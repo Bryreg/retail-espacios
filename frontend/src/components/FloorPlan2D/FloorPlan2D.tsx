@@ -22,8 +22,9 @@ import {
 import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
 import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
-import { CATALOG, CATALOGO_2D, H_DEFAULTS, MODELOS_2D, type ModeloDelPlano } from "../../catalogo/plano2D";
-import { modeloPorId, nombreDeModelo } from "../../catalogo/catalogo";
+import { CATALOG, CATALOGO_2D, H_DEFAULTS, modelosDelPlanoConPropias, type ModeloDelPlano } from "../../catalogo/plano2D";
+import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
+import { useFichasPropias } from "../../store/fichasPropias";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
@@ -346,6 +347,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
    *  siempre. Se suelta junto con el tipo. */
   const [pendingModelo, setPendingModelo] = useState<ModeloDelPlano | null>(null);
   useEffect(() => { if (pendingType === null) setPendingModelo(null); }, [pendingType]);
+  /** La biblioteca de modelos: los de RECABRA y, después, las fichas propias
+   *  del supermercado que no están retiradas, debajo de su familia. */
+  const fichasPropias = useFichasPropias();
+  const modelosDelPlano = useMemo(() => modelosDelPlanoConPropias(fichasPropias), [fichasPropias]);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
   /** Por qué no se pudo poner ese nombre, y qué se puede hacer al respecto.
@@ -1386,7 +1391,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                   const displayLabel = catalogLabels[def.type] ?? def.label;
                   const isEditingThis = editingCatalogType === def.type;
                   const isActive = pendingType === def.type && activeTool === "place" && !pendingModelo;
-                  const modelos = MODELOS_2D[def.type] ?? [];
+                  const modelos = modelosDelPlano[def.type] ?? [];
                   return (
                     <div
                       key={cat + def.type}
@@ -1476,8 +1481,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         </button>
                       )}
                       {/* Los modelos de la familia: muebles de verdad, con las
-                          medidas de su ficha. Lo de arriba es el modelo base,
-                          que se coloca como siempre. «≈»: medidas deducidas. */}
+                          medidas de su ficha —los de RECABRA y después las
+                          fichas propias del supermercado—. Lo de arriba es el
+                          modelo base, que se coloca como siempre. «≈»: medidas
+                          deducidas. */}
                       {modelos.length > 0 && (
                         <details data-modelos-2d={def.type}
                           open={(pendingType === def.type && !!pendingModelo) || undefined}
@@ -3561,6 +3568,9 @@ function AssignmentPanel({
   onClose: () => void;
 }) {
   const catDef = CATALOG.find((c) => c.type === item.type);
+  // El nombre del modelo de una ficha propia llega cuando se leen las fichas
+  // del supermercado: escucharlas vuelve a dibujar el panel.
+  useFichasPropias();
   const modeloDelMueble = modeloPorId(item.nace?.modelo);
   const fullCode = `${item.sede || sede}-${item.code}`;
   const inp = "w-full bg-transparent border-b border-dark-line-2 text-dark-ink-1 text-sm py-1 focus:outline-none focus:border-accent placeholder:text-dark-ink-3";
@@ -3695,7 +3705,7 @@ function AssignmentPanel({
               medidas son una deducción, «≈». */}
           {modeloDelMueble && (
             <p data-modelo={modeloDelMueble.id}
-              title={`${modeloDelMueble.fuente.nota}\nFuente (${modeloDelMueble.fuente.confiabilidad}): ${modeloDelMueble.fuente.url}`}
+              title={textoDeFuente(modeloDelMueble)}
               style={{ fontSize: 11, color: "var(--dark-ink-2)", marginTop: 2 }}>
               {nombreDeModelo(modeloDelMueble)}
             </p>

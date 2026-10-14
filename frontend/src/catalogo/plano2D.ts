@@ -1,5 +1,7 @@
 import type { Catalogo2D, FixType2D, NaceDeModelo } from "../utils/convertirPlano";
-import { CATALOGO_DE_MUEBLES, estampaDe, formaDe, modelosDe, resolverTipo } from "./catalogo";
+import { CATALOGO_DE_MUEBLES, estampaDe, formaDe, modelosDe, modelosPropiosDe, resolverTipo } from "./catalogo";
+import type { FichaDeModelo } from "./catalogo";
+import type { ModeloPropio } from "./propias";
 
 /**
  * Las tablas por TIPO de mueble del plano 2D, calculadas del catálogo
@@ -109,24 +111,42 @@ export interface ModeloDelPlano {
   nace: NaceDeModelo;
 }
 
+/** El modelo como lo lista la biblioteca del tipo `t` del plano. El MISMO
+ *  para un modelo de RECABRA y para una ficha propia del supermercado. */
+export function modeloDelPlano(t: string, m: FichaDeModelo): ModeloDelPlano {
+  const e = estampaDe(m);
+  const color = "color" in m ? m.color : undefined;
+  return {
+    id: m.id,
+    nombre: m.nombre,
+    estimado: m.fuente.confiabilidad === "estimado",
+    w: e.w,
+    h: e.d,
+    nace: {
+      h: e.h,
+      // El color del 2D, como `COLOR_DEFAULTS`: el de la ficha si lo tiene.
+      color: color ?? COLOR_DEFAULTS[t] ?? e.color,
+      modelo: e.modelo,
+      ...(e.entrepanos !== undefined ? { entrepanos: e.entrepanos } : {}),
+      ...(e.modulo !== undefined ? { modulo: e.modulo } : {}),
+      ...(e.partes !== undefined ? { partes: e.partes } : {}),
+    },
+  };
+}
+
 export const MODELOS_2D: Record<string, ModeloDelPlano[]> = Object.fromEntries(
-  CATALOGO_DE_MUEBLES.orden.plano2D.map((t) => [t, modelosDe(t).map((m) => {
-    const e = estampaDe(m);
-    return {
-      id: m.id,
-      nombre: m.nombre,
-      estimado: m.fuente.confiabilidad === "estimado",
-      w: e.w,
-      h: e.d,
-      nace: {
-        h: e.h,
-        // El color del 2D, como `COLOR_DEFAULTS`: el de la ficha si lo tiene.
-        color: m.color ?? COLOR_DEFAULTS[t] ?? e.color,
-        modelo: e.modelo,
-        ...(e.entrepanos !== undefined ? { entrepanos: e.entrepanos } : {}),
-        ...(e.modulo !== undefined ? { modulo: e.modulo } : {}),
-        ...(e.partes !== undefined ? { partes: e.partes } : {}),
-      },
-    };
-  })]),
+  CATALOGO_DE_MUEBLES.orden.plano2D.map((t) => [t, modelosDe(t).map((m) => modeloDelPlano(t, m))]),
 );
+
+/** La biblioteca con las fichas propias del supermercado: cada una debajo de
+ *  su familia (la góndola central en `gondola_doble`, la de pared en
+ *  `gondola_mural`), después de los modelos de RECABRA y sin las retiradas.
+ *  Sin fichas propias es `MODELOS_2D` misma. */
+export function modelosDelPlanoConPropias(propias: readonly ModeloPropio[]): Record<string, ModeloDelPlano[]> {
+  if (propias.length === 0) return MODELOS_2D;
+  return Object.fromEntries(CATALOGO_DE_MUEBLES.orden.plano2D.map((t) => {
+    const suyas = modelosPropiosDe(t, propias);
+    const base = MODELOS_2D[t] ?? [];
+    return [t, suyas.length === 0 ? base : [...base, ...suyas.map((m) => modeloDelPlano(t, m))]];
+  }));
+}

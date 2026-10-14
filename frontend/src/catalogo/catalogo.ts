@@ -1,4 +1,5 @@
 import datos from "./muebles.json";
+import { fichaPropiaPorId, type ModeloPropio } from "./propias";
 
 /**
  * El catálogo de los tipos de mueble, leído de UN archivo: `muebles.json`.
@@ -55,6 +56,13 @@ import datos from "./muebles.json";
  * geometría (`estampaDe`), y lo guardado no se vuelve a leer de acá: cambiar
  * una ficha no mueve lo ya colocado. Lo único que se busca por el id es la
  * tarifa de los modelos que tienen una propia (`tarifaDeModelo`).
+ *
+ * Las fichas PROPIAS de cada supermercado (`cli:<clave>`, las que arma la
+ * dueña en el taller) se buscan igual, por el mismo `modeloPorId`: viven en su
+ * base y las trae `catalogo/propias.ts`. Mismo trato que un modelo de acá —se
+ * estampan, la tarifa se busca por el id y sólo si es del tipo del mueble—,
+ * y las paletas las listan debajo de su familia, después de las de RECABRA
+ * (`modelosPropiosDe`).
  */
 
 /** Si el tipo se alquila: siempre, sólo si se lo habilita a mano (nace con
@@ -88,7 +96,9 @@ export interface PartesDeMueble { puertas?: number }
  *  entrepaños y el módulo de la góndola, las puertas de la nevera de puertas. */
 export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas";
 
-/** Una ficha de un mueble de verdad. Ver «Los modelos», arriba. */
+/** Una ficha de un mueble de verdad. Ver «Los modelos», arriba. Las de este
+ *  archivo traen las tres cosas de la fuente; una ficha propia del
+ *  supermercado (`ModeloPropio`) puede traer sólo la URL o sólo la nota. */
 export interface ModeloDeMueble {
   /** `base:…`: no cambia nunca, porque el mueble lo guarda. */
   id: string;
@@ -281,6 +291,10 @@ export function nombresDeInforme(): { singular: Record<string, string>; plural: 
 
 // ─── Los modelos ──────────────────────────────────────────────────────────────
 
+/** Un modelo que puede estar guardado en un mueble: uno de `muebles.json`
+ *  (`base:…`) o una ficha propia del supermercado (`cli:…`). */
+export type FichaDeModelo = ModeloDeMueble | ModeloPropio;
+
 /** Un `Map` y no un objeto: un id escrito a mano en un plano no puede caer en
  *  `toString` ni en `constructor`. Se arma la primera vez que se pide y no al
  *  cargar el módulo: armado arriba de todo, cualquiera que importara este
@@ -288,12 +302,18 @@ export function nombresDeInforme(): { singular: Record<string, string>; plural: 
  *  catálogo entero aunque nunca preguntara por un modelo. */
 let modeloPorIdArmado: ReadonlyMap<string, ModeloDeMueble> | null = null;
 
-/** La ficha de ese id, o `undefined` si no está (un id que se borró, o el
- *  modelo base implícito, que no tiene ficha). */
-export function modeloPorId(id: string | undefined): ModeloDeMueble | undefined {
+/** La ficha de ese id, o `undefined` si no está (un id que se borró, el
+ *  modelo base implícito, que no tiene ficha, o una ficha propia que esta
+ *  sesión todavía no leyó). Primero el catálogo: una ficha propia no puede
+ *  hacerse pasar por un modelo de RECABRA —sólo se buscan las de su prefijo,
+ *  `cli:`—, como en el servidor (`tarifa_del_mueble`). Las propias retiradas
+ *  también se encuentran: lo colocado con ellas se sigue llamando así. */
+export function modeloPorId(id: string | undefined): FichaDeModelo | undefined {
   if (!id) return undefined;
   modeloPorIdArmado ??= new Map(C.modelos.map((m) => [m.id, m]));
-  return modeloPorIdArmado.get(id);
+  const delCatalogo = modeloPorIdArmado.get(id);
+  if (delCatalogo) return delCatalogo;
+  return id.startsWith(C.fichas.prefijoPropio) ? fichaPropiaPorId(id) : undefined;
 }
 
 /** El tipo de verdad de un tipo o un alias (`gondola_mural` → `gondola`). */
@@ -318,6 +338,20 @@ export function modelosDe(entrada: string): ModeloDeMueble[] {
   return C.modelos.filter((m) => m.tipo === r.clave && (r.variante === undefined || m.variante === r.variante));
 }
 
+/** Las fichas propias que se OFRECEN en una entrada de las paletas: las de su
+ *  familia (y su variante, en la góndola), sin las retiradas, en el orden en
+ *  que llegaron. Van después de los modelos de RECABRA. Una ficha con el id
+ *  de un modelo del catálogo o sin el prefijo propio no se ofrece: no se la
+ *  encontraría por su id. */
+export function modelosPropiosDe(entrada: string, propias: readonly ModeloPropio[]): ModeloPropio[] {
+  const r = resolverTipo(entrada);
+  if (!r) return [];
+  return propias.filter((m) => !m.retirado
+    && m.id.startsWith(C.fichas.prefijoPropio)
+    && m.tipo === r.clave
+    && (r.variante === undefined || m.variante === r.variante));
+}
+
 /** El id del modelo base implícito de una entrada: `base:<tipo>` o, en la
  *  góndola, `base:<alias>` (`base:gondola_doble`). Ningún modelo del archivo
  *  puede llamarse así. */
@@ -340,12 +374,14 @@ export interface EstampaDeModelo {
   partes?: PartesDeMueble;
 }
 
-export function estampaDe(m: ModeloDeMueble): EstampaDeModelo {
+export function estampaDe(m: FichaDeModelo): EstampaDeModelo {
   const r = resolverTipo(m.variante !== undefined ? `${m.tipo}:${m.variante}` : m.tipo);
   const forma = r ? formaDe(r.tipo, r.variante) : undefined;
+  // Una ficha propia no trae color: nace con el de su familia.
+  const color = "color" in m ? m.color : undefined;
   return {
     w: m.w, d: m.d, h: m.h,
-    color: m.color ?? forma?.color ?? "#6366f1",
+    color: color ?? forma?.color ?? "#6366f1",
     modelo: m.id,
     ...(m.entrepanos !== undefined ? { entrepanos: m.entrepanos } : {}),
     ...(m.modulo !== undefined ? { modulo: m.modulo } : {}),
@@ -354,7 +390,21 @@ export function estampaDe(m: ModeloDeMueble): EstampaDeModelo {
 }
 
 /** Lo que se muestra del modelo en un panel: su nombre y, si las medidas son
- *  una deducción, un «≈» adelante. */
-export function nombreDeModelo(m: ModeloDeMueble): string {
-  return (m.fuente.confiabilidad === "estimado" ? "≈ " : "") + m.nombre;
+ *  una deducción, un «≈» adelante. Una ficha propia retirada se sigue
+ *  nombrando —lo colocado con ella es eso—, y lo dice. */
+export function nombreDeModelo(m: FichaDeModelo): string {
+  const retirada = "retirado" in m && m.retirado ? " (retirada)" : "";
+  return (m.fuente.confiabilidad === "estimado" ? "≈ " : "") + m.nombre + retirada;
+}
+
+/** El texto de la fuente al pasar el mouse por el nombre del modelo: la nota,
+ *  cuánto confiar y la URL, lo que tenga (una ficha propia puede traer sólo
+ *  la nota o sólo la URL). */
+export function textoDeFuente(m: FichaDeModelo): string {
+  const { nota, url, confiabilidad } = m.fuente;
+  return [
+    nota,
+    `Fuente (${confiabilidad})${url ? `: ${url}` : ""}`,
+    "retirado" in m && m.retirado ? "Ficha retirada: ya no se ofrece en la paleta; lo colocado sigue igual." : "",
+  ].filter(Boolean).join("\n");
 }

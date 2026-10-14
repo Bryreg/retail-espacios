@@ -17,6 +17,7 @@ import {
   Box,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
+import { useFichasPropias } from "../store/fichasPropias";
 import { temaActual, useTema } from "../tema";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client, { describeError } from "../api/client";
@@ -3063,6 +3064,10 @@ function SpacesTable({
    *  se puede contestar «¿cuánto pido por ésta?» sin salir a otra pantalla. */
   tarifaDe: (entry: FaceEntry) => number | null;
 }) {
+  // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
+  // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
+  // primer dibujo, así que van en las dependencias de lo que la pregunta.
+  const fichasPropias = useFichasPropias();
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
     () =>
@@ -3080,7 +3085,7 @@ function SpacesTable({
     return rows.filter(
       (e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, filter, sinMontar),
     );
-  }, [rows, filter, query, sinMontar]);
+  }, [rows, filter, query, sinMontar, fichasPropias]);
 
   /* LOS ANCHOS, MEDIDOS.
      Proveedor no llevaba ancho y se quedaba con todo lo que sobraba: en una
@@ -3108,7 +3113,7 @@ function SpacesTable({
     };
   // `fuentes` vuelve a medir cuando llega la tipografía de la página.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, fuentes]);
+  }, [rows, fuentes, fichasPropias]);
 
   // Los anchos van en el `th` y no en el `td`: con `table-layout:fixed` el
   // navegador toma las medidas de la PRIMERA fila, que es la del encabezado.
@@ -3497,6 +3502,10 @@ function EmptyDashboard({
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () => void }) {
+  // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
+  // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
+  // primer dibujo, así que van en las dependencias de lo que la pregunta.
+  const fichasPropias = useFichasPropias();
   // El plano isométrico pinta con hex de verdad y no con `var(--x)` —`darken()`
   // le hace la cuenta a cada cara del prisma—, así que las ternas se eligen al
   // pintar con `temaActual()`. Esta suscripción es lo que hace que el plano se
@@ -3677,7 +3686,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   /** Qué tipos de tarifa toca el contrato, para marcar sus filas en la tabla. */
   const tiposDelContrato = useMemo(
     () => new Set(espaciosDelContrato.map((e) => rateTypeOf(e.fixture))),
-    [espaciosDelContrato],
+    [espaciosDelContrato, fichasPropias],
   );
 
   /** EL RESALTADO. Apaga la sala al 20 % y enciende los muebles de los que se
@@ -3903,7 +3912,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       faceFlags.set(f.id, flags);
     });
     return { faceFlags, count };
-  }, [fixtures, mapQuery, mapFilter]);
+  }, [fixtures, mapQuery, mapFilter, fichasPropias]);
 
   // La lista de precios de la sede: qué familias hay, cuántas caras de cada una
   // están libres en el periodo, cuántas se liberan adentro, y a cuánto sale.
@@ -3957,7 +3966,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     });
     return [...acum].map(([cat, v]) => ({ cat, ...v }))
       .sort((a, b) => (b.tarifa ?? -1) - (a.tarifa ?? -1));
-  }, [fixtures, mapRange, referenceRates, sede, clavesDelContrato]);
+  }, [fixtures, mapRange, referenceRates, sede, clavesDelContrato, fichasPropias]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -4040,7 +4049,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       expired, expiring, noContract,
       topSuppliers, belowReference,
     };
-  }, [fixtures, referenceRates, sede]);
+  }, [fixtures, referenceRates, sede, fichasPropias]);
 
   // How much of the sede can actually be sold for the chosen period. Counted
   // per face, like every other total on this page.
@@ -4129,7 +4138,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const tarifaDe = useCallback(
     (e: FaceEntry): number | null =>
       referenceRateFor(referenceRates, e.fixture.sede || sede, rateTypeOf(e.fixture)),
-    [referenceRates, sede],
+    [referenceRates, sede, fichasPropias],
   );
 
   /** Lo que la sede NO está cobrando: las caras libres hoy, valoradas a tarifa.
@@ -4208,7 +4217,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     return fixtures.flatMap(commercialFacesOf)
       .filter((e) => (!q || faceMatchesQuery(e, q)) && faceMatchesFilter(e, mapFilter, sinMontarSet))
       .length;
-  }, [fixtures, mapQuery, mapFilter, sinMontarSet]);
+  }, [fixtures, mapQuery, mapFilter, sinMontarSet, fichasPropias]);
 
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
    *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,

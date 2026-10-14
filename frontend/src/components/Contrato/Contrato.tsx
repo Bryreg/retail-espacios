@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
+import { useFichasPropias } from "../../store/fichasPropias";
 import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { parseISODate, upcomingSeasons } from "../../types/seasons";
@@ -161,6 +162,10 @@ export function useContrato({
   const fixtures = useFixtureStore(selectFixtures);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
   const seasonWindows = useFixtureStore((s) => s.seasonWindows);
+  // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
+  // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
+  // primer dibujo, así que van en las dependencias de lo que la pregunta.
+  const fichasPropias = useFichasPropias();
 
   // El periodo con el que abre. Se congela al montar a propósito: cambiar la
   // temporada de arriba no debe reescribirle las fechas a alguien que ya está
@@ -234,7 +239,7 @@ export function useContrato({
           : rangeAvailability(datos, inicial.from, inicial.to)) as RangeAvailability,
       };
     });
-  }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial]);
+  }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias]);
 
 
   /** Al entrar, cada espacio arranca con su tarifa de referencia escrita.

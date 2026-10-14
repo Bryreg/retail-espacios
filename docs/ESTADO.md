@@ -1,7 +1,18 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, noche (las **fichas propias de cada supermercado, del lado
+Última actualización: 2026-10-14, más tarde (las **fichas propias de cada supermercado, en
+pantalla**: el taller tiene la pestaña «Fichas», donde la dueña arma la ficha de un mueble suyo
+—familia, nombre, medidas en centímetros con el rango de su familia a la vista, puertas,
+entrepaños y módulo, tarifa y de dónde salió, sin foto— y lo ve girar con esa ficha mientras
+escribe; el formulario valida con las mismas reglas que el servidor, y además los entrepaños a
+25 cm, antes de mandar. Guardada, la ficha aparece en la paleta del plano 2D y del Editor 3D
+debajo de su familia, después de las de RECABRA (las retiradas no se ofrecen); colocarla estampa
+`cli:<clave>` como un modelo del catálogo, el panel la nombra, y `rateTypeOf` le da su tarifa
+con la misma regla que el servidor, comparada con casos compartidos. Ver *Fichas propias: la
+pantalla (2026-10-14)*).
+
+Antes, 2026-10-14, noche (las **fichas propias de cada supermercado, del lado
 del servidor**: una tabla nueva, `modelos_mueble`, en la base de cada uno, con la API
 `/api/muebles/modelos` —la lee cualquier sesión, la escribe administración— para que la dueña
 arme sus muebles sin pedirnos un cambio: familia, nombre, medidas, la geometría de su familia y
@@ -182,15 +193,13 @@ sigue, en orden:
 2. **El material de la cara** (copete, cenefa, stopper) como venta aparte, que el plan
    deja para después de las partes (PR 5) y que pide su propia respuesta de la dueña: si
    esas piezas se pueden vender a otra marca que la de la cara.
-3. **Fichas propias del cliente en el taller**: la dueña arma la ficha de un mueble suyo
-   —medidas, puertas, la URL de la ficha técnica— y lo coloca. **El servidor ya está**
-   (2026-10-14, *Fichas propias: el servidor*): la tabla `modelos_mueble`, la API
-   `/api/muebles/modelos` y la validación compartida (`catalogo/fichas.ts` ↔
-   `catalogo_muebles.problemas_de_la_ficha`). Falta la pantalla: la pestaña «Fichas» de
-   `/taller` (usa `problemasDeLaFicha` para marcar cada campo; los 422 traen `loc` por campo),
-   `api/muebles.ts`, las paletas del 2D y del 3D con las fichas vigentes (las retiradas no se
-   ofrecen pero se nombran en el panel), y `rateTypeOf` en el navegador resolviendo también
-   `cli:…` (hoy Tarifas y el tablero darían la del tipo). Sin foto: ella dijo que no tiene.
+3. **Fichas propias del cliente en el taller: HECHO** (2026-10-14). El servidor (*Fichas
+   propias: el servidor*) y la pantalla (*Fichas propias: la pantalla*): la pestaña «Fichas»
+   de `/taller`, las paletas del 2D y del 3D con las fichas vigentes, el panel que las nombra
+   (también retiradas) y `rateTypeOf` resolviendo `cli:…`. Sin foto: ella dijo que no tiene.
+   Lo que queda de esto: mirar el flujo entero con la dueña (armar «Nevera Inducol 2 puertas»,
+   colocarla, venderla) y la revisión adversarial de la rama; `/taller` sigue siendo sólo de
+   administración, así que la dueña entra con su cuenta de dueña (que es admin).
 
 Quedó abierto, más chico, de lo hecho:
 
@@ -433,6 +442,13 @@ fichas propias de cada supermercado** (`cli:<clave>`, tabla `modelos_mueble`) si
 regla: se estampan, la clave, la familia y la tarifa no cambian nunca (el `PUT` las rechaza),
 retirar es baja lógica y lo colocado no se mueve; y se validan con las mismas reglas que los
 modelos del catálogo (`fichas` en `muebles.json`). Ver *Fichas propias: el servidor (2026-10-14)*.
+En el navegador viven en `catalogo/propias.ts` (las lee `store/fichasPropias.ts` una vez por
+sesión y otra al guardar una; nunca en `localStorage`, y una sesión de otro supermercado las
+olvida antes de leer las suyas), y `modeloPorId` las busca DESPUÉS del catálogo y sólo con el
+prefijo `cli:`. Como llegan después del primer dibujo, **todo `useMemo`/`useCallback` que
+pregunta la tarifa (`rateTypeOf`, directo o por una función del archivo) lleva `fichasPropias`
+en sus dependencias** (`useFichasPropias()`); `probar-catalogo` recorre `src` y falla si falta.
+Ver *Fichas propias: la pantalla (2026-10-14)*.
 
 **Lo vendido no se mueve sin aviso.** El alto, los entrepaños y el módulo de una góndola o
 una punta deciden las filas del arte pintado, los entrepaños donde se para el producto y
@@ -7109,6 +7125,12 @@ vuelve a `/`. Es una herramienta de diseño, no una pantalla del producto.
 Desde el 2026-10-14 también dibuja cada **modelo** de la familia con su ficha estampada, y
 «al lado» el de siempre, para compararlos: ver *Cotejo visual de los muebles de Colombia*.
 
+Y desde más tarde ese mismo día tiene dos pestañas: **«Mirar»**, el banco de siempre (que
+ahora lista también las fichas propias del supermercado en «modelo»), y **«Fichas»**, donde la
+dueña arma las de sus muebles y las ve girar mientras escribe: ver *Fichas propias: la pantalla
+(2026-10-14)*. `scripts/taller/mirar-mueble.py` sigue eligiendo el mueble por el segundo
+`select` de «Mirar»: las pestañas son botones y no corrieron nada.
+
 ### Lo que falta
 
 - **Reconstruidos de cero**: góndola (doble y mural), punta, nevera de refrescos y batea.
@@ -8985,6 +9007,108 @@ sin mirar el tipo o pisando al catálogo, la planilla y la consola que leen por 
 plano o no leen, las retiradas sin tarifa, la tabla sin clasificar o fuera de la copia, ids
 reutilizados, las rutas fuera de orden, `in` en vez de `hasOwnProperty`, los largos en
 unidades UTF-16 y `probar-catalogo` sin las reglas— y cada una hizo fallar su guarda.
+
+### Fichas propias: la pantalla (2026-10-14)
+
+El servidor de las fichas propias estaba (*Fichas propias: el servidor*); faltaba que la dueña
+pudiera usarlo sin pedirnos nada. Ahora arma la ficha en el taller y la coloca desde las paletas
+de los dos editores, como un modelo de RECABRA.
+
+**Dónde viven en el navegador.** `catalogo/propias.ts` guarda la lista que manda `GET
+/api/muebles/modelos` (retiradas incluidas) y no importa nada: es donde las busca
+`modeloPorId` —y con él `rateTypeOf`, el nombre del panel y la sugerencia de «Alto»,
+«Entrepaños» y «Módulo»—, primero el catálogo y después las propias, sólo con el prefijo `cli:`
+(una ficha propia no puede hacerse pasar por un modelo de RECABRA). La llena
+`store/fichasPropias.ts` UNA vez por sesión (`useFichasPropias()`, que además vuelve a dibujar a
+quien la llama) y otra vez cuando el taller guarda, retira o reactiva una
+(`recargarFichasPropias`). No se guarda en `localStorage`: un ingreso nuevo —o de otro
+supermercado en la misma máquina— las olvida ANTES de leer las suyas, una respuesta de la
+sesión anterior que llega tarde no las pisa, cerrar la sesión las olvida y, sin red, se queda
+sin ellas (los muebles colocados se dibujan igual: tienen la ficha estampada) y reintenta en la
+próxima pantalla. No viaja en lo que baja la landing: la piden el tablero, los editores y el
+taller (`probar-catalogo` mira el grafo de `main.tsx`; el pedazo de entrada siguió en
+352,43 kB). `api/muebles.ts` tiene los cinco pedidos.
+
+**La pestaña «Fichas» de `/taller`** (`components/taller/PanelDeFichas.tsx`, sólo
+administración, como el taller). A la izquierda el formulario y la lista; a la derecha el
+mueble con ESA ficha, girando:
+
+- **Familia**: las que admiten fichas (las que tienen `rango`), con la góndola dos veces
+  —«Góndola Doble (central, dos caras)» y «Góndola Mural (de pared, una cara)»—, porque de la
+  variante dependen las caras. **Nombre** y **clave** (sale del nombre sin tildes mientras no
+  se la toque: «Góndola de pared 1,70» → `gondola-de-pared-1-70`; «es lo que guarda el plano:
+  no cambia nunca»).
+- **Medidas en centímetros**, como vienen en una ficha técnica, con el rango de la familia al
+  lado de cada una («de 60 a 320 cm»); en la góndola el ancho es «Ancho de un módulo».
+- **Cómo es por dentro**, sólo lo que su familia admite: puertas (la nevera de puertas),
+  entrepaños por cara sin la base y módulo (la góndola y la punta). Vacío es la cuenta de
+  siempre. El tope de entrepaños dice cuántos caben **con ese alto** a 25 cm.
+- **Tarifa**: «La de su familia (…)» o una de las propias de la familia que ya existen (media
+  y cuarto de estiba, exhibidor de cartón).
+- **De dónde salió**: URL de la ficha técnica («la página, no una foto»), nota con sus
+  palabras (con el contador de 600) y cuánto confiar, en palabras: «Ficha técnica: la página
+  trae las medidas», «Catálogo: salen del título o de un listado», «Estimado: medido a ojo o
+  deducido (lleva «≈»)». Sin foto ni subida de imágenes.
+- **Guardar** pasa por `guardarFicha` (`utils/formularioDeFicha.ts`, puro): valida con
+  `problemasDeLaFicha` —las mismas reglas que el servidor— más los entrepaños a 25 cm
+  (`entrepanosQueEntran`, que el servidor no puede ver), dice cada problema debajo de su campo
+  y en centímetros («el ancho (400 cm) está fuera del rango de su familia (60 a 320 cm)»), y
+  **no llama a la API** si hay uno. Lo que diga el servidor vuelve igual, por campo: un 422 con
+  sus palabras, un 409 debajo de la clave («Ya hay una ficha con la clave … (retirada). Las
+  claves no se reutilizan…»), sin red «la ficha no se guardó». Al editar, la familia, la clave
+  y la tarifa están quietas y dicen por qué.
+- **La lista**: «Tus fichas» con Editar y Retirar (retirar pregunta y dice que lo colocado
+  sigue igual), y las retiradas aparte, plegadas, con Reactivar.
+- **El mueble que se ve** sale de `fichaParaDibujar` (lo escrito, metido en el rango para no
+  dibujar una góndola de 30 m mientras se tipea) pasado por `defDeModelo` —la MISMA función
+  con que se arma la entrada de la paleta— y dibujado con la ficha estampada (`delCatalogo`
+  con `modelo`). La cámara arranca a tres cuartos encuadrando el mueble entero y «girar» lo
+  hace dar vueltas. «Mirar» lista también las fichas propias en «modelo».
+
+**Las paletas.** `paletaConPropias(propias)` (`catalogo/editor3D.ts`) y
+`modelosDelPlanoConPropias(propias)` (`catalogo/plano2D.ts`) ponen cada ficha vigente debajo
+de su familia —la central en `gondola_doble`, la de pared en `gondola_mural`—, DESPUÉS de los
+modelos de RECABRA, con su nombre y «≈» si es estimada; las retiradas no aparecen. Sin fichas
+propias devuelven `PALETA_3D` y `MODELOS_2D` mismas, y una familia sin propias es el mismo
+objeto (el 3D compara la entrada elegida por identidad). Una ficha propia se coloca con el
+rótulo y el emoji de su familia, el COLOR de su familia (no lleva color) y sus medidas y su
+geometría: `defDeModelo` y `modeloDelPlano`, las mismas que arman los modelos del catálogo.
+Colocarla estampa `modelo: "cli:<clave>"` por el camino de siempre (`fichaDe` en el 3D, `nace`
+en el 2D). El panel de los dos editores nombra el modelo (`nombreDeModelo`, con «(retirada)»
+si lo está) y la fuente al pasar el mouse (`textoDeFuente`: una ficha propia puede tener sólo
+la URL o sólo la nota).
+
+**La tarifa.** `rateTypeOf` no cambió: `tarifaDeModelo` busca por `modeloPorId`, que ahora
+encuentra también las propias, con la misma regla que `tarifa_del_mueble` del servidor (sólo
+si la ficha es del tipo del mueble; las retiradas siguen cobrando lo que cobraban). Los dos
+lados corren los 14 casos de `frontend/scripts/casos/tarifas.json` (`probar-catalogo` y
+`test_fichas_propias.py`, que las carga en la base y las lee con `tarifas_propias`, como la
+planilla y la consola). Como las fichas llegan DESPUÉS del primer dibujo, el tablero
+(`DashboardView`, `SpacesTable`), el contrato (`useContrato`) y Vender (`Ficha`) escuchan
+`useFichasPropias()` y ponen `fichasPropias` en cada `useMemo`/`useCallback` que pregunta la
+tarifa; sin eso la media estiba propia se mostraba y se comparaba como estiba entera hasta que
+cambiara otra cosa.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`: 31 guiones, 887 «ok» (eran 879), con
+guardas nuevas en `probar-catalogo` —la paleta y la biblioteca con las propias, colocar estampa
+`cli:` y cambiar o retirar la ficha no mueve lo colocado, los editores y el panel que las usan,
+la tarifa con los casos compartidos, el cargador por sesión, los cálculos que vuelven a
+preguntar la tarifa, el formulario que valida antes de mandar y las fichas fuera del pedazo de
+entrada— y en `probar-muebles` («/taller «Fichas» dibuja la ficha que se escribe»); `npm run
+build` limpio, entrada en 352,43 kB. pytest con la prueba nueva de la tarifa compartida.
+Mirado en el navegador contra un servidor local descartable: con 400 cm de ancho el formulario
+marcó el ancho, la fuente y la confiabilidad sin mandar nada; guardó la nevera Inducol de 2
+puertas, una góndola de pared estimada y una media estiba que después se retiró; la clave
+repetida dio el 409 debajo de la clave; la biblioteca del 2D y la paleta del 3D mostraron las
+dos vigentes al final de su familia (la «Góndola Mural» con 13 modelos) y no la retirada; la
+nevera colocada en el plano quedó con `modelo: "cli:nevera-inducol-2-puertas"` y el panel la
+nombró con su URL. 33 mutaciones, cada una hizo fallar su guarda (ver el commit).
+
+**Lo que queda.** El flujo entero con la dueña y sus fotos de trabajo, la revisión adversarial
+de la rama. La tarifa propia de una ficha sólo puede ser una de las que ya tiene su familia
+(decisión del paso del servidor, a confirmar con ella). Un mueble con `cli:` de una ficha que
+esta sesión no pudo leer (sin red) se dibuja bien pero el panel no lo nombra y la tarifa es la
+del tipo hasta que se lean.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

@@ -338,6 +338,53 @@ def test_la_tarifa_del_mueble_resuelve_las_fichas_propias(client):
                              {"base:estiba-media": ("isla", "isla_fria")}) == "estiba_media"
 
 
+def test_la_tarifa_corre_los_casos_compartidos_con_el_navegador(client, worker):
+    """Los mismos casos que corre ``probar-catalogo.mjs`` sobre ``rateTypeOf``
+    (``frontend/scripts/casos/tarifas.json``): las fichas se guardan en la base
+    como las guarda la API, se leen con ``tarifas_propias`` —lo que hacen la
+    planilla y la consola— y cada mueble tiene que dar la misma tarifa que en
+    el navegador. Y ``GET /modelos`` las manda con el ``id`` que el navegador
+    busca (``cli:<clave>``), retiradas incluidas."""
+    from datetime import datetime, timezone
+
+    from app.database import SessionLocal
+    from app.models.models import ModeloMueble
+    from app.services.catalogo_muebles import tarifa_del_mueble
+    from app.services.fichas_propias import tarifas_propias
+
+    casos = json.loads((RAIZ / "frontend" / "scripts" / "casos" / "tarifas.json").read_text(encoding="utf-8"))
+    db = SessionLocal()
+    try:
+        for p in casos["propias"]:
+            datos = {"w": 1.0, "d": 1.0, "h": 1.0, "fuente": {"confiabilidad": "estimado", "nota": "x"}}
+            if p.get("variante"):
+                datos["variante"] = p["variante"]
+            if p.get("tarifa"):
+                datos["tarifa"] = p["tarifa"]
+            db.add(ModeloMueble(
+                clave=p["clave"], tipo=p["tipo"], nombre=p["clave"], datos_json=json.dumps(datos),
+                retirado_en=datetime.now(timezone.utc) if p.get("retirado") else None,
+            ))
+        db.commit()
+        propios = tarifas_propias(db)
+    finally:
+        db.close()
+
+    mal = []
+    for caso in casos["casos"]:
+        hoy = tarifa_del_mueble(caso["mueble"], propios)
+        if hoy != caso["tarifa"]:
+            mal.append(f"{caso['nombre']}: da «{hoy}» y tenía que ser «{caso['tarifa']}»")
+    assert not mal, "\n".join(mal)
+
+    r = client.get("/api/muebles/modelos", headers=worker)
+    assert r.status_code == 200, r.text
+    por_id = {m["id"]: m for m in r.json()}
+    for p in casos["propias"]:
+        m = por_id[f"cli:{p['clave']}"]
+        assert (m["tipo"], m.get("tarifa"), m["retirado"]) == (p["tipo"], p.get("tarifa"), bool(p.get("retirado"))), p
+
+
 def test_la_planilla_usa_la_tarifa_de_la_ficha_con_una_consulta(client, admin):
     """La media estiba propia se cobra con la tarifa de la media estiba; una
     estiba sin modelo, con la de la estiba. Y las fichas se leen UNA vez por

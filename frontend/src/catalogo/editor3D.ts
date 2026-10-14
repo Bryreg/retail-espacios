@@ -1,8 +1,9 @@
 import type { FixType, GondolaType } from "../types/fixtures";
 import {
-  CATALOGO_DE_MUEBLES, estampaDe, formaDe, idDeModeloBase, modelosDe, resolverTipo, tiposConBandera,
+  CATALOGO_DE_MUEBLES, estampaDe, formaDe, idDeModeloBase, modelosDe, modelosPropiosDe, resolverTipo, tiposConBandera,
 } from "./catalogo";
-import type { PartesDeMueble } from "./catalogo";
+import type { FichaDeModelo, PartesDeMueble } from "./catalogo";
+import type { ModeloPropio } from "./propias";
 
 /**
  * Las tablas por TIPO de mueble del editor 3D, calculadas del catálogo
@@ -112,26 +113,49 @@ export interface FamiliaDePaleta {
   modelos: FixtureDef[];
 }
 
+/** La entrada de la paleta de un modelo: lo que coloca. La MISMA para un
+ *  modelo de RECABRA y para una ficha propia del supermercado: el mueble nace
+ *  con el rótulo y el emoji de su familia y con las medidas, el color y la
+ *  geometría de la ficha, y guarda su id (`base:…` o `cli:…`). */
+export function defDeModelo(base: FixtureDef, m: FichaDeModelo): FixtureDef {
+  const e = estampaDe(m);
+  return {
+    ...base,
+    w: e.w, d: e.d, h: e.h,
+    color: e.color,
+    desc: m.fuente.nota ?? m.fuente.url ?? "",
+    modelo: m.id,
+    nombreModelo: m.nombre,
+    estimado: m.fuente.confiabilidad === "estimado",
+    ...(e.entrepanos !== undefined ? { entrepanos: e.entrepanos } : {}),
+    ...(e.modulo !== undefined ? { modulo: e.modulo } : {}),
+    ...(e.partes !== undefined ? { partes: e.partes } : {}),
+  };
+}
+
 export const PALETA_3D: FamiliaDePaleta[] = CATALOGO_DE_MUEBLES.orden.editor3D.map((entrada, i) => {
   const base = FIXTURE_DEFS[i];
   return {
     entrada,
     idBase: idDeModeloBase(entrada),
     base,
-    modelos: modelosDe(entrada).map((m) => {
-      const e = estampaDe(m);
-      return {
-        ...base,
-        w: e.w, d: e.d, h: e.h,
-        color: e.color,
-        desc: m.fuente.nota,
-        modelo: m.id,
-        nombreModelo: m.nombre,
-        estimado: m.fuente.confiabilidad === "estimado",
-        ...(e.entrepanos !== undefined ? { entrepanos: e.entrepanos } : {}),
-        ...(e.modulo !== undefined ? { modulo: e.modulo } : {}),
-        ...(e.partes !== undefined ? { partes: e.partes } : {}),
-      };
-    }),
+    modelos: modelosDe(entrada).map((m) => defDeModelo(base, m)),
   };
 });
+
+/**
+ * La paleta con las fichas propias del supermercado: cada una debajo de su
+ * familia, DESPUÉS de los modelos de RECABRA, y sin las retiradas. Sin fichas
+ * propias es `PALETA_3D` misma; con ellas, las familias que no tienen ninguna
+ * siguen siendo el mismo objeto, y sus modelos también (el editor compara la
+ * entrada elegida por identidad). Se arma una vez por cambio de las fichas
+ * (`useMemo` sobre `useFichasPropias()`).
+ */
+export function paletaConPropias(propias: readonly ModeloPropio[]): FamiliaDePaleta[] {
+  if (propias.length === 0) return PALETA_3D;
+  return PALETA_3D.map((familia) => {
+    const suyas = modelosPropiosDe(familia.entrada, propias);
+    return suyas.length === 0 ? familia
+      : { ...familia, modelos: [...familia.modelos, ...suyas.map((m) => defDeModelo(familia.base, m))] };
+  });
+}

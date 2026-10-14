@@ -10,6 +10,7 @@ import {
   type CaraElegida, type Contrato, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
 import { useSesionDeVenta } from "./sesionDeVenta";
+import { useFichasPropias } from "../../store/fichasPropias";
 // De `utils/` (no importa nada): la ficha la usa al entrar.
 import { normalizarProveedor } from "../../utils/proveedor";
 // Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
@@ -412,6 +413,10 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   } = props;
   const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado });
   const guardando = c.estado === "guardando";
+  // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
+  // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
+  // primer dibujo, así que van en las dependencias de lo que la pregunta.
+  const fichasPropias = useFichasPropias();
 
   /* ── El 3D, encima de la ficha ──────────────────────────────────────────
      La prueba de producto vive ACÁ y no en el visor: se abre y se cierra
@@ -433,7 +438,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     .map((l) => ({
       fixtureId: l.fixture.id, face: l.face, visible: l.visible, codigo: l.codigo,
       tipo: rateTypeLabel(rateTypeOf(l.fixture)),
-    })), [c.lineas]);
+    })), [c.lineas, fichasPropias]);
   /** La que abre «Ver en 3D»: la última cara que se tocó en el plano (las
    *  filas van en el orden en que se tocaron). Las otras quedan a un toque en
    *  la chapa del visor. */

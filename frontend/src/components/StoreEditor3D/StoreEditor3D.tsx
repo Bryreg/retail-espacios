@@ -68,8 +68,9 @@ import {
   fichaDe, fixturesToStore, storeToFixtures as delStoreAl3D, type Catalogo3D, type PlacedFixture,
 } from "../../utils/convertirPlano";
 import { useModalAbierto } from "../../tema";
-import { FIXTURE_DEFS, PALETA_3D, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO } from "../../catalogo/editor3D";
-import { modeloPorId, nombreDeModelo } from "../../catalogo/catalogo";
+import { FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO, paletaConPropias } from "../../catalogo/editor3D";
+import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
+import { useFichasPropias } from "../../store/fichasPropias";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
@@ -6297,6 +6298,9 @@ function CommercialPanel({
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
+  // El nombre del modelo de una ficha propia llega cuando se leen las fichas
+  // del supermercado: escucharlas vuelve a dibujar el panel.
+  useFichasPropias();
   const u  = useCallback((up: Partial<PlacedFixture>) => onUpdate(fix.id, up), [fix.id, onUpdate]);
   const us = useCallback((up: Partial<ShelfSlot>) => selectedSlot && onUpdateSlot(fix.id, selectedSlot.id, up), [fix.id, selectedSlot, onUpdateSlot]);
 
@@ -6500,7 +6504,7 @@ function CommercialPanel({
               relee de la ficha; esto es sólo el nombre. */}
           {modeloDelMueble && (
             <p className="truncate text-[10px] text-dark-ink-2" data-modelo={modeloDelMueble.id}
-              title={`${modeloDelMueble.fuente.nota}\nFuente (${modeloDelMueble.fuente.confiabilidad}): ${modeloDelMueble.fuente.url}`}>
+              title={textoDeFuente(modeloDelMueble)}>
               {nombreDeModelo(modeloDelMueble)}
             </p>
           )}
@@ -6838,6 +6842,11 @@ export default function StoreEditor3D() {
   const [selectedSlotId, setSelectedSlotId] = useState<string|null>(null);
   const [hoveredSlotId, setHoveredSlotId]   = useState<string|null>(null);
   const [placingDef, setPlacingDef]         = useState<FixtureDef|null>(null);
+  // La paleta: los modelos de RECABRA y, después, las fichas propias del
+  // supermercado que no están retiradas. Una vez por cambio de las fichas: la
+  // entrada elegida se compara por identidad.
+  const fichasPropias = useFichasPropias();
+  const paleta = useMemo(() => paletaConPropias(fichasPropias), [fichasPropias]);
   const [ghostX, setGhostX]                 = useState(STORE_W/2);
   const [ghostZ, setGhostZ]                 = useState(STORE_D/2);
   const [ghostRotY, setGhostRotY]           = useState(0);
@@ -7283,7 +7292,8 @@ export default function StoreEditor3D() {
         // Columns, checkouts and free zones are part of the store, not stock to
         // sell. Everything else stays rentable (flag left absent).
         ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
-        // Desde un modelo de la paleta (`PALETA_3D`): su id y su geometría
+        // Desde un modelo de la paleta (`paleta`, del catálogo o una ficha
+        // propia del supermercado, `cli:…`): su id y su geometría
         // quedan ESTAMPADOS en el mueble (las medidas y el color ya vienen en
         // `placingDef`). El modelo base no trae nada: el mueble nace como
         // siempre.
@@ -7679,10 +7689,11 @@ export default function StoreEditor3D() {
         <div>
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Fixtures</p>
           {/* Por familia: el modelo base —se coloca como siempre— y, plegados
-              debajo, los modelos de muebles de verdad del catálogo, con las
+              debajo, los modelos de muebles de verdad del catálogo y después
+              las fichas propias del supermercado (las vigentes), con las
               medidas de su ficha. «≈»: medidas deducidas, no de una ficha. */}
           <div className="flex flex-col gap-1.5" data-paleta-3d>
-            {PALETA_3D.map((familia) => {
+            {paleta.map((familia) => {
               const def = familia.base;
               const active = placingDef === def;
               const activoAdentro = familia.modelos.some((m) => m === placingDef);

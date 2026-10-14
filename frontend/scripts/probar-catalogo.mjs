@@ -40,7 +40,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { armarPlano, capturarTS, TIPOS } from "./capturar-catalogo.mjs";
 
@@ -796,6 +796,382 @@ await prueba("cada tipo tiene quién lo dibuja en el 3D", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 3a' · LAS FICHAS PROPIAS DEL SUPERMERCADO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// La dueña arma en el taller las fichas de los muebles que su supermercado
+// tiene y el catálogo no (`cli:<clave>`, en su base). Se ofrecen en las dos
+// paletas debajo de su familia —después de las de RECABRA, y nunca las
+// retiradas—, se colocan ESTAMPANDO la ficha como un modelo del catálogo, el
+// panel las nombra y la tarifa las resuelve con la misma regla que el servidor.
+
+/** Varios módulos de `src` en UN paquete: comparten `catalogo/propias.ts` (lo
+ *  que el store llena y `rateTypeOf` lee), como en el navegador. */
+const cargarJuntos = async (modulos) => {
+  const r = await build({
+    stdin: {
+      contents: Object.entries(modulos).map(([n, rel]) => `export * as ${n} from "./${rel}";`).join("\n"),
+      resolveDir: raiz, loader: "ts",
+    },
+    bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+  });
+  return import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+};
+
+/** Una ficha propia como la manda `GET /api/muebles/modelos`. */
+const propia = (clave, datos) => ({
+  id: `${CATALOGO.fichas.prefijoPropio}${clave}`, clave, retirado: false,
+  fuente: { confiabilidad: "ficha", url: `https://fabricante.example.co/${clave}` }, ...datos,
+});
+const PROPIAS = [
+  propia("nevera-inducol-2p", { tipo: "nevera_puertas", nombre: "Nevera Inducol 2 puertas", w: 1.445, d: 0.74, h: 2.1, partes: { puertas: 2 } }),
+  propia("gondola-pared-170", { tipo: "gondola", variante: "wall", nombre: "Góndola de pared 1,70", w: 1, d: 0.45, h: 1.7, entrepanos: 4, modulo: 1,
+    fuente: { confiabilidad: "estimado", nota: "Medida en la tienda con metro." } }),
+  propia("cuarto-viejo", { tipo: "isla", nombre: "Cuarto de estiba viejo", w: 0.6, d: 0.5, h: 1.2, tarifa: "estiba_cuarta", retirado: true }),
+  propia("media-bodega", { tipo: "isla", nombre: "Media estiba de bodega", w: 1, d: 0.6, h: 1.2, tarifa: "estiba_media" }),
+];
+
+await prueba("la paleta del 3D y la biblioteca del 2D muestran las fichas propias, después de las de RECABRA y sin las retiradas", async () => {
+  const [C3, C2] = await Promise.all(["src/catalogo/editor3D.ts", "src/catalogo/plano2D.ts"].map((r) => cargar(r)));
+  assert.equal(C3.paletaConPropias([]), C3.PALETA_3D, "sin fichas propias la paleta no es la de siempre");
+  assert.equal(C2.modelosDelPlanoConPropias([]), C2.MODELOS_2D, "sin fichas propias la biblioteca no es la de siempre");
+  const p3 = C3.paletaConPropias(PROPIAS);
+  const p2 = C2.modelosDelPlanoConPropias(PROPIAS);
+  const fam = (e) => p3.find((f) => f.entrada === e);
+  // 3D: debajo de su familia, al final; las demás familias, el mismo objeto.
+  for (const [entrada, clave] of [["nevera_puertas", "nevera-inducol-2p"], ["gondola:wall", "gondola-pared-170"], ["isla", "media-bodega"]]) {
+    const f = fam(entrada);
+    const base = C3.PALETA_3D.find((x) => x.entrada === entrada);
+    assert.deepEqual(f.modelos.slice(0, base.modelos.length), base.modelos, `${entrada}: los modelos de RECABRA no van primero`);
+    assert.equal(f.modelos.at(-1).modelo, `cli:${clave}`, `${entrada}: la ficha propia no está al final de su familia`);
+    assert.equal(f.base, base.base, `${entrada}: el modelo base cambió`);
+  }
+  assert.equal(fam("punta"), C3.PALETA_3D.find((x) => x.entrada === "punta"), "una familia sin fichas propias no es el mismo objeto");
+  assert.ok(!fam("gondola:double").modelos.some((m) => m.modelo === "cli:gondola-pared-170"), "la góndola de pared aparece en la central");
+  const todas3D = p3.flatMap((f) => f.modelos.map((m) => m.modelo));
+  assert.ok(!todas3D.includes("cli:cuarto-viejo"), "una ficha retirada se ofrece en la paleta del 3D");
+  // Lo que coloca: el rótulo de su familia, las medidas y la geometría de la
+  // ficha, el color de la familia (una ficha propia no lleva color), su nombre
+  // y el «≈» si es estimada.
+  const nev = fam("nevera_puertas").modelos.at(-1);
+  const baseNev = fam("nevera_puertas").base;
+  assert.deepEqual(
+    { label: nev.label, type: nev.type, w: nev.w, d: nev.d, h: nev.h, color: nev.color, partes: nev.partes, nombre: nev.nombreModelo, est: nev.estimado },
+    { label: baseNev.label, type: "nevera_puertas", w: 1.445, d: 0.74, h: 2.1, color: baseNev.color, partes: { puertas: 2 }, nombre: "Nevera Inducol 2 puertas", est: false },
+    "la nevera propia no se coloca con su ficha");
+  const gon = fam("gondola:wall").modelos.at(-1);
+  assert.deepEqual([gon.gondolaType, gon.entrepanos, gon.modulo, gon.estimado], ["wall", 4, 1, true], "la góndola propia no trae su geometría o su «≈»");
+  // 2D: la central y la de pared son dos entradas de la biblioteca.
+  assert.equal(p2.nevera_puertas.at(-1).id, "cli:nevera-inducol-2p");
+  assert.deepEqual(p2.nevera_puertas.slice(0, C2.MODELOS_2D.nevera_puertas.length), C2.MODELOS_2D.nevera_puertas, "el 2D no pone primero los de RECABRA");
+  assert.equal(p2.gondola_mural.at(-1).id, "cli:gondola-pared-170");
+  assert.ok(!p2.gondola_doble.some((m) => m.id === "cli:gondola-pared-170"), "la góndola de pared aparece en la doble del 2D");
+  assert.ok(!Object.values(p2).flat().some((m) => m.id === "cli:cuarto-viejo"), "una ficha retirada se ofrece en la biblioteca del 2D");
+  assert.equal(p2.punta, C2.MODELOS_2D.punta, "una familia del 2D sin fichas propias no es la misma lista");
+  const g2 = p2.gondola_mural.at(-1);
+  assert.deepEqual([g2.w, g2.h, g2.nace.h, g2.nace.modelo, g2.nace.entrepanos, g2.nace.modulo, g2.estimado, g2.nombre],
+    [1, 0.45, 1.7, "cli:gondola-pared-170", 4, 1, true, "Góndola de pared 1,70"], "el 2D no dibuja la ficha propia con sus medidas");
+  // Una ficha con un id que no es propio no se ofrece: no se la encontraría.
+  const trucha = { ...PROPIAS[0], id: "base:nevera-1p-inducol", clave: "x" };
+  assert.ok(!C3.paletaConPropias([trucha]).flatMap((f) => f.modelos).some((m) => m === trucha || (m.modelo === trucha.id && m.nombreModelo === trucha.nombre)),
+    "una ficha con id de modelo del catálogo se ofrece en la paleta");
+});
+
+await prueba("colocar una ficha propia estampa su ficha con modelo «cli:<clave>», y cambiarla o retirarla no mueve lo colocado", async () => {
+  const J = await cargarJuntos({ CP: "src/utils/convertirPlano.ts", C3: "src/catalogo/editor3D.ts", C2: "src/catalogo/plano2D.ts",
+    P: "src/catalogo/propias.ts", C: "src/catalogo/catalogo.ts" });
+  J.P.fijarFichasPropias(PROPIAS);
+  // El 3D: lo que arma `onFloorClick` con la entrada de la paleta.
+  const def = J.C3.paletaConPropias(PROPIAS).find((f) => f.entrada === "nevera_puertas").modelos.at(-1);
+  const colocado = { id: "nev-9", code: "NEV-09", type: def.type, x: 3, z: 4, rotY: 0, w: def.w, d: def.d, h: def.h,
+    label: def.label, color: def.color, ...libre, ...J.CP.fichaDe(def) };
+  const [f] = J.CP.fixturesToStore([colocado], "NAVE", []);
+  assert.deepEqual({ modelo: f.modelo, w: f.w, d: f.d, h: f.h, partes: f.partes },
+    { modelo: "cli:nevera-inducol-2p", w: 1.445, d: 0.74, h: 2.1, partes: { puertas: 2 } }, "el 3D no estampó la ficha propia");
+  // El 2D: lo que arma `placeItem` con el modelo de la biblioteca.
+  const m2 = J.C2.modelosDelPlanoConPropias(PROPIAS).gondola_mural.at(-1);
+  const item = { id: "g-9", type: "gondola_mural", code: "GON-09", label: "Góndola Mural", x: 0, y: 0, w: m2.w, h: m2.h, rotY: 0,
+    ...libre, sede: "NAVE", nace: m2.nace };
+  const [g] = J.CP.itemsToStore([item], [], J.C2.CATALOGO_2D);
+  assert.deepEqual({ modelo: g.modelo, type: g.type, gondolaType: g.gondolaType, w: g.w, d: g.d, h: g.h, entrepanos: g.entrepanos, modulo: g.modulo },
+    { modelo: "cli:gondola-pared-170", type: "gondola", gondolaType: "wall", w: 1, d: 0.45, h: 1.7, entrepanos: 4, modulo: 1 },
+    "el 2D no estampó la ficha propia");
+  // El panel la nombra: el nombre, el «≈» si es estimada, y la fuente.
+  assert.equal(J.C.nombreDeModelo(J.C.modeloPorId(g.modelo)), "≈ Góndola de pared 1,70", "el panel no nombra la ficha propia");
+  assert.match(J.C.textoDeFuente(J.C.modeloPorId(g.modelo)), /Medida en la tienda con metro\.\nFuente \(estimado\)$/);
+  assert.match(J.C.textoDeFuente(J.C.modeloPorId(f.modelo)), /^Fuente \(ficha\): https:\/\/fabricante\.example\.co\/nevera-inducol-2p$/);
+  // La ficha cambia (otras medidas, otras puertas) o se retira: lo colocado va
+  // y vuelve por los dos editores tal como se guardó, y el panel la sigue
+  // nombrando, diciendo que está retirada.
+  const cambiadas = PROPIAS.map((p) => (p.clave === "nevera-inducol-2p" ? { ...p, w: 2.5, h: 1.9, partes: { puertas: 4 }, retirado: true }
+    : p.clave === "gondola-pared-170" ? { ...p, h: 2.2, entrepanos: 5, modulo: 1.2 } : p));
+  J.P.fijarFichasPropias(cambiadas);
+  const plano = [f, g];
+  const ficha = (x) => ({ w: x.w, d: x.d, h: x.h, modelo: x.modelo, entrepanos: x.entrepanos, modulo: x.modulo, partes: x.partes });
+  const tras3D = J.CP.fixturesToStore(J.CP.storeToFixtures(plano, { defs: J.C3.FIXTURE_DEFS, slotsPorDefecto: () => [] }), "NAVE", plano);
+  const tras2D = J.CP.itemsToStore(J.CP.storeToItems(tras3D, J.C2.CATALOGO_2D), tras3D, J.C2.CATALOGO_2D);
+  for (const x of plano) {
+    assert.deepEqual(ficha(tras3D.find((y) => y.id === x.id)), ficha(x), `${x.id}: el 3D releyó la ficha propia`);
+    assert.deepEqual(ficha(tras2D.find((y) => y.id === x.id)), ficha(x), `${x.id}: el 2D releyó la ficha propia`);
+  }
+  assert.equal(J.C.nombreDeModelo(J.C.modeloPorId(f.modelo)), "Nevera Inducol 2 puertas (retirada)", "el panel no nombra la retirada");
+  // Una ficha propia no puede hacerse pasar por un modelo del catálogo.
+  J.P.fijarFichasPropias([{ ...PROPIAS[0], id: "base:estiba-media", tipo: "isla", tarifa: "estiba_cuarta" }]);
+  assert.equal(J.C.modeloPorId("base:estiba-media").nombre, CATALOGO.modelos.find((m) => m.id === "base:estiba-media").nombre,
+    "una ficha propia pisó un modelo del catálogo");
+  J.P.olvidarFichasPropias();
+  assert.equal(J.C.modeloPorId("cli:gondola-pared-170"), undefined, "olvidar las fichas no las olvida");
+});
+
+await prueba("los editores ofrecen las fichas propias, y el panel del mueble las nombra (el código de verdad)", () => {
+  // Lo de arriba es lo que arman `paletaConPropias` y `modelosDelPlanoConPropias`;
+  // esto, que los editores las USEN, con las fichas que trae la sesión, y que el
+  // panel del mueble vuelva a dibujarse cuando llegan (si no, una nevera propia
+  // colocada no dice qué es hasta que se toque otra cosa).
+  const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
+  const ed3D = sinComent(leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx")));
+  const ed2D = sinComent(leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx")));
+  assert.match(ed3D, /const fichasPropias = useFichasPropias\(\);\s*const paleta = useMemo\(\(\) => paletaConPropias\(fichasPropias\), \[fichasPropias\]\);/,
+    "el Editor 3D no arma su paleta con las fichas propias");
+  assert.match(ed3D, /\{paleta\.map\(\(familia\) => \{/, "la paleta del Editor 3D no es la que tiene las fichas propias");
+  assert.ok(!/PALETA_3D\.map\(/.test(ed3D), "el Editor 3D dibuja la paleta sin las fichas propias");
+  assert.match(ed2D, /const fichasPropias = useFichasPropias\(\);\s*const modelosDelPlano = useMemo\(\(\) => modelosDelPlanoConPropias\(fichasPropias\), \[fichasPropias\]\);/,
+    "el plano 2D no arma su biblioteca con las fichas propias");
+  assert.match(ed2D, /const modelos = modelosDelPlano\[def\.type\] \?\? \[\];/, "la biblioteca del 2D no es la que tiene las fichas propias");
+  assert.ok(!/MODELOS_2D\[/.test(ed2D), "el plano 2D lista los modelos sin las fichas propias");
+  const panel3D = ed3D.slice(ed3D.indexOf("function CommercialPanel("), ed3D.indexOf("const modeloDelMueble = modeloPorId(fix.modelo);") + 60);
+  assert.match(panel3D, /useFichasPropias\(\);/, "el panel del Editor 3D no escucha las fichas propias");
+  const panel2D = ed2D.slice(ed2D.indexOf("function AssignmentPanel("), ed2D.indexOf("const modeloDelMueble = modeloPorId(item.nace?.modelo);") + 60);
+  assert.match(panel2D, /useFichasPropias\(\);/, "el panel del plano 2D no escucha las fichas propias");
+  for (const [n, t] of [["3D", ed3D], ["2D", ed2D]]) {
+    assert.match(t, /\{nombreDeModelo\(modeloDelMueble\)\}/, `el panel del ${n} no nombra el modelo`);
+    assert.match(t, /title=\{textoDeFuente\(modeloDelMueble\)\}/, `el panel del ${n} arma la fuente a mano (una ficha propia puede no tener URL)`);
+  }
+});
+
+await prueba("la tarifa de un mueble con ficha propia: los casos compartidos con el servidor (casos/tarifas.json)", async () => {
+  const CASOS_TARIFA = JSON.parse(leer(join(aqui, "casos", "tarifas.json")));
+  const J = await cargarJuntos({ F: "src/types/fixtures.ts", P: "src/catalogo/propias.ts" });
+  // Como las manda `GET /api/muebles/modelos`: `id` = prefijo + clave.
+  J.P.fijarFichasPropias(CASOS_TARIFA.propias.map((p) => ({
+    id: `${CATALOGO.fichas.prefijoPropio}${p.clave}`, nombre: p.clave, w: 1, d: 1, h: 1,
+    fuente: { confiabilidad: "estimado", nota: "x" }, ...p,
+  })));
+  const mal = [];
+  for (const c of CASOS_TARIFA.casos) {
+    const hoy = J.F.rateTypeOf(c.mueble);
+    if (hoy !== c.tarifa) mal.push(`${c.nombre}: da «${hoy}» y tenía que ser «${c.tarifa}»`);
+  }
+  assert.deepEqual(mal, [], "\n" + mal.join("\n"));
+  // Los casos tocan lo que importa: una propia con tarifa, una retirada, una de
+  // otra familia, una sin prefijo, un modelo del catálogo.
+  assert.ok(CASOS_TARIFA.casos.length >= 10 && CASOS_TARIFA.propias.some((p) => p.retirado && p.tarifa));
+  // Sin las fichas (otra sesión, o antes de leerlas), la del tipo.
+  J.P.olvidarFichasPropias();
+  assert.equal(J.F.rateTypeOf({ type: "isla", modelo: "cli:media-estiba-bodega" }), "isla");
+});
+
+await prueba("las fichas se leen una vez por sesión, se releen al guardar y no pasan de un supermercado a otro", async () => {
+  // `store/fichasPropias.ts` con la API cambiada por una que anota y contesta
+  // lo que le digan, y sin Firebase (el cierre de sesión lo llama).
+  const r = await build({
+    stdin: {
+      contents: 'export * as S from "./src/store/fichasPropias.ts"; export * as P from "./src/catalogo/propias.ts"; export { useAuthStore } from "./src/store/authStore.ts";',
+      resolveDir: raiz, loader: "ts",
+    },
+    bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+    plugins: [{
+      name: "sin-red",
+      setup(b) {
+        b.onResolve({ filter: /api[\\/](muebles|firebase)$/ }, (a) => ({ path: a.path, namespace: "sin-red" }));
+        b.onLoad({ filter: /muebles$/, namespace: "sin-red" }, () => ({ contents:
+          "export const listarModelosPropios = () => globalThis.__pedirFichas();", loader: "js" }));
+        b.onLoad({ filter: /firebase$/, namespace: "sin-red" }, () => ({ contents: "export const signOutFirebase = async () => {};", loader: "js" }));
+      },
+    }],
+  });
+  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "fichas-"));
+  const archivo = join(dir, "fichasPropias.mjs");
+  writeFileSync(archivo, r.outputFiles[0].text);
+  // La sesión se guarda en `window.localStorage`: uno en memoria, para que no
+  // avise en cada cambio de sesión. Se saca al terminar.
+  const guardado = new Map();
+  const habiaWindow = "window" in globalThis;
+  if (!habiaWindow) globalThis.window = { localStorage: {
+    getItem: (k) => guardado.get(k) ?? null, setItem: (k, v) => { guardado.set(k, String(v)); },
+    removeItem: (k) => { guardado.delete(k); },
+  } };
+  let J;
+  try { J = await import(pathToFileURL(archivo).href); } finally { rmSync(dir, { recursive: true, force: true }); }
+  try {
+    const pedidos = [];
+    let contestar = null;
+    globalThis.__pedirFichas = () => new Promise((ok) => { pedidos.push(ok); contestar = ok; });
+    const A = [{ ...PROPIAS[0] }];
+    const B = [{ ...PROPIAS[1], clave: "de-otro", id: "cli:de-otro" }];
+    J.useAuthStore.getState().setAuth("token-a", "admin", "galerias");
+    let p = J.S.cargarFichasPropias();
+    J.S.cargarFichasPropias();
+    assert.equal(pedidos.length, 1, "dos pantallas que las piden leen dos veces");
+    contestar(A); await p;
+    assert.equal(J.P.fichasPropias().length, 1);
+    await J.S.cargarFichasPropias();
+    assert.equal(pedidos.length, 1, "en la misma sesión se vuelven a leer");
+    // Guardar una ficha las relee.
+    p = J.S.recargarFichasPropias(); contestar([...A, { ...PROPIAS[3] }]); await p;
+    assert.equal(pedidos.length, 2, "guardar una ficha no las relee");
+    assert.equal(J.P.fichasPropias().length, 2);
+    // Otra sesión (otro supermercado): se olvidan ANTES de leer las suyas, y una
+    // respuesta vieja que llega tarde no las pisa.
+    p = J.S.recargarFichasPropias();
+    const tarde = contestar;
+    J.useAuthStore.getState().setAuth("token-b", "admin", "canaveral");
+    const q = J.S.cargarFichasPropias();
+    assert.equal(J.P.fichasPropias().length, 0, "la sesión de otro supermercado ve las fichas del anterior");
+    tarde(A); await p;
+    assert.equal(J.P.fichasPropias().length, 0, "la respuesta de la sesión anterior pisó la de ahora");
+    contestar(B); await q;
+    assert.deepEqual(J.P.fichasPropias().map((m) => m.id), ["cli:de-otro"]);
+    // Cerrar la sesión las olvida, aunque no haya ninguna pantalla montada.
+    J.useAuthStore.getState().logout();
+    assert.equal(J.P.fichasPropias().length, 0, "cerrar la sesión no olvida las fichas");
+    // Sin red: se queda sin ellas y la próxima pantalla reintenta.
+    J.useAuthStore.getState().setAuth("token-c", "admin", "galerias");
+    globalThis.__pedirFichas = () => Promise.reject(new Error("sin red"));
+    await J.S.cargarFichasPropias();
+    globalThis.__pedirFichas = () => Promise.resolve(A);
+    await J.S.cargarFichasPropias();
+    assert.equal(J.P.fichasPropias().length, 1, "después de un error de red no se reintenta");
+  } finally {
+    delete globalThis.__pedirFichas;
+    if (!habiaWindow) delete globalThis.window;
+  }
+});
+
+await prueba("quien pregunta la tarifa vuelve a preguntar cuando llegan las fichas del supermercado", () => {
+  // Las fichas propias llegan del servidor DESPUÉS del primer dibujo. Un
+  // `useMemo` que le pregunta la tarifa a `rateTypeOf` —directo, o por una
+  // función del mismo archivo— y no tiene `fichasPropias` en sus dependencias
+  // se queda con la tarifa del tipo hasta que cambie otra cosa: la media estiba
+  // propia se mostraba y se comparaba como estiba entera.
+  const archivos = [];
+  const recorrer = (d) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isDirectory()) recorrer(p);
+      else if (/\.tsx$/.test(n)) archivos.push(p);
+    }
+  };
+  recorrer(join(raiz, "src"));
+  const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1 + " ".repeat(m.length - p1.length));
+  let memos = 0;
+  for (const a of archivos) {
+    const t = sinComent(leer(a));
+    if (!/rateTypeOf\(/.test(t)) continue;
+    const rel = a.slice(raiz.length + 1);
+    // Las funciones del archivo que la preguntan (en minúscula: los componentes
+    // se vigilan por sus propios `useMemo`).
+    const fns = [...t.matchAll(/\nfunction ([a-z]\w*)\(/g)]
+      .filter((m) => /rateTypeOf\(/.test(t.slice(m.index, t.indexOf("\n}\n", m.index))))
+      .map((m) => m[1]);
+    const pregunta = new RegExp(`\\b(${["rateTypeOf", ...fns].join("|")})\\(`);
+    for (const m of t.matchAll(/\b(useMemo|useCallback)(<[^>]*>)?\(/g)) {
+      let i = m.index + m[0].length, prof = 1;
+      while (prof > 0 && i < t.length) { if (t[i] === "(") prof++; else if (t[i] === ")") prof--; i++; }
+      const cuerpo = t.slice(m.index, i);
+      if (!pregunta.test(cuerpo)) continue;
+      memos++;
+      const linea = t.slice(0, m.index).split("\n").length;
+      const deps = cuerpo.slice(cuerpo.lastIndexOf("["), cuerpo.lastIndexOf("]") + 1);
+      assert.match(deps, /\bfichasPropias\b/, `${rel}:${linea}: un ${m[1]} pregunta la tarifa y no depende de \`fichasPropias\``);
+    }
+    if (memos) assert.match(t, /const fichasPropias = useFichasPropias\(\);/, `${rel}: pregunta la tarifa y no escucha las fichas del supermercado`);
+  }
+  assert.ok(memos >= 10, `se esperaban los cálculos del tablero, el contrato y Vender; hay ${memos}`);
+});
+
+await prueba("el formulario de la ficha valida el rango (y los entrepaños a 25 cm) antes de mandar", async () => {
+  const FF = await cargar("src/utils/formularioDeFicha.ts");
+  const llamadas = [];
+  const api = {
+    crear: async (ficha) => { llamadas.push(["crear", ficha]); return { ...ficha, id: `cli:${ficha.clave}`, retirado: false }; },
+    cambiar: async (clave, ficha) => { llamadas.push(["cambiar", clave, ficha]); return { ...ficha, clave, id: `cli:${clave}`, retirado: false }; },
+  };
+  const buena = {
+    ...FF.formularioVacio("nevera_puertas"), nombre: "Nevera Inducol 2 puertas", clave: "nevera-inducol-2p",
+    anchoCm: "144,5", fondoCm: "74", altoCm: "210", puertas: "2",
+    url: "https://inducol.com.co/neveras/vertical-2-puertas/", confiabilidad: "ficha",
+  };
+  // Fuera del rango de su familia (la nevera de puertas, de 0,60 a 3,20 de ancho): no se manda.
+  let r = await FF.guardarFicha({ ...buena, anchoCm: "400" }, null, api);
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.problemas.map((p) => p.campo), ["w"], "el ancho fuera de rango no se marcó");
+  assert.match(r.problemas[0].problema, /\(400 cm\).*\(60 a 320 cm\)/, "el problema no se dice en centímetros");
+  assert.equal(llamadas.length, 0, "la ficha fuera de rango llegó a la API");
+  // Las puertas fuera de la geometría de su familia, la fuente sin URL ni nota y sin confiabilidad: tampoco.
+  r = await FF.guardarFicha({ ...buena, puertas: "9", url: "", confiabilidad: "" }, null, api);
+  assert.deepEqual(r.problemas.map((p) => p.campo).sort(), ["fuente", "fuente.confiabilidad", "partes.puertas"]);
+  assert.equal(llamadas.length, 0);
+  // Una góndola de 1,20 con 6 entrepaños: el rango de la familia los deja,
+  // pero quedan a menos de 25 cm. El servidor no lo puede ver; el formulario sí.
+  const gon = { ...FF.formularioVacio("gondola:wall"), nombre: "Góndola baja", clave: "gondola-baja",
+    anchoCm: "100", fondoCm: "45", altoCm: "120", entrepanos: "6", moduloCm: "100", nota: "Medida en la tienda.", confiabilidad: "estimado" };
+  r = await FF.guardarFicha(gon, null, api);
+  assert.deepEqual(r.problemas.map((p) => p.campo), ["entrepanos"], "los entrepaños que no caben a 25 cm no se marcaron");
+  assert.match(r.problemas[0].problema, /entran hasta \d entrepaños/);
+  assert.equal(llamadas.length, 0, "la góndola con entrepaños apretados llegó a la API");
+  // El módulo en centímetros, dicho en centímetros.
+  r = await FF.guardarFicha({ ...gon, entrepanos: "2", moduloCm: "200" }, null, api);
+  assert.deepEqual(r.problemas.map((p) => [p.campo, p.problema]), [["modulo", "el módulo va de 60 a 150 cm"]]);
+  // Bien: se manda UNA vez, en metros, con su clave y sólo lo que admite su familia.
+  r = await FF.guardarFicha({ ...buena, entrepanos: "4", moduloCm: "90" }, null, api);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(llamadas, [["crear", {
+    clave: "nevera-inducol-2p", tipo: "nevera_puertas", nombre: "Nevera Inducol 2 puertas", w: 1.445, d: 0.74, h: 2.1,
+    partes: { puertas: 2 }, fuente: { confiabilidad: "ficha", url: "https://inducol.com.co/neveras/vertical-2-puertas/" },
+  }]], "la ficha no viajó como la espera el servidor");
+  // Al editar no viaja la clave, y va a la de la ficha que se edita.
+  llamadas.length = 0;
+  r = await FF.guardarFicha({ ...gon, entrepanos: "2" }, "gondola-baja", api);
+  assert.equal(r.ok, true);
+  assert.equal(llamadas[0][0], "cambiar");
+  assert.equal(llamadas[0][1], "gondola-baja");
+  assert.equal("clave" in llamadas[0][2], false, "al editar se manda la clave");
+  assert.deepEqual([llamadas[0][2].variante, llamadas[0][2].w, llamadas[0][2].modulo, llamadas[0][2].entrepanos], ["wall", 1, 1, 2]);
+  // Lo que dice el servidor vuelve por campo, con sus palabras.
+  const fallar = (respuesta) => ({ crear: async () => { throw { response: respuesta }; }, cambiar: async () => { throw { response: respuesta }; } });
+  r = await FF.guardarFicha(buena, null, fallar({ status: 422, data: { detail: [
+    { loc: ["body", "fuente", "url"], msg: "la fuente es una imagen: se guarda la página de la ficha, nunca una foto" },
+    { loc: ["body", "w"], msg: "el ancho (3,50 m) está fuera del rango de su familia (0,60 a 3,20 m)" },
+  ] } }));
+  assert.deepEqual(r.problemas.map((p) => p.campo), ["fuente.url", "w"]);
+  assert.match(r.problemas[1].problema, /\(350 cm\).*\(60 a 320 cm\)/);
+  r = await FF.guardarFicha(buena, null, fallar({ status: 409, data: { detail: "Ya hay una ficha con la clave «nevera-inducol-2p» (retirada)." } }));
+  assert.deepEqual(r.problemas, [{ campo: "clave", problema: "Ya hay una ficha con la clave «nevera-inducol-2p» (retirada)." }]);
+  r = await FF.guardarFicha(buena, null, { crear: async () => { throw new Error("red"); }, cambiar: async () => { throw new Error("red"); } });
+  assert.match(r.problemas[0].problema, /no se guardó/);
+  // Cada campo con problema tiene dónde mostrarse en el formulario.
+  for (const c of ["clave", "tipo", "variante", "nombre", "w", "d", "h", "entrepanos", "modulo", "partes", "partes.puertas", "tarifa",
+    "fuente", "fuente.url", "fuente.nota", "fuente.confiabilidad"]) {
+    assert.ok(FF.CAMPO_DEL_FORMULARIO[c], `el formulario no tiene dónde mostrar un problema de «${c}»`);
+  }
+  // La clave sale del nombre, sin tildes, y la acepta la regla del catálogo.
+  assert.equal(FF.claveDeNombre("  Góndola de pared 1,70 — Cañaveral "), "gondola-de-pared-1-70-canaveral");
+  assert.match(FF.claveDeNombre("Ñandú ".repeat(30)), new RegExp(CATALOGO.fichas.clave));
+  // Las familias del formulario son las que admiten fichas, y la góndola va por variante.
+  assert.deepEqual(FF.FAMILIAS_DEL_FORMULARIO.map((f) => f.entrada),
+    CATALOGO.orden.editor3D.filter((e) => CATALOGO.tipos[e.split(":")[0]]?.rango));
+  // Una ficha guardada vuelve al formulario igual: guardarla sin tocar nada no cambia nada.
+  const guardada = { ...PROPIAS[1] };
+  const ida = FF.fichaDelFormulario(FF.formularioDe(guardada), { nueva: false });
+  for (const k of ["tipo", "variante", "nombre", "w", "d", "h", "entrepanos", "modulo"]) assert.equal(ida[k], guardada[k], k);
+  assert.deepEqual(ida.fuente, guardada.fuente);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 3b · EL CATÁLOGO VIAJA SÓLO DONDE SE USA
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -836,6 +1212,11 @@ await prueba("el catálogo no viaja en lo primero que baja la landing", async ()
   seguir(entrada);
   const mal = [...deEntrada].filter((k) => conCatalogo(salidas[k].inputs));
   assert.deepEqual(mal, [], "el catálogo de muebles entra en lo que se baja de entrada");
+  // Las fichas propias del supermercado tampoco: las lee el tablero, los
+  // editores y el taller, que se cargan aparte (`store/fichasPropias.ts`).
+  const propiasDeEntrada = [...deEntrada].flatMap((k) => Object.keys(salidas[k].inputs)
+    .filter((m) => /(store[\\/]fichasPropias|api[\\/]muebles|catalogo[\\/]propias|utils[\\/]formularioDeFicha)\.ts$/.test(m)));
+  assert.deepEqual(propiasDeEntrada, [], "las fichas propias entran en lo que se baja de entrada");
   const tarde = Object.keys(salidas).filter((k) => !deEntrada.has(k));
   assert.ok(tarde.some((k) => conCatalogo(salidas[k].inputs)), "el catálogo no aparece en ningún pedazo: la prueba no está mirando lo que cree");
 });

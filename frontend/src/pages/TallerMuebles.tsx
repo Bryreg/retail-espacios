@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -20,10 +20,15 @@ import { claveDeArte, etiquetaDeArte, marcarEnUso } from "../components/StoreEdi
 import type { Etiqueta } from "../components/StoreEditor3D/muebles/etiqueta";
 import type { ModoDeFondo } from "../components/StoreEditor3D/muebles/recorte";
 import { arteUrl, listarCatalogo, type Arte } from "../api/catalogo";
-import { PALETA_3D } from "../catalogo/editor3D";
+import { defDeModelo, paletaConPropias } from "../catalogo/editor3D";
 import type { FixtureDef } from "../catalogo/editor3D";
 import { fichaDe } from "../utils/convertirPlano";
 import type { ShelfSlot } from "../types/fixtures";
+import { useFichasPropias } from "../store/fichasPropias";
+import { PanelDeFichas } from "../components/taller/PanelDeFichas";
+import {
+  FAMILIAS_DEL_FORMULARIO, fichaParaDibujar, formularioVacio, type FormularioDeFicha,
+} from "../utils/formularioDeFicha";
 
 /**
  * El taller: un mueble solo, girable, para mirarle la forma.
@@ -36,6 +41,13 @@ import type { ShelfSlot } from "../types/fixtures";
  *
  * También sirve después: es donde se mira si un mueble nuevo quedó parecido al
  * de la tienda antes de ponerlo en un plano de un cliente.
+ *
+ * Y es donde la dueña arma las FICHAS de sus muebles (pestaña «Fichas»,
+ * `components/taller/PanelDeFichas.tsx`): el mueble que su supermercado tiene
+ * y el catálogo no, con sus medidas y de dónde salieron. Mientras escribe, al
+ * lado se dibuja ESE mueble con esa ficha estampada —con la misma entrada de
+ * paleta con que se colocará (`defDeModelo`)—, y al guardarla aparece en la
+ * paleta del plano y del Editor 3D.
  */
 
 /** Iluminación de entorno hecha con three directo y NO con drei.
@@ -66,18 +78,31 @@ function EntornoNeutro() {
 /** Una toma fija de la cámara: dónde se para y adónde mira. */
 type Toma = { pos: [number, number, number]; mira: [number, number, number] } | null;
 
-function Controles({ toma }: { toma: Toma }) {
+function Controles({ toma, girar = false }: { toma: Toma; girar?: boolean }) {
   const { camera, gl, invalidate } = useThree();
   const ctrl = useRef<OrbitControls | null>(null);
+  // «Girar»: el mueble da vueltas solo, para mirarlo de todos lados mientras
+  // se escribe su ficha. La órbita a mano sigue andando.
+  useEffect(() => {
+    const c = ctrl.current;
+    if (!c) return;
+    c.autoRotate = girar;
+    c.autoRotateSpeed = 1.4;
+  }, [girar]);
+  useFrame(() => { if (girar) ctrl.current?.update(); });
   useEffect(() => {
     const c = new OrbitControls(camera, gl.domElement);
     c.target.set(0, 0.9, 0);
     c.enableDamping = true;
+    c.autoRotate = girar;
+    c.autoRotateSpeed = 1.4;
     c.update();
     ctrl.current = c;
     const animar = () => { c.update(); };
     gl.domElement.addEventListener("pointermove", animar);
     return () => { gl.domElement.removeEventListener("pointermove", animar); c.dispose(); ctrl.current = null; };
+    // `girar` lo sigue el efecto de arriba: acá sólo el valor con que nace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, gl]);
   // Las tomas fijas son para medir y para comparar fotos: de frente a la
   // altura del ojo, a tres cuartos, de cerca. Con la órbita a mano dos fotos
@@ -215,9 +240,20 @@ const mmDeCm = (s: string) => {
 };
 
 export default function TallerMuebles() {
+  /** «Mirar» es el banco de siempre; «Fichas», donde la dueña arma las de sus
+   *  muebles y las ve dibujadas mientras escribe. */
+  const [pestana, setPestana] = useState<"mirar" | "fichas">("mirar");
+  const [formFicha, setFormFicha] = useState<FormularioDeFicha>(() => formularioVacio(FAMILIAS_DEL_FORMULARIO[0]?.entrada ?? "gondola:double"));
+  /** La clave de la ficha que se edita; `null`, una nueva. */
+  const [editandoFicha, setEditandoFicha] = useState<string | null>(null);
+  const [girar, setGirar] = useState(true);
+  /** La paleta con las fichas propias del supermercado, como la ven los
+   *  editores: el taller mira también las suyas. */
+  const propias = useFichasPropias();
+  const paleta = useMemo(() => paletaConPropias(propias), [propias]);
   /** Qué mueble del catálogo se está mirando. -1 = los del taller. */
   const [catalogo, setCatalogo] = useState(-1);
-  /** Cuál de sus modelos (`PALETA_3D`). -1 = el modelo base, el de hoy. */
+  /** Cuál de sus modelos (`paleta`). -1 = el modelo base, el de hoy. */
   const [modeloI, setModeloI] = useState(-1);
   /** Qué se dibuja al lado del modelo, para compararlo contra lo de siempre a
    *  la misma escala y con la misma luz. Los dos van SIN ficha:
@@ -258,23 +294,36 @@ export default function TallerMuebles() {
   const [, setVersion] = useState(0);
   const [avisar] = useState(() => () => setVersion((v) => v + 1));
 
-  const def = catalogo >= 0 ? FIXTURE_DEFS[catalogo] : null;
-  const modelos = catalogo >= 0 ? PALETA_3D[catalogo]?.modelos ?? [] : [];
-  const modelo = modelos[modeloI] ?? null;
+  const enFichas = pestana === "fichas";
+  // En «Fichas» se mira la ficha que se está escribiendo, con la MISMA entrada
+  // de paleta con que se colocará (`defDeModelo`, la de los editores): sus
+  // medidas, su color y su geometría estampadas.
+  const fichaVista = useMemo(() => (enFichas ? fichaParaDibujar(formFicha) : null), [enFichas, formFicha]);
+  const indiceFicha = fichaVista ? paleta.findIndex((f) => f.entrada === formFicha.entrada) : -1;
+  const defFicha = useMemo(
+    () => (fichaVista && indiceFicha >= 0 ? defDeModelo(paleta[indiceFicha].base, fichaVista) : null),
+    [fichaVista, indiceFicha, paleta],
+  );
+  /** El mueble del catálogo que se dibuja, y con qué medidas. */
+  const indiceVisto = enFichas ? indiceFicha : catalogo;
+  const [anchoV, fondoV, altoV] = enFichas && defFicha ? [defFicha.w, defFicha.d, defFicha.h] : [ancho, fondo, alto];
+  const def = indiceVisto >= 0 ? FIXTURE_DEFS[indiceVisto] : null;
+  const modelos = catalogo >= 0 ? paleta[catalogo]?.modelos ?? [] : [];
+  const modelo = enFichas ? defFicha : modelos[modeloI] ?? null;
   // La venta con la ficha del modelo: si no, las filas de «dónde» y la toma de
   // cerca saldrían de la cuenta de siempre y no de los entrepaños dibujados.
   const geometria = useMemo(() => (modelo ? geometriaDe(modelo) : undefined), [modelo]);
   const venta = useMemo(
-    () => (def ? ventaDeTipo(def.type, ancho, fondo, alto, def.gondolaType, geometria) : null),
-    [def, ancho, fondo, alto, geometria],
+    () => (def ? ventaDeTipo(def.type, anchoV, fondoV, altoV, def.gondolaType, geometria) : null),
+    [def, anchoV, fondoV, altoV, geometria],
   );
   // Memorizado: la toma depende de esto, y un objeto nuevo en cada dibujo
   // devolvería la cámara a la toma fija a cada rato.
   const deHoy = useMemo(
-    () => (!def || !modelo || alLado === "nada" ? null
+    () => (!def || !modelo || enFichas || alLado === "nada" ? null
       : alLado === "de_hoy" ? { w: def.w, d: def.d, h: def.h }
       : { w: ancho, d: fondo, h: alto }),
-    [def, modelo, alLado, ancho, fondo, alto],
+    [def, modelo, enFichas, alLado, ancho, fondo, alto],
   );
   const arte = artes.find((a) => a.id === arteId) ?? null;
   const fuente: { clave: string; blob: Blob | string } | null = conCarta
@@ -316,10 +365,14 @@ export default function TallerMuebles() {
       }
     : null;
 
-  // Las tomas fijas, contra la cara A del mueble (mira a −Z).
+  // Las tomas fijas, contra la cara A del mueble (mira a −Z). En «Fichas» la
+  // cámara arranca a tres cuartos y encuadra el mueble entero, que gira: con la
+  // órbita libre una nevera de 1,45 llenaba el cuadro y se miraba por detrás.
+  const vistaEfectiva = enFichas && vista === "libre" ? "tres_cuartos" : vista;
   const toma: Toma = useMemo(() => {
+    const vista = vistaEfectiva;
     if (vista === "libre") return null;
-    const yMedio = alto / 2;
+    const yMedio = altoV / 2;
     if (vista === "cerca") {
       // El entrepaño más cerca de 1,30 m, de frente y a medio metro largo.
       const filas = venta?.filas;
@@ -331,7 +384,7 @@ export default function TallerMuebles() {
           if (Math.abs(c - 1.3) < mejor) { mejor = Math.abs(c - 1.3); y = c; }
         }
       }
-      return { pos: [0, Math.min(1.65, y + 0.2), -(fondo / 2 + 0.85)], mira: [0, y, 0] };
+      return { pos: [0, Math.min(1.65, y + 0.2), -(fondoV / 2 + 0.85)], mira: [0, y, 0] };
     }
     // Con el de hoy al lado, la toma encuadra a los dos: se corre al centro
     // del par. Y se aleja lo que pida el ancho, haya o no otro al lado: con
@@ -339,9 +392,9 @@ export default function TallerMuebles() {
     // por los costados (el lienzo es más ancho que alto; 1,3 es un mínimo
     // prudente).
     const tan = Math.tan((21 * Math.PI) / 180);
-    const altoEscena = Math.max(alto, deHoy?.h ?? 0);
-    const anchoEscena = deHoy ? ancho + SEPARACION_DEL_DE_HOY + deHoy.w : ancho;
-    const fondoEscena = Math.max(fondo, deHoy?.d ?? 0);
+    const altoEscena = Math.max(altoV, deHoy?.h ?? 0);
+    const anchoEscena = deHoy ? anchoV + SEPARACION_DEL_DE_HOY + deHoy.w : anchoV;
+    const fondoEscena = Math.max(fondoV, deHoy?.d ?? 0);
     const cx = deHoy ? -(SEPARACION_DEL_DE_HOY + deHoy.w) / 2 : 0;
     const ang = vista === "tres_cuartos" ? (35 * Math.PI) / 180 : 0;
     const yMira = Math.max(yMedio, altoEscena / 2);
@@ -362,7 +415,7 @@ export default function TallerMuebles() {
       pos: [cx + Math.sin(ang) * (fondoEscena / 2 + dist), altoDeCamara, -Math.cos(ang) * (fondoEscena / 2 + dist)],
       mira: [cx, yMira, 0],
     };
-  }, [vista, alto, fondo, ancho, venta, deHoy]);
+  }, [vistaEfectiva, altoV, fondoV, anchoV, venta, deHoy]);
 
   const camara = useMemo(
     () => ({ position: [2.6, 1.7, 2.8] as [number, number, number], fov: 42, near: 0.05, far: 100 }),
@@ -379,6 +432,46 @@ export default function TallerMuebles() {
         }}
       >
         <strong style={{ fontSize: 13 }}>Taller de muebles</strong>
+        <span role="tablist" style={{ display: "inline-flex", gap: 4 }}>
+          {([["mirar", "Mirar"], ["fichas", "Fichas"]] as const).map(([valor, rotulo]) => (
+            <button key={valor} type="button" role="tab" aria-selected={pestana === valor} data-pestana={valor}
+                    style={{ ...campo, width: "auto", fontWeight: pestana === valor ? 700 : 400,
+                             background: pestana === valor ? "var(--surface-3)" : "var(--surface-2)" }}
+                    onClick={() => setPestana(valor)}>
+              {rotulo}
+            </button>
+          ))}
+        </span>
+        {enFichas ? (
+          <>
+            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+              <input type="checkbox" checked={girar} onChange={(e) => setGirar(e.target.checked)} /> girar
+            </label>
+            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+              rubro{" "}
+              <input type="text" value={rubro} placeholder="sin contrato" style={{ ...campo, width: 120 }}
+                     onChange={(e) => setRubro(e.target.value)} />
+            </label>
+            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+              <input type="checkbox" checked={conProducto}
+                     onChange={(e) => setConProducto(e.target.checked)} />{" "}
+              producto
+            </label>
+            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+              cámara{" "}
+              <select value={vistaEfectiva} style={{ ...campo, width: 110 }}
+                      onChange={(e) => setVista(e.target.value as typeof vista)}>
+                <option value="frente">de frente</option>
+                <option value="tres_cuartos">tres cuartos</option>
+                <option value="cerca">de cerca</option>
+              </select>
+            </label>
+            <span style={{ fontSize: 11, color: "var(--ink-4)" }}>
+              Se dibuja con la ficha que estás escribiendo, como se va a colocar.
+            </span>
+          </>
+        ) : (
+        <>
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
           ancho{" "}
           <input type="number" step="0.05" value={ancho} style={campo}
@@ -552,10 +645,12 @@ export default function TallerMuebles() {
             <option value="cerca">de cerca</option>
           </select>
         </label>
+        </>
+        )}
       </header>
 
       {/* La tira de diagnóstico: qué se hizo con la foto y qué medidas salieron. */}
-      {fuente && (
+      {fuente && !enFichas && (
         <div
           data-diagnostico
           style={{
@@ -599,7 +694,12 @@ export default function TallerMuebles() {
         </div>
       )}
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+        {enFichas && (
+          <PanelDeFichas form={formFicha} onForm={setFormFicha}
+                         editando={editandoFicha} onEditando={setEditandoFicha} />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
         <Canvas
           camera={camara}
           shadows={{ type: THREE.PCFSoftShadowMap }}
@@ -608,7 +708,7 @@ export default function TallerMuebles() {
           style={{ background: "#c8c5bf" }}
         >
           <Suspense fallback={null}>
-            <Controles toma={toma} />
+            <Controles toma={toma} girar={enFichas && girar} />
             {luz === "editor" ? (
               <LuzDelEditor />
             ) : (
@@ -629,21 +729,21 @@ export default function TallerMuebles() {
               </>
             )}
             <Piso />
-            {catalogo >= 0 && def ? (
+            {indiceVisto >= 0 && def ? (
               <>
                 {!conProducto && (def.type === "nevera_puertas" || def.type === "nevera_refrescos") ? (
                   // La nevera llena sus rejillas aunque esté libre (es como se
                   // ve en el editor): para mirarle las rejillas y las puertas
                   // sin botellas, el mismo cuerpo sin el relleno.
-                  <NeveraReal w={ancho} d={fondo} h={alto} conRelleno={false}
+                  <NeveraReal w={anchoV} d={fondoV} h={altoV} conRelleno={false}
                     variante={def.type === "nevera_puertas" ? "puertas" : "multideck"}
-                    puertas={def.type === "nevera_puertas" ? puertasDe(ancho, geometria?.puertas) : undefined} />
+                    puertas={def.type === "nevera_puertas" ? puertasDe(anchoV, geometria?.puertas) : undefined} />
                 ) : (
-                  <FixtureMesh fixture={delCatalogo(catalogo, ancho, fondo, alto, conProducto ? rubro : "", modelo)}
-                    facePaint={facePaint} />
+                  <FixtureMesh fixture={delCatalogo(indiceVisto, anchoV, fondoV, altoV, conProducto ? rubro : "", modelo)}
+                    facePaint={enFichas ? null : facePaint} />
                 )}
                 {deHoy && (
-                  <group position={[-(ancho / 2 + SEPARACION_DEL_DE_HOY + deHoy.w / 2), 0, 0]}>
+                  <group position={[-(anchoV / 2 + SEPARACION_DEL_DE_HOY + deHoy.w / 2), 0, 0]}>
                     {!conProducto && (def.type === "nevera_puertas" || def.type === "nevera_refrescos") ? (
                       // Igual que el de la ficha: sin producto, sin relleno.
                       // Si no, se comparan rejillas vacías contra botellas.
@@ -679,6 +779,7 @@ export default function TallerMuebles() {
             )}
           </Suspense>
         </Canvas>
+        </div>
       </div>
     </div>
   );
