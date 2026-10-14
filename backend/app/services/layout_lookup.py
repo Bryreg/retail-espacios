@@ -23,11 +23,11 @@ from sqlalchemy.orm import Session
 from app.models.models import LayoutSnapshot
 from app.services import catalogo_muebles
 from app.services.partes import (
-    CodigoPartido, Parte, chocan, codigo_de_parte, concordancia, division_de, es_division,
-    firma_de_partes, partes_de, partir_codigo, termina_reservado, texto_de_parte,
+    CodigoPartido, Parte, chocan, codigo_de_parte, concordancia, division_de, es_division, es_pieza,
+    firma_de_partes, partes_de, partir_codigo, piezas_de, termina_reservado, texto_de_parte,
 )
 from app.services.catalogo_muebles import (
-    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, tipo_base,
+    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, PIEZAS_POR_TIPO, tipo_base,
 )
 
 
@@ -213,6 +213,9 @@ SIN_CARA_B = "sin_cara_b"
 #: Una parte que el plano no ofrece: la nevera se vende entera, o tiene menos
 #: puertas que las que pide el código (``NEV-03-PU4`` en una de tres).
 PARTE_INEXISTENTE = "parte_inexistente"
+#: Un mueble que nunca se vende entero pero tiene piezas a la venta: la caja
+#: con sus bahías de impulso, la columna con su forro. La frase dice cuáles.
+SOLO_SUS_PIEZAS = "solo_sus_piezas"
 
 
 def pide_cara_b_inexistente(fixture: dict, espacio: str) -> bool:
@@ -243,16 +246,37 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
     · un tramo de una góndola que se vende por entrepaños (o al revés): un
       mueble se divide de UNA sola forma;
     · una división que el mueble eligió pero sin la cuenta fijada (la góndola
-      por tramos colocada desde una ficha, antes de fijarlos en el panel).
+      por tramos colocada desde una ficha, antes de fijarlos en el panel);
+    · la caja o la columna enteras: nunca, pero si tienen piezas configuradas
+      se dice cuáles se venden (``SOLO_SUS_PIEZAS``);
+    · una pieza que su familia no lleva, que el plano no configuró o con un
+      número de más (``CAJ-04-BI3`` en una caja de dos). Una pieza se vende
+      aunque el mueble no sea comercializable: es lo único que se vende de él.
     """
     # Se nombra con el código que trae quien pregunta (la planilla y el
     # contrato suelto, el completo), como el resto de sus mensajes.
     corto = partido.base
+    parte = partido.parte
     if partido.cara == "B" and caras_de(fixture) != 2:
         return SIN_CARA_B, f"«{corto}» tiene una sola cara: no hay cara B que vender."
+    if es_pieza(parte):
+        return _motivo_de_la_pieza(fixture, corto, partido.cara, parte)
     if not es_comercializable(fixture):
-        return NO_COMERCIALIZABLE, f"«{corto}» está marcado como no comercializable: es parte del local."
-    parte = partido.parte
+        piezas = piezas_de(fixture)
+        if parte is None and piezas:
+            clases = list(dict.fromkeys(p.clase for p in piezas))
+            nombres = ", ".join(codigo_de_parte(corto, "A", p) for p in piezas)
+            una = len(piezas) == 1
+            return SOLO_SUS_PIEZAS, (
+                f"«{corto}» no se vende: se vende{'' if una else 'n'} {_sus(clases)} ({nombres})."
+            )
+        lleva = PIEZAS_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+        frase = f"«{corto}» está marcado como no comercializable: es parte del local."
+        if parte is None and lleva:
+            # La caja o la columna sin piezas configuradas: lo de siempre, y
+            # cómo se pone a la venta lo que sí se vende de ellas.
+            return NO_COMERCIALIZABLE, f"{frase} {como_se_venden_sus_piezas(fixture)}"
+        return NO_COMERCIALIZABLE, frase
     if parte is None:
         return None
     regla = CLASES_DE_PARTE[parte.clase]
@@ -287,6 +311,63 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
             return PARTE_INEXISTENTE, (
                 f"«{corto}» tiene {div[1]} {regla['plural']}: no hay {parte.sufijo}."
             )
+    return None
+
+
+def _sus(clases: list[str]) -> str:
+    """«sus bahías de impulso», «su forro» (una pieza única va en singular)."""
+    return " y ".join(
+        f"su {CLASES_DE_PARTE[c]['singular']}" if CLASES_DE_PARTE[c].get("unico")
+        else f"sus {CLASES_DE_PARTE[c]['plural']}"
+        for c in clases
+    )
+
+
+def como_se_venden_sus_piezas(fixture: dict) -> str | None:
+    """Para un mueble que nunca se vende entero pero cuya familia lleva piezas
+    (la caja, la columna): cómo se ponen a la venta, en una frase. ``None``
+    si su familia no lleva piezas (el mostrador de servicio al cliente)."""
+    lleva = PIEZAS_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+    if not lleva:
+        return None
+    como = "; ".join(_como_se_configura(c) for c in lleva)
+    return f"{como[:1].upper()}{como[1:]}."
+
+
+def _como_se_configura(clase: str) -> str:
+    """Cómo se pone a la venta una pieza que el plano todavía no tiene."""
+    regla = CLASES_DE_PARTE[clase]
+    g = concordancia(clase)
+    if regla.get("unico"):
+        return (f"su {regla['singular']} se vende marcándol{g['o']} en el panel del plano "
+                "(«Cómo se vende»)")
+    return (f"sus {regla['plural']} se venden un{g['o']} por un{g['o']}, configurándo{g['los']} en el panel "
+            "del plano («Cómo se vende»)")
+
+
+def _motivo_de_la_pieza(fixture: dict, corto: str, cara: str, parte: Parte) -> tuple[str, str] | None:
+    """La compuerta de una PIEZA (la bahía de una caja, el forro de una
+    columna): que su familia la lleve, que el plano la tenga configurada y que
+    el número exista. No pregunta si el mueble es comercializable: la caja no
+    lo es nunca, y sus bahías son justamente lo que se vende de ella."""
+    regla = CLASES_DE_PARTE[parte.clase]
+    g = concordancia(parte.clase)
+    lleva = PIEZAS_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+    if parte.clase not in lleva:
+        cual = regla["singular"] if regla.get("unico") else regla["plural"]
+        return PARTE_INEXISTENTE, f"«{corto}» no lleva {cual}: no hay {parte.sufijo}."
+    if cara == "B":
+        # Una pieza no es de una cara: va siempre sin la B (``CAJ-04-BI1``).
+        return PARTE_INEXISTENTE, (
+            f"{g['el'][:1].upper()}{g['el'][1:]}s {regla['plural']} no son de una cara: se escriben sin la B "
+            f"(«{corto}-{parte.sufijo}»)."
+        )
+    hay = [p for p in piezas_de(fixture) if p.clase == parte.clase]
+    if not hay:
+        return PARTE_INEXISTENTE, f"«{corto}» no tiene {regla['plural'] if not regla.get('unico') else regla['singular']} " \
+            f"en el plano: {_como_se_configura(parte.clase)}."
+    if parte not in hay:
+        return PARTE_INEXISTENTE, f"«{corto}» tiene {len(hay)} {regla['plural']}: no hay {parte.sufijo}."
     return None
 
 
@@ -1018,18 +1099,23 @@ def espacios_de(fixture: dict, sede: str) -> list[str]:
     """Los códigos COMPLETOS que un mueble pone a la venta: sus caras y sus
     partes (``NAVE-NEV-03``, ``NAVE-NEV-03-PU1``…). Es ``espaciosDe`` de
     ``utils/partes.ts``, con los mismos casos (``casos/partes.json``). Un
-    mueble sin ``partes.division`` da sus caras, como siempre."""
+    mueble sin ``partes.division`` da sus caras, como siempre. Uno que no es
+    comercializable no da sus caras, pero sí sus PIEZAS configuradas (las
+    bahías de una caja, el forro de una columna): es lo que se vende de él."""
     if not isinstance(fixture, dict):
         return []
     code = (fixture.get("code") or "").strip().upper()
-    if not code or not es_comercializable(fixture):
+    if not code:
         return []
     completo = _full_code(code, str(fixture.get("sede") or sede or ""))
-    fuera = [completo]
+    comercializable = es_comercializable(fixture)
     caras = caras_de(fixture)
-    if caras == 2:
-        fuera.append(f"{completo}-B")
-    for cara, parte in partes_de(fixture, caras, True):
+    fuera = []
+    if comercializable:
+        fuera.append(completo)
+        if caras == 2:
+            fuera.append(f"{completo}-B")
+    for cara, parte in partes_de(fixture, caras, comercializable):
         fuera.append(codigo_de_parte(completo, cara, parte))
     return fuera
 
@@ -1275,6 +1361,7 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
         corto_mueble = sin_prefijo_de_sede(p.base, sede)
         cambio = (
             f"no puede pasar de {n_antes} a {n_despues} {regla['plural']}" if n_despues is not None
+            else f"no puede quedarse sin {regla['plural']}" if es_pieza(p.parte)
             else f"no puede dejar de venderse por {regla['plural']}"
         )
         quien = lease.supplier.name if lease.supplier else "sin proveedor"

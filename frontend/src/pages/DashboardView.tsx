@@ -74,8 +74,9 @@ import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
 import { repartirAnchos, type Columna as ColumnaTabla } from "../utils/anchosTabla";
 import {
-  alternarParte, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia, disponibilidadDeCara,
-  divisionDe, estadoDeEspacio, indiceDePartes, partesDe, partirClave, partirCodigo, sufijoDeParte, tarifaDeEspacio,
+  alternarParte, cantidadDe, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia,
+  disponibilidadDeCara, disponibilidadDeEspacio, divisionDe, esDivision, esPieza, estadoDeEspacio, indiceDePartes,
+  partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte, tarifaDeEspacio,
   textoDeParte, type EnContrato, type IndiceDePartes, type ParteRef,
 } from "../utils/partes";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
@@ -278,18 +279,23 @@ function entradaDeParte(
  *
  * También las que el mueble hoy no ofrece (un `PU3` firmado antes de bajar a
  * dos puertas no se puede, el servidor lo frena; pero si llega, se ve).
+ *
+ * Y las PIEZAS de lo que no se vende entero (la bahía de impulso de una caja,
+ * el forro de una columna): la caja no es una cara comercial, pero sus bahías
+ * vendidas son contratos como cualquier otro.
  */
 function partesConContrato(
   f: UnifiedFixture, estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string,
 ): FaceEntry[] {
-  if (!isRentable(f)) return [];
+  const soloPiezas = !isRentable(f);
+  if (soloPiezas && piezasDeLaFamilia(f.type).length === 0) return [];
   const fuera: FaceEntry[] = [];
   for (const { face } of facesOf(f)) {
     const caraCorta = codigoDeParte(f.code, face, null);
     const caraCompleta = fullSpaceCode(f.sede || sede, caraCorta);
     const vistas = new Set<string>();
     const conAlgo = [...(indice.get(caraCompleta) ?? []), ...(caraCompleta !== caraCorta ? indice.get(caraCorta) ?? [] : [])]
-      .filter((o) => o.partido.parte && o.estado.status !== "free")
+      .filter((o) => o.partido.parte && o.estado.status !== "free" && (!soloPiezas || esPieza(o.partido.parte)))
       .filter((o) => {
         const k = sufijoDeParte(o.partido.parte!);
         if (vistas.has(k)) return false;
@@ -1824,7 +1830,7 @@ function FileRow({ file, onOpen }: { file: SpaceFileMeta; onOpen: () => void }) 
  *  Reads the face, not the raw status, so a contract signed for later says
  *  "Contratado" here exactly as it does on the map and in the cards. */
 function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntry }) {
-  const rentable = isRentable(fixture);
+  const rentable = isRentable(fixture) || esPieza(face.parte);
   const ds = displayStatus(face);
   const ring = rentable ? colorEstado()[ds] : noRentableTop();
   const meta = STATUS_META[ds];
@@ -1935,6 +1941,11 @@ function PeriodBox({ entry }: { entry: FaceEntry }) {
 /** Shown instead of a wall of "—" when there is nothing to report. */
 function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmin: boolean }) {
   const rentable = isRentable(fixture);
+  // La caja y la columna no se venden enteras, pero sus piezas sí (la bahía
+  // de impulso, el forro): se dice cuáles y dónde se configuran.
+  const llevaPiezas = !rentable && piezasDeLaFamilia(fixture.type).length > 0;
+  const tienePiezas = piezasDe(fixture).length > 0;
+  const plural = claseDe(piezasDeLaFamilia(fixture.type)[0] ?? "")?.plural ?? "piezas";
   return (
     <div style={{ padding: "22px 4px 8px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
       <div
@@ -1947,17 +1958,23 @@ function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmi
         <Building2 size={22} style={{ color: rentable ? "var(--success)" : "var(--ink-2)" }} />
       </div>
       <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-1)" }}>
-        {rentable ? "Disponible para vender" : "Parte del local"}
+        {rentable ? "Disponible para vender" : llevaPiezas ? "No se vende entero" : "Parte del local"}
       </div>
       <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginTop: 6 }}>
         {rentable
           ? "Este espacio no tiene contrato activo."
+          : llevaPiezas && tienePiezas
+          ? `Es parte del local y no cuenta en la ocupación; sus ${plural} se venden, cada una con su contrato.`
+          : llevaPiezas
+          ? `Es parte del local y no cuenta en la ocupación; sus ${plural} se venden si se configuran en el plano.`
           : "Está marcado como no comercializable: no admite contrato y no cuenta en la ocupación."}
       </div>
       {isAdmin && (
         <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5, marginTop: 10 }}>
           {rentable
             ? "Con «Negociar este espacio» llenás el contrato acá mismo."
+            : llevaPiezas
+            ? "En el plano, «Cómo se vende» de su panel dice cuántas se venden."
             : "Para alquilarlo, cambiá su destino a «Comercializable» desde el plano."}
         </div>
       )}
@@ -2203,10 +2220,9 @@ function PartesDeLaCara({
     ];
   }, [fixture, face, estado, indice, sede]);
   if (filas.length === 0) return null;
-  const n = partesDe(fixture).filter((p) => p.cara === face).length || null;
-  // De qué clase: la forma en que se vende hoy o, si dejó de venderse así,
-  // la de la primera parte con contrato.
-  const claseDeLaCara = divisionDe(fixture)?.clase ?? filas[0]?.parte?.clase ?? "puertas";
+  // De qué clase: la forma en que se vende hoy o sus piezas (las bahías de
+  // la caja) o, si dejó de venderse así, la de la primera parte con contrato.
+  const claseDeLaCara = divisionDe(fixture)?.clase ?? piezasDe(fixture)[0]?.clase ?? filas[0]?.parte?.clase ?? "puertas";
   const reglaDeLaCara = claseDe(claseDeLaCara);
   const g = concordancia(claseDeLaCara);
   return (
@@ -2223,7 +2239,7 @@ function PartesDeLaCara({
                 <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 12.5, color: "var(--ink-1)" }}>
                   {codigoVisible(e)}
                 </span>
-                <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{e.parte ? textoDeParte(e.parte, n) : ""}</span>
+                <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{e.parte ? textoDeParte(e.parte, cantidadDe(fixture, e.parte.clase)) : ""}</span>
                 <span style={{ marginLeft: "auto" }}><StatusPill fixture={fixture} face={e} /></span>
               </div>
               {conContrato && (
@@ -2469,8 +2485,9 @@ function FixtureDetailCard({
         )}
 
         {/* Vender por partes: las puertas de esta cara, cada una con su
-            contrato. Sin partes no dibuja nada. */}
-        {rentable && (
+            contrato; o las bahías de impulso de una caja y el forro de una
+            columna, que no se venden enteras. Sin partes no dibuja nada. */}
+        {(rentable || seVendeAlgo(fixture) || piezasDeLaFamilia(fixture.type).length > 0) && (
           <PartesDeLaCara
             fixture={fixture}
             face={entry.face}
@@ -3509,7 +3526,7 @@ function SpacesTable({
                 <td style={celda} title={conNombrePropio(entry.fixture, nombresPropios, entry.fixture.label) || undefined}>
                   {tipoDelMueble(entry.fixture, nombresPropios)}
                   {/* Vender por partes: «· Puerta 2 de 3». */}
-                  {entry.parte ? ` · ${textoDeParte(entry.parte, partesDe(entry.fixture).filter((p) => p.cara === entry.face).length || null)}` : ""}
+                  {entry.parte ? ` · ${textoDeParte(entry.parte, cantidadDe(entry.fixture, entry.parte.clase))}` : ""}
                 </td>
                 <td style={{ ...celda, color: libre ? "var(--ink-3)" : "var(--ink-1)" }}
                     title={entry.supplierName || undefined}>
@@ -3892,7 +3909,22 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // había que ir a buscarla al renglón del contrato — el renglón sigue
     // teniendo sus dos interruptores, pero ya no es el único camino.
     if (modoEfectivo !== "vender" || !f) return;
-    if (!isRentable(f)) { setEnContrato([]); return; }
+    if (!seVendeAlgo(f)) { setEnContrato([]); return; }
+    if (!isRentable(f)) {
+      // Una caja o una columna: nunca enteras. Tocarla suma su primera pieza
+      // libre en el periodo (la bahía 1 si está libre, si no la que siga; el
+      // forro); tocarla de nuevo saca todo lo de ese mueble. Las demás
+      // bahías se prenden en el renglón («BI1 · BI2»).
+      const piezas = piezasDe(f);
+      const libre = piezas.find((p) => !mapRange || disponibilidadDeEspacio(
+        f, "A", p, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to) === "libre") ?? piezas[0];
+      setEnContrato((lista) =>
+        lista.some((x) => x.id === f.id)
+          ? lista.filter((x) => x.id !== f.id)
+          : [...lista, { id: f.id, face: "A", parte: sufijoDeParte(libre) }],
+      );
+      return;
+    }
     // Vender por partes: tocar la nevera suma la ENTERA, como siempre; las
     // puertas se prenden en el renglón («Entera · PU1 · PU2…»). Tocarla de
     // nuevo saca todo lo de esa cara, entera o por puertas.
@@ -3902,6 +3934,19 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         : [...lista, { id: f.id, face: cara }],
     );
   };
+
+  /** «Sumar la BI1 de todas las cajas de la sede»: esa pieza de cada mueble de
+   *  ese tipo que la tiene configurada, un renglón por mueble, en el mismo
+   *  contrato (el multiespacio). Lo que ya estaba queda como estaba. */
+  const sumarEnTodas = useCallback((tipo: string, parte: string) => {
+    setEnContrato((lista) => {
+      const nuevos = fixtures
+        .filter((f) => f.type === tipo && piezasDe(f).some((p) => sufijoDeParte(p) === parte))
+        .filter((f) => !lista.some((x) => x.id === f.id && x.parte === parte))
+        .map((f) => ({ id: f.id, face: "A" as const, parte }));
+      return [...lista, ...nuevos];
+    });
+  }, [fixtures]);
 
   /** Quitar un espacio del contrato: una cara, o una parte de ella. */
   const quitarDelContrato = useCallback((id: string, face: "A" | "B", parte?: string) => {
@@ -4323,16 +4368,28 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     /** Las partes que se ofrecen y cuántas corren o están firmadas: «Puertas
      *  vendidas: 2 de 9», «Tramos vendidos: 1 de 6»; con varias clases en la
      *  sede, «Partes vendidas». Cero y cero si nadie vende por partes. */
-    const partesOfrecidas = fixtures.filter(isRentable).reduce((t, f) => t + partesDe(f).length, 0);
-    const clasesOfrecidas = new Set(fixtures.filter(isRentable).flatMap((f) => partesDe(f).map((p) => p.parte.clase)));
+    const divisionesDe = (f: UnifiedFixture) => partesDe(f).filter((p) => esDivision(p.parte));
+    const partesOfrecidas = fixtures.filter(isRentable).reduce((t, f) => t + divisionesDe(f).length, 0);
+    const clasesOfrecidas = new Set(fixtures.filter(isRentable).flatMap((f) => divisionesDe(f).map((p) => p.parte.clase)));
     const unaClase = clasesOfrecidas.size === 1 ? [...clasesOfrecidas][0] : null;
     const rotuloPartes = unaClase && claseDe(unaClase)
       ? `${claseDe(unaClase)!.plural.charAt(0).toUpperCase()}${claseDe(unaClase)!.plural.slice(1)} vendid${concordancia(unaClase).o}s`
       : "Partes vendidas";
-    const partesVendidas = partes.filter((p) => {
+    const corre = (p: FaceEntry) => {
       const d = displayStatus(p);
       return d === "active" || d === "expiring" || d === "committed";
-    }).length;
+    };
+    const partesVendidas = partes.filter((p) => esDivision(p.parte) && corre(p)).length;
+    /** Las piezas (las bahías de las cajas, los forros de las columnas): no
+     *  son caras ni cuentan en la ocupación, pero se dice cuántas corren de
+     *  las que se ofrecen: «Bahías de impulso: 5 de 16». */
+    const piezasOfrecidas = new Map<string, number>();
+    for (const f of fixtures) for (const p of piezasDe(f)) piezasOfrecidas.set(p.clase, (piezasOfrecidas.get(p.clase) ?? 0) + 1);
+    const piezasVendidas = [...piezasOfrecidas].map(([clase, de]) => {
+      const c = claseDe(clase)!;
+      const n = partes.filter((p) => p.parte?.clase === clase && corre(p)).length;
+      return `${c.plural.charAt(0).toUpperCase()}${c.plural.slice(1)}: ${n} de ${de}`;
+    });
     // reserved + maintenance + expired + occupied-without-dates. Kept as the
     // remainder so Libres + Ocupados + Contratados never overstate the total.
     const held = total - occupied - committed - free;
@@ -4396,7 +4453,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       rentableFixtures, nonRentable,
       expired, expiring, noContract,
       topSuppliers, belowReference,
-      partesOfrecidas, partesVendidas, rotuloPartes,
+      partesOfrecidas, partesVendidas, rotuloPartes, piezasVendidas,
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
     };
@@ -4522,12 +4579,23 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         }
         // Vendida por partes: lo que falta alquilar son las puertas libres, a
         // la tarifa de cada una. La cara no cuenta como libre: ya trabaja.
-        for (const { parte } of partesDe(f).filter((p) => p.cara === face.face)) {
+        for (const { parte } of partesDe(f).filter((p) => p.cara === face.face && esDivision(p.parte))) {
           if (suyas.some((p) => p.parte && sufijoDeParte(p.parte) === sufijoDeParte(parte))) continue;
           const ref = tarifaDe({ ...face, parte });
           if (ref) plata += ref; else sinTarifa++;
         }
       });
+      // Las piezas libres (la bahía de una caja, el forro de una columna), a
+      // la tarifa de su clase: también son plata que la sede no cobra.
+      const piezas = piezasDe(f);
+      if (piezas.length) {
+        const caraA = facesOf(f)[0];
+        for (const parte of piezas) {
+          if (vendidas.some((p) => p.parte && sufijoDeParte(p.parte) === sufijoDeParte(parte))) continue;
+          const ref = tarifaDe({ ...caraA, parte });
+          if (ref) plata += ref; else sinTarifa++;
+        }
+      }
     });
     return { plata, caras, sinTarifa, porDia: Math.round(plata / 30) };
   }, [fixtures, tarifaDe, partesVendidasDe]);
@@ -5059,6 +5127,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             onQuitar={quitarDelContrato}
             onCambiarCara={alternarCara}
             onCambiarParte={alternarDeParte}
+            onSumarEnTodas={sumarEnTodas}
             onResaltar={destacar}
             sede={sede}
             rango={mapRange}
@@ -5167,6 +5236,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   // de las que se ofrecen. Sólo si alguien vende por partes.
                   ...(kpis.partesOfrecidas > 0
                     ? [`${kpis.rotuloPartes}: ${kpis.partesVendidas} de ${kpis.partesOfrecidas}`] : []),
+                  // Las piezas de lo que no se vende entero, aparte: no son caras.
+                  ...kpis.piezasVendidas,
                 ]}
                 barra={kpis.occPct}
               />

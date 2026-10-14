@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { claseDe, concordancia, divisionDe } from "../utils/partes";
 import {
-  cambioParaDividir, conPartes, divisionSinFijar, divisionesDe, partesConEstado, puertasDibujadas,
-  revisarCambioDePartes, tramosDibujados, tramosQueEntran, type CambioDePartes,
+  aplicarATodos, bahiasMaximas, cambioParaDividir, conPartes, divisionSinFijar, divisionesDe, partesConEstado,
+  piezasDeLaFamilia, puertasDibujadas, revisarCambioDePartes, tramosDibujados, tramosQueEntran, type CambioDePartes,
 } from "../utils/partesDelMueble";
 
 /**
@@ -27,6 +27,11 @@ import {
  * (`revisarCambioDePartes`). No nombra a nadie: dice qué parte está vendida,
  * no de quién ni hasta cuándo. Sólo un administrador lo cambia; los demás lo
  * leen.
+ *
+ * Y las PIEZAS de lo que nunca se vende entero (paso 3): la caja, «Bahías de
+ * impulso que se venden» (0 a 4, de izquierda a derecha mirando la caja desde
+ * la fila) con «Aplicar a todas las cajas de la sede»; la columna, «El forro
+ * se vende». Sin piezas, la caja y la columna no ofrecen nada, como siempre.
  */
 export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: boolean }) {
   const f = useFixtureStore((s) => selectFixtures(s).find((x) => x.id === id));
@@ -48,9 +53,15 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
   }, [id, guardada]);
 
   const partes = useMemo(() => (f ? partesConEstado(f, estado, sede) : []), [f, estado, sede]);
+  const [bahias, setBahias] = useState("");
+  const bahiasGuardadas = f?.partes?.bahias ?? null;
+  useEffect(() => { setBahias(typeof bahiasGuardadas === "number" ? String(bahiasGuardadas) : ""); }, [id, bahiasGuardadas]);
+  const [enTodas, setEnTodas] = useState<string | null>(null);
+  useEffect(() => { setEnTodas(null); }, [id]);
   if (!f) return null;
   const formas = divisionesDe(f.type);
-  if (formas.length === 0) return null;
+  const piezas = piezasDeLaFamilia(f.type);
+  if (formas.length === 0 && piezas.length === 0) return null;
   const sinFijar = divisionSinFijar(f);
   const clase = division ? claseDe(division.clase)! : null;
 
@@ -62,10 +73,45 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
   function proponer(cambio: CambioDePartes) {
     if (!f || !puedeEditar) return;
     setProblema(null);
+    setEnTodas(null);
     const r = revisarCambioDePartes(f, cambio, estado, sede);
-    if (r.bloqueo) { setProblema(r.bloqueo); setCuenta(typeof guardada === "number" ? String(guardada) : ""); return; }
+    if (r.bloqueo) {
+      setProblema(r.bloqueo);
+      setCuenta(typeof guardada === "number" ? String(guardada) : "");
+      setBahias(typeof bahiasGuardadas === "number" ? String(bahiasGuardadas) : "");
+      return;
+    }
     if (r.aviso) { setAviso({ texto: r.aviso, cambio }); return; }
     escribir(cambio);
+  }
+
+  /** Las bahías de impulso de la caja: vacío o 0 es ninguna (`null`). */
+  function cambiarBahias() {
+    if (!f) return;
+    const texto = bahias.trim();
+    const n = texto === "" ? 0 : Number(texto);
+    const volver = () => setBahias(typeof bahiasGuardadas === "number" ? String(bahiasGuardadas) : "");
+    const tope = bahiasMaximas(f.type);
+    if (!Number.isInteger(n) || n < 0 || n > tope) {
+      setProblema(`Las bahías de impulso van de 1 a ${tope}; vacío o 0 es que la caja no vende ninguna.`);
+      volver();
+      return;
+    }
+    if ((n || null) === bahiasGuardadas) { volver(); return; }
+    proponer({ bahias: n || null });
+  }
+
+  /** «Aplicar a todas las cajas de la sede»: lo de esta, en las demás, menos
+   *  las que tienen una pieza vendida (se dice cuáles). */
+  function aplicarEnTodas(cambio: CambioDePartes, plural: string) {
+    if (!f || !puedeEditar) return;
+    const st = useFixtureStore.getState();
+    const r = aplicarATodos(selectFixtures(st), f.type, cambio, estado, sede);
+    if (r.aplicados.length) st.commit(r.fixtures);
+    setEnTodas(
+      (r.aplicados.length ? `Quedó igual en ${r.aplicados.length} ${plural}.` : `Las demás ${plural} ya estaban así.`)
+      + (r.saltados.length ? ` No se tocó ${r.saltados.join(", ")}: tiene${r.saltados.length > 1 ? "n" : ""} algo vendido que se movería.` : ""),
+    );
   }
 
   /** Elegir una forma de vender (o «Entera», `null`). Queda escrito lo que se
@@ -117,9 +163,67 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
     return `Entera o por ${c.plural}${formaActiva === forma && n ? ` (${n})` : ""}`;
   };
 
+  const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3";
+  const piezasConEstado = partes.filter((p) => p.pieza);
+  const seccionDePiezas = piezas.length > 0 && (
+    <div className="flex flex-col gap-1.5" data-piezas={f.id}>
+      {piezas.includes("bahias") && (() => {
+        const c = claseDe("bahias")!;
+        return (
+          <>
+            {puedeEditar ? (
+              <label>
+                <span className={etiquetaCls}>Bahías de impulso que se venden</span>
+                <input type="number" step={1} min={0} max={bahiasMaximas(f.type)} className={inputCls}
+                  value={bahias} placeholder="ninguna" disabled={!!aviso}
+                  onChange={(e) => setBahias(e.target.value)} onBlur={cambiarBahias}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+              </label>
+            ) : (
+              <p className="text-xs text-dark-ink-2">
+                {typeof bahiasGuardadas === "number" ? `${bahiasGuardadas} ${bahiasGuardadas === 1 ? c.singular : c.plural}` : `Sin ${c.plural}`}
+              </p>
+            )}
+            <p className="text-[10px] leading-snug text-dark-ink-3" data-piezas-lista>
+              {piezasConEstado.length > 0 && <>{piezasConEstado.map((p) => `${p.sufijo} · ${p.vendida ? "vendida" : "libre"}`).join("  ·  ")}. </>}
+              La caja no se vende entera: cada bahía de impulso, sí, una por una, contadas de izquierda a derecha
+              mirando la caja desde la fila. Vacío o 0: no vende ninguna.
+            </p>
+            {puedeEditar && (
+              <button type="button" disabled={!!aviso} data-piezas-en-todas
+                className="rounded border border-dark-line-2 px-2 py-1 text-[11px] text-dark-ink-2 hover:text-dark-ink-1 disabled:opacity-60"
+                onClick={() => aplicarEnTodas({ bahias: typeof bahiasGuardadas === "number" ? bahiasGuardadas : null }, "cajas")}>
+                Aplicar a todas las cajas de la sede
+              </button>
+            )}
+          </>
+        );
+      })()}
+      {piezas.includes("forro") && (() => {
+        const tiene = f.partes?.forro === true;
+        const vendido = piezasConEstado.some((p) => p.vendida);
+        return (
+          <>
+            <label className="flex items-center gap-2 text-xs text-dark-ink-1">
+              <input type="checkbox" checked={tiene} disabled={!puedeEditar || !!aviso} data-piezas-forro
+                onChange={(e) => proponer({ forro: e.target.checked ? true : null })} />
+              El forro se vende
+            </label>
+            <p className="text-[10px] leading-snug text-dark-ink-3">
+              {tiene ? `FO · ${vendido ? "vendido" : "libre"}. ` : ""}
+              La columna no se vende: su forro (las cuatro caras, del zócalo a dos metros), sí, como un espacio más.
+            </p>
+          </>
+        );
+      })()}
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-1.5" data-partes={f.id}>
       <span className={etiquetaCls}>Cómo se vende</span>
+      {seccionDePiezas}
+      {formas.length > 0 && (<>
       {puedeEditar ? (
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Cómo se vende">
           <button type="button" role="radio" aria-checked={!formaActiva} className={`flex-1 ${opcion(!formaActiva)}`}
@@ -151,7 +255,7 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
       )}
       {division && clase && (
         <p className="text-[10px] leading-snug text-dark-ink-3" data-partes-lista>
-          {partes.map((p) => `${p.sufijo} · ${p.vendida ? `vendid${concordancia(division.clase).o}` : "libre"}`).join("  ·  ")}
+          {partes.filter((p) => !p.pieza).map((p) => `${p.sufijo} · ${p.vendida ? `vendid${concordancia(division.clase).o}` : "libre"}`).join("  ·  ")}
           {". "}
           {clase.eje === "alto"
             ? <>Se cuentan de abajo hacia arriba: el {clase.token}1 es la base. La cantidad es la de «Entrepaños» y la base.</>
@@ -172,6 +276,8 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
           mismas fechas.
         </p>
       )}
+      </>)}
+      {enTodas && <p className="text-[11px] leading-snug text-dark-ink-2" data-piezas-resultado>{enTodas}</p>}
       {problema && <p className="text-[11px] leading-snug text-danger" data-partes-rechazo>{problema}</p>}
       {aviso && (
         <div role="alertdialog" aria-label="Esto cambia lo vendido" data-partes-aviso
@@ -182,7 +288,7 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
               className="flex-1 rounded border border-warning/60 bg-warning/20 px-2 py-1 font-semibold text-dark-ink-1 hover:bg-warning/30">
               Cambiar igual
             </button>
-            <button onClick={() => { setAviso(null); setCuenta(typeof guardada === "number" ? String(guardada) : ""); }}
+            <button onClick={() => { setAviso(null); setCuenta(typeof guardada === "number" ? String(guardada) : ""); setBahias(typeof bahiasGuardadas === "number" ? String(bahiasGuardadas) : ""); }}
               className="flex-1 rounded border border-dark-line-2 px-2 py-1 text-dark-ink-2 hover:text-dark-ink-1">
               Dejarlo como estaba
             </button>

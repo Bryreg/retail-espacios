@@ -15,7 +15,7 @@ import { nombreDeMueble } from "../utils/nomenclatura";
 // formulario del montaje.
 import { conNombrePropio } from "../catalogo/nombresPropios";
 import {
-  cantidadDe, codigoDeParte, indiceDePartes, partirCodigo, sufijoDeParte, textoParaMontar,
+  cantidadDe, codigoDeParte, esPieza, indiceDePartes, partirCodigo, piezasDeLaFamilia, sufijoDeParte, textoParaMontar,
 } from "../utils/partes";
 
 /** Una cara de un mueble que hay que montar, con lo que ordena la lista. */
@@ -102,7 +102,10 @@ export default function MountView({
       : fixtures.map((f) => [activeSede, f] as const);
 
     for (const [sede, f] of universo) {
-      if (!isRentable(f)) continue;
+      // La caja y la columna no se montan enteras (no se venden), pero sus
+      // piezas vendidas sí: la bahía de impulso, el forro.
+      const soloPiezas = !isRentable(f);
+      if (soloPiezas && piezasDeLaFamilia(f.type).length === 0) continue;
       // El código completo se arma con la sede del propio mueble cuando la
       // trae, igual que al guardar el contrato: un mueble puede haber quedado
       // con la sede escrita adentro y no coincidir con la clave del mapa.
@@ -110,7 +113,7 @@ export default function MountView({
       const caras: { code: string; corto: string; data: Partial<UnifiedFixture>; parte?: string }[] = [
         { code: base, corto: f.code, data: f },
       ];
-      if (isDoubleGondola(f) && f.faceB) {
+      if (!soloPiezas && isDoubleGondola(f) && f.faceB) {
         caras.push({
           code: `${base}-B`,
           corto: `${f.code}-B`,
@@ -121,7 +124,7 @@ export default function MountView({
       // con su propio contrato y su propio reporte.
       for (const c of [...caras]) {
         for (const { partido, estado } of indicePartes.get(c.code) ?? []) {
-          if (!partido.parte) continue;
+          if (!partido.parte || (soloPiezas && !esPieza(partido.parte))) continue;
           caras.push({
             // El completo de la cara más el de la parte: `NAVE-NEV-03-PU2`.
             code: `${c.code}-${sufijoDeParte(partido.parte)}`,
@@ -131,7 +134,8 @@ export default function MountView({
           });
         }
       }
-      for (const { code, corto, data, parte } of caras) {
+      // De la caja, sólo sus piezas: la caja entera no tiene contrato.
+      for (const { code, corto, data, parte } of soloPiezas ? caras.slice(1) : caras) {
         const cara = {
           status: (data.status ?? "free") as UnifiedFixture["status"],
           startDate: data.startDate ?? "",

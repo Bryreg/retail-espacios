@@ -1,7 +1,22 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, **vender por partes, paso 2: tramos y entrepaños, y las fichas
+Última actualización: 2026-10-14, **vender por partes, paso 3: las bahías de la caja y el forro
+de la columna**. La caja registradora y la columna siguen sin venderse enteras en ningún lado,
+pero ahora venden sus PIEZAS: cada bahía de impulso de una caja, una por una (`CAJ-04-BI1`, de
+izquierda a derecha mirando la caja desde la fila), y el forro de una columna (`COL-07-FO`, sin
+número). Se configuran en el panel «Cómo se vende» del plano 2D y del Editor 3D («Bahías de
+impulso que se venden», con «Aplicar a todas las cajas de la sede»; «El forro se vende») o en la
+ficha propia del taller (la caja y la columna ahora admiten fichas), y se dibujan en el 3D (los
+nichos de la caja, el forro de la columna) y en el plano 2D. Vender: tocar una caja suma su
+primera bahía libre, el renglón ofrece «BI1 · BI2» sin «Entera», y «Sumar la BI1 de todas las
+cajas de la sede (8)» arma un contrato multiespacio. Una pieza no choca con nada más que
+consigo misma, su tarifa es la de su clase («Bahía de impulso de caja (cada una)», «Forro de
+columna»), sin respaldo, y nunca cuenta en la ocupación. Una caja sin bahías configuradas —todas
+las de los planos de antes— no ofrece nada, como siempre. Ver *Vender por partes: las bahías de
+la caja y el forro de la columna (P3, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 2: tramos y entrepaños, y las fichas
 propias que ya vienen configuradas**. El mural, la góndola (central o de pared), la nevera abierta
 y la de vegetales se venden enteros o POR TRAMOS (`GON-05-B-TR2`, de izquierda a derecha mirando
 esa cara); la góndola y la punta, enteras o POR ENTREPAÑOS (`PUN-02-EN1` es la base, contando de
@@ -257,21 +272,16 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
      es el entrepaño 1 y se vende, si «mural refrigerado» es el multideck, una tarifa de tramo
      para todos o una por familia, y si los modelos de góndola de RECABRA tienen que nacer «por
      entrepaños» (hoy nacen enteros: el panel o la ficha lo eligen)—;
-   - **la bahía de la caja** (`CAJ-04-BI1`): la caja sigue sin venderse entera, su bahía sí, y
-     eso reescribe la regla dura de `NUNCA_ALQUILABLE`. Falta que la dueña diga cuántas bahías
-     por caja y si se venden de a una (decisión 4 del plan);
-   - **el forro de la columna** (`COL-07-FO`): una pieza sobre la columna, que tampoco se vende
-     entera. Va con los soportes cedidos a un operador (Marketmedios), que sacan de la venta
-     columnas y pantallas enteras.
-
-   Lo que ya está listo para eso, desde P1 y P2: las clases de parte del catálogo
-   (`partes.clases`: token, eje, campo, base, género, mínimo, tarifa, nombres) y la regla de
-   `chocan` con clases distintas en la misma cara (se pisan), el candado por mueble, la
-   compuerta (`motivo_para_no_vender_parte`), los nombres reservados (`BI`, `FO`, `CP`, `CN`,
-   `ST` ya no se pueden poner a un mueble nuevo), el panel y la ficha que ofrecen las formas de
-   la familia, y las pantallas, que muestran cualquier clase y la dicen con su género. Las
-   bahías y el forro son PIEZAS (no dividen la cara): falta la clase `pieza` en `partesDe` y
-   reescribir la regla dura de `NUNCA_ALQUILABLE`.
+   - ~~**la bahía de la caja**~~ y ~~**el forro de la columna**~~ **hechos (P3, 2026-10-14)**:
+     ver *Vender por partes: las bahías de la caja y el forro de la columna*. Queda de ese paso:
+     el recorrido en el navegador con la dueña (configurar 2 bahías en las cajas de la sede con
+     un clic, vender la BI1 de todas a Colombina en un contrato, ver «Bahías de impulso: 8 de
+     16» en Supervisar y el enlace de la mercaderista de la `CAJ-04-BI1`; marcar el forro de una
+     columna y venderlo); sus preguntas —cuántas bahías por caja son lo habitual (el panel deja
+     de 1 a 4) y si la caja de RECABRA tiene que nacer con 2—; los soportes cedidos a un operador
+     (Marketmedios), que sacan de la venta columnas y pantallas enteras; y, en la consola, una
+     lista de las piezas en el detalle por cliente (hoy salen en el resumen por tipo, el spread,
+     los proveedores y el benchmark, no en «espacios»).
 2. **El material de la cara** (copete, cenefa, stopper) como venta aparte (PR 5 del plan).
    **Espera una respuesta de la dueña**: si el copete de una cara se puede vender a otra marca
    que la de la cara. El plan recomienda que sí (es una pieza aparte, que Vender sugiere junto
@@ -462,7 +472,8 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B.
 **Una parte agrega su sufijo al final, después de la cara: `SEDE-CODE[-B]-PU<n>`**
-(`NAVE-NEV-03-PU2`, `NAVE-GON-05-B-TR2`, `NAVE-PUN-02-EN1`). La relación entre la cara y sus
+(`NAVE-NEV-03-PU2`, `NAVE-GON-05-B-TR2`, `NAVE-PUN-02-EN1`), y una pieza, sin cara
+(`NAVE-CAJ-04-BI1`; el forro, sin número: `NAVE-COL-07-FO`). La relación entre la cara y sus
 partes se DEDUCE del código, sin columnas: `partirCodigo` (`utils/partes.ts`) y
 `partir_codigo` (`services/partes.py`) leen de derecha a izquierda —el último tramo es una
 parte si es el token de una clase que existe con su número; después, `-B` es la cara— y
@@ -577,7 +588,11 @@ también (409 `partes_vendidas`); con la nevera vendida ENTERA, cambiar las puer
 «Cambiar igual». Lo mismo **con un tramo o un entrepaño vendido**: no cambian los tramos, ni
 la cantidad de entrepaños (que es la cantidad de partes: el «Entrepaños» del panel de
 geometría lo frena con `loVendidoDe(…, estado)`), ni la forma de dividir; el alto sí, con
-aviso. Estirar el mueble no frena: los tramos y las puertas se estiran parejo.
+aviso. Estirar el mueble no frena: los tramos y las puertas se estiran parejo. Y **con una
+bahía de impulso vendida** no cambia la cantidad de bahías de la caja (parten la mesa parejo:
+la «bahía 1» quedaría en otro lugar; 409 `partes_vendidas`), y **con el forro vendido** la
+columna no se queda sin forro (409 `contratos_vivos`); el panel lo frena antes, y «Aplicar a
+todas las cajas de la sede» salta las que tienen una bahía vendida y lo dice.
 
 **Una pestaña vieja no borra lo nuevo.** La ficha del mueble (`CLAVES_DE_FICHA`: `modelo`,
 `partes`, `entrepanos`, `modulo`) son claves que un editor de antes no conoce. `PUT
@@ -624,7 +639,8 @@ puertas, por tramos o por entrepaños, nunca por dos a la vez (`partes.division`
 valor; el panel y la ficha ofrecen las de su familia). Lo decide `chocan` (los dos lados, los
 mismos casos): el mismo espacio choca; la cara entera y una de sus divisiones, sí; dos
 divisiones de la misma clase, no (dos puertas conviven); de clases distintas en la misma cara,
-sí; una pieza sólo consigo misma. Lo aplican los CUATRO caminos que escriben contratos —la
+sí; una pieza sólo consigo misma (dos bahías de la misma caja conviven; la caja entera ni
+se vende). Lo aplican los CUATRO caminos que escriben contratos —la
 planilla y Vender (`bulk_leases`), el contrato suelto (`create_lease`) y la importación del
 plano (`importar_del_plano`)— con `contratos_que_chocan` y `frase_de_choque`, que no nombra al
 dueño de la otra parte ni su canon. Y como la puerta y la entera son dos filas de `spaces`
@@ -639,7 +655,16 @@ tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`alquilable: "nunca"` en
 catálogo de muebles, que leen `frontend/src/types/fixtures.ts` y
 `backend/app/services/layout_lookup.py`, y hay pruebas de los dos lados que verifican
 que las dos listas digan lo mismo— y no tienen tarifa, no suman a la disponibilidad de
-la sede y no aceptan contrato.
+la sede y **nunca se venden enteros**: ni Vender, ni la planilla, ni el contrato suelto
+aceptan `CAJ-04` o `COL-07`. **La excepción son sus PIEZAS** (desde el paso 3 de vender
+por partes, 2026-10-14): la caja vende sus bahías de impulso una por una (`CAJ-04-BI1`) y
+la columna su forro (`COL-07-FO`), cada pieza con su contrato, **sólo si el plano las
+configura** (`partes.bahias`, `partes.forro`: en el panel «Cómo se vende» o desde la ficha
+propia). Una pieza se ofrece aunque el mueble no sea comercializable (`piezas_de` /
+`piezasDe` no preguntan la bandera ni el tipo), no choca con nada más que consigo misma, su
+tarifa es la de su clase sin respaldo y nunca cuenta en la ocupación —no es una cara—. Una
+caja sin `partes.bahias` (todas las de los planos de antes) no ofrece nada, como siempre. El
+mostrador de servicio al cliente no tiene piezas. `NUNCA_ALQUILABLE` no cambió.
 
 La regla pregunta **primero por el tipo y después por la bandera `rentable`**, y ese
 orden es lo que la hace funcionar: la bandera se estampa al CREAR el mueble, así que un
@@ -9661,6 +9686,114 @@ y su adulteración); del lado del servidor `tests/test_partes_tramos.py` (los ca
 tramos y entrepaños, la forma única, la tarifa, el área, el guardado del plano, la pestaña vieja,
 los espacios internos, la mercaderista y la ficha propia configurada), `test_partes.py` y
 `test_fichas_propias.py` con los casos compartidos.
+
+### Vender por partes: las bahías de la caja y el forro de la columna (P3, 2026-10-14)
+
+La dueña: **la caja nunca se vende entera; se venden sus bahías de impulso, una por una, con el
+atajo de venderle la misma bahía de todas las cajas de la sede a una marca** (el contrato
+multiespacio ya existía); **la columna nunca se vende; se vende su forro**. Y lo que pidió para
+todo vender por partes: que quede configurable también en los muebles que cada supermercado
+arma con sus fichas propias. Es la maquinaria de P1 y P2 con una clase nueva de parte: la
+PIEZA.
+
+**Dos clases nuevas** (`muebles.json`, las dos copias idénticas):
+
+- `bahias`: token `BI`, `es: "pieza"`, a lo ancho y **mirando la caja desde la fila**
+  (`mirando`, nuevo en las clases: la bahía 1 es la de la izquierda de quien hace la fila, que
+  mira la caja desde el lado del cliente, −Z de la caja: la cuenta de la cara A), contada por
+  `partes.bahias` (de 1 a 4: `geometria.bahias` de `checkout`), mínimo 1, tarifa `parte_bahia`
+  («Bahía de impulso de caja (cada una)»).
+- `forro`: token `FO`, `es: "pieza"`, `unico: true` (uno por columna, **sin número**:
+  `COL-07-FO`), contado por un sí o no (`partes.forro`; `fichas.geometria.forro` es
+  `booleano`, nuevo), tarifa `parte_forro` («Forro de columna»).
+- Las familias dicen qué piezas llevan en `partes.piezas` (`checkout: ["bahias"]`, `columna:
+  ["forro"]`); el esquema (`probar-catalogo`) exige que una pieza se cuente con un campo de la
+  geometría de su familia o, la única, con un sí o no, y deja que la lleve un tipo que nunca se
+  vende entero. **`checkout` y `columna` ganaron `rango`: admiten fichas propias** («Caja Ocaña
+  1,80 con dos bahías», «Columna de 40 forrada»).
+- Desde este paso `NAVE-CAJ-04-BI1` y `NAVE-CAJ-04-FO` se parten como la bahía 1 y el forro de
+  `CAJ-04` (hasta P2 eran códigos de mueble: las clases no existían; lo dicen los casos
+  compartidos). `CP`, `CN` y `ST` siguen reservados y sin clase.
+
+**Una pieza no es una división** (`es_pieza` / `esPieza`):
+
+- se ofrece **aunque el mueble no sea comercializable** (`piezas_de` / `piezasDe` no preguntan
+  la bandera ni el tipo), siempre en la cara A, y `partes_de` / `partesDe` la suman al final de
+  las divisiones. `espacios_de` / `espaciosDe` de una caja con dos bahías dan `[CAJ-04-BI1,
+  CAJ-04-BI2]` y nunca `CAJ-04`;
+- no choca con nada más que consigo misma (`chocan` ya lo decía): dos bahías de la misma caja
+  conviven y la caja entera ni se vende;
+- su tarifa es la de su clase por sede, **sin respaldo** (la caja no tiene tarifa que
+  dividir): vacía, no hay referencia, y Tarifas lo dice debajo de la fila;
+- no tiene huella propia (`area_m2` 0 en su fila de `spaces`) ni cuenta en la ocupación, de
+  Supervisar ni de la consola.
+
+**La compuerta** (`motivo_para_no_vender_parte`, los cuatro caminos): la caja entera con bahías
+dice cuáles se venden (««CAJ-04» no se vende: se venden sus bahías de impulso (CAJ-04-BI1,
+CAJ-04-BI2)», motivo nuevo `solo_sus_piezas`); sin bahías configuradas, la frase de siempre más
+cómo configurarlas; una bahía de una caja sin bahías, de más (`BI3` en una de dos), de una
+familia que no las lleva (`NEV-03-BI1`) o con la B (`CAJ-04-B-BI1`), rechazada diciendo por
+qué. El contrato suelto dice «nunca se alquila» y, en la caja y la columna, cómo se venden sus
+piezas (`como_se_venden_sus_piezas`).
+
+**El guardado del plano**: con una bahía vendida no cambia la cantidad de bahías (`firma_de_partes`
+cuenta las piezas: 409 `partes_vendidas`, «de 2 a 3 bahías de impulso»); sacarlas o sacar el
+forro vendido es `contratos_vivos`; una pestaña vieja no las borra (`_con_la_ficha_de_antes`,
+clave por clave adentro de `partes`). Estirar la caja no frena.
+
+**Cómo se dibuja.** La caja con `partes.bahias` parte la mesa larga en ESOS nichos iguales, con
+un montante entre nicho y nicho (`nichosDeImpulso` / `montantesDeImpulso` sobre
+`mesaDeImpulso`, en `medidas.ts`: la misma cuenta para el 3D, el plano 2D y el contorno del
+visor; `cotasDeCheckout` no cambió, la referencia del catálogo la compara tal cual). Sin el
+campo, el dibujo de siempre: el montante al 10 %. La columna con `partes.forro` lleva una
+envoltura de las cuatro caras del zócalo a dos metros (`FORRO`), con su marco arriba. El plano
+2D marca los montantes de las bahías del lado de la fila y un punto rojo en cada bahía vendida,
+y un anillo alrededor de la columna forrada (rojo si el forro está vendido).
+
+**El panel «Cómo se vende»** (el mismo en el 2D y el 3D, fuera de lo comercial del panel: la caja
+no es comercializable): la caja, «Bahías de impulso que se venden» (vacío o 0, ninguna) con la
+lista «BI1 · libre · BI2 · vendida» y **«Aplicar a todas las cajas de la sede»** (`aplicarATodos`:
+la misma cantidad en todas, salta las que tienen una bahía vendida y las nombra); la columna, «El
+forro se vende». Con una pieza vendida no cambia la cantidad ni se saca (`revisarCambioDePartes`).
+El texto del destino del mueble ya no dice sólo «no se alquila»: dice qué se vende de él
+(`textoDeLoQueNuncaSeAlquila`).
+
+**Vender**: tocar una caja suma **su primera bahía libre** en el periodo (tocarla de nuevo la
+saca); el renglón ofrece «BI1 · BI2» **sin «Entera»**, y **«Sumar la BI1 de todas las cajas de
+la sede (8)»** agrega un renglón por caja con esa bahía configurada: un contrato, una firma,
+varios espacios. Tocar una columna forrada suma su forro. Una caja sin bahías explica cómo se
+configuran. El visor 3D marca el nicho de la bahía (o el frente del forro) con el contorno de la
+venta, sin producto. **Supervisar**: cada pieza vendida es una fila más (plata, vencimientos,
+proveedores, montaje, renovar y cancelar desde el detalle de la caja), «Sin alquilar» suma las
+piezas libres a su tarifa y la ocupación dice aparte «Bahías de impulso: 5 de 16» (no son
+caras). **La mercaderista**: «Bahía de impulso 1 de 2, contando de izquierda a derecha mirando la
+caja desde la fila»; «Forro de columna». **La consola**: las piezas cuentan canon, spread (contra
+la tarifa de su clase, sin respaldo), proveedores y el resumen por tipo, y nunca ocupación; no
+salen todavía como una lista propia en el detalle por cliente. La auditoría (la pantalla y
+`auditar_desfase.py`) conoce las piezas que se ofrecen.
+
+**Las fichas propias** (el taller, «Fichas»): la caja dice cuántas bahías de impulso vende (de 1
+a 4) y la columna si vende el forro; las mismas reglas en los dos lados (`problemas_de_la_ficha`
+y `fichas.ts`, los casos de `casos/fichas.json`: el forro es un sí o no, una caja no se divide,
+una nevera no lleva bahías) y `ficha_normalizada` guarda las piezas. Colocada desde la paleta,
+la caja ya vende sus bahías sin tocar el panel.
+
+**Decisiones de este paso**, para confirmar con la dueña: de 1 a 4 bahías por caja (¿2 es lo
+habitual?, ¿la caja de RECABRA tiene que nacer con ellas?); la bahía no tiene respaldo de tarifa
+(la caja no tiene tarifa); el forro va del zócalo a dos metros en el dibujo; una pieza no tiene
+huella propia.
+
+**Cómo se prueba.** `npm run probar:partes` (sección «paso 3»: los casos compartidos con las
+piezas, la bahía 1 a la izquierda de quien hace la fila con la caja girada, los nichos parejos y
+el dibujo de siempre sin bahías, la disponibilidad, los bloqueos, «Aplicar a todas», el
+contorno, el taller y el cableado de Vender, Supervisar y el montaje); `probar-catalogo` (el
+esquema de las piezas y sus adulteraciones); `probar-auditoria` (la bahía vendida de una caja
+configurada no es «contrato sin mueble»; la caja entera y la BI3 de una de dos, sí); del lado
+del servidor `tests/test_partes_piezas.py`
+(los caminos de venta, el multiespacio de ocho cajas, la caja de antes, el contrato suelto, la
+tarifa, el guardado del plano, la pestaña vieja, la mercaderista, la consola, la auditoría, la
+renumeración y la ficha propia), `test_partes.py` y `test_fichas_propias.py` con los casos
+compartidos.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

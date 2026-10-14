@@ -96,14 +96,21 @@ export type Confiabilidad = "ficha" | "catalogo" | "estimado";
  *  del mueble y la base, `PUN-02-EN1`). Sin `division`, el mueble se vende
  *  entero, como siempre. Sólo números y una palabra de una lista cerrada:
  *  nunca lleva nada comercial. En el mueble del plano, un `null` adentro es
- *  «borrado a propósito» (como en la ficha: ver `UnifiedFixture.modelo`). */
-export interface PartesDeMueble { puertas?: number | null; tramos?: number | null; division?: string | null }
+ *  «borrado a propósito» (como en la ficha: ver `UnifiedFixture.modelo`).
+ *
+ *  Y las PIEZAS de lo que nunca se vende entero (desde el paso 3): `bahias`,
+ *  las bahías de impulso de una caja (dibujan sus nichos y se venden de a una,
+ *  `CAJ-04-BI1`), y `forro`, si la columna lleva forro (`COL-07-FO`). */
+export interface PartesDeMueble {
+  puertas?: number | null; tramos?: number | null; division?: string | null;
+  bahias?: number | null; forro?: boolean | null;
+}
 
 /** La geometría que un modelo puede fijar, por tipo, con su rango: los
  *  entrepaños y el módulo de la góndola, las puertas de la nevera de puertas,
  *  los tramos y cómo se vende por partes (`division`, de la lista de su
  *  familia). */
-export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas" | "tramos" | "division";
+export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas" | "tramos" | "bahias" | "forro" | "division";
 
 /** Una clase de parte (`partes.clases` en `muebles.json`): la puerta de la
  *  nevera, y lo que venga. Ver `utils/partes.ts`. */
@@ -114,6 +121,9 @@ export interface ClaseDeParte {
   es: "division" | "pieza";
   /** Por dónde se cuentan: `ancho`, de izquierda a derecha mirando el frente. */
   eje: "ancho" | "alto" | null;
+  /** Mirando qué se cuentan, si no es «el frente» (las bahías: «la caja
+   *  desde la fila»). */
+  mirando?: string;
   /** El campo que dice cuántas hay (uno de `fichas.geometria`: en `partes`
    *  —las puertas, los tramos— o en el mueble —los entrepaños—). */
   campo: string;
@@ -122,7 +132,8 @@ export interface ClaseDeParte {
   base?: boolean;
   /** Menos que esto no es dividir (una nevera de una puerta se vende entera). */
   minimo: number;
-  /** Una por mueble y sin número (el forro, cuando llegue). */
+  /** Una por mueble y sin número (el forro): la cuenta un sí o no
+   *  (`booleano` en `fichas.geometria`). */
   unico?: boolean;
   singular: string;
   plural: string;
@@ -214,11 +225,11 @@ export interface TipoDeMueble extends FormaDeMueble {
   rango?: Record<keyof Medidas, [number, number]>;
   /** Qué geometría puede fijar un modelo de este tipo, y entre qué valores. */
   geometria?: Partial<Record<CampoDeGeometria, [number, number]>>;
-  /** De qué formas se puede vender por partes (`partes.clases`). */
-  /** Vender por partes: de qué formas se divide (`divisiones`) y cuáles se
+  /** Vender por partes: de qué formas se divide (`divisiones`), cuáles se
    *  cuentan en el plano y no en la ficha (`seCuentanEnElPlano`: los tramos
-   *  de una góndola, cuya ficha es un módulo). */
-  partes?: { divisiones?: string[]; seCuentanEnElPlano?: string[] };
+   *  de una góndola, cuya ficha es un módulo) y qué PIEZAS lleva (`piezas`:
+   *  las bahías de la caja, el forro de la columna). */
+  partes?: { divisiones?: string[]; seCuentanEnElPlano?: string[]; piezas?: string[] };
 }
 
 /** Las reglas de una ficha (`fichas` en `muebles.json`). Ver `catalogo/fichas.ts`. */
@@ -232,7 +243,7 @@ export interface ReglasDeFicha {
   /** Dónde vive cada campo de geometría (en `partes` o suelto), si es entero
    *  y, si es una palabra de una lista cerrada, dónde está la lista de su
    *  familia (`valores`: `divisiones` es `tipos[t].partes.divisiones`). */
-  geometria: Record<CampoDeGeometria, { enPartes: boolean; entero: boolean; valores?: string }>;
+  geometria: Record<CampoDeGeometria, { enPartes: boolean; entero: boolean; valores?: string; booleano?: boolean }>;
   /** La URL de una fuente que es una imagen: nunca se guarda una foto. */
   fuenteQueEsImagen: string;
   largoMaximo: { nombre: number; url: number; nota: number };

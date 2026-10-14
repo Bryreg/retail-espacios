@@ -17,7 +17,7 @@ from app.schemas.spaces import (
 from app.services.contacts import recipients_for
 from app.services.candado import tomar_candados
 from app.services.layout_lookup import (
-    NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, contratos_que_chocan, describe_location,
+    NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, como_se_venden_sus_piezas, contratos_que_chocan, describe_location,
     find_fixture_by_space_code, frase_de_choque, por_que_no_se_vende,
 )
 from app.services.partes import cantidad_de, partir_codigo, texto_para_montar
@@ -403,11 +403,17 @@ def create_lease(
         )
     if motivo and motivo[0] == NO_COMERCIALIZABLE:
         mueble = find_fixture_by_space_code(db, space.code) or {}
-        if str(mueble.get("type") or "") in NUNCA_ALQUILABLE:
+        tipo = str(mueble.get("type") or "")
+        if tipo in NUNCA_ALQUILABLE:
             detalle = (
                 f"«{space.code}» es operación de la tienda (una caja, una columna o el servicio "
                 "al cliente): nunca se alquila."
             )
+            # La caja y la columna no se venden, pero sus piezas sí (la bahía
+            # de impulso, el forro): se dice cómo se ponen a la venta.
+            piezas = como_se_venden_sus_piezas(mueble)
+            if piezas:
+                detalle = f"{detalle} {piezas}"
         else:
             detalle = (
                 f"«{space.code}» está marcado como no comercializable. "

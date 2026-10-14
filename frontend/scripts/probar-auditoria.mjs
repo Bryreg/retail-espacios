@@ -135,6 +135,26 @@ prueba("una puerta ofrecida no es fantasma; la de una nevera que se vende entera
     { "NAVE-NEV-03-PU4": vendido() }).length, 1);
 });
 
+prueba("la bahía de la caja y el forro de la columna se ofrecen aunque el mueble no se venda", () => {
+  // Vender por partes, paso 3: la caja nunca se vende entera, sus bahías sí.
+  // Una BI1 vendida no es fantasma; la caja entera vendida, sí, y la BI3 de
+  // una caja de 2 bahías, también. Lo mismo el forro de una columna forrada.
+  const planos = { NAVE: [
+    mueble("CAJ-04", { type: "checkout", w: 1.8, d: 0.8, h: 0.9, partes: { bahias: 2 } }),
+    mueble("COL-07", { type: "columna", w: 0.4, d: 0.4, h: 3, partes: { forro: true } }),
+  ] };
+  assert.deepEqual(contratosSinMueble(planos, {
+    "NAVE-CAJ-04-BI1": vendido(), "NAVE-CAJ-04-BI2": vendido(), "NAVE-COL-07-FO": vendido(),
+  }), []);
+  const r = contratosSinMueble(planos, {
+    "NAVE-CAJ-04": vendido(), "NAVE-CAJ-04-BI3": vendido(), "NAVE-COL-07": vendido(),
+  });
+  assert.deepEqual(r.map((x) => x.code).sort(), ["CAJ-04", "CAJ-04-BI3", "COL-07"]);
+  // Sin configurar, la caja de siempre no ofrece nada: su bahía es fantasma.
+  const vieja = { NAVE: [mueble("CAJ-04", { type: "checkout", w: 1.8, d: 0.8, h: 0.9 })] };
+  assert.equal(contratosSinMueble(vieja, { "NAVE-CAJ-04-BI1": vendido() }).length, 1);
+});
+
 prueba("EL IMP-17 DE LA OTRA TIENDA NO LO TAPA", () => {
   // El bug entero en una línea: `PUN-15` existe en NAVE, no en CIUDAD JARDIN.
   const r = contratosSinMueble(dosSedes(), { "CIUDAD JARDIN-PUN-15": vendido() });
@@ -257,7 +277,9 @@ prueba("el servidor sigue saltándose lo no comercializable", () => {
 
 prueba("el servidor sigue contando la cara B como un espacio aparte, con `caras_de`", () => {
   const m = espaciosDeServidor();
-  assert.match(m[0], /caras = caras_de\(fixture\)\s*\n\s*if caras == 2:\s*\n\s*fuera\.append\(f"\{completo\}-B"\)/,
+  // Desde las piezas (paso 3) la cara entera va adentro de «si es
+  // comercializable»: la caja no ofrece su cara, sí sus bahías.
+  assert.match(m[0], /caras = caras_de\(fixture\)[\s\S]*?if caras == 2:\s*\n\s*fuera\.append\(f"\{completo\}-B"\)/,
     "el servidor dejó de preguntarle a `caras_de` si el mueble tiene cara B");
 });
 

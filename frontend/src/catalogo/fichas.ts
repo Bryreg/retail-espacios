@@ -14,7 +14,8 @@ import { CATALOGO_DE_MUEBLES, type CampoDeGeometria, type TipoDeMueble } from ".
  *     tiene (la góndola: central o de pared);
  *   · las medidas, dentro del `rango` de la familia;
  *   · sólo la geometría que admite su `geometria`, dentro de su rango y entera
- *     donde corresponde (los entrepaños, las puertas);
+ *     donde corresponde (los entrepaños, las puertas, las bahías de una caja),
+ *     y el sí o no de una pieza que la familia lleva (el forro de una columna);
  *   · una tarifa propia sólo si es una de las de su familia (la media estiba,
  *     el exhibidor de cartón): son las que Tarifas ya ofrece;
  *   · la fuente dice cuánto confiar y de dónde salió —una URL http(s) que no sea
@@ -72,7 +73,7 @@ export function idDeFichaPropia(clave: string): string {
 const NOMBRE_DE_MEDIDA = { w: "el ancho", d: "el fondo", h: "el alto" } as const;
 const NOMBRE_DE_GEOMETRIA: Record<CampoDeGeometria, string> = {
   entrepanos: "los entrepaños", modulo: "el módulo", puertas: "las puertas", tramos: "los tramos",
-  division: "cómo se vende por partes",
+  bahias: "las bahías de impulso", forro: "el forro", division: "cómo se vende por partes",
 };
 
 /** La lista cerrada de un campo de palabras (`division`): la de su familia
@@ -140,7 +141,7 @@ export function problemasDeLaFicha(ficha: unknown, { nueva = true }: { nueva?: b
     let partes: unknown = ficha.partes;
     if (partes != null && !(objeto(partes)
       && Object.keys(partes).every((k) => propio(REGLAS.geometria, k) && REGLAS.geometria[k as CampoDeGeometria].enPartes))) {
-      no("partes", "las partes sólo llevan lo conocido (las puertas, los tramos y cómo se vende)");
+      no("partes", "las partes sólo llevan lo conocido (las puertas, los tramos, las bahías de impulso, el forro y cómo se vende)");
       partes = undefined;
     }
     const admite = familia.geometria ?? {};
@@ -148,15 +149,26 @@ export function problemasDeLaFicha(ficha: unknown, { nueva = true }: { nueva?: b
     // de una góndola: su ficha es un módulo), y los campos que las cuentan.
     const enElPlano = familia.partes?.seCuentanEnElPlano ?? [];
     const delPlano = new Set(enElPlano.map((c) => C.partes.clases[c]?.campo).filter(Boolean));
-    for (const [campo, regla] of Object.entries(REGLAS.geometria) as [CampoDeGeometria, { enPartes: boolean; entero: boolean; valores?: string }][]) {
+    // Los campos que cuentan las piezas de la familia (`partes.bahias` de la
+    // caja, `partes.forro` de la columna).
+    const deSusPiezas = new Set((familia.partes?.piezas ?? []).map((c) => C.partes.clases[c]?.campo).filter(Boolean));
+    for (const [campo, regla] of Object.entries(REGLAS.geometria) as [CampoDeGeometria, { enPartes: boolean; entero: boolean; valores?: string; booleano?: boolean }][]) {
       const donde = regla.enPartes ? `partes.${campo}` : campo;
       const v = regla.enPartes ? (objeto(partes) ? partes[campo] : undefined) : ficha[campo];
       if (v == null) continue;
+      if (regla.booleano) {
+        // Un sí o no (el forro de una columna): lo lleva la familia que tiene
+        // una pieza contada con él.
+        if (!deSusPiezas.has(campo)) no(donde, `la familia «${tipo}» no lleva ${NOMBRE_DE_GEOMETRIA[campo]}`);
+        else if (typeof v !== "boolean") no(donde, `${NOMBRE_DE_GEOMETRIA[campo]} es sí o no`);
+        continue;
+      }
       const valores = valoresDe(regla, familia);
       if (valores) {
         // Una palabra de una lista cerrada: cómo se vende por partes.
         const clases = C.partes.clases;
-        if (valores.length === 0) no(donde, `la familia «${tipo}» se vende entera: no tiene partes`);
+        if (valores.length === 0 && deSusPiezas.size > 0) no(donde, `la familia «${tipo}» no se divide: lo que se vende son sus piezas`);
+        else if (valores.length === 0) no(donde, `la familia «${tipo}» se vende entera: no tiene partes`);
         else if (typeof v !== "string" || !valores.includes(v)) {
           no(donde, `se vende por ${valores.map((c) => clases[c]?.plural ?? c).join(" o por ")}`);
         } else if (!enElPlano.includes(v)) {

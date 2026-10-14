@@ -9,7 +9,12 @@ import { LIBRE, type EstadoComercial, type EstadoPorEspacio } from "./estadoCome
 /**
  * Vender por partes: la nevera entera o por puertas; el mural, la góndola, la
  * nevera abierta o la de vegetales, enteros o por tramos; la góndola y la
- * punta, enteras o por entrepaños.
+ * punta, enteras o por entrepaños. Y las PIEZAS de lo que nunca se vende
+ * entero: cada bahía de impulso de una caja (`CAJ-04-BI1`, de izquierda a
+ * derecha mirando la caja desde la fila) y el forro de una columna
+ * (`COL-07-FO`). Una pieza no parte ninguna cara: no choca con nada más que
+ * consigo misma, se ofrece aunque el mueble no sea comercializable (la caja y
+ * la columna no lo son nunca) y su tarifa es la de su clase, sin respaldo.
  *
  * La dueña lo pidió así: **las marcas pagan la nevera entera o por puertas,
  * pero nunca las dos en las mismas fechas; dos puertas distintas, sí.** Y
@@ -114,6 +119,12 @@ export function esDivision(p: ParteRef | null | undefined): boolean {
   return !!p && claseDe(p.clase)?.es === "division";
 }
 
+/** ¿Es una pieza de un mueble que no se vende entero (la bahía de impulso de
+ *  una caja, el forro de una columna)? */
+export function esPieza(p: ParteRef | null | undefined): boolean {
+  return !!p && claseDe(p.clase)?.es === "pieza";
+}
+
 const mismaParte = (a: ParteRef | null, b: ParteRef | null) =>
   a === b || (!!a && !!b && a.clase === b.clase && a.token === b.token && a.n === b.n);
 
@@ -188,34 +199,83 @@ export function divisionDe(f: ConPartes): { clase: string; n: number } | null {
   return n === null ? null : { clase, n };
 }
 
-/** Las partes que el mueble pone a la venta, por cara. Un mueble no
- *  comercializable no ofrece ninguna: una división parte una cara que se vende. */
+/** Las piezas que lleva un mueble de esa familia (`partes.piezas` del
+ *  catálogo): la caja, sus bahías de impulso; la columna, su forro. */
+export function piezasDeLaFamilia(tipo: string): string[] {
+  return CATALOGO_DE_MUEBLES.tipos[tipoBase(tipo)]?.partes?.piezas ?? [];
+}
+
+/** Las PIEZAS que el mueble pone a la venta: `BI1`, `BI2` de una caja con
+ *  dos bahías de impulso; `FO` de una columna forrada. Sólo las que su familia
+ *  lleva (`partes.piezas` del catálogo) y con su campo bien escrito: un entero
+ *  dentro del rango de la familia (las bahías) o un `true` (el forro). No
+ *  dependen de que el mueble sea comercializable. Es `piezas_de` del servidor. */
+export function piezasDe(f: ConPartes): ParteRef[] {
+  if (!f) return [];
+  const fuera: ParteRef[] = [];
+  for (const clase of piezasDeLaFamilia(f.type)) {
+    const regla = claseDe(clase);
+    if (!regla || regla.es !== "pieza") continue;
+    if (regla.unico) {
+      if (valorDelCampo(f, regla.campo) === true) fuera.push({ clase, token: regla.token, n: null });
+      continue;
+    }
+    const n = cantidadDe(f, clase);
+    if (n) for (let k = 1; k <= n; k++) fuera.push({ clase, token: regla.token, n: k });
+  }
+  return fuera;
+}
+
+/** Las partes que el mueble pone a la venta, por cara: las divisiones de sus
+ *  caras (un mueble no comercializable no ofrece ninguna: una división parte
+ *  una cara que se vende) y, al final, sus PIEZAS, en la cara A (se ofrecen
+ *  aunque el mueble no sea comercializable). Es `partes_de` del servidor. */
 export function partesDe(f: ConPartes): { cara: "A" | "B"; parte: ParteRef }[] {
-  if (!isRentable(f)) return [];
-  const div = divisionDe(f);
-  if (!div) return [];
-  const token = P.clases[div.clase].token;
-  const caras: ("A" | "B")[] = carasDe(f) === 2 ? ["A", "B"] : ["A"];
-  return caras.flatMap((cara) =>
-    Array.from({ length: div.n }, (_, i) => ({ cara, parte: { clase: div.clase, token, n: i + 1 } })));
+  const fuera: { cara: "A" | "B"; parte: ParteRef }[] = [];
+  const div = isRentable(f) ? divisionDe(f) : null;
+  if (div) {
+    const token = P.clases[div.clase].token;
+    const caras: ("A" | "B")[] = carasDe(f) === 2 ? ["A", "B"] : ["A"];
+    for (const cara of caras) {
+      for (let k = 1; k <= div.n; k++) fuera.push({ cara, parte: { clase: div.clase, token, n: k } });
+    }
+  }
+  for (const parte of piezasDe(f)) fuera.push({ cara: "A", parte });
+  return fuera;
+}
+
+/** ¿Se vende algo de este mueble? Sus caras, si es comercializable; si no,
+ *  sus piezas (la caja con sus bahías de impulso, la columna con su forro). Es
+ *  la compuerta de tocarlo en Vender. */
+export function seVendeAlgo(f: ConPartes): boolean {
+  return isRentable(f) || piezasDe(f).length > 0;
 }
 
 /** Los códigos COMPLETOS que el mueble pone a la venta: sus caras y sus
- *  partes. Es `espacios_de` del servidor (`espacios_ofrecidos`). */
+ *  partes. Un mueble que no es comercializable no da sus caras, pero sí sus
+ *  piezas. Es `espacios_de` del servidor (`espacios_ofrecidos`). */
 export function espaciosDe(f: ConPartes & { code: string; sede?: string }, sede: string): string[] {
   const code = normalizar(f.code);
-  if (!code || !isRentable(f)) return [];
+  if (!code) return [];
   const completo = fullSpaceCode(f.sede || sede, code);
-  const fuera = [completo];
-  if (carasDe(f) === 2) fuera.push(`${completo}-B`);
+  const fuera: string[] = [];
+  if (isRentable(f)) {
+    fuera.push(completo);
+    if (carasDe(f) === 2) fuera.push(`${completo}-B`);
+  }
   for (const { cara, parte } of partesDe(f)) fuera.push(codigoDeParte(completo, cara, parte));
   return fuera;
 }
 
-/** Lo que decide DÓNDE cae cada parte vendida, por clase. */
+/** Lo que decide DÓNDE cae cada parte vendida, por clase: la cantidad de la
+ *  división, o de las piezas (las bahías parten la mesa en partes iguales), o
+ *  1 si tiene el forro. Es `firma_de_partes` del servidor. */
 export function firmaDePartes(f: ConPartes): Record<string, number | null> {
   const div = divisionDe(f);
-  return Object.fromEntries(Object.keys(P.clases).map((clase) => [clase, div && div.clase === clase ? div.n : null]));
+  const firma: Record<string, number | null> = Object.fromEntries(
+    Object.keys(P.clases).map((clase) => [clase, div && div.clase === clase ? div.n : null]));
+  for (const p of piezasDe(f)) firma[p.clase] = Math.max(firma[p.clase] ?? 0, p.n ?? 1);
+  return firma;
 }
 
 /** De `partes`, sólo lo conocido y con su tipo: lo que dicen las reglas de la
@@ -229,6 +289,8 @@ export function partesTipadas(partes: unknown): PartesDeMueble | undefined {
     const v = (partes as Record<string, unknown>)[campo];
     if (regla.valores) {
       if (typeof v === "string" && claseDe(v)) fuera[campo] = v;
+    } else if (regla.booleano) {
+      if (typeof v === "boolean") fuera[campo] = v;
     } else if (typeof v === "number" && Number.isFinite(v) && (!regla.entero || Number.isInteger(v))) {
       fuera[campo] = v;
     }
@@ -258,13 +320,17 @@ export function textoDeParte(p: ParteRef, de?: number | null): string {
 }
 
 /** Lo que lee la mercaderista: cuál es, contada desde dónde. Los entrepaños,
- *  de abajo hacia arriba con la base como el 1. Es `texto_para_montar` del
- *  servidor. */
+ *  de abajo hacia arriba con la base como el 1; las bahías de una caja,
+ *  mirándola desde la fila; el forro, que es uno solo, con el nombre de los
+ *  informes («Forro de columna»). Es `texto_para_montar` del servidor. */
 export function textoParaMontar(p: ParteRef, de?: number | null): string {
   const texto = textoDeParte(p, de);
   const regla = claseDe(p.clase);
-  if (p.n === null) return texto;
-  if (regla?.eje === "ancho") return `${texto}, contando de izquierda a derecha mirando el frente`;
+  if (p.n === null) {
+    const nombre = regla?.informe || regla?.singular || p.token;
+    return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+  }
+  if (regla?.eje === "ancho") return `${texto}, contando de izquierda a derecha mirando ${regla.mirando || "el frente"}`;
   if (regla?.eje === "alto") return `${texto}, contando de abajo hacia arriba${regla.base ? " (el 1 es la base)" : ""}`;
   return texto;
 }
@@ -527,7 +593,9 @@ export function disponibilidadDeCara(
 ): RangeAvailability {
   const entera = rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta);
   const caraCompleta = fullSpaceCode(f.sede || sede, codigoDeParte(f.code, cara, null));
-  const divisiones = partesDe(f).filter((p) => p.cara === cara);
+  // Sólo las divisiones: una pieza (la bahía de una caja) no es de ninguna
+  // cara que se venda entera.
+  const divisiones = partesDe(f).filter((p) => p.cara === cara && esDivision(p.parte));
   const conAlgo = (indice.get(caraCompleta) ?? []).filter((o) => esDivision(o.partido.parte));
   if (entera === "tomado") return "tomado";
   if (divisiones.length === 0 && conAlgo.length === 0) return entera;

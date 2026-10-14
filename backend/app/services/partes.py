@@ -1,6 +1,8 @@
 """Vender por partes: la nevera entera o por puertas; el mural, la góndola, la
 nevera abierta o la de vegetales, enteros o por tramos; la góndola y la punta,
-enteras o por entrepaños.
+enteras o por entrepaños. Y las PIEZAS de lo que nunca se vende entero: las
+bahías de impulso de una caja, una por una (``CAJ-04-BI1``), y el forro de una
+columna (``COL-07-FO``).
 
 La dueña lo pidió así: **las marcas pagan la nevera entera o por puertas, pero
 nunca las dos en las mismas fechas; dos puertas distintas, sí.** Y eligió el
@@ -34,6 +36,18 @@ Un mueble sin ``partes.division`` se vende entero, como siempre: la nevera de
 la dueña colocada antes (``NEV-01``) no cambia sola aunque tenga
 ``partes.puertas``.
 
+── Las piezas ───────────────────────────────────────────────────────────────
+
+Una caja y una columna nunca se venden enteras (son operación de la tienda);
+lo que sí se vende es una PIEZA de ellas: cada bahía de impulso del lado del
+cliente de la caja (``partes.bahias``: cuántas, de izquierda a derecha mirando
+la caja desde la fila) y el forro de la columna (``partes.forro``: sí o no).
+Una pieza no parte ninguna cara —no hay cara que vender—, así que no choca
+con nada más que consigo misma, se ofrece aunque el mueble no sea
+comercializable, va siempre en la cara A y su tarifa es la de su clase, sin
+respaldo. Una caja de un plano de antes no tiene ``partes.bahias``: no ofrece
+nada, como siempre.
+
 El espejo de este módulo en el navegador es ``frontend/src/utils/partes.ts``.
 Los dos corren los casos de ``frontend/scripts/casos/partes.json``
 (``tests/test_partes.py`` y ``scripts/probar-partes.mjs``).
@@ -47,7 +61,7 @@ import re
 from dataclasses import dataclass
 
 from app.services.catalogo_muebles import (
-    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, REGLAS_DE_FICHA, RESERVADOS, TIPOS,
+    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, PIEZAS_POR_TIPO, REGLAS_DE_FICHA, RESERVADOS, TIPOS,
     tarifa_del_mueble, tipo_base,
 )
 
@@ -142,6 +156,12 @@ def es_division(parte: Parte | None) -> bool:
     """¿La parte divide la cara (puertas, tramos, entrepaños)? Las piezas (la
     bahía de una caja, el forro de una columna) no: son inventario aparte."""
     return parte is not None and CLASES_DE_PARTE[parte.clase]["es"] == "division"
+
+
+def es_pieza(parte: Parte | None) -> bool:
+    """¿Es una pieza de un mueble que no se vende entero (la bahía de impulso
+    de una caja, el forro de una columna)?"""
+    return parte is not None and CLASES_DE_PARTE[parte.clase]["es"] == "pieza"
 
 
 def chocan(a: CodigoPartido, b: CodigoPartido) -> bool:
@@ -240,29 +260,59 @@ def division_de(fixture: dict) -> tuple[str, int] | None:
     return (clase, n) if n is not None else None
 
 
+def piezas_de(fixture: dict) -> list[Parte]:
+    """Las piezas que el mueble pone a la venta: ``[BI1, BI2]`` de una caja con
+    dos bahías de impulso, ``[FO]`` de una columna forrada. Sólo las que su
+    familia lleva (``partes.piezas``) y con su campo bien escrito: un entero
+    dentro del rango de la familia (las bahías) o un ``true`` (el forro). Lo que
+    no cierra no se vende, y una caja sin ``partes.bahias`` no ofrece nada."""
+    if not isinstance(fixture, dict):
+        return []
+    fuera: list[Parte] = []
+    for clase in PIEZAS_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ()):
+        regla = CLASES_DE_PARTE.get(clase)
+        if regla is None or regla["es"] != "pieza":
+            continue
+        if regla.get("unico"):
+            if valor_del_campo(fixture, regla["campo"]) is True:
+                fuera.append(Parte(clase, regla["token"], None))
+            continue
+        n = cantidad_de(fixture, clase)
+        if n:
+            fuera.extend(Parte(clase, regla["token"], k) for k in range(1, n + 1))
+    return fuera
+
+
 def partes_de(fixture: dict, caras: int, comercializable: bool) -> list[tuple[str, Parte]]:
     """Las partes que el mueble pone a la venta, por cara: ``[("A", PU1), …]``.
 
     ``caras`` y ``comercializable`` los dice quien llama (``caras_de`` y
     ``es_comercializable`` de ``layout_lookup``): una división parte una cara
-    que se vende, así que un mueble no comercializable no ofrece ninguna.
+    que se vende, así que un mueble no comercializable no ofrece ninguna. Las
+    PIEZAS van aparte y al final, siempre en la cara A: se ofrecen aunque el
+    mueble no sea comercializable (la caja y la columna no lo son nunca).
     """
-    if not comercializable:
-        return []
-    div = division_de(fixture)
-    if div is None:
-        return []
-    clase, n = div
-    token = CLASES_DE_PARTE[clase]["token"]
-    return [(cara, Parte(clase, token, k)) for cara in ("A", "B")[:max(1, caras)] for k in range(1, n + 1)]
+    fuera: list[tuple[str, Parte]] = []
+    div = division_de(fixture) if comercializable else None
+    if div is not None:
+        clase, n = div
+        token = CLASES_DE_PARTE[clase]["token"]
+        fuera = [(cara, Parte(clase, token, k)) for cara in ("A", "B")[:max(1, caras)] for k in range(1, n + 1)]
+    fuera.extend(("A", p) for p in piezas_de(fixture))
+    return fuera
 
 
 def firma_de_partes(fixture: dict) -> dict[str, int | None]:
     """Lo que decide DÓNDE cae cada parte vendida, por clase: la cantidad si el
     mueble se divide de esa forma, ``None`` si no. Con una parte vendida, que
-    cambie esto es mover lo vendido (``partes_que_se_moverian``)."""
+    cambie esto es mover lo vendido (``partes_que_se_moverian``). Las piezas,
+    por cuántas hay (las bahías parten la mesa en partes iguales: de 2 a 3, la
+    bahía 1 queda en otro lugar) o, el forro, 1 si lo tiene."""
     div = division_de(fixture)
-    return {clase: (div[1] if div and div[0] == clase else None) for clase in CLASES_DE_PARTE}
+    firma = {clase: (div[1] if div and div[0] == clase else None) for clase in CLASES_DE_PARTE}
+    for p in piezas_de(fixture):
+        firma[p.clase] = max(firma.get(p.clase) or 0, p.n or 1)
+    return firma
 
 
 def partes_tipadas(partes) -> dict:
@@ -278,6 +328,9 @@ def partes_tipadas(partes) -> dict:
         v = partes.get(campo)
         if regla.get("valores"):
             if isinstance(v, str) and v in CLASES_DE_PARTE:
+                fuera[campo] = v
+        elif regla.get("booleano"):
+            if isinstance(v, bool):
                 fuera[campo] = v
         elif regla["entero"]:
             if _entero(v):
@@ -312,13 +365,17 @@ def texto_de_parte(parte: Parte, de: int | None = None) -> str:
 def texto_para_montar(parte: Parte, de: int | None = None) -> str:
     """Lo que lee la mercaderista: cuál es, contada desde dónde. Los
     entrepaños, de abajo hacia arriba y con la base como el 1: es la bandeja
-    que se apoya en el zócalo, y también lleva producto."""
+    que se apoya en el zócalo, y también lleva producto. Las bahías de una
+    caja, mirándola desde la fila (``mirando`` de la clase); el forro, que es
+    uno solo, con el nombre con que lo dicen los informes («Forro de
+    columna»)."""
     regla = CLASES_DE_PARTE[parte.clase]
     texto = texto_de_parte(parte, de)
     if parte.n is None:
-        return texto
+        nombre = regla.get("informe") or regla["singular"]
+        return nombre[:1].upper() + nombre[1:]
     if regla.get("eje") == "ancho":
-        return f"{texto}, contando de izquierda a derecha mirando el frente"
+        return f"{texto}, contando de izquierda a derecha mirando {regla.get('mirando') or 'el frente'}"
     if regla.get("eje") == "alto":
         base = " (el 1 es la base)" if regla.get("base") else ""
         return f"{texto}, contando de abajo hacia arriba{base}"

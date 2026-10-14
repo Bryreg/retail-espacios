@@ -32,10 +32,12 @@ import {
 } from "../../catalogo/nombresPropios";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
-import { divisionesDe } from "../../utils/partesDelMueble";
+import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
 import {
-  claseDe, codigoDeParte, concordancia, divisionDe, fraccionDeParte, juntasDePartes, partesDe, sufijoDeParte,
+  claseDe, codigoDeParte, concordancia, divisionDe, esDivision, fraccionDeParte, juntasDePartes, partesDe, piezasDe,
+  sufijoDeParte, vanoDeParte,
 } from "../../utils/partes";
+import { cotasDeCheckout, mesaDeImpulso, montantesDeImpulso, nichosDeImpulso } from "../StoreEditor3D/muebles/medidas";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -1759,8 +1761,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       });
                       const noPtr = { style: { pointerEvents: "none" as const } };
                       const completo = fullSpaceCode(f.sede || sede, f.code);
-                      const vendidas = partesDe(f).filter(({ cara, parte }) =>
-                        estadoCrudo[codigoDeParte(completo, cara, parte)]?.status === "occupied");
+                      const vendidas = partesDe(f).filter(({ cara, parte }) => esDivision(parte)
+                        && estadoCrudo[codigoDeParte(completo, cara, parte)]?.status === "occupied");
                       return (
                         <g data-partes-en-planta={item.id}>
                           {juntas.map((t) => {
@@ -1777,6 +1779,56 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                             return <circle key={`v${cara}${parte.n}`} cx={p.x} cy={p.y} r={Math.max(2, 3.2 / zoom)}
                               fill={STATUS_COLORS.occupied} {...noPtr}><title>{sufijoDeParte(parte)} vendid{concordancia(parte.clase).o}</title></circle>;
                           })}
+                        </g>
+                      );
+                    })()}
+
+                    {/* Vender por partes, las piezas de lo que no se vende
+                        entero: las bahías de impulso de la caja (las juntas
+                        entre nicho y nicho del lado del cliente, con la misma
+                        cuenta que el 3D) y el forro de la columna (un anillo).
+                        Un punto o el anillo en rojo si está vendida. */}
+                    {(() => {
+                      const f = muebleDelStore.get(item.id);
+                      if (!f) return null;
+                      const piezas = piezasDe(f);
+                      if (piezas.length === 0) return null;
+                      const th = rotationSteps(item.rotY) * Math.PI / 2;
+                      const cx = px + pw / 2;
+                      const cy = py + ph / 2;
+                      const aPlano = (x: number, z: number) => ({
+                        x: cx + (x * Math.cos(th) + z * Math.sin(th)) * PX_PER_M,
+                        y: cy + (-x * Math.sin(th) + z * Math.cos(th)) * PX_PER_M,
+                      });
+                      const noPtr = { style: { pointerEvents: "none" as const } };
+                      const completo = fullSpaceCode(f.sede || sede, f.code);
+                      const vendida = (p: (typeof piezas)[number]) =>
+                        estadoCrudo[codigoDeParte(completo, "A", p)]?.status === "occupied";
+                      const bahias = piezas.filter((p) => p.clase === "bahias");
+                      const forro = piezas.find((p) => p.clase === "forro");
+                      const c = bahias.length ? mesaDeImpulso(f.w, cotasDeCheckout(f.w, f.d, f.h)) : null;
+                      const zCliente = -f.d / 2 + 0.06;
+                      return (
+                        <g data-piezas-en-planta={item.id}>
+                          {c && montantesDeImpulso(c, bahias.length).map((x) => {
+                            const a = aPlano(x, -f.d / 2);
+                            const b = aPlano(x, -f.d / 2 + 0.2);
+                            return <line key={`m${x}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                              stroke="rgba(28,27,22,0.55)" strokeWidth={1 / zoom} {...noPtr} />;
+                          })}
+                          {c && bahias.filter(vendida).map((p) => {
+                            const nicho = nichosDeImpulso(c, bahias.length)[vanoDeParte("A", p.n ?? 1, bahias.length)];
+                            const q = aPlano(nicho.x, zCliente);
+                            return <circle key={`b${p.n}`} cx={q.x} cy={q.y} r={Math.max(2, 3.2 / zoom)}
+                              fill={STATUS_COLORS.occupied} {...noPtr}><title>{sufijoDeParte(p)} vendida</title></circle>;
+                          })}
+                          {forro && (
+                            <rect x={px - 2 / zoom} y={py - 2 / zoom} width={pw + 4 / zoom} height={ph + 4 / zoom}
+                              fill="none" rx={3 / zoom} strokeWidth={1.6 / zoom}
+                              stroke={vendida(forro) ? STATUS_COLORS.occupied : "rgba(28,27,22,0.55)"} {...noPtr}>
+                              <title>{vendida(forro) ? "Forro vendido" : "Forro: se vende"}</title>
+                            </rect>
+                          )}
                         </g>
                       );
                     })()}
@@ -3862,7 +3914,7 @@ function AssignmentPanel({
         )}
         <p style={{ marginTop: 6, fontSize: 10, color: "var(--dark-ink-3)", lineHeight: 1.45 }}>
           {NUNCA_ALQUILABLE.has(item.type)
-            ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+            ? textoDeLoQueNuncaSeAlquila(item.type)
             : rentable
             ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
             : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
@@ -4078,10 +4130,12 @@ function AssignmentPanel({
 
       {/* Vender por partes: la nevera entera o por puertas; el mural, la
           góndola, la nevera abierta y la de vegetales, por tramos; la góndola
-          y la punta, por entrepaños. Fuera de lo comercial del panel a
-          propósito: es cómo ES el mueble, y el mismo componente que el Editor
-          3D (`components/PartesDelMueble.tsx`). */}
-      {divisionesDe(item.type).length > 0 && (
+          y la punta, por entrepaños; y las piezas de la caja (sus bahías de
+          impulso) y de la columna (su forro), que no se venden enteras. Fuera
+          de lo comercial del panel a propósito: es cómo ES el mueble —y la
+          caja y la columna no son comercializables—, y el mismo componente
+          que el Editor 3D (`components/PartesDelMueble.tsx`). */}
+      {vendePorPartes(item.type) && (
         <Field label="Cómo se vende" icon="🧩">
           <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
         </Field>

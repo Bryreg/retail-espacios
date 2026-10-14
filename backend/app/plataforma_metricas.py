@@ -326,26 +326,35 @@ def _mapa_partes_de_sede(fixtures: list, sede_snapshot: str,
     CARA. Una puerta vendida ocupa su cara; no es un espacio más. Lo que sí
     necesita es su tarifa: la de su clase (``parte_puerta``) o, vacía, la de la
     cara dividida por la cantidad de puertas (``n``).
+
+    Y las PIEZAS (la bahía de impulso de una caja, el forro de una columna),
+    también de muebles que no son comercializables —la caja no lo es nunca—:
+    cuentan canon y spread, contra la tarifa de su clase y sin respaldo
+    (``tarifa_de_la_cara`` y ``n`` en ``None``: no hay cara que dividir), y
+    nunca ocupación (no son caras).
     """
     mapa: dict[str, tuple] = {}
     for fixture in fixtures:
         if not isinstance(fixture, dict):
             continue
         code = str(fixture.get("code") or "").strip()
-        if not code or not _es_comercializable(fixture):
+        if not code:
             continue
         sede = str(fixture.get("sede") or sede_snapshot or "").strip()
         completo = _codigo_completo(sede, code)
         if not completo:
             continue
-        partes = partes_de(fixture, caras_de(fixture), True)
+        partes = partes_de(fixture, caras_de(fixture), _es_comercializable(fixture))
         if not partes:
             continue
         tarifa_cara = tarifa_del_mueble(fixture, propios)
-        n = sum(1 for cara, _p in partes if cara == "A")
         for cara, parte in partes:
+            division = CLASES_DE_PARTE[parte.clase]["es"] == "division"
+            # Cuántas de SU clase tiene la cara: es el divisor del respaldo.
+            n = sum(1 for c, p in partes if c == "A" and p.clase == parte.clase)
             mapa[codigo_de_parte(completo, cara, parte)] = (
-                sede.strip().upper(), CLASES_DE_PARTE[parte.clase]["tarifa"], tarifa_cara, n,
+                sede.strip().upper(), CLASES_DE_PARTE[parte.clase]["tarifa"],
+                tarifa_cara if division else None, n if division else None,
             )
     return mapa
 
@@ -358,6 +367,9 @@ def tarifa_de_parte(tarifas: dict, entrada: tuple) -> float | None:
     propia = _tarifa_aplicable(tarifas, sede, tarifa_clase)
     if propia is not None:
         return propia
+    if tarifa_cara is None or not n:
+        # Una pieza: sin tarifa de su clase, no tiene tarifa.
+        return None
     cara = _tarifa_aplicable(tarifas, sede, tarifa_cara)
     return redondear(cara / n) if cara is not None and n else None
 

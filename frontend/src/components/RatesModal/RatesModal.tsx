@@ -14,6 +14,15 @@ const DIVISION_POR_TARIFA: ReadonlyMap<string, string> = new Map(
     .map((c) => [c.tarifa, c.plural]),
 );
 
+/** Las tarifas que son de una PIEZA (la bahía de impulso de una caja, el
+ *  forro de una columna): no hay mueble entero que dividir, así que vacías no
+ *  tienen respaldo. */
+const PIEZA_POR_TARIFA: ReadonlyMap<string, string> = new Map(
+  Object.values(CATALOGO_DE_MUEBLES.partes.clases)
+    .filter((c) => c.es === "pieza")
+    .map((c) => [c.tarifa, c.singular]),
+);
+
 /** Tariff editor (admin only). One general rate per fixture type plus an
  *  optional override for the sede being edited. Every keystroke goes through
  *  the store, which pushes with the same debounce as the shared settings —
@@ -202,6 +211,13 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
                         {DIVISION_POR_TARIFA.has(type) && (
                           <span data-tarifa-de-parte style={{ display: "block", fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "normal" }}>
                             Vacía: se sugiere la del mueble ÷ cantidad de {DIVISION_POR_TARIFA.get(type)}
+                          </span>
+                        )}
+                        {/* Una pieza (la bahía de una caja, el forro): la caja
+                            y la columna no tienen tarifa, no hay respaldo. */}
+                        {PIEZA_POR_TARIFA.has(type) && (
+                          <span data-tarifa-de-pieza style={{ display: "block", fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "normal" }}>
+                            Sin respaldo: vacía, {PIEZA_POR_TARIFA.get(type) === "forro" ? "el forro" : `la ${PIEZA_POR_TARIFA.get(type)}`} no tiene tarifa de referencia
                           </span>
                         )}
                       </td>

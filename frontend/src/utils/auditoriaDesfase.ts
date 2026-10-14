@@ -72,15 +72,19 @@ function espaciosOfrecidos(
     if (!Array.isArray(fixtures)) continue;
     for (const f of fixtures) {
       const code = (f.code || "").trim().toUpperCase();
-      if (!code || !isRentable(f)) continue;
+      if (!code) continue;
       // La sede del MUEBLE, no la de la clave: un plano copiado de otra tienda
       // dibuja muebles que no son de ésta.
       const completo = fullSpaceCode(normalizar(f.sede || clave), code);
-      ofrecidos.add(completo);
-      if (carasDe(f) === 2) ofrecidos.add(`${completo}-B`);
+      if (isRentable(f)) {
+        ofrecidos.add(completo);
+        if (carasDe(f) === 2) ofrecidos.add(`${completo}-B`);
+      }
       // Vender por partes: las puertas que el mueble ofrece (`NEV-03-PU2`),
       // como `espacios_de` del servidor. Una puerta vendida de una nevera que
       // hoy se vende entera NO está: es un contrato que ningún plano dibuja.
+      // Y las piezas de lo que no se vende entero (la bahía de una caja, el
+      // forro de una columna), aunque el mueble no sea comercializable.
       for (const { cara, parte } of partesDe(f)) ofrecidos.add(codigoDeParte(completo, cara, parte));
     }
   }

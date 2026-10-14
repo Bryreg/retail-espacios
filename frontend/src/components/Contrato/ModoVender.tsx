@@ -11,16 +11,16 @@ import {
 } from "./Contrato";
 import { useSesionDeVenta } from "./sesionDeVenta";
 import { useFichasPropias } from "../../store/fichasPropias";
-import { useFixtureStore } from "../../store/fixtureStore";
+import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 // Cómo le dice este supermercado a cada familia: la lista, el visor y la lámina.
 import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 // De `utils/` (no importa nada): la ficha la usa al entrar.
 import { normalizarProveedor } from "../../utils/proveedor";
 import {
-  claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, filaDeEntrepano, parteDeSufijo, partesDe,
-  sufijoDeParte, textoDeParte, vanoEnLaCara,
+  claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, esPieza, filaDeEntrepano, parteDeSufijo, partesDe,
+  piezasDe, seVendeAlgo, sufijoDeParte, textoDeParte, vanoDeParte, vanoEnLaCara,
 } from "../../utils/partes";
-import { divisionSinFijar } from "../../utils/partesDelMueble";
+import { divisionSinFijar, piezasDeLaFamilia } from "../../utils/partesDelMueble";
 import { internosVendidosEnLaParte } from "../../utils/slotsDeLasPartes";
 // Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
 // recién cuando se abre, por el `lazy` de abajo.
@@ -73,6 +73,10 @@ interface ModoVenderProps {
   /** Apagar la sala y encender estos muebles. Pasar el mouse por una fila del
    *  contrato señala en el plano de qué espacio habla. */
   onResaltar: (claves: string[] | null) => void;
+  /** Vender por partes, las piezas: sumar al contrato esa pieza (`"BI1"`) de
+   *  todos los muebles de ese tipo de la sede que la tienen (la bahía 1 de
+   *  todas las cajas): un contrato multiespacio, un renglón por caja. */
+  onSumarEnTodas?: (tipo: string, parte: string) => void;
   sede: string;
   rango: DateRange | null;
   /** El contrato que se acaba de guardar, si hay uno. */
@@ -110,12 +114,13 @@ function Panel({ derecha, children }: { derecha?: React.ReactNode; children: Rea
  *  de partida real— y al lado se ve el desvío, así que bajar el precio es una
  *  decisión que se toma mirando cuánto se está bajando. */
 function Fila({
-  l, c, sePuedeQuitar, onResaltar,
+  l, c, sePuedeQuitar, onResaltar, onSumarEnTodas,
 }: {
   l: Contrato["lineas"][number];
   c: Contrato;
   sePuedeQuitar: boolean;
   onResaltar: (claves: string[] | null) => void;
+  onSumarEnTodas?: (tipo: string, parte: string) => void;
 }) {
   const clave = claveDeEspacio(l.fixture.id, l.face, l.parte);
   /** La llave de la CARA: la que conoce el plano (una puerta enciende su
@@ -172,9 +177,23 @@ function Fila({
 
   /* «Entera · PU1 · PU2 · PU3»: los interruptores de la venta por partes,
      una vez por cara (en el primer renglón de esa cara). Prender una puerta
-     apaga la entera y al revés: nunca las dos en el mismo contrato. */
+     apaga la entera y al revés: nunca las dos en el mismo contrato. Una caja
+     o una columna (que nunca se venden enteras) ofrecen sólo sus piezas:
+     «BI1 · BI2», sin «Entera». */
   const partesDeLaCara = partesDe(l.fixture).filter((p) => p.cara === l.face);
+  const seVendeEntera = isRentable(l.fixture);
   const primeraDeLaCara = c.lineas.find((o) => o.fixture.id === l.fixture.id && o.face === l.face) === l;
+  /* «Sumar la BI1 de todas las cajas de la sede (8)»: el contrato multiespacio
+     de una marca que compra la misma bahía en toda la línea de cajas. Cuenta
+     las cajas de la sede que tienen esa bahía configurada; desaparece cuando
+     ya están todas en el contrato. */
+  const todos = useFixtureStore(selectFixtures);
+  const piezaDelRenglon = l.parte && esPieza(parteDeSufijo(l.parte)) ? l.parte : null;
+  const conEsaPieza = piezaDelRenglon
+    ? todos.filter((o) => o.type === l.fixture.type && piezasDe(o).some((p) => sufijoDeParte(p) === piezaDelRenglon))
+    : [];
+  const faltanEnElContrato = conEsaPieza.filter((o) => !c.lineas.some((x) => x.fixture.id === o.id && x.parte === piezaDelRenglon));
+  const deTodas = piezaDelRenglon && parteDeSufijo(piezaDelRenglon)?.clase === "forro" ? "todas las columnas forradas" : "todas las cajas";
 
   /* Los espacios internos que el plano da por vendidos APARTE (los que se
      marcan en el Editor 3D). No tienen contrato en la base —viven sólo en el
@@ -291,7 +310,7 @@ function Fila({
       {primeraDeLaCara && partesDeLaCara.length > 0 && (
         <span className="partes" role="group" aria-label={`Cómo se vende ${codigoVisibleDe(l.fixture.code, l.face, l.doble, null)}`}
           data-partes-de={claveDeCara}>
-          {[null, ...partesDeLaCara.map((p) => sufijoDeParte(p.parte))].map((suf) => {
+          {[...(seVendeEntera ? [null] : []), ...partesDeLaCara.map((p) => sufijoDeParte(p.parte))].map((suf) => {
             const puesta = c.lineas.some((o) => o.fixture.id === l.fixture.id && o.face === l.face && o.parte === suf);
             const parte = suf ? parteDeSufijo(suf) : null;
             const nombre = parte ? textoDeParte(parte, partesDeLaCara.length) : "Entera";
@@ -308,6 +327,13 @@ function Fila({
               </button>
             );
           })}
+          {onSumarEnTodas && piezaDelRenglon && faltanEnElContrato.length > 0 && conEsaPieza.length > 1 && (
+            <button type="button" data-sumar-en-todas={piezaDelRenglon}
+              onClick={() => onSumarEnTodas(l.fixture.type, piezaDelRenglon)}
+              title={`Un renglón por cada una: la ${piezaDelRenglon} de ${deTodas} de la sede que la tienen configurada`}>
+              Sumar la {piezaDelRenglon} de {deTodas} de la sede ({conEsaPieza.length})
+            </button>
+          )}
         </span>
       )}
       {choque && <span className="aviso choque" role="alert">{choque}</span>}
@@ -318,9 +344,12 @@ function Fila({
 // ─── Estados sin contrato en curso ───────────────────────────────────────────
 
 /** Un mueble que no se alquila: una caja, una pared, la zona de frutas. Tocarlo
- *  en el mapa no puede abrir un contrato — no hay nada que vender ahí. */
+ *  en el mapa no puede abrir un contrato — no hay nada que vender ahí. Una
+ *  caja o una columna sin piezas configuradas dicen cómo se venden sus piezas
+ *  (las bahías de impulso, el forro): en el panel del plano. */
 function NoComercializable({ fixture }: { fixture: UnifiedFixture }) {
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
+  const piezas = piezasDeLaFamilia(fixture.type);
   return (
     <div
       style={{
@@ -331,9 +360,14 @@ function NoComercializable({ fixture }: { fixture: UnifiedFixture }) {
     >
       <Lock size={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
       <span style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
-        <b>{conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)}</b> es parte del local: está marcado como
-        no comercializable y no admite contrato. Para alquilarlo, cambiá su
-        destino desde el Plano.
+        <b>{conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)}</b>{" "}
+        {piezas.includes("bahias")
+          ? <>no se vende entera: se venden sus bahías de impulso, una por una, cuando se configuran en el panel de la
+            caja, en el Plano («Cómo se vende»).</>
+          : piezas.includes("forro")
+          ? <>no se vende: se vende su forro, cuando se marca en el panel de la columna, en el Plano («Cómo se vende»).</>
+          : <>es parte del local: está marcado como no comercializable y no admite contrato. Para alquilarlo, cambiá su
+            destino desde el Plano.</>}
       </span>
     </div>
   );
@@ -531,6 +565,22 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
         return { ...cara, visible: codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null) };
       }
       const div = divisionDe(f);
+      const piezas = piezasDe(f);
+      if (!div && piezas.length) {
+        // Una pieza (la bahía de una caja, el forro de una columna) no prueba
+        // producto: sólo se marca su lugar, por el nicho del dibujo (las
+        // bahías, de −X a +X: la BI1 mirando desde la fila es la de +X).
+        const nBahias = piezas.filter((p) => p.clase === "bahias").length;
+        const vanos = sufijos.map((s) => parteDeSufijo(s))
+          .filter((p) => p && esPieza(p))
+          .map((p) => (p!.n === null ? 0 : vanoDeParte("A", p!.n, nBahias)));
+        return {
+          ...cara,
+          visible: `${codigoVisibleDe(f.code, cara.face, false, null)}·${sufijos.join("·")}`,
+          codigo: codigos.join(", "),
+          ...(vanos.length ? { vanos } : {}),
+        };
+      }
       const n = div?.n ?? 0;
       const delRenglon = sufijos.map((s) => parteDeSufijo(s)).filter((p) => p && p.n !== null && n > 0 && p.clase === div?.clase);
       const porAlto = claseDe(div?.clase ?? "")?.eje === "alto";
@@ -692,12 +742,13 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               l={l}
               c={c}
               onResaltar={onResaltar}
+              onSumarEnTodas={props.onSumarEnTodas}
               /* Con un solo espacio no se ofrece quitarlo: dejaría un contrato
                  sin nada adentro, y para eso está «Empezar de nuevo». */
               sePuedeQuitar={c.lineas.length > 1}
             />
           ))}
-          {c.lineas.length === 0 && ultimo && !isRentable(ultimo) && (
+          {c.lineas.length === 0 && ultimo && !seVendeAlgo(ultimo) && (
             <NoComercializable fixture={ultimo} />
           )}
         </div>

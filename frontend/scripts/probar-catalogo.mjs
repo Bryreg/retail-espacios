@@ -98,12 +98,12 @@ const CLAVES_DE_MODELO = new Set([
  *  nunca fotos de terceros) y los largos de los textos NO están acá: son las
  *  reglas de `fichas` del catálogo, las mismas que el servidor aplica a las
  *  fichas propias de cada supermercado. */
-const CAMPOS_DE_GEOMETRIA = ["entrepanos", "modulo", "puertas", "tramos", "division"];
+const CAMPOS_DE_GEOMETRIA = ["entrepanos", "modulo", "puertas", "tramos", "bahias", "forro", "division"];
 const reglasDeFicha = (cat) => {
   const r = cat.fichas ?? {};
   const geometria = Object.fromEntries(Object.entries(r.geometria ?? {}).map(([campo, g]) => [campo, {
     leer: (m) => (g.enPartes ? m.partes?.[campo] : m[campo]), entero: g.entero === true,
-    enPartes: g.enPartes === true, valores: g.valores,
+    enPartes: g.enPartes === true, valores: g.valores, booleano: g.booleano === true,
   }]));
   let esImagen = /(?!)/;
   try { esImagen = new RegExp(r.fuenteQueEsImagen, "i"); } catch { /* lo dice la validación de `fichas` */ }
@@ -140,9 +140,11 @@ function validar(cat) {
     "`fichas.confiabilidad` tiene que ser una lista de textos");
   si(rf.geometria && Object.keys(rf.geometria).sort().join() === [...CAMPOS_DE_GEOMETRIA].sort().join()
     && Object.values(rf.geometria).every((g) => typeof g?.enPartes === "boolean" && typeof g?.entero === "boolean"
-      && Object.keys(g).every((k) => ["enPartes", "entero", "valores"].includes(k))
-      && (g.valores === undefined || (texto(g.valores) && g.enPartes && !g.entero))),
-    `\`fichas.geometria\` tiene que decir de ${CAMPOS_DE_GEOMETRIA.join(", ")} si va en \`partes\` y si es entero (y, si es una palabra, dónde está su lista: \`valores\`)`);
+      && Object.keys(g).every((k) => ["enPartes", "entero", "valores", "booleano"].includes(k))
+      && (g.valores === undefined || (texto(g.valores) && g.enPartes && !g.entero))
+      // Un sí o no (el forro): en `partes`, ni entero ni palabra.
+      && (g.booleano === undefined || (g.booleano === true && g.enPartes && !g.entero && g.valores === undefined))),
+    `\`fichas.geometria\` tiene que decir de ${CAMPOS_DE_GEOMETRIA.join(", ")} si va en \`partes\` y si es entero (y, si es una palabra, dónde está su lista: \`valores\`; si es un sí o no, \`booleano\`)`);
   si(expresionValida(rf.fuenteQueEsImagen), "`fichas.fuenteQueEsImagen` no es una expresión");
   si(["nombre", "url", "nota"].every((k) => Number.isInteger(rf.largoMaximo?.[k]) && rf.largoMaximo[k] > 0),
     "`fichas.largoMaximo` tiene que tener nombre, url y nota, enteros positivos");
@@ -165,7 +167,7 @@ function validar(cat) {
     && reservados.includes("B"), "`partes.reservados` son finales de una o dos mayúsculas, sin repetir, con la `B` de la cara B");
   const clases = pc.clases ?? {};
   const tokens = new Set();
-  const CLAVES_DE_CLASE = ["token", "es", "eje", "campo", "base", "minimo", "unico", "singular", "plural", "genero", "tarifa", "informe", "informePlural"];
+  const CLAVES_DE_CLASE = ["token", "es", "eje", "mirando", "campo", "base", "minimo", "unico", "singular", "plural", "genero", "tarifa", "informe", "informePlural"];
   for (const [clase, c] of Object.entries(clases)) {
     const donde = `parte ${clase}`;
     for (const k of Object.keys(c ?? {})) si(CLAVES_DE_CLASE.includes(k), `${donde}: clave desconocida \`${k}\``);
@@ -176,9 +178,18 @@ function validar(cat) {
     si(["division", "pieza"].includes(c?.es), `${donde}: \`es\` es division o pieza`);
     si([null, "ancho", "alto"].includes(c?.eje), `${donde}: \`eje\` es ancho, alto o null`);
     // El campo que la cuenta es un entero de la ficha: en `partes` (las
-    // puertas, los tramos) o en el mueble (los entrepaños, con la base).
+    // puertas, los tramos, las bahías) o en el mueble (los entrepaños, con la
+    // base). Una pieza ÚNICA (el forro: una por mueble, sin número) se cuenta
+    // con un sí o no, y sólo una pieza puede ser única.
     const regla = (cat.fichas?.geometria ?? {})[c?.campo];
-    si(!!regla && regla.entero && !regla.valores, `${donde}: \`campo\` tiene que ser un entero de \`fichas.geometria\``);
+    if (c?.unico) {
+      si(!!regla && regla.booleano === true, `${donde}: una pieza única se cuenta con un sí o no de \`fichas.geometria\` (\`booleano\`)`);
+    } else {
+      si(!!regla && regla.entero && !regla.valores && !regla.booleano, `${donde}: \`campo\` tiene que ser un entero de \`fichas.geometria\``);
+    }
+    si(c?.unico === undefined || (c.unico === true && c.es === "pieza"), `${donde}: \`unico\` es true y sólo en una pieza`);
+    si(c?.mirando === undefined || (texto(c.mirando) && c.eje === "ancho"),
+      `${donde}: \`mirando\` es un texto, y sólo en lo que se cuenta a lo ancho`);
     si(c?.base === undefined || c.base === true, `${donde}: \`base\` es true o no va`);
     si(c?.genero === "f" || c?.genero === "m", `${donde}: \`genero\` es f o m (para decirla bien: «una puerta», «un tramo»)`);
     si(Number.isInteger(c?.minimo) && c.minimo >= 1, `${donde}: \`minimo\` es un entero de 1 o más`);
@@ -224,17 +235,32 @@ function validar(cat) {
         `${t}: \`rango\` tiene que tener w, d y h, cada uno [mínimo, máximo] positivos`);
     }
     if (d.geometria !== undefined) {
-      si(Object.entries(d.geometria).every(([k, r]) => k in GEOMETRIA && !GEOMETRIA[k].valores && rangoValido(r)),
-        `${t}: \`geometria\` sólo admite ${Object.keys(GEOMETRIA).filter((k) => !GEOMETRIA[k].valores).join(", ")}, cada uno [mínimo, máximo]`);
+      si(Object.entries(d.geometria).every(([k, r]) => k in GEOMETRIA && !GEOMETRIA[k].valores && !GEOMETRIA[k].booleano && rangoValido(r)),
+        `${t}: \`geometria\` sólo admite ${Object.keys(GEOMETRIA).filter((k) => !GEOMETRIA[k].valores && !GEOMETRIA[k].booleano).join(", ")}, cada uno [mínimo, máximo]`);
     }
     if (d.partes !== undefined) {
-      // Las divisiones de la familia: clases que dividen, contadas por un
-      // campo que la familia tiene en su `geometria`.
       const divs = d.partes?.divisiones;
-      si(d.partes && Object.keys(d.partes).every((k) => k === "divisiones" || k === "seCuentanEnElPlano") && Array.isArray(divs) && divs.length > 0
-        && divs.every((x) => clases[x]?.es === "division" && d.geometria?.[clases[x].campo] !== undefined)
-        && d.alquilable !== "nunca",
-        `${t}: \`partes.divisiones\` son clases que dividen, contadas con un campo de su \`geometria\`, en un tipo que se vende`);
+      const piezas = d.partes?.piezas;
+      si(d.partes && Object.keys(d.partes).every((k) => ["divisiones", "seCuentanEnElPlano", "piezas"].includes(k))
+        && ((Array.isArray(divs) && divs.length > 0) || (Array.isArray(piezas) && piezas.length > 0)),
+        `${t}: \`partes\` dice sus divisiones o sus piezas (y nada más)`);
+      // Las divisiones de la familia: clases que dividen, contadas por un
+      // campo que la familia tiene en su `geometria`, en un tipo que se vende.
+      if (divs !== undefined) {
+        si(Array.isArray(divs) && divs.length > 0
+          && divs.every((x) => clases[x]?.es === "division" && d.geometria?.[clases[x].campo] !== undefined)
+          && d.alquilable !== "nunca",
+          `${t}: \`partes.divisiones\` son clases que dividen, contadas con un campo de su \`geometria\`, en un tipo que se vende`);
+      }
+      // Las piezas (la bahía de una caja, el forro de una columna): clases que
+      // son piezas, contadas por un campo de su `geometria` o, la única, por
+      // un sí o no. Pueden ir en un tipo que nunca se vende entero.
+      if (piezas !== undefined) {
+        si(Array.isArray(piezas) && piezas.length > 0
+          && piezas.every((x) => clases[x]?.es === "pieza"
+            && (clases[x].unico ? GEOMETRIA[clases[x].campo]?.booleano === true : d.geometria?.[clases[x].campo] !== undefined)),
+          `${t}: \`partes.piezas\` son clases que son piezas, contadas con un campo de su \`geometria\` o con un sí o no`);
+      }
       // Las que se cuentan en el plano (no en la ficha) son de las suyas.
       const enElPlano = d.partes?.seCuentanEnElPlano;
       si(enElPlano === undefined || (Array.isArray(enElPlano) && enElPlano.every((x) => divs?.includes(x))),
@@ -291,6 +317,12 @@ function validar(cat) {
     for (const [campo, g] of Object.entries(GEOMETRIA)) {
       const v = g.leer(m);
       if (v === undefined) continue;
+      if (g.booleano) {
+        // Un sí o no de una pieza que su familia lleva (el forro).
+        si(typeof v === "boolean" && (d.partes?.piezas ?? []).some((c) => clases[c]?.campo === campo),
+          `${donde}: \`${campo}\` es un sí o no de una pieza de \`${m.tipo}\``);
+        continue;
+      }
       if (g.valores) {
         // Una palabra de la lista de su familia, y con su cuenta.
         const lista = d.partes?.[g.valores] ?? [];
@@ -312,7 +344,7 @@ function validar(cat) {
     if (m.partes !== undefined) {
       si(m.partes && typeof m.partes === "object"
         && Object.entries(m.partes).every(([k, v]) => GEOMETRIA[k]?.enPartes
-          && (GEOMETRIA[k].valores ? typeof v === "string" : typeof v === "number")),
+          && (GEOMETRIA[k].valores ? typeof v === "string" : GEOMETRIA[k].booleano ? typeof v === "boolean" : typeof v === "number")),
         `${donde}: \`partes\` sólo lleva lo conocido de \`fichas.geometria\`, con su tipo`);
     }
     si(m.color === undefined || COLOR.test(m.color), `${donde}: color inválido`);
@@ -466,6 +498,17 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
     ["una familia que se divide en algo que no es una clase", (c) => { c.tipos.nevera_puertas.partes.divisiones = ["cajones"]; }, /`partes.divisiones` son clases que dividen/],
     ["una familia que nunca se vende, por partes", (c) => { c.tipos.checkout.partes = { divisiones: ["puertas"] }; c.tipos.checkout.geometria = { puertas: [1, 6] }; }, /`partes.divisiones` son clases que dividen/],
     ["la división como un rango de familia", (c) => { c.tipos.nevera_puertas.geometria.division = [1, 2]; }, /`geometria` sólo admite/],
+    // Las piezas (paso 3).
+    ["una pieza que dice dividir la cara", (c) => { c.partes.clases.bahias.es = "division"; }, /checkout: `partes.piezas` son clases que son piezas/],
+    ["el forro contado con un entero", (c) => { c.partes.clases.forro.campo = "bahias"; }, /parte forro: una pieza única se cuenta con un sí o no/],
+    ["las bahías contadas con un sí o no", (c) => { c.partes.clases.bahias.campo = "forro"; }, /parte bahias: `campo` tiene que ser un entero/],
+    ["una división única", (c) => { c.partes.clases.puertas.unico = true; }, /parte puertas: `unico` es true y sólo en una pieza/],
+    ["un sí o no como rango de familia", (c) => { c.tipos.columna.geometria = { forro: [0, 1] }; }, /columna: `geometria` sólo admite/],
+    ["una caja con bahías y sin su rango", (c) => { delete c.tipos.checkout.geometria; }, /checkout: `partes.piezas` son clases que son piezas/],
+    ["`mirando` en lo que se cuenta de abajo hacia arriba", (c) => { c.partes.clases.entrepanos.mirando = "la góndola"; }, /parte entrepanos: `mirando` es un texto/],
+    ["una familia con `partes` vacío", (c) => { c.tipos.columna.partes = {}; }, /columna: `partes` dice sus divisiones o sus piezas/],
+    ["el forro como un número en la ficha", (c) => { c.fichas.geometria.forro = { enPartes: true, entero: true, booleano: true }; }, /`fichas.geometria`/],
+    ["el nombre de informe de la bahía lleva a otra fila", (c) => { c.partes.clases.bahias.informe = "forro de columna"; }, /parte bahias: los informes lo llaman «forro de columna»/],
     ["el nombre de informe de la puerta lleva a otra fila", (c) => { c.partes.clases.puertas.informe = "nevera de puertas"; }, /parte puertas: los informes lo llaman «nevera de puertas»/],
     ["una tarifa de modelo sin fila", (c) => { c.modelos.find((m) => m.tarifa).tarifa = "estiba_octava"; }, /la tarifa `estiba_octava` no está en `tarifas`/],
     ["una tarifa de modelo sin nombre de informe", (c) => { delete c.modelos.find((m) => m.tarifa).informePlural; }, /tiene tarifa propia y los informes/],

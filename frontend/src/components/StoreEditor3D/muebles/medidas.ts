@@ -328,7 +328,18 @@ export interface GeometriaDeMueble {
    *  en la nevera abierta y la de vegetales ponen un montante entre tramo y
    *  tramo. Ausentes, la cuenta de siempre. */
   tramos?: number;
+  /** Vender por partes, las piezas de la caja: cuántas bahías de impulso
+   *  tiene del lado del cliente (`partes.bahias`, de 1 a 4). Parten la mesa en
+   *  nichos iguales (`nichosDeImpulso`). Ausentes, el dibujo de siempre. */
+  bahias?: number;
+  /** La columna lleva forro (`partes.forro === true`): una envoltura de cuatro
+   *  caras del zócalo a `FORRO.alto`. */
+  forro?: boolean;
 }
+
+/** El forro de una columna: una envoltura de las cuatro caras, del zócalo a
+ *  dos metros —lo que se ve parado al lado—, un poco más gruesa que el fuste. */
+export const FORRO = { alto: 2.0, espesor: 0.015 } as const;
 
 /** Los tramos con que se dibuja: un entero de 1 a 40 (`geometria.tramos` del
  *  catálogo llega a 40). Lo demás —un texto, un 0, un número que haría
@@ -341,7 +352,7 @@ export function tramosValidos(tramos: number | null | undefined): number | undef
  *  lo borró a propósito y todavía no se guardó) es no tenerlo. */
 export function geometriaDe(f: {
   entrepanos?: number | null; modulo?: number | null;
-  partes?: { puertas?: number | null; tramos?: number | null } | null;
+  partes?: { puertas?: number | null; tramos?: number | null; bahias?: number | null; forro?: boolean | null } | null;
 }): GeometriaDeMueble {
   const g: GeometriaDeMueble = {};
   if (typeof f.entrepanos === "number") g.entrepanos = f.entrepanos;
@@ -349,6 +360,11 @@ export function geometriaDe(f: {
   if (typeof f.partes?.puertas === "number") g.puertas = f.partes.puertas;
   const tramos = tramosValidos(f.partes?.tramos);
   if (tramos !== undefined) g.tramos = tramos;
+  const bahias = f.partes?.bahias;
+  // Las bahías se dibujan de 1 a 4 (`geometria.bahias` del catálogo): lo
+  // demás no se dibuja, como no se vende.
+  if (typeof bahias === "number" && Number.isInteger(bahias) && bahias >= 1 && bahias <= 4) g.bahias = bahias;
+  if (f.partes?.forro === true) g.forro = true;
   return g;
 }
 
@@ -1051,6 +1067,20 @@ export interface CotasDeCheckout {
   yDeImpulso: number[];
 }
 
+/** El panel claro de la punta de la caja y la mesa larga entre él y la
+ *  estación de empaque: el cuerpo donde se abren las bahías de impulso. Va
+ *  aparte de `cotasDeCheckout` (que la referencia del catálogo compara tal
+ *  cual) y se calcula de ellas. */
+export interface MesaDeImpulso { punta: number; anchoDeMesa: number; xMesa: number }
+
+export function mesaDeImpulso(w: number, c: CotasDeCheckout): MesaDeImpulso {
+  // Los volúmenes se reparten el ancho sin pisarse (superpuestos, el z-buffer
+  // decide qué cara gana y sale una malla rayada que titila al girar).
+  const punta = Math.min(0.26, w * 0.16);
+  const anchoDeMesa = Math.max(0.06, c.largoDeMesa - punta);
+  return { punta, anchoDeMesa, xMesa: -w / 2 + punta + anchoDeMesa / 2 };
+}
+
 export function cotasDeCheckout(w: number, d: number, h: number): CotasDeCheckout {
   const mesa = h;
   const cama = mesa - CHECKOUT.hundido;
@@ -1097,6 +1127,34 @@ export function cotasDeCheckout(w: number, d: number, h: number): CotasDeCheckou
     yPantalla: yPoste + CHECKOUT.pantalla.alto / 2 - 0.02,
     yDeImpulso,
   };
+}
+
+/**
+ * Las bahías de impulso de la caja, del lado del cliente: la mesa larga
+ * (entre el panel de la punta y la estación de empaque) partida en `n` nichos
+ * iguales, en el orden del dibujo (de −X a +X). Vender por partes las vende de
+ * a una (`CAJ-04-BI1`) contando de izquierda a derecha mirando la caja desde la
+ * fila, que es mirar hacia +Z: la `BI1` es el nicho `n − 1` (`vanoDeParte` de
+ * la cara A). La usan el dibujo (`CheckoutReal`), el plano 2D y el contorno del
+ * visor: una sola cuenta.
+ */
+export function nichosDeImpulso(c: MesaDeImpulso, n: number): Vano[] {
+  const k = Math.max(1, Math.floor(n));
+  const paso = c.anchoDeMesa / k;
+  const desde = c.xMesa - c.anchoDeMesa / 2;
+  // El montante que separa dos nichos mide 3 cm: el hueco libre es el paso
+  // menos eso.
+  return Array.from({ length: k }, (_, i) => ({ x: desde + paso * (i + 0.5), ancho: Math.max(0.02, paso - 0.03) }));
+}
+
+/** Dónde van los montantes entre bahía y bahía (en X, desde el centro de la
+ *  caja): las juntas de los nichos de `nichosDeImpulso`. Con una bahía,
+ *  ninguno. */
+export function montantesDeImpulso(c: MesaDeImpulso, n: number): number[] {
+  const k = Math.max(1, Math.floor(n));
+  const paso = c.anchoDeMesa / k;
+  const desde = c.xMesa - c.anchoDeMesa / 2;
+  return Array.from({ length: k - 1 }, (_, i) => desde + paso * (i + 1));
 }
 
 /* ── La batea de promoción ───────────────────────────────────────────────────

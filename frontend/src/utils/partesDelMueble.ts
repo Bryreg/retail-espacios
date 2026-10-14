@@ -3,7 +3,9 @@ import { puertasDe, tramosValidos, vanosDeCorrido } from "../components/StoreEdi
 import { fullSpaceCode } from "../types/espacio";
 import type { EstadoPorEspacio } from "./estadoComercial";
 import { geometriaALaVista } from "./geometriaDelMueble";
-import { claseDe, codigoDeParte, concordancia, divisionDe, partesDe, sufijoDeParte } from "./partes";
+import {
+  claseDe, codigoDeParte, concordancia, divisionDe, esDivision, partesDe, piezasDe, piezasDeLaFamilia, sufijoDeParte,
+} from "./partes";
 
 /**
  * «Cómo se vende» un mueble que se puede vender por partes, en el panel del
@@ -26,6 +28,13 @@ import { claseDe, codigoDeParte, concordancia, divisionDe, partesDe, sufijoDePar
  *    ser otro pedazo del mueble, o dejaría de existir— hasta que termine o se
  *    cancele su contrato. El servidor frena lo mismo (409 `partes_vendidas` y
  *    `contratos_vivos`); acá se dice antes, sin nombrar a nadie.
+ *  · **Las piezas de lo que no se vende entero** (paso 3): la caja tiene sus
+ *    bahías de impulso (`partes.bahias`, de 1 a 4) y la columna su forro
+ *    (`partes.forro`). Con una bahía vendida no cambia la cantidad de bahías
+ *    (la «bahía 1» quedaría en otro lugar), y con el forro vendido la columna
+ *    no se queda sin forro. «Aplicar a todas las cajas de la sede» escribe la
+ *    misma cantidad en las demás, salta las que tienen una bahía vendida y lo
+ *    dice.
  */
 
 type Mueble = {
@@ -41,6 +50,37 @@ const tipoBase = (tipo: string) => CATALOGO_DE_MUEBLES.alias[tipo]?.tipo ?? tipo
 export function divisionesDe(tipo: string): string[] {
   const t = CATALOGO_DE_MUEBLES.tipos[tipoBase(tipo)];
   return t?.partes?.divisiones ?? [];
+}
+
+/** Las piezas que lleva un mueble de esa familia (vive en `partes.ts`). */
+export { piezasDeLaFamilia };
+
+/** ¿El panel «Cómo se vende» tiene algo que decir de esa familia? Las que se
+ *  dividen y las que tienen piezas: también la caja y la columna, que no son
+ *  comercializables pero venden sus piezas. */
+export function vendePorPartes(tipo: string): boolean {
+  return divisionesDe(tipo).length > 0 || piezasDeLaFamilia(tipo).length > 0;
+}
+
+/** Lo que el panel dice de un mueble que nunca se alquila (`alquilable:
+ *  "nunca"`): la caja y la columna no se venden enteras, pero sus piezas sí;
+ *  el mostrador de servicio al cliente, nada. */
+export function textoDeLoQueNuncaSeAlquila(tipo: string): string {
+  const piezas = piezasDeLaFamilia(tipo);
+  if (piezas.includes("bahias")) {
+    return "Puesto de trabajo de la tienda: no se alquila entero ni cuenta en la ocupación. Sus bahías de impulso, sí: "
+      + "se venden una por una, configuradas abajo en «Cómo se vende».";
+  }
+  if (piezas.includes("forro")) {
+    return "Estructura del local: no se alquila ni cuenta en la ocupación. Su forro, sí: se vende marcándolo abajo en «Cómo se vende».";
+  }
+  return "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación.";
+}
+
+/** Hasta cuántas bahías de impulso admite la familia (`geometria.bahias`). */
+export function bahiasMaximas(tipo: string): number {
+  const r = (CATALOGO_DE_MUEBLES.tipos[tipoBase(tipo)]?.geometria as Record<string, [number, number]> | undefined)?.bahias;
+  return r ? r[1] : 0;
 }
 
 /** Cuántas puertas tiene: las de su ficha o las que se dibujan por el ancho. */
@@ -90,6 +130,10 @@ export interface CambioDePartes {
   puertas?: number | null;
   tramos?: number | null;
   entrepanos?: number | null;
+  /** Las bahías de impulso de una caja (`null`: ninguna). */
+  bahias?: number | null;
+  /** El forro de una columna (`null`: sin forro). */
+  forro?: boolean | null;
 }
 
 /** El mueble con el cambio escrito encima (sin tocar el original). */
@@ -117,20 +161,21 @@ export function conPartes<T extends { id: string; partes?: PartesDeMueble | null
  *  plano, y la pantalla puede estar compartida. */
 export function partesConEstado(
   f: Mueble, estado: EstadoPorEspacio, sede: string,
-): { codigo: string; sufijo: string; vendida: boolean }[] {
+): { codigo: string; sufijo: string; vendida: boolean; pieza: boolean }[] {
   const completo = fullSpaceCode(f.sede || sede, f.code);
   return partesDe(f).map(({ cara, parte }) => {
     const codigo = codigoDeParte(completo, cara, parte);
-    return { codigo, sufijo: sufijoDeParte(parte), vendida: estado[codigo]?.status === "occupied" };
+    return { codigo, sufijo: sufijoDeParte(parte), vendida: estado[codigo]?.status === "occupied", pieza: !esDivision(parte) };
   });
 }
 
 /** ¿Hay algo vendido de esa clase en el mueble? Mira el mapa crudo por
  *  código (también lo que hoy no se ofrece: un `TR4` vendido de antes), en
- *  las dos caras. */
+ *  las dos caras. Una pieza única (el forro) va sin número: `COL-07-FO`. */
 export function vendidasDeLaClase(f: Mueble, estado: EstadoPorEspacio, sede: string, token: string): string[] {
   const prefijo = `${fullSpaceCode(f.sede || sede, f.code)}-`;
-  const deLaClase = new RegExp(`^(?:B-)?${token}[1-9][0-9]?$`);
+  const unica = Object.values(CATALOGO_DE_MUEBLES.partes.clases).some((c) => c.token === token && c.unico);
+  const deLaClase = unica ? new RegExp(`^${token}$`) : new RegExp(`^(?:B-)?${token}[1-9][0-9]?$`);
   return Object.entries(estado)
     .filter(([c, e]) => e.status === "occupied" && c.startsWith(prefijo) && deLaClase.test(c.slice(prefijo.length)))
     .map(([c]) => c.slice(prefijo.length));
@@ -159,6 +204,27 @@ export interface RevisionDePartes {
 export function revisarCambioDePartes(
   f: Mueble, cambio: CambioDePartes, estado: EstadoPorEspacio, sede: string,
 ): RevisionDePartes {
+  // Las piezas: con una vendida, su clase no cambia de cantidad (las bahías
+  // parten la mesa parejo: la «bahía 1» quedaría en otro lugar) ni desaparece
+  // (el forro vendido).
+  const piezasAntes = piezasDe(f);
+  const piezasDespues = piezasDe(conElCambio(f, cambio));
+  for (const clase of new Set(piezasAntes.map((p) => p.clase))) {
+    const cuantas = (lista: typeof piezasAntes) => lista.filter((p) => p.clase === clase).length;
+    if (cuantas(piezasAntes) === cuantas(piezasDespues)) continue;
+    const regla = claseDe(clase)!;
+    const g = concordancia(clase);
+    const vendidas = vendidasDeLaClase(f, estado, sede, regla.token);
+    if (vendidas.length === 0) continue;
+    return {
+      bloqueo: regla.unico
+        ? `Con ${g.el} ${regla.singular} vendid${g.o} (contrato vivo o firmado), no se puede sacar. Esperá a que termine o cancelá su contrato.`
+        : `Con ${vendidas.length === 1 ? `${g.un} ${regla.singular} vendid${g.o}` : `${vendidas.length} ${regla.plural} vendid${g.o}s`} ` +
+          `(contrato vivo o firmado), la cantidad de ${regla.plural} no cambia: ${g.el} ${regla.singular} vendid${g.o} quedaría ` +
+          "en otro lugar. Esperá a que termine o cancelá su contrato.",
+      aviso: null,
+    };
+  }
   const antes = divisionDe(f);
   const despues = divisionDe(conElCambio(f, cambio));
   const mismaForma = (antes?.clase ?? null) === (despues?.clase ?? null) && (antes?.n ?? null) === (despues?.n ?? null);
@@ -230,6 +296,31 @@ export function cambioParaDividir(f: Mueble, clase: string): { cambio: CambioDeP
     return { cambio: guardados ? { division: clase } : { division: clase, entrepanos: n } };
   }
   return { cambio: { division: clase } };
+}
+
+/**
+ * «Aplicar a todas las cajas de la sede»: la misma cantidad de bahías (o el
+ * mismo forro) en todos los muebles de ese tipo, en un solo cambio. Salta los
+ * que tienen una pieza de esa clase vendida (el cambio la movería: lo mismo
+ * que frena `revisarCambioDePartes`) y los nombra; los que ya la tienen así
+ * quedan como están.
+ */
+export function aplicarATodos<T extends Mueble>(
+  fixtures: readonly T[], tipo: string, cambio: CambioDePartes, estado: EstadoPorEspacio, sede: string,
+): { fixtures: T[]; aplicados: string[]; saltados: string[] } {
+  const aplicados: string[] = [];
+  const saltados: string[] = [];
+  const base = tipoBase(tipo);
+  const nuevos = fixtures.map((f) => {
+    if (tipoBase(f.type) !== base) return f;
+    const conCambio = conElCambio(f, cambio);
+    const igual = JSON.stringify(piezasDe(f)) === JSON.stringify(piezasDe(conCambio));
+    if (igual) return f;
+    if (revisarCambioDePartes(f, cambio, estado, sede).bloqueo) { saltados.push(f.code); return f; }
+    aplicados.push(f.code);
+    return conCambio;
+  });
+  return { fixtures: nuevos, aplicados, saltados };
 }
 
 /** La división que el mueble pidió pero no puede usar todavía: eligió «por

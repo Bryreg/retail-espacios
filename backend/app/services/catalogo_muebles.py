@@ -100,6 +100,15 @@ DIVISIONES_POR_TIPO: dict[str, tuple[str, ...]] = {
     for tipo, d in TIPOS.items() if (d.get("partes") or {}).get("divisiones")
 }
 
+#: Qué PIEZAS lleva cada tipo (``tipos[t].partes.piezas``): la bahía de
+#: impulso de la caja, el forro de la columna. Una pieza no parte la cara: es
+#: inventario de un mueble que nunca se vende entero, y se vende aunque el
+#: mueble no sea comercializable.
+PIEZAS_POR_TIPO: dict[str, tuple[str, ...]] = {
+    tipo: tuple((d.get("partes") or {}).get("piezas") or ())
+    for tipo, d in TIPOS.items() if (d.get("partes") or {}).get("piezas")
+}
+
 #: Las divisiones cuya cantidad NO va en la ficha de esa familia, sino en el
 #: plano (``tipos[t].partes.seCuentanEnElPlano``): la ficha de una góndola es
 #: un módulo, y cuántos tramos tiene depende del largo del corrido.
@@ -204,13 +213,15 @@ CAMPOS_DE_FUENTE: tuple[str, ...] = ("url", "nota", "confiabilidad")
 
 _NOMBRE_DE_MEDIDA = {"w": "el ancho", "d": "el fondo", "h": "el alto"}
 _NOMBRE_DE_GEOMETRIA = {"entrepanos": "los entrepaños", "modulo": "el módulo", "puertas": "las puertas",
-                        "tramos": "los tramos", "division": "cómo se vende por partes"}
+                        "tramos": "los tramos", "bahias": "las bahías de impulso", "forro": "el forro",
+                        "division": "cómo se vende por partes"}
 
 #: Lo que puede vivir adentro de ``partes`` de un mueble o de una ficha, con su
 #: tipo: las claves de ``fichas.geometria`` que van en ``partes``. Es la lista
 #: blanca que copian el enlace de la mercaderista (``_solo_geometria``) y el
-#: visor de Vender (``sinDatosComerciales``): un número donde va un número, una
-#: palabra de la lista cerrada donde va una palabra, y nada más.
+#: visor de Vender (``sinDatosComerciales``): un número donde va un número, un
+#: sí o no donde va un sí o no (el forro), una palabra de la lista cerrada
+#: donde va una palabra, y nada más.
 CAMPOS_DE_PARTES: dict[str, dict] = {
     campo: regla for campo, regla in REGLAS_DE_FICHA["geometria"].items() if regla["enPartes"]
 }
@@ -325,22 +336,39 @@ def problemas_de_la_ficha(ficha, *, nueva: bool = True) -> list[tuple[str, str]]
         if partes is not None and not (
             isinstance(partes, dict) and all(k in CAMPOS_DE_PARTES for k in partes)
         ):
-            mal.append(("partes", "las partes sólo llevan lo conocido (las puertas, los tramos y cómo se vende)"))
+            mal.append(("partes", "las partes sólo llevan lo conocido (las puertas, los tramos, las bahías de "
+                                  "impulso, el forro y cómo se vende)"))
             partes = None
         admite = familia.get("geometria") or {}
         en_el_plano = SE_CUENTAN_EN_EL_PLANO.get(tipo, frozenset())
         #: Los campos que cuentan una división que se cuenta en el plano: no
         #: van en la ficha (los tramos de una góndola).
         del_plano = {CLASES_DE_PARTE[c]["campo"] for c in en_el_plano if c in CLASES_DE_PARTE}
+        #: Los campos que cuentan las piezas de la familia (``partes.bahias``
+        #: de la caja, ``partes.forro`` de la columna).
+        de_sus_piezas = {
+            CLASES_DE_PARTE[c]["campo"] for c in (familia.get("partes") or {}).get("piezas") or ()
+            if c in CLASES_DE_PARTE
+        }
         for campo, regla in REGLAS_DE_FICHA["geometria"].items():
             donde = f"partes.{campo}" if regla["enPartes"] else campo
             v = (partes or {}).get(campo) if regla["enPartes"] else ficha.get(campo)
             if v is None:
                 continue
+            if regla.get("booleano"):
+                # Un sí o no (el forro de una columna): lo lleva la familia
+                # que tiene una pieza contada con él.
+                if campo not in de_sus_piezas:
+                    mal.append((donde, f"la familia «{tipo}» no lleva {_NOMBRE_DE_GEOMETRIA[campo]}"))
+                elif not isinstance(v, bool):
+                    mal.append((donde, f"{_NOMBRE_DE_GEOMETRIA[campo]} es sí o no"))
+                continue
             valores = _valores_de(regla, familia)
             if valores is not None:
                 # Una palabra de una lista cerrada: cómo se vende por partes.
-                if not valores:
+                if not valores and de_sus_piezas:
+                    mal.append((donde, f"la familia «{tipo}» no se divide: lo que se vende son sus piezas"))
+                elif not valores:
                     mal.append((donde, f"la familia «{tipo}» se vende entera: no tiene partes"))
                 elif not isinstance(v, str) or v not in valores:
                     mal.append((donde, "se vende por " + " o por ".join(
@@ -429,7 +457,12 @@ def ficha_normalizada(ficha: dict) -> dict:
         v = (ficha.get("partes") or {}).get(campo)
         if v is None:
             continue
-        partes[campo] = v if regla.get("valores") else (int(v) if regla["entero"] else round(float(v), 3))
+        if regla.get("valores"):
+            partes[campo] = v
+        elif regla.get("booleano"):
+            partes[campo] = bool(v)
+        else:
+            partes[campo] = int(v) if regla["entero"] else round(float(v), 3)
     if partes:
         salida["partes"] = partes
     if ficha.get("tarifa") is not None:

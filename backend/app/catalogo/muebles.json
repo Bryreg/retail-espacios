@@ -202,7 +202,10 @@
       "rotuloEditor": "Checkout / Caja",
       "medidas": { "w": 1.80, "d": 0.70, "h": 0.90 }, "color": "#8b5cf6", "emoji": "🛒",
       "descripcion": "Caja registradora con cinta transportadora",
-      "referencia": { "corto": "Cajas", "frase": "las cajas" }
+      "referencia": { "corto": "Cajas", "frase": "las cajas" },
+      "rango": { "w": [1.2, 3.6], "d": [0.5, 1.2], "h": [0.8, 1.1] },
+      "geometria": { "bahias": [1, 4] },
+      "partes": { "piezas": ["bahias"] }
     },
     "servicio_cliente": {
       "prefijo": "SAC", "alquilable": "nunca",
@@ -218,7 +221,9 @@
       "banderas": [],
       "rotuloEditor": "Columna",
       "medidas": { "w": 0.30, "d": 0.30, "h": 3.00 }, "color": "#94a3b8", "emoji": "🏛️",
-      "descripcion": "Columna estructural"
+      "descripcion": "Columna estructural",
+      "rango": { "w": [0.2, 1.5], "d": [0.2, 1.5], "h": [2.4, 6.0] },
+      "partes": { "piezas": ["forro"] }
     },
     "exhibicion": {
       "prefijo": "EXH", "alquilable": "si", "legado": true,
@@ -252,6 +257,8 @@
     { "clave": "parte_puerta", "rotulo": "Puerta de nevera (cada una)" },
     { "clave": "parte_tramo", "rotulo": "Tramo (cada uno)" },
     { "clave": "parte_entrepano", "rotulo": "Entrepaño (cada uno)" },
+    { "clave": "parte_bahia", "rotulo": "Bahía de impulso de caja (cada una)" },
+    { "clave": "parte_forro", "rotulo": "Forro de columna" },
     { "clave": "stand_frutas", "rotulo": "Frutas y verduras" },
     { "clave": "metro", "rotulo": "Zona libre" }
   ],
@@ -625,7 +632,8 @@
       "Vender por partes: una nevera de puertas se vende entera o por puertas (NEV-03-PU2: la puerta 2, contando de izquierda a derecha mirando su frente); un mural, una góndola, una nevera abierta o de vegetales, entero o por tramos (GON-05-B-TR2); una góndola o una punta, entera o por entrepaños (PUN-02-EN1: la base, contando de abajo hacia arriba). Una PARTE es una fila más de spaces/space_leases con un código derivado del de la cara; la relación cara-parte sale del código, sin columnas nuevas. Lo leen src/utils/partes.ts y app/services/partes.py, con los casos compartidos de frontend/scripts/casos/partes.json.",
       "`clases` dice qué es cada clase una sola vez: su token (dos letras y el número, sin ceros adelante), si DIVIDE la cara (`division`: choca con la cara entera en fechas que se pisan; dos divisiones de la misma clase conviven, de clases distintas no) o es una pieza aparte, el campo que la cuenta (uno de `fichas.geometria`: en `partes` o en el mueble, como los entrepaños), si la base cuenta como una más (`base`: los entrepaños son la base y los entrepaños), su género (`genero`, para decirla bien: «una puerta vendida», «un tramo vendido»), la tarifa propia por clase (vacía: la de la cara dividida por la cantidad de partes) y cómo la nombran los informes. Cada tipo dice en `partes.divisiones` cuáles admite; el mueble del plano elige UNA en `partes.division` y la cuenta en su campo. Sin `partes.division`, el mueble se vende entero, como siempre.",
       "`seCuentanEnElPlano` (por tipo) son las divisiones cuya cantidad NO va en la ficha: la ficha de una góndola es un módulo, y cuántos tramos tiene depende del largo del corrido. La ficha dice sólo que se vende por tramos, y la cantidad se fija en el panel del plano (un tramo por módulo).",
-      "`reservados` son los finales de código que ningún mueble puede tomar al renombrarse: los tokens de hoy y los de lo que viene (tramos, entrepaños, bahías, forro, copete, cenefa, stopper) y la cara B."
+      "`reservados` son los finales de código que ningún mueble puede tomar al renombrarse: los tokens de hoy y los de lo que viene (copete, cenefa, stopper) y la cara B.",
+      "Las PIEZAS (`es: pieza`, desde el paso 3: la bahía de impulso de una caja, CAJ-04-BI1, y el forro de una columna, COL-07-FO) no parten la cara: son inventario de un mueble que nunca se vende entero. Cada tipo dice en `partes.piezas` cuáles lleva; el mueble del plano las tiene si su campo lo dice (`partes.bahias`: cuántas, de izquierda a derecha mirando la caja desde la fila, `mirando`; `partes.forro`: true). Se venden aunque el mueble no sea comercializable, no chocan con nada más que consigo mismas y su tarifa es la de su clase, sin respaldo: no hay cara que dividir. `unico` es una pieza sin número (el forro: uno por columna), contada por un sí o no de `fichas.geometria` (`booleano`)."
     ],
     "clases": {
       "puertas": {
@@ -642,6 +650,17 @@
         "token": "EN", "es": "division", "eje": "alto", "campo": "entrepanos", "base": true, "minimo": 2,
         "singular": "entrepaño", "plural": "entrepaños", "genero": "m",
         "tarifa": "parte_entrepano", "informe": "entrepaño", "informePlural": "entrepaños"
+      },
+      "bahias": {
+        "token": "BI", "es": "pieza", "eje": "ancho", "campo": "bahias", "minimo": 1,
+        "mirando": "la caja desde la fila",
+        "singular": "bahía de impulso", "plural": "bahías de impulso", "genero": "f",
+        "tarifa": "parte_bahia", "informe": "bahía de impulso de caja", "informePlural": "bahías de impulso de caja"
+      },
+      "forro": {
+        "token": "FO", "es": "pieza", "eje": null, "campo": "forro", "unico": true, "minimo": 1,
+        "singular": "forro", "plural": "forros", "genero": "m",
+        "tarifa": "parte_forro", "informe": "forro de columna", "informePlural": "forros de columna"
       }
     },
     "reservados": ["B", "PU", "TR", "EN", "BI", "FO", "CP", "CN", "ST"]
@@ -650,7 +669,7 @@
     "leeme": [
       "Las reglas de una ficha de mueble, escritas una vez para los dos lados: las leen probar-catalogo.mjs (los modelos de este archivo), src/catalogo/fichas.ts (el navegador) y app/services/catalogo_muebles.py (el servidor, que valida las fichas propias de cada supermercado antes de guardarlas en modelos_mueble). frontend/scripts/casos/fichas.json tiene los casos que corren los dos lados.",
       "Una familia admite fichas si tiene `rango`, y una ficha fija sólo la geometría de su `geometria`. Una ficha propia viaja en el plano como `cli:<clave>`: la clave no cambia nunca, como el id de un modelo de este archivo. Una ficha no lleva foto: sólo medidas y de dónde salieron.",
-      "`geometria` es la lista blanca de lo que puede vivir en el mueble como ficha, con su tipo: un número (entero o no) cuyo rango da la `geometria` de su familia, o una palabra de una lista cerrada (`valores`), que es la de su familia en `partes` (`division`: cómo se vende la cara por partes). Lo que va en `partes` es lo único de `partes` que sale hacia quien no ve plata (el visor de Vender, la mercaderista)."
+      "`geometria` es la lista blanca de lo que puede vivir en el mueble como ficha, con su tipo: un número (entero o no) cuyo rango da la `geometria` de su familia, un sí o no (`booleano`: el forro de una columna, que la familia lleva si una de sus `partes.piezas` se cuenta con él), o una palabra de una lista cerrada (`valores`), que es la de su familia en `partes` (`division`: cómo se vende la cara por partes). Lo que va en `partes` es lo único de `partes` que sale hacia quien no ve plata (el visor de Vender, la mercaderista)."
     ],
     "prefijoPropio": "cli:",
     "clave": "^[a-z0-9-]{1,60}$",
@@ -660,6 +679,8 @@
       "modulo": { "enPartes": false, "entero": false },
       "puertas": { "enPartes": true, "entero": true },
       "tramos": { "enPartes": true, "entero": true },
+      "bahias": { "enPartes": true, "entero": true },
+      "forro": { "enPartes": true, "entero": false, "booleano": true },
       "division": { "enPartes": true, "entero": false, "valores": "divisiones" }
     },
     "fuenteQueEsImagen": "\\.(jpe?g|png|webp|gif|avif|svg|bmp)([?#;&%].*)?$",

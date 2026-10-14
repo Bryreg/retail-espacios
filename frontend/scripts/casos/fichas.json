@@ -554,10 +554,10 @@
    ]
   },
   {
-   "nombre": "una familia que no admite fichas",
+   "nombre": "una familia que no admite fichas (el mostrador de servicio al cliente)",
    "ficha": {
     "clave": "nevera-inducol-2p",
-    "tipo": "checkout",
+    "tipo": "servicio_cliente",
     "nombre": "Nevera Inducol 2 puertas",
     "w": 1.445,
     "d": 0.74,
@@ -2559,6 +2559,296 @@
    },
    "mal": [
     "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "una caja con dos bahías de impulso (desde el paso 3, la caja admite fichas)",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una caja con más bahías que las de su familia",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 5
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.bahias"
+   ]
+  },
+  {
+   "nombre": "bahías que no son un entero",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 1.5
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.bahias"
+   ]
+  },
+  {
+   "nombre": "una caja no se divide: lo que se vende son sus bahías",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una caja no lleva forro",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2,
+     "forro": true
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.forro"
+   ]
+  },
+  {
+   "nombre": "una caja no tiene tarifa propia",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    },
+    "tarifa": "parte_bahia"
+   },
+   "mal": [
+    "tarifa"
+   ]
+  },
+  {
+   "nombre": "una caja sin bahías también es una ficha (sólo dibuja)",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una columna forrada",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": true
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una columna sin forro",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": false
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "el forro es un sí o no",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": "si"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.forro"
+   ]
+  },
+  {
+   "nombre": "un 1 no es un sí",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": 1
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.forro"
+   ]
+  },
+  {
+   "nombre": "una columna no lleva bahías",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "bahias": 2
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.bahias"
+   ]
+  },
+  {
+   "nombre": "una columna fuera del rango de su familia",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 1.5,
+    "partes": {
+     "forro": true
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "h"
+   ]
+  },
+  {
+   "nombre": "una nevera no lleva bahías ni forro",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "bahias": 2,
+     "forro": true
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.bahias",
+    "partes.forro"
    ]
   }
  ]

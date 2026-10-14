@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import * as THREE from "three";
-import { CHECKOUT, cotasDeCheckout } from "./medidas";
+import { CHECKOUT, cotasDeCheckout, mesaDeImpulso, montantesDeImpulso } from "./medidas";
 import { geometriaBandejaRedondeada, geometriaMarcoRedondeado } from "./perfiles";
 
 /**
@@ -31,6 +31,13 @@ import { geometriaBandejaRedondeada, geometriaMarcoRedondeado } from "./perfiles
  *    mostrarlo para que se entienda el mueble.
  * 5. **La registradora se apoya en una consola** de chapa doblada con la cara
  *    inclinada, y el poste de la pantalla nace de ahí.
+ *
+ * Vender por partes (2026-10-14): la caja no se vende entera, pero sus bahías
+ * de impulso sí, de a una (`CAJ-04-BI1`). Con `bahias` (las del plano,
+ * `partes.bahias`) la mesa se parte en ESOS nichos iguales, con un montante
+ * entre nicho y nicho (`nichosDeImpulso`: la misma cuenta que el plano 2D y el
+ * visor de Vender). Sin `bahias`, el dibujo de siempre: dos bahías con el
+ * montante al 10 %.
  */
 
 export interface CheckoutRealProps {
@@ -39,10 +46,13 @@ export interface CheckoutRealProps {
   h: number;
   statusColor?: string;
   ghost?: boolean;
+  /** Las bahías de impulso que se venden (1 a 4). Ausente: el dibujo de
+   *  siempre. */
+  bahias?: number;
 }
 
 export const CheckoutReal = memo(function CheckoutReal({
-  w, d, h, statusColor, ghost = false,
+  w, d, h, statusColor, ghost = false, bahias,
 }: CheckoutRealProps) {
   const m = useMemo(() => {
     const comun = { transparent: ghost, opacity: ghost ? 0.42 : 1 };
@@ -85,13 +95,16 @@ export const CheckoutReal = memo(function CheckoutReal({
   const topeDeCuerpo = c.mesa - CHECKOUT.bocel.alto;
   const altoDeCuerpo = topeDeCuerpo - CHECKOUT.zocalo;
   const zFrenteDeMesa = c.zDeMesa - c.fondoDeMesa / 2;
-  /** Ancho del panel claro de cada punta. */
-  const punta = Math.min(0.26, w * 0.16);
-  // Los volúmenes se reparten el ancho SIN pisarse. Superpuestos, la carcasa
-  // oscura y el panel claro ocupan el mismo espacio y la cara que gana la
-  // decide el z-buffer: sale una malla rayada que titila al girar.
-  const anchoDeMesa = Math.max(0.06, c.largoDeMesa - punta);
-  const xMesa = -w / 2 + punta + anchoDeMesa / 2;
+  /** Ancho del panel claro de cada punta, y la mesa larga sin él (de
+   *  `mesaDeImpulso`): los volúmenes se reparten el ancho SIN pisarse.
+   *  Superpuestos, la carcasa oscura y el panel claro ocupan el mismo espacio y
+   *  la cara que gana la decide el z-buffer: sale una malla rayada que titila
+   *  al girar. */
+  const mesaDeLaCaja = mesaDeImpulso(w, c);
+  const { punta, anchoDeMesa, xMesa } = mesaDeLaCaja;
+  // Los montantes entre bahía y bahía: con las bahías del plano, uno entre
+  // cada par de nichos iguales; sin ellas, el de siempre, al 10 %.
+  const montantes = bahias ? montantesDeImpulso(mesaDeLaCaja, bahias) : [xMesa + anchoDeMesa * 0.1];
   const anchoDeAla = Math.max(0.06, c.largoDeAla - punta);
   const xAla = w / 2 - punta - anchoDeAla / 2;
 
@@ -132,18 +145,17 @@ export const CheckoutReal = memo(function CheckoutReal({
       >
         <boxGeometry args={[punta, altoDeCuerpo, c.fondoDeMesa]} />
       </mesh>
-      {/* El montante que separa las bahías de impulso. */}
-      <mesh
-        position={[
-          xMesa + anchoDeMesa * 0.1,
-          CHECKOUT.zocalo + altoDeCuerpo / 2,
-          zFrenteDeMesa + CHECKOUT.impulso.fondo / 2,
-        ]}
-        castShadow
-        material={m.carcasa}
-      >
-        <boxGeometry args={[0.03, altoDeCuerpo, CHECKOUT.impulso.fondo]} />
-      </mesh>
+      {/* Los montantes que separan las bahías de impulso. */}
+      {montantes.map((x, i) => (
+        <mesh
+          key={`montante${i}`}
+          position={[x, CHECKOUT.zocalo + altoDeCuerpo / 2, zFrenteDeMesa + CHECKOUT.impulso.fondo / 2]}
+          castShadow
+          material={m.carcasa}
+        >
+          <boxGeometry args={[0.03, altoDeCuerpo, CHECKOUT.impulso.fondo]} />
+        </mesh>
+      ))}
 
       {/* ── Las bahías de impulso, del lado del cliente ───────────────────*/}
       <mesh

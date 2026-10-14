@@ -49,8 +49,8 @@ const cargar = async (catalogo) => {
       contents: [
         'export * from "./src/utils/partes.ts";',
         'export { vistaDeCara } from "./src/utils/planta.ts";',
-        'export { vanosDePuertas, vanosDeCorrido, ventaDeNevera, montantesDeTramos, geometriaDe } from "./src/components/StoreEditor3D/muebles/medidas.ts";',
-        'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados } from "./src/utils/partesDelMueble.ts";',
+        'export { vanosDePuertas, vanosDeCorrido, ventaDeNevera, montantesDeTramos, geometriaDe, cotasDeCheckout, mesaDeImpulso, nichosDeImpulso, montantesDeImpulso } from "./src/components/StoreEditor3D/muebles/medidas.ts";',
+        'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila } from "./src/utils/partesDelMueble.ts";',
         'export { slotsDeLaParte, internosVendidosEnLaParte, partesQuePisa } from "./src/utils/slotsDeLasPartes.ts";',
         'export { revisarCambioDeGeometria, loVendidoDe, geometriaALaVista } from "./src/utils/geometriaDelMueble.ts";',
         'export { fichaDelFormulario, formularioVacio, formularioDe, problemasDelFormulario, familiaDe } from "./src/utils/formularioDeFicha.ts";',
@@ -89,6 +89,7 @@ await prueba(`qué ofrece cada mueble en NAVE (${CASOS.muebles.length} casos)`, 
     assert.deepEqual(P.espaciosDe(c.mueble, "NAVE"), c.espacios, c.nombre);
     const d = P.divisionDe(c.mueble);
     assert.deepEqual(d ? [d.clase, d.n] : null, c.division, c.nombre);
+    if ("firma" in c) assert.deepEqual(P.firmaDePartes(c.mueble), c.firma, `${c.nombre}: la firma`);
   }
 });
 
@@ -272,7 +273,7 @@ await prueba("«Cómo se vende» escribe `partes` entera, sin perder lo que no c
   const estado = { "NAVE-NEV-03-PU2": vendido("2026-10-01", "2099-12-31") };
   assert.deepEqual(P.partesConEstado(nevera, estado, "NAVE").map((p) => [p.sufijo, p.vendida]),
     [["PU1", false], ["PU2", true], ["PU3", false]]);
-  for (const p of P.partesConEstado(nevera, estado, "NAVE")) assert.deepEqual(Object.keys(p).sort(), ["codigo", "sufijo", "vendida"]);
+  for (const p of P.partesConEstado(nevera, estado, "NAVE")) assert.deepEqual(Object.keys(p).sort(), ["codigo", "pieza", "sufijo", "vendida"]); // `pieza`: si es de una caja o una columna, sin nombres
 });
 
 await prueba("deshacer «por puertas» manda `division: null` adentro de `partes`", () => {
@@ -546,6 +547,191 @@ await prueba("el Editor 3D no marca vendido un espacio interno nuevo en un muebl
   // Y lo que ya pisa una parte con contrato se avisa con el mapa crudo.
   assert.match(ed, /partesQuePisa\(fix, selectedSlot, [^\n]*\n\s*\.filter\(\(\{ cara, parte \}\) => estadoCrudo\[/,
     "el aviso de la parte con contrato no sale del mapa crudo de la base");
+});
+
+console.log("partes · paso 3: las piezas de lo que no se vende entero");
+
+const caja = (extra = {}) => ({
+  id: "c1", code: "CAJ-04", type: "checkout", sede: "NAVE", w: 1.8, d: 0.7, h: 0.9, partes: { bahias: 2 }, ...extra,
+});
+const columna = (extra = {}) => ({
+  id: "k1", code: "COL-07", type: "columna", sede: "NAVE", w: 0.4, d: 0.4, h: 3.0, partes: { forro: true }, ...extra,
+});
+
+await prueba("la caja y la columna no se venden enteras, sus piezas sí: Vender las deja tocar", () => {
+  assert.equal(P.seVendeAlgo(caja()), true, "una caja con bahías no se deja tocar en Vender");
+  assert.equal(P.seVendeAlgo(caja({ partes: undefined })), false, "una caja de un plano de antes se volvió vendible");
+  assert.equal(P.seVendeAlgo(columna()), true);
+  assert.equal(P.seVendeAlgo(columna({ partes: { forro: false } })), false);
+  assert.equal(P.seVendeAlgo({ id: "s1", code: "SAC-01", type: "servicio_cliente", partes: { bahias: 2, forro: true } }), false);
+  // Sus espacios son sólo las piezas, en la cara A: nunca la caja.
+  assert.deepEqual(P.espaciosDe(caja(), "NAVE"), ["NAVE-CAJ-04-BI1", "NAVE-CAJ-04-BI2"]);
+  assert.deepEqual(P.partesDe(caja()).map((p) => p.cara), ["A", "A"]);
+  assert.deepEqual(P.piezasDe(columna()).map(P.sufijoDeParte), ["FO"]);
+  // Una pieza no es una división: no parte ninguna cara.
+  assert.ok(P.partesDe(caja()).every((p) => P.esPieza(p.parte) && !P.esDivision(p.parte)));
+});
+
+await prueba("dos bahías conviven en el contrato y ninguna apaga a la otra", () => {
+  let l = P.alternarParte([], { id: "c1", face: "A", parte: "BI1" });
+  l = P.alternarParte(l, { id: "c1", face: "A", parte: "BI2" });
+  assert.equal(l.length, 2, "la bahía 2 apagó la 1");
+  l = P.alternarParte(l, { id: "c1", face: "A", parte: "BI1" });
+  assert.deepEqual(l, [{ id: "c1", face: "A", parte: "BI2" }], "tocarla de nuevo la saca");
+});
+
+await prueba("la bahía 1 queda a la izquierda de quien mira la caja desde la fila, con la caja girada", () => {
+  // Quien hace la fila está del lado del cliente (−Z de la caja) mirando hacia
+  // +Z: la cámara de la cara A. La BI k es el nicho `vanoDeParte("A", k, n)`.
+  for (const rotY of [0, 0.7, Math.PI / 2, 2.4, -1.1]) {
+    const f = { cx: 3, cz: -2, w: 1.8, d: 0.7, h: 0.9, rotY };
+    for (const n of [2, 3, 4]) {
+      const nichos = P.nichosDeImpulso(P.mesaDeImpulso(f.w, P.cotasDeCheckout(f.w, f.d, f.h)), n);
+      const v = P.vistaDeCara(f, "A");
+      const adelante = { x: v.targetX - v.posX, z: v.targetZ - v.posZ };
+      const derecha = { x: -adelante.z, z: adelante.x };
+      const enPantalla = [];
+      for (let k = 1; k <= n; k++) {
+        const x = nichos[P.vanoDeParte("A", k, n)].x;
+        enPantalla.push((f.cx + x * Math.cos(rotY)) * derecha.x + (f.cz - x * Math.sin(rotY)) * derecha.z);
+      }
+      for (let k = 1; k < n; k++) {
+        assert.ok(enPantalla[k] > enPantalla[k - 1], `giro ${rotY}, ${n} bahías: la BI${k + 1} no queda a la derecha de la BI${k}`);
+      }
+    }
+  }
+});
+
+await prueba("las bahías parten la mesa en nichos iguales; sin bahías, el dibujo de siempre", () => {
+  const c = P.mesaDeImpulso(1.8, P.cotasDeCheckout(1.8, 0.7, 0.9));
+  for (const n of [1, 2, 3, 4]) {
+    const nichos = P.nichosDeImpulso(c, n);
+    assert.equal(nichos.length, n);
+    assert.equal(P.montantesDeImpulso(c, n).length, n - 1, `${n} bahías: un montante entre cada par`);
+    const desde = c.xMesa - c.anchoDeMesa / 2;
+    assert.ok(Math.abs(nichos[0].x - (desde + c.anchoDeMesa / n / 2)) < 1e-9, "el primer nicho no arranca en la punta");
+    assert.ok(nichos.every((v) => Math.abs(v.ancho - nichos[0].ancho) < 1e-9), "nichos desparejos");
+  }
+  // La geometría las lee de 1 a 4; lo demás no se dibuja (como no se vende).
+  assert.equal(P.geometriaDe({ partes: { bahias: 3 } }).bahias, 3);
+  assert.equal(P.geometriaDe({ partes: { bahias: 5 } }).bahias, undefined);
+  assert.equal(P.geometriaDe({ partes: { bahias: true } }).bahias, undefined);
+  assert.equal(P.geometriaDe({ partes: { forro: true } }).forro, true);
+  assert.equal(P.geometriaDe({ partes: { forro: "si" } }).forro, undefined);
+  // El dibujo: con `bahias`, los montantes de la cuenta; sin ellas, el de
+  // siempre al 10 %. Y el despachador le pasa las bahías y el forro.
+  const ck = leer(join(raiz, "src", "components", "StoreEditor3D", "muebles", "CheckoutReal.tsx"));
+  assert.match(ck, /const montantes = bahias \? montantesDeImpulso\(mesaDeLaCaja, bahias\) : \[xMesa \+ anchoDeMesa \* 0\.1\];/,
+    "la caja dejó de partir la mesa con las bahías del plano, o cambió el dibujo de siempre");
+  const ed = leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
+  assert.match(ed, /case "checkout":\s+return <CheckoutMesh\s+\{\.\.\.base\} bahias=\{geometria\.bahias\} \/>;/, "la caja del 3D no recibe sus bahías");
+  assert.match(ed, /case "columna":\s+return <ColumnaMesh\s+\{\.\.\.base\} forro=\{geometria\.forro\} \/>;/, "la columna del 3D no recibe su forro");
+  assert.match(ed, /\{forro && \(\(\) => \{/, "la columna dibuja el forro aunque no lo tenga");
+});
+
+await prueba("una bahía vendida: las otras y la caja siguen libres; el forro, sólo consigo mismo", () => {
+  const estado = { "NAVE-CAJ-04-BI1": vendido("2026-10-01", "2026-12-31") };
+  const ix = P.indiceDePartes(estado);
+  const dispo = (f, suf) => P.disponibilidadDeEspacio(f, "A", P.partirCodigo(`X-${suf}`).parte, estado, ix, "NAVE",
+    d("2026-11-01"), d("2026-11-30"));
+  assert.equal(dispo(caja(), "BI1"), "tomado");
+  assert.equal(dispo(caja(), "BI2"), "libre", "una bahía vendida tapó la otra");
+  assert.equal(P.porQueNoEstaLibre(caja(), "A", P.partirCodigo("X-BI1").parte, estado, ix, "NAVE", d("2026-11-01"), d("2026-11-30")), "propio");
+  assert.equal(dispo(columna(), "FO"), "libre");
+});
+
+await prueba("con una bahía vendida no cambia la cantidad de bahías; con el forro vendido, no se saca", () => {
+  const estado = { "NAVE-CAJ-04-BI1": { ...vendido("2026-10-01", "2026-12-31"), status: "occupied" } };
+  const r = P.revisarCambioDePartes(caja(), { bahias: 3 }, estado, "NAVE");
+  assert.ok(r.bloqueo && /una bahía de impulso vendida/.test(r.bloqueo) && /no cambia/.test(r.bloqueo), r.bloqueo);
+  assert.ok(!/Postob/.test(r.bloqueo), "el bloqueo nombra al proveedor");
+  assert.ok(P.revisarCambioDePartes(caja(), { bahias: null }, estado, "NAVE").bloqueo, "sacar las bahías con una vendida se dejó");
+  assert.equal(P.revisarCambioDePartes(caja(), { bahias: 3 }, {}, "NAVE").bloqueo, null, "sin nada vendido, se cambia");
+  const conForro = { "NAVE-COL-07-FO": vendido("2026-10-01", "2026-12-31") };
+  const f = P.revisarCambioDePartes(columna(), { forro: null }, conForro, "NAVE");
+  assert.ok(f.bloqueo && /el forro vendido/.test(f.bloqueo), f.bloqueo);
+});
+
+await prueba("«Aplicar a todas las cajas de la sede» salta las que tienen una bahía vendida y lo dice", () => {
+  const plano = [caja(), caja({ id: "c2", code: "CAJ-05", partes: undefined }), caja({ id: "c3", code: "CAJ-06", partes: { bahias: 2 } }),
+    { id: "n1", code: "NEV-03", type: "nevera_puertas", w: 2, partes: { puertas: 3 } }];
+  const estado = { "NAVE-CAJ-06-BI2": vendido("2026-10-01", "2026-12-31") };
+  const r = P.aplicarATodos(plano, "checkout", { bahias: 3 }, estado, "NAVE");
+  assert.deepEqual(r.aplicados, ["CAJ-04", "CAJ-05"]);
+  assert.deepEqual(r.saltados, ["CAJ-06"]);
+  assert.deepEqual(r.fixtures.map((f) => f.partes?.bahias ?? null), [3, 3, 2, null]);
+  assert.equal(r.fixtures[3], plano[3], "tocó un mueble que no es una caja");
+  // Lo que ya está así no se cuenta ni se toca.
+  const igual = P.aplicarATodos(plano, "checkout", { bahias: 2 }, {}, "NAVE");
+  assert.deepEqual(igual.aplicados, ["CAJ-05"]);
+});
+
+await prueba("los textos de una pieza: la bahía desde la fila, el forro sin número", () => {
+  assert.equal(P.textoParaMontar(P.partirCodigo("X-BI2").parte, 2),
+    "Bahía de impulso 2 de 2, contando de izquierda a derecha mirando la caja desde la fila");
+  assert.equal(P.textoParaMontar(P.partirCodigo("X-FO").parte), "Forro de columna");
+  assert.equal(P.codigoVisibleDe("CAJ-04", "A", false, P.partirCodigo("X-BI1").parte), "CAJ-04·BI1");
+  // El panel dice qué se vende de lo que nunca se alquila entero.
+  assert.equal(P.vendePorPartes("checkout"), true);
+  assert.equal(P.vendePorPartes("columna"), true);
+  assert.equal(P.vendePorPartes("servicio_cliente"), false);
+  assert.match(P.textoDeLoQueNuncaSeAlquila("checkout"), /bahías de impulso/);
+  assert.match(P.textoDeLoQueNuncaSeAlquila("columna"), /forro/);
+  assert.doesNotMatch(P.textoDeLoQueNuncaSeAlquila("servicio_cliente"), /bahías|forro/);
+});
+
+await prueba("el contorno de la bahía en el visor cae en su nicho; el del forro, en su frente", () => {
+  const c = P.mesaDeImpulso(1.8, P.cotasDeCheckout(1.8, 0.7, 0.9));
+  const nichos = P.nichosDeImpulso(c, 2);
+  const bi1 = C.contornosDeLasPartes("checkout", 1.8, 0.7, 0.9, undefined, { bahias: 2 }, "A", [P.vanoDeParte("A", 1, 2)]);
+  assert.equal(bi1.length, 1);
+  assert.ok(Math.abs(bi1[0].cx - nichos[1].x) < 1e-9 && bi1[0].z < 0, JSON.stringify(bi1[0]));
+  // Sin bahías en el plano, ninguno; la cara B de una caja no existe.
+  assert.deepEqual(C.contornosDeLasPartes("checkout", 1.8, 0.7, 0.9, undefined, {}, "A", [0]), []);
+  assert.deepEqual(C.contornosDeLasPartes("checkout", 1.8, 0.7, 0.9, undefined, { bahias: 2 }, "B", [0]), []);
+  const fo = C.contornosDeLasPartes("columna", 0.4, 0.4, 3.0, undefined, { forro: true }, "A", [0]);
+  assert.equal(fo.length, 1);
+  assert.ok(fo[0].ancho > 0.4 && fo[0].cy + fo[0].alto / 2 <= 2.0 + 1e-9, JSON.stringify(fo[0]));
+});
+
+await prueba("el taller: la caja dice cuántas bahías vende y la columna si vende el forro", () => {
+  const c = { ...P.formularioVacio("checkout"), nombre: "Caja Ocaña", clave: "caja-ocana", bahias: "2", nota: "medida", confiabilidad: "estimado" };
+  assert.deepEqual(P.fichaDelFormulario(c).partes, { bahias: 2 });
+  assert.deepEqual(P.problemasDelFormulario(c), []);
+  assert.ok(P.problemasDelFormulario({ ...c, bahias: "5" }).some((x) => x.campo === "partes.bahias"));
+  const k = { ...P.formularioVacio("columna"), nombre: "Columna 40", clave: "col-40", forro: "si", anchoCm: "40", fondoCm: "40", nota: "medida", confiabilidad: "estimado" };
+  assert.deepEqual(P.fichaDelFormulario(k).partes, { forro: true });
+  assert.deepEqual(P.problemasDelFormulario(k), []);
+  // Una nevera no lleva bahías: el formulario no las manda.
+  const n = { ...P.formularioVacio("nevera_puertas"), bahias: "2", forro: "si" };
+  assert.equal(P.fichaDelFormulario(n).partes, undefined);
+  // Y vuelve igual al editarla.
+  const ida = P.formularioDe({ id: "cli:c", clave: "c", tipo: "checkout", nombre: "C", w: 1.8, d: 0.7, h: 0.9,
+    partes: { bahias: 3 }, fuente: { confiabilidad: "estimado" }, retirado: false });
+  assert.equal(ida.bahias, "3");
+  const vuelta = P.formularioDe({ id: "cli:k", clave: "k", tipo: "columna", nombre: "K", w: 0.4, d: 0.4, h: 3,
+    partes: { forro: true }, fuente: { confiabilidad: "estimado" }, retirado: false });
+  assert.equal(vuelta.forro, "si");
+});
+
+/** Las pantallas grandes (Vender, Supervisar, el tablero de montaje) no se
+ *  montan acá: se lee el código de lo que las piezas no pueden perder. */
+await prueba("Vender toca la caja, ofrece sus bahías sin «Entera» y el atajo de todas las cajas", () => {
+  const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
+  assert.match(dash, /if \(!seVendeAlgo\(f\)\) \{ setEnContrato\(\[\]\); return; \}/, "Vender ya no deja tocar una caja con bahías");
+  assert.match(dash, /\[\.\.\.lista, \{ id: f\.id, face: "A", parte: sufijoDeParte\(libre\) \}\]/, "tocar la caja no suma su primera bahía libre");
+  assert.match(dash, /onSumarEnTodas=\{sumarEnTodas\}/, "el atajo de todas las cajas no llega a la ficha");
+  const mv = leer(join(raiz, "src", "components", "Contrato", "ModoVender.tsx"));
+  assert.match(mv, /\[\.\.\.\(seVendeEntera \? \[null\] : \[\]\), \.\.\.partesDeLaCara/, "la caja ofrece «Entera»");
+  assert.match(mv, /data-sumar-en-todas=\{piezaDelRenglon\}/, "falta «Sumar la BI1 de todas las cajas»");
+  assert.match(mv, /!seVendeAlgo\(ultimo\)/, "la caja con bahías se explica como no comercializable");
+  // Supervisar: las piezas de la caja son filas, y no cuentan en la ocupación.
+  assert.match(dash, /if \(soloPiezas && piezasDeLaFamilia\(f\.type\)\.length === 0\) return \[\];/, "las bahías vendidas no son filas de Supervisar");
+  assert.match(dash, /\(!soloPiezas \|\| esPieza\(o\.partido\.parte\)\)/, "de una caja se cuelan partes que no son piezas");
+  assert.match(dash, /const partesVendidas = partes\.filter\(\(p\) => esDivision\(p\.parte\) && corre\(p\)\)\.length;/,
+    "las bahías se cuentan como partes de una cara");
+  const mount = leer(join(raiz, "src", "pages", "MountView.tsx"));
+  assert.match(mount, /soloPiezas \? caras\.slice\(1\) : caras/, "el tablero de montaje pide montar la caja entera");
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);

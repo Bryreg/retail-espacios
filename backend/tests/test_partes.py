@@ -40,12 +40,14 @@ def test_como_se_parte_un_codigo(client):
 
 def test_que_ofrece_cada_mueble(client):
     from app.services.layout_lookup import espacios_de
-    from app.services.partes import division_de
+    from app.services.partes import division_de, firma_de_partes
 
     for c in CASOS["muebles"]:
         assert espacios_de(c["mueble"], "NAVE") == c["espacios"], c["nombre"]
         d = division_de(c["mueble"])
         assert (list(d) if d else None) == c["division"], c["nombre"]
+        if "firma" in c:
+            assert firma_de_partes(c["mueble"]) == c["firma"], c["nombre"]
 
 
 def test_que_choca_con_que(client):

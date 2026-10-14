@@ -57,17 +57,21 @@ def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
 
     Y las partes que el plano pone a la venta (vender por partes: la puerta 2
     de una nevera que se vende por puertas, ``NEV-03-PU2``), sin contrato en
-    el JSON: el plano nunca guardó contratos de partes.
+    el JSON: el plano nunca guardó contratos de partes. Las PIEZAS de lo que no
+    se vende entero (la bahía de impulso de una caja, ``CAJ-04-BI1``; el forro
+    de una columna, ``COL-07-FO``) también: la caja no se ofrece, sus bahías sí.
     """
     caras: dict[str, dict] = {}
     for f in fixtures:
         code = (f.get("code") or "").strip().upper()
-        if not code or not es_comercializable(f):
+        if not code:
             continue
-        caras[code] = f
-        if caras_de(f) == 2:
-            caras[f"{code}-B"] = f.get("faceB") or {}
-        for cara, parte in partes_de(f, caras_de(f), True):
+        comercializable = es_comercializable(f)
+        if comercializable:
+            caras[code] = f
+            if caras_de(f) == 2:
+                caras[f"{code}-B"] = f.get("faceB") or {}
+        for cara, parte in partes_de(f, caras_de(f), comercializable):
             caras[codigo_de_parte(code, cara, parte)] = {}
     return caras
 

@@ -62,7 +62,7 @@ import {
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
   bandejasDeStand, cotasDeEstiba, cotasDeRobatope, filasDeNevera, filasDeProducto, filasDePunta,
   fondoPorCara, pisoDelCartelDePunta, techoDeCara, ventaDeNevera, ventaDeRobatope,
-  cotasDePuestoDeImpulso, geometriaDe, puertasDe, type GeometriaDeMueble,
+  cotasDePuestoDeImpulso, geometriaDe, puertasDe, FORRO, type GeometriaDeMueble,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import {
@@ -77,6 +77,7 @@ import { conNombrePropio } from "../../catalogo/nombresPropios";
 import { useFichasPropias } from "../../store/fichasPropias";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
+import { textoDeLoQueNuncaSeAlquila } from "../../utils/partesDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import { claseDe, codigoDeParte, codigoVisibleDe, divisionDe } from "../../utils/partes";
@@ -2230,7 +2231,7 @@ function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: 
   );
 }
 
-function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function CheckoutMesh({ w, d, h, statusColor, ghost, bahias }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;bahias?:number }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // Era un cajón liso con una placa oscura de cinta y la PANTALLA FLOTANDO:
   // el poste medía `posH * 0.75` y la pantalla se colocaba a `posH`, así que
@@ -2238,12 +2239,15 @@ function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
   // que hace que una caja se lea como una caja: la cama hundida con su bocel,
   // la consola de la registradora de la que sale el poste, el sector de
   // empaque con su guarda y los estantes de impulso del lado del cliente.
-  return <CheckoutReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />;
+  //
+  // Vender por partes: con las bahías de impulso del plano (`partes.bahias`),
+  // la mesa se parte en esos nichos, que son lo que se vende de la caja.
+  return <CheckoutReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} bahias={bahias} />;
 }
 
 // ─── Mesh: Columna ────────────────────────────────────────────────────────────
 
-function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function ColumnaMesh({ w, d, h, statusColor, ghost, forro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;forro?:boolean }) {
   // En la pantalla de venta la columna es parte del LOCAL: va del piso al
   // cielo raso, con la luz de venta de los muebles y sin el remate de arriba.
   // Con la altura del plano (3 m, 20 cm por debajo del cielo raso), sin esa
@@ -2281,9 +2285,30 @@ function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:numb
         </mesh>
       )}
 
+      {/* Vender por partes: el forro de la columna (`partes.forro`), una
+          envoltura de las cuatro caras del zócalo a dos metros, que es lo que
+          se le vende a una marca. Sin el forro, la columna de siempre. */}
+      {forro && (() => {
+        const altoForro = Math.max(0.2, Math.min(FORRO.alto, plinthH + shaftH) - plinthH);
+        return (
+          <group>
+            <mesh position={[0, plinthH + altoForro / 2, 0]} castShadow>
+              <boxGeometry args={[w + FORRO.espesor * 2, altoForro, d + FORRO.espesor * 2]} />
+              <meshStandardMaterial color="#ece7dc" metalness={0.05} roughness={0.55} transparent opacity={op} {...venta} />
+            </mesh>
+            {/* El marco de arriba: el remate del panel, que es lo que dice que
+                es un forro y no la columna pintada. */}
+            <mesh position={[0, plinthH + altoForro - 0.012, 0]}>
+              <boxGeometry args={[w + FORRO.espesor * 2 + 0.01, 0.024, d + FORRO.espesor * 2 + 0.01]} />
+              <meshStandardMaterial color="#8d969c" metalness={0.45} roughness={0.45} transparent opacity={op} {...venta} />
+            </mesh>
+          </group>
+        );
+      })()}
+
       {/* Status indicator (subtle thin ring at base) */}
       <mesh position={[0, plinthH + 0.02, 0]}>
-        <boxGeometry args={[w + 0.004, 0.018, d + 0.004]} />
+        <boxGeometry args={[w + 0.004 + (forro ? FORRO.espesor * 2 + 0.01 : 0), 0.018, d + 0.004 + (forro ? FORRO.espesor * 2 + 0.01 : 0)]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.70 * op} />
       </mesh>
     </group>
@@ -2398,9 +2423,9 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
     case "nevera_puertas":   return <NeveraRefrescosMesh  {...base} facePaint={facePaint} puertas={puertasDe(fixture.w, geometria.puertas)} />;
     case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} tramos={geometria.tramos} />;
     case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
-    case "checkout":      return <CheckoutMesh       {...base} />;
+    case "checkout":      return <CheckoutMesh       {...base} bahias={geometria.bahias} />;
     case "servicio_cliente": return <ServicioClienteMesh {...base} />;
-    case "columna":       return <ColumnaMesh        {...base} />;
+    case "columna":       return <ColumnaMesh        {...base} forro={geometria.forro} />;
     default:              return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;  // legacy exhibicion + unknown
   } })();
   // Vender por partes, en el visor de Vender: el contorno de cada tramo o
@@ -6744,7 +6769,7 @@ function CommercialPanel({
           )}
           <p className="mt-1.5 text-[9.5px] leading-relaxed text-dark-ink-3">
             {NUNCA_ALQUILABLE.has(fix.type)
-              ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+              ? textoDeLoQueNuncaSeAlquila(fix.type)
               : rentable
               ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
               : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
@@ -6870,8 +6895,10 @@ function CommercialPanel({
             entrepaños; con una cara vendida, pregunta diciendo qué se mueve—.
             Ver `components/GeometriaDelMueble.tsx`. */}
         <GeometriaDelMueble id={fix.id} puedeEditar={isAdmin} />
-        {/* Cómo se vende la nevera de puertas: entera, o entera o por
-            puertas. El mismo componente que el plano 2D. */}
+        {/* Cómo se vende: la nevera entera o por puertas, el mural por
+            tramos, la góndola por entrepaños, las bahías de la caja y el
+            forro de la columna. El mismo componente que el plano 2D, fuera de
+            lo comercial del panel (la caja no es comercializable). */}
         <PartesDelMueble id={fix.id} puedeEditar={isAdmin} />
 
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-2 font-mono text-[10px] text-dark-ink-3">

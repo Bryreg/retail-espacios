@@ -593,11 +593,13 @@ def confirmar(
                 except (TypeError, ValueError):
                     area = 0.0
                 # Una puerta ocupa su parte del frente: la huella entre las
-                # puertas. Una parte que no parte el ancho no tiene huella propia.
+                # puertas. Una parte que no parte el ancho no tiene huella
+                # propia, y una pieza (la bahía de una caja, el forro de una
+                # columna) tampoco: no es un pedazo del piso que se vende.
                 if parte is not None:
                     n = cantidad_de(fixture, parte.clase)
                     eje = CLASES_DE_PARTE[parte.clase].get("eje")
-                    area = round(area / n, 2) if (n and eje == "ancho") else 0.0
+                    area = round(area / n, 2) if (n and eje == "ancho" and es_division(parte)) else 0.0
             space = Space(
                 code=v.codigo,
                 svg_id=v.codigo,

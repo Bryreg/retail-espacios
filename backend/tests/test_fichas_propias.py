@@ -233,7 +233,7 @@ def test_el_rango_y_la_geometria_son_los_de_su_familia(client, admin):
     assert _campos(client.post("/api/muebles/modelos", json={**gondola, "entrepanos": 9}, headers=admin)) == {"entrepanos"}
     assert _campos(client.post("/api/muebles/modelos", json={**_media_estiba(), "entrepanos": 3}, headers=admin)) == {"entrepanos"}
     assert _campos(client.post("/api/muebles/modelos", json=_nevera(foto="https://x.co/n.png"), headers=admin)) == {"foto"}
-    assert _campos(client.post("/api/muebles/modelos", json=_nevera(tipo="checkout"), headers=admin)) == {"tipo"}
+    assert _campos(client.post("/api/muebles/modelos", json=_nevera(tipo="servicio_cliente"), headers=admin)) == {"tipo"}
     assert _campos(client.post("/api/muebles/modelos", json=_nevera(
         fuente={"confiabilidad": "ficha", "url": "https://inducol.com.co/nevera.jpg"}), headers=admin)) == {"fuente.url"}
     # Nada de eso se guardó.

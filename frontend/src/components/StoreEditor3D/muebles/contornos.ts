@@ -1,4 +1,4 @@
-import { NEVERA, altoUtilDeNevera, vanosDeTramos } from "./medidas";
+import { CHECKOUT, FORRO, NEVERA, altoUtilDeNevera, cotasDeCheckout, mesaDeImpulso, nichosDeImpulso, vanosDeTramos } from "./medidas";
 import type { GeometriaDeMueble } from "./medidas";
 import { ventaDeTipo } from "./venta";
 
@@ -17,7 +17,11 @@ export interface ContornoDeParte { cx: number; cy: number; ancho: number; alto: 
  * se dibuja en un grupo girado media vuelta, así que su vano `i` está, en el
  * mueble, en `−x`. Las cuentas son las de `ventaDeTipo`; la nevera de
  * vegetales, que no prueba producto, con las suyas (sus tramos y su interior).
- * Sin partes, ninguno.
+ * Las piezas de lo que no se vende entero, que tampoco prueban producto
+ * (sólo se muestra el lugar): la bahía de impulso de una caja, por su nicho
+ * (`nichosDeImpulso`, la misma cuenta del dibujo; los `vanos` son los nichos
+ * en el orden del dibujo), y el forro de una columna, por su frente. Sin
+ * partes, ninguno.
  */
 export function contornosDeLasPartes(
   type: string, w: number, d: number, h: number, gondolaType: string | undefined,
@@ -25,6 +29,23 @@ export function contornosDeLasPartes(
   vanosDeLaCara?: readonly number[], filasDeLaCara?: readonly number[],
 ): ContornoDeParte[] {
   if (!vanosDeLaCara?.length && !filasDeLaCara?.length) return [];
+  if (type === "checkout") {
+    if (cara !== "A" || !vanosDeLaCara?.length || !geometria?.bahias) return [];
+    const c = cotasDeCheckout(w, d, h);
+    const nichos = nichosDeImpulso(mesaDeImpulso(w, c), geometria.bahias);
+    const alto = c.mesa - CHECKOUT.bocel.alto - CHECKOUT.zocalo;
+    const z = c.zDeMesa - c.fondoDeMesa / 2 - 0.006;
+    return vanosDeLaCara.filter((i) => nichos[i]).map((i) => ({
+      cx: nichos[i].x, cy: CHECKOUT.zocalo + alto / 2, ancho: nichos[i].ancho, alto, z,
+    }));
+  }
+  if (type === "columna") {
+    if (cara !== "A" || !vanosDeLaCara?.length || !geometria?.forro) return [];
+    // Del zócalo (el de `ColumnaMesh`) a la altura del forro.
+    const zocalo = Math.min(h * 0.06, 0.18);
+    const alto = Math.max(0.2, Math.min(FORRO.alto, h) - zocalo);
+    return [{ cx: 0, cy: zocalo + alto / 2, ancho: w + FORRO.espesor * 2, alto, z: -d / 2 - FORRO.espesor - 0.006 }];
+  }
   if (type === "nevera_vegetales") {
     if (cara !== "A" || !vanosDeLaCara?.length || !geometria?.tramos) return [];
     const vanos = vanosDeTramos(w - 2 * NEVERA.chapa - 0.03, geometria.tramos);

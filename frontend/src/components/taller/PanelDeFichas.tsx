@@ -325,6 +325,40 @@ export function PanelDeFichas({
               </>
             )}
 
+            {/* Las piezas de lo que nunca se vende entero: las bahías de
+                impulso de una caja y el forro de una columna. Lo que se coloque
+                desde esta ficha ya viene configurado para venderlas. */}
+            {familia.piezas.length > 0 && (
+              <>
+                <p style={{ ...estilo.titulo, marginTop: 14 }}>Cómo se vende</p>
+                {familia.geometria.bahias && (
+                  <>
+                    <label style={estilo.etiqueta}>
+                      Bahías de impulso que se venden
+                      <span style={estilo.ayuda}>
+                        de {familia.geometria.bahias[0]} a {familia.geometria.bahias[1]}, del lado del cliente; la caja no se
+                        vende entera; vacío: ninguna
+                      </span>
+                      <input inputMode="numeric" value={form.bahias} style={borde("bahias")} data-campo="bahias"
+                        onChange={(e) => cambiar("bahias", e.target.value)} />
+                    </label>
+                    <Problemas campo="bahias" />
+                  </>
+                )}
+                {familia.piezas.includes("forro") && (
+                  <>
+                    <label style={{ ...estilo.etiqueta, display: "flex", alignItems: "center", gap: 8 }}>
+                      <input type="checkbox" checked={form.forro === "si"} data-campo="forro"
+                        onChange={(e) => cambiar("forro", e.target.checked ? "si" : "")} />
+                      El forro se vende
+                      <span style={estilo.ayuda}>la columna no se vende; su forro, sí</span>
+                    </label>
+                    <Problemas campo="forro" />
+                  </>
+                )}
+              </>
+            )}
+
             <label style={{ ...estilo.etiqueta, marginTop: 14 }}>
               Tarifa{!nueva && <span style={estilo.ayuda}>no cambia: lo colocado la busca por la clave</span>}
               <select value={form.tarifa} disabled={!nueva} style={borde("tarifa")} data-campo="tarifa"
