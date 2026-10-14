@@ -161,14 +161,22 @@ export function conPartes<T extends { id: string; partes?: PartesDeMueble | null
 
 /** Las partes del mueble y si están vendidas (contrato vivo o firmado: el
  *  mapa crudo dice `occupied`). Sin nombres ni fechas: lo mira quien arma el
- *  plano, y la pantalla puede estar compartida. */
+ *  plano, y la pantalla puede estar compartida.
+ *
+ *  El `sufijo` de la cara B lleva su letra (`B·EN2`, como lo numera el
+ *  taller y lo dice Vender): una góndola central por entrepaños tiene un EN1
+ *  en cada cara, y el panel listaba «EN1 … EN5 · EN1 … EN5» sin decir cuál
+ *  era cuál (el recorrido en el navegador, 2026-10-14). */
 export function partesConEstado(
   f: Mueble, estado: EstadoPorEspacio, sede: string,
 ): { codigo: string; sufijo: string; vendida: boolean; pieza: boolean }[] {
   const completo = fullSpaceCode(f.sede || sede, f.code);
   return partesDe(f).map(({ cara, parte }) => {
     const codigo = codigoDeParte(completo, cara, parte);
-    return { codigo, sufijo: sufijoDeParte(parte), vendida: estado[codigo]?.status === "occupied", pieza: !esDivision(parte) };
+    return {
+      codigo, sufijo: `${cara === "B" ? "B·" : ""}${sufijoDeParte(parte)}`,
+      vendida: estado[codigo]?.status === "occupied", pieza: !esDivision(parte),
+    };
   });
 }
 
@@ -188,6 +196,15 @@ export function vendidasDeLaClase(f: Mueble, estado: EstadoPorEspacio, sede: str
  *  viven sólo en el plano). Son los mismos que avisa Vender. */
 function internosVendidos(f: Mueble): number {
   return (f.slots ?? []).filter((s) => s.status === "occupied" || s.status === "reserved").length;
+}
+
+/** «la puerta vendida quedaría» / «las puertas vendidas quedarían»: con tres
+ *  vendidas, el panel decía «Con 3 puertas vendidas (…): la puerta vendida
+ *  quedaría en otro lugar». */
+function loVendidoSeMoveria(
+  c: { singular: string; plural: string }, g: { el: string; los: string; o: string }, n: number,
+): string {
+  return n === 1 ? `${g.el} ${c.singular} vendid${g.o} quedaría` : `${g.los} ${c.plural} vendid${g.o}s quedarían`;
 }
 
 export interface RevisionDePartes {
@@ -223,7 +240,7 @@ export function revisarCambioDePartes(
       bloqueo: regla.unico
         ? `Con ${g.el} ${regla.singular} vendid${g.o} (contrato vivo o firmado), no se puede sacar. Esperá a que termine o cancelá su contrato.`
         : `Con ${vendidas.length === 1 ? `${g.un} ${regla.singular} vendid${g.o}` : `${vendidas.length} ${regla.plural} vendid${g.o}s`} ` +
-          `(contrato vivo o firmado), la cantidad de ${regla.plural} no cambia: ${g.el} ${regla.singular} vendid${g.o} quedaría ` +
+          `(contrato vivo o firmado), la cantidad de ${regla.plural} no cambia: ${loVendidoSeMoveria(regla, g, vendidas.length)} ` +
           "en otro lugar. Esperá a que termine o cancelá su contrato.",
       aviso: null,
     };
@@ -239,7 +256,7 @@ export function revisarCambioDePartes(
       return {
         bloqueo: `Con ${vendidas.length === 1 ? `${g.un} ${clase.singular} vendid${g.o}` : `${vendidas.length} ${clase.plural} vendid${g.o}s`} ` +
           `(contrato vivo o firmado), la cantidad de ${clase.plural} no cambia ni deja de venderse por ` +
-          `${clase.plural}: ${g.el} ${clase.singular} vendid${g.o} quedaría en otro lugar. Esperá a que termine o cancelá su contrato.`,
+          `${clase.plural}: ${loVendidoSeMoveria(clase, g, vendidas.length)} en otro lugar. Esperá a que termine o cancelá su contrato.`,
         aviso: null,
       };
     }
@@ -330,6 +347,17 @@ export function aplicarATodos<T extends Mueble>(
     return conCambio;
   });
   return { fixtures: nuevos, aplicados, saltados };
+}
+
+/** Lo que dice el panel después de «Aplicar a todas las cajas de la sede»:
+ *  cuántas quedaron igual —en singular con una: decía «Quedó igual en 1
+ *  cajas» (el recorrido en el navegador, 2026-10-14)— y cuáles no se tocaron. */
+export function textoDeAplicarATodos(
+  r: { aplicados: readonly string[]; saltados: readonly string[] }, singular: string, plural: string,
+): string {
+  const n = r.aplicados.length;
+  return (n ? `Quedó igual en ${n === 1 ? `1 ${singular}` : `${n} ${plural}`}.` : `Las demás ${plural} ya estaban así.`)
+    + (r.saltados.length ? ` No se tocó ${r.saltados.join(", ")}: tiene${r.saltados.length > 1 ? "n" : ""} algo vendido que se movería.` : "");
 }
 
 /** ¿La cantidad de esa división se cuenta en el plano y no en la ficha? Los

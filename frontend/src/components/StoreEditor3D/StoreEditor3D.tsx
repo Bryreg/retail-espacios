@@ -3615,7 +3615,8 @@ function useEtiquetas(ids: readonly number[], catalogo: readonly Arte[]): (Etiqu
 }
 
 export function PanelDePrueba({
-  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo, catalogo, paraElProveedor = false,
+  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo, catalogo, paraElProveedor = false, vanos,
+  filas: filasDelContrato,
 }: {
   fix: PlacedFixture;
   cara: "A" | "B";
@@ -3634,7 +3635,22 @@ export function PanelDePrueba({
    *  entrepaño, sólo en «Por entrepaño» y en tinta. A la dueña se le avisa
    *  en la fila del contrato, antes de la reunión. */
   paraElProveedor?: boolean;
+  /** Vender por partes (el visor de Vender): las puertas o los tramos del
+   *  contrato, como vanos del dibujo de la cara, y sus entrepaños, como filas.
+   *  La cuenta es la de ESAS partes, con la misma regla que el dibujo
+   *  (`construirPrueba`). Contaba la cara entera: con la puerta 2 de 3
+   *  vendiéndose, «24 de frente · 1296 unidades» para ocho por entrepaño (el
+   *  recorrido en el navegador, 2026-10-14). Sin esto, la cara entera. */
+  vanos?: readonly number[];
+  filas?: readonly number[];
 }) {
+  const vanosDeLaParte = vanos && vanos.length ? vanos : undefined;
+  const filasDeLaParte = filasDelContrato && filasDelContrato.length ? filasDelContrato : null;
+  const dondeDelDibujo: "todas" | readonly number[] = filasDeLaParte
+    ? (como.donde !== "todas" && como.donde.some((i) => filasDeLaParte.includes(i))
+      ? como.donde.filter((i) => filasDeLaParte.includes(i)) : filasDeLaParte)
+    : como.donde;
+  const firmaDeLaParte = `${vanosDeLaParte?.join(",") ?? ""}|${filasDeLaParte?.join(",") ?? ""}`;
   const venta = useMemo(
     () => (TIPOS_CON_PRUEBA_3D.has(fix.type)
       ? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix)) : null),
@@ -3673,12 +3689,16 @@ export function PanelDePrueba({
   // Lo que entraría en cada entrepaño, elegido o no: es lo que ofrecen los
   // chips. Y lo que se dibuja, con lo elegido.
   const capacidad = useMemo(
-    () => (ventaUsada && empaque ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: "todas", semilla: "panel" }) : null),
-    [ventaUsada, empaque],
+    () => (ventaUsada && empaque
+      ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: "todas", semilla: "panel", vanos: vanosDeLaParte }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ventaUsada, empaque, firmaDeLaParte],
   );
   const acomodo = useMemo(
-    () => (ventaUsada && empaque ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: como.donde, semilla: "panel" }) : null),
-    [ventaUsada, empaque, como.donde],
+    () => (ventaUsada && empaque
+      ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: dondeDelDibujo, semilla: "panel", vanos: vanosDeLaParte }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ventaUsada, empaque, como.donde, firmaDeLaParte],
   );
   // «Acostarla sólo en la N»: los entrepaños donde parada no entra, con la
   // MISMA cuenta que dibuja (`filasSinAlto`, la usa `construirPrueba`), y lo
@@ -3690,12 +3710,13 @@ export function PanelDePrueba({
     const sin = filasSinAlto(ventaUsada.filas, empaque.alto);
     if (sin.length === 0 || sin.length === ventaUsada.filas.rows) return null;
     const acostado = empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: true });
-    const r = unidadesDePrueba({ venta: ventaUsada, empaque: acostado, donde: sin, semilla: "panel" });
+    const r = unidadesDePrueba({ venta: ventaUsada, empaque: acostado, donde: sin, semilla: "panel", vanos: vanosDeLaParte });
     const enCadaUna = sin.map((i) => r.porFila[i]?.frentes ?? 0);
     // Si acostada tampoco entra en alguno, no se ofrece: quedaría vacío igual.
     if (enCadaUna.some((n) => n === 0)) return null;
     return { filas: sin, nombres: sin.map((i) => i + 1).join(" y "), frentes: r.frentesALaVista, enCadaUna };
-  }, [ventaUsada, empaque, etiqueta, arte, como.donde, como.surtido]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ventaUsada, empaque, etiqueta, arte, como.donde, como.surtido, firmaDeLaParte]);
   const acostadaActiva = !!como.acostarDondeNoEntra && !!acostadaSoloAhi;
   // Los entrepaños con un espacio vendido encima, por la misma regla que el
   // relleno por rubro (`entrepanosDelEspacio`). Se miran sobre las filas de
@@ -3737,7 +3758,8 @@ export function PanelDePrueba({
     const partes = productos.map((x, k) => {
       if (!x.empaque) return `${x.arte.nombre} …`;
       const r = unidadesDePrueba({
-        venta: ventaUsada, empaque: x.empaque, donde: como.donde, semilla: "panel", tramo: tramos[k], surtido: true,
+        venta: ventaUsada, empaque: x.empaque, donde: dondeDelDibujo, semilla: "panel", tramo: tramos[k], surtido: true,
+        vanos: vanosDeLaParte,
       });
       total += r.frentesALaVista;
       const fs = r.porFila.filter((f) => f.motivo === null).map((f) => f.frentes);
@@ -3747,7 +3769,7 @@ export function PanelDePrueba({
     });
     return { texto: `${partes.join(" · ")} por entrepaño · ${total} de frente` };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ventaUsada, empaque, idsSurtido, claveEtiquetasSurtido, como.donde, como.acostado, arte, catalogo]);
+  }, [ventaUsada, empaque, idsSurtido, claveEtiquetasSurtido, como.donde, como.acostado, arte, catalogo, firmaDeLaParte]);
   const disponiblesParaSurtido = conSurtido
     ? catalogo.filter((a) => a.supplier_id === arte.supplier_id && a.id !== arte.id && !idsSurtido.includes(a.id))
     : [];

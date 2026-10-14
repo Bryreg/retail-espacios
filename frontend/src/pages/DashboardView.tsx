@@ -76,8 +76,8 @@ import { repartirAnchos, type Columna as ColumnaTabla } from "../utils/anchosTab
 import {
   alternarParte, cantidadDe, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia,
   disponibilidadDeCara, disponibilidadDeEspacio, divisionDe, esDivision, esPieza, estadoDeEspacio, indiceDePartes,
-  partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte, tarifaDeEspacio,
-  textoDeParte, type EnContrato, type IndiceDePartes, type ParteRef,
+  partesDe, partesVendidasDeLaCara, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
+  tarifaDeEspacio, textoDeParte, textoDePartesVendidas, type EnContrato, type IndiceDePartes, type ParteRef,
 } from "../utils/partes";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
 import { partesConEstado } from "../utils/partesDelMueble";
@@ -217,6 +217,8 @@ interface Disponible {
   face: "A" | "B";
   /** El primer día en que queda libre. Ausente = libre desde el arranque. */
   desde?: Date;
+  /** Parcial por sus partes: «1 de 3 puertas vendida», en vez del día. */
+  porPartes?: string;
 }
 
 /** Desde cuándo se puede ofrecer una cara que está tomada parte del periodo.
@@ -726,6 +728,11 @@ interface IsoMapProps {
    *  partes: una nevera con la puerta 2 vendida se pinta «parcial»: se puede
    *  vender otra puerta). Sin esto, la cara sola, como siempre. */
   dispo?: (f: UnifiedFixture, face: FaceEntry) => RangeAvailability;
+  /** Lo que dice el rótulo de una cara «parcial» POR SUS PARTES («1 de 3
+   *  puertas vendida»), en vez del día en que se libera: con la puerta 2
+   *  vendida, «libre 14 oct» leía como que la nevera entera se libera hoy.
+   *  `null` si la cara está parcial por sus días: ahí manda la fecha. */
+  porPartes?: (f: UnifiedFixture, face: FaceEntry) => string | null;
 }
 
 /** Un rótulo del plano: el código del espacio y, si se libera adentro del
@@ -830,7 +837,7 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
  *    tiembla y —peor— la medición del deschoque se hace contra la geometría
  *    del paso anterior.
  */
-function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo }: IsoMapProps) {
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes }: IsoMapProps) {
   /** La disponibilidad de una cara en el periodo: la combinada con sus
    *  partes si quien dibuja la sabe, y si no la de la cara sola. */
   const dispoDe = useCallback(
@@ -989,6 +996,8 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         // "libre los 24 días" — the colour already excludes it, the words
         // have to as well.
         if (!rentable) return NON_RENTABLE_LABEL;
+        const partes = porPartes?.(f, face) ?? null;
+        if (partes) return partes;
         const total = inclusiveDays(range.from, range.to);
         const taken = daysTakenInRange(face, range.from, range.to);
         if (taken <= 0) return `libre los ${total} día${total === 1 ? "" : "s"}`;
@@ -1038,7 +1047,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
 
     return { prisms, piso, anclas, e, unidad, base };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planta, range, tema, vista, dispoDe]);
+  }, [planta, range, tema, vista, dispoDe, porPartes]);
   /** El lienzo existe: los oyentes que se cuelgan de él esperan a esto. Sin
    *  muebles el componente no dibuja nada, y un efecto que corrió en ese
    *  momento no vuelve a correr cuando los muebles llegan. */
@@ -1064,11 +1073,12 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
       const choque = choqueDeRotulo(f, chocados);
       for (const entry of facesOf(f)) {
         const dispo = dispoDe(f, entry);
-        const desde = dispo === "parcial" ? primerDiaLibre(entry, range.from, range.to) : undefined;
+        const partes = dispo === "parcial" ? porPartes?.(f, entry) ?? null : null;
+        const desde = dispo === "parcial" && !partes ? primerDiaLibre(entry, range.from, range.to) : undefined;
         salida.push({
           clave: `${f.id}-${entry.face}`,
           cod: doble ? `${nombre}·${entry.face}` : nombre,
-          fecha: desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : "",
+          fecha: partes ?? (desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : ""),
           // Sólo la cuenta. Antes acompañaba el código del mueble, que era lo
           // único que distinguía a los dos gemelos; ahora los dos se llaman
           // igual de verdad y el código no distingue nada: lo que hay que hacer
@@ -1082,7 +1092,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     // cede—, después lo que se libera (lleva fecha), lo libre y lo tomado: si
     // dos se pisan, el que cede es el que menos se está vendiendo.
     return salida.sort((a, b) => a.peso - b.peso || (a.cod < b.cod ? -1 : 1));
-  }, [fixtures, range, dispoDe]);
+  }, [fixtures, range, dispoDe, porPartes]);
 
   // ── Del plano a la pantalla ──────────────────────────────────────────────
   //
@@ -3378,7 +3388,19 @@ function SpacesTable({
     const tipos = rows.map((e) => tipoDelMueble(e.fixture, nombresPropios));
     const nombres = rows.map((e) => (displayStatus(e) === "free" && e.supplierName
       ? `último: ${e.supplierName}` : e.supplierName));
+    // El código de una PARTE es más largo que el de una cara, y en 104 px
+    // las tres puertas de una nevera decían «NEV-01·P…» las tres (el recorrido
+    // en el navegador, 2026-10-14): la columna se estira a lo que miden. Sin
+    // partes vendidas no se mide nada y queda en 104, como siempre.
+    const mono = typeof document !== "undefined" ? getComputedStyle(document.body).getPropertyValue("--font-mono").trim() : "";
+    const deLasPartes = rows.filter((e) => e.parte).map((e) => codigoVisible(e));
+    // El punto de color (7 + 8 px), el relleno de la celda (8 + 8) y el
+    // espaciado de la letra.
+    const codigo = deLasPartes.length
+      ? Math.round(Math.min(170, Math.max(104, anchoDeTexto(deLasPartes, `700 13px ${mono || "monospace"}`) * 1.03 + 34)))
+      : 104;
     return {
+      codigo,
       tipo: Math.round(Math.min(200, Math.max(110, anchoDeTexto(tipos, fuente) + 24))),
       proveedor: Math.round(Math.min(340, Math.max(150, anchoDeTexto(nombres, fuente) + 24))),
     };
@@ -3391,7 +3413,7 @@ function SpacesTable({
   // Puestos en las celdas se ignoran en silencio y la tabla vuelve a repartir
   // el ancho a ojo — que es exactamente lo que hacía antes de esto.
   const pedidas: (ColumnaTabla & { etiqueta: string; derecha?: boolean })[] = [
-    { etiqueta: "Código", ancho: 104, minimo: 104 },
+    { etiqueta: "Código", ancho: anchos.codigo, minimo: anchos.codigo },
     { etiqueta: "Tipo", ancho: anchos.tipo, minimo: Math.min(anchos.tipo, 104), cede: 2 },
     { etiqueta: "Proveedor", ancho: anchos.proveedor, minimo: Math.min(anchos.proveedor, 150), cede: 1 },
     { etiqueta: "Estado", ancho: 100, minimo: 100 },
@@ -4206,6 +4228,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       : "libre"),
     [mapRange, estadoComercial, indicePartes, sede],
   );
+  /** «1 de 3 puertas vendida»: el rótulo de una cara parcial POR SUS PARTES
+   *  (`partesVendidasDeLaCara`). `null` si lo parcial son sus días. */
+  const porPartesDeCara = useCallback(
+    (f: UnifiedFixture, face: FaceEntry): string | null => {
+      if (!mapRange) return null;
+      const r = partesVendidasDeLaCara(f, face.face, estadoComercial, sede, mapRange.from, mapRange.to);
+      return r ? textoDePartesVendidas(r) : null;
+    },
+    [mapRange, estadoComercial, sede],
+  );
   /** Las partes vendidas de un mueble, como filas propias (`partesConContrato`).
    *  Dependen del mapa crudo: vender una puerta no cambia `fixtures`. */
   const partesVendidasDe = useCallback(
@@ -4324,9 +4356,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           }
           e.claves.push(clave);
         } else if (a === "parcial") {
+          const porPartes = porPartesDeCara(f, face);
           e.parciales.push({
             code: codigoVisible(face), fixture: f, face: face.face,
-            desde: primerDiaLibre(face, mapRange.from, mapRange.to),
+            ...(porPartes ? { porPartes } : { desde: primerDiaLibre(face, mapRange.from, mapRange.to) }),
           });
           e.claves.push(clave);
         }
@@ -4337,7 +4370,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     });
     return [...acum].map(([cat, v]) => ({ cat, ...v }))
       .sort((a, b) => (b.tarifa ?? -1) - (a.tarifa ?? -1));
-  }, [fixtures, mapRange, referenceRates, sede, carasDelContrato, fichasPropias, dispoDeCara]);
+  }, [fixtures, mapRange, referenceRates, sede, carasDelContrato, fichasPropias, dispoDeCara, porPartesDeCara]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -4380,6 +4413,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       return d === "active" || d === "expiring" || d === "committed";
     };
     const partesVendidas = partes.filter((p) => esDivision(p.parte) && corre(p)).length;
+    /** Los contratos que corren o están firmados: uno por espacio, la cara
+     *  entera o cada parte. Decía «ocupadas + firmadas», que son CARAS: con
+     *  tres puertas de una nevera vendidas a tres proveedores, «1 contrato».
+     *  Sin partes vendidas es la misma cuenta de siempre. */
+    const contratos = faces.filter(corre).length;
     /** Las piezas (las bahías de las cajas, los forros de las columnas): no
      *  son caras ni cuentan en la ocupación, pero se dice cuántas corren de
      *  las que se ofrecen: «Bahías de impulso: 5 de 16». */
@@ -4453,7 +4491,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       rentableFixtures, nonRentable,
       expired, expiring, noContract,
       topSuppliers, belowReference,
-      partesOfrecidas, partesVendidas, rotuloPartes, piezasVendidas,
+      partesOfrecidas, partesVendidas, rotuloPartes, piezasVendidas, contratos,
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
     };
@@ -4714,6 +4752,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 match={mapMatch}
                 range={mapRange}
                 dispo={dispoDeCara}
+                porPartes={porPartesDeCara}
               />
             )}
           </div>
@@ -4769,6 +4808,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           range={mapRange}
           resaltar={resaltarPlano}
           dispo={dispoDeCara}
+                porPartes={porPartesDeCara}
         />
       </div>
     </section>
@@ -4878,14 +4918,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   <td colSpan={3}>
                     <div className="chips-fila">
                       {chips.map((d) => {
-                        const entra = d.desde !== undefined;
+                        const entra = d.desde !== undefined || !!d.porPartes;
                         const clave = `${d.fixture.id}-${d.face}`;
                         return (
                           <button
                             key={clave}
                             type="button"
                             className={"chip" + (entra ? " chip--entra" : "")}
-                            title={entra
+                            title={d.porPartes
+                              ? `Sumar ${d.code} al contrato · ${d.porPartes}: se vende otra parte, no la entera`
+                              : entra
                               ? `Sumar ${d.code} al contrato · se libera el ${fechaEnCurso(toISODate(d.desde as Date))}`
                               : `Sumar ${d.code} al contrato`}
                             onMouseEnter={() => destacar([clave])}
@@ -4893,7 +4935,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                             onClick={(e) => { e.stopPropagation(); destacar(null); alternarCara(d.fixture.id, d.face); }}
                           >
                             {d.code}
-                            {entra && <span className="chip__f">{fechaEnCurso(toISODate(d.desde as Date))}</span>}
+                            {entra && <span className="chip__f">{d.porPartes ?? fechaEnCurso(toISODate(d.desde as Date))}</span>}
                           </button>
                         );
                       })}
@@ -5169,8 +5211,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               sub={mapRange ? describeRange(mapRange) : "Hoy"}
               right={
                 <span>
-                  {kpis.occupied + kpis.committed} contrato
-                  {kpis.occupied + kpis.committed === 1 ? "" : "s"} · {kpis.total} caras
+                  {kpis.contratos} contrato
+                  {kpis.contratos === 1 ? "" : "s"} · {kpis.total} caras
                 </span>
               }
             />
@@ -5400,7 +5442,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                         />
                         {kpis.expiring.map((entry) => (
                           <AtencionRow
-                            key={`pv-${entry.fixture.id}-${entry.face}`}
+                            key={`pv-${claveDeFila(entry)}`}
                             entry={entry}
                             chip={`${entry.days}d`}
                             dates={entry.endDate ? fechaEnCurso(entry.endDate) : "—"}
@@ -5451,7 +5493,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                         />
                         {montaje.sinMontar.map((entry) => (
                           <AtencionRow
-                            key={`sm-${entry.fixture.id}-${entry.face}`}
+                            key={`sm-${claveDeFila(entry)}`}
                             entry={entry}
                             chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
                             /* Más de dos meses cobrando algo que nadie

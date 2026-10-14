@@ -1083,6 +1083,8 @@ export default function VisorDeVenta({
                   catalogo={artes}
                   onRecargarCatalogo={recargar}
                   paraElProveedor
+                  vanos={cara?.vanos}
+                  filas={cara?.filas}
                 />
               </section>
             )}

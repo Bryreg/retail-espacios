@@ -4144,7 +4144,7 @@ function AssignmentPanel({
           que el Editor 3D (`components/PartesDelMueble.tsx`). */}
       {vendePorPartes(item.type) && (
         <Field label="Cómo se vende" icon="🧩">
-          <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
+          <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} sinTitulo />
         </Field>
       )}
 

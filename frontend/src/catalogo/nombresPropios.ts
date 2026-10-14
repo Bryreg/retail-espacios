@@ -88,9 +88,17 @@ export function tipoDelMueble(
   nombres: NombresPropios | null | undefined,
 ): string {
   const tarifa = rateTypeOf(f);
-  const propio = nombrePropio(familiaDe(f), nombres);
+  const familia = familiaDe(f);
+  const propio = nombrePropio(familia, nombres);
   if (propio && tarifa === tarifaDeLaFamilia(f.type)) return propio;
-  return rateTypeLabel(tarifa);
+  const rotulo = rateTypeLabel(tarifa);
+  // Lo que no tiene tarifa y vende sus PIEZAS —la caja, la columna— no tiene
+  // rótulo de tarifa, y la fila de su bahía decía «checkout · Bahía de impulso
+  // 1 de 2» (el recorrido en el navegador, 2026-10-14): el nombre de su
+  // familia, el de RECABRA. Lo demás sin tarifa (el servicio al cliente) no
+  // tiene filas que nombrar y sigue como siempre.
+  const piezas = resolverTipo(familia)?.tipo.partes?.piezas ?? [];
+  return rotulo === tarifa && piezas.length > 0 ? rotuloDeRecabra(familia) : rotulo;
 }
 
 /** La tarifa del TIPO, sin mirar el modelo: la misma cuenta que `rateTypeOf`

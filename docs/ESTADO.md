@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, **vender por partes, paso 4: cómo se vende, configurado desde
+Última actualización: 2026-10-14, **vender por partes, recorrido en el navegador**: la ficha
+de la nevera Inducol de 3 puertas, del taller a Vender, la planilla, Supervisar, el visor 3D,
+el 409 y el enlace de la mercaderista. Se arreglaron siete cosas que se vieron mirando —el
+plano decía «libre 14 oct» en una nevera con puertas vendidas (ahora «1 de 3 puertas
+vendida»), el visor contaba las unidades de la nevera entera, Estado por espacio cortaba los
+códigos de las puertas— y quedan anotadas las que no son chicas. Ver *Vender por partes: el
+recorrido en el navegador (P5, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 4: cómo se vende, configurado desde
 la ficha**. Lo que pidió la dueña: que los muebles que cada supermercado arma con sus fichas
 propias —y los modelos de RECABRA— queden configurados para venderse por partes. La ficha dice
 cómo se vende (en el taller, «Cómo se vende»: por puertas, por tramos o por entrepaños según la
@@ -290,6 +298,10 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
      es el entrepaño 1 y se vende, si «mural refrigerado» es el multideck, una tarifa de tramo
      para todos o una por familia, y si los modelos de góndola de RECABRA tienen que nacer «por
      entrepaños» (desde P4 los de pared nacen por tramos; los centrales, enteros)—;
+   - ~~**el recorrido en el navegador**~~ **hecho (P5, 2026-10-14)** sin la dueña: ver *Vender
+     por partes: el recorrido en el navegador*. Lo que quedó de ahí, para ella: si tocar una
+     nevera con puertas vendidas tiene que sumar la primera puerta libre (como la caja suma
+     su primera bahía) y cómo cuenta la lista de precios una nevera parcial;
    - ~~**cómo se vende, configurado desde la ficha**~~ **hecho (P4, 2026-10-14)**: ver *Vender
      por partes: cómo se vende, desde la ficha*. Los modelos de RECABRA lo traen (neveras por
      puertas, murales por tramos), las fichas propias lo eligen en el taller y lo colocado antes
@@ -9917,6 +9929,87 @@ servidor `tests/test_partes_fichas.py` (los modelos de RECABRA, lo colocado ante
 sin fijar y fijado, la ficha propia de antes y editada, las fichas con partes y piezas, el
 409 al usar la ficha con una puerta vendida y retirar la ficha sin tocar lo vendido) y
 `test_fichas_propias.py` con los casos compartidos.
+
+### Vender por partes: el recorrido en el navegador (P5, 2026-10-14)
+
+Lo que hace la dueña con las cuatro partes de punta a punta, en Chromium contra un servidor
+local descartable (SQLite vacía, ingreso por clave sólo en esa máquina, Vite), con capturas
+fuera del repo:
+
+1. **El taller.** «Nevera Inducol 3 puertas», 205 × 74 × 210 cm, 3 puertas, «Cómo se vende:
+   Entero o por puertas». Ningún problema; el mueble que gira muestra PU1 · PU2 · PU3 de
+   izquierda a derecha; guardar hace UN `POST` con `partes: {puertas: 3, division: "puertas"}`
+   y la fila dice «3 puertas · por puertas».
+2. **El plano.** La paleta la muestra «por puertas»; colocada (`NEV-01`), el panel ya dice
+   «Entera o por puertas (3)» sin tocar nada. Una góndola doble «por entrepaños» (5 por cara,
+   con la base), dos cajas con 2 bahías («Aplicar a todas las cajas de la sede») y una columna
+   con su forro: el servidor guarda `partes` de cada una.
+3. **Vender.** Tocar `NEV-01` ofrece «Entera · PU1 · PU2 · PU3»; la PU2 a Postobón por un mes
+   ($350.000) guarda `SEDE 1-NEV-01-PU2`. La entera en esas fechas se rechaza en el renglón y
+   en el servidor («la puerta 2 está vendida del … al …: la entera no; las otras puertas, sí»),
+   sin nombrar a Postobón, y «Guardar» queda apagado. La PU3 a Coca-Cola, sí. La EN2 de la
+   cara B de la góndola a Nutresa; «Sumar la BI1 de todas las cajas de la sede (2)» arma un
+   contrato de Colombina con dos renglones; el forro de la columna a Alpina.
+4. **La planilla.** `NEV-01-PU1` se carga («Nevera de Puertas · Puerta 1»); en la misma
+   planilla la nevera entera no entra, por la fila de la PU1.
+5. **Supervisar y Estado por espacio.** Cada parte es una fila con su proveedor, su montaje
+   pendiente y su plata (sólo la dueña); la mercaderista ve las mismas filas sin plata. La
+   ficha de la nevera dice «Entera, sin contrato: hay puertas vendidas · PU1 libre · PU2
+   vendida · PU3 vendida»; la ocupación, «Partes vendidas: 4 de 13 · Bahías de impulso: 2 de 4
+   · Forros: 1 de 1».
+6. **El visor 3D de la puerta.** Sólo el marco de la puerta vendida, en amarillo, y el
+   producto de prueba de Postobón sólo detrás de ella.
+7. **Bajar a 2 puertas.** El panel lo frena antes («Con 3 puertas vendidas…») y el servidor
+   contesta 409: `contratos_vivos` (la PU3 se iría del plano) y, al subir a 4, `partes_vendidas`;
+   también con 3 entrepaños y con 1 bahía.
+8. **El enlace de montaje de la PU2** (teléfono, sin sesión): «Puerta 2 de 3, contando de
+   izquierda a derecha mirando el frente», Postobón, las fechas, dónde queda. Sin plata ni
+   otros proveedores.
+
+**Lo que se arregló al mirar** (con sus guardas en `probar-partes`, sección «lo que se vio en
+el recorrido», y `probar-nombres`; 25 mutaciones, todas fallan):
+
+- **«libre 14 oct» en una nevera con puertas vendidas.** El rótulo del plano (Vender y
+  Supervisar), el cartel del mouse y la ficha de la lista de precios decían el primer día
+  libre de la CARA, que es hoy: leía como que la nevera entera se libera hoy. Ahora una cara
+  parcial por sus partes dice **«1 de 3 puertas vendida»** («1 de 5 entrepaños vendido»)
+  (`partesVendidasDeLaCara`, `textoDePartesVendidas` en `utils/partes.ts`); con la entera
+  tomada parte del periodo sigue la fecha. Es una cuenta, sin nombres ni plata.
+- **El visor contaba la nevera entera.** Con la puerta 2 vendiéndose, «Cómo va» decía «24 de
+  frente · 1296 unidades» con ocho botellas por entrepaño a la vista: el panel no sabía qué
+  partes iban en el contrato. Ahora `PanelDePrueba` recibe los vanos y las filas del contrato
+  y cuenta con la misma regla que el dibujo: «8 de frente × 9 de fondo · 432 unidades».
+- **Estado por espacio cortaba el código**: «NEV-01·P…» tres veces. La columna se estira a lo
+  que miden los códigos de las partes (sin partes, 104 px como siempre).
+- **«1 contrato · 3 caras»** con dos contratos (y «2 contratos» con siete): contaba caras
+  ocupadas. Ahora cuenta los contratos que corren o están firmados, uno por espacio; sin
+  partes, la misma cuenta de antes.
+- **Claves repetidas en «Para revisar»** (dos puertas de la misma nevera que vencen el mismo
+  día): React avisaba y podía comerse una fila. Ahora la clave es la del espacio.
+- **«checkout · Bahía de impulso 1 de 2»**: la caja y la columna no tienen tarifa y la fila de
+  su pieza decía la clave interna. Ahora su nombre de RECABRA («Checkout / Caja», «Columna») o
+  el propio; lo demás sin tarifa no cambia.
+- **El panel del plano**: listaba «EN1 … EN5 · EN1 … EN5» en una góndola central (ahora
+  «B·EN1» en la cara B), decía «Quedó igual en 1 cajas», «Con 3 puertas vendidas: la puerta
+  vendida quedaría» y «Cómo se vende» dos veces seguidas en el 2D.
+
+**Visto y no arreglado** (no es chico, o espera a la dueña):
+
+- Tocar en Vender una nevera con puertas vendidas pone «Entera» en el contrato y el rechazo en
+  rojo; la caja, en cambio, suma su primera bahía libre. Podría sumar la primera puerta libre:
+  es decidir cómo arranca la venta, para la dueña.
+- «+1 entran» en la lista de precios y el color «Se libera en el periodo» siguen contando por
+  cara (ya anotado en P2): una nevera con una puerta vendida «entra» aunque la entera no.
+- En el visor, las puertas que no se venden quedan con las rejillas vacías (anotado en P2).
+- Los mensajes del 409 del servidor cuentan los entrepaños con la base («de 5 a 4
+  entrepaños» cuando el campo dice 4 → 3) y dicen «1 bahías de impulso».
+- El encabezado del enlace de montaje dice «NEV-01-PU2 PU2» (el nombre del espacio repite el
+  sufijo).
+- Ajeno a las partes: el primer ingreso a una base vacía manda dos `PUT /layout/settings`
+  (el doble efecto de `StrictMode`) y esta vez el segundo volvió **500** (`UNIQUE constraint
+  failed: app_config.key`: los dos llegan antes de que exista la revisión y los dos insertan;
+  en el recorrido de las fichas había vuelto 409). Se resuelve solo al recargar; la carga
+  por planilla dice «Los avisos salieron agrupados» aunque el correo no esté configurado.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

@@ -687,6 +687,32 @@ export function disponibilidadDeCara(
 }
 
 /**
+ * Cuántas divisiones de una cara están vendidas en el periodo, cuando la cara
+ * está «parcial» POR SUS PARTES y no por sus días: el rótulo del plano y la
+ * lista de precios dicen «1 de 3 puertas vendida» en vez de «libre 14 oct»,
+ * que leía como que la nevera entera se libera hoy (el recorrido en el
+ * navegador, 2026-10-14). `null` si la cara tiene días tomados ella misma —ahí
+ * la fecha en que se libera es la respuesta— o si no hay división vendida.
+ * Una cuenta, sin nombres ni plata: vale para la pantalla de Vender.
+ */
+export function partesVendidasDeLaCara(
+  f: ConPartes & MuebleConEstado, cara: "A" | "B",
+  estado: EstadoPorEspacio, sede: string, desde: Date, hasta: Date,
+): { vendidas: number; de: number; clase: string } | null {
+  if (rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta) !== "libre") return null;
+  const divisiones = partesDe(f).filter((p) => p.cara === cara && esDivision(p.parte));
+  const vendidas = divisiones.filter(({ parte }) =>
+    rangeAvailability(estadoDeEspacio(f, cara, parte, estado, sede), desde, hasta) !== "libre").length;
+  return vendidas > 0 ? { vendidas, de: divisiones.length, clase: divisiones[0].parte.clase } : null;
+}
+
+/** «1 de 3 puertas vendida», «2 de 5 entrepaños vendidos». */
+export function textoDePartesVendidas(r: { vendidas: number; de: number; clase: string }): string {
+  const c = claseDe(r.clase);
+  return `${r.vendidas} de ${r.de} ${c?.plural ?? r.clase} vendid${concordancia(r.clase).o}${r.vendidas === 1 ? "" : "s"}`;
+}
+
+/**
  * Por qué un espacio no está libre en el periodo, para decirlo en el renglón
  * de Vender sin nombrar a nadie: lo suyo (`propio`), la nevera vendida entera
  * (`entera`, para una puerta) o puertas vendidas (`partes`, para la entera).

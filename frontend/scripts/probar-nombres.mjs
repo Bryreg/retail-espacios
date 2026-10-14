@@ -107,7 +107,11 @@ await prueba("sin nombre propio, cada mueble se nombra exactamente como antes", 
       const otra = fam === "punta" ? "columna" : "punta";
       // Sin nada, con el de OTRA familia, y con el suyo vacío o de espacios.
       for (const nombres of [{}, null, undefined, { [otra]: "Pilar" }, { [fam]: "" }, { [fam]: "   " }]) {
-        const antes = F.rateTypeLabel(F.rateTypeOf(f));
+        // Salvo la caja y la columna: sin tarifa, decían su clave («checkout»)
+        // en la fila de una bahía o un forro vendidos; ahora, su nombre de
+        // RECABRA. Ninguna otra familia cambia.
+        const conPiezas = (CATALOGO.tipos[f.type]?.partes?.piezas ?? []).length > 0;
+        const antes = conPiezas ? N.rotuloDeRecabra(fam) : F.rateTypeLabel(F.rateTypeOf(f));
         const hoy = N.tipoDelMueble(f, nombres);
         if (hoy !== antes) mal.push(`${JSON.stringify(f)} con ${JSON.stringify(nombres)}: tipo «${hoy}», era «${antes}»`);
         const rot = N.conNombrePropio(f, nombres, "lo de siempre");
@@ -138,6 +142,11 @@ await prueba("con nombre propio, lo dice (y la ficha con tarifa propia sigue con
   P.fijarFichasPropias(PROPIAS);
   try {
     assert.equal(N.tipoDelMueble({ type: "punta" }, n), "Tope de góndola");
+    // La caja y la columna venden sus piezas: su fila dice la familia, nunca
+    // la clave; con nombre propio, el propio.
+    assert.equal(N.tipoDelMueble({ type: "checkout" }, {}), "Checkout / Caja");
+    assert.equal(N.tipoDelMueble({ type: "columna" }, n), "Pilar");
+    assert.equal(N.tipoDelMueble({ type: "servicio_cliente" }, {}), "servicio_cliente", "cambió lo que no vende nada");
     assert.equal(N.conNombrePropio({ type: "punta" }, n, "Punta Góndola"), "Tope de góndola");
     // La góndola: la central (con su variante, sin ella y como la llama el 2D)
     // y la de pared, que no tiene nombre propio, se quedan cada una con lo suyo.

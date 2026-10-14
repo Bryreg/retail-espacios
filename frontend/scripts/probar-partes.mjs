@@ -50,7 +50,7 @@ const cargar = async (catalogo) => {
         'export * from "./src/utils/partes.ts";',
         'export { vistaDeCara } from "./src/utils/planta.ts";',
         'export { vanosDePuertas, vanosDeCorrido, ventaDeNevera, montantesDeTramos, geometriaDe, cotasDeCheckout, mesaDeImpulso, nichosDeImpulso, montantesDeImpulso } from "./src/components/StoreEditor3D/muebles/medidas.ts";',
-        'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila, loDeLaFicha, aplicarLoDeLaFicha, colocadosConLaFicha } from "./src/utils/partesDelMueble.ts";',
+        'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, textoDeAplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila, loDeLaFicha, aplicarLoDeLaFicha, colocadosConLaFicha } from "./src/utils/partesDelMueble.ts";',
         'export { fijarFichasPropias, olvidarFichasPropias } from "./src/catalogo/propias.ts";',
         'export { PALETA_3D, paletaConPropias } from "./src/catalogo/editor3D.ts";',
         'export { MODELOS_2D, modelosDelPlanoConPropias } from "./src/catalogo/plano2D.ts";',
@@ -962,6 +962,91 @@ await prueba("el taller numera las partes sobre el mueble que gira, con las cuen
   assert.match(taller, /\{numeradas\.map\(\(p, i\) => <ParteNumeradaDelTaller/, "el taller no dibuja las partes numeradas");
   assert.match(taller, /tramos=\{def\.type === "nevera_refrescos" \? geometria\?\.tramos : undefined\}/,
     "la nevera abierta del taller no dibuja sus tramos");
+});
+
+console.log("partes · lo que se vio en el recorrido en el navegador (2026-10-14)");
+
+await prueba("el plano y la lista de precios dicen «1 de 3 puertas vendida», no «libre» el día de hoy", () => {
+  const estado = { "NAVE-NEV-03-PU2": vendido("2026-10-14", "2026-11-13") };
+  const r = P.partesVendidasDeLaCara(nevera, "A", estado, "NAVE", d("2026-10-14"), d("2026-11-13"));
+  assert.deepEqual(r, { vendidas: 1, de: 3, clase: "puertas" });
+  assert.equal(P.textoDePartesVendidas(r), "1 de 3 puertas vendida");
+  assert.equal(P.textoDePartesVendidas({ vendidas: 2, de: 5, clase: "entrepanos" }), "2 de 5 entrepaños vendidos");
+  // Fuera de esas fechas, nada vendido: el rótulo de siempre.
+  assert.equal(P.partesVendidasDeLaCara(nevera, "A", estado, "NAVE", d("2026-12-01"), d("2026-12-31")), null);
+  // Con la ENTERA tomada parte del periodo, manda el día en que se libera.
+  // (la entera hasta el 20 y la PU2 desde el 25: no se pisan, y la cara tiene
+  // días tomados ella misma).
+  const entera = { "NAVE-NEV-03": vendido("2026-09-01", "2026-10-20"), "NAVE-NEV-03-PU2": vendido("2026-10-25", "2026-11-13") };
+  assert.equal(P.partesVendidasDeLaCara(nevera, "A", entera, "NAVE", d("2026-10-14"), d("2026-11-13")), null);
+  // Un mueble sin partes: nada que contar.
+  assert.equal(P.partesVendidasDeLaCara({ code: "GON-04", type: "gondola", sede: "NAVE" }, "A", {}, "NAVE", d("2026-10-14"), d("2026-11-13")), null);
+  // Y el plano lo pide antes que la fecha (`porPartes`), en el rótulo, en el
+  // cartel del mouse y en la ficha de la lista de precios.
+  const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
+  assert.match(dash, /const partes = dispo === "parcial" \? porPartes\?\.\(f, entry\) \?\? null : null;\s*const desde = dispo === "parcial" && !partes \? primerDiaLibre/,
+    "el rótulo de una cara parcial por sus partes vuelve a decir «libre» y el día");
+  assert.match(dash, /fecha: partes \?\? \(desde \?/, "el rótulo no dice las partes vendidas");
+  assert.match(dash, /const partes = porPartes\?\.\(f, face\) \?\? null;\s*if \(partes\) return partes;/, "el cartel del mouse dice «libre los 31 días»");
+  assert.match(dash, /\.\.\.\(porPartes \? \{ porPartes \} : \{ desde: primerDiaLibre\(/, "la lista de precios vuelve a poner el día");
+  assert.equal((dash.match(/porPartes=\{porPartesDeCara\}/g) ?? []).length, 2, "Vender y Supervisar dibujan el plano con el mismo rótulo");
+});
+
+await prueba("el panel dice de qué cara es cada entrepaño de una góndola central", () => {
+  const gon = { id: "g", code: "GON-01", type: "gondola", gondolaType: "double", sede: "NAVE", w: 0.9, d: 0.9, h: 1.8,
+    entrepanos: 2, partes: { division: "entrepanos" } };
+  const estado = { "NAVE-GON-01-B-EN2": vendido("2026-10-14", "2026-11-13") };
+  assert.deepEqual(P.partesConEstado(gon, estado, "NAVE").map((p) => [p.sufijo, p.vendida]),
+    [["EN1", false], ["EN2", false], ["EN3", false], ["B·EN1", false], ["B·EN2", true], ["B·EN3", false]]);
+});
+
+await prueba("lo que dice el panel: «1 caja», «las puertas vendidas quedarían», y un solo «Cómo se vende» en el 2D", () => {
+  assert.equal(P.textoDeAplicarATodos({ aplicados: ["CAJ-03"], saltados: [] }, "caja", "cajas"), "Quedó igual en 1 caja.");
+  assert.equal(P.textoDeAplicarATodos({ aplicados: ["CAJ-03", "CAJ-04"], saltados: ["CAJ-02"] }, "caja", "cajas"),
+    "Quedó igual en 2 cajas. No se tocó CAJ-02: tiene algo vendido que se movería.");
+  assert.equal(P.textoDeAplicarATodos({ aplicados: [], saltados: [] }, "caja", "cajas"), "Las demás cajas ya estaban así.");
+  const tres = { "NAVE-NEV-03-PU1": vendido("2026-10-14", "2026-11-13"), "NAVE-NEV-03-PU3": vendido("2026-10-14", "2026-11-13") };
+  assert.match(P.revisarCambioDePartes(nevera, { puertas: 2 }, tres, "NAVE").bloqueo, /Con 2 puertas vendidas .*: las puertas vendidas quedarían en otro lugar/);
+  const una = { "NAVE-NEV-03-PU3": vendido("2026-10-14", "2026-11-13") };
+  assert.match(P.revisarCambioDePartes(nevera, { puertas: 2 }, una, "NAVE").bloqueo, /Con una puerta vendida .*: la puerta vendida quedaría en otro lugar/);
+  const cajas = { "NAVE-CAJ-04-BI1": vendido("2026-10-14", "2026-11-13"), "NAVE-CAJ-04-BI2": vendido("2026-10-14", "2026-11-13") };
+  assert.match(P.revisarCambioDePartes(caja(), { bahias: 1 }, cajas, "NAVE").bloqueo, /las bahías de impulso vendidas quedarían/);
+  const comp = leer(join(raiz, "src", "components", "PartesDelMueble.tsx"));
+  assert.match(comp, /\{!sinTitulo && <span className=\{etiquetaCls\}>Cómo se vende<\/span>\}/, "el componente no deja sacar su título");
+  assert.match(comp, /setEnTodas\(textoDeAplicarATodos\(r, singular, plural\)\)/, "el panel arma el texto a mano otra vez");
+  assert.match(comp, /aplicarEnTodas\(\{ bahias: [^}]*\}, "caja", "cajas"\)/, "«Aplicar a todas» no dice la caja en singular");
+  const plano = leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx"));
+  assert.match(plano, /<Field label="Cómo se vende" icon="🧩">\s*<PartesDelMueble id=\{item\.id\} puedeEditar=\{editMode && isAdmin\} sinTitulo \/>/,
+    "el panel del 2D dice «Cómo se vende» dos veces seguidas");
+});
+
+await prueba("Supervisar: una fila por puerta que se distingue, claves únicas y los contratos contados como contratos", () => {
+  const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
+  // «Para revisar»: dos puertas de la misma nevera que vencen el mismo día
+  // repetían la clave y React podía comerse una fila.
+  assert.match(dash, /key=\{`pv-\$\{claveDeFila\(entry\)\}`\}/, "las filas de «por vencer» repiten la clave de dos puertas");
+  assert.match(dash, /key=\{`sm-\$\{claveDeFila\(entry\)\}`\}/, "las filas de «sin montar» repiten la clave de dos puertas");
+  // Estado por espacio: la columna del código mide los de las partes; sin
+  // partes, 104 como siempre.
+  assert.match(dash, /const deLasPartes = rows\.filter\(\(e\) => e\.parte\)\.map\(\(e\) => codigoVisible\(e\)\);/, "la columna no mide los códigos de las partes");
+  assert.match(dash, /: 104;\s*return \{\s*codigo,/, "sin partes, la columna del código ya no mide 104");
+  assert.match(dash, /\{ etiqueta: "Código", ancho: anchos\.codigo, minimo: anchos\.codigo \}/, "la columna del código no usa lo que se midió");
+  // «N contratos»: uno por espacio que corre, la cara o cada parte.
+  assert.match(dash, /const contratos = faces\.filter\(corre\)\.length;/, "los contratos se cuentan por cara otra vez");
+  assert.match(dash, /\{kpis\.contratos\} contrato\s*\{kpis\.contratos === 1 \? "" : "s"\}/, "el encabezado no dice los contratos");
+});
+
+await prueba("el visor cuenta las unidades de la puerta que se vende, no las de la nevera entera", () => {
+  const ed = leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
+  assert.match(ed, /unidadesDePrueba\(\{ venta: ventaUsada, empaque, donde: "todas", semilla: "panel", vanos: vanosDeLaParte \}\)/,
+    "la capacidad del panel cuenta la cara entera");
+  assert.match(ed, /unidadesDePrueba\(\{ venta: ventaUsada, empaque, donde: dondeDelDibujo, semilla: "panel", vanos: vanosDeLaParte \}\)/,
+    "la cuenta del panel no es la del dibujo");
+  const visor = leer(join(raiz, "src", "components", "Contrato", "VisorDeVenta.tsx"));
+  assert.match(visor, /paraElProveedor\s*vanos=\{cara\?\.vanos\}\s*filas=\{cara\?\.filas\}/, "el visor no le pasa al panel las partes del contrato");
+  // Y la cuenta pura: la puerta 2 de 3 entra un tercio de la nevera.
+  const venta = P.ventaDeNevera(2.05, 0.74, 2.1, 3);
+  assert.ok(venta.vanos.length === 3, `la nevera de 3 puertas tiene ${venta.vanos.length} vanos`);
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);

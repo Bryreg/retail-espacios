@@ -4269,7 +4269,11 @@ prueba("el selector de productos no abre el catálogo entero en la reunión", ()
 
 prueba("el panel de la prueba dice la cuenta, lo que no entra y la foto en perspectiva", () => {
   const panel = cuerpoDe("function PanelDePrueba(", "function VistaProveedor(");
-  assert.match(panel, /unidadesDePrueba\(\{ venta: ventaUsada, empaque, donde: como\.donde/, "el resumen no sale de la cuenta que dibuja");
+  // La cuenta del dibujo: lo elegido (`como.donde`) o, vendiendo entrepaños
+  // sueltos en el visor de Vender, los del contrato (`dondeDelDibujo`, la
+  // misma regla que `construirPrueba`).
+  assert.match(panel, /unidadesDePrueba\(\{ venta: ventaUsada, empaque, donde: dondeDelDibujo/, "el resumen no sale de la cuenta que dibuja");
+  assert.match(panel, /: filasDeLaParte\)\s*: como\.donde;/, "sin partes, el resumen ya no sale de lo elegido");
   // Las rejillas: las MISMAS que dibuja la nevera (`rejillasDeLaPrueba`, con
   // lo elegido en la sesión), y el resumen se cuenta sobre ellas.
   assert.match(panel, /rejillasDeLaPrueba\(venta, empaque, como\.rejillas\)/, "el panel no cuenta con las rejillas que se dibujan");

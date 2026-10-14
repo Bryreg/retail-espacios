@@ -4,7 +4,7 @@ import { claseDe, concordancia, divisionDe } from "../utils/partes";
 import {
   aplicarATodos, aplicarLoDeLaFicha, bahiasMaximas, cambioParaDividir, colocadosConLaFicha, conPartes, divisionSinFijar,
   divisionesDe, loDeLaFicha, partesConEstado, piezasDeLaFamilia, puertasDibujadas, revisarCambioDePartes, seCuentaEnElPlano,
-  tramosDibujados, tramosQueEntran, type CambioDePartes,
+  textoDeAplicarATodos, tramosDibujados, tramosQueEntran, type CambioDePartes,
 } from "../utils/partesDelMueble";
 import { useFichasPropias } from "../store/fichasPropias";
 
@@ -43,7 +43,12 @@ import { useFichasPropias } from "../store/fichasPropias";
  * los que tienen algo vendido. Lo colocado no cambia solo: espera el clic, y
  * pasa por las mismas revisiones que cualquier cambio de este panel.
  */
-export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: boolean }) {
+export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
+  id: string; puedeEditar: boolean;
+  /** Sin su «Cómo se vende» arriba: el panel del plano 2D ya lo pone en el
+   *  rótulo de su campo, y salía dos veces seguidas. */
+  sinTitulo?: boolean;
+}) {
   const f = useFixtureStore((s) => selectFixtures(s).find((x) => x.id === id));
   const sede = useFixtureStore((s) => s.sede);
   const estado = useFixtureStore((s) => s.estadoComercial);
@@ -118,16 +123,13 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
   }
 
   /** «Aplicar a todas las cajas de la sede»: lo de esta, en las demás, menos
-   *  las que tienen una pieza vendida (se dice cuáles). */
-  function aplicarEnTodas(cambio: CambioDePartes, plural: string) {
+   *  las que tienen una pieza vendida (se dice cuáles; `textoDeAplicarATodos`). */
+  function aplicarEnTodas(cambio: CambioDePartes, singular: string, plural: string) {
     if (!f || !puedeEditar) return;
     const st = useFixtureStore.getState();
     const r = aplicarATodos(selectFixtures(st), f.type, cambio, estado, sede);
     if (r.aplicados.length) st.commit(r.fixtures);
-    setEnTodas(
-      (r.aplicados.length ? `Quedó igual en ${r.aplicados.length} ${plural}.` : `Las demás ${plural} ya estaban así.`)
-      + (r.saltados.length ? ` No se tocó ${r.saltados.join(", ")}: tiene${r.saltados.length > 1 ? "n" : ""} algo vendido que se movería.` : ""),
-    );
+    setEnTodas(textoDeAplicarATodos(r, singular, plural));
   }
 
   /** «Aplicar a los colocados con esta ficha en la sede»: lo de su ficha en
@@ -225,7 +227,7 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
             {puedeEditar && (
               <button type="button" disabled={!!aviso} data-piezas-en-todas
                 className="rounded border border-dark-line-2 px-2 py-1 text-[11px] text-dark-ink-2 hover:text-dark-ink-1 disabled:opacity-60"
-                onClick={() => aplicarEnTodas({ bahias: typeof bahiasGuardadas === "number" ? bahiasGuardadas : null }, "cajas")}>
+                onClick={() => aplicarEnTodas({ bahias: typeof bahiasGuardadas === "number" ? bahiasGuardadas : null }, "caja", "cajas")}>
                 Aplicar a todas las cajas de la sede
               </button>
             )}
@@ -254,7 +256,7 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
 
   return (
     <div className="flex flex-col gap-1.5" data-partes={f.id}>
-      <span className={etiquetaCls}>Cómo se vende</span>
+      {!sinTitulo && <span className={etiquetaCls}>Cómo se vende</span>}
       {seccionDePiezas}
       {formas.length > 0 && (<>
       {puedeEditar ? (
