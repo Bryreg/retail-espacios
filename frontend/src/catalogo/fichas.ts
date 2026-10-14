@@ -72,7 +72,17 @@ export function idDeFichaPropia(clave: string): string {
 const NOMBRE_DE_MEDIDA = { w: "el ancho", d: "el fondo", h: "el alto" } as const;
 const NOMBRE_DE_GEOMETRIA: Record<CampoDeGeometria, string> = {
   entrepanos: "los entrepaños", modulo: "el módulo", puertas: "las puertas",
+  division: "cómo se vende por partes",
 };
+
+/** La lista cerrada de un campo de palabras (`division`): la de su familia
+ *  (`partes.divisiones`). `undefined` si el campo es un número. Espejo de
+ *  `_valores_de` del servidor. */
+function valoresDe(regla: { valores?: string }, familia: TipoDeMueble): string[] | undefined {
+  if (!regla.valores) return undefined;
+  const lista = (familia.partes as Record<string, unknown> | undefined)?.[regla.valores];
+  return Array.isArray(lista) ? lista.filter((x): x is string => typeof x === "string") : [];
+}
 
 /**
  * Lo que está mal en una ficha propia. Vacío es que se puede guardar.
@@ -130,14 +140,31 @@ export function problemasDeLaFicha(ficha: unknown, { nueva = true }: { nueva?: b
     let partes: unknown = ficha.partes;
     if (partes != null && !(objeto(partes)
       && Object.keys(partes).every((k) => propio(REGLAS.geometria, k) && REGLAS.geometria[k as CampoDeGeometria].enPartes))) {
-      no("partes", "las partes sólo llevan números conocidos (puertas)");
+      no("partes", "las partes sólo llevan lo conocido (las puertas y cómo se vende)");
       partes = undefined;
     }
     const admite = familia.geometria ?? {};
-    for (const [campo, regla] of Object.entries(REGLAS.geometria) as [CampoDeGeometria, { enPartes: boolean; entero: boolean }][]) {
+    for (const [campo, regla] of Object.entries(REGLAS.geometria) as [CampoDeGeometria, { enPartes: boolean; entero: boolean; valores?: string }][]) {
       const donde = regla.enPartes ? `partes.${campo}` : campo;
       const v = regla.enPartes ? (objeto(partes) ? partes[campo] : undefined) : ficha[campo];
       if (v == null) continue;
+      const valores = valoresDe(regla, familia);
+      if (valores) {
+        // Una palabra de una lista cerrada: cómo se vende por partes.
+        const clases = C.partes.clases;
+        if (valores.length === 0) no(donde, `la familia «${tipo}» se vende entera: no tiene partes`);
+        else if (typeof v !== "string" || !valores.includes(v)) {
+          no(donde, `se vende por ${valores.map((c) => clases[c]?.plural ?? c).join(" o por ")}`);
+        } else {
+          // Dividir pide saber en cuántas: sin la cuenta no hay partes.
+          const clase = clases[v];
+          const n = objeto(partes) ? partes[clase.campo] : undefined;
+          if (!(numero(n) && Number.isInteger(n) && n >= clase.minimo)) {
+            no(donde, `para venderla por ${clase.plural}, la ficha dice cuántas (${clase.minimo} o más)`);
+          }
+        }
+        continue;
+      }
       const r = admite[campo];
       if (!r) no(donde, `la familia «${tipo}» no lleva ${NOMBRE_DE_GEOMETRIA[campo]}`);
       else if (!numero(v) || (regla.entero && !Number.isInteger(v)) || !(r[0] <= v && v <= r[1])) {

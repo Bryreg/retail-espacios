@@ -257,10 +257,12 @@ export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
 /** Los 409 que son «el servidor miró y dijo que no», con su lista de motivos.
  *  Se enumeran para no confundirlos con los otros dos 409 del guardado —el
  *  conflicto entre equipos y la sede borrada—, que se resuelven de otra manera. */
-const RECHAZOS_CONOCIDOS = new Set(["nombres_repetidos", "contratos_vivos"]);
+const RECHAZOS_CONOCIDOS = new Set(["nombres_repetidos", "contratos_vivos", "partes_vendidas", "nombre_reservado"]);
 
 export interface RechazoDelServidor {
-  /** El `detail.code` del 409, tal cual: `nombres_repetidos` o `contratos_vivos`. */
+  /** El `detail.code` del 409, tal cual: `nombres_repetidos`, `contratos_vivos`,
+   *  `partes_vendidas` (movería una puerta vendida) o `nombre_reservado` (un
+   *  nombre que se lee como el código de una parte). */
   code: string;
   message: string;
   choques: string[];

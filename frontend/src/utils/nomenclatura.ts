@@ -42,6 +42,7 @@
  */
 
 import { CATALOGO_DE_MUEBLES, prefijosPorTipo } from "../catalogo/catalogo";
+import { terminaReservado } from "./partes";
 
 /** Prefijo por tipo. Cubre los nombres del 3D y los del 2D, que difieren: el
  *  plano 2D parte la góndola en `gondola_doble` y `gondola_mural`, y las dos son
@@ -226,7 +227,10 @@ export interface MuebleNombrable {
  */
 export type RechazoDeNombre<T> =
   | { razon: "vacio" }
-  | { razon: "ocupado"; ocupa: T };
+  | { razon: "ocupado"; ocupa: T }
+  /** Termina como el código de una parte o de la cara B (`GON-01-B`,
+   *  `NEV-03-PU2`): se leería como una parte de otro mueble. */
+  | { razon: "reservado" };
 
 export type Renombre<T> =
   | { ok: true; muebles: T[]; nombre: string }
@@ -252,7 +256,13 @@ export function choqueDeNombre<T extends MuebleNombrable>(
   const n = normalizar(nombre);
   if (!n) return { razon: "vacio" };
   const ocupa = muebleConCodigo(n, existentes, exceptoId);
-  return ocupa ? { razon: "ocupado", ocupa } : null;
+  if (ocupa) return { razon: "ocupado", ocupa };
+  // Vender por partes: `NEV-03-PU2` es la puerta 2 de `NEV-03`. Un mueble NUEVO
+  // con un nombre así se leería como una parte de otro (el servidor lo frena
+  // igual: `nombre_reservado`). El que ya se llamaba así, sigue.
+  const yo = exceptoId !== undefined ? existentes.find((f) => f.id === exceptoId) : undefined;
+  if (terminaReservado(n) && (!yo || normalizar(yo.code) !== n)) return { razon: "reservado" };
+  return null;
 }
 
 /**
@@ -333,6 +343,12 @@ export function textoDelChoque<T extends MuebleNombrable>(
     return (
       "El mueble tiene que llamarse de alguna manera: el nombre es la llave con " +
       "la que viaja al contrato, al correo de montaje y a la lámina."
+    );
+  }
+  if (rechazo.razon === "reservado") {
+    return (
+      `«${n}» termina como el código de una parte o de la cara B (-B, -PU2…): ` +
+      "se confundiría con una parte de otro mueble. Elegí otro nombre."
     );
   }
   const quien = ((rotuloDe ? rotuloDe(rechazo.ocupa) : "") || rechazo.ocupa.label || "").trim();

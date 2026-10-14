@@ -172,9 +172,10 @@
       "banderas": ["producto", "prueba3D", "frio"],
       "rotuloEditor": "Nevera de Puertas",
       "medidas": { "w": 1.40, "d": 0.74, "h": 2.10 }, "color": "#1e293b", "emoji": "🧊",
-      "descripcion": "Nevera vertical cerrada, con puertas de vidrio: se vende entera",
+      "descripcion": "Nevera vertical cerrada, con puertas de vidrio: se vende entera o por puertas",
       "rango": { "w": [0.6, 3.2], "d": [0.55, 0.9], "h": [1.7, 2.3] },
-      "geometria": { "puertas": [1, 6] }
+      "geometria": { "puertas": [1, 6] },
+      "partes": { "divisiones": ["puertas"] }
     },
     "stand_frutas": {
       "prefijo": "FRU", "alquilable": "si", "tarifa": "stand_frutas",
@@ -240,6 +241,7 @@
     { "clave": "nevera_vegetales", "rotulo": "Nevera de vegetales" },
     { "clave": "nevera_refrescos", "rotulo": "Nevera de bebidas" },
     { "clave": "nevera_puertas", "rotulo": "Nevera de puertas" },
+    { "clave": "parte_puerta", "rotulo": "Puerta de nevera (cada una)" },
     { "clave": "stand_frutas", "rotulo": "Frutas y verduras" },
     { "clave": "metro", "rotulo": "Zona libre" }
   ],
@@ -570,7 +572,7 @@
     {
       "id": "base:nevera-2p-inducol", "tipo": "nevera_puertas",
       "nombre": "Nevera de 2 puertas",
-      "w": 1.445, "d": 0.74, "h": 2.10, "partes": { "puertas": 2 },
+      "w": 1.445, "d": 0.74, "h": 2.10, "partes": { "puertas": 2, "division": "puertas" },
       "fuente": {
         "url": "https://inducol.com.co/producto/vitrina-vertical-de-1195-litros/",
         "confiabilidad": "ficha",
@@ -580,7 +582,7 @@
     {
       "id": "base:nevera-3p-frigomaster", "tipo": "nevera_puertas",
       "nombre": "Nevera de 3 puertas",
-      "w": 2.07, "d": 0.70, "h": 2.10, "partes": { "puertas": 3 },
+      "w": 2.07, "d": 0.70, "h": 2.10, "partes": { "puertas": 3, "division": "puertas" },
       "fuente": {
         "url": "https://frigomaster.co/nevera-exhibidora-vertical-tres-puertas/",
         "confiabilidad": "ficha",
@@ -590,7 +592,7 @@
     {
       "id": "base:nevera-4p-frigomaster", "tipo": "nevera_puertas",
       "nombre": "Nevera de 4 puertas",
-      "w": 2.72, "d": 0.75, "h": 2.10, "partes": { "puertas": 4 },
+      "w": 2.72, "d": 0.75, "h": 2.10, "partes": { "puertas": 4, "division": "puertas" },
       "fuente": {
         "url": "https://frigomaster.co/nevera-exhibidora-vertical-cuatro-puertas/",
         "confiabilidad": "ficha",
@@ -608,10 +610,26 @@
       }
     }
   ],
+  "partes": {
+    "leeme": [
+      "Vender por partes: una nevera de puertas se vende entera o por puertas (NEV-03-PU2: la puerta 2, contando de izquierda a derecha mirando su frente). Una PARTE es una fila más de spaces/space_leases con un código derivado del de la cara; la relación cara-parte sale del código, sin columnas nuevas. Lo leen src/utils/partes.ts y app/services/partes.py, con los casos compartidos de frontend/scripts/casos/partes.json.",
+      "`clases` dice qué es cada clase una sola vez: su token (dos letras y el número, sin ceros adelante), si DIVIDE la cara (`division`: choca con la cara entera en fechas que se pisan; dos divisiones distintas conviven) o es una pieza aparte, el campo de `partes` que la cuenta, la tarifa propia por clase (vacía: la de la cara dividida por la cantidad de partes) y cómo la nombran los informes. Cada tipo dice en `partes.divisiones` cuáles admite; el mueble del plano elige UNA en `partes.division` y la cuenta en su campo. Sin `partes.division`, el mueble se vende entero, como siempre.",
+      "`reservados` son los finales de código que ningún mueble puede tomar al renombrarse: los tokens de hoy y los de lo que viene (tramos, entrepaños, bahías, forro, copete, cenefa, stopper) y la cara B."
+    ],
+    "clases": {
+      "puertas": {
+        "token": "PU", "es": "division", "eje": "ancho", "campo": "puertas", "minimo": 2,
+        "singular": "puerta", "plural": "puertas",
+        "tarifa": "parte_puerta", "informe": "puerta de nevera", "informePlural": "puertas de nevera"
+      }
+    },
+    "reservados": ["B", "PU", "TR", "EN", "BI", "FO", "CP", "CN", "ST"]
+  },
   "fichas": {
     "leeme": [
       "Las reglas de una ficha de mueble, escritas una vez para los dos lados: las leen probar-catalogo.mjs (los modelos de este archivo), src/catalogo/fichas.ts (el navegador) y app/services/catalogo_muebles.py (el servidor, que valida las fichas propias de cada supermercado antes de guardarlas en modelos_mueble). frontend/scripts/casos/fichas.json tiene los casos que corren los dos lados.",
-      "Una familia admite fichas si tiene `rango`, y una ficha fija sólo la geometría de su `geometria`. Una ficha propia viaja en el plano como `cli:<clave>`: la clave no cambia nunca, como el id de un modelo de este archivo. Una ficha no lleva foto: sólo medidas y de dónde salieron."
+      "Una familia admite fichas si tiene `rango`, y una ficha fija sólo la geometría de su `geometria`. Una ficha propia viaja en el plano como `cli:<clave>`: la clave no cambia nunca, como el id de un modelo de este archivo. Una ficha no lleva foto: sólo medidas y de dónde salieron.",
+      "`geometria` es la lista blanca de lo que puede vivir en el mueble como ficha, con su tipo: un número (entero o no) cuyo rango da la `geometria` de su familia, o una palabra de una lista cerrada (`valores`), que es la de su familia en `partes` (`division`: cómo se vende la cara por partes). Lo que va en `partes` es lo único de `partes` que sale hacia quien no ve plata (el visor de Vender, la mercaderista)."
     ],
     "prefijoPropio": "cli:",
     "clave": "^[a-z0-9-]{1,60}$",
@@ -619,7 +637,8 @@
     "geometria": {
       "entrepanos": { "enPartes": false, "entero": true },
       "modulo": { "enPartes": false, "entero": false },
-      "puertas": { "enPartes": true, "entero": true }
+      "puertas": { "enPartes": true, "entero": true },
+      "division": { "enPartes": true, "entero": false, "valores": "divisiones" }
     },
     "fuenteQueEsImagen": "\\.(jpe?g|png|webp|gif|avif|svg|bmp)([?#;&%].*)?$",
     "largoMaximo": { "nombre": 80, "url": 500, "nota": 600 }

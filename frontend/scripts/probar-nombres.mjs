@@ -213,7 +213,8 @@ const SITIOS = [
   ["components/Contrato/ModoVender.tsx", "la lista del contrato en Vender",
     /\{tipoDelMueble\(l\.fixture, nombresPropios\)\}<\/span>/],
   ["components/Contrato/ModoVender.tsx", "el visor 3D y la lámina de Vender (la chapa de cada cara)",
-    /tipo: tipoDelMueble\(l\.fixture, nombresPropios\),\s*\}\)\), \[c\.lineas, fichasPropias, nombresPropios\]\)/],
+    // Por cara del visor (las puertas vendidas de una nevera son una cara).
+    /const carasDelVisor = useMemo<CaraDelVisor\[\]>\(\(\) => \{[\s\S]*?tipo: tipoDelMueble\(l\.fixture, nombresPropios\),[\s\S]*?\}, \[c\.lineas, fichasPropias, nombresPropios\]\);/],
   ["components/Contrato/ModoVender.tsx", "el aviso de lo que no se alquila",
     /<b>\{conNombrePropio\(fixture, nombresPropios, fixture\.label \|\| fixture\.code\)\}<\/b>/],
   ["components/StoreEditor3D/StoreEditor3D.tsx", "la paleta del Editor 3D", /\{conNombrePropio\(def, nombresPropios, def\.label\)\}/],

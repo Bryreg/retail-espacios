@@ -9,11 +9,14 @@ import { subirPlanometria } from "../../api/planograms";
 import { describeError } from "../../api/client";
 import type { AvisosContrato } from "../../types";
 import {
-  fullSpaceCode, isDoubleGondola, rangeAvailability, rateTypeOf, referenceRateFor,
-  type FaceData, type RangeAvailability, type UnifiedFixture,
+  fullSpaceCode, isDoubleGondola, type RangeAvailability, type UnifiedFixture,
 } from "../../types/fixtures";
 import { nombreDeMueble } from "../../utils/nomenclatura";
 import { valoresDeLista } from "../../utils/precioDeLista";
+import {
+  cantidadDe, codigoDeParte, codigoVisibleDe, disponibilidadDeEspacio, indiceDePartes, parteDeSufijo,
+  porQueNoEstaLibre, tarifaDeEspacio, textoDeParte, type OrigenDeTarifa,
+} from "../../utils/partes";
 
 /**
  * El contrato: TODO el estado y la aritmética del acuerdo, sin una sola línea
@@ -52,10 +55,12 @@ export interface ResumenContrato {
   avisos?: AvisosContrato;
 }
 
-/** Una cara adentro del contrato que se está armando. */
+/** Un espacio adentro del contrato que se está armando: una cara entera o,
+ *  vendiendo por partes, una de sus partes (`parte: "PU2"`). */
 export interface CaraElegida {
   fixture: UnifiedFixture;
   face: "A" | "B";
+  parte?: string;
 }
 
 /** Con qué llega prellenado un contrato al que se entra por «Renovar». */
@@ -97,12 +102,16 @@ export interface ArgsContrato {
    *  valor mirando la ficha de al lado, y cada uno de esos cuatro campos es una
    *  oportunidad de escribir mal el nombre del proveedor y crear uno nuevo. */
   semilla?: SemillaContrato | null;
-  /** Sacar una cara de la lista desde la propia ficha. */
-  onQuitar: (fixtureId: string, face: "A" | "B") => void;
+  /** Sacar un espacio de la lista desde la propia ficha: una cara, o una
+   *  parte de ella. */
+  onQuitar: (fixtureId: string, face: "A" | "B", parte?: string) => void;
   /** Sumar o sacar una cara de una góndola doble. Es un interruptor por cara,
    *  no un selector entre las dos: vendérselas ambas al mismo proveedor en el
    *  mismo contrato es lo normal, y con un selector había que hacer dos. */
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
+  /** Vender por partes: prender o apagar la entera (`null`) o una parte
+   *  (`"PU2"`) de esa cara. La entera y sus partes nunca juntas. */
+  onCambiarParte: (fixtureId: string, face: "A" | "B", parte: string | null) => void;
   /** El contrato YA está en la base cuando esto se llama. No hay nada que
    *  escribirle al plano: quien dibuja vuelve a leer. */
   onGuardado: (resumen: ResumenContrato) => void;
@@ -146,19 +155,10 @@ function rangoPorDefecto(): DateRange {
   return { from: hoy, to };
 }
 
-function datosDeCara(f: UnifiedFixture, face: "A" | "B"): FaceData {
-  if (face === "B") return (f.faceB ?? {}) as FaceData;
-  return {
-    status: f.status, supplierName: f.supplierName, brandCategory: f.brandCategory,
-    negotiatedValue: f.negotiatedValue, startDate: f.startDate, endDate: f.endDate,
-    observation: f.observation,
-  } as FaceData;
-}
-
 // ─── El hook ─────────────────────────────────────────────────────────────────
 
 export function useContrato({
-  espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado,
+  espacios, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte, onGuardado,
 }: ArgsContrato) {
   const fixtures = useFixtureStore(selectFixtures);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
@@ -167,6 +167,12 @@ export function useContrato({
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
   // primer dibujo, así que van en las dependencias de lo que la pregunta.
   const fichasPropias = useFichasPropias();
+  // Lo que dice la BASE de cada espacio, por código completo. Con la venta
+  // por partes no alcanza el mueble fusionado: vender la puerta 2 no le cambia
+  // nada a la nevera, y la entera choca con esa puerta. Va en las
+  // dependencias de las líneas: una puerta vendida en otra sesión se ve acá.
+  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  const indicePartes = useMemo(() => indiceDePartes(estadoComercial), [estadoComercial]);
 
   // El periodo con el que abre. Se congela al montar a propósito: cambiar la
   // temporada de arriba no debe reescribirle las fechas a alguien que ya está
@@ -216,18 +222,30 @@ export function useContrato({
   const lineas = useMemo(() => {
     const f = fechasEnOrden ? parseISODate(desde) : null;
     const t = fechasEnOrden ? parseISODate(hasta) : null;
-    return espacios.map(({ fixture, face }) => {
-      const corto = face === "B" ? `${fixture.code}-B` : fixture.code;
-      const codigo = fullSpaceCode(fixture.sede || sede, corto);
-      const datos = datosDeCara(fixture, face);
-      const ref = referenceRateFor(referenceRates, fixture.sede || sede, rateTypeOf(fixture));
+    return espacios.map(({ fixture, face, parte: sufijo }) => {
+      // Vender por partes: `NEV-03-PU2` es la puerta 2 de `NEV-03`. Una parte
+      // que el mueble ya no ofrece (alguien bajó las puertas en otra pestaña)
+      // se lee igual por su código y el servidor la rechaza al validar.
+      const parte = sufijo ? parteDeSufijo(sufijo) : null;
+      const corto = codigoDeParte(fixture.code, face, parte);
+      const sedeDe = fixture.sede || sede;
+      const codigo = fullSpaceCode(sedeDe, corto);
+      const tarifa = tarifaDeEspacio(referenceRates, sedeDe, fixture, parte);
+      const ref = tarifa.valor;
       const texto = valores[codigo] ?? "";
       const monto = Number(texto.replace(/[^\d]/g, "")) || 0;
       return {
         fixture, face, corto, codigo, ref,
+        /** De dónde salió la referencia: la del mueble, la de la clase
+         *  (`parte_puerta`) o la de la nevera dividida por sus puertas. */
+        origenRef: tarifa.origen as OrigenDeTarifa,
+        /** `PU2`, si es una parte. */
+        parte: parte ? sufijo!.toUpperCase() : null,
+        /** «Puerta 2 de 3», si es una parte. */
+        textoParte: parte ? textoDeParte(parte, cantidadDe(fixture, parte.clase)) : null,
         doble: isDoubleGondola(fixture),
-        /** `GON-60·A`, que es como se lee. El de la base sigue siendo `corto`. */
-        visible: isDoubleGondola(fixture) ? `${fixture.code}·${face}` : corto,
+        /** `GON-60·A`, `NEV-03·PU2`: como se lee. El de la base es `corto`. */
+        visible: codigoVisibleDe(fixture.code, face, isDoubleGondola(fixture), parte),
         // Un mueble tiene UN nombre y es su código: lo que se lee acá es lo
         // mismo que dibuja el plano, sin resolver nada.
         nombre: nombreDeMueble({ code: corto }),
@@ -235,12 +253,23 @@ export function useContrato({
         valor: texto,
         monto,
         desvio: ref !== null && monto > 0 ? Math.round((1 - monto / ref) * 100) : null,
-        disponibilidad: (f && t
-          ? rangeAvailability(datos, f, t)
-          : rangeAvailability(datos, inicial.from, inicial.to)) as RangeAvailability,
+        // Lo suyo y lo que choca con él (la nevera entera para una puerta, las
+        // puertas para la entera), del mapa de la base. Sin partes es la misma
+        // cuenta de siempre: la de la cara.
+        disponibilidad: disponibilidadDeEspacio(
+          fixture, face, parte, estadoComercial, indicePartes, sede,
+          f && t ? f : inicial.from, f && t ? t : inicial.to,
+        ) as RangeAvailability,
+        /** Si no está libre, por qué: lo suyo, la entera vendida (para una
+         *  puerta) o puertas vendidas (para la entera). Sin nombres. */
+        porQue: porQueNoEstaLibre(
+          fixture, face, parte, estadoComercial, indicePartes, sede,
+          f && t ? f : inicial.from, f && t ? t : inicial.to,
+        ),
       };
     });
-  }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias]);
+  }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
+    estadoComercial, indicePartes]);
 
 
   /** Al entrar, cada espacio arranca con su tarifa de referencia escrita, y
@@ -520,7 +549,7 @@ export function useContrato({
     // La sede efectiva: los muebles dibujados antes de que existiera esa
     // columna no la traen, y ahí manda la sede activa.
     sede: lineas[0]?.fixture.sede || sede,
-    lineas: lineasConVeredicto, onQuitar, onCambiarCara,
+    lineas: lineasConVeredicto, onQuitar, onCambiarCara, onCambiarParte,
     total, cubre,
     desde, setDesde, hasta, setHasta,
     proveedor, setProveedor, correo, setCorreo, marca, setMarca,

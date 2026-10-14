@@ -75,6 +75,10 @@ export interface CaraDelVisor {
   codigo: string;
   /** «Punta de góndola», «Góndola, por cara». */
   tipo: string;
+  /** Vender por partes: las puertas de esta cara que van en el contrato,
+   *  como vanos del DIBUJO (`vanoDeParte`). Se marcan y el producto en prueba
+   *  va sólo detrás de ellas. Sin esto, la cara entera. */
+  vanos?: number[];
 }
 
 export interface CaraActiva { fixtureId: string; face: "A" | "B" }
@@ -146,8 +150,10 @@ const INTERRUMPIDA = new Error("la lámina se interrumpió");
  * acá. Sólo lo redibuja lo que cambia lo que se ve.
  */
 const Lienzo = memo(function Lienzo({
-  muebles, privadoPara, sinArte, prueba, como, artes, pedido, estado, orbitRef, onCaptura,
+  muebles, privadoPara, sinArte, prueba, como, artes, pedido, estado, orbitRef, onCaptura, vanos,
 }: {
+  /** Vender por partes: las puertas que se venden, por cara. */
+  vanos: ReadonlyMap<string, readonly number[]>;
   muebles: PlacedFixture[];
   privadoPara: number | null;
   sinArte: boolean;
@@ -219,6 +225,7 @@ const Lienzo = memo(function Lienzo({
           saltarA={null}
           onHoverFixture={NADA}
           estadoDeEscena={estado}
+          vanosALaVenta={vanos}
         />
         </RellenoNeutro.Provider>
       </Canvas>
@@ -298,6 +305,17 @@ export default function VisorDeVenta({
     [unificados, idsDelContrato],
   );
   const mueble = muebles.find((f) => f.id === activa.fixtureId) ?? null;
+  /** Vender por partes: las puertas que van en el contrato, por cara
+   *  (`${fixtureId}|${cara}` → vanos del dibujo). Con la firma en texto: la
+   *  lista de caras llega nueva en cada render de la ficha, y el lienzo está en
+   *  `memo`. */
+  const firmaDeVanos = caras.filter((c) => c.vanos?.length).map((c) => `${c.fixtureId}|${c.face}:${c.vanos!.join(",")}`).join(";");
+  const vanos = useMemo(() => new Map<string, readonly number[]>(
+    firmaDeVanos ? firmaDeVanos.split(";").map((t) => {
+      const [k, v] = t.split(":");
+      return [k, v.split(",").map(Number)] as [string, number[]];
+    }) : [],
+  ), [firmaDeVanos]);
   const mueblesRef = useRef(muebles);
   mueblesRef.current = muebles;
   const cara = caras.find((c) => c.fixtureId === activa.fixtureId && c.face === activa.face) ?? null;
@@ -823,6 +841,7 @@ export default function VisorDeVenta({
           estado={estado}
           orbitRef={orbitRef}
           onCaptura={alTenerCaptura}
+          vanos={vanos}
         />
         {/* El cuadro de antes, quieto, mientras se arma la lámina. */}
         {congelado && <img className="visor-congelado" src={congelado} alt="" aria-hidden data-congelado />}

@@ -1,0 +1,251 @@
+{
+  "leeme": [
+    "Vender por partes, con la MISMA regla en los dos lados: src/utils/partes.ts en el navegador y app/services/partes.py en el servidor. Los corren scripts/probar-partes.mjs y tests/test_partes.py.",
+    "`codigos`: cómo se parte un código de espacio (la base, la cara y la parte, o null si es la cara entera) y que volver a armarlo da el mismo código normalizado. `muebles`: qué partes pone a la venta un mueble del plano en la sede NAVE (las caras y las partes, por código completo) y su firma (qué decide dónde cae cada parte). `chocan`: qué dos espacios no se pueden vender en fechas que se pisan. `tarifas`: la tarifa de referencia de un espacio y de dónde salió. `reservados`: los nombres que un mueble no puede tomar. `numeracion`: qué vano del dibujo es la parte k de n de cada cara."
+  ],
+  "codigos": [
+    { "codigo": "NAVE-NEV-03-PU2", "base": "NAVE-NEV-03", "cara": "A", "parte": "PU2" },
+    { "codigo": "NEV-03-PU2", "base": "NEV-03", "cara": "A", "parte": "PU2" },
+    { "codigo": "  nave-nev-03-pu2 ", "base": "NAVE-NEV-03", "cara": "A", "parte": "PU2", "armado": "NAVE-NEV-03-PU2" },
+    { "codigo": "CIUDAD JARDIN-NEV-03-PU2", "base": "CIUDAD JARDIN-NEV-03", "cara": "A", "parte": "PU2" },
+    { "codigo": "NAVE-NEV-03-PU12", "base": "NAVE-NEV-03", "cara": "A", "parte": "PU12" },
+    { "codigo": "NAVE-NEV-03-PU99", "base": "NAVE-NEV-03", "cara": "A", "parte": "PU99" },
+    { "codigo": "NAVE-NEV-03", "base": "NAVE-NEV-03", "cara": "A", "parte": null },
+    { "codigo": "NAVE-GON-05-B", "base": "NAVE-GON-05", "cara": "B", "parte": null },
+    { "codigo": "NAVE-GON-05-B-PU1", "base": "NAVE-GON-05", "cara": "B", "parte": "PU1" },
+    { "codigo": "GON-05-B", "base": "GON-05", "cara": "B", "parte": null },
+    { "codigo": "NAVE-NEV-03-PU0", "base": "NAVE-NEV-03-PU0", "cara": "A", "parte": null },
+    { "codigo": "NAVE-NEV-03-PU01", "base": "NAVE-NEV-03-PU01", "cara": "A", "parte": null },
+    { "codigo": "NAVE-NEV-03-PU100", "base": "NAVE-NEV-03-PU100", "cara": "A", "parte": null },
+    { "codigo": "NAVE-NEV-03-PU", "base": "NAVE-NEV-03-PU", "cara": "A", "parte": null },
+    { "codigo": "NAVE-NEV-03-TR2", "base": "NAVE-NEV-03-TR2", "cara": "A", "parte": null },
+    { "codigo": "NAVE-CAJ-04-FO", "base": "NAVE-CAJ-04-FO", "cara": "A", "parte": null },
+    { "codigo": "NAVE-NEV-03-PU2-B", "base": "NAVE-NEV-03-PU2", "cara": "B", "parte": null },
+    { "codigo": "NAVE-GON-05-B-B", "base": "NAVE-GON-05-B", "cara": "B", "parte": null },
+    { "codigo": "PU2", "base": "PU2", "cara": "A", "parte": null },
+    { "codigo": "-PU2", "base": "-PU2", "cara": "A", "parte": null },
+    { "codigo": "B", "base": "B", "cara": "A", "parte": null },
+    { "codigo": "-B", "base": "-B", "cara": "A", "parte": null },
+    { "codigo": "X-B-PU3", "base": "X", "cara": "B", "parte": "PU3" },
+    { "codigo": "NAVE-PUN-01", "base": "NAVE-PUN-01", "cara": "A", "parte": null },
+    { "codigo": "", "base": "", "cara": "A", "parte": null }
+  ],
+  "muebles": [
+    {
+      "nombre": "una nevera de 3 puertas sin `division` se vende entera, como siempre",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3 } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "por puertas: la cara y sus tres puertas",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "espacios": ["NAVE-NEV-03", "NAVE-NEV-03-PU1", "NAVE-NEV-03-PU2", "NAVE-NEV-03-PU3"], "division": ["puertas", 3]
+    },
+    {
+      "nombre": "el código que ya trae la sede no se duplica",
+      "mueble": { "id": "n1", "code": "NAVE-NEV-03", "type": "nevera_puertas", "partes": { "puertas": 2, "division": "puertas" } },
+      "espacios": ["NAVE-NEV-03", "NAVE-NEV-03-PU1", "NAVE-NEV-03-PU2"], "division": ["puertas", 2]
+    },
+    {
+      "nombre": "la sede propia del mueble manda",
+      "mueble": { "id": "n1", "code": "NEV-03", "sede": "POBLADO", "type": "nevera_puertas", "partes": { "puertas": 2, "division": "puertas" } },
+      "espacios": ["POBLADO-NEV-03", "POBLADO-NEV-03-PU1", "POBLADO-NEV-03-PU2"], "division": ["puertas", 2]
+    },
+    {
+      "nombre": "una puerta sola no se divide: se vende entera",
+      "mueble": { "id": "n1", "code": "NEV-01", "type": "nevera_puertas", "partes": { "puertas": 1, "division": "puertas" } },
+      "espacios": ["NAVE-NEV-01"], "division": null
+    },
+    {
+      "nombre": "sin la cuenta de puertas no hay división (no se adivina por el ancho)",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "w": 2.07, "partes": { "division": "puertas" } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "más puertas que las de su familia: no se recorta, se vende entera",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 7, "division": "puertas" } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "puertas que no son un entero: entera",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 2.5, "division": "puertas" } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "verdadero no es una cantidad de puertas (en Python True es un int)",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": true, "division": "puertas" } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "un texto como cantidad: entera",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": "3", "division": "puertas" } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "una forma de dividir que la familia no admite: entera",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "tramos" } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "una división que no es texto: entera",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": ["puertas"] } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "la división borrada a propósito (null): entera",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": null } },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "una góndola no se divide por puertas aunque lo diga: sus dos caras, como siempre",
+      "mueble": { "id": "g1", "code": "GON-05", "type": "gondola", "partes": { "puertas": 3, "division": "puertas" } },
+      "espacios": ["NAVE-GON-05", "NAVE-GON-05-B"], "division": null
+    },
+    {
+      "nombre": "no comercializable: no ofrece ni la cara ni sus puertas",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "rentable": false, "partes": { "puertas": 3, "division": "puertas" } },
+      "espacios": [], "division": ["puertas", 3]
+    },
+    {
+      "nombre": "`partes` que no es un objeto: entera",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas", "partes": "puertas" },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "sin `partes`: exactamente lo de antes",
+      "mueble": { "id": "n1", "code": "NEV-03", "type": "nevera_puertas" },
+      "espacios": ["NAVE-NEV-03"], "division": null
+    },
+    {
+      "nombre": "una caja nunca se vende entera",
+      "mueble": { "id": "c1", "code": "CAJ-04", "type": "checkout" },
+      "espacios": [], "division": null
+    },
+    {
+      "nombre": "sin código no hay espacio",
+      "mueble": { "id": "n1", "code": "", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "espacios": [], "division": ["puertas", 3]
+    }
+  ],
+  "chocan": [
+    { "a": "NAVE-NEV-03", "b": "NAVE-NEV-03-PU2", "chocan": true, "por": "la entera y una puerta" },
+    { "a": "NAVE-NEV-03-PU2", "b": "NAVE-NEV-03", "chocan": true, "por": "en los dos órdenes" },
+    { "a": "NAVE-NEV-03-PU1", "b": "NAVE-NEV-03-PU2", "chocan": false, "por": "dos puertas distintas conviven" },
+    { "a": "NAVE-NEV-03-PU2", "b": "NAVE-NEV-03-PU2", "chocan": true, "por": "la misma puerta" },
+    { "a": "NAVE-NEV-03", "b": "NAVE-NEV-03", "chocan": true, "por": "la misma cara" },
+    { "a": "NAVE-NEV-03", "b": "NAVE-NEV-04-PU2", "chocan": false, "por": "otra nevera" },
+    { "a": "NAVE-NEV-03", "b": "NAVE-NEV-030-PU2", "chocan": false, "por": "un código que empieza igual es otro mueble" },
+    { "a": "NAVE-GON-05", "b": "NAVE-GON-05-B-PU1", "chocan": false, "por": "la cara A no choca con una parte de la B" },
+    { "a": "NAVE-GON-05-B", "b": "NAVE-GON-05-B-PU1", "chocan": true, "por": "la cara B entera y una parte suya" },
+    { "a": "NAVE-GON-05", "b": "NAVE-GON-05-B", "chocan": false, "por": "las dos caras de una góndola, como siempre" },
+    { "a": "nave-nev-03", "b": "NAVE-NEV-03-PU2", "chocan": true, "por": "sin distinguir mayúsculas" },
+    { "a": "POBLADO-NEV-03", "b": "NAVE-NEV-03-PU2", "chocan": false, "por": "otra sede" }
+  ],
+  "tarifas": [
+    {
+      "nombre": "la cara entera: la de su mueble",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "sede": "NAVE", "parte": null,
+      "rates": { "default": { "nevera_puertas": 900000 }, "by_sede": {} },
+      "valor": 900000, "origen": "cara"
+    },
+    {
+      "nombre": "la puerta, sin tarifa de puerta: la de la nevera entre tres",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU2",
+      "rates": { "default": { "nevera_puertas": 900000 }, "by_sede": {} },
+      "valor": 300000, "origen": "cara/n"
+    },
+    {
+      "nombre": "la puerta con su tarifa propia",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU2",
+      "rates": { "default": { "nevera_puertas": 900000, "parte_puerta": 350000 }, "by_sede": {} },
+      "valor": 350000, "origen": "clase"
+    },
+    {
+      "nombre": "la de la sede gana sobre la general, también para la puerta",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU1",
+      "rates": { "default": { "parte_puerta": 350000 }, "by_sede": { "NAVE": { "parte_puerta": 420000 } } },
+      "valor": 420000, "origen": "clase"
+    },
+    {
+      "nombre": "la de la cara de esa sede, partida",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 4, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU1",
+      "rates": { "default": { "nevera_puertas": 900000 }, "by_sede": { "NAVE": { "nevera_puertas": 1000000 } } },
+      "valor": 250000, "origen": "cara/n"
+    },
+    {
+      "nombre": "los medios se redondean hacia arriba en los dos lados",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 2, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU1",
+      "rates": { "default": { "nevera_puertas": 1000001 }, "by_sede": {} },
+      "valor": 500001, "origen": "cara/n"
+    },
+    {
+      "nombre": "medio peso en el borde: 5 / 2 da 3, no 2",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 2, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU1",
+      "rates": { "default": { "nevera_puertas": 5 }, "by_sede": {} },
+      "valor": 3, "origen": "cara/n"
+    },
+    {
+      "nombre": "sin tarifa de la nevera ni de la puerta: no hay referencia",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU1",
+      "rates": { "default": {}, "by_sede": {} },
+      "valor": null, "origen": ""
+    },
+    {
+      "nombre": "una tarifa en cero no es una tarifa",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU1",
+      "rates": { "default": { "nevera_puertas": 900000, "parte_puerta": 0 }, "by_sede": {} },
+      "valor": 300000, "origen": "cara/n"
+    },
+    {
+      "nombre": "sin tarifas cargadas (un trabajador no las ve): nada",
+      "mueble": { "code": "NEV-03", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
+      "sede": "NAVE", "parte": "PU1",
+      "rates": null,
+      "valor": null, "origen": ""
+    }
+  ],
+  "reservados": [
+    { "nombre": "GON-01-B", "reservado": true },
+    { "nombre": "NEV-03-PU2", "reservado": true },
+    { "nombre": "GON-01-TR2", "reservado": true },
+    { "nombre": "GON-01-EN1", "reservado": true },
+    { "nombre": "CAJ-04-BI1", "reservado": true },
+    { "nombre": "CAJ-04-FO", "reservado": true },
+    { "nombre": "GON-01-CP", "reservado": true },
+    { "nombre": "gon-01-cn ", "reservado": true },
+    { "nombre": "GON-01-ST3", "reservado": true },
+    { "nombre": "GON-01", "reservado": false },
+    { "nombre": "NAVE-NEV-03", "reservado": false },
+    { "nombre": "PUN-01", "reservado": false },
+    { "nombre": "PU2", "reservado": false },
+    { "nombre": "GON-01-BX", "reservado": false },
+    { "nombre": "GON-01-PUERTA", "reservado": false },
+    { "nombre": "GON-01-A", "reservado": false }
+  ],
+  "numeracion": [
+    { "cara": "A", "k": 1, "n": 3, "vano": 2 },
+    { "cara": "A", "k": 2, "n": 3, "vano": 1 },
+    { "cara": "A", "k": 3, "n": 3, "vano": 0 },
+    { "cara": "B", "k": 1, "n": 3, "vano": 0 },
+    { "cara": "B", "k": 3, "n": 3, "vano": 2 },
+    { "cara": "A", "k": 1, "n": 2, "vano": 1 }
+  ],
+  "tipadas": [
+    { "nombre": "lo conocido pasa con su tipo", "partes": { "puertas": 3, "division": "puertas" }, "salida": { "puertas": 3, "division": "puertas" } },
+    { "nombre": "lo que alguien le escriba adentro, no", "partes": { "puertas": 3, "proveedor": "Postobón", "valor": 2500000 }, "salida": { "puertas": 3 } },
+    { "nombre": "una división que no es de ninguna clase, no", "partes": { "puertas": 3, "division": "Postobón" }, "salida": { "puertas": 3 } },
+    { "nombre": "puertas que no son un entero, no", "partes": { "puertas": "3", "division": "puertas" }, "salida": { "division": "puertas" } },
+    { "nombre": "verdadero no es una cantidad", "partes": { "puertas": true }, "salida": {} },
+    { "nombre": "un objeto adentro de la división, no", "partes": { "division": { "valor": 1 } }, "salida": {} },
+    { "nombre": "no es un objeto", "partes": [3], "salida": {} }
+  ]
+}

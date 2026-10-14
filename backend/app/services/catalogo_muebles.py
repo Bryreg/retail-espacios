@@ -84,6 +84,23 @@ REFERENCIAS: dict[str, str] = {
 }
 
 
+#: Vender por partes (``partes`` en el archivo): qué es cada clase —la puerta
+#: de la nevera, y lo que venga— una sola vez, con su token, si divide la cara,
+#: el campo de ``partes`` que la cuenta, su tarifa y cómo la nombran los
+#: informes. La regla la aplica ``services/partes.py``.
+CLASES_DE_PARTE: dict[str, dict] = _DATOS["partes"]["clases"]
+
+#: Los finales de código que ningún mueble puede tomar al renombrarse: los
+#: tokens de las partes de hoy y de las que vienen, y la cara B.
+RESERVADOS: frozenset[str] = frozenset(_DATOS["partes"]["reservados"])
+
+#: Qué divisiones admite cada tipo (``tipos[t].partes.divisiones``).
+DIVISIONES_POR_TIPO: dict[str, tuple[str, ...]] = {
+    tipo: tuple((d.get("partes") or {}).get("divisiones") or ())
+    for tipo, d in TIPOS.items() if (d.get("partes") or {}).get("divisiones")
+}
+
+
 def tipo_de_tarifa(tipo: str) -> str:
     """La clave de tarifa de un tipo de mueble. Lo que no tiene tarifa —lo que
     no se vende, un tipo que el catálogo no conoce— contesta su propio tipo,
@@ -178,7 +195,29 @@ CAMPOS_DE_FICHA_PROPIA: tuple[str, ...] = (
 CAMPOS_DE_FUENTE: tuple[str, ...] = ("url", "nota", "confiabilidad")
 
 _NOMBRE_DE_MEDIDA = {"w": "el ancho", "d": "el fondo", "h": "el alto"}
-_NOMBRE_DE_GEOMETRIA = {"entrepanos": "los entrepaños", "modulo": "el módulo", "puertas": "las puertas"}
+_NOMBRE_DE_GEOMETRIA = {"entrepanos": "los entrepaños", "modulo": "el módulo", "puertas": "las puertas",
+                        "division": "cómo se vende por partes"}
+
+#: Lo que puede vivir adentro de ``partes`` de un mueble o de una ficha, con su
+#: tipo: las claves de ``fichas.geometria`` que van en ``partes``. Es la lista
+#: blanca que copian el enlace de la mercaderista (``_solo_geometria``) y el
+#: visor de Vender (``sinDatosComerciales``): un número donde va un número, una
+#: palabra de la lista cerrada donde va una palabra, y nada más.
+CAMPOS_DE_PARTES: dict[str, dict] = {
+    campo: regla for campo, regla in REGLAS_DE_FICHA["geometria"].items() if regla["enPartes"]
+}
+
+
+def _valores_de(regla: dict, familia: dict | None) -> tuple[str, ...] | None:
+    """La lista cerrada de un campo de palabras (``division``): la de su
+    familia (``partes.divisiones``) o, sin familia, la de todas las clases.
+    ``None`` si el campo es un número."""
+    clave = regla.get("valores")
+    if not clave:
+        return None
+    if familia is None:
+        return tuple(CLASES_DE_PARTE)
+    return tuple((familia.get("partes") or {}).get(clave) or ())
 
 
 def _numero(x) -> bool:
@@ -276,16 +315,31 @@ def problemas_de_la_ficha(ficha, *, nueva: bool = True) -> list[tuple[str, str]]
 
         partes = ficha.get("partes")
         if partes is not None and not (
-            isinstance(partes, dict)
-            and all(k in REGLAS_DE_FICHA["geometria"] and REGLAS_DE_FICHA["geometria"][k]["enPartes"] for k in partes)
+            isinstance(partes, dict) and all(k in CAMPOS_DE_PARTES for k in partes)
         ):
-            mal.append(("partes", "las partes sólo llevan números conocidos (puertas)"))
+            mal.append(("partes", "las partes sólo llevan lo conocido (las puertas y cómo se vende)"))
             partes = None
         admite = familia.get("geometria") or {}
         for campo, regla in REGLAS_DE_FICHA["geometria"].items():
             donde = f"partes.{campo}" if regla["enPartes"] else campo
             v = (partes or {}).get(campo) if regla["enPartes"] else ficha.get(campo)
             if v is None:
+                continue
+            valores = _valores_de(regla, familia)
+            if valores is not None:
+                # Una palabra de una lista cerrada: cómo se vende por partes.
+                if not valores:
+                    mal.append((donde, f"la familia «{tipo}» se vende entera: no tiene partes"))
+                elif not isinstance(v, str) or v not in valores:
+                    mal.append((donde, "se vende por " + " o por ".join(
+                        CLASES_DE_PARTE[c]["plural"] for c in valores)))
+                else:
+                    # Dividir pide saber en cuántas: sin la cuenta no hay partes.
+                    clase = CLASES_DE_PARTE[v]
+                    n = (partes or {}).get(clase["campo"])
+                    if not (_numero(n) and float(n) == int(n) and n >= clase["minimo"]):
+                        mal.append((donde, f"para venderla por {clase['plural']}, la ficha dice cuántas "
+                                           f"({clase['minimo']} o más)"))
                 continue
             r = admite.get(campo)
             if r is None:
@@ -345,9 +399,17 @@ def ficha_normalizada(ficha: dict) -> dict:
         salida["entrepanos"] = int(ficha["entrepanos"])
     if ficha.get("modulo") is not None:
         salida["modulo"] = round(float(ficha["modulo"]), 3)
-    puertas = (ficha.get("partes") or {}).get("puertas")
-    if puertas is not None:
-        salida["partes"] = {"puertas": int(puertas)}
+    # De `partes`, cada clave conocida con su tipo (`CAMPOS_DE_PARTES`): hasta
+    # vender por partes se guardaban sólo las puertas, y la manera de venderla
+    # que la dueña eligió en el taller se perdía sin aviso.
+    partes = {}
+    for campo, regla in CAMPOS_DE_PARTES.items():
+        v = (ficha.get("partes") or {}).get(campo)
+        if v is None:
+            continue
+        partes[campo] = v if regla.get("valores") else (int(v) if regla["entero"] else round(float(v), 3))
+    if partes:
+        salida["partes"] = partes
     if ficha.get("tarifa") is not None:
         salida["tarifa"] = ficha["tarifa"]
     fuente = ficha["fuente"]

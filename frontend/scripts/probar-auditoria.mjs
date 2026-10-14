@@ -122,6 +122,19 @@ prueba("un tipo que NUNCA se alquila tampoco ofrece", () => {
   assert.equal(contratosSinMueble(planos, { "NAVE-CAJ-01": vendido() }).length, 1);
 });
 
+prueba("una puerta ofrecida no es fantasma; la de una nevera que se vende entera, sí", () => {
+  // Vender por partes: `NEV-03-PU2` es un espacio que el plano ofrece sólo si
+  // la nevera se vende por puertas (`espacios_de` del servidor).
+  const nevera = (partes) => mueble("NEV-03", { type: "nevera_puertas", partes });
+  const estado = { "NAVE-NEV-03-PU2": vendido() };
+  assert.deepEqual(contratosSinMueble({ NAVE: [nevera({ puertas: 3, division: "puertas" })] }, estado), []);
+  const entera = contratosSinMueble({ NAVE: [nevera({ puertas: 3 })] }, estado);
+  assert.deepEqual(entera.map((x) => [x.sede, x.code]), [["NAVE", "NEV-03-PU2"]]);
+  // La PU4 de una nevera de 3 tampoco la ofrece nadie.
+  assert.equal(contratosSinMueble({ NAVE: [nevera({ puertas: 3, division: "puertas" })] },
+    { "NAVE-NEV-03-PU4": vendido() }).length, 1);
+});
+
 prueba("EL IMP-17 DE LA OTRA TIENDA NO LO TAPA", () => {
   // El bug entero en una línea: `PUN-15` existe en NAVE, no en CIUDAD JARDIN.
   const r = contratosSinMueble(dosSedes(), { "CIUDAD JARDIN-PUN-15": vendido() });
@@ -224,17 +237,27 @@ const servidor = readFileSync(
   join(aqui, "..", "..", "backend", "app", "services", "layout_lookup.py"), "utf8",
 );
 
+/* Desde la venta por partes, `espacios_ofrecidos` junta los `espacios_de` de
+   cada mueble (sus caras y sus partes): las reglas de abajo viven ahí. */
+const espaciosDeServidor = () => {
+  const o = servidor.match(/def espacios_ofrecidos[\s\S]*?\n    return ofrecidos/);
+  assert.ok(o, "no se encontró `espacios_ofrecidos` en el servidor");
+  assert.match(o[0], /ofrecidos\.update\(espacios_de\(/, "`espacios_ofrecidos` dejó de juntar `espacios_de` de cada mueble");
+  const m = servidor.match(/def espacios_de\([\s\S]*?\n    return fuera/);
+  assert.ok(m, "no se encontró `espacios_de` en el servidor");
+  return m;
+};
+
 prueba("el servidor sigue saltándose lo no comercializable", () => {
-  const m = servidor.match(/def espacios_ofrecidos[\s\S]*?\n    return ofrecidos/);
-  assert.ok(m, "no se encontró `espacios_ofrecidos` en el servidor");
+  const m = espaciosDeServidor();
   assert.match(m[0], /es_comercializable\(fixture\)/,
     "el servidor dejó de mirar si el mueble se alquila: un mueble marcado no " +
     "comercializable volvería a poder sacarse del plano con un contrato vivo");
 });
 
 prueba("el servidor sigue contando la cara B como un espacio aparte, con `caras_de`", () => {
-  const m = servidor.match(/def espacios_ofrecidos[\s\S]*?\n    return ofrecidos/);
-  assert.match(m[0], /if caras_de\(fixture\) == 2:\s*\n\s*ofrecidos\.add\(f"\{completo\}-B"\)/,
+  const m = espaciosDeServidor();
+  assert.match(m[0], /caras = caras_de\(fixture\)\s*\n\s*if caras == 2:\s*\n\s*fuera\.append\(f"\{completo\}-B"\)/,
     "el servidor dejó de preguntarle a `caras_de` si el mueble tiene cara B");
 });
 
@@ -391,8 +414,8 @@ prueba("quien pregunta por la cara B usa `carasDe` / `caras_de`, no una propia",
 });
 
 prueba("el servidor sigue armando el código con la sede", () => {
-  const m = servidor.match(/def espacios_ofrecidos[\s\S]*?\n    return ofrecidos/);
-  assert.match(m[0], /_full_code\(code, sede\)/,
+  const m = espaciosDeServidor();
+  assert.match(m[0], /_full_code\(code, str\(fixture\.get\("sede"\) or sede or ""\)\)/,
     "el servidor dejó de usar `_full_code`: indexar por el código corto mezcla " +
     "tiendas, que es el bug original");
 });

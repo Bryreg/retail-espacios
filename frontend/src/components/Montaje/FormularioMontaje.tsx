@@ -36,6 +36,10 @@ export interface EspacioAMontar {
   proveedor: string;
   desde: string;
   hasta: string;
+  /** Vender por partes: qué parte del mueble es, dicho para quien la arma
+   *  («Puerta 2 de 3, contando de izquierda a derecha mirando el frente»).
+   *  Sin esto, el mueble o la cara entera. */
+  parte?: string | null;
 }
 
 /** La planometría, ya resuelta a algo que un `<img>` puede abrir. */
@@ -239,6 +243,13 @@ export default function FormularioMontaje({
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--ink-3)" }}>
           {item.sede} · {item.corto}
         </div>
+        {/* Cuál puerta, contada desde dónde: con tres puertas iguales, es lo
+            único que evita armar la exhibición en la equivocada. */}
+        {item.parte && (
+          <div data-parte-a-montar style={{ fontSize: 13.5, fontWeight: 700, color: "var(--accent-700)", marginTop: 4 }}>
+            {item.parte}
+          </div>
+        )}
         <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2, letterSpacing: "-0.02em" }}>
           {item.proveedor || "Sin proveedor"}
         </div>

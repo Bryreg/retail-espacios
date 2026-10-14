@@ -1,5 +1,6 @@
 import type { UnifiedFixture } from "../types/fixtures";
 import { carasDe, fullSpaceCode, isRentable } from "../types/fixtures";
+import { codigoDeParte, partesDe } from "./partes";
 import type { EstadoPorEspacio } from "./estadoComercial";
 
 /**
@@ -77,6 +78,10 @@ function espaciosOfrecidos(
       const completo = fullSpaceCode(normalizar(f.sede || clave), code);
       ofrecidos.add(completo);
       if (carasDe(f) === 2) ofrecidos.add(`${completo}-B`);
+      // Vender por partes: las puertas que el mueble ofrece (`NEV-03-PU2`),
+      // como `espacios_de` del servidor. Una puerta vendida de una nevera que
+      // hoy se vende entera NO está: es un contrato que ningún plano dibuja.
+      for (const { cara, parte } of partesDe(f)) ofrecidos.add(codigoDeParte(completo, cara, parte));
     }
   }
   return ofrecidos;

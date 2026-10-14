@@ -114,6 +114,7 @@ from app.models.models import (
     Space,
 )
 from app.services import catalogo_muebles
+from app.services.partes import partir_codigo
 from app.services.layout_lookup import (
     _full_code,
     _huella,
@@ -547,9 +548,15 @@ def planificar_sede(db: Session, sede: str) -> PlanSede:
 
 
 def _base_y_cara(codigo: str) -> tuple[str, str]:
-    """``NAVE-GON-01-B`` → ``("NAVE-GON-01", "-B")``. La cara B comparte mueble."""
+    """``NAVE-GON-01-B`` → ``("NAVE-GON-01", "-B")``. La cara B comparte mueble.
+
+    Y la parte también (vender por partes): ``NAVE-NEV-03-PU2`` →
+    ``("NAVE-NEV-03", "-PU2")``, ``NAVE-GON-05-B-PU1`` → ``("NAVE-GON-05",
+    "-B-PU1")``. Renumerar la nevera muda sus puertas vendidas, sus montajes y
+    su ``svg_id`` con ella: el sufijo viaja tal cual."""
     c = normalizar(codigo)
-    return (c[:-2], "-B") if c.endswith("-B") else (c, "")
+    partido = partir_codigo(c)
+    return partido.base, c[len(partido.base):]
 
 
 def _svg_nuevo(svg: str, viejo: str, nuevo: str) -> str:

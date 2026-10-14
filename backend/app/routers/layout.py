@@ -11,13 +11,19 @@ from app.models.models import LayoutSnapshot
 from app.services.bitacora import anotar
 from app.services.catalogo_muebles import tipo_base
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
+from app.services.candado import tomar_candados
+from app.services.catalogo_muebles import CAMPOS_DE_PARTES
 from app.services.layout_lookup import (
     CAMPOS_DE_CONTRATO,
     CLAVES_DE_FICHA,
     choques_nuevos,
     contratos_que_quedarian_sin_mueble,
+    espacios_ofrecidos,
+    nombres_reservados_nuevos,
     normalizar,
+    partes_que_se_moverian,
 )
+from app.services.partes import firma_de_partes
 from app.services.renumeracion import (
     InvarianteRoto,
     RenumeracionBloqueada,
@@ -237,6 +243,13 @@ def _con_la_ficha_de_antes(incoming: list, stored: list) -> None:
     Un plano que no trae ninguna de estas claves y no las tenía guardadas se
     guarda exactamente igual que antes. Sólo el primer nivel del mueble: la
     ficha no vive en la cara B.
+
+    **Y adentro de ``partes``, lo mismo** (vender por partes, 2026-10-14):
+    ``partes`` es un objeto, y una pestaña con el código de antes que lo armara
+    sólo con lo que conoce (las puertas) borraría ``division`` —y con ella la
+    venta por puertas— sin saberlo. Cada clave conocida de ``partes``
+    (``CAMPOS_DE_PARTES``) que llega AUSENTE se rellena con la guardada, y un
+    ``null`` adentro la borra. ``partes`` que queda vacío se va.
     """
     previos = {
         f.get("id"): f for f in stored
@@ -255,6 +268,34 @@ def _con_la_ficha_de_antes(incoming: list, stored: list) -> None:
                 continue
             if previo is not None and previo.get(clave) is not None:
                 fixture[clave] = copy.deepcopy(previo[clave])
+        partes = fixture.get("partes")
+        if isinstance(partes, dict):
+            antes = (previo or {}).get("partes")
+            for clave in CAMPOS_DE_PARTES:
+                if clave in partes:
+                    if partes[clave] is None:
+                        partes.pop(clave)
+                elif isinstance(antes, dict) and antes.get(clave) is not None:
+                    partes[clave] = copy.deepcopy(antes[clave])
+            if not partes:
+                fixture.pop("partes")
+
+
+def _candados_del_guardado(db: Session, sede: str, previas: list, nuevas: list) -> None:
+    """Toma los candados de los muebles que este guardado retira de la venta o
+    cuya forma de venderse por partes cambia. Sin eso, bajar la nevera de 3 a 2
+    puertas y vender la puerta 3 al mismo tiempo pasaban los dos: el guardado
+    no veía el contrato todavía y la venta no veía el plano todavía."""
+    previas = [f for f in previas if isinstance(f, dict)]
+    nuevas = [f for f in nuevas if isinstance(f, dict)]
+    codigos = set(espacios_ofrecidos(previas, sede) ^ espacios_ofrecidos(nuevas, sede))
+    firmas = {normalizar(f.get("code")): firma_de_partes(f) for f in previas if normalizar(f.get("code"))}
+    for f in nuevas:
+        code = normalizar(f.get("code"))
+        if code in firmas and firmas[code] != firma_de_partes(f):
+            codigos.add(f"{normalizar(sede)}-{code}" if not code.startswith(f"{normalizar(sede)}-") else code)
+    if codigos:
+        tomar_candados(db, codigos)
 
 
 # ─── El nombre viejo: se lee del registro, no del mueble ──────────────────────
@@ -852,6 +893,36 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                 },
             )
 
+        # ── Un nombre que se lee como una parte ───────────────────────────────
+        #
+        # Con la venta por partes, `NEV-03-PU2` es la puerta 2 de `NEV-03`. Un
+        # mueble que se llamara así —o `GON-01-B`, o `GON-01-TR2`, el token de
+        # lo que viene— tendría un código que se lee como una parte de otro.
+        # Sólo lo que este guardado agrega: un plano viejo con un nombre así se
+        # sigue guardando.
+        reservados = nombres_reservados_nuevos(
+            [f for f in previous if isinstance(f, dict)],
+            [f for f in fixtures if isinstance(f, dict)],
+        )
+        if reservados:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "nombre_reservado",
+                    "message": (
+                        f"Este guardado le pondría a {len(reservados)} mueble(s) de «{sede}» un "
+                        "nombre que se lee como el código de una parte."
+                    ),
+                    "choques": reservados,
+                },
+            )
+
+        # Los candados de los muebles que este guardado retira o cuya forma de
+        # venderse por partes cambia: una venta que confirma al mismo tiempo
+        # espera, y la guarda de abajo lee los contratos ya con el candado
+        # puesto (`services/candado.py`).
+        _candados_del_guardado(db, sede, previous, fixtures)
+
         # ── La tercera puerta: sacar de circulación algo que está vendido ────
         #
         # Borrar el mueble, pasar la góndola de doble a simple o marcarlo «no
@@ -883,6 +954,34 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                         f"espacio(s) que tienen contrato vivo."
                     ),
                     "choques": huerfanos,
+                },
+            )
+
+        # ── La cuarta: mover una parte vendida ───────────────────────────────
+        #
+        # La puerta vendida que sigue existiendo pero en otro lugar: con la
+        # puerta 1 vendida, pasar la nevera de 3 a 2 puertas convierte la
+        # «puerta 1» en otra hoja, y lo que firmó el proveedor ya no es lo que
+        # se monta. Lo que desaparece lo frenó la de arriba.
+        movidas = partes_que_se_moverian(
+            db, sede,
+            [f for f in previous if isinstance(f, dict)],
+            [f for f in fixtures if isinstance(f, dict)],
+        )
+        if movidas:
+            logger.info(
+                "layout %s: guardado rechazado por partes vendidas — %s",
+                sede, " · ".join(movidas),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "partes_vendidas",
+                    "message": (
+                        f"Este guardado movería {len(movidas)} parte(s) que tienen contrato "
+                        f"vivo o firmado en «{sede}»."
+                    ),
+                    "choques": movidas,
                 },
             )
 

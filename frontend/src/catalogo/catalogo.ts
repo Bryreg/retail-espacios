@@ -87,14 +87,51 @@ export interface Medidas { w: number; d: number; h: number }
  *    pantalla lleva un «≈». */
 export type Confiabilidad = "ficha" | "catalogo" | "estimado";
 
-/** Las partes de un mueble que cuenta su ficha. Hoy, las puertas de la nevera
- *  de puertas, que sólo sirven para dibujarla: se vende entera. Sólo números:
- *  nunca lleva nada comercial. */
-export interface PartesDeMueble { puertas?: number }
+/** Las partes de un mueble que cuenta su ficha: las puertas de la nevera de
+ *  puertas (dibujan las hojas) y, desde vender por partes, `division`: si la
+ *  cara se vende ADEMÁS por esas partes (`"puertas"`: entera o por puertas,
+ *  `NEV-03-PU2`). Sin `division`, el mueble se vende entero, como siempre.
+ *  Sólo números y una palabra de una lista cerrada: nunca lleva nada
+ *  comercial. En el mueble del plano, un `null` adentro es «borrado a
+ *  propósito» (como en la ficha: ver `UnifiedFixture.modelo`). */
+export interface PartesDeMueble { puertas?: number | null; division?: string | null }
 
 /** La geometría que un modelo puede fijar, por tipo, con su rango: los
- *  entrepaños y el módulo de la góndola, las puertas de la nevera de puertas. */
-export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas";
+ *  entrepaños y el módulo de la góndola, las puertas de la nevera de puertas
+ *  y cómo se vende por partes (`division`, de la lista de su familia). */
+export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas" | "division";
+
+/** Una clase de parte (`partes.clases` en `muebles.json`): la puerta de la
+ *  nevera, y lo que venga. Ver `utils/partes.ts`. */
+export interface ClaseDeParte {
+  /** Dos letras: `PU`. El código de la parte es el de la cara y `-PU2`. */
+  token: string;
+  /** `division` parte la cara y choca con la cara entera; `pieza`, no. */
+  es: "division" | "pieza";
+  /** Por dónde se cuentan: `ancho`, de izquierda a derecha mirando el frente. */
+  eje: "ancho" | "alto" | null;
+  /** El campo de `partes` que dice cuántas hay. */
+  campo: string;
+  /** Menos que esto no es dividir (una nevera de una puerta se vende entera). */
+  minimo: number;
+  /** Una por mueble y sin número (el forro, cuando llegue). */
+  unico?: boolean;
+  singular: string;
+  plural: string;
+  /** La tarifa de referencia por clase (`parte_puerta`). Vacía: la de la cara
+   *  dividida por la cantidad de partes. */
+  tarifa: string;
+  informe: string;
+  informePlural: string;
+}
+
+/** Vender por partes, en el catálogo. */
+export interface PartesDelCatalogo {
+  leeme: string[];
+  clases: Record<string, ClaseDeParte>;
+  /** Los finales de código que ningún mueble puede tomar al renombrarse. */
+  reservados: string[];
+}
 
 /** Una ficha de un mueble de verdad. Ver «Los modelos», arriba. Las de este
  *  archivo traen las tres cosas de la fuente; una ficha propia del
@@ -167,6 +204,8 @@ export interface TipoDeMueble extends FormaDeMueble {
   rango?: Record<keyof Medidas, [number, number]>;
   /** Qué geometría puede fijar un modelo de este tipo, y entre qué valores. */
   geometria?: Partial<Record<CampoDeGeometria, [number, number]>>;
+  /** De qué formas se puede vender por partes (`partes.clases`). */
+  partes?: { divisiones?: string[] };
 }
 
 /** Las reglas de una ficha (`fichas` en `muebles.json`). Ver `catalogo/fichas.ts`. */
@@ -177,8 +216,10 @@ export interface ReglasDeFicha {
   /** La expresión que tiene que cumplir la clave de una ficha propia. */
   clave: string;
   confiabilidad: Confiabilidad[];
-  /** Dónde vive cada campo de geometría (en `partes` o suelto) y si es entero. */
-  geometria: Record<CampoDeGeometria, { enPartes: boolean; entero: boolean }>;
+  /** Dónde vive cada campo de geometría (en `partes` o suelto), si es entero
+   *  y, si es una palabra de una lista cerrada, dónde está la lista de su
+   *  familia (`valores`: `divisiones` es `tipos[t].partes.divisiones`). */
+  geometria: Record<CampoDeGeometria, { enPartes: boolean; entero: boolean; valores?: string }>;
   /** La URL de una fuente que es una imagen: nunca se guarda una foto. */
   fuenteQueEsImagen: string;
   largoMaximo: { nombre: number; url: number; nota: number };
@@ -198,6 +239,8 @@ export interface CatalogoDeMuebles {
   tarifas: { clave: string; rotulo: string }[];
   /** Las fichas de muebles de verdad. Ver «Los modelos», arriba. */
   modelos: ModeloDeMueble[];
+  /** Vender por partes: las clases y los finales reservados. */
+  partes: PartesDelCatalogo;
   /** Las reglas de una ficha, las mismas para los modelos de este archivo y
    *  para las fichas propias de cada supermercado: las lee `catalogo/fichas.ts`
    *  y, del lado del servidor, `catalogo_muebles.py`. */
@@ -285,6 +328,12 @@ export function nombresDeInforme(): { singular: Record<string, string>; plural: 
   for (const m of C.modelos) {
     if (m.tarifa && m.informe) singular[m.tarifa] = m.informe;
     if (m.tarifa && m.informePlural) plural[m.tarifa] = m.informePlural;
+  }
+  // Las partes cuentan por la tarifa de su clase: la consola dice «puertas de
+  // nevera», no `parte_puerta`.
+  for (const c of Object.values(C.partes.clases)) {
+    singular[c.tarifa] = c.informe;
+    plural[c.tarifa] = c.informePlural;
   }
   return { singular, plural };
 }

@@ -30,7 +30,8 @@ from app.fechas import ZONA_DEL_NEGOCIO, hoy
 from app.models.models import LayoutSnapshot, LeaseFile, MountConfirmation, Space, SpaceFile, SpaceLease
 from app.routers.mounts import MountOut, registrar_montaje
 from app.services.contratos import contrato_para_montar
-from app.services.layout_lookup import PARTES_GEOMETRICAS, describe_location
+from app.services.layout_lookup import describe_location
+from app.services.partes import cantidad_de, partes_tipadas, partir_codigo, texto_para_montar
 
 router = APIRouter(prefix="/montaje", tags=["montaje"], dependencies=[Depends(require_montaje)])
 
@@ -98,6 +99,10 @@ class EspacioMontaje(BaseModel):
     #: del arranque del contrato del enlace. Mientras tanto la pantalla lo dice
     #: en vez de ofrecer el formulario.
     se_confirma_desde: Optional[str] = None
+    #: Si el espacio es una parte del mueble (``NEV-03-PU2``), cuál, dicho para
+    #: armarla: «Puerta 2 de 3, contando de izquierda a derecha mirando el
+    #: frente». ``None`` es la cara entera. Ni plata ni quién tiene las otras.
+    parte: Optional[dict] = None
 
 
 # ─── Resolución ───────────────────────────────────────────────────────────────
@@ -119,8 +124,9 @@ def _codigo(quien: Quien, code: Optional[str]) -> str:
 
 
 def _base(code: str) -> str:
-    """El código del espacio sin el sufijo de cara."""
-    return code[:-2] if code.endswith("-B") else code
+    """El código del espacio sin el sufijo de cara ni la parte: la cara B y la
+    puerta 2 se montan en el mismo mueble."""
+    return partir_codigo(code).base
 
 
 def _fixtures(db: Session, sede: str) -> list[dict]:
@@ -147,13 +153,12 @@ def _solo_geometria(fixture: dict) -> dict:
         if _es_numero(fixture.get(clave)):
             fuera[clave] = fixture[clave]
     # `partes` no pasa entera: es un objeto, y un objeto de la lista blanca se
-    # llevaría lo que le escriban adentro mañana. Pasan sus números
-    # conocidos, copiados uno por uno.
-    partes = fixture.get("partes")
-    if isinstance(partes, dict):
-        numeros = {k: partes[k] for k in PARTES_GEOMETRICAS if _es_numero(partes.get(k))}
-        if numeros:
-            fuera["partes"] = numeros
+    # llevaría lo que le escriban adentro mañana. Pasa lo conocido (las
+    # puertas y cómo se vende), copiado clave por clave y con su tipo
+    # (`partes.partes_tipadas`, que sale del catálogo).
+    partes = partes_tipadas(fixture.get("partes"))
+    if partes:
+        fuera["partes"] = partes
     return fuera
 
 
@@ -300,8 +305,18 @@ def mi_espacio(
                 ultimo_out.foto_nombre, ultimo_out.foto_tipo = datos
 
     corto = str(mueble.get("code") or "") or (base[len(sede) + 1:] if sede and base.startswith(f"{sede}-") else base)
-    if codigo.endswith("-B"):
+    # El sufijo completo: la cara B y la parte (`NEV-03-PU2`, `GON-05-B-PU1`).
+    partido = partir_codigo(codigo)
+    if partido.cara == "B":
         corto = f"{corto}-B"
+    parte = None
+    if partido.parte is not None:
+        corto = f"{corto}-{partido.parte.sufijo}"
+        de = cantidad_de(mueble, partido.parte.clase) if mueble else None
+        parte = {
+            "token": partido.parte.token, "n": partido.parte.n, "de": de,
+            "texto": texto_para_montar(partido.parte, de),
+        }
 
     return EspacioMontaje(
         code=codigo,
@@ -321,6 +336,7 @@ def mi_espacio(
         ultimo=ultimo_out,
         vence=quien.vence,
         se_confirma_desde=se_confirma_desde,
+        parte=parte,
     )
 
 

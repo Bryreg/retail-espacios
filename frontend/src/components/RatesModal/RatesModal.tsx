@@ -4,6 +4,15 @@ import { useFixtureStore } from "../../store/fixtureStore";
 import { RATE_TYPES, rateTypeLabel } from "../../types/fixtures";
 import { useModalAbierto } from "../../tema";
 import { nombreDeTarifa } from "../../catalogo/nombresPropios";
+import { CATALOGO_DE_MUEBLES } from "../../catalogo/catalogo";
+
+/** Las tarifas que son de una DIVISIÓN (`parte_puerta` → «puertas»): vacías,
+ *  la referencia es la del mueble entero dividida por sus partes. */
+const DIVISION_POR_TARIFA: ReadonlyMap<string, string> = new Map(
+  Object.values(CATALOGO_DE_MUEBLES.partes.clases)
+    .filter((c) => c.es === "division")
+    .map((c) => [c.tarifa, c.plural]),
+);
 
 /** Tariff editor (admin only). One general rate per fixture type plus an
  *  optional override for the sede being edited. Every keystroke goes through
@@ -186,6 +195,13 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
                         {dicho !== label && (
                           <span data-nombre-recabra style={{ display: "block", fontSize: 10.5, color: "var(--ink-3)" }}>
                             {label} en RECABRA
+                          </span>
+                        )}
+                        {/* Vender por partes: la tarifa de una puerta. Vacía, Vender
+                            sugiere la de la nevera dividida por sus puertas. */}
+                        {DIVISION_POR_TARIFA.has(type) && (
+                          <span data-tarifa-de-parte style={{ display: "block", fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "normal" }}>
+                            Vacía: se sugiere la del mueble ÷ cantidad de {DIVISION_POR_TARIFA.get(type)}
                           </span>
                         )}
                       </td>

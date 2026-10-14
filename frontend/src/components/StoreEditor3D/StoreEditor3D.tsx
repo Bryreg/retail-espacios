@@ -75,6 +75,7 @@ import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catal
 import { conNombrePropio } from "../../catalogo/nombresPropios";
 import { useFichasPropias } from "../../store/fichasPropias";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
+import { PartesDelMueble } from "../PartesDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
@@ -167,6 +168,9 @@ export interface FacePaint {
    *  lámina sólo dibuja la otra cara. */
   pruebaA?: PruebaDeCara | null;
   pruebaB?: PruebaDeCara | null;
+  /** Vender por partes: las puertas de la cara A que se están vendiendo (los
+   *  vanos del dibujo). La nevera las marca y la prueba va sólo detrás. */
+  puertasA?: readonly number[];
 }
 
 /** CÓMO se prueba un producto en una cara: en qué entrepaños y si va
@@ -2091,7 +2095,9 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas }
   const pa = facePaint?.pruebaA;
   // Es un aviso LUMINOSO (retroiluminado) y, en una botella transparente,
   // recorta la franja de su etiqueta y no la del medio de la foto.
-  const cabezote = enPrueba && pa?.etiqueta && pa.donde === "todas" && pa.copete !== false
+  // Vendiendo puertas sueltas (`pa.vanos`), el cabezote es de la nevera
+  // entera: no lleva la marca de quien compra una puerta.
+  const cabezote = enPrueba && pa?.etiqueta && pa.donde === "todas" && pa.copete !== false && !pa.vanos
     ? materialDeCopete(pa.etiqueta, w - NEVERA.chapa * 2, NEVERA.copete * 0.62, entorno, {
       retroiluminado: true, franja: !!pa.empaque?.transparente,
     })
@@ -2106,6 +2112,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas }
         cabezote={cabezote}
         variante={conPuertas ? "puertas" : "multideck"}
         puertas={puertas}
+        resaltadas={conPuertas ? facePaint?.puertasA : undefined}
         // El relleno mudo se apaga cuando el proveedor subió su arte: lo que
         // se ve en el mueble tiene que ser SU producto, no uno inventado.
         conRelleno={!pinta && !enPrueba}
@@ -5292,6 +5299,10 @@ interface SceneProps {
   comoSePrueba:      ReadonlyMap<string, ComoSePrueba>;
   /** El catálogo: de ahí salen la ficha y el modo de fondo de cada arte. */
   catalogo:          Arte[];
+  /** Vender por partes, en el visor de Vender: las puertas que se venden de
+   *  cada cara (`${fixtureId}|A` → vanos del dibujo). Se marcan y la prueba
+   *  va sólo detrás de ellas. Sin esto, las caras enteras. */
+  vanosALaVenta?:    ReadonlyMap<string, readonly number[]>;
   /** La pantalla de venta: limpia y sin datos de otros proveedores. */
   presentationMode:  boolean;
   /** Para quién es lo que se dibuja (`muebles/privacidad.ts`): `undefined` en
@@ -5332,7 +5343,7 @@ export function Scene({
   onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
   onHoverFixture, fixtures, comoSePrueba, catalogo, presentationMode, pedidoDeToma, privadoPara,
-  estadoDeEscena, soloVenta = false,
+  estadoDeEscena, soloVenta = false, vanosALaVenta,
 }: SceneProps) {
   const { gl, camera, invalidate, size } = useThree();
   // Con un selector, y no el store entero: cada movimiento de la órbita
@@ -5460,9 +5471,11 @@ export function Scene({
           acostada = { empaque: empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: true }), filas: sin };
         }
       }
+      const vanos = vanosALaVenta?.get(`${fixId}|${cara}`);
       return {
         etiqueta, empaque, donde: como?.donde ?? "todas", semilla: `${fixId}|${cara}|${arteId}`, filas,
         copete: como?.copete ?? true, acostada,
+        ...(vanos && vanos.length ? { vanos } : {}),
         // El hablador: el nombre sin cifras y el precio SÓLO si está cargado
         // en la ficha; de un arte que esta pantalla no puede ver, ninguno.
         hablador: habladorALaVista(arte, catalogo, privadoPara),
@@ -5528,7 +5541,10 @@ export function Scene({
       const back = isDouble && !pruebaB
         ? caraPintada(arteB, `${fullCode}-B`, `${codeUC}-B`, uf?.faceB?.brandCategory ?? "")
         : null;
-      if (front || back || pruebaA || pruebaB) map.set(fix.id, { front, back, pruebaA, pruebaB });
+      const puertasA = vanosALaVenta?.get(`${fix.id}|A`);
+      if (front || back || pruebaA || pruebaB || puertasA) {
+        map.set(fix.id, { front, back, pruebaA, pruebaB, ...(puertasA && puertasA.length ? { puertasA } : {}) });
+      }
     }
     // Lo que está en prueba no se desaloja del caché de etiquetas.
     marcarEnUso(enUso);
@@ -5536,7 +5552,7 @@ export function Scene({
   // texVersion re-runs this memo when an async photo texture settles
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba,
-      catalogo, comoSePrueba, privadoPara]);
+      catalogo, comoSePrueba, privadoPara, vanosALaVenta]);
   // El foco de la pantalla de venta: los muebles con una prueba a la vista y
   // el de la toma. Los demás —los vecinos— se atenúan para no competir con lo
   // que se vende; sin ninguno (Presentar sin proveedor ni toma), nadie. En el
@@ -6765,6 +6781,9 @@ function CommercialPanel({
             entrepaños; con una cara vendida, pregunta diciendo qué se mueve—.
             Ver `components/GeometriaDelMueble.tsx`. */}
         <GeometriaDelMueble id={fix.id} puedeEditar={isAdmin} />
+        {/* Cómo se vende la nevera de puertas: entera, o entera o por
+            puertas. El mismo componente que el plano 2D. */}
+        <PartesDelMueble id={fix.id} puedeEditar={isAdmin} />
 
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-2 font-mono text-[10px] text-dark-ink-3">
           {/* Las medidas al milímetro, como la paleta y el panel del plano: con

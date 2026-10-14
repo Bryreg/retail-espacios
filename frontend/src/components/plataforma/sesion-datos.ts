@@ -214,11 +214,17 @@ export function derivar(d: DetalleCliente): Derivado {
     enOferta: libres + seLiberan,
     ocupacionPct: espacios.length === 0 ? null : ((ocupados + seLiberan) / espacios.length) * 100,
     contratos,
-    contratosEnPlano: espacios.filter((e) => e.contrato !== null).length,
+    // Las puertas vendidas son contratos sobre el plano, como las caras.
+    contratosEnPlano: espacios.filter((e) => e.contrato !== null).length
+      + espacios.reduce((s, e) => s + (e.partes?.length ?? 0), 0),
     ingresoMes,
     canonPromedio: contratos === 0 ? null : ingresoMes / contratos,
     gruposOportunidad: agruparOportunidades(d.oportunidades),
+    // Con las puertas vendidas: cada una vence por su lado, con su código.
     porVencer: espacios
+      .flatMap((e) => [e, ...(e.partes ?? []).map((p) => ({
+        ...e, codigo: p.codigo, codigo_corto: p.codigo_corto, contrato: p.contrato, partes: undefined,
+      }))])
       .filter((e) => e.contrato !== null && e.contrato.dias_para_vencer <= VENTANA_VENCIMIENTO)
       .map((e) => ({ espacio: e, dias: e.contrato!.dias_para_vencer }))
       .sort((a, b) => a.dias - b.dias),

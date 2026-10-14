@@ -151,13 +151,18 @@ prueba("el frontend y el backend dicen lo MISMO", () => {
     py, /if str\(fixture\.get\("type"\)[^)]*\) in NUNCA_ALQUILABLE:/,
     "el backend volvió a mirar sólo la bandera",
   );
-  // Los tres portones del servidor usan la misma función y no una copia.
-  for (const [archivo, ruta] of [
-    ["bulk_leases", join(repo, "backend", "app", "routers", "bulk_leases.py")],
-    ["plataforma_metricas", join(repo, "backend", "app", "plataforma_metricas.py")],
+  // Los tres portones del servidor usan la misma función y no una copia. La
+  // planilla y Vender pasan por la COMPUERTA de la venta por partes
+  // (`motivo_para_no_vender_parte`), que pregunta `es_comercializable` antes
+  // que nada: un mueble no comercializable no vende ni su cara ni sus partes.
+  assert.match(py, /def motivo_para_no_vender_parte[\s\S]*?\n    if not es_comercializable\(fixture\):/,
+    "la compuerta de la venta por partes dejó de preguntar `es_comercializable`");
+  for (const [archivo, ruta, regla] of [
+    ["bulk_leases", join(repo, "backend", "app", "routers", "bulk_leases.py"), /motivo_para_no_vender_parte\(fixture, /],
+    ["plataforma_metricas", join(repo, "backend", "app", "plataforma_metricas.py"), /es_comercializable\(/],
   ]) {
     const t = leer(ruta);
-    assert.match(t, /es_comercializable\(/, `\`${archivo}\` volvió a tener su propia copia de la regla`);
+    assert.match(t, regla, `\`${archivo}\` volvió a tener su propia copia de la regla`);
     assert.ok(
       !/rentable"\)\s+is\s+(not\s+)?False/.test(t),
       `\`${archivo}\` volvió a leer la bandera a mano`,

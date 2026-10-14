@@ -23,7 +23,10 @@ import type { UnifiedFixture } from "../types/fixtures";
  * clave deje de estar. El panel lo hace al vaciar un campo (`conGeometria`).
  * El deshacer también tiene que hacerlo: el plano repuesto es el de antes del
  * cambio, y si antes del cambio el mueble no tenía la clave, el arreglo
- * repuesto la tiene AUSENTE. Mandado así, el servidor rellenaba el valor que
+ * repuesto la tiene AUSENTE. Lo mismo ADENTRO de `partes` (vender por partes):
+ * el servidor rellena cada clave de `partes` que llega ausente (`division`,
+ * cómo se vende la nevera), así que deshacer «por puertas» tiene que mandar
+ * `division: null`. Mandado así, el servidor rellenaba el valor que
  * se acababa de deshacer: el editor dibujaba la cuenta de siempre y la base
  * guardaba los entrepaños deshechos, que eran los que veían el visor de otro
  * equipo, el enlace de la mercaderista y el mismo editor al recargar. Por eso
@@ -79,6 +82,9 @@ export function sinComercial(fixtures: UnifiedFixture[]): UnifiedFixture[] {
  * identidad (los espejos de los editores comparan por identidad); si ninguno
  * cambia, vuelve el mismo arreglo.
  */
+const esObjeto = (x: unknown): x is Record<string, unknown> =>
+  typeof x === "object" && x !== null && !Array.isArray(x);
+
 export function conFichaQuitada(
   repuesto: UnifiedFixture[], actual: readonly UnifiedFixture[],
 ): UnifiedFixture[] {
@@ -89,10 +95,21 @@ export function conFichaQuitada(
     if (!ahora) return f;
     const antes = f as unknown as Record<string, unknown>;
     const faltan = CLAVES_DE_FICHA.filter((k) => antes[k] === undefined && ahora[k] !== undefined);
-    if (faltan.length === 0) return f;
+    // Adentro de `partes`: lo que ahora tiene y el repuesto no.
+    const partesAntes = antes.partes;
+    const partesAhora = ahora.partes;
+    const faltanEnPartes = esObjeto(partesAntes) && esObjeto(partesAhora)
+      ? Object.keys(partesAhora).filter((k) => partesAntes[k] === undefined && partesAhora[k] !== undefined)
+      : [];
+    if (faltan.length === 0 && faltanEnPartes.length === 0) return f;
     cambio = true;
     const out: Record<string, unknown> = { ...antes };
     for (const k of faltan) out[k] = null;
+    if (faltanEnPartes.length > 0) {
+      const partes: Record<string, unknown> = { ...(partesAntes as Record<string, unknown>) };
+      for (const k of faltanEnPartes) partes[k] = null;
+      out.partes = partes;
+    }
     return out as unknown as UnifiedFixture;
   });
   return cambio ? fuera : repuesto;

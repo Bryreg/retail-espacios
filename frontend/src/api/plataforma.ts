@@ -774,6 +774,20 @@ export interface EspacioDetalle {
   area_m2: number | null;
   estado: "ocupado" | "libre" | "se_libera";
   contrato: ContratoEspacioDetalle | null;
+  /** Vender por partes: las puertas de esta cara con contrato en el período
+   *  (`NAVE-NEV-03-PU2`), cada una con el suyo. Ausente si no hay ninguna.
+   *  La cara cuenta tomada si lo está ella o alguna de sus puertas. */
+  partes?: ParteDetalle[];
+}
+
+/** Una parte vendida de una cara (la puerta 2 de una nevera). Nunca trae la
+ *  tarifa de la puerta: sólo el contrato público, como la cara. */
+export interface ParteDetalle {
+  /** `PU2`. */
+  parte: string;
+  codigo: string;
+  codigo_corto: string;
+  contrato: ContratoEspacioDetalle;
 }
 
 /** Resumen por tipo de espacio de ESTE cliente. `canon_promedio/minimo/maximo`

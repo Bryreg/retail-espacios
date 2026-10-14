@@ -41,10 +41,15 @@ from app.fechas import hoy
 from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
-    Ambiguedad, Colision, PlanoIndexado, es_comercializable, sin_prefijo_de_sede,
+    Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, frase_de_choque,
+    motivo_para_no_vender_parte, sin_prefijo_de_sede,
 )
-from app.services.catalogo_muebles import tarifa_del_mueble, tipo_de_tarifa
+from app.services.catalogo_muebles import CLASES_DE_PARTE, tipo_de_tarifa
+from app.services.candado import tomar_candados
 from app.services.fichas_propias import tarifas_propias
+from app.services.partes import (
+    cantidad_de, chocan, partir_codigo, referencia_de_espacio, texto_de_parte, texto_para_montar,
+)
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
@@ -121,6 +126,10 @@ class FilaOut(BaseModel):
     #: lo necesita para colgarle la planometría, que existe recién después de
     #: que el contrato existe. Al validar es siempre None.
     lease_id: Optional[int] = None
+    #: Si el espacio es una parte (``NEV-03-PU2``), cuál, dicho para quien la
+    #: monta: «Puerta 2 de 3, contando de izquierda a derecha mirando el
+    #: frente». Va en los tres correos. ``None`` es la cara entera.
+    parte: Optional[str] = None
 
 
 class LoteOut(BaseModel):
@@ -280,10 +289,11 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
     }
 
     salida: list[FilaOut] = []
-    #: Lo aceptado hasta ahora, por código, para que dos filas del MISMO archivo
-    #: no se vendan el mismo espacio en fechas que se pisan. Es el error más
-    #: fácil de cometer en una planilla y el más difícil de ver leyéndola.
-    tomados: dict[str, list[tuple[date, date, int]]] = defaultdict(list)
+    #: Lo aceptado hasta ahora, para que dos filas del MISMO archivo no se
+    #: vendan el mismo espacio en fechas que se pisan —ni la nevera entera y una
+    #: de sus puertas—. Es el error más fácil de cometer en una planilla y el
+    #: más difícil de ver leyéndola.
+    tomados: list[tuple[str, date, date, int]] = []
 
     for fila in lote.filas:
         out = FilaOut(fila=fila.fila, estado=OK)
@@ -341,6 +351,15 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                 # ninguna pista de por qué. No resuelve la fila —adivinar el
                 # mueble es el error que esta fase eliminó—, la explica.
                 pista = rastreador.pista(sede, tecleado)
+                partido = partir_codigo(tecleado)
+                al_reves = partir_codigo(partido.base) if partido.cara == "B" and partido.parte is None else None
+                if al_reves is not None and al_reves.parte is not None:
+                    # «NEV-03-PU2-B»: la parte de la cara B se escribe con la
+                    # cara antes de la parte.
+                    pista = (pista + " " if pista else "") + (
+                        f"Si es una parte de la cara B, la cara va antes: "
+                        f"«{sin_prefijo_de_sede(al_reves.base, sede)}-B-{al_reves.parte.sufijo}»."
+                    )
                 una_cara = plano.sin_cara_b(sede, tecleado)
                 if una_cara is not None:
                     # El mueble existe; lo que no existe es su cara B. Decir
@@ -373,12 +392,20 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                 # Se dice aunque la fila termine en error: la revisión tiene que
                 # poder ver contra qué mueble resolvió, sobre todo cuando no entra.
                 out.nombre_dibujado = resuelto.nombre_dibujado
-                if not es_comercializable(fixture):
-                    errores.append(
-                        f"«{codigo}» está marcado como no comercializable: es parte del local."
-                    )
+                # La COMPUERTA: la cara B que no existe, lo no comercializable,
+                # la puerta de una nevera que se vende entera o con un número
+                # de más. Una sola regla para la planilla, Vender y el contrato
+                # suelto (`motivo_para_no_vender_parte`).
+                parte = resuelto.parte
+                motivo = motivo_para_no_vender_parte(fixture, resuelto.partido)
+                if motivo:
+                    errores.append(motivo[1])
                 else:
                     out.nombre = fixture.get("label") or fixture.get("code")
+                    if parte is not None:
+                        n = cantidad_de(fixture, parte.clase)
+                        out.nombre = f"{out.nombre} · {texto_de_parte(parte)}"
+                        out.parte = texto_para_montar(parte, n)
                     # El texto resolvió sin dudas, pero el MUEBLE puede tener un
                     # gemelo de nombre: es el residuo que dejaba abierta la doble
                     # venta. Quien mira la cajita rotulada «IMP-08» y escribe el
@@ -388,17 +415,11 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                     colision = plano.colision(sede, resuelto)
                     if colision:
                         avisos.extend(_avisos_de_colision(colision))
-                    ref = None
                     # La del modelo del mueble si tiene una propia (la media
                     # estiba, el exhibidor de cartón, una ficha propia del
-                    # supermercado), y si no la de su tipo.
-                    tipo = tarifa_del_mueble(fixture, propios)
-                    if rates:
-                        por_sede = (rates.get("by_sede") or {}).get(sede or "", {})
-                        ref = por_sede.get(tipo)
-                        if ref is None:
-                            ref = (rates.get("default") or {}).get(tipo)
-                    out.referencia = ref
+                    # supermercado), y si no la de su tipo. Una puerta, la de
+                    # su clase o, vacía, la de la nevera entre sus puertas.
+                    out.referencia, _origen = referencia_de_espacio(rates, sede or "", fixture, parte, propios)
 
         # ── El proveedor ──────────────────────────────────────────────────────
         #: Notas que se dicen pero NO pintan la fila. "Proveedor nuevo" es cierto
@@ -443,27 +464,24 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
             out.dias = (hasta - desde).days + 1
 
         # ── Choques ───────────────────────────────────────────────────────────
+        # Con la regla de la dueña: el mismo espacio, o la nevera entera y una
+        # de sus puertas (`partes.chocan`). Dos puertas distintas, no.
         if not errores and desde and hasta and codigo:
-            for otro_desde, otro_hasta, otra_fila in tomados[codigo]:
-                if _se_pisan(desde, hasta, otro_desde, otro_hasta):
+            yo = partir_codigo(codigo)
+            for otro_codigo, otro_desde, otro_hasta, otra_fila in tomados:
+                if (otro_codigo == codigo or chocan(yo, partir_codigo(otro_codigo))) \
+                        and _se_pisan(desde, hasta, otro_desde, otro_hasta):
                     errores.append(
                         f"Choca con la fila {otra_fila} de esta misma planilla, "
-                        f"que ya toma «{codigo}» del {otro_desde} al {otro_hasta}."
+                        f"que ya toma «{otro_codigo}» del {otro_desde} al {otro_hasta}."
                     )
                     break
 
         if not errores and desde and hasta and codigo:
-            space = db.query(Space).filter(Space.code == codigo).first()
-            if space:
-                for lease in space.leases:
-                    if not lease.is_active:
-                        continue
-                    if _se_pisan(desde, hasta, lease.start_date, lease.end_date):
-                        errores.append(
-                            f"«{codigo}» ya tiene un contrato del {lease.start_date} "
-                            f"al {lease.end_date}. Cancelalo primero o ajustá las fechas."
-                        )
-                        break
+            choques = contratos_que_chocan(db, codigo, desde, hasta)
+            if choques:
+                lease, space, _otro = choques[0]
+                errores.append(frase_de_choque(codigo, space.code or "", lease))
 
         if errores:
             out.estado = ERROR
@@ -471,7 +489,7 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
         else:
             out.estado = AVISO if avisos else OK
             out.mensajes = avisos + notas
-            tomados[codigo].append((desde, hasta, fila.fila))
+            tomados.append((codigo, desde, hasta, fila.fila))
 
         salida.append(out)
 
@@ -508,7 +526,22 @@ def confirmar(
     Revalidar no es paranoia: entre la revisión y el botón alguien pudo vender
     uno de esos espacios desde el mapa, y crear el contrato igual dejaría dos
     proveedores en la misma punta.
+
+    **Con candado.** Con la venta por partes, la nevera entera y su puerta 2
+    son dos filas de ``spaces`` (la de la puerta puede no existir todavía): dos
+    sesiones que confirman a la vez pasarían las dos la revisión. Se revisa una
+    vez para saber qué muebles toca (los códigos resueltos, que llevan la sede
+    del mueble, y los tecleados), se toman los candados de esos muebles en orden
+    (``services/candado.py``) y se vuelve a revisar YA con el candado puesto: lo
+    que se escribe es lo que pasó esa segunda revisión.
     """
+    filas = _revisar(db, lote)
+    codigos = {f.codigo for f in filas if f.codigo}
+    for fila in lote.filas:
+        sede = (fila.sede or lote.sede or "").strip().upper()
+        if (fila.espacio or "").strip():
+            codigos.add(_codigo_completo(fila.espacio, sede))
+    tomar_candados(db, codigos)
     filas = _revisar(db, lote)
     por_fila = {f.fila: f for f in filas}
     plano = PlanoIndexado(db)
@@ -532,6 +565,7 @@ def confirmar(
         # con la sede del fixture, así que esto no puede caer en otra tienda.
         resuelto = plano.resolver(v.sede or "", v.codigo or "")
         fixture = resuelto.fixture if resuelto else None
+        parte = resuelto.parte if resuelto else None
         space = db.query(Space).filter(Space.code == v.codigo).first()
         if not space:
             area = 0.0
@@ -540,6 +574,12 @@ def confirmar(
                     area = round(float(fixture.get("w") or 0) * float(fixture.get("d") or 0), 2)
                 except (TypeError, ValueError):
                     area = 0.0
+                # Una puerta ocupa su parte del frente: la huella entre las
+                # puertas. Una parte que no parte el ancho no tiene huella propia.
+                if parte is not None:
+                    n = cantidad_de(fixture, parte.clase)
+                    eje = CLASES_DE_PARTE[parte.clase].get("eje")
+                    area = round(area / n, 2) if (n and eje == "ancho") else 0.0
             space = Space(
                 code=v.codigo,
                 svg_id=v.codigo,
@@ -645,7 +685,8 @@ def _avisar(
             asunto = f"{cuantos} contrato{'s' if cuantos != 1 else ''} nuevo{'s' if cuantos != 1 else ''} — {sede or 'sede'}"
             rows = [
                 (f"{escape(f.codigo or '')} · {escape(f.proveedor or '')}",
-                 f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
+                 (f"{escape(f.parte)}<br>" if f.parte else "")
+                 + f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
                 for f in filas
             ]
             rows.append(("Total mensual", format_cop(total)))
@@ -665,7 +706,10 @@ def _avisar(
             # con el que no podía hacer nada.
             rows = [
                 (escape(f.codigo or ""),
-                 f"{escape(f.proveedor or '')}{f' · {escape(f.marca)}' if f.marca else ''} · "
+                 # Cuál puerta, contada desde dónde: sin esto, la puerta 2
+                 # de una nevera de tres se arma en la que primero se ve.
+                 (f"<strong>{escape(f.parte)}</strong><br>" if f.parte else "")
+                 + f"{escape(f.proveedor or '')}{f' · {escape(f.marca)}' if f.marca else ''} · "
                  f"desde el {f.desde}<br>"
                  f'<a href="{_enlace_de_montaje(f, cliente)}" style="color:#0369A1;font-weight:600;">'
                  "Ver dónde queda y confirmar</a>")
@@ -709,7 +753,8 @@ def _avisar(
         # tienda —el remitente es el de RECABRA para todos los clientes—.
         rows = [("Supermercado", escape(cliente.nombre))] + [
             (escape(f"{f.codigo} — {f.nombre or ''}".strip(" —")),
-             f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
+             (f"{escape(f.parte)}<br>" if f.parte else "")
+             + f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
             for f in filas
         ]
         background_tasks.add_task(

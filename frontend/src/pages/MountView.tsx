@@ -14,6 +14,9 @@ import { nombreDeMueble } from "../utils/nomenclatura";
 // El tipo de cada espacio, como le dicen acá («tope de góndola»): la lista y el
 // formulario del montaje.
 import { conNombrePropio } from "../catalogo/nombresPropios";
+import {
+  cantidadDe, codigoDeParte, indiceDePartes, partirCodigo, sufijoDeParte, textoParaMontar,
+} from "../utils/partes";
 
 /** Una cara de un mueble que hay que montar, con lo que ordena la lista. */
 interface Pendiente extends EspacioAMontar {
@@ -66,6 +69,10 @@ export default function MountView({
   const activeSede = useFixtureStore((s) => s.sede);
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const fixtures = useFixtureStore(selectFixtures);
+  /** Vender por partes: las puertas vendidas no están en el mueble fusionado,
+   *  están en el mapa crudo de la base, por su código. */
+  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  const indicePartes = useMemo(() => indiceDePartes(estadoComercial), [estadoComercial]);
   /** El primer pull del servidor ya terminó — antes de eso no hay espacios. */
   const layoutListo = useFixtureStore((s) => s.lastSyncedAt) !== null;
   /** La última sincronización falló: una lista vacía puede ser falta de señal
@@ -100,7 +107,7 @@ export default function MountView({
       // trae, igual que al guardar el contrato: un mueble puede haber quedado
       // con la sede escrita adentro y no coincidir con la clave del mapa.
       const base = fullSpaceCode((f.sede as string) || sede, f.code);
-      const caras: { code: string; corto: string; data: Partial<UnifiedFixture> }[] = [
+      const caras: { code: string; corto: string; data: Partial<UnifiedFixture>; parte?: string }[] = [
         { code: base, corto: f.code, data: f },
       ];
       if (isDoubleGondola(f) && f.faceB) {
@@ -110,7 +117,21 @@ export default function MountView({
           data: f.faceB as Partial<UnifiedFixture>,
         });
       }
-      for (const { code, corto, data } of caras) {
+      // Vender por partes: cada puerta vendida se monta como un espacio más,
+      // con su propio contrato y su propio reporte.
+      for (const c of [...caras]) {
+        for (const { partido, estado } of indicePartes.get(c.code) ?? []) {
+          if (!partido.parte) continue;
+          caras.push({
+            // El completo de la cara más el de la parte: `NAVE-NEV-03-PU2`.
+            code: `${c.code}-${sufijoDeParte(partido.parte)}`,
+            corto: codigoDeParte(f.code, partido.cara, partido.parte),
+            data: { ...estado, status: estado.status as UnifiedFixture["status"] } as Partial<UnifiedFixture>,
+            parte: textoParaMontar(partido.parte, cantidadDe(f, partido.parte.clase)),
+          });
+        }
+      }
+      for (const { code, corto, data, parte } of caras) {
         const cara = {
           status: (data.status ?? "free") as UnifiedFixture["status"],
           startDate: data.startDate ?? "",
@@ -137,6 +158,7 @@ export default function MountView({
           hasta: data.endDate ?? "",
           urgente: fase === "vigente" && diasDesde(data.startDate ?? "") <= VENTANA_DIAS,
           viejo: fase === "vigente" && diasDesde(data.startDate ?? "") > VENTANA_DIAS,
+          ...(parte ? { parte } : {}),
         });
       }
     }
@@ -146,7 +168,7 @@ export default function MountView({
     const tramo = (p: Pendiente) => (p.urgente ? 0 : p.viejo ? 2 : 1);
     out.sort((a, b) => tramo(a) - tramo(b) || a.desde.localeCompare(b.desde));
     return out;
-  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios]);
+  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios, indicePartes]);
 
   // Enlace del correo: abrir directamente ese espacio.
   const [yaConfirmado, setYaConfirmado] = useState<MountConfirmation | null>(null);
@@ -160,16 +182,21 @@ export default function MountView({
   const reportarDeNuevo = useMemo<Pendiente | null>(() => {
     if (!yaConfirmado) return null;
     const code = yaConfirmado.space_code.toUpperCase();
-    const base = code.endsWith("-B") ? code.slice(0, -2) : code;
+    // `NAVE-NEV-03-B-PU2` → el mueble `NAVE-NEV-03`, la cara B y la puerta 2.
+    const partido = partirCodigo(code);
+    const base = partido.base;
     for (const [sede, lista] of Object.entries(fixturesBySede)) {
       for (const f of lista) {
         const completo = fullSpaceCode((f.sede as string) || sede, f.code);
         if (completo !== base) continue;
-        const caraB = code.endsWith("-B");
-        const data = (caraB ? f.faceB : f) as Partial<UnifiedFixture>;
+        const caraB = partido.cara === "B";
+        const data = (partido.parte
+          ? { ...(estadoComercial[code] ?? {}) }
+          : (caraB ? f.faceB : f)) as Partial<UnifiedFixture>;
         return {
           code,
-          corto: caraB ? `${f.code}-B` : f.code,
+          corto: codigoDeParte(f.code, partido.cara, partido.parte),
+          ...(partido.parte ? { parte: textoParaMontar(partido.parte, cantidadDe(f, partido.parte.clase)) } : {}),
           fixtureCode: f.code,
           sede: (data?.sede as string) || (f.sede as string) || sede,
           label: conNombrePropio(f, nombresPropios, f.label || f.code),
@@ -183,7 +210,7 @@ export default function MountView({
       }
     }
     return null;
-  }, [yaConfirmado, fixturesBySede, nombresPropios]);
+  }, [yaConfirmado, fixturesBySede, nombresPropios, estadoComercial]);
   const abiertoPorEnlace = useRef(false);
   useEffect(() => {
     // Esperar a que el layout haya llegado del servidor. Sin esta condición el
@@ -325,6 +352,9 @@ export default function MountView({
               >
                 {nombreDeMueble({ code: p.corto })}
               </span>
+              {p.parte && (
+                <span style={{ fontSize: 11, color: "var(--accent-700)", fontWeight: 600 }}>{p.parte}</span>
+              )}
               {p.urgente && (
                 <span
                   style={{

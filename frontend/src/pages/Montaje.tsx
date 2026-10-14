@@ -99,6 +99,7 @@ export default function Montaje() {
       proveedor: espacio.proveedor,
       desde: espacio.desde ?? "",
       hasta: espacio.hasta ?? "",
+      parte: espacio.parte?.texto ?? null,
     };
   }, [espacio]);
 
@@ -284,6 +285,11 @@ function Marco({ espacio, children }: { espacio: EspacioMontaje; children: React
           <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>
             {nombreDeMueble({ code: espacio.corto })}
           </span>
+          {espacio.parte && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-700)" }}>
+              {`${espacio.parte.token}${espacio.parte.n ?? ""}`}
+            </span>
+          )}
           <span style={{ display: "inline-flex", alignItems: "center", gap: 3,
             fontSize: 12, color: "var(--ink-3)" }}>
             <MapPin size={11} /> {espacio.sede}

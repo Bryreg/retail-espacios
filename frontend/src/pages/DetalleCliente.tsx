@@ -1788,7 +1788,7 @@ function Cap4({ detalle, der }: { detalle: DetalleClienteShape; der: Derivado })
             { k: "f", t: "Vence" },
             { k: "d", t: "Días", num: true },
           ]}
-          filas={espacios.map((e) => ({
+          filas={espacios.flatMap((e) => [{
             c: e.codigo,
             s: e.sede,
             t: tipoN(e.tipo),
@@ -1799,7 +1799,20 @@ function Cap4({ detalle, der }: { detalle: DetalleClienteShape; der: Derivado })
             v: e.contrato ? plata(e.contrato.canon_mensual) : "—",
             f: e.contrato ? fechaCorta(e.contrato.fin) : "—",
             d: e.contrato ? num(e.contrato.dias_para_vencer) : "—",
-          }))}
+          },
+          // Vender por partes: debajo de su cara, cada puerta con su contrato.
+          ...(e.partes ?? []).map((p) => ({
+            c: `↳ ${p.codigo}`,
+            s: e.sede,
+            t: tipoN(e.tipo),
+            z: e.zona ?? "—",
+            a: "—",
+            e: <MarcaEstado estado="ocupado" texto={ESTADO_TXT.ocupado} />,
+            p: `${p.contrato.proveedor}${p.contrato.marca ? ` · ${p.contrato.marca}` : ""}`,
+            v: plata(p.contrato.canon_mensual),
+            f: fechaCorta(p.contrato.fin),
+            d: num(p.contrato.dias_para_vencer),
+          }))])}
         />
       </Cajon>
 

@@ -31,6 +31,7 @@ import {
   LARGO_DEL_NOMBRE_PROPIO, conNombrePropio, nombrePropio, nombreParaGuardar, type NombresPropios,
 } from "../../catalogo/nombresPropios";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
+import { PartesDelMueble } from "../PartesDelMueble";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -4018,6 +4019,15 @@ function AssignmentPanel({
       {(item.type === "gondola_doble" || item.type === "gondola_mural" || item.type === "punta") && (
         <Field label="Alto, entrepaños y módulo" icon="📏">
           <GeometriaDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
+        </Field>
+      )}
+
+      {/* Vender por partes: la nevera entera, o entera o por puertas. Fuera de
+          lo comercial del panel a propósito: es cómo ES el mueble, y el mismo
+          componente que el Editor 3D (`components/PartesDelMueble.tsx`). */}
+      {item.type === "nevera_puertas" && (
+        <Field label="Cómo se vende" icon="🚪">
+          <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
         </Field>
       )}
 

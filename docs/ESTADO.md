@@ -1,7 +1,20 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, revisión de la rama de las fichas propias (tres revisiones
+Última actualización: 2026-10-14, **vender por partes, paso 1: la nevera entera o por puertas**.
+En el panel del plano (2D y 3D) la nevera de puertas tiene «Cómo se vende: Entera · Entera o por
+puertas (N)»; elegida la segunda, Vender ofrece «Entera · PU1 · PU2…» y `NEV-03-PU2` es un espacio
+más (una fila de `spaces` con el código derivado, sin columnas nuevas): la planilla, el contrato
+suelto, los correos, el montaje, Supervisar, la consola y la auditoría lo conocen. **La nevera
+entera y sus puertas nunca en las mismas fechas; dos puertas distintas, sí** (`chocan`, los dos
+lados con los mismos casos), con un candado por mueble para que dos ventas a la vez no pasen las
+dos. Con una puerta vendida no cambia la cantidad de puertas ni deja de venderse por puertas
+(409 `partes_vendidas`), y un mueble no puede llamarse como una parte (409 `nombre_reservado`).
+La tarifa de una puerta es la de su clase por sede o, vacía, la de la nevera ÷ puertas. Un plano
+sin `partes.division` se vende y se ve exactamente como antes. Ver *Vender por partes: la nevera
+entera o por puertas (P1, 2026-10-14)*.
+
+Antes, 2026-10-14, revisión de la rama de las fichas propias (tres revisiones
 —regresión con Postgres 16, seguridad y mutación de las guardas— y el recorrido de la dueña.
 **Vender arrancaba con la tarifa equivocada** si las fichas propias llegaban tarde o no llegaban:
 ahora el valor acordado sigue a la tarifa mientras nadie lo toque y el store reintenta solo; un
@@ -215,15 +228,13 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
    fechas**; dos puertas distintas, sí. **El código de la puerta lo eligió ella el 2026-10-14:
    `NEV-03-PU2`** (puerta 2 de la nevera NEV-03, contando de izquierda a derecha mirando su
    frente) y queda para siempre en contratos, correos, planillas y enlaces de montaje. En orden:
-   - **la nevera, entera o por puertas**: la regla de exclusión en `create_lease`, en la
-     planilla y en Vender (interruptores «Entera · P1 · P2…», sin decir nunca quién tiene la otra
-     puerta ni a cuánto), Supervisar con «1 de 3 puertas vendida», y el guardarraíl de `PUT
-     /layout` frenando cambiar la cantidad de puertas con una puerta vendida (hoy las puertas
-     no se editan en el panel: sólo las trae la ficha). Con ella, **las 4 repisas por puerta de
-     la ficha** (hoy el dibujo pone 5 y el piso, sacadas del alto): toca la cuenta única de la
-     nevera —dibujo, relleno, venta y rejillas automáticas— y por eso va junto con la puerta
-     vendida, no antes. La fila de la puerta dice el nombre propio de la nevera con
-     `tipoDelMueble`, como las caras;
+   - ~~**la nevera, entera o por puertas**~~ **hecho (P1, 2026-10-14)**: ver *Vender por
+     partes: la nevera entera o por puertas*. Queda de ese paso: **las 4 repisas por puerta de
+     la ficha** (hoy el dibujo pone 5 y el piso, sacadas del alto) —toca la cuenta única de la
+     nevera: dibujo, relleno, venta y rejillas automáticas, y cambia cómo se ve lo ya vendido;
+     se dejó para P2 a propósito—; el recorrido en el navegador con la dueña (vender la PU2,
+     ver el plano «parcial», intentar la entera, bajar a 2 puertas y ver el 409); y la pregunta
+     de si una nevera de UNA puerta se vende por puertas (hoy no: el mínimo es 2);
    - **el mural por tramos** (`GON-12-TR3`): la misma regla que la puerta, sobre la góndola de
      pared, el multideck y vegetales;
    - **la bahía de la caja** (`CAJ-04-BI1`): la caja sigue sin venderse entera, su bahía sí, y
@@ -233,10 +244,12 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
      entera. Va con los soportes cedidos a un operador (Marketmedios), que sacan de la venta
      columnas y pantallas enteras.
 
-   Lo que ya está listo para eso: `partes` es geometría que viaja al visor y a la mercaderista
-   sólo con sus números, el aviso de lo vendido (`revisarCambioDeGeometria`), el guardarraíl de
-   `PUT /layout`, y la ficha propia ya admite `partes.puertas` (la nevera Inducol de la dueña
-   tiene 2). Hasta entonces la nevera se vende ENTERA y `partes.puertas` sólo dibuja.
+   Lo que ya está listo para eso, desde P1: las clases de parte del catálogo
+   (`partes.clases`: token, eje, mínimo, tarifa, nombres) y la regla de `chocan` con clases
+   distintas en la misma cara (se pisan), el candado por mueble, la compuerta
+   (`motivo_para_no_vender_parte`), los nombres reservados (`TR`, `EN`, `BI`, `FO`, `CP`, `CN`,
+   `ST` ya no se pueden poner a un mueble nuevo) y las pantallas, que muestran cualquier clase.
+   Agregar el mural es sumar la clase `tramos` y la división a su familia, y dibujar dónde cae.
 2. **El material de la cara** (copete, cenefa, stopper) como venta aparte (PR 5 del plan).
    **Espera una respuesta de la dueña**: si el copete de una cara se puede vender a otra marca
    que la de la cara. El plan recomienda que sí (es una pieza aparte, que Vender sugiere junto
@@ -244,10 +257,10 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
    incluida en el contrato de la cara— impide vender la cenefa de un pasillo que la tienda usa
    para su propio surtido.
 3. **Las formas de cobro de las partes**: con qué tarifa de referencia sale una puerta, un
-   tramo, una bahía o un copete. El plan propone una tarifa propia por clase y por sede, y si
-   está vacía la de la cara dividida por la cantidad de partes (decisión 3); la alternativa es
-   usar siempre esa fracción. Lo decide la dueña antes del PR 3, porque Vender escribe esa
-   tarifa en el campo del valor acordado.
+   tramo, una bahía o un copete. **P1 hizo lo que propone el plan** (decisión 3): una tarifa
+   propia por clase y por sede (`parte_puerta`, «Puerta de nevera (cada una)» en Tarifas) y, si
+   está vacía, la de la nevera dividida por sus puertas, redondeada al peso. Falta que la dueña
+   lo confirme; la alternativa —siempre la fracción— es borrar la fila de la tarifa.
 
 De las fichas propias y los nombres, lo que queda: que la dueña haga el flujo ella misma con
 una ficha de verdad de Cañaveral (`/taller` sigue siendo sólo de administración: entra con su
@@ -426,6 +439,14 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
 
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B.
+**Una parte agrega su sufijo al final, después de la cara: `SEDE-CODE[-B]-PU<n>`**
+(`NAVE-NEV-03-PU2`, `NAVE-GON-05-B-TR2` cuando haya tramos). La relación entre la cara y sus
+partes se DEDUCE del código, sin columnas: `partirCodigo` (`utils/partes.ts`) y
+`partir_codigo` (`services/partes.py`) leen de derecha a izquierda —el último tramo es una
+parte si es el token de una clase que existe con su número; después, `-B` es la cara— y
+quien resuelve contra el plano prueba primero el texto tal cual, así que un mueble viejo que
+ya se llamara así sigue siendo ése. Los dos lados corren `frontend/scripts/casos/partes.json`.
+Los códigos existentes no cambian.
 
 **«¿Tiene cara B?» tiene UNA respuesta:** `carasDe` en `frontend/src/types/espacio.ts`
 (`isDoubleGondola` es `carasDe(f) === 2`; `types/fixtures.ts` reexporta las dos) y su
@@ -526,7 +547,12 @@ adelante, arte pintado en la cara— o espacios internos vendidos, el panel no l
 decir qué se mueve y sin un «Cambiar igual»; con espacios internos vendidos, la CANTIDAD de
 entrepaños no cambia hasta liberarlos. Una sola cuenta para los dos editores
 (`revisarCambioDeGeometria` en `utils/geometriaDelMueble.ts`), y el aviso no nombra a
-nadie. Ver *Lo que se puede editar y lo que no se puede perder*.
+nadie. Ver *Lo que se puede editar y lo que no se puede perder*. **Con una puerta vendida**
+(contrato vivo o firmado) la nevera no cambia la cantidad de puertas ni deja de venderse
+por puertas —la «puerta 2» pasaría a ser otra hoja—: el panel «Cómo se vende» lo frena sin
+nombrar a nadie (`revisarCambioDePartes` en `utils/partesDelMueble.ts`) y el servidor
+también (409 `partes_vendidas`); con la nevera vendida ENTERA, cambiar las puertas avisa con
+«Cambiar igual».
 
 **Una pestaña vieja no borra lo nuevo.** La ficha del mueble (`CLAVES_DE_FICHA`: `modelo`,
 `partes`, `entrepanos`, `modulo`) son claves que un editor de antes no conoce. `PUT
@@ -538,7 +564,10 @@ de hoy nunca saca una de estas claves borrándola: la pone en `null`.** Lo hacen
 vaciar un campo (`conGeometria`) y el deshacer/rehacer del store (`conFichaQuitada` en
 `utils/guardadoDelPlano.ts`); un camino nuevo que quite la ficha tiene que hacer lo mismo, o
 el servidor la resucita. Una clave nueva de este tipo se suma a las DOS listas
-(`services/layout_lookup.py` y `utils/guardadoDelPlano.ts`; pytest las compara).
+(`services/layout_lookup.py` y `utils/guardadoDelPlano.ts`; pytest las compara). **Adentro de
+`partes` vale lo mismo, clave por clave** (`puertas`, `division`): una pestaña de antes que no
+conoce `division` la manda ausente y el servidor se la deja; un `null` la borra; y el panel
+escribe `partes` ENTERA a partir de la que tiene (`conPartes`).
 
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
@@ -557,6 +586,25 @@ venta y dejaba su contrato vivo y sin nada que lo mostrara. Ahora el `PUT` conte
 vez de cancelar solo: cancelar es plata y un compromiso con un proveedor, no lo decide un
 guardado del plano. Se comprueba **sólo lo que ese guardado retira**, comparando contra el
 snapshot anterior — un plano que ya venía desfasado tiene que poder guardarse igual.
+Con la venta por partes, retirar incluye **dejar de vender por puertas o bajar la cantidad**
+con una puerta vendida (`contratos_vivos`, porque esa puerta deja de existir), y **mover** lo
+vendido: cambiar de 3 a 4 puertas con la PU2 vendida no la retira pero la cambia de lugar, y
+contesta 409 `partes_vendidas` (`partes_que_se_moverian`, por el `code` del mueble y la
+«firma» de sus partes). Y **un mueble nuevo no puede llamarse como una parte** (`NEV-PU2`,
+`GON-B`: 409 `nombre_reservado`, `nombres_reservados_nuevos`); un plano viejo con un nombre
+así se sigue guardando.
+
+**La nevera entera o por partes, nunca las dos.** Lo decide `chocan` (los dos lados, los
+mismos casos): el mismo espacio choca; la cara entera y una de sus divisiones, sí; dos
+divisiones de la misma clase, no (dos puertas conviven); de clases distintas en la misma cara,
+sí; una pieza sólo consigo misma. Lo aplican los CUATRO caminos que escriben contratos —la
+planilla y Vender (`bulk_leases`), el contrato suelto (`create_lease`) y la importación del
+plano (`importar_del_plano`)— con `contratos_que_chocan` y `frase_de_choque`, que no nombra al
+dueño de la otra parte ni su canon. Y como la puerta y la entera son dos filas de `spaces`
+distintas, cada camino toma **un candado por mueble** antes de la revisión con la que escribe
+(`services/candado.py`: `pg_advisory_xact_lock` ordenado por mueble; en SQLite no hace nada):
+sin él, dos ventas a la vez pasaban las dos (`tests/test_partes_concurrencia.py`, contra un
+Postgres descartable).
 
 **No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
 caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
@@ -9400,6 +9448,90 @@ while rendering a different component»: `u()` escribe en el store adentro del a
 `setPlacedFixtures` (viene de #22). Una sesión de administración que no es la dueña recibe 403
 de `/clientes/mi-suscripcion` en cada carga y Configuración muestra en rojo «Solo el owner del
 cliente puede hacer esto» bajo Suscripción.
+
+### Vender por partes: la nevera entera o por puertas (P1, 2026-10-14)
+
+La dueña: **las marcas pagan la nevera entera o por puertas, nunca las dos en las mismas
+fechas; dos puertas distintas, sí**, y la puerta se llama `NEV-03-PU2` (la 2 contando de
+izquierda a derecha mirando el frente). Es el primer paso del plan de vender por partes; los
+tramos del mural, la bahía de la caja y el forro de la columna usan la misma maquinaria.
+
+**Una parte es un espacio más.** `NAVE-NEV-03-PU2` es una fila de `spaces` con su contrato en
+`space_leases`, como cualquier cara: sin migraciones, sin columnas nuevas, sin tabla nueva. Lo
+que la relaciona con su nevera es el código (*Reglas duras*). Los códigos de siempre no
+cambiaron.
+
+**Tres niveles de configuración** (`muebles.json`, las dos copias idénticas):
+
+- la FAMILIA dice de qué formas se divide: `tipos.nevera_puertas.partes.divisiones =
+  ["puertas"]`; las clases viven en `partes.clases` (`puertas`: token `PU`, eje `ancho`,
+  campo `puertas`, mínimo 2, tarifa `parte_puerta`, nombres para la consola) y los tokens
+  reservados en `partes.reservados`;
+- el MODELO (de RECABRA o una ficha propia) dice cuál usa y en cuántas: los de 2, 3 y 4
+  puertas traen `partes: { puertas: N, division: "puertas" }` (el de 1 no se divide). Una
+  ficha propia puede pedir `division` sólo si su familia la admite, con `puertas` entero ≥ 2
+  y dentro del rango (`problemas_de_la_ficha` y `fichas.ts`, con los casos de
+  `casos/fichas.json`);
+- el MUEBLE del plano lo lleva estampado en `partes`, y es lo único que cuenta. **Sin
+  `partes.division` la nevera se vende entera**, aunque su ficha traiga las puertas: lo ya
+  colocado no cambia solo. Se elige en el panel del plano 2D y del Editor 3D, «Cómo se vende»
+  (`components/PartesDelMueble.tsx`, el mismo en los dos), que escribe `division` y la cuenta
+  de puertas, y frena el cambio con una puerta vendida (`utils/partesDelMueble.ts`).
+
+**Dónde se aplica la regla** (`chocan`; servidor `services/partes.py`, pantalla
+`utils/partes.ts`):
+
+- **la planilla y Vender** (`routers/bulk_leases.py`): la compuerta
+  `motivo_para_no_vender_parte` (una puerta de una nevera que se vende entera, o la PU4 de una
+  de 3, se rechaza diciendo qué hacer), el choque con la entera o las puertas en esas fechas, y
+  dentro de la misma tanda. `confirmar` revisa, toma los candados de los muebles que toca y
+  vuelve a revisar antes de escribir. La fila dice «Puerta 2 de 3, contando de izquierda a
+  derecha mirando el frente» (`FilaOut.parte`) y la tarifa de referencia es la de la puerta;
+- **el contrato suelto** (`routers/spaces.py`, `create_lease`): candado, compuerta con su
+  motivo (`por_que_no_se_vende`) y choque con la entera o las puertas;
+- **la importación del plano** (`services/importar_del_plano.py`): un contrato que vive en el
+  JSON y choca con puertas vendidas queda «incompleto, revisalo a mano»;
+- **el guardado del plano** (`routers/layout.py`): `contratos_vivos` si deja de ofrecer una
+  puerta vendida, `partes_vendidas` si la cambia de lugar, `nombre_reservado` si un mueble
+  nuevo se llama como una parte, y el candado de los muebles cuya forma de venderse cambia.
+
+**Las pantallas.** Vender: tocar la nevera suma la ENTERA, como siempre; el renglón ofrece
+«Entera · PU1 · PU2 · PU3» (prender una puerta apaga la entera y al revés, `alternarParte`), y
+el choque dice «Ya está vendida entera en el periodo» o «Hay puertas vendidas: se puede vender
+otra puerta, no la entera» — nunca de quién ni a cuánto. El plano pinta la nevera «parcial»
+con una puerta vendida y «tomada» con todas (`disponibilidadDeCara`, que lee el mapa CRUDO de
+la base: vender una puerta no cambia el mueble fusionado). El visor 3D sigue siendo por cara:
+las puertas del contrato van con el marco en el amarillo de la venta y el producto en prueba
+sólo detrás de ellas (`vanoDeParte`: la PU1 de la cara A es la hoja de dibujo `n − 1`, lo
+comprueba `probar-partes` proyectando con la cámara de venta); el cabezote no lleva la marca
+de quien compra una puerta. Supervisar: cada puerta vendida es una fila más de «Estado por
+espacio» y de la plata, los vencimientos, los proveedores, «bajo la tarifa» y el montaje; la
+ocupación sigue contando caras (una nevera con una puerta que corre está trabajando) y dice
+«Puertas vendidas: x de y»; «Sin alquilar» suma las puertas libres a su tarifa; el detalle del
+mueble lista sus puertas con Renovar, «Vender esta puerta» y Cancelar, una por una; «Cuándo se
+libera» no cuenta libre un día con una puerta tomada. Montaje: el tablero y el enlace del
+correo dicen cuál puerta, contada desde dónde. Correos: los tres llevan la puerta (el de
+montaje en negrita), sin plata para quien no la ve. Tarifas: la fila «Puerta de nevera (cada
+una)» dice que vacía se sugiere la del mueble ÷ puertas. La consola de la plataforma cuenta
+las puertas como contratos sobre el plano (no «fuera del plano»), con su tipo en el resumen y
+en el benchmark, sin publicar nunca la tarifa; el detalle lista las puertas debajo de su cara.
+«Contrato sin mueble» y `auditar_desfase.py` conocen las puertas que se ofrecen; una puerta
+vendida de una nevera que hoy se vende entera SÍ es un contrato sin mueble.
+
+**Decisiones de este paso**, para confirmar con la dueña: la tarifa de la puerta (la de su
+clase por sede o, vacía, la de la nevera ÷ puertas, redondeada al peso con los medios hacia
+arriba en los dos lados); el área de la fila de una puerta es la huella de la nevera ÷ puertas;
+una nevera de una puerta no se vende por puertas; y **las 4 repisas por puerta quedaron para
+P2** (cambian cómo se ve lo ya vendido).
+
+**Cómo se prueba.** `npm run probar:partes` (los casos compartidos, la proyección de las
+puertas, `alternarParte`, la disponibilidad y un catálogo adulterado), `probar-catalogo`,
+`probar-fichas` y las guardas de Vender, auditoría y muebles; del lado del servidor
+`tests/test_partes.py` (los mismos casos; un plano sin `division` da exactamente los espacios
+de antes), `test_partes_venta.py` (los cuatro caminos, correos, tarifa, renovar),
+`test_layout_partes.py` (los tres 409 y la pestaña vieja) y `test_partes_concurrencia.py` (el
+orden del candado siempre; la carrera de dos hilos con
+`DATABASE_URL_PG_PRUEBA=postgresql://…`).
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

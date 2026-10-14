@@ -328,7 +328,7 @@ export interface GeometriaDeMueble {
 /** La geometría que guardó un mueble: sólo lo que tiene. Un `null` (el panel
  *  lo borró a propósito y todavía no se guardó) es no tenerlo. */
 export function geometriaDe(f: {
-  entrepanos?: number | null; modulo?: number | null; partes?: { puertas?: number } | null;
+  entrepanos?: number | null; modulo?: number | null; partes?: { puertas?: number | null } | null;
 }): GeometriaDeMueble {
   const g: GeometriaDeMueble = {};
   if (typeof f.entrepanos === "number") g.entrepanos = f.entrepanos;

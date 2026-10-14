@@ -910,3 +910,30 @@ html[data-tema="oscuro"] .vender {
 .visor-abriendo { flex-direction: row; gap: 8px; color: rgb(var(--ink-2-rgb)); }
 .visor-falla p { margin: 0; max-width: 46ch; text-align: center; font-size: var(--t-base); line-height: 1.5; }
 .visor-falla .visor-volver { position: static; }
+
+/* Vender por partes: «Entera · PU1 · PU2 · PU3», debajo del renglón y a todo
+   el ancho, como el aviso. Interruptores y no un selector: dos puertas
+   distintas pueden ir en el mismo contrato; la entera y sus puertas, no. */
+.eitem > .partes {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.eitem > .partes button {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.eitem > .partes button.on {
+  border-color: var(--ink-1);
+  color: var(--ink-1);
+  font-weight: 700;
+}

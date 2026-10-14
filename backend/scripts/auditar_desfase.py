@@ -39,6 +39,7 @@ from app.database import SessionLocal  # noqa: E402
 from app.fechas import hoy as hoy_en_colombia  # noqa: E402
 from app.models.models import LayoutSnapshot, Space, SpaceLease  # noqa: E402
 from app.services.layout_lookup import caras_de, es_comercializable  # noqa: E402
+from app.services.partes import codigo_de_parte, partes_de, termina_reservado  # noqa: E402
 
 
 def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
@@ -53,6 +54,10 @@ def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
     bandera. Mirando sólo la bandera, una caja de un plano viejo contaba como
     espacio ofrecido y su contrato no salía acá aunque la pantalla sí lo diera
     por «Contrato sin mueble».
+
+    Y las partes que el plano pone a la venta (vender por partes: la puerta 2
+    de una nevera que se vende por puertas, ``NEV-03-PU2``), sin contrato en
+    el JSON: el plano nunca guardó contratos de partes.
     """
     caras: dict[str, dict] = {}
     for f in fixtures:
@@ -62,7 +67,20 @@ def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
         caras[code] = f
         if caras_de(f) == 2:
             caras[f"{code}-B"] = f.get("faceB") or {}
+        for cara, parte in partes_de(f, caras_de(f), True):
+            caras[codigo_de_parte(code, cara, parte)] = {}
     return caras
+
+
+def nombres_que_parecen_partes(fixtures: list[dict]) -> list[str]:
+    """Los muebles cuyo código termina como el de una parte o de la cara B
+    (``GON-01-TR2``, ``CAJ-04-FO``, ``GON-01-B``). Desde vender por partes no
+    se puede renombrar uno así, pero un plano de antes puede tenerlo: su código
+    se leería como una parte de otro mueble. Se cuentan para mirarlos."""
+    return sorted({
+        (f.get("code") or "").strip().upper() for f in fixtures
+        if isinstance(f, dict) and termina_reservado(f.get("code") or "")
+    })
 
 
 def contratos_del_plano(caras: dict[str, dict]) -> dict[str, dict]:
@@ -133,6 +151,10 @@ def auditar(db, solo_sede: str | None = None) -> int:
             continue
 
         caras = caras_del_plano(fixtures)
+        raros = nombres_que_parecen_partes(fixtures)
+        if raros:
+            print(f"\n■ {sede} — {len(raros)} mueble(s) con un código que se lee como una "
+                  f"parte: {', '.join(raros)}. Conviene renombrarlos.")
         fantasmas = []
         for lease, space in contratos:
             code = (space.code or "").strip().upper()

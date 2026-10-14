@@ -79,7 +79,15 @@ export interface NeveraRealProps {
    *  (`partes.puertas` de la nevera de puertas). Sin esto, las que pide el
    *  ancho (`puertasDeNevera`). Sólo cuenta en la variante `puertas`. */
   puertas?: number;
+  /** Vender por partes: las hojas (en el orden del dibujo, de −X a +X) que se
+   *  están vendiendo. Su marco va en el color de la venta, para que el
+   *  proveedor vea cuál es «su» puerta. Sin esto, todas iguales. */
+  resaltadas?: readonly number[];
 }
+
+/** El marco de la puerta que se vende: el amarillo del botón de Vender, con
+ *  un poco de luz propia para que se lea también con la nevera encendida. */
+const COLOR_DE_LA_PUERTA_VENDIDA = "#f2b705";
 
 /**
  * Envases mudos llenando los entrepaños.
@@ -358,9 +366,19 @@ export function apagarElFrio(
 
 export const NeveraReal = memo(function NeveraReal({
   w, d, h, statusColor, ghost = false, variante = "multideck", conRelleno = true,
-  niveles: nivelesDePrueba, cabezote, puertas,
+  niveles: nivelesDePrueba, cabezote, puertas, resaltadas,
 }: NeveraRealProps) {
   const conPuertas = variante === "puertas";
+  const marcoResaltado = useMemo(
+    () => (resaltadas && resaltadas.length > 0
+      ? new THREE.MeshStandardMaterial({
+        color: COLOR_DE_LA_PUERTA_VENDIDA, emissive: COLOR_DE_LA_PUERTA_VENDIDA, emissiveIntensity: 0.35,
+        roughness: 0.45, metalness: 0.2,
+      })
+      : null),
+    [resaltadas],
+  );
+  useEffect(() => () => { marcoResaltado?.dispose(); }, [marcoResaltado]);
   const esMural = variante === "vegetales";
   const luz = useLuzDeVenta();
   const m = useMaterialesDeFrio(ghost, statusColor, luz, Math.max(0.1, w - NEVERA.chapa * 2), !conPuertas && !esMural);
@@ -595,7 +613,7 @@ export const NeveraReal = memo(function NeveraReal({
               geometry={geometriaMarcoDePuerta(
                 anchoDePuerta, altoDePuerta, NEVERA.marcoPuerta, NEVERA.fondoPuerta,
               )}
-              material={m.marco}
+              material={marcoResaltado && resaltadas?.includes(i) ? marcoResaltado : m.marco}
               castShadow
             />
             <mesh position={[0, 0, -NEVERA.fondoPuerta / 2]} material={m.vidrio}>

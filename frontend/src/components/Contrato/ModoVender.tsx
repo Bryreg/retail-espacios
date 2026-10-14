@@ -16,6 +16,10 @@ import { useFixtureStore } from "../../store/fixtureStore";
 import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 // De `utils/` (no importa nada): la ficha la usa al entrar.
 import { normalizarProveedor } from "../../utils/proveedor";
+import {
+  claseDe, claveDeEspacio, codigoVisibleDe, divisionDe, parteDeSufijo, partesDe, sufijoDeParte, textoDeParte,
+  vanoDeParte,
+} from "../../utils/partes";
 // Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
 // recién cuando se abre, por el `lazy` de abajo.
 import type { CaraActiva, CaraDelVisor } from "./VisorDeVenta";
@@ -60,8 +64,10 @@ interface ModoVenderProps {
   /** El que se tocó último: es el que decide si hay que explicar que ese mueble
    *  no se alquila. */
   ultimo: UnifiedFixture | null;
-  onQuitar: (fixtureId: string, face: "A" | "B") => void;
+  onQuitar: (fixtureId: string, face: "A" | "B", parte?: string) => void;
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
+  /** Vender por partes: prender la entera (`null`) o una parte (`"PU2"`). */
+  onCambiarParte: (fixtureId: string, face: "A" | "B", parte: string | null) => void;
   /** Apagar la sala y encender estos muebles. Pasar el mouse por una fila del
    *  contrato señala en el plano de qué espacio habla. */
   onResaltar: (claves: string[] | null) => void;
@@ -109,7 +115,10 @@ function Fila({
   sePuedeQuitar: boolean;
   onResaltar: (claves: string[] | null) => void;
 }) {
-  const clave = `${l.fixture.id}-${l.face}`;
+  const clave = claveDeEspacio(l.fixture.id, l.face, l.parte);
+  /** La llave de la CARA: la que conoce el plano (una puerta enciende su
+   *  nevera). */
+  const claveDeCara = claveDeEspacio(l.fixture.id, l.face);
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   /* Dos renglones y ni uno más: la fila mide 46 px y la ficha tiene que cerrar
      con tres espacios adentro. Arriba el TIPO —que es lo que se está
@@ -118,6 +127,8 @@ function Fila({
      $1.200.000») era un tercer renglón para un número que ya está en la tabla
      de tarifa, a dos paneles de distancia. */
   const segunda = [
+    // «Puerta 2 de 3»: qué parte de la nevera se vende.
+    l.textoParte,
     l.ubicacion,
     l.ref === null
       ? "sin tarifa de referencia"
@@ -133,13 +144,27 @@ function Fila({
      y no se veía NUNCA. Se vendió un espacio ocupado y el único que avisó fue
      el backend, al guardar, cuando ya estaba todo tecleado.
      Un aviso que compite por ancho con la ubicación no es un aviso. */
+  /* Vender por partes: lo que choca puede no ser este espacio sino la nevera
+     entera (para una puerta) o una puerta (para la entera). Se dice cuál, sin
+     nombrar a nadie: ni de quién es la otra parte ni cuánto paga. */
+  const division = divisionDe(l.fixture);
+  const clase = division ? claseDe(division.clase) : undefined;
   const choque = l.choqueServidor.length > 0
     // Lo que dice la base gana: nombra las fechas del contrato que ya existe,
     // que es lo que hace falta para corregir las propias.
     ? l.choqueServidor.join(" ")
     : l.disponibilidad === "libre" ? null
+    : l.porQue === "entera" ? "Ya está vendida entera en el periodo: no se vende por partes"
+    : l.porQue === "partes" && clase
+    ? `Hay ${clase.plural} vendidas en el periodo: se puede vender otra ${clase.singular}, no la entera`
     : l.disponibilidad === "parcial" ? "Parte del periodo ya está vendida"
     : "Ya está vendido en el periodo";
+
+  /* «Entera · PU1 · PU2 · PU3»: los interruptores de la venta por partes,
+     una vez por cara (en el primer renglón de esa cara). Prender una puerta
+     apaga la entera y al revés: nunca las dos en el mismo contrato. */
+  const partesDeLaCara = partesDe(l.fixture).filter((p) => p.cara === l.face);
+  const primeraDeLaCara = c.lineas.find((o) => o.fixture.id === l.fixture.id && o.face === l.face) === l;
 
   /* Los espacios internos que el plano da por vendidos APARTE (los que se
      marcan en el Editor 3D). No tienen contrato en la base —viven sólo en el
@@ -157,7 +182,7 @@ function Fila({
     <div
       className="eitem"
       data-clave={clave}
-      onMouseEnter={() => onResaltar([clave])}
+      onMouseEnter={() => onResaltar(clave === claveDeCara ? [clave] : [claveDeCara, clave])}
       onMouseLeave={() => onResaltar(null)}
     >
       <span className="cod">
@@ -233,7 +258,7 @@ function Fila({
       {sePuedeQuitar && (
         <button
           className="x"
-          onClick={() => c.onQuitar(l.fixture.id, l.face)}
+          onClick={() => c.onQuitar(l.fixture.id, l.face, l.parte ?? undefined)}
           aria-label={`Quitar ${l.visible} del contrato`}
         >
           ×
@@ -244,6 +269,28 @@ function Fila({
           pasaba de 150 a 255 px y empujaba Proveedor, fechas y «Guardar»
           fuera del panel. (`.eitem` es flex con `wrap`; el aviso ocupa el
           100 % y baja solo al renglón de abajo.) */}
+      {primeraDeLaCara && partesDeLaCara.length > 0 && (
+        <span className="partes" role="group" aria-label={`Cómo se vende ${codigoVisibleDe(l.fixture.code, l.face, l.doble, null)}`}
+          data-partes-de={claveDeCara}>
+          {[null, ...partesDeLaCara.map((p) => sufijoDeParte(p.parte))].map((suf) => {
+            const puesta = c.lineas.some((o) => o.fixture.id === l.fixture.id && o.face === l.face && o.parte === suf);
+            const parte = suf ? parteDeSufijo(suf) : null;
+            const nombre = parte ? textoDeParte(parte, partesDeLaCara.length) : "Entera";
+            return (
+              <button
+                key={suf ?? "entera"}
+                type="button"
+                aria-pressed={puesta}
+                className={puesta ? "on" : undefined}
+                onClick={() => c.onCambiarParte(l.fixture.id, l.face, suf)}
+                title={puesta ? `Sacar ${nombre.toLowerCase()} del contrato` : `Vender ${nombre.toLowerCase()}`}
+              >
+                {suf ?? "Entera"}
+              </button>
+            );
+          })}
+        </span>
+      )}
       {choque && <span className="aviso choque" role="alert">{choque}</span>}
     </div>
   );
@@ -413,10 +460,10 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
 
 function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const {
-    espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara,
+    espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte,
     onGuardado, onCancelar, onResaltar,
   } = props;
-  const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onGuardado });
+  const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte, onGuardado });
   const guardando = c.estado === "guardando";
   // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
@@ -439,14 +486,41 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
    *  Sin las que chocan: una cara que ya está vendida en el periodo no se
    *  puede guardar en este contrato, y mostrársela en 3D al proveedor era
    *  ofrecerle un espacio que no se le puede vender. */
-  const carasDelVisor = useMemo<CaraDelVisor[]>(() => c.lineas
-    // La exhibición no tiene 3D (`storeToFixtures` no la dibuja): ni botón ni pestaña.
-    .filter((l) => l.fixture.type !== "exhibicion")
-    .filter((l) => l.disponibilidad === "libre" && l.choqueServidor.length === 0)
-    .map((l) => ({
-      fixtureId: l.fixture.id, face: l.face, visible: l.visible, codigo: l.codigo,
-      tipo: tipoDelMueble(l.fixture, nombresPropios),
-    })), [c.lineas, fichasPropias, nombresPropios]);
+  //
+  // El visor sigue siendo por CARA: las puertas de una nevera que van en el
+  // contrato son una sola cara del visor, con esas puertas marcadas (`vanos`,
+  // los del dibujo) y el producto sólo detrás de ellas. Con la entera, la cara
+  // entera, como siempre.
+  const carasDelVisor = useMemo<CaraDelVisor[]>(() => {
+    const porCara = new Map<string, CaraDelVisor & { entera: boolean; sufijos: string[]; codigos: string[] }>();
+    for (const l of c.lineas
+      // La exhibición no tiene 3D (`storeToFixtures` no la dibuja): ni botón ni pestaña.
+      .filter((l) => l.fixture.type !== "exhibicion")
+      .filter((l) => l.disponibilidad === "libre" && l.choqueServidor.length === 0)) {
+      const k = `${l.fixture.id}|${l.face}`;
+      const ya = porCara.get(k) ?? {
+        fixtureId: l.fixture.id, face: l.face, visible: l.visible, codigo: l.codigo,
+        tipo: tipoDelMueble(l.fixture, nombresPropios), entera: false, sufijos: [], codigos: [],
+      };
+      if (l.parte) { ya.sufijos.push(l.parte); ya.codigos.push(l.codigo); } else ya.entera = true;
+      porCara.set(k, ya);
+    }
+    return [...porCara.values()].map(({ entera, sufijos, codigos, ...cara }) => {
+      const f = c.lineas.find((l) => l.fixture.id === cara.fixtureId)!.fixture;
+      if (entera || sufijos.length === 0) {
+        return { ...cara, visible: codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null) };
+      }
+      const n = divisionDe(f)?.n ?? 0;
+      const vanos = sufijos.map((s) => parteDeSufijo(s)).filter((p) => p && p.n !== null && n > 0)
+        .map((p) => vanoDeParte(cara.face, p!.n!, n));
+      return {
+        ...cara,
+        visible: `${codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null)}·${sufijos.join("·")}`,
+        codigo: codigos.join(", "),
+        ...(vanos.length ? { vanos } : {}),
+      };
+    });
+  }, [c.lineas, fichasPropias, nombresPropios]);
   /** La que abre «Ver en 3D»: la última cara que se tocó en el plano (las
    *  filas van en el orden en que se tocaron). Las otras quedan a un toque en
    *  la chapa del visor. */
@@ -590,7 +664,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
         <div className="espacios">
           {c.lineas.map((l) => (
             <Fila
-              key={`${l.fixture.id}-${l.face}`}
+              key={claveDeEspacio(l.fixture.id, l.face, l.parte)}
               l={l}
               c={c}
               onResaltar={onResaltar}

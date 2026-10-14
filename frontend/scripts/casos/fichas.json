@@ -1892,6 +1892,230 @@
    "mal": [
     "ficha"
    ]
+  },
+  {
+   "nombre": "una nevera de dos puertas que se vende por puertas",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "por puertas con una puerta sola: no se divide",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 1,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "por puertas sin decir cuántas",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "por algo que la nevera no admite",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "tramos"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la división como un número",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la división borrada (null) es no decir nada",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": null
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "por puertas con puertas que no son un entero",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2.5,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division",
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "una góndola no se vende por puertas",
+   "ficha": {
+    "clave": "gondola-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "partes": {
+     "division": "puertas"
+    },
+    "fuente": {
+     "confiabilidad": "ficha",
+     "nota": "medida"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una estiba no se vende por partes",
+   "ficha": {
+    "clave": "estiba",
+    "tipo": "isla",
+    "nombre": "Estiba",
+    "w": 1.2,
+    "d": 1.0,
+    "h": 1.4,
+    "partes": {
+     "division": "puertas"
+    },
+    "fuente": {
+     "confiabilidad": "ficha",
+     "nota": "medida"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "algo comercial adentro de partes, aunque diga cómo se vende",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "puertas",
+     "proveedor": "Postobón"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes"
+   ]
   }
  ]
 }

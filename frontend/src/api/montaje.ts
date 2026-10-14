@@ -53,6 +53,9 @@ export interface EspacioMontaje {
   hasta?: string | null;
   /** "A unos 4 m de las cajas" — la misma frase que iba en el correo. */
   donde?: string | null;
+  /** Vender por partes: qué parte del mueble es (`texto`: «Puerta 2 de 3,
+   *  contando de izquierda a derecha mirando el frente»). Sin esto, la cara. */
+  parte?: { token: string; n: number | null; de: number | null; texto: string } | null;
   /** Los muebles de la sede, sólo geometría: alcanza para dibujar el plano y
    *  no lleva ni proveedor ni fechas ni valores de los espacios ajenos. */
   vecinos: UnifiedFixture[];

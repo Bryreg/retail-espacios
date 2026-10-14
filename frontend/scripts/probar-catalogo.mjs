@@ -87,7 +87,7 @@ const CLAVES_DE_TIPO = new Set([
   "prefijo", "alquilable", "tarifa", "informe", "informePlural", "categoria", "grupo2D",
   "referencia", "banderas", "legado", "variantes",
   "rotuloEditor", "medidas", "color", "color2D", "emoji", "descripcion",
-  "rango", "geometria",
+  "rango", "geometria", "partes",
 ]);
 const CLAVES_DE_MODELO = new Set([
   "id", "tipo", "variante", "nombre", "w", "d", "h", "entrepanos", "modulo", "partes", "color",
@@ -98,11 +98,12 @@ const CLAVES_DE_MODELO = new Set([
  *  nunca fotos de terceros) y los largos de los textos NO están acá: son las
  *  reglas de `fichas` del catálogo, las mismas que el servidor aplica a las
  *  fichas propias de cada supermercado. */
-const CAMPOS_DE_GEOMETRIA = ["entrepanos", "modulo", "puertas"];
+const CAMPOS_DE_GEOMETRIA = ["entrepanos", "modulo", "puertas", "division"];
 const reglasDeFicha = (cat) => {
   const r = cat.fichas ?? {};
   const geometria = Object.fromEntries(Object.entries(r.geometria ?? {}).map(([campo, g]) => [campo, {
     leer: (m) => (g.enPartes ? m.partes?.[campo] : m[campo]), entero: g.entero === true,
+    enPartes: g.enPartes === true, valores: g.valores,
   }]));
   let esImagen = /(?!)/;
   try { esImagen = new RegExp(r.fuenteQueEsImagen, "i"); } catch { /* lo dice la validación de `fichas` */ }
@@ -122,7 +123,7 @@ function validar(cat) {
   si(Array.isArray(cat.leeme) && cat.leeme.every(texto), "`leeme` no es una lista de textos");
   si(/^[A-Z]{3}$/.test(cat.prefijoDesconocido ?? ""), "`prefijoDesconocido` no son tres mayúsculas");
   const tipos = cat.tipos ?? {};
-  const claves = new Set(["version", "leeme", "prefijoDesconocido", "tipos", "alias", "tarifas", "modelos", "fichas", "orden"]);
+  const claves = new Set(["version", "leeme", "prefijoDesconocido", "tipos", "alias", "tarifas", "modelos", "partes", "fichas", "orden"]);
   for (const k of Object.keys(cat)) si(claves.has(k), `clave desconocida \`${k}\` en el catálogo`);
 
   // ── Las reglas de las fichas ──
@@ -138,8 +139,10 @@ function validar(cat) {
   si(Array.isArray(rf.confiabilidad) && rf.confiabilidad.length > 0 && rf.confiabilidad.every(texto),
     "`fichas.confiabilidad` tiene que ser una lista de textos");
   si(rf.geometria && Object.keys(rf.geometria).sort().join() === [...CAMPOS_DE_GEOMETRIA].sort().join()
-    && Object.values(rf.geometria).every((g) => typeof g?.enPartes === "boolean" && typeof g?.entero === "boolean"),
-    `\`fichas.geometria\` tiene que decir de ${CAMPOS_DE_GEOMETRIA.join(", ")} si va en \`partes\` y si es entero`);
+    && Object.values(rf.geometria).every((g) => typeof g?.enPartes === "boolean" && typeof g?.entero === "boolean"
+      && Object.keys(g).every((k) => ["enPartes", "entero", "valores"].includes(k))
+      && (g.valores === undefined || (texto(g.valores) && g.enPartes && !g.entero))),
+    `\`fichas.geometria\` tiene que decir de ${CAMPOS_DE_GEOMETRIA.join(", ")} si va en \`partes\` y si es entero (y, si es una palabra, dónde está su lista: \`valores\`)`);
   si(expresionValida(rf.fuenteQueEsImagen), "`fichas.fuenteQueEsImagen` no es una expresión");
   si(["nombre", "url", "nota"].every((k) => Number.isInteger(rf.largoMaximo?.[k]) && rf.largoMaximo[k] > 0),
     "`fichas.largoMaximo` tiene que tener nombre, url y nota, enteros positivos");
@@ -148,6 +151,37 @@ function validar(cat) {
   const tarifas = new Map((cat.tarifas ?? []).map((t) => [t.clave, t]));
   si((cat.tarifas ?? []).length === tarifas.size, "hay dos tarifas con la misma clave");
   for (const t of cat.tarifas ?? []) si(texto(t.clave) && texto(t.rotulo), `tarifa sin clave o sin rótulo: ${JSON.stringify(t)}`);
+
+  // ── Vender por partes: las clases ──
+  // Cada clase dice su token (dos letras, único, reservado), si divide la
+  // cara o es una pieza, el campo de `partes` que la cuenta (uno de los de
+  // `fichas.geometria` que van en `partes`, entero), su tarifa (con su fila)
+  // y cómo la nombran los informes.
+  const pc = cat.partes ?? {};
+  for (const k of Object.keys(pc)) si(["leeme", "clases", "reservados"].includes(k), `clave desconocida \`${k}\` en \`partes\``);
+  si(Array.isArray(pc.leeme) && pc.leeme.every(texto), "`partes.leeme` no es una lista de textos");
+  const reservados = Array.isArray(pc.reservados) ? pc.reservados : [];
+  si(Array.isArray(pc.reservados) && reservados.every((r) => /^[A-Z]{1,2}$/.test(r)) && new Set(reservados).size === reservados.length
+    && reservados.includes("B"), "`partes.reservados` son finales de una o dos mayúsculas, sin repetir, con la `B` de la cara B");
+  const clases = pc.clases ?? {};
+  const tokens = new Set();
+  const CLAVES_DE_CLASE = ["token", "es", "eje", "campo", "minimo", "unico", "singular", "plural", "tarifa", "informe", "informePlural"];
+  for (const [clase, c] of Object.entries(clases)) {
+    const donde = `parte ${clase}`;
+    for (const k of Object.keys(c ?? {})) si(CLAVES_DE_CLASE.includes(k), `${donde}: clave desconocida \`${k}\``);
+    si(/^[A-Z]{2}$/.test(c?.token ?? ""), `${donde}: el token son dos mayúsculas`);
+    si(!tokens.has(c?.token), `${donde}: el token ${c?.token} ya es de otra clase`);
+    tokens.add(c?.token);
+    si(reservados.includes(c?.token), `${donde}: el token ${c?.token} no está entre los reservados`);
+    si(["division", "pieza"].includes(c?.es), `${donde}: \`es\` es division o pieza`);
+    si([null, "ancho", "alto"].includes(c?.eje), `${donde}: \`eje\` es ancho, alto o null`);
+    const regla = (cat.fichas?.geometria ?? {})[c?.campo];
+    si(!!regla && regla.enPartes && regla.entero, `${donde}: \`campo\` tiene que ser un entero de \`partes\` en \`fichas.geometria\``);
+    si(Number.isInteger(c?.minimo) && c.minimo >= 1, `${donde}: \`minimo\` es un entero de 1 o más`);
+    si(texto(c?.singular) && texto(c?.plural), `${donde}: sin singular o plural`);
+    si(texto(c?.tarifa) && tarifas.has(c.tarifa), `${donde}: su tarifa no está en \`tarifas\``);
+    si(texto(c?.informe) && texto(c?.informePlural), `${donde}: los informes no tienen cómo nombrarla`);
+  }
 
   /** La forma con que nace: rótulo, medidas, color, emoji y descripción. */
   const forma = (f, donde, { conCaras }) => {
@@ -186,8 +220,17 @@ function validar(cat) {
         `${t}: \`rango\` tiene que tener w, d y h, cada uno [mínimo, máximo] positivos`);
     }
     if (d.geometria !== undefined) {
-      si(Object.entries(d.geometria).every(([k, r]) => k in GEOMETRIA && rangoValido(r)),
-        `${t}: \`geometria\` sólo admite ${Object.keys(GEOMETRIA).join(", ")}, cada uno [mínimo, máximo]`);
+      si(Object.entries(d.geometria).every(([k, r]) => k in GEOMETRIA && !GEOMETRIA[k].valores && rangoValido(r)),
+        `${t}: \`geometria\` sólo admite ${Object.keys(GEOMETRIA).filter((k) => !GEOMETRIA[k].valores).join(", ")}, cada uno [mínimo, máximo]`);
+    }
+    if (d.partes !== undefined) {
+      // Las divisiones de la familia: clases que dividen, contadas por un
+      // campo que la familia tiene en su `geometria`.
+      const divs = d.partes?.divisiones;
+      si(d.partes && Object.keys(d.partes).every((k) => k === "divisiones") && Array.isArray(divs) && divs.length > 0
+        && divs.every((x) => clases[x]?.es === "division" && d.geometria?.[clases[x].campo] !== undefined)
+        && d.alquilable !== "nunca",
+        `${t}: \`partes.divisiones\` son clases que dividen, contadas con un campo de su \`geometria\`, en un tipo que se vende`);
     }
     if (d.legado) {
       si(d.tarifa === undefined && d.variantes === undefined, `${t}: un legado no tiene tarifa ni variantes`);
@@ -206,8 +249,9 @@ function validar(cat) {
   const modelos = Array.isArray(cat.modelos) ? cat.modelos : [];
   si(Array.isArray(cat.modelos), "`modelos` no es una lista");
   for (const t of tarifas.keys()) {
-    si(Object.values(tipos).some((d) => d.tarifa === t) || modelos.some((m) => m.tarifa === t),
-      `la tarifa \`${t}\` no es de ningún tipo ni de ningún modelo`);
+    si(Object.values(tipos).some((d) => d.tarifa === t) || modelos.some((m) => m.tarifa === t)
+      || Object.values(clases).some((c) => c?.tarifa === t),
+      `la tarifa \`${t}\` no es de ningún tipo, ni de ningún modelo, ni de ninguna clase de parte`);
   }
 
   // ── Los modelos ──
@@ -239,14 +283,25 @@ function validar(cat) {
     for (const [campo, g] of Object.entries(GEOMETRIA)) {
       const v = g.leer(m);
       if (v === undefined) continue;
+      if (g.valores) {
+        // Una palabra de la lista de su familia, y con su cuenta.
+        const lista = d.partes?.[g.valores] ?? [];
+        si(lista.includes(v), `${donde}: \`${campo}\` = ${JSON.stringify(v)} no es de la lista de \`${m.tipo}\``);
+        const c = clases[v];
+        si(!c || (Number.isInteger(m.partes?.[c.campo]) && m.partes[c.campo] >= c.minimo),
+          `${donde}: se vende por ${c?.plural ?? v} y no dice cuántas (${c?.minimo ?? 2} o más)`);
+        continue;
+      }
       const r = d.geometria?.[campo];
       si(!!r, `${donde}: \`${campo}\` no es geometría de \`${m.tipo}\``);
       if (r) si(typeof v === "number" && (!g.entero || Number.isInteger(v)) && v >= r[0] && v <= r[1],
         `${donde}: \`${campo}\` = ${v} está fuera de su rango (${r[0]} a ${r[1]})`);
     }
     if (m.partes !== undefined) {
-      si(m.partes && typeof m.partes === "object" && Object.keys(m.partes).every((k) => k === "puertas")
-        && Object.values(m.partes).every((v) => typeof v === "number"), `${donde}: \`partes\` sólo lleva números conocidos (puertas)`);
+      si(m.partes && typeof m.partes === "object"
+        && Object.entries(m.partes).every(([k, v]) => GEOMETRIA[k]?.enPartes
+          && (GEOMETRIA[k].valores ? typeof v === "string" : typeof v === "number")),
+        `${donde}: \`partes\` sólo lleva lo conocido de \`fichas.geometria\`, con su tipo`);
     }
     si(m.color === undefined || COLOR.test(m.color), `${donde}: color inválido`);
     if (m.tarifa !== undefined) {
@@ -291,6 +346,7 @@ function validar(cat) {
   const conNombre = [
     ...Object.entries(tipos).map(([t, d]) => [t, d]),
     ...modelos.filter((m) => m?.tarifa).map((m) => [`modelo ${m.id}`, m]),
+    ...Object.entries(clases).map(([c, x]) => [`parte ${c}`, x]),
   ];
   for (const [t, d] of conNombre) {
     for (const nombre of [d.informe, d.informePlural].filter(texto)) {
@@ -379,12 +435,26 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
     ["otros entrepaños en el mismo alto", (c) => { c.modelos.find((m) => m.id === "base:gondola-central-150-m120").entrepanos = 3; },
       /gondola:double:1\.5: los modelos del mismo alto tienen distintos entrepaños/],
     ["puertas que no son enteras", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").partes.puertas = 2.5; }, /`puertas` = 2.5 está fuera/],
-    ["algo comercial en las partes", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").partes.proveedor = "Postobón"; }, /`partes` sólo lleva números/],
+    ["algo comercial en las partes", (c) => { c.modelos.find((m) => m.tipo === "nevera_puertas").partes.proveedor = "Postobón"; }, /`partes` sólo lleva lo conocido/],
+    // Vender por partes.
+    ["un modelo que se vende por algo que su familia no admite", (c) => { c.modelos.find((m) => m.id === "base:nevera-3p-frigomaster").partes.division = "tramos"; }, /`division` = "tramos" no es de la lista/],
+    ["un modelo por puertas sin decir cuántas", (c) => { delete c.modelos.find((m) => m.id === "base:nevera-3p-frigomaster").partes.puertas; }, /se vende por puertas y no dice cuántas/],
+    ["una puerta sola, por puertas", (c) => { c.modelos.find((m) => m.id === "base:nevera-1p-inducol").partes.division = "puertas"; }, /se vende por puertas y no dice cuántas/],
+    ["la división como un número", (c) => { c.modelos.find((m) => m.id === "base:nevera-3p-frigomaster").partes.division = 3; }, /`partes` sólo lleva lo conocido/],
+    ["un token de tres letras", (c) => { c.partes.clases.puertas.token = "PUE"; }, /el token son dos mayúsculas/],
+    ["un token sin reservar", (c) => { c.partes.reservados = c.partes.reservados.filter((r) => r !== "PU"); }, /no está entre los reservados/],
+    ["sin la B reservada", (c) => { c.partes.reservados = c.partes.reservados.filter((r) => r !== "B"); }, /con la `B` de la cara B/],
+    ["una clase con una tarifa sin fila", (c) => { c.partes.clases.puertas.tarifa = "parte_inventada"; }, /su tarifa no está en `tarifas`/],
+    ["una clase contada con un campo que no es de `partes`", (c) => { c.partes.clases.puertas.campo = "entrepanos"; }, /`campo` tiene que ser un entero de `partes`/],
+    ["una familia que se divide en algo que no es una clase", (c) => { c.tipos.nevera_puertas.partes.divisiones = ["cajones"]; }, /`partes.divisiones` son clases que dividen/],
+    ["una familia que nunca se vende, por partes", (c) => { c.tipos.checkout.partes = { divisiones: ["puertas"] }; c.tipos.checkout.geometria = { puertas: [1, 6] }; }, /`partes.divisiones` son clases que dividen/],
+    ["la división como un rango de familia", (c) => { c.tipos.nevera_puertas.geometria.division = [1, 2]; }, /`geometria` sólo admite/],
+    ["el nombre de informe de la puerta lleva a otra fila", (c) => { c.partes.clases.puertas.informe = "nevera de puertas"; }, /parte puertas: los informes lo llaman «nevera de puertas»/],
     ["una tarifa de modelo sin fila", (c) => { c.modelos.find((m) => m.tarifa).tarifa = "estiba_octava"; }, /la tarifa `estiba_octava` no está en `tarifas`/],
     ["una tarifa de modelo sin nombre de informe", (c) => { delete c.modelos.find((m) => m.tarifa).informePlural; }, /tiene tarifa propia y los informes/],
     ["una tarifa de modelo que lleva a otra fila", (c) => { c.modelos.find((m) => m.tarifa === "estiba_media").informe = "cuarto de estiba"; },
       /los informes lo llaman «cuarto de estiba» y en Tarifas eso es `estiba_cuarta`/],
-    ["una tarifa que no es de nadie", (c) => { c.tarifas.push({ clave: "huerfana", rotulo: "Huérfana" }); }, /la tarifa `huerfana` no es de ningún tipo ni de ningún modelo/],
+    ["una tarifa que no es de nadie", (c) => { c.tarifas.push({ clave: "huerfana", rotulo: "Huérfana" }); }, /la tarifa `huerfana` no es de ningún tipo, ni de ningún modelo, ni de ninguna clase de parte/],
     ["una fuente sin URL https", (c) => { c.modelos[0].fuente.url = "http://ejemplo.co/ficha"; }, /la fuente no tiene una URL https/],
     ["una fuente que es una imagen", (c) => { c.modelos[0].fuente.url = "https://ejemplo.co/gondola.JPG"; }, /la fuente es una imagen/],
     ["una confiabilidad inventada", (c) => { c.modelos[0].fuente.confiabilidad = "segura"; }, /la confiabilidad tiene que ser/],
@@ -625,7 +695,7 @@ await prueba("colocar un modelo estampa su ficha, y cambiar la ficha no mueve lo
   };
   const [f] = CP.fixturesToStore([colocado], "NAVE", []);
   assert.deepEqual({ modelo: f.modelo, w: f.w, d: f.d, h: f.h, partes: f.partes },
-    { modelo: ID, w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3 } }, "el 3D no estampó la ficha");
+    { modelo: ID, w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3, division: "puertas" } }, "el 3D no estampó la ficha");
   assert.equal(f.label, "Nevera de Puertas", "el 3D no estampó el rótulo de su tipo");
 
   // El 2D: lo que arma `placeItem` con el modelo de la biblioteca.
@@ -1236,14 +1306,16 @@ await prueba("quien pregunta la tarifa vuelve a preguntar cuando llegan las fich
   let memos = 0;
   for (const a of archivos) {
     const t = sinComent(leer(a));
-    if (!/(rateTypeOf|tipoDelMueble)\(/.test(t)) continue;
+    // `tarifaDeEspacio` (vender por partes) pregunta `rateTypeOf` adentro: quien
+    // la llama desde un memo también depende de las fichas.
+    if (!/(rateTypeOf|tipoDelMueble|tarifaDeEspacio)\(/.test(t)) continue;
     const rel = a.slice(raiz.length + 1);
     // Las funciones del archivo que la preguntan (en minúscula: los componentes
     // se vigilan por sus propios `useMemo`).
     const fns = [...t.matchAll(/\nfunction ([a-z]\w*)\(/g)]
-      .filter((m) => /(rateTypeOf|tipoDelMueble)\(/.test(t.slice(m.index, t.indexOf("\n}\n", m.index))))
+      .filter((m) => /(rateTypeOf|tipoDelMueble|tarifaDeEspacio)\(/.test(t.slice(m.index, t.indexOf("\n}\n", m.index))))
       .map((m) => m[1]);
-    const pregunta = new RegExp(`\\b(${["rateTypeOf", "tipoDelMueble", ...fns].join("|")})\\(`);
+    const pregunta = new RegExp(`\\b(${["rateTypeOf", "tipoDelMueble", "tarifaDeEspacio", ...fns].join("|")})\\(`);
     for (const m of t.matchAll(/\b(useMemo|useCallback)(<[^>]*>)?\(/g)) {
       let i = m.index + m[0].length, prof = 1;
       while (prof > 0 && i < t.length) { if (t[i] === "(") prof++; else if (t[i] === ")") prof--; i++; }

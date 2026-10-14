@@ -541,7 +541,7 @@ export function tonosDelRelleno(semilla: string, n: number): [number, number, nu
  * `[0, apoyo, 0]` girado `giro`, adentro del grupo de la cara.
  */
 export function unidadesDePrueba({
-  venta, empaque, donde, semilla, profundidad = 3, tramo, surtido = false,
+  venta, empaque, donde, semilla, profundidad = 3, tramo, surtido = false, vanos: soloVanos,
 }: {
   venta: Pick<VentaDeMueble, "filas" | "vanos" | "sobreApoyo">;
   empaque: EmpaqueDePrueba;
@@ -554,6 +554,9 @@ export function unidadesDePrueba({
   tramo?: TramoDeSurtido;
   /** Es uno de varios productos en la cara: sin frente corrido. */
   surtido?: boolean;
+  /** Vender por partes: sólo estos vanos (los de las puertas que se venden,
+   *  en el orden del dibujo). Sin esto, todos. */
+  vanos?: readonly number[];
 }): PruebaAcomodada {
   const { filas, vanos } = venta;
   const porFila: FilaDePrueba[] = [];
@@ -615,7 +618,11 @@ export function unidadesDePrueba({
       Math.max(0, apoyo + pisos * e.alto - filas.alturas[i + 1]),
     );
 
-    for (const vano of vanos) {
+    for (let iv = 0; iv < vanos.length; iv++) {
+      const vano = vanos[iv];
+      // Vendiendo una puerta, el producto va sólo detrás de ella: las otras
+      // no se le venden a este proveedor.
+      if (soloVanos && !soloVanos.includes(iv)) continue;
       // El vano ENTERO: la prueba es por entrepaño, no por el tramo de un
       // slot. Con surtido, sólo lo que el tramo de este producto toca.
       const vx0 = Math.max(tramo ? tramo.x0 : -Infinity, vano.x - vano.ancho / 2);
