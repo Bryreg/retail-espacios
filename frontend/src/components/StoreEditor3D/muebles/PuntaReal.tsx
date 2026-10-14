@@ -65,10 +65,16 @@ export interface PuntaRealProps {
   /** Sólo en venta: los (entrepaño, vano) con habladores genéricos
    *  (`tramosConRelleno`). */
   habladores?: ReadonlySet<string> | null;
+  /** Entrepaños sin la base, como los guardó la punta (de su ficha o
+   *  escritos en el panel). Ausente: los que entran al paso típico. */
+  entrepanos?: number;
+  /** Ancho de módulo guardado. Ausente: 1,25 (un solo vano en una punta de
+   *  catálogo). */
+  modulo?: number;
 }
 
 export const PuntaReal = memo(function PuntaReal({
-  w, d, h, statusColor, ghost = false, copete, cenefa, habladores,
+  w, d, h, statusColor, ghost = false, copete, cenefa, habladores, entrepanos, modulo,
 }: PuntaRealProps) {
   const materiales = useMateriales(ghost, statusColor);
   // En la pantalla de venta, un copete SIN prueba lleva la chapa de la tienda
@@ -91,8 +97,10 @@ export const PuntaReal = memo(function PuntaReal({
   );
 
   const altoDeCuerpo = techoDeCara(h);
-  const vanos = useMemo(() => vanosDeCorrido(w), [w]);
-  const niveles = useMemo(() => nivelesDePunta(altoDeCuerpo), [altoDeCuerpo]);
+  // Con lo que guardó la punta, las MISMAS cuentas que el producto, el
+  // relleno, los habladores y la lámina (`ventaDePunta`, `filasDePunta`).
+  const vanos = useMemo(() => vanosDeCorrido(w, modulo), [w, modulo]);
+  const niveles = useMemo(() => nivelesDePunta(altoDeCuerpo, entrepanos), [altoDeCuerpo, entrepanos]);
 
   // El fondo útil de los entrepaños, descontando el respaldo.
   const fondoDeCara = Math.max(0.12, d - PANEL_FONDO.espesor);

@@ -141,8 +141,15 @@ export const TIPOS = [...FIX_TYPE, ...FIX_TYPE_2D.filter((t) => !FIX_TYPE.includ
 
 export const SEDE = "NAVE";
 
-/** El plano sintético, armado con el código de hoy. */
-export function armarPlano() {
+/** El plano sintético, armado con el código de hoy.
+ *
+ *  Con `soloTipos`, los muebles del editor 3D se toman sólo de esos tipos: es
+ *  como `probar-catalogo.mjs` vuelve a armar el plano de la referencia sin los
+ *  tipos que se sumaron después de capturarla (la nevera de puertas, el puesto
+ *  de impulso…). Sin eso, cada tipo nuevo corría la numeración y la grilla de
+ *  todos los que venían detrás, y la comparación fallaba sin que ningún plano
+ *  viejo hubiera cambiado. */
+export function armarPlano({ soloTipos } = {}) {
   const muebles = [];
   const poner = (nombre, m) => {
     const i = muebles.length;
@@ -167,6 +174,7 @@ export function armarPlano() {
   // Los 19 del editor 3D, como los crea él (`onFloorClick` en StoreEditor3D):
   // la bandera sólo en los que nacen fuera de la venta.
   for (const d of C3.FIXTURE_DEFS) {
+    if (soloTipos && !soloTipos.includes(d.type)) continue;
     poner(d.gondolaType ? `${d.type}-${d.gondolaType}` : d.type, {
       type: d.type, gondolaType: d.gondolaType, label: d.label,
       w: d.w, d: d.d, h: d.h, color: d.color,

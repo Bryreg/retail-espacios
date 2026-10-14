@@ -1,5 +1,5 @@
-import type { Catalogo2D, FixType2D } from "../utils/convertirPlano";
-import { CATALOGO_DE_MUEBLES, formaDe, resolverTipo } from "./catalogo";
+import type { Catalogo2D, FixType2D, NaceDeModelo } from "../utils/convertirPlano";
+import { CATALOGO_DE_MUEBLES, estampaDe, formaDe, modelosDe, resolverTipo } from "./catalogo";
 
 /**
  * Las tablas por TIPO de mueble del plano 2D, calculadas del catálogo
@@ -89,3 +89,44 @@ export const COLOR_DEFAULTS: Record<string, string> = Object.fromEntries([
  *  copia vieja de los altos en el componente deshacía en silencio, por ejemplo,
  *  el alto con que nace el servicio al cliente. */
 export const CATALOGO_2D: Catalogo2D = { tipos: CATALOG, altos: H_DEFAULTS, colores: COLOR_DEFAULTS };
+
+/**
+ * Los modelos de cada tipo de la biblioteca del plano (`modelos` del
+ * catálogo), en el orden del archivo: la biblioteca los lista debajo de su
+ * familia. Cada uno trae con qué ancho y fondo se dibuja y con qué nace en el
+ * store (`nace`: alto, color, id del modelo y geometría), que es lo que
+ * `itemsToStore` le estampa al mueble nuevo. El rótulo es el de su tipo, como
+ * siempre: el 2D lo vuelve a escribir en `label` cada vez que abre el plano.
+ */
+export interface ModeloDelPlano {
+  id: string;
+  nombre: string;
+  /** Las medidas son una deducción: en pantalla, «≈». */
+  estimado: boolean;
+  /** Ancho y fondo, en la convención del 2D (`h` es el fondo). */
+  w: number;
+  h: number;
+  nace: NaceDeModelo;
+}
+
+export const MODELOS_2D: Record<string, ModeloDelPlano[]> = Object.fromEntries(
+  CATALOGO_DE_MUEBLES.orden.plano2D.map((t) => [t, modelosDe(t).map((m) => {
+    const e = estampaDe(m);
+    return {
+      id: m.id,
+      nombre: m.nombre,
+      estimado: m.fuente.confiabilidad === "estimado",
+      w: e.w,
+      h: e.d,
+      nace: {
+        h: e.h,
+        // El color del 2D, como `COLOR_DEFAULTS`: el de la ficha si lo tiene.
+        color: m.color ?? COLOR_DEFAULTS[t] ?? e.color,
+        modelo: e.modelo,
+        ...(e.entrepanos !== undefined ? { entrepanos: e.entrepanos } : {}),
+        ...(e.modulo !== undefined ? { modulo: e.modulo } : {}),
+        ...(e.partes !== undefined ? { partes: e.partes } : {}),
+      },
+    };
+  })]),
+);

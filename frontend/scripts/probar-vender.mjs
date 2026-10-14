@@ -935,6 +935,89 @@ prueba("StoreView y Legend están borrados, o al menos nadie los importa", () =>
   assert.deepEqual(vivos, [], vivos.join(" · "));
 });
 
+/* ── el visor ve el mueble de verdad (ejecutado) ──────────────────────────
+   El visor de Vender dibuja con la misma escena que el editor, sobre
+   `sinRepisasVendidas(sinDatosComerciales(storeToFixtures(…)))`. Si la lista
+   blanca de `sinDatosComerciales` dejara afuera los entrepaños, el módulo o
+   las puertas que guardó el mueble, al proveedor se le mostraría OTRA góndola
+   u otra nevera que la que se le vende —con el producto parado en otros
+   entrepaños—. Se arma el mismo plano por los dos caminos y se comparan las
+   filas y los vanos que cada uno le pide a `ventaDeTipo` (la cuenta que usan
+   el dibujo, el relleno, la prueba, los habladores y la cámara). */
+{
+  const { build } = await import("esbuild");
+  const cargar = async (rel, opciones = {}) => {
+    const r = await build({
+      entryPoints: [join(raiz, rel)], bundle: true, write: false, format: "esm",
+      platform: "neutral", logLevel: "silent", ...opciones,
+    });
+    return import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+  };
+  const Pl = await cargar("src/utils/convertirPlano.ts");
+  const Pr = await cargar("src/components/StoreEditor3D/muebles/privacidad.ts");
+  const Me = await cargar("src/components/StoreEditor3D/muebles/medidas.ts");
+  const Ve = await cargar("src/components/StoreEditor3D/muebles/venta.ts", { platform: "node", jsx: "automatic" });
+  const E3 = await cargar("src/catalogo/editor3D.ts");
+  const CATALOGO = { defs: E3.FIXTURE_DEFS, slotsPorDefecto: () => [] };
+
+  const CONTRATO = {
+    status: "occupied", supplierName: "POSTOBÓN", brandCategory: "Gaseosas", negotiatedValue: 2_500_000,
+    startDate: "2026-10-01", endDate: "2026-12-31", observation: "pago por adelantado",
+  };
+  const unificados = [
+    { id: "g", code: "GON-02", sede: "NAVE", type: "gondola", gondolaType: "double", label: "Góndola Doble",
+      cx: 4, cz: 6, rotY: 0, w: 3.0, d: 0.9, h: 2.0, color: "#6366f1", ...CONTRATO,
+      modelo: "base:gondola-central-200-m100", entrepanos: 4, modulo: 1.0,
+      faceB: { ...CONTRATO, supplierName: "NUTRESA" },
+      slots: [{ id: "s1", x: 0, y: 0, w: 1, h: 1, status: "occupied", supplierName: "NUTRESA",
+        brandCategory: "Café", negotiatedValue: 900_000, startDate: "2026-10-01", endDate: "2026-12-31" }] },
+    { id: "p", code: "PUN-03", sede: "NAVE", type: "punta", label: "Punta Góndola",
+      cx: 6, cz: 6, rotY: 0, w: 0.9, d: 0.4, h: 1.8, color: "#7c3aed", ...CONTRATO, entrepanos: 3, modulo: 0.45 },
+    { id: "n", code: "NEV-01", sede: "NAVE", type: "nevera_puertas", label: "Nevera de Puertas",
+      // 2,30 de frente con 3 puertas: la cuenta de siempre (`puertasDeNevera`)
+      // le daría 4, así que sin su ficha el visor la dibujaría distinta.
+      cx: 9, cz: 2, rotY: 0, w: 2.3, d: 0.7, h: 2.1, color: "#1e293b", ...CONTRATO,
+      modelo: "base:nevera-3p-frigomaster", partes: { puertas: 3, proveedor: "POSTOBÓN", valor: 2_500_000 } },
+  ];
+  // Los dos caminos: el del editor (`FixtureMesh` dibuja con `geometriaDe`)
+  // y el del visor.
+  const delEditor = Pl.storeToFixtures(unificados, CATALOGO);
+  const delVisor = Pr.sinRepisasVendidas(Pr.sinDatosComerciales(Pl.storeToFixtures(unificados, CATALOGO)), new Set(["g"]));
+  const venta = (f) => Ve.ventaDeTipo(f.type, f.w, f.d, f.h, f.gondolaType, Me.geometriaDe(f));
+
+  prueba("el visor de Vender ve las MISMAS filas y vanos que el editor: góndola con su ficha, punta y nevera de 3 puertas (ejecutado)", () => {
+    for (const f of delEditor) {
+      const v = delVisor.find((x) => x.id === f.id);
+      assert.ok(v, `${f.code} no llegó al visor`);
+      const [a, b] = [venta(f), venta(v)];
+      assert.deepEqual(b.filas.alturas, a.filas.alturas, `${f.code}: el visor le muestra al proveedor otras filas que las del editor`);
+      assert.equal(b.filas.rows, a.filas.rows, `${f.code}: otra cantidad de filas en el visor`);
+      assert.deepEqual(b.vanos, a.vanos, `${f.code}: el visor le muestra al proveedor otros módulos (o puertas) que los del editor`);
+    }
+    // Y la prueba prueba algo: sin la ficha, cada uno se vería distinto.
+    const g = delEditor.find((f) => f.id === "g"), p = delEditor.find((f) => f.id === "p"), n = delEditor.find((f) => f.id === "n");
+    assert.notDeepEqual(venta(g).filas.alturas, Ve.ventaDeTipo("gondola", g.w, g.d, g.h, "double").filas.alturas, "la góndola de prueba se dibuja igual sin su ficha");
+    assert.equal(venta(g).vanos.length, 3, "la góndola de 3,00 con módulo de 1,00 no tiene 3 módulos");
+    assert.equal(venta(p).vanos.length, 2, "la punta con módulo de 0,45 no tiene 2 módulos");
+    assert.equal(venta(n).vanos.length, 3, "la nevera de 3 puertas no tiene un vano por puerta");
+    assert.equal(Ve.ventaDeTipo("nevera_puertas", n.w, n.d, n.h).vanos.length, 4, "sin sus puertas la nevera de 2,30 también tendría 3: la prueba no prueba nada");
+    assert.notDeepEqual(venta(p).filas.alturas, Ve.ventaDeTipo("punta", p.w, p.d, p.h).filas.alturas, "la punta de prueba se dibuja igual sin sus entrepaños");
+  });
+
+  prueba("el visor de Vender no recibe NI UNA clave comercial, tampoco colada en `partes` (ejecutado)", () => {
+    const json = JSON.stringify(delVisor);
+    for (const fuga of ["POSTOB", "NUTRESA", "Gaseosas", "Café", "2500000", "900000", "2026-", "adelantado", "faceB", "proveedor", "valor"]) {
+      assert.ok(!json.includes(fuga), `«${fuga}» llega al visor de Vender`);
+    }
+    for (const v of delVisor) {
+      assert.deepEqual([v.supplierName, v.brandCategory, v.negotiatedValue, v.startDate, v.endDate, v.observation],
+        ["", "", 0, "", "", ""], `${v.code}: llegó un dato del contrato`);
+      for (const s of v.slots ?? []) assert.equal(s.status, "free", `${v.code}: el visor ve un espacio interno vendido`);
+    }
+    assert.deepEqual(delVisor.find((v) => v.id === "n").partes, { puertas: 3 }, "de `partes` pasó algo más que sus números");
+  });
+}
+
 /* ── avisos: reglas de D que no están en el encargo de estas cinco pruebas ── */
 console.log("\nvender · avisos (no fallan, pero están medidos)");
 if (/--ring\s*:\s*var\(--signal/.test(temaCss)) {

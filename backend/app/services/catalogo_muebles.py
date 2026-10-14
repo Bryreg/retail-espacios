@@ -17,7 +17,9 @@ cambió. Lo que calculan sobre un plano lo compara ``test_catalogo_muebles.py``
 contra ``frontend/scripts/casos/catalogo-antes.json``, lo que daban antes.
 
 Sólo se lee lo que el servidor necesita: prefijo, si se alquila, tarifa y
-referencia. Las medidas, los colores y los rótulos de los editores son del
+referencia, y de los MODELOS (las fichas de muebles de verdad) sólo su tipo y
+su tarifa propia: la media estiba, el cuarto de estiba y el exhibidor de cartón
+se cobran aparte de su tipo (``tarifa_del_mueble``). Las medidas, los colores y los rótulos de los editores son del
 navegador. Las claves de los tipos, los prefijos y las claves de tarifa no
 cambian nunca: están en los planos guardados, en ``spaces.code`` y en las
 tarifas de cada cliente.
@@ -73,7 +75,37 @@ REFERENCIAS: dict[str, str] = {
 
 
 def tipo_de_tarifa(tipo: str) -> str:
-    """La clave de tarifa de un tipo de mueble. Espeja ``rateTypeOf`` del
-    frontend: lo que no tiene tarifa —lo que no se vende, un tipo que el
-    catálogo no conoce— contesta su propio tipo, como siempre."""
+    """La clave de tarifa de un tipo de mueble. Lo que no tiene tarifa —lo que
+    no se vende, un tipo que el catálogo no conoce— contesta su propio tipo,
+    como siempre. Para un mueble del plano, ``tarifa_del_mueble``, que mira
+    antes su modelo."""
     return TARIFA_POR_TIPO.get(tipo, tipo)
+
+
+#: Los modelos (fichas de muebles de verdad) que tienen tarifa propia: id →
+#: (tipo, tarifa). Un mueble colocado desde uno guarda su id en ``modelo``, y
+#: ni el id ni la tarifa de un modelo cambian nunca.
+TARIFA_POR_MODELO: dict[str, tuple[str, str]] = {
+    m["id"]: (m["tipo"], m["tarifa"]) for m in _DATOS.get("modelos", []) if m.get("tarifa")
+}
+
+
+def tipo_base(tipo: str) -> str:
+    """El tipo de verdad de un tipo o de un alias del 2D
+    (``gondola_mural`` → ``gondola``). Lo usan la tarifa por modelo y
+    ``PUT /layout``, que no le rellena a un mueble la ficha de otro tipo."""
+    return ALIAS.get(tipo, {}).get("tipo", tipo)
+
+
+def tarifa_del_mueble(fixture: dict) -> str:
+    """La clave de tarifa de un mueble del plano. Espeja ``rateTypeOf`` del
+    frontend: primero la tarifa propia de su modelo —si el modelo la tiene y es
+    del mismo tipo que el mueble—, y si no, la de su tipo, como siempre. Un
+    mueble de un plano viejo no tiene ``modelo`` y da lo de siempre."""
+    tipo = str(fixture.get("type") or "")
+    modelo = fixture.get("modelo")
+    if isinstance(modelo, str):
+        ficha = TARIFA_POR_MODELO.get(modelo)
+        if ficha and ficha[0] == tipo_base(tipo):
+            return ficha[1]
+    return tipo_de_tarifa(tipo)

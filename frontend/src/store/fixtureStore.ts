@@ -19,6 +19,7 @@ import {
 } from "../api/layout";
 import { fetchEstadoComercial } from "../api/spaces";
 import { useAuthStore } from "./authStore";
+import { conFichaQuitada, sinComercial } from "../utils/guardadoDelPlano";
 
 const MAX_UNDO = 50;
 
@@ -55,35 +56,11 @@ function cancelScheduledSave(sede: string) {
 }
 
 // ─── Lo comercial vive en la base, no en el plano ─────────────────────────────
-
-/**
- * Los campos que la BASE manda y el layout ya no guarda.
- *
- * El servidor los recorta al recibir un plano (`_sin_contrato` en
- * `routers/layout.py`); esto los recorta también **al mandarlos**, para que lo
- * que viaja por el cable sea sólo geometría. Con los dos lados cortando, ningún
- * camino —un guardado viejo en cola, un `force` de conflicto, un bootstrap—
- * puede volver a escribir un contrato en el JSON.
- */
-const CAMPOS_DE_CONTRATO = [
-  "status", "supplierName", "brandCategory", "negotiatedValue",
-  "startDate", "endDate", "observation",
-] as const;
-
-/** El mismo plano sin una sola palabra de lo comercial. No toca el original. */
-function sinComercial(fixtures: UnifiedFixture[]): UnifiedFixture[] {
-  return fixtures.map((f) => {
-    const limpio: Record<string, unknown> = { ...f };
-    for (const campo of CAMPOS_DE_CONTRATO) delete limpio[campo];
-    if (limpio.faceB && typeof limpio.faceB === "object") {
-      const caraB: Record<string, unknown> = { ...(limpio.faceB as object) };
-      for (const campo of CAMPOS_DE_CONTRATO) delete caraB[campo];
-      if (Object.keys(caraB).length > 0) limpio.faceB = caraB;
-      else delete limpio.faceB;
-    }
-    return limpio as unknown as UnifiedFixture;
-  });
-}
+//
+// Lo que viaja en el `PUT` es el plano sin lo comercial (`sinComercial`): los
+// siete campos del contrato los manda la base y el servidor también los
+// recorta al recibir. Vive en `utils/guardadoDelPlano.ts`, que es puro y no
+// importa nada, para que una prueba lo ejecute (`probar-geometria`).
 
 /**
  * ¿Los dos mapas comerciales dicen lo mismo?
@@ -745,11 +722,16 @@ export const useFixtureStore = create<FixtureStore>()(
           };
         }),
 
+      // Deshacer y rehacer reponen el plano de antes TAL CUAL, salvo la
+      // ficha del mueble que se va: una clave que el plano repuesto no tiene
+      // y el de ahora sí vuelve en `null`. Ausente, el servidor la rellenaba
+      // con la guardada y el deshacer de «Entrepaños» o «Módulo» no se
+      // guardaba nunca (ver `conFichaQuitada`).
       undo: () =>
         set((state) => {
           if (state.past.length === 0) return state;
-          const prev = state.past[state.past.length - 1];
           const current = state.fixturesBySede[state.sede] ?? [];
+          const prev = conFichaQuitada(state.past[state.past.length - 1], current);
           scheduleSave(state.sede);
           return {
             fixturesBySede: { ...state.fixturesBySede, [state.sede]: prev },
@@ -762,8 +744,8 @@ export const useFixtureStore = create<FixtureStore>()(
       redo: () =>
         set((state) => {
           if (state.future.length === 0) return state;
-          const next = state.future[0];
           const current = state.fixturesBySede[state.sede] ?? [];
+          const next = conFichaQuitada(state.future[0], current);
           scheduleSave(state.sede);
           return {
             fixturesBySede: { ...state.fixturesBySede, [state.sede]: next },
@@ -849,6 +831,11 @@ export const useFixtureStore = create<FixtureStore>()(
           // recorta al recibir, y esto lo recorta al mandar — así el JSON que
           // se guarda no vuelve a tener una segunda copia del contrato ni por
           // un guardado que quedó en cola desde antes del corte.
+          //
+          // La ficha del mueble (`CLAVES_DE_FICHA`) viaja como está, `null`
+          // incluido: `null` es «la borré a propósito» y el servidor la saca;
+          // una clave ausente, en cambio, la rellena con la guardada (así no
+          // la borra una pestaña de antes que no la conoce).
           const saved = await saveLayout(sede, sinComercial(fixtures), base);
           // The sede may have been deleted while this request was in flight.
           // Writing serverRev/dirty back would leave bookkeeping for a sede

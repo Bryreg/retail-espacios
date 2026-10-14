@@ -1,5 +1,8 @@
 import type { FixType, GondolaType } from "../types/fixtures";
-import { CATALOGO_DE_MUEBLES, formaDe, resolverTipo, tiposConBandera } from "./catalogo";
+import {
+  CATALOGO_DE_MUEBLES, estampaDe, formaDe, idDeModeloBase, modelosDe, resolverTipo, tiposConBandera,
+} from "./catalogo";
+import type { PartesDeMueble } from "./catalogo";
 
 /**
  * Las tablas por TIPO de mueble del editor 3D, calculadas del catálogo
@@ -27,6 +30,16 @@ export interface FixtureDef {
   emoji:        string;
   desc:         string;
   code:         string;
+  /** Sólo en los modelos de la paleta (`PALETA_3D`): el id que se estampa en
+   *  el mueble, su nombre, si sus medidas son una deducción, y su geometría.
+   *  Los de `FIXTURE_DEFS` —los modelos base— no los llevan: colocarlos es
+   *  colocar el mueble como siempre. */
+  modelo?:      string;
+  nombreModelo?: string;
+  estimado?:    boolean;
+  entrepanos?:  number;
+  modulo?:      number;
+  partes?:      PartesDeMueble;
 }
 
 // ─── Fixture catalogue ────────────────────────────────────────────────────────
@@ -79,3 +92,46 @@ export const TIPOS_CON_PRUEBA_3D = new Set<string>(tiposConBandera("prueba3D"));
  *  con alturas distintas los demás no entrarían— ni en el robatope, que
  *  tiene un solo vano de 30 cm. Es la bandera `surtido` del catálogo. */
 export const TIPOS_CON_SURTIDO = new Set<string>(tiposConBandera("surtido"));
+
+/**
+ * La paleta del editor 3D: por familia —cada entrada de `orden.editor3D`—, su
+ * modelo base (el de `FIXTURE_DEFS`, que se coloca como siempre) y los modelos
+ * de muebles de verdad que tiene el catálogo (`modelos`).
+ *
+ * Un modelo se coloca con las medidas, el color y la geometría de su ficha, y
+ * con el rótulo y el emoji de su tipo: el rótulo es el que el plano 2D estampa
+ * en `label` al abrirse, así que es el mismo de siempre. El nombre del modelo
+ * se lee de la ficha, por el `modelo` que guarda el mueble.
+ */
+export interface FamiliaDePaleta {
+  /** `tipo` o `tipo:variante`, como en `orden.editor3D`. */
+  entrada: string;
+  /** El id del modelo base implícito (`base:<tipo>`). */
+  idBase: string;
+  base: FixtureDef;
+  modelos: FixtureDef[];
+}
+
+export const PALETA_3D: FamiliaDePaleta[] = CATALOGO_DE_MUEBLES.orden.editor3D.map((entrada, i) => {
+  const base = FIXTURE_DEFS[i];
+  return {
+    entrada,
+    idBase: idDeModeloBase(entrada),
+    base,
+    modelos: modelosDe(entrada).map((m) => {
+      const e = estampaDe(m);
+      return {
+        ...base,
+        w: e.w, d: e.d, h: e.h,
+        color: e.color,
+        desc: m.fuente.nota,
+        modelo: m.id,
+        nombreModelo: m.nombre,
+        estimado: m.fuente.confiabilidad === "estimado",
+        ...(e.entrepanos !== undefined ? { entrepanos: e.entrepanos } : {}),
+        ...(e.modulo !== undefined ? { modulo: e.modulo } : {}),
+        ...(e.partes !== undefined ? { partes: e.partes } : {}),
+      };
+    }),
+  };
+});

@@ -56,12 +56,17 @@ export interface GondolaRealProps {
   /** Sólo en venta: por cara, los (entrepaño, vano) con habladores genéricos
    *  (`tramosConRelleno`). */
   habladores?: readonly (ReadonlySet<string> | null | undefined)[];
+  /** Entrepaños por cara, sin la base, como los dice la ficha del modelo que
+   *  la góndola guardó al colocarla. Ausente: los que entran al paso típico. */
+  entrepanos?: number;
+  /** Ancho de módulo de la ficha (0,90, 1,00, 1,20…). Ausente: 1,25. */
+  modulo?: number;
 }
 
 /* ── El mueble ─────────────────────────────────────────────────────────────*/
 
 export const GondolaReal = memo(function GondolaReal({
-  w, d, h, gondolaType = "double", statusColor, ghost = false, habladores,
+  w, d, h, gondolaType = "double", statusColor, ghost = false, habladores, entrepanos, modulo,
 }: GondolaRealProps) {
   const materiales = useMateriales(ghost, statusColor);
   const esMural = gondolaType === "wall";
@@ -73,8 +78,8 @@ export const GondolaReal = memo(function GondolaReal({
 
   /** El corrido se parte en módulos de ancho de catálogo. De acá salen los
    *  vanos —los paneles y entrepaños— y, de sus bordes, los parantes. */
-  const vanos = useMemo(() => vanosDeCorrido(w), [w]);
-  const niveles = useMemo(() => nivelesDeEntrepano(h), [h]);
+  const vanos = useMemo(() => vanosDeCorrido(w, modulo), [w, modulo]);
+  const niveles = useMemo(() => nivelesDeEntrepano(h, entrepanos), [h, entrepanos]);
 
   // La base es una sola pieza que abraza las dos caras, así que la monta el
   // mueble y no cada cara. Va retranqueada respecto del entrepaño de abajo:

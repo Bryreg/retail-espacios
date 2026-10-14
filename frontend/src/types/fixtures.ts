@@ -14,8 +14,9 @@
 import { dayNumber, inclusiveDays, parseISODate } from "./seasons";
 import type { Vista3D } from "../utils/planta";
 import {
-  CATALOGO_DE_MUEBLES, categoriasDeTipo, tarifaPorTipo, tiposQueSeAlquilan,
+  CATALOGO_DE_MUEBLES, categoriasDeTipo, tarifaDeModelo, tarifaPorTipo, tiposQueSeAlquilan,
 } from "../catalogo/catalogo";
+import type { PartesDeMueble } from "../catalogo/catalogo";
 
 export type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 
@@ -29,10 +30,12 @@ export type FixType =
   | "mueble"
   | "isla"
   | "impulsador"
+  | "puesto_impulso"
   | "batea"
   | "isla_fria"
   | "nevera_carnes"
   | "nevera_refrescos"
+  | "nevera_puertas"
   | "nevera_vegetales"
   | "stand_frutas"
   | "checkout"
@@ -140,9 +143,15 @@ const TARIFA_POR_TIPO: ReadonlyMap<string, string> = new Map(Object.entries(tari
  *  double and wall gondolas (and the legacy 2D-only type names) share one
  *  per-face "gondola" rate instead of three diverging ones. Sale de `tarifa`
  *  en el catálogo de muebles; lo que no tiene tarifa —lo que no se vende, un
- *  tipo que el catálogo no conoce— contesta su propio tipo, como siempre. */
-export function rateTypeOf(f: { type: string }): string {
-  return TARIFA_POR_TIPO.get(f.type) ?? f.type;
+ *  tipo que el catálogo no conoce— contesta su propio tipo, como siempre.
+ *
+ *  Primero el MODELO: un mueble colocado desde una ficha con tarifa propia
+ *  (la media estiba, el cuarto de estiba, el exhibidor de cartón) se cobra
+ *  con la de su ficha, que se busca por el `modelo` que guardó. Sin modelo, o
+ *  con uno sin tarifa, la de su tipo, como siempre. El servidor pregunta lo
+ *  mismo (`tarifa_del_mueble` en `services/catalogo_muebles.py`). */
+export function rateTypeOf(f: { type: string; modelo?: string | null }): string {
+  return tarifaDeModelo(f.modelo ?? undefined, f.type) ?? TARIFA_POR_TIPO.get(f.type) ?? f.type;
 }
 
 /** Effective reference for one sede + rate type, or null when none is set.
@@ -438,6 +447,37 @@ export interface UnifiedFixture {
 
   // ── 3D-specific ───────────────────────────────────────────────────────────
   slots?: ShelfSlot[];
+
+  /** La ficha de la que nació (`base:…`, un modelo de `catalogo/muebles.json`).
+   *  Ausente: el modelo base de su tipo, que es como se colocaba siempre.
+   *
+   *  Al colocarlo se ESTAMPAN en el mueble las medidas, el color y la
+   *  geometría de la ficha (`entrepanos`, `modulo`, `partes`), y lo guardado
+   *  ya no se vuelve a leer de ella: si mañana cambia la ficha, lo colocado
+   *  no se mueve. Lo único que se sigue buscando por este id es la tarifa
+   *  (`rateTypeOf`), y por eso ni el id ni la tarifa de un modelo cambian.
+   *  Los editores no lo escriben nunca después de crearlo: lo conservan
+   *  (`utils/convertirPlano.ts`).
+   *
+   *  En estas cuatro claves (`CLAVES_DE_FICHA`), `null` es BORRADO A
+   *  PROPÓSITO y vive sólo hasta el próximo guardado: el servidor lo saca del
+   *  JSON. AUSENTE es «no sé»: `PUT /layout` le rellena al mueble lo que
+   *  tenía guardado, porque así es como llega de una pestaña abierta desde
+   *  antes de que existieran (ver `_con_la_ficha_de_antes` en
+   *  `routers/layout.py`). Quien las lee para dibujar pasa por `fichaDe` o
+   *  `geometriaDe`, que tratan el `null` como ausente. */
+  modelo?: string | null;
+  /** Góndola y punta: entrepaños por cara sin la base, de su ficha o del
+   *  panel («Entrepaños»). Ausente: los que entran al paso típico
+   *  (`nivelesDeEntrepano`, `nivelesDePunta`). */
+  entrepanos?: number | null;
+  /** Góndola y punta: ancho de módulo, de su ficha o del panel («Módulo»).
+   *  Ausente: 1,25 (`vanosDeCorrido`). */
+  modulo?: number | null;
+  /** Las partes del mueble que cuenta su ficha: las puertas de la nevera de
+   *  puertas. Sólo sirven para DIBUJARLO —la nevera se vende entera—.
+   *  Ausente: la cuenta de siempre (`puertasDeNevera`). */
+  partes?: PartesDeMueble | null;
 
   /** Cámara guardada para mostrarle este espacio a un proveedor, por cara.
    *

@@ -43,7 +43,7 @@ from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
     Ambiguedad, Colision, PlanoIndexado, es_comercializable, sin_prefijo_de_sede,
 )
-from app.services.catalogo_muebles import tipo_de_tarifa
+from app.services.catalogo_muebles import tarifa_del_mueble, tipo_de_tarifa
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
@@ -385,7 +385,9 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                     if colision:
                         avisos.extend(_avisos_de_colision(colision))
                     ref = None
-                    tipo = _tipo_de_tarifa(str(fixture.get("type") or ""))
+                    # La del modelo del mueble si tiene una propia (la media
+                    # estiba, el exhibidor de cartón), y si no la de su tipo.
+                    tipo = tarifa_del_mueble(fixture)
                     if rates:
                         por_sede = (rates.get("by_sede") or {}).get(sede or "", {})
                         ref = por_sede.get(tipo)

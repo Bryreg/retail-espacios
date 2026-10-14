@@ -64,7 +64,7 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 
-from app.services.catalogo_muebles import tipo_de_tarifa
+from app.services.catalogo_muebles import tarifa_del_mueble, tipo_de_tarifa
 from app.services.layout_lookup import caras_de, es_comercializable
 
 log = logging.getLogger("recabra.plataforma.metricas")
@@ -301,7 +301,9 @@ def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[s
         if not completo:
             continue
         sede_uc = sede.strip().upper()
-        tipo = _tipo_de_tarifa(str(fixture.get("type") or ""))
+        # La del modelo si tiene una propia (la media estiba se cobra aparte
+        # de la estiba), y si no la de su tipo: la misma que `rateTypeOf`.
+        tipo = tarifa_del_mueble(fixture)
         mapa[completo] = (sede_uc, tipo)
         if _es_gondola_doble(fixture):
             mapa[f"{completo}-B"] = (sede_uc, tipo)

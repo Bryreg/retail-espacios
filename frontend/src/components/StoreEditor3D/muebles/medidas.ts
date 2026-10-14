@@ -142,15 +142,33 @@ export function inclinacionDeNivel(apoyo: number, altoDeCara: number): number {
 /** Cuántos entrepaños entran, y a qué altura va cada uno.
  *
  *  Devuelve las alturas del PLANO SUPERIOR de cada entrepaño, ya redondeadas
- *  al paso de ranura. El primero se apoya sobre el zócalo. */
-export function nivelesDeEntrepano(alto: number): number[] {
+ *  al paso de ranura. El primero se apoya sobre el zócalo.
+ *
+ *  Sin `entrepanos`, la cuenta de siempre: los que entran al paso típico, y el
+ *  de más arriba hace de techo de la última fila (sobre él no se para nada).
+ *  Con `entrepanos` —lo que dice la ficha del modelo, por cara y sin contar la
+ *  base, y lo que el mueble guardó al colocarlo— van la base y ESOS
+ *  entrepaños, todos con producto: el aire de arriba, hasta el remate, es la
+ *  última fila (`filasDeProducto`). Una góndola de 2,00 «con cuatro
+ *  entrepaños y la base» se ve con cuatro y la base, no con cinco. */
+export function nivelesDeEntrepano(alto: number, entrepanos?: number): number[] {
   // El primero es la BANDEJA DE BASE: se apoya directo sobre el zócalo, es la
   // más profunda y en tienda es la que lleva el producto pesado. Arrancar el
   // primer nivel un paso más arriba deja un hueco vacío abajo que ninguna
   // góndola tiene, y es de las cosas que más delatan un modelo inventado.
   //
   // Aire arriba: el último entrepaño no toca el remate.
+  if (entrepanos !== undefined) return nivelesDeFicha(ZOCALO.alto, alto - 0.1, entrepanos);
   return nivelesEntre(ZOCALO.alto, alto - 0.1);
+}
+
+/** La base y `entrepanos` entrepaños, repartidos parejo entre `desde` y
+ *  `hasta` dejando arriba una fila del mismo paso, al ras de ranura. */
+export function nivelesDeFicha(desde: number, hasta: number, entrepanos: number): number[] {
+  if (hasta <= desde) return [];
+  const cuantos = Math.max(0, Math.round(entrepanos));
+  const paso = (hasta - desde) / (cuantos + 1);
+  return Array.from({ length: cuantos + 1 }, (_, i) => alRasDeRanura(desde + i * paso));
 }
 
 /**
@@ -238,8 +256,23 @@ export interface FilasDeProducto {
   giros?: number[];
 }
 
-export function filasDeProducto(alto: number, fondoMaximo: number): FilasDeProducto {
-  const niveles = nivelesDeEntrepano(alto);
+export function filasDeProducto(alto: number, fondoMaximo: number, entrepanos?: number): FilasDeProducto {
+  const niveles = nivelesDeEntrepano(alto, entrepanos);
+  if (entrepanos !== undefined && niveles.length > 0) {
+    // Con la ficha, todos los entrepaños llevan producto: el techo de la
+    // última fila es el aire bajo el remate, que no se dibuja (como el copete
+    // de la punta en `filasDePunta`).
+    const alturas = [...niveles, alto - 0.1];
+    const rows = niveles.length;
+    return {
+      rowBottom: niveles[0],
+      alturas,
+      rowPitch: (alturas[rows] - alturas[0]) / rows,
+      rows,
+      fondos: Array.from({ length: rows }, (_, i) => profundidadDeNivel(i, niveles.length, fondoMaximo)),
+      giros: niveles.map((y) => inclinacionDeNivel(y, alto)),
+    };
+  }
   if (niveles.length < 2) {
     return {
       rowBottom: ZOCALO.alto,
@@ -272,6 +305,38 @@ export function fondoPorCara(d: number, esMural: boolean): number {
   return esMural ? d - ESPESOR_ESPINA : (d - ESPESOR_ESPINA) / 2;
 }
 
+/**
+ * Lo que el mueble guardó de la ficha de su modelo (o se escribió en el
+ * panel, «Entrepaños» y «Módulo») y cambia cómo se dibuja: los entrepaños y
+ * el ancho de módulo de una góndola o una punta, y las puertas de una nevera
+ * de puertas. Todo opcional: lo que falta se cuenta como siempre
+ * (`nivelesDeEntrepano`, `nivelesDePunta`, `vanosDeCorrido`,
+ * `puertasDeNevera`), así que un mueble de un plano viejo se dibuja igual que
+ * antes.
+ *
+ * Sale del mueble con `geometriaDe` y viaja junto con el tipo y las medidas a
+ * quien pregunta dónde vende (`ventaDeTipo`) o cómo pintar su cara: si el
+ * dibujo usara la ficha y la cuenta del producto no, el producto quedaría
+ * parado entre dos entrepaños.
+ */
+export interface GeometriaDeMueble {
+  entrepanos?: number;
+  modulo?: number;
+  puertas?: number;
+}
+
+/** La geometría que guardó un mueble: sólo lo que tiene. Un `null` (el panel
+ *  lo borró a propósito y todavía no se guardó) es no tenerlo. */
+export function geometriaDe(f: {
+  entrepanos?: number | null; modulo?: number | null; partes?: { puertas?: number } | null;
+}): GeometriaDeMueble {
+  const g: GeometriaDeMueble = {};
+  if (typeof f.entrepanos === "number") g.entrepanos = f.entrepanos;
+  if (typeof f.modulo === "number") g.modulo = f.modulo;
+  if (typeof f.partes?.puertas === "number") g.puertas = f.partes.puertas;
+  return g;
+}
+
 /** Un vano: el hueco de un módulo, entre parante y parante. */
 export interface Vano {
   /** Centro en X, respecto del centro del corrido. */
@@ -290,8 +355,11 @@ export interface Vano {
  * componente que dibuja: si el producto la calculara por su lado, terminaría
  * apoyado sobre un parante.
  */
-export function vanosDeCorrido(w: number): Vano[] {
-  const cuantos = Math.max(1, Math.round(w / ANCHO_MODULO_TIPICO));
+export function vanosDeCorrido(w: number, modulo?: number): Vano[] {
+  // Sin `modulo`, el de catálogo europeo (1,25). Con él —el ancho de módulo de
+  // la ficha que el mueble guardó al colocarlo: en Colombia 0,90, 1,00 o
+  // 1,20—, el corrido se parte en módulos de ESE ancho.
+  const cuantos = Math.max(1, Math.round(w / (modulo && modulo > 0 ? modulo : ANCHO_MODULO_TIPICO)));
   const anchoModulo = w / cuantos;
   const libre = Math.max(0.1, anchoModulo - PARANTE.ancho);
   return Array.from({ length: cuantos }, (_, i) => ({
@@ -409,9 +477,9 @@ export const HUECO_SIN_PRODUCTO = 0.12;
  * —una franja de color de la marca colgando arriba, con la chapa del visor
  * apoyada encima («el copete cortado por la mitad»)—.
  */
-export function pisoDelCartelDePunta(h: number): number {
+export function pisoDelCartelDePunta(h: number, entrepanos?: number): number {
   const techo = techoDeCara(h);
-  const niveles = nivelesDePunta(techo);
+  const niveles = nivelesDePunta(techo, entrepanos);
   const ultimo = niveles[niveles.length - 1];
   return ultimo != null && techo - ultimo < HUECO_SIN_PRODUCTO ? ultimo : techo;
 }
@@ -419,8 +487,15 @@ export function pisoDelCartelDePunta(h: number): number {
 /** Los entrepaños de una punta, dentro de su cuerpo (sin el copete).
  *
  *  Terminan un poco antes del copete: el cartel necesita su aire o se lee
- *  como un entrepaño más. */
-export function nivelesDePunta(altoDeCuerpo: number): number[] {
+ *  como un entrepaño más.
+ *
+ *  Con `entrepanos` —los que el mueble guardó, por cara y sin contar la base,
+ *  igual que en la góndola (`nivelesDeEntrepano`)— van la base y ESOS
+ *  entrepaños repartidos parejo, y sobre el de más arriba también se vende:
+ *  el techo de esa fila es el copete (`filasDePunta`). Sin el campo, la
+ *  cuenta de siempre. */
+export function nivelesDePunta(altoDeCuerpo: number, entrepanos?: number): number[] {
+  if (entrepanos !== undefined) return nivelesDeFicha(ZOCALO.alto, altoDeCuerpo - 0.06, entrepanos);
   return nivelesEntre(ZOCALO.alto, altoDeCuerpo - 0.06);
 }
 
@@ -432,8 +507,8 @@ export function nivelesDePunta(altoDeCuerpo: number): number[] {
  * tantas filas como entrepaños —sobre el de más arriba también se para
  * producto— y una góndola tiene una menos.
  */
-export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number): FilasDeProducto {
-  const niveles = nivelesDePunta(altoDeCuerpo);
+export function filasDePunta(altoDeCuerpo: number, fondoMaximo: number, entrepanos?: number): FilasDeProducto {
+  const niveles = nivelesDePunta(altoDeCuerpo, entrepanos);
   if (niveles.length === 0) {
     return {
       rowBottom: ZOCALO.alto,
@@ -527,6 +602,22 @@ export function puertasDeNevera(ancho: number): number {
   return Math.max(1, Math.ceil(ancho / NEVERA.anchoMaximoDePuerta));
 }
 
+/** Las puertas de una nevera de puertas: las que guardó de su ficha
+ *  (`partes.puertas`), o la cuenta de siempre. */
+export function puertasDe(ancho: number, puertas?: number): number {
+  return puertas !== undefined && puertas >= 1 ? Math.round(puertas) : puertasDeNevera(ancho);
+}
+
+/** El hueco detrás del vidrio de cada puerta: la hoja, menos su marco. */
+export function vanosDePuertas(w: number, puertas: number): Vano[] {
+  const n = puertasDe(w, puertas);
+  const hoja = w / n;
+  return Array.from({ length: n }, (_, i) => ({
+    x: -w / 2 + hoja * (i + 0.5),
+    ancho: Math.max(0.05, hoja - NEVERA.marcoPuerta * 2 - 0.01),
+  }));
+}
+
 /** Los entrepaños de un mueble refrigerado.
  *
  *  Van más juntos que los de una góndola: lo que se guarda en frío es chico y
@@ -588,11 +679,16 @@ export const SOBRE_REJILLA = 0.005;
  *  `NeveraReal`: el interior descuenta la chapa del fondo y la puerta, la
  *  rejilla va en `z = chapa/2` con ese fondo —así que su canto de atrás cae en
  *  `(d − fondoPuerta)/2`—, y el relleno usa el ancho interior menos 3 cm. */
-export function ventaDeNevera(w: number, d: number, h: number): VentaDeMueble {
+export function ventaDeNevera(w: number, d: number, h: number, puertas?: number): VentaDeMueble {
   const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);
   return {
     filas: filasDeNevera(h, fondoInterior),
-    vanos: [{ x: 0, ancho: w - 2 * NEVERA.chapa - 0.03 }],
+    // La de puertas: un vano por puerta, detrás del vidrio de cada hoja. Con
+    // uno solo de punta a punta, el producto quedaba parado detrás de los
+    // montantes. La multideck es de frente abierto: un vano.
+    vanos: puertas !== undefined
+      ? vanosDePuertas(w, puertas)
+      : [{ x: 0, ancho: w - 2 * NEVERA.chapa - 0.03 }],
     caras: [{ montaje: (d - NEVERA.fondoPuerta) / 2, hacia: -1 }],
     sobreApoyo: SOBRE_REJILLA,
     altoDeCara: h,
@@ -1133,6 +1229,43 @@ export function bandejasDeStand(w: number, d: number, h: number): BandejaDeStand
      tenía bien: un tramo del frente a 0,86 m para atender a alguien sentado.
      Sale de la norma de accesibilidad (34"), no de una fracción inventada. */
 
+/* ── El puesto de impulso ────────────────────────────────────────────────────
+   El mostrador chico de la promotora: degustación, impulso de una marca un
+   sábado. Las cotas son las de la ficha de un counter de aluminio que se
+   vende en Colombia (Grupo SRM, ES-MC-8040-C: 0,80 × 0,40, superficie a 1,00
+   y cenefa hasta 2,00), dichas acá con palabras propias. */
+
+export const PUESTO_IMPULSO = {
+  /** Alto de la superficie donde la promotora apoya lo que ofrece. */
+  superficie: 1.0,
+  /** La tapa: una lámina con un vuelo chico sobre el frente. */
+  tapa: { espesor: 0.025, vuelo: 0.015 },
+  /** El zócalo, retranqueado. */
+  zocalo: { alto: 0.06, retranqueo: 0.02 },
+  /** La cenefa de arriba —el cartel de la marca— y lo que la sostiene. */
+  cenefa: { alto: 0.3, espesor: 0.02 },
+  mastil: 0.025,
+} as const;
+
+/** Dónde va cada cosa de un puesto de impulso de `w × d × h`. Con un alto
+ *  menor que la superficie más la cenefa, la superficie baja: nunca queda
+ *  la cenefa encima del mostrador. */
+export function cotasDePuestoDeImpulso(w: number, d: number, h: number) {
+  const cenefaDesde = Math.max(0.3, h - PUESTO_IMPULSO.cenefa.alto);
+  const superficie = Math.min(PUESTO_IMPULSO.superficie, cenefaDesde - 0.2);
+  const cuerpo = Math.max(0.1, superficie - PUESTO_IMPULSO.tapa.espesor - PUESTO_IMPULSO.zocalo.alto);
+  return {
+    superficie,
+    cuerpo,
+    cenefaDesde,
+    /** Los mástiles, en las esquinas de atrás. */
+    xMastil: Math.max(0.02, w / 2 - 0.04),
+    zMastil: Math.max(0, d / 2 - 0.04),
+    /** El frente del cuerpo, donde va impresa la marca. */
+    frente: { ancho: Math.max(0.05, w - 0.04), alto: Math.max(0.05, cuerpo - 0.04) },
+  };
+}
+
 export const SERVICIO = {
   /** Alto del plano de trabajo del que atiende, como fracción del total. */
   fraccionDeTrabajo: 0.7,
@@ -1342,7 +1475,8 @@ export function labioDeFila(tipo: string, venta: VentaDeMueble, fila: number): {
   const cara = venta.caras[0];
   const apoyo = venta.filas.alturas[fila] + (venta.sobreApoyo ?? 0);
   switch (tipo) {
-    case "nevera_refrescos": {
+    case "nevera_refrescos":
+    case "nevera_puertas": {
       // NeveraReal: la tira en [0, nivel − alto/2 − portaBaja, −d/2 +
       // fondoPuerta + portaAdentro] del mueble, y la cara en z = (d − fp)/2.
       const d = cara.montaje * 2 + NEVERA.fondoPuerta;

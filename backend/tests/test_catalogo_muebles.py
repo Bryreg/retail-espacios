@@ -120,6 +120,45 @@ def _leer(datos: dict, ruta: str):
     return datos
 
 
+#: Las tablas de la captura y cómo se les saca lo de un tipo NUEVO —uno que la
+#: referencia no conoce: la nevera de puertas, el puesto de impulso—. Sin esto,
+#: cada tipo que se sumaba al catálogo aparecía en ``PREFIJO_POR_TIPO`` y la
+#: comparación lo tomaba por un cambio de lo de antes, aunque ningún plano viejo
+#: cambiara. Se saca sólo lo que es de un tipo nuevo —no lo que no estaba en esa
+#: tabla—: si la punta pasara a ``NUNCA_ALQUILABLE``, eso tiene que verse. Una
+#: tabla que se sume a la captura sin clasificar acá hace fallar la prueba.
+_LO_NUEVO_POR_TABLA = {
+    "PREFIJO_POR_TIPO": "por_tipo",
+    "_REFERENCIAS": "por_tipo",
+    "NUNCA_ALQUILABLE": "lista",
+    "PREFIJO_DESCONOCIDO": "entera",
+}
+
+
+def _tipos_nuevos(referencia: dict) -> set[str]:
+    """Los tipos y alias del catálogo que la referencia no conoce."""
+    cat = _catalogo()
+    return {t for t in [*cat["tipos"], *cat["alias"]] if t not in set(referencia["tipos"])}
+
+
+def _solo_lo_de_antes(captura: dict, referencia: dict, nuevos: set[str] | None = None) -> dict:
+    """La captura sin lo que es de un tipo nuevo. ``por_tipo`` ya viene sólo con
+    los tipos de la referencia (``capturar`` recibe esa lista) y ``por_mueble`` y
+    ``plano`` salen del plano viejo; las que dependen del catálogo entero son
+    las tablas."""
+    nuevos = _tipos_nuevos(referencia) if nuevos is None else nuevos
+    out = json.loads(json.dumps(captura))
+    for nombre, tabla in out["tablas"].items():
+        clase = _LO_NUEVO_POR_TABLA.get(nombre)
+        assert clase, f"la tabla `{nombre}` no dice cómo se le saca lo nuevo: sumala a _LO_NUEVO_POR_TABLA"
+        if clase == "por_tipo":
+            tabla["valor"] = {k: v for k, v in tabla["valor"].items() if k not in nuevos}
+        elif clase == "lista":
+            tabla["valor"] = [t for t in tabla["valor"] if t not in nuevos]
+    out["por_tipo"] = {k: v for k, v in out["por_tipo"].items() if k not in nuevos}
+    return out
+
+
 def test_lo_que_calcula_el_servidor_es_lo_de_antes(client):
     """La promesa del catálogo único: un plano viejo da exactamente lo mismo.
 
@@ -138,7 +177,10 @@ def test_lo_que_calcula_el_servidor_es_lo_de_antes(client):
         assert _leer(esperado, ruta) == antes, f"{ruta}: la referencia no dice {antes!r}"
         _aplicar(esperado, ruta, ahora)
 
-    ahora = capturar(referencia["tipos"], referencia["plano"]["sede"], referencia["plano"]["muebles"])
+    ahora = _solo_lo_de_antes(
+        capturar(referencia["tipos"], referencia["plano"]["sede"], referencia["plano"]["muebles"]),
+        referencia,
+    )
 
     if a_json(ahora) != a_json(esperado):
         distintas = [
@@ -148,6 +190,48 @@ def test_lo_que_calcula_el_servidor_es_lo_de_antes(client):
             if a_json(esperado[seccion].get(clave)) != a_json(ahora[seccion].get(clave))
         ]
         raise AssertionError(f"el servidor ya no calcula lo de antes en: {distintas}")
+
+
+def test_la_comparacion_saca_solo_lo_nuevo(client):
+    """Que sacar lo nuevo no se convierta en no mirar nada. Sobre la captura de
+    hoy se inventa un tipo que aparece en todas las tablas —eso no tiene que
+    verse— y después se cambia, de a una, una cosa de un tipo de antes —eso
+    sí—."""
+    from scripts.capturar_catalogo import a_json, capturar
+
+    referencia = json.loads(ANTES.read_text(encoding="utf-8"))
+    base = capturar(referencia["tipos"], referencia["plano"]["sede"], referencia["plano"]["muebles"])
+    nuevos = _tipos_nuevos(referencia) | {"tipo_inventado"}
+    limpia = a_json(_solo_lo_de_antes(base, referencia, nuevos))
+
+    con_inventado = json.loads(json.dumps(base))
+    con_inventado["tablas"]["PREFIJO_POR_TIPO"]["valor"]["tipo_inventado"] = "INV"
+    con_inventado["tablas"]["_REFERENCIAS"]["valor"]["tipo_inventado"] = "lo inventado"
+    con_inventado["tablas"]["NUNCA_ALQUILABLE"]["valor"].append("tipo_inventado")
+    con_inventado["por_tipo"]["tipo_inventado"] = con_inventado["por_tipo"]["punta"]
+    assert a_json(_solo_lo_de_antes(con_inventado, referencia, nuevos)) == limpia, (
+        "lo de un tipo nuevo se toma por un cambio de lo de antes"
+    )
+
+    def cambia_prefijo(x):
+        x["tablas"]["PREFIJO_POR_TIPO"]["valor"]["punta"] = "PNX"
+
+    def punta_nunca(x):
+        x["tablas"]["NUNCA_ALQUILABLE"]["valor"].append("punta")
+
+    def otra_referencia(x):
+        x["tablas"]["_REFERENCIAS"]["valor"]["checkout"] = "la línea de cajas"
+
+    def otra_tarifa(x):
+        x["por_tipo"]["isla"]["tipo_de_tarifa_bulk_leases"] = "estiba_media"
+
+    def otro_ofrecido(x):
+        x["plano"]["espacios_ofrecidos"]["valor"].append("NAVE-CAJ-01")
+
+    for cambiar in (cambia_prefijo, punta_nunca, otra_referencia, otra_tarifa, otro_ofrecido):
+        x = json.loads(json.dumps(con_inventado))
+        cambiar(x)
+        assert a_json(_solo_lo_de_antes(x, referencia, nuevos)) != limpia, f"no se ve: {cambiar.__name__}"
 
 
 # ─── Las tablas son las del catálogo ──────────────────────────────────────────
