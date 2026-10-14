@@ -906,6 +906,27 @@ prueba("el producto va DENTRO del grupo de la repisa que se inclina", () => {
     "la repisa de más arriba es la tapa: lo que se pare encima sobresale del mueble");
 });
 
+prueba("el impulsador inclina cada bandeja sobre sí misma y su cartel no vuela", () => {
+  // Es también el dibujo del exhibidor de cartón (`base:exhibidor-carton`).
+  // Mirado en /taller: girando el grupo desde el origen del mueble la bandeja
+  // de 1,12 m se iba 4 cm hacia atrás y el producto —que no gira— quedaba
+  // volando delante del filo; y la cara blanca del cartel estaba en el filo
+  // del mueble, 13 cm por delante de todo lo que podía sostenerla.
+  const imp = cuerpoDe("function ImpulsadorMesh(", "function PuestoImpulsoMesh(");
+  assert.match(imp, /<group key=\{si\} position=\{\[0, sy, 0\]\} rotation=\{\[0\.035, 0, 0\]\}>/,
+    "la bandeja del impulsador volvió a girar desde el origen del mueble");
+  assert.ok(!/position=\{\[0, sy/.test(imp.replace(/<group key=\{si\} position=\{\[0, sy, 0\]\}/, "")),
+    "una pieza de la bandeja volvió a sumar `sy` adentro del grupo que ya está a esa altura");
+  assert.ok(!/-\(d\/2 - 0\.008\)/.test(imp),
+    "la cara del cartel volvió al filo del mueble, lejos del cartel que la sostiene");
+  assert.match(imp, /position=\{\[0, h - topperH \/ 2 - 0\.009, SPINE_D \* 0\.10 - 0\.009 - 0\.005\]\}/,
+    "la cara del cartel no está pegada al cartel");
+  // Y el cartel no asoma por encima del alto declarado, que es el del choque.
+  assert.match(imp,
+    /position=\{\[0, h - topperH \/ 2 - 0\.009, SPINE_D \* 0\.10\]\} castShadow>\s*<boxGeometry args=\{\[w \* 1\.05, topperH - 0\.018, 0\.018\]\} \/>/,
+    "el cartel del impulsador volvió a pasarse del alto del mueble");
+});
+
 prueba("un mueble entero se llena también en profundidad", () => {
   // Con dos filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
   // producto y setenta de estante vacío.
@@ -2386,6 +2407,25 @@ prueba("surtido: el copete, el cabezote, la toma y /taller siguen con el princip
   // Y el surtido no se escribe en el plano.
   const ajustar = cuerpoDe("const ajustarPrueba = useCallback(", "const [proveedorDeReunion");
   assert.ok(!/setPlacedFixtures|pushToStore/.test(ajustar));
+});
+
+prueba("/taller mira cada modelo con su ficha estampada, como lo coloca la paleta", () => {
+  // Sin la ficha, el taller dibujaba la cuenta de siempre: una nevera de 4
+  // puertas se miraba con las que salen del ancho y una góndola de 4
+  // entrepaños con los de su alto. El cotejo contra la ficha no se puede
+  // hacer mirando otro mueble.
+  const taller = sinComentarios(leer(join("src", "pages", "TallerMuebles.tsx")));
+  assert.match(taller, /PALETA_3D\[catalogo\]\?\.modelos/, "/taller no lista los modelos de la familia");
+  assert.match(taller, /\.\.\.\(modelo \? fichaDe\(modelo\) : \{\}\)/, "/taller no estampa la ficha del modelo");
+  assert.match(taller, /ventaDeTipo\(def\.type, ancho, fondo, alto, def\.gondolaType, geometria\)/,
+    "/taller vende con la cuenta de siempre y no con los entrepaños dibujados");
+  // El de al lado va SIN ficha: es contra lo que se compara.
+  assert.match(taller, /delCatalogo\(catalogo, deHoy\.w, deHoy\.d, deHoy\.h, conProducto \? rubro : ""\)\s*\}/,
+    "el mueble de al lado lleva ficha: ya no se compara contra lo de hoy");
+  // Y la toma se aleja por el ancho siempre, no sólo con otro al lado: la
+  // nevera de 4 puertas salía cortada por los costados.
+  assert.match(taller, /let dist = Math\.max\(1\.6, \(altoEscena \* 1\.15\) \/ \(2 \* tan\), \(anchoEscena \* 1\.1\) \/ \(2 \* tan \* 1\.3\)\);/,
+    "la toma fija del taller volvió a encuadrar sólo por el alto");
 });
 
 prueba("frío: el selector marca lo refrigerado y el panel avisa en un mueble seco, sin bloquear", () => {

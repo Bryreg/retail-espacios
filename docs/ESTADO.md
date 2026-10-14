@@ -1,7 +1,16 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-13, noche (lo que se puede editar del mueble y lo que no se
+Última actualización: 2026-10-14 (cotejo visual de los muebles de Colombia: cada modelo se
+miró en `/taller` contra su ficha, y el taller ahora dibuja el modelo con su ficha
+estampada y, al lado, el de siempre. Las neveras, el puesto de impulso, las estibas y la
+góndola de 2,00 coinciden con la ficha. Se arreglaron tres piezas del impulsador, que
+también dibuja el exhibidor de cartón: las bandejas se corrían hacia atrás y el cartel
+flotaba. Quedan abiertos un dibujo propio para el exhibidor de cartón, la torre de la
+estiba que no llega al fondo y las repisas de la nevera, que no son las 4 de la ficha. Ver
+*Cotejo visual de los muebles de Colombia (2026-10-14)*).
+
+Antes, 2026-10-13, noche (lo que se puede editar del mueble y lo que no se
 puede perder: la góndola y la punta tienen «Alto», «Entrepaños» y «Módulo» en el panel del
 plano 2D y en el del Editor 3D —el mismo componente—, y la punta se dibuja, vende y
 encuadra con ellos como la góndola. **Lo vendido no se mueve sin aviso**: con una cara con
@@ -135,6 +144,12 @@ internet y sin fotos propias. Lo que sigue, en orden:
   perder*. Quedó abierto: el aviso vive en el navegador (el servidor no frena un cambio de
   geometría sobre una cara vendida), y las puertas de la nevera no se editan en el panel
   (sólo dibujan: se edita cuando se venda por puerta).
+- ~~Mirar cada modelo contra su ficha~~: hecho el 2026-10-14, ver *Cotejo visual de los
+  muebles de Colombia*. Quedó abierto, de mayor a menor:
+  - un dibujo propio para el **exhibidor de cartón**, que hoy usa la forma del impulsador;
+  - la **torre de la estiba** que no llega al fondo de la tarima;
+  - las **repisas de la nevera de puertas**, que no son las 4 por puerta de la ficha;
+  - de qué lado van las manijas con 3 y 4 puertas.
 - **Fichas propias del cliente en el taller**: la dueña arma la ficha de un mueble suyo
   —medidas, puertas, la URL de la ficha técnica— y lo coloca. Es una tabla nueva
   (clasificada en `TABLAS_DEL_CLIENTE`), sin foto por ahora: ella dijo que no tiene.
@@ -6557,6 +6572,9 @@ el repo. El token de sesión no: se pasa por `TALLER_TOKEN`.
 Desde el 2026-10-02 `/taller` es **sólo para administradores**: cualquier otra sesión
 vuelve a `/`. Es una herramienta de diseño, no una pantalla del producto.
 
+Desde el 2026-10-14 también dibuja cada **modelo** de la familia con su ficha estampada, y
+«al lado» el de siempre, para compararlos: ver *Cotejo visual de los muebles de Colombia*.
+
 ### Lo que falta
 
 - **Reconstruidos de cero**: góndola (doble y mural), punta, nevera de refrescos y batea.
@@ -8151,6 +8169,100 @@ pierda). Las puertas de la nevera no se editan en el panel: sólo dibujan, y se 
 se venda por puerta. Los modelos de la punta siguen sin entrepaños por ficha (la de 1,30
 dice «tres y la base», pero su alto no trae copete y el nuestro sí). `/taller` no tiene los
 campos: se miran en el editor.
+
+## Cotejo visual de los muebles de Colombia (2026-10-14)
+
+La lección escrita del repo es que no se modela de memoria y que «lo revisé» no es haberlo
+revisado (`docs/engram/03-mobiliario-3d.md`). Los modelos nuevos se miraron uno por uno en
+`/taller` contra las medidas y la descripción de su ficha (la investigación R3), en tres
+cuartos y de frente, con producto y sin él. Las capturas son de trabajo y NO entran al
+repo; lo que se vio queda acá.
+
+**El taller mira el modelo, no la cuenta de siempre.** En una familia con modelos aparece
+«modelo» (los de `PALETA_3D`, con «≈» los estimados). El mueble se arma con las medidas de
+la ficha y con la ficha ESTAMPADA (`fichaDe`), como lo coloca la paleta, y los botones de
+«dónde» y la toma de cerca salen de la misma geometría (`geometriaDe`). Antes el taller
+dibujaba la cuenta de siempre: una nevera de 4 puertas se miraba con las puertas que salen
+del ancho. «Al lado» dibuja SIN ficha el modelo base con sus medidas (lo que hoy coloca el
+editor) o el mismo tipo con las medidas del modelo (lo que la ficha cambia, y nada más). La
+toma fija se aleja también por el ancho —la nevera de 4 puertas salía cortada— y lo que
+haga falta para que la esquina de abajo entre en el cuadro. Sin producto, la nevera se
+dibuja sin su relleno mudo, para mirarle las rejillas y las puertas. En el contenedor de
+esa sesión no estaba el Playwright de Python que usa `scripts/taller/mirar-mueble.py`: se
+usó el de Node (`/opt/node22/lib/node_modules/playwright`) con los mismos pasos.
+
+**Lo que se vio, contra la ficha:**
+
+- **Neveras de 1 a 4 puertas.** Las puertas son las de la ficha, con hojas de 0,72, 0,72,
+  0,69 y 0,68; el copete de 14 cm lleva el aviso luminoso (R3 estima el cabezote en 15 a
+  25) y el zócalo de 17, su rejilla. El producto queda detrás del vidrio y adentro del
+  gabinete. Se lee como nevera de puertas de supermercado. Quedan dos diferencias:
+  - **Las repisas no son las de la ficha.** Las cuatro fichas dicen 4 por puerta y el
+    dibujo pone 5 más el piso (6 filas de producto), porque las rejillas salen del alto
+    (`nivelesDeNevera`, una cada ~30 cm) o se acomodan al producto en prueba. El plan
+    preveía `repisasPorPuerta` y no se hizo. Llevarlo a la ficha toca la cuenta única de
+    la nevera: dibujo, relleno, venta y rejillas automáticas.
+  - **Las manijas.** Con 2 puertas se enfrentan en el medio; con 3 y 4 sólo se enfrenta la
+    última pareja y las demás abren todas hacia el mismo lado. Ninguna ficha dice cómo
+    van: queda así hasta tener una referencia.
+- **Puesto de impulso.** 0,80 × 0,40, la tapa a 1,00 y la cenefa de 30 cm hasta los 2,00
+  sobre dos mástiles en las esquinas de atrás, con aire entre la tapa y la cenefa: lo de la
+  ficha de Grupo SRM. Nada flota. Con producto y sin él se ve igual, a propósito: no lleva
+  producto inventado y sólo cambia la franja de estado.
+- **Estiba completa, media y cuarto.** La tarima tiene la huella de cada ficha (1,20 ×
+  1,00; 1,00 × 0,60; 0,60 × 0,50), con su hueco para la uña, y la torre se apoya en la
+  cubierta sin aire entre tendidos. Queda abierto que **la torre no llega al fondo de la
+  tarima**. El relleno de un mueble que se vende entero se apila hasta
+  `PROFUNDIDAD_DE_MUEBLE_ENTERO` (5) unidades hacia atrás (`muebles/frentes.ts`), y con
+  cajas de 7 cm eso cubre unos 40 cm. En la completa, de 1,00 de fondo, queda más de media
+  tarima vacía detrás. Se ve en tres cuartos y, sobre todo, desde arriba, que es como más
+  se mira el plano. Viene de antes: el exhibidor de piso de 0,80 ya lo tenía. No se tocó
+  porque cambia cómo se dibuja cada estiba con contrato de los planos de hoy.
+- **Exhibidor de cartón.** Mide 0,60 × 0,40 × 1,70, con cuatro bandejas y cabezote, como el
+  valor sugerido. Se dibuja con la forma del impulsador, como pedía el plan, y **esa forma
+  no se lee como un exhibidor de cartón**. Es una columna central con bandejas en voladizo,
+  sin los costados ni el fondo de cartón que tiene uno de verdad. Además, la columna
+  atraviesa el producto de cada bandeja: de frente se ve como un mordisco en el centro.
+  Necesita un dibujo propio: dos costados, el fondo, cuatro bandejas y el cabezote de unos
+  30 cm de R3. No es un arreglo chico.
+- **Góndola central de 2,00 con 4 entrepaños y módulo de 1,00**, al lado de la misma sin
+  ficha. El modelo lleva la base y cuatro entrepaños con producto en las cinco filas, y el
+  corrido de 3 m partido en tres módulos de 1,00. La cuenta de siempre da cinco entrepaños
+  (en el de arriba no cabe producto) y dos módulos de 1,50. El modelo coincide con la
+  ficha de Vialambre.
+
+**Lo que se arregló.** Los tres arreglos son de `ImpulsadorMesh`, que dibuja el exhibidor de
+cartón y también el impulsador de siempre:
+
+- **Cada bandeja se inclina sobre sí misma.** El grupo giraba desde el origen del mueble y
+  las bandejas se corrían hacia atrás el 3,5 % de su altura: 4 cm la de 1,12 m. El
+  producto, que no gira, quedaba volando delante del filo y el porta-precios, enterrado en
+  la primera fila. El mural de vegetales había tenido el mismo error.
+- **La cara blanca del cartel va pegada al cartel.** Estaba en el filo del mueble, 13 cm
+  por delante de la espina y sin nada que la sostuviera.
+- **El cartel no pasa del alto del mueble.** Asomaba 5 cm por encima del alto declarado y
+  de la tapa. Ahora ocupa los últimos 24 cm del alto y termina bajo la tapa.
+
+Esto cambia el dibujo del impulsador en los planos de hoy, pero no su medida, su cara ni lo
+que se vende: es la corrección de piezas que flotaban. Lo vigila la guarda «el impulsador
+inclina cada bandeja sobre sí misma y su cartel no vuela» de `probar-muebles`. Otra guarda,
+«/taller mira cada modelo con su ficha estampada», cuida lo del taller.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`, 842 verdes; `npm run build` limpio,
+con el pedazo de entrada en los mismos 340,7 kB; `import app.main` y el pytest de catálogo,
+modelos, caras, renumeración, corte y ficha del layout, planilla, vendible, métricas y
+detalle de la plataforma, enlace de montaje y estado comercial, todo verde. Hubo 11
+mutaciones y cada una hizo fallar su guarda:
+
+- la bandeja que vuelve a girar desde el origen, o que suma `sy` dos veces en la tabla o en
+  el porta-precios;
+- la cara del cartel de vuelta en el filo;
+- el cartel centrado como antes, o con su alto entero;
+- el taller sin la ficha, vendiendo con la cuenta de siempre, con ficha en el de al lado,
+  encuadrando por el ancho sólo con otro al lado, o sin la lista de modelos.
+
+Las capturas del impulsador y del exhibidor de cartón, antes y después, muestran las
+bandejas debajo del producto y el cartel en su lugar.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

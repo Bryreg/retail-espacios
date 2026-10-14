@@ -8,6 +8,7 @@ import { ProductoEnGondola } from "../components/StoreEditor3D/muebles/ProductoE
 import { PuntaReal } from "../components/StoreEditor3D/muebles/PuntaReal";
 import { ProductoEnPunta } from "../components/StoreEditor3D/muebles/ProductoEnPunta";
 import { NeveraReal } from "../components/StoreEditor3D/muebles/NeveraReal";
+import { geometriaDe, puertasDe } from "../components/StoreEditor3D/muebles/medidas";
 import { FixtureMesh, FIXTURE_DEFS } from "../components/StoreEditor3D/StoreEditor3D";
 import type { FacePaint, PlacedFixture } from "../components/StoreEditor3D/StoreEditor3D";
 import type { SlotDeProducto } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
@@ -19,6 +20,10 @@ import { claveDeArte, etiquetaDeArte, marcarEnUso } from "../components/StoreEdi
 import type { Etiqueta } from "../components/StoreEditor3D/muebles/etiqueta";
 import type { ModoDeFondo } from "../components/StoreEditor3D/muebles/recorte";
 import { arteUrl, listarCatalogo, type Arte } from "../api/catalogo";
+import { PALETA_3D } from "../catalogo/editor3D";
+import type { FixtureDef } from "../catalogo/editor3D";
+import { fichaDe } from "../utils/convertirPlano";
+import type { ShelfSlot } from "../types/fixtures";
 
 /**
  * El taller: un mueble solo, girable, para mirarle la forma.
@@ -159,18 +164,44 @@ const SLOTS_DE_MUESTRA: SlotDeProducto[] = [
 
 /** Un mueble del catálogo, armado con lo mínimo que pide `FixtureMesh`. No es
  *  un mueble de una sede: no tiene contrato, ni código de espacio, ni posición.
- *  Es el mismo dibujo que usa el editor, traído acá para poder mirarlo. */
-function delCatalogo(indice: number, w: number, d: number, h: number, rubro: string): PlacedFixture {
+ *  Es el mismo dibujo que usa el editor, traído acá para poder mirarlo.
+ *
+ *  Con `modelo` (uno de `PALETA_3D`), el mueble lleva estampada la ficha de
+ *  ese modelo —entrepaños, módulo, puertas— igual que el que el editor coloca
+ *  desde la paleta (`fichaDe`): sin eso, el taller dibujaba la cuenta de
+ *  siempre y una nevera de 4 puertas se miraba con las que salen del ancho.
+ *
+ *  La góndola y la punta sólo dibujan producto sobre espacios vendidos: con
+ *  rubro, cada espacio de muestra lleva ESE rubro, así el rubro sigue siendo
+ *  lo que decide qué se para en los entrepaños. */
+function delCatalogo(
+  indice: number, w: number, d: number, h: number, rubro: string, modelo?: FixtureDef | null,
+): PlacedFixture {
   const def = FIXTURE_DEFS[indice] ?? FIXTURE_DEFS[0];
+  const conEspacios = rubro && (def.type === "gondola" || def.type === "punta");
   return {
     id: "taller", code: def.code, type: def.type, gondolaType: def.gondolaType,
     x: 0, z: 0, rotY: 0, w, d, h,
-    label: def.label, color: def.color,
+    label: def.label, color: modelo?.color ?? def.color,
     supplierName: rubro ? "Proveedor de prueba" : "", brandCategory: rubro,
     status: rubro ? "occupied" : "free",
     negotiatedValue: 0, startDate: "", endDate: "", observation: "",
+    ...(modelo ? fichaDe(modelo) : {}),
+    ...(conEspacios ? { slots: espaciosDeMuestra(rubro) } : {}),
   };
 }
+
+/** Los espacios de muestra como espacios de un mueble, todos con el rubro. */
+function espaciosDeMuestra(rubro: string): ShelfSlot[] {
+  return SLOTS_DE_MUESTRA.map((s) => ({
+    id: s.id, x: s.x, y: s.y, w: s.w, h: s.h, status: "occupied",
+    supplierName: "Proveedor de prueba", brandCategory: rubro,
+    negotiatedValue: 0, startDate: "", endDate: "",
+  }));
+}
+
+/** Cuánto aire queda entre el mueble y el de hoy, cuando se miran juntos. */
+const SEPARACION_DEL_DE_HOY = 0.6;
 
 /** La ficha de la sesión del taller: no se guarda, es para probar. */
 const FICHA_TALLER: FichaDeArte = {
@@ -186,6 +217,15 @@ const mmDeCm = (s: string) => {
 export default function TallerMuebles() {
   /** Qué mueble del catálogo se está mirando. -1 = los del taller. */
   const [catalogo, setCatalogo] = useState(-1);
+  /** Cuál de sus modelos (`PALETA_3D`). -1 = el modelo base, el de hoy. */
+  const [modeloI, setModeloI] = useState(-1);
+  /** Qué se dibuja al lado del modelo, para compararlo contra lo de siempre a
+   *  la misma escala y con la misma luz. Los dos van SIN ficha:
+   *  · `de_hoy` — el modelo base con sus medidas de catálogo: lo que hoy
+   *    coloca el editor;
+   *  · `sin_ficha` — el mismo tipo con las medidas de este modelo: lo que la
+   *    ficha cambia (entrepaños, módulo, puertas) y nada más. */
+  const [alLado, setAlLado] = useState<"nada" | "de_hoy" | "sin_ficha">("nada");
   /** El rubro del contrato. Decide qué producto se dibuja adentro del mueble,
    *  así que hace falta poder cambiarlo sin ir a cargar un contrato. */
   const [rubro, setRubro] = useState("");
@@ -219,9 +259,22 @@ export default function TallerMuebles() {
   const [avisar] = useState(() => () => setVersion((v) => v + 1));
 
   const def = catalogo >= 0 ? FIXTURE_DEFS[catalogo] : null;
+  const modelos = catalogo >= 0 ? PALETA_3D[catalogo]?.modelos ?? [] : [];
+  const modelo = modelos[modeloI] ?? null;
+  // La venta con la ficha del modelo: si no, las filas de «dónde» y la toma de
+  // cerca saldrían de la cuenta de siempre y no de los entrepaños dibujados.
+  const geometria = useMemo(() => (modelo ? geometriaDe(modelo) : undefined), [modelo]);
   const venta = useMemo(
-    () => (def ? ventaDeTipo(def.type, ancho, fondo, alto, def.gondolaType) : null),
-    [def, ancho, fondo, alto],
+    () => (def ? ventaDeTipo(def.type, ancho, fondo, alto, def.gondolaType, geometria) : null),
+    [def, ancho, fondo, alto, geometria],
+  );
+  // Memorizado: la toma depende de esto, y un objeto nuevo en cada dibujo
+  // devolvería la cámara a la toma fija a cada rato.
+  const deHoy = useMemo(
+    () => (!def || !modelo || alLado === "nada" ? null
+      : alLado === "de_hoy" ? { w: def.w, d: def.d, h: def.h }
+      : { w: ancho, d: fondo, h: alto }),
+    [def, modelo, alLado, ancho, fondo, alto],
   );
   const arte = artes.find((a) => a.id === arteId) ?? null;
   const fuente: { clave: string; blob: Blob | string } | null = conCarta
@@ -280,13 +333,36 @@ export default function TallerMuebles() {
       }
       return { pos: [0, Math.min(1.65, y + 0.2), -(fondo / 2 + 0.85)], mira: [0, y, 0] };
     }
-    const dist = Math.max(1.6, (alto * 1.15) / (2 * Math.tan((21 * Math.PI) / 180)));
+    // Con el de hoy al lado, la toma encuadra a los dos: se corre al centro
+    // del par. Y se aleja lo que pida el ancho, haya o no otro al lado: con
+    // sólo el alto, la nevera de 4 puertas (2,72 de frente) salía cortada
+    // por los costados (el lienzo es más ancho que alto; 1,3 es un mínimo
+    // prudente).
+    const tan = Math.tan((21 * Math.PI) / 180);
+    const altoEscena = Math.max(alto, deHoy?.h ?? 0);
+    const anchoEscena = deHoy ? ancho + SEPARACION_DEL_DE_HOY + deHoy.w : ancho;
+    const fondoEscena = Math.max(fondo, deHoy?.d ?? 0);
+    const cx = deHoy ? -(SEPARACION_DEL_DE_HOY + deHoy.w) / 2 : 0;
     const ang = vista === "tres_cuartos" ? (35 * Math.PI) / 180 : 0;
+    const yMira = Math.max(yMedio, altoEscena / 2);
+    const altoDeCamara = 1.55;
+    let dist = Math.max(1.6, (altoEscena * 1.15) / (2 * tan), (anchoEscena * 1.1) / (2 * tan * 1.3));
+    // Y lo que pida el piso: la esquina de abajo más cercana a la cámara
+    // tiene que entrar en el cuadro. Mirando a media torre, la estiba sin
+    // producto (la madera llega a 14 cm) salía con esa esquina cortada.
+    const cerca = (anchoEscena / 2) * Math.sin(ang) + (fondoEscena / 2) * Math.cos(ang);
+    for (let i = 0; i < 20; i++) {
+      const lejos = fondoEscena / 2 + dist;
+      const bajaLaToma = Math.atan2(altoDeCamara - yMira, lejos);
+      const bajaLaEsquina = Math.atan2(altoDeCamara, Math.max(0.1, lejos - cerca));
+      if (bajaLaEsquina <= bajaLaToma + (19 * Math.PI) / 180) break;
+      dist *= 1.1;
+    }
     return {
-      pos: [Math.sin(ang) * (fondo / 2 + dist), 1.55, -Math.cos(ang) * (fondo / 2 + dist)],
-      mira: [0, yMedio, 0],
+      pos: [cx + Math.sin(ang) * (fondoEscena / 2 + dist), altoDeCamara, -Math.cos(ang) * (fondoEscena / 2 + dist)],
+      mira: [cx, yMira, 0],
     };
-  }, [vista, alto, fondo, venta]);
+  }, [vista, alto, fondo, ancho, venta, deHoy]);
 
   const camara = useMemo(
     () => ({ position: [2.6, 1.7, 2.8] as [number, number, number], fov: 42, near: 0.05, far: 100 }),
@@ -334,6 +410,7 @@ export default function TallerMuebles() {
                   onChange={(e) => {
                     const i = +e.target.value;
                     setCatalogo(i);
+                    setModeloI(-1);
                     const def = FIXTURE_DEFS[i];
                     if (def) { setAncho(def.w); setFondo(def.d); setAlto(def.h); }
                   }}>
@@ -343,6 +420,35 @@ export default function TallerMuebles() {
             ))}
           </select>
         </label>
+        {modelos.length > 0 && (
+          <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+            modelo{" "}
+            <select data-modelo value={modeloI} style={{ ...campo, width: 230 }}
+                    onChange={(e) => {
+                      const i = +e.target.value;
+                      setModeloI(i);
+                      // Con las medidas de su ficha, como lo coloca la paleta.
+                      const m = modelos[i] ?? def;
+                      if (m) { setAncho(m.w); setFondo(m.d); setAlto(m.h); }
+                    }}>
+              <option value={-1}>— el de hoy —</option>
+              {modelos.map((m, i) => (
+                <option key={m.modelo} value={i}>{m.estimado ? "≈ " : ""}{m.nombreModelo}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {modelo && (
+          <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+            al lado{" "}
+            <select data-al-lado value={alLado} style={{ ...campo, width: 190 }}
+                    onChange={(e) => setAlLado(e.target.value as typeof alLado)}>
+              <option value="nada">— nada —</option>
+              <option value="de_hoy">el de hoy, con sus medidas</option>
+              <option value="sin_ficha">el mismo sin ficha</option>
+            </select>
+          </label>
+        )}
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
           rubro{" "}
           <input type="text" value={rubro} placeholder="sin contrato" style={{ ...campo, width: 120 }}
@@ -523,8 +629,33 @@ export default function TallerMuebles() {
               </>
             )}
             <Piso />
-            {catalogo >= 0 ? (
-              <FixtureMesh fixture={delCatalogo(catalogo, ancho, fondo, alto, rubro)} facePaint={facePaint} />
+            {catalogo >= 0 && def ? (
+              <>
+                {!conProducto && (def.type === "nevera_puertas" || def.type === "nevera_refrescos") ? (
+                  // La nevera llena sus rejillas aunque esté libre (es como se
+                  // ve en el editor): para mirarle las rejillas y las puertas
+                  // sin botellas, el mismo cuerpo sin el relleno.
+                  <NeveraReal w={ancho} d={fondo} h={alto} conRelleno={false}
+                    variante={def.type === "nevera_puertas" ? "puertas" : "multideck"}
+                    puertas={def.type === "nevera_puertas" ? puertasDe(ancho, geometria?.puertas) : undefined} />
+                ) : (
+                  <FixtureMesh fixture={delCatalogo(catalogo, ancho, fondo, alto, conProducto ? rubro : "", modelo)}
+                    facePaint={facePaint} />
+                )}
+                {deHoy && (
+                  <group position={[-(ancho / 2 + SEPARACION_DEL_DE_HOY + deHoy.w / 2), 0, 0]}>
+                    {!conProducto && (def.type === "nevera_puertas" || def.type === "nevera_refrescos") ? (
+                      // Igual que el de la ficha: sin producto, sin relleno.
+                      // Si no, se comparan rejillas vacías contra botellas.
+                      <NeveraReal w={deHoy.w} d={deHoy.d} h={deHoy.h} conRelleno={false}
+                        variante={def.type === "nevera_puertas" ? "puertas" : "multideck"}
+                        puertas={def.type === "nevera_puertas" ? puertasDe(deHoy.w) : undefined} />
+                    ) : (
+                      <FixtureMesh fixture={delCatalogo(catalogo, deHoy.w, deHoy.d, deHoy.h, conProducto ? rubro : "")} />
+                    )}
+                  </group>
+                )}
+              </>
             ) : tipo === "nevera" ? (
               <NeveraReal w={ancho} d={fondo} h={alto} />
             ) : tipo === "punta" ? (

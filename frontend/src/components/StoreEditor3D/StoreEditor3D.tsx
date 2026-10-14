@@ -1650,15 +1650,21 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
       {/* Cantilevered shelves — much wider than spine, angled slightly up */}
       {Array.from({ length: nShelves }, (_, si) => {
         const sy  = baseH + si * shelfGap;
+        // El giro va SOBRE LA BANDEJA, con el grupo ya puesto en su altura
+        // (como en el mural de `NeveraReal`). Girando desde el origen del
+        // mueble, cada bandeja se corría hacia atrás el 3,5 % de su altura
+        // —4 cm la de 1,12 m del exhibidor de cartón— y el producto, que no
+        // gira, quedaba volando delante del filo con el porta-precios
+        // enterrado en la primera fila.
         return (
-          <group key={si} rotation={[0.035, 0, 0]}>    {/* slight upward tilt */}
+          <group key={si} position={[0, sy, 0]} rotation={[0.035, 0, 0]}>    {/* slight upward tilt */}
             {/* Shelf board */}
-            <mesh position={[0, sy, 0]} castShadow>
+            <mesh castShadow>
               <boxGeometry args={[w, 0.018, d]} />
               <meshStandardMaterial color={LIGHT} roughness={0.65} transparent opacity={op} />
             </mesh>
             {/* Front lip / price strip */}
-            <mesh position={[0, sy + 0.030, -(d/2 - 0.006)]}>
+            <mesh position={[0, 0.030, -(d/2 - 0.006)]}>
               <boxGeometry args={[w, 0.050, 0.008]} />
               <meshLambertMaterial color={WHITE} transparent opacity={op} />
             </mesh>
@@ -1670,13 +1676,19 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
       })}
 
       {/* Mushroom topper — wide flat panel cantilevered above spine */}
+      {/* El cartel ocupa los últimos `topperH` del alto y no se pasa: centrado
+          en `h - topperH·0,3` asomaba 5 cm por encima de la tapa, y ese alto
+          es el que mira el chequeo de choques. Arranca sobre la bandeja de
+          más arriba y termina bajo la tapa. */}
       {/* Back brace from spine up to topper */}
-      <mesh position={[0, h - topperH * 0.30, SPINE_D * 0.10]} castShadow>
-        <boxGeometry args={[w * 1.05, topperH, 0.018]} />
+      <mesh position={[0, h - topperH / 2 - 0.009, SPINE_D * 0.10]} castShadow>
+        <boxGeometry args={[w * 1.05, topperH - 0.018, 0.018]} />
         <meshStandardMaterial color={statusColor} roughness={0.60} transparent opacity={op} />
       </mesh>
-      {/* Topper front face (white brand label) */}
-      <mesh position={[0, h - topperH * 0.30, -(d/2 - 0.008) + 0.005]}>
+      {/* Topper front face (white brand label). Pegada a la cara del cartel:
+          en el filo del mueble (`-(d/2 - 0.008)`) quedaba flotando en el aire,
+          13 cm por delante de la espina y sin nada que la sostuviera. */}
+      <mesh position={[0, h - topperH / 2 - 0.009, SPINE_D * 0.10 - 0.009 - 0.005]}>
         <boxGeometry args={[w * 0.92, topperH * 0.72, 0.008]} />
         <meshStandardMaterial color="#ffffff" roughness={0.80} transparent opacity={0.88 * op} />
       </mesh>
