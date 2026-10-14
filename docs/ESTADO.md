@@ -161,10 +161,10 @@ sigue, en orden:
    nunca las dos en las mismas fechas**. Es la regla de exclusión del plan (PR 3): un
    contrato de la nevera entera y uno de una de sus puertas no pueden pisarse en fechas,
    en `create_lease`, en la planilla y en Vender; dos puertas distintas entre sí, sí. Hasta
-   entonces la nevera se vende ENTERA y `partes.puertas` sólo dibuja. Antes de programar
-   falta decidir con ella la forma del código de la puerta —el plan recomienda
-   `NEV-03-PU2`—, que queda para siempre en contratos, correos, planillas y enlaces de
-   montaje. Lo que ya está listo para eso: `partes` es geometría que viaja al visor y a la
+   entonces la nevera se vende ENTERA y `partes.puertas` sólo dibuja. **La forma del
+   código de la puerta quedó decidida por la dueña el 2026-10-14: `NEV-03-PU2`** (puerta 2
+   de la nevera NEV-03; el sufijo de dos letras que propone el plan, §2.2). Queda para
+   siempre en contratos, correos, planillas y enlaces de montaje. Lo que ya está listo para eso: `partes` es geometría que viaja al visor y a la
    mercaderista sólo con sus números, el aviso de lo vendido (`revisarCambioDeGeometria`)
    y el guardarraíl de `PUT /layout`, que tendrá que frenar cambiar la cantidad de puertas
    con una puerta vendida (hoy las puertas no se editan en el panel). Tramos de mural y
