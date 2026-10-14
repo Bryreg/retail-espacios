@@ -2552,8 +2552,14 @@ prueba("/taller «Fichas» dibuja la ficha que se escribe, con la misma entrada 
   assert.ok(!/(crearModeloPropio|cambiarModeloPropio)\(/.test(panel), "el taller llama a la API sin validar");
   const guardar = cuerpoEntre(panel, "const guardar = async", "const retirarOReactivar = async");
   assert.match(guardar, /if \(!r\.ok\) \{[^]*?\}\s*await recargarFichasPropias\(\);/, "guardar una ficha no la lleva a las paletas");
-  assert.match(cuerpoEntre(panel, "const retirarOReactivar = async", "const Problemas = "), /await recargarFichasPropias\(\);/,
+  // Retirar y reactivar pasan por `retirarOReactivarFicha` (puro: lo prueba
+  // `probar-catalogo` con una API que anota el orden), con la API de verdad y
+  // la relectura de las fichas de la sesión. Llamar a la API acá saltaba el
+  // orden: releer antes del pedido dejaba la retirada en las paletas.
+  assert.match(cuerpoEntre(panel, "const retirarOReactivar = async", "const Problemas = "),
+    /await retirarOReactivarFicha\(\s*m, \{ retirar: retirarModeloPropio, reactivar: reactivarModeloPropio \}, recargarFichasPropias\)/,
     "retirar o reactivar una ficha no la saca o la vuelve a las paletas");
+  assert.ok(!/(retirarModeloPropio|reactivarModeloPropio)\(/.test(panel), "el taller retira o reactiva sin `retirarOReactivarFicha`");
   assert.ok(!/type="file"|FormData|[{,]\s*foto\s*:|["']foto["']|setFoto/.test(panel), "la ficha del taller pide una foto");
   // Con todas retiradas, la dueña sí armó alguna: la lista no puede decirle
   // que no (se vio en el recorrido del 2026-10-14).

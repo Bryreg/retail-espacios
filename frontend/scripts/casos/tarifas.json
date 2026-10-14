@@ -25,6 +25,10 @@
     { "nombre": "un modelo del catálogo sigue mandando", "mueble": { "type": "isla", "modelo": "base:estiba-cuarta" }, "tarifa": "estiba_cuarta" },
     { "nombre": "sin modelo, la del tipo", "mueble": { "type": "isla" }, "tarifa": "isla" },
     { "nombre": "con el modelo borrado a propósito (null), la del tipo", "mueble": { "type": "isla", "modelo": null }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (un número) da la del tipo, sin romper la pantalla", "mueble": { "type": "isla", "modelo": 5 }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (verdadero) da la del tipo", "mueble": { "type": "isla", "modelo": true }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (un objeto) da la del tipo", "mueble": { "type": "isla", "modelo": {} }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (una lista con la clave) da la del tipo", "mueble": { "type": "isla", "modelo": ["cli:media-estiba-bodega"] }, "tarifa": "isla" },
     { "nombre": "lo que no se vende contesta su tipo", "mueble": { "type": "columna", "modelo": "cli:media-estiba-bodega" }, "tarifa": "columna" }
   ]
 }

@@ -253,6 +253,24 @@ await prueba("cada pantalla del supermercado dice el nombre propio de la familia
   }
 });
 
+await prueba("cada componente que nombra lee los nombres del store, no uno por archivo", () => {
+  // La de arriba se conforma con UNA lectura por archivo, y ModoVender tiene
+  // tres componentes que nombran (y DashboardView seis): con la lectura de la
+  // fila del contrato cambiada por `{}`, la lista de Vender volvía al nombre de
+  // RECABRA y todo pasaba. Ningún `nombresPropios` de las pantallas del
+  // supermercado sale de otro lado que no sea el store.
+  const mal = [];
+  for (const { rel, texto } of archivosDelSupermercado()) {
+    for (const m of texto.matchAll(/\b(const|let|var)\s+nombresPropios\b(?!\s*=\s*useFixtureStore\(\(s\) => s\.catalogLabels\);)/g)) {
+      mal.push(`${rel}:${texto.slice(0, m.index).split("\n").length}`);
+    }
+  }
+  assert.deepEqual(mal, [], "\nun `nombresPropios` que no es la lectura del store:\n" + mal.join("\n"));
+  const lecturas = archivosDelSupermercado().reduce((n, { texto }) =>
+    n + (texto.match(/const nombresPropios = useFixtureStore\(\(s\) => s\.catalogLabels\);/g) ?? []).length, 0);
+  assert.ok(lecturas >= 15, `se esperaban las lecturas de cada componente que nombra; hay ${lecturas}`);
+});
+
 /** Los archivos de `src` (sin la consola, la landing ni este módulo). */
 function archivosDelSupermercado() {
   const out = [];
@@ -400,11 +418,13 @@ await prueba("sólo administración los cambia, y un nombre borrado no vuelve al
         b.onResolve({ filter: /api[\\/](layout|spaces|firebase)$/ }, (a) => ({ path: a.path, namespace: "sin-red" }));
         b.onLoad({ filter: /layout$/, namespace: "sin-red" }, () => ({ contents: `
           const no = () => Promise.reject(new Error("sin red"));
-          export const deleteLayout = no, fetchAllLayouts = no, fetchReferenceRates = no, fetchRevisions = no,
+          export const deleteLayout = no, fetchReferenceRates = no, fetchRevisions = no,
             fetchSeasonWindows = no, saveLayout = no, saveReferenceRates = no, saveSeasonWindows = no;
+          export const fetchAllLayouts = () => (globalThis.__ajustes?.planos ? globalThis.__ajustes.planos() : no());
           export const fetchLayoutSettings = () => globalThis.__ajustes.leer();
           export const saveLayoutSettings = (sedes, labels, rev) => globalThis.__ajustes.guardar(sedes, labels, rev);`, loader: "js" }));
-        b.onLoad({ filter: /spaces$/, namespace: "sin-red" }, () => ({ contents: "export const fetchEstadoComercial = () => Promise.reject(new Error('sin red'));", loader: "js" }));
+        b.onLoad({ filter: /spaces$/, namespace: "sin-red" }, () => ({ contents:
+          "export const fetchEstadoComercial = () => (globalThis.__ajustes?.comercial ? globalThis.__ajustes.comercial() : Promise.reject(new Error('sin red')));", loader: "js" }));
         b.onLoad({ filter: /firebase$/, namespace: "sin-red" }, () => ({ contents: "export const signOutFirebase = async () => {};", loader: "js" }));
       },
     }],
@@ -467,6 +487,26 @@ await prueba("sólo administración los cambia, y un nombre borrado no vuelve al
     };
     await store.getState().pushSettings();
     assert.deepEqual(escritos.at(-1).labels, { isla: "Exhibición especial" }, "un nombre borrado en otro supermercado se borró acá");
+
+    // Al abrir la sesión se BAJAN del servidor: es lo que hace que la
+    // trabajadora en Vender, otra computadora o un navegador nuevo digan
+    // «Mamut» y no el nombre de RECABRA. Sin esto los nombres se veían sólo en
+    // el navegador donde la dueña los escribió (vienen de su `localStorage`).
+    await store.getState().flushPending(); // lo que quedó esperando su debounce
+    S.useAuthStore.getState().setAuth("token-w2", "worker", "canaveral");
+    store.setState({ catalogLabels: {} });
+    Object.assign(globalThis.__ajustes, {
+      planos: async () => [], comercial: async () => ({}),
+      leer: async () => ({ sedes: ["SUR"], catalog_labels: { isla: "Mamut", punta: "Tope de góndola" }, updated_at: "c4" }),
+    });
+    await store.getState().syncFromServer();
+    assert.deepEqual(store.getState().catalogLabels, { isla: "Mamut", punta: "Tope de góndola" },
+      "los nombres propios no bajan del servidor al abrir la sesión");
+    // Pero no pisan lo que esta estación está por guardar.
+    S.useAuthStore.getState().setAuth("token-a2", "admin", "canaveral");
+    store.getState().setCatalogLabel("punta", "Cabecera");
+    await store.getState().syncFromServer();
+    assert.equal(store.getState().catalogLabels.punta, "Cabecera", "bajar del servidor pisó un nombre que se estaba guardando");
   } finally {
     delete globalThis.__ajustes;
     S.useFixtureStore.getState().stopAutoSync?.();

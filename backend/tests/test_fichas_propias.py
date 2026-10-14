@@ -241,6 +241,33 @@ def test_el_rango_y_la_geometria_son_los_de_su_familia(client, admin):
     assert _crear(client, admin, gondola)["entrepanos"] == 4
 
 
+def test_un_numero_gigante_es_un_422_y_no_un_500(client, admin):
+    """Un entero de JSON de cientos de cifras no entra en un ``float``: la
+    validación lo tiene que decir por campo, como cualquier medida mala, y no
+    caerse (``math.isfinite`` y ``float()`` lanzaban ``OverflowError``). El
+    navegador nunca lo manda —``JSON.parse`` lo vuelve un número o Infinity—,
+    así que no está en los casos compartidos."""
+    from app.services.catalogo_muebles import problemas_de_la_ficha
+
+    gigante = int("9" * 400)
+    gondola = {"clave": "gondola-cali", "tipo": "gondola", "variante": "double", "nombre": "Góndola Cali",
+               "w": 1.0, "d": 0.8, "h": 2.0, "fuente": {"confiabilidad": "ficha", "nota": "medida en la tienda"}}
+    casos = [
+        (_nevera(w=gigante), {"w"}),
+        (_nevera(h=-gigante), {"h"}),
+        (_nevera(partes={"puertas": gigante}), {"partes.puertas"}),
+        ({**gondola, "entrepanos": gigante}, {"entrepanos"}),
+        ({**gondola, "modulo": gigante}, {"modulo"}),
+    ]
+    for ficha, campos in casos:
+        assert {c for c, _ in problemas_de_la_ficha(ficha)} == campos, ficha
+        # Por la API, como texto: el cuerpo que mandaría alguien a mano.
+        r = client.post("/api/muebles/modelos", content=json.dumps(ficha), headers={
+            **admin, "Content-Type": "application/json"})
+        assert _campos(r) == campos, r.text
+    assert client.get("/api/muebles/modelos", headers=admin).json() == []
+
+
 def test_la_clave_no_se_repite_ni_se_reutiliza(client, admin):
     _crear(client, admin, _nevera())
     r = client.post("/api/muebles/modelos", json=_nevera(nombre="Otra"), headers=admin)
@@ -596,6 +623,39 @@ def test_las_rutas_literales_van_antes_que_las_parametricas(client):
         ("/api/muebles/modelos/{clave}/retirar", "POST"),
         ("/api/muebles/modelos/{clave}/reactivar", "POST"),
     ]
+
+
+def test_el_navegador_pide_las_rutas_que_existen(client):
+    """Cada pedido de ``frontend/src/api/muebles.ts`` es una ruta de verdad,
+    con su método. La prueba del store reemplaza la API entera y estas pruebas
+    escriben sus propias URLs, así que una errata pasaba sin que nada fallara:
+    con ``/muebles/modelo`` el servidor da 404, el store se lo traga y las
+    paletas quedan sin fichas en silencio; con ``/retiro``, «Retirar» dice que
+    la ficha ya no está y la deja en las paletas."""
+    from conftest import rutas_planas
+
+    texto = (RAIZ / "frontend" / "src" / "api" / "muebles.ts").read_text(encoding="utf-8")
+    assert "baseURL" not in texto
+    base = re.search(r'baseURL:\s*"([^"]+)"', (RAIZ / "frontend" / "src" / "api" / "client.ts").read_text(encoding="utf-8")).group(1)
+    ruta = re.search(r"const ruta = \(clave: string\) => `([^`]+)`;", texto).group(1)
+    ruta = ruta.replace("${encodeURIComponent(clave)}", "{clave}")
+    pedidos = []
+    for metodo, arg in re.findall(r'client\.(get|post|put|patch|delete)<[^>]*>\(\s*("[^"]*"|`[^`]*`|ruta\(clave\))', texto):
+        if arg == "ruta(clave)":
+            camino = ruta
+        else:
+            camino = arg[1:-1].replace("${ruta(clave)}", ruta)
+        assert "${" not in camino, camino
+        pedidos.append((metodo.upper(), base + camino))
+    assert len(pedidos) == 5, pedidos
+    assert len(re.findall(r"client\.(get|post|put|patch|delete)\b", texto)) == len(pedidos)
+    del_servidor = {(m, r.path) for r in rutas_planas(client.app) for m in r.methods}
+    faltan = [p for p in pedidos if p not in del_servidor]
+    assert not faltan, faltan
+    assert sorted(pedidos) == sorted([
+        ("GET", "/api/muebles/modelos"), ("POST", "/api/muebles/modelos"), ("PUT", "/api/muebles/modelos/{clave}"),
+        ("POST", "/api/muebles/modelos/{clave}/retirar"), ("POST", "/api/muebles/modelos/{clave}/reactivar"),
+    ])
 
 
 def test_la_tabla_tiene_lo_justo_y_casi_todo_va_en_el_json(client):

@@ -8,7 +8,8 @@ import type { ProblemaDeFicha } from "../../catalogo/fichas";
 import { recargarFichasPropias, useFichasPropias } from "../../store/fichasPropias";
 import {
   CAMPO_DEL_FORMULARIO, FAMILIAS_DEL_FORMULARIO, claveDeNombre, familiaDe, formularioDe, formularioVacio,
-  guardarFicha, problemasDelFormulario, problemasDelServidor, rotuloDeTarifa, type FormularioDeFicha,
+  guardarFicha, problemasDelFormulario, problemasDelServidor, retirarOReactivarFicha, rotuloDeTarifa,
+  type FormularioDeFicha,
 } from "../../utils/formularioDeFicha";
 import { entrepanosQueEntran, TIPOS_CON_GEOMETRIA } from "../../utils/geometriaDelMueble";
 import { useFixtureStore } from "../../store/fixtureStore";
@@ -137,9 +138,8 @@ export function PanelDeFichas({
       `¿Retirar «${m.nombre}»?\n\nDeja de ofrecerse en la paleta. Los muebles ya colocados con esta ficha siguen igual, con sus medidas y su tarifa.`,
     )) return;
     try {
-      await (m.retirado ? reactivarModeloPropio(m.clave) : retirarModeloPropio(m.clave));
-      await recargarFichasPropias();
-      setAviso(m.retirado ? `«${m.nombre}» vuelve a la paleta.` : `«${m.nombre}» quedó retirada.`);
+      setAviso(await retirarOReactivarFicha(
+        m, { retirar: retirarModeloPropio, reactivar: reactivarModeloPropio }, recargarFichasPropias));
     } catch (err) {
       setAviso(problemasDelServidor(err).map((p) => p.problema).join(" "));
     }

@@ -307,9 +307,15 @@ let modeloPorIdArmado: ReadonlyMap<string, ModeloDeMueble> | null = null;
  *  sesión todavía no leyó). Primero el catálogo: una ficha propia no puede
  *  hacerse pasar por un modelo de RECABRA —sólo se buscan las de su prefijo,
  *  `cli:`—, como en el servidor (`tarifa_del_mueble`). Las propias retiradas
- *  también se encuentran: lo colocado con ellas se sigue llamando así. */
+ *  también se encuentran: lo colocado con ellas se sigue llamando así.
+ *
+ *  El tipo dice `string`, pero el `modelo` viene del JSON del plano y el
+ *  servidor lo guarda como llegue: un `modelo: 5` escrito a mano por la API
+ *  dejaba en blanco todas las pantallas del supermercado (`startsWith` no es
+ *  una función de un número). Lo que no es texto no es un modelo, como en
+ *  `tarifa_del_mueble`, que pregunta `isinstance(modelo, str)`. */
 export function modeloPorId(id: string | undefined): FichaDeModelo | undefined {
-  if (!id) return undefined;
+  if (typeof id !== "string" || !id) return undefined;
   modeloPorIdArmado ??= new Map(C.modelos.map((m) => [m.id, m]));
   const delCatalogo = modeloPorIdArmado.get(id);
   if (delCatalogo) return delCatalogo;
@@ -347,7 +353,7 @@ export function modelosPropiosDe(entrada: string, propias: readonly ModeloPropio
   const r = resolverTipo(entrada);
   if (!r) return [];
   return propias.filter((m) => !m.retirado
-    && m.id.startsWith(C.fichas.prefijoPropio)
+    && typeof m.id === "string" && m.id.startsWith(C.fichas.prefijoPropio)
     && m.tipo === r.clave
     && (r.variante === undefined || m.variante === r.variante));
 }

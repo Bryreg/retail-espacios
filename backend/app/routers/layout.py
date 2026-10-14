@@ -44,6 +44,7 @@ from app.schemas.layout import (
     SeasonWindow,
     SeasonWindowsIn,
     SeasonWindowsOut,
+    nombres_propios_recortados,
 )
 
 logger = logging.getLogger(__name__)
@@ -368,7 +369,7 @@ def get_settings(response: Response, db: Session = Depends(get_db)):
     updated_at = _stored_settings_revision(db)
     return LayoutSettingsOut(
         sedes=[s for s in sedes if isinstance(s, str)],
-        catalog_labels={k: v for k, v in labels.items() if isinstance(v, str)} if isinstance(labels, dict) else {},
+        catalog_labels=nombres_propios_recortados(labels) if isinstance(labels, dict) else {},
         updated_at=updated_at,
         generacion=get_config(db, CLAVE_GENERACION),
     )

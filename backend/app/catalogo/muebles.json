@@ -621,7 +621,7 @@
       "modulo": { "enPartes": false, "entero": false },
       "puertas": { "enPartes": true, "entero": true }
     },
-    "fuenteQueEsImagen": "\\.(jpe?g|png|webp|gif|avif|svg|bmp)(\\?.*)?$",
+    "fuenteQueEsImagen": "\\.(jpe?g|png|webp|gif|avif|svg|bmp)([?#;&%].*)?$",
     "largoMaximo": { "nombre": 80, "url": 500, "nota": 600 }
   },
   "orden": {

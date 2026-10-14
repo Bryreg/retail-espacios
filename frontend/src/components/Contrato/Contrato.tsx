@@ -13,6 +13,7 @@ import {
   type FaceData, type RangeAvailability, type UnifiedFixture,
 } from "../../types/fixtures";
 import { nombreDeMueble } from "../../utils/nomenclatura";
+import { valoresDeLista } from "../../utils/precioDeLista";
 
 /**
  * El contrato: TODO el estado y la aritmética del acuerdo, sin una sola línea
@@ -242,28 +243,22 @@ export function useContrato({
   }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias]);
 
 
-  /** Al entrar, cada espacio arranca con su tarifa de referencia escrita.
-   *
-   *  No es una comodidad: el precio de lista es el punto de partida real de la
-   *  negociación, y dejar el campo vacío obliga a ir a buscar la tarifa en otro
-   *  panel y a teclearla — que es donde se cuela un cero de más. Se escribe una
-   *  sola vez por espacio; si alguien lo borra a mano, se queda borrado. */
-  // Lo que trae la semilla ya cuenta como visto: al renovar, el valor que
-  // manda es el que se está pagando hoy, no la tarifa de lista. Pisarlo con la
-  // tarifa haría que renovar arrancara proponiendo otro precio sin que nadie lo
-  // pidiera.
-  const vistos = useRef(new Set<string>(Object.keys(semilla?.valores ?? {})));
+  /** Al entrar, cada espacio arranca con su tarifa de referencia escrita, y
+   *  el campo la SIGUE mientras nadie lo toque: la tarifa de un mueble de una
+   *  ficha propia llega con las fichas, después del primer dibujo. La cuenta
+   *  está en `utils/precioDeLista.ts`. */
+  // Lo que trae la semilla ya es de alguien: al renovar, el valor que manda es
+  // el que se está pagando hoy, no la tarifa de lista. Pisarlo con la tarifa
+  // haría que renovar arrancara proponiendo otro precio sin que nadie lo
+  // pidiera. Lo mismo lo que se teclea (`escribirValor`).
+  const tocados = useRef(new Set<string>(Object.keys(semilla?.valores ?? {})));
   useEffect(() => {
-    const nuevos: Record<string, string> = {};
-    for (const l of lineas) {
-      if (vistos.current.has(l.codigo)) continue;
-      vistos.current.add(l.codigo);
-      if (l.ref !== null) nuevos[l.codigo] = l.ref.toLocaleString("es-CO");
-    }
+    const nuevos = valoresDeLista(lineas, tocados.current);
     if (Object.keys(nuevos).length) setValores((v) => ({ ...v, ...nuevos }));
   }, [lineas]);
 
   const escribirValor = useCallback((codigo: string, txt: string) => {
+    tocados.current.add(codigo);
     const soloDigitos = txt.replace(/[^\d]/g, "");
     setValores((v) => ({
       ...v,

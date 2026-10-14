@@ -293,6 +293,32 @@ export async function guardarFicha(
   }
 }
 
+/** Lo que necesita `retirarOReactivarFicha` de la API (la de verdad está en
+ *  `api/muebles.ts`; las pruebas le pasan otra que anota). */
+export interface ApiDeRetiro {
+  retirar: (clave: string) => Promise<ModeloPropio>;
+  reactivar: (clave: string) => Promise<ModeloPropio>;
+}
+
+/**
+ * «Retirar» una ficha vigente o «Reactivar» una retirada, y DESPUÉS volver a
+ * leer las fichas de la sesión (`recargar`), que es lo que la saca de las
+ * paletas o la devuelve. En ese orden: releída antes del pedido, la paleta
+ * seguía ofreciendo la retirada con el taller diciendo «quedó retirada».
+ * Devuelve el aviso para la dueña; si el servidor dice que no, lanza su error
+ * (y no relee). Retirar no borra nada: lo colocado con ella sigue igual.
+ */
+export async function retirarOReactivarFicha(
+  m: Pick<ModeloPropio, "clave" | "nombre" | "retirado">,
+  api: ApiDeRetiro,
+  recargar: () => Promise<void>,
+): Promise<string> {
+  if (m.retirado) await api.reactivar(m.clave);
+  else await api.retirar(m.clave);
+  await recargar();
+  return m.retirado ? `«${m.nombre}» vuelve a la paleta.` : `«${m.nombre}» quedó retirada.`;
+}
+
 /**
  * La ficha del formulario para DIBUJARLA en el taller mientras se escribe:
  * con las medidas y la geometría metidas en el rango de su familia (una

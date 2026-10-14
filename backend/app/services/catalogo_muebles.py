@@ -182,7 +182,16 @@ _NOMBRE_DE_GEOMETRIA = {"entrepanos": "los entrepaños", "modulo": "el módulo",
 
 
 def _numero(x) -> bool:
-    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+    """Un número de verdad, y que entre en un ``float``: un entero de JSON de
+    cientos de cifras lanzaba ``OverflowError`` en ``isfinite`` (y en el
+    ``float()`` de la regla de los enteros), y la API contestaba 500 en vez del
+    422 por campo."""
+    if not isinstance(x, (int, float)) or isinstance(x, bool):
+        return False
+    try:
+        return math.isfinite(float(x))
+    except OverflowError:
+        return False
 
 
 def _texto(x) -> bool:

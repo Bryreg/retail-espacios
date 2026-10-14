@@ -8,10 +8,35 @@ from app.services.catalogo_muebles import REGLAS_DE_FICHA
 # el largo del nombre de una ficha: lo lee el navegador del mismo `muebles.json`
 # (`LARGO_DEL_NOMBRE_PROPIO` en `catalogo/nombresPropios.ts`).
 LARGO_DEL_NOMBRE_PROPIO: int = REGLAS_DE_FICHA["largoMaximo"]["nombre"]
-# Las familias son ~20 (las de la biblioteca del plano 2D); el tope es holgado
-# para no rechazar una entrada vieja, y corto para que nadie guarde un libro.
+# Las familias son ~20 (las de la biblioteca del plano 2D) y su clave más larga
+# no llega a 20 letras: lo que pase de estos topes no es un nombre que la dueña
+# escribió.
 MAXIMO_DE_NOMBRES_PROPIOS = 100
 LARGO_DE_LA_FAMILIA = 60
+
+
+def nombres_propios_recortados(nombres: dict) -> dict[str, str]:
+    """Los nombres propios como se guardan: sin espacios a los costados,
+    cortados a ``LARGO_DEL_NOMBRE_PROPIO`` letras de verdad (puntos de código,
+    como ``[...texto]`` del navegador), y sin lo que no puede ser un nombre
+    (un valor que no es texto, una clave de más de ``LARGO_DE_LA_FAMILIA``,
+    los que pasan de ``MAXIMO_DE_NOMBRES_PROPIOS``).
+
+    RECORTA y nunca rechaza: viajan en el mismo ``PUT /settings`` que la lista
+    de sedes, y el lápiz de la biblioteca del 2D no tuvo tope hasta c190158.
+    Rechazar un nombre viejo de 90 letras dejaba al supermercado sin poder
+    agregar, renombrar ni quitar una sede. Lo usan el ``PUT`` (al recibir) y el
+    ``GET`` (al leer lo guardado antes), así que el navegador nunca recibe un
+    valor que el ``PUT`` guardaría distinto. Es lo mismo que hace
+    ``nombreParaGuardar`` en el navegador."""
+    salida: dict[str, str] = {}
+    for familia, nombre in nombres.items():
+        if len(salida) >= MAXIMO_DE_NOMBRES_PROPIOS:
+            break
+        if not isinstance(familia, str) or len(familia) > LARGO_DE_LA_FAMILIA or not isinstance(nombre, str):
+            continue
+        salida[familia] = nombre.strip()[:LARGO_DEL_NOMBRE_PROPIO].strip()
+    return salida
 
 
 class LayoutIn(BaseModel):
@@ -75,18 +100,9 @@ class LayoutSettingsIn(BaseModel):
     @classmethod
     def _nombres_propios_cortos(cls, v: dict[str, str]) -> dict[str, str]:
         """Lo que escribe la dueña sale en Vender y en la lámina que se lleva el
-        proveedor: un nombre, no un texto. Largo en letras de verdad (puntos de
-        código), como ``[...texto].length`` del navegador."""
-        if len(v) > MAXIMO_DE_NOMBRES_PROPIOS:
-            raise ValueError(f"hasta {MAXIMO_DE_NOMBRES_PROPIOS} nombres propios")
-        for familia, nombre in v.items():
-            if len(familia) > LARGO_DE_LA_FAMILIA:
-                raise ValueError("la clave de una familia es corta")
-            if len(nombre.strip()) > LARGO_DEL_NOMBRE_PROPIO:
-                raise ValueError(
-                    f"el nombre propio de «{familia}» tiene hasta {LARGO_DEL_NOMBRE_PROPIO} letras"
-                )
-        return v
+        proveedor: un nombre, no un texto. Se recorta, no se rechaza (ver
+        ``nombres_propios_recortados``)."""
+        return nombres_propios_recortados(v)
 
 
 class LayoutSettingsOut(BaseModel):

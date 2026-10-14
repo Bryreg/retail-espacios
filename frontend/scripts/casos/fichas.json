@@ -1534,6 +1534,114 @@
    ]
   },
   {
+   "nombre": "una URL que es una imagen con un ancla",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.png#1",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con parámetros de ruta",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.jpg;v=1",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con el signo de pregunta escapado",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.png%3Fv=1",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con parámetros sin signo de pregunta",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.webp&w=800",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una página que tiene «png» en el nombre no es una imagen",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/neveras/nevera.png-ficha-tecnica/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
    "nombre": "una URL con espacios",
    "ficha": {
     "clave": "nevera-inducol-2p",

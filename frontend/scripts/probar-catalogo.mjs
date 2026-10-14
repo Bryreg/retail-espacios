@@ -946,6 +946,18 @@ await prueba("los editores ofrecen las fichas propias, y el panel del mueble las
     "el plano 2D no arma su biblioteca con las fichas propias");
   assert.match(ed2D, /const modelos = modelosDelPlano\[def\.type\] \?\? \[\];/, "la biblioteca del 2D no es la que tiene las fichas propias");
   assert.ok(!/MODELOS_2D\[/.test(ed2D), "el plano 2D lista los modelos sin las fichas propias");
+  // Y dibujan la familia ENTERA: un filtro en el JSX que escondiera las `cli:`
+  // pasaba todo lo de arriba, y la dueña guardaba la nevera, el taller le decía
+  // «Ya está en la paleta» y no estaba en ninguna de las dos.
+  for (const [n, t, lista, id] of [["3D", ed3D, "familia\\.modelos", "m\\.modelo"], ["2D", ed2D, "\\bmodelos", "m\\.id"]]) {
+    const usos = [...t.matchAll(new RegExp(`${lista}\\.(\\w+)`, "g"))].map((m) => m[1]);
+    assert.ok(usos.length > 0 && usos.every((u) => u === "length" || u === "map" || u === "some"),
+      `la paleta del ${n} hace algo más que contar y recorrer los modelos de la familia: ${usos.join(", ")}`);
+    // (`some` sólo pregunta si el elegido está adentro, para abrir el desplegable.)
+    const mapa = t.match(new RegExp(`\\{${lista}\\.map\\(\\(m\\) => \\{([^]*?)return \\(\\s*<button key=\\{${id}\\} data-modelo=\\{${id}\\}`));
+    assert.ok(mapa, `la paleta del ${n} no dibuja un botón por cada modelo de la familia`);
+    assert.ok(!/\breturn\b|startsWith|retirad|prefijoPropio|cli:/.test(mapa[1]), `la paleta del ${n} se saltea algunos modelos de la familia`);
+  }
   const panel3D = ed3D.slice(ed3D.indexOf("function CommercialPanel("), ed3D.indexOf("const modeloDelMueble = modeloPorId(fix.modelo);") + 60);
   assert.match(panel3D, /useFichasPropias\(\);/, "el panel del Editor 3D no escucha las fichas propias");
   const panel2D = ed2D.slice(ed2D.indexOf("function AssignmentPanel("), ed2D.indexOf("const modeloDelMueble = modeloPorId(item.nace?.modelo);") + 60);
@@ -1012,6 +1024,7 @@ await prueba("las fichas se leen una vez por sesión, se releen al guardar y no 
   } };
   let J;
   try { J = await import(pathToFileURL(archivo).href); } finally { rmSync(dir, { recursive: true, force: true }); }
+  const setTimeoutReal = globalThis.setTimeout, clearTimeoutReal = globalThis.clearTimeout;
   try {
     const pedidos = [];
     let contestar = null;
@@ -1051,9 +1064,153 @@ await prueba("las fichas se leen una vez por sesión, se releen al guardar y no 
     globalThis.__pedirFichas = () => Promise.resolve(A);
     await J.S.cargarFichasPropias();
     assert.equal(J.P.fichasPropias().length, 1, "después de un error de red no se reintenta");
+
+    // Y reintenta SOLA, sin que se monte otra pantalla: en Vender `Ficha` está
+    // siempre montada, y con un 502 en la primera lectura toda la sesión de
+    // venta cobraba la media estiba propia como estiba entera. Con espera
+    // creciente y tope; lo cancela cerrar la sesión.
+    const relojes = [];
+    globalThis.setTimeout = (fn, ms) => { const t = { fn, ms, vivo: true }; relojes.push(t); return t; };
+    globalThis.clearTimeout = (t) => { if (t) t.vivo = false; };
+    const correr = async () => {
+      const t = relojes.filter((x) => x.vivo).at(-1);
+      assert.ok(t, "una lectura fallida no programa otro intento");
+      t.vivo = false; t.fn();
+      await new Promise((ok) => setImmediate(ok));
+    };
+    let leidas = 0;
+    J.useAuthStore.getState().setAuth("token-d", "admin", "galerias");
+    globalThis.__pedirFichas = () => { leidas++; return Promise.reject(new Error("502")); };
+    await J.S.cargarFichasPropias();
+    await new Promise((ok) => setImmediate(ok));
+    assert.deepEqual(relojes.filter((x) => x.vivo).map((x) => x.ms), [J.S.ESPERA_INICIAL_MS]);
+    await correr();
+    assert.equal(leidas, 2, "el reintento no volvió a leer");
+    assert.deepEqual(relojes.filter((x) => x.vivo).map((x) => x.ms), [J.S.ESPERA_INICIAL_MS * 2], "la espera no crece");
+    for (let i = 0; i < 8; i++) await correr();
+    assert.equal(relojes.filter((x) => x.vivo)[0].ms, J.S.ESPERA_MAXIMA_MS, "la espera no tiene tope");
+    globalThis.__pedirFichas = () => { leidas++; return Promise.resolve(A); };
+    await correr();
+    assert.equal(J.P.fichasPropias().length, 1, "el reintento no trajo las fichas");
+    assert.equal(relojes.filter((x) => x.vivo).length, 0, "con las fichas leídas sigue reintentando");
+    // Cerrar la sesión cancela el reintento pendiente.
+    globalThis.__pedirFichas = () => Promise.reject(new Error("502"));
+    await J.S.recargarFichasPropias();
+    await new Promise((ok) => setImmediate(ok));
+    assert.equal(relojes.filter((x) => x.vivo).length, 1);
+    J.useAuthStore.getState().logout();
+    assert.equal(relojes.filter((x) => x.vivo).length, 0, "cerrar la sesión no cancela el reintento");
+    // Otra sesión con un reintento de la anterior pendiente: el de la anterior
+    // no tapa el de la nueva (al dispararse no haría nada), y la nueva arranca
+    // con la espera inicial.
+    J.useAuthStore.getState().setAuth("token-e", "admin", "galerias");
+    await J.S.cargarFichasPropias();
+    for (let i = 0; i < 3; i++) await correr();
+    J.useAuthStore.getState().setAuth("token-f", "admin", "canaveral");
+    await J.S.cargarFichasPropias();
+    await new Promise((ok) => setImmediate(ok));
+    assert.deepEqual(relojes.filter((x) => x.vivo).map((x) => x.ms), [J.S.ESPERA_INICIAL_MS],
+      "la falla de la sesión nueva no programa su propio reintento");
+    globalThis.__pedirFichas = () => Promise.resolve(B);
+    await correr();
+    assert.deepEqual(J.P.fichasPropias().map((m) => m.id), ["cli:de-otro"], "el reintento de la sesión nueva no las trajo");
   } finally {
+    globalThis.setTimeout = setTimeoutReal;
+    globalThis.clearTimeout = clearTimeoutReal;
     delete globalThis.__pedirFichas;
     if (!habiaWindow) delete globalThis.window;
+  }
+});
+
+await prueba("montar una pantalla con `useFichasPropias` las pide una vez por sesión, y quien dibuja con ellas se entera", async () => {
+  // Lo de arriba llama al cargador a mano; esto es el HOOK, que es lo único
+  // que las lee al abrir la aplicación: sin su efecto, después de recargar
+  // ninguna sesión pide `GET /api/muebles/modelos` —las paletas sin la nevera
+  // propia, el panel sin nombrarla, Vender con la tarifa del tipo— y nada
+  // fallaba. Con un React de mentira que corre el efecto cuando cambian sus
+  // dependencias y suscribe la pantalla, y una sesión que se puede cambiar.
+  const r = await build({
+    stdin: {
+      contents: 'export * as S from "./src/store/fichasPropias.ts"; export * as P from "./src/catalogo/propias.ts"; export * as R from "react";',
+      resolveDir: raiz, loader: "ts",
+    },
+    bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+    plugins: [{
+      name: "falsos",
+      setup(b) {
+        b.onResolve({ filter: /^react$/ }, () => ({ path: "react", namespace: "falso" }));
+        b.onResolve({ filter: /api[\\/]muebles$/ }, () => ({ path: "api", namespace: "falso" }));
+        b.onResolve({ filter: /[\\/]authStore$/ }, () => ({ path: "auth", namespace: "falso" }));
+        b.onLoad({ filter: /^react$/, namespace: "falso" }, () => ({ loader: "js", contents: `
+          let actual = null;
+          export const pantalla = () => ({ deps: [], dejar: [], avisos: 0 });
+          export function dibujar(p, fn) { actual = p; p.i = 0; try { return fn(); } finally { actual = null; } }
+          export function useEffect(fn, deps) {
+            const p = actual, i = p.i++;
+            const antes = p.deps[i];
+            if (!antes || deps.length !== antes.length || deps.some((d, k) => d !== antes[k])) { p.deps[i] = deps; fn(); }
+          }
+          export function useSyncExternalStore(suscribir, instantanea) {
+            const p = actual, i = p.i++;
+            if (!p.dejar[i]) p.dejar[i] = suscribir(() => { p.avisos++; });
+            return instantanea();
+          }` }));
+        b.onLoad({ filter: /^api$/, namespace: "falso" }, () => ({ loader: "js", contents:
+          "export const listarModelosPropios = () => { globalThis.__pedidos.push(globalThis.__sesion.token); return Promise.resolve(globalThis.__respuesta); };" }));
+        b.onLoad({ filter: /^auth$/, namespace: "falso" }, () => ({ loader: "js", contents: `
+          const oyentes = new Set();
+          export const useAuthStore = Object.assign((sel) => sel(globalThis.__sesion), {
+            getState: () => globalThis.__sesion,
+            subscribe: (fn) => { oyentes.add(fn); return () => oyentes.delete(fn); },
+          });` }));
+      },
+    }],
+  });
+  const J = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+  globalThis.__pedidos = [];
+  globalThis.__respuesta = [PROPIAS[0]];
+  globalThis.__sesion = { token: "tok-1", plataforma: false, cliente: "canaveral" };
+  const listo = () => new Promise((ok) => setImmediate(ok));
+  try {
+    // El tablero se monta: pide UNA vez, y cuando llegan, el tablero se entera.
+    const tablero = J.R.pantalla();
+    assert.equal(J.R.dibujar(tablero, () => J.S.useFichasPropias()).length, 0);
+    assert.deepEqual(globalThis.__pedidos, ["tok-1"], "montar una pantalla no pide las fichas");
+    await listo();
+    assert.equal(J.P.fichasPropias().length, 1, "las fichas no llegaron a memoria");
+    assert.equal(tablero.avisos, 1, "la pantalla no se enteró de que llegaron las fichas");
+    assert.equal(J.R.dibujar(tablero, () => J.S.useFichasPropias()).length, 1, "la pantalla no dibuja con las fichas que llegaron");
+    // Otra pantalla (el Editor 3D) y otro dibujo de la misma: no vuelven a pedir.
+    const editor = J.R.pantalla();
+    J.R.dibujar(editor, () => J.S.useFichasPropias());
+    J.R.dibujar(tablero, () => J.S.useFichasPropias());
+    await listo();
+    assert.equal(globalThis.__pedidos.length, 1, "cada pantalla las vuelve a pedir");
+    // Otro ingreso (otro token) o otro supermercado: sí.
+    globalThis.__sesion = { ...globalThis.__sesion, token: "tok-2" };
+    J.R.dibujar(tablero, () => J.S.useFichasPropias());
+    await listo();
+    globalThis.__sesion = { ...globalThis.__sesion, token: "tok-3", cliente: "galerias" };
+    J.R.dibujar(editor, () => J.S.useFichasPropias());
+    await listo();
+    assert.deepEqual(globalThis.__pedidos, ["tok-1", "tok-2", "tok-3"], "otra sesión no lee las suyas");
+
+    // `catalogo/propias.ts` avisa a cada suscripto al fijarlas y al olvidarlas
+    // (si había), y deja de avisar a quien se fue.
+    let avisos = 0;
+    const dejar = J.P.suscribirFichasPropias(() => { avisos++; });
+    J.P.fijarFichasPropias(PROPIAS);
+    assert.equal(avisos, 1, "fijar las fichas no avisa a quien dibuja con ellas");
+    J.P.olvidarFichasPropias();
+    assert.equal(avisos, 2, "olvidar las fichas no avisa");
+    J.P.olvidarFichasPropias();
+    assert.equal(avisos, 2, "olvidar lo que ya estaba vacío avisa de nuevo");
+    dejar();
+    J.P.fijarFichasPropias(PROPIAS);
+    assert.equal(avisos, 2, "quien dejó de escuchar sigue recibiendo avisos");
+    J.P.olvidarFichasPropias();
+  } finally {
+    delete globalThis.__pedidos; delete globalThis.__respuesta; delete globalThis.__sesion;
   }
 });
 
@@ -1196,6 +1353,74 @@ const vacio = {
 };
 const conCatalogo = (inputs) => Object.entries(inputs)
   .some(([m, x]) => /catalogo[\\/]muebles\.json$/.test(m) && x.bytesInOutput > 0);
+
+await prueba("retirar y reactivar una ficha: el pedido que corresponde, y DESPUÉS releer las fichas", async () => {
+  // El taller decía «quedó retirada» y la ficha seguía en las dos paletas si
+  // «Retirar» llamaba a `/reactivar` (que sobre una vigente no hace nada y
+  // contesta 200) o si releía las fichas antes del pedido.
+  const FF = await cargar("src/utils/formularioDeFicha.ts");
+  const orden = [];
+  const api = {
+    retirar: async (clave) => { orden.push(["retirar", clave]); return {}; },
+    reactivar: async (clave) => { orden.push(["reactivar", clave]); return {}; },
+  };
+  const recargar = async () => { orden.push(["releer"]); };
+  const vigente = { clave: "nevera-inducol-2p", nombre: "Nevera Inducol 2 puertas", retirado: false };
+  assert.equal(await FF.retirarOReactivarFicha(vigente, api, recargar), "«Nevera Inducol 2 puertas» quedó retirada.");
+  assert.deepEqual(orden, [["retirar", "nevera-inducol-2p"], ["releer"]], "retirar no pide retirar y después relee");
+  orden.length = 0;
+  assert.equal(await FF.retirarOReactivarFicha({ ...vigente, retirado: true }, api, recargar), "«Nevera Inducol 2 puertas» vuelve a la paleta.");
+  assert.deepEqual(orden, [["reactivar", "nevera-inducol-2p"], ["releer"]], "reactivar no pide reactivar y después relee");
+  // Si el servidor dice que no, el error llega al taller y no se relee.
+  orden.length = 0;
+  const conError = { ...api, retirar: async () => { orden.push(["retirar"]); throw Object.assign(new Error("404"), { response: { status: 404 } }); } };
+  await assert.rejects(FF.retirarOReactivarFicha(vigente, conError, recargar));
+  assert.deepEqual(orden, [["retirar"]], "con el retiro rechazado igual relee (o no pidió)");
+});
+
+await prueba("Vender escribe la tarifa de lista y la sigue hasta que alguien toca el campo", async () => {
+  // La tarifa de un mueble de una ficha propia llega con las fichas, después
+  // del primer dibujo. Escrita una sola vez, la media estiba propia tocada
+  // antes de que llegaran quedaba en 3.000.000 (la de la estiba entera) en vez
+  // de 900.000, y ése era el precio que se guardaba.
+  const J = await cargarJuntos({ L: "src/utils/precioDeLista.ts", F: "src/types/fixtures.ts", P: "src/catalogo/propias.ts" });
+  const tarifas = { default: { isla: 3_000_000, estiba_media: 900_000 }, by_sede: {} };
+  const exp1 = { type: "isla", modelo: "cli:media-estiba-bodega" };
+  const exp2 = { type: "isla" };
+  const renglones = (valores) => [["NAVE-EXP-01", exp1], ["NAVE-EXP-02", exp2], ["NAVE-EXP-03", exp2]].map(([codigo, f]) => ({
+    codigo, ref: J.F.referenceRateFor(tarifas, "NAVE", J.F.rateTypeOf(f)), valor: valores[codigo] ?? "",
+  }));
+  J.P.olvidarFichasPropias();
+  // La renovación trae su valor: es de alguien.
+  const tocados = new Set(["NAVE-EXP-03"]);
+  let valores = { "NAVE-EXP-03": "2.500.000" };
+  valores = { ...valores, ...J.L.valoresDeLista(renglones(valores), tocados) };
+  assert.deepEqual(valores, { "NAVE-EXP-01": "3.000.000", "NAVE-EXP-02": "3.000.000", "NAVE-EXP-03": "2.500.000" });
+  assert.deepEqual(J.L.valoresDeLista(renglones(valores), tocados), {}, "reescribe lo que ya dice la tarifa");
+  // Llegan las fichas: el campo que nadie tocó pasa a la tarifa de la ficha.
+  J.P.fijarFichasPropias([{ id: "cli:media-estiba-bodega", clave: "media-estiba-bodega", tipo: "isla", tarifa: "estiba_media",
+    nombre: "Media estiba", w: 1, d: 0.6, h: 1.2, retirado: false, fuente: { confiabilidad: "estimado", nota: "x" } }]);
+  assert.deepEqual(J.L.valoresDeLista(renglones(valores), tocados), { "NAVE-EXP-01": "900.000" },
+    "el precio de la media estiba propia se queda con la tarifa de la estiba entera");
+  // Lo que se tecleó (también borrarlo) no se pisa.
+  tocados.add("NAVE-EXP-01");
+  valores = { ...valores, "NAVE-EXP-01": "" };
+  assert.deepEqual(J.L.valoresDeLista(renglones(valores), tocados), {}, "pisó lo que alguien escribió");
+  // Sin tarifa, nada.
+  assert.deepEqual(J.L.valoresDeLista([{ codigo: "X", ref: null, valor: "" }], new Set()), {});
+  J.P.olvidarFichasPropias();
+  // Y el contrato la usa así: cada vez que cambian los renglones, y lo
+  // tecleado entra en `tocados`.
+  const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
+  const contrato = sinComent(leer(join(raiz, "src", "components", "Contrato", "Contrato.tsx")));
+  assert.match(contrato, /const tocados = useRef\(new Set<string>\(Object\.keys\(semilla\?\.valores \?\? \{\}\)\)\);/,
+    "la semilla de la renovación no cuenta como tocada");
+  assert.match(contrato, /useEffect\(\(\) => \{\s*const nuevos = valoresDeLista\(lineas, tocados\.current\);\s*if \(Object\.keys\(nuevos\)\.length\) setValores\(\(v\) => \(\{ \.\.\.v, \.\.\.nuevos \}\)\);\s*\}, \[lineas\]\);/,
+    "el contrato no escribe la tarifa de lista con `valoresDeLista`");
+  assert.match(contrato, /const escribirValor = useCallback\(\(codigo: string, txt: string\) => \{\s*tocados\.current\.add\(codigo\);/,
+    "lo que se teclea no cuenta como tocado: la tarifa lo pisaría");
+  assert.equal((contrato.match(/\bsetValores\(/g) ?? []).length, 2, "otro camino escribe el valor acordado");
+});
 
 await prueba("el catálogo no viaja en lo primero que baja la landing", async () => {
   // El catálogo trae descripciones, emojis, medidas y rótulos que sólo usan los
