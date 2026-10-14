@@ -1,10 +1,11 @@
-import { CATALOGO_DE_MUEBLES, type PartesDeMueble } from "../catalogo/catalogo";
+import { CATALOGO_DE_MUEBLES, modeloPorId, nombreDeModelo, type PartesDeMueble } from "../catalogo/catalogo";
 import { puertasDe, tramosValidos, vanosDeCorrido } from "../components/StoreEditor3D/muebles/medidas";
 import { fullSpaceCode } from "../types/espacio";
 import type { EstadoPorEspacio } from "./estadoComercial";
 import { geometriaALaVista } from "./geometriaDelMueble";
 import {
-  claseDe, codigoDeParte, concordancia, divisionDe, esDivision, partesDe, piezasDe, piezasDeLaFamilia, sufijoDeParte,
+  claseDe, codigoDeParte, comoSeVendeLaFicha, concordancia, divisionDe, esDivision, firmaDePartes, partesDe, piezasDe,
+  piezasDeLaFamilia, sufijoDeParte, textoDeComoSeVende,
 } from "./partes";
 
 /**
@@ -42,6 +43,8 @@ type Mueble = {
   gondolaType?: string | null; rentable?: boolean; partes?: PartesDeMueble | null;
   entrepanos?: number | null; modulo?: number | null;
   slots?: readonly { status: string }[] | null;
+  /** La ficha con que se colocó (`base:…` de RECABRA o `cli:…` propia). */
+  modelo?: string | null;
 };
 
 const tipoBase = (tipo: string) => CATALOGO_DE_MUEBLES.alias[tipo]?.tipo ?? tipo;
@@ -283,6 +286,12 @@ export function cambioParaDividir(f: Mueble, clase: string): { cambio: CambioDeP
     return { cambio: { division: clase, puertas: n } };
   }
   if (clase === "tramos") {
+    // La de una góndola, un tramo por módulo (su ficha es un módulo): con un
+    // solo módulo dibujado no hay tramos que vender, se estira primero. Antes
+    // proponía partir ese módulo en dos.
+    if (seCuentaEnElPlano(f.type, clase) && tramosDibujados(f) < regla.minimo) {
+      return { problema: `Tiene un solo módulo: para venderla por ${regla.plural} (uno por módulo), estirala en el plano a ${regla.minimo} módulos o más.` };
+    }
     const n = Math.min(tramosQueEntran(f), Math.max(regla.minimo, tramosDibujados(f)));
     if (n < regla.minimo) {
       return { problema: `Es muy angosto para venderlo por ${regla.plural}: cada uno mide al menos ${TRAMO_MINIMO.toFixed(2).replace(".", ",")} m.` };
@@ -323,6 +332,12 @@ export function aplicarATodos<T extends Mueble>(
   return { fixtures: nuevos, aplicados, saltados };
 }
 
+/** ¿La cantidad de esa división se cuenta en el plano y no en la ficha? Los
+ *  tramos de una góndola (`seCuentanEnElPlano` del catálogo): uno por módulo. */
+export function seCuentaEnElPlano(tipo: string, clase: string): boolean {
+  return CATALOGO_DE_MUEBLES.tipos[tipoBase(tipo)]?.partes?.seCuentanEnElPlano?.includes(clase) ?? false;
+}
+
 /** La división que el mueble pidió pero no puede usar todavía: eligió «por
  *  tramos» en su ficha (la de una góndola no trae la cantidad: depende del
  *  largo del corrido) y nadie la fijó. Se vende entera hasta fijarla. */
@@ -330,4 +345,112 @@ export function divisionSinFijar(f: Mueble): string | null {
   const pedida = f.partes?.division;
   if (typeof pedida !== "string" || !divisionesDe(f.type).includes(pedida)) return null;
   return divisionDe(f) ? null : pedida;
+}
+
+// ─── Lo que dice su ficha ────────────────────────────────────────────────────
+
+/** Lo que el panel le ofrece a un mueble colocado desde una ficha (un modelo
+ *  de RECABRA o una ficha propia) que dice cómo se vende. */
+export interface LoDeLaFicha {
+  /** El nombre de la ficha, como lo nombra el panel («≈ Góndola de pared…»). */
+  nombre: string;
+  /** Lo que dice: «entera o por puertas (3)», «2 bahías de impulso». */
+  texto: string;
+  /** Lo que hay que escribirle al mueble para venderse así; `null` si ya se
+   *  vende así o si todavía no se puede (`problema`). */
+  cambio: CambioDePartes | null;
+  /** Por qué no se puede todavía: una góndola de un solo módulo no tiene
+   *  tramos que vender. */
+  problema: string | null;
+}
+
+/** Qué decide DÓNDE cae cada parte y si se vende por partes: la forma y la
+ *  cuenta de cada clase. Dos muebles con la misma se venden igual. */
+const firmaDeVenta = (f: Mueble) => JSON.stringify({ d: divisionDe(f), p: firmaDePartes(f) });
+
+/**
+ * Lo que dice la ficha del mueble de cómo se vende, y qué hay que escribirle
+ * para que se venda así: «Usar lo de la ficha» del panel.
+ *
+ * **Lo ya colocado no cambia solo.** El mueble lleva estampado lo que su ficha
+ * decía al colocarlo; si la ficha cambió después —la dueña la pasó a «por
+ * puertas» en el taller, o el modelo de RECABRA ahora viene por tramos—, el
+ * panel lo dice y espera a que alguien lo elija. Esto sólo lo calcula.
+ *
+ * Lo que va: la forma de dividir y, si la ficha la cuenta (las puertas, los
+ * tramos de una nevera abierta, las bahías), su cantidad; los tramos de una
+ * góndola, uno por módulo del corrido (`cambioParaDividir`: la ficha es un
+ * módulo); los entrepaños, los que tiene el mueble o, si no tiene, los de la
+ * ficha. `null` si el mueble no tiene ficha, si es de otra familia o si la
+ * ficha no dice nada de partes.
+ */
+export function loDeLaFicha(f: Mueble): LoDeLaFicha | null {
+  const m = modeloPorId(f.modelo ?? undefined);
+  if (!m || m.tipo !== tipoBase(f.type)) return null;
+  if (m.variante !== undefined && (f.gondolaType === "wall" ? "wall" : "double") !== m.variante) return null;
+  const como = comoSeVendeLaFicha(m);
+  if (!como) return null;
+  const cambio: CambioDePartes = {};
+  let problema: string | null = null;
+  if (como.division) {
+    const regla = claseDe(como.division)!;
+    if (como.n === null) {
+      const r = cambioParaDividir(f, como.division);
+      if ("problema" in r) problema = r.problema;
+      else Object.assign(cambio, r.cambio);
+    } else if (regla.campo === "entrepanos") {
+      cambio.division = como.division;
+      if (typeof f.entrepanos !== "number") cambio.entrepanos = m.entrepanos ?? null;
+    } else {
+      cambio.division = como.division;
+      (cambio as Record<string, unknown>)[regla.campo] = (m.partes as Record<string, unknown>)[regla.campo];
+    }
+  }
+  for (const p of como.piezas) {
+    if (p.clase === "bahias") cambio.bahias = p.n;
+    if (p.clase === "forro") cambio.forro = true;
+  }
+  const igual = !problema && firmaDeVenta(f) === firmaDeVenta(conElCambio(f, cambio));
+  return {
+    nombre: nombreDeModelo(m),
+    texto: textoDeComoSeVende(como),
+    cambio: igual || problema ? null : cambio,
+    problema: igual ? null : problema,
+  };
+}
+
+/**
+ * «Aplicar a todos los colocados con esta ficha en la sede»: lo de su ficha
+ * en cada mueble colocado con ella (`loDeLaFicha`), en un solo cambio. Salta
+ * los que tienen algo vendido que se movería o cambiaría cómo se ve
+ * (`revisarCambioDePartes` frena o avisa: eso se hace de a uno, desde su
+ * panel) y los que todavía no pueden (una góndola de un solo módulo), y los
+ * nombra; los que ya se venden así quedan como están.
+ */
+export function aplicarLoDeLaFicha<T extends Mueble>(
+  fixtures: readonly T[], modelo: string, estado: EstadoPorEspacio, sede: string,
+): { fixtures: T[]; aplicados: string[]; saltados: string[]; sinPoder: string[] } {
+  const aplicados: string[] = [];
+  const saltados: string[] = [];
+  const sinPoder: string[] = [];
+  const nuevos = fixtures.map((f) => {
+    if (!modelo || f.modelo !== modelo) return f;
+    const ficha = loDeLaFicha(f);
+    if (!ficha) return f;
+    if (ficha.problema) { sinPoder.push(f.code); return f; }
+    if (!ficha.cambio) return f;
+    const r = revisarCambioDePartes(f, ficha.cambio, estado, sede);
+    if (r.bloqueo || r.aviso) { saltados.push(f.code); return f; }
+    aplicados.push(f.code);
+    return conElCambio(f, ficha.cambio);
+  });
+  return { fixtures: nuevos, aplicados, saltados, sinPoder };
+}
+
+/** Los colocados con esa ficha en el plano (la sede de la pantalla), y
+ *  cuántos todavía no se venden como ella dice. */
+export function colocadosConLaFicha(fixtures: readonly Mueble[], modelo: string | null | undefined): { todos: number; distintos: number } {
+  if (!modelo) return { todos: 0, distintos: 0 };
+  const con = fixtures.filter((f) => f.modelo === modelo);
+  return { todos: con.length, distintos: con.filter((f) => !!loDeLaFicha(f)?.cambio).length };
 }

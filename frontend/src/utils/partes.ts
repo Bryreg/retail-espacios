@@ -298,6 +298,86 @@ export function partesTipadas(partes: unknown): PartesDeMueble | undefined {
   return Object.keys(fuera).length ? (fuera as PartesDeMueble) : undefined;
 }
 
+// ─── Lo que dice la ficha ────────────────────────────────────────────────────
+
+/** Cómo se vende lo que se coloque desde una FICHA (un modelo de RECABRA o una
+ *  ficha propia del supermercado): la forma de dividir la cara y en cuántas
+ *  partes, y las piezas que vende. */
+export interface ComoSeVende {
+  /** `puertas`, `tramos` o `entrepanos`; `null`: la cara se vende entera. */
+  division: string | null;
+  /** Cuántas partes por cara (con la base, en los entrepaños), o `null` si
+   *  se cuentan en el plano: los tramos de una góndola, uno por módulo (su
+   *  ficha es UN módulo; cuántos tiene depende del largo del corrido). */
+  n: number | null;
+  /** Las piezas de lo que no se vende entero: las bahías de impulso de una
+   *  caja (`n` cuántas) y el forro de una columna (`n` es `null`: uno solo). */
+  piezas: { clase: string; n: number | null }[];
+}
+
+/**
+ * Cómo se vende lo que se coloque desde esa ficha, con las MISMAS reglas que
+ * cuentan las partes de un mueble del plano (`divisionDe`, `cantidadDe`,
+ * `piezasDe`): una ficha es lo que se le estampa al mueble. `null` si la
+ * ficha no dice nada de partes (se vende entera, como siempre) o lo dice mal.
+ * No mira si es comercializable: eso es del mueble colocado.
+ */
+export function comoSeVendeLaFicha(
+  m: { tipo: string; partes?: PartesDeMueble | null; entrepanos?: number | null },
+): ComoSeVende | null {
+  if (!m || typeof m.tipo !== "string") return null;
+  const f: ConPartes = { type: m.tipo, partes: m.partes ?? null, entrepanos: m.entrepanos ?? null };
+  const familia = CATALOGO_DE_MUEBLES.tipos[tipoBase(m.tipo)];
+  let division: string | null = null;
+  let n: number | null = null;
+  const pedida = m.partes?.division;
+  if (typeof pedida === "string" && familia?.partes?.divisiones?.includes(pedida)) {
+    if (familia.partes.seCuentanEnElPlano?.includes(pedida)) {
+      division = pedida;
+    } else {
+      const cuantas = cantidadDe(f, pedida);
+      if (cuantas !== null) { division = pedida; n = cuantas; }
+    }
+  }
+  const piezas: { clase: string; n: number | null }[] = [];
+  for (const p of piezasDe(f)) {
+    const ya = piezas.find((x) => x.clase === p.clase);
+    if (ya) ya.n = Math.max(ya.n ?? 0, p.n ?? 0);
+    else piezas.push({ clase: p.clase, n: p.n });
+  }
+  return division || piezas.length ? { division, n, piezas } : null;
+}
+
+/** Lo que dice esa ficha de cómo se vende, en palabras. `corto` es lo que
+ *  acompaña al nombre en las paletas («por puertas», «2 bahías de impulso»);
+ *  si no, lo que lee el panel del plano («entera o por puertas (3)»). */
+export function textoDeComoSeVende(c: ComoSeVende, { corto = false }: { corto?: boolean } = {}): string {
+  const dichos: string[] = [];
+  if (c.division) {
+    const regla = claseDe(c.division);
+    const plural = regla?.plural ?? c.division;
+    if (corto) dichos.push(`por ${plural}`);
+    else if (c.n === null) dichos.push(`entera o por ${plural}, ${concordancia(c.division).un === "un" ? "uno" : "una"} por módulo`);
+    else dichos.push(`entera o por ${plural} (${c.n}${regla?.base ? ", con la base" : ""})`);
+  }
+  for (const p of c.piezas) {
+    const regla = claseDe(p.clase);
+    if (!regla) continue;
+    if (p.n === null) dichos.push(corto ? `con ${regla.singular}` : `${concordancia(p.clase).el} ${regla.singular} se vende`);
+    else dichos.push(`${p.n} ${p.n === 1 ? regla.singular : regla.plural}`);
+  }
+  return dichos.join(corto ? " · " : "; ");
+}
+
+/** Lo que acompaña al nombre de un modelo en las paletas del plano 2D y del
+ *  Editor 3D: `{ comoSeVende: "por puertas" }`, o nada si se vende entera. */
+export function comoSeVendeCorto(
+  m: { tipo: string; partes?: PartesDeMueble | null; entrepanos?: number | null },
+): { comoSeVende?: string } {
+  const como = comoSeVendeLaFicha(m);
+  return como ? { comoSeVende: textoDeComoSeVende(como, { corto: true }) } : {};
+}
+
 // ─── Cómo se dice ────────────────────────────────────────────────────────────
 
 /** Las palabras que concuerdan con la clase: «una puerta vendida, la otra,

@@ -386,7 +386,7 @@
     {
       "id": "base:gondola-pared-150-m090", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,50 m · módulo 0,90",
-      "w": 0.90, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 0.90,
+      "w": 0.90, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 0.90, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
         "confiabilidad": "estimado",
@@ -396,7 +396,7 @@
     {
       "id": "base:gondola-pared-150-m100", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,50 m · módulo 1,00",
-      "w": 1.00, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 1.00,
+      "w": 1.00, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 1.00, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
         "confiabilidad": "estimado",
@@ -406,7 +406,7 @@
     {
       "id": "base:gondola-pared-150-m120", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,50 m · módulo 1,20",
-      "w": 1.20, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 1.20,
+      "w": 1.20, "d": 0.40, "h": 1.50, "entrepanos": 3, "modulo": 1.20, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
         "confiabilidad": "estimado",
@@ -416,7 +416,7 @@
     {
       "id": "base:gondola-pared-160-m090", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,60 m · módulo 0,90",
-      "w": 0.90, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 0.90,
+      "w": 0.90, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 0.90, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://exhivicol.com/tienda/supermercado/gondolas/",
         "confiabilidad": "estimado",
@@ -426,7 +426,7 @@
     {
       "id": "base:gondola-pared-160-m100", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,60 m · módulo 1,00",
-      "w": 1.00, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 1.00,
+      "w": 1.00, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 1.00, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://exhivicol.com/tienda/supermercado/gondolas/",
         "confiabilidad": "estimado",
@@ -436,7 +436,7 @@
     {
       "id": "base:gondola-pared-160-m120", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,60 m · módulo 1,20",
-      "w": 1.20, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 1.20,
+      "w": 1.20, "d": 0.40, "h": 1.60, "entrepanos": 3, "modulo": 1.20, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://exhivicol.com/tienda/supermercado/gondolas/",
         "confiabilidad": "estimado",
@@ -446,7 +446,7 @@
     {
       "id": "base:gondola-pared-180-m090", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,80 m · módulo 0,90",
-      "w": 0.90, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 0.90,
+      "w": 0.90, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 0.90, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
@@ -456,7 +456,7 @@
     {
       "id": "base:gondola-pared-180-m100", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,80 m · módulo 1,00",
-      "w": 1.00, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 1.00,
+      "w": 1.00, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 1.00, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
@@ -466,7 +466,7 @@
     {
       "id": "base:gondola-pared-180-m120", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 1,80 m · módulo 1,20",
-      "w": 1.20, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 1.20,
+      "w": 1.20, "d": 0.40, "h": 1.80, "entrepanos": 4, "modulo": 1.20, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://algamar.com.co/soluciones-para-supermercados/gondolas/",
         "confiabilidad": "estimado",
@@ -476,7 +476,7 @@
     {
       "id": "base:gondola-pared-200-m090", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 2,00 m · módulo 0,90",
-      "w": 0.90, "d": 0.40, "h": 2.00, "entrepanos": 4, "modulo": 0.90,
+      "w": 0.90, "d": 0.40, "h": 2.00, "entrepanos": 4, "modulo": 0.90, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
@@ -486,7 +486,7 @@
     {
       "id": "base:gondola-pared-200-m100", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 2,00 m · módulo 1,00",
-      "w": 1.00, "d": 0.40, "h": 2.00, "entrepanos": 4, "modulo": 1.00,
+      "w": 1.00, "d": 0.40, "h": 2.00, "entrepanos": 4, "modulo": 1.00, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://lockermetaldisenosgmc.com/nuestros-productos/estanteria/gondolas/",
         "confiabilidad": "ficha",
@@ -496,7 +496,7 @@
     {
       "id": "base:gondola-pared-200-m120", "tipo": "gondola", "variante": "wall",
       "nombre": "Góndola de pared 2,00 m · módulo 1,20",
-      "w": 1.20, "d": 0.49, "h": 2.00, "entrepanos": 4, "modulo": 1.20,
+      "w": 1.20, "d": 0.49, "h": 2.00, "entrepanos": 4, "modulo": 1.20, "partes": { "division": "tramos" },
       "fuente": {
         "url": "https://dispromem.com/productos/gondolas-para-supermercado/",
         "confiabilidad": "ficha",
@@ -633,7 +633,8 @@
       "`clases` dice qué es cada clase una sola vez: su token (dos letras y el número, sin ceros adelante), si DIVIDE la cara (`division`: choca con la cara entera en fechas que se pisan; dos divisiones de la misma clase conviven, de clases distintas no) o es una pieza aparte, el campo que la cuenta (uno de `fichas.geometria`: en `partes` o en el mueble, como los entrepaños), si la base cuenta como una más (`base`: los entrepaños son la base y los entrepaños), su género (`genero`, para decirla bien: «una puerta vendida», «un tramo vendido»), la tarifa propia por clase (vacía: la de la cara dividida por la cantidad de partes) y cómo la nombran los informes. Cada tipo dice en `partes.divisiones` cuáles admite; el mueble del plano elige UNA en `partes.division` y la cuenta en su campo. Sin `partes.division`, el mueble se vende entero, como siempre.",
       "`seCuentanEnElPlano` (por tipo) son las divisiones cuya cantidad NO va en la ficha: la ficha de una góndola es un módulo, y cuántos tramos tiene depende del largo del corrido. La ficha dice sólo que se vende por tramos, y la cantidad se fija en el panel del plano (un tramo por módulo).",
       "`reservados` son los finales de código que ningún mueble puede tomar al renombrarse: los tokens de hoy y los de lo que viene (copete, cenefa, stopper) y la cara B.",
-      "Las PIEZAS (`es: pieza`, desde el paso 3: la bahía de impulso de una caja, CAJ-04-BI1, y el forro de una columna, COL-07-FO) no parten la cara: son inventario de un mueble que nunca se vende entero. Cada tipo dice en `partes.piezas` cuáles lleva; el mueble del plano las tiene si su campo lo dice (`partes.bahias`: cuántas, de izquierda a derecha mirando la caja desde la fila, `mirando`; `partes.forro`: true). Se venden aunque el mueble no sea comercializable, no chocan con nada más que consigo mismas y su tarifa es la de su clase, sin respaldo: no hay cara que dividir. `unico` es una pieza sin número (el forro: uno por columna), contada por un sí o no de `fichas.geometria` (`booleano`)."
+      "Las PIEZAS (`es: pieza`, desde el paso 3: la bahía de impulso de una caja, CAJ-04-BI1, y el forro de una columna, COL-07-FO) no parten la cara: son inventario de un mueble que nunca se vende entero. Cada tipo dice en `partes.piezas` cuáles lleva; el mueble del plano las tiene si su campo lo dice (`partes.bahias`: cuántas, de izquierda a derecha mirando la caja desde la fila, `mirando`; `partes.forro`: true). Se venden aunque el mueble no sea comercializable, no chocan con nada más que consigo mismas y su tarifa es la de su clase, sin respaldo: no hay cara que dividir. `unico` es una pieza sin número (el forro: uno por columna), contada por un sí o no de `fichas.geometria` (`booleano`).",
+      "Los MODELOS de RECABRA traen cómo se venden (paso 4): las neveras de 2, 3 y 4 puertas, por puertas; las góndolas de pared (los murales), por tramos, uno por módulo, que se fijan en el panel del plano porque la ficha es un módulo y la cantidad depende del largo del corrido. Las fichas propias de cada supermercado lo eligen en el taller. Lo que se estampa al colocar es lo único que cuenta: un mueble ya colocado no cambia si su ficha cambia, y el panel del plano le ofrece «Usar lo de la ficha»."
     ],
     "clases": {
       "puertas": {

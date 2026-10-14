@@ -1,5 +1,6 @@
 import client from "./client";
 import type { ModeloPropio } from "../catalogo/propias";
+import type { PartesDeMueble } from "../catalogo/catalogo";
 
 /**
  * Las fichas propias de los muebles del supermercado: `/api/muebles/modelos`
@@ -28,7 +29,9 @@ export interface FichaParaGuardar {
   w: number; d: number; h: number;
   entrepanos?: number;
   modulo?: number;
-  partes?: { puertas?: number };
+  /** Las puertas, los tramos, las bahías, el forro y cómo se vende por partes
+   *  (`division`): lo que la familia admite (`fichas.geometria`). */
+  partes?: PartesDeMueble;
   tarifa?: string;
   fuente: { confiabilidad: string; url?: string; nota?: string };
 }

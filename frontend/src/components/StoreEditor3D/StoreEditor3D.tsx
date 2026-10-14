@@ -7876,7 +7876,11 @@ export default function StoreEditor3D() {
                               <p className="truncate text-[11px] font-medium text-dark-ink-1">
                                 {m.estimado ? "≈ " : ""}{m.nombreModelo}
                               </p>
-                              <p className="text-[10px] text-dark-ink-3">{m.w}×{m.d}×{m.h} m</p>
+                              {/* Cómo se vende lo que se coloca desde este modelo
+                                  («por puertas»): lo dice su ficha y se estampa. */}
+                              <p className="text-[10px] text-dark-ink-3" data-como-se-vende={m.comoSeVende}>
+                                {m.w}×{m.d}×{m.h} m{m.comoSeVende ? ` · ${m.comoSeVende}` : ""}
+                              </p>
                             </button>
                           );
                         })}

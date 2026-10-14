@@ -1531,6 +1531,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-4)" }}>
                                   {m.w}×{m.h}×{m.nace.h}m
                                 </span>
+                                {/* Cómo se vende lo que se coloca desde este
+                                    modelo («por puertas»): lo dice su ficha. */}
+                                {m.comoSeVende && (
+                                  <span data-como-se-vende={m.comoSeVende} style={{ display: "block", fontSize: 9.5, color: "var(--ink-3)" }}>
+                                    {m.comoSeVende}
+                                  </span>
+                                )}
                               </button>
                             );
                           })}

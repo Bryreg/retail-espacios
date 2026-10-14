@@ -14,6 +14,7 @@ import {
 import { entrepanosQueEntran, TIPOS_CON_GEOMETRIA } from "../../utils/geometriaDelMueble";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { conNombrePropio } from "../../catalogo/nombresPropios";
+import { comoSeVendeCorto } from "../../utils/partes";
 
 /**
  * La pestaña «Fichas» del taller: la dueña arma la ficha de un mueble suyo
@@ -167,8 +168,8 @@ export function PanelDeFichas({
           {m.partes?.puertas != null ? ` · ${m.partes.puertas} ${m.partes.puertas === 1 ? "puerta" : "puertas"}` : ""}
           {m.partes?.tramos != null ? ` · ${m.partes.tramos} tramos` : ""}
           {m.entrepanos !== undefined ? ` · ${m.entrepanos} entrepaños` : ""}
-          {typeof m.partes?.division === "string" && CATALOGO_DE_MUEBLES.partes.clases[m.partes.division]
-            ? ` · por ${CATALOGO_DE_MUEBLES.partes.clases[m.partes.division].plural}` : ""}
+          {/* Cómo se vende (las partes y las piezas), como lo dice la paleta. */}
+          {comoSeVendeCorto(m).comoSeVende ? ` · ${comoSeVendeCorto(m).comoSeVende}` : ""}
           {m.tarifa ? ` · tarifa ${rotuloDeTarifa(m.tarifa)}` : ""}
         </div>
       </div>
@@ -322,6 +323,12 @@ export function PanelDeFichas({
                   </p>
                 )}
                 <Problemas campo="division" />
+                {form.division && (
+                  <p style={estilo.ayuda} data-ayuda-numeradas>
+                    En el mueble de la derecha, cada parte con el número que va a tener en Vender. Lo ya colocado no
+                    cambia: en su panel del plano aparece «Usar lo de la ficha».
+                  </p>
+                )}
               </>
             )}
 
@@ -355,6 +362,12 @@ export function PanelDeFichas({
                     </label>
                     <Problemas campo="forro" />
                   </>
+                )}
+                {(form.bahias.trim() || form.forro === "si") && (
+                  <p style={estilo.ayuda} data-ayuda-numeradas>
+                    En el mueble de la derecha, cada pieza con el número que va a tener en Vender. Lo ya colocado no
+                    cambia: en su panel del plano aparece «Usar lo de la ficha».
+                  </p>
                 )}
               </>
             )}

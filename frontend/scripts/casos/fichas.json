@@ -2850,6 +2850,180 @@
     "partes.bahias",
     "partes.forro"
    ]
+  },
+  {
+   "nombre": "paso 4: una ficha guardada antes de vender por partes (sólo las puertas) sigue valiendo y se vende entera",
+   "ficha": {
+    "clave": "nevera-de-antes",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera de antes",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "paso 4: editar una ficha de antes para venderla por puertas (sin la clave: no cambia)",
+   "nueva": false,
+   "ficha": {
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera de antes",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "paso 4: una góndola de pared por tramos, como los murales de RECABRA (uno por módulo, sin la cantidad)",
+   "ficha": {
+    "clave": "mural-lacteos",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Mural de lácteos",
+    "w": 1.25,
+    "d": 0.45,
+    "h": 1.9,
+    "entrepanos": 4,
+    "modulo": 1.25,
+    "partes": {
+     "division": "tramos"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "paso 4: una nevera por puertas con cero puertas",
+   "ficha": {
+    "clave": "nevera-cero",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera sin puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 0,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division",
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "paso 4: una caja con sus bahías no se divide además por puertas",
+   "ficha": {
+    "clave": "caja-ocana",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "paso 4: una punta por entrepaños con más entrepaños que los de su familia",
+   "ficha": {
+    "clave": "punta-alta",
+    "tipo": "punta",
+    "nombre": "Punta alta",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 2.0,
+    "entrepanos": 7,
+    "partes": {
+     "division": "entrepanos"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "entrepanos"
+   ]
+  },
+  {
+   "nombre": "paso 4: cómo se vende con mayúsculas no es una de la lista",
+   "ficha": {
+    "clave": "nevera-mayus",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "Puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "paso 4: la nevera de vegetales por tramos con su cantidad",
+   "ficha": {
+    "clave": "vegetales-3t",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 3 tramos",
+    "w": 3.0,
+    "d": 0.9,
+    "h": 1.9,
+    "partes": {
+     "tramos": 3,
+     "division": "tramos"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
   }
  ]
 }

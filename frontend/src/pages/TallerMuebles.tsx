@@ -13,6 +13,8 @@ import { FixtureMesh, FIXTURE_DEFS } from "../components/StoreEditor3D/StoreEdit
 import type { FacePaint, PlacedFixture } from "../components/StoreEditor3D/StoreEditor3D";
 import type { SlotDeProducto } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
 import { ventaDeTipo } from "../components/StoreEditor3D/muebles/venta";
+import { partesNumeradas, type ParteNumerada } from "../components/StoreEditor3D/muebles/contornos";
+import { Html } from "@react-three/drei";
 import { unidadesDePrueba } from "../components/StoreEditor3D/muebles/frentes";
 import { empaqueDeArte } from "../components/StoreEditor3D/muebles/producto";
 import type { FichaDeArte, FormaDeFicha } from "../components/StoreEditor3D/muebles/producto";
@@ -225,6 +227,37 @@ function espaciosDeMuestra(rubro: string): ShelfSlot[] {
   }));
 }
 
+/** Una parte que vende la ficha, en el taller: su contorno sobre el frente y
+ *  su número («PU1», «EN1 · base»), con las cuentas del visor de Vender
+ *  (`partesNumeradas`). Fuera de la escena de venta: es para la dueña. */
+function ParteNumeradaDelTaller({ p }: { p: ParteNumerada }) {
+  const { contorno: c } = p;
+  const geometria = useMemo(() => {
+    const plano = new THREE.PlaneGeometry(Math.max(0.01, c.ancho), Math.max(0.01, c.alto));
+    const g = new THREE.EdgesGeometry(plano);
+    plano.dispose();
+    return g;
+  }, [c.ancho, c.alto]);
+  useEffect(() => () => geometria.dispose(), [geometria]);
+  return (
+    <group position={[c.cx, c.cy, c.z]}>
+      <lineSegments geometry={geometria}>
+        <lineBasicMaterial color="#f2b705" />
+      </lineSegments>
+      {/* Sólo la cara A lleva el número: la B se numera igual mirando su
+          frente, y dos rótulos en el mismo lugar no se leen. */}
+      {p.cara === "A" && (
+        <Html center style={{ pointerEvents: "none" }}>
+          <span data-parte-numerada={p.etiqueta} style={{
+            fontSize: 11, fontWeight: 700, padding: "1px 5px", borderRadius: 4, whiteSpace: "nowrap",
+            background: "rgba(242,183,5,0.92)", color: "#1c1917",
+          }}>{p.etiqueta}</span>
+        </Html>
+      )}
+    </group>
+  );
+}
+
 /** Cuánto aire queda entre el mueble y el de hoy, cuando se miran juntos. */
 const SEPARACION_DEL_DE_HOY = 0.6;
 
@@ -313,6 +346,15 @@ export default function TallerMuebles() {
   // La venta con la ficha del modelo: si no, las filas de «dónde» y la toma de
   // cerca saldrían de la cuenta de siempre y no de los entrepaños dibujados.
   const geometria = useMemo(() => (modelo ? geometriaDe(modelo) : undefined), [modelo]);
+  // En «Fichas», las partes que va a vender lo que se coloque desde esta
+  // ficha, numeradas sobre el mueble que gira (vender por partes).
+  const numeradas = useMemo(
+    () => (enFichas && def && defFicha
+      ? partesNumeradas({ type: def.type, gondolaType: def.gondolaType, w: anchoV, d: fondoV, h: altoV,
+        partes: defFicha.partes, entrepanos: defFicha.entrepanos, modulo: defFicha.modulo })
+      : []),
+    [enFichas, def, defFicha, anchoV, fondoV, altoV],
+  );
   const venta = useMemo(
     () => (def ? ventaDeTipo(def.type, anchoV, fondoV, altoV, def.gondolaType, geometria) : null),
     [def, anchoV, fondoV, altoV, geometria],
@@ -526,7 +568,7 @@ export default function TallerMuebles() {
                     }}>
               <option value={-1}>— el de hoy —</option>
               {modelos.map((m, i) => (
-                <option key={m.modelo} value={i}>{m.estimado ? "≈ " : ""}{m.nombreModelo}</option>
+                <option key={m.modelo} value={i}>{m.estimado ? "≈ " : ""}{m.nombreModelo}{m.comoSeVende ? ` · ${m.comoSeVende}` : ""}</option>
               ))}
             </select>
           </label>
@@ -737,11 +779,13 @@ export default function TallerMuebles() {
                   // sin botellas, el mismo cuerpo sin el relleno.
                   <NeveraReal w={anchoV} d={fondoV} h={altoV} conRelleno={false}
                     variante={def.type === "nevera_puertas" ? "puertas" : "multideck"}
-                    puertas={def.type === "nevera_puertas" ? puertasDe(anchoV, geometria?.puertas) : undefined} />
+                    puertas={def.type === "nevera_puertas" ? puertasDe(anchoV, geometria?.puertas) : undefined}
+                    tramos={def.type === "nevera_refrescos" ? geometria?.tramos : undefined} />
                 ) : (
                   <FixtureMesh fixture={delCatalogo(indiceVisto, anchoV, fondoV, altoV, conProducto ? rubro : "", modelo)}
                     facePaint={enFichas ? null : facePaint} />
                 )}
+                {numeradas.map((p, i) => <ParteNumeradaDelTaller key={`${p.etiqueta}-${i}`} p={p} />)}
                 {deHoy && (
                   <group position={[-(anchoV / 2 + SEPARACION_DEL_DE_HOY + deHoy.w / 2), 0, 0]}>
                     {!conProducto && (def.type === "nevera_puertas" || def.type === "nevera_refrescos") ? (

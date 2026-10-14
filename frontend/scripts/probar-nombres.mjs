@@ -115,7 +115,11 @@ await prueba("sin nombre propio, cada mueble se nombra exactamente como antes", 
       }
     }
     for (const { type } of F.RATE_TYPES) {
-      for (const nombres of [{}, { columna: "Pilar" }]) {
+      // El de una familia sin tarifa ni partes (el servicio al cliente) no
+      // cambia ninguna fila. La columna, desde vender por partes, sí cambia
+      // UNA: la de su forro («Forro de Pilar»); ninguna más.
+      for (const nombres of [{}, { servicio_cliente: "Atención" }, { columna: "Pilar" }]) {
+        if (nombres.columna && type === "parte_forro") continue;
         if (N.nombreDeTarifa(type, nombres) !== F.rateTypeLabel(type)) mal.push(`tarifa ${type}: «${N.nombreDeTarifa(type, nombres)}»`);
       }
     }
@@ -168,6 +172,27 @@ await prueba("con nombre propio, lo dice (y la ficha con tarifa propia sigue con
   } finally {
     P.olvidarFichasPropias();
   }
+});
+
+await prueba("el nombre propio de la familia llega al nombre de sus partes, donde la parte la nombra", () => {
+  // Vender por partes: la fila de Tarifas de la puerta dice la nevera; donde a
+  // la nevera de puertas le dicen «Enfriador vertical», la puerta es la del
+  // enfriador. Lo mismo la bahía de la caja y el forro de la columna.
+  const n = { nevera_puertas: "Enfriador vertical", checkout: "Registradora", columna: "  Pilar  ", gondola_doble: "Góndola de centro", punta: "Tope" };
+  assert.equal(N.nombreDeTarifa("parte_puerta", n), "Puerta de Enfriador vertical (cada una)");
+  assert.equal(N.nombreDeTarifa("parte_bahia", n), "Bahía de impulso de Registradora (cada una)");
+  assert.equal(N.nombreDeTarifa("parte_forro", n), "Forro de Pilar");
+  // El tramo y el entrepaño son de varias familias y no nombran ninguna: no cambian.
+  assert.equal(N.nombreDeTarifa("parte_tramo", n), F.rateTypeLabel("parte_tramo"));
+  assert.equal(N.nombreDeTarifa("parte_entrepano", n), F.rateTypeLabel("parte_entrepano"));
+  // Sin el nombre de SU familia, la de siempre (el de otra no se cuela).
+  for (const clave of ["parte_puerta", "parte_bahia", "parte_forro", "parte_tramo", "parte_entrepano"]) {
+    assert.equal(N.nombreDeTarifa(clave, {}), F.rateTypeLabel(clave), clave);
+    assert.equal(N.nombreDeTarifa(clave, { isla: "Mamut", nevera_refrescos: "Multideck" }), F.rateTypeLabel(clave), clave);
+  }
+  // Y Tarifas lo muestra con el de RECABRA debajo (la fila ya lo hace con
+  // cualquier nombre distinto del rótulo).
+  assert.notEqual(N.nombreDeTarifa("parte_puerta", n), F.rateTypeLabel("parte_puerta"));
 });
 
 await prueba("las claves raras no son nombres, y lo que se guarda se limpia y se corta", () => {

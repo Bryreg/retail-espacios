@@ -1,7 +1,25 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, **vender por partes, paso 3: las bahías de la caja y el forro
+Última actualización: 2026-10-14, **vender por partes, paso 4: cómo se vende, configurado desde
+la ficha**. Lo que pidió la dueña: que los muebles que cada supermercado arma con sus fichas
+propias —y los modelos de RECABRA— queden configurados para venderse por partes. La ficha dice
+cómo se vende (en el taller, «Cómo se vende»: por puertas, por tramos o por entrepaños según la
+familia, con la cantidad; las bahías de la caja; el forro de la columna) y eso se ESTAMPA al
+colocar. **Los modelos de RECABRA ya traen la suya**: las neveras de 2, 3 y 4 puertas, por
+puertas; las góndolas de pared (los murales), por tramos, uno por módulo, que se fijan en el
+panel con un clic («Fijar 4 tramos, uno por módulo»: la ficha es un módulo). Las paletas del
+plano 2D y del Editor 3D lo dicen al lado de cada modelo («por puertas», «2 bahías de
+impulso»), y el taller numera las partes sobre el mueble que gira («PU1», «EN1 · base»). **Lo
+ya colocado no cambia solo**: un mueble colocado antes de que su ficha lo dijera se sigue
+vendiendo entero, y su panel ofrece «Usar lo de la ficha» y «Aplicar lo de su ficha a los N
+colocados con ella en la sede», que salta los que tienen algo vendido (con una parte vendida,
+el mismo bloqueo del panel y el 409 `partes_vendidas` del servidor). Y el nombre propio de la
+familia llega al nombre de sus partes: donde a la nevera de puertas le dicen «Enfriador
+vertical», Tarifas dice «Puerta de Enfriador vertical (cada una)». Ver *Vender por partes: cómo
+se vende, desde la ficha (P4, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 3: las bahías de la caja y el forro
 de la columna**. La caja registradora y la columna siguen sin venderse enteras en ningún lado,
 pero ahora venden sus PIEZAS: cada bahía de impulso de una caja, una por una (`CAJ-04-BI1`, de
 izquierda a derecha mirando la caja desde la fila), y el forro de una columna (`COL-07-FO`, sin
@@ -271,7 +289,16 @@ que todavía no puede es **venderlos como los vende él**. Lo que sigue, en orde
      vendidos, un multideck colocado desde una ficha «por tramos»); y sus preguntas —si la base
      es el entrepaño 1 y se vende, si «mural refrigerado» es el multideck, una tarifa de tramo
      para todos o una por familia, y si los modelos de góndola de RECABRA tienen que nacer «por
-     entrepaños» (hoy nacen enteros: el panel o la ficha lo eligen)—;
+     entrepaños» (desde P4 los de pared nacen por tramos; los centrales, enteros)—;
+   - ~~**cómo se vende, configurado desde la ficha**~~ **hecho (P4, 2026-10-14)**: ver *Vender
+     por partes: cómo se vende, desde la ficha*. Los modelos de RECABRA lo traen (neveras por
+     puertas, murales por tramos), las fichas propias lo eligen en el taller y lo colocado antes
+     se cambia desde su panel («Usar lo de la ficha»). Queda de ese paso: el recorrido en el
+     navegador con la dueña (armar una nevera «por puertas» en el taller, colocarla y ver
+     «Entera · PU1 · PU2» en Vender sin tocar el panel; su `NEV-01` vieja con «Usar lo de la
+     ficha»; un mural de RECABRA estirado a 4 módulos con «Fijar 4 tramos»); y sus preguntas —si
+     las góndolas CENTRALES de RECABRA nacen por tramos, por entrepaños o enteras (hoy enteras),
+     y si las puntas nacen por entrepaños (sus modelos no traen entrepaños: hoy enteras)—;
    - ~~**la bahía de la caja**~~ y ~~**el forro de la columna**~~ **hechos (P3, 2026-10-14)**:
      ver *Vender por partes: las bahías de la caja y el forro de la columna*. Queda de ese paso:
      el recorrido en el navegador con la dueña (configurar 2 bahías en las cajas de la sede con
@@ -546,6 +573,12 @@ fichas propias de cada supermercado** (`cli:<clave>`, tabla `modelos_mueble`) si
 regla: se estampan, la clave, la familia y la tarifa no cambian nunca (el `PUT` las rechaza),
 retirar es baja lógica y lo colocado no se mueve; y se validan con las mismas reglas que los
 modelos del catálogo (`fichas` en `muebles.json`). Ver *Fichas propias: el servidor (2026-10-14)*.
+**Cómo se vende también se estampa** (vender por partes, P4): la ficha dice la forma de
+dividir y las piezas (`partes.division`, `partes.bahias`, `partes.forro`), el mueble las
+recibe al colocarse y ninguno de los dos lados las vuelve a leer de la ficha para vender (el
+servidor ni siquiera las lee: `test_partes_fichas.py`). Un mueble colocado antes de que su
+ficha lo dijera se sigue vendiendo como se colocó; el panel le ofrece «Usar lo de la ficha»,
+que pasa por las mismas guardas que cualquier cambio de partes.
 En el navegador viven en `catalogo/propias.ts` (las lee `store/fichasPropias.ts` una vez por
 sesión y otra al guardar una, y si la lectura falla reintenta sola con espera creciente; nunca
 en `localStorage`, y una sesión de otro supermercado las olvida antes de leer las suyas), y
@@ -9651,7 +9684,9 @@ mismo (`problemas_de_la_ficha`, los casos de `casos/fichas.json`) y guarda la fo
 (`ficha_normalizada`). Colocada desde la paleta, la ficha se estampa con su forma y Vender la
 ofrece por partes sin tocar el panel. **Lo ya colocado no cambia** si se edita la ficha. Los
 modelos de RECABRA pueden llevar la forma (las neveras de 2, 3 y 4 puertas la traen desde P1);
-los de góndola nacen enteros a propósito: lo decide la dueña.
+los de góndola nacen enteros a propósito: lo decide la dueña (desde P4, los de pared —los
+murales— nacen por tramos, uno por módulo; ver *Vender por partes: cómo se vende, desde la
+ficha*).
 
 **Los espacios internos del Editor 3D conviven** (`utils/slotsDeLasPartes.ts`): un espacio
 interno cae en un tramo por el ancho (con la numeración de la cara) y en un entrepaño por la
@@ -9673,7 +9708,8 @@ entrepaño), la consola, la auditoría y el guardado del plano (`partes_vendidas
 **Decisiones de este paso**, para confirmar con la dueña: la base es el `EN1` y se vende; «mural
 refrigerado» es el multideck (`nevera_refrescos`); una sola tarifa de tramo para la góndola, el
 multideck y vegetales (si la carga, pisa a los tres; vacía, cada uno se parte de la suya); los
-modelos de góndola de RECABRA nacen enteros; la ocupación de Supervisar sigue contando caras.
+modelos de góndola de RECABRA nacen enteros (desde P4, los de pared nacen por tramos); la
+ocupación de Supervisar sigue contando caras.
 **Riesgo**: un mueble de un plano viejo que ya se llamara `GON-01-TR2` se resuelve a sí mismo,
 pero `chocan` lo lee como el tramo 2 de `GON-01`: antes de desplegar, correr
 `scripts/auditar_desfase.py` sobre los planos de producción («código que se lee como una parte»).
@@ -9794,6 +9830,93 @@ del servidor `tests/test_partes_piezas.py`
 tarifa, el guardado del plano, la pestaña vieja, la mercaderista, la consola, la auditoría, la
 renumeración y la ficha propia), `test_partes.py` y `test_fichas_propias.py` con los casos
 compartidos.
+
+### Vender por partes: cómo se vende, desde la ficha (P4, 2026-10-14)
+
+La dueña: «ahora que los clientes pueden armar sus propios muebles, necesito que quede
+configurado el poder vender por partes dichos muebles». Los pasos 1 a 3 hicieron la maquinaria
+(puertas, tramos, entrepaños, bahías, forro) y ya dejaban elegir la forma en la ficha propia
+del taller; este paso cierra lo que faltaba para que la configuración VIAJE con la ficha: los
+modelos de RECABRA la traen, las paletas la dicen, el taller la muestra numerada, y lo que ya
+estaba colocado se pone al día desde su panel, nunca solo.
+
+**Tres niveles, como siempre** (*Vender por partes: la nevera entera o por puertas*): la
+FAMILIA dice qué formas admite, la FICHA (modelo de RECABRA o ficha propia) dice cuál usa y en
+cuántas, y el MUEBLE del plano la lleva estampada y es lo único que cuenta para vender.
+
+**Los modelos de RECABRA** (`muebles.json`, las dos copias idénticas): las neveras de 2, 3 y 4
+puertas, por puertas (desde P1); **las 12 góndolas de pared, los murales, por tramos**
+(`partes: { division: "tramos" }`, sin la cantidad: la ficha de una góndola es UN módulo y
+cuántos tramos tiene depende del largo del corrido). Las centrales, las puntas (sus modelos no
+traen entrepaños), la nevera de una puerta y lo demás, enteros: lo decide la dueña. Ningún id ni
+tarifa cambió (`modelos-ids.json` verde).
+
+**Lo ya colocado no cambia solo.** Un mueble colocado antes de que su ficha dijera cómo se vende
+tiene estampado lo de entonces (el mural sin `partes`, la nevera con sus puertas y sin
+`division`) y se sigue vendiendo entero: ni el navegador ni el servidor releen la ficha para
+vender (el servidor ni la lee: `test_partes_fichas.py`). Lo que cambia es el PANEL «Cómo se
+vende» del plano 2D y del Editor 3D (`components/PartesDelMueble.tsx`):
+
+- **«Su ficha («Nevera de 3 puertas») dice: entera o por puertas (3). Hoy se vende distinto»**
+  con **«Usar lo de la ficha»** (`loDeLaFicha`, en `utils/partesDelMueble.ts`): escribe la forma
+  y, si la ficha la cuenta, la cantidad (las puertas, los tramos de una nevera abierta, las
+  bahías, el forro); los tramos de una góndola, uno por módulo del corrido; los entrepaños, los
+  del mueble o, si no tiene, los de la ficha. Pasa por las MISMAS revisiones que cualquier
+  cambio del panel (`revisarCambioDePartes`): con una parte vendida no se mueve (bloqueo en
+  pantalla y, si llega igual, 409 `partes_vendidas`); con la entera vendida y las hojas
+  cambiando, avisa. Sólo aparece si se puede usar: un mural de un solo módulo no tiene tramos
+  que vender, y decirlo en cada góndola corta del plano era ruido.
+- **«Aplicar lo de su ficha a los N colocados con ella en la sede»** (`aplicarLoDeLaFicha`):
+  en un solo cambio, salta los que tienen algo vendido que se movería o cambiaría cómo se ve
+  (se cambian de a uno, desde su panel) y los que todavía no pueden (un solo módulo), y los
+  nombra.
+- **«Fijar 4 tramos, uno por módulo»**: el mural colocado desde el modelo de hoy llega «por
+  tramos» sin la cantidad; el panel lo dice y la fija con un clic (lo que se dibuja). Con un
+  solo módulo no hay tramos: «estirala en el plano a 2 módulos o más» (`cambioParaDividir`
+  ya no parte un módulo en dos medios tramos, como hacía hasta P3).
+
+**Las paletas** del plano 2D y del Editor 3D dicen al lado de las medidas de cada modelo cómo se
+vende lo que se coloca desde él («por puertas», «por tramos», «2 bahías de impulso», «con
+forro»: `comoSeVendeLaFicha` / `textoDeComoSeVende`, en `utils/partes.ts`, con las mismas
+reglas que cuentan las partes de un mueble del plano), igual para las fichas propias. El
+selector de modelos del taller también.
+
+**El taller** («Fichas»): la sección «Cómo se vende» ya existía (P2 y P3, con la validación
+compartida); ahora el mueble que gira a la derecha muestra cada parte con su contorno y el
+número que va a tener en Vender («PU1», «TR2», «EN1 · base», «BI1», «FO»: `partesNumeradas` en
+`muebles/contornos.ts`, las mismas cuentas que el visor de Vender; la cara B se numera igual y
+lleva sólo el contorno), la nevera abierta dibuja sus tramos, y la lista de fichas dice cómo se
+vende cada una (también las bahías y el forro). Una ficha guardada antes de vender por partes
+(sólo puertas) se lee igual y se vende entera; al editarla se guarda la forma.
+
+**El nombre propio llega a las partes** (`nombreDeTarifa`, `catalogo/nombresPropios.ts`): la
+fila de Tarifas de una clase que es de UNA familia y la nombra («Puerta de nevera», «Bahía de
+impulso de caja», «Forro de columna») dice el nombre propio de esa familia («Puerta de
+Enfriador vertical (cada una)», con el de RECABRA debajo); el tramo y el entrepaño son de varias
+familias y no nombran ninguna, así que no cambian. La consola y los informes siguen con el de
+RECABRA.
+
+**Lo que no cambió.** Ningún código de espacio, ningún plano, ninguna tabla ni columna: el
+servidor no tuvo cambios de código (la validación de la ficha y `ficha_normalizada` ya
+guardaban la forma y las piezas desde P2 y P3), sólo el catálogo y pruebas. El pedazo de
+entrada sigue en 352,81 kB.
+
+**Decisiones de este paso**, para confirmar con la dueña: los murales de RECABRA nacen por
+tramos y los centrales enteros (¿por tramos, por entrepaños o enteros?); el aviso de la ficha
+sólo aparece cuando se puede usar; «Aplicar a todos» no toca los que tienen algo vendido.
+
+**Cómo se prueba.** `npm run probar:partes` (sección «paso 4»: los modelos de RECABRA y su
+configuración, las paletas, lo colocado antes que se vende entero y lo que le ofrece el panel,
+el mural de un solo módulo, las fichas propias de antes y de ahora, el bloqueo con una parte
+vendida, «Aplicar a todos» y las partes numeradas del taller), `probar-nombres` (el nombre
+propio en las filas de las partes), `probar-fichas` con ocho casos nuevos en
+`casos/fichas.json` (una ficha de antes, editar una de antes para venderla por puertas, el
+mural por tramos sin cantidad, cero puertas, una caja que además se divide, una punta con
+entrepaños de más, la forma en mayúsculas, la nevera de vegetales por tramos); del lado del
+servidor `tests/test_partes_fichas.py` (los modelos de RECABRA, lo colocado antes, el mural
+sin fijar y fijado, la ficha propia de antes y editada, las fichas con partes y piezas, el
+409 al usar la ficha con una puerta vendida y retirar la ficha sin tocar lo vendido) y
+`test_fichas_propias.py` con los casos compartidos.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 

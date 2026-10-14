@@ -2,6 +2,7 @@ import type { Catalogo2D, FixType2D, NaceDeModelo } from "../utils/convertirPlan
 import { CATALOGO_DE_MUEBLES, estampaDe, formaDe, modelosDe, modelosPropiosDe, resolverTipo } from "./catalogo";
 import type { FichaDeModelo } from "./catalogo";
 import type { ModeloPropio } from "./propias";
+import { comoSeVendeCorto } from "../utils/partes";
 
 /**
  * Las tablas por TIPO de mueble del plano 2D, calculadas del catálogo
@@ -105,6 +106,9 @@ export interface ModeloDelPlano {
   nombre: string;
   /** Las medidas son una deducción: en pantalla, «≈». */
   estimado: boolean;
+  /** Cómo se vende, si su ficha lo dice («por puertas»): la biblioteca lo
+   *  muestra al lado de las medidas. */
+  comoSeVende?: string;
   /** Ancho y fondo, en la convención del 2D (`h` es el fondo). */
   w: number;
   h: number;
@@ -120,6 +124,7 @@ export function modeloDelPlano(t: string, m: FichaDeModelo): ModeloDelPlano {
     id: m.id,
     nombre: m.nombre,
     estimado: m.fuente.confiabilidad === "estimado",
+    ...comoSeVendeCorto(m),
     w: e.w,
     h: e.d,
     nace: {

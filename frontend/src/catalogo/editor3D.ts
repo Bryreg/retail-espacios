@@ -4,6 +4,7 @@ import {
 } from "./catalogo";
 import type { FichaDeModelo, PartesDeMueble } from "./catalogo";
 import type { ModeloPropio } from "./propias";
+import { comoSeVendeCorto } from "../utils/partes";
 
 /**
  * Las tablas por TIPO de mueble del editor 3D, calculadas del catálogo
@@ -38,6 +39,10 @@ export interface FixtureDef {
   modelo?:      string;
   nombreModelo?: string;
   estimado?:    boolean;
+  /** Cómo se vende lo que se coloca desde este modelo, si su ficha lo dice
+   *  («por puertas», «2 bahías de impulso»): la paleta lo muestra al lado de
+   *  las medidas. Vender por partes. */
+  comoSeVende?: string;
   entrepanos?:  number;
   modulo?:      number;
   partes?:      PartesDeMueble;
@@ -127,6 +132,7 @@ export function defDeModelo(base: FixtureDef, m: FichaDeModelo): FixtureDef {
     modelo: m.id,
     nombreModelo: m.nombre,
     estimado: m.fuente.confiabilidad === "estimado",
+    ...comoSeVendeCorto(m),
     ...(e.entrepanos !== undefined ? { entrepanos: e.entrepanos } : {}),
     ...(e.modulo !== undefined ? { modulo: e.modulo } : {}),
     ...(e.partes !== undefined ? { partes: e.partes } : {}),

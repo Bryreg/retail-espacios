@@ -1,6 +1,8 @@
-import { CHECKOUT, FORRO, NEVERA, altoUtilDeNevera, cotasDeCheckout, mesaDeImpulso, nichosDeImpulso, vanosDeTramos } from "./medidas";
+import { CHECKOUT, FORRO, NEVERA, altoUtilDeNevera, cotasDeCheckout, geometriaDe, mesaDeImpulso, nichosDeImpulso, vanosDeTramos } from "./medidas";
 import type { GeometriaDeMueble } from "./medidas";
 import { ventaDeTipo } from "./venta";
+import type { PartesDeMueble } from "../../../catalogo/catalogo";
+import { claseDe, filaDeEntrepano, partesDe, sufijoDeParte, vanoDeParte, vanoEnLaCara } from "../../../utils/partes";
 
 /** El contorno de una parte que se está vendiendo: un rectángulo en el frente
  *  de su cara, en coordenadas del mueble (centro, ancho, alto y la `z` del
@@ -81,6 +83,52 @@ export function contornosDeLasPartes(
       if (y0 === undefined || y1 === undefined) continue;
       fuera.push({ cx: enElMueble((x0 + x1) / 2), cy: (y0 + y1) / 2, ancho: x1 - x0, alto: y1 - y0, z });
     }
+  }
+  return fuera;
+}
+
+/** Una parte que vende el mueble, con su número y dónde cae: lo que el taller
+ *  dibuja sobre la ficha mientras se arma. */
+export interface ParteNumerada {
+  /** «PU1», «TR2», «EN1 · base», «BI2», «FO». */
+  etiqueta: string;
+  cara: "A" | "B";
+  contorno: ContornoDeParte;
+}
+
+/**
+ * Las partes que vende un mueble, cada una con su número y su contorno, con
+ * las MISMAS cuentas que el visor de Vender (`contornosDeLasPartes`) y que
+ * los códigos (`partesDe`): la puerta 1 a la izquierda de quien mira el frente,
+ * el entrepaño 1 abajo (la base), la bahía 1 a la izquierda de quien hace la
+ * fila. Es lo que muestra el taller («Fichas») sobre el mueble que gira: la
+ * dueña ve qué se va a vender con el número que va a tener. Sin partes,
+ * ninguna.
+ */
+export function partesNumeradas(f: {
+  type: string; gondolaType?: string | null; w: number; d: number; h: number;
+  rentable?: boolean; partes?: PartesDeMueble | null; entrepanos?: number | null; modulo?: number | null;
+}): ParteNumerada[] {
+  const geometria = geometriaDe(f);
+  const todas = partesDe(f);
+  const fuera: ParteNumerada[] = [];
+  for (const { cara, parte } of todas) {
+    const regla = claseDe(parte.clase);
+    if (!regla) continue;
+    const k = parte.n ?? 1;
+    const deSuClase = todas.filter((p) => p.cara === cara && p.parte.clase === parte.clase).length;
+    let vanos: number[] | undefined;
+    let filas: number[] | undefined;
+    if (regla.es === "pieza") vanos = [parte.n === null ? 0 : vanoDeParte("A", k, deSuClase)];
+    else if (regla.eje === "alto") filas = [filaDeEntrepano(k)];
+    else vanos = [vanoEnLaCara(cara, k, deSuClase)];
+    const [contorno] = contornosDeLasPartes(f.type, f.w, f.d, f.h, f.gondolaType ?? undefined, geometria, cara, vanos, filas);
+    if (!contorno) continue;
+    const sufijo = sufijoDeParte(parte);
+    fuera.push({
+      etiqueta: `${cara === "B" ? "B·" : ""}${sufijo}${regla.base && k === 1 ? " · base" : ""}`,
+      cara, contorno,
+    });
   }
   return fuera;
 }

@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { claseDe, concordancia, divisionDe } from "../utils/partes";
 import {
-  aplicarATodos, bahiasMaximas, cambioParaDividir, conPartes, divisionSinFijar, divisionesDe, partesConEstado,
-  piezasDeLaFamilia, puertasDibujadas, revisarCambioDePartes, tramosDibujados, tramosQueEntran, type CambioDePartes,
+  aplicarATodos, aplicarLoDeLaFicha, bahiasMaximas, cambioParaDividir, colocadosConLaFicha, conPartes, divisionSinFijar,
+  divisionesDe, loDeLaFicha, partesConEstado, piezasDeLaFamilia, puertasDibujadas, revisarCambioDePartes, seCuentaEnElPlano,
+  tramosDibujados, tramosQueEntran, type CambioDePartes,
 } from "../utils/partesDelMueble";
+import { useFichasPropias } from "../store/fichasPropias";
 
 /**
  * «Cómo se vende» un mueble que se puede vender por partes, en el panel del
@@ -32,6 +34,14 @@ import {
  * impulso que se venden» (0 a 4, de izquierda a derecha mirando la caja desde
  * la fila) con «Aplicar a todas las cajas de la sede»; la columna, «El forro
  * se vende». Sin piezas, la caja y la columna no ofrecen nada, como siempre.
+ *
+ * Y lo que dice SU FICHA (paso 4): un mueble colocado desde un modelo de
+ * RECABRA o desde una ficha propia que dice cómo se vende («por puertas», «2
+ * bahías de impulso») y que hoy se vende de otra forma —se colocó antes de
+ * que la ficha lo dijera— muestra «Su ficha … dice: …» con «Usar lo de la
+ * ficha», y «Aplicar a los N colocados con esta ficha en la sede», que salta
+ * los que tienen algo vendido. Lo colocado no cambia solo: espera el clic, y
+ * pasa por las mismas revisiones que cualquier cambio de este panel.
  */
 export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: boolean }) {
   const f = useFixtureStore((s) => selectFixtures(s).find((x) => x.id === id));
@@ -58,6 +68,12 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
   useEffect(() => { setBahias(typeof bahiasGuardadas === "number" ? String(bahiasGuardadas) : ""); }, [id, bahiasGuardadas]);
   const [enTodas, setEnTodas] = useState<string | null>(null);
   useEffect(() => { setEnTodas(null); }, [id]);
+  // Lo que dice su ficha: las propias llegan después del primer dibujo
+  // (`useFichasPropias` vuelve a dibujar cuando llegan).
+  const fichasPropias = useFichasPropias();
+  const todos = useFixtureStore(selectFixtures);
+  const ficha = useMemo(() => (f ? loDeLaFicha(f) : null), [f, fichasPropias]);
+  const conLaFicha = useMemo(() => colocadosConLaFicha(todos, f?.modelo), [todos, f?.modelo, fichasPropias]);
   if (!f) return null;
   const formas = divisionesDe(f.type);
   const piezas = piezasDeLaFamilia(f.type);
@@ -111,6 +127,23 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
     setEnTodas(
       (r.aplicados.length ? `Quedó igual en ${r.aplicados.length} ${plural}.` : `Las demás ${plural} ya estaban así.`)
       + (r.saltados.length ? ` No se tocó ${r.saltados.join(", ")}: tiene${r.saltados.length > 1 ? "n" : ""} algo vendido que se movería.` : ""),
+    );
+  }
+
+  /** «Aplicar a los colocados con esta ficha en la sede»: lo de su ficha en
+   *  cada uno, menos los que tienen algo vendido (se dice cuáles). */
+  function aplicarLaFichaEnTodos() {
+    if (!f?.modelo || !puedeEditar) return;
+    const st = useFixtureStore.getState();
+    const r = aplicarLoDeLaFicha(selectFixtures(st), f.modelo, estado, sede);
+    if (r.aplicados.length) st.commit(r.fixtures);
+    setProblema(null);
+    setEnTodas(
+      (r.aplicados.length
+        ? `Quedó como dice su ficha en ${r.aplicados.length === 1 ? "1 mueble" : `${r.aplicados.length} muebles`} (${r.aplicados.join(", ")}).`
+        : "Ninguno cambió.")
+      + (r.saltados.length ? ` No se tocó ${r.saltados.join(", ")}: tiene${r.saltados.length > 1 ? "n" : ""} algo vendido que se movería o cambiaría cómo se ve; se cambia${r.saltados.length > 1 ? "n" : ""} de a uno, desde su panel.` : "")
+      + (r.sinPoder.length ? ` Todavía no se puede en ${r.sinPoder.join(", ")}: tiene${r.sinPoder.length > 1 ? "n" : ""} un solo módulo.` : ""),
     );
   }
 
@@ -264,12 +297,29 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
           {" "}Un mueble se divide de una sola forma.
         </p>
       )}
-      {!division && sinFijar && (
-        <p className="text-[11px] leading-snug text-warning" data-partes-sin-fijar>
-          Su ficha dice que se vende por {claseDe(sinFijar)!.plural}, pero falta fijar cuánt{concordancia(sinFijar).o}s:
-          {" "}hasta entonces se vende entera. Elegí «Entera o por {claseDe(sinFijar)!.plural}» para fijar l{concordancia(sinFijar).o}s que se dibujan.
-        </p>
-      )}
+      {!division && sinFijar && (() => {
+        // «Fijar 4 tramos, uno por módulo»: los que se dibujan hoy. Con un
+        // solo módulo no hay tramos que vender: se dice que se estire.
+        const fijar = cambioParaDividir(f, sinFijar);
+        const c = claseDe(sinFijar)!;
+        const g = concordancia(sinFijar);
+        const n = "cambio" in fijar ? (fijar.cambio as Record<string, unknown>)[c.campo] : null;
+        return (
+          <div className="flex flex-col gap-1" data-partes-sin-fijar>
+            <p className="text-[11px] leading-snug text-warning">
+              Su ficha dice que se vende por {c.plural}, pero falta fijar cuánt{g.o}s: hasta entonces se vende entera.
+              {"problema" in fijar ? <> {fijar.problema}</> : null}
+            </p>
+            {puedeEditar && typeof n === "number" && (
+              <button type="button" disabled={!!aviso} data-partes-fijar
+                className="rounded border border-accent/60 bg-accent/10 px-2 py-1 text-[11px] font-semibold text-dark-ink-1 hover:bg-accent/20 disabled:opacity-60"
+                onClick={() => elegir(sinFijar)}>
+                Fijar {n} {c.plural}{seCuentaEnElPlano(f.type, sinFijar) ? `, ${g.un === "un" ? "uno" : "una"} por módulo` : ""}
+              </button>
+            )}
+          </div>
+        );
+      })()}
       {!division && !sinFijar && (
         <p className="text-[10px] leading-snug text-dark-ink-3">
           Se vende entera. Con «Entera o por …», Vender ofrece la cara entera o cada parte, nunca las dos en las
@@ -277,6 +327,31 @@ export function PartesDelMueble({ id, puedeEditar }: { id: string; puedeEditar: 
         </p>
       )}
       </>)}
+      {/* Lo que dice su ficha, si el mueble hoy se vende de otra forma. Lo
+          colocado no cambia solo: espera «Usar lo de la ficha». Sólo si se
+          puede usar: un mural de un solo módulo no tiene tramos que vender, y
+          decirlo en cada góndola corta del plano es ruido. */}
+      {ficha && !sinFijar && ficha.cambio && (
+        <div className="flex flex-col gap-1 rounded border border-dark-line-2 p-2" data-partes-ficha>
+          <p className="text-[11px] leading-snug text-dark-ink-2">
+            Su ficha («{ficha.nombre}») dice: {ficha.texto}. Hoy se vende distinto: lo colocado no cambia solo.
+          </p>
+          {puedeEditar && (
+            <button type="button" disabled={!!aviso} data-partes-usar-ficha
+              className="rounded border border-accent/60 bg-accent/10 px-2 py-1 text-[11px] font-semibold text-dark-ink-1 hover:bg-accent/20 disabled:opacity-60"
+              onClick={() => { setEnTodas(null); proponer(ficha.cambio!); }}>
+              Usar lo de la ficha
+            </button>
+          )}
+        </div>
+      )}
+      {ficha && puedeEditar && conLaFicha.todos > 1 && conLaFicha.distintos > 0 && (
+        <button type="button" disabled={!!aviso} data-partes-ficha-en-todos
+          className="rounded border border-dark-line-2 px-2 py-1 text-[11px] text-dark-ink-2 hover:text-dark-ink-1 disabled:opacity-60"
+          onClick={aplicarLaFichaEnTodos}>
+          Aplicar lo de su ficha a los {conLaFicha.todos} colocados con ella en la sede ({conLaFicha.distintos} se venden distinto)
+        </button>
+      )}
       {enTodas && <p className="text-[11px] leading-snug text-dark-ink-2" data-piezas-resultado>{enTodas}</p>}
       {problema && <p className="text-[11px] leading-snug text-danger" data-partes-rechazo>{problema}</p>}
       {aviso && (

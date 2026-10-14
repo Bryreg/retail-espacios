@@ -50,7 +50,11 @@ const cargar = async (catalogo) => {
         'export * from "./src/utils/partes.ts";',
         'export { vistaDeCara } from "./src/utils/planta.ts";',
         'export { vanosDePuertas, vanosDeCorrido, ventaDeNevera, montantesDeTramos, geometriaDe, cotasDeCheckout, mesaDeImpulso, nichosDeImpulso, montantesDeImpulso } from "./src/components/StoreEditor3D/muebles/medidas.ts";',
-        'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila } from "./src/utils/partesDelMueble.ts";',
+        'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila, loDeLaFicha, aplicarLoDeLaFicha, colocadosConLaFicha } from "./src/utils/partesDelMueble.ts";',
+        'export { fijarFichasPropias, olvidarFichasPropias } from "./src/catalogo/propias.ts";',
+        'export { PALETA_3D, paletaConPropias } from "./src/catalogo/editor3D.ts";',
+        'export { MODELOS_2D, modelosDelPlanoConPropias } from "./src/catalogo/plano2D.ts";',
+        'export { nombreDeTarifa } from "./src/catalogo/nombresPropios.ts";',
         'export { slotsDeLaParte, internosVendidosEnLaParte, partesQuePisa } from "./src/utils/slotsDeLasPartes.ts";',
         'export { revisarCambioDeGeometria, loVendidoDe, geometriaALaVista } from "./src/utils/geometriaDelMueble.ts";',
         'export { fichaDelFormulario, formularioVacio, formularioDe, problemasDelFormulario, familiaDe } from "./src/utils/formularioDeFicha.ts";',
@@ -732,6 +736,232 @@ await prueba("Vender toca la caja, ofrece sus bahías sin «Entera» y el atajo 
     "las bahías se cuentan como partes de una cara");
   const mount = leer(join(raiz, "src", "pages", "MountView.tsx"));
   assert.match(mount, /soloPiezas \? caras\.slice\(1\) : caras/, "el tablero de montaje pide montar la caja entera");
+});
+
+console.log("partes · paso 4: cómo se vende, desde la ficha");
+
+/** Una ficha propia como la manda `GET /api/muebles/modelos`. */
+const propia = (clave, datos) => ({
+  id: `cli:${clave}`, clave, retirado: false, fuente: { confiabilidad: "estimado", nota: "medida en la tienda" }, ...datos,
+});
+const PROPIAS = [
+  propia("nevera-inducol-2p", { tipo: "nevera_puertas", nombre: "Nevera Inducol 2 puertas", w: 1.445, d: 0.74, h: 2.1,
+    partes: { puertas: 2, division: "puertas" } }),
+  propia("nevera-vieja", { tipo: "nevera_puertas", nombre: "Nevera de antes", w: 1.445, d: 0.74, h: 2.1, partes: { puertas: 2 } }),
+  propia("caja-ocana", { tipo: "checkout", nombre: "Caja Ocaña", w: 1.8, d: 0.7, h: 0.9, partes: { bahias: 2 } }),
+  propia("columna-40", { tipo: "columna", nombre: "Columna 40 forrada", w: 0.4, d: 0.4, h: 3.0, partes: { forro: true } }),
+  propia("multideck-2t", { tipo: "nevera_refrescos", nombre: "Multideck 2 tramos", w: 2.5, d: 0.8, h: 2.0,
+    partes: { tramos: 2, division: "tramos" } }),
+  propia("punta-en", { tipo: "punta", nombre: "Punta por entrepaños", w: 0.7, d: 0.37, h: 1.8, entrepanos: 3,
+    partes: { division: "entrepanos" } }),
+];
+
+await prueba("los modelos de RECABRA traen cómo se venden: neveras por puertas, murales por tramos, lo demás entero", () => {
+  const como = (id) => P.comoSeVendeLaFicha(CATALOGO.modelos.find((m) => m.id === id));
+  for (const [id, n] of [["base:nevera-2p-inducol", 2], ["base:nevera-3p-frigomaster", 3], ["base:nevera-4p-frigomaster", 4]]) {
+    assert.deepEqual(como(id), { division: "puertas", n, piezas: [] }, id);
+  }
+  // La de una puerta no se divide (el mínimo es 2).
+  assert.equal(como("base:nevera-1p-inducol"), null);
+  // Los murales (góndolas de pared), por tramos: uno por módulo, se fijan en
+  // el plano (la ficha es un módulo).
+  const murales = CATALOGO.modelos.filter((m) => m.tipo === "gondola" && m.variante === "wall");
+  assert.equal(murales.length, 12, "cambió la cantidad de murales de RECABRA");
+  for (const m of murales) assert.deepEqual(P.comoSeVendeLaFicha(m), { division: "tramos", n: null, piezas: [] }, m.id);
+  // Las centrales, las puntas, las estibas y el resto, enteros: lo decide la dueña.
+  for (const m of CATALOGO.modelos.filter((m) => !(m.tipo === "gondola" && m.variante === "wall") && m.tipo !== "nevera_puertas")) {
+    assert.equal(P.comoSeVendeLaFicha(m), null, `${m.id} nace por partes`);
+  }
+  // En palabras: la paleta dice poco, el panel dice todo.
+  assert.equal(P.textoDeComoSeVende(como("base:nevera-3p-frigomaster"), { corto: true }), "por puertas");
+  assert.equal(P.textoDeComoSeVende(como("base:nevera-3p-frigomaster")), "entera o por puertas (3)");
+  assert.equal(P.textoDeComoSeVende(P.comoSeVendeLaFicha(murales[0])), "entera o por tramos, uno por módulo");
+  assert.equal(P.textoDeComoSeVende(P.comoSeVendeLaFicha(PROPIAS[5])), "entera o por entrepaños (4, con la base)");
+  assert.equal(P.textoDeComoSeVende(P.comoSeVendeLaFicha(PROPIAS[2]), { corto: true }), "2 bahías de impulso");
+  assert.equal(P.textoDeComoSeVende(P.comoSeVendeLaFicha(PROPIAS[3])), "el forro se vende");
+  assert.equal(P.textoDeComoSeVende(P.comoSeVendeLaFicha(PROPIAS[3]), { corto: true }), "con forro");
+  // Lo que no dice nada, o lo dice mal (la cuenta fuera de rango), es entera.
+  assert.equal(P.comoSeVendeLaFicha(PROPIAS[1]), null, "una ficha de antes (sólo puertas) se vende entera");
+  assert.equal(P.comoSeVendeLaFicha({ tipo: "nevera_puertas", partes: { puertas: 9, division: "puertas" } }), null);
+  assert.equal(P.comoSeVendeLaFicha({ tipo: "isla", partes: { division: "tramos" } }), null);
+});
+
+await prueba("las paletas del plano y del 3D dicen cómo se vende cada modelo, de RECABRA y propio", () => {
+  const def = (entrada, id) => P.PALETA_3D.find((f) => f.entrada === entrada).modelos.find((m) => m.modelo === id);
+  assert.equal(def("nevera_puertas", "base:nevera-3p-frigomaster").comoSeVende, "por puertas");
+  assert.equal(def("nevera_puertas", "base:nevera-1p-inducol").comoSeVende, undefined);
+  assert.equal(def("gondola:wall", "base:gondola-pared-180-m100").comoSeVende, "por tramos");
+  assert.equal(def("gondola:double", "base:gondola-central-180-m100").comoSeVende, undefined);
+  assert.equal(P.MODELOS_2D.gondola_mural.find((m) => m.id === "base:gondola-pared-180-m100").comoSeVende, "por tramos");
+  assert.equal(P.MODELOS_2D.nevera_puertas.find((m) => m.id === "base:nevera-4p-frigomaster").comoSeVende, "por puertas");
+  // La ficha propia, igual, y con su estampa entera (lo que se coloca).
+  const paleta = P.paletaConPropias(PROPIAS);
+  const caja = paleta.find((f) => f.entrada === "checkout").modelos.find((m) => m.modelo === "cli:caja-ocana");
+  assert.equal(caja.comoSeVende, "2 bahías de impulso");
+  assert.deepEqual(caja.partes, { bahias: 2 });
+  const nev = paleta.find((f) => f.entrada === "nevera_puertas").modelos.find((m) => m.modelo === "cli:nevera-inducol-2p");
+  assert.deepEqual([nev.comoSeVende, nev.partes], ["por puertas", { puertas: 2, division: "puertas" }]);
+  assert.equal(P.modelosDelPlanoConPropias(PROPIAS).columna.at(-1).comoSeVende, "con forro");
+  // Y las dos paletas lo muestran al lado de las medidas.
+  const ed = leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
+  assert.match(ed, /\{m\.w\}×\{m\.d\}×\{m\.h\} m\{m\.comoSeVende \? ` · \$\{m\.comoSeVende\}` : ""\}/, "la paleta del 3D no dice cómo se vende");
+  const p2 = leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx"));
+  assert.match(p2, /\{m\.comoSeVende && \(/, "la biblioteca del 2D no dice cómo se vende");
+});
+
+await prueba("lo ya colocado no cambia solo: un mueble de antes se vende entero aunque su ficha diga partes", () => {
+  // Colocados antes de que su modelo dijera cómo se vende: con la ficha
+  // estampada de entonces (el mural sin `partes`; la nevera con sus puertas
+  // y sin `division`). Se venden enteros, como el día que se colocaron.
+  const mural = { id: "m1", code: "GON-07", type: "gondola", gondolaType: "wall", sede: "NAVE", w: 4, d: 0.4, h: 1.8,
+    modulo: 1, entrepanos: 4, modelo: "base:gondola-pared-180-m100" };
+  const nev = { id: "n9", code: "NEV-09", type: "nevera_puertas", sede: "NAVE", w: 2.07, d: 0.7, h: 2.1,
+    partes: { puertas: 3 }, modelo: "base:nevera-3p-frigomaster" };
+  assert.deepEqual(P.espaciosDe(mural, "NAVE"), ["NAVE-GON-07"]);
+  assert.deepEqual(P.espaciosDe(nev, "NAVE"), ["NAVE-NEV-09"]);
+  assert.equal(P.divisionSinFijar(mural), null);
+  // El panel lo ofrece, y el cambio es lo que dice la ficha.
+  const lo = P.loDeLaFicha(nev);
+  assert.equal(lo.nombre, "Nevera de 3 puertas");
+  assert.equal(lo.texto, "entera o por puertas (3)");
+  assert.deepEqual(lo.cambio, { division: "puertas", puertas: 3 });
+  assert.equal(lo.problema, null);
+  const usada = P.conPartes([nev], "n9", lo.cambio)[0];
+  assert.deepEqual(P.espaciosDe(usada, "NAVE"), ["NAVE-NEV-09", "NAVE-NEV-09-PU1", "NAVE-NEV-09-PU2", "NAVE-NEV-09-PU3"]);
+  assert.equal(P.loDeLaFicha(usada).cambio, null, "ya se vende como su ficha y se sigue ofreciendo");
+  // El mural: un tramo por módulo de su corrido (4 m de módulos de 1 m).
+  assert.deepEqual(P.loDeLaFicha(mural).cambio, { division: "tramos", tramos: 4 });
+  // Sin ficha, o con la de otra familia, o con una que no dice nada: nada.
+  assert.equal(P.loDeLaFicha({ ...nev, modelo: undefined }), null);
+  assert.equal(P.loDeLaFicha({ ...nev, modelo: "base:gondola-pared-180-m100" }), null);
+  assert.equal(P.loDeLaFicha({ ...mural, gondolaType: "double" }), null, "un mural se le ofrece a una central");
+  assert.equal(P.loDeLaFicha({ ...mural, modelo: "base:gondola-pared-180-m100".replace("pared", "central") }), null);
+  assert.equal(P.loDeLaFicha({ ...nev, modelo: "cli:no-esta" }), null);
+});
+
+await prueba("un mural de un solo módulo no se parte en dos: se estira primero", () => {
+  const solo = { id: "m2", code: "GON-08", type: "gondola", gondolaType: "wall", sede: "NAVE", w: 1, d: 0.4, h: 1.8,
+    modulo: 1, modelo: "base:gondola-pared-180-m100", partes: { division: "tramos" } };
+  const r = P.cambioParaDividir(solo, "tramos");
+  assert.ok("problema" in r && /un solo módulo/.test(r.problema), JSON.stringify(r));
+  const lo = P.loDeLaFicha({ ...solo, partes: null });
+  assert.equal(lo.cambio, null);
+  assert.match(lo.problema, /un solo módulo/);
+  // Con dos módulos, sí: uno por módulo.
+  assert.deepEqual(P.cambioParaDividir({ ...solo, w: 2 }, "tramos"), { cambio: { division: "tramos", tramos: 2 } });
+  // La nevera abierta sigue con su cuenta (un tramo cada 1,25 m, al menos 2).
+  assert.deepEqual(P.cambioParaDividir({ id: "b", code: "BEB-01", type: "nevera_refrescos", w: 2.5 }, "tramos"),
+    { cambio: { division: "tramos", tramos: 2 } });
+});
+
+await prueba("las fichas propias: lo que se coloca ya viene configurado; lo de antes, se ofrece", () => {
+  P.fijarFichasPropias(PROPIAS);
+  try {
+    const caja = { id: "c9", code: "CAJ-09", type: "checkout", sede: "NAVE", w: 1.8, d: 0.7, h: 0.9, modelo: "cli:caja-ocana" };
+    assert.deepEqual(P.loDeLaFicha(caja).cambio, { bahias: 2 });
+    assert.equal(P.loDeLaFicha(caja).texto, "2 bahías de impulso");
+    assert.equal(P.loDeLaFicha({ ...caja, partes: { bahias: 2 } }).cambio, null);
+    const col = { id: "k9", code: "COL-09", type: "columna", sede: "NAVE", w: 0.4, d: 0.4, h: 3, modelo: "cli:columna-40" };
+    assert.deepEqual(P.loDeLaFicha(col).cambio, { forro: true });
+    // Por entrepaños: los del mueble si los tiene; si no, los de la ficha.
+    const punta = { id: "p9", code: "PUN-09", type: "punta", sede: "NAVE", w: 0.7, d: 0.37, h: 1.8, modelo: "cli:punta-en" };
+    assert.deepEqual(P.loDeLaFicha(punta).cambio, { division: "entrepanos", entrepanos: 3 });
+    assert.deepEqual(P.loDeLaFicha({ ...punta, entrepanos: 4 }).cambio, { division: "entrepanos" });
+    const beb = { id: "b9", code: "BEB-09", type: "nevera_refrescos", sede: "NAVE", w: 2.5, d: 0.8, h: 2, modelo: "cli:multideck-2t" };
+    assert.deepEqual(P.loDeLaFicha(beb).cambio, { division: "tramos", tramos: 2 });
+    // Una ficha guardada antes de vender por partes (sólo las puertas) no dice
+    // nada de cómo se vende: el mueble sigue entero y el panel no ofrece nada.
+    assert.equal(P.loDeLaFicha({ id: "n8", code: "NEV-08", type: "nevera_puertas", w: 1.445, partes: { puertas: 2 }, modelo: "cli:nevera-vieja" }), null);
+    // Retirada, se sigue leyendo: lo colocado la sigue usando.
+    P.fijarFichasPropias(PROPIAS.map((m) => (m.clave === "caja-ocana" ? { ...m, retirado: true } : m)));
+    assert.deepEqual(P.loDeLaFicha(caja).cambio, { bahias: 2 });
+    assert.match(P.loDeLaFicha(caja).nombre, /\(retirada\)/);
+  } finally {
+    P.olvidarFichasPropias();
+  }
+});
+
+await prueba("«Usar lo de la ficha» pasa por las mismas revisiones: con una parte vendida, no se mueve", () => {
+  // Una nevera de 2 puertas ya vendida por puertas (PU1), colocada desde la
+  // de 3: lo de la ficha la llevaría a 3 puertas y la PU1 quedaría en otro lugar.
+  const nev = { id: "n7", code: "NEV-07", type: "nevera_puertas", sede: "NAVE", w: 2.07, d: 0.7, h: 2.1,
+    partes: { puertas: 2, division: "puertas" }, modelo: "base:nevera-3p-frigomaster" };
+  const estado = { "NAVE-NEV-07-PU1": vendido("2026-10-01", "2026-12-31") };
+  const lo = P.loDeLaFicha(nev);
+  assert.deepEqual(lo.cambio, { division: "puertas", puertas: 3 });
+  const r = P.revisarCambioDePartes(nev, lo.cambio, estado, "NAVE");
+  assert.ok(r.bloqueo && /una puerta vendida/.test(r.bloqueo), r.bloqueo);
+  assert.ok(!/Postob/.test(r.bloqueo), "el bloqueo nombra al proveedor");
+  // Y el panel lo propone por `proponer` (la revisión), nunca escribe directo.
+  const panel = leer(join(raiz, "src", "components", "PartesDelMueble.tsx"));
+  assert.match(panel, /const ficha = useMemo\(\(\) => \(f \? loDeLaFicha\(f\) : null\), \[f, fichasPropias\]\);/,
+    "el panel no pregunta lo de la ficha, o no se entera cuando llegan las fichas propias");
+  assert.match(panel, /data-partes-usar-ficha[\s\S]{0,400}onClick=\{\(\) => \{ setEnTodas\(null\); proponer\(ficha\.cambio!\); \}\}/,
+    "«Usar lo de la ficha» no pasa por la revisión de lo vendido");
+  assert.match(panel, /aplicarLoDeLaFicha\(selectFixtures\(st\), f\.modelo, estado, sede\)/, "falta «Aplicar a los colocados con esta ficha»");
+  assert.match(panel, /onClick=\{\(\) => elegir\(sinFijar\)\}/, "el mural sin fijar no tiene cómo fijar sus tramos");
+});
+
+await prueba("«Aplicar a los colocados con esta ficha» salta lo vendido, lo que no puede y lo de otra ficha", () => {
+  const nev = (id, code, extra = {}) => ({ id, code, type: "nevera_puertas", sede: "NAVE", w: 2.07, d: 0.7, h: 2.1,
+    partes: { puertas: 3 }, modelo: "base:nevera-3p-frigomaster", ...extra });
+  const plano = [
+    nev("a", "NEV-01"),
+    nev("b", "NEV-02", { partes: { puertas: 3, division: "puertas" } }),
+    nev("c", "NEV-03", { partes: { puertas: 2, division: "puertas" } }),
+    nev("d", "NEV-04", { modelo: "base:nevera-4p-frigomaster", partes: { puertas: 4 } }),
+    { id: "m", code: "GON-01", type: "gondola", gondolaType: "wall", sede: "NAVE", w: 1, d: 0.4, h: 1.8, modulo: 1,
+      modelo: "base:gondola-pared-180-m100" },
+  ];
+  const estado = { "NAVE-NEV-03-PU2": vendido("2026-10-01", "2026-12-31") };
+  assert.deepEqual(P.colocadosConLaFicha(plano, "base:nevera-3p-frigomaster"), { todos: 3, distintos: 2 });
+  const r = P.aplicarLoDeLaFicha(plano, "base:nevera-3p-frigomaster", estado, "NAVE");
+  assert.deepEqual(r.aplicados, ["NEV-01"]);
+  assert.deepEqual(r.saltados, ["NEV-03"], "tocó la nevera con una puerta vendida");
+  assert.deepEqual(r.fixtures[0].partes, { puertas: 3, division: "puertas" });
+  assert.equal(r.fixtures[1], plano[1], "tocó la que ya estaba así");
+  assert.equal(r.fixtures[2], plano[2]);
+  assert.equal(r.fixtures[3], plano[3], "tocó una de otra ficha");
+  // El mural de un solo módulo: no puede, y se dice.
+  const m = P.aplicarLoDeLaFicha(plano, "base:gondola-pared-180-m100", {}, "NAVE");
+  assert.deepEqual([m.aplicados, m.sinPoder], [[], ["GON-01"]]);
+  // Con la entera vendida y la ficha cambiando las hojas que se dibujan, se
+  // hace de a una (el panel avisa): en lote, se salta.
+  const entera = { "NAVE-NEV-01": vendido("2026-10-01", "2026-12-31") };
+  const otra = [nev("a", "NEV-01", { partes: { puertas: 2 } })];
+  assert.deepEqual(P.aplicarLoDeLaFicha(otra, "base:nevera-3p-frigomaster", entera, "NAVE").saltados, ["NEV-01"]);
+});
+
+await prueba("el taller numera las partes sobre el mueble que gira, con las cuentas del visor", () => {
+  const numeradas = (f) => C.partesNumeradas(f);
+  const nev = numeradas({ type: "nevera_puertas", w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3, division: "puertas" } });
+  assert.deepEqual(nev.map((p) => p.etiqueta), ["PU1", "PU2", "PU3"]);
+  // La PU1 a la izquierda de quien mira el frente de la A (−Z): en +X.
+  assert.ok(nev[0].contorno.cx > nev[1].contorno.cx && nev[1].contorno.cx > nev[2].contorno.cx,
+    nev.map((p) => p.contorno.cx).join(", "));
+  assert.ok(nev.every((p) => p.contorno.z < 0), "las puertas no están en el frente");
+  // Los entrepaños, de abajo hacia arriba, con la base.
+  const pun = numeradas({ type: "punta", w: 0.7, d: 0.37, h: 1.8, entrepanos: 3, partes: { division: "entrepanos" } });
+  assert.deepEqual(pun.map((p) => p.etiqueta), ["EN1 · base", "EN2", "EN3", "EN4"]);
+  assert.ok(pun.every((p, i) => i === 0 || p.contorno.cy > pun[i - 1].contorno.cy), "los entrepaños no suben");
+  // Las dos caras de una góndola central; la B, con su letra.
+  const gon = numeradas({ type: "gondola", gondolaType: "double", w: 1, d: 0.8, h: 1.8, entrepanos: 3, partes: { division: "entrepanos" } });
+  assert.deepEqual(gon.map((p) => p.etiqueta), ["EN1 · base", "EN2", "EN3", "EN4", "B·EN1 · base", "B·EN2", "B·EN3", "B·EN4"]);
+  assert.ok(gon.slice(4).every((p) => p.cara === "B" && p.contorno.z > 0));
+  // Las piezas: la bahía 1 a la izquierda de quien hace la fila; el forro.
+  const caja = numeradas({ type: "checkout", w: 1.8, d: 0.7, h: 0.9, partes: { bahias: 2 } });
+  assert.deepEqual(caja.map((p) => p.etiqueta), ["BI1", "BI2"]);
+  assert.ok(caja[0].contorno.cx > caja[1].contorno.cx);
+  assert.deepEqual(numeradas({ type: "columna", w: 0.4, d: 0.4, h: 3, partes: { forro: true } }).map((p) => p.etiqueta), ["FO"]);
+  // Sin partes, nada: una ficha entera no muestra números.
+  assert.deepEqual(numeradas({ type: "nevera_puertas", w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3 } }), []);
+  // El taller las dibuja, y a la nevera abierta le pasa sus tramos.
+  const taller = leer(join(raiz, "src", "pages", "TallerMuebles.tsx"));
+  assert.match(taller, /partesNumeradas\(\{ type: def\.type, gondolaType: def\.gondolaType, w: anchoV, d: fondoV, h: altoV,\s*partes: defFicha\.partes/,
+    "el taller no numera las partes de la ficha que se arma");
+  assert.match(taller, /\{numeradas\.map\(\(p, i\) => <ParteNumeradaDelTaller/, "el taller no dibuja las partes numeradas");
+  assert.match(taller, /tramos=\{def\.type === "nevera_refrescos" \? geometria\?\.tramos : undefined\}/,
+    "la nevera abierta del taller no dibuja sus tramos");
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);

@@ -118,10 +118,41 @@ function familiasDeLaTarifa(clave: string): string[] {
  *  nombre, la fila de la góndola dice «góndola de centro · Góndola Mural», y no
  *  le pone a la de pared un nombre que no es el suyo. */
 export function nombreDeTarifa(clave: string, nombres: NombresPropios | null | undefined): string {
+  const deParte = nombreDeTarifaDeParte(clave, nombres);
+  if (deParte !== undefined) return deParte;
   const familias = familiasDeLaTarifa(clave);
   if (!familias.some((fam) => nombrePropio(fam, nombres) !== undefined)) return rateTypeLabel(clave);
   const dichos = familias.map((fam) => nombrePropio(fam, nombres) ?? rotuloDeRecabra(fam));
   return [...new Set(dichos)].join(" · ");
+}
+
+/**
+ * El nombre de la fila de tarifa de una CLASE DE PARTE (vender por partes),
+ * con el nombre propio de su familia donde el nombre de la parte la nombra:
+ * «Puerta de nevera (cada una)» es, donde a la nevera de puertas le dicen
+ * «Enfriador vertical», «Puerta de Enfriador vertical (cada una)»; la bahía
+ * de impulso «de caja» y el forro «de columna», igual. La familia es la única
+ * que tiene esa clase (`partes.divisiones` o `partes.piezas` del catálogo), y
+ * la palabra es la que dicen los informes después de la parte («puerta de
+ * nevera»): el tramo y el entrepaño son de varias familias y no nombran
+ * ninguna, así que no cambian. `undefined` si la clave no es de una parte;
+ * sin nombre propio, el rótulo de siempre.
+ */
+function nombreDeTarifaDeParte(clave: string, nombres: NombresPropios | null | undefined): string | undefined {
+  const entrada = Object.entries(CATALOGO_DE_MUEBLES.partes.clases).find(([, c]) => c.tarifa === clave);
+  if (!entrada) return undefined;
+  const [claseClave, clase] = entrada;
+  const rotulo = rateTypeLabel(clave);
+  const familias = CATALOGO_DE_MUEBLES.orden.plano2D.filter((t) => {
+    const p = resolverTipo(t)?.tipo.partes;
+    return !!p && ((p.divisiones ?? []).includes(claseClave) || (p.piezas ?? []).includes(claseClave));
+  });
+  const prefijo = `${clase.singular} de `;
+  if (familias.length !== 1 || !clase.informe.startsWith(prefijo)) return rotulo;
+  const propio = nombrePropio(familias[0], nombres);
+  const palabra = ` de ${clase.informe.slice(prefijo.length)}`;
+  if (!propio || !rotulo.includes(palabra)) return rotulo;
+  return rotulo.replace(palabra, ` de ${propio}`);
 }
 
 /** El rótulo de RECABRA de una familia (el de los editores). */
