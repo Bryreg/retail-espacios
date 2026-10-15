@@ -32,6 +32,15 @@ function salidaDelRechazo(codes: string[]): string {
       "Cancelá el contrato desde el espacio, o volvé a poner el mueble en el plano",
     );
   }
+  if (hay.has("partes_vendidas")) {
+    // Una puerta vendida no cambia de lugar: lo que se firmó es esa puerta.
+    salidas.push(
+      "Dejá las puertas como estaban, o esperá a que termine o cancelá el contrato de la puerta desde el espacio",
+    );
+  }
+  if (hay.has("nombre_reservado")) {
+    salidas.push("Elegí otro nombre para el mueble: no puede terminar como el código de una parte");
+  }
   if (salidas.length === 0) return "Revisá lo que dice el servidor.";
   return `${salidas.join(", o bien: ")} y se guarda solo.`;
 }

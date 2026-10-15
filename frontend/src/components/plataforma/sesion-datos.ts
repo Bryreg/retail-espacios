@@ -31,6 +31,7 @@
    ========================================================================== */
 
 import type {
+  ContratoEspacioDetalle,
   DetalleCliente,
   EspacioDetalle,
   Oportunidad,
@@ -193,6 +194,38 @@ export interface Derivado {
 
 const VENTANA_VENCIMIENTO = 60;
 
+/** Los contratos del periodo que están SOBRE EL PLANO, uno por espacio: las
+ *  caras con contrato, sus partes vendidas (la puerta 2 de una nevera, con su
+ *  código y el tipo de su cara) y las piezas (la bahía de impulso de una caja,
+ *  el forro de una columna), que no cuelgan de ninguna cara porque la caja y
+ *  la columna nunca son espacios. Es lo que cuenta «N sobre el plano», lo que
+ *  lista la tabla de contratos y lo que vence: sin las piezas, el contrato de
+ *  una bahía no estaba ni sobre el plano ni fuera, y la cuenta no cerraba. */
+export function contratosSobreElPlano(
+  d: DetalleCliente
+): Array<EspacioDetalle & { contrato: ContratoEspacioDetalle }> {
+  const deLasCaras: EspacioDetalle[] = d.espacios.flatMap((e) => [
+    e,
+    ...(e.partes ?? []).map((p) => ({
+      ...e, codigo: p.codigo, codigo_corto: p.codigo_corto, contrato: p.contrato, partes: undefined,
+    })),
+  ]);
+  const piezas: EspacioDetalle[] = (d.piezas ?? []).map((p) => ({
+    codigo: p.codigo,
+    sede: p.sede,
+    codigo_corto: p.codigo_corto,
+    cara: null,
+    tipo: p.tipo,
+    zona: null,
+    area_m2: null,
+    estado: p.contrato.fin <= d.hasta ? "se_libera" : "ocupado",
+    contrato: p.contrato,
+  }));
+  return [...deLasCaras, ...piezas].filter(
+    (e): e is EspacioDetalle & { contrato: ContratoEspacioDetalle } => e.contrato !== null
+  );
+}
+
 export function derivar(d: DetalleCliente): Derivado {
   const espacios = d.espacios;
   const ocupados = espacios.filter((e) => e.estado === "ocupado").length;
@@ -214,12 +247,16 @@ export function derivar(d: DetalleCliente): Derivado {
     enOferta: libres + seLiberan,
     ocupacionPct: espacios.length === 0 ? null : ((ocupados + seLiberan) / espacios.length) * 100,
     contratos,
-    contratosEnPlano: espacios.filter((e) => e.contrato !== null).length,
+    // Las puertas vendidas son contratos sobre el plano, como las caras; y
+    // las piezas (la bahía de una caja, el forro de una columna) también,
+    // aunque no cuelguen de ninguna cara: sin ellas la cuenta no cerraba.
+    contratosEnPlano: contratosSobreElPlano(d).length,
     ingresoMes,
     canonPromedio: contratos === 0 ? null : ingresoMes / contratos,
     gruposOportunidad: agruparOportunidades(d.oportunidades),
-    porVencer: espacios
-      .filter((e) => e.contrato !== null && e.contrato.dias_para_vencer <= VENTANA_VENCIMIENTO)
+    // Con las puertas y las piezas vendidas: cada una vence por su lado, con su código.
+    porVencer: contratosSobreElPlano(d)
+      .filter((e) => e.contrato.dias_para_vencer <= VENTANA_VENCIMIENTO)
       .map((e) => ({ espacio: e, dias: e.contrato!.dias_para_vencer }))
       .sort((a, b) => a.dias - b.dias),
     valor: {

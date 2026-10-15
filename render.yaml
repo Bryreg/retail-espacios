@@ -44,6 +44,22 @@ services:
       # Solo aplica a cuentas con sub (el login legado jamás es operador).
       - key: OPERADOR_EMAILS
         sync: false
+      # Cobro de la suscripción (C2). COBRANZA_AUTOMATICA prende la escalera
+      # automática (avisos por correo y sólo lectura a los 30 días de vencida la
+      # cuenta de cobro —nunca antes de 10 días después del aviso formal
+      # entregado—, nunca suspensión): vacía, en 0 o con cualquier valor que no
+      # sea 1/true/sí/on, cada pasada sólo ENSAYA y deja en el log una línea con
+      # lo que haría. Se prende con 1. Ver docs/ESTADO.md, «Cobro de la
+      # suscripción (2026-10-13)».
+      # COBRO_INSTRUCCIONES_TRANSFERENCIA es el texto con los datos para
+      # transferir (banco, tipo y número de cuenta, titular, NIT) que ven la
+      # dueña de un supermercado CON suscripción y los correos de cobranza: un
+      # dato bancario no se escribe en el repo. Sin ella, la pantalla dice que se
+      # comuniquen con RECABRA.
+      - key: COBRANZA_AUTOMATICA
+        sync: false
+      - key: COBRO_INSTRUCCIONES_TRANSFERENCIA
+        sync: false
       # El acceso por clave compartida (POST /api/auth/login) está APAGADO
       # desde 2026-10-01: se entra sólo con Google/correo. LOGIN_LEGADO=1 lo
       # prende, sólo como emergencia si Firebase no deja entrar a nadie — con

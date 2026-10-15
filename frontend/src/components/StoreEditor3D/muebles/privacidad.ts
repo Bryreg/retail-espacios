@@ -21,6 +21,8 @@
 
 import { contenidoDelHablador } from "./habladores";
 import type { ArteConFicha, ContenidoDelHablador } from "./habladores";
+import { partesTipadas } from "../../../utils/partes";
+import type { PartesDeMueble } from "../../../catalogo/catalogo";
 
 /** Lo que hace falta de un arte del catálogo para decidir. */
 export interface ArteDeProveedor {
@@ -430,6 +432,11 @@ export interface MuebleVendible {
   endDate: string;
   observation: string;
   rentable?: boolean;
+  /** La ficha del modelo: geometría, no comercio (ver `sinDatosComerciales`). */
+  modelo?: string;
+  entrepanos?: number;
+  modulo?: number;
+  partes?: PartesDeMueble | null;
 }
 
 /**
@@ -438,7 +445,14 @@ export interface MuebleVendible {
  *
  * Pasan la geometría, el código, la etiqueta, el color y el ESTADO (libre,
  * ocupado…): Vender ya pinta la ocupación en el plano, así que el estado no
- * dice nada nuevo; quién, cuánto y hasta cuándo, sí. Con el rubro vacío el
+ * dice nada nuevo; quién, cuánto y hasta cuándo, sí. La ficha del modelo
+ * (`modelo`, `entrepanos`, `modulo`, `partes`) también pasa: es geometría, y
+ * sin ella el visor le mostraría al proveedor una góndola con otros entrepaños
+ * o una nevera con otras puertas que las que se le venden. `partes` pasa SÓLO
+ * con lo conocido y con su tipo (`partesTipadas`: las puertas, un entero, y
+ * cómo se vende, una palabra de la lista de las clases), copiado clave por
+ * clave: lo que alguien le escriba adentro mañana no sale. Nunca el estado de
+ * las otras puertas: no vive en el mueble. Con el rubro vacío el
  * relleno neutro y el del contrato entero (`rubroDeContratoEntero`) caen al
  * gris genérico, sin la categoría del que hoy ocupa el espacio.
  *
@@ -482,6 +496,11 @@ export function sinDatosComerciales<T extends MuebleVendible>(muebles: readonly 
     if (m.slots === undefined) delete limpio.slots;
     if (m.gondolaType === undefined) delete limpio.gondolaType;
     if (m.rentable === undefined) delete limpio.rentable;
+    if (typeof m.modelo === "string") limpio.modelo = m.modelo;
+    if (typeof m.entrepanos === "number") limpio.entrepanos = m.entrepanos;
+    if (typeof m.modulo === "number") limpio.modulo = m.modulo;
+    const partes = partesTipadas(m.partes);
+    if (partes) limpio.partes = partes;
     return limpio as T;
   });
 }

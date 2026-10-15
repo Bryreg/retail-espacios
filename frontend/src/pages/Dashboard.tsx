@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
@@ -10,6 +10,7 @@ import DashboardView from "./DashboardView";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import AvisoCuentaBanner from "../components/AvisoCuentaBanner";
+import MiSuscripcion from "../components/suscripcion/MiSuscripcion";
 import { soyOperador } from "../api/plataforma";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import {
@@ -33,6 +34,10 @@ import { descargarMiExport, solicitarSupresion } from "../api/derechos";
 import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { TemaToggle, useModalAbierto } from "../tema";
+import {
+  LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
+  type FamiliaConNombre,
+} from "../catalogo/nombresPropios";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -266,6 +271,85 @@ function ContactsSection({ sedes }: { sedes: string[] }) {
 
 /** `owner`/`admin`/`worker` → la palabra que la persona espera leer, no el
  *  nombre de la columna. */
+/** «Cómo se llaman los muebles acá» (sólo administración, como todo este
+ *  panel): una fila por familia, con el nombre de RECABRA y el de la tienda.
+ *
+ *  Es `catalogLabels`, que ya existía y sólo se editaba con el lápiz de la
+ *  biblioteca del Plano —escondido detrás de un hover, y sólo lo aplicaba esa
+ *  biblioteca—. Desde ahora el nombre propio sale en todas las pantallas del
+ *  supermercado (`catalogo/nombresPropios.ts`), así que se edita en un lugar
+ *  que se encuentra. Se guarda al salir del campo, con la lista de sedes (el
+ *  mismo `PUT /api/layout/settings`, y el mismo debounce), como las tarifas: no
+ *  hay botón de guardar. */
+function NombresDeMueblesSection() {
+  const nombres = useFixtureStore((s) => s.catalogLabels);
+  const setCatalogLabel = useFixtureStore((s) => s.setCatalogLabel);
+  const familias = familiasConNombre();
+  return (
+    <div data-seccion="nombres-de-muebles" style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Cómo se llaman los muebles acá</div>
+      <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
+        Si en la tienda a la estiba le dicen «mamut» o a la punta «tope de góndola», escribilo
+        al lado: sale así en Vender, Supervisar, Estado por espacio, Montajes, Tarifas, el
+        Plano, el Editor 3D y la lámina que se lleva el proveedor. Vacío, queda el de RECABRA.
+        Los informes de RECABRA siguen con el suyo, para poder comparar supermercados. Se
+        guarda al salir del campo; ningún mueble, código ni tarifa cambia.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.2fr)", gap: "6px 10px", alignItems: "center" }}>
+        <div style={{ ...fieldLabelStyle, marginBottom: 0 }}>En RECABRA</div>
+        <div style={{ ...fieldLabelStyle, marginBottom: 0 }}>Acá le dicen</div>
+        {familias.map((f) => (
+          <FilaDeNombre
+            key={f.clave}
+            familia={f}
+            guardado={nombrePropio(f.clave, nombres) ?? ""}
+            onGuardar={(texto) => setCatalogLabel(f.clave, nombreParaGuardar(f.clave, texto))}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FilaDeNombre({ familia, guardado, onGuardar }: {
+  familia: FamiliaConNombre;
+  guardado: string;
+  onGuardar: (texto: string) => void;
+}) {
+  const [borrador, setBorrador] = useState(guardado);
+  const [editando, setEditando] = useState(false);
+  // Lo que llega del servidor (otra estación lo cambió) entra mientras no se
+  // está escribiendo encima.
+  useEffect(() => { if (!editando) setBorrador(guardado); }, [guardado, editando]);
+  const id = `nombre-propio-${familia.clave}`;
+  return (
+    <>
+      <label htmlFor={id} style={{ fontSize: 12, color: "var(--ink-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <span aria-hidden style={{ marginRight: 6 }}>{familia.emoji}</span>{familia.rotulo}
+      </label>
+      <input
+        id={id}
+        data-familia={familia.clave}
+        type="text"
+        value={borrador}
+        maxLength={LARGO_DEL_NOMBRE_PROPIO}
+        placeholder={familia.rotulo}
+        onFocus={() => setEditando(true)}
+        onChange={(e) => setBorrador(e.target.value)}
+        onBlur={() => {
+          setEditando(false);
+          if (borrador.trim() !== guardado) onGuardar(borrador);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+          if (e.key === "Escape") { e.stopPropagation(); setBorrador(guardado); setEditando(false); }
+        }}
+        style={{ ...inputStyle, height: 30 }}
+      />
+    </>
+  );
+}
+
 function rolLabelUsuario(rol: Miembro["rol"]): string {
   if (rol === "owner") return "Dueño";
   if (rol === "admin") return "Administrador";
@@ -749,6 +833,34 @@ function CopiaSection() {
   );
 }
 
+/** «Suscripción» (C2): lo que RECABRA le cobra a este supermercado —estado de
+ *  la cuenta, lo pactado, la próxima cuenta de cobro con retenciones y neto,
+ *  cómo transferir, el historial y los datos de facturación—.
+ *
+ *  Sólo la dueña, con el mismo filtro que la copia de seguridad: a un admin
+ *  invitado ni se le muestra, y si una sesión vieja sin rol la ve, el 403 del
+ *  backend lo dice. La plata vive acá y no en la franja de «pago pendiente»,
+ *  que se ve en Vender delante de los proveedores. */
+function SuscripcionSection({ enfocar }: { enfocar: boolean }) {
+  const rolCliente = useAuthStore((s) => s.rolCliente);
+  const ancla = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (enfocar) ancla.current?.scrollIntoView({ block: "start" });
+  }, [enfocar]);
+
+  if (rolCliente && rolCliente !== "owner") return null;
+
+  return (
+    <div ref={ancla} style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+      <div style={sectionLabelStyle}>Suscripción</div>
+      {/* Las secciones de arriba también cargan solas y la empujan: cuando
+          llegan sus datos, se vuelve a traer a la vista. */}
+      <MiSuscripcion alCargar={() => enfocar && ancla.current?.scrollIntoView({ block: "start" })} />
+    </div>
+  );
+}
+
 /** "Tus datos" (Fase 3, Ley 1581/2012): derechos del titular, propios de esta
  *  fase y en su propio archivo (`api/derechos.ts`) -- no comparten código con
  *  el resto de Configuración a propósito, porque su frontera es distinta: acá
@@ -852,7 +964,15 @@ function TusDatosSection() {
   );
 }
 
-function SettingsModal({ onClose }: { onClose: () => void }) {
+function SettingsModal({
+  onClose,
+  enfocar = null,
+}: {
+  onClose: () => void;
+  /** Abrir directo en una sección: la franja de «pago pendiente» abre acá la
+   *  suscripción. */
+  enfocar?: "suscripcion" | null;
+}) {
   // «Claves de acceso» vivía acá arriba y se fue (2026-10-01): desde la Fase 15
   // se entra sólo con Google o correo, y las claves compartidas por rol ya no
   // abrían nada desde la app — sólo una puerta del backend, que se apagó (ver
@@ -1019,6 +1139,10 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <ContactsSection sedes={sedes} />
+
+        <NombresDeMueblesSection />
+
+        <SuscripcionSection enfocar={enfocar === "suscripcion"} />
 
         <CopiaSection />
 
@@ -1266,6 +1390,7 @@ export default function Dashboard() {
   const mountCode = MOUNT_DEEP_LINK;
   const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "kpis");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [seccionConfig, setSeccionConfig] = useState<"suscripcion" | null>(null);
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
   const logout = useAuthStore((s) => s.logout);
@@ -1311,14 +1436,22 @@ export default function Dashboard() {
         background: "var(--bg)",
       }}
     >
-      <AvisoCuentaBanner />
+      <AvisoCuentaBanner
+        onVerSuscripcion={() => {
+          setSeccionConfig("suscripcion");
+          setSettingsOpen(true);
+        }}
+      />
 
       <Topbar
         viewMode={effectiveMode}
         setViewMode={setViewMode}
         isAdmin={isAdmin}
         operador={operador}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          setSeccionConfig(null);
+          setSettingsOpen(true);
+        }}
         onIrPlataforma={() => navigate("/plataforma")}
         onLogout={logout}
       />
@@ -1341,7 +1474,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {settingsOpen && isAdmin && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && isAdmin && (
+        <SettingsModal enfocar={seccionConfig} onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
   );
 }

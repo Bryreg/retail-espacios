@@ -3,7 +3,7 @@ import {
   ESPESOR_ESPINA, PARANTE,
   altoDeZonaDeSlots, filasDeProducto, fondoPorCara, vanosDeCorrido,
 } from "./medidas";
-import type { VentaDeMueble } from "./medidas";
+import type { GeometriaDeMueble, VentaDeMueble } from "./medidas";
 import { ProductoEnMueble } from "./ProductoEnMueble";
 import type { SlotDeProducto } from "./ProductoEnMueble";
 import type { Cubiertas, VendidoEntero } from "./frentes";
@@ -18,11 +18,17 @@ export type { SlotDeProducto } from "./ProductoEnMueble";
  * vende por una sola porque la otra da contra la pared. Lo usan el relleno por
  * rubro de acá abajo y el producto de prueba del proveedor: con una sola
  * cuenta, los dos se paran en los mismos entrepaños.
+ *
+ * Con `geometria` (los entrepaños y el módulo que la góndola guardó de su
+ * ficha) las filas y los vanos son los de la ficha, los mismos que dibuja
+ * `GondolaReal`; sin ella, la cuenta de siempre.
  */
-export function ventaDeGondola(w: number, d: number, h: number, esMural: boolean): VentaDeMueble {
+export function ventaDeGondola(
+  w: number, d: number, h: number, esMural: boolean, geometria?: GeometriaDeMueble,
+): VentaDeMueble {
   return {
-    filas: filasDeProducto(h, fondoPorCara(d, esMural)),
-    vanos: vanosDeCorrido(w),
+    filas: filasDeProducto(h, fondoPorCara(d, esMural), geometria?.entrepanos),
+    vanos: vanosDeCorrido(w, geometria?.modulo, geometria?.tramos),
     // Cada cara se monta en su lado de la espina y crece hacia afuera.
     caras: esMural
       ? [{ montaje: -ESPESOR_ESPINA / 2, hacia: -1 }]
@@ -42,12 +48,17 @@ export function ventaDeGondola(w: number, d: number, h: number, esMural: boolean
  * `ventaDeGondola`.
  */
 export const ProductoEnGondola = memo(function ProductoEnGondola({
-  w, d, h, esMural, slots, cubiertas, ghost = false, vendidoEntero, semilla,
+  w, d, h, esMural, slots, cubiertas, ghost = false, vendidoEntero, semilla, entrepanos, modulo, tramos,
 }: {
   w: number;
   d: number;
   h: number;
   esMural: boolean;
+  /** Lo que la góndola guardó de su ficha (ver `ventaDeGondola`). */
+  entrepanos?: number;
+  modulo?: number;
+  /** Los tramos en que se vende (`partes.tramos`): parten el corrido. */
+  tramos?: number;
   slots?: SlotDeProducto[];
   /** Lo que tapa la prueba del producto del proveedor, por cara: ahí no va
    *  relleno. Arte o relleno vale por (cara, entrepaño). */
@@ -59,7 +70,10 @@ export const ProductoEnGondola = memo(function ProductoEnGondola({
   /** El mueble (su id): siembra la variación del relleno en venta. */
   semilla?: string;
 }) {
-  const venta = useMemo(() => ventaDeGondola(w, d, h, esMural), [w, d, h, esMural]);
+  const venta = useMemo(
+    () => ventaDeGondola(w, d, h, esMural, { entrepanos, modulo, tramos }),
+    [w, d, h, esMural, entrepanos, modulo, tramos],
+  );
 
   return (
     <ProductoEnMueble

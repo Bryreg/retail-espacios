@@ -267,6 +267,26 @@ def test_the_first_ever_publish_needs_no_revision(client, admin):
     assert r.json()["catalog_labels"] == {"gondola": "Góndola"}
 
 
+def test_dos_primeras_publicaciones_a_la_vez_dan_409_y_no_500(client, admin, monkeypatch):
+    """Al entrar a una base vacía el navegador manda dos `PUT /settings` (el
+    doble efecto de StrictMode). Las dos leen la base sin revisión e insertan
+    la misma clave: la segunda chocaba con `UNIQUE app_config.key` y volvía
+    500 (el recorrido de vender por partes, 2026-10-14). Se simula esa
+    carrera: la segunda escritura inserta como si no hubiera visto la fila."""
+    import app.routers.layout as lay
+    from app.models.models import AppConfig
+
+    primera = client.put("/api/layout/settings", json={"sedes": ["TERRON"], "catalog_labels": {}}, headers=admin)
+    assert primera.status_code == 200, primera.text
+    monkeypatch.setattr(lay, "set_config", lambda db, key, value: db.add(AppConfig(key=key, value=value)))
+    segunda = client.put("/api/layout/settings", json={
+        "sedes": ["TERRON", "NAVE"], "catalog_labels": {}, "base_updated_at": primera.json()["updated_at"],
+    }, headers=admin)
+    assert segunda.status_code == 409, segunda.text
+    assert segunda.json()["detail"]["code"] == "settings_conflict"
+    assert client.get("/api/layout/settings", headers=admin).json()["sedes"] == ["TERRON"]
+
+
 def test_a_blind_write_over_a_known_revision_is_rejected(client, admin):
     """A client that never read the settings used to overwrite them wholesale by
     sending no base revision — which put deleted sedes back for everyone."""

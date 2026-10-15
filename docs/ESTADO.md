@@ -1,7 +1,200 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-12 (el diseño se ve desde Vender: cada fila del contrato
+Última actualización: 2026-10-14, **vender por partes, la revisión de la rama**: tres
+revisiones (regresión y plata, privacidad, guardas) y el recorrido. **La venta aguantaba**
+—ningún camino vendía dos veces lo mismo con los códigos de la planilla—; lo que fallaba era
+cómo se informaba, más un agujero del contrato suelto. Ahora **el contrato suelto exige el
+código completo** de lo que se vende por partes (`NEV-03-PU2` sin la sede vendía la nevera
+entera a uno y la puerta a otro), y la regla y las guardas del plano comparan los códigos
+en su forma completa; **la consola** ya no ofrece como «se libera» una nevera con una puerta
+vendida después, cuenta las bahías y forros vendidos y lista sus contratos; **el plano y la
+lista de precios** ya no dicen «libre 21 oct» cuando ese día hay una puerta vendida; y lo que
+el visor le marca al proveedor, la tarifa de cada fila, la caja que nunca se vende entera y el
+punto rojo de la cara B pasaron a cuentas puras con su prueba (16 mutaciones sobrevivían).
+Además: el 409 del plano dice «de 2 a 1 bahía de impulso» y «(contando la base)», el enlace
+de montaje ya no repite «PU2», y dos `PUT /layout/settings` a la vez dan 409 y no 500. Ver
+*Vender por partes (2026-10-14)*, el resumen de todo, y *Vender por partes: la revisión de la
+rama (2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, recorrido en el navegador**: la ficha
+de la nevera Inducol de 3 puertas, del taller a Vender, la planilla, Supervisar, el visor 3D,
+el 409 y el enlace de la mercaderista. Se arreglaron siete cosas que se vieron mirando —el
+plano decía «libre 14 oct» en una nevera con puertas vendidas (ahora «1 de 3 puertas
+vendida»), el visor contaba las unidades de la nevera entera, Estado por espacio cortaba los
+códigos de las puertas— y quedan anotadas las que no son chicas. Ver *Vender por partes: el
+recorrido en el navegador (P5, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 4: cómo se vende, configurado desde
+la ficha**. Lo que pidió la dueña: que los muebles que cada supermercado arma con sus fichas
+propias —y los modelos de RECABRA— queden configurados para venderse por partes. La ficha dice
+cómo se vende (en el taller, «Cómo se vende»: por puertas, por tramos o por entrepaños según la
+familia, con la cantidad; las bahías de la caja; el forro de la columna) y eso se ESTAMPA al
+colocar. **Los modelos de RECABRA ya traen la suya**: las neveras de 2, 3 y 4 puertas, por
+puertas; las góndolas de pared (los murales), por tramos, uno por módulo, que se fijan en el
+panel con un clic («Fijar 4 tramos, uno por módulo»: la ficha es un módulo). Las paletas del
+plano 2D y del Editor 3D lo dicen al lado de cada modelo («por puertas», «2 bahías de
+impulso»), y el taller numera las partes sobre el mueble que gira («PU1», «EN1 · base»). **Lo
+ya colocado no cambia solo**: un mueble colocado antes de que su ficha lo dijera se sigue
+vendiendo entero, y su panel ofrece «Usar lo de la ficha» y «Aplicar lo de su ficha a los N
+colocados con ella en la sede», que salta los que tienen algo vendido (con una parte vendida,
+el mismo bloqueo del panel y el 409 `partes_vendidas` del servidor). Y el nombre propio de la
+familia llega al nombre de sus partes: donde a la nevera de puertas le dicen «Enfriador
+vertical», Tarifas dice «Puerta de Enfriador vertical (cada una)». Ver *Vender por partes: cómo
+se vende, desde la ficha (P4, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 3: las bahías de la caja y el forro
+de la columna**. La caja registradora y la columna siguen sin venderse enteras en ningún lado,
+pero ahora venden sus PIEZAS: cada bahía de impulso de una caja, una por una (`CAJ-04-BI1`, de
+izquierda a derecha mirando la caja desde la fila), y el forro de una columna (`COL-07-FO`, sin
+número). Se configuran en el panel «Cómo se vende» del plano 2D y del Editor 3D («Bahías de
+impulso que se venden», con «Aplicar a todas las cajas de la sede»; «El forro se vende») o en la
+ficha propia del taller (la caja y la columna ahora admiten fichas), y se dibujan en el 3D (los
+nichos de la caja, el forro de la columna) y en el plano 2D. Vender: tocar una caja suma su
+primera bahía libre, el renglón ofrece «BI1 · BI2» sin «Entera», y «Sumar la BI1 de todas las
+cajas de la sede (8)» arma un contrato multiespacio. Una pieza no choca con nada más que
+consigo misma, su tarifa es la de su clase («Bahía de impulso de caja (cada una)», «Forro de
+columna»), sin respaldo, y nunca cuenta en la ocupación. Una caja sin bahías configuradas —todas
+las de los planos de antes— no ofrece nada, como siempre. Ver *Vender por partes: las bahías de
+la caja y el forro de la columna (P3, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 2: tramos y entrepaños, y las fichas
+propias que ya vienen configuradas**. El mural, la góndola (central o de pared), la nevera abierta
+y la de vegetales se venden enteros o POR TRAMOS (`GON-05-B-TR2`, de izquierda a derecha mirando
+esa cara); la góndola y la punta, enteras o POR ENTREPAÑOS (`PUN-02-EN1` es la base, contando de
+abajo hacia arriba: con 4 entrepaños se venden 5). Un mueble se divide de UNA sola forma, elegida
+en el panel «Cómo se vende» del plano 2D y del Editor 3D —que ahora ofrece las formas de su
+familia— o, lo que pidió la dueña, **en la ficha propia del taller** («Cómo se vende»: la ficha
+de un multideck «por tramos, 2» se coloca y Vender ya ofrece `TR1 · TR2`). La tarifa de un tramo
+o un entrepaño es la de su clase por sede o, vacía, la de la cara ÷ partes. Con un tramo o un
+entrepaño vendido no cambian los tramos ni los entrepaños (409 `partes_vendidas`, y el panel lo
+frena antes). Los espacios internos del Editor 3D conviven: se avisan por parte, y en un mueble
+que se vende por partes no se marca uno nuevo como vendido. Ver *Vender por partes: tramos y
+entrepaños (P2, 2026-10-14)*.
+
+Antes, 2026-10-14, **vender por partes, paso 1: la nevera entera o por puertas**.
+En el panel del plano (2D y 3D) la nevera de puertas tiene «Cómo se vende: Entera · Entera o por
+puertas (N)»; elegida la segunda, Vender ofrece «Entera · PU1 · PU2…» y `NEV-03-PU2` es un espacio
+más (una fila de `spaces` con el código derivado, sin columnas nuevas): la planilla, el contrato
+suelto, los correos, el montaje, Supervisar, la consola y la auditoría lo conocen. **La nevera
+entera y sus puertas nunca en las mismas fechas; dos puertas distintas, sí** (`chocan`, los dos
+lados con los mismos casos), con un candado por mueble para que dos ventas a la vez no pasen las
+dos. Con una puerta vendida no cambia la cantidad de puertas ni deja de venderse por puertas
+(409 `partes_vendidas`), y un mueble no puede llamarse como una parte (409 `nombre_reservado`).
+La tarifa de una puerta es la de su clase por sede o, vacía, la de la nevera ÷ puertas. Un plano
+sin `partes.division` se vende y se ve exactamente como antes. Ver *Vender por partes: la nevera
+entera o por puertas (P1, 2026-10-14)*.
+
+Antes, 2026-10-14, revisión de la rama de las fichas propias (tres revisiones
+—regresión con Postgres 16, seguridad y mutación de las guardas— y el recorrido de la dueña.
+**Vender arrancaba con la tarifa equivocada** si las fichas propias llegaban tarde o no llegaban:
+ahora el valor acordado sigue a la tarifa mientras nadie lo toque y el store reintenta solo; un
+`modelo` que no es texto ya no deja la aplicación en blanco; **un nombre propio viejo de más de 80
+letras ya no traba la lista de sedes** (el servidor recorta en vez de rechazar); un número
+gigante es un 422 y no un 500; «la fuente no es una imagen» ya no se salta con `#`, `;`, `&` o
+`%`; y guardas para el cableado que once mutaciones pasaban en verde. Y **lo que sigue de los
+muebles**: vender por partes (la nevera entera o por puertas con `NEV-03-PU2`, con las 4 repisas
+por puerta de la ficha; el mural por tramos, la bahía de la caja y el forro de la columna),
+después el material de la cara —espera la respuesta de la dueña— y las formas de cobro. Ver
+*Fichas propias del cliente (2026-10-14)* y *Dónde retomar*).
+
+Antes, 2026-10-14, cierre (el **recorrido de la dueña en el navegador**: armar
+«Nevera Inducol 2 puertas» en el taller, colocarla desde la paleta del plano y del Editor 3D,
+darle a su familia un nombre propio y verlo en el plano, el 3D y Vender, venderla, retirar la
+ficha y ver que lo colocado sigue igual, y el trabajador sin poder crear fichas. Anduvo de punta
+a punta; se arreglaron dos detalles que sólo se ven mirando: el pie del panel del 3D redondeaba
+las medidas al decímetro y la lista del taller decía «todavía no armaste ninguna» con todas
+retiradas. Ver *Fichas propias: el recorrido en el navegador (2026-10-14)*).
+
+Antes, 2026-10-14, al final del día (el **nombre propio de cada familia de
+muebles**: cada supermercado le pone su nombre a cada familia —«mamut», «tope de góndola»,
+«exhibición especial»— en Configuración → «Cómo se llaman los muebles acá» (sólo
+administración: una fila por familia con el nombre de RECABRA y el de la tienda), y ese nombre
+sale en todas sus pantallas: la paleta y el panel del plano 2D y del Editor 3D, Vender (la
+lista, el visor y la lámina del proveedor), Supervisar, Estado por espacio, Montajes, Tarifas
+y el taller. La consola de la plataforma y los informes de asesoría siguen con el de RECABRA,
+para comparar supermercados. Sin nombre propio todo sale como antes, y nada se guarda en el
+plano. Ver *Cómo le dicen acá: el nombre propio de cada familia (2026-10-14)*).
+
+Antes, 2026-10-14, más tarde (las **fichas propias de cada supermercado, en
+pantalla**: el taller tiene la pestaña «Fichas», donde la dueña arma la ficha de un mueble suyo
+—familia, nombre, medidas en centímetros con el rango de su familia a la vista, puertas,
+entrepaños y módulo, tarifa y de dónde salió, sin foto— y lo ve girar con esa ficha mientras
+escribe; el formulario valida con las mismas reglas que el servidor, y además los entrepaños a
+25 cm, antes de mandar. Guardada, la ficha aparece en la paleta del plano 2D y del Editor 3D
+debajo de su familia, después de las de RECABRA (las retiradas no se ofrecen); colocarla estampa
+`cli:<clave>` como un modelo del catálogo, el panel la nombra, y `rateTypeOf` le da su tarifa
+con la misma regla que el servidor, comparada con casos compartidos. Ver *Fichas propias: la
+pantalla (2026-10-14)*).
+
+Antes, 2026-10-14, noche (las **fichas propias de cada supermercado, del lado
+del servidor**: una tabla nueva, `modelos_mueble`, en la base de cada uno, con la API
+`/api/muebles/modelos` —la lee cualquier sesión, la escribe administración— para que la dueña
+arme sus muebles sin pedirnos un cambio: familia, nombre, medidas, la geometría de su familia y
+de dónde salieron, sin foto. Viajan en el plano como `cli:<clave>`, se validan con las MISMAS
+reglas que los modelos del catálogo —que ahora viven en `fichas` de `muebles.json` y corren los
+mismos casos en el navegador y en el servidor—, retirar no borra ni mueve nada colocado, y su
+tarifa propia llega a la planilla y a la consola con una consulta por pedido. Falta la pantalla
+(el taller y las paletas): ver *Fichas propias: el servidor (2026-10-14)*).
+
+Antes, 2026-10-14, tarde (la revisión de la rama de los muebles de Colombia:
+**deshacer un «Entrepaños» o un «Módulo» ahora se guarda** —el plano repuesto manda `null`
+donde antes mandaba la clave ausente y el servidor rellenaba lo deshecho—; el panel cuenta los
+entrepaños en la misma unidad en que se escriben (el «auto (5)» de la góndola de 1,80 eran 4
+con producto y el techo); `PUT /layout` no le pasa la ficha de una góndola a una punta con su
+mismo `id`; el enlace de la mercaderista deja pasar la ficha sólo con su tipo; las centrales
+estimadas de 1,50 tienen los entrepaños de su nota; los ids de los modelos quedaron escritos en
+una lista que sólo admite sumar; y guardas sobre el código real que coloca, guarda y cobra. La
+estiba colocada desde un modelo se carga hasta el fondo y el exhibidor de cartón tiene su
+dibujo. La dueña confirmó que las marcas pagan la nevera entera o por puertas: es lo próximo.
+Ver *Muebles de Colombia (2026-10-13)* y, adentro, *La revisión de la rama (2026-10-14)*).
+
+Antes, 2026-10-14 (cotejo visual de los muebles de Colombia: cada modelo se
+miró en `/taller` contra su ficha, y el taller ahora dibuja el modelo con su ficha
+estampada y, al lado, el de siempre. Las neveras, el puesto de impulso, las estibas y la
+góndola de 2,00 coinciden con la ficha. Se arreglaron tres piezas del impulsador, que
+también dibuja el exhibidor de cartón: las bandejas se corrían hacia atrás y el cartel
+flotaba. Quedan abiertos un dibujo propio para el exhibidor de cartón, la torre de la
+estiba que no llega al fondo y las repisas de la nevera, que no son las 4 de la ficha. Ver
+*Cotejo visual de los muebles de Colombia (2026-10-14)*).
+
+Antes, 2026-10-13, noche (lo que se puede editar del mueble y lo que no se
+puede perder: la góndola y la punta tienen «Alto», «Entrepaños» y «Módulo» en el panel del
+plano 2D y en el del Editor 3D —el mismo componente—, y la punta se dibuja, vende y
+encuadra con ellos como la góndola. **Lo vendido no se mueve sin aviso**: con una cara con
+contrato vivo o firmado, arte pintado o espacios internos vendidos, cambiar esos campos
+dice qué se mueve («cambian las filas del arte de esta cara») y espera «Cambiar igual»; con
+espacios internos vendidos la cantidad de entrepaños no cambia hasta liberarlos. **Una
+pestaña vieja no borra lo nuevo**: `PUT /layout` le rellena al mueble la ficha que llega
+ausente y sólo un `null` la borra. El visor de Vender y el enlace de la mercaderista ven el
+mueble real. Ver *Lo que se puede editar y lo que no se puede perder (2026-10-13)*).
+
+Antes, 2026-10-13, tarde (muebles de Colombia: el catálogo tiene
+**modelos** —fichas de muebles de verdad con la URL de su fuente y cuánto confiar en
+ellas, sin una sola imagen—: góndolas central y de pared por alto y módulo, puntas,
+estiba completa, media y cuarta, exhibidor de cartón, neveras de 1 a 4 puertas y el
+puesto de impulso. Dos tipos nuevos, la **nevera de puertas** (`NEV`, se vende entera) y
+el **puesto de impulso** (`PIM`). Colocar un modelo estampa su ficha en el mueble y lo
+colocado no se vuelve a leer de ella; la media estiba, el cuarto y el exhibidor de cartón
+se cobran con su propia tarifa. La referencia del catálogo compara sólo los tipos que
+conoce. Ver *Muebles de Colombia: modelos con su fuente (2026-10-13)*).
+
+Antes, 2026-10-13 (el cobro de la suscripción: la operadora registra en la
+consola la suscripción, las cuentas de cobro y los pagos por transferencia —sin pasarela y
+sin emitir nada ante la DIAN—, y una escalera automática, apagada por defecto, avisa por
+correo y pasa a sólo lectura a los 30 días de vencida, nunca antes de 10 días después del
+aviso formal, y nunca suspende. La dueña del supermercado ve lo suyo en Configuración →
+Suscripción. Tres revisores la revisaron y lo que encontraron quedó arreglado. Ver *Cobro
+de la suscripción (2026-10-13)*).
+
+Antes, 2026-10-13 (un solo catálogo de muebles: cada tipo de mueble está
+escrito una vez, en `muebles.json`, con una copia idéntica para el servidor, y las tablas
+de siempre se calculan de ahí; un plano viejo da lo mismo que antes, comparado contra una
+referencia fija. Lo que el editor no conoce del mueble ya no se pierde al moverlo, y
+«¿tiene cara B?» tiene una sola respuesta, que ahora también consultan la planilla y el
+contrato suelto. Ver *Un solo catálogo de muebles (2026-10-13)*).
+
+Antes, 2026-10-12 (el diseño se ve desde Vender: cada fila del contrato
 trae un botón «3D» que abre la tienda ENCIMA de la ficha —la misma sala de «Presentar»,
 con las tres tomas y el producto del proveedor del contrato— sin perder nada de lo
 tecleado. Los muebles le llegan sin datos comerciales, el catálogo se pide por el nombre
@@ -90,6 +283,94 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
+### Lo que sigue de los muebles (2026-10-14)
+
+La meta de la dueña es que **cada supermercado arme sus muebles sin pedirnos un cambio**: el
+próximo cliente es uno como Galerías o Cañaveral, con muebles de allá, armado con datos de
+internet y sin fotos propias. Lo que ya está para eso: el catálogo único (*Un solo catálogo de
+muebles*), los modelos de Colombia con su fuente, la nevera de puertas y el puesto de impulso
+(*Muebles de Colombia (2026-10-13)*), y ahora **las fichas propias del cliente y el nombre
+propio de cada familia**, revisados y recorridos en el navegador (*Fichas propias del cliente
+(2026-10-14)*). Con eso un supermercado ya dibuja su tienda con sus muebles y sus palabras, y
+desde el 2026-10-14 **los vende como los vende él: enteros o por partes** —también los que arma
+con sus fichas propias—. Lo que sigue, en orden:
+
+1. ~~**Vender por partes**~~ **hecho (P1 a P5 y la revisión de la rama, 2026-10-14)**: ver
+   *Vender por partes (2026-10-14)*, que resume todo, y sus pasos. Lo que quedó para la dueña,
+   junto (cada paso lo dice en su sección):
+   - **la tarifa de las partes**: una propia por clase y por sede o, vacía, la de la cara ÷
+     partes (decisión 3 del plan; la alternativa —siempre la fracción— es borrar la fila de la
+     tarifa); una sola tarifa de tramo para la góndola, el multideck y vegetales;
+   - **cómo nacen los modelos de RECABRA**: las centrales y las puntas (hoy enteras), la caja
+     (¿con 2 bahías?), y si una nevera de UNA puerta se vende por puertas (hoy no);
+   - **la base es el `EN1` y se vende**; «mural refrigerado» es el multideck; de 1 a 4 bahías;
+   - **cómo arranca la venta de una nevera con puertas vendidas** (hoy tocarla pone «Entera» y
+     el rechazo; podría sumar la primera puerta libre, como la caja) y cómo cuenta la lista de
+     precios una cara parcial («+1 entran» y el color siguen contando por cara);
+   - los soportes cedidos a un operador (Marketmedios), que sacan de la venta columnas enteras;
+   - **las 4 repisas por puerta de la ficha** (hoy el dibujo pone 5 y el piso): cambia cómo se
+     ve lo ya vendido.
+2. **El material de la cara** (copete, cenefa, stopper) como venta aparte (PR 5 del plan). Es
+   lo PRÓXIMO, y **espera una respuesta de la dueña**: si el copete de una cara se puede vender
+   a otra marca que la de la cara. El plan recomienda que sí (es una pieza aparte, que Vender
+   sugiere junto con la cara y la planilla avisa si van a proveedores distintos); la
+   alternativa —siempre incluida en el contrato de la cara— impide vender la cenefa de un
+   pasillo que la tienda usa para su propio surtido. Con la respuesta, es la maquinaria de las
+   piezas (P3): una clase más (`CP`, `CN`, `ST` ya están reservados en el catálogo, sin clase).
+3. **Las formas de cobro**: hoy un contrato tiene un valor acordado por espacio para sus
+   fechas (sin prorrateo) y la referencia es una tarifa mensual por tipo, por sede y por clase
+   de parte. Falta cobrar **por semana, por día, por temporada, por m² y por paquetes** (varios
+   espacios a un precio). Antes de tocarlo: el m² ya se discutió y se descartó como ranking
+   (*Tarifa de referencia y rendimiento $/m²*: la industria mide anaquel en metros lineales y
+   frentes, y la huella de piso es casi cero en lo que se cuelga), y la temporada ya tiene sus
+   ventanas (*Temporadas comerciales*). Es una conversación con la dueña antes que código.
+
+De las fichas propias y los nombres, lo que queda: que la dueña haga el flujo ella misma con
+una ficha de verdad de Cañaveral (`/taller` sigue siendo sólo de administración: entra con su
+cuenta de dueña); el enlace de la mercaderista (`/?montar=…`, sin sesión) sigue con el nombre
+de RECABRA, porque no lee la configuración; y la tarifa propia de una ficha sólo puede ser una
+de las que su familia ya tiene (decisión del paso del servidor, a confirmar con ella).
+
+Quedó abierto, más chico, de lo hecho:
+
+- de qué lado van las manijas con 3 y 4 puertas (ninguna ficha lo dice);
+- el aviso de lo vendido vive en el navegador: un `PUT /layout` armado a mano podría cambiar
+  la geometría de una cara vendida sin preguntar (el servidor sólo cuida que no se pierda);
+- la confiabilidad es una sola por modelo: en las centrales de GMC las medidas son de ficha
+  y los entrepaños una estimación, y eso lo dice sólo la nota;
+- los entrepaños de la PUNTA por ficha (sus modelos traen sólo medidas), y si la paleta de
+  la góndola —doce modelos por familia— se lee mejor como una grilla alto × módulo;
+- la estiba y el exhibidor de cartón de los planos de ANTES (sin modelo) siguen con su
+  dibujo de siempre: la torre a cinco cajas de fondo y el impulsador. Cambiarlos es cambiar
+  cómo se ve lo ya vendido, y eso lo decide la dueña;
+- de vender por partes: en el visor, las puertas que no se venden quedan con las rejillas
+  vacías; la consola lista los contratos de las piezas pero no les da renglón en la tabla de
+  «Espacios» (no son caras); el Editor 3D no se recorrió en el navegador configurando partes
+  desde ahí; y, ajeno a
+  las partes, la planilla dice «Los avisos salieron agrupados» aunque el correo no esté
+  configurado.
+
+### Lo que sigue del cobro (2026-10-13)
+
+Lo hecho está en *Cobro de la suscripción (2026-10-13)*. Lo que falta, todo del lado de la
+dueña antes de tocar código:
+
+- **Antes de prender `COBRANZA_AUTOMATICA`**: que su abogado revise los borradores de
+  `docs/legal/borradores/` (política de datos con los datos de facturación, y términos con
+  la escalera), publicarlos (subir `VERSION_POLITICA`) y cargar
+  `COBRO_INSTRUCCIONES_TRANSFERENCIA` en Render.
+- **La pasarela**: se eligió conectarla después. La investigación recomienda Wompi (link
+  de pago por PSE por el neto, reenviable a tesorería) y ePayco si su banco es Davivienda.
+- **La factura electrónica**: depende de lo que diga su contador (persona natural con
+  cuenta de cobro, SIMPLE o SAS). Hoy el sistema sólo registra el número y el CUFE.
+- **Galerías**: quedó con suscripción manual, sólo para llevar sus cuentas; nada la mueve.
+  Falta que la dueña confirme si prefiere que no tenga suscripción.
+- **Revisar al activar el segundo cliente**: con dos clientes activos, `unico()`
+  (`clientes.py`) deja de devolver uno, y un token viejo sin el claim `cliente` deja de
+  resolverse. No es del cobro, pero aparece el día que entre Cañaveral.
+
+### Lo que quedó abierto el 2026-09-13
+
 Lo que quedó abierto al cerrar la sesión del 2026-09-13, en orden de lo que más
 conviene atacar primero. Nada de esto está empezado: son hilos, no trabajo a medias.
 
@@ -123,13 +404,14 @@ Tres cosas quedaron contestadas y conviene no volver a averiguarlas:
 
 ### 2. El 409 le pide al usuario algo que ya no puede hacer
 
-`backend/app/routers/spaces.py:297` rechaza un contrato sobre un mueble no
+`create_lease` (`backend/app/routers/spaces.py`) rechaza un contrato sobre un mueble no
 comercializable con: *«Cambiá su destino a "Comercializable" en el plano»*. Para una
 caja registradora o un mostrador de servicio eso es **imposible por diseño** — están en
 `NUNCA_ALQUILABLE` y el editor ni siquiera ofrece el botón. El mensaje tiene que
 distinguir los dos casos: «este mueble es operación de la tienda y nunca se alquila»
 contra «este mueble está marcado como no comercializable, cambialo en el plano».
-Defecto conocido, sin arreglar, chico.
+Defecto conocido, sin arreglar, chico: `motivo_para_no_vender` (`layout_lookup.py`) ya
+separa la cara B que no existe; falta separar ahí el tipo que nunca se alquila.
 
 ### 3. El fondo del robatope
 
@@ -225,8 +507,150 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
   se lo dice al proveedor (ver *Ver el diseño desde Vender*, la crítica).
 
 El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola doble usa
-sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B
-(helper `isDoubleGondola`).
+sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B.
+**Una parte agrega su sufijo al final, después de la cara: `SEDE-CODE[-B]-PU<n>`**
+(`NAVE-NEV-03-PU2`, `NAVE-GON-05-B-TR2`, `NAVE-PUN-02-EN1`), y una pieza, sin cara
+(`NAVE-CAJ-04-BI1`; el forro, sin número: `NAVE-COL-07-FO`). La relación entre la cara y sus
+partes se DEDUCE del código, sin columnas: `partirCodigo` (`utils/partes.ts`) y
+`partir_codigo` (`services/partes.py`) leen de derecha a izquierda —el último tramo es una
+parte si es el token de una clase que existe con su número; después, `-B` es la cara— y
+quien resuelve contra el plano prueba primero el texto tal cual, así que un mueble viejo que
+ya se llamara así sigue siendo ése. Los dos lados corren `frontend/scripts/casos/partes.json`.
+Los códigos existentes no cambian.
+
+**«¿Tiene cara B?» tiene UNA respuesta:** `carasDe` en `frontend/src/types/espacio.ts`
+(`isDoubleGondola` es `carasDe(f) === 2`; `types/fixtures.ts` reexporta las dos) y su
+espejo `caras_de` en `backend/app/services/layout_lookup.py`. Es la regla laxa: `gondola`
+con `gondolaType` `"double"` o AUSENTE, o el tipo legado `gondola_doble`, son dos caras;
+`"wall"` y todo lo demás, una. La usan Vender, la fusión, «Contrato sin mueble»,
+Supervisar, el guardarraíl de `PUT /layout`, la importación del plano, las métricas,
+`scripts/auditar_desfase.py` y las dos puertas que crean contratos: la planilla
+(`PlanoIndexado.resolver` no resuelve la `-B` de un mueble de una cara, y la fila dice
+«tiene una sola cara») y el contrato suelto (`motivo_para_no_vender`, 409). Hubo dos
+reglas —la fusión, la auditoría y el servidor exigían `"double"` escrito— y una góndola
+vieja sin el campo vendía su cara B sin que el plano la pintara ni el guardarraíl la
+cuidara; y hasta el 2026-10-13 la planilla vendía `PUN-01-B`, que ningún plano ofrece.
+Los dos lados corren los mismos casos (`frontend/scripts/casos/caras.json`:
+`probar-auditoria.mjs` y `tests/test_caras.py`), y `probar-auditoria.mjs` falla si aparece
+otra comparación con `"double"` —escrita como sea: `===`, `["double"].includes(…)`,
+`case`, `in (…)`— fuera de esas dos funciones, o una `carasDe`/`isDoubleGondola`/`caras_de`
+propia. Para DIBUJAR, los editores siguen tratando como doble todo lo que no es `"wall"`.
+
+**Lo que el editor no conoce del mueble se conserva.** Las conversiones entre el store y
+cada editor viven en `frontend/src/utils/convertirPlano.ts` (puro, lo prueba
+`probar-plano.mjs`). La vuelta al store parte del mueble guardado con ese `id` y le
+escribe encima lo que el editor sabe: `{ ...guardado, ...loQueSabe }`. Antes armaban el
+mueble desde cero con una lista fija y el 2D borraba `vista3D` y el montaje de la cara A
+al mover cualquier cosa. Un campo nuevo del mueble no tiene que sumarse a ninguna lista
+de los editores (sí a `sinDatosComerciales` si el visor de Vender lo necesita, y a
+`_solo_geometria` de `routers/montaje.py` si el mercaderista lo necesita: esas son listas de
+lo que se DEJA pasar, a propósito, y lo que podría llevar un objeto adentro —la ficha— pasa
+copiado clave por clave y con su tipo, nunca entero). Lo que el editor sabe MANDA, también cuando vale
+`undefined`, y `probar-plano.mjs` edita en cada editor todos los campos que la vuelta
+escribe: comparando sólo lo movido se pudo borrar `rentable` de la vuelta sin que nada
+fallara, y una punta habilitada de nuevo volvía «No comercializable» al guardar.
+
+**Cada tipo de mueble está escrito UNA vez: el catálogo de muebles**
+(`frontend/src/catalogo/muebles.json`, con una copia idéntica byte a byte para el servidor
+en `backend/app/catalogo/muebles.json`: la imagen de Docker lleva `backend/` y
+`frontend/dist`, no una carpeta compartida). **Se edita uno y se copia sobre el otro**;
+`tests/test_catalogo_muebles.py` y `probar-catalogo.mjs` fallan si difieren. Las tablas de
+siempre se CALCULAN de ahí y ningún componente ni módulo del servidor tiene una copia
+propia: las guardas cargan los módulos con un catálogo adulterado, de los dos lados, y
+cada tabla tiene que cambiar con él. **Las claves de tipo, los prefijos y las claves de
+tarifa no se cambian nunca** (están en los planos, en los códigos de espacio y en las
+tarifas de cada cliente); las medidas, el color y el rótulo sólo se usan al CREAR un
+mueble, salvo `rotuloEditor`, que el 2D estampa en `label` cada vez que abre el plano.
+**Un plano viejo da lo mismo que antes:** `frontend/scripts/casos/catalogo-antes.json` es
+una referencia FIJA y todo lo que cambie respecto de ella va escrito, con su porqué, en
+`CAMBIOS_INTENCIONALES`. Compara SÓLO los tipos y las tarifas que conoce: un tipo nuevo
+no se compara contra nada, lo valida el esquema. Qué dice cada tipo, quién lo lee y cómo
+se agrega uno: *Un solo catálogo de muebles (2026-10-13)*.
+
+**Un modelo se ESTAMPA, no se enlaza.** Los `modelos` del catálogo (fichas de muebles de
+verdad, con la URL de su fuente y su confiabilidad; nunca una imagen de terceros) se usan
+al COLOCAR: el mueble guarda sus medidas, su color, su `modelo` y su geometría
+(`entrepanos`, `modulo`, `partes`), y la vuelta de ningún editor la vuelve a escribir: sólo
+el panel, a propósito («Alto», «Entrepaños», «Módulo»; ver abajo). Cambiar una ficha
+no mueve lo ya colocado. Lo único que se busca por el id es la tarifa propia del modelo
+(`rateTypeOf` ↔ `tarifa_del_mueble`, que reciben el MUEBLE entero, nunca sólo su tipo), y
+por eso **el `id` y la `tarifa` de un modelo no se cambian nunca**, igual que las claves de
+los tipos: los ids que ya salieron están escritos en `frontend/scripts/casos/modelos-ids.json`
+con su tipo, variante y tarifa, y `probar-catalogo` y `test_modelos_de_muebles.py` fallan si
+uno desaparece o cambia, o si aparece uno sin anotar. Un mueble sin `modelo` es el modelo
+base de su tipo y da exactamente lo de antes. Ver *Muebles de Colombia (2026-10-13)*. **Las
+fichas propias de cada supermercado** (`cli:<clave>`, tabla `modelos_mueble`) siguen la misma
+regla: se estampan, la clave, la familia y la tarifa no cambian nunca (el `PUT` las rechaza),
+retirar es baja lógica y lo colocado no se mueve; y se validan con las mismas reglas que los
+modelos del catálogo (`fichas` en `muebles.json`). Ver *Fichas propias: el servidor (2026-10-14)*.
+**Cómo se vende también se estampa** (vender por partes, P4): la ficha dice la forma de
+dividir y las piezas (`partes.division`, `partes.bahias`, `partes.forro`), el mueble las
+recibe al colocarse y ninguno de los dos lados las vuelve a leer de la ficha para vender (el
+servidor ni siquiera las lee: `test_partes_fichas.py`). Un mueble colocado antes de que su
+ficha lo dijera se sigue vendiendo como se colocó; el panel le ofrece «Usar lo de la ficha»,
+que pasa por las mismas guardas que cualquier cambio de partes.
+En el navegador viven en `catalogo/propias.ts` (las lee `store/fichasPropias.ts` una vez por
+sesión y otra al guardar una, y si la lectura falla reintenta sola con espera creciente; nunca
+en `localStorage`, y una sesión de otro supermercado las olvida antes de leer las suyas), y
+`modeloPorId` las busca DESPUÉS del catálogo y sólo con el prefijo `cli:` (un `modelo` que no es
+texto no es un modelo: el servidor guarda el plano como llega). Como llegan después del primer
+dibujo, **todo `useMemo`/`useCallback` que pregunta la tarifa (`rateTypeOf`, directo o por una
+función del archivo) lleva `fichasPropias` en sus dependencias** (`useFichasPropias()`);
+`probar-catalogo` recorre `src` y falla si falta. Y por lo mismo **el valor acordado de Vender
+sigue a la tarifa de lista mientras nadie lo toque** (`valoresDeLista`, `utils/precioDeLista.ts`):
+escrito una sola vez, quedaba con la tarifa de antes de que llegaran las fichas. Ver *Fichas
+propias del cliente (2026-10-14)*.
+
+**El nombre propio de una familia es sólo lo que se lee.** Cada supermercado le pone su nombre
+a cada familia (`catalogLabels`, `layout_catalog_labels` en `app_config`, por la clave de la
+biblioteca del 2D) y sus pantallas lo dicen por `catalogo/nombresPropios.ts`: `conNombrePropio`
+para el nombre del mueble, `tipoDelMueble` para la columna «Tipo» (que reemplaza a
+`rateTypeLabel(rateTypeOf(f))`, que ninguna pantalla vuelve a escribir) y `nombreDeTarifa` para
+las filas de tarifa. **Nada de eso se guarda**: el `label` del mueble sigue siendo el rótulo de
+RECABRA, la fila de `spaces` se crea con él, ningún código ni tarifa cambia, y el servidor sólo
+lo guarda y lo devuelve (`test_nombres_propios.py` falla si otro módulo lo lee), **recortado y
+nunca rechazado** —80 letras sin los espacios de los costados, a lo sumo 100, claves de hasta 60
+(`nombres_propios_recortados`)—: viaja en el mismo `PUT /layout/settings` que la lista de sedes,
+y un nombre viejo rechazado dejaba al supermercado sin poder tocar sus sedes. **La consola y
+los informes de asesoría nunca lo usan**: comparan supermercados con el nombre de RECABRA
+(`probar-nombres.mjs` falla si una página de la plataforma llega a ese módulo o lee
+`catalogLabels`). El store no importa ese módulo (va de entrada y traería el catálogo).
+
+**Lo vendido no se mueve sin aviso.** El alto, los entrepaños y el módulo de una góndola o
+una punta deciden las filas del arte pintado, los entrepaños donde se para el producto y
+los módulos por los que se reparte. Con una cara vendida —contrato vivo o firmado para más
+adelante, arte pintado en la cara— o espacios internos vendidos, el panel no los cambia sin
+decir qué se mueve y sin un «Cambiar igual»; con espacios internos vendidos, la CANTIDAD de
+entrepaños no cambia hasta liberarlos. Una sola cuenta para los dos editores
+(`revisarCambioDeGeometria` en `utils/geometriaDelMueble.ts`), y el aviso no nombra a
+nadie. Ver *Lo que se puede editar y lo que no se puede perder*. **Con una puerta vendida**
+(contrato vivo o firmado) la nevera no cambia la cantidad de puertas ni deja de venderse
+por puertas —la «puerta 2» pasaría a ser otra hoja—: el panel «Cómo se vende» lo frena sin
+nombrar a nadie (`revisarCambioDePartes` en `utils/partesDelMueble.ts`) y el servidor
+también (409 `partes_vendidas`); con la nevera vendida ENTERA, cambiar las puertas avisa con
+«Cambiar igual». Lo mismo **con un tramo o un entrepaño vendido**: no cambian los tramos, ni
+la cantidad de entrepaños (que es la cantidad de partes: el «Entrepaños» del panel de
+geometría lo frena con `loVendidoDe(…, estado)`), ni la forma de dividir; el alto sí, con
+aviso. Estirar el mueble no frena: los tramos y las puertas se estiran parejo. Y **con una
+bahía de impulso vendida** no cambia la cantidad de bahías de la caja (parten la mesa parejo:
+la «bahía 1» quedaría en otro lugar; 409 `partes_vendidas`), y **con el forro vendido** la
+columna no se queda sin forro (409 `contratos_vivos`); el panel lo frena antes, y «Aplicar a
+todas las cajas de la sede» salta las que tienen una bahía vendida y lo dice.
+
+**Una pestaña vieja no borra lo nuevo.** La ficha del mueble (`CLAVES_DE_FICHA`: `modelo`,
+`partes`, `entrepanos`, `modulo`) son claves que un editor de antes no conoce. `PUT
+/layout/{sede}` le rellena al mueble que ya estaba (mismo `id` y mismo tipo de verdad) la que
+llega AUSENTE, y la borra sólo con un `null` explícito, que es como el navegador de hoy dice
+«ya no está» (`_con_la_ficha_de_antes`). Un mueble nuevo —u otro tipo con el mismo `id`— no
+hereda nada y un plano sin esas claves se guarda byte a byte igual. **Por eso el navegador
+de hoy nunca saca una de estas claves borrándola: la pone en `null`.** Lo hacen el panel al
+vaciar un campo (`conGeometria`) y el deshacer/rehacer del store (`conFichaQuitada` en
+`utils/guardadoDelPlano.ts`); un camino nuevo que quite la ficha tiene que hacer lo mismo, o
+el servidor la resucita. Una clave nueva de este tipo se suma a las DOS listas
+(`services/layout_lookup.py` y `utils/guardadoDelPlano.ts`; pytest las compara). **Adentro de
+`partes` vale lo mismo, clave por clave** (`puertas`, `division`): una pestaña de antes que no
+conoce `division` la manda ausente y el servidor se la deja; un `null` la borra; y el panel
+escribe `partes` ENTERA a partir de la que tiene (`conPartes`).
 
 **Lo que no está en el mapa comercial está LIBRE, y la fusión REEMPLAZA.** No hace falta
 pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rellena huecos
@@ -245,20 +669,64 @@ venta y dejaba su contrato vivo y sin nada que lo mostrara. Ahora el `PUT` conte
 vez de cancelar solo: cancelar es plata y un compromiso con un proveedor, no lo decide un
 guardado del plano. Se comprueba **sólo lo que ese guardado retira**, comparando contra el
 snapshot anterior — un plano que ya venía desfasado tiene que poder guardarse igual.
+Con la venta por partes, retirar incluye **dejar de vender por puertas o bajar la cantidad**
+con una puerta vendida (`contratos_vivos`, porque esa puerta deja de existir), y **mover** lo
+vendido: cambiar de 3 a 4 puertas con la PU2 vendida no la retira pero la cambia de lugar, y
+contesta 409 `partes_vendidas` (`partes_que_se_moverian`, por el `code` del mueble y la
+«firma» de sus partes). Y **un mueble nuevo no puede llamarse como una parte** (`NEV-PU2`,
+`GON-B`: 409 `nombre_reservado`, `nombres_reservados_nuevos`); un plano viejo con un nombre
+así se sigue guardando.
+
+**Entero o por partes, nunca las dos; y una sola forma de dividir.** Un mueble se divide por
+puertas, por tramos o por entrepaños, nunca por dos a la vez (`partes.division` es un solo
+valor; el panel y la ficha ofrecen las de su familia). Lo decide `chocan` (los dos lados, los
+mismos casos): el mismo espacio choca; la cara entera y una de sus divisiones, sí; dos
+divisiones de la misma clase, no (dos puertas conviven); de clases distintas en la misma cara,
+sí; una pieza sólo consigo misma (dos bahías de la misma caja conviven; la caja entera ni
+se vende). Lo aplican los CUATRO caminos que escriben contratos —la
+planilla y Vender (`bulk_leases`), el contrato suelto (`create_lease`) y la importación del
+plano (`importar_del_plano`)— con `contratos_que_chocan` y `frase_de_choque`, que no nombra al
+dueño de la otra parte ni su canon. Y como la puerta y la entera son dos filas de `spaces`
+distintas, cada camino toma **un candado por mueble** antes de la revisión con la que escribe
+(`services/candado.py`: `pg_advisory_xact_lock` ordenado por mueble; en SQLite no hace nada):
+sin él, dos ventas a la vez pasaban las dos (`tests/test_partes_concurrencia.py`, contra un
+Postgres descartable; y espías que exigen el candado ANTES de revisar en `confirmar`, el
+contrato suelto y la importación). **La regla compara CÓDIGOS, así que un mueble que se vende
+por partes se guarda con su código completo**: la planilla y Vender lo arman con
+`PlanoIndexado.resolver`, y el contrato suelto exige esa forma (`forma_canonica`, 409
+«Escribilo «NAVE-NEV-03-PU2»…») —aceptaba `NEV-03-PU2` sin la sede o con un espacio adelante,
+la compuerta lo resolvía igual y la nevera entera, escrita completa, no lo veía: entera a uno
+y por puertas a otro en las mismas fechas—. Y lo que ya estaba escrito de otra forma también
+cuenta: `contratos_que_chocan` (con `sede`), `partes_que_se_moverian` y
+`contratos_que_quedarian_sin_mueble` comparan sin mayúsculas ni espacios y con la forma corta
+de una fila de esa sede pasada a la completa.
 
 **No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
 caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
-tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`frontend/src/types/fixtures.ts` y
+tienda. Esos tres tipos están en `NUNCA_ALQUILABLE` —`alquilable: "nunca"` en el
+catálogo de muebles, que leen `frontend/src/types/fixtures.ts` y
 `backend/app/services/layout_lookup.py`, y hay pruebas de los dos lados que verifican
 que las dos listas digan lo mismo— y no tienen tarifa, no suman a la disponibilidad de
-la sede y no aceptan contrato.
+la sede y **nunca se venden enteros**: ni Vender, ni la planilla, ni el contrato suelto
+aceptan `CAJ-04` o `COL-07`. **La excepción son sus PIEZAS** (desde el paso 3 de vender
+por partes, 2026-10-14): la caja vende sus bahías de impulso una por una (`CAJ-04-BI1`) y
+la columna su forro (`COL-07-FO`), cada pieza con su contrato, **sólo si el plano las
+configura** (`partes.bahias`, `partes.forro`: en el panel «Cómo se vende» o desde la ficha
+propia). Una pieza se ofrece aunque el mueble no sea comercializable (`piezas_de` /
+`piezasDe` no preguntan la bandera ni el tipo), no choca con nada más que consigo misma, su
+tarifa es la de su clase sin respaldo y nunca cuenta en la ocupación —no es una cara—. Una
+caja sin `partes.bahias` (todas las de los planos de antes) no ofrece nada, como siempre. El
+mostrador de servicio al cliente no tiene piezas. `NUNCA_ALQUILABLE` no cambió.
 
 La regla pregunta **primero por el tipo y después por la bandera `rentable`**, y ese
 orden es lo que la hace funcionar: la bandera se estampa al CREAR el mueble, así que un
 plano guardado antes de que existiera no la trae, y `rentable` ausente significa
 comercializable —tiene que significarlo, o esos planos se vaciarían—. Mirando sólo la
 bandera, todas las cajas de los planos viejos seguían aceptando contratos. Mirando el
-tipo primero, quedan bien sin migrar una sola fila.
+tipo primero, quedan bien sin migrar una sola fila. El auditor de consola
+(`scripts/auditar_desfase.py`) pregunta lo mismo, con `es_comercializable`, desde el
+2026-10-13: mirando sólo la bandera contaba como ofrecida una caja de un plano viejo, y
+su contrato no salía en el script aunque la pantalla lo diera por «Contrato sin mueble».
 
 La `metro` (zona libre) es distinta: nace no comercializable pero **se puede habilitar a
 mano**, porque un metro de piso sí se le alquila a una marca para su stand.
@@ -266,7 +734,8 @@ mano**, porque un metro de piso sí se le alquila a una marca para su stand.
 **Dentro del plano el código es corto; afuera lleva la sede.** `PUN-01` es nomenclatura
 de sede y se repite en las tres tiendas. Todo lo que salga del layout — la fila en
 `spaces`, el enlace del correo, el reporte de montaje — usa el código completo, que arma
-`fullSpaceCode(sede, code)` en `frontend/src/types/fixtures.ts`. Indexar por el código
+`fullSpaceCode(sede, code)` en `frontend/src/types/espacio.ts` (lo reexporta
+`types/fixtures.ts`). Indexar por el código
 corto es un bug silencioso: parece funcionar con una sola sede y con dos empieza a
 mezclar tiendas.
 
@@ -357,6 +826,23 @@ rechaza el cliente cuya base es la de `DATABASE_URL` —que además es el regist
 todos—. Y **borra membresías, invitaciones y estado de cuenta de ese slug**: no es
 limpieza, es seguridad — un cliente nuevo que tome el mismo slug heredaría miembros,
 invitaciones pendientes y una suspensión ajena. Ver *El ciclo de vida de un cliente*.
+Lo mismo con la cobranza (C1): se va su suscripción; sus cuentas de cobro y pagos
+se quedan de constancia, colgados de un id de suscripción que no se reutiliza, así
+que nadie hereda una deuda ajena (ver *Cobro de la suscripción*).
+
+**La cobranza automática sólo pone sólo lectura, sólo a quien tiene suscripción
+automática, nunca sin aviso y nunca encima de una persona.** La escalera
+(`COBRANZA_AUTOMATICA`, apagada por defecto: sólo ensaya) nunca suspende —eso es del
+PATCH de la operadora—, nunca toca a un cliente sin suscripción o con suscripción
+manual, nunca a Galerías (ni la escalera ni el «levantar» de un pago le mueven el
+estado), nunca cambia un estado que no es «activo» y que puso una persona, y
+**nunca pasa a sólo lectura sin que el aviso formal por correo haya salido diez días
+antes** (sin correo entregado, la cuenta se queda en gracia). Sólo lectura es a los
+30 días de vencida o más, nunca menos (el PUT no acepta menos). Sus motivos no llevan
+montos, y la franja y la pantalla de bloqueo no muestran ni montos ni el motivo
+(texto libre de la operadora): eso está en «Ver suscripción», sólo para la dueña.
+Todo cambio del interruptor pasa por `cobranza.mover_estado`. Ver *Cobro de la
+suscripción (2026-10-13)*.
 
 **Toda tabla nueva se clasifica: de negocio o de registro.** `services/traspaso.py`
 tiene las dos listas (`TABLAS_DEL_CLIENTE`, `TABLAS_DEL_REGISTRO`). Pasar un cliente a
@@ -367,8 +853,10 @@ niegue a correr, y `tests/test_traspaso.py` falla hasta que alguien decide de qu
 lado está. La copia de seguridad sale de la misma lista: una tabla de negocio nueva
 entra sola a la copia, y dejarla afuera es una decisión escrita
 (`TABLAS_QUE_NO_SALEN` en `services/copia.py`). La última que entró así es
-`supplier_asset_specs` (la ficha del arte: forma y medidas del envase), de negocio, sin
-archivos propios: viaja en el traspaso y en la copia con su arte.
+`modelos_mueble` (las fichas propias de los muebles de cada supermercado, 2026-10-14), de
+negocio y sin archivos —una ficha no lleva foto—, con clave primaria entera: la copia arma las
+rutas de los archivos con la clave primaria, y la clave de texto de la ficha nunca llega a una
+ruta del ZIP. Antes, `supplier_asset_specs` (la ficha del arte).
 
 **La fecha del negocio es la de Colombia.** Render corre en UTC, cinco horas
 adelante: preguntando `date.today()`, desde las 7 p. m. el servidor vivía en el día
@@ -573,7 +1061,11 @@ avisa sin cortar; `solo_lectura` deja GET y corta mutaciones de negocio con
 escrituras internas de un GET permitido, como `expire_leases()`, no se
 cortan); `suspendido` corta todo salvo el login del owner, que es el ÚNICO que
 ve el `motivo` escrito por el operador — su gente ve el estado, nunca la deuda.
-Los datos jamás se borran por estado.
+(Desde la revisión de C2 la dueña lo lee en «Ver suscripción»: la franja y la
+pantalla de bloqueo dicen un texto fijo, porque se ven en Vender y el motivo de la
+operadora es texto libre.)
+Los datos jamás se borran por estado. Desde C2, ver qué se debe y el estado en vivo tampoco se
+cortan (`_EXENTOS_PARA_PONERSE_AL_DIA`, ver *La escalera de cobranza*).
 
 **Enmendado en Fase 14**: el 402 sale rotulado con la cabecera
 `X-Estado-Cuenta` (`suspendido` | `solo_lectura`), expuesta en CORS. Es lo que
@@ -693,9 +1185,11 @@ transparencia.
   intactos. Reactivar con un nombre que ya usa otro activo da 409.
 - **Borrar** (`POST /clientes/{slug}/borrar`, `{confirmacion: "<slug>"}`): ver la
   regla dura. Borra la base y, del registro, la fila del cliente, sus membresías,
-  invitaciones, estado de cuenta, fundaciones y fotos mensuales propias. Quedan las
-  cuentas de las personas, sus consentimientos, las solicitudes de supresión
-  (constancia legal), la bitácora y el consolidado mensual.
+  invitaciones, estado de cuenta, fundaciones, fotos mensuales propias, su
+  suscripción y su historial de estados sin suscripción. Quedan las cuentas de las
+  personas, sus consentimientos, las solicitudes de supresión (constancia legal),
+  la bitácora, el consolidado mensual y sus cuentas de cobro y pagos (constancia
+  contable, ver *Cobro de la suscripción*).
 - **`GET /clientes` dice `base_principal`**, para que la consola no ofrezca borrar
   el cliente de la instalación original.
 - **`unico()` ahora exige que ese único cliente sea el de siempre.** Resuelve las
@@ -786,6 +1280,431 @@ que abrían —`POST /api/auth/login`— está apagada salvo `LOGIN_LEGADO=1` (v
 *Identidad*, punto «Legado»). Y desde el 2026-10-02 ni eso: sin `LOGIN_LEGADO` no
 se las pone.
 
+### Cobro de la suscripción (2026-10-13)
+
+Cómo le cobra RECABRA a cada supermercado, para quien llega sin contexto. El detalle
+de cada pieza está en las dos secciones que siguen —*a mano en la consola (C1)* y *La
+escalera de cobranza (C2)*—; acá va el mapa, lo que cambió la revisión de las dos y
+lo que falta.
+
+**Lo que decidió la dueña, y manda sobre cualquier plan:**
+
+- **Sin pasarela por ahora.** Nada de Wompi, enlaces de pago, webhooks ni datos de
+  tarjeta: el supermercado paga por transferencia y la operadora registra el pago en
+  la consola. La landing sigue siendo cierta («no se usa pasarela ni se piden datos de
+  tarjeta»).
+- **Sin DIAN.** El sistema registra «facturas o cuentas de cobro» emitidas FUERA de
+  RECABRA: número y, si es factura electrónica, CUFE. El régimen lo ve ella con su
+  contador.
+- **Si no paga: avisos por correo y sólo lectura a los 30 días de vencida**, nunca
+  antes de 10 días después de que salió el aviso formal. **Nunca suspensión
+  automática**: suspender lo decide la operadora con el PATCH de siempre.
+- **Galerías, y todo cliente sin suscripción, exento**: la automatización jamás lo
+  toca.
+
+**Las tablas.** Cinco, nuevas, de la base registro (`app/models/cobro.py`), en
+`TABLAS_DEL_REGISTRO`, creadas por `create_all()` sin migración. Ninguna columna nueva
+en tablas viejas (tampoco en `estados_cliente`). Plata en pesos enteros `BigInteger`;
+todo cuelga de `suscripcion_id`, que no se reutiliza (`sqlite_autoincrement` en
+SQLite, la secuencia en Postgres), así que quien funda de nuevo un slug borrado no
+hereda nada.
+
+| Tabla | Qué guarda |
+|---|---|
+| `suscripciones` | Una por cliente: modo (`manual` · `automatico`), valor pactado por supermercado o por sede, plazo, `dia_solo_lectura` (30 o más), prórroga, referencia del contrato o de los términos aceptados (obligatoria para automático), datos de facturación y retenciones esperadas. Sin fila = exento. Se borra con el cliente. |
+| `facturas_cobro` | Cada cuenta de cobro registrada: período (un mes se cobra una sola vez), número único para siempre, CUFE opcional, vencimiento, total, retenciones estimadas, neto, estado, disputa y copia del nombre y el NIT. Se conserva al borrar el cliente (constancia contable). |
+| `pagos_cobro` | Cada pago contra UNA cuenta de cobro: recibido, retenciones, certificado, referencia bancaria (no única: una transferencia puede pagar varias) y quién lo registró. Se conserva. |
+| `cambios_estado_cuenta` | El historial del interruptor (`estados_cliente` guarda sólo el último), con quién lo hizo: un correo o `sistema:cobranza`. |
+| `avisos_cobro` | Un correo de la escalera por (cuenta de cobro, hito), una sola vez. La fila del aviso formal es la constancia de la que cuelga el corte. |
+
+**Quién ve qué.**
+
+| Quién | Qué ve | Dónde |
+|---|---|---|
+| La operadora (`OPERADOR_EMAILS`) | La cartera de todos: plata, cuentas de cobro, pagos, quién registró qué, el estado y el que correspondería | Consola → *Lo operativo* → cajón «Cobros» (`/api/plataforma/cobros` y compañía) |
+| La dueña del supermercado (membresía `owner`) | Lo suyo: estado con motivo, lo pactado, la próxima cuenta de cobro con total, retenciones y neto, desde cuándo pasaría a sólo lectura, el historial de un año y los datos para transferir (sólo si tiene suscripción) | Configuración → Suscripción, y «Ver suscripción» en la pantalla de bloqueo (`/api/clientes/mi-suscripcion`) · los correos |
+| El correo de facturación | Los correos con montos, en un envío propio (no ve el correo de las dueñas). Si es el de alguien de su gente, no se le manda | Correo |
+| Su gente (admin no dueña, worker, mercaderista) | El estado, sin motivo y sin un solo monto | La franja y la pantalla de bloqueo (`/api/auth/estado-cuenta`) |
+| Cualquiera delante de la pantalla (Vender) | Un texto fijo por estado: ni montos ni el motivo | La franja y la pantalla de bloqueo |
+| El cliente, en su reporte de transparencia | Que la operadora miró la cartera, registró su suscripción, una cuenta de cobro, un pago, una anulación o una disputa —sin montos—, y sólo desde que ESE cliente se fundó | `/api/clientes/mi-reporte-plataforma` |
+
+**La escalera** (`services/cobranza_automatica.py`; sólo suscripciones automáticas de
+clientes activos que no son la base principal; al arrancar, cada 12 horas y, con el
+interruptor prendido, apenas la operadora registra un pago, anula, pone en disputa o
+guarda la suscripción de ese cliente):
+
+| Días desde el vencimiento | Estado | Correo (a la dueña y a facturación) |
+|---|---|---|
+| −5 a 0 (el día que vence, todavía a tiempo; hora de Colombia) | activo | recordatorio |
+| 1 | gracia | «está vencida» |
+| 8 | gracia | «lleva N días vencida» |
+| 20 —diez antes del corte— o apenas se pueda si ya pasó | gracia | **aviso formal**: «desde el … pasa a sólo lectura» |
+| 30, y al menos 10 después de que salió el aviso formal | sólo lectura | «la cuenta está en sólo lectura» (una vez por corte) |
+| al ponerse al día | activo (sólo lo que puso el sistema) | constancia del pago |
+
+Nunca suspendido. Nunca pisa un estado que no es «activo» y que puso una persona (ni
+para arriba ni para abajo). Con prórroga vigente no pasa de gracia; una cuenta de
+cobro en disputa no cuenta. Si el correo no sale —SMTP caído, nadie a quién
+escribir—, la cuenta se queda en gracia y la línea del log lo dice («sin aviso formal
+entregado»). Los motivos que escribe no llevan montos.
+
+**El interruptor `COBRANZA_AUTOMATICA`**, en `render.yaml` con `sync: false`.
+**Apagado por defecto**: vacío, `0`, `false`, `no`, `off` o cualquier otra cosa → cada
+pasada sólo ENSAYA (calcula con el mismo código, no escribe un estado ni manda un
+correo) y deja una línea WARNING en el log con lo que haría. Prendido sólo con `1`,
+`true`, `si`/`sí` u `on`. Para prenderlo:
+
+1. Cargar `COBRO_INSTRUCCIONES_TRANSFERENCIA` (abajo) y revisar que el correo saliente
+   ande con el botón de prueba (ver *Configurar el envío* y *El botón de prueba ahora
+   sirve para probar*): sin correo no hay aviso formal, y sin aviso no hay corte.
+2. Mirar unos días la línea «Cobranza automática, ENSAYO …» del log de Render, y
+   «Correr cobranza (ensayo)» de la consola con las fechas que importen.
+3. Publicar la política y los términos revisados por el abogado (borradores en
+   `docs/legal/borradores/`) y tener, para cada suscripción automática, la referencia
+   del contrato firmado o de los términos aceptados (`contrato_ref`).
+4. En Render → el servicio → *Environment*: `COBRANZA_AUTOMATICA=1`. Render redespliega
+   y la pasada del arranque ya aplica.
+
+Para apagarlo, borrar la variable o ponerla en `0`: la pasada siguiente vuelve a
+ensayar. Lo que el sistema ya había puesto queda como está: se cambia con el PATCH, o
+se levanta al registrar un pago que deja al día con la casilla «levantar» marcada.
+
+**`COBRO_INSTRUCCIONES_TRANSFERENCIA`**, también con `sync: false`: el texto con los
+datos para transferir (banco, tipo y número de cuenta, titular, NIT), hasta 2.000
+caracteres. Nunca va en el repo. La ven la dueña de un supermercado CON suscripción
+(Configuración → Suscripción) y los correos de cobranza; sin la variable, dicen que se
+comuniquen con RECABRA.
+
+**Galerías** (el cliente de la base principal) es exenta. Nunca automática (409). Puede
+tener una suscripción manual sólo para que sus cuentas de cobro se vean en la cartera
+—Galerías paga hoy por cuenta de cobro—, pero ningún camino del sistema le mueve el
+estado: ni la escalera ni el «levantar» de un pago (`razon: "exento"`), y la cartera no
+le calcula «correspondería». **Por confirmar con la dueña**: si la quiere en la cartera
+con suscripción manual o sin fila.
+
+**La revisión (2026-10-13).** Tres revisores sobre C1 y C2 —seguridad y privacidad;
+la escalera y la plata; cobertura con mutaciones—. Lo que encontraron y quedó
+arreglado, con su prueba en `tests/test_cobranza_revision.py` (vista fallar contra el
+código de antes, o contra la mutación que el revisor dejó viva):
+
+- **Sólo lectura sin aviso** (alta): una deuda vieja al prender el interruptor, una
+  cuenta de cobro cargada tarde, el servicio dormido o el correo caído pasaban derecho a
+  sólo lectura sin un solo aviso. Ahora el corte exige el aviso formal ENTREGADO (su fila
+  en `avisos_cobro`) diez días antes, como mínimo; el cálculo vive en
+  `cobranza.estado_objetivo` y `mover_estado` lo lee en la misma transacción, así que el
+  ensayo dice lo mismo (para una fecha futura supone que el aviso sale el día que le
+  toca). Para una suscripción manual, «correspondería» sigue siendo la regla sin aviso:
+  es una indicación para la operadora.
+- **Retenciones con decimales ×10** (alta): el formulario leía «3.5» como 35. Pesos y
+  porcentajes se leen distinto (`formato.ts`), y la vista previa de una cuenta de cobro
+  sin subtotal cuenta los meses del período, como el backend.
+- **Un abono con «levantar»** bajaba la suspensión de una persona a un sólo lectura del
+  sistema: ahora «levantar» sólo levanta si el pago deja al día (`no_queda_al_dia`).
+- **El correo tras un abono** pedía el neto entero: ahora dice lo abonado y lo que falta.
+- **Anular, disputar o prorrogar** no volvían a mirar al cliente hasta la pasada de las
+  12 horas: con el interruptor prendido, la escalera de ese cliente corre enseguida.
+- **Plata en `Integer`**: en Postgres reventaba con 2.400 millones. Ahora `BigInteger`, y
+  lo calculado tiene el mismo tope (422) que lo escrito.
+- **Períodos superpuestos** se cobraban dos veces: un mes se cobra una sola vez (409), y
+  «2026-11..2026-11» se guarda «2026-11».
+- **Datos bancarios a cualquiera**: el alta es self-service, y la API los daba a toda
+  dueña aunque no tuviera suscripción. Ahora sólo con suscripción.
+- **La bitácora de cobros de un cliente borrado** le llegaba a quien fundara el mismo
+  slug, y una acción posterior sobre una factura huérfana se le atribuía. Ahora el reporte
+  sólo cuenta las líneas de cobro posteriores a la fundación, y la factura huérfana se
+  anota `#suscripcion-<id>`.
+- **El motivo libre de la operadora** salía en la franja y en el bloqueo, delante de
+  proveedores: ahora un texto fijo, el motivo detrás de «Ver suscripción», y la consola
+  avisa al escribirlo.
+- **Correos**: uno por destinatario, y el de facturación que es de su gente no recibe
+  montos. Con la cuenta ya en sólo lectura, ningún correo anuncia el corte (dicen que ya
+  está), y el «está en sólo lectura» sale una vez por corte.
+- **Sólo lectura a 1 día**: `dia_solo_lectura` aceptaba de 1 a 365. Ahora de 30 a 365.
+- **Galerías** se podía mover con un pago con «levantar»: ya no (ver arriba).
+- **La próxima cuenta de cobro de la dueña** era la más vieja aunque estuviera en
+  disputa: ahora la que cuenta para el atraso.
+- **Aplicar la escalera con otra fecha**: `correr()` aceptaba aplicar con el reloj
+  atrasado. Ahora sólo con la de hoy, en el servicio y en la consola.
+- **La consola pedía la cartera** al abrirse y tras cada PATCH, y cada pedido anota
+  «cobros» en el reporte de TODOS los clientes: ahora al abrir el cajón, y el PATCH la
+  actualiza en memoria. El reporte nombra cada acción (antes, «pago_manual» crudo).
+- **Textos que C2 había vuelto falsos** en la consola («nada de acá corta», «todavía
+  no»): ahora dicen lo que pasa según el interruptor.
+- **Pruebas que faltaban** (mutaciones que sobrevivían): el interruptor con `0`/`off`,
+  la constancia de pago para pagos viejos, el orden de los hitos, la frontera de las
+  exenciones probada en `_aplicar_estado`, y en pantalla: «Correr cobranza» manda
+  `ensayo: 1`, `duena` sale del servidor, el reloj llama a `revisar()`, y
+  `MiSuscripcion` sólo se monta en el bloqueo y en Configuración. La prueba de dos hilos
+  de la escalera se saltea fuera de SQLite: en Postgres el `FOR UPDATE` serializa antes
+  de la barrera, que es justo lo que protege.
+
+Verificado además contra un **Postgres 16** descartable: las tres suites de cobranza,
+74 pasan y 1 se saltea (la de dos hilos).
+
+**Lo que falta:**
+
+- **Pasarela**: la recomendada es **Wompi** (Plan Avanzado Agregador; enlace de pago por
+  el NETO de retenciones, PSE o Botón Bancolombia, webhook firmado), pero **la decisión
+  es de la dueña y está pendiente**. Nada integrado; si se integra, la landing deja de
+  ser cierta y hay que cambiarla en el mismo PR.
+- **Factura electrónica**: si RECABRA factura electrónicamente, y en qué régimen (SIMPLE,
+  SAS, persona natural), lo ve la dueña con su contador. Hoy sólo se registran número y
+  CUFE de lo que se emite afuera.
+- **Política de datos y términos del servicio**: borradores para el abogado en
+  `docs/legal/borradores/` (`politica-datos-cobro.md`, `terminos-servicio.md`). La
+  política publicada y `VERSION_POLITICA` NO se tocaron: publicarla es una versión
+  nueva y dispara el re-consentimiento. Va antes de prender el interruptor.
+- Anular un pago mal cargado (hoy no hay vuelta atrás desde la consola).
+- Pasar una suscripción de automática a manual no levanta lo que había puesto el
+  sistema: se baja con el PATCH.
+- Las líneas de ciclo de vida (archivo, borrado, renombre) de un slug borrado todavía
+  le llegan al reporte de quien lo funda de nuevo: es la deuda de antes de C1; las de
+  cobro ya no.
+- `services/traspaso.py` (sin ruta desde 2026-10-02) no mueve la suscripción.
+
+### Cobro de la suscripción, a mano en la consola (C1, 2026-10-13)
+
+Lo que RECABRA le cobra a cada supermercado, registrado por la operadora en la
+consola (*Lo operativo → Cobros*). **No corta el servicio a nadie**: es la base
+sobre la que después corre la escalera automática (C2).
+
+**Lo que decidió la dueña, y manda sobre el plan de la pasarela:**
+
+- **Sin pasarela por ahora.** Ni Wompi, ni enlaces de pago, ni webhooks. La
+  landing sigue siendo cierta: transferencia contra cuenta de cobro, sin datos de
+  tarjeta.
+- **Sin DIAN.** El sistema registra «facturas o cuentas de cobro» genéricas
+  —número, CUFE si la factura es electrónica— que se emitieron FUERA de RECABRA.
+  El régimen lo ve ella con su contador.
+- **Si no paga: avisos y sólo lectura a los 30 días de vencida la factura**
+  (C2). **Nunca suspensión automática**: suspender lo decide ella con el PATCH de
+  siempre.
+- **Galerías, y todo cliente sin suscripción, queda exento**: la cobranza jamás
+  lo toca.
+
+**Cuatro tablas nuevas del registro** (`app/models/cobro.py`, en
+`TABLAS_DEL_REGISTRO`; ninguna columna nueva en tablas viejas):
+
+- `suscripciones` — una por cliente: modo `manual` | `automatico`, valor pactado
+  en pesos enteros, unidad (`supermercado_mes` | `sede_mes`) y cantidad,
+  periodicidad, plazo de pago, `dia_solo_lectura` (30 o más), prórroga, `contrato_ref`,
+  datos de facturación y los porcentajes de retención esperados. **Sin fila =
+  exento**, igual que sin fila de estado = activo. El precio va acá: no hay
+  catálogo de planes.
+- `facturas_cobro` — período, número (único para siempre, también el de una
+  anulada), CUFE opcional, emisión, vencimiento, subtotal, IVA, total,
+  retenciones estimadas, neto esperado, estado (`borrador` | `emitida` |
+  `pagada` | `anulada`), marca de disputa, y una copia del nombre y el NIT al
+  emitir. Una sola **viva** por período y suscripción: el índice único es
+  parcial y deja afuera a las anuladas, porque anular la que salió mal y emitir
+  la corregida para el mismo mes es lo normal. Desde la revisión, además, ningún
+  mes lo cubren dos vivas (409): antes «2026-11» y «2026-11..2026-12» entraban las
+  dos.
+- `pagos_cobro` — contra UNA factura: medio (`transferencia` | `otro`), recibido,
+  retefuente/reteICA/reteIVA, certificado recibido sí/no, referencia bancaria
+  (obligatoria y **no única**: una transferencia que paga dos cuentas de cobro se
+  registra en cada una con la misma referencia), fecha y quién lo registró.
+- `cambios_estado_cuenta` — el historial del interruptor: `estados_cliente`
+  guarda sólo el último cambio.
+
+**Todo cuelga de `suscripcion_id`, no del slug**, y ese id no se reutiliza nunca
+(`sqlite_autoincrement` en SQLite —sin él la fila borrada devolvía su id—, la
+secuencia en Postgres). Borrar un cliente borra su suscripción y su historial de
+estados SIN suscripción; las facturas, los pagos y el historial atado a la
+suscripción se conservan como constancia contable, y quien funde el mismo slug
+arranca exento y sin deuda.
+
+**Cuándo una factura está pagada**: lo recibido más las retenciones de los pagos
+aprobados cubre el total, con mil pesos de tolerancia por redondeo. Las
+retenciones cuentan aunque el certificado no haya llegado. **«Vencida»** no es un
+estado guardado: emitida, impaga y con `vence_el < hoy` (Colombia) — el día del
+vencimiento todavía está a tiempo. Una factura en disputa no cuenta para el
+atraso.
+
+**Un solo camino para el interruptor: `services/cobranza.mover_estado`.** El
+PATCH de la consola pasó a llamarlo y contesta lo mismo de siempre; además deja
+la fila en `cambios_estado_cuenta`. Sus reglas para una máquina (actor que
+empieza con `sistema:`): **nunca empeora un estado puesto por una persona** (sólo
+uno sin fila, «activo», o puesto por otra máquina); mejora uno puesto por una
+persona sólo si ella lo pidió; no reescribe un estado igual. Con
+`EL_QUE_CORRESPONDE` calcula el estado DENTRO de la misma transacción que lo
+escribe (suscripción y estado `FOR UPDATE` en Postgres). `estado_objetivo` es
+pura: activo · gracia desde el día siguiente al vencimiento · sólo lectura a los
+`dia_solo_lectura` días —para una suscripción automática, además, no antes de 10
+días después de que salió el aviso formal (revisión de C2)— · no pasa de gracia con
+prórroga vigente · **nunca suspendido**. Galerías nunca se mueve por acá. Se muestra («correspondería») y, desde C2, la escalera lo aplica a
+las suscripciones automáticas (ver la sección siguiente). Desde C2 también
+reintenta una vez si dos caminos crean la PRIMERA fila de estado a la vez (sin
+fila, `FOR UPDATE` no tiene qué bloquear, tampoco en Postgres), y tiene modo
+`ensayo`: decide igual y no escribe.
+
+**Registrar un pago puede LEVANTAR el estado**, y sólo eso, sólo si la operadora
+marca «Si con este pago queda al día, levantar el estado de cuenta» (apagada por
+defecto) y el pago deja al día: vuelve a activo, nunca sube, y lo firma
+`sistema:cobranza` (el correo de ella queda en el pago). Un abono que no deja al
+día no toca nada (`no_queda_al_dia`): antes bajaba a «lo que corresponde», y una
+suspensión puesta a mano se volvía un sólo lectura del sistema (revisión de C2). Así la escalera de
+C2 reconoce ese estado como suyo. **Los motivos que escribe el sistema no llevan
+montos**: le llegan a la dueña del supermercado y la franja se ve en Vender,
+delante de los proveedores.
+
+**Endpoints** (`/api/plataforma`, sólo operadora, todos al registro):
+`GET /cobros` (la cartera: modo, valor, próxima a pagar, atraso, estado actual y
+el que correspondería, último pago, facturas; exentos sin deuda),
+`PUT /clientes/{slug}/suscripcion` (automático exige `contrato_ref` → 422;
+`dia_solo_lectura` menor que 30 → 422; el cliente de la base principal nunca es
+automático → 409),
+`POST /clientes/{slug}/facturas` (sin suscripción → 409),
+`POST /facturas/{id}/pagos`, `POST /facturas/{id}/anular` (con pagos → 409) y
+`POST /facturas/{id}/disputa`, con motivo. Bitácora del registro con códigos
+`cobros` (alcanza a todos, como `clientes`), `suscripcion`, `factura`,
+`pago_manual`, `anulacion` y `disputa` (`"<slug>:<YYYY-MM>"`), cada uno con su
+rama en `plataforma_reporte._accesos_del_cliente`: el cliente las ve en su
+reporte de transparencia, sin montos, y sólo las posteriores a su fundación (una
+acción sobre la factura de un cliente borrado se anota `#suscripcion-<id>`).
+
+**Pantalla**: cajón «Cobros» (`components/plataforma/cartera-cobros.tsx`) con la
+cartera y los formularios —suscripción, emitir, registrar pago con retenciones y
+referencia, anular, disputa— y columna «Modo» en la tabla de estados. Plata y
+facturas, sólo para la operadora: `probar-plataforma.mjs` (1d) falla si un
+archivo fuera de la consola nombra la API de cobros, y si la casilla de levantar
+deja de arrancar apagada. Recorrido en navegador sobre una base sembrada: cargar
+suscripción, emitir una vencida, sólo lectura a mano, pago con retenciones y
+«levantar» → activo firmado `sistema:cobranza`, sin errores de la app ni de la API.
+
+Pruebas: `tests/test_cobranza_consola.py` (23; cada una rota a propósito una vez
+y vista fallar).
+
+**Pendiente**: anular un pago mal cargado (hoy no hay vuelta atrás desde la
+consola); `services/traspaso.py` (sin ruta desde 2026-10-02) no mueve la
+suscripción del origen al principal. La escalera, los avisos y la pantalla de la
+dueña llegaron en C2.
+
+### La escalera de cobranza, sola y en ensayo por defecto (C2, 2026-10-13)
+
+Lo que decidió la dueña: **si no paga, avisos por correo y sólo lectura a los 30
+días de vencida la cuenta de cobro; nunca suspensión automática** (suspender lo
+decide ella con el PATCH de siempre); Galerías y todo cliente sin suscripción,
+exentos. Sin pasarela: se sigue pagando por transferencia y la operadora
+registra el pago en la consola (C1).
+
+**La tarea** (`services/cobranza_automatica.py`, bloque propio en
+`main._run_lease_maintenance`, después del cierre del mes; al arrancar y cada
+12 horas) recorre SÓLO las suscripciones en modo `automatico` de clientes
+activos —ni las manuales, ni los clientes sin suscripción, ni los archivados, ni
+el de la base principal— y para cada una llama a `cobranza.mover_estado(slug,
+EL_QUE_CORRESPONDE, actor="sistema:cobranza")`, que calcula y escribe en la
+misma transacción. Con `d` = días desde el vencimiento de la cuenta de cobro
+emitida, impaga y sin disputa más vieja: `d ≤ 0` activo · `1 ≤ d < 30` gracia ·
+`d ≥ 30` sólo lectura (el 30 es `dia_solo_lectura` de cada suscripción, 30 o
+más), **y nunca antes de 10 días después de que salió el aviso formal** (revisión
+de C2: sin el correo entregado, la cuenta se queda en gracia). El día del
+vencimiento todavía está a tiempo (fecha de Colombia). Con prórroga vigente no
+pasa de gracia.
+
+**Nunca pisa a una persona.** Un estado que NO es «activo» y que puso alguien
+(`cambiado_por` sin `sistema:`) queda como está, para arriba y para abajo: si la
+operadora le dio aire a mano (gracia) o la suspendió, la escalera no la toca, ni
+siquiera cuando paga. Al ponerse al día, la escalera devuelve a activo sólo lo
+que puso ella misma. Un «activo» puesto a mano NO congela la escalera (C1 lo
+decidió así: es la ausencia de corte): **para darle aire a un cliente que debe,
+la herramienta es la prórroga**, no el PATCH a «activo» — la consola lo dice al
+lado de cada diferencia («automático: lo aplica la próxima pasada»).
+
+**Un pago registrado** con la suscripción automática y la escalera prendida
+corre la escalera de ESE cliente apenas sale la respuesta (en segundo plano): lo
+que puso el sistema vuelve a activo sin esperar 12 horas, y sale la constancia.
+Desde la revisión, lo mismo al anular una cuenta de cobro, ponerla o sacarla de
+disputa, y guardar la suscripción (una prórroga).
+
+**Los correos** (`avisos_cobro`, tabla nueva del registro, UNIQUE por factura e
+hito): `por_vencer` (desde 5 días antes), `vencida` (d=1), `mas_7` (d=8),
+`aviso_solo_lectura` (10 días antes del día de sólo lectura, o apenas se pueda si
+no salió a tiempo, y entonces corre el corte), `solo_lectura` (sólo si la cuenta
+quedó de verdad así por la escalera, una vez por corte) y `pago_recibido` (pagos
+registrados en los últimos 10 días). Sólo a las cuentas con membresía ACTIVA de
+dueña y al correo de facturación de la suscripción —salvo que sea el de alguien de
+su gente—, **un envío por destinatario**: nunca a su gente ni a la libreta de
+contactos por sede. Llevan número, total, retenciones estimadas, neto (tras un
+abono, lo abonado y lo que falta), vencimiento y los datos de
+`COBRO_INSTRUCCIONES_TRANSFERENCIA`. Con la cuenta ya en sólo lectura, ninguno
+anuncia el corte: dicen que ya está. **Con el servicio
+dormido se pone al día sin duplicar**: cada pasada manda sólo el hito que le
+toca HOY a cada cuenta de cobro (el que despierta 20 días tarde manda uno, no
+tres) y nunca uno anterior a otro que ya salió. La fila del hito se escribe
+ANTES de mandar (la reserva: dos pasadas a la vez chocan con el UNIQUE) y se
+borra si el envío falla, para que se reintente. Con un estado puesto por una
+persona, los correos no anuncian una fecha de sólo lectura que no va a llegar.
+Los motivos que escribe el sistema siguen sin montos.
+
+**El interruptor `COBRANZA_AUTOMATICA`** (mismo patrón que
+`LIMPIAR_FOTOS_VENCIDAS`, declarado en `render.yaml` con `sync: false`): vacío o
+en 0 —el valor por defecto—, la pasada sólo ENSAYA: calcula con el mismo código
+(`mover_estado(..., ensayo=True)`), no escribe un estado ni manda un correo, y
+deja UNA línea WARNING por pasada, también con «0 cambios»:
+`Cobranza automática, ENSAYO (COBRANZA_AUTOMATICA apagado), lo que haría el
+2026-11-16: 1 suscripción automática · 1 cambio: canaveral activo→gracia · 1
+correo: canaveral CC-001 vencida`. Sin montos ni correos en el log. Se prende con
+1 en el panel de Render cuando la dueña haya mirado unos días el ensayo.
+
+**Consola**: «Correr cobranza (ensayo)» en el cajón «Cobros»
+(`POST /api/plataforma/cobranza/correr?ensayo=1[&fecha=YYYY-MM-DD]`): qué haría
+hoy, o el día que se elija, a quién movería y qué avisos mandaría (hito y
+cuántos destinatarios, sin los correos). Desde la pantalla es siempre un ensayo;
+`?ensayo=0` exige el interruptor prendido (409) y la fecha de hoy (422), y
+`correr()` mismo rechaza aplicar con otra fecha, hacia adelante o hacia atrás.
+Bitácora `cobranza`, que alcanza a todos como `cobros`.
+
+**La dueña del supermercado** (membresía `owner`, `require_owner`):
+`GET /api/clientes/mi-suscripcion` —estado con motivo, lo pactado, la próxima
+cuenta de cobro con total, retenciones estimadas, neto, vencimiento y desde qué
+día pasaría a sólo lectura, el historial de un año de cuentas de cobro, pagos y
+cambios de estado (sin el correo de la operadora: «RECABRA» o «automático») y
+las instrucciones de transferencia, sólo si tiene suscripción— y `PUT /api/clientes/mi-suscripcion/
+facturacion` (razón social, NIT, correo de facturación, municipio; valen para
+las cuentas de cobro que vengan). Su gente recibe 403. En pantalla, sección
+«Suscripción» de Configuración (`components/suscripcion/MiSuscripcion.tsx`), con
+el mismo filtro de rol que la copia de seguridad.
+
+**Exentos del corte** (`_EXENTOS_PARA_PONERSE_AL_DIA` en `clientes.py`, con
+`_path_bajo`): `/api/clientes/mi-suscripcion` (y su `/facturacion`) y
+`/api/auth/estado-cuenta`. Una dueña suspendida lee su suscripción y nada más
+del negocio.
+
+**El estado se refresca sin volver a entrar.** `GET /api/auth/estado-cuenta`
+(cualquier rol con sesión; el motivo sólo para la dueña; sin plata) lo consultan
+`BloqueoCuenta` y la franja al montarse, cada 3 minutos y con «Reintentar»; lo
+que dice el servidor va al store con `actualizarAvisoCuenta`, que también LIMPIA
+el aviso cuando la cuenta vuelve a estar al día. La franja está montada siempre
+en el tablero, así que también se entera de un paso a gracia a mitad de sesión
+(eso no da 402). **Ni la franja ni la pantalla de bloqueo muestran un monto, ni
+el motivo** (desde la revisión: el de la operadora es texto libre) —se ven en
+Vender, delante de proveedores—: a la dueña le ofrecen «Ver
+suscripción», que muestra la plata tras un clic (en la franja abre
+Configuración → Suscripción; en `BloqueoCuenta`, la misma vista dentro de la
+pantalla, que no tiene router). Y un 402 ya no pisa el motivo de verdad con el
+texto genérico «en caliente» si el estado es el mismo (titilaba con cada 402 de
+la sincronización).
+
+Pruebas: `tests/test_cobranza_escalera.py` (20, con `time_machine`: cada tramo,
+el día del vencimiento a las 11:30 p. m. de Colombia, el servicio que despierta
+20 días tarde, la prórroga, el estado de una persona intocable, el pago que
+vuelve a activo, nunca suspendido, manual/sin suscripción/archivado nunca se
+mueve, el ensayo no escribe ni manda, la línea del log con «0 cambios», correos
+sólo a dueñas y facturación, dos pasadas a la vez con una barrera, reintento de
+un correo caído, la consola, la dueña suspendida, su gente con 403 y sin motivo,
+la frontera de las exenciones). Cada una vista caer con una mutación.
+`probar-suspension.mjs` ganó 9 guardas de pantalla (las rutas exentas son las
+que pide el navegador, la consulta en vivo, «Reintentar», cero montos en la
+franja y el bloqueo, la plata tras un clic y sólo para la dueña).
+
+**Pendiente**: la factura electrónica y la pasarela siguen fuera, por decisión de
+la dueña; la política de datos todavía no declara el correo de facturación ni la
+finalidad «cobro del servicio» (borrador para el abogado en
+`docs/legal/borradores/`, antes de prender el interruptor). La revisión corrió las
+suites de cobranza contra un Postgres 16 descartable (ver *Cobro de la suscripción
+(2026-10-13)*).
+
 ### Compliance: Ley 1581, consentimiento y hardening (Fase 3 comercial)
 
 **Tablas nuevas (registro, `create_all()`, sin migraciones):** `consentimientos`
@@ -811,6 +1730,9 @@ se las pone.
   hashes, tablas de intentos y `estados_cliente` — por construcción.
   `POST /solicitar-supresion` → nada se borra nunca; atiende el operador en
   `/api/plataforma/supresiones` con nota obligatoria.
+- **Ponerse al día tampoco se corta** (C2): la suscripción de la dueña
+  (`/api/clientes/mi-suscripcion`) y el estado en vivo (`/api/auth/estado-cuenta`)
+  están exentos del 402, en `_EXENTOS_PARA_PONERSE_AL_DIA`. Nada de negocio.
 - **Los derechos del titular NO se cortan por estado de cuenta**: export,
   solicitud de supresión y aceptar-politica están exentos del 402 (incluso en
   suspendido) — el interruptor de cobranza no puede bloquear el habeas data.
@@ -3392,9 +4314,11 @@ servidor y aparece en la laptop del que arma la propuesta. **Sin migración.**
 
 Dos cuidados:
 
-- `fixturesToStore` tiene que arrastrarla. El 3D no la modela, y sin esa línea
+- La vuelta de los editores al store tiene que arrastrarla. Ninguno la modela, y
   **mover un mueble borraba todos los encuadres de la sede** y le mandaba la pérdida
-  al servidor.
+  al servidor: primero en el 3D, que la arrastró con una línea, y hasta el
+  2026-10-13 en el plano 2D. Desde entonces las dos vueltas conservan todo lo que no
+  conocen (`utils/convertirPlano.ts`, ver *Reglas duras*).
 - Guardar y borrar escriben el layout pero **no entran al historial**: que Ctrl+Z
   deshaga un encuadre de cámara mezcla dos cosas que no tienen nada que ver.
 
@@ -6419,6 +7343,15 @@ el repo. El token de sesión no: se pasa por `TALLER_TOKEN`.
 Desde el 2026-10-02 `/taller` es **sólo para administradores**: cualquier otra sesión
 vuelve a `/`. Es una herramienta de diseño, no una pantalla del producto.
 
+Desde el 2026-10-14 también dibuja cada **modelo** de la familia con su ficha estampada, y
+«al lado» el de siempre, para compararlos: ver *Cotejo visual de los muebles de Colombia*.
+
+Y desde más tarde ese mismo día tiene dos pestañas: **«Mirar»**, el banco de siempre (que
+ahora lista también las fichas propias del supermercado en «modelo»), y **«Fichas»**, donde la
+dueña arma las de sus muebles y las ve girar mientras escribe: ver *Fichas propias: la pantalla
+(2026-10-14)*. `scripts/taller/mirar-mueble.py` sigue eligiendo el mueble por el segundo
+`select` de «Mirar»: las pestañas son botones y no corrieron nada.
+
 ### Lo que falta
 
 - **Reconstruidos de cero**: góndola (doble y mural), punta, nevera de refrescos y batea.
@@ -7657,6 +8590,1631 @@ lámina que nunca se da por interrumpida (cae «cerrar a mitad»). Cada defensa 
 lámina contra la ficha, la subida contra la lista atada a su nombre) se rompió sola en
 lo estático: en el navegador la otra mitad la sostiene, que es la idea.
 
+## Un solo catálogo de muebles (2026-10-13)
+
+Cada tipo de mueble estaba escrito a mano en unas veintidós tablas —el catálogo del 3D y
+el del 2D, los altos y colores con que nace, los prefijos, las tarifas, lo que no se
+alquila, los nombres de los informes, las referencias del minimapa— y del lado del
+servidor en sus copias. Ya no decían lo mismo: el mostrador de carnes nacía con 0,85 de
+fondo en el plano y 0,90 en el 3D, el servicio al cliente dibujado en el plano nacía de
+1,80 m y los informes decían «mueble», «metro» e «impulsadors». Sumar un mueble —lo que
+hace falta para dibujar Cañaveral— era tocar diez lugares sin olvidarse de ninguno.
+
+**Dónde vive.** En `muebles.json`, en dos copias idénticas byte a byte:
+`frontend/src/catalogo/` y `backend/app/catalogo/`. Son dos porque la imagen de Docker
+lleva `backend/` y `frontend/dist`, no una carpeta compartida. Se edita una y se copia
+sobre la otra. Por tipo dice: prefijo, `alquilable` (`si` · `no_por_defecto` · `nunca`),
+clave de tarifa, rótulo de los editores, nombre de informe (singular y plural),
+categoría, grupo de la biblioteca del 2D, medidas, color (y `color2D` si el 2D nace con
+otro), emoji, descripción, referencia del minimapa y banderas (`producto`, `prueba3D`,
+`surtido`, `frio`, `formaCorrida`). La góndola tiene variantes (`double`/`wall`, con sus
+caras); `gondola_doble` y `gondola_mural` son `alias` del 2D; `exhibicion` es `legado`.
+Además están `tarifas` (clave y rótulo, en el orden de la pantalla) y `orden` (la paleta
+del 3D, la biblioteca del 2D y las referencias del minimapa). Desde *Muebles de Colombia*,
+también `modelos` (las fichas de muebles de verdad) y, en los tipos que tienen modelos,
+`rango` (entre qué medidas tiene que estar uno) y `geometria` (qué puede fijar: los
+entrepaños y el módulo de la góndola, las puertas de la nevera de puertas).
+
+**Quién lo lee.**
+
+- **El navegador**, por `catalogo/catalogo.ts`. De ahí salen, con el nombre y el orden de
+  siempre, `FIXTURE_DEFS` y `TIPOS_CON_*` (`catalogo/editor3D.ts`; `/taller` elige por
+  posición), `CATALOG`, `H_DEFAULTS`, `COLOR_DEFAULTS` y `CATALOGO_2D`
+  (`catalogo/plano2D.ts`), `REFERENCIAS` (`catalogo/minimapa.ts`), `NUNCA_ALQUILABLE`,
+  `NON_RENTABLE_BY_DEFAULT`, `RATE_TYPES`, `CATEGORIA_DE_TIPO` y `rateTypeOf`
+  (`types/fixtures.ts`), `PREFIJO_POR_TIPO` (`utils/nomenclatura.ts`), `MUEBLES_FRIOS`,
+  `FORMAN_CORRIDA` y los nombres de `plataforma/formato.ts`. Los editores no tienen tablas
+  propias: el 2D convierte con `CATALOGO_2D` y el 3D con `CATALOGO_3D` (`FIXTURE_DEFS` y
+  `defaultSlots`), y `probar-muebles.mjs` lo exige. Una copia vieja de los altos pegada en
+  `FloorPlan2D` volvía a hacer nacer el servicio al cliente de 1,80 m sin que fallara nada.
+- **El servidor**, por `app/services/catalogo_muebles.py`, que lee sólo lo que necesita:
+  `PREFIJO_POR_TIPO` (la renumeración), `NUNCA_ALQUILABLE` y `REFERENCIAS`
+  (`layout_lookup.py`) y la clave de tarifa (`bulk_leases.py`, `plataforma_metricas.py`),
+  que desde *Muebles de Colombia* es la del mueble: `tarifa_del_mueble`, con la tarifa
+  propia de su modelo (`TARIFA_POR_MODELO`) si la tiene.
+- **Viaja sólo donde se usa.** No entra en lo primero que baja la landing: la fusión con
+  la base (`utils/estadoComercial.ts`, que va de entrada) toma `carasDe` y `fullSpaceCode`
+  de `types/espacio.ts`, que no importa nada; antes se las pedía a `types/fixtures.ts`, que
+  arrastraba el catálogo entero. Tampoco entra en el worker del recorte (`MUEBLES_FRIOS`
+  va marcado `@__PURE__`). `probar-catalogo.mjs` arma el grafo de `main.tsx` y del worker y
+  falla si vuelve. El pedazo de entrada quedó en 341 kB (109 kB comprimido), por debajo de
+  los 346 kB que pesaba antes del catálogo.
+
+**Cómo se agrega un tipo.**
+
+1. Una entrada en `tipos` de `frontend/src/catalogo/muebles.json`: un prefijo de tres
+   letras que nadie use, `alquilable` y, si se vende, `tarifa` (con su fila en `tarifas`),
+   `informe`, `informePlural` y `categoria`. El nombre de informe tiene que llevar a SU
+   fila de Tarifas: la sesión le dice a la dueña «dejar la tarifa cargada en …» y ella la
+   busca por esas palabras, así que la validación falla si aparece en el rótulo de la
+   tarifa de otro tipo y no en el suyo.
+2. Sumarlo a `orden.editor3D` y a `orden.plano2D` (y a `orden.minimapa` si es referencia).
+3. Copiar el archivo sobre `backend/app/catalogo/muebles.json`.
+4. Sumar la clave a `FixType` (`types/fixtures.ts`) y a `FixType2D`
+   (`utils/convertirPlano.ts`): son tipos de TypeScript, no corren, y `probar-catalogo`
+   exige que digan lo mismo que el archivo.
+5. Dibujarlo: un `case` en `FixtureMesh` (`StoreEditor3D.tsx`) y, si hace falta, en el 2D.
+   `probar-catalogo` falla si un tipo no tiene su `case` («cada tipo tiene quién lo dibuja
+   en el 3D»): sin él caía en el `default` y se dibujaba como una estiba.
+6. La referencia no lo compara: `probar-catalogo` y `test_catalogo_muebles.py` sacan de la
+   captura de hoy lo que es de un tipo o una tarifa que `catalogo-antes.json` no conoce,
+   tabla por tabla (`LO_NUEVO_POR_TABLA`; una tabla sin clasificar hace fallar la prueba),
+   y comparan el resto. Que eso no se convierta en no mirar nada lo vigila «la comparación
+   saca SÓLO lo nuevo»: un tipo inventado en todas las tablas no se ve, y un cambio de un
+   tipo viejo —un prefijo, una bandera, una medida, una tarifa— sí.
+
+**La referencia y los cambios intencionales.** `frontend/scripts/casos/catalogo-antes.json`
+es lo que hacía el código antes del catálogo, capturado de `fafb301` por
+`scripts/capturar-catalogo.mjs` y `backend/scripts/capturar_catalogo.py` sobre un plano
+sintético con un mueble de cada tipo y los legados (una góndola sin `gondolaType`,
+`gondola_doble`, `exhibicion`, una zona libre habilitada, una caja sin la bandera). Quedó
+FIJA: escribirla pide `--reescribir` y sólo tiene sentido sobre el código de antes.
+`probar-catalogo.mjs` y `tests/test_catalogo_muebles.py` corren la misma captura sobre el
+código de hoy y la comparan entera; cada diferencia tiene que estar en su
+`CAMBIOS_INTENCIONALES`, con su porqué y su valor de antes. Los que hay, todos para
+muebles que se creen desde ahora o textos que no se guardan:
+
+- el mostrador de carnes nace en el 2D con 0,90 de fondo (era 0,85; el 3D ya decía 0,90);
+- el servicio al cliente nace en el 2D con 1,10 de alto y su color (no estaba en las
+  tablas del 2D y caía en 1,80 y en el color de la góndola);
+- se fue el color de `nevera_mural`, un tipo que no existe;
+- los informes nombran «vitrina», «zona libre» e «impulsadores» (salían `mueble`, `metro`
+  e «impulsadors»);
+- la `isla` y la `cross` se llaman «Estiba (exhibición de piso)» y «Exhibidor cruz» en
+  Tarifas, y «estiba» y «exhibidor cruz» en los informes (decían «Isla» y «Exhibición de
+  piso»). Con sólo las tarifas renombradas, «exhibición de piso» era la cruz en los
+  informes y la estiba en Tarifas; la demo de la landing usa los mismos nombres;
+- del lado del servidor, uno de la revisión: `scripts/auditar_desfase.py` pregunta
+  `es_comercializable`, como la aplicación, y ya no cuenta como ofrecida una caja de un
+  plano viejo sin la bandera.
+
+Además, las dos pruebas cargan los módulos con un catálogo adulterado y cada tabla tiene
+que cambiar con él: una copia escrita a mano que hoy coincide con el archivo no pasa.
+
+**Lo que el editor no conoce, se conserva.** Las conversiones entre el store y cada editor
+viven en `utils/convertirPlano.ts`, y la vuelta parte del mueble guardado:
+`{ ...guardado, ...loQueSabe }`. Antes armaban el mueble con una lista fija, y el 2D
+borraba la vista 3D guardada para el proveedor y el montaje de la cara A al mover
+cualquier cosa. Lo que el editor sabe manda, también cuando vale `undefined`.
+`probar-plano.mjs` compara contra las funciones de antes y edita en cada editor todos los
+campos que la vuelta escribe.
+
+**Una sola regla de caras, la laxa.** `carasDe` (`types/espacio.ts`) y `caras_de`
+(`layout_lookup.py`): `gondola` con `gondolaType` `"double"` o ausente, o el legado
+`gondola_doble`, son dos caras; todo lo demás, una. Es lo que dibujan los dos editores y lo
+que ya ofrecía Vender; con la estricta, la cara B de una góndola vieja se vendía sin que el
+plano la pintara ni el guardarraíl la cuidara. En la revisión se sumaron la planilla y el
+contrato suelto, que le recortaban el `-B` a cualquier mueble y vendían `PUN-01-B` (ver
+*Reglas duras*).
+
+Ningún código de espacio, prefijo, clave de tarifa ni plano guardado cambió, y no hay
+migraciones ni columnas nuevas.
+
+**Verificación (del catálogo único).** `tsc` limpio; `npm run probar` (29 guiones) y `npm run build` limpios
+(35 pedazos; el catálogo, 8,7 kB, va en uno perezoso). pytest de los archivos que tocan
+esto: caras, auditoría de desfase, catálogo, planilla, vendible, renumeración, contrato
+sin mueble, nomenclatura de la planilla, correos de contrato, punta a punta, importación
+del plano, estado comercial, métricas y detalle de la plataforma, enlace de montaje,
+endurecimiento y bitácora: 322 verdes. Tres revisiones de la rama dejaron diez hallazgos
+y quedaron cerrados con su prueba, rota a propósito antes del arreglo: los nombres de
+informe de la estiba y la cruz; la planilla y el contrato suelto que vendían la cara B de
+un mueble de una cara; el auditor de consola que contaba la caja de un plano viejo; la
+bandera `rentable` que la vuelta de los editores podía perder sin que nada fallara (y con
+ella cualquier campo: se mutaron los 27 que escriben las dos vueltas); las tablas del
+servidor sin prueba contra el archivo; las tablas propias de los editores (los altos
+viejos en el 2D, `slotsPorDefecto` vacío en el 3D); la guarda de las caras, que sólo veía
+`=== "double"`, y el catálogo en el pedazo de entrada y en el worker.
+
+## Muebles de Colombia (2026-10-13)
+
+En corto, para quien retoma. El próximo cliente es un supermercado como Galerías o
+Cañaveral (Cali) y no hay una sola foto propia de sus muebles: todo sale de fichas de
+fabricantes encontradas en internet (la investigación «R3»). Lo que quedó, del 2026-10-13 al
+2026-10-14 (el detalle, en las cuatro secciones que siguen):
+
+- **Modelos con su fuente.** `modelos` en `muebles.json` (36: góndolas central y de pared
+  por alto y módulo, puntas, estiba completa, media y cuarto, exhibidor de cartón, neveras
+  de 1 a 4 puertas, puesto de impulso). Cada uno guarda sus medidas, una nota con palabras
+  propias, la URL de la página y cuánto confiar (`ficha`, `catalogo` o `estimado`, que en
+  pantalla lleva «≈»). **No se copia ninguna imagen de terceros**: sólo medidas, y la
+  validación rechaza una fuente que sea una imagen o una clave `foto`. Colocar un modelo
+  ESTAMPA su ficha en el mueble; cambiar la ficha después no mueve lo colocado.
+- **Dos tipos nuevos.** La **nevera de puertas** (`NEV`) se vende ENTERA por ahora: sus
+  puertas (`partes.puertas`) sólo dicen cómo se dibuja y dónde se para el producto de
+  prueba (un vano por hoja). El **puesto de impulso** (`PIM`) es el mostrador de la
+  promotora, con el arte impreso en el frente y sin producto inventado.
+- **Tarifa por modelo.** La media estiba, el cuarto de estiba y el exhibidor de cartón se
+  cobran con su propia tarifa: `rateTypeOf` (navegador) y `tarifa_del_mueble` (servidor)
+  miran primero el modelo del mueble, sólo si es de su tipo, y si no la del tipo.
+- **Alto, entrepaños y módulo editables, con aviso.** En el panel del 2D y del 3D (el mismo
+  componente). Con una cara con contrato vivo o firmado, arte pintado o espacios internos
+  vendidos, el cambio dice qué se mueve y espera «Cambiar igual»; con espacios internos
+  vendidos no cambia la cantidad de entrepaños. Los entrepaños se cuentan como se escriben:
+  los que llevan producto sobre la base.
+- **Ausente no es null.** `PUT /layout` le rellena al mueble que ya estaba (mismo `id`,
+  mismo tipo) la ficha que llega AUSENTE —así llega de una pestaña de antes— y la borra sólo
+  con un `null`. El navegador de hoy dice `null` cuando vacía un campo y cuando deshace.
+- **Lo que ve quien no ve plata.** El visor de Vender (`sinDatosComerciales`) y el enlace de
+  la mercaderista (`_solo_geometria`) dejan pasar la ficha porque es geometría, por lista
+  blanca y con su tipo: `modelo` si es texto, `entrepanos` y `modulo` si son números, y de
+  `partes` sólo el número de puertas.
+
+### Muebles de Colombia: modelos con su fuente (2026-10-13)
+
+El próximo cliente es un supermercado como Galerías o Cañaveral (Cali), y no hay fotos
+propias de sus muebles: todo sale de fichas de fabricantes encontradas en internet
+(la investigación «R3»). Sobre el catálogo único se sumaron **modelos** —fichas de
+muebles de verdad— y dos tipos nuevos. **Ninguna imagen de terceros entró al repo**: de
+cada fuente se guardan las medidas, una nota con palabras propias, la URL de la página y
+cuánto confiar (`ficha`: la página trae los datos explícitos; `catalogo`: salen del título
+o de un listado; `estimado`: una deducción, que en pantalla lleva «≈»).
+
+**Qué modelos hay** (`modelos` en `muebles.json`, 36):
+
+- **Góndola central y de pared** de 1,50, 1,60, 1,80 y 2,00 de alto con módulos de 0,90,
+  1,00 y 1,20 (24). Con ficha: GMC (la doble de 1,60 a 2,00 y la sencilla de 1,80 y 2,00,
+  módulos de 0,90 y 1,00), Vialambre (central 2,00 × 1,00 × 1,00, cuatro entrepaños y la
+  base) y Dispromem (pared de 2,00, módulo de 1,20, fondo 0,49). Vialambre 1,50 es de
+  catálogo; las combinaciones que nadie publica van «estimado». El ancho del modelo es UN
+  módulo: la góndola se estira en el plano y se parte en módulos de ese ancho.
+- **Punta** de 0,70 × 0,37 de 1,30, 1,50 y 2,00 (Vialambre, Exhivicol): cierra una central
+  de 0,70 de fondo.
+- **Estiba completa, media y cuarto.** Se eligió UN sistema, el colombiano: la completa es
+  la de la NTC 4680 (1,20 × 1,00), la media la que se vende acá (1,00 × 0,60) y el cuarto
+  es la mitad de la media (0,60 × 0,50), «estimado» porque nadie lo publica. El cuarto
+  europeo (0,60 × 0,40) es de otro sistema y no se mezcla. El alto de las tres es el de la
+  torre de producto con que se exhiben: estimado.
+- **Exhibidor de cartón de la marca** (0,60 × 0,40 × 1,70), sobre la familia del
+  impulsador: «estimado» (se fabrican a medida; el rango sale de catálogos de la región).
+- **Neveras de puertas**: de 1 y 2 puertas de Inducol y de 3 y 4 de Frigomaster, con ficha.
+- **Puesto de impulso** de 0,80 × 0,40 con la superficie a 1,00 y la cenefa hasta 2,00
+  (Grupo SRM, con ficha).
+
+**Dos tipos nuevos** (completos en las dos copias del catálogo, con su dibujo, su nombre de
+informe, su tarifa y su lugar en las paletas):
+
+- **`nevera_puertas`** (prefijo `NEV`; la de bebidas abierta sigue siendo `BEB`): la nevera
+  vertical cerrada. Se dibuja con `NeveraReal variante="puertas"`, que existía y ningún
+  mueble usaba. Las puertas salen de `partes.puertas` del mueble y, si falta, de la cuenta
+  de siempre (`puertasDe` / `puertasDeNevera`). Está entre los fríos y en la prueba 3D del
+  producto, con las mismas rejillas automáticas y el mismo cabezote que la abierta
+  (`esNeveraDeBebidas`), y el producto se para detrás del vidrio de cada hoja (un vano por
+  puerta). **Se vende ENTERA**: la cantidad de puertas sólo sirve para dibujarla; vender
+  por puerta espera a la dueña (ver *Lo que sigue de los muebles*). Tarifa «Nevera de
+  puertas».
+- **`puesto_impulso`** (prefijo `PIM`): el mostrador chico de la promotora, con la cenefa
+  sobre dos mástiles y aire entre la tapa y el cartel (`muebles/PuestoImpulsoReal.tsx`,
+  cotas en `PUESTO_IMPULSO` de `medidas.ts`). El arte del proveedor va impreso en el frente
+  del mostrador; no lleva producto inventado. Tarifa «Puesto de impulso».
+
+**Colocar un modelo ESTAMPA su ficha.** Las paletas del editor 3D (`PALETA_3D`) y del plano
+2D (`MODELOS_2D`) listan cada familia con su **modelo base** —el de siempre, `base:<tipo>`
+o `base:<alias>` en la góndola; colocarlo no escribe `modelo` y el mueble nace como antes—
+y, plegados debajo, sus modelos, con «≈» los estimados. Al colocar uno, el mueble guarda
+`w/d/h`, el color, `modelo` y su geometría (`entrepanos`, `modulo`, `partes`); el rótulo es
+el de su tipo, el mismo que el 2D estampa en `label` al abrir el plano. El panel de los dos
+editores nombra el modelo (y su fuente al pasar el mouse). Ningún editor vuelve a escribir
+la ficha: `utils/convertirPlano.ts` la escribe sólo cuando el mueble NACE —sin guardado con
+ese `id`: en el 3D de los campos del mueble nuevo, en el 2D de `nace`— y, con guardado,
+manda lo guardado. Un duplicado del 2D nace con la ficha del original. Si mañana cambia
+una ficha en `muebles.json`, lo ya colocado no se mueve (`probar-catalogo` lo comprueba con
+un catálogo adulterado).
+
+**La góndola se dibuja con su ficha.** `entrepanos` es lo que dice la ficha, por cara y sin
+la base, y todos llevan producto: «cuatro entrepaños y la base» son la base y cuatro, y el
+aire bajo el remate es la última fila (`nivelesDeFicha`, `filasDeProducto`). `modulo` parte
+el corrido en módulos de ese ancho (`vanosDeCorrido(w, modulo)`). La misma geometría
+(`geometriaDe(f)`) la usan el dibujo (`GondolaReal`), el relleno, el producto de prueba
+(`ventaDeGondola`), la cámara de venta (`ventaDeTipo`) y la lámina (`getPanelShelfSpan`):
+si una la usara y otra no, el producto quedaría parado entre dos entrepaños. Sin los
+campos, la cuenta de siempre, idéntica. La punta no tiene entrepaños por ficha (sus modelos
+traen sólo medidas), pero desde la noche del mismo día se dibuja con los que se le escriban
+en el panel: ver *Lo que se puede editar y lo que no se puede perder*.
+
+**La tarifa por modelo.** La media estiba (`estiba_media`), el cuarto (`estiba_cuarta`) y el
+exhibidor de cartón (`exhibidor_carton`) se cobran aparte de su tipo: `rateTypeOf` mira
+primero la tarifa del modelo del mueble —sólo si el modelo es de su tipo— y si no la del
+tipo, como siempre; el servidor pregunta lo mismo (`tarifa_del_mueble` en
+`services/catalogo_muebles.py`), y lo usan la referencia de la planilla (`bulk_leases.py`)
+y el mapa de tipos de la plataforma (`plataforma_metricas._mapa_tipos_de_sede`, que alimenta
+el spread y el detalle por cliente). Las cinco tarifas nuevas salen solas en Tarifas, con
+su rótulo, y los informes las nombran («media estiba», «exhibidores de cartón»).
+
+**Vender.** `sinDatosComerciales` deja pasar la ficha —es geometría: sin ella, el visor le
+mostraría al proveedor otras puertas u otros entrepaños que los que se le venden—, y de
+`partes` sólo el número de puertas. Ni plata ni datos de otro proveedor.
+
+**Cómo se valida.** `probar-catalogo.mjs`: id único `base:…` que no pisa ningún base
+implícito, tipo que existe, variante en la góndola, medidas dentro del `rango` de su familia,
+sólo la geometría que su tipo admite (`geometria`) y dentro de su rango, tarifa propia con
+su fila y sus nombres de informe (que tienen que llevar a SU fila), y la fuente con URL
+https, nota, confiabilidad y nunca una imagen. Cada regla tiene su caso roto que tiene que
+quejarse. `tests/test_modelos_de_muebles.py`: lo mismo de lo que lee el servidor, la tarifa
+por modelo (unidad, planilla y plataforma), un mueble sin modelo que da lo de siempre, y
+los prefijos `NEV` y `PIM` vendiéndose enteros y por una cara.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`, 817 verdes; `npm run build` limpio
+(el pedazo de entrada sigue en 340,7 kB; el del catálogo, perezoso, pasó de 8,7 a 26 kB por
+las notas de los modelos); `import app.main` y pytest de catálogo, modelos, caras,
+renumeración, corte del layout, planilla, vendible, métricas y detalle de la plataforma,
+enlace de montaje y estado comercial: 225 verdes. 33 mutaciones —un tipo viejo que cambia
+de medida o de prefijo, el filtro de lo nuevo que se come la punta, un modelo fuera de
+rango, la validación sin el rango o sin la regla de imágenes, la paleta sin un modelo, los
+editores que no estampan o que reescriben la ficha, `rateTypeOf` y `tarifa_del_mueble` sin
+el modelo o sin mirar el tipo, la planilla y la plataforma con la tarifa del tipo, la
+nevera sin las puertas de su ficha, la góndola o su lámina sin sus entrepaños, el índice de
+modelos armado al cargar (se llevaba el catálogo al worker del recorte), el puesto sin su
+`case`, el visor de Vender sin la ficha o con `partes` entero— y cada una hizo fallar su
+guarda. Mirados en `/taller` con un servidor local: la nevera de puertas de 1,40 (dos
+hojas) y de 2,07 (tres), y el puesto de impulso.
+
+### Lo que se puede editar y lo que no se puede perder (2026-10-13)
+
+Con los modelos (*Muebles de Colombia*) la góndola y la punta guardan su geometría:
+entrepaños y módulo. Faltaba poder escribirla —en Cañaveral no todas las góndolas van a ser
+las de la ficha— sin que eso moviera lo ya vendido, y sin que una pestaña abierta desde antes
+la borrara al mover el mueble. La crítica del plan lo marcó como el hallazgo alto: «el
+guardarraíl sólo compara códigos que desaparecen», y la regla de siempre es que el espacio
+vendido no cambia de lugar.
+
+**Los campos.** En el panel del plano 2D («Alto, entrepaños y módulo») y en el del Editor
+3D, para la góndola y la punta: «Alto (m)», «Entrepaños» (por cara, sin la base) y «Módulo
+(m)». Es UN componente, `components/GeometriaDelMueble.tsx`, con la cuenta en
+`utils/geometriaDelMueble.ts` (puro). Vacío es la cuenta de siempre (`nivelesDeEntrepano` /
+`nivelesDePunta` y `vanosDeCorrido` con 1,25), y el panel dice cuántos entrepaños y módulos
+se dibujan hoy; si el mueble nació de una ficha, sus valores van de sugerencia. Los límites
+son los del catálogo —`rango.h` y `geometria` del tipo; la punta ganó `geometria` en
+`muebles.json`: entrepaños de 1 a 6 y módulo de 0,40 a 1,40— y nunca más entrepaños que los
+que caben a 25 cm (`PASO_ENTRE_ENTREPANOS.minimo`): bajar el alto de una góndola con cinco
+entrepaños guardados pide bajar primero los entrepaños. Toda ficha del catálogo pasa esa
+validación (`probar-geometria`). Sólo un administrador los escribe (en el plano, en modo
+edición); los demás ven los números.
+
+**Se escribe en el store, no por la vuelta de un editor.** `conGeometria` escribe los tres
+campos en ESE mueble del store (el resto conserva su identidad) y los dos editores se
+resincronizan como con un deshacer; Ctrl+Z lo deshace. Vaciar un campo escribe `null`, no
+borra la clave: es «borrado a propósito» hasta el próximo guardado (ver abajo). `fichaDe` y
+`geometriaDe` tratan el `null` como ausente, así que a ningún dibujo le llega: un `null`
+dibujado sería una góndola con un solo entrepaño.
+
+**La punta, como la góndola.** Con `entrepanos` van la base y esos entrepaños, todos con
+producto, y la última fila llega hasta el copete; `modulo` parte el frente en vanos. La
+misma geometría la usan el dibujo (`PuntaReal`), el producto y el relleno
+(`ventaDePunta`, `ProductoEnPunta`), los habladores (salen de la misma venta), la lámina
+(`getPanelShelfSpan`) y la cámara de venta (`ventaDeTipo`, `pisoDelCartelDePunta`). Sin los
+campos, idéntica a antes.
+
+**Lo vendido no se mueve sin aviso.** Antes de escribir, `revisarCambioDeGeometria` mira:
+
+- por cara, un **contrato vivo o firmado** para más adelante (la fusión con la base pinta
+  «occupied» la cara con el que corre o, si no hay, con el próximo) y el **arte pintado**
+  (la imagen designada de la cara, que se alinea a los entrepaños; se pregunta en el
+  momento a `GET /spaces/face-images`). La planometría cuelga del contrato vigente o
+  próximo, así que una cara con planometría ya cuenta por su contrato;
+- del mueble, los **espacios internos vendidos** del Editor 3D (ocupados o reservados).
+
+Con algo de eso, cambiar el alto, los entrepaños o el módulo muestra un aviso que dice qué
+se mueve —«Cara A (contrato vivo o firmado): cambian las filas del arte de esta cara y el
+producto se para en otros entrepaños», «… se reparten en otros módulos», «con otro alto
+[los espacios internos] quedan en otro lugar del mueble»— y lo que se cambia («el alto, de
+1,80 a 2,20 m (los entrepaños pasan de 5 a 6)»), y escribe sólo con «Cambiar igual»;
+«Dejarlo como estaba» vuelve a lo guardado. Con espacios internos vendidos, la CANTIDAD de
+entrepaños no cambia hasta liberarlos —tampoco la que arrastra el alto cuando no hay
+entrepaños guardados—: cada uno cae sobre ciertos entrepaños (`entrepanosDelEspacio`) y con
+otros pasaría a ser otra cosa. Si la consulta del arte falla, se avisa igual (ante la duda,
+se pregunta). El aviso no nombra proveedor, marca, fechas ni plata: se lee con la pantalla
+compartida. Sin nada vendido, se escribe sin preguntar.
+
+**Una pestaña vieja no borra lo nuevo.** `PUT /api/layout/{sede}` (`_con_la_ficha_de_antes`
+en `routers/layout.py`), antes de las guardas, para `CLAVES_DE_FICHA` (`modelo`, `partes`,
+`entrepanos`, `modulo`):
+
+- **ausente** en un mueble cuyo `id` ya estaba en el plano guardado: se rellena con lo
+  guardado. Así llega de un editor de antes, que no conoce estas claves;
+- **`null`**: lo borra (el navegador de hoy vació el campo a propósito), y el `null` no se
+  guarda;
+- un **valor** manda; un mueble **nuevo** (otro `id`, aunque se llame igual que uno borrado)
+  no hereda nada; otra sede no presta la suya;
+- un plano sin ninguna de estas claves se guarda **byte a byte** como antes.
+
+Las dos listas de claves —`services/layout_lookup.py` y `utils/guardadoDelPlano.ts` (hasta
+el 2026-10-14 estaba en `utils/convertirPlano.ts`, que la reexporta)— las compara una prueba. Es el mismo patrón que `_restore_missing_slot_prices`.
+
+**El visor de Vender y la mercaderista ven el mueble real.** `sinDatosComerciales` ya dejaba
+pasar la ficha (`modelo`, `entrepanos`, `modulo` y de `partes` sólo las puertas);
+`_solo_geometria` de `routers/montaje.py` suma `modelo`, `entrepanos` y `modulo` —desde la
+revisión del 2026-10-14, con su tipo: texto y números—, y de `partes` sólo sus números
+conocidos (`PARTES_GEOMETRICAS`), copiados uno por uno: un objeto en la lista blanca se
+llevaría lo que le escriban adentro mañana. `probar-vender` arma el mismo
+plano por el camino del editor y por el del visor
+(`sinRepisasVendidas(sinDatosComerciales(storeToFixtures(…)))`) y compara las filas y los
+vanos que cada uno le pide a `ventaDeTipo`: una góndola con ficha (4 entrepaños, módulo de
+1,00), una punta con 3 entrepaños y módulo de 0,45 y una nevera de 3 puertas de 2,30 de
+frente —la cuenta de siempre le daría 4—; y que no pase ni una clave comercial, tampoco
+colada en `partes`.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`, 840 verdes (con `probar-geometria`,
+nuevo: 20); `npm run build` limpio (el pedazo de entrada sigue en 340,7 kB);
+`import app.main` y pytest de catálogo, modelos, caras, renumeración, corte y ficha del
+layout (`test_layout_ficha.py`, nuevo), planilla, vendible, métricas y detalle de la
+plataforma, enlace de montaje y estado comercial: 235 verdes. 35 mutaciones —la punta que
+dibuja, vende, rellena, pone habladores, pinta la lámina o encuadra sin lo que guardó; el
+`FixtureMesh` que le pasa la ficha cruda a la góndola; el bloqueo de los espacios internos
+quitado o sin el alto que arrastra la cantidad; la cara B, el arte pintado, el contrato o
+la consulta fallida que no cuentan; el aviso sin «cambian las filas del arte»; vaciar que
+borra la clave; sin el paso mínimo; el componente que escribe sin revisar o con bloqueo; el
+2D sin los campos; `fichaDe` que deja pasar el `null`; `sinDatosComerciales` sin el módulo,
+sin las puertas o con `partes` entero; la punta sin sus límites en el catálogo; el
+servidor que no rellena, guarda el `null`, rellena por código, se olvida del primer
+guardado o pierde una clave; montaje sin los entrepaños, sin `partes` o con `partes`
+entero— y cada una hizo fallar su guarda (una 36.ª, sumar `partes` a `_GEOMETRIA`, no
+rompió nada: el filtro de `partes` igual manda). Mirado en el navegador contra un servidor
+local descartable: en el plano 2D, la góndola con contrato pidió confirmar con el texto de
+arriba y se cambió con «Cambiar igual»; la mural con un espacio interno vendido rechazó los
+entrepaños; una punta libre cambió sin preguntar; vaciar el campo dejó al servidor sin la
+clave. En el Editor 3D, la punta de 0,90 con módulo de 0,45 se dibujó en dos módulos, con
+la base y 2, 3 y 4 entrepaños según el panel.
+
+**Lo que queda.** El aviso vive en el navegador: un `PUT /layout` armado a mano podría
+cambiar la geometría de una cara vendida sin preguntar (el servidor sólo cuida que no se
+pierda). Las puertas de la nevera no se editan en el panel: sólo dibujan, y se editan cuando
+se venda por puerta. Los modelos de la punta siguen sin entrepaños por ficha (la de 1,30
+dice «tres y la base», pero su alto no trae copete y el nuestro sí). `/taller` no tiene los
+campos: se miran en el editor.
+
+### Cotejo visual de los muebles de Colombia (2026-10-14)
+
+La lección escrita del repo es que no se modela de memoria y que «lo revisé» no es haberlo
+revisado (`docs/engram/03-mobiliario-3d.md`). Los modelos nuevos se miraron uno por uno en
+`/taller` contra las medidas y la descripción de su ficha (la investigación R3), en tres
+cuartos y de frente, con producto y sin él. Las capturas son de trabajo y NO entran al
+repo; lo que se vio queda acá.
+
+**El taller mira el modelo, no la cuenta de siempre.** En una familia con modelos aparece
+«modelo» (los de `PALETA_3D`, con «≈» los estimados). El mueble se arma con las medidas de
+la ficha y con la ficha ESTAMPADA (`fichaDe`), como lo coloca la paleta, y los botones de
+«dónde» y la toma de cerca salen de la misma geometría (`geometriaDe`). Antes el taller
+dibujaba la cuenta de siempre: una nevera de 4 puertas se miraba con las puertas que salen
+del ancho. «Al lado» dibuja SIN ficha el modelo base con sus medidas (lo que hoy coloca el
+editor) o el mismo tipo con las medidas del modelo (lo que la ficha cambia, y nada más). La
+toma fija se aleja también por el ancho —la nevera de 4 puertas salía cortada— y lo que
+haga falta para que la esquina de abajo entre en el cuadro. Sin producto, la nevera se
+dibuja sin su relleno mudo, para mirarle las rejillas y las puertas. En el contenedor de
+esa sesión no estaba el Playwright de Python que usa `scripts/taller/mirar-mueble.py`: se
+usó el de Node (`/opt/node22/lib/node_modules/playwright`) con los mismos pasos.
+
+**Lo que se vio, contra la ficha:**
+
+- **Neveras de 1 a 4 puertas.** Las puertas son las de la ficha, con hojas de 0,72, 0,72,
+  0,69 y 0,68; el copete de 14 cm lleva el aviso luminoso (R3 estima el cabezote en 15 a
+  25) y el zócalo de 17, su rejilla. El producto queda detrás del vidrio y adentro del
+  gabinete. Se lee como nevera de puertas de supermercado. Quedan dos diferencias:
+  - **Las repisas no son las de la ficha.** Las cuatro fichas dicen 4 por puerta y el
+    dibujo pone 5 más el piso (6 filas de producto), porque las rejillas salen del alto
+    (`nivelesDeNevera`, una cada ~30 cm) o se acomodan al producto en prueba. El plan
+    preveía `repisasPorPuerta` y no se hizo. Llevarlo a la ficha toca la cuenta única de
+    la nevera: dibujo, relleno, venta y rejillas automáticas.
+  - **Las manijas.** Con 2 puertas se enfrentan en el medio; con 3 y 4 sólo se enfrenta la
+    última pareja y las demás abren todas hacia el mismo lado. Ninguna ficha dice cómo
+    van: queda así hasta tener una referencia.
+- **Puesto de impulso.** 0,80 × 0,40, la tapa a 1,00 y la cenefa de 30 cm hasta los 2,00
+  sobre dos mástiles en las esquinas de atrás, con aire entre la tapa y la cenefa: lo de la
+  ficha de Grupo SRM. Nada flota. Con producto y sin él se ve igual, a propósito: no lleva
+  producto inventado y sólo cambia la franja de estado.
+- **Estiba completa, media y cuarto.** La tarima tiene la huella de cada ficha (1,20 ×
+  1,00; 1,00 × 0,60; 0,60 × 0,50), con su hueco para la uña, y la torre se apoya en la
+  cubierta sin aire entre tendidos. Queda abierto que **la torre no llega al fondo de la
+  tarima**. El relleno de un mueble que se vende entero se apila hasta
+  `PROFUNDIDAD_DE_MUEBLE_ENTERO` (5) unidades hacia atrás (`muebles/frentes.ts`), y con
+  cajas de 7 cm eso cubre unos 40 cm. En la completa, de 1,00 de fondo, queda más de media
+  tarima vacía detrás. Se ve en tres cuartos y, sobre todo, desde arriba, que es como más
+  se mira el plano. Viene de antes: el exhibidor de piso de 0,80 ya lo tenía. No se tocó
+  porque cambia cómo se dibuja cada estiba con contrato de los planos de hoy. (Arreglado
+  esa misma tarde para la estiba colocada desde un modelo: ver *La revisión de la rama*.)
+- **Exhibidor de cartón.** Mide 0,60 × 0,40 × 1,70, con cuatro bandejas y cabezote, como el
+  valor sugerido. Se dibuja con la forma del impulsador, como pedía el plan, y **esa forma
+  no se lee como un exhibidor de cartón**. Es una columna central con bandejas en voladizo,
+  sin los costados ni el fondo de cartón que tiene uno de verdad. Además, la columna
+  atraviesa el producto de cada bandeja: de frente se ve como un mordisco en el centro.
+  Necesita un dibujo propio: dos costados, el fondo, cuatro bandejas y el cabezote de unos
+  30 cm de R3. No es un arreglo chico. (Lo tiene desde esa misma tarde: ver *La revisión de
+  la rama*.)
+- **Góndola central de 2,00 con 4 entrepaños y módulo de 1,00**, al lado de la misma sin
+  ficha. El modelo lleva la base y cuatro entrepaños con producto en las cinco filas, y el
+  corrido de 3 m partido en tres módulos de 1,00. La cuenta de siempre da cinco entrepaños
+  (en el de arriba no cabe producto) y dos módulos de 1,50. El modelo coincide con la
+  ficha de Vialambre.
+
+**Lo que se arregló.** Los tres arreglos son de `ImpulsadorMesh`, que dibuja el exhibidor de
+cartón y también el impulsador de siempre:
+
+- **Cada bandeja se inclina sobre sí misma.** El grupo giraba desde el origen del mueble y
+  las bandejas se corrían hacia atrás el 3,5 % de su altura: 4 cm la de 1,12 m. El
+  producto, que no gira, quedaba volando delante del filo y el porta-precios, enterrado en
+  la primera fila. El mural de vegetales había tenido el mismo error.
+- **La cara blanca del cartel va pegada al cartel.** Estaba en el filo del mueble, 13 cm
+  por delante de la espina y sin nada que la sostuviera.
+- **El cartel no pasa del alto del mueble.** Asomaba 5 cm por encima del alto declarado y
+  de la tapa. Ahora ocupa los últimos 24 cm del alto y termina bajo la tapa.
+
+Esto cambia el dibujo del impulsador en los planos de hoy, pero no su medida, su cara ni lo
+que se vende: es la corrección de piezas que flotaban. Lo vigila la guarda «el impulsador
+inclina cada bandeja sobre sí misma y su cartel no vuela» de `probar-muebles`. Otra guarda,
+«/taller mira cada modelo con su ficha estampada», cuida lo del taller.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`, 842 verdes; `npm run build` limpio,
+con el pedazo de entrada en los mismos 340,7 kB; `import app.main` y el pytest de catálogo,
+modelos, caras, renumeración, corte y ficha del layout, planilla, vendible, métricas y
+detalle de la plataforma, enlace de montaje y estado comercial, todo verde. Hubo 11
+mutaciones y cada una hizo fallar su guarda:
+
+- la bandeja que vuelve a girar desde el origen, o que suma `sy` dos veces en la tabla o en
+  el porta-precios;
+- la cara del cartel de vuelta en el filo;
+- el cartel centrado como antes, o con su alto entero;
+- el taller sin la ficha, vendiendo con la cuenta de siempre, con ficha en el de al lado,
+  encuadrando por el ancho sólo con otro al lado, o sin la lista de modelos.
+
+Las capturas del impulsador y del exhibidor de cartón, antes y después, muestran las
+bandejas debajo del producto y el cartel en su lugar.
+
+### La revisión de la rama (2026-10-14)
+
+Tres revisiones adversariales de la rama (lógica y planos viejos, reglas y privacidad, y 40
+mutaciones contra las guardas) dejaron doce hallazgos. Los planos de antes —sin `modelo`,
+entrepaños, módulo ni partes— dan lo mismo que antes en las 73.482 comparaciones de la
+primera: lo que encontraron está en lo nuevo. Cada uno se reprodujo, se arregló con el
+cambio mínimo y quedó con una prueba que falla sin el arreglo:
+
+- **Deshacer el panel no se guardaba (alto).** «Entrepaños» o «Módulo» escritos sobre una
+  góndola que no tenía la clave, y después Ctrl+Z: el store reponía el arreglo de antes,
+  con la clave AUSENTE, y `PUT /layout` la rellenaba con lo deshecho. El editor dibujaba la
+  cuenta de siempre y la base guardaba los entrepaños deshechos, que eran los que veían el
+  visor de otro equipo, la mercaderista y el mismo editor al recargar. Ahora deshacer y
+  rehacer pasan por `conFichaQuitada` (`utils/guardadoDelPlano.ts`): la clave que el plano
+  repuesto no tiene y el de ahora sí vuelve en `null`. `probar-geometria` corre el store de
+  verdad con la red cambiada por una que anota el cuerpo de cada `PUT`, y exige
+  `"entrepanos":null` después del deshacer. En el mismo módulo quedaron `sinComercial` (lo
+  que viaja en el `PUT`) y `CLAVES_DE_FICHA`; no importa nada, así que el store —que va en
+  el pedazo de entrada— no arrastra el catálogo.
+- **El panel contaba los entrepaños en otra unidad.** En la góndola sin entrepaños guardados
+  el de arriba es techo, sin producto, y el panel lo contaba: la de 1,80 decía «auto (5)» y
+  escribir 5 daba seis filas de producto, con otras alturas, sobre una cara vendida (y el
+  aviso decía «de 5 a 5»). `geometriaALaVista` cuenta ahora los que llevan producto (las
+  filas menos una, de `filasDeProducto`): esa góndola dice 4 «más uno de techo». La
+  cantidad se compara en esa unidad, así que escribir el número sugerido reparte los
+  entrepaños parejo —avisa, no bloquea— y el aviso lo dice así.
+- **Un mueble de otro tipo con el mismo `id` heredaba la ficha.** `_con_la_ficha_de_antes`
+  compara además el tipo de verdad (`tipo_base`: `gondola_mural` es `gondola`).
+- **La mercaderista recibía la ficha sin tipar.** `modelo`, `entrepanos` y `modulo` estaban en
+  la lista blanca de montaje y pasaban con lo que trajeran (un objeto con plata, un texto
+  con un proveedor). Ahora se copian como en `sinDatosComerciales`: texto y números.
+- **Las centrales estimadas de 1,50** decían tomar los entrepaños de la de alto parecido y
+  tenían 3: tienen 4, los de Vialambre. `probar-catalogo` exige que los modelos de una
+  familia y un alto tengan los mismos entrepaños (el módulo es el ancho, no cambia cuántos
+  van). **La confiabilidad de más**: la nota de la Vialambre de 1,50 dice que su 1,00 es el
+  0,97 redondeado al módulo, y la de las centrales de GMC que los entrepaños no son de la
+  ficha de la doble sino de la sencilla —o de Vialambre e Industrias Cruz en la de 2,00—:
+  son una estimación.
+- **Los ids de los modelos sólo admiten sumar**: `frontend/scripts/casos/modelos-ids.json`.
+- **Guardas sobre el código de verdad.** Varias probaban una copia de lo que hace el editor
+  y no la línea que lo hace. Ahora fallan si: el Editor 3D o el plano 2D colocan sin
+  estampar la ficha (`...fichaDe(placingDef)` en `newFix`, `nace` en `placeItem`, el
+  `pendingModelo` del clic); el guardado saca los `null` (el cuerpo del `PUT`, ejecutado);
+  alguien le pregunta la tarifa a `rateTypeOf` con un objeto armado o con `.type` en vez del
+  mueble (se revisan todas las llamadas); la lámina de `GondolaMesh`, el producto de prueba
+  de la nevera de puertas o cualquiera de las cinco ventas del editor dejan de usar la ficha.
+
+**Lo que se vio en `/taller`, y se arregló sólo para lo colocado desde un modelo.** La torre
+de la estiba se apila hasta el FONDO de la tarima (`hondo: "todo"` en `VendidoEntero`, que
+pide `IslaMesh` cuando el mueble tiene `modelo`): la completa de 1,20 × 1,00 mostraba más de
+media tarima vacía desde arriba; ahora la torre ocupa de 0,86 a 0,94 m de los 0,96 útiles
+según el empaque (lo que sobra es menos de una caja), con 360 a 1.540 cajas. El
+**exhibidor de cartón** tiene su dibujo (`ExhibidorCartonMesh`): dos costados y el fondo de
+cartón, el zócalo cerrado con la franja de estado, bandejas planas de costado a costado con
+el frente doblado y el cabezote al frente, sin la columna del impulsador que mordía el
+producto al medio. Las bandejas, el cabezote (24 cm; R3 dice unos 30) y el arte salen de la
+misma cuenta que el impulsador (`getPanelShelfSpan("impulsador")`), así que el arte del
+proveedor cae igual sobre cada bandeja. Una estiba o un impulsador SIN modelo —todo lo de
+los planos de hoy— se dibujan exactamente como antes; se miró la estiba de 1,20 × 0,80 de
+siempre con las cinco filas. Las capturas, de trabajo, no entran al repo.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`, 851 verdes (eran 842); `npm run build`
+limpio, con el pedazo de entrada en 341,0 kB (el store ahora importa `guardadoDelPlano`, que
+no arrastra nada); `import app.main` y pytest de catálogo, modelos, caras, renumeración,
+corte y ficha del layout, planilla, vendible, métricas y detalle de la plataforma, enlace de
+montaje y estado comercial: 240 verdes. 32 mutaciones, y cada una hizo fallar su guarda:
+deshacer y rehacer sin el `null`, `conFichaQuitada` que no hace nada, el guardado que saca
+los `null`; el panel que vuelve a contar el techo, que compara la cantidad por el campo o
+que dice «de N a N»; el 3D y el 2D que colocan sin la ficha y el clic sin el modelo; el
+contrato y el tablero que preguntan la tarifa con el tipo; la lámina de la góndola, la venta
+de la nevera y tres ventas del editor sin la ficha; la estiba con modelo como siempre, la
+de antes hasta el fondo, «hasta el fondo» ignorado o sin traducir; el cartón dibujado como
+impulsador, con columna o con otra cuenta de bandejas; la central de 1,50 con 3; un id
+renombrado (de los dos lados); el servidor sin mirar el tipo o sin los alias; y montaje sin
+el tipo del modelo o de los entrepaños.
+
+### Fichas propias del cliente (2026-10-14)
+
+Lo que hay que saber de las fichas propias sin leer las cuatro secciones que siguen (el
+servidor, la pantalla, el nombre propio y el recorrido), y lo que cambió en la revisión de la
+rama. La meta es de la dueña: que cada supermercado arme sus muebles **sin pedirnos un cambio**.
+
+- **La tabla y su clave.** `modelos_mueble`, en la base de CADA supermercado, de negocio
+  (`TABLAS_DEL_CLIENTE`: viaja en el traspaso y en la copia de seguridad, sin archivos). Clave
+  primaria entera que no se reutiliza; `clave` única, `^[a-z0-9-]{1,60}$`, que el plano guarda
+  en el mueble como `modelo: "cli:<clave>"` y **no cambia nunca** —tampoco la familia ni la
+  tarifa: el `PUT` las rechaza—, porque lo colocado busca su tarifa por ella. Casi todo va en
+  `datos_json` (variante, medidas, entrepaños, módulo, puertas, tarifa, fuente): desplegada,
+  esta tabla tampoco podrá ganar columnas.
+- **Quién crea y quién ve.** Crea, cambia, retira y reactiva **administración**, en `/taller` →
+  «Fichas» (la dueña entra con su cuenta de dueña, que es admin). La lee **cualquier sesión de
+  ese supermercado** —el trabajador también, sin `creado_por`—: las paletas, el panel y la
+  tarifa las necesitan. Otro supermercado no las ve (cada uno tiene su base), la consola de la
+  plataforma sólo usa su tarifa (`tarifas_propias`), y en el navegador nunca se guardan en
+  `localStorage`.
+- **Una validación, la del catálogo.** `fichas` de `muebles.json` (las dos copias idénticas):
+  `problemasDeLaFicha` en el navegador y `problemas_de_la_ficha` en el servidor dicen lo mismo,
+  y corren los mismos 90 casos (`frontend/scripts/casos/fichas.json`). Familia con `rango`,
+  medidas en rango, sólo la geometría de su familia, textos con largo máximo, la fuente con su
+  confiabilidad (`ficha`/`catalogo`/`estimado`) y una URL o una nota. El formulario además
+  marca los entrepaños que no caben a 25 cm, que el servidor no puede ver.
+- **La tarifa.** Una ficha no lleva plata: lleva, si acaso, la clave de una fila de Tarifas que
+  su familia ya tiene (media o cuarto de estiba, exhibidor de cartón). `rateTypeOf` ↔
+  `tarifa_del_mueble`, con los 18 casos compartidos de `casos/tarifas.json`; la planilla y la
+  consola leen las fichas UNA vez por pedido. Un `modelo` que no es texto da la tarifa del tipo
+  en los dos lados.
+- **Retirar no borra.** Es baja lógica: la ficha deja de ofrecerse en las paletas del plano y
+  del Editor 3D, y lo colocado con ella sigue igual —tiene la ficha ESTAMPADA, con sus medidas,
+  su geometría y su `modelo`—, se sigue cobrando con su tarifa y el panel la nombra «(retirada)».
+  La clave de una retirada no se reutiliza. Reactivar la vuelve a ofrecer.
+- **Sin foto.** La dueña no tiene fotos de sus muebles: no hay campo ni subida de imágenes. La
+  fuente es la página de la ficha técnica, nunca una imagen (`fuenteQueEsImagen`), y sólo se
+  muestra en un `title` al pasar el mouse, nunca como enlace.
+- **Los nombres propios.** Cada supermercado le pone su nombre a cada familia («mamut», «tope de
+  góndola») en Configuración → «Cómo se llaman los muebles acá». Se ven en el plano 2D, el
+  Editor 3D, Vender (la lista, el visor y la lámina del proveedor), Supervisar, Estado por
+  espacio, Montajes, Tarifas y el taller. **No** se ven en la consola de la plataforma ni en los
+  informes de asesoría (comparan supermercados con el nombre de RECABRA), ni en el enlace de la
+  mercaderista (no tiene sesión). Nada se guarda en el plano: el `label` del mueble sigue siendo
+  el de RECABRA.
+
+**La revisión de la rama (2026-10-14).** Tres revisiones —regresión y datos (con Postgres 16),
+seguridad, y mutación de las guardas— y el recorrido de la dueña en el navegador. Lo que
+encontraron y quedó arreglado, cada cosa con su guarda:
+
+- **Vender arrancaba con la tarifa equivocada.** El precio inicial de cada espacio se escribía
+  UNA vez; con las fichas propias depende de `GET /api/muebles/modelos`, que llega aparte, y una
+  media estiba propia tocada antes quedaba en 3.000.000 (estiba entera) en vez de 900.000, que
+  es lo que dan la planilla y la consola. Ahora **el campo sigue a la tarifa mientras nadie lo
+  toque** (`utils/precioDeLista.ts`, `valoresDeLista`): lo tecleado —también borrarlo— y la
+  semilla de una renovación no se pisan. Y si la lectura de las fichas falla (un 502), el store
+  **reintenta solo**, a los 2, 4, 8… segundos hasta un minuto, mientras siga la sesión
+  (`store/fichasPropias.ts`); antes sólo reintentaba al montar otra pantalla, y en Vender eso
+  no pasa nunca.
+- **Un `modelo` que no es texto dejaba la aplicación en blanco.** `PUT /layout` guarda el mueble
+  como llega, y un `modelo: 5` escrito a mano por la API rompía `modeloPorId` (`startsWith`) en
+  todas las pantallas del supermercado, trabajadores incluidos. Ahora lo que no es texto no es
+  un modelo, como ya hacía el servidor; cuatro casos nuevos en `casos/tarifas.json`.
+- **Un nombre propio viejo trababa la lista de sedes.** El lápiz de la biblioteca del 2D no
+  tenía tope antes de c190158, y el validador nuevo rechazaba con 422 TODO el `PUT
+  /layout/settings` —que es el mismo que guarda las sedes— si un nombre pasaba de 80 letras:
+  ese supermercado no podía agregar, renombrar ni quitar una sede. Ahora **se recorta, nunca se
+  rechaza** (`nombres_propios_recortados` en `schemas/layout.py`, al guardar y al leer): sin
+  espacios a los costados (un nombre con un millón de espacios pesaba un mega en cada lectura),
+  cortado a 80 letras, y sin lo que no puede ser un nombre (una clave de más de 60, más de 100).
+- **Un número gigante daba 500.** Un entero de JSON de cientos de cifras no entra en un `float`
+  y `math.isfinite` lanzaba `OverflowError`: ahora es un 422 por campo, como cualquier medida
+  mala.
+- **«Una ficha no lleva foto» se saltaba** con `foto.png#1`, `foto.jpg;v=1`, `foto.png%3Fv=1` o
+  `foto.webp&w=800`. La expresión compartida mira ahora también `#`, `;`, `&` y `%` después de
+  la extensión (`.png-ficha-tecnica/` sigue siendo una página); cinco casos nuevos.
+- **Las guardas no miraban el cableado.** Once mutaciones pasaban la suite entera en verde. Ahora
+  se prueban: el hook `useFichasPropias` (montar una pantalla las pide UNA vez por sesión, otra
+  pantalla no, otro token u otro supermercado sí) y que quien está suscripto se entera al
+  fijarlas y al olvidarlas (`probar-catalogo`, con un React de mentira); retirar y reactivar en
+  el orden correcto, por `retirarOReactivarFicha` (`utils/formularioDeFicha.ts`, puro); que las
+  paletas de los dos editores dibujen la familia ENTERA, sin filtro; que cada pedido de
+  `api/muebles.ts` sea una ruta del servidor con su método (`test_fichas_propias.py`); que los
+  nombres propios BAJEN del servidor al abrir la sesión sin pisar uno que se está guardando; y
+  que cada `nombresPropios` de las pantallas del supermercado sea la lectura del store, no uno
+  por archivo (`probar-nombres`).
+
+Lo que se vio en el recorrido y no es de esto (el doble `PUT /layout/settings` de `StrictMode`
+en desarrollo, el aviso de React al colocar en el 3D, el 403 de `/clientes/mi-suscripcion` para
+un administrador que no es la dueña) está en *Fichas propias: el recorrido en el navegador*.
+
+### Fichas propias: el servidor (2026-10-14)
+
+La meta de la dueña: que cada supermercado —el próximo es uno como Galerías o Cañaveral—
+arme sus muebles **sin pedirnos un cambio**. Los modelos de RECABRA viven en `muebles.json` y
+cambian con un despliegue; los de cada supermercado viven en su base. Ella no tiene fotos de
+sus muebles, así que la ficha es sólo familia, nombre, medidas, la geometría de su familia y
+de dónde salió (URL, nota y confiabilidad `ficha`/`catalogo`/`estimado`). Este paso es el
+servidor; la pantalla (el taller y las paletas) es el que sigue (*Dónde retomar*).
+
+**La tabla.** `modelos_mueble` (`models/models.py`, `ModeloMueble`), en la base de CADA
+supermercado y clasificada en `TABLAS_DEL_CLIENTE`: viaja en el traspaso y en la copia de
+seguridad. `id` entero con `sqlite_autoincrement` (no se reutiliza); `clave` única,
+`^[a-z0-9-]{1,60}$`, que es lo que guarda el plano como `cli:<clave>` y no cambia nunca —una
+retirada conserva la suya: otra con la misma clave le cambiaría la tarifa a lo colocado—;
+`tipo` (la familia, String y no `SAEnum`), `nombre`, `datos_json` (variante, `w`/`d`/`h`,
+`entrepanos`, `modulo`, `partes.puertas`, tarifa, fuente), `retirado_en` (la baja lógica),
+`creado_en`, `actualizado_en` y `creado_por`. Casi todo va en el JSON porque, desplegada, esta
+tabla tampoco podrá ganar columnas. La clave primaria es el entero a propósito (la crítica del
+plan): la copia de seguridad arma las rutas de los archivos con la clave primaria, y una ficha
+no tiene archivos, así que sale sólo en `tablas/modelos_mueble.json`.
+
+**Una validación, la del catálogo, en los dos lados.** Las reglas que antes estaban escritas
+dentro de `probar-catalogo.mjs` —la confiabilidad, qué geometría puede fijar un modelo y dónde
+vive, qué URL es una imagen— y las nuevas —la clave, los largos máximos (nombre 80, URL 500,
+nota 600) y el prefijo `cli:`— viven ahora en `fichas` de `muebles.json`, que leen los dos
+lados. `problemas_de_la_ficha` (`services/catalogo_muebles.py`) y `problemasDeLaFicha`
+(`src/catalogo/fichas.ts`) dicen lo mismo: la familia existe y tiene `rango`; la variante si la
+tiene (la góndola); las medidas dentro del `rango`; sólo la geometría de su `geometria`, en
+rango y entera donde va; una tarifa propia sólo si es una de las de los modelos de su familia
+(la media o el cuarto de estiba, el exhibidor de cartón: las que Tarifas ya ofrece); la fuente
+con su confiabilidad y una URL http(s) que no sea una imagen, o una nota; ni foto ni nada que
+no sea de la ficha. Los dos corren los 85 casos de `frontend/scripts/casos/fichas.json`
+(`probar-fichas.mjs` y `tests/test_fichas_propias.py`), que comparan los CAMPOS con problemas,
+y los 36 modelos del catálogo pasan la validación de una ficha propia. Lo que NO valida el
+servidor: que los entrepaños quepan a 25 cm (`entrepanosQueEntran`, que depende de cotas del
+dibujo en `medidas.ts`); eso lo tendrá que marcar el formulario del taller.
+
+**La API** (`routers/muebles.py`, prefijo `/api/muebles`; `/api/catalogo` es el de las artes):
+`GET /modelos` para cualquier sesión del supermercado (no lleva plata: la tarifa es la clave de
+una fila, y quién la creó sólo lo ve administración), retiradas incluidas con `retirado: true`;
+`POST /modelos` y `PUT /modelos/{clave}` sólo administración, con 422 en la forma de FastAPI
+(`loc` por campo) y 409 si la clave ya existe, aunque esté retirada; `POST
+/modelos/{clave}/retirar` y `/reactivar`. El `PUT` reemplaza la ficha entera y rechaza cambiar
+la clave, la familia o la tarifa: lo colocado busca la tarifa por la clave y la compara con su
+tipo. Alta, cambio (con qué grupos cambiaron: nombre, medidas, geometría, fuente), retiro y
+reactivación van a la bitácora (`ficha_mueble.*`; retirar no termina en `.baja`: no borra).
+Las salidas tienen la misma forma que un modelo de `muebles.json`, para que las paletas las
+traten igual.
+
+**La tarifa de una ficha.** `tarifa_del_mueble(fixture, propios)` resuelve también `cli:…`, con
+la misma regla que los modelos base (sólo si la ficha es del tipo del mueble; un modelo del
+catálogo no puede ser pisado por una ficha). `propios` lo arma `fichas_propias.tarifas_propias`
+con UNA consulta —retiradas incluidas— y lo piden la planilla (`bulk_leases._revisar`, una vez
+por planilla) y la consola (`plataforma_metricas._numeros_del_layout`, una vez por cliente: de
+ahí salen las métricas, el spread y el detalle por cliente). Las pruebas cuentan las consultas.
+
+**Lo que no cambió.** Ningún plano: un mueble colocado con una ficha la tiene estampada y no se
+relee (cambiar o retirar la ficha no le toca nada; lo prueba `test_fichas_propias`). Ninguna
+tabla vieja ganó columnas (`test_t22` verde), ningún código de espacio ni id de modelo base.
+El pedazo de entrada del navegador es byte a byte el mismo: nadie importa todavía
+`catalogo/fichas.ts` y Rollup deja afuera `fichas` del JSON.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar` (31 guiones, con `probar-fichas` nuevo)
+y `npm run build` limpios; `import app.main` y pytest de fichas propias (18, nuevo), catálogo,
+modelos, ficha y corte del layout, planilla, traspaso, copia de seguridad, bitácora,
+métricas, spread y detalle de la plataforma y tendencia (t22): 253 verdes y el salto de
+siempre. 37 mutaciones —el rango, la geometría, la clave con `match`, la URL de cualquier
+esquema, la imagen, la tarifa de otra familia, la foto, las reglas copiadas a mano (de los dos
+lados), el worker que crea, retira o ve el autor, la tarifa, la familia o la clave que se
+editan, retirar que borra o no anota, la clave retirada reutilizada, la tarifa sin las fichas,
+sin mirar el tipo o pisando al catálogo, la planilla y la consola que leen por fila o por
+plano o no leen, las retiradas sin tarifa, la tabla sin clasificar o fuera de la copia, ids
+reutilizados, las rutas fuera de orden, `in` en vez de `hasOwnProperty`, los largos en
+unidades UTF-16 y `probar-catalogo` sin las reglas— y cada una hizo fallar su guarda.
+
+### Fichas propias: la pantalla (2026-10-14)
+
+El servidor de las fichas propias estaba (*Fichas propias: el servidor*); faltaba que la dueña
+pudiera usarlo sin pedirnos nada. Ahora arma la ficha en el taller y la coloca desde las paletas
+de los dos editores, como un modelo de RECABRA.
+
+**Dónde viven en el navegador.** `catalogo/propias.ts` guarda la lista que manda `GET
+/api/muebles/modelos` (retiradas incluidas) y no importa nada: es donde las busca
+`modeloPorId` —y con él `rateTypeOf`, el nombre del panel y la sugerencia de «Alto»,
+«Entrepaños» y «Módulo»—, primero el catálogo y después las propias, sólo con el prefijo `cli:`
+(una ficha propia no puede hacerse pasar por un modelo de RECABRA). La llena
+`store/fichasPropias.ts` UNA vez por sesión (`useFichasPropias()`, que además vuelve a dibujar a
+quien la llama) y otra vez cuando el taller guarda, retira o reactiva una
+(`recargarFichasPropias`). No se guarda en `localStorage`: un ingreso nuevo —o de otro
+supermercado en la misma máquina— las olvida ANTES de leer las suyas, una respuesta de la
+sesión anterior que llega tarde no las pisa, cerrar la sesión las olvida y, sin red, se queda
+sin ellas (los muebles colocados se dibujan igual: tienen la ficha estampada) y reintenta en la
+próxima pantalla. No viaja en lo que baja la landing: la piden el tablero, los editores y el
+taller (`probar-catalogo` mira el grafo de `main.tsx`; el pedazo de entrada siguió en
+352,43 kB). `api/muebles.ts` tiene los cinco pedidos.
+
+**La pestaña «Fichas» de `/taller`** (`components/taller/PanelDeFichas.tsx`, sólo
+administración, como el taller). A la izquierda el formulario y la lista; a la derecha el
+mueble con ESA ficha, girando:
+
+- **Familia**: las que admiten fichas (las que tienen `rango`), con la góndola dos veces
+  —«Góndola Doble (central, dos caras)» y «Góndola Mural (de pared, una cara)»—, porque de la
+  variante dependen las caras. **Nombre** y **clave** (sale del nombre sin tildes mientras no
+  se la toque: «Góndola de pared 1,70» → `gondola-de-pared-1-70`; «es lo que guarda el plano:
+  no cambia nunca»).
+- **Medidas en centímetros**, como vienen en una ficha técnica, con el rango de la familia al
+  lado de cada una («de 60 a 320 cm»); en la góndola el ancho es «Ancho de un módulo».
+- **Cómo es por dentro**, sólo lo que su familia admite: puertas (la nevera de puertas),
+  entrepaños por cara sin la base y módulo (la góndola y la punta). Vacío es la cuenta de
+  siempre. El tope de entrepaños dice cuántos caben **con ese alto** a 25 cm.
+- **Tarifa**: «La de su familia (…)» o una de las propias de la familia que ya existen (media
+  y cuarto de estiba, exhibidor de cartón).
+- **De dónde salió**: URL de la ficha técnica («la página, no una foto»), nota con sus
+  palabras (con el contador de 600) y cuánto confiar, en palabras: «Ficha técnica: la página
+  trae las medidas», «Catálogo: salen del título o de un listado», «Estimado: medido a ojo o
+  deducido (lleva «≈»)». Sin foto ni subida de imágenes.
+- **Guardar** pasa por `guardarFicha` (`utils/formularioDeFicha.ts`, puro): valida con
+  `problemasDeLaFicha` —las mismas reglas que el servidor— más los entrepaños a 25 cm
+  (`entrepanosQueEntran`, que el servidor no puede ver), dice cada problema debajo de su campo
+  y en centímetros («el ancho (400 cm) está fuera del rango de su familia (60 a 320 cm)»), y
+  **no llama a la API** si hay uno. Lo que diga el servidor vuelve igual, por campo: un 422 con
+  sus palabras, un 409 debajo de la clave («Ya hay una ficha con la clave … (retirada). Las
+  claves no se reutilizan…»), sin red «la ficha no se guardó». Al editar, la familia, la clave
+  y la tarifa están quietas y dicen por qué.
+- **La lista**: «Tus fichas» con Editar y Retirar (retirar pregunta y dice que lo colocado
+  sigue igual), y las retiradas aparte, plegadas, con Reactivar.
+- **El mueble que se ve** sale de `fichaParaDibujar` (lo escrito, metido en el rango para no
+  dibujar una góndola de 30 m mientras se tipea) pasado por `defDeModelo` —la MISMA función
+  con que se arma la entrada de la paleta— y dibujado con la ficha estampada (`delCatalogo`
+  con `modelo`). La cámara arranca a tres cuartos encuadrando el mueble entero y «girar» lo
+  hace dar vueltas. «Mirar» lista también las fichas propias en «modelo».
+
+**Las paletas.** `paletaConPropias(propias)` (`catalogo/editor3D.ts`) y
+`modelosDelPlanoConPropias(propias)` (`catalogo/plano2D.ts`) ponen cada ficha vigente debajo
+de su familia —la central en `gondola_doble`, la de pared en `gondola_mural`—, DESPUÉS de los
+modelos de RECABRA, con su nombre y «≈» si es estimada; las retiradas no aparecen. Sin fichas
+propias devuelven `PALETA_3D` y `MODELOS_2D` mismas, y una familia sin propias es el mismo
+objeto (el 3D compara la entrada elegida por identidad). Una ficha propia se coloca con el
+rótulo y el emoji de su familia, el COLOR de su familia (no lleva color) y sus medidas y su
+geometría: `defDeModelo` y `modeloDelPlano`, las mismas que arman los modelos del catálogo.
+Colocarla estampa `modelo: "cli:<clave>"` por el camino de siempre (`fichaDe` en el 3D, `nace`
+en el 2D). El panel de los dos editores nombra el modelo (`nombreDeModelo`, con «(retirada)»
+si lo está) y la fuente al pasar el mouse (`textoDeFuente`: una ficha propia puede tener sólo
+la URL o sólo la nota).
+
+**La tarifa.** `rateTypeOf` no cambió: `tarifaDeModelo` busca por `modeloPorId`, que ahora
+encuentra también las propias, con la misma regla que `tarifa_del_mueble` del servidor (sólo
+si la ficha es del tipo del mueble; las retiradas siguen cobrando lo que cobraban). Los dos
+lados corren los 14 casos de `frontend/scripts/casos/tarifas.json` (`probar-catalogo` y
+`test_fichas_propias.py`, que las carga en la base y las lee con `tarifas_propias`, como la
+planilla y la consola). Como las fichas llegan DESPUÉS del primer dibujo, el tablero
+(`DashboardView`, `SpacesTable`), el contrato (`useContrato`) y Vender (`Ficha`) escuchan
+`useFichasPropias()` y ponen `fichasPropias` en cada `useMemo`/`useCallback` que pregunta la
+tarifa; sin eso la media estiba propia se mostraba y se comparaba como estiba entera hasta que
+cambiara otra cosa.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`: 31 guiones, 887 «ok» (eran 879), con
+guardas nuevas en `probar-catalogo` —la paleta y la biblioteca con las propias, colocar estampa
+`cli:` y cambiar o retirar la ficha no mueve lo colocado, los editores y el panel que las usan,
+la tarifa con los casos compartidos, el cargador por sesión, los cálculos que vuelven a
+preguntar la tarifa, el formulario que valida antes de mandar y las fichas fuera del pedazo de
+entrada— y en `probar-muebles` («/taller «Fichas» dibuja la ficha que se escribe»); `npm run
+build` limpio, entrada en 352,43 kB. pytest con la prueba nueva de la tarifa compartida.
+Mirado en el navegador contra un servidor local descartable: con 400 cm de ancho el formulario
+marcó el ancho, la fuente y la confiabilidad sin mandar nada; guardó la nevera Inducol de 2
+puertas, una góndola de pared estimada y una media estiba que después se retiró; la clave
+repetida dio el 409 debajo de la clave; la biblioteca del 2D y la paleta del 3D mostraron las
+dos vigentes al final de su familia (la «Góndola Mural» con 13 modelos) y no la retirada; la
+nevera colocada en el plano quedó con `modelo: "cli:nevera-inducol-2-puertas"` y el panel la
+nombró con su URL. 33 mutaciones, cada una hizo fallar su guarda (ver el commit).
+
+**Lo que queda.** Que la dueña haga el flujo ella misma (ya se recorrió en el navegador: ver
+*Fichas propias: el recorrido en el navegador*), la revisión adversarial
+de la rama. La tarifa propia de una ficha sólo puede ser una de las que ya tiene su familia
+(decisión del paso del servidor, a confirmar con ella). Un mueble con `cli:` de una ficha que
+esta sesión no pudo leer (sin red) se dibuja bien pero el panel no lo nombra y la tarifa es la
+del tipo hasta que se lean (desde la revisión, el store reintenta solo y el precio de Vender se
+corrige cuando llegan, si nadie lo tocó: ver *Fichas propias del cliente*).
+
+### Cómo le dicen acá: el nombre propio de cada familia (2026-10-14)
+
+Cada supermercado le dice distinto a sus muebles: lo que RECABRA llama «Estiba (exhibición de
+piso)» en uno es el «mamut», la punta es el «tope de góndola», el impulsador es la «exhibición
+especial». Para que cada uno use RECABRA sin pedirnos un cambio, sus pantallas tienen que hablar
+como habla la tienda.
+
+**Lo que había.** Las «etiquetas del catálogo» (`catalogLabels` en el store, `catalog_labels` de
+`GET`/`PUT /api/layout/settings`, guardadas en `app_config` como `layout_catalog_labels`, en el
+mismo valor que la lista de sedes) existían desde antes, pero sólo las aplicaba la biblioteca del
+plano 2D, y se editaban con un lápiz que aparecía al pasar el mouse. En Vender, Supervisar, Estado
+por espacio, el panel de los editores y la lámina seguía saliendo el nombre de RECABRA. Se
+siguen guardando ahí (sin migración ni columnas: es un valor de `app_config`), por la clave de la
+biblioteca del 2D: la góndola tiene dos, `gondola_doble` y `gondola_mural`, porque la central y
+la de pared se llaman distinto.
+
+**Dónde se edita.** Configuración (sólo administración) → «Cómo se llaman los muebles acá»: una
+fila por familia de la biblioteca del 2D, con el emoji y el nombre de RECABRA a la izquierda y el
+de la tienda a la derecha (el de RECABRA de muestra). Se guarda al salir del campo, con el mismo
+debounce de la lista de sedes, sin botón, como Tarifas; Esc deshace lo escrito. Vacío, o igual
+al de RECABRA, deja la familia sin nombre propio (`nombreParaGuardar`); se corta en 80 letras
+—el largo del nombre de una ficha, `fichas.largoMaximo.nombre` de `muebles.json`—, contadas en
+letras de verdad. El lápiz de la biblioteca del 2D sigue y guarda por el mismo camino (ahora
+también deja vaciar). Lo cambia sólo administración (`setCatalogLabel` pregunta `canWrite`,
+como el `PUT`). Si otra estación guardó la lista de sedes en el medio (409), la fusión ya no
+resucita un nombre recién borrado (`_nombresQuitados`, que se olvida con los datos de otro
+supermercado).
+
+**Dónde se lee** (`catalogo/nombresPropios.ts`, puro salvo `rateTypeOf`):
+
+- `conNombrePropio(f, nombres, deSiempre)`: el nombre del mueble, o el texto que esa pantalla
+  mostraba antes, tal cual. Lo usan el encabezado del espacio en el plano de Sede y su panel de
+  detalle, el cartel del mouse, «Para revisar» de Supervisar, la paleta, el panel, el cartel y
+  «Colocando …» del Editor 3D, el panel del 2D, el aviso de lo que no se alquila en Vender,
+  Montajes, la familia del formulario de fichas del taller («mamut — Estiba»), el aviso «ese
+  nombre ya lo tiene otro mueble» de los dos editores y **la lámina del proveedor** («Mueble:
+  …»), del Editor 3D.
+- `tipoDelMueble(f, nombres)`: la columna «Tipo» —Estado por espacio, la lista de Vender, la
+  chapa del visor de Vender y su lámina, «Cuándo se libera»—. Es `rateTypeLabel(rateTypeOf(f))`
+  con el nombre propio encima, **salvo cuando el mueble tiene ficha con tarifa propia** (la media
+  estiba, el cuarto, el exhibidor de cartón, de RECABRA o propias): ahí dice su tarifa, que dice
+  más y es la fila de Tarifas que le pone precio. Pregunta la tarifa, así que los `useMemo` que
+  la llaman dependen de `fichasPropias` (la guarda de `probar-catalogo` la cuenta como
+  `rateTypeOf`) y de los nombres.
+- `nombreDeTarifa(clave, nombres)`: las filas por tarifa —«Tarifa de referencia» de Vender y
+  Tarifas—. Junta las familias de esa tarifa: la góndola son dos, y con sólo la central
+  nombrada dice «góndola de centro · Góndola Mural», sin ponerle a la de pared un nombre que no
+  es el suyo. Tarifas dice debajo «… en RECABRA», porque ése es el nombre por el que pregunta
+  quien la ayuda desde la consola.
+- La búsqueda del plano de Sede, de Estado por espacio y del 2D encuentra también por el
+  nombre propio (y sigue encontrando por el de RECABRA).
+
+**Dónde NO.** La consola de la plataforma y los informes de asesoría (`components/plataforma`,
+`Plataforma`, `ReportePlataforma`, `DetalleCliente`, `InformeCliente`) comparan supermercados y
+nombran con el catálogo (`nombresDeInforme`). Del lado del servidor, sólo `routers/layout.py`
+lee la clave, y el detalle, el reporte y las métricas de un cliente con nombres propios no los
+devuelven (`test_la_consola_no_usa_el_nombre_propio_del_supermercado`). Tampoco el enlace de la
+mercaderista (`/?montar=…`): no tiene sesión ni lee la configuración, y sigue con el de RECABRA.
+
+**Lo que no cambió.** Sin nombre propio, cada pantalla dice exactamente lo de antes: la guarda
+lo comprueba para cada tipo, variante, alias y modelo del catálogo y para las fichas propias de
+`casos/tarifas.json`. Nada se guarda en el plano: el `label` del mueble sigue siendo el rótulo de
+RECABRA (el 2D lo estampa al abrir), y `FilesSection` crea la fila de `spaces` con él. El
+servidor cuida el largo (80 letras, a lo sumo 100 nombres, claves de hasta 60) y no valida las
+claves contra el catálogo: una clave vieja no puede trabar el guardado de la lista de sedes, que
+viaja en el mismo pedido. Desde la revisión de la rama **recorta en vez de rechazar**, al guardar
+y al leer: un nombre de más de 80 letras escrito con el lápiz de antes trababa ese guardado (ver
+*Fichas propias del cliente*). El pedazo de entrada pasó de 352,43 a 352,53 kB (la fusión del 409 en
+el store); el catálogo sigue afuera.
+
+**Cómo se comprobó.** `tsc` limpio; `npm run probar`: 32 guiones (con `probar-nombres`, nuevo,
+11 pruebas), 898 «ok» (eran 887); `npm run build` limpio. pytest de los nombres (5, nuevo),
+catálogo, modelos, ficha y corte del layout, traspaso, copia de seguridad, borrado de sedes y
+fichas propias: 101 verdes; planilla, métricas y detalle de la plataforma (con la prueba de la
+consola) y tendencia: 146 verdes y el salto de siempre; t22 verde. En Chromium contra un
+servidor local descartable: Configuración mostró las 21 familias; con «Congelador de puertas»,
+«Tope de góndola» y «Mamut» el servidor los guardó, Estado por espacio dejó de decir «Nevera de
+puertas», la biblioteca del 2D y la paleta del 3D dijeron los tres, y vaciar la punta la sacó
+del servidor. 32 mutaciones —cada función, cada pantalla vuelta al nombre de RECABRA, una
+dependencia quitada, la consola que importa el módulo, el store que lo importa, el 409 que
+resucita, el trabajador que escribe, la sección quitada, el largo en UTF-16 de los dos lados,
+el servidor sin topes, otro módulo que lee la clave y el detalle que la devuelve— y cada una
+hizo fallar su guarda.
+
+### Fichas propias: el recorrido en el navegador (2026-10-14)
+
+Lo que hace la dueña, de punta a punta, en Chromium contra un servidor local descartable
+(SQLite vacía, ingreso por clave sólo en esa máquina), con capturas fuera del repo:
+
+1. **El taller.** «Fichas» → Nevera de puertas, «Nevera Inducol 2 puertas» (la clave sale sola:
+   `nevera-inducol-2-puertas`), 144,5 × 74 × 210 cm, 2 puertas, la URL de la ficha de Inducol y
+   «Ficha técnica». Ningún problema antes de guardar; el mueble de la derecha es una nevera de
+   dos puertas con su cabezote y gira (dos fotos del lienzo a 3 s son distintas). Guardar hace
+   UN `POST` y dice «Ya está en la paleta del plano y del Editor 3D, debajo de su familia».
+2. **El plano.** La biblioteca muestra «5 modelos» en la nevera de puertas, la propia al final
+   (1.445×0.74×2.1 m). Colocada, el panel dice «Nevera de Puertas · Nevera Inducol 2 puertas»
+   con la fuente al pasar el mouse, y el servidor guarda `NEV-01` con
+   `modelo: "cli:nevera-inducol-2-puertas"`, 1,445 × 0,74 × 2,10 y `partes.puertas: 2`.
+3. **El Editor 3D.** La misma ficha en la paleta, colocada como `NEV-02`; vistas de frente, las
+   dos neveras tienen dos puertas, repisas y cabezote (la cámara del editor arranca mirando el
+   dorso, que es negro: no es un defecto de la ficha).
+4. **El nombre propio.** «Enfriador vertical» para la nevera de puertas en Configuración: lo
+   dicen la biblioteca y el panel del plano, la paleta del 3D, la Tarifa de referencia, la fila
+   del contrato en Vender y la chapa del visor 3D («NEV-01 Enfriador vertical»), y Estado por
+   espacio del trabajador.
+5. **Venderla.** Postobón, $350.000 al mes: el contrato se guarda por la planilla
+   (`/leases/bulk`) y Supervisar sólo pide lo de siempre (por vencer, sin montar); nada de
+   «contrato sin mueble en el plano».
+6. **Retirarla.** El taller pregunta y dice que lo colocado sigue igual. Después: la biblioteca
+   y la paleta vuelven a 4 modelos, el panel de los dos editores dice «Nevera Inducol 2 puertas
+   (retirada)», y `NEV-01`/`NEV-02` en el servidor son idénticos a antes de retirar (el
+   contrato de `NEV-01` sigue).
+7. **El trabajador.** `/taller` lo devuelve a `/`; crear, cambiar o reactivar una ficha con su
+   sesión da 403 («Se requiere rol de administrador»), leerlas da 200 sin `creado_por`, y
+   cambiar el nombre propio también da 403.
+
+**Lo que se arregló al mirar.** El pie del panel del Editor 3D decía «1.4 × 0.7 × 2.1 m» para
+la nevera de 144,5 × 74 cm (`toFixed(1)`), mientras la paleta y el panel del plano decían 1.445
+y 0.74: ahora dice las medidas al milímetro, sin ceros de más. Y con todas las fichas retiradas,
+«Tus fichas (0)» decía «Todavía no armaste ninguna»: ahora dice «Ninguna vigente: las retiradas
+están acá abajo». Las dos con su guarda en `probar-muebles`.
+
+**Ruido que se vio y no es de esto.** En desarrollo, el primer ingreso a una base vacía manda
+dos `PUT /layout/settings` (el doble efecto de `StrictMode`) y uno vuelve con 409; la fusión lo
+resuelve sola. Colocar en el 3D deja en la consola el aviso de React «Cannot update a component
+while rendering a different component»: `u()` escribe en el store adentro del actualizador de
+`setPlacedFixtures` (viene de #22). Una sesión de administración que no es la dueña recibe 403
+de `/clientes/mi-suscripcion` en cada carga y Configuración muestra en rojo «Solo el owner del
+cliente puede hacer esto» bajo Suscripción.
+
+### Vender por partes (2026-10-14)
+
+El resumen de todo lo que se hizo en cinco pasos y una revisión, para retomar sin leer las
+seis secciones que siguen (P1 a P5 y *la revisión de la rama*, que tienen el detalle y el
+porqué). Lo pidió la dueña: **vender por partes, y que quede configurado para los muebles
+que cada supermercado arma con sus fichas propias** y para los modelos de RECABRA.
+
+**Qué se vende por partes.**
+
+| Mueble | Cómo se vende | La parte | Código |
+|---|---|---|---|
+| Nevera de puertas | entera o por puertas | `PU` | `NEV-03-PU2` |
+| Góndola (central o de pared: el mural), nevera abierta (multideck), nevera de vegetales | entera o por tramos | `TR` | `GON-05-B-TR2` |
+| Góndola y punta | enteras o por entrepaños | `EN` | `PUN-02-EN1` (la base) |
+| Caja (checkout) | **nunca entera**: sus bahías de impulso, una por una | `BI` | `CAJ-04-BI1` |
+| Columna | **nunca**: su forro | `FO` | `COL-07-FO` (sin número) |
+
+**La regla: entera o por partes, nunca las dos.** Un mueble se divide de UNA sola forma
+(`partes.division` es un solo valor: puertas, tramos o entrepaños, nunca tramos y entrepaños a
+la vez). La cara entera SIEMPRE se puede vender; la cara entera y sus divisiones nunca en
+fechas que se pisen; dos divisiones distintas, sí (dos puertas, dos tramos); dos de clases
+distintas de la misma cara chocan (el tramo 2 y el entrepaño 3 comparten repisa); una pieza
+sólo choca consigo misma. Lo decide `chocan` (`services/partes.py` ↔ `utils/partes.ts`, los
+mismos casos en `frontend/scripts/casos/partes.json`), lo aplican los cuatro caminos que
+escriben contratos (la planilla y Vender, el contrato suelto, la importación del plano) con
+un candado por mueble, y compara CÓDIGOS: por eso un mueble que se vende por partes se guarda
+con su código completo (*Reglas duras*).
+
+**Los códigos y su numeración.** `SEDE-CODE[-B]-<TOKEN><n>`: la cara B antes que la parte
+(`NAVE-GON-05-B-TR2`), la pieza sin cara (`NAVE-CAJ-04-BI1`), el forro sin número. **Una parte
+es una fila más de `spaces` / `space_leases` con su código derivado**: sin migraciones, sin
+columnas nuevas, sin tablas nuevas; la relación con su cara se deduce del código
+(`partirCodigo` / `partir_codigo`). Los códigos existentes no cambiaron, y un mueble nuevo no
+puede llamarse como una parte (409 `nombre_reservado`). La numeración:
+
+- puertas y tramos, **de izquierda a derecha mirando el frente de ESA cara** (en la B, la
+  izquierda es −X del mueble: `vanoDeParte` para el mueble, `vanoEnLaCara` para el dibujo de la
+  cara, cuyo producto va girado media vuelta);
+- entrepaños, **de abajo hacia arriba, y el `EN1` es la base**: con 4 entrepaños se venden 5;
+- bahías, **de izquierda a derecha mirando la caja desde la fila** (desde el lado del cliente).
+
+**Dónde se configura.** Tres niveles, y sólo el último cuenta para vender:
+
+- la FAMILIA (`muebles.json`, las dos copias idénticas) dice qué formas admite y qué piezas
+  lleva (`partes.divisiones`, `partes.piezas`; las clases en `partes.clases`);
+- la FICHA dice cuál usa y en cuántas: **los modelos de RECABRA** (neveras de 2, 3 y 4 puertas
+  por puertas; los 12 murales por tramos, uno por módulo; lo demás entero) y **las fichas
+  propias del taller** («Fichas» → «Cómo se vende»: por puertas, tramos o entrepaños según la
+  familia; las bahías de la caja; el forro de la columna), validadas con las mismas reglas en
+  los dos lados (`casos/fichas.json`);
+- el MUEBLE del plano la lleva estampada en `partes` al colocarse. **Sin `partes.division` (ni
+  piezas) se vende y se ve exactamente como antes**, aunque su ficha diga partes: lo ya
+  colocado no cambia solo. Se cambia en el panel «Cómo se vende» del plano 2D y del Editor 3D
+  (`components/PartesDelMueble.tsx`, el mismo en los dos): elegir la forma, «Usar lo de la
+  ficha», «Aplicar lo de su ficha a los N colocados con ella», «Aplicar a todas las cajas de
+  la sede», «Fijar 4 tramos, uno por módulo».
+
+**La tarifa, por clase de parte y por sede.** En Tarifas: «Puerta de nevera (cada una)»,
+«Tramo (cada uno)», «Entrepaño (cada uno)», «Bahía de impulso de caja (cada una)», «Forro de
+columna» (`parte_puerta`, `parte_tramo`, `parte_entrepano`, `parte_bahia`, `parte_forro`), con
+el nombre propio de la familia cuando la clase es de una sola. **Vacía, se sugiere la de la
+cara dividida por la cantidad de partes**, redondeada al peso con los medios hacia arriba en
+los dos lados (`tarifaDeEspacio` ↔ `referencia_de_espacio`); una pieza no tiene respaldo (la
+caja no tiene tarifa que dividir). Vender, Supervisar («bajo la tarifa», la franja) y la
+planilla cobran la de ESA parte (`comercialDelEspacio`, `tarifaDeLaFila`).
+
+**La guarda de `PUT /layout`.** Con una parte vendida (contrato vivo o firmado para más
+adelante) no cambia la cantidad de partes ni la forma de dividir: **409 `partes_vendidas`** si
+la parte seguiría existiendo en otro lugar («de 2 a 1 bahía de impulso», «de 5 a 6 entrepaños
+(contando la base)») y **409 `contratos_vivos`** si dejaría de existir; el panel lo frena antes
+y lo dice sin nombrar a nadie (`revisarCambioDePartes`). Con la cara vendida ENTERA, cambiar
+las partes avisa con «Cambiar igual»; estirar el mueble no frena (las partes se estiran
+parejo). Una pestaña vieja que no conoce `partes.division` no la borra
+(`_con_la_ficha_de_antes`, clave por clave), y el candado del mueble va también acá.
+
+**La convivencia con los espacios internos (los `slots` del Editor 3D).** Conviven: un espacio
+interno cae en un tramo por el ancho y en un entrepaño por la regla del relleno
+(`utils/slotsDeLasPartes.ts`); Vender avisa en el renglón de ESA parte («1 interno vendido en
+esta parte») y la planilla en las filas de una parte. En un mueble que se vende por tramos o
+entrepaños no se marca uno nuevo como vendido desde el panel del espacio interno (eso se vende
+en Vender, con contrato): si no, la misma repisa se vendía dos veces sin que el servidor lo
+viera.
+
+**Lo que ve cada rol.**
+
+- **La dueña, en Vender** (delante del proveedor): «Entera · PU1 · PU2…» en el renglón (la
+  caja, «BI1 · BI2», sin «Entera»), el choque dicho sin nombres ni plata («Hay puertas vendidas
+  en el periodo: se puede vender otra puerta, no la entera»; las FECHAS sí: son las que hay que
+  mover), la tarifa de la parte, el visor 3D con la parte marcada y el producto sólo ahí
+  (`marcasDelContrato`), y el plano «parcial» con «1 de 3 puertas vendida» o el día en que se
+  libera la entera mirando sus partes (`comoSeLiberaLaCara`). **Vender es de cara al
+  proveedor: nunca dice quién tiene otra parte, ni su canon, ni totales de la sede.**
+- **La dueña, en Supervisar**: cada parte vendida es una fila (plata, vencimientos,
+  proveedores, «bajo la tarifa», montaje); la ocupación sigue contando caras y dice aparte
+  «Partes vendidas: x de y», «Bahías de impulso: x de y», «Forros»; «Sin alquilar» suma las
+  partes libres a su tarifa; el detalle del mueble lista sus partes con Renovar, «Vender esta
+  puerta» y Cancelar.
+- **El trabajador**: las mismas filas sin plata (`negotiatedValue` en 0 desde
+  `/spaces/comercial`).
+- **La mercaderista** (el enlace del correo, sin sesión): «Puerta 2 de 3, contando de
+  izquierda a derecha mirando el frente», su proveedor, sus fechas y dónde queda. **La plata
+  no llega ni al trabajador ni a la mercaderista**, ni a su correo.
+- **La consola de la plataforma**: las partes y las piezas son contratos sobre el plano (no
+  «fuera»); el resumen por tipo las cuenta por clase sin la tarifa; la entera no «se libera»
+  mientras corra una de sus partes; la ocupación es por cara.
+
+**Dónde vive.** Servidor: `services/partes.py` (la forma), `services/layout_lookup.py` (la
+compuerta, `contratos_que_chocan`, `forma_canonica`, las guardas del plano),
+`services/candado.py`, `routers/bulk_leases.py`, `routers/spaces.py`,
+`services/importar_del_plano.py`, `plataforma_detalle.py`. Navegador: `utils/partes.ts` (la
+forma, la disponibilidad, la tarifa, lo que se marca y lo que se toca),
+`utils/partesDelMueble.ts` y `components/PartesDelMueble.tsx` (el panel),
+`utils/slotsDeLasPartes.ts`, `components/StoreEditor3D/muebles/contornos.ts` (los contornos y
+el taller). **Cómo se prueba**: `npm run probar:partes` (62 pruebas) y, del lado del servidor,
+`tests/test_partes.py`, `test_partes_venta.py`, `test_partes_tramos.py`,
+`test_partes_piezas.py`, `test_partes_fichas.py`, `test_partes_consola.py`,
+`test_layout_partes.py` y `test_partes_concurrencia.py`.
+
+### Vender por partes: la nevera entera o por puertas (P1, 2026-10-14)
+
+La dueña: **las marcas pagan la nevera entera o por puertas, nunca las dos en las mismas
+fechas; dos puertas distintas, sí**, y la puerta se llama `NEV-03-PU2` (la 2 contando de
+izquierda a derecha mirando el frente). Es el primer paso del plan de vender por partes; los
+tramos del mural, la bahía de la caja y el forro de la columna usan la misma maquinaria.
+
+**Una parte es un espacio más.** `NAVE-NEV-03-PU2` es una fila de `spaces` con su contrato en
+`space_leases`, como cualquier cara: sin migraciones, sin columnas nuevas, sin tabla nueva. Lo
+que la relaciona con su nevera es el código (*Reglas duras*). Los códigos de siempre no
+cambiaron.
+
+**Tres niveles de configuración** (`muebles.json`, las dos copias idénticas):
+
+- la FAMILIA dice de qué formas se divide: `tipos.nevera_puertas.partes.divisiones =
+  ["puertas"]`; las clases viven en `partes.clases` (`puertas`: token `PU`, eje `ancho`,
+  campo `puertas`, mínimo 2, tarifa `parte_puerta`, nombres para la consola) y los tokens
+  reservados en `partes.reservados`;
+- el MODELO (de RECABRA o una ficha propia) dice cuál usa y en cuántas: los de 2, 3 y 4
+  puertas traen `partes: { puertas: N, division: "puertas" }` (el de 1 no se divide). Una
+  ficha propia puede pedir `division` sólo si su familia la admite, con `puertas` entero ≥ 2
+  y dentro del rango (`problemas_de_la_ficha` y `fichas.ts`, con los casos de
+  `casos/fichas.json`);
+- el MUEBLE del plano lo lleva estampado en `partes`, y es lo único que cuenta. **Sin
+  `partes.division` la nevera se vende entera**, aunque su ficha traiga las puertas: lo ya
+  colocado no cambia solo. Se elige en el panel del plano 2D y del Editor 3D, «Cómo se vende»
+  (`components/PartesDelMueble.tsx`, el mismo en los dos), que escribe `division` y la cuenta
+  de puertas, y frena el cambio con una puerta vendida (`utils/partesDelMueble.ts`).
+
+**Dónde se aplica la regla** (`chocan`; servidor `services/partes.py`, pantalla
+`utils/partes.ts`):
+
+- **la planilla y Vender** (`routers/bulk_leases.py`): la compuerta
+  `motivo_para_no_vender_parte` (una puerta de una nevera que se vende entera, o la PU4 de una
+  de 3, se rechaza diciendo qué hacer), el choque con la entera o las puertas en esas fechas, y
+  dentro de la misma tanda. `confirmar` revisa, toma los candados de los muebles que toca y
+  vuelve a revisar antes de escribir. La fila dice «Puerta 2 de 3, contando de izquierda a
+  derecha mirando el frente» (`FilaOut.parte`) y la tarifa de referencia es la de la puerta;
+- **el contrato suelto** (`routers/spaces.py`, `create_lease`): candado, compuerta con su
+  motivo (`por_que_no_se_vende`) y choque con la entera o las puertas;
+- **la importación del plano** (`services/importar_del_plano.py`): un contrato que vive en el
+  JSON y choca con puertas vendidas queda «incompleto, revisalo a mano»;
+- **el guardado del plano** (`routers/layout.py`): `contratos_vivos` si deja de ofrecer una
+  puerta vendida, `partes_vendidas` si la cambia de lugar, `nombre_reservado` si un mueble
+  nuevo se llama como una parte, y el candado de los muebles cuya forma de venderse cambia.
+
+**Las pantallas.** Vender: tocar la nevera suma la ENTERA, como siempre; el renglón ofrece
+«Entera · PU1 · PU2 · PU3» (prender una puerta apaga la entera y al revés, `alternarParte`), y
+el choque dice «Ya está vendida entera en el periodo» o «Hay puertas vendidas: se puede vender
+otra puerta, no la entera» — nunca de quién ni a cuánto. El plano pinta la nevera «parcial»
+con una puerta vendida y «tomada» con todas (`disponibilidadDeCara`, que lee el mapa CRUDO de
+la base: vender una puerta no cambia el mueble fusionado). El visor 3D sigue siendo por cara:
+las puertas del contrato van con el marco en el amarillo de la venta y el producto en prueba
+sólo detrás de ellas (`vanoDeParte`: la PU1 de la cara A es la hoja de dibujo `n − 1`, lo
+comprueba `probar-partes` proyectando con la cámara de venta); el cabezote no lleva la marca
+de quien compra una puerta. Supervisar: cada puerta vendida es una fila más de «Estado por
+espacio» y de la plata, los vencimientos, los proveedores, «bajo la tarifa» y el montaje; la
+ocupación sigue contando caras (una nevera con una puerta que corre está trabajando) y dice
+«Puertas vendidas: x de y»; «Sin alquilar» suma las puertas libres a su tarifa; el detalle del
+mueble lista sus puertas con Renovar, «Vender esta puerta» y Cancelar, una por una; «Cuándo se
+libera» no cuenta libre un día con una puerta tomada. Montaje: el tablero y el enlace del
+correo dicen cuál puerta, contada desde dónde. Correos: los tres llevan la puerta (el de
+montaje en negrita), sin plata para quien no la ve. Tarifas: la fila «Puerta de nevera (cada
+una)» dice que vacía se sugiere la del mueble ÷ puertas. La consola de la plataforma cuenta
+las puertas como contratos sobre el plano (no «fuera del plano»), con su tipo en el resumen y
+en el benchmark, sin publicar nunca la tarifa; el detalle lista las puertas debajo de su cara.
+«Contrato sin mueble» y `auditar_desfase.py` conocen las puertas que se ofrecen; una puerta
+vendida de una nevera que hoy se vende entera SÍ es un contrato sin mueble.
+
+**Decisiones de este paso**, para confirmar con la dueña: la tarifa de la puerta (la de su
+clase por sede o, vacía, la de la nevera ÷ puertas, redondeada al peso con los medios hacia
+arriba en los dos lados); el área de la fila de una puerta es la huella de la nevera ÷ puertas;
+una nevera de una puerta no se vende por puertas; y **las 4 repisas por puerta quedaron para
+P2** (cambian cómo se ve lo ya vendido).
+
+**Cómo se prueba.** `npm run probar:partes` (los casos compartidos, la proyección de las
+puertas, `alternarParte`, la disponibilidad y un catálogo adulterado), `probar-catalogo`,
+`probar-fichas` y las guardas de Vender, auditoría y muebles; del lado del servidor
+`tests/test_partes.py` (los mismos casos; un plano sin `division` da exactamente los espacios
+de antes), `test_partes_venta.py` (los cuatro caminos, correos, tarifa, renovar),
+`test_layout_partes.py` (los tres 409 y la pestaña vieja) y `test_partes_concurrencia.py` (el
+orden del candado siempre; la carrera de dos hilos con
+`DATABASE_URL_PG_PRUEBA=postgresql://…`).
+
+### Vender por partes: tramos y entrepaños (P2, 2026-10-14)
+
+La dueña: el mural, la góndola, la nevera abierta (multideck) y la de vegetales se venden
+**enteros o por tramos**; la góndola y la punta, **enteras o por entrepaños** («cada repisa con
+proveedor y precio por entrepaño, pero siempre dejando la opción de vender toda la cara»). Y lo
+que pidió para este paso: **que los muebles que cada supermercado arma con sus fichas propias
+queden configurados para venderse por partes**. Es la maquinaria de P1 con dos clases más.
+
+**Las clases nuevas** (`muebles.json`, las dos copias idénticas):
+
+- `tramos`: token `TR`, a lo ancho (de izquierda a derecha mirando el frente de esa cara),
+  contado por `partes.tramos`, mínimo 2, tarifa `parte_tramo` («Tramo (cada uno)»). Lo admiten
+  `gondola` (central y de pared; `geometria.tramos` de 2 a 40), `nevera_refrescos` y
+  `nevera_vegetales`. El panel deja hasta un tramo cada 60 cm (el mural de refrigerados de NAVE
+  mide 26 m: 40 tramos).
+- `entrepanos`: token `EN`, de abajo hacia arriba, contado por el `entrepanos` del MUEBLE (no de
+  `partes`) **más la base** (`base: true`): con 4 entrepaños se venden 5, y **`EN1` es la base**
+  (la bandeja que se apoya en el zócalo, que también lleva producto). Sin entrepaños guardados no
+  hay cuenta: se vende entera, no se adivina por el alto. Lo admiten `gondola` y `punta`; tarifa
+  `parte_entrepano` («Entrepaño (cada uno)»).
+- Cada clase dice su `genero` para decirla bien («un tramo vendido», «una puerta vendida»).
+- `fichas.geometria` suma `tramos` (entero, en `partes`), así que la mercaderista y el visor de
+  Vender reciben los tramos tipados, como las puertas.
+- `seCuentanEnElPlano` (por tipo): la ficha de una góndola es UN MÓDULO, así que su cantidad de
+  tramos no va en la ficha (depende del largo del corrido). La ficha dice sólo «por tramos»; lo
+  colocado se vende entero hasta fijarlos en el panel del plano (un tramo por módulo). Vender
+  lo dice («fijalos en el plano») y la planilla también («no tiene fijado cuántos»).
+- `nevera_refrescos` y `nevera_vegetales` ganan `rango`: admiten fichas propias.
+
+**Una sola forma de dividir.** `partes.division` es un solo valor. Una góndola puede tener los
+tramos dibujados y venderse por entrepaños: los tramos sólo dibujan. La compuerta lo dice: un
+`TR2` de una góndola que se vende por entrepaños es «se vende por entrepaños: un mueble se divide
+de una sola forma»; un `TR1` de una punta, «no se vende por tramos». Y `chocan` sigue frenando
+un tramo y un entrepaño de la misma cara aunque los haya dejado una restauración.
+
+**Cómo se dibuja.**
+
+- Con `partes.tramos`, la góndola parte el corrido en ESOS tramos iguales, mande lo que mande el
+  módulo (`vanosDeCorrido(w, modulo, tramos)`): un tramo es siempre un vano, y estirar el corrido
+  estira los tramos sin cambiar cuál es cuál. El «Módulo» del panel queda quieto y dice el que
+  sale del ancho. La nevera abierta y la de vegetales dibujan un montante entre tramo y tramo
+  (`montantesDeTramos`) y venden un vano por tramo (`ventaDeNevera(…, tramos)`).
+- Los entrepaños son las filas de siempre (`filasDeProducto`, `filasDePunta`).
+- **El plano 2D** marca las juntas entre puertas o tramos (línea punteada a lo ancho) y un punto
+  rojo en el frente de cada parte vendida (del mapa crudo de la base), sin nombres.
+- **El visor de Vender**: un tramo es un vano del dibujo DE LA CARA (`vanoEnLaCara`, que es `n − k`
+  en las dos caras porque el producto de la B se dibuja girado media vuelta; `vanoDeParte` sigue
+  siendo la cuenta en el mueble, la del plano y los espacios internos). Un entrepaño es una fila
+  (`filaDeEntrepano`, la base es la 0): el producto en prueba va sólo en esas filas. Cada parte
+  vendida lleva su contorno en el amarillo de Vender (`muebles/contornos.ts`), fuera de la lámina.
+  `probar-partes` proyecta con la cámara de venta de las dos caras de una góndola girada.
+
+**El panel «Cómo se vende»** (`components/PartesDelMueble.tsx`, el mismo en el 2D y el 3D, y
+ahora en todas las familias que se dividen): «Entera · Entera o por tramos · Entera o por
+entrepaños». Elegir una forma escribe lo que se dibuja hoy (`cambioParaDividir`: los módulos del
+corrido, un tramo cada 1,25 m en la nevera abierta, y los entrepaños dibujados si no estaban
+guardados). Con una parte vendida de esa clase no cambia la forma ni la cantidad; con la cara
+vendida entera, avisa; con espacios internos vendidos, avisa que pueden caer encima.
+
+**Las fichas propias** (el taller, «Fichas»): la sección **«Cómo se vende»** ofrece las formas de
+su familia, y «Tramos» para la nevera abierta y la de vegetales. Una ficha por entrepaños tiene
+que decir sus entrepaños; una por tramos (que no sea góndola), cuántos. El servidor valida lo
+mismo (`problemas_de_la_ficha`, los casos de `casos/fichas.json`) y guarda la forma
+(`ficha_normalizada`). Colocada desde la paleta, la ficha se estampa con su forma y Vender la
+ofrece por partes sin tocar el panel. **Lo ya colocado no cambia** si se edita la ficha. Los
+modelos de RECABRA pueden llevar la forma (las neveras de 2, 3 y 4 puertas la traen desde P1);
+los de góndola nacen enteros a propósito: lo decide la dueña (desde P4, los de pared —los
+murales— nacen por tramos, uno por módulo; ver *Vender por partes: cómo se vende, desde la
+ficha*).
+
+**Los espacios internos del Editor 3D conviven** (`utils/slotsDeLasPartes.ts`): un espacio
+interno cae en un tramo por el ancho (con la numeración de la cara) y en un entrepaño por la
+regla del relleno (`entrepanosDelEspacio`). Vender avisa en el renglón de la parte los que caen
+en ESA parte («1 interno vendido en esta parte»); la planilla avisa los del mueble en las filas
+de una parte. Y en un mueble que se vende por tramos o entrepaños, el panel del espacio interno
+**no deja marcar uno nuevo como Ocupado o Reservado** (eso se vende en Vender, con contrato: si
+no, la misma repisa se vendía dos veces sin que el servidor lo viera); el que ya estaba se puede
+liberar, y si pisa una parte con contrato lo dice.
+
+**Lo demás es la maquinaria de P1, que ya era genérica**: Vender («Entera · TR1 · TR2…», el
+choque dicho con el género de la clase, la tarifa de la parte), Supervisar (la fila de cada
+parte, «Tramos vendidos: x de y» o «Partes vendidas» con varias clases, el detalle «Por tramos»
+con «Vender este tramo»), los correos, la mercaderista («Entrepaño 1 de 5, contando de abajo
+hacia arriba (el 1 es la base)»), el área de la fila (huella ÷ n para los tramos, 0 para un
+entrepaño), la consola, la auditoría y el guardado del plano (`partes_vendidas` con
+«de 5 a 6 entrepaños»). La hoja de ayuda de la planilla explica `-TR3`, `-EN1` y `-B-TR3`.
+
+**Decisiones de este paso**, para confirmar con la dueña: la base es el `EN1` y se vende; «mural
+refrigerado» es el multideck (`nevera_refrescos`); una sola tarifa de tramo para la góndola, el
+multideck y vegetales (si la carga, pisa a los tres; vacía, cada uno se parte de la suya); los
+modelos de góndola de RECABRA nacen enteros (desde P4, los de pared nacen por tramos); la
+ocupación de Supervisar sigue contando caras.
+**Riesgo**: un mueble de un plano viejo que ya se llamara `GON-01-TR2` se resuelve a sí mismo,
+pero `chocan` lo lee como el tramo 2 de `GON-01`: antes de desplegar, correr
+`scripts/auditar_desfase.py` sobre los planos de producción («código que se lee como una parte»).
+
+**Cómo se prueba.** `npm run probar:partes` (los casos compartidos con tramos y entrepaños, la
+proyección de los tramos de las dos caras con el producto de la B girado, los tramos que parten
+el corrido, elegir la forma, los bloqueos, los espacios internos por parte, la disponibilidad, el
+contorno del visor y el formulario del taller); `probar-catalogo` (el esquema de las clases nuevas
+y su adulteración); del lado del servidor `tests/test_partes_tramos.py` (los caminos de venta con
+tramos y entrepaños, la forma única, la tarifa, el área, el guardado del plano, la pestaña vieja,
+los espacios internos, la mercaderista y la ficha propia configurada), `test_partes.py` y
+`test_fichas_propias.py` con los casos compartidos.
+
+### Vender por partes: las bahías de la caja y el forro de la columna (P3, 2026-10-14)
+
+La dueña: **la caja nunca se vende entera; se venden sus bahías de impulso, una por una, con el
+atajo de venderle la misma bahía de todas las cajas de la sede a una marca** (el contrato
+multiespacio ya existía); **la columna nunca se vende; se vende su forro**. Y lo que pidió para
+todo vender por partes: que quede configurable también en los muebles que cada supermercado
+arma con sus fichas propias. Es la maquinaria de P1 y P2 con una clase nueva de parte: la
+PIEZA.
+
+**Dos clases nuevas** (`muebles.json`, las dos copias idénticas):
+
+- `bahias`: token `BI`, `es: "pieza"`, a lo ancho y **mirando la caja desde la fila**
+  (`mirando`, nuevo en las clases: la bahía 1 es la de la izquierda de quien hace la fila, que
+  mira la caja desde el lado del cliente, −Z de la caja: la cuenta de la cara A), contada por
+  `partes.bahias` (de 1 a 4: `geometria.bahias` de `checkout`), mínimo 1, tarifa `parte_bahia`
+  («Bahía de impulso de caja (cada una)»).
+- `forro`: token `FO`, `es: "pieza"`, `unico: true` (uno por columna, **sin número**:
+  `COL-07-FO`), contado por un sí o no (`partes.forro`; `fichas.geometria.forro` es
+  `booleano`, nuevo), tarifa `parte_forro` («Forro de columna»).
+- Las familias dicen qué piezas llevan en `partes.piezas` (`checkout: ["bahias"]`, `columna:
+  ["forro"]`); el esquema (`probar-catalogo`) exige que una pieza se cuente con un campo de la
+  geometría de su familia o, la única, con un sí o no, y deja que la lleve un tipo que nunca se
+  vende entero. **`checkout` y `columna` ganaron `rango`: admiten fichas propias** («Caja Ocaña
+  1,80 con dos bahías», «Columna de 40 forrada»).
+- Desde este paso `NAVE-CAJ-04-BI1` y `NAVE-CAJ-04-FO` se parten como la bahía 1 y el forro de
+  `CAJ-04` (hasta P2 eran códigos de mueble: las clases no existían; lo dicen los casos
+  compartidos). `CP`, `CN` y `ST` siguen reservados y sin clase.
+
+**Una pieza no es una división** (`es_pieza` / `esPieza`):
+
+- se ofrece **aunque el mueble no sea comercializable** (`piezas_de` / `piezasDe` no preguntan
+  la bandera ni el tipo), siempre en la cara A, y `partes_de` / `partesDe` la suman al final de
+  las divisiones. `espacios_de` / `espaciosDe` de una caja con dos bahías dan `[CAJ-04-BI1,
+  CAJ-04-BI2]` y nunca `CAJ-04`;
+- no choca con nada más que consigo misma (`chocan` ya lo decía): dos bahías de la misma caja
+  conviven y la caja entera ni se vende;
+- su tarifa es la de su clase por sede, **sin respaldo** (la caja no tiene tarifa que
+  dividir): vacía, no hay referencia, y Tarifas lo dice debajo de la fila;
+- no tiene huella propia (`area_m2` 0 en su fila de `spaces`) ni cuenta en la ocupación, de
+  Supervisar ni de la consola.
+
+**La compuerta** (`motivo_para_no_vender_parte`, los cuatro caminos): la caja entera con bahías
+dice cuáles se venden (««CAJ-04» no se vende: se venden sus bahías de impulso (CAJ-04-BI1,
+CAJ-04-BI2)», motivo nuevo `solo_sus_piezas`); sin bahías configuradas, la frase de siempre más
+cómo configurarlas; una bahía de una caja sin bahías, de más (`BI3` en una de dos), de una
+familia que no las lleva (`NEV-03-BI1`) o con la B (`CAJ-04-B-BI1`), rechazada diciendo por
+qué. El contrato suelto dice «nunca se alquila» y, en la caja y la columna, cómo se venden sus
+piezas (`como_se_venden_sus_piezas`).
+
+**El guardado del plano**: con una bahía vendida no cambia la cantidad de bahías (`firma_de_partes`
+cuenta las piezas: 409 `partes_vendidas`, «de 2 a 3 bahías de impulso»); sacarlas o sacar el
+forro vendido es `contratos_vivos`; una pestaña vieja no las borra (`_con_la_ficha_de_antes`,
+clave por clave adentro de `partes`). Estirar la caja no frena.
+
+**Cómo se dibuja.** La caja con `partes.bahias` parte la mesa larga en ESOS nichos iguales, con
+un montante entre nicho y nicho (`nichosDeImpulso` / `montantesDeImpulso` sobre
+`mesaDeImpulso`, en `medidas.ts`: la misma cuenta para el 3D, el plano 2D y el contorno del
+visor; `cotasDeCheckout` no cambió, la referencia del catálogo la compara tal cual). Sin el
+campo, el dibujo de siempre: el montante al 10 %. La columna con `partes.forro` lleva una
+envoltura de las cuatro caras del zócalo a dos metros (`FORRO`), con su marco arriba. El plano
+2D marca los montantes de las bahías del lado de la fila y un punto rojo en cada bahía vendida,
+y un anillo alrededor de la columna forrada (rojo si el forro está vendido).
+
+**El panel «Cómo se vende»** (el mismo en el 2D y el 3D, fuera de lo comercial del panel: la caja
+no es comercializable): la caja, «Bahías de impulso que se venden» (vacío o 0, ninguna) con la
+lista «BI1 · libre · BI2 · vendida» y **«Aplicar a todas las cajas de la sede»** (`aplicarATodos`:
+la misma cantidad en todas, salta las que tienen una bahía vendida y las nombra); la columna, «El
+forro se vende». Con una pieza vendida no cambia la cantidad ni se saca (`revisarCambioDePartes`).
+El texto del destino del mueble ya no dice sólo «no se alquila»: dice qué se vende de él
+(`textoDeLoQueNuncaSeAlquila`).
+
+**Vender**: tocar una caja suma **su primera bahía libre** en el periodo (tocarla de nuevo la
+saca); el renglón ofrece «BI1 · BI2» **sin «Entera»**, y **«Sumar la BI1 de todas las cajas de
+la sede (8)»** agrega un renglón por caja con esa bahía configurada: un contrato, una firma,
+varios espacios. Tocar una columna forrada suma su forro. Una caja sin bahías explica cómo se
+configuran. El visor 3D marca el nicho de la bahía (o el frente del forro) con el contorno de la
+venta, sin producto. **Supervisar**: cada pieza vendida es una fila más (plata, vencimientos,
+proveedores, montaje, renovar y cancelar desde el detalle de la caja), «Sin alquilar» suma las
+piezas libres a su tarifa y la ocupación dice aparte «Bahías de impulso: 5 de 16» (no son
+caras). **La mercaderista**: «Bahía de impulso 1 de 2, contando de izquierda a derecha mirando la
+caja desde la fila»; «Forro de columna». **La consola**: las piezas cuentan canon, spread (contra
+la tarifa de su clase, sin respaldo), proveedores y el resumen por tipo, y nunca ocupación; no
+salen todavía como una lista propia en el detalle por cliente. La auditoría (la pantalla y
+`auditar_desfase.py`) conoce las piezas que se ofrecen.
+
+**Las fichas propias** (el taller, «Fichas»): la caja dice cuántas bahías de impulso vende (de 1
+a 4) y la columna si vende el forro; las mismas reglas en los dos lados (`problemas_de_la_ficha`
+y `fichas.ts`, los casos de `casos/fichas.json`: el forro es un sí o no, una caja no se divide,
+una nevera no lleva bahías) y `ficha_normalizada` guarda las piezas. Colocada desde la paleta,
+la caja ya vende sus bahías sin tocar el panel.
+
+**Decisiones de este paso**, para confirmar con la dueña: de 1 a 4 bahías por caja (¿2 es lo
+habitual?, ¿la caja de RECABRA tiene que nacer con ellas?); la bahía no tiene respaldo de tarifa
+(la caja no tiene tarifa); el forro va del zócalo a dos metros en el dibujo; una pieza no tiene
+huella propia.
+
+**Cómo se prueba.** `npm run probar:partes` (sección «paso 3»: los casos compartidos con las
+piezas, la bahía 1 a la izquierda de quien hace la fila con la caja girada, los nichos parejos y
+el dibujo de siempre sin bahías, la disponibilidad, los bloqueos, «Aplicar a todas», el
+contorno, el taller y el cableado de Vender, Supervisar y el montaje); `probar-catalogo` (el
+esquema de las piezas y sus adulteraciones); `probar-auditoria` (la bahía vendida de una caja
+configurada no es «contrato sin mueble»; la caja entera y la BI3 de una de dos, sí); del lado
+del servidor `tests/test_partes_piezas.py`
+(los caminos de venta, el multiespacio de ocho cajas, la caja de antes, el contrato suelto, la
+tarifa, el guardado del plano, la pestaña vieja, la mercaderista, la consola, la auditoría, la
+renumeración y la ficha propia), `test_partes.py` y `test_fichas_propias.py` con los casos
+compartidos.
+
+### Vender por partes: cómo se vende, desde la ficha (P4, 2026-10-14)
+
+La dueña: «ahora que los clientes pueden armar sus propios muebles, necesito que quede
+configurado el poder vender por partes dichos muebles». Los pasos 1 a 3 hicieron la maquinaria
+(puertas, tramos, entrepaños, bahías, forro) y ya dejaban elegir la forma en la ficha propia
+del taller; este paso cierra lo que faltaba para que la configuración VIAJE con la ficha: los
+modelos de RECABRA la traen, las paletas la dicen, el taller la muestra numerada, y lo que ya
+estaba colocado se pone al día desde su panel, nunca solo.
+
+**Tres niveles, como siempre** (*Vender por partes: la nevera entera o por puertas*): la
+FAMILIA dice qué formas admite, la FICHA (modelo de RECABRA o ficha propia) dice cuál usa y en
+cuántas, y el MUEBLE del plano la lleva estampada y es lo único que cuenta para vender.
+
+**Los modelos de RECABRA** (`muebles.json`, las dos copias idénticas): las neveras de 2, 3 y 4
+puertas, por puertas (desde P1); **las 12 góndolas de pared, los murales, por tramos**
+(`partes: { division: "tramos" }`, sin la cantidad: la ficha de una góndola es UN módulo y
+cuántos tramos tiene depende del largo del corrido). Las centrales, las puntas (sus modelos no
+traen entrepaños), la nevera de una puerta y lo demás, enteros: lo decide la dueña. Ningún id ni
+tarifa cambió (`modelos-ids.json` verde).
+
+**Lo ya colocado no cambia solo.** Un mueble colocado antes de que su ficha dijera cómo se vende
+tiene estampado lo de entonces (el mural sin `partes`, la nevera con sus puertas y sin
+`division`) y se sigue vendiendo entero: ni el navegador ni el servidor releen la ficha para
+vender (el servidor ni la lee: `test_partes_fichas.py`). Lo que cambia es el PANEL «Cómo se
+vende» del plano 2D y del Editor 3D (`components/PartesDelMueble.tsx`):
+
+- **«Su ficha («Nevera de 3 puertas») dice: entera o por puertas (3). Hoy se vende distinto»**
+  con **«Usar lo de la ficha»** (`loDeLaFicha`, en `utils/partesDelMueble.ts`): escribe la forma
+  y, si la ficha la cuenta, la cantidad (las puertas, los tramos de una nevera abierta, las
+  bahías, el forro); los tramos de una góndola, uno por módulo del corrido; los entrepaños, los
+  del mueble o, si no tiene, los de la ficha. Pasa por las MISMAS revisiones que cualquier
+  cambio del panel (`revisarCambioDePartes`): con una parte vendida no se mueve (bloqueo en
+  pantalla y, si llega igual, 409 `partes_vendidas`); con la entera vendida y las hojas
+  cambiando, avisa. Sólo aparece si se puede usar: un mural de un solo módulo no tiene tramos
+  que vender, y decirlo en cada góndola corta del plano era ruido.
+- **«Aplicar lo de su ficha a los N colocados con ella en la sede»** (`aplicarLoDeLaFicha`):
+  en un solo cambio, salta los que tienen algo vendido que se movería o cambiaría cómo se ve
+  (se cambian de a uno, desde su panel) y los que todavía no pueden (un solo módulo), y los
+  nombra.
+- **«Fijar 4 tramos, uno por módulo»**: el mural colocado desde el modelo de hoy llega «por
+  tramos» sin la cantidad; el panel lo dice y la fija con un clic (lo que se dibuja). Con un
+  solo módulo no hay tramos: «estirala en el plano a 2 módulos o más» (`cambioParaDividir`
+  ya no parte un módulo en dos medios tramos, como hacía hasta P3).
+
+**Las paletas** del plano 2D y del Editor 3D dicen al lado de las medidas de cada modelo cómo se
+vende lo que se coloca desde él («por puertas», «por tramos», «2 bahías de impulso», «con
+forro»: `comoSeVendeLaFicha` / `textoDeComoSeVende`, en `utils/partes.ts`, con las mismas
+reglas que cuentan las partes de un mueble del plano), igual para las fichas propias. El
+selector de modelos del taller también.
+
+**El taller** («Fichas»): la sección «Cómo se vende» ya existía (P2 y P3, con la validación
+compartida); ahora el mueble que gira a la derecha muestra cada parte con su contorno y el
+número que va a tener en Vender («PU1», «TR2», «EN1 · base», «BI1», «FO»: `partesNumeradas` en
+`muebles/contornos.ts`, las mismas cuentas que el visor de Vender; la cara B se numera igual y
+lleva sólo el contorno), la nevera abierta dibuja sus tramos, y la lista de fichas dice cómo se
+vende cada una (también las bahías y el forro). Una ficha guardada antes de vender por partes
+(sólo puertas) se lee igual y se vende entera; al editarla se guarda la forma.
+
+**El nombre propio llega a las partes** (`nombreDeTarifa`, `catalogo/nombresPropios.ts`): la
+fila de Tarifas de una clase que es de UNA familia y la nombra («Puerta de nevera», «Bahía de
+impulso de caja», «Forro de columna») dice el nombre propio de esa familia («Puerta de
+Enfriador vertical (cada una)», con el de RECABRA debajo); el tramo y el entrepaño son de varias
+familias y no nombran ninguna, así que no cambian. La consola y los informes siguen con el de
+RECABRA.
+
+**Lo que no cambió.** Ningún código de espacio, ningún plano, ninguna tabla ni columna: el
+servidor no tuvo cambios de código (la validación de la ficha y `ficha_normalizada` ya
+guardaban la forma y las piezas desde P2 y P3), sólo el catálogo y pruebas. El pedazo de
+entrada sigue en 352,81 kB.
+
+**Decisiones de este paso**, para confirmar con la dueña: los murales de RECABRA nacen por
+tramos y los centrales enteros (¿por tramos, por entrepaños o enteros?); el aviso de la ficha
+sólo aparece cuando se puede usar; «Aplicar a todos» no toca los que tienen algo vendido.
+
+**Cómo se prueba.** `npm run probar:partes` (sección «paso 4»: los modelos de RECABRA y su
+configuración, las paletas, lo colocado antes que se vende entero y lo que le ofrece el panel,
+el mural de un solo módulo, las fichas propias de antes y de ahora, el bloqueo con una parte
+vendida, «Aplicar a todos» y las partes numeradas del taller), `probar-nombres` (el nombre
+propio en las filas de las partes), `probar-fichas` con ocho casos nuevos en
+`casos/fichas.json` (una ficha de antes, editar una de antes para venderla por puertas, el
+mural por tramos sin cantidad, cero puertas, una caja que además se divide, una punta con
+entrepaños de más, la forma en mayúsculas, la nevera de vegetales por tramos); del lado del
+servidor `tests/test_partes_fichas.py` (los modelos de RECABRA, lo colocado antes, el mural
+sin fijar y fijado, la ficha propia de antes y editada, las fichas con partes y piezas, el
+409 al usar la ficha con una puerta vendida y retirar la ficha sin tocar lo vendido) y
+`test_fichas_propias.py` con los casos compartidos.
+
+### Vender por partes: el recorrido en el navegador (P5, 2026-10-14)
+
+Lo que hace la dueña con las cuatro partes de punta a punta, en Chromium contra un servidor
+local descartable (SQLite vacía, ingreso por clave sólo en esa máquina, Vite), con capturas
+fuera del repo:
+
+1. **El taller.** «Nevera Inducol 3 puertas», 205 × 74 × 210 cm, 3 puertas, «Cómo se vende:
+   Entero o por puertas». Ningún problema; el mueble que gira muestra PU1 · PU2 · PU3 de
+   izquierda a derecha; guardar hace UN `POST` con `partes: {puertas: 3, division: "puertas"}`
+   y la fila dice «3 puertas · por puertas».
+2. **El plano.** La paleta la muestra «por puertas»; colocada (`NEV-01`), el panel ya dice
+   «Entera o por puertas (3)» sin tocar nada. Una góndola doble «por entrepaños» (5 por cara,
+   con la base), dos cajas con 2 bahías («Aplicar a todas las cajas de la sede») y una columna
+   con su forro: el servidor guarda `partes` de cada una.
+3. **Vender.** Tocar `NEV-01` ofrece «Entera · PU1 · PU2 · PU3»; la PU2 a Postobón por un mes
+   ($350.000) guarda `SEDE 1-NEV-01-PU2`. La entera en esas fechas se rechaza en el renglón y
+   en el servidor («la puerta 2 está vendida del … al …: la entera no; las otras puertas, sí»),
+   sin nombrar a Postobón, y «Guardar» queda apagado. La PU3 a Coca-Cola, sí. La EN2 de la
+   cara B de la góndola a Nutresa; «Sumar la BI1 de todas las cajas de la sede (2)» arma un
+   contrato de Colombina con dos renglones; el forro de la columna a Alpina.
+4. **La planilla.** `NEV-01-PU1` se carga («Nevera de Puertas · Puerta 1»); en la misma
+   planilla la nevera entera no entra, por la fila de la PU1.
+5. **Supervisar y Estado por espacio.** Cada parte es una fila con su proveedor, su montaje
+   pendiente y su plata (sólo la dueña); la mercaderista ve las mismas filas sin plata. La
+   ficha de la nevera dice «Entera, sin contrato: hay puertas vendidas · PU1 libre · PU2
+   vendida · PU3 vendida»; la ocupación, «Partes vendidas: 4 de 13 · Bahías de impulso: 2 de 4
+   · Forros: 1 de 1».
+6. **El visor 3D de la puerta.** Sólo el marco de la puerta vendida, en amarillo, y el
+   producto de prueba de Postobón sólo detrás de ella.
+7. **Bajar a 2 puertas.** El panel lo frena antes («Con 3 puertas vendidas…») y el servidor
+   contesta 409: `contratos_vivos` (la PU3 se iría del plano) y, al subir a 4, `partes_vendidas`;
+   también con 3 entrepaños y con 1 bahía.
+8. **El enlace de montaje de la PU2** (teléfono, sin sesión): «Puerta 2 de 3, contando de
+   izquierda a derecha mirando el frente», Postobón, las fechas, dónde queda. Sin plata ni
+   otros proveedores.
+
+**Lo que se arregló al mirar** (con sus guardas en `probar-partes`, sección «lo que se vio en
+el recorrido», y `probar-nombres`; 25 mutaciones, todas fallan):
+
+- **«libre 14 oct» en una nevera con puertas vendidas.** El rótulo del plano (Vender y
+  Supervisar), el cartel del mouse y la ficha de la lista de precios decían el primer día
+  libre de la CARA, que es hoy: leía como que la nevera entera se libera hoy. Ahora una cara
+  parcial por sus partes dice **«1 de 3 puertas vendida»** («1 de 5 entrepaños vendido»)
+  (`partesVendidasDeLaCara`, `textoDePartesVendidas` en `utils/partes.ts`); con la entera
+  tomada parte del periodo sigue la fecha. Es una cuenta, sin nombres ni plata.
+- **El visor contaba la nevera entera.** Con la puerta 2 vendiéndose, «Cómo va» decía «24 de
+  frente · 1296 unidades» con ocho botellas por entrepaño a la vista: el panel no sabía qué
+  partes iban en el contrato. Ahora `PanelDePrueba` recibe los vanos y las filas del contrato
+  y cuenta con la misma regla que el dibujo: «8 de frente × 9 de fondo · 432 unidades».
+- **Estado por espacio cortaba el código**: «NEV-01·P…» tres veces. La columna se estira a lo
+  que miden los códigos de las partes (sin partes, 104 px como siempre).
+- **«1 contrato · 3 caras»** con dos contratos (y «2 contratos» con siete): contaba caras
+  ocupadas. Ahora cuenta los contratos que corren o están firmados, uno por espacio; sin
+  partes, la misma cuenta de antes.
+- **Claves repetidas en «Para revisar»** (dos puertas de la misma nevera que vencen el mismo
+  día): React avisaba y podía comerse una fila. Ahora la clave es la del espacio.
+- **«checkout · Bahía de impulso 1 de 2»**: la caja y la columna no tienen tarifa y la fila de
+  su pieza decía la clave interna. Ahora su nombre de RECABRA («Checkout / Caja», «Columna») o
+  el propio; lo demás sin tarifa no cambia.
+- **El panel del plano**: listaba «EN1 … EN5 · EN1 … EN5» en una góndola central (ahora
+  «B·EN1» en la cara B), decía «Quedó igual en 1 cajas», «Con 3 puertas vendidas: la puerta
+  vendida quedaría» y «Cómo se vende» dos veces seguidas en el 2D.
+
+**Visto y no arreglado** (no es chico, o espera a la dueña):
+
+- Tocar en Vender una nevera con puertas vendidas pone «Entera» en el contrato y el rechazo en
+  rojo; la caja, en cambio, suma su primera bahía libre. Podría sumar la primera puerta libre:
+  es decidir cómo arranca la venta, para la dueña.
+- «+1 entran» en la lista de precios y el color «Se libera en el periodo» siguen contando por
+  cara (ya anotado en P2): una nevera con una puerta vendida «entra» aunque la entera no.
+- En el visor, las puertas que no se venden quedan con las rejillas vacías (anotado en P2).
+- Los mensajes del 409 del servidor cuentan los entrepaños con la base («de 5 a 4
+  entrepaños» cuando el campo dice 4 → 3) y dicen «1 bahías de impulso».
+- El encabezado del enlace de montaje dice «NEV-01-PU2 PU2» (el nombre del espacio repite el
+  sufijo).
+- Ajeno a las partes: el primer ingreso a una base vacía manda dos `PUT /layout/settings`
+  (el doble efecto de `StrictMode`) y esta vez el segundo volvió **500** (`UNIQUE constraint
+  failed: app_config.key`: los dos llegan antes de que exista la revisión y los dos insertan;
+  en el recorrido de las fichas había vuelto 409). Se resuelve solo al recargar; la carga
+  por planilla dice «Los avisos salieron agrupados» aunque el correo no esté configurado.
+
+### Vender por partes: la revisión de la rama (2026-10-14)
+
+Tres revisiones sobre `fcaa5f9..8ed09fa` —regresión y plata, privacidad y seguridad, y las
+guardas (24 mutaciones, 16 sobrevivían)— y los defectos del recorrido. **La venta aguantaba**:
+ningún camino vendía dos veces lo mismo con los códigos que arma la planilla, dos tandas a la
+vez quedan cubiertas por el candado, renumerar mudaba las puertas vendidas, y un plano sin
+partes da lo mismo que antes. Lo que fallaba era cómo se informaba, más un agujero del
+contrato suelto. Cada arreglo tiene su prueba, que falla sin él.
+
+**El contrato suelto con un código escrito de otra forma** (media). `POST /spaces/{id}/leases`
+aceptaba `NEV-03-PU2` sin la sede o `" NAVE-NEV-03-PU2"`: la compuerta resolvía el mueble igual,
+pero la regla compara códigos y la nevera entera, escrita completa por la planilla, no lo veía.
+La misma bahía se vendía dos veces, y `PUT /layout` con la PU1 sin sede bajaba a 2 puertas sin
+409. Ahora: el contrato suelto exige la forma completa de lo que se vende por partes
+(`forma_canonica`, 409 «Escribilo «NAVE-NEV-03-PU2», con la sede y sin espacios…»; un mueble
+que se vende entero sigue como siempre), y lo que ya estaba escrito de otra forma cuenta igual
+(`contratos_que_chocan` con `sede`, `partes_que_se_moverian` y
+`contratos_que_quedarian_sin_mueble` por la forma completa). Ninguna pantalla usa este
+endpoint: la planilla y Vender ya armaban el código canónico. Pruebas en `test_partes_venta.py`
+(«exige el código completo», «un contrato viejo guardado sin la sede también cuenta»).
+
+**La consola de la plataforma** (`plataforma_detalle.py`):
+
+- **ofrecía una nevera que no se puede vender** (media): con la entera hasta el 15 y la puerta
+  2 desde el 16, el detalle la daba por «se libera» el 15, la metía en oportunidades a $900.000
+  y recomendaba ofrecerla. La cara está tomada hasta que se liberan ella y todas sus partes;
+- **las bahías y los forros vendidos salían libres** (media) en el resumen por tipo (la caja no
+  es un espacio y su bahía no colgaba de nada), sin su canon, y la cuenta «N contratos · M sobre
+  el plano + K fuera» no cerraba. El resumen mira el contrato de cada parte por su código, y el
+  detalle trae `piezas` (sólo si hay alguna, como `partes` en un espacio: las claves de siempre
+  no cambian) que la consola cuenta y lista con los contratos (`contratosSobreElPlano`);
+- **las puertas de una nevera vendida entera salían libres** (baja): ahora cuentan tomadas, sin
+  canon propio; y el hallazgo «Lo que no se vende es sobre todo…» mira sólo los tipos de las
+  caras (decía «X de los N espacios son puertas»).
+
+Pruebas en `tests/test_partes_consola.py`, por las funciones y por el endpoint; y en
+`probar-partes` («la consola cuenta los contratos de las bahías…»), la cuenta de la pantalla.
+
+**El plano y la lista de precios decían «libre 21 oct»** (baja) con la entera vendida del 15 al
+20 y la puerta 2 desde el 21: miraban sólo los días de la cara. Ahora el día y los días libres
+son los de la ENTERA mirando lo que choca con ella (`diasLibresDeLaCara`,
+`comoSeLiberaLaCara`), la misma cuenta que «Cuándo se libera»; si la entera no se libera en el
+periodo, la cuenta de partes («1 de 3 puertas vendida»). Sin partes, el día de siempre.
+
+**Lo que ninguna prueba cubría** (las mutaciones que sobrevivían), ahora con prueba:
+
+- servidor: **renumerar** con una puerta y un tramo de la cara B vendidos (el espacio, su
+  `svg_id` y la confirmación de montaje van con su mueble físico); la planilla con la entera
+  ANTES que la puerta; el contrato suelto de una puerta, un tramo y un entrepaño con la cara
+  vendida entera; y los espías del candado: el contrato suelto lo toma antes de la compuerta y
+  de los choques, y la importación del plano mira, toma y vuelve a mirar
+  (`test_partes_venta.py`, `test_partes_concurrencia.py`);
+- navegador: lo que el visor le marca al proveedor (`marcasDelContrato`: el tramo de la B, el
+  entrepaño, la bahía, proyectados con la cámara de venta), lo comercial del renglón de Vender
+  (`comercialDelEspacio`, que arma el índice de partes del mismo mapa) y la tarifa de las filas
+  de Supervisar (`tarifaDeLaFila`), tocar en Vender (`alTocarEnVender`: la caja nunca entera) y
+  los interruptores del renglón (`interruptoresDeLaCara`), el punto rojo de la cara B en el
+  plano 2D (`puntosDePartesVendidas`) y los números del taller en los tramos de la B. Eran
+  cuentas sueltas en las pantallas con guardas de texto; ahora son funciones puras de
+  `utils/partes.ts` probadas por lo que hacen, y las pantallas las llaman (una guarda corta
+  vigila que lo sigan haciendo). `probar-catalogo` sabe que `tarifaDeLaFila` y
+  `comercialDelEspacio` preguntan la tarifa (dependen de `fichasPropias`).
+
+**Del recorrido**, además: el 409 del plano dice «de 2 a 1 bahía de impulso» (decía «1
+bahías») y los entrepaños «(contando la base)»; el encabezado del enlace de montaje dice
+«NEV-01 PU2» (decía «NEV-01-PU2 PU2»); y **dos `PUT /layout/settings` a la vez** al entrar a
+una base vacía dan 409 `settings_conflict` y no 500 (`UNIQUE app_config.key`; ajeno a las
+partes, `test_sede_delete.py`). Lo que es decisión de la dueña quedó en *Dónde retomar*.
+
+**Un gotcha de las pruebas que costó caro**: una prueba que importa `app` SIN el fixture
+`client` arma el motor con el `DATABASE_URL` por defecto, y las pruebas de punta a punta que
+corren después en el mismo proceso escriben en `backend/retail_espacios.db` (la base local de
+desarrollo, fuera del repo). Pasó con la primera versión de `test_partes_consola.py`: dejó un
+cliente `partcli` en esa base y un `backend/recabra_partcli.db`. Las pruebas unitarias de ese
+archivo piden `client` aunque no lo usen. Otros archivos tienen pruebas sin `client` que
+importan `app` (`test_partes_piezas.py`, `test_partes.py`): el riesgo aparece cuando una de
+ésas es la PRIMERA del proceso y después corre una de punta a punta (con `-k`, por ejemplo).
+Esa base local quedó con esas filas: no se borraron desde la sesión.
+
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 
 **El pedido del dueño (2026-09-07).** Al abrir el detalle de un cliente en
@@ -8373,8 +10931,11 @@ endpoint, que es donde se sabe qué es lo guardado.
 * **Cuentas de usuario.** La tabla `users` sí se puede crear sin migración, pero
   pasar de dos contraseñas compartidas a cuentas nominales es un cambio
   operativo para siete tiendas vivas: se coordina, no se despliega de sorpresa.
-* **Pagos (fase 4).** Falta elegir proveedor —Stripe o MercadoPago para
-  Colombia— y las llaves, que no viajan por chat: van en el panel de Render.
+* **Pagos.** Sin pasarela, por decisión de la dueña (2026-10-13): el supermercado
+  paga por transferencia y la operadora registra el pago en la consola (ver *Cobro de
+  la suscripción (2026-10-13)*). Si algún día se integra una, la recomendada es
+  **Wompi** —Stripe no abre cuentas a empresas colombianas—, y la decisión es de ella.
+  Las llaves no viajan por chat: van en el panel de Render.
 * **Dos avisos `moderate` de `react-router`** (open redirect). El arreglo es un
   salto de versión mayor; se dejó afuera a propósito de la fase 1.
 

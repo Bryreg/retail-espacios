@@ -274,11 +274,15 @@ prueba("el entrepaño conserva el labio y el gancho", () => {
 prueba("el corrido se arma por módulos, con un parante en cada junta", () => {
   // Dos postes en las puntas y nada en el medio es lo que delata un corrido
   // largo: una góndola de 5 m son cuatro módulos, no un mueble de 5 m.
+  // Sin ficha, módulos de catálogo (1,25); con el módulo que la góndola
+  // guardó de su ficha (0,90, 1,00, 1,20 en Colombia), módulos de ése. Se
+  // ejecuta más abajo («la ficha del modelo…»).
   assert.match(
-    medidasCodigo, /Math\.round\(w \/ ANCHO_MODULO_TIPICO\)/,
+    medidasCodigo, /Math\.round\(w \/ \(modulo && modulo > 0 \? modulo : ANCHO_MODULO_TIPICO\)\)/,
     "el corrido dejó de partirse en módulos de ancho de catálogo",
   );
-  assert.match(gondolaCodigo, /vanosDeCorrido\(w\)/, "la góndola dejó de armarse por vanos");
+  assert.match(gondolaCodigo, /vanosDeCorrido\(w, modulo, tramos\)/, "la góndola dejó de armarse por vanos (o ignora su módulo o sus tramos)");
+  assert.match(gondolaCodigo, /nivelesDeEntrepano\(h, entrepanos\)/, "la góndola ignora los entrepaños de su ficha");
 });
 
 prueba("el fondo es de listones sobre respaldo, no una chapa lisa", () => {
@@ -411,6 +415,24 @@ const M = await import(
   "data:text/javascript;base64," +
   Buffer.from(compiladoM.outputFiles[0].text).toString("base64")
 );
+
+// Las tablas por tipo que vivían adentro del editor 3D, del plano 2D y del
+// minimapa (`FIXTURE_DEFS`, `TIPOS_CON_*`, `CATALOG`, `REFERENCIAS`) están en
+// `src/catalogo/`, calculadas del catálogo de muebles (`catalogo/muebles.json`).
+// Se corren: una regex sobre el texto del componente ya no las encontraría.
+const deCatalogo = async (archivo) => {
+  const r = await build({
+    entryPoints: [join(raiz, "src", "catalogo", archivo)],
+    bundle: true, write: false, format: "esm", platform: "neutral",
+  });
+  return import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+};
+const C3 = await deCatalogo("editor3D.ts");
+const C2 = await deCatalogo("plano2D.ts");
+const CM = await deCatalogo("minimapa.ts");
+// El catálogo de muebles: de ahí salen las tres de arriba (lo vigila
+// `probar-catalogo.mjs`).
+const CC = await deCatalogo("catalogo.ts");
 
 prueba("ninguna altura de mueble pierde su entrepaño de arriba", () => {
   // El último entrepaño cae JUSTO en el límite, y con `y <= hasta` a secas la
@@ -639,7 +661,8 @@ prueba("la marca del copete sale sólo del arte en prueba, sin texto inventado",
   assert.match(cuerpoPuntaMesh, /const copete = conMarca && pa\?\.etiqueta\s*\? materialDeCopete\(/);
   assert.match(cuerpoPuntaMesh, /const cenefa = conMarca && pa\?\.etiqueta \? materialDeCenefa\(/,
     "la cenefa va sin la marca en el copete");
-  assert.match(cuerpoPuntaMesh, /<PuntaReal w=\{w\} d=\{d\} h=\{h\} ghost=\{ghost\} copete=\{copete\} cenefa=\{cenefa\} habladores=\{habladores\} \/>/);
+  // (Y con los entrepaños y el módulo que guardó la punta: ver `probar-geometria`.)
+  assert.match(cuerpoPuntaMesh, /<PuntaReal w=\{w\} d=\{d\} h=\{h\} ghost=\{ghost\} copete=\{copete\} cenefa=\{cenefa\} habladores=\{habladores\}\s+entrepanos=\{entrepanos\} modulo=\{modulo\} \/>/);
   // Segunda ronda: un héroe al centro (no dos recortes en las puntas con el
   // centro vacío) y sin la raya blanca que cruzaba la base de los vasos.
   assert.match(pop, /pegar\(W \/ 2, heroe\)/, "el copete no lleva el producto al centro");
@@ -652,7 +675,9 @@ prueba("la marca del copete sale sólo del arte en prueba, sin texto inventado",
     "el hueco que tapa la cenefa dejó de ser de 12 cm");
   // El cabezote de la nevera, con la misma regla que el copete.
   assert.match(cuerpoDe("function NeveraRefrescosMesh(", "function StandFrutasMesh("),
-    /const cabezote = enPrueba && pa\?\.etiqueta && pa\.donde === "todas" && pa\.copete !== false\s*\? materialDeCopete\(/);
+    // Vendiendo puertas sueltas (`pa.vanos`) el cabezote es de la nevera
+    // entera: no lleva la marca de quien compra una puerta.
+    /const cabezote = enPrueba && pa\?\.etiqueta && pa\.donde === "todas" && pa\.copete !== false && !pa\.vanos\s*\? materialDeCopete\(/);
 });
 
 // ── Los muebles de frío ─────────────────────────────────────────────────────
@@ -671,8 +696,20 @@ prueba("el multideck tiene su cortina de aire", () => {
 });
 
 prueba("la nevera de refrescos es de frente ABIERTO", () => {
-  // Su ficha del catálogo dice «vitrina multideck abierta para bebidas».
-  assert.match(cuerpoNeveraMesh, /variante="multideck"/, "la nevera de refrescos se cerró con puertas");
+  // Su ficha del catálogo dice «vitrina multideck abierta para bebidas». El
+  // mismo mesh dibuja la nevera de PUERTAS (`nevera_puertas`), y sólo cuando
+  // le llegan sus puertas: la de refrescos no las recibe.
+  assert.match(cuerpoNeveraMesh, /const conPuertas = puertas !== undefined;/);
+  assert.match(cuerpoNeveraMesh, /variante=\{conPuertas \? "puertas" : "multideck"\}/, "la nevera de refrescos se cerró con puertas");
+  // Le llegan sus tramos (vender por partes: un montante entre tramo y
+  // tramo), nunca puertas.
+  assert.match(editorCodigo, /case "nevera_refrescos": return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} tramos=\{geometria\.tramos\} \/>;/,
+    "a la nevera de refrescos le llegan puertas");
+  // Las puertas, por `geometriaDe` (la misma puerta que la lámina y la
+  // cámara; un `partes: null` del store es no tenerlas).
+  assert.match(editorCodigo, /const geometria = geometriaDe\(fixture\);/, "`FixtureMesh` no lee la geometría por `geometriaDe`");
+  assert.match(editorCodigo, /case "nevera_puertas": {3}return <NeveraRefrescosMesh {2}\{\.\.\.base\} facePaint=\{facePaint\} puertas=\{puertasDe\(fixture\.w, geometria\.puertas\)\} \/>;/,
+    "la nevera de puertas no se dibuja con las puertas de su ficha");
 });
 
 prueba("el relleno mudo se apaga cuando entra el arte del proveedor", () => {
@@ -873,10 +910,59 @@ prueba("el producto va DENTRO del grupo de la repisa que se inclina", () => {
     "la repisa de más arriba es la tapa: lo que se pare encima sobresale del mueble");
 });
 
+prueba("el impulsador inclina cada bandeja sobre sí misma y su cartel no vuela", () => {
+  // Es también el dibujo del exhibidor de cartón (`base:exhibidor-carton`).
+  // Mirado en /taller: girando el grupo desde el origen del mueble la bandeja
+  // de 1,12 m se iba 4 cm hacia atrás y el producto —que no gira— quedaba
+  // volando delante del filo; y la cara blanca del cartel estaba en el filo
+  // del mueble, 13 cm por delante de todo lo que podía sostenerla.
+  const imp = cuerpoDe("function ImpulsadorMesh(", "const MODELO_EXHIBIDOR_DE_CARTON");
+  assert.match(imp, /<group key=\{si\} position=\{\[0, sy, 0\]\} rotation=\{\[0\.035, 0, 0\]\}>/,
+    "la bandeja del impulsador volvió a girar desde el origen del mueble");
+  assert.ok(!/position=\{\[0, sy/.test(imp.replace(/<group key=\{si\} position=\{\[0, sy, 0\]\}/, "")),
+    "una pieza de la bandeja volvió a sumar `sy` adentro del grupo que ya está a esa altura");
+  assert.ok(!/-\(d\/2 - 0\.008\)/.test(imp),
+    "la cara del cartel volvió al filo del mueble, lejos del cartel que la sostiene");
+  assert.match(imp, /position=\{\[0, h - topperH \/ 2 - 0\.009, SPINE_D \* 0\.10 - 0\.009 - 0\.005\]\}/,
+    "la cara del cartel no está pegada al cartel");
+  // Y el cartel no asoma por encima del alto declarado, que es el del choque.
+  assert.match(imp,
+    /position=\{\[0, h - topperH \/ 2 - 0\.009, SPINE_D \* 0\.10\]\} castShadow>\s*<boxGeometry args=\{\[w \* 1\.05, topperH - 0\.018, 0\.018\]\} \/>/,
+    "el cartel del impulsador volvió a pasarse del alto del mueble");
+});
+
 prueba("un mueble entero se llena también en profundidad", () => {
   // Con dos filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
   // producto y setenta de estante vacío.
   assert.match(frentesCodigo, /PROFUNDIDAD_DE_MUEBLE_ENTERO/, "el mueble entero volvió a llenarse como una góndola");
+});
+
+prueba("el exhibidor de cartón tiene su dibujo: costados, fondo, bandejas y cabezote, sin la columna al medio", () => {
+  // Mirado en /taller (2026-10-14): con la forma del impulsador era una
+  // columna con bandejas en voladizo, y la columna atravesaba el producto de
+  // cada bandeja. Se dibuja aparte, sólo cuando el mueble nació del modelo.
+  const despacho = cuerpoDe("export function FixtureMesh(", "default:");
+  assert.match(despacho, /case "impulsador":\s*return fixture\.modelo === MODELO_EXHIBIDOR_DE_CARTON\s*\? <ExhibidorCartonMesh [^>]*\/>\s*: <ImpulsadorMesh /,
+    "el exhibidor de cartón no tiene su propio dibujo (o el impulsador de antes dejó de ser el de siempre)");
+  assert.match(editorCodigo, /const MODELO_EXHIBIDOR_DE_CARTON = "base:exhibidor-carton";/);
+  const modelo = JSON.parse(leer(join("src", "catalogo", "muebles.json"))).modelos.find((m) => m.id === "base:exhibidor-carton");
+  assert.equal(modelo?.tipo, "impulsador", "el id del exhibidor de cartón no es un modelo del impulsador");
+  const carton = cuerpoDe("function ExhibidorCartonMesh(", "function PuestoImpulsoMesh(");
+  // Las bandejas, el cabezote y el arte, de la MISMA cuenta que el impulsador:
+  // el arte del proveedor tiene que caer sobre cada bandeja.
+  assert.match(carton, /const span = getPanelShelfSpan\("impulsador", w, h, d\);/);
+  assert.match(carton, /const bandejas = Array\.from\(\{ length: span\.rows \+ 1 \}, \(_, i\) => baseH \+ i \* span\.rowPitch\);/);
+  // Sin columna: nada al medio que muerda el producto.
+  assert.ok(!/SPINE/.test(carton), "el exhibidor de cartón volvió a tener la columna del impulsador");
+  // Los dos costados y el fondo, del piso al tope.
+  assert.match(carton, /\[-1, 1\]\.map\(\(lado\) => \(\s*<mesh key=\{lado\} position=\{\[lado \* \(w \/ 2 - CARTON \/ 2\), h \/ 2, 0\]\}/, "faltan los costados");
+  assert.match(carton, /position=\{\[0, h \/ 2, d \/ 2 - CARTON \/ 2\]\}/, "falta el fondo");
+  // Bandejas planas (el cartón no se inclina) y el producto entre los costados.
+  assert.ok(!/rotation=\{\[0\.035/.test(carton), "las bandejas de cartón se inclinan como las del impulsador");
+  assert.match(carton, /<ProductoEnRepisas\s*alturas=\{bandejas\}\s*techo=\{h - topperH\}\s*ancho=\{anchoUtil - 0\.01\} fondo=\{fondoUtil\}\s*montaje=\{d \/ 2 - CARTON\}/,
+    "el producto del exhibidor de cartón no queda entre los costados y delante del fondo");
+  // El cabezote no pasa del alto (el del choque y el que se cobra).
+  assert.match(carton, /position=\{\[0, h - topperH \/ 2, -\(d \/ 2 - CARTON\)\]\} castShadow>\s*<boxGeometry args=\{\[anchoUtil, topperH, CARTON \* 2\]\} \/>/);
 });
 
 prueba("la ristra cuelga producto de sus ganchos", () => {
@@ -1448,19 +1534,70 @@ prueba("la bandeja gira sobre SÍ MISMA, no sobre el piso del mueble", () => {
 
 prueba("la nevera de vegetales está dada de alta en todo el sistema", () => {
   // Un tipo nuevo toca diez lugares. Si falta uno, el mueble se puede colocar
-  // y después no tiene código, o no aparece en el plano 2D.
-  const donde = [
-    ["types/fixtures.ts", "el tipo no existe"],
-    ["utils/nomenclatura.ts", "el mueble no tiene prefijo de código"],
-    ["components/FloorPlan2D/FloorPlan2D.tsx", "no se puede colocar en el plano 2D"],
-    ["components/MiniMapa/MiniMapa.tsx", "no tiene nombre en el minimapa"],
-    ["components/plataforma/formato.ts", "no tiene nombre en los informes"],
-  ];
-  for (const [ruta, porque] of donde) {
-    assert.match(leer(join("src", ruta)), /nevera_vegetales/, `${ruta}: ${porque}`);
-  }
+  // y después no tiene código, o no aparece en el plano 2D. El prefijo, la
+  // tarifa y el nombre de los informes salen del catálogo de muebles
+  // (`catalogo/muebles.json`); el tipo de TypeScript sigue escrito a mano.
+  assert.match(leer(join("src", "types", "fixtures.ts")), /nevera_vegetales/, "types/fixtures.ts: el tipo no existe");
+  const veg = CC.CATALOGO_DE_MUEBLES.tipos.nevera_vegetales;
+  assert.ok(veg, "catalogo/muebles.json: el tipo no existe");
+  assert.equal(CC.prefijosPorTipo().nevera_vegetales, "VEG", "el mueble no tiene prefijo de código");
+  assert.ok(veg.informe && veg.informePlural, "no tiene nombre en los informes");
+  assert.ok(CC.tarifaPorTipo().nevera_vegetales, "no tiene tarifa de referencia");
+  // El catálogo del plano 2D y las referencias del minimapa viven en
+  // `src/catalogo/`; cada componente tiene que tomarlos de ahí.
+  assert.ok(C2.CATALOG.some((c) => c.type === "nevera_vegetales"), "catalogo/plano2D.ts: no se puede colocar en el plano 2D");
+  assert.match(sinComentarios(leer(join("src", "components", "FloorPlan2D", "FloorPlan2D.tsx"))),
+    /import \{[^}]*\bCATALOG\b[^}]*\} from "\.\.\/\.\.\/catalogo\/plano2D";/, "el plano 2D no coloca desde `catalogo/plano2D.ts`");
+  assert.ok(CM.REFERENCIAS.nevera_vegetales, "catalogo/minimapa.ts: no tiene nombre en el minimapa");
+  assert.match(sinComentarios(leer(join("src", "components", "MiniMapa", "MiniMapa.tsx"))),
+    /import \{ REFERENCIAS \} from "\.\.\/\.\.\/catalogo\/minimapa";/, "el minimapa no nombra desde `catalogo/minimapa.ts`");
   assert.match(editorCodigo, /case "nevera_vegetales":/, "el editor 3D no sabe dibujarla");
-  assert.match(editorCodigo, /code:"VEG"/, "el mueble no tiene código de espacio");
+  assert.ok(C3.FIXTURE_DEFS.some((d) => d.type === "nevera_vegetales" && d.code === "VEG"), "el mueble no tiene código de espacio");
+});
+
+prueba("cada editor crea muebles con las tablas de `src/catalogo/`, sin copias propias", () => {
+  // `probar-catalogo` corre las tablas de `src/catalogo/`, no las que usa cada
+  // componente. Una copia pegada en el componente las pisaba sin que fallara
+  // nada: con los altos viejos del 2D en FloorPlan2D, el servicio al cliente
+  // volvía a nacer de 1,80 m (y no de 1,10); con `slotsPorDefecto: () => []` en
+  // el 3D, las góndolas y las puntas sin repisas guardadas se quedaban sin
+  // repisas en el editor y en el visor de Vender, que dibuja con la misma
+  // conversión. tsc y todas las guardas pasaban en los dos casos.
+  const plano = sinComentarios(leer(join("src", "components", "FloorPlan2D", "FloorPlan2D.tsx")));
+  const imp2D = /import \{([^}]*)\} from "\.\.\/\.\.\/catalogo\/plano2D";/.exec(plano);
+  assert.ok(imp2D, "el plano 2D no importa de `catalogo/plano2D.ts`");
+  for (const n of ["CATALOG", "CATALOGO_2D", "H_DEFAULTS"]) {
+    assert.match(imp2D[1], new RegExp(`\\b${n}\\b`), `el plano 2D no toma \`${n}\` de \`catalogo/plano2D.ts\``);
+  }
+  const propias2D = [...plano.matchAll(/\b(?:const|let|var|function)\s+(CATALOG|CATALOGO_2D|H_DEFAULTS|COLOR_DEFAULTS)\b/g)];
+  assert.deepEqual(propias2D.map((m) => m[1]), [], "el plano 2D declara sus propias tablas de muebles");
+  // Toda conversión del 2D recibe ESE catálogo (`capturar-catalogo.mjs` crea
+  // un mueble de cada tipo con el mismo objeto, y `probar-catalogo` lo compara).
+  const conversiones2D = plano.match(/\b(?:storeToItems|itemsToStore)\(/g) ?? [];
+  const conCatalogo2D = plano.match(/,\s*CATALOGO_2D\s*\)/g) ?? [];
+  assert.ok(conversiones2D.length >= 4, "no se encontraron las conversiones del plano 2D");
+  assert.equal(conCatalogo2D.length, conversiones2D.length,
+    "alguna conversión del plano 2D no recibe `CATALOGO_2D` de `catalogo/plano2D.ts`");
+  assert.equal(C2.CATALOGO_2D.tipos, C2.CATALOG, "`CATALOGO_2D` no es el catálogo del plano");
+  assert.equal(C2.CATALOGO_2D.altos, C2.H_DEFAULTS, "`CATALOGO_2D` no usa los altos del catálogo");
+  assert.equal(C2.CATALOGO_2D.colores, C2.COLOR_DEFAULTS, "`CATALOGO_2D` no usa los colores del catálogo");
+
+  assert.match(editorCodigo, /import \{[^}]*\bFIXTURE_DEFS\b[^}]*\} from "\.\.\/\.\.\/catalogo\/editor3D";/,
+    "el editor 3D no toma `FIXTURE_DEFS` de `catalogo/editor3D.ts`");
+  const propias3D = [...editorCodigo.matchAll(/\b(?:const|let|var|function)\s+(FIXTURE_DEFS|TIPOS_CON_[A-Z0-9_]+)\b/g)];
+  assert.deepEqual(propias3D.map((m) => m[1]), [], "el editor 3D declara sus propias tablas de muebles");
+  assert.match(editorCodigo,
+    /const CATALOGO_3D: Catalogo3D = \{ defs: FIXTURE_DEFS, slotsPorDefecto: defaultSlots \};/,
+    "el 3D convierte con otro catálogo que `FIXTURE_DEFS` y `defaultSlots`: las góndolas sin repisas guardadas se quedan sin repisas");
+  const conversiones3D = editorCodigo.match(/\bdelStoreAl3D\(/g) ?? [];
+  assert.ok(conversiones3D.length >= 1, "no se encontró la conversión del 3D");
+  assert.equal((editorCodigo.match(/\bdelStoreAl3D\([^)]*,\s*CATALOGO_3D\)/g) ?? []).length, conversiones3D.length,
+    "alguna conversión del 3D no recibe `CATALOGO_3D`");
+  // Y `defaultSlots` sigue dando repisas a la góndola y a la punta.
+  const slots = cuerpoDe("function defaultSlots(", "function validatePlacement(");
+  assert.match(slots, /if \(fix\.type !== "gondola" && fix\.type !== "punta"\) return \[\];/,
+    "`defaultSlots` cambió a qué muebles les da repisas");
+  assert.match(slots, /Array\.from\(\{ length: cols \* rows \}/, "`defaultSlots` ya no arma la grilla de repisas");
 });
 
 prueba("la ristra NO lleva entrepaño", () => {
@@ -1534,7 +1671,7 @@ prueba("todo mueble que lee el arte del proveedor lo dibuja", () => {
   // Los meshes que reciben `facePaint` tienen que hacer algo con él: pintarlo
   // en una lámina, volcarlo sobre una superficie, o decidir con él si va el
   // producto genérico. Leerlo y descartarlo es el defecto.
-  const dibuja = /<LaminaDeProducto|<VolcadoDeProducto|<ProductoEn(Gondola|Punta|Mural|Repisas)|facePaint=\{/;
+  const dibuja = /<LaminaDeProducto|<VolcadoDeProducto|<ProductoEn(Gondola|Punta|Mural|Repisas)|facePaint=\{|frente=\{[^\n]*facePaint\?\.front/;
   const meshes = [...editorCodigo.matchAll(/function (\w+Mesh)\(/g)].map((m) => m[1]);
   assert.ok(meshes.length > 10, "no se encontraron los meshes del catálogo");
 
@@ -1674,6 +1811,40 @@ const compiladoV = await build({
 const V = await import(
   "data:text/javascript;base64," + Buffer.from(compiladoV.outputFiles[0].text).toString("base64")
 );
+
+prueba("la estiba colocada desde un modelo se carga hasta el fondo; la de antes, como siempre (ejecutado)", () => {
+  // Mirado en /taller (2026-10-14): con cinco filas hacia el fondo, la estiba
+  // completa de 1,20 × 1,00 mostraba más de media tarima vacía detrás de la
+  // torre, sobre todo desde arriba.
+  const c = M.cotasDeEstiba(1.2, 1.0, 1.4, 0.19);
+  const filas = { rowBottom: c.capas[0], alturas: [...c.capas, c.techo], rowPitch: c.paso, rows: c.capas.length,
+    fondos: c.capas.map(() => c.fondo) };
+  const entrada = (vendidoEntero) => ({ anchoTotal: c.ancho, filas, vanos: [{ x: 0, ancho: c.ancho }],
+    caras: [{ montaje: c.fondo / 2, hacia: -1 }], franja: c.techo, vendidoEntero });
+  const hondura = (g) => {
+    const zs = g.flatMap((x) => x.posiciones.map((p) => p.z));
+    return Math.max(...zs) - Math.min(...zs);
+  };
+  const deSiempre = F.rellenoPorRubro(entrada({ rubro: "Galletas" }));
+  const todo = F.rellenoPorRubro(entrada({ rubro: "Galletas", hondo: "todo" }));
+  const e = todo[0].empaque;
+  assert.ok(hondura(todo) + e.fondo >= c.fondo - 2 * e.fondo, `la torre llega a ${(hondura(todo) + e.fondo).toFixed(2)} m de ${c.fondo} m de tarima`);
+  assert.ok(hondura(deSiempre) + e.fondo < c.fondo / 2, "sin modelo la estiba cambió: tiene que seguir con las cinco filas de siempre");
+  // Cuántas cajas: las que entran, no más (es un InstancedMesh por empaque).
+  const n = todo.reduce((t, g) => t + g.posiciones.length, 0);
+  assert.ok(n < 2500, `la estiba completa pide ${n} cajas`);
+  // Lo pide sólo la estiba con modelo, por el mismo camino de siempre.
+  const despacho = cuerpoDe("export function FixtureMesh(", "const LADO_BALDOSA");
+  assert.match(despacho, /case "isla":\s*return <IslaMesh [^>]*hastaElFondo=\{typeof fixture\.modelo === "string"\} \/>/,
+    "la estiba colocada desde un modelo no se carga hasta el fondo");
+  assert.match(despacho, /default:\s*return <IslaMesh (?![^>]*hastaElFondo)[^>]*\/>/, "el exhibidor de antes (default) cambió");
+  const isla = cuerpoDe("function IslaMesh(", "function ImpulsadorMesh(");
+  assert.match(isla, /<ProductoEnRepisas[^>]*hastaElFondo=\{hastaElFondo\}/, "la estiba no le pasa el pedido al relleno");
+  const repisas = sinComentarios(leer(join(muebles, "ProductoEnRepisas.tsx")));
+  assert.match(repisas, /hastaElFondo \? \{ rubro, hondo: "todo" as const \} : \{ rubro \}/,
+    "el relleno de repisas no traduce «hasta el fondo»");
+  assert.match(repisas, /hastaElFondo = false/, "el relleno de repisas cambió para todos los muebles");
+});
 
 prueba("el relleno por rubro cuenta lo que entra, y cada cara lo suyo", () => {
   // Una góndola doble de catálogo con UN espacio vendido que toma la cara
@@ -1909,6 +2080,95 @@ prueba("el vaso se apila de a tres y la botella parada gira como en la tienda", 
   }
 });
 
+prueba("la ficha del modelo: la góndola con sus entrepaños y su módulo, o los de siempre", () => {
+  // Sin ficha, la cuenta de siempre, idéntica.
+  for (const alto of [1.2, 1.5, 1.6, 1.8, 2.0, 2.4]) {
+    assert.deepEqual(M.nivelesDeEntrepano(alto, undefined), M.nivelesDeEntrepano(alto), `sin ficha cambió ${alto}`);
+    assert.deepEqual(M.filasDeProducto(alto, 0.44, undefined), M.filasDeProducto(alto, 0.44), `sin ficha cambió ${alto}`);
+  }
+  assert.deepEqual(M.vanosDeCorrido(5).map((v) => +v.x.toFixed(3)), [-1.875, -0.625, 0.625, 1.875],
+    "el corrido dejó de partirse en módulos de ancho de catálogo");
+  assert.deepEqual(M.vanosDeCorrido(5, undefined), M.vanosDeCorrido(5));
+  for (const t of ["gondola", "punta", "nevera_refrescos", "robatope"]) {
+    assert.deepEqual(V.ventaDeTipo(t, 2.4, 0.9, 1.8, "double", {}), V.ventaDeTipo(t, 2.4, 0.9, 1.8, "double"),
+      `${t}: una geometría vacía no da lo de siempre`);
+  }
+  // Con la ficha: «cuatro entrepaños y la base» son la base y cuatro, todos
+  // con producto (el aire bajo el remate es la última fila), y el módulo parte
+  // el corrido.
+  const niv = M.nivelesDeEntrepano(2.0, 4);
+  assert.equal(niv.length, 5, `la base y cuatro: ${niv}`);
+  assert.equal(niv[0], M.nivelesDeEntrepano(2.0)[0], "la base no apoya sobre el zócalo, como siempre");
+  const filas = M.filasDeProducto(2.0, 0.44, 4);
+  assert.equal(filas.rows, 5, "cada entrepaño de la ficha lleva su fila de producto");
+  assert.deepEqual(filas.alturas.slice(0, 5), niv, "las filas no se paran en los entrepaños que se dibujan");
+  assert.ok(Math.abs(filas.alturas[5] - (2.0 - 0.1)) < 1e-9, "la última fila no termina bajo el remate");
+  assert.equal(M.vanosDeCorrido(3.0, 1.0).length, 3, "el módulo de la ficha no parte el corrido");
+  assert.equal(M.vanosDeCorrido(3.6, 1.2).length, 3, "el módulo de la ficha no parte el corrido");
+  // Y la venta de la góndola (el producto de prueba, el relleno, la cámara)
+  // pregunta con la misma ficha.
+  const venta = V.ventaDeTipo("gondola", 3.0, 1.0, 2.0, "double", { entrepanos: 4, modulo: 1.0 });
+  assert.deepEqual(venta.filas, M.filasDeProducto(2.0, M.fondoPorCara(1.0, false), 4));
+  assert.equal(venta.vanos.length, 3);
+  // El pintado de la cara pregunta con la ficha (si no, el arte queda a
+  // caballo entre dos entrepaños).
+  const span = editorCodigo.slice(editorCodigo.indexOf("function getPanelShelfSpan"));
+  assert.match(span, /filasDeProducto\(h, fondoPorCara\(d, false\), geometria\?\.entrepanos\)/, "el pintado de la góndola ignora su ficha");
+  assert.match(editorCodigo, /fix\.w, fix\.h, fix\.d, faceImages, notifyTexLoaded, geometriaDe\(fix\)/, "la cara pintada no recibe la ficha del mueble");
+  // La lámina pintada fila por fila de `GondolaMesh` (la que se ve sobre los
+  // entrepaños) sale de las MISMAS filas, y no de la cuenta de siempre.
+  assert.match(cuerpoGondolaMesh, /const filas = useMemo\(\(\) => filasDeProducto\(h, fondoCara, entrepanos\), \[h, fondoCara, entrepanos\]\);/,
+    "la lámina de la góndola (`GondolaMesh`) ignora sus entrepaños: el arte queda a caballo entre dos");
+  assert.match(cuerpoGondolaMesh, /<LaminaDeProductoPorFila[^>]*filas=\{filas\}/, "la lámina de la góndola no usa esas filas");
+  // Toda venta que el editor le pide a `ventaDeTipo` por un mueble del plano
+  // lleva su ficha: el panel de la prueba, las rejillas, el surtido, «Acostarla
+  // sólo en la N» y la toma de venta. Sin ella, cuentan otros vanos y otras
+  // filas que las que se dibujan.
+  const llamadas = [...editorCodigo.matchAll(/ventaDeTipo\(fix\.type,[^;]*?\)\)?/g)].map((m) => m[0]);
+  assert.ok(llamadas.length >= 5, `se esperaban las cinco ventas del editor, hay ${llamadas.length}`);
+  for (const l of llamadas) {
+    assert.match(l, /^ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\)/, `una venta del editor sin la ficha: ${l}`);
+  }
+  assert.ok(!/ventaDeTipo\((?!fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\))/.test(editorCodigo),
+    "el editor pide una venta de otra forma que con el mueble y su ficha");
+});
+
+prueba("la nevera de puertas dibuja las puertas de su ficha, o las de siempre", () => {
+  // `partes.puertas` del mueble manda; si falta, la cuenta de siempre. Las
+  // puertas sólo dicen cómo se ve y dónde se para el producto de prueba —un
+  // vano por hoja—: se vende entera.
+  assert.equal(M.puertasDe(2.07, 3), 3);
+  assert.equal(M.puertasDe(2.07, undefined), M.puertasDeNevera(2.07));
+  assert.equal(M.puertasDe(1.2, 0), M.puertasDeNevera(1.2), "cero puertas no es una ficha");
+  assert.match(neveraCodigo, /const cuantasPuertas = puertasDe\(w, puertas\);/, "NeveraReal no lee las puertas de la ficha");
+  // El producto en prueba de la malla sale de una venta con las MISMAS puertas
+  // que se dibujan: si no, con 2,30 m y tres hojas se reparte en cuatro vanos
+  // y uno queda detrás de un montante.
+  const malla = cuerpoDe("function NeveraRefrescosMesh(", "function NeveraVegetalesMesh(");
+  assert.match(malla, /const ventaNevera = useMemo\(\(\) => ventaDeNevera\(w, d, h, puertas, conPuertas \? undefined : tramos\), \[w, d, h, puertas, conPuertas, tramos\]\);/,
+    "el producto en prueba de la nevera de puertas ignora las puertas de su ficha");
+  assert.match(malla, /<ProductoDePrueba venta=\{ventaNevera\}/, "el producto en prueba de la nevera no usa esa venta");
+  assert.match(malla, /puertas=\{puertas\}/, "la malla no le pasa las puertas al dibujo");
+  const tres = V.ventaDeTipo("nevera_puertas", 2.07, 0.7, 2.1, undefined, { puertas: 3 });
+  assert.equal(tres.vanos.length, 3, "el producto no se reparte por puerta");
+  // Una ficha que dice otra cosa que la cuenta (1,60 pediría tres hojas): manda la ficha.
+  assert.equal(M.puertasDeNevera(1.6), 3);
+  assert.equal(V.ventaDeTipo("nevera_puertas", 1.6, 0.7, 2.1, undefined, { puertas: 2 }).vanos.length, 2,
+    "la venta de la nevera de puertas ignora las puertas de su ficha");
+  const sola = V.ventaDeTipo("nevera_puertas", 2.07, 0.7, 2.1);
+  assert.equal(sola.vanos.length, M.puertasDeNevera(2.07), "sin ficha, no son las puertas de siempre");
+  // Cada vano queda detrás del vidrio de su hoja: ninguno pisa un montante.
+  const hoja = 2.07 / 3;
+  tres.vanos.forEach((v, i) => {
+    const centro = -2.07 / 2 + hoja * (i + 0.5);
+    assert.ok(Math.abs(v.x - centro) < 1e-9 && v.ancho < hoja - 2 * M.NEVERA.marcoPuerta, `el vano ${i} pisa un marco`);
+  });
+  // La abierta sigue con UN vano y las mismas filas; la de puertas, las mismas filas.
+  assert.deepEqual(V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8), M.ventaDeNevera(1.2, 0.75, 1.8));
+  assert.equal(M.ventaDeNevera(1.2, 0.75, 1.8).vanos.length, 1);
+  assert.deepEqual(tres.filas, M.ventaDeNevera(2.07, 0.7, 2.1).filas);
+});
+
 prueba("la nevera acomoda sus rejillas para el producto, sin inventar ninguna", () => {
   const v = V.ventaDeTipo("nevera_refrescos", 1.2, 0.75, 1.8);
   const libresDe = (f) => f.alturas.slice(1).map((y, i) => y - f.alturas[i]);
@@ -1942,7 +2202,9 @@ prueba("la nevera acomoda sus rejillas para el producto, sin inventar ninguna", 
   // Y lo que se dibuja sale de `rejillasDeLaPrueba`, con lo elegido en la
   // sesión: ya no hay una segunda copia de la cuenta en el editor.
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
-  assert.match(fp, /fix\.type === "nevera_refrescos"\s*\? rejillasDeLaPrueba\(ventaDeNevera\(fix\.w, fix\.d, fix\.h\), empaque, como\?\.rejillas\)\.filas/,
+  // Las dos neveras de bebidas (la abierta y la de puertas), con la venta de
+  // SU tipo y la geometría que guardó.
+  assert.match(fp, /esNeveraDeBebidas\(fix\.type\)\s*\? rejillasDeLaPrueba\(ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\)!, empaque, como\?\.rejillas\)\.filas/,
     "el dibujo no usa `rejillasDeLaPrueba` con la elección de la sesión");
   assert.ok(!/rejillasParaProducto/.test(editorCodigo), "el editor volvió a llamar la cuenta vieja por su lado");
 });
@@ -2217,7 +2479,8 @@ prueba("surtido: cada producto llena SU bloque, en todos los entrepaños, y ning
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
   assert.match(fp, /TIPOS_CON_SURTIDO\.has\(fix\.type\)\s*\? surtidoALaVista\(arteId, como\?\.surtido, catalogo, privadoPara\)/);
   assert.match(fp, /bloquesDeSurtido\(venta\.vanos, delSurtido\.length \+ 1\)/);
-  assert.match(editorCodigo, /const TIPOS_CON_SURTIDO = new Set<string>\(\["gondola", "punta"\]\);/, "el surtido se ofrece en la nevera o el robatope");
+  // Es un conjunto (se consulta con `.has`): se compara sin orden.
+  assert.deepEqual(C3.TIPOS_CON_SURTIDO, new Set(["gondola", "punta"]), "el surtido se ofrece en la nevera o el robatope");
 });
 
 prueba("surtido: el copete, el cabezote, la toma y /taller siguen con el principal", () => {
@@ -2234,6 +2497,88 @@ prueba("surtido: el copete, el cabezote, la toma y /taller siguen con el princip
   // Y el surtido no se escribe en el plano.
   const ajustar = cuerpoDe("const ajustarPrueba = useCallback(", "const [proveedorDeReunion");
   assert.ok(!/setPlacedFixtures|pushToStore/.test(ajustar));
+});
+
+prueba("/taller mira cada modelo con su ficha estampada, como lo coloca la paleta", () => {
+  // Sin la ficha, el taller dibujaba la cuenta de siempre: una nevera de 4
+  // puertas se miraba con las que salen del ancho y una góndola de 4
+  // entrepaños con los de su alto. El cotejo contra la ficha no se puede
+  // hacer mirando otro mueble.
+  const taller = sinComentarios(leer(join("src", "pages", "TallerMuebles.tsx")));
+  // La paleta es la de los editores, con las fichas propias del supermercado.
+  assert.match(taller, /const paleta = useMemo\(\(\) => paletaConPropias\(propias\), \[propias\]\);/,
+    "/taller no mira la paleta de los editores (con las fichas del supermercado)");
+  assert.match(taller, /paleta\[catalogo\]\?\.modelos/, "/taller no lista los modelos de la familia");
+  assert.match(taller, /\.\.\.\(modelo \? fichaDe\(modelo\) : \{\}\)/, "/taller no estampa la ficha del modelo");
+  assert.match(taller, /ventaDeTipo\(def\.type, anchoV, fondoV, altoV, def\.gondolaType, geometria\)/,
+    "/taller vende con la cuenta de siempre y no con los entrepaños dibujados");
+  // El de al lado va SIN ficha: es contra lo que se compara.
+  assert.match(taller, /delCatalogo\(catalogo, deHoy\.w, deHoy\.d, deHoy\.h, conProducto \? rubro : ""\)\s*\}/,
+    "el mueble de al lado lleva ficha: ya no se compara contra lo de hoy");
+  // Y la toma se aleja por el ancho siempre, no sólo con otro al lado: la
+  // nevera de 4 puertas salía cortada por los costados.
+  assert.match(taller, /let dist = Math\.max\(1\.6, \(altoEscena \* 1\.15\) \/ \(2 \* tan\), \(anchoEscena \* 1\.1\) \/ \(2 \* tan \* 1\.3\)\);/,
+    "la toma fija del taller volvió a encuadrar sólo por el alto");
+});
+
+/** El texto entre dos marcadores, que tienen que existir los dos. */
+function cuerpoEntre(t, desde, hasta) {
+  const i = t.indexOf(desde);
+  assert.ok(i >= 0, `no se encontró \`${desde}\``);
+  const j = t.indexOf(hasta, i);
+  assert.ok(j > i, `no se encontró \`${hasta}\` después de \`${desde}\``);
+  return t.slice(i, j);
+}
+
+prueba("/taller «Fichas» dibuja la ficha que se escribe, con la misma entrada de paleta con que se colocará", () => {
+  // Lo que la dueña ve girar mientras escribe tiene que ser lo que después
+  // coloca: la entrada de la paleta sale de `defDeModelo` —la MISMA función que
+  // arma la paleta de los editores con sus fichas— sobre la familia elegida,
+  // y el mueble se dibuja con esa ficha estampada (`delCatalogo` con `modelo`).
+  const taller = sinComentarios(leer(join("src", "pages", "TallerMuebles.tsx")));
+  assert.match(taller, /fichaParaDibujar\(formFicha\)/, "/taller no dibuja la ficha del formulario");
+  assert.match(taller, /defDeModelo\(paleta\[indiceFicha\]\.base, fichaVista\)/,
+    "/taller arma la ficha que dibuja con otra cuenta que la paleta");
+  assert.match(taller, /const modelo = enFichas \? defFicha : modelos\[modeloI\] \?\? null;/,
+    "en «Fichas» el mueble no lleva la ficha que se escribe");
+  assert.match(taller, /delCatalogo\(indiceVisto, anchoV, fondoV, altoV, conProducto \? rubro : "", modelo\)/,
+    "/taller no dibuja el mueble con las medidas y la ficha que se ven");
+  assert.match(taller, /<PanelDeFichas form=\{formFicha\} onForm=\{setFormFicha\}/, "falta el formulario de la pestaña «Fichas»");
+  const editor3D = sinComentarios(leer(join("src", "catalogo", "editor3D.ts")));
+  assert.match(editor3D, /modelos: modelosDe\(entrada\)\.map\(\(m\) => defDeModelo\(base, m\)\)/,
+    "la paleta del catálogo no arma sus entradas con `defDeModelo`");
+  assert.match(editor3D, /suyas\.map\(\(m\) => defDeModelo\(familia\.base, m\)\)/,
+    "las fichas propias entran a la paleta con otra cuenta que los modelos del catálogo");
+  // Y el panel guarda por `guardarFicha`, que valida antes de llamar a la API.
+  const panel = sinComentarios(leer(join("src", "components", "taller", "PanelDeFichas.tsx")));
+  assert.match(panel, /await guardarFicha\(form, editando, \{ crear: crearModeloPropio, cambiar: cambiarModeloPropio \}\)/,
+    "el taller guarda la ficha sin pasar por la validación del formulario");
+  assert.ok(!/(crearModeloPropio|cambiarModeloPropio)\(/.test(panel), "el taller llama a la API sin validar");
+  const guardar = cuerpoEntre(panel, "const guardar = async", "const retirarOReactivar = async");
+  assert.match(guardar, /if \(!r\.ok\) \{[^]*?\}\s*await recargarFichasPropias\(\);/, "guardar una ficha no la lleva a las paletas");
+  // Retirar y reactivar pasan por `retirarOReactivarFicha` (puro: lo prueba
+  // `probar-catalogo` con una API que anota el orden), con la API de verdad y
+  // la relectura de las fichas de la sesión. Llamar a la API acá saltaba el
+  // orden: releer antes del pedido dejaba la retirada en las paletas.
+  assert.match(cuerpoEntre(panel, "const retirarOReactivar = async", "const Problemas = "),
+    /await retirarOReactivarFicha\(\s*m, \{ retirar: retirarModeloPropio, reactivar: reactivarModeloPropio \}, recargarFichasPropias\)/,
+    "retirar o reactivar una ficha no la saca o la vuelve a las paletas");
+  assert.ok(!/(retirarModeloPropio|reactivarModeloPropio)\(/.test(panel), "el taller retira o reactiva sin `retirarOReactivarFicha`");
+  assert.ok(!/type="file"|FormData|[{,]\s*foto\s*:|["']foto["']|setFoto/.test(panel), "la ficha del taller pide una foto");
+  // Con todas retiradas, la dueña sí armó alguna: la lista no puede decirle
+  // que no (se vio en el recorrido del 2026-10-14).
+  assert.match(panel, /retiradas\.length > 0 \? "Ninguna vigente[^"]*" : "Todavía no armaste ninguna\."/,
+    "con todas sus fichas retiradas, el taller le dice que no armó ninguna");
+});
+
+prueba("el panel del Editor 3D dice las medidas de la ficha al milímetro, como la paleta y el plano", () => {
+  // La nevera de 144,5 × 74 cm que la dueña escribió en el taller salía en el
+  // pie del panel como «1.4 × 0.7 × 2.1 m» (`toFixed(1)`), mientras la paleta y
+  // el panel del plano decían 1.445 y 0.74.
+  assert.ok(!/fix\.[wdh]\.toFixed\([0-2]\)/.test(editorCodigo), "el panel del 3D redondea las medidas del mueble");
+  assert.match(editorCodigo, /<p>\{\+fix\.w\.toFixed\(3\)\} × \{\+fix\.d\.toFixed\(3\)\} × \{\+fix\.h\.toFixed\(3\)\} m<\/p>/,
+    "el panel del 3D no dice las medidas del mueble");
+  assert.deepEqual([1.445, 0.74, 2.1, 1.2000000000000002].map((x) => String(+x.toFixed(3))), ["1.445", "0.74", "2.1", "1.2"]);
 });
 
 prueba("frío: el selector marca lo refrigerado y el panel avisa en un mueble seco, sin bloquear", () => {
@@ -3659,8 +4004,8 @@ prueba("arte o relleno, CORRIDO: la cara probada no lleva relleno y la otra sí"
 // que dibuja el producto.
 
 prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella", () => {
-  assert.match(editorCodigo,
-    /const TIPOS_CON_PRUEBA_3D = new Set<string>\(\["gondola", "punta", "nevera_refrescos", "robatope"\]\)/,
+  // Es un conjunto (se consulta con `.has`): se compara sin orden.
+  assert.deepEqual(C3.TIPOS_CON_PRUEBA_3D, new Set(["gondola", "punta", "nevera_refrescos", "nevera_puertas", "robatope"]),
     "cambió en qué muebles se para el producto de prueba");
   const fp = cuerpoDe("const facePaintById = useMemo(", "const handleOrbitReady");
   assert.match(fp, /const en3D = TIPOS_CON_PRUEBA_3D\.has\(type\)/, "facePaintById no pregunta si el mueble lleva prueba 3D");
@@ -3684,14 +4029,16 @@ prueba("la prueba 3D le gana a la foto y al patrón en su cara, y sólo en ella"
     "Presentar dibuja las pruebas de otros proveedores");
   assert.match(fp, /const arteB = isDouble \? arteALaVista\(prueba\.get\(`\$\{fix\.id\}\|B`\), catalogo, privadoPara\) : null;/);
   assert.match(fp, /const privado = privadoPara !== undefined;/);
-  assert.match(fp, /if \(front \|\| back \|\| pruebaA \|\| pruebaB\) map\.set\(fix\.id, \{ front, back, pruebaA, pruebaB \}\)/,
+  // (Y uno con sólo puertas a la venta en el visor, para marcarlas.)
+  // (Y uno con sólo partes a la venta en el visor, para marcarlas.)
+  assert.match(fp, /if \(front \|\| back \|\| pruebaA \|\| pruebaB \|\| puertasA \|\| contornos\.length\) \{\s*map\.set\(fix\.id, \{\s*front, back, pruebaA, pruebaB,/,
     "un mueble con sólo prueba se queda sin pintar");
   assert.match(fp, /marcarEnUso\(enUso\)/, "las etiquetas en prueba se pueden desalojar del caché");
   assert.match(fp, /etiquetaDeArte\(clave, arteUrl\(arteId\), modo, notifyTexLoaded, \{ arte, ficha: arte\.ficha \?\? null \}\)/);
   // Sin `?? false`: hasta que la dueña toca «Mostrarla acostada», decide la
   // ficha del arte (`ficha.acostado`).
   assert.match(fp, /\{ acostado: como\?\.acostado \}/, "«acostada» no llega al envase");
-  assert.match(fp, /catalogo, comoSePrueba, privadoPara\]\)/, "el memo no se rehace al cambiar la prueba o quién mira");
+  assert.match(fp, /catalogo, comoSePrueba, privadoPara, vanosALaVenta, filasALaVenta\]\)/, "el memo no se rehace al cambiar la prueba, quién mira o las partes a la venta");
   assert.match(fp, /if \(sinArte\) return map;/, "el «Hoy» de la propuesta mostraría la prueba");
 });
 
@@ -3922,7 +4269,11 @@ prueba("el selector de productos no abre el catálogo entero en la reunión", ()
 
 prueba("el panel de la prueba dice la cuenta, lo que no entra y la foto en perspectiva", () => {
   const panel = cuerpoDe("function PanelDePrueba(", "function VistaProveedor(");
-  assert.match(panel, /unidadesDePrueba\(\{ venta: ventaUsada, empaque, donde: como\.donde/, "el resumen no sale de la cuenta que dibuja");
+  // La cuenta del dibujo: lo elegido (`como.donde`) o, vendiendo entrepaños
+  // sueltos en el visor de Vender, los del contrato (`dondeDelDibujo`, la
+  // misma regla que `construirPrueba`).
+  assert.match(panel, /unidadesDePrueba\(\{ venta: ventaUsada, empaque, donde: dondeDelDibujo/, "el resumen no sale de la cuenta que dibuja");
+  assert.match(panel, /: filasDeLaParte\)\s*: como\.donde;/, "sin partes, el resumen ya no sale de lo elegido");
   // Las rejillas: las MISMAS que dibuja la nevera (`rejillasDeLaPrueba`, con
   // lo elegido en la sesión), y el resumen se cuenta sobre ellas.
   assert.match(panel, /rejillasDeLaPrueba\(venta, empaque, como\.rejillas\)/, "el panel no cuenta con las rejillas que se dibujan");
@@ -3958,7 +4309,7 @@ prueba("«Mostrar al proveedor» abre Presentar con la toma de frente", () => {
 
 prueba("la cámara de venta encuadra con la cuenta de la prueba, dentro del pasillo", () => {
   const toma = cuerpoDe("const tomaDeVenta = useCallback(", "function handleSceneDoubleClick");
-  assert.match(toma, /ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType\)/);
+  assert.match(toma, /ventaDeTipo\(fix\.type, fix\.w, fix\.d, fix\.h, fix\.gondolaType, geometriaDe\(fix\)\)/);
   assert.match(toma, /focoDeLaPrueba\(venta, fix\.h, enCara \? \(como\?\.donde \?\? "todas"\) : "todas", enCara\?\.empaque \?\? null\)/,
     "la cámara calcula sus alturas por su cuenta");
   // «De cerca» con teleobjetivo, y el campo visual vuelve a 50° fuera de ella
@@ -5440,7 +5791,8 @@ prueba("la persona de venta sale de la toma (una sola cuenta); el editor conserv
   // La punta lleva su copete al foco, con la MISMA cuenta que el mueble.
   // El cartel de la punta empieza donde empieza la cenefa (o el copete), con
   // la misma cuenta que dibuja la cenefa (`pisoDelCartelDePunta`).
-  assert.match(toma, /const pisoDelCartel = fix\.type === "punta" \? pisoDelCartelDePunta\(fix\.h\) : 0;/);
+  // Con los entrepaños que guardó la punta: la cenefa baja hasta el último.
+  assert.match(toma, /const pisoDelCartel = fix\.type === "punta" \? pisoDelCartelDePunta\(fix\.h, geometriaDe\(fix\)\.entrepanos\) : 0;/);
   assert.match(toma, /fix\.type === "punta" \? \{ \.\.\.foco, techoDeCara: pisoDelCartel, altoDeCopete: fix\.h - pisoDelCartel \} : foco\),/);
   // Con el campo visual abierto, «De frente» desde el fondo del pasillo.
   assert.match(toma, /\.\.\.\(fov > FOV_DEL_EDITOR && toma === "frente" \? \{ alFondo: true \} : \{\}\),/);
@@ -5658,6 +6010,28 @@ prueba("el visor de Vender: los muebles le llegan sin un solo dato comercial (ej
   assert.deepEqual([a.supplierName, a.brandCategory, a.negotiatedValue, a.startDate, a.endDate, a.observation], ["", "", 0, "", "", ""]);
 });
 
+prueba("el visor de Vender: la ficha del modelo pasa (es geometría), y sólo con sus números (ejecutado)", () => {
+  // Sin la ficha, el visor le mostraría al proveedor una nevera con otras
+  // puertas o una góndola con otros entrepaños que las que se le venden.
+  const base = {
+    id: "nev", code: "NEV-01", type: "nevera_puertas", x: 1, z: 1, rotY: 0, w: 2.07, d: 0.7, h: 2.1,
+    label: "Nevera de Puertas", color: "#1e293b", status: "occupied",
+    supplierName: "POSTOBÓN", brandCategory: "Gaseosas", negotiatedValue: 2500000,
+    startDate: "2026-10-01", endDate: "2026-12-31", observation: "",
+  };
+  const [n] = X.sinDatosComerciales([{
+    ...base, modelo: "base:nevera-3p-frigomaster", entrepanos: 4, modulo: 1,
+    partes: { puertas: 3, proveedor: "POSTOBÓN", valor: 2500000 },
+  }]);
+  assert.deepEqual([n.modelo, n.entrepanos, n.modulo, n.partes], ["base:nevera-3p-frigomaster", 4, 1, { puertas: 3 }],
+    "la ficha del modelo no llega entera al visor");
+  assert.ok(!JSON.stringify(n).includes("POSTOBÓN") && !JSON.stringify(n).includes("2500000"),
+    "algo comercial colado en `partes` llega al visor");
+  // Un mueble sin ficha no gana ninguna clave.
+  const [v] = X.sinDatosComerciales([base]);
+  for (const k of ["modelo", "entrepanos", "modulo", "partes"]) assert.ok(!(k in v), `un mueble sin ficha ganó \`${k}\``);
+});
+
 prueba("el visor de Vender: la prueba es de las caras del contrato y el proveedor se compara como al guardar (ejecutado)", () => {
   const prueba = new Map([["m1|A", 1], ["m1|B", 2], ["m2|A", 3]]);
   const fuera = X.pruebasDelContrato(prueba, [{ fixtureId: "m1", face: "A" }, { fixtureId: "m2", face: "A" }]);
@@ -5704,7 +6078,7 @@ prueba("el visor de Vender vende la cara entera: los espacios internos del contr
 
 prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del editor, ni `enfoque3D`", () => {
   // Las tres puertas, en el código de la escena (ver `SceneProps.soloVenta`).
-  assert.match(cuerpoEscena, /estadoDeEscena, soloVenta = false,\s*\}: SceneProps\)/, "`soloVenta` no arranca apagado");
+  assert.match(cuerpoEscena, /estadoDeEscena, soloVenta = false,(?: vanosALaVenta,)?(?: filasALaVenta,)?\s*\}: SceneProps\)/, "`soloVenta` no arranca apagado");
   assert.match(cuerpoEscena, /useState<Map<string, number> \| null>\(\(\) => \(soloVenta \? new Map\(\) : null\)\)/,
     "en el visor la escena espera un índice de fotos que nunca pide");
   const efecto = cuerpoEscena.match(/useEffect\(\(\) => \{([^]*?)getFaceImages\(\)/);
@@ -5724,11 +6098,23 @@ prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del edi
   assert.ok(!/soloVenta/.test(sceneDelEditor[0]), "el editor le pasa `soloVenta` a su escena");
   // Lo que el visor necesita, exportado (y nada de lo que escribe el plano).
   for (const n of ["export function Scene(", "export function storeToFixtures(", "export function PanelDePrueba(",
-    "export function HudQueSeEsconde(", "export class CanvasErrorBoundary", "export const TIPOS_CON_PRUEBA_3D",
-    "export const TIPOS_CON_PRODUCTO", "export type ComoSePrueba", "export const CAM_POS", "export const FONDO_DE_SALA"]) {
+    "export function HudQueSeEsconde(", "export class CanvasErrorBoundary",
+    "export type ComoSePrueba", "export const CAM_POS", "export const FONDO_DE_SALA"]) {
     assert.ok(editorCodigo.includes(n), `falta \`${n}\``);
   }
+  // Los `TIPOS_CON_*` viven en `catalogo/editor3D.ts`: el editor los toma de
+  // ahí —no de una copia propia— y los reexporta para el visor.
+  assert.match(editorCodigo,
+    /import \{ FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO, paletaConPropias \} from "\.\.\/\.\.\/catalogo\/editor3D";/,
+    "el editor no toma sus tablas por tipo de `catalogo/editor3D.ts`");
+  assert.match(editorCodigo, /export \{[^}]*\bTIPOS_CON_PRODUCTO\b[^}]*\bTIPOS_CON_PRUEBA_3D\b[^}]*\};/,
+    "el editor no reexporta lo que el visor necesita");
+  for (const n of ["TIPOS_CON_PRODUCTO", "TIPOS_CON_PRUEBA_3D", "TIPOS_CON_SURTIDO"]) {
+    assert.ok(C3[n] instanceof Set, `falta \`${n}\` en catalogo/editor3D.ts`);
+  }
   assert.ok(!/export function fixturesToStore\(/.test(editorCodigo), "`fixturesToStore` se exporta: el visor podría escribir el plano");
+  // Vive en `utils/convertirPlano.ts`; el editor la usa, pero no la reexporta.
+  assert.ok(!/export\s*\{[^}]*\bfixturesToStore\b/.test(editorCodigo), "`fixturesToStore` se reexporta desde el editor");
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

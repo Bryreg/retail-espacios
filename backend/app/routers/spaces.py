@@ -15,7 +15,12 @@ from app.schemas.spaces import (
     SpaceFindOrCreate, AvisosContrato,
 )
 from app.services.contacts import recipients_for
-from app.services.layout_lookup import describe_location, is_space_rentable
+from app.services.candado import tomar_candados
+from app.services.layout_lookup import (
+    NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, como_se_venden_sus_piezas, contratos_que_chocan, describe_location,
+    find_fixture_by_space_code, forma_canonica, frase_de_choque, por_que_no_se_vende,
+)
+from app.services.partes import cantidad_de, partir_codigo, texto_para_montar
 from app.services.mailer import (
     app_base_url, format_cop, html_shell, send_mail_to_bg, correo_configurado,
 )
@@ -373,15 +378,64 @@ def create_lease(
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
 
+    # La nevera entera y su puerta 2 son dos filas de `spaces`: sin candado,
+    # dos sesiones que venden a la vez pasan las dos la revisión de abajo
+    # (`services/candado.py`). Va antes de revisar, y se suelta en el commit.
+    tomar_candados(db, [space.code])
+
     # The UI hides the contract form for infrastructure, but the rule belongs
     # here too: a stale tab or a direct API call must not create a lease on a
     # fixture the user marked as not for rent.
-    if not is_space_rentable(db, space.code):
+    #
+    # Un texto por motivo (2026-10-14): todo lo que no era la cara B salía como
+    # «cambiá su destino a Comercializable», que es imposible para una caja y
+    # no dice nada de una puerta que no existe.
+    motivo = por_que_no_se_vende(db, space.code)
+    if motivo and motivo[0] == SIN_CARA_B:
+        # El plano no la ofrece: venderla dejaba un contrato que Supervisar
+        # daba enseguida por «Contrato sin mueble».
         raise HTTPException(
             status_code=409,
             detail=(
+                f"«{space.code}» no existe: ese mueble tiene una sola cara, "
+                "no hay cara B que vender."
+            ),
+        )
+    if motivo and motivo[0] == NO_COMERCIALIZABLE:
+        mueble = find_fixture_by_space_code(db, space.code) or {}
+        tipo = str(mueble.get("type") or "")
+        if tipo in NUNCA_ALQUILABLE:
+            detalle = (
+                f"«{space.code}» es operación de la tienda (una caja, una columna o el servicio "
+                "al cliente): nunca se alquila."
+            )
+            # La caja y la columna no se venden, pero sus piezas sí (la bahía
+            # de impulso, el forro): se dice cómo se ponen a la venta.
+            piezas = como_se_venden_sus_piezas(mueble)
+            if piezas:
+                detalle = f"{detalle} {piezas}"
+        else:
+            detalle = (
                 f"«{space.code}» está marcado como no comercializable. "
                 "Cambiá su destino a «Comercializable» en el plano para poder asignarle un contrato."
+            )
+        raise HTTPException(status_code=409, detail=detalle)
+    if motivo:
+        # Una parte que el plano no ofrece: la frase de la compuerta dice qué hacer.
+        raise HTTPException(status_code=409, detail=motivo[1])
+    # Un mueble que se vende por partes se reconoce por su código COMPLETO: la
+    # regla «entera o por partes, nunca las dos» compara códigos, y una puerta
+    # guardada como `NEV-03-PU2` (sin sede) o ` NAVE-NEV-03-PU2` (con un
+    # espacio) no la veía la nevera entera, ni la guarda de `PUT /layout`.
+    # La planilla y Vender ya lo arman así (`PlanoIndexado.resolver`).
+    canonico = forma_canonica(db, space.sede or "", space.code)
+    if canonico is not None and space.code != canonico:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Escribilo «{canonico}», con la sede y sin espacios: un mueble que se vende "
+                "por partes se reconoce por su código completo, y así nunca se vende entero "
+                "y por partes a la vez."
             ),
         )
 
@@ -389,25 +443,21 @@ def create_lease(
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
-    # Reject if an active lease already overlaps the requested period
-    overlapping = (
-        db.query(SpaceLease)
-        .filter(
-            SpaceLease.space_id == space_id,
-            SpaceLease.is_active == True,  # noqa: E712
-            SpaceLease.start_date <= payload.end_date,
-            SpaceLease.end_date >= payload.start_date,
-        )
-        .first()
-    )
-    if overlapping:
-        raise HTTPException(
-            status_code=409,
-            detail=(
+    # Reject if an active lease already overlaps the requested period: on this
+    # space, and —vender por partes— on what it shares the fixture with (the
+    # whole fridge for a door, its doors for the whole fridge).
+    choques = contratos_que_chocan(db, space.code, payload.start_date, payload.end_date, space_id=space.id,
+                                   sede=space.sede)
+    if choques:
+        overlapping, otro_space, _ = choques[0]
+        if otro_space.id == space.id:
+            detalle = (
                 f"El espacio ya tiene un contrato activo del {overlapping.start_date}"
                 f" al {overlapping.end_date}. Cancelalo primero o ajustá las fechas."
-            ),
-        )
+            )
+        else:
+            detalle = frase_de_choque(space.code, otro_space.code or "", overlapping)
+        raise HTTPException(status_code=409, detail=detalle)
 
     lease = SpaceLease(space_id=space_id, **payload.model_dump())
     db.add(lease)
@@ -438,6 +488,13 @@ def create_lease(
     duration_days = (lease.end_date - lease.start_date).days + 1
     who = recipients_for(db, space.sede)
     periodo = f"{lease.start_date} → {lease.end_date}"
+    # Si es una parte (`NEV-03-PU2`), cuál, contada desde dónde: va en los tres
+    # correos. Se calcula acá, con la sesión abierta.
+    parte = partir_codigo(space.code).parte
+    fila_parte = None
+    if parte is not None:
+        mueble = find_fixture_by_space_code(db, space.code) or {}
+        fila_parte = ("Parte", texto_para_montar(parte, cantidad_de(mueble, parte.clase)))
 
     # Lo que se va a intentar mandar, para devolvérselo a la pantalla. Antes la
     # confirmación afirmaba «Ya salieron los avisos» pase lo que pase: sin SMTP
@@ -462,6 +519,8 @@ def create_lease(
             ("Duración", f"{duration_days} día{'s' if duration_days != 1 else ''}"),
             ("Valor mensual", format_cop(lease.monthly_rent)),
         ]
+        if fila_parte:
+            rows.insert(2, fila_parte)
         background_tasks.add_task(
             send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
         )
@@ -484,6 +543,8 @@ def create_lease(
         ]
         if ubicacion:
             rows.insert(2, ("Dónde queda", ubicacion))
+        if fila_parte:
+            rows.insert(2, fila_parte)
         # Enlace directo al espacio, FIRMADO. El token va en el enlace y no hay
         # contraseña de por medio: quien monta abre el correo, toca y está
         # adentro de la pantalla de ese espacio y de ningún otro.
@@ -526,6 +587,8 @@ def create_lease(
             ("Periodo", periodo),
             ("Valor mensual", format_cop(lease.monthly_rent)),
         ]
+        if fila_parte:
+            rows.insert(1, fila_parte)
         footer = "Cualquier ajuste sobre lo acordado, respondé este correo."
         background_tasks.add_task(
             send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)

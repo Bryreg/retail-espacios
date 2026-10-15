@@ -1082,3 +1082,41 @@ def test_dos_consultas_seguidas_devuelven_lo_mismo(client, monkeypatch):
     uno.pop("generado_en")
     dos.pop("generado_en")
     assert uno == dos
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# El nombre propio de cada familia
+# ════════════════════════════════════════════════════════════════════════════
+
+def test_la_consola_no_usa_el_nombre_propio_del_supermercado(client, monkeypatch):
+    """Cada supermercado le pone su nombre a cada familia («mamut», «tope de
+    góndola»: ``catalog_labels``), y sus pantallas lo muestran. La consola y los
+    informes de asesoría comparan clientes, así que nombran con la clave de
+    RECABRA: ni el detalle, ni el reporte, ni las métricas lo devuelven."""
+    from app.auth import set_config
+    from app.clientes import buscar, sesion_de
+
+    _ids, cab = _escenario(client, monkeypatch)
+    propio = "TOPE-DE-GONDOLA-DE-DETCLI"
+    db = sesion_de(buscar("detcli"))
+    try:
+        set_config(db, "layout_catalog_labels", json.dumps({
+            "punta": propio, "gondola_doble": propio + "-G", "nevera_refrescos": propio + "-N",
+        }))
+        db.commit()
+    finally:
+        db.close()
+    _limpiar_caches()
+
+    detalle = _pedir(client, cab)
+    assert detalle.status_code == 200, detalle.text
+    assert propio not in detalle.text
+    # El tipo sigue siendo la clave de RECABRA.
+    assert _espacio(detalle.json(), "NAVE-PUN-01")["tipo"] == "punta"
+    for url in (
+        f"/api/plataforma/clientes/detcli/reporte?periodo={PERIODO}",
+        f"/api/plataforma/metricas?periodo={PERIODO}",
+    ):
+        r = client.get(url, headers=cab)
+        assert r.status_code == 200, (url, r.text)
+        assert propio not in r.text, url

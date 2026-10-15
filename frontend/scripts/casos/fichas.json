@@ -1,0 +1,3029 @@
+{
+ "leeme": [
+  "Los casos de la validación de una ficha de mueble, compartidos por los dos lados: frontend/scripts/probar-fichas.mjs (src/catalogo/fichas.ts, problemasDeLaFicha) y backend/tests/test_fichas_propias.py (app/services/catalogo_muebles.py, problemas_de_la_ficha).",
+  "`mal` son los CAMPOS con problemas (w, partes.puertas, fuente.url…), no los mensajes: los dos lados pueden decirlo distinto, pero tienen que quejarse de lo mismo. `nueva: false` es editar (la clave no hace falta). Las reglas viven en `fichas` de src/catalogo/muebles.json."
+ ],
+ "casos": [
+  {
+   "nombre": "una nevera de dos puertas con su ficha",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una góndola central medida en la tienda, con una nota y sin URL",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una media estiba con la tarifa propia de su familia",
+   "ficha": {
+    "clave": "media-estiba-propia",
+    "tipo": "isla",
+    "nombre": "Media estiba de bodega",
+    "w": 1.0,
+    "d": 0.6,
+    "h": 1.2,
+    "tarifa": "estiba_media",
+    "fuente": {
+     "confiabilidad": "estimado",
+     "nota": "La de la bodega, a ojo."
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una URL http (no https) se acepta",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "http://inducol.com.co/ficha",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una URL vacía con nota es como sin URL",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha",
+     "url": "   "
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "al editar no hace falta la clave",
+   "ficha": {
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [],
+   "nueva": false
+  },
+  {
+   "nombre": "las medidas en el borde del rango",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 0.6,
+    "d": 0.9,
+    "h": 2.3,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "los entrepaños como 4.0 son enteros",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4.0,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "ochenta letras de verdad aunque sean emojis",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒🛒",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una clave con guiones dobles",
+   "ficha": {
+    "clave": "nevera--2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una góndola de pared",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.4,
+    "h": 2.0,
+    "entrepanos": 3,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "el exhibidor de cartón propio con su tarifa",
+   "ficha": {
+    "clave": "carton-alpina",
+    "tipo": "impulsador",
+    "nombre": "Exhibidor de cartón Alpina",
+    "w": 0.6,
+    "d": 0.4,
+    "h": 1.7,
+    "tarifa": "exhibidor_carton",
+    "fuente": {
+     "confiabilidad": "estimado",
+     "nota": "El que trajo la marca."
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "un puesto de impulso de catálogo, con una URL con parámetros",
+   "ficha": {
+    "clave": "puesto-80",
+    "tipo": "puesto_impulso",
+    "nombre": "Puesto de impulso",
+    "w": 0.8,
+    "d": 0.4,
+    "h": 2.0,
+    "fuente": {
+     "confiabilidad": "catalogo",
+     "url": "https://ejemplo.co/puesto?ref=12"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una punta con entrepaños y módulo",
+   "ficha": {
+    "clave": "punta-070",
+    "tipo": "punta",
+    "nombre": "Punta 0,70",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 1.5,
+    "entrepanos": 3,
+    "modulo": 0.7,
+    "fuente": {
+     "confiabilidad": "catalogo",
+     "url": "https://www.vialambre.com/supermercado/puntas/"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "sin clave en el alta",
+   "ficha": {
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave con mayúsculas",
+   "ficha": {
+    "clave": "Nevera-2P",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave con dos puntos",
+   "ficha": {
+    "clave": "cli:nevera",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave con barras y puntos",
+   "ficha": {
+    "clave": "../nevera",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave con espacios",
+   "ficha": {
+    "clave": "nevera 2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave con tilde",
+   "ficha": {
+    "clave": "góndola",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave de 61",
+   "ficha": {
+    "clave": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave de 60 entra",
+   "ficha": {
+    "clave": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una clave con un salto de línea al final",
+   "ficha": {
+    "clave": "nevera\n",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave vacía",
+   "ficha": {
+    "clave": "",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "una clave que es un número",
+   "ficha": {
+    "clave": 12,
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ]
+  },
+  {
+   "nombre": "al editar, una clave mal escrita también se queja",
+   "ficha": {
+    "clave": "Otra",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "clave"
+   ],
+   "nueva": false
+  },
+  {
+   "nombre": "una familia que no existe",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "gondolita",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "tipo"
+   ]
+  },
+  {
+   "nombre": "una familia que no admite fichas (el mostrador de servicio al cliente)",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "servicio_cliente",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "tipo"
+   ]
+  },
+  {
+   "nombre": "un tipo legado",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "exhibicion",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "tipo"
+   ]
+  },
+  {
+   "nombre": "un nombre del prototipo no es una familia",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "constructor",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "tipo"
+   ]
+  },
+  {
+   "nombre": "un alias del 2D no es una familia",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola_doble",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "tipo"
+   ]
+  },
+  {
+   "nombre": "sin familia",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "tipo"
+   ]
+  },
+  {
+   "nombre": "una góndola sin variante",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "variante"
+   ]
+  },
+  {
+   "nombre": "una variante que no existe",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "isla",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "variante"
+   ]
+  },
+  {
+   "nombre": "una variante del prototipo",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "toString",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "variante"
+   ]
+  },
+  {
+   "nombre": "una variante en una nevera",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "variante": "double"
+   },
+   "mal": [
+    "variante"
+   ]
+  },
+  {
+   "nombre": "un ancho fuera del rango de la familia",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 3.5,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "w"
+   ]
+  },
+  {
+   "nombre": "un alto debajo del rango",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 1.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "h"
+   ]
+  },
+  {
+   "nombre": "sin alto",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "h"
+   ]
+  },
+  {
+   "nombre": "un fondo escrito como texto",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": "0.74",
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "d"
+   ]
+  },
+  {
+   "nombre": "un fondo que es un booleano",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": true,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "d"
+   ]
+  },
+  {
+   "nombre": "un fondo en cero",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "d"
+   ]
+  },
+  {
+   "nombre": "entrepaños en una estiba",
+   "ficha": {
+    "clave": "media-estiba-propia",
+    "tipo": "isla",
+    "nombre": "Media estiba de bodega",
+    "w": 1.0,
+    "d": 0.6,
+    "h": 1.2,
+    "tarifa": "estiba_media",
+    "fuente": {
+     "confiabilidad": "estimado",
+     "nota": "La de la bodega, a ojo."
+    },
+    "entrepanos": 3
+   },
+   "mal": [
+    "entrepanos"
+   ]
+  },
+  {
+   "nombre": "puertas en una góndola",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "puertas": 2
+    }
+   },
+   "mal": [
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "módulo en una nevera",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "modulo": 1.0
+   },
+   "mal": [
+    "modulo"
+   ]
+  },
+  {
+   "nombre": "entrepaños fuera de rango",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 9,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "entrepanos"
+   ]
+  },
+  {
+   "nombre": "entrepaños que no son enteros",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 3.5,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "entrepanos"
+   ]
+  },
+  {
+   "nombre": "entrepaños como texto",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": "4",
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "entrepanos"
+   ]
+  },
+  {
+   "nombre": "un módulo fuera de rango",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 2.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "modulo"
+   ]
+  },
+  {
+   "nombre": "puertas que no son enteras",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2.5
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "cero puertas",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 0
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "algo comercial en las partes",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "proveedor": "Postobón"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes"
+   ]
+  },
+  {
+   "nombre": "las partes como lista",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": [
+     2
+    ],
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes"
+   ]
+  },
+  {
+   "nombre": "los entrepaños dentro de las partes",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "entrepanos": 4
+    }
+   },
+   "mal": [
+    "partes"
+   ]
+  },
+  {
+   "nombre": "las partes vacías no molestan",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {},
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "la tarifa de otra familia",
+   "ficha": {
+    "clave": "media-estiba-propia",
+    "tipo": "isla",
+    "nombre": "Media estiba de bodega",
+    "w": 1.0,
+    "d": 0.6,
+    "h": 1.2,
+    "tarifa": "exhibidor_carton",
+    "fuente": {
+     "confiabilidad": "estimado",
+     "nota": "La de la bodega, a ojo."
+    }
+   },
+   "mal": [
+    "tarifa"
+   ]
+  },
+  {
+   "nombre": "la tarifa de su propia familia",
+   "ficha": {
+    "clave": "media-estiba-propia",
+    "tipo": "isla",
+    "nombre": "Media estiba de bodega",
+    "w": 1.0,
+    "d": 0.6,
+    "h": 1.2,
+    "tarifa": "isla",
+    "fuente": {
+     "confiabilidad": "estimado",
+     "nota": "La de la bodega, a ojo."
+    }
+   },
+   "mal": [
+    "tarifa"
+   ]
+  },
+  {
+   "nombre": "una tarifa inventada",
+   "ficha": {
+    "clave": "media-estiba-propia",
+    "tipo": "isla",
+    "nombre": "Media estiba de bodega",
+    "w": 1.0,
+    "d": 0.6,
+    "h": 1.2,
+    "tarifa": "estiba_octava",
+    "fuente": {
+     "confiabilidad": "estimado",
+     "nota": "La de la bodega, a ojo."
+    }
+   },
+   "mal": [
+    "tarifa"
+   ]
+  },
+  {
+   "nombre": "una tarifa en una familia sin tarifas propias",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "Medida en la tienda con metro.",
+     "confiabilidad": "ficha"
+    },
+    "tarifa": "estiba_media"
+   },
+   "mal": [
+    "tarifa"
+   ]
+  },
+  {
+   "nombre": "una tarifa que es un número",
+   "ficha": {
+    "clave": "media-estiba-propia",
+    "tipo": "isla",
+    "nombre": "Media estiba de bodega",
+    "w": 1.0,
+    "d": 0.6,
+    "h": 1.2,
+    "tarifa": 900000,
+    "fuente": {
+     "confiabilidad": "estimado",
+     "nota": "La de la bodega, a ojo."
+    }
+   },
+   "mal": [
+    "tarifa"
+   ]
+  },
+  {
+   "nombre": "una foto",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "foto": "https://ejemplo.co/n.png"
+   },
+   "mal": [
+    "foto"
+   ]
+  },
+  {
+   "nombre": "un color",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "color": "#ffffff"
+   },
+   "mal": [
+    "color"
+   ]
+  },
+  {
+   "nombre": "un id",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "id": "base:nevera-2p-inducol"
+   },
+   "mal": [
+    "id"
+   ]
+  },
+  {
+   "nombre": "una foto en la fuente",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha",
+     "foto": "https://ejemplo.co/n.png"
+    }
+   },
+   "mal": [
+    "fuente.foto"
+   ]
+  },
+  {
+   "nombre": "sin fuente",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    }
+   },
+   "mal": [
+    "fuente"
+   ]
+  },
+  {
+   "nombre": "la fuente como texto",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": "https://inducol.com.co"
+   },
+   "mal": [
+    "fuente"
+   ]
+  },
+  {
+   "nombre": "una fuente sin URL ni nota",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente"
+   ]
+  },
+  {
+   "nombre": "una confiabilidad inventada",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "segura"
+    }
+   },
+   "mal": [
+    "fuente.confiabilidad"
+   ]
+  },
+  {
+   "nombre": "sin confiabilidad",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante."
+    }
+   },
+   "mal": [
+    "fuente.confiabilidad"
+   ]
+  },
+  {
+   "nombre": "una URL javascript",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "javascript:alert(1)",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL ftp",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "ftp://inducol.com.co/ficha.pdf",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/nevera.JPG",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con parámetros",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://cdn.co/n.webp?w=800",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con un ancla",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.png#1",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con parámetros de ruta",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.jpg;v=1",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con el signo de pregunta escapado",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.png%3Fv=1",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL que es una imagen con parámetros sin signo de pregunta",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/foto.webp&w=800",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una página que tiene «png» en el nombre no es una imagen",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://x.com/neveras/nevera.png-ficha-tecnica/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una URL con espacios",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/nevera dos",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL de 501",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una URL de 500 entra",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una URL que es un número, sin nota",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": 12,
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente",
+    "fuente.url"
+   ]
+  },
+  {
+   "nombre": "una nota de 601",
+   "ficha": {
+    "clave": "gondola-central-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola central de la sede Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "entrepanos": 4,
+    "modulo": 1.0,
+    "fuente": {
+     "nota": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.nota"
+   ]
+  },
+  {
+   "nombre": "una nota que es una lista",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": [
+      "a"
+     ],
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "fuente.nota"
+   ]
+  },
+  {
+   "nombre": "sin nombre",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "nombre"
+   ]
+  },
+  {
+   "nombre": "un nombre de espacios",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "   ",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "nombre"
+   ]
+  },
+  {
+   "nombre": "un nombre de 81",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "nombre"
+   ]
+  },
+  {
+   "nombre": "varias cosas mal a la vez",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 9,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "segura"
+    },
+    "foto": "x"
+   },
+   "mal": [
+    "foto",
+    "fuente.confiabilidad",
+    "w"
+   ]
+  },
+  {
+   "nombre": "una lista no es una ficha",
+   "ficha": [
+    {
+     "clave": "nevera-inducol-2p",
+     "tipo": "nevera_puertas",
+     "nombre": "Nevera Inducol 2 puertas",
+     "w": 1.445,
+     "d": 0.74,
+     "h": 2.1,
+     "partes": {
+      "puertas": 2
+     },
+     "fuente": {
+      "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+      "nota": "Ficha técnica del fabricante.",
+      "confiabilidad": "ficha"
+     }
+    }
+   ],
+   "mal": [
+    "ficha"
+   ]
+  },
+  {
+   "nombre": "un texto no es una ficha",
+   "ficha": "nevera",
+   "mal": [
+    "ficha"
+   ]
+  },
+  {
+   "nombre": "una nevera de dos puertas que se vende por puertas",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "por puertas con una puerta sola: no se divide",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 1,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "por puertas sin decir cuántas",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "por algo que la nevera no admite",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "tramos"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la división como un número",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la división borrada (null) es no decir nada",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": null
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "por puertas con puertas que no son un entero",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2.5,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division",
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "una góndola no se vende por puertas",
+   "ficha": {
+    "clave": "gondola-cali",
+    "tipo": "gondola",
+    "variante": "double",
+    "nombre": "Góndola Cali",
+    "w": 1.0,
+    "d": 0.8,
+    "h": 2.0,
+    "partes": {
+     "division": "puertas"
+    },
+    "fuente": {
+     "confiabilidad": "ficha",
+     "nota": "medida"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una estiba no se vende por partes",
+   "ficha": {
+    "clave": "estiba",
+    "tipo": "isla",
+    "nombre": "Estiba",
+    "w": 1.2,
+    "d": 1.0,
+    "h": 1.4,
+    "partes": {
+     "division": "puertas"
+    },
+    "fuente": {
+     "confiabilidad": "ficha",
+     "nota": "medida"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "algo comercial adentro de partes, aunque diga cómo se vende",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "puertas",
+     "proveedor": "Postobón"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes"
+   ]
+  },
+  {
+   "nombre": "una góndola por tramos: la cantidad no va en la ficha (es un módulo), se fija en el plano",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "tramos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una góndola con la cantidad de tramos en la ficha: no va, depende del largo del corrido",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 4,
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "una góndola con tramos y sin decir cómo se vende: tampoco van",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 4
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "una góndola por entrepaños, con sus entrepaños",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "por entrepaños sin decir cuántos entrepaños tiene",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una góndola no se divide por puertas",
+   "ficha": {
+    "clave": "gondola-gamma-100",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Góndola Gamma de pared 1,00",
+    "w": 1.0,
+    "d": 0.45,
+    "h": 2.0,
+    "entrepanos": 4,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "puertas"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una punta por entrepaños, con un entrepaño y la base",
+   "ficha": {
+    "clave": "punta-gamma-70",
+    "tipo": "punta",
+    "nombre": "Punta Gamma 0,70",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 1.8,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "entrepanos": 1,
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una punta no se divide por tramos",
+   "ficha": {
+    "clave": "punta-gamma-70",
+    "tipo": "punta",
+    "nombre": "Punta Gamma 0,70",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 1.8,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "entrepanos": 3,
+    "partes": {
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una punta no lleva tramos",
+   "ficha": {
+    "clave": "punta-gamma-70",
+    "tipo": "punta",
+    "nombre": "Punta Gamma 0,70",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 1.8,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 2
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta (multideck) admite fichas, y por tramos con su cantidad",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 2,
+     "division": "tramos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "la nevera abierta por tramos sin decir cuántos",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta con un solo tramo: no es dividir",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 1,
+     "division": "tramos"
+    }
+   },
+   "mal": [
+    "partes.division",
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta con más tramos que los de su familia",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 41
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "tramos que no son un entero",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 2.5
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta no se divide por entrepaños ni los lleva",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "entrepanos": 4,
+    "partes": {
+     "division": "entrepanos"
+    }
+   },
+   "mal": [
+    "entrepanos",
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "la nevera abierta sin cómo se vende: entera, como siempre",
+   "ficha": {
+    "clave": "multideck-250",
+    "tipo": "nevera_refrescos",
+    "nombre": "Multideck de bebidas 2,50",
+    "w": 2.5,
+    "d": 0.8,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "la nevera de vegetales admite fichas, y por tramos",
+   "ficha": {
+    "clave": "mural-vegetales-250",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 2,50",
+    "w": 2.5,
+    "d": 0.95,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "tramos": 3,
+     "division": "tramos"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "la nevera de vegetales fuera de su rango de ancho",
+   "ficha": {
+    "clave": "mural-vegetales-250",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 2,50",
+    "w": 5.0,
+    "d": 0.95,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "w"
+   ]
+  },
+  {
+   "nombre": "la nevera de vegetales no lleva puertas",
+   "ficha": {
+    "clave": "mural-vegetales-250",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 2,50",
+    "w": 2.5,
+    "d": 0.95,
+    "h": 2.0,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "puertas": 2
+    }
+   },
+   "mal": [
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "una nevera de puertas no lleva tramos",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "fuente": {
+     "url": "https://www.gmc.com.co/gondolas/",
+     "nota": "Ficha del fabricante.",
+     "confiabilidad": "ficha"
+    },
+    "partes": {
+     "puertas": 2,
+     "tramos": 2,
+     "division": "puertas"
+    }
+   },
+   "mal": [
+    "partes.tramos"
+   ]
+  },
+  {
+   "nombre": "una caja con dos bahías de impulso (desde el paso 3, la caja admite fichas)",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una caja con más bahías que las de su familia",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 5
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.bahias"
+   ]
+  },
+  {
+   "nombre": "bahías que no son un entero",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 1.5
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.bahias"
+   ]
+  },
+  {
+   "nombre": "una caja no se divide: lo que se vende son sus bahías",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "una caja no lleva forro",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2,
+     "forro": true
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.forro"
+   ]
+  },
+  {
+   "nombre": "una caja no tiene tarifa propia",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    },
+    "tarifa": "parte_bahia"
+   },
+   "mal": [
+    "tarifa"
+   ]
+  },
+  {
+   "nombre": "una caja sin bahías también es una ficha (sólo dibuja)",
+   "ficha": {
+    "clave": "caja-ocana-180",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña 1,80 con dos bahías",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una columna forrada",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": true
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "una columna sin forro",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": false
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "el forro es un sí o no",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": "si"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.forro"
+   ]
+  },
+  {
+   "nombre": "un 1 no es un sí",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "forro": 1
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.forro"
+   ]
+  },
+  {
+   "nombre": "una columna no lleva bahías",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 3.0,
+    "partes": {
+     "bahias": 2
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.bahias"
+   ]
+  },
+  {
+   "nombre": "una columna fuera del rango de su familia",
+   "ficha": {
+    "clave": "columna-forrada-40",
+    "tipo": "columna",
+    "nombre": "Columna de 40 forrada",
+    "w": 0.4,
+    "d": 0.4,
+    "h": 1.5,
+    "partes": {
+     "forro": true
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "h"
+   ]
+  },
+  {
+   "nombre": "una nevera no lleva bahías ni forro",
+   "ficha": {
+    "clave": "nevera-inducol-2p",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera Inducol 2 puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "bahias": 2,
+     "forro": true
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.bahias",
+    "partes.forro"
+   ]
+  },
+  {
+   "nombre": "paso 4: una ficha guardada antes de vender por partes (sólo las puertas) sigue valiendo y se vende entera",
+   "ficha": {
+    "clave": "nevera-de-antes",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera de antes",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "paso 4: editar una ficha de antes para venderla por puertas (sin la clave: no cambia)",
+   "nueva": false,
+   "ficha": {
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera de antes",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "paso 4: una góndola de pared por tramos, como los murales de RECABRA (uno por módulo, sin la cantidad)",
+   "ficha": {
+    "clave": "mural-lacteos",
+    "tipo": "gondola",
+    "variante": "wall",
+    "nombre": "Mural de lácteos",
+    "w": 1.25,
+    "d": 0.45,
+    "h": 1.9,
+    "entrepanos": 4,
+    "modulo": 1.25,
+    "partes": {
+     "division": "tramos"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  },
+  {
+   "nombre": "paso 4: una nevera por puertas con cero puertas",
+   "ficha": {
+    "clave": "nevera-cero",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera sin puertas",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 0,
+     "division": "puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division",
+    "partes.puertas"
+   ]
+  },
+  {
+   "nombre": "paso 4: una caja con sus bahías no se divide además por puertas",
+   "ficha": {
+    "clave": "caja-ocana",
+    "tipo": "checkout",
+    "nombre": "Caja Ocaña",
+    "w": 1.8,
+    "d": 0.7,
+    "h": 0.9,
+    "partes": {
+     "bahias": 2,
+     "division": "puertas"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "paso 4: una punta por entrepaños con más entrepaños que los de su familia",
+   "ficha": {
+    "clave": "punta-alta",
+    "tipo": "punta",
+    "nombre": "Punta alta",
+    "w": 0.7,
+    "d": 0.37,
+    "h": 2.0,
+    "entrepanos": 7,
+    "partes": {
+     "division": "entrepanos"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": [
+    "entrepanos"
+   ]
+  },
+  {
+   "nombre": "paso 4: cómo se vende con mayúsculas no es una de la lista",
+   "ficha": {
+    "clave": "nevera-mayus",
+    "tipo": "nevera_puertas",
+    "nombre": "Nevera",
+    "w": 1.445,
+    "d": 0.74,
+    "h": 2.1,
+    "partes": {
+     "puertas": 2,
+     "division": "Puertas"
+    },
+    "fuente": {
+     "url": "https://inducol.com.co/neveras/vertical-2-puertas/",
+     "nota": "Ficha técnica del fabricante.",
+     "confiabilidad": "ficha"
+    }
+   },
+   "mal": [
+    "partes.division"
+   ]
+  },
+  {
+   "nombre": "paso 4: la nevera de vegetales por tramos con su cantidad",
+   "ficha": {
+    "clave": "vegetales-3t",
+    "tipo": "nevera_vegetales",
+    "nombre": "Mural de vegetales 3 tramos",
+    "w": 3.0,
+    "d": 0.9,
+    "h": 1.9,
+    "partes": {
+     "tramos": 3,
+     "division": "tramos"
+    },
+    "fuente": {
+     "nota": "Medida en la tienda.",
+     "confiabilidad": "estimado"
+    }
+   },
+   "mal": []
+  }
+ ]
+}

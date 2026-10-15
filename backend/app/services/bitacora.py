@@ -53,6 +53,12 @@ ACCIONES = {
     # esperada y la pantalla pinta de rojo lo que termina así. Ver
     # `services/fotos_vencidas.py`.
     "archivo.vencido": "Fotos y planometrías vencidas, borradas",
+    # Las fichas propias de los muebles (`routers/muebles.py`). Retirar no es
+    # borrar —lo colocado sigue igual—, así que no termina en «.baja».
+    "ficha_mueble.alta": "Ficha de mueble creada",
+    "ficha_mueble.cambio": "Ficha de mueble cambiada",
+    "ficha_mueble.retiro": "Ficha de mueble retirada",
+    "ficha_mueble.reactivacion": "Ficha de mueble reactivada",
 }
 
 # Lo que ya no puede pasar (2026-10-02) y por eso el filtro de la pantalla no lo

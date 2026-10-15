@@ -22,8 +22,18 @@ from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombi
 
 @pytest.fixture()
 def rem(client):
-    """El módulo de recordatorios de ESTA prueba."""
+    """El módulo de recordatorios de ESTA prueba.
+
+    Antes de devolverlo se espera la pasada de mantenimiento del arranque: ese
+    hilo también corre ``check_expiring_leases``, y si termina tarde lo hace a
+    la par de la prueba, sobre el contrato que la prueba acaba de sembrar, y el
+    mismo aviso sale dos veces (2026-10-14: ``expiry_30`` dos veces en la suite
+    completa). En producción sólo lo llama ese hilo, de a una pasada.
+    """
+    from conftest import esperar_mantenimiento
     from app.services import reminders
+
+    esperar_mantenimiento()
     return reminders
 
 

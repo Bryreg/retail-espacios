@@ -73,6 +73,9 @@ export interface PruebaDeCara {
    *  parado no entra (`filasSinAlto`); en las demás sigue parado. Sin
    *  surtido. De la sesión, como todo esto. */
   acostada?: { empaque: EmpaqueDeArte; filas: readonly number[] } | null;
+  /** Vender por partes: los vanos (puertas, en el orden del dibujo) que se
+   *  venden. El producto va sólo detrás de ellos. Sin esto, la cara entera. */
+  vanos?: readonly number[];
 }
 
 /** Un producto más del surtido de una cara. */
@@ -164,7 +167,8 @@ export const ProductoDePrueba = memo(function ProductoDePrueba({
       p.filas?.alturas.map((y) => y.toFixed(4)).join(",") ?? "-"}|${
       (p.surtido ?? []).map(claveDeProducto).join("+")}|${
       (p.tramos ?? []).map((t) => `${t.x0.toFixed(4)}:${t.x1.toFixed(4)}`).join(",")}|${
-      p.acostada ? `${claveDeEmpaque(p.acostada.empaque)}@${p.acostada.filas.join(",")}` : "-"}` : "-",
+      p.acostada ? `${claveDeEmpaque(p.acostada.empaque)}@${p.acostada.filas.join(",")}` : "-"}|${
+      p.vanos ? p.vanos.join(",") : "*"}` : "-",
   ).join("¦");
   const claveVenta = claveDeVenta(venta);
 
@@ -195,6 +199,7 @@ export const ProductoDePrueba = memo(function ProductoDePrueba({
         const e = x.empaque;
         const r = unidadesDePrueba({
           venta: ventaUsada, empaque: e, donde: x.donde, semilla: x.semilla, tramo: x.tramo, surtido: conSurtido,
+          vanos: p.vanos,
         });
         const vaso = e.envase === "revolucion" && !e.transparente;
         const geometriaCon = (detalle: "alto" | "bajo") => geometriaDeEtiqueta(

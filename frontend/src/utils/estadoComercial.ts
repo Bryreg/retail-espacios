@@ -1,5 +1,7 @@
 import type { FaceData, UnifiedFixture } from "../types/fixtures";
-import { fullSpaceCode } from "../types/fixtures";
+// De `types/espacio.ts` y no de `types/fixtures.ts`: esto viaja en lo primero
+// que baja la landing, y `types/fixtures.ts` arrastra el catálogo de muebles.
+import { carasDe, fullSpaceCode } from "../types/espacio";
 
 /**
  * Pegarle a cada mueble del plano lo que la BASE dice de él.
@@ -74,12 +76,6 @@ function loSuyo(
   return estado[fullSpaceCode(sede, c)] ?? estado[c] ?? LIBRE;
 }
 
-/** ¿Es una góndola de dos caras? Se pregunta por el tipo, no por si existe
- *  `faceB`: desde el corte, la cara B ya no guarda nada y puede no existir. */
-function esDoble(f: UnifiedFixture): boolean {
-  return f.gondolaType === "double" || (f.type as string) === "gondola_doble";
-}
-
 /**
  * ¿El objeto ya dice exactamente esto, con todos los campos escritos?
  *
@@ -105,7 +101,9 @@ export function fusionarEstadoComercial(
   const salida = fixtures.map((f) => {
     const propia = f.sede || sede;
     const a = loSuyo(estado, propia, f.code);
-    const doble = esDoble(f);
+    // ¿Tiene cara B? Se pregunta por el tipo (`carasDe`), no por si existe
+    // `faceB`: desde el corte, la cara B ya no guarda nada y puede no existir.
+    const doble = carasDe(f) === 2;
     const b = doble ? loSuyo(estado, propia, `${f.code}-B`) : null;
 
     if (yaEs(f as unknown as Record<string, unknown>, a) &&

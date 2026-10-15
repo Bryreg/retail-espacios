@@ -19,8 +19,51 @@
       columna con `tabular-nums` el guion se lee como un tachado.
    ========================================================================== */
 
+import { nombresDeInforme } from "../../catalogo/catalogo";
+
 /** Lo que se escribe cuando la API no trajo el dato. Nunca un 0, nunca vacío. */
 export const SIN_DATO = "—";
+
+// ─── Y lo inverso: leer lo que la operadora escribe a mano (cobros, C1) ─────
+//
+// Dos lecturas DISTINTAS, porque el punto significa cosas distintas: en pesos
+// es separador de miles («1.234.567»), en un porcentaje es la coma decimal de
+// otro teclado («3.5»). Antes se leían con la misma función, que borraba todos
+// los puntos: una retefuente de 3,5 guardada volvía al formulario como «3.5» y
+// al guardar sin tocarla viajaba como 35 (revisión de C2).
+
+/** Pesos escritos a mano: «1.234.567», «1234567» o «1.234.567,40». Vacío o
+ *  inválido es `null`, no 0. */
+export function pesosEscritos(texto: string): number | null {
+  const limpio = texto.replace(/\./g, "").replace(",", ".").trim();
+  if (!limpio) return null;
+  const n = Number(limpio);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Un porcentaje escrito a mano: «3,5», «3.5» o «0,966». La coma y el punto
+ *  son los dos la coma decimal: ningún porcentaje lleva miles. Vacío o
+ *  inválido es `null`. */
+export function porcentajeEscrito(texto: string): number | null {
+  const limpio = texto.trim().replace(",", ".");
+  if (!limpio || !/^\d*(\.\d*)?$/.test(limpio) || limpio === ".") return null;
+  const n = Number(limpio);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Un porcentaje para el campo de texto: `3.5` → «3,5». */
+export const porcentajeParaEscribir = (n: number): string => String(n).replace(".", ",");
+
+/** Cuántos meses cubre un período de cuenta de cobro: «2026-11» → 1,
+ *  «2026-11..2027-01» → 3. La misma forma que valida el backend
+ *  (`cobranza.rango_del_periodo`); `null` si no la tiene. */
+export function mesesDelPeriodo(periodo: string): number | null {
+  const m = periodo.trim().match(/^(\d{4})-(0[1-9]|1[0-2])(?:\.\.(\d{4})-(0[1-9]|1[0-2]))?$/);
+  if (!m) return null;
+  const desde = Number(m[1]) * 12 + Number(m[2]);
+  const hasta = m[3] ? Number(m[3]) * 12 + Number(m[4]) : desde;
+  return hasta >= desde && hasta - desde < 24 ? hasta - desde + 1 : null;
+}
 
 type Cifra = number | null | undefined;
 
@@ -135,27 +178,24 @@ export function diasEntre(desde: string, hasta: string): number | null {
 
 // ─── Nombres de tipo de espacio ────────────────────────────────────────────
 //
-// `tipo` viaja como slug del backend (`nevera_refrescos`). El diccionario es
-// el mismo del prototipo; un tipo que no esté acá se muestra tal cual llegó
-// (no se adivina, no se rompe).
+// `tipo` viaja como slug del backend (`nevera_refrescos`). Los nombres salen
+// del catálogo de muebles (`informe` e `informePlural` de cada tipo en
+// `catalogo/muebles.json`), más `fuera_del_plano`, que no es un mueble sino lo
+// que el servidor cuenta afuera de todo plano. Un tipo que no esté se muestra
+// tal cual llegó (no se adivina, no se rompe).
+//
+// Hasta que existió el catálogo faltaban la ristra, el impulsador, la vitrina
+// (`mueble`) y la zona libre (`metro`): los informes decían «muebles»,
+// «metros» e «impulsadors».
+
+const NOMBRES = nombresDeInforme();
 
 const TIPOS: Record<string, string> = {
-  gondola: "góndola", punta: "punta", nevera_refrescos: "nevera de bebidas",
-  isla: "isla", cross: "exhibición de piso", robatope: "robatope",
-  batea: "batea", fuera_del_plano: "fuera del plano",
-  stand_frutas: "stand de frutas", isla_fria: "isla fría",
-  nevera_carnes: "nevera de carnes",
-  nevera_vegetales: "nevera de vegetales",
+  ...NOMBRES.singular,
+  fuera_del_plano: "fuera del plano",
 };
 
-const TIPOS_PLURAL: Record<string, string> = {
-  gondola: "caras de góndola", punta: "puntas de góndola",
-  nevera_refrescos: "neveras de bebidas", isla: "islas",
-  cross: "exhibiciones de piso", robatope: "robatopes", batea: "bateas",
-  stand_frutas: "stands de frutas", isla_fria: "islas frías",
-  nevera_carnes: "neveras de carnes",
-  nevera_vegetales: "neveras de vegetales",
-};
+const TIPOS_PLURAL: Record<string, string> = NOMBRES.plural;
 
 export function tipoN(tipo: string): string {
   return TIPOS[tipo] ?? tipo;

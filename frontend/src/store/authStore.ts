@@ -17,7 +17,10 @@ export type EstadoCuentaAviso = "gracia" | "solo_lectura" | "suspendido";
 
 export interface AvisoCuenta {
   estado: EstadoCuentaAviso;
-  motivo: string;
+  /** El motivo sólo le llega a la dueña: a su gente le llega `null` (el login
+   *  y `GET /auth/estado-cuenta` lo sacan), y la pantalla pone un texto
+   *  propio. Nunca lleva montos cuando lo escribe el sistema. */
+  motivo: string | null;
 }
 
 interface AuthState {
@@ -81,6 +84,16 @@ interface AuthState {
    *  adentro, la pantalla no se enteraba hasta el próximo login. El corte del
    *  servidor sí funcionaba; lo que seguía andando era la app dibujada. */
   marcarEstadoCuenta: (estado: EstadoCuentaAviso, motivo: string) => void;
+  /** Deja el estado de cuenta tal como lo dice el servidor AHORA, también
+   *  cuando volvió a estar al día (`null`).
+   *
+   *  Lo llaman `BloqueoCuenta` y `AvisoCuentaBanner` con lo que contesta
+   *  `GET /auth/estado-cuenta`, cada pocos minutos y con «Reintentar» (C2).
+   *  Hasta que existió, nada limpiaba el aviso salvo el logout: después de un
+   *  pago, la gente del supermercado seguía bloqueada o con la franja hasta
+   *  volver a entrar. Mismas guardas que `marcarEstadoCuenta`: sin sesión no
+   *  escribe nada, y si ya dice lo mismo no despierta a nadie. */
+  actualizarAvisoCuenta: (aviso: AvisoCuenta | null) => void;
   /** Cierra el aviso de consentimiento sin más — el botón "Ahora no" y el
    *  que sigue a un `aceptar-politica` exitoso. No es un muro. */
   descartarConsentimiento: () => void;
@@ -129,11 +142,26 @@ export const useAuthStore = create<AuthState>()(
           // nuevo despierta a todos los suscriptores, y esto corre en CADA
           // respuesta 402 — en `solo_lectura` eso es una vez por intento de
           // guardar, con la app entera redibujándose al pedo.
-          !s.token || (s.avisoCuenta?.estado === estado && s.avisoCuenta?.motivo === motivo)
+          //
+          // Basta con el MISMO estado, aunque el motivo difiera (C2): el que
+          // ya está lo dijo el servidor —el login o `GET /auth/estado-cuenta`,
+          // con el motivo de verdad para la dueña— y el de acá es el genérico
+          // «en caliente». Pisarlo hacía titilar la pantalla de bloqueo entre
+          // los dos textos, una vez por cada 402 de la sincronización.
+          !s.token || s.avisoCuenta?.estado === estado
             ? s
             : { avisoCuenta: { estado, motivo } },
         ),
       descartarConsentimiento: () => set({ pedirConsentimiento: false }),
+      actualizarAvisoCuenta: (aviso) =>
+        set((s) => {
+          if (!s.token) return s;
+          const actual = s.avisoCuenta;
+          if (aviso === null) return actual === null ? s : { avisoCuenta: null };
+          return actual?.estado === aviso.estado && actual?.motivo === aviso.motivo
+            ? s
+            : { avisoCuenta: { estado: aviso.estado, motivo: aviso.motivo } };
+        }),
       logout: () => {
         set({
           token: null, role: null, cliente: null, clienteNombre: null, rolCliente: null,

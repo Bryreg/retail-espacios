@@ -21,6 +21,14 @@ import math
 from sqlalchemy.orm import Session
 
 from app.models.models import LayoutSnapshot
+from app.services import catalogo_muebles
+from app.services.partes import (
+    CodigoPartido, Parte, chocan, codigo_de_parte, concordancia, division_de, es_division, es_pieza,
+    firma_de_partes, partes_de, partir_codigo, piezas_de, termina_reservado, texto_de_parte,
+)
+from app.services.catalogo_muebles import (
+    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, PIEZAS_POR_TIPO, tipo_base,
+)
 
 
 #: Los campos que describen un CONTRATO, no un mueble.
@@ -47,6 +55,28 @@ CAMPOS_DE_CONTRATO = (
     "status", "supplierName", "brandCategory", "negotiatedValue",
     "startDate", "endDate", "observation",
 )
+
+#: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa
+#: ficha o escrita en el panel: entrepaños y módulo de la góndola y la punta,
+#: puertas de la nevera de puertas). Es geometría, no comercio.
+#:
+#: Son claves NUEVAS del JSON del plano, y un editor abierto desde antes de que
+#: existieran no las conoce: al mover el mueble las perdía, y el guardado
+#: borraba en silencio lo que otra pestaña había escrito. Por eso ``PUT
+#: /layout`` las trata distinto de todo lo demás (``_con_la_ficha_de_antes`` en
+#: ``routers/layout.py``): una clave AUSENTE en un mueble que ya estaba se
+#: rellena con la guardada, y sólo un ``null`` explícito la borra —es como el
+#: navegador de hoy dice «volver a la cuenta de siempre»—. El mismo nombre y
+#: las mismas cuatro en ``CLAVES_DE_FICHA`` de ``utils/guardadoDelPlano.ts``.
+CLAVES_DE_FICHA = ("modelo", "partes", "entrepanos", "modulo")
+
+#: De ``partes``, lo que es geometría y puede salir hacia quien no ve plata (la
+#: mercaderista, el visor de Vender): las claves de ``fichas.geometria`` que van
+#: en ``partes`` (las puertas y cómo se vende), copiadas una por una y con su
+#: tipo por ``partes.partes_tipadas``. Sale del catálogo: no hay una lista
+#: escrita a mano que se olvide de la próxima. El espejo es
+#: ``sinDatosComerciales`` en ``muebles/privacidad.ts``.
+PARTES_GEOMETRICAS = tuple(CAMPOS_DE_PARTES)
 
 
 def _full_code(fixture_code: str, sede: str) -> str:
@@ -84,8 +114,13 @@ def find_fixture_by_space_code(db: Session, space_code: str) -> dict | None:
     code = (space_code or "").strip().upper()
     if not code:
         return None
-    base = code[:-2] if code.endswith("-B") else code
+    # La cara B y la parte (``NEV-03-PU2``, ``GON-05-B-PU1``) son del mismo
+    # mueble. Con parte, primero el texto tal cual: un mueble viejo que se
+    # llamara literalmente así sigue siendo él mismo.
+    partido = partir_codigo(code)
+    buscados = ([code] if partido.parte else []) + [partido.base]
 
+    muebles: list[tuple[dict, str, str]] = []
     for snap in db.query(LayoutSnapshot).all():
         try:
             fixtures = json.loads(snap.fixtures_json or "[]")
@@ -100,7 +135,10 @@ def find_fixture_by_space_code(db: Session, space_code: str) -> dict | None:
             if not raw:
                 continue
             sede = str(fixture.get("sede") or snap.sede or "").strip()
-            if base in (_full_code(raw, sede), raw):
+            muebles.append((fixture, raw, _full_code(raw, sede)))
+    for base in buscados:
+        for fixture, raw, completo in muebles:
+            if base in (completo, raw):
                 return fixture
     return None
 
@@ -119,8 +157,11 @@ def find_fixture_by_space_code(db: Session, space_code: str) -> dict | None:
 #: viejos seguían aceptando un contrato por API. Mirando el tipo, esos planos
 #: quedan bien sin migrar una sola fila.
 #:
-#: Espeja ``NUNCA_ALQUILABLE`` de ``frontend/src/types/fixtures.ts``.
-NUNCA_ALQUILABLE = frozenset({"columna", "checkout", "servicio_cliente"})
+#: Son los tipos con ``alquilable: "nunca"`` del catálogo de muebles
+#: (``app/catalogo/muebles.json``, ver ``services/catalogo_muebles.py``): el
+#: mismo archivo del que sale ``NUNCA_ALQUILABLE`` de
+#: ``frontend/src/types/fixtures.ts``.
+NUNCA_ALQUILABLE: frozenset[str] = catalogo_muebles.NUNCA_ALQUILABLE
 
 
 def es_comercializable(fixture: dict) -> bool:
@@ -136,16 +177,236 @@ def es_comercializable(fixture: dict) -> bool:
     return fixture.get("rentable") is not False
 
 
+def caras_de(fixture: dict) -> int:
+    """Cuántas caras vendibles tiene el mueble: 2 es la cara A y la ``-B``.
+
+    Espejo de ``carasDe`` en ``frontend/src/types/espacio.ts``, y es LA
+    respuesta a «¿esta góndola tiene cara B?» de este lado: lo que el plano
+    ofrece (``espacios_ofrecidos``, el guardarraíl de contratos vivos), la
+    importación de contratos del plano, las métricas de la plataforma y
+    ``scripts/auditar_desfase.py``.
+
+    Hubo dos reglas. Ésta exigía ``"double"`` escrito mientras Vender ofrecía
+    la cara B de una góndola sin ``gondolaType``: se vendía, pero borrar la
+    góndola no frenaba por ella y la auditoría la daba por contrato sin
+    mueble. Quedó la laxa, que es lo que dibujan los dos editores:
+
+    · ``gondola`` con ``gondolaType`` ``"double"`` o AUSENTE → 2;
+    · el tipo legado ``gondola_doble`` de los planos viejos del 2D → 2;
+    · cualquier otra cosa (``"wall"``, un mueble que no es góndola) → 1.
+
+    Ausente es ``None``, igual que ``??`` del frontend: un ``""`` escrito no
+    cuenta como ausente en ninguno de los dos lados.
+    """
+    tipo = fixture.get("type")
+    if tipo == "gondola_doble":
+        return 2
+    if tipo != "gondola":
+        return 1
+    variante = fixture.get("gondolaType")
+    return 2 if variante is None or variante == "double" else 1
+
+
+#: Lo que contesta ``motivo_para_no_vender``.
+NO_COMERCIALIZABLE = "no_comercializable"
+SIN_CARA_B = "sin_cara_b"
+#: Una parte que el plano no ofrece: la nevera se vende entera, o tiene menos
+#: puertas que las que pide el código (``NEV-03-PU4`` en una de tres).
+PARTE_INEXISTENTE = "parte_inexistente"
+#: Un mueble que nunca se vende entero pero tiene piezas a la venta: la caja
+#: con sus bahías de impulso, la columna con su forro. La frase dice cuáles.
+SOLO_SUS_PIEZAS = "solo_sus_piezas"
+
+
+def pide_cara_b_inexistente(fixture: dict, espacio: str) -> bool:
+    """¿El código pide la cara B de un mueble que tiene una sola?
+
+    ``espacios_ofrecidos`` no ofrece ``PUN-01-B`` ni la ``-B`` de una góndola
+    mural, pero la planilla y el contrato suelto le recortaban el sufijo a
+    cualquier mueble y la vendían igual; Supervisar la marcaba enseguida como
+    «Contrato sin mueble». La cara B existe cuando ``caras_de`` dice 2: es la
+    misma regla para ofrecer, para cuidar y para vender. Vale también para una
+    parte de la cara B (``PUN-01-B-PU1``).
+    """
+    return partir_codigo(espacio).cara == "B" and caras_de(fixture) != 2
+
+
+def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[str, str] | None:
+    """La COMPUERTA: por qué este espacio de este mueble no se puede vender,
+    como ``(motivo, frase)``, o ``None`` si se puede.
+
+    La usan la planilla y Vender (``bulk_leases._revisar``) y el contrato suelto
+    (``motivo_para_no_vender``): un solo lugar dice qué partes existen. Las
+    frases no nombran proveedores ni plata —Vender las lee en vivo, delante del
+    proveedor—, y dicen qué hacer.
+
+    · la cara B de un mueble de una cara: no existe, entera ni por partes;
+    · un mueble no comercializable: ni la cara ni sus partes;
+    · una puerta de una nevera que se vende entera, o con un número de más;
+    · un tramo de una góndola que se vende por entrepaños (o al revés): un
+      mueble se divide de UNA sola forma;
+    · una división que el mueble eligió pero sin la cuenta fijada (la góndola
+      por tramos colocada desde una ficha, antes de fijarlos en el panel);
+    · la caja o la columna enteras: nunca, pero si tienen piezas configuradas
+      se dice cuáles se venden (``SOLO_SUS_PIEZAS``);
+    · una pieza que su familia no lleva, que el plano no configuró o con un
+      número de más (``CAJ-04-BI3`` en una caja de dos). Una pieza se vende
+      aunque el mueble no sea comercializable: es lo único que se vende de él.
+    """
+    # Se nombra con el código que trae quien pregunta (la planilla y el
+    # contrato suelto, el completo), como el resto de sus mensajes.
+    corto = partido.base
+    parte = partido.parte
+    if partido.cara == "B" and caras_de(fixture) != 2:
+        return SIN_CARA_B, f"«{corto}» tiene una sola cara: no hay cara B que vender."
+    if es_pieza(parte):
+        return _motivo_de_la_pieza(fixture, corto, partido.cara, parte)
+    if not es_comercializable(fixture):
+        piezas = piezas_de(fixture)
+        if parte is None and piezas:
+            clases = list(dict.fromkeys(p.clase for p in piezas))
+            nombres = ", ".join(codigo_de_parte(corto, "A", p) for p in piezas)
+            una = len(piezas) == 1
+            return SOLO_SUS_PIEZAS, (
+                f"«{corto}» no se vende: se vende{'' if una else 'n'} {_sus(clases)} ({nombres})."
+            )
+        lleva = PIEZAS_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+        frase = f"«{corto}» está marcado como no comercializable: es parte del local."
+        if parte is None and lleva:
+            # La caja o la columna sin piezas configuradas: lo de siempre, y
+            # cómo se pone a la venta lo que sí se vende de ellas.
+            return NO_COMERCIALIZABLE, f"{frase} {como_se_venden_sus_piezas(fixture)}"
+        return NO_COMERCIALIZABLE, frase
+    if parte is None:
+        return None
+    regla = CLASES_DE_PARTE[parte.clase]
+    if es_division(parte):
+        div = division_de(fixture)
+        admite = DIVISIONES_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+        pedida = (fixture.get("partes") or {}).get("division") if isinstance(fixture.get("partes"), dict) else None
+        if parte.clase not in admite:
+            # Su familia no se divide así (una punta por tramos).
+            formas = " o por ".join(CLASES_DE_PARTE[c]["plural"] for c in admite)
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» no se vende por {regla['plural']}"
+                + (f": se vende entera o por {formas}." if formas else ": se vende entera.")
+            )
+        if div is not None and div[0] != parte.clase:
+            otra = CLASES_DE_PARTE[div[0]]
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» se vende por {otra['plural']}: un mueble se divide de una sola forma, así "
+                f"que no hay {parte.sufijo}."
+            )
+        if div is None and pedida == parte.clase:
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» se vende por {regla['plural']}, pero no tiene fijado cuánt"
+                f"{concordancia(parte.clase)['o']}s: fijalo en el panel del plano («Cómo se vende»)."
+            )
+        if div is None:
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» se vende entera: para venderla por {regla['plural']}, elegí "
+                f"«por {regla['plural']}» en el panel del plano."
+            )
+        if parte.n is None or parte.n > div[1]:
+            return PARTE_INEXISTENTE, (
+                f"«{corto}» tiene {div[1]} {regla['plural']}: no hay {parte.sufijo}."
+            )
+    return None
+
+
+def _sus(clases: list[str]) -> str:
+    """«sus bahías de impulso», «su forro» (una pieza única va en singular)."""
+    return " y ".join(
+        f"su {CLASES_DE_PARTE[c]['singular']}" if CLASES_DE_PARTE[c].get("unico")
+        else f"sus {CLASES_DE_PARTE[c]['plural']}"
+        for c in clases
+    )
+
+
+def como_se_venden_sus_piezas(fixture: dict) -> str | None:
+    """Para un mueble que nunca se vende entero pero cuya familia lleva piezas
+    (la caja, la columna): cómo se ponen a la venta, en una frase. ``None``
+    si su familia no lleva piezas (el mostrador de servicio al cliente)."""
+    lleva = PIEZAS_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+    if not lleva:
+        return None
+    como = "; ".join(_como_se_configura(c) for c in lleva)
+    return f"{como[:1].upper()}{como[1:]}."
+
+
+def _como_se_configura(clase: str) -> str:
+    """Cómo se pone a la venta una pieza que el plano todavía no tiene."""
+    regla = CLASES_DE_PARTE[clase]
+    g = concordancia(clase)
+    if regla.get("unico"):
+        return (f"su {regla['singular']} se vende marcándol{g['o']} en el panel del plano "
+                "(«Cómo se vende»)")
+    return (f"sus {regla['plural']} se venden un{g['o']} por un{g['o']}, configurándo{g['los']} en el panel "
+            "del plano («Cómo se vende»)")
+
+
+def _motivo_de_la_pieza(fixture: dict, corto: str, cara: str, parte: Parte) -> tuple[str, str] | None:
+    """La compuerta de una PIEZA (la bahía de una caja, el forro de una
+    columna): que su familia la lleve, que el plano la tenga configurada y que
+    el número exista. No pregunta si el mueble es comercializable: la caja no
+    lo es nunca, y sus bahías son justamente lo que se vende de ella."""
+    regla = CLASES_DE_PARTE[parte.clase]
+    g = concordancia(parte.clase)
+    lleva = PIEZAS_POR_TIPO.get(tipo_base(str(fixture.get("type") or "")), ())
+    if parte.clase not in lleva:
+        cual = regla["singular"] if regla.get("unico") else regla["plural"]
+        return PARTE_INEXISTENTE, f"«{corto}» no lleva {cual}: no hay {parte.sufijo}."
+    if cara == "B":
+        # Una pieza no es de una cara: va siempre sin la B (``CAJ-04-BI1``).
+        return PARTE_INEXISTENTE, (
+            f"{g['el'][:1].upper()}{g['el'][1:]}s {regla['plural']} no son de una cara: se escriben sin la B "
+            f"(«{corto}-{parte.sufijo}»)."
+        )
+    hay = [p for p in piezas_de(fixture) if p.clase == parte.clase]
+    if not hay:
+        return PARTE_INEXISTENTE, f"«{corto}» no tiene {regla['plural'] if not regla.get('unico') else regla['singular']} " \
+            f"en el plano: {_como_se_configura(parte.clase)}."
+    if parte not in hay:
+        return PARTE_INEXISTENTE, f"«{corto}» tiene {len(hay)} {regla['plural']}: no hay {parte.sufijo}."
+    return None
+
+
+def motivo_para_no_vender(db: Session, space_code: str) -> str | None:
+    """Por qué no se le puede colgar un contrato a este código, o ``None``.
+
+    ``NO_COMERCIALIZABLE``: el mueble es operación de la tienda o está marcado
+    «no comercializable». ``SIN_CARA_B``: el código es la cara B de un mueble
+    de una sola cara (``pide_cara_b_inexistente``). ``PARTE_INEXISTENTE``: una
+    parte que el plano no ofrece (``motivo_para_no_vender_parte``).
+
+    Falla abierto, como siempre: un código sin mueble —filas sembradas, un
+    mueble borrado del plano después del contrato— se puede vender.
+    """
+    motivo = por_que_no_se_vende(db, space_code)
+    return motivo[0] if motivo else None
+
+
+def por_que_no_se_vende(db: Session, space_code: str) -> tuple[str, str] | None:
+    """``motivo_para_no_vender`` con la frase para la persona."""
+    fixture = find_fixture_by_space_code(db, space_code)
+    if fixture is None:
+        return None
+    partido = partir_codigo(space_code)
+    if partido.parte is not None and normalizar(space_code).endswith(normalizar(fixture.get("code"))):
+        # Resolvió el texto tal cual: un mueble viejo que se llama así. Es su
+        # cara entera, no una parte de otro.
+        partido = CodigoPartido(normalizar(space_code), "A", None)
+    return motivo_para_no_vender_parte(fixture, partido)
+
+
 def is_space_rentable(db: Session, space_code: str) -> bool:
     """Whether a contract may be attached to this space code.
 
     Fails open: a space with no matching fixture (seeded demo rows, fixtures
-    deleted from the plan after the contract existed) stays rentable.
+    deleted from the plan after the contract existed) stays rentable. Ver
+    ``motivo_para_no_vender``, que además dice por qué.
     """
-    fixture = find_fixture_by_space_code(db, space_code)
-    if fixture is None:
-        return True
-    return es_comercializable(fixture)
+    return motivo_para_no_vender(db, space_code) is None
 
 
 # ── El nombre que se DIBUJA, que no es la llave ───────────────────────────────
@@ -215,12 +476,19 @@ class FixtureResuelto:
     contrato del otro.
     """
 
-    __slots__ = ("fixture", "sede", "codigo")
+    __slots__ = ("fixture", "sede", "codigo", "partido")
 
-    def __init__(self, fixture: dict, sede: str, codigo: str):
+    def __init__(self, fixture: dict, sede: str, codigo: str, partido: CodigoPartido | None = None):
         self.fixture = fixture
         self.sede = sede
         self.codigo = codigo
+        #: La cara y la parte que pidió el texto (``NEV-03-PU2`` es la puerta 2
+        #: de la cara A). ``None`` sólo para quien lo arma a mano.
+        self.partido = partido or CodigoPartido(codigo, "A", None)
+
+    @property
+    def parte(self) -> Parte | None:
+        return self.partido.parte
 
     @property
     def nombre_dibujado(self) -> str | None:
@@ -306,8 +574,15 @@ class Colision:
 
 def _sin_cara_b(texto: str) -> str:
     """La góndola doble comparte fixture entre sus dos caras; ``-B`` no es parte
-    del código del mueble ni de ningún nombre dibujado."""
-    return texto[:-2] if texto.endswith("-B") else texto
+    del código del mueble ni de ningún nombre dibujado. Tampoco la parte: la
+    puerta 2 (``NEV-03-PU2``) es del mueble ``NEV-03``. Ver ``_sin_sufijos``."""
+    return _sin_sufijos(texto)
+
+
+def _sin_sufijos(texto: str) -> str:
+    """El código del mueble, sin la cara B ni la parte: ``GON-05-B-PU1`` →
+    ``GON-05``."""
+    return partir_codigo(texto).base if texto else texto
 
 
 def sin_prefijo_de_sede(texto: str, sede: str) -> str:
@@ -366,12 +641,15 @@ class PlanoIndexado:
         if not texto:
             return None
         # El texto tal cual primero: un mueble podría llamarse literalmente
-        # ``GON-01-B``, y recortarle la cara lo dejaría sin resolver.
-        candidatos = [(texto, "")]
-        if texto.endswith("-B"):
-            candidatos.append((_sin_cara_b(texto), "-B"))
+        # ``GON-01-B`` (o ``X-PU2``), y recortarle la cara o la parte lo
+        # dejaría sin resolver. Después, sin la parte y la cara: la puerta 2
+        # de ``NEV-03`` es del mueble ``NEV-03``.
+        partido = partir_codigo(texto)
+        candidatos: list[tuple[str, CodigoPartido | None]] = [(texto, None)]
+        if partido.parte is not None or partido.cara == "B":
+            candidatos.append((partido.base, partido))
 
-        for buscado, sufijo in candidatos:
+        for buscado, pedido in candidatos:
             for fixture in fixtures:
                 raw = normalizar(fixture.get("code"))
                 if not raw:
@@ -379,8 +657,36 @@ class PlanoIndexado:
                 propia = str(fixture.get("sede") or sede or "").strip()
                 completo = _full_code(raw, propia)
                 if buscado in (raw, completo):
-                    return FixtureResuelto(fixture, normalizar(propia), completo + sufijo)
+                    if pedido is None:
+                        return FixtureResuelto(fixture, normalizar(propia), completo,
+                                               CodigoPartido(completo, "A", None))
+                    # La cara B de un mueble de una cara no existe: el plano
+                    # no la ofrece, y resolverla vendía un espacio que
+                    # Supervisar daba enseguida por «Contrato sin mueble».
+                    if pedido.cara == "B" and caras_de(fixture) != 2:
+                        continue
+                    # La parte sí se resuelve aunque el plano no la ofrezca:
+                    # la que dice por qué no se vende es la compuerta
+                    # (`motivo_para_no_vender_parte`), con una frase que dice
+                    # qué hacer.
+                    final = CodigoPartido(completo, pedido.cara, pedido.parte)
+                    return FixtureResuelto(
+                        fixture, normalizar(propia),
+                        codigo_de_parte(completo, pedido.cara, pedido.parte), final,
+                    )
         return None
+
+    def sin_cara_b(self, sede: str, espacio: str) -> FixtureResuelto | None:
+        """El mueble de una sola cara cuya ``-B`` pide el texto, o ``None``.
+
+        Para decir «PUN-01 tiene una sola cara» en vez de un «no hay ningún
+        mueble con ese código», que manda a buscar un tipeo que no está.
+        """
+        texto = normalizar(espacio)
+        if partir_codigo(texto).cara != "B" or self.resolver(sede, texto) is not None:
+            return None
+        base = self.resolver(sede, _sin_sufijos(texto))
+        return base if base is not None and caras_de(base.fixture) != 2 else None
 
     def sedes_con_codigo(self, espacio: str) -> list[str]:
         """En qué sedes existe un mueble con ese código. Para poder decir «no
@@ -408,7 +714,7 @@ class PlanoIndexado:
         vuelve a haber dos candidatos y esto vuelve a rechazar: la regla es la
         misma, no una excepción.
         """
-        objetivo = _sin_cara_b(normalizar(espacio))
+        objetivo = _sin_sufijos(normalizar(espacio))
         if not objetivo:
             return None
         resuelto = self.resolver(sede, espacio)
@@ -453,7 +759,7 @@ class PlanoIndexado:
         que importa se pierde entre ellos.
         """
         sede_fixture = resuelto.sede or sede
-        corto = _sin_cara_b(sin_prefijo_de_sede(resuelto.codigo, sede_fixture))
+        corto = _sin_sufijos(sin_prefijo_de_sede(resuelto.codigo, sede_fixture))
         mi_nombre = normalizar(resuelto.nombre_dibujado or "")
 
         otro_me_dibuja: str | None = None
@@ -503,14 +809,10 @@ def ambiguedad_de_nombre(db: Session, sede: str, espacio: str) -> Ambiguedad | N
 # arriba del plano cuando toque el enlace.
 
 #: Muebles que sirven de referencia para alguien parado en la tienda. Son los
-#: que cualquiera ubica sin mirar un plano.
-_REFERENCIAS = {
-    "checkout": "las cajas",
-    "nevera_refrescos": "las neveras",
-    "nevera_carnes": "el mostrador de carnes",
-    "nevera_vegetales": "el mural de frutas y verduras",
-    "stand_frutas": "las frutas",
-}
+#: que cualquiera ubica sin mirar un plano. Salen de ``referencia`` en el
+#: catálogo de muebles: las mismas que el minimapa del frontend
+#: (``frontend/src/catalogo/minimapa.ts``) dibuja con etiqueta.
+_REFERENCIAS: dict[str, str] = catalogo_muebles.REFERENCIAS
 
 
 def _huella(fixture: dict) -> tuple[float, float]:
@@ -546,7 +848,9 @@ def describe_location(db: Session, space_code: str, sede: str) -> str | None:
     code = (space_code or "").strip().upper()
     if not code:
         return None
-    base = code[:-2] if code.endswith("-B") else code
+    # La cara B y la puerta 2 están donde está su mueble.
+    partido = partir_codigo(code)
+    buscados = ([code] if partido.parte else []) + [partido.base]
     sede_uc = (sede or "").strip().upper()
 
     fixtures = _fixtures_de_sede(db, sede)
@@ -554,13 +858,16 @@ def describe_location(db: Session, space_code: str, sede: str) -> str | None:
         return None
 
     target = None
-    for fixture in fixtures:
-        raw = str(fixture.get("code") or "").strip().upper()
-        if not raw:
-            continue
-        propia = str(fixture.get("sede") or sede_uc or "").strip()
-        if base in (_full_code(raw, propia), raw):
-            target = fixture
+    for base in buscados:
+        for fixture in fixtures:
+            raw = str(fixture.get("code") or "").strip().upper()
+            if not raw:
+                continue
+            propia = str(fixture.get("sede") or sede_uc or "").strip()
+            if base in (_full_code(raw, propia), raw):
+                target = fixture
+                break
+        if target is not None:
             break
     if target is None:
         return None
@@ -788,24 +1095,47 @@ def choques_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
 # que acordarse de poner en cada botón es un guardarraíl que se va a olvidar.
 
 
+def espacios_de(fixture: dict, sede: str) -> list[str]:
+    """Los códigos COMPLETOS que un mueble pone a la venta: sus caras y sus
+    partes (``NAVE-NEV-03``, ``NAVE-NEV-03-PU1``…). Es ``espaciosDe`` de
+    ``utils/partes.ts``, con los mismos casos (``casos/partes.json``). Un
+    mueble sin ``partes.division`` da sus caras, como siempre. Uno que no es
+    comercializable no da sus caras, pero sí sus PIEZAS configuradas (las
+    bahías de una caja, el forro de una columna): es lo que se vende de él."""
+    if not isinstance(fixture, dict):
+        return []
+    code = (fixture.get("code") or "").strip().upper()
+    if not code:
+        return []
+    completo = _full_code(code, str(fixture.get("sede") or sede or ""))
+    comercializable = es_comercializable(fixture)
+    caras = caras_de(fixture)
+    fuera = []
+    if comercializable:
+        fuera.append(completo)
+        if caras == 2:
+            fuera.append(f"{completo}-B")
+    for cara, parte in partes_de(fixture, caras, comercializable):
+        fuera.append(codigo_de_parte(completo, cara, parte))
+    return fuera
+
+
 def espacios_ofrecidos(fixtures: list[dict], sede: str) -> set[str]:
     """Los códigos COMPLETOS que este plano pone a la venta hoy.
 
-    Una góndola doble son dos espacios: ``NAVE-GON-60`` y ``NAVE-GON-60-B``.
-    Un mueble no comercializable NO está — y ése es justamente uno de los casos
-    que hay que encontrar.
+    Una góndola doble son dos espacios: ``NAVE-GON-60`` y ``NAVE-GON-60-B``
+    (``caras_de``). Una nevera que se vende por puertas, además, sus puertas:
+    ``NAVE-NEV-03-PU1``… (``espacios_de``). Un mueble no comercializable NO
+    está — y ése es justamente uno de los casos que hay que encontrar.
+
+    Con la sede del PLANO, no la del mueble: es la que usaba siempre, y la
+    respuesta de un plano viejo tiene que ser la misma.
     """
     ofrecidos: set[str] = set()
     for fixture in fixtures:
         if not isinstance(fixture, dict):
             continue
-        code = (fixture.get("code") or "").strip().upper()
-        if not code or not es_comercializable(fixture):
-            continue
-        completo = _full_code(code, sede)
-        ofrecidos.add(completo)
-        if fixture.get("gondolaType") == "double" or fixture.get("type") == "gondola_doble":
-            ofrecidos.add(f"{completo}-B")
+        ofrecidos.update(espacios_de({**fixture, "sede": sede}, sede))
     return ofrecidos
 
 
@@ -849,7 +1179,9 @@ def contratos_que_quedarian_sin_mueble(
 
     frases = []
     for lease, space in vivos:
-        completo = (space.code or "").strip().upper()
+        # Por la forma completa: una fila guardada sin la sede (`NEV-03-PU3`)
+        # es el mismo espacio que el plano ofrece como `NAVE-NEV-03-PU3`.
+        completo = _full_code(sin_prefijo_de_sede(normalizar(space.code), sede), sede)
         if completo not in perdidos:
             continue
         # Se nombra por el código CORTO: es el que está en el plano y en la
@@ -861,5 +1193,246 @@ def contratos_que_quedarian_sin_mueble(
             f"{lease.end_date.isoformat()}. Cancelalo primero, o volvé a poner "
             f"el mueble: si se va del plano, el contrato queda vivo y sin nada "
             f"que lo muestre."
+        )
+    return sorted(frases)
+
+
+# ─── Vender por partes: lo que choca, lo que se movería, lo que no se nombra ──
+#
+# Una puerta vendida (``NEV-03-PU2``) es un espacio más, con su fila en
+# ``spaces``. La regla de la dueña —la nevera entera o por puertas, nunca las
+# dos en las mismas fechas— se decide por los códigos (``partes.chocan``), así
+# que todos los caminos que crean un contrato preguntan lo mismo acá.
+
+
+def _escapar_like(texto: str) -> str:
+    return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def forma_canonica(db: Session, sede: str, codigo: str) -> str | None:
+    """El código con que se guarda el espacio de un mueble que se vende por
+    partes: con la sede del mueble, en mayúsculas y sin espacios
+    (``NAVE-NEV-03-PU2``, ``NAVE-NEV-03``), como lo arma la planilla
+    (``PlanoIndexado.resolver``).
+
+    ``None`` si el texto no es una parte ni la cara de un mueble del plano que
+    se vende por partes: ahí no se exige nada, como siempre (un espacio
+    sembrado sin sede, una cara de un mueble que se vende entero).
+
+    Para qué: la regla «entera o por partes, nunca las dos» compara CÓDIGOS
+    (``contratos_que_chocan``). El contrato suelto aceptaba ``NEV-03-PU2`` sin
+    sede, o con un espacio adelante, porque la compuerta resuelve el mueble por
+    el código pelado; pero la otra forma no veía ese contrato, y la nevera se
+    vendía entera a uno y por puertas a otro en las mismas fechas.
+    """
+    plano = PlanoIndexado(db)
+    sedes = [normalizar(sede)] if normalizar(sede) else []
+    sedes += [s for s in plano.sedes_con_codigo(codigo) if s not in sedes]
+    for s in sedes:
+        r = plano.resolver(s, codigo)
+        if r is None:
+            continue
+        f = r.fixture
+        if r.parte is not None or partes_de(f, caras_de(f), es_comercializable(f)):
+            return r.codigo
+        return None
+    return None
+
+
+def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int | None = None,
+                         sede: str | None = None) -> list[tuple]:
+    """Los contratos vivos (no cancelados) que no dejan vender ``codigo`` entre
+    ``desde`` y ``hasta``, ambos inclusive: el del mismo espacio, el de la cara
+    entera si es una puerta, y los de sus puertas si es la cara entera.
+
+    ``[(lease, space, partido)]``, en orden de fecha. Una sola consulta: el
+    código mismo, la cara, y lo que empieza con ``<cara>-`` (filtrado después
+    con ``chocan``: la ``-B`` de la cara A no choca, ``GON-050`` no calza).
+    ``space_id``: el espacio mismo, por su id, aunque su código esté guardado
+    con otras mayúsculas (el contrato suelto preguntaba así).
+
+    Los códigos guardados se comparan sin mayúsculas ni espacios de los
+    costados, y con ``sede`` también en su forma corta —``NEV-03-PU2`` de una
+    fila de esa sede es ``NAVE-NEV-03-PU2``—: un contrato guardado con otra
+    escritura no puede quedar ciego a la regla «entera o por partes, nunca las
+    dos». El contrato suelto ya exige la forma completa (``forma_canonica``);
+    esto cuida las filas que ya estaban.
+    """
+    from sqlalchemy import func, or_
+    from app.models.models import Space, SpaceLease
+
+    s = normalizar(sede)
+
+    def completo(texto) -> str:
+        t = normalizar(texto)
+        return _full_code(sin_prefijo_de_sede(t, s), s) if s else t
+
+    codigo = completo(codigo)
+    yo = partir_codigo(codigo)
+    cara = yo.cara_entera
+    caras = {cara} | ({sin_prefijo_de_sede(cara, s)} if s else set())
+    codigos = {codigo} | ({sin_prefijo_de_sede(codigo, s)} if s else set())
+    guardado = func.upper(func.trim(Space.code))
+    filas = (
+        db.query(SpaceLease, Space)
+        .join(Space, Space.id == SpaceLease.space_id)
+        .filter(
+            SpaceLease.is_active.is_(True),
+            SpaceLease.start_date <= hasta,
+            SpaceLease.end_date >= desde,
+            or_(guardado.in_(sorted(codigos | caras)),
+                *[guardado.like(f"{_escapar_like(c)}-%", escape="\\") for c in sorted(caras)],
+                Space.id == (space_id if space_id is not None else -1)),
+        )
+        .all()
+    )
+    fuera = []
+    for lease, space in filas:
+        bruto = normalizar(space.code)
+        # La forma corta es de ESTA sede sólo si su fila lo dice (o no dice
+        # ninguna): `PUN-01` se repite en las tres tiendas.
+        if s and not bruto.startswith(f"{s}-") and normalizar(space.sede) not in ("", s) \
+                and space.id != space_id:
+            continue
+        otro = partir_codigo(completo(bruto))
+        if space.id == space_id or completo(bruto) == codigo or chocan(yo, otro):
+            fuera.append((lease, space, otro))
+    fuera.sort(key=lambda x: (x[0].start_date, x[0].id))
+    return fuera
+
+
+def frase_de_choque(codigo: str, otro_codigo: str, lease) -> str:
+    """Por qué no entra, sin decir de quién es lo otro: Vender lee esto en vivo,
+    delante del proveedor. Las fechas sí: son las que hay que mover."""
+    codigo, otro_codigo = normalizar(codigo), normalizar(otro_codigo)
+    fechas = f"del {lease.start_date} al {lease.end_date}"
+    if codigo == otro_codigo:
+        return f"«{codigo}» ya tiene un contrato {fechas}. Cancelalo primero o ajustá las fechas."
+    yo, otro = partir_codigo(codigo), partir_codigo(otro_codigo)
+    if yo.parte is not None and otro.parte is None:
+        regla = CLASES_DE_PARTE[yo.parte.clase]
+        return f"«{otro_codigo}» está vendida entera {fechas}: en esas fechas no se vende por {regla['plural']}."
+    if yo.parte is None and otro.parte is not None:
+        regla = CLASES_DE_PARTE[otro.parte.clase]
+        g = concordancia(otro.parte.clase)
+        return (
+            f"«{otro_codigo}» ({texto_de_parte(otro.parte).lower()}) está vendid{g['o']} {fechas}: en esas "
+            f"fechas «{codigo}» no se vende entera; {g['los']} otr{g['o']}s {regla['plural']}, sí."
+        )
+    if otro.parte is not None:
+        # Dos divisiones de clases distintas de la misma cara: el tramo 2 y el
+        # entrepaño 3 comparten una repisa. Un mueble se divide de una forma.
+        g = concordancia(otro.parte.clase)
+        return (
+            f"«{otro_codigo}» ({texto_de_parte(otro.parte).lower()}) está vendid{g['o']} {fechas} y se pisa "
+            f"con «{codigo}»: un mueble se divide de una sola forma."
+        )
+    return f"«{otro_codigo}» está vendida {fechas} y se pisa con «{codigo}»."
+
+
+def nombres_reservados_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
+    """Los muebles que ESTE guardado nombra como el código de una parte o de la
+    cara B (``GON-01-B``, ``NEV-03-PU2``, ``GON-01-TR2``): su código se leería
+    como una parte de otro mueble. Sólo los que el guardado agrega —un plano
+    viejo con un nombre así se sigue guardando—, comparando contra el plano
+    anterior, como ``choques_nuevos``."""
+    ya = {normalizar(f.get("code")) for f in previas if isinstance(f, dict)}
+    malos = sorted({
+        normalizar(f.get("code")) for f in nuevas
+        if isinstance(f, dict) and normalizar(f.get("code")) not in ya and termina_reservado(f.get("code"))
+    })
+    return [
+        f"«{c}» termina como el código de una parte o de la cara B (-B, -PU2…): ese código se "
+        "confundiría con el de una parte de otro mueble. Elegí otro nombre."
+        for c in malos
+    ]
+
+
+def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: list[dict]) -> list[str]:
+    """Las frases de las partes vendidas que este guardado MOVERÍA de lugar.
+
+    ``contratos_que_quedarian_sin_mueble`` ya frena la parte vendida que
+    desaparece (bajar de 3 a 2 puertas con la 3 vendida, sacar la división).
+    Esto frena la que sigue existiendo pero en otro lugar: con la puerta 1
+    vendida, pasar de 3 a 2 puertas convierte la «puerta 1» en otra hoja, y lo
+    que firmó el proveedor ya no es lo que se monta.
+
+    Por CÓDIGO del mueble y no por ``id``: borrar ``NEV-03`` y dibujar otra
+    ``NEV-03`` con 4 puertas también se frena. Sólo lo que ESTE guardado cambia
+    (un plano que ya venía desfasado se guarda), y el caso normal —nada cambia—
+    no consulta la base.
+    """
+    if not previas:
+        return []
+
+    def por_codigo(fixtures: list[dict]) -> dict[str, dict]:
+        fuera: dict[str, dict] = {}
+        for f in fixtures:
+            if not isinstance(f, dict):
+                continue
+            code = normalizar(f.get("code"))
+            if code:
+                fuera[_full_code(code, sede)] = f
+        return fuera
+
+    antes, despues = por_codigo(previas), por_codigo(nuevas)
+    cambiadas: dict[str, tuple[dict, dict]] = {}
+    for codigo, f in despues.items():
+        prev = antes.get(codigo)
+        if prev is None:
+            continue
+        fa, fd = firma_de_partes(prev), firma_de_partes(f)
+        if fa != fd:
+            cambiadas[codigo] = (fa, fd)
+    if not cambiadas:
+        return []
+
+    from app.fechas import hoy as hoy_en_colombia
+    from app.models.models import Space, SpaceLease
+
+    vivos = (
+        db.query(SpaceLease, Space)
+        .join(Space, Space.id == SpaceLease.space_id)
+        .filter(
+            Space.sede == sede.strip().upper(),
+            SpaceLease.is_active.is_(True),
+            SpaceLease.end_date >= hoy_en_colombia(),
+        )
+        .all()
+    )
+    frases = []
+    for lease, space in vivos:
+        p = partir_codigo(space.code or "")
+        # Por la forma completa: una parte guardada sin la sede (`NEV-03-PU1`,
+        # de antes de que el contrato suelto la exigiera) también se mueve.
+        mueble = _full_code(sin_prefijo_de_sede(p.base, sede), sede)
+        if p.parte is None or mueble not in cambiadas:
+            continue
+        fa, fd = cambiadas[mueble]
+        n_antes, n_despues = fa.get(p.parte.clase), fd.get(p.parte.clase)
+        # Sólo lo que se ofrecía: una parte vendida sin que el plano la
+        # ofreciera (un desfase de antes) no se mueve por darle lugar.
+        if n_antes is None or n_antes == n_despues:
+            continue
+        regla = CLASES_DE_PARTE[p.parte.clase]
+        g = concordancia(p.parte.clase)
+        corto_mueble = sin_prefijo_de_sede(p.base, sede)
+        def cuantas(n: int) -> str:
+            return f"{n} {regla['singular'] if n == 1 else regla['plural']}"
+
+        # Los entrepaños se cuentan con la base (el EN1): con 4 entrepaños en
+        # el panel se venden 5. Se dice, para que «de 5 a 4» no se lea como un
+        # error cuando el campo pasó de 4 a 3.
+        con_la_base = " (contando la base)" if regla.get("base") else ""
+        cambio = (
+            f"no puede pasar de {n_antes} a {cuantas(n_despues)}{con_la_base}" if n_despues is not None
+            else f"no puede quedarse sin {regla['plural']}" if es_pieza(p.parte)
+            else f"no puede dejar de venderse por {regla['plural']}"
+        )
+        quien = lease.supplier.name if lease.supplier else "sin proveedor"
+        frases.append(
+            f"«{sin_prefijo_de_sede(space.code or '', sede)}» tiene un contrato de {quien} hasta el "
+            f"{lease.end_date.isoformat()}: con {g['un']} {regla['singular']} vendid{g['o']}, «{corto_mueble}» {cambio}"
+            f" ({g['el']} {regla['singular']} vendid{g['o']} quedaría en otro lugar). Esperá a que termine o cancelalo primero."
         )
     return sorted(frases)

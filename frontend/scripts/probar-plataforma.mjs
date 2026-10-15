@@ -193,6 +193,7 @@ const PIEZAS = [
   "src/components/plataforma/cartera-datos.ts",
   "src/components/plataforma/cartera-cola.tsx",
   "src/components/plataforma/cartera-operativo.tsx",
+  "src/components/plataforma/cartera-cobros.tsx",
   "src/components/plataforma/sesion-datos.ts",
   "src/components/plataforma/sesion-piezas.tsx",
 ];
@@ -352,19 +353,132 @@ if (propsTarifa.length === 0) ok("ninguna prop `tarifa…` viaja entre component
 else mal(`${propsTarifa.length} props \`tarifa…\``, propsTarifa.join("\n         "));
 
 /* ── 1c · solo lectura ────────────────────────────────────────────────────
-   Todo es de lectura salvo el estado de cuenta y las supresiones, que viven
-   en su cajón operativo. Ninguna otra pieza del área puede escribir. */
-const ESCRIBEN_OK = ["src/components/plataforma/cartera-operativo.tsx"];
+   Todo es de lectura salvo el estado de cuenta, las supresiones y los cobros
+   (C1: suscripción, cuentas de cobro y pagos que registra la operadora), que
+   viven en el cajón operativo. Ninguna otra pieza del área puede escribir. */
+const ESCRIBEN_OK = [
+  "src/components/plataforma/cartera-operativo.tsx",
+  "src/components/plataforma/cartera-cobros.tsx",
+];
 const escrituras = [];
 for (const p of AREA_TS) {
   if (ESCRIBEN_OK.includes(p)) continue;
   sinComentarios(leer(p)).split("\n").forEach((l, i) => {
-    if (/\b(client\.(post|put|patch|delete)|patchEstadoCliente|atenderSupresion|fetch\([^)]*method)/.test(l))
+    if (/\b(client\.(post|put|patch|delete)|patchEstadoCliente|atenderSupresion|guardarSuscripcion|emitirFactura|registrarPago|anularFactura|marcarDisputa|fetch\([^)]*method)/.test(l))
       escrituras.push(`${p}:${i + 1}  ${l.trim().slice(0, 90)}`);
   });
 }
 if (escrituras.length === 0) ok("solo lectura: nadie escribe fuera del cajón operativo");
 else mal(`${escrituras.length} escrituras fuera del cajón operativo`, escrituras.join("\n         "));
+
+/* ── 1d · la plata de la plataforma no sale de la consola (C1, C2) ────────
+   Lo que RECABRA le cobra a cada supermercado lo ve la operadora —acá, con
+   la cartera de TODOS— y la dueña de ESE supermercado, por su propia puerta
+   (`api/suscripcion.ts`, que vigila `probar-suspension.mjs`): su gente
+   (admin no dueña, worker, mercaderista) no ve un monto jamás. Ningún archivo
+   fuera de `/plataforma` puede nombrar la API de cobros de la consola, ni la
+   escalera («Correr cobranza»). Y la casilla que levanta el estado tras un
+   pago es una opción EXPLÍCITA: arranca apagada. */
+{
+  const API_COBROS = /\b(getCobros|guardarSuscripcion|emitirFactura|registrarPago|anularFactura|marcarDisputa|correrCobranza|CarteraCobros|FacturaCobro|PagoCobro|PlanCobranza)\b/;
+  const fuera = [];
+  const recorrerFront = (rel) => {
+    for (const e of readdirSync(join(raiz, rel), { withFileTypes: true })) {
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) recorrerFront(r);
+      else if (/\.tsx?$/.test(e.name) && r !== CONTRATO && !r.startsWith("src/components/plataforma/") && r !== "src/pages/Plataforma.tsx")
+        sinComentarios(leer(r)).split("\n").forEach((l, i) => {
+          if (API_COBROS.test(l)) fuera.push(`${r}:${i + 1}  ${l.trim().slice(0, 90)}`);
+        });
+    }
+  };
+  recorrerFront("src");
+  if (fuera.length === 0) ok("la API de cobros sólo la nombra la consola de la plataforma");
+  else mal(`${fuera.length} archivos fuera de la consola nombran la API de cobros`, fuera.join("\n         "));
+
+  const cobros = sinComentarios(leer("src/components/plataforma/cartera-cobros.tsx"));
+  if (/const \[levantar, setLevantar\] = useState\(false\)/.test(cobros) && /levantar_estado: levantar,/.test(cobros))
+    ok("«levantar el estado si queda al día» arranca apagada y viaja tal cual la marcó la operadora");
+  else mal("la casilla que levanta el estado tras un pago no arranca apagada (o no es la que viaja)");
+}
+
+/* ── 1e · la revisión de C2: el ensayo es ensayo, los números se leen bien,
+   la cartera no se pide de más y el reporte nombra cada acción ──────────── */
+{
+  const { build } = await import("esbuild");
+  // «Correr cobranza (ensayo)» manda SIEMPRE `ensayo: 1`: con el interruptor
+  // prendido, el backend aplica `ensayo=0` de verdad, y un botón rotulado
+  // «ensayo» cortaría cuentas y mandaría correos.
+  const api = sinComentarios(leer(CONTRATO));
+  const correr = api.match(/export const correrCobranza = [\s\S]*?\.then\(/);
+  const ramas = correr ? [...correr[0].matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]).filter((r) => /ensayo/.test(r)) : [];
+  if (correr && ramas.length === 2 && ramas.every((r) => /\bensayo: 1\b/.test(r)))
+    ok("«Correr cobranza» manda `ensayo: 1` en las dos ramas (con fecha y sin fecha)");
+  else mal("correrCobranza no manda `ensayo: 1` en las dos ramas", correr ? correr[0].slice(0, 200) : "no está");
+  const aplicar = [];
+  const recorrerSrc = (rel) => {
+    for (const e of readdirSync(join(raiz, rel), { withFileTypes: true })) {
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) recorrerSrc(r);
+      else if (/\.tsx?$/.test(e.name))
+        sinComentarios(leer(r)).split("\n").forEach((l, i) => {
+          if (/\bensayo\s*[:=]\s*(0|false)\b/.test(l)) aplicar.push(`${r}:${i + 1}  ${l.trim().slice(0, 90)}`);
+        });
+    }
+  };
+  recorrerSrc("src");
+  if (aplicar.length === 0) ok("nada en el navegador pide aplicar la escalera (`ensayo: 0` / `false`)");
+  else mal(`${aplicar.length} lugares piden aplicar la escalera desde el navegador`, aplicar.join("\n         "));
+
+  // Los números escritos a mano: pesos con punto de miles, porcentajes con
+  // coma —o punto— decimal. Antes «3.5» de retefuente viajaba como 35.
+  const r = await build({
+    entryPoints: [join(raiz, "src/components/plataforma/formato.ts")],
+    bundle: true, write: false, format: "esm", platform: "neutral",
+  });
+  const F = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+  const casos = [
+    [F.porcentajeEscrito("3.5"), 3.5], [F.porcentajeEscrito("3,5"), 3.5], [F.porcentajeEscrito("0.966"), 0.966],
+    [F.porcentajeEscrito("11,04"), 11.04], [F.porcentajeEscrito(F.porcentajeParaEscribir(3.5)), 3.5],
+    [F.porcentajeEscrito(String(0.966)), 0.966], [F.porcentajeEscrito(""), null], [F.porcentajeEscrito("1.000,5"), null],
+    [F.pesosEscritos("1.234.567"), 1234567], [F.pesosEscritos("1234567"), 1234567], [F.pesosEscritos(""), null],
+    [F.mesesDelPeriodo("2026-11"), 1], [F.mesesDelPeriodo("2026-11..2027-01"), 3], [F.mesesDelPeriodo("2026-13"), null],
+  ];
+  const torcidos = casos.map(([dio, esperado], i) => (dio === esperado ? null : `caso ${i}: ${dio} ≠ ${esperado}`)).filter(Boolean);
+  if (torcidos.length === 0) ok("porcentajes, pesos y meses del período se leen como se escriben (3.5 % es 3,5, no 35)");
+  else mal("los números escritos a mano se leen mal", torcidos.join(" · "));
+  const editor = sinComentarios(leer("src/components/plataforma/cartera-cobros.tsx"));
+  const pcts = ["retefuente", "reteica", "reteiva"];
+  if (pcts.every((x) => new RegExp(`${x}_pct: porcentajeEscrito\\(${x}\\)`).test(editor)) && !/\bnumero\(/.test(editor))
+    ok("las retenciones de la suscripción viajan con `porcentajeEscrito`, no con el lector de pesos");
+  else mal("alguna retención de la suscripción no pasa por `porcentajeEscrito`");
+  if (/mesesDelPeriodo\(periodo\)/.test(editor) && /pactado \* meses/.test(editor))
+    ok("la vista previa de una cuenta de cobro sin subtotal multiplica por los meses del período, como el backend");
+  else mal("la vista previa de la cuenta de cobro no cuenta los meses del período");
+
+  // La cartera se pide al abrir el cajón de cobros, no al abrir la consola ni
+  // tras cada cambio de estado: cada GET /cobros deja una línea en el reporte
+  // de transparencia de TODOS los clientes.
+  const pagina = sinComentarios(leer("src/pages/Plataforma.tsx"));
+  const uso = pagina.match(/useCartera\(([^,]+),/);
+  if (uso && /cobrosPedidos/.test(uso[1]) && !/cobros\.recargar\(\)/.test(pagina))
+    ok("la cartera de cobros se pide recién al abrir su cajón, y un cambio de estado no la vuelve a pedir");
+  else mal("la consola pide la cartera de cobros sin que se abra su cajón (o tras cada PATCH)", uso ? uso[0] : "");
+
+  // Cada acción que el backend deja llegar al reporte de transparencia tiene
+  // su nombre en la pantalla del reporte.
+  const reporte = readFileSync(join(repo, "backend/app/plataforma_reporte.py"), "utf8");
+  const cuerpo = reporte.slice(reporte.indexOf("def _accesos_del_cliente"), reporte.indexOf("def armar_reporte"));
+  const acciones = new Set();
+  for (const m of cuerpo.matchAll(/f\.accion (?:==|in) (\([^)]*\)|"[a-z_]+")/g))
+    for (const a of m[1].matchAll(/"([a-z_]+)"/g)) acciones.add(a[1]);
+  const etiquetas = leer("src/pages/ReportePlataforma.tsx").match(/const ACCION_LABEL[^{]*\{([\s\S]*?)\n\};/);
+  const nombradas = new Set(etiquetas ? [...etiquetas[1].matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]) : []);
+  const sinNombre = [...acciones].filter((a) => !nombradas.has(a));
+  if (acciones.size >= 15 && sinNombre.length === 0)
+    ok(`las ${acciones.size} acciones que llegan al reporte de transparencia tienen nombre en la pantalla`);
+  else mal("acciones del reporte sin nombre en ReportePlataforma.tsx (la dueña lee el código crudo)", sinNombre.join(", ") || `sólo ${acciones.size} acciones leídas`);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2 · EL INFORME NO SABE DE LA CARTERA

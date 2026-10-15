@@ -456,6 +456,58 @@ class SupplierAssetSpec(Base):
     )
 
 
+class ModeloMueble(Base):
+    """La ficha propia de un mueble del supermercado: familia, nombre, medidas,
+    geometría y de dónde salieron.
+
+    Existe para que cada supermercado arme sus muebles sin pedirnos un cambio.
+    Los modelos que trae RECABRA viven en ``muebles.json`` (``base:…``) y cambian
+    sólo con un despliegue; los de un supermercado —la nevera de dos puertas que
+    tiene Cañaveral y no está en el catálogo— viven acá, en la base de cada
+    uno, y viajan en el plano como ``cli:<clave>`` en el ``modelo`` del mueble.
+
+    **Colocar una ficha la ESTAMPA**, como un modelo del catálogo: el mueble
+    guarda sus medidas y su geometría, y lo colocado no se vuelve a leer de acá.
+    Cambiar o retirar la ficha no mueve nada de ningún plano. Lo único que se
+    busca por la clave es su tarifa propia (``catalogo_muebles.tarifa_del_mueble``
+    con ``services/fichas_propias.tarifas_propias``), y por eso la clave, la
+    familia y la tarifa no cambian nunca.
+
+    · ``id`` entero con ``sqlite_autoincrement`` (en Postgres, la secuencia nunca
+      retrocede): no se reutiliza. Es la clave primaria a propósito, y no la
+      ``clave``: la copia de seguridad arma rutas con la clave primaria, y un
+      entero no lleva «:», «/» ni «..».
+    · ``clave``: ``^[a-z0-9-]{1,60}$``, única y para siempre. Una ficha retirada
+      conserva la suya: otra con la misma clave le cambiaría la tarifa a lo que
+      ya está colocado.
+    · ``tipo`` es la familia del catálogo, String y no ``SAEnum``: en Postgres
+      sumar un valor a un enum es un ``ALTER TYPE``, que es una migración.
+    · ``datos_json``: casi todo —variante, medidas, entrepaños, módulo, puertas,
+      tarifa, fuente— lo valida ``catalogo_muebles.problemas_de_la_ficha``.
+      Va en JSON porque, una vez desplegada, esta tabla tampoco va a poder ganar
+      columnas (la lección de ``supplier_asset_specs``).
+    · ``retirado_en``: la baja lógica. Retirar la saca de las paletas; no borra
+      nada, y lo ya colocado sigue igual, con su tarifa.
+
+    Sin foto: la dueña no tiene fotos propias de sus muebles y ninguna imagen de
+    terceros entra al sistema. Es de NEGOCIO (``TABLAS_DEL_CLIENTE``): viaja en
+    el traspaso y en la copia de seguridad.
+    """
+    __tablename__ = "modelos_mueble"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True)
+    clave = Column(String, nullable=False, unique=True)
+    tipo = Column(String, nullable=False)
+    nombre = Column(String, nullable=False)
+    datos_json = Column(Text, nullable=False)
+    retirado_en = Column(DateTime(timezone=True), nullable=True)
+    creado_en = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    actualizado_en = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    # El correo de quien la creó si entró con su cuenta, o su rol. Nunca una clave.
+    creado_por = Column(String, nullable=True)
+
+
 class LoginAttempt(Base):
     """Un intento de entrar que falló, con la IP y la hora.
 

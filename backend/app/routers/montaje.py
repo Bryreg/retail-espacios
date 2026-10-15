@@ -31,6 +31,7 @@ from app.models.models import LayoutSnapshot, LeaseFile, MountConfirmation, Spac
 from app.routers.mounts import MountOut, registrar_montaje
 from app.services.contratos import contrato_para_montar
 from app.services.layout_lookup import describe_location
+from app.services.partes import cantidad_de, partes_tipadas, partir_codigo, texto_para_montar
 
 router = APIRouter(prefix="/montaje", tags=["montaje"], dependencies=[Depends(require_montaje)])
 
@@ -40,10 +41,23 @@ KIND_PLANOMETRIA = "planometria"
 #: dibujar el plano que dice «queda acá». Nada de quién lo alquiló, por cuánto
 #: ni hasta cuándo. Es una lista blanca y no una negra a propósito: un campo
 #: comercial que se agregue mañana al layout no se filtra por olvido.
+#:
+#: Desde 2026-10-13 también la ficha del mueble: es geometría, la misma que ve
+#: el visor de Vender (``sinDatosComerciales``), y sin ella la mercaderista
+#: vería otro mueble que el que tiene que armar. NO está en esta lista: la
+#: copia ``_solo_geometria`` clave por clave y con su tipo (``modelo`` sólo si
+#: es texto, ``entrepanos`` y ``modulo`` sólo si son números, de ``partes``
+#: sólo sus números conocidos). ``PUT /layout`` recibe el mueble sin tipar, y
+#: una clave de la lista blanca se llevaría lo que le escriban adentro mañana
+#: —un objeto con plata, un texto con un proveedor—.
 _GEOMETRIA = {
     "id", "code", "nomenclatura", "type", "gondolaType", "label",
     "cx", "cz", "rotY", "w", "d", "h", "color", "sede", "rentable",
 }
+
+
+def _es_numero(v: object) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -85,6 +99,10 @@ class EspacioMontaje(BaseModel):
     #: del arranque del contrato del enlace. Mientras tanto la pantalla lo dice
     #: en vez de ofrecer el formulario.
     se_confirma_desde: Optional[str] = None
+    #: Si el espacio es una parte del mueble (``NEV-03-PU2``), cuál, dicho para
+    #: armarla: «Puerta 2 de 3, contando de izquierda a derecha mirando el
+    #: frente». ``None`` es la cara entera. Ni plata ni quién tiene las otras.
+    parte: Optional[dict] = None
 
 
 # ─── Resolución ───────────────────────────────────────────────────────────────
@@ -106,8 +124,9 @@ def _codigo(quien: Quien, code: Optional[str]) -> str:
 
 
 def _base(code: str) -> str:
-    """El código del espacio sin el sufijo de cara."""
-    return code[:-2] if code.endswith("-B") else code
+    """El código del espacio sin el sufijo de cara ni la parte: la cara B y la
+    puerta 2 se montan en el mismo mueble."""
+    return partir_codigo(code).base
 
 
 def _fixtures(db: Session, sede: str) -> list[dict]:
@@ -124,7 +143,23 @@ def _fixtures(db: Session, sede: str) -> list[dict]:
 
 
 def _solo_geometria(fixture: dict) -> dict:
-    return {k: v for k, v in fixture.items() if k in _GEOMETRIA}
+    fuera = {k: v for k, v in fixture.items() if k in _GEOMETRIA}
+    # La ficha, con su tipo: el mismo criterio que `sinDatosComerciales` en
+    # el navegador. Un `modelo` que no es texto o unos entrepaños que no son
+    # un número no son una ficha, y no salen.
+    if isinstance(fixture.get("modelo"), str):
+        fuera["modelo"] = fixture["modelo"]
+    for clave in ("entrepanos", "modulo"):
+        if _es_numero(fixture.get(clave)):
+            fuera[clave] = fixture[clave]
+    # `partes` no pasa entera: es un objeto, y un objeto de la lista blanca se
+    # llevaría lo que le escriban adentro mañana. Pasa lo conocido (las
+    # puertas y cómo se vende), copiado clave por clave y con su tipo
+    # (`partes.partes_tipadas`, que sale del catálogo).
+    partes = partes_tipadas(fixture.get("partes"))
+    if partes:
+        fuera["partes"] = partes
+    return fuera
 
 
 def _sede_de(code: str, db: Session) -> str:
@@ -270,8 +305,18 @@ def mi_espacio(
                 ultimo_out.foto_nombre, ultimo_out.foto_tipo = datos
 
     corto = str(mueble.get("code") or "") or (base[len(sede) + 1:] if sede and base.startswith(f"{sede}-") else base)
-    if codigo.endswith("-B"):
+    # El sufijo completo: la cara B y la parte (`NEV-03-PU2`, `GON-05-B-PU1`).
+    partido = partir_codigo(codigo)
+    if partido.cara == "B":
         corto = f"{corto}-B"
+    parte = None
+    if partido.parte is not None:
+        corto = f"{corto}-{partido.parte.sufijo}"
+        de = cantidad_de(mueble, partido.parte.clase) if mueble else None
+        parte = {
+            "token": partido.parte.token, "n": partido.parte.n, "de": de,
+            "texto": texto_para_montar(partido.parte, de),
+        }
 
     return EspacioMontaje(
         code=codigo,
@@ -291,6 +336,7 @@ def mi_espacio(
         ultimo=ultimo_out,
         vence=quien.vence,
         se_confirma_desde=se_confirma_desde,
+        parte=parte,
     )
 
 

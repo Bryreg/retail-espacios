@@ -41,36 +41,23 @@
  * Es geometría de nombres: se prueba sin navegador (`npm run probar:nomenclatura`).
  */
 
-/** Prefijo por tipo. Cubre los nombres del 3D y los del 2D, que difieren. */
-export const PREFIJO_POR_TIPO: Record<string, string> = {
-  // Nombres del modelo unificado / editor 3D
-  gondola: "GON",
-  punta: "PUN",
-  robatope: "ROB",
-  ristra: "RIS",
-  cross: "CRS",
-  metro: "MET",
-  mueble: "MUE",
-  isla: "EXP",
-  impulsador: "IMP",
-  batea: "BAT",
-  isla_fria: "ISL",
-  nevera_carnes: "CAR",
-  nevera_vegetales: "VEG",
-  nevera_refrescos: "BEB",
-  stand_frutas: "FRU",
-  checkout: "CAJ",
-  servicio_cliente: "SAC",
-  columna: "COL",
-  exhibicion: "EXH",
-  // Nombres que sólo usa el plano 2D: la góndola se parte en dos tipos
-  gondola_doble: "GON",
-  gondola_mural: "GON",
-};
+import { CATALOGO_DE_MUEBLES, prefijosPorTipo } from "../catalogo/catalogo";
+import { terminaReservado } from "./partes";
+
+/** Prefijo por tipo. Cubre los nombres del 3D y los del 2D, que difieren: el
+ *  plano 2D parte la góndola en `gondola_doble` y `gondola_mural`, y las dos son
+ *  `GON`.
+ *
+ *  Sale del catálogo de muebles (`catalogo/muebles.json`): `prefijo` de cada
+ *  tipo, y el de su tipo para los `alias` del 2D. El servidor lee los mismos de
+ *  su copia (`PREFIJO_POR_TIPO` en `backend/app/services/renumeracion.py`), y
+ *  `tests/test_renumeracion.py` los compara. Un prefijo no se cambia nunca: es
+ *  la mitad de cada código de espacio que ya existe. */
+export const PREFIJO_POR_TIPO: Record<string, string> = prefijosPorTipo();
 
 /** Prefijo de un mueble. Lo desconocido cae en SPC, como hacía el 2D. */
 export function prefijoDe(tipo: string): string {
-  return PREFIJO_POR_TIPO[tipo] ?? "SPC";
+  return PREFIJO_POR_TIPO[tipo] ?? CATALOGO_DE_MUEBLES.prefijoDesconocido;
 }
 
 /** Número que lleva un nombre, o null si no sigue el esquema `PRE-NN`. */
@@ -240,7 +227,10 @@ export interface MuebleNombrable {
  */
 export type RechazoDeNombre<T> =
   | { razon: "vacio" }
-  | { razon: "ocupado"; ocupa: T };
+  | { razon: "ocupado"; ocupa: T }
+  /** Termina como el código de una parte o de la cara B (`GON-01-B`,
+   *  `NEV-03-PU2`): se leería como una parte de otro mueble. */
+  | { razon: "reservado" };
 
 export type Renombre<T> =
   | { ok: true; muebles: T[]; nombre: string }
@@ -266,7 +256,13 @@ export function choqueDeNombre<T extends MuebleNombrable>(
   const n = normalizar(nombre);
   if (!n) return { razon: "vacio" };
   const ocupa = muebleConCodigo(n, existentes, exceptoId);
-  return ocupa ? { razon: "ocupado", ocupa } : null;
+  if (ocupa) return { razon: "ocupado", ocupa };
+  // Vender por partes: `NEV-03-PU2` es la puerta 2 de `NEV-03`. Un mueble NUEVO
+  // con un nombre así se leería como una parte de otro (el servidor lo frena
+  // igual: `nombre_reservado`). El que ya se llamaba así, sigue.
+  const yo = exceptoId !== undefined ? existentes.find((f) => f.id === exceptoId) : undefined;
+  if (terminaReservado(n) && (!yo || normalizar(yo.code) !== n)) return { razon: "reservado" };
+  return null;
 }
 
 /**
@@ -331,10 +327,16 @@ export function intercambiarNombres<T extends MuebleNombrable>(
  * No lo nombra por su código —con un solo nombre, el código del otro es el
  * texto que la persona acaba de teclear, y repetírselo no le dice nada nuevo—
  * sino por lo que es: «otro Impulsador Marca de la sede».
+ *
+ * `rotuloDe` dice cómo se llama ese otro mueble en ESTA tienda (el nombre
+ * propio de su familia, `catalogo/nombresPropios.ts`); sin él, o si devuelve
+ * vacío, va su `label`, como siempre. Entra por parámetro para que este
+ * archivo siga sin importar el catálogo.
  */
 export function textoDelChoque<T extends MuebleNombrable>(
   nombre: string,
   rechazo: RechazoDeNombre<T>,
+  rotuloDe?: (mueble: T) => string,
 ): string {
   const n = normalizar(nombre);
   if (rechazo.razon === "vacio") {
@@ -343,7 +345,13 @@ export function textoDelChoque<T extends MuebleNombrable>(
       "la que viaja al contrato, al correo de montaje y a la lámina."
     );
   }
-  const quien = (rechazo.ocupa.label ?? "").trim();
+  if (rechazo.razon === "reservado") {
+    return (
+      `«${n}» termina como el código de una parte o de la cara B (-B, -PU2…): ` +
+      "se confundiría con una parte de otro mueble. Elegí otro nombre."
+    );
+  }
+  const quien = ((rotuloDe ? rotuloDe(rechazo.ocupa) : "") || rechazo.ocupa.label || "").trim();
   return (
     `«${n}» ya lo tiene otro mueble de esta sede` +
     (quien ? ` (${quien})` : "") +

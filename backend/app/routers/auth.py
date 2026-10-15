@@ -883,6 +883,64 @@ def aceptar_politica(
         reg.close()
 
 
+def _es_duena(sub: Optional[int], slug: str) -> bool:
+    """¿Esta cuenta es dueña (membresía ACTIVA ``owner``) de este cliente? La
+    misma regla que ``derechos.require_owner``, sin el 403: el rol del token no
+    alcanza, porque la dueña viaja como «admin» desde la Fase 1."""
+    if sub is None:
+        return False
+    from app.clientes import sesion_registro
+    from app.models.identidad import Membresia
+
+    reg = sesion_registro()
+    try:
+        return (
+            reg.query(Membresia.id)
+            .filter(
+                Membresia.usuario_id == sub,
+                Membresia.cliente_slug == slug,
+                Membresia.activo.is_(True),
+                Membresia.rol == "owner",
+            )
+            .first()
+            is not None
+        )
+    finally:
+        reg.close()
+
+
+@router.get("/estado-cuenta")
+def estado_cuenta(
+    role: str = Depends(require_auth),
+    identidad: tuple = Depends(sub_y_email_de_la_sesion),
+    cliente: Cliente = Depends(cliente_del_pedido),
+):
+    """El estado de cuenta EN VIVO del supermercado de la sesión (C2).
+
+    `aviso_cuenta` viaja una vez, en el login, y el interceptor del navegador
+    sólo se entera de un corte por un 402: nada le avisaba a la pantalla que la
+    cuenta VOLVIÓ a estar al día. Después de un pago, la gente del supermercado
+    seguía con `BloqueoCuenta` o con la franja hasta volver a entrar. Esto es lo
+    que la pantalla consulta cada pocos minutos y con «Reintentar».
+
+    Para cualquier rol con sesión, y exento del corte (`clientes.py`,
+    `_EXENTOS_PARA_PONERSE_AL_DIA`): justamente tiene que contestar estando
+    suspendido. El MOTIVO viaja sólo a la dueña, como en el login (hallazgo
+    R-2): es la relación comercial, y su gente ve el estado, no la deuda. Nada
+    de plata acá, tampoco para ella: eso está en `/clientes/mi-suscripcion`.
+    """
+    from app import plataforma_estado
+
+    sub, _email = identidad
+    estado, motivo = plataforma_estado.estado_de(cliente.slug)
+    duena = _es_duena(sub, cliente.slug)
+    return {
+        "estado": estado,
+        "motivo": motivo if duena and estado != "activo" else None,
+        "duena": duena,
+    }
+
+
 # Cambiar las claves compartidas sólo tiene sentido con la puerta que abren:
 # apagada una, se apaga la otra (ver `exigir_login_legado`).
 @router.put("/passwords", response_model=PasswordsOut, dependencies=[Depends(exigir_login_legado)])

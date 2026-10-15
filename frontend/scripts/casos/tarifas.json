@@ -1,0 +1,34 @@
+{
+  "leeme": [
+    "La tarifa de un mueble del plano colocado desde una ficha propia del supermercado (cli:<clave>), con la MISMA regla en los dos lados: rateTypeOf en el navegador (types/fixtures.ts, con las fichas que trae store/fichasPropias.ts) y tarifa_del_mueble en el servidor (services/catalogo_muebles.py, con las que lee fichas_propias.tarifas_propias de la base). Los corren probar-catalogo.mjs y tests/test_fichas_propias.py.",
+    "`propias` son las fichas de un supermercado como las guarda la base (y como las manda GET /api/muebles/modelos, que les pone `id` = cli:<clave>): la familia, la tarifa propia si tiene una y si está retirada. Cada caso es un mueble del plano y la clave de tarifa que le corresponde: primero un modelo del catálogo con tarifa propia, después una ficha propia de su mismo tipo, y si no, la de su tipo."
+  ],
+  "propias": [
+    { "clave": "media-estiba-bodega", "tipo": "isla", "tarifa": "estiba_media", "retirado": false },
+    { "clave": "cuarto-de-estiba-viejo", "tipo": "isla", "tarifa": "estiba_cuarta", "retirado": true },
+    { "clave": "carton-de-marca", "tipo": "impulsador", "tarifa": "exhibidor_carton", "retirado": false },
+    { "clave": "nevera-inducol-2p", "tipo": "nevera_puertas", "retirado": false },
+    { "clave": "gondola-pared-170", "tipo": "gondola", "variante": "wall", "retirado": false },
+    { "clave": "estiba-entera-propia", "tipo": "isla", "retirado": false }
+  ],
+  "casos": [
+    { "nombre": "una media estiba propia se cobra como media estiba", "mueble": { "type": "isla", "modelo": "cli:media-estiba-bodega" }, "tarifa": "estiba_media" },
+    { "nombre": "una retirada sigue cobrando lo que cobraba: lo colocado no cambia", "mueble": { "type": "isla", "modelo": "cli:cuarto-de-estiba-viejo" }, "tarifa": "estiba_cuarta" },
+    { "nombre": "el exhibidor de cartón propio, con la suya", "mueble": { "type": "impulsador", "modelo": "cli:carton-de-marca" }, "tarifa": "exhibidor_carton" },
+    { "nombre": "una ficha sin tarifa propia da la de su familia", "mueble": { "type": "nevera_puertas", "modelo": "cli:nevera-inducol-2p" }, "tarifa": "nevera_puertas" },
+    { "nombre": "la estiba propia sin tarifa propia es estiba", "mueble": { "type": "isla", "modelo": "cli:estiba-entera-propia" }, "tarifa": "isla" },
+    { "nombre": "la góndola de pared propia, colocada como mural del 2D, es góndola", "mueble": { "type": "gondola_mural", "modelo": "cli:gondola-pared-170" }, "tarifa": "gondola" },
+    { "nombre": "una ficha de otra familia no le cambia la tarifa a nadie", "mueble": { "type": "punta", "modelo": "cli:media-estiba-bodega" }, "tarifa": "punta" },
+    { "nombre": "una ficha que no existe da la del tipo", "mueble": { "type": "isla", "modelo": "cli:no-existe" }, "tarifa": "isla" },
+    { "nombre": "la clave sin el prefijo no es la ficha", "mueble": { "type": "isla", "modelo": "media-estiba-bodega" }, "tarifa": "isla" },
+    { "nombre": "un nombre de las tripas del objeto no es una ficha", "mueble": { "type": "isla", "modelo": "cli:constructor" }, "tarifa": "isla" },
+    { "nombre": "un modelo del catálogo sigue mandando", "mueble": { "type": "isla", "modelo": "base:estiba-cuarta" }, "tarifa": "estiba_cuarta" },
+    { "nombre": "sin modelo, la del tipo", "mueble": { "type": "isla" }, "tarifa": "isla" },
+    { "nombre": "con el modelo borrado a propósito (null), la del tipo", "mueble": { "type": "isla", "modelo": null }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (un número) da la del tipo, sin romper la pantalla", "mueble": { "type": "isla", "modelo": 5 }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (verdadero) da la del tipo", "mueble": { "type": "isla", "modelo": true }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (un objeto) da la del tipo", "mueble": { "type": "isla", "modelo": {} }, "tarifa": "isla" },
+    { "nombre": "un modelo que no es texto (una lista con la clave) da la del tipo", "mueble": { "type": "isla", "modelo": ["cli:media-estiba-bodega"] }, "tarifa": "isla" },
+    { "nombre": "lo que no se vende contesta su tipo", "mueble": { "type": "columna", "modelo": "cli:media-estiba-bodega" }, "tarifa": "columna" }
+  ]
+}

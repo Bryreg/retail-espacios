@@ -62,7 +62,7 @@ from app.plataforma_metricas import (
     _es_comercializable,
     _es_gondola_doble,
     _guardar_en_cache,
-    _numeros_del_layout,
+    _numeros_del_layout_con_partes,
     _pct,
     _plata,
     _tarifa_aplicable,
@@ -75,6 +75,7 @@ from app.plataforma_metricas import (
 # los cuatro endpoints que hoy miran un cliente por su código.
 from app.plataforma_tendencia import ClienteDesconocido
 from app.services.layout_lookup import _huella
+from app.services.partes import es_division, es_pieza, partir_codigo
 
 log = logging.getLogger("recabra.plataforma.detalle")
 
@@ -210,13 +211,14 @@ def _acumular_benchmark(cliente, desde: date, hasta: date, suma: dict, cuenta: d
 
     db = sesion_de(cliente)
     try:
-        _sedes, _caras, mapa_tipos = _numeros_del_layout(db)
+        _sedes, _caras, mapa_tipos, partes = _numeros_del_layout_con_partes(db)
         contratos = _contratos_activos(db, desde, hasta)
     finally:
         db.close()
+    tipos = _tipos_de_contrato(mapa_tipos, partes)
 
     for codigo, _nombre, canon in contratos:
-        entrada = mapa_tipos.get(codigo)
+        entrada = tipos.get(codigo)
         if entrada is None:
             continue
         tipo = entrada[1]
@@ -298,6 +300,15 @@ def limpiar_cache_detalle() -> None:
     """Para las pruebas, que arman una base nueva por prueba."""
     with _cache_candado:
         _cache_benchmark.clear()
+
+
+def _tipos_de_contrato(mapa_tipos: dict, partes: dict) -> dict[str, tuple[str, str]]:
+    """``codigo -> (SEDE, tipo)`` de todo lo que puede tener un contrato: las
+    caras (``mapa_tipos``, que es también el universo de espacios) y las partes
+    vendibles (la puerta 2 de una nevera), con la tarifa de su clase como tipo
+    (``parte_puerta``, que los informes llaman «puertas de nevera»). Con esto un
+    contrato de una puerta no cuenta como «fuera del plano»."""
+    return {**{c: (e[0], e[1]) for c, e in partes.items()}, **mapa_tipos}
 
 
 # ─── Plata y porcentajes, en palabras ─────────────────────────────────────────
@@ -407,26 +418,49 @@ def _contrato_publico(contrato: "_Contrato", desde: date) -> dict:
 
 
 def _armar_espacios(mapa_tipos: dict, fixtures: dict, geo: dict,
-                    publicados: dict, desde: date, hasta: date) -> list[dict]:
+                    publicados: dict, desde: date, hasta: date,
+                    partes: dict | None = None) -> list[dict]:
     """Un objeto por CARA comercializable del plano, ordenado por sede y código.
 
     El universo de espacios son las claves de ``mapa_tipos`` —las mismas caras
     que cuenta la ocupación de ``/metricas``, cara ``-B`` incluida—: si un
     contrato apunta a un código que no está ahí, no es un espacio de este
     cliente y no se inventa uno.
+
+    Vender por partes: la cara de una nevera con puertas vendidas lleva en
+    ``partes`` las puertas con contrato en el período (su código, el corto y
+    el contrato público, como el de la cara) —la clave sólo aparece si hay
+    alguna—, y está tomada si lo está ella o alguna de sus puertas: la
+    ocupación es por cara, como en ``/metricas``. Nunca sale la tarifa de una
+    puerta.
+
+    Y está tomada HASTA que se liberan ella y todas sus puertas: la entera
+    vendida hasta el 15 con la puerta 2 vendida desde el 16 no «se libera» el
+    15 —el servidor no deja venderla entera hasta que termine la puerta—, así
+    que no es una oportunidad ni se le ofrece a nadie.
     """
+    partes = partes or {}
+    por_cara: dict[str, list] = {}
+    for codigo in partes:
+        p = partir_codigo(codigo)
+        if codigo in publicados:
+            por_cara.setdefault(p.cara_entera, []).append((codigo, p))
     salida = []
     for codigo in sorted(mapa_tipos, key=lambda c: (mapa_tipos[c][0], c)):
         sede, tipo = mapa_tipos[codigo]
         fixture = fixtures.get(codigo)
         contrato = publicados.get(codigo)
-        if contrato is None:
+        vendidas = sorted(por_cara.get(codigo, []), key=lambda x: x[0])
+        fines = ([contrato.fin] if contrato is not None else []) + [
+            publicados[c].fin for c, _p in vendidas]
+        fin = max(fines) if fines else None
+        if fin is None:
             estado = "libre"
-        elif contrato.fin <= hasta:
+        elif fin <= hasta:
             estado = "se_libera"
         else:
             estado = "ocupado"
-        salida.append({
+        espacio = {
             "codigo": codigo,
             "sede": sede,
             "codigo_corto": _codigo_corto(codigo, sede),
@@ -436,7 +470,20 @@ def _armar_espacios(mapa_tipos: dict, fixtures: dict, geo: dict,
             "area_m2": _area_de(codigo, fixture, geo),
             "estado": estado,
             "contrato": _contrato_publico(contrato, desde) if contrato is not None else None,
-        })
+        }
+        # Sólo si hay puertas con contrato: una cara sin partes sale con las
+        # mismas claves de siempre (`test_detalle_ataques` las fija).
+        if vendidas:
+            espacio["partes"] = [
+                {
+                    "parte": p.parte.sufijo,
+                    "codigo": c,
+                    "codigo_corto": f"{_codigo_corto(codigo, sede)}{c[len(p.base):]}",
+                    "contrato": _contrato_publico(publicados[c], desde),
+                }
+                for c, p in vendidas
+            ]
+        salida.append(espacio)
     return salida
 
 
@@ -461,7 +508,9 @@ def _armar_sedes(espacios: list[dict]) -> list[dict]:
     return salida
 
 
-def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dict) -> list[dict]:
+def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dict,
+                            partes: dict | None = None,
+                            publicados: dict | None = None) -> list[dict]:
     """Total, ocupados, libres y la estadística de canon por tipo de espacio.
 
     ``canon_promedio`` / ``canon_minimo`` / ``canon_maximo`` salen de los
@@ -482,6 +531,28 @@ def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dic
     for e in espacios:
         por_tipo.setdefault(e["tipo"], []).append(e)
 
+    # Las partes, por la tarifa de su clase (`parte_puerta`): cuántas hay
+    # configuradas, cuántas tienen contrato en el período y su canon. Sin el
+    # valor de la tarifa, como todo lo demás.
+    #
+    # Se mira el contrato de la parte por SU código en `publicados`, no en
+    # `espacios[].partes`: las piezas (la bahía de una caja, el forro de una
+    # columna) no cuelgan de ninguna cara —la caja no es un espacio— y salían
+    # libres con su contrato corriendo. Y una división cuya cara está vendida
+    # ENTERA en el período tampoco está libre: no se puede vender en esas
+    # fechas (`chocan`). Cuenta tomada, sin canon: el canon es de la cara.
+    publicados = publicados or {}
+    for codigo, entrada in (partes or {}).items():
+        sede, clase = entrada[0], entrada[1]
+        sedes_por_tipo.setdefault(clase, set()).add(sede)
+        propio = publicados.get(codigo)
+        partida = partir_codigo(codigo)
+        tapada = es_division(partida.parte) and partida.cara_entera in publicados
+        por_tipo.setdefault(clase, []).append({
+            "estado": "ocupado" if (propio is not None or tapada) else "libre",
+            "contrato": {"canon_mensual": _plata(propio.canon)} if propio is not None else None,
+        })
+
     salida = []
     for tipo in sorted(por_tipo):
         filas = por_tipo[tipo]
@@ -499,6 +570,33 @@ def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dic
                 _tarifa_aplicable(tarifas, sede, tipo) is not None
                 for sede in sorted(sedes_por_tipo.get(tipo, set()))
             ),
+        })
+    return salida
+
+
+def _armar_piezas(partes: dict, publicados: dict, desde: date) -> list[dict]:
+    """Las PIEZAS con contrato en el período (la bahía de impulso de una caja,
+    el forro de una columna), con su contrato público.
+
+    No cuelgan de ningún espacio: la caja y la columna nunca son caras
+    (``mapa_tipos`` no las tiene). Sin esta lista el contrato de una bahía no
+    salía ni «sobre el plano» ni «fuera», y la cuenta de contratos de la
+    consola no cerraba. Nunca la tarifa; nunca ocupación.
+    """
+    salida = []
+    for codigo in sorted(partes or {}):
+        partida = partir_codigo(codigo)
+        contrato = publicados.get(codigo)
+        if contrato is None or not es_pieza(partida.parte):
+            continue
+        sede, clase = partes[codigo][0], partes[codigo][1]
+        salida.append({
+            "parte": partida.parte.sufijo,
+            "codigo": codigo,
+            "codigo_corto": _codigo_corto(codigo, sede),
+            "sede": sede,
+            "tipo": clase,
+            "contrato": _contrato_publico(contrato, desde),
         })
     return salida
 
@@ -1018,7 +1116,7 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
     try:
         db = sesion_de(cliente)
         try:
-            sedes_con_plano, _caras, mapa_tipos = _numeros_del_layout(db)
+            sedes_con_plano, _caras, mapa_tipos, partes = _numeros_del_layout_con_partes(db)
             fixtures = _fixtures_por_codigo(db)
             geo = _zona_y_area(db)
             crudos = _contratos_del_cliente(db)
@@ -1040,16 +1138,20 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
         por_codigo.setdefault(c.codigo, []).append(c)
     publicados = {codigo: _contrato_publicado(lista) for codigo, lista in por_codigo.items()}
 
-    espacios = _armar_espacios(mapa_tipos, fixtures, geo, publicados, desde, hasta)
+    espacios = _armar_espacios(mapa_tipos, fixtures, geo, publicados, desde, hasta, partes)
     sedes = _armar_sedes(espacios)
-    resumen = _armar_resumen_por_tipo(espacios, mapa_tipos, tarifas)
-    indice = _indice_de_proveedores(del_periodo, historicos, mapa_tipos, desde)
+    resumen = _armar_resumen_por_tipo(espacios, mapa_tipos, tarifas, partes, publicados)
+    piezas = _armar_piezas(partes, publicados, desde)
+    # Lo que puede tener contrato: las caras y las partes. El universo de
+    # espacios sigue siendo `mapa_tipos`.
+    tipos = _tipos_de_contrato(mapa_tipos, partes)
+    indice = _indice_de_proveedores(del_periodo, historicos, tipos, desde)
     benchmark = benchmark_por_tipo(anio_mes)
     precios = _precios_sugeridos(resumen, benchmark)
 
     estado, _motivo = estado_de(cliente.slug)
 
-    return {
+    cuerpo = {
         "cliente": {
             "slug": cliente.slug,
             "nombre": cliente.nombre,
@@ -1063,14 +1165,20 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
         "sedes": sedes,
         "espacios": espacios,
         "contratos_fuera_del_plano": sum(
-            1 for c in del_periodo if c.codigo not in mapa_tipos),
+            1 for c in del_periodo if c.codigo not in tipos),
         "resumen_por_tipo": resumen,
         "proveedores": _armar_proveedores(indice),
-        "movimientos": _armar_movimientos(historicos, mapa_tipos, anio_mes),
+        "movimientos": _armar_movimientos(historicos, tipos, anio_mes),
         "benchmark_plataforma": benchmark,
         "oportunidades": _armar_oportunidades(espacios, precios, indice),
         "recomendaciones": _armar_recomendaciones(
             espacios, sedes, resumen, indice, publicados, precios, benchmark,
-            mapa_tipos, del_periodo, desde,
+            tipos, del_periodo, desde,
         ),
     }
+    # Sólo si hay piezas con contrato: un cliente sin bahías ni forros
+    # vendidos sale con las claves de siempre (`test_detalle_ataques` las fija),
+    # como `partes` en un espacio.
+    if piezas:
+        cuerpo["piezas"] = piezas
+    return cuerpo

@@ -84,6 +84,11 @@ export interface LiberaProps {
   facesOf: (f: UnifiedFixture) => {
     fixture: UnifiedFixture; face: "A" | "B"; code: string;
     status: UnifiedFixture["status"]; startDate: string; endDate: string;
+    /** Vender por partes: los contratos de sus partes (las puertas vendidas).
+     *  Un día con una puerta tomada la cara no está libre: se vende otra
+     *  puerta, no la nevera (la misma cuenta que el plano, que la pinta
+     *  «parcial»). Sin esto, la cara sola, como siempre. */
+    tambien?: { status: UnifiedFixture["status"]; startDate: string; endDate: string }[];
   }[];
   /** Cómo se llama el TIPO de esa cara —«Punta de góndola»—, para el pie.
    *  El nombre propio del mueble («Punta 03») ya está en el chip del código. */
@@ -168,7 +173,7 @@ export default function Libera({
       const fila: boolean[] = [];
       for (let i = 0; i <= dias; i++) {
         const d = fecha(i);
-        fila.push(daysTakenInRange(c, d, d) === 0);
+        fila.push(daysTakenInRange(c, d, d) === 0 && (c.tambien ?? []).every((t) => daysTakenInRange(t, d, d) === 0));
       }
       return fila;
     });

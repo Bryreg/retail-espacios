@@ -19,6 +19,7 @@ import {
 } from "../api/layout";
 import { fetchEstadoComercial } from "../api/spaces";
 import { useAuthStore } from "./authStore";
+import { conFichaQuitada, sinComercial } from "../utils/guardadoDelPlano";
 
 const MAX_UNDO = 50;
 
@@ -55,35 +56,11 @@ function cancelScheduledSave(sede: string) {
 }
 
 // ─── Lo comercial vive en la base, no en el plano ─────────────────────────────
-
-/**
- * Los campos que la BASE manda y el layout ya no guarda.
- *
- * El servidor los recorta al recibir un plano (`_sin_contrato` en
- * `routers/layout.py`); esto los recorta también **al mandarlos**, para que lo
- * que viaja por el cable sea sólo geometría. Con los dos lados cortando, ningún
- * camino —un guardado viejo en cola, un `force` de conflicto, un bootstrap—
- * puede volver a escribir un contrato en el JSON.
- */
-const CAMPOS_DE_CONTRATO = [
-  "status", "supplierName", "brandCategory", "negotiatedValue",
-  "startDate", "endDate", "observation",
-] as const;
-
-/** El mismo plano sin una sola palabra de lo comercial. No toca el original. */
-function sinComercial(fixtures: UnifiedFixture[]): UnifiedFixture[] {
-  return fixtures.map((f) => {
-    const limpio: Record<string, unknown> = { ...f };
-    for (const campo of CAMPOS_DE_CONTRATO) delete limpio[campo];
-    if (limpio.faceB && typeof limpio.faceB === "object") {
-      const caraB: Record<string, unknown> = { ...(limpio.faceB as object) };
-      for (const campo of CAMPOS_DE_CONTRATO) delete caraB[campo];
-      if (Object.keys(caraB).length > 0) limpio.faceB = caraB;
-      else delete limpio.faceB;
-    }
-    return limpio as unknown as UnifiedFixture;
-  });
-}
+//
+// Lo que viaja en el `PUT` es el plano sin lo comercial (`sinComercial`): los
+// siete campos del contrato los manda la base y el servidor también los
+// recorta al recibir. Vive en `utils/guardadoDelPlano.ts`, que es puro y no
+// importa nada, para que una prueba lo ejecute (`probar-geometria`).
 
 /**
  * ¿Los dos mapas comerciales dicen lo mismo?
@@ -151,6 +128,13 @@ const _inFlight = new Map<string, Promise<void>>();
 // merged. In memory only: a reload starts from a server list that no longer
 // contains them.
 const _removedSedes = new Set<string>();
+
+// Las familias a las que en esta sesión se les QUITÓ el nombre propio. Los
+// nombres viajan en el mismo valor que la lista de sedes, y el 409 los fusiona
+// «los del servidor, y encima los míos»: sin esto, un nombre recién borrado acá
+// volvía a aparecer desde la copia del servidor. Se restan al fusionar; una
+// familia que vuelve a recibir nombre sale de la lista.
+const _nombresQuitados = new Set<string>();
 
 // Sedes added (or renamed into) during this session, normalised. The mirror of
 // the set above, and needed for the same reason: when a settings write is
@@ -273,10 +257,12 @@ export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
 /** Los 409 que son «el servidor miró y dijo que no», con su lista de motivos.
  *  Se enumeran para no confundirlos con los otros dos 409 del guardado —el
  *  conflicto entre equipos y la sede borrada—, que se resuelven de otra manera. */
-const RECHAZOS_CONOCIDOS = new Set(["nombres_repetidos", "contratos_vivos"]);
+const RECHAZOS_CONOCIDOS = new Set(["nombres_repetidos", "contratos_vivos", "partes_vendidas", "nombre_reservado"]);
 
 export interface RechazoDelServidor {
-  /** El `detail.code` del 409, tal cual: `nombres_repetidos` o `contratos_vivos`. */
+  /** El `detail.code` del 409, tal cual: `nombres_repetidos`, `contratos_vivos`,
+   *  `partes_vendidas` (movería una puerta vendida) o `nombre_reservado` (un
+   *  nombre que se lee como el código de una parte). */
   code: string;
   message: string;
   choques: string[];
@@ -378,7 +364,10 @@ interface FixtureStore {
    *  refused, in which case NOTHING was removed locally either. */
   removeSede: (name: string) => Promise<{ ok: boolean; error?: string }>;
 
-  /** Override the display label for a catalog fixture type. */
+  /** El nombre propio de una familia de muebles (la clave es la de la
+   *  biblioteca del 2D). Vacío lo quita y vuelve el de RECABRA. Sólo
+   *  administración: se guarda con la lista de sedes. Cómo se lee en cada
+   *  pantalla: `catalogo/nombresPropios.ts`. */
   setCatalogLabel: (type: string, label: string) => void;
 
   /** Set one reference rate. `sede === null` edits the general rate; a value
@@ -455,6 +444,9 @@ export const selectHasPendingWork = (state: FixtureStore): boolean =>
  *  sus datos reemplazados (la generación, en `syncFromServer`). El servidor
  *  repuebla lo que de verdad corresponde. */
 function planosVacios(): Partial<FixtureStore> {
+  // Los nombres quitados eran de esos datos: con los de otro supermercado, una
+  // familia que acá se dejó sin nombre no tiene por qué perder el suyo allá.
+  _nombresQuitados.clear();
   return {
     fixturesBySede: {},
     sedes: DEFAULT_SEDES,
@@ -681,11 +673,17 @@ export const useFixtureStore = create<FixtureStore>()(
 
       setCatalogLabel: (type, label) =>
         set((state) => {
+          // Lo escribe administración, como las sedes: un trabajador no lo
+          // puede guardar (el PUT exige admin) y no tiene por qué verlo
+          // cambiar en su pantalla como si se hubiera guardado.
+          if (!canWrite()) return state;
           const next = { ...state.catalogLabels };
           if (label.trim()) {
             next[type] = label.trim();
+            _nombresQuitados.delete(type);
           } else {
             delete next[type];
+            _nombresQuitados.add(type);
           }
           scheduleSettingsSave();
           return { catalogLabels: next };
@@ -745,11 +743,16 @@ export const useFixtureStore = create<FixtureStore>()(
           };
         }),
 
+      // Deshacer y rehacer reponen el plano de antes TAL CUAL, salvo la
+      // ficha del mueble que se va: una clave que el plano repuesto no tiene
+      // y el de ahora sí vuelve en `null`. Ausente, el servidor la rellenaba
+      // con la guardada y el deshacer de «Entrepaños» o «Módulo» no se
+      // guardaba nunca (ver `conFichaQuitada`).
       undo: () =>
         set((state) => {
           if (state.past.length === 0) return state;
-          const prev = state.past[state.past.length - 1];
           const current = state.fixturesBySede[state.sede] ?? [];
+          const prev = conFichaQuitada(state.past[state.past.length - 1], current);
           scheduleSave(state.sede);
           return {
             fixturesBySede: { ...state.fixturesBySede, [state.sede]: prev },
@@ -762,8 +765,8 @@ export const useFixtureStore = create<FixtureStore>()(
       redo: () =>
         set((state) => {
           if (state.future.length === 0) return state;
-          const next = state.future[0];
           const current = state.fixturesBySede[state.sede] ?? [];
+          const next = conFichaQuitada(state.future[0], current);
           scheduleSave(state.sede);
           return {
             fixturesBySede: { ...state.fixturesBySede, [state.sede]: next },
@@ -849,6 +852,11 @@ export const useFixtureStore = create<FixtureStore>()(
           // recorta al recibir, y esto lo recorta al mandar — así el JSON que
           // se guarda no vuelve a tener una segunda copia del contrato ni por
           // un guardado que quedó en cola desde antes del corte.
+          //
+          // La ficha del mueble (`CLAVES_DE_FICHA`) viaja como está, `null`
+          // incluido: `null` es «la borré a propósito» y el servidor la saca;
+          // una clave ausente, en cambio, la rellena con la guardada (así no
+          // la borra una pestaña de antes que no la conoce).
           const saved = await saveLayout(sede, sinComercial(fixtures), base);
           // The sede may have been deleted while this request was in flight.
           // Writing serverRev/dirty back would leave bookkeeping for a sede
@@ -1006,6 +1014,9 @@ export const useFixtureStore = create<FixtureStore>()(
               // Labels are display names: last writer wins per key, and ours is
               // the edit that just happened.
               const labels = { ...fresh.catalog_labels, ...local.catalogLabels };
+              // Menos los que se quitaron acá: «los suyos y encima los míos»
+              // no sabe que un nombre ausente en los míos es uno borrado.
+              for (const quitado of _nombresQuitados) delete labels[quitado];
               const saved = await saveLayoutSettings(
                 merged, labels, fresh.updated_at ?? null,
               );
@@ -1559,6 +1570,12 @@ export function migrateFromLegacy(): void {
   } catch { /* ignore corrupt data */ }
 
   // ── Migrate from 2D editor (floor-plan-v1) ──────────────────────────────────
+  // Estas dos tablas se quedan escritas acá y NO salen del catálogo de muebles
+  // (`catalogo/muebles.json`), a propósito: reproducen con qué alto y color
+  // entraba un mueble del localStorage viejo del 2D, que es un dato del pasado.
+  // Por eso dicen otra cosa que el catálogo (la punta de 2,00, la vitrina de
+  // 2,10, el robatope verde): cambiarlas cambiaría lo que se recupera de esos
+  // navegadores, no los muebles que se creen desde ahora.
   const H_DEFAULTS: Record<string, number> = {
     gondola: 1.8, punta: 2.0, robatope: 1.6, ristra: 1.6,
     cross: 1.8, metro: 0.05, mueble: 2.1, exhibicion: 1.5,

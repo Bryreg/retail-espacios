@@ -213,6 +213,23 @@ prueba("un mueble no choca contra sí mismo", () => {
   assert.equal(N.choqueDeNombre("imp-07", CIUDAD_JARDIN, "i07"), null);
 });
 
+prueba("un mueble nuevo no se llama como una parte; el que ya se llamaba así, sigue", () => {
+  // Vender por partes: `NEV-03-PU2` es la puerta 2 de `NEV-03` y `GON-05-B`
+  // la cara B. Un mueble que se llamara así se leería como la parte de otro
+  // (el servidor lo frena igual: 409 `nombre_reservado`).
+  for (const nombre of ["NEV-PU2", "gon-05-b", "MUR-TR3", "CAJ-BI1", "COL-FO"]) {
+    assert.equal(N.choqueDeNombre(nombre, CIUDAD_JARDIN, "i12")?.razon, "reservado", nombre);
+  }
+  assert.match(N.textoDelChoque("NEV-PU2", { razon: "reservado" }), /parte/);
+  // Lo que sólo se le parece, no: un token que no está reservado, o sin guion.
+  for (const nombre of ["NEV-PUN2", "PUB-01", "NEVPU2", "IMP-99"]) {
+    assert.equal(N.choqueDeNombre(nombre, CIUDAD_JARDIN, "i12"), null, nombre);
+  }
+  // Un plano viejo con un mueble ya llamado así se sigue abriendo y guardando.
+  const viejo = [...CIUDAD_JARDIN, { id: "v1", code: "NEV-PU2", label: "Nevera vieja" }];
+  assert.equal(N.choqueDeNombre("NEV-PU2", viejo, "v1"), null);
+});
+
 prueba("LA REGLA Y LA ESCRITURA SON LA MISMA LLAMADA", () => {
   // El agujero de la fase 12 no fue que faltara la comprobación: fue que vivía
   // en un camino y la escritura en otro, y el segundo no la llamaba. `renombrar`

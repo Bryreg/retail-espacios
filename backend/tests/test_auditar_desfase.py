@@ -237,3 +237,52 @@ def test_un_contrato_del_plano_ya_vencido_no_es_desfase(client, admin, capsys):
     )])
     n, salida = _auditar(capsys)
     assert n == 0, salida
+
+
+# ─── Lo que nunca se alquila, aunque el plano viejo no lo diga ────────────────
+#
+# El auditor preguntaba sólo por la bandera (`rentable is False`) y la pantalla
+# y el servidor preguntan primero por el TIPO (`es_comercializable`): la caja,
+# la columna y el servicio al cliente nunca se alquilan. Una caja de un plano
+# viejo, sin la bandera, contaba acá como espacio ofrecido. CLAUDE.md promete
+# que el script «hace lo mismo» que la tarjeta de Supervisar.
+
+def test_UN_CONTRATO_SOBRE_UNA_CAJA_SE_REPORTA_AUNQUE_EL_PLANO_VIEJO_NO_TENGA_LA_BANDERA(
+        client, admin, capsys):
+    # El contrato entró cuando el plano todavía no dibujaba la caja (el
+    # contrato suelto falla abierto ante un código sin mueble).
+    _plano_viejo([_mueble("PUN-01")])
+    espacio = client.post("/api/spaces/find-or-create", headers=admin, json={
+        "code": "NAVE-CAJ-02", "name": "Caja 2", "zone": "checkout", "sede": "NAVE", "area_m2": 1.0,
+    })
+    assert espacio.status_code in (200, 201), espacio.text
+    proveedor = client.post("/api/suppliers/find-or-create", headers=admin,
+                            json={"name": "MACA MANI"}).json()["id"]
+    r = client.post(f"/api/spaces/{espacio.json()['id']}/leases", headers=admin, json={
+        "supplier_id": proveedor, "start_date": HOY.isoformat(),
+        "end_date": (HOY + timedelta(days=30)).isoformat(), "monthly_rent": 200000,
+    })
+    assert r.status_code == 201, r.text
+
+    # Después se dibujó la caja, en un plano de antes de la bandera.
+    caja = _mueble("CAJ-02", type="checkout")
+    assert "rentable" not in caja
+    _plano_viejo([_mueble("PUN-01"), caja])
+
+    from scripts.auditar_desfase import caras_del_plano
+    assert "CAJ-02" not in caras_del_plano([caja])
+
+    n, salida = _auditar(capsys)
+    assert n == 1, salida
+    assert "CAJ-02" in salida and "el plano no lo ofrece" in salida
+
+
+def test_UNA_CAJA_PINTADA_OCUPADA_EN_UN_PLANO_VIEJO_NO_ES_UN_CONTRATO(client, admin, capsys):
+    """La importación del plano (`caras_vendidas`) tampoco la trae: crearle un
+    contrato haría una fila que la propia aplicación rechaza."""
+    _plano_viejo([_mueble(
+        "CAJ-03", type="checkout", status="occupied", supplierName="CAJA VIEJA",
+        startDate=HOY.isoformat(), endDate=(HOY + timedelta(days=20)).isoformat(),
+    )])
+    n, salida = _auditar(capsys)
+    assert n == 0, salida

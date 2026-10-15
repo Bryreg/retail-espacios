@@ -64,7 +64,9 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime, timezone
 
-from app.services.layout_lookup import es_comercializable
+from app.services.catalogo_muebles import CLASES_DE_PARTE, tarifa_del_mueble, tipo_de_tarifa
+from app.services.layout_lookup import caras_de, es_comercializable
+from app.services.partes import codigo_de_parte, es_division, partes_de, partir_codigo, redondear
 
 log = logging.getLogger("recabra.plataforma.metricas")
 
@@ -207,25 +209,15 @@ def _es_comercializable(fixture: dict) -> bool:
 
 
 def _es_gondola_doble(fixture: dict) -> bool:
-    """``isDoubleGondola`` **de ``DashboardView.tsx``**, que es la que cuenta caras.
+    """¿Tiene cara B? Delega en ``layout_lookup.caras_de``, la misma regla que
+    usan el guardarraíl del plano y el frontend (``carasDe``).
 
-    Dos criterios, unidos por un OR, exactamente como el frontend::
-
-        isDoubleGondolaShared(f) || (f.type as string) === "gondola_doble"
-
-    · ``type == "gondola"`` con ``gondolaType`` ``"double"`` **o ausente** — el
-      default indefinido es doble en los dos editores (``fixtures.ts``).
-    · el tipo **legado** ``"gondola_doble"``, que ``DashboardView.tsx`` conserva
-      a propósito para los layouts viejos ya persistidos: esos planos están en
-      las bases de los clientes y sus góndolas siguen siendo de dos caras. Sin
-      esta rama, un cliente antiguo aparecería con la mitad del inventario.
+    Incluye la góndola sin ``gondolaType`` y el tipo **legado**
+    ``"gondola_doble"``: esos planos están en las bases de los clientes y sus
+    góndolas siguen siendo de dos caras. Sin eso, un cliente antiguo aparecería
+    con la mitad del inventario.
     """
-    tipo = fixture.get("type")
-    if tipo == "gondola_doble":
-        return True
-    if tipo != "gondola":
-        return False
-    return (fixture.get("gondolaType") or "double") == "double"
+    return caras_de(fixture) == 2
 
 
 def _codigo_completo(sede: str, code: str) -> str:
@@ -285,16 +277,20 @@ def _caras_comercializables(fixtures: list, sede_snapshot: str) -> set[str]:
 # ``codigo_completo -> (SEDE, tipo)``.
 
 def _tipo_de_tarifa(tipo: str) -> str:
-    """Misma semántica que ``_tipo_de_tarifa`` de ``routers/bulk_leases.py``:
+    """La misma que ``_tipo_de_tarifa`` de ``routers/bulk_leases.py``, porque
+    las dos salen del catálogo de muebles (``services/catalogo_muebles.py``):
     las dos caras de una góndola (doble o mural) comparten tarifa, porque el
     valor negociado también es por cara."""
-    return "gondola" if tipo in ("gondola_doble", "gondola_mural") else tipo
+    return tipo_de_tarifa(tipo)
 
 
-def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[str, str]]:
+def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str,
+                       propios: dict[str, tuple[str, str]] | None = None) -> dict[str, tuple[str, str]]:
     """``codigo_completo -> (SEDE, tipo)`` de los fixtures COMERCIALIZABLES de
     una sede. Espeja ``_caras_comercializables``: la cara ``-B`` de una
-    góndola doble entra con el MISMO tipo que la cara A."""
+    góndola doble entra con el MISMO tipo que la cara A. ``propios``: las
+    tarifas de las fichas propias del cliente (``fichas_propias.tarifas_propias``),
+    leídas una vez por cliente."""
     mapa: dict[str, tuple[str, str]] = {}
     for fixture in fixtures:
         if not isinstance(fixture, dict):
@@ -309,16 +305,92 @@ def _mapa_tipos_de_sede(fixtures: list, sede_snapshot: str) -> dict[str, tuple[s
         if not completo:
             continue
         sede_uc = sede.strip().upper()
-        tipo = _tipo_de_tarifa(str(fixture.get("type") or ""))
+        # La del modelo si tiene una propia (la media estiba se cobra aparte
+        # de la estiba, y una ficha propia del cliente puede tener la suya), y
+        # si no la de su tipo: la misma que `rateTypeOf`.
+        tipo = tarifa_del_mueble(fixture, propios)
         mapa[completo] = (sede_uc, tipo)
         if _es_gondola_doble(fixture):
             mapa[f"{completo}-B"] = (sede_uc, tipo)
     return mapa
 
 
+def _mapa_partes_de_sede(fixtures: list, sede_snapshot: str,
+                        propios: dict[str, tuple[str, str]] | None = None) -> dict[str, tuple]:
+    """``codigo_de_la_parte -> (SEDE, tarifa_de_su_clase, tarifa_de_la_cara, n)``
+    de las partes que el plano pone a la venta (vender por partes: la puerta 2
+    de una nevera, ``NAVE-NEV-03-PU2``).
+
+    Va APARTE de ``_mapa_tipos_de_sede`` a propósito: ése es también el
+    universo de espacios del detalle y de la ocupación, que se cuentan por
+    CARA. Una puerta vendida ocupa su cara; no es un espacio más. Lo que sí
+    necesita es su tarifa: la de su clase (``parte_puerta``) o, vacía, la de la
+    cara dividida por la cantidad de puertas (``n``).
+
+    Y las PIEZAS (la bahía de impulso de una caja, el forro de una columna),
+    también de muebles que no son comercializables —la caja no lo es nunca—:
+    cuentan canon y spread, contra la tarifa de su clase y sin respaldo
+    (``tarifa_de_la_cara`` y ``n`` en ``None``: no hay cara que dividir), y
+    nunca ocupación (no son caras).
+    """
+    mapa: dict[str, tuple] = {}
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            continue
+        code = str(fixture.get("code") or "").strip()
+        if not code:
+            continue
+        sede = str(fixture.get("sede") or sede_snapshot or "").strip()
+        completo = _codigo_completo(sede, code)
+        if not completo:
+            continue
+        partes = partes_de(fixture, caras_de(fixture), _es_comercializable(fixture))
+        if not partes:
+            continue
+        tarifa_cara = tarifa_del_mueble(fixture, propios)
+        for cara, parte in partes:
+            division = CLASES_DE_PARTE[parte.clase]["es"] == "division"
+            # Cuántas de SU clase tiene la cara: es el divisor del respaldo.
+            n = sum(1 for c, p in partes if c == "A" and p.clase == parte.clase)
+            mapa[codigo_de_parte(completo, cara, parte)] = (
+                sede.strip().upper(), CLASES_DE_PARTE[parte.clase]["tarifa"],
+                tarifa_cara if division else None, n if division else None,
+            )
+    return mapa
+
+
+def tarifa_de_parte(tarifas: dict, entrada: tuple) -> float | None:
+    """La tarifa aplicable a una parte: la de su clase en su sede (o la
+    general) y, si no hay, la de su cara entre sus partes. Nunca sale al JSON:
+    sólo entra al spread, que es una relación."""
+    sede, tarifa_clase, tarifa_cara, n = entrada
+    propia = _tarifa_aplicable(tarifas, sede, tarifa_clase)
+    if propia is not None:
+        return propia
+    if tarifa_cara is None or not n:
+        # Una pieza: sin tarifa de su clase, no tiene tarifa.
+        return None
+    cara = _tarifa_aplicable(tarifas, sede, tarifa_cara)
+    return redondear(cara / n) if cara is not None and n else None
+
+
+def cara_ocupada(codigo: str) -> str:
+    """El código de la cara que ocupa un contrato: el suyo, o el de su cara si
+    es una división (la puerta 2 ocupa la nevera). La ocupación es por cara."""
+    p = partir_codigo(codigo)
+    return p.cara_entera if es_division(p.parte) else codigo
+
+
 # ─── Un cliente ───────────────────────────────────────────────────────────────
 
 def _numeros_del_layout(db) -> tuple[int, set[str], dict[str, tuple[str, str]]]:
+    """Lo de siempre: ``(sedes_con_plano, caras, mapa_tipos)``. Ver
+    ``_numeros_del_layout_con_partes``, que además devuelve las partes."""
+    sedes, caras, mapa_tipos, _partes = _numeros_del_layout_con_partes(db)
+    return sedes, caras, mapa_tipos
+
+
+def _numeros_del_layout_con_partes(db) -> tuple[int, set[str], dict[str, tuple[str, str]], dict[str, tuple]]:
     """``(sedes_con_plano, caras_comercializables, mapa_tipos)`` leyendo
     ``layout_snapshots``.
 
@@ -328,10 +400,15 @@ def _numeros_del_layout(db) -> tuple[int, set[str], dict[str, tuple[str, str]]]:
     pasada para no volver a abrir el plano por cada contrato.
     """
     from app.models.models import LayoutSnapshot
+    from app.services.fichas_propias import tarifas_propias
 
     sedes = 0
     caras: set[str] = set()
     mapa_tipos: dict[str, tuple[str, str]] = {}
+    partes: dict[str, tuple] = {}
+    # Las tarifas de las fichas propias del cliente, UNA consulta por cliente y
+    # no una por mueble: la consola recorre todos los planos de todos.
+    propios = tarifas_propias(db)
     for snap in db.query(LayoutSnapshot).all():
         try:
             fixtures = json.loads(snap.fixtures_json or "[]")
@@ -342,8 +419,9 @@ def _numeros_del_layout(db) -> tuple[int, set[str], dict[str, tuple[str, str]]]:
             continue
         sedes += 1
         caras |= _caras_comercializables(fixtures, snap.sede or "")
-        mapa_tipos.update(_mapa_tipos_de_sede(fixtures, snap.sede or ""))
-    return sedes, caras, mapa_tipos
+        mapa_tipos.update(_mapa_tipos_de_sede(fixtures, snap.sede or "", propios))
+        partes.update(_mapa_partes_de_sede(fixtures, snap.sede or "", propios))
+    return sedes, caras, mapa_tipos, partes
 
 
 def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, float]]:
@@ -641,7 +719,7 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
 
     db = sesion_de(cliente)
     try:
-        sedes, caras, mapa_tipos = _numeros_del_layout(db)
+        sedes, caras, mapa_tipos, partes = _numeros_del_layout_con_partes(db)
         contratos = _contratos_activos(db, desde, hasta)
         tarifas = _tarifas_limpias(db)
     finally:
@@ -660,6 +738,11 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
         if entrada is not None:
             sede_del_espacio, tipo = entrada
             tarifa_valor = _tarifa_aplicable(tarifas, sede_del_espacio, tipo)
+        elif codigo in partes:
+            # Una puerta: la tarifa de su clase o la de su nevera entre sus
+            # puertas. Comparar su canon con la de la nevera entera la daría
+            # por un 66 % debajo de la tarifa.
+            tarifa_valor = tarifa_de_parte(tarifas, partes[codigo])
         if tarifa_valor is None:
             contratos_sin_tarifa += 1
             continue
@@ -667,7 +750,9 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
         tarifa_total += tarifa_valor
         contratos_con_tarifa += 1
 
-    ocupados = {codigo for codigo, _n, _c in contratos}
+    # Por CARA: la puerta 2 vendida ocupa su nevera (`cara_ocupada`); dos
+    # puertas de la misma nevera son una cara ocupada, no dos.
+    ocupados = {cara_ocupada(codigo) for codigo, _n, _c in contratos}
     # Un contrato sobre un espacio que NO tiene mueble en el plano (un código
     # legado, un mueble borrado después de firmar) no puede contar como cara
     # ocupada: inflaría el numerador contra un denominador que no lo incluye,

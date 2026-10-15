@@ -83,6 +83,10 @@ const TRATAMIENTO_LABEL: Record<CatalogoEntrada["tratamiento"], string> = {
 /** Acciones tal como las anota `_anotar_consulta` en la bitácora del
  *  registro -- un texto que no está en la lista taxativa se muestra tal
  *  cual llegó (nunca se inventa una etiqueta). */
+/* Una etiqueta por cada acción que `plataforma_reporte._accesos_del_cliente`
+   deja llegar al reporte: sin ella, la dueña leía el código crudo
+   («pago_manual»). `probar-plataforma.mjs` falla si el backend suma una
+   acción y acá no tiene nombre. */
 const ACCION_LABEL: Record<string, string> = {
   metricas: "Consulta de métricas",
   tendencia: "Consulta de tendencia",
@@ -90,6 +94,19 @@ const ACCION_LABEL: Record<string, string> = {
   clientes: "Listado de clientes",
   supresiones: "Solicitudes de supresión",
   reporte: "Reporte de transparencia",
+  detalle: "Detalle de espacios y contratos",
+  renombre: "Cambio de nombre",
+  archivo: "Archivo del cliente",
+  reactivacion: "Reactivación del cliente",
+  borrado: "Borrado del cliente",
+  traspaso: "Traspaso a la base principal",
+  cobros: "Cartera de cobros",
+  cobranza: "Revisión de la cobranza automática",
+  suscripcion: "Registro de la suscripción",
+  factura: "Registro de una cuenta de cobro",
+  pago_manual: "Registro de un pago",
+  anulacion: "Anulación de una cuenta de cobro",
+  disputa: "Disputa de una cuenta de cobro",
 };
 const etiquetaAccion = (a: string): string => ACCION_LABEL[a] ?? a;
 

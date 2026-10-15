@@ -535,6 +535,20 @@ _EXENTOS_POR_HABEAS_DATA = (
     "/api/clientes/mi-reporte-plataforma",
 )
 
+# Ponerse al día (C2, cobranza). Una cuenta en sólo lectura o suspendida tiene
+# que poder ver QUÉ debe y cómo pagarlo, y su gente tiene que poder enterarse de
+# que ya se pagó sin volver a entrar:
+#   · `/api/clientes/mi-suscripcion` (y `/facturacion`): lo que debe, cómo
+#     transferir y sus datos de facturación. Sólo la dueña: `require_owner`.
+#   · `/api/auth/estado-cuenta`: el estado de cuenta en vivo, para cualquier
+#     rol; el motivo, sólo para la dueña. Es lo que consultan `BloqueoCuenta` y
+#     la franja cada pocos minutos.
+# Nada de negocio: ni planos, ni contratos, ni proveedores.
+_EXENTOS_PARA_PONERSE_AL_DIA = (
+    "/api/clientes/mi-suscripcion",
+    "/api/auth/estado-cuenta",
+)
+
 # El panel del operador opera sobre el REGISTRO, no sobre datos de negocio de
 # nadie. Si el estado lo cortara, un operador cuyo propio cliente quedó
 # degradado no podría destrabar ninguna cuenta — incluida la suya.
@@ -594,6 +608,12 @@ def _aplicar_estado(cliente: Cliente, request: Request) -> Cliente:
     # de la verificación de Fase 3). Son owner-only/authenticados por sus
     # propios routers; acá solo se los exime del 402.
     if _path_bajo(path, _EXENTOS_POR_HABEAS_DATA):
+        return cliente
+
+    # Saber qué se debe y enterarse de que ya se pagó tampoco: cortarlo dejaría
+    # a la dueña sin forma de ponerse al día (C2). Con frontera de segmento,
+    # como todas: `/api/clientes/mi-suscripcionX` no se cuela.
+    if _path_bajo(path, _EXENTOS_PARA_PONERSE_AL_DIA):
         return cliente
 
     if estado == "solo_lectura":

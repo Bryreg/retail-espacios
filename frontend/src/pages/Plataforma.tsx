@@ -58,6 +58,7 @@ import {
   TablaSupresiones,
   useSupresiones,
 } from "../components/plataforma/cartera-operativo";
+import { TablaCobros, mapaDeModos, useCartera } from "../components/plataforma/cartera-cobros";
 
 /* ============================================================================
    /plataforma — PIEZA 1 DE A («El informe»): LA CARTERA
@@ -463,6 +464,14 @@ export default function Plataforma() {
 
   const supresiones = useSupresiones();
 
+  // ── Cobros (C1): la cartera de la suscripción ───────────────────────────
+  // La comparten dos cajones: el de cobros y la columna «Modo» de los estados.
+  // Se pide recién al abrir el cajón de cobros, y una vez: cada pedido deja una
+  // línea en el reporte de transparencia de todos los clientes (revisión de C2).
+  const [cobrosPedidos, setCobrosPedidos] = useState(false);
+  const cobros = useCartera(operador === "si" && cobrosPedidos, recarga);
+  const modos = useMemo(() => mapaDeModos(cobros.cartera), [cobros.cartera]);
+
   // ── Estado de la pantalla ───────────────────────────────────────────────
   const [orden, setOrden] = useState<OrdenCola>("riesgo");
   const [editandoEstado, setEditandoEstado] = useState<string | null>(null);
@@ -852,8 +861,9 @@ export default function Plataforma() {
             {/* ═══ 1.6 · Lo operativo ═══ */}
             <Capitulo id="c-operativo" numero="1.6" titulo="Lo operativo" der="fuera de la historia">
               <p className="plat-nota" style={{ marginTop: 0 }}>
-                Estados de cuenta y solicitudes de supresión existen y tienen su lugar, pero no son análisis: son
-                operaciones. Lo único que sube a la historia es la línea de estado en la fila del cliente.
+                Estados de cuenta, cobros y solicitudes de supresión existen y tienen su lugar, pero no son
+                análisis: son operaciones. Lo único que sube a la historia es la línea de estado en la fila del
+                cliente.
               </p>
               <details
                 className="plat-cajon"
@@ -869,12 +879,16 @@ export default function Plataforma() {
                 <div>
                   <TablaEstados
                     clientes={clientes}
+                    modos={modos}
                     error={clientesError}
                     abierto={editandoEstado}
                     onAbrir={setEditandoEstado}
-                    onGuardado={(slug, patch) =>
-                      setClientes((prev) => (prev ? prev.map((x) => (x.slug === slug ? { ...x, ...patch } : x)) : prev))
-                    }
+                    onGuardado={(slug, patch) => {
+                      setClientes((prev) => (prev ? prev.map((x) => (x.slug === slug ? { ...x, ...patch } : x)) : prev));
+                      // El estado también se lee en la cartera de cobros: se copia,
+                      // no se vuelve a pedir (cada pedido deja línea en la bitácora).
+                      cobros.actualizarEstado(slug, { estado: patch.estado, cambiado_por: patch.cambiado_por });
+                    }}
                     onBorrado={(slug) => setClientes((prev) => (prev ? prev.filter((x) => x.slug !== slug) : prev))}
                     onCicloCambiado={() => setRecarga((n) => n + 1)}
                     enlaceReporte={(slug) => navigate(`/plataforma/reporte/${encodeURIComponent(slug)}`)}
@@ -887,6 +901,42 @@ export default function Plataforma() {
                     <b>Archivar</b> saca al cliente del ingreso y del análisis sin tocar sus datos, y se deshace.{" "}
                     <b>Borrar</b> elimina su base para siempre: sólo se ofrece con el cliente ya archivado y nunca con
                     el de la base principal, que guarda también la lista de clientes y sus usuarios.
+                  </p>
+                </div>
+              </details>
+              <details
+                className="plat-cajon"
+                onToggle={(e) => {
+                  if ((e.currentTarget as HTMLDetailsElement).open) setCobrosPedidos(true);
+                }}
+              >
+                <summary>
+                  Cobros
+                  <span className="cuenta">
+                    {cobros.cartera
+                      ? `${plural(cobros.cartera.clientes.filter((c) => !c.exento).length, "con suscripción", "con suscripción")} · ${plural(cobros.cartera.clientes.filter((c) => c.dias_atraso !== null).length, "con atraso", "con atraso")}`
+                      : SIN_DATO}
+                  </span>
+                </summary>
+                <div>
+                  <TablaCobros
+                    cartera={cobros.cartera}
+                    error={cobros.error}
+                    onCambio={cobros.recargar}
+                    onEstadoMovido={(slug, patch) =>
+                      setClientes((prev) => (prev ? prev.map((x) => (x.slug === slug ? { ...x, ...patch } : x)) : prev))
+                    }
+                  />
+                  <p className="plat-nota">
+                    Lo que RECABRA le cobra a cada supermercado. Se registra a mano: la cuenta de cobro que ya se emitió
+                    (RECABRA no factura ante la DIAN) y el pago que entró por el banco, con lo que el supermercado
+                    retuvo. Un cliente sin suscripción queda <b>exento</b>: no tiene deuda y nada lo mueve.
+                  </p>
+                  <p className="plat-nota">
+                    {cobros.cartera?.cobranza_automatica
+                      ? "La escalera automática está prendida: a las suscripciones automáticas las pasa sola a gracia y a sólo lectura (diez días después del aviso formal, como mínimo), y levanta sola lo que puso ella cuando se ponen al día. Nunca suspende ni toca lo que puso una persona."
+                      : "Los formularios de acá no cortan el servicio, y la escalera automática está apagada: sólo ensaya. El estado de cuenta se cambia en el cajón de arriba; el sistema sólo lo levanta si se marca al registrar un pago que deja al día."}{" "}
+                    Lo que hace el sistema lo firma <span className="cod">sistema:cobranza</span>.
                   </p>
                 </div>
               </details>

@@ -168,7 +168,17 @@ export interface GrupoDeRelleno {
  * cinco, la góndola de Bimbo eran 1.635 cajas en el cuadro de bolsa-4, tres
  * de cada cinco tapadas por su propio frente.
  */
-export interface VendidoEntero { rubro?: string; hondo?: boolean }
+export interface VendidoEntero {
+  rubro?: string;
+  /** `false`: dos filas hacia el fondo. Ausente o `true`: cinco
+   *  (`PROFUNDIDAD_DE_MUEBLE_ENTERO`), lo de siempre. `"todo"`: hasta el fondo
+   *  —las filas que entren—, que es como viene cargada una ESTIBA de verdad:
+   *  con cinco, la de 1,20 × 1,00 mostraba más de media tarima vacía desde
+   *  arriba. Sólo la piden las estibas colocadas desde un modelo del catálogo
+   *  (`IslaMesh`): una sin modelo, de un plano de antes, se sigue dibujando
+   *  igual. */
+  hondo?: boolean | "todo";
+}
 
 export interface EntradaDeRelleno {
   /** Ancho total del mueble, para pasar los slots de fracción a metros. */
@@ -254,7 +264,7 @@ export function rellenoPorRubro({
         // se mira desde todos lados y está contratado completo. Con dos
         // filas, un exhibidor de 80 cm de fondo muestra siete centímetros de
         // producto y setenta de estante vacío.
-        const fondos = Math.min(
+        const fondos = vendidoEntero?.hondo === "todo" ? acomodo.filas : Math.min(
           acomodo.filas, vendidoEntero && vendidoEntero.hondo !== false ? PROFUNDIDAD_DE_MUEBLE_ENTERO : PROFUNDIDAD_VISIBLE,
         );
 
@@ -531,7 +541,7 @@ export function tonosDelRelleno(semilla: string, n: number): [number, number, nu
  * `[0, apoyo, 0]` girado `giro`, adentro del grupo de la cara.
  */
 export function unidadesDePrueba({
-  venta, empaque, donde, semilla, profundidad = 3, tramo, surtido = false,
+  venta, empaque, donde, semilla, profundidad = 3, tramo, surtido = false, vanos: soloVanos,
 }: {
   venta: Pick<VentaDeMueble, "filas" | "vanos" | "sobreApoyo">;
   empaque: EmpaqueDePrueba;
@@ -544,6 +554,9 @@ export function unidadesDePrueba({
   tramo?: TramoDeSurtido;
   /** Es uno de varios productos en la cara: sin frente corrido. */
   surtido?: boolean;
+  /** Vender por partes: sólo estos vanos (los de las puertas que se venden,
+   *  en el orden del dibujo). Sin esto, todos. */
+  vanos?: readonly number[];
 }): PruebaAcomodada {
   const { filas, vanos } = venta;
   const porFila: FilaDePrueba[] = [];
@@ -605,7 +618,11 @@ export function unidadesDePrueba({
       Math.max(0, apoyo + pisos * e.alto - filas.alturas[i + 1]),
     );
 
-    for (const vano of vanos) {
+    for (let iv = 0; iv < vanos.length; iv++) {
+      const vano = vanos[iv];
+      // Vendiendo una puerta, el producto va sólo detrás de ella: las otras
+      // no se le venden a este proveedor.
+      if (soloVanos && !soloVanos.includes(iv)) continue;
       // El vano ENTERO: la prueba es por entrepaño, no por el tramo de un
       // slot. Con surtido, sólo lo que el tramo de este producto toca.
       const vx0 = Math.max(tramo ? tramo.x0 : -Infinity, vano.x - vano.ancho / 2);

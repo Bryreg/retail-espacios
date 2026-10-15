@@ -577,6 +577,13 @@ def _spread_actual(reg, fila_cliente) -> dict | None:
         return None
 
 
+def _como_utc(instante: datetime | None) -> datetime | None:
+    """SQLite devuelve las marcas sin zona; son UTC (así se escriben)."""
+    if instante is None:
+        return None
+    return instante if instante.tzinfo else instante.replace(tzinfo=timezone.utc)
+
+
 def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime) -> dict:
     """Cada línea de ``bitacora_plataforma`` en la ventana que ALCANZÓ a este
     cliente. Más nueva primero; ``fecha`` sin hora; ``operador`` es el correo
@@ -598,13 +605,28 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
       forma de ``periodo`` que ``detalle``. El borrado no llega a verse en
       ningún reporte (el cliente ya no existe), pero se declara igual: la
       regla es que ninguna acción quede sin rama acá.
+    * ``cobros`` (C1) -- la cartera de cobros barre a TODOS los clientes, como
+      ``clientes``: alcanza siempre.
+    * ``cobranza`` (C2) -- «Correr cobranza» desde la consola (ensayo o de
+      verdad): recorre a todos los clientes con cobro automático, así que
+      alcanza siempre, como ``cobros``.
+    * ``suscripcion``, ``factura``, ``pago_manual``, ``anulacion``, ``disputa``
+      (C1) -- lo que la operadora registró de lo que le cobra a ESTE cliente,
+      con ``periodo="<slug>:<YYYY-MM>"``. La línea dice qué se hizo, nunca el
+      monto. Y sólo las de DESPUÉS de que este cliente se fundó: si se borró
+      otro con el mismo slug, su relación comercial —que tuvo suscripción, que
+      pagó, que hubo una disputa— no es del titular nuevo (revisión de C2). Una
+      acción sobre la factura de un cliente borrado se anota con
+      ``#suscripcion-<id>`` y no alcanza a nadie (``_slug_de_la_factura``).
 
     Cualquier acción que no esté en esa lista NO alcanza: una acción nueva sin
     su rama acá quedaría sin declarar en el reporte del titular, que es
     exactamente lo que este módulo existe para impedir."""
+    from app.models.models import ClienteRow
     from app.models.plataforma import BitacoraPlataforma
     from app.models.supresion import SolicitudSupresion
 
+    creado = _como_utc(reg.query(ClienteRow.creado).filter(ClienteRow.slug == slug).scalar())
     tiene_supresion = (
         reg.query(SolicitudSupresion.id)
         .filter(SolicitudSupresion.cliente_slug == slug)
@@ -622,7 +644,7 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
     lineas = []
     for f in filas:
         periodo = f.periodo or ""
-        if f.accion in ("metricas", "adopcion", "clientes"):
+        if f.accion in ("metricas", "adopcion", "clientes", "cobros", "cobranza"):
             alcanza = True
         elif f.accion == "tendencia":
             alcanza = periodo.startswith(f"{slug}:") or periodo.startswith(f"{CONSOLIDADO_SLUG}:")
@@ -632,6 +654,13 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
             alcanza = periodo.startswith(f"{slug}:")
         elif f.accion in ("renombre", "archivo", "reactivacion", "borrado", "traspaso"):
             alcanza = periodo.startswith(f"{slug}:")
+        elif f.accion in ("suscripcion", "factura", "pago_manual", "anulacion", "disputa"):
+            # C1: la cobranza a mano. Mismo `periodo="<slug>:<YYYY-MM>"` que el
+            # ciclo de vida: lo que la operadora registró de ESTE cliente, y no
+            # del que tuvo el mismo slug antes de que éste se fundara.
+            alcanza = periodo.startswith(f"{slug}:") and not (
+                creado is not None and _como_utc(f.en) < creado
+            )
         elif f.accion == "detalle":
             # Fase 8: `GET /api/plataforma/clientes/{slug}/detalle` anota
             # `periodo="<slug>:<YYYY-MM>"` -- alcanza SÓLO al cliente cuyo slug

@@ -46,7 +46,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from conftest import CLAVE_ADMIN, CLAVE_WORKER
+from conftest import CLAVE_ADMIN, CLAVE_WORKER, esperar_mantenimiento
 
 NO_OPERADOR = "Solo para operadores de la plataforma."
 
@@ -68,8 +68,11 @@ def _fijar_mes_en_curso(monkeypatch) -> str:
 
     from app.plataforma_metricas import periodo_actual
 
+    # El hilo del mantenimiento importa módulos mientras corre: se lo espera
+    # antes de recorrer ``sys.modules``, y se recorre una copia.
+    esperar_mantenimiento()
     fijo = periodo_actual()
-    for nombre, modulo in list(sys.modules.items()):
+    for nombre, modulo in sys.modules.copy().items():
         if nombre.startswith("app.") and getattr(modulo, "periodo_actual", None) is periodo_actual:
             monkeypatch.setattr(modulo, "periodo_actual", lambda: fijo)
     return fijo
@@ -374,6 +377,9 @@ def test_t04_operador_200(client, monkeypatch):
 @pytest.mark.parametrize("caso", ["sin_token", "sub_no_operador", "legado"])
 def test_t05_los_tres_fallos_no_escriben_bitacora_ni_snapshot(client, monkeypatch, admin, caso):
     """Ninguno de los tres 4xx de acceso deja rastro: ni bitácora, ni snapshot nuevo."""
+    # El cierre del mes del arranque escribe snapshots desde su hilo: si todavía
+    # corre, los escribe entre el «antes» y el «después» y parece que fue el 4xx.
+    esperar_mantenimiento()
     antes_bitacora = len(_bitacora_filas())
     antes_snapshots = len(_snapshots_filas())
 

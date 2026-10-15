@@ -23,7 +23,8 @@ import {
 } from "./muebles/frentes";
 import type { AccionDeRejillas, EleccionDeRejillas, FilaDePrueba, RejillasDeLaPrueba } from "./muebles/frentes";
 import type { FilasDeProducto } from "./muebles/medidas";
-import { ventaDeTipo } from "./muebles/venta";
+import { esNeveraDeBebidas, ventaDeTipo } from "./muebles/venta";
+import { contornosDeLasPartes, type ContornoDeParte } from "./muebles/contornos";
 import {
   arteALaVista, caraDeLasTomas, habladorALaVista, hayReunion, laminaDelMueble, MAXIMO_DE_SURTIDO, supplierPorNombre, surtidoALaVista,
   proveedorParaPresentar, pruebaAjenaDelMueble, pruebasDelPlano, pruebasDeLaReunion, REUNION_SIN_PROVEEDOR, reunionFijada, ultimaPrueba,
@@ -44,6 +45,7 @@ import {
   COLOR_DEL_MURO_DE_VENTA, geometriaDeCenefa, geometriaDeCieloRaso, geometriaDeMurosConDegradado, geometriaDeMurosDeVenta,
 } from "./muebles/sala";
 import { NeveraReal } from "./muebles/NeveraReal";
+import { PuestoImpulsoReal } from "./muebles/PuestoImpulsoReal";
 import { ProductoAGranel } from "./muebles/ProductoAGranel";
 import { BateaReal, bocaDeBatea } from "./muebles/BateaReal";
 import { MostradorFrioReal, bandejaDeMostrador } from "./muebles/MostradorFrioReal";
@@ -60,10 +62,26 @@ import {
   altoDeZonaDeSlots, altoDeZonaDeSlotsDePunta, altoUtilDeNevera,
   bandejasDeStand, cotasDeEstiba, cotasDeRobatope, filasDeNevera, filasDeProducto, filasDePunta,
   fondoPorCara, pisoDelCartelDePunta, techoDeCara, ventaDeNevera, ventaDeRobatope,
+  cotasDePuestoDeImpulso, geometriaDe, puertasDe, FORRO, type GeometriaDeMueble,
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
+import {
+  fichaDe, fixturesToStore, storeToFixtures as delStoreAl3D, type Catalogo3D, type PlacedFixture,
+} from "../../utils/convertirPlano";
 import { useModalAbierto } from "../../tema";
+import { FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO, paletaConPropias } from "../../catalogo/editor3D";
+import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
+// Cómo le dice este supermercado a cada familia: la paleta, el panel, el cartel
+// del mouse y la lámina del proveedor (`catalogo/nombresPropios.ts`).
+import { conNombrePropio } from "../../catalogo/nombresPropios";
+import { useFichasPropias } from "../../store/fichasPropias";
+import { GeometriaDelMueble } from "../GeometriaDelMueble";
+import { PartesDelMueble } from "../PartesDelMueble";
+import { textoDeLoQueNuncaSeAlquila } from "../../utils/partesDelMueble";
+import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
+import { claseDe, codigoDeParte, codigoVisibleDe, divisionDe } from "../../utils/partes";
+import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
   nombreDeMueble, renombrar, intercambiarNombres, choqueDeNombre,
@@ -154,6 +172,13 @@ export interface FacePaint {
    *  lámina sólo dibuja la otra cara. */
   pruebaA?: PruebaDeCara | null;
   pruebaB?: PruebaDeCara | null;
+  /** Vender por partes: las puertas de la cara A que se están vendiendo (los
+   *  vanos del dibujo). La nevera las marca y la prueba va sólo detrás. */
+  puertasA?: readonly number[];
+  /** Vender por partes, en el visor de Vender: el contorno de cada tramo o
+   *  entrepaño que se está vendiendo, en el frente de su cara
+   *  (`contornosDeLasPartes`). Fuera de la lámina, como el de los slots. */
+  contornos?: readonly ContornoDeParte[];
 }
 
 /** CÓMO se prueba un producto en una cara: en qué entrepaños y si va
@@ -501,70 +526,16 @@ interface ShelfSlot {
   status:          SpaceStatus;
 }
 
-interface FixtureDef {
-  type:         FixType;
-  gondolaType?: GondolaType;
-  label:        string;
-  w: number; d: number; h: number;
-  color:        string;
-  emoji:        string;
-  desc:         string;
-  code:         string;
-}
+// `PlacedFixture` —la forma con que la escena trabaja cada mueble— vive en
+// `utils/convertirPlano.ts`, junto con las conversiones desde y hacia el store.
+export type { PlacedFixture };
 
-export interface PlacedFixture {
-  id:              string;
-  code:            string;
-  type:            FixType;
-  gondolaType?:    GondolaType;
-  slots?:          ShelfSlot[];
-  x: number; z: number;
-  rotY:            number;
-  w: number; d: number; h: number;
-  label:           string;
-  color:           string;
-  supplierName:    string;
-  brandCategory:   string;
-  status:          SpaceStatus;
-  negotiatedValue: number;
-  startDate:       string;
-  endDate:         string;
-  observation:     string;
-  /** False marks infrastructure that is never rented out. Undefined = rentable. */
-  rentable?:       boolean;
-}
-
-// ─── Fixture catalogue ────────────────────────────────────────────────────────
-
-export const FIXTURE_DEFS: FixtureDef[] = [
-  // ── Góndolas ──────────────────────────────────────────────────────────────
-  { type:"gondola", gondolaType:"double", label:"Góndola Doble",    w:0.90, d:0.90, h:1.80, color:"#6366f1", emoji:"📚", desc:"Módulo de estante central, doble cara",   code:"GON" },
-  { type:"gondola", gondolaType:"wall",   label:"Góndola Mural",    w:1.00, d:0.40, h:1.90, color:"#818cf8", emoji:"🧱", desc:"Módulo de estante contra pared",           code:"GON" },
-  { type:"punta",                         label:"Punta Góndola",    w:0.90, d:0.40, h:1.80, color:"#7c3aed", emoji:"🏷️",  desc:"Cabecera de góndola con topper promocional", code:"PUN" },
-  // ── Displays ──────────────────────────────────────────────────────────────
-  { type:"ristra",                        label:"Ristra",           w:0.40, d:0.40, h:1.60, color:"#d97706", emoji:"🪝",  desc:"Colgante de productos",                   code:"RIS" },
-  { type:"cross",                         label:"Exhibidor Cruz",   w:0.80, d:0.80, h:1.80, color:"#0891b2", emoji:"➕", desc:"Display lateral cross-selling",            code:"CRS" },
-  // ── Muebles ───────────────────────────────────────────────────────────────
-  { type:"mueble",                        label:"Vitrina",          w:1.20, d:0.60, h:2.00, color:"#475569", emoji:"🗄️", desc:"Vitrina con puertas de vidrio",            code:"MUE" },
-  { type:"isla",                          label:"Exhib. de Piso",   w:1.20, d:0.80, h:1.40, color:"#f59e0b", emoji:"🏪", desc:"Exhibidor de piso con estantes y productos", code:"EXP" },
-  { type:"impulsador",                    label:"Impulsador Marca",  w:0.60, d:0.40, h:1.50, color:"#e11d48", emoji:"🏷️",  desc:"Display compacto de impulso de marca",         code:"IMP" },
-  { type:"batea",                         label:"Batea",            w:0.80, d:0.60, h:0.80, color:"#84cc16", emoji:"🧺", desc:"Canasto metálico con ruedas",              code:"BAT" },
-  // ── Refrigeración ─────────────────────────────────────────────────────────
-  { type:"isla_fria",        label:"Isla Helados/Cong.",  w:1.80, d:1.00, h:0.90, color:"#e5e7eb", emoji:"🍦", desc:"Isla abierta refrigerada con guarda de acrílico",code:"ISL" },
-  { type:"nevera_carnes",    label:"Nevera Carnes",       w:2.00, d:0.90, h:1.05, color:"#111827", emoji:"🥩", desc:"Mostrador con vidrio curvo para carnes y deli",  code:"CAR" },
-  { type:"nevera_refrescos", label:"Nevera Refrescos",    w:1.20, d:0.75, h:1.80, color:"#1e293b", emoji:"🥤", desc:"Vitrina multideck abierta para bebidas",         code:"BEB" },
-  { type:"nevera_vegetales", label:"Nevera Vegetales",    w:1.80, d:0.90, h:1.60, color:"#1e293b", emoji:"🥬", desc:"Mural refrigerado de frutas y verduras, con bandejas inclinadas", code:"VEG" },
-  // ── Servicio ──────────────────────────────────────────────────────────────
-  { type:"stand_frutas",                  label:"Stand Frutas/Verd",w:1.50, d:1.20, h:0.95, color:"#84cc16", emoji:"🍎", desc:"Cajón expositor de frutas y verduras", code:"FRU" },
-  { type:"checkout",                      label:"Checkout / Caja",  w:1.80, d:0.70, h:0.90, color:"#8b5cf6", emoji:"🛒", desc:"Caja registradora con cinta transportadora", code:"CAJ" },
-  { type:"servicio_cliente",              label:"Servicio al Cliente", w:1.60, d:0.70, h:1.10, color:"#0ea5e9", emoji:"💁", desc:"Mostrador de atención: devoluciones, reclamos e información", code:"SAC" },
-  // ── Infraestructura ───────────────────────────────────────────────────────
-  { type:"metro",                         label:"Zona Libre",       w:1.00, d:1.00, h:0.05, color:"#64748b", emoji:"⬜", desc:"Área de suelo demarcada",                  code:"MET" },
-  { type:"columna",                       label:"Columna",          w:0.30, d:0.30, h:3.00, color:"#94a3b8", emoji:"🏛️", desc:"Columna estructural",                      code:"COL" },
-  // ── Accesorios de góndola ─────────────────────────────────────────────────
-  // Robatope: w=0.30 (ancho del panel), d=0.40 (= profundidad de la Punta → encaja al ras)
-  { type:"robatope",                      label:"Robatope",         w:0.30, d:0.40, h:1.60, color:"#c0c0bc", emoji:"🛡️", desc:"Panel lateral de protección — flanquea la Punta de Góndola", code:"ROB" },
-];
+// `FixtureDef` y `FIXTURE_DEFS` —el catálogo con que nace cada mueble: medidas,
+// color, emoji y prefijo— y los conjuntos `TIPOS_CON_*` viven en
+// `catalogo/editor3D.ts`, calculados del catálogo de muebles
+// (`catalogo/muebles.json`). Se reexportan: `/taller` y el visor de Vender los
+// siguen tomando de acá.
+export { FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO };
 
 // Chip styling mirrors STATUS_COLORS: ocupado se lee rojo, igual que el mueble.
 const STATUS_META: Record<SpaceStatus, { bg: string; text: string; label: string }> = {
@@ -700,6 +671,15 @@ interface GondolaMeshProps {
   rubroEntero?:    string;
   /** El id del mueble: siembra la variación del relleno en venta. */
   semilla?:        string;
+  /** Lo que la góndola guardó de la ficha de su modelo: entrepaños por cara
+   *  y ancho de módulo. Ausentes, la cuenta de siempre. El dibujo, el
+   *  producto y la lámina preguntan con los mismos. */
+  entrepanos?:     number;
+  modulo?:         number;
+  /** Vender por partes: los tramos guardados (`partes.tramos`), que parten el
+   *  corrido en tramos iguales. El dibujo, el producto y la lámina preguntan
+   *  con los mismos (`ventaDeGondola`). */
+  tramos?:         number;
 }
 
 const GondolaMesh = memo(function GondolaMesh({
@@ -707,7 +687,7 @@ const GondolaMesh = memo(function GondolaMesh({
   gondolaType = "double",
   facePaint,
   slots, selectedSlotId, hoveredSlotId,
-  onSlotClick, onSlotHover, rubroEntero, semilla,
+  onSlotClick, onSlotHover, rubroEntero, semilla, entrepanos, modulo, tramos,
 }: GondolaMeshProps) {
   const isWall = gondolaType === "wall";
 
@@ -732,14 +712,17 @@ const GondolaMesh = memo(function GondolaMesh({
   // Las filas de producto salen de la misma cuenta que los entrepaños, no de
   // una copia. Ver `filasDeProducto`.
   const fondoCara = fondoPorCara(d, isWall);
-  const filas = useMemo(() => filasDeProducto(h, fondoCara), [h, fondoCara]);
+  const filas = useMemo(() => filasDeProducto(h, fondoCara, entrepanos), [h, fondoCara, entrepanos]);
 
   const pinta = !ghost && !!facePaint && !!(facePaint.front || facePaint.back);
   // El producto del proveedor en prueba, como envases 3D parados en los
   // entrepaños. Es otra cosa que la lámina: sale de `ventaDeGondola`, la misma
   // cuenta que el relleno, y donde está la prueba no va relleno.
   const enPrueba = !ghost && !!(facePaint?.pruebaA || facePaint?.pruebaB);
-  const ventaGondola = useMemo(() => ventaDeGondola(w, d, h, isWall), [w, d, h, isWall]);
+  const ventaGondola = useMemo(
+    () => ventaDeGondola(w, d, h, isWall, { entrepanos, modulo, tramos }),
+    [w, d, h, isWall, entrepanos, modulo, tramos],
+  );
   // Contratada entera con los slots libres (la góndola de Bimbo): en venta
   // se ve con el relleno neutro de su rubro, como cualquier cosa vendida.
   // Contratada entera: todas las filas, pero sólo las dos de adelante en
@@ -795,7 +778,8 @@ const GondolaMesh = memo(function GondolaMesh({
 
   return (
     <group>
-      <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} habladores={habladores ?? undefined} />
+      <GondolaReal w={w} d={d} h={h} gondolaType={isWall ? "wall" : "double"} ghost={ghost} habladores={habladores ?? undefined}
+        entrepanos={entrepanos} modulo={modulo} tramos={tramos} />
 
       {/* El producto de los espacios vendidos, parado sobre los entrepaños.
           Cuando el proveedor subió su arte manda el arte: la lámina es
@@ -804,6 +788,7 @@ const GondolaMesh = memo(function GondolaMesh({
       {!pinta && (
         <ProductoEnGondola
           w={w} d={d} h={h} esMural={isWall} slots={slots} ghost={ghost}
+          entrepanos={entrepanos} modulo={modulo} tramos={tramos}
           cubiertas={cubiertasDe(facePaint, isWall)}
           vendidoEntero={vendidoEntero}
           semilla={semilla}
@@ -873,9 +858,14 @@ interface PuntaMeshProps {
   /** Ver `GondolaMeshProps.rubroEntero`. */
   rubroEntero?:    string;
   semilla?:        string;
+  /** Lo que guardó la punta: entrepaños sin la base y ancho de módulo. Ver
+   *  `GondolaMeshProps.entrepanos`: el dibujo, el producto, los habladores y
+   *  la lámina preguntan con los mismos. */
+  entrepanos?:     number;
+  modulo?:         number;
 }
 
-function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover, rubroEntero, semilla }: PuntaMeshProps) {
+function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover, rubroEntero, semilla, entrepanos, modulo }: PuntaMeshProps) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // La punta es el espacio más caro de un supermercado: se ve de frente desde
   // todo el pasillo transversal y se negocia aparte del lineal. Estaba armada
@@ -898,13 +888,16 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 
   // Las filas de producto salen de la misma cuenta que los entrepaños.
   const filas = useMemo(
-    () => filasDePunta(altoDeCuerpo, fondoDeCara), [altoDeCuerpo, fondoDeCara],
+    () => filasDePunta(altoDeCuerpo, fondoDeCara, entrepanos), [altoDeCuerpo, fondoDeCara, entrepanos],
   );
 
   const pinta = !ghost && !!facePaint?.front;
   // El producto del proveedor en prueba, como envases 3D. Una sola cara.
   const enPrueba = !ghost && !!facePaint?.pruebaA;
-  const ventaPunta = useMemo(() => ventaDePunta(w, d, h), [w, d, h]);
+  const ventaPunta = useMemo(
+    () => ventaDePunta(w, d, h, { entrepanos, modulo }),
+    [w, d, h, entrepanos, modulo],
+  );
   // Contratada entera con los slots libres: relleno neutro en venta.
   // Contratada entera: todas las filas, pero sólo las dos de adelante en
   // profundidad, como lo vendido por slot (`VendidoEntero.hondo`).
@@ -924,7 +917,8 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
 
   return (
     <group>
-      <PuntaReal w={w} d={d} h={h} ghost={ghost} copete={copete} cenefa={cenefa} habladores={habladores} />
+      <PuntaReal w={w} d={d} h={h} ghost={ghost} copete={copete} cenefa={cenefa} habladores={habladores}
+        entrepanos={entrepanos} modulo={modulo} />
 
       {/* El arte del proveedor, parado en el filo de cada entrepaño. La punta
           se cuelga ATRÁS —contra el corrido— y crece hacia el frente: con el
@@ -944,6 +938,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
           arte manda el arte: las dos no conviven sobre la misma cara. */}
       {!pinta && (
         <ProductoEnPunta w={w} d={d} h={h} slots={slots} ghost={ghost}
+          entrepanos={entrepanos} modulo={modulo}
           cubiertas={cubiertasDe(facePaint, true)} vendidoEntero={vendidoEntero} semilla={semilla} />
       )}
       {enPrueba && <ProductoDePrueba venta={ventaPunta} pruebas={[facePaint?.pruebaA]} tipo="punta" />}
@@ -1562,7 +1557,7 @@ function MuebleMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:num
 // Stepped promotional floor display — cardboard base boxes + product rows per level,
 // narrowing like stairs as it goes up. Front price card at bottom.
 
-function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro, hastaElFondo = false }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string;hastaElFondo?:boolean }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // Un «exhibidor de piso» no es un mueble: es una ESTIBA plantada en el
   // pasillo con la mercancía apilada encima. Lo confirma el propio catálogo —
@@ -1600,7 +1595,12 @@ function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;
       {/* La mercancía, apilada en capas sobre la cubierta de la tarima. Una
           estiba de promoción viene cargada hasta el filo, así que se apila al
           ras y no centrada con aire alrededor. El relleno mudo se apaga cuando
-          entra el arte del proveedor. */}
+          entra el arte del proveedor.
+          La estiba colocada desde un modelo (`hastaElFondo`) se carga hasta el
+          fondo de la tarima: con las cinco filas de siempre, la completa de
+          1,20 × 1,00 dejaba más de media tarima vacía detrás de la torre, y
+          desde arriba —como más se mira el plano— se veía una estiba a medio
+          cargar. La de un plano de antes, sin modelo, sigue igual. */}
       {!pinta && (
         <ProductoEnRepisas
           alturas={c.capas}
@@ -1608,6 +1608,7 @@ function IslaMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;
           ancho={c.ancho} fondo={c.fondo}
           montaje={c.fondo / 2} hacia={-1}
           rubro={rubro} ghost={ghost}
+          hastaElFondo={hastaElFondo}
         />
       )}
     </group>
@@ -1675,15 +1676,21 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
       {/* Cantilevered shelves — much wider than spine, angled slightly up */}
       {Array.from({ length: nShelves }, (_, si) => {
         const sy  = baseH + si * shelfGap;
+        // El giro va SOBRE LA BANDEJA, con el grupo ya puesto en su altura
+        // (como en el mural de `NeveraReal`). Girando desde el origen del
+        // mueble, cada bandeja se corría hacia atrás el 3,5 % de su altura
+        // —4 cm la de 1,12 m del exhibidor de cartón— y el producto, que no
+        // gira, quedaba volando delante del filo con el porta-precios
+        // enterrado en la primera fila.
         return (
-          <group key={si} rotation={[0.035, 0, 0]}>    {/* slight upward tilt */}
+          <group key={si} position={[0, sy, 0]} rotation={[0.035, 0, 0]}>    {/* slight upward tilt */}
             {/* Shelf board */}
-            <mesh position={[0, sy, 0]} castShadow>
+            <mesh castShadow>
               <boxGeometry args={[w, 0.018, d]} />
               <meshStandardMaterial color={LIGHT} roughness={0.65} transparent opacity={op} />
             </mesh>
             {/* Front lip / price strip */}
-            <mesh position={[0, sy + 0.030, -(d/2 - 0.006)]}>
+            <mesh position={[0, 0.030, -(d/2 - 0.006)]}>
               <boxGeometry args={[w, 0.050, 0.008]} />
               <meshLambertMaterial color={WHITE} transparent opacity={op} />
             </mesh>
@@ -1695,13 +1702,19 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
       })}
 
       {/* Mushroom topper — wide flat panel cantilevered above spine */}
+      {/* El cartel ocupa los últimos `topperH` del alto y no se pasa: centrado
+          en `h - topperH·0,3` asomaba 5 cm por encima de la tapa, y ese alto
+          es el que mira el chequeo de choques. Arranca sobre la bandeja de
+          más arriba y termina bajo la tapa. */}
       {/* Back brace from spine up to topper */}
-      <mesh position={[0, h - topperH * 0.30, SPINE_D * 0.10]} castShadow>
-        <boxGeometry args={[w * 1.05, topperH, 0.018]} />
+      <mesh position={[0, h - topperH / 2 - 0.009, SPINE_D * 0.10]} castShadow>
+        <boxGeometry args={[w * 1.05, topperH - 0.018, 0.018]} />
         <meshStandardMaterial color={statusColor} roughness={0.60} transparent opacity={op} />
       </mesh>
-      {/* Topper front face (white brand label) */}
-      <mesh position={[0, h - topperH * 0.30, -(d/2 - 0.008) + 0.005]}>
+      {/* Topper front face (white brand label). Pegada a la cara del cartel:
+          en el filo del mueble (`-(d/2 - 0.008)`) quedaba flotando en el aire,
+          13 cm por delante de la espina y sin nada que la sostuviera. */}
+      <mesh position={[0, h - topperH / 2 - 0.009, SPINE_D * 0.10 - 0.009 - 0.005]}>
         <boxGeometry args={[w * 0.92, topperH * 0.72, 0.008]} />
         <meshStandardMaterial color="#ffffff" roughness={0.80} transparent opacity={0.88 * op} />
       </mesh>
@@ -1730,6 +1743,138 @@ function ImpulsadorMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:n
       )}
 
     </group>
+  );
+}
+
+// ─── Mesh: Exhibidor de cartón ────────────────────────────────────────────────
+
+/** El id del modelo «Exhibidor de cartón de la marca» (tipo `impulsador`).
+ *  Los ids de los modelos no cambian nunca (`scripts/casos/modelos-ids.json`). */
+const MODELO_EXHIBIDOR_DE_CARTON = "base:exhibidor-carton";
+
+/** Espesor de la plancha de cartón corrugado de los costados y el fondo. */
+const CARTON = 0.006;
+
+/**
+ * El exhibidor de cartón que manda la marca: una caja abierta al frente —dos
+ * costados, el fondo y el zócalo cerrado—, bandejas planas de borde a borde y
+ * el cabezote arriba.
+ *
+ * Hasta el 2026-10-14 se dibujaba con la forma del impulsador (`ImpulsadorMesh`):
+ * una columna al medio con bandejas en voladizo, sin costados ni fondo, que
+ * no se leía como cartón; y la columna atravesaba el producto de cada bandeja,
+ * que de frente se veía mordido al medio. Las bandejas, el cabezote y el arte
+ * salen de la MISMA cuenta que el impulsador (`getPanelShelfSpan`), así que el
+ * arte del proveedor y el relleno caen igual sobre cada bandeja; lo que cambia
+ * es el mueble alrededor. El cabezote ocupa los 24 cm de arriba del alto (R3
+ * dice unos 30): con más, cambiaría cuántas bandejas entran.
+ *
+ * Sólo se dibuja así el mueble colocado desde el modelo: un impulsador de un
+ * plano de antes sigue siendo el impulsador.
+ */
+function ExhibidorCartonMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;rubro?:string }) {
+  const op = ghost ? 0.42 : 1;
+  const CARA = "#f2ede3";      // cartón impreso de blanco, por fuera
+  const CANTO = "#d9c9a8";     // el corrugado que se ve en los cantos
+  const span = getPanelShelfSpan("impulsador", w, h, d);
+  const baseH = span.rowBottom - 0.009;
+  const topperH = h - span.panelH;
+  const bandejas = Array.from({ length: span.rows + 1 }, (_, i) => baseH + i * span.rowPitch);
+  const anchoUtil = Math.max(0.05, w - 2 * CARTON);
+  const fondoUtil = Math.max(0.05, d - CARTON);
+  const pinta = !ghost && !!facePaint?.front;
+
+  return (
+    <group>
+      {/* El arte del proveedor, rebanado por bandeja (la misma lámina que el
+          impulsador: el arte se arma con la misma cuenta). */}
+      {pinta && (
+        <LaminaDeProductoPorFila
+          ancho={span.panelW}
+          alto={span.panelH}
+          filas={{ rowBottom: span.rowBottom, rowPitch: span.rowPitch, rows: span.rows }}
+          fondos={Array.from({ length: span.rows }, () => d)}
+          montajeA={d / 2} haciaA={-1}
+          facePaint={facePaint}
+        />
+      )}
+
+      {/* Los dos costados, del piso al tope: el cabezote va encajado entre ellos. */}
+      {[-1, 1].map((lado) => (
+        <mesh key={lado} position={[lado * (w / 2 - CARTON / 2), h / 2, 0]} castShadow>
+          <boxGeometry args={[CARTON, h, d]} />
+          <meshStandardMaterial color={CARA} roughness={0.9} transparent opacity={op} />
+        </mesh>
+      ))}
+      {/* El fondo. */}
+      <mesh position={[0, h / 2, d / 2 - CARTON / 2]} castShadow>
+        <boxGeometry args={[anchoUtil, h, CARTON]} />
+        <meshStandardMaterial color={CARA} roughness={0.9} transparent opacity={op} />
+      </mesh>
+      {/* El zócalo: una caja cerrada hasta la primera bandeja, con la franja de
+          estado al frente (como el impulsador). */}
+      <mesh position={[0, baseH / 2, -CARTON / 2]} castShadow>
+        <boxGeometry args={[anchoUtil, baseH, fondoUtil]} />
+        <meshStandardMaterial color={CANTO} roughness={0.9} transparent opacity={op} />
+      </mesh>
+      <mesh position={[0, baseH * 0.5, -(d / 2 + 0.003)]}>
+        <boxGeometry args={[anchoUtil * 0.85, Math.min(0.03, baseH * 0.4), 0.005]} />
+        <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
+      </mesh>
+
+      {/* Las bandejas: planas y de costado a costado (el cartón no se inclina),
+          con el frente doblado hacia arriba como porta-precios. La de más
+          arriba es el techo de la última fila: sin frente. */}
+      {bandejas.map((y, i) => (
+        <group key={i} position={[0, y, -CARTON / 2]}>
+          <mesh position={[0, -0.006, 0]} castShadow>
+            <boxGeometry args={[anchoUtil, 0.012, fondoUtil]} />
+            <meshStandardMaterial color={CANTO} roughness={0.9} transparent opacity={op} />
+          </mesh>
+          {i < bandejas.length - 1 && (
+            <mesh position={[0, 0.025, -(fondoUtil / 2 - CARTON / 2)]}>
+              <boxGeometry args={[anchoUtil, 0.05, CARTON]} />
+              <meshStandardMaterial color={CARA} roughness={0.85} transparent opacity={op} />
+            </mesh>
+          )}
+        </group>
+      ))}
+
+      {/* El cabezote: el cartel de la marca, al frente y entre los costados.
+          Ocupa lo que el impulsador le deja a su cartel y termina en el alto. */}
+      <mesh position={[0, h - topperH / 2, -(d / 2 - CARTON)]} castShadow>
+        <boxGeometry args={[anchoUtil, topperH, CARTON * 2]} />
+        <meshStandardMaterial color={statusColor} roughness={0.7} transparent opacity={op} />
+      </mesh>
+      <mesh position={[0, h - topperH / 2, -(d / 2 + 0.0005)]}>
+        <boxGeometry args={[anchoUtil * 0.88, topperH * 0.7, 0.002]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.8} transparent opacity={0.9 * op} />
+      </mesh>
+
+      {/* El relleno por rubro, sobre las bandejas y entre los costados. */}
+      {!pinta && (
+        <ProductoEnRepisas
+          alturas={bandejas}
+          techo={h - topperH}
+          ancho={anchoUtil - 0.01} fondo={fondoUtil}
+          montaje={d / 2 - CARTON} hacia={-1}
+          rubro={rubro} ghost={ghost}
+        />
+      )}
+    </group>
+  );
+}
+
+// ─── Mesh: Puesto de impulso ──────────────────────────────────────────────────
+
+/** El mostrador de la promotora (`PuestoImpulsoReal`). El arte del proveedor
+ *  va impreso en el frente del cuerpo, que es el cartel grande de la marca
+ *  (`getPanelShelfSpan` lo compone en una sola fila). No lleva producto
+ *  inventado: lo que se ofrece en la tapa cambia cada día. */
+function PuestoImpulsoMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+  return (
+    <PuestoImpulsoReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost}
+      frente={!ghost ? facePaint?.front ?? null : null} />
   );
 }
 
@@ -1928,7 +2073,7 @@ function NeveraCarnesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }:
   );
 }
 
-function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null }) {
+function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint, puertas, tramos }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;puertas?:number;tramos?:number }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // Era una caja oscura con estantes y tiras de luz. Le faltaba lo que hace
   // que el ojo lea «mueble de frío»: en un multideck, la CORTINA DE AIRE —la
@@ -1938,8 +2083,12 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
   // pintada de oscuro.
   //
   // `nevera_refrescos` es de frente ABIERTO, como dice su ficha del catálogo
-  // («vitrina multideck abierta para bebidas»). La variante con puertas de
-  // vidrio existe en `NeveraReal` y la usa la vitrina.
+  // («vitrina multideck abierta para bebidas»). Con `puertas` es la NEVERA DE
+  // PUERTAS (`nevera_puertas`): el mismo cuerpo cerrado con puertas de vidrio
+  // (`NeveraReal variante="puertas"`), tantas como guardó de su ficha, y el
+  // producto en prueba parado detrás del vidrio de cada hoja. Se vende entera,
+  // como la abierta: las puertas sólo dicen cómo se ve.
+  const conPuertas = puertas !== undefined;
 
   const util = altoUtilDeNevera(h);
   const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);
@@ -1949,7 +2098,8 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
   // La nevera se vende entera: con el producto del proveedor en prueba, las
   // botellas mudas se apagan en todo el mueble.
   const enPrueba = !ghost && !!facePaint?.pruebaA;
-  const ventaNevera = useMemo(() => ventaDeNevera(w, d, h), [w, d, h]);
+  // Abierta y vendida por tramos: un vano por tramo, con su montante.
+  const ventaNevera = useMemo(() => ventaDeNevera(w, d, h, puertas, conPuertas ? undefined : tramos), [w, d, h, puertas, conPuertas, tramos]);
   // La marca en el cabezote, como el copete de la punta: la nevera se vende
   // entera, y el cartel de arriba en gris decía «maqueta» justo encima de
   // las botellas del proveedor. Mismo dibujo honesto (`pop.ts`): el color de
@@ -1958,7 +2108,9 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
   const pa = facePaint?.pruebaA;
   // Es un aviso LUMINOSO (retroiluminado) y, en una botella transparente,
   // recorta la franja de su etiqueta y no la del medio de la foto.
-  const cabezote = enPrueba && pa?.etiqueta && pa.donde === "todas" && pa.copete !== false
+  // Vendiendo puertas sueltas (`pa.vanos`), el cabezote es de la nevera
+  // entera: no lleva la marca de quien compra una puerta.
+  const cabezote = enPrueba && pa?.etiqueta && pa.donde === "todas" && pa.copete !== false && !pa.vanos
     ? materialDeCopete(pa.etiqueta, w - NEVERA.chapa * 2, NEVERA.copete * 0.62, entorno, {
       retroiluminado: true, franja: !!pa.empaque?.transparente,
     })
@@ -1971,7 +2123,10 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
         statusColor={statusColor}
         ghost={ghost}
         cabezote={cabezote}
-        variante="multideck"
+        variante={conPuertas ? "puertas" : "multideck"}
+        puertas={puertas}
+        tramos={conPuertas ? undefined : tramos}
+        resaltadas={conPuertas ? facePaint?.puertasA : undefined}
         // El relleno mudo se apaga cuando el proveedor subió su arte: lo que
         // se ve en el mueble tiene que ser SU producto, no uno inventado.
         conRelleno={!pinta && !enPrueba}
@@ -1980,7 +2135,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
         niveles={enPrueba && facePaint?.pruebaA?.filas
           ? facePaint.pruebaA.filas.alturas.slice(0, -1) : undefined}
       />
-      {enPrueba && <ProductoDePrueba venta={ventaNevera} pruebas={[facePaint?.pruebaA]} tipo="nevera_refrescos" />}
+      {enPrueba && <ProductoDePrueba venta={ventaNevera} pruebas={[facePaint?.pruebaA]} tipo={conPuertas ? "nevera_puertas" : "nevera_refrescos"} />}
 
       {pinta && (
         <LaminaDeProductoPorFila
@@ -2009,7 +2164,7 @@ function NeveraRefrescosMesh({ w, d, h, statusColor, ghost, facePaint }: { w:num
  * encima es fruta suelta, que rueda y hay que verla desde arriba; con estantes
  * planos el mueble se lee como una estantería con cosas apoyadas.
  */
-function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string }) {
+function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro, tramos }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;facePaint?:FacePaint|null;id?:string;rubro?:string;tramos?:number }) {
   return (
     <group>
       <NeveraReal
@@ -2018,6 +2173,8 @@ function NeveraVegetalesMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro
         ghost={ghost}
         variante="vegetales"
         conRelleno={false}
+        // Vendido por tramos: un montante entre tramo y tramo.
+        tramos={tramos}
       />
       {/* Cada bandeja se llena con el MISMO componente que la batea y el cajón
           de frutas: con el arte del proveedor si lo subió, y con producto
@@ -2074,7 +2231,7 @@ function StandFrutasMesh({ w, d, h, statusColor, ghost, facePaint, id, rubro }: 
   );
 }
 
-function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function CheckoutMesh({ w, d, h, statusColor, ghost, bahias }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;bahias?:number }) {
   // ── La geometría del mueble vive en `muebles/`, no acá ──────────────────
   // Era un cajón liso con una placa oscura de cinta y la PANTALLA FLOTANDO:
   // el poste medía `posH * 0.75` y la pantalla se colocaba a `posH`, así que
@@ -2082,12 +2239,15 @@ function CheckoutMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:num
   // que hace que una caja se lea como una caja: la cama hundida con su bocel,
   // la consola de la registradora de la que sale el poste, el sector de
   // empaque con su guarda y los estantes de impulso del lado del cliente.
-  return <CheckoutReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} />;
+  //
+  // Vender por partes: con las bahías de impulso del plano (`partes.bahias`),
+  // la mesa se parte en esos nichos, que son lo que se vende de la caja.
+  return <CheckoutReal w={w} d={d} h={h} statusColor={statusColor} ghost={ghost} bahias={bahias} />;
 }
 
 // ─── Mesh: Columna ────────────────────────────────────────────────────────────
 
-function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
+function ColumnaMesh({ w, d, h, statusColor, ghost, forro }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean;forro?:boolean }) {
   // En la pantalla de venta la columna es parte del LOCAL: va del piso al
   // cielo raso, con la luz de venta de los muebles y sin el remate de arriba.
   // Con la altura del plano (3 m, 20 cm por debajo del cielo raso), sin esa
@@ -2125,9 +2285,30 @@ function ColumnaMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:numb
         </mesh>
       )}
 
+      {/* Vender por partes: el forro de la columna (`partes.forro`), una
+          envoltura de las cuatro caras del zócalo a dos metros, que es lo que
+          se le vende a una marca. Sin el forro, la columna de siempre. */}
+      {forro && (() => {
+        const altoForro = Math.max(0.2, Math.min(FORRO.alto, plinthH + shaftH) - plinthH);
+        return (
+          <group>
+            <mesh position={[0, plinthH + altoForro / 2, 0]} castShadow>
+              <boxGeometry args={[w + FORRO.espesor * 2, altoForro, d + FORRO.espesor * 2]} />
+              <meshStandardMaterial color="#ece7dc" metalness={0.05} roughness={0.55} transparent opacity={op} {...venta} />
+            </mesh>
+            {/* El marco de arriba: el remate del panel, que es lo que dice que
+                es un forro y no la columna pintada. */}
+            <mesh position={[0, plinthH + altoForro - 0.012, 0]}>
+              <boxGeometry args={[w + FORRO.espesor * 2 + 0.01, 0.024, d + FORRO.espesor * 2 + 0.01]} />
+              <meshStandardMaterial color="#8d969c" metalness={0.45} roughness={0.45} transparent opacity={op} {...venta} />
+            </mesh>
+          </group>
+        );
+      })()}
+
       {/* Status indicator (subtle thin ring at base) */}
       <mesh position={[0, plinthH + 0.02, 0]}>
-        <boxGeometry args={[w + 0.004, 0.018, d + 0.004]} />
+        <boxGeometry args={[w + 0.004 + (forro ? FORRO.espesor * 2 + 0.01 : 0), 0.018, d + 0.004 + (forro ? FORRO.espesor * 2 + 0.01 : 0)]} />
         <meshLambertMaterial color={statusColor} transparent opacity={0.70 * op} />
       </mesh>
     </group>
@@ -2177,6 +2358,10 @@ function ServicioClienteMesh({ w, d, h, statusColor, ghost }: { w:number;d:numbe
  * de los defectos de forma sólo se ven poniendo el ojo a la altura del
  * producto. No lo usa nadie más: el editor lo llama desde acá adentro.
  */
+/** El contorno de la parte que se vende en el visor de Vender: el amarillo
+ *  del botón de Vender, el mismo del marco de la puerta vendida. */
+const COLOR_DE_LA_PARTE_VENDIDA = "#f2b705";
+
 export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
   const sc = neutro
     ? COLOR_NEUTRO
@@ -2185,12 +2370,18 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
       : NON_RENTABLE_COLOR;
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
   const rubroEntero = rubroDeContratoEntero(fixture, neutro);
-  switch (fixture.type) {
+  // Lo que el mueble guardó (de su ficha o del panel), por la misma puerta
+  // que usan la lámina, el producto y la cámara (`geometriaDe`).
+  const geometria = geometriaDe(fixture);
+  const cuerpo = (() => { switch (fixture.type) {
     case "gondola": return (
       <GondolaMesh {...base}
         rubroEntero={rubroEntero}
         semilla={fixture.id}
         gondolaType={fixture.gondolaType ?? "double"}
+        entrepanos={geometria.entrepanos}
+        modulo={geometria.modulo}
+        tramos={geometria.tramos}
         facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
@@ -2203,6 +2394,8 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
       <PuntaMesh {...base}
         rubroEntero={rubroEntero}
         semilla={fixture.id}
+        entrepanos={geometria.entrepanos}
+        modulo={geometria.modulo}
         facePaint={facePaint}
         slots={fixture.slots}
         selectedSlotId={selectedSlotId}
@@ -2216,19 +2409,40 @@ export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selecte
     case "cross":         return <CrossMesh          {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
     case "metro":         return <MetroMesh          {...base} />;
     case "mueble":        return <MuebleMesh         {...base} facePaint={facePaint} />;
-    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
-    case "impulsador":    return <ImpulsadorMesh     {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    // Una estiba o un exhibidor de cartón colocados desde un modelo tienen
+    // su propio dibujo; sin modelo —un plano de antes—, el de siempre.
+    case "isla":          return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} hastaElFondo={typeof fixture.modelo === "string"} />;
+    case "impulsador":    return fixture.modelo === MODELO_EXHIBIDOR_DE_CARTON
+      ? <ExhibidorCartonMesh {...base} facePaint={facePaint} rubro={fixture.brandCategory} />
+      : <ImpulsadorMesh     {...base} facePaint={facePaint} rubro={fixture.brandCategory} />;
+    case "puesto_impulso": return <PuestoImpulsoMesh {...base} facePaint={facePaint} />;
     case "batea":         return <BateaMesh          {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "isla_fria":        return <IslaFriaMesh         {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
     case "nevera_carnes":    return <NeveraCarnesMesh     {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
-    case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} />;
-    case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
+    case "nevera_refrescos": return <NeveraRefrescosMesh  {...base} facePaint={facePaint} tramos={geometria.tramos} />;
+    case "nevera_puertas":   return <NeveraRefrescosMesh  {...base} facePaint={facePaint} puertas={puertasDe(fixture.w, geometria.puertas)} />;
+    case "nevera_vegetales": return <NeveraVegetalesMesh   {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} tramos={geometria.tramos} />;
     case "stand_frutas":     return <StandFrutasMesh       {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;
-    case "checkout":      return <CheckoutMesh       {...base} />;
+    case "checkout":      return <CheckoutMesh       {...base} bahias={geometria.bahias} />;
     case "servicio_cliente": return <ServicioClienteMesh {...base} />;
-    case "columna":       return <ColumnaMesh        {...base} />;
+    case "columna":       return <ColumnaMesh        {...base} forro={geometria.forro} />;
     default:              return <IslaMesh           {...base} facePaint={facePaint} id={fixture.id} rubro={fixture.brandCategory} />;  // legacy exhibicion + unknown
-  }
+  } })();
+  // Vender por partes, en el visor de Vender: el contorno de cada tramo o
+  // entrepaño que se vende, sobre el frente de su cara. Fuera de la lámina
+  // (`CHROME`), como el contorno de los slots.
+  const contornos = !ghost ? facePaint?.contornos : undefined;
+  if (!contornos?.length) return cuerpo;
+  return (
+    <group>
+      {cuerpo}
+      {contornos.map((c, i) => (
+        <group key={i} position={[c.cx, c.cy, c.z]} userData={CHROME}>
+          <ContornoDeSlot w={Math.max(0.01, c.ancho)} h={Math.max(0.01, c.alto)} z={0} color={COLOR_DE_LA_PARTE_VENDIDA} />
+        </group>
+      ))}
+    </group>
+  );
 }
 
 // ─── Store room ───────────────────────────────────────────────────────────────
@@ -3401,7 +3615,8 @@ function useEtiquetas(ids: readonly number[], catalogo: readonly Arte[]): (Etiqu
 }
 
 export function PanelDePrueba({
-  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo, catalogo, paraElProveedor = false,
+  fix, cara, arte, como, onAjustar, isAdmin, onRecargarCatalogo, catalogo, paraElProveedor = false, vanos,
+  filas: filasDelContrato,
 }: {
   fix: PlacedFixture;
   cara: "A" | "B";
@@ -3420,10 +3635,27 @@ export function PanelDePrueba({
    *  entrepaño, sólo en «Por entrepaño» y en tinta. A la dueña se le avisa
    *  en la fila del contrato, antes de la reunión. */
   paraElProveedor?: boolean;
+  /** Vender por partes (el visor de Vender): las puertas o los tramos del
+   *  contrato, como vanos del dibujo de la cara, y sus entrepaños, como filas.
+   *  La cuenta es la de ESAS partes, con la misma regla que el dibujo
+   *  (`construirPrueba`). Contaba la cara entera: con la puerta 2 de 3
+   *  vendiéndose, «24 de frente · 1296 unidades» para ocho por entrepaño (el
+   *  recorrido en el navegador, 2026-10-14). Sin esto, la cara entera. */
+  vanos?: readonly number[];
+  filas?: readonly number[];
 }) {
+  const vanosDeLaParte = vanos && vanos.length ? vanos : undefined;
+  const filasDeLaParte = filasDelContrato && filasDelContrato.length ? filasDelContrato : null;
+  const dondeDelDibujo: "todas" | readonly number[] = filasDeLaParte
+    ? (como.donde !== "todas" && como.donde.some((i) => filasDeLaParte.includes(i))
+      ? como.donde.filter((i) => filasDeLaParte.includes(i)) : filasDeLaParte)
+    : como.donde;
+  const firmaDeLaParte = `${vanosDeLaParte?.join(",") ?? ""}|${filasDeLaParte?.join(",") ?? ""}`;
   const venta = useMemo(
-    () => (TIPOS_CON_PRUEBA_3D.has(fix.type) ? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType) : null),
-    [fix.type, fix.w, fix.d, fix.h, fix.gondolaType],
+    () => (TIPOS_CON_PRUEBA_3D.has(fix.type)
+      ? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fix.type, fix.w, fix.d, fix.h, fix.gondolaType, fix.entrepanos, fix.modulo, fix.partes?.puertas],
   );
   const modo = arte.ficha?.fondo_foto ?? "auto";
   // La misma etiqueta que usa el 3D (mismo caché): de ahí salen el aspecto y
@@ -3445,7 +3677,7 @@ export function PanelDePrueba({
   // En la nevera, las rejillas con que se prueba: la MISMA cuenta que dibuja
   // (`rejillasDeLaPrueba`, la usa también `construirPrueba`). Automáticas de
   // entrada: lo que hace el mercaderista cuando llega la de 2 L.
-  const esNevera = fix.type === "nevera_refrescos";
+  const esNevera = esNeveraDeBebidas(fix.type);
   const rejillas = useMemo(
     () => (venta && esNevera ? rejillasDeLaPrueba(venta, empaque, como.rejillas) : null),
     [venta, esNevera, empaque, como.rejillas],
@@ -3457,12 +3689,16 @@ export function PanelDePrueba({
   // Lo que entraría en cada entrepaño, elegido o no: es lo que ofrecen los
   // chips. Y lo que se dibuja, con lo elegido.
   const capacidad = useMemo(
-    () => (ventaUsada && empaque ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: "todas", semilla: "panel" }) : null),
-    [ventaUsada, empaque],
+    () => (ventaUsada && empaque
+      ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: "todas", semilla: "panel", vanos: vanosDeLaParte }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ventaUsada, empaque, firmaDeLaParte],
   );
   const acomodo = useMemo(
-    () => (ventaUsada && empaque ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: como.donde, semilla: "panel" }) : null),
-    [ventaUsada, empaque, como.donde],
+    () => (ventaUsada && empaque
+      ? unidadesDePrueba({ venta: ventaUsada, empaque, donde: dondeDelDibujo, semilla: "panel", vanos: vanosDeLaParte }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ventaUsada, empaque, como.donde, firmaDeLaParte],
   );
   // «Acostarla sólo en la N»: los entrepaños donde parada no entra, con la
   // MISMA cuenta que dibuja (`filasSinAlto`, la usa `construirPrueba`), y lo
@@ -3474,12 +3710,13 @@ export function PanelDePrueba({
     const sin = filasSinAlto(ventaUsada.filas, empaque.alto);
     if (sin.length === 0 || sin.length === ventaUsada.filas.rows) return null;
     const acostado = empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: true });
-    const r = unidadesDePrueba({ venta: ventaUsada, empaque: acostado, donde: sin, semilla: "panel" });
+    const r = unidadesDePrueba({ venta: ventaUsada, empaque: acostado, donde: sin, semilla: "panel", vanos: vanosDeLaParte });
     const enCadaUna = sin.map((i) => r.porFila[i]?.frentes ?? 0);
     // Si acostada tampoco entra en alguno, no se ofrece: quedaría vacío igual.
     if (enCadaUna.some((n) => n === 0)) return null;
     return { filas: sin, nombres: sin.map((i) => i + 1).join(" y "), frentes: r.frentesALaVista, enCadaUna };
-  }, [ventaUsada, empaque, etiqueta, arte, como.donde, como.surtido]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ventaUsada, empaque, etiqueta, arte, como.donde, como.surtido, firmaDeLaParte]);
   const acostadaActiva = !!como.acostarDondeNoEntra && !!acostadaSoloAhi;
   // Los entrepaños con un espacio vendido encima, por la misma regla que el
   // relleno por rubro (`entrepanosDelEspacio`). Se miran sobre las filas de
@@ -3521,7 +3758,8 @@ export function PanelDePrueba({
     const partes = productos.map((x, k) => {
       if (!x.empaque) return `${x.arte.nombre} …`;
       const r = unidadesDePrueba({
-        venta: ventaUsada, empaque: x.empaque, donde: como.donde, semilla: "panel", tramo: tramos[k], surtido: true,
+        venta: ventaUsada, empaque: x.empaque, donde: dondeDelDibujo, semilla: "panel", tramo: tramos[k], surtido: true,
+        vanos: vanosDeLaParte,
       });
       total += r.frentesALaVista;
       const fs = r.porFila.filter((f) => f.motivo === null).map((f) => f.frentes);
@@ -3531,7 +3769,7 @@ export function PanelDePrueba({
     });
     return { texto: `${partes.join(" · ")} por entrepaño · ${total} de frente` };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ventaUsada, empaque, idsSurtido, claveEtiquetasSurtido, como.donde, como.acostado, arte, catalogo]);
+  }, [ventaUsada, empaque, idsSurtido, claveEtiquetasSurtido, como.donde, como.acostado, arte, catalogo, firmaDeLaParte]);
   const disponiblesParaSurtido = conSurtido
     ? catalogo.filter((a) => a.supplier_id === arte.supplier_id && a.id !== arte.id && !idsSurtido.includes(a.id))
     : [];
@@ -3820,7 +4058,7 @@ export function PanelDePrueba({
           {empaque.anchoEstimado ? " · el ancho, estimado: la foto conserva su fondo (cargalo en Medidas)" : ""}
         </p>
       )}
-      {(fix.type === "punta" || fix.type === "nevera_refrescos") && empaque && (
+      {(fix.type === "punta" || esNeveraDeBebidas(fix.type)) && empaque && (
         <label className="flex items-center gap-1.5 text-[10.5px] text-dark-ink-2" data-copete-prueba>
           <input
             type="checkbox"
@@ -4434,32 +4672,10 @@ function FirstPersonControls({
 //   2. category pattern — square canvas texture, "stocked shelves" look
 //   3. none             — plain color material, exactly as today
 
-/**
- * Los muebles que pueden llevar el producto del proveedor.
- *
- * Antes eran DOS listas que se cruzaban —una de «tiene estantes» y otra de
- * «tiene cara pintable»— y bastaba faltar en cualquiera para quedar afuera. El
- * resultado: 8 de los 13 tipos que se venden no mostraban nada al cargarles el
- * arte, y justo los promocionales (isla, batea, impulsador, ristra). Una sola
- * lista, y lo que decide CÓMO se pinta es `getPanelShelfSpan`.
- *
- * Lo que no está acá es infraestructura: no se alquila, así que no lleva
- * producto de nadie.
- */
-export const TIPOS_CON_PRODUCTO = new Set<string>([
-  "gondola", "gondola_doble", "punta", "robatope", "mueble", "nevera_refrescos",
-  "isla", "batea", "impulsador", "ristra", "cross",
-  "stand_frutas", "nevera_carnes", "nevera_vegetales", "isla_fria", "exhibicion",
-]);
+// `TIPOS_CON_PRODUCTO`, `TIPOS_CON_PRUEBA_3D` y `TIPOS_CON_SURTIDO` —qué muebles
+// llevan producto, cuáles lo paran como envases 3D y dónde se ofrece el
+// surtido— viven en `catalogo/editor3D.ts` (ver arriba).
 
-/**
- * Los muebles donde el producto de PRUEBA se para como envases 3D
- * (`ProductoDePrueba`). Son los que venden por entrepaños y tienen su cuenta
- * en `ventaDeTipo`: ahí el producto se apoya en la altura exacta de cada
- * entrepaño. La vitrina, la ristra, los volcados, la cruz, el impulsador y la
- * isla siguen con la lámina, como antes: no tienen entrepaños donde pararlo.
- */
-export const TIPOS_CON_PRUEBA_3D = new Set<string>(["gondola", "punta", "nevera_refrescos", "robatope"]);
 /** El renglón «Producto» de la lámina: el principal y, con surtido, los
  *  demás del mismo proveedor que se ven, unidos por « · » (`surtidoALaVista`
  *  con la misma pantalla que las tomas). */
@@ -4471,12 +4687,6 @@ export function nombresDeLaPrueba(
     .filter(Boolean);
   return [arte.nombre, ...otros].join(" · ");
 }
-
-/** Dónde se ofrece el surtido (varios productos del proveedor en bloques).
- *  No en la nevera —las rejillas automáticas se acomodan a UN producto, y
- *  con alturas distintas los demás no entrarían— ni en el robatope, que
- *  tiene un solo vano de 30 cm. */
-export const TIPOS_CON_SURTIDO = new Set<string>(["gondola", "punta"]);
 
 /** Lowercase + strip accents so "Lácteos" matches "lacteo". */
 function normalizeText(s: string): string {
@@ -4730,7 +4940,7 @@ interface PanelShelfSpan {
  *  llena en vez de con cuatro paquetes gigantes. */
 const ANCHO_UNIDAD = 0.13;
 
-function getPanelShelfSpan(type: string, w: number, h: number, d: number): PanelShelfSpan {
+function getPanelShelfSpan(type: string, w: number, h: number, d: number, geometria?: GeometriaDeMueble): PanelShelfSpan {
   switch (type) {
     case "gondola":
     case "gondola_doble": {
@@ -4743,7 +4953,9 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       // El reparto de filas depende sólo del alto; el fondo entra únicamente
       // en el escalonado, que acá no se usa. Por eso da igual si es mural o
       // doble: las filas caen a la misma altura en las dos.
-      const { rowBottom, rowPitch, rows } = filasDeProducto(h, fondoPorCara(d, false));
+      // Con los entrepaños de su ficha, si los guardó: los mismos que dibuja
+      // `GondolaReal`, o el arte queda a caballo entre dos.
+      const { rowBottom, rowPitch, rows } = filasDeProducto(h, fondoPorCara(d, false), geometria?.entrepanos);
       return { panelW: w, panelH: h, rowBottom, rowPitch, rows };
     }
     case "punta": {
@@ -4755,9 +4967,11 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       // Una punta tiene tantas filas como entrepaños —y no una menos, como la
       // góndola— porque el techo de la fila de arriba es el COPETE: sobre el
       // entrepaño más alto de una punta también se vende.
+      // Con los entrepaños que guardó la punta, los mismos que dibuja
+      // `PuntaReal`: si no, el arte queda a caballo entre dos.
       const altoDeCuerpo = techoDeCara(h);
       const { rowBottom, rowPitch, rows } = filasDePunta(
-        altoDeCuerpo, Math.max(0.12, d - PANEL_FONDO.espesor),
+        altoDeCuerpo, Math.max(0.12, d - PANEL_FONDO.espesor), geometria?.entrepanos,
       );
       return { panelW: w, panelH: altoDeCuerpo, rowBottom, rowPitch, rows };
     }
@@ -4780,7 +4994,8 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       const pitch = (doorH - 0.12) / Math.max(n - 1, 1);
       return { panelW: w - 0.036, panelH: doorH - 0.036, rowBottom: 0.10 - 0.018 + 0.007, rowPitch: pitch, rows: Math.max(1, n - 1) };
     }
-    case "nevera_refrescos": {
+    case "nevera_refrescos":
+    case "nevera_puertas": {
       // Otra copia de la misma cuenta, como tenían la góndola y la punta.
       // Ahora la pide. Las alturas de `filasDeNevera` son absolutas —desde el
       // piso— y el panel pintado empieza arriba del zócalo, así que se
@@ -4805,6 +5020,12 @@ function getPanelShelfSpan(type: string, w: number, h: number, d: number): Panel
       const n     = Math.max(4, Math.round(h / 0.36));
       const pitch = (h - 0.12) / Math.max(n - 1, 1);
       return { panelW: w - 0.07, panelH: h, rowBottom: 0.10 + 0.013, rowPitch: pitch, rows: Math.max(1, n - 1) };
+    }
+    case "puesto_impulso": {
+      // PuestoImpulsoReal — el arte va impreso en el frente del mostrador, en
+      // una sola fila: es un cartel, no un estante.
+      const c = cotasDePuestoDeImpulso(w, d, h);
+      return { panelW: c.frente.ancho, panelH: c.frente.alto, rowBottom: 0, rowPitch: c.frente.alto, rows: 1 };
     }
     case "impulsador": {
       // ImpulsadorMesh — panel [w, h - topperH]; estantes en
@@ -4884,6 +5105,7 @@ function getPhotoFaceMaterial(
   faceH: number,
   faceD: number,
   notify: () => void,
+  geometria?: GeometriaDeMueble,
 ): THREE.MeshBasicMaterial | null {
   let entry = photoTexCache.get(fuente.clave);
   if (!entry) {
@@ -4923,7 +5145,7 @@ function getPhotoFaceMaterial(
   // repeatX bucketing did). Boards are 10-22 mm thick and occlude the row
   // boundary, so 5 mm of quantisation error is invisible.
   const q   = (v: number) => Math.round(v / 0.005) * 0.005;
-  const raw = getPanelShelfSpan(fixType, faceW, faceH, faceD);
+  const raw = getPanelShelfSpan(fixType, faceW, faceH, faceD, geometria);
   const span: PanelShelfSpan = {
     modo:      raw.modo,
     panelW:    Math.max(0.05, q(raw.panelW)),
@@ -5041,17 +5263,20 @@ function resolveFaceMaterial(
   faceD:    number,
   faceImages: Map<string, number> | null,
   notify:     () => void,
+  /** Lo que el mueble guardó de su ficha (`geometriaDe`): la góndola pinta
+   *  sus filas con los entrepaños de la ficha, los mismos que dibuja. */
+  geometria?: GeometriaDeMueble,
 ): THREE.Material | null {
   const aspect = faceW / Math.max(0.05, faceH);
   // El patrón de categoría dibuja estantes con paquetes: sobre la superficie de
   // un volcado o en una ristra sería un dibujo de góndola pegado donde no va.
   // Sin foto, esos muebles quedan pelados, que es lo honesto.
-  const soloFoto = getPanelShelfSpan(fixType, faceW, faceH, faceD).modo !== undefined
-    && getPanelShelfSpan(fixType, faceW, faceH, faceD).modo !== "estante";
+  const soloFoto = getPanelShelfSpan(fixType, faceW, faceH, faceD, geometria).modo !== undefined
+    && getPanelShelfSpan(fixType, faceW, faceH, faceD, geometria).modo !== "estante";
   if (arteId != null) {
     const arte = getPhotoFaceMaterial(
       { clave: `catalogo:${arteId}`, url: arteUrl(arteId) },
-      fixType, faceW, faceH, faceD, notify,
+      fixType, faceW, faceH, faceD, notify, geometria,
     );
     // Si todavía carga —o si alguien borró el arte del catálogo— se cae al
     // camino de siempre en vez de dejar el mueble pelado a mitad de una
@@ -5063,7 +5288,7 @@ function resolveFaceMaterial(
     if (fileId !== undefined) {
       const photo = getPhotoFaceMaterial(
         { clave: `archivo:${fileId}`, url: fileUrl(fileId) },
-        fixType, faceW, faceH, faceD, notify,
+        fixType, faceW, faceH, faceD, notify, geometria,
       );
       if (photo) return photo;
       // still loading or failed → fall through to the category pattern
@@ -5156,6 +5381,13 @@ interface SceneProps {
   comoSePrueba:      ReadonlyMap<string, ComoSePrueba>;
   /** El catálogo: de ahí salen la ficha y el modo de fondo de cada arte. */
   catalogo:          Arte[];
+  /** Vender por partes, en el visor de Vender: las puertas o los tramos que
+   *  se venden de cada cara (`${fixtureId}|A` → vanos del dibujo de la cara).
+   *  Se marcan y la prueba va sólo en ellos. Sin esto, las caras enteras. */
+  vanosALaVenta?:    ReadonlyMap<string, readonly number[]>;
+  /** Vender por partes: los entrepaños que se venden de cada cara, como
+   *  filas de producto (la base es la 0). La prueba va sólo en ellas. */
+  filasALaVenta?:    ReadonlyMap<string, readonly number[]>;
   /** La pantalla de venta: limpia y sin datos de otros proveedores. */
   presentationMode:  boolean;
   /** Para quién es lo que se dibuja (`muebles/privacidad.ts`): `undefined` en
@@ -5196,7 +5428,7 @@ export function Scene({
   onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
   onHoverFixture, fixtures, comoSePrueba, catalogo, presentationMode, pedidoDeToma, privadoPara,
-  estadoDeEscena, soloVenta = false,
+  estadoDeEscena, soloVenta = false, vanosALaVenta, filasALaVenta,
 }: SceneProps) {
   const { gl, camera, invalidate, size } = useThree();
   // Con un selector, y no el store entero: cada movimiento de la órbita
@@ -5284,8 +5516,8 @@ export function Scene({
       // Las automáticas existen recién con la foto: mientras carga, `filas`
       // queda sin definir y la toma re-encuadra cuando llegan (ver el efecto
       // de la toma).
-      const filas = fix.type === "nevera_refrescos"
-        ? rejillasDeLaPrueba(ventaDeNevera(fix.w, fix.d, fix.h), empaque, como?.rejillas).filas ?? undefined
+      const filas = esNeveraDeBebidas(fix.type)
+        ? rejillasDeLaPrueba(ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix))!, empaque, como?.rejillas).filas ?? undefined
         : undefined;
       // El surtido: más productos del MISMO proveedor, en bloques verticales
       // (sólo góndola y punta). Cada uno pasa por la misma privacidad que el
@@ -5297,7 +5529,7 @@ export function Scene({
       let surtido: PruebaDeCara["surtido"];
       let tramos: PruebaDeCara["tramos"];
       if (delSurtido.length > 0) {
-        const venta = ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType);
+        const venta = ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix));
         tramos = venta ? bloquesDeSurtido(venta.vanos, delSurtido.length + 1) : undefined;
         surtido = delSurtido.map((id) => {
           const otro = catalogo.find((a) => a.id === id)!;
@@ -5318,15 +5550,26 @@ export function Scene({
       let acostada: PruebaDeCara["acostada"] = null;
       if (como?.acostarDondeNoEntra && etiqueta && empaque && !empaque.acostado && empaque.envase === "revolucion"
         && (como.donde ?? "todas") === "todas" && !surtido) {
-        const vigentes = filas ?? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType)?.filas;
+        const vigentes = filas ?? ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix))?.filas;
         const sin = vigentes ? filasSinAlto(vigentes, empaque.alto) : [];
         if (vigentes && sin.length > 0 && sin.length < vigentes.rows) {
           acostada = { empaque: empaqueDeArte(arte, arte.ficha ?? null, etiqueta.recorte, { acostado: true }), filas: sin };
         }
       }
+      const vanos = vanosALaVenta?.get(`${fixId}|${cara}`);
+      // Vendiendo entrepaños sueltos, el producto va sólo en ESAS filas (las
+      // que eligió quien prueba, si alguna es de ellas; si no, todas las del
+      // contrato): las otras no se le venden a este proveedor.
+      const filasDeLaParte = filasALaVenta?.get(`${fixId}|${cara}`);
+      const elegidas = como?.donde && como.donde !== "todas" ? como.donde : null;
+      const donde: PruebaDeCara["donde"] = filasDeLaParte && filasDeLaParte.length
+        ? (elegidas && elegidas.some((i) => filasDeLaParte.includes(i))
+          ? elegidas.filter((i) => filasDeLaParte.includes(i)) : [...filasDeLaParte])
+        : como?.donde ?? "todas";
       return {
-        etiqueta, empaque, donde: como?.donde ?? "todas", semilla: `${fixId}|${cara}|${arteId}`, filas,
+        etiqueta, empaque, donde, semilla: `${fixId}|${cara}|${arteId}`, filas,
         copete: como?.copete ?? true, acostada,
+        ...(vanos && vanos.length ? { vanos } : {}),
         // El hablador: el nombre sin cifras y el precio SÓLO si está cargado
         // en la ficha; de un arte que esta pantalla no puede ver, ninguno.
         hablador: habladorALaVista(arte, catalogo, privadoPara),
@@ -5359,7 +5602,7 @@ export function Scene({
         faceImages && !faceImages.has(primary) && faceImages.has(fallback)
           ? fallback
           : primary;
-      const isDouble = isDoubleGondola(fix) || type === "gondola_doble";
+      const isDouble = isDoubleGondola(fix);
       const en3D = TIPOS_CON_PRUEBA_3D.has(type);
       // En una pantalla que mira un proveedor, sólo SUS pruebas: las de otros
       // proveedores de la misma sesión (la punta que se le ofreció a Alpina
@@ -5382,17 +5625,30 @@ export function Scene({
         arte: number | null, codigo: string, codigoSolo: string, categoria: string,
       ): THREE.Material | null => (privado
         ? (arte != null
-          ? resolveFaceMaterial(arte, null, type, "", fix.label, fix.w, fix.h, fix.d, faceImages, notifyTexLoaded)
+          ? resolveFaceMaterial(arte, null, type, "", fix.label, fix.w, fix.h, fix.d, faceImages, notifyTexLoaded, geometriaDe(fix))
           : null)
         : resolveFaceMaterial(
           arte, pickCode(codigo, codigoSolo), type, categoria, fix.label,
-          fix.w, fix.h, fix.d, faceImages, notifyTexLoaded,
+          fix.w, fix.h, fix.d, faceImages, notifyTexLoaded, geometriaDe(fix),
         ));
       const front = pruebaA ? null : caraPintada(arteA, fullCode, codeUC, fix.brandCategory);
       const back = isDouble && !pruebaB
         ? caraPintada(arteB, `${fullCode}-B`, `${codeUC}-B`, uf?.faceB?.brandCategory ?? "")
         : null;
-      if (front || back || pruebaA || pruebaB) map.set(fix.id, { front, back, pruebaA, pruebaB });
+      const puertasA = vanosALaVenta?.get(`${fix.id}|A`);
+      // El contorno de los tramos y entrepaños que se venden (la nevera de
+      // puertas ya marca el marco de sus hojas).
+      const contornos = type === "nevera_puertas" ? [] : (["A", "B"] as const).flatMap((c) => contornosDeLasPartes(
+        type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix), c,
+        vanosALaVenta?.get(`${fix.id}|${c}`), filasALaVenta?.get(`${fix.id}|${c}`),
+      ));
+      if (front || back || pruebaA || pruebaB || puertasA || contornos.length) {
+        map.set(fix.id, {
+          front, back, pruebaA, pruebaB,
+          ...(puertasA && puertasA.length ? { puertasA } : {}),
+          ...(contornos.length ? { contornos } : {}),
+        });
+      }
     }
     // Lo que está en prueba no se desaloja del caché de etiquetas.
     marcarEnUso(enUso);
@@ -5400,7 +5656,7 @@ export function Scene({
   // texVersion re-runs this memo when an async photo texture settles
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placedFixtures, unifiedById, faceImages, texVersion, notifyTexLoaded, sinArte, prueba,
-      catalogo, comoSePrueba, privadoPara]);
+      catalogo, comoSePrueba, privadoPara, vanosALaVenta, filasALaVenta]);
   // El foco de la pantalla de venta: los muebles con una prueba a la vista y
   // el de la toma. Los demás —los vecinos— se atenúan para no competir con lo
   // que se vende; sin ninguno (Presentar sin proveedor ni toma), nadie. En el
@@ -5513,7 +5769,7 @@ export function Scene({
    * campo visual: «De cerca» va con teleobjetivo (`FOV_DE_CERCA`).
    */
   const tomaDeVenta = useCallback((fix: PlacedFixture, cara: "A" | "B", toma: TomaDeVenta, holgura = 1) => {
-    const venta0 = ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType);
+    const venta0 = ventaDeTipo(fix.type, fix.w, fix.d, fix.h, fix.gondolaType, geometriaDe(fix));
     const paint = facePaintById.get(fix.id);
     const enCara = cara === "A" ? paint?.pruebaA : paint?.pruebaB;
     // Con las rejillas reacomodadas, la toma encuadra ESAS alturas.
@@ -5541,7 +5797,7 @@ export function Scene({
     // La punta: dónde empieza el cartel —el copete, o la cenefa que baja de
     // él hasta el último entrepaño—, para que «De cerca» no lo corte por la
     // mitad (`focoDeLaPrueba` mira entrepaños y no sabe del copete).
-    const pisoDelCartel = fix.type === "punta" ? pisoDelCartelDePunta(fix.h) : 0;
+    const pisoDelCartel = fix.type === "punta" ? pisoDelCartelDePunta(fix.h, geometriaDe(fix).entrepanos) : 0;
     const focoConCopete = {
       ...(fix.type === "punta" ? { ...foco, techoDeCara: pisoDelCartel, altoDeCopete: fix.h - pisoDelCartel } : foco),
       // Con el campo visual abierto, desde el fondo del pasillo.
@@ -5731,6 +5987,9 @@ export function Scene({
     status:"free", negotiatedValue:0,
     startDate:"", endDate:"", observation:"",
     ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
+    // El fantasma se ve como va a quedar: con las puertas, los entrepaños y
+    // el módulo de la ficha.
+    ...fichaDe(placingDef),
   } : null;
 
   return (
@@ -6037,105 +6296,21 @@ export function Scene({
 
 // ─── Store ↔ PlacedFixture adapters ──────────────────────────────────────────
 
+/** Lo que las conversiones de `utils/convertirPlano.ts` necesitan del catálogo
+ *  de este editor. */
+const CATALOGO_3D: Catalogo3D = { defs: FIXTURE_DEFS, slotsPorDefecto: defaultSlots };
+
 /**
  * Convert the unified store into the 3D internal array.
  * Filters out "exhibicion" fixtures (no 3D mesh representation).
+ *
+ * La conversión vive en `utils/convertirPlano.ts`; ésta le pone el catálogo
+ * del 3D. Se exporta porque el visor de Vender dibuja con ella. La vuelta,
+ * `fixturesToStore`, NO se exporta desde acá: arma el plano para escribirlo, y
+ * el visor no escribe.
  */
 export function storeToFixtures(unifiedList: UnifiedFixture[]): PlacedFixture[] {
-  return unifiedList
-    .filter((f) => f.type !== "exhibicion")
-    .map((f) => {
-      const type = f.type as FixType;
-      const def  = FIXTURE_DEFS.find(
-        (d) => d.type === type && (!f.gondolaType || d.gondolaType === f.gondolaType)
-      );
-      return {
-        id:              f.id,
-        code:            f.code,
-        type,
-        gondolaType:     f.gondolaType,
-        slots:           f.slots ?? defaultSlots({ type, w: f.w, h: f.h, code: f.code }),
-        x:               f.cx,
-        // Direct Z mapping — camera is on the north side (Z = STORE_D + 8),
-        // so small Z = far from camera = top of viewport, which already matches
-        // the 2D convention (small Y = top of canvas). No flip needed.
-        z:               f.cz,
-        rotY:            f.rotY,
-        w:               f.w,
-        d:               f.d,
-        h:               f.h,
-        label:           f.label || def?.label || type,
-        color:           f.color || def?.color || "#6366f1",
-        supplierName:    f.supplierName,
-        brandCategory:   f.brandCategory,
-        status:          f.status,
-        negotiatedValue: f.negotiatedValue,
-        startDate:       f.startDate,
-        endDate:         f.endDate,
-        observation:     f.observation,
-        rentable:        f.rentable,
-      };
-    });
-}
-
-/**
- * Convert the 3D internal array back to unified format.
- * Preserves "exhibicion" fixtures from the store (2D-only, invisible in 3D).
- */
-function fixturesToStore(
-  fixtures: PlacedFixture[],
-  sede: string,
-  existingStore: UnifiedFixture[],
-): UnifiedFixture[] {
-  // Keep 2D-only fixtures (exhibicion) so the 2D editor doesn't lose them
-  const exhibicion = existingStore.filter((f) => f.type === "exhibicion");
-
-  // PlacedFixture models only what the 3D scene needs. Any UnifiedFixture field
-  // the 3D editor does not know about (face B contracts, the old name kept for
-  // reconciliation) must be carried over from the store, otherwise simply
-  // opening this editor would blank it out for every fixture and push the loss
-  // to the server.
-  const existingMap = new Map(existingStore.map((f) => [f.id, f]));
-
-  const updated: UnifiedFixture[] = fixtures.map((f) => {
-    const existing = existingMap.get(f.id);
-    return {
-      id:              f.id,
-      code:            f.code,
-      type:            f.type,
-      gondolaType:     f.gondolaType,
-      label:           f.label,
-      cx:              f.x,
-      cz:              f.z, // direct mapping — no flip since camera moved to north side
-      rotY:            f.rotY,
-      w:               f.w,
-      d:               f.d,
-      h:               f.h,
-      color:           f.color,
-      status:          f.status,
-      sede,
-      supplierName:    f.supplierName,
-      brandCategory:   f.brandCategory,
-      negotiatedValue: f.negotiatedValue,
-      startDate:       f.startDate,
-      endDate:         f.endDate,
-      observation:     f.observation,
-      slots:           f.slots,
-      rentable:        f.rentable,
-      // ── Preserved from the store (not modelled in 3D) ──────────────────────
-      // El nombre VIEJO: nadie lo escribe ya, pero borrarlo dejaría sin fuente a
-      // la reconciliación de los contratos que se negociaron con ese nombre.
-      nomenclatura:    existing?.nomenclatura,
-      nombreAnterior:  existing?.nombreAnterior,
-      faceB:           existing?.faceB,
-      // Las vistas guardadas viven en el layout pero no las modela el 3D: sin
-      // esta línea, mover un mueble borraba todos los encuadres de la sede y
-      // le mandaba la pérdida al servidor.
-      vista3D:         existing?.vista3D,
-    };
-  });
-
-  return [...exhibicion, ...updated];
+  return delStoreAl3D(unifiedList, CATALOGO_3D);
 }
 
 // ─── El HUD de Presentar ──────────────────────────────────────────────────────
@@ -6246,6 +6421,15 @@ function CommercialPanel({
   onRotate, onFlip, onDelete, onClose, onSlotClose,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
+  // Vender por partes: el mapa CRUDO de la base (vender un tramo no cambia el
+  // mueble fusionado) para avisar si un espacio interno cae en un tramo o un
+  // entrepaño con contrato.
+  const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
+  const sedeDelPanel = useFixtureStore((s) => s.sede);
+  // El nombre del modelo de una ficha propia llega cuando se leen las fichas
+  // del supermercado: escucharlas vuelve a dibujar el panel.
+  useFichasPropias();
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const u  = useCallback((up: Partial<PlacedFixture>) => onUpdate(fix.id, up), [fix.id, onUpdate]);
   const us = useCallback((up: Partial<ShelfSlot>) => selectedSlot && onUpdateSlot(fix.id, selectedSlot.id, up), [fix.id, selectedSlot, onUpdateSlot]);
 
@@ -6263,6 +6447,7 @@ function CommercialPanel({
 
   const sm  = STATUS_META[fix.status];
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
+  const modeloDelMueble = modeloPorId(fix.modelo);
   // Infrastructure holds no contract: the commercial half of the panel hides.
   const rentable = isRentable(fix);
 
@@ -6330,6 +6515,20 @@ function CommercialPanel({
   }
 
   if (selectedSlot) {
+    // Vender por partes: un mueble que se vende por tramos o por entrepaños
+    // vende lo suyo con contrato, en Vender. Un espacio interno marcado
+    // vendido acá no tiene contrato, y la misma repisa se podría vender dos
+    // veces sin que el servidor lo vea: en ese mueble no se marca uno NUEVO
+    // como vendido (el que ya estaba marcado se puede liberar, y se avisa).
+    const divisionDelMueble = divisionDe(fix);
+    const porPartes = !!divisionDelMueble && (divisionDelMueble.clase === "tramos" || divisionDelMueble.clase === "entrepanos");
+    const claseDelMueble = divisionDelMueble ? claseDe(divisionDelMueble.clase) : undefined;
+    const pisaConContrato = porPartes
+      ? partesQuePisa(fix, selectedSlot, isDoubleGondola(fix) ? ["A", "B"] : ["A"])
+        .filter(({ cara, parte }) => estadoCrudo[fullSpaceCode(sedeDelPanel, codigoDeParte(fix.code, cara, parte))]?.status === "occupied")
+        .map(({ cara, parte }) => codigoVisibleDe("", cara, isDoubleGondola(fix), parte).replace(/^·/, ""))
+      : [];
+    const noSeMarcaVendido = porPartes && selectedSlot.status === "free";
     const slotSm   = STATUS_META[selectedSlot.status];
     const slotDays = computeDays(selectedSlot.startDate, selectedSlot.endDate);
     const slotStatusBorder = selectedSlot.status === "occupied" ? "border-l-4 border-danger" : selectedSlot.status === "reserved" ? "border-l-4 border-warning" : "border-l-4 border-accent";
@@ -6359,9 +6558,20 @@ function CommercialPanel({
             <select value={selectedSlot.status} onChange={e=>handleSlotStatusChange(e.target.value as SpaceStatus)}
               className={`w-full rounded border ${slotSelectBorder} bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:outline-none`}>
               <option value="free">Disponible</option>
-              <option value="occupied">Ocupado</option>
-              <option value="reserved">Reservado</option>
+              <option value="occupied" disabled={noSeMarcaVendido}>Ocupado</option>
+              <option value="reserved" disabled={noSeMarcaVendido}>Reservado</option>
             </select>
+            {porPartes && claseDelMueble && (
+              <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slot-por-partes>
+                Este mueble se vende por {claseDelMueble.plural}: lo que se vende de él va con contrato, en Vender.
+                {noSeMarcaVendido ? " Un espacio interno nuevo no se marca vendido acá." : " Éste ya estaba marcado: se puede liberar."}
+              </p>
+            )}
+            {pisaConContrato.length > 0 && (
+              <p className="mt-1 text-[10px] leading-snug text-warning" data-slot-pisa-parte>
+                Cae en {pisaConContrato.join(", ")}, que {pisaConContrato.length === 1 ? "tiene" : "tienen"} contrato.
+              </p>
+            )}
           </div>
 
           <div>
@@ -6369,7 +6579,9 @@ function CommercialPanel({
             <input type="text" value={selectedSlot.supplierName} placeholder="Nombre del proveedor"
               onChange={e => {
                 us({ supplierName: e.target.value });
-                if (e.target.value && selectedSlot.status==="free")
+                // Escribir un proveedor lo marcaba ocupado; en un mueble que
+                // se vende por partes, no (se vende en Vender).
+                if (e.target.value && selectedSlot.status==="free" && !noSeMarcaVendido)
                   us({ status:"occupied", supplierName: e.target.value });
               }} className={inputCls} />
           </div>
@@ -6441,8 +6653,17 @@ function CommercialPanel({
           {def.emoji}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-bold text-dark-ink-1">{fix.label}</p>
+          <p className="truncate text-xs font-bold text-dark-ink-1">{conNombrePropio(fix, nombresPropios, fix.label)}</p>
           <p className="font-mono text-[10px] text-dark-ink-3">{nombreDeMueble(fix)}</p>
+          {/* La ficha de la que nació, si nació de una: su nombre y, si sus
+              medidas son una deducción, «≈». Lo guardado en el mueble no se
+              relee de la ficha; esto es sólo el nombre. */}
+          {modeloDelMueble && (
+            <p className="truncate text-[10px] text-dark-ink-2" data-modelo={modeloDelMueble.id}
+              title={textoDeFuente(modeloDelMueble)}>
+              {nombreDeModelo(modeloDelMueble)}
+            </p>
+          )}
         </div>
         <button onClick={onClose} className="text-dark-ink-3 hover:text-dark-ink-1"><X size={14}/></button>
       </div>
@@ -6494,7 +6715,7 @@ function CommercialPanel({
           {rechazo ? (
             <>
               <p className="mt-1 text-[11px] leading-snug text-danger">
-                No se guardó: {textoDelChoque(nombreBorrador, rechazo)} Sigue
+                No se guardó: {textoDelChoque(nombreBorrador, rechazo, (m) => conNombrePropio(m, nombresPropios, ""))} Sigue
                 llamándose «{fix.code}».
               </p>
               {rechazo.razon === "ocupado" && (
@@ -6513,7 +6734,7 @@ function CommercialPanel({
             </>
           ) : choqueEscrito ? (
             <p className="mt-1 text-[11px] leading-snug text-danger">
-              {textoDelChoque(nombreBorrador, choqueEscrito)}
+              {textoDelChoque(nombreBorrador, choqueEscrito, (m) => conNombrePropio(m, nombresPropios, ""))}
             </p>
           ) : (
             <p className="mt-1 text-[11px] leading-snug text-dark-ink-3">
@@ -6570,7 +6791,7 @@ function CommercialPanel({
           )}
           <p className="mt-1.5 text-[9.5px] leading-relaxed text-dark-ink-3">
             {NUNCA_ALQUILABLE.has(fix.type)
-              ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+              ? textoDeLoQueNuncaSeAlquila(fix.type)
               : rentable
               ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
               : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
@@ -6690,8 +6911,24 @@ function CommercialPanel({
         </div>
         </>)}
 
+        {/* Alto, entrepaños y módulo (góndola y punta). El mismo componente
+            que el plano 2D: escribe en el store después de revisar lo vendido
+            —con espacios internos vendidos no cambia la cantidad de
+            entrepaños; con una cara vendida, pregunta diciendo qué se mueve—.
+            Ver `components/GeometriaDelMueble.tsx`. */}
+        <GeometriaDelMueble id={fix.id} puedeEditar={isAdmin} />
+        {/* Cómo se vende: la nevera entera o por puertas, el mural por
+            tramos, la góndola por entrepaños, las bahías de la caja y el
+            forro de la columna. El mismo componente que el plano 2D, fuera de
+            lo comercial del panel (la caja no es comercializable). */}
+        <PartesDelMueble id={fix.id} puedeEditar={isAdmin} />
+
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-2 font-mono text-[10px] text-dark-ink-3">
-          <p>{fix.w.toFixed(1)} × {fix.d.toFixed(1)} × {fix.h.toFixed(1)} m</p>
+          {/* Las medidas al milímetro, como la paleta y el panel del plano: con
+              `toFixed(1)` la nevera de 144,5 × 74 cm de la ficha decía «1.4 ×
+              0.7», y quien acababa de escribirla en el taller veía otra. El
+              `+` quita los ceros de más y el ruido de coma flotante. */}
+          <p>{+fix.w.toFixed(3)} × {+fix.d.toFixed(3)} × {+fix.h.toFixed(3)} m</p>
           <p>pos ({fix.x.toFixed(1)}, {fix.z.toFixed(1)}) · {Math.round(((fix.rotY*180/Math.PI)%360+360)%360)}°</p>
           {fix.gondolaType && <p className="font-mono uppercase">{fix.gondolaType}</p>}
         </div>
@@ -6770,6 +7007,14 @@ export default function StoreEditor3D() {
   const [selectedSlotId, setSelectedSlotId] = useState<string|null>(null);
   const [hoveredSlotId, setHoveredSlotId]   = useState<string|null>(null);
   const [placingDef, setPlacingDef]         = useState<FixtureDef|null>(null);
+  // La paleta: los modelos de RECABRA y, después, las fichas propias del
+  // supermercado que no están retiradas. Una vez por cambio de las fichas: la
+  // entrada elegida se compara por identidad.
+  const fichasPropias = useFichasPropias();
+  const paleta = useMemo(() => paletaConPropias(fichasPropias), [fichasPropias]);
+  // El nombre propio de cada familia: la paleta lo dice en vez del de RECABRA,
+  // y también el cartel del mouse, el aviso de «Colocando» y la lámina.
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const [ghostX, setGhostX]                 = useState(STORE_W/2);
   const [ghostZ, setGhostZ]                 = useState(STORE_D/2);
   const [ghostRotY, setGhostRotY]           = useState(0);
@@ -7215,6 +7460,12 @@ export default function StoreEditor3D() {
         // Columns, checkouts and free zones are part of the store, not stock to
         // sell. Everything else stays rentable (flag left absent).
         ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
+        // Desde un modelo de la paleta (`paleta`, del catálogo o una ficha
+        // propia del supermercado, `cli:…`): su id y su geometría
+        // quedan ESTAMPADOS en el mueble (las medidas y el color ya vienen en
+        // `placingDef`). El modelo base no trae nada: el mueble nace como
+        // siempre.
+        ...fichaDe(placingDef),
       };
       newFix.slots = defaultSlots({ type:newFix.type, w:newFix.w, h:newFix.h, code:newCode });
       u(prev=>[...prev,newFix]);
@@ -7526,7 +7777,7 @@ export default function StoreEditor3D() {
       const datos = {
         sede,
         espacio: fullSpaceCode(uf.sede || sede, uf.code),
-        mueble: uf.label || uf.code,
+        mueble: conNombrePropio(uf, nombresPropios, uf.label || uf.code),
         proveedor: arte ? arte.proveedor : contratoALaVista ? (uf.supplierName ?? "") : "",
         // Con surtido, los productos de la cara unidos por « · » (los del
         // mismo proveedor que se ven en las tomas); sin período ni valor.
@@ -7573,7 +7824,7 @@ export default function StoreEditor3D() {
       setExportando(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba, fijada, pedidoDeToma, proveedorDeReunion]);
+  }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba, fijada, pedidoDeToma, proveedorDeReunion, nombresPropios]);
   const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -7605,23 +7856,60 @@ export default function StoreEditor3D() {
 
         <div>
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Fixtures</p>
-          <div className="flex flex-col gap-1.5">
-            {FIXTURE_DEFS.map((def,idx) => {
-              const active=placingDef?.type===def.type&&placingDef?.gondolaType===def.gondolaType&&(def.type!=="gondola"||placingDef?.label===def.label);
+          {/* Por familia: el modelo base —se coloca como siempre— y, plegados
+              debajo, los modelos de muebles de verdad del catálogo y después
+              las fichas propias del supermercado (las vigentes), con las
+              medidas de su ficha. «≈»: medidas deducidas, no de una ficha. */}
+          <div className="flex flex-col gap-1.5" data-paleta-3d>
+            {paleta.map((familia) => {
+              const def = familia.base;
+              const active = placingDef === def;
+              const activoAdentro = familia.modelos.some((m) => m === placingDef);
               return (
-                <button key={idx}
-                  onClick={()=>{ setPlacingDef(active?null:def); setSelectedId(null); setSelectedSlotId(null); if(!active) setGhostRotY(0); }}
-                  className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-all duration-150 ${
-                    active
-                      ? "ring-2 ring-accent ring-offset-1 ring-offset-dark-surface bg-accent/20 border-accent text-accent-200"
-                      : "border-dark-line-2 bg-dark-surface-2 text-dark-ink-2 hover:bg-dark-line hover:border-dark-line-2"}`}>
-                  <span className="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-dark-line/50 flex-shrink-0">{def.emoji}</span>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-dark-ink-1">{def.label}</p>
-                    <p className="text-[10px] text-dark-ink-3">{def.w}×{def.d}×{def.h} m</p>
-                  </div>
-                  {active&&<span className="ml-auto h-2.5 w-2.5 flex-shrink-0 animate-pulse rounded-full bg-accent"/>}
-                </button>
+                <div key={familia.entrada} className="flex flex-col gap-1">
+                  <button data-modelo={familia.idBase}
+                    onClick={()=>{ setPlacingDef(active?null:def); setSelectedId(null); setSelectedSlotId(null); if(!active) setGhostRotY(0); }}
+                    className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-all duration-150 ${
+                      active
+                        ? "ring-2 ring-accent ring-offset-1 ring-offset-dark-surface bg-accent/20 border-accent text-accent-200"
+                        : "border-dark-line-2 bg-dark-surface-2 text-dark-ink-2 hover:bg-dark-line hover:border-dark-line-2"}`}>
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-dark-line/50 flex-shrink-0">{def.emoji}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-dark-ink-1">{conNombrePropio(def, nombresPropios, def.label)}</p>
+                      <p className="text-[10px] text-dark-ink-3">{def.w}×{def.d}×{def.h} m</p>
+                    </div>
+                    {active&&<span className="ml-auto h-2.5 w-2.5 flex-shrink-0 animate-pulse rounded-full bg-accent"/>}
+                  </button>
+                  {familia.modelos.length > 0 && (
+                    <details className="ml-3" open={activoAdentro || undefined}>
+                      <summary className="cursor-pointer select-none text-[10px] text-dark-ink-3 hover:text-dark-ink-1">
+                        {familia.modelos.length} {familia.modelos.length === 1 ? "modelo" : "modelos"}
+                      </summary>
+                      <div className="mt-1 flex flex-col gap-1">
+                        {familia.modelos.map((m) => {
+                          const activo = placingDef === m;
+                          return (
+                            <button key={m.modelo} data-modelo={m.modelo} title={m.desc}
+                              onClick={()=>{ setPlacingDef(activo?null:m); setSelectedId(null); setSelectedSlotId(null); if(!activo) setGhostRotY(0); }}
+                              className={`rounded-md border px-2 py-1 text-left transition-all duration-150 ${
+                                activo
+                                  ? "ring-2 ring-accent ring-offset-1 ring-offset-dark-surface bg-accent/20 border-accent text-accent-200"
+                                  : "border-dark-line-2 bg-dark-surface-2 text-dark-ink-2 hover:bg-dark-line"}`}>
+                              <p className="truncate text-[11px] font-medium text-dark-ink-1">
+                                {m.estimado ? "≈ " : ""}{m.nombreModelo}
+                              </p>
+                              {/* Cómo se vende lo que se coloca desde este modelo
+                                  («por puertas»): lo dice su ficha y se estampa. */}
+                              <p className="text-[10px] text-dark-ink-3" data-como-se-vende={m.comoSeVende}>
+                                {m.w}×{m.d}×{m.h} m{m.comoSeVende ? ` · ${m.comoSeVende}` : ""}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -7692,7 +7980,9 @@ export default function StoreEditor3D() {
             ) : placingDef ? (
               <span className="flex items-center gap-2 text-accent-200">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent flex-shrink-0"/>
-                Colocando <strong className="text-dark-ink-1">{placingDef.label}</strong>
+                Colocando <strong className="text-dark-ink-1">
+                  {placingDef.nombreModelo ? `${placingDef.estimado ? "≈ " : ""}${placingDef.nombreModelo}` : conNombrePropio(placingDef, nombresPropios, placingDef.label)}
+                </strong>
                 <span className="text-accent/40">·</span>
                 <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">clic</kbd> ubicar ·
                 <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">R</kbd> rotar ·
@@ -7885,7 +8175,7 @@ export default function StoreEditor3D() {
               style={{ left: tooltipPos.x + 12, top: tooltipPos.y - 8, transform: 'translateY(-100%)' }}
             >
               <p className="font-mono font-bold text-accent-200">{nombreDeMueble(fix)}</p>
-              <p className="text-dark-ink-1">{fix.label}</p>
+              <p className="text-dark-ink-1">{conNombrePropio(fix, nombresPropios, fix.label)}</p>
               {!discreto && fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
               {!discreto && fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}
               <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${sm.bg} ${sm.text}`}>

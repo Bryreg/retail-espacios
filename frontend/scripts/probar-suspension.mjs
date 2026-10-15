@@ -31,9 +31,23 @@
  *  5. **Las dos pantallas del corte siguen colgando del store**: `BloqueoCuenta`
  *     de `suspendido` y el banner de lo demás. Si alguien las desconecta, el
  *     interceptor escribe en el vacío.
+ *
+ * Y desde C2 (cobranza, 2026-10-13), la vuelta y la plata:
+ *
+ *  6. **La pantalla se entera de que la cuenta volvió a estar al día** sin que
+ *     nadie vuelva a entrar: `BloqueoCuenta` y la franja consultan
+ *     `GET /auth/estado-cuenta` cada pocos minutos y con «Reintentar», y lo
+ *     escriben en el store con `actualizarAvisoCuenta`, que también LIMPIA.
+ *  7. **Lo que la pantalla pide estando cortada, el backend lo deja pasar**:
+ *     los caminos de `api/suscripcion.ts` son los de
+ *     `_EXENTOS_PARA_PONERSE_AL_DIA` en `clientes.py`, leídos de los dos lados.
+ *  8. **La franja y la pantalla de bloqueo nunca muestran un monto** (se ven
+ *     en Vender, delante de proveedores). La plata vive en `MiSuscripcion`, que
+ *     sólo la pide la dueña: en Configuración, con el filtro de la copia de
+ *     seguridad, o en `BloqueoCuenta` TRAS UN CLIC en «Ver suscripción».
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -54,6 +68,10 @@ const clientTs = leer(join("frontend", "src", "api", "client.ts"));
 const storeTs = leer(join("frontend", "src", "store", "authStore.ts"));
 const appTsx = leer(join("frontend", "src", "App.tsx"));
 const banner = leer(join("frontend", "src", "components", "AvisoCuentaBanner.tsx"));
+const bloqueo = leer(join("frontend", "src", "components", "BloqueoCuenta.tsx"));
+const apiSuscripcion = leer(join("frontend", "src", "api", "suscripcion.ts"));
+const vivo = leer(join("frontend", "src", "components", "suscripcion", "useEstadoCuenta.ts"));
+const dashboard = leer(join("frontend", "src", "pages", "Dashboard.tsx"));
 
 /* El nombre de la cabecera, tal como lo declara el backend. Es la única fuente:
    todo lo demás en este archivo se compara contra esto. */
@@ -173,6 +191,170 @@ prueba("el banner sigue leyendo el store, y no tapa nada en `suspendido`", () =>
     /aviso\.estado === "suspendido"/.test(banner),
     "el banner tiene que dejarle `suspendido` a BloqueoCuenta",
   );
+});
+
+// ─── C2: la vuelta a «al día» y la plata ────────────────────────────────────
+
+/** El código sin comentarios: los docstrings hablan de montos y de «Ver
+ *  suscripción» a propósito, y no son pantalla. */
+const sinComentarios = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+prueba("los caminos que la pantalla pide estando cortada son los que el backend exime", () => {
+  const m = clientesPy.match(/^_EXENTOS_PARA_PONERSE_AL_DIA = \(([\s\S]*?)\)/m);
+  assert.ok(m, "clientes.py no declara _EXENTOS_PARA_PONERSE_AL_DIA");
+  const exentos = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).sort();
+  const pedidos = [...apiSuscripcion.matchAll(/client\.(?:get|put|post)<[^>]*>\("([^"]+)"/g)]
+    .map((x) => "/api" + x[1]);
+  assert.ok(pedidos.length >= 3, "api/suscripcion.ts dejó de pedir estado-cuenta y mi-suscripcion");
+  for (const ruta of pedidos) {
+    assert.ok(
+      exentos.some((e) => ruta === e || ruta.startsWith(e + "/")),
+      `${ruta} lo pide la pantalla pero el backend no lo exime del corte: en sólo lectura o ` +
+        "suspendida contestaría 402 justo cuando hace falta",
+    );
+  }
+  for (const e of exentos) {
+    assert.ok(pedidos.some((r) => r === e || r.startsWith(e + "/")), `${e} está exento y nadie lo pide`);
+  }
+});
+
+prueba("`actualizarAvisoCuenta` limpia el aviso, y sin sesión no escribe nada", () => {
+  const m = storeTs.match(/actualizarAvisoCuenta: \(aviso\) =>([\s\S]*?)\n {6}logout/);
+  assert.ok(m, "authStore.ts no implementa actualizarAvisoCuenta");
+  assert.ok(/if \(!s\.token\) return s;/.test(m[1]), "sin sesión tiene que no hacer nada");
+  assert.ok(/aviso === null[\s\S]*avisoCuenta: null/.test(m[1]), "con la cuenta al día tiene que LIMPIAR el aviso");
+});
+
+prueba("un 402 no pisa el motivo de verdad con el genérico «en caliente»", () => {
+  // La sincronización consulta cada 20 s: en suspendido, cada 402 volvía a
+  // escribir el texto genérico encima del motivo que dijo el servidor.
+  const m = storeTs.match(/marcarEstadoCuenta: \(estado, motivo\) =>[\s\S]*?\n {6}descartarConsentimiento/);
+  assert.ok(/!s\.token \|\| s\.avisoCuenta\?\.estado === estado\s*\n\s*\? s/.test(m[0]),
+    "marcarEstadoCuenta tiene que dejar el aviso como está si el estado es el mismo");
+});
+
+prueba("la consulta en vivo: al montarse, cada pocos minutos, y escribe en el store", () => {
+  assert.ok(/getEstadoCuenta\(\)/.test(vivo), "useEstadoCuenta no consulta GET /auth/estado-cuenta");
+  assert.ok(/setInterval\(/.test(vivo) && /clearInterval\(/.test(vivo), "la consulta no se repite (o no se limpia)");
+  assert.ok(/actualizarAvisoCuenta\(r\.estado === "activo" \? null/.test(vivo),
+    "«activo» tiene que limpiar el aviso: si no, la pantalla de bloqueo no se levanta nunca");
+  const ms = Number((vivo.match(/CONSULTA_ESTADO_MS = ([\d_]+) \* 60_000/) || [])[1]);
+  assert.ok(ms >= 1 && ms <= 10, "cada «pocos minutos»: entre 1 y 10");
+});
+
+prueba("BloqueoCuenta y la franja consultan solas y tienen «Reintentar»", () => {
+  for (const [nombre, src] of [["BloqueoCuenta", bloqueo], ["AvisoCuentaBanner", banner]]) {
+    const codigo = sinComentarios(src);
+    assert.ok(/useEstadoCuentaVivo\(\)/.test(codigo), `${nombre} no consulta el estado en vivo`);
+    assert.ok(/"Reintentar"/.test(codigo) && /onClick=\{\(\) => void revisar\(\)\}/.test(codigo),
+      `${nombre} no tiene «Reintentar»`);
+  }
+});
+
+prueba("la franja y la pantalla de bloqueo no muestran un monto", () => {
+  for (const [nombre, src] of [["BloqueoCuenta", bloqueo], ["AvisoCuentaBanner", banner]]) {
+    const codigo = sinComentarios(src);
+    for (const prohibido of [/_cop\b/, /\bpesos\(/, /\bplata\(/, /getMiSuscripcion/, /toLocaleString/]) {
+      assert.ok(!prohibido.test(codigo), `${nombre} nombra ${prohibido}: la plata va tras un clic`);
+    }
+  }
+  assert.ok(!/MiSuscripcion/.test(sinComentarios(banner)), "la franja no puede montar la vista con montos");
+});
+
+prueba("en BloqueoCuenta la plata está detrás de un clic, y sólo para la dueña", () => {
+  const codigo = sinComentarios(bloqueo);
+  assert.ok(/const \[verSuscripcion, setVerSuscripcion\] = useState\(false\)/.test(codigo),
+    "«Ver suscripción» tiene que arrancar cerrado");
+  const aperturas = [...codigo.matchAll(/setVerSuscripcion\(true\)/g)];
+  assert.equal(aperturas.length, 1, "sólo un camino abre la suscripción");
+  assert.ok(/onClick=\{\(\) => setVerSuscripcion\(true\)\}/.test(codigo), "se abre con un clic, no sola");
+  assert.ok(/if \(verSuscripcion && duena\)/.test(codigo), "la vista con montos exige que sea la dueña");
+  assert.ok(/\{duena && \(\s*<button[\s\S]*?Ver suscripción/.test(codigo), "el botón es sólo para la dueña");
+  assert.ok(/\{duena && onVerSuscripcion && \(/.test(sinComentarios(banner)),
+    "en la franja, «Ver suscripción» también es sólo para la dueña");
+});
+
+prueba("la API de la suscripción sólo la usa la vista de la dueña", () => {
+  const fuera = [];
+  const recorrer = (rel) => {
+    for (const e of readdirSync(join(raiz, rel), { withFileTypes: true })) {
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) recorrer(r);
+      else if (/\.tsx?$/.test(e.name) && r !== "src/api/suscripcion.ts" && !r.startsWith("src/components/suscripcion/")) {
+        const src = sinComentarios(readFileSync(join(raiz, r), "utf8"));
+        if (/\b(getMiSuscripcion|guardarMiFacturacion)\b/.test(src)) fuera.push(r);
+      }
+    }
+  };
+  recorrer("src");
+  assert.deepEqual(fuera, [], "la plata de la suscripción se pide fuera de su vista");
+});
+
+prueba("«Suscripción» en Configuración tiene el filtro de la copia de seguridad", () => {
+  const seccion = (nombre) => {
+    const i = dashboard.indexOf(`function ${nombre}(`);
+    assert.ok(i >= 0, `Dashboard.tsx no tiene ${nombre}`);
+    return dashboard.slice(i, dashboard.indexOf("\n}\n", i));
+  };
+  const filtro = /if \(rolCliente && rolCliente !== "owner"\) return null;/;
+  assert.ok(filtro.test(seccion("CopiaSection")), "la copia de seguridad perdió su filtro");
+  assert.ok(filtro.test(seccion("SuscripcionSection")), "«Suscripción» no tiene el filtro de la dueña");
+  assert.ok(/<SuscripcionSection /.test(dashboard), "«Suscripción» no está montada en Configuración");
+});
+
+// ─── La revisión de C2: el motivo, «duena» y el reloj ───────────────────────
+
+prueba("la franja y la pantalla de bloqueo no pintan el motivo (texto libre de la operadora)", () => {
+  // El que escribe el sistema no lleva montos, pero el de la operadora es texto
+  // libre: «Debe $1.234.567 de la CC-777» llegaba tal cual a Vender, delante de
+  // los proveedores. El motivo lo lee la dueña en «Ver suscripción».
+  for (const [nombre, src] of [["BloqueoCuenta", bloqueo], ["AvisoCuentaBanner", banner]]) {
+    const codigo = sinComentarios(src);
+    assert.ok(!/(\.|\{\s*)motivo\b/.test(codigo), `${nombre} pinta el motivo: va detrás de «Ver suscripción»`);
+  }
+  assert.ok(/<BloqueoCuenta \/>/.test(appTsx), "App.tsx le sigue pasando el motivo a BloqueoCuenta");
+});
+
+prueba("«duena» la dice el servidor, nunca la pantalla", () => {
+  // `setDuena(true)` le daría «Ver suscripción» a cualquier rol: el 403 del
+  // backend protege la plata, pero el botón le mentiría a la trabajadora.
+  const asignaciones = [...sinComentarios(vivo).matchAll(/setDuena\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.ok(asignaciones.length >= 1, "useEstadoCuenta dejó de leer «duena» del servidor");
+  assert.deepEqual([...new Set(asignaciones)], ["r.duena"], "«duena» sólo sale de la respuesta de /auth/estado-cuenta");
+});
+
+prueba("el reloj vuelve a preguntar de verdad", () => {
+  // Un `setInterval` que no hace nada pasaba la guarda de arriba (que sólo
+  // busca el texto `setInterval(`): la pantalla de bloqueo no se levantaría
+  // nunca sola.
+  assert.ok(/setInterval\(\(\) => void revisar\(\), CONSULTA_ESTADO_MS\)/.test(sinComentarios(vivo)),
+    "el intervalo tiene que llamar a revisar() cada CONSULTA_ESTADO_MS");
+});
+
+prueba("la vista con la plata sólo se monta en el bloqueo y en Configuración", () => {
+  // MiSuscripcion pide la plata al montarse: montada en una vista que ve la
+  // trabajadora, el backend contesta 403, pero la pantalla ya no sería de la
+  // dueña. Sólo BloqueoCuenta (tras un clic, sólo la dueña) y el Dashboard
+  // (SuscripcionSection, con el filtro de la copia de seguridad).
+  const permitidos = ["src/components/BloqueoCuenta.tsx", "src/pages/Dashboard.tsx"];
+  const importan = [];
+  const recorrer = (rel) => {
+    for (const e of readdirSync(join(raiz, rel), { withFileTypes: true })) {
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) recorrer(r);
+      else if (/\.tsx?$/.test(e.name) && !r.startsWith("src/components/suscripcion/")) {
+        const src = sinComentarios(readFileSync(join(raiz, r), "utf8"));
+        if (/from\s+"[^"]*suscripcion\/MiSuscripcion"/.test(src)) importan.push(r);
+      }
+    }
+  };
+  recorrer("src");
+  assert.deepEqual(importan.sort(), permitidos, "MiSuscripcion se monta fuera del bloqueo y de Configuración");
+  const i = dashboard.indexOf("function SuscripcionSection(");
+  const seccion = dashboard.slice(i, dashboard.indexOf("\n}\n", i));
+  const usos = [...sinComentarios(dashboard).matchAll(/<MiSuscripcion\b/g)].length;
+  assert.equal(usos, 1, "Dashboard monta MiSuscripcion más de una vez");
+  assert.ok(/<MiSuscripcion\b/.test(seccion), "en el Dashboard, MiSuscripcion vive sólo en SuscripcionSection");
 });
 
 console.log(`\n${hechas} pruebas del corte por estado de cuenta`);

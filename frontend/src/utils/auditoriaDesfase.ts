@@ -1,5 +1,6 @@
 import type { UnifiedFixture } from "../types/fixtures";
-import { fullSpaceCode, isRentable } from "../types/fixtures";
+import { carasDe, fullSpaceCode, isRentable } from "../types/fixtures";
+import { codigoDeParte, partesDe } from "./partes";
 import type { EstadoPorEspacio } from "./estadoComercial";
 
 /**
@@ -58,8 +59,9 @@ const NORMALIZAR = (s: string) => s.trim().toUpperCase();
  * tiene que seguir siéndolo: si las dos listas se separan, el aviso de la
  * pantalla y el guardarraíl del servidor dejan de hablar del mismo conjunto.
  *
- * Una góndola doble son DOS espacios. Un mueble no comercializable no está —y
- * ése es justamente uno de los casos que hay que encontrar—.
+ * Una góndola doble son DOS espacios (`carasDe`, la misma regla que
+ * `caras_de` del servidor). Un mueble no comercializable no está —y ése es
+ * justamente uno de los casos que hay que encontrar—.
  */
 function espaciosOfrecidos(
   fixturesBySede: Record<string, UnifiedFixture[]>,
@@ -70,14 +72,20 @@ function espaciosOfrecidos(
     if (!Array.isArray(fixtures)) continue;
     for (const f of fixtures) {
       const code = (f.code || "").trim().toUpperCase();
-      if (!code || !isRentable(f)) continue;
+      if (!code) continue;
       // La sede del MUEBLE, no la de la clave: un plano copiado de otra tienda
       // dibuja muebles que no son de ésta.
       const completo = fullSpaceCode(normalizar(f.sede || clave), code);
-      ofrecidos.add(completo);
-      if (f.gondolaType === "double" || (f.type as string) === "gondola_doble") {
-        ofrecidos.add(`${completo}-B`);
+      if (isRentable(f)) {
+        ofrecidos.add(completo);
+        if (carasDe(f) === 2) ofrecidos.add(`${completo}-B`);
       }
+      // Vender por partes: las puertas que el mueble ofrece (`NEV-03-PU2`),
+      // como `espacios_de` del servidor. Una puerta vendida de una nevera que
+      // hoy se vende entera NO está: es un contrato que ningún plano dibuja.
+      // Y las piezas de lo que no se vende entero (la bahía de una caja, el
+      // forro de una columna), aunque el mueble no sea comercializable.
+      for (const { cara, parte } of partesDe(f)) ofrecidos.add(codigoDeParte(completo, cara, parte));
     }
   }
   return ofrecidos;

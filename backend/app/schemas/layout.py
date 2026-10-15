@@ -1,6 +1,42 @@
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.services.catalogo_muebles import REGLAS_DE_FICHA
+
+# El nombre propio de una familia de muebles («mamut», «tope de góndola») tiene
+# el largo del nombre de una ficha: lo lee el navegador del mismo `muebles.json`
+# (`LARGO_DEL_NOMBRE_PROPIO` en `catalogo/nombresPropios.ts`).
+LARGO_DEL_NOMBRE_PROPIO: int = REGLAS_DE_FICHA["largoMaximo"]["nombre"]
+# Las familias son ~20 (las de la biblioteca del plano 2D) y su clave más larga
+# no llega a 20 letras: lo que pase de estos topes no es un nombre que la dueña
+# escribió.
+MAXIMO_DE_NOMBRES_PROPIOS = 100
+LARGO_DE_LA_FAMILIA = 60
+
+
+def nombres_propios_recortados(nombres: dict) -> dict[str, str]:
+    """Los nombres propios como se guardan: sin espacios a los costados,
+    cortados a ``LARGO_DEL_NOMBRE_PROPIO`` letras de verdad (puntos de código,
+    como ``[...texto]`` del navegador), y sin lo que no puede ser un nombre
+    (un valor que no es texto, una clave de más de ``LARGO_DE_LA_FAMILIA``,
+    los que pasan de ``MAXIMO_DE_NOMBRES_PROPIOS``).
+
+    RECORTA y nunca rechaza: viajan en el mismo ``PUT /settings`` que la lista
+    de sedes, y el lápiz de la biblioteca del 2D no tuvo tope hasta c190158.
+    Rechazar un nombre viejo de 90 letras dejaba al supermercado sin poder
+    agregar, renombrar ni quitar una sede. Lo usan el ``PUT`` (al recibir) y el
+    ``GET`` (al leer lo guardado antes), así que el navegador nunca recibe un
+    valor que el ``PUT`` guardaría distinto. Es lo mismo que hace
+    ``nombreParaGuardar`` en el navegador."""
+    salida: dict[str, str] = {}
+    for familia, nombre in nombres.items():
+        if len(salida) >= MAXIMO_DE_NOMBRES_PROPIOS:
+            break
+        if not isinstance(familia, str) or len(familia) > LARGO_DE_LA_FAMILIA or not isinstance(nombre, str):
+            continue
+        salida[familia] = nombre.strip()[:LARGO_DEL_NOMBRE_PROPIO].strip()
+    return salida
 
 
 class LayoutIn(BaseModel):
@@ -47,11 +83,26 @@ class LayoutRevision(BaseModel):
 class LayoutSettingsIn(BaseModel):
     """Shared, non-fixture layout state that every workstation must agree on."""
     sedes: list[str] = Field(default=[], max_length=100)
+    # El nombre propio de cada familia de muebles en ESTE supermercado, por la
+    # clave de la biblioteca del 2D (`gondola_doble`, `punta`, `isla`…). Sólo
+    # se lee en las pantallas del supermercado; el servidor no lo usa para
+    # nada —ni la consola ni los informes de asesoría, que comparan clientes con
+    # el nombre de RECABRA— y no se valida contra el catálogo: una clave vieja
+    # no puede trabar el guardado de la lista de sedes, que viaja en el mismo
+    # pedido.
     catalog_labels: dict[str, str] = Field(default={})
     # Same optimistic-concurrency contract as LayoutIn: the revision this write
     # is based on. Absent means "overwrite unconditionally", which is what a
     # first-ever publish sends.
     base_updated_at: datetime | None = None
+
+    @field_validator("catalog_labels")
+    @classmethod
+    def _nombres_propios_cortos(cls, v: dict[str, str]) -> dict[str, str]:
+        """Lo que escribe la dueña sale en Vender y en la lámina que se lleva el
+        proveedor: un nombre, no un texto. Se recorta, no se rechaza (ver
+        ``nombres_propios_recortados``)."""
+        return nombres_propios_recortados(v)
 
 
 class LayoutSettingsOut(BaseModel):

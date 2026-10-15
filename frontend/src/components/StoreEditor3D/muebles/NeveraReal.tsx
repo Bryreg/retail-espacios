@@ -1,8 +1,8 @@
 import { memo, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import {
-  MURAL_VEGETALES, NEVERA, PORTA_PRECIOS, SOBRE_REJILLA,
-  altoUtilDeNevera, nivelesDeMural, nivelesDeNevera, puertasDeNevera,
+  MONTANTE_DE_TRAMO, MURAL_VEGETALES, NEVERA, PORTA_PRECIOS, SOBRE_REJILLA,
+  altoUtilDeNevera, montantesDeTramos, nivelesDeMural, nivelesDeNevera, puertasDe,
 } from "./medidas";
 import { geometriaDeEmpaque, geometriaMarcoDePuerta, geometriaPortaPrecios } from "./perfiles";
 import { acomodar, EMPAQUES } from "./producto";
@@ -75,7 +75,24 @@ export interface NeveraRealProps {
   /** La chapa del cabezote con la marca del producto en prueba (`pop.ts`),
    *  como el copete de la punta. Sin esto, la chapa clara de siempre. */
   cabezote?: THREE.Material;
+  /** Cuántas puertas tiene el frente, si el mueble lo guardó de su ficha
+   *  (`partes.puertas` de la nevera de puertas). Sin esto, las que pide el
+   *  ancho (`puertasDeNevera`). Sólo cuenta en la variante `puertas`. */
+  puertas?: number;
+  /** Vender por partes: en la nevera abierta y en el mural de vegetales, los
+   *  tramos en que se vende (`partes.tramos`): un montante vertical entre
+   *  tramo y tramo, del zócalo al copete, para que se vea dónde termina lo
+   *  de cada marca. Sin esto (o con uno), el frente corrido de siempre. */
+  tramos?: number;
+  /** Vender por partes: las hojas (en el orden del dibujo, de −X a +X) que se
+   *  están vendiendo. Su marco va en el color de la venta, para que el
+   *  proveedor vea cuál es «su» puerta. Sin esto, todas iguales. */
+  resaltadas?: readonly number[];
 }
+
+/** El marco de la puerta que se vende: el amarillo del botón de Vender, con
+ *  un poco de luz propia para que se lea también con la nevera encendida. */
+const COLOR_DE_LA_PUERTA_VENDIDA = "#f2b705";
 
 /**
  * Envases mudos llenando los entrepaños.
@@ -354,9 +371,19 @@ export function apagarElFrio(
 
 export const NeveraReal = memo(function NeveraReal({
   w, d, h, statusColor, ghost = false, variante = "multideck", conRelleno = true,
-  niveles: nivelesDePrueba, cabezote,
+  niveles: nivelesDePrueba, cabezote, puertas, resaltadas, tramos,
 }: NeveraRealProps) {
   const conPuertas = variante === "puertas";
+  const marcoResaltado = useMemo(
+    () => (resaltadas && resaltadas.length > 0
+      ? new THREE.MeshStandardMaterial({
+        color: COLOR_DE_LA_PUERTA_VENDIDA, emissive: COLOR_DE_LA_PUERTA_VENDIDA, emissiveIntensity: 0.35,
+        roughness: 0.45, metalness: 0.2,
+      })
+      : null),
+    [resaltadas],
+  );
+  useEffect(() => () => { marcoResaltado?.dispose(); }, [marcoResaltado]);
   const esMural = variante === "vegetales";
   const luz = useLuzDeVenta();
   const m = useMaterialesDeFrio(ghost, statusColor, luz, Math.max(0.1, w - NEVERA.chapa * 2), !conPuertas && !esMural);
@@ -380,7 +407,7 @@ export const NeveraReal = memo(function NeveraReal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [h, esMural, clavePrueba],
   );
-  const cuantasPuertas = puertasDeNevera(w);
+  const cuantasPuertas = puertasDe(w, puertas);
   const anchoDePuerta = w / cuantasPuertas;
 
   // El interior, descontando la carrocería de los lados y del fondo.
@@ -541,6 +568,22 @@ export const NeveraReal = memo(function NeveraReal({
         </group>
       ))}
 
+      {/* ── Los montantes de los tramos ───────────────────────────────────
+          Vendida por tramos, una chapa vertical entre tramo y tramo (las
+          mismas juntas que los vanos de `ventaDeNevera`), del zócalo al
+          copete y de fondo a fondo. Sin tramos, nada: el frente corrido. */}
+      {!conPuertas && montantesDeTramos(anchoInterior - 0.03, tramos).map((x) => (
+        <mesh
+          key={`tr${x.toFixed(3)}`}
+          position={[x, yInterior, (NEVERA.fondoPuerta - NEVERA.chapa) / 2]}
+          castShadow
+          receiveShadow
+          material={m.marco}
+        >
+          <boxGeometry args={[MONTANTE_DE_TRAMO, util, fondoInterior]} />
+        </mesh>
+      ))}
+
       {/* ── El producto ───────────────────────────────────────────────────*/}
       {conRelleno && !ghost && !esMural && (
         <RellenoDeNevera
@@ -591,7 +634,7 @@ export const NeveraReal = memo(function NeveraReal({
               geometry={geometriaMarcoDePuerta(
                 anchoDePuerta, altoDePuerta, NEVERA.marcoPuerta, NEVERA.fondoPuerta,
               )}
-              material={m.marco}
+              material={marcoResaltado && resaltadas?.includes(i) ? marcoResaltado : m.marco}
               castShadow
             />
             <mesh position={[0, 0, -NEVERA.fondoPuerta / 2]} material={m.vidrio}>

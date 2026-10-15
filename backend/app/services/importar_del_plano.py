@@ -36,7 +36,11 @@ from app.fechas import hoy as hoy_en_colombia
 from app.models.models import (
     LayoutSnapshot, Space, SpaceLease, SpaceStatus, Supplier,
 )
-from app.services.layout_lookup import _full_code, es_comercializable
+from app.services.candado import tomar_candados
+from app.services.layout_lookup import (
+    _full_code, caras_de, contratos_que_chocan, es_comercializable, sin_prefijo_de_sede,
+)
+from app.services.partes import texto_de_parte
 
 
 @dataclass
@@ -93,11 +97,12 @@ class Importacion:
 def caras_vendidas(fixtures: list[dict]) -> list[tuple[str, dict]]:
     """Los espacios que el plano da por vendidos, con su contrato.
 
-    Una góndola doble son dos espacios: la cara A vive en el mueble y la B en
-    ``faceB``. Un mueble que no se alquila no cuenta — y se pregunta con
-    ``es_comercializable``, que mira primero el TIPO y después la bandera: una
-    caja registradora marcada «ocupada» en un plano viejo no es un contrato, y
-    crearle uno haría una fila que después la propia aplicación rechaza.
+    Una góndola doble son dos espacios (``caras_de``): la cara A vive en el
+    mueble y la B en ``faceB``. Un mueble que no se alquila no cuenta — y se
+    pregunta con ``es_comercializable``, que mira primero el TIPO y después la
+    bandera: una caja registradora marcada «ocupada» en un plano viejo no es un
+    contrato, y crearle uno haría una fila que después la propia aplicación
+    rechaza.
     """
     out: list[tuple[str, dict]] = []
     for f in fixtures:
@@ -108,7 +113,7 @@ def caras_vendidas(fixtures: list[dict]) -> list[tuple[str, dict]]:
             continue
         if (f.get("status") or "free") == "occupied":
             out.append((code, f))
-        if f.get("gondolaType") == "double" or f.get("type") == "gondola_doble":
+        if caras_de(f) == 2:
             b = f.get("faceB") or {}
             if (b.get("status") or "free") == "occupied":
                 out.append((f"{code}-B", b))
@@ -216,6 +221,31 @@ def revisar(db: Session) -> Importacion:
             salida.ya_estaban += 1
             continue
 
+        # El contrato del plano es siempre de una CARA. Si en esas fechas la
+        # base ya vendió una de sus partes (la puerta 2 de esa nevera), pasarlo
+        # vendería la nevera entera y por puertas a la vez: se mira a mano.
+        partes = [
+            (lease, otro, partido) for lease, otro, partido in contratos_que_chocan(db, completo, desde, hasta, sede=sede)
+            if partido.parte is not None
+        ]
+        if partes:
+            lease, otro, partido = partes[0]
+            salida.incompletos.append(Incompleto(
+                espacio=completo, sede=sede, code=corto,
+                proveedor=proveedor,
+                desde=(cara.get("startDate") or ""),
+                hasta=(cara.get("endDate") or ""),
+                motivo=(
+                    f"choca con partes vendidas de esa cara ("
+                    f"{sin_prefijo_de_sede(otro.code or '', sede)}, "
+                    f"{texto_de_parte(partido.parte).lower()} del {lease.start_date} al "
+                    f"{lease.end_date}): revisalo a mano"
+                ),
+                marca=(cara.get("brandCategory") or "").strip(),
+                valor=float(cara.get("negotiatedValue") or 0),
+            ))
+            continue
+
         salida.importables.append(ContratoDelPlano(
             espacio=completo, sede=sede, code=corto,
             proveedor=proveedor,
@@ -235,6 +265,12 @@ def aplicar(db: Session) -> Importacion:
     apuntar a un espacio que nunca tuvo fila, que es justamente por qué se
     perdería si nadie lo importa.
     """
+    plan = revisar(db)
+    if not plan.importables:
+        return plan
+    # Con el candado de esos muebles puesto, se vuelve a revisar: entre la
+    # primera mirada y la escritura, alguien pudo vender una de sus puertas.
+    tomar_candados(db, [f.espacio for f in plan.importables])
     plan = revisar(db)
     if not plan.importables:
         return plan

@@ -12,8 +12,8 @@ import {
 import { ClipboardCheck, Keyboard, ListOrdered } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
-import type { UnifiedFixture, FixType, GondolaType, FaceData } from "../../types/fixtures";
-import { isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
+import type { UnifiedFixture, FaceData } from "../../types/fixtures";
+import { fullSpaceCode, isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import {
   siguienteCodigo, nombreDeMueble, nombreAnterior, choqueDeNombre, textoDelChoque,
   renombrar, intercambiarNombres, textoDelIntercambio, rotulosDelPlano, nombresChocados,
@@ -21,6 +21,23 @@ import {
 } from "../../utils/nomenclatura";
 import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
+import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
+import { CATALOG, CATALOGO_2D, H_DEFAULTS, modelosDelPlanoConPropias, type ModeloDelPlano } from "../../catalogo/plano2D";
+import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
+import { useFichasPropias } from "../../store/fichasPropias";
+// Cómo le dice este supermercado a cada familia: la biblioteca, el panel y la
+// búsqueda (`catalogo/nombresPropios.ts`).
+import {
+  LARGO_DEL_NOMBRE_PROPIO, conNombrePropio, nombrePropio, nombreParaGuardar, type NombresPropios,
+} from "../../catalogo/nombresPropios";
+import { GeometriaDelMueble } from "../GeometriaDelMueble";
+import { PartesDelMueble } from "../PartesDelMueble";
+import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
+import {
+  codigoDeParte, concordancia, divisionDe, juntasDePartes, piezasDe, puntosDePartesVendidas,
+  sufijoDeParte, vanoDeParte,
+} from "../../utils/partes";
+import { cotasDeCheckout, mesaDeImpulso, montantesDeImpulso, nichosDeImpulso } from "../StoreEditor3D/muebles/medidas";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
@@ -38,100 +55,19 @@ const PX_PER_M = 40;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FixType2D =
-  | "gondola_doble"
-  | "gondola_mural"
-  | "punta"
-  | "robatope"
-  | "metro"
-  | "mueble"
-  | "ristra"
-  | "cross"
-  | "isla"
-  | "impulsador"
-  | "batea"
-  | "isla_fria"
-  | "nevera_carnes"
-  | "nevera_vegetales"
-  | "nevera_refrescos"
-  | "stand_frutas"
-  | "checkout"
-  | "servicio_cliente"
-  | "columna"
-  | "exhibicion";   // legacy — kept for backward compat, not in catalog
-
 type SpaceStatus = "free" | "occupied" | "reserved" | "maintenance";
 
-interface PlacedItem2D {
-  id: string;
-  type: FixType2D;
-  code: string;
-  label: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  /** Mirrors UnifiedFixture.rotY so 2D and 3D stay in sync. */
-  rotY: number;
-  status: SpaceStatus;
-  supplierName: string;
-  brandCategory: string;
-  negotiatedValue: number;
-  startDate: string;
-  endDate: string;
-  observation: string;
-  sede: string;
-  /** El nombre VIEJO del mueble. Ya no es un nombre y nada lo dibuja: se
-   *  arrastra tal cual para que buscar por lo que dice la cartelería siga
-   *  encontrando el mueble y para que la reconciliación tenga contra qué
-   *  comparar. Ver `nombreAnterior` en `utils/nomenclatura.ts`. */
-  nomenclatura?: string;
-  /** Lo mismo, pero escrito por la renumeración del servidor: cómo se llamaba
-   *  este mueble antes de que le cambiaran el nombre. */
-  nombreAnterior?: string;
-  /** Face B commercial data (gondola_doble only); face A = top-level fields. */
-  faceB?: FaceData;
-  /** False marks infrastructure that is never rented out. Undefined = rentable. */
-  rentable?: boolean;
-}
+// `FixType2D` y `PlacedItem2D` —la forma con que este plano trabaja cada
+// mueble— viven en `utils/convertirPlano.ts`, junto con las conversiones desde
+// y hacia el store.
 
-// ─── Catalog ──────────────────────────────────────────────────────────────────
-
-const CATALOG: {
-  type: FixType2D;
-  label: string;
-  w: number;
-  h: number;      // depth (Z axis in 2D top-down; maps to UnifiedFixture.d)
-  emoji: string;
-  prefix: string;
-  category: string;
-}[] = [
-  // ── Góndolas ──────────────────────────────────────────────────────────
-  { type: "gondola_doble", label: "Góndola Doble",    w: 0.90, h: 0.90, emoji: "📚", prefix: "GON", category: "Góndolas" },
-  { type: "gondola_mural", label: "Góndola Mural",    w: 1.00, h: 0.40, emoji: "🧱", prefix: "GON", category: "Góndolas" },
-  { type: "punta",         label: "Punta Góndola",    w: 0.90, h: 0.40, emoji: "🏷️",  prefix: "PUN", category: "Góndolas" },
-  { type: "robatope",      label: "Robatope",          w: 0.30, h: 0.40, emoji: "🛡️", prefix: "ROB", category: "Góndolas" },
-  // ── Displays & Cross-selling ────────────────────────────────────────
-  { type: "ristra",        label: "Ristra",            w: 0.40, h: 0.40, emoji: "🪝",  prefix: "RIS", category: "Displays" },
-  { type: "cross",         label: "Exhibidor Cruz",    w: 0.80, h: 0.80, emoji: "➕", prefix: "CRS", category: "Displays" },
-  { type: "impulsador",   label: "Impulsador Marca",  w: 0.60, h: 0.40, emoji: "🏷️", prefix: "IMP", category: "Displays" },
-  // ── Muebles ───────────────────────────────────────────────────────────
-  { type: "mueble",        label: "Vitrina",           w: 1.20, h: 0.60, emoji: "🗄️", prefix: "MUE", category: "Muebles" },
-  { type: "isla",          label: "Exhib. de Piso",    w: 1.20, h: 0.80, emoji: "🏪", prefix: "EXP", category: "Muebles" },
-  { type: "batea",         label: "Batea",             w: 0.80, h: 0.60, emoji: "🧺", prefix: "BAT", category: "Muebles" },
-  // ── Refrigeración ─────────────────────────────────────────────────────
-  { type: "isla_fria",        label: "Isla Helados/Cong.", w: 1.80, h: 1.00, emoji: "🍦", prefix: "ISL", category: "Refrigeración" },
-  { type: "nevera_carnes",    label: "Nevera Carnes",      w: 2.00, h: 0.85, emoji: "🥩", prefix: "CAR", category: "Refrigeración" },
-  { type: "nevera_vegetales", label: "Nevera Vegetales",   w: 1.80, h: 0.90, emoji: "🥬", prefix: "VEG", category: "Refrigeración" },
-  { type: "nevera_refrescos", label: "Nevera Refrescos",   w: 1.20, h: 0.75, emoji: "🥤", prefix: "BEB", category: "Refrigeración" },
-  // ── Servicio ──────────────────────────────────────────────────────────
-  { type: "stand_frutas",  label: "Stand Frutas/Verd", w: 1.50, h: 1.20, emoji: "🍎", prefix: "FRU", category: "Frescos" },
-  { type: "checkout",      label: "Checkout / Caja",   w: 1.80, h: 0.70, emoji: "🛒", prefix: "CAJ", category: "Servicio" },
-  { type: "servicio_cliente", label: "Servicio al Cliente", w: 1.60, h: 0.70, emoji: "💁", prefix: "SAC", category: "Servicio" },
-  // ── Infraestructura ───────────────────────────────────────────────────
-  { type: "metro",         label: "Zona Libre",        w: 1.00, h: 1.00, emoji: "⬜", prefix: "MET", category: "Infraestructura" },
-  { type: "columna",       label: "Columna",           w: 0.30, h: 0.30, emoji: "🏛️", prefix: "COL", category: "Infraestructura" },
-];
+// `CATALOG` —los muebles que se pueden colocar en el plano: rótulo, ancho,
+// fondo, emoji, prefijo y familia—, y `H_DEFAULTS` y `COLOR_DEFAULTS` —el alto
+// y el color con que nace un mueble dibujado acá— viven en `catalogo/plano2D.ts`,
+// calculados del catálogo de muebles (`catalogo/muebles.json`): el plano y el
+// editor 3D crean el mismo mueble. Las conversiones reciben `CATALOGO_2D`, de
+// ahí mismo. Este componente no declara tablas propias: una copia vieja acá
+// pisaba las del catálogo sin que fallara nada (`probar-muebles.mjs` lo vigila).
 
 // Status palette, shared with the Dashboard's occupancy map y con el editor 3D.
 //
@@ -219,12 +155,14 @@ function matchesStatusFilter(item: PlacedItem2D, filter: StatusFilter2D): boolea
   });
 }
 
-/** True when the pre-normalized query matches any searchable field on either face. */
-function matchesQuery(item: PlacedItem2D, normalizedQuery: string): boolean {
+/** True when the pre-normalized query matches any searchable field on either face.
+ *  Con `nombres`, también por el nombre propio de la familia («mamut»). */
+function matchesQuery(item: PlacedItem2D, normalizedQuery: string, nombres: NombresPropios): boolean {
   if (!normalizedQuery) return true;
   const fields = [
     item.code,
     item.label,
+    conNombrePropio(item, nombres, ""),
     // El nombre VIEJO. Ya no se dibuja, pero el cartel de la góndola puede
     // seguir diciéndolo: buscar por él tiene que llevar igual al mueble. Y
     // tiene que seguir sirviendo DESPUÉS de renumerar, que es justo cuando la
@@ -263,138 +201,6 @@ const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string; color: string
 /** Quantize rotY to quarter-turn steps (0 = south, 1 = west, 2 = north, 3 = east). */
 function rotationSteps(rotY?: number): number {
   return Math.round(((rotY ?? 0) % (2 * Math.PI)) / (Math.PI / 2)) % 4;
-}
-
-/** 3D height defaults (used when promoting a 2D item to a UnifiedFixture).
- *  Keys match FixType2D so gondola_doble / gondola_mural can be distinguished. */
-const H_DEFAULTS: Record<string, number> = {
-  gondola_doble: 1.80, gondola_mural: 1.90,
-  punta: 1.80, robatope: 1.60, ristra: 1.60,
-  cross: 1.80, metro: 0.05, mueble: 2.00, exhibicion: 1.50,
-  isla: 1.40, impulsador: 1.50,
-  batea: 0.80, isla_fria: 0.90,
-  nevera_carnes: 1.05, nevera_refrescos: 1.80, nevera_vegetales: 1.60,
-  stand_frutas: 0.95, checkout: 0.90, columna: 3.00,
-};
-
-/* PENDIENTE DEL PR 2 (forma / dataviz). Estos veinte son un color por TIPO de
-   mueble —góndola, punta, ristra, nevera, caja— y quedan como estaban a
-   propósito. No son la terna de estado (esa ya salió a tokens arriba) sino una
-   paleta CATEGÓRICA de veinte entradas elegidas a ojo: no está validada contra
-   daltonismo, no está medida contra ninguna de las dos superficies, y en modo
-   oscuro varias son igual de brillantes entre sí. Cambiarlas es reelegir una
-   paleta de veinte con el validador en la mano, que es una decisión de diseño
-   y no un cambio de piel. Anotado en `features/diseno-interior/outputs/frontend.md`.
-   Además el color de cada mueble es dato guardado (`f.color`), así que moverlo
-   toca lo que ya está en la base, no sólo lo que se pinta. */
-const COLOR_DEFAULTS: Record<string, string> = {
-  gondola_doble: "#6366f1", gondola_mural: "#818cf8",
-  punta: "#7c3aed", robatope: "#c0c0bc",
-  ristra: "#d97706", cross: "#0891b2", impulsador: "#e11d48", metro: "#64748b",
-  mueble: "#475569", exhibicion: "#ec4899",
-  isla: "#f59e0b", batea: "#84cc16", nevera_mural: "#06b6d4",
-  isla_fria: "#e5e7eb", nevera_carnes: "#1e293b", nevera_refrescos: "#1e293b",
-  nevera_vegetales: "#1e293b",
-  stand_frutas: "#84cc16",
-  checkout: "#8b5cf6", columna: "#94a3b8",
-};
-
-/** Convert the unified store into the 2D internal array (run once on mount). */
-function storeToItems(fixtures: UnifiedFixture[]): PlacedItem2D[] {
-  return fixtures.map((f) => {
-    let type2D: FixType2D;
-    if (f.type === "gondola") {
-      // Same undefined-defaults-to-double rule as isDoubleGondola() in types/fixtures.
-      type2D = f.gondolaType === "wall" ? "gondola_mural" : "gondola_doble";
-    } else {
-      // All other types exist 1-to-1 in FixType2D (including new types + legacy exhibicion)
-      type2D = f.type as FixType2D;
-    }
-    const catDef = CATALOG.find((c) => c.type === type2D);
-    const rot90 = isRotated90(f.rotY ?? 0);
-    // Visual footprint in 2D — swap w/d when rotated 90° or 270°
-    const w2d = rot90 ? f.d : f.w;
-    const h2d = rot90 ? f.w : f.d;
-    return {
-      id: f.id,
-      type: type2D,
-      code: f.code,
-      label: catDef?.label ?? f.label,
-      x: f.cx - w2d / 2,
-      y: f.cz - h2d / 2,
-      w: w2d,
-      h: h2d,
-      rotY: f.rotY ?? 0,
-      status: f.status,
-      supplierName: f.supplierName,
-      brandCategory: f.brandCategory,
-      // Worker layout responses omit negotiatedValue — default to 0 locally.
-      negotiatedValue: f.negotiatedValue ?? 0,
-      startDate: f.startDate,
-      endDate: f.endDate,
-      observation: f.observation,
-      sede: f.sede,
-      nomenclatura: f.nomenclatura,
-      nombreAnterior: f.nombreAnterior,
-      faceB: f.faceB,
-      rentable: f.rentable,
-    };
-  });
-}
-
-/**
- * Convert the 2D internal array back to unified format for the store.
- * Preserves 3D-specific fields (h, color, slots, rotY) from the existing
- * store entry so the 3D editor doesn't lose its data on roundtrip.
- */
-function itemsToStore(
-  items: PlacedItem2D[],
-  existingStore: UnifiedFixture[],
-): UnifiedFixture[] {
-  const existingMap = new Map(existingStore.map((f) => [f.id, f]));
-  return items.map((item) => {
-    let type: FixType;
-    let gondolaType: GondolaType | undefined;
-    if (item.type === "gondola_doble")       { type = "gondola"; gondolaType = "double"; }
-    else if (item.type === "gondola_mural")  { type = "gondola"; gondolaType = "wall"; }
-    else { type = item.type as FixType; }
-
-    const existing = existingMap.get(item.id);
-    // item.rotY tracks rotation (incremented by rotateItem); fall back to existing store value
-    const rotY = item.rotY ?? existing?.rotY ?? 0;
-    const rot90 = isRotated90(rotY);
-    // Convert visual 2D dims back to canonical (unrotated) store dims
-    const storeW = rot90 ? item.h : item.w;
-    const storeD = rot90 ? item.w : item.h;
-    // Use the FixType2D key (item.type) for defaults so gondola_doble / gondola_mural are distinct
-    return {
-      h:     existing?.h     ?? H_DEFAULTS[item.type]     ?? 1.8,
-      color: existing?.color ?? COLOR_DEFAULTS[item.type] ?? "#6366f1",
-      slots: existing?.slots,
-      rotY,
-      id: item.id,
-      code: item.code,
-      type,
-      gondolaType,
-      label: item.label,
-      cx: item.x + item.w / 2,
-      cz: item.y + item.h / 2,
-      w: storeW,
-      d: storeD,
-      status: item.status,
-      sede: item.sede,
-      supplierName: item.supplierName,
-      brandCategory: item.brandCategory,
-      negotiatedValue: item.negotiatedValue,
-      startDate: item.startDate,
-      endDate: item.endDate,
-      observation: item.observation,
-      nomenclatura: item.nomenclatura,
-      nombreAnterior: item.nombreAnterior,
-      faceB: item.faceB,
-      rentable: item.rentable,
-    };
-  });
 }
 
 // ─── Smart alignment guides (PowerPoint-style) ───────────────────────────────
@@ -542,7 +348,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // Same array object seeds the state AND the "came from the store" ref below,
   // so the first items→store effect recognises it as an echo and stays quiet.
   const initialItems = useMemo(
-    () => storeToItems(selectFixtures(useFixtureStore.getState())),
+    () => storeToItems(selectFixtures(useFixtureStore.getState()), CATALOGO_2D),
     [],
   );
   const [items, setItems]             = useState<PlacedItem2D[]>(initialItems);
@@ -550,6 +356,15 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editMode, setEditMode]       = useState(defaultEditMode);
   const [activeTool, setActiveTool]   = useState<"select" | "place" | "draw">("select");
   const [pendingType, setPendingType] = useState<FixType2D | null>(null);
+  /** El modelo del catálogo que se está por colocar (de la familia
+   *  `pendingType`), o null para el modelo base, que es colocarlo como
+   *  siempre. Se suelta junto con el tipo. */
+  const [pendingModelo, setPendingModelo] = useState<ModeloDelPlano | null>(null);
+  useEffect(() => { if (pendingType === null) setPendingModelo(null); }, [pendingType]);
+  /** La biblioteca de modelos: los de RECABRA y, después, las fichas propias
+   *  del supermercado que no están retiradas, debajo de su familia. */
+  const fichasPropias = useFichasPropias();
+  const modelosDelPlano = useMemo(() => modelosDelPlanoConPropias(fichasPropias), [fichasPropias]);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
   /** Por qué no se pudo poner ese nombre, y qué se puede hacer al respecto.
@@ -637,12 +452,17 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // ── Sync store → items (for undo/redo/syncFromServer) ────────────────────────
   // When the store changes from outside (undo, redo, server sync), update local items.
   const storeFixtures = useFixtureStore(selectFixtures);
+  // Vender por partes: el mueble del store (con su `partes`) por id, y el mapa
+  // CRUDO de la base: las juntas entre puertas o tramos y qué parte está
+  // vendida (vender una parte no cambia el mueble fusionado).
+  const muebleDelStore = useMemo(() => new Map(storeFixtures.map((f) => [f.id, f])), [storeFixtures]);
+  const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
   useEffect(() => {
     // commit() stores the array by reference, so identity equality means this
     // update is the echo of our own commit and must not rebuild the canvas.
     if (lastCommittedRef.current === storeFixtures) return;
     // External change (undo/redo/server sync) — update canvas to match
-    const next = storeToItems(storeFixtures);
+    const next = storeToItems(storeFixtures, CATALOGO_2D);
     itemsFromStoreRef.current = next; // suppress the items→store echo
     setItems(next);
   }, [storeFixtures]);
@@ -658,7 +478,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (itemsFromStoreRef.current === items) return;
     const snapshot = selectFixtures(useFixtureStore.getState());
     const timer = setTimeout(() => {
-      const converted = itemsToStore(items, snapshot);
+      const converted = itemsToStore(items, snapshot, CATALOGO_2D);
       lastCommittedRef.current = converted;
       commit(converted);
     }, 16);
@@ -693,7 +513,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     pushSedeToStore(sede);
     // Re-init canvas from the new sede's saved fixtures (may be empty = blank canvas).
     const newFixtures = useFixtureStore.getState().fixturesBySede[sede] ?? [];
-    const next = storeToItems(newFixtures);
+    const next = storeToItems(newFixtures, CATALOGO_2D);
     itemsFromStoreRef.current = next;   // suppress the items→store echo
     setItems(next);
   }, [sede, pushSedeToStore]);
@@ -844,8 +664,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // ── Place item ───────────────────────────────────────────────────────────────
 
   const placeItem = useCallback(
-    (type: FixType2D, x: number, y: number, w?: number, h?: number) => {
+    (type: FixType2D, x: number, y: number, w?: number, h?: number, modelo?: ModeloDelPlano | null) => {
       const def = CATALOG.find((c) => c.type === type)!;
+      // Desde un modelo: el ancho y el fondo de su ficha, y con qué nace en el
+      // store (alto, color, id y geometría: `nace`, que `itemsToStore` le
+      // estampa al mueble nuevo). El rótulo es el de su tipo, como siempre.
+      const ancho = w ?? modelo?.w ?? def.w;
+      const fondo = h ?? modelo?.h ?? def.h;
       setItems((prev) => {
         const code = nextCode(type, prev);
         const newItem: PlacedItem2D = {
@@ -853,10 +678,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           type,
           code,
           label: def.label,
-          x: snapTo(x - (w ?? def.w) / 2),
-          y: snapTo(y - (h ?? def.h) / 2),
-          w: w ?? def.w,
-          h: h ?? def.h,
+          x: snapTo(x - ancho / 2),
+          y: snapTo(y - fondo / 2),
+          w: ancho,
+          h: fondo,
           rotY: 0,
           status: "free",
           supplierName: "",
@@ -870,6 +695,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           // to sell. Everything else stays rentable (flag left absent) so the
           // saved payload keeps its historical shape.
           ...(NON_RENTABLE_BY_DEFAULT.has(type) ? { rentable: false } : {}),
+          ...(modelo ? { nace: modelo.nace } : {}),
         };
         // Reject placement if it would overlap an existing fixture
         if (hasCollision(newItem, prev)) return prev;
@@ -1079,7 +905,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
     if (activeTool === "place" && pendingType !== null) {
       const pt = svgPoint(e);
-      placeItem(pendingType, pt.x, pt.y);
+      placeItem(pendingType, pt.x, pt.y, undefined, undefined, pendingModelo);
       return;
     }
 
@@ -1374,7 +1200,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     const rechazo = aplicarRenombre(editingCodeId, val);
     if (!rechazo) { cerrar(); return; }
     setAvisoDeNombre({
-      texto: textoDelChoque(val, rechazo),
+      texto: textoDelChoque(val, rechazo, (m) => conNombrePropio(m, catalogLabels, "")),
       // El intercambio se ofrece sólo cuando hay con quién: un nombre vacío no
       // se intercambia con nadie.
       intercambio: rechazo.razon === "ocupado" && item
@@ -1419,7 +1245,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // el plano dibujaba uno solo y el otro quedaba mudo, así que quien miraba no
   // podía sospechar que había dos. La regla vive en `nomenclatura.ts`.
   const chocados = useMemo(() => nombresChocados(items), [items]);
-  const ghostDef = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
+  const ghostTipo = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
+  const ghostDef = ghostTipo && pendingModelo ? { ...ghostTipo, w: pendingModelo.w, h: pendingModelo.h } : ghostTipo;
 
   // Search + status filter matching (AND-combined); null set = no filter active
   const normalizedQuery = normalizeText(searchQuery.trim());
@@ -1428,12 +1255,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (!filterActive) return null;
     const s = new Set<string>();
     for (const it of items) {
-      if (matchesQuery(it, normalizedQuery) && matchesStatusFilter(it, statusFilter)) {
+      if (matchesQuery(it, normalizedQuery, catalogLabels) && matchesStatusFilter(it, statusFilter)) {
         s.add(it.id);
       }
     }
     return s;
-  }, [items, normalizedQuery, statusFilter, filterActive]);
+  }, [items, normalizedQuery, statusFilter, filterActive, catalogLabels]);
 
   // Smart alignment guides — derived from the live drag/resize state so no
   // extra setState happens inside mousemove. Empty outside drag/resize (and
@@ -1580,9 +1407,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                   {cat}
                 </p>
                 {defs.map((def) => {
-                  const displayLabel = catalogLabels[def.type] ?? def.label;
+                  const displayLabel = nombrePropio(def.type, catalogLabels) ?? def.label;
                   const isEditingThis = editingCatalogType === def.type;
-                  const isActive = pendingType === def.type && activeTool === "place";
+                  const isActive = pendingType === def.type && activeTool === "place" && !pendingModelo;
+                  const modelos = modelosDelPlano[def.type] ?? [];
                   return (
                     <div
                       key={cat + def.type}
@@ -1593,7 +1421,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       }}
                     >
                       <button
-                        onClick={() => { setActiveTool("place"); setPendingType(def.type); }}
+                        onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(null); }}
                         style={{
                           width: "100%", textAlign: "left",
                           padding: "6px 12px",
@@ -1626,14 +1454,16 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 color: "var(--ink-1)",
                               }}
                               value={editingCatalogVal}
+                              maxLength={LARGO_DEL_NOMBRE_PROPIO}
                               onClick={(e) => e.stopPropagation()}
                               onChange={(e) => setEditingCatalogVal(e.target.value)}
                               onBlur={() => {
-                                if (editingCatalogVal.trim()) setCatalogLabel(def.type, editingCatalogVal.trim());
+                                // Vacío, o el de RECABRA, deja la familia sin nombre propio.
+                                setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal));
                                 setEditingCatalogType(null);
                               }}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") { if (editingCatalogVal.trim()) setCatalogLabel(def.type, editingCatalogVal.trim()); setEditingCatalogType(null); }
+                                if (e.key === "Enter") { setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal)); setEditingCatalogType(null); }
                                 if (e.key === "Escape") setEditingCatalogType(null);
                                 e.stopPropagation();
                               }}
@@ -1664,12 +1494,54 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                             color: "var(--ink-4)",
                             transition: "opacity .12s",
                           }}
-                          title="Renombrar en catálogo"
+                          title="Cómo le dicen en esta tienda (vacío: el nombre de RECABRA). También en Configuración."
                           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
                         >
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
+                      )}
+                      {/* Los modelos de la familia: muebles de verdad, con las
+                          medidas de su ficha —los de RECABRA y después las
+                          fichas propias del supermercado—. Lo de arriba es el
+                          modelo base, que se coloca como siempre. «≈»: medidas
+                          deducidas. */}
+                      {modelos.length > 0 && (
+                        <details data-modelos-2d={def.type}
+                          open={(pendingType === def.type && !!pendingModelo) || undefined}
+                          style={{ padding: "0 12px 6px 44px" }}>
+                          <summary style={{ cursor: "pointer", fontSize: 10, color: "var(--ink-3)", userSelect: "none" }}>
+                            {modelos.length} {modelos.length === 1 ? "modelo" : "modelos"}
+                          </summary>
+                          {modelos.map((m) => {
+                            const activo = pendingModelo?.id === m.id && activeTool === "place";
+                            return (
+                              <button key={m.id} data-modelo={m.id}
+                                onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(m); }}
+                                style={{
+                                  width: "100%", textAlign: "left", display: "block",
+                                  padding: "3px 6px", marginTop: 2,
+                                  background: activo ? "var(--accent-50)" : "transparent",
+                                  border: "none", borderLeft: activo ? "2px solid var(--accent)" : "2px solid transparent",
+                                  cursor: "pointer", fontFamily: "inherit",
+                                }}>
+                                <span style={{ display: "block", fontSize: 11, color: "var(--ink-1)", lineHeight: 1.2 }}>
+                                  {m.estimado ? "≈ " : ""}{m.nombre}
+                                </span>
+                                <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-4)" }}>
+                                  {m.w}×{m.h}×{m.nace.h}m
+                                </span>
+                                {/* Cómo se vende lo que se coloca desde este
+                                    modelo («por puertas»): lo dice su ficha. */}
+                                {m.comoSeVende && (
+                                  <span data-como-se-vende={m.comoSeVende} style={{ display: "block", fontSize: 9.5, color: "var(--ink-3)" }}>
+                                    {m.comoSeVende}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </details>
                       )}
                     </div>
                   );
@@ -1872,6 +1744,100 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       }
                       rx={4 / zoom}
                     />
+
+                    {/* Vender por partes: las juntas entre puertas o tramos, a lo
+                        ancho del mueble, y un punto en el frente de cada parte
+                        vendida (contrato vivo o firmado, del mapa crudo). Sin
+                        nombres: el plano lo mira quien lo arma. */}
+                    {(() => {
+                      const f = muebleDelStore.get(item.id);
+                      if (!f || !isRentable(item)) return null;
+                      const juntas = juntasDePartes(f);
+                      const div = divisionDe(f);
+                      if (!div) return null;
+                      // Del mueble (x a lo largo, z de fondo, centrado) al
+                      // plano: el giro de three.js sobre Y, en pasos de 90°.
+                      const th = rotationSteps(item.rotY) * Math.PI / 2;
+                      const cx = px + pw / 2;
+                      const cy = py + ph / 2;
+                      const largo = f.w * PX_PER_M;
+                      const fondo = f.d * PX_PER_M;
+                      const aPlano = (x: number, z: number) => ({
+                        x: cx + x * Math.cos(th) + z * Math.sin(th),
+                        y: cy - x * Math.sin(th) + z * Math.cos(th),
+                      });
+                      const noPtr = { style: { pointerEvents: "none" as const } };
+                      // El punto de cada puerta o tramo vendido, con la cuenta de
+                      // la cara (`puntosDePartesVendidas`, probada): el TR1 de la
+                      // B cae a la izquierda de quien mira la B.
+                      const vendidas = puntosDePartesVendidas(f, estadoCrudo, sede);
+                      return (
+                        <g data-partes-en-planta={item.id}>
+                          {juntas.map((t) => {
+                            const x = -largo / 2 + t * largo;
+                            const a = aPlano(x, -fondo / 2);
+                            const b = aPlano(x, fondo / 2);
+                            return <line key={`j${t}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                              stroke="rgba(28,27,22,0.45)" strokeWidth={1 / zoom} strokeDasharray={`${3 / zoom},${2 / zoom}`} {...noPtr} />;
+                          })}
+                          {vendidas.map(({ cara, parte, a, lado }) => {
+                            const p = aPlano(a * largo, lado * fondo * 0.3);
+                            return <circle key={`v${cara}${parte.n}`} cx={p.x} cy={p.y} r={Math.max(2, 3.2 / zoom)}
+                              fill={STATUS_COLORS.occupied} {...noPtr}><title>{sufijoDeParte(parte)} vendid{concordancia(parte.clase).o}</title></circle>;
+                          })}
+                        </g>
+                      );
+                    })()}
+
+                    {/* Vender por partes, las piezas de lo que no se vende
+                        entero: las bahías de impulso de la caja (las juntas
+                        entre nicho y nicho del lado del cliente, con la misma
+                        cuenta que el 3D) y el forro de la columna (un anillo).
+                        Un punto o el anillo en rojo si está vendida. */}
+                    {(() => {
+                      const f = muebleDelStore.get(item.id);
+                      if (!f) return null;
+                      const piezas = piezasDe(f);
+                      if (piezas.length === 0) return null;
+                      const th = rotationSteps(item.rotY) * Math.PI / 2;
+                      const cx = px + pw / 2;
+                      const cy = py + ph / 2;
+                      const aPlano = (x: number, z: number) => ({
+                        x: cx + (x * Math.cos(th) + z * Math.sin(th)) * PX_PER_M,
+                        y: cy + (-x * Math.sin(th) + z * Math.cos(th)) * PX_PER_M,
+                      });
+                      const noPtr = { style: { pointerEvents: "none" as const } };
+                      const completo = fullSpaceCode(f.sede || sede, f.code);
+                      const vendida = (p: (typeof piezas)[number]) =>
+                        estadoCrudo[codigoDeParte(completo, "A", p)]?.status === "occupied";
+                      const bahias = piezas.filter((p) => p.clase === "bahias");
+                      const forro = piezas.find((p) => p.clase === "forro");
+                      const c = bahias.length ? mesaDeImpulso(f.w, cotasDeCheckout(f.w, f.d, f.h)) : null;
+                      const zCliente = -f.d / 2 + 0.06;
+                      return (
+                        <g data-piezas-en-planta={item.id}>
+                          {c && montantesDeImpulso(c, bahias.length).map((x) => {
+                            const a = aPlano(x, -f.d / 2);
+                            const b = aPlano(x, -f.d / 2 + 0.2);
+                            return <line key={`m${x}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                              stroke="rgba(28,27,22,0.55)" strokeWidth={1 / zoom} {...noPtr} />;
+                          })}
+                          {c && bahias.filter(vendida).map((p) => {
+                            const nicho = nichosDeImpulso(c, bahias.length)[vanoDeParte("A", p.n ?? 1, bahias.length)];
+                            const q = aPlano(nicho.x, zCliente);
+                            return <circle key={`b${p.n}`} cx={q.x} cy={q.y} r={Math.max(2, 3.2 / zoom)}
+                              fill={STATUS_COLORS.occupied} {...noPtr}><title>{sufijoDeParte(p)} vendida</title></circle>;
+                          })}
+                          {forro && (
+                            <rect x={px - 2 / zoom} y={py - 2 / zoom} width={pw + 4 / zoom} height={ph + 4 / zoom}
+                              fill="none" rx={3 / zoom} strokeWidth={1.6 / zoom}
+                              stroke={vendida(forro) ? STATUS_COLORS.occupied : "rgba(28,27,22,0.55)"} {...noPtr}>
+                              <title>{vendida(forro) ? "Forro vendido" : "Forro: se vende"}</title>
+                            </rect>
+                          )}
+                        </g>
+                      );
+                    })()}
 
                     {/* Search/filter match highlight — accent outline + soft outer glow */}
                     {filterActive && isFilterMatch && (
@@ -3724,6 +3690,13 @@ function AssignmentPanel({
   onClose: () => void;
 }) {
   const catDef = CATALOG.find((c) => c.type === item.type);
+  // El nombre del modelo de una ficha propia llega cuando se leen las fichas
+  // del supermercado: escucharlas vuelve a dibujar el panel.
+  useFichasPropias();
+  // El nombre propio de la familia, en el encabezado. Lo que va a la base
+  // (`FilesSection`, que crea la fila de `spaces`) sigue con el de RECABRA.
+  const nombresPropios = useFixtureStore((s) => s.catalogLabels);
+  const modeloDelMueble = modeloPorId(item.nace?.modelo);
   const fullCode = `${item.sede || sede}-${item.code}`;
   const inp = "w-full bg-transparent border-b border-dark-line-2 text-dark-ink-1 text-sm py-1 focus:outline-none focus:border-accent placeholder:text-dark-ink-3";
   const sel = "w-full bg-dark-surface-2 border border-dark-line-2 text-dark-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-accent";
@@ -3851,8 +3824,17 @@ function AssignmentPanel({
         <div>
           <p style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--dark-ink-3)", marginBottom: 2 }}>{activeCode}</p>
           <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
-            {catDef?.emoji} {catDef?.label}
+            {catDef?.emoji} {conNombrePropio(item, nombresPropios, catDef?.label ?? "")}
           </p>
+          {/* La ficha de la que nació, si nació de una: su nombre y, si sus
+              medidas son una deducción, «≈». */}
+          {modeloDelMueble && (
+            <p data-modelo={modeloDelMueble.id}
+              title={textoDeFuente(modeloDelMueble)}
+              style={{ fontSize: 11, color: "var(--dark-ink-2)", marginTop: 2 }}>
+              {nombreDeModelo(modeloDelMueble)}
+            </p>
+          )}
           {/* Nadie dice «PUN-07» en una reunión: dice «la punta del pasillo 4».
               Sale de la geometría, así que mover el mueble lo actualiza solo. */}
           {pasillo !== undefined && (
@@ -3938,7 +3920,7 @@ function AssignmentPanel({
         )}
         <p style={{ marginTop: 6, fontSize: 10, color: "var(--dark-ink-3)", lineHeight: 1.45 }}>
           {NUNCA_ALQUILABLE.has(item.type)
-            ? "Puesto de trabajo de la tienda: no se alquila, no lleva tarifa y queda fuera de la ocupación."
+            ? textoDeLoQueNuncaSeAlquila(item.type)
             : rentable
             ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
             : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
@@ -4008,7 +3990,7 @@ function AssignmentPanel({
             {rechazo ? (
               <>
                 <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
-                  No se guardó: {textoDelChoque(nombreBorrador, rechazo)}
+                  No se guardó: {textoDelChoque(nombreBorrador, rechazo, (m) => conNombrePropio(m, nombresPropios, ""))}
                   {" "}Sigue llamándose «{item.code}».
                 </p>
                 {/* Renumerar una corrida es intercambiar nombres entre muebles
@@ -4039,7 +4021,7 @@ function AssignmentPanel({
               </>
             ) : choqueEscrito ? (
               <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
-                {textoDelChoque(nombreBorrador, choqueEscrito)}
+                {textoDelChoque(nombreBorrador, choqueEscrito, (m) => conNombrePropio(m, nombresPropios, ""))}
               </p>
             ) : (
               <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
@@ -4051,7 +4033,7 @@ function AssignmentPanel({
             {!rechazo && !choqueEscrito && choqueGuardado && (
               <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
                 Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
-                {choqueGuardado.label ? ` (${choqueGuardado.label})` : ""}. Renombrá
+                {choqueGuardado.label ? ` (${conNombrePropio(choqueGuardado, nombresPropios, choqueGuardado.label)})` : ""}. Renombrá
                 uno de los dos para que un contrato pueda decir a cuál va.
               </p>
             )}
@@ -4062,7 +4044,7 @@ function AssignmentPanel({
             {choqueGuardado && (
               <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
                 Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
-                {choqueGuardado.label ? ` (${choqueGuardado.label})` : ""}.
+                {choqueGuardado.label ? ` (${conNombrePropio(choqueGuardado, nombresPropios, choqueGuardado.label)})` : ""}.
               </p>
             )}
           </>
@@ -4139,6 +4121,29 @@ function AssignmentPanel({
                 onChange={(e) => onUpdate({ h: parseFloat(e.target.value) || 0.25 })} />
             </div>
           </div>
+        </Field>
+      )}
+
+      {/* Alto, entrepaños y módulo (góndola y punta). El plano no dibuja el
+          alto, pero acá es donde se arma la tienda: el mismo componente que el
+          Editor 3D, que escribe en el store después de revisar lo vendido
+          (`components/GeometriaDelMueble.tsx`). */}
+      {(item.type === "gondola_doble" || item.type === "gondola_mural" || item.type === "punta") && (
+        <Field label="Alto, entrepaños y módulo" icon="📏">
+          <GeometriaDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
+        </Field>
+      )}
+
+      {/* Vender por partes: la nevera entera o por puertas; el mural, la
+          góndola, la nevera abierta y la de vegetales, por tramos; la góndola
+          y la punta, por entrepaños; y las piezas de la caja (sus bahías de
+          impulso) y de la columna (su forro), que no se venden enteras. Fuera
+          de lo comercial del panel a propósito: es cómo ES el mueble —y la
+          caja y la columna no son comercializables—, y el mismo componente
+          que el Editor 3D (`components/PartesDelMueble.tsx`). */}
+      {vendePorPartes(item.type) && (
+        <Field label="Cómo se vende" icon="🧩">
+          <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} sinTitulo />
         </Field>
       )}
 
