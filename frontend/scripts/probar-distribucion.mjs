@@ -1063,6 +1063,7 @@ const rP = await build({
       `export * as FORM from "./src/${DIST}/FormularioDeParticipacion.tsx";`,
       'export { useDistribucionStore } from "./src/store/distribucionStore.ts";',
       'export { estadoInicial } from "./src/utils/edicionDeZonas.ts";',
+      'export { useAuthStore } from "./src/store/authStore.ts";',
     ].join("\n"),
     resolveDir: raiz, loader: "ts",
   },
@@ -1423,6 +1424,42 @@ await prueba("panel y leyenda (verificación 6b): «Guardarlos como borrador» g
   const form = codigo6b("FormularioDeParticipacion");
   assert.match(form, /r\.termino\.estado === "contrato"\) void useFixtureStore\.getState\(\)\.refrescarComercial\(\)/,
     "un contrato nuevo no vuelve a leer el estado comercial del plano");
+});
+
+await prueba("pantalla (verificación 6b): lo que sólo se ve en pantalla, fijado — solape rojo sólo con fechas cruzadas, relleno sólo de lo que cuenta ese día, edición frenada con el plano sin guardar, confirmar frenado con errores, beforeunload, revisión congelada en el arrastre", () => {
+  // Sin DOM no se puede mirar el dibujo: se fija el código que lo decide (cada
+  // una de estas líneas, sacada, dejaba todas las pruebas en verde).
+  const lienzo = codigo6b("LienzoDeZonas"), panel = codigo6b("PanelDeDistribucion");
+  const resumen = codigo6b("ResumenDeCambios"), ley = codigo6b("LeyendaDeParticipaciones"), form = codigo6b("FormularioDeParticipacion");
+  assert.match(lienzo, /if \(!t1 \|\| !t2 \|\| !seCruzanEnFechas\(t1, t2, hoy\)\) continue;/, "el solape rojo no mira si las fechas se cruzan (§3.6)");
+  assert.match(lienzo, /if \(!info\?\.cuenta \|\| !info\.estampa\) return null;/, "se rellena una participación que no cuenta el día de «Ver al día» (va sólo punteada)");
+  assert.match(panel, /const editable = !!datos\?\.por_participacion && !!datos\.superficie && alDia;/, "se edita con el plano sin guardar (§9.2: la firma tiene que coincidir)");
+  assert.match(lienzo, /const puedeEditar = [^;]*alDia[^;]*edicion\.modo === "editar";/, "el lienzo dibuja con el plano sin guardar o en «Mirar»");
+  assert.match(resumen, /const bloqueado = errores\.length > 0 \|\| !enTopes \|\| !alDia/, "«Confirmar» no se frena con errores, fuera de los topes o con el plano sin guardar");
+  assert.match(panel, /window\.addEventListener\("beforeunload", (\w+)\)[\s\S]{0,80}window\.removeEventListener\("beforeunload", \1\)/, "cerrar la pestaña con cambios sin guardar no pregunta (§9.8)");
+  assert.match(ley, /s\.edicion\.arrastre \? s\.edicion\.arrastre\.antes : s\.edicion\.zonas/, "la revisión en vivo se recalcula en cada movimiento del arrastre (§9.4: al soltar)");
+  assert.match(ley, /const renovable = masNuevo && masNuevo\.estado === "contrato" \? masNuevo : null;/, "«Renovar» se ofrece en una reserva (§4.7: sólo el contrato vivo más nuevo)");
+  assert.match(form, /const excluir = \(modo === "editar" \|\| modo === "confirmar"\) && termino \? termino\.id : null;/,
+    "la vista previa de cambiar o confirmar una reserva la cuenta dos veces (a ella misma)");
+});
+
+await prueba("vista de pantalla (verificación 6b): «Ver cómo estaba» y el período se vacían al cambiar de cara, de sesión o de cliente (geometría de un supermercado en la pantalla de otro)", () => {
+  const V = P6.LEY.useVistaDeDistribucion;
+  const sembrar = () => {
+    V.getState().elegirPeriodo({ desde: "2027-01-01", hasta: "2027-02-01" });
+    V.getState().verComoEstaba({ titulo: "cómo quedó", zonas: [{ id: 1, participacion_space_id: 7, vertices: [[0, 0], [1, 0], [1, 1]], orden: 0 }] });
+  };
+  const vacia = () => V.getState().comoEstaba === null && V.getState().periodo === null;
+  enElModo();
+  sembrar();
+  P6.useDistribucionStore.setState({ activa: { ...P6.useDistribucionStore.getState().activa, cara: "B" } });
+  assert.ok(vacia(), "cambiar de cara dejó «Ver cómo estaba» de la otra");
+  sembrar();
+  P6.useAuthStore.setState({ token: "otro-token" });
+  assert.ok(vacia(), "cambiar de sesión dejó la vista de la anterior");
+  sembrar();
+  P6.useAuthStore.setState({ cliente: "otro-cliente" });
+  assert.ok(vacia(), "cambiar de cliente dejó la vista del anterior");
 });
 
 console.log(`\n${hechas} pruebas de distribución en verde`);
