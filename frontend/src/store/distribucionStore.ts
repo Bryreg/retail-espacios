@@ -5,7 +5,7 @@ import {
   type CaraOut, type DistribucionEscrita, type DistribucionOut, type ProblemaOut, type ZonaOut,
 } from "../api/participaciones";
 import {
-  desdeElServidor, estadoInicial, fusionarZonas, reducir, zonaEnPunto, zonasParaEnviar,
+  descartarEnCualquierModo, desdeElServidor, estadoInicial, fusionarZonas, reducir, zonaEnPunto, zonasParaEnviar,
   type Accion, type EstadoDeEdicion, type ZonaEnEdicion,
 } from "../utils/edicionDeZonas";
 import { firmaDeCara, type MuebleParaSuperficie } from "../utils/superficie";
@@ -24,7 +24,10 @@ import { useOcupacionStore } from "./ocupacionStore";
  *     quietud, sin historial ni bitácora), y una copia por pestaña chocaría con
  *     el reinicio por sesión y sería un segundo lugar con datos comerciales.
  *   · Se vacía entero al cambiar de sesión o de cliente (`logout` no recarga
- *     la página): lo de un supermercado no aparece en la sesión de otro.
+ *     la página): lo de un supermercado no aparece en la sesión de otro. Lo
+ *     no guardado de una sesión que se cierra (un 401) queda apartado EN
+ *     MEMORIA y vuelve como «Recuperar lo que no se guardó» sólo si vuelve a
+ *     entrar la misma persona en el mismo cliente (`reservaDeLaSesion`).
  *   · `entrar` guarda antes el plano pendiente (`flushPending`): si no, el
  *     servidor todavía ve la cara como se vendía antes y contesta 409.
  *   · Nada se pierde en silencio: cambiar de cara o salir con cambios guarda
@@ -84,9 +87,10 @@ interface DistribucionStore {
   entrar: (a: { sede: string; fixtureId: string; codigo: string; cara: "A" | "B" }) => Promise<void>;
   /** `true` si salió. Sin forzar, con cambios que no se pudieron guardar, se
    *  queda; forzado (Presentar, reunión, desmontar), sale y los deja en
-   *  memoria. */
-  salir: (o?: { forzado?: boolean }) => Promise<boolean>;
-  cambiarCara: (c: "A" | "B") => Promise<boolean>;
+   *  memoria. Con `descartar` («Descartarlos»), los cambios de la pantalla se
+   *  tiran antes —en cualquier modo— y no se guarda nada. */
+  salir: (o?: { forzado?: boolean; descartar?: boolean }) => Promise<boolean>;
+  cambiarCara: (c: "A" | "B", o?: { descartar?: boolean }) => Promise<boolean>;
   cancelarPedidoDeCara: () => void;
   traerLoNuevo: () => Promise<void>;
   usarLoMio: (spaceId: number) => void;
@@ -233,6 +237,17 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     });
   };
 
+  /** «Descartarlos»: lo de la pantalla vuelve a lo último cargado o guardado,
+   *  también en «Mirar» (`descartarEnCualquierModo`), y el autoguardado no
+   *  salta después. Sin esto, salir o cambiar de cara veía `sucio` y guardaba
+   *  como borrador justo lo que se pidió tirar. */
+  const tirarLoDeLaPantalla = () => {
+    cancelarAutoguardado();
+    const ed = get().edicion;
+    const limpia = descartarEnCualquierModo(ed);
+    if (limpia !== ed) set({ edicion: limpia });
+  };
+
   /** Sale de la cara activa sin mirar lo editado (eso ya se resolvió). */
   const soltar = () => {
     cancelarAutoguardado();
@@ -303,6 +318,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     salir: async (o) => {
       const a = get().activa;
       if (!a) return true;
+      if (o?.descartar) tirarLoDeLaPantalla();
       if (get().edicion.sucio) {
         const ok = await get().guardarBorrador(true);
         if (!ok) {
@@ -315,10 +331,11 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       return true;
     },
 
-    cambiarCara: async (c) => {
+    cambiarCara: async (c, o) => {
       const a = get().activa;
       if (!a) return false;
       if (a.cara === c) { set({ pedidoDeCara: null }); return true; }
+      if (o?.descartar) tirarLoDeLaPantalla();
       if (get().edicion.sucio) {
         const ok = await get().guardarBorrador(true);
         if (!ok) return false;
@@ -570,8 +587,58 @@ export function hayParaRecuperar(s: Pick<DistribucionStore, "activa" | "sinGuard
   return s.activa !== null && claveDeCara(s.activa) in s.sinGuardar;
 }
 
+/**
+ * Lo que no se guardó cuando se cerró la sesión, para el re-ingreso de LA
+ * MISMA persona en EL MISMO cliente (revisión final, escena-uso: con el
+ * autoguardado frenado por un 409 `version_vieja`, un 401 posterior —el token
+ * de 12 h— borraba todo lo dibujado desde el 409, sin cota de tiempo). Vive en
+ * una variable del módulo: en memoria de esta pestaña, nunca en el navegador
+ * (ni `localStorage` ni nada: §9.8). El store se vacía igual al cerrar la
+ * sesión; esto se devuelve a `sinGuardar` —y la pantalla ofrece «Recuperar lo
+ * que no se guardó» al volver a esa cara, con la fusión de tres vías— sólo si
+ * la sesión nueva es del mismo cliente, con el mismo correo y de
+ * administrador. Cualquier otra sesión (otro cliente, otra persona, un
+ * trabajador) la tira sin mirarla.
+ */
+let reservaDeLaSesion: { cliente: string; email: string | null; sinGuardar: Record<string, EdicionSinGuardar> } | null = null;
+
+/** Lo no guardado de la sesión que se cierra: lo que ya estaba en
+ *  `sinGuardar` y la edición en curso, si tiene cambios. */
+function loNoGuardado(): Record<string, EdicionSinGuardar> {
+  const { activa, edicion, sinGuardar } = useDistribucionStore.getState();
+  const fuera = { ...sinGuardar };
+  if (activa && edicion.sucio) fuera[claveDeCara(activa)] = { zonas: edicion.zonas, base: edicion.base };
+  return fuera;
+}
+
+// ANTES del reinicio (los suscriptores corren en el orden en que se anotan):
+// al cerrarse la sesión se aparta lo no guardado; cualquier otro cambio de
+// sesión o de cliente tira lo apartado.
+useAuthStore.subscribe((s, antes) => {
+  if (s.token === antes.token && s.cliente === antes.cliente) return;
+  if (antes.token && !s.token) {
+    const sinGuardar = antes.cliente ? loNoGuardado() : {};
+    reservaDeLaSesion = antes.cliente && Object.keys(sinGuardar).length > 0
+      ? { cliente: antes.cliente, email: antes.email, sinGuardar } : null;
+  } else if (!(s.token && !antes.token)) {
+    // Una sesión que cambia por otra (o de cliente) sin pasar por cerrarse:
+    // nada que devolver. Un INGRESO lo resuelve el suscriptor de abajo.
+    reservaDeLaSesion = null;
+  }
+});
+
 // Al cambiar de sesión o de cliente se vacía, aunque no haya ninguna pantalla
 // montada (un 401 cierra la sesión sin recargar la página).
 useAuthStore.subscribe((s, antes) => {
   if (s.token !== antes.token || s.cliente !== antes.cliente) useDistribucionStore.getState().reiniciar();
+});
+
+// DESPUÉS del reinicio: el re-ingreso de la misma persona en el mismo cliente
+// recupera lo apartado (como lo que no se pudo guardar al salir de una cara).
+useAuthStore.subscribe((s, antes) => {
+  if (!s.token || antes.token) return;   // sólo un ingreso: de sin sesión a con sesión
+  const r = reservaDeLaSesion;
+  reservaDeLaSesion = null;
+  if (!r || s.cliente !== r.cliente || s.email !== r.email || s.role !== "admin") return;
+  useDistribucionStore.setState({ sinGuardar: r.sinGuardar });
 });

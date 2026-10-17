@@ -727,4 +727,240 @@ await prueba("la letra de la cara de atrás no se ve a través del mueble: tapad
   assert.ok(comparados > 1000, `se compararon pocos rayos: ${comparados}`);
 });
 
+// ── Distribución: arreglos de la revisión final ─────────────────────────────
+//
+// Tres cuentas puras del 3D de Distribución que dejó la revisión final: lejos
+// con histéresis (los rótulos `Html` no se montan más allá de 40 m), el clic
+// que un vecino tapa (`rayoTapado`, contra el raycaster de three) y el
+// encuadre que abarca la cara entera en el panel partido
+// (`encuadreDeDistribucion.ts`, con el plano del recorrido).
+
+console.log("superficies · Distribución, arreglos de la revisión final");
+
+const rE = await build({
+  stdin: { contents: 'export * as ED from "./src/utils/encuadreDeDistribucion.ts"; export * as PL from "./src/utils/planta.ts";', resolveDir: raiz, loader: "ts" },
+  bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+});
+const { ED, PL } = await import("data:text/javascript;base64," + Buffer.from(rE.outputFiles[0].text).toString("base64"));
+
+await prueba("lejos con histéresis: se apaga al pasar los 40 m y vuelve 1 m más cerca (una órbita que roza el borde no monta y desmonta los rótulos)", () => {
+  assert.equal(Z.sigueLejos(false, 40, 40), false);
+  assert.equal(Z.sigueLejos(false, 40.01, 40), true);
+  assert.equal(Z.sigueLejos(true, 39.5, 40), true, "vuelve apenas cruza el borde (sin histéresis)");
+  assert.equal(Z.sigueLejos(true, 38.99, 40), false);
+  assert.equal(Z.HISTERESIS_DE_LEJOS_M, 1);
+  let lejos = false, cambios = 0;
+  for (let k = 0; k < 400; k++) {
+    const d = 40 + 0.4 * Math.sin(k / 3);
+    const ahora = Z.sigueLejos(lejos, d, 40);
+    if (ahora !== lejos) cambios++;
+    lejos = ahora;
+  }
+  assert.equal(cambios, 1, `rozando el borde cambió ${cambios} veces`);
+});
+
+await prueba("el corte con la cara dice a qué distancia toca (`corteConLaCara`): el punto del rayo a esa distancia es el (u, v) de la cara", () => {
+  const sup = supDe({ type: "gondola", gondolaType: "double", w: 2.5, d: 0.9, h: 1.8 }, "A");
+  const supB = supDe({ type: "gondola", gondolaType: "double", w: 2.5, d: 0.9, h: 1.8 }, "B");
+  let semilla = 11;
+  const azar = () => { semilla = (semilla * 16807) % 2147483647; return semilla / 2147483647; };
+  let vistos = 0;
+  for (let i = 0; i < 300; i++) {
+    const cara = azar() < 0.5 ? "A" : "B";
+    const u = 0.05 + 0.9 * azar(), v = 0.05 + 0.9 * azar();
+    const blanco = Z.puntoDeLaCara(cara === "A" ? sup : supB, cara, u, v);
+    const origen = [blanco[0] + (azar() - 0.5) * 3, 0.3 + azar() * 2.5, blanco[2] + (cara === "A" ? -1 : 1) * (1 + azar() * 4)];
+    const d = blanco.map((x, k) => x - origen[k]);
+    const l = Math.hypot(...d);
+    const dir = d.map((x) => x / l);
+    const r = Z.corteConLaCara({ origen, dir }, { A: sup, B: supB });
+    assert.ok(r, "no tocó la cara a la que apuntaba");
+    assert.deepEqual(Z.elegirCaraYPunto({ origen, dir }, { A: sup, B: supB }), { cara: r.cara, u: r.u, v: r.v }, "las dos cuentas eligen distinto");
+    assert.equal(r.cara, cara);
+    assert.ok(Math.abs(r.t - l) < 1e-9, `la distancia del corte (${r.t}) no es la del rayo (${l})`);
+    vistos++;
+  }
+  assert.equal(vistos, 300);
+});
+
+await prueba("un mueble que corta el rayo ANTES que la cara la tapa (`rayoTapado`), contra el raycaster de three (cajas giradas, 2000 rayos)", () => {
+  const rc = new THREE.Raycaster();
+  const cajaDeThree = (m, margen) => {
+    const malla = new THREE.Mesh(new THREE.BoxGeometry(m.w + margen, m.h + margen, m.d + margen), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+    const g = new THREE.Group();
+    g.position.set(m.x, 0, m.z);
+    g.rotation.set(0, m.rotY, 0);
+    malla.position.set(0, m.h / 2, 0);
+    g.add(malla);
+    g.updateMatrixWorld(true);
+    return malla;
+  };
+  const adentro = (m, p) => {
+    const c = Math.cos(m.rotY), s = Math.sin(m.rotY), dx = p[0] - m.x, dz = p[2] - m.z;
+    const lx = dx * c - dz * s, lz = dx * s + dz * c;
+    return Math.abs(lx) < m.w / 2 + 0.02 && Math.abs(lz) < m.d / 2 + 0.02 && p[1] > -0.02 && p[1] < m.h + 0.02;
+  };
+  let semilla = 23;
+  const azar = () => { semilla = (semilla * 16807) % 2147483647; return semilla / 2147483647; };
+  let comparados = 0, tapados = 0;
+  for (let i = 0; i < 2000; i++) {
+    const m = { x: (azar() - 0.5) * 6, z: (azar() - 0.5) * 6, w: 0.3 + azar() * 3, d: 0.3 + azar() * 1.2, h: 0.05 + azar() * 2.2, rotY: azar() * 2 * Math.PI };
+    const origen = [(azar() - 0.5) * 14, 0.2 + azar() * 4, (azar() - 0.5) * 14];
+    if (adentro(m, origen)) continue;
+    const blanco = [m.x + (azar() - 0.5) * 3, azar() * 2, m.z + (azar() - 0.5) * 3];
+    const d = blanco.map((x, k) => x - origen[k]);
+    const hasta = Math.hypot(...d);
+    const dir = d.map((x) => x / hasta);
+    const porThree = (margen) => {
+      rc.set(new THREE.Vector3(...origen), new THREE.Vector3(...dir));
+      rc.far = hasta;
+      return rc.intersectObject(cajaDeThree(m, margen), false).some((h) => h.distance < hasta - 1e-6);
+    };
+    const grande = porThree(0.01), chica = porThree(-0.01);
+    if (grande !== chica) continue;   // roza un canto: las dos cajas no se ponen de acuerdo
+    comparados++;
+    if (grande) tapados++;
+    assert.equal(Z.rayoTapado({ origen, dir }, hasta, [m]), grande, `caja ${JSON.stringify(m)}, origen ${origen}: rayoTapado no coincide con three`);
+  }
+  assert.ok(comparados > 1500 && tapados > 200, `se compararon pocos rayos: ${comparados} (${tapados} tapados)`);
+  // El caso del recorrido: se distribuye GON-01 (cara B, que mira a GON-02) y la cámara queda detrás de GON-02.
+  const g = (code, x, z) => ({ code, x, z, w: 3, d: 0.9, h: 1.8, rotY: 0 });
+  const gon01 = g("GON-01", 4, 4), gon02 = g("GON-02", 4, 9);
+  const supB = supDe({ type: "gondola", gondolaType: "double", w: 3, d: 0.9, h: 1.8 }, "B");
+  const supA = supDe({ type: "gondola", gondolaType: "double", w: 3, d: 0.9, h: 1.8 }, "A");
+  const clic = (camara, blanco) => {
+    const d = blanco.map((x, k) => x - camara[k]);
+    const l = Math.hypot(...d);
+    const dir = d.map((x) => x / l);
+    const local = [camara[0] - gon01.x, camara[1], camara[2] - gon01.z];   // GON-01 sin giro: el marco es el mundo corrido
+    const corte = Z.corteConLaCara({ origen: local, dir }, { A: supA, B: supB });
+    return corte && !Z.rayoTapado({ origen: camara, dir }, corte.t, [gon02]) ? corte : null;
+  };
+  assert.equal(clic([4, 1, 12], [4, 1, 4.6]), null, "el clic sobre GON-02, que tapa, eligió la cara B de GON-01");
+  assert.equal(clic([4, 1, 7], [4, 1, 4.6])?.cara, "B", "sin nada delante, el clic no eligió la cara");
+  assert.equal(clic([4, 5, 12], [4, 1, 4.6])?.cara, "B", "por encima de GON-02 (se ve la cara) el clic no eligió");
+  assert.equal(Z.rayoTapado({ origen: [4, 1, 12], dir: [0, 0, -1] }, 2, [gon02]), false, "un mueble DETRÁS de la cara la tapa");
+});
+
+await prueba("al entrar en Distribución el encuadre abarca la cara ENTERA en el panel partido: de frente si entra, si no el tres cuartos que la abarca (el plano del recorrido)", () => {
+  const f = (code, x, z, w, d, h, rotY = 0) => ({ code, x, z, w, d, h, rotY });
+  const NAVE = [f("GON-01", 4, 4, 3, 0.9, 1.8), f("GON-04", 4, 14, 3, 0.5, 1.9), f("PUN-01", 11, 4, 0.9, 0.4, 1.8), f("ROB-01", 13, 4, 1.2, 0.5, 1),
+    f("RIS-01", 15, 4, 0.4, 0.4, 1.6), f("CRO-01", 17, 4, 0.8, 0.8, 1.8), f("MUE-01", 19.5, 4, 1.2, 0.6, 2), f("GON-02", 4, 9, 3, 0.9, 1.8),
+    f("GON-03", 11, 9, 3, 0.9, 1.8), f("GON-05", 11, 14, 3, 0.9, 1.8)];
+  // El salón del editor (`limitesDePlanta(…, 2,5)`) y el 3D del panel partido: ≈ 560 × 720 px a 1440 × 900 (y 521 a 1366).
+  const limites = PL.limitesDePlanta(NAVE, 2.5, { minX: 0, maxX: 30, minZ: 0, maxZ: 42 });
+  const encuadre = (code, cara, aspecto, plano = NAVE) => {
+    const m = plano.find((x) => x.code === code);
+    const mueble = { cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: m.rotY };
+    const obstaculos = PL.murosDeCaminata(plano.filter((x) => x !== m));
+    const e = ED.encuadreDeLaCara(mueble, cara, obstaculos, limites, 50, aspecto);
+    const esquinas = ED.esquinasDeLaCara(mueble, cara);
+    const frente = PL.vistaDeVenta(mueble, cara, "frente", { yBajo: 0, yAlto: m.h }, obstaculos, limites, 50, aspecto);
+    return { e, esquinas, obstaculos, antes: ED.cuantoOcupa(frente, 50, aspecto, esquinas) };
+  };
+  for (const aspecto of [560 / 720, 521 / 700]) {
+    for (const [code, cara] of [["GON-01", "A"], ["GON-01", "B"], ["GON-03", "A"], ["GON-02", "B"], ["PUN-01", "A"], ["CRO-01", "A"]]) {
+      const { e, esquinas, obstaculos, antes } = encuadre(code, cara, aspecto);
+      const quien = `${code}·${cara} a ${aspecto.toFixed(2)}`;
+      assert.equal(e.entera, true, `${quien}: la cara no entra entera`);
+      for (const p of esquinas) {
+        const q = PL.proyectar(e.vista, 50, aspecto, p);
+        assert.ok(q.profundidad > 0 && Math.abs(q.x) <= ED.BORDE_DEL_ENCUADRE + 1e-9 && Math.abs(q.y) <= ED.BORDE_DEL_ENCUADRE + 1e-9,
+          `${quien}: una esquina de la cara queda fuera de cuadro (${q.x.toFixed(2)}, ${q.y.toFixed(2)})`);
+      }
+      // Desde donde se puede parar alguien: dentro del salón y fuera de los muebles.
+      assert.ok(e.vista.posX > limites.minX && e.vista.posX < limites.maxX && e.vista.posZ > limites.minZ && e.vista.posZ < limites.maxZ, `${quien}: la cámara sale del salón`);
+      assert.ok(!PL.chocaEn(obstaculos, e.vista.posX, e.vista.posZ), `${quien}: la cámara queda adentro de un mueble`);
+      assert.ok(e.vista.posY > e.vista.targetY, `${quien}: la cámara no mira desde arriba de la mira (los controles la corrigen)`);
+      // De frente cuando entra de frente; si no, girada lo menos posible.
+      if (antes <= ED.BORDE_DEL_ENCUADRE) assert.equal(e.toma, "frente", `${quien}: entraba de frente y se giró`);
+      else assert.ok(e.toma === "tres_cuartos" && ED.GIROS_DEL_TRES_CUARTOS.includes(Math.abs(e.giro)), `${quien}: no entraba de frente y no se giró`);
+    }
+  }
+  // GON-01·A, el caso del recorrido: de frente se veía el 54 % del ancho (la cara de −1,85 a +1,85).
+  const gon = encuadre("GON-01", "A", 560 / 720);
+  assert.ok(gon.antes > 1.6, `el caso del recorrido ya no se reproduce de frente (${gon.antes.toFixed(2)})`);
+  assert.equal(gon.e.toma, "tres_cuartos");
+  // A pantalla entera (16:9) la misma cara entra de frente: la cuenta mira el aspecto del lienzo de ahora.
+  assert.equal(encuadre("GON-01", "A", 16 / 9).e.toma, "frente", "con el lienzo ancho no la mira de frente");
+  // Girado 90°, igual.
+  const girado = NAVE.map((m) => (m.code === "GON-01" ? { ...m, rotY: Math.PI / 2, x: 1.5, z: 12 } : m));
+  const gr = encuadre("GON-01", "A", 560 / 720, girado);
+  for (const p of gr.esquinas) assert.ok(Math.abs(PL.proyectar(gr.e.vista, 50, 560 / 720, p).x) <= ED.BORDE_DEL_ENCUADRE + 1e-9, "girado 90°, la cara no entra");
+  // Encajonada (sin lugar para girar): la que muestra más, sin mentir que entra.
+  const caja = PL.limitesDePlanta([NAVE[0]], 1.2, limites);
+  const m = NAVE[0];
+  const muro = ED.encuadreDeLaCara({ cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: 0 }, "A", [], caja, 50, 560 / 720);
+  const frenteMuro = PL.vistaDeVenta({ cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: 0 }, "A", "frente", { yBajo: 0, yAlto: m.h }, [], caja, 50, 560 / 720);
+  assert.equal(muro.entera, false, "encajonada dice que entra entera");
+  assert.ok(muro.ocupa <= ED.cuantoOcupa(frenteMuro, 50, 560 / 720, ED.esquinasDeLaCara({ cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: 0 }, "A")) + 1e-9,
+    "encajonada eligió una toma que muestra menos que la de frente");
+});
+
+// Verificación de los arreglos del Editor: dos cosas del encuadre que nada fijaba (con los giros
+// al revés —del más oblicuo— o sin la subida mínima de la cámara, las pruebas de arriba seguían
+// en verde). La referencia de abajo recorre los giros de MENOR a mayor con la misma cuenta.
+await prueba("el tres cuartos de Distribución es el de MENOR giro que abarca la cara y queda dentro del rango polar de los controles (si no, los controles la mueven y la cara se sale)", () => {
+  const f = (code, x, z, w, d, h, rotY = 0) => ({ code, x, z, w, d, h, rotY });
+  const NAVE = [f("GON-01", 4, 4, 3, 0.9, 1.8), f("GON-04", 4, 14, 3, 0.5, 1.9), f("PUN-01", 11, 4, 0.9, 0.4, 1.8), f("ROB-01", 13, 4, 1.2, 0.5, 1),
+    f("RIS-01", 15, 4, 0.4, 0.4, 1.6), f("CRO-01", 17, 4, 0.8, 0.8, 1.8), f("MUE-01", 19.5, 4, 1.2, 0.6, 2), f("GON-02", 4, 9, 3, 0.9, 1.8),
+    f("GON-03", 11, 9, 3, 0.9, 1.8), f("GON-05", 11, 14, 3, 0.9, 1.8)];
+  // Los controles del editor: `minPolarAngle = π/6`, `maxPolarAngle = π/2,1` (StoreEditor3D.tsx).
+  const editor = leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
+  assert.match(editor, /ctrl\.minPolarAngle = Math\.PI \/ 6;\s*ctrl\.maxPolarAngle = Math\.PI \/ 2\.1;/, "cambió el rango polar de los controles: revisá la subida mínima del encuadre");
+  const polar = (v) => Math.atan2(Math.hypot(v.posX - v.targetX, v.posZ - v.targetZ), v.posY - v.targetY);
+  const SUBIDA = Math.tan(Math.PI / 2 - Math.PI / 2.1) * 1.08;
+  /** La referencia: el menor giro de la lista con alguna toma que abarque la cara (la misma cuenta). */
+  const menorGiroQueEntra = (mueble, cara, obstaculos, limites, aspecto) => {
+    const esquinas = ED.esquinasDeLaCara(mueble, cara);
+    const n = PL.normalDeCara(mueble.rotY ?? 0, cara);
+    const centro = { x: mueble.cx + (n.x * mueble.d) / 2, z: mueble.cz + (n.z * mueble.d) / 2 };
+    const mira = mueble.h / 2, yCamara = Math.min(1.6, Math.max(1.2, mira + 0.35));
+    for (const giro of [...ED.GIROS_DEL_TRES_CUARTOS].sort((a, b) => a - b)) {
+      for (const signo of [1, -1]) {
+        const a = (signo * giro * Math.PI) / 180;
+        const dir = { x: n.x * Math.cos(a) - n.z * Math.sin(a), z: n.x * Math.sin(a) + n.z * Math.cos(a) };
+        const libre = PL.distanciaLibre(centro, dir, obstaculos, limites);
+        for (let dist = 0.9; dist <= libre + 1e-9; dist += 0.05) {
+          const x = centro.x + dir.x * dist, z = centro.z + dir.z * dist;
+          if (!(x > limites.minX && x < limites.maxX && z > limites.minZ && z < limites.maxZ) || PL.chocaEn(obstaculos, x, z)) break;
+          const v = { posX: x, posY: Math.max(yCamara, mira + 0.05, mira + SUBIDA * dist), posZ: z, targetX: centro.x, targetY: mira, targetZ: centro.z };
+          if (ED.cuantoOcupa(v, 50, aspecto, esquinas) <= ED.BORDE_DEL_ENCUADRE) return giro;
+        }
+      }
+    }
+    return null;
+  };
+  const revisar = (quien, plano, code, cara, aspecto, limites) => {
+    const m = plano.find((x) => x.code === code);
+    const mueble = { cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: m.rotY };
+    const obstaculos = PL.murosDeCaminata(plano.filter((x) => x !== m));
+    const e = ED.encuadreDeLaCara(mueble, cara, obstaculos, limites, 50, aspecto);
+    const p = polar(e.vista);
+    assert.ok(p <= Math.PI / 2.1 + 1e-9 && p >= Math.PI / 6 - 1e-9,
+      `${quien}: la toma queda fuera del rango polar de los controles (${((p * 180) / Math.PI).toFixed(1)}°): la corrigen y la cara se sale`);
+    if (e.toma === "tres_cuartos" && e.entera) {
+      assert.equal(Math.abs(e.giro), menorGiroQueEntra(mueble, cara, obstaculos, limites, aspecto), `${quien}: el tres cuartos no es el de menor giro que la abarca`);
+    }
+    return e;
+  };
+  const limites = PL.limitesDePlanta(NAVE, 2.5, { minX: 0, maxX: 30, minZ: 0, maxZ: 42 });
+  let girados = 0;
+  for (const aspecto of [560 / 720, 521 / 700]) {
+    for (const [code, cara] of [["GON-01", "A"], ["GON-01", "B"], ["GON-03", "A"], ["GON-02", "B"], ["PUN-01", "A"], ["CRO-01", "A"], ["GON-05", "B"]]) {
+      if (revisar(`${code}·${cara} a ${aspecto.toFixed(2)}`, NAVE, code, cara, aspecto, limites).toma === "tres_cuartos") girados++;
+    }
+  }
+  assert.ok(girados >= 4, `pocos casos en tres cuartos (${girados}): la referencia no prueba nada`);
+  // Una góndola de 5 m frente a un pasillo de 2,5 m: el tres cuartos queda LEJOS (más de 5 m), donde la
+  // subida mínima decide si los controles la dejan donde está.
+  const larga = [f("GON-L", 20, 10, 5, 0.9, 1.8)];
+  const salon = { minX: 0, maxX: 40, minZ: 10 - 0.45 - 2.5, maxZ: 10 + 0.45 + 2.5 };
+  for (const cara of ["A", "B"]) {
+    const e = revisar(`góndola de 5 m · ${cara}`, larga, "GON-L", cara, 560 / 720, salon);
+    assert.ok(e.entera && e.toma === "tres_cuartos", `góndola de 5 m · ${cara}: no la abarca en tres cuartos (${e.toma}, ${e.ocupa.toFixed(2)})`);
+    assert.ok(Math.hypot(e.vista.posX - e.vista.targetX, e.vista.posZ - e.vista.targetZ) > 5, `góndola de 5 m · ${cara}: la toma no quedó lejos (el caso no prueba la subida)`);
+  }
+});
+
 console.log(`\n${hechas} pruebas de superficies en verde`);

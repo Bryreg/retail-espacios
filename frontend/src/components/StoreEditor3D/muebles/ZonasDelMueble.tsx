@@ -1,11 +1,11 @@
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import type { Estampa, Textura } from "../../../utils/coloresDeMarca";
 import type { Superficie } from "../../../utils/superficie";
 import { trapecios, validarZona, type Poligono, type Punto } from "../../../utils/zonasGeometria";
-import { formaDeZona, letraDeCara, letraTapada, transformDeCara } from "../../../utils/zonas3d";
+import { formaDeZona, letraDeCara, letraTapada, sigueLejos, transformDeCara } from "../../../utils/zonas3d";
 import { puntoInterior } from "../../../utils/edicionDeZonas";
 
 /**
@@ -30,7 +30,12 @@ import { puntoInterior } from "../../../utils/edicionDeZonas";
  *     más saliente del frente (`superficie.ts`, medido) y el mueble está
  *     desnudo (`desnudo.ts`); los rellenos no escriben profundidad y llevan
  *     `polygonOffset` (−1, −4: la precisión de profundidad a 80 m, la órbita
- *     máxima, es ≈ 3,8 mm); la cinta va medio milímetro más afuera.
+ *     máxima, es ≈ 3,8 mm); la cinta va medio milímetro más afuera. Entre
+ *     cintas coplanares (dos marcas vecinas, la historia bajo una viva, la
+ *     elegida) decide su NIVEL (`nivelDeCinta`): cada nivel va 0,2 mm más
+ *     afuera (`separacionDeCinta`), nunca el orden en que la GPU las triangula.
+ *   · **Lejos (más de 40 m)**, ni mallas ni `Html`: las letras y el rótulo no
+ *     se montan (`sigueLejos`, con histéresis).
  *   · **No roban el clic**: toda malla lleva `raycast` nulo y va marcada
  *     `chrome` (fuera de las capturas). La cara y el punto que se tocan se
  *     resuelven con un rayo contra el plano (`elegirCaraYPunto`), nunca contra
@@ -70,6 +75,71 @@ export const REPETICIONES_POR_METRO = 25;
 const GRIS_DE_HISTORIA = "#8d9499";
 
 export type EstiloDeCinta = "continua" | "discontinua" | "punteada";
+
+/**
+ * Las CINTAS, escalonadas en profundidad (revisión final, escena-uso 2).
+ * Todas las cintas de una cara iban en el mismo plano, opacas y con el mismo
+ * `polygonOffset`: dos zonas de participaciones distintas que comparten un
+ * borde (lo normal: el imán viene prendido y pega los bordes exactos) dejaban
+ * sus cintas superpuestas y coplanares, con triangulaciones distintas, y el
+ * color que ganaba cambiaba a pedazos y al girar 1°. Ahora cada cinta tiene un
+ * NIVEL y gana siempre la de nivel más alto:
+ *
+ *   · 0: la historia (gris punteada), debajo de todo lo vivo.
+ *   · 1 + i: las cintas de la participación i, en el orden estable de su
+ *     `spaceId` (el mismo de los rellenos).
+ *   · arriba de todas: la gruesa de la participación resaltada y, encima, la
+ *     de la zona elegida.
+ *
+ * Lo que separa es la POSICIÓN: cada nivel va `Z_POR_NIVEL_M` (0,2 mm) más
+ * afuera que el anterior, en el marco de la cara. Medido en Chromium
+ * (swiftshader) con estas mismas geometrías y materiales, sobre el borde común
+ * de dos marcas, de 1 a 4 m y girando la cámara: el 20 % de los píxeles
+ * cambiaba de color entre tomas con un solo plano, el 19 % escalonando sólo
+ * `polygonOffsetUnits` de a 2 (la interpolación de la profundidad se come esas
+ * unidades) y 0 % con los 0,2 mm por nivel. Más lejos la cinta de 1 cm ya
+ * mide menos de un píxel. El `polygonOffset` escalonado queda como refuerzo
+ * (siempre más cerca que el relleno, −4). El tope (`NIVEL_MAXIMO_DE_CINTA`)
+ * deja la cinta más alta a 3,5 mm del dibujo: pegada a la cara, y el plano ya
+ * va ≥ 6 mm por delante de lo más saliente del frente.
+ */
+export const Z_POR_NIVEL_M = 0.0002;
+export const PASO_DE_DESFASE = 2;
+/** Hasta dónde sube el nivel: con más participaciones que esto en una cara,
+ *  las de arriba comparten el último. */
+export const NIVEL_MAXIMO_DE_CINTA = 15;
+
+export function nivelDeCinta(c: { historia?: boolean; indice: number; cuantas: number; gruesa?: boolean; elegida?: boolean }): number {
+  if (c.historia) return 0;
+  const n = Math.max(0, c.cuantas);
+  const nivel = c.elegida ? n + 2 : c.gruesa ? n + 1 : 1 + Math.max(0, Math.min(c.indice, n - 1));
+  return Math.min(nivel, NIVEL_MAXIMO_DE_CINTA);
+}
+
+/** Cuánto más afuera que el resto de su cara va una cinta de ese nivel, en
+ *  metros (además del medio milímetro de `SOBRE_EL_RELLENO`). */
+export function separacionDeCinta(nivel: number): number {
+  return nivel * Z_POR_NIVEL_M;
+}
+
+/** Las `polygonOffsetUnits` de una cinta de ese nivel (las del relleno son −4). */
+export function desfaseDeCinta(nivel: number): number {
+  return -4 - PASO_DE_DESFASE * nivel;
+}
+
+/**
+ * Cómo se dibuja una zona según su participación: la MISMA regla que el
+ * lienzo 2D (`LienzoDeZonas`: `if (!info?.cuenta || !info.estampa) return
+ * null;` y punteado si no cuenta). Relleno sólo si cuenta el día que se mira
+ * y tiene estampa; si no cuenta —o la cara no la nombra (un dato roto que el
+ * servidor marca)—, sin relleno y con la cinta punteada; la reserva,
+ * discontinua. Antes, una zona de una participación que la cara no nombra se
+ * rellenaba en gris en el 3D y no en el lienzo (revisión final, escena-uso).
+ */
+export function comoSeDibuja(como: ComoSeVe | undefined): { relleno: boolean; estilo: EstiloDeCinta } {
+  if (!como?.cuenta) return { relleno: false, estilo: "punteada" };
+  return { relleno: !!como.estampa, estilo: como.reserva ? "discontinua" : "continua" };
+}
 
 /** Una zona viva, tal como se edita. */
 export interface ZonaParaDibujar { clave: string; spaceId: number; vertices: Poligono }
@@ -287,8 +357,17 @@ function Relleno({ sup, cara, zonas, tono, textura, opacidad, orden }: {
   return <mesh geometry={geometria} material={material} renderOrder={orden} raycast={() => null} userData={CHROME} />;
 }
 
-function Cinta({ sup, cara, vertices, ancho, estilo, tono, opacidad, orden }: {
-  sup: Superficie; cara: "A" | "B"; vertices: Poligono; ancho: number; estilo: EstiloDeCinta; tono: string; opacidad: number; orden: number;
+/** El material de una cinta: opaco (escribe profundidad) salvo atenuada, con
+ *  el desfase de su nivel (`nivelDeCinta`). Exportado para medirlo. */
+export function materialDeCinta(tono: string, opacidad: number, nivel: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: tono, transparent: opacidad < 1, opacity: opacidad, side: THREE.FrontSide, toneMapped: false,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: desfaseDeCinta(nivel),
+  });
+}
+
+function Cinta({ sup, cara, vertices, ancho, estilo, tono, opacidad, nivel }: {
+  sup: Superficie; cara: "A" | "B"; vertices: Poligono; ancho: number; estilo: EstiloDeCinta; tono: string; opacidad: number; nivel: number;
 }) {
   const clave = `${sup.ancho}|${sup.alto}|${cara}|${ancho}|${estilo}|${JSON.stringify(vertices)}`;
   const geometria = useMemo(
@@ -297,12 +376,13 @@ function Cinta({ sup, cara, vertices, ancho, estilo, tono, opacidad, orden }: {
     [clave],
   );
   useEffect(() => () => geometria.dispose(), [geometria]);
-  const material = useMemo(() => new THREE.MeshBasicMaterial({
-    color: tono, transparent: opacidad < 1, opacity: opacidad, side: THREE.FrontSide, toneMapped: false,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
-  }), [tono, opacidad]);
+  const material = useMemo(() => materialDeCinta(tono, opacidad, nivel), [tono, opacidad, nivel]);
   useEffect(() => () => material.dispose(), [material]);
-  return <mesh geometry={geometria} material={material} renderOrder={orden} raycast={() => null} userData={CHROME} />;
+  // El orden de dibujo sigue al nivel (rellenos `2 + i`, cintas `3 + i`, la
+  // historia 2): las atenuadas, que son transparentes, se mezclan siempre en
+  // el mismo orden.
+  return <mesh geometry={geometria} material={material} position={[0, 0, separacionDeCinta(nivel)]} renderOrder={2 + nivel}
+    raycast={() => null} userData={CHROME} />;
 }
 
 /** El rótulo «3 · 25 %», en el punto interior de la zona. Texto en la tinta
@@ -320,8 +400,10 @@ function Rotulo({ sup, cara, vertices, texto }: { sup: Superficie; cara: "A" | "
   );
 }
 
-function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada }: {
+function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada, lejos }: {
   c: CaraParaDibujar; participaciones: ReadonlyMap<number, ComoSeVe>; resaltada: number | null; seleccionada: string | null;
+  /** Lejos (más de `DISTANCIA_MAXIMA_M`): los rótulos `Html` no se montan. */
+  lejos: boolean;
 }) {
   const sup = c.superficie;
   const t = transformDeCara(sup, c.cara);
@@ -338,10 +420,12 @@ function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada }: {
     <group position={t.position} rotation={t.rotation}>
       {ordenadas.map((s, i) => {
         const como = participaciones.get(s);
-        if (como && !como.cuenta) return null;   // no cuenta ese día: sólo el contorno
+        // Lo que no cuenta ese día, o una participación que la cara no
+        // nombra: sólo el contorno, como en el lienzo (`comoSeDibuja`).
+        if (!comoSeDibuja(como).relleno || !como?.estampa) return null;
         return (
           <Relleno key={`r${s}`} sup={sup} cara={c.cara} zonas={porParticipacion.get(s)!}
-            tono={como?.estampa?.tono ?? GRIS_DE_HISTORIA} textura={como?.estampa?.textura ?? "lleno"}
+            tono={como.estampa.tono} textura={como.estampa.textura}
             opacidad={opacidadDe(s)} orden={2 + i} />
         );
       })}
@@ -350,19 +434,19 @@ function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada }: {
         const i = Math.max(0, ordenadas.indexOf(z.spaceId));
         const elegida = z.clave === seleccionada;
         const gruesa = elegida || (resaltada !== null && z.spaceId === resaltada);
-        const estilo: EstiloDeCinta = como && !como.cuenta ? "punteada" : como?.reserva ? "discontinua" : "continua";
         const apagada = resaltada !== null && z.spaceId !== resaltada && !elegida;
         return (
           <Cinta key={`c${z.clave}`} sup={sup} cara={c.cara} vertices={z.vertices}
-            ancho={gruesa ? CINTA_ELEGIDA_M : CINTA_M} estilo={estilo}
-            tono={como?.estampa?.tono ?? GRIS_DE_HISTORIA} opacidad={(apagada ? 0.35 : 1) * mitad} orden={3 + i} />
+            ancho={gruesa ? CINTA_ELEGIDA_M : CINTA_M} estilo={comoSeDibuja(como).estilo}
+            tono={como?.estampa?.tono ?? GRIS_DE_HISTORIA} opacidad={(apagada ? 0.35 : 1) * mitad}
+            nivel={nivelDeCinta({ indice: i, cuantas: ordenadas.length, gruesa, elegida })} />
         );
       })}
       {c.historia.map((p, k) => (
         <Cinta key={`h${k}`} sup={sup} cara={c.cara} vertices={p} ancho={CINTA_M} estilo="punteada"
-          tono={GRIS_DE_HISTORIA} opacidad={0.8 * mitad} orden={2} />
+          tono={GRIS_DE_HISTORIA} opacidad={0.8 * mitad} nivel={nivelDeCinta({ historia: true, indice: 0, cuantas: ordenadas.length })} />
       ))}
-      {c.editada && c.zonas.map((z) => {
+      {c.editada && !lejos && c.zonas.map((z) => {
         const como = participaciones.get(z.spaceId);
         if (!como || (z.clave !== seleccionada && z.spaceId !== resaltada)) return null;
         return <Rotulo key={`t${z.clave}`} sup={sup} cara={c.cara} vertices={z.vertices} texto={como.rotulo} />;
@@ -390,12 +474,20 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
   const camaraLocal = useMemo(() => new THREE.Vector3(), []);
   /** Las letras, para esconder la que el mueble tapa sin volver a dibujar. */
   const letras = useRef<Partial<Record<"A" | "B", HTMLDivElement | null>>>({});
-  // Lejos, no se dibujan: se decide en cada cuadro que se dibuja, sin estado.
+  /** Lejos, los `Html` (letras y rótulo) no se montan: son capas del DOM que
+   *  no miran el `visible` del grupo y quedaban flotando sobre la nada más
+   *  allá de los 40 m (revisión final, escena-uso). Con estado y con
+   *  histéresis (`sigueLejos`): se vuelve a dibujar sólo al cruzar el borde. */
+  const [lejos, setLejos] = useState(false);
+  const lejosAhora = useRef(false);
+  // Las mallas, lejos, no se dibujan: se decide en cada cuadro, sin estado.
   useFrame(() => {
     const g = grupo.current;
     if (!g) return;
     g.getWorldPosition(donde);
     g.visible = camera.position.distanceTo(donde) <= DISTANCIA_MAXIMA_M;
+    const siguen = sigueLejos(lejosAhora.current, camera.position.distanceTo(donde), DISTANCIA_MAXIMA_M);
+    if (siguen !== lejosAhora.current) { lejosAhora.current = siguen; setLejos(siguen); }
     // La letra de la cara de atrás no se ve A TRAVÉS del mueble (el `Html` se
     // dibuja encima del lienzo, sin profundidad): con la cámara en el marco
     // del mueble —el grupo de las zonas no tiene transformación propia—, la
@@ -414,9 +506,9 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
   return (
     <group ref={grupo} userData={CHROME}>
       {caras.map((c) => (
-        <ZonasDeUnaCara key={c.cara} c={c} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} />
+        <ZonasDeUnaCara key={c.cara} c={c} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} lejos={lejos} />
       ))}
-      {caras.length > 1 && caras.map((c) => (
+      {!lejos && caras.length > 1 && caras.map((c) => (
         <Html key={`letra${c.cara}`} position={letraDeCara(c.superficie, c.cara)} center zIndexRange={[6, 0]}
           style={{ pointerEvents: "none" }}>
           <div ref={(el) => { letras.current[c.cara] = el; }} data-letra-de-cara={c.cara} style={{

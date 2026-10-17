@@ -588,6 +588,22 @@ export function reducir(e: EstadoDeEdicion, a: Accion): EstadoDeEdicion {
   }
 }
 
+/**
+ * «Descartarlos» de la pregunta al salir o al cambiar de cara: vuelve a lo
+ * último que se cargó o se guardó AUNQUE la edición esté en «Mirar». El
+ * reductor no edita en «Mirar» (`EDITAN`), y con eso lo que se pidió
+ * descartar seguía `sucio`: salir o cambiar de cara lo guardaba como borrador
+ * (revisión final, escena-uso 1). Esto no es una acción del reductor —el
+ * botón «Descartar mis cambios» sigue sin andar en «Mirar»—: es la respuesta
+ * explícita a esa pregunta, y el modo queda como estaba.
+ */
+export function descartarEnCualquierModo(e: EstadoDeEdicion): EstadoDeEdicion {
+  const enEditar: EstadoDeEdicion = e.modo === "editar" ? e : { ...e, modo: "editar" };
+  const r = reducir(enEditar, { tipo: "descartarCambios" });
+  if (r === enEditar) return e;
+  return r.modo === e.modo ? r : { ...r, modo: e.modo };
+}
+
 /* ── El teclado ────────────────────────────────────────────────────────────── */
 
 /**

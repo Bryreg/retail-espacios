@@ -19,8 +19,8 @@ import ResumenDeCambios, { ConflictosDeLaFusion } from "./ResumenDeCambios";
 /**
  * El panel de Distribución (§9.3 del diseño de participaciones): reemplaza al
  * panel comercial del Editor 3D mientras el modo está visible. De arriba
- * abajo: el encabezado («Distribución · GON-01», Cara A | Cara B, Mirar |
- * Editar, el estado y «Salir»), cómo se vende la cara, la capacidad del día y
+ * abajo: el encabezado («Distribución · NAVE · GON-01 · cara A», Cara A |
+ * Cara B, Mirar | Editar, el estado y «Salir»), cómo se vende la cara, la capacidad del día y
  * del período, «Ver al día», la leyenda, los botones (UN principal:
  * «Confirmar distribución…», que abre el resumen de diferencias), los errores
  * y avisos de la revisión y el historial.
@@ -119,11 +119,76 @@ const ESTADOS: Record<EstadoDeDistribucion, string> = {
 };
 
 const hora = (ms: number) => new Date(ms).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+/** Cuándo pasó una entrada REAL del historial: un instante con su zona, con
+ *  día y hora. Una derivada con su día no pasa por acá (`lineasDelHistorial`). */
 const cuandoFue = (iso: string) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso
     : d.toLocaleString("es-CO", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
+
+/** El título del encabezado: qué SEDE, qué mueble y qué cara se distribuyen
+ *  (pedido §12: «qué sede tiene seleccionada el usuario»; con el modo
+ *  encendido la paleta de la sede se oculta y con dos sedes de la misma
+ *  nomenclatura nada en pantalla decía cuál era). */
+export function tituloDelPanel(a: { sede: string; codigo: string; cara: "A" | "B" }): string {
+  return `Distribución · ${a.sede} · ${a.codigo} · cara ${a.cara}`;
+}
+
+const SOLO_DIA = /^\d{4}-\d{2}-\d{2}$/;
+/** La medianoche de un día de Colombia (UTC−5, sin horario de verano), en ms. */
+const medianocheDeColombia = (dia: string) =>
+  Date.UTC(Number(dia.slice(0, 4)), Number(dia.slice(5, 7)) - 1, Number(dia.slice(8, 10)), 5, 0, 0);
+
+/** Una línea del historial, lista para mostrar. */
+export interface LineaDelHistorial {
+  clave: string;
+  /** El instante, en ms desde 1970: con él se ordena (nunca con el texto). */
+  instante: number;
+  /** «18 oct 2026» en una derivada (sólo el día); día y hora en una real. */
+  cuando: string;
+  derivada: boolean;
+  actor: string | null;
+  detalle: string;
+  en: string;
+  /** Lo que «Ver cómo estaba» dibuja (sólo las confirmaciones). */
+  zonas: ZonaOut[] | null;
+}
+
+/**
+ * El historial de la cara, del más nuevo al más viejo (contrato del historial
+ * con el servidor, revisión final). Las entradas DERIVADAS —el vencimiento de
+ * un contrato, la caducidad de una reserva: no tienen fila, salen de las
+ * fechas— traen `derivado: true`, `dia` (el día de Colombia en que pasó: el
+ * siguiente al último día de vigencia) y `en`, la medianoche de ese día en
+ * Colombia con su zona. Se muestran con el DÍA solo, leído como texto
+ * (`fechaLegible`): con `new Date("2026-10-18")` el navegador en Colombia decía
+ * «17 oct, 7:00 p. m.», un día antes de cuando dejó de valer. Se ordenan por el
+ * instante (`Date.parse` del ISO con zona), no comparando textos: un
+ * «…T00:00:00-05:00» contra un «…T03:00:00+00:00» se ordenaba al revés. Un
+ * servidor viejo manda `en` como día solo: se lee igual, como día de Colombia.
+ */
+export function lineasDelHistorial(h: HistorialOut): LineaDelHistorial[] {
+  const lineas: LineaDelHistorial[] = [];
+  for (const e of h.entradas) {
+    const zonas = e.accion === "distribucion.confirmada" && e.despues && Array.isArray((e.despues as { zonas?: unknown }).zonas)
+      ? (e.despues as { zonas: ZonaOut[] }).zonas : null;
+    const instante = SOLO_DIA.test(e.en) ? medianocheDeColombia(e.en) : Date.parse(e.en);
+    lineas.push({ clave: `e${e.id}`, instante, cuando: cuandoFue(e.en), derivada: false, actor: e.actor, detalle: e.detalle, en: e.en, zonas });
+  }
+  h.derivados.forEach((d: HistorialOut["derivados"][number] & { dia?: unknown; derivado?: unknown }, i) => {
+    const dia = typeof d.dia === "string" && SOLO_DIA.test(d.dia) ? d.dia : SOLO_DIA.test(d.en) ? d.en : null;
+    const conZona = SOLO_DIA.test(d.en) ? NaN : Date.parse(d.en);
+    const instante = Number.isNaN(conZona) ? (dia ? medianocheDeColombia(dia) : NaN) : conZona;
+    lineas.push({
+      clave: `d${i}`, instante, cuando: dia ? fechaLegible(dia) : cuandoFue(d.en), derivada: true,
+      actor: null, detalle: d.detalle, en: d.en, zonas: null,
+    });
+  });
+  // Del más nuevo al más viejo; lo que no se pudo leer, al final. Estable.
+  const valor = (x: LineaDelHistorial) => (Number.isNaN(x.instante) ? -Infinity : x.instante);
+  return lineas.map((l, i) => ({ l, i })).sort((a, b) => valor(b.l) - valor(a.l) || a.i - b.i).map((x) => x.l);
+}
 
 type Pregunta = { tipo: "cara"; cara: "A" | "B" } | { tipo: "salir" } | { tipo: "descartarBorrador" } | null;
 
@@ -278,14 +343,17 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
     setMensajeDePregunta(st().guardado.mensaje
       ?? "No se pudo guardar el borrador: tu trabajo sigue acá. Probá de nuevo o descartá los cambios.");
   }
+  // «Descartarlos» descarta en el STORE, en cualquier modo: un
+  // `despachar({ tipo: "descartarCambios" })` no hace nada en «Mirar» (el
+  // reductor no edita ahí) y después salir o cambiar de cara guardaba como
+  // borrador lo que se pidió tirar.
   async function descartarYSeguir() {
     const p = preguntaVisible;
     if (!p) return;
-    st().despachar({ tipo: "descartarCambios" });
     setPregunta(null);
     setMensajeDePregunta(null);
-    if (p.tipo === "cara") await st().cambiarCara(p.cara);
-    else if (p.tipo === "salir") await st().salir();
+    if (p.tipo === "cara") await st().cambiarCara(p.cara, { descartar: true });
+    else if (p.tipo === "salir") await st().salir({ descartar: true });
   }
 
   /** «Vender esta cara por participación»: escribe la división en el plano,
@@ -339,8 +407,13 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
 
       {/* 1 · Encabezado */}
       <div className="flex flex-col gap-2 border-b border-dark-line p-3">
-        <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-bold">Distribución · {activa.codigo}</p>
+        {/* El título se PARTE en dos renglones, nunca se corta: con la sede
+            adelante, en el panel de 320 px cortado decía «Distribución · NAVE
+            · GON-…» y con una sede larga se comía la sede misma. Parejos
+            (`text-balance`): sin eso el corte caía en el guion del código
+            («GON-» / «01 · cara B»). */}
+        <div className="flex items-start gap-2">
+          <p className="min-w-0 flex-1 text-balance break-words text-sm font-bold leading-snug" title={tituloDelPanel(activa)} data-titulo-de-distribucion>{tituloDelPanel(activa)}</p>
           <button type="button" title="Encuadrar esta cara en el 3D" aria-label="Encuadrar en el 3D"
             onClick={() => onEncuadrarCara(activa.cara)}
             className="rounded border border-dark-line-2 p-1 text-dark-ink-2 hover:text-dark-ink-1"><Crosshair size={12} /></button>
@@ -577,24 +650,18 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
                 {errorHistorial && <p style={{ color: "rgb(var(--ocupado-txt-rgb))" }}>{errorHistorial}</p>}
                 {!lineas && !errorHistorial && <p>Leyendo…</p>}
                 {lineas && lineas.entradas.length === 0 && lineas.derivados.length === 0 && <p>Todavía no pasó nada en esta cara.</p>}
-                {lineas && [...lineas.entradas.map((e) => ({ ...e, derivado: false as const })), ...lineas.derivados.map((e, i) => ({ ...e, id: -1 - i, actor: null, antes: null, despues: null, derivado: true as const }))]
-                  .sort((a, b) => (a.en < b.en ? 1 : a.en > b.en ? -1 : 0))
-                  .map((e) => {
-                    const zonas = e.accion === "distribucion.confirmada" && e.despues && Array.isArray((e.despues as { zonas?: unknown }).zonas)
-                      ? (e.despues as { zonas: ZonaOut[] }).zonas : null;
-                    return (
-                      <div key={e.id} className="rounded border border-dark-line px-2 py-1">
-                        <p className="text-dark-ink-3">{cuandoFue(e.en)}{e.actor ? ` · ${e.actor}` : ""}</p>
-                        <p className="text-dark-ink-1">{e.detalle}</p>
-                        {zonas && (
-                          <button type="button" className="mt-0.5 text-[10px] underline underline-offset-2 hover:text-dark-ink-1"
-                            onClick={() => verComoEstaba(e.en, zonas)}>
-                            Ver cómo estaba
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                {lineas && lineasDelHistorial(lineas).map((e) => (
+                  <div key={e.clave} className="rounded border border-dark-line px-2 py-1" data-derivada={e.derivada || undefined}>
+                    <p className="text-dark-ink-3">{e.cuando}{e.actor ? ` · ${e.actor}` : ""}</p>
+                    <p className="text-dark-ink-1">{e.detalle}</p>
+                    {e.zonas && (
+                      <button type="button" className="mt-0.5 text-[10px] underline underline-offset-2 hover:text-dark-ink-1"
+                        onClick={() => verComoEstaba(e.en, e.zonas!)}>
+                        Ver cómo estaba
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </section>

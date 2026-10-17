@@ -96,6 +96,18 @@ const enLaCara = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
  */
 export function elegirCaraYPunto(rayo: { origen: V3; dir: V3 }, caras: { A?: Superficie | null; B?: Superficie | null }):
   { cara: Cara; u: number; v: number } | null {
+  const r = corteConLaCara(rayo, caras);
+  return r && { cara: r.cara, u: r.u, v: r.v };
+}
+
+/**
+ * Lo mismo que `elegirCaraYPunto`, con `t`: a qué distancia del origen (en
+ * las unidades de `dir`; con `dir` normalizado y el marco del mueble rígido,
+ * en metros del mundo) corta el rayo la cara. Con eso se sabe si algo lo
+ * corta ANTES (`rayoTapado`).
+ */
+export function corteConLaCara(rayo: { origen: V3; dir: V3 }, caras: { A?: Superficie | null; B?: Superficie | null }):
+  { cara: Cara; u: number; v: number; t: number } | null {
   let mejor: { t: number; cara: Cara; u: number; v: number } | null = null;
   const tol = TOLERANCIA_DEL_CLIC_M;
   for (const cara of ["A", "B"] as const) {
@@ -125,7 +137,50 @@ export function elegirCaraYPunto(rayo: { origen: V3; dir: V3 }, caras: { A?: Sup
     if (!adentro) continue;
     if (mejor === null || t < mejor.t) mejor = { t, cara, u: enLaCara(u), v: enLaCara(v) };
   }
-  return mejor && { cara: mejor.cara, u: mejor.u, v: mejor.v };
+  return mejor;
+}
+
+/** Un mueble del plano como caja: centro de la huella en el piso, medidas y
+ *  giro (el de su `<group>`). */
+export interface CajaDeMueble { x: number; z: number; w: number; d: number; h: number; rotY?: number }
+
+/**
+ * ¿Algún OTRO mueble corta el rayo antes de `hasta`? Rayo y muebles en el
+ * marco del mundo. Cada mueble es su caja real (la huella `w × d` girada
+ * `rotY`, del piso a `h`), sin el margen de su volumen de toque. En
+ * Distribución los volúmenes de toque de los vecinos no reciben el rayo (si
+ * lo recibieran, R3F le daría el clic al vecino y se perdería el del mueble
+ * distribuido, que mide +8 cm), así que nada tapaba al mueble: un clic sobre
+ * la góndola que se ve delante elegía la cara de atrás del mueble
+ * distribuido —y cambiaba de cara— (revisión final, escena-uso). Con esto el
+ * editor descarta ese clic. Un rayo que nace adentro de una caja no cuenta
+ * esa caja (se ve a través de ella: sus caras dan la espalda).
+ */
+export function rayoTapado(rayo: { origen: V3; dir: V3 }, hasta: number, muebles: readonly CajaDeMueble[]): boolean {
+  const [ox, oy, oz] = rayo.origen, [dx, dy, dz] = rayo.dir;
+  for (const m of muebles) {
+    const r = m.rotY ?? 0, c = Math.cos(r), s = Math.sin(r);
+    // Al marco del mueble: R_y(−rotY)·(p − centro).
+    const px = ox - m.x, pz = oz - m.z;
+    const o: V3 = [px * c - pz * s, oy, px * s + pz * c];
+    const d: V3 = [dx * c - dz * s, dy, dx * s + dz * c];
+    const min: V3 = [-m.w / 2, 0, -m.d / 2], max: V3 = [m.w / 2, m.h, m.d / 2];
+    let t0 = -Infinity, t1 = Infinity, fuera = false;
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(d[i]) < 1e-12) {
+        if (o[i] < min[i] || o[i] > max[i]) { fuera = true; break; }
+        continue;
+      }
+      let ta = (min[i] - o[i]) / d[i], tb = (max[i] - o[i]) / d[i];
+      if (ta > tb) [ta, tb] = [tb, ta];
+      if (ta > t0) t0 = ta;
+      if (tb < t1) t1 = tb;
+      if (t0 > t1) { fuera = true; break; }
+    }
+    if (fuera) continue;
+    if (t0 >= 0 && t0 < hasta - 1e-6) return true;
+  }
+  return false;
 }
 
 /** Cuánto se achica el cuerpo para decidir si tapa la letra: rozar un canto
@@ -162,6 +217,20 @@ export function letraTapada(sup: Superficie, camara: V3, letra: V3): boolean {
     if (t0 >= t1) return false;
   }
   return true;
+}
+
+/** Cuánto más cerca que el borde hay que volver para que los rótulos de las
+ *  zonas reaparezcan (sin titileo en el borde). */
+export const HISTERESIS_DE_LEJOS_M = 1;
+
+/**
+ * ¿Las zonas siguen LEJOS de la cámara? Se apagan al pasar `maxima` y
+ * vuelven al acercarse `HISTERESIS_DE_LEJOS_M` más: con un solo borde, una
+ * órbita que roza los 40 m montaba y desmontaba los rótulos `Html` en cada
+ * cuadro. `antes`, lo que se decidió el cuadro anterior.
+ */
+export function sigueLejos(antes: boolean, distancia: number, maxima: number, histeresis = HISTERESIS_DE_LEJOS_M): boolean {
+  return antes ? distancia > maxima - histeresis : distancia > maxima;
 }
 
 /** Dónde va la letra «A»/«B» de la cara, en el marco del mueble: arriba al

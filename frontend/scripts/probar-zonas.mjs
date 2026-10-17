@@ -779,6 +779,26 @@ await prueba("ajustar: una U con otra marca adentro de su hueco no se borra para
   assert.deepEqual(E.ajustarAlContratado(U, [], 2500, 1, [], { ancho: 1, alto: 1 }), out);
 });
 
+await prueba("«Descartarlos» (la pregunta al salir o al cambiar de cara) descarta también en «Mirar», sin cambiar el modo; el botón «Descartar mis cambios» sigue sin andar en «Mirar» (revisión final)", () => {
+  const cargado = E.reducir(ini(), { tipo: "cargar", zonas: [{ id: 5, participacion_space_id: 1, vertices: cuadrado(0.1, 0.1, 0.2, 0.2), orden: 0 }] });
+  const editado = E.reducir(cargado, { tipo: "moverZona", clave: "z5", du: 0.1, dv: 0 });
+  const enMirar = E.reducir(editado, { tipo: "elegirModo", modo: "mirar" });
+  assert.equal(enMirar.modo, "mirar");
+  assert.equal(enMirar.sucio, true);
+  // El reductor no edita en «Mirar»: por eso la pregunta no puede despachar `descartarCambios`.
+  assert.equal(E.reducir(enMirar, { tipo: "descartarCambios" }), enMirar);
+  const tirado = E.descartarEnCualquierModo(enMirar);
+  assert.equal(tirado.sucio, false, "en «Mirar», «Descartarlos» dejó lo descartado sin guardar (y salir lo guardaba como borrador)");
+  assert.deepEqual(tirado.zonas, cargado.zonas);
+  assert.equal(tirado.modo, "mirar", "descartar cambió el modo");
+  assert.equal(tirado.herramienta, enMirar.herramienta);
+  // En «Editar», lo mismo que el reductor; sin nada que descartar, el MISMO objeto.
+  assert.deepEqual(E.descartarEnCualquierModo(editado), E.reducir(editado, { tipo: "descartarCambios" }));
+  assert.equal(E.descartarEnCualquierModo(cargado), cargado);
+  const quietoEnMirar = E.reducir(cargado, { tipo: "elegirModo", modo: "mirar" });
+  assert.equal(E.descartarEnCualquierModo(quietoEnMirar), quietoEnMirar);
+});
+
 await prueba("el editor es puro: sin React, sin catálogo, sin reloj y sin guardar nada en el navegador", () => {
   const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
   const ts = sinComent(leer(join(raiz, "src", "utils", "edicionDeZonas.ts")));
