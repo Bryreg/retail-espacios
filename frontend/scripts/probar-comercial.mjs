@@ -476,6 +476,36 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Sede → Vender» se dice también de una cara por participación");
 });
 
+/* La verificación del arreglo (2026-10-17): cuatro mutantes vivían con las
+   pruebas de arriba. «Estado del espacio» —el renglón que el recorrido vio
+   decir «Disponible» sobre ROB-01— podía volver al estado crudo; «es por
+   participación» podía valer para todo mueble (la ficha de una góndola que se
+   vende entera perdía «Sin contrato activo.» y «Sede → Vender»); la nota «lo
+   dice la ocupación» podía salir siempre, y el tope de lo comprometido no lo
+   probaba nadie. */
+prueba("la ficha del plano 2D: «Estado del espacio» también por ocupación, y un mueble que se vende entero queda como estaba (ejecutado)", () => {
+  // El tope: lo comprometido nunca pasa de la cara ni baja de cero.
+  assert.equal(PC.textoDeLoComprometido({ dispo: "tomado", quedaPb: -500 }, true), "Por participación · comprometido 100 % · queda 0 %.");
+  assert.equal(PC.textoDeLoComprometido({ dispo: "libre", quedaPb: 12000 }, true),
+    "Por participación · comprometido 0 % · queda 100 % — disponible para vender en el Editor 3D → Distribución.");
+  const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
+  // «Es por participación» lo dice el mueble del store, no cualquier mueble.
+  assert.match(plano, /const esPorParticipacion = useCallback\(\(itemId: string\): boolean => \{\s*const f = muebleDelStore\.get\(itemId\);\s*return !!f && porParticipacion\(f\);\s*\}, \[muebleDelStore\]\);/,
+    "«es por participación» vale para muebles que no se venden así");
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
+  const i = panel.indexOf('<Field label="Estado del espacio"');
+  const estado = panel.slice(i, panel.indexOf("</Field>", i));
+  assert.ok(i > 0 && estado.length > 200, "no está el campo «Estado del espacio»");
+  // De sólo lectura dice la palabra por ocupación, nunca el estado crudo.
+  assert.match(estado, /<p style=\{\{ fontSize: 14, color: "var\(--dark-ink-1\)" \}\}>\s*\{rotuloVisto\}\s*\{face\.status === "occupied" && \(/,
+    "«Estado del espacio» dice «Disponible» sobre una cara por participación tomada");
+  assert.doesNotMatch(estado, /STATUS_LABELS\[face\.status\]/, "«Estado del espacio» vuelve a leer el estado crudo");
+  // La nota «lo dice la ocupación» sale sólo cuando lo que se ve no es lo de la base.
+  assert.equal((estado.match(/data-estado-por-ocupacion/g) || []).length, 2);
+  assert.equal((estado.match(/\{estadoVisto !== face\.status && \(\s*<(?:p|span) data-estado-por-ocupacion/g) || []).length, 2,
+    "la nota «lo dice la ocupación» sale también en caras que no se venden por participación");
+});
+
 prueba("Montajes: la participación es un contrato a montar, «Participación 3 · cara A», sin % (ejecutado)", () => {
   const p = PC.partirCodigo("NAVE-GON-01-B-PC3");
   assert.equal(PC.textoDeParticipacionParaMontar(p.parte, p.cara), "Participación 3 · cara B");

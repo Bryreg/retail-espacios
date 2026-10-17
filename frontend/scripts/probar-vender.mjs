@@ -1154,6 +1154,10 @@ console.log("\nvender · las participaciones de cara");
     if (!RAMA) throw new Error("sin rama de Vender");
     assert.match(podar(RAMA.texto), /avisoDeParticipacion=\{avisoDeParticipacion\}/, "Vender no le pasa el aviso a la ficha");
     assert.match(modoCodigo, /\{avisoDeParticipacion && \(/, "la ficha no muestra el aviso");
+    // (Verificación del arreglo: la caja del aviso podía quedar vacía.) La
+    // caja dice el texto, no sólo aparece.
+    const caja = modoCodigo.slice(modoCodigo.indexOf("data-aviso-participacion"), modoCodigo.indexOf("</div>", modoCodigo.indexOf("data-aviso-participacion")));
+    assert.match(caja, /<span[^>]*>\s*\{avisoDeParticipacion\}\s*<\/span>/, "la caja del aviso sale vacía");
     assert.match(modoCodigo, /onGuardado, onCancelar, onResaltar, avisoDeParticipacion,/, "la ficha no recibe el aviso");
     // Y el aviso no quedó adentro de la rama «sin espacios»: tocar la cara con
     // un contrato a medio armar también lo dice.
