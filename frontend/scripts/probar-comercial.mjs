@@ -384,6 +384,98 @@ prueba("el plano 2D pinta la cara por participación con su ocupación del día 
   assert.match(plano, /: STATUS_COLORS\[pintadoDe\(item\.id, "A", item\.status\)\]/, "el borde no usa el color por ocupación");
 });
 
+/* La revisión final (2026-10-17): el globo de Supervisar y la ficha del plano
+   2D decían «Sin contrato activo — disponible para vender» y «Disponible» en
+   verde sobre caras por participación tomadas al 100 %: una cara así nunca
+   tiene `supplierName` (el contrato `…-PC3` no la pinta). Lo dice su ocupación
+   anónima de hoy. */
+prueba("lo comprometido de una cara por participación: «comprometido X % · queda Y %», y «disponible» sólo si queda algo (ejecutado)", () => {
+  const g = porPc("ROB-01", { type: "robatope", gondolaType: undefined });
+  const hoy = "2026-10-17";
+  const de = (intervalos, fisicos = []) => PC.dispoDeParticipacion(g, { ocupacion: { intervalos, fisicos }, hoy }, hoy, hoy);
+  const iv = (pb, desde = "2026-10-01", hasta = "2026-12-31") => ({ desde, hasta, pb });
+  // GON-01·A del recorrido: 55 % comprometido.
+  assert.equal(PC.textoDeLoComprometido(de([iv(3000), iv(2500)]), true),
+    "Por participación · comprometido 55 % · queda 45 % — disponible para vender en el Editor 3D → Distribución.");
+  // ROB-01: cuatro del 25 %. Nunca «disponible» sobre algo tomado.
+  const tomada = PC.textoDeLoComprometido(de([iv(2500), iv(2500), iv(2500), iv(2500)]), true);
+  assert.equal(tomada, "Por participación · comprometido 100 % · queda 0 %.");
+  assert.doesNotMatch(tomada, /disponible/i, "el globo dice «disponible» sobre una cara tomada");
+  // Vendida entera (lo físico cuenta como la cara entera) y con decimales.
+  assert.equal(PC.textoDeLoComprometido(de([], [{ desde: "2026-10-01", hasta: "2026-12-31" }]), true),
+    "Por participación · comprometido 100 % · queda 0 %.");
+  assert.match(PC.textoDeLoComprometido(de([iv(3333)]), true), /^Por participación · comprometido 33,33 % · queda 66,67 % — disponible/);
+  // Nada comprometido hoy (lo de mañana no cuenta): queda todo.
+  assert.equal(PC.textoDeLoComprometido(de([iv(4000, "2026-10-18")]), true),
+    "Por participación · comprometido 0 % · queda 100 % — disponible para vender en el Editor 3D → Distribución.");
+  // El trabajador: la palabra sola, sin % ni «disponible» (D7).
+  for (const [d, esperado] of [[de([iv(5500)]), "Por participación."], [de([iv(10000)]), "Por participación · tomada."], [de([]), "Por participación."]]) {
+    const t = PC.textoDeLoComprometido(d, false);
+    assert.equal(t, esperado);
+    assert.doesNotMatch(t, /%|\d|disponible/i, "el trabajador ve un % o «disponible»");
+  }
+  // Sin la ocupación todavía: nunca «disponible» sobre lo que no se sabe.
+  for (const conPct of [true, false]) {
+    assert.equal(PC.textoDeLoComprometido(null, conPct), "Se vende por participación.");
+  }
+});
+
+prueba("el globo de Supervisar dice lo comprometido de una cara por participación, nunca «Sin contrato activo — disponible»", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const globo = t.slice(t.indexOf("function FixturePopover("), t.indexOf("// ─── Vender por partes: las puertas de la cara"));
+  assert.ok(globo.length > 1000, "no está FixturePopover");
+  assert.match(globo, /const esPc = rentable && porParticipacion\(fixture\);/);
+  // La ocupación de HOY de la misma cara que la pastilla.
+  assert.match(globo, /const dispoPc = useDispoDeHoy\(fixture, entry\.face\);/);
+  assert.match(globo, /<StatusPill fixture=\{fixture\} face=\{entry\} \/>/);
+  // La rama de participación va ANTES de la frase de siempre: ésa queda para
+  // las caras que no se venden así.
+  assert.match(globo, /\? esPc\s*\? textoDeLoComprometido\(dispoPc, isAdmin\)\s*: puertas\.some\(\(p\) => p\.vendida\) && claseDelPopover/,
+    "el globo de una cara por participación no dice lo comprometido");
+  const i = globo.indexOf("textoDeLoComprometido(dispoPc, isAdmin)");
+  const j = globo.indexOf('"Sin contrato activo — disponible para vender."');
+  assert.ok(i > 0 && j > i, "«Sin contrato activo — disponible para vender.» se alcanza antes que la rama de participación");
+  // «Abrir en Distribución» sólo para quien administra, y sólo en una cara así.
+  assert.match(globo, /\{esPc && isAdmin && onAbrirEnDistribucion && \(/);
+  assert.match(t, /onAbrirEnDistribucion=\{isAdmin && porParticipacion\(selected\)\s*\? \(\) => abrirEnDistribucion\(selected\.id, facesOf\(selected\)\[0\]\.face\)\s*: undefined\}/,
+    "el globo ofrece Distribución a quien no administra, o a una cara que no es por participación");
+});
+
+prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por participación, no «Disponible» ni «Sede → Vender» (ejecutado)", () => {
+  // La palabra del estado que se ve, la misma regla que el color.
+  assert.equal(PC.rotuloPorOcupacion("free", { dispo: "tomado" }), "Tomada");
+  assert.equal(PC.rotuloPorOcupacion("free", { dispo: "parcial" }), "Parcial");
+  assert.equal(PC.rotuloPorOcupacion("free", { dispo: "libre" }), null);
+  assert.equal(PC.rotuloPorOcupacion("free", null), null, "sin ocupación se inventó un estado");
+  assert.equal(PC.rotuloPorOcupacion("maintenance", { dispo: "tomado" }), null, "lo propio de la cara dejó de mandar");
+  assert.equal(PC.rotuloPorOcupacion("occupied", { dispo: "parcial" }), null);
+  const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
+  assert.ok(panel.length > 1000, "no está AssignmentPanel");
+  // La ocupación de la cara que se mira, del mismo cálculo que su color.
+  assert.match(plano, /const pintadoDe = useCallback\(\(itemId: string, cara: "A" \| "B", propio: SpaceStatus\): SpaceStatus =>\s*estadoParaPintar\(propio, dispoDeLaCara\(itemId, cara\)\), \[dispoDeLaCara\]\);/,
+    "el color y la ficha no salen de la misma ocupación");
+  assert.match(plano, /dispoDeCara=\{\(cara\) => dispoDeLaCara\(selectedItem\.id, cara\)\}/);
+  assert.match(plano, /porParticipacion=\{esPorParticipacion\(selectedItem\.id\)\}/);
+  assert.match(panel, /const dispoPc = esPc \? \(dispoDeCara\?\.\(activeFace\) \?\? null\) : null;/);
+  assert.match(panel, /const estadoVisto: SpaceStatus = estadoParaPintar\(face\.status, dispoPc\);/);
+  assert.match(panel, /const rotuloVisto = rotuloPorOcupacion\(face\.status, dispoPc\) \?\? STATUS_LABELS\[face\.status\];/);
+  // La pastilla: el color y la palabra por ocupación.
+  assert.match(panel, /\.\.\.\(rentable \? STATUS_BADGE_STYLE\[estadoVisto\] : NON_RENTABLE_BADGE_STYLE\)/, "la pastilla no usa el color por ocupación");
+  assert.match(panel, /\{rentable \? rotuloVisto : NON_RENTABLE_LABEL\}/, "la pastilla dice «Disponible» sobre una cara por participación");
+  assert.doesNotMatch(panel, /STATUS_BADGE_STYLE\[face\.status\]|\{rentable \? STATUS_LABELS\[face\.status\]/, "queda una pastilla con el estado crudo");
+  // «Contratado»: lo comprometido, y dónde se vende (no «Sede → Vender»).
+  assert.match(panel, /\) : esPc \? \(\s*<p data-contratado-por-participacion[^>]*>\s*\{textoDeLoComprometido\(dispoPc, isAdmin\)\}/,
+    "«Contratado» de una cara por participación no dice lo comprometido");
+  const k = panel.indexOf("{textoDeLoComprometido(dispoPc, isAdmin)}");
+  const sin = panel.indexOf("Sin contrato activo.");
+  assert.ok(k > 0 && sin > k, "«Sin contrato activo.» se alcanza antes que la rama de participación");
+  assert.match(panel, /\{isAdmin && esPc \? \(\s*<>\s*<p[^>]*>\s*\{DONDE_SE_CARGAN\}/, "a quien administra no le dice dónde se cargan las participaciones");
+  assert.match(panel, /onClick=\{\(\) => abrirEnDistribucion\(item\.id, activeFace\)\}/);
+  const vender = panel.indexOf("Sede → Vender");
+  assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Sede → Vender» se dice también de una cara por participación");
+});
+
 prueba("Montajes: la participación es un contrato a montar, «Participación 3 · cara A», sin % (ejecutado)", () => {
   const p = PC.partirCodigo("NAVE-GON-01-B-PC3");
   assert.equal(PC.textoDeParticipacionParaMontar(p.parte, p.cara), "Participación 3 · cara B");

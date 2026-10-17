@@ -15,6 +15,7 @@ import {
   Handshake,
   FileSpreadsheet,
   Box,
+  Layers,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { useFichasPropias } from "../store/fichasPropias";
@@ -79,7 +80,7 @@ import {
   partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
   tarifaDeLaFila, textoDeParte, comoSeLiberaLaCara, type ComoSeLibera, type EnContrato, type IndiceDePartes, type ParteRef,
   comoSeLiberaPorParticipacion, dispoDeParticipacion, esParticipacion, ocupadoPorParticipacion, parteVisible,
-  porParticipacion, type ParticipacionDeLaCara,
+  porParticipacion, textoAlTocarEnVender, textoDeLoComprometido, type ParticipacionDeLaCara,
 } from "../utils/partes";
 // Las participaciones de cara (§4.8, §9.9, §11): la ocupación ANÓNIMA para
 // Vender, Supervisar y el plano (store de LECTURA, el de edición es del 3D) y
@@ -2090,7 +2091,7 @@ function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmi
 // ─── Quick-look popover, anchored to the fixture on the map ─────────────────
 
 function FixturePopover({
-  fixture, anchor, isAdmin, onExpand, onNegociar, onRenovar, onClose,
+  fixture, anchor, isAdmin, onExpand, onNegociar, onRenovar, onAbrirEnDistribucion, onClose,
 }: {
   fixture: UnifiedFixture;
   anchor: MapAnchor;
@@ -2100,6 +2101,9 @@ function FixturePopover({
   onNegociar?: () => void;
   /** El mismo acuerdo otra vez, prellenado. Sólo cuando hay algo que renovar. */
   onRenovar?: () => void;
+  /** Una cara por participación se vende en el Editor 3D → Distribución, no
+   *  acá: sólo para quien administra. */
+  onAbrirEnDistribucion?: () => void;
   onClose: () => void;
 }) {
   const rentable = isRentable(fixture);
@@ -2115,6 +2119,13 @@ function FixturePopover({
   );
   const pill = daysPill(entry.endDate ? daysUntil(entry.endDate) : null);
   const hasContract = rentable && entry.supplierName.trim().length > 0;
+  // Una cara POR PARTICIPACIÓN nunca tiene `supplierName` (un contrato `…-PC3`
+  // no la pinta): sin esto el globo decía «Sin contrato activo — disponible
+  // para vender» sobre un robatope tomado al 100 %. Lo dice su ocupación
+  // anónima de hoy —la misma de la pastilla—: cuánto está comprometido y
+  // cuánto queda, y «disponible» sólo si queda algo (`textoDeLoComprometido`).
+  const esPc = rentable && porParticipacion(fixture);
+  const dispoPc = useDispoDeHoy(fixture, entry.face);
   // Vender por partes: qué puertas de la cara A están vendidas, sin nombres
   // (el detalle, con «Ver todo», dice de quién y hasta cuándo).
   const sedeActiva = useFixtureStore((s) => s.sede);
@@ -2213,9 +2224,11 @@ function FixturePopover({
             )}
           </>
         ) : (
-          <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          <div data-globo-participacion={esPc ? "" : undefined} style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
             {rentable
-              ? puertas.some((p) => p.vendida) && claseDelPopover
+              ? esPc
+                ? textoDeLoComprometido(dispoPc, isAdmin)
+                : puertas.some((p) => p.vendida) && claseDelPopover
                 ? `Entera, sin contrato: hay ${claseDelPopover.plural} vendid${generoDelPopover}s.`
                 : "Sin contrato activo — disponible para vender."
               : "Parte del local, no admite contrato."}
@@ -2260,6 +2273,21 @@ function FixturePopover({
             <Handshake size={13} />
             {onRenovar ? "Con otro proveedor"
               : hasContract ? "Nuevo contrato" : "Negociar este espacio"}
+          </button>
+        )}
+        {esPc && isAdmin && onAbrirEnDistribucion && (
+          <button
+            onClick={onAbrirEnDistribucion}
+            title="Abre el Editor 3D en esta cara, en Distribución"
+            style={{
+              width: "100%", height: 34, borderRadius: "var(--r-md)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink-2)",
+              fontSize: 12.5, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            <Layers size={13} />
+            Abrir en Distribución
           </button>
         )}
 
@@ -4425,6 +4453,19 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       : null),
     [mapRange, estadoComercial, indicePartes, sede, participacionDe, isAdmin],
   );
+  /** Lo que dice la ficha de Vender al tocar una cara POR PARTICIPACIÓN.
+   *  Tocarla no suma nada (`alTocarEnVender`), y antes tampoco decía nada: el
+   *  panel seguía en «Elegí el primer espacio» como si el toque no hubiera
+   *  llegado. Ahora dice dónde se vende y cuánto queda EN EL PERIODO —el mismo
+   *  número del rótulo del plano—, sin nombres ni montos: del otro lado de la
+   *  mesa puede estar otro proveedor. No ofrece ir a Distribución: eso muestra
+   *  las participaciones de todos, y Vender lo mira el proveedor. */
+  const avisoDeParticipacion = useMemo(() => {
+    if (!selected || !porParticipacion(selected)) return null;
+    const par = participacionDe(selected, detailFace);
+    const d = par ? dispoDeParticipacion(selected, par, mapRange?.from ?? par.hoy, mapRange?.to ?? par.hoy) : null;
+    return textoAlTocarEnVender(d, isAdmin);
+  }, [selected, detailFace, participacionDe, mapRange, isAdmin]);
   const porPartesDeCara = useCallback(
     (f: UnifiedFixture, face: FaceEntry): string | null => comoSeLibera(f, face)?.porPartes ?? null,
     [comoSeLibera],
@@ -5001,6 +5042,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               onRenovar={isAdmin && renovable(facesOf(selected)[0])
                 ? () => renovar(facesOf(selected)[0])
                 : undefined}
+              onAbrirEnDistribucion={isAdmin && porParticipacion(selected)
+                ? () => abrirEnDistribucion(selected.id, facesOf(selected)[0].face)
+                : undefined}
               onClose={closeDetail}
             />
           )}
@@ -5411,6 +5455,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           <ModoVender
             espacios={espaciosDelContrato}
             ultimo={selected}
+            avisoDeParticipacion={avisoDeParticipacion}
             onQuitar={quitarDelContrato}
             onCambiarCara={alternarCara}
             onCambiarParte={alternarDeParte}

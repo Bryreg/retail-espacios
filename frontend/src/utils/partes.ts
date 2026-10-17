@@ -5,7 +5,7 @@ import {
   type RangeAvailability, type ReferenceRates, type SpaceStatus,
 } from "../types/fixtures";
 import { LIBRE, type EstadoComercial, type EstadoPorEspacio } from "./estadoComercial";
-import { dispoPorParticipacion, pct, type OcupacionDeCara } from "./participaciones";
+import { CARA_ENTERA_PB, dispoPorParticipacion, pct, type OcupacionDeCara } from "./participaciones";
 
 /**
  * Vender por partes: la nevera entera o por puertas; el mural, la góndola, la
@@ -739,8 +739,9 @@ export interface EnContrato { id: string; face: "A" | "B"; parte?: string }
  *   que siga, o el forro. Nunca la caja entera, que el servidor rechaza.
  * · Una cara POR PARTICIPACIÓN no se vende así: ni entera ni la participación
  *   (`…-PC3`), que se carga en el Editor 3D → Distribución. Tocarla no suma
- *   nada y tampoco vacía lo que ya se armó: el contrato queda como estaba y el
- *   plano dice «Por participación · queda 40 %» (`textoDeParticipacion`).
+ *   nada y tampoco vacía lo que ya se armó: el contrato queda como estaba, el
+ *   plano dice «Por participación · queda 40 %» (`textoDeParticipacion`) y la
+ *   ficha del contrato avisa dónde se vende (`textoAlTocarEnVender`).
  */
 export function alTocarEnVender(
   lista: EnContrato[], f: ConPartes & { id: string }, cara: "A" | "B", libre: (p: ParteRef) => boolean,
@@ -1067,10 +1068,60 @@ export function textoDeParticipacion(d: Pick<DispoDeParticipacion, "dispo" | "qu
   return `Por participación · queda ${pct(d.quedaPb)}`;
 }
 
-/** Lo que se dice al tocar una cara por participación en Vender: no se vende
- *  entera ni la participación; se carga en el Editor 3D → Distribución. */
-export function textoAlTocarEnVender(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb">, conPorcentaje: boolean): string {
-  return `${textoDeParticipacion(d, conPorcentaje)}. Se carga en el Editor 3D → Distribución.`;
+/** Dónde se vende una cara por participación (no en Sede → Vender, que no
+ *  la vende): lo dicen Vender, el globo de Supervisar y la ficha del plano 2D
+ *  con las mismas palabras. */
+export const DONDE_SE_CARGAN = "Las participaciones se cargan en el Editor 3D → Distribución.";
+
+/** Lo que se dice al tocar una cara por participación en Vender (el aviso de
+ *  la ficha del contrato): no se vende entera ni la participación, y se dice
+ *  dónde. Para quien vende, cuánto queda EN EL PERIODO —el mismo número del
+ *  rótulo del plano—: «Se vende por participación: queda 40 %. Las
+ *  participaciones se cargan en el Editor 3D → Distribución.». Sin el % para
+ *  el trabajador, ni sin la ocupación todavía. Nunca un nombre ni un monto:
+ *  es la ocupación anónima, y del otro lado de la mesa puede estar otro
+ *  proveedor. */
+export function textoAlTocarEnVender(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb"> | null, conPorcentaje: boolean): string {
+  return d && conPorcentaje
+    ? `Se vende por participación: queda ${pct(d.quedaPb)}. ${DONDE_SE_CARGAN}`
+    : `Se vende por participación. ${DONDE_SE_CARGAN}`;
+}
+
+/**
+ * Lo que dice de una cara por participación el globo de Supervisar y la
+ * tarjeta «Contratado» de la ficha del plano 2D, con la ocupación anónima de
+ * HOY (`d`, de un solo día: lo comprometido es lo que no queda). Una cara así
+ * nunca tiene `supplierName` (un contrato `…-PC3` no la pinta: la fusión busca
+ * por código exacto), y por eso las dos decían «Sin contrato activo —
+ * disponible para vender» sobre un robatope tomado al 100 % (la revisión
+ * final, 2026-10-17).
+ *
+ * · Para quien administra: «Por participación · comprometido 55 % · queda
+ *   45 %», y «disponible para vender» SÓLO si queda algo, con el lugar donde
+ *   se vende (el Editor 3D → Distribución, no Vender).
+ * · Para el trabajador, la palabra sola (D7): «Por participación» o «Por
+ *   participación · tomada». Nunca el % ni «disponible».
+ * · Sin la ocupación todavía, que se vende así y nada más: nunca «disponible»
+ *   sobre lo que no se sabe.
+ */
+export function textoDeLoComprometido(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb"> | null, conPorcentaje: boolean): string {
+  if (!d) return "Se vende por participación.";
+  if (!conPorcentaje) return `${textoDeParticipacion(d, false)}.`;
+  const queda = Math.max(0, Math.min(CARA_ENTERA_PB, d.quedaPb));
+  const cuenta = `Por participación · comprometido ${pct(CARA_ENTERA_PB - queda)} · queda ${pct(queda)}`;
+  return queda > 0 ? `${cuenta} — disponible para vender en el Editor 3D → Distribución.` : `${cuenta}.`;
+}
+
+/** La palabra del estado que se VE de una cara por participación en la ficha
+ *  del plano 2D: la misma regla que su color (`estadoParaPintar`) y que el
+ *  cartel del Editor 3D. Sin lugar hoy, «Tomada»; con algo comprometido,
+ *  «Parcial»; sin nada, sin la ocupación o con un estado propio que manda
+ *  (vendida entera, en mantenimiento), `null`: la de siempre. Sin el %: es
+ *  la misma información que el color. */
+export function rotuloPorOcupacion(propio: string, d: Pick<DispoDeParticipacion, "dispo"> | null): string | null {
+  const pintado = estadoParaPintar(propio, d);
+  if (pintado === propio) return null;
+  return pintado === "occupied" ? "Tomada" : "Parcial";
 }
 
 /** «Cuándo se libera» de una cara por participación: con algo comprometido

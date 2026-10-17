@@ -36,7 +36,11 @@ import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDe
 import {
   codigoDeParte, concordancia, dispoDeParticipacion, divisionDe, estadoParaPintar, juntasDePartes, piezasDe,
   porParticipacion, puntosDePartesVendidas, sufijoDeParte, vanoDeParte,
+  DONDE_SE_CARGAN, rotuloPorOcupacion, textoDeLoComprometido, type DispoDeParticipacion,
 } from "../../utils/partes";
+// «Abrir en Distribución» (el Editor 3D en esa cara): el mismo pedido que la
+// ficha de Supervisar, sólo tipos y el store de lectura.
+import { useAbrirEnDistribucion } from "../Distribucion/ParticipacionesDeLaCara";
 // La ocupación ANÓNIMA de las caras por participación (store de LECTURA): el
 // color de esas caras sale de ahí (§10.8), no de un contrato `…-PC3`.
 import { claveDeSede, useOcupacionStore } from "../../store/ocupacionStore";
@@ -480,15 +484,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   useEffect(() => {
     if (hayParticipaciones) void cargarOcupacion(sede);
   }, [hayParticipaciones, sede, cargarOcupacion]);
-  const pintadoDe = useCallback((itemId: string, cara: "A" | "B", propio: SpaceStatus): SpaceStatus => {
+  /** Cómo está HOY una cara por participación, o `null` si el mueble no se
+   *  vende así o la sede todavía no se leyó. La leen el color (`pintadoDe`) y
+   *  la ficha del panel: el estado que se ve y lo comprometido. */
+  const dispoDeLaCara = useCallback((itemId: string, cara: "A" | "B"): DispoDeParticipacion | null => {
     const f = muebleDelStore.get(itemId);
-    if (!f || !ocupacionDeSede || !porParticipacion(f)) return propio;
+    if (!f || !ocupacionDeSede || !porParticipacion(f)) return null;
     const codigo = fullSpaceCode(sede, codigoDeParte(f.code, cara, null));
     const o = Object.prototype.hasOwnProperty.call(ocupacionDeSede.caras, codigo)
       ? ocupacionDeSede.caras[codigo] : { intervalos: [], fisicos: [] };
     const hoy = ocupacionDeSede.hoy;
-    return estadoParaPintar(propio, dispoDeParticipacion(f, { ocupacion: o, hoy }, hoy, hoy));
+    return dispoDeParticipacion(f, { ocupacion: o, hoy }, hoy, hoy);
   }, [muebleDelStore, ocupacionDeSede, sede]);
+  const pintadoDe = useCallback((itemId: string, cara: "A" | "B", propio: SpaceStatus): SpaceStatus =>
+    estadoParaPintar(propio, dispoDeLaCara(itemId, cara)), [dispoDeLaCara]);
+  const esPorParticipacion = useCallback((itemId: string): boolean => {
+    const f = muebleDelStore.get(itemId);
+    return !!f && porParticipacion(f);
+  }, [muebleDelStore]);
   useEffect(() => {
     // commit() stores the array by reference, so identity equality means this
     // update is the echo of our own commit and must not rebuild the canvas.
@@ -2506,6 +2519,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               isAdmin={isAdmin}
               initialFace={panelFace}
               pasillo={pasilloDe.get(selectedItem.id)}
+              porParticipacion={esPorParticipacion(selectedItem.id)}
+              dispoDeCara={(cara) => dispoDeLaCara(selectedItem.id, cara)}
               onUpdate={updateSelected}
               onRenombrar={aplicarRenombre}
               onIntercambiar={aplicarIntercambio}
@@ -3792,11 +3807,17 @@ const EMPTY_FACE: FaceData = {
 };
 
 function AssignmentPanel({
-  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo,
+  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo, porParticipacion: esPc = false, dispoDeCara,
   onUpdate, onRenombrar, onIntercambiar, onDelete, onDuplicate, onClose,
 }: {
   /** En qué pasillo cae, deducido de la geometría. */
   pasillo?: number;
+  /** El mueble se vende por participación (`porParticipacion` del mueble del
+   *  store: el del plano no trae `partes`). Su cara nunca tiene proveedor: lo
+   *  que tiene lo dice la ocupación. */
+  porParticipacion?: boolean;
+  /** La ocupación anónima de HOY de una cara por participación (o `null`). */
+  dispoDeCara?: (cara: "A" | "B") => DispoDeParticipacion | null;
   item: PlacedItem2D;
   /** Todo el plano: sin los demás muebles no se puede decir si el nombre que se
    *  está escribiendo ya es de otro, que es la comprobación que faltaba acá. */
@@ -3906,6 +3927,19 @@ function AssignmentPanel({
       };
   const activeCode = activeFace === "B" ? `${fullCode}-B` : fullCode;
 
+  // ── Una cara POR PARTICIPACIÓN ────────────────────────────────────────────
+  // Su `status` sigue «libre» en la base (un contrato `…-PC3` no la pinta, D6),
+  // y la ficha decía «Disponible» en verde y «Sin contrato activo… Sede →
+  // Vender» sobre un robatope tomado al 100 % (la revisión final, 2026-10-17).
+  // Lo que se ve sale de su ocupación anónima de HOY, la misma regla que su
+  // color en el plano (`estadoParaPintar`): la pastilla y «Estado del espacio»
+  // dicen «Tomada» o «Parcial» en ese color, y «Contratado» dice cuánto está
+  // comprometido y cuánto queda (`textoDeLoComprometido`).
+  const dispoPc = esPc ? (dispoDeCara?.(activeFace) ?? null) : null;
+  const estadoVisto: SpaceStatus = estadoParaPintar(face.status, dispoPc);
+  const rotuloVisto = rotuloPorOcupacion(face.status, dispoPc) ?? STATUS_LABELS[face.status];
+  const abrirEnDistribucion = useAbrirEnDistribucion();
+
   function updateFace(patch: Partial<FaceData>) {
     if (activeFace === "B") {
       onUpdate({ faceB: { ...(item.faceB ?? EMPTY_FACE), ...patch } });
@@ -4003,11 +4037,11 @@ function AssignmentPanel({
       {/* Status badge */}
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--dark-line)" }}>
         <span style={{
-          ...(rentable ? STATUS_BADGE_STYLE[face.status] : NON_RENTABLE_BADGE_STYLE),
+          ...(rentable ? STATUS_BADGE_STYLE[estadoVisto] : NON_RENTABLE_BADGE_STYLE),
           display: "inline-flex", alignItems: "center", borderRadius: 999,
           padding: "2px 10px", fontSize: 11, fontWeight: 600,
         }}>
-          {rentable ? STATUS_LABELS[face.status] : NON_RENTABLE_LABEL}
+          {rentable ? rotuloVisto : NON_RENTABLE_LABEL}
         </span>
       </div>
 
@@ -4071,13 +4105,26 @@ function AssignmentPanel({
                 {estadoError}
               </p>
             )}
+            {/* El estado de arriba es el de la base; el que se VE de una cara
+                por participación lo pone su ocupación. Se dice, para que el
+                «Disponible» del selector no se lea como «se puede vender». */}
+            {estadoVisto !== face.status && (
+              <p data-estado-por-ocupacion style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
+                Hoy se ve «{rotuloVisto}»: lo dice la ocupación de sus participaciones.
+              </p>
+            )}
           </>
         ) : (
           <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-            {STATUS_LABELS[face.status]}
+            {rotuloVisto}
             {face.status === "occupied" && (
               <span style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
                 Lo pone el contrato. Para liberarlo hay que cancelarlo.
+              </span>
+            )}
+            {estadoVisto !== face.status && (
+              <span data-estado-por-ocupacion style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
+                Lo dice la ocupación de hoy de sus participaciones.
               </span>
             )}
           </p>
@@ -4220,10 +4267,32 @@ function AssignmentPanel({
                 </p>
               )}
             </>
+          ) : esPc ? (
+            <p data-contratado-por-participacion style={{ fontSize: 13, color: "var(--dark-ink-2)", lineHeight: 1.45 }}>
+              {textoDeLoComprometido(dispoPc, isAdmin)}
+            </p>
           ) : (
             <p style={{ fontSize: 13, color: "var(--dark-ink-3)" }}>Sin contrato activo.</p>
           )}
-          {isAdmin && (
+          {isAdmin && esPc ? (
+            <>
+              <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 8, lineHeight: 1.45 }}>
+                {DONDE_SE_CARGAN}
+              </p>
+              <button
+                onClick={() => abrirEnDistribucion(item.id, activeFace)}
+                title="Abre el Editor 3D en esta cara, en Distribución"
+                style={{
+                  marginTop: 8, padding: "5px 10px", borderRadius: "var(--r-sm)",
+                  border: "1px solid var(--dark-line-2)", background: "transparent",
+                  color: "var(--dark-ink-1)", fontSize: 11.5, fontWeight: 600,
+                  fontFamily: "inherit", cursor: "pointer",
+                }}
+              >
+                Abrir en Distribución
+              </button>
+            </>
+          ) : isAdmin && (
             <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 8, lineHeight: 1.45 }}>
               Los contratos se hacen en <b style={{ color: "var(--dark-ink-2)" }}>Sede → Vender</b>, sobre el
               mapa y con la disponibilidad del periodo a la vista.
