@@ -15,7 +15,8 @@ import { nombreDeMueble } from "../utils/nomenclatura";
 // formulario del montaje.
 import { conNombrePropio } from "../catalogo/nombresPropios";
 import {
-  cantidadDe, codigoDeParte, esPieza, indiceDePartes, partirCodigo, piezasDeLaFamilia, sufijoDeParte, textoParaMontar,
+  cantidadDe, codigoDeParte, esParticipacion, esPieza, indiceDePartes, partirCodigo, piezasDeLaFamilia, sufijoDeParte,
+  textoDeParticipacionParaMontar, textoParaMontar, type ParteRef,
 } from "../utils/partes";
 
 /** Una cara de un mueble que hay que montar, con lo que ordena la lista. */
@@ -32,6 +33,17 @@ interface Pendiente extends EspacioAMontar {
 /** Días hacia atrás en que todavía tiene sentido tratar un montaje como
  *  pendiente de verdad. Espeja la ventana del tablero. */
 const VENTANA_DIAS = 30;
+
+/** Lo que dice la fila de una parte vendida: cuál es y contada desde dónde
+ *  («Puerta 2 de 3, contando de izquierda a derecha…»). Una participación de
+ *  la cara (`…-PC3`) es un contrato a montar como cualquier otro, con su
+ *  rótulo «Participación 3 · cara A» (D13): sin el %, que el tablero no carga,
+ *  ni zonas ni plata (§4.8, §4.9). */
+function parteParaMontar(parte: ParteRef, cara: "A" | "B", f: UnifiedFixture): string {
+  return esParticipacion(parte)
+    ? textoDeParticipacionParaMontar(parte, cara)
+    : textoParaMontar(parte, cantidadDe(f, parte.clase));
+}
 
 function diasDesde(iso: string): number {
   if (!iso) return 0;
@@ -130,7 +142,7 @@ export default function MountView({
             code: `${c.code}-${sufijoDeParte(partido.parte)}`,
             corto: codigoDeParte(f.code, partido.cara, partido.parte),
             data: { ...estado, status: estado.status as UnifiedFixture["status"] } as Partial<UnifiedFixture>,
-            parte: textoParaMontar(partido.parte, cantidadDe(f, partido.parte.clase)),
+            parte: parteParaMontar(partido.parte, partido.cara, f),
           });
         }
       }
@@ -200,7 +212,7 @@ export default function MountView({
         return {
           code,
           corto: codigoDeParte(f.code, partido.cara, partido.parte),
-          ...(partido.parte ? { parte: textoParaMontar(partido.parte, cantidadDe(f, partido.parte.clase)) } : {}),
+          ...(partido.parte ? { parte: parteParaMontar(partido.parte, partido.cara, f) } : {}),
           fixtureCode: f.code,
           sede: (data?.sede as string) || (f.sede as string) || sede,
           label: conNombrePropio(f, nombresPropios, f.label || f.code),

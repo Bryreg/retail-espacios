@@ -1030,6 +1030,144 @@ prueba("StoreView y Legend están borrados, o al menos nadie los importa", () =>
   });
 }
 
+/* ── las participaciones de cara en Vender (§4.8, §9.9) ─────────────────────
+   Una cara POR PARTICIPACIÓN se vende en el Editor 3D → Distribución, nunca
+   desde Vender: ni entera ni la participación (`…-PC3`). Vender la muestra
+   con su ocupación ANÓNIMA —«Por participación · queda 40 %»—: sin nombres,
+   sin montos, sin números de participación. Y lo que la vuelve «libre» o
+   «tomada» en el plano, la tarifa y «Cuándo se libera» es la misma cuenta
+   pura (`dispoPorParticipacion`) que usan Supervisar y el plano 2D. */
+console.log("\nvender · las participaciones de cara");
+{
+  const { build } = await import("esbuild");
+  const r = await build({
+    stdin: { contents: 'export * from "./src/utils/partes.ts";', resolveDir: raiz, loader: "ts" },
+    bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+  });
+  const P = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+  const d = (s) => new Date(`${s}T00:00:00`);
+  const HOY = "2026-10-17";
+  const gon = { id: "g1", code: "GON-01", sede: "NAVE", type: "gondola", gondolaType: "double", partes: { division: "participacion" } };
+  const entera = { id: "g2", code: "GON-02", sede: "NAVE", type: "gondola", gondolaType: "double" };
+  const ocup = (intervalos, fisicos = []) => ({ ocupacion: { intervalos, fisicos }, hoy: HOY });
+  const iv = (desde, hasta, pb) => ({ desde, hasta, pb });
+  const nov = [d("2026-11-01"), d("2026-11-30")];
+  const ix = P.indiceDePartes({});
+  const dispo = (f, par) => P.disponibilidadDeCara(f, "A", {}, ix, "NAVE", nov[0], nov[1], par);
+  const como = (f, par, conPorcentaje) => P.comoSeLiberaLaCara(f, "A", {}, ix, "NAVE", nov[0], nov[1], par && { ...par, conPorcentaje });
+
+  prueba("una cara por participación no se vende desde Vender: tocarla no suma nada ni vacía el contrato (ejecutado)", () => {
+    assert.equal(P.porParticipacion(gon), true, "la góndola de prueba no se vende por participación: la prueba no prueba nada");
+    const vacia = [];
+    assert.equal(P.alTocarEnVender(vacia, gon, "A", () => true), vacia, "tocarla cambió el contrato");
+    const armado = [{ id: "g2", face: "B" }];
+    assert.equal(P.alTocarEnVender(armado, gon, "B", () => true), armado, "tocarla vació (o cambió) lo que ya se había armado");
+    // Y la entera de al lado sigue sumándose como siempre.
+    assert.deepEqual(P.alTocarEnVender([], entera, "B", () => true), [{ id: "g2", face: "B" }]);
+    // No ofrece la cara entera ni las participaciones como interruptores del renglón.
+    assert.deepEqual(P.interruptoresDeLaCara(gon, "A"), []);
+    assert.deepEqual(P.partesDe(gon), []);
+  });
+
+  prueba("una participación (`…-PC3`) nunca está «libre» en Vender, y no tiene tarifa propia (ejecutado)", () => {
+    const pc = P.partirCodigo("NAVE-GON-01-PC3").parte;
+    assert.equal(P.esParticipacion(pc), true);
+    assert.equal(P.disponibilidadDeEspacio(gon, "A", pc, {}, ix, "NAVE", nov[0], nov[1]), "tomado");
+    assert.equal(P.disponibilidadDeEspacio(entera, "A", pc, {}, ix, "NAVE", nov[0], nov[1]), "tomado");
+    assert.deepEqual(P.tarifaDeEspacio(null, "NAVE", gon, pc), { valor: null, origen: "" });
+  });
+
+  prueba("la cara por participación se pinta con su ocupación: libre, parcial o tomada; sin ocupación, como antes (ejecutado)", () => {
+    assert.equal(dispo(gon, ocup([])), "libre", "sin nada comprometido");
+    assert.equal(dispo(gon, ocup([iv("2026-10-01", "2026-12-31", 3000)])), "parcial", "con un 30 % vendido");
+    assert.equal(dispo(gon, ocup([iv("2026-10-01", "2026-12-31", 6000), iv("2026-11-10", "2026-11-20", 4000)])), "tomado",
+      "un día del periodo sin lugar: no se puede vender por TODO el periodo");
+    assert.equal(dispo(gon, ocup([], [{ desde: "2026-10-01", hasta: "2026-12-31" }])), "tomado", "vendida entera");
+    assert.equal(dispo(gon, ocup([iv("2027-01-10", "2027-03-31", 9000)])), "libre", "lo de después del periodo no cuenta");
+    // Sin la ocupación (todavía no llegó), todo como antes: la cara sola.
+    assert.equal(dispo(gon, undefined), "libre");
+    // Y a un mueble que se vende entero la ocupación no le cambia nada.
+    assert.equal(dispo(entera, ocup([iv("2026-10-01", "2026-12-31", 10000)])), "libre");
+  });
+
+  prueba("el rótulo dice «Por participación · queda X %» (el % sólo a quien vende) y nunca un nombre ni un monto (ejecutado)", () => {
+    const parcial = ocup([iv("2026-10-01", "2026-12-31", 2500), iv("2026-11-05", "2026-11-25", 3500)]);
+    assert.deepEqual(como(gon, parcial, true), { porPartes: "Por participación · queda 40 %" });
+    assert.deepEqual(como(gon, parcial, false), { porPartes: "Por participación" }, "el trabajador ve un %");
+    assert.deepEqual(como(gon, ocup([iv("2026-10-01", "2026-12-31", 10000)]), true), { porPartes: "Por participación · tomada" });
+    // Sin nada comprometido, lo de siempre: libre desde el arranque del periodo.
+    const libre = como(gon, ocup([]), true);
+    assert.equal(libre.porPartes, undefined);
+    assert.equal(libre.diasLibres, 30);
+    // Lo que llega es la ocupación anónima: el texto no puede decir otra cosa
+    // que la palabra y el porcentaje.
+    for (const t of [P.textoDeParticipacion({ dispo: "parcial", quedaPb: 3333 }, true), P.textoAlTocarEnVender({ dispo: "parcial", quedaPb: 3333 }, true)]) {
+      assert.match(t, /^Por participación · queda 33,33 %(\. Se carga en el Editor 3D → Distribución\.)?$/);
+    }
+    assert.doesNotMatch(P.textoDeParticipacion({ dispo: "parcial", quedaPb: 3333 }, false), /%|\d/);
+  });
+
+  prueba("la ocupación que lee Vender es anónima: intervalos y fechas, sin proveedor, marca, valor ni número", () => {
+    const api = sinComentarios(leer("src/api/participaciones.ts"));
+    const tipo = (api.match(/export interface OcupacionOut \{[\s\S]*?\n\}/) || [""])[0];
+    assert.ok(tipo, "no se encontró OcupacionOut en api/participaciones.ts");
+    assert.match(tipo, /intervalos: \{ desde: string; hasta: string; pb: number \}\[\]/);
+    assert.doesNotMatch(tipo, /proveedor|supplier|marca|valor|numero|nombre/i, "la ocupación trae algo que no es anónimo");
+  });
+
+  prueba("Vender cuenta la cara por participación con la ocupación, y el trabajador nunca ve el %", () => {
+    const dispoDef = DEF_INT.get("dispoDeCara")?.texto ?? "";
+    assert.match(dispoDef, /disponibilidadDeCara\(f, face\.face, estadoComercial, indicePartes, sede, mapRange\.from, mapRange\.to, participacionDe\(f, face\.face\)\)/,
+      "el plano, la tarifa y los contadores de Vender no miran la ocupación de la cara por participación");
+    const comoDef = DEF_INT.get("comoSeLibera")?.texto ?? "";
+    assert.match(comoDef, /comoSeLiberaPorParticipacion\(f, participacionDe\(f, face\.face\), mapRange\.from, mapRange\.to, isAdmin\)\s*\?\? comoSeLiberaLaCara\(/,
+      "el rótulo de la cara por participación no sale de la ocupación, o el % no depende de quién mira");
+    const carasDef = DEF_INT.get("carasConSusPartes")?.texto ?? "";
+    assert.match(carasDef, /ocupadoPorParticipacion\(participacionDe\(f, c\.face\)\)/, "«Cuándo se libera» da libre una cara por participación con algo comprometido");
+    assert.match(sinComentarios(leer("src/utils/partes.ts")), /if \(porParticipacion\(f\)\) return lista;\s*if \(!seVendeAlgo\(f\)\) return \[\];/,
+      "tocar en Vender una cara por participación hace otra cosa que dejar el contrato como estaba");
+  });
+
+  prueba("ni una pastilla de la tarifa ni «Negociar» meten una cara por participación al contrato", () => {
+    const alternar = DEF_INT.get("alternarCara")?.texto ?? "";
+    assert.match(alternar, /if \(f && porParticipacion\(f\)\) return lista;/, "alternarCara suma una cara por participación");
+    assert.match(vista, /if \(!d\.porParticipacion\) alternarCara\(d\.fixture\.id, d\.face\);/, "la pastilla de una cara por participación la suma al contrato");
+    // Y se VE que no se suma (verificación del paso 7: aria-disabled sin nada
+    // a la vista, con el puntero de siempre, invitaba a tocarla), con un rótulo
+    // aunque la cara no tenga nada comprometido (antes lo decía sólo el title).
+    assert.match(vista, /aria-disabled=\{d\.porParticipacion \? true : undefined\}/, "la pastilla de una cara por participación no dice que está deshabilitada");
+    assert.match(vista, /style=\{d\.porParticipacion \? \{ cursor: "not-allowed", borderStyle: "dashed" \} : undefined\}/,
+      "la pastilla de una cara por participación se ve igual a las que se suman");
+    assert.match(vista, /\{!entra && d\.porParticipacion && <span className="chip__f">por participación<\/span>\}/,
+      "la pastilla de una cara por participación libre no dice por qué no entra");
+    const negociar = DEF_INT.get("negociar")?.texto ?? "";
+    assert.match(negociar, /if \(porParticipacion\(f\)\) return;/, "«Negociar este espacio» vende entera una cara por participación");
+  });
+
+  prueba("renovar una participación manda a Distribución con su formulario, no al contrato de Vender", () => {
+    const renovar = DEF_INT.get("renovar")?.texto ?? "";
+    assert.match(renovar, /if \(entry\.parte && esParticipacion\(entry\.parte\)\) \{\s*void renovarParticipacion\(entry\);\s*return;\s*\}/,
+      "renovar una participación arma un contrato de Vender");
+    const rp = DEF_INT.get("renovarParticipacion")?.texto ?? "";
+    assert.match(rp, /abrirEnDistribucion\(f\.id, entry\.face, termino\)/, "renovar una participación no abre Distribución");
+    const comp = sinComentarios(leer("src/components/Distribucion/ParticipacionesDeLaCara.tsx"));
+    assert.match(comp, /pedir\(fixtureId, cara, \{ distribucion: renovar \? \{ renovar \} : \{\} \}\)/,
+      "«Abrir en Distribución» no pide entrar a Distribución (`pedirEnfoque3D` con `distribucion`)");
+  });
+
+  prueba("lo de las participaciones que es de administración no se alcanza desde Vender", () => {
+    if (!SUP) throw new Error("sin superficie");
+    const hits = [];
+    for (const r of SUP.regiones) {
+      r.texto.split("\n").forEach((l, k) => {
+        const m = l.match(/<\s*(RevisarParticipaciones|ParticipacionesDeLaCara|TablaDeParticipaciones)\b|\b(leerCara|cargarResumen|useRevisionDeParticipaciones|revisionPc|renovarParticipacion)\b/);
+        if (m) hits.push(`${r.archivo}:${r.desde + k + 1}${r.nombre ? ` (${r.nombre})` : ""} — ${m[1] ?? m[2]}`);
+      });
+    }
+    assert.deepEqual([...new Set(hits)], [], `Vender alcanza datos de participaciones con nombres o montos:\n         ${[...new Set(hits)].join("\n         ")}`);
+  });
+}
+
 /* ── avisos: reglas de D que no están en el encargo de estas cinco pruebas ── */
 console.log("\nvender · avisos (no fallan, pero están medidos)");
 if (/--ring\s*:\s*var\(--signal/.test(temaCss)) {
