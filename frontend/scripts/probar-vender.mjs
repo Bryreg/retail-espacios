@@ -1120,6 +1120,14 @@ console.log("\nvender · las participaciones de cara");
     const alternar = DEF_INT.get("alternarCara")?.texto ?? "";
     assert.match(alternar, /if \(f && porParticipacion\(f\)\) return lista;/, "alternarCara suma una cara por participación");
     assert.match(vista, /if \(!d\.porParticipacion\) alternarCara\(d\.fixture\.id, d\.face\);/, "la pastilla de una cara por participación la suma al contrato");
+    // Y se VE que no se suma (verificación del paso 7: aria-disabled sin nada
+    // a la vista, con el puntero de siempre, invitaba a tocarla), con un rótulo
+    // aunque la cara no tenga nada comprometido (antes lo decía sólo el title).
+    assert.match(vista, /aria-disabled=\{d\.porParticipacion \? true : undefined\}/, "la pastilla de una cara por participación no dice que está deshabilitada");
+    assert.match(vista, /style=\{d\.porParticipacion \? \{ cursor: "not-allowed", borderStyle: "dashed" \} : undefined\}/,
+      "la pastilla de una cara por participación se ve igual a las que se suman");
+    assert.match(vista, /\{!entra && d\.porParticipacion && <span className="chip__f">por participación<\/span>\}/,
+      "la pastilla de una cara por participación libre no dice por qué no entra");
     const negociar = DEF_INT.get("negociar")?.texto ?? "";
     assert.match(negociar, /if \(porParticipacion\(f\)\) return;/, "«Negociar este espacio» vende entera una cara por participación");
   });

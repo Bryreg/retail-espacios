@@ -22,6 +22,7 @@
  */
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import * as esbuildMod from "esbuild";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { writeFileSync, mkdtempSync } from "node:fs";
@@ -432,7 +433,9 @@ prueba("«Para revisar»: una cara en orden no aparece; cada problema cae en su 
   ], { sin_mueble: 1 });
   const s = R.paraRevisarDeResumen(r, plano, ["NAVE-GON-01-PC7"]);
   const por = Object.fromEntries(s.map((x) => [x.tipo, x.items]));
-  assert.deepEqual(s.map((x) => x.tipo), ["sin_termino", "sin_mueble", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"]);
+  // `sin_mueble: 1` del servidor NO es una tarjeta: esa cuenta incluye lo
+  // cancelado y lo vencido (ver la prueba de abajo).
+  assert.deepEqual(s.map((x) => x.tipo), ["sin_termino", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"]);
   assert.deepEqual(s.map((x) => x.titulo).slice(0, 1), ["Contrato de participación sin término"]);
   assert.equal(por.sin_dibujar[0].rotulo, "GON-01 · A");
   assert.equal(por.sin_dibujar[0].frase, "falta dibujar 15 % (2 participaciones).");
@@ -447,10 +450,9 @@ prueba("«Para revisar»: una cara en orden no aparece; cada problema cae en su 
   assert.equal(por.borradores[0].rotulo, "PUN-03");
   assert.deepEqual(por.por_caducar.map((i) => i.frase), ["Reserva de Alpina en PUN-03 caduca el 24 oct."],
     "la reserva que caduca dentro de 8 días o más no se avisa, o la que caduca en 7 sí");
-  assert.equal(por.sin_mueble.length, 1);
-  assert.match(por.sin_mueble[0].frase, /^1 cara con participaciones ya no está en el plano como «por participación»/);
+  assert.equal(por.sin_mueble, undefined, "la cuenta `sin_mueble` del servidor se volvió una tarjeta");
   assert.deepEqual(por.sin_termino.map((i) => [i.rotulo, i.frase]), [["NAVE-GON-01-PC7", "cuenta como la cara entera hasta que se aclare."]]);
-  assert.equal(R.cuantasParaRevisar(s), 8);
+  assert.equal(R.cuantasParaRevisar(s), 7);
 });
 
 prueba("«Para revisar»: reservas que caducan hoy y dentro de 7 días; los huérfanos que no se pudieron nombrar se cuentan (ejecutado)", () => {
@@ -522,6 +524,108 @@ prueba("la ficha renueva sólo un contrato vivo que termina en 60 días; las pal
   assert.equal(R.rotuloDeCara("GON-09", "A", undefined), "GON-09 · A");
   assert.equal(R.fechaCorta("2027-02-03", HOY), "3 feb 2027");
   assert.equal(R.sumarDias("2026-12-28", 7), "2027-01-04");
+});
+
+/* ── Verificación del paso 7: lo que las pruebas de arriba dejaban pasar ─────
+   Cada una de estas cayó con una mutación que no rompía ninguna prueba: sacar
+   la carga de la ocupación de Vender, el filtro `activo` del resumen, la
+   palabra de la pastilla, la regla de «Libres» con una reserva que llena la
+   cara, el botón «Negociar» de una cara por participación… */
+
+prueba("«Participación sin mueble» no sale de `totales.sin_mueble`, que cuenta también lo cancelado (ejecutado)", () => {
+  // Lo que se vio en el navegador: PUN-05 tuvo una reserva, se canceló, y la
+  // cara volvió a venderse entera. El servidor la cuenta para siempre (las
+  // filas de participación no se borran nunca, D14): «cancelá lo que quede
+  // vivo» sin nada vivo, y la cuenta de «Para revisar» nunca volvía a cero.
+  assert.deepEqual(R.paraRevisarDeResumen(resumen([], { sin_mueble: 3 }), plano), []);
+  assert.equal(R.cuantasParaRevisar(R.paraRevisarDeResumen(resumen([caraRes()], { sin_mueble: 1 }), plano)), 0);
+});
+
+prueba("«Distribución con problemas» con UN problema (ejecutado)", () => {
+  const s = R.paraRevisarDeResumen(resumen([caraRes({ errores: 1 })]), plano);
+  assert.deepEqual(s.map((x) => [x.tipo, x.items.map((i) => i.frase)]), [["con_problemas", ["1 problema en la distribución."]]]);
+});
+
+prueba("la ficha muestra el término que rige hoy, no el más nuevo (ejecutado)", () => {
+  const nuevo = { id: 9, estado: "contrato", estado_visible: "firmado", desde: "2026-12-01", hasta: "2027-05-31" };
+  const rige = { id: 5, estado: "contrato", estado_visible: "vigente", desde: "2026-06-01", hasta: "2026-11-30" };
+  assert.equal(R.terminoQueSeMuestra({ terminos: [nuevo, rige] }, HOY)?.id, 5, "la ficha muestra el renovado que todavía no empieza");
+  assert.equal(R.terminoQueSeMuestra({ terminos: [nuevo] }, HOY)?.id, 9);
+  assert.equal(R.terminoQueSeMuestra({ terminos: [] }, HOY), null);
+});
+
+prueba("«Libres»: una cara por participación que una reserva deja hoy sin lugar no está libre (estadoDeUnidad, ejecutado)", () => {
+  const t = fuenteDe("pages/DashboardView.tsx");
+  const i = t.indexOf("function estadoDeUnidad(");
+  assert.ok(i >= 0, "no está estadoDeUnidad");
+  const fuente = t.slice(i, t.indexOf("\n}\n", i) + 2);
+  const { transformSync } = esbuildMod;
+  const js = transformSync(fuente, { loader: "ts" }).code;
+  const estadoDeUnidad = new Function("displayStatus", `${js}\nreturn estadoDeUnidad;`)((f) => f.ds);
+  const cara = { ds: "free" };
+  assert.equal(estadoDeUnidad(cara, [], true), "reserved", "una reserva del 100 % hoy deja la cara entre las «Libres»");
+  assert.equal(estadoDeUnidad(cara, [], false), "free");
+  assert.equal(estadoDeUnidad(cara, [{ ds: "active" }], true), "active", "con un contrato de participación que corre, la cara trabaja");
+  assert.equal(estadoDeUnidad(cara, [{ ds: "committed" }], false), "committed");
+  assert.equal(estadoDeUnidad({ ds: "active" }, [], true), "active", "lo que la cara tiene por sí misma manda");
+  // Y los totales le pasan la ocupación de HOY: «tomado» (sin lugar), nada más.
+  const v = sinComent(t);
+  assert.match(v, /return !!par && dispoDeParticipacion\(c\.fixture, par, par\.hoy, par\.hoy\)\?\.dispo === "tomado";/,
+    "«Libres» no mira la ocupación de hoy de la cara por participación");
+  assert.match(v, /estadoDeUnidad\(\s*c, partes\.filter\(\(p\) => p\.fixture\.id === c\.fixture\.id && p\.face === c\.face\), sinLugarHoy\(c\)\)/,
+    "los totales no le pasan a estadoDeUnidad si la cara se quedó sin lugar hoy");
+});
+
+prueba("Vender, Supervisar y el plano 2D LEEN la ocupación (sin esto, toda cara por participación se ve libre)", () => {
+  const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(v, /useEffect\(\(\) => \{\s*if \(hayParticipaciones\) void cargarOcupacion\(sede\);\s*\}, \[hayParticipaciones, sede, cargarOcupacion\]\);/,
+    "el tablero no pide la ocupación de la sede");
+  assert.match(v, /const hayParticipaciones = useMemo\(\(\) => fixtures\.some\(\(f\) => porParticipacion\(f\)\), \[fixtures\]\);/);
+  // Un contrato que entra o se cancela cambia el mapa de la base: la ocupación
+  // y el resumen se vuelven a leer.
+  assert.match(v, /if \(estadoVisto\.current === estadoComercial\) return;\s*estadoVisto\.current = estadoComercial;\s*if \(!hayParticipaciones\) return;\s*void recargarOcupacion\(sede\);\s*invalidarResumen\(sede\);/,
+    "un contrato nuevo o cancelado no vuelve a leer la ocupación ni olvida el resumen");
+  const plano2d = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
+  assert.match(plano2d, /useEffect\(\(\) => \{\s*if \(hayParticipaciones\) void cargarOcupacion\(sede\);\s*\}, \[hayParticipaciones, sede, cargarOcupacion\]\);/,
+    "el plano 2D no pide la ocupación (abierto directo, pinta verde lo comprometido)");
+  // La cara se busca en la ocupación con la sede del PLANO, como el servidor y
+  // `carasPorParticipacion`: con el campo `sede` del mueble, un mueble viejo
+  // con otra sede escrita adentro no encontraría su ocupación (y se vería libre).
+  assert.match(v, /function participacionDeLaCara\([\s\S]*?const codigo = fullSpaceCode\(sede, codigoDeParte\(f\.code, cara, null\)\);/,
+    "Vender y Supervisar buscan la ocupación con otra sede que la del plano");
+  assert.match(plano2d, /const codigo = fullSpaceCode\(sede, codigoDeParte\(f\.code, cara, null\)\);/,
+    "el plano 2D busca la ocupación con otra sede que la del plano");
+});
+
+prueba("la palabra de la cara por participación sale en la pastilla y en la tabla de «Estado por espacio»", () => {
+  const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(v, /const porPc = !face\.parte && ds === "free" && pc && pc\.dispo !== "libre" \? META_DE_PARTICIPACION\[pc\.dispo\] : null;/,
+    "la pastilla de estado no dice «Por participación» / «Tomada»");
+  assert.match(v, /const meta = porPc \? porPc\.meta : STATUS_META\[ds\];/);
+  assert.match(v, /const pin = pcHoy && pcHoy\.dispo !== "libre" \? pinDeParticipacion\(pcHoy\.dispo\) : pinDe\(\)\[ds\];/,
+    "la tabla dice «Libre» de una cara por participación comprometida");
+  assert.match(v, /tomado: \{ meta: \{ \.\.\.STATUS_META\.expired, label: palabraDeLaCara\("tomado"\) \}/);
+});
+
+prueba("el resumen (proveedores y marcas) no se pide sin `activo`: lo cumple el hook, no sólo quien lo llama", () => {
+  const c = sinComent(fuenteDe("components/Distribucion/RevisarParticipaciones.tsx"));
+  assert.match(c, /useOcupacionStore\(\(s\) => \(activo \? s\.resumen\[clave\] \?\? null : null\)\)/, "el hook muestra un resumen sin estar activo");
+  assert.match(c, /if \(!activo \|\| r\) return;/, "el hook pide el resumen sin estar activo");
+});
+
+prueba("una cara por participación no ofrece «Negociar» en la ficha ni en el globito", () => {
+  const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(v, /\{rentable && onNegociar && !pc && \(/, "la ficha ofrece vender entera una cara por participación");
+  assert.match(v, /onNegociar=\{isAdmin && !porParticipacion\(selected\) \? \(\) => negociar\(selected\) : undefined\}/,
+    "el globito de Supervisar ofrece vender entera una cara por participación");
+  // Lo del trabajador va sólo al trabajador (la administración tiene el bloque completo).
+  assert.match(v, /\{!hasContract && pc \? \(\s*!isAdmin && <CaraPorParticipacion fixture=\{fixture\} face=\{entry\.face\} \/>/);
+});
+
+prueba("«Renovar» de una participación sólo lleva a Distribución un contrato vivo", () => {
+  const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(v, /if \(t && t\.estado === "contrato" && \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)\) termino = t\.id;/,
+    "renovar abre el formulario sobre una reserva, un vencido o un cancelado");
 });
 
 console.log(`\n${hechas} pruebas\n`);

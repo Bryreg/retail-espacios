@@ -94,7 +94,7 @@ export function rotuloDeCara(codigo: string, cara: "A" | "B", mueble: MuebleDelP
 /* ── «Para revisar» ────────────────────────────────────────────────────────── */
 
 export type TipoDeRevision =
-  | "sin_dibujar" | "con_problemas" | "para_revisar" | "por_caducar" | "borradores" | "sin_mueble" | "sin_termino";
+  | "sin_dibujar" | "con_problemas" | "para_revisar" | "por_caducar" | "borradores" | "sin_termino";
 
 export interface ItemDeRevision {
   clave: string;
@@ -114,7 +114,7 @@ export interface SeccionDeRevision {
 /** En qué orden se dicen: primero lo que no se puede ver de otra forma (lo
  *  que cuenta como la cara entera sin estar escrito), después lo que vence
  *  solo (las reservas) y al final lo que se arregla dibujando. */
-const ORDEN: TipoDeRevision[] = ["sin_termino", "sin_mueble", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"];
+const ORDEN: TipoDeRevision[] = ["sin_termino", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"];
 
 const TITULOS: Record<TipoDeRevision, string> = {
   sin_dibujar: "Contratado sin dibujar",
@@ -122,7 +122,6 @@ const TITULOS: Record<TipoDeRevision, string> = {
   para_revisar: "Distribución para revisar",
   por_caducar: "Reservas por caducar",
   borradores: "Borradores sin confirmar",
-  sin_mueble: "Participación sin mueble",
   sin_termino: "Contrato de participación sin término",
 };
 
@@ -140,8 +139,18 @@ const TITULOS: Record<TipoDeRevision, string> = {
  *  5. *Borradores sin confirmar*: una cara que nunca se confirmó y tiene un
  *     borrador (el resumen no trae la fecha del borrador ni el de una cara ya
  *     confirmada: ésos se ven en la ficha).
- *  6. *Participación sin mueble*: caras con participaciones que el plano ya no
- *     vende así (el resumen da la cuenta).
+ *  6. *Participación sin mueble* (§11): NO va. La única fuente es
+ *     `totales.sin_mueble` del resumen, que cuenta toda cara con una fila de
+ *     participación —también las canceladas, caducadas y vencidas, que no se
+ *     borran nunca (D14)— que el plano ya no vende así. Una cara que tuvo una
+ *     reserva cancelada y volvió a venderse entera quedaba para siempre en
+ *     «Para revisar» con «cancelá lo que quede vivo» sin que quedara nada vivo
+ *     (verificación del paso 7, en el navegador). Lo vivo que importa ya se ve:
+ *     un contrato `…-PC<n>` sobre una cara que no es por participación sale en
+ *     «Contrato sin mueble» (`auditoriaDesfase.ts`), y una reserva viva no
+ *     puede quedar así (la frena el guardado del plano, §4.4, paso 4c) y
+ *     caduca sola.
+ *     Vuelve cuando el servidor cuente sólo las caras con términos vivos.
  *  7. *Contrato de participación sin término*: un contrato `…-PC<n>` sin fila
  *     de participación, que cuenta como la cara entera (§3.2). Con los códigos
  *     que se pudieron identificar (`huerfanos`), si no, la cuenta del servidor.
@@ -201,14 +210,6 @@ export function paraRevisarDeResumen(
         frase: `Reserva de ${quien} en ${rotulo} ${cuando}.`,
       });
     }
-  }
-
-  if (r.totales.sin_mueble > 0) {
-    const n = r.totales.sin_mueble;
-    sumar("sin_mueble", {
-      clave: "sin_mueble", rotulo: "", abrir: null,
-      frase: `${plural(n, "cara con participaciones ya no está", "caras con participaciones ya no están")} en el plano como «por participación». Volvé a ponerla${n === 1 ? "" : "s"} así o cancelá lo que quede vivo.`,
-    });
   }
 
   if (huerfanos.length > 0) {

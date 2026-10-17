@@ -5168,10 +5168,19 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                             onMouseEnter={() => destacar([clave])}
                             onMouseLeave={() => destacar(claves)}
                             aria-disabled={d.porParticipacion ? true : undefined}
+                            /* Que se VEA que no se suma: el puntero de siempre y la
+                               pastilla igual a las demás invitaban a tocar algo que no
+                               hace nada (verificación del paso 7). Borde punteado y sin
+                               bajar la opacidad: el texto se tiene que seguir leyendo. */
+                            style={d.porParticipacion ? { cursor: "not-allowed", borderStyle: "dashed" } : undefined}
                             onClick={(e) => { e.stopPropagation(); destacar(null); if (!d.porParticipacion) alternarCara(d.fixture.id, d.face); }}
                           >
                             {d.code}
                             {entra && <span className="chip__f">{d.porPartes ?? fechaEnCurso(toISODate(d.desde as Date))}</span>}
+                            {/* Una cara por participación sin nada comprometido no
+                                lleva rótulo: sin esto no hay nada que diga por qué no
+                                entra al contrato (lo decía sólo el `title`). */}
+                            {!entra && d.porParticipacion && <span className="chip__f">por participación</span>}
                           </button>
                         );
                       })}
