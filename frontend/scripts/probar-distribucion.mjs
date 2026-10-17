@@ -1712,6 +1712,13 @@ await prueba("el encabezado dice la sede: «Distribución · NAVE · GON-01 · c
   const panel = codigo6b("PanelDeDistribucion");
   assert.match(panel, /title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>\{tituloDelPanel\(activa\)\}<\/p>/, "el encabezado no usa el título con la sede");
   assert.ok(!/>Distribución · \{activa\.codigo\}</.test(panel), "quedó el encabezado sin la sede");
+  // Verificación de los arreglos (recorrido a 1440 × 900): con `truncate`, el panel de 320 px decía
+  // «Distribución · NAVE · GON-…» (el mueble cortado; con una sede larga, la sede misma). Se parte, no se corta.
+  const clases = panel.match(/<p className="([^"]*)" title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>/);
+  assert.ok(clases, "no está el párrafo del título");
+  assert.ok(!/(^|\s)truncate(\s|$)/.test(clases[1]), `el título del panel se corta (${clases[1]}): con la sede adelante no entra en un renglón`);
+  assert.match(clases[1], /(^|\s)break-words(\s|$)/, "el título del panel no se parte en renglones");
+  assert.match(clases[1], /(^|\s)text-balance(\s|$)/, "el título se parte en el guion del código («GON-» / «01 · cara B»)");
 });
 
 await prueba("historial (contrato con el servidor): una derivada dice sólo el DÍA en que dejó de valer —nunca el anterior— y se ordena por el instante contra las reales (ejecutado con TZ=America/Bogota)", () => {

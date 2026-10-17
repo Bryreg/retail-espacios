@@ -407,8 +407,13 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
 
       {/* 1 · Encabezado */}
       <div className="flex flex-col gap-2 border-b border-dark-line p-3">
-        <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-bold" title={tituloDelPanel(activa)} data-titulo-de-distribucion>{tituloDelPanel(activa)}</p>
+        {/* El título se PARTE en dos renglones, nunca se corta: con la sede
+            adelante, en el panel de 320 px cortado decía «Distribución · NAVE
+            · GON-…» y con una sede larga se comía la sede misma. Parejos
+            (`text-balance`): sin eso el corte caía en el guion del código
+            («GON-» / «01 · cara B»). */}
+        <div className="flex items-start gap-2">
+          <p className="min-w-0 flex-1 text-balance break-words text-sm font-bold leading-snug" title={tituloDelPanel(activa)} data-titulo-de-distribucion>{tituloDelPanel(activa)}</p>
           <button type="button" title="Encuadrar esta cara en el 3D" aria-label="Encuadrar en el 3D"
             onClick={() => onEncuadrarCara(activa.cara)}
             className="rounded border border-dark-line-2 p-1 text-dark-ink-2 hover:text-dark-ink-1"><Crosshair size={12} /></button>
