@@ -1,0 +1,1029 @@
+"""Participaciones de cara, paso 4b: la API (diseño 21-diseno-final.md §5, §13.2).
+
+Un escenario por prueba, con varias aserciones encadenadas (cada prueba con
+``client`` reimporta la app y crea una SQLite: ≈ 1–1,5 s). Los números de las
+escenas con fechas son de la marca ``reloj``: «hoy» es el 17 de octubre de 2026
+en Colombia. Para «pasa el tiempo» se usa ``time_machine.travel`` alrededor de
+la segunda mitad y se vuelve a entrar (la sesión dura 12 h).
+
+Los casos del pedido que se prueban por la API: A (30 % contratado y 20 %
+dibujado → pendiente 10 % y lo disponible no lo ofrece), B (tres polígonos que
+suman igual después de guardar y recargar), C (formas libres que se guardan),
+D (dos marcas con fechas cruzadas que se pisan → 409 al confirmar y el
+borrador queda), E (exceso → 409), G (lo vencido o cancelado deja de contar y
+su zona pasa a historia) y H (dos sesiones con la misma versión → la segunda
+recibe ``version_vieja``).
+
+Todo ``import app.*`` va ADENTRO de las funciones (el fixture ``client`` purga
+``sys.modules``).
+"""
+from datetime import date
+
+import pytest
+
+RELOJ = pytest.mark.reloj("2026-10-17T15:00:00+00:00")
+
+
+def D(y, m, d) -> str:
+    return date(y, m, d).isoformat()
+
+
+def _mueble(code, tipo, w, d, h, cx, division="participacion", **extra):
+    f = {"id": f"f-{code}", "code": code, "sede": "NAVE", "type": tipo, "label": extra.pop("label", code),
+         "cx": cx, "cz": 2, "rotY": 0, "w": w, "d": d, "h": h, "color": "#818cf8", **extra}
+    if division:
+        f["partes"] = {"division": division}
+    return f
+
+
+GON_01 = _mueble("GON-01", "gondola", 0.9, 0.9, 1.8, 2, label="Góndola 1", gondolaType="double")
+GON_02 = _mueble("GON-02", "gondola", 0.9, 0.9, 1.8, 4, division=None, label="Góndola 2", gondolaType="double")
+PUN_01 = _mueble("PUN-01", "punta", 0.9, 0.4, 1.8, 6, label="Punta 1")
+MET_01 = _mueble("MET-01", "metro", 1, 1, 0.05, 8, label="Metro 1")
+MET_02 = _mueble("MET-02", "metro", 1, 1, 0.05, 10, label="Metro 2")
+NEV_03 = {**_mueble("NEV-03", "nevera_puertas", 2.07, 0.7, 2.1, 12, label="Nevera"),
+          "partes": {"puertas": 3, "division": "puertas"}}
+ROB_01 = _mueble("ROB-01", "robatope", 0.3, 0.4, 1.6, 14, label="Robatope 1")
+PLANO = [GON_01, GON_02, PUN_01, MET_01, MET_02, NEV_03, ROB_01]
+
+
+def _plano(client, admin, fixtures=PLANO):
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": fixtures, "base_updated_at": None})
+    assert r.status_code == 200, r.text
+
+
+def _entrar(client):
+    """Una sesión nueva de administrador (después de viajar en el tiempo)."""
+    from conftest import CLAVE_ADMIN, _token
+
+    return {"Authorization": f"Bearer {_token(client, CLAVE_ADMIN)}"}
+
+
+def _alta(client, admin, espacio="GON-01", tipo="contrato", pb=2500, desde=D(2026, 11, 1), hasta=D(2027, 1, 31),
+          proveedor="Postobón", marca="Hit", caduca=None, valor=1_200_000, codigo=201, **extra):
+    cuerpo = {"sede": "NAVE", "espacio": espacio, "tipo": tipo, "proveedor": proveedor, "marca": marca,
+              "puntos_basicos": pb, "desde": desde, "hasta": hasta}
+    if tipo == "reserva":
+        cuerpo["caduca"] = caduca or D(2026, 10, 25)
+    else:
+        cuerpo["valor_mensual"] = valor
+    cuerpo.update(extra)
+    r = client.post("/api/participaciones/", headers=admin, json=cuerpo)
+    assert r.status_code == codigo, r.text
+    return r.json()
+
+
+def _cara(client, admin, espacio="GON-01", **q):
+    r = client.get("/api/participaciones/cara", headers=admin, params={"sede": "NAVE", "espacio": espacio, **q})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _zonas(*pares):
+    return [{"participacion_space_id": s, "vertices": v} for s, v in pares]
+
+
+def _distribuir(client, admin, accion, espacio, version, zonas, codigo=200, **extra):
+    cuerpo = {"sede": "NAVE", "espacio": espacio, "version": version, **extra}
+    if accion != "descartar":
+        cuerpo["zonas"] = zonas
+    if accion == "borrador":
+        r = client.put("/api/participaciones/distribucion/borrador", headers=admin, json=cuerpo)
+    else:
+        r = client.post(f"/api/participaciones/distribucion/{accion}", headers=admin, json=cuerpo)
+    assert r.status_code == codigo, r.text
+    return r.json()
+
+
+def _rect(u0, u1, v0=0.0, v1=1.0):
+    return [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]
+
+
+def _util(sup):
+    """El tramo útil en u de un frente (entre los parantes)."""
+    izq = max((e["u1"] for e in sup["exclusiones"] if e["por"] == "parante" and e["u0"] == 0), default=0.0)
+    der = min((e["u0"] for e in sup["exclusiones"] if e["por"] == "parante" and e["u1"] == 1), default=1.0)
+    return izq, der
+
+
+def _franja(sup, a, b):
+    """La franja de ``a`` a ``b`` (fracciones del ancho útil), de arriba abajo:
+    pisa zócalo y remate, que no suman."""
+    izq, der = _util(sup)
+    return _rect(izq + a * (der - izq), izq + b * (der - izq))
+
+
+def _dibujado(sup, *zonas):
+    from app.services.zonas_geometria import dibujado_pb, limpiar
+
+    return dibujado_pb([limpiar(z) for z in zonas], sup["exclusiones"])
+
+
+def _codigos(problemas):
+    return [p["codigo"] for p in problemas]
+
+
+def _participacion(bloque, numero):
+    return next(p for p in bloque["participaciones"] if p["numero"] == numero)
+
+
+def _bd():
+    from app.database import SessionLocal
+
+    return SessionLocal()
+
+
+# ─── 1 · Alta y numeración ────────────────────────────────────────────────────
+
+@RELOJ
+def test_alta_numera_crea_los_espacios_y_un_contrato_no_copia_lo_del_lease(client, admin, monkeypatch):
+    import app.routers.bulk_leases as bl
+    from app.models.models import AuditEntry, Space, SpaceLease, SpaceStatus
+    from app.models.participaciones import HistorialParticipacion, Participacion
+
+    enviados = []
+    monkeypatch.setattr(bl, "correo_configurado", lambda: True)
+    monkeypatch.setattr(bl, "send_mail_to_bg", lambda to, asunto, html: enviados.append((to, asunto, html)))
+    _plano(client, admin)
+
+    reserva = _alta(client, admin, tipo="reserva", caduca=D(2026, 10, 25))
+    t = reserva["termino"]
+    assert (t["codigo"], t["numero"], t["cara"], t["estado"], t["estado_visible"]) == (
+        "NAVE-GON-01-PC1", 1, "A", "reserva", "reserva")
+    assert t["proveedor"]["nombre"] == "Postobón" and t["valor_mensual"] is None and t["caduca"] == "2026-10-25"
+    assert reserva["avisos"] is None and enviados == [], "una reserva no manda correos"
+    assert reserva["cara"]["codigo_cara"] == "NAVE-GON-01"
+
+    contrato = _alta(client, admin, proveedor="Alpina", marca="Yogurt", pb=2000, correo="trade@alpina.co")
+    t2 = contrato["termino"]
+    assert (t2["codigo"], t2["estado"], t2["estado_visible"]) == ("NAVE-GON-01-PC2", "contrato", "firmado")
+    assert (t2["proveedor"]["nombre"], t2["marca"], t2["desde"], t2["hasta"], t2["valor_mensual"]) == (
+        "Alpina", "Yogurt", "2026-11-01", "2027-01-31", 1_200_000.0)
+    assert contrato["avisos"]["proveedor"] == ["trade@alpina.co"]
+    assert len(enviados) == 1 and "Participación 2 · 20 % de la cara A" in enviados[0][2]
+
+    db = _bd()
+    try:
+        fila = db.query(Participacion).filter_by(numero=2).one()
+        # La verdad de proveedor, marca y fechas es el lease: el término no la copia.
+        assert (fila.supplier_id, fila.marca, fila.desde, fila.hasta, fila.caduca) == (None,) * 5
+        lease = db.get(SpaceLease, fila.lease_id)
+        pc = db.get(Space, fila.space_id)
+        assert lease.space_id == pc.id and lease.marca == "Yogurt" and lease.monthly_rent == 1_200_000
+        assert (pc.code, pc.svg_id, pc.area_m2, pc.status, pc.sede, pc.zone) == (
+            "NAVE-GON-01-PC2", "NAVE-GON-01-PC2", 0.0, SpaceStatus.free, "NAVE", "gondola")
+        assert pc.name == "Góndola 1 · Participación 2 · cara A"
+        cara = db.query(Space).filter_by(code="NAVE-GON-01").one()
+        assert (cara.status, cara.area_m2, cara.name) == (SpaceStatus.free, 0.81, "Góndola 1")
+        historial = db.query(HistorialParticipacion).order_by(HistorialParticipacion.id).all()
+        assert [(h.tipo, h.accion) for h in historial] == [
+            ("contractual", "participacion.reserva"), ("contractual", "participacion.contrato")]
+        assert "valor" not in (historial[1].despues_json or "") and "1200000" not in (historial[1].despues_json or "")
+        acciones = [a for (a,) in db.query(AuditEntry.accion).filter(AuditEntry.accion.like("participacion.%"))]
+        assert sorted(acciones) == ["participacion.contrato", "participacion.reserva"]
+    finally:
+        db.close()
+
+    # PC1 cancelada: su número no se reutiliza.
+    r = client.post(f"/api/participaciones/{t['id']}/cancelar", headers=admin, json={"version": t["version"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["termino"]["estado"] == "reserva_cancelada"
+    assert _alta(client, admin, pb=1000)["termino"]["codigo"] == "NAVE-GON-01-PC3"
+
+    # Una fila …-PC5 creada a mano y una archivada …-PC7#12 cuentan.
+    db = _bd()
+    try:
+        for codigo in ("NAVE-GON-01-PC5", "NAVE-GON-01-PC7#12"):
+            db.add(Space(code=codigo, svg_id=codigo, name=codigo, zone="gondola", sede="NAVE", area_m2=0.0,
+                         status=SpaceStatus.free))
+        db.commit()
+    finally:
+        db.close()
+    assert _alta(client, admin, pb=1000)["termino"]["codigo"] == "NAVE-GON-01-PC8"
+    # La B numera aparte.
+    assert _alta(client, admin, espacio="GON-01-B", pb=1000)["termino"]["codigo"] == "NAVE-GON-01-B-PC1"
+
+    bloque = _cara(client, admin)
+    assert [p["numero"] for p in bloque["participaciones"]] == [1, 2, 3, 8]
+    assert _participacion(bloque, 2)["terminos"][0]["proveedor"]["nombre"] == "Alpina"
+    assert bloque["capacidad"]["periodo"]["pico_pb"] == 2000 + 1000 + 1000
+
+    # La regla de códigos lee PC1…PC99: con la 99 usada (aunque sea a mano) la cara está llena, y no se crea
+    # una PC100 que nadie sabría partir.
+    db = _bd()
+    try:
+        db.add(Space(code="NAVE-GON-01-PC99", svg_id="NAVE-GON-01-PC99", name="x", zone="gondola", sede="NAVE",
+                     area_m2=0.0, status=SpaceStatus.free))
+        db.commit()
+    finally:
+        db.close()
+    r = client.post("/api/participaciones/", headers=admin, json={
+        "sede": "NAVE", "espacio": "GON-01", "tipo": "contrato", "proveedor": "Colanta", "puntos_basicos": 100,
+        "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "valor_mensual": 1})
+    assert (r.status_code, r.json()["detail"]["code"]) == (409, "cara_llena"), r.text
+    assert [p["numero"] for p in _cara(client, admin)["participaciones"]] == [1, 2, 3, 8]
+
+
+# ─── 2 · Capacidad ────────────────────────────────────────────────────────────
+
+@RELOJ
+def test_la_capacidad_suma_lo_que_cuenta_cada_dia_y_nada_mas(client, admin):
+    _plano(client, admin)
+    # Los 422 del alta, en el orden de la tabla (§5.3): nada llega a la base.
+    base = {"sede": "NAVE", "espacio": "GON-01", "proveedor": "Postobón", "puntos_basicos": 2500}
+    for cuerpo, frase in (
+        ({**base, "tipo": "contrato", "desde": D(2026, 11, 2), "hasta": D(2026, 11, 1), "valor_mensual": 1},
+         "La fecha de inicio no puede ser posterior a la de fin"),
+        ({**base, "tipo": "reserva", "desde": D(2026, 10, 1), "hasta": D(2026, 10, 16), "caduca": D(2026, 10, 16)},
+         "Una reserva provisional tiene que terminar hoy o después."),
+        ({**base, "tipo": "reserva", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30)},
+         "La reserva tiene que caducar entre hoy y el último día que reserva."),
+        ({**base, "tipo": "reserva", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "caduca": D(2026, 12, 1)},
+         "La reserva tiene que caducar entre hoy y el último día que reserva."),
+        ({**base, "tipo": "contrato", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30)},
+         "Escribí el valor mensual del contrato."),
+        ({**base, "tipo": "contrato", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "valor_mensual": -1},
+         "Escribí el valor mensual del contrato."),
+        ({**base, "espacio": "GON-09", "tipo": "contrato", "desde": D(2026, 11, 2), "hasta": D(2026, 11, 1),
+          "valor_mensual": 1}, "La fecha de inicio no puede ser posterior a la de fin"),
+    ):
+        r = client.post("/api/participaciones/", headers=admin, json=cuerpo)
+        assert r.status_code == 422 and r.json()["detail"]["message"] == frase, (cuerpo, r.text)
+    for malo in ({"puntos_basicos": 0}, {"puntos_basicos": 10001}, {"puntos_basicos": 25.5}, {"proveedor": "  "},
+                 {"campo_de_mas": 1}, {"tipo": "regalo"}):
+        r = client.post("/api/participaciones/", headers=admin, json={
+            **base, "tipo": "contrato", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "valor_mensual": 1, **malo})
+        assert r.status_code == 422 and isinstance(r.json()["detail"], list), (malo, r.text)
+    r = client.post("/api/participaciones/", headers=admin, json={
+        **base, "tipo": "reserva", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "caduca": D(2026, 10, 25),
+        "valor_mensual": 1})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "valor_mensual", r.text
+    r = client.post("/api/participaciones/", headers=admin, json={
+        **base, "tipo": "contrato", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "caduca": D(2026, 10, 25),
+        "valor_mensual": 1})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "caduca", r.text
+    assert _cara(client, admin)["participaciones"] == []
+
+    _alta(client, admin, pb=6000, desde=D(2026, 11, 1), hasta=D(2026, 12, 31))
+    r = client.post("/api/participaciones/", headers=admin, json={
+        "sede": "NAVE", "espacio": "GON-01", "tipo": "contrato", "proveedor": "Alpina", "puntos_basicos": 5000,
+        "desde": D(2026, 11, 15), "hasta": D(2026, 11, 30), "valor_mensual": 1})
+    assert r.status_code == 409, r.text
+    detalle = r.json()["detail"]
+    assert (detalle["code"], detalle["dia"], detalle["disponible_pb"]) == ("capacidad_excedida", "2026-11-15", 4000)
+    assert "Postobón" not in detalle["message"] and "15 nov 2026" in detalle["message"]
+    # 60 + 40 entra justo: la participación 1 con contrato vivo no es «física».
+    _alta(client, admin, pb=4000, desde=D(2026, 11, 15), hasta=D(2026, 11, 30), proveedor="Alpina")
+
+    # Dos que no se cruzan en fechas no suman.
+    _alta(client, admin, espacio="GON-01-B", pb=6000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))
+    _alta(client, admin, espacio="GON-01-B", pb=6000, desde=D(2026, 12, 1), hasta=D(2026, 12, 31), proveedor="Alpina")
+
+    # Un contrato cancelado por el camino de siempre deja de contar.
+    pc1 = _alta(client, admin, espacio="MET-01", pb=7000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))["termino"]
+    _alta(client, admin, espacio="MET-01", pb=4000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30), codigo=409)
+    r = client.delete(f"/api/spaces/{pc1['space_id']}/leases/{pc1['lease_id']}", headers=admin)
+    assert r.status_code == 204, r.text
+    _alta(client, admin, espacio="MET-01", pb=4000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))
+
+    # Una reserva viva cuenta; caducada, no.
+    _alta(client, admin, espacio="PUN-01", tipo="reserva", pb=8000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30),
+          caduca=D(2026, 10, 20))
+    _alta(client, admin, espacio="PUN-01", pb=3000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30), codigo=409)
+    import time_machine
+
+    # La defensa en profundidad de los caminos de siempre (4c): la cara con participaciones vivas.
+    from app.services.participaciones import bloqueo_por_participaciones
+
+    db = _bd()
+    try:
+        frase = bloqueo_por_participaciones(db, "NAVE", "GON-01", date(2026, 11, 10), date(2026, 11, 20))
+        assert frase == ("«GON-01» se vende por participación del 10 nov 2026 al 20 nov 2026 (2 términos de "
+                         "participación vivos): en esas fechas no se vende entera ni por partes.")
+        assert "Postobón" not in frase and "Alpina" not in frase
+        # La forma completa, una división y la B (con sus propios términos) también; una pieza o una PC, no.
+        assert bloqueo_por_participaciones(db, "NAVE", "NAVE-GON-01-TR1", date(2026, 11, 10), date(2026, 11, 20))
+        assert "GON-01-B" in bloqueo_por_participaciones(db, "NAVE", "GON-01-B", date(2026, 12, 5), date(2026, 12, 6))
+        assert bloqueo_por_participaciones(db, "NAVE", "NAVE-GON-01-PC1", date(2026, 11, 10), date(2026, 11, 20)) is None
+        assert bloqueo_por_participaciones(db, "NAVE", "GON-01", date(2027, 2, 1), date(2027, 2, 28)) is None
+        assert bloqueo_por_participaciones(db, "NAVE", "GON-01", date(2026, 9, 1), date(2026, 9, 30)) is None
+        assert bloqueo_por_participaciones(db, "NAVE", "GON-02", date(2026, 11, 1), date(2026, 11, 30)) is None
+        assert bloqueo_por_participaciones(db, "NAVE", "NAVE-SIN-MUEBLE", date(2026, 11, 1), date(2026, 11, 30)) is None
+    finally:
+        db.close()
+
+    with time_machine.travel("2026-10-21T15:00:00+00:00", tick=True):
+        otra = _entrar(client)
+        bloque = _cara(client, otra, espacio="PUN-01")
+        assert bloque["participaciones"][0]["terminos"][0]["estado_visible"] == "reserva_caducada"
+        assert bloque["capacidad"]["periodo"]["pico_pb"] == 0 and bloque["capacidad"]["intervalos"] == []
+        ocupacion = client.get("/api/participaciones/ocupacion", headers=otra, params={"sede": "NAVE"}).json()
+        assert ocupacion["caras"]["NAVE-PUN-01"] == {"intervalos": [], "fisicos": []}
+        # La caducidad no se escribe: el historial la deriva de la fecha (D6).
+        derivados = client.get("/api/participaciones/historial", headers=otra,
+                               params={"sede": "NAVE", "espacio": "PUN-01"}).json()["derivados"]
+        assert [(d["accion"], d["en"]) for d in derivados] == [("reserva.caducada", "2026-10-21")]
+        _alta(client, otra, espacio="PUN-01", pb=3000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))
+
+
+# ─── 3 · Cara vendida entera y lease huérfano ─────────────────────────────────
+
+@RELOJ
+def test_lo_vendido_entero_y_el_lease_huerfano_cuentan_como_la_cara_entera(client, admin):
+    from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
+
+    _plano(client, admin)
+    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": [{
+        "fila": 1, "espacio": "GON-02", "sede": "NAVE", "proveedor": "Colombina", "valor": 500_000,
+        "desde": D(2026, 10, 1), "hasta": D(2026, 11, 15)}]})
+    assert r.status_code == 200 and r.json()["creados"] == 1, r.text
+    # El plano la pasa a participación con el contrato entero vivo: el guardado lo deja.
+    _plano(client, admin, [{**f, "partes": {"division": "participacion"}} if f["code"] == "GON-02" else f
+                           for f in PLANO])
+    r = client.post("/api/participaciones/", headers=admin, json={
+        "sede": "NAVE", "espacio": "GON-02", "tipo": "contrato", "proveedor": "Alpina", "puntos_basicos": 3000,
+        "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "valor_mensual": 1})
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "cara_vendida_entera"
+    assert "del 1 oct 2026 al 15 nov 2026" in r.json()["detail"]["message"]
+    assert "Colombina" not in r.json()["detail"]["message"]
+    _alta(client, admin, espacio="GON-02", pb=3000, desde=D(2026, 11, 16), hasta=D(2026, 11, 30))
+    capacidad = _cara(client, admin, espacio="GON-02")["capacidad"]
+    assert (capacidad["hoy_pb"], capacidad["disponible_hoy_pb"]) == (10000, 0)
+    assert capacidad["fisicos"] == [{"codigo": "NAVE-GON-02", "desde": "2026-10-01", "hasta": "2026-11-15",
+                                     "huerfano": False}]
+    # La ocupación anónima (Vender, Supervisar, el plano) también la lleva, sin código: no se pinta libre.
+    ocupacion = client.get("/api/participaciones/ocupacion", headers=admin, params={"sede": "NAVE"}).json()
+    assert ocupacion["caras"]["NAVE-GON-02"] == {
+        "intervalos": [{"desde": "2026-11-16", "hasta": "2026-11-30", "pb": 3000}],
+        "fisicos": [{"desde": "2026-10-01", "hasta": "2026-11-15"}]}
+
+    # Un lease de participación sin término (insertado a mano) cuenta como la cara entera.
+    db = _bd()
+    try:
+        pc = Space(code="NAVE-GON-01-PC4", svg_id="NAVE-GON-01-PC4", name="x", zone="gondola", sede="NAVE",
+                   area_m2=0.0, status=SpaceStatus.free)
+        sup = Supplier(name="Huérfano SA")
+        db.add_all([pc, sup])
+        db.flush()
+        db.add(SpaceLease(space_id=pc.id, supplier_id=sup.id, start_date=date(2026, 11, 1),
+                          end_date=date(2026, 11, 30), monthly_rent=1, is_active=True))
+        db.commit()
+    finally:
+        db.close()
+    capacidad = _cara(client, admin)["capacidad"]
+    assert [f["huerfano"] for f in capacidad["fisicos"]] == [True]
+    assert capacidad["periodo"]["disponible_pb"] == 0
+    # Con un período que termina antes, lo físico de después igual viaja (la vista previa del formulario
+    # no puede decir «entra» donde el servidor dice cara_vendida_entera), y el período no cambia.
+    corto = _cara(client, admin, hasta=D(2026, 10, 31))["capacidad"]
+    assert [f["huerfano"] for f in corto["fisicos"]] == [True] and corto["periodo"]["disponible_pb"] == 10000
+    r = client.post("/api/participaciones/", headers=admin, json={
+        "sede": "NAVE", "espacio": "GON-01", "tipo": "contrato", "proveedor": "Alpina", "puntos_basicos": 1000,
+        "desde": D(2026, 11, 10), "hasta": D(2026, 11, 20), "valor_mensual": 1})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "cara_vendida_entera", r.text
+    assert "sin término" in r.json()["detail"]["message"]
+    # Fuera de sus fechas, sí: y la numeración salta la fila PC4 que ya existe.
+    assert _alta(client, admin, pb=1000, desde=D(2026, 12, 1), hasta=D(2026, 12, 31))["termino"]["numero"] == 5
+    r = client.get("/api/participaciones/resumen", headers=admin, params={"sede": "NAVE"})
+    assert r.status_code == 200, r.text
+    assert r.json()["totales"]["huerfanos"] == 1
+
+
+# ─── 6 · Casos A, B, C y H ────────────────────────────────────────────────────
+
+@RELOJ
+def test_casos_a_b_c_lo_dibujado_se_suma_por_participacion_y_vuelve_igual(client, admin):
+    from app.services.zonas_geometria import limpiar
+
+    _plano(client, admin)
+    pc1 = _alta(client, admin, pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    s1 = pc1["space_id"]
+    bloque = _cara(client, admin)
+    sup = bloque["superficie"]
+    assert bloque["distribucion"] is None and bloque["revision"]["capa"] == "confirmada"
+    assert _codigos(bloque["revision"]["avisos"]) == ["PENDIENTE"]
+
+    # Caso A: 30 % contratado, 20 % dibujado → falta 10 %; lo disponible sigue en 70 %.
+    a = _franja(sup, 0, 0.2)
+    assert _dibujado(sup, a) == 2000
+    r = _distribuir(client, admin, "borrador", "GON-01", 0, _zonas((s1, a)))
+    p = _participacion(r, 1)
+    assert (r["version"], p["contratado_pb"], p["dibujado_pb"], p["pendiente_pb"]) == (1, 3000, 2000, 1000)
+    assert (r["capacidad"]["hoy_pb"], r["capacidad"]["disponible_hoy_pb"]) == (3000, 7000)
+    assert r["revision"]["capa"] == "borrador" and r["revision"]["errores"] == []
+    assert [x["frase"] for x in r["revision"]["avisos"]] == ["A la participación 1 le falta dibujar 10 % de 30 %."]
+    assert r["distribucion"]["estado"] == "borrador"
+
+    # Caso B: tres zonas separadas suman 30 %; recargadas, los mismos vértices y la misma cuenta.
+    tres = [_franja(sup, 0, 0.1), _franja(sup, 0.3, 0.4), _franja(sup, 0.6, 0.7)]
+    assert _dibujado(sup, *tres) == 3000
+    r = _distribuir(client, admin, "borrador", "GON-01", 1, _zonas(*[(s1, z) for z in tres]))
+    assert _participacion(r, 1)["dibujado_pb"] == 3000 and _participacion(r, 1)["pendiente_pb"] == 0
+    recargada = _cara(client, admin)
+    assert [z["vertices"] for z in recargada["distribucion"]["borrador"]] == [limpiar(z) for z in tres]
+    assert _participacion(recargada, 1)["dibujado_pb"] == 3000
+    # Una cuarta adentro de la primera, de la misma participación, no cambia el total (D9).
+    cuatro = tres + [_franja(sup, 0.02, 0.08)]
+    r = _distribuir(client, admin, "borrador", "GON-01", 2, _zonas(*[(s1, z) for z in cuatro]))
+    assert _participacion(r, 1)["dibujado_pb"] == 3000 and r["revision"]["errores"] == []
+    r = _distribuir(client, admin, "confirmar", "GON-01", 3, _zonas(*[(s1, z) for z in cuatro]))
+    assert r["version"] == 4 and r["distribucion"]["estado"] == "confirmada"
+    assert r["distribucion"]["borrador"] is None and len(r["distribucion"]["confirmada"]) == 4
+    assert r["revision"] == {"capa": "confirmada", "errores": [], "avisos": []}
+
+    # Caso C: vertical, horizontal, estrella y una que cruza entrepaños y un parante se guardan tal cual.
+    estrella = [[0.5, 0.2], [0.56, 0.4], [0.75, 0.42], [0.6, 0.53], [0.66, 0.75], [0.5, 0.62], [0.34, 0.75],
+                [0.4, 0.53], [0.25, 0.42], [0.44, 0.4]]
+    libres = [_rect(0.1, 0.15, 0.1, 0.9), _rect(0.05, 0.95, 0.45, 0.5), estrella, _rect(0.0, 0.3, 0.3, 0.7)]
+    r = _distribuir(client, admin, "borrador", "GON-01", 4, _zonas(*[(s1, z) for z in libres]))
+    assert r["revision"]["capa"] == "borrador" and "ZONA_SE_CRUZA" not in _codigos(r["revision"]["errores"])
+    recargada = _cara(client, admin)
+    assert [z["vertices"] for z in recargada["distribucion"]["borrador"]] == [limpiar(z) for z in libres]
+    assert recargada["distribucion"]["estado"] == "confirmada", "confirmada con un borrador encima"
+    assert len(recargada["distribucion"]["confirmada"]) == 4
+
+
+# ─── 7 · Casos D y E ──────────────────────────────────────────────────────────
+
+@RELOJ
+def test_casos_d_y_e_el_solape_y_el_exceso_no_se_confirman_y_el_borrador_queda(client, admin):
+    from app.models.participaciones import HistorialParticipacion
+
+    _plano(client, admin)
+    s1 = _alta(client, admin, espacio="MET-01", pb=5000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    s2 = _alta(client, admin, espacio="MET-01", tipo="reserva", pb=5000, desde=D(2026, 11, 1),
+               hasta=D(2026, 11, 30), caduca=D(2026, 10, 30), proveedor="Alpina")["termino"]
+    pisadas = _zonas((s1["space_id"], _rect(0, 0.5)), (s2["space_id"], _rect(0.45, 0.95)))
+    r = _distribuir(client, admin, "borrador", "MET-01", 0, pisadas)
+    assert _codigos(r["revision"]["errores"]) == ["SOLAPE"]
+    assert r["revision"]["errores"][0]["frase"] == (
+        "Las zonas de las participaciones 1 y 2 se pisan (500 cm²) y sus fechas se cruzan: separalas.")
+    r = client.post("/api/participaciones/distribucion/confirmar", headers=admin,
+                    json={"sede": "NAVE", "espacio": "MET-01", "version": 1, "zonas": pisadas})
+    assert r.status_code == 409, r.text
+    detalle = r.json()["detail"]
+    assert (detalle["code"], detalle["version"], _codigos(detalle["errores"])) == (
+        "distribucion_invalida", 2, ["SOLAPE"])
+    assert detalle["message"] == "La distribución tiene 1 problema: se guardó como borrador."
+    # El 409 hizo commit: el borrador está.
+    bloque = _cara(client, admin, espacio="MET-01")
+    assert bloque["distribucion"]["estado"] == "borrador" and bloque["distribucion"]["version"] == 2
+    assert [z["vertices"] for z in bloque["distribucion"]["borrador"]] == [_rect(0, 0.5), _rect(0.45, 0.95)]
+    db = _bd()
+    try:
+        assert db.query(HistorialParticipacion).filter_by(accion="distribucion.borrador").count() == 2
+        assert db.query(HistorialParticipacion).filter_by(accion="distribucion.confirmada").count() == 0
+    finally:
+        db.close()
+    separadas = _zonas((s1["space_id"], _rect(0, 0.5)), (s2["space_id"], _rect(0.5, 1)))
+    r = _distribuir(client, admin, "confirmar", "MET-01", 2, separadas)
+    assert r["distribucion"]["estado"] == "confirmada" and r["revision"]["errores"] == []
+
+    # Caso E: 20 % contratado y 25 % dibujado.
+    s = _alta(client, admin, espacio="MET-02", pb=2000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    r = _distribuir(client, admin, "borrador", "MET-02", 0, _zonas((s["space_id"], _rect(0, 0.25))))
+    assert [x["frase"] for x in r["revision"]["errores"]] == [
+        "La participación 1 tiene dibujado 25 % y contratado 20 %: achicá sus zonas (o usá «Ajustar al contratado»)."]
+    r = client.post("/api/participaciones/distribucion/confirmar", headers=admin, json={
+        "sede": "NAVE", "espacio": "MET-02", "version": 1, "zonas": _zonas((s["space_id"], _rect(0, 0.25)))})
+    assert r.status_code == 409 and _codigos(r.json()["detail"]["errores"]) == ["EXCESO"], r.text
+    r = _distribuir(client, admin, "confirmar", "MET-02", 2, _zonas((s["space_id"], _rect(0, 0.2))))
+    assert r["distribucion"]["estado"] == "confirmada" and _participacion(r, 1)["dibujado_pb"] == 2000
+
+
+# ─── 8 · Caso F y 21 · Robatope ───────────────────────────────────────────────
+
+@RELOJ
+def test_caso_f_las_dos_caras_son_independientes_y_el_robatope_dibuja_girado(client, admin):
+    from app.services.superficie import superficie
+
+    _plano(client, admin)
+    a = _alta(client, admin, pb=10000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    b = _alta(client, admin, espacio="GON-01-B", pb=5000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    assert b["codigo"] == "NAVE-GON-01-B-PC1"
+    cara_b = _cara(client, admin, espacio="GON-01-B")
+    assert (cara_b["cara"], cara_b["capacidad"]["hoy_pb"], cara_b["capacidad"]["disponible_hoy_pb"]) == ("B", 5000, 5000)
+    sup = cara_b["superficie"]
+    _distribuir(client, admin, "borrador", "GON-01", 0, _zonas((a["space_id"], _franja(sup, 0, 1))))
+    assert _cara(client, admin, espacio="GON-01-B")["distribucion"] is None
+    # Una zona de la A no se puede mandar a la B: espacio ajeno.
+    r = client.put("/api/participaciones/distribucion/borrador", headers=admin, json={
+        "sede": "NAVE", "espacio": "GON-01-B", "version": 0, "zonas": _zonas((a["space_id"], _rect(0.1, 0.2)))})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "espacio_ajeno", r.text
+    r = _distribuir(client, admin, "borrador", "GON-01-B", 0, _zonas((b["space_id"], _franja(sup, 0, 0.5))))
+    assert _participacion(r, 1)["dibujado_pb"] == 5000
+
+    rob = _cara(client, admin, espacio="ROB-01")
+    assert rob["superficie"]["giro_x"] == -0.06
+    assert rob["superficie"] == superficie(ROB_01, "A")
+    assert rob["firma"].startswith("v1|robatope||300|1600|")
+    # Una parte no es una cara; la B de una punta no existe; un mueble que no está, 404.
+    r = client.get("/api/participaciones/cara", headers=admin, params={"sede": "NAVE", "espacio": "NEV-03-PU2"})
+    # La nevera tiene una sola cara: la frase no le ofrece una B que no existe.
+    assert r.status_code == 422 and r.json()["detail"]["message"] == "Pedí la cara (NEV-03), no una parte."
+    r = client.get("/api/participaciones/cara", headers=admin, params={"sede": "NAVE", "espacio": "GON-01-PC1"})
+    assert r.status_code == 422 and r.json()["detail"]["message"] == "Pedí la cara (GON-01 o GON-01-B), no una parte."
+    r = client.get("/api/participaciones/cara", headers=admin, params={"sede": "NAVE", "espacio": "PUN-01-B"})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "sin_cara_b"
+    r = client.get("/api/participaciones/cara", headers=admin, params={"sede": "NAVE", "espacio": "GON-09"})
+    assert r.status_code == 404
+    assert r.json()["detail"]["message"] == "No hay ningún mueble con el código «GON-09» en el plano de NAVE."
+    # Una cara que no es por participación: 200 sin errores; la compuerta frena el alta.
+    gon02 = _cara(client, admin, espacio="GON-02")
+    assert (gon02["por_participacion"], gon02["revision"]["errores"]) == (False, [])
+    r = client.post("/api/participaciones/", headers=admin, json={
+        "sede": "NAVE", "espacio": "NEV-03", "tipo": "contrato", "proveedor": "x", "puntos_basicos": 100,
+        "desde": D(2026, 11, 1), "hasta": D(2026, 11, 2), "valor_mensual": 1})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "parte_inexistente", r.text
+
+    # Lo que no se guarda (§3.7 pasos 1–2, §3.8 pasos 0 y 0b): los topes protegen la geometría, que corre
+    # sin candado pero cuesta; y una cara que no se vende por participación no tiene distribución.
+    def borrador(espacio, version, zonas):
+        return client.put("/api/participaciones/distribucion/borrador", headers=admin,
+                          json={"sede": "NAVE", "espacio": espacio, "version": version, "zonas": zonas})
+
+    s = b["space_id"]
+    for zonas, esperado in (
+        ([{"participacion_space_id": s, "vertices": _rect(0.1, 0.11)}] * 61, (422, "distribucion_malformada")),
+        ([{"participacion_space_id": s, "vertices": [[i / 30, (i % 2) * 0.5] for i in range(25)]}],
+         (422, "distribucion_malformada")),
+        ([{"participacion_space_id": s, "vertices": [["a", 0], [1, 0], [1, 1]]}], (422, "zona_malformada")),
+        ([{"participacion_space_id": s, "vertices": [[1e308, 0], [1, 0], [1, 1]]}], (422, "zona_malformada")),
+    ):
+        r = borrador("GON-01-B", 1, zonas)
+        assert (r.status_code, r.json()["detail"]["code"]) == esperado, r.text
+    for espacio in ("GON-02", "NEV-03"):
+        r = borrador(espacio, 0, [])
+        assert (r.status_code, r.json()["detail"]["code"]) == (409, "cara_no_distribuible"), r.text
+    assert _cara(client, admin, espacio="GON-01-B")["distribucion"]["version"] == 1, "nada se guardó"
+    assert _cara(client, admin, espacio="GON-02")["distribucion"] is None
+
+
+# ─── 9 · Caso G con el reloj ──────────────────────────────────────────────────
+
+@RELOJ
+def test_caso_g_lo_vencido_y_lo_cancelado_dejan_de_contar_y_su_zona_pasa_a_historia(client, admin):
+    import time_machine
+
+    from app.models.participaciones import HistorialParticipacion
+
+    _plano(client, admin)
+    p1 = _alta(client, admin, espacio="MET-01", pb=5000, desde=D(2026, 10, 1), hasta=D(2026, 10, 31))["termino"]
+    p2 = _alta(client, admin, espacio="MET-01", pb=5000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30),
+               proveedor="Alpina")["termino"]
+    p3 = _alta(client, admin, espacio="MET-01", tipo="reserva", pb=3000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30),
+               caduca=D(2026, 11, 1), proveedor="Colanta")["termino"]
+    zonas = _zonas((p1["space_id"], _rect(0, 0.5)), (p2["space_id"], _rect(0, 0.5)), (p3["space_id"], _rect(0.6, 0.9)))
+    # D19: la misma región en fechas que no se cruzan.
+    r = _distribuir(client, admin, "confirmar", "MET-01", 0, zonas)
+    assert r["revision"]["errores"] == []
+    # La reserva cancelada: su zona mandada otra vez ya no se confirma.
+    r = client.post(f"/api/participaciones/{p3['id']}/cancelar", headers=admin, json={"version": 1})
+    assert r.status_code == 200, r.text
+    r = client.post("/api/participaciones/distribucion/confirmar", headers=admin,
+                    json={"sede": "NAVE", "espacio": "MET-01", "version": 1, "zonas": zonas})
+    assert r.status_code == 409, r.text
+    errores = r.json()["detail"]["errores"]
+    assert [(e["codigo"], e["zona"]) for e in errores] == [("ZONA_DE_PARTICIPACION_TERMINADA", 2)]
+    _distribuir(client, admin, "descartar", "MET-01", 2, [])
+
+    with time_machine.travel("2026-11-05T15:00:00+00:00", tick=True):
+        otra = _entrar(client)
+        bloque = _cara(client, otra, espacio="MET-01")
+        assert (bloque["capacidad"]["hoy_pb"], bloque["capacidad"]["disponible_hoy_pb"]) == (5000, 5000)
+        assert [p["viva"] for p in bloque["participaciones"]] == [False, True, False]
+        assert bloque["participaciones"][0]["terminos"][0]["estado_visible"] == "vencido"
+        # En la confirmada guardada, las zonas de lo que ya no rige son historia: no chocan ni cuentan.
+        assert bloque["revision"] == {"capa": "confirmada", "errores": [], "avisos": []}
+        # El vencimiento no se escribe: el historial lo deriva (D6). La reserva cancelada no «caduca».
+        derivados = client.get("/api/participaciones/historial", headers=otra,
+                               params={"sede": "NAVE", "espacio": "MET-01"}).json()["derivados"]
+        assert [(d["accion"], d["en"], d["participacion_id"]) for d in derivados] == [
+            ("participacion.vencida", "2026-11-01", p1["id"])]
+        _alta(client, otra, espacio="MET-01", pb=5000, desde=D(2026, 11, 10), hasta=D(2026, 11, 20),
+              proveedor="Nutresa")
+        r = client.post("/api/participaciones/distribucion/confirmar", headers=otra,
+                        json={"sede": "NAVE", "espacio": "MET-01", "version": 3, "zonas": zonas})
+        assert r.status_code == 409, r.text
+        assert [(e["codigo"], e["zona"]) for e in r.json()["detail"]["errores"]] == [
+            ("ZONA_DE_PARTICIPACION_TERMINADA", 0), ("ZONA_DE_PARTICIPACION_TERMINADA", 2)]
+        r = _distribuir(client, otra, "confirmar", "MET-01", 4, _zonas((p2["space_id"], _rect(0, 0.5))))
+        assert len(r["distribucion"]["confirmada"]) == 1
+        db = _bd()
+        try:
+            ultima = (db.query(HistorialParticipacion).filter_by(accion="distribucion.confirmada")
+                      .order_by(HistorialParticipacion.id.desc()).first())
+            import json
+
+            antes = json.loads(ultima.antes_json)
+            assert [z["participacion_space_id"] for z in antes["zonas"]] == [
+                p1["space_id"], p2["space_id"], p3["space_id"]]
+            assert antes["zonas"][0]["vertices"] == _rect(0, 0.5)
+        finally:
+            db.close()
+        r = client.post(f"/api/participaciones/{p1['id']}/renovar", headers=otra, json={
+            "version": p1["version"], "tipo": "contrato", "desde": D(2026, 12, 1), "hasta": D(2026, 12, 31),
+            "valor_mensual": 1})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "no_renovable", r.text
+
+
+# ─── 13 (la parte de 4b) · La distribución de otro mueble ─────────────────────
+
+@RELOJ
+def test_la_distribucion_de_otro_mueble_con_el_mismo_codigo_no_vale_y_la_proxima_escritura_la_cierra(client, admin):
+    import json
+
+    from app.models.participaciones import HistorialParticipacion
+
+    _plano(client, admin)
+    s = _alta(client, admin, espacio="MET-02", tipo="reserva", pb=4000, desde=D(2026, 11, 1),
+              hasta=D(2026, 11, 30))["termino"]
+    _distribuir(client, admin, "confirmar", "MET-02", 0, _zonas((s["space_id"], _rect(0, 0.4))))
+    r = client.post(f"/api/participaciones/{s['id']}/cancelar", headers=admin, json={"version": 1})
+    assert r.status_code == 200, r.text
+    # Otro mueble (otro id) toma el código MET-02.
+    _plano(client, admin, [{**f, "id": "f-MET-02-nuevo"} if f["code"] == "MET-02" else f for f in PLANO])
+    bloque = _cara(client, admin, espacio="MET-02")
+    d = bloque["distribucion"]
+    assert (d["estado"], d["otro_mueble"], d["confirmada"], d["borrador"], d["version"]) == (
+        "sin_distribuir", True, [], None, 1)
+    assert bloque["revision"]["errores"] == []
+    r = _distribuir(client, admin, "borrador", "MET-02", 1, [])
+    assert (r["distribucion"]["otro_mueble"], r["distribucion"]["estado"], r["version"]) == (False, "borrador", 2)
+    db = _bd()
+    try:
+        cierre = db.query(HistorialParticipacion).filter_by(accion="distribucion.otro_mueble").one()
+        antes = json.loads(cierre.antes_json)
+        assert antes["fixture_id"] == "f-MET-02" and antes["confirmada"][0]["vertices"] == _rect(0, 0.4)
+        assert json.loads(cierre.despues_json) == {"fixture_id": "f-MET-02-nuevo"}
+    finally:
+        db.close()
+
+
+# ─── 10 · Invariantes y revalidación ──────────────────────────────────────────
+
+@RELOJ
+def test_las_invariantes_de_termino_y_un_cambio_que_romperia_la_confirmada(client, admin):
+    from app.models.participaciones import HistorialParticipacion, Participacion
+
+    _plano(client, admin)
+    pc1 = _alta(client, admin, pb=2500, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    url = f"/api/participaciones/{pc1['id']}/renovar"
+    r = client.post(url, headers=admin, json={"version": 1, "tipo": "reserva", "desde": D(2026, 12, 1),
+                                              "hasta": D(2027, 2, 28), "caduca": D(2026, 11, 15)})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "termino_superpuesto", r.text
+    assert "del 1 oct 2026 al 31 dic 2026" in r.json()["detail"]["message"]
+    r = client.post(url, headers=admin, json={"version": 1, "tipo": "contrato", "desde": D(2027, 1, 1),
+                                              "hasta": D(2027, 3, 31), "valor_mensual": 1_300_000})
+    assert r.status_code == 201, r.text
+    nuevo = r.json()["termino"]
+    assert (nuevo["codigo"], nuevo["numero"], nuevo["renueva_a"], nuevo["puntos_basicos"]) == (
+        "NAVE-GON-01-PC1", 1, pc1["id"], 2500)
+    assert (nuevo["proveedor"]["nombre"], nuevo["marca"], nuevo["valor_mensual"]) == ("Postobón", "Hit", 1_300_000.0)
+    # La segunda renovación del mismo término: ya no es el más nuevo.
+    r = client.post(url, headers=admin, json={"version": 1, "tipo": "contrato", "desde": D(2027, 4, 1),
+                                              "hasta": D(2027, 4, 30), "valor_mensual": 1})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "no_renovable", r.text
+    # Renovar no lleva proveedor, marca ni porcentaje (se copian): mandarlos es 422.
+    r = client.post(url, headers=admin, json={"version": 2, "tipo": "contrato", "desde": D(2027, 4, 1),
+                                              "hasta": D(2027, 4, 30), "valor_mensual": 1, "proveedor": "Alpina"})
+    assert r.status_code == 422, r.text
+
+    pc2 = _alta(client, admin, pb=2000, desde=D(2026, 10, 1), hasta=D(2026, 11, 30), proveedor="Alpina",
+                marca="Chocolisto")["termino"]
+    r = client.post(f"/api/participaciones/{pc2['id']}/renovar", headers=admin, json={
+        "version": 1, "tipo": "reserva", "desde": D(2026, 12, 1), "hasta": D(2026, 12, 31), "caduca": D(2026, 11, 20)})
+    assert r.status_code == 201, r.text
+    reserva = r.json()["termino"]
+    assert (reserva["estado"], reserva["proveedor"]["nombre"], reserva["marca"]) == ("reserva", "Alpina", "Chocolisto")
+    r = client.patch(f"/api/participaciones/{reserva['id']}", headers=admin, json={"version": 1, "puntos_basicos": 3000})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "otro_porcentaje", r.text
+    r = client.patch(f"/api/participaciones/{reserva['id']}", headers=admin, json={"version": 1, "marca": "Otra"})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "otro_proveedor", r.text
+    # Un contrato no se cambia por PATCH.
+    r = client.patch(f"/api/participaciones/{pc2['id']}", headers=admin, json={"version": 2, "puntos_basicos": 1000})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "no_editable", r.text
+
+    # A2: PC1 en noviembre y PC2 en diciembre en la misma mitad; renovar PC1 a diciembre rompería la confirmada.
+    m1 = _alta(client, admin, espacio="MET-01", pb=5000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))["termino"]
+    m2 = _alta(client, admin, espacio="MET-01", pb=5000, desde=D(2026, 12, 1), hasta=D(2026, 12, 31),
+               proveedor="Alpina")["termino"]
+    _distribuir(client, admin, "confirmar", "MET-01", 0,
+                _zonas((m1["space_id"], _rect(0, 0.5)), (m2["space_id"], _rect(0, 0.5))))
+    db = _bd()
+    try:
+        antes = (db.query(Participacion).count(), db.query(HistorialParticipacion).count())
+    finally:
+        db.close()
+    r = client.post(f"/api/participaciones/{m1['id']}/renovar", headers=admin, json={
+        "version": 1, "tipo": "reserva", "desde": D(2026, 12, 1), "hasta": D(2027, 1, 31), "caduca": D(2026, 11, 15)})
+    assert r.status_code == 409, r.text
+    detalle = r.json()["detail"]
+    assert detalle["code"] == "rompe_distribucion" and _codigos(detalle["problemas"]) == ["SOLAPE"]
+    assert detalle["message"].startswith(
+        "Con esas fechas, las zonas de la participación 1 pisan las de la 2 desde el 1 dic 2026")
+    db = _bd()
+    try:
+        assert (db.query(Participacion).count(), db.query(HistorialParticipacion).count()) == antes, "algo se escribió"
+    finally:
+        db.close()
+
+    # Un PATCH que estira una reserva sobre la región de otra que rige en esas fechas.
+    n1 = _alta(client, admin, espacio="PUN-01", pb=5000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))["termino"]
+    n2 = _alta(client, admin, espacio="PUN-01", tipo="reserva", pb=5000, desde=D(2026, 12, 1), hasta=D(2026, 12, 31),
+               caduca=D(2026, 11, 25), proveedor="Alpina")["termino"]
+    sup = _cara(client, admin, espacio="PUN-01")["superficie"]
+    _distribuir(client, admin, "confirmar", "PUN-01", 0,
+                _zonas((n1["space_id"], _franja(sup, 0, 0.5)), (n2["space_id"], _franja(sup, 0, 0.5))))
+    r = client.patch(f"/api/participaciones/{n2['id']}", headers=admin, json={"version": 1, "desde": D(2026, 11, 20)})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "rompe_distribucion", r.text
+    # Cancelar no revalida: sólo saca restricciones.
+    r = client.post(f"/api/participaciones/{n2['id']}/cancelar", headers=admin, json={"version": 1})
+    assert r.status_code == 200, r.text
+    # A un contrato no se lo cancela por acá.
+    r = client.post(f"/api/participaciones/{n1['id']}/cancelar", headers=admin, json={"version": 1})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "es_contrato", r.text
+
+
+# ─── 11 · Versión (Caso H) ────────────────────────────────────────────────────
+
+@RELOJ
+def test_caso_h_dos_sesiones_con_la_misma_version_la_segunda_recibe_version_vieja(client, admin):
+    from app.models.models import AuditEntry
+    from app.models.participaciones import HistorialParticipacion
+
+    _plano(client, admin)
+    s = _alta(client, admin, espacio="MET-01", pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    zonas = _zonas((s["space_id"], _rect(0, 0.2)))
+    assert _distribuir(client, admin, "borrador", "MET-01", 0, zonas)["version"] == 1
+    r = client.put("/api/participaciones/distribucion/borrador", headers=admin,
+                   json={"sede": "NAVE", "espacio": "MET-01", "version": 0, "zonas": zonas})
+    assert r.status_code == 409, r.text
+    assert (r.json()["detail"]["code"], r.json()["detail"]["version_actual"]) == ("version_vieja", 1)
+    assert _distribuir(client, admin, "borrador", "MET-01", 1, zonas)["version"] == 2
+    r = client.put("/api/participaciones/distribucion/borrador", headers=admin,
+                   json={"sede": "NAVE", "espacio": "MET-01", "version": 1, "zonas": zonas})
+    assert r.status_code == 409 and r.json()["detail"]["version_actual"] == 2, r.text
+    r = client.post("/api/participaciones/distribucion/confirmar", headers=admin,
+                    json={"sede": "NAVE", "espacio": "MET-01", "version": 1, "zonas": zonas})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "version_vieja", r.text
+
+    def cuentas():
+        db = _bd()
+        try:
+            return (db.query(HistorialParticipacion).filter_by(tipo="geometria").count(),
+                    db.query(AuditEntry).filter(AuditEntry.accion.like("distribucion.%")).count())
+        finally:
+            db.close()
+
+    antes = cuentas()
+    assert _distribuir(client, admin, "borrador", "MET-01", 2, zonas, automatico=True)["version"] == 3
+    assert cuentas() == antes, "el autoguardado no escribe historial ni bitácora"
+    _distribuir(client, admin, "borrador", "MET-01", 3, zonas)
+    assert cuentas() == (antes[0] + 1, antes[1] + 1)
+    r = _distribuir(client, admin, "descartar", "MET-01", 4, [])
+    assert r["distribucion"]["borrador"] is None and r["version"] == 5
+
+    # Lo mismo con un término: dos sesiones cambian la misma reserva.
+    reserva = _alta(client, admin, espacio="MET-01", tipo="reserva", pb=1000, desde=D(2026, 11, 1),
+                    hasta=D(2026, 11, 30), proveedor="Alpina")["termino"]
+    url = f"/api/participaciones/{reserva['id']}"
+    r = client.patch(url, headers=admin, json={"version": 1, "notas": "la de la mañana"})
+    assert r.status_code == 200 and r.json()["termino"]["version"] == 2, r.text
+    assert r.json()["termino"]["notas"] == "la de la mañana"
+    r = client.patch(url, headers=admin, json={"version": 1, "puntos_basicos": 2000})
+    assert r.status_code == 409, r.text
+    assert (r.json()["detail"]["code"], r.json()["detail"]["version_actual"]) == ("version_vieja", 2)
+    r = client.post(f"{url}/confirmar", headers=admin, json={"version": 1, "valor_mensual": 1})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "version_vieja", r.text
+    # Con la versión al día, se confirma como contrato sobre el MISMO espacio.
+    r = client.post(f"{url}/confirmar", headers=admin, json={"version": 2, "valor_mensual": 900_000,
+                                                             "correo": "ventas@alpina.co"})
+    assert r.status_code == 200, r.text
+    t = r.json()["termino"]
+    assert (t["estado"], t["space_id"], t["codigo"], t["valor_mensual"], t["proveedor"]["nombre"]) == (
+        "contrato", reserva["space_id"], reserva["codigo"], 900_000.0, "Alpina")
+
+
+# ─── 6 y 7 (verificación) · Un término no compite consigo mismo ───────────────
+
+@RELOJ
+def test_cambiar_o_confirmar_una_reserva_no_compite_consigo_misma_y_avisa_lo_que_rompe_del_borrador(client, admin):
+    """Cambiar o confirmar una reserva la saca de la cuenta (``excluir_id``):
+    si contara dos veces, una reserva de 60 % no podría pasar a 70 % en una
+    cara vacía. Y lo que el cambio le rompe al BORRADOR vuelve como aviso, no
+    como 409 (el borrador no es oficial, §3.11)."""
+    _plano(client, admin)
+    r = _alta(client, admin, espacio="MET-01", tipo="reserva", pb=6000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30),
+              caduca=D(2026, 10, 30))["termino"]
+    url = f"/api/participaciones/{r['id']}"
+    # Una reserva que se cambia sigue caducando entre hoy y su último día (y nada se escribe).
+    hecho = client.patch(url, headers=admin, json={"version": 1, "caduca": D(2026, 12, 5)})
+    assert (hecho.status_code, hecho.json()["detail"]["code"]) == (422, "caduca"), hecho.text
+    hecho = client.patch(url, headers=admin, json={"version": 1, "puntos_basicos": 7000})
+    assert hecho.status_code == 200, hecho.text
+    assert hecho.json()["cara"]["capacidad"]["periodo"]["pico_pb"] == 7000
+    # 70 + 30 = 100: entra justo.
+    _alta(client, admin, espacio="MET-01", pb=3000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30), proveedor="Alpina")
+    _distribuir(client, admin, "borrador", "MET-01", 0, _zonas((r["space_id"], _rect(0, 0.7))))
+    # Bajarla a 60 % deja el borrador con 70 % dibujado: aviso, y el cambio se hace.
+    hecho = client.patch(url, headers=admin, json={"version": 2, "puntos_basicos": 6000})
+    assert hecho.status_code == 200, hecho.text
+    avisos = hecho.json()["avisos_distribucion"]
+    assert [(a["codigo"], a["participaciones"]) for a in avisos] == [("EXCESO", [1])], avisos
+    assert avisos[0]["frase"].startswith("Con ese porcentaje, la participación 1 queda con 70 % dibujado y 60 %")
+    # Confirmarla de vuelta en 70 %: 70 + 30 = 100 sin contarse a sí misma; el borrador ya no queda roto.
+    hecho = client.post(f"{url}/confirmar", headers=admin, json={"version": 3, "valor_mensual": 1,
+                                                                 "puntos_basicos": 7000})
+    assert hecho.status_code == 200, hecho.text
+    cuerpo = hecho.json()
+    assert (cuerpo["termino"]["estado"], cuerpo["termino"]["puntos_basicos"]) == ("contrato", 7000)
+    assert cuerpo["avisos_distribucion"] == []
+    assert cuerpo["cara"]["capacidad"]["periodo"]["pico_pb"] == 10000
+    # Confirmada, la verdad de proveedor, marca y fechas pasa al lease: el término no guarda copia.
+    from app.models.participaciones import Participacion
+
+    db = _bd()
+    try:
+        fila = db.get(Participacion, r["id"])
+        assert (fila.supplier_id, fila.marca, fila.desde, fila.hasta, fila.caduca, fila.notas) == (None,) * 6
+        assert fila.lease_id == cuerpo["termino"]["lease_id"] is not None
+    finally:
+        db.close()
+
+
+# ─── 15 · Cancelación a la noche de Colombia ──────────────────────────────────
+
+@pytest.mark.reloj("2026-10-18T02:00:00+00:00")
+def test_cancelar_a_las_nueve_de_la_noche_es_del_dia_de_colombia(client, admin):
+    _plano(client, admin)
+    t = _alta(client, admin, pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    r = client.delete(f"/api/spaces/{t['space_id']}/leases/{t['lease_id']}", headers=admin)
+    assert r.status_code == 204, r.text
+    bloque = _cara(client, admin)
+    termino = bloque["participaciones"][0]["terminos"][0]
+    assert (termino["estado_visible"], termino["baja_fecha"]) == ("cancelado", "2026-10-17")
+    assert termino["baja_en"].startswith("2026-10-18T02:0")
+    assert bloque["capacidad"]["hoy_pb"] == 0
+    for dia, esperado in ((D(2026, 10, 16), 3000), (D(2026, 10, 17), 0)):
+        r = client.get("/api/participaciones/resumen", headers=admin, params={"sede": "NAVE", "dia": dia})
+        cara = next(c for c in r.json()["caras"] if c["codigo_cara"] == "NAVE-GON-01")
+        assert cara["comprometido_dia_pb"] == esperado, dia
+
+    # Un lease ya vencido por fecha que `expire_leases` no había cerrado: «vencido», sin baja.
+    v = _alta(client, admin, pb=2000, desde=D(2026, 9, 1), hasta=D(2026, 10, 10), proveedor="Alpina")["termino"]
+    r = client.delete(f"/api/spaces/{v['space_id']}/leases/{v['lease_id']}", headers=admin)
+    assert r.status_code == 204, r.text
+    vencido = _participacion(_cara(client, admin), 2)["terminos"][0]
+    assert (vencido["estado_visible"], vencido["baja_en"], vencido["baja_fecha"]) == ("vencido", None, None)
+
+
+# ─── 17 · Borrar un proveedor ─────────────────────────────────────────────────
+
+@RELOJ
+def test_un_proveedor_con_reservas_o_contratos_de_participacion_no_se_borra(client, admin):
+    _plano(client, admin)
+    reserva = _alta(client, admin, tipo="reserva", proveedor="Nutresa")["termino"]
+    contrato = _alta(client, admin, proveedor="Colanta")["termino"]
+    r = client.delete(f"/api/suppliers/{reserva['proveedor']['id']}", headers=admin)
+    assert r.status_code == 409 and "reserva" in r.text, r.text
+    r = client.delete(f"/api/suppliers/{contrato['proveedor']['id']}", headers=admin)
+    assert r.status_code == 409, r.text
+
+
+# ─── 18 · Permisos ────────────────────────────────────────────────────────────
+
+@RELOJ
+def test_el_trabajador_solo_lee_la_ocupacion_anonima(client, admin, worker):
+    from conftest import rutas_planas
+
+    _plano(client, admin)
+    _alta(client, admin, pb=2500, desde=D(2026, 10, 1), hasta=D(2026, 12, 31), marca="Hit", valor=3_333_333)
+    _alta(client, admin, tipo="reserva", pb=1500, desde=D(2026, 11, 1), hasta=D(2026, 11, 30), proveedor="Alpina")
+    revisadas = 0
+    for ruta in rutas_planas(client.app):
+        if not ruta.path.startswith("/api/participaciones"):
+            continue
+        for metodo in sorted(ruta.methods - {"HEAD", "OPTIONS"}):
+            url = ruta.path.replace("{participacion_id}", "1")
+            params = {"sede": "NAVE", "espacio": "GON-01"} if metodo == "GET" else None
+            r = client.request(metodo, url, headers=worker, params=params, json=None if metodo == "GET" else {})
+            esperado = 200 if (metodo, ruta.path) == ("GET", "/api/participaciones/ocupacion") else 403
+            assert r.status_code == esperado, (metodo, ruta.path, r.status_code, r.text)
+            revisadas += 1
+    assert revisadas == 12, revisadas
+
+    r = client.get("/api/participaciones/ocupacion", headers=worker, params={"sede": "NAVE"})
+    cuerpo = r.json()
+    prohibidas = {"proveedor", "proveedor_id", "supplier", "supplier_id", "marca", "valor", "valor_mensual",
+                  "monthly_rent", "numero", "notas", "tipo", "codigo"}
+
+    def claves(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                yield k
+                yield from claves(v)
+        elif isinstance(x, list):
+            for v in x:
+                yield from claves(v)
+
+    assert not (set(claves(cuerpo)) & prohibidas), cuerpo
+    assert "3333333" not in r.text and "Postobón" not in r.text and "Hit" not in r.text
+    assert set(cuerpo["caras"]) == {"NAVE-GON-01", "NAVE-GON-01-B", "NAVE-PUN-01", "NAVE-MET-01", "NAVE-MET-02",
+                                    "NAVE-ROB-01"}
+    assert cuerpo["caras"]["NAVE-GON-01"] == {
+        "intervalos": [{"desde": "2026-10-01", "hasta": "2026-12-31", "pb": 2500},
+                       {"desde": "2026-11-01", "hasta": "2026-11-30", "pb": 1500}],
+        "fisicos": []}
+    assert client.get("/api/participaciones/ocupacion", headers=admin, params={"sede": "NAVE"}).json() == cuerpo
+    # «Estado por espacio» del trabajador no cambia de forma: el contrato PC, sin plata.
+    comercial = client.get("/api/spaces/comercial", headers=worker, params={"sede": "NAVE"}).json()
+    pc = comercial["NAVE-GON-01-PC1"]
+    assert (pc["negotiatedValue"], pc["observation"]) == (0, "")
+
+
+# ─── 19 · Rutas en orden ──────────────────────────────────────────────────────
+
+def test_las_rutas_literales_van_antes_que_las_parametricas(client):
+    from conftest import rutas_planas
+
+    rutas = [(r.path, m) for r in rutas_planas(client.app) if r.path.startswith("/api/participaciones")
+             for m in sorted(r.methods - {"HEAD", "OPTIONS"})]
+    assert rutas == [
+        ("/api/participaciones/cara", "GET"),
+        ("/api/participaciones/resumen", "GET"),
+        ("/api/participaciones/ocupacion", "GET"),
+        ("/api/participaciones/historial", "GET"),
+        ("/api/participaciones/distribucion/borrador", "PUT"),
+        ("/api/participaciones/distribucion/confirmar", "POST"),
+        ("/api/participaciones/distribucion/descartar", "POST"),
+        ("/api/participaciones/", "POST"),
+        ("/api/participaciones/{participacion_id}", "PATCH"),
+        ("/api/participaciones/{participacion_id}/confirmar", "POST"),
+        ("/api/participaciones/{participacion_id}/cancelar", "POST"),
+        ("/api/participaciones/{participacion_id}/renovar", "POST"),
+    ]
+    # Ningún GET lleva parámetros de ruta: el barrido del token de montaje los cubre sin relleno nuevo.
+    assert not [p for p, m in rutas if m == "GET" and "{" in p]
+
+
+# ─── 20 · Resumen por día ─────────────────────────────────────────────────────
+
+@RELOJ
+def test_el_resumen_suma_un_dia_y_una_vez_por_participacion(client, admin):
+    _plano(client, admin)
+    m1 = _alta(client, admin, espacio="MET-01", pb=6000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))["termino"]
+    m2 = _alta(client, admin, espacio="MET-01", pb=6000, desde=D(2026, 12, 1), hasta=D(2026, 12, 31),
+               proveedor="Alpina")["termino"]
+    _distribuir(client, admin, "confirmar", "MET-01", 0,
+                _zonas((m1["space_id"], _rect(0, 0.6)), (m2["space_id"], _rect(0, 0.6))))
+    g1 = _alta(client, admin, pb=2500, desde=D(2026, 10, 1), hasta=D(2026, 11, 30))["termino"]
+    r = client.post(f"/api/participaciones/{g1['id']}/renovar", headers=admin, json={
+        "version": 1, "tipo": "contrato", "desde": D(2026, 12, 1), "hasta": D(2026, 12, 31), "valor_mensual": 1})
+    assert r.status_code == 201, r.text
+    _alta(client, admin, espacio="PUN-01", tipo="reserva", pb=1000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30),
+          caduca=D(2026, 10, 20), proveedor="Colanta")
+    _alta(client, admin, espacio="PUN-01", tipo="reserva", pb=1000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30),
+          caduca=D(2026, 11, 10), proveedor="Colanta")
+
+    def resumen(**q):
+        r = client.get("/api/participaciones/resumen", headers=admin, params={"sede": "NAVE", **q})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    noviembre = resumen(dia=D(2026, 11, 15))
+    metro = next(c for c in noviembre["caras"] if c["codigo_cara"] == "NAVE-MET-01")
+    assert (metro["comprometido_dia_pb"], metro["dibujado_dia_pb"], metro["pendiente_dia_pb"]) == (6000, 6000, 0)
+    assert [(p["numero"], p["cuenta_el_dia"]) for p in metro["participaciones"]] == [(1, True), (2, False)]
+    assert metro["participaciones"][0]["m2_contratados"] == pytest.approx(6000 / 10000 * metro["area_util_m2"])
+    assert metro["estado_distribucion"] == "confirmada"
+    diciembre = resumen(dia=D(2026, 12, 15))
+    metro = next(c for c in diciembre["caras"] if c["codigo_cara"] == "NAVE-MET-01")
+    assert (metro["dibujado_dia_pb"], [p["numero"] for p in metro["participaciones"] if p["cuenta_el_dia"]]) == (6000, [2])
+    # La participación renovada es UNA fila: el término que rige ese día (el de diciembre).
+    gondola = next(c for c in diciembre["caras"] if c["codigo_cara"] == "NAVE-GON-01")
+    assert [(p["numero"], p["desde"]) for p in gondola["participaciones"]] == [(1, "2026-12-01")]
+    postobon = next(p for p in noviembre["por_proveedor"] if p["proveedor"] == "Postobón")
+    area_gondola = next(c for c in noviembre["caras"] if c["codigo_cara"] == "NAVE-GON-01")["area_util_m2"]
+    assert (postobon["participaciones"], postobon["caras"]) == (2, 2), "la renovación firmada no suma dos veces"
+    assert postobon["m2_contratados_dia"] == pytest.approx(0.6 * 1.0 + 0.25 * area_gondola)
+    alpina_id = next(p for p in diciembre["por_proveedor"] if p["proveedor"] == "Alpina")["proveedor_id"]
+    solo = resumen(dia=D(2026, 12, 15), proveedor_id=alpina_id)
+    assert [c["codigo_cara"] for c in solo["caras"]] == ["NAVE-MET-01"]
+    assert [p["proveedor"] for p in solo["caras"][0]["participaciones"]] == ["Alpina"]
+    totales = resumen()["totales"]
+    assert totales["reservas_por_caducar"] == 1 and totales["caras_por_participacion"] == 6
+    assert totales["sin_distribuir"] == 5 and totales["huerfanos"] == 0
+    # Una cara o un mueble (los dos lados).
+    assert [c["codigo_cara"] for c in resumen(espacio="GON-01")["caras"]] == ["NAVE-GON-01", "NAVE-GON-01-B"]
+    assert [c["codigo_cara"] for c in resumen(espacio="GON-01-B")["caras"]] == ["NAVE-GON-01-B"]
+
+    historial = client.get("/api/participaciones/historial", headers=admin,
+                           params={"sede": "NAVE", "espacio": "MET-01"}).json()
+    assert [e["accion"] for e in historial["entradas"]] == [
+        "distribucion.confirmada", "participacion.contrato", "participacion.contrato"]
+    assert historial["entradas"][0]["despues"]["zonas"][0]["vertices"] == _rect(0, 0.6)
+    por_participacion = client.get("/api/participaciones/historial", headers=admin,
+                                   params={"participacion_id": g1["id"]}).json()
+    assert [e["accion"] for e in por_participacion["entradas"]] == ["participacion.renovada", "participacion.contrato"]
