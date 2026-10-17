@@ -67,8 +67,9 @@ def _d(x):
 
 
 def _fecha_corta(d: date) -> str:
-    """``2026-10-17`` → ``17 oct 2026`` (como ``fechaCorta`` del navegador)."""
-    return f"{d.day} {_MESES[d.month - 1]} {d.year}"
+    """``2026-10-17`` → ``17 oct 2026`` (como ``fechaCorta`` del navegador,
+    que copia el año del texto: ``0026`` sale ``0026``, no ``26``)."""
+    return f"{d.day} {_MESES[d.month - 1]} {d.year:04d}"
 
 
 def pct(pb: int) -> str:
@@ -230,14 +231,18 @@ def _signo(x: int) -> int:
 def _eventos(I, desde: date, hasta: date) -> list[tuple[date, int]]:
     """Los eventos de la suma diaria recortados a [desde, hasta], ordenados por
     fecha y, en la misma fecha, primero las salidas: un intervalo que termina
-    el 30 y otro que empieza el 1 no se suman."""
+    el 30 y otro que empieza el 1 no se suman. La salida de lo que llega hasta
+    el final del período no se anota (después de ``hasta`` no se mira nada):
+    así un contrato «hasta el 31 dic 9999» no pide ``date.max + 1 día``
+    (OverflowError, un 500)."""
     ev = []
     for it in I:
         a, b = max(_d(it["desde"]), desde), min(_d(it["hasta"]), hasta)
         if a > b:
             continue
         ev.append((a, it["pb"]))
-        ev.append((b + _UN_DIA, -it["pb"]))
+        if b < hasta:
+            ev.append((b + _UN_DIA, -it["pb"]))
     ev.sort(key=lambda e: (e[0], _signo(e[1])))
     return ev
 
@@ -375,8 +380,13 @@ def revisar_terminos(de, cambio, hoy):
         ultimo = _el_mas_nuevo(vivos)
         if ultimo is not None and ultimo["id"] != t["id"]:
             a, b = _fechas_de(ultimo)
-            return ("no_renovable", f"La participación {t['numero']} ya tiene un término más nuevo (del "
-                    f"{_fecha_corta(a)} al {_fecha_corta(b)}): renová ése.", {})
+            cuando = f"(del {_fecha_corta(a)} al {_fecha_corta(b)})"
+            # Una reserva no se renueva: decirle «renová ése» la mandaba a otro «no».
+            if ultimo["estado"] == "reserva":
+                return ("no_renovable", f"La participación {t['numero']} ya tiene una reserva provisional más nueva "
+                        f"{cuando}: confirmala como contrato y renová ése.", {})
+            return ("no_renovable", f"La participación {t['numero']} ya tiene un término más nuevo {cuando}: "
+                    "renová ése.", {})
         nuevo = {"desde": _d(cambio["desde"]), "hasta": _d(cambio["hasta"]), "pb": cambio["pb"],
                  "supplier_id": cambio["supplier_id"], "marca": cambio.get("marca")}
         otros = list(de)
@@ -461,8 +471,10 @@ def rige(terminos, hoy) -> bool:
 def contratado_pb(terminos, hoy) -> tuple[int, bool]:
     """Lo contratado de una participación (§3.5): el pb de sus vivos (todos
     iguales por I3; si un dato viejo los trae distintos, el menor y
-    ``desiguales``); sin vivos, el del último término, para la historia.
-    Devuelve ``(pb, desiguales)``."""
+    ``desiguales``); sin vivos, el del último término, para la historia (por
+    fecha de inicio y, a igual inicio, el de id mayor; un contrato sin lease,
+    dato roto sin fechas, cuenta como el más viejo: comparar None con una
+    fecha sería un TypeError, un 500). Devuelve ``(pb, desiguales)``."""
     hoy = _d(hoy)
     pb = None
     desiguales = False
@@ -482,7 +494,7 @@ def contratado_pb(terminos, hoy) -> tuple[int, bool]:
         if ultimo is None:
             ultimo = t
             continue
-        a, b = _fechas_de(t)[0], _fechas_de(ultimo)[0]
+        a, b = _fechas_de(t)[0] or date.min, _fechas_de(ultimo)[0] or date.min
         if a > b or (a == b and t["id"] > ultimo["id"]):
             ultimo = t
     return (ultimo["pb"] if ultimo is not None else 0), False
@@ -553,7 +565,8 @@ def juzgar(medidas, terminos_por_s, hoy, *, confirmada=False, firma_cambio=False
     corre adentro del candado con los términos frescos.
 
     1. por zona, en orden: su código de validación (error); una zona que no es
-       de ninguna participación de la cara (``ZONA_AJENA``, error); la de una
+       de ninguna participación de la cara, o de una sin términos
+       (``ZONA_AJENA``, error: sin término no hay número que nombrar); la de una
        participación que ya no rige (error al mandarla; con ``confirmada``, la
        capa confirmada guardada, es historia y no dice nada); si no,
        ``ZONA_SIN_SUPERFICIE_UTIL`` (aviso). Un aviso nunca tapa un error.
@@ -580,7 +593,7 @@ def juzgar(medidas, terminos_por_s, hoy, *, confirmada=False, firma_cambio=False
     for s in sorted(set(terminos_por_s) | set(dibujado_pb)):
         ts = terminos_por_s.get(s)
         dibujado = dibujado_pb.get(s, 0)
-        if ts is None:
+        if not ts:
             cuentas[s] = {"numero": None, "viva": False, "contratado": 0, "dibujado": dibujado,
                           "pendiente": 0, "exceso": 0}
             continue
@@ -588,7 +601,7 @@ def juzgar(medidas, terminos_por_s, hoy, *, confirmada=False, firma_cambio=False
         c, desparejos = contratado_pb(ts, hoy)
         if desparejos:
             desiguales.add(s)
-        cuentas[s] = {"numero": ts[0]["numero"] if ts else None, "viva": viva, "contratado": c,
+        cuentas[s] = {"numero": ts[0]["numero"], "viva": viva, "contratado": c,
                       "dibujado": dibujado, "pendiente": max(0, c - dibujado) if viva else 0,
                       "exceso": dibujado - c if viva else 0}
     con_lugar = set(medidas["sin_superficie_util"])
@@ -596,7 +609,7 @@ def juzgar(medidas, terminos_por_s, hoy, *, confirmada=False, firma_cambio=False
     for v in medidas["validaciones"]:
         s = v["participacion_space_id"]
         cu = cuentas.get(s)
-        conocida = s in terminos_por_s
+        conocida = bool(terminos_por_s.get(s))
         if confirmada and conocida and cu is not None and not cu["viva"]:
             continue  # historia (D19)
         ns = [cu["numero"]] if cu is not None and cu["numero"] is not None else []
@@ -750,8 +763,8 @@ def dispo_por_participacion(ocupacion, desde, hasta, hoy) -> dict:
     que queda algo para vender, o None. ``ocupacion``: ``{"intervalos":
     [{"desde", "hasta", "pb"}], "fisicos": [{"desde", "hasta"}]}``."""
     hoy, desde, hasta = _d(hoy), _d(desde), _d(hasta)
-    I = [{"desde": f["desde"], "hasta": f["hasta"], "pb": CARA_ENTERA_PB} for f in ocupacion.get("fisicos", [])]
-    I += [{"desde": it["desde"], "hasta": it["hasta"], "pb": it["pb"]} for it in ocupacion.get("intervalos", [])]
+    I = [{"desde": f["desde"], "hasta": f["hasta"], "pb": CARA_ENTERA_PB} for f in ocupacion.get("fisicos") or []]
+    I += [{"desde": it["desde"], "hasta": it["hasta"], "pb": it["pb"]} for it in ocupacion.get("intervalos") or []]
     queda = disponible(I, desde, hasta, hoy)
     libre_desde = _primer_dia_con_lugar(I, max(desde, hoy), hasta)
     dispo = "tomado" if queda == 0 else ("libre" if queda == CARA_ENTERA_PB else "parcial")

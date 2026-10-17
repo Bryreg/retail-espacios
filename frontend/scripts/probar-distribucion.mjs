@@ -277,7 +277,9 @@ await prueba("el pico es el de contar día por día, y la capacidad dice «entra
   }
 });
 
-await prueba("lo dibujado nunca cambia lo disponible, y una distribución sin cambio de términos no se rompe", () => {
+// (Que lo dibujado no cambia lo disponible lo fijan los casos `distribucion` con `disponible`: `disponible`
+// ni siquiera recibe las zonas.)
+await prueba("una distribución sin cambio de términos no se rompe, y el solape sigue a las fechas (100 al azar)", () => {
   const sup = superficieDe("superficie:metro-100");
   for (let i = 0; i < 100; i++) {
     const ts1 = [terminoAlAzar(1)].map((t) => ({ ...t, spaceId: 1, numero: 1 }));

@@ -120,10 +120,13 @@ function fechaCorta(iso: string): string {
   return `${Number(iso.slice(8, 10))} ${MESES[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
 }
 
-/** El día siguiente, en UTC (sin husos: un día es un día). */
+/** El día siguiente, en UTC (sin husos: un día es un día). Con
+ *  `setUTCFullYear` y no `Date.UTC`, que lee los años 0–99 como 1900–1999: un
+ *  «0026» tipeado de más (la base lo acepta) daría 1926 acá y 26 en Python. */
 function masUnDia(iso: string): string {
-  const t = Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) + 86400000;
-  return new Date(t).toISOString().slice(0, 10);
+  const d = new Date(0);
+  d.setUTCFullYear(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 const mayor = (a: string, b: string) => (a > b ? a : b);
@@ -249,13 +252,17 @@ export function intervalosQueCuentan(ts: readonly Termino[], fisicos: readonly F
 
 /** Los eventos de la suma diaria recortados a [desde, hasta], ordenados por
  *  fecha y, en la misma fecha, primero las salidas: un intervalo que termina
- *  el 30 y otro que empieza el 1 no se suman. */
+ *  el 30 y otro que empieza el 1 no se suman. La salida de lo que llega hasta
+ *  el final del período no se anota (después de `hasta` no se mira nada): así
+ *  un contrato «hasta el 31 dic 9999» no pide el día 10000-01-01, que Python
+ *  no puede escribir y que acá, como texto, quedaría antes que todo. */
 function eventos(I: readonly Intervalo[], desde: string, hasta: string): [string, number][] {
   const ev: [string, number][] = [];
   for (const it of I) {
     const a = mayor(it.desde, desde), b = menor(it.hasta, hasta);
     if (a > b) continue;
-    ev.push([a, it.pb], [masUnDia(b), -it.pb]);
+    ev.push([a, it.pb]);
+    if (b < hasta) ev.push([masUnDia(b), -it.pb]);
   }
   ev.sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : Math.sign(x[1]) - Math.sign(y[1])));
   return ev;
@@ -382,8 +389,11 @@ export function revisarTerminos(de: readonly Termino[], cambio: CambioDeTermino,
     const ultimo = elMasNuevo(vivos);
     if (ultimo && ultimo.id !== t.id) {
       const [a, b] = fechasDe(ultimo);
-      return rechazo("no_renovable",
-        `La participación ${t.numero} ya tiene un término más nuevo (del ${fechaCorta(a)} al ${fechaCorta(b)}): renová ése.`);
+      const cuando = `(del ${fechaCorta(a)} al ${fechaCorta(b)})`;
+      // Una reserva no se renueva: decirle «renová ése» la mandaba a otro «no».
+      return rechazo("no_renovable", ultimo.estado === "reserva"
+        ? `La participación ${t.numero} ya tiene una reserva provisional más nueva ${cuando}: confirmala como contrato y renová ése.`
+        : `La participación ${t.numero} ya tiene un término más nuevo ${cuando}: renová ése.`);
     }
     nuevo = { desde: cambio.desde, hasta: cambio.hasta, pb: cambio.pb, supplierId: cambio.supplierId, marca: cambio.marca };
     otros = [...de];
@@ -465,7 +475,9 @@ export function rige(ts: readonly Termino[], hoy: string): boolean {
 
 /** Lo contratado de una participación (§3.5): el pb de sus vivos (todos
  *  iguales por I3; si un dato viejo los trae distintos, el menor y
- *  `desiguales`); sin vivos, el del último término, para la historia. */
+ *  `desiguales`); sin vivos, el del último término, para la historia (por
+ *  fecha de inicio y, a igual inicio, el de id mayor; un contrato sin lease,
+ *  dato roto sin fechas, cuenta como el más viejo). */
 export function contratadoPb(ts: readonly Termino[], hoy: string): { pb: number; desiguales: boolean } {
   let pb: number | null = null, desiguales = false;
   for (const t of ts) {
@@ -477,7 +489,7 @@ export function contratadoPb(ts: readonly Termino[], hoy: string): { pb: number;
   let ultimo: Termino | null = null;
   for (const t of ts) {
     if (ultimo === null) { ultimo = t; continue; }
-    const a = fechasDe(t)[0], b = fechasDe(ultimo)[0];
+    const a = fechasDe(t)[0] ?? "", b = fechasDe(ultimo)[0] ?? "";
     if (a > b || (a === b && t.id > ultimo.id)) ultimo = t;
   }
   return { pb: ultimo ? ultimo.pb : 0, desiguales: false };
@@ -547,7 +559,8 @@ function participacionesDe(m: Medidas, terminosPorS: ReadonlyMap<number, readonl
  * Juzga lo medido (`medir` de `zonasGeometria.ts`) con los términos: barato,
  * así el servidor lo corre adentro del candado con los términos frescos.
  *   1. por zona, en orden: su código de validación (error); una zona que no es
- *      de ninguna participación de la cara (`ZONA_AJENA`, error); la de una
+ *      de ninguna participación de la cara, o de una sin términos (`ZONA_AJENA`,
+ *      error: sin término no hay número que nombrar); la de una
  *      participación que ya no rige (error al mandarla; en la confirmada
  *      guardada es historia y no dice nada); si no, `ZONA_SIN_SUPERFICIE_UTIL`
  *      (aviso). Un aviso nunca tapa un error: una zona tiene un solo problema.
@@ -566,7 +579,7 @@ export function juzgar(m: Medidas, terminosPorS: ReadonlyMap<number, readonly Te
   for (const s of participacionesDe(m, terminosPorS)) {
     const ts = terminosPorS.get(s);
     const dibujado = m.dibujadoPb.get(s) ?? 0;
-    if (!ts) {
+    if (!ts || ts.length === 0) {
       cuentas.set(s, { numero: null, viva: false, contratado: 0, dibujado, pendiente: 0, exceso: 0 });
       continue;
     }
@@ -574,7 +587,7 @@ export function juzgar(m: Medidas, terminosPorS: ReadonlyMap<number, readonly Te
     const c = contratadoPb(ts, hoy);
     if (c.desiguales) desiguales.add(s);
     cuentas.set(s, {
-      numero: ts.length > 0 ? ts[0].numero : null, viva, contratado: c.pb, dibujado,
+      numero: ts[0].numero, viva, contratado: c.pb, dibujado,
       pendiente: viva ? Math.max(0, c.pb - dibujado) : 0, exceso: viva ? dibujado - c.pb : 0,
     });
   }
@@ -582,7 +595,7 @@ export function juzgar(m: Medidas, terminosPorS: ReadonlyMap<number, readonly Te
   // 1. Cada zona.
   for (const v of m.validaciones) {
     const cu = cuentas.get(v.participacionSpaceId);
-    const conocida = terminosPorS.has(v.participacionSpaceId);
+    const conocida = (terminosPorS.get(v.participacionSpaceId)?.length ?? 0) > 0;
     if (opciones.confirmada && conocida && cu && !cu.viva) continue;   // historia (D19)
     const ns = cu && cu.numero !== null ? [cu.numero] : [];
     if (v.codigo !== null) {
