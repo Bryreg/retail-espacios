@@ -29,11 +29,8 @@ import {
 
 /** `pedirEnfoque3D(fixtureId, cara, { distribucion })`: abre el Editor 3D en
  *  esa cara y entra a Distribución (§9.2); con `renovar`, con el formulario de
- *  renovar ese término. El tercer argumento lo agrega el paso 6a en
- *  `fixtureStore.ts`; esta firma acepta la del store de antes (que tiene dos
- *  parámetros: TypeScript deja asignar una función con menos) y la de después,
- *  así que el merge no necesita tocar acá. Hasta ese merge, el pedido sólo
- *  encuadra la cara en el 3D. */
+ *  renovar ese término. Es la firma de `pedirEnfoque3D` en `fixtureStore.ts`
+ *  (el pedido lo atiende un efecto de `StoreEditor3D`). */
 export type PedirEnfoqueConDistribucion = (
   fixtureId: string, cara: "A" | "B", opciones?: { distribucion?: { renovar?: number } },
 ) => void;
