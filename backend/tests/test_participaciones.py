@@ -323,7 +323,9 @@ def test_la_capacidad_suma_lo_que_cuenta_cada_dia_y_nada_mas(client, admin):
         # La caducidad no se escribe: el historial la deriva de la fecha (D6).
         derivados = client.get("/api/participaciones/historial", headers=otra,
                                params={"sede": "NAVE", "espacio": "PUN-01"}).json()["derivados"]
-        assert [(d["accion"], d["en"]) for d in derivados] == [("reserva.caducada", "2026-10-21")]
+        # El día de Colombia en `dia`; `en` es su medianoche en Colombia (contrato del historial).
+        assert [(d["accion"], d["dia"], d["en"], d["derivado"]) for d in derivados] == [
+            ("reserva.caducada", "2026-10-21", "2026-10-21T00:00:00-05:00", True)]
         _alta(client, otra, espacio="PUN-01", pb=3000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))
 
 
@@ -744,8 +746,8 @@ def test_caso_g_lo_vencido_y_lo_cancelado_dejan_de_contar_y_su_zona_pasa_a_histo
         # El vencimiento no se escribe: el historial lo deriva (D6). La reserva cancelada no «caduca».
         derivados = client.get("/api/participaciones/historial", headers=otra,
                                params={"sede": "NAVE", "espacio": "MET-01"}).json()["derivados"]
-        assert [(d["accion"], d["en"], d["participacion_id"]) for d in derivados] == [
-            ("participacion.vencida", "2026-11-01", p1["id"])]
+        assert [(d["accion"], d["dia"], d["en"], d["participacion_id"]) for d in derivados] == [
+            ("participacion.vencida", "2026-11-01", "2026-11-01T00:00:00-05:00", p1["id"])]
         _alta(client, otra, espacio="MET-01", pb=5000, desde=D(2026, 11, 10), hasta=D(2026, 11, 20),
               proveedor="Nutresa")
         r = client.post("/api/participaciones/distribucion/confirmar", headers=otra,
@@ -1553,3 +1555,213 @@ def test_el_resumen_nombra_lo_que_hay_que_revisar_sin_mueble_vivo_huerfanos_y_bo
     with time_machine.travel("2026-10-26T15:00:00+00:00", tick=True):
         r2 = resumen(_entrar(client))
         assert [x["codigo_cara"] for x in r2["sin_mueble"]] == ["NAVE-ROB-01"] and r2["totales"]["sin_mueble"] == 1
+
+
+# ─── 21 · Lo que dejó la revisión final ───────────────────────────────────────
+
+@RELOJ
+def test_una_fila_de_cara_sin_sede_no_deja_la_participacion_sin_confirmar_renovar_ni_cambiar(client, admin, monkeypatch):
+    """Una fila ``NAVE-GON-01`` sin sede (de antes de la columna, de
+    ``find-or-create`` o de un reporte de montaje sin sede) la reusa el alta.
+    Confirmar, renovar y cambiar buscaban el mueble con esa sede vacía y daban
+    404 «ya no está en el plano de .» con el mueble en el plano: sólo quedaba
+    cancelar y cargar otra participación, sin sus zonas ni la continuidad de
+    la renovación. El alta le completa la sede; y si una fila igual llega sin
+    ella, la cara del término la toma de su fila PC o del prefijo del código."""
+    import app.services.participaciones as servicio
+    from app.models.models import Space, SpaceStatus
+    from app.services.participaciones import _sede_por_prefijo
+
+    _plano(client, admin)
+    db = _bd()
+    try:
+        db.add(Space(code="NAVE-GON-01", svg_id="fix-NAVE-GON-01", name="GON-01", zone="Pasillo", sede=None,
+                     area_m2=4.0, status=SpaceStatus.free))
+        db.commit()
+    finally:
+        db.close()
+
+    def sedes(*codigos, poner=False):
+        """La sede de esas filas; con ``poner``, se la borra (NULL)."""
+        db = _bd()
+        try:
+            filas = db.query(Space).filter(Space.code.in_(codigos)).order_by(Space.code).all()
+            if poner:
+                for f in filas:
+                    f.sede = None
+                db.commit()
+            return [f.sede for f in filas]
+        finally:
+            db.close()
+
+    reserva = _alta(client, admin, tipo="reserva", pb=2500, caduca=D(2026, 10, 25))["termino"]
+    contrato = _alta(client, admin, pb=2000, proveedor="Alpina", marca="Bon Yurt", desde=D(2026, 10, 1),
+                     hasta=D(2026, 12, 31))["termino"]
+    assert sedes("NAVE-GON-01") == ["NAVE"], "el alta reusa la fila sin completarle la sede"
+
+    # Una fila que sigue sin sede: la cara sale de la sede de la fila PC del término. El prefijo es el
+    # último recurso (una sede puede tener guiones): acá, si se usara, daría una sede sin plano.
+    sedes("NAVE-GON-01", poner=True)
+    with monkeypatch.context() as m:
+        m.setattr(servicio, "_sede_por_prefijo", lambda codigo, plano: "SIN-PLANO")
+        r = client.patch(f"/api/participaciones/{reserva['id']}", headers=admin,
+                         json={"version": reserva["version"], "notas": "con la sede de la fila PC"})
+    assert r.status_code == 200, r.text
+    reserva = r.json()["termino"]
+
+    # Ni la fila de cara ni las PC: la sede sale del prefijo del código.
+    sedes("NAVE-GON-01", reserva["codigo"], contrato["codigo"], poner=True)
+    r = client.post(f"/api/participaciones/{reserva['id']}/confirmar", headers=admin,
+                    json={"version": reserva["version"], "valor_mensual": 1000})
+    assert r.status_code == 200, r.text
+    assert r.json()["termino"]["estado"] == "contrato"
+    r = client.post(f"/api/participaciones/{contrato['id']}/renovar", headers=admin,
+                    json={"version": contrato["version"], "tipo": "contrato", "desde": D(2027, 1, 1),
+                          "hasta": D(2027, 3, 31), "valor_mensual": 1000})
+    assert r.status_code == 201, r.text
+    assert r.json()["termino"]["renueva_a"] == contrato["id"]
+
+    # El prefijo: la sede más larga que calza y cuyo plano tiene el mueble.
+    class Plano:
+        def __init__(self, muebles):
+            self.muebles = muebles
+
+        def sedes(self):
+            return sorted(self.muebles)
+
+        def resolver(self, sede, espacio):
+            return object() if espacio in self.muebles.get(sede, ()) else None
+
+    assert _sede_por_prefijo("SAN-JOSE-GON-01", Plano({"SAN": {"JOSE-GON-01"}, "SAN-JOSE": {"GON-01"}})) == "SAN-JOSE"
+    assert _sede_por_prefijo("SAN-GON-01", Plano({"SAN": {"GON-01"}, "SAN-JOSE": {"GON-01"}})) == "SAN"
+    assert _sede_por_prefijo("SAN-JOSE-GON-09", Plano({"SAN": set(), "SAN-JOSE": set()})) == "SAN-JOSE", \
+        "sin el mueble, la frase del 404 igual nombra la sede"
+    assert _sede_por_prefijo("OTRA-GON-01", Plano({"SAN": {"GON-01"}})) == ""
+
+
+@RELOJ
+def test_cancelar_una_reserva_caducada_no_reescribe_su_historia(client, admin):
+    """Una reserva que caducó el 20 no se «cancela» el 25: pasaba a cancelada
+    con la fecha del 25 y el historial dejaba de decir que caducó (D14). 409
+    con una frase que dice qué pasa, y la fila no se toca. La que caduca HOY
+    todavía se sostiene: ésa sí se cancela."""
+    import time_machine
+
+    from app.models.participaciones import HistorialParticipacion, Participacion
+
+    _plano(client, admin)
+    caducada = _alta(client, admin, tipo="reserva", pb=2500, caduca=D(2026, 10, 20))["termino"]
+    de_hoy = _alta(client, admin, espacio="PUN-01", tipo="reserva", pb=2500, caduca=D(2026, 10, 25))["termino"]
+    with time_machine.travel("2026-10-25T15:00:00+00:00", tick=True):
+        otra = _entrar(client)
+        r = client.post(f"/api/participaciones/{caducada['id']}/cancelar", headers=otra,
+                        json={"version": caducada["version"]})
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"] == {
+            "code": "reserva_caducada",
+            "message": "La reserva ya caducó el 20 oct 2026: no hace falta cancelarla; queda en el historial."}
+        db = _bd()
+        try:
+            t = db.get(Participacion, caducada["id"])
+            assert (t.estado, t.version, t.baja_en, t.baja_por) == ("reserva", caducada["version"], None, None)
+            assert [h.accion for h in db.query(HistorialParticipacion)
+                    .filter_by(participacion_id=caducada["id"]).order_by(HistorialParticipacion.id)] == [
+                "participacion.reserva"]
+        finally:
+            db.close()
+        h = client.get("/api/participaciones/historial", headers=otra,
+                       params={"participacion_id": caducada["id"]}).json()
+        assert [(d["accion"], d["dia"]) for d in h["derivados"]] == [("reserva.caducada", "2026-10-21")]
+        assert [e["accion"] for e in h["entradas"]] == ["participacion.reserva"]
+        assert _cara(client, otra)["participaciones"][0]["terminos"][0]["estado_visible"] == "reserva_caducada"
+
+        r = client.post(f"/api/participaciones/{de_hoy['id']}/cancelar", headers=otra,
+                        json={"version": de_hoy["version"]})
+        assert r.status_code == 200, r.text
+        assert r.json()["termino"]["estado_visible"] == "reserva_cancelada"
+
+
+@RELOJ
+def test_un_lease_de_participacion_colgado_de_otra_fila_de_cara_cuenta_como_la_cara_entera(client, admin):
+    """La carrera entre borrar la sede y la primera alta de una cara (§2.5),
+    armada a mano: el archivo renombra la fila de cara (sin términos, no toma
+    su candado) a ``NAVE-GON-01#id`` y el alta concurrente ya la había reusado
+    y creó ``NAVE-GON-01-PC1``, que el archivo no vio. Queda un lease PC vivo
+    cuyo término cuelga de la fila archivada. ``fisicos_de`` lo descartaba por
+    tener término —de OTRA fila—: ese 30 % no contaba en ninguna parte y se
+    podía vender el 100 % encima. Ahora va como huérfano (la cara entera) y
+    «Para revisar» lo nombra."""
+    from app.models.models import Space
+
+    _plano(client, admin)
+    _alta(client, admin, pb=3000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))
+    db = _bd()
+    try:
+        fila = db.query(Space).filter_by(code="NAVE-GON-01").one()
+        fila.code, fila.svg_id = f"NAVE-GON-01#{fila.id}", f"{fila.svg_id}#{fila.id}"
+        db.commit()
+    finally:
+        db.close()
+
+    huerfano = {"codigo": "NAVE-GON-01-PC1", "desde": "2026-11-01", "hasta": "2026-11-30", "huerfano": True}
+    assert _cara(client, admin)["capacidad"]["fisicos"] == [huerfano]
+    r = _alta(client, admin, pb=7000, desde=D(2026, 11, 10), hasta=D(2026, 11, 20), codigo=409)
+    assert r["detail"]["code"] == "cara_vendida_entera", r
+
+    # La cara vuelve a tener su fila (sin términos de antes): el de la fila archivada sigue contando,
+    # el número no se reutiliza, y el término de ESTA fila no es «físico».
+    nueva = _alta(client, admin, pb=2000, desde=D(2026, 12, 1), hasta=D(2026, 12, 31))["termino"]
+    assert nueva["numero"] == 2
+    assert _cara(client, admin)["capacidad"]["fisicos"] == [huerfano]
+    _alta(client, admin, pb=1000, desde=D(2026, 11, 10), hasta=D(2026, 11, 20), codigo=409)
+    assert _cara(client, admin, espacio="GON-01-B")["capacidad"]["fisicos"] == []
+    ocupacion = client.get("/api/participaciones/ocupacion", headers=admin, params={"sede": "NAVE"}).json()
+    assert ocupacion["caras"]["NAVE-GON-01"] == {
+        "intervalos": [{"desde": "2026-12-01", "hasta": "2026-12-31", "pb": 2000}],
+        "fisicos": [{"desde": "2026-11-01", "hasta": "2026-11-30"}]}
+    resumen = client.get("/api/participaciones/resumen", headers=admin, params={"sede": "NAVE"}).json()
+    assert resumen["huerfanos"] == [{"codigo": "NAVE-GON-01-PC1", "desde": "2026-11-01", "hasta": "2026-11-30"}]
+
+
+@RELOJ
+def test_el_historial_fecha_lo_derivado_con_el_dia_de_colombia_y_lo_ordena_contra_lo_real(client, admin):
+    """Contrato del historial: el vencimiento de un contrato y la caducidad de
+    una reserva (derivados, sin fila: D6) traen ``derivado: true``, ``dia`` (el
+    día de Colombia en que pasó: el siguiente al último día de vigencia) y
+    ``en``, la medianoche de ese día en Colombia con su zona. Con
+    ``"en": "2026-10-20"`` el navegador en Colombia lo mostraba el 19 a las
+    7 p. m., y lo ordenaba ANTES de lo que pasó a las 10 p. m. del 19.
+
+    El reloj, a las 21:00 del 20 en Colombia (ya el 21 en UTC): lo que vale
+    hasta el 20 todavía rige, y no aparece ni vencido ni caducado."""
+    from datetime import datetime
+
+    import time_machine
+
+    _plano(client, admin)
+    vencido = _alta(client, admin, espacio="MET-01", pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 10, 19))["termino"]
+    _alta(client, admin, espacio="MET-01", pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 10, 20), proveedor="Alpina")
+    caducada = _alta(client, admin, espacio="MET-01", tipo="reserva", pb=2000, desde=D(2026, 11, 1),
+                     hasta=D(2026, 11, 30), caduca=D(2026, 10, 19), proveedor="Colanta")["termino"]
+    sostiene = _alta(client, admin, espacio="MET-01", tipo="reserva", pb=2000, desde=D(2026, 11, 1),
+                     hasta=D(2026, 11, 30), caduca=D(2026, 10, 20), proveedor="Nutresa")["termino"]
+
+    # Una entrada real a las 10 p. m. del 19 en Colombia (03:00 del 20 en UTC).
+    with time_machine.travel("2026-10-20T03:00:00+00:00", tick=False):
+        r = client.patch(f"/api/participaciones/{sostiene['id']}", headers=_entrar(client),
+                         json={"version": sostiene["version"], "notas": "a la noche"})
+        assert r.status_code == 200, r.text
+
+    with time_machine.travel("2026-10-21T02:00:00+00:00", tick=False):
+        h = client.get("/api/participaciones/historial", headers=_entrar(client),
+                       params={"sede": "NAVE", "espacio": "MET-01"}).json()
+    assert [(d["accion"], d["participacion_id"], d["dia"], d["en"], d["derivado"]) for d in h["derivados"]] == [
+        ("reserva.caducada", caducada["id"], "2026-10-20", "2026-10-20T00:00:00-05:00", True),
+        ("participacion.vencida", vencido["id"], "2026-10-20", "2026-10-20T00:00:00-05:00", True),
+    ], "lo que vale hasta el 20 (hoy en Colombia) aparece vencido o caducado, o falta un derivado"
+    assert all("dia" not in e and "derivado" not in e for e in h["entradas"])
+    editada = next(e for e in h["entradas"] if e["accion"] == "participacion.editada")
+    assert editada["en"].startswith("2026-10-20T03:00")
+    # Juntas y ordenadas por instante (como las ordena el panel), lo derivado del 20 va después de las 10 p. m. del 19.
+    juntas = sorted(h["entradas"] + h["derivados"], key=lambda e: datetime.fromisoformat(e["en"]), reverse=True)
+    assert [e["accion"] for e in juntas[:3]] == ["reserva.caducada", "participacion.vencida", "participacion.editada"]
