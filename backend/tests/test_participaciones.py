@@ -1383,6 +1383,26 @@ def test_las_rutas_literales_van_antes_que_las_parametricas(client):
     # Ningún GET lleva parámetros de ruta: el barrido del token de montaje los cubre sin relleno nuevo.
     assert not [p for p, m in rutas if m == "GET" and "{" in p]
 
+    # La otra mitad del escenario 19: lo que pide el navegador
+    # (`frontend/src/api/participaciones.ts`) son estas mismas rutas, con su
+    # método. `probar-distribucion` fija la lista del cliente, pero nada la
+    # comparaba con el servidor: una errata daba 404 y el store se la tragaba.
+    import re
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    texto = (raiz / "frontend" / "src" / "api" / "participaciones.ts").read_text(encoding="utf-8")
+    base = re.search(r'baseURL:\s*"([^"]+)"', (raiz / "frontend" / "src" / "api" / "client.ts")
+                     .read_text(encoding="utf-8")).group(1)
+    prefijo = re.search(r'^const P = "([^"]+)";$', texto, re.M).group(1)
+    pedidos = []
+    for metodo, camino in re.findall(r"client\.(get|post|put|patch|delete)<[^>]*>\(`\$\{P\}([^`]*)`", texto):
+        camino = camino.replace("${id}", "{participacion_id}")
+        assert "${" not in camino, camino
+        pedidos.append((base + prefijo + camino, metodo.upper()))
+    assert len(re.findall(r"client\.(get|post|put|patch|delete)\b", texto)) == len(pedidos) == 12, pedidos
+    assert sorted(pedidos) == sorted(rutas), sorted(set(pedidos) ^ set(rutas))
+
 
 # ─── 20 · Resumen por día ─────────────────────────────────────────────────────
 
@@ -1443,3 +1463,93 @@ def test_el_resumen_suma_un_dia_y_una_vez_por_participacion(client, admin):
     por_participacion = client.get("/api/participaciones/historial", headers=admin,
                                    params={"participacion_id": g1["id"]}).json()
     assert [e["accion"] for e in por_participacion["entradas"]] == ["participacion.renovada", "participacion.contrato"]
+
+
+@RELOJ
+def test_el_resumen_nombra_lo_que_hay_que_revisar_sin_mueble_vivo_huerfanos_y_borradores(client, admin):
+    """Lo que «Para revisar» (Supervisar) dice con fecha y nombre: la cara SIN
+    MUEBLE cuenta sólo si le quedan términos vivos (una reserva cancelada no
+    se borra nunca, D14, y dejaba la tarjeta para siempre), el contrato de
+    participación sin término con su código y sus fechas, y el borrador de
+    cada cara con su instante y su día de Colombia (también encima de una
+    confirmada, que sigue «confirmada»)."""
+    import json
+
+    import time_machine
+    from app.models.models import LayoutSnapshot, Space, SpaceLease, SpaceStatus, Supplier
+
+    _plano(client, admin)
+    viva = _alta(client, admin, espacio="PUN-01", tipo="reserva", pb=2000, desde=D(2026, 11, 1),
+                 hasta=D(2026, 11, 30), caduca=D(2026, 10, 25))["termino"]
+    muerta = _alta(client, admin, espacio="MET-02", tipo="reserva", pb=2000, desde=D(2026, 11, 1),
+                   hasta=D(2026, 11, 30), caduca=D(2026, 10, 25))["termino"]
+    r = client.post(f"/api/participaciones/{muerta['id']}/cancelar", headers=admin, json={"version": muerta["version"]})
+    assert r.status_code == 200, r.text
+    _alta(client, admin, espacio="ROB-01", pb=2500, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))
+    g = _alta(client, admin, pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    sup = _cara(client, admin)["superficie"]
+    _distribuir(client, admin, "confirmar", "GON-01", 0, _zonas((g["space_id"], _franja(sup, 0, 0.3))))
+    _distribuir(client, admin, "borrador", "GON-01", 1, _zonas((g["space_id"], _franja(sup, 0, 0.31))))
+
+    # Un contrato de participación sin término (un script, un archivo viejo).
+    db = _bd()
+    try:
+        pc = Space(code="NAVE-GON-01-PC9", svg_id="NAVE-GON-01-PC9", name="x", zone="gondola", sede="NAVE",
+                   area_m2=0.0, status=SpaceStatus.free)
+        sup_h = Supplier(name="Huérfano SA")
+        db.add_all([pc, sup_h])
+        db.flush()
+        db.add(SpaceLease(space_id=pc.id, supplier_id=sup_h.id, start_date=date(2027, 1, 1),
+                          end_date=date(2027, 1, 31), monthly_rent=1, is_active=True))
+        db.commit()
+    finally:
+        db.close()
+
+    def resumen(headers=admin):
+        r = client.get("/api/participaciones/resumen", headers=headers, params={"sede": "NAVE"})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    r0 = resumen()
+    assert r0["sin_mueble"] == [] and r0["totales"]["sin_mueble"] == 0
+    assert r0["huerfanos"] == [{"codigo": "NAVE-GON-01-PC9", "desde": "2027-01-01", "hasta": "2027-01-31"}]
+    assert r0["totales"]["huerfanos"] == 1
+    gondola = next(c for c in r0["caras"] if c["codigo_cara"] == "NAVE-GON-01")
+    assert gondola["estado_distribucion"] == "confirmada", "un borrador encima de la confirmada no cambia el estado"
+    assert gondola["borrador_en"].startswith("2026-10-17T15:00") and gondola["borrador_dia"] == "2026-10-17"
+    assert all(c["borrador_en"] is None and c["borrador_dia"] is None
+               for c in r0["caras"] if c["codigo_cara"] != "NAVE-GON-01")
+
+    # Un plano viejo (el guardado lo frena): PUN-01 deja de venderse por
+    # participación con su reserva viva, MET-02 también pero sólo tenía una
+    # reserva cancelada, y ROB-01 desaparece con su contrato vivo.
+    db = _bd()
+    try:
+        snap = db.query(LayoutSnapshot).filter_by(sede="NAVE").one()
+        muebles = [f for f in json.loads(snap.fixtures_json) if f["code"] != "ROB-01"]
+        for f in muebles:
+            if f["code"] in ("PUN-01", "MET-02"):
+                f.pop("partes", None)
+            if f["code"] == "GON-01":
+                f["id"] = "f-GON-01-otro"     # otro mueble con el mismo código (§2.5)
+        snap.fixtures_json = json.dumps(muebles)
+        db.commit()
+    finally:
+        db.close()
+    r1 = resumen()
+    assert r1["sin_mueble"] == [
+        {"codigo_cara": "NAVE-PUN-01", "cara": "A", "fixture_code": "PUN-01", "en_el_plano": True,
+         "participaciones": 1, "hasta": "2026-11-30"},
+        {"codigo_cara": "NAVE-ROB-01", "cara": "A", "fixture_code": "ROB-01", "en_el_plano": False,
+         "participaciones": 1, "hasta": "2026-12-31"},
+    ], "la reserva cancelada de MET-02 cuenta como «sin mueble», o falta una cara con términos vivos"
+    assert r1["totales"]["sin_mueble"] == 2
+    assert viva["codigo"] == "NAVE-PUN-01-PC1"
+    # El borrador se dibujó para el mueble de antes: no vale para el de ahora.
+    otro = next(c for c in r1["caras"] if c["codigo_cara"] == "NAVE-GON-01")
+    assert (otro["estado_distribucion"], otro["borrador_en"], otro["borrador_dia"]) == ("sin_distribuir", None, None)
+
+    # La reserva caduca sola: la cara sale de la lista sin que nadie la toque.
+    with time_machine.travel("2026-10-26T15:00:00+00:00", tick=True):
+        r2 = resumen(_entrar(client))
+        assert [x["codigo_cara"] for x in r2["sin_mueble"]] == ["NAVE-ROB-01"] and r2["totales"]["sin_mueble"] == 1

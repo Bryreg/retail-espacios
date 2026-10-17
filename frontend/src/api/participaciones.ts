@@ -172,6 +172,10 @@ export interface ResumenOut {
     pendiente_dia_pb: number;
     errores: number;
     avisos: number;
+    /** El borrador guardado (también encima de una confirmada, que sigue
+     *  `confirmada`): el instante y su DÍA en Colombia. null sin borrador. */
+    borrador_en?: string | null;
+    borrador_dia?: string | null;
     participaciones: {
       codigo: string; numero: number; proveedor_id: number; proveedor: string; marca: string | null;
       cuenta_el_dia: boolean; estado_visible: EstadoVisible; puntos_basicos: number;
@@ -183,6 +187,12 @@ export interface ResumenOut {
     caras_por_participacion: number; sin_distribuir: number; borradores: number; para_revisar: number;
     con_errores: number; reservas_por_caducar: number; sin_mueble: number; huerfanos: number;
   };
+  /** §11-6: las caras con términos VIVOS que el plano ya no vende por
+   *  participación (`en_el_plano`: el mueble sigue, pero se vende de otra
+   *  forma). Sólo sin el filtro `espacio`. */
+  sin_mueble?: { codigo_cara: string; cara: "A" | "B"; fixture_code: string; en_el_plano: boolean; participaciones: number; hasta: string }[];
+  /** §3.2: los contratos `…-PC<n>` sin término que cuentan como la cara entera en el período. */
+  huerfanos?: { codigo: string; desde: string; hasta: string }[];
 }
 
 /** 3 · `GET /participaciones/ocupacion`: anónima. */

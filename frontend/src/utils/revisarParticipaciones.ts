@@ -33,6 +33,13 @@ export function fechaCorta(iso: string, hoy: string): string {
   return iso.slice(0, 4) === hoy.slice(0, 4) ? base : `${base} ${iso.slice(0, 4)}`;
 }
 
+/** «de hoy», «de ayer», «de hace 3 días»: cuándo se guardó algo, por su DÍA
+ *  (`YYYY-MM-DD` de Colombia, como lo manda el servidor) contra `hoy`. */
+export function deCuando(dia: string, hoy: string): string {
+  const n = diasEntre(dia, hoy);
+  return n <= 0 ? "de hoy" : n === 1 ? "de ayer" : `de hace ${n} días`;
+}
+
 /** El día `n` días después (en UTC: un día es un día). */
 export function sumarDias(iso: string, n: number): string {
   const d = new Date(0);
@@ -94,7 +101,7 @@ export function rotuloDeCara(codigo: string, cara: "A" | "B", mueble: MuebleDelP
 /* ── «Para revisar» ────────────────────────────────────────────────────────── */
 
 export type TipoDeRevision =
-  | "sin_dibujar" | "con_problemas" | "para_revisar" | "por_caducar" | "borradores" | "sin_termino";
+  | "sin_dibujar" | "con_problemas" | "para_revisar" | "por_caducar" | "borradores" | "sin_mueble" | "sin_termino";
 
 export interface ItemDeRevision {
   clave: string;
@@ -114,7 +121,7 @@ export interface SeccionDeRevision {
 /** En qué orden se dicen: primero lo que no se puede ver de otra forma (lo
  *  que cuenta como la cara entera sin estar escrito), después lo que vence
  *  solo (las reservas) y al final lo que se arregla dibujando. */
-const ORDEN: TipoDeRevision[] = ["sin_termino", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"];
+const ORDEN: TipoDeRevision[] = ["sin_termino", "sin_mueble", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"];
 
 const TITULOS: Record<TipoDeRevision, string> = {
   sin_dibujar: "Contratado sin dibujar",
@@ -122,6 +129,7 @@ const TITULOS: Record<TipoDeRevision, string> = {
   para_revisar: "Distribución para revisar",
   por_caducar: "Reservas por caducar",
   borradores: "Borradores sin confirmar",
+  sin_mueble: "Participación sin mueble",
   sin_termino: "Contrato de participación sin término",
 };
 
@@ -136,24 +144,23 @@ const TITULOS: Record<TipoDeRevision, string> = {
  *  2. *Distribución con problemas*: excesos, solapes o zonas fuera de lugar.
  *  3. *Distribución para revisar*: el mueble cambió desde que se confirmó.
  *  4. *Reservas por caducar* (≤ 7 días).
- *  5. *Borradores sin confirmar*: una cara que nunca se confirmó y tiene un
- *     borrador (el resumen no trae la fecha del borrador ni el de una cara ya
- *     confirmada: ésos se ven en la ficha).
- *  6. *Participación sin mueble* (§11): NO va. La única fuente es
- *     `totales.sin_mueble` del resumen, que cuenta toda cara con una fila de
- *     participación —también las canceladas, caducadas y vencidas, que no se
- *     borran nunca (D14)— que el plano ya no vende así. Una cara que tuvo una
- *     reserva cancelada y volvió a venderse entera quedaba para siempre en
- *     «Para revisar» con «cancelá lo que quede vivo» sin que quedara nada vivo
- *     (verificación del paso 7, en el navegador). Lo vivo que importa ya se ve:
- *     un contrato `…-PC<n>` sobre una cara que no es por participación sale en
- *     «Contrato sin mueble» (`auditoriaDesfase.ts`), y una reserva viva no
- *     puede quedar así (la frena el guardado del plano, §4.4, paso 4c) y
- *     caduca sola.
- *     Vuelve cuando el servidor cuente sólo las caras con términos vivos.
+ *  5. *Borradores sin confirmar*: toda cara con un borrador guardado, también
+ *     encima de una confirmada (que sigue «confirmada»), con su día:
+ *     «GON-01 · A: tiene un borrador de hace 3 días.» (`borrador_dia`, el día
+ *     de Colombia que manda el servidor: acá no se deriva un día de un
+ *     instante). Un servidor sin ese dato: las que nunca se confirmaron, sin
+ *     fecha.
+ *  6. *Participación sin mueble* (§11): la LISTA `sin_mueble` del resumen, que
+ *     trae sólo las caras con términos VIVOS que el plano ya no vende por
+ *     participación, con hasta cuándo. NUNCA la cuenta `totales.sin_mueble`
+ *     sola: la de antes contaba también lo cancelado, caducado y vencido (no se
+ *     borra nunca, D14) y una cara que volvió a venderse entera quedaba para
+ *     siempre en «Para revisar» sin nada vivo (verificación del paso 7).
  *  7. *Contrato de participación sin término*: un contrato `…-PC<n>` sin fila
- *     de participación, que cuenta como la cara entera (§3.2). Con los códigos
- *     que se pudieron identificar (`huerfanos`), si no, la cuenta del servidor.
+ *     de participación, que cuenta como la cara entera (§3.2). Con la lista
+ *     `huerfanos` del servidor (código y fechas); un servidor sin ella, con
+ *     los códigos que se pudieron identificar en el navegador (`huerfanos`), y
+ *     si no, la cuenta.
  *
  * Sólo las secciones con algo: una tarjeta vacía no se dibuja.
  */
@@ -198,7 +205,9 @@ export function paraRevisarDeResumen(
         frase: "el mueble cambió desde que se confirmó la distribución.",
       });
     }
-    if (c.estado_distribucion === "borrador") {
+    if (c.borrador_dia) {
+      sumar("borradores", { clave: `${clave}|bor`, rotulo, abrir, frase: `tiene un borrador ${deCuando(c.borrador_dia, r.hoy)}.` });
+    } else if (c.estado_distribucion === "borrador") {
       sumar("borradores", { clave: `${clave}|bor`, rotulo, abrir, frase: "tiene un borrador sin confirmar." });
     }
     for (const p of c.participaciones) {
@@ -212,7 +221,26 @@ export function paraRevisarDeResumen(
     }
   }
 
-  if (huerfanos.length > 0) {
+  for (const x of r.sin_mueble ?? []) {
+    const mueble = porCodigo.get(norm(x.fixture_code));
+    const vivas = `${plural(x.participaciones, "participación viva", "participaciones vivas")} hasta el ${fechaCorta(x.hasta, r.hoy)}`;
+    sumar("sin_mueble", {
+      clave: `sinmueble|${x.codigo_cara}`, rotulo: rotuloDeCara(x.fixture_code || x.codigo_cara, x.cara, mueble),
+      abrir: mueble ? { fixtureId: mueble.id, cara: x.cara } : null,
+      frase: x.en_el_plano
+        ? `ya no se vende por participación y tiene ${vivas}: volvé a venderla así o cancelá lo que quede vivo.`
+        : `ya no está en el plano y tiene ${vivas}: volvé a poner el mueble o cancelá lo que quede vivo.`,
+    });
+  }
+
+  if (Array.isArray(r.huerfanos)) {
+    for (const h of r.huerfanos) {
+      sumar("sin_termino", {
+        clave: `huerfano|${h.codigo}|${h.desde}`, rotulo: h.codigo, abrir: null,
+        frase: `contrato del ${fechaCorta(h.desde, r.hoy)} al ${fechaCorta(h.hasta, r.hoy)} sin término: cuenta como la cara entera hasta que se aclare.`,
+      });
+    }
+  } else if (huerfanos.length > 0) {
     for (const codigo of huerfanos) {
       sumar("sin_termino", {
         clave: `huerfano|${codigo}`, rotulo: codigo, abrir: null,

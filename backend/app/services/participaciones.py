@@ -1466,7 +1466,9 @@ def resumen(db: Session, sede: str, dia: Optional[date] = None, desde: Optional[
     por_proveedor: dict[int, dict] = {}
     totales = {"caras_por_participacion": 0, "sin_distribuir": 0, "borradores": 0, "para_revisar": 0,
                "con_errores": 0, "reservas_por_caducar": 0, "sin_mueble": 0, "huerfanos": 0}
-    huerfanos = set()
+    # Los contratos de participación sin término (§3.2), por lease: con su
+    # código y sus fechas, para que «Para revisar» los nombre.
+    huerfanos: dict[int, dict] = {}
     for cara in caras:
         datos = leer(db, cara.codigo)
         proveedores = _proveedores(db, datos.por_s)
@@ -1524,7 +1526,14 @@ def resumen(db: Session, sede: str, dia: Optional[date] = None, desde: Optional[
                 totales["reservas_por_caducar"] += 1
         for f in fis:
             if f["huerfano"] and f["hasta"] >= desde and f["desde"] <= hasta:
-                huerfanos.add(f["lease_id"])
+                huerfanos[f["lease_id"]] = {"codigo": f["codigo"], "desde": f["desde"], "hasta": f["hasta"]}
+        # El borrador de la capa que se muestra (también encima de una
+        # confirmada, que sigue «confirmada»): cuándo se guardó, y su DÍA en
+        # Colombia (la cuenta de `baja_fecha`: el navegador no deriva días de
+        # un instante).
+        dist = datos.distribucion
+        borrador_en = (dist.borrador_en if dist is not None and dist.borrador_en is not None
+                       and not _otro_mueble(datos, cara) else None)
         totales["caras_por_participacion"] += 1
         totales["sin_distribuir"] += estado == "sin_distribuir"
         totales["borradores"] += estado == "borrador"
@@ -1537,21 +1546,51 @@ def resumen(db: Session, sede: str, dia: Optional[date] = None, desde: Optional[
             "disponible_pb": reglas.disponible(I, desde, hasta, hoy_),
             "dibujado_dia_pb": dibujado_dia, "pendiente_dia_pb": pendiente_dia,
             "errores": len(juicio["errores"]), "avisos": len(juicio["avisos"]),
+            "borrador_en": _iso(borrador_en), "borrador_dia": baja_fecha(borrador_en),
             "participaciones": lista,
         })
     totales["huerfanos"] = len(huerfanos)
-    if not espacio:
-        en_el_plano = {c.codigo for c in caras}
-        con_terminos = (db.query(Space.code).join(Participacion, Participacion.cara_space_id == Space.id)
-                        .filter(Space.sede == s).distinct().all())
-        totales["sin_mueble"] = sum(1 for (code,) in con_terminos
-                                    if "#" not in (code or "") and normalizar(code) not in en_el_plano)
+    sin_mueble = _caras_sin_mueble(db, s, {c.codigo for c in caras}, plano, hoy_) if not espacio else []
+    totales["sin_mueble"] = len(sin_mueble)
     return {
         "sede": s, "hoy": hoy_, "dia": dia_informe, "desde": desde, "hasta": hasta, "caras": filas,
         "por_proveedor": [{**pp, "caras": len(pp["caras"])}
                           for pp in sorted(por_proveedor.values(), key=lambda x: (x["proveedor"] or "", x["proveedor_id"]))],
         "totales": totales,
+        "sin_mueble": sin_mueble,
+        "huerfanos": [huerfanos[k] for k in sorted(huerfanos, key=lambda k: (huerfanos[k]["codigo"], k))],
     }
+
+
+def _caras_sin_mueble(db: Session, sede: str, en_el_plano: set, plano: PlanoIndexado, dia: date) -> list[dict]:
+    """§11-6 «Participación sin mueble»: las caras de la sede con términos VIVOS
+    (contratos activos que no terminaron, reservas que se sostienen) que el
+    plano ya no vende por participación —el mueble no está, o dejó de venderse
+    así—. Lo frena el guardado del plano (§4.4); puede venir de un plano viejo.
+    Las canceladas, caducadas y vencidas no cuentan: no se borran nunca (D14)
+    y una cara que volvió a venderse entera quedaba para siempre en «Para
+    revisar» (verificación del paso 7). Lo archivado (``…#id``) tampoco."""
+    fuera = []
+    caras_con_terminos = (db.query(Space.code).join(Participacion, Participacion.cara_space_id == Space.id)
+                          .filter(Space.sede == sede).distinct().all())
+    for (code,) in sorted(caras_con_terminos, key=lambda x: x[0] or ""):
+        codigo = normalizar(code)
+        if not codigo or "#" in codigo or codigo in en_el_plano:
+            continue
+        vivos = [t for t in leer(db, codigo).todos if reglas.vivo(t, dia)]
+        if not vivos:
+            continue
+        p = partir_codigo(codigo)
+        corto = p.base[len(sede) + 1:] if p.base.startswith(f"{sede}-") else p.base
+        fuera.append({
+            "codigo_cara": codigo, "cara": p.cara, "fixture_code": corto,
+            # El mueble sigue en el plano (dejó de venderse por participación)
+            # o ya no está.
+            "en_el_plano": plano.resolver(sede, corto) is not None,
+            "participaciones": len({t["space_id"] for t in vivos}),
+            "hasta": max(t["hasta"] for t in vivos),
+        })
+    return fuera
 
 
 def historial(db: Session, sede: Optional[str] = None, espacio: Optional[str] = None,

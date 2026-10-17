@@ -541,6 +541,51 @@ prueba("«Participación sin mueble» no sale de `totales.sin_mueble`, que cuent
   assert.equal(R.cuantasParaRevisar(R.paraRevisarDeResumen(resumen([caraRes()], { sin_mueble: 1 }), plano)), 0);
 });
 
+prueba("«Para revisar» con fecha y nombre: la LISTA `sin_mueble` (sólo lo vivo), los huérfanos del servidor y el borrador de hace N días (ejecutado)", () => {
+  // Lo que el verificador del paso 7 tuvo que sacar, de vuelta con los datos
+  // que ahora manda el servidor (`GET /participaciones/resumen`).
+  const r = {
+    ...resumen([
+      caraRes({ borrador_en: "2026-10-14T15:00:00+00:00", borrador_dia: "2026-10-14" }),   // encima de una confirmada
+      caraRes({ codigo_cara: "NAVE-GON-01-B", cara: "B", borrador_en: "2026-10-17T02:00:00+00:00", borrador_dia: "2026-10-16" }),
+      caraRes({ codigo_cara: "NAVE-PUN-03", fixture_code: "PUN-03", estado_distribucion: "borrador",
+        borrador_en: "2026-10-17T13:00:00+00:00", borrador_dia: HOY }),
+    ], { sin_mueble: 2, huerfanos: 1 }),
+    sin_mueble: [
+      { codigo_cara: "NAVE-PUN-03", cara: "A", fixture_code: "PUN-03", en_el_plano: true, participaciones: 1, hasta: "2026-11-30" },
+      { codigo_cara: "NAVE-GON-07-B", cara: "B", fixture_code: "GON-07", en_el_plano: false, participaciones: 2, hasta: "2027-01-31" },
+    ],
+    huerfanos: [{ codigo: "NAVE-GON-01-PC9", desde: "2027-01-01", hasta: "2027-01-31" }],
+  };
+  // Lo que el navegador nombró por su cuenta no pisa la lista del servidor.
+  const s = R.paraRevisarDeResumen(r, plano, ["NAVE-GON-01-PC7"]);
+  const por = Object.fromEntries(s.map((x) => [x.tipo, x.items]));
+  assert.deepEqual(s.map((x) => x.tipo), ["sin_termino", "sin_mueble", "borradores"]);
+  assert.deepEqual(s.map((x) => x.titulo).slice(0, 2), ["Contrato de participación sin término", "Participación sin mueble"]);
+  assert.deepEqual(por.sin_termino.map((i) => [i.rotulo, i.frase]), [
+    ["NAVE-GON-01-PC9", "contrato del 1 ene 2027 al 31 ene 2027 sin término: cuenta como la cara entera hasta que se aclare."]]);
+  assert.deepEqual(por.sin_mueble.map((i) => [i.rotulo, i.frase, i.abrir]), [
+    ["PUN-03", "ya no se vende por participación y tiene 1 participación viva hasta el 30 nov: volvé a venderla así o cancelá lo que quede vivo.",
+      { fixtureId: "f2", cara: "A" }],
+    ["GON-07 · B", "ya no está en el plano y tiene 2 participaciones vivas hasta el 31 ene 2027: volvé a poner el mueble o cancelá lo que quede vivo.", null],
+  ]);
+  assert.deepEqual(por.borradores.map((i) => [i.rotulo, i.frase]), [
+    ["GON-01 · A", "tiene un borrador de hace 3 días."],
+    ["GON-01 · B", "tiene un borrador de ayer."],
+    ["PUN-03", "tiene un borrador de hoy."],
+  ], "el borrador de una cara confirmada no sale, o sale sin su día");
+  assert.equal(R.cuantasParaRevisar(s), 6);
+  // Con la lista del servidor vacía no hay tarjeta, aunque la cuenta vieja diga 3.
+  assert.deepEqual(R.paraRevisarDeResumen({ ...resumen([], { sin_mueble: 3 }), sin_mueble: [], huerfanos: [] }, plano, ["NAVE-GON-01-PC7"]), []);
+  assert.equal(R.deCuando("2026-10-17", HOY), "de hoy");
+  assert.equal(R.deCuando("2026-09-30", HOY), "de hace 17 días");
+  // La tarjeta lee la LISTA, nunca la cuenta: en el código no hay un
+  // `totales.sin_mueble` que arme una tarjeta.
+  const fuenteR = fuenteDe("utils/revisarParticipaciones.ts").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  assert.ok(!/totales\.sin_mueble/.test(fuenteR), "una tarjeta sale de la cuenta `totales.sin_mueble`");
+  assert.match(fuenteR, /for \(const x of r\.sin_mueble \?\? \[\]\)/);
+});
+
 prueba("«Distribución con problemas» con UN problema (ejecutado)", () => {
   const s = R.paraRevisarDeResumen(resumen([caraRes({ errores: 1 })]), plano);
   assert.deepEqual(s.map((x) => [x.tipo, x.items.map((i) => i.frase)]), [["con_problemas", ["1 problema en la distribución."]]]);
