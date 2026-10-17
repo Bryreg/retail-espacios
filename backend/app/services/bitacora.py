@@ -59,6 +59,19 @@ ACCIONES = {
     "ficha_mueble.cambio": "Ficha de mueble cambiada",
     "ficha_mueble.retiro": "Ficha de mueble retirada",
     "ficha_mueble.reactivacion": "Ficha de mueble reactivada",
+    # Participaciones de cara (`routers/participaciones.py`). La cancelación de una
+    # reserva termina en «.baja» como la de un contrato: la pantalla la pinta igual.
+    # La cancelación de un contrato de participación sigue anotando `contrato.baja`
+    # (el camino de siempre). El autoguardado del borrador no anota nada.
+    "participacion.reserva": "Reserva provisional de participación creada",
+    "participacion.contrato": "Contrato de participación creado",
+    "participacion.confirmada": "Reserva provisional confirmada como contrato",
+    "participacion.renovada": "Participación renovada",
+    "participacion.editada": "Reserva provisional cambiada",
+    "reserva.baja": "Reserva provisional cancelada",
+    "distribucion.borrador": "Borrador de distribución guardado",
+    "distribucion.confirmada": "Distribución confirmada",
+    "distribucion.descartada": "Borrador de distribución descartado",
 }
 
 # Lo que ya no puede pasar (2026-10-02) y por eso el filtro de la pantalla no lo

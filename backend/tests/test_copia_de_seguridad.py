@@ -129,6 +129,64 @@ def _llenar(client, cab):
     assert r.status_code == 201, r.text
 
 
+def _llenar_participaciones():
+    """Las cuatro tablas de participaciones con una fila de cada cosa, directo
+    en la base (su API es de otro paso): una góndola doble por participación
+    con una reserva provisional, un contrato y su renovación (`renueva_a`, un
+    entero SIN clave foránea que apunta a otra fila de la misma tabla), una
+    distribución confirmada con una zona y una fila de historial.
+
+    Aparte de `_llenar` a propósito: suma espacios y contratos, y las pruebas
+    de arriba cuentan los de la punta."""
+    from datetime import date
+
+    from sqlalchemy.orm import Session
+
+    from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
+    from app.models.participaciones import Distribucion, HistorialParticipacion, Participacion, Zona
+
+    with Session(_motor_del_cliente()) as s:
+        alpina = s.query(Supplier).filter(Supplier.name == "Alpina").one()
+        cara, pc1, pc2 = (
+            Space(code=c, svg_id=c, name=n, zone="gondola", sede="NAVE", area_m2=a, status=SpaceStatus.free)
+            for c, n, a in (("NAVE-GON-01", "Góndola 1", 3.6),
+                            ("NAVE-GON-01-PC1", "Góndola 1 · Participación 1 · cara A", 0.0),
+                            ("NAVE-GON-01-PC2", "Góndola 1 · Participación 2 · cara A", 0.0))
+        )
+        s.add_all([cara, pc1, pc2])
+        s.flush()
+        l1 = SpaceLease(space_id=pc1.id, supplier_id=alpina.id, marca="Alpina Kids",
+                        start_date=date(2026, 10, 1), end_date=date(2026, 12, 31), monthly_rent=900_000)
+        l2 = SpaceLease(space_id=pc1.id, supplier_id=alpina.id, marca="Alpina Kids",
+                        start_date=date(2027, 1, 1), end_date=date(2027, 3, 31), monthly_rent=950_000)
+        s.add_all([l1, l2])
+        s.flush()
+        original = Participacion(space_id=pc1.id, cara_space_id=cara.id, numero=1, estado="contrato",
+                                 puntos_basicos=2500, lease_id=l1.id, creada_por=CORREO_DUENA)
+        s.add(original)
+        s.flush()
+        renovada = Participacion(space_id=pc1.id, cara_space_id=cara.id, numero=1, estado="contrato",
+                                 puntos_basicos=2500, lease_id=l2.id, renueva_a=original.id,
+                                 creada_por=CORREO_DUENA)
+        reserva = Participacion(space_id=pc2.id, cara_space_id=cara.id, numero=2, estado="reserva",
+                                puntos_basicos=1250, supplier_id=alpina.id, marca="Alpina Bon Yurt",
+                                desde=date(2026, 11, 1), hasta=date(2026, 11, 30), caduca=date(2026, 10, 25),
+                                notas="Llamar el lunes")
+        dist = Distribucion(cara_space_id=cara.id, fixture_id="g1", version=3,
+                            confirmada_en=datetime(2026, 10, 17, 14, 2, 11, tzinfo=timezone.utc),
+                            confirmada_por=CORREO_DUENA, firma_confirmada="v1|gondola|doble|900|1800|e-|")
+        s.add_all([renovada, reserva, dist])
+        s.flush()
+        s.add(Zona(distribucion_id=dist.id, capa="confirmada", participacion_space_id=pc1.id,
+                   vertices_json="[[0.1,0.1],[0.4,0.1],[0.4,0.6],[0.1,0.6]]", creada_por=CORREO_DUENA))
+        s.add(HistorialParticipacion(
+            actor=CORREO_DUENA, tipo="contractual", accion="participacion.renovada",
+            cara_space_id=cara.id, participacion_space_id=pc1.id, participacion_id=renovada.id,
+            distribucion_id=dist.id, detalle="Participación 1 · 25 % · Alpina (Alpina Kids)",
+            antes_json=None, despues_json='{"desde": "2027-01-01", "hasta": "2027-03-31"}'))
+        s.commit()
+
+
 def _bajar(client, cab):
     r = client.get("/api/clientes/mi-copia", headers=cab)
     assert r.status_code == 200, r.text
@@ -301,6 +359,7 @@ def test_ida_y_vuelta_deja_todo_igual(client, tmp_path):
 
     duena = _fundar(client)
     _llenar(client, duena)
+    _llenar_participaciones()
     copia = tmp_path / "copia.zip"
     copia.write_bytes(_bajar(client, duena).content)
 
@@ -310,8 +369,10 @@ def test_ida_y_vuelta_deja_todo_igual(client, tmp_path):
         cuantas = restaurar(copia, destino)
         for nombre in ("spaces", "space_leases", "suppliers", "layout_snapshots", "space_files",
                        "lease_files", "supplier_assets", "supplier_asset_specs",
-                       "mount_confirmations", "audit_log", "modelos_mueble"):
+                       "mount_confirmations", "audit_log", "modelos_mueble",
+                       "participaciones", "distribuciones", "zonas", "historial_participaciones"):
             assert cuantas.get(nombre), f"la prueba no llenó {nombre}"
+        assert cuantas["participaciones"] == 3
 
         for tabla in tablas_de_la_copia():
             antes, despues = _filas(origen, tabla), _filas(destino, tabla)

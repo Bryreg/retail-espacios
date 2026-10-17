@@ -100,6 +100,7 @@ def escenario(client, admin, monkeypatch):
     from app.models.models import (
         AppConfig, Space, SpaceFile, SpaceLease, Supplier, SupplierAsset, SupplierAssetSpec,
     )
+    from app.models.participaciones import Distribucion, HistorialParticipacion, Participacion, Zona
     from app.models.plataforma import SnapshotMetricas
     from sqlalchemy.orm import Session
 
@@ -152,6 +153,36 @@ def escenario(client, admin, monkeypatch):
                                 fondo_mm=75, apilable=True, acostado=False, fondo_foto="auto",
                                 precio_publico=4900))
         s.merge(AppConfig(key="notify_emails", value="real@galerias.co"))
+        # Las cuatro tablas de participaciones. La renovación va PRIMERO a
+        # propósito: su `renueva_a` nombra un id que todavía no existe, y la
+        # copia (sin `ORDER BY`) tiene que aguantarlo porque no es clave foránea.
+        cara = Space(code="TER-GON-01", svg_id="TER-GON-01", name="Góndola 1", zone="gondola",
+                     sede="TERRON", area_m2=3.6)
+        pc1 = Space(code="TER-GON-01-PC1", svg_id="TER-GON-01-PC1", name="Góndola 1 · Participación 1 · cara A",
+                    zone="gondola", sede="TERRON", area_m2=0.0)
+        s.add_all([cara, pc1])
+        s.flush()
+        l1, l2 = (SpaceLease(space_id=pc1.id, supplier_id=prov.json()["id"], marca="Marca Real",
+                             start_date=a, end_date=b, monthly_rent=700_000, is_active=True)
+                  for a, b in ((dt.date(2026, 9, 1), dt.date(2026, 12, 31)),
+                               (dt.date(2027, 1, 1), dt.date(2027, 3, 31))))
+        s.add_all([l1, l2])
+        s.flush()
+        renovada = Participacion(id=50, space_id=pc1.id, cara_space_id=cara.id, numero=1, estado="contrato",
+                                 puntos_basicos=2500, lease_id=l2.id, renueva_a=51)
+        s.add(renovada)
+        s.flush()
+        s.add(Participacion(id=51, space_id=pc1.id, cara_space_id=cara.id, numero=1, estado="contrato",
+                            puntos_basicos=2500, lease_id=l1.id))
+        dist = Distribucion(cara_space_id=cara.id, fixture_id="t1", version=2)
+        s.add(dist)
+        s.flush()
+        s.add(Zona(distribucion_id=dist.id, capa="borrador", participacion_space_id=pc1.id,
+                   vertices_json="[[0,0],[0.25,0],[0.25,1],[0,1]]"))
+        s.add(HistorialParticipacion(actor="brayan@gmail.com", tipo="contractual",
+                                     accion="participacion.renovada", cara_space_id=cara.id,
+                                     participacion_space_id=pc1.id, participacion_id=renovada.id,
+                                     distribucion_id=dist.id, detalle="Participación 1 · 25 %"))
         s.commit()
     # Algo de práctica con archivo, para ver que se va.
     with Session(motor_principal) as s:
@@ -207,7 +238,12 @@ def test_los_datos_de_pepito_pasan_a_galerias_identicos(client, escenario):
     r = _pasar(client, escenario.cab_op)
     assert r.status_code == 200, r.text
     assert r.json()["principal"] == "galerias" and r.json()["origen"] == "pepito"
-    assert r.json()["filas"]["spaces"] == 1 and r.json()["filas"]["space_files"] == 1
+    assert r.json()["filas"]["spaces"] == 3 and r.json()["filas"]["space_files"] == 1
+    # Las participaciones viajan con el cliente (la comparación de abajo las
+    # recorre como a toda tabla de negocio).
+    filas = r.json()["filas"]
+    assert (filas["participaciones"], filas["distribuciones"], filas["zonas"],
+            filas["historial_participaciones"]) == (2, 1, 1, 1)
 
     despues_principal = _contenido(motor_principal)
     for tabla, filas in antes_pepito.items():

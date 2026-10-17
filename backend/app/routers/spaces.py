@@ -20,7 +20,8 @@ from app.services.layout_lookup import (
     NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, como_se_venden_sus_piezas, contratos_que_chocan, describe_location,
     find_fixture_by_space_code, forma_canonica, frase_de_choque, por_que_no_se_vende,
 )
-from app.services.partes import cantidad_de, partir_codigo, texto_para_montar
+from app.services.partes import cantidad_de, es_participacion, partir_codigo, texto_para_montar
+from app.services.ciclo_participaciones import actor_de, al_cancelar_contrato
 from app.services.mailer import (
     app_base_url, format_cop, html_shell, send_mail_to_bg, correo_configurado,
 )
@@ -340,6 +341,14 @@ def update_status(
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    # «Reservado» a mano sobre una participación serían dos nociones de reserva
+    # sobre lo mismo (la provisional de Distribución tiene caducidad y cuenta
+    # en la capacidad de la cara; ésta no). Su estado lo llevan sus términos.
+    if es_participacion(partir_codigo(space.code).parte):
+        raise HTTPException(
+            status_code=409,
+            detail="Una participación no se marca a mano: su reserva provisional se carga en Distribución.",
+        )
     antes = space.status.value if space.status else "—"
     space.status = payload.status
     if payload.notes is not None:
@@ -638,4 +647,8 @@ def cancel_lease(
         entidad="contrato", entidad_id=lease.id,
         detalle=f"{space.code if space else space_id} · {lease.marca or '—'}",
     )
+    # Si es el contrato de una participación de cara, su término queda
+    # «cancelado» (`baja_en`) con su historia; si ya había vencido por fecha,
+    # «vencido». Nada para cualquier otro contrato. Misma transacción.
+    al_cancelar_contrato(db, lease, actor_de(request, rol))
     db.commit()

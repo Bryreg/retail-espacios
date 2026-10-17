@@ -73,6 +73,12 @@ TABLAS_DEL_CLIENTE = frozenset({
     # Las fichas propias de sus muebles (`cli:<clave>`): las colocan sus planos,
     # que viajan con ellas. Sin archivos: una ficha no lleva foto.
     "modelos_mueble",
+    # Las participaciones de cara (`models/participaciones.py`): los términos,
+    # las distribuciones, sus zonas y el historial, que nunca se purga. Cuelgan
+    # de `spaces`, `space_leases` y `suppliers`, que viajan con ellas; el orden
+    # lo da `sorted_tables` y ninguna se apunta a sí misma (`renueva_a` es un
+    # entero sin clave foránea), así que copiar sin `ORDER BY` no rompe nada.
+    "participaciones", "distribuciones", "zonas", "historial_participaciones",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar
