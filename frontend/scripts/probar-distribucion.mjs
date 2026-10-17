@@ -1589,4 +1589,173 @@ await prueba("«Borrar sede» y el renombre nombran las reservas provisionales q
   assert.match(plano, /<RenombrarSedeDialog[\s\S]{0,300}renameSede\(de, a\);/, "«Renombrar igual» no renombra");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// REVISIÓN FINAL · el Editor 3D y el modo Distribución
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Lo que dejaron la revisión final y el recorrido (50-hallazgos-finales):
+// «Descartarlos» en «Mirar» guardaba como borrador lo que se pidió tirar; un
+// 401 con el autoguardado frenado por un 409 perdía todo lo dibujado desde el
+// 409; el encabezado no decía la sede; y el historial fechaba la caducidad y
+// el vencimiento un día antes en hora de Colombia (contrato del historial con
+// el servidor: las derivadas traen `derivado` y `dia`, y `en` es la
+// medianoche de Colombia con su zona). Se CORRE con los stores de verdad y un
+// servidor de prueba, y el historial con TZ=America/Bogota.
+
+console.log("distribución · el Editor 3D y el modo, tras la revisión final");
+
+await prueba("«Descartarlos» con la edición en «Mirar» (al salir y al cambiar de cara) no escribe ningún borrador: se descarta en cualquier modo", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-desc-mirar", "admin", "galerias");
+  for (const como of ["salir", "cambiarCara"]) {
+    await entrarA(caraOut({ distribucion: distribucion(4, [zo(1, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3))]) }));
+    D().despachar({ tipo: "elegirModo", modo: "editar" });     // el modo sobrevive a la salida anterior
+    dibujar(813, 0.5, 0.5, 0.7, 0.7);
+    D().despachar({ tipo: "elegirModo", modo: "mirar" });
+    assert.equal(D().edicion.modo, "mirar");
+    assert.equal(D().edicion.sucio, true);
+    // El camino de antes: en «Mirar» el reductor no descarta nada.
+    D().despachar({ tipo: "descartarCambios" });
+    assert.equal(D().edicion.sucio, true);
+    servidor.pedidos = [];
+    const ok = como === "salir" ? await D().salir({ descartar: true }) : await D().cambiarCara("B", { descartar: true });
+    assert.equal(ok, true, `${como}: no siguió`);
+    assert.deepEqual(servidor.pedidos.filter((p) => p.url !== "/participaciones/cara").map((p) => p.url), [],
+      `${como}: guardó como borrador lo que se pidió descartar`);
+    if (como === "salir") assert.equal(D().activa, null);
+    else {
+      assert.equal(D().activa.cara, "B");
+      assert.equal(D().edicion.sucio, false);
+      assert.equal(D().edicion.modo, "mirar", "descartar cambió el modo");
+      await D().salir();
+    }
+  }
+  // Sin «descartar», la red de siempre (§9.8): salir con cambios guarda el borrador.
+  await entrarA(caraOut({ distribucion: distribucion(4, []) }));
+  D().despachar({ tipo: "elegirModo", modo: "editar" });
+  dibujar(813, 0.5, 0.5, 0.7, 0.7);
+  D().despachar({ tipo: "elegirModo", modo: "mirar" });
+  servidor.pedidos = [];
+  servidor.responder = async (cfg) => ({ version: 5, distribucion: distribucion(5, [], cfg.data.zonas.map((z, i) => zo(90 + i, z.participacion_space_id, z.vertices, i))), participaciones: [], revision: { capa: "borrador", errores: [], avisos: [] } });
+  assert.equal(await D().salir(), true);
+  assert.equal(servidor.pedidos.filter((p) => p.url !== "/participaciones/cara").length, 1, "salir con cambios dejó de guardar el borrador");
+  // El panel responde «Descartarlos» con la opción del store, no con el reductor.
+  const panel = codigo6b("PanelDeDistribucion");
+  const i = panel.indexOf("async function descartarYSeguir(");
+  const cuerpo = panel.slice(i, panel.indexOf("\n  }\n", i));
+  assert.match(cuerpo, /await st\(\)\.cambiarCara\(p\.cara, \{ descartar: true \}\)/);
+  assert.match(cuerpo, /await st\(\)\.salir\(\{ descartar: true \}\)/);
+  assert.ok(!/despachar\(\{ tipo: "descartarCambios" \}\)/.test(cuerpo), "«Descartarlos» sigue dependiendo del modo");
+});
+
+await prueba("un 401 con el autoguardado frenado por un 409 no pierde lo dibujado desde el 409: vuelve al re-ingreso de LA MISMA persona en EL MISMO cliente, en memoria; nunca a otra sesión", async () => {
+  D().reiniciar();
+  const entrarComo = (token, email, cliente = "galerias", rol = "admin") => S.useAuthStore.getState().setAuth(token, rol, cliente, "Galerías", email);
+  entrarComo("t-r1", "duena@super.co");
+  await entrarA(caraOut({ distribucion: distribucion(4, [zo(1, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3))]) }));
+  dibujar(812, 0.5, 0.1, 0.6, 0.2);
+  servidor.responder = async () => { throw rechazo(409, { detail: { code: "version_vieja", message: "Otra sesión cambió esta distribución mientras la editabas." } }); };
+  assert.equal(await D().guardarBorrador(true), false);
+  assert.equal(D().guardado.estado, "version_vieja");
+  dibujar(813, 0.7, 0.7, 0.8, 0.8);                                  // sigue dibujando sin ver la franja
+  servidor.responder = async () => { throw rechazo(401, { detail: "Sesión vencida" }); };
+  await D().guardarBorrador();
+  assert.equal(S.useAuthStore.getState().token, null, "el 401 no cerró la sesión");
+  assert.deepEqual([D().activa, D().datos, D().edicion.zonas, D().sinGuardar], [null, null, [], {}], "el store no se vació al cerrarse la sesión");
+  // La misma persona, el mismo cliente: «Recuperar lo que no se guardó», con la fusión de tres vías.
+  entrarComo("t-r2", "duena@super.co");
+  assert.deepEqual(Object.keys(D().sinGuardar), ["galerias|NAVE|f-1|A"]);
+  await entrarA(caraOut({ distribucion: distribucion(5, [zo(1, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3)), zo(9, 814, cuadradoZ(0.1, 0.6, 0.2, 0.7), 1)]) }));
+  assert.equal(S.hayParaRecuperar(D()), true, "no se ofrece recuperar lo dibujado antes del 401");
+  D().recuperar();
+  const por = (s) => D().edicion.zonas.filter((z) => z.participacionSpaceId === s).map((z) => z.vertices);
+  assert.deepEqual(por(812), [cuadradoZ(0.1, 0.1, 0.3, 0.3), cuadradoZ(0.5, 0.1, 0.6, 0.2)], "se perdió lo dibujado antes del 409");
+  assert.deepEqual(por(813), [cuadradoZ(0.7, 0.7, 0.8, 0.8)], "se perdió lo dibujado DESPUÉS del 409");
+  assert.deepEqual(por(814), [cuadradoZ(0.1, 0.6, 0.2, 0.7)], "la fusión pisó lo de la otra sesión");
+  await D().salir({ forzado: true });
+  // Nunca a otra sesión: otra persona del mismo cliente, un trabajador, otro cliente.
+  const apartarAlgo = async (token, email) => {
+    D().reiniciar();
+    entrarComo(token, email);
+    await entrarA(caraOut({ distribucion: distribucion(4, []) }));
+    dibujar(812, 0.2, 0.2, 0.3, 0.3);
+    S.useAuthStore.getState().logout();
+    assert.deepEqual(D().sinGuardar, {});
+  };
+  for (const [otra, cual] of [[() => entrarComo("t-o1", "otra@super.co"), "otra persona"], [() => entrarComo("t-o2", "duena@super.co", "galerias", "worker"), "un trabajador"],
+    [() => entrarComo("t-o3", "duena@super.co", "canaveral"), "otro cliente"]]) {
+    await apartarAlgo("t-a", "duena@super.co");
+    otra();
+    assert.deepEqual(D().sinGuardar, {}, `lo apartado volvió en la sesión de ${cual}`);
+    // Y lo apartado ya no vuelve después, aunque entre la persona de antes.
+    S.useAuthStore.getState().logout();
+    entrarComo("t-b", "duena@super.co");
+    assert.deepEqual(D().sinGuardar, {}, `después de ${cual}, lo apartado volvió`);
+  }
+  // Cambiar de sesión sin cerrarla también lo tira.
+  await apartarAlgo("t-c", "duena@super.co");
+  entrarComo("t-c2", "otra@super.co");
+  entrarComo("t-c3", "duena@super.co");
+  assert.deepEqual(D().sinGuardar, {});
+  // Nada fue al navegador.
+  for (const k of escritas) assert.ok(["retail-auth-v1", "retail-fixtures-v1"].includes(k), `clave nueva en localStorage: ${k}`);
+  const st = sinComentTs2(fuente("store/distribucionStore.ts"));
+  assert.ok(!/localStorage|sessionStorage|indexedDB/.test(st));
+  assert.match(st, /let reservaDeLaSesion: \{ cliente: string; email: string \| null; sinGuardar: Record<string, EdicionSinGuardar> \} \| null = null;/);
+  assert.match(st, /if \(!r \|\| s\.cliente !== r\.cliente \|\| s\.email !== r\.email \|\| s\.role !== "admin"\) return;/);
+  D().reiniciar();
+});
+
+await prueba("el encabezado dice la sede: «Distribución · NAVE · GON-01 · cara A» (pedido §12)", () => {
+  assert.equal(P6.PANEL.tituloDelPanel({ sede: "NAVE", codigo: "GON-01", cara: "A" }), "Distribución · NAVE · GON-01 · cara A");
+  assert.equal(P6.PANEL.tituloDelPanel({ sede: "TERRON", codigo: "ROB-01", cara: "B" }), "Distribución · TERRON · ROB-01 · cara B");
+  const panel = codigo6b("PanelDeDistribucion");
+  assert.match(panel, /title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>\{tituloDelPanel\(activa\)\}<\/p>/, "el encabezado no usa el título con la sede");
+  assert.ok(!/>Distribución · \{activa\.codigo\}</.test(panel), "quedó el encabezado sin la sede");
+});
+
+await prueba("historial (contrato con el servidor): una derivada dice sólo el DÍA en que dejó de valer —nunca el anterior— y se ordena por el instante contra las reales (ejecutado con TZ=America/Bogota)", () => {
+  const tzAntes = process.env.TZ;
+  process.env.TZ = "America/Bogota";
+  try {
+    assert.equal(new Date("2026-10-18").getDate(), 17, "la prueba no corre con el reloj de Colombia (el error de antes no se vería)");
+    const L = P6.PANEL.lineasDelHistorial;
+    const real = (id, en, detalle, extra = {}) => ({ id, en, actor: "duena@super.co", tipo: "contractual", accion: "participacion.contrato", detalle, antes: null, despues: null, ...extra });
+    const zonas = [{ id: 1, participacion_space_id: 7, vertices: cuadradoZ(0, 0, 0.5, 1), orden: 0 }];
+    const h = {
+      entradas: [
+        real(1, "2026-10-18T06:00:00+00:00", "Contrato a la 1 de la mañana del 18"),
+        real(2, "2026-10-18T03:00:00+00:00", "Cambio a las 10 de la noche del 17"),
+        real(3, "2026-10-16T15:00:00+00:00", "Confirmada", { tipo: "geometria", accion: "distribucion.confirmada", despues: { zonas } }),
+      ],
+      derivados: [{ en: "2026-10-18T00:00:00-05:00", dia: "2026-10-18", derivado: true, tipo: "evento", accion: "reserva.caducada", participacion_id: 2,
+        detalle: "Caducó la reserva provisional de la participación 2." }],
+    };
+    const ls = L(h);
+    assert.deepEqual(ls.map((l) => l.detalle), [
+      "Contrato a la 1 de la mañana del 18", "Caducó la reserva provisional de la participación 2.", "Cambio a las 10 de la noche del 17", "Confirmada",
+    ], "no se ordena por el instante (comparando textos, la medianoche de Colombia quedaba debajo de las 10 de la noche del 17)");
+    const d = ls[1];
+    assert.equal(d.derivada, true);
+    assert.equal(d.cuando, "18 oct 2026", `la caducidad dice «${d.cuando}» (en Colombia, con new Date(iso), «17 oct, 7:00 p. m.»)`);
+    assert.equal(d.actor, null);
+    assert.ok(!/\d:\d\d/.test(d.cuando), "la derivada muestra una hora");
+    // Las reales siguen con día y hora (en la hora del navegador).
+    assert.match(ls[2].cuando, /17/, `la entrada de las 22:00 del 17 dice «${ls[2].cuando}»`);
+    assert.match(ls[2].cuando, /\d:\d\d/);
+    assert.ok(ls[3].zonas && ls[3].zonas.length === 1, "«Ver cómo estaba» perdió las zonas de la confirmación");
+    // Un servidor de antes (`en` = día solo): el mismo día y el mismo lugar.
+    const viejo = L({ entradas: h.entradas, derivados: [{ en: "2026-10-18", tipo: "evento", accion: "participacion.vencida", participacion_id: 4, detalle: "Venció la participación 4." }] });
+    assert.deepEqual(viejo.map((l) => l.cuando)[1], "18 oct 2026");
+    assert.equal(viejo[1].detalle, "Venció la participación 4.");
+    // El panel muestra eso, y ya no ordena por texto ni fecha las derivadas con su hora.
+    const panel = codigo6b("PanelDeDistribucion");
+    assert.match(panel, /\{lineas && lineasDelHistorial\(lineas\)\.map\(\(e\) => \(/);
+    assert.ok(!/\.sort\(\(a, b\) => \(a\.en < b\.en/.test(panel), "el historial se sigue ordenando comparando textos");
+    assert.match(panel, /cuando: dia \? fechaLegible\(dia\) : cuandoFue\(d\.en\)/, "una derivada con su día pasa por new Date");
+  } finally {
+    if (tzAntes === undefined) delete process.env.TZ; else process.env.TZ = tzAntes;
+  }
+});
+
 console.log(`\n${hechas} pruebas de distribución en verde`);
