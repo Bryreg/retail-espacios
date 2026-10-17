@@ -320,3 +320,36 @@ def test_UNA_PARTICIPACION_tiene_mueble_mientras_su_cara_se_venda_por_participac
     assert n == 1, salida
     assert "GON-02-PC1" in salida and "el plano no lo ofrece" in salida
     assert "GON-01-PC1" not in salida and "GON-01-B-PC2" not in salida, salida
+
+
+def test_UN_MUEBLE_DE_ANTES_que_ya_se_llamaba_GON_07_PC1_no_es_un_fantasma(client, admin, capsys):
+    """Riesgo R1 del diseño de participaciones: antes del token ``PC`` un mueble
+    se podía llamar ``GON-07-PC1``. Su contrato es de su cara entera, y el plano
+    lo muestra por el texto tal cual (``layout_lookup.ofrece``), no como «la
+    participación 1 de GON-07»."""
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceLease, Supplier
+
+    # Sin el estado comercial en el JSON (el de un plano después del corte):
+    # lo único que se mira es si el plano lo ofrece.
+    viejo = {k: v for k, v in _mueble("GON-07-PC1", type="gondola", gondolaType="wall").items() if k != "status"}
+    _plano_viejo([viejo])
+    db = SessionLocal()
+    try:
+        sup = Supplier(name="Alpina")
+        db.add(sup)
+        db.flush()
+        space = Space(code="NAVE-GON-07-PC1", svg_id="fix-viejo", name="GON-07-PC1", zone="gondola", sede="NAVE",
+                      area_m2=1.0)
+        db.add(space)
+        db.flush()
+        db.add(SpaceLease(space_id=space.id, supplier_id=sup.id, monthly_rent=1, is_active=True,
+                          start_date=HOY, end_date=HOY + timedelta(days=30)))
+        db.commit()
+    finally:
+        db.close()
+
+    n, salida = _auditar(capsys)
+    assert n == 0, salida
+    # Sí se cuenta entre los nombres para renombrar (``buscar_codigos_pc.py``).
+    assert "GON-07-PC1. Conviene renombrarlos" in salida, salida

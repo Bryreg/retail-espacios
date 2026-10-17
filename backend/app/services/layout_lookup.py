@@ -1205,11 +1205,17 @@ def ofrece(ofrecidos: set[str], caras_pc: set[str], codigo: str) -> bool:
     tienen tope—: se ofrece si su cara se vende por participación
     (``caras_pc``, de ``caras_por_participacion``). Todo lo demás, si está en
     ``ofrecidos``. Lo usan el guardarraíl de contratos vivos, la auditoría de
-    la pantalla (``utils/auditoriaDesfase.ts``) y ``scripts/auditar_desfase.py``."""
-    p = partir_codigo(codigo)
-    if es_participacion(p.parte):
-        return codigo_de_parte(p.base, p.cara, None) in caras_pc
-    return normalizar(codigo) in ofrecidos
+    la pantalla (``utils/auditoriaDesfase.ts``) y ``scripts/auditar_desfase.py``.
+
+    El texto tal cual primero, como ``PlanoIndexado.resolver``: un mueble de
+    antes del token que ya se llamaba ``GON-07-PC1`` (riesgo R1 del diseño;
+    un nombre nuevo así no entra) es su cara entera, y está en ``ofrecidos``.
+    Sin esto, retirarlo del plano dejaba su contrato vivo sin frenar."""
+    c = normalizar(codigo)
+    if c in ofrecidos:
+        return True
+    p = partir_codigo(c)
+    return es_participacion(p.parte) and codigo_de_parte(p.base, p.cara, None) in caras_pc
 
 
 def contratos_que_quedarian_sin_mueble(

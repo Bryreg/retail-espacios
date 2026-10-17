@@ -281,3 +281,34 @@ def test_la_cara_por_participacion_se_escribe_completa(client, admin):
         "supplier_id": sup, "start_date": _d(1), "end_date": _d(30), "monthly_rent": 1})
     assert space["code"] == "GON-02"
     assert r.status_code == 409 and "Escribilo «NAVE-GON-02»" in r.json()["detail"], r.text
+
+
+def test_un_mueble_viejo_que_se_llama_como_una_participacion_sigue_cuidado(client, admin):
+    """Riesgo R1 del diseño: un mueble de ANTES del token que ya se llamaba
+    ``GON-07-PC1`` (un nombre nuevo así ya no entra). Su contrato es de su cara
+    entera, y ``ofrece`` lo reconoce por el texto tal cual, como
+    ``PlanoIndexado.resolver``: retirarlo del plano frena con el 409
+    ``contratos_vivos`` de siempre, aunque ninguna cara se venda por
+    participación. Sin eso, el código se leía como «la participación 1 de
+    GON-07» y el guardado lo dejaba huérfano en silencio."""
+    import json as _json
+    from app.database import SessionLocal
+    from app.models.models import LayoutSnapshot
+    viejo = {**_gondola_pc(), "id": "f-viejo", "code": "GON-07-PC1", "gondolaType": "wall", "partes": None}
+    punta = {"id": "p1", "code": "PUN-01", "sede": "NAVE", "type": "punta", "label": "Punta",
+             "cx": 1, "cz": 1, "rotY": 0, "w": 0.9, "d": 0.4, "h": 1.8, "color": "#6366f1"}
+    assert _guardar(client, admin, [punta]).status_code == 200
+    db = SessionLocal()
+    try:
+        db.query(LayoutSnapshot).one().fixtures_json = _json.dumps([punta, viejo])
+        db.commit()
+    finally:
+        db.close()
+    _espacio_directo("NAVE-GON-07-PC1", desde=1, hasta=30)
+
+    # Moverlo se guarda (el nombre viejo se respeta) …
+    assert _guardar(client, admin, [punta, {**viejo, "cx": 5}]).status_code == 200
+    # … y sacarlo del plano frena, nombrando su contrato.
+    r = _guardar(client, admin, [punta])
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "contratos_vivos", r.text
+    assert any("«GON-07-PC1»" in c for c in r.json()["detail"]["choques"]), r.text

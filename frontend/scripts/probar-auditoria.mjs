@@ -463,6 +463,17 @@ prueba("una participación de una cara por participación no es fantasma; de una
   assert.equal(r[0].code, "NEV-03-PC1", "se nombra por el código corto, con la participación");
 });
 
+prueba("un mueble de antes que ya se llamaba `GON-07-PC1` sigue siendo su cara entera (R1)", () => {
+  // Antes del token `PC` un mueble se podía llamar así. Su contrato es de su
+  // cara entera y lo ofrece el plano por el texto tal cual, como `ofrece` del
+  // servidor y `PlanoIndexado.resolver`: no es la participación 1 de GON-07.
+  const viejo = { "NAVE": [mueble("GON-07-PC1", { type: "gondola", gondolaType: "wall" })] };
+  assert.deepEqual(contratosSinMueble(viejo, { "NAVE-GON-07-PC1": vendido() }), []);
+  // Sin ese mueble en el plano, sí es un fantasma (no hay GON-07 por participación).
+  const sinEl = { "NAVE": [mueble("GON-07", { type: "gondola", gondolaType: "wall" })] };
+  assert.deepEqual(contratosSinMueble(sinEl, { "NAVE-GON-07-PC1": vendido() }).map((x) => x.espacio), ["NAVE-GON-07-PC1"]);
+});
+
 prueba("la participación se cuenta con la sede del mueble, como sus caras", () => {
   // Un plano copiado de otra tienda dibuja muebles que no son de ésta: la
   // misma regla que las caras de arriba.
@@ -475,10 +486,10 @@ prueba("la participación se cuenta con la sede del mueble, como sus caras", () 
 });
 
 prueba("el servidor decide lo mismo: `ofrece`, con las caras por participación de antes y de después", () => {
-  const o = servidor.match(/def ofrece\([\s\S]*?\n    return normalizar\(codigo\) in ofrecidos/);
-  assert.ok(o, "no se encontró `ofrece` en layout_lookup.py");
-  assert.match(o[0], /if es_participacion\(p\.parte\):\s*\n\s*return codigo_de_parte\(p\.base, p\.cara, None\) in caras_pc/,
-    "`ofrece` dejó de mirar la cara de la participación");
+  const o = servidor.match(/def ofrece\([\s\S]*?\n    return es_participacion\(p\.parte\) and codigo_de_parte\(p\.base, p\.cara, None\) in caras_pc\n/);
+  assert.ok(o, "no se encontró `ofrece` en layout_lookup.py, o dejó de mirar la cara de la participación");
+  assert.match(o[0], /\n    c = normalizar\(codigo\)\n    if c in ofrecidos:\n        return True\n    p = partir_codigo\(c\)\n/,
+    "`ofrece` dejó de mirar primero el texto tal cual (un mueble de antes que ya se llamaba `GON-07-PC1`)");
   const g = servidor.match(/def contratos_que_quedarian_sin_mueble[\s\S]*?\n    return sorted\(frases\)/);
   assert.ok(g, "no se encontró `contratos_que_quedarian_sin_mueble`");
   assert.match(g[0], /caras_por_participacion\(previas, sede\), caras_por_participacion\(nuevas, sede\)/,

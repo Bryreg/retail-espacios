@@ -100,13 +100,15 @@ function espaciosOfrecidos(
   return { ofrecidos, carasPc };
 }
 
-/** ¿El plano pone a la venta este código COMPLETO? Una participación, si su
- *  cara se vende por participación; lo demás, si está entre lo ofrecido. Es
- *  `ofrece` de `backend/app/services/layout_lookup.py`. */
+/** ¿El plano pone a la venta este código COMPLETO? Lo que está entre lo
+ *  ofrecido, por el texto tal cual —un mueble de antes del token que ya se
+ *  llamaba `GON-07-PC1` es su cara entera (riesgo R1 del diseño)—, y una
+ *  participación si su cara se vende por participación. Es `ofrece` de
+ *  `backend/app/services/layout_lookup.py`. */
 function ofrecido(o: { ofrecidos: Set<string>; carasPc: Set<string> }, espacio: string): boolean {
+  if (o.ofrecidos.has(espacio)) return true;
   const p = partirCodigo(espacio);
-  if (esParticipacion(p.parte)) return o.carasPc.has(codigoDeParte(p.base, p.cara, null));
-  return o.ofrecidos.has(espacio);
+  return esParticipacion(p.parte) && o.carasPc.has(codigoDeParte(p.base, p.cara, null));
 }
 
 /** Partir `NAVE-IMP-17` en sede y código corto, usando las sedes que existen.

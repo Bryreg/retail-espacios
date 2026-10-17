@@ -610,6 +610,16 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
   }
 });
 
+await prueba("la participación, sin tarifa propia, no le pone nombre a ninguna tarifa de la consola", async () => {
+  // `nombresDeInforme` nombra las tarifas por su clave: la clase sin `tarifa`
+  // dejaría una clave `undefined` («participación de cara») si no se saltea.
+  const { singular, plural } = (await cargar("src/catalogo/catalogo.ts")).nombresDeInforme();
+  assert.ok(!("undefined" in singular) && !("undefined" in plural), "la participación nombra una tarifa `undefined`");
+  assert.ok(!Object.values(singular).includes(CATALOGO.partes.clases.participacion.informe),
+    "la participación aparece entre los nombres de tarifa de la consola");
+  assert.equal(singular.parte_puerta, CATALOGO.partes.clases.puertas.informe, "las divisiones siguen nombradas por su tarifa");
+});
+
 await prueba("qué tipos se venden por participación, y con qué receta", () => {
   // §7.1 del diseño de participaciones: los siete tipos del pedido llevan
   // receta; los demás alquilables (la nevera de puertas, la isla, el cartón…)
