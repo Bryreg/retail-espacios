@@ -1765,4 +1765,146 @@ await prueba("historial (contrato con el servidor): una derivada dice sólo el D
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RECORRIDO FINAL · lo que quedó del caso H y del historial
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Dos sesiones piden 60 % de la misma cara; la segunda frena con el 409 del
+// servidor («queda 40 %»), pero su vista previa seguía diciendo «queda 100 %»
+// y el panel «Comprometido 0 %» hasta volver a entrar a la cara. Y el
+// historial escribía la fecha de dos maneras: «18 oct 2026» en las derivadas y
+// «17 de oct de 2026, 03:24 p. m.» en las reales.
+
+console.log("distribución · los arreglos del recorrido final");
+
+const terminoOut = (id, space_id, numero, extra = {}) => ({
+  id, space_id, codigo: `NAVE-GON-01-PC${numero}`, numero, cara: "A", estado: "contrato", estado_visible: "vigente",
+  puntos_basicos: 6000, porcentaje: "60 %", proveedor: { id: 7, nombre: "Café A" }, marca: null,
+  desde: "2026-10-17", hasta: "2027-01-14", caduca: null, lease_id: 3310, valor_mensual: null, renueva_a: null, notas: null,
+  baja_en: null, baja_fecha: null, version: 1, creada_en: "2026-10-17T15:00:00+00:00", creada_por: "otra@super.co", ...extra,
+});
+const participacionOut = (t) => ({
+  space_id: t.space_id, codigo: t.codigo, numero: t.numero, viva: true,
+  contratado_pb: t.puntos_basicos, dibujado_pb: 0, pendiente_pb: t.puntos_basicos, terminos: [t],
+});
+
+await prueba("un 409 de una escritura de términos (otra sesión vendió en el medio) vuelve a leer la cara y la ocupación SIN cerrar el formulario: la vista previa y el panel dicen lo que queda de verdad (ejecutado, caso H)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-409", "admin", "galerias");
+  const capa = [zo(1, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3))];
+  await entrarA(caraOut({ distribucion: distribucion(4, capa) }));
+  D().despachar({ tipo: "elegirModo", modo: "editar" });
+  dibujar(812, 0.5, 0.5, 0.7, 0.7);
+  const dibujado = D().edicion.zonas;
+  D().abrirFormulario({ modo: "alta" });
+  // Lo escrito vive en el componente; la vista previa es pura y sale de los `datos` del store.
+  const escrito = { tipo: "contrato", proveedor: "Lácteos B", correo: "", marca: "", porcentaje: "60", desde: "2026-10-17", hasta: "2027-01-14",
+    caduca: "2026-10-24", valor: "500.000", notas: "" };
+  const vista = () => P6.FORM.fraseDeLaVistaPrevia(P6.FORM.vistaPrevia("alta", escrito, D().datos, null, null, "A"));
+  assert.equal(vista(), "En esas fechas queda 100 % y pedís 60 %.");
+  assert.equal(P6.LEY.capacidadDe(D().datos, "2026-10-17").queda, 10000);
+
+  // Lo que no es un 409 no relee nada (ni un 422 de validación, ni una caída, ni la red).
+  servidor.pedidos = [];
+  for (const e of [rechazo(422, { detail: [{ msg: "campo" }] }), rechazo(500, { detail: "error" }), rechazo(404, { detail: { code: "sin_mueble", message: "…" } }),
+    new Error("sin red"), null]) {
+    assert.equal(await D().releerTrasConflicto(e), false);
+  }
+  assert.deepEqual(servidor.pedidos, [], "un rechazo que no es 409 volvió a leer la cara");
+
+  // La otra sesión cargó 60 % de la cara: es lo que tiene el servidor ahora.
+  const otra = participacionOut(terminoOut(51, 813, 1));
+  const conLaOtra = caraOut({ distribucion: distribucion(4, capa), participaciones: [otra] });
+  const ocup = { sede: "NAVE", hoy: "2026-10-17", caras: { "NAVE-GON-01": { intervalos: [{ desde: "2026-10-17", hasta: "2027-01-14", pb: 6000 }], fisicos: [] } } };
+  servidor.responder = async (cfg) => (cfg.url === "/participaciones/cara" ? conLaOtra : cfg.url === "/participaciones/ocupacion" ? ocup : {});
+  const r409 = rechazo(409, { detail: { code: "capacidad_excedida",
+    message: "No entra: el 17 oct 2026 la cara A ya tiene 60 % comprometido; queda 40 % y pediste 60 %." } });
+  assert.equal(await D().releerTrasConflicto(r409), true);
+  await esperar(5);
+  assert.deepEqual(servidor.pedidos.map((p) => [p.url, p.params]), [
+    ["/participaciones/cara", { sede: "NAVE", espacio: "GON-01" }],
+    ["/participaciones/ocupacion", { sede: "NAVE" }],
+  ], "no volvió a leer la cara y la ocupación");
+  // El formulario sigue abierto (lo escrito no se pierde: el componente no se remonta) y lo dibujado, intacto.
+  assert.deepEqual(D().formulario, { modo: "alta" }, "el 409 cerró el formulario");
+  assert.equal(D().edicion.zonas, dibujado, "volver a leer la cara tocó lo dibujado");
+  assert.equal(D().edicion.sucio, true);
+  // La vista previa, con lo escrito, ya no dice «queda 100 %»: dice por qué no entra, con lo que queda.
+  assert.ok(!/queda 100 %/.test(vista()), `la vista previa sigue diciendo «${vista()}»`);
+  assert.match(vista(), /queda 40 %/);
+  assert.ok(P6.FORM.vistaPrevia("alta", escrito, D().datos, null, null, "A").noEntra, "«Guardar» sigue habilitado con lo que ya no entra");
+  // El panel (la barra y «Para vender»): comprometido 60 %, queda 40 %.
+  const cap = P6.LEY.capacidadDe(D().datos, "2026-10-17");
+  assert.deepEqual([cap.comprometido, cap.queda], [6000, 4000], "el panel sigue en «Comprometido 0 % · queda 100 %»");
+  assert.deepEqual(S.ocupacionDeLaCara(S.useOcupacionStore.getState(), "NAVE", "NAVE-GON-01").intervalos, ocup.caras["NAVE-GON-01"].intervalos);
+
+  // Si en el medio otra sesión guardó la distribución, su versión NO se adopta:
+  // el próximo guardado tiene que chocar (`version_vieja`) en vez de pisarla.
+  const otraCapa = [zo(7, 813, cuadradoZ(0.6, 0.1, 0.9, 0.4))];
+  const conOtraVersion = caraOut({ distribucion: distribucion(5, capa, otraCapa), participaciones: [otra, participacionOut(terminoOut(52, 814, 2, { puntos_basicos: 1000 }))] });
+  servidor.responder = async (cfg) => (cfg.url === "/participaciones/cara" ? conOtraVersion : cfg.url === "/participaciones/ocupacion" ? ocup : {});
+  assert.equal(await D().releerTrasConflicto(rechazo(409, { detail: { code: "version_vieja", message: "Otra sesión…" } })), true);
+  assert.equal(D().datos.participaciones.length, 2, "los términos no se pusieron al día");
+  assert.equal(D().datos.distribucion.version, 4, "adoptó la versión de la distribución de la otra sesión: el próximo guardado la pisaría");
+  assert.equal(D().datos.distribucion.borrador, null);
+  servidor.pedidos = [];
+  servidor.responder = async () => { throw rechazo(409, { detail: { code: "version_vieja", message: "Otra sesión cambió esta distribución mientras la editabas." } }); };
+  assert.equal(await D().guardarBorrador(), false);
+  assert.equal(servidor.pedidos[0].data.version, 4);
+  assert.equal(D().guardado.estado, "version_vieja");
+
+  // Una lectura que vuelve después de salir de la cara se tira.
+  let soltar;
+  servidor.responder = () => new Promise((r) => { soltar = () => r(conLaOtra); });
+  const tarde = D().releerTrasConflicto(r409);
+  await D().salir({ forzado: true, descartar: true });
+  soltar();
+  assert.equal(await tarde, false);
+  assert.equal(D().datos, null, "la lectura de una cara de la que se salió volvió a poner datos");
+  assert.equal(await D().releerTrasConflicto(r409), false, "sin cara activa leyó algo");
+
+  // Los dos caminos que escriben términos en Distribución lo piden; el formulario no se remonta con los datos nuevos.
+  const form = codigo6b("FormularioDeParticipacion");
+  assert.match(form, /setRechazo\(\{\s*mensaje: r\?\.message[\s\S]*?\}\);\s*void useDistribucionStore\.getState\(\)\.releerTrasConflicto\(e\);\s*\} finally \{/,
+    "el rechazo del formulario no vuelve a leer la cara");
+  assert.match(form, /<Formulario key=\{`\$\{formulario\.modo\}\|\$\{formulario\.terminoId \?\? ""\}`\}/, "la clave del formulario cambia con los datos: se perdería lo escrito");
+  assert.match(form, /const vista = vistaPrevia\(modo, c, datos, termino, participacion, activa\.cara\);/, "la vista previa no sale de los datos de este dibujo");
+  assert.match(form, /<p className="text-dark-ink-1">\{fraseDeLaVistaPrevia\(vista\)\}<\/p>/);
+  const ley = codigo6b("LeyendaDeParticipaciones");
+  const c = ley.indexOf("function PreguntaDeCancelar(");
+  assert.match(ley.slice(c, ley.indexOf("return (", c)), /\} catch \(e\) \{[\s\S]*?void st\.releerTrasConflicto\(e\);/, "un 409 al cancelar no vuelve a leer la cara");
+  D().reiniciar();
+});
+
+await prueba("historial: la fecha se escribe igual en las reales y en las derivadas («17 oct 2026»); la hora, sólo en las reales (ejecutado con TZ=America/Bogota)", () => {
+  const tzAntes = process.env.TZ;
+  process.env.TZ = "America/Bogota";
+  try {
+    assert.equal(new Date("2026-10-17T20:24:00+00:00").getHours(), 15, "la prueba no corre con el reloj de Colombia");
+    const real = (id, en) => ({ id, en, actor: "duena@super.co", tipo: "contractual", accion: "participacion.contrato", detalle: `real ${id}`, antes: null, despues: null });
+    const ls = P6.PANEL.lineasDelHistorial({
+      entradas: [real(1, "2026-10-17T20:24:00+00:00"), real(2, "2026-10-18T03:00:00+00:00"), real(3, "2026-12-01T13:05:00+00:00")],
+      derivados: [{ en: "2026-10-18T05:00:00+00:00", dia: "2026-10-18", derivado: true, tipo: "evento", accion: "participacion.vencida", participacion_id: 4,
+        detalle: "Venció la participación 4." }],
+    });
+    const por = Object.fromEntries(ls.map((l) => [l.detalle, l.cuando]));
+    assert.equal(por["Venció la participación 4."], "18 oct 2026");
+    assert.match(por["real 1"], /^17 oct 2026, 0?3:24\s?p\.\s?m\.$/, `una real dice «${por["real 1"]}»`);
+    assert.match(por["real 2"], /^17 oct 2026, 10:00\s?p\.\s?m\.$/, `la de las 10 de la noche del 17 dice «${por["real 2"]}»`);
+    assert.match(por["real 3"], /^1 dic 2026, 0?8:05\s?a\.\s?m\.$/);
+    // El día, igual en las dos: «D mmm AAAA», sin «de»; la hora, sólo en las reales.
+    const dia = (s) => s.split(", ")[0];
+    for (const l of ls) {
+      assert.match(dia(l.cuando), /^\d{1,2} [a-z]{3} \d{4}$/, `«${l.cuando}» no escribe la fecha como las demás`);
+      assert.ok(!/ de /.test(l.cuando), `«${l.cuando}» escribe la fecha con «de»`);
+      assert.equal(/\d:\d\d/.test(l.cuando), !l.derivada, `«${l.cuando}»: la hora va sólo en las reales`);
+    }
+    const panel = codigo6b("PanelDeDistribucion");
+    assert.match(panel, /return `\$\{fechaLegible\(dia\)\}, \$\{hora\(d\.getTime\(\)\)\}`;/, "una real no escribe su día con `fechaLegible`");
+    assert.ok(!/toLocaleString\("es-CO"/.test(panel), "queda el formato largo de `es-CO` («17 de oct de 2026»)");
+  } finally {
+    if (tzAntes === undefined) delete process.env.TZ; else process.env.TZ = tzAntes;
+  }
+});
+
 console.log(`\n${hechas} pruebas de distribución en verde`);

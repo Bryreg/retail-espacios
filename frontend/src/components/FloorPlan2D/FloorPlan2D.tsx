@@ -36,7 +36,7 @@ import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDe
 import {
   codigoDeParte, concordancia, dispoDeParticipacion, divisionDe, estadoParaPintar, juntasDePartes, piezasDe,
   porParticipacion, puntosDePartesVendidas, sufijoDeParte, vanoDeParte,
-  DONDE_SE_CARGAN, rotuloPorOcupacion, textoDeLoComprometido, type DispoDeParticipacion,
+  DONDE_SE_CARGAN, notaDeEstadoPorOcupacion, rotuloPorOcupacion, textoDeLoComprometido, type DispoDeParticipacion,
 } from "../../utils/partes";
 // «Abrir en Distribución» (el Editor 3D en esa cara): el mismo pedido que la
 // ficha de Supervisar, sólo tipos y el store de lectura.
@@ -4110,7 +4110,7 @@ function AssignmentPanel({
                 «Disponible» del selector no se lea como «se puede vender». */}
             {estadoVisto !== face.status && (
               <p data-estado-por-ocupacion style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
-                Hoy se ve «{rotuloVisto}»: lo dice la ocupación de sus participaciones.
+                {notaDeEstadoPorOcupacion(rotuloVisto)}
               </p>
             )}
           </>

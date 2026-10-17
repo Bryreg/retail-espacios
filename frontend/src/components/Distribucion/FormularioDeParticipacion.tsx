@@ -74,7 +74,7 @@ function finDeLosVivos(p: ParticipacionOut, hoy: string): string | null {
   return fin;
 }
 
-interface Campos {
+export interface Campos {
   tipo: "reserva" | "contrato";
   proveedor: string;
   correo: string;
@@ -140,6 +140,64 @@ export function problemaDeLosCampos(modo: Modo, c: Campos, hoy: string): string 
   return null;
 }
 
+/** Lo que dice la vista previa: lo que falta en los campos, por qué no entra,
+ *  o cuánto queda en esas fechas y cuánto se pide. */
+export interface VistaPrevia {
+  problema: string | null;
+  noEntra: Rechazo | null;
+  /** Lo que queda para vender en esas fechas (pb), o null sin fechas válidas. */
+  queda: number | null;
+  pb: number | null;
+}
+
+/**
+ * La vista previa del formulario (pura: la corre `probar-distribucion`), con
+ * las mismas reglas que el servidor sobre lo que bajó la cara (`datos`). Sale
+ * de los `datos` de cada dibujo y no de una copia: después de un 409, el store
+ * vuelve a leer la cara (`releerTrasConflicto`) y esto dice lo que queda de
+ * verdad, con lo escrito (`c`) intacto. Antes, la sesión que frenaba seguía
+ * leyendo «queda 100 %» con la otra participación ya cargada.
+ */
+export function vistaPrevia(
+  modo: Modo, c: Campos, datos: CaraOut, termino: TerminoOut | null, participacion: ParticipacionOut | null, cara: "A" | "B",
+): VistaPrevia {
+  const hoy = datos.hoy;
+  const d = datosDeLaCara(datos);
+  const pb = pbDeTexto(c.porcentaje);
+  const problema = problemaDeLosCampos(modo, c, hoy);
+  const fechasOk = /^\d{4}-\d{2}-\d{2}$/.test(c.desde) && /^\d{4}-\d{2}-\d{2}$/.test(c.hasta) && c.desde <= c.hasta;
+  const excluir = (modo === "editar" || modo === "confirmar") && termino ? termino.id : null;
+  const I = intervalosQueCuentan(d.todos, d.fisicos, hoy, excluir);
+  const queda = fechasOk ? disponible(I, c.desde, c.hasta, hoy) : null;
+  let porCapacidad: Rechazo | null = null;
+  if (pb !== null && fechasOk) porCapacidad = revisarCapacidad(I, d.fisicos, pb, c.desde, c.hasta, cara, hoy);
+  let porTerminos: Rechazo | null = null;
+  if (termino && participacion && pb !== null && fechasOk) {
+    const deLaP = d.terminosPorS.get(participacion.space_id) ?? [];
+    let cambio: CambioDeTermino | null = null;
+    if (modo === "renovar") {
+      cambio = { tipo: "renovar", renuevaA: termino.id, desde: c.desde, hasta: c.hasta, pb: termino.puntos_basicos,
+        supplierId: termino.proveedor?.id ?? 0, marca: termino.marca };
+    } else if (modo === "editar" || modo === "confirmar") {
+      cambio = {
+        tipo: modo, id: termino.id, desde: c.desde, hasta: c.hasta,
+        ...(pb !== termino.puntos_basicos ? { pb } : {}),
+        ...(modo === "editar" && (c.marca.trim() || null) !== (termino.marca ?? null) ? { marca: c.marca.trim() || null } : {}),
+      };
+    }
+    if (cambio) porTerminos = revisarTerminos(deLaP, cambio, hoy);
+  }
+  return { problema, noEntra: porTerminos ?? porCapacidad, queda, pb };
+}
+
+/** La frase de la vista previa: «En esas fechas queda 40 % y pedís 20 %.», o
+ *  la de por qué no se puede guardar. */
+export function fraseDeLaVistaPrevia(v: VistaPrevia): string {
+  if (v.problema) return v.problema;
+  if (v.noEntra) return v.noEntra.frase;
+  return `En esas fechas queda ${v.queda !== null ? pct(v.queda) : "—"}${v.pb !== null ? ` y pedís ${pct(v.pb)}` : ""}.`;
+}
+
 export default function FormularioDeParticipacion() {
   const formulario = useDistribucionStore((s) => s.formulario);
   const datos = useDistribucionStore((s) => s.datos);
@@ -196,37 +254,15 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
     );
   }
 
-  const d = datosDeLaCara(datos);
   const pb = pbDeTexto(c.porcentaje);
-  const problemaCampos = problemaDeLosCampos(modo, c, hoy);
-  const fechasOk = /^\d{4}-\d{2}-\d{2}$/.test(c.desde) && /^\d{4}-\d{2}-\d{2}$/.test(c.hasta) && c.desde <= c.hasta;
   const proveedorElegido = conProveedor && proveedores
     ? proveedores.find((s) => s.name.trim().toLowerCase() === c.proveedor.trim().toLowerCase()) ?? null : null;
   const proveedorNuevo = conProveedor && !!c.proveedor.trim() && proveedores !== null && !proveedorElegido;
 
-  // La vista previa: las mismas reglas que el servidor.
-  const excluir = (modo === "editar" || modo === "confirmar") && termino ? termino.id : null;
-  const I = intervalosQueCuentan(d.todos, d.fisicos, hoy, excluir);
-  const queda = fechasOk ? disponible(I, c.desde, c.hasta, hoy) : null;
-  let porCapacidad: Rechazo | null = null;
-  if (pb !== null && fechasOk) porCapacidad = revisarCapacidad(I, d.fisicos, pb, c.desde, c.hasta, activa.cara, hoy);
-  let porTerminos: Rechazo | null = null;
-  if (termino && participacion && pb !== null && fechasOk) {
-    const deLaP = d.terminosPorS.get(participacion.space_id) ?? [];
-    let cambio: CambioDeTermino | null = null;
-    if (modo === "renovar") {
-      cambio = { tipo: "renovar", renuevaA: termino.id, desde: c.desde, hasta: c.hasta, pb: termino.puntos_basicos,
-        supplierId: termino.proveedor?.id ?? 0, marca: termino.marca };
-    } else if (modo === "editar" || modo === "confirmar") {
-      cambio = {
-        tipo: modo, id: termino.id, desde: c.desde, hasta: c.hasta,
-        ...(pb !== termino.puntos_basicos ? { pb } : {}),
-        ...(modo === "editar" && (c.marca.trim() || null) !== (termino.marca ?? null) ? { marca: c.marca.trim() || null } : {}),
-      };
-    }
-    if (cambio) porTerminos = revisarTerminos(deLaP, cambio, hoy);
-  }
-  const noEntra = porTerminos ?? porCapacidad;
+  // La vista previa: las mismas reglas que el servidor, con los `datos` de
+  // ESTE dibujo (después de un 409, los que el store volvió a leer).
+  const vista = vistaPrevia(modo, c, datos, termino, participacion, activa.cara);
+  const problemaCampos = vista.problema, noEntra = vista.noEntra;
   const puedeGuardar = !problemaCampos && !noEntra && !enviando;
 
   const titulo = modo === "alta" ? `Nueva participación · ${activa.codigo} · cara ${activa.cara}`
@@ -296,6 +332,10 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
         mensaje: r?.message || describeError(e, "No se pudo guardar: probá de nuevo en un momento. Lo escrito sigue acá."),
         problemas, code: r?.code ?? null,
       });
+      // Un 409 es que otra sesión cambió la cara: el store la vuelve a leer en
+      // segundo plano y la vista previa (que sale de `datos` en cada dibujo)
+      // dice lo nuevo, con lo escrito intacto.
+      void useDistribucionStore.getState().releerTrasConflicto(e);
     } finally {
       setEnviando(false);
     }
@@ -459,9 +499,7 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
           ) : noEntra ? (
             <p style={{ color: ROJO }}>{noEntra.frase}</p>
           ) : (
-            <p className="text-dark-ink-1">
-              En esas fechas queda {queda !== null ? pct(queda) : "—"}{pb !== null ? ` y pedís ${pct(pb)}` : ""}.
-            </p>
+            <p className="text-dark-ink-1">{fraseDeLaVistaPrevia(vista)}</p>
           )}
         </div>
 

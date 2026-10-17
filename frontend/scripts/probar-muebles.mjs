@@ -6640,7 +6640,7 @@ const compiladoReglas = await build({
   stdin: {
     contents: [
       'export { dispoPorParticipacion } from "./src/utils/participaciones.ts";',
-      'export { porParticipacion } from "./src/utils/partes.ts";',
+      'export { porParticipacion, rotuloPorOcupacion, PALABRA_POR_OCUPACION, notaDeEstadoPorOcupacion } from "./src/utils/partes.ts";',
       'export { carasDe, fullSpaceCode } from "./src/types/espacio.ts";',
       'export { formasDeVenderDe, vendePorPartes, cambioParaDividir, revisarCambioDePartes, POR_PARTICIPACION } from "./src/utils/partesDelMueble.ts";',
     ].join("\n"),
@@ -6660,9 +6660,9 @@ prueba("el color de estado de una cara por participación sale de la ocupación:
   const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
     reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
   const { ocupacionDelMueble, coloresPorOcupacion, estadoQueSeVe } = new Function(
-    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META",
+    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META", "PALABRA_POR_OCUPACION",
     `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { ocupacionDelMueble, coloresPorOcupacion, estadoQueSeVe };`,
-  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, STATUS_COLORS, STATUS_META);
+  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, STATUS_COLORS, STATUS_META, RG.PALABRA_POR_OCUPACION);
   const hoy = "2026-10-17";
   const rob = (id, code) => ({ id, code, type: "robatope", w: 0.3, d: 0.4, h: 1.6, partes: { division: "participacion" } });
   const muebles = [rob("r1", "ROB-01"), rob("r2", "ROB-02"), rob("r3", "ROB-03"),
@@ -6688,7 +6688,7 @@ prueba("el color de estado de una cara por participación sale de la ocupación:
   // El cartel de estado (el del mouse y el del panel) dice lo mismo que la
   // banda: lo contratado no dice «Disponible» (pedido §6).
   const visto = (m) => estadoQueSeVe(STATUS_META.free, ocupacionDelMueble(m, o, "NAVE"));
-  assert.equal(visto(muebles[0]).label, "Ocupado", "un robatope con su cara repartida al 100 % dice «Disponible»");
+  assert.equal(visto(muebles[0]).label, "Tomada", "un robatope con su cara repartida al 100 % dice «Disponible» (o «Ocupado», que el plano y Supervisar no dicen)");
   assert.equal(visto(muebles[0]).bg, STATUS_META.occupied.bg);
   assert.equal(visto(muebles[1]).label, "Parcial", "una cara con 25 % comprometido dice «Disponible»");
   assert.equal(visto(muebles[1]).bg, STATUS_META.reserved.bg);
@@ -6703,6 +6703,56 @@ prueba("el color de estado de una cara por participación sale de la ocupación:
   // El cartel del mouse: anónimo.
   assert.match(editorCodigo, /\{ocupacionHover && <p className="mt-0\.5 text-\[10px\] text-dark-ink-2" data-ocupacion-participacion>\{textoDeOcupacion\(ocupacionHover\)\}<\/p>\}/);
   assert.match(editorCodigo, /return `Por participación · queda \$\{/);
+});
+
+// Recorrido final (2026-10-17): sobre una cara por participación la pastilla
+// del panel del 3D decía «Ocupado» donde el plano y Supervisar decían
+// «Tomada», y «Estado fixture» decía «Disponible» sin la nota que el plano
+// agrega. La palabra y la nota salen ahora de `utils/partes.ts`, una sola vez.
+prueba("el Editor 3D dice de una cara por participación la MISMA palabra que el plano 2D («Tomada», «Parcial») y «Estado fixture» lleva la misma nota (ejecutado)", () => {
+  const i = editorCodigo.indexOf("function ocupacionDelMueble(");
+  const j = editorCodigo.indexOf("function textoDeOcupacion(", i);
+  const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
+    reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
+  const { estadoQueSeVe } = new Function(
+    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META", "PALABRA_POR_OCUPACION",
+    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { estadoQueSeVe };`,
+  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, {}, STATUS_META, RG.PALABRA_POR_OCUPACION);
+  // La palabra del 3D es la de la ficha del plano para la misma ocupación.
+  const tomada = estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "tomado" }]);
+  const parcial = estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "parcial" }]);
+  assert.equal(tomada.label, RG.rotuloPorOcupacion("free", { dispo: "tomado" }), `el 3D dice «${tomada.label}» y el plano «${RG.rotuloPorOcupacion("free", { dispo: "tomado" })}»`);
+  assert.equal(parcial.label, RG.rotuloPorOcupacion("free", { dispo: "parcial" }));
+  assert.deepEqual([tomada.label, parcial.label], ["Tomada", "Parcial"]);
+  // El color sigue siendo el de la banda (rojo / ámbar), y la palabra de la base no cambia.
+  assert.deepEqual([tomada.bg, tomada.text, parcial.bg, parcial.text], ["bg-r", "t-r", "bg-a", "t-a"]);
+  assert.equal(STATUS_META.occupied.label, "Ocupado", "la prueba cambió la tabla de estados");
+  // Una doble con las dos caras tomadas: «Tomada»; con una sola, «Parcial».
+  assert.equal(estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "tomado" }, { cara: "B", dispo: "tomado" }]).label, "Tomada");
+  assert.equal(estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "tomado" }, { cara: "B", dispo: "libre" }]).label, "Parcial");
+  // Nada escrito a mano en el 3D: la palabra es la de `utils/partes.ts`.
+  const fn = editorCodigo.slice(editorCodigo.indexOf("function estadoQueSeVe("), editorCodigo.indexOf("function textoDeOcupacion("));
+  assert.match(fn, /return \{ \.\.\.STATUS_META\.occupied, label: PALABRA_POR_OCUPACION\.tomado \};/);
+  assert.match(fn, /return \{ \.\.\.STATUS_META\.reserved, label: PALABRA_POR_OCUPACION\.parcial \};/);
+  assert.ok(!/return STATUS_META\.occupied;|"Tomada"|"Parcial"/.test(fn), "el 3D escribe la palabra a mano (o vuelve a «Ocupado»)");
+
+  // La nota de «Estado fixture»: la misma frase que el selector del plano.
+  const nota = RG.notaDeEstadoPorOcupacion("Tomada");
+  assert.equal(nota, "Se ve «Tomada»: lo dice la ocupación de hoy de sus participaciones.");
+  assert.match(nota, /lo dice la ocupación de hoy de sus participaciones/i);
+  const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+  assert.match(panel, /const estadoPorOcupacion = sm !== STATUS_META\[fix\.status\];/, "la nota no mira si lo que se ve lo puso la ocupación");
+  const k = panel.indexOf("Estado fixture</label>");
+  assert.ok(k > 0, "no está «Estado fixture»");
+  const bloque = panel.slice(k, panel.indexOf("{estadoError && (", k));
+  assert.match(bloque, /<option value="free">Disponible<\/option>/, "«Estado fixture» dejó de ser el selector de siempre");
+  assert.match(bloque, /\{estadoPorOcupacion && \(\s*<p [^>]*data-estado-por-ocupacion>\s*\{notaDeEstadoPorOcupacion\(sm\.label\)\}\s*<\/p>\s*\)\}/,
+    "«Estado fixture» dice «Disponible» sin la nota de la ocupación");
+  // Y el plano usa la misma nota en su selector (no una copia escrita aparte).
+  const plano = sinComentarios(leer("src/components/FloorPlan2D/FloorPlan2D.tsx"));
+  assert.match(plano, /\{estadoVisto !== face\.status && \(\s*<p data-estado-por-ocupacion[^>]*>\s*\{notaDeEstadoPorOcupacion\(rotuloVisto\)\}\s*<\/p>/,
+    "el selector del plano no usa la nota compartida");
+  assert.ok(!/Hoy se ve «\{rotuloVisto\}»/.test(plano), "el plano conserva su nota escrita aparte");
 });
 
 prueba("los slots de la cara B: el contorno no roba el rayo, la malla corta el arrastre y el panel dice que vale para las dos caras", () => {

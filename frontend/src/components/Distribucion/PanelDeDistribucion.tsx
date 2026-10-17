@@ -120,11 +120,16 @@ const ESTADOS: Record<EstadoDeDistribucion, string> = {
 
 const hora = (ms: number) => new Date(ms).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
 /** Cuándo pasó una entrada REAL del historial: un instante con su zona, con
- *  día y hora. Una derivada con su día no pasa por acá (`lineasDelHistorial`). */
+ *  día y hora: «17 oct 2026, 03:24 p. m.». El día se escribe como el de una
+ *  derivada (`fechaLegible`, «18 oct 2026»), y la hora va sólo acá: antes las
+ *  reales decían «17 de oct de 2026, 03:24 p. m.» (el formato de `es-CO`)
+ *  debajo de una derivada que decía «18 oct 2026» (recorrido final). Una
+ *  derivada con su día no pasa por acá (`lineasDelHistorial`). */
 const cuandoFue = (iso: string) => {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso
-    : d.toLocaleString("es-CO", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (Number.isNaN(d.getTime())) return iso;
+  const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${fechaLegible(dia)}, ${hora(d.getTime())}`;
 };
 
 /** El título del encabezado: qué SEDE, qué mueble y qué cara se distribuyen

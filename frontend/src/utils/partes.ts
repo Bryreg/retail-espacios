@@ -1112,6 +1112,13 @@ export function textoDeLoComprometido(d: Pick<DispoDeParticipacion, "dispo" | "q
   return queda > 0 ? `${cuenta} — disponible para vender en el Editor 3D → Distribución.` : `${cuenta}.`;
 }
 
+/** La palabra de la ocupación de una cara por participación, UNA para todas
+ *  las pantallas: la ficha del plano 2D (`rotuloPorOcupacion`), la pastilla
+ *  del panel y el cartel del mouse del Editor 3D (`estadoQueSeVe`). El 3D
+ *  decía «Ocupado» donde el plano y Supervisar decían «Tomada» (recorrido
+ *  final). */
+export const PALABRA_POR_OCUPACION = { tomado: "Tomada", parcial: "Parcial" } as const;
+
 /** La palabra del estado que se VE de una cara por participación en la ficha
  *  del plano 2D: la misma regla que su color (`estadoParaPintar`) y que el
  *  cartel del Editor 3D. Sin lugar hoy, «Tomada»; con algo comprometido,
@@ -1121,7 +1128,14 @@ export function textoDeLoComprometido(d: Pick<DispoDeParticipacion, "dispo" | "q
 export function rotuloPorOcupacion(propio: string, d: Pick<DispoDeParticipacion, "dispo"> | null): string | null {
   const pintado = estadoParaPintar(propio, d);
   if (pintado === propio) return null;
-  return pintado === "occupied" ? "Tomada" : "Parcial";
+  return pintado === "occupied" ? PALABRA_POR_OCUPACION.tomado : PALABRA_POR_OCUPACION.parcial;
+}
+
+/** La nota debajo del selector de estado de una cara por participación (la
+ *  ficha del plano 2D y «Estado fixture» del Editor 3D): el selector dice el
+ *  estado de la base («Disponible») y lo que se ve lo pone la ocupación. */
+export function notaDeEstadoPorOcupacion(rotulo: string): string {
+  return `Se ve «${rotulo}»: lo dice la ocupación de hoy de sus participaciones.`;
 }
 
 /** «Cuándo se libera» de una cara por participación: con algo comprometido

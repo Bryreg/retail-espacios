@@ -350,6 +350,11 @@ ve exactamente como antes.
   participación.
 - **Una reserva sin tope de caducidad**: hoy puede caducar cualquier día hasta su `hasta`, y
   mientras tanto bloquea como un contrato (riesgo R7 del diseño).
+- **Lo que el recorrido final dejó sin tocar** (bajos): el encuadre de tres cuartos deja el
+  extremo cercano del mueble pegado al borde del cuadro; Vender cuenta las caras por
+  participación parciales en «Se libera en el periodo» (heredado de la venta por partes); la
+  pestaña de la cara activa se lee poco en la ficha del plano (ya era así); y en el isométrico
+  los rótulos «Por participación · queda X %» de muebles vecinos se enciman.
 - **Lo heredado, sin agravar**: el renombre de sede, que es borrar y crear y cancela las
   reservas y los contratos de participación de la sede (ahora avisa antes; D21/D22); el campo
   «Sede» del 3D (V16); `PUT /layout` sin validar `w` ni `modulo`.
@@ -10771,8 +10776,10 @@ elegida muestra su participación, proveedor y marca, %, m² y el estado del té
 **formulario** (`FormularioDeParticipacion.tsx`, modal: alta, renovar, confirmar, cambiar,
 cargar de nuevo) valida antes de mandar lo que el servidor rechazaría con 422, hace la vista
 previa con `revisarCapacidad` y `revisarTerminos` —las mismas frases del servidor—, muestra la
-tarifa de la cara como referencia y un 409 arriba sin cerrarse; Esc con algo escrito pide
-confirmación. Antes de confirmar, **el resumen de cambios** (`ResumenDeCambios.tsx`): por
+tarifa de la cara como referencia y un 409 arriba sin cerrarse —y el store vuelve a leer la cara
+y la ocupación en segundo plano (`releerTrasConflicto`): la vista previa y el panel dicen lo que
+queda de verdad, con lo escrito intacto—; Esc con algo escrito pide confirmación. Antes de
+confirmar, **el resumen de cambios** (`ResumenDeCambios.tsx`): por
 participación, lo dibujado antes y después; los errores bloquean y ofrecen «Guardar como
 borrador».
 
@@ -10823,8 +10830,10 @@ ellos, o desmontar el editor, saca del modo a la fuerza. El visor de Vender nunc
 capa a la escena (`probar-vender`).
 
 **Lo que cambia fuera del modo**, en un mueble por participación: el color de estado sale de
-la ocupación (`estadoQueSeVe`: «Ocupado», «Parcial»; nunca «Disponible» en verde sobre lo
-contratado), los paneles verdes de espacios internos libres no se dibujan y el panel no los
+la ocupación (`estadoQueSeVe`: «Tomada», «Parcial», la palabra del plano 2D y Supervisar,
+`PALABRA_POR_OCUPACION`; nunca «Disponible» en verde sobre lo contratado, y «Estado fixture» lo
+dice con la nota del selector del plano, `notaDeEstadoPorOcupacion`), los paneles
+verdes de espacios internos libres no se dibujan y el panel no los
 ofrece; el metro bajo es una placa; el aviso de cara inaccesible (`carasInaccesibles`,
 medido con un rayo contra la caja del vecino) sale en el panel y en «Revisar» del 2D; y la
 tarjeta CONTRATADO del panel dice «Por participación · comprometido 55 % · queda 45 %», una
@@ -11042,7 +11051,8 @@ al último día de vigencia) y `en`, la medianoche de ese día en Colombia escri
 formato de las entradas reales (`2026-10-18T05:00:00+00:00`), así ordenarlas por texto o por
 instante da lo mismo. El panel (`lineasDelHistorial`) ordena por el instante y de una derivada
 muestra sólo el día, leído como texto, nunca con `new Date("2026-10-18")`, que en Colombia es
-el 17 a las 7 p. m. **Nunca lleva montos** (`anotar_historial` frena con `ValueError` una clave de plata, también anidada),
+el 17 a las 7 p. m.; una real lleva el día escrito igual y la hora: «18 oct 2026» contra «17 oct
+2026, 03:24 p. m.». **Nunca lleva montos** (`anotar_historial` frena con `ValueError` una clave de plata, también anidada),
 **nunca se purga** (≈ 10 KB por confirmación, con vértices) y **guarda para siempre el correo
 de quien actuó**: una supresión por Ley 1581 se hace a mano.
 
@@ -11096,9 +11106,10 @@ Las limitaciones escritas del diseño (§15.2), con lo que quedó de verdad:
 
 ### Cómo se probó
 
-- **`npm run probar`**: 1176 pruebas en 36 suites, 0 fallas (en `6a27cc4`, con los arreglos;
-  en `fc97dbc` eran 1154 y en `578058c`, 977). Tres suites nuevas: `probar-zonas` (38),
-  `probar-superficies` (20) y `probar-distribucion` (66: los casos de las reglas, los stores
+- **`npm run probar`**: 1179 pruebas en 36 suites, 0 fallas, con los arreglos del recorrido
+  final (en `6a27cc4` eran 1176, en `fc97dbc` 1154 y en `578058c`, 977).
+  Tres suites nuevas: `probar-zonas` (38),
+  `probar-superficies` (20) y `probar-distribucion` (68: los casos de las reglas, los stores
   con el `client.ts` real sobre un servidor de prueba, el oyente del teclado foco por foco, los
   colores, «Borrar sede», el historial con `TZ=America/Bogota`…), y
   pruebas sumadas a `probar-muebles` (el modo, el mueble desnudo, las guardas de la escena),
@@ -11267,13 +11278,22 @@ Vender se aparta de la de §9.9 del diseño, a propósito: dice dónde se carga.
   6 m o más frente a un pasillo de 2,5 m no entra entera desde ningún lado: queda la toma que
   muestra más (`entera: false`).
 - **Chicos**: `HistorialOut` (`api/participaciones.ts`) no tiene `dia` ni `derivado` y el panel
-  los lee con un tipo local; en el historial las derivadas dicen «18 oct 2026» y las reales
-  «17 de oct de 2026, 10:36 a. m.»; el globo de Supervisar muestra la cara A aunque se toque la
+  los lee con un tipo local; el globo de Supervisar muestra la cara A aunque se toque la
   B (ya era así: su cabecera es el código de la A); en la ficha 2D de administración «en el
   Editor 3D → Distribución» se lee dos veces.
 - **Visto de paso, sin relación con esto y sin investigar**: al abrir el plano o el Editor 3D
   se reescriben las etiquetas del layout de la base («GON-01» pasa a «Góndola Doble»); pasa
   también en el código de antes.
+
+**Lo que dejó el recorrido final** (arreglado después de `9e764ff`; pruebas en `probar-distribucion`
+y `probar-muebles`, y en Chromium H.17–H.19 pasaron de FALLA a OK):
+
+- **Tras el 409 de un alta, la otra sesión ya no lee «queda 100 %»**: todo 409 de una escritura de
+  términos llama a `releerTrasConflicto`, que relee la cara y la ocupación sin cerrar el formulario
+  ni tocar lo dibujado (sin adoptar una versión ajena de la distribución: el próximo guardado choca).
+- **El Editor 3D dice «Tomada»/«Parcial» como el plano**, y «Estado fixture» lleva su nota
+  (`PALABRA_POR_OCUPACION` y `notaDeEstadoPorOcupacion`, en `utils/partes.ts`).
+- **El historial escribe la fecha igual en todas** («17 oct 2026»); la hora, sólo en las reales.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 
@@ -12419,7 +12439,7 @@ código. Vale la pena el rato que toma:
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
 **Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las suites sin
-navegador —36 suites y 1176 pruebas al 2026-10-17 (`6a27cc4`), de `probar-planta` a
+navegador —36 suites y 1179 pruebas al 2026-10-17, de `probar-planta` a
 `probar-distribucion`; la cadena está en `frontend/package.json`—: transpila el `.ts` con el
 esbuild que ya trae vite y afirma en node. No hay runner de pruebas en el frontend y no valía
 la pena montar uno para esto. Ahí se encontró que un paso largo saltaba por encima de un

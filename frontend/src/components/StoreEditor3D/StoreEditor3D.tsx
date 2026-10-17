@@ -96,7 +96,9 @@ import { PartesDelMueble } from "../PartesDelMueble";
 import { textoDeLoQueNuncaSeAlquila } from "../../utils/partesDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
-import { claseDe, codigoDeParte, codigoVisibleDe, divisionDe, porParticipacion } from "../../utils/partes";
+import {
+  PALABRA_POR_OCUPACION, claseDe, codigoDeParte, codigoVisibleDe, divisionDe, notaDeEstadoPorOcupacion, porParticipacion,
+} from "../../utils/partes";
 import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
@@ -6667,6 +6669,9 @@ function CommercialPanel({
   const clienteDelPanel = useAuthStore((s) => s.cliente) ?? "";
   const ocupacionDelPanel = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteDelPanel, sedeDelPanel)]);
   const sm  = estadoQueSeVe(STATUS_META[fix.status], ocupacionDelMueble(fix, ocupacionDelPanel, sedeDelPanel));
+  // «Estado fixture» dice el de la base («Disponible»); si lo que se ve lo
+  // pone la ocupación, se dice debajo, como en la ficha del plano 2D.
+  const estadoPorOcupacion = sm !== STATUS_META[fix.status];
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
   const modeloDelMueble = modeloPorId(fix.modelo);
   // Infrastructure holds no contract: the commercial half of the panel hides.
@@ -7067,6 +7072,11 @@ function CommercialPanel({
               <option value="maintenance">Mantenimiento</option>
             </select>
           )}
+          {estadoPorOcupacion && (
+            <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-estado-por-ocupacion>
+              {notaDeEstadoPorOcupacion(sm.label)}
+            </p>
+          )}
           {estadoError && (
             <p className="mt-1 text-[10px] text-danger">{estadoError}</p>
           )}
@@ -7428,15 +7438,17 @@ function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut 
  *  salvo en uno que se vende por participación, donde lo dice la ocupación
  *  anónima del día —el `status` sigue «libre» en la base (D6), y un robatope
  *  con sus cuatro participaciones del 25 % decía «Disponible» en verde junto
- *  a su banda roja—. Todo tomado → «Ocupado»; algo comprometido → «Parcial»,
- *  en el ámbar de la banda; nada → el de siempre. */
+ *  a su banda roja—. Todo tomado → «Tomada», en el rojo de la banda; algo
+ *  comprometido → «Parcial», en su ámbar; nada → el de siempre. La palabra es
+ *  la del plano 2D y Supervisar (`PALABRA_POR_OCUPACION`): decía «Ocupado»
+ *  (recorrido final). */
 function estadoQueSeVe(
   sm: { bg: string; text: string; label: string },
   caras: readonly { dispo: "tomado" | "parcial" | "libre" }[] | null,
 ): { bg: string; text: string; label: string } {
   if (!caras || caras.length === 0) return sm;
-  if (caras.every((c) => c.dispo === "tomado")) return STATUS_META.occupied;
-  if (caras.some((c) => c.dispo !== "libre")) return { ...STATUS_META.reserved, label: "Parcial" };
+  if (caras.every((c) => c.dispo === "tomado")) return { ...STATUS_META.occupied, label: PALABRA_POR_OCUPACION.tomado };
+  if (caras.some((c) => c.dispo !== "libre")) return { ...STATUS_META.reserved, label: PALABRA_POR_OCUPACION.parcial };
   return sm;
 }
 

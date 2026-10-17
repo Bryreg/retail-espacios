@@ -37,6 +37,9 @@ import { useOcupacionStore } from "./ocupacionStore";
  *   · Otra sesión guardó en el medio (409 `version_vieja`): se deja de
  *     autoguardar y `traerLoNuevo` combina por participación
  *     (`fusionarZonas`), con «Usar lo mío» para los conflictos.
+ *   · Una escritura de términos que vuelve con un 409 (otra sesión vendió en
+ *     el medio): `releerTrasConflicto` vuelve a leer la cara y la ocupación
+ *     sin cerrar el formulario, y su vista previa dice lo que queda de verdad.
  */
 
 export interface DistribucionActiva {
@@ -106,6 +109,11 @@ interface DistribucionStore {
   /** Lo que devolvió una escritura de términos (`{termino, cara}`): pone la
    *  cara al día sin tocar lo dibujado y vuelve a leer la ocupación. */
   aplicarCara: (cara: CaraOut) => void;
+  /** Una escritura de términos que volvió con un 409 (capacidad, términos,
+   *  versión, reserva caducada…): otra sesión cambió la cara. La vuelve a leer
+   *  en segundo plano —y la ocupación—, sin cerrar el formulario ni tocar lo
+   *  dibujado. `true` si la puso al día; con cualquier otro rechazo, nada. */
+  releerTrasConflicto: (e: unknown) => Promise<boolean>;
   elegirDia: (dia: string) => void;
   /** Vacía todo: activa, datos, edición, formulario y lo no guardado. */
   reiniciar: () => void;
@@ -566,6 +574,29 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       });
       void useOcupacionStore.getState().recargarOcupacion(a.sede);
       useOcupacionStore.getState().invalidarResumen(a.sede);
+    },
+
+    releerTrasConflicto: async (e) => {
+      // Recorrido final (caso H): dos sesiones piden 60 % de la misma cara; la
+      // segunda frena con «queda 40 %», pero su vista previa seguía diciendo
+      // «queda 100 %» y el panel «Comprometido 0 %» hasta volver a entrar.
+      if ((e as { response?: { status?: unknown } } | null)?.response?.status !== 409) return false;
+      const a = get().activa;
+      if (!a) return false;
+      const gen = generacion;
+      let cara: CaraOut;
+      try {
+        cara = await leerCara(a.sede, espacioDeLaCara(a.codigo, a.cara));
+      } catch { return false; }   // se queda con lo que tenía: el formulario ya muestra el rechazo
+      if (!mismaCara(a, gen)) return false;
+      // Lo de los términos se pone al día; la distribución, no, si otra sesión
+      // la guardó en el medio: su versión es la que hace saltar el
+      // `version_vieja` del próximo guardado («Traer lo nuevo» combina). Con
+      // la versión nueva, ese guardado pisaría lo de la otra sesión en silencio.
+      const antes = get().datos;
+      const otraVersion = (antes?.distribucion?.version ?? 0) !== (cara.distribucion?.version ?? 0);
+      get().aplicarCara(antes && otraVersion ? { ...cara, distribucion: antes.distribucion, revision: antes.revision } : cara);
+      return true;
     },
 
     elegirDia: (dia) => set({ verAlDia: dia }),

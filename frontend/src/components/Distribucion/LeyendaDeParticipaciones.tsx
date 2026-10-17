@@ -704,6 +704,9 @@ function PreguntaDeCancelar({ pregunta, aviso, onAviso, onCerrar, datos }: {
       const r = rechazoDe(e);
       onAviso(r?.message || describeError(e, esContrato ? "No se pudo cancelar el contrato." : "No se pudo cancelar la reserva."));
       setHaciendo(false);
+      // Un 409 (otra sesión la cambió, ya caducó…): la cara se vuelve a leer
+      // en segundo plano, como después de un rechazo del formulario.
+      void st.releerTrasConflicto(e);
     }
   }
 
