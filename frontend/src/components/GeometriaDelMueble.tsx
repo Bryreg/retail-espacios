@@ -1,11 +1,28 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
+import { useOcupacionStore } from "../store/ocupacionStore";
 import { getFaceImages } from "../api/files";
 import {
-  TIPOS_CON_GEOMETRIA, conGeometria, fichaSugerida, geometriaALaVista, limitesDe, loVendidoDe, metros,
+  TIPOS_CON_GEOMETRIA, confirmadasDelResumen, conGeometria, fichaSugerida, geometriaALaVista, limitesDe, loVendidoDe, metros,
   problemaDelCambio, queCambia, revisarCambioDeGeometria,
-  type AvisoDeGeometria, type CambioDeGeometria,
+  type AvisoDeGeometria, type CambioDeGeometria, type DatosDeParticipacion,
 } from "../utils/geometriaDelMueble";
+import { porParticipacion } from "../utils/partes";
+
+/** Lo que se sabe de las participaciones de la sede para revisar un cambio de
+ *  geometría (paso 5, `loVendidoDe`): la ocupación anónima (contratos y
+ *  reservas vivas) y las caras con distribución confirmada (del resumen, que
+ *  es de administración, como estos campos). Los dos quedan en caché en el
+ *  store de lectura; lo que no se pudo leer va `null` («no se sabe»: se avisa
+ *  igual). */
+async function datosDeParticipacionDeLaSede(sede: string): Promise<DatosDeParticipacion> {
+  const st = useOcupacionStore.getState();
+  const [o, r] = await Promise.all([
+    st.cargarOcupacion(sede).catch(() => null),
+    st.cargarResumen({ sede }).catch(() => null),
+  ]);
+  return { ocupacion: o?.caras ?? null, confirmadas: confirmadasDelResumen(r) };
+}
 
 /**
  * «Alto», «Entrepaños» y «Módulo» de una góndola o una punta, en el panel del
@@ -100,7 +117,15 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
     } finally {
       setRevisando(false);
     }
-    const r = revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte, estado));
+    // Una cara por participación: con lo que se sabe de sus participaciones
+    // (sin esto decía «No se pudo revisar si la cara A tiene participaciones…»
+    // aunque se pudiera saber).
+    let participaciones: DatosDeParticipacion | undefined;
+    if (porParticipacion(f)) {
+      setRevisando(true);
+      try { participaciones = await datosDeParticipacionDeLaSede(sede); } finally { setRevisando(false); }
+    }
+    const r = revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte, estado, participaciones));
     if (r.bloqueo) { setProblema(r.bloqueo); volver(); return; }
     if (r.aviso) { setPendiente({ cambio, aviso: r.aviso }); return; }
     escribir(cambio);

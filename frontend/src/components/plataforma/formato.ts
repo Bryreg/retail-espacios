@@ -19,7 +19,7 @@
       columna con `tabular-nums` el guion se lee como un tachado.
    ========================================================================== */
 
-import { nombresDeInforme } from "../../catalogo/catalogo";
+import { CATALOGO_DE_MUEBLES, nombresDeInforme } from "../../catalogo/catalogo";
 
 /** Lo que se escribe cuando la API no trajo el dato. Nunca un 0, nunca vacío. */
 export const SIN_DATO = "—";
@@ -187,15 +187,26 @@ export function diasEntre(desde: string, hasta: string): number | null {
 // Hasta que existió el catálogo faltaban la ristra, el impulsador, la vitrina
 // (`mueble`) y la zona libre (`metro`): los informes decían «muebles»,
 // «metros» e «impulsadors».
+//
+// Y `participacion`, el tipo PROPIO que el servidor le pone a un contrato
+// `…-PC3` (`plataforma_detalle.TIPO_PARTICIPACION`): sin tarifa, así que
+// `nombresDeInforme` no lo nombra (nombra tarifas); su nombre es el de la clase
+// del catálogo, «participación de cara». Sin esto la consola decía
+// «participacion», sin tilde.
 
 const NOMBRES = nombresDeInforme();
+const PARTICIPACION = CATALOGO_DE_MUEBLES.partes.clases.participacion;
 
 const TIPOS: Record<string, string> = {
   ...NOMBRES.singular,
   fuera_del_plano: "fuera del plano",
+  ...(PARTICIPACION ? { participacion: PARTICIPACION.informe } : {}),
 };
 
-const TIPOS_PLURAL: Record<string, string> = NOMBRES.plural;
+const TIPOS_PLURAL: Record<string, string> = {
+  ...NOMBRES.plural,
+  ...(PARTICIPACION ? { participacion: PARTICIPACION.informePlural } : {}),
+};
 
 export function tipoN(tipo: string): string {
   return TIPOS[tipo] ?? tipo;

@@ -14,7 +14,7 @@ import {
   disponible, intervalosQueCuentan, pbDeTexto, pct, revisarCapacidad, revisarTerminos, vivo, type CambioDeTermino, type Rechazo,
 } from "../../utils/participaciones";
 import {
-  BOTON, Dialogo, datosDeLaCara, irAlProblema, nombreDeParticipacion, sumarDias, vigenciaDe,
+  BOTON, BOTON_PELIGRO, Dialogo, ESTILO_PELIGRO, datosDeLaCara, irAlProblema, nombreDeParticipacion, sumarDias, vigenciaDe,
 } from "./LeyendaDeParticipaciones";
 
 /**
@@ -54,6 +54,18 @@ export function valorDeTexto(s: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 const pesos = (n: number) => `$ ${Math.round(n).toLocaleString("es-CO")}`;
+
+/**
+ * Qué hace Esc en el formulario (también con el foco en un campo, donde Esc
+ * llega igual al diálogo): sin nada escrito, cierra; con algo escrito,
+ * pregunta antes de perderlo; con la pregunta a la vista, la cierra y se
+ * sigue editando. Mientras se guarda, nada.
+ */
+export function queHaceEsc(c: { sucio: boolean; preguntando: boolean; enviando: boolean }): "cerrar" | "preguntar" | "seguir" | "nada" {
+  if (c.enviando) return "nada";
+  if (c.preguntando) return "seguir";
+  return c.sucio ? "preguntar" : "cerrar";
+}
 
 /** El último día que ocupa un término vivo de la participación (o null). */
 function finDeLosVivos(p: ParticipacionOut, hoy: string): string | null {
@@ -144,6 +156,10 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
   const participacion = terminoId != null ? datos.participaciones.find((p) => p.terminos.some((t) => t.id === terminoId)) ?? null : null;
   const termino = participacion?.terminos.find((t) => t.id === terminoId) ?? null;
   const [c, setC] = useState<Campos>(() => camposIniciales(modo, termino, participacion, hoy));
+  // Lo que había al abrir: con algo distinto, Esc pregunta antes de cerrar.
+  const [inicial] = useState<Campos>(() => c);
+  const sucio = (Object.keys(inicial) as (keyof Campos)[]).some((k) => c[k] !== inicial[k]);
+  const [preguntaCerrar, setPreguntaCerrar] = useState(false);
   const [proveedores, setProveedores] = useState<Supplier[] | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [rechazo, setRechazo] = useState<{ mensaje: string; problemas: ProblemaOut[]; code: string | null } | null>(null);
@@ -302,8 +318,24 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
   }
 
   return (
-    <Dialogo titulo={titulo} onCerrar={cerrar} cerrarAfuera={false} ancho="max-w-md">
+    <Dialogo titulo={titulo} onCerrar={cerrar} cerrarAfuera={false} ancho="max-w-md"
+      alEscape={() => {
+        const q = queHaceEsc({ sucio, preguntando: preguntaCerrar, enviando });
+        if (q === "cerrar") cerrar();
+        else if (q === "preguntar") setPreguntaCerrar(true);
+        else if (q === "seguir") setPreguntaCerrar(false);
+      }}>
       <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); void guardar(); }}>
+        {preguntaCerrar && (
+          <div role="alert" data-pregunta-cerrar className="rounded-md border px-2.5 py-2 text-xs leading-snug"
+            style={{ borderColor: "rgb(var(--entra-txt-rgb) / 0.6)", color: "rgb(var(--entra-txt-rgb))" }}>
+            <p>Hay cambios sin guardar en el formulario. Si cerrás, se pierde lo escrito.</p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              <button type="button" className={BOTON} autoFocus onClick={() => setPreguntaCerrar(false)}>Seguir editando</button>
+              <button type="button" className={BOTON_PELIGRO} style={ESTILO_PELIGRO} onClick={cerrar}>Cerrar sin guardar</button>
+            </div>
+          </div>
+        )}
         {rechazo && (
           <div role="alert" className="rounded-md border px-2.5 py-2 text-xs leading-snug" style={{ borderColor: ROJO, color: ROJO }}>
             <p>{rechazo.mensaje}</p>

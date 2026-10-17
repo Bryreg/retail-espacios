@@ -48,6 +48,7 @@ import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { findOrCreateSpace, updateSpaceStatus } from "../../api/spaces";
 import { fetchDeleteImpact } from "../../api/layout";
 import type { DeleteImpact } from "../../api/layout";
+import { avisoDelRenombre, lineasDelImpacto } from "../../utils/impactoDeSede";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
 import type { SpaceFileMeta } from "../../api/files";
 import client from "../../api/client";
@@ -414,6 +415,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingSedeVal, setEditingSedeVal]       = useState("");
   const [addingNewSede, setAddingNewSede]         = useState(false);
   const [confirmDeleteSede, setConfirmDeleteSede] = useState(false);
+  /** El renombre que espera confirmación: renombrar una sede la borra y la
+   *  crea de nuevo (cierra contratos, cancela reservas; D21/D22, tarea aparte),
+   *  así que se dice ANTES con lo que cuenta el servidor. */
+  const [renombreEnEspera, setRenombreEnEspera] = useState<{ de: string; a: string; aviso: string } | null>(null);
+  const renombrando = useRef(false);
   const [newSedeVal, setNewSedeVal]               = useState("");
   const [clipboard, setClipboard]               = useState<PlacedItem2D[]>([]);
   // Catalog label editing state
@@ -1162,6 +1168,30 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     const item = items.find((i) => i.id === id)!;
     const pt = svgPoint(e);
     setResizeState({ id, ox: pt.x - item.w, oy: pt.y - item.h, origW: item.w, origH: item.h });
+  }
+
+  // ── Renombrar la sede ───────────────────────────────────────────────────────
+  //
+  // El renombre es «borrar + crear» (`renameSede` borra el plano del nombre
+  // viejo en el servidor, y el archivo de la sede cierra sus contratos y
+  // cancela sus reservas provisionales de participación). Arreglarlo es una
+  // tarea aparte (D21/D22); acá se dice antes: con algo comercial en juego, un
+  // diálogo con lo que cuenta el servidor (`GET /layout/{sede}/impact`, el
+  // mismo de «Borrar sede»). Sin nada en juego, como siempre. Enter y el blur
+  // del campo llegan los dos: sólo cuenta el primero.
+  async function pedirRenombre(nuevo: string) {
+    if (renombrando.current) return;
+    renombrando.current = true;
+    const viejo = sede;
+    if (!nuevo || nuevo === viejo) return;
+    let impacto: DeleteImpact | null = null;
+    if (isAdmin) {
+      try { impacto = await fetchDeleteImpact(viejo); } catch { impacto = null; }
+    }
+    const aviso = isAdmin ? avisoDelRenombre(viejo, nuevo, impacto) : null;
+    if (aviso) { setRenombreEnEspera({ de: viejo, a: nuevo, aviso }); return; }
+    renameSede(viejo, nuevo);
+    setSede(nuevo);
   }
 
   // ── Renombrar un mueble ─────────────────────────────────────────────────────
@@ -2549,14 +2579,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               }}
               value={editingSedeVal}
               onChange={(e) => setEditingSedeVal(e.target.value)}
-              onBlur={() => {
-                const n = normalizeSede(editingSedeVal);
-                if (n && n !== sede) { renameSede(sede, n); setSede(n); }
-                setEditingSedeInline(false);
-              }}
+              onBlur={() => { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") { const n = normalizeSede(editingSedeVal); if (n && n !== sede) { renameSede(sede, n); setSede(n); } setEditingSedeInline(false); }
-                if (e.key === "Escape") setEditingSedeInline(false);
+                if (e.key === "Enter") { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }
+                if (e.key === "Escape") { renombrando.current = true; setEditingSedeInline(false); }
               }}
               autoFocus
             />
@@ -2577,7 +2603,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           {/* Rename sede */}
           {!editingSedeInline && (
             <button
-              onClick={() => { setEditingSedeInline(true); setEditingSedeVal(sede); }}
+              onClick={() => { renombrando.current = false; setEditingSedeInline(true); setEditingSedeVal(sede); }}
               style={{
                 padding: 2, borderRadius: 4, border: "none",
                 background: "transparent", cursor: "pointer", color: "var(--ink-4)",
@@ -2722,6 +2748,19 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         </div>
       </div>
 
+      {renombreEnEspera && (
+        <RenombrarSedeDialog
+          {...renombreEnEspera}
+          onCancel={() => setRenombreEnEspera(null)}
+          onConfirm={() => {
+            const { de, a } = renombreEnEspera;
+            setRenombreEnEspera(null);
+            renameSede(de, a);
+            setSede(a);
+          }}
+        />
+      )}
+
       {confirmDeleteSede && (
         <DeleteSedeDialog
           sede={sede}
@@ -2750,6 +2789,66 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Renombrar sede: el aviso ────────────────────────────────────────────────
+
+/**
+ * Renombrar una sede con contratos activos o reservas provisionales los cierra
+ * y las cancela (es «borrar + crear»; D21/D22, tarea aparte). Este diálogo lo
+ * dice antes, con el texto de `avisoDelRenombre`, y deja seguir o no.
+ */
+function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
+  de: string; a: string; aviso: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed", inset: 0, zIndex: 200, background: "rgba(26,24,20,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div
+        role="dialog" aria-modal="true" aria-label={`Renombrar la sede «${de}»`} data-renombrar-sede
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 440, maxWidth: "100%", background: "var(--surface)", border: "1px solid var(--line)",
+          borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-lg)", overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid var(--line-soft)", fontSize: 15, fontWeight: 700, color: "var(--ink-1)" }}>
+          Renombrar «{de}» a «{a}»
+        </div>
+        <p style={{ margin: 0, padding: "14px 18px 4px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>{aviso}</p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", padding: "14px 18px 16px" }}>
+          <button
+            onClick={onCancel} autoFocus
+            style={{
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+              background: "var(--surface)", color: "var(--ink-2)", fontSize: 12.5, fontWeight: 500, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            Dejar el nombre
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "none", background: "var(--danger)",
+              color: "#fff", fontSize: 12.5, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            Renombrar igual
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2864,18 +2963,21 @@ function DeleteSedeDialog({
                 {slotsWithContract} balda{slotsWithContract !== 1 ? "s" : ""} con proveedor asignado
               </div>
             )}
-            {impact !== null && impact.active_leases > 0 && (
-              <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 3 }}>
-                {impact.active_leases} contrato{impact.active_leases !== 1 ? "s" : ""} activo
-                {impact.active_leases !== 1 ? "s" : ""} se cerrará
-                {impact.active_leases !== 1 ? "n" : ""}
+            {/* Lo que cuenta el servidor: los contratos que se cierran y las
+                reservas provisionales de participación que se cancelan. */}
+            {lineasDelImpacto(impact).map((linea) => (
+              <div key={linea} data-impacto style={{ fontSize: 12, color: "var(--danger)", marginTop: 3 }}>
+                {linea}
               </div>
-            )}
+            ))}
           </div>
 
           <p style={{ margin: "0 0 12px" }}>
             {impact !== null && impact.active_leases > 0
               ? "Los contratos se cierran y quedan archivados: siguen en la base de datos con su valor y sus fechas, pero dejan de avisar por vencimiento. "
+              : ""}
+            {impact !== null && (impact.reservas_vivas ?? 0) > 0
+              ? "Las reservas provisionales pasan a canceladas y quedan en el historial de su cara. "
               : ""}
             El tablero pierde los ingresos, la ocupación y los vencimientos de esta sede.
           </p>

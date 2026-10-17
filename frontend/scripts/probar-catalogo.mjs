@@ -620,6 +620,23 @@ await prueba("la participación, sin tarifa propia, no le pone nombre a ninguna 
   assert.equal(singular.parte_puerta, CATALOGO.partes.clases.puertas.informe, "las divisiones siguen nombradas por su tarifa");
 });
 
+await prueba("la consola nombra el tipo propio `participacion` con el nombre de la clase, no tal cual", async () => {
+  // El servidor le pone a un contrato `…-PC3` el tipo `participacion`
+  // (`plataforma_detalle.TIPO_PARTICIPACION`); los informes decían
+  // «participacion», sin tilde, porque la clase no tiene tarifa (y
+  // `nombresDeInforme`, que sigue sin nombrarla, nombra tarifas).
+  const FMT = await cargar("src/components/plataforma/formato.ts");
+  const pc = CATALOGO.partes.clases.participacion;
+  assert.equal(FMT.tipoN("participacion"), pc.informe);
+  assert.equal(FMT.tipoN("participacion"), "participación de cara");
+  assert.equal(FMT.tipoP("participacion", 1), "participación de cara");
+  assert.equal(FMT.tipoP("participacion", 3), "participaciones de cara");
+  assert.match(leer(join(repo, "backend", "app", "plataforma_detalle.py")), /^TIPO_PARTICIPACION = "participacion"$/m,
+    "el tipo que pone el servidor ya no es la clave que nombra la consola");
+  // Las demás tarifas siguen por su clave.
+  assert.equal(FMT.tipoN("parte_puerta"), CATALOGO.partes.clases.puertas.informe);
+});
+
 await prueba("qué tipos se venden por participación, y con qué receta", () => {
   // §7.1 del diseño de participaciones: los siete tipos del pedido llevan
   // receta; los demás alquilables (la nevera de puertas, la isla, el cartón…)

@@ -315,6 +315,19 @@ export interface DatosDeParticipacion {
   confirmadas?: ReadonlySet<string> | null;
 }
 
+/** Las caras con distribución CONFIRMADA del resumen de la sede (también la
+ *  que quedó «para revisar», y una confirmada con un borrador encima, que
+ *  sigue `confirmada`): lo que `DatosDeParticipacion.confirmadas` necesita.
+ *  `null` sin resumen (no se sabe). */
+export function confirmadasDelResumen(
+  r: { caras: readonly { codigo_cara: string; estado_distribucion: string }[] } | null | undefined,
+): Set<string> | null {
+  if (!r) return null;
+  return new Set(r.caras
+    .filter((c) => c.estado_distribucion === "confirmada" || c.estado_distribucion === "para_revisar")
+    .map((c) => c.codigo_cara));
+}
+
 export interface LoVendido {
   /** Sólo las caras con algo. */
   caras: CaraVendida[];

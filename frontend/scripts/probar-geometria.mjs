@@ -405,7 +405,9 @@ prueba("el componente NO escribe sin revisar: bloqueo no escribe, aviso espera �
   assert.deepEqual(llamadas.filter((l) => l !== "escribir(cambio: CambioDeGeometria)"), ["escribir(cambio)", "escribir(c)"],
     "el componente escribe en un lugar más que tras la revisión y tras «Cambiar igual»");
   const proponer = recorte(componente, "async function proponer(", "const alSalir");
-  const orden = ["problemaDelCambio(f, cambio)", "getFaceImages()", "revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte, estado))",
+  // `loVendidoDe` va como PREFIJO (§12 del diseño de participaciones): ganó
+  // un quinto parámetro, `participaciones`, que se fija aparte, abajo.
+  const orden = ["problemaDelCambio(f, cambio)", "getFaceImages()", "revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte, estado",
     "if (r.bloqueo) { setProblema(r.bloqueo); volver(); return; }",
     "if (r.aviso) { setPendiente({ cambio, aviso: r.aviso }); return; }", "escribir(cambio);"];
   let desde = 0;
@@ -416,6 +418,16 @@ prueba("el componente NO escribe sin revisar: bloqueo no escribe, aviso espera �
   }
   // Si no se pudo preguntar por el arte: null, que avisa.
   assert.match(proponer, /catch \{\s*conArte = null;/, "si falla la consulta del arte se sigue como si no hubiera");
+  // El quinto parámetro: lo que se sabe de las participaciones de la sede, leído
+  // DESPUÉS del arte y ANTES de revisar, sólo si el mueble se vende así.
+  assert.ok(proponer.includes("revisarCambioDeGeometria(f, cambio, loVendidoDe(f, sede, conArte, estado, participaciones));"),
+    "`loVendidoDe` no recibe lo que se sabe de las participaciones (paso 5): una cara por participación dice «No se pudo revisar»");
+  const leeParticipaciones = proponer.indexOf("participaciones = await datosDeParticipacionDeLaSede(sede);");
+  assert.ok(leeParticipaciones > proponer.indexOf("getFaceImages()")
+    && leeParticipaciones < proponer.indexOf("revisarCambioDeGeometria("), "las participaciones no se leen antes de revisar");
+  assert.match(proponer, /if \(porParticipacion\(f\)\) \{\s*setRevisando\(true\);/, "se leen las participaciones de un mueble que no se vende así");
+  assert.match(componente, /async function datosDeParticipacionDeLaSede\(sede: string\): Promise<DatosDeParticipacion> \{[\s\S]*?st\.cargarOcupacion\(sede\)\.catch\(\(\) => null\),\s*st\.cargarResumen\(\{ sede \}\)\.catch\(\(\) => null\),[\s\S]*?return \{ ocupacion: o\?\.caras \?\? null, confirmadas: confirmadasDelResumen\(r\) \};/,
+    "las participaciones no salen del store de lectura (ocupación y resumen), o una falla no queda como «no se sabe»");
   // «Cambiar igual» escribe el cambio que se revisó.
   assert.match(componente, /onClick=\{\(\) => \{ const c = pendiente\.cambio; setPendiente\(null\); escribir\(c\); \}\}[^]*?Cambiar igual/);
   assert.match(componente, /Dejarlo como estaba/);

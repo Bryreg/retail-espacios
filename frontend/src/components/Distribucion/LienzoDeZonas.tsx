@@ -11,7 +11,7 @@ import { guiasDeCara } from "../../utils/superficie";
 import { AREA_MINIMA_M2, cajas, trapecios, validarZona, type Poligono, type Punto } from "../../utils/zonasGeometria";
 import { ESTAMPAS, type Estampa } from "../../utils/coloresDeMarca";
 import {
-  datosDeLaCara, fechaLegible, nombreDeParticipacion, tonoCss, useRevisionEnVivo, useVistaDeDistribucion,
+  datosDeLaCara, datosDeLaZona, nombreDeParticipacion, tonoCss, useRevisionEnVivo, useVistaDeDistribucion,
 } from "./LeyendaDeParticipaciones";
 
 /**
@@ -543,7 +543,9 @@ export default function LienzoDeZonas({ fixtureId, sede }: { fixtureId: string; 
 
   const fs = px(11);
   const manijaPx = px(10);
-  const infoElegida = elegida && (ed.modo === "mirar" || !puedeEditar) ? porS.get(elegida.participacionSpaceId) : null;
+  // Los datos de la zona elegida se ven en «Mirar» y en «Editar» por igual
+  // (pedido §12: «al seleccionar una sombra, muestra sus datos»).
+  const partElegida = elegida ? d?.porSpace.get(elegida.participacionSpaceId) ?? null : null;
   const kElegida = elegida ? ed.zonas.indexOf(elegida) : -1;
 
   return (
@@ -778,11 +780,10 @@ export default function LienzoDeZonas({ fixtureId, sede }: { fixtureId: string; 
           </g>
         </svg>
 
-        {/* Lo que se ve de la zona elegida en «Mirar» */}
-        {elegida && infoElegida && (
-          <div className="pointer-events-none absolute left-2 top-2 max-w-[70%] rounded-md border border-dark-line-2 bg-dark-surface px-2.5 py-1.5 text-[11px] text-dark-ink-2 shadow-lg">
-            <b className="text-dark-ink-1">Zona {kElegida + 1}</b> · participación {infoElegida.nombre} · {pct(infoElegida.contratado)} contratado
-            {!infoElegida.cuenta && <> · no cuenta el {fechaLegible(dia, hoy)}</>}
+        {/* Lo que se ve de la zona elegida, en «Mirar» y en «Editar» */}
+        {elegida && partElegida && (
+          <div data-datos-de-la-zona className="pointer-events-none absolute left-2 top-2 max-w-[70%] rounded-md border border-dark-line-2 bg-dark-surface px-2.5 py-1.5 text-[11px] text-dark-ink-2 shadow-lg">
+            {datosDeLaZona(kElegida, elegida.vertices, partElegida, sup, dia, hoy)}
           </div>
         )}
         {!alDia && (

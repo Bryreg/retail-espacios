@@ -17,7 +17,9 @@ import {
   cuentaElDia, cuentaEseDia, disponible, intervalosQueCuentan, pct, pico, seCruzanEnFechas, vivo,
   type Cuenta, type Fisico, type Juicio, type Termino,
 } from "../../utils/participaciones";
-import { areaUtil, dentroDeLosTopes, type Medidas, type Poligono } from "../../utils/zonasGeometria";
+import {
+  areaCubierta, areaUtil, dentroDeLosTopes, dibujadoPb, validarZona, type Exclusion, type Medidas, type Poligono,
+} from "../../utils/zonasGeometria";
 
 /**
  * La leyenda de la distribución de una cara (§9.3 del diseño de
@@ -319,6 +321,31 @@ export function filaDeLaLeyenda(p: ParticipacionOut, cuenta: Cuenta, dia: string
   };
 }
 
+/**
+ * Lo que se dice de la zona ELEGIDA, igual en «Mirar» que en «Editar» (pedido
+ * §12: «al seleccionar una sombra, muestra sus datos y permite modificarla»):
+ * cuál es, de qué participación (número, proveedor y marca), cuánto tiene
+ * contratado, cuánto de lo que se vende cubre ESTA zona (m² y % de la cara) y
+ * el estado comercial del término que se muestra ese día. `k` es el índice en
+ * `edicion.zonas` (no el de la capa del servidor).
+ */
+export function datosDeLaZona(
+  k: number, vertices: unknown, p: ParticipacionOut,
+  sup: { ancho: number; alto: number; exclusiones: readonly Exclusion[] }, dia: string, hoy: string,
+): string {
+  const f = filaDeLaLeyenda(p, cuentaDe(p, null), dia, hoy);
+  const r = validarZona(vertices, sup.ancho, sup.alto);
+  let cubre = "zona sin terminar de dibujar";
+  if (r.codigo === null) {
+    const m2 = areaCubierta([r.vertices], sup.exclusiones) * sup.ancho * sup.alto;
+    const m2Texto = m2 > 0 && m2 < 0.005 ? "menos de 0,01" : m2.toFixed(2).replace(".", ",");
+    cubre = `esta zona cubre ${m2Texto} m² (${pct(dibujadoPb([r.vertices], sup.exclusiones))} de la cara)`;
+  }
+  const partes = [`Zona ${k + 1}`, `participación ${f.nombre}`, `${pct(f.contratado)} contratado`, cubre, f.estado];
+  if (!f.cuentaElDia && f.rotuloDelDia) partes.push(f.rotuloDelDia);
+  return partes.join(" · ");
+}
+
 /** «25 % contratado · 24,1 % dibujado · falta 0,9 %» (o «sobra 1 %»). */
 export function textoDeMagnitudes(f: Pick<FilaDeLaLeyenda, "contratado" | "dibujado" | "pendiente" | "exceso">): string {
   const cola = f.exceso > 0 ? `sobra ${pct(f.exceso)}` : f.pendiente > 0 ? `falta ${pct(f.pendiente)}` : "completa";
@@ -366,10 +393,13 @@ useDistribucionStore.subscribe((s, antes) => {
  * el mueble): el foco entra al abrirse y el `stopPropagation` de React corta
  * la burbuja antes de `window`.
  */
-export function Dialogo({ titulo, onCerrar, children, ancho = "max-w-sm", cerrarAfuera = true }: {
+export function Dialogo({ titulo, onCerrar, children, ancho = "max-w-sm", cerrarAfuera = true, alEscape }: {
   titulo: string; onCerrar: () => void; children: ReactNode; ancho?: string;
   /** Un clic afuera de la tarjeta lo cierra (no en un formulario: se perdería lo escrito). */
   cerrarAfuera?: boolean;
+  /** Lo que hace Esc (también con el foco en un campo). Sin esto, cierra. Un
+   *  formulario con algo escrito pregunta antes (`queHaceEsc`). */
+  alEscape?: () => void;
 }) {
   useModalAbierto();
   const ref = useRef<HTMLDivElement>(null);
@@ -384,7 +414,7 @@ export function Dialogo({ titulo, onCerrar, children, ancho = "max-w-sm", cerrar
       tabIndex={-1}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === "Escape") { e.preventDefault(); onCerrar(); }
+        if (e.key === "Escape") { e.preventDefault(); (alEscape ?? onCerrar)(); }
       }}
       onMouseDown={(e) => { if (cerrarAfuera && e.target === e.currentTarget) onCerrar(); }}
       className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-5 outline-none"
@@ -505,43 +535,51 @@ export default function LeyendaDeParticipaciones() {
           const renovable = masNuevo && masNuevo.estado === "contrato" ? masNuevo : null;
           return (
             <li key={p.space_id} data-participacion={p.numero}>
+              {/* La fila son DOS botones hermanos —elegir la participación y sus
+                  acciones—, no un botón adentro de otro (un `role="button"`
+                  con un `<button>` adentro no se lee bien con un lector de
+                  pantalla ni se recorre bien con Tab). Adentro de un botón sólo
+                  va texto en línea: `span` con `block`, no `div` ni `p`. */}
               <div
-                role="button"
-                tabIndex={0}
-                aria-pressed={esActiva}
-                onClick={() => elegir(p.space_id)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); elegir(p.space_id); } }}
-                className={`flex cursor-pointer items-start gap-2 rounded-md border px-2 py-1.5 transition-colors ${esActiva ? "border-dark-ink-2 bg-dark-surface-2" : "border-dark-line hover:border-dark-line-2"}`}
+                className={`flex items-start gap-2 rounded-md border px-2 py-1.5 transition-colors ${esActiva ? "border-dark-ink-2 bg-dark-surface-2" : "border-dark-line hover:border-dark-line-2"}`}
                 style={{ opacity: f.cuentaElDia ? 1 : 0.7 }}
               >
-                <span className="mt-0.5"><MuestraDeEstampa estampa={estampa} apagada={!f.cuentaElDia} /></span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-dark-ink-1">
-                    {f.nombre}
-                    {esActiva && <span className="ml-1 text-[10px] font-normal text-dark-ink-2">· dibujás con ésta</span>}
-                  </p>
-                  <p className="text-[11px] leading-snug" data-magnitudes
-                    style={{ color: f.exceso > 0 ? "rgb(var(--ocupado-txt-rgb))" : "rgb(var(--ink-2-rgb))" }}>
-                    {f.exceso > 0 && "⚠ "}{textoDeMagnitudes(f)}
-                  </p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-snug text-dark-ink-2">
-                    <span className={`rounded px-1 py-px font-semibold text-dark-ink-1 ${f.esReserva ? "border border-dashed border-dark-ink-3" : "border border-dark-line-2 bg-dark-surface-2"}`}>
-                      {f.estado}
+                <button
+                  type="button"
+                  aria-pressed={esActiva}
+                  data-elegir-participacion
+                  onClick={() => elegir(p.space_id)}
+                  className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left"
+                >
+                  <span className="mt-0.5"><MuestraDeEstampa estampa={estampa} apagada={!f.cuentaElDia} /></span>
+                  <span className="block min-w-0 flex-1">
+                    <span className="block truncate text-xs font-semibold text-dark-ink-1">
+                      {f.nombre}
+                      {esActiva && <span className="ml-1 text-[10px] font-normal text-dark-ink-2">· dibujás con ésta</span>}
                     </span>
-                    <span>{f.vigencia}</span>
-                    {f.rotuloDelDia && <span className="font-semibold text-dark-ink-1">· {f.rotuloDelDia}</span>}
-                  </p>
-                  {f.despues && (
-                    <p className="text-[10px] text-dark-ink-3">
-                      Después: {f.despues.estado === "reserva" ? "reserva provisional" : "contrato"} {vigenciaDe(f.despues)}
-                    </p>
-                  )}
-                </div>
+                    <span className="block text-[11px] leading-snug" data-magnitudes
+                      style={{ color: f.exceso > 0 ? "rgb(var(--ocupado-txt-rgb))" : "rgb(var(--ink-2-rgb))" }}>
+                      {f.exceso > 0 && "⚠ "}{textoDeMagnitudes(f)}
+                    </span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-snug text-dark-ink-2">
+                      <span className={`rounded px-1 py-px font-semibold text-dark-ink-1 ${f.esReserva ? "border border-dashed border-dark-ink-3" : "border border-dark-line-2 bg-dark-surface-2"}`}>
+                        {f.estado}
+                      </span>
+                      <span>{f.vigencia}</span>
+                      {f.rotuloDelDia && <span className="font-semibold text-dark-ink-1">· {f.rotuloDelDia}</span>}
+                    </span>
+                    {f.despues && (
+                      <span className="block text-[10px] text-dark-ink-3">
+                        Después: {f.despues.estado === "reserva" ? "reserva provisional" : "contrato"} {vigenciaDe(f.despues)}
+                      </span>
+                    )}
+                  </span>
+                </button>
                 <button
                   type="button"
                   aria-label={`Acciones de la participación ${p.numero}`}
                   aria-expanded={menu === p.space_id}
-                  onClick={(e) => { e.stopPropagation(); setMenu(menu === p.space_id ? null : p.space_id); }}
+                  onClick={() => setMenu(menu === p.space_id ? null : p.space_id)}
                   className="rounded p-1 text-dark-ink-2 hover:bg-dark-line hover:text-dark-ink-1"
                 >
                   <MoreHorizontal size={14} />

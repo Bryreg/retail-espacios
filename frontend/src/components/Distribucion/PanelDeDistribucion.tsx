@@ -127,6 +127,17 @@ const cuandoFue = (iso: string) => {
 
 type Pregunta = { tipo: "cara"; cara: "A" | "B" } | { tipo: "salir" } | { tipo: "descartarBorrador" } | null;
 
+/** Lo que dice «Descartar el borrador» antes de hacerlo. Descartar vuelve a
+ *  leer la cara del servidor: lo que se cambió en pantalla y todavía no se
+ *  guardó también se pierde, y hay que decirlo (verificación del paso 6b). */
+export function textoDeDescartarBorrador(c: { cara: "A" | "B"; hayConfirmada: boolean; sucio: boolean }): string[] {
+  const fuera = [
+    `Se borra el borrador guardado de la cara ${c.cara}${c.hayConfirmada ? " y vuelve a verse la distribución confirmada" : ""}. Queda anotado en el historial.`,
+  ];
+  if (c.sucio) fuera.push("También se pierden los cambios que hiciste en pantalla y todavía no guardaste.");
+  return fuera;
+}
+
 export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }: { fixtureId: string; sede: string; onEncuadrarCara: (cara: "A" | "B") => void }) {
   const activa = useDistribucionStore((s) => s.activa);
   const datos = useDistribucionStore((s) => s.datos);
@@ -609,10 +620,12 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
       )}
       {preguntaVisible?.tipo === "descartarBorrador" && (
         <Dialogo titulo="Descartar el borrador" onCerrar={cerrarPregunta}>
-          <p className="text-xs leading-relaxed text-dark-ink-2">
-            Se borra el borrador guardado de la cara {activa.cara}{datos?.distribucion?.confirmada.length ? " y vuelve a verse la distribución confirmada" : ""}.
-            Queda anotado en el historial.
-          </p>
+          {textoDeDescartarBorrador({ cara: activa.cara, hayConfirmada: !!datos?.distribucion?.confirmada.length, sucio }).map((linea, i) => (
+            <p key={i} className={`text-xs leading-relaxed ${i === 0 ? "text-dark-ink-2" : "mt-1.5 font-semibold"}`}
+              style={i === 0 ? undefined : { color: "rgb(var(--entra-txt-rgb))" }} data-descartar-linea={i}>
+              {linea}
+            </p>
+          ))}
           {guardado.estado === "error" && guardado.mensaje && <p role="alert" className="mt-2 text-xs" style={{ color: "rgb(var(--ocupado-txt-rgb))" }}>{guardado.mensaje}</p>}
           <div className="mt-3 flex justify-end gap-2">
             <button type="button" className={BOTON} onClick={cerrarPregunta}>Dejarlo así</button>

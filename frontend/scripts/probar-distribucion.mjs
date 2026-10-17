@@ -1462,4 +1462,131 @@ await prueba("vista de pantalla (verificación 6b): «Ver cómo estaba» y el pe
   assert.ok(vacia(), "cambiar de cliente dejó la vista del anterior");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// INTEGRACIÓN · lo que los pasos dejaron anotado para «otro dueño»
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Los datos de la zona elegida también en «Editar» (pedido §12), Esc en un
+// campo del formulario que no pierde lo escrito, «Descartar borrador» que avisa
+// lo que se pierde en pantalla, la fila de la leyenda sin un botón adentro de
+// otro (verificación del paso 6b), y «Borrar sede» / el renombre que nombran
+// las reservas provisionales que se cancelan (pasos 4a y 4c).
+
+console.log("distribución · pendientes de la integración");
+
+const rI = await build({
+  entryPoints: [join(raiz, "src", "utils", "impactoDeSede.ts")],
+  bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+});
+const IMP = await import("data:text/javascript;base64," + Buffer.from(rI.outputFiles[0].text).toString("base64"));
+
+await prueba("la zona elegida dice sus datos en «Editar» igual que en «Mirar»: participación, proveedor, %, área que cubre y estado (ejecutado)", () => {
+  const L = P6.LEY;
+  const sup = { ancho: 1.25, alto: 1.8, exclusiones: [{ por: "zocalo", u0: 0, u1: 1, v0: 0, v1: 0.1 }] };
+  const p = {
+    space_id: 7, codigo: "NAVE-GON-01-PC3", numero: 3, viva: true, contratado_pb: 2500, dibujado_pb: 0, pendiente_pb: 2500,
+    terminos: [{ id: 30, space_id: 7, numero: 3, estado: "contrato", estado_visible: "vigente", desde: "2026-10-01", hasta: "2027-01-31",
+      caduca: null, proveedor: { id: 4, nombre: "Postobón" }, marca: "Hit", puntos_basicos: 2500, baja_fecha: null, lease_id: 90 }],
+  };
+  // Media cara de ancho, de v = 0 a 0,5: pisa el zócalo (0 a 0,1), que no cuenta.
+  const zona = [[0, 0], [0.5, 0], [0.5, 0.5], [0, 0.5]];
+  const t = L.datosDeLaZona(1, zona, p, sup, "2026-10-17", "2026-10-17");
+  const m2 = 0.5 * 0.4 * 1.25 * 1.8;                       // 0,45 m² de lo que se vende
+  assert.equal(t, `Zona 2 · participación 3 · Postobón · Hit · 25 % contratado · esta zona cubre ${m2.toFixed(2).replace(".", ",")} m² (22,22 % de la cara) · Contrato vigente`);
+  // Un día en que no cuenta: lo dice.
+  const futuro = { ...p, terminos: [{ ...p.terminos[0], estado_visible: "firmado", desde: "2026-12-01" }] };
+  assert.match(L.datosDeLaZona(0, zona, futuro, sup, "2026-10-17", "2026-10-17"), /Contrato firmado · empieza el 1 dic · desde el 1 dic$/);
+  // Un trazo a medias no rompe la tarjeta.
+  assert.match(L.datosDeLaZona(0, [[0, 0], [0.1, 0]], p, sup, "2026-10-17", "2026-10-17"), /zona sin terminar de dibujar/);
+  // El lienzo la muestra con la zona elegida, sin mirar el modo.
+  const lienzo = codigo6b("LienzoDeZonas");
+  assert.ok(!/infoElegida/.test(lienzo) && !/elegida && \(ed\.modo === "mirar"/.test(lienzo), "la tarjeta de la zona sigue sólo en «Mirar»");
+  assert.match(lienzo, /\{elegida && partElegida && \([\s\S]{0,320}datosDeLaZona\(kElegida, elegida\.vertices, partElegida, sup, dia, hoy\)/);
+});
+
+await prueba("formulario: Esc con algo escrito pregunta y no cierra (tampoco desde un campo); sin nada escrito cierra; la pregunta se va con Esc (ejecutado)", () => {
+  const q = P6.FORM.queHaceEsc;
+  assert.equal(q({ sucio: false, preguntando: false, enviando: false }), "cerrar");
+  assert.equal(q({ sucio: true, preguntando: false, enviando: false }), "preguntar", "Esc con lo escrito cierra el formulario y se pierde");
+  assert.equal(q({ sucio: true, preguntando: true, enviando: false }), "seguir");
+  assert.equal(q({ sucio: true, preguntando: false, enviando: true }), "nada", "Esc mientras se guarda cierra el formulario");
+  // El diálogo de siempre usa `alEscape` si se lo dan (el Esc de un campo
+  // llega al diálogo: el oyente del panel deja pasar las teclas de los campos).
+  const ley = codigo6b("LeyendaDeParticipaciones");
+  assert.match(ley, /if \(e\.key === "Escape"\) \{ e\.preventDefault\(\); \(alEscape \?\? onCerrar\)\(\); \}/);
+  const form = codigo6b("FormularioDeParticipacion");
+  const i = form.indexOf('<Dialogo titulo={titulo} onCerrar={cerrar} cerrarAfuera={false} ancho="max-w-md"');
+  assert.ok(i >= 0, "el formulario dejó de ser un diálogo que no se cierra con un clic afuera");
+  assert.match(form.slice(i, i + 400), /alEscape=\{\(\) => \{\s*const q = queHaceEsc\(\{ sucio, preguntando: preguntaCerrar, enviando \}\);/,
+    "el formulario no le dice al diálogo qué hacer con Esc");
+  assert.match(form, /const sucio = \(Object\.keys\(inicial\) as \(keyof Campos\)\[\]\)\.some\(\(k\) => c\[k\] !== inicial\[k\]\);/);
+  assert.match(form, /Cerrar sin guardar/);
+  // Un campo del formulario: el oyente en captura no corta su Esc (llega al diálogo).
+  enElModo();
+  assert.ok(!atajo(tecla("Escape", EN_CAMPO)).cortada);
+});
+
+await prueba("«Descartar borrador» dice que también se pierde lo que no se guardó en pantalla (ejecutado)", () => {
+  const T = P6.PANEL.textoDeDescartarBorrador;
+  assert.deepEqual(T({ cara: "A", hayConfirmada: true, sucio: false }), [
+    "Se borra el borrador guardado de la cara A y vuelve a verse la distribución confirmada. Queda anotado en el historial."]);
+  const con = T({ cara: "B", hayConfirmada: false, sucio: true });
+  assert.equal(con.length, 2, "con cambios sin guardar, el diálogo no avisa que se pierden");
+  assert.equal(con[1], "También se pierden los cambios que hiciste en pantalla y todavía no guardaste.");
+  const panel = codigo6b("PanelDeDistribucion");
+  assert.match(panel, /textoDeDescartarBorrador\(\{ cara: activa\.cara, hayConfirmada: !!datos\?\.distribucion\?\.confirmada\.length, sucio \}\)/,
+    "el diálogo no usa lo que se hizo en pantalla (`sucio`)");
+  // Y descartar de verdad vuelve a cargar del servidor (por eso se pierde).
+  assert.match(sinComentTs2(fuente("store/distribucionStore.ts")), /descartar: async \(\) => \{[\s\S]*?reducir\(s\.edicion, \{ tipo: "cargar"/);
+});
+
+await prueba("la fila de la leyenda: dos botones hermanos (elegir y acciones), ningún botón adentro de otro ni `role=\"button\"`", () => {
+  const ley = codigo6b("LeyendaDeParticipaciones");
+  assert.ok(!/role="button"/.test(ley), "la fila sigue siendo un role=\"button\" (con un <button> adentro)");
+  const i = ley.indexOf("data-elegir-participacion");
+  assert.ok(i >= 0, "no está el botón que elige la participación");
+  const abre = ley.lastIndexOf("<button", i);
+  const cierra = ley.indexOf("</button>", i);
+  const adentro = ley.slice(ley.indexOf(">", i) + 1, cierra);
+  assert.ok(!/<button/.test(adentro), "hay un botón adentro del botón de la fila");
+  assert.ok(!/<(div|p)\b/.test(adentro), "un botón con <div> o <p> adentro (sólo va contenido en línea)");
+  assert.match(ley.slice(abre, i + 200), /type="button"[\s\S]*aria-pressed=\{esActiva\}[\s\S]*onClick=\{\(\) => elegir\(p\.space_id\)\}/);
+  assert.match(ley.slice(cierra, cierra + 400), /<button[\s\S]{0,80}aria-label=\{`Acciones de la participación \$\{p\.numero\}`\}/,
+    "las acciones no son el botón hermano que sigue");
+});
+
+await prueba("«Borrar sede» y el renombre nombran las reservas provisionales que se cancelan (ejecutado)", () => {
+  assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
+    "2 contratos activos se cerrarán", "3 reservas provisionales de participación se cancelan"]);
+  assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 1, reservas_vivas: 1 }), [
+    "1 contrato activo se cerrará", "1 reserva provisional de participación se cancela"]);
+  assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 0, reservas_vivas: 0 }), []);
+  assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 0 }), [], "un servidor viejo sin `reservas_vivas`");
+  // El renombre: sin nada comercial, sin pregunta; con algo, lo dice; sin saberlo, avisa igual.
+  assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 0 }), null);
+  assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 2 }),
+    "Renombrar «NAVE» a «NAVE NORTE» borra la sede y la vuelve a crear con el nombre nuevo: 2 reservas provisionales de participación se cancelan. No se puede deshacer.");
+  assert.match(IMP.avisoDelRenombre("NAVE", "X", null), /No se pudo saber cuántos hay\.$/);
+  // El tipo del cliente lleva el dato del servidor, y el diálogo lo muestra.
+  assert.match(fuente("api/layout.ts"), /export interface DeleteImpact \{[^}]*reservas_vivas: number;/);
+  const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
+  assert.match(plano, /\{lineasDelImpacto\(impact\)\.map\(\(linea\) => \(/, "«Borrar sede» no muestra lo que cuenta el servidor");
+  assert.ok(!/impact\.active_leases\} contrato/.test(plano), "quedó la línea vieja que sólo contaba contratos");
+  // El renombre pregunta ANTES de borrar: lee el impacto y sólo sin aviso renombra directo.
+  const i = plano.indexOf("async function pedirRenombre(");
+  assert.ok(i >= 0, "no está pedirRenombre");
+  const cuerpo = plano.slice(i, plano.indexOf("\n  }\n", i));
+  const orden = ["fetchDeleteImpact(viejo)", "avisoDelRenombre(viejo, nuevo, impacto)", "if (aviso) { setRenombreEnEspera(", "renameSede(viejo, nuevo);"];
+  let desde = 0;
+  for (const paso of orden) {
+    const k = cuerpo.indexOf(paso, desde);
+    assert.ok(k >= 0, `el renombre no hace «${paso}» (o no en ese orden)`);
+    desde = k + paso.length;
+  }
+  // El campo ya no renombra por su cuenta: Enter y el blur pasan por pedirRenombre.
+  assert.equal((plano.match(/renameSede\(sede, n\)/g) || []).length, 0, "el campo de la sede renombra sin avisar");
+  assert.equal((plano.match(/void pedirRenombre\(normalizeSede\(editingSedeVal\)\)/g) || []).length, 2);
+  assert.match(plano, /<RenombrarSedeDialog[\s\S]{0,300}renameSede\(de, a\);/, "«Renombrar igual» no renombra");
+});
+
 console.log(`\n${hechas} pruebas de distribución en verde`);

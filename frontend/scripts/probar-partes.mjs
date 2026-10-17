@@ -56,7 +56,7 @@ const cargar = async (catalogo) => {
         'export { MODELOS_2D, modelosDelPlanoConPropias } from "./src/catalogo/plano2D.ts";',
         'export { nombreDeTarifa } from "./src/catalogo/nombresPropios.ts";',
         'export { slotsDeLaParte, internosVendidosEnLaParte, partesQuePisa } from "./src/utils/slotsDeLasPartes.ts";',
-        'export { revisarCambioDeGeometria, loVendidoDe, geometriaALaVista } from "./src/utils/geometriaDelMueble.ts";',
+        'export { revisarCambioDeGeometria, loVendidoDe, geometriaALaVista, confirmadasDelResumen } from "./src/utils/geometriaDelMueble.ts";',
         'export { fichaDelFormulario, formularioVacio, formularioDe, problemasDelFormulario, familiaDe } from "./src/utils/formularioDeFicha.ts";',
         'export { conFichaQuitada } from "./src/utils/guardadoDelPlano.ts";',
       ].join("\n"),
@@ -1337,6 +1337,25 @@ await prueba("cambiar alto, entrepaños o módulo de una cara por participación
   // Sin la ocupación pero sabiendo que NO hay distribución confirmada: nada queda para revisar, no se pregunta.
   const sinOcupacion = P.loVendidoDe(g, "NAVE", new Set(), {}, { ocupacion: null, confirmadas: new Set() });
   assert.equal(P.revisarCambioDeGeometria(g, { h: 2.2 }, sinOcupacion).aviso, null);
+});
+
+await prueba("el panel de geometría le pasa a `loVendidoDe` las caras confirmadas del resumen: la confirmada avisa «para revisar», no «no se pudo revisar» (ejecutado)", () => {
+  // Lo que arma `GeometriaDelMueble` con el store de lectura (ocupación y
+  // resumen): sin esto, toda cara por participación decía «No se pudo revisar».
+  const resumen = { caras: [
+    { codigo_cara: "NAVE-GON-05", estado_distribucion: "confirmada" },
+    { codigo_cara: "NAVE-GON-05-B", estado_distribucion: "borrador" },     // nunca se confirmó
+    { codigo_cara: "NAVE-GON-06", estado_distribucion: "para_revisar" },  // confirmada, el mueble cambió
+    { codigo_cara: "NAVE-GON-07", estado_distribucion: "sin_distribuir" },
+  ] };
+  assert.deepEqual([...P.confirmadasDelResumen(resumen)].sort(), ["NAVE-GON-05", "NAVE-GON-06"]);
+  assert.equal(P.confirmadasDelResumen(null), null, "sin resumen no se sabe: no es «ninguna confirmada»");
+  const g = gondola({ partes: { division: "participacion" }, status: "free", faceB: { status: "free" } });
+  const v = P.loVendidoDe(g, "NAVE", new Set(), {}, { ocupacion: {}, confirmadas: P.confirmadasDelResumen(resumen) });
+  const r = P.revisarCambioDeGeometria(g, { h: 2.2 }, v);
+  assert.deepEqual(r.aviso?.lineas.filter((l) => /cara [AB]/.test(l)),
+    ["La cara A se vende por participación y tiene una distribución confirmada: con este cambio queda para revisar."]);
+  assert.ok(!r.aviso.lineas.some((l) => l.startsWith("No se pudo revisar")), "con los datos a mano igual dice «No se pudo revisar»");
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);
