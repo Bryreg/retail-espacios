@@ -1,7 +1,23 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-14, **vender por partes, la revisión de la rama**: tres
+Última actualización: 2026-10-17, **participaciones de cara y zonas**: lo que pidió la dueña
+para que el supermercado negocie y registre el **porcentaje de una cara que le toca a cada
+proveedor y marca** («Café A, 30 % de la GON-01, con sus fechas y su precio») y que el área
+comercial lo **distribuya dibujando zonas libres** sobre el mueble, sin que el dibujo cambie
+el porcentaje ni el porcentaje imponga una forma. Una participación es una clase de división
+más (`NAVE-GON-01-PC1`: una fila de `spaces` y un contrato normal) con cuatro tablas nuevas
+(términos, distribuciones, zonas e historial, que nunca se purga); la capacidad —la suma de los
+porcentajes que cuentan cada día, ≤ 100 %— la decide el servidor con el candado del mueble; la
+superficie comercializable de siete tipos y la geometría de las zonas están escritas en TS y
+en Python con los mismos casos, bit a bit; y el Editor 3D tiene un modo **Distribución**
+(lienzo 2D y 3D con la misma fuente, mueble desnudo, teclado aislado, autoguardado) que nunca
+aparece delante de un proveedor. Vender dice «Por participación · queda 45 %» sin nombres,
+Supervisar suma «Para revisar» y la ficha de la cara, y la planilla y el contrato suelto
+mandan a Distribución. **Antes de desplegar, correr `backend/scripts/buscar_codigos_pc.py`.**
+Ver *Participaciones de cara y zonas (2026-10-17)* y *Dónde retomar*.
+
+Antes, 2026-10-14, **vender por partes, la revisión de la rama**: tres
 revisiones (regresión y plata, privacidad, guardas) y el recorrido. **La venta aguantaba**
 —ningún camino vendía dos veces lo mismo con los códigos de la planilla—; lo que fallaba era
 cómo se informaba, más un agujero del contrato suelto. Ahora **el contrato suelto exige el
@@ -283,6 +299,54 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
+### Lo que sigue de las participaciones de cara (2026-10-17)
+
+Lo hecho está en *Participaciones de cara y zonas (2026-10-17)*. **Antes de desplegar**, lo
+que tiene que hacer la dueña (o quien despliegue):
+
+1. **Correr `backend/scripts/buscar_codigos_pc.py`** contra producción (la consola de Render,
+   que es plan pago, o una base restaurada de la copia con `scripts/restaurar_copia.py`) y
+   renombrar con la renumeración lo que aparezca: un mueble o una fila de `spaces` que hoy se
+   llame `…-PC<n>` pasaría a leerse como una participación de otro mueble. Sale con 1 si
+   encuentra algo.
+2. **Cerrar los arreglos de la revisión final** (ver *Arreglos de la revisión final*, al
+   final de la sección): el más serio, una fila de cara vieja sin `sede` que deja una
+   participación sin poder confirmarse ni renovarse.
+3. **Confirmar con ella cuatro decisiones** que se tomaron por el pedido y no por una
+   conversación: que una reserva provisional cuenta para la capacidad hasta que caduca (sin
+   interruptor); si una reserva tiene un tope de caducidad (hoy, cualquier fecha hasta su
+   `hasta`; se propuso 30 días); que renovar con otro % es cargar una participación nueva (I3);
+   y que el historial guarda para siempre el correo de quien actuó (la supresión, a mano: que
+   lo vea su abogado junto con la política de datos).
+
+No hace falta configurar nada: las cuatro tablas las crea `create_all()` al arrancar, no hay
+variables de entorno nuevas y un plano sin `partes.division = "participacion"` se vende y se
+ve exactamente como antes.
+
+**Lo que queda para después** (las limitaciones de *Lo que esta fase NO hace*):
+
+- **Copiar distribuciones** (D20, prioridad posterior del pedido): de una cara a la otra y
+  entre muebles, sin que nada se copie sin autorización (Caso F).
+- **La unidad comercial de dos caras** (D4): hoy vender «la góndola» al 30 % son dos
+  participaciones, una por cara.
+- **La mercaderista viendo su zona**: hoy lee «Participación 2 · 25 % de la cara A», sin
+  dibujo (D13); mostrarle su zona —y sólo la suya— en el enlace de montaje quedó afuera.
+- **Los tipos sin receta**: la nevera de puertas, la isla, el exhibidor de cartón, la estiba;
+  cada uno necesita su receta en `superficie.ts`/`superficie.py`, sus casos en
+  `casos/superficies.json` y la cota medida contra el 3D.
+- **El proveedor viendo su participación** (hoy, nada delante de él: D12) y **el trabajador**
+  viendo participaciones en Supervisar (hoy, sólo la palabra: D7). Las dos son decisiones de
+  privacidad antes que código.
+- **Herramientas**: dibujar en el 3D, «Ajustar el borde a la vecina».
+- **Vender**: una cara parcial cuenta en la tarifa como «+N entran» y en la leyenda como
+  «Vence dentro», los rótulos que ya tenía el ámbar, que no son exactos para una
+  participación.
+- **Una reserva sin tope de caducidad**: hoy puede caducar cualquier día hasta su `hasta`, y
+  mientras tanto bloquea como un contrato (riesgo R7 del diseño).
+- **Lo heredado, sin agravar**: el renombre de sede, que es borrar y crear y cancela las
+  reservas y los contratos de participación de la sede (ahora avisa antes; D21/D22); el campo
+  «Sede» del 3D (V16); `PUT /layout` sin validar `w` ni `modulo`.
+
 ### Lo que sigue de los muebles (2026-10-14)
 
 La meta de la dueña es que **cada supermercado arme sus muebles sin pedirnos un cambio**: el
@@ -510,7 +574,8 @@ El código de espacio es `"SEDE-CODE"` en mayúsculas. La cara B de una góndola
 sufijo `-B`; los campos top-level del fixture son la Cara A y `fixture.faceB` es la B.
 **Una parte agrega su sufijo al final, después de la cara: `SEDE-CODE[-B]-PU<n>`**
 (`NAVE-NEV-03-PU2`, `NAVE-GON-05-B-TR2`, `NAVE-PUN-02-EN1`), y una pieza, sin cara
-(`NAVE-CAJ-04-BI1`; el forro, sin número: `NAVE-COL-07-FO`). La relación entre la cara y sus
+(`NAVE-CAJ-04-BI1`; el forro, sin número: `NAVE-COL-07-FO`). Una participación de cara, igual
+que una división: `NAVE-GON-01-B-PC3`, con el `n` que pone el servidor. La relación entre la cara y sus
 partes se DEDUCE del código, sin columnas: `partirCodigo` (`utils/partes.ts`) y
 `partir_codigo` (`services/partes.py`) leen de derecha a izquierda —el último tramo es una
 parte si es el token de una clase que existe con su número; después, `-B` es la cara— y
@@ -675,7 +740,13 @@ vendido: cambiar de 3 a 4 puertas con la PU2 vendida no la retira pero la cambia
 contesta 409 `partes_vendidas` (`partes_que_se_moverian`, por el `code` del mueble y la
 «firma» de sus partes). Y **un mueble nuevo no puede llamarse como una parte** (`NEV-PU2`,
 `GON-B`: 409 `nombre_reservado`, `nombres_reservados_nuevos`); un plano viejo con un nombre
-así se sigue guardando.
+así se sigue guardando. Con las participaciones (2026-10-17), retirar incluye **sacar de «por
+participación» una cara con términos vivos** —409 `participaciones_vivas`: las reservas
+provisionales no son leases y `contratos_vivos` no las ve—, y el guardado frena además pasar a
+participación un mueble con espacios internos vendidos y vigentes
+(`slots_vendidos_en_participacion`) y vender un espacio interno en uno que se vende así
+(`slots_en_participacion`). El candado se toma también cuando una cara entra o sale de «por
+participación».
 
 **Entero o por partes, nunca las dos; y una sola forma de dividir.** Un mueble se divide por
 puertas, por tramos o por entrepaños, nunca por dos a la vez (`partes.division` es un solo
@@ -700,6 +771,84 @@ y por puertas a otro en las mismas fechas—. Y lo que ya estaba escrito de otra
 cuenta: `contratos_que_chocan` (con `sede`), `partes_que_se_moverian` y
 `contratos_que_quedarian_sin_mueble` comparan sin mayúsculas ni espacios y con la forma corta
 de una fila de esa sede pasada a la completa.
+
+**Entera, por partes o por participación: nunca dos a la vez** (participaciones de cara,
+2026-10-17). La participación es una clase de división más (`PC`: `NAVE-GON-01-PC1`,
+`NAVE-GON-01-B-PC3`, una fila de `spaces` por participación y su contrato un `space_leases`
+normal), elegida como las otras en `partes.division` (`"participacion"`): un solo valor por
+mueble, que vale para las dos caras de una doble, cada una con su capacidad. Una cara que se
+vende por participación no se vende entera ni por partes físicas (la compuerta,
+`motivo_para_no_vender_parte`, en la planilla, Vender, el contrato suelto y la importación); una
+participación de una cara que no se vende así no existe; y `chocan` no deja convivir en fechas
+que se pisan la cara entera o una división con una participación. Dos participaciones de la
+misma cara no chocan por código: las frena la capacidad. **Un código `PC` se carga, se renueva y
+se cancela sólo en Distribución** (`/api/participaciones`): la planilla y el contrato suelto lo
+rechazan y mandan ahí, y `PATCH /spaces/{id}/status` no lo marca a mano. El `n` lo pone el
+servidor y no se reutiliza nunca (el montaje atribuye por código y fecha), y un mueble nuevo no
+puede llamarse `…-PC<n>` (`nombres_reservados_nuevos`). Ver *Participaciones de cara y zonas
+(2026-10-17)*.
+
+**La capacidad de una cara la decide el servidor, con el candado del mueble, en todo camino que
+escriba un término.** Cada día desde hoy, la suma de los pb que cuentan —contratos activos,
+reservas provisionales que no caducaron y, como 10 000, lo físico: la cara vendida entera o por
+partes y un lease `PC` sin término— no pasa de 10 000 (`revisar_capacidad`). La revisan con el
+candado tomado el alta, cambiar y confirmar una reserva, renovar y confirmar una distribución
+(`services/participaciones.py`); lo que muestra el navegador es una vista previa con la gemela.
+**Las reglas y la geometría están escritas DOS veces** —`reglas_participacion.py` ↔
+`utils/participaciones.ts`, `zonas_geometria.py` ↔ `utils/zonasGeometria.ts`, `superficie.py` ↔
+`utils/superficie.ts`— y tienen que dar lo mismo **bit a bit**, frases incluidas: los mismos
+casos (`casos/participaciones.json`, `zonas.json`, `superficies.json`), bucles explícitos con el
+mismo orden de suma, nada de `sum()`, `math.fsum` ni `reduce` sobre flotantes (hay guardas que
+los buscan) y `hoy` siempre como parámetro. Lo que la dueña ve dibujando es lo que el servidor
+acepta al confirmar: si las dos cuentas se separan, una zona al filo pasa en pantalla y rebota
+con 409.
+
+**Después de cada candado, `db.expire_all()`.** El orden es revisar → candado → `expire_all` →
+revisar otra vez → escribir, y la segunda revisión es la que vale. SQLAlchemy no refresca un
+objeto que la sesión ya tiene cuando se lo vuelve a consultar: sin el `expire_all`, una reserva
+que otra sesión subió de 30 % a 70 % mientras se esperaba el candado se sigue leyendo en 30 %, y
+la cara queda en 110 % (probado contra Postgres). Lo hacen todos los caminos que toman el candado
+del mueble: los de participaciones, el contrato suelto, la planilla (`confirmar`), la importación
+del plano, el guardado del plano, la renumeración (que además vuelve a calcular el plan) y el
+borrado de sede (candado → `flush` → `expire_all`; en otro orden se traba con un guardado del
+plano). Y todos arman el código de la cara con la sede del plano (`codigo_cara`): otra escritura
+del código es otro candado.
+
+**Un término `contrato` no copia proveedor, marca ni fechas: la verdad es su lease.** En
+`participaciones` esas columnas van en NULL para un contrato, las reglas leen las fechas del
+lease (`termino_para_reglas`) y las notas viven sólo en `lease.notes`. Sólo una reserva
+provisional, que no tiene lease, las guarda. Un camino nuevo que escriba un contrato de
+participación lo hace con `alta_de_contrato` (el de la planilla) y su término apunta al lease:
+el día que exista «editar contrato», no hay copia que se contradiga.
+
+**El % nunca cambia por el dibujo, y el dibujo nunca cambia precio, % ni fechas.** Lo contratado
+es un compromiso: lo dibujado se mide (`dibujado_pb`) y se juzga contra él (`EXCESO`,
+`PENDIENTE`), nunca al revés, y «Ajustar al contratado» achica las zonas, no sube el %. Lo
+disponible sale de los términos, nunca de lo pintado. Y del otro lado, un cambio de término que
+dejaría rota la distribución confirmada es 409 `rompe_distribucion`, no un ajuste callado de
+las zonas.
+
+**Delante de un proveedor no se ve ninguna zona**, ni participaciones, ni porcentajes, ni otras
+marcas. El modo Distribución depende de UNA condición, `distribucionALaVista`
+(`StoreEditor3D.tsx`): sin Presentar, sin `privadoPara`, fuera del visor de Vender, sin reunión
+y sin primera persona; adentro, Presentar y la lámina están deshabilitados, y el visor de Vender
+nunca le pasa la capa a la escena (`probar-vender`). Vender dice «Por participación · queda
+X %», sin nombres ni montos ajenos. El trabajador recibe sólo la ocupación anónima (`GET
+/participaciones/ocupacion`, la única ruta que no es de administración) y dice la palabra
+(«Libre», «Por participación», «Tomada»), nunca el %.
+
+**El historial de participaciones nunca se purga.** `historial_participaciones` es la
+constancia de lo contratado y lo dibujado (D14): ningún borrado automático lo toca, no lleva
+montos (`anotar_historial` frena una clave de plata, también anidada) y guarda el correo de quien
+actuó; una supresión es manual y es una decisión escrita.
+
+**Antes de desplegar, `backend/scripts/buscar_codigos_pc.py`.** Desde esta fase `PC` es un
+token: un mueble que hoy se llame `…-PC<n>` (o una fila de `spaces` así) se leería como la
+participación n de otro mueble, y su contrato contaría como un lease sin término que ocupa la
+cara entera. El script sólo lee, usa el `DATABASE_URL` de la aplicación (la consola de Render o
+una base restaurada de la copia) y sale con 1 si encuentra algo; lo que aparezca se renombra con
+la renumeración ANTES de desplegar. Desde el despliegue, `nombres_reservados_nuevos` no deja
+crear nombres así, pero uno viejo se sigue guardando.
 
 **No todo mueble del plano es espacio vendible.** La columna sostiene el techo; la
 caja registradora y el mostrador de servicio al cliente son puestos de trabajo de la
@@ -852,8 +1001,11 @@ sistema entero adentro. Por eso una tabla sin clasificar hace que el traspaso se
 niegue a correr, y `tests/test_traspaso.py` falla hasta que alguien decide de qué
 lado está. La copia de seguridad sale de la misma lista: una tabla de negocio nueva
 entra sola a la copia, y dejarla afuera es una decisión escrita
-(`TABLAS_QUE_NO_SALEN` en `services/copia.py`). La última que entró así es
-`modelos_mueble` (las fichas propias de los muebles de cada supermercado, 2026-10-14), de
+(`TABLAS_QUE_NO_SALEN` en `services/copia.py`). Las últimas que entraron así son las cuatro
+de las participaciones de cara (`participaciones`, `distribuciones`, `zonas` e
+`historial_participaciones`, 2026-10-17), de negocio y sin archivos; ninguna se apunta a sí
+misma (`renueva_a` es un entero sin clave foránea), porque el traspaso copia sin `ORDER BY`.
+Antes, `modelos_mueble` (las fichas propias de los muebles de cada supermercado, 2026-10-14), de
 negocio y sin archivos —una ficha no lleva foto—, con clave primaria entera: la copia arma las
 rutas de los archivos con la clave primaria, y la clave de texto de la ficha nunca llega a una
 ruta del ZIP. Antes, `supplier_asset_specs` (la ficha del arte).
@@ -10215,6 +10367,717 @@ importan `app` (`test_partes_piezas.py`, `test_partes.py`): el riesgo aparece cu
 ésas es la PRIMERA del proceso y después corre una de punta a punta (con `-k`, por ejemplo).
 Esa base local quedó con esas filas: no se borraron desde la sesión.
 
+## Participaciones de cara y zonas (2026-10-17)
+
+Lo que pidió la dueña, en sus palabras: que el supermercado **negocie y registre el porcentaje
+de un mueble que le toca a cada marca o proveedor** («Café A, 30 % de la GON-001, con sus
+fechas y su precio»), y que el área comercial **distribuya ese porcentaje dibujando regiones
+libres sobre el mueble** —verticales, varias chicas, diagonales, un polígono cualquiera—, sin
+que el sistema imponga entrepaños ni franjas. El principio de todo el pedido es que **contratar
+y dibujar son dos cosas distintas**: el 30 % es un compromiso comercial; la forma es una
+decisión gráfica que no lo cambia. Y cuatro números que no se pueden confundir: contratado,
+dibujado, pendiente de distribuir y disponible para vender, con la disponibilidad calculada
+de las obligaciones vigentes y no de lo pintado. El pedido entero (21 secciones, casos A a I)
+está copiado en el scratchpad de la sesión; acá queda lo que se construyó.
+
+En la interfaz las regiones se llaman **zonas**: «sombra» ya era la sombra de luz del 3D.
+
+Se hizo en `578058c..fc97dbc` (34 commits): siete pasos, cada uno con su verificación
+independiente (mutaciones, fuzzers entre gemelos, carreras contra Postgres), la integración y
+una revisión final con tres revisores y un recorrido en el navegador. Lo que la revisión final
+encontró y se arregló después va al final, en *Arreglos de la revisión final*.
+
+### Lo que se decidió (D1 a D22)
+
+La dueña pidió no frenar en el diagnóstico; se cerraron las 22 preguntas abiertas con lo que
+dice el pedido y lo que el repo ya hacía, y el diseño no las volvió a discutir:
+
+- **D1 · La unidad** es el área frontal comercializable de la cara, en m². Los porcentajes se
+  guardan en **puntos básicos enteros** (1 pb = 0,01 %; 10 000 = la cara entera), nunca en
+  flotantes.
+- **D2 · La superficie** sale del catálogo (dato compartido por los dos lados) más una función
+  pura escrita en TS y en Python con casos compartidos: un rectángulo exterior menos
+  exclusiones (zócalo, parantes, copete…). Las zonas se guardan normalizadas 0..1 en ese
+  rectángulo; lo dibujado cuenta sólo dentro de lo que se vende (se recorta contra las
+  exclusiones, no se rechaza por cruzar un parante); salir del rectángulo es un error.
+- **D3 · «Marca»** es el proveedor (`Supplier`) más el texto `marca` del contrato. No hay
+  entidad marca. Dos marcas del mismo proveedor en la misma cara son dos participaciones.
+- **D4 · Por cara.** Cada cara tiene su propia capacidad; «la unidad de dos caras» no entra.
+- **D5 · Una participación es una clase de división nueva** (`PC`), con código derivado y una
+  fila propia de `spaces`; su contrato es un `space_leases` normal (ver *El modelo*).
+- **D6 · Estados** de término y de distribución, con «para revisar» cuando el mueble cambió.
+- **D7 · Permisos:** todo es de administración, como lo comercial de siempre. El trabajador no
+  ve participaciones ni zonas.
+- **D8 · Borrador contra confirmar:** el borrador se guarda con errores; confirmar es estricto.
+  Se puede confirmar con lo dibujado por debajo de lo contratado (queda pendiente y sigue
+  comprometido). No hay zona sin participación.
+- **D9 · Sin capas:** dos participaciones distintas no se pisan si sus fechas se cruzan; las
+  zonas de una misma participación que se pisan cuentan una vez.
+- **D10 · Precio:** el valor es el que se teclea (`monthly_rent`, como siempre). La tarifa de la
+  cara se muestra como referencia, sin prorratear. Nada del dibujo toca precio, % ni fechas.
+- **D11 · Dónde se carga:** en el panel de Distribución del Editor 3D, con el MISMO alta de
+  contrato que los otros caminos. Vender muestra la cara «por participación · queda X %» sin
+  nombres ni montos ajenos y no la vende entera; la planilla rechaza los códigos `PC` y manda
+  a Distribución; renovar se hace desde Distribución.
+- **D12 · Delante del proveedor** (Presentar, lámina, visor de Vender, reunión): ninguna zona.
+- **D13 · La mercaderista** lee «Participación n · X % de la cara A», sin dibujo.
+- **D14 · Historial propio**, que distingue lo contractual, lo gráfico, el estado y los eventos
+  de otros caminos, y **nunca se purga** (decisión escrita).
+- **D15 · Capa «Distribución» en el Editor 3D:** el mueble se ve desnudo (sin paquetes, sin
+  envases, sin foto) y con las zonas. Fuera del modo, todo como antes.
+- **D16 · Cruz y zona libre** como están: de la cruz, su frente; de la zona libre (`metro`), la
+  tapa vista desde arriba. El dibujo roto del metro bajo se arregló porque era chico (placa).
+- **D17 · Aviso de cara inaccesible** (en «Revisar» del 2D y en el panel del 3D): sólo avisa.
+- **D18 · Informes** en Supervisar con las mismas funciones puras del editor, más un resumen
+  del servidor por sede, mueble, proveedor, día y período.
+- **D19 · Una zona vale lo que vale su participación:** chocan sólo si se pisan Y sus fechas se
+  cruzan; la de una participación vencida o cancelada no cuenta, no bloquea y se ve como
+  historia.
+- **D20 · Copiar distribuciones**, fuera de esta fase.
+- **D21/D22 · No se toca ningún dato** de producción, y dos defectos previos (el renombre de
+  sede que cierra contratos y el campo «Sede» del 3D) quedan como tareas aparte, sin agravarlos.
+
+### El modelo: una participación es un espacio más
+
+**El código.** `SEDE-COD[-B]-PC<n>`: `NAVE-GON-01-PC1`, `NAVE-GON-01-B-PC3`. `PC` es una clase
+más de `partes.clases` en el catálogo (las dos copias), con `es: "participacion"` y sin
+`campo` (el mueble no la cuenta: `cantidad_de` da `None`), reservada para los nombres
+(`termina_reservado`, `nombres_reservados_nuevos`) y leída por `partirCodigo` / `partir_codigo`
+con los casos de `casos/partes.json`. **El `n` lo pone el servidor** (`siguiente_numero`): el
+mayor que existió en esa cara, mirando los términos y TODAS las filas `…-PC<n>` (también las
+hechas a mano, la forma corta de esa sede y las archivadas `…-PC7#12`), más uno. **Nunca se
+reutiliza**, porque el montaje atribuye reportes por código y fecha. `partir_codigo` reconoce
+`PC1` a `PC99`: la centésima da 409 `cara_llena`.
+
+**Una fila de `spaces` por participación y un contrato normal.** Ésa fue la razón de elegir
+este modelo: montaje, fotos, planometría, correos, renumeración, «Estado por espacio»,
+cancelar y vencer siguen funcionando sin generalizar «un contrato vivo por código». El alta
+busca (o crea libre) la fila de la cara, crea la de la participación y, si es un contrato,
+escribe el lease con la misma función que la planilla: `services/alta_de_contrato.py`
+(`proveedor_por_nombre`, `espacio_para`, `escribir_contrato`), que salió de
+`bulk_leases.confirmar` como refactor puro, comparado byte a byte contra el código de antes
+con 80 tandas al azar por semilla.
+
+**Cuándo una cara se vende por participación** lo dice el mueble: `partes.division =
+"participacion"`, su tipo tiene receta de superficie y es comercializable (`por_participacion`
+de `layout_lookup.py` ↔ `porParticipacion` de `utils/partes.ts`). Es una sola forma de dividir,
+como las demás, y **vale para las dos caras de una doble, cada una con su capacidad**.
+`division_de` sigue dando `None` para ese mueble (una participación no es una división física)
+y `firma_de_partes` no la cuenta: su forma física no cambia.
+
+**Cuatro tablas nuevas** (`backend/app/models/participaciones.py`), en la base del
+supermercado, creadas por `create_all()` (ninguna columna en tablas existentes: `test_t22`) y
+clasificadas de negocio en `TABLAS_DEL_CLIENTE`, así que viajan en el traspaso y en la copia:
+
+| Tabla | Qué guarda |
+|---|---|
+| `participaciones` | **Un término por fila** (una reserva provisional o un contrato): `space_id` (la fila `…-PC<n>`, que no cambia al renovar ni al renumerar: las zonas la nombran a ella), `cara_space_id`, `numero`, `estado` (`reserva`, `reserva_cancelada`, `contrato`), `puntos_basicos` (1 a 10 000). Una reserva guarda `supplier_id`, `marca`, `desde`, `hasta`, `caduca` y `notas`; **un contrato guarda sólo `lease_id`** (único) y deja todo eso en NULL. `renueva_a` (el término anterior, entero sin clave foránea), `baja_en`/`baja_por` (la cancelación, que separa «cancelado» de «vencido»), `version` optimista y quién/cuándo. |
+| `distribuciones` | Una por cara (`UNIQUE cara_space_id`): `fixture_id` (el mueble del plano para el que se dibujó), `version`, `confirmada_en`/`_por`, `firma_confirmada`, `borrador_en`/`_por`. |
+| `zonas` | Los polígonos: `distribucion_id`, `capa` (`borrador` o `confirmada`), `participacion_space_id` (ninguna zona sin participación), `vertices_json` (u,v cuantizados a 1e-6, antihorarios) y `orden`. |
+| `historial_participaciones` | Lo que pasó: `en`, `actor` (el correo del token), `tipo` (`contractual`, `geometria`, `estado`, `evento`), `accion`, la cara, la participación, el término y la distribución, `detalle` (una frase sin montos) y `antes_json`/`despues_json` (con los vértices en las confirmaciones). |
+
+Las reglas de forma son a propósito: sólo `Integer`, `String`, `Text`, `Date`,
+`DateTime(timezone=True)` y `ForeignKey` (nada de `Enum`, `Boolean`, `Float` ni `Numeric`: la
+copia serializa con `json.dumps` y el traspaso copia filas planas); `sqlite_autoincrement` en
+las cuatro (el historial nombra ids, que no se reutilizan); y ninguna tabla se apunta a sí
+misma, porque el traspaso copia sin `ORDER BY` y una renovación podía llegar antes que su
+original.
+
+### La cuenta: capacidad día por día y las cuatro magnitudes
+
+**La regla de capacidad**: para cada día desde hoy, la suma de los pb que cuentan ese día no
+pasa de 10 000. Cuentan los **contratos activos** que cubren el día, las **reservas
+provisionales que se sostienen** (su `caduca` es hoy o después) y cubren el día, y **lo
+físico** —la cara vendida entera o por partes, y los contratos `…-PC<n>` sin término (un
+script, un dato viejo)— como si fuera la cara entera (`fisicos_de`). Se mira día por día y no
+sumando todo lo vivo: dos participaciones que no se cruzan en fechas pueden ocupar la misma
+región, y sumarlas daría más de 100 %. Un intervalo que termina el 30 y otro que empieza el 1
+no se suman (en el mismo día salen primero los que terminan). **Lo disponible en un período**
+es 10 000 menos el pico de la suma diaria en `[max(desde, hoy), hasta]`: el pasado no se vende
+ni se valida. **Lo dibujado no cambia lo disponible.** Las funciones son
+`intervalos_que_cuentan`, `pico`, `disponible` y `revisar_capacidad` de
+`services/reglas_participacion.py`, gemelas de `utils/participaciones.ts` (ver *Reglas duras*).
+
+**Las cuatro magnitudes**, por participación (`juzgar` devuelve sus `cuentas`):
+
+- **contratado**: el pb de sus términos vivos (I3 los obliga a ser iguales; si un dato viejo
+  los trae distintos, se toma el menor y sale el aviso `TERMINOS_DESIGUALES`);
+- **dibujado**: `redondear(10 000 · área(∪ zonas ∩ lo que se vende) / área que se vende)`
+  (`dibujado_pb`), con la unión exacta, así que una zona encima de otra de la misma marca no
+  suma dos veces;
+- **pendiente de distribuir**: `max(0, contratado − dibujado)`. Sigue comprometido: no se le
+  ofrece a nadie;
+- y, por cara, **disponible para vender**: lo de arriba.
+
+Un ejemplo, el del pedido y el caso A del recorrido. GON-01 cara A, con un contrato de Café A
+al 30 % del 1 oct al 31 dic, con zonas por el 20 %, y una reserva provisional de Marca B al
+25 % del 1 nov al 31 ene que caduca el 15 nov:
+
+| | pb | se lee |
+|---|---:|---|
+| Café A contratado | 3 000 | «30 % contratado» |
+| Café A dibujado | 2 000 | «20 % dibujado» |
+| Café A pendiente | 1 000 | «falta 10 %» |
+| Marca B contratado (reserva) | 2 500 | cuenta mientras no caduque |
+| Disponible del 1 oct al 31 ene | 4 500 | «queda 45 %» (el pico es 55 %, en noviembre y diciembre) |
+
+Una tercera marca al 50 % del 1 al 31 ene entra (en enero queda sólo la reserva: 25 %); la
+misma del 1 dic al 31 ene no: «No entra: el 1 dic 2026 la cara A ya tiene 55 % comprometido;
+queda 45 % y pediste 50 %.» (409 `capacidad_excedida`, con `disponible_pb` y `dia`). Si la
+reserva de Marca B no se confirma, el 16 nov deja de contar sola, sin que nada la borre, y
+queda 70 % de noviembre a diciembre. En el recorrido, el formulario de otra marca frenó 46 % y
+55 % con la frase del servidor y dejó pasar 45 %.
+
+### Los estados
+
+**De un término** (`estado_visible`; lo derivado no se guarda):
+
+- **Reserva provisional** (`reserva`): proveedor, marca, %, fechas y una caducidad con `hoy ≤
+  caduca ≤ hasta`; sin valor mensual (422 si lo trae) y sin correos. **Cuenta para la capacidad
+  mientras no caduque** —es lo que es reservar—, escrito como regla, sin interruptor.
+- **Reserva caducada**: el día después de `caduca` deja de contar, sola.
+- **Reserva cancelada** (`reserva_cancelada`, guardada con `baja_en`).
+- **Contrato**: tiene su lease, y de sus fechas e `is_active` salen **vigente**, **firmado**
+  (empieza más adelante), **vencido** y **cancelado** (con `baja_en`, o el lease cerrado antes
+  de vencer). Un contrato no caduca (422 si trae `caduca`).
+
+Una reserva viva se cambia, se confirma como contrato (con el mismo alta: el valor se escribe
+ahí) o se cancela. Un contrato se cancela desde su ficha y se renueva.
+
+**De la distribución de una cara** (`estado_distribucion`): **sin distribuir** (nada, o lo que
+hay se dibujó para otro mueble que tenía ese código), **borrador** (guardado en el servidor, no
+oficial, con sus errores marcados), **confirmada** (oficial, validada estricto) y **para
+revisar** (la confirmada, si cambió la firma de la cara desde que se confirmó); `sin_mueble`
+si la cara no se vende por participación. Una confirmada con un borrador encima sigue
+«confirmada»: el panel agrega «hay un borrador sin confirmar». **La firma** (`firma` /
+`firmaDeCara`) es el tipo, mural o doble (de `caras_de`), ancho y alto en mm, los entrepaños
+guardados y las exclusiones a 1e-4 (que llevan el módulo y los tramos); el fondo no entra,
+porque no mueve nada del frente.
+
+### Las invariantes de los términos (I1–I3) y renovar
+
+Los términos de UNA participación (`revisar_terminos`, en este orden):
+
+- **el estado**: se cambia o se confirma sólo una reserva viva; se renueva sólo el contrato
+  vivo más nuevo (`no_renovable`, `no_editable`, `reserva_caducada`). Una reserva no se renueva:
+  se confirma o se le cambian las fechas;
+- **I2**: el mismo proveedor y la misma marca que TODOS los otros términos, también los ya
+  terminados (más estricto que el diseño, a propósito: D3 y D19). Otro proveedor u otra marca
+  es otra participación (`otro_proveedor`);
+- **I3**: el mismo porcentaje que los otros vivos (`otro_porcentaje`). **Renovar con otro % es
+  cargar una participación nueva**: en «Renovar», «Cambiar el porcentaje» la abre prellenada;
+  conserva el color (la estampa es por proveedor) y puede usar la misma región desde que
+  empieza (D19);
+- **I1**: los vivos no se pisan en fechas (`termino_superpuesto`); al renovar, el nuevo empieza
+  después de todos los vivos.
+
+En un cambio, I2 e I3 se miran sólo si el cambio toca la marca o el porcentaje: un dato viejo
+desparejo no frena correr una fecha. Dos renovaciones del mismo término: la segunda recibe
+`no_renovable` («ya tiene un término más nuevo: renová ése»), no un choque de fechas.
+
+### Borrador, confirmar y `rompe_distribucion`
+
+**Guardar el borrador** (`guardar_borrador`, sin candado: no es oficial) acepta zonas con
+solapes o excesos y los deja marcados. **Confirmar** (`confirmar_distribucion`) exige, contra
+los términos frescos: zonas válidas y adentro; ninguna de una participación ajena
+(`ZONA_AJENA`) o que ya no rige (`ZONA_DE_PARTICIPACION_TERMINADA`); ningún `EXCESO` (lo
+dibujado no pasa lo contratado, con tolerancia 0: «Ajustar al contratado» deja su margen); y
+ningún `SOLAPE` de más de 1 cm² entre participaciones cuyas fechas se cruzan. Con errores, las
+zonas quedan como borrador y la respuesta es 409 `distribucion_invalida` (armada después del
+commit: con `raise` se perdía el borrador). Con lo dibujado por debajo de lo contratado, se
+confirma con el aviso `PENDIENTE`; una zona que cae entera sobre el zócalo o un parante es el
+aviso `ZONA_SIN_SUPERFICIE_UTIL` (no suma). Una zona tiene un solo problema, y un aviso nunca
+tapa un error. Topes de trabajo: 24 vértices por zona, 240 por cara y 60 zonas (422 y no se
+guarda); 1 cm² es el área mínima de una zona, de un solape y de lo útil.
+
+Al confirmar, la confirmada pasa a ser exactamente esas zonas y el historial guarda los
+vértices de antes y de después («Ver cómo estaba» los vuelve a mostrar). Las zonas de una
+participación que venció o se canceló se ven en gris en la confirmada **hasta la próxima
+confirmación**, que las pasa al historial: no cuentan ni chocan con nadie (D19).
+
+**`rompe_distribucion`** (§3.11 del diseño): un cambio de término —cambiar una reserva,
+confirmarla o renovar— **no puede dejar rota la distribución confirmada**. Si con las fechas o
+el porcentaje nuevos aparece un `SOLAPE` o un `EXCESO` que antes no estaba, el servidor
+contesta 409 `rompe_distribucion` con la frase de qué rompe («Con ese porcentaje, la
+participación 2 queda con 30 % dibujado y 25 % contratado: achicá sus zonas…»); lo que ya
+estaba roto no frena. Sobre el borrador no frena: vuelve como `avisos_distribucion`. Así el %
+nunca se acomoda al dibujo, y el dibujo tampoco tiene que acomodarse en silencio al %.
+
+### La superficie comercializable, por tipo
+
+Cada tipo que se vende por participación declara su receta en el catálogo
+(`tipos[t].superficie = {orientacion, receta}`, las dos copias de `muebles.json`), y la cuenta
+está escrita dos veces con los mismos casos: `frontend/src/utils/superficie.ts` ↔
+`backend/app/services/superficie.py`, con `frontend/scripts/casos/superficies.json` (48 casos;
+`probar-superficies.mjs` y `test_participaciones_geometria.py`). Una receta del catálogo sin su
+cuenta no compila (`RECETAS` sale de un `Record`). Son siete:
+
+| Tipo | Receta | Lo que no se vende | El plano de dibujo |
+|---|---|---|---|
+| Góndola (central o mural) | `gondola` | zócalo (12 cm), remate (10 cm) y los parantes de 5 cm, en cada unión de módulos (o tramos) y en las dos puntas | media espina + el fondo de la cara + 12 mm |
+| Punta | `punta` | zócalo, copete desde `techoDeCara(h)` = máx(0,40, h − 0,36) y los parantes | d/2 + 14 mm |
+| Robatope | `robatope` | la base hasta la primera repisa, el remate y los dos parantes | d/2 + 14 mm, **en el marco de sus repisas, inclinado** (−0,06 rad) |
+| Ristra | `ristra` | base y cabezal (la tira mide de 7,6 a 13 cm de ancho) | 0,32·d (el gancho) + 12 mm |
+| Cruz (`cross`) | `cross` | base, tapa y los dos postes | d/2 + 6 mm |
+| Vitrina (`mueble`) | `vitrina` | zócalo, marco y los divisores de puertas de 60 cm | d/2 + 20 mm |
+| Zona libre (`metro`) | `zona_libre` | nada: la tapa entera, **vista desde arriba** | 4 mm sobre la tapa, **sólo si se pisa** (h < 25 cm, `ALTURA_PISABLE`) |
+
+Las cotas de la góndola, la punta y el robatope están **copiadas** de
+`muebles/medidas.ts` y la prueba de Python compara la copia; las de la ristra, la cruz y la
+vitrina están en `StoreEditor3D.tsx` y las amarra `probar-superficies` por texto. Lo que manda
+la separación en cada tipo es lo más saliente del frente (el porta precios en la góndola, la
+cenefa en la punta, la tira de estado en el robatope), medido: el plano va ≥ 6 mm por delante.
+Las exclusiones pasan a u,v (en la cara B, en espejo), se recortan a [0,1] y se cuantizan a
+1e-6. **Topes**: un mueble de más de 1 000 m o con más de 200 módulos o puertas
+(`MEDIDA_MAXIMA`, `MAX_VANOS`) no tiene superficie (la API no acota `w` ni `modulo`, y con
+`w = 1e308` la cuenta no terminaba); lo útil tiene que pasar de 1 cm².
+
+### La geometría: franjas verticales, exacta y gemela
+
+`frontend/src/utils/zonasGeometria.ts` ↔ `backend/app/services/zonas_geometria.py`, con
+`frontend/scripts/casos/zonas.json` (incluye `exactos`, 25 casos que Python reproduce bit a bit,
+el peor caso de 240 vértices y la sección `ajustar`). La unión, la intersección y el recorte
+contra las exclusiones salen de un **barrido por franjas verticales** entre todas las x de
+vértices y de cruces: dentro de una franja ningún borde se cruza con otro, así que el largo en
+el punto medio por el ancho es la integral exacta. Los dos lados dan **el mismo número, bit a
+bit** —el porcentaje que la dueña ve en el lienzo es el que el servidor acepta al confirmar, y
+una zona al filo del redondeo no puede pasar en uno y rebotar en el otro—: bucles explícitos
+con el mismo orden de suma (nada de `sum()`, `math.fsum` ni `reduce`: Python 3.12 cambia
+`sum()` de flotantes, y una guarda en las dos suites lo busca), cuantización a 1e-6 escrita
+igual, enteros para la simplicidad y la orientación, el mismo desempate al ordenar.
+
+La validación de una zona (`validar_zona` / `validarZona`), en orden: `ZONA_MALFORMADA` (no es
+una lista de pares de números finitos: 422, no se guarda), `ZONA_POCOS_VERTICES`,
+`ZONA_DEMASIADOS_VERTICES` (24), `ZONA_FUERA` (sale de [0,1]²), `ZONA_SE_CRUZA` y
+`ZONA_SIN_AREA` (menos de 1 cm²). Rapidez medida en CPython: 0,09–0,12 s el peor caso del
+diseño y 0,44–0,50 s un zigzag armado para cruzarse; por eso **la geometría se mide antes del
+candado**, y adentro sólo se juzga.
+
+### u,v y cómo se proyecta en el 3D
+
+**La convención**: u = 0 es el borde IZQUIERDO de quien mira la cara de frente; v = 0, abajo
+(en la tapa de la zona libre, el borde delantero). El marco es el del `<group>` del mueble
+(origen en el centro de la huella, en el piso, `y` arriba, el frente hacia −z, la cara B hacia
++z), y `utils/zonas3d.ts` tiene las fórmulas con su tabla (`transformDeCara`, `formaDeZona`,
+`puntoDeLaCara`): la cara A va girada media vuelta en `[0, 0, −plano]`, la B en `[0, 0,
++plano]`, la tapa del metro acostada en `[0, plano, 0]`, y el robatope suma un grupo de afuera
+con el giro de sus repisas. `probar-superficies` arma con three la misma jerarquía y compara.
+
+`components/StoreEditor3D/muebles/ZonasDelMueble.tsx` dibuja las zonas **como hijas del grupo
+del mueble** (se mueven con él), con la misma superficie que el lienzo (la del servidor) y la
+misma fórmula:
+
+- **el relleno son los trapecios de la unión ∩ lo que se vende** (`trapecios`): cada punto se
+  pinta una vez y nada cae sobre zócalo, parantes o copete; lo que se ve pintado es lo que
+  cuenta. Encima, la cinta del contorno dibujado: 1 cm (2 cm la elegida), discontinua la
+  reserva, gris punteada la historia, punteada lo que no cuenta el día que se mira;
+- **sin z-fighting contra el mueble**: el plano va ≥ 6 mm por delante de lo más saliente, el
+  mueble está desnudo y los rellenos no escriben profundidad y llevan `polygonOffset`;
+- **no roban el clic**: `raycast` nulo en toda malla; la cara y el punto que se tocan salen de
+  un rayo contra el plano de la cara (`elegirCaraYPunto`, 2 cm de tolerancia en metros);
+- en una doble, la cara que no se edita va a media opacidad, cada cara lleva su letra «A»/«B»
+  y la que tapa el mueble se esconde en cada cuadro (`letraTapada`, comparada con un rayo de
+  three en más de 1 000 cámaras); el rótulo «n · %» va sobre la zona; a más de 40 m las zonas
+  no se dibujan.
+
+**Los colores** (`utils/coloresDeMarca.ts`): tres tonos validados (`--marca-1..3` en
+`tema.css`, repetidos en el bloque oscuro) por tres texturas (lleno, rayado a 45° y a 135°) son
+nueve estampas; la preferida es `supplierId mod 9`, así un proveedor se ve igual en todas las
+caras, y si choca dentro de una cara se corre a la siguiente. **El color nunca va solo**: la
+identidad la llevan la cinta en tono pleno, la textura y el número. Una participación nueva
+nunca repinta a las anteriores.
+
+### El modo Distribución del Editor 3D
+
+**Entrar.** En el panel comercial del 3D, «Distribuir esta cara» (`data-distribuir`); desde
+Supervisar, «Abrir en Distribución» o «Renovar» (`pedirEnfoque3D(…, { distribucion })`; lo
+atendido vive en una variable de módulo, así un pedido no vuelve a entrar solo al remontar el
+editor). El trabajador no entra al 3D. `entrar` guarda antes el plano pendiente
+(`flushPending`) —si no, el servidor todavía ve la cara como se vendía antes y contesta 409— y
+lee la cara. Una cara que todavía no se vende así se pasa con «Vender esta cara por
+participación» del panel, o con «Cómo se vende → Por participación» (`PartesDelMueble`, el mismo
+panel en el 2D y el 3D: `formasDeVenderDe`), que pasa por las mismas guardas: con
+participaciones vivas no se sale de participación, con espacios internos vendidos y vigentes no
+se entra (`revisarCambioDePartes`), y vendida entera sólo avisa. Lo que no se puede repartir lo
+dice: sin receta, la zona libre alta, el mueble que no es comercializable.
+
+**El mueble desnudo.** Un contexto (`muebles/desnudo.ts`) que leen `ProductoEnGondola`,
+`ProductoEnPunta`, `ProductoAGranel` y `ProductoDePrueba`, que devuelven `null` después de todos
+sus hooks: el mueble entra y sale del modo sin remontarse. Se cortan el gizmo, la caja de
+selección y el arrastre del mueble, y la paleta se oculta. Fuera del modo, un mueble que no es
+por participación da 0 píxeles de diferencia contra `578058c`.
+
+**Lienzo y 3D, con la misma fuente.** A la izquierda el lienzo 2D
+(`components/Distribucion/LienzoDeZonas.tsx`: un SVG en metros, el puntero por
+`getScreenCTM().inverse()`, rueda no pasiva de 1× a 20× alrededor del cursor, paneo con espacio
++ arrastre o el botón del medio, «Encuadrar» con 0); a la derecha el 3D. Los dos dibujan
+`edicion.zonas` del store con la superficie del servidor. **Se dibuja sólo en el lienzo**; en el
+3D se elige la zona y la cara (un clic en la otra cara pasa a ella, y con cambios sin guardar
+pregunta antes). Por debajo de 1440 px, «Ocultar 3D» le da todo el ancho al lienzo.
+
+**Las herramientas** (el reductor puro `utils/edicionDeZonas.ts`): Seleccionar (V), Rectángulo
+(R) y Polígono (P; cierra un clic en el primer punto o Enter, Retroceso saca el último, Esc
+cancela). Mover la zona o un vértice, doble clic en un borde agrega un punto, manijas de escala
+(Shift conserva la proporción), flechas de a 1 cm (10 cm con Shift), Supr borra la zona o el
+vértice. El imán (G, prendido) pega a vértices y bordes de otras zonas y al borde de la cara;
+el imán a entrepaños y parantes existe pero va apagado —el pedido no deja imponer las baldas— y
+las guías se ven igual. Deshacer y rehacer, 100 pasos, y un arrastre entero es uno. En «Mirar»
+nada edita. **«Ajustar al contratado»** achica las zonas de una participación hacia su punto
+interior (no el centroide: en una L cae afuera), con búsqueda binaria, hasta quedar medio pb
+lejos del filo del redondeo; si para no pisar a otra marca tendría que dejarla con menos de la
+mitad de lo contratado (`MIN_FRACCION_SIN_PISAR`: una U con otra marca adentro del hueco),
+prefiere dejar el solape a la vista, marcado.
+
+**El panel** (`PanelDeDistribucion.tsx`): cara A | B, Mirar | Editar, el estado, Salir; la barra
+de capacidad apilada con «Comprometido X % · queda Y %» y un selector de período; «Ver al día»;
+la leyenda (`LeyendaDeParticipaciones.tsx`), una fila por participación viva con «25 %
+contratado · 24,1 % dibujado · falta 0,9 %» (o «sobra»), el estado comercial y la vigencia, y
+arriba «Para vender: queda X %» —ahí están las cuatro magnitudes a la vista—; el menú de cada
+una (Renovar, Confirmar, Cambiar y Cancelar reserva, Cancelar contrato, que es el `DELETE
+/spaces/{id}/leases/{id}` de siempre, Ajustar al contratado); la historia con «Cargar de nuevo»;
+los errores y avisos en vivo, que llevan a la zona; el historial plegado. En «Editar», la zona
+elegida muestra su participación, proveedor y marca, %, m² y el estado del término. El
+**formulario** (`FormularioDeParticipacion.tsx`, modal: alta, renovar, confirmar, cambiar,
+cargar de nuevo) valida antes de mandar lo que el servidor rechazaría con 422, hace la vista
+previa con `revisarCapacidad` y `revisarTerminos` —las mismas frases del servidor—, muestra la
+tarifa de la cara como referencia y un 409 arriba sin cerrarse; Esc con algo escrito pide
+confirmación. Antes de confirmar, **el resumen de cambios** (`ResumenDeCambios.tsx`): por
+participación, lo dibujado antes y después; los errores bloquean y ofrecen «Guardar como
+borrador».
+
+**El teclado, aislado.** `atajoDeDistribucion` escucha en captura en `window`: mientras dura el
+modo, Supr, Retroceso, R, F, Esc y Ctrl/⌘+Z/Y **nunca le llegan al atajo global del editor**,
+tenga el foco quien lo tenga (con el foco en un botón de un diálogo, Supr borraba del plano el
+mueble que se distribuía). Las acciones se despachan sólo con el foco en el lienzo o en `body`
+(donde queda después de tocar el 3D); desde el panel, sólo lo que no borra ni mueve
+(`DESDE_EL_PANEL`); los campos y los diálogos se quedan con su Esc y su Enter. **Esc nunca saca
+del modo**: se sale con «Salir». WASD no hace nada. Los diálogos llevan `role="dialog"` y
+`aria-modal`.
+
+**La cámara**: la mira no baja de y = 0 al panear (`frenarMira`) y una vista guardada muy baja
+sube a la mira + 0,3 m (`sanearOrbita`); girar no dibuja (clic contra arrastre por 4 px de
+`e.delta`). Al entrar o cambiar de cara se encuadra la cara.
+
+**El guardado, sin perder nada en silencio** (`store/distribucionStore.ts`): el borrador se
+autoguarda a los 20 s de quietud (`automatico: true`: sin historial ni bitácora); «Guardar
+borrador» y el «Guardarlos como borrador» del diálogo anotan. Las escrituras van en fila
+(`while (enCurso)`), o la sesión se daba a sí misma un `version_vieja`. Si otra sesión guardó en
+el medio (409 `version_vieja`), se deja de autoguardar, sale la franja «Otra sesión cambió…» y
+«Traer lo nuevo» combina por participación (`fusionarZonas`), con «Usar lo mío» para los
+conflictos. Cambiar de cara o salir con cambios pregunta (guardar, descartar o seguir); si el
+guardado falla al salir, la edición queda en memoria y al volver se ofrece «Recuperar lo que
+no se guardó». Mientras el plano tiene cambios sin guardar, el panel pasa solo a «Mirar». Nada
+de esto va a `localStorage`: los dos stores se vacían al cambiar de sesión o de cliente.
+
+**Lo que se excluye.** Una sola condición decide si el modo se ve (`distribucionALaVista` en
+`StoreEditor3D.tsx`, y `Scene` repite la defensa): la cara activa es de este cliente y esta
+sede, el mueble está en el plano, y NO hay Presentar, ni `privadoPara`, ni visor de Vender
+(`soloVenta`), ni primera persona, ni reunión (que incluye cualquier prueba de producto de la
+sesión), ni un mueble colocándose. Dentro del modo, Presentar, 1ª persona y Propuesta (la
+lámina) están deshabilitados («Salí de Distribución para presentar»); entrar a cualquiera de
+ellos, o desmontar el editor, saca del modo a la fuerza. El visor de Vender nunca le pasa la
+capa a la escena (`probar-vender`).
+
+**Lo que cambia fuera del modo**, en un mueble por participación: el color de estado sale de
+la ocupación (`estadoQueSeVe`: «Ocupado», «Parcial»; nunca «Disponible» en verde sobre lo
+contratado), los paneles verdes de espacios internos libres no se dibujan y el panel no los
+ofrece; el metro bajo es una placa; y el aviso de cara inaccesible (`carasInaccesibles`,
+medido con un rayo contra la caja del vecino) sale en el panel y en «Revisar» del 2D. Se
+arregló de paso la selección de los espacios internos de la cara B (el contorno se robaba el
+rayo).
+
+**Un gotcha de los colores**: el editor es un cajón oscuro que redefine sólo los canales
+`-rgb`; un `var(--surface)` resuelto en `:root` llega adentro con el valor del tema claro.
+Adentro va `rgb(var(--x-rgb))`, y una guarda de `probar-distribucion` lo exige.
+
+### La API `/api/participaciones`
+
+`backend/app/routers/participaciones.py`, con la lógica en `services/participaciones.py` (sin
+commit: el router anota la bitácora, hace commit y después arma la respuesta y encola los
+correos). **Todas las rutas piden administrador, salvo `GET /ocupacion`**. Las literales van
+antes que las paramétricas, y los GET reciben todo por query (un código con `#` no rompe la
+URL y el barrido del token de montaje las cubre sin casos nuevos):
+
+| # | Ruta | Qué hace |
+|---|---|---|
+| 1 | `GET /cara?sede=&espacio=` | Todo de una cara: superficie, firma, la distribución con sus dos capas, las participaciones con sus términos, la capacidad del período y la revisión. |
+| 2 | `GET /resumen?sede=&dia=&desde=&hasta=&proveedor_id=&espacio=` | El informe de Supervisar (D18): los totales de UN día, la capacidad del período; por cara, estado, comprometido, pico, disponible, dibujado, pendiente, errores, avisos y `borrador_en`/`borrador_dia`; por proveedor; `sin_mueble` (caras con términos vivos que el plano ya no vende así) y `huerfanos` (contratos `…-PC<n>` sin término). Sin montos. |
+| 3 | `GET /ocupacion?sede=` | **Cualquier sesión** (`require_auth`). Por cara, intervalos `{desde, hasta, pb}` y lo físico `{desde, hasta}`, sin nombres, montos ni números de participación. La leen Vender, Supervisar, el plano 2D y el color del 3D. |
+| 4 | `GET /historial?sede=&espacio=` o `?participacion_id=` | El historial, con los vencimientos y caducidades derivados. |
+| 10 | `PUT /distribucion/borrador` | Guardar el borrador (con `automatico` para el autoguardado). |
+| 11 | `POST /distribucion/confirmar` | Confirmar; con errores, 409 `distribucion_invalida` y queda como borrador. |
+| 12 | `POST /distribucion/descartar` | Borrar el borrador; la confirmada queda. |
+| 5 | `POST /` | Alta de una reserva provisional o de un contrato (participación nueva). |
+| 6 | `PATCH /{id}` | Cambiar una reserva viva. |
+| 7 | `POST /{id}/confirmar` | Reserva viva → contrato, con el mismo alta. |
+| 8 | `POST /{id}/cancelar` | Cancelar una reserva (un contrato se cancela con el `DELETE` de siempre). |
+| 9 | `POST /{id}/renovar` | Un término nuevo de la misma participación. |
+
+Campos de más en el cuerpo son 422 (`extra="forbid"`: un cliente viejo que manda «proveedor»
+al renovar no puede creer que lo cambió). Los errores llevan `{code, message}` (el 409
+`distribucion_invalida` va dentro de `detail`, como un `HTTPException`, para que
+`describeError` lea su `message`). Una escritura de término devuelve `{termino, cara}` (el
+término y la cara leídos después del commit) y, salvo cancelar, `avisos` y
+`avisos_distribucion`: `avisos` son los correos de contrato (los de la planilla, por
+`bulk_leases._avisar`, con la parte «Participación 3 · 25 % de la cara A»); una reserva no
+manda correos. El cliente del navegador es `frontend/src/api/participaciones.ts`, y la prueba
+de orden de rutas compara lo que llama con las 12 que existen.
+
+### Concurrencia
+
+**El orden que no se negocia**, en todo camino que puede sobrevender una cara (alta, cambiar,
+confirmar, cancelar y renovar un término, y confirmar la distribución):
+
+    revisar → (medir) → tomar_candados([cara]) → db.expire_all() → revisar otra vez → escribir
+
+- **El candado es el del mueble** (`services/candado.py`, `pg_advisory_xact_lock`), con la
+  MISMA clave que la venta de la cara entera y de sus partes, el guardado del plano y la
+  renumeración. Por eso todo camino arma el código completo de la cara con la sede del plano
+  (`codigo_cara`): `GON-01` y `NAVE-GON-01` serían candados distintos. Y por lo mismo
+  `forma_canonica` exige el código completo en el contrato suelto también para una cara que se
+  vende por participación o que tuvo participaciones.
+- **`db.expire_all()` justo después**: SQLAlchemy no refresca un objeto que la sesión ya tiene
+  cuando se lo vuelve a consultar, y la primera revisión cargó los términos; sin esto, una
+  reserva que otra sesión subió de 30 % a 70 % se seguiría leyendo en 30 %. **El alta conserva
+  la lectura de antes del candado** a propósito: al principio sacar el `expire_all` no hacía
+  fallar ninguna carrera, porque los términos de afuera no quedaban en ninguna variable y
+  SQLAlchemy los volvía a cargar frescos. Andaba por suerte; ahora la protección depende del
+  `expire_all` y la prueba lo nota si falta.
+- Si con el candado la cara resulta otra (el plano cambió en el medio): 409 `plano_cambio`. Si
+  cambió la distribución confirmada, se vuelve a medir adentro.
+- **Versión optimista** en términos y distribuciones: `UPDATE … WHERE version = :leida`; 0
+  filas → 409 `version_vieja`. En SQLite el candado no hace nada y esto es lo que queda.
+- El borrador no toma candado (no es oficial); descartar compara la versión.
+
+Lo probado: **cinco carreras contra un Postgres 16 descartable**
+(`tests/test_participaciones_concurrencia.py`, sólo con `DATABASE_URL_PG_PRUEBA`; se saltean sin
+él): dos altas de 60 % a la vez dejan una; una reserva que sube contra un alta no pasan las
+dos; dos renovaciones del mismo contrato dejan una; y sacar la división en el plano contra un
+alta, en los dos órdenes, deja la base coherente. Sin el `expire_all`, la de la reserva da 110 %
+de la cara; sin el candado, fallan todas. En SQLite, espías que exigen el orden en los siete
+caminos nuevos, en el guardado del plano, la renumeración, el contrato suelto, la planilla y la
+importación.
+
+### Cómo entra en los caminos de siempre
+
+- **La compuerta** (`motivo_para_no_vender_parte`, la frase que usan la planilla y el contrato
+  suelto): la cara entera de una cara por participación no se vende (`por_participacion`: «se
+  vende por participación: cargá el porcentaje en el Editor 3D → Distribución (podés darle el
+  100 %)»), ni una división física suya; una participación de una cara que NO se vende así no
+  existe. `chocan` sabe que una participación choca con la cara entera y con una división
+  física de su cara, no con otra participación (ésas las frena la capacidad) ni con una pieza.
+- **La planilla y Vender** (`bulk_leases`): una fila `…-PC<n>` da «es una participación: se
+  carga y se renueva en el Editor 3D → Distribución, no en la planilla». Además, como defensa
+  en profundidad para una cara que dejó de venderse así con términos vivos,
+  `bloqueo_por_participaciones` —preguntado sólo para las caras con términos, que averigua una
+  consulta por tanda— y `expire_all` en `confirmar`.
+- **El contrato suelto** (`create_lease`): `expire_all` después del candado, el mismo rechazo
+  de un código `PC` y el mismo bloqueo. `PATCH /spaces/{id}/status` sobre una participación es
+  409: «Reservado» a mano serían dos nociones de reserva sobre lo mismo.
+- **La importación del plano** (`importar_del_plano.py`): la cara entera de un mueble por
+  participación queda «Incompleta» aunque no tenga participaciones todavía, y un código del
+  JSON que se lee como participación no se importa («…si es un mueble que se llama así,
+  renombralo»).
+- **El guardado del plano** (`PUT /layout`): toma el candado también cuando una cara entra o
+  sale de «por participación» (sin cambiar lo ofrecido ni la firma de partes no tomaba ninguno)
+  y hace `expire_all`. Tres guardas nuevas, con `{code, message, choques}` y en
+  `RECHAZOS_CONOCIDOS` del navegador: **`participaciones_vivas`** (sacar de participación una
+  cara con contratos o reservas vivas, por cualquier camino: la división, el tipo, no
+  comercializable, borrar, renombrar sin la renumeración, doble → mural),
+  **`slots_vendidos_en_participacion`** (pasar a participación con espacios internos vendidos
+  y vigentes) y
+  **`slots_en_participacion`** (vender un espacio interno en un mueble por participación: pasar
+  a ocupado, o cambiarle a uno vendido el fin, el valor, el inicio o el proveedor; liberar
+  sigue permitido). Un contrato `…-PC<n>` vivo cuya cara deja de venderse así lo frena
+  `contratos_vivos`, porque `ofrece` ya sabe que una participación se ofrece si su cara se
+  vende por participación. Y el guardado anota en el historial `distribucion.division` y
+  `distribucion.para_revisar`.
+- **La renumeración**: toma los candados de los códigos viejos y nuevos de cada mueble que se
+  muda (`codigos_del_candado`), hace `expire_all` y **vuelve a calcular el plan**
+  (`con_candados`): si no, un `…-PC2` creado en el medio quedaba con el nombre que se iba. Si
+  con el candado el plano cambió: 409 `renumeracion_bloqueada`.
+- **Borrar una sede** (`archive_sede_spaces`): toma los candados de las caras con términos
+  (candado → `flush` → `expire_all`: en el otro orden se trababa con un guardado del plano de la
+  misma sede, deadlock reproducido en Postgres), **cancela las reservas vivas** y da de baja
+  los términos de los contratos que cierra (sin `baja_en` si ya habían vencido), con quién lo
+  hizo en `baja_por` y el evento `sede.baja` en el historial. `GET /layout/{sede}/impact`
+  cuenta `reservas_vivas`, el diálogo «Borrar sede» dice «N reservas provisionales de
+  participación se cancelan» y la bitácora las cuenta. **El renombre de sede** (que en el
+  navegador es borrar y crear) consulta antes el impacto y, con contratos o reservas vivas,
+  abre `RenombrarSedeDialog` (`utils/impactoDeSede.ts`); la trampa del renombre (D21/D22) sigue
+  sin arreglar, pero ya no es a ciegas.
+- **Cancelar un contrato** (`DELETE /spaces/{id}/leases/{id}`): el gancho
+  `al_cancelar_contrato` (`services/ciclo_participaciones.py`) le pone `baja_en` a su término y
+  anota `contrato.cancelado`; si el lease ya había vencido por fecha, queda «vencido».
+- **Borrar un proveedor** con reservas de participación, vivas o no, es 409 (antes era el 500
+  de la clave foránea): son las únicas filas que guardan el proveedor fuera de un lease.
+- **El montaje**: la mercaderista (`/montaje/mi-espacio`, el correo) lee «Participación 1 ·
+  25 % de la cara A»; sin término, «Participación 4 de la cara A»; nunca el dibujo ni la plata.
+  El tablero de Montajes del administrador (`MountView.tsx`) dice «Participación 3 · cara A»,
+  sin el %.
+- **La consola de la plataforma**: la participación es un tipo propio, `participacion`
+  («participación de cara», en `formato.ts`), que cuelga de su cara en `espacios[].partes` (la
+  cara figura ocupada), fuera del benchmark, de los precios sugeridos, de «precio bajo» y del
+  spread, y sigue contando en `contratos_sin_tarifa` porque no tiene tarifa propia.
+  `referencia_de_espacio` de una participación es `None`: compararla con la tarifa de la cara
+  la listaría «75 % por debajo».
+- **La auditoría del desfase** (`utils/auditoriaDesfase.ts` y `scripts/auditar_desfase.py`)
+  pregunta `ofrece`: una participación tiene mueble si su cara se vende por participación.
+
+### Supervisar, Vender y el plano 2D
+
+La ocupación anónima se lee sólo si la sede tiene alguna cara por participación, una vez por
+sede, y otra vez cuando cambia el mapa de la base o vuelve una escritura de participaciones
+(`store/ocupacionStore.ts`; cada pedido lleva un número que sólo crece, así una lectura vieja
+no pisa a la nueva). De ahí sale `dispoPorParticipacion` (`dispo_por_participacion`, gemela):
+**libre** si no hay nada comprometido en el período, **parcial** si sí y queda algo, **tomado**
+si no queda nada.
+
+- **Vender**: «Por participación · queda 40 %» o «tomada», sin un nombre. Una cara por
+  participación no se vende desde Vender: tocarla no suma nada ni vacía el contrato armado, y
+  su pastilla de la tarifa se ve deshabilitada (borde punteado, `not-allowed`, «por
+  participación»). «Cuándo se libera» y los contadores miran la ocupación, y una cara que las
+  reservas dejan sin lugar hoy sale de «Libres». Una cara parcial cuenta en la tarifa como «+N
+  entran» y en la leyenda como «Vence dentro»: son los rótulos que ya tenía el ámbar, y no son
+  exactos.
+- **Supervisar, administración** (todo dentro de `isAdmin`; una guarda de `probar-comercial`
+  lo vigila): «Para revisar» suma siete tarjetas (`utils/revisarParticipaciones.ts`, puro):
+  *Contratado sin dibujar*, *Distribución con problemas*, *Distribución para revisar*,
+  *Reservas por caducar* (7 días o menos), *Borradores sin confirmar* («de hace N días», por
+  `borrador_dia`), *Participación sin mueble* (armada con la lista `sin_mueble`, nunca con la
+  cuenta: una cuenta de toda cara con participaciones, también las canceladas, era una falsa
+  alarma que no se iba nunca) y *Contrato de participación sin término*. La ficha de la cara
+  (`ParticipacionesDeLaCara.tsx`) trae la barra de hoy, la lista, el estado de la distribución,
+  «Abrir en Distribución» y «Renovar», y esconde «Negociar»; la tabla «Participaciones de cara»
+  filtra por proveedor, día y período.
+- **Supervisar, trabajador**: sin bloques de participaciones, sin %, sin filas `PC`; la cara
+  dice la palabra («Libre», «Por participación», «Tomada»: `palabraDeLaCara`). Sus contadores
+  de ocupación incluyen los contratos `PC`, para coincidir con los de administración. En el
+  KPI «Ocupación», un contrato de participación hace trabajar a su cara como una puerta vendida
+  a su nevera; una reserva, no.
+- **El plano 2D**: cada mitad de la cara se pinta con la ocupación del día (`pintadoDe`): rojo
+  lo tomado, ámbar lo parcial. «Cómo se vende» ofrece «Por participación».
+
+### El historial y la bitácora
+
+**El historial** (`historial_participaciones`, `anotar_historial`) cuenta lo que pasó con una
+cara y sus participaciones: lo contractual (`participacion.reserva`, `.contrato`, `.editada`,
+`.confirmada`, `.renovada`, `reserva.cancelada`), lo gráfico (`distribucion.borrador` cuando se
+guarda a mano, `.confirmada` con los vértices de antes y de después, `.descartada`), el estado
+(`distribucion.division`, `.para_revisar`, `.otro_mueble`) y los eventos de otros caminos
+(`contrato.cancelado`, `sede.baja`). Los vencimientos y las caducidades **no se escriben**: se
+derivan de las fechas al leer (`participacion.vencida`, `reserva.caducada`). **Nunca lleva
+montos** (`anotar_historial` frena con `ValueError` una clave de plata, también anidada),
+**nunca se purga** (≈ 10 KB por confirmación, con vértices) y **guarda para siempre el correo
+de quien actuó**: una supresión por Ley 1581 se hace a mano.
+
+**La bitácora** (`services/bitacora.py`) suma nueve acciones: `participacion.reserva`,
+`.contrato`, `.confirmada`, `.renovada`, `.editada`, `reserva.baja`, `distribucion.borrador`,
+`.confirmada` y `.descartada`. El autoguardado no anota nada; cancelar un contrato de
+participación sigue anotando `contrato.baja`, por el camino de siempre.
+
+### Lo que esta fase NO hace
+
+Las limitaciones escritas del diseño (§15.2), con lo que quedó de verdad:
+
+- **Tipos**: sólo los siete de la tabla tienen superficie; la zona libre, sólo la baja. La
+  nevera de puertas, la isla, el exhibidor de cartón, la estiba y el resto no se venden por
+  participación hasta tener su receta y sus casos.
+- **La unidad de dos caras** (D4): vender «la góndola» al 30 % son dos participaciones.
+- **Copiar distribuciones** (D20), ni de una cara a otra ni entre muebles.
+- **Quién ve**: el proveedor no ve zonas ni participaciones; la mercaderista lee su texto, sin
+  dibujo; el trabajador ve los contratos `PC` sólo en Montajes y la ocupación anónima.
+- **El dibujo es sólo en el lienzo 2D**, sobre un plano frontal 6 a 25 mm por delante (en el
+  robatope, inclinado; en el metro, sobre la tapa): una proyección, no un recorte del
+  producto. En la punta, el copete se excluye desde `techoDeCara(h)` aunque el 3D baje el
+  cartel cuando el hueco es chico (la diferencia, ≤ 12 cm, queda dibujable).
+- **El estado de la cara no cambia** (D6): cambia el color con que se pinta.
+- **La consola** cuenta la cara ocupada con cualquier participación vendida, sin ponderar por
+  el porcentaje.
+- **La bitácora de la planilla** sigue sin anotar `contrato.alta` (hueco conocido); el
+  endpoint nuevo sí anota.
+- **Cancelado contra vencido** se distingue por `baja_en`: un lease cerrado por un camino que
+  no pase por los ganchos se ve «cancelado» si todavía no había vencido.
+- **El renombre de sede** hereda su trampa (cancela las reservas y da de baja los contratos de
+  participación de la sede) aunque ahora avisa antes; y el campo «Sede» del 3D (V16): un
+  mueble cuyo `sede` no coincide con la del plano no muda la fila de la cara de sus
+  participaciones al renumerar.
+- **Las paredes** que no están dibujadas como mueble no cuentan para el aviso de cara
+  inaccesible.
+- **Una reserva no tiene tope de caducidad** más allá de `hasta` (un tope, p. ej. 30 días, es
+  una decisión comercial que quedó propuesta).
+- **Herramientas para después**: «Ajustar el borde a la vecina» (el imán cubre el caso común),
+  dibujar en el 3D, copiar.
+- **Preexistentes, sin agravar**: `PUT /layout` no valida `w` ni `modulo` (la superficie da
+  `None` fuera de los topes, pero el 3D se puede colgar; validarlo podría rechazar planos que
+  ya existen); dos filas de `spaces` que difieren sólo en mayúsculas hacen terminar la
+  renumeración en un 500; `save_layout` compara `base_updated_at` antes del candado. Y chicos de
+  esta fase: descartar sin borrador igual sube la versión; Esc con un modal abierto y el foco
+  en `body` suelta el mueble seleccionado (cortarlo rompería los modales que escuchan en
+  `window`); `loVendidoDe` busca la ocupación con la sede del mueble.
+
+### Cómo se probó
+
+- **`npm run probar`**: 1154 pruebas en 36 suites, 0 fallas (en `fc97dbc`; en `578058c` eran
+  977). Tres suites nuevas: `probar-zonas` (37), `probar-superficies` (15) y
+  `probar-distribucion` (62: los casos de las reglas, los stores con el `client.ts` real sobre un
+  servidor de prueba, el oyente del teclado foco por foco, los colores, «Borrar sede»…), y
+  pruebas sumadas a `probar-muebles` (el modo, el mueble desnudo, las guardas de la escena),
+  `probar-vender`, `probar-comercial`, `probar-partes`, `probar-revision`, `probar-camara`,
+  `probar-tema`, `probar-catalogo`, `probar-geometria`, `probar-auditoria` y `probar-sinmueble`.
+- **pytest**: los cinco `tests/test_participaciones*.py` (el servicio y la API, la
+  concurrencia, el ciclo de vida, las reglas y la geometría) dan 63 passed y 5 skipped (las
+  carreras, sin `DATABASE_URL_PG_PRUEBA`). La suite entera, en tres tandas al cierre del paso
+  4c: 1586 passed, 29 skipped, 0 failed. Contra Postgres 16 descartable,
+  `test_participaciones_concurrencia` + `test_partes_concurrencia`: 16 passed. Además,
+  pruebas sumadas a la copia, el traspaso, la bitácora, el borrado de sede, la consola, la
+  auditoría del desfase, el catálogo y la venta por partes.
+- **Los gemelos**, con fuzzers TS contra Python: 12 000 casos de área e intersección, 48 000 de
+  validación, 6 000 de medición y 48 000 de superficie y firma, sin una diferencia (la mayor
+  contra shapely, 4,4e-16); y 4 × 1 500 escenarios de reglas, sin una diferencia. Cada paso
+  corrió su tanda de mutaciones, y las que sobrevivían se cerraron con casos.
+- **El recorrido A a I** en Chromium (sedes NAVE por participación y TERRON sin, con los siete
+  tipos), sobre `d75f8ed`: A 12/12 (las cuatro magnitudes y el 45 %), B 15/15 (tres zonas sin
+  doble conteo, que vuelven iguales al recargar), C 16/16 (vertical, horizontal, irregular,
+  diagonal; el área por muestreo coincide), D 12/12 (el solape frena y queda de borrador), E
+  11/11 (sobra 5 % → «Ajustar al contratado»; el % y el valor no cambian), F 11/11 (cada cara
+  su capa, clic desde los dos lados, girar no dibuja), G (cancelar, caducar y vencer liberan y
+  pasan a historia), H 16/16 (dos sesiones; dos altas de 60 % dejan una) e I (TERRON y GON-02
+  dan 0 píxeles de diferencia contra `578058c`; el modo desnuda, aísla el teclado y no aparece
+  delante de un proveedor). G e I encontraron defectos: ver abajo.
+
+**Un gotcha de las pruebas**: en `probar-catalogo`, el contador de memos que preguntan la
+tarifa se acumula entre archivos, así que una vez que alguno lo tuvo, **todo archivo que
+mencione `rateTypeOf`, `tarifaDeEspacio` y compañía tiene que tener `const fichasPropias =
+useFichasPropias()`**, aunque no tenga un memo propio. La regla de *Fichas propias* dice «todo
+memo»; en la práctica es «todo archivo».
+
+### Arreglos de la revisión final
+
+La revisión final (integridad comercial, privacidad y reglas duras, escena y uso, y el
+recorrido) se hizo sobre `d75f8ed`; la integración (`fc97dbc`) ya cerró lo que venía de los
+pasos (el rótulo de la consola, «Borrar sede» y el renombre, la tarjeta *Participación sin
+mueble*, los datos de la zona en «Editar», el Esc del formulario, la letra tapada). Lo que
+encontró y quedó abierto en `fc97dbc`:
+
+- integridad: una fila de cara vieja sin `sede` deja 404 al confirmar, renovar o cambiar
+  (alta); cancelar una reserva ya caducada reescribe su historia; `fisicos_de` no mira de qué
+  cara cuelga el término de un lease `PC` (carrera con el borrado de sede);
+- privacidad: el trabajador lee el % por `/montaje/mi-espacio`, y cruzando `/ocupacion` con
+  `/spaces/comercial` puede armar proveedor, marca y % de cada participación;
+- escena y uso: «Descartarlos» en «Mirar» guarda en vez de descartar; z-fighting entre las
+  cintas coplanares de dos zonas contiguas; un 401 después de un `version_vieja` pierde todo
+  lo hecho desde el 409; un clic sobre un vecino que tapa actúa sobre la cara de atrás; en el
+  modo no se ve la sede; las letras y rótulos (`Html`) siguen más allá de 40 m; una zona de
+  una participación que la cara no nombra se rellena en el 3D y no en el lienzo;
+- recorrido: el globo de Supervisar y la ficha del plano 2D dicen «Disponible» / «Sin
+  contrato activo» en una cara por participación tomada; el historial fecha caducidades y
+  vencimientos un día antes en hora de Colombia; tocar en Vender una cara por participación no
+  explica nada (`textoAlTocarEnVender` está sin usar); al entrar, el encuadre deja afuera parte
+  de una cara ancha.
+
+<!-- ARREGLOS-FINALES -->
+
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
 
 **El pedido del dueño (2026-09-07).** Al abrir el detalle de un cliente en
@@ -11358,10 +12221,12 @@ código. Vale la pena el rato que toma:
 3. Conducir el navegador con Playwright y capturar. Chromium ya está instalado en
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
-**Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las seis suites
-sin navegador (113 pruebas: planta, propuesta, nomenclatura, pasillos, revisión, acomodar): transpila el `.ts` con el esbuild que ya trae vite y
-afirma en node. No hay runner de pruebas en el frontend y no valía la pena montar uno para
-esto. Ahí se encontró que un paso largo saltaba por encima de un mueble.
+**Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las suites sin
+navegador —36 suites y 1154 pruebas al 2026-10-17 (`fc97dbc`), de `probar-planta` a
+`probar-distribucion`; la cadena está en `frontend/package.json`—: transpila el `.ts` con el
+esbuild que ya trae vite y afirma en node. No hay runner de pruebas en el frontend y no valía
+la pena montar uno para esto. Ahí se encontró que un paso largo saltaba por encima de un
+mueble. Empezó con seis suites y 113 pruebas; cada fase suma la suya.
 
 **Después del 3D, los locators de Playwright dejan de resolver** aunque el DOM esté intacto:
 el lienzo redibuja sin parar y el framework nunca lo considera estable. `page.evaluate` sigue
