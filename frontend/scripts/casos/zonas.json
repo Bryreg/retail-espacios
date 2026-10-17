@@ -75,7 +75,12 @@
     {"nombre":"malformada: nada","vertices":null,"ancho":1,"alto":1,"codigo":"ZONA_MALFORMADA"},
     {"nombre":"malformada: un punto con tres números","vertices":[[0,0,0],[1,0],[1,1]],"ancho":1,"alto":1,"codigo":"ZONA_MALFORMADA"},
     {"nombre":"malformada: un número escrito como texto","vertices":[[0,"0"],[1,0],[1,1]],"ancho":1,"alto":1,"codigo":"ZONA_MALFORMADA"},
-    {"nombre":"malformada: un booleano","vertices":[[true,0],[1,0],[1,1]],"ancho":1,"alto":1,"codigo":"ZONA_MALFORMADA"}
+    {"nombre":"malformada: un booleano","vertices":[[true,0],[1,0],[1,1]],"ancho":1,"alto":1,"codigo":"ZONA_MALFORMADA"},
+    {"nombre":"afuera y además se cruza: fuera va antes que se cruza (§3.7)","vertices":[[0,0],[1.5,1],[1,0],[0,1]],"ancho":1,"alto":1,"codigo":"ZONA_FUERA"},
+    {"nombre":"25 puntos con uno afuera: demasiados va antes que fuera","vertices":[[0.0,0],[0.04,0],[0.08,0],[0.12,0],[0.16,0],[0.2,0],[0.24,0],[0.28,0],[0.32,0],[0.36,0],[0.4,0],[0.44,0],[0.48,0],[0.52,0],[0.56,0],[0.6,0],[0.64,0],[0.68,0],[0.72,0],[0.76,0],[0.8,0],[0.84,0],[0.88,0],[0.92,0],[2,1]],"ancho":1,"alto":1,"codigo":"ZONA_DEMASIADOS_VERTICES"},
+    {"nombre":"dos puntos afuera: pocos va antes que fuera","vertices":[[2,2],[3,3]],"ancho":1,"alto":1,"codigo":"ZONA_POCOS_VERTICES"},
+    {"nombre":"un número enorme pero finito: afuera, no una caída del servidor","vertices":[[1e303,0],[1,0],[1,1]],"ancho":1,"alto":1,"codigo":"ZONA_FUERA"},
+    {"nombre":"un entero que no entra en un float (el navegador lo lee Infinity): malformada","vertices":[[10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,0],[1,0],[1,1]],"ancho":1,"alto":1,"codigo":"ZONA_MALFORMADA"}
   ],
   "dibujado": [
     {"nombre":"un cuarto de una cara sin exclusiones","zonas":[[[0,0],[0.5,0],[0.5,0.5],[0,0.5]]],"exclusiones":[],"pb":2500},
@@ -92,7 +97,9 @@
     {"nombre":"una zona entera sobre el zócalo no suma","superficie":"superficie:gondola-doble-090","zonas":[{"s":3,"vertices":[[0.2,0],[0.8,0],[0.8,0.05],[0.2,0.05]]},{"s":3,"vertices":[[0.2,0.5],[0.8,0.5],[0.8,0.6],[0.2,0.6]]}],"codigos":[null,null],"dibujado":{"3":724},"pisadas":[],"sin_superficie_util":[0]},
     {"nombre":"cajas que no se tocan no se miden","superficie":{"exclusiones":[],"ancho":1,"alto":1},"zonas":[{"s":1,"vertices":[[0,0],[0.2,0],[0.2,1],[0,1]]},{"s":2,"vertices":[[0.8,0],[1,0],[1,1],[0.8,1]]}],"codigos":[null,null],"dibujado":{"1":2000,"2":2000},"pisadas":[],"sin_superficie_util":[]},
     {"nombre":"cajas que se pisan con zonas que no: la pisada es 0","superficie":{"exclusiones":[],"ancho":1,"alto":1},"zonas":[{"s":1,"vertices":[[0,0],[1,0],[0,1]]},{"s":2,"vertices":[[1,1],[0,1],[1,0]]}],"codigos":[null,null],"dibujado":{"1":5000,"2":5000},"pisadas":[[1,2,0]],"sin_superficie_util":[]},
-    {"nombre":"una participación con todas sus zonas malas no tiene dibujado","superficie":{"exclusiones":[],"ancho":1,"alto":1},"zonas":[{"s":4,"vertices":[[0,0],[1,1]]},{"s":5,"vertices":[[0,0],[0.1,0],[0.1,0.1],[0,0.1]]}],"codigos":["ZONA_POCOS_VERTICES",null],"dibujado":{"5":100},"pisadas":[],"sin_superficie_util":[]}
+    {"nombre":"una participación con todas sus zonas malas no tiene dibujado","superficie":{"exclusiones":[],"ancho":1,"alto":1},"zonas":[{"s":4,"vertices":[[0,0],[1,1]]},{"s":5,"vertices":[[0,0],[0.1,0],[0.1,0.1],[0,0.1]]}],"codigos":["ZONA_POCOS_VERTICES",null],"dibujado":{"5":100},"pisadas":[],"sin_superficie_util":[]},
+    {"nombre":"lo útil se mide en m²: una zona con área que cae casi entera sobre lo excluido","superficie":{"exclusiones":[{"por":"zocalo","u0":0,"u1":1,"v0":0,"v1":0.5}],"ancho":0.5,"alto":0.5},"zonas":[{"s":1,"vertices":[[0,0],[0.5,0],[0.5,0.5004],[0,0.5004]]}],"codigos":[null],"dibujado":{"1":4},"pisadas":[],"sin_superficie_util":[0]},
+    {"nombre":"cajas que sólo se tocan por un lado no se miden","superficie":{"exclusiones":[],"ancho":1,"alto":1},"zonas":[{"s":1,"vertices":[[0,0],[0.5,0],[0.5,1],[0,1]]},{"s":2,"vertices":[[0.5,0],[1,0],[1,1],[0.5,1]]}],"codigos":[null,null],"dibujado":{"1":5000,"2":5000},"pisadas":[],"sin_superficie_util":[]}
   ],
   "topes": [
     {"nombre":"60 rectángulos entran","vertices_por_zona":[4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],"entra":true},

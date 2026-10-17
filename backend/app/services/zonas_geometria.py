@@ -63,8 +63,16 @@ CODIGOS_DE_ZONA = (
 
 
 def cuantizar_numero(x: float) -> float:
-    """``floor(x·1e6 + 0.5) / 1e6`` (nunca −0: ``floor`` da un ``int``)."""
-    return math.floor(x * 1e6 + 0.5) / 1e6
+    """``floor(x·1e6 + 0.5) / 1e6`` (nunca −0: ``floor`` da un ``int``).
+
+    Un número finito de más de ≈ 1,8e302 desborda al multiplicarlo: en el
+    navegador ``Math.floor(±Infinity)`` es ±Infinity (y la zona da
+    ``ZONA_FUERA``), y acá ``math.floor`` se caía con OverflowError. Se
+    devuelve lo mismo que allá."""
+    y = x * 1e6 + 0.5
+    if math.isinf(y):
+        return y
+    return math.floor(y) / 1e6
 
 
 def area_firmada(p) -> float:
@@ -182,7 +190,15 @@ def es_simple(p) -> bool:
 
 
 def _es_numero(x) -> bool:
-    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+    """Un número finito. Un ``int`` que no entra en un float (el ``json`` de
+    Python lo deja entero; ``JSON.parse`` del navegador lo lee Infinity) no lo
+    es: ``math.isfinite`` se caía con OverflowError."""
+    if not isinstance(x, (int, float)) or isinstance(x, bool):
+        return False
+    try:
+        return math.isfinite(x)
+    except OverflowError:
+        return False
 
 
 def _son_pares_finitos(x) -> bool:

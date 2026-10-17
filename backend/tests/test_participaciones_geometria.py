@@ -194,6 +194,9 @@ def test_la_geometria_es_pura_y_sin_sumas_compensadas():
     codigo = re.sub(r'"""[\s\S]*?"""', " ", fuente)
     codigo = re.sub(r"#[^\n]*", " ", codigo)
     assert not re.search(r"(^|[^\w.])(sum|fsum|round)\s*\(", codigo, re.M), "suma con sum/fsum o redondea con round"
+    # La de arriba no ve ``math.fsum(`` (el punto la deja pasar), que es como
+    # se escribe: ésta sí.
+    assert not re.search(r"\bf?sum\s*\(", codigo), "suma con math.fsum o sum"
     assert not re.search(r"^\s*(from app|import app)", codigo, re.M), "importa algo de la app: tiene que ser pura"
 
 
@@ -315,6 +318,26 @@ def test_la_copia_de_las_medidas_del_3d():
     assert "(_, i) => ROBATOPE.base + (i + 1) * (cuerpo - ROBATOPE.margen) / (n + 1)," in medidas
     assert "apoyos: repisas.map((y) => y + ROBATOPE.espesorRepisa / 2)," in medidas
     assert "Math.max(1, Math.round(w / (modulo && modulo > 0 ? modulo : ANCHO_MODULO_TIPICO)))" in medidas
+
+
+def test_medidas_absurdas_no_se_distribuyen():
+    """Más de ``MAX_VANOS`` módulos o puertas, o una medida de más de
+    ``MEDIDA_MAXIMA``, no tienen superficie (la API no acota ``w`` ni
+    ``modulo``: sin el tope, un ancho de 1e308 colgaba la cuenta). Los dos
+    lados del filo, que los casos compartidos sólo tienen del lado de afuera."""
+    from app.services.superficie import MAX_VANOS, MEDIDA_MAXIMA, firma, superficie
+
+    assert (MAX_VANOS, MEDIDA_MAXIMA) == (200, 1000)
+    justo = superficie({"type": "gondola", "w": 1.25 * MAX_VANOS, "d": 0.9, "h": 1.8}, "A")
+    assert justo is not None and len([e for e in justo["exclusiones"] if e["por"] == "parante"]) == MAX_VANOS + 1
+    assert superficie({"type": "gondola", "w": 251.9, "d": 0.9, "h": 1.8}, "A") is None
+    assert superficie({"type": "mueble", "w": 0.6 * MAX_VANOS, "d": 0.6, "h": 2}, "A") is not None
+    assert superficie({"type": "mueble", "w": 0.6 * (MAX_VANOS + 1), "d": 0.6, "h": 2}, "A") is None
+    assert superficie({"type": "robatope", "w": 0.3, "d": 0.4, "h": MEDIDA_MAXIMA}, "A") is not None
+    assert firma({"type": "robatope", "w": 0.3, "d": 0.4, "h": MEDIDA_MAXIMA}, "A").startswith("v1|robatope||300|1000000|")
+    for k in ("w", "d", "h"):
+        f = {"type": "cross", "w": 0.8, "d": 0.8, "h": 1.8, k: MEDIDA_MAXIMA + 0.001}
+        assert superficie(f, "A") is None and firma(f, "A") is None, k
 
 
 def test_la_zona_libre_solo_si_se_pisa():

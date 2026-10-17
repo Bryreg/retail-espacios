@@ -65,6 +65,16 @@ export const SEPARACION_CROSS = 0.006;
 export const SEPARACION_VITRINA = 0.020;
 /** La zona libre se dibuja 4 mm sobre su tapa. */
 export const SOBRE_LA_TAPA = 0.004;
+/** Un mueble de más de un kilómetro es un plano roto o un número mal escrito
+ *  (la API no acota las medidas): no se distribuye. Sin este tope, un ancho
+ *  de 1e308 colgaba la cuenta en los dos gemelos y Python se caía al pasar el
+ *  ancho a milímetros para la firma. */
+export const MEDIDA_MAXIMA = 1000;
+/** Ni módulos ni puertas de más: cada uno es una exclusión, y la cuenta de
+ *  franjas crece con ellas (≈ 0,26 s en CPython con 200 y el peor caso de
+ *  zonas). 200 módulos son 250 m de góndola con el módulo de 1,25. Un módulo
+ *  de 1e-9 (la API no lo acota) pedía mil millones de parantes. */
+export const MAX_VANOS = 200;
 
 /** La ristra que dibuja `RistraMesh`: la lámina angosta, base y cabezal de
  *  6 cm, y el gancho que sale `0,32·d` con 3,5 mm de radio. */
@@ -145,18 +155,24 @@ function bandas(w: number, xs: number[], y0: number, y1: number): Rect[] {
 /** Las recetas, en metros y en el marco del mueble (§7.3). Un `Record` sobre
  *  la unión del catálogo: una receta sin cocinar no compila. */
 const RECETARIO: Record<RecetaDeSuperficie, (m: Medidas) => Dibujo | null> = {
-  gondola: ({ w, d, h, mural, modulo, tramos }) => ({
-    orientacion: "frente",
-    exterior: { x0: -w / 2, x1: w / 2, y0: 0, y1: h },
-    exclusiones: [
-      rect("zocalo", -w / 2, w / 2, 0, ZOCALO.alto),
-      rect("remate", -w / 2, w / 2, h - REMATE_GONDOLA, h),
-      ...bandas(w, parantes(w, vanos(w, modulo, tramos)), ZOCALO.alto, h - REMATE_GONDOLA),
-    ],
-    plano: ESPESOR_ESPINA / 2 + fondoPorCara(d, mural) + SEPARACION_GONDOLA,
-    giroX: 0,
-  }),
+  gondola: ({ w, d, h, mural, modulo, tramos }) => {
+    const n = vanos(w, modulo, tramos);
+    if (n > MAX_VANOS) return null;
+    return {
+      orientacion: "frente",
+      exterior: { x0: -w / 2, x1: w / 2, y0: 0, y1: h },
+      exclusiones: [
+        rect("zocalo", -w / 2, w / 2, 0, ZOCALO.alto),
+        rect("remate", -w / 2, w / 2, h - REMATE_GONDOLA, h),
+        ...bandas(w, parantes(w, n), ZOCALO.alto, h - REMATE_GONDOLA),
+      ],
+      plano: ESPESOR_ESPINA / 2 + fondoPorCara(d, mural) + SEPARACION_GONDOLA,
+      giroX: 0,
+    };
+  },
   punta: ({ w, d, h, modulo }) => {
+    const n = vanos(w, modulo, undefined);
+    if (n > MAX_VANOS) return null;
     const techo = techoDeCara(h);
     return {
       orientacion: "frente",
@@ -164,7 +180,7 @@ const RECETARIO: Record<RecetaDeSuperficie, (m: Medidas) => Dibujo | null> = {
       exclusiones: [
         rect("zocalo", -w / 2, w / 2, 0, ZOCALO.alto),
         rect("copete", -w / 2, w / 2, techo, h),
-        ...bandas(w, parantes(w, vanos(w, modulo, undefined)), ZOCALO.alto, techo),
+        ...bandas(w, parantes(w, n), ZOCALO.alto, techo),
       ],
       plano: d / 2 + SEPARACION_PUNTA,
       giroX: 0,
@@ -220,6 +236,7 @@ const RECETARIO: Record<RecetaDeSuperficie, (m: Medidas) => Dibujo | null> = {
     const baseH = Math.min(VITRINA.fraccionDeBase * h, VITRINA.baseMaxima);
     const techo = h - VITRINA.marco;
     const nP = Math.max(1, Math.round(w / VITRINA.puerta));
+    if (nP > MAX_VANOS) return null;
     const pw = w / nP;
     const exclusiones: Rect[] = [
       rect("zocalo", -w / 2, w / 2, 0, baseH),
@@ -283,6 +300,7 @@ function dibujoDe(f: MuebleParaSuperficie, cara: "A" | "B"): { clave: string; re
   const caras = carasDe({ type: f.type, gondolaType: f.gondolaType });
   if (cara === "B" && caras !== 2) return null;
   if (!positivo(f.w) || !positivo(f.d) || !positivo(f.h)) return null;
+  if (f.w > MEDIDA_MAXIMA || f.d > MEDIDA_MAXIMA || f.h > MEDIDA_MAXIMA) return null;
   const dibujo = RECETARIO[receta]({
     w: f.w, d: f.d, h: f.h, mural: caras === 1,
     modulo: typeof f.modulo === "number" ? f.modulo : undefined,
@@ -294,7 +312,8 @@ function dibujoDe(f: MuebleParaSuperficie, cara: "A" | "B"): { clave: string; re
 /**
  * La superficie comercializable de la cara A o B (§7.4), o null si: el tipo
  * no tiene receta, la cara es la B de un mueble de una cara, las medidas no
- * son números > 0, o lo útil no pasa de 1 cm² (sin división por cero en
+ * son números > 0 (o pasan de `MEDIDA_MAXIMA`), pide más de `MAX_VANOS`
+ * módulos o puertas, o lo útil no pasa de 1 cm² (sin división por cero en
  * `dibujadoPb`). Las exclusiones se pasan a u,v (en la B, en espejo), se
  * recortan a [0,1], se cuantizan a 1e-6 y se descartan las que quedan sin
  * ancho o sin alto.

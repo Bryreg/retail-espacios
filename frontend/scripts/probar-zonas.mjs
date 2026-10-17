@@ -83,6 +83,37 @@ const fueraDeLasExclusiones = (T, E, quien) => {
   }
 };
 
+/** Adentro o sobre el borde de un polígono (tolerancia en u,v). */
+const adentroOBorde = ([x, y], p, tol) => {
+  let dentro = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+    const [ax, ay] = p[j], [bx, by] = p[i];
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+    if (Math.hypot(x - (ax + t * dx), y - (ay + t * dy)) <= tol) return true;
+    if ((ay > y) !== (by > y) && x < ax + (y - ay) * dx / dy) dentro = !dentro;
+  }
+  return dentro;
+};
+/** Cada esquina de cada trapecio cae en la región que se pinta: en la cara,
+ *  en alguna zona de P (y de Q) y fuera del interior de las exclusiones. La
+ *  suma de áreas sola no alcanza: los rectángulos a la altura del punto medio
+ *  de cada franja suman lo mismo y pintan fuera de las zonas inclinadas. */
+const trapeciosEnSuLugar = (T, P, E, Q, quien) => {
+  const tol = 1e-9;
+  for (const t of T) {
+    for (const c of t) {
+      const [u, v] = c;
+      assert.ok(u >= -tol && u <= 1 + tol && v >= -tol && v <= 1 + tol, `${quien}: una esquina fuera de la cara (${u}, ${v})`);
+      assert.ok(P.some((p) => adentroOBorde(c, p, tol)), `${quien}: una esquina fuera de las zonas (${u}, ${v})`);
+      if (Q) assert.ok(Q.some((p) => adentroOBorde(c, p, tol)), `${quien}: una esquina fuera de la otra participación (${u}, ${v})`);
+      for (const e of E) {
+        assert.ok(!(e.u0 + tol < u && u < e.u1 - tol && e.v0 + tol < v && v < e.v1 - tol), `${quien}: una esquina adentro de «${e.por}» (${u}, ${v})`);
+      }
+    }
+  }
+};
+
 console.log("zonas · los casos compartidos con el servidor");
 
 await prueba(`área de la unión dentro de la cara (${CASOS.area.length} casos)`, () => {
@@ -93,6 +124,7 @@ await prueba(`área de la unión dentro de la cara (${CASOS.area.length} casos)`
     const T = G.trapecios(c.zonas, E);
     cerca(areaDeTrapecios(T), a, 1e-12, `${c.nombre}: los trapecios`);
     fueraDeLasExclusiones(T, E, c.nombre);
+    trapeciosEnSuLugar(T, c.zonas, E, undefined, c.nombre);
   }
 });
 
@@ -102,7 +134,9 @@ await prueba(`lo que se pisan dos participaciones (${CASOS.interseccion.length} 
     const a = G.areaCubierta(c.a, E, c.b);
     cerca(a, c.area, TOL, c.nombre);
     cerca(G.areaCubierta(c.b, E, c.a), a, 1e-12, `${c.nombre}: al revés`);
-    cerca(areaDeTrapecios(G.trapecios(c.a, E, c.b)), a, 1e-12, `${c.nombre}: los trapecios`);
+    const T = G.trapecios(c.a, E, c.b);
+    cerca(areaDeTrapecios(T), a, 1e-12, `${c.nombre}: los trapecios`);
+    trapeciosEnSuLugar(T, c.a, E, c.b, c.nombre);
   }
 });
 
@@ -157,7 +191,9 @@ await prueba(`bit a bit: el número que Python tiene que dar igual (${CASOS.exac
     const P = poligonosDe(c.P), E = exclusionesDe(c.E), Q = c.Q !== undefined ? poligonosDe(c.Q) : undefined;
     const a = G.areaCubierta(P, E, Q);
     assert.ok(Object.is(a, c.area), `${c.nombre}: ${a} y no ${c.area} (cambió el orden de una cuenta)`);
-    cerca(areaDeTrapecios(G.trapecios(P, E, Q)), a, 1e-12, `${c.nombre}: los trapecios`);
+    const T = G.trapecios(P, E, Q);
+    cerca(areaDeTrapecios(T), a, 1e-12, `${c.nombre}: los trapecios`);
+    trapeciosEnSuLugar(T, P, E, Q, c.nombre);
   }
 });
 
@@ -270,6 +306,9 @@ await prueba("las sumas de los dos gemelos son bucles explícitos (nada de reduc
   const py = leer(join(raiz, "..", "backend", "app", "services", "zonas_geometria.py"))
     .replace(/"""[\s\S]*?"""/g, " ").replace(/#[^\n]*/g, " ");
   assert.ok(!/(^|[^\w.])(sum|fsum|round)\s*\(/m.test(py), "zonas_geometria.py suma con sum/fsum o redondea con round");
+  // La de arriba no ve `math.fsum(` (el punto la deja pasar), que es como se
+  // escribe: ésta sí.
+  assert.ok(!/\bf?sum\s*\(/.test(py), "zonas_geometria.py suma con math.fsum o sum");
   assert.ok(!/^\s*(from app|import app)/m.test(py), "zonas_geometria.py importa algo de la app: tiene que ser pura");
 });
 

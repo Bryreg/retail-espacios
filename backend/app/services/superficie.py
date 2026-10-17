@@ -61,6 +61,14 @@ SEPARACION_RISTRA = 0.012
 SEPARACION_CROSS = 0.006
 SEPARACION_VITRINA = 0.020
 SOBRE_LA_TAPA = 0.004
+#: Un mueble de más de un kilómetro es un plano roto o un número mal escrito
+#: (la API no acota las medidas): no se distribuye. Sin este tope, un ancho de
+#: 1e308 colgaba la cuenta y ``_mm`` se caía con OverflowError en la firma.
+MEDIDA_MAXIMA = 1000
+#: Ni módulos ni puertas de más: cada uno es una exclusión, y la cuenta de
+#: franjas crece con ellas. Un módulo de 1e-9 (la API no lo acota) pedía mil
+#: millones de parantes.
+MAX_VANOS = 200
 #: La ristra de ``RistraMesh``.
 RISTRA_ANCHO_MINIMO = 0.076
 RISTRA_ANCHO_MAXIMO = 0.13
@@ -112,6 +120,19 @@ def _numero(x) -> bool:
     return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
+def _como_en_el_navegador(x):
+    """El número como lo lee el navegador: ``JSON.parse`` convierte un entero
+    que no entra en un float en ±Infinity, y el ``json`` de Python lo deja
+    ``int`` (``math.isfinite`` y la división se caían con OverflowError).
+    Lo demás pasa igual."""
+    if isinstance(x, int) and not isinstance(x, bool):
+        try:
+            float(x)
+        except OverflowError:
+            return math.inf if x > 0 else -math.inf
+    return x
+
+
 def _tramos_validos(t):
     if _numero(t) and math.isfinite(t) and float(t).is_integer() and 1 <= t <= TRAMOS_MAXIMOS:
         return int(t)
@@ -140,20 +161,26 @@ def _bandas(w: float, xs, y0: float, y1: float) -> list[tuple]:
 # plano, giro_x) en metros y en el marco del mueble (§7.3), o None.
 
 def _gondola(w, d, h, mural, modulo, tramos):
+    n = _vanos(w, modulo, tramos)
+    if n > MAX_VANOS:
+        return None
     excl = [
         ("zocalo", -w / 2, w / 2, 0, ZOCALO_ALTO),
         ("remate", -w / 2, w / 2, h - REMATE_GONDOLA, h),
-        *_bandas(w, _parantes(w, _vanos(w, modulo, tramos)), ZOCALO_ALTO, h - REMATE_GONDOLA),
+        *_bandas(w, _parantes(w, n), ZOCALO_ALTO, h - REMATE_GONDOLA),
     ]
     return "frente", (-w / 2, w / 2, 0, h), excl, ESPESOR_ESPINA / 2 + _fondo_por_cara(d, mural) + SEPARACION_GONDOLA, 0
 
 
 def _punta(w, d, h, mural, modulo, tramos):
+    n = _vanos(w, modulo, None)
+    if n > MAX_VANOS:
+        return None
     techo = _techo_de_cara(h)
     excl = [
         ("zocalo", -w / 2, w / 2, 0, ZOCALO_ALTO),
         ("copete", -w / 2, w / 2, techo, h),
-        *_bandas(w, _parantes(w, _vanos(w, modulo, None)), ZOCALO_ALTO, techo),
+        *_bandas(w, _parantes(w, n), ZOCALO_ALTO, techo),
     ]
     return "frente", (-w / 2, w / 2, 0, h), excl, d / 2 + SEPARACION_PUNTA, 0
 
@@ -193,6 +220,8 @@ def _vitrina(w, d, h, mural, modulo, tramos):
     base_h = min(VITRINA_FRACCION_DE_BASE * h, VITRINA_BASE_MAXIMA)
     techo = h - VITRINA_MARCO
     n_p = max(1, _redondear(w / VITRINA_PUERTA))
+    if n_p > MAX_VANOS:
+        return None
     pw = w / n_p
     excl = [
         ("zocalo", -w / 2, w / 2, 0, base_h),
@@ -264,12 +293,14 @@ def _dibujo_de(f, cara):
     caras = caras_del_mueble({"type": tipo, "gondolaType": f.get("gondolaType")})
     if cara == "B" and caras != 2:
         return None
-    w, d, h = f.get("w"), f.get("d"), f.get("h")
+    w, d, h = (_como_en_el_navegador(f.get(k)) for k in ("w", "d", "h"))
     if not (_positivo(w) and _positivo(d) and _positivo(h)):
         return None
-    modulo = f.get("modulo")
+    if w > MEDIDA_MAXIMA or d > MEDIDA_MAXIMA or h > MEDIDA_MAXIMA:
+        return None
+    modulo = _como_en_el_navegador(f.get("modulo"))
     partes = f.get("partes")
-    tramos = partes.get("tramos") if isinstance(partes, dict) else None
+    tramos = _como_en_el_navegador(partes.get("tramos")) if isinstance(partes, dict) else None
     dibujo = _RECETARIO[receta](
         w, d, h, caras == 1,
         modulo if _numero(modulo) else None,
@@ -282,7 +313,8 @@ def superficie(f: dict, cara: str) -> dict | None:
     """La superficie comercializable de la cara ``"A"`` o ``"B"`` (§7.4):
     ``{orientacion, ancho, alto, plano, giro_x, exclusiones, area_util_m2}``,
     o None si: el tipo no tiene receta, la cara es la B de un mueble de una
-    cara, las medidas no son números > 0, o lo útil no pasa de 1 cm². Las
+    cara, las medidas no son números > 0 (o pasan de ``MEDIDA_MAXIMA``), pide
+    más de ``MAX_VANOS`` módulos o puertas, o lo útil no pasa de 1 cm². Las
     exclusiones van a u,v (en la B, en espejo), recortadas a [0,1],
     cuantizadas a 1e-6, sin las que quedan sin ancho o sin alto y ordenadas
     por (v0, u0, v1, u1, por). Es ``superficieDeCara`` del navegador."""
@@ -334,7 +366,7 @@ def firma(f: dict, cara: str) -> str | None:
         return None
     clave, _receta, caras, _ = r
     variante = "doble" if caras == 2 else ("mural" if clave == "gondola" else "")
-    e = f.get("entrepanos")
+    e = _como_en_el_navegador(f.get("entrepanos"))
     entrepanos = str(int(e)) if (_numero(e) and math.isfinite(e) and float(e).is_integer() and 0 <= e <= 1000) else "-"
     orden = sorted(s["exclusiones"], key=lambda x: (_q4(x["v0"]), _q4(x["u0"]), _q4(x["v1"]), _q4(x["u1"]), x["por"]))
     partes = ";".join(f"{x['por']}:{_q4(x['u0'])},{_q4(x['u1'])},{_q4(x['v0'])},{_q4(x['v1'])}" for x in orden)

@@ -125,6 +125,26 @@ await prueba("la cara B de una doble es la A en espejo, y la mural no tiene B", 
   assert.equal(S.superficieDeCara({ type: "gondola", gondolaType: "wall", w: 2, d: 0.4, h: 1.8 }, "B"), null);
 });
 
+await prueba("medidas absurdas no se distribuyen: los dos lados del filo de MAX_VANOS y MEDIDA_MAXIMA", () => {
+  // La API no acota `w` ni `modulo`: sin el tope, un ancho de 1e308 dejaba
+  // el bucle de parantes sin fin. Los casos compartidos tienen el lado de
+  // afuera; acá va también el de adentro.
+  assert.deepEqual([S.MAX_VANOS, S.MEDIDA_MAXIMA], [200, 1000]);
+  const justo = S.superficieDeCara({ type: "gondola", w: 1.25 * S.MAX_VANOS, d: 0.9, h: 1.8 }, "A");
+  assert.ok(justo, "200 módulos no tienen superficie");
+  assert.equal(justo.exclusiones.filter((e) => e.por === "parante").length, S.MAX_VANOS + 1);
+  assert.equal(S.superficieDeCara({ type: "gondola", w: 251.9, d: 0.9, h: 1.8 }, "A"), null);
+  assert.ok(S.superficieDeCara({ type: "mueble", w: 0.6 * S.MAX_VANOS, d: 0.6, h: 2 }, "A"), "200 puertas no tienen superficie");
+  assert.equal(S.superficieDeCara({ type: "mueble", w: 0.6 * (S.MAX_VANOS + 1), d: 0.6, h: 2 }, "A"), null);
+  assert.ok(S.superficieDeCara({ type: "robatope", w: 0.3, d: 0.4, h: S.MEDIDA_MAXIMA }, "A"), "un kilómetro justo no tiene superficie");
+  assert.ok(S.firmaDeCara({ type: "robatope", w: 0.3, d: 0.4, h: S.MEDIDA_MAXIMA }, "A").startsWith("v1|robatope||300|1000000|"));
+  for (const k of ["w", "d", "h"]) {
+    const f = { type: "cross", w: 0.8, d: 0.8, h: 1.8, [k]: S.MEDIDA_MAXIMA + 0.001 };
+    assert.equal(S.superficieDeCara(f, "A"), null, k);
+    assert.equal(S.firmaDeCara(f, "A"), null, k);
+  }
+});
+
 await prueba("la firma cambia con lo que mueve u,v y no con el fondo", () => {
   const base = { type: "gondola", w: 1.25, d: 0.9, h: 1.8 };
   const f0 = S.firmaDeCara(base, "A");
