@@ -420,14 +420,21 @@ def slots_vendidos_en_participacion(previas: list, nuevas: list) -> list[str]:
     return sorted(frases)
 
 
+#: Lo que, cambiado en un espacio interno que ya estaba vendido, es venderlo
+#: otra vez: correr el inicio (más días vendidos, como estirar el fin) o
+#: pasárselo a otro proveedor. Se comparan sólo si vienen (una pestaña que no
+#: los conoce no los está cambiando).
+_VENTA_DEL_SLOT = ("startDate", "supplierName")
+
+
 def slots_en_participacion(previas: list, nuevas: list) -> list[str]:
     """Los muebles por participación en los que este guardado VENDE un espacio
     interno: un slot que pasa a ocupado o reservado, o que siendo vendido
-    cambia su fin o su valor. Los slots y su precio viven en el JSON, sin
-    autoridad del servidor: una pestaña vieja vendía así un frente que ya está
-    repartido por participación. Liberar un slot sigue permitido, y uno que ya
-    estaba vendido igual se guarda sin tocarlo. Un valor AUSENTE no es un
-    cambio: lo rellena ``_restore_missing_slot_prices``."""
+    cambia su fin, su inicio, su proveedor o su valor. Los slots y su precio
+    viven en el JSON, sin autoridad del servidor: una pestaña vieja vendía así
+    un frente que ya está repartido por participación. Liberar un slot sigue
+    permitido, y uno que ya estaba vendido igual se guarda sin tocarlo. Un
+    valor AUSENTE no es un cambio: lo rellena ``_restore_missing_slot_prices``."""
     previos = _por_id(previas)
     frases = []
     for f in nuevas:
@@ -441,6 +448,7 @@ def slots_en_participacion(previas: list, nuevas: list) -> list[str]:
                 continue
             a = antes.get(x.get("id")) if x.get("id") else None
             if (a is None or a.get("status") not in _SLOT_VENDIDO or a.get("endDate") != x.get("endDate")
+                    or any(k in x and a.get(k) != x.get(k) for k in _VENTA_DEL_SLOT)
                     or ("negotiatedValue" in x and a.get("negotiatedValue") != x.get("negotiatedValue"))):
                 frases.append(
                     f"«{normalizar(f.get('code'))}» se vende por participación: lo vendido va con contrato en "
@@ -1366,7 +1374,9 @@ def delete_layout(
         detalle=(
             f"{archived['spaces']} espacios archivados · "
             f"{archived['leases_closed']} contratos cerrados"
-            + (f" · {archived['reservas_canceladas']} reservas provisionales de participación canceladas"
+            + (" · " + _plural(archived["reservas_canceladas"],
+                               "reserva provisional de participación cancelada",
+                               "reservas provisionales de participación canceladas")
                if archived.get("reservas_canceladas") else "")
         ),
     )

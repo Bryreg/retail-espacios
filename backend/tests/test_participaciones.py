@@ -1061,6 +1061,17 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
         assert fila.actor == "admin"
     finally:
         db.close()
+    # Y vuelve: la entrada también queda en su historia.
+    plano = _con("PUN-01", plano, partes={"division": "participacion"})
+    _guardar(client, admin, plano)
+    db = _bd()
+    try:
+        filas = db.query(HistorialParticipacion).filter_by(accion="distribucion.division").order_by(
+            HistorialParticipacion.id).all()
+        assert [f.detalle for f in filas] == ["PUN-01 · cara A dejó de venderse por participación.",
+                                              "PUN-01 · cara A pasó a venderse por participación."]
+    finally:
+        db.close()
 
     # Espacios internos: GON-02 (entera) con uno vendido y vigente no pasa a participación.
     plano = _con("GON-02", plano, slots=[_slot("s1")])
@@ -1071,15 +1082,22 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
                             "vendidos.",
                  "choques": ["«GON-02» tiene espacios internos vendidos: no pasa a participación hasta que "
                              "terminen."]}
+    # Uno que termina hoy todavía rige (el día de Colombia).
+    hoy_termina = _con("GON-02", plano, slots=[_slot("s1", fin=D(2026, 10, 17))])
+    _guardar(client, admin, hoy_termina)
+    assert _rechazo(client, admin, _con("GON-02", hoy_termina, partes={"division": "participacion"}))["code"] == \
+        "slots_vendidos_en_participacion"
     # Terminado, sí pasa (en dos guardados: el que lo termina y el que cambia la división).
     plano = _con("GON-02", plano, slots=[_slot("s1", fin=D(2026, 10, 1))])
     _guardar(client, admin, plano)
     plano = _con("GON-02", plano, partes={"division": "participacion"})
     _guardar(client, admin, plano)
-    # En un mueble por participación no se vende un espacio interno: ni uno nuevo, ni estirar o cambiar el
-    # valor del que estaba. Liberarlo, sí.
+    # En un mueble por participación no se vende un espacio interno: ni uno nuevo, ni estirar, adelantar,
+    # pasarle a otro proveedor o cambiar el valor del que estaba. Liberarlo, sí.
     for slots in ([_slot("s1", fin=D(2026, 10, 1)), _slot("s2")], [_slot("s1", fin=D(2026, 12, 31))],
-                  [_slot("s1", fin=D(2026, 10, 1), valor=999)], [_slot("s1", status="free"), _slot("s2", "reserved")]):
+                  [_slot("s1", fin=D(2026, 10, 1), valor=999)], [_slot("s1", status="free"), _slot("s2", "reserved")],
+                  [{**_slot("s1", fin=D(2026, 10, 1)), "startDate": D(2026, 9, 1)}],
+                  [{**_slot("s1", fin=D(2026, 10, 1)), "supplierName": "Alpina"}]):
         d = _rechazo(client, admin, _con("GON-02", plano, slots=slots))
         assert d["code"] == "slots_en_participacion", (slots, d)
         assert d["choques"] == ["«GON-02» se vende por participación: lo vendido va con contrato en Distribución, "
@@ -1088,6 +1106,8 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
     _guardar(client, admin, _con("GON-02", plano, slots=[sin_valor], cx=4.5))  # un valor ausente no es un cambio
     plano = _con("GON-02", plano, slots=[_slot("s1", status="free")])
     _guardar(client, admin, plano)
+    # Y el liberado no se vuelve a vender con el mismo id (una pestaña vieja que lo tenía vendido).
+    assert _rechazo(client, admin, _con("GON-02", plano, slots=[_slot("s1")]))["code"] == "slots_en_participacion"
 
     # Un plano que ya venía así (por participación con un espacio interno vendido y vigente, de antes) se
     # guarda igual mientras no lo toque.
@@ -1141,6 +1161,11 @@ def test_un_cambio_del_mueble_deja_la_distribucion_confirmada_para_revisar_y_lo_
     # La cara B cambió igual (es el mismo mueble), pero no tiene distribución: nada que anotar ahí.
     h = client.get("/api/participaciones/historial", headers=admin, params={"sede": "NAVE", "espacio": "GON-01-B"})
     assert h.json()["entradas"] == []
+    # Otro mueble con el mismo código (otro id) y otra medida: la confirmada era del de antes, no queda «para
+    # revisar» del nuevo (`otro_mueble`), y no se anota nada.
+    _guardar(client, admin, _con("GON-01", id="f-otra-gondola", w=1.25))
+    assert _cara(client, admin)["distribucion"]["otro_mueble"] is True
+    assert len(anotado()) == 3
 
 
 # ─── 14 · Ciclo de vida: renumerar y borrar la sede ───────────────────────────
@@ -1185,7 +1210,7 @@ def test_la_renumeracion_muda_las_participaciones_y_borrar_la_sede_las_cierra(cl
         cerrado = db.get(Participacion, contrato["id"])
         assert cerrado.baja_en is not None and cerrado.baja_por == "admin"
         detalle = db.query(AuditEntry).filter_by(accion="sede.baja").one().detalle
-        assert "1 reservas provisionales de participación canceladas" in detalle
+        assert detalle.endswith(" · 1 reserva provisional de participación cancelada"), detalle
     finally:
         db.close()
 

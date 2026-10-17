@@ -367,6 +367,42 @@ def test_la_renumeracion_toma_los_candados_de_los_codigos_viejos_y_nuevos_antes_
     assert client.post("/api/layout/renumeracion/aplicar", headers=admin, json={"sedes": ["NAVE"]}).status_code == 200
     assert traza == ["planificar"], traza
 
+    # Si mientras se esperaba el candado el plano cambió y la segunda mirada renombra muebles que no tienen
+    # su candado (acá, otra góndola que entró), no se escribe nada: 409 y a mirar el previo otra vez.
+    from app.database import SessionLocal
+    from app.models.models import LayoutSnapshot, Space
+
+    def poner_plano(fixtures):
+        s = SessionLocal()
+        try:
+            s.query(LayoutSnapshot).filter_by(sede="NAVE").one().fixtures_json = json.dumps(fixtures)
+            s.commit()
+        finally:
+            s.close()
+
+    gon_01 = {**gon_05, "code": "GON-01"}
+    otra = {**GON_01, "id": "f-GON-08", "code": "GON-08", "cx": 30, "partes": None}
+    tercera = {**GON_01, "id": "f-GON-09", "code": "GON-09", "cx": 40, "partes": None}
+    poner_plano([gon_01, MET_01, otra])
+    original = R.tomar_candados
+
+    def en_el_medio(db, codigos):
+        monkeypatch.setattr(R, "tomar_candados", original)
+        poner_plano([gon_01, MET_01, otra, tercera])  # otra sesión guarda el plano antes de soltar el candado
+        return original(db, codigos)
+
+    monkeypatch.setattr(R, "tomar_candados", en_el_medio)
+    r = client.post("/api/layout/renumeracion/aplicar", headers=admin, json={"sedes": ["NAVE"]})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "renumeracion_bloqueada", r.text
+    assert "el plano cambió mientras se renumeraba" in r.json()["detail"]["motivos"][0]
+    s = SessionLocal()
+    try:
+        codigos = [f["code"] for f in json.loads(s.query(LayoutSnapshot).filter_by(sede="NAVE").one().fixtures_json)]
+        assert codigos == ["GON-01", "MET-01", "GON-08", "GON-09"], codigos
+        assert s.get(Space, pc["space_id"]).code == "NAVE-GON-01-PC1"
+    finally:
+        s.close()
+
 
 @RELOJ
 def test_los_caminos_de_siempre_releen_despues_del_candado(client, admin, monkeypatch):
