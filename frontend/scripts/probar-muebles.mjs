@@ -6281,6 +6281,23 @@ prueba("las zonas no roban el clic, no salen en las capturas y no pelean por la 
   assert.match(editorCodigo, /useEffect\(\(\) => olvidarTexturasDeZonas, \[\]\);/, "las texturas del rayado quedan en la GPU al salir del editor");
 });
 
+prueba("la letra de la cara de atrás se esconde cuando el mueble la tapa (el `Html` no sabe de profundidad)", () => {
+  // Verificación del paso 6a: «la letra de la cara de atrás (A o B) se ve a
+  // través del mueble». La cuenta (`letraTapada`, contra un rayo de three) la
+  // prueba `probar-superficies`; acá, que la escena la use en cada cuadro, con
+  // la cámara en el marco del mueble, y que esconda sin volver a dibujar.
+  const z = sinComentarios(leer(join(muebles, "ZonasDelMueble.tsx")));
+  const i = z.indexOf("useFrame(() => {");
+  assert.ok(i >= 0, "no está el useFrame de las zonas");
+  const cuadro = z.slice(i, z.indexOf("\n  });", i));
+  assert.match(cuadro, /g\.worldToLocal\(camaraLocal\.copy\(camera\.position\)\)/, "la cámara no se pasa al marco del mueble");
+  assert.match(cuadro, /const tapada = letraTapada\(c\.superficie, cam, letraDeCara\(c\.superficie, c\.cara\)\);/);
+  assert.match(cuadro, /el\.style\.visibility = visibilidad;/, "la letra tapada no se esconde");
+  assert.ok(cuadro.indexOf("g.visible = camera.position.distanceTo(donde) <= DISTANCIA_MAXIMA_M;") < cuadro.indexOf("letraTapada("),
+    "la letra se cuenta antes de saber si las zonas están lo bastante cerca para verse");
+  assert.match(z, /<div ref=\{\(el\) => \{ letras\.current\[c\.cara\] = el; \}\} data-letra-de-cara=\{c\.cara\}/, "la letra no queda a mano para esconderla");
+});
+
 prueba("el relleno pinta la unión sin lo que no se vende, y la cinta no dispara picos", () => {
   const sup = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "A");
   // Dos zonas de la misma participación que se pisan: el relleno es la unión
@@ -6702,6 +6719,9 @@ prueba("los slots de la cara B: el contorno no roba el rayo, la malla corta el a
   // Un mueble por participación no ofrece espacios internos: no se abre su ficha.
   assert.match(editorCodigo, /const selectedSlot = selectedFix && !porParticipacion\(selectedFix\)/, "un mueble por participación abre la ficha de un slot");
   assert.match(editorCodigo, /data-slots-por-participacion>\s*Este mueble se vende por participación: lo vendido va con contrato en Distribución/);
+  // Y no ofrece «N disponible» al lado de esa nota (verificación del paso 6a).
+  assert.match(editorCodigo, /if \(!cnt\) return null;[\s\S]{0,260}if \(s === "free" && porParticipacion\(fix\)\) return null;/,
+    "el resumen de slots de un mueble por participación dice «N disponible»");
 });
 
 prueba("el aviso de cara inaccesible sale en el panel del mueble elegido (al colocar o mover una doble)", () => {

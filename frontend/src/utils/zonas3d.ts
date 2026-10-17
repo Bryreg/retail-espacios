@@ -128,6 +128,42 @@ export function elegirCaraYPunto(rayo: { origen: V3; dir: V3 }, caras: { A?: Sup
   return mejor && { cara: mejor.cara, u: mejor.u, v: mejor.v };
 }
 
+/** Cuánto se achica el cuerpo para decidir si tapa la letra: rozar un canto
+ *  no la tapa. */
+const ROCE_M = 0.005;
+
+/**
+ * La letra de una cara queda TAPADA por el mueble: el segmento de la cámara a
+ * la letra pasa por adentro del cuerpo que hay entre las dos caras (en los
+ * frentes, |x| < ancho/2, 0 < y < alto, |z| < plano, en el marco girado de la
+ * superficie). El `Html` de drei se dibuja encima del lienzo y no sabe de
+ * profundidad: sin esto la letra de la cara de atrás se veía a través del
+ * mueble (verificación del paso 6a). Mirando desde arriba, por encima del
+ * mueble, la de atrás se ve, como se vería de verdad. La tapa (zona libre)
+ * tiene una sola cara: nada que tapar. `camara` y `letra`, en el marco del
+ * mueble.
+ */
+export function letraTapada(sup: Superficie, camara: V3, letra: V3): boolean {
+  if (sup.orientacion === "arriba") return false;
+  const a = girarX(camara, -sup.giroX), b = girarX(letra, -sup.giroX);
+  const min: V3 = [-sup.ancho / 2 + ROCE_M, ROCE_M, -sup.plano + ROCE_M];
+  const max: V3 = [sup.ancho / 2 - ROCE_M, sup.alto - ROCE_M, sup.plano - ROCE_M];
+  let t0 = 0, t1 = 1;
+  for (let i = 0; i < 3; i++) {
+    const d = b[i] - a[i];
+    if (Math.abs(d) < 1e-12) {
+      if (a[i] <= min[i] || a[i] >= max[i]) return false;
+      continue;
+    }
+    let ta = (min[i] - a[i]) / d, tb = (max[i] - a[i]) / d;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    if (ta > t0) t0 = ta;
+    if (tb < t1) t1 = tb;
+    if (t0 >= t1) return false;
+  }
+  return true;
+}
+
 /** Dónde va la letra «A»/«B» de la cara, en el marco del mueble: arriba al
  *  centro, sobre el plano del dibujo (en la tapa, sobre su borde delantero). */
 export function letraDeCara(sup: Superficie, cara: Cara): V3 {

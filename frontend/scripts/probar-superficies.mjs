@@ -669,4 +669,62 @@ await prueba("la letra «A»/«B» va arriba al centro de su cara, sobre el plan
   cerca3(Z.letraDeCara(rob, "A"), rotarX([0, rob.alto + Z.ALTO_DE_LA_LETRA, -rob.plano], rob.giroX), 1e-12, "robatope");
 });
 
+await prueba("la letra de la cara de atrás no se ve a través del mueble: tapada de frente, visible desde arriba (ejecutado, contra un rayo de three)", () => {
+  const f = { type: "gondola", w: 1.25, d: 0.9, h: 1.8 };
+  const a = S.superficieDeCara(f, "A"), b = S.superficieDeCara(f, "B");
+  const la = Z.letraDeCara(a, "A"), lb = Z.letraDeCara(b, "B");
+  const frenteBajo = [0.3, 1.2, -4];          // delante de la A, más bajo que el mueble
+  assert.equal(Z.letraTapada(b, frenteBajo, lb), true, "la B se ve a través del mueble mirando la A");
+  assert.equal(Z.letraTapada(a, frenteBajo, la), false, "la A, mirada de frente, quedó escondida");
+  const atras = [-0.2, 1.2, 4];
+  assert.equal(Z.letraTapada(a, atras, la), true, "la A se ve a través del mueble mirando la B");
+  assert.equal(Z.letraTapada(b, atras, lb), false);
+  const arriba = [0, 6, -2];                   // por encima del mueble: se ven las dos
+  assert.equal(Z.letraTapada(b, arriba, lb), false, "desde arriba la de atrás asoma por encima y se escondió igual");
+  assert.equal(Z.letraTapada(a, arriba, la), false);
+  // La tapa de la zona libre tiene una sola cara: nada la tapa.
+  const tapa = S.superficieDeCara({ type: "zona_libre", w: 1, d: 1, h: 0.05 }, "A")
+    ?? S.superficieDeCara({ type: "metro", w: 1, d: 1, h: 0.05 }, "A");
+  assert.equal(Z.letraTapada(tapa, [0, 3, -3], Z.letraDeCara(tapa, "A")), false);
+
+  // Contra three: el rayo de la cámara a la letra contra la caja del cuerpo
+  // entre las dos caras (girada en el robatope). Se comparan sólo los rayos
+  // que no rozan un canto (la caja 1 cm más grande y 1 cm más chica dicen lo
+  // mismo).
+  const rc = new THREE.Raycaster();
+  const tapadaPorThree = (sup, cam, letra, margen) => {
+    const caja = new THREE.Mesh(new THREE.BoxGeometry(sup.ancho + margen, sup.alto + margen, 2 * sup.plano + margen), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+    const g = new THREE.Group();
+    g.rotation.set(sup.giroX, 0, 0);
+    caja.position.set(0, sup.alto / 2, 0);
+    g.add(caja);
+    g.updateMatrixWorld(true);
+    const o = new THREE.Vector3(...cam), dst = new THREE.Vector3(...letra);
+    const dir = dst.clone().sub(o);
+    const largo = dir.length();
+    rc.set(o, dir.normalize());
+    rc.far = largo;
+    return rc.intersectObject(caja, false).some((h) => h.distance < largo - 1e-6);
+  };
+  let semilla = 7;
+  const azar = () => { semilla = (semilla * 16807) % 2147483647; return semilla / 2147483647; };
+  let comparados = 0;
+  for (const [sup, cara] of [[a, "A"], [b, "B"], ...(() => {
+    const ra = S.superficieDeCara({ type: "robatope", w: 0.3, d: 0.4, h: 1.6 }, "A");
+    const rb = S.superficieDeCara({ type: "robatope", w: 0.3, d: 0.4, h: 1.6 }, "B");
+    return rb ? [[ra, "A"], [rb, "B"]] : [[ra, "A"]];
+  })()]) {
+    const letra = Z.letraDeCara(sup, cara);
+    for (let i = 0; i < 400; i++) {
+      const ang = azar() * 2 * Math.PI, r = 1.5 + azar() * 6;
+      const cam = [r * Math.cos(ang), 0.2 + azar() * 4, r * Math.sin(ang)];
+      const grande = tapadaPorThree(sup, cam, letra, 0.01), chica = tapadaPorThree(sup, cam, letra, -0.01);
+      if (grande !== chica) continue;
+      comparados++;
+      assert.equal(Z.letraTapada(sup, cam, letra), grande, `cara ${cara}, cámara ${cam.map((x) => x.toFixed(2))}: letraTapada no coincide con el rayo`);
+    }
+  }
+  assert.ok(comparados > 1000, `se compararon pocos rayos: ${comparados}`);
+});
+
 console.log(`\n${hechas} pruebas de superficies en verde`);

@@ -5,7 +5,7 @@ import { Html } from "@react-three/drei";
 import type { Estampa, Textura } from "../../../utils/coloresDeMarca";
 import type { Superficie } from "../../../utils/superficie";
 import { trapecios, validarZona, type Poligono, type Punto } from "../../../utils/zonasGeometria";
-import { formaDeZona, letraDeCara, transformDeCara } from "../../../utils/zonas3d";
+import { formaDeZona, letraDeCara, letraTapada, transformDeCara } from "../../../utils/zonas3d";
 import { puntoInterior } from "../../../utils/edicionDeZonas";
 
 /**
@@ -387,12 +387,29 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
   const grupo = useRef<THREE.Group>(null);
   const { camera } = useThree();
   const donde = useMemo(() => new THREE.Vector3(), []);
+  const camaraLocal = useMemo(() => new THREE.Vector3(), []);
+  /** Las letras, para esconder la que el mueble tapa sin volver a dibujar. */
+  const letras = useRef<Partial<Record<"A" | "B", HTMLDivElement | null>>>({});
   // Lejos, no se dibujan: se decide en cada cuadro que se dibuja, sin estado.
   useFrame(() => {
     const g = grupo.current;
     if (!g) return;
     g.getWorldPosition(donde);
     g.visible = camera.position.distanceTo(donde) <= DISTANCIA_MAXIMA_M;
+    // La letra de la cara de atrás no se ve A TRAVÉS del mueble (el `Html` se
+    // dibuja encima del lienzo, sin profundidad): con la cámara en el marco
+    // del mueble —el grupo de las zonas no tiene transformación propia—, la
+    // que tapa el cuerpo se esconde.
+    if (!g.visible || caras.length < 2) return;
+    g.worldToLocal(camaraLocal.copy(camera.position));
+    const cam: [number, number, number] = [camaraLocal.x, camaraLocal.y, camaraLocal.z];
+    for (const c of caras) {
+      const el = letras.current[c.cara];
+      if (!el) continue;
+      const tapada = letraTapada(c.superficie, cam, letraDeCara(c.superficie, c.cara));
+      const visibilidad = tapada ? "hidden" : "visible";
+      if (el.style.visibility !== visibilidad) el.style.visibility = visibilidad;
+    }
   });
   return (
     <group ref={grupo} userData={CHROME}>
@@ -402,7 +419,7 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
       {caras.length > 1 && caras.map((c) => (
         <Html key={`letra${c.cara}`} position={letraDeCara(c.superficie, c.cara)} center zIndexRange={[6, 0]}
           style={{ pointerEvents: "none" }}>
-          <div style={{
+          <div ref={(el) => { letras.current[c.cara] = el; }} data-letra-de-cara={c.cara} style={{
             background: c.editada ? "var(--ink-1)" : "var(--surface)", color: c.editada ? "var(--surface)" : "var(--ink-1)",
             fontSize: 12, fontWeight: 800, width: 20, height: 20, lineHeight: "20px", textAlign: "center", borderRadius: 999,
             pointerEvents: "none", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",

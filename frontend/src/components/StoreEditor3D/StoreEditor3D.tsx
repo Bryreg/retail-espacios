@@ -6963,6 +6963,10 @@ function CommercialPanel({
               {(["free","occupied","reserved"] as SpaceStatus[]).map(s=>{
                 const cnt = fix.slots!.filter(sl=>sl.status===s).length;
                 if (!cnt) return null;
+                // Por participación los espacios internos no se venden: «8
+                // disponible» en verde contradecía la nota de abajo
+                // (verificación del paso 6a). Lo vendido viejo sí se dice.
+                if (s === "free" && porParticipacion(fix)) return null;
                 const sm2 = STATUS_META[s];
                 return (
                   <span key={s} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${sm2.bg} ${sm2.text}`}>
