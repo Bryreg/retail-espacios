@@ -162,3 +162,122 @@ def test_un_nombre_que_se_lee_como_una_parte_no_entra(client, admin):
     finally:
         db.close()
     assert _guardar(client, admin, [{**punta, "code": "PUN-01-B", "cx": 2}]).status_code == 200
+
+
+# ─── Las participaciones de una cara (diseño de participaciones, §4.4) ────────
+
+def _gondola_pc(division="participacion", **extra):
+    """Una góndola doble que se vende por participación (``GON-01-PC3``)."""
+    return {
+        "id": "f-GON-01", "code": "GON-01", "sede": "NAVE", "type": "gondola", "gondolaType": "double",
+        "label": "Góndola", "cx": 2, "cz": 2, "rotY": 0, "w": 1.0, "d": 0.9, "h": 1.8, "color": "#6366f1",
+        "partes": {"division": division}, **extra,
+    }
+
+
+def _espacio_directo(codigo, desde=None, hasta=None, sede="NAVE"):
+    """Un espacio (y su contrato, si hay fechas) escrito directo en la base: la
+    participación todavía no tiene su camino propio (llega con su router), y la
+    planilla no es el camino de una participación."""
+    from datetime import date
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceLease, Supplier
+    db = SessionLocal()
+    try:
+        space = Space(code=codigo, svg_id=f"fix-{codigo}", name=codigo, zone="gondola", sede=sede, area_m2=0.0)
+        db.add(space)
+        db.flush()
+        if desde is not None:
+            sup = db.query(Supplier).filter(Supplier.name == "Postobón").first() or Supplier(name="Postobón")
+            db.add(sup)
+            db.flush()
+            db.add(SpaceLease(space_id=space.id, supplier_id=sup.id, monthly_rent=1, is_active=True,
+                              start_date=date.fromisoformat(_d(desde)), end_date=date.fromisoformat(_d(hasta))))
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_una_participacion_viva_no_se_queda_sin_su_cara(client, admin):
+    """Un contrato de participación (``GON-01-PC1``) se ofrece mientras su cara
+    se venda por participación (``layout_lookup.ofrece``): el guardado que
+    saca la división, pasa la doble a mural o la vende por tramos lo frena con
+    el 409 ``contratos_vivos`` de siempre, nombrándolo. Lo que no toca la cara
+    se guarda, y una participación vencida no frena. Una participación no tiene
+    lugar físico: ``partes_que_se_moverian`` no la cuenta como movida."""
+    assert _guardar(client, admin, [_gondola_pc()]).status_code == 200
+    _espacio_directo("NAVE-GON-01-PC1", desde=1, hasta=30)
+    _espacio_directo("NAVE-GON-01-B-PC2", desde=10, hasta=60)
+    _espacio_directo("NAVE-GON-01-PC3", desde=-40, hasta=-10)
+
+    # Mover la góndola o cambiarle los entrepaños no toca cómo se vende.
+    assert _guardar(client, admin, [_gondola_pc(cx=6, rotY=1.2)]).status_code == 200
+    assert _guardar(client, admin, [_gondola_pc(entrepanos=5)]).status_code == 200
+
+    # Doble → mural: la B se va, y con ella su participación viva.
+    r = _guardar(client, admin, [_gondola_pc(gondolaType="wall")])
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "contratos_vivos", r.text
+    choques = r.json()["detail"]["choques"]
+    assert len(choques) == 1 and "«GON-01-B-PC2»" in choques[0] and "Postobón" in choques[0], choques
+
+    # Sacar la división (con el `null` del navegador de hoy) o venderla por
+    # tramos: las dos vivas, no la vencida.
+    for partes in ({"division": None}, {"division": "tramos", "tramos": 2}):
+        r = _guardar(client, admin, [{**_gondola_pc(), "partes": partes}])
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "contratos_vivos", (partes, r.text)
+        texto = " ".join(r.json()["detail"]["choques"])
+        assert "«GON-01-PC1»" in texto and "«GON-01-B-PC2»" in texto and "GON-01-PC3" not in texto, texto
+    # Marcarla no comercializable, también.
+    r = _guardar(client, admin, [_gondola_pc(rentable=False)])
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "contratos_vivos", r.text
+    assert _guardado(client, admin)[0]["partes"] == {"division": "participacion"}
+
+    # La participación no «se mueve» si cambia la firma del mueble: no tiene
+    # lugar físico (la pierde, y eso lo frena la guarda de arriba).
+    from app.database import SessionLocal
+    from app.services.layout_lookup import partes_que_se_moverian
+    db = SessionLocal()
+    try:
+        por_tramos = {**_gondola_pc(), "partes": {"division": "tramos", "tramos": 2}}
+        assert partes_que_se_moverian(db, "NAVE", [_gondola_pc()], [por_tramos]) == []
+    finally:
+        db.close()
+
+
+def test_la_cara_por_participacion_se_escribe_completa(client, admin):
+    """``forma_canonica`` exige el código completo de una cara por
+    participación, o que tuvo participaciones (filas ``…-PC<n>`` en
+    ``spaces``, también la corta de esa sede y la archivada): ``GON-01`` y
+    ``NAVE-GON-01`` toman candados distintos. Una cara que se vende entera y
+    nunca tuvo participaciones, como siempre: no exige nada."""
+    otra = lambda code: {**_gondola_pc(), "id": f"f-{code}", "code": code, "partes": None}  # noqa: E731
+    assert _guardar(client, admin, [_gondola_pc()] + [otra(c) for c in ("GON-02", "GON-03", "GON-04", "GON-05")]).status_code == 200
+
+    from app.database import SessionLocal
+    from app.services.layout_lookup import forma_canonica
+    _espacio_directo("NAVE-GON-02-PC1")             # la A tuvo participaciones
+    _espacio_directo("GON-03-B-PC1")                 # corta, de esta sede
+    _espacio_directo("GON-04-PC1", sede="POBLADO")   # corta, de OTRA sede: no cuenta
+    _espacio_directo("NAVE-GON-05-PC2#7")            # archivada
+    db = SessionLocal()
+    try:
+        assert forma_canonica(db, "NAVE", "GON-01") == "NAVE-GON-01"
+        assert forma_canonica(db, "NAVE", "gon-01-b") == "NAVE-GON-01-B"
+        assert forma_canonica(db, "NAVE", "GON-01-PC2") == "NAVE-GON-01-PC2"
+        assert forma_canonica(db, "NAVE", "GON-02") == "NAVE-GON-02"
+        assert forma_canonica(db, "NAVE", "GON-02-B") is None, "las participaciones eran de la A"
+        assert forma_canonica(db, "NAVE", "GON-03-B") == "NAVE-GON-03-B"
+        assert forma_canonica(db, "NAVE", "GON-03") is None
+        assert forma_canonica(db, "NAVE", "GON-04") is None, "la fila corta es de otra sede"
+        assert forma_canonica(db, "NAVE", "GON-05") == "NAVE-GON-05"
+    finally:
+        db.close()
+
+    # Por la API: el contrato suelto de la cara que tuvo participaciones, escrita corta.
+    sup = client.post("/api/suppliers/", headers=admin, json={"name": "Alpina"}).json()["id"]
+    space = client.post("/api/spaces/find-or-create", headers=admin,
+                        json={"code": "GON-02", "sede": "NAVE"}).json()
+    r = client.post(f"/api/spaces/{space['id']}/leases", headers=admin, json={
+        "supplier_id": sup, "start_date": _d(1), "end_date": _d(30), "monthly_rent": 1})
+    assert space["code"] == "GON-02"
+    assert r.status_code == 409 and "Escribilo «NAVE-GON-02»" in r.json()["detail"], r.text

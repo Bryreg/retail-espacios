@@ -376,3 +376,43 @@ def test_el_catalogo_es_valido_para_lo_que_lee_el_servidor():
 
     con_referencia = {t for t, d in tipos.items() if "referencia" in d}
     assert set(cat["orden"]["minimapa"]) == con_referencia
+
+
+def test_la_participacion_y_la_superficie_estan_en_el_catalogo():
+    """La venta por participación (diseño de participaciones, §4.1 y §7.2):
+    la clase ``participacion`` con su token ``PC`` reservado y sin ``campo`` ni
+    ``tarifa``; las demás clases siguen con los dos; y la clave ``superficie``
+    en los siete tipos del pedido, con una receta que se sabe calcular (las de
+    ``RecetaDeSuperficie`` en ``frontend/src/catalogo/catalogo.ts``). Los
+    demás alquilables no se venden por participación en esta fase. Sin
+    ``client``: lee el archivo y módulos que no tocan la base."""
+    from app.services.catalogo_muebles import CLASES_DE_PARTE, DIVISIONES_POR_TIPO, RESERVADOS
+    from app.services.partes import CLASE_POR_TOKEN
+
+    cat = _catalogo()
+    pc = cat["partes"]["clases"]["participacion"]
+    assert pc["token"] == "PC" and pc["es"] == "participacion" and pc["eje"] is None
+    assert "campo" not in pc and "tarifa" not in pc
+    assert "PC" in cat["partes"]["reservados"] and "PC" in RESERVADOS
+    assert CLASE_POR_TOKEN["PC"] == "participacion"
+    assert CLASES_DE_PARTE["participacion"]["es"] == "participacion"
+    for clase, c in cat["partes"]["clases"].items():
+        assert c["es"] in ("division", "pieza", "participacion"), clase
+        if c["es"] != "participacion":
+            assert c.get("campo") and c.get("tarifa"), f"{clase}: una división o una pieza lleva campo y tarifa"
+    # Una participación no es una división física de ninguna familia.
+    assert all("participacion" not in d for d in DIVISIONES_POR_TIPO.values())
+
+    recetas = re.search(r"export type RecetaDeSuperficie =([^;]*);",
+                        (RAIZ / "frontend" / "src" / "catalogo" / "catalogo.ts").read_text(encoding="utf-8"))
+    recetas = set(re.findall(r'"([^"]+)"', recetas.group(1)))
+    con_superficie = {t: d["superficie"] for t, d in cat["tipos"].items() if "superficie" in d}
+    assert {t: s["receta"] for t, s in con_superficie.items()} == {
+        "gondola": "gondola", "punta": "punta", "robatope": "robatope", "ristra": "ristra",
+        "cross": "cross", "mueble": "vitrina", "metro": "zona_libre",
+    }
+    for t, s in con_superficie.items():
+        assert set(s) == {"orientacion", "receta"}, t
+        assert s["receta"] in recetas, f"{t}: la receta «{s['receta']}» no la calcula nadie"
+        assert s["orientacion"] == ("arriba" if s["receta"] == "zona_libre" else "frente"), t
+        assert cat["tipos"][t]["alquilable"] != "nunca", t

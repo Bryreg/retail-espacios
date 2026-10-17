@@ -3,7 +3,8 @@
     "Vender por partes, con la MISMA regla en los dos lados: src/utils/partes.ts en el navegador y app/services/partes.py en el servidor. Los corren scripts/probar-partes.mjs y tests/test_partes.py.",
     "`codigos`: cómo se parte un código de espacio (la base, la cara y la parte, o null si es la cara entera) y que volver a armarlo da el mismo código normalizado. `muebles`: qué partes pone a la venta un mueble del plano en la sede NAVE (las caras y las partes, por código completo) y su firma (qué decide dónde cae cada parte). `chocan`: qué dos espacios no se pueden vender en fechas que se pisan. `tarifas`: la tarifa de referencia de un espacio y de dónde salió. `reservados`: los nombres que un mueble no puede tomar. `numeracion`: qué vano del dibujo es la parte k de n de cada cara, en el mueble (`vanoDeParte`: la B es la del espejo). `enLaCara`: el mismo vano en el dibujo de la cara, que en la B está girado media vuelta (`vanoEnLaCara`, para el producto en prueba).",
     "Desde el paso 2 (2026-10-14): los tramos (`TR`, góndola, mural, nevera abierta y de vegetales) y los entrepaños (`EN`, góndola y punta; la base es el `EN1` y los cuenta el `entrepanos` del mueble más uno). Un mueble se divide de una sola forma: dos divisiones de clases distintas de la misma cara chocan.",
-    "Desde el paso 3 (2026-10-14): las PIEZAS de lo que nunca se vende entero, la bahía de impulso de una caja (`BI`, `CAJ-04-BI1`, de izquierda a derecha mirando la caja desde la fila) y el forro de una columna (`FO`, sin número: `COL-07-FO`). Se ofrecen aunque el mueble no sea comercializable, van en la cara A, no chocan con nada más que consigo mismas y su tarifa es la de su clase, sin respaldo. Hasta el paso 2, `NAVE-CAJ-04-BI1` y `NAVE-CAJ-04-FO` eran códigos de mueble (las clases no existían); ahora son la bahía 1 y el forro de `CAJ-04`. Un token reservado de una clase que todavía no existe (`CP`, el copete) sigue siendo parte del nombre. `firma`, cuando está, es lo que decide dónde cae cada parte vendida (`firmaDePartes`)."
+    "Desde el paso 3 (2026-10-14): las PIEZAS de lo que nunca se vende entero, la bahía de impulso de una caja (`BI`, `CAJ-04-BI1`, de izquierda a derecha mirando la caja desde la fila) y el forro de una columna (`FO`, sin número: `COL-07-FO`). Se ofrecen aunque el mueble no sea comercializable, van en la cara A, no chocan con nada más que consigo mismas y su tarifa es la de su clase, sin respaldo. Hasta el paso 2, `NAVE-CAJ-04-BI1` y `NAVE-CAJ-04-FO` eran códigos de mueble (las clases no existían); ahora son la bahía 1 y el forro de `CAJ-04`. Un token reservado de una clase que todavía no existe (`CP`, el copete) sigue siendo parte del nombre. `firma`, cuando está, es lo que decide dónde cae cada parte vendida (`firmaDePartes`).",
+    "Desde las participaciones (2026-10-17): la PARTICIPACIÓN de una cara (`PC`, `NAVE-GON-01-PC3`, `NAVE-GON-01-B-PC1`), el porcentaje de la cara vendido a un proveedor. No es una división física ni una pieza: `espacios`/`espaciosDe` no la enumeran (sus números los da el servidor), `division` sigue en null para la cara que se vende así y la `firma` no gana clave (sólo divisiones y piezas tienen lugar físico). Choca con la cara entera y con una división física de su cara; con otra participación de la misma cara, no (la frena la regla de capacidad), ni con una pieza. `carasPorParticipacion`, cuando está, son las caras completas que el mueble vende por participación en la sede NAVE (`caras_por_participacion`/`carasPorParticipacion`, con la sede del PLANO): lo dice `partes.division: participacion` en un tipo con `superficie` del catálogo que sea comercializable. `PC` es un final reservado."
   ],
   "codigos": [
     { "codigo": "NAVE-NEV-03-PU2", "base": "NAVE-NEV-03", "cara": "A", "parte": "PU2" },
@@ -45,7 +46,17 @@
     { "codigo": "-B", "base": "-B", "cara": "A", "parte": null },
     { "codigo": "X-B-PU3", "base": "X", "cara": "B", "parte": "PU3" },
     { "codigo": "NAVE-PUN-01", "base": "NAVE-PUN-01", "cara": "A", "parte": null },
-    { "codigo": "", "base": "", "cara": "A", "parte": null }
+    { "codigo": "", "base": "", "cara": "A", "parte": null },
+    { "codigo": "NAVE-GON-01-PC1", "base": "NAVE-GON-01", "cara": "A", "parte": "PC1" },
+    { "codigo": "NAVE-GON-01-B-PC12", "base": "NAVE-GON-01", "cara": "B", "parte": "PC12" },
+    { "codigo": "GON-01-PC3", "base": "GON-01", "cara": "A", "parte": "PC3" },
+    { "codigo": " nave-gon-01-b-pc2", "base": "NAVE-GON-01", "cara": "B", "parte": "PC2", "armado": "NAVE-GON-01-B-PC2" },
+    { "codigo": "NAVE-GON-01-PC99", "base": "NAVE-GON-01", "cara": "A", "parte": "PC99" },
+    { "codigo": "NAVE-GON-01-PC0", "base": "NAVE-GON-01-PC0", "cara": "A", "parte": null },
+    { "codigo": "NAVE-GON-01-PC100", "base": "NAVE-GON-01-PC100", "cara": "A", "parte": null },
+    { "codigo": "NAVE-GON-01-PC01", "base": "NAVE-GON-01-PC01", "cara": "A", "parte": null },
+    { "codigo": "NAVE-GON-01-PC", "base": "NAVE-GON-01-PC", "cara": "A", "parte": null },
+    { "codigo": "NAVE-GON-01-PC1-B", "base": "NAVE-GON-01-PC1", "cara": "B", "parte": null }
   ],
   "muebles": [
     {
@@ -316,6 +327,123 @@
       "nombre": "sin código no hay espacio",
       "mueble": { "id": "n1", "code": "", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "puertas" } },
       "espacios": [], "division": ["puertas", 3]
+    },
+    {
+      "nombre": "una góndola doble por participación ofrece sus dos caras (las participaciones no se enumeran), sin división física y con la firma de siempre",
+      "mueble": { "id": "g1", "code": "GON-01", "type": "gondola", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-GON-01", "NAVE-GON-01-B"], "division": null,
+      "firma": { "puertas": null, "tramos": null, "entrepanos": null, "bahias": null, "forro": null },
+      "carasPorParticipacion": ["NAVE-GON-01", "NAVE-GON-01-B"]
+    },
+    {
+      "nombre": "un mural por participación: una sola cara",
+      "mueble": { "id": "g2", "code": "GON-02", "type": "gondola", "gondolaType": "wall", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-GON-02"], "division": null,
+      "carasPorParticipacion": ["NAVE-GON-02"]
+    },
+    {
+      "nombre": "la góndola doble del 2D viejo (gondola_doble) también, por su tipo de verdad",
+      "mueble": { "id": "g3", "code": "GON-03", "type": "gondola_doble", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-GON-03", "NAVE-GON-03-B"], "division": null,
+      "carasPorParticipacion": ["NAVE-GON-03", "NAVE-GON-03-B"]
+    },
+    {
+      "nombre": "por participación con entrepaños guardados: no se vende por entrepaños (una sola forma de dividir)",
+      "mueble": { "id": "g4", "code": "GON-04", "type": "gondola", "entrepanos": 4, "partes": { "tramos": 3, "division": "participacion" } },
+      "espacios": ["NAVE-GON-04", "NAVE-GON-04-B"], "division": null,
+      "firma": { "puertas": null, "tramos": null, "entrepanos": null, "bahias": null, "forro": null },
+      "carasPorParticipacion": ["NAVE-GON-04", "NAVE-GON-04-B"]
+    },
+    {
+      "nombre": "un mueble sin `division` no se vende por participación",
+      "mueble": { "id": "g5", "code": "GON-05", "type": "gondola" },
+      "espacios": ["NAVE-GON-05", "NAVE-GON-05-B"], "division": null,
+      "carasPorParticipacion": []
+    },
+    {
+      "nombre": "una góndola no comercializable no se vende por participación",
+      "mueble": { "id": "g6", "code": "GON-06", "type": "gondola", "rentable": false, "partes": { "division": "participacion" } },
+      "espacios": [], "division": null,
+      "carasPorParticipacion": []
+    },
+    {
+      "nombre": "una nevera de puertas no tiene receta de superficie: no se vende por participación, sigue entera",
+      "mueble": { "id": "n7", "code": "NEV-07", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "participacion" } },
+      "espacios": ["NAVE-NEV-07"], "division": null,
+      "firma": { "puertas": null, "tramos": null, "entrepanos": null, "bahias": null, "forro": null },
+      "carasPorParticipacion": []
+    },
+    {
+      "nombre": "la punta por participación, con sus entrepaños guardados: no se vende por entrepaños",
+      "mueble": { "id": "p8", "code": "PUN-08", "type": "punta", "entrepanos": 4, "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-PUN-08"], "division": null,
+      "carasPorParticipacion": ["NAVE-PUN-08"]
+    },
+    {
+      "nombre": "la ristra por participación",
+      "mueble": { "id": "s8", "code": "RIS-08", "type": "ristra", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-RIS-08"], "division": null,
+      "carasPorParticipacion": ["NAVE-RIS-08"]
+    },
+    {
+      "nombre": "la cruz por participación",
+      "mueble": { "id": "x8", "code": "CRS-08", "type": "cross", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-CRS-08"], "division": null,
+      "carasPorParticipacion": ["NAVE-CRS-08"]
+    },
+    {
+      "nombre": "un impulsador no tiene receta: se vende entero",
+      "mueble": { "id": "i8", "code": "IMP-08", "type": "impulsador", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-IMP-08"], "division": null,
+      "carasPorParticipacion": []
+    },
+    {
+      "nombre": "el robatope por participación",
+      "mueble": { "id": "r9", "code": "ROB-09", "type": "robatope", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-ROB-09"], "division": null,
+      "carasPorParticipacion": ["NAVE-ROB-09"]
+    },
+    {
+      "nombre": "la vitrina (tipo `mueble`) por participación",
+      "mueble": { "id": "m10", "code": "MUE-10", "type": "mueble", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-MUE-10"], "division": null,
+      "carasPorParticipacion": ["NAVE-MUE-10"]
+    },
+    {
+      "nombre": "la zona libre habilitada a mano se vende por participación (desde arriba)",
+      "mueble": { "id": "z11", "code": "MET-11", "type": "metro", "rentable": true, "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-MET-11"], "division": null,
+      "carasPorParticipacion": ["NAVE-MET-11"]
+    },
+    {
+      "nombre": "la zona libre que nació no comercializable, no",
+      "mueble": { "id": "z12", "code": "MET-12", "type": "metro", "rentable": false, "partes": { "division": "participacion" } },
+      "espacios": [], "division": null,
+      "carasPorParticipacion": []
+    },
+    {
+      "nombre": "una caja nunca se vende por participación: sus bahías, como siempre",
+      "mueble": { "id": "c13", "code": "CAJ-13", "type": "checkout", "partes": { "bahias": 2, "division": "participacion" } },
+      "espacios": ["NAVE-CAJ-13-BI1", "NAVE-CAJ-13-BI2"], "division": null,
+      "carasPorParticipacion": []
+    },
+    {
+      "nombre": "el código que ya trae la sede no se duplica",
+      "mueble": { "id": "g14", "code": "NAVE-GON-14", "type": "gondola", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-GON-14", "NAVE-GON-14-B"], "division": null,
+      "carasPorParticipacion": ["NAVE-GON-14", "NAVE-GON-14-B"]
+    },
+    {
+      "nombre": "las caras por participación se arman con la sede del PLANO, nunca con el campo `sede` del mueble (las del mueble, `espaciosDe`, siguen con la suya)",
+      "mueble": { "id": "g15", "code": "GON-15", "sede": "POBLADO", "type": "gondola", "gondolaType": "wall", "partes": { "division": "participacion" } },
+      "espacios": ["POBLADO-GON-15"], "division": null,
+      "carasPorParticipacion": ["NAVE-GON-15"]
+    },
+    {
+      "nombre": "sin código no hay cara",
+      "mueble": { "id": "g16", "code": "", "type": "gondola", "partes": { "division": "participacion" } },
+      "espacios": [], "division": null,
+      "carasPorParticipacion": []
     }
   ],
   "chocan": [
@@ -346,7 +474,20 @@
     { "a": "NAVE-CAJ-04-BI1", "b": "NAVE-CAJ-04", "chocan": false, "por": "en los dos órdenes" },
     { "a": "NAVE-COL-07-FO", "b": "NAVE-COL-07-FO", "chocan": true, "por": "el mismo forro" },
     { "a": "NAVE-COL-07-FO", "b": "NAVE-COL-07", "chocan": false, "por": "el forro y la columna" },
-    { "a": "NAVE-CAJ-04-BI1", "b": "NAVE-CAJ-05-BI1", "chocan": false, "por": "la bahía 1 de otra caja" }
+    { "a": "NAVE-CAJ-04-BI1", "b": "NAVE-CAJ-05-BI1", "chocan": false, "por": "la bahía 1 de otra caja" },
+    { "a": "NAVE-GON-01", "b": "NAVE-GON-01-PC1", "chocan": true, "por": "la cara entera y una participación suya" },
+    { "a": "NAVE-GON-01-PC1", "b": "NAVE-GON-01", "chocan": true, "por": "en los dos órdenes" },
+    { "a": "NAVE-GON-01-PC1", "b": "NAVE-GON-01-PC2", "chocan": false, "por": "dos participaciones de la misma cara no chocan por el código: las frena la regla de capacidad" },
+    { "a": "NAVE-GON-01-PC1", "b": "NAVE-GON-01-PC1", "chocan": true, "por": "la misma participación (dos términos que se pisan)" },
+    { "a": "NAVE-GON-01-PC1", "b": "NAVE-GON-01-B-PC1", "chocan": false, "por": "la participación 1 de la A y la 1 de la B son de caras distintas" },
+    { "a": "NAVE-GON-01", "b": "NAVE-GON-01-B-PC1", "chocan": false, "por": "la cara A no choca con una participación de la B" },
+    { "a": "NAVE-GON-01-B", "b": "NAVE-GON-01-B-PC2", "chocan": true, "por": "la cara B entera y una participación suya" },
+    { "a": "NAVE-GON-01-PC1", "b": "NAVE-GON-01-EN2", "chocan": true, "por": "una participación y un entrepaño de la misma cara se pisan" },
+    { "a": "NAVE-GON-01-TR1", "b": "NAVE-GON-01-PC1", "chocan": true, "por": "un tramo y una participación de la misma cara, en los dos órdenes" },
+    { "a": "NAVE-GON-01-B-TR1", "b": "NAVE-GON-01-PC1", "chocan": false, "por": "un tramo de la B y una participación de la A, no" },
+    { "a": "NAVE-CAJ-04-BI1", "b": "NAVE-CAJ-04-PC1", "chocan": false, "por": "una pieza y una participación no chocan" },
+    { "a": "NAVE-GON-01-PC1", "b": "NAVE-GON-02-PC1", "chocan": false, "por": "la participación 1 de otra góndola" },
+    { "a": "nave-gon-01", "b": "NAVE-GON-01-PC3", "chocan": true, "por": "sin distinguir mayúsculas" }
   ],
   "tarifas": [
     {
@@ -488,6 +629,20 @@
       "sede": "NAVE", "parte": null,
       "rates": { "default": { "parte_bahia": 180000 }, "by_sede": {} },
       "valor": null, "origen": "cara"
+    },
+    {
+      "nombre": "una participación no tiene tarifa de referencia propia (la de la cara la listaría muy por debajo)",
+      "mueble": { "code": "GON-01", "type": "gondola", "partes": { "division": "participacion" } },
+      "sede": "NAVE", "parte": "PC1",
+      "rates": { "default": { "gondola": 900000 }, "by_sede": { "NAVE": { "gondola": 1000000 } } },
+      "valor": null, "origen": ""
+    },
+    {
+      "nombre": "la cara de una góndola por participación: la de su mueble, como referencia",
+      "mueble": { "code": "GON-01", "type": "gondola", "partes": { "division": "participacion" } },
+      "sede": "NAVE", "parte": null,
+      "rates": { "default": { "gondola": 900000 }, "by_sede": {} },
+      "valor": 900000, "origen": "cara"
     }
   ],
   "reservados": [
@@ -508,7 +663,12 @@
     { "nombre": "PU2", "reservado": false },
     { "nombre": "GON-01-BX", "reservado": false },
     { "nombre": "GON-01-PUERTA", "reservado": false },
-    { "nombre": "GON-01-A", "reservado": false }
+    { "nombre": "GON-01-A", "reservado": false },
+    { "nombre": "GON-01-PC1", "reservado": true },
+    { "nombre": "GON-01-B-PC12", "reservado": true },
+    { "nombre": "GON-01-PC", "reservado": true },
+    { "nombre": "PC-01", "reservado": false },
+    { "nombre": "GON-01-PCX", "reservado": false }
   ],
   "numeracion": [
     { "cara": "A", "k": 1, "n": 3, "vano": 2 },
@@ -541,6 +701,8 @@
     { "nombre": "un forro que no es un sí o no, no; ni bahías escritas como texto", "partes": { "forro": "si", "bahias": "2" }, "salida": {} },
     { "nombre": "un 1 no es un sí", "partes": { "forro": 1 }, "salida": {} },
     { "nombre": "un forro en falso pasa como falso", "partes": { "forro": false }, "salida": { "forro": false } },
-    { "nombre": "bahías que no son un entero, no", "partes": { "bahias": 1.5 }, "salida": {} }
+    { "nombre": "bahías que no son un entero, no", "partes": { "bahias": 1.5 }, "salida": {} },
+    { "nombre": "por participación pasa: es una palabra de la lista de clases", "partes": { "division": "participacion" }, "salida": { "division": "participacion" } },
+    { "nombre": "por participación, con lo que alguien le escriba al lado", "partes": { "division": "participacion", "porcentaje": 2500, "proveedor": "Postobón" }, "salida": { "division": "participacion" } }
   ]
 }

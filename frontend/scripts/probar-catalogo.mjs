@@ -53,6 +53,17 @@ const RUTA_CATALOGO = join(raiz, "src", "catalogo", "muebles.json");
 const RUTA_COPIA = join(repo, "backend", "app", "catalogo", "muebles.json");
 const CATALOGO = JSON.parse(leer(RUTA_CATALOGO));
 const ANTES = JSON.parse(leer(join(aqui, "casos", "catalogo-antes.json")));
+/** Las recetas de superficie comercializable que se saben calcular: las de
+ *  `RecetaDeSuperficie` en `src/catalogo/catalogo.ts` (las calculan
+ *  `utils/superficie.ts` y `app/services/superficie.py`, con los casos de
+ *  `casos/superficies.json`). Un tipo no puede pedir otra. */
+const RECETAS = (() => {
+  const m = /export type RecetaDeSuperficie =([^;]*);/.exec(leer(join(raiz, "src", "catalogo", "catalogo.ts")));
+  return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
+})();
+/** Los tipos que se venden por participación en esta fase (§7.1 del diseño
+ *  de participaciones): los demás alquilables NO se habilitan. */
+const CON_SUPERFICIE = { gondola: "gondola", punta: "punta", robatope: "robatope", ristra: "ristra", cross: "cross", mueble: "vitrina", metro: "zona_libre" };
 
 let hechas = 0;
 const prueba = async (n, fn) => {
@@ -87,7 +98,7 @@ const CLAVES_DE_TIPO = new Set([
   "prefijo", "alquilable", "tarifa", "informe", "informePlural", "categoria", "grupo2D",
   "referencia", "banderas", "legado", "variantes",
   "rotuloEditor", "medidas", "color", "color2D", "emoji", "descripcion",
-  "rango", "geometria", "partes",
+  "rango", "geometria", "partes", "superficie",
 ]);
 const CLAVES_DE_MODELO = new Set([
   "id", "tipo", "variante", "nombre", "w", "d", "h", "entrepanos", "modulo", "partes", "color",
@@ -175,14 +186,27 @@ function validar(cat) {
     si(!tokens.has(c?.token), `${donde}: el token ${c?.token} ya es de otra clase`);
     tokens.add(c?.token);
     si(reservados.includes(c?.token), `${donde}: el token ${c?.token} no está entre los reservados`);
-    si(["division", "pieza"].includes(c?.es), `${donde}: \`es\` es division o pieza`);
+    si(["division", "pieza", "participacion"].includes(c?.es), `${donde}: \`es\` es division, pieza o participacion`);
     si([null, "ancho", "alto"].includes(c?.eje), `${donde}: \`eje\` es ancho, alto o null`);
+    const esParticipacion = c?.es === "participacion";
+    if (esParticipacion) {
+      // La participación (`GON-01-PC3`: el porcentaje de la cara vendido a un
+      // proveedor) no la cuenta ningún campo del mueble —los números los da
+      // el servidor—, no tiene tarifa propia —la referencia es la de la
+      // cara— y no se cuenta por ningún eje: no es una división física.
+      si(c.eje === null, `${donde}: una participación no se cuenta por ningún eje (\`eje\`: null)`);
+      si(c.campo === undefined && c.tarifa === undefined, `${donde}: una participación no lleva \`campo\` ni \`tarifa\``);
+      si(c.unico === undefined && c.base === undefined && c.mirando === undefined,
+        `${donde}: una participación no lleva \`unico\`, \`base\` ni \`mirando\``);
+    }
     // El campo que la cuenta es un entero de la ficha: en `partes` (las
     // puertas, los tramos, las bahías) o en el mueble (los entrepaños, con la
     // base). Una pieza ÚNICA (el forro: una por mueble, sin número) se cuenta
     // con un sí o no, y sólo una pieza puede ser única.
     const regla = (cat.fichas?.geometria ?? {})[c?.campo];
-    if (c?.unico) {
+    if (esParticipacion) {
+      // Sin campo: lo dice el bloque de arriba.
+    } else if (c?.unico) {
       si(!!regla && regla.booleano === true, `${donde}: una pieza única se cuenta con un sí o no de \`fichas.geometria\` (\`booleano\`)`);
     } else {
       si(!!regla && regla.entero && !regla.valores && !regla.booleano, `${donde}: \`campo\` tiene que ser un entero de \`fichas.geometria\``);
@@ -194,7 +218,7 @@ function validar(cat) {
     si(c?.genero === "f" || c?.genero === "m", `${donde}: \`genero\` es f o m (para decirla bien: «una puerta», «un tramo»)`);
     si(Number.isInteger(c?.minimo) && c.minimo >= 1, `${donde}: \`minimo\` es un entero de 1 o más`);
     si(texto(c?.singular) && texto(c?.plural), `${donde}: sin singular o plural`);
-    si(texto(c?.tarifa) && tarifas.has(c.tarifa), `${donde}: su tarifa no está en \`tarifas\``);
+    if (!esParticipacion) si(texto(c?.tarifa) && tarifas.has(c.tarifa), `${donde}: su tarifa no está en \`tarifas\``);
     si(texto(c?.informe) && texto(c?.informePlural), `${donde}: los informes no tienen cómo nombrarla`);
   }
 
@@ -265,6 +289,18 @@ function validar(cat) {
       const enElPlano = d.partes?.seCuentanEnElPlano;
       si(enElPlano === undefined || (Array.isArray(enElPlano) && enElPlano.every((x) => divs?.includes(x))),
         `${t}: \`partes.seCuentanEnElPlano\` son divisiones de la familia`);
+    }
+    // La superficie comercializable: que una cara de este tipo se vende por
+    // participación y con qué receta se mide. Sólo en lo que se vende, y la
+    // zona libre (y sólo ella) se mide desde arriba.
+    if (d.superficie !== undefined) {
+      const s = d.superficie;
+      si(!!s && typeof s === "object" && !Array.isArray(s) && Object.keys(s).sort().join() === "orientacion,receta"
+        && ["frente", "arriba"].includes(s.orientacion) && RECETAS.includes(s.receta),
+        `${t}: \`superficie\` es { orientacion: frente o arriba, receta: ${RECETAS.join(", ")} } y nada más`);
+      si(d.alquilable !== "nunca" && !d.legado, `${t}: \`superficie\` sólo en un tipo que se vende`);
+      si((s?.receta === "zona_libre") === (s?.orientacion === "arriba"),
+        `${t}: la zona libre se mide desde arriba, y sólo ella`);
     }
     if (d.legado) {
       si(d.tarifa === undefined && d.variantes === undefined, `${t}: un legado no tiene tarifa ni variantes`);
@@ -535,10 +571,60 @@ await prueba("la validación rechaza lo que tiene que rechazar", () => {
     ["una geometría de ficha sin decir dónde vive", (c) => { delete c.fichas.geometria.puertas.enPartes; }, /`fichas\.geometria`/],
     ["el prefijo propio igual al de los modelos", (c) => { c.fichas.prefijoPropio = "base:"; }, /`fichas\.prefijoPropio`/],
     ["una regla de ficha mal escrita", (c) => { c.fichas.largoMaxmo = {}; }, /clave desconocida `largoMaxmo` en `fichas`/],
+    // La participación y la superficie comercializable.
+    ["una participación con tarifa propia", (c) => { c.partes.clases.participacion.tarifa = "gondola"; },
+      /parte participacion: una participación no lleva `campo` ni `tarifa`/],
+    ["una participación contada con un campo del mueble", (c) => { c.partes.clases.participacion.campo = "puertas"; },
+      /parte participacion: una participación no lleva `campo` ni `tarifa`/],
+    ["una participación contada a lo ancho", (c) => { c.partes.clases.participacion.eje = "ancho"; },
+      /parte participacion: una participación no se cuenta por ningún eje/],
+    ["una participación única", (c) => { c.partes.clases.participacion.unico = true; },
+      /parte participacion: una participación no lleva `unico`/],
+    ["una participación sin reservar su token", (c) => { c.partes.reservados = c.partes.reservados.filter((r) => r !== "PC"); },
+      /parte participacion: el token PC no está entre los reservados/],
+    ["una clase que no es división, pieza ni participación", (c) => { c.partes.clases.puertas.es = "porcentaje"; },
+      /parte puertas: `es` es division, pieza o participacion/],
+    ["una división sin tarifa (sólo la participación no la lleva)", (c) => { delete c.partes.clases.puertas.tarifa; },
+      /parte puertas: su tarifa no está en `tarifas`/],
+    ["una división sin campo (sólo la participación no lo lleva)", (c) => { delete c.partes.clases.tramos.campo; },
+      /parte tramos: `campo` tiene que ser un entero de `fichas.geometria`/],
+    ["una familia que se divide por participación", (c) => { c.tipos.gondola.partes.divisiones.push("participacion"); },
+      /gondola: `partes.divisiones` son clases que dividen/],
+    ["una superficie con una receta que nadie calcula", (c) => { c.tipos.punta.superficie.receta = "isla"; },
+      /punta: `superficie` es \{ orientacion/],
+    ["una superficie mirada de costado", (c) => { c.tipos.gondola.superficie.orientacion = "costado"; },
+      /gondola: `superficie` es \{ orientacion/],
+    ["una superficie con una clave de más", (c) => { c.tipos.ristra.superficie.plano = 0.2; },
+      /ristra: `superficie` es \{ orientacion/],
+    ["una superficie en lo que nunca se vende", (c) => { c.tipos.checkout.superficie = { orientacion: "frente", receta: "gondola" }; },
+      /checkout: `superficie` sólo en un tipo que se vende/],
+    ["la zona libre mirada de frente", (c) => { c.tipos.metro.superficie.orientacion = "frente"; },
+      /metro: la zona libre se mide desde arriba, y sólo ella/],
+    ["una góndola mirada desde arriba", (c) => { c.tipos.gondola.superficie.orientacion = "arriba"; },
+      /gondola: la zona libre se mide desde arriba, y sólo ella/],
+    ["una superficie mal escrita", (c) => { c.tipos.cross.superfice = c.tipos.cross.superficie; }, /cross: clave desconocida `superfice`/],
   ];
   for (const [que, cambiar, motivo] of casos) {
     const mal = roto(cambiar);
     assert.ok(mal.some((m) => motivo.test(m)), `no se queja de ${que}: ${JSON.stringify(mal)}`);
+  }
+});
+
+await prueba("qué tipos se venden por participación, y con qué receta", () => {
+  // §7.1 del diseño de participaciones: los siete tipos del pedido llevan
+  // receta; los demás alquilables (la nevera de puertas, la isla, el cartón…)
+  // no se habilitan. Y la clase `participacion` está, con su token reservado.
+  assert.deepEqual(RECETAS.slice().sort(), ["cross", "gondola", "punta", "ristra", "robatope", "vitrina", "zona_libre"],
+    "`RecetaDeSuperficie` (catalogo.ts) no son las siete recetas del diseño");
+  const conSuperficie = Object.fromEntries(Object.entries(CATALOGO.tipos)
+    .filter(([, d]) => d.superficie).map(([t, d]) => [t, d.superficie.receta]));
+  assert.deepEqual(conSuperficie, CON_SUPERFICIE);
+  const pc = CATALOGO.partes.clases.participacion;
+  assert.ok(pc && pc.token === "PC" && pc.es === "participacion" && pc.eje === null, "falta la clase `participacion` (PC)");
+  assert.ok(CATALOGO.partes.reservados.includes("PC"), "`PC` no está entre los reservados");
+  // No es una división física de ninguna familia.
+  for (const [t, d] of Object.entries(CATALOGO.tipos)) {
+    assert.ok(!(d.partes?.divisiones ?? []).includes("participacion"), `${t} se divide por participación como si fuera física`);
   }
 });
 

@@ -1,6 +1,6 @@
 import type { UnifiedFixture } from "../types/fixtures";
 import { carasDe, fullSpaceCode, isRentable } from "../types/fixtures";
-import { codigoDeParte, partesDe } from "./partes";
+import { carasPorParticipacion, codigoDeParte, esParticipacion, partesDe, partirCodigo } from "./partes";
 import type { EstadoPorEspacio } from "./estadoComercial";
 
 /**
@@ -62,12 +62,18 @@ const NORMALIZAR = (s: string) => s.trim().toUpperCase();
  * Una góndola doble son DOS espacios (`carasDe`, la misma regla que
  * `caras_de` del servidor). Un mueble no comercializable no está —y ése es
  * justamente uno de los casos que hay que encontrar—.
+ *
+ * Las participaciones (`NAVE-GON-01-PC3`) no se enumeran —sus números no
+ * tienen tope—: van aparte las CARAS que se venden por participación
+ * (`carasPc`, `carasPorParticipacion`), y una participación se ofrece si su
+ * cara está ahí (`ofrecido`, que es `ofrece` del servidor).
  */
 function espaciosOfrecidos(
   fixturesBySede: Record<string, UnifiedFixture[]>,
   normalizar: (s: string) => string,
-): Set<string> {
+): { ofrecidos: Set<string>; carasPc: Set<string> } {
   const ofrecidos = new Set<string>();
+  const carasPc = new Set<string>();
   for (const [clave, fixtures] of Object.entries(fixturesBySede)) {
     if (!Array.isArray(fixtures)) continue;
     for (const f of fixtures) {
@@ -86,9 +92,21 @@ function espaciosOfrecidos(
       // Y las piezas de lo que no se vende entero (la bahía de una caja, el
       // forro de una columna), aunque el mueble no sea comercializable.
       for (const { cara, parte } of partesDe(f)) ofrecidos.add(codigoDeParte(completo, cara, parte));
+      // Las caras que se venden por participación, con la misma sede que sus
+      // caras de arriba (la del mueble, si la trae).
+      for (const c of carasPorParticipacion([f], normalizar(f.sede || clave))) carasPc.add(c);
     }
   }
-  return ofrecidos;
+  return { ofrecidos, carasPc };
+}
+
+/** ¿El plano pone a la venta este código COMPLETO? Una participación, si su
+ *  cara se vende por participación; lo demás, si está entre lo ofrecido. Es
+ *  `ofrece` de `backend/app/services/layout_lookup.py`. */
+function ofrecido(o: { ofrecidos: Set<string>; carasPc: Set<string> }, espacio: string): boolean {
+  const p = partirCodigo(espacio);
+  if (esParticipacion(p.parte)) return o.carasPc.has(codigoDeParte(p.base, p.cara, null));
+  return o.ofrecidos.has(espacio);
 }
 
 /** Partir `NAVE-IMP-17` en sede y código corto, usando las sedes que existen.
@@ -129,7 +147,7 @@ export function contratosSinMueble(
     // no es plata en el aire.
     if (e.status !== "occupied") continue;
     const espacio = clave.trim().toUpperCase();
-    if (ofrecidos.has(espacio)) continue;
+    if (ofrecido(ofrecidos, espacio)) continue;
     const { sede, code } = partir(espacio, lista);
     fantasmas.push({
       espacio, sede, code,

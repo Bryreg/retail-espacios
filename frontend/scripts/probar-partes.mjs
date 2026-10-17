@@ -94,7 +94,26 @@ await prueba(`qué ofrece cada mueble en NAVE (${CASOS.muebles.length} casos)`, 
     const d = P.divisionDe(c.mueble);
     assert.deepEqual(d ? [d.clase, d.n] : null, c.division, c.nombre);
     if ("firma" in c) assert.deepEqual(P.firmaDePartes(c.mueble), c.firma, `${c.nombre}: la firma`);
+    if ("carasPorParticipacion" in c) {
+      assert.deepEqual([...P.carasPorParticipacion([c.mueble], "NAVE")].sort(), c.carasPorParticipacion,
+        `${c.nombre}: las caras por participación`);
+    }
   }
+});
+
+await prueba("la participación: no la cuenta el mueble, no tiene tarifa propia y no divide la cara", () => {
+  const doble = { code: "GON-01", type: "gondola", entrepanos: 4, partes: { division: "participacion" } };
+  const pc3 = P.partirCodigo("NAVE-GON-01-PC3").parte;
+  assert.ok(P.esParticipacion(pc3) && !P.esDivision(pc3) && !P.esPieza(pc3), "PC3 no es una participación");
+  assert.ok(!P.esParticipacion(P.partirCodigo("NAVE-GON-01-EN3").parte) && !P.esParticipacion(null));
+  assert.equal(P.cantidadDe(doble, "participacion"), null);
+  assert.ok(P.porParticipacion(doble) && !P.porParticipacion({ ...doble, rentable: false }));
+  assert.ok(!P.porParticipacion({ code: "NEV-03", type: "nevera_puertas", partes: { division: "participacion" } }),
+    "una nevera de puertas no tiene receta de superficie");
+  assert.equal(P.divisionDe(doble), null);
+  assert.deepEqual(P.interruptoresDeLaCara(doble, "A"), [], "Vender no ofrece partes físicas de una cara por participación");
+  assert.equal(P.textoDeParte(pc3), "Participación 3");
+  assert.equal(P.textoParaMontar(pc3), "Participación 3");
 });
 
 await prueba(`qué choca con qué (${CASOS.chocan.length} casos)`, () => {

@@ -431,7 +431,7 @@ export function loDeLaFicha(f: Mueble): LoDeLaFicha | null {
       if (typeof f.entrepanos !== "number") cambio.entrepanos = m.entrepanos ?? null;
     } else {
       cambio.division = como.division;
-      (cambio as Record<string, unknown>)[regla.campo] = (m.partes as Record<string, unknown>)[regla.campo];
+      (cambio as Record<string, unknown>)[regla.campo!] = (m.partes as Record<string, unknown>)[regla.campo!];
     }
   }
   for (const p of como.piezas) {

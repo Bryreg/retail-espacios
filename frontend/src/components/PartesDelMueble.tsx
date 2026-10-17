@@ -305,7 +305,7 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
         const fijar = cambioParaDividir(f, sinFijar);
         const c = claseDe(sinFijar)!;
         const g = concordancia(sinFijar);
-        const n = "cambio" in fijar ? (fijar.cambio as Record<string, unknown>)[c.campo] : null;
+        const n = "cambio" in fijar ? (fijar.cambio as Record<string, unknown>)[c.campo!] : null;
         return (
           <div className="flex flex-col gap-1" data-partes-sin-fijar>
             <p className="text-[11px] leading-snug text-warning">

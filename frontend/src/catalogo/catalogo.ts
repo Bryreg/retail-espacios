@@ -117,16 +117,21 @@ export type CampoDeGeometria = "entrepanos" | "modulo" | "puertas" | "tramos" | 
 export interface ClaseDeParte {
   /** Dos letras: `PU`. El código de la parte es el de la cara y `-PU2`. */
   token: string;
-  /** `division` parte la cara y choca con la cara entera; `pieza`, no. */
-  es: "division" | "pieza";
+  /** `division` parte la cara y choca con la cara entera; `pieza`, no.
+   *  `participacion` es el porcentaje de una cara vendido a un proveedor
+   *  (`NAVE-GON-01-PC3`): no es una división física, no tiene `campo` (los
+   *  números los da el servidor) ni `tarifa` (la referencia es la de la
+   *  cara). Ver `esParticipacion` en `utils/partes.ts`. */
+  es: "division" | "pieza" | "participacion";
   /** Por dónde se cuentan: `ancho`, de izquierda a derecha mirando el frente. */
   eje: "ancho" | "alto" | null;
   /** Mirando qué se cuentan, si no es «el frente» (las bahías: «la caja
    *  desde la fila»). */
   mirando?: string;
   /** El campo que dice cuántas hay (uno de `fichas.geometria`: en `partes`
-   *  —las puertas, los tramos— o en el mueble —los entrepaños—). */
-  campo: string;
+   *  —las puertas, los tramos— o en el mueble —los entrepaños—). Falta en la
+   *  participación: no la cuenta ningún campo del mueble. */
+  campo?: string;
   /** La base cuenta como una más: los entrepaños son la base y los
    *  `entrepanos` del mueble (`EN1` es la base). */
   base?: boolean;
@@ -140,11 +145,23 @@ export interface ClaseDeParte {
   /** Para decirla bien: «una puerta vendida», «un tramo vendido». */
   genero: "f" | "m";
   /** La tarifa de referencia por clase (`parte_puerta`). Vacía: la de la cara
-   *  dividida por la cantidad de partes. */
-  tarifa: string;
+   *  dividida por la cantidad de partes. Falta en la participación: no tiene
+   *  tarifa propia. */
+  tarifa?: string;
   informe: string;
   informePlural: string;
 }
+
+/** Las recetas de la superficie comercializable (`tipos[t].superficie.receta`):
+ *  la cuenta que hacen `utils/superficie.ts` y `app/services/superficie.py`
+ *  con las medidas del dibujo. `probar-catalogo.mjs` lee esta lista y exige
+ *  que el catálogo use sólo éstas. */
+export type RecetaDeSuperficie = "gondola" | "punta" | "robatope" | "ristra" | "cross" | "vitrina" | "zona_libre";
+
+/** Cómo se mide la superficie comercializable de una cara: de `frente` (las
+ *  góndolas, la punta, el robatope, la ristra, la cruz, la vitrina) o desde
+ *  `arriba` (la zona libre). */
+export interface SuperficieDelTipo { orientacion: "frente" | "arriba"; receta: RecetaDeSuperficie }
 
 /** Vender por partes, en el catálogo. */
 export interface PartesDelCatalogo {
@@ -230,6 +247,10 @@ export interface TipoDeMueble extends FormaDeMueble {
    *  de una góndola, cuya ficha es un módulo) y qué PIEZAS lleva (`piezas`:
    *  las bahías de la caja, el forro de la columna). */
   partes?: { divisiones?: string[]; seCuentanEnElPlano?: string[]; piezas?: string[] };
+  /** Que una cara de este tipo se puede vender por participación, y cómo se
+   *  mide su superficie comercializable. Sin esto, no se vende así
+   *  (`porParticipacion` en `utils/partes.ts`). */
+  superficie?: SuperficieDelTipo;
 }
 
 /** Las reglas de una ficha (`fichas` en `muebles.json`). Ver `catalogo/fichas.ts`. */
@@ -355,7 +376,9 @@ export function nombresDeInforme(): { singular: Record<string, string>; plural: 
   }
   // Las partes cuentan por la tarifa de su clase: la consola dice «puertas de
   // nevera», no `parte_puerta`.
+  // La participación no tiene tarifa propia: no cuenta por clave de tarifa.
   for (const c of Object.values(C.partes.clases)) {
+    if (!c.tarifa) continue;
     singular[c.tarifa] = c.informe;
     plural[c.tarifa] = c.informePlural;
   }

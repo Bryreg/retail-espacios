@@ -35,6 +35,13 @@ import { LIBRE, type EstadoComercial, type EstadoPorEspacio } from "./estadoCome
  * en `partes` y es lo único que cuenta para vender. Sin `partes.division`, el
  * mueble se vende entero, como siempre.
  *
+ * Y la PARTICIPACIÓN de una cara (`NAVE-GON-01-PC3`, `NAVE-GON-01-B-PC1`): el
+ * porcentaje de la cara vendido a un proveedor. No es una división física ni
+ * una pieza: `partesDe` no la enumera (sus números los da el servidor) y
+ * `divisionDe` da `null` para la cara que se vende así. La cara se vende por
+ * participación cuando el mueble dice `partes.division: "participacion"` y su
+ * tipo tiene `superficie` en el catálogo (`porParticipacion`).
+ *
  * Es el espejo de `backend/app/services/partes.py`. Los dos corren los casos
  * de `scripts/casos/partes.json` (`probar-partes.mjs`, `tests/test_partes.py`).
  *
@@ -125,6 +132,13 @@ export function esPieza(p: ParteRef | null | undefined): boolean {
   return !!p && claseDe(p.clase)?.es === "pieza";
 }
 
+/** ¿Es una participación de la cara (`GON-01-PC3`: el porcentaje de la cara
+ *  vendido a un proveedor)? No divide la cara físicamente ni es una pieza. Es
+ *  `es_participacion` del servidor. */
+export function esParticipacion(p: ParteRef | null | undefined): boolean {
+  return !!p && claseDe(p.clase)?.es === "participacion";
+}
+
 const mismaParte = (a: ParteRef | null, b: ParteRef | null) =>
   a === b || (!!a && !!b && a.clase === b.clase && a.token === b.token && a.n === b.n);
 
@@ -133,14 +147,19 @@ const mismaParte = (a: ParteRef | null, b: ParteRef | null) =>
  * `chocan` del servidor, con los mismos casos: el mismo espacio sí; la cara
  * entera y una de sus divisiones, sí; dos divisiones de la misma clase, no (dos
  * puertas distintas conviven); de clases distintas de la misma cara, sí (se
- * pisan); una pieza sólo consigo misma. Se decide por los códigos: quien manda
- * es el servidor, esto es para avisar antes.
+ * pisan); una pieza sólo consigo misma. Una participación choca con la cara
+ * entera y con una división física de su cara, pero no con otra participación
+ * (a ésas las frena la regla de capacidad) ni con una pieza. Se decide por los
+ * códigos: quien manda es el servidor, esto es para avisar antes.
  */
 export function chocan(a: CodigoPartido, b: CodigoPartido): boolean {
   if (a.base !== b.base || a.cara !== b.cara) return false;
   if (mismaParte(a.parte, b.parte)) return true;
-  if (!a.parte) return esDivision(b.parte);
-  if (!b.parte) return esDivision(a.parte);
+  if (esParticipacion(a.parte) && esParticipacion(b.parte)) return false;
+  if (!a.parte) return esDivision(b.parte) || esParticipacion(b.parte);
+  if (!b.parte) return esDivision(a.parte) || esParticipacion(a.parte);
+  if (esParticipacion(a.parte)) return esDivision(b.parte);
+  if (esParticipacion(b.parte)) return esDivision(a.parte);
   return esDivision(a.parte) && esDivision(b.parte) && a.parte.clase !== b.parte.clase;
 }
 
@@ -178,7 +197,8 @@ export function valorDelCampo(f: ConPartes, campo: string): unknown {
  *  5 (la base, `EN1`, y los 4); sin entrepaños guardados, entera. */
 export function cantidadDe(f: ConPartes, clase: string): number | null {
   const regla = claseDe(clase);
-  if (!regla || !f) return null;
+  // Una clase sin `campo` (la participación) no la cuenta el mueble.
+  if (!regla || !regla.campo || !f) return null;
   const v = valorDelCampo(f, regla.campo);
   if (typeof v !== "number" || !Number.isInteger(v)) return null;
   const tipo = CATALOGO_DE_MUEBLES.tipos[tipoBase(f.type)];
@@ -215,7 +235,7 @@ export function piezasDe(f: ConPartes): ParteRef[] {
   const fuera: ParteRef[] = [];
   for (const clase of piezasDeLaFamilia(f.type)) {
     const regla = claseDe(clase);
-    if (!regla || regla.es !== "pieza") continue;
+    if (!regla || regla.es !== "pieza" || !regla.campo) continue;
     if (regla.unico) {
       if (valorDelCampo(f, regla.campo) === true) fuera.push({ clase, token: regla.token, n: null });
       continue;
@@ -267,13 +287,51 @@ export function espaciosDe(f: ConPartes & { code: string; sede?: string }, sede:
   return fuera;
 }
 
+/**
+ * ¿La cara se vende por participación? Lo dice el mueble
+ * (`partes.division === "participacion"`), su tipo tiene receta de superficie
+ * (`superficie` en el catálogo) y es comercializable. Una sola forma de
+ * dividir: vale para las dos caras de una doble. Es `por_participacion` del
+ * servidor. `divisionDe` sigue dando `null` para ese mueble (no es una
+ * división física) y `espaciosDe` da sus caras, no sus participaciones.
+ */
+export function porParticipacion(f: ConPartes): boolean {
+  if (!f || f.partes?.division !== "participacion") return false;
+  const tipo = tipoBase(String(f.type ?? ""));
+  const familia = Object.prototype.hasOwnProperty.call(CATALOGO_DE_MUEBLES.tipos, tipo)
+    ? CATALOGO_DE_MUEBLES.tipos[tipo] : undefined;
+  return !!familia?.superficie && isRentable(f);
+}
+
+/** Los códigos COMPLETOS de las caras que se venden por participación
+ *  (`NAVE-GON-01`, `NAVE-GON-01-B`), armados con la sede que se pasa: la del
+ *  plano, nunca el campo `sede` del mueble, como `caras_por_participacion` del
+ *  servidor. Una participación (`…-PC3`) se ofrece si su cara está acá. */
+export function carasPorParticipacion(
+  fixtures: readonly (ConPartes & { code: string })[], sede: string,
+): Set<string> {
+  const caras = new Set<string>();
+  for (const f of fixtures) {
+    if (!f || typeof f !== "object" || !porParticipacion(f)) continue;
+    const code = normalizar(f.code);
+    if (!code) continue;
+    const completo = fullSpaceCode(sede, code);
+    caras.add(completo);
+    if (carasDe(f) === 2) caras.add(`${completo}-B`);
+  }
+  return caras;
+}
+
 /** Lo que decide DÓNDE cae cada parte vendida, por clase: la cantidad de la
  *  división, o de las piezas (las bahías parten la mesa en partes iguales), o
- *  1 si tiene el forro. Es `firma_de_partes` del servidor. */
+ *  1 si tiene el forro. Sólo las clases con lugar físico (divisiones y
+ *  piezas): una participación no cae en un lugar fijo del mueble, y la firma
+ *  de siempre no cambia. Es `firma_de_partes` del servidor. */
 export function firmaDePartes(f: ConPartes): Record<string, number | null> {
   const div = divisionDe(f);
   const firma: Record<string, number | null> = Object.fromEntries(
-    Object.keys(P.clases).map((clase) => [clase, div && div.clase === clase ? div.n : null]));
+    Object.entries(P.clases).filter(([, c]) => c.es === "division" || c.es === "pieza")
+      .map(([clase]) => [clase, div && div.clase === clase ? div.n : null]));
   for (const p of piezasDe(f)) firma[p.clase] = Math.max(firma[p.clase] ?? 0, p.n ?? 1);
   return firma;
 }
@@ -556,7 +614,10 @@ export type OrigenDeTarifa = "cara" | "clase" | "cara/n" | "";
  * La tarifa de referencia de un espacio y de dónde salió: la cara entera, la
  * de su mueble (`rateTypeOf`); una división, la de su clase (`parte_puerta`)
  * y, si está vacía, la de la cara dividida por la cantidad de partes; una
- * pieza, la de su clase, sin respaldo. Es `referencia_de_espacio` del servidor.
+ * pieza, la de su clase, sin respaldo. Una participación no tiene referencia
+ * propia: compararla con la tarifa de la cara la listaría «75 % por debajo»
+ * (el mismo error que cuenta `tarifaDeLaFila` para las puertas); la de la cara
+ * se pide para la cara (`parte = null`). Es `referencia_de_espacio` del servidor.
  *
  * Pregunta la tarifa del mueble (`rateTypeOf`): quien la llama desde un
  * `useMemo` pone `fichasPropias` en las dependencias.
@@ -567,8 +628,9 @@ export function tarifaDeEspacio(
 ): { valor: number | null; origen: OrigenDeTarifa } {
   const deLaCara = rateTypeOf(f);
   if (!parte) return { valor: referenceRateFor(rates, sede, deLaCara), origen: "cara" };
+  if (esParticipacion(parte)) return { valor: null, origen: "" };
   const regla = claseDe(parte.clase);
-  if (!regla) return { valor: null, origen: "" };
+  if (!regla?.tarifa) return { valor: null, origen: "" };
   const propia = referenceRateFor(rates, sede, regla.tarifa);
   if (propia !== null) return { valor: propia, origen: "clase" };
   if (regla.es !== "division") return { valor: null, origen: "" };

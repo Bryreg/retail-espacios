@@ -7,7 +7,8 @@
     "Las claves de los tipos, los prefijos y las claves de tarifa no se cambian nunca: están guardados en los planos, en los códigos de espacio y en las tarifas de cada cliente.",
     "probar-catalogo.mjs y test_catalogo_muebles.py comparan lo que sale de acá contra frontend/scripts/casos/catalogo-antes.json (lo que hacía el código antes del catálogo). Comparan sólo los tipos que la referencia conoce: un tipo nuevo se valida contra el esquema.",
     "`modelos` son las fichas de muebles de verdad (medidas de fabricantes, con la URL de la fuente y su confiabilidad: ficha, catalogo o estimado). Al colocar uno se ESTAMPAN en el mueble del plano sus medidas, su color, su `modelo` y su geometría (entrepanos, modulo, partes): lo guardado no se vuelve a leer de acá, así que cambiar una ficha no mueve lo ya colocado. Cada tipo tiene además su modelo base implícito, `base:<tipo>` (o `base:<alias>` en la góndola), que es colocarlo como siempre, sin `modelo`.",
-    "El `id` de un modelo y su `tarifa` no se cambian nunca: el mueble guarda el id, y la tarifa se busca por él. Ningún modelo copia imágenes de terceros: sólo medidas, dichas con palabras propias."
+    "El `id` de un modelo y su `tarifa` no se cambian nunca: el mueble guarda el id, y la tarifa se busca por él. Ningún modelo copia imágenes de terceros: sólo medidas, dichas con palabras propias.",
+    "`superficie` (por tipo) dice que una cara de ese tipo se puede vender por participación (el porcentaje de la cara vendido a un proveedor: `partes.clases.participacion`) y cómo se calcula su superficie comercializable: `orientacion` (`frente`, o `arriba` en la zona libre, que se mira desde arriba) y `receta`, la cuenta con las medidas del dibujo que hacen utils/superficie.ts y app/services/superficie.py con los mismos casos. Un tipo sin `superficie` no se vende por participación."
   ],
   "prefijoDesconocido": "SPC",
   "tipos": {
@@ -19,6 +20,7 @@
       "rango": { "w": [0.6, 1.5], "d": [0.3, 1.2], "h": [1.2, 2.6] },
       "geometria": { "entrepanos": [2, 6], "modulo": [0.6, 1.5], "tramos": [2, 40] },
       "partes": { "divisiones": ["tramos", "entrepanos"], "seCuentanEnElPlano": ["tramos"] },
+      "superficie": { "orientacion": "frente", "receta": "gondola" },
       "variantes": {
         "double": {
           "caras": 2, "rotuloEditor": "Góndola Doble",
@@ -42,7 +44,8 @@
       "descripcion": "Cabecera de góndola con topper promocional",
       "rango": { "w": [0.5, 1.4], "d": [0.3, 0.7], "h": [1.2, 2.4] },
       "geometria": { "entrepanos": [1, 6], "modulo": [0.4, 1.4] },
-      "partes": { "divisiones": ["entrepanos"] }
+      "partes": { "divisiones": ["entrepanos"] },
+      "superficie": { "orientacion": "frente", "receta": "punta" }
     },
     "robatope": {
       "prefijo": "ROB", "alquilable": "si", "tarifa": "robatope",
@@ -51,7 +54,8 @@
       "banderas": ["producto", "prueba3D"],
       "rotuloEditor": "Robatope",
       "medidas": { "w": 0.30, "d": 0.40, "h": 1.60 }, "color": "#c0c0bc", "emoji": "🛡️",
-      "descripcion": "Panel lateral de protección — flanquea la Punta de Góndola"
+      "descripcion": "Panel lateral de protección — flanquea la Punta de Góndola",
+      "superficie": { "orientacion": "frente", "receta": "robatope" }
     },
     "ristra": {
       "prefijo": "RIS", "alquilable": "si", "tarifa": "ristra",
@@ -60,7 +64,8 @@
       "banderas": ["producto"],
       "rotuloEditor": "Ristra",
       "medidas": { "w": 0.40, "d": 0.40, "h": 1.60 }, "color": "#d97706", "emoji": "🪝",
-      "descripcion": "Colgante de productos"
+      "descripcion": "Colgante de productos",
+      "superficie": { "orientacion": "frente", "receta": "ristra" }
     },
     "cross": {
       "prefijo": "CRS", "alquilable": "si", "tarifa": "cross",
@@ -69,7 +74,8 @@
       "banderas": ["producto"],
       "rotuloEditor": "Exhibidor Cruz",
       "medidas": { "w": 0.80, "d": 0.80, "h": 1.80 }, "color": "#0891b2", "emoji": "➕",
-      "descripcion": "Display lateral cross-selling"
+      "descripcion": "Display lateral cross-selling",
+      "superficie": { "orientacion": "frente", "receta": "cross" }
     },
     "metro": {
       "prefijo": "MET", "alquilable": "no_por_defecto", "tarifa": "metro",
@@ -78,7 +84,8 @@
       "banderas": [],
       "rotuloEditor": "Zona Libre",
       "medidas": { "w": 1.00, "d": 1.00, "h": 0.05 }, "color": "#64748b", "emoji": "⬜",
-      "descripcion": "Área de suelo demarcada"
+      "descripcion": "Área de suelo demarcada",
+      "superficie": { "orientacion": "arriba", "receta": "zona_libre" }
     },
     "mueble": {
       "prefijo": "MUE", "alquilable": "si", "tarifa": "mueble",
@@ -87,7 +94,8 @@
       "banderas": ["producto"],
       "rotuloEditor": "Vitrina",
       "medidas": { "w": 1.20, "d": 0.60, "h": 2.00 }, "color": "#475569", "emoji": "🗄️",
-      "descripcion": "Vitrina con puertas de vidrio"
+      "descripcion": "Vitrina con puertas de vidrio",
+      "superficie": { "orientacion": "frente", "receta": "vitrina" }
     },
     "isla": {
       "prefijo": "EXP", "alquilable": "si", "tarifa": "isla",
@@ -634,7 +642,8 @@
       "`seCuentanEnElPlano` (por tipo) son las divisiones cuya cantidad NO va en la ficha: la ficha de una góndola es un módulo, y cuántos tramos tiene depende del largo del corrido. La ficha dice sólo que se vende por tramos, y la cantidad se fija en el panel del plano (un tramo por módulo).",
       "`reservados` son los finales de código que ningún mueble puede tomar al renombrarse: los tokens de hoy y los de lo que viene (copete, cenefa, stopper) y la cara B.",
       "Las PIEZAS (`es: pieza`, desde el paso 3: la bahía de impulso de una caja, CAJ-04-BI1, y el forro de una columna, COL-07-FO) no parten la cara: son inventario de un mueble que nunca se vende entero. Cada tipo dice en `partes.piezas` cuáles lleva; el mueble del plano las tiene si su campo lo dice (`partes.bahias`: cuántas, de izquierda a derecha mirando la caja desde la fila, `mirando`; `partes.forro`: true). Se venden aunque el mueble no sea comercializable, no chocan con nada más que consigo mismas y su tarifa es la de su clase, sin respaldo: no hay cara que dividir. `unico` es una pieza sin número (el forro: uno por columna), contada por un sí o no de `fichas.geometria` (`booleano`).",
-      "Los MODELOS de RECABRA traen cómo se venden (paso 4): las neveras de 2, 3 y 4 puertas, por puertas; las góndolas de pared (los murales), por tramos, uno por módulo, que se fijan en el panel del plano porque la ficha es un módulo y la cantidad depende del largo del corrido. Las fichas propias de cada supermercado lo eligen en el taller. Lo que se estampa al colocar es lo único que cuenta: un mueble ya colocado no cambia si su ficha cambia, y el panel del plano le ofrece «Usar lo de la ficha»."
+      "Los MODELOS de RECABRA traen cómo se venden (paso 4): las neveras de 2, 3 y 4 puertas, por puertas; las góndolas de pared (los murales), por tramos, uno por módulo, que se fijan en el panel del plano porque la ficha es un módulo y la cantidad depende del largo del corrido. Las fichas propias de cada supermercado lo eligen en el taller. Lo que se estampa al colocar es lo único que cuenta: un mueble ya colocado no cambia si su ficha cambia, y el panel del plano le ofrece «Usar lo de la ficha».",
+      "La PARTICIPACIÓN (`es: participacion`, token `PC`: NAVE-GON-01-PC3 es la participación 3 de la cara A de GON-01; NAVE-GON-01-B-PC1, la 1 de la cara B) es el porcentaje de una cara vendido a un proveedor, con su contrato y su zona dibujada en la cara. No es una división física: no va en ningún `tipos[t].partes.divisiones`, no tiene `campo` (los números los da el servidor, uno por participación y sin reutilizarse) ni `tarifa` (la referencia es la de la cara). Una cara se vende por participación cuando el mueble dice `partes.division: participacion` y su tipo tiene `superficie`; entonces no se vende entera ni por partes físicas. Dos participaciones de la misma cara no chocan por el código (las frena la regla de capacidad: nunca más del 100 % el mismo día); con la cara entera o con una división física, sí; con una pieza, no."
     ],
     "clases": {
       "puertas": {
@@ -662,9 +671,14 @@
         "token": "FO", "es": "pieza", "eje": null, "campo": "forro", "unico": true, "minimo": 1,
         "singular": "forro", "plural": "forros", "genero": "m",
         "tarifa": "parte_forro", "informe": "forro de columna", "informePlural": "forros de columna"
+      },
+      "participacion": {
+        "token": "PC", "es": "participacion", "eje": null, "minimo": 1,
+        "singular": "participación", "plural": "participaciones", "genero": "f",
+        "informe": "participación de cara", "informePlural": "participaciones de cara"
       }
     },
-    "reservados": ["B", "PU", "TR", "EN", "BI", "FO", "CP", "CN", "ST"]
+    "reservados": ["B", "PU", "TR", "EN", "BI", "FO", "PC", "CP", "CN", "ST"]
   },
   "fichas": {
     "leeme": [

@@ -286,3 +286,37 @@ def test_UNA_CAJA_PINTADA_OCUPADA_EN_UN_PLANO_VIEJO_NO_ES_UN_CONTRATO(client, ad
     )])
     n, salida = _auditar(capsys)
     assert n == 0, salida
+
+
+def test_UNA_PARTICIPACION_tiene_mueble_mientras_su_cara_se_venda_por_participacion(client, admin, capsys):
+    """La participación de una cara (``GON-01-PC1``) no está entre las caras del
+    plano —sus números no tienen tope—: tiene mueble si su CARA se vende por
+    participación, la misma regla que la aplicación (``layout_lookup.ofrece``).
+    La de una cara que dejó de venderse así es un fantasma, como cualquier
+    otro. Los contratos se escriben por abajo: la participación todavía no
+    tiene su camino propio."""
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceLease, Supplier
+
+    por_pc = _mueble("GON-01", type="gondola", gondolaType="double", d=0.9, partes={"division": "participacion"})
+    entera = _mueble("GON-02", type="gondola", gondolaType="double", d=0.9)
+    _plano_viejo([por_pc, entera])
+    db = SessionLocal()
+    try:
+        sup = Supplier(name="Alpina")
+        db.add(sup)
+        db.flush()
+        for codigo in ("NAVE-GON-01-PC1", "NAVE-GON-01-B-PC2", "NAVE-GON-02-PC1"):
+            space = Space(code=codigo, svg_id=f"fix-{codigo}", name=codigo, zone="gondola", sede="NAVE", area_m2=0.0)
+            db.add(space)
+            db.flush()
+            db.add(SpaceLease(space_id=space.id, supplier_id=sup.id, monthly_rent=1, is_active=True,
+                              start_date=HOY, end_date=HOY + timedelta(days=30)))
+        db.commit()
+    finally:
+        db.close()
+
+    n, salida = _auditar(capsys)
+    assert n == 1, salida
+    assert "GON-02-PC1" in salida and "el plano no lo ofrece" in salida
+    assert "GON-01-PC1" not in salida and "GON-01-B-PC2" not in salida, salida
