@@ -14,6 +14,21 @@ import { GondolaReal } from "./muebles/GondolaReal";
 import { ProductoEnGondola, ventaDeGondola } from "./muebles/ProductoEnGondola";
 import { PuntaReal } from "./muebles/PuntaReal";
 import { ProductoEnPunta, ventaDePunta } from "./muebles/ProductoEnPunta";
+// Distribución (participaciones de cara, §9–§10 del diseño): el mueble
+// desnudo, las zonas pegadas a su cara y el store de edición, que sólo lee
+// el editor (las zonas le llegan a la escena armadas: `Scene` no lee stores).
+import { DesnudoDelMueble } from "./muebles/desnudo";
+import { ZonasDelMueble, olvidarTexturasDeZonas, type CaraParaDibujar, type ComoSeVe } from "./muebles/ZonasDelMueble";
+import { useDistribucionStore, capaQueSeMuestra, zonasEditables, type DistribucionActiva } from "../../store/distribucionStore";
+import { useOcupacionStore, claveDeSede } from "../../store/ocupacionStore";
+import { espacioDeLaCara, leerCara, superficieDeOut, terminoDeOut, type CaraOut, type OcupacionOut } from "../../api/participaciones";
+import { UMBRAL_CLIC_PX, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
+import { elegirCaraYPunto } from "../../utils/zonas3d";
+import { superficieDeCara, tieneSuperficie, type Superficie } from "../../utils/superficie";
+import { estampasDeLaCara } from "../../utils/coloresDeMarca";
+import { cuentaElDia, cuentaEseDia, dispoPorParticipacion, pct, vivo } from "../../utils/participaciones";
+import { carasInaccesibles, textoDeCaraInaccesible } from "../../utils/revision";
+import { carasDe } from "../../types/espacio";
 import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
 import { useHabladoresDeRelleno } from "./muebles/ProductoEnMueble";
 import type { PruebaDeCara } from "./muebles/ProductoDePrueba";
@@ -80,7 +95,7 @@ import { PartesDelMueble } from "../PartesDelMueble";
 import { textoDeLoQueNuncaSeAlquila } from "../../utils/partesDelMueble";
 import type { FixtureDef } from "../../catalogo/editor3D";
 import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
-import { claseDe, codigoDeParte, codigoVisibleDe, divisionDe } from "../../utils/partes";
+import { claseDe, codigoDeParte, codigoVisibleDe, divisionDe, porParticipacion } from "../../utils/partes";
 import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
@@ -106,6 +121,7 @@ import {
   type Vista3D, type TomaDeVenta,
   VEL_CAMINANDO, VEL_APURADA,
   type LimitesPlanta,
+  ALTURA_PISABLE, frenarMira, sanearOrbita,
 } from "../../utils/planta";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
@@ -752,6 +768,10 @@ const GondolaMesh = memo(function GondolaMesh({
           // Fuera de toda captura: el estado de cada espacio no va en la
           // lámina que se le manda al proveedor.
           userData={CHROME}
+          // El slot corta el `pointerdown`: si no, le llegaba al volumen de
+          // toque del mueble, que lo elegía y arrancaba el arrastre (un
+          // temblor del mouse movía la góndola al elegir un espacio).
+          onPointerDown={e => e.stopPropagation()}
           onClick={e  => { e.stopPropagation(); onSlotClick?.(slot.id); }}
           onPointerOver={e => { e.stopPropagation(); onSlotHover?.(slot.id); }}
           onPointerOut={e  => { e.stopPropagation(); onSlotHover?.(null); }}
@@ -837,8 +857,12 @@ function ContornoDeSlot({ w, h, z, color }: { w: number; h: number; z: number; c
     return g;
   }, [w, h]);
   useEffect(() => () => geometria.dispose(), [geometria]);
+  // Sin raycast: three mide las líneas con `Line.threshold = 1` (UN METRO) y
+  // R3F prueba los hijos de la malla del slot. El contorno de un slot vecino
+  // interceptaba el rayo, el evento subía a SU malla y se elegía el espacio
+  // equivocado. El panel transparente sigue recibiendo el clic.
   return (
-    <lineSegments geometry={geometria} position={[0, 0, z]}>
+    <lineSegments geometry={geometria} position={[0, 0, z]} raycast={() => null}>
       <lineBasicMaterial color={color} transparent opacity={0.85} />
     </lineSegments>
   );
@@ -955,6 +979,7 @@ function PuntaMesh({ w, d, h, ghost, facePaint, slots, selectedSlotId, hoveredSl
         return (
           <mesh key={slot.id} position={[cx, cy, panelZ]}
             userData={CHROME}
+            onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onSlotClick?.(slot.id); }}
             onPointerOver={e => { e.stopPropagation(); onSlotHover?.(slot.id); }}
             onPointerOut={e  => { e.stopPropagation(); onSlotHover?.(null); }}>
@@ -1348,9 +1373,49 @@ function CrossMesh({ w, d, h, statusColor, ghost, facePaint, rubro }: { w:number
 
 // ─── Mesh: Metro cuadrado ─────────────────────────────────────────────────────
 
+/** La banda de estado de la zona libre que se pisa, en el borde de su tapa. */
+const BANDA_DE_LA_ZONA_LIBRE = 0.04;
+/** El espesor de la tapa de esa placa (la banda va al ras de la tapa). */
+const TAPA_DE_LA_ZONA_LIBRE = 0.006;
+
 function MetroMesh({ w, d, h, statusColor, ghost }: { w:number;d:number;h:number;statusColor:string;ghost?:boolean }) {
   const op       = ghost ? 0.42 : 1;
   const BODY     = "#e6e6e3";
+  // La zona libre que se PISA (más baja que `ALTURA_PISABLE`, como la de 5 cm
+  // del catálogo) es una marca en el piso: una placa de su alto, con una banda
+  // de estado de 4 cm alrededor de la tapa, al ras. Antes se dibujaba con
+  // estantes desde 16 cm y rieles hasta ≈ 19 cm aunque midiera 5: el dibujo
+  // pasaba su propio alto y enterraba el plano de las zonas de Distribución
+  // (4 mm sobre la tapa, `superficie.ts`). Nada de esta placa sube de `h`.
+  if (h < ALTURA_PISABLE) {
+    const banda = Math.min(BANDA_DE_LA_ZONA_LIBRE, w / 4, d / 4);
+    const tapa  = Math.min(TAPA_DE_LA_ZONA_LIBRE, h / 2);
+    const yTapa = h - tapa / 2;
+    return (
+      <group>
+        <mesh position={[0, (h - tapa) / 2, 0]} receiveShadow>
+          <boxGeometry args={[w, h - tapa, d]} />
+          <meshLambertMaterial color={BODY} transparent opacity={op} />
+        </mesh>
+        <mesh position={[0, yTapa, 0]}>
+          <boxGeometry args={[w - 2 * banda, tapa, d - 2 * banda]} />
+          <meshLambertMaterial color={BODY} transparent opacity={op} />
+        </mesh>
+        {([-1, 1] as const).map(s => (
+          <mesh key={`bx${s}`} position={[s * (w / 2 - banda / 2), yTapa, 0]}>
+            <boxGeometry args={[banda, tapa, d]} />
+            <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
+          </mesh>
+        ))}
+        {([-1, 1] as const).map(s => (
+          <mesh key={`bz${s}`} position={[0, yTapa, s * (d / 2 - banda / 2)]}>
+            <boxGeometry args={[w - 2 * banda, tapa, banda]} />
+            <meshLambertMaterial color={statusColor} transparent opacity={0.88 * op} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
   const FR       = "#c8c8c5";
   const RAIL     = "#b8b8b5";
   const nShelves = Math.max(3, Math.round(h / 0.40));
@@ -2329,6 +2394,10 @@ interface FixtureMeshProps {
   hoveredSlotId?:  string | null;
   onSlotClick?:    (slotId: string) => void;
   onSlotHover?:    (slotId: string | null) => void;
+  /** El color de estado que se pinta, si no es el de `fixture.status`: una
+   *  cara por participación (§10.8) no cambia su estado —sigue «libre» en la
+   *  base—, pero lo contratado no puede verse libre. Con `neutro` no cuenta. */
+  colorDeEstado?:  string;
 }
 
 /**
@@ -2362,12 +2431,12 @@ function ServicioClienteMesh({ w, d, h, statusColor, ghost }: { w:number;d:numbe
  *  del botón de Vender, el mismo del marco de la puerta vendida. */
 const COLOR_DE_LA_PARTE_VENDIDA = "#f2b705";
 
-export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover }: FixtureMeshProps) {
+export function FixtureMesh({ fixture, ghost, neutro = false, facePaint, selectedSlotId, hoveredSlotId, onSlotClick, onSlotHover, colorDeEstado }: FixtureMeshProps) {
   const sc = neutro
     ? COLOR_NEUTRO
-    : isRentable(fixture)
+    : colorDeEstado ?? (isRentable(fixture)
       ? (STATUS_COLORS[fixture.status] ?? STATUS_COLORS.free)
-      : NON_RENTABLE_COLOR;
+      : NON_RENTABLE_COLOR);
   const base = { w:fixture.w, d:fixture.d, h:fixture.h, statusColor:sc, ghost };
   const rubroEntero = rubroDeContratoEntero(fixture, neutro);
   // Lo que el mueble guardó (de su ficha o del panel), por la misma puerta
@@ -2950,12 +3019,27 @@ function CameraControls({
     ctrl.panSpeed      = 1.4;
     ctrl.update();
     orbitRef.current   = ctrl;
+    // La cámara no pasa por debajo del piso (§10.4). `maxPolarAngle` se mide
+    // contra la MIRA, y el paneo en espacio de pantalla (que se queda: sin él
+    // no hay cómo subir a mirar un copete) la bajaba de y = 0 con la cámara
+    // detrás. Si la mira baja del piso, se suben la mira y la cámara lo mismo
+    // (`frenarMira`, una traslación: sin tirón ni `update()` adentro). Va
+    // ANTES que el oyente de `onReady`, que guarda la cámara ya corregida.
+    const frenar = () => {
+      const f = frenarMira(ctrl.target, camera.position);
+      if (f) {
+        ctrl.target.set(f.target.x, f.target.y, f.target.z);
+        camera.position.set(f.position.x, f.position.y, f.position.z);
+      }
+    };
+    ctrl.addEventListener('change', frenar);
     // With frameloop="demand", re-render only when the camera actually moves.
     const onCtrlChange = () => invalidate();
     ctrl.addEventListener('change', onCtrlChange);
     // B3: capture the disposer returned by onReady (removes the 'change' listener)
     const disposeListener = onReady?.(ctrl);
     return () => {
+      ctrl.removeEventListener('change', frenar);
       ctrl.removeEventListener('change', onCtrlChange);
       disposeListener?.();
       ctrl.dispose();
@@ -5349,6 +5433,21 @@ function FixtureBadge({ x, z, h }: { x: number; z: number; h: number }) {
 
 // ─── Scene ───────────────────────────────────────────────────────────────────
 
+/** Lo que la escena necesita de Distribución (ver `SceneProps.distribucion`). */
+export interface PropsDeDistribucion {
+  fixtureId: string;
+  cara: "A" | "B";
+  /** Las del SERVIDOR para la cara que se edita (la misma que usa el lienzo);
+   *  la otra de una doble, la del mueble local (el plano está al día: si no,
+   *  la edición se bloquea). */
+  superficies: { A?: Superficie | null; B?: Superficie | null };
+  /** Un clic en el mueble: qué cara y qué punto (u, v) tocó. */
+  onTocar: (cara: "A" | "B", u: number, v: number) => void;
+  /** Las zonas, ya armadas por el editor (que es quien lee el store de
+   *  edición): se montan adentro del grupo del mueble. */
+  zonas?: React.ReactNode;
+}
+
 interface SceneProps {
   placedFixtures:    PlacedFixture[];
   selectedId:        string | null;
@@ -5403,6 +5502,17 @@ interface SceneProps {
   fixtures:          import("../../types/fixtures").UnifiedFixture[];
   /** Se escribe al confirmar cada cambio (ver `EstadoDeEscena`). */
   estadoDeEscena:    React.MutableRefObject<EstadoDeEscena>;
+  /** La capa Distribución (§10 del diseño de participaciones). Sólo la pasa
+   *  el editor, y sólo con su condición única (`distribucionVisible`): el
+   *  visor de Vender nunca (guarda en `probar-vender.mjs`), ni Presentar, ni
+   *  la lámina, ni la reunión, ni la primera persona. `Scene` no lee ningún
+   *  store: todo le llega acá. Con ella, el mueble se dibuja desnudo, sin
+   *  arrastre, gizmo ni caja; los vecinos no se comen el clic; y un clic en
+   *  el mueble elige cara y punto con un rayo contra el plano. */
+  distribucion?:     PropsDeDistribucion;
+  /** El color de estado que se pinta por mueble cuando no es el de su
+   *  `status` (las caras por participación por ocupación, §10.8). */
+  coloresDeEstado?:  ReadonlyMap<string, string>;
   /** La escena del visor de Vender (`components/Contrato/VisorDeVenta.tsx`):
    *  la MISMA tienda, pero sin tocar nada que sea del editor ni de otros
    *  proveedores. Tres puertas, y ni una más:
@@ -5428,6 +5538,7 @@ export function Scene({
   onSelectFixture, setPlacedFixtures,
   screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
   onHoverFixture, fixtures, comoSePrueba, catalogo, presentationMode, pedidoDeToma, privadoPara,
+  distribucion, coloresDeEstado,
   estadoDeEscena, soloVenta = false, vanosALaVenta, filasALaVenta,
 }: SceneProps) {
   const { gl, camera, invalidate, size } = useThree();
@@ -5668,6 +5779,28 @@ export function Scene({
     if (pedidoDeToma) s.add(pedidoDeToma.fixtureId);
     return s;
   }, [privadoPara, facePaintById, pedidoDeToma]);
+  // Distribución (§10.9): la condición la calcula el editor; la escena la
+  // repite por defensa, así un llamador nuevo no puede desnudar un mueble
+  // delante de un proveedor. El mueble desnudo, las zonas y el puntero
+  // dependen sólo de esto.
+  const enModoDistribucion = distribucion !== undefined && !presentationMode && privadoPara === undefined
+    && !soloVenta && !firstPerson ? distribucion : undefined;
+  const enDistribucionDelMueble = (id: string | null) =>
+    enModoDistribucion !== undefined && id === enModoDistribucion.fixtureId;
+  const idEnDistribucion = enModoDistribucion?.fixtureId ?? null;
+  // Lo que se pinta de cada mueble cuando no es el mueble tal cual (§10.2,
+  // §10.8): el que se distribuye, DESNUDO —sin rubro (ni patrón de paquetes
+  // ni relleno) y sin slots (ni envases ni paneles)—; uno que se vende por
+  // participación, sin sus slots (sus paneles verdes «libres» decían lo
+  // contrario de la verdad). `hasSlots` y `conEspacios` no se tocan.
+  const paraPintar = useMemo(() => {
+    const m = new Map<string, PlacedFixture>();
+    for (const fix of placedFixtures) {
+      if (fix.id === idEnDistribucion) m.set(fix.id, { ...fix, brandCategory: "", slots: [] });
+      else if (fix.slots?.length && porParticipacion(fix)) m.set(fix.id, { ...fix, slots: [] });
+    }
+    return m;
+  }, [placedFixtures, idEnDistribucion]);
   // Qué caras se dibujan con las rejillas acomodadas, para el pie de la lámina.
   React.useLayoutEffect(() => {
     const acomodadas: string[] = [];
@@ -5693,8 +5826,11 @@ export function Scene({
     const targetX = needsMigration ? STORE_W / 2 : c3d.targetX;
     const targetY = needsMigration ? 0 : c3d.targetY;
     const targetZ = needsMigration ? STORE_D / 2 : c3d.targetZ;
-    camera.position.set(posX, posY, posZ);
-    ctrl.target.set(targetX, targetY, targetZ);
+    // Una cámara guardada bajo el piso (de antes del freno de §10.4) vuelve
+    // sana: la mira en y ≥ 0 y la cámara al menos 0,3 m por encima de ella.
+    const sana = sanearOrbita({ position: { x: posX, y: posY, z: posZ }, target: { x: targetX, y: targetY, z: targetZ } });
+    camera.position.set(sana.position.x, sana.position.y, sana.position.z);
+    ctrl.target.set(sana.target.x, sana.target.y, sana.target.z);
     ctrl.update();
     const handler = () => {
       const p = camera.position;
@@ -6139,21 +6275,31 @@ export function Scene({
         // En Presentar no van: los colores de estado dicen qué está vendido y
         // qué no, y eso no es asunto del proveedor que mira.
         const conEspacios = hasSlots && fix.id === selectedId && !placingDef && !firstPerson && !presentationMode;
+        // Distribución: ESTE es el mueble que se distribuye (desnudo, con sus
+        // zonas, sin arrastre ni caja), o es un vecino mientras se distribuye
+        // otro (su volumen de toque no se come el clic).
+        const enDistribucion = enDistribucionDelMueble(fix.id);
+        const vecinoEnDistribucion = enModoDistribucion !== undefined && !enDistribucion;
         return (
           <group key={fix.id} position={[fix.x,0,fix.z]} rotation={[0,fix.rotY,0]}>
             {/* El foco de la pantalla de venta: un boolean (ver `FocoDeVenta`). */}
             <FocoDeVenta.Provider value={conFoco.size === 0 || conFoco.has(fix.id)}>
+            {/* El mueble desnudo de Distribución (`desnudo.ts`): siempre
+                montado, así entrar y salir del modo no remonta el mueble. */}
+            <DesnudoDelMueble.Provider value={enDistribucion}>
             <FixtureMesh
-              fixture={fix}
+              fixture={paraPintar.get(fix.id) ?? fix}
               neutro={privadoPara !== undefined}
-              facePaint={facePaintById.get(fix.id) ?? null}
+              facePaint={enDistribucion ? null : (facePaintById.get(fix.id) ?? null)}
+              colorDeEstado={coloresDeEstado?.get(fix.id)}
               selectedSlotId={conEspacios ? selectedSlotId : null}
               hoveredSlotId={conEspacios ? hoveredSlotId : null}
               onSlotClick={conEspacios ? (slotId) => onSelectSlot(fix.id, slotId) : undefined}
               onSlotHover={conEspacios ? setHoveredSlotId : undefined}
             />
+            </DesnudoDelMueble.Provider>
             </FocoDeVenta.Provider>
-            {fix.id===selectedId && !selectedSlotId && !presentationMode && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
+            {!enDistribucion && fix.id===selectedId && !selectedSlotId && !presentationMode && <SelectionBox w={fix.w} d={fix.d} h={fix.h} />}
             {/* CHANGE 4 — Unauthorized placement badge (distance-gated + occluded) */}
             {/* En Presentar no: «sin contrato» es un dato de la tienda, no
                 del proveedor que está mirando. */}
@@ -6170,9 +6316,18 @@ export function Scene({
             {/* Hit volume */}
             <mesh
               position={[0, fix.h/2, hasSlots ? 0.03 : 0]}
+              // Mientras se distribuye otro mueble, éste no recibe el clic: los
+              // volúmenes miden +0,30 m (+0,08 la góndola y la punta) y R3F le
+              // da el clic al más cercano. Con un spread: `raycast={undefined}`
+              // pisaría el de `Mesh` y rompería la selección fuera del modo.
+              {...(vecinoEnDistribucion ? { raycast: () => null } : {})}
               onDoubleClick={handleSceneDoubleClick}
               onPointerDown={e=>{
                 if (firstPerson) return;
+                // En Distribución el mueble no se elige ni se arrastra: el
+                // arrastre que empieza sobre él gira la cámara (la órbita es
+                // del lienzo), y un temblor no corre la góndola.
+                if (enModoDistribucion) { e.stopPropagation(); return; }
                 e.stopPropagation();
                 onSelectFixture(fix.id);
                 // En Presentar se elige el mueble (las tomas del HUD son de
@@ -6196,6 +6351,21 @@ export function Scene({
               onClick={e=>{
                 if (placingDef || firstPerson) return;
                 e.stopPropagation();
+                // Distribución (§10.3): qué cara y qué punto tocó el clic, con
+                // un rayo contra el plano de cada cara (nunca contra las mallas
+                // de las zonas). Sólo un clic: si el puntero se movió más de
+                // 4 px desde que bajó, fue un giro de cámara y no dibuja.
+                if (enDistribucion && enModoDistribucion && e.delta <= UMBRAL_CLIC_PX) {
+                  const grupo = e.eventObject.parent;
+                  if (!grupo) return;
+                  const inversa = grupo.matrixWorld.clone().invert();
+                  const origen = e.ray.origin.clone().applyMatrix4(inversa);
+                  const dir = e.ray.direction.clone().transformDirection(inversa);
+                  const r = elegirCaraYPunto(
+                    { origen: [origen.x, origen.y, origen.z], dir: [dir.x, dir.y, dir.z] }, enModoDistribucion.superficies,
+                  );
+                  if (r) enModoDistribucion.onTocar(r.cara, r.u, r.v);
+                }
               }}
               onPointerOver={e=>{
                 e.stopPropagation();
@@ -6222,6 +6392,9 @@ export function Scene({
               ]} />
               <meshBasicMaterial transparent opacity={0} depthWrite={false} />
             </mesh>
+            {/* Las zonas de la cara, hijas del grupo del mueble: heredan su
+                lugar y su giro (`muebles/ZonasDelMueble.tsx`). */}
+            {enDistribucion && enModoDistribucion?.zonas}
           </group>
         );
       })}
@@ -6247,7 +6420,7 @@ export function Scene({
       )}
 
       {/* MEJORA 6: Transform gizmo — only when not first-person and not placing */}
-      {selectedId && !placingDef && !firstPerson && !presentationMode && (() => {
+      {!enDistribucionDelMueble(selectedId) && selectedId && !placingDef && !firstPerson && !presentationMode && (() => {
         const fix = placedFixtures.find(f => f.id === selectedId);
         return fix ? (
           <FixtureTransformControls
@@ -6411,6 +6584,13 @@ interface CommercialPanelProps {
   onDelete:      () => void;
   onClose:       () => void;
   onSlotClose:   () => void;
+  /** «Distribuir esta cara» (participaciones de cara, §9.2): entra al modo
+   *  Distribución con la cara que se mira en el panel (en una doble, la A si
+   *  no se eligió otra). Sólo para un tipo con superficie. */
+  onDistribuir?: () => void;
+  /** Por qué no se puede entrar ahora (reunión, Presentar, caminata): el
+   *  botón queda deshabilitado con este texto. */
+  motivoSinDistribuir?: string | null;
 }
 
 function CommercialPanel({
@@ -6418,7 +6598,7 @@ function CommercialPanel({
   comoSePrueba, onAjustarPrueba, proveedorDeReunion, onProveedorDeReunion, onMostrar,
   eligiendo, setEligiendo, onCara,
   selectedSlot, onUpdate, muebles, onRenombrar, onIntercambiar, onUpdateSlot,
-  onRotate, onFlip, onDelete, onClose, onSlotClose,
+  onRotate, onFlip, onDelete, onClose, onSlotClose, onDistribuir, motivoSinDistribuir,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
   // Vender por partes: el mapa CRUDO de la base (vender un tramo no cambia el
@@ -6444,6 +6624,18 @@ function CommercialPanel({
   const enReunion = hayReunion({ pruebas: prueba.size, proveedorDeReunion, eligiendo });
   useEffect(() => { if (eligiendo) setVerContrato(false); }, [eligiendo]);
   const contratoDiscreto = enReunion && !verContrato;
+
+  // Una cara que nadie puede mirar (D17, §10.6): una doble arrimada a otra o
+  // a 30 cm vende una cara B que no ve nadie. El mismo aviso que la revisión
+  // del plano, para el mueble elegido, que es el que queda elegido después de
+  // colocarlo o moverlo. Sólo avisa: nunca cambia el tipo ni un contrato.
+  const carasTapadas = useMemo(() => {
+    if (carasDe(fix) !== 2) return [];
+    const plano = muebles.map((m) => ({
+      id: m.id, code: m.code, type: m.type, cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: m.rotY, gondolaType: m.gondolaType,
+    }));
+    return carasInaccesibles(plano).filter((c) => c.fixtureId === fix.id);
+  }, [muebles, fix]);
 
   const sm  = STATUS_META[fix.status];
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
@@ -6561,6 +6753,14 @@ function CommercialPanel({
               <option value="occupied" disabled={noSeMarcaVendido}>Ocupado</option>
               <option value="reserved" disabled={noSeMarcaVendido}>Reservado</option>
             </select>
+            {/* Los espacios internos son del MUEBLE, de las dos caras: el mismo
+                slot se dibuja en la A y en la B (`renderSlotFace`), y elegirlo
+                desde la B elige ése. Se dice, para que no parezca un error. */}
+            {carasDe(fix) === 2 && (
+              <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slot-dos-caras>
+                Este espacio vale para las dos caras de la góndola.
+              </p>
+            )}
             {porPartes && claseDelMueble && (
               <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slot-por-partes>
                 Este mueble se vende por {claseDelMueble.plural}: lo que se vende de él va con contrato, en Vender.
@@ -6697,6 +6897,13 @@ function CommercialPanel({
 
       <div className="flex flex-col gap-3 p-3">
 
+        {carasTapadas.length > 0 && (
+          <p className="rounded border border-warning/40 bg-warning/10 p-2 text-[11px] leading-snug text-warning" data-cara-inaccesible>
+            <AlertTriangle size={11} className="mr-1 inline" />
+            {textoDeCaraInaccesible(nombreDeMueble(fix), carasTapadas[0].libre, carasTapadas[0].vecino)}
+          </p>
+        )}
+
         {/* Nombre — el del mueble, que es su código. Uno solo, y el mismo que
             dibuja el plano 2D, la pantalla de montaje y la lámina. */}
         <div>
@@ -6760,7 +6967,13 @@ function CommercialPanel({
                 );
               })}
             </div>
-            <p className="mt-1 text-[9px] text-dark-ink-3 italic">Hacé clic en un slot del panel frontal para editarlo</p>
+            {porParticipacion(fix) ? (
+              <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slots-por-participacion>
+                Este mueble se vende por participación: lo vendido va con contrato en Distribución, no como espacio interno.
+              </p>
+            ) : (
+              <p className="mt-1 text-[9px] text-dark-ink-3 italic">Hacé clic en un slot del panel frontal para editarlo</p>
+            )}
           </div>
         )}
 
@@ -6917,6 +7130,20 @@ function CommercialPanel({
             entrepaños; con una cara vendida, pregunta diciendo qué se mueve—.
             Ver `components/GeometriaDelMueble.tsx`. */}
         <GeometriaDelMueble id={fix.id} puedeEditar={isAdmin} />
+        {/* Distribución (participaciones de cara): repartir la cara entre
+            proveedores por porcentaje, dibujando la zona de cada uno. Sólo
+            para un tipo con superficie, sólo admin, y nunca con un
+            proveedor mirando (reunión, Presentar). */}
+        {isAdmin && onDistribuir && tieneSuperficie(fix.type) && (
+          <div className="flex flex-col gap-1" data-distribuir>
+            <button type="button" onClick={onDistribuir} disabled={!!motivoSinDistribuir}
+              title={motivoSinDistribuir ?? "Repartir esta cara por participación, dibujando la zona de cada proveedor"}
+              className="rounded border border-accent/60 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-dark-ink-1 hover:bg-accent/20 disabled:opacity-50">
+              Distribuir esta cara
+            </button>
+            {motivoSinDistribuir && <p className="text-[10px] leading-snug text-dark-ink-3">{motivoSinDistribuir}</p>}
+          </div>
+        )}
         {/* Cómo se vende: la nevera entera o por puertas, el mural por
             tramos, la góndola por entrepaños, las bahías de la caja y el
             forro de la columna. El mismo componente que el plano 2D, fuera de
@@ -6975,6 +7202,177 @@ export class CanvasErrorBoundary extends React.Component<
   }
 }
 
+// ─── Distribución: la condición única, lo que se dibuja y la ocupación ──────
+
+/** El panel y el lienzo de Distribución, perezosos: bajan con el modo, no
+ *  con el editor. */
+const PanelDeDistribucion = React.lazy(() => import("../Distribucion/PanelDeDistribucion"));
+const LienzoDeZonas = React.lazy(() => import("../Distribucion/LienzoDeZonas"));
+
+/** Las teclas que el atajo global del editor usaría sobre el mueble elegido
+ *  (borrar, girar, ancho por fondo, soltar). En Distribución no le llegan. */
+const TECLAS_DEL_EDITOR = ["Delete", "Backspace", "r", "R", "f", "F", "Escape"] as const;
+
+/**
+ * ¿Se ve el modo Distribución? UNA condición (§10.9 del diseño de
+ * participaciones), calculada acá y en ningún otro lado: con ella se montan el
+ * panel y el lienzo y se le pasa a la escena la capa (`distribucion`), y si
+ * deja de cumplirse con una cara activa el store sale forzado (autoguarda el
+ * borrador). Nunca delante de un proveedor: ni en Presentar, ni en la lámina
+ * (`privadoPara`), ni en el visor de Vender (`soloVenta`, que el editor nunca
+ * es: el visor no pasa la capa), ni en la primera persona, ni con una reunión
+ * en curso; tampoco mientras se coloca un mueble (R de girar el fantasma
+ * chocaba con R de rectángulo). Y sólo para la sesión, el plano y el mueble
+ * que se están mirando.
+ */
+function distribucionALaVista(c: {
+  activa: DistribucionActiva | null; cliente: string; sede: string; muebleEnElPlano: boolean;
+  presentationMode: boolean; privadoPara: PrivadoPara; soloVenta: boolean; firstPerson: boolean;
+  enReunion: boolean; colocando: boolean;
+}): boolean {
+  return c.activa !== null && c.activa.cliente === c.cliente && c.activa.sede === c.sede && c.muebleEnElPlano
+    && !c.presentationMode && c.privadoPara === undefined && !c.soloVenta && !c.firstPerson && !c.enReunion && !c.colocando;
+}
+
+/** Por qué el botón «Distribuir esta cara» no deja entrar ahora (o null). */
+function motivoParaNoDistribuir(c: { enReunion: boolean; presentationMode: boolean; privadoPara: PrivadoPara; firstPerson: boolean }): string | null {
+  return c.enReunion || c.presentationMode || c.privadoPara !== undefined || c.firstPerson
+    ? "Terminá la reunión (o Presentar) para distribuir."
+    : null;
+}
+
+/**
+ * Cómo se ve cada participación VIVA de una cara en el 3D: su estampa (la
+ * misma cuenta que la leyenda, `estampasDeLaCara` con todas las vivas), si el
+ * término que rige el día que se mira es una reserva provisional, si cuenta
+ * ese día y el rótulo «3 · 25 %».
+ */
+function comoSeVenLasParticipaciones(d: CaraOut, verAlDia: string): Map<number, ComoSeVe> {
+  const hoy = d.hoy;
+  const dia = verAlDia || hoy;
+  const vivas = d.participaciones.filter((p) => p.viva);
+  const estampas = estampasDeLaCara(vivas.map((p) => ({
+    spaceId: p.space_id, numero: p.numero, supplierId: p.terminos[0]?.proveedor?.id ?? 0,
+  })));
+  const fuera = new Map<number, ComoSeVe>();
+  for (const p of vivas) {
+    const ts = p.terminos.map(terminoDeOut);
+    const rige = ts.find((t) => cuentaElDia(t, dia, hoy))
+      ?? ts.filter((t) => vivo(t, hoy)).sort((a, b) => (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0))[0];
+    fuera.set(p.space_id, {
+      estampa: estampas.get(p.space_id) ?? null,
+      reserva: rige?.estado === "reserva",
+      cuenta: cuentaEseDia(ts, dia, hoy),
+      rotulo: `${p.numero} · ${pct(p.contratado_pb)}`,
+    });
+  }
+  return fuera;
+}
+
+/**
+ * Las caras que se dibujan sobre el mueble: la que se edita (con lo que hay
+ * en la edición, en vivo, y la historia en gris desde lo leído) y, en una
+ * doble, la otra a la mitad (lo que se mostraría al pasar a ella).
+ */
+function carasParaDibujar(d: CaraOut | null, zonas: readonly ZonaEnEdicion[], otra: CaraOut | null): CaraParaDibujar[] {
+  const fuera: CaraParaDibujar[] = [];
+  if (!d?.superficie) return fuera;
+  const muertas = new Set(d.participaciones.filter((p) => !p.viva).map((p) => p.space_id));
+  fuera.push({
+    cara: d.cara, superficie: superficieDeOut(d.superficie), editada: true,
+    zonas: zonas.map((z) => ({ clave: z.clave, spaceId: z.participacionSpaceId, vertices: z.vertices })),
+    historia: capaQueSeMuestra(d).filter((z) => muertas.has(z.participacion_space_id)).map((z) => z.vertices),
+  });
+  if (otra?.superficie && otra.cara !== d.cara && otra.fixture?.id === d.fixture?.id) {
+    fuera.push({
+      cara: otra.cara, superficie: superficieDeOut(otra.superficie), editada: false,
+      zonas: zonasEditables(otra).map((z) => ({ clave: `otra-${z.id}`, spaceId: z.participacion_space_id, vertices: z.vertices })),
+      historia: [],
+    });
+  }
+  return fuera;
+}
+
+/**
+ * Las zonas de la distribución en el 3D. Vive en el editor y no en la escena:
+ * es quien lee el store de edición (`Scene` no lee ningún store, y la guarda
+ * de `probar-distribucion.mjs` sólo deja importarlo al editor y a
+ * `components/Distribucion/`). Con selectores propios: un `pointermove` del
+ * lienzo vuelve a dibujar sólo esto, no la escena ni los muebles. En una
+ * doble lee también la otra cara (sólo lectura), para dibujarla a la mitad.
+ */
+function ZonasDeLaDistribucion() {
+  const activa = useDistribucionStore((s) => s.activa);
+  const datos = useDistribucionStore((s) => s.datos);
+  const zonas = useDistribucionStore((s) => s.edicion.zonas);
+  const resaltada = useDistribucionStore((s) => s.edicion.activa);
+  const seleccionada = useDistribucionStore((s) => s.edicion.seleccion?.zona ?? null);
+  const verAlDia = useDistribucionStore((s) => s.verAlDia);
+  const [otra, setOtra] = useState<CaraOut | null>(null);
+  const doble = datos?.fixture?.caras === 2;
+  useEffect(() => {
+    setOtra(null);
+    if (!activa || !doble) return;
+    let sigue = true;
+    const cara = activa.cara === "A" ? "B" : "A";
+    leerCara(activa.sede, espacioDeLaCara(activa.codigo, cara))
+      .then((d) => { if (sigue) setOtra(d); })
+      .catch(() => { /* sin la otra cara: se dibuja sólo la que se edita */ });
+    return () => { sigue = false; };
+  }, [activa, doble]);
+  const caras = useMemo(() => carasParaDibujar(datos, zonas, otra), [datos, zonas, otra]);
+  const participaciones = useMemo(() => {
+    const m = new Map<number, ComoSeVe>();
+    for (const d of [otra, datos]) if (d) comoSeVenLasParticipaciones(d, verAlDia).forEach((v, k) => m.set(k, v));
+    return m;
+  }, [datos, otra, verAlDia]);
+  if (caras.length === 0) return null;
+  return <ZonasDelMueble caras={caras} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} />;
+}
+
+/** Lo que dice la ocupación anónima de las caras por participación de un
+ *  mueble, el día de hoy del servidor: «tomado», «parcial» o «libre» por cara
+ *  y cuánto queda. `null` si no se vende por participación o la sede no se
+ *  leyó. */
+function ocupacionDelMueble(f: PlacedFixture, o: OcupacionOut | undefined, sede: string):
+  { cara: "A" | "B"; dispo: "tomado" | "parcial" | "libre"; quedaPb: number }[] | null {
+  if (!o || !porParticipacion(f)) return null;
+  const completo = fullSpaceCode(sede, f.code);
+  const caras: ["A" | "B", string][] = carasDe(f) === 2 ? [["A", completo], ["B", `${completo}-B`]] : [["A", completo]];
+  const fuera: { cara: "A" | "B"; dispo: "tomado" | "parcial" | "libre"; quedaPb: number }[] = [];
+  for (const [cara, codigo] of caras) {
+    const oc = Object.prototype.hasOwnProperty.call(o.caras, codigo) ? o.caras[codigo] : undefined;
+    if (!oc) continue;
+    const r = dispoPorParticipacion(oc, o.hoy, o.hoy, o.hoy);
+    fuera.push({ cara, dispo: r.dispo, quedaPb: r.quedaPb });
+  }
+  return fuera.length ? fuera : null;
+}
+
+/**
+ * El color de estado que se pinta de cada mueble por participación (§10.8):
+ * D6 dice que el estado de la cara no cambia —y no cambia—; cambia sólo el
+ * color. Todo tomado → el de ocupado; algo comprometido → el ámbar de
+ * reservado; nada → el de siempre. Sin nombres: es la ocupación anónima.
+ */
+function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut | undefined, sede: string): Map<string, string> {
+  const fuera = new Map<string, string>();
+  if (!o) return fuera;
+  for (const f of muebles) {
+    const caras = ocupacionDelMueble(f, o, sede);
+    if (!caras) continue;
+    if (caras.every((c) => c.dispo === "tomado")) fuera.set(f.id, STATUS_COLORS.occupied);
+    else if (caras.some((c) => c.dispo !== "libre")) fuera.set(f.id, STATUS_COLORS.reserved);
+  }
+  return fuera;
+}
+
+/** «Por participación · queda 25 %» (por cara en una doble), para el cartel
+ *  del mouse: anónimo, sin proveedores ni montos. */
+function textoDeOcupacion(caras: { cara: "A" | "B"; quedaPb: number }[]): string {
+  return `Por participación · queda ${caras.length === 1 ? pct(caras[0].quedaPb) : caras.map((c) => `${pct(c.quedaPb)} (${c.cara})`).join(" · ")}`;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function StoreEditor3D() {
@@ -6985,6 +7383,8 @@ export default function StoreEditor3D() {
   // Y las etiquetas del producto de prueba: texturas de hasta 1024 px.
   useEffect(() => olvidarEtiquetas, []);
   useEffect(() => olvidarCopetes, []);
+  // Y las dos texturas del rayado de las zonas de Distribución.
+  useEffect(() => olvidarTexturasDeZonas, []);
 
   // ── Unified store (read once on mount; write on every change) ────────────────
   // Selectores, y no el store entero: la órbita escribe la cámara en el store
@@ -7283,6 +7683,156 @@ export default function StoreEditor3D() {
   const orbitRef   = useRef<ThreeOrbitControls|null>(null);
   const draggingId = useRef<string|null>(null);
 
+  // ── Distribución (participaciones de cara, §9.2, §9.5, §9.6 y §10.9) ──────
+  // La cara que se distribuye vive en el store de edición; acá se decide, con
+  // UNA condición, si el modo se ve. Si deja de verse con una cara activa
+  // (Presentar, una reunión, la caminata, otra sede, el mueble que ya no
+  // está), el store sale forzado: autoguarda el borrador y nada queda
+  // dibujado delante de un proveedor ni se pierde en silencio.
+  const distribucionActiva = useDistribucionStore((s) => s.activa);
+  const clienteActual = useAuthStore((s) => s.cliente) ?? "";
+  const distribucionVisible = distribucionALaVista({
+    activa: distribucionActiva, cliente: clienteActual, sede,
+    muebleEnElPlano: !!distribucionActiva && placedFixtures.some((f) => f.id === distribucionActiva.fixtureId),
+    presentationMode, privadoPara, soloVenta: false, firstPerson, enReunion, colocando: placingDef !== null,
+  });
+  const distribucionVisibleRef = useRef(distribucionVisible);
+  distribucionVisibleRef.current = distribucionVisible;
+  useEffect(() => {
+    if (distribucionActiva && !distribucionVisible) void useDistribucionStore.getState().salir({ forzado: true });
+  }, [distribucionActiva, distribucionVisible]);
+  // Cambiar de pestaña desmonta el editor: la misma salida forzada.
+  useEffect(() => () => {
+    if (useDistribucionStore.getState().activa) void useDistribucionStore.getState().salir({ forzado: true });
+  }, []);
+  // Sin cartel del mouse mientras dura el modo (cada movimiento re-dibujaba
+  // el editor entero).
+  useEffect(() => { if (distribucionVisible) setHoveredFixtureId(null); }, [distribucionVisible]);
+
+  // El teclado, acotado (§9.5). El atajo global del editor (más abajo) borra
+  // el mueble elegido con Supr/Retroceso, lo gira con R, le cambia ancho por
+  // fondo con F, suelta todo con Esc y deshace el PLANO con Ctrl+Z; mientras
+  // se distribuye, el elegido es justamente el mueble que se distribuye. No
+  // se toca ese efecto (sus dependencias las fija `probar-muebles.mjs`): este
+  // oyente, en CAPTURA de `window`, le corta SÓLO esas teclas
+  // (`stopPropagation`: el oyente global, en burbuja, no las ve). Los de
+  // Distribución que también escuchan en captura de `window` las siguen
+  // recibiendo. Esc nunca saca del modo (se sale con «Salir»); con un
+  // diálogo abierto o escribiendo en un campo no se corta nada; las demás
+  // teclas —letras, Tab, Enter, flechas, los `onKeyDown` de React— pasan, y
+  // WASD de la primera persona (bloqueada en el modo) ni se mira.
+  useEffect(() => {
+    if (!distribucionVisible) return;
+    const delEditor = new Set<string>(TECLAS_DEL_EDITOR);
+    function enCaptura(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('[role="dialog"]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const tag = t?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || t?.isContentEditable) return;
+      const deshacer = (e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y");
+      if (deshacer || delEditor.has(e.key)) e.stopPropagation();
+    }
+    window.addEventListener("keydown", enCaptura, { capture: true });
+    return () => window.removeEventListener("keydown", enCaptura, { capture: true });
+  }, [distribucionVisible]);
+
+  /** «Distribuir esta cara»: la cara que se mira en el panel (en una doble,
+   *  la A si no se eligió otra). */
+  const entrarADistribuir = useCallback((fixtureId: string) => {
+    const fix = placedFixtures.find((f) => f.id === fixtureId);
+    if (!fix) return;
+    const mirada = caraDelPanel.current?.fixtureId === fixtureId ? caraDelPanel.current.cara : "A";
+    setSelectedSlotId(null);
+    void useDistribucionStore.getState().entrar({ sede, fixtureId, codigo: fix.code, cara: carasDe(fix) === 2 ? mirada : "A" });
+  }, [placedFixtures, sede]);
+
+  // Entrar desde otra pantalla (Supervisar, «Renovar» de una participación):
+  // `pedirEnfoque3D(…, { distribucion })`. Una vez por pedido; si la sede
+  // todavía no cargó, se reintenta al llegar. Con un proveedor mirando no se
+  // entra (y se dice por qué).
+  const distribucionPedidaAtendida = useRef<number>(-1);
+  useEffect(() => {
+    if (!enfoquePedido?.distribucion || distribucionPedidaAtendida.current === enfoquePedido.n) return;
+    const fix = placedFixtures.find((f) => f.id === enfoquePedido.fixtureId);
+    if (!fix) return;
+    distribucionPedidaAtendida.current = enfoquePedido.n;
+    if (enReunion || presentationMode) { setWarning("Terminá la reunión (o Presentar) para distribuir."); return; }
+    setPlacingDef(null);
+    const { cara } = enfoquePedido;
+    const renovar = enfoquePedido.distribucion.renovar;
+    void (async () => {
+      await useDistribucionStore.getState().entrar({ sede, fixtureId: fix.id, codigo: fix.code, cara: carasDe(fix) === 2 ? cara : "A" });
+      const st = useDistribucionStore.getState();
+      if (renovar != null && st.activa?.fixtureId === fix.id) st.abrirFormulario({ modo: "renovar", terminoId: renovar });
+    })();
+  }, [enfoquePedido, placedFixtures, enReunion, presentationMode, sede]);
+
+  // Al entrar y al cambiar de cara, el 3D encuadra esa cara de frente. Con
+  // un pedido de toma (`pedidoDeToma`), que la escena vuelve a encuadrar
+  // cuando el lienzo cambia de tamaño (el lienzo partido llega un cuadro
+  // después) si la cámara no se movió: la toma depende del aspecto.
+  const muebleEnDistribucion = distribucionVisible ? distribucionActiva?.fixtureId ?? null : null;
+  const caraEnDistribucion = distribucionVisible ? distribucionActiva?.cara ?? null : null;
+  const encuadrarCara = useCallback((cara: "A" | "B") => {
+    const a = useDistribucionStore.getState().activa;
+    if (a) pedirToma(a.fixtureId, cara, "frente");
+  }, [pedirToma]);
+  useEffect(() => {
+    if (muebleEnDistribucion && caraEnDistribucion) pedirToma(muebleEnDistribucion, caraEnDistribucion, "frente");
+  }, [muebleEnDistribucion, caraEnDistribucion, pedirToma]);
+  const habiaDistribucion = useRef(false);
+  useEffect(() => {
+    if (habiaDistribucion.current && !muebleEnDistribucion && !presentationMode) setPedidoDeToma(null);
+    habiaDistribucion.current = !!muebleEnDistribucion;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [muebleEnDistribucion]);
+
+  // La ocupación anónima de las caras por participación (§10.8): el color de
+  // estado que se pinta y el cartel del mouse. Se lee sólo si el plano tiene
+  // alguna (una vez por sede; cada escritura de participaciones la recarga).
+  const hayPorParticipacion = useMemo(() => placedFixtures.some((f) => porParticipacion(f)), [placedFixtures]);
+  const ocupacionDeLaSede = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteActual, sede)]);
+  useEffect(() => {
+    if (hayPorParticipacion) void useOcupacionStore.getState().cargarOcupacion(sede);
+  }, [hayPorParticipacion, sede, clienteActual]);
+  const coloresDeEstado = useMemo(
+    () => coloresPorOcupacion(placedFixtures, ocupacionDeLaSede, sede), [placedFixtures, ocupacionDeLaSede, sede],
+  );
+
+  // Lo que la escena necesita del modo: el mueble, la cara, las superficies
+  // (la del servidor para la que se edita: la misma que dibuja el lienzo),
+  // el clic y las zonas armadas. Sólo con la condición única.
+  const superficieLeida = useDistribucionStore((s) => s.datos?.superficie ?? null);
+  const caraLeida = useDistribucionStore((s) => s.datos?.cara ?? null);
+  const tocarEnElMueble = useDistribucionStore((s) => s.tocarEnElMueble);
+  const zonasDeLaDistribucion = useMemo(() => <ZonasDeLaDistribucion />, []);
+  const muebleDistribuido = muebleEnDistribucion ? placedFixtures.find((f) => f.id === muebleEnDistribucion) ?? null : null;
+  const propsDeDistribucion = useMemo<PropsDeDistribucion | undefined>(() => {
+    if (!muebleDistribuido || !caraEnDistribucion) return undefined;
+    const deLaCara = (c: "A" | "B"): Superficie | null => {
+      if (c === "B" && carasDe(muebleDistribuido) !== 2) return null;
+      if (superficieLeida && caraLeida === c) return superficieDeOut(superficieLeida);
+      return superficieDeCara(muebleDistribuido, c);
+    };
+    return {
+      fixtureId: muebleDistribuido.id, cara: caraEnDistribucion,
+      superficies: { A: deLaCara("A"), B: deLaCara("B") },
+      onTocar: tocarEnElMueble, zonas: zonasDeLaDistribucion,
+    };
+  }, [muebleDistribuido, caraEnDistribucion, superficieLeida, caraLeida, tocarEnElMueble, zonasDeLaDistribucion]);
+
+  // «Ocultar 3D» por debajo de 1440 px: el lienzo toma todo el ancho.
+  const [angosta, setAngosta] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(max-width: 1439px)").matches);
+  useEffect(() => {
+    const mq = typeof window !== "undefined" ? window.matchMedia?.("(max-width: 1439px)") : undefined;
+    if (!mq) return;
+    const alCambiar = () => setAngosta(mq.matches);
+    mq.addEventListener?.("change", alCambiar);
+    return () => mq.removeEventListener?.("change", alCambiar);
+  }, []);
+  const [ocultar3D, setOcultar3D] = useState(false);
+  useEffect(() => { if (!distribucionVisible || !angosta) setOcultar3D(false); }, [distribucionVisible, angosta]);
+
   // CHANGE 3 — u: undoable mutation helper
   // Updates local state AND records an undoable snapshot in the store.
   const u = useCallback((fn: (prev: PlacedFixture[]) => PlacedFixture[]) => {
@@ -7413,6 +7963,8 @@ export default function StoreEditor3D() {
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   const onFloorMove = useCallback((x:number, z:number) => {
+    // En Distribución no hay fantasma: cada movimiento re-dibujaba el editor.
+    if (distribucionVisibleRef.current) return;
     setGhostX(x);
     setGhostZ(z);
     if (placingDef) {
@@ -7427,6 +7979,8 @@ export default function StoreEditor3D() {
   }, [placingDef, placedFixtures, ghostRotY]);
 
   function onFloorClick(x:number, z:number){
+    // En Distribución el clic en el piso no hace nada (no suelta el mueble).
+    if (distribucionVisible) return;
     if(placingDef){
       // El fantasma se pintaba rojo al pisar a otro mueble y el clic lo soltaba
       // igual: el aviso era decorativo. El plano 2D siempre lo bloqueó; acá no.
@@ -7534,6 +8088,7 @@ export default function StoreEditor3D() {
 
   // MEJORA 9: hover callback
   const onHoverFixture = useCallback((id: string|null, x: number, y: number) => {
+    if (distribucionVisibleRef.current) return;
     setHoveredFixtureId(id);
     if (id) setTooltipPos({ x, y });
   }, []);
@@ -7825,7 +8380,12 @@ export default function StoreEditor3D() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportando, sinArte, selectedFix, fixtures, sede, isAdmin, prueba, catalogo, pedirToma, supplierDeReunion, firstPerson, comoSePrueba, fijada, pedidoDeToma, proveedorDeReunion, nombresPropios]);
-  const selectedSlot = selectedFix?.slots?.find(s=>s.id===selectedSlotId)??null;
+  // Un mueble por participación no ofrece espacios internos (§10.5): no se
+  // dibujan sus paneles y su ficha de slot no se abre (lo vendido va con
+  // contrato en Distribución; el servidor lo frena igual,
+  // `slots_en_participacion`).
+  const selectedSlot = selectedFix && !porParticipacion(selectedFix)
+    ? selectedFix.slots?.find(s=>s.id===selectedSlotId) ?? null : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -7843,7 +8403,7 @@ export default function StoreEditor3D() {
       style={{minHeight:0}}>
 
       {/* ── Left sidebar — hidden in presentation mode ── */}
-      <div className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode ? 'hidden' : ''}`}>
+      <div className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode || distribucionVisible ? 'hidden' : ''}`}>
 
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</label>
@@ -7962,11 +8522,13 @@ export default function StoreEditor3D() {
       </div>
 
       {/* ── Canvas ── */}
-      <div className="relative flex-1 overflow-hidden">
+      <div className={`relative flex-1 overflow-hidden ${distribucionVisible ? "flex flex-col" : ""}`}>
 
         {/* MEJORA 4: Status bar — hidden in presentation mode */}
+        {/* En Distribución la barra va en la franja de arriba del área, no
+            encima de la mitad del lienzo 2D. */}
         {!presentationMode && (
-          <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
+          <div className={`${distribucionVisible ? "relative flex-shrink-0" : "absolute inset-x-0 top-0"} z-10 flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
             warning
               ? "bg-warning/10 border-warning/30"
               : placingDef
@@ -7998,6 +8560,13 @@ export default function StoreEditor3D() {
                     {selectedSlot&&<span className="text-warning">› {selectedSlot.id}</span>}
                   </span>
                 )}
+                {/* En Distribución: qué se distribuye y por qué Presentar,
+                    la lámina y la caminata están apagados. */}
+                {distribucionVisible && (
+                  <span className="ml-2 text-dark-ink-3" data-en-distribucion>
+                    · Distribución, cara {distribucionActiva?.cara} · Salí de Distribución para presentar.
+                  </span>
+                )}
               </span>
             )}
             <span className="ml-auto hidden text-dark-ink-3 lg:block">drag → orbitar · scroll → zoom</span>
@@ -8010,8 +8579,8 @@ export default function StoreEditor3D() {
             </button>
 
             {/* MEJORA 8: First-person button */}
-            <button onClick={() => setFirstPerson(p => !p)}
-              title="Modo primera persona (WASD)"
+            <button onClick={() => setFirstPerson(p => !p)} disabled={distribucionVisible}
+              title={distribucionVisible ? "Salí de Distribución para presentar." : "Modo primera persona (WASD)"}
               className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all ${
                 firstPerson
                   ? 'border-success/50 bg-success/15 text-success'
@@ -8037,8 +8606,8 @@ export default function StoreEditor3D() {
                 pie que dice de qué espacio se habla. Con un mueble
                 seleccionado sale el par antes/después; sin selección, la
                 imagen sola de lo que hay en pantalla. */}
-            <button onClick={exportarPropuesta} disabled={exportando}
-              title={selectedFix
+            <button onClick={exportarPropuesta} disabled={exportando || distribucionVisible}
+              title={distribucionVisible ? "Salí de Distribución para presentar." : selectedFix
                 ? "Bajar la lámina de este espacio, con el antes y el después"
                 : "Bajar la vista actual como imagen"}
               className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors disabled:opacity-50">
@@ -8063,6 +8632,7 @@ export default function StoreEditor3D() {
             {/* MEJORA 4: Presentation mode button */}
             <button
               onClick={alternarPresentar}
+              disabled={distribucionVisible && !presentationMode}
               title={pruebaAjenaElegida
                 ? "Este mueble tiene una prueba de otro proveedor: en Presentar sale vacío"
                 : "Modo presentación"}
@@ -8076,6 +8646,13 @@ export default function StoreEditor3D() {
               {presentationMode ? <EyeOff size={10}/> : <Eye size={10}/>}
               {presentationMode ? 'Salir' : 'Presentar'}
             </button>
+
+            {distribucionVisible && angosta && (
+              <button onClick={() => setOcultar3D((o) => !o)} data-ocultar-3d
+                className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
+                {ocultar3D ? "Ver 3D" : "Ocultar 3D"}
+              </button>
+            )}
 
             {placingDef && (
               <button onClick={()=>setPlacingDef(null)}
@@ -8104,6 +8681,20 @@ export default function StoreEditor3D() {
           </div>
         )}
 
+        {/* El área del 3D. En Distribución va partida: a la izquierda el
+            lienzo 2D de la cara (perezoso, sólo con el modo a la vista), a la
+            derecha el 3D. Los dos contenedores están siempre (cambian sus
+            clases): el lienzo 3D no se remonta al entrar ni al salir. */}
+        <div className={distribucionVisible ? "relative flex min-h-0 flex-1" : "absolute inset-0"}>
+          {distribucionVisible && distribucionActiva && (
+            <div data-distribucion className={`relative z-10 min-w-0 ${ocultar3D ? "flex-1" : "w-1/2 border-r border-dark-line"}`}>
+              <React.Suspense fallback={<div className="h-full w-full bg-dark-surface" />}>
+                <LienzoDeZonas fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} />
+              </React.Suspense>
+            </div>
+          )}
+          <div className={!distribucionVisible ? "absolute inset-0"
+            : ocultar3D ? "pointer-events-none invisible absolute inset-0" : "relative min-w-0 flex-1"}>
         <CanvasErrorBoundary>
           <Canvas
             camera={{ position:CAM_POS, fov:FOV_DEL_EDITOR, near:0.1, far:500 }}
@@ -8153,6 +8744,8 @@ export default function StoreEditor3D() {
               onHoverFixture={onHoverFixture}
               fixtures={fixtures}
               estadoDeEscena={estadoDeEscena}
+              distribucion={distribucionVisible ? propsDeDistribucion : undefined}
+              coloresDeEstado={coloresDeEstado}
             />
           </Canvas>
         </CanvasErrorBoundary>
@@ -8166,6 +8759,7 @@ export default function StoreEditor3D() {
           const fix = placedFixtures.find(f => f.id === hoveredFixtureId);
           if (!fix || fix.id === selectedId) return null;
           const sm = STATUS_META[fix.status];
+          const ocupacionHover = ocupacionDelMueble(fix, ocupacionDeLaSede, sede);
           // La misma cuenta que el panel (`hayReunion`): con la reunión fijada y
           // la prueba recién quitada, el cartel volvía a decir quién paga qué.
           const discreto = enReunion;
@@ -8181,6 +8775,9 @@ export default function StoreEditor3D() {
               <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${sm.bg} ${sm.text}`}>
                 {sm.label}
               </span>
+              {/* Una cara por participación: cuánto queda, sin nombres ni montos
+                  (la ocupación anónima, la misma que pinta su color). */}
+              {ocupacionHover && <p className="mt-0.5 text-[10px] text-dark-ink-2" data-ocupacion-participacion>{textoDeOcupacion(ocupacionHover)}</p>}
             </div>
           );
         })()}
@@ -8278,10 +8875,18 @@ export default function StoreEditor3D() {
             </p>
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       {/* ── Right panel — hidden in presentation mode ── */}
-      {selectedFix && !presentationMode && (
+      {/* En Distribución, el panel de Distribución reemplaza al comercial
+          (perezoso, sólo con el modo a la vista). */}
+      {distribucionVisible && distribucionActiva ? (
+        <React.Suspense fallback={<div className="w-80 flex-shrink-0 border-l border-dark-line bg-dark-surface" />}>
+          <PanelDeDistribucion fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} onEncuadrarCara={encuadrarCara} />
+        </React.Suspense>
+      ) : selectedFix && !presentationMode && (
         <CommercialPanel
           fix={selectedFix}
           enCaminata={firstPerson}
@@ -8309,6 +8914,8 @@ export default function StoreEditor3D() {
           onDelete={deleteSelected}
           onClose={()=>{ setSelectedId(null); setSelectedSlotId(null); }}
           onSlotClose={()=>setSelectedSlotId(null)}
+          onDistribuir={() => entrarADistribuir(selectedFix.id)}
+          motivoSinDistribuir={motivoParaNoDistribuir({ enReunion, presentationMode, privadoPara, firstPerson })}
         />
       )}
     </div>
