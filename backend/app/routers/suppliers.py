@@ -5,6 +5,7 @@ from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Supplier, SpaceLease, SupplierAsset
 from app.schemas.spaces import SupplierCreate, SupplierOut, SupplierPublicOut
+from app.services.ciclo_participaciones import reservas_del_proveedor
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/suppliers", tags=["suppliers"], dependencies=[Depends(require_auth)])
@@ -136,6 +137,19 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
             detail=(
                 f"El proveedor tiene {historial} contrato(s) en el historial: "
                 "no se puede eliminar sin perder ese historial."
+            ),
+        )
+    # Y las reservas provisionales de participación (vivas, caducadas o
+    # canceladas): son las únicas que guardan el proveedor en
+    # `participaciones.supplier_id` (un contrato lo lee de su lease, y ese ya
+    # frenó arriba). Sin esto, otra vez el 500 de la clave foránea.
+    reservas = reservas_del_proveedor(db, supplier_id)
+    if reservas:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"El proveedor tiene {reservas} reserva(s) provisional(es) de participación en el "
+                "historial: no se puede eliminar sin perder ese historial."
             ),
         )
     db.delete(supplier)

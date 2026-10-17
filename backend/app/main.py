@@ -26,6 +26,10 @@ from app.services.subidas import LimiteDeCuerpo
 # conozca ANTES de que corra `create_all()` en el lifespan de abajo — si no,
 # `create_all` nunca se entera de que existen.
 from app.models import identidad as identidad_models  # noqa: F401
+# Participaciones de cara (cuatro tablas nuevas en la base del supermercado,
+# sin columnas agregadas a nada existente). Mismo propósito: que `create_all()`
+# del lifespan las conozca.
+from app.models import participaciones as participaciones_models  # noqa: F401
 
 logger = logging.getLogger("retail.main")
 

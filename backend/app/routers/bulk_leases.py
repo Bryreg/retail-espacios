@@ -37,14 +37,16 @@ from sqlalchemy.orm import Session
 from app.auth import create_mount_token, dias_del_enlace_de_montaje, require_admin
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
-from app.fechas import hoy
-from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
+from app.models.models import SpaceLease, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
     Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, frase_de_choque,
     motivo_para_no_vender_parte, sin_prefijo_de_sede,
 )
-from app.services.catalogo_muebles import CLASES_DE_PARTE, tipo_de_tarifa
+from app.services.alta_de_contrato import (
+    cache_de_proveedores, escribir_contrato, espacio_para, proveedor_por_nombre,
+)
+from app.services.catalogo_muebles import tipo_de_tarifa
 from app.services.candado import tomar_candados
 from app.services.fichas_propias import tarifas_propias
 from app.services.partes import (
@@ -564,14 +566,9 @@ def confirmar(
     por_fila = {f.fila: f for f in filas}
     plano = PlanoIndexado(db)
     #: El proveedor se busca igual que en la revisión: sin espacios y sin
-    #: mayúsculas. Si la revisión no avisó «Proveedor nuevo» porque ya existe
-    #: «BIC», confirmar no puede crear en silencio un «Bic» aparte: serían dos
-    #: proveedores para el mismo, con el historial partido, y la renovación ya
-    #: no se reconocería como tal (`services/fotos_vencidas.py`). Si ya hay dos
-    #: que sólo difieren en mayúsculas, gana el más viejo.
-    proveedores: dict[str, Supplier] = {}
-    for s in db.query(Supplier).order_by(Supplier.id).all():
-        proveedores.setdefault((s.name or "").strip().lower(), s)
+    #: mayúsculas (`alta_de_contrato.proveedor_por_nombre`). Una sola carga
+    #: para toda la tanda: el que crea una fila lo encuentra la siguiente.
+    proveedores = cache_de_proveedores(db)
 
     creados: list[FilaOut] = []
     for fila in lote.filas:
@@ -584,62 +581,15 @@ def confirmar(
         resuelto = plano.resolver(v.sede or "", v.codigo or "")
         fixture = resuelto.fixture if resuelto else None
         parte = resuelto.parte if resuelto else None
-        space = db.query(Space).filter(Space.code == v.codigo).first()
-        if not space:
-            area = 0.0
-            if fixture:
-                try:
-                    area = round(float(fixture.get("w") or 0) * float(fixture.get("d") or 0), 2)
-                except (TypeError, ValueError):
-                    area = 0.0
-                # Una puerta ocupa su parte del frente: la huella entre las
-                # puertas. Una parte que no parte el ancho no tiene huella
-                # propia, y una pieza (la bahía de una caja, el forro de una
-                # columna) tampoco: no es un pedazo del piso que se vende.
-                if parte is not None:
-                    n = cantidad_de(fixture, parte.clase)
-                    eje = CLASES_DE_PARTE[parte.clase].get("eje")
-                    area = round(area / n, 2) if (n and eje == "ancho" and es_division(parte)) else 0.0
-            space = Space(
-                code=v.codigo,
-                svg_id=v.codigo,
-                name=v.nombre or v.codigo,
-                zone=str((fixture or {}).get("type") or "espacio"),
-                sede=v.sede,
-                area_m2=area,
-                status=SpaceStatus.free,
-            )
-            db.add(space)
-            db.flush()
-
-        nombre = (v.proveedor or "").strip()
-        supplier = proveedores.get(nombre.lower())
-        if not supplier:
-            supplier = Supplier(name=nombre, email=v.correo)
-            db.add(supplier)
-            db.flush()
-            proveedores[nombre.lower()] = supplier
-        elif v.correo and not supplier.email:
-            # Se completa el que falta y nunca se pisa el que ya está: la
-            # planilla puede traer el correo del vendedor de turno.
-            supplier.email = v.correo
-
-        lease = SpaceLease(
-            space_id=space.id,
-            supplier_id=supplier.id,
-            marca=v.marca,
-            start_date=_fecha(v.desde),
-            end_date=_fecha(v.hasta),
-            monthly_rent=float(v.valor or 0),
-            notes=v.nota,
+        # El alta es la MISMA que la del contrato de participación
+        # (`services/alta_de_contrato.py`, D11): espacio buscado o creado libre
+        # con su huella, proveedor sin mayúsculas, y sólo lo que ya arrancó ocupa.
+        space = espacio_para(db, v.codigo, v.nombre, v.sede, fixture, parte)
+        supplier = proveedor_por_nombre(db, v.proveedor or "", v.correo, proveedores)
+        lease = escribir_contrato(
+            db, space, supplier, v.marca, _fecha(v.desde), _fecha(v.hasta), v.valor, v.nota,
         )
-        db.add(lease)
-        db.flush()          # para poder devolver el id del contrato creado
-        v.lease_id = lease.id
-        # Sólo lo que ya arrancó ocupa: firmar en agosto para diciembre no puede
-        # esconder cuatro meses vendibles detrás de un estado que no es cierto.
-        if lease.start_date <= hoy():
-            space.status = SpaceStatus.occupied
+        v.lease_id = lease.id   # para que la pantalla le cuelgue la planometría
         creados.append(v)
 
     db.commit()

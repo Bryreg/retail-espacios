@@ -236,6 +236,27 @@ def test_el_diccionario_de_acciones_cubre_lo_que_se_anota(client, admin):
     assert set(catalogo) | RETIRADAS == set(ACCIONES)
 
 
+def test_las_acciones_de_participaciones_tienen_titulo_y_se_ofrecen(client, admin):
+    """Las nueve que anota el router de participaciones (diseño §5.5): con su
+    título en castellano y en el filtro de la pantalla. La cancelación de una
+    reserva termina en «.baja», como la de un contrato, y la pantalla la pinta
+    igual; la de un contrato de participación sigue siendo `contrato.baja`."""
+    from app.services.bitacora import ACCIONES, RETIRADAS
+
+    nuevas = {
+        "participacion.reserva", "participacion.contrato", "participacion.confirmada",
+        "participacion.renovada", "participacion.editada", "reserva.baja",
+        "distribucion.borrador", "distribucion.confirmada", "distribucion.descartada",
+    }
+    catalogo = client.get("/api/bitacora/acciones", headers=admin).json()
+    for accion in nuevas:
+        assert ACCIONES.get(accion), f"`{accion}` sin título"
+        assert accion in catalogo and accion not in RETIRADAS, accion
+    assert ACCIONES["reserva.baja"] == "Reserva provisional cancelada"
+    # Ningún título dice «sombra»: en la interfaz es la sombra de luz del 3D.
+    assert not any("sombra" in ACCIONES[a].lower() for a in nuevas)
+
+
 # ─── Que no crezca para siempre ───────────────────────────────────────────────
 
 def test_lo_viejo_se_purga(client, admin):
