@@ -1,15 +1,20 @@
 import copy
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
-from app.models.models import LayoutSnapshot
+from app.fechas import hoy
+from app.models.models import LayoutSnapshot, Space
+from app.models.participaciones import Distribucion
+from app.services import participaciones as servicio_participaciones
+from app.services import reglas_participacion as reglas
 from app.services.bitacora import anotar
+from app.services.ciclo_participaciones import actor_de, anotar_historial
 from app.services.catalogo_muebles import tipo_base
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.services.candado import tomar_candados
@@ -17,21 +22,26 @@ from app.services.catalogo_muebles import CAMPOS_DE_PARTES
 from app.services.layout_lookup import (
     CAMPOS_DE_CONTRATO,
     CLAVES_DE_FICHA,
+    caras_por_participacion,
     choques_nuevos,
     contratos_que_quedarian_sin_mueble,
     espacios_ofrecidos,
     nombres_reservados_nuevos,
     normalizar,
     partes_que_se_moverian,
+    por_participacion,
+    sin_prefijo_de_sede,
 )
-from app.services.partes import firma_de_partes
+from app.services.partes import firma_de_partes, partir_codigo
 from app.services.renumeracion import (
     InvarianteRoto,
     RenumeracionBloqueada,
     aplicar as aplicar_renumeracion,
+    con_candados as renumeracion_con_candados,
     nombres_anteriores,
     planificar,
 )
+from app.services.superficie import firma as firma_de_cara
 from app.services.importar_del_plano import (
     aplicar as aplicar_importacion,
     revisar as revisar_importacion,
@@ -286,7 +296,19 @@ def _candados_del_guardado(db: Session, sede: str, previas: list, nuevas: list) 
     """Toma los candados de los muebles que este guardado retira de la venta o
     cuya forma de venderse por partes cambia. Sin eso, bajar la nevera de 3 a 2
     puertas y vender la puerta 3 al mismo tiempo pasaban los dos: el guardado
-    no veía el contrato todavía y la venta no veía el plano todavía."""
+    no veía el contrato todavía y la venta no veía el plano todavía.
+
+    **Y las caras que entran o salen de «por participación»** (diseño de
+    participaciones §4.4, hallazgo A1 de la crítica): pasar ``partes.division``
+    de ``"participacion"`` a entera no cambia lo ofrecido ni la firma de
+    partes, así que sin esto el guardado no tomaba candado y un alta de
+    participación simultánea pasaba con el plano viejo. Cubre cambiar la
+    división, perder la receta por cambio de tipo, dejar de ser
+    comercializable, borrar el mueble, renombrarlo y pasar de doble a mural.
+
+    Con candado tomado, ``db.expire_all()``: lo que se lee después (los
+    contratos y los términos de participación de las guardas de abajo) es
+    fresco, no lo que la sesión ya tenía en memoria."""
     previas = [f for f in previas if isinstance(f, dict)]
     nuevas = [f for f in nuevas if isinstance(f, dict)]
     codigos = set(espacios_ofrecidos(previas, sede) ^ espacios_ofrecidos(nuevas, sede))
@@ -295,8 +317,215 @@ def _candados_del_guardado(db: Session, sede: str, previas: list, nuevas: list) 
         code = normalizar(f.get("code"))
         if code in firmas and firmas[code] != firma_de_partes(f):
             codigos.add(f"{normalizar(sede)}-{code}" if not code.startswith(f"{normalizar(sede)}-") else code)
+    codigos |= caras_por_participacion(previas, sede) ^ caras_por_participacion(nuevas, sede)
     if codigos:
         tomar_candados(db, codigos)
+        db.expire_all()
+
+
+# ─── Participaciones de cara: lo que el guardado del plano no puede romper ────
+#
+# Diseño de participaciones §4.4. Las tres guardas comparan el plano anterior
+# con el nuevo y frenan SÓLO lo que este guardado cambia (un plano que ya venía
+# desfasado se sigue guardando), y corren con los candados de
+# `_candados_del_guardado` ya tomados. Sus claves (`participaciones_vivas`,
+# `slots_vendidos_en_participacion`, `slots_en_participacion`) llevan el mismo
+# `{code, message, choques}` que las demás: el navegador las muestra como
+# rechazo (`RECHAZOS_CONOCIDOS` de `fixtureStore.ts`).
+
+#: Lo que un espacio interno (slot) da por vendido en el JSON del plano.
+_SLOT_VENDIDO = ("occupied", "reserved")
+
+
+def _cara_corta(cara: str, sede: str) -> str:
+    """``NAVE-GON-01-B`` → «GON-01 · cara B»."""
+    p = partir_codigo(sin_prefijo_de_sede(cara, sede))
+    return f"{p.base} · cara {p.cara}"
+
+
+def _plural(n: int, uno: str, varios: str) -> str:
+    return f"{n} {uno if n == 1 else varios}"
+
+
+def participaciones_vivas(db: Session, sede: str, previas: list, nuevas: list) -> list[str]:
+    """Las caras que este guardado saca de «por participación» y que tienen
+    términos VIVOS (contratos o reservas provisionales que cuentan hoy o más
+    adelante). Las reservas no son leases: ``contratos_que_quedarian_sin_mueble``
+    no las ve. Se define por conjuntos de códigos (``caras_por_participacion``,
+    la misma regla que ``ofrece``): cambiar la división, cambiar de tipo, no
+    comercializable, borrar, renombrar sin pasar por la renumeración y doble →
+    mural (la B sale del conjunto). Lo terminado no frena."""
+    salen = caras_por_participacion(previas, sede) - caras_por_participacion(nuevas, sede)
+    if not salen:
+        return []
+    dia = hoy()
+    frases = []
+    for cara in sorted(salen):
+        datos = servicio_participaciones.leer(db, cara)
+        vivos = [t for t in datos.todos if reglas.vivo(t, dia)]
+        if not vivos:
+            continue
+        n = len({t["space_id"] for t in vivos})
+        contratos = sum(1 for t in vivos if t["estado"] == "contrato")
+        reservas = len(vivos) - contratos
+        cuales = " y ".join(x for x in (
+            _plural(contratos, "contrato", "contratos") if contratos else "",
+            _plural(reservas, "reserva provisional", "reservas provisionales") if reservas else "",
+        ) if x)
+        frases.append(
+            f"{_cara_corta(cara, sede)} tiene {_plural(n, 'participación viva', 'participaciones vivas')} "
+            f"({cuales}). {'Cancelala o dejá que venza' if len(vivos) == 1 else 'Cancelalas o dejá que venzan'} "
+            "antes de cambiar cómo se vende."
+        )
+    return frases
+
+
+def _vive(slot: dict, dia: date) -> bool:
+    """¿El espacio interno está vendido y vigente (sin fin o con fin hoy o
+    después)? Un fin que no se entiende cuenta como vigente: es lo prudente."""
+    if slot.get("status") not in _SLOT_VENDIDO:
+        return False
+    fin = str(slot.get("endDate") or "").strip()
+    if not fin:
+        return True
+    try:
+        return date.fromisoformat(fin[:10]) >= dia
+    except ValueError:
+        return True
+
+
+def _por_id(fixtures: list) -> dict:
+    return {f.get("id"): f for f in fixtures if isinstance(f, dict) and f.get("id")}
+
+
+def slots_vendidos_en_participacion(previas: list, nuevas: list) -> list[str]:
+    """Los muebles que pasan a venderse por participación EN ESTE guardado con
+    espacios internos vendidos y vigentes en el JSON: lo vendido así no tiene
+    contrato que la capacidad de la cara pueda contar. Un mueble que ya era
+    por participación no entra acá (lo cuida ``slots_en_participacion``)."""
+    dia = hoy()
+    previos = _por_id(previas)
+    frases = []
+    for f in nuevas:
+        if not isinstance(f, dict) or not por_participacion(f):
+            continue
+        previo = previos.get(f.get("id")) if f.get("id") else None
+        if previo is not None and por_participacion(previo):
+            continue
+        if any(isinstance(x, dict) and _vive(x, dia) for x in f.get("slots") or []):
+            frases.append(
+                f"«{normalizar(f.get('code'))}» tiene espacios internos vendidos: no pasa a participación "
+                "hasta que terminen."
+            )
+    return sorted(frases)
+
+
+def slots_en_participacion(previas: list, nuevas: list) -> list[str]:
+    """Los muebles por participación en los que este guardado VENDE un espacio
+    interno: un slot que pasa a ocupado o reservado, o que siendo vendido
+    cambia su fin o su valor. Los slots y su precio viven en el JSON, sin
+    autoridad del servidor: una pestaña vieja vendía así un frente que ya está
+    repartido por participación. Liberar un slot sigue permitido, y uno que ya
+    estaba vendido igual se guarda sin tocarlo. Un valor AUSENTE no es un
+    cambio: lo rellena ``_restore_missing_slot_prices``."""
+    previos = _por_id(previas)
+    frases = []
+    for f in nuevas:
+        if not isinstance(f, dict) or not por_participacion(f):
+            continue
+        previo = previos.get(f.get("id")) if f.get("id") else None
+        antes = {x.get("id"): x for x in ((previo or {}).get("slots") or [])
+                 if isinstance(x, dict) and x.get("id")}
+        for x in f.get("slots") or []:
+            if not isinstance(x, dict) or x.get("status") not in _SLOT_VENDIDO:
+                continue
+            a = antes.get(x.get("id")) if x.get("id") else None
+            if (a is None or a.get("status") not in _SLOT_VENDIDO or a.get("endDate") != x.get("endDate")
+                    or ("negotiatedValue" in x and a.get("negotiatedValue") != x.get("negotiatedValue"))):
+                frases.append(
+                    f"«{normalizar(f.get('code'))}» se vende por participación: lo vendido va con contrato en "
+                    "Distribución, no como espacio interno."
+                )
+                break
+    return sorted(frases)
+
+
+def _caras_pc_con_mueble(fixtures: list, sede: str) -> dict[str, tuple[dict, str]]:
+    """``{código completo de la cara: (mueble, letra)}`` de las caras por
+    participación, como ``caras_por_participacion`` (con la sede del plano)."""
+    caras: dict[str, tuple[dict, str]] = {}
+    for f in fixtures:
+        if not isinstance(f, dict):
+            continue
+        for codigo in caras_por_participacion([f], sede):
+            caras[codigo] = (f, partir_codigo(codigo).cara)
+    return caras
+
+
+def _historial_del_guardado(db: Session, sede: str, previas: list, nuevas: list, actor: str) -> None:
+    """Lo que el guardado le cambia a las caras por participación, en su
+    historial (diseño §4.4, §5.6; tipo ``estado``):
+
+    · ``distribucion.division``: la cara pasó a venderse por participación, o
+      dejó de venderse así (sólo lo terminado: lo vivo lo frena la guarda);
+    · ``distribucion.para_revisar``: cambió la firma de una cara con
+      distribución confirmada (la del mismo mueble): queda para revisar, o
+      vuelve a coincidir con lo confirmado.
+
+    Sólo para caras que ya tienen su fila en ``spaces`` (vendidas alguna vez o
+    con participaciones): el historial se cuelga de esa fila, y una cara que
+    nunca se vendió no tiene historia que contar todavía —su primera
+    participación la crea—. Barato: las firmas se calculan sólo de los muebles
+    que cambiaron, y la base se consulta sólo si hay algo que anotar."""
+    antes = _caras_pc_con_mueble(previas, sede)
+    despues = _caras_pc_con_mueble(nuevas, sede)
+    cambian = set(antes) ^ set(despues)
+    firmas: dict[str, tuple] = {}
+    for codigo in set(antes) & set(despues):
+        (fa, la), (fd, ld) = antes[codigo], despues[codigo]
+        if fa == fd:
+            continue
+        f1, f2 = firma_de_cara(fa, la), firma_de_cara(fd, ld)
+        if f1 != f2:
+            firmas[codigo] = (f1, f2, fd)
+    if not cambian and not firmas:
+        return
+    filas = {normalizar(s.code): s for s in db.query(Space).filter(Space.code.in_(sorted(cambian | set(firmas))))}
+    for codigo in sorted(cambian):
+        fila = filas.get(codigo)
+        if fila is None:
+            continue
+        entra = codigo in despues
+        firma_antes = firma_de_cara(*antes[codigo]) if codigo in antes else None
+        firma_despues = firma_de_cara(*despues[codigo]) if codigo in despues else None
+        anotar_historial(
+            db, tipo="estado", accion="distribucion.division", actor=actor, cara_space_id=fila.id,
+            detalle=(f"{_cara_corta(codigo, sede)} pasó a venderse por participación." if entra
+                     else f"{_cara_corta(codigo, sede)} dejó de venderse por participación."),
+            antes={"por_participacion": not entra, "firma": firma_antes},
+            despues={"por_participacion": entra, "firma": firma_despues},
+        )
+    con_fila = {codigo: filas[codigo] for codigo in firmas if codigo in filas}
+    if not con_fila:
+        return
+    dists = {d.cara_space_id: d for d in db.query(Distribucion).filter(
+        Distribucion.cara_space_id.in_([f.id for f in con_fila.values()]))}
+    for codigo in sorted(con_fila):
+        d = dists.get(con_fila[codigo].id)
+        f1, f2, mueble = firmas[codigo]
+        if d is None or d.confirmada_en is None or not d.firma_confirmada:
+            continue
+        if str(d.fixture_id or "") != str(mueble.get("id") or ""):
+            continue  # la dibujaron para otro mueble: no hay qué revisar (`otro_mueble`)
+        queda = f2 != d.firma_confirmada
+        anotar_historial(
+            db, tipo="estado", accion="distribucion.para_revisar", actor=actor,
+            cara_space_id=con_fila[codigo].id, distribucion_id=d.id,
+            detalle=(f"{_cara_corta(codigo, sede)}: el mueble cambió desde que se confirmó la distribución; "
+                     "queda para revisar." if queda else
+                     f"{_cara_corta(codigo, sede)}: el mueble vuelve a coincidir con la distribución confirmada."),
+            antes={"firma": f1}, despues={"firma": f2, "para_revisar": queda},
+        )
 
 
 # ─── El nombre viejo: se lee del registro, no del mueble ──────────────────────
@@ -760,7 +989,21 @@ def renumeracion_aplicar(
     """
     planes = _planificar(db, payload)
     try:
+        # Los candados de los muebles que se mudan, y el plan otra vez con
+        # ellos puestos: un alta de participación no puede crear su espacio con
+        # el código que se está yendo (diseño de participaciones §2.5).
+        planes = renumeracion_con_candados(db, planes)
         aplicar_renumeracion(db, planes)
+    except RenumeracionBloqueada as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "renumeracion_bloqueada",
+                "message": f"No se puede renumerar «{e.sede}» sin romper algo.",
+                "motivos": e.motivos,
+            },
+        )
     except InvarianteRoto as e:
         db.rollback()
         logger.error("renumeración: invariante roto al aplicar %s — %s", e.sede, e.fallas)
@@ -809,7 +1052,7 @@ def get_layout(sede: str, response: Response, role: str = Depends(require_auth),
 
 
 @router.put("/{sede}", response_model=LayoutOut, dependencies=[Depends(require_admin)])
-def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
+def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = Depends(get_db)):
     """Upsert the fixture layout for a sede — creates or replaces atomically.
 
     When the client sends ``base_updated_at`` the write is rejected with 409 if
@@ -935,10 +1178,11 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                 },
             )
 
-        # Los candados de los muebles que este guardado retira o cuya forma de
-        # venderse por partes cambia: una venta que confirma al mismo tiempo
-        # espera, y la guarda de abajo lee los contratos ya con el candado
-        # puesto (`services/candado.py`).
+        # Los candados de los muebles que este guardado retira, cuya forma de
+        # venderse por partes cambia o cuya cara entra o sale de «por
+        # participación»: una venta que confirma al mismo tiempo espera, y las
+        # guardas de abajo leen los contratos y los términos ya con el
+        # candado puesto y la sesión fresca (`services/candado.py`).
         _candados_del_guardado(db, sede, previous, fixtures)
 
         # ── La tercera puerta: sacar de circulación algo que está vendido ────
@@ -1003,6 +1247,36 @@ def save_layout(sede: str, payload: LayoutIn, db: Session = Depends(get_db)):
                 },
             )
 
+        # ── Participaciones de cara (diseño §4.4) ─────────────────────────────
+        #
+        # Una cara que deja de venderse por participación con términos vivos
+        # (las reservas provisionales no son leases: la de contratos vivos no
+        # las ve); un mueble que pasa a participación con espacios internos
+        # vendidos; y un espacio interno que se vende en un mueble por
+        # participación. Sólo lo que este guardado cambia.
+        previas = [f for f in previous if isinstance(f, dict)]
+        nuevas = [f for f in fixtures if isinstance(f, dict)]
+        for code, frases, mensaje in (
+            ("participaciones_vivas", participaciones_vivas(db, sede, previas, nuevas),
+             "Este guardado cambiaría cómo se vende(n) {n} cara(s) de «{sede}» con participaciones vivas."),
+            ("slots_vendidos_en_participacion", slots_vendidos_en_participacion(previas, nuevas),
+             "Este guardado pasaría a participación {n} mueble(s) de «{sede}» con espacios internos vendidos."),
+            ("slots_en_participacion", slots_en_participacion(previas, nuevas),
+             "Este guardado vendería espacios internos en {n} mueble(s) de «{sede}» que se venden por "
+             "participación."),
+        ):
+            if frases:
+                logger.info("layout %s: guardado rechazado (%s) — %s", sede, code, " · ".join(frases))
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": code, "message": mensaje.format(n=len(frases), sede=sede),
+                            "choques": frases},
+                )
+
+        # La historia de las caras por participación que este guardado cambia
+        # (pasó a / dejó de venderse así; una confirmada que queda para revisar).
+        _historial_del_guardado(db, sede, previas, nuevas, actor_de(request, "admin"))
+
         # El precio del MUEBLE ya no viaja en el layout —es de la base— pero el
         # de cada repisa sí, y sigue saliendo redactado para un mercaderista.
         # Sin esto, un guardado hecho desde una copia redactada borraría la
@@ -1066,7 +1340,9 @@ def delete_layout(
     # deleted — they are billing history — but leaving them live meant expiry
     # emails for a sede nobody could open, and a sede recreated under the same
     # name inheriting the old one's contracts through find_or_create_space.
-    archived = archive_sede_spaces(db, sede)
+    # Quien borra queda en `baja_por` de las reservas y los contratos de
+    # participación que el archivo cancela, y en su historial.
+    archived = archive_sede_spaces(db, sede, actor=actor_de(request, rol))
 
     # Drop the name from the shared list too, in the same commit. Leaving that
     # to a separate settings PUT from the client made the deletion two
@@ -1090,6 +1366,8 @@ def delete_layout(
         detalle=(
             f"{archived['spaces']} espacios archivados · "
             f"{archived['leases_closed']} contratos cerrados"
+            + (f" · {archived['reservas_canceladas']} reservas provisionales de participación canceladas"
+               if archived.get("reservas_canceladas") else "")
         ),
     )
     db.commit()

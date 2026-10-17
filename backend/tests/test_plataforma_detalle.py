@@ -1120,3 +1120,70 @@ def test_la_consola_no_usa_el_nombre_propio_del_supermercado(client, monkeypatch
         r = client.get(url, headers=cab)
         assert r.status_code == 200, (url, r.text)
         assert propio not in r.text, url
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# (9) Participaciones de cara: un tipo propio, fuera de todo promedio
+# ════════════════════════════════════════════════════════════════════════════
+
+def test_una_participacion_de_cara_es_un_tipo_propio_fuera_del_promedio(client, monkeypatch):
+    """Diseño de participaciones §11. Un contrato del 25 % de una cara
+    (``NAVE-GON-01-PC1``, 250.000) promediado con caras enteras daba «precio
+    bajo» falso y bajaba el precio sugerido de las caras libres: queda con tipo
+    propio, fuera del resumen, del benchmark, de los precios y de «precio
+    bajo». Sí cuenta en proveedores y ocupa su cara como una puerta a su
+    nevera (``/metricas`` lo cuenta igual, y sin tarifa propia)."""
+    from app.auth import set_config
+    from app.clientes import buscar, sesion_de
+
+    ids = Identidades(client)
+    _fundar(ids, "uid-detpc", "duena@detpc.co", "detpc", "Detalle PC")
+    nave = [
+        {"code": "GON-01", "type": "gondola", "gondolaType": "double", "sede": "NAVE", "w": 3.0, "d": 1.0,
+         "partes": {"division": "participacion"}},
+        {"code": "GON-02", "type": "gondola", "gondolaType": "double", "sede": "NAVE", "w": 3.0, "d": 1.0},
+    ]
+    _sembrar("detpc", {"NAVE": nave}, [
+        ("NAVE-GON-02", "Alpina", None, "2026-09-01", "2026-12-31", 1_000_000.0, True),
+        ("NAVE-GON-02-B", "Alpina", None, "2026-09-01", "2026-12-31", 1_000_000.0, True),
+        ("NAVE-GON-01-PC1", "Postobón", "Hit", "2026-09-01", "2026-10-15", 250_000.0, True),
+    ])
+    db = sesion_de(buscar("detpc"))
+    try:
+        set_config(db, "layout_reference_rates", json.dumps({"default": {"gondola": 1_000_000}, "by_sede": {}}))
+        db.commit()
+    finally:
+        db.close()
+    cab = _operador_sin_membresias(ids, monkeypatch)
+    _limpiar_caches()
+
+    cuerpo = _detalle(client, cab, "detpc")
+    assert cuerpo["contratos_fuera_del_plano"] == 0
+    assert [r["tipo"] for r in cuerpo["resumen_por_tipo"]] == ["gondola"]
+    gondola = _por(cuerpo["resumen_por_tipo"], "tipo", "gondola")
+    assert (gondola["canon_promedio"], gondola["canon_minimo"]) == (1_000_000.0, 1_000_000.0)
+    assert cuerpo["benchmark_plataforma"] == {"gondola": 1_000_000.0}
+    assert not [r for r in cuerpo["recomendaciones"] if r["tipo"] == "precio_bajo_tarifa"]
+
+    # La cara de la participación está tomada (la participación cuelga de ella, como una puerta); su B, libre.
+    gon01 = _espacio(cuerpo, "NAVE-GON-01")
+    assert (gon01["estado"], gon01["contrato"]) == ("ocupado", None)
+    assert [(p["parte"], p["codigo"], p["codigo_corto"]) for p in gon01["partes"]] == [
+        ("PC1", "NAVE-GON-01-PC1", "GON-01-PC1")]
+    assert gon01["partes"][0]["contrato"]["canon_mensual"] == 250_000.0
+    assert _espacio(cuerpo, "NAVE-GON-01-B")["estado"] == "libre"
+    assert [o["codigo"] for o in cuerpo["oportunidades"]] == ["NAVE-GON-01-B"]
+    assert cuerpo["oportunidades"][0]["precio_sugerido"] == 1_000_000.0  # el de las caras enteras
+
+    # En proveedores y movimientos, con su tipo propio.
+    postobon = _por(cuerpo["proveedores"], "nombre", "Postobón")
+    assert (postobon["tipos"], postobon["sedes"], postobon["espacios"]) == (["participacion"], ["NAVE"], 1)
+    entradas = next(m for m in cuerpo["movimientos"] if m["mes"] == PERIODO)["entradas"]
+    assert _por(entradas, "codigo", "NAVE-GON-01-PC1")["tipo"] == "participacion"
+
+    # /metricas: la cara cuenta ocupada (3 de 4) y la participación no tiene tarifa propia.
+    r = client.get(f"/api/plataforma/metricas?periodo={PERIODO}", headers=cab)
+    assert r.status_code == 200, r.text
+    metricas = next(c for c in r.json()["clientes"] if c["slug"] == "detpc")["metricas"]
+    assert metricas["ocupacion_pct"] == 75.0
+    assert metricas["contratos_sin_tarifa"] == 1

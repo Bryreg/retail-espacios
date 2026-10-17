@@ -9,13 +9,21 @@ Patrón de ``tests/test_partes_concurrencia.py``:
   ``revisar → candado(clave de la cara) → expire_all → revisar → escribir``, y
   que en la confirmación de la distribución la geometría se mide ANTES del
   candado y adentro sólo se juzga. La clave es la del MUEBLE: la misma que la
-  venta de la cara entera o de una parte (``NAVE-GON-01-PU1``).
+  venta de la cara entera o de una parte (``NAVE-GON-01-PU1``). Y en los
+  caminos de siempre (paso 4c): el guardado del plano que saca la división
+  toma ese candado ANTES de leer los términos (A1), y la renumeración toma
+  los de los códigos viejos y nuevos antes de mudar (B1).
 · **Las carreras, en Postgres (sólo con ``DATABASE_URL_PG_PRUEBA``).** Dos
   hilos, cada uno con su sesión, llaman al servicio; la revisión de adentro del
   primero se demora a propósito (la ventana) y el segundo arranca en el medio:
 
   1. dos altas de 60 % en la misma cara y fechas → una entra, la otra
      ``capacidad_excedida``; un solo término en la base;
+  2. ``PUT /layout`` que saca la división de la cara contra un alta (paso
+     4c, hallazgo A1): gane quien gane, la base queda coherente — o la cara
+     sigue por participación con su término (el guardado frena con
+     ``participaciones_vivas``) o ya no se vende así y no le cuelga nada (el
+     alta frena en la compuerta);
   3. una reserva que sube de 30 % a 70 % contra un alta de 40 % → exactamente
      una falla con ``capacidad_excedida`` (fija el ``expire_all``: sin él, la
      segunda revisión leía la reserva vieja de la memoria de la sesión y
@@ -269,6 +277,158 @@ def test_un_cambio_de_termino_juzga_la_distribucion_que_encuentra_despues_del_ca
     assert [z["vertices"] for z in confirmada] == [izq, izq]
 
 
+# ─── El guardado del plano y la renumeración (paso 4c) ────────────────────────
+
+@RELOJ
+def test_el_guardado_que_saca_la_division_toma_el_candado_de_la_cara_antes_de_leer_sus_participaciones(
+        client, admin, monkeypatch):
+    """A1 de la crítica: pasar ``partes.division`` de ``"participacion"`` a
+    entera no cambia lo ofrecido ni la firma de partes. Sin el disparador
+    propio, el guardado no tomaba candado y un alta simultánea pasaba con el
+    plano viejo. El orden tiene que ser candado (con la clave del mueble) →
+    ``expire_all`` → leer los términos de la cara."""
+    import app.routers.layout as L
+    import app.services.participaciones as P
+    from app.services.candado import claves_de_candado
+    from sqlalchemy.orm import Session
+
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [GON_01, MET_01], "base_updated_at": None})
+    assert r.status_code == 200, r.text
+    traza = []
+    tomar, leer, expirar = L.tomar_candados, P.leer, Session.expire_all
+    monkeypatch.setattr(L, "tomar_candados", lambda db, c: (traza.append(("candado", tuple(sorted(c)))),
+                                                            tomar(db, c))[1])
+    monkeypatch.setattr(P, "leer", lambda db, codigo: (traza.append(("leer", codigo)), leer(db, codigo))[1])
+    monkeypatch.setattr(Session, "expire_all", lambda self: (traza.append("expire_all"), expirar(self))[1])
+
+    def guardar(fixtures, codigo=200):
+        traza.clear()
+        r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": fixtures, "base_updated_at": None})
+        assert r.status_code == codigo, r.text
+
+    # Lo de siempre (mover un mueble) no toma candado ni relee nada.
+    guardar([{**GON_01, "cx": 3}, MET_01])
+    assert traza == [], traza
+    entera = {**GON_01, "cx": 3, "partes": None}
+    guardar([entera, MET_01])
+    assert traza[:2] == [("candado", ("NAVE-GON-01", "NAVE-GON-01-B")), "expire_all"], traza
+    assert ("leer", "NAVE-GON-01") in traza and ("leer", "NAVE-GON-01-B") in traza
+    misma = claves_de_candado(["NAVE-GON-01"])
+    assert claves_de_candado(["NAVE-GON-01-B"]) == claves_de_candado(["NAVE-GON-01-PC1"]) == misma
+    # Volver a participación también la toma (la cara entra), sin nada que leer.
+    guardar([{**GON_01, "cx": 3}, MET_01])
+    assert traza == [("candado", ("NAVE-GON-01", "NAVE-GON-01-B")), "expire_all"], traza
+    # Con una reserva viva, la lectura (fresca, con el candado tomado) la ve y frena.
+    alta = {"sede": "NAVE", "espacio": "GON-01", "proveedor": "Postobón", "puntos_basicos": 2000, "tipo": "reserva",
+            "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "caduca": D(2026, 10, 25)}
+    assert client.post("/api/participaciones/", headers=admin, json=alta).status_code == 201
+    guardar([entera, MET_01], 409)
+    assert traza.index(("leer", "NAVE-GON-01")) > traza.index("expire_all") > 0
+
+
+@RELOJ
+def test_la_renumeracion_toma_los_candados_de_los_codigos_viejos_y_nuevos_antes_de_mudar(client, admin, monkeypatch):
+    """B1: un alta concurrente no puede buscar la cara por el código viejo
+    mientras se muda. El orden: planificar → candados de los códigos viejos y
+    nuevos de cada mueble que muda → ``expire_all`` → planificar otra vez →
+    mudar."""
+    import app.services.renumeracion as R
+    from sqlalchemy.orm import Session
+
+    # La única góndola se llama GON-05: renumerar la pasa a GON-01 (un nombre que nadie tenía).
+    gon_05 = {**GON_01, "id": "f-GON-05", "code": "GON-05"}
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [gon_05, MET_01], "base_updated_at": None})
+    assert r.status_code == 200, r.text
+    alta = {"sede": "NAVE", "espacio": "GON-05", "proveedor": "Postobón", "puntos_basicos": 2000, "tipo": "contrato",
+            "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "valor_mensual": 1}
+    pc = client.post("/api/participaciones/", headers=admin, json=alta).json()["termino"]
+    traza = []
+
+    def espiar(nombre, marca):
+        original = getattr(R, nombre)
+        monkeypatch.setattr(R, nombre, lambda *a, **kw: (traza.append(marca), original(*a, **kw))[1])
+
+    espiar("planificar_sede", "planificar")
+    espiar("_mudar_espacios", "mudar")
+    tomar, expirar = R.tomar_candados, Session.expire_all
+    monkeypatch.setattr(R, "tomar_candados", lambda db, c: (traza.append(("candado", tuple(sorted(c)))),
+                                                            tomar(db, c))[1])
+    monkeypatch.setattr(Session, "expire_all", lambda self: (traza.append("expire_all"), expirar(self))[1])
+
+    r = client.post("/api/layout/renumeracion/aplicar", headers=admin, json={"sedes": ["NAVE"]})
+    assert r.status_code == 200, r.text
+    assert traza == ["planificar", ("candado", ("NAVE-GON-01", "NAVE-GON-05")), "expire_all", "planificar",
+                     "mudar"], traza
+    cara = client.get("/api/participaciones/cara", headers=admin, params={"sede": "NAVE", "espacio": "GON-01"}).json()
+    assert [p["codigo"] for p in cara["participaciones"]] == ["NAVE-GON-01-PC1"]
+    assert cara["participaciones"][0]["space_id"] == pc["space_id"]
+    # Otra vez: nada que mudar, ningún candado.
+    traza.clear()
+    assert client.post("/api/layout/renumeracion/aplicar", headers=admin, json={"sedes": ["NAVE"]}).status_code == 200
+    assert traza == ["planificar"], traza
+
+
+@RELOJ
+def test_los_caminos_de_siempre_releen_despues_del_candado(client, admin, monkeypatch):
+    """El contrato suelto, la planilla (y Vender) y la importación del plano
+    toman el candado del mueble y enseguida ``expire_all``: lo que revisan
+    después (los contratos de la cara y los términos de participación de
+    ``bloqueo_por_participaciones``) es lo que hay en la base, no lo que la
+    sesión ya tenía en memoria (§5.4)."""
+    import app.routers.bulk_leases as BL
+    import app.routers.spaces as SP
+    import app.services.importar_del_plano as IMP
+    import app.services.participaciones as P
+    from app.database import SessionLocal
+    from app.models.models import LayoutSnapshot
+    from sqlalchemy.orm import Session
+
+    gon_02 = {**GON_01, "id": "f-GON-02", "code": "GON-02", "label": "Góndola 2", "cx": 4, "partes": None}
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [GON_01, gon_02, MET_01],
+                                                            "base_updated_at": None})
+    assert r.status_code == 200, r.text
+    traza = []
+    expirar, bloqueo = Session.expire_all, P.bloqueo_por_participaciones
+    monkeypatch.setattr(Session, "expire_all", lambda self: (traza.append("expire_all"), expirar(self))[1])
+    for modulo in (SP, BL, IMP):
+        tomar = modulo.tomar_candados
+        monkeypatch.setattr(modulo, "tomar_candados",
+                            lambda db, c, tomar=tomar: (traza.append("candado"), tomar(db, c))[1])
+    # La defensa se pregunta siempre adentro, con la sesión ya fresca.
+    monkeypatch.setattr(SP, "bloqueo_por_participaciones",
+                        lambda *a: (traza.append("bloqueo"), bloqueo(*a))[1])
+
+    s = client.post("/api/spaces/find-or-create", headers=admin,
+                    json={"code": "NAVE-GON-02", "name": "x", "zone": "Z", "sede": "NAVE", "area_m2": 1}).json()
+    sup = client.post("/api/suppliers/find-or-create", headers=admin, json={"name": "Colombina"}).json()
+    traza.clear()
+    r = client.post(f"/api/spaces/{s['id']}/leases", headers=admin, json={
+        "supplier_id": sup["id"], "start_date": D(2026, 11, 1), "end_date": D(2026, 11, 30), "monthly_rent": 1})
+    assert r.status_code == 201, r.text
+    assert traza[:3] == ["candado", "expire_all", "bloqueo"], traza
+
+    traza.clear()
+    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": [{
+        "fila": 2, "espacio": "GON-02-B", "sede": "NAVE", "proveedor": "Colombina", "valor": 1,
+        "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30)}]})
+    assert r.json()["creados"] == 1, r.text
+    assert traza[:2] == ["candado", "expire_all"], traza
+
+    db = SessionLocal()
+    try:
+        fixtures = [GON_01, {**gon_02, "code": "GON-03", "id": "f-GON-03", "status": "occupied",
+                             "supplierName": "Colanta", "startDate": D(2026, 11, 1), "endDate": D(2026, 11, 30)},
+                    MET_01]
+        db.query(LayoutSnapshot).filter_by(sede="NAVE").one().fixtures_json = json.dumps(fixtures)
+        db.commit()
+    finally:
+        db.close()
+    traza.clear()
+    r = client.post("/api/layout/importacion/aplicar", headers=admin)
+    assert [x["espacio"] for x in r.json()["importables"]] == ["NAVE-GON-03"], r.text
+    assert traza[:2] == ["candado", "expire_all"], traza
+
+
 # ─── Las carreras, contra Postgres ────────────────────────────────────────────
 
 PG = os.environ.get("DATABASE_URL_PG_PRUEBA", "")
@@ -427,3 +587,96 @@ def test_dos_renovaciones_del_mismo_contrato_dejan_una(pg, monkeypatch):
         assert s.query(Participacion).count() == 2
     finally:
         s.close()
+
+
+def _guardar_plano(fixtures):
+    """El guardado del plano llamado como lo llama la ruta (sin request: el
+    actor queda «admin»). Hace su propio commit."""
+    def paso(s):
+        from app.routers.layout import save_layout
+        from app.schemas.layout import LayoutIn
+
+        save_layout("NAVE", LayoutIn(fixtures=fixtures, base_updated_at=None), None, s)
+    return paso
+
+
+def _estado_de_la_cara(SessionLocal):
+    """(¿GON-01 sigue por participación?, términos vivos de su cara A)."""
+    from app.fechas import hoy
+    from app.models.models import LayoutSnapshot
+    from app.services import participaciones as P
+    from app.services import reglas_participacion as reglas
+    from app.services.layout_lookup import por_participacion
+
+    s = SessionLocal()
+    try:
+        fixtures = json.loads(s.query(LayoutSnapshot).filter_by(sede="NAVE").one().fixtures_json)
+        gon = next(f for f in fixtures if f["code"] == "GON-01")
+        vivos = [t for t in P.leer(s, "NAVE-GON-01").todos if reglas.vivo(t, hoy())]
+        return por_participacion(gon), len(vivos)
+    finally:
+        s.close()
+
+
+@SIN_PG
+@RELOJ
+def test_sacar_la_division_contra_un_alta_deja_la_base_coherente_cuando_gana_el_alta(pg, monkeypatch):
+    """Carrera 2, el alta primero: el guardado que saca la división espera el
+    candado de la cara (A1), lee los términos ya con el alta escrita y frena con
+    ``participaciones_vivas``. La cara sigue por participación con su término."""
+    P, SessionLocal = pg
+    sin_division = [{**GON_01, "partes": None}, MET_01]
+    resultados = _correr(P, SessionLocal, monkeypatch,
+                         lambda s: P.alta(s, _alta(P, SessionLocal, 3000, tipo="reserva"), "a@x.co"),
+                         _guardar_plano(sin_division))
+    assert resultados == {"primera": "ok", "segunda": "participaciones_vivas"}, resultados
+    assert _estado_de_la_cara(SessionLocal) == (True, 1)
+
+
+@SIN_PG
+@RELOJ
+def test_sacar_la_division_contra_un_alta_deja_la_base_coherente_cuando_gana_el_plano(pg, monkeypatch):
+    """Carrera 2, el plano primero: el guardado toma el candado y se queda
+    mirando (la ventana) antes de leer los términos; el alta pasa su revisión
+    de afuera con el plano viejo y espera el candado; adentro relee el plano
+    ya sin la división y la compuerta la frena. Sin términos colgando de una
+    cara que ya no se vende así."""
+    import app.routers.layout as L
+    from fastapi import HTTPException
+
+    P, SessionLocal = pg
+    original = L.participaciones_vivas
+    en_la_ventana = threading.Event()
+
+    def demorado(*a, **kw):
+        en_la_ventana.set()
+        time.sleep(0.6)
+        return original(*a, **kw)
+
+    monkeypatch.setattr(L, "participaciones_vivas", demorado)
+    resultados = {}
+
+    def correr(nombre, paso):
+        s = SessionLocal()
+        try:
+            paso(s)
+            s.commit()
+            resultados[nombre] = "ok"
+        except HTTPException as e:
+            s.rollback()
+            resultados[nombre] = e.detail["code"] if isinstance(e.detail, dict) else e.detail
+        except Exception as e:  # pragma: no cover — que el hilo no muera callado
+            s.rollback()
+            resultados[nombre] = f"{type(e).__name__}: {e}"
+        finally:
+            s.close()
+
+    plano = threading.Thread(target=correr, args=("plano", _guardar_plano([{**GON_01, "partes": None}, MET_01])))
+    alta = threading.Thread(target=correr, args=("alta", lambda s: P.alta(s, _alta(P, SessionLocal, 3000), "b@x.co")))
+    plano.start()
+    assert en_la_ventana.wait(10), f"el guardado no llegó a la ventana: {resultados}"
+    alta.start()
+    for h in (plano, alta):
+        h.join(20)
+    assert resultados == {"plano": "ok", "alta": "parte_inexistente"}, resultados
+    assert _estado_de_la_cara(SessionLocal) == (False, 0)

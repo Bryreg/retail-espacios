@@ -28,10 +28,12 @@ from app.auth import Quien, require_montaje
 from app.database import get_db
 from app.fechas import ZONA_DEL_NEGOCIO, hoy
 from app.models.models import LayoutSnapshot, LeaseFile, MountConfirmation, Space, SpaceFile, SpaceLease
+from app.models.participaciones import Participacion
 from app.routers.mounts import MountOut, registrar_montaje
 from app.services.contratos import contrato_para_montar
 from app.services.layout_lookup import describe_location
-from app.services.partes import cantidad_de, partes_tipadas, partir_codigo, texto_para_montar
+from app.services.partes import cantidad_de, es_participacion, partes_tipadas, partir_codigo, texto_para_montar
+from app.services.reglas_participacion import pct
 
 router = APIRouter(prefix="/montaje", tags=["montaje"], dependencies=[Depends(require_montaje)])
 
@@ -312,11 +314,16 @@ def mi_espacio(
     parte = None
     if partido.parte is not None:
         corto = f"{corto}-{partido.parte.sufijo}"
-        de = cantidad_de(mueble, partido.parte.clase) if mueble else None
-        parte = {
-            "token": partido.parte.token, "n": partido.parte.n, "de": de,
-            "texto": texto_para_montar(partido.parte, de),
-        }
+        if es_participacion(partido.parte):
+            # Una participación de cara (D13): quien monta ve cuál y qué parte
+            # de la cara le toca, en palabras. Sin dibujo de la zona y sin
+            # plata (el porcentaje no es plata: es lo que se monta).
+            de = None
+            texto = _texto_de_participacion(db, lease, partido)
+        else:
+            de = cantidad_de(mueble, partido.parte.clase) if mueble else None
+            texto = texto_para_montar(partido.parte, de)
+        parte = {"token": partido.parte.token, "n": partido.parte.n, "de": de, "texto": texto}
 
     return EspacioMontaje(
         code=codigo,
@@ -338,6 +345,19 @@ def mi_espacio(
         se_confirma_desde=se_confirma_desde,
         parte=parte,
     )
+
+
+def _texto_de_participacion(db: Session, lease: Optional[SpaceLease], partido) -> str:
+    """«Participación 3 · 25 % de la cara A» con el porcentaje del término de
+    ESTE contrato; sin término (un lease de participación hecho a mano, o sin
+    contrato que mostrar), «Participación 3 de la cara A»."""
+    termino = None
+    if lease is not None:
+        termino = db.query(Participacion).filter(Participacion.lease_id == lease.id).first()
+    n = partido.parte.n
+    if termino is None:
+        return f"Participación {n} de la cara {partido.cara}"
+    return f"Participación {n} · {pct(termino.puntos_basicos)} de la cara {partido.cara}"
 
 
 def _utc(t: datetime) -> datetime:

@@ -1,4 +1,5 @@
-"""Participaciones de cara, paso 4b: la API (diseño 21-diseno-final.md §5, §13.2).
+"""Participaciones de cara, pasos 4b y 4c: la API y los caminos de siempre (diseño
+21-diseno-final.md §4.3, §4.4, §4.9, §5, §11, §13.2).
 
 Un escenario por prueba, con varias aserciones encadenadas (cada prueba con
 ``client`` reimporta la app y crea una SQLite: ≈ 1–1,5 s). Los números de las
@@ -388,6 +389,150 @@ def test_lo_vendido_entero_y_el_lease_huerfano_cuentan_como_la_cara_entera(clien
     r = client.get("/api/participaciones/resumen", headers=admin, params={"sede": "NAVE"})
     assert r.status_code == 200, r.text
     assert r.json()["totales"]["huerfanos"] == 1
+
+
+# ─── 4 · La compuerta en los caminos de siempre ───────────────────────────────
+
+def _suelto(client, admin, code, desde=D(2026, 11, 1), hasta=D(2026, 11, 30)):
+    """Un contrato suelto (`POST /spaces/{id}/leases`) sobre el espacio ``code``."""
+    s = client.post("/api/spaces/find-or-create", headers=admin,
+                    json={"code": code, "name": code, "zone": "Z", "sede": "NAVE", "area_m2": 1})
+    assert s.status_code in (200, 201), s.text
+    sup = client.post("/api/suppliers/find-or-create", headers=admin, json={"name": "Colombina"}).json()
+    return client.post(f"/api/spaces/{s.json()['id']}/leases", headers=admin, json={
+        "supplier_id": sup["id"], "start_date": desde, "end_date": hasta, "monthly_rent": 1})
+
+
+def _planilla(client, admin, espacio, desde=D(2026, 11, 1), hasta=D(2026, 11, 30), paso="validar"):
+    r = client.post(f"/api/leases/bulk/{paso}", headers=admin, json={"sede": "NAVE", "filas": [{
+        "fila": 2, "espacio": espacio, "sede": "NAVE", "proveedor": "Colombina", "valor": 500_000,
+        "desde": desde, "hasta": hasta}]})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _vendido_en_el_json(f, proveedor="Colombina", desde=D(2026, 11, 1), hasta=D(2026, 11, 30)):
+    """Un mueble con un contrato que vive SÓLO en el JSON del plano (lo que
+    `PUT /layout` ya no acepta: se escribe directo en la base)."""
+    return {**f, "status": "occupied", "supplierName": proveedor, "startDate": desde, "endDate": hasta,
+            "negotiatedValue": 100}
+
+
+def _plano_en_la_base(fixtures):
+    """El plano escrito directo en la base, sin pasar por las guardas del guardado."""
+    import json
+
+    from app.models.models import LayoutSnapshot
+
+    db = _bd()
+    try:
+        db.query(LayoutSnapshot).filter_by(sede="NAVE").one().fixtures_json = json.dumps(fixtures)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _leases():
+    from app.models.models import SpaceLease
+
+    db = _bd()
+    try:
+        return db.query(SpaceLease).count()
+    finally:
+        db.close()
+
+
+@RELOJ
+def test_la_compuerta_frena_la_cara_entera_y_la_participacion_en_los_caminos_de_siempre(client, admin):
+    _plano(client, admin)
+    pc = _alta(client, admin)["termino"]
+    antes = _leases()
+
+    # Contrato suelto: la cara entera de una cara por participación, la participación misma (existe, pero se
+    # carga en Distribución), el código corto de la cara y una participación de una cara que no se vende así.
+    for code, frase in (("NAVE-GON-01", "se vende por participación: cargá el porcentaje en el Editor 3D"),
+                        ("NAVE-GON-01-PC1", "es una participación: se carga y se renueva en el Editor 3D → "
+                                            "Distribución"),
+                        ("GON-01", "se vende por participación"),
+                        ("NAVE-NEV-03-PC1", "no se vende por participación")):
+        r = _suelto(client, admin, code)
+        assert r.status_code == 409 and frase in r.json()["detail"], (code, r.text)
+    assert _leases() == antes, "ningún contrato suelto se escribió"
+
+    # La planilla (y Vender, que confirma por el mismo camino) dice lo mismo, fila por fila.
+    for espacio, frase in (("GON-01-PC1", "es una participación: se carga y se renueva en el Editor 3D → "
+                                          "Distribución, no en la planilla."),
+                           ("NEV-03-PC1", "no se vende por participación: elegí «por participación»"),
+                           ("GON-01", "se vende por participación"),
+                           ("GON-01-B", "se vende por participación")):
+        fila = _planilla(client, admin, espacio)["filas"][0]
+        assert fila["estado"] == "error" and any(frase in m for m in fila["mensajes"]), (espacio, fila)
+    assert _planilla(client, admin, "GON-01-PC1", paso="confirmar")["creados"] == 0
+    assert _leases() == antes
+
+    # Una participación no se marca «Reservado» a mano.
+    r = client.patch(f"/api/spaces/{pc['space_id']}/status", headers=admin, json={"status": "reserved"})
+    assert r.status_code == 409 and "Distribución" in r.text, r.text
+
+    # Importar del plano: un contrato del JSON sobre la cara entera de PUN-01 (por participación, todavía sin
+    # participaciones) y sobre un mueble viejo llamado como una participación quedan «Incompletos».
+    viejo = _mueble("GON-09-PC1", "gondola", 0.9, 0.9, 1.8, 20, division=None, gondolaType="wall")
+    _plano_en_la_base([_vendido_en_el_json(f) if f["code"] == "PUN-01" else f for f in PLANO]
+                      + [_vendido_en_el_json(viejo)])
+    r = client.get("/api/layout/importacion/previo", headers=admin)
+    assert r.status_code == 200, r.text
+    incompletos = {x["espacio"]: x["motivo"] for x in r.json()["incompletos"]}
+    assert "se vende por participación" in incompletos["NAVE-PUN-01"]
+    assert "se lee como una participación" in incompletos["NAVE-GON-09-PC1"]
+    assert r.json()["importables"] == []
+    r = client.post("/api/layout/importacion/aplicar", headers=admin)
+    assert r.status_code == 200 and r.json()["importables"] == [], r.text
+    assert _leases() == antes
+
+    # El script de antes del despliegue (riesgo R1) encuentra el mueble viejo, no la participación de verdad.
+    from scripts.buscar_codigos_pc import buscar
+
+    db = _bd()
+    try:
+        hallado = buscar(db)
+    finally:
+        db.close()
+    assert [codigo for _sede, codigo, _r in hallado["muebles"]] == ["GON-09-PC1"]
+    # La fila que el contrato suelto de arriba creó a mano sí; la de la participación del alta, no.
+    assert hallado["espacios"] == [("NAVE-NEV-03-PC1", "NAVE", 0)] and hallado["archivados"] == []
+
+
+# ─── 5 · Defensa en profundidad ───────────────────────────────────────────────
+
+@RELOJ
+def test_una_cara_que_dejo_de_venderse_por_participacion_con_terminos_vivos_no_se_vende_entera(client, admin):
+    _plano(client, admin)
+    _alta(client, admin, tipo="reserva", desde=D(2026, 11, 1), hasta=D(2026, 11, 30), caduca=D(2026, 10, 25))
+    # El plano escrito directo en la base (el guardado lo frenaría, escenario 12): GON-01 se vende entera,
+    # con la reserva de su cara A viva, y su JSON trae un contrato de antes en esas fechas.
+    sin_division = {k: v for k, v in GON_01.items() if k != "partes"}
+    _plano_en_la_base([_vendido_en_el_json(sin_division) if f["code"] == "GON-01" else f for f in PLANO])
+    frase = ("«GON-01» se vende por participación del 1 nov 2026 al 30 nov 2026 (1 término de participación "
+             "vivo): en esas fechas no se vende entera ni por partes.")
+    antes = _leases()
+
+    fila = _planilla(client, admin, "GON-01")["filas"][0]
+    assert fila["estado"] == "error" and frase in fila["mensajes"], fila
+    assert "Postobón" not in " ".join(fila["mensajes"])
+    # Fuera de esas fechas, y la cara B (sin términos), sí.
+    assert _planilla(client, admin, "GON-01", desde=D(2026, 12, 1), hasta=D(2026, 12, 31))["filas"][0]["estado"] == "ok"
+    assert _planilla(client, admin, "GON-01-B")["filas"][0]["estado"] == "ok"
+
+    r = _suelto(client, admin, "NAVE-GON-01")
+    assert r.status_code == 409 and r.json()["detail"] == frase, r.text
+    # Con el código corto, la forma completa primero: la misma clave de candado que sus participaciones.
+    r = _suelto(client, admin, "GON-01")
+    assert r.status_code == 409 and "Escribilo «NAVE-GON-01»" in r.json()["detail"], r.text
+
+    r = client.get("/api/layout/importacion/previo", headers=admin)
+    incompletos = {x["espacio"]: x["motivo"] for x in r.json()["incompletos"]}
+    assert incompletos["NAVE-GON-01"] == frase and r.json()["importables"] == []
+    assert _leases() == antes
 
 
 # ─── 6 · Casos A, B, C y H ────────────────────────────────────────────────────
@@ -853,6 +998,198 @@ def test_cambiar_o_confirmar_una_reserva_no_compite_consigo_misma_y_avisa_lo_que
         db.close()
 
 
+# ─── 12 · Las guardas del guardado del plano ──────────────────────────────────
+
+def _guardar(client, admin, fixtures, codigo=200):
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": fixtures, "base_updated_at": None})
+    assert r.status_code == codigo, r.text
+    return r.json()
+
+
+def _con(mueble, plano=PLANO, **cambios):
+    """El plano con el mueble de código ``mueble`` cambiado. Un ``None`` viaja
+    como ``null``: en la ficha del mueble (``partes``) es «borrala»; ausente, el
+    servidor conservaría la guardada (``_con_la_ficha_de_antes``)."""
+    return [{**f, **cambios} if f["code"] == mueble else f for f in plano]
+
+
+def _slot(id_, status="occupied", fin=D(2026, 12, 31), valor=100):
+    return {"id": id_, "x": 0, "y": 0, "w": 0.3, "h": 0.3, "supplierName": "", "brandCategory": "",
+            "negotiatedValue": valor, "startDate": D(2026, 10, 1), "endDate": fin, "status": status}
+
+
+def _rechazo(client, admin, fixtures):
+    return _guardar(client, admin, fixtures, 409)["detail"]
+
+
+@RELOJ
+def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, admin):
+    from app.models.participaciones import HistorialParticipacion
+
+    _plano(client, admin)
+    _alta(client, admin, tipo="reserva", caduca=D(2026, 10, 25))
+    # Sacar la división con una reserva viva (no es un lease: la guarda de contratos vivos no la ve).
+    d = _rechazo(client, admin, _con("GON-01", partes=None))
+    assert d["code"] == "participaciones_vivas"
+    assert d["choques"] == ["GON-01 · cara A tiene 1 participación viva (1 reserva provisional). Cancelala o "
+                            "dejá que venza antes de cambiar cómo se vende."]
+    # Borrar el mueble, renombrarlo sin la renumeración o cambiarle el tipo a uno sin superficie: lo mismo.
+    for fixtures in ([f for f in PLANO if f["code"] != "GON-01"], _con("GON-01", code="GON-09"),
+                     _con("GON-01", type="nevera_refrescos", gondolaType=None)):
+        assert _rechazo(client, admin, fixtures)["code"] == "participaciones_vivas"
+    # Doble → mural con dos reservas en la B: sale sólo la B, y es la que frena.
+    _alta(client, admin, espacio="GON-01-B", tipo="reserva", caduca=D(2026, 10, 25), proveedor="Alpina")
+    _alta(client, admin, espacio="GON-01-B", tipo="reserva", caduca=D(2026, 10, 25), pb=1000, proveedor="Colanta")
+    d = _rechazo(client, admin, _con("GON-01", gondolaType="wall"))
+    assert d["code"] == "participaciones_vivas" and len(d["choques"]) == 1
+    assert d["choques"][0] == ("GON-01 · cara B tiene 2 participaciones vivas (2 reservas provisionales). "
+                               "Cancelalas o dejá que venzan antes de cambiar cómo se vende.")
+    # Con un contrato de participación ya la frena la guarda de siempre (un lease que dejaría de estar en el
+    # plano, `ofrece`), que corre antes: es la que se ve.
+    _alta(client, admin, espacio="GON-01-B", pb=1000, proveedor="Colombina")
+    d = _rechazo(client, admin, _con("GON-01", gondolaType="wall"))
+    assert d["code"] == "contratos_vivos" and "«GON-01-B-PC3» tiene un contrato de Colombina" in d["choques"][0]
+
+    # Con sólo lo terminado (un contrato de PUN-01 que ya venció), la división sale; y queda en su historia.
+    _alta(client, admin, espacio="PUN-01", desde=D(2026, 9, 1), hasta=D(2026, 10, 10))
+    plano = _con("PUN-01", partes=None)
+    _guardar(client, admin, plano)
+    db = _bd()
+    try:
+        fila = db.query(HistorialParticipacion).filter_by(accion="distribucion.division").one()
+        assert fila.tipo == "estado" and fila.detalle == "PUN-01 · cara A dejó de venderse por participación."
+        assert fila.actor == "admin"
+    finally:
+        db.close()
+
+    # Espacios internos: GON-02 (entera) con uno vendido y vigente no pasa a participación.
+    plano = _con("GON-02", plano, slots=[_slot("s1")])
+    _guardar(client, admin, plano)
+    d = _rechazo(client, admin, _con("GON-02", plano, partes={"division": "participacion"}))
+    assert d == {"code": "slots_vendidos_en_participacion",
+                 "message": "Este guardado pasaría a participación 1 mueble(s) de «NAVE» con espacios internos "
+                            "vendidos.",
+                 "choques": ["«GON-02» tiene espacios internos vendidos: no pasa a participación hasta que "
+                             "terminen."]}
+    # Terminado, sí pasa (en dos guardados: el que lo termina y el que cambia la división).
+    plano = _con("GON-02", plano, slots=[_slot("s1", fin=D(2026, 10, 1))])
+    _guardar(client, admin, plano)
+    plano = _con("GON-02", plano, partes={"division": "participacion"})
+    _guardar(client, admin, plano)
+    # En un mueble por participación no se vende un espacio interno: ni uno nuevo, ni estirar o cambiar el
+    # valor del que estaba. Liberarlo, sí.
+    for slots in ([_slot("s1", fin=D(2026, 10, 1)), _slot("s2")], [_slot("s1", fin=D(2026, 12, 31))],
+                  [_slot("s1", fin=D(2026, 10, 1), valor=999)], [_slot("s1", status="free"), _slot("s2", "reserved")]):
+        d = _rechazo(client, admin, _con("GON-02", plano, slots=slots))
+        assert d["code"] == "slots_en_participacion", (slots, d)
+        assert d["choques"] == ["«GON-02» se vende por participación: lo vendido va con contrato en Distribución, "
+                                "no como espacio interno."]
+    sin_valor = {k: v for k, v in _slot("s1", fin=D(2026, 10, 1)).items() if k != "negotiatedValue"}
+    _guardar(client, admin, _con("GON-02", plano, slots=[sin_valor], cx=4.5))  # un valor ausente no es un cambio
+    plano = _con("GON-02", plano, slots=[_slot("s1", status="free")])
+    _guardar(client, admin, plano)
+
+    # Un plano que ya venía así (por participación con un espacio interno vendido y vigente, de antes) se
+    # guarda igual mientras no lo toque.
+    viejo = _con("MET-02", plano, slots=[_slot("s9")])
+    _plano_en_la_base(viejo)
+    _guardar(client, admin, _con("MET-02", viejo, cx=10.5))
+
+    # Una cara por tramos con un tramo vendido no pasa a participación: lo frena la guarda de siempre
+    # (contratos vivos: el tramo deja de estar en el plano).
+    tramos = {**_mueble("GON-03", "gondola", 3.75, 0.9, 2.0, 30, division=None, gondolaType="wall"),
+              "partes": {"division": "tramos", "tramos": 3}}
+    plano = _con("MET-02", viejo, cx=10.5) + [tramos]
+    _guardar(client, admin, plano)
+    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": [{
+        "fila": 2, "espacio": "GON-03-TR1", "sede": "NAVE", "proveedor": "Colombina", "valor": 1,
+        "desde": D(2026, 10, 1), "hasta": D(2026, 12, 31)}]})
+    assert r.json()["creados"] == 1, r.text
+    assert _rechazo(client, admin, _con("GON-03", plano, partes={"division": "participacion"}))["code"] == \
+        "contratos_vivos"
+
+
+# ─── 13 · Firma: lo que el guardado del plano deja para revisar ───────────────
+
+@RELOJ
+def test_un_cambio_del_mueble_deja_la_distribucion_confirmada_para_revisar_y_lo_anota(client, admin):
+    _plano(client, admin)
+    t = _alta(client, admin, pb=3000)["termino"]
+    sup = _cara(client, admin)["superficie"]
+    _distribuir(client, admin, "confirmar", "GON-01", 0, _zonas((t["space_id"], _franja(sup, 0, 0.2))))
+
+    def estado():
+        b = _cara(client, admin)
+        return b["distribucion"]["para_revisar"], "PARA_REVISAR" in _codigos(b["revision"]["avisos"])
+
+    def anotado():
+        h = client.get("/api/participaciones/historial", headers=admin,
+                       params={"sede": "NAVE", "espacio": "GON-01"}).json()
+        return [(e["accion"], e["despues"]["para_revisar"]) for e in h["entradas"] if e["tipo"] == "estado"]
+
+    assert estado() == (False, False) and anotado() == []
+    _guardar(client, admin, _con("GON-01", w=1.25))
+    assert estado() == (True, True)
+    assert anotado() == [("distribucion.para_revisar", True)]
+    _guardar(client, admin, PLANO)  # vuelve a la medida confirmada
+    assert estado() == (False, False)
+    assert anotado() == [("distribucion.para_revisar", False), ("distribucion.para_revisar", True)]
+    _guardar(client, admin, _con("GON-01", d=0.6))  # el fondo no entra en la firma: nada que anotar
+    assert estado() == (False, False) and len(anotado()) == 2
+    _guardar(client, admin, _con("GON-01", entrepanos=5))
+    assert estado() == (True, True) and anotado()[0] == ("distribucion.para_revisar", True)
+    # La cara B cambió igual (es el mismo mueble), pero no tiene distribución: nada que anotar ahí.
+    h = client.get("/api/participaciones/historial", headers=admin, params={"sede": "NAVE", "espacio": "GON-01-B"})
+    assert h.json()["entradas"] == []
+
+
+# ─── 14 · Ciclo de vida: renumerar y borrar la sede ───────────────────────────
+
+@RELOJ
+def test_la_renumeracion_muda_las_participaciones_y_borrar_la_sede_las_cierra(client, admin):
+    from app.models.models import AuditEntry, Space
+    from app.models.participaciones import Participacion
+
+    # GON-01 queda después de GON-02 en el recorrido de la tienda: renumerar los intercambia.
+    _plano(client, admin, [{**GON_01, "cx": 6}, {**GON_02, "cx": 2}, PUN_01])
+    contrato = _alta(client, admin, pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    reserva = _alta(client, admin, tipo="reserva", pb=2000, proveedor="Alpina")["termino"]
+    sup = _cara(client, admin)["superficie"]
+    _distribuir(client, admin, "confirmar", "GON-01", 0, _zonas((contrato["space_id"], _franja(sup, 0, 0.2))))
+
+    r = client.post("/api/layout/renumeracion/aplicar", headers=admin, json={"sedes": ["NAVE"]})
+    assert r.status_code == 200, r.text
+    db = _bd()
+    try:
+        assert db.get(Space, contrato["space_id"]).code == "NAVE-GON-02-PC1"
+        assert db.get(Space, reserva["space_id"]).code == "NAVE-GON-02-PC2"
+        assert db.get(Space, db.get(Participacion, contrato["id"]).cara_space_id).code == "NAVE-GON-02"
+    finally:
+        db.close()
+    # Todo sigue por id: la cara se pide con el código nuevo y trae lo mismo, distribución incluida.
+    b = _cara(client, admin, espacio="GON-02")
+    assert [p["codigo"] for p in b["participaciones"]] == ["NAVE-GON-02-PC1", "NAVE-GON-02-PC2"]
+    assert (b["distribucion"]["estado"], b["distribucion"]["otro_mueble"]) == ("confirmada", False)
+    assert _alta(client, admin, espacio="GON-02", pb=1000)["termino"]["codigo"] == "NAVE-GON-02-PC3"
+    assert _cara(client, admin, espacio="GON-01")["participaciones"] == []  # el nuevo GON-01 no hereda nada
+
+    # Borrar la sede: lo dice antes, cancela las reservas y da de baja los contratos, con quien lo hizo.
+    assert client.get("/api/layout/NAVE/impact", headers=admin).json()["reservas_vivas"] == 1
+    r = client.delete("/api/layout/NAVE", headers=admin)
+    assert r.status_code == 204, r.text
+    db = _bd()
+    try:
+        cancelada = db.get(Participacion, reserva["id"])
+        assert (cancelada.estado, cancelada.baja_por) == ("reserva_cancelada", "admin")
+        assert cancelada.baja_en is not None
+        cerrado = db.get(Participacion, contrato["id"])
+        assert cerrado.baja_en is not None and cerrado.baja_por == "admin"
+        detalle = db.query(AuditEntry).filter_by(accion="sede.baja").one().detalle
+        assert "1 reservas provisionales de participación canceladas" in detalle
+    finally:
+        db.close()
+
+
 # ─── 15 · Cancelación a la noche de Colombia ──────────────────────────────────
 
 @pytest.mark.reloj("2026-10-18T02:00:00+00:00")
@@ -877,6 +1214,60 @@ def test_cancelar_a_las_nueve_de_la_noche_es_del_dia_de_colombia(client, admin):
     assert r.status_code == 204, r.text
     vencido = _participacion(_cara(client, admin), 2)["terminos"][0]
     assert (vencido["estado_visible"], vencido["baja_en"], vencido["baja_fecha"]) == ("vencido", None, None)
+
+
+# ─── 16 · Montaje y consola ───────────────────────────────────────────────────
+
+@RELOJ
+def test_quien_monta_ve_su_participacion_sin_plata_y_la_consola_la_cuenta_aparte(client, admin):
+    import json
+
+    from app.auth import create_mount_token
+    from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
+
+    _plano(client, admin)
+    a = _alta(client, admin, pb=2500, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))["termino"]
+    b = _alta(client, admin, espacio="GON-01-B", pb=1250, proveedor="Alpina")["termino"]
+
+    def mi_espacio(code, contrato):
+        token = create_mount_token(code, days=120, contrato=contrato)
+        r = client.get("/api/montaje/mi-espacio", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    e = mi_espacio("NAVE-GON-01-PC1", a["lease_id"])
+    assert e["parte"] == {"token": "PC", "n": 1, "de": None, "texto": "Participación 1 · 25 % de la cara A"}
+    assert (e["corto"], e["fixture_code"], e["proveedor"]) == ("GON-01-PC1", "GON-01", "Postobón")
+    assert "1200000" not in json.dumps(e), "quien monta no ve plata"
+    assert mi_espacio("NAVE-GON-01-B-PC1", b["lease_id"])["parte"]["texto"] == "Participación 1 · 12,5 % de la cara B"
+    # Un lease de participación sin término (hecho a mano): sin porcentaje que decir.
+    db = _bd()
+    try:
+        pc = Space(code="NAVE-GON-01-PC4", svg_id="NAVE-GON-01-PC4", name="x", zone="gondola", sede="NAVE",
+                   area_m2=0.0, status=SpaceStatus.free)
+        sup = Supplier(name="Huérfano SA")
+        db.add_all([pc, sup])
+        db.flush()
+        huerfano = SpaceLease(space_id=pc.id, supplier_id=sup.id, start_date=date(2026, 12, 1),
+                              end_date=date(2026, 12, 31), monthly_rent=1, is_active=True)
+        db.add(huerfano)
+        db.commit()
+        huerfano_id = huerfano.id
+    finally:
+        db.close()
+    assert mi_espacio("NAVE-GON-01-PC4", huerfano_id)["parte"]["texto"] == "Participación 4 de la cara A"
+
+    # La consola: tipo propio (no «fuera del plano»), y ocupa su cara como una división.
+    import app.plataforma_detalle as pd
+    import app.plataforma_metricas as pm
+
+    mapa = {"NAVE-GON-01": ("NAVE", "gondola"), "NAVE-GON-01-B": ("NAVE", "gondola")}
+    tipos = pd._tipos_de_contrato(mapa, {}, ["NAVE-GON-01-PC1", "NAVE-GON-01-B-PC3", "NAVE-GON-09-PC1", "OTRA-01"])
+    assert tipos["NAVE-GON-01-PC1"] == tipos["NAVE-GON-01-B-PC3"] == ("NAVE", "participacion")
+    assert "NAVE-GON-09-PC1" not in tipos and "OTRA-01" not in tipos  # sin su cara en el plano: fuera del plano
+    assert pm.cara_ocupada("NAVE-GON-01-PC1") == "NAVE-GON-01"
+    assert pm.cara_ocupada("NAVE-GON-01-B-PC3") == "NAVE-GON-01-B"
+    assert pm.cara_ocupada("NAVE-NEV-03-PU2") == "NAVE-NEV-03" and pm.cara_ocupada("NAVE-GON-01") == "NAVE-GON-01"
 
 
 # ─── 17 · Borrar un proveedor ─────────────────────────────────────────────────
