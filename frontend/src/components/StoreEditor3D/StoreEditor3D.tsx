@@ -6637,7 +6637,11 @@ function CommercialPanel({
     return carasInaccesibles(plano).filter((c) => c.fixtureId === fix.id);
   }, [muebles, fix]);
 
-  const sm  = STATUS_META[fix.status];
+  // El cartel de estado: en un mueble por participación, el de la ocupación
+  // (`estadoQueSeVe`), el mismo que su banda y el cartel del mouse.
+  const clienteDelPanel = useAuthStore((s) => s.cliente) ?? "";
+  const ocupacionDelPanel = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteDelPanel, sedeDelPanel)]);
+  const sm  = estadoQueSeVe(STATUS_META[fix.status], ocupacionDelMueble(fix, ocupacionDelPanel, sedeDelPanel));
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
   const modeloDelMueble = modeloPorId(fix.modelo);
   // Infrastructure holds no contract: the commercial half of the panel hides.
@@ -7213,6 +7217,16 @@ const LienzoDeZonas = React.lazy(() => import("../Distribucion/LienzoDeZonas"));
  *  (borrar, girar, ancho por fondo, soltar). En Distribución no le llegan. */
 const TECLAS_DEL_EDITOR = ["Delete", "Backspace", "r", "R", "f", "F", "Escape"] as const;
 
+/** Cuántos editores 3D hay montados (uno o ninguno): la salida forzada al
+ *  desmontar mira esto un momento después, para no cortar la entrada que
+ *  pidió el mismo montaje cuando `StrictMode` (desarrollo) lo desmonta y lo
+ *  vuelve a montar. */
+let editoresMontados = 0;
+/** El último pedido de entrar a Distribución (`enfoque3D.n`) que se atendió.
+ *  Vive afuera del componente: el pedido queda en el store, y cada montaje
+ *  nuevo del editor lo volvería a atender. */
+let ultimaDistribucionPedida = -1;
+
 /**
  * ¿Se ve el modo Distribución? UNA condición (§10.9 del diseño de
  * participaciones), calculada acá y en ningún otro lado: con ella se montan el
@@ -7365,6 +7379,22 @@ function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut 
     else if (caras.some((c) => c.dispo !== "libre")) fuera.set(f.id, STATUS_COLORS.reserved);
   }
   return fuera;
+}
+
+/** El cartel de estado que se ve de un mueble (§10.8): el de su `status`,
+ *  salvo en uno que se vende por participación, donde lo dice la ocupación
+ *  anónima del día —el `status` sigue «libre» en la base (D6), y un robatope
+ *  con sus cuatro participaciones del 25 % decía «Disponible» en verde junto
+ *  a su banda roja—. Todo tomado → «Ocupado»; algo comprometido → «Parcial»,
+ *  en el ámbar de la banda; nada → el de siempre. */
+function estadoQueSeVe(
+  sm: { bg: string; text: string; label: string },
+  caras: readonly { dispo: "tomado" | "parcial" | "libre" }[] | null,
+): { bg: string; text: string; label: string } {
+  if (!caras || caras.length === 0) return sm;
+  if (caras.every((c) => c.dispo === "tomado")) return STATUS_META.occupied;
+  if (caras.some((c) => c.dispo !== "libre")) return { ...STATUS_META.reserved, label: "Parcial" };
+  return sm;
 }
 
 /** «Por participación · queda 25 %» (por cara en una doble), para el cartel
@@ -7701,9 +7731,20 @@ export default function StoreEditor3D() {
   useEffect(() => {
     if (distribucionActiva && !distribucionVisible) void useDistribucionStore.getState().salir({ forzado: true });
   }, [distribucionActiva, distribucionVisible]);
-  // Cambiar de pestaña desmonta el editor: la misma salida forzada.
-  useEffect(() => () => {
-    if (useDistribucionStore.getState().activa) void useDistribucionStore.getState().salir({ forzado: true });
+  // Cambiar de pestaña desmonta el editor: la misma salida forzada. Se mira
+  // un momento después (una microtarea) y sólo si no quedó ningún editor
+  // montado: en desarrollo `StrictMode` desmonta y vuelve a montar cada
+  // efecto una vez, y la salida inmediata cortaba la entrada que el mismo
+  // montaje acababa de pedir (Supervisar → «Abrir en Distribución» no abría
+  // nada). Un desmontaje de verdad deja el contador en cero y sale igual.
+  useEffect(() => {
+    editoresMontados += 1;
+    return () => {
+      editoresMontados -= 1;
+      queueMicrotask(() => {
+        if (editoresMontados === 0 && useDistribucionStore.getState().activa) void useDistribucionStore.getState().salir({ forzado: true });
+      });
+    };
   }, []);
   // Sin cartel del mouse mientras dura el modo (cada movimiento re-dibujaba
   // el editor entero).
@@ -7717,20 +7758,27 @@ export default function StoreEditor3D() {
   // oyente, en CAPTURA de `window`, le corta SÓLO esas teclas
   // (`stopPropagation`: el oyente global, en burbuja, no las ve). Los de
   // Distribución que también escuchan en captura de `window` las siguen
-  // recibiendo. Esc nunca saca del modo (se sale con «Salir»); con un
-  // diálogo abierto o escribiendo en un campo no se corta nada; las demás
-  // teclas —letras, Tab, Enter, flechas, los `onKeyDown` de React— pasan, y
-  // WASD de la primera persona (bloqueada en el modo) ni se mira.
+  // recibiendo. Esc nunca saca del modo (se sale con «Salir»); escribiendo en
+  // un campo no se corta nada; las demás teclas —letras, Tab, Enter, flechas,
+  // los `onKeyDown` de React— pasan, y WASD de la primera persona (bloqueada
+  // en el modo) ni se mira. Con un diálogo abierto, Esc es del diálogo (los
+  // que cierran con Esc desde `window` lo tienen que recibir), pero Supr,
+  // Retroceso, R, F y Ctrl+Z se cortan igual: el atajo global no mira
+  // diálogos, y con el foco en un botón del diálogo («Cancelar contrato»,
+  // «cambios sin guardar») Supr borraba del plano el mueble que se
+  // distribuye, debajo del diálogo.
   useEffect(() => {
     if (!distribucionVisible) return;
     const delEditor = new Set<string>(TECLAS_DEL_EDITOR);
     function enCaptura(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
-      if (t?.closest?.('[role="dialog"]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       const tag = t?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || t?.isContentEditable) return;
       const deshacer = (e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y");
-      if (deshacer || delEditor.has(e.key)) e.stopPropagation();
+      if (!deshacer && !delEditor.has(e.key)) return;
+      const conDialogo = t?.closest?.('[role="dialog"]') || document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (conDialogo && e.key === "Escape") return;
+      e.stopPropagation();
     }
     window.addEventListener("keydown", enCaptura, { capture: true });
     return () => window.removeEventListener("keydown", enCaptura, { capture: true });
@@ -7749,13 +7797,15 @@ export default function StoreEditor3D() {
   // Entrar desde otra pantalla (Supervisar, «Renovar» de una participación):
   // `pedirEnfoque3D(…, { distribucion })`. Una vez por pedido; si la sede
   // todavía no cargó, se reintenta al llegar. Con un proveedor mirando no se
-  // entra (y se dice por qué).
-  const distribucionPedidaAtendida = useRef<number>(-1);
+  // entra (y se dice por qué). Lo atendido se anota afuera del componente
+  // (`ultimaDistribucionPedida`): el pedido queda en el store, y con una ref
+  // —que nace de nuevo con cada montaje— salir del modo, ir al plano y volver
+  // al 3D entraba otra vez (y con «Renovar», reabría el formulario).
   useEffect(() => {
-    if (!enfoquePedido?.distribucion || distribucionPedidaAtendida.current === enfoquePedido.n) return;
+    if (!enfoquePedido?.distribucion || ultimaDistribucionPedida === enfoquePedido.n) return;
     const fix = placedFixtures.find((f) => f.id === enfoquePedido.fixtureId);
     if (!fix) return;
-    distribucionPedidaAtendida.current = enfoquePedido.n;
+    ultimaDistribucionPedida = enfoquePedido.n;
     if (enReunion || presentationMode) { setWarning("Terminá la reunión (o Presentar) para distribuir."); return; }
     setPlacingDef(null);
     const { cara } = enfoquePedido;
@@ -8758,8 +8808,8 @@ export default function StoreEditor3D() {
         {hoveredFixtureId && !presentationMode && (() => {
           const fix = placedFixtures.find(f => f.id === hoveredFixtureId);
           if (!fix || fix.id === selectedId) return null;
-          const sm = STATUS_META[fix.status];
           const ocupacionHover = ocupacionDelMueble(fix, ocupacionDeLaSede, sede);
+          const sm = estadoQueSeVe(STATUS_META[fix.status], ocupacionHover);
           // La misma cuenta que el panel (`hayReunion`): con la reunión fijada y
           // la prueba recién quitada, el cartel volvía a decir quién paga qué.
           const discreto = enReunion;

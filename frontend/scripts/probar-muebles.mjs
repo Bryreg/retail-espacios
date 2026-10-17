@@ -6377,8 +6377,29 @@ prueba("una sola condición para el modo, corrida con cada modo que lo excluye",
   assert.match(editorCodigo, /const LienzoDeZonas = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/LienzoDeZonas"\)\);/, "el lienzo no es perezoso");
   // Si deja de cumplirse con una cara activa, el store sale forzado; también al desmontar.
   assert.match(enEditor, /if \(distribucionActiva && !distribucionVisible\) void useDistribucionStore\.getState\(\)\.salir\(\{ forzado: true \}\);/);
-  assert.match(enEditor, /useEffect\(\(\) => \(\) => \{\s*if \(useDistribucionStore\.getState\(\)\.activa\) void useDistribucionStore\.getState\(\)\.salir\(\{ forzado: true \}\);\s*\}, \[\]\);/,
-    "cambiar de pestaña deja la distribución activa (y dibujada) sin autoguardar");
+  // Al desmontar (cambiar de pestaña) sale forzado; con `StrictMode` (que
+  // desmonta y vuelve a montar al nacer) no corta la entrada que el mismo
+  // montaje pidió. Ejecutado: el efecto de verdad, con un store y una cola de
+  // microtareas de mentira.
+  const iDesm = editor.indexOf("useEffect(() => {\n    editoresMontados += 1;");
+  const jDesm = editor.indexOf("}, []);", iDesm);
+  assert.ok(iDesm > 0 && jDesm > iDesm, "cambiar de pestaña deja la distribución activa (y dibujada) sin autoguardar");
+  assert.match(editorCodigo, /^let editoresMontados = 0;$/m, "el contador de editores montados no vive afuera del componente");
+  const efectoDesm = new Function("useDistribucionStore", "queueMicrotask",
+    `let editoresMontados = 0;\n${esbuildTransform(`const efecto = ${editor.slice(iDesm + "useEffect(".length, jDesm + 1)};`)}\nreturn efecto;`);
+  let activaDesm = null, salidas = 0;
+  const storeDesm = { getState: () => ({ activa: activaDesm, salir: async (o) => { assert.deepEqual(o, { forzado: true }); salidas++; activaDesm = null; } }) };
+  const cola = [];
+  const efecto = efectoDesm(storeDesm, (f) => cola.push(f));
+  const limpiar1 = efecto();
+  activaDesm = { fixtureId: "g1" };                    // el montaje pidió entrar (Supervisar → «Abrir en Distribución»)
+  limpiar1(); const limpiar2 = efecto();               // StrictMode: desmonta y vuelve a montar
+  cola.splice(0).forEach((f) => f());
+  assert.equal(salidas, 0, "con StrictMode, la salida al desmontar corta la entrada que pidió el mismo montaje");
+  limpiar2();                                          // ahora sí, cambio de pestaña
+  cola.splice(0).forEach((f) => f());
+  assert.equal(salidas, 1, "cambiar de pestaña deja la distribución activa (y dibujada) sin autoguardar");
+  assert.equal(activaDesm, null);
   // Con el modo abierto: ni Presentar, ni la lámina, ni la caminata, ni la paleta.
   assert.match(enEditor, /onClick=\{\(\) => setFirstPerson\(p => !p\)\} disabled=\{distribucionVisible\}/);
   assert.match(enEditor, /onClick=\{exportarPropuesta\} disabled=\{exportando \|\| distribucionVisible\}/);
@@ -6440,10 +6461,120 @@ prueba("el teclado en Distribución: el atajo global no borra ni gira el mueble,
   assert.ok(!correr({ key: "Escape" }, { dialogo: true }), "con un diálogo abierto, Esc no le llega al diálogo");
   const enDialogo = { tagName: "BUTTON", closest: (s) => (s.includes("dialog") ? {} : null), isContentEditable: false };
   assert.ok(!correr({ key: "Escape", target: enDialogo }));
+  // Con un diálogo abierto, Esc es suyo, pero lo demás se corta igual: el
+  // atajo global no mira diálogos, y Supr con el foco en un botón del diálogo
+  // borraba del plano el mueble que se distribuye (visto en el navegador).
+  for (const key of ["Delete", "Backspace", "r", "F"]) {
+    assert.ok(correr({ key }, { dialogo: true }), `con un diálogo abierto, «${key}» le llega al atajo global: toca el mueble debajo del diálogo`);
+    assert.ok(correr({ key, target: enDialogo }), `con el foco en un diálogo, «${key}» le llega al atajo global`);
+  }
+  assert.ok(correr({ key: "z", ctrlKey: true }, { dialogo: true }), "con un diálogo abierto, Ctrl+Z deshace el PLANO");
+  assert.ok(!correr({ key: "w" }, { dialogo: true }), "con un diálogo abierto se cortan teclas que no son del editor");
   // El efecto: en captura, sólo con el modo a la vista; el atajo global, intacto.
   assert.match(editorCodigo, /const TECLAS_DEL_EDITOR = \["Delete", "Backspace", "r", "R", "f", "F", "Escape"\] as const;/);
   assert.match(editorCodigo, /window\.removeEventListener\("keydown", enCaptura, \{ capture: true \}\);\s*\}, \[distribucionVisible\]\);/);
   assert.match(editorCodigo, /\},\[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson,soltarPruebasDe\]\);/, "se tocó el atajo global");
+});
+
+const compiladoDibujo = await build({
+  stdin: {
+    contents: [
+      'export { estampasDeLaCara } from "./src/utils/coloresDeMarca.ts";',
+      'export { cuentaElDia, cuentaEseDia, pct, vivo } from "./src/utils/participaciones.ts";',
+    ].join("\n"),
+    resolveDir: raiz, loader: "ts",
+  },
+  bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+});
+const DB = await import("data:text/javascript;base64," + Buffer.from(compiladoDibujo.outputFiles[0].text).toString("base64"));
+
+prueba("lo que se dibuja en el 3D sale de la cara leída: la reserva discontinua, lo que no rige sin relleno, la historia en gris y la otra cara a la mitad (ejecutado)", () => {
+  // Las funciones de verdad del editor, del store (`capaQueSeMuestra`,
+  // `zonasEditables`) y del cliente (`terminoDeOut`, `superficieDeOut`),
+  // sacadas de su fuente: sin React ni red.
+  const tramo = (txt, desde, hasta) => {
+    const i = txt.indexOf(desde), j = txt.indexOf(hasta, i);
+    assert.ok(i >= 0 && j > i, `no se encontró ${desde}`);
+    return txt.slice(i, j).replace(/^export /gm, "");
+  };
+  const store = sinComentarios(leer(join("src", "store", "distribucionStore.ts")));
+  const api = sinComentarios(leer(join("src", "api", "participaciones.ts")));
+  const fuente = [
+    tramo(store, "export function capaQueSeMuestra(", "export function planoAlDia("),
+    tramo(api, "export function terminoDeOut(", "export function terminosPorParticipacion("),
+    tramo(api, "export function superficieDeOut(", "export function espacioDeLaCara("),
+    tramo(editorCodigo, "function comoSeVenLasParticipaciones(", "function ZonasDeLaDistribucion("),
+  ].map(esbuildTransform).join("\n");
+  const { comoSeVenLasParticipaciones, carasParaDibujar } = new Function(
+    "estampasDeLaCara", "cuentaElDia", "cuentaEseDia", "pct", "vivo",
+    `${fuente}\nreturn { comoSeVenLasParticipaciones, carasParaDibujar };`,
+  )(DB.estampasDeLaCara, DB.cuentaElDia, DB.cuentaEseDia, DB.pct, DB.vivo);
+  const hoy = "2026-10-17";
+  const sup = { orientacion: "frente", ancho: 2.5, alto: 1.5, plano: 0.46, giro_x: 0, exclusiones: [], area_util_m2: 3.75 };
+  const termino = (id, sid, estado, prov, pb, desde, hasta, extra = {}) => ({
+    id, space_id: sid, numero: sid, estado, puntos_basicos: pb, proveedor: { id: prov, nombre: `P${prov}` }, marca: null,
+    desde, hasta, caduca: estado === "reserva" ? "2026-10-30" : null, baja_fecha: null,
+    estado_visible: estado === "reserva" ? "reserva" : "vigente", lease_id: estado === "contrato" ? id : null, ...extra,
+  });
+  const part = (sid, numero, viva, pb, terminos) => ({ space_id: sid, numero, viva, contratado_pb: pb, terminos });
+  const zona = (id, sid, v) => ({ id, participacion_space_id: sid, vertices: v });
+  const caja = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+  const A = {
+    hoy, cara: "A", fixture: { id: "g1", code: "GON-01", label: "GON-01", type: "gondola", caras: 2 }, superficie: sup,
+    participaciones: [
+      part(11, 1, true, 3000, [termino(1, 11, "contrato", 7, 3000, "2026-10-01", "2026-12-31")]),
+      part(12, 2, true, 2500, [termino(2, 12, "reserva", 8, 2500, "2026-10-01", "2026-11-30")]),
+      part(13, 3, true, 2000, [termino(3, 13, "contrato", 9, 2000, "2026-12-01", "2027-01-31")]),
+      part(14, 4, false, 1000, [termino(4, 14, "contrato", 5, 1000, "2026-01-01", "2026-06-30", { estado_visible: "vencido" })]),
+    ],
+    distribucion: { version: 3, borrador: null, confirmada: [zona(1, 11, caja(0, 0, 0.3, 1)), zona(2, 14, caja(0.8, 0, 1, 0.5))] },
+  };
+  const B = { ...A, cara: "B",
+    participaciones: [part(21, 1, true, 5000, [termino(5, 21, "contrato", 7, 5000, "2026-10-01", "2026-12-31")])],
+    distribucion: { version: 1, borrador: null, confirmada: [zona(9, 21, caja(0.5, 0, 1, 1))] } };
+  const vistos = comoSeVenLasParticipaciones(A, hoy);
+  assert.deepEqual([...vistos.keys()].sort(), [11, 12, 13], "la historia (o una viva) entra mal en lo que se dibuja");
+  assert.equal(vistos.get(11).reserva, false);
+  assert.equal(vistos.get(12).reserva, true, "una reserva provisional no sale con la cinta discontinua");
+  assert.equal(vistos.get(11).cuenta, true);
+  assert.equal(vistos.get(13).cuenta, false, "una participación que empieza en diciembre se pinta llena hoy");
+  assert.equal(comoSeVenLasParticipaciones(A, "2026-12-15").get(13).cuenta, true, "«Ver al día» no mueve lo que cuenta");
+  assert.equal(vistos.get(11).rotulo, `1 · ${DB.pct(3000)}`);
+  assert.ok(!/P7|\$/.test([...vistos.values()].map((v) => v.rotulo).join(" ")), "el rótulo del 3D nombra al proveedor o un monto");
+  assert.deepEqual(comoSeVenLasParticipaciones(B, hoy).get(21).estampa, vistos.get(11).estampa,
+    "el mismo proveedor sale con otra estampa en la otra cara (y en la leyenda)");
+  // Las caras: la que se edita, con lo de la edición y la historia en gris; la otra, sólo lectura.
+  const enEdicion = [{ clave: "n1", participacionSpaceId: 11, vertices: caja(0, 0, 0.4, 1) }];
+  const caras = carasParaDibujar(A, enEdicion, B);
+  assert.equal(caras.length, 2);
+  assert.deepEqual(caras.map((c) => [c.cara, c.editada]), [["A", true], ["B", false]]);
+  assert.deepEqual(caras[0].zonas, [{ clave: "n1", spaceId: 11, vertices: caja(0, 0, 0.4, 1) }], "el 3D no dibuja lo que se está editando");
+  assert.deepEqual(caras[0].historia, [caja(0.8, 0, 1, 0.5)], "la zona de una participación terminada no sale en gris");
+  assert.deepEqual(caras[1].zonas.map((z) => z.spaceId), [21]);
+  assert.equal(caras[1].superficie.giroX, 0);
+  assert.equal(carasParaDibujar(A, enEdicion, { ...B, fixture: { ...B.fixture, id: "otro" } }).length, 1, "se dibuja la cara de OTRO mueble");
+  assert.equal(carasParaDibujar(A, enEdicion, A).length, 1, "la cara que se edita se dibuja dos veces");
+  assert.deepEqual(carasParaDibujar({ ...A, superficie: null }, enEdicion, B), [], "sin superficie se dibuja igual");
+  // En la escena: la otra cara a la mitad, y lo que no cuenta ese día sin relleno y punteado.
+  const supA = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "A");
+  const supB = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "B");
+  const z1 = { clave: "z1", spaceId: 7, vertices: caja(0.1, 0.1, 0.4, 0.4) };
+  const z2 = { clave: "z2", spaceId: 8, vertices: caja(0.5, 0.1, 0.9, 0.4) };
+  const mallas = mallasConProps(ZD.ZonasDelMueble({
+    caras: [caraDe(supA, "A", [z1, z2]), caraDe(supB, "B", [{ ...z1, clave: "o1", spaceId: 9 }], false)],
+    participaciones: new Map([[7, comoSeVe()], [8, comoSeVe({ cuenta: false })], [9, comoSeVe()]]),
+    resaltada: null, seleccionada: null,
+  })).filter((x) => !x.grupo);
+  const rellenos = mallas.filter((m) => m.props.material.depthWrite === false);
+  const ladoB = (m) => new THREE_.Vector3(m.props.geometry.getAttribute("position").getX(0), m.props.geometry.getAttribute("position").getY(0), 0)
+    .applyMatrix4(m.matriz).z > 0;
+  assert.equal(rellenos.length, 2, "una participación que no cuenta ese día se pinta con relleno");
+  const [rA, rB] = [rellenos.find((m) => !ladoB(m)), rellenos.find(ladoB)];
+  assert.ok(rA && rB);
+  assert.ok(Math.abs(rB.props.material.opacity - rA.props.material.opacity / 2) < 1e-9, "la cara que no se edita no va a la mitad");
+  const cintaNoCuenta = mallas.find((m) => m.props.material.depthWrite !== false && !ladoB(m)
+    && m.props.geometry.index.count / 6 > 4);
+  assert.ok(cintaNoCuenta, "lo que no cuenta ese día no sale con la cinta punteada");
 });
 
 const { OrbitControls: OrbitaDeThree } = await import("three/examples/jsm/controls/OrbitControls.js");
@@ -6509,10 +6640,12 @@ prueba("el color de estado de una cara por participación sale de la ocupación:
   const j = editorCodigo.indexOf("function textoDeOcupacion(", i);
   assert.ok(i > 0 && j > i, "no se encontró la cuenta del color por ocupación");
   const STATUS_COLORS = { free: "verde", occupied: "rojo", reserved: "ambar" };
-  const { ocupacionDelMueble, coloresPorOcupacion } = new Function(
-    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS",
-    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { ocupacionDelMueble, coloresPorOcupacion };`,
-  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, STATUS_COLORS);
+  const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
+    reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
+  const { ocupacionDelMueble, coloresPorOcupacion, estadoQueSeVe } = new Function(
+    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META",
+    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { ocupacionDelMueble, coloresPorOcupacion, estadoQueSeVe };`,
+  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, STATUS_COLORS, STATUS_META);
   const hoy = "2026-10-17";
   const rob = (id, code) => ({ id, code, type: "robatope", w: 0.3, d: 0.4, h: 1.6, partes: { division: "participacion" } });
   const muebles = [rob("r1", "ROB-01"), rob("r2", "ROB-02"), rob("r3", "ROB-03"),
@@ -6535,6 +6668,21 @@ prueba("el color de estado de una cara por participación sale de la ocupación:
   assert.equal(c.has("x"), false, "un mueble que no se vende por participación se pinta por la ocupación");
   assert.equal(coloresPorOcupacion(muebles, undefined, "NAVE").size, 0);
   assert.deepEqual(ocupacionDelMueble(muebles[1], o, "NAVE"), [{ cara: "A", dispo: "parcial", quedaPb: 7500 }]);
+  // El cartel de estado (el del mouse y el del panel) dice lo mismo que la
+  // banda: lo contratado no dice «Disponible» (pedido §6).
+  const visto = (m) => estadoQueSeVe(STATUS_META.free, ocupacionDelMueble(m, o, "NAVE"));
+  assert.equal(visto(muebles[0]).label, "Ocupado", "un robatope con su cara repartida al 100 % dice «Disponible»");
+  assert.equal(visto(muebles[0]).bg, STATUS_META.occupied.bg);
+  assert.equal(visto(muebles[1]).label, "Parcial", "una cara con 25 % comprometido dice «Disponible»");
+  assert.equal(visto(muebles[1]).bg, STATUS_META.reserved.bg);
+  assert.equal(visto(muebles[3]).label, "Parcial", "una doble con una cara tomada y la otra libre dice «Disponible»");
+  assert.equal(visto(muebles[2]), STATUS_META.free, "una cara sin nada comprometido cambia de cartel");
+  assert.equal(visto(muebles[4]), STATUS_META.free, "un mueble que no se vende por participación cambia de cartel");
+  assert.match(editorCodigo, /const ocupacionHover = ocupacionDelMueble\(fix, ocupacionDeLaSede, sede\);\s*const sm = estadoQueSeVe\(STATUS_META\[fix\.status\], ocupacionHover\);/,
+    "el cartel del mouse dice «Disponible» sobre lo contratado");
+  const panelCartel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+  assert.match(panelCartel, /const sm {2}= estadoQueSeVe\(STATUS_META\[fix\.status\], ocupacionDelMueble\(fix, ocupacionDelPanel, sedeDelPanel\)\);/,
+    "el cartel del panel dice «Disponible» sobre lo contratado");
   // El cartel del mouse: anónimo.
   assert.match(editorCodigo, /\{ocupacionHover && <p className="mt-0\.5 text-\[10px\] text-dark-ink-2" data-ocupacion-participacion>\{textoDeOcupacion\(ocupacionHover\)\}<\/p>\}/);
   assert.match(editorCodigo, /return `Por participación · queda \$\{/);
@@ -6625,7 +6773,18 @@ prueba("los rechazos del guardado de las participaciones y la entrada a Distribu
   assert.match(st, /enfoque3D: \{ fixtureId: string; cara: "A" \| "B"; n: number; distribucion\?: PedidoDeDistribucion \} \| null;/);
   assert.match(st, /\.\.\.\(opciones\?\.distribucion \? \{ distribucion: \{ \.\.\.opciones\.distribucion \} \} : \{\}\)/);
   const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
-  assert.match(enEditor, /if \(!enfoquePedido\?\.distribucion \|\| distribucionPedidaAtendida\.current === enfoquePedido\.n\) return;/);
+  // Una vez por pedido, también entre montajes: lo atendido vive afuera del
+  // componente (con una ref, volver a la pestaña del 3D entraba otra vez).
+  assert.match(enEditor, /if \(!enfoquePedido\?\.distribucion \|\| ultimaDistribucionPedida === enfoquePedido\.n\) return;/);
+  assert.match(enEditor, /ultimaDistribucionPedida = enfoquePedido\.n;/);
+  const iLet = editorCodigo.search(/^let ultimaDistribucionPedida = -1;$/m);
+  assert.ok(iLet > 0 && iLet < editorCodigo.indexOf("export default function StoreEditor3D("),
+    "lo atendido vive en el componente: cada montaje vuelve a entrar a Distribución");
+  assert.ok(!/distribucionPedidaAtendida/.test(editorCodigo));
+  // «Distribuir esta cara» entra en la cara que se mira en el panel.
+  assert.match(enEditor, /const mirada = caraDelPanel\.current\?\.fixtureId === fixtureId \? caraDelPanel\.current\.cara : "A";/);
+  assert.match(enEditor, /entrar\(\{ sede, fixtureId, codigo: fix\.code, cara: carasDe\(fix\) === 2 \? mirada : "A" \}\)/,
+    "«Distribuir esta cara» entra siempre en la A aunque se esté mirando la B");
   assert.match(enEditor, /if \(enReunion \|\| presentationMode\) \{ setWarning\("Terminá la reunión \(o Presentar\) para distribuir\."\); return; \}/);
   assert.match(enEditor, /st\.abrirFormulario\(\{ modo: "renovar", terminoId: renovar \}\)/);
   // El botón del panel, con el mismo bloqueo.
