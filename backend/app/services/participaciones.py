@@ -221,7 +221,10 @@ def resolver_cara(db: Session, sede: str, espacio: str, plano: Optional[PlanoInd
                      f"No hay ningún mueble con el código «{sin_prefijo_de_sede(texto, s)}» en el plano de {s}.")
     if r.parte is not None:
         corto = sin_prefijo_de_sede(normalizar(r.fixture.get("code")), s)
-        raise _error(422, "pide_una_parte", f"Pedí la cara ({corto} o {corto}-B), no una parte.")
+        # La B se nombra sólo si existe (``caras_de``: la única respuesta a
+        # «¿tiene cara B?»); a una nevera de una cara no se le ofrece «NEV-03-B».
+        caras = f"{corto} o {corto}-B" if caras_de(r.fixture) == 2 else corto
+        raise _error(422, "pide_una_parte", f"Pedí la cara ({caras}), no una parte.")
     return _armar_cara(s, r.fixture, r.partido.cara)
 
 
@@ -1313,7 +1316,13 @@ def _intervalos_out(datos: Datos, dia: date) -> list[dict]:
 
 
 def capacidad(db: Session, cara: Cara, datos: Datos, desde: date, hasta: date, dia: date) -> dict:
-    fis = fisicos_de(db, cara, min(desde, dia), max(hasta, dia))
+    # Lo físico va hasta el final, como ``intervalos`` (que trae todo lo vivo):
+    # el formulario de Distribución hace su vista previa de la capacidad con
+    # este bloque (§9.3), y un término que pasa del período mostrado no puede
+    # «entrar» en la pantalla y chocar acá con una venta entera que empieza
+    # después. El pico y lo disponible siguen siendo los del período (``pico``
+    # recorta a [desde, hasta]).
+    fis = fisicos_de(db, cara, min(desde, dia), _SIN_FIN)
     I = reglas.intervalos_que_cuentan(datos.todos, fis, dia)
     a = max(desde, dia)
     if a <= hasta:

@@ -155,6 +155,120 @@ def test_cada_camino_toma_el_candado_de_la_cara_y_relee_antes_de_la_revision_que
     assert r.status_code == 409 and "escribir" not in traza, traza
 
 
+@RELOJ
+def test_si_el_mueble_cambia_mientras_se_espera_el_candado_no_se_escribe_nada(client, admin, monkeypatch):
+    """Adentro del candado la cara se resuelve otra vez contra el plano: si es
+    otra (el plano cambió en el medio) el alta no escribe con el candado de
+    afuera; si cambió la firma del mueble, la confirmación de la distribución
+    no guarda zonas medidas sobre la superficie vieja. Los dos dan 409
+    ``plano_cambio`` y la base queda como estaba."""
+    import dataclasses
+
+    import app.services.participaciones as P
+    from app.database import SessionLocal
+    from app.models.participaciones import Distribucion, HistorialParticipacion, Participacion
+
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [GON_01, MET_01], "base_updated_at": None})
+    assert r.status_code == 200, r.text
+    alta = {"sede": "NAVE", "espacio": "MET-01", "proveedor": "Postobón", "puntos_basicos": 2000, "tipo": "contrato",
+            "desde": D(2026, 10, 1), "hasta": D(2026, 12, 31), "valor_mensual": 1}
+    termino = client.post("/api/participaciones/", headers=admin, json=alta).json()["termino"]
+
+    def contar():
+        db = SessionLocal()
+        try:
+            return (db.query(Participacion).count(), db.query(Distribucion).count(),
+                    db.query(HistorialParticipacion).count())
+        finally:
+            db.close()
+
+    original = P.resolver_cara
+    llamadas = []
+
+    def otra_la_segunda(cambio):
+        def resolver(*a, **kw):
+            cara = original(*a, **kw)
+            llamadas.append(cara.codigo)
+            return dataclasses.replace(cara, **cambio) if len(llamadas) == 2 else cara
+        return resolver
+
+    antes = contar()
+    monkeypatch.setattr(P, "resolver_cara", otra_la_segunda({"codigo": "NAVE-MET-09"}))
+    r = client.post("/api/participaciones/", headers=admin, json={**alta, "proveedor": "Alpina"})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "plano_cambio", r.text
+    assert contar() == antes
+
+    llamadas.clear()
+    monkeypatch.setattr(P, "resolver_cara", otra_la_segunda({"firma": "v1|metro||otra"}))
+    zonas = [{"participacion_space_id": termino["space_id"], "vertices": [[0, 0], [0.2, 0], [0.2, 1], [0, 1]]}]
+    r = client.post("/api/participaciones/distribucion/confirmar", headers=admin,
+                    json={"sede": "NAVE", "espacio": "MET-01", "version": 0, "zonas": zonas})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "plano_cambio", r.text
+    assert len(llamadas) == 2 and contar() == antes
+
+
+@RELOJ
+def test_un_cambio_de_termino_juzga_la_distribucion_que_encuentra_despues_del_candado(client, admin, monkeypatch):
+    """La capa confirmada se mide ANTES del candado (§5.4); si mientras se
+    esperaba otra sesión confirmó otra distribución, adentro se vuelve a medir.
+    Acá la otra sesión pone las dos participaciones en la misma mitad (vale:
+    noviembre y diciembre no se cruzan) justo antes de que el cambio tome el
+    candado. El cambio adelanta la reserva de diciembre al 20 de noviembre:
+    tiene que chocar con ESA distribución y no con la de antes, donde estaban
+    separadas (con las medidas viejas pasaba y dejaba dos marcas en la misma
+    región)."""
+    import app.services.participaciones as P
+    from app.database import SessionLocal
+    from app.models.participaciones import Participacion
+
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [GON_01, MET_01], "base_updated_at": None})
+    assert r.status_code == 200, r.text
+    base = {"sede": "NAVE", "espacio": "MET-01", "puntos_basicos": 5000}
+    m1 = client.post("/api/participaciones/", headers=admin, json={
+        **base, "proveedor": "Postobón", "tipo": "contrato", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30),
+        "valor_mensual": 1}).json()["termino"]
+    m2 = client.post("/api/participaciones/", headers=admin, json={
+        **base, "proveedor": "Alpina", "tipo": "reserva", "desde": D(2026, 12, 1), "hasta": D(2026, 12, 31),
+        "caduca": D(2026, 11, 15)}).json()["termino"]
+    izq, der = [[0, 0], [0.5, 0], [0.5, 1], [0, 1]], [[0.5, 0], [1, 0], [1, 1], [0.5, 1]]
+
+    def zonas(a, b):
+        return [{"participacion_space_id": m1["space_id"], "vertices": a},
+                {"participacion_space_id": m2["space_id"], "vertices": b}]
+
+    r = client.post("/api/participaciones/distribucion/confirmar", headers=admin,
+                    json={"sede": "NAVE", "espacio": "MET-01", "version": 0, "zonas": zonas(izq, der)})
+    assert r.status_code == 200, r.text
+
+    tomar = P.tomar_candados
+    otra = []
+
+    def la_otra_sesion_confirma_antes(db, codigos):
+        if not otra:
+            otra.append(True)
+            s = SessionLocal()
+            try:
+                P.confirmar_distribucion(s, {"sede": "NAVE", "espacio": "MET-01", "version": 1,
+                                             "zonas": zonas(izq, izq)}, "otra@x.co")
+                s.commit()
+            finally:
+                s.close()
+        return tomar(db, codigos)
+
+    monkeypatch.setattr(P, "tomar_candados", la_otra_sesion_confirma_antes)
+    r = client.patch(f"/api/participaciones/{m2['id']}", headers=admin, json={"version": 1, "desde": D(2026, 11, 20)})
+    assert otra == [True]
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "rompe_distribucion", r.text
+    db = SessionLocal()
+    try:
+        assert db.get(Participacion, m2["id"]).desde == date(2026, 12, 1), "el cambio no se escribió"
+    finally:
+        db.close()
+    confirmada = client.get("/api/participaciones/cara", headers=admin,
+                            params={"sede": "NAVE", "espacio": "MET-01"}).json()["distribucion"]["confirmada"]
+    assert [z["vertices"] for z in confirmada] == [izq, izq]
+
+
 # ─── Las carreras, contra Postgres ────────────────────────────────────────────
 
 PG = os.environ.get("DATABASE_URL_PG_PRUEBA", "")
