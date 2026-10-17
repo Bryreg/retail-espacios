@@ -53,16 +53,26 @@ export const claveDeResumen = (cliente: string, p: ParametrosDeResumen) =>
 
 /** Los pedidos en vuelo, por clave (y de qué sesión son). */
 const enVuelo = new Map<string, { token: string | null; pedido: Promise<OcupacionOut | null> }>();
+/** Cada pedido lleva un número que sólo crece; por clave, el del último que
+ *  se escribió. Una lectura VIEJA que tarda y llega después de la que trajo
+ *  una escritura de recién (`recargarOcupacion`) no la pisa: si la pisara,
+ *  Vender mostraría libre una cara que ya se vendió hasta recargar la página. */
+let numeroDePedido = 0;
+const escrito = new Map<string, number>();
+const esViejo = (clave: string, n: number) => n < (escrito.get(clave) ?? 0);
 
 export const useOcupacionStore = create<OcupacionStore>()((set, get) => {
   const leer = (sede: string): Promise<OcupacionOut | null> => {
     const { token, cliente } = sesion();
     if (!token) return Promise.resolve(null);
     const clave = claveDeSede(cliente, sede);
+    const n = ++numeroDePedido;
     const pedido = leerOcupacion(sede)
       .then((o) => {
         const ahora = sesion();
         if (ahora.token !== token || ahora.cliente !== cliente) return null;   // es de otra sesión
+        if (esViejo(clave, n)) return get().ocupacion[clave] ?? null;          // ya llegó una más nueva
+        escrito.set(clave, n);
         set((s) => {
           const error = { ...s.error };
           delete error[clave];
@@ -72,7 +82,7 @@ export const useOcupacionStore = create<OcupacionStore>()((set, get) => {
       })
       .catch((e) => {
         const ahora = sesion();
-        if (ahora.token === token && ahora.cliente === cliente) {
+        if (ahora.token === token && ahora.cliente === cliente && !esViejo(clave, n)) {
           set((s) => ({ error: { ...s.error, [clave]: describeError(e, "No se pudo leer la ocupación de las participaciones.") } }));
         }
         return null;
@@ -102,9 +112,13 @@ export const useOcupacionStore = create<OcupacionStore>()((set, get) => {
       const clave = claveDeResumen(cliente, params);
       const ya = get().resumen[clave];
       if (ya && !opciones?.forzar) return ya;
+      const n = ++numeroDePedido;
       const r = await leerResumen(params);
       const ahora = sesion();
       if (ahora.token !== token || ahora.cliente !== cliente) return null;
+      const k = `resumen|${clave}`;
+      if (esViejo(k, n)) return get().resumen[clave] ?? r;   // ya llegó uno más nuevo con los mismos parámetros
+      escrito.set(k, n);
       set((s) => ({ resumen: { ...s.resumen, [clave]: r } }));
       return r;
     },
@@ -116,6 +130,7 @@ export const useOcupacionStore = create<OcupacionStore>()((set, get) => {
     },
     reiniciar: () => {
       enVuelo.clear();
+      escrito.clear();
       set({ ocupacion: {}, error: {}, resumen: {} });
     },
   };

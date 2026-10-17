@@ -837,13 +837,31 @@ export function diferencias(antes: readonly ZonaOut[], despues: readonly ZonaEnE
     return f;
   };
   const vistas = new Set<string>();
+  const sueltas: ZonaEnEdicion[] = [];
   for (const z of despues) {
     const viejo = porId.get(z.clave);
-    if (!viejo || viejo.participacion_space_id !== z.participacionSpaceId) { fila(z.participacionSpaceId).agregadas++; continue; }
+    if (!viejo || viejo.participacion_space_id !== z.participacionSpaceId) { sueltas.push(z); continue; }
     vistas.add(z.clave);
     if (firmaDePoligono(viejo.vertices) !== firmaDePoligono(z.vertices)) fila(z.participacionSpaceId).cambiadas++;
   }
-  for (const [clave, z] of porId) if (!vistas.has(clave)) fila(z.participacion_space_id).borradas++;
+  // Las claves sólo se reconocen si la edición salió de ESA capa: cargada del
+  // borrador, o después de un guardado o una confirmación (el servidor numera
+  // las zonas de nuevo cada vez), una zona idéntica tiene otra clave. Una zona
+  // que sigue igual, de la misma participación, es la misma zona: ni se
+  // agregó ni se borró.
+  const sinPareja = new Map<string, { spaceId: number; n: number }>();
+  for (const [clave, z] of porId) {
+    if (vistas.has(clave)) continue;
+    const k = `${z.participacion_space_id}|${firmaDePoligono(z.vertices)}`;
+    const ya = sinPareja.get(k);
+    if (ya) ya.n++; else sinPareja.set(k, { spaceId: z.participacion_space_id, n: 1 });
+  }
+  for (const z of sueltas) {
+    const ya = sinPareja.get(`${z.participacionSpaceId}|${firmaDePoligono(z.vertices)}`);
+    if (ya && ya.n > 0) { ya.n--; continue; }
+    fila(z.participacionSpaceId).agregadas++;
+  }
+  for (const { spaceId, n } of sinPareja.values()) if (n > 0) fila(spaceId).borradas += n;
   for (const s of new Set([...cuentasAntes.keys(), ...cuentasDespues.keys()])) {
     if ((cuentasAntes.get(s)?.dibujado ?? 0) !== (cuentasDespues.get(s)?.dibujado ?? 0)) fila(s);
   }

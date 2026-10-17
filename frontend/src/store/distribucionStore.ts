@@ -120,6 +120,25 @@ export function capaQueSeMuestra(d: Pick<CaraOut, "distribucion"> | null): ZonaO
   return d?.distribucion?.borrador ?? d?.distribucion?.confirmada ?? [];
 }
 
+/** Los `spaceId` de las participaciones de la cara que ya no rigen (historia). */
+function deHistoria(d: Pick<CaraOut, "participaciones"> | null): Set<number> {
+  return new Set((d?.participaciones ?? []).filter((p) => !p.viva).map((p) => p.space_id));
+}
+
+/**
+ * Lo que se EDITA (y se manda) de la capa: sus zonas menos las de las
+ * participaciones que ya no rigen. El cliente sólo manda zonas de
+ * participaciones vivas (§5.3-11): las de historia se dibujan aparte, en gris,
+ * desde `datos`, y salen de la capa al confirmar (§3.8). Si se mandaran, el
+ * servidor las marcaría `ZONA_DE_PARTICIPACION_TERMINADA` y la cara no se
+ * podría confirmar sin borrarlas a mano. Una zona de una participación que la
+ * cara no nombra se queda (que el servidor la marque, no se pierde callada).
+ */
+export function zonasEditables(d: Pick<CaraOut, "distribucion" | "participaciones"> | null): ZonaOut[] {
+  const muertas = deHistoria(d);
+  return capaQueSeMuestra(d).filter((z) => !muertas.has(z.participacion_space_id));
+}
+
 /** ¿El plano local firma igual que la cara que leyó el servidor? Si no (el
  *  plano tiene cambios sin guardar o la lectura es vieja), la edición se
  *  bloquea hasta que coincidan (§9.2). */
@@ -165,7 +184,16 @@ function falla(e: unknown, antes: EstadoDelGuardado): EstadoDelGuardado {
 
 /** Sube con cada entrada, salida o reinicio: una respuesta de antes se tira. */
 let generacion = 0;
-/** El guardado en vuelo (se hacen de a uno). */
+/**
+ * La escritura en vuelo (borrador, confirmar o descartar: de a una). Cada una
+ * empieza con `while (enCurso) await enCurso;`: con un solo `if … await`, dos
+ * que esperaban a la misma salían juntas y la segunda iba con la versión que
+ * la primera acababa de gastar —un 409 `version_vieja` de la propia sesión
+ * («Otra sesión cambió…») que además frenaba el autoguardado—. Sin nada en
+ * vuelo no se espera nada (ni un `await` de balde: dos llamadas seguidas,
+ * en el mismo tic, se pisarían), y desde el bucle hasta anotar la escritura
+ * nueva en `enCurso` no hay ningún `await`.
+ */
 let enCurso: Promise<boolean> | null = null;
 let relojAuto: ReturnType<typeof setTimeout> | null = null;
 
@@ -265,7 +293,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
         if (!mismaCara(activa, gen) || ahora.token !== token || ahora.cliente !== cliente) return;
         set((s) => ({
           datos, cargando: false, verAlDia: datos.hoy,
-          edicion: reducir(s.edicion, { tipo: "cargar", zonas: capaQueSeMuestra(datos), medidas: medidasDe(datos) }),
+          edicion: reducir(s.edicion, { tipo: "cargar", zonas: zonasEditables(datos), medidas: medidasDe(datos) }),
         }));
       } catch (e) {
         if (mismaCara(activa, gen)) set({ cargando: false, error: describeError(e, "No se pudo leer la cara.") });
@@ -310,10 +338,12 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       try {
         const datos = await leerCara(a.sede, espacioDeLaCara(a.codigo, a.cara));
         if (!mismaCara(a, gen)) return;
-        const suyas = capaQueSeMuestra(datos);
+        const suyas = zonasEditables(datos);
+        const muertas = deHistoria(datos);
         const ed = get().edicion;
         const f = fusionarZonas(ed.base, ed.zonas, suyas);
-        const edicion = { ...reducir(ed, { tipo: "fusionar", zonas: f.zonas, base: desdeElServidor(suyas) }), medidas: medidasDe(datos) };
+        const zonas = f.zonas.filter((z) => !muertas.has(z.participacionSpaceId));
+        const edicion = { ...reducir(ed, { tipo: "fusionar", zonas, base: desdeElServidor(suyas) }), medidas: medidasDe(datos) };
         set({
           datos, cargando: false, error: null, edicion, guardado: QUIETO,
           fusion: f.conflictos.length > 0 ? { conflictos: f.conflictos, mias: ed.zonas } : null,
@@ -327,6 +357,9 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     usarLoMio: (spaceId) => {
       const f = get().fusion;
       if (!f || !f.conflictos.includes(spaceId)) return;
+      // En «Mirar» nada edita: el reductor no aplicaría lo mío y el conflicto
+      // se iría de la lista sin resolverse (lo de acá, perdido en silencio).
+      if (get().edicion.modo === "mirar") return;
       get().despachar({ tipo: "usarZonas", spaceId, zonas: f.mias.filter((z) => z.participacionSpaceId === spaceId) });
       const conflictos = f.conflictos.filter((s) => s !== spaceId);
       set({ fusion: conflictos.length > 0 ? { ...f, conflictos } : null });
@@ -337,9 +370,11 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       if (!activa || !datos) return;
       const guardada = sinGuardar[claveDeCara(activa)];
       if (!guardada) return;
-      const suyas = capaQueSeMuestra(datos);
+      const suyas = zonasEditables(datos);
+      const muertas = deHistoria(datos);
       const f = fusionarZonas(guardada.base, guardada.zonas, suyas);
-      const ed = reducir(edicion, { tipo: "fusionar", zonas: f.zonas, base: desdeElServidor(suyas) });
+      const zonas = f.zonas.filter((z) => !muertas.has(z.participacionSpaceId));
+      const ed = reducir(edicion, { tipo: "fusionar", zonas, base: desdeElServidor(suyas) });
       set({ edicion: ed, fusion: f.conflictos.length > 0 ? { conflictos: f.conflictos, mias: guardada.zonas } : null });
       olvidarDeEstaCara(activa);
       if (ed.sucio) programarAutoguardado();
@@ -360,10 +395,13 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     },
 
     guardarBorrador: async (automatico = false) => {
-      if (enCurso) await enCurso;
+      while (enCurso) await enCurso;
       const a = get().activa, d = get().datos;
       if (!a || !d) return false;
       if (automatico && get().guardado.estado === "version_vieja") return false;   // hasta traer lo nuevo
+      // Mientras esperaba su turno, otra escritura pudo dejarlo todo guardado (o
+      // descartado): un autoguardado sin nada que guardar no escribe un borrador de balde.
+      if (automatico && !get().edicion.sucio) return true;
       const gen = generacion;
       const foto = get().edicion.zonas;
       const version = d.distribucion?.version ?? 0;
@@ -381,6 +419,8 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
             guardado: { estado: "quieto", mensaje: null, ultimoAuto: automatico ? Date.now() : s.guardado.ultimoAuto },
           }));
           olvidarDeEstaCara(a);
+          // El estado de la distribución (borrador) y su dibujado cambian en el resumen de Supervisar.
+          useOcupacionStore.getState().invalidarResumen(a.sede);
           if (get().edicion.sucio) programarAutoguardado();   // se siguió dibujando mientras se guardaba
           return true;
         } catch (e) {
@@ -393,7 +433,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     },
 
     confirmar: async () => {
-      if (enCurso) await enCurso;
+      while (enCurso) await enCurso;
       const a = get().activa, d = get().datos;
       if (!a || !d) return;
       const gen = generacion;
@@ -447,25 +487,36 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     },
 
     descartar: async () => {
-      if (enCurso) await enCurso;
+      while (enCurso) await enCurso;
       const a = get().activa, d = get().datos;
       if (!a || !d?.distribucion) return;
       const gen = generacion;
-      try {
-        const r = await descartarBorrador({ sede: a.sede, espacio: espacioDeLaCara(a.codigo, a.cara), version: d.distribucion.version });
-        if (!mismaCara(a, gen)) return;
-        cancelarAutoguardado();
-        set((s) => {
-          const datos = s.datos ? conEscritura(s.datos, r) : s.datos;
-          return {
-            datos, guardado: QUIETO, fusion: null,
-            edicion: reducir(s.edicion, { tipo: "cargar", zonas: capaQueSeMuestra(datos), medidas: medidasDe(datos) }),
-          };
-        });
-        olvidarDeEstaCara(a);
-      } catch (e) {
-        if (mismaCara(a, gen)) set((s) => ({ guardado: falla(e, s.guardado) }));
-      }
+      const version = d.distribucion.version;
+      // Va en fila con los guardados (y sin autoguardado en el medio): si no,
+      // uno de los dos salía con la versión que el otro acababa de gastar.
+      cancelarAutoguardado();
+      const pedido = (async () => {
+        try {
+          const r = await descartarBorrador({ sede: a.sede, espacio: espacioDeLaCara(a.codigo, a.cara), version });
+          if (!mismaCara(a, gen)) return false;
+          cancelarAutoguardado();
+          set((s) => {
+            const datos = s.datos ? conEscritura(s.datos, r) : s.datos;
+            return {
+              datos, guardado: QUIETO, fusion: null,
+              edicion: reducir(s.edicion, { tipo: "cargar", zonas: zonasEditables(datos), medidas: medidasDe(datos) }),
+            };
+          });
+          olvidarDeEstaCara(a);
+          useOcupacionStore.getState().invalidarResumen(a.sede);
+          return true;
+        } catch (e) {
+          if (mismaCara(a, gen)) set((s) => ({ guardado: falla(e, s.guardado) }));
+          return false;
+        }
+      })();
+      enCurso = pedido;
+      try { await pedido; } finally { if (enCurso === pedido) enCurso = null; }
     },
 
     tocarEnElMueble: (cara, u, v) => {
@@ -484,7 +535,18 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     aplicarCara: (cara) => {
       const a = get().activa;
       if (!a || cara.fixture?.id !== a.fixtureId || cara.cara !== a.cara) return;
-      set((s) => ({ datos: cara, edicion: { ...s.edicion, medidas: medidasDe(cara) } }));
+      // Una participación que dejó de regir con esta escritura (se canceló
+      // su reserva o su contrato) pasa a la historia: sus zonas salen de lo
+      // que se edita —de lo dibujado y de la base por igual, así no queda
+      // nada «sin guardar» de balde— y se dibujan en gris desde `datos`.
+      const muertas = deHistoria(cara);
+      set((s) => {
+        const ed = s.edicion;
+        const sigue = (z: ZonaEnEdicion) => !muertas.has(z.participacionSpaceId);
+        const edicion = ed.zonas.every(sigue) && ed.base.every(sigue)
+          ? ed : reducir(ed, { tipo: "fusionar", zonas: ed.zonas.filter(sigue), base: ed.base.filter(sigue) });
+        return { datos: cara, edicion: { ...edicion, medidas: medidasDe(cara) } };
+      });
       void useOcupacionStore.getState().recargarOcupacion(a.sede);
       useOcupacionStore.getState().invalidarResumen(a.sede);
     },

@@ -619,6 +619,40 @@ await prueba("ocupación: una lectura por sede (los pedidos simultáneos compart
   assert.deepEqual(S.useOcupacionStore.getState().resumen, {});
 });
 
+await prueba("ocupación: una lectura vieja que llega DESPUÉS de la que trajo una escritura no la pisa (ni su falla deja un error)", async () => {
+  S.useAuthStore.getState().setAuth("t-oc", "admin", "galerias");
+  const libre = { sede: "NAVE", hoy: "2026-10-17", caras: { "NAVE-GON-01": { intervalos: [], fisicos: [] } } };
+  const tomada = { sede: "NAVE", hoy: "2026-10-17", caras: { "NAVE-GON-01": { intervalos: [{ desde: "2026-10-17", hasta: "2027-01-31", pb: 10000 }], fisicos: [] } } };
+  // La lectura de entrada tarda; mientras, una escritura vuelve y se relee.
+  let soltar, n = 0;
+  servidor.responder = () => (n++ === 0 ? new Promise((r) => { soltar = () => r(libre); }) : Promise.resolve(tomada));
+  const vieja = S.useOcupacionStore.getState().cargarOcupacion("NAVE");
+  await S.useOcupacionStore.getState().recargarOcupacion("NAVE");
+  soltar();
+  await vieja;
+  assert.equal(S.ocupacionDeLaCara(S.useOcupacionStore.getState(), "NAVE", "NAVE-GON-01").intervalos.length, 1,
+    "la lectura vieja pisó a la nueva: la cara vendida se ve libre");
+  // Lo mismo si la vieja falla tarde: no deja un error sobre datos buenos.
+  n = 0;
+  servidor.responder = () => (n++ === 0 ? new Promise((_, no) => { soltar = () => no(rechazo(503, { detail: "Servicio no disponible" })); }) : Promise.resolve(tomada));
+  const falla = S.useOcupacionStore.getState().recargarOcupacion("NAVE");
+  await S.useOcupacionStore.getState().recargarOcupacion("NAVE");
+  soltar();
+  await falla;
+  assert.equal(S.useOcupacionStore.getState().error["galerias|NAVE"], undefined, "la falla vieja dejó un error");
+  // Una nueva que llega primero no la tapa la vieja aunque la vieja llegue después y la nueva ya esté escrita.
+  assert.deepEqual(S.useOcupacionStore.getState().ocupacion["galerias|NAVE"], tomada);
+  // El resumen, igual: una lectura forzada que tarda no pisa a la que se pidió después.
+  n = 0;
+  servidor.responder = (cfg) => (n++ === 0 ? new Promise((r) => { soltar = () => r({ sede: "NAVE", dia: cfg.params.dia, caras: [], cual: "vieja" }); })
+    : Promise.resolve({ sede: "NAVE", dia: cfg.params.dia, caras: [], cual: "nueva" }));
+  const rv = S.useOcupacionStore.getState().cargarResumen({ sede: "NAVE", dia: "2026-10-20" }, { forzar: true });
+  await S.useOcupacionStore.getState().cargarResumen({ sede: "NAVE", dia: "2026-10-20" }, { forzar: true });
+  soltar();
+  await rv;
+  assert.equal(S.useOcupacionStore.getState().resumen["galerias|NAVE|2026-10-20||||"]?.cual, "nueva");
+});
+
 /** Entra a la cara A de GON-01 con un servidor que contesta `cara`. */
 const entrarA = async (cara, cualCara = "A") => {
   servidor.responder = async (cfg) => (cfg.url === "/participaciones/cara" ? cara : {});
@@ -797,6 +831,144 @@ await prueba("un toque en el 3D: en la misma cara elige la zona de arriba; en la
   await esperar(10);
   assert.equal(D().activa.cara, "B");
   assert.deepEqual(servidor.pedidos.at(-1).params, { sede: "NAVE", espacio: "GON-01-B" });
+});
+
+/** Un servidor de borradores con su versión: un pedido con otra versión es `version_vieja`. */
+const servidorConVersion = (inicial) => {
+  const s = { version: inicial };
+  servidor.responder = async (cfg) => {
+    if (cfg.url === "/participaciones/cara") return caraOut({ distribucion: distribucion(s.version, []) });
+    await esperar(3);
+    if (cfg.data.version !== s.version) throw rechazo(409, { detail: { code: "version_vieja", message: "Otra sesión cambió esta distribución mientras la editabas." } });
+    s.version++;
+    const zonas = (cfg.data.zonas ?? []).map((z, i) => zo(100 * s.version + i, z.participacion_space_id, z.vertices, i));
+    return { version: s.version, distribucion: distribucion(s.version, [], cfg.url.endsWith("/descartar") ? null : zonas), participaciones: [], revision: { capa: "borrador", errores: [], avisos: [] } };
+  };
+  return s;
+};
+
+await prueba("las escrituras van en fila: tres guardados encimados salen con 4, 5 y 6 (ningún version_vieja de la propia sesión), y descartar espera su turno", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-fila", "admin", "galerias");
+  servidorConVersion(4);
+  await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+  servidor.pedidos = [];
+  dibujar(812, 0.1, 0.1, 0.2, 0.2);
+  const a = D().guardarBorrador(true);
+  dibujar(812, 0.3, 0.3, 0.4, 0.4);
+  const b = D().guardarBorrador();
+  dibujar(812, 0.5, 0.5, 0.6, 0.6);
+  const c = D().guardarBorrador();
+  const d = D().descartar();
+  assert.deepEqual(await Promise.all([a, b, c]), [true, true, true]);
+  await d;
+  assert.deepEqual(servidor.pedidos.filter((p) => p.url !== "/participaciones/cara").map((p) => [p.url.split("/").at(-1), p.data.version]),
+    [["borrador", 4], ["borrador", 5], ["borrador", 6], ["descartar", 7]]);
+  assert.equal(D().guardado.estado, "quieto", "la propia sesión se dio un version_vieja");
+  assert.equal(D().datos.distribucion.version, 8);
+  // Al revés: un guardado pedido mientras se descarta espera a que vuelva el descarte.
+  servidor.pedidos = [];
+  const des = D().descartar();
+  dibujar(812, 0.7, 0.7, 0.8, 0.8);
+  const tras = D().guardarBorrador();
+  await des;
+  assert.equal(await tras, true);
+  assert.deepEqual(servidor.pedidos.map((p) => [p.url.split("/").at(-1), p.data.version]), [["descartar", 8], ["borrador", 9]]);
+  await D().salir({ forzado: true });
+});
+
+await prueba("descartar con el autoguardado a punto de saltar: no se vuelve a escribir el borrador recién descartado", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-desc", "admin", "galerias");
+  await conRelojFalso(async () => {
+    servidorConVersion(4);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    dibujar(812, 0.1, 0.1, 0.2, 0.2);
+    const reloj = relojes.filter((r) => r.vivo).at(-1);
+    servidor.pedidos = [];
+    const des = D().descartar();
+    reloj.f();                       // el reloj ya estaba armado: salta durante el descarte
+    await des;
+    await esperar(20);
+    assert.deepEqual(servidor.pedidos.filter((p) => p.url !== "/participaciones/cara").map((p) => p.url.split("/").at(-1)), ["descartar"],
+      "después de descartar, el autoguardado volvió a escribir un borrador");
+    assert.equal(D().edicion.sucio, false);
+  });
+  await D().salir({ forzado: true });
+});
+
+await prueba("«Usar lo mío» en Mirar no se pierde: el conflicto sigue en la lista (y lo de acá también) hasta volver a Editar", async () => {
+  D().reiniciar();
+  const base = [zo(1, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3)), zo(2, 813, cuadradoZ(0.5, 0.1, 0.7, 0.3), 1)];
+  await entrarA(caraOut({ distribucion: distribucion(4, base) }));
+  D().despachar({ tipo: "moverZona", clave: "z2", du: 0, dv: 0.05 });
+  D().despachar({ tipo: "elegirModo", modo: "mirar" });
+  servidor.responder = async () => caraOut({ distribucion: distribucion(5, [base[0], zo(5, 813, cuadradoZ(0.5, 0.1, 0.8, 0.3), 1)]) });
+  await D().traerLoNuevo();
+  assert.deepEqual(D().fusion.conflictos, [813]);
+  D().usarLoMio(813);
+  assert.deepEqual(D().fusion?.conflictos, [813], "en Mirar el conflicto se fue de la lista sin aplicar lo mío");
+  D().despachar({ tipo: "elegirModo", modo: "editar" });
+  D().usarLoMio(813);
+  assert.deepEqual(D().edicion.zonas.filter((z) => z.participacionSpaceId === 813).map((z) => z.vertices), [cuadradoZ(0.5, 0.15, 0.7, 0.35)]);
+  assert.equal(D().fusion, null);
+  await D().salir({ forzado: true });
+});
+
+await prueba("las zonas de una participación que ya no rige no se editan ni se mandan (salen de la capa al confirmar); si una deja de regir, sus zonas salen de lo editado", async () => {
+  D().reiniciar();
+  const part = (space_id, numero, viva) => ({ space_id, codigo: `NAVE-GON-01-PC${numero}`, numero, viva, contratado_pb: 2000, dibujado_pb: 0, pendiente_pb: 0, terminos: [] });
+  const conf = [zo(1, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3)), zo(2, 899, cuadradoZ(0.5, 0.5, 0.7, 0.7), 1), zo(3, 813, cuadradoZ(0.1, 0.6, 0.2, 0.7), 2)];
+  const vivas = [part(812, 1, true), part(813, 3, true), part(899, 2, false)];
+  await entrarA(caraOut({ distribucion: distribucion(4, conf), participaciones: vivas }));
+  assert.deepEqual(D().edicion.zonas.map((z) => z.participacionSpaceId), [812, 813], "se edita la zona de una participación que ya no rige");
+  assert.equal(D().edicion.sucio, false);
+  // Lo que se manda al confirmar: sólo las vivas (el servidor no marca ZONA_DE_PARTICIPACION_TERMINADA).
+  servidor.pedidos = [];
+  servidor.responder = async (cfg) => ({ version: 5, distribucion: distribucion(5, cfg.data.zonas.map((z, i) => zo(50 + i, z.participacion_space_id, z.vertices, i))), participaciones: vivas, revision: { capa: "confirmada", errores: [], avisos: [] } });
+  await D().confirmar();
+  assert.deepEqual(servidor.pedidos[0].data.zonas.map((z) => z.participacion_space_id), [812, 813]);
+  // Se cancela la 813 (vuelve la cara de la escritura del término): sus zonas salen de lo editado sin dejar nada «sin guardar».
+  D().aplicarCara(caraOut({ distribucion: distribucion(5, D().datos.distribucion.confirmada), participaciones: [part(812, 1, true), part(813, 3, false), part(899, 2, false)] }));
+  assert.deepEqual(D().edicion.zonas.map((z) => z.participacionSpaceId), [812]);
+  assert.equal(D().edicion.sucio, false);
+  // Traer lo nuevo tampoco las trae de vuelta: ni las del servidor ni una que dibujé acá para la 899 cuando
+  // todavía regía (la otra sesión no la tocó, así que «gana lo mío»… de una participación que ya no rige).
+  D().despachar({ tipo: "fusionar", zonas: [...D().edicion.zonas, { clave: "n90", participacionSpaceId: 899, vertices: cuadradoZ(0.6, 0.1, 0.7, 0.2) }], base: D().edicion.base });
+  servidor.responder = async () => caraOut({ distribucion: distribucion(6, [zo(60, 812, cuadradoZ(0.1, 0.1, 0.35, 0.3)), zo(61, 813, cuadradoZ(0.1, 0.6, 0.2, 0.7), 1)]), participaciones: [part(812, 1, true), part(813, 3, false), part(899, 2, false)] });
+  await D().traerLoNuevo();
+  assert.deepEqual(D().edicion.zonas.map((z) => z.participacionSpaceId), [812]);
+  // Descartar el borrador vuelve a la confirmada… sin sus zonas de historia.
+  servidor.responder = async () => ({ version: 7, distribucion: distribucion(7, [zo(60, 812, cuadradoZ(0.1, 0.1, 0.35, 0.3)), zo(62, 899, cuadradoZ(0.6, 0.1, 0.7, 0.2), 1)]),
+    participaciones: [part(812, 1, true), part(899, 2, false)], revision: { capa: "confirmada", errores: [], avisos: [] } });
+  await D().descartar();
+  assert.deepEqual(D().edicion.zonas.map((z) => z.participacionSpaceId), [812], "descartar trajo de vuelta una zona de historia");
+  await D().salir({ forzado: true });
+  // «Recuperar lo que no se guardó»: lo dibujado para la 813 cuando regía no vuelve si ya no rige.
+  D().reiniciar();
+  await entrarA(caraOut({ distribucion: distribucion(7, [zo(70, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3))]), participaciones: [part(812, 1, true), part(813, 3, true)] }));
+  dibujar(813, 0.6, 0.6, 0.7, 0.7);
+  servidor.responder = async () => { throw rechazo(503, { detail: "Servicio no disponible" }); };
+  assert.equal(await D().salir({ forzado: true }), true);
+  await entrarA(caraOut({ distribucion: distribucion(7, [zo(70, 812, cuadradoZ(0.1, 0.1, 0.3, 0.3))]), participaciones: [part(812, 1, true), part(813, 3, false)] }));
+  assert.equal(S.hayParaRecuperar(D()), true);
+  D().recuperar();
+  assert.deepEqual(D().edicion.zonas.map((z) => z.participacionSpaceId), [812], "recuperar trajo la zona de una participación que ya no rige");
+  await D().salir({ forzado: true });
+});
+
+await prueba("guardar el borrador, confirmar y descartar olvidan el resumen de Supervisar de esa sede (cambia su estado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-res", "admin", "galerias");
+  const sembrar = () => S.useOcupacionStore.setState({ resumen: { "galerias|NAVE||||||": { sede: "NAVE", caras: [] }, "galerias|OTRA||||||": { sede: "OTRA", caras: [] } } });
+  servidorConVersion(4);
+  await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+  for (const accion of [async () => { dibujar(812, 0.1, 0.1, 0.2, 0.2); return D().guardarBorrador(); }, () => D().descartar()]) {
+    sembrar();
+    await accion();
+    assert.deepEqual(Object.keys(S.useOcupacionStore.getState().resumen), ["galerias|OTRA||||||"]);
+  }
+  await D().salir({ forzado: true });
 });
 
 await prueba("cerrar la sesión (o un 401) vacía la edición entera, lo no guardado incluido; nada se escribió en localStorage", async () => {

@@ -1329,6 +1329,14 @@ await prueba("cambiar alto, entrepaños o módulo de una cara por participación
   assert.equal(P.revisarCambioDeGeometria(conTramos, { modulo: 1.0 }, vt).aviso, null);
   // Un mueble que no se vende por participación no lleva la rama.
   assert.equal(P.loVendidoDe(gondola(), "NAVE", new Set(), {}, sinParticipaciones).participacion, undefined);
+  // Una mural por participación tiene UNA cara: nunca se pregunta por una B que no existe.
+  const mural = gondola({ gondolaType: "wall", partes: { division: "participacion" }, status: "free" });
+  const vm = P.loVendidoDe(mural, "NAVE", new Set(), {}, { ocupacion: { "NAVE-GON-05-B": { intervalos: [{ desde: "2026-11-01", hasta: "2026-11-30", pb: 2500 }] } }, confirmadas: new Set(["NAVE-GON-05-B"]) });
+  assert.deepEqual(vm.participacion, [{ cara: "A", comprometida: false, confirmada: false }]);
+  assert.equal(P.revisarCambioDeGeometria(mural, { h: 2.2 }, vm).aviso, null);
+  // Sin la ocupación pero sabiendo que NO hay distribución confirmada: nada queda para revisar, no se pregunta.
+  const sinOcupacion = P.loVendidoDe(g, "NAVE", new Set(), {}, { ocupacion: null, confirmadas: new Set() });
+  assert.equal(P.revisarCambioDeGeometria(g, { h: 2.2 }, sinOcupacion).aviso, null);
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);

@@ -634,8 +634,10 @@ await prueba("imán: al vértice más cercano dentro del radio, si no a una aris
   assert.deepEqual(E.imantar([0.515, 0.501], objetivos, segmentos, 0.01), [0.52, 0.5]);
   assert.deepEqual(E.imantar([0.7, 0.305], objetivos, segmentos, 0.01), [0.7, 0.3]);
   assert.deepEqual(E.imantar([0.7, 0.4], objetivos, segmentos, 0.01), [0.7, 0.4]);
-  // El vértice gana a la arista aunque la arista quede más cerca.
-  assert.deepEqual(E.imantar([0.5, 0.308], [[0.5, 0.31]], segmentos, 0.01), [0.5, 0.31]);
+  // El vértice gana a la arista aunque la arista quede más cerca (0,003 contra 0,007).
+  assert.deepEqual(E.imantar([0.5, 0.303], [[0.5, 0.31]], segmentos, 0.01), [0.5, 0.31]);
+  // La esquina de otra zona gana a sus dos bordes (que pasan por ella y siempre quedan más cerca).
+  assert.deepEqual(E.imantar([0.102, 0.101], [[0.1, 0.1]], [[[0.1, 0.1], [0.5, 0.1]], [[0.1, 0.1], [0.1, 0.5]]], 0.01), [0.1, 0.1]);
   // Radio anisótropo: 6 px son 0,02 en u y 0,005 en v.
   assert.deepEqual(E.imantar([0.515, 0.5], objetivos, [], { u: 0.02, v: 0.005 }), [0.52, 0.5]);
   assert.deepEqual(E.imantar([0.5, 0.51], objetivos, [], { u: 0.02, v: 0.005 }), [0.5, 0.51]);
@@ -700,6 +702,26 @@ await prueba("lo que cambia al confirmar: zonas agregadas, borradas y cambiadas,
   ]);
   assert.deepEqual([r.agregadas, r.borradas, r.cambiadas, r.hayCambios], [1, 1, 1, true]);
   assert.equal(E.diferencias(antes, E.desdeElServidor(antes), new Map(), new Map()).hayCambios, false);
+  // Editando el BORRADOR (o después de guardar: el servidor numera de nuevo), las claves no son las de la
+  // confirmada: una zona idéntica de la misma participación es la misma zona, no «una agregada y una borrada».
+  const delBorrador = E.desdeElServidor(antes.map((z) => ({ ...z, id: z.id + 100 })));
+  const d0 = E.diferencias(antes, delBorrador, new Map(), new Map());
+  assert.deepEqual([d0.agregadas, d0.borradas, d0.cambiadas, d0.hayCambios], [0, 0, 0, false], JSON.stringify(d0));
+  // Con una cambiada, una nueva y una que pasa a otra participación (misma forma): eso sí se cuenta.
+  const mezcla = [zona("z101", 10, cuadrado(0, 0, 0.2, 0.2)), zona("z102", 20, cuadrado(0.3, 0, 0.6, 0.2)), zona("z103", 30, cuadrado(0.3, 0.5, 0.5, 0.7))];
+  const d1 = E.diferencias(antes, mezcla, new Map(), new Map());
+  assert.deepEqual(d1.participaciones.map((f) => [f.spaceId, f.agregadas, f.borradas, f.cambiadas]), [[20, 1, 2, 0], [30, 1, 0, 0]]);
+  // Dos zonas iguales de la misma participación: se aparean de a una.
+  const dos = [{ id: 1, participacion_space_id: 10, vertices: cuadrado(0, 0, 0.2, 0.2), orden: 0 }, { id: 2, participacion_space_id: 10, vertices: cuadrado(0, 0, 0.2, 0.2), orden: 1 }];
+  const d2 = E.diferencias(dos, [zona("n1", 10, cuadrado(0, 0, 0.2, 0.2))], new Map(), new Map());
+  assert.deepEqual([d2.agregadas, d2.borradas], [0, 1]);
+});
+
+await prueba("sucio no mira el orden de la lista ni de las zonas de una misma participación", () => {
+  const a = [zona("a", 1, cuadrado(0, 0, 0.1, 0.1)), zona("b", 1, cuadrado(0.5, 0.5, 0.6, 0.6)), zona("c", 2, cuadrado(0.7, 0.7, 0.8, 0.8))];
+  assert.equal(E.mismasZonas(a, [a[2], a[1], a[0]]), true);
+  assert.equal(E.mismasZonas(a, [a[0], { ...a[1], participacionSpaceId: 2 }, a[2]]), false);
+  assert.equal(E.reducir(conZonas(a), { tipo: "fusionar", zonas: [a[1], a[2], a[0]], base: a }).sucio, false);
 });
 
 await prueba("ajustar: nunca pasa el tope y no crea solapes, en 150 juegos al azar con zócalo y parantes", () => {
