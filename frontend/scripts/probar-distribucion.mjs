@@ -1028,4 +1028,333 @@ await prueba("`distribucionStore` lo importan sólo el Editor 3D y components/Di
   assert.ok(!/distribucionStore/.test(sinComentTs2(fuente("store/ocupacionStore.ts"))));
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PASO 6b · EL PANEL, EL LIENZO, LA LEYENDA, EL FORMULARIO Y EL TECLADO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// La pantalla de Distribución (§9.3–§9.8). Lo que se puede romper sin que se
+// vea en una captura:
+//
+//   · **El teclado** (§9.5). El atajo global del Editor 3D borra el mueble
+//     seleccionado con Supr, lo gira con R, le cambia ancho por fondo con F y
+//     deshace el PLANO con Ctrl+Z, y en Distribución el seleccionado es
+//     justamente el mueble que se distribuye. El panel se queda con esas
+//     teclas en CAPTURA: Supr borra la zona (nunca el mueble), Ctrl+Z deshace
+//     la zona (nunca el plano), Esc nunca saca del modo. Se EJECUTA el oyente
+//     con eventos de mentira, foco por foco.
+//   · **La firma que 6a monta** (contrato entre los pasos 6a y 6b).
+//   · **Los colores**: tokens reales, y escritos de modo que el cajón oscuro
+//     del editor los cambie (un `var(--surface)` resuelto en `:root` llegaba
+//     adentro con el blanco del tema claro).
+//   · **La leyenda** dice las cuatro magnitudes, el estado comercial y la
+//     vigencia; el formulario frena lo que el servidor rechazaría por fechas.
+
+console.log("distribución · el panel, el lienzo y el teclado (paso 6b)");
+
+const DIST = "components/Distribucion";
+const ARCHIVOS_6B = ["PanelDeDistribucion", "LienzoDeZonas", "LeyendaDeParticipaciones", "FormularioDeParticipacion", "ResumenDeCambios"];
+const codigo6b = (n) => sinComentTs2(fuente(`${DIST}/${n}.tsx`));
+
+const rP = await build({
+  stdin: {
+    contents: [
+      `export * as PANEL from "./src/${DIST}/PanelDeDistribucion.tsx";`,
+      `export * as LEY from "./src/${DIST}/LeyendaDeParticipaciones.tsx";`,
+      `export * as FORM from "./src/${DIST}/FormularioDeParticipacion.tsx";`,
+      'export { useDistribucionStore } from "./src/store/distribucionStore.ts";',
+      'export { estadoInicial } from "./src/utils/edicionDeZonas.ts";',
+    ].join("\n"),
+    resolveDir: raiz, loader: "ts",
+  },
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent", jsx: "automatic",
+  plugins: [{
+    name: "sin-red",
+    setup(b) {
+      b.onResolve({ filter: /^axios$/ }, () => ({ path: "axios", namespace: "falso" }));
+      b.onLoad({ filter: /^axios$/, namespace: "falso" }, () => ({ contents: AXIOS_FALSO, loader: "js" }));
+      b.onResolve({ filter: /api[\\/]firebase$/ }, (a) => ({ path: a.path, namespace: "firebase-falso" }));
+      b.onLoad({ filter: /.*/, namespace: "firebase-falso" }, () => ({ contents: "export const signOutFirebase = async () => {};", loader: "js" }));
+    },
+  }],
+});
+const dirP = mkdtempSync(join(tmpdir(), "distribucion-6b-"));
+writeFileSync(join(dirP, "p.mjs"), rP.outputFiles[0].text);
+const P6 = await import(pathToFileURL(join(dirP, "p.mjs")).href);
+rmSync(dirP, { recursive: true, force: true });
+
+/** Un nodo del DOM de mentira: su etiqueta y los selectores que lo contienen. */
+const nodo = (tag, dentroDe = [], editable = false) => ({
+  tagName: tag.toUpperCase(), isContentEditable: editable, closest: (sel) => (dentroDe.includes(sel) ? {} : null),
+});
+const EN_LIENZO = nodo("svg", ["[data-lienzo-de-zonas]", "[data-distribucion]"]);
+const EN_BOTON_DEL_PANEL = nodo("button", ["[data-distribucion]"]);
+const AFUERA = nodo("button", []);              // la barra del editor, fuera del modo
+const EN_BODY = nodo("body", []);               // donde queda el foco después de tocar el 3D
+const EN_CAMPO = nodo("input", ["[data-distribucion]"]);
+const EN_DIALOGO = nodo("button", ['[role="dialog"]', "[data-distribucion]"]);
+const tecla = (key, target, extra = {}) => ({
+  key, ctrlKey: false, metaKey: false, shiftKey: false, ...extra, target, cortada: false, prevenida: false,
+  stopPropagation() { this.cortada = true; }, preventDefault() { this.prevenida = true; },
+});
+const ZONA_A = { clave: "z1", participacionSpaceId: 7, vertices: [[0.1, 0.1], [0.4, 0.1], [0.4, 0.5], [0.1, 0.5]] };
+const ZONA_B = { clave: "z2", participacionSpaceId: 8, vertices: [[0.5, 0.1], [0.9, 0.1], [0.9, 0.5], [0.5, 0.5]] };
+let salidas = 0;
+/** El modo encendido, con dos zonas, la 1 elegida y la participación 7 activa. */
+const enElModo = (extra = {}) => {
+  salidas = 0;
+  P6.useDistribucionStore.setState({
+    activa: { cliente: "galerias", sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" },
+    salir: async () => { salidas++; return true; },
+    edicion: { ...P6.estadoInicial(), zonas: [ZONA_A, ZONA_B], base: [ZONA_A, ZONA_B], seleccion: { zona: "z1", vertice: null },
+      activa: 7, medidas: { ancho: 0.9, alto: 1.8 }, ...extra },
+  });
+};
+const atajo = (ev, modal = false) => { P6.PANEL.atajoDeDistribucion(ev, () => modal); return ev; };
+const claves = () => P6.useDistribucionStore.getState().edicion.zonas.map((z) => z.clave);
+
+await prueba("teclado: Supr borra la ZONA elegida con el foco en el lienzo (o en body, después de tocar el 3D), y el atajo global no ve la tecla", () => {
+  enElModo();
+  const ev = atajo(tecla("Delete", EN_LIENZO));
+  assert.deepEqual(claves(), ["z2"], "Supr en el lienzo no borró la zona elegida");
+  assert.ok(ev.cortada && ev.prevenida, "la tecla siguió hasta el atajo global del editor (que borra el mueble)");
+  enElModo();
+  atajo(tecla("Backspace", EN_BODY));
+  assert.deepEqual(claves(), ["z2"], "Retroceso con el foco en body (tocando el 3D) no borró la zona");
+  enElModo({ seleccion: { zona: "z1", vertice: 2 } });
+  atajo(tecla("Delete", EN_LIENZO));
+  assert.equal(P6.useDistribucionStore.getState().edicion.zonas[0].vertices.length, 3, "con un punto elegido, Supr borra el punto");
+});
+
+await prueba("teclado: Supr, R, F, Esc y Ctrl+Z NUNCA le llegan al atajo global mientras dura el modo, tenga el foco quien lo tenga", () => {
+  for (const donde of [EN_LIENZO, EN_BOTON_DEL_PANEL, AFUERA, EN_BODY]) {
+    for (const k of ["Delete", "Backspace", "r", "R", "f", "F", "Escape"]) {
+      enElModo();
+      const ev = atajo(tecla(k, donde));
+      assert.ok(ev.cortada, `«${k}» con el foco en ${donde.tagName} llegó al atajo global`);
+    }
+    enElModo();
+    assert.ok(atajo(tecla("z", donde, { ctrlKey: true })).cortada, `Ctrl+Z con el foco en ${donde.tagName} deshacía el plano`);
+    assert.ok(atajo(tecla("y", donde, { metaKey: true })).cortada, `⌘+Y con el foco en ${donde.tagName} rehacía el plano`);
+  }
+  // Fuera del lienzo no se borra nada: Supr en un botón del panel o afuera no toca las zonas.
+  for (const donde of [EN_BOTON_DEL_PANEL, AFUERA]) {
+    enElModo();
+    atajo(tecla("Delete", donde));
+    assert.deepEqual(claves(), ["z1", "z2"], `Supr con el foco en ${donde.tagName} borró una zona`);
+  }
+  // Las teclas que no son del editor pasan (Tab, letras, Enter en un botón).
+  for (const k of ["Tab", "a", "Enter", "ArrowDown"]) {
+    enElModo({ seleccion: null });
+    assert.ok(!atajo(tecla(k, EN_BOTON_DEL_PANEL)).cortada, `«${k}» en un botón del panel no llegó a su destino`);
+  }
+});
+
+await prueba("teclado: Ctrl+Z deshace la ZONA (desde el lienzo y desde el panel), R elige el rectángulo, Esc cancela el trazo y nunca saca del modo", () => {
+  enElModo();
+  atajo(tecla("Delete", EN_LIENZO));
+  assert.deepEqual(claves(), ["z2"]);
+  atajo(tecla("z", EN_BOTON_DEL_PANEL, { ctrlKey: true }));
+  assert.deepEqual(claves(), ["z1", "z2"], "Ctrl+Z desde el panel no deshizo la zona");
+  atajo(tecla("Z", EN_LIENZO, { ctrlKey: true, shiftKey: true }));
+  assert.deepEqual(claves(), ["z2"], "Ctrl+Shift+Z no rehízo");
+  enElModo();
+  atajo(tecla("r", EN_LIENZO));
+  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "rectangulo");
+  enElModo({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.2, 0.1]], seleccion: null });
+  atajo(tecla("Escape", EN_LIENZO));
+  assert.equal(P6.useDistribucionStore.getState().edicion.trazo, null, "Esc no canceló el trazo");
+  const ev = atajo(tecla("Escape", EN_LIENZO));
+  assert.ok(ev.cortada, "Esc sin nada que cancelar llegó al atajo global");
+  atajo(tecla("Escape", EN_BOTON_DEL_PANEL));
+  atajo(tecla("Escape", AFUERA));
+  assert.equal(salidas, 0, "Esc llamó a salir");
+  assert.ok(P6.useDistribucionStore.getState().activa, "Esc sacó del modo");
+});
+
+await prueba("teclado: lo que se escribe y los diálogos mandan (su Esc y su Enter siguen), pero Supr/R/F/Ctrl+Z no llegan al mueble; sin el modo, nada se toca", () => {
+  enElModo();
+  for (const k of ["Delete", "r", "Escape", "Backspace"]) {
+    const ev = atajo(tecla(k, EN_CAMPO));
+    assert.ok(!ev.cortada && !ev.prevenida, `«${k}» en un campo no llegó al campo`);
+  }
+  assert.deepEqual(claves(), ["z1", "z2"], "escribir en un campo borró una zona");
+  for (const k of ["Escape", "Enter", "Tab"]) assert.ok(!atajo(tecla(k, EN_DIALOGO)).cortada, `«${k}» no le llegó al diálogo`);
+  for (const k of ["Delete", "Backspace", "r", "F"]) assert.ok(atajo(tecla(k, EN_DIALOGO)).cortada, `«${k}» con el foco en el diálogo llegó al atajo global`);
+  assert.ok(atajo(tecla("z", EN_DIALOGO, { ctrlKey: true })).cortada);
+  // Con un diálogo modal abierto y el foco en body: nada se despacha, y Supr no llega al mueble.
+  const ev = atajo(tecla("Delete", EN_BODY), true);
+  assert.ok(ev.cortada);
+  assert.deepEqual(claves(), ["z1", "z2"], "con un diálogo abierto, Supr borró una zona de atrás");
+  assert.equal(salidas, 0);
+  // Fuera del modo el editor de siempre sigue: el oyente no corta nada.
+  P6.useDistribucionStore.setState({ activa: null });
+  for (const k of ["Delete", "r", "Escape"]) assert.ok(!atajo(tecla(k, EN_BODY)).cortada, `sin el modo, «${k}» no llegó al editor`);
+});
+
+await prueba("el panel registra el oyente en captura y lo saca en captura, respeta role=\"dialog\" y no llama a salir desde el oyente", () => {
+  const t = codigo6b("PanelDeDistribucion");
+  const m = /window\.addEventListener\("keydown", (\w+), \{ capture: true \}\)/.exec(t);
+  assert.ok(m, "el panel no registra keydown con capture: true");
+  assert.ok(t.includes(`window.removeEventListener("keydown", ${m[1]}, { capture: true })`), "el oyente no se saca en captura (quedaría colgado)");
+  assert.ok(t.includes('role="dialog"'), "el oyente no respeta los diálogos");
+  const i = t.indexOf("export function atajoDeDistribucion(");
+  assert.ok(i >= 0, "no está atajoDeDistribucion");
+  const cuerpo = t.slice(i, t.indexOf("\n}\n", i));
+  assert.ok(!/\bsalir\b/.test(cuerpo), "el oyente del teclado llama a salir: Esc nunca saca del modo");
+  assert.match(cuerpo, /e\.stopPropagation\(\)/);
+  assert.match(cuerpo, /accionDeTecla\(/, "el teclado no pasa por el reductor");
+  // El panel no toca el atajo global (es de StoreEditor3D, fijado por probar-muebles).
+  assert.ok(!/StoreEditor3D/.test(t.replace(/import[^\n]*\n/g, "")) || !/from\s+["'][^"']*StoreEditor3D/.test(t));
+});
+
+await prueba("contrato con 6a: las firmas exactas de PanelDeDistribucion y LienzoDeZonas, salir por el store", () => {
+  const panel = codigo6b("PanelDeDistribucion"), lienzo = codigo6b("LienzoDeZonas");
+  assert.match(panel, /export default function PanelDeDistribucion\(\{ fixtureId, sede, onEncuadrarCara \}: \{ fixtureId: string; sede: string; onEncuadrarCara: \(cara: "A" \| "B"\) => void \}\)/);
+  assert.match(lienzo, /export default function LienzoDeZonas\(\{ fixtureId, sede \}: \{ fixtureId: string; sede: string \}\)/);
+  assert.match(panel, /st\(\)\.salir\(\)/, "«Salir» no sale por el store");
+  for (const n of ARCHIVOS_6B) {
+    const t = codigo6b(n);
+    assert.ok(!/from\s+["'][^"']*StoreEditor3D\/StoreEditor3D["']/.test(t), `${n} importa StoreEditor3D`);
+    assert.ok(!/Marcador: lo reemplaza el paso 6b/.test(fuente(`${DIST}/${n}.tsx`)), `${n} sigue siendo el marcador de 6a`);
+  }
+});
+
+await prueba("el lienzo: getScreenCTM().inverse() como Libera, rueda nativa no pasiva, y edita SÓLO por el reductor del store (nunca el plano)", () => {
+  const t = codigo6b("LienzoDeZonas");
+  assert.match(t, /getScreenCTM\(\)/);
+  assert.match(t, /matrixTransform\(m\.inverse\(\)\)/, "el puntero no pasa por la inversa de la matriz del SVG");
+  assert.match(t, /addEventListener\("wheel", (\w+), \{ passive: false \}\)/, "la rueda no es un oyente nativo con passive: false");
+  assert.ok(!/onWheel=/.test(t), "con onWheel de React el preventDefault no vale");
+  assert.match(t, /useDistribucionStore\.getState\(\)\.despachar\(a\)/);
+  for (const n of ARCHIVOS_6B) {
+    const c = codigo6b(n);
+    assert.ok(!/useDistribucionStore\.setState\(/.test(c), `${n} escribe el store de edición por fuera de sus acciones`);
+  }
+  assert.ok(!/\.commit\(/.test(t), "el lienzo escribe el plano");
+  // Los trazos, las manijas y los rótulos miden en pantalla, no en metros.
+  assert.match(t, /const px = \(n: number\) => n \/ escala;/);
+  // El rótulo va sobre una pastilla y nunca en el color de la serie.
+  assert.match(t, /<text textAnchor="middle" dominantBaseline="central" style=\{\{ fill: error \? C\.rojo : C\.tinta \}\}>/);
+});
+
+await prueba("colores: un botón principal por archivo, tokens que existen y que el cajón oscuro redefine; nada guardado en el navegador", () => {
+  const css = [leer(join(raiz, "src", "tema.css")), leer(join(raiz, "src", "index.css"))].join("\n");
+  for (const n of ARCHIVOS_6B) {
+    const crudo = fuente(`${DIST}/${n}.tsx`), t = codigo6b(n);
+    const principales = (crudo.match(/["'\s`]btn-principal["'\s`]/g) || []).length;
+    assert.ok(principales <= 1, `${n}: ${principales} botones principales`);
+    for (const m of t.matchAll(/var\(\s*(--[\w-]+)\s*[,)]/g)) {
+      assert.ok(new RegExp(`${m[1]}\\s*:`).test(css), `${n}: ${m[1]} no existe en el tema`);
+    }
+    // El único nombre armado en el momento es el tono de la estampa (--marca-1..3).
+    for (const m of t.matchAll(/var\(\s*(--[\w-]*)\$\{/g)) assert.equal(m[1], "--marca-", `${n}: var(${m[1]}…) armado a mano`);
+    // Resueltos en :root: adentro del cajón oscuro del editor llegarían con el valor del tema claro.
+    const raiz1 = /var\(--(surface|surface-2|surface-3|ink-[1-4]|danger|warning|success|line|line-strong|accent|bg)\)/.exec(t);
+    assert.equal(raiz1, null, `${n}: ${raiz1?.[0]} se resuelve en :root (usá rgb(var(--x-rgb)))`);
+    assert.ok(!/--superficie|--tinta\b|prefers-color-scheme/.test(t), `${n}: token inventado o prefers-color-scheme`);
+    assert.ok(!/localStorage|sessionStorage|indexedDB/.test(t), `${n} guarda algo en el navegador`);
+  }
+  assert.match(fuente(`${DIST}/PanelDeDistribucion.tsx`), /className="btn-principal[^"]*"[\s\S]{0,260}Confirmar distribución…/,
+    "el botón principal del panel no es «Confirmar distribución…»");
+  // Las estampas son los --marca-k del tema.
+  P6.LEY && C.ESTAMPAS.forEach((e) => assert.equal(P6.LEY.tonoCss(e), `var(--marca-${C.TONOS_DE_MARCA.indexOf(e.tono) + 1})`));
+});
+
+/** Un término como lo manda el servidor. */
+const tOut = (x) => ({
+  id: 1, space_id: 7, codigo: "NAVE-GON-01-PC1", numero: 1, cara: "A", estado: "contrato", estado_visible: "vigente",
+  puntos_basicos: 2500, porcentaje: "25 %", proveedor: { id: 4, nombre: "Postobón" }, marca: "Hit",
+  desde: "2026-11-01", hasta: "2027-01-31", caduca: null, lease_id: 30, valor_mensual: 900000, renueva_a: null, notas: null,
+  baja_en: null, baja_fecha: null, version: 1, creada_en: "2026-10-01T00:00:00+00:00", creada_por: null, ...x,
+});
+const pOut = (terminos, x = {}) => ({
+  space_id: terminos[0].space_id, codigo: terminos[0].codigo, numero: terminos[0].numero, viva: true,
+  contratado_pb: terminos[0].puntos_basicos, dibujado_pb: 0, pendiente_pb: terminos[0].puntos_basicos, terminos, ...x,
+});
+const cuenta = (contratado, dibujado) => ({ numero: 1, viva: true, contratado, dibujado, pendiente: Math.max(0, contratado - dibujado), exceso: dibujado - contratado });
+
+await prueba("la leyenda dice las cuatro magnitudes, el estado comercial y la vigencia (y «desde el…» si no cuenta ese día)", () => {
+  const L = P6.LEY;
+  const vigente = pOut([tOut({ desde: "2026-10-01", hasta: "2027-01-31" })]);
+  let f = L.filaDeLaLeyenda(vigente, cuenta(2500, 2410), "2026-10-17", "2026-10-17");
+  assert.equal(f.nombre, "1 · Postobón · Hit");
+  assert.equal(f.estado, "Contrato vigente");
+  assert.equal(f.vigencia, "del 1 oct 2026 al 31 ene 2027");
+  assert.equal(L.textoDeMagnitudes(f), "25 % contratado · 24,1 % dibujado · falta 0,9 %");
+  assert.equal(f.cuentaElDia, true);
+  assert.equal(f.rotuloDelDia, null);
+  assert.equal(L.textoDeMagnitudes(L.filaDeLaLeyenda(vigente, cuenta(2500, 2600), "2026-10-17", "2026-10-17")),
+    "25 % contratado · 26 % dibujado · sobra 1 %");
+  assert.equal(L.textoDeMagnitudes(L.filaDeLaLeyenda(vigente, cuenta(2500, 2500), "2026-10-17", "2026-10-17")),
+    "25 % contratado · 25 % dibujado · completa");
+  // Una reserva: su caducidad en el chip.
+  const reserva = pOut([tOut({ estado: "reserva", estado_visible: "reserva", lease_id: null, valor_mensual: null, caduca: "2026-10-25", desde: "2026-10-17", hasta: "2026-12-31" })]);
+  f = L.filaDeLaLeyenda(reserva, cuenta(2500, 0), "2026-10-17", "2026-10-17");
+  assert.equal(f.estado, "Reserva provisional · caduca el 25 oct");
+  assert.equal(f.esReserva, true);
+  // Un contrato firmado que empieza el 1 dic: ese día no cuenta y se dice desde cuándo.
+  const firmado = pOut([tOut({ estado_visible: "firmado", desde: "2026-12-01", hasta: "2027-02-28" })]);
+  f = L.filaDeLaLeyenda(firmado, cuenta(2500, 0), "2026-10-17", "2026-10-17");
+  assert.equal(f.estado, "Contrato firmado · empieza el 1 dic");
+  assert.equal(f.cuentaElDia, false);
+  assert.equal(f.rotuloDelDia, "desde el 1 dic");
+  // Con una renovación: se muestra el que cuenta y «Después: …».
+  const renovado = pOut([tOut({ id: 2, desde: "2027-02-01", hasta: "2027-04-30", estado_visible: "firmado" }), tOut({ id: 1, desde: "2026-10-01", hasta: "2027-01-31" })]);
+  f = L.filaDeLaLeyenda(renovado, cuenta(2500, 2500), "2026-10-17", "2026-10-17");
+  assert.equal(f.termino.id, 1);
+  assert.equal(f.despues?.id, 2);
+  // El código del componente las escribe (la fila, el chip y la vigencia; «Para vender» arriba).
+  const t = codigo6b("LeyendaDeParticipaciones");
+  for (const pieza of ["textoDeMagnitudes(f)", "{f.estado}", "{f.vigencia}", "Para vender:", "{f.rotuloDelDia}"]) assert.ok(t.includes(pieza), `la leyenda no muestra ${pieza}`);
+});
+
+await prueba("la capacidad del día y del período: un segmento por participación, lo vendido entero cuenta 100 %, lo que queda para vender", () => {
+  const L = P6.LEY;
+  const a = pOut([tOut({ id: 1, space_id: 7, numero: 1, puntos_basicos: 3000, desde: "2026-10-01", hasta: "2027-01-31" })]);
+  const b = pOut([tOut({ id: 2, space_id: 8, numero: 2, puntos_basicos: 2500, estado: "reserva", estado_visible: "reserva", lease_id: null, caduca: "2026-10-30", desde: "2026-10-17", hasta: "2026-11-30", proveedor: { id: 5, nombre: "Alpina" } })]);
+  const cara = { hoy: "2026-10-17", participaciones: [a, b], capacidad: { periodo: { desde: "2026-10-17", hasta: "2027-10-16" }, fisicos: [] } };
+  let c = L.capacidadDe(cara, "2026-10-17");
+  assert.deepEqual(c.segmentos.map((s) => [s.numero, s.pb]), [[1, 3000], [2, 2500]]);
+  assert.equal(c.comprometido, 5500);
+  assert.equal(c.queda, 4500);
+  assert.equal(c.periodo.pico, 5500);
+  assert.equal(c.periodo.queda, 4500, "en todo el período queda lo del pico");
+  assert.ok(c.segmentos.every((s) => s.estampa), "una participación viva sin estampa");
+  c = L.capacidadDe(cara, "2026-12-15");
+  assert.deepEqual(c.segmentos.map((s) => s.numero), [1], "la reserva terminó el 30 nov y se sigue contando");
+  c = L.capacidadDe({ ...cara, capacidad: { ...cara.capacidad, fisicos: [{ desde: "2027-03-01", hasta: "2027-03-31" }] } }, "2027-03-10");
+  assert.equal(c.enteraElDia, true);
+  assert.equal(c.queda, 0);
+  assert.equal(c.periodo.queda, 0, "con la cara vendida entera un mes, en el año no queda nada para vender por participación");
+  c = L.capacidadDe(cara, "2026-10-17", { desde: "2027-02-01", hasta: "2027-06-30" });
+  assert.equal(c.periodo.queda, 10000, "el período elegido no mira lo que terminó antes");
+});
+
+await prueba("el formulario frena antes de mandar lo que el servidor rechazaría (porcentaje, fechas, caducidad, valor) y lee los pesos como se escriben", () => {
+  const F = P6.FORM;
+  const base = { tipo: "contrato", proveedor: "Postobón", correo: "", marca: "", porcentaje: "25", desde: "2026-10-17", hasta: "2026-12-31", caduca: "2026-10-24", valor: "900.000", notas: "" };
+  const hoy = "2026-10-17";
+  assert.equal(F.problemaDeLosCampos("alta", base, hoy), null);
+  assert.equal(F.problemaDeLosCampos("alta", { ...base, porcentaje: "0" }, hoy), "Escribí un porcentaje entre 0,01 y 100.");
+  assert.equal(F.problemaDeLosCampos("alta", { ...base, porcentaje: "120" }, hoy), "Escribí un porcentaje entre 0,01 y 100.");
+  assert.equal(F.problemaDeLosCampos("alta", { ...base, proveedor: "  " }, hoy), "Escribí el proveedor.");
+  assert.equal(F.problemaDeLosCampos("alta", { ...base, desde: "2027-01-01" }, hoy), "La fecha de inicio no puede ser posterior a la de fin.");
+  assert.match(F.problemaDeLosCampos("alta", { ...base, valor: "" }, hoy), /^Escribí el valor mensual del contrato/);
+  assert.equal(F.problemaDeLosCampos("alta", { ...base, valor: "0" }, hoy), null, "un contrato de $ 0 es válido");
+  const reserva = { ...base, tipo: "reserva", valor: "" };
+  assert.equal(F.problemaDeLosCampos("alta", reserva, hoy), null);
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2027-01-05" }, hoy), "La reserva tiene que caducar entre hoy y el último día que reserva.");
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2026-10-16" }, hoy), "La reserva tiene que caducar entre hoy y el último día que reserva.");
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, desde: "2026-09-01", hasta: "2026-10-01", caduca: "2026-10-01" }, hoy),
+    "Una reserva provisional tiene que terminar hoy o después.");
+  // Renovar no pide proveedor (es el de la participación); confirmar pide el valor.
+  assert.equal(F.problemaDeLosCampos("renovar", { ...base, proveedor: "" }, hoy), null);
+  assert.match(F.problemaDeLosCampos("confirmar", { ...reserva, valor: "" }, hoy), /^Escribí el valor mensual/);
+  assert.equal(F.valorDeTexto("900.000"), 900000);
+  assert.equal(F.valorDeTexto("$ 1.250.000"), 1250000);
+  assert.equal(F.valorDeTexto("900000,5"), 900000.5);
+  assert.equal(F.valorDeTexto("abc"), null);
+  assert.equal(F.valorDeTexto("-5"), null);
+});
+
 console.log(`\n${hechas} pruebas de distribución en verde`);
