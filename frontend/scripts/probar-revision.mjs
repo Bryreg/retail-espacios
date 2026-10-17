@@ -420,4 +420,64 @@ prueba("un contrato vencido tampoco se lista después de renumerar", () => {
   assert.deepEqual(reconciliar([{ ...LUKER, hasta: "2026-08-31" }]), []);
 });
 
+console.log("\nrevisión · la cara que nadie puede mirar (D17)");
+
+/** Una góndola doble sin girar: la A mira a −z y la B a +z. */
+const doble = (id, cz, extra = {}) => ({ id, code: id.toUpperCase(), type: "gondola", cx: 0, cz, w: 1.25, d: 0.9, h: 1.8, rotY: 0, ...extra });
+
+prueba("una doble a 0,30 m de otra: avisa, nombra a la otra y dice cuánto queda", () => {
+  // GON-01 en z = 0 (caras en ±0,45); GON-02 a 0,30 de su cara B.
+  const plano = [doble("gon-01", 0), doble("gon-02", 0.45 + 0.30 + 0.45)];
+  const c = R.carasInaccesibles(plano);
+  assert.deepEqual(c.map((x) => [x.fixtureId, x.cara, x.vecino]), [["gon-01", "B", "GON-02"], ["gon-02", "A", "GON-01"]]);
+  assert.ok(Math.abs(c[0].libre - 0.30) < 1e-9, `midió ${c[0].libre}`);
+  const h = R.revisarPlano(plano).filter((x) => x.clase === "cara-inaccesible");
+  assert.equal(h.length, 2);
+  assert.equal(h[0].severidad, "aviso");
+  assert.deepEqual(h[0].ids, ["gon-01", "gon-02"]);
+  assert.equal(h[0].texto, "Una cara de GON-01 queda a 0,30 m de GON-02: nadie se para a mirarla. Si va contra la pared o contra otra, hacela mural.");
+});
+
+prueba("con 1,20 m de pasillo, nada; con 0,56 m (un hombro), nada; con 0,55 m, aviso", () => {
+  assert.deepEqual(R.carasInaccesibles([doble("a", 0), doble("b", 0.9 + 1.2)]), []);
+  assert.deepEqual(R.carasInaccesibles([doble("a", 0), doble("b", 0.9 + R.HOMBRO)]), []);
+  assert.equal(R.carasInaccesibles([doble("a", 0), doble("b", 0.9 + 0.55)]).length, 2);
+});
+
+prueba("una mural (o cualquier mueble de una cara) no avisa nunca; el tipo doble del 2D sí cuenta", () => {
+  const mural = doble("gon-01", 0, { gondolaType: "wall" });
+  assert.deepEqual(R.carasInaccesibles([mural, doble("gon-02", 0.9 + 0.1, { gondolaType: "wall" })]), []);
+  assert.deepEqual(R.carasInaccesibles([{ ...doble("p", 0), type: "punta" }, { ...doble("q", 1.0), type: "punta" }]), []);
+  // Plano 2D: «gondola_doble» tiene cara B, «gondola_mural» no (carasDe).
+  const en2D = [{ ...doble("a", 0), type: "gondola_doble" }, { ...doble("b", 1.0), type: "gondola_mural" }];
+  assert.deepEqual(R.carasInaccesibles(en2D).map((x) => [x.fixtureId, x.cara]), [["a", "B"]]);
+});
+
+prueba("dos dobles pegadas de espaldas (al ras, o metidas un centímetro) avisan con 0 m", () => {
+  for (const solape of [0, 0.01]) {
+    const c = R.carasInaccesibles([doble("a", 0), doble("b", 0.9 - solape)]);
+    assert.deepEqual(c.map((x) => [x.fixtureId, x.cara, x.libre]), [["a", "B", 0], ["b", "A", 0]], `solape ${solape}`);
+  }
+});
+
+prueba("la normal sigue al giro: girada 90°, la A mira a −x; un mueble bajo (la zona libre) no tapa; uno al costado tampoco", () => {
+  const girada = { ...doble("g", 0), rotY: Math.PI / 2 };
+  const alOeste = { id: "w", code: "COL-01", type: "columna", cx: -0.45 - 0.2 - 0.25, cz: 0, w: 0.5, d: 0.5, h: 3, rotY: 0 };
+  assert.deepEqual(R.carasInaccesibles([girada, alOeste]).map((x) => [x.cara, x.vecino]), [["A", "COL-01"]]);
+  const metro = { id: "m", code: "MET-01", type: "metro", cx: 0, cz: 0.45 + 0.1 + 0.5, w: 1, d: 1, h: 0.05, rotY: 0 };
+  assert.deepEqual(R.carasInaccesibles([doble("a", 0), metro]), []);
+  // Al costado de la góndola (fuera del frente), aunque pegado.
+  const costado = { id: "c", code: "PUN-01", type: "punta", cx: 0.625 + 0.2, cz: 0, w: 0.4, d: 0.9, h: 1.8, rotY: 0 };
+  assert.deepEqual(R.carasInaccesibles([doble("a", 0), costado]), []);
+});
+
+prueba("el texto del borde del plano, y nunca cambia el tipo ni nada del mueble", () => {
+  assert.equal(R.textoDeCaraInaccesible("GON-07", 0.123, null),
+    "Una cara de GON-07 queda a 0,12 m del borde del plano: nadie se para a mirarla. Si va contra la pared o contra otra, hacela mural.");
+  const plano = [doble("gon-01", 0), doble("gon-02", 1.2)];
+  const antes = JSON.stringify(plano);
+  R.revisarPlano(plano);
+  assert.equal(JSON.stringify(plano), antes);
+});
+
 console.log("\n" + hechas + " pruebas" + (process.exitCode ? " · CON FALLAS" : " · todo en orden") + "\n");

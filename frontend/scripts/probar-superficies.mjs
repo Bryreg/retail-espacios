@@ -26,6 +26,11 @@
  *     plano del dibujo, en el marco de la superficie: el robatope, girado
  *     como sus repisas. La zona libre se mira desde arriba: 4 mm sobre la
  *     tapa.
+ *   · **Las zonas en el 3D** (`zonas3d.ts`): montadas con three como las monta
+ *     la escena (el grupo del giro del robatope y, adentro, el de la cara),
+ *     cada punto cae donde dice §8.2 y la cara visible da hacia quien mira; el
+ *     rayo contra el plano devuelve la misma cara y el mismo (u, v), con 2 cm
+ *     de tolerancia en metros.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -61,13 +66,14 @@ const r = await build({
       'export { areaUtil } from "./src/utils/zonasGeometria.ts";',
       'export { ALTURA_PISABLE } from "./src/utils/planta.ts";',
       'export * as M from "./src/components/StoreEditor3D/muebles/medidas.ts";',
+      'export * as Z from "./src/utils/zonas3d.ts";',
     ].join("\n"),
     resolveDir: raiz, loader: "ts",
   },
   bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
 });
 const S = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
-const { M } = S;
+const { M, Z } = S;
 
 const comoCaso = (s) => s && ({ orientacion: s.orientacion, ancho: s.ancho, alto: s.alto, plano: s.plano, giro_x: s.giroX, area_util_m2: s.areaUtilM2, exclusiones: s.exclusiones });
 const porNombre = Object.fromEntries(CASOS.casos.map((c) => [c.nombre, c]));
@@ -528,6 +534,139 @@ await prueba("la zona libre: 4 mm sobre la tapa que dibuja el 3D, y sólo si se 
   }
   assert.equal(S.superficieDeCara({ type: "metro", w: 1, d: 1, h: S.ALTURA_PISABLE }, "A"), null,
     "una zona libre que no se pisa (el 3D la dibuja con estantes y rieles por encima de h) tiene superficie");
+});
+
+console.log("superficies · las zonas en el 3D (`zonas3d.ts`, armado con three como lo monta la escena)");
+
+const THREE = await import("three");
+/** Lo que monta `ZonasDelMueble`: un grupo con el giro (sólo el robatope) y,
+ *  adentro, el grupo de la cara; devuelve la matriz del grupo de la cara. */
+const matrizDeLaCara = (sup, cara) => {
+  const t = Z.transformDeCara(sup, cara);
+  const afuera = new THREE.Group();
+  if (t.giro) afuera.rotation.set(...t.giro);
+  const adentro = new THREE.Group();
+  adentro.position.set(...t.position);
+  adentro.rotation.set(...t.rotation);
+  afuera.add(adentro);
+  afuera.updateMatrixWorld(true);
+  return adentro.matrixWorld;
+};
+const supDe = (f, cara = "A") => {
+  const s = S.superficieDeCara(f, cara);
+  assert.ok(s, `${JSON.stringify(f)} ${cara} no tiene superficie`);
+  return s;
+};
+const CARAS_3D = [
+  ["góndola doble, A", { type: "gondola", w: 0.9, d: 0.9, h: 1.8 }, "A"],
+  ["góndola doble, B", { type: "gondola", w: 0.9, d: 0.9, h: 1.8 }, "B"],
+  ["góndola de 3 m, B", { type: "gondola", w: 3, d: 0.9, h: 1.8 }, "B"],
+  ["mural", { type: "gondola", gondolaType: "wall", w: 1, d: 0.4, h: 1.9 }, "A"],
+  ["punta", { type: "punta", w: 0.9, d: 0.4, h: 1.8 }, "A"],
+  ["robatope", { type: "robatope", w: 0.3, d: 0.4, h: 1.6 }, "A"],
+  ["ristra", { type: "ristra", w: 0.4, d: 0.4, h: 1.6 }, "A"],
+  ["metro (desde arriba)", { type: "metro", w: 1.2, d: 0.8, h: 0.05 }, "A"],
+];
+let sem3 = 4242;
+const az3 = () => ((sem3 = (sem3 * 16807) % 2147483647) / 2147483647);
+const cerca3 = ([a, b, c], [x, y, z], tol, quien) => assert.ok(Math.abs(a - x) <= tol && Math.abs(b - y) <= tol && Math.abs(c - z) <= tol,
+  `${quien}: (${a.toFixed(5)}, ${b.toFixed(5)}, ${c.toFixed(5)}) y no (${x.toFixed(5)}, ${y.toFixed(5)}, ${z.toFixed(5)})`);
+const rotarX = ([x, y, z], t) => [x, y * Math.cos(t) - z * Math.sin(t), y * Math.sin(t) + z * Math.cos(t)];
+
+await prueba("la forma de una zona, montada con `transformDeCara`, cae donde dice §8.2 (A en −plano con x = (0,5 − u)·W; B en +plano; la tapa desde arriba; el robatope girado)", () => {
+  for (const [nombre, f, cara] of CARAS_3D) {
+    const sup = supDe(f, cara);
+    const M4 = matrizDeLaCara(sup, cara);
+    const W = sup.ancho, H = sup.alto;
+    for (let k = 0; k < 40; k++) {
+      const u = az3(), v = az3();
+      const [[sx, sy]] = Z.formaDeZona(sup, cara, [[u, v]]);
+      const p = new THREE.Vector3(sx, sy, 0).applyMatrix4(M4).toArray();
+      let esperado;
+      if (sup.orientacion === "arriba") esperado = [(0.5 - u) * W, sup.plano, -H / 2 + v * H];
+      else if (cara === "B") esperado = [(u - 0.5) * W, v * H, sup.plano];
+      else esperado = [(0.5 - u) * W, v * H, -sup.plano];
+      esperado = rotarX(esperado, sup.giroX);
+      cerca3(p, esperado, 1e-12, `${nombre} (${u.toFixed(3)}, ${v.toFixed(3)})`);
+      cerca3(Z.puntoDeLaCara(sup, cara, u, v), esperado, 1e-12, `${nombre}: puntoDeLaCara`);
+    }
+    // u = 0 es la izquierda de quien MIRA la cara: en la A (mirando hacia +z
+    // desde −z) la izquierda es +x; en la B, −x.
+    const izq = Z.puntoDeLaCara(sup, cara, 0, 0.5)[0], der = Z.puntoDeLaCara(sup, cara, 1, 0.5)[0];
+    if (cara === "B") assert.ok(izq < der, `${nombre}: u = 0 no es la izquierda`);
+    else assert.ok(izq > der, `${nombre}: u = 0 no es la izquierda`);
+    // La cara visible de `ShapeGeometry` (+z de la forma) da hacia quien mira.
+    const n = new THREE.Vector3(0, 0, 1).transformDirection(M4).toArray();
+    const haciaQuienMira = sup.orientacion === "arriba" ? [0, 1, 0] : cara === "B" ? [0, 0, 1] : [0, 0, -1];
+    cerca3(n, rotarX(haciaQuienMira, sup.giroX), 1e-12, `${nombre}: la normal`);
+  }
+  // El robatope tiene el grupo del giro; los demás, no.
+  assert.deepEqual(Z.transformDeCara(supDe({ type: "robatope", w: 0.3, d: 0.4, h: 1.6 }), "A").giro, [M.ROBATOPE.giro, 0, 0]);
+  assert.equal(Z.transformDeCara(supDe({ type: "gondola", w: 0.9, d: 0.9, h: 1.8 }), "A").giro, null);
+});
+
+await prueba("elegir cara y punto con rayo contra plano: ida y vuelta en todas las caras, desde cualquier lado de enfrente", () => {
+  for (const [nombre, f, cara] of CARAS_3D) {
+    const sup = supDe(f, cara);
+    const caras = { A: S.superficieDeCara(f, "A"), B: S.superficieDeCara(f, "B") };
+    const normal = rotarX(sup.orientacion === "arriba" ? [0, 1, 0] : cara === "B" ? [0, 0, 1] : [0, 0, -1], sup.giroX);
+    for (let k = 0; k < 60; k++) {
+      const u = 0.02 + 0.96 * az3(), v = 0.02 + 0.96 * az3();
+      const p = Z.puntoDeLaCara(sup, cara, u, v);
+      // Una cámara delante de la cara (a 1–6 m, corrida para un costado).
+      const d = 1 + 5 * az3();
+      const camara = [p[0] + normal[0] * d + (az3() - 0.5) * 2, p[1] + normal[1] * d + (az3() - 0.5) * 1.5, p[2] + normal[2] * d + (az3() - 0.5) * 2];
+      const dir = [p[0] - camara[0], p[1] - camara[1], p[2] - camara[2]];
+      if (dir[0] * normal[0] + dir[1] * normal[1] + dir[2] * normal[2] >= -1e-6) continue;
+      const r = Z.elegirCaraYPunto({ origen: camara, dir }, caras);
+      assert.ok(r, `${nombre}: el rayo no tocó la cara`);
+      assert.equal(r.cara, cara, `${nombre}: tocó la otra cara`);
+      assert.ok(Math.abs(r.u - u) < 1e-9 && Math.abs(r.v - v) < 1e-9, `${nombre}: (${r.u}, ${r.v}) y no (${u}, ${v})`);
+    }
+  }
+});
+
+await prueba("rayos que no tocan: oblicuo que pasa al costado, desde adentro del mueble, paralelo; desde −z nunca la B", () => {
+  const f = { type: "gondola", w: 0.9, d: 0.9, h: 1.8 };
+  const caras = { A: S.superficieDeCara(f, "A"), B: S.superficieDeCara(f, "B") };
+  assert.equal(Z.elegirCaraYPunto({ origen: [3, 1, -3], dir: [0.2, 0, 1] }, caras), null, "el oblicuo que pasa al costado tocó");
+  assert.equal(Z.elegirCaraYPunto({ origen: [0, 1, 0], dir: [0, 0, 1] }, caras), null, "desde adentro tocó");
+  assert.equal(Z.elegirCaraYPunto({ origen: [0, 1, -3], dir: [1, 0, 0] }, caras), null, "el paralelo tocó");
+  const desdeA = Z.elegirCaraYPunto({ origen: [0, 1, -3], dir: [0, 0, 1] }, caras);
+  assert.equal(desdeA.cara, "A");
+  const desdeB = Z.elegirCaraYPunto({ origen: [0, 1, 3], dir: [0, 0, -1] }, caras);
+  assert.equal(desdeB.cara, "B");
+  // Una mural sólo tiene A: desde atrás, nada.
+  const mural = { A: S.superficieDeCara({ type: "gondola", gondolaType: "wall", w: 1, d: 0.4, h: 1.9 }, "A"), B: null };
+  assert.equal(Z.elegirCaraYPunto({ origen: [0, 1, 3], dir: [0, 0, -1] }, mural), null);
+  // El metro, desde abajo, nada; desde arriba, la tapa (que es su A).
+  const metro = { A: S.superficieDeCara({ type: "metro", w: 1, d: 1, h: 0.05 }, "A") };
+  assert.equal(Z.elegirCaraYPunto({ origen: [0, -1, 0], dir: [0, 1, 0] }, metro), null);
+  assert.deepEqual(Z.elegirCaraYPunto({ origen: [0.25, 3, -0.25], dir: [0, -1, 0] }, metro), { cara: "A", u: 0.25, v: 0.25 });
+});
+
+await prueba("la tolerancia del clic es de 2 cm EN METROS, en la ristra angosta y en la góndola de 3 m; u,v se recortan", () => {
+  assert.equal(Z.TOLERANCIA_DEL_CLIC_M, 0.02);
+  for (const f of [{ type: "ristra", w: 0.4, d: 0.4, h: 1.6 }, { type: "gondola", w: 3, d: 0.9, h: 1.8 }]) {
+    const sup = S.superficieDeCara(f, "A");
+    const caras = { A: sup };
+    const rayo = (x, y) => ({ origen: [x, y, -sup.plano - 2], dir: [0, 0, 1] });
+    // A la derecha de quien mira la A (−x), 1,5 cm afuera: toca, con u = 1.
+    const r = Z.elegirCaraYPunto(rayo(-sup.ancho / 2 - 0.015, 1), caras);
+    assert.ok(r && r.u === 1, `${f.type}: 1,5 cm afuera no tocó`);
+    assert.equal(Z.elegirCaraYPunto(rayo(-sup.ancho / 2 - 0.025, 1), caras), null, `${f.type}: 2,5 cm afuera tocó`);
+    assert.ok(Z.elegirCaraYPunto(rayo(0, sup.alto + 0.019), caras)?.v === 1, `${f.type}: arriba, dentro de la tolerancia`);
+    assert.equal(Z.elegirCaraYPunto(rayo(0, -0.021), caras), null, `${f.type}: abajo, fuera de la tolerancia`);
+  }
+});
+
+await prueba("la letra «A»/«B» va arriba al centro de su cara, sobre el plano del dibujo", () => {
+  const f = { type: "gondola", w: 0.9, d: 0.9, h: 1.8 };
+  const a = S.superficieDeCara(f, "A"), b = S.superficieDeCara(f, "B");
+  cerca3(Z.letraDeCara(a, "A"), [0, a.alto + Z.ALTO_DE_LA_LETRA, -a.plano], 1e-12, "A");
+  cerca3(Z.letraDeCara(b, "B"), [0, b.alto + Z.ALTO_DE_LA_LETRA, b.plano], 1e-12, "B");
+  const rob = S.superficieDeCara({ type: "robatope", w: 0.3, d: 0.4, h: 1.6 }, "A");
+  cerca3(Z.letraDeCara(rob, "A"), rotarX([0, rob.alto + Z.ALTO_DE_LA_LETRA, -rob.plano], rob.giroX), 1e-12, "robatope");
 });
 
 console.log(`\n${hechas} pruebas de superficies en verde`);

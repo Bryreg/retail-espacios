@@ -1308,3 +1308,51 @@ export function personaYTomaDeVenta(
   }
   return mejor ?? { vista: vistaDeVenta(mueble, cara, toma, foco, obstaculos, limites, fovGrados, aspecto, undefined, undefined, corrida), persona: null, extremo: 0 };
 }
+
+// ─── La cámara del editor no pasa por debajo del piso ────────────────────────
+//
+// El `OrbitControls` del editor limita el ángulo polar a π/2,1 respecto de la
+// MIRA, deja panear y panea en el plano de la pantalla: inclinada, un paneo
+// hacia abajo baja la mira de `y = 0` y la cámara la sigue bajo el piso (y se
+// guarda así: al recargar seguía abajo). No se apaga el paneo vertical
+// (`screenSpacePanning` sigue en `true`): sin él, después de un doble clic la
+// mira queda en el piso sin forma de subir a mirar un copete o los estantes
+// altos de una vitrina. Lo que se hace es frenar la mira en el piso.
+
+/** Un punto del mundo (`THREE.Vector3` lo cumple). */
+export interface Punto3 { x: number; y: number; z: number }
+
+/** Lo mínimo que una cámara restaurada sube su posición sobre la mira. */
+export const ALTURA_MINIMA_SOBRE_LA_MIRA = 0.3;
+
+/**
+ * Si la mira bajó del piso, sube la mira y la cámara lo mismo (`dy = −y` de la
+ * mira): una traslación pura, así la orientación que calculó `update()` sigue
+ * valiendo (sin tirón, sin `lookAt`, sin llamar a `update()` adentro del
+ * oyente de `change`). Con la mira en `y ≥ 0` y el ángulo polar ≤ π/2,1, la
+ * cámara queda a `≥ 0,075 · distancia` sobre la mira: no hace falta un tope
+ * propio de la cámara, que además podía tocar las tomas «De cerca». `null` =
+ * no hay que tocar nada (también con números rotos: no se inventa una cámara).
+ */
+export function frenarMira(target: Punto3, position: Punto3): { target: Punto3; position: Punto3 } | null {
+  if (!(target.y < 0) || !Number.isFinite(target.y) || !Number.isFinite(position.y)) return null;
+  const dy = -target.y;
+  return {
+    target: { x: target.x, y: 0, z: target.z },
+    position: { x: position.x, y: position.y + dy, z: position.z },
+  };
+}
+
+/**
+ * La cámara guardada (de una sesión que la dejó bajo el piso, antes de este
+ * freno) vuelve sana: la mira en `y ≥ 0` y la cámara al menos 0,3 m por
+ * encima de la mira. Una cámara sana sale igual.
+ */
+export function sanearOrbita(c: { position: Punto3; target: Punto3 }): { position: Punto3; target: Punto3 } {
+  const ty = Number.isFinite(c.target.y) ? Math.max(0, c.target.y) : 0;
+  const py = Number.isFinite(c.position.y) ? Math.max(c.position.y, ty + ALTURA_MINIMA_SOBRE_LA_MIRA) : ty + ALTURA_MINIMA_SOBRE_LA_MIRA;
+  return {
+    position: { x: c.position.x, y: py, z: c.position.z },
+    target: { x: c.target.x, y: ty, z: c.target.z },
+  };
+}
