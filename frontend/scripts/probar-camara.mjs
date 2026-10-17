@@ -21,6 +21,10 @@
  *    —Supervisar es una hoja con la rejilla de Vender— y con los mismos colores
  *    de rótulo; y la tabla de Supervisar llena su columna sin huecos y filtra
  *    con el mismo filtro que el plano.
+ *  · La cámara del EDITOR 3D (`frenarMira` y `sanearOrbita` de `utils/planta.ts`)
+ *    no pasa por debajo del piso: paneando inclinada, la mira bajaba de y = 0
+ *    y la cámara la seguía (y se guardaba así). El freno sólo traslada mira y
+ *    cámara juntas: no gira nada ni apaga el paneo vertical.
  */
 import assert from "node:assert/strict";
 import { build } from "esbuild";
@@ -438,6 +442,67 @@ prueba("si ni con los mínimos entra, mide la suma de los mínimos y se desliza"
 
 prueba("sin medida todavía (primer pintado), cada columna mide lo que quiere", () => {
   assert.deepEqual(T.repartirAnchos(COLS, 0), COLS.map((c) => c.ancho));
+});
+
+console.log("\ncámara del editor 3D · no pasa por debajo del piso (utils/planta.ts)");
+
+const salidaP = join(mkdtempSync(join(tmpdir(), "cam-planta-")), "p.mjs");
+const planta = await build({
+  entryPoints: [join(raiz, "src", "utils", "planta.ts")],
+  bundle: true, format: "esm", write: false, platform: "neutral",
+});
+writeFileSync(salidaP, planta.outputFiles[0].text);
+const P = await import(pathToFileURL(salidaP).href);
+
+prueba("frenarMira: con la mira sobre el piso no toca nada; debajo, sube mira y cámara lo mismo (la orientación no cambia)", () => {
+  assert.equal(P.frenarMira({ x: 1, y: 0, z: 2 }, { x: 5, y: 3, z: 6 }), null);
+  assert.equal(P.frenarMira({ x: 1, y: 0.4, z: 2 }, { x: 5, y: 3, z: 6 }), null);
+  const f = P.frenarMira({ x: 1, y: -0.75, z: 2 }, { x: 5, y: 0.5, z: 6 });
+  assert.deepEqual(f, { target: { x: 1, y: 0, z: 2 }, position: { x: 5, y: 1.25, z: 6 } });
+  assert.equal(P.frenarMira({ x: 0, y: NaN, z: 0 }, { x: 0, y: 1, z: 0 }), null, "inventó una cámara con números rotos");
+});
+
+prueba("con el freno, paneos y giros al azar nunca dejan la mira ni la cámara bajo el piso (polar ≤ π/2,1)", () => {
+  const POLAR_MAX = Math.PI / 2.1, POLAR_MIN = Math.PI / 6;
+  let frenadas = 0;
+  for (let k = 0; k < 4000; k++) {
+    let target = { x: (azar() - 0.5) * 40, y: azar() * 2, z: (azar() - 0.5) * 40 };
+    const r = 1.2 + azar() * 78;
+    const phi = POLAR_MIN + azar() * (POLAR_MAX - POLAR_MIN), theta = azar() * 2 * Math.PI;
+    const off = { x: r * Math.sin(phi) * Math.sin(theta), y: r * Math.cos(phi), z: r * Math.sin(phi) * Math.cos(theta) };
+    let pos = { x: target.x + off.x, y: target.y + off.y, z: target.z + off.z };
+    // Paneo en el plano de la pantalla (`screenSpacePanning`): derecha y arriba de la cámara.
+    const f = { x: -off.x / r, y: -off.y / r, z: -off.z / r };
+    const der = { x: -f.z, y: 0, z: f.x };
+    const ld = Math.hypot(der.x, der.z) || 1;
+    der.x /= ld; der.z /= ld;
+    const arr = { x: der.y * f.z - der.z * f.y, y: der.z * f.x - der.x * f.z, z: der.x * f.y - der.y * f.x };
+    const a = (azar() - 0.5) * 30, b = (azar() - 0.2) * -30;   // sobre todo hacia abajo
+    const pan = { x: der.x * a + arr.x * b, y: der.y * a + arr.y * b, z: der.z * a + arr.z * b };
+    target = { x: target.x + pan.x, y: target.y + pan.y, z: target.z + pan.z };
+    pos = { x: pos.x + pan.x, y: pos.y + pan.y, z: pos.z + pan.z };
+    const frenada = P.frenarMira(target, pos);
+    if (frenada) { ({ target, position: pos } = frenada); frenadas++; }
+    assert.ok(target.y >= 0, `vuelta ${k}: la mira quedó en ${target.y}`);
+    assert.ok(pos.y >= target.y + r * Math.cos(POLAR_MAX) - 1e-9, `vuelta ${k}: la cámara quedó bajo la mira`);
+    assert.ok(pos.y > 0, `vuelta ${k}: la cámara quedó bajo el piso (${pos.y})`);
+    // La orientación es la misma: el freno sólo traslada.
+    assert.ok(cerca(pos.x - target.x, off.x, 1e-9) && cerca(pos.y - target.y, off.y, 1e-9) && cerca(pos.z - target.z, off.z, 1e-9), `vuelta ${k}: el freno giró la cámara`);
+  }
+  assert.ok(frenadas > 1000, `el azar casi no bajó la mira del piso (${frenadas} de 4000)`);
+});
+
+prueba("sanearOrbita: la cámara guardada bajo el piso vuelve sana; una sana sale igual", () => {
+  assert.deepEqual(P.sanearOrbita({ position: { x: 3, y: -2, z: 4 }, target: { x: 1, y: -3, z: 1 } }),
+    { position: { x: 3, y: 0.3, z: 4 }, target: { x: 1, y: 0, z: 1 } });
+  assert.deepEqual(P.sanearOrbita({ position: { x: 3, y: 0.1, z: 4 }, target: { x: 1, y: 0, z: 1 } }),
+    { position: { x: 3, y: 0.3, z: 4 }, target: { x: 1, y: 0, z: 1 } });
+  const sana = { position: { x: 15, y: 28, z: 50 }, target: { x: 15, y: 0, z: 21 } };
+  assert.deepEqual(P.sanearOrbita(sana), sana);
+  const subida = { position: { x: 0, y: 3, z: 5 }, target: { x: 0, y: 1.6, z: 0 } };
+  assert.deepEqual(P.sanearOrbita(subida), subida, "bajó la mira que miraba un copete");
+  assert.deepEqual(P.sanearOrbita({ position: { x: 0, y: NaN, z: 5 }, target: { x: 0, y: NaN, z: 0 } }),
+    { position: { x: 0, y: 0.3, z: 5 }, target: { x: 0, y: 0, z: 0 } });
 });
 
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? " — HAY FALLAS" : ""}\n`);

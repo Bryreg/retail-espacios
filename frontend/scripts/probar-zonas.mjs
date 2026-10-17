@@ -26,6 +26,13 @@
  *   · **Identidades**: |A∪B| + |A∩B| = |A| + |B| y, para un polígono simple,
  *     el área es la del shoelace.
  *   · **El peor caso es rápido**: 240 vértices de estrellas que se cruzan.
+ *
+ * Y el editor de zonas (`src/utils/edicionDeZonas.ts`), que es un reductor
+ * puro: dibujar, mover, escalar, borrar, deshacer (un arrastre entero es UN
+ * paso, 100 pasos), «Mirar» que no edita, las teclas (Esc nunca saca del
+ * modo), el imán, la fusión de tres vías ante `version_vieja` y «Ajustar al
+ * contratado», cuyas salidas de `casos/zonas.json` (`ajustar`) se exigen
+ * exactas acá y por debajo del tope de los dos lados.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -51,6 +58,11 @@ const r = await build({
   bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
 });
 const G = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+const rE = await build({
+  stdin: { contents: 'export * from "./src/utils/edicionDeZonas.ts";', resolveDir: raiz, loader: "ts" },
+  bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+});
+const E = await import("data:text/javascript;base64," + Buffer.from(rE.outputFiles[0].text).toString("base64"));
 
 // ── Lo que los casos nombran por referencia ──────────────────────────────────
 const superficiePorNombre = Object.fromEntries(SUPERFICIES.casos.map((c) => [c.nombre, c.superficie]));
@@ -310,6 +322,477 @@ await prueba("las sumas de los dos gemelos son bucles explícitos (nada de reduc
   // escribe: ésta sí.
   assert.ok(!/\bf?sum\s*\(/.test(py), "zonas_geometria.py suma con math.fsum o sum");
   assert.ok(!/^\s*(from app|import app)/m.test(py), "zonas_geometria.py importa algo de la app: tiene que ser pura");
+});
+
+console.log("zonas · «Ajustar al contratado» (casos compartidos)");
+
+await prueba(`ajustar al contratado: la salida revisada a mano, exacta, y por debajo del tope (${(CASOS.ajustar ?? []).length} casos)`, () => {
+  assert.ok((CASOS.ajustar ?? []).length >= 3, "faltan los casos `ajustar` en casos/zonas.json");
+  for (const c of CASOS.ajustar) {
+    const Ex = exclusionesDe(c.exclusiones);
+    assert.ok(typeof c.revisado === "string" && c.revisado.length > 20, `${c.nombre}: la salida no dice cómo se revisó`);
+    assert.ok(G.dibujadoPb(c.zonas, Ex) > c.tope, `${c.nombre}: la entrada ya no pasaba el tope (el caso no prueba nada)`);
+    const salida = E.ajustarAlContratado(c.zonas, Ex, c.tope, G.areaUtil(Ex), c.otras ?? [], c.cara);
+    assert.deepEqual(salida, c.salida, `${c.nombre}: la salida cambió`);
+    assert.ok(G.dibujadoPb(salida, Ex) <= c.tope, `${c.nombre}: pasa el tope`);
+    // El crudo, al menos medio pb lejos del filo donde floor(x + 0.5) da tope + 1.
+    assert.ok(10000 * G.areaCubierta(salida, Ex) / G.areaUtil(Ex) <= c.tope, `${c.nombre}: el crudo pasa el tope`);
+    for (const z of salida) assert.equal(G.validarZona(z, c.cara?.ancho ?? 1, c.cara?.alto ?? 1).codigo, null, `${c.nombre}: una zona quedó inválida`);
+    for (const q of (c.otras ?? []).flat()) {
+      assert.ok(G.areaCubierta(salida, Ex, [q]) * (c.cara?.ancho ?? 1) * (c.cara?.alto ?? 1) <= G.AREA_MINIMA_M2 / 2, `${c.nombre}: pisa a la otra`);
+    }
+  }
+});
+
+console.log("zonas · el editor (reductor puro)");
+
+const ini = (extra = {}) => ({ ...E.estadoInicial(), medidas: { ancho: 1, alto: 1 }, ...extra });
+const hacer = (e, ...acciones) => acciones.reduce((x, a) => E.reducir(x, a), e);
+const cuadrado = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+const zona = (clave, s, vertices) => ({ clave, participacionSpaceId: s, vertices });
+const conZonas = (zonas, extra = {}) => ini({ zonas, base: zonas, ...extra });
+
+await prueba("dibujar un rectángulo: con la participación activa, arrastrando; queda elegida, antihoraria y es UN paso", () => {
+  let e = hacer(ini(), { tipo: "elegirActiva", spaceId: 7 }, { tipo: "elegirHerramienta", herramienta: "rectangulo" });
+  assert.equal(e.herramienta, "rectangulo");
+  e = hacer(e, { tipo: "empezarTrazo", punto: [0.6, 0.7] }, { tipo: "estirarTrazo", punto: [0.2, 0.1] }, { tipo: "estirarTrazo", punto: [0.1, 0.2] });
+  assert.deepEqual(e.trazo, [[0.6, 0.7], [0.1, 0.2]]);
+  e = E.reducir(e, { tipo: "cerrarTrazo" });
+  assert.equal(e.zonas.length, 1);
+  assert.deepEqual(e.zonas[0].vertices, cuadrado(0.1, 0.2, 0.6, 0.7));
+  assert.equal(e.zonas[0].participacionSpaceId, 7);
+  assert.ok(G.areaFirmada(e.zonas[0].vertices) > 0, "no quedó antihoraria");
+  assert.deepEqual(e.seleccion, { zona: e.zonas[0].clave, vertice: null });
+  assert.equal(e.trazo, null);
+  assert.equal(e.atras.length, 1);
+  assert.equal(e.sucio, true);
+  // Un clic sin arrastre no dibuja nada.
+  const f = hacer(e, { tipo: "empezarTrazo", punto: [0.3, 0.3] }, { tipo: "cerrarTrazo" });
+  assert.equal(f.zonas.length, 1);
+  assert.equal(f.atras.length, 1);
+  // Lo que se sale de la cara se recorta, y todo queda cuantizado a 1e-6.
+  const g = hacer(e, { tipo: "empezarTrazo", punto: [-0.3, 0.5] }, { tipo: "estirarTrazo", punto: [0.12345678, 1.7] }, { tipo: "cerrarTrazo" });
+  assert.deepEqual(g.zonas[1].vertices, cuadrado(0, 0.5, 0.123457, 1));
+});
+
+await prueba("dibujar un polígono: punto a punto, Retroceso saca el último, Enter cierra, Esc cancela; con menos de tres, no cierra", () => {
+  let e = hacer(ini(), { tipo: "elegirActiva", spaceId: 3 }, { tipo: "elegirHerramienta", herramienta: "poligono" });
+  e = hacer(e, { tipo: "agregarPunto", punto: [0.1, 0.1] }, { tipo: "agregarPunto", punto: [0.5, 0.1] }, { tipo: "agregarPunto", punto: [0.5, 0.1] });
+  assert.equal(e.trazo.length, 2, "el doble clic repitió el punto");
+  const corto = E.reducir(e, { tipo: "cerrarTrazo" });
+  assert.equal(corto.zonas.length, 0);
+  assert.equal(corto.aviso, E.AVISO_POCOS_PUNTOS);
+  e = hacer(e, { tipo: "agregarPunto", punto: [0.9, 0.9] }, E.accionDeTecla(e, { key: "Backspace", ctrl: false, shift: false }));
+  assert.deepEqual(e.trazo, [[0.1, 0.1], [0.5, 0.1]]);
+  e = hacer(e, { tipo: "agregarPunto", punto: [0.5, 0.5] }, { tipo: "agregarPunto", punto: [0.1, 0.5] });
+  const cerrar = E.accionDeTecla(e, { key: "Enter", ctrl: false, shift: false });
+  assert.deepEqual(cerrar, { tipo: "cerrarTrazo" });
+  const hecho = E.reducir(e, cerrar);
+  assert.deepEqual(hecho.zonas[0].vertices, cuadrado(0.1, 0.1, 0.5, 0.5));
+  // Esc con un trazo lo cancela, y no hace nada más.
+  const cancel = E.accionDeTecla(e, { key: "Escape", ctrl: false, shift: false });
+  assert.deepEqual(cancel, { tipo: "cancelarTrazo" });
+  assert.equal(E.reducir(e, cancel).trazo, null);
+  assert.equal(E.reducir(e, cancel).zonas.length, 0);
+  // No pasa de 24 puntos.
+  let largo = hacer(ini(), { tipo: "elegirActiva", spaceId: 3 }, { tipo: "elegirHerramienta", herramienta: "poligono" });
+  for (let k = 0; k < 30; k++) largo = E.reducir(largo, { tipo: "agregarPunto", punto: [0.5 + 0.4 * Math.cos(k / 5), 0.5 + 0.4 * Math.sin(k / 5)] });
+  assert.equal(largo.trazo.length, G.MAX_VERTICES);
+  assert.equal(largo.aviso, E.AVISO_TOPE_DE_PUNTOS);
+});
+
+await prueba("sin participación activa no se dibuja: R y P no hacen nada y el trazo no empieza", () => {
+  const e = ini();
+  assert.equal(E.accionDeTecla(e, { key: "r", ctrl: false, shift: false }), null);
+  assert.equal(E.accionDeTecla(e, { key: "P", ctrl: false, shift: false }), null);
+  const h = E.reducir(e, { tipo: "elegirHerramienta", herramienta: "rectangulo" });
+  assert.equal(h.herramienta, "seleccionar");
+  assert.equal(h.aviso, E.AVISO_SIN_ACTIVA);
+  // Si se saca la activa con una herramienta de dibujo, vuelve a Seleccionar.
+  const d = hacer(e, { tipo: "elegirActiva", spaceId: 1 }, { tipo: "elegirHerramienta", herramienta: "poligono" }, { tipo: "elegirActiva", spaceId: null });
+  assert.equal(d.herramienta, "seleccionar");
+  assert.equal(E.reducir(d, { tipo: "agregarPunto", punto: [0.2, 0.2] }).trazo, null);
+});
+
+await prueba("mover una zona contra el borde no la deforma: el vector se recorta con su caja", () => {
+  const z = [[0.7, 0.2], [0.9, 0.25], [0.85, 0.6], [0.75, 0.5]];
+  const movida = E.trasladar(z, 0.5, -0.4);
+  const [u0, v0, u1, v1] = G.cajas([movida]);
+  assert.equal(u1, 1);
+  assert.equal(v0, 0);
+  // La forma es la misma: las diferencias entre vértices no cambian.
+  for (let i = 1; i < z.length; i++) {
+    cerca(movida[i][0] - movida[0][0], z[i][0] - z[0][0], 1e-6, `du ${i}`);
+    cerca(movida[i][1] - movida[0][1], z[i][1] - z[0][1], 1e-6, `dv ${i}`);
+  }
+  assert.ok(u0 > 0 && v1 < 1);
+  // Con un arrastre, `du/dv` cuentan desde el comienzo: ir y volver deja la zona donde estaba.
+  let e = conZonas([zona("z1", 1, z)]);
+  e = hacer(e, { tipo: "empezarArrastre" }, { tipo: "moverZona", clave: "z1", du: 0.5, dv: 0 }, { tipo: "moverZona", clave: "z1", du: 0, dv: 0 }, { tipo: "terminarArrastre" });
+  assert.deepEqual(e.zonas[0].vertices, z);
+  assert.equal(e.atras.length, 0, "un arrastre que vuelve al lugar apiló un paso");
+});
+
+await prueba("un arrastre de 50 movimientos es UN paso de deshacer (mover, vértice y escala)", () => {
+  const base = conZonas([zona("z1", 1, cuadrado(0.2, 0.2, 0.4, 0.4)), zona("z2", 2, cuadrado(0.6, 0.6, 0.8, 0.8))]);
+  for (const mover of [
+    (k) => ({ tipo: "moverZona", clave: "z1", du: k * 0.004, dv: k * 0.002 }),
+    (k) => ({ tipo: "moverVertice", clave: "z1", vertice: 2, punto: [0.4 + k * 0.003, 0.4 + k * 0.001] }),
+    (k) => ({ tipo: "escalar", clave: "z1", manija: "ne", punto: [0.4 + k * 0.004, 0.4 + k * 0.004] }),
+  ]) {
+    let e = E.reducir(base, { tipo: "empezarArrastre" });
+    for (let k = 1; k <= 50; k++) e = E.reducir(e, mover(k));
+    assert.equal(e.atras.length, 0, "los movimientos apilan pasos");
+    e = E.reducir(e, { tipo: "terminarArrastre" });
+    assert.equal(e.atras.length, 1, "el arrastre no es un paso");
+    assert.equal(e.arrastre, null);
+    const atras = E.reducir(e, { tipo: "deshacer" });
+    assert.deepEqual(atras.zonas, base.zonas, "deshacer no vuelve a antes del arrastre");
+    assert.equal(atras.sucio, false);
+    assert.deepEqual(E.reducir(atras, { tipo: "rehacer" }).zonas, e.zonas);
+  }
+});
+
+await prueba("vértices: mover, insertar en un borde, borrar; un triángulo no pierde un punto", () => {
+  let e = conZonas([zona("z1", 1, cuadrado(0.2, 0.2, 0.4, 0.4))]);
+  e = E.reducir(e, { tipo: "insertarVertice", clave: "z1", despuesDe: 0, punto: [0.3, 0.2] });
+  assert.equal(e.zonas[0].vertices.length, 5);
+  assert.deepEqual(e.zonas[0].vertices[1], [0.3, 0.2]);
+  assert.deepEqual(e.seleccion, { zona: "z1", vertice: 1 });
+  e = E.reducir(e, { tipo: "moverVertice", clave: "z1", vertice: 1, punto: [0.3, -0.5] });
+  assert.deepEqual(e.zonas[0].vertices[1], [0.3, 0], "el vértice se sale de la cara");
+  const borrar = E.accionDeTecla(e, { key: "Delete", ctrl: false, shift: false });
+  assert.deepEqual(borrar, { tipo: "borrarVertice", clave: "z1", vertice: 1 });
+  e = E.reducir(e, borrar);
+  assert.equal(e.zonas[0].vertices.length, 4);
+  e = hacer(e, { tipo: "borrarVertice", clave: "z1", vertice: 0 });
+  assert.equal(e.zonas[0].vertices.length, 3);
+  const triangulo = E.reducir(e, { tipo: "borrarVertice", clave: "z1", vertice: 0 });
+  assert.equal(triangulo.zonas, e.zonas, "el triángulo perdió un punto");
+  assert.equal(triangulo.aviso, E.AVISO_TRIANGULO);
+  // Sin un punto elegido, Supr borra la zona entera.
+  const sinPunto = E.reducir(triangulo, { tipo: "seleccionar", zona: "z1" });
+  const z = E.reducir(sinPunto, E.accionDeTecla(sinPunto, { key: "Delete", ctrl: false, shift: false }));
+  assert.equal(z.zonas.length, 0);
+  assert.equal(z.seleccion, null);
+  // Una zona de 24 puntos no gana otro.
+  const llena = conZonas([zona("z9", 1, Array.from({ length: 24 }, (_, k) => [0.5 + 0.3 * Math.cos(2 * Math.PI * k / 24), 0.5 + 0.3 * Math.sin(2 * Math.PI * k / 24)]))]);
+  assert.equal(E.reducir(llena, { tipo: "insertarVertice", clave: "z9", despuesDe: 3, punto: [0.5, 0.5] }).zonas, llena.zonas);
+});
+
+await prueba("escalar: el lado opuesto queda fijo, Shift conserva la proporción, nunca se da vuelta ni sale de la cara", () => {
+  const z = cuadrado(0.2, 0.2, 0.4, 0.3);
+  assert.deepEqual(G.cajas([E.escalarZona(z, "e", [0.6, 0.9])]), [0.2, 0.2, 0.6, 0.3]);
+  assert.deepEqual(G.cajas([E.escalarZona(z, "o", [0.1, 0.9])]), [0.1, 0.2, 0.4, 0.3]);
+  assert.deepEqual(G.cajas([E.escalarZona(z, "n", [0.9, 0.5])]), [0.2, 0.2, 0.4, 0.5]);
+  assert.deepEqual(G.cajas([E.escalarZona(z, "s", [0.9, 0])]), [0.2, 0, 0.4, 0.3]);
+  // Pasar la manija al otro lado no la da vuelta: queda en el mínimo.
+  const [u0, , u1] = G.cajas([E.escalarZona(z, "e", [0.05, 0.25])]);
+  assert.ok(u1 > u0 && u0 === 0.2, "se dio vuelta");
+  // Shift en una esquina: la misma proporción (ancho/alto = 2).
+  const [a0, b0, a1, b1] = G.cajas([E.escalarZona(z, "ne", [0.8, 0.35], true)]);
+  cerca((a1 - a0) / (b1 - b0), 2, 1e-5, "la proporción");
+  // Y nunca sale de la cara, aunque la proporción lo pida.
+  const [, , c1, d1] = G.cajas([E.escalarZona(z, "ne", [1, 1], true)]);
+  assert.ok(c1 <= 1 && d1 <= 1);
+});
+
+await prueba("100 pasos de deshacer; rehacer se pierde al editar; deshacer de vuelta a lo cargado no queda sucio", () => {
+  let e = hacer(ini(), { tipo: "elegirActiva", spaceId: 1 }, { tipo: "elegirHerramienta", herramienta: "rectangulo" });
+  const pasos = [];
+  for (let k = 0; k < 120; k++) {
+    e = hacer(e, { tipo: "empezarTrazo", punto: [0.001 * k, 0] }, { tipo: "estirarTrazo", punto: [0.001 * k + 0.0011, 0.01] }, { tipo: "cerrarTrazo" });
+    pasos.push(e.zonas);
+  }
+  assert.equal(e.atras.length, E.PASOS_DE_DESHACER);
+  for (let k = 0; k < 100; k++) e = E.reducir(e, { tipo: "deshacer" });
+  assert.equal(e.zonas.length, 20, "deshacer no volvió 100 pasos");
+  assert.equal(E.reducir(e, { tipo: "deshacer" }), e, "deshizo más de 100");
+  e = E.reducir(e, { tipo: "rehacer" });
+  assert.equal(e.zonas.length, 21);
+  e = E.reducir(e, { tipo: "borrarZona", clave: e.zonas[0].clave });
+  assert.equal(e.adelante.length, 0, "editar no borró lo de rehacer");
+  // De vuelta a lo cargado: no sucio.
+  const cargado = E.reducir(ini(), { tipo: "cargar", zonas: [{ id: 5, participacion_space_id: 1, vertices: cuadrado(0.1, 0.1, 0.2, 0.2), orden: 0 }] });
+  const editado = E.reducir(cargado, { tipo: "moverZona", clave: "z5", du: 0.1, dv: 0 });
+  assert.equal(editado.sucio, true);
+  assert.equal(E.reducir(editado, { tipo: "deshacer" }).sucio, false);
+  const descartado = E.reducir(editado, { tipo: "descartarCambios" });
+  assert.equal(descartado.sucio, false);
+  assert.deepEqual(descartado.zonas, cargado.zonas);
+  assert.equal(E.reducir(descartado, { tipo: "deshacer" }).sucio, true, "descartar no se puede deshacer");
+});
+
+await prueba("«Mirar» no edita: ninguna acción de edición cambia nada, y se puede elegir una zona para ver sus datos", () => {
+  const z = conZonas([zona("z1", 1, cuadrado(0.2, 0.2, 0.4, 0.4))], { activa: 1, atras: [[]], adelante: [[]] });
+  const m = E.reducir(z, { tipo: "elegirModo", modo: "mirar" });
+  assert.equal(m.herramienta, "seleccionar");
+  const editan = [
+    { tipo: "empezarTrazo", punto: [0.5, 0.5] }, { tipo: "agregarPunto", punto: [0.5, 0.5] }, { tipo: "cerrarTrazo" },
+    { tipo: "empezarArrastre" }, { tipo: "moverZona", clave: "z1", du: 0.1, dv: 0 }, { tipo: "empujar", dx: 0.01, dy: 0 },
+    { tipo: "moverVertice", clave: "z1", vertice: 0, punto: [0, 0] }, { tipo: "escalar", clave: "z1", manija: "e", punto: [0.9, 0.9] },
+    { tipo: "insertarVertice", clave: "z1", despuesDe: 0, punto: [0.3, 0.2] }, { tipo: "borrarVertice", clave: "z1", vertice: 0 },
+    { tipo: "borrarZona", clave: "z1" }, { tipo: "deshacer" }, { tipo: "rehacer" }, { tipo: "descartarCambios" },
+    { tipo: "ajustarZonas", spaceId: 1, vertices: [cuadrado(0, 0, 0.1, 0.1)] }, { tipo: "usarZonas", spaceId: 1, zonas: [] },
+  ];
+  for (const a of editan) assert.equal(E.reducir(m, a), m, `en Mirar, «${a.tipo}» cambió algo`);
+  assert.equal(E.reducir(m, { tipo: "elegirHerramienta", herramienta: "rectangulo" }).herramienta, "seleccionar");
+  const visto = E.reducir(m, { tipo: "seleccionar", zona: "z1", vertice: 2 });
+  assert.deepEqual(visto.seleccion, { zona: "z1", vertice: null }, "en Mirar se eligió un vértice");
+  for (const key of ["v", "r", "p", "Delete", "Backspace", "ArrowLeft", "Enter"]) {
+    assert.equal(E.accionDeTecla(visto, { key, ctrl: false, shift: false }), null, `en Mirar, ${key} edita`);
+  }
+  assert.equal(E.accionDeTecla(visto, { key: "z", ctrl: true, shift: false }), null);
+});
+
+await prueba("las teclas: V/R/P/G, flechas (1 cm, Shift 10 cm), Supr/Retroceso, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y; Esc NUNCA sale", () => {
+  const t = (e, key, o = {}) => E.accionDeTecla(e, { key, ctrl: !!o.ctrl, shift: !!o.shift });
+  const e = conZonas([zona("z1", 1, cuadrado(0.2, 0.2, 0.4, 0.4))], { activa: 1, medidas: { ancho: 2, alto: 0.5 } });
+  assert.deepEqual(t(e, "v"), { tipo: "elegirHerramienta", herramienta: "seleccionar" });
+  assert.deepEqual(t(e, "R"), { tipo: "elegirHerramienta", herramienta: "rectangulo" });
+  assert.deepEqual(t(e, "p"), { tipo: "elegirHerramienta", herramienta: "poligono" });
+  assert.deepEqual(t(e, "g"), { tipo: "alternarIman" });
+  assert.deepEqual(t(e, "z", { ctrl: true }), { tipo: "deshacer" });
+  assert.deepEqual(t(e, "Z", { ctrl: true, shift: true }), { tipo: "rehacer" });
+  assert.deepEqual(t(e, "y", { ctrl: true }), { tipo: "rehacer" });
+  assert.equal(t(e, "ArrowLeft"), null, "sin nada elegido, las flechas no son del editor");
+  assert.equal(t(e, "f"), null, "F no es del editor (es del atajo del plano: la corta el panel)");
+  const elegida = E.reducir(e, { tipo: "seleccionar", zona: "z1" });
+  assert.deepEqual(t(elegida, "ArrowRight"), { tipo: "empujar", dx: 0.01, dy: 0 });
+  assert.deepEqual(t(elegida, "ArrowUp", { shift: true }), { tipo: "empujar", dx: 0, dy: 0.1 });
+  // 1 cm en una cara de 2 m de ancho es 0,005 en u; 10 cm en 0,5 m de alto, 0,2 en v.
+  const movida = E.reducir(elegida, t(elegida, "ArrowRight"));
+  cerca(movida.zonas[0].vertices[0][0], 0.205, 1e-9, "1 cm a la derecha");
+  const subida = E.reducir(elegida, t(elegida, "ArrowUp", { shift: true }));
+  cerca(subida.zonas[0].vertices[0][1], 0.4, 1e-9, "10 cm arriba");
+  assert.deepEqual(t(elegida, "Backspace"), { tipo: "borrarZona", clave: "z1" });
+  // Esc: suelta la zona; sin nada, nada. Nunca otra cosa (no hay «salir»).
+  assert.deepEqual(t(elegida, "Escape"), { tipo: "seleccionar", zona: null });
+  assert.equal(t(e, "Escape"), null);
+  const estados = [e, elegida, E.reducir(e, { tipo: "elegirModo", modo: "mirar" }),
+    hacer(e, { tipo: "elegirHerramienta", herramienta: "poligono" }, { tipo: "agregarPunto", punto: [0.5, 0.5] })];
+  for (const x of estados) {
+    for (const mods of [{}, { shift: true }]) {
+      const a = t(x, "Escape", mods);
+      assert.ok(a === null || a.tipo === "cancelarTrazo" || (a.tipo === "seleccionar" && a.zona === null), `Esc devolvió ${JSON.stringify(a)}`);
+    }
+  }
+});
+
+await prueba("un clic es menos de 4 px entre bajar y subir; más, es un arrastre", () => {
+  assert.equal(E.UMBRAL_CLIC_PX, 4);
+  assert.equal(E.esClic({ x: 10, y: 10 }, { x: 12, y: 12 }), true);
+  assert.equal(E.esClic({ x: 10, y: 10 }, { x: 14, y: 10 }), false);
+});
+
+await prueba("cargar: las zonas del servidor por su orden, con su clave; guardado deja la base en lo mandado", () => {
+  const e = E.reducir(ini(), { tipo: "cargar", zonas: [
+    { id: 9, participacion_space_id: 2, vertices: cuadrado(0.5, 0.5, 0.6, 0.6), orden: 1 },
+    { id: 4, participacion_space_id: 1, vertices: cuadrado(0.1, 0.1, 0.2, 0.2), orden: 0 },
+  ], medidas: { ancho: 0.9, alto: 1.8 } });
+  assert.deepEqual(e.zonas.map((z) => z.clave), ["z4", "z9"]);
+  assert.deepEqual(e.medidas, { ancho: 0.9, alto: 1.8 });
+  assert.equal(e.sucio, false);
+  const dibujado = hacer(e, { tipo: "elegirActiva", spaceId: 1 }, { tipo: "elegirHerramienta", herramienta: "rectangulo" },
+    { tipo: "empezarTrazo", punto: [0.3, 0.3] }, { tipo: "estirarTrazo", punto: [0.4, 0.4] }, { tipo: "cerrarTrazo" });
+  assert.equal(dibujado.sucio, true);
+  const guardado = E.reducir(dibujado, { tipo: "guardado", base: dibujado.zonas });
+  assert.equal(guardado.sucio, false);
+  assert.equal(guardado.atras.length, dibujado.atras.length, "guardar borró el deshacer");
+  assert.deepEqual(E.zonasParaEnviar(guardado.zonas).map((z) => z.participacion_space_id), [1, 2, 1]);
+  // El sentido de los vértices o el orden de la lista no son un cambio.
+  const alReves = E.reducir(e, { tipo: "guardado", base: [...e.zonas].reverse().map((z) => ({ ...z, vertices: [...z.vertices].reverse() })) });
+  assert.equal(alReves.sucio, false);
+});
+
+await prueba("la zona de arriba bajo el puntero (la última si se pisan), y el punto interior cae adentro", () => {
+  const zs = [zona("a", 1, cuadrado(0, 0, 0.6, 0.6)), zona("b", 2, cuadrado(0.4, 0.4, 1, 1))];
+  assert.equal(E.zonaEnPunto(zs, [0.5, 0.5]), "b");
+  assert.equal(E.zonaEnPunto(zs, [0.1, 0.1]), "a");
+  assert.equal(E.zonaEnPunto(zs, [0.9, 0.1]), null);
+  // L: el punto interior no es el centroide (que cae afuera), y está adentro.
+  const L = [[0, 0], [0.6, 0], [0.6, 0.2], [0.2, 0.2], [0.2, 0.8], [0, 0.8]];
+  assert.ok(E.adentro(E.puntoInterior(L), L));
+  // Un rectángulo: centrado.
+  assert.deepEqual(E.puntoInterior(cuadrado(0, 0, 0.5, 1)).map((x) => Math.round(x * 1000) / 1000), [0.234, 0.469]);
+  // Tan fina que ninguna celda cae adentro: el centroide del triángulo más grande, adentro.
+  const fina = [[0.1, 0.1], [0.9, 0.1000001], [0.9, 0.1000003], [0.1, 0.1000002]];
+  const pf = E.puntoInterior(fina);
+  assert.ok(pf[0] > 0.1 && pf[0] < 0.9 && pf[1] >= 0.1 && pf[1] <= 0.1000003, `cayó en ${pf}`);
+  for (let i = 0; i < 200; i++) {
+    const p = alAzar();
+    assert.ok(E.adentro(E.puntoInterior(p), p), `polígono ${i}: el punto interior cae afuera`);
+  }
+});
+
+console.log("zonas · imán, fusión y lo que cambia al confirmar");
+
+await prueba("imán: al vértice más cercano dentro del radio, si no a una arista; afuera, nada; con radio distinto en u y v", () => {
+  const objetivos = [[0.5, 0.5], [0.52, 0.5]];
+  const segmentos = [[[0, 0.3], [1, 0.3]]];
+  assert.deepEqual(E.imantar([0.505, 0.502], objetivos, segmentos, 0.01), [0.5, 0.5]);
+  assert.deepEqual(E.imantar([0.515, 0.501], objetivos, segmentos, 0.01), [0.52, 0.5]);
+  assert.deepEqual(E.imantar([0.7, 0.305], objetivos, segmentos, 0.01), [0.7, 0.3]);
+  assert.deepEqual(E.imantar([0.7, 0.4], objetivos, segmentos, 0.01), [0.7, 0.4]);
+  // El vértice gana a la arista aunque la arista quede más cerca (0,003 contra 0,007).
+  assert.deepEqual(E.imantar([0.5, 0.303], [[0.5, 0.31]], segmentos, 0.01), [0.5, 0.31]);
+  // La esquina de otra zona gana a sus dos bordes (que pasan por ella y siempre quedan más cerca).
+  assert.deepEqual(E.imantar([0.102, 0.101], [[0.1, 0.1]], [[[0.1, 0.1], [0.5, 0.1]], [[0.1, 0.1], [0.1, 0.5]]], 0.01), [0.1, 0.1]);
+  // Radio anisótropo: 6 px son 0,02 en u y 0,005 en v.
+  assert.deepEqual(E.imantar([0.515, 0.5], objetivos, [], { u: 0.02, v: 0.005 }), [0.52, 0.5]);
+  assert.deepEqual(E.imantar([0.5, 0.51], objetivos, [], { u: 0.02, v: 0.005 }), [0.5, 0.51]);
+  assert.deepEqual(E.imantar([0.5, 0.51], objetivos, [], 0), [0.5, 0.51]);
+});
+
+await prueba("a qué imanta: otras zonas y el borde por defecto (no la que se mueve); entrepaños y parantes sólo a pedido", () => {
+  const e = conZonas([zona("z1", 1, cuadrado(0.2, 0.2, 0.4, 0.4)), zona("z2", 2, cuadrado(0.6, 0.6, 0.8, 0.8))]);
+  assert.equal(e.iman, true, "el imán no arranca prendido");
+  assert.equal(e.imanAGuias, false, "el imán a las guías arranca prendido (el pedido no deja imponerlo)");
+  assert.equal(e.guias, true, "las guías no se ven de entrada");
+  const guias = { entrepanos: [0.33], parantes: [0.5] };
+  const { objetivos, segmentos } = E.objetivosDelIman(e, "z1", guias);
+  assert.ok(objetivos.some(([u, v]) => u === 0.6 && v === 0.6), "no imanta a la otra zona");
+  assert.ok(!objetivos.some(([u, v]) => u === 0.2 && v === 0.2), "imanta a la zona que se mueve");
+  assert.ok(objetivos.some(([u, v]) => u === 1 && v === 1), "no imanta a la esquina de la cara");
+  assert.ok(!segmentos.some(([a, b]) => a[1] === 0.33 && b[1] === 0.33), "imanta a un entrepaño sin que se pida");
+  assert.deepEqual(E.imantar([0.45, 0.335], objetivos, segmentos, 0.01), [0.45, 0.335]);
+  const conGuias = E.objetivosDelIman(E.reducir(e, { tipo: "alternarImanAGuias" }), "z1", guias);
+  assert.deepEqual(E.imantar([0.45, 0.335], conGuias.objetivos, conGuias.segmentos, 0.01), [0.45, 0.33]);
+  assert.deepEqual(E.imantar([0.497, 0.9], conGuias.objetivos, conGuias.segmentos, 0.01), [0.5, 0.9]);
+  // G apaga el imán (lo usa el lienzo).
+  assert.equal(E.reducir(e, E.accionDeTecla(e, { key: "G", ctrl: false, shift: false })).iman, false);
+});
+
+await prueba("fusión de tres vías: mía sin tocar → suya; suya sin tocar → mía; las dos distinto → conflicto con la suya", () => {
+  const zo = (id, s, v, orden = 0) => ({ id, participacion_space_id: s, vertices: v, orden });
+  const servidorAntes = [zo(1, 10, cuadrado(0, 0, 0.2, 0.2)), zo(2, 20, cuadrado(0.3, 0, 0.5, 0.2)), zo(3, 30, cuadrado(0.6, 0, 0.8, 0.2))];
+  const base = E.desdeElServidor(servidorAntes);
+  // Acá: cambié la 20 y la 30. Allá: cambiaron la 10 y la 30 (distinto), y la 20 la dejaron.
+  const mias = base.map((z) => (z.participacionSpaceId === 20 ? { ...z, vertices: cuadrado(0.3, 0, 0.55, 0.2) }
+    : z.participacionSpaceId === 30 ? { ...z, vertices: cuadrado(0.6, 0, 0.85, 0.2) } : z));
+  // El servidor devuelve la 20 al revés y antihoraria desde otro vértice: no es un cambio.
+  const suyas = [zo(11, 10, cuadrado(0, 0, 0.25, 0.25)), zo(2, 20, [[0.5, 0.2], [0.3, 0.2], [0.3, 0], [0.5, 0]]), zo(33, 30, cuadrado(0.6, 0, 0.7, 0.2))];
+  const f = E.fusionarZonas(base, mias, suyas);
+  assert.deepEqual(f.conflictos, [30]);
+  const de = (s) => f.zonas.filter((z) => z.participacionSpaceId === s).map((z) => z.vertices);
+  assert.deepEqual(de(10), [cuadrado(0, 0, 0.25, 0.25)], "la que no toqué no tomó lo del servidor");
+  assert.deepEqual(de(20), [cuadrado(0.3, 0, 0.55, 0.2)], "la que no tocaron allá no quedó con lo mío");
+  assert.deepEqual(de(30), [cuadrado(0.6, 0, 0.7, 0.2)], "en el conflicto no quedó lo del servidor");
+  assert.equal(new Set(f.zonas.map((z) => z.clave)).size, f.zonas.length, "claves repetidas");
+  // Las dos cambiaron igual: sin conflicto. Una participación nueva de cada lado, se suman.
+  const igual = E.fusionarZonas(base, [...mias, zona("n1", 40, cuadrado(0, 0.5, 0.1, 0.6))], [...suyas.slice(0, 2), zo(33, 30, cuadrado(0.6, 0, 0.85, 0.2)), zo(50, 50, cuadrado(0.5, 0.5, 0.6, 0.6))]);
+  assert.deepEqual(igual.conflictos, []);
+  assert.deepEqual(igual.zonas.map((z) => z.participacionSpaceId).sort(), [10, 20, 30, 40, 50]);
+  // Sin cambios de nadie: lo del servidor.
+  assert.deepEqual(E.fusionarZonas(base, base, servidorAntes), { zonas: base, conflictos: [] });
+  // «Usar lo mío» (en el reductor): la participación del conflicto vuelve a lo de acá.
+  const ed = E.reducir(conZonas(f.zonas), { tipo: "usarZonas", spaceId: 30, zonas: mias.filter((z) => z.participacionSpaceId === 30) });
+  assert.deepEqual(ed.zonas.filter((z) => z.participacionSpaceId === 30).map((z) => z.vertices), [cuadrado(0.6, 0, 0.85, 0.2)]);
+});
+
+await prueba("lo que cambia al confirmar: zonas agregadas, borradas y cambiadas, y el dibujado de antes y después", () => {
+  const antes = [{ id: 1, participacion_space_id: 10, vertices: cuadrado(0, 0, 0.2, 0.2), orden: 0 },
+    { id: 2, participacion_space_id: 20, vertices: cuadrado(0.3, 0, 0.5, 0.2), orden: 1 },
+    { id: 3, participacion_space_id: 20, vertices: cuadrado(0.3, 0.5, 0.5, 0.7), orden: 2 }];
+  const despues = [zona("z1", 10, [[0.2, 0.2], [0, 0.2], [0, 0], [0.2, 0]]), zona("z2", 20, cuadrado(0.3, 0, 0.6, 0.2)), zona("n1", 30, cuadrado(0.7, 0.7, 0.8, 0.8))];
+  const r = E.diferencias(antes, despues, new Map([[10, { dibujado: 400 }], [20, { dibujado: 800 }]]), new Map([[10, { dibujado: 400 }], [20, { dibujado: 600 }], [30, { dibujado: 100 }]]));
+  assert.deepEqual(r.participaciones, [
+    { spaceId: 20, dibujadoAntes: 800, dibujadoDespues: 600, agregadas: 0, borradas: 1, cambiadas: 1 },
+    { spaceId: 30, dibujadoAntes: 0, dibujadoDespues: 100, agregadas: 1, borradas: 0, cambiadas: 0 },
+  ]);
+  assert.deepEqual([r.agregadas, r.borradas, r.cambiadas, r.hayCambios], [1, 1, 1, true]);
+  assert.equal(E.diferencias(antes, E.desdeElServidor(antes), new Map(), new Map()).hayCambios, false);
+  // Editando el BORRADOR (o después de guardar: el servidor numera de nuevo), las claves no son las de la
+  // confirmada: una zona idéntica de la misma participación es la misma zona, no «una agregada y una borrada».
+  const delBorrador = E.desdeElServidor(antes.map((z) => ({ ...z, id: z.id + 100 })));
+  const d0 = E.diferencias(antes, delBorrador, new Map(), new Map());
+  assert.deepEqual([d0.agregadas, d0.borradas, d0.cambiadas, d0.hayCambios], [0, 0, 0, false], JSON.stringify(d0));
+  // Con una cambiada, una nueva y una que pasa a otra participación (misma forma): eso sí se cuenta.
+  const mezcla = [zona("z101", 10, cuadrado(0, 0, 0.2, 0.2)), zona("z102", 20, cuadrado(0.3, 0, 0.6, 0.2)), zona("z103", 30, cuadrado(0.3, 0.5, 0.5, 0.7))];
+  const d1 = E.diferencias(antes, mezcla, new Map(), new Map());
+  assert.deepEqual(d1.participaciones.map((f) => [f.spaceId, f.agregadas, f.borradas, f.cambiadas]), [[20, 1, 2, 0], [30, 1, 0, 0]]);
+  // Dos zonas iguales de la misma participación: se aparean de a una.
+  const dos = [{ id: 1, participacion_space_id: 10, vertices: cuadrado(0, 0, 0.2, 0.2), orden: 0 }, { id: 2, participacion_space_id: 10, vertices: cuadrado(0, 0, 0.2, 0.2), orden: 1 }];
+  const d2 = E.diferencias(dos, [zona("n1", 10, cuadrado(0, 0, 0.2, 0.2))], new Map(), new Map());
+  assert.deepEqual([d2.agregadas, d2.borradas], [0, 1]);
+});
+
+await prueba("sucio no mira el orden de la lista ni de las zonas de una misma participación", () => {
+  const a = [zona("a", 1, cuadrado(0, 0, 0.1, 0.1)), zona("b", 1, cuadrado(0.5, 0.5, 0.6, 0.6)), zona("c", 2, cuadrado(0.7, 0.7, 0.8, 0.8))];
+  assert.equal(E.mismasZonas(a, [a[2], a[1], a[0]]), true);
+  assert.equal(E.mismasZonas(a, [a[0], { ...a[1], participacionSpaceId: 2 }, a[2]]), false);
+  assert.equal(E.reducir(conZonas(a), { tipo: "fusionar", zonas: [a[1], a[2], a[0]], base: a }).sucio, false);
+});
+
+await prueba("ajustar: nunca pasa el tope y no crea solapes, en 150 juegos al azar con zócalo y parantes", () => {
+  const sup = superficieDe("superficie:gondola-doble-090");
+  const Ex = sup.exclusiones, util = G.areaUtil(Ex);
+  let achicados = 0, creados = 0;
+  for (let i = 0; i < 150; i++) {
+    const zs = [alAzar(), ...(rnd() < 0.4 ? [alAzar()] : [])];
+    const antes = G.dibujadoPb(zs, Ex);
+    const crudoAntes = 10000 * G.areaCubierta(zs, Ex) / util;
+    if (antes < 50) continue;
+    const tope = 1 + Math.floor(rnd() * antes * 1.2);
+    // La otra participación (fechas cruzadas): un rectángulo a la derecha que
+    // arranca en el borde de las zonas (no las pisa) o un poco antes (las
+    // pisa: un dibujo desprolijo), siempre a la derecha de todos los puntos
+    // interiores.
+    const [, , u1] = G.cajas(zs);
+    let cu = 0;
+    for (const z of zs) cu = Math.max(cu, E.puntoInterior(z, sup.ancho, sup.alto)[0]);
+    const x0 = G.cuantizarNumero(i % 2 ? u1 : cu + 0.75 * (u1 - cu));
+    if (!(x0 < 0.99)) continue;
+    const otra = [[x0, 0.0], [1, 0], [1, 1], [x0, 1]];
+    const pisabaAntes = G.areaCubierta(zs, Ex, [otra]) * sup.ancho * sup.alto > G.AREA_MINIMA_M2 / 2;
+    const out = E.ajustarAlContratado(zs, Ex, tope, util, [[otra]], sup);
+    const pb = G.dibujadoPb(out, Ex);
+    assert.ok(pb <= Math.max(tope, 0), `juego ${i}: ${pb} > ${tope}`);
+    // Sin exceso (el crudo, sin redondear, no pasa el tope) no se toca nada.
+    if (crudoAntes <= tope) assert.deepEqual(out, zs, `juego ${i}: sin exceso cambió las zonas`);
+    else assert.ok(10000 * G.areaCubierta(out, Ex) / util <= tope, `juego ${i}: el crudo pasa el tope`);
+    const pisa = G.areaCubierta(out, Ex, [otra]) * sup.ancho * sup.alto > G.AREA_MINIMA_M2 / 2;
+    const soloTope = E.ajustarAlContratado(zs, Ex, tope, util, [], sup);
+    const topePisa = G.areaCubierta(soloTope, Ex, [otra]) * sup.ancho * sup.alto > G.AREA_MINIMA_M2 / 2;
+    if (pisa) {
+      // Sólo se queda pisando con lo que tenía (el resultado del tope solo):
+      // no pudo dejar de pisar sin perder más de la mitad del contratado.
+      assert.deepEqual(out, soloTope, `juego ${i}: pisa y no es lo que tenía`);
+      if (!pisabaAntes) creados++;
+    } else if (topePisa) {
+      achicados++;
+      assert.ok(10000 * G.areaCubierta(out, Ex) / util >= E.MIN_FRACCION_SIN_PISAR * tope, `juego ${i}: la borró para no pisar`);
+    }
+  }
+  console.log(`         ${achicados} achicadas de más para no pisar · ${creados} que habrían pisado sin poder evitarlo`);
+  assert.ok(achicados > 5, "el azar casi no prueba el achique por solape");
+});
+
+await prueba("ajustar: una U con otra marca adentro de su hueco no se borra para no pisarla (queda el solape a la vista)", () => {
+  const U = [[[0, 0], [0.6, 0], [0.6, 0.8], [0.45, 0.8], [0.45, 0.15], [0.15, 0.15], [0.15, 0.8], [0, 0.8]]];
+  const otra = [[0.15, 0.15], [0.45, 0.15], [0.45, 1], [0.15, 1]];
+  assert.equal(G.areaCubierta(U, [], [otra]), 0, "la U ya pisaba");
+  const out = E.ajustarAlContratado(U, [], 2500, 1, [[otra]], { ancho: 1, alto: 1 });
+  assert.equal(G.dibujadoPb(out, []), 2500, "no llegó al tope");
+  assert.ok(G.areaCubierta(out, [], [otra]) > 0, "esperaba el solape (que la revisión marca)");
+  // Sin la otra marca, la misma U sólo llega al tope.
+  assert.deepEqual(E.ajustarAlContratado(U, [], 2500, 1, [], { ancho: 1, alto: 1 }), out);
+});
+
+await prueba("el editor es puro: sin React, sin catálogo, sin reloj y sin guardar nada en el navegador", () => {
+  const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
+  const ts = sinComent(leer(join(raiz, "src", "utils", "edicionDeZonas.ts")));
+  const imports = [...ts.matchAll(/^import\s+(type\s+)?[^;]*from\s+"([^"]+)"/gm)].map((m) => [m[2], !!m[1]]);
+  for (const [de, soloTipos] of imports) {
+    assert.ok(soloTipos || ["./participaciones", "./zonasGeometria"].includes(de), `edicionDeZonas.ts importa ${de}`);
+  }
+  assert.ok(!/localStorage|sessionStorage|indexedDB|new Date\(|Date\.now|from "react"/.test(ts));
+  for (const f of ["zonas3d.ts", "coloresDeMarca.ts"]) {
+    const t = sinComent(leer(join(raiz, "src", "utils", f)));
+    for (const m of t.matchAll(/^import\s+(type\s+)?[^;]*from\s+"([^"]+)"/gm)) {
+      assert.ok(m[1], `${f} importa ${m[2]} con valores (tiene que ser sólo de tipos)`);
+    }
+  }
 });
 
 console.log(`\n${hechas} pruebas de zonas en verde`);

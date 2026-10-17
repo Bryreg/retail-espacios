@@ -1292,4 +1292,51 @@ await prueba("el enlace de montaje dice la cara y la parte una vez: «NEV-01 PU2
   assert.match(m, /espacio\.corto\.slice\(0, -\(sufijoParte\.length \+ 1\)\)/, "el encabezado repite el sufijo de la parte");
 });
 
+console.log("partes · la cara por participación y el cambio de geometría (§10.8)");
+
+await prueba("cambiar alto, entrepaños o módulo de una cara por participación avisa que su distribución queda para revisar", () => {
+  const g = gondola({ partes: { division: "participacion" }, status: "free", faceB: { status: "free" } });
+  const sinParticipaciones = { ocupacion: {}, confirmadas: new Set() };
+  // Un `PC3` vivo tiene la forma de una parte vendida y NO lo es: no se para a ninguna altura.
+  const conPC = { "NAVE-GON-05-PC3": vendido("2026-10-01", "2099-12-31"), "NAVE-GON-05-B-PC1": vendido("2026-10-01", "2099-12-31") };
+  const v0 = P.loVendidoDe(g, "NAVE", new Set(), conPC, sinParticipaciones);
+  assert.equal(v0.partes, undefined, "un contrato de participación cuenta como parte vendida");
+  assert.deepEqual(v0.participacion, [{ cara: "A", comprometida: false, confirmada: false }, { cara: "B", comprometida: false, confirmada: false }]);
+  // Sin términos ni distribución, nada que avisar.
+  assert.deepEqual(P.revisarCambioDeGeometria(g, { h: 2.2 }, v0), { cambios: P.revisarCambioDeGeometria(g, { h: 2.2 }, v0).cambios, bloqueo: null, aviso: null });
+  // La A con una distribución confirmada.
+  const conDistribucion = P.loVendidoDe(g, "NAVE", new Set(), conPC, { ocupacion: { "NAVE-GON-05": { intervalos: [{ desde: "2026-11-01", hasta: "2026-11-30", pb: 2500 }] } }, confirmadas: new Set(["NAVE-GON-05"]) });
+  for (const cambio of [{ h: 2.2 }, { entrepanos: 5 }, { modulo: 1.0 }]) {
+    const r = P.revisarCambioDeGeometria(g, cambio, conDistribucion);
+    assert.equal(r.bloqueo, null, JSON.stringify(cambio));
+    assert.ok(r.aviso, `${JSON.stringify(cambio)} no avisa`);
+    assert.ok(r.aviso.lineas.includes("La cara A se vende por participación y tiene una distribución confirmada: con este cambio queda para revisar."),
+      `${JSON.stringify(cambio)}: ${r.aviso.lineas.join(" | ")}`);
+    assert.ok(!r.aviso.lineas.some((l) => l.includes("La cara B")), "avisa de la B, que no tiene nada");
+    assert.ok(!r.aviso.lineas.some((l) => /partes vendidas|PC3/.test(l)), "el PC3 se lee como una parte que se para a otra altura");
+  }
+  // Sólo con una reserva provisional (la ocupación la cuenta; la fusión con la base no la ve).
+  const conReserva = P.loVendidoDe(g, "NAVE", new Set(), {}, { ocupacion: { "NAVE-GON-05-B": { intervalos: [{ desde: "2026-12-01", hasta: "2026-12-31", pb: 3000 }], fisicos: [] } }, confirmadas: new Set() });
+  const r = P.revisarCambioDeGeometria(g, { h: 2.2 }, conReserva);
+  assert.ok(r.aviso && r.aviso.lineas.some((l) => l.startsWith("La cara B se vende por participación y tiene participaciones vivas")), r.aviso?.lineas.join(" | "));
+  // Sin poder leer la ocupación: ante la duda, se pregunta.
+  const sinDatos = P.loVendidoDe(g, "NAVE", new Set(), {});
+  const d = P.revisarCambioDeGeometria(g, { h: 2.2 }, sinDatos);
+  assert.ok(d.aviso && d.aviso.lineas.some((l) => l.startsWith("No se pudo revisar si la cara A tiene participaciones")));
+  // Un cambio que no cambia la firma (con tramos guardados, el módulo no manda) no dice nada de la distribución.
+  const conTramos = gondola({ partes: { division: "participacion", tramos: 3 }, status: "free" });
+  const vt = P.loVendidoDe(conTramos, "NAVE", new Set(), {}, { ocupacion: {}, confirmadas: new Set(["NAVE-GON-05", "NAVE-GON-05-B"]) });
+  assert.equal(P.revisarCambioDeGeometria(conTramos, { modulo: 1.0 }, vt).aviso, null);
+  // Un mueble que no se vende por participación no lleva la rama.
+  assert.equal(P.loVendidoDe(gondola(), "NAVE", new Set(), {}, sinParticipaciones).participacion, undefined);
+  // Una mural por participación tiene UNA cara: nunca se pregunta por una B que no existe.
+  const mural = gondola({ gondolaType: "wall", partes: { division: "participacion" }, status: "free" });
+  const vm = P.loVendidoDe(mural, "NAVE", new Set(), {}, { ocupacion: { "NAVE-GON-05-B": { intervalos: [{ desde: "2026-11-01", hasta: "2026-11-30", pb: 2500 }] } }, confirmadas: new Set(["NAVE-GON-05-B"]) });
+  assert.deepEqual(vm.participacion, [{ cara: "A", comprometida: false, confirmada: false }]);
+  assert.equal(P.revisarCambioDeGeometria(mural, { h: 2.2 }, vm).aviso, null);
+  // Sin la ocupación pero sabiendo que NO hay distribución confirmada: nada queda para revisar, no se pregunta.
+  const sinOcupacion = P.loVendidoDe(g, "NAVE", new Set(), {}, { ocupacion: null, confirmadas: new Set() });
+  assert.equal(P.revisarCambioDeGeometria(g, { h: 2.2 }, sinOcupacion).aviso, null);
+});
+
 console.log(`\n${hechas} pruebas de vender por partes`);
