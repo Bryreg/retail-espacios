@@ -78,7 +78,21 @@ import {
   disponibilidadDeCara, disponibilidadDeEspacio, divisionDe, esDivision, esPieza, estadoDeEspacio, indiceDePartes,
   partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
   tarifaDeLaFila, textoDeParte, comoSeLiberaLaCara, type ComoSeLibera, type EnContrato, type IndiceDePartes, type ParteRef,
+  comoSeLiberaPorParticipacion, dispoDeParticipacion, esParticipacion, ocupadoPorParticipacion, parteVisible,
+  porParticipacion, type ParticipacionDeLaCara,
 } from "../utils/partes";
+// Las participaciones de cara (§4.8, §9.9, §11): la ocupación ANÓNIMA para
+// Vender, Supervisar y el plano (store de LECTURA, el de edición es del 3D) y
+// los bloques de Supervisar, sólo para quien administra.
+import { claveDeSede, useOcupacionStore } from "../store/ocupacionStore";
+import type { OcupacionOut } from "../api/participaciones";
+import { espacioDeLaCara, leerCara } from "../api/participaciones";
+import type { OcupacionDeCara } from "../utils/participaciones";
+import { palabraDeLaCara } from "../utils/revisarParticipaciones";
+import ParticipacionesDeLaCara, { useAbrirEnDistribucion } from "../components/Distribucion/ParticipacionesDeLaCara";
+import RevisarParticipaciones, {
+  TablaDeParticipaciones, useRevisionDeParticipaciones,
+} from "../components/Distribucion/RevisarParticipaciones";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
 import { partesConEstado } from "../utils/partesDelMueble";
 import { revisarImportacion, aplicarImportacion, type Importacion } from "../api/layout";
@@ -219,6 +233,9 @@ interface Disponible {
   desde?: Date;
   /** Parcial por sus partes: «1 de 3 puertas vendida», en vez del día. */
   porPartes?: string;
+  /** La cara se vende por participación: no se suma al contrato de Vender
+   *  (se carga en el Editor 3D → Distribución). */
+  porParticipacion?: true;
 }
 
 /** Desde cuándo se puede ofrecer una cara que está tomada parte del periodo.
@@ -288,6 +305,9 @@ function entradaDeParte(
  */
 function partesConContrato(
   f: UnifiedFixture, estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string,
+  /** Las participaciones (`…-PC3`) cuelgan de su cara sólo para quien
+   *  administra: el trabajador no ve participaciones en Supervisar (D7). */
+  conParticipaciones = true,
 ): FaceEntry[] {
   const soloPiezas = !isRentable(f);
   if (soloPiezas && piezasDeLaFamilia(f.type).length === 0) return [];
@@ -298,6 +318,7 @@ function partesConContrato(
     const vistas = new Set<string>();
     const conAlgo = [...(indice.get(caraCompleta) ?? []), ...(caraCompleta !== caraCorta ? indice.get(caraCorta) ?? [] : [])]
       .filter((o) => o.partido.parte && o.estado.status !== "free" && (!soloPiezas || esPieza(o.partido.parte)))
+      .filter((o) => parteVisible(o.partido.parte, conParticipaciones))
       .filter((o) => {
         const k = sufijoDeParte(o.partido.parte!);
         if (vistas.has(k)) return false;
@@ -312,14 +333,48 @@ function partesConContrato(
 
 /** Cómo cuenta una CARA en los totales cuando se vende por partes: si la
  *  entera está libre pero hay puertas que corren, la cara está trabajando
- *  (`active`); si sólo hay puertas firmadas, `committed`. Sin partes, lo suyo. */
-function estadoDeUnidad(cara: FaceEntry, partes: FaceEntry[]): DisplayStatus {
+ *  (`active`); si sólo hay puertas firmadas, `committed`. Sin partes, lo suyo.
+ *
+ *  Una cara POR PARTICIPACIÓN cuenta igual, con sus contratos `…-PC3` como
+ *  partes (la misma regla que las puertas). Una reserva provisional no la hace
+ *  «trabajar» (no es una venta), pero si hoy la deja sin lugar
+ *  (`sinLugarHoy`, de la ocupación) la saca de «Libres»: cuenta como apartada. */
+function estadoDeUnidad(cara: FaceEntry, partes: FaceEntry[], sinLugarHoy = false): DisplayStatus {
   const propio = displayStatus(cara);
-  if (propio !== "free" || partes.length === 0) return propio;
+  const libreOApartada: DisplayStatus = propio === "free" && sinLugarHoy ? "reserved" : propio;
+  if (propio !== "free" || partes.length === 0) return libreOApartada;
   const de = partes.map((p) => displayStatus(p));
   if (de.some((d) => d === "active" || d === "expiring")) return "active";
   if (de.some((d) => d === "committed")) return "committed";
-  return propio;
+  return libreOApartada;
+}
+
+/** Una cara sin nada comprometido en la ocupación: la sede se leyó y esa cara
+ *  no está (el servidor todavía no la ve por participación, o no tiene nada). */
+const OCUPACION_VACIA: OcupacionDeCara = { intervalos: [], fisicos: [] };
+
+/** La ocupación anónima de UNA cara por participación, con el `hoy` del
+ *  servidor, o `undefined` si el mueble no se vende por participación o la
+ *  sede todavía no se leyó (entonces todo sigue como antes). El código de la
+ *  cara se arma con la sede del PLANO, como `carasPorParticipacion` y el
+ *  servidor (nunca con el campo `sede` del mueble). */
+function participacionDeLaCara(
+  ocupacion: OcupacionOut | undefined, f: UnifiedFixture, cara: "A" | "B", sede: string,
+): ParticipacionDeLaCara | undefined {
+  if (!ocupacion || !porParticipacion(f)) return undefined;
+  const codigo = fullSpaceCode(sede, codigoDeParte(f.code, cara, null));
+  const o = Object.prototype.hasOwnProperty.call(ocupacion.caras, codigo) ? ocupacion.caras[codigo] : OCUPACION_VACIA;
+  return { ocupacion: o, hoy: ocupacion.hoy };
+}
+
+/** Cómo está HOY una cara por participación (para la palabra de su estado y
+ *  los totales), o `null` si no se vende así o no se sabe todavía. */
+function useDispoDeHoy(fixture: UnifiedFixture, cara: "A" | "B") {
+  const sede = useFixtureStore((s) => s.sede);
+  const cliente = useAuthStore((s) => s.cliente) ?? "";
+  const ocupacion = useOcupacionStore((s) => s.ocupacion[claveDeSede(cliente, sede)]);
+  const par = participacionDeLaCara(ocupacion, fixture, cara, sede);
+  return par ? dispoDeParticipacion(fixture, par, par.hoy, par.hoy) : null;
 }
 
 /** Cuántos días atrás sigue teniendo sentido reclamar un montaje sin reportar.
@@ -1849,11 +1904,22 @@ function FileRow({ file, onOpen }: { file: SpaceFileMeta; onOpen: () => void }) 
 /** Status pill in the page's light theme (the old panel was dark-on-light).
  *  Reads the face, not the raw status, so a contract signed for later says
  *  "Contratado" here exactly as it does on the map and in the cards. */
+/** La palabra del estado de una cara POR PARTICIPACIÓN que está libre por sí
+ *  misma (los contratos `…-PC3` nunca la pintan ocupada): sale de la ocupación
+ *  anónima de hoy y es la misma para quien administra y para el trabajador
+ *  —«Libre», «Por participación», «Tomada»—, nunca con %. */
+const META_DE_PARTICIPACION: Record<"parcial" | "tomado", { meta: (typeof STATUS_META)[DisplayStatus]; anillo: DisplayStatus }> = {
+  parcial: { meta: { ...STATUS_META.reserved, label: palabraDeLaCara("parcial") }, anillo: "reserved" },
+  tomado: { meta: { ...STATUS_META.expired, label: palabraDeLaCara("tomado") }, anillo: "active" },
+};
+
 function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntry }) {
   const rentable = isRentable(fixture) || esPieza(face.parte);
   const ds = displayStatus(face);
-  const ring = rentable ? colorEstado()[ds] : noRentableTop();
-  const meta = STATUS_META[ds];
+  const pc = useDispoDeHoy(fixture, face.face);
+  const porPc = !face.parte && ds === "free" && pc && pc.dispo !== "libre" ? META_DE_PARTICIPACION[pc.dispo] : null;
+  const ring = porPc ? colorEstado()[porPc.anillo] : rentable ? colorEstado()[ds] : noRentableTop();
+  const meta = porPc ? porPc.meta : STATUS_META[ds];
   return (
     <span
       style={{
@@ -1953,6 +2019,25 @@ function PeriodBox({ entry }: { entry: FaceEntry }) {
             </span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Lo que el TRABAJADOR ve de una cara por participación en la ficha (D7 con
+ *  D13): que se vende así y la palabra de su estado hoy —«Libre», «Por
+ *  participación», «Tomada»—, sin %, sin proveedores y sin zonas. Lo que hay
+ *  que armar está en Montajes, como cualquier contrato. */
+function CaraPorParticipacion({ fixture, face }: { fixture: UnifiedFixture; face: "A" | "B" }) {
+  const pc = useDispoDeHoy(fixture, face);
+  return (
+    <div data-cara-por-participacion style={{ padding: "18px 4px 6px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+      <div style={{ fontSize: "var(--t-base)", fontWeight: 700, color: "var(--ink-1)" }}>
+        Se vende por participación
+      </div>
+      <div style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.55, marginTop: 6 }}>
+        {pc ? `Hoy: ${palabraDeLaCara(pc.dispo)}.` : "La cara se reparte entre varios proveedores."}{" "}
+        Lo que hay que armar está en Montajes, como cualquier contrato.
       </div>
     </div>
   );
@@ -2231,7 +2316,9 @@ function PartesDeLaCara({
   const indice = useMemo(() => indiceDePartes(estado), [estado]);
   const filas = useMemo(() => {
     const ofrecidas = partesDe(fixture).filter((p) => p.cara === face).map((p) => p.parte);
-    const conContrato = partesConContrato(fixture, estado, indice, sede).filter((p) => p.face === face);
+    // Las participaciones (`…-PC3`) no van acá: las muestra
+    // `ParticipacionesDeLaCara`, sólo para quien administra (§9.9).
+    const conContrato = partesConContrato(fixture, estado, indice, sede, false).filter((p) => p.face === face);
     const mismo = (a: ParteRef, b: ParteRef) => sufijoDeParte(a) === sufijoDeParte(b);
     return [
       ...ofrecidas.map((parte) => conContrato.find((e) => mismo(e.parte!, parte))
@@ -2351,6 +2438,11 @@ function FixtureDetailCard({
   const hasContract = rentable && entry.supplierName.trim().length > 0;
   const pedirEnfoque3D = useFixtureStore((s) => s.pedirEnfoque3D);
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
+  /** La sede del PLANO: con ella se nombra la cara ante las participaciones. */
+  const sedeDelPlano = useFixtureStore((s) => s.sede);
+  /** La cara se vende por participación: no se negocia entera (se carga en
+   *  Distribución) y lo que tiene lo dice `ParticipacionesDeLaCara`. */
+  const pc = porParticipacion(fixture);
 
   return (
     <Card style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -2429,7 +2521,7 @@ function FixtureDetailCard({
             Renovar {entry.supplierName ? `con ${entry.supplierName}` : "este contrato"}
           </button>
         )}
-        {rentable && onNegociar && (
+        {rentable && onNegociar && !pc && (
           <button
             onClick={onNegociar}
             style={{
@@ -2471,7 +2563,9 @@ function FixtureDetailCard({
             Ver la exhibición en 3D
           </button>
         )}
-        {!hasContract ? (
+        {!hasContract && pc ? (
+          !isAdmin && <CaraPorParticipacion fixture={fixture} face={entry.face} />
+        ) : !hasContract ? (
           <NoContractState fixture={fixture} isAdmin={isAdmin} />
         ) : (
           <>
@@ -2515,6 +2609,20 @@ function FixtureDetailCard({
             onVender={onNegociarParte}
             onRenovar={onRenovarParte}
             onCancelado={onCancelado}
+          />
+        )}
+
+        {/* Las participaciones de esta cara: la barra de capacidad de hoy, la
+            lista, el estado de la distribución y «Abrir en Distribución».
+            Sólo para quien administra: lleva proveedores, marcas y fechas de
+            todos, y su ruta es de administración (§4.8, §11). */}
+        {isAdmin && pc && (
+          <ParticipacionesDeLaCara
+            fixtureId={fixture.id}
+            codigo={fixture.code}
+            cara={entry.face}
+            sede={sedeDelPlano}
+            doble={double}
           />
         )}
 
@@ -3225,6 +3333,16 @@ function pinDe(): Record<DisplayStatus, { punto: string; texto: string; palabra:
   };
 }
 
+/** El punto y la palabra de una cara POR PARTICIPACIÓN que está libre por sí
+ *  misma, con su ocupación anónima de hoy: «Por participación» (algo
+ *  comprometido) o «Tomada» (sin lugar). La misma palabra para quien
+ *  administra y para el trabajador, nunca con %. */
+function pinDeParticipacion(dispo: "parcial" | "tomado"): { punto: string; texto: string; palabra: string } {
+  return dispo === "tomado"
+    ? { punto: rangeTop().tomado, texto: "var(--ocupado-txt)", palabra: palabraDeLaCara("tomado") }
+    : { punto: rangeTop().parcial, texto: "var(--entra-txt)", palabra: palabraDeLaCara("parcial") };
+}
+
 /** El orden de la tabla: primero lo que pide acción.
  *
  *  Ordenar sólo por «días que faltan» ponía arriba lo vencido —que ya no se
@@ -3359,6 +3477,11 @@ function SpacesTable({
   const fichasPropias = useFichasPropias();
   // Cómo le dicen acá a cada familia: la columna «Tipo» y la búsqueda.
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
+  // Las caras por participación dicen su estado con la ocupación anónima de
+  // hoy (la sede del PLANO, como el servidor).
+  const sedeDelPlano = useFixtureStore((s) => s.sede);
+  const clienteDeLaTabla = useAuthStore((s) => s.cliente) ?? "";
+  const ocupacionDeLaTabla = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteDeLaTabla, sedeDelPlano)]);
   // One row per rentable face — doubles expand to A + B, matching the KPIs.
   const rows = useMemo(
     () =>
@@ -3501,8 +3624,11 @@ function SpacesTable({
           )}
           {filtered.map((entry) => {
             const ds = displayStatus(entry);
-            const pin = pinDe()[ds];
             const libre = ds === "free";
+            const par = !entry.parte && libre
+              ? participacionDeLaCara(ocupacionDeLaTabla, entry.fixture, entry.face, sedeDelPlano) : undefined;
+            const pcHoy = par ? dispoDeParticipacion(entry.fixture, par, par.hoy, par.hoy) : null;
+            const pin = pcHoy && pcHoy.dispo !== "libre" ? pinDeParticipacion(pcHoy.dispo) : pinDe()[ds];
             const days = entry.endDate && !libre ? daysUntil(entry.endDate) : null;
             const sel = selectedId === entry.fixture.id;
 
@@ -3851,6 +3977,39 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   const isAdmin = useAuthStore(selectIsAdmin);
 
+  /** Las participaciones de cara: la ocupación ANÓNIMA de la sede (intervalos
+   *  `{desde, hasta, pb}`, sin nombres, montos ni números), del store de
+   *  LECTURA. La leen Vender (una cara por participación nunca aparece libre
+   *  si no le queda lugar), Supervisar y «Cuándo se libera». Se pide sólo si
+   *  la sede tiene alguna cara por participación, una vez por sede, y otra vez
+   *  cuando el mapa de la base cambia (un contrato entra o se cancela). */
+  const clienteActual = useAuthStore((s) => s.cliente) ?? "";
+  const ocupacionDeSede = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteActual, sede)]);
+  const cargarOcupacion = useOcupacionStore((s) => s.cargarOcupacion);
+  const recargarOcupacion = useOcupacionStore((s) => s.recargarOcupacion);
+  const invalidarResumen = useOcupacionStore((s) => s.invalidarResumen);
+  const hayParticipaciones = useMemo(() => fixtures.some((f) => porParticipacion(f)), [fixtures]);
+  useEffect(() => {
+    if (hayParticipaciones) void cargarOcupacion(sede);
+  }, [hayParticipaciones, sede, cargarOcupacion]);
+  const estadoVisto = useRef(estadoComercial);
+  useEffect(() => {
+    if (estadoVisto.current === estadoComercial) return;
+    estadoVisto.current = estadoComercial;
+    if (!hayParticipaciones) return;
+    void recargarOcupacion(sede);
+    invalidarResumen(sede);
+  }, [estadoComercial, hayParticipaciones, sede, recargarOcupacion, invalidarResumen]);
+  /** La ocupación de UNA cara por participación (o `undefined`: todo como antes). */
+  const participacionDe = useCallback(
+    (f: UnifiedFixture, cara: "A" | "B") => participacionDeLaCara(ocupacionDeSede, f, cara, sede),
+    [ocupacionDeSede, sede],
+  );
+  /** «Para revisar» de las participaciones: sólo para quien administra, y sólo
+   *  si la sede vende alguna cara así (si no, no se pide nada). */
+  const revisionPc = useRevisionDeParticipaciones({ sede, activo: isAdmin && hayParticipaciones, muebles: fixtures });
+  const abrirEnDistribucion = useAbrirEnDistribucion();
+
   /** La OTRA mitad del desfase: contratos que viven sólo en el JSON del layout.
    *
    *  Ésta no se puede calcular acá. La fusión del store reemplaza lo comercial
@@ -3982,12 +4141,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  saca el mueble del contrato, que es lo que uno espera al apagar la
    *  única que quedaba prendida. */
   const alternarCara = useCallback((id: string, face: "A" | "B") => {
-    setEnContrato((lista) =>
-      lista.some((x) => x.id === id && x.face === face)
-        ? lista.filter((x) => !(x.id === id && x.face === face))
-        : [...lista, { id, face }],
-    );
-  }, []);
+    setEnContrato((lista) => {
+      if (lista.some((x) => x.id === id && x.face === face)) return lista.filter((x) => !(x.id === id && x.face === face));
+      // Una cara por participación no entra al contrato de Vender, ni desde una
+      // pastilla de la tarifa: se carga en el Editor 3D → Distribución.
+      const f = fixtures.find((x) => x.id === id);
+      if (f && porParticipacion(f)) return lista;
+      return [...lista, { id, face }];
+    });
+  }, [fixtures]);
 
   /** Los espacios del contrato resueltos contra el layout de ahora. */
   const espaciosDelContrato = useMemo(
@@ -4083,6 +4245,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const negociar = (
     f: UnifiedFixture, face: "A" | "B" = "A", semilla: SemillaContrato | null = null, parte?: string,
   ) => {
+    // Una cara por participación no se vende entera ni por la planilla de
+    // Vender: se carga en Distribución (la ficha ni ofrece el botón).
+    if (porParticipacion(f)) return;
     setSelected(f);
     setDetailFace(face);
     setDetailFull(false);
@@ -4098,6 +4263,25 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   /** Con qué abre el formulario cuando se llega por «Renovar». */
   const [semilla, setSemilla] = useState<SemillaContrato | null>(null);
+
+  /** Renovar una participación: el Editor 3D en esa cara, en Distribución, con
+   *  el formulario de renovar su término (`pedirEnfoque3D(…, { distribucion:
+   *  { renovar } })`, §9.2). El término sale de `GET /participaciones/cara`;
+   *  si no se puede leer o ya no se renueva (vencido, cancelado), Distribución
+   *  abre igual, sin el formulario, y ahí se ve por qué. */
+  const renovarParticipacion = useCallback(async (entry: FaceEntry) => {
+    const f = entry.fixture;
+    const codigo = fullSpaceCode(sede, entry.code);
+    let termino: number | undefined;
+    try {
+      const cara = await leerCara(sede, espacioDeLaCara(f.code, entry.face));
+      const t = cara.participaciones.find((p) => p.codigo.toUpperCase() === codigo)?.terminos[0];
+      if (t && t.estado === "contrato" && (t.estado_visible === "vigente" || t.estado_visible === "firmado")) termino = t.id;
+    } catch {
+      /* sin el término, Distribución abre sin el formulario */
+    }
+    abrirEnDistribucion(f.id, entry.face, termino);
+  }, [sede, abrirEnDistribucion]);
 
   /** La cara que la ficha está mostrando. Se calcula acá y no adentro de la
    *  ficha porque el botón de renovar necesita la MISMA: dos cálculos separados
@@ -4127,6 +4311,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  lo que se renegocia es lo que se está pagando. Queda editable, que es
    *  justamente donde se sube el canon. */
   const renovar = useCallback((entry: FaceEntry) => {
+    // Una participación (`…-PC3`) se renueva en Distribución, con su
+    // formulario (§4.7): no es un contrato de Vender.
+    if (entry.parte && esParticipacion(entry.parte)) {
+      void renovarParticipacion(entry);
+      return;
+    }
     const dia = 86_400_000;
     const fin = entry.endDate ? parseISODate(entry.endDate) : null;
     const ini = entry.startDate ? parseISODate(entry.startDate) : null;
@@ -4160,7 +4350,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       ? { id: entry.fixture.id, face: entry.face, parte: sufijoDeParte(entry.parte) }
       : { id: entry.fixture.id, face: entry.face }]);
     setModo("vender");
-  }, [sede]);
+  }, [sede, renovarParticipacion]);
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
 
   // ── Estado de montaje ────────────────────────────────────────────────────
@@ -4215,9 +4405,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  cuenta del plano, la tarifa, la escalera y los contadores. */
   const dispoDeCara = useCallback(
     (f: UnifiedFixture, face: FaceEntry): RangeAvailability => (mapRange
-      ? disponibilidadDeCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to)
+      // Una cara por participación, con su ocupación anónima: sin lugar en el
+      // periodo, tomada; con algo comprometido, parcial (§4.8).
+      ? disponibilidadDeCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to, participacionDe(f, face.face))
       : "libre"),
-    [mapRange, estadoComercial, indicePartes, sede],
+    [mapRange, estadoComercial, indicePartes, sede, participacionDe],
   );
   /** Lo que dice una cara parcial: «1 de 3 puertas vendida» (POR SUS PARTES)
    *  o desde qué día se vende ENTERA, mirando lo que choca con ella
@@ -4225,9 +4417,13 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  cartel del mouse y la lista de precios. */
   const comoSeLibera = useCallback(
     (f: UnifiedFixture, face: FaceEntry): ComoSeLibera | null => (mapRange
-      ? comoSeLiberaLaCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to)
+      // Una cara por participación con algo comprometido dice «Por
+      // participación · queda 40 %» (el % sólo para quien administra: el
+      // trabajador ve la palabra) en el rótulo, el cartel y la tarifa.
+      ? comoSeLiberaPorParticipacion(f, participacionDe(f, face.face), mapRange.from, mapRange.to, isAdmin)
+        ?? comoSeLiberaLaCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to)
       : null),
-    [mapRange, estadoComercial, indicePartes, sede],
+    [mapRange, estadoComercial, indicePartes, sede, participacionDe, isAdmin],
   );
   const porPartesDeCara = useCallback(
     (f: UnifiedFixture, face: FaceEntry): string | null => comoSeLibera(f, face)?.porPartes ?? null,
@@ -4246,26 +4442,42 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     (f: UnifiedFixture): FaceEntry[] => partesConContrato(f, estadoComercial, indicePartes, sede),
     [estadoComercial, indicePartes, sede],
   );
+  /** Las mismas, como se MUESTRAN: los contratos de participación (`…-PC3`)
+   *  sólo para quien administra (el trabajador no ve participaciones en
+   *  Supervisar, D7). Las cuentas de ocupación usan todas (`partesVendidasDe`):
+   *  una cara con un contrato de participación que corre está trabajando, la
+   *  vea quien la vea. */
+  const partesVisiblesDe = useCallback(
+    (f: UnifiedFixture): FaceEntry[] => partesConContrato(f, estadoComercial, indicePartes, sede, isAdmin),
+    [estadoComercial, indicePartes, sede, isAdmin],
+  );
   /** Las caras comerciales con los contratos de sus partes pegados
    *  (`tambien`): «Cuándo se libera» cuenta una cara libre sólo si no tiene
    *  ninguna puerta tomada ese día, como el plano. */
   const carasConSusPartes = useCallback(
     (f: UnifiedFixture) => {
       const partes = partesVendidasDe(f);
-      if (partes.length === 0) return commercialFacesOf(f);
-      return commercialFacesOf(f).map((c) => ({ ...c, tambien: partes.filter((p) => p.face === c.face) }));
+      // Una cara por participación no está libre ENTERA el día que tiene algo
+      // comprometido (una participación, una reserva): se vende otra
+      // participación, como con una puerta vendida. De la ocupación anónima.
+      const conPc = porParticipacion(f);
+      if (partes.length === 0 && !conPc) return commercialFacesOf(f);
+      return commercialFacesOf(f).map((c) => ({
+        ...c,
+        tambien: [...partes.filter((p) => p.face === c.face), ...ocupadoPorParticipacion(participacionDe(f, c.face))],
+      }));
     },
-    [partesVendidasDe],
+    [partesVendidasDe, participacionDe],
   );
   /** Todo lo que de un mueble tiene contrato o se puede contratar: sus caras
    *  comerciales y sus partes vendidas. Es la lista de la tabla, de la plata,
    *  de los vencimientos y del montaje. Sin partes, las caras como siempre. */
   const espaciosDelMueble = useCallback(
     (f: UnifiedFixture): FaceEntry[] => {
-      const partes = partesVendidasDe(f);
+      const partes = partesVisiblesDe(f);
       return partes.length ? [...commercialFacesOf(f), ...partes] : commercialFacesOf(f);
     },
-    [partesVendidasDe],
+    [partesVisiblesDe],
   );
 
   // Deselect when switching sedes: ese mueble es de la otra tienda, y un
@@ -4306,7 +4518,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     fixtures.forEach((f) => {
       // Una cara se enciende si ella o alguna de sus partes vendidas contesta
       // (buscar al proveedor de la puerta 2 tiene que encontrar su nevera).
-      const partes = partesVendidasDe(f);
+      const partes = partesVisiblesDe(f);
       const flags = commercialFacesOf(f).map((entry) => {
         const contesta = (e: FaceEntry) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, mapFilter);
         const deLasPartes = partes.filter((p) => p.face === entry.face && contesta(p)).length;
@@ -4317,7 +4529,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       faceFlags.set(f.id, flags);
     });
     return { faceFlags, count };
-  }, [fixtures, mapQuery, mapFilter, fichasPropias, nombresPropios, partesVendidasDe]);
+  }, [fixtures, mapQuery, mapFilter, fichasPropias, nombresPropios, partesVisiblesDe]);
 
   // La lista de precios de la sede: qué familias hay, cuántas caras de cada una
   // están libres en el periodo, cuántas se liberan adentro, y a cuánto sale.
@@ -4354,7 +4566,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           // enciende: la fila dice «de este tipo, esto es lo que hay», y lo que
           // uno acaba de tomar es parte de esa respuesta —se ve en tinta.
           if (!carasDelContrato.includes(clave)) {
-            e.libres.push({ code: codigoVisible(face), fixture: f, face: face.face });
+            e.libres.push({
+              code: codigoVisible(face), fixture: f, face: face.face,
+              ...(porParticipacion(f) ? { porParticipacion: true as const } : {}),
+            });
           }
           e.claves.push(clave);
         } else if (a === "parcial") {
@@ -4362,6 +4577,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           e.parciales.push({
             code: codigoVisible(face), fixture: f, face: face.face,
             ...(como?.porPartes ? { porPartes: como.porPartes } : { desde: como?.desde }),
+            ...(porParticipacion(f) ? { porParticipacion: true as const } : {}),
           });
           e.claves.push(clave);
         }
@@ -4383,7 +4599,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // unidades nuevas: la ocupación sigue contando caras, y una cara con una
     // puerta que corre está trabajando (`estadoDeUnidad`).
     const partes = fixtures.flatMap(partesVendidasDe);
-    const faces = partes.length ? [...caras, ...partes] : caras;
+    // Las filas, las listas y las cuentas de contratos se hacen con lo que se
+    // MUESTRA (los contratos de participación, sólo a quien administra); la
+    // ocupación, con todo: una cara por participación que trabaja, trabaja.
+    const visibles = isAdmin ? partes : fixtures.flatMap(partesVisiblesDe);
+    const faces = visibles.length ? [...caras, ...visibles] : caras;
     const total = caras.length;
     // Kept separate so the strip can explain why "Espacios" is lower than the
     // number of fixtures drawn on the plan.
@@ -4395,8 +4615,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // the same name excluded it made the two disagree on screen.
     const ds = faces.map((x) => displayStatus(x));
     const phases = faces.map((x) => contractPhase(x));
+    /** Una cara por participación que hoy no tiene lugar (reservas que la
+     *  llenan) no está libre aunque nada la haga trabajar todavía. */
+    const sinLugarHoy = (c: FaceEntry) => {
+      const par = participacionDe(c.fixture, c.face);
+      return !!par && dispoDeParticipacion(c.fixture, par, par.hoy, par.hoy)?.dispo === "tomado";
+    };
     const porUnidad = caras.map((c) => estadoDeUnidad(
-      c, partes.filter((p) => p.fixture.id === c.fixture.id && p.face === c.face)));
+      c, partes.filter((p) => p.fixture.id === c.fixture.id && p.face === c.face), sinLugarHoy(c)));
     const occupied  = porUnidad.filter((s) => s === "active" || s === "expiring").length;
     const committed = porUnidad.filter((s) => s === "committed").length;
     const free      = porUnidad.filter((s) => s === "free").length;
@@ -4497,7 +4723,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
     };
-  }, [fixtures, referenceRates, sede, fichasPropias, partesVendidasDe]);
+  }, [fixtures, referenceRates, sede, fichasPropias, partesVendidasDe, partesVisiblesDe, isAdmin, participacionDe]);
 
   // How much of the sede can actually be sold for the chosen period. Counted
   // per face, like every other total on this page.
@@ -4682,7 +4908,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     fantasmas.length +
     (isAdmin
       ? kpis.belowReference.length + montaje.noMontado.length +
-        montaje.sinMontar.length + pendientesDelPlano
+        montaje.sinMontar.length + pendientesDelPlano +
+        // Lo de las participaciones: lo que falta dibujar, las distribuciones
+        // con problemas o para revisar, las reservas por caducar…
+        revisionPc.total
       : 0);
 
   /** Cuántas filas deja ver la tabla con el filtro y el chip puestos: la misma
@@ -4768,7 +4997,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               anchor={anchor}
               isAdmin={isAdmin}
               onExpand={() => setDetailFull(true)}
-              onNegociar={isAdmin ? () => negociar(selected) : undefined}
+              onNegociar={isAdmin && !porParticipacion(selected) ? () => negociar(selected) : undefined}
               onRenovar={isAdmin && renovable(facesOf(selected)[0])
                 ? () => renovar(facesOf(selected)[0])
                 : undefined}
@@ -4929,14 +5158,17 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                             key={clave}
                             type="button"
                             className={"chip" + (entra ? " chip--entra" : "")}
-                            title={d.porPartes
+                            title={d.porParticipacion
+                              ? `${d.code} ${d.porPartes ? `· ${d.porPartes}` : "se vende por participación"}: se carga en el Editor 3D → Distribución, no en este contrato`
+                              : d.porPartes
                               ? `Sumar ${d.code} al contrato · ${d.porPartes}: se vende otra parte, no la entera`
                               : entra
                               ? `Sumar ${d.code} al contrato · se libera el ${fechaEnCurso(toISODate(d.desde as Date))}`
                               : `Sumar ${d.code} al contrato`}
                             onMouseEnter={() => destacar([clave])}
                             onMouseLeave={() => destacar(claves)}
-                            onClick={(e) => { e.stopPropagation(); destacar(null); alternarCara(d.fixture.id, d.face); }}
+                            aria-disabled={d.porParticipacion ? true : undefined}
+                            onClick={(e) => { e.stopPropagation(); destacar(null); if (!d.porParticipacion) alternarCara(d.fixture.id, d.face); }}
                           >
                             {d.code}
                             {entra && <span className="chip__f">{d.porPartes ?? fechaEnCurso(toISODate(d.desde as Date))}</span>}
@@ -5397,6 +5629,13 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                         ))}
                       </div>
                     )}
+                    {/* Las participaciones de cara: contratado sin dibujar,
+                        distribuciones con problemas o para revisar, reservas
+                        por caducar, contratos de participación sin término…
+                        Sólo para quien administra: lleva proveedores y marcas. */}
+                    {isAdmin && revisionPc.total > 0 && (
+                      <RevisarParticipaciones secciones={revisionPc.secciones} />
+                    )}
                     {kpis.noContract.length > 0 && (
                       <div>
                         <AtencionSection
@@ -5622,6 +5861,17 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   ))
                 )}
               </div>
+            </Card>
+          )}
+
+          {/* «Participaciones de cara»: por cara, lo comprometido y lo dibujado
+              el día, el pico y lo disponible del período, con filtro por
+              proveedor, día y período (D18). Una tabla a todo el ancho, sólo
+              para quien administra y sólo si la sede vende alguna cara así. */}
+          {isAdmin && hayParticipaciones && (
+            <Card style={{ minWidth: 0, minHeight: 0, gridColumn: "1 / -1" }}>
+              <CardHeader title="Participaciones de cara" right={<span>por cara</span>} />
+              <TablaDeParticipaciones sede={sede} muebles={fixtures} />
             </Card>
           )}
           </div>

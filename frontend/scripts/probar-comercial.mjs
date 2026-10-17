@@ -242,4 +242,286 @@ prueba("un plano vacío devuelve un plano vacío", () => {
   assert.equal(fusionarEstadoComercial("NAVE", entrada, { "NAVE-X": vendido() }), entrada);
 });
 
+/* ── Las participaciones de cara (§4.8, §9.9, §10.8, §11) ────────────────────
+   Un contrato de participación (`NAVE-GON-01-PC3`) es un espacio más de
+   `/spaces/comercial`: la fusión NUNCA pinta la cara con él (busca por código
+   exacto), Supervisar lo cuelga de su cara sólo para quien administra, y el
+   color y la palabra de la cara salen de la ocupación anónima. Los bloques de
+   participaciones de Supervisar (tarjetas, ficha, tabla) llevan proveedores y
+   marcas de todos: se montan SÓLO con `isAdmin`. */
+console.log("\nLas participaciones de cara\n");
+
+const { readFileSync } = await import("node:fs");
+const raiz = join(aqui, "..");
+const fuenteDe = (rel) => readFileSync(join(raiz, "src", ...rel.split("/")), "utf8");
+const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+const salidaPc = join(mkdtempSync(join(tmpdir(), "com-pc-")), "pc.mjs");
+{
+  const r = await build({
+    stdin: {
+      contents: [
+        'export * from "./src/utils/partes.ts";',
+        'export * as R from "./src/utils/revisarParticipaciones.ts";',
+      ].join("\n"),
+      resolveDir: raiz, loader: "ts",
+    },
+    bundle: true, format: "esm", write: false, platform: "neutral", logLevel: "silent",
+  });
+  writeFileSync(salidaPc, r.outputFiles[0].text);
+}
+const PC = await import(pathToFileURL(salidaPc).href);
+const R = PC.R;
+
+const porPc = (code, extra = {}) => mueble(code, { type: "gondola", gondolaType: "double", partes: { division: "participacion" }, ...extra });
+
+prueba("UN CONTRATO DE PARTICIPACIÓN NO PINTA LA CARA: ni la A ni la B quedan ocupadas por un `…-PC`", () => {
+  const [f] = fusionarEstadoComercial("NAVE", [porPc("GON-01")], {
+    "NAVE-GON-01-PC1": vendido({ supplierName: "Postobón" }),
+    "NAVE-GON-01-B-PC2": vendido({ supplierName: "Alpina" }),
+  });
+  assert.equal(f.status, "free", "la cara A se pintó con un contrato de participación");
+  assert.equal(f.supplierName, "", "la cara A tomó el proveedor de una participación");
+  assert.equal(f.faceB.status, "free", "la cara B se pintó con un contrato de participación");
+  assert.equal(f.faceB.supplierName, "");
+});
+
+prueba("el contrato de participación cuelga de SU cara en el índice de partes (lo que lee Supervisar)", () => {
+  const estado = { "NAVE-GON-01-PC1": vendido(), "NAVE-GON-01-B-PC2": vendido(), "NAVE-GON-01-PU1": vendido() };
+  const ix = PC.indiceDePartes(estado);
+  const de = (cara) => (ix.get(cara) ?? []).map((o) => PC.sufijoDeParte(o.partido.parte)).sort();
+  assert.deepEqual(de("NAVE-GON-01"), ["PC1", "PU1"]);
+  assert.deepEqual(de("NAVE-GON-01-B"), ["PC2"]);
+});
+
+prueba("Supervisar: las participaciones sólo para quien administra; puertas, tramos y piezas para todos", () => {
+  const pc = PC.partirCodigo("NAVE-GON-01-PC1").parte;
+  const pu = PC.partirCodigo("NAVE-NEV-03-PU2").parte;
+  const bi = PC.partirCodigo("NAVE-CAJ-04-BI1").parte;
+  assert.equal(PC.parteVisible(pc, true), true, "la administración no ve la participación");
+  assert.equal(PC.parteVisible(pc, false), false, "el trabajador ve una participación en Supervisar");
+  for (const p of [pu, bi, null]) {
+    assert.equal(PC.parteVisible(p, false), true);
+    assert.equal(PC.parteVisible(p, true), true);
+  }
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const def = (nombre) => {
+    const i = t.indexOf(`function ${nombre}(`);
+    return i < 0 ? "" : t.slice(i, t.indexOf("\n}\n", i));
+  };
+  assert.match(def("partesConContrato"), /conParticipaciones = true,[\s\S]*\.filter\(\(o\) => parteVisible\(o\.partido\.parte, conParticipaciones\)\)/,
+    "partesConContrato no filtra las participaciones");
+  assert.match(def("PartesDeLaCara"), /partesConContrato\(fixture, estado, indice, sede, false\)/,
+    "«Por puertas» lista participaciones (las muestra ParticipacionesDeLaCara)");
+  assert.match(t, /const partesVisiblesDe = useCallback\(\s*\(f: UnifiedFixture\): FaceEntry\[\] => partesConContrato\(f, estadoComercial, indicePartes, sede, isAdmin\),/,
+    "las filas de Supervisar no dependen de quién mira");
+  assert.match(t, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\);\s*const faces = visibles\.length \? \[\.\.\.caras, \.\.\.visibles\] : caras;/,
+    "los totales y las listas de «Para revisar» le muestran al trabajador contratos de participación");
+  assert.match(t, /const partes = partesVisiblesDe\(f\);\s*return partes\.length \? \[\.\.\.commercialFacesOf\(f\), \.\.\.partes\] : commercialFacesOf\(f\);/,
+    "«Estado por espacio» le muestra al trabajador contratos de participación");
+});
+
+prueba("BLOQUES DE SUPERVISAR DENTRO DE isAdmin: tarjetas, ficha y tabla de participaciones", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  // Cada montaje, adentro de un `{isAdmin && … (` que no se cerró antes de él
+  // (ni con `)}` ni con otra rama): mirando hacia atrás desde la etiqueta.
+  for (const tag of ["RevisarParticipaciones", "ParticipacionesDeLaCara", "TablaDeParticipaciones"]) {
+    const usos = [...t.matchAll(new RegExp(`<${tag}\\b`, "g"))].map((m) => m.index);
+    assert.ok(usos.length >= 1, `${tag} no se monta en Supervisar`);
+    for (const i of usos) {
+      const antes = t.slice(Math.max(0, i - 700), i);
+      const k = antes.lastIndexOf("{isAdmin && ");
+      const linea = t.slice(0, i).split("\n").length;
+      assert.ok(k >= 0, `${tag} (línea ${linea}) se monta sin \`{isAdmin && …\` alrededor`);
+      const entre = antes.slice(k);
+      assert.match(entre, /^\{isAdmin && [^{}()]*\(/, `${tag} (línea ${linea}): la condición no es \`{isAdmin && … (\``);
+      assert.doesNotMatch(entre, /\)\}|\) : \(|\s:\s/, `${tag} (línea ${linea}) queda afuera del \`{isAdmin && …\` que lo precede`);
+    }
+  }
+  // El resumen (proveedores y marcas) no se pide si no es administración.
+  assert.match(t, /useRevisionDeParticipaciones\(\{ sede, activo: isAdmin && hayParticipaciones,/,
+    "«Para revisar» pide el resumen de participaciones sin ser administración");
+  // Y lo que suma a la cuenta de «Para revisar», también sólo con isAdmin.
+  assert.match(t, /\(isAdmin\s*\? kpis\.belowReference\.length[^;]*revisionPc\.total\s*: 0\)/,
+    "la cuenta de «Para revisar» suma participaciones para el trabajador");
+  // Los dos componentes van en el pedazo del tablero: sólo el store de lectura.
+  for (const f of ["components/Distribucion/ParticipacionesDeLaCara.tsx", "components/Distribucion/RevisarParticipaciones.tsx"]) {
+    const c = sinComent(fuenteDe(f));
+    assert.doesNotMatch(c, /store\/distribucionStore/, `${f} trae el store de edición al tablero`);
+    assert.doesNotMatch(c, /localStorage|sessionStorage|indexedDB/, `${f} guarda algo en el navegador`);
+  }
+});
+
+prueba("la palabra del trabajador para una cara por participación nunca lleva %", () => {
+  assert.deepEqual(["libre", "parcial", "tomado"].map(R.palabraDeLaCara), ["Libre", "Por participación", "Tomada"]);
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const ficha = t.slice(t.indexOf("function CaraPorParticipacion("), t.indexOf("function NoContractState("));
+  assert.ok(ficha.length > 0, "no está CaraPorParticipacion");
+  assert.doesNotMatch(ficha, /pct\(|quedaPb|%/, "la ficha del trabajador muestra un %");
+  assert.match(ficha, /palabraDeLaCara\(pc\.dispo\)/);
+  // La pastilla de estado también es la palabra (para los dos roles).
+  assert.match(t, /parcial: \{ meta: \{ \.\.\.STATUS_META\.reserved, label: palabraDeLaCara\("parcial"\) \}/);
+});
+
+prueba("el plano 2D pinta la cara por participación con su ocupación del día (ejecutado)", () => {
+  assert.equal(PC.estadoParaPintar("free", { dispo: "tomado" }), "occupied");
+  assert.equal(PC.estadoParaPintar("free", { dispo: "parcial" }), "reserved");
+  assert.equal(PC.estadoParaPintar("free", { dispo: "libre" }), "free");
+  assert.equal(PC.estadoParaPintar("free", null), "free", "sin ocupación se inventó un color");
+  // Lo que la cara tiene por sí misma (vendida entera, en mantenimiento) manda.
+  assert.equal(PC.estadoParaPintar("maintenance", { dispo: "parcial" }), "maintenance");
+  assert.equal(PC.estadoParaPintar("occupied", { dispo: "libre" }), "occupied");
+  // Cuatro participaciones del 25 % hoy: no se ven verdes.
+  const g = porPc("ROB-01", { type: "robatope", gondolaType: undefined });
+  const hoy = "2026-10-17";
+  const cuatro = { ocupacion: { intervalos: [1, 2, 3, 4].map(() => ({ desde: "2026-10-01", hasta: "2026-12-31", pb: 2500 })), fisicos: [] }, hoy };
+  assert.equal(PC.porParticipacion(g), true, "el robatope de prueba no se vende por participación");
+  assert.equal(PC.estadoParaPintar("free", PC.dispoDeParticipacion(g, cuatro, hoy, hoy)), "occupied");
+  const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
+  assert.match(plano, /const aFill = STATUS_FILL\[pintadoDe\(item\.id, "A", item\.status\)\];/, "la mitad A no usa el color por ocupación");
+  assert.match(plano, /const bFill = STATUS_FILL\[pintadoDe\(item\.id, "B", item\.faceB\?\.status \?\? "free"\)\];/, "la mitad B no usa el color por ocupación");
+  assert.match(plano, /: STATUS_FILL\[pintadoDe\(item\.id, "A", item\.status\)\]/, "la cara de una sola cara no usa el color por ocupación");
+  assert.match(plano, /: STATUS_COLORS\[pintadoDe\(item\.id, "A", item\.status\)\]/, "el borde no usa el color por ocupación");
+});
+
+prueba("Montajes: la participación es un contrato a montar, «Participación 3 · cara A», sin % (ejecutado)", () => {
+  const p = PC.partirCodigo("NAVE-GON-01-B-PC3");
+  assert.equal(PC.textoDeParticipacionParaMontar(p.parte, p.cara), "Participación 3 · cara B");
+  assert.equal(PC.textoDeParticipacionParaMontar(PC.partirCodigo("GON-01-PC12").parte, "A"), "Participación 12 · cara A");
+  const mv = sinComent(fuenteDe("pages/MountView.tsx"));
+  assert.equal((mv.match(/parteParaMontar\(partido\.parte, partido\.cara, f\)/g) ?? []).length, 2,
+    "la lista o el «reportar de nuevo» del tablero arman el rótulo de la parte a mano");
+  assert.match(mv, /esParticipacion\(parte\)\s*\? textoDeParticipacionParaMontar\(parte, cara\)\s*: textoParaMontar\(parte, cantidadDe\(f, parte\.clase\)\)/);
+});
+
+/* «Para revisar», ejecutado sobre un resumen como el que devuelve el servidor. */
+const HOY = "2026-10-17";
+const pcRes = (extra) => ({
+  codigo: "NAVE-GON-01-PC1", numero: 1, proveedor_id: 7, proveedor: "Postobón", marca: "Hit", cuenta_el_dia: true,
+  estado_visible: "vigente", puntos_basicos: 2500, desde: "2026-10-01", hasta: "2027-01-31", caduca: null,
+  dibujado_pb: 2500, m2_contratados: 0.3, ...extra,
+});
+const caraRes = (extra) => ({
+  codigo_cara: "NAVE-GON-01", cara: "A", fixture_code: "GON-01", rotulo: "Góndola 1", estado_distribucion: "confirmada",
+  area_util_m2: 1.3, comprometido_dia_pb: 2500, pico_pb: 2500, dia_pico: HOY, disponible_pb: 7500,
+  dibujado_dia_pb: 2500, pendiente_dia_pb: 0, errores: 0, avisos: 0, participaciones: [pcRes()], ...extra,
+});
+const resumen = (caras, totales = {}) => ({
+  sede: "NAVE", hoy: HOY, dia: HOY, desde: HOY, hasta: "2027-10-16", caras, por_proveedor: [],
+  totales: { caras_por_participacion: caras.length, sin_distribuir: 0, borradores: 0, para_revisar: 0, con_errores: 0,
+    reservas_por_caducar: 0, sin_mueble: 0, huerfanos: 0, ...totales },
+});
+const plano = [
+  { id: "f1", code: "GON-01", type: "gondola", gondolaType: "double" },
+  { id: "f2", code: "PUN-03", type: "punta" },
+];
+
+prueba("«Para revisar»: una cara en orden no aparece; cada problema cae en su tarjeta, con «Abrir en Distribución» (ejecutado)", () => {
+  assert.deepEqual(R.paraRevisarDeResumen(resumen([caraRes()]), plano), []);
+  // Una cara por participación sin ninguna participación todavía no tiene nada
+  // que dibujar: no es un pendiente.
+  const vacia = caraRes({ codigo_cara: "NAVE-GON-01-B", cara: "B", estado_distribucion: "sin_distribuir", participaciones: [],
+    comprometido_dia_pb: 0, dibujado_dia_pb: 0, disponible_pb: 10000 });
+  assert.deepEqual(R.paraRevisarDeResumen(resumen([vacia]), plano), [], "una cara sin participaciones sale como «sin distribuir»");
+  const r = resumen([
+    caraRes({ pendiente_dia_pb: 1500, dibujado_dia_pb: 1000, participaciones: [pcRes({ dibujado_pb: 1000 }), pcRes({ codigo: "NAVE-GON-01-PC2", numero: 2, dibujado_pb: 0 })] }),
+    caraRes({ codigo_cara: "NAVE-GON-01-B", cara: "B", estado_distribucion: "para_revisar", errores: 2 }),
+    caraRes({ codigo_cara: "NAVE-PUN-03", fixture_code: "PUN-03", estado_distribucion: "borrador",
+      participaciones: [pcRes({ codigo: "NAVE-PUN-03-PC1", estado_visible: "reserva", caduca: "2026-10-24", proveedor: "Alpina", marca: null })] }),
+    caraRes({ codigo_cara: "NAVE-GON-09", fixture_code: "GON-09", estado_distribucion: "sin_distribuir", pendiente_dia_pb: 0,
+      participaciones: [pcRes({ codigo: "NAVE-GON-09-PC1", cuenta_el_dia: false, estado_visible: "reserva", caduca: "2026-11-30" })] }),
+  ], { sin_mueble: 1 });
+  const s = R.paraRevisarDeResumen(r, plano, ["NAVE-GON-01-PC7"]);
+  const por = Object.fromEntries(s.map((x) => [x.tipo, x.items]));
+  assert.deepEqual(s.map((x) => x.tipo), ["sin_termino", "sin_mueble", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"]);
+  assert.deepEqual(s.map((x) => x.titulo).slice(0, 1), ["Contrato de participación sin término"]);
+  assert.equal(por.sin_dibujar[0].rotulo, "GON-01 · A");
+  assert.equal(por.sin_dibujar[0].frase, "falta dibujar 15 % (2 participaciones).");
+  assert.deepEqual(por.sin_dibujar[0].abrir, { fixtureId: "f1", cara: "A" });
+  // Sin el mueble en el plano, se nombra igual pero no hay qué abrir.
+  assert.equal(por.sin_dibujar[1].frase, "todavía sin distribuir (1 participación).");
+  assert.equal(por.sin_dibujar[1].abrir, null);
+  assert.equal(por.con_problemas[0].frase, "2 problemas en la distribución.");
+  assert.equal(por.con_problemas[0].rotulo, "GON-01 · B");
+  assert.equal(por.para_revisar[0].frase, "el mueble cambió desde que se confirmó la distribución.");
+  // La punta tiene una sola cara: sin la letra.
+  assert.equal(por.borradores[0].rotulo, "PUN-03");
+  assert.deepEqual(por.por_caducar.map((i) => i.frase), ["Reserva de Alpina en PUN-03 caduca el 24 oct."],
+    "la reserva que caduca dentro de 8 días o más no se avisa, o la que caduca en 7 sí");
+  assert.equal(por.sin_mueble.length, 1);
+  assert.match(por.sin_mueble[0].frase, /^1 cara con participaciones ya no está en el plano como «por participación»/);
+  assert.deepEqual(por.sin_termino.map((i) => [i.rotulo, i.frase]), [["NAVE-GON-01-PC7", "cuenta como la cara entera hasta que se aclare."]]);
+  assert.equal(R.cuantasParaRevisar(s), 8);
+});
+
+prueba("«Para revisar»: reservas que caducan hoy y dentro de 7 días; los huérfanos que no se pudieron nombrar se cuentan (ejecutado)", () => {
+  const r = resumen([caraRes({ participaciones: [
+    pcRes({ estado_visible: "reserva", caduca: HOY }),
+    pcRes({ codigo: "NAVE-GON-01-PC2", numero: 2, estado_visible: "reserva", caduca: "2026-10-24" }),
+    pcRes({ codigo: "NAVE-GON-01-PC3", numero: 3, estado_visible: "reserva_caducada", caduca: "2026-10-10" }),
+  ] })], { huerfanos: 2 });
+  const s = R.paraRevisarDeResumen(r, plano);
+  const por = Object.fromEntries(s.map((x) => [x.tipo, x.items]));
+  assert.deepEqual(por.por_caducar.map((i) => i.frase), [
+    "Reserva de Postobón (Hit) en GON-01 · A caduca hoy.",
+    "Reserva de Postobón (Hit) en GON-01 · A caduca el 24 oct.",
+  ]);
+  assert.deepEqual(por.sin_termino.map((i) => i.frase), ["2 contratos de participación sin término cuentan como la cara entera hasta que se aclare."]);
+});
+
+prueba("los contratos de participación sin término se nombran: vivos, sobre una cara por participación, y fuera del resumen (ejecutado)", () => {
+  const r = resumen([caraRes()]);
+  const estado = {
+    "NAVE-GON-01-PC1": vendido({ endDate: "2027-01-31" }),        // tiene término: está en el resumen
+    "NAVE-GON-01-PC7": vendido({ endDate: "2027-01-31" }),        // sin término
+    "NAVE-GON-01-PC8": vendido({ endDate: "2026-10-01" }),        // ya terminó
+    "NAVE-GON-01-PC9": { ...vendido(), status: "free" },          // libre
+    "NAVE-GON-02-PC1": vendido({ endDate: "2027-01-31" }),        // su cara no es por participación (lo dice otra tarjeta)
+    "NAVE-GON-01-PU1": vendido({ endDate: "2027-01-31" }),        // una puerta no es una participación
+  };
+  assert.deepEqual(R.huerfanosDelEstado(estado, r), ["NAVE-GON-01-PC7"]);
+});
+
+prueba("la barra de capacidad de hoy: un segmento por participación que cuenta, lo libre, o «Vendida entera» (ejecutado)", () => {
+  const term = (id, prov, extra = {}) => ({ id, proveedor: { id: prov, nombre: `P${prov}` }, estado: "contrato", estado_visible: "vigente", desde: "2026-10-01", hasta: "2026-12-31", ...extra });
+  const cara = {
+    hoy: HOY,
+    capacidad: {
+      intervalos: [
+        { desde: "2026-10-01", hasta: "2026-12-31", pb: 2500, tipo: "contrato", numero: 1 },
+        { desde: "2026-10-10", hasta: "2026-10-31", pb: 1000, tipo: "reserva", numero: 2 },
+        { desde: "2026-11-01", hasta: "2026-12-31", pb: 4000, tipo: "contrato", numero: 3 },
+      ],
+      fisicos: [],
+    },
+    participaciones: [
+      { space_id: 11, numero: 1, viva: true, terminos: [term(1, 7)] },
+      { space_id: 12, numero: 2, viva: true, terminos: [term(2, 8, { estado: "reserva", estado_visible: "reserva" })] },
+      { space_id: 13, numero: 3, viva: true, terminos: [term(3, 9, { desde: "2026-11-01" })] },
+    ],
+  };
+  const seg = R.segmentosDeHoy(cara);
+  assert.deepEqual(seg.map((x) => [x.rotulo, x.tipo, x.pb]), [["1 · 25 %", "contrato", 2500], ["2 · 10 %", "reserva", 1000], ["Libre 65 %", "libre", 6500]],
+    "la barra de hoy cuenta lo que empieza después, o no deja lo libre");
+  assert.ok(seg.slice(0, 2).every((x) => x.tono !== null && x.textura), "una participación sin estampa");
+  assert.notDeepEqual([seg[0].tono, seg[0].textura], [seg[1].tono, seg[1].textura], "dos participaciones con la misma estampa");
+  const entera = R.segmentosDeHoy({ ...cara, capacidad: { ...cara.capacidad, fisicos: [{ codigo: "NAVE-GON-01", desde: "2026-01-01", hasta: "2026-12-31", huerfano: false }] } });
+  assert.deepEqual(entera.map((x) => [x.rotulo, x.pb]), [["Vendida entera", 10000]]);
+});
+
+prueba("la ficha renueva sólo un contrato vivo que termina en 60 días; las palabras de cada estado (ejecutado)", () => {
+  const t = (extra) => ({ id: 5, estado: "contrato", estado_visible: "vigente", desde: "2026-01-01", hasta: "2026-12-01", ...extra });
+  assert.equal(R.terminoParaRenovar({ terminos: [t()] }, HOY)?.id, 5);
+  assert.equal(R.terminoParaRenovar({ terminos: [t({ hasta: "2027-03-01" })] }, HOY), null, "renovar un contrato que vence en cinco meses");
+  assert.equal(R.terminoParaRenovar({ terminos: [t({ estado: "reserva", estado_visible: "reserva" })] }, HOY), null, "una reserva se renueva");
+  assert.equal(R.terminoParaRenovar({ terminos: [t({ estado_visible: "vencido", hasta: "2026-10-01" })] }, HOY), null, "un contrato vencido se renueva");
+  assert.equal(R.terminoParaRenovar({ terminos: [] }, HOY), null);
+  assert.equal(R.PALABRA_DEL_TERMINO.reserva, "Reserva provisional");
+  assert.equal(R.PALABRA_DE_LA_DISTRIBUCION.para_revisar, "Para revisar");
+  assert.equal(R.rotuloDeCara("GON-01", "B", plano[0]), "GON-01 · B");
+  assert.equal(R.rotuloDeCara("PUN-03", "A", plano[1]), "PUN-03");
+  assert.equal(R.rotuloDeCara("GON-09", "A", undefined), "GON-09 · A");
+  assert.equal(R.fechaCorta("2027-02-03", HOY), "3 feb 2027");
+  assert.equal(R.sumarDias("2026-12-28", 7), "2027-01-04");
+});
+
 console.log(`\n${hechas} pruebas\n`);

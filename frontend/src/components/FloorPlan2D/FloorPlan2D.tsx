@@ -34,9 +34,12 @@ import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
 import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
 import {
-  codigoDeParte, concordancia, divisionDe, juntasDePartes, piezasDe, puntosDePartesVendidas,
-  sufijoDeParte, vanoDeParte,
+  codigoDeParte, concordancia, dispoDeParticipacion, divisionDe, estadoParaPintar, juntasDePartes, piezasDe,
+  porParticipacion, puntosDePartesVendidas, sufijoDeParte, vanoDeParte,
 } from "../../utils/partes";
+// La ocupación ANÓNIMA de las caras por participación (store de LECTURA): el
+// color de esas caras sale de ahí (§10.8), no de un contrato `…-PC3`.
+import { claveDeSede, useOcupacionStore } from "../../store/ocupacionStore";
 import { cotasDeCheckout, mesaDeImpulso, montantesDeImpulso, nichosDeImpulso } from "../StoreEditor3D/muebles/medidas";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
@@ -457,6 +460,29 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // vendida (vender una parte no cambia el mueble fusionado).
   const muebleDelStore = useMemo(() => new Map(storeFixtures.map((f) => [f.id, f])), [storeFixtures]);
   const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
+
+  // ── El color de una cara por participación (§10.8) ──────────────────────────
+  // Su estado no cambia (un contrato `…-PC3` nunca la pinta ocupada: la fusión
+  // busca la cara por código exacto); cambia sólo el color que se pinta, con
+  // la ocupación anónima de HOY: sin lugar, el de ocupado; con algo
+  // comprometido, el ámbar de «parcial»; sin nada, el suyo. Así cuatro
+  // participaciones del 25 % no se ven verdes, «libres».
+  const clienteActual = useAuthStore((s) => s.cliente) ?? "";
+  const ocupacionDeSede = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteActual, sede)]);
+  const cargarOcupacion = useOcupacionStore((s) => s.cargarOcupacion);
+  const hayParticipaciones = useMemo(() => storeFixtures.some((f) => porParticipacion(f)), [storeFixtures]);
+  useEffect(() => {
+    if (hayParticipaciones) void cargarOcupacion(sede);
+  }, [hayParticipaciones, sede, cargarOcupacion]);
+  const pintadoDe = useCallback((itemId: string, cara: "A" | "B", propio: SpaceStatus): SpaceStatus => {
+    const f = muebleDelStore.get(itemId);
+    if (!f || !ocupacionDeSede || !porParticipacion(f)) return propio;
+    const codigo = fullSpaceCode(sede, codigoDeParte(f.code, cara, null));
+    const o = Object.prototype.hasOwnProperty.call(ocupacionDeSede.caras, codigo)
+      ? ocupacionDeSede.caras[codigo] : { intervalos: [], fisicos: [] };
+    const hoy = ocupacionDeSede.hoy;
+    return estadoParaPintar(propio, dispoDeParticipacion(f, { ocupacion: o, hoy }, hoy, hoy));
+  }, [muebleDelStore, ocupacionDeSede, sede]);
   useEffect(() => {
     // commit() stores the array by reference, so identity equality means this
     // update is the echo of our own commit and must not rebuild the canvas.
@@ -1682,8 +1708,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         Face B = opposite half, colored by faceB.status. */}
                     {item.type === "gondola_doble" && isRentable(item) && !isCollidingDrag && (() => {
                       const steps = rotationSteps(item.rotY);
-                      const aFill = STATUS_FILL[item.status];
-                      const bFill = STATUS_FILL[item.faceB?.status ?? "free"];
+                      const aFill = STATUS_FILL[pintadoDe(item.id, "A", item.status)];
+                      const bFill = STATUS_FILL[pintadoDe(item.id, "B", item.faceB?.status ?? "free")];
                       const noPtr = { style: { pointerEvents: "none" as const } };
                       const dividerStroke = "rgba(28,27,22,0.30)";
                       if (steps === 0 || steps === 2) {
@@ -1721,7 +1747,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                           ? NON_RENTABLE_FILL
                           : item.type === "gondola_doble"
                           ? "transparent" // halves painted above; keep pointer target
-                          : STATUS_FILL[item.status]
+                          : STATUS_FILL[pintadoDe(item.id, "A", item.status)]
                       }
                       stroke={
                         isCollidingDrag
@@ -1730,7 +1756,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                           ? "var(--accent)"
                           : !isRentable(item)
                           ? NON_RENTABLE_STROKE
-                          : STATUS_COLORS[item.status]
+                          : STATUS_COLORS[pintadoDe(item.id, "A", item.status)]
                       }
                       strokeWidth={(isSelected || isCollidingDrag ? 2.5 : 1.5) / zoom}
                       strokeDasharray={
