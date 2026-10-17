@@ -323,9 +323,9 @@ def test_la_capacidad_suma_lo_que_cuenta_cada_dia_y_nada_mas(client, admin):
         # La caducidad no se escribe: el historial la deriva de la fecha (D6).
         derivados = client.get("/api/participaciones/historial", headers=otra,
                                params={"sede": "NAVE", "espacio": "PUN-01"}).json()["derivados"]
-        # El día de Colombia en `dia`; `en` es su medianoche en Colombia (contrato del historial).
+        # El día de Colombia en `dia`; `en` es su medianoche en Colombia, en UTC (contrato del historial).
         assert [(d["accion"], d["dia"], d["en"], d["derivado"]) for d in derivados] == [
-            ("reserva.caducada", "2026-10-21", "2026-10-21T00:00:00-05:00", True)]
+            ("reserva.caducada", "2026-10-21", "2026-10-21T05:00:00+00:00", True)]
         _alta(client, otra, espacio="PUN-01", pb=3000, desde=D(2026, 11, 1), hasta=D(2026, 11, 30))
 
 
@@ -747,7 +747,7 @@ def test_caso_g_lo_vencido_y_lo_cancelado_dejan_de_contar_y_su_zona_pasa_a_histo
         derivados = client.get("/api/participaciones/historial", headers=otra,
                                params={"sede": "NAVE", "espacio": "MET-01"}).json()["derivados"]
         assert [(d["accion"], d["dia"], d["en"], d["participacion_id"]) for d in derivados] == [
-            ("participacion.vencida", "2026-11-01", "2026-11-01T00:00:00-05:00", p1["id"])]
+            ("participacion.vencida", "2026-11-01", "2026-11-01T05:00:00+00:00", p1["id"])]
         _alta(client, otra, espacio="MET-01", pb=5000, desde=D(2026, 11, 10), hasta=D(2026, 11, 20),
               proveedor="Nutresa")
         r = client.post("/api/participaciones/distribucion/confirmar", headers=otra,
@@ -1634,6 +1634,8 @@ def test_una_fila_de_cara_sin_sede_no_deja_la_participacion_sin_confirmar_renova
 
     assert _sede_por_prefijo("SAN-JOSE-GON-01", Plano({"SAN": {"JOSE-GON-01"}, "SAN-JOSE": {"GON-01"}})) == "SAN-JOSE"
     assert _sede_por_prefijo("SAN-GON-01", Plano({"SAN": {"GON-01"}, "SAN-JOSE": {"GON-01"}})) == "SAN"
+    assert _sede_por_prefijo("SAN-JOSE-GON-01", Plano({"SAN": {"JOSE-GON-01"}, "SAN-JOSE": {"GON-02"}})) == "SAN", \
+        "la sede más larga calza pero su plano no tiene el mueble: es de la otra"
     assert _sede_por_prefijo("SAN-JOSE-GON-09", Plano({"SAN": set(), "SAN-JOSE": set()})) == "SAN-JOSE", \
         "sin el mueble, la frase del 404 igual nombra la sede"
     assert _sede_por_prefijo("OTRA-GON-01", Plano({"SAN": {"GON-01"}})) == ""
@@ -1728,9 +1730,11 @@ def test_el_historial_fecha_lo_derivado_con_el_dia_de_colombia_y_lo_ordena_contr
     """Contrato del historial: el vencimiento de un contrato y la caducidad de
     una reserva (derivados, sin fila: D6) traen ``derivado: true``, ``dia`` (el
     día de Colombia en que pasó: el siguiente al último día de vigencia) y
-    ``en``, la medianoche de ese día en Colombia con su zona. Con
-    ``"en": "2026-10-20"`` el navegador en Colombia lo mostraba el 19 a las
-    7 p. m., y lo ordenaba ANTES de lo que pasó a las 10 p. m. del 19.
+    ``en``, la medianoche de ese día en Colombia escrita en UTC, como el
+    ``en`` de las entradas reales. Con ``"en": "2026-10-20"`` el navegador en
+    Colombia lo mostraba el 19 a las 7 p. m., y lo ordenaba ANTES de lo que
+    pasó a las 10 p. m. del 19; con ``-05:00``, el panel (que compara el
+    texto) seguía ordenándolo así.
 
     El reloj, a las 21:00 del 20 en Colombia (ya el 21 en UTC): lo que vale
     hasta el 20 todavía rige, y no aparece ni vencido ni caducado."""
@@ -1756,12 +1760,16 @@ def test_el_historial_fecha_lo_derivado_con_el_dia_de_colombia_y_lo_ordena_contr
         h = client.get("/api/participaciones/historial", headers=_entrar(client),
                        params={"sede": "NAVE", "espacio": "MET-01"}).json()
     assert [(d["accion"], d["participacion_id"], d["dia"], d["en"], d["derivado"]) for d in h["derivados"]] == [
-        ("reserva.caducada", caducada["id"], "2026-10-20", "2026-10-20T00:00:00-05:00", True),
-        ("participacion.vencida", vencido["id"], "2026-10-20", "2026-10-20T00:00:00-05:00", True),
+        ("reserva.caducada", caducada["id"], "2026-10-20", "2026-10-20T05:00:00+00:00", True),
+        ("participacion.vencida", vencido["id"], "2026-10-20", "2026-10-20T05:00:00+00:00", True),
     ], "lo que vale hasta el 20 (hoy en Colombia) aparece vencido o caducado, o falta un derivado"
     assert all("dia" not in e and "derivado" not in e for e in h["entradas"])
     editada = next(e for e in h["entradas"] if e["accion"] == "participacion.editada")
     assert editada["en"].startswith("2026-10-20T03:00")
-    # Juntas y ordenadas por instante (como las ordena el panel), lo derivado del 20 va después de las 10 p. m. del 19.
+    # Juntas y ordenadas por instante, lo derivado del 20 va después de las 10 p. m. del 19.
     juntas = sorted(h["entradas"] + h["derivados"], key=lambda e: datetime.fromisoformat(e["en"]), reverse=True)
     assert [e["accion"] for e in juntas[:3]] == ["reserva.caducada", "participacion.vencida", "participacion.editada"]
+    # Y por el texto, como ordena el panel (`a.en < b.en` en PanelDeDistribucion): el mismo orden.
+    por_texto = sorted(h["entradas"] + h["derivados"], key=lambda e: e["en"], reverse=True)
+    assert [e["accion"] for e in por_texto] == [e["accion"] for e in juntas], \
+        "ordenar por el texto de `en` no da el orden de los instantes: lo derivado y lo real no comparten formato"

@@ -1705,10 +1705,13 @@ def _derivado(dia: date, accion: str, t: Participacion, codigos: dict, detalle: 
     · ``dia`` (``YYYY-MM-DD``) es lo que el panel muestra, sin hora: lo parsea
       como fecha local, nunca con ``new Date(iso)`` (que toma ``2026-10-18``
       como medianoche UTC: las 7 p. m. del 17 en Colombia).
-    · ``en`` es el instante de la medianoche de ese día en Colombia, con su
-      zona (``2026-10-18T00:00:00-05:00``), para ordenarla bien contra las
-      entradas reales, que son instantes.
+    · ``en`` es el instante de la medianoche de ese día en Colombia, escrito
+      en UTC como el ``en`` de las entradas reales (``_iso``):
+      ``2026-10-18T05:00:00+00:00``. Con el mismo formato, ordenar por el
+      texto (el panel compara ``a.en < b.en``) da el orden de los instantes;
+      con ``-05:00`` la entrada real de las 10 p. m. del 17
+      (``2026-10-18T03:00…+00:00``) quedaba DESPUÉS de lo derivado del 18.
     · ``derivado: true`` la distingue de una entrada con fila."""
     medianoche = datetime.combine(dia, datetime.min.time(), tzinfo=ZONA_DEL_NEGOCIO)
-    return {"en": medianoche.isoformat(), "dia": dia, "derivado": True, "tipo": "evento", "accion": accion,
+    return {"en": _iso(medianoche), "dia": dia, "derivado": True, "tipo": "evento", "accion": accion,
             "participacion_id": t.id, "codigo": codigos.get(t.space_id), "detalle": detalle}
