@@ -23,10 +23,11 @@ import { useDistribucionStore, capaQueSeMuestra, zonasEditables, type Distribuci
 import { useOcupacionStore, claveDeSede } from "../../store/ocupacionStore";
 import { espacioDeLaCara, leerCara, superficieDeOut, terminoDeOut, type CaraOut, type OcupacionOut } from "../../api/participaciones";
 import { UMBRAL_CLIC_PX, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
-import { elegirCaraYPunto } from "../../utils/zonas3d";
+import { corteConLaCara, rayoTapado } from "../../utils/zonas3d";
+import { encuadreDeLaCara } from "../../utils/encuadreDeDistribucion";
 import { superficieDeCara, tieneSuperficie, type Superficie } from "../../utils/superficie";
 import { estampasDeLaCara } from "../../utils/coloresDeMarca";
-import { cuentaElDia, cuentaEseDia, dispoPorParticipacion, pct, vivo } from "../../utils/participaciones";
+import { CARA_ENTERA_PB, cuentaElDia, cuentaEseDia, dispoPorParticipacion, pct, vivo } from "../../utils/participaciones";
 import { carasInaccesibles, textoDeCaraInaccesible } from "../../utils/revision";
 import { carasDe } from "../../types/espacio";
 import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
@@ -5788,6 +5789,10 @@ export function Scene({
   const enDistribucionDelMueble = (id: string | null) =>
     enModoDistribucion !== undefined && id === enModoDistribucion.fixtureId;
   const idEnDistribucion = enModoDistribucion?.fixtureId ?? null;
+  // La toma la lee al pedirse (sin entrar en las dependencias de
+  // `tomaDeVenta`): en Distribución, «De frente» abarca la cara entera.
+  const distribucionDeLaToma = useRef(enModoDistribucion);
+  distribucionDeLaToma.current = enModoDistribucion;
   // Lo que se pinta de cada mueble cuando no es el mueble tal cual (§10.2,
   // §10.8): el que se distribuye, DESNUDO —sin rubro (ni patrón de paquetes
   // ni relleno) y sin slots (ni envases ni paneles)—; uno que se vende por
@@ -5927,6 +5932,16 @@ export function Scene({
     // la Avena de GON-02·A por entrepaño salía sin los dos cantos—. En el
     // editor, los 50° de siempre.
     const enVenta = presentationMode || privadoPara !== undefined;
+    // Distribución (revisión final, recorrido I.5): «De frente» abarca la
+    // cara ENTERA en el panel partido, con el campo visual horizontal del
+    // lienzo de ahora (`aspecto`); si de frente no entra desde el pasillo, el
+    // tres cuartos menos oblicuo que la abarca (`encuadreDeLaCara`). Sin
+    // persona de escala: no es una toma de venta.
+    if (!enVenta && toma === "frente" && distribucionDeLaToma.current?.fixtureId === fix.id) {
+      ponerCampoVisual(FOV_DEL_EDITOR);
+      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto).vista);
+      return;
+    }
     const fov = toma === "cerca" ? FOV_DE_CERCA
       : enVenta && toma === "frente" ? fovParaLaCara(mueble, cara, obstaculos, limites, aspecto, FOV_DEL_EDITOR, foco.porEntrepano ? foco : undefined)
         : FOV_DEL_EDITOR;
@@ -6361,9 +6376,19 @@ export function Scene({
                   const inversa = grupo.matrixWorld.clone().invert();
                   const origen = e.ray.origin.clone().applyMatrix4(inversa);
                   const dir = e.ray.direction.clone().transformDirection(inversa);
-                  const r = elegirCaraYPunto(
+                  const corte = corteConLaCara(
                     { origen: [origen.x, origen.y, origen.z], dir: [dir.x, dir.y, dir.z] }, enModoDistribucion.superficies,
                   );
+                  // Los volúmenes de los vecinos no reciben el rayo (si no, se
+                  // comerían el clic): un clic sobre el mueble que se ve
+                  // DELANTE atravesaba hasta la cara tapada y la elegía —o
+                  // cambiaba de cara—. Si otro mueble corta el rayo antes que
+                  // la cara (su caja real), el clic no elige nada.
+                  const delante = corte !== null && rayoTapado(
+                    { origen: [e.ray.origin.x, e.ray.origin.y, e.ray.origin.z], dir: [e.ray.direction.x, e.ray.direction.y, e.ray.direction.z] },
+                    corte.t, placedFixtures.filter((f) => f.id !== fix.id),
+                  );
+                  const r = corte && !delante ? corte : null;
                   if (r) enModoDistribucion.onTocar(r.cara, r.u, r.v);
                 }
               }}
@@ -7058,7 +7083,17 @@ function CommercialPanel({
             vez que se tocaba el botón en vez de editar el que había. */}
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-3" data-contratado>
           <p className={labelCls}><Building2 size={9} className="inline mr-1"/>Contratado</p>
-          {fix.supplierName && contratoDiscreto ? (
+          {porParticipacion(fix) ? (
+            // Por participación no hay UN contrato de la cara: «Sin contrato
+            // activo» sobre una cara tomada al 100 % decía lo contrario de la
+            // banda roja (revisión final, recorrido I.25). Lo que se dice es
+            // la ocupación anónima del store de lectura, como en Vender.
+            <div data-contratado-por-participacion>
+              {lineasDeContratadoPorParticipacion(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto).map((linea) => (
+                <p key={linea} className="text-xs text-dark-ink-1">{linea}</p>
+              ))}
+            </div>
+          ) : fix.supplierName && contratoDiscreto ? (
             <>
               <p className="text-xs text-dark-ink-2" data-contrato-discreto>
                 {fix.endDate ? `Ocupado hasta ${mesYAnio(fix.endDate)}` : "Ocupado"}
@@ -7100,11 +7135,15 @@ function CommercialPanel({
           ) : (
             <p className="text-xs text-dark-ink-3">Sin contrato activo.</p>
           )}
-          {isAdmin && (
+          {isAdmin && (porParticipacion(fix) ? (
+            <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
+              Las participaciones se cargan en <b className="text-dark-ink-2">Distribución</b> («Distribuir esta cara», abajo).
+            </p>
+          ) : (
             <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
               Los contratos se hacen en <b className="text-dark-ink-2">Sede → Vender</b>, sobre el mapa.
             </p>
-          )}
+          ))}
         </div>
 
         <VistaProveedor
@@ -7405,6 +7444,30 @@ function estadoQueSeVe(
  *  del mouse: anónimo, sin proveedores ni montos. */
 function textoDeOcupacion(caras: { cara: "A" | "B"; quedaPb: number }[]): string {
   return `Por participación · queda ${caras.length === 1 ? pct(caras[0].quedaPb) : caras.map((c) => `${pct(c.quedaPb)} (${c.cara})`).join(" · ")}`;
+}
+
+/**
+ * La tarjeta CONTRATADO de un mueble por participación: «Por participación ·
+ * comprometido 55 % · queda 45 %» (una línea por cara en una doble), con la
+ * ocupación anónima del día del servidor —la misma de la banda y del cartel
+ * del mouse—. Nunca «Sin contrato activo». Una cara que la ocupación no nombra
+ * no tiene nada comprometido; sin la ocupación leída, lo dice. Con un
+ * proveedor mirando (`discreto`), sólo lo que queda, como en Vender.
+ */
+function lineasDeContratadoPorParticipacion(
+  f: PlacedFixture, o: OcupacionOut | undefined, sede: string, discreto: boolean,
+): string[] {
+  if (!o) return ["Por participación · leyendo la ocupación…"];
+  const completo = fullSpaceCode(sede, f.code);
+  const caras: ["A" | "B", string][] = carasDe(f) === 2 ? [["A", completo], ["B", `${completo}-B`]] : [["A", completo]];
+  return caras.map(([cara, codigo]) => {
+    const oc = Object.prototype.hasOwnProperty.call(o.caras, codigo) ? o.caras[codigo] : { intervalos: [], fisicos: [] };
+    const { quedaPb } = dispoPorParticipacion(oc, o.hoy, o.hoy, o.hoy);
+    const deLaCara = caras.length === 2 ? `Cara ${cara} · ` : "";
+    return discreto
+      ? `${deLaCara}Por participación · queda ${pct(quedaPb)}`
+      : `${deLaCara}Por participación · comprometido ${pct(CARA_ENTERA_PB - quedaPb)} · queda ${pct(quedaPb)}`;
+  });
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
