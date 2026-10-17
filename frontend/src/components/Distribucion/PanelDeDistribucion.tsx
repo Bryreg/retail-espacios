@@ -5,7 +5,7 @@ import { espacioDeLaCara, historial, type HistorialOut, type ZonaOut } from "../
 import { hayParaRecuperar, planoAlDia, useDistribucionStore } from "../../store/distribucionStore";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import { carasDe } from "../../types/espacio";
-import { accionDeTecla } from "../../utils/edicionDeZonas";
+import { accionDeTecla, type Accion } from "../../utils/edicionDeZonas";
 import { cambioParaDividir, conPartes, revisarCambioDePartes, type CambioDePartes } from "../../utils/partesDelMueble";
 import { pct, type EstadoDeDistribucion } from "../../utils/participaciones";
 import type { Estampa } from "../../utils/coloresDeMarca";
@@ -43,6 +43,19 @@ import ResumenDeCambios, { ConflictosDeLaFusion } from "./ResumenDeCambios";
 /** Las teclas que el atajo global del editor usaría (`StoreEditor3D`). */
 const DEL_EDITOR = new Set(["Delete", "Backspace", "r", "R", "f", "F", "Escape"]);
 
+/**
+ * Lo que también se despacha con el foco en el PANEL: elegir herramienta
+ * (V, R, P), el imán (G), deshacer, rehacer y lo de Esc (cancelar el trazo,
+ * soltar la zona). Nada de eso borra ni mueve una zona. Es el camino que la
+ * pantalla misma sugiere —«Elegí una participación en la lista para dibujar su
+ * zona»: clic en la fila y R—, y sin esto la R se cortaba sin hacer nada (el
+ * foco quedaba en la fila). Supr, Retroceso, las flechas y Enter siguen
+ * siendo sólo del lienzo: en el panel son de sus botones y listas.
+ */
+const DESDE_EL_PANEL: ReadonlySet<Accion["tipo"]> = new Set<Accion["tipo"]>([
+  "elegirHerramienta", "alternarIman", "deshacer", "rehacer", "cancelarTrazo", "seleccionar",
+]);
+
 /** Lo que el oyente necesita del evento (un `KeyboardEvent` lo cumple). */
 export interface TeclaDeDistribucion {
   key: string;
@@ -58,9 +71,10 @@ type Destino = { tagName?: string; isContentEditable?: boolean; closest?: (s: st
 
 /**
  * El oyente en captura del modo Distribución. Las acciones del editor
- * (`accionDeTecla`) se despachan sólo con el foco en el lienzo —o en ninguna
- * parte (`body`), que es donde queda después de tocar el 3D—; deshacer,
- * rehacer y Esc también desde el panel. Las teclas que el atajo global
+ * (`accionDeTecla`) se despachan con el foco en el lienzo —o en ninguna
+ * parte (`body`), que es donde queda después de tocar el 3D—; desde el panel,
+ * sólo las que no borran ni mueven nada (`DESDE_EL_PANEL`: herramienta, imán,
+ * deshacer, rehacer y Esc). Las teclas que el atajo global
  * usaría NO le llegan nunca mientras dura el modo, tenga el foco quien lo
  * tenga: se cortan acá. Lo que se escribe (campos) y los diálogos mandan: un
  * diálogo se queda con su Esc y su Enter, aunque Supr, R, F y Ctrl+Z igual se
@@ -87,9 +101,8 @@ export function atajoDeDistribucion(
   }
   const enLienzo = tag === "body" || !!t?.closest?.("[data-lienzo-de-zonas]");
   const enElModo = enLienzo || !!t?.closest?.("[data-distribucion]");
-  const a = enLienzo || (enElModo && (deshacer || e.key === "Escape"))
-    ? accionDeTecla(st.edicion, { key: e.key, ctrl, shift: e.shiftKey })
-    : null;
+  const posible = enElModo ? accionDeTecla(st.edicion, { key: e.key, ctrl, shift: e.shiftKey }) : null;
+  const a = posible && (enLienzo || DESDE_EL_PANEL.has(posible.tipo)) ? posible : null;
   if (a || delEditor) {
     e.stopPropagation();                          // el atajo global no ve la tecla
     if (a) { e.preventDefault(); st.despachar(a); }
@@ -240,6 +253,15 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
   async function guardarYSeguir() {
     const p = preguntaVisible;
     if (!p) return;
+    // «Guardarlos como borrador» es una decisión de la persona, como el botón
+    // «Guardar borrador»: va al historial y a la bitácora (`automatico: false`).
+    // Si se dejaba a `cambiarCara`/`salir`, guardaban como AUTOGUARDADO (la red
+    // de seguridad, §9.8) y el borrador quedaba sin rastro de quién ni cuándo.
+    if (st().edicion.sucio && !(await st().guardarBorrador(false))) {
+      setMensajeDePregunta(st().guardado.mensaje
+        ?? "No se pudo guardar el borrador: tu trabajo sigue acá. Probá de nuevo o descartá los cambios.");
+      return;
+    }
     const ok = p.tipo === "cara" ? await st().cambiarCara(p.cara) : p.tipo === "salir" ? await st().salir() : false;
     if (ok) { setPregunta(null); setMensajeDePregunta(null); return; }
     setMensajeDePregunta(st().guardado.mensaje

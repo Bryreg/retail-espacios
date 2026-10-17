@@ -1357,4 +1357,72 @@ await prueba("el formulario frena antes de mandar lo que el servidor rechazaría
   assert.equal(F.valorDeTexto("-5"), null);
 });
 
+// ── Verificación del paso 6b ─────────────────────────────────────────────────
+
+await prueba("teclado (verificación 6b): desde el PANEL andan V/R/P/G, deshacer y Esc —clic en la fila de la leyenda y R—; Supr, flechas y Enter siguen siendo sólo del lienzo", () => {
+  // El camino que la pantalla sugiere: «Elegí una participación en la lista
+  // para dibujar su zona» → clic en la fila (el foco queda en la fila) → R.
+  // Antes la R se cortaba y no hacía nada.
+  enElModo({ seleccion: null });
+  let ev = atajo(tecla("r", EN_BOTON_DEL_PANEL));
+  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "rectangulo", "R con el foco en la fila de la leyenda no eligió el rectángulo");
+  assert.ok(ev.cortada && ev.prevenida, "la R siguió hasta el atajo global (gira el mueble)");
+  atajo(tecla("p", EN_BOTON_DEL_PANEL));
+  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "poligono");
+  atajo(tecla("v", EN_BOTON_DEL_PANEL));
+  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "seleccionar");
+  const iman = P6.useDistribucionStore.getState().edicion.iman;
+  atajo(tecla("g", EN_BOTON_DEL_PANEL));
+  assert.equal(P6.useDistribucionStore.getState().edicion.iman, !iman, "G desde el panel no alternó el imán");
+  // Lo que borra o mueve una zona, no: con una zona elegida, las flechas y Supr
+  // en un botón del panel no la tocan (son del botón o de la lista).
+  enElModo();
+  const antes = JSON.stringify(P6.useDistribucionStore.getState().edicion.zonas);
+  ev = atajo(tecla("ArrowLeft", EN_BOTON_DEL_PANEL));
+  assert.ok(!ev.cortada, "la flecha en un botón del panel no le llegó al botón");
+  atajo(tecla("Delete", EN_BOTON_DEL_PANEL));
+  assert.equal(JSON.stringify(P6.useDistribucionStore.getState().edicion.zonas), antes, "una tecla en el panel movió o borró una zona");
+  // Enter en un botón del panel es del botón, aunque haya un polígono a medias.
+  enElModo({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.2, 0.1], [0.2, 0.3]], seleccion: null });
+  ev = atajo(tecla("Enter", EN_BOTON_DEL_PANEL));
+  assert.ok(!ev.cortada && P6.useDistribucionStore.getState().edicion.trazo, "Enter en un botón del panel cerró el polígono del lienzo");
+  // Sin acción, en el lienzo, las teclas del atajo global se cortan Y se frenan (Retroceso no navega).
+  enElModo({ seleccion: null });
+  ev = atajo(tecla("Backspace", EN_LIENZO));
+  assert.ok(ev.cortada && ev.prevenida, "Retroceso sin nada elegido, en el lienzo, no se frenó");
+  // Afuera del modo (la barra del editor) nada se despacha.
+  enElModo({ seleccion: null });
+  atajo(tecla("r", AFUERA));
+  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "seleccionar", "una R afuera del modo eligió una herramienta");
+});
+
+await prueba("capacidad (verificación 6b): el pico de un período que empezó antes de hoy no mira los días que ya pasaron", () => {
+  const L = P6.LEY;
+  // Un contrato del 90 % que terminó el 30 sep, y hoy es 17 oct: ese 90 % no
+  // compromete nada de lo que queda del período.
+  const viejo = pOut([tOut({ id: 9, space_id: 9, numero: 1, puntos_basicos: 9000, estado_visible: "vencido", desde: "2026-08-01", hasta: "2026-09-30" })], { viva: false });
+  const hoyVivo = pOut([tOut({ id: 10, space_id: 10, numero: 2, puntos_basicos: 2000, desde: "2026-10-01", hasta: "2026-12-31", proveedor: { id: 5, nombre: "Alpina" } })]);
+  const cara = { hoy: "2026-10-17", participaciones: [viejo, hoyVivo], capacidad: { periodo: { desde: "2026-10-17", hasta: "2027-10-16" }, fisicos: [] } };
+  const c = L.capacidadDe(cara, "2026-10-17", { desde: "2026-09-01", hasta: "2026-12-31" });
+  assert.equal(c.periodo.pico, 2000, `el pico miró el pasado: ${c.periodo.pico}`);
+  assert.equal(c.periodo.diaPico >= "2026-10-17", true, `el día del pico es anterior a hoy: ${c.periodo.diaPico}`);
+  assert.equal(c.periodo.queda, 8000);
+});
+
+await prueba("panel y leyenda (verificación 6b): «Guardarlos como borrador» guarda como la persona (con historial), y un contrato escrito vuelve a leer el estado comercial del plano", () => {
+  const panel = codigo6b("PanelDeDistribucion");
+  const i = panel.indexOf("async function guardarYSeguir(");
+  assert.ok(i >= 0, "no está guardarYSeguir");
+  const cuerpo = panel.slice(i, panel.indexOf("\n  }\n", i));
+  const g = cuerpo.indexOf("guardarBorrador(false)");
+  assert.ok(g >= 0, "«Guardarlos como borrador» guarda como autoguardado (sin historial ni bitácora)");
+  assert.ok(g < cuerpo.indexOf("cambiarCara(") && g < cuerpo.indexOf("salir()"), "el guardado explícito tiene que ir antes de cambiar de cara o salir");
+  const ley = codigo6b("LeyendaDeParticipaciones");
+  const c = ley.indexOf("await cancelLease(");
+  assert.ok(c >= 0 && ley.indexOf("refrescarComercial()", c) > c, "cancelar un contrato no vuelve a leer el estado comercial del plano");
+  const form = codigo6b("FormularioDeParticipacion");
+  assert.match(form, /r\.termino\.estado === "contrato"\) void useFixtureStore\.getState\(\)\.refrescarComercial\(\)/,
+    "un contrato nuevo no vuelve a leer el estado comercial del plano");
+});
+
 console.log(`\n${hechas} pruebas de distribución en verde`);

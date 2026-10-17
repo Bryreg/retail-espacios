@@ -9,6 +9,7 @@ import { cancelLease } from "../../api/spaces";
 import { describeError } from "../../api/client";
 import { useAuthStore } from "../../store/authStore";
 import { useDistribucionStore } from "../../store/distribucionStore";
+import { useFixtureStore } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
 import { TONOS_DE_MARCA, estampasDeLaCara, type Estampa } from "../../utils/coloresDeMarca";
 import { ajustarAlContratado, revisarZonas, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
@@ -650,6 +651,10 @@ function PreguntaDeCancelar({ pregunta, aviso, onAviso, onCerrar, datos }: {
         // El contrato se cancela por el camino de siempre
         // (`DELETE /spaces/{id}/leases/{id}`); la cara se vuelve a leer.
         await cancelLease(t.space_id, t.lease_id as number);
+        // El contrato era una fila de `space_leases`: el estado comercial del
+        // plano (el panel comercial y el 3D al salir del modo) se vuelve a leer
+        // ya, como después de cualquier venta, y no a los 20 s del sondeo.
+        void useFixtureStore.getState().refrescarComercial();
         const a = st.activa;
         if (a) st.aplicarCara(await leerCara(a.sede, espacioDeLaCara(a.codigo, a.cara)));
       } else {

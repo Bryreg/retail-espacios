@@ -260,6 +260,10 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
         });
       }
       useDistribucionStore.getState().aplicarCara(r.cara);
+      // Un contrato nuevo (alta, confirmación o renovación) es una fila de
+      // `space_leases`: el estado comercial del plano se vuelve a leer ya, como
+      // después de cualquier venta, y no a los 20 s del sondeo.
+      if (r.termino.estado === "contrato") void useFixtureStore.getState().refrescarComercial();
       const extra = (r as TerminoEscrito & { avisos_distribucion?: ProblemaOut[] }).avisos_distribucion ?? [];
       const n = r.termino.numero;
       setHecho({
