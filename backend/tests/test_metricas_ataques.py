@@ -795,7 +795,9 @@ def test_m10_barrido_automatico_de_todas_las_rutas_de_la_aplicacion(client, monk
     relleno = {"space_id": "1", "supplier_id": "1", "file_id": "1", "lease_id": "1",
                "arte_id": "1", "usuario_id": "1", "solicitud_id": "1", "sede": "NAVE",
                "space_code": "NAVE-PUN-01", "svg_id": "s1", "code": "NAVE-PUN-01",
-               "slug": "acme", "mount_id": "1", "id": "1"}
+               "slug": "acme", "mount_id": "1", "id": "1",
+               # Las participaciones de cara: sus POST y su PATCH llevan el id del término.
+               "participacion_id": "1"}
 
     from conftest import rutas_planas
 

@@ -114,6 +114,7 @@ from app.models.models import (
     Space,
 )
 from app.services import catalogo_muebles
+from app.services.candado import tomar_candados
 from app.services.partes import partir_codigo
 from app.services.layout_lookup import (
     _full_code,
@@ -693,11 +694,64 @@ def _arrastre(
 # ─── El paso que sí escribe ───────────────────────────────────────────────────
 
 
+def codigos_del_candado(planes: list[PlanSede]) -> set[str]:
+    """Los códigos COMPLETOS, viejos y nuevos, de cada mueble que cambia de
+    código: con la sede del mueble (como se mudan sus espacios, ``mapa``) y con
+    la del plano (como arman la cara las participaciones, ``codigo_cara``).
+
+    Son las claves del candado del mueble (``services/candado.py``: la base del
+    código), las mismas que toman la venta de la cara entera, de sus partes y
+    de sus participaciones, y el guardado del plano. Un mueble que sólo pierde
+    la nomenclatura no muda nada y no entra."""
+    codigos: set[str] = set()
+    for plan in planes:
+        for fila in plan.filas:
+            if not fila.antes or fila.antes == fila.ahora:
+                continue
+            codigos.update(c for c in (
+                fila.codigo_antes, fila.codigo_ahora,
+                _full_code(fila.antes, plan.sede), _full_code(fila.ahora, plan.sede),
+            ) if c)
+    return codigos
+
+
+def con_candados(db: Session, planes: list[PlanSede]) -> list[PlanSede]:
+    """Toma los candados de los muebles que se renumeran y devuelve el plan
+    vuelto a calcular con ellos puestos (y la sesión leída de nuevo).
+
+    Sin esto, un alta de participación que buscaba la cara por el código viejo
+    mientras la renumeración la mudaba podía crear su espacio ``…-PC2`` con el
+    nombre que se estaba yendo: la mudanza sólo arrastra lo que vio al
+    planificar, y la participación quedaba colgada de un mueble que ya no se
+    llama así. Con el candado, el alta espera (o la renumeración la ve).
+
+    Es el patrón de la planilla (``bulk_leases.confirmar``): mirar, tomar el
+    candado, ``expire_all`` (SQLAlchemy no refresca lo que ya tiene en memoria)
+    y volver a mirar; lo que se escribe es lo que pasó la segunda mirada. Si el
+    plano cambió en el medio y la segunda mirada renombra otros muebles, se
+    frena (``RenumeracionBloqueada``): esos no tienen el candado."""
+    codigos = codigos_del_candado(planes)
+    if not codigos:
+        return planes
+    tomar_candados(db, codigos)
+    db.expire_all()
+    frescos = [planificar_sede(db, plan.sede) for plan in planes]
+    for plan in frescos:
+        nuevos = codigos_del_candado([plan]) - codigos
+        if nuevos:
+            raise RenumeracionBloqueada(plan.sede, [
+                "el plano cambió mientras se renumeraba (" + ", ".join(sorted(nuevos)[:5]) + "): "
+                "mirá el previo otra vez"])
+    return frescos
+
+
 def aplicar(db: Session, planes: list[PlanSede]) -> None:
     """Escribe la renumeración de todas las sedes en UNA transacción.
 
     No hace commit: lo hace el endpoint, para que la bitácora viaje en la misma
-    transacción y las dos cosas caigan juntas o no caiga ninguna.
+    transacción y las dos cosas caigan juntas o no caiga ninguna. El endpoint
+    pasa el plan de ``con_candados``: los muebles que se mudan ya tienen su
+    candado.
 
     Idempotente: una sede donde nada cambia no se toca —ni el plano ni su
     ``updated_at``—, así que correrla dos veces deja todo exactamente igual.

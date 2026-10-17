@@ -75,7 +75,7 @@ from app.plataforma_metricas import (
 # los cuatro endpoints que hoy miran un cliente por su código.
 from app.plataforma_tendencia import ClienteDesconocido
 from app.services.layout_lookup import _huella
-from app.services.partes import es_division, es_pieza, partir_codigo
+from app.services.partes import es_division, es_participacion, es_pieza, partir_codigo
 
 log = logging.getLogger("recabra.plataforma.detalle")
 
@@ -112,6 +112,16 @@ PISO_PRIORIDAD_MEDIA = 0.05
 #: `oportunidades`), pero la plata existe: cuenta en proveedores, movimientos y
 #: contratos por vencer.
 TIPO_FUERA_DEL_PLANO = "fuera_del_plano"
+
+#: El tipo de un contrato de participación de cara (``NAVE-GON-01-PC3``, la
+#: clase ``participacion`` del catálogo, «participaciones de cara»). Es un tipo
+#: PROPIO y queda fuera de todo promedio: un canon del 10–25 % de una cara
+#: promediado con caras enteras daba «precio bajo» falso y bajaba el precio
+#: sugerido de las caras libres de otros supermercados (para las puertas se
+#: evitó lo mismo con su tarifa de clase). No sale en el benchmark, ni en los
+#: precios sugeridos, ni en «precio bajo»; cuenta en proveedores, movimientos y
+#: vencimientos, y ocupa su cara como una división (``cara_ocupada``).
+TIPO_PARTICIPACION = "participacion"
 
 _ORDEN_PRIORIDAD = {"alta": 0, "media": 1, "baja": 2}
 
@@ -215,11 +225,12 @@ def _acumular_benchmark(cliente, desde: date, hasta: date, suma: dict, cuenta: d
         contratos = _contratos_activos(db, desde, hasta)
     finally:
         db.close()
-    tipos = _tipos_de_contrato(mapa_tipos, partes)
+    tipos = _tipos_de_contrato(mapa_tipos, partes, (codigo for codigo, _n, _c in contratos))
 
     for codigo, _nombre, canon in contratos:
         entrada = tipos.get(codigo)
-        if entrada is None:
+        if entrada is None or entrada[1] == TIPO_PARTICIPACION:
+            # Sin mueble no hay bolsa; una participación es un pedazo de cara.
             continue
         tipo = entrada[1]
         suma[tipo] = suma.get(tipo, 0.0) + canon
@@ -302,13 +313,25 @@ def limpiar_cache_detalle() -> None:
         _cache_benchmark.clear()
 
 
-def _tipos_de_contrato(mapa_tipos: dict, partes: dict) -> dict[str, tuple[str, str]]:
+def _tipos_de_contrato(mapa_tipos: dict, partes: dict, codigos=()) -> dict[str, tuple[str, str]]:
     """``codigo -> (SEDE, tipo)`` de todo lo que puede tener un contrato: las
     caras (``mapa_tipos``, que es también el universo de espacios) y las partes
     vendibles (la puerta 2 de una nevera), con la tarifa de su clase como tipo
     (``parte_puerta``, que los informes llaman «puertas de nevera»). Con esto un
-    contrato de una puerta no cuenta como «fuera del plano»."""
-    return {**{c: (e[0], e[1]) for c, e in partes.items()}, **mapa_tipos}
+    contrato de una puerta no cuenta como «fuera del plano».
+
+    Y las participaciones de cara entre ``codigos`` (los de los contratos): el
+    plano no las enumera —sus números no tienen tope—, así que una
+    ``NAVE-GON-01-PC3`` de una cara del plano entra con el tipo propio
+    ``participacion`` (``TIPO_PARTICIPACION``) y la sede de su cara."""
+    tipos = {**{c: (e[0], e[1]) for c, e in partes.items()}, **mapa_tipos}
+    for codigo in codigos:
+        if codigo in tipos:
+            continue
+        p = partir_codigo(codigo)
+        if es_participacion(p.parte) and p.cara_entera in mapa_tipos:
+            tipos[codigo] = (mapa_tipos[p.cara_entera][0], TIPO_PARTICIPACION)
+    return tipos
 
 
 # ─── Plata y porcentajes, en palabras ─────────────────────────────────────────
@@ -444,6 +467,14 @@ def _armar_espacios(mapa_tipos: dict, fixtures: dict, geo: dict,
     for codigo in partes:
         p = partir_codigo(codigo)
         if codigo in publicados:
+            por_cara.setdefault(p.cara_entera, []).append((codigo, p))
+    # Las participaciones de cara con contrato en el período cuelgan de su
+    # cara como una división: la ocupan (la misma regla que `cara_ocupada` de
+    # `/metricas`, sin ponderar por el porcentaje) y la tienen tomada hasta
+    # que terminan. El plano no las enumera: salen de los contratos.
+    for codigo in publicados:
+        p = partir_codigo(codigo)
+        if codigo not in partes and es_participacion(p.parte) and p.cara_entera in mapa_tipos:
             por_cara.setdefault(p.cara_entera, []).append((codigo, p))
     salida = []
     for codigo in sorted(mapa_tipos, key=lambda c: (mapa_tipos[c][0], c)):
@@ -742,6 +773,10 @@ def _precios_sugeridos(resumen: list[dict], benchmark: dict) -> dict[str, tuple]
     precios: dict[str, tuple] = {}
     for fila in resumen:
         tipo = fila["tipo"]
+        if tipo == TIPO_PARTICIPACION:
+            # Un pedazo de cara no da precio para nada: ni para sí (no se
+            # ofrece como espacio libre) ni para las caras.
+            continue
         if fila["canon_promedio"] is not None:
             precios[tipo] = (fila["canon_promedio"], "cliente")
         elif benchmark.get(tipo) is not None:
@@ -920,7 +955,9 @@ def _rec_precio_bajo(espacios: list[dict], resumen: list[dict], ingreso: float) 
     salida = []
     for tipo in sorted(promedios):
         promedio = promedios[tipo]
-        if promedio is None:
+        if promedio is None or tipo == TIPO_PARTICIPACION:
+            # Una participación cobra un porcentaje de la cara: contra el
+            # promedio de caras enteras, toda saldría «bajo».
             continue
         contratos = [e for e in espacios if e["tipo"] == tipo and e["contrato"] is not None]
         if len(contratos) < 2:
@@ -1144,7 +1181,7 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
     piezas = _armar_piezas(partes, publicados, desde)
     # Lo que puede tener contrato: las caras y las partes. El universo de
     # espacios sigue siendo `mapa_tipos`.
-    tipos = _tipos_de_contrato(mapa_tipos, partes)
+    tipos = _tipos_de_contrato(mapa_tipos, partes, (c.codigo for c in historicos))
     indice = _indice_de_proveedores(del_periodo, historicos, tipos, desde)
     benchmark = benchmark_por_tipo(anio_mes)
     precios = _precios_sugeridos(resumen, benchmark)

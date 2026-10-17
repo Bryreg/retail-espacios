@@ -50,8 +50,11 @@ from app.services.catalogo_muebles import tipo_de_tarifa
 from app.services.candado import tomar_candados
 from app.services.fichas_propias import tarifas_propias
 from app.services.partes import (
-    cantidad_de, chocan, es_division, partir_codigo, referencia_de_espacio, texto_de_parte, texto_para_montar,
+    cantidad_de, chocan, es_division, es_participacion, partir_codigo, referencia_de_espacio, texto_de_parte,
+    texto_para_montar,
 )
+from app.services.importar_del_plano import caras_con_participaciones
+from app.services.participaciones import bloqueo_por_participaciones, codigo_cara
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.contacts import recipients_for
@@ -266,6 +269,27 @@ def _avisos_de_colision(c: Colision) -> list[str]:
 
 # ─── El corazón: revisar una tanda sin escribir nada ──────────────────────────
 
+def _frase_participacion(codigo: str) -> str:
+    """La frase de una fila con el código de una participación de cara
+    (``GON-01-PC1``): existe, pero no se vende por acá."""
+    return (f"«{codigo}» es una participación: se carga y se renueva en el Editor 3D → Distribución, "
+            "no en la planilla.")
+
+
+def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: date, hasta: date) -> Optional[str]:
+    """``bloqueo_por_participaciones`` sólo si la cara de ``codigo`` tiene
+    términos (``caras_pc``, de ``caras_con_participaciones``): así no relee el
+    plano en cada una de las trescientas filas de una planilla. Se mira con la
+    sede del mueble (la del código resuelto) y con la del plano, que pueden no
+    coincidir en un plano viejo."""
+    if not caras_pc:
+        return None
+    cara = partir_codigo(codigo).cara_entera
+    if cara not in caras_pc and codigo_cara(sede, codigo) not in caras_pc:
+        return None
+    return bloqueo_por_participaciones(db, sede, codigo, desde, hasta)
+
+
 def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
     if len(lote.filas) > MAX_FILAS:
         raise HTTPException(
@@ -289,6 +313,8 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
         (s.name or "").strip().lower(): s
         for s in db.query(Supplier).all()
     }
+    #: Las caras con términos de participación, leídas una vez (ver `_bloqueo`).
+    caras_pc = caras_con_participaciones(db)
 
     salida: list[FilaOut] = []
     #: Lo aceptado hasta ahora, para que dos filas del MISMO archivo no se
@@ -401,7 +427,17 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                 parte = resuelto.parte
                 motivo = motivo_para_no_vender_parte(fixture, resuelto.partido)
                 if motivo:
+                    # También la cara entera de una cara que se vende por
+                    # participación, y una participación de una que no
+                    # (`NEV-03-PC1`: «no se vende por participación»).
                     errores.append(motivo[1])
+                elif es_participacion(parte):
+                    # Una participación de una cara que sí se vende así
+                    # existe, pero su contrato lleva el porcentaje y la
+                    # capacidad de la cara: se carga en Distribución
+                    # (`/api/participaciones`). Por acá quedaría un lease sin
+                    # término, que cuenta como la cara entera.
+                    errores.append(_frase_participacion(codigo))
                 else:
                     out.nombre = fixture.get("label") or fixture.get("code")
                     if parte is not None:
@@ -503,6 +539,16 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
                 lease, space, _otro = choques[0]
                 errores.append(frase_de_choque(codigo, space.code or "", lease))
 
+        # Defensa en profundidad: la cara entera (o una división física suya)
+        # de una cara con reservas o contratos de participación que cuentan en
+        # esas fechas. La compuerta ya frena la de una cara POR participación;
+        # esto cubre la que dejó de serlo con términos vivos, que el guardado
+        # del plano impide pero un plano escrito a mano podría traer.
+        if not errores and desde and hasta and codigo:
+            bloqueo = _bloqueo(db, caras_pc, sede, codigo, desde, hasta)
+            if bloqueo:
+                errores.append(bloqueo)
+
         if errores:
             out.estado = ERROR
             out.mensajes = errores + avisos + notas
@@ -562,6 +608,9 @@ def confirmar(
         if (fila.espacio or "").strip():
             codigos.add(_codigo_completo(fila.espacio, sede))
     tomar_candados(db, codigos)
+    # Lectura fresca (regla dura de participaciones): lo que la primera
+    # revisión cargó en la sesión no se refresca solo al volver a consultarlo.
+    db.expire_all()
     filas = _revisar(db, lote)
     por_fila = {f.fila: f for f in filas}
     plano = PlanoIndexado(db)
