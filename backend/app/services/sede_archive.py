@@ -107,12 +107,21 @@ def _tomar_candados_de_participaciones(db: Session, sede: str) -> None:
     igual. Con candados, ``expire_all`` (regla dura del diseño §5.4): lo que se
     lee después es lo de la base, no lo que la sesión tenía en memoria; el
     ``flush`` de antes es para no perder lo pendiente de quien llama (el
-    borrado del plano)."""
+    borrado del plano).
+
+    El orden es candado → ``flush`` → ``expire_all``, y no ``flush`` primero:
+    el ``flush`` escribe el ``DELETE`` de la fila del plano, que en Postgres
+    queda trabada hasta el commit. Si eso pasara ANTES del candado, un
+    ``PUT /layout`` de la misma sede que ya tiene el candado de esa cara
+    (`_candados_del_guardado`) y va a escribir esa misma fila esperaría al
+    borrado mientras el borrado espera su candado: un abrazo mortal que
+    Postgres corta con un 500. Con el candado primero, el borrado espera a que
+    el guardado termine y recién ahí toca la fila."""
     codigos = codigos_de_caras_con_terminos(db, [s.id for s in _spaces_of_sede(db, sede)])
     if not codigos:
         return
-    db.flush()
     tomar_candados(db, codigos)
+    db.flush()
     db.expire_all()
 
 

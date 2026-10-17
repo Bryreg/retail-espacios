@@ -209,7 +209,8 @@ def test_el_alta_de_contrato_escribe_como_la_planilla(client):
 def test_cancelar_el_contrato_de_una_participacion_lo_da_de_baja(client, admin):
     """El contrato de una participación se cancela por el camino de siempre y
     el término queda «cancelado» con su historia. Uno que ya venció por fecha
-    (y que `expire_leases` todavía no cerró) queda «vencido»: sin `baja_en`."""
+    (y que `expire_leases` todavía no cerró) queda «vencido»: sin `baja_en`.
+    El que termina HOY todavía rige: cancelarlo es cancelarlo (el borde)."""
     from conftest import esperar_mantenimiento
     from app.database import SessionLocal
     from app.models.participaciones import Participacion
@@ -222,13 +223,16 @@ def test_cancelar_el_contrato_de_una_participacion_lo_da_de_baja(client, admin):
         prov = _proveedor(db, "Postobón")
         cara = _espacio(db, "NAVE-GON-01")
         pc1, pc2 = _espacio(db, "NAVE-GON-01-PC1"), _espacio(db, "NAVE-GON-01-PC2")
+        pc3 = _espacio(db, "NAVE-GON-01-PC3")
         suelto = _espacio(db, "NAVE-GON-02")
         lease1, t1 = _contrato(db, cara, pc1, 1, prov, OCT(1), date(2026, 12, 31))
         lease2, t2 = _contrato(db, cara, pc2, 2, prov, date(2026, 8, 1), OCT(16))
+        lease4, t3 = _contrato(db, cara, pc3, 3, prov, date(2026, 9, 1), OCT(17))
         lease3 = _lease(db, suelto, prov, OCT(1), date(2026, 12, 31))
         db.commit()
-        ids = SimpleNamespace(pc1=pc1.id, pc2=pc2.id, cara=cara.id, suelto=suelto.id, l1=lease1.id,
-                              l2=lease2.id, l3=lease3.id, t1=t1.id, t2=t2.id)
+        ids = SimpleNamespace(pc1=pc1.id, pc2=pc2.id, pc3=pc3.id, cara=cara.id, suelto=suelto.id,
+                              l1=lease1.id, l2=lease2.id, l3=lease3.id, l4=lease4.id, t1=t1.id, t2=t2.id,
+                              t3=t3.id)
     finally:
         db.close()
 
@@ -237,6 +241,8 @@ def test_cancelar_el_contrato_de_una_participacion_lo_da_de_baja(client, admin):
     r = client.delete(f"/api/spaces/{ids.pc2}/leases/{ids.l2}", headers=admin)
     assert r.status_code == 204, r.text
     r = client.delete(f"/api/spaces/{ids.suelto}/leases/{ids.l3}", headers=admin)
+    assert r.status_code == 204, r.text
+    r = client.delete(f"/api/spaces/{ids.pc3}/leases/{ids.l4}", headers=admin)
     assert r.status_code == 204, r.text
 
     db = SessionLocal()
@@ -248,8 +254,12 @@ def test_cancelar_el_contrato_de_una_participacion_lo_da_de_baja(client, admin):
         assert (t1.supplier_id, t1.marca, t1.desde, t1.hasta) == (None, None, None, None)
         t2 = db.get(Participacion, ids.t2)
         assert t2.baja_en is None and t2.version == 1, "un contrato vencido por fecha quedó «cancelado»"
+        t3 = db.get(Participacion, ids.t3)
+        assert t3.baja_en is not None, "el que termina hoy todavía regía: quedó «vencido»"
 
-        (fila,) = _historial(db)
+        filas = _historial(db)
+        assert [f.participacion_id for f in filas] == [ids.t1, ids.t3]
+        fila = filas[0]
         assert (fila.tipo, fila.accion, fila.actor) == ("evento", "contrato.cancelado", "admin")
         assert (fila.participacion_id, fila.cara_space_id, fila.participacion_space_id) == (ids.t1, ids.cara, ids.pc1)
         assert "participación 1" in fila.detalle and "2026-10-01→2026-12-31" in fila.detalle
@@ -258,9 +268,9 @@ def test_cancelar_el_contrato_de_una_participacion_lo_da_de_baja(client, admin):
     finally:
         db.close()
 
-    # La bitácora sigue anotando lo de siempre para los tres.
+    # La bitácora sigue anotando lo de siempre para los cuatro.
     acciones = [l["accion"] for l in client.get("/api/bitacora/", headers=admin).json()]
-    assert acciones.count("contrato.baja") == 3
+    assert acciones.count("contrato.baja") == 4
 
 
 def test_una_participacion_no_se_marca_a_mano_ni_se_borra_su_proveedor(client, admin):
@@ -273,11 +283,15 @@ def test_una_participacion_no_se_marca_a_mano_ni_se_borra_su_proveedor(client, a
     try:
         prov = _proveedor(db, "Colombina")
         libre = _proveedor(db, "Sin nada")
+        de_antes = _proveedor(db, "Alpina")
         cara = _espacio(db, "NAVE-GON-01")
         pc = _espacio(db, "NAVE-GON-01-PC1")
         _reserva(db, cara, pc, 1, prov, date(2026, 11, 1), date(2026, 11, 30), date(2026, 11, 30))
+        # Una reserva ya cancelada también lo nombra: es historia, y la FK la frena igual.
+        _reserva(db, cara, _espacio(db, "NAVE-GON-01-PC2"), 2, de_antes, date(2026, 11, 1),
+                 date(2026, 11, 30), date(2026, 11, 30), estado="reserva_cancelada")
         db.commit()
-        ids = SimpleNamespace(prov=prov.id, libre=libre.id, cara=cara.id, pc=pc.id)
+        ids = SimpleNamespace(prov=prov.id, libre=libre.id, de_antes=de_antes.id, cara=cara.id, pc=pc.id)
     finally:
         db.close()
 
@@ -295,6 +309,8 @@ def test_una_participacion_no_se_marca_a_mano_ni_se_borra_su_proveedor(client, a
     assert r.json()["detail"] == (
         "El proveedor tiene 1 reserva(s) provisional(es) de participación en el historial: "
         "no se puede eliminar sin perder ese historial.")
+    r = client.delete(f"/api/suppliers/{ids.de_antes}", headers=admin)
+    assert r.status_code == 409 and "1 reserva(s)" in r.json()["detail"], r.text
     assert client.delete(f"/api/suppliers/{ids.libre}", headers=admin).status_code == 204
 
 
@@ -302,7 +318,10 @@ def test_una_participacion_no_se_marca_a_mano_ni_se_borra_su_proveedor(client, a
 def test_borrar_la_sede_cancela_las_reservas_vivas_y_lo_dice_antes(client, admin, monkeypatch):
     """El archivo de la sede cierra los contratos y renombra los códigos; sin
     el gancho, las reservas provisionales quedaban vivas sobre espacios
-    archivados, contando contra una cara que ya no existe."""
+    archivados, contando contra una cara que ya no existe. Los bordes de hoy:
+    la reserva que caduca hoy y el contrato que termina hoy todavía rigen."""
+    from sqlalchemy.orm import Session
+
     import app.services.sede_archive as archivo
     from conftest import esperar_mantenimiento
     from app.database import SessionLocal
@@ -313,32 +332,49 @@ def test_borrar_la_sede_cancela_las_reservas_vivas_y_lo_dice_antes(client, admin
     try:
         prov = _proveedor(db, "Postobón")
         cara = _espacio(db, "NAVE-GON-01")
-        pcs = [_espacio(db, f"NAVE-GON-01-PC{n}") for n in range(1, 6)]
+        pcs = [_espacio(db, f"NAVE-GON-01-PC{n}") for n in range(1, 8)]
         viva = _reserva(db, cara, pcs[0], 1, prov, date(2026, 11, 1), date(2026, 11, 30), OCT(25))
         _, vigente = _contrato(db, cara, pcs[1], 2, prov, OCT(1), date(2026, 12, 31))
         caducada = _reserva(db, cara, pcs[2], 3, prov, date(2026, 11, 1), date(2026, 11, 30), OCT(16))
         _, vencido = _contrato(db, cara, pcs[3], 4, prov, date(2026, 8, 1), OCT(16))
         cancelada = _reserva(db, cara, pcs[4], 5, prov, date(2026, 11, 1), date(2026, 11, 30), OCT(25),
                              estado="reserva_cancelada")
+        caduca_hoy = _reserva(db, cara, pcs[5], 6, prov, OCT(20), date(2026, 11, 30), OCT(17))
+        _, termina_hoy = _contrato(db, cara, pcs[6], 7, prov, OCT(1), OCT(17))
         # Otra sede, con su reserva viva: no se toca ni se cuenta.
         cara_t = _espacio(db, "TERRON-GON-01", sede="TERRON")
         otra = _reserva(db, cara_t, _espacio(db, "TERRON-GON-01-PC1", sede="TERRON"), 1, prov,
                         date(2026, 11, 1), date(2026, 11, 30), OCT(25))
         db.commit()
         ids = SimpleNamespace(viva=viva.id, vigente=vigente.id, caducada=caducada.id, vencido=vencido.id,
-                              cancelada=cancelada.id, otra=otra.id)
+                              cancelada=cancelada.id, otra=otra.id, caduca_hoy=caduca_hoy.id,
+                              termina_hoy=termina_hoy.id)
     finally:
         db.close()
 
     # Lo dice ANTES: el diálogo de «Borrar sede» lee esto.
     impacto = client.get("/api/layout/NAVE/impact", headers=admin).json()
-    assert impacto == {"spaces": 6, "active_leases": 2, "reservas_vivas": 1}
+    assert impacto == {"spaces": 8, "active_leases": 3, "reservas_vivas": 2}
 
-    candados = []
+    # El orden: candado → flush → expire_all. El flush escribe el DELETE del
+    # plano; antes del candado, en Postgres, se abrazaba con un PUT /layout que
+    # ya tenía ese candado y esperaba esa fila. Sin el expire_all, lo que se
+    # lee después del candado podía ser lo que la sesión tenía en memoria.
+    candados, eventos = [], []
     tomar = archivo.tomar_candados
-    monkeypatch.setattr(archivo, "tomar_candados", lambda db, c: candados.append(set(c)) or tomar(db, c))
+
+    def espia_candado(db, c):
+        candados.append(set(c))
+        eventos.append(("candado", set(c)))
+        return tomar(db, c)
+
+    flush, expire_all = Session.flush, Session.expire_all
+    monkeypatch.setattr(archivo, "tomar_candados", espia_candado)
+    monkeypatch.setattr(Session, "flush", lambda self, *a, **k: eventos.append("flush") or flush(self, *a, **k))
+    monkeypatch.setattr(Session, "expire_all", lambda self: eventos.append("expire_all") or expire_all(self))
     assert client.delete("/api/layout/NAVE", headers=admin).status_code == 204
     assert candados == [{"NAVE-GON-01"}], "no tomó el candado de la cara antes de tocar sus términos"
+    assert eventos[:3] == [("candado", {"NAVE-GON-01"}), "flush", "expire_all"], eventos[:4]
 
     db = SessionLocal()
     try:
@@ -350,11 +386,14 @@ def test_borrar_la_sede_cancela_las_reservas_vivas_y_lo_dice_antes(client, admin
         assert (t["caducada"].estado, t["caducada"].baja_en) == ("reserva", None)
         assert (t["cancelada"].baja_en, t["cancelada"].version) == (None, 1)
         assert (t["otra"].estado, t["otra"].baja_en) == ("reserva", None)
+        assert t["caduca_hoy"].estado == "reserva_cancelada", "la reserva que caduca hoy todavía regía"
+        assert t["termina_hoy"].baja_en is not None, "el contrato que termina hoy todavía regía"
 
         filas = _historial(db, accion="sede.baja")
-        assert [(f.tipo, f.participacion_id) for f in filas] == [("evento", ids.viva), ("evento", ids.vigente)]
+        assert [(f.tipo, f.participacion_id) for f in filas] == [
+            ("evento", ids.viva), ("evento", ids.caduca_hoy), ("evento", ids.vigente), ("evento", ids.termina_hoy)]
         assert "Se borró la sede NAVE: la reserva provisional de la participación 1 se canceló." == filas[0].detalle
-        assert "el contrato de la participación 2 se cerró" in filas[1].detalle
+        assert "el contrato de la participación 2 se cerró" in filas[2].detalle
     finally:
         db.close()
 
