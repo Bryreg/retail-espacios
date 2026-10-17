@@ -228,14 +228,40 @@ def resolver_cara(db: Session, sede: str, espacio: str, plano: Optional[PlanoInd
     return _armar_cara(s, r.fixture, r.partido.cara)
 
 
+def _sede_por_prefijo(codigo: str, plano: PlanoIndexado) -> str:
+    """La sede de un código COMPLETO por su prefijo, entre las sedes que
+    tienen plano: la más larga que calce y cuyo plano tenga el mueble (``SAN``
+    y ``SAN-JOSE`` empiezan igual); si ninguno lo tiene, la más larga que
+    calce, para que la frase del 404 nombre la sede. ``""`` si no calza
+    ninguna."""
+    calzan = sorted((s for s in plano.sedes() if s and codigo.startswith(f"{s}-")), key=len, reverse=True)
+    for s in calzan:
+        if plano.resolver(s, sin_prefijo_de_sede(codigo, s)) is not None:
+            return s
+    return calzan[0] if calzan else ""
+
+
 def cara_del_termino(db: Session, termino: Participacion, plano: Optional[PlanoIndexado] = None) -> Cara:
     """La cara de un término, por su fila de cara: el código guardado ES el
     completo (lo armó el alta con la sede del plano, y la renumeración lo muda
     con el mueble). El mueble se busca por el código corto en el plano de esa
-    sede; si ya no está, ``fixture`` queda None."""
+    sede; si ya no está, ``fixture`` queda None.
+
+    La sede sale de la fila de cara; si está vacía (las filas de antes de la
+    columna, las de ``find-or-create`` o de un reporte de montaje sin sede: el
+    alta las reusa), de la fila PC del término, que ``_crear_espacio_pc`` llena
+    siempre con la sede del plano; y si tampoco, del prefijo del código. Sin
+    esto, confirmar, renovar y cambiar daban 404 «ya no está en el plano de .»
+    con el mueble en el plano."""
     cara_space = db.get(Space, termino.cara_space_id)
     sede = normalizar(cara_space.sede)
     codigo = normalizar(cara_space.code)
+    if not sede:
+        pc = db.get(Space, termino.space_id)
+        sede = normalizar(pc.sede) if pc is not None else ""
+    if not sede:
+        plano = plano or PlanoIndexado(db)
+        sede = _sede_por_prefijo(codigo, plano)
     letra = partir_codigo(codigo).cara
     fixture = None
     if sede:
@@ -318,12 +344,23 @@ def fisicos_de(db: Session, cara: Cara, desde: date, hasta: date) -> list[dict]:
     """Lo que ocupa la cara ENTERA en [desde, hasta] (§3.2): sus contratos de
     cara entera o de partes físicas, y los leases de participación sin término
     (huérfanos: un script, un archivo viejo), que cuentan como la cara entera
-    hasta que se aclaren. Con el código de la CARA, nunca con el de una PC."""
+    hasta que se aclaren. Con el código de la CARA, nunca con el de una PC.
+
+    «Con término» quiere decir con un término de ESTA fila de cara (la que
+    ``leer`` encuentra por el código y cuyos términos ya suman en la
+    capacidad). Un lease PC vivo cuyo término cuelga de OTRA fila —la carrera
+    entre borrar la sede y la primera alta de la cara deja uno colgado de la
+    fila archivada ``…#id``— no lo cuenta ningún término de esta cara: va
+    como huérfano, cuenta como la cara entera (conservador: nunca sobreventa)
+    y Supervisar lo lista."""
     choques = contratos_que_chocan(db, cara.codigo, desde, hasta, sede=cara.sede)
     de_pc = [lease.id for lease, _space, p in choques if es_participacion(p.parte)]
     con_termino = set()
     if de_pc:
-        con_termino = {lid for (lid,) in db.query(Participacion.lease_id).filter(Participacion.lease_id.in_(de_pc))}
+        con_termino = {lid for (lid,) in (db.query(Participacion.lease_id)
+                                          .join(Space, Space.id == Participacion.cara_space_id)
+                                          .filter(Participacion.lease_id.in_(de_pc),
+                                                  Space.code == normalizar(cara.codigo)))}
     fuera = []
     for lease, space, p in choques:
         if es_participacion(p.parte) and lease.id in con_termino:
@@ -529,6 +566,14 @@ def revisar_alta(db: Session, cara: Cara, datos: Datos, cambio: dict, medidas: O
             raise _error(409, "es_contrato", "Un contrato se cancela desde su ficha (Cancelar contrato).")
         if t_fila.estado != "reserva":
             raise _error(409, "no_cancelable", "Esa reserva provisional ya estaba cancelada.")
+        # Una reserva caducada ya no cuenta: cancelarla reescribía su historia
+        # (pasaba a «cancelada» con la fecha de hoy y el historial dejaba de
+        # derivar «caducó»). Se deja como está.
+        t = next(x for x in datos.por_s[t_fila.space_id] if x["id"] == t_fila.id)
+        if reglas.estado_visible(t, dia) == "reserva_caducada":
+            cuando = f" el {reglas._fecha_corta(t['caduca'])}" if t.get("caduca") is not None else ""
+            raise _error(409, "reserva_caducada",
+                         f"La reserva ya caducó{cuando}: no hace falta cancelarla; queda en el historial.")
         return []
 
     _compuerta(cara)
@@ -637,8 +682,13 @@ def siguiente_numero(db: Session, cara_space: Space, cara: Cara) -> int:
 
 def _fila_de_cara(db: Session, cara: Cara, datos: Datos) -> Space:
     """La fila de ``spaces`` de la cara, buscada o creada LIBRE con el armado
-    de la planilla (``alta_de_contrato.espacio_para``)."""
+    de la planilla (``alta_de_contrato.espacio_para``). Una fila que ya
+    estaba sin sede (de antes de la columna, de ``find-or-create``) se queda
+    con la del plano: es la que leen ``cara_del_termino``, «Para revisar» y el
+    archivo de la sede. Una sede que ya tiene no se pisa."""
     if datos.cara_space is not None:
+        if not normalizar(datos.cara_space.sede) and cara.sede:
+            datos.cara_space.sede = cara.sede
         return datos.cara_space
     try:
         return espacio_para(db, cara.codigo, cara.rotulo, cara.sede, cara.fixture, None)
@@ -1638,12 +1688,30 @@ def historial(db: Session, sede: Optional[str] = None, espacio: Optional[str] = 
     for t in terminos:
         r = termino_para_reglas(t, leases.get(t.lease_id))
         if t.estado == "contrato" and r["lease"] is not None and r["baja_fecha"] is None and r["hasta"] < dia:
-            derivados.append({"en": r["hasta"] + timedelta(days=1), "tipo": "evento", "accion": "participacion.vencida",
-                              "participacion_id": t.id, "codigo": codigos.get(t.space_id),
-                              "detalle": f"Venció la participación {t.numero}."})
+            derivados.append(_derivado(r["hasta"] + timedelta(days=1), "participacion.vencida", t, codigos,
+                                       f"Venció la participación {t.numero}."))
         elif t.estado == "reserva" and t.caduca is not None and t.caduca < dia:
-            derivados.append({"en": t.caduca + timedelta(days=1), "tipo": "evento", "accion": "reserva.caducada",
-                              "participacion_id": t.id, "codigo": codigos.get(t.space_id),
-                              "detalle": f"Caducó la reserva provisional de la participación {t.numero}."})
-    derivados.sort(key=lambda d: (d["en"], d["participacion_id"]), reverse=True)
+            derivados.append(_derivado(t.caduca + timedelta(days=1), "reserva.caducada", t, codigos,
+                                       f"Caducó la reserva provisional de la participación {t.numero}."))
+    derivados.sort(key=lambda d: (d["dia"], d["participacion_id"]), reverse=True)
     return {"entradas": entradas, "derivados": derivados}
+
+
+def _derivado(dia: date, accion: str, t: Participacion, codigos: dict, detalle: str) -> dict:
+    """Una entrada DERIVADA del historial (D6: no tiene fila): el vencimiento
+    de un contrato o la caducidad de una reserva, el DÍA de Colombia en que
+    pasó —el siguiente al último día de vigencia—.
+
+    · ``dia`` (``YYYY-MM-DD``) es lo que el panel muestra, sin hora: lo parsea
+      como fecha local, nunca con ``new Date(iso)`` (que toma ``2026-10-18``
+      como medianoche UTC: las 7 p. m. del 17 en Colombia).
+    · ``en`` es el instante de la medianoche de ese día en Colombia, escrito
+      en UTC como el ``en`` de las entradas reales (``_iso``):
+      ``2026-10-18T05:00:00+00:00``. Con el mismo formato, ordenar por el
+      texto (el panel compara ``a.en < b.en``) da el orden de los instantes;
+      con ``-05:00`` la entrada real de las 10 p. m. del 17
+      (``2026-10-18T03:00…+00:00``) quedaba DESPUÉS de lo derivado del 18.
+    · ``derivado: true`` la distingue de una entrada con fila."""
+    medianoche = datetime.combine(dia, datetime.min.time(), tzinfo=ZONA_DEL_NEGOCIO)
+    return {"en": _iso(medianoche), "dia": dia, "derivado": True, "tipo": "evento", "accion": accion,
+            "participacion_id": t.id, "codigo": codigos.get(t.space_id), "detalle": detalle}
