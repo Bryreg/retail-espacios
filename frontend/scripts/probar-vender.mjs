@@ -632,6 +632,18 @@ prueba("la escena del visor va en modo venta, con los muebles saneados y para al
   assert.match(visorCodigo, /privadoPara: number \| null;/, "el lienzo acepta un `privadoPara` indefinido");
 });
 
+prueba("el visor no le pasa la capa Distribución a la escena: nunca delante de un proveedor", () => {
+  // La capa Distribución (participaciones de cara, §10.9) desnuda el mueble y
+  // dibuja las zonas de cada proveedor con su porcentaje. Sólo la pasa el
+  // Editor 3D, con su condición única; el visor de Vender lo mira un
+  // proveedor y no la nombra ni lee el store de edición.
+  const tag = (visorCodigo.match(/<Scene\b[^]*?\/>/) || [""])[0];
+  assert.ok(tag.length > 50, "no se encontró la escena del visor");
+  assert.ok(!/\bdistribucion\b/.test(tag), "el visor le pasa `distribucion` a la escena: saldrían el mueble desnudo y las zonas de otros proveedores");
+  assert.ok(!/distribucionStore|ZonasDelMueble|DesnudoDelMueble|\bdistribucion=/.test(visorCodigo),
+    "el visor lee el store de edición de Distribución o monta sus zonas");
+});
+
 prueba("Vender no baja el 3D al entrar: el visor entra SÓLO por el import perezoso", () => {
   const archivos = [RUTA_MODO, "src/components/Contrato/Contrato.tsx", RUTA_SESION,
     "src/components/Contrato/Planometria.tsx", "src/components/Libera/Libera.tsx", VISTA];

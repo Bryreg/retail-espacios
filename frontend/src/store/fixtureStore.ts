@@ -256,13 +256,31 @@ export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
  */
 /** Los 409 que son «el servidor miró y dijo que no», con su lista de motivos.
  *  Se enumeran para no confundirlos con los otros dos 409 del guardado —el
- *  conflicto entre equipos y la sede borrada—, que se resuelven de otra manera. */
-const RECHAZOS_CONOCIDOS = new Set(["nombres_repetidos", "contratos_vivos", "partes_vendidas", "nombre_reservado"]);
+ *  conflicto entre equipos y la sede borrada—, que se resuelven de otra manera.
+ *
+ *  Los tres de las participaciones de cara (§4.4 del diseño): sacar de «por
+ *  participación» una cara con participaciones vivas, pasar a participación un
+ *  mueble con espacios internos vendidos, y vender un espacio interno en un
+ *  mueble que se vende por participación. Sin ellos, el 409 se mostraba como
+ *  una caída del guardado y no con la frase del servidor. */
+const RECHAZOS_CONOCIDOS = new Set([
+  "nombres_repetidos", "contratos_vivos", "partes_vendidas", "nombre_reservado",
+  "participaciones_vivas", "slots_vendidos_en_participacion", "slots_en_participacion",
+]);
+
+/** Entrar a Distribución desde otra pantalla (`pedirEnfoque3D`): sólo tipos
+ *  y números, nada del store de edición (que no baja con el tablero). */
+export interface PedidoDeDistribucion {
+  /** El id del término a renovar: abre su formulario al entrar. */
+  renovar?: number;
+}
 
 export interface RechazoDelServidor {
   /** El `detail.code` del 409, tal cual: `nombres_repetidos`, `contratos_vivos`,
-   *  `partes_vendidas` (movería una puerta vendida) o `nombre_reservado` (un
-   *  nombre que se lee como el código de una parte). */
+   *  `partes_vendidas` (movería una puerta vendida), `nombre_reservado` (un
+   *  nombre que se lee como el código de una parte) o los tres de las
+   *  participaciones de cara (`participaciones_vivas`,
+   *  `slots_vendidos_en_participacion`, `slots_en_participacion`). */
   code: string;
   message: string;
   choques: string[];
@@ -292,8 +310,12 @@ interface FixtureStore {
    *  ellas, así que el pedido viaja por acá. Se identifica por id de mueble y
    *  no por código: el código corto se repite entre sedes y a veces llega con
    *  el prefijo puesto y a veces no. `n` sube en cada pedido para que volver a
-   *  tocar el mismo espacio vuelva a encuadrar. */
-  enfoque3D: { fixtureId: string; cara: "A" | "B"; n: number } | null;
+   *  tocar el mismo espacio vuelva a encuadrar.
+   *
+   *  `distribucion`: además de encuadrar, entra a Distribución en esa cara
+   *  (Supervisar, «Renovar» de una participación desde Vender); con `renovar`
+   *  (el id del término), abre su formulario de renovación. */
+  enfoque3D: { fixtureId: string; cara: "A" | "B"; n: number; distribucion?: PedidoDeDistribucion } | null;
 
   // ── Sync bookkeeping ────────────────────────────────────────────────────────
   /** Server revision (updated_at) last seen for each sede. */
@@ -387,8 +409,9 @@ interface FixtureStore {
   setCamera2D: (c: Partial<Camera2D>) => void;
   setCamera3D: (c: Partial<Camera3D>) => void;
 
-  /** Pedir el 3D encuadrando este espacio. Lo consume StoreEditor3D. */
-  pedirEnfoque3D: (fixtureId: string, cara: "A" | "B") => void;
+  /** Pedir el 3D encuadrando este espacio. Lo consume StoreEditor3D. Con
+   *  `distribucion`, entra además a Distribución en esa cara. */
+  pedirEnfoque3D: (fixtureId: string, cara: "A" | "B", opciones?: { distribucion?: PedidoDeDistribucion }) => void;
   /** Guardar la cámara actual como la vista de este espacio. */
   guardarVista3D: (fixtureId: string, cara: "A" | "B", vista: Vista3D) => void;
   /** Olvidar la vista guardada: se vuelve al encuadre calculado. */
@@ -782,9 +805,12 @@ export const useFixtureStore = create<FixtureStore>()(
       setCamera3D: (c) =>
         set((state) => ({ camera3D: { ...state.camera3D, ...c } })),
 
-      pedirEnfoque3D: (fixtureId, cara) =>
+      pedirEnfoque3D: (fixtureId, cara, opciones) =>
         set((state) => ({
-          enfoque3D: { fixtureId, cara, n: (state.enfoque3D?.n ?? 0) + 1 },
+          enfoque3D: {
+            fixtureId, cara, n: (state.enfoque3D?.n ?? 0) + 1,
+            ...(opciones?.distribucion ? { distribucion: { ...opciones.distribucion } } : {}),
+          },
         })),
 
       // Guardar y borrar escriben el layout y lo mandan al servidor, pero NO

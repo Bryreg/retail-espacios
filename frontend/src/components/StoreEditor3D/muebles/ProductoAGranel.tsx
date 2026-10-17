@@ -1,4 +1,5 @@
-import { memo, useMemo } from "react";
+import { memo, useContext, useMemo } from "react";
+import { DesnudoDelMueble } from "./desnudo";
 import * as THREE from "three";
 import { colorVolcado, empaqueVolcadoEn } from "./producto";
 import { geometriaDeEmpaque } from "./perfiles";
@@ -75,6 +76,10 @@ const ASIENTO = 0.12;
 export const ProductoAGranel = memo(function ProductoAGranel({
   ancho, fondo, y, altoLibre, rubro, semilla, ghost = false,
 }: ProductoAGranelProps) {
+  // El mueble desnudo de Distribución (`desnudo.ts`): nada encima. Se mira
+  // después de los hooks (abajo), para que entrar y salir del modo no cambie
+  // su orden.
+  const desnudo = useContext(DesnudoDelMueble);
   const { matrices, empaque, color } = useMemo(() => {
     // Con el alto libre: lo envasado se acuesta sólo si no entra parado.
     const e = empaqueVolcadoEn(rubro, altoLibre);
@@ -179,7 +184,7 @@ export const ProductoAGranel = memo(function ProductoAGranel({
     [color],
   );
 
-  if (matrices.length === 0) return null;
+  if (desnudo || matrices.length === 0) return null;
 
   return (
     <instancedMesh

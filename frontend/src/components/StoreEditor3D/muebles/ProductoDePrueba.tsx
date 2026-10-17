@@ -1,4 +1,5 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useContext, useMemo } from "react";
+import { DesnudoDelMueble } from "./desnudo";
 import * as THREE from "three";
 import { useThree } from "@react-three/fiber";
 import { labioDeFila } from "./medidas";
@@ -150,6 +151,10 @@ export const ProductoDePrueba = memo(function ProductoDePrueba({
   /** El tipo de mueble: dice dónde está su porta-precios (`labioDeFila`). */
   tipo: string;
 }) {
+  // El mueble desnudo de Distribución (`desnudo.ts`): ni el producto en
+  // prueba. Se mira después de los hooks (abajo), para que entrar y salir del
+  // modo no cambie su orden.
+  const desnudo = useContext(DesnudoDelMueble);
   const entorno = useEntornoDeProducto();
   const { invalidate } = useThree();
   // Los habladores van sólo en la pantalla de venta: en el editor el
@@ -266,7 +271,7 @@ export const ProductoDePrueba = memo(function ProductoDePrueba({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claves, claveVenta, entorno, enVenta, tipo]);
 
-  if (ghost || caras.every((c) => !c)) return null;
+  if (desnudo || ghost || caras.every((c) => !c)) return null;
   const sombra = sombraDeContacto();
   const tiraDeFila = tiraDeContacto();
 

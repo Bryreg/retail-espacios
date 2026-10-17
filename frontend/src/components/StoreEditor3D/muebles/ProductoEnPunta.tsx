@@ -1,4 +1,5 @@
-import { memo, useMemo } from "react";
+import { memo, useContext, useMemo } from "react";
+import { DesnudoDelMueble } from "./desnudo";
 import {
   PANEL_FONDO, altoDeZonaDeSlotsDePunta, filasDePunta, vanosDeCorrido, techoDeCara,
 } from "./medidas";
@@ -60,10 +61,14 @@ export const ProductoEnPunta = memo(function ProductoEnPunta({
   /** El mueble (su id): siembra la variación del relleno en venta. */
   semilla?: string;
 }) {
+  // El mueble desnudo de Distribución (`desnudo.ts`): nada encima. Después de
+  // los hooks, para que entrar y salir del modo no cambie su orden.
+  const desnudo = useContext(DesnudoDelMueble);
   const venta = useMemo(
     () => ventaDePunta(w, d, h, { entrepanos, modulo }),
     [w, d, h, entrepanos, modulo],
   );
+  if (desnudo) return null;
 
   return (
     <ProductoEnMueble
