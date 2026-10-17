@@ -6755,6 +6755,39 @@ prueba("el Editor 3D dice de una cara por participación la MISMA palabra que el
   assert.ok(!/Hoy se ve «\{rotuloVisto\}»/.test(plano), "el plano conserva su nota escrita aparte");
 });
 
+// Verificación del recorrido final: un mueble que se vende por participación
+// con la cara VENDIDA ENTERA (vendida antes de pasar a participación: `status`
+// «occupied» y un físico del 100 % en la ocupación). El plano dice «Ocupado»
+// sin nota (`estadoParaPintar` sólo cambia una cara libre); el 3D decía
+// «Tomada» y, debajo de «Ocupado · Lo pone el contrato», «Se ve «Tomada»: lo
+// dice la ocupación de hoy de sus participaciones», que no es cierto.
+prueba("una cara por participación ya ocupada por su propio contrato (vendida entera) dice en el 3D lo mismo que el plano («Ocupado») y sin la nota de la ocupación (ejecutado)", () => {
+  const i = editorCodigo.indexOf("function ocupacionDelMueble(");
+  const j = editorCodigo.indexOf("function textoDeOcupacion(", i);
+  const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
+    reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
+  const { ocupacionDelMueble, estadoQueSeVe } = new Function(
+    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META", "PALABRA_POR_OCUPACION",
+    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { ocupacionDelMueble, estadoQueSeVe };`,
+  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, {}, STATUS_META, RG.PALABRA_POR_OCUPACION);
+  const rob = { id: "r2", code: "ROB-02", type: "robatope", w: 0.3, d: 0.4, h: 1.6, partes: { division: "participacion" } };
+  const o = { sede: "NAVE", hoy: "2026-10-17", caras: { "NAVE-ROB-02": { intervalos: [], fisicos: [{ desde: "2026-10-01", hasta: "2026-12-31" }] } } };
+  const caras = ocupacionDelMueble(rob, o, "NAVE");
+  assert.deepEqual(caras.map((c) => c.dispo), ["tomado"], "la cara vendida entera no cuenta tomada");
+  // El plano: `rotuloPorOcupacion` no cambia una cara que no está libre, y la
+  // ficha dice el rótulo de su estado («Ocupado») sin nota.
+  assert.equal(RG.rotuloPorOcupacion("occupied", { dispo: "tomado" }), null);
+  const visto = estadoQueSeVe(STATUS_META.occupied, caras);
+  assert.equal(visto.label, "Ocupado", `el 3D dice «${visto.label}» donde el plano dice «Ocupado»`);
+  // Mismo objeto: `estadoPorOcupacion` (sm !== STATUS_META[fix.status]) queda
+  // falso y «Estado fixture» no suma la nota de la ocupación.
+  assert.equal(visto, STATUS_META.occupied, "el cartel de una cara ocupada por su contrato lo cambia la ocupación (y «Estado fixture» suma la nota)");
+  // Una cara libre tomada por sus participaciones sigue diciendo «Tomada».
+  assert.equal(estadoQueSeVe(STATUS_META.free, caras).label, "Tomada");
+  const fn = editorCodigo.slice(editorCodigo.indexOf("function estadoQueSeVe("), editorCodigo.indexOf("function textoDeOcupacion("));
+  assert.match(fn, /if \(caras\.every\(\(c\) => c\.dispo === "tomado"\) && sm === STATUS_META\.occupied\) return sm;\s*if \(caras\.every\(\(c\) => c\.dispo === "tomado"\)\) return \{ \.\.\.STATUS_META\.occupied, label: PALABRA_POR_OCUPACION\.tomado \};/);
+});
+
 prueba("los slots de la cara B: el contorno no roba el rayo, la malla corta el arrastre y el panel dice que vale para las dos caras", () => {
   const contorno = cuerpoDe("function ContornoDeSlot(", "interface PuntaMeshProps");
   assert.match(contorno, /<lineSegments geometry=\{geometria\} position=\{\[0, 0, z\]\} raycast=\{\(\) => null\}>/,

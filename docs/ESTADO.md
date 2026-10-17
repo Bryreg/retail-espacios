@@ -353,8 +353,11 @@ ve exactamente como antes.
 - **Lo que el recorrido final dejó sin tocar** (bajos): el encuadre de tres cuartos deja el
   extremo cercano del mueble pegado al borde del cuadro; Vender cuenta las caras por
   participación parciales en «Se libera en el periodo» (heredado de la venta por partes); la
-  pestaña de la cara activa se lee poco en la ficha del plano (ya era así); y en el isométrico
-  los rótulos «Por participación · queda X %» de muebles vecinos se enciman.
+  pestaña de la cara activa se lee poco en la ficha del plano (ya era así); en el isométrico
+  los rótulos «Por participación · queda X %» de muebles vecinos se enciman; y una cara por
+  participación en «Mantenimiento» o «Reservado» a mano, con participaciones vivas, se pinta y
+  se nombra en el 3D por la ocupación («Tomada»/«Parcial», con la nota) y en el plano por su
+  estado (`estadoParaPintar` sólo cambia una cara libre; ya era así: antes el 3D decía «Ocupado»).
 - **Lo heredado, sin agravar**: el renombre de sede, que es borrar y crear y cancela las
   reservas y los contratos de participación de la sede (ahora avisa antes; D21/D22); el campo
   «Sede» del 3D (V16); `PUT /layout` sin validar `w` ni `modulo`.
@@ -10832,7 +10835,9 @@ capa a la escena (`probar-vender`).
 **Lo que cambia fuera del modo**, en un mueble por participación: el color de estado sale de
 la ocupación (`estadoQueSeVe`: «Tomada», «Parcial», la palabra del plano 2D y Supervisar,
 `PALABRA_POR_OCUPACION`; nunca «Disponible» en verde sobre lo contratado, y «Estado fixture» lo
-dice con la nota del selector del plano, `notaDeEstadoPorOcupacion`), los paneles
+dice con la nota del selector del plano, `notaDeEstadoPorOcupacion`; una cara que ya está
+«Ocupado» por su propio contrato —vendida entera antes de pasar a participación— se queda
+«Ocupado» y sin nota, como en el plano), los paneles
 verdes de espacios internos libres no se dibujan y el panel no los
 ofrece; el metro bajo es una placa; el aviso de cara inaccesible (`carasInaccesibles`,
 medido con un rayo contra la caja del vecino) sale en el panel y en «Revisar» del 2D; y la
@@ -11106,7 +11111,7 @@ Las limitaciones escritas del diseño (§15.2), con lo que quedó de verdad:
 
 ### Cómo se probó
 
-- **`npm run probar`**: 1179 pruebas en 36 suites, 0 fallas, con los arreglos del recorrido
+- **`npm run probar`**: 1180 pruebas en 36 suites, 0 fallas, con los arreglos del recorrido
   final (en `6a27cc4` eran 1176, en `fc97dbc` 1154 y en `578058c`, 977).
   Tres suites nuevas: `probar-zonas` (38),
   `probar-superficies` (20) y `probar-distribucion` (68: los casos de las reglas, los stores
@@ -11292,7 +11297,12 @@ y `probar-muebles`, y en Chromium H.17–H.19 pasaron de FALLA a OK):
   términos llama a `releerTrasConflicto`, que relee la cara y la ocupación sin cerrar el formulario
   ni tocar lo dibujado (sin adoptar una versión ajena de la distribución: el próximo guardado choca).
 - **El Editor 3D dice «Tomada»/«Parcial» como el plano**, y «Estado fixture» lleva su nota
-  (`PALABRA_POR_OCUPACION` y `notaDeEstadoPorOcupacion`, en `utils/partes.ts`).
+  (`PALABRA_POR_OCUPACION` y `notaDeEstadoPorOcupacion`, en `utils/partes.ts`). En la
+  verificación salió un caso que el arreglo había abierto: la cara vendida entera antes de pasar
+  a participación (`status` «occupied», un físico del 100 %) decía «Tomada» y, debajo de
+  «Ocupado · Lo pone el contrato», «Se ve «Tomada»: lo dice la ocupación de hoy de sus
+  participaciones», donde el plano dice «Ocupado» sin nota; ahora `estadoQueSeVe` la deja con su
+  cartel (`probar-muebles`, y en Chromium con un ROB-02 así).
 - **El historial escribe la fecha igual en todas** («17 oct 2026»); la hora, sólo en las reales.
 
 ## Fase 11 — La Plataforma como espacio de análisis y asesoría
@@ -12439,7 +12449,7 @@ código. Vale la pena el rato que toma:
    `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`.
 
 **Lo que es geometría pura, probarlo aparte.** `npm run probar` corre las suites sin
-navegador —36 suites y 1179 pruebas al 2026-10-17, de `probar-planta` a
+navegador —36 suites y 1180 pruebas al 2026-10-17, de `probar-planta` a
 `probar-distribucion`; la cadena está en `frontend/package.json`—: transpila el `.ts` con el
 esbuild que ya trae vite y afirma en node. No hay runner de pruebas en el frontend y no valía
 la pena montar uno para esto. Ahí se encontró que un paso largo saltaba por encima de un

@@ -7441,12 +7441,18 @@ function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut 
  *  a su banda roja—. Todo tomado → «Tomada», en el rojo de la banda; algo
  *  comprometido → «Parcial», en su ámbar; nada → el de siempre. La palabra es
  *  la del plano 2D y Supervisar (`PALABRA_POR_OCUPACION`): decía «Ocupado»
- *  (recorrido final). */
+ *  (recorrido final). Salvo la cara que ya está «Ocupado» por su propio
+ *  contrato —la vendida entera antes de pasar a venderse por participación,
+ *  que la ocupación cuenta como un físico del 100 %—: la toma ese contrato, no
+ *  las participaciones, y el plano dice «Ocupado» sin nota (`estadoParaPintar`
+ *  sólo cambia una cara libre). Se queda con su cartel, y así «Estado fixture»
+ *  no suma la nota de la ocupación debajo de «Lo pone el contrato». */
 function estadoQueSeVe(
   sm: { bg: string; text: string; label: string },
   caras: readonly { dispo: "tomado" | "parcial" | "libre" }[] | null,
 ): { bg: string; text: string; label: string } {
   if (!caras || caras.length === 0) return sm;
+  if (caras.every((c) => c.dispo === "tomado") && sm === STATUS_META.occupied) return sm;
   if (caras.every((c) => c.dispo === "tomado")) return { ...STATUS_META.occupied, label: PALABRA_POR_OCUPACION.tomado };
   if (caras.some((c) => c.dispo !== "libre")) return { ...STATUS_META.reserved, label: PALABRA_POR_OCUPACION.parcial };
   return sm;
