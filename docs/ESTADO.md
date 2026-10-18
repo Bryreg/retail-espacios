@@ -3015,8 +3015,12 @@ Queda una app retenida por cada módulo de `scripts/` que importan las pruebas
 (`scripts.auditar_desfase` y otros importan modelos arriba y la purga sólo saca
 `app.*`): son unas pocas y no crecen por prueba.
 
-El job tiene además `timeout-minutes: 60`: sin tope, uno trabado esperaba las 6 h
-que da GitHub sin mostrar el log.
+El job tiene además `timeout-minutes: 60` (sin tope, uno trabado esperaba las 6 h
+que da GitHub sin mostrar el log) y `TMPDIR: /dev/shm`: cada prueba crea su base
+SQLite en el directorio temporal y cada `CREATE TABLE` del arranque hace fsync; en
+memoria la suite entera bajó de 31 a 24 min en local, con las mismas 1613 pasando.
+Para correrla así en local: `cd backend && TMPDIR=$(mktemp -d -p /dev/shm) python -m
+pytest`.
 
 ### Pruebas con el mes escrito a mano: rojas desde el 2026-10-01
 

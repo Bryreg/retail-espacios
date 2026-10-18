@@ -77,6 +77,10 @@ jobs:
         working-directory: backend
         env:
           JWT_SECRET: ci-secret
+          # Cada prueba crea su base SQLite en el directorio temporal, y cada
+          # CREATE TABLE del arranque hace fsync: en memoria (tmpfs) la suite
+          # tarda ~25 % menos (local: 31 → 24 min, las mismas 1613 pasan).
+          TMPDIR: /dev/shm
 
   deploy-vps:
     name: Deploy al VPS vía SSH
