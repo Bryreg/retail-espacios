@@ -56,6 +56,10 @@ jobs:
   backend:
     name: Backend · pytest
     runs-on: ubuntu-latest
+    # La suite tarda ~25 min. Sin tope, un job trabado esperaba las 6 h que da
+    # GitHub sin decir nada (el PR #80 estuvo 100 min «corriendo» con todo verde
+    # adentro): pasado este tiempo falla y muestra su log.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,6 +77,10 @@ jobs:
         working-directory: backend
         env:
           JWT_SECRET: ci-secret
+          # Cada prueba crea su base SQLite en el directorio temporal, y cada
+          # CREATE TABLE del arranque hace fsync: en memoria (tmpfs) la suite
+          # tarda ~25 % menos (local: 31 → 24 min, las mismas 1613 pasan).
+          TMPDIR: /dev/shm
 
   deploy-vps:
     name: Deploy al VPS vía SSH

@@ -2972,6 +2972,56 @@ todos de tests, ninguno del producto — y ninguno reproducible local:
 **Regla:** antes de mergear, mirar los checks del PR en GitHub, no solo la
 suite local; y después del merge, el run de `main`.
 
+### CI lento: la suite se quedaba con una app entera por prueba (2026-10-18)
+
+El job «Backend · pytest» pasó de ~20 min a 51 (PR #79) y a 81 (PR #80), más un
+cuarto de hora sin salir después del 100 %: en el #80 lo cancelamos a los 100 min
+con `1590 passed` ya impreso en el log. No era la cantidad de pruebas, era
+**memoria**: cada prueba dejaba ~7 MB que nunca se liberaban.
+
+**Por qué.** El fixture `client` importa la app entera de nuevo en cada prueba y al
+terminar la saca de `sys.modules`. Pero tres cosas de afuera seguían apuntando a
+sus clases y funciones, y la app vieja no moría nunca:
+
+- `JoinCondition._track_overlapping_sync_targets` de SQLAlchemy, un
+  `WeakKeyDictionary` cuyos valores apuntan a su propia clave (columna → mapper →
+  relación): ninguna entrada muere. **Sin tope**; es la que hacía crecer todo.
+- los cachés de `typing` (`Optional[Space]`, `list[...]`), 128 por función;
+- los tres `lru_cache` de 4.096 de `fastapi.dependencies.models`, con las
+  funciones de las rutas.
+
+Con ~1.600 pruebas el proceso pasaba los 4 GB y decenas de millones de objetos: el
+runner de GitHub (poca RAM) entraba en swap, cada pasada completa del recolector
+tardaba segundos y al salir había que liberar todo eso. En local (más RAM) se notaba
+menos: 37 min.
+
+**El arreglo** (sólo pruebas, nada de la app): `conftest.soltar_la_app_vieja()` corta
+las tres referencias después de purgar `sys.modules`; el cuerpo del fixture quedó en
+`app_de_prueba()`, con la limpieza en un `finally` (antes, si el arranque fallaba, la
+prueba siguiente heredaba la app y la base de esa). Medido en los primeros 40
+archivos (740 pruebas): de 4,7 GB y 19 M objetos a 300 MB y 244 k; de 18 min 46 s a
+13 min 50 s. La suite entera, en local: 1613 pasan, la memoria no pasa de 318 MB,
+31 min contra 37, y el proceso sale en menos de un segundo.
+
+`test_suite_sin_fuga.py` levanta la app dos veces y exige que las dos se liberen:
+sacar cualquiera de las tres limpiezas la pone roja (probado una por una). Si se
+pone roja después de actualizar una librería, hay una referencia nueva: se busca
+subiendo desde una clase vieja con `gc.get_referrers` hasta un módulo que siga en
+`sys.modules`, y se corta en el mismo lugar. Antes mira que el arranque no haya
+logueado excepciones: pytest guarda el registro con su traceback, que también
+retiene la app, y eso es un arranque roto, no una fuga.
+
+Queda una app retenida por cada módulo de `scripts/` que importan las pruebas
+(`scripts.auditar_desfase` y otros importan modelos arriba y la purga sólo saca
+`app.*`): son unas pocas y no crecen por prueba.
+
+El job tiene además `timeout-minutes: 60` (sin tope, uno trabado esperaba las 6 h
+que da GitHub sin mostrar el log) y `TMPDIR: /dev/shm`: cada prueba crea su base
+SQLite en el directorio temporal y cada `CREATE TABLE` del arranque hace fsync; en
+memoria la suite entera bajó de 31 a 24 min en local, con las mismas 1613 pasando.
+Para correrla así en local: `cd backend && TMPDIR=$(mktemp -d -p /dev/shm) python -m
+pytest`.
+
 ### Pruebas con el mes escrito a mano: rojas desde el 2026-10-01
 
 El 1.º de octubre de 2026 cinco pruebas del backend amanecieron rojas sin que la
