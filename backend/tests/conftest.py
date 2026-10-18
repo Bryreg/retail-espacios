@@ -107,35 +107,40 @@ def app_de_prueba():
 
     # Imported here, and purged afterwards, so each test builds a fresh engine
     # bound to its own file instead of sharing the first test's database.
-    import app.database  # noqa: F401
-    from fastapi.testclient import TestClient
-    from app.main import app as fastapi_app
-
-    with TestClient(fastapi_app) as c:
-        yield c
-
-    # Soltar los motores antes de purgar los módulos: cada cliente abre el suyo,
-    # y una prueba que deje conexiones abiertas contra un archivo borrado hace
-    # fallar a la siguiente por un motivo que no tiene nada que ver.
+    # La limpieza va en el `finally`: si el arranque falla, o si quien usa esto
+    # a mano levanta una excepción adentro del `with`, la prueba siguiente no
+    # puede heredar la app ni la base de esta.
     try:
-        from app.clientes import olvidar_motores
-        olvidar_motores()
-    except Exception:
-        pass
+        import app.database  # noqa: F401
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
 
-    import sys
-    for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
-        del sys.modules[name]
-    soltar_la_app_vieja()
-    os.unlink(path)
-    # Las bases de los clientes que haya creado la prueba son archivos hermanos.
-    import glob
-    carpeta = os.path.dirname(path)
-    for extra in glob.glob(os.path.join(carpeta, "recabra_*.db")):
+        with TestClient(fastapi_app) as c:
+            yield c
+    finally:
+        # Soltar los motores antes de purgar los módulos: cada cliente abre el
+        # suyo, y una prueba que deje conexiones abiertas contra un archivo
+        # borrado hace fallar a la siguiente por un motivo que no tiene nada
+        # que ver.
         try:
-            os.unlink(extra)
-        except OSError:
+            from app.clientes import olvidar_motores
+            olvidar_motores()
+        except Exception:
             pass
+
+        import sys
+        for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
+            del sys.modules[name]
+        soltar_la_app_vieja()
+        os.unlink(path)
+        # Las bases de los clientes que haya creado la prueba son archivos hermanos.
+        import glob
+        carpeta = os.path.dirname(path)
+        for extra in glob.glob(os.path.join(carpeta, "recabra_*.db")):
+            try:
+                os.unlink(extra)
+            except OSError:
+                pass
 
 
 def soltar_la_app_vieja() -> None:

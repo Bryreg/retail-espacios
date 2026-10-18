@@ -2997,13 +2997,23 @@ menos: 37 min.
 
 **El arreglo** (sólo pruebas, nada de la app): `conftest.soltar_la_app_vieja()` corta
 las tres referencias después de purgar `sys.modules`; el cuerpo del fixture quedó en
-`app_de_prueba()`. Medido en los primeros 40 archivos (740 pruebas): de 4,7 GB y
-19 M objetos a 300 MB y 244 k; de 18 min 46 s a 13 min 50 s; y el proceso sale en
-menos de un segundo. `test_suite_sin_fuga.py` levanta la app dos veces y exige que
-las dos se liberen: sacar cualquiera de las tres limpiezas la pone roja (probado una
-por una). Si se pone roja después de actualizar una librería, hay una referencia
-nueva: se busca subiendo desde una clase vieja con `gc.get_referrers` hasta un
-módulo que siga en `sys.modules`, y se corta en el mismo lugar.
+`app_de_prueba()`, con la limpieza en un `finally` (antes, si el arranque fallaba, la
+prueba siguiente heredaba la app y la base de esa). Medido en los primeros 40
+archivos (740 pruebas): de 4,7 GB y 19 M objetos a 300 MB y 244 k; de 18 min 46 s a
+13 min 50 s. La suite entera, en local: 1613 pasan, la memoria no pasa de 318 MB,
+31 min contra 37, y el proceso sale en menos de un segundo.
+
+`test_suite_sin_fuga.py` levanta la app dos veces y exige que las dos se liberen:
+sacar cualquiera de las tres limpiezas la pone roja (probado una por una). Si se
+pone roja después de actualizar una librería, hay una referencia nueva: se busca
+subiendo desde una clase vieja con `gc.get_referrers` hasta un módulo que siga en
+`sys.modules`, y se corta en el mismo lugar. Antes mira que el arranque no haya
+logueado excepciones: pytest guarda el registro con su traceback, que también
+retiene la app, y eso es un arranque roto, no una fuga.
+
+Queda una app retenida por cada módulo de `scripts/` que importan las pruebas
+(`scripts.auditar_desfase` y otros importan modelos arriba y la purga sólo saca
+`app.*`): son unas pocas y no crecen por prueba.
 
 El job tiene además `timeout-minutes: 60`: sin tope, uno trabado esperaba las 6 h
 que da GitHub sin mostrar el log.

@@ -12,6 +12,11 @@ bajarlas, no quede viva ninguna. Si falla después de actualizar una librería,
 hay una referencia nueva: la cadena se encuentra subiendo desde una clase vieja
 con ``gc.get_referrers`` hasta un módulo que siga en ``sys.modules``, y se corta
 en ``conftest.soltar_la_app_vieja``.
+
+Una excepción logueada durante el arranque también retiene la app —pytest guarda
+el registro con su traceback hasta que termina la fase, y el traceback apunta a
+los módulos de la app—, así que eso se mira antes y se reporta como lo que es:
+el arranque falló, no hay fuga.
 """
 import gc
 import weakref
@@ -30,8 +35,12 @@ def _una_vuelta():
         return weakref.ref(la_app), weakref.ref(Space)
 
 
-def test_la_app_de_una_prueba_se_libera_cuando_termina():
+def test_la_app_de_una_prueba_se_libera_cuando_termina(caplog):
     vueltas = [_una_vuelta() for _ in range(2)]
+
+    errores = [r.getMessage() for r in caplog.records if r.exc_info]
+    assert errores == [], f"el arranque de la app logueó excepciones (no es una fuga): {errores}"
+
     gc.collect()
 
     vivas = [i for i, (app, modelo) in enumerate(vueltas) if app() is not None or modelo() is not None]
