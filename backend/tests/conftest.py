@@ -12,6 +12,7 @@ toman de ADMIN_PASSWORD / WORKER_PASSWORD. La suite arma sus sesiones con ese
 ingreso, así que el fixture `client` prende el interruptor y fija las claves.
 """
 
+import contextlib
 import os
 import tempfile
 
@@ -82,6 +83,15 @@ def _reloj(request):
 
 @pytest.fixture()
 def client():
+    with app_de_prueba() as c:
+        yield c
+
+
+@contextlib.contextmanager
+def app_de_prueba():
+    """Levanta la app contra una base SQLite propia y, al salir, la baja y la
+    olvida: motores, módulos ``app.*``, cachés de librerías y archivos. Es el
+    cuerpo del fixture ``client``; ``test_suite_sin_fuga.py`` la usa a mano."""
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     os.environ["DATABASE_URL"] = f"sqlite:///{path}"
@@ -116,6 +126,7 @@ def client():
     import sys
     for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
         del sys.modules[name]
+    soltar_la_app_vieja()
     os.unlink(path)
     # Las bases de los clientes que haya creado la prueba son archivos hermanos.
     import glob
@@ -125,6 +136,49 @@ def client():
             os.unlink(extra)
         except OSError:
             pass
+
+
+def soltar_la_app_vieja() -> None:
+    """Corta las referencias que tres librerías guardan a la app de la prueba
+    que terminó, para que la purga de ``sys.modules`` la libere de verdad.
+
+    Cada prueba importa la app entera de nuevo: modelos, rutas, esquemas. Sacar
+    los módulos de ``sys.modules`` no alcanza si algo de afuera sigue apuntando
+    a sus clases o funciones, y tres cosas apuntaban:
+
+    · ``JoinCondition._track_overlapping_sync_targets`` de SQLAlchemy: un
+      ``WeakKeyDictionary`` cuyos valores apuntan a su propia clave (columna →
+      mapper → relación), así que ninguna entrada muere nunca. Sin tope: cada
+      prueba dejaba ~7 MB, la suite llegaba a varios GB, el runner de GitHub
+      entraba en swap y el proceso tardaba más de un cuarto de hora en salir
+      después del 100 % liberando decenas de millones de objetos.
+    · los cachés de ``typing`` (``Optional[Space]``, ``list[Proveedor]``…):
+      128 entradas por función, con las clases de las últimas pruebas.
+    · los tres ``lru_cache`` de 4096 de ``fastapi.dependencies.models``, con
+      las funciones de las rutas de las últimas pruebas.
+
+    Los tres son internos de cada librería: si una versión nueva los mueve, la
+    limpieza no rompe nada (se saltea) y ``test_suite_sin_fuga.py`` avisa que
+    la fuga volvió.
+    """
+    import typing
+
+    for limpiar in getattr(typing, "_cleanups", ()):
+        limpiar()
+    try:
+        import fastapi.dependencies.models as modelos_de_fastapi
+    except ImportError:
+        pass
+    else:
+        for valor in list(vars(modelos_de_fastapi).values()):
+            if callable(getattr(valor, "cache_clear", None)):
+                valor.cache_clear()
+    try:
+        from sqlalchemy.orm.relationships import JoinCondition
+
+        JoinCondition._track_overlapping_sync_targets.clear()
+    except (ImportError, AttributeError):
+        pass
 
 
 def esperar_mantenimiento() -> None:
