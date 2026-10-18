@@ -5,6 +5,7 @@ import {
   type RangeAvailability, type ReferenceRates, type SpaceStatus,
 } from "../types/fixtures";
 import { LIBRE, type EstadoComercial, type EstadoPorEspacio } from "./estadoComercial";
+import { CARA_ENTERA_PB, dispoPorParticipacion, pct, type OcupacionDeCara } from "./participaciones";
 
 /**
  * Vender por partes: la nevera entera o por puertas; el mural, la góndola, la
@@ -34,6 +35,13 @@ import { LIBRE, type EstadoComercial, type EstadoPorEspacio } from "./estadoCome
  * propia) dice cuál usa y en cuántas; el MUEBLE del plano lo guarda estampado
  * en `partes` y es lo único que cuenta para vender. Sin `partes.division`, el
  * mueble se vende entero, como siempre.
+ *
+ * Y la PARTICIPACIÓN de una cara (`NAVE-GON-01-PC3`, `NAVE-GON-01-B-PC1`): el
+ * porcentaje de la cara vendido a un proveedor. No es una división física ni
+ * una pieza: `partesDe` no la enumera (sus números los da el servidor) y
+ * `divisionDe` da `null` para la cara que se vende así. La cara se vende por
+ * participación cuando el mueble dice `partes.division: "participacion"` y su
+ * tipo tiene `superficie` en el catálogo (`porParticipacion`).
  *
  * Es el espejo de `backend/app/services/partes.py`. Los dos corren los casos
  * de `scripts/casos/partes.json` (`probar-partes.mjs`, `tests/test_partes.py`).
@@ -125,6 +133,13 @@ export function esPieza(p: ParteRef | null | undefined): boolean {
   return !!p && claseDe(p.clase)?.es === "pieza";
 }
 
+/** ¿Es una participación de la cara (`GON-01-PC3`: el porcentaje de la cara
+ *  vendido a un proveedor)? No divide la cara físicamente ni es una pieza. Es
+ *  `es_participacion` del servidor. */
+export function esParticipacion(p: ParteRef | null | undefined): boolean {
+  return !!p && claseDe(p.clase)?.es === "participacion";
+}
+
 const mismaParte = (a: ParteRef | null, b: ParteRef | null) =>
   a === b || (!!a && !!b && a.clase === b.clase && a.token === b.token && a.n === b.n);
 
@@ -133,14 +148,19 @@ const mismaParte = (a: ParteRef | null, b: ParteRef | null) =>
  * `chocan` del servidor, con los mismos casos: el mismo espacio sí; la cara
  * entera y una de sus divisiones, sí; dos divisiones de la misma clase, no (dos
  * puertas distintas conviven); de clases distintas de la misma cara, sí (se
- * pisan); una pieza sólo consigo misma. Se decide por los códigos: quien manda
- * es el servidor, esto es para avisar antes.
+ * pisan); una pieza sólo consigo misma. Una participación choca con la cara
+ * entera y con una división física de su cara, pero no con otra participación
+ * (a ésas las frena la regla de capacidad) ni con una pieza. Se decide por los
+ * códigos: quien manda es el servidor, esto es para avisar antes.
  */
 export function chocan(a: CodigoPartido, b: CodigoPartido): boolean {
   if (a.base !== b.base || a.cara !== b.cara) return false;
   if (mismaParte(a.parte, b.parte)) return true;
-  if (!a.parte) return esDivision(b.parte);
-  if (!b.parte) return esDivision(a.parte);
+  if (esParticipacion(a.parte) && esParticipacion(b.parte)) return false;
+  if (!a.parte) return esDivision(b.parte) || esParticipacion(b.parte);
+  if (!b.parte) return esDivision(a.parte) || esParticipacion(a.parte);
+  if (esParticipacion(a.parte)) return esDivision(b.parte);
+  if (esParticipacion(b.parte)) return esDivision(a.parte);
   return esDivision(a.parte) && esDivision(b.parte) && a.parte.clase !== b.parte.clase;
 }
 
@@ -178,7 +198,8 @@ export function valorDelCampo(f: ConPartes, campo: string): unknown {
  *  5 (la base, `EN1`, y los 4); sin entrepaños guardados, entera. */
 export function cantidadDe(f: ConPartes, clase: string): number | null {
   const regla = claseDe(clase);
-  if (!regla || !f) return null;
+  // Una clase sin `campo` (la participación) no la cuenta el mueble.
+  if (!regla || !regla.campo || !f) return null;
   const v = valorDelCampo(f, regla.campo);
   if (typeof v !== "number" || !Number.isInteger(v)) return null;
   const tipo = CATALOGO_DE_MUEBLES.tipos[tipoBase(f.type)];
@@ -215,7 +236,7 @@ export function piezasDe(f: ConPartes): ParteRef[] {
   const fuera: ParteRef[] = [];
   for (const clase of piezasDeLaFamilia(f.type)) {
     const regla = claseDe(clase);
-    if (!regla || regla.es !== "pieza") continue;
+    if (!regla || regla.es !== "pieza" || !regla.campo) continue;
     if (regla.unico) {
       if (valorDelCampo(f, regla.campo) === true) fuera.push({ clase, token: regla.token, n: null });
       continue;
@@ -267,13 +288,51 @@ export function espaciosDe(f: ConPartes & { code: string; sede?: string }, sede:
   return fuera;
 }
 
+/**
+ * ¿La cara se vende por participación? Lo dice el mueble
+ * (`partes.division === "participacion"`), su tipo tiene receta de superficie
+ * (`superficie` en el catálogo) y es comercializable. Una sola forma de
+ * dividir: vale para las dos caras de una doble. Es `por_participacion` del
+ * servidor. `divisionDe` sigue dando `null` para ese mueble (no es una
+ * división física) y `espaciosDe` da sus caras, no sus participaciones.
+ */
+export function porParticipacion(f: ConPartes): boolean {
+  if (!f || f.partes?.division !== "participacion") return false;
+  const tipo = tipoBase(String(f.type ?? ""));
+  const familia = Object.prototype.hasOwnProperty.call(CATALOGO_DE_MUEBLES.tipos, tipo)
+    ? CATALOGO_DE_MUEBLES.tipos[tipo] : undefined;
+  return !!familia?.superficie && isRentable(f);
+}
+
+/** Los códigos COMPLETOS de las caras que se venden por participación
+ *  (`NAVE-GON-01`, `NAVE-GON-01-B`), armados con la sede que se pasa: la del
+ *  plano, nunca el campo `sede` del mueble, como `caras_por_participacion` del
+ *  servidor. Una participación (`…-PC3`) se ofrece si su cara está acá. */
+export function carasPorParticipacion(
+  fixtures: readonly (ConPartes & { code: string })[], sede: string,
+): Set<string> {
+  const caras = new Set<string>();
+  for (const f of fixtures) {
+    if (!f || typeof f !== "object" || !porParticipacion(f)) continue;
+    const code = normalizar(f.code);
+    if (!code) continue;
+    const completo = fullSpaceCode(sede, code);
+    caras.add(completo);
+    if (carasDe(f) === 2) caras.add(`${completo}-B`);
+  }
+  return caras;
+}
+
 /** Lo que decide DÓNDE cae cada parte vendida, por clase: la cantidad de la
  *  división, o de las piezas (las bahías parten la mesa en partes iguales), o
- *  1 si tiene el forro. Es `firma_de_partes` del servidor. */
+ *  1 si tiene el forro. Sólo las clases con lugar físico (divisiones y
+ *  piezas): una participación no cae en un lugar fijo del mueble, y la firma
+ *  de siempre no cambia. Es `firma_de_partes` del servidor. */
 export function firmaDePartes(f: ConPartes): Record<string, number | null> {
   const div = divisionDe(f);
   const firma: Record<string, number | null> = Object.fromEntries(
-    Object.keys(P.clases).map((clase) => [clase, div && div.clase === clase ? div.n : null]));
+    Object.entries(P.clases).filter(([, c]) => c.es === "division" || c.es === "pieza")
+      .map(([clase]) => [clase, div && div.clase === clase ? div.n : null]));
   for (const p of piezasDe(f)) firma[p.clase] = Math.max(firma[p.clase] ?? 0, p.n ?? 1);
   return firma;
 }
@@ -556,7 +615,10 @@ export type OrigenDeTarifa = "cara" | "clase" | "cara/n" | "";
  * La tarifa de referencia de un espacio y de dónde salió: la cara entera, la
  * de su mueble (`rateTypeOf`); una división, la de su clase (`parte_puerta`)
  * y, si está vacía, la de la cara dividida por la cantidad de partes; una
- * pieza, la de su clase, sin respaldo. Es `referencia_de_espacio` del servidor.
+ * pieza, la de su clase, sin respaldo. Una participación no tiene referencia
+ * propia: compararla con la tarifa de la cara la listaría «75 % por debajo»
+ * (el mismo error que cuenta `tarifaDeLaFila` para las puertas); la de la cara
+ * se pide para la cara (`parte = null`). Es `referencia_de_espacio` del servidor.
  *
  * Pregunta la tarifa del mueble (`rateTypeOf`): quien la llama desde un
  * `useMemo` pone `fichasPropias` en las dependencias.
@@ -567,8 +629,9 @@ export function tarifaDeEspacio(
 ): { valor: number | null; origen: OrigenDeTarifa } {
   const deLaCara = rateTypeOf(f);
   if (!parte) return { valor: referenceRateFor(rates, sede, deLaCara), origen: "cara" };
+  if (esParticipacion(parte)) return { valor: null, origen: "" };
   const regla = claseDe(parte.clase);
-  if (!regla) return { valor: null, origen: "" };
+  if (!regla?.tarifa) return { valor: null, origen: "" };
   const propia = referenceRateFor(rates, sede, regla.tarifa);
   if (propia !== null) return { valor: propia, origen: "clase" };
   if (regla.es !== "division") return { valor: null, origen: "" };
@@ -674,10 +737,16 @@ export interface EnContrato { id: string; face: "A" | "B"; parte?: string }
  * · Una caja o una columna, que nunca se venden enteras, suman su primera
  *   PIEZA libre en el periodo (`libre`; si ninguna, la primera): la BI1, o la
  *   que siga, o el forro. Nunca la caja entera, que el servidor rechaza.
+ * · Una cara POR PARTICIPACIÓN no se vende así: ni entera ni la participación
+ *   (`…-PC3`), que se carga en el Editor 3D → Distribución. Tocarla no suma
+ *   nada y tampoco vacía lo que ya se armó: el contrato queda como estaba, el
+ *   plano dice «Por participación · queda 40 %» (`textoDeParticipacion`) y la
+ *   ficha del contrato avisa dónde se vende (`textoAlTocarEnVender`).
  */
 export function alTocarEnVender(
   lista: EnContrato[], f: ConPartes & { id: string }, cara: "A" | "B", libre: (p: ParteRef) => boolean,
 ): EnContrato[] {
+  if (porParticipacion(f)) return lista;
   if (!seVendeAlgo(f)) return [];
   if (!isRentable(f)) {
     const piezas = piezasDe(f);
@@ -792,11 +861,15 @@ export function estadoDeEspacio(
  * Si un espacio se puede vender en el periodo: lo suyo y lo que choca con él
  * (la cara entera para una puerta; las puertas para la cara entera). Sin
  * nombres: dice «tomado», nunca de quién.
+ *
+ * Una participación (`…-PC3`) no se vende desde Vender: da siempre «tomado».
+ * Se carga, y se renueva, en el Editor 3D → Distribución (§4.8).
  */
 export function disponibilidadDeEspacio(
   f: MuebleConEstado, cara: "A" | "B", parte: ParteRef | null,
   estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string, desde: Date, hasta: Date,
 ): RangeAvailability {
+  if (esParticipacion(parte)) return "tomado";
   let d = rangeAvailability(estadoDeEspacio(f, cara, parte, estado, sede), desde, hasta);
   // La cara entera vendida tapa todas sus divisiones.
   if (esDivision(parte)) d = peor(d, rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta));
@@ -819,11 +892,19 @@ export function disponibilidadDeEspacio(
  * el periodo; «parcial» si hay algo vendido (días o partes): se puede vender
  * una parte; «libre» si no hay nada. Un mueble sin divisiones da exactamente
  * lo de `rangeAvailability` de la cara.
+ *
+ * Una cara POR PARTICIPACIÓN, con su ocupación anónima (`participacion`): sin
+ * nada para vender en todo el periodo, «tomado»; con algo comprometido,
+ * «parcial» (se vende otra participación, en Distribución); sin nada
+ * comprometido, lo de siempre. Sin la ocupación, todo como antes.
  */
 export function disponibilidadDeCara(
   f: ConPartes & MuebleConEstado, cara: "A" | "B",
   estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string, desde: Date, hasta: Date,
+  participacion?: ParticipacionDeLaCara,
 ): RangeAvailability {
+  const porPc = dispoDeParticipacion(f, participacion, desde, hasta);
+  if (porPc && porPc.dispo !== "libre") return porPc.dispo;
   const entera = rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta);
   const caraCompleta = fullSpaceCode(f.sede || sede, codigoDeParte(f.code, cara, null));
   // Sólo las divisiones: una pieza (la bahía de una caja) no es de ninguna
@@ -906,7 +987,10 @@ export type ComoSeLibera = { porPartes: string; desde?: undefined; diasLibres?: 
 export function comoSeLiberaLaCara(
   f: ConPartes & MuebleConEstado, cara: "A" | "B",
   estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string, desde: Date, hasta: Date,
+  participacion?: ParticipacionDeLaCara & { conPorcentaje?: boolean },
 ): ComoSeLibera | null {
+  const porPc = comoSeLiberaPorParticipacion(f, participacion, desde, hasta, participacion?.conPorcentaje ?? false);
+  if (porPc) return porPc;
   const r = partesVendidasDeLaCara(f, cara, estado, sede, desde, hasta);
   if (r) return { porPartes: textoDePartesVendidas(r) };
   const libres = diasLibresDeLaCara(f, cara, estado, indice, sede, desde, hasta);
@@ -936,4 +1020,174 @@ export function porQueNoEstaLibre(
     return "entera";
   }
   return disponibilidadDeEspacio(f, cara, parte, estado, indice, sede, desde, hasta) === "libre" ? null : "partes";
+}
+
+// ─── La participación de la cara, en Vender, Supervisar y el plano 2D ────────
+
+/**
+ * Lo que las pantallas saben de una cara POR PARTICIPACIÓN: su ocupación
+ * ANÓNIMA (`GET /participaciones/ocupacion`: intervalos `{desde, hasta, pb}` y
+ * lo vendido entero, sin nombres, montos ni números de participación) y el
+ * `hoy` del servidor (la fecha de Colombia: acá nunca se pregunta la hora del
+ * navegador). Es lo único de las participaciones que lee el trabajador.
+ */
+export interface ParticipacionDeLaCara { ocupacion: OcupacionDeCara; hoy: string }
+
+/** Cómo se pinta una cara por participación (`dispoPorParticipacion`). */
+export interface DispoDeParticipacion { dispo: RangeAvailability; quedaPb: number; libreDesde: string | null }
+
+/** El día local de una fecha del periodo, como texto: el periodo de las
+ *  pantallas son días del calendario (`toISODate`), no instantes. */
+function diaDe(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Cómo está una cara por participación en el periodo, o `null` si el mueble
+ *  no se vende por participación o no se sabe su ocupación (entonces todo
+ *  sigue como antes). Para un día, `desde` = `hasta`. */
+export function dispoDeParticipacion(
+  f: ConPartes, participacion: ParticipacionDeLaCara | null | undefined, desde: Date | string, hasta: Date | string,
+): DispoDeParticipacion | null {
+  if (!participacion || !porParticipacion(f)) return null;
+  const a = typeof desde === "string" ? desde : diaDe(desde);
+  const b = typeof hasta === "string" ? hasta : diaDe(hasta);
+  return dispoPorParticipacion(participacion.ocupacion, a, b, participacion.hoy);
+}
+
+/**
+ * El rótulo de una cara por participación, sin nombres ni montos: «Por
+ * participación · queda 40 %» para quien vende (lo que queda para vender en
+ * TODO el periodo); para el trabajador (`conPorcentaje = false`), la palabra
+ * sola, «Por participación», nunca el %. Sin lugar en el periodo, «Por
+ * participación · tomada» (eso no dice nada de nadie).
+ */
+export function textoDeParticipacion(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb">, conPorcentaje: boolean): string {
+  if (d.dispo === "tomado") return "Por participación · tomada";
+  if (d.dispo === "libre" || !conPorcentaje) return "Por participación";
+  return `Por participación · queda ${pct(d.quedaPb)}`;
+}
+
+/** Dónde se vende una cara por participación (no en Sede → Vender, que no
+ *  la vende): lo dicen Vender, el globo de Supervisar y la ficha del plano 2D
+ *  con las mismas palabras. */
+export const DONDE_SE_CARGAN = "Las participaciones se cargan en el Editor 3D → Distribución.";
+
+/** Lo que se dice al tocar una cara por participación en Vender (el aviso de
+ *  la ficha del contrato): no se vende entera ni la participación, y se dice
+ *  dónde. Para quien vende, cuánto queda EN EL PERIODO —el mismo número del
+ *  rótulo del plano—: «Se vende por participación: queda 40 %. Las
+ *  participaciones se cargan en el Editor 3D → Distribución.». Sin el % para
+ *  el trabajador, ni sin la ocupación todavía. Nunca un nombre ni un monto:
+ *  es la ocupación anónima, y del otro lado de la mesa puede estar otro
+ *  proveedor. */
+export function textoAlTocarEnVender(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb"> | null, conPorcentaje: boolean): string {
+  return d && conPorcentaje
+    ? `Se vende por participación: queda ${pct(d.quedaPb)}. ${DONDE_SE_CARGAN}`
+    : `Se vende por participación. ${DONDE_SE_CARGAN}`;
+}
+
+/**
+ * Lo que dice de una cara por participación el globo de Supervisar y la
+ * tarjeta «Contratado» de la ficha del plano 2D, con la ocupación anónima de
+ * HOY (`d`, de un solo día: lo comprometido es lo que no queda). Una cara así
+ * nunca tiene `supplierName` (un contrato `…-PC3` no la pinta: la fusión busca
+ * por código exacto), y por eso las dos decían «Sin contrato activo —
+ * disponible para vender» sobre un robatope tomado al 100 % (la revisión
+ * final, 2026-10-17).
+ *
+ * · Para quien administra: «Por participación · comprometido 55 % · queda
+ *   45 %», y «disponible para vender» SÓLO si queda algo, con el lugar donde
+ *   se vende (el Editor 3D → Distribución, no Vender).
+ * · Para el trabajador, la palabra sola (D7): «Por participación» o «Por
+ *   participación · tomada». Nunca el % ni «disponible».
+ * · Sin la ocupación todavía, que se vende así y nada más: nunca «disponible»
+ *   sobre lo que no se sabe.
+ */
+export function textoDeLoComprometido(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb"> | null, conPorcentaje: boolean): string {
+  if (!d) return "Se vende por participación.";
+  if (!conPorcentaje) return `${textoDeParticipacion(d, false)}.`;
+  const queda = Math.max(0, Math.min(CARA_ENTERA_PB, d.quedaPb));
+  const cuenta = `Por participación · comprometido ${pct(CARA_ENTERA_PB - queda)} · queda ${pct(queda)}`;
+  return queda > 0 ? `${cuenta} — disponible para vender en el Editor 3D → Distribución.` : `${cuenta}.`;
+}
+
+/** La palabra de la ocupación de una cara por participación, UNA para todas
+ *  las pantallas: la ficha del plano 2D (`rotuloPorOcupacion`), la pastilla
+ *  del panel y el cartel del mouse del Editor 3D (`estadoQueSeVe`). El 3D
+ *  decía «Ocupado» donde el plano y Supervisar decían «Tomada» (recorrido
+ *  final). */
+export const PALABRA_POR_OCUPACION = { tomado: "Tomada", parcial: "Parcial" } as const;
+
+/** La palabra del estado que se VE de una cara por participación en la ficha
+ *  del plano 2D: la misma regla que su color (`estadoParaPintar`) y que el
+ *  cartel del Editor 3D. Sin lugar hoy, «Tomada»; con algo comprometido,
+ *  «Parcial»; sin nada, sin la ocupación o con un estado propio que manda
+ *  (vendida entera, en mantenimiento), `null`: la de siempre. Sin el %: es
+ *  la misma información que el color. */
+export function rotuloPorOcupacion(propio: string, d: Pick<DispoDeParticipacion, "dispo"> | null): string | null {
+  const pintado = estadoParaPintar(propio, d);
+  if (pintado === propio) return null;
+  return pintado === "occupied" ? PALABRA_POR_OCUPACION.tomado : PALABRA_POR_OCUPACION.parcial;
+}
+
+/** La nota debajo del selector de estado de una cara por participación (la
+ *  ficha del plano 2D y «Estado fixture» del Editor 3D): el selector dice el
+ *  estado de la base («Disponible») y lo que se ve lo pone la ocupación. */
+export function notaDeEstadoPorOcupacion(rotulo: string): string {
+  return `Se ve «${rotulo}»: lo dice la ocupación de hoy de sus participaciones.`;
+}
+
+/** «Cuándo se libera» de una cara por participación: con algo comprometido
+ *  en el periodo, el rótulo de la participación (va en `porPartes`, el mismo
+ *  lugar que «1 de 3 puertas vendida»: el plano, el cartel del mouse y la
+ *  lista de precios ya lo piden ahí); sin nada comprometido o sin ocupación,
+ *  `null` (lo de siempre). */
+export function comoSeLiberaPorParticipacion(
+  f: ConPartes, participacion: ParticipacionDeLaCara | null | undefined, desde: Date, hasta: Date, conPorcentaje: boolean,
+): ComoSeLibera | null {
+  const d = dispoDeParticipacion(f, participacion, desde, hasta);
+  if (!d || d.dispo === "libre") return null;
+  return { porPartes: textoDeParticipacion(d, conPorcentaje) };
+}
+
+/**
+ * El estado con que se PINTA una cara por participación en el plano 2D (§10.8):
+ * su estado no cambia (un contrato `…-PC3` nunca la pinta ocupada, la fusión
+ * busca por código exacto), cambia sólo el color. Sin lugar el día, el de
+ * ocupado; con algo comprometido, el ámbar de «parcial» (`reserved`); sin
+ * nada, el suyo. Sin ocupación, el suyo.
+ */
+export function estadoParaPintar<S extends string>(propio: S, d: Pick<DispoDeParticipacion, "dispo"> | null): S | "occupied" | "reserved" {
+  if (!d || propio !== "free") return propio;
+  return d.dispo === "tomado" ? "occupied" : d.dispo === "parcial" ? "reserved" : propio;
+}
+
+/** ¿Se muestra esa parte con contrato? Las participaciones (`…-PC3`) sólo
+ *  para quien administra: el trabajador no ve participaciones en Supervisar
+ *  (D7). Las ve en Montajes, que es su trabajo (D13). */
+export function parteVisible(p: ParteRef | null | undefined, conParticipaciones: boolean): boolean {
+  return conParticipaciones || !esParticipacion(p);
+}
+
+/** Lo que lee la mercaderista de una participación en Montajes: «Participación
+ *  3 · cara A». Sin el porcentaje (el tablero no carga términos, §4.9) ni
+ *  zonas: lo que se arma lo dice el correo y la planometría del contrato. */
+export function textoDeParticipacionParaMontar(p: ParteRef, cara: "A" | "B"): string {
+  return `${textoDeParte(p)} · cara ${cara}`;
+}
+
+/** Los días que una cara por participación tiene algo comprometido, como los
+ *  «contratos de sus partes» que lee «Cuándo se libera» (`tambien`): un día
+ *  con una participación (o una reserva, o la cara vendida entera) la cara no
+ *  está libre ENTERA —se vende otra participación, en Distribución—, la misma
+ *  regla que con una puerta vendida. Sin nombres: sólo fechas. Sin ocupación,
+ *  nada. */
+export function ocupadoPorParticipacion(
+  participacion: ParticipacionDeLaCara | null | undefined,
+): { status: "occupied"; startDate: string; endDate: string }[] {
+  if (!participacion) return [];
+  const o = participacion.ocupacion;
+  return [...(o.fisicos ?? []), ...(o.intervalos ?? [])]
+    .map((i) => ({ status: "occupied" as const, startDate: i.desde, endDate: i.hasta }));
 }

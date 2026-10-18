@@ -11,7 +11,7 @@ import { CATALOGO_DE_MUEBLES } from "../../catalogo/catalogo";
 const DIVISION_POR_TARIFA: ReadonlyMap<string, string> = new Map(
   Object.values(CATALOGO_DE_MUEBLES.partes.clases)
     .filter((c) => c.es === "division")
-    .map((c) => [c.tarifa, c.plural]),
+    .map((c) => [c.tarifa!, c.plural]),
 );
 
 /** Las tarifas que son de una PIEZA (la bahía de impulso de una caja, el
@@ -20,7 +20,7 @@ const DIVISION_POR_TARIFA: ReadonlyMap<string, string> = new Map(
 const PIEZA_POR_TARIFA: ReadonlyMap<string, string> = new Map(
   Object.values(CATALOGO_DE_MUEBLES.partes.clases)
     .filter((c) => c.es === "pieza")
-    .map((c) => [c.tarifa, c.singular]),
+    .map((c) => [c.tarifa!, c.singular]),
 );
 
 /** Tariff editor (admin only). One general rate per fixture type plus an

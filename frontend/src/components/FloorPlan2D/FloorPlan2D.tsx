@@ -34,9 +34,16 @@ import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
 import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
 import {
-  codigoDeParte, concordancia, divisionDe, juntasDePartes, piezasDe, puntosDePartesVendidas,
-  sufijoDeParte, vanoDeParte,
+  codigoDeParte, concordancia, dispoDeParticipacion, divisionDe, estadoParaPintar, juntasDePartes, piezasDe,
+  porParticipacion, puntosDePartesVendidas, sufijoDeParte, vanoDeParte,
+  DONDE_SE_CARGAN, notaDeEstadoPorOcupacion, rotuloPorOcupacion, textoDeLoComprometido, type DispoDeParticipacion,
 } from "../../utils/partes";
+// «Abrir en Distribución» (el Editor 3D en esa cara): el mismo pedido que la
+// ficha de Supervisar, sólo tipos y el store de lectura.
+import { useAbrirEnDistribucion } from "../Distribucion/ParticipacionesDeLaCara";
+// La ocupación ANÓNIMA de las caras por participación (store de LECTURA): el
+// color de esas caras sale de ahí (§10.8), no de un contrato `…-PC3`.
+import { claveDeSede, useOcupacionStore } from "../../store/ocupacionStore";
 import { cotasDeCheckout, mesaDeImpulso, montantesDeImpulso, nichosDeImpulso } from "../StoreEditor3D/muebles/medidas";
 import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
@@ -45,6 +52,7 @@ import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { findOrCreateSpace, updateSpaceStatus } from "../../api/spaces";
 import { fetchDeleteImpact } from "../../api/layout";
 import type { DeleteImpact } from "../../api/layout";
+import { avisoDelRenombre, lineasDelImpacto } from "../../utils/impactoDeSede";
 import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
 import type { SpaceFileMeta } from "../../api/files";
 import client from "../../api/client";
@@ -411,6 +419,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingSedeVal, setEditingSedeVal]       = useState("");
   const [addingNewSede, setAddingNewSede]         = useState(false);
   const [confirmDeleteSede, setConfirmDeleteSede] = useState(false);
+  /** El renombre que espera confirmación: renombrar una sede la borra y la
+   *  crea de nuevo (cierra contratos, cancela reservas; D21/D22, tarea aparte),
+   *  así que se dice ANTES con lo que cuenta el servidor. */
+  const [renombreEnEspera, setRenombreEnEspera] = useState<{ de: string; a: string; aviso: string } | null>(null);
+  const renombrando = useRef(false);
   const [newSedeVal, setNewSedeVal]               = useState("");
   const [clipboard, setClipboard]               = useState<PlacedItem2D[]>([]);
   // Catalog label editing state
@@ -457,6 +470,38 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // vendida (vender una parte no cambia el mueble fusionado).
   const muebleDelStore = useMemo(() => new Map(storeFixtures.map((f) => [f.id, f])), [storeFixtures]);
   const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
+
+  // ── El color de una cara por participación (§10.8) ──────────────────────────
+  // Su estado no cambia (un contrato `…-PC3` nunca la pinta ocupada: la fusión
+  // busca la cara por código exacto); cambia sólo el color que se pinta, con
+  // la ocupación anónima de HOY: sin lugar, el de ocupado; con algo
+  // comprometido, el ámbar de «parcial»; sin nada, el suyo. Así cuatro
+  // participaciones del 25 % no se ven verdes, «libres».
+  const clienteActual = useAuthStore((s) => s.cliente) ?? "";
+  const ocupacionDeSede = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteActual, sede)]);
+  const cargarOcupacion = useOcupacionStore((s) => s.cargarOcupacion);
+  const hayParticipaciones = useMemo(() => storeFixtures.some((f) => porParticipacion(f)), [storeFixtures]);
+  useEffect(() => {
+    if (hayParticipaciones) void cargarOcupacion(sede);
+  }, [hayParticipaciones, sede, cargarOcupacion]);
+  /** Cómo está HOY una cara por participación, o `null` si el mueble no se
+   *  vende así o la sede todavía no se leyó. La leen el color (`pintadoDe`) y
+   *  la ficha del panel: el estado que se ve y lo comprometido. */
+  const dispoDeLaCara = useCallback((itemId: string, cara: "A" | "B"): DispoDeParticipacion | null => {
+    const f = muebleDelStore.get(itemId);
+    if (!f || !ocupacionDeSede || !porParticipacion(f)) return null;
+    const codigo = fullSpaceCode(sede, codigoDeParte(f.code, cara, null));
+    const o = Object.prototype.hasOwnProperty.call(ocupacionDeSede.caras, codigo)
+      ? ocupacionDeSede.caras[codigo] : { intervalos: [], fisicos: [] };
+    const hoy = ocupacionDeSede.hoy;
+    return dispoDeParticipacion(f, { ocupacion: o, hoy }, hoy, hoy);
+  }, [muebleDelStore, ocupacionDeSede, sede]);
+  const pintadoDe = useCallback((itemId: string, cara: "A" | "B", propio: SpaceStatus): SpaceStatus =>
+    estadoParaPintar(propio, dispoDeLaCara(itemId, cara)), [dispoDeLaCara]);
+  const esPorParticipacion = useCallback((itemId: string): boolean => {
+    const f = muebleDelStore.get(itemId);
+    return !!f && porParticipacion(f);
+  }, [muebleDelStore]);
   useEffect(() => {
     // commit() stores the array by reference, so identity equality means this
     // update is the echo of our own commit and must not rebuild the canvas.
@@ -1138,6 +1183,30 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setResizeState({ id, ox: pt.x - item.w, oy: pt.y - item.h, origW: item.w, origH: item.h });
   }
 
+  // ── Renombrar la sede ───────────────────────────────────────────────────────
+  //
+  // El renombre es «borrar + crear» (`renameSede` borra el plano del nombre
+  // viejo en el servidor, y el archivo de la sede cierra sus contratos y
+  // cancela sus reservas provisionales de participación). Arreglarlo es una
+  // tarea aparte (D21/D22); acá se dice antes: con algo comercial en juego, un
+  // diálogo con lo que cuenta el servidor (`GET /layout/{sede}/impact`, el
+  // mismo de «Borrar sede»). Sin nada en juego, como siempre. Enter y el blur
+  // del campo llegan los dos: sólo cuenta el primero.
+  async function pedirRenombre(nuevo: string) {
+    if (renombrando.current) return;
+    renombrando.current = true;
+    const viejo = sede;
+    if (!nuevo || nuevo === viejo) return;
+    let impacto: DeleteImpact | null = null;
+    if (isAdmin) {
+      try { impacto = await fetchDeleteImpact(viejo); } catch { impacto = null; }
+    }
+    const aviso = isAdmin ? avisoDelRenombre(viejo, nuevo, impacto) : null;
+    if (aviso) { setRenombreEnEspera({ de: viejo, a: nuevo, aviso }); return; }
+    renameSede(viejo, nuevo);
+    setSede(nuevo);
+  }
+
   // ── Renombrar un mueble ─────────────────────────────────────────────────────
   //
   //  Un mueble tiene UN nombre y es su código. Hubo una época en la que el doble
@@ -1682,8 +1751,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         Face B = opposite half, colored by faceB.status. */}
                     {item.type === "gondola_doble" && isRentable(item) && !isCollidingDrag && (() => {
                       const steps = rotationSteps(item.rotY);
-                      const aFill = STATUS_FILL[item.status];
-                      const bFill = STATUS_FILL[item.faceB?.status ?? "free"];
+                      const aFill = STATUS_FILL[pintadoDe(item.id, "A", item.status)];
+                      const bFill = STATUS_FILL[pintadoDe(item.id, "B", item.faceB?.status ?? "free")];
                       const noPtr = { style: { pointerEvents: "none" as const } };
                       const dividerStroke = "rgba(28,27,22,0.30)";
                       if (steps === 0 || steps === 2) {
@@ -1721,7 +1790,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                           ? NON_RENTABLE_FILL
                           : item.type === "gondola_doble"
                           ? "transparent" // halves painted above; keep pointer target
-                          : STATUS_FILL[item.status]
+                          : STATUS_FILL[pintadoDe(item.id, "A", item.status)]
                       }
                       stroke={
                         isCollidingDrag
@@ -1730,7 +1799,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                           ? "var(--accent)"
                           : !isRentable(item)
                           ? NON_RENTABLE_STROKE
-                          : STATUS_COLORS[item.status]
+                          : STATUS_COLORS[pintadoDe(item.id, "A", item.status)]
                       }
                       strokeWidth={(isSelected || isCollidingDrag ? 2.5 : 1.5) / zoom}
                       strokeDasharray={
@@ -2450,6 +2519,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               isAdmin={isAdmin}
               initialFace={panelFace}
               pasillo={pasilloDe.get(selectedItem.id)}
+              porParticipacion={esPorParticipacion(selectedItem.id)}
+              dispoDeCara={(cara) => dispoDeLaCara(selectedItem.id, cara)}
               onUpdate={updateSelected}
               onRenombrar={aplicarRenombre}
               onIntercambiar={aplicarIntercambio}
@@ -2523,14 +2594,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               }}
               value={editingSedeVal}
               onChange={(e) => setEditingSedeVal(e.target.value)}
-              onBlur={() => {
-                const n = normalizeSede(editingSedeVal);
-                if (n && n !== sede) { renameSede(sede, n); setSede(n); }
-                setEditingSedeInline(false);
-              }}
+              onBlur={() => { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") { const n = normalizeSede(editingSedeVal); if (n && n !== sede) { renameSede(sede, n); setSede(n); } setEditingSedeInline(false); }
-                if (e.key === "Escape") setEditingSedeInline(false);
+                if (e.key === "Enter") { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }
+                if (e.key === "Escape") { renombrando.current = true; setEditingSedeInline(false); }
               }}
               autoFocus
             />
@@ -2551,7 +2618,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           {/* Rename sede */}
           {!editingSedeInline && (
             <button
-              onClick={() => { setEditingSedeInline(true); setEditingSedeVal(sede); }}
+              onClick={() => { renombrando.current = false; setEditingSedeInline(true); setEditingSedeVal(sede); }}
               style={{
                 padding: 2, borderRadius: 4, border: "none",
                 background: "transparent", cursor: "pointer", color: "var(--ink-4)",
@@ -2696,6 +2763,19 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         </div>
       </div>
 
+      {renombreEnEspera && (
+        <RenombrarSedeDialog
+          {...renombreEnEspera}
+          onCancel={() => setRenombreEnEspera(null)}
+          onConfirm={() => {
+            const { de, a } = renombreEnEspera;
+            setRenombreEnEspera(null);
+            renameSede(de, a);
+            setSede(a);
+          }}
+        />
+      )}
+
       {confirmDeleteSede && (
         <DeleteSedeDialog
           sede={sede}
@@ -2724,6 +2804,66 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Renombrar sede: el aviso ────────────────────────────────────────────────
+
+/**
+ * Renombrar una sede con contratos activos o reservas provisionales los cierra
+ * y las cancela (es «borrar + crear»; D21/D22, tarea aparte). Este diálogo lo
+ * dice antes, con el texto de `avisoDelRenombre`, y deja seguir o no.
+ */
+function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
+  de: string; a: string; aviso: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed", inset: 0, zIndex: 200, background: "rgba(26,24,20,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div
+        role="dialog" aria-modal="true" aria-label={`Renombrar la sede «${de}»`} data-renombrar-sede
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 440, maxWidth: "100%", background: "var(--surface)", border: "1px solid var(--line)",
+          borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-lg)", overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid var(--line-soft)", fontSize: 15, fontWeight: 700, color: "var(--ink-1)" }}>
+          Renombrar «{de}» a «{a}»
+        </div>
+        <p style={{ margin: 0, padding: "14px 18px 4px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>{aviso}</p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", padding: "14px 18px 16px" }}>
+          <button
+            onClick={onCancel} autoFocus
+            style={{
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+              background: "var(--surface)", color: "var(--ink-2)", fontSize: 12.5, fontWeight: 500, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            Dejar el nombre
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "none", background: "var(--danger)",
+              color: "#fff", fontSize: 12.5, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            Renombrar igual
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2838,18 +2978,21 @@ function DeleteSedeDialog({
                 {slotsWithContract} balda{slotsWithContract !== 1 ? "s" : ""} con proveedor asignado
               </div>
             )}
-            {impact !== null && impact.active_leases > 0 && (
-              <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 3 }}>
-                {impact.active_leases} contrato{impact.active_leases !== 1 ? "s" : ""} activo
-                {impact.active_leases !== 1 ? "s" : ""} se cerrará
-                {impact.active_leases !== 1 ? "n" : ""}
+            {/* Lo que cuenta el servidor: los contratos que se cierran y las
+                reservas provisionales de participación que se cancelan. */}
+            {lineasDelImpacto(impact).map((linea) => (
+              <div key={linea} data-impacto style={{ fontSize: 12, color: "var(--danger)", marginTop: 3 }}>
+                {linea}
               </div>
-            )}
+            ))}
           </div>
 
           <p style={{ margin: "0 0 12px" }}>
             {impact !== null && impact.active_leases > 0
               ? "Los contratos se cierran y quedan archivados: siguen en la base de datos con su valor y sus fechas, pero dejan de avisar por vencimiento. "
+              : ""}
+            {impact !== null && (impact.reservas_vivas ?? 0) > 0
+              ? "Las reservas provisionales pasan a canceladas y quedan en el historial de su cara. "
               : ""}
             El tablero pierde los ingresos, la ocupación y los vencimientos de esta sede.
           </p>
@@ -3664,11 +3807,17 @@ const EMPTY_FACE: FaceData = {
 };
 
 function AssignmentPanel({
-  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo,
+  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo, porParticipacion: esPc = false, dispoDeCara,
   onUpdate, onRenombrar, onIntercambiar, onDelete, onDuplicate, onClose,
 }: {
   /** En qué pasillo cae, deducido de la geometría. */
   pasillo?: number;
+  /** El mueble se vende por participación (`porParticipacion` del mueble del
+   *  store: el del plano no trae `partes`). Su cara nunca tiene proveedor: lo
+   *  que tiene lo dice la ocupación. */
+  porParticipacion?: boolean;
+  /** La ocupación anónima de HOY de una cara por participación (o `null`). */
+  dispoDeCara?: (cara: "A" | "B") => DispoDeParticipacion | null;
   item: PlacedItem2D;
   /** Todo el plano: sin los demás muebles no se puede decir si el nombre que se
    *  está escribiendo ya es de otro, que es la comprobación que faltaba acá. */
@@ -3778,6 +3927,19 @@ function AssignmentPanel({
       };
   const activeCode = activeFace === "B" ? `${fullCode}-B` : fullCode;
 
+  // ── Una cara POR PARTICIPACIÓN ────────────────────────────────────────────
+  // Su `status` sigue «libre» en la base (un contrato `…-PC3` no la pinta, D6),
+  // y la ficha decía «Disponible» en verde y «Sin contrato activo… Sede →
+  // Vender» sobre un robatope tomado al 100 % (la revisión final, 2026-10-17).
+  // Lo que se ve sale de su ocupación anónima de HOY, la misma regla que su
+  // color en el plano (`estadoParaPintar`): la pastilla y «Estado del espacio»
+  // dicen «Tomada» o «Parcial» en ese color, y «Contratado» dice cuánto está
+  // comprometido y cuánto queda (`textoDeLoComprometido`).
+  const dispoPc = esPc ? (dispoDeCara?.(activeFace) ?? null) : null;
+  const estadoVisto: SpaceStatus = estadoParaPintar(face.status, dispoPc);
+  const rotuloVisto = rotuloPorOcupacion(face.status, dispoPc) ?? STATUS_LABELS[face.status];
+  const abrirEnDistribucion = useAbrirEnDistribucion();
+
   function updateFace(patch: Partial<FaceData>) {
     if (activeFace === "B") {
       onUpdate({ faceB: { ...(item.faceB ?? EMPTY_FACE), ...patch } });
@@ -3875,11 +4037,11 @@ function AssignmentPanel({
       {/* Status badge */}
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--dark-line)" }}>
         <span style={{
-          ...(rentable ? STATUS_BADGE_STYLE[face.status] : NON_RENTABLE_BADGE_STYLE),
+          ...(rentable ? STATUS_BADGE_STYLE[estadoVisto] : NON_RENTABLE_BADGE_STYLE),
           display: "inline-flex", alignItems: "center", borderRadius: 999,
           padding: "2px 10px", fontSize: 11, fontWeight: 600,
         }}>
-          {rentable ? STATUS_LABELS[face.status] : NON_RENTABLE_LABEL}
+          {rentable ? rotuloVisto : NON_RENTABLE_LABEL}
         </span>
       </div>
 
@@ -3943,13 +4105,26 @@ function AssignmentPanel({
                 {estadoError}
               </p>
             )}
+            {/* El estado de arriba es el de la base; el que se VE de una cara
+                por participación lo pone su ocupación. Se dice, para que el
+                «Disponible» del selector no se lea como «se puede vender». */}
+            {estadoVisto !== face.status && (
+              <p data-estado-por-ocupacion style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
+                {notaDeEstadoPorOcupacion(rotuloVisto)}
+              </p>
+            )}
           </>
         ) : (
           <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-            {STATUS_LABELS[face.status]}
+            {rotuloVisto}
             {face.status === "occupied" && (
               <span style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
                 Lo pone el contrato. Para liberarlo hay que cancelarlo.
+              </span>
+            )}
+            {estadoVisto !== face.status && (
+              <span data-estado-por-ocupacion style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
+                Lo dice la ocupación de hoy de sus participaciones.
               </span>
             )}
           </p>
@@ -4092,10 +4267,32 @@ function AssignmentPanel({
                 </p>
               )}
             </>
+          ) : esPc ? (
+            <p data-contratado-por-participacion style={{ fontSize: 13, color: "var(--dark-ink-2)", lineHeight: 1.45 }}>
+              {textoDeLoComprometido(dispoPc, isAdmin)}
+            </p>
           ) : (
             <p style={{ fontSize: 13, color: "var(--dark-ink-3)" }}>Sin contrato activo.</p>
           )}
-          {isAdmin && (
+          {isAdmin && esPc ? (
+            <>
+              <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 8, lineHeight: 1.45 }}>
+                {DONDE_SE_CARGAN}
+              </p>
+              <button
+                onClick={() => abrirEnDistribucion(item.id, activeFace)}
+                title="Abre el Editor 3D en esta cara, en Distribución"
+                style={{
+                  marginTop: 8, padding: "5px 10px", borderRadius: "var(--r-sm)",
+                  border: "1px solid var(--dark-line-2)", background: "transparent",
+                  color: "var(--dark-ink-1)", fontSize: 11.5, fontWeight: 600,
+                  fontFamily: "inherit", cursor: "pointer",
+                }}
+              >
+                Abrir en Distribución
+              </button>
+            </>
+          ) : isAdmin && (
             <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 8, lineHeight: 1.45 }}>
               Los contratos se hacen en <b style={{ color: "var(--dark-ink-2)" }}>Sede → Vender</b>, sobre el
               mapa y con la disponibilidad del periodo a la vista.

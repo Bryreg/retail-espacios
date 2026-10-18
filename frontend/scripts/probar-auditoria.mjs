@@ -435,6 +435,69 @@ prueba("quien pregunta por la cara B usa `carasDe` / `caras_de`, no una propia",
   assert.deepEqual(mal, []);
 });
 
+// ─── Las participaciones de una cara ─────────────────────────────────────────
+
+prueba("una participación de una cara por participación no es fantasma; de una que no, sí", () => {
+  // `GON-01-PC3` no está entre los espacios ofrecidos —sus números no tienen
+  // tope—: se ofrece si su CARA se vende por participación, como `ofrece` del
+  // servidor (`layout_lookup.py`).
+  const gondola = (extra = {}) => mueble("GON-01", { type: "gondola", ...extra });
+  const porPc = { "NAVE": [gondola({ partes: { division: "participacion" } })] };
+  assert.deepEqual(contratosSinMueble(porPc, { "NAVE-GON-01-PC1": vendido(), "NAVE-GON-01-B-PC7": vendido() }), []);
+  // La cara entera de antes sigue ofrecida: su contrato no es un fantasma.
+  assert.deepEqual(contratosSinMueble(porPc, { "NAVE-GON-01": vendido() }), []);
+  // Sacarle la división, marcarla no comercializable o pasarla a mural deja
+  // a sus participaciones sin mueble donde verse.
+  const entera = { "NAVE": [gondola()] };
+  assert.deepEqual(contratosSinMueble(entera, { "NAVE-GON-01-PC1": vendido() }).map((x) => x.espacio), ["NAVE-GON-01-PC1"]);
+  const tapada = { "NAVE": [gondola({ rentable: false, partes: { division: "participacion" } })] };
+  assert.equal(contratosSinMueble(tapada, { "NAVE-GON-01-PC1": vendido() }).length, 1);
+  const mural = { "NAVE": [gondola({ gondolaType: "wall", partes: { division: "participacion" } })] };
+  assert.deepEqual(
+    contratosSinMueble(mural, { "NAVE-GON-01-PC1": vendido(), "NAVE-GON-01-B-PC2": vendido() }).map((x) => x.espacio),
+    ["NAVE-GON-01-B-PC2"]);
+  // Un tipo sin receta de superficie (la nevera de puertas) no se vende así.
+  const nevera = { "NAVE": [mueble("NEV-03", { type: "nevera_puertas", partes: { puertas: 3, division: "participacion" } })] };
+  const r = contratosSinMueble(nevera, { "NAVE-NEV-03-PC1": vendido() });
+  assert.equal(r.length, 1);
+  assert.equal(r[0].code, "NEV-03-PC1", "se nombra por el código corto, con la participación");
+});
+
+prueba("un mueble de antes que ya se llamaba `GON-07-PC1` sigue siendo su cara entera (R1)", () => {
+  // Antes del token `PC` un mueble se podía llamar así. Su contrato es de su
+  // cara entera y lo ofrece el plano por el texto tal cual, como `ofrece` del
+  // servidor y `PlanoIndexado.resolver`: no es la participación 1 de GON-07.
+  const viejo = { "NAVE": [mueble("GON-07-PC1", { type: "gondola", gondolaType: "wall" })] };
+  assert.deepEqual(contratosSinMueble(viejo, { "NAVE-GON-07-PC1": vendido() }), []);
+  // Sin ese mueble en el plano, sí es un fantasma (no hay GON-07 por participación).
+  const sinEl = { "NAVE": [mueble("GON-07", { type: "gondola", gondolaType: "wall" })] };
+  assert.deepEqual(contratosSinMueble(sinEl, { "NAVE-GON-07-PC1": vendido() }).map((x) => x.espacio), ["NAVE-GON-07-PC1"]);
+});
+
+prueba("la participación se cuenta con la sede del mueble, como sus caras", () => {
+  // Un plano copiado de otra tienda dibuja muebles que no son de ésta: la
+  // misma regla que las caras de arriba.
+  const otra = { "NAVE": [mueble("GON-01", { type: "gondola", sede: "POBLADO", partes: { division: "participacion" } })] };
+  assert.deepEqual(contratosSinMueble(otra, { "POBLADO-GON-01-PC1": vendido() }), []);
+  assert.equal(contratosSinMueble(otra, { "NAVE-GON-01-PC1": vendido() }).length, 1);
+  // Un código que ya trae la sede adentro no se prefija dos veces.
+  const conSede = { "NAVE": [mueble("NAVE-GON-01", { type: "gondola", partes: { division: "participacion" } })] };
+  assert.deepEqual(contratosSinMueble(conSede, { "NAVE-GON-01-PC4": vendido() }), []);
+});
+
+prueba("el servidor decide lo mismo: `ofrece`, con las caras por participación de antes y de después", () => {
+  const o = servidor.match(/def ofrece\([\s\S]*?\n    return es_participacion\(p\.parte\) and codigo_de_parte\(p\.base, p\.cara, None\) in caras_pc\n/);
+  assert.ok(o, "no se encontró `ofrece` en layout_lookup.py, o dejó de mirar la cara de la participación");
+  assert.match(o[0], /\n    c = normalizar\(codigo\)\n    if c in ofrecidos:\n        return True\n    p = partir_codigo\(c\)\n/,
+    "`ofrece` dejó de mirar primero el texto tal cual (un mueble de antes que ya se llamaba `GON-07-PC1`)");
+  const g = servidor.match(/def contratos_que_quedarian_sin_mueble[\s\S]*?\n    return sorted\(frases\)/);
+  assert.ok(g, "no se encontró `contratos_que_quedarian_sin_mueble`");
+  assert.match(g[0], /caras_por_participacion\(previas, sede\), caras_por_participacion\(nuevas, sede\)/,
+    "el guardarraíl de contratos vivos no mira las caras por participación");
+  assert.match(g[0], /if not ofrece\(ofrecidos_antes, pc_antes, completo\) or ofrece\(ofrecidos_despues, pc_despues, completo\):/,
+    "el guardarraíl de contratos vivos no decide con `ofrece`");
+});
+
 prueba("el servidor sigue armando el código con la sede", () => {
   const m = espaciosDeServidor();
   assert.match(m[0], /_full_code\(code, str\(fixture\.get\("sede"\) or sede or ""\)\)/,

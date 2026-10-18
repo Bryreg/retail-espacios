@@ -209,8 +209,10 @@ def test_impact_reports_what_would_be_closed(client, admin):
     assert impact["spaces"] == 2
 
     client.delete("/api/layout/NAVE", headers=admin)
+    # `reservas_vivas`: las reservas provisionales de participación que el
+    # archivo cancelaría (tests/test_participaciones_ciclo.py las prueba llenas).
     assert client.get("/api/layout/NAVE/impact", headers=admin).json() == {
-        "spaces": 0, "active_leases": 0,
+        "spaces": 0, "active_leases": 0, "reservas_vivas": 0,
     }
 
 

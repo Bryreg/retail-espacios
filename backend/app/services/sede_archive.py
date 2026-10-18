@@ -17,6 +17,14 @@ visible consequences:
 · the backend KPIs kept summing revenue the app no longer showed anywhere.
 
 Archiving closes the lease, frees the unique code and keeps the row.
+
+**Participaciones de cara** (diseño de participaciones §2.5). Sus reservas
+provisionales no son leases: sin un gancho quedaban vivas sobre espacios
+archivados. En la misma transacción, con los candados de esas caras tomados
+ANTES de tocar nada, las reservas vivas pasan a `reserva_cancelada` y los
+términos de los contratos que el archivo cierra ganan `baja_en`
+(`services/ciclo_participaciones.py`). Y se dice antes: `count_commercial_rows`
+cuenta `reservas_vivas`, que el diálogo de «Borrar sede» muestra.
 """
 
 from datetime import datetime, timezone
@@ -30,6 +38,10 @@ from app.models.models import (
     Space,
     SpaceLease,
     SpaceStatus,
+)
+from app.services.candado import tomar_candados
+from app.services.ciclo_participaciones import (
+    al_archivar_sede, codigos_de_caras_con_terminos, reservas_vivas,
 )
 
 
@@ -84,14 +96,48 @@ def _archive_mount_confirmations(db: Session, sede: str) -> int:
     return len(rows)
 
 
-def archive_sede_spaces(db: Session, sede: str) -> dict:
+def _tomar_candados_de_participaciones(db: Session, sede: str) -> None:
+    """Los candados de las caras de la sede que tienen términos de
+    participación, ANTES de leer lo que se va a cambiar: un alta, una
+    confirmación o una renovación concurrente sobre esa cara espera a que el
+    archivo termine (o el archivo a ella). Con los códigos de ANTES del
+    renombre a ``#id``: la clave del candado sale del código.
+
+    Una sede sin participaciones no toma nada y no relee nada: lo de siempre,
+    igual. Con candados, ``expire_all`` (regla dura del diseño §5.4): lo que se
+    lee después es lo de la base, no lo que la sesión tenía en memoria; el
+    ``flush`` de antes es para no perder lo pendiente de quien llama (el
+    borrado del plano).
+
+    El orden es candado → ``flush`` → ``expire_all``, y no ``flush`` primero:
+    el ``flush`` escribe el ``DELETE`` de la fila del plano, que en Postgres
+    queda trabada hasta el commit. Si eso pasara ANTES del candado, un
+    ``PUT /layout`` de la misma sede que ya tiene el candado de esa cara
+    (`_candados_del_guardado`) y va a escribir esa misma fila esperaría al
+    borrado mientras el borrado espera su candado: un abrazo mortal que
+    Postgres corta con un 500. Con el candado primero, el borrado espera a que
+    el guardado termine y recién ahí toca la fila."""
+    codigos = codigos_de_caras_con_terminos(db, [s.id for s in _spaces_of_sede(db, sede)])
+    if not codigos:
+        return
+    tomar_candados(db, codigos)
+    db.flush()
+    db.expire_all()
+
+
+def archive_sede_spaces(db: Session, sede: str, actor: str | None = None) -> dict:
     """Archive every Space of ``sede``. Flushes but does not commit.
 
     The caller owns the transaction, so the archive lands in the same commit as
     the snapshot deletion: a sede is never half-deleted.
 
+    ``actor`` (correo del token o rol) queda en ``baja_por`` y en el historial
+    de las participaciones que el archivo cancela.
+
     Returns a summary of what was archived.
     """
+    _tomar_candados_de_participaciones(db, sede)
+
     # Before the early return below: a "no pude montar" report never creates a
     # Space row, so a sede can have confirmations to archive and no spaces.
     mounts_archived = _archive_mount_confirmations(db, sede)
@@ -99,7 +145,8 @@ def archive_sede_spaces(db: Session, sede: str) -> dict:
     spaces = _spaces_of_sede(db, sede)
     if not spaces:
         db.flush()
-        return {"spaces": 0, "leases_closed": 0, "mounts_archived": mounts_archived}
+        return {"spaces": 0, "leases_closed": 0, "mounts_archived": mounts_archived,
+                "reservas_canceladas": 0}
 
     already = {
         row.space_id
@@ -110,10 +157,13 @@ def archive_sede_spaces(db: Session, sede: str) -> dict:
 
     archived_count = 0
     closed_count = 0
+    archivados: list[int] = []
+    cerrados: list[SpaceLease] = []
 
     for space in spaces:
         if space.id in already:
             continue
+        archivados.append(space.id)
 
         record = ArchivedSpace(
             space_id=space.id,
@@ -133,6 +183,7 @@ def archive_sede_spaces(db: Session, sede: str) -> dict:
             # The dates and the amount are the contract; they are not rewritten.
             # Only the "this is current" flag changes, and that is now true.
             closed_count += 1
+            cerrados.append(lease)
         space.status = SpaceStatus.free
 
         # Free the unique columns. `code` and `svg_id` are both unique, so
@@ -142,11 +193,13 @@ def archive_sede_spaces(db: Session, sede: str) -> dict:
         space.svg_id = f"{space.svg_id}#{record.id}"
         archived_count += 1
 
+    participaciones = al_archivar_sede(db, sede, archivados, cerrados, actor)
     db.flush()
     return {
         "spaces": archived_count,
         "leases_closed": closed_count,
         "mounts_archived": mounts_archived,
+        "reservas_canceladas": participaciones["reservas_canceladas"],
     }
 
 
@@ -155,7 +208,7 @@ def count_commercial_rows(db: Session, sede: str) -> dict:
     spaces = _spaces_of_sede(db, sede)
     space_ids = [s.id for s in spaces]
     if not space_ids:
-        return {"spaces": 0, "active_leases": 0}
+        return {"spaces": 0, "active_leases": 0, "reservas_vivas": 0}
     archived = {
         row.space_id
         for row in db.query(ArchivedSpace).filter(ArchivedSpace.space_id.in_(space_ids)).all()
@@ -169,4 +222,8 @@ def count_commercial_rows(db: Session, sede: str) -> dict:
         )
         .count()
     )
-    return {"spaces": len(live), "active_leases": active}
+    # Las reservas provisionales de participación que el archivo cancelaría
+    # (las de los mismos espacios que archiva). No son leases: sin esto el
+    # diálogo no las nombraba.
+    return {"spaces": len(live), "active_leases": active,
+            "reservas_vivas": reservas_vivas(db, [s.id for s in live])}

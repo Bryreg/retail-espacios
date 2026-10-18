@@ -177,7 +177,7 @@ export function problemasDeLaFicha(ficha: unknown, { nueva = true }: { nueva?: b
           // (los entrepaños, con la base).
           const clase = clases[v];
           const reglaDelCampo = REGLAS.geometria[clase.campo as CampoDeGeometria];
-          const n = reglaDelCampo?.enPartes ? (objeto(partes) ? partes[clase.campo] : undefined) : ficha[clase.campo];
+          const n = reglaDelCampo?.enPartes ? (objeto(partes) ? partes[clase.campo!] : undefined) : ficha[clase.campo!];
           const base = clase.base ? 1 : 0;
           if (!(numero(n) && Number.isInteger(n) && n + base >= clase.minimo)) {
             no(donde, `para venderla por ${clase.plural}, la ficha dice cuánt${clase.genero === "f" ? "a" : "o"}s `

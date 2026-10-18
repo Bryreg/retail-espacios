@@ -66,6 +66,11 @@ interface ModoVenderProps {
   /** El que se tocó último: es el que decide si hay que explicar que ese mueble
    *  no se alquila. */
   ultimo: UnifiedFixture | null;
+  /** Si lo último que se tocó es una cara POR PARTICIPACIÓN, lo que hay que
+   *  decir (`textoAlTocarEnVender`): tocarla no la suma —se vende en el Editor
+   *  3D → Distribución— y sin esto el toque no decía nada. Viene armado, con
+   *  la ocupación ANÓNIMA: la ficha no lee participaciones. */
+  avisoDeParticipacion?: string | null;
   onQuitar: (fixtureId: string, face: "A" | "B", parte?: string) => void;
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
   /** Vender por partes: prender la entera (`null`) o una parte (`"PU2"`). */
@@ -514,7 +519,7 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
 function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const {
     espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte,
-    onGuardado, onCancelar, onResaltar,
+    onGuardado, onCancelar, onResaltar, avisoDeParticipacion,
   } = props;
   const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte, onGuardado });
   const guardando = c.estado === "guardando";
@@ -732,6 +737,25 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           ))}
           {c.lineas.length === 0 && ultimo && !seVendeAlgo(ultimo) && (
             <NoComercializable fixture={ultimo} />
+          )}
+          {/* Una cara por participación no entra al contrato: se dice dónde se
+              vende, con o sin espacios ya sumados (el contrato queda como
+              estaba). Sin nombres ni montos: lo arma la ocupación anónima. */}
+          {avisoDeParticipacion && (
+            <div
+              data-aviso-participacion
+              role="status"
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 11px", borderRadius: "var(--r-sm)",
+                border: "1px dashed var(--line-strong)", background: "var(--surface-2)",
+              }}
+            >
+              <Lock size={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
+              <span style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
+                {avisoDeParticipacion}
+              </span>
+            </div>
           )}
         </div>
         {/* Un solo renglón de guía, y dice lo que falta AHORA. Antes eran dos

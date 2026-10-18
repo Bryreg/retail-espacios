@@ -48,6 +48,17 @@ comercializable, va siempre en la cara A y su tarifa es la de su clase, sin
 respaldo. Una caja de un plano de antes no tiene ``partes.bahias``: no ofrece
 nada, como siempre.
 
+── La participación ─────────────────────────────────────────────────────────
+
+La PARTICIPACIÓN de una cara (``NAVE-GON-01-PC3``, ``NAVE-GON-01-B-PC1``) es el
+porcentaje de la cara vendido a un proveedor. Es un espacio más, como una
+puerta, pero no es una división física ni una pieza: ``partes_de`` no la
+enumera (sus números los da el servidor y no se reutilizan) y ``division_de``
+da ``None`` para la cara que se vende así. Choca con la cara entera y con una
+división física de su cara, no con otra participación (a ésas las frena la
+regla de capacidad) ni con una pieza. Cuándo una cara se vende por
+participación lo dice ``por_participacion`` de ``layout_lookup``.
+
 El espejo de este módulo en el navegador es ``frontend/src/utils/partes.ts``.
 Los dos corren los casos de ``frontend/scripts/casos/partes.json``
 (``tests/test_partes.py`` y ``scripts/probar-partes.mjs``).
@@ -164,6 +175,13 @@ def es_pieza(parte: Parte | None) -> bool:
     return parte is not None and CLASES_DE_PARTE[parte.clase]["es"] == "pieza"
 
 
+def es_participacion(parte: Parte | None) -> bool:
+    """¿Es una participación de la cara (``GON-01-PC3``: el porcentaje de la
+    cara vendido a un proveedor)? No divide la cara físicamente ni es una
+    pieza. Es ``esParticipacion`` del navegador."""
+    return parte is not None and CLASES_DE_PARTE[parte.clase].get("es") == "participacion"
+
+
 def chocan(a: CodigoPartido, b: CodigoPartido) -> bool:
     """¿Dos espacios no se pueden vender en fechas que se pisan?
 
@@ -175,7 +193,12 @@ def chocan(a: CodigoPartido, b: CodigoPartido) -> bool:
       físicamente (el tramo 2 y el entrepaño 3 comparten una repisa). Un
       mueble se divide de UNA forma, pero una restauración o un script podrían
       haber dejado contratos de las dos;
-    · una pieza no choca con nada más que consigo misma.
+    · una pieza no choca con nada más que consigo misma;
+    · una participación choca con la cara entera y con una división física de
+      su cara, pero no con otra participación de la misma cara —a ésas las
+      frenan la regla de capacidad y las invariantes de término— ni con una
+      pieza. Dos términos de la MISMA participación tienen el mismo código, y
+      el mismo código choca siempre.
 
     Es ESTRUCTURAL: se decide por los códigos, no por cómo está configurado el
     plano hoy. Un contrato de ``PU3`` sigue chocando con la nevera entera
@@ -186,9 +209,15 @@ def chocan(a: CodigoPartido, b: CodigoPartido) -> bool:
         return True
     if a.base != b.base or a.cara != b.cara:
         return False
+    if es_participacion(a.parte) and es_participacion(b.parte):
+        return False
     if a.parte is None:
-        return es_division(b.parte)
+        return es_division(b.parte) or es_participacion(b.parte)
     if b.parte is None:
+        return es_division(a.parte) or es_participacion(a.parte)
+    if es_participacion(a.parte):
+        return es_division(b.parte)
+    if es_participacion(b.parte):
         return es_division(a.parte)
     return es_division(a.parte) and es_division(b.parte) and a.parte.clase != b.parte.clase
 
@@ -227,9 +256,10 @@ def cantidad_de(fixture: dict, clase: str) -> int | None:
     clase. No se recorta ni se adivina: lo que no cierra no se vende por
     partes. Una góndola con 4 entrepaños guardados vende 5: la base (``EN1``)
     y los 4 —los cinco llevan producto—; sin entrepaños guardados no hay
-    cuenta, y se vende entera."""
+    cuenta, y se vende entera. Una clase sin ``campo`` (la participación) no
+    la cuenta el mueble: ``None``."""
     regla = CLASES_DE_PARTE.get(clase)
-    if regla is None or not isinstance(fixture, dict):
+    if regla is None or "campo" not in regla or not isinstance(fixture, dict):
         return None
     v = valor_del_campo(fixture, regla["campo"])
     if not _entero(v):
@@ -307,9 +337,14 @@ def firma_de_partes(fixture: dict) -> dict[str, int | None]:
     mueble se divide de esa forma, ``None`` si no. Con una parte vendida, que
     cambie esto es mover lo vendido (``partes_que_se_moverian``). Las piezas,
     por cuántas hay (las bahías parten la mesa en partes iguales: de 2 a 3, la
-    bahía 1 queda en otro lugar) o, el forro, 1 si lo tiene."""
+    bahía 1 queda en otro lugar) o, el forro, 1 si lo tiene. Sólo las clases
+    con lugar físico (divisiones y piezas): una participación no cae en un
+    lugar fijo del mueble, y la firma de siempre no cambia."""
     div = division_de(fixture)
-    firma = {clase: (div[1] if div and div[0] == clase else None) for clase in CLASES_DE_PARTE}
+    firma = {
+        clase: (div[1] if div and div[0] == clase else None)
+        for clase, regla in CLASES_DE_PARTE.items() if regla.get("es") in ("division", "pieza")
+    }
     for p in piezas_de(fixture):
         firma[p.clase] = max(firma.get(p.clase) or 0, p.n or 1)
     return firma
@@ -413,13 +448,19 @@ def referencia_de_espacio(
     · la cara entera: la del mueble (``tarifa_del_mueble``), ``"cara"``;
     · una división: la de su clase (``parte_puerta``), ``"clase"``, y si está
       vacía, la de la cara dividida por la cantidad de partes, ``"cara/n"``;
-    · una pieza: la de su clase, sin respaldo.
+    · una pieza: la de su clase, sin respaldo;
+    · una participación: ninguna, ``(None, "")``. No tiene referencia propia:
+      compararla con la tarifa de la cara la listaría «75 % por debajo» en
+      «bajo la tarifa», el mismo error que ``tarifaDeLaFila`` del navegador
+      cuenta para las puertas. La de la cara se pide para la cara.
 
     La sede gana sobre la general en cada paso, como siempre.
     """
     tarifa_cara = tarifa_del_mueble(fixture, propios)
     if parte is None:
         return _tarifa(rates, sede, tarifa_cara), "cara"
+    if es_participacion(parte):
+        return None, ""
     regla = CLASES_DE_PARTE[parte.clase]
     propia = _tarifa(rates, sede, regla["tarifa"])
     if propia is not None:
@@ -435,7 +476,8 @@ def referencia_de_espacio(
 
 def termina_reservado(codigo: str) -> bool:
     """¿El nombre termina como el código de una parte o de la cara B?
-    (``GON-01-B``, ``NEV-03-PU2``, ``GON-01-TR2``, ``CAJ-04-FO``). Incluye los
+    (``GON-01-B``, ``NEV-03-PU2``, ``GON-01-TR2``, ``CAJ-04-FO``,
+    ``GON-01-PC1``). Incluye los
     tokens de lo que todavía no se vende, para que mañana ningún mueble se
     llame así."""
     c = normalizar(codigo)

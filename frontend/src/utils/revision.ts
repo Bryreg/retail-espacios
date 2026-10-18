@@ -9,9 +9,10 @@
  * Cada hallazgo trae los ids para poder saltar al mueble.
  */
 
-import { huella, limitesDePlanta, chocaEn, puntoLibreCerca, RADIO_PERSONA, TOLERANCIA_CONTACTO } from "./planta";
+import { huella, limitesDePlanta, chocaEn, puntoLibreCerca, normalDeCara, RADIO_PERSONA, TOLERANCIA_CONTACTO, type Caja } from "./planta";
 import { duplicados, prefijoDesalineado, normalizar, muebleConCodigo } from "./nomenclatura";
 import { fullSpaceCode } from "../types/fixtures";
+import { carasDe } from "../types/espacio";
 import { detectarCorridas, type Corrida } from "./pasillos";
 
 export interface MuebleRevisable {
@@ -21,6 +22,9 @@ export interface MuebleRevisable {
   cx: number; cz: number;
   w: number; d: number; h?: number;
   rotY?: number;
+  /** Para saber si tiene cara B (`carasDe`): una góndola sin el campo es
+   *  doble. El plano 2D no lo necesita: sus tipos ya dicen doble o mural. */
+  gondolaType?: string | null;
 }
 
 export type Clase =
@@ -28,7 +32,8 @@ export type Clase =
   | "prefijo"
   | "encimado"
   | "pasillo-angosto"
-  | "zona-aislada";
+  | "zona-aislada"
+  | "cara-inaccesible";
 
 export interface Hallazgo {
   clase: Clase;
@@ -150,8 +155,88 @@ export function zonasAisladas(
   return { celdas: aisladas, total, punto };
 }
 
+/**
+ * Las caras de un mueble doble que no tienen dónde pararse delante (D17): una
+ * góndola doble arrimada a otra, o a 30 cm, vende una cara B que nadie puede
+ * mirar. Desde el centro de cada cara se mira derecho hacia afuera (la normal
+ * de la cara, `normalDeCara`: la A mira a −z local) y se mide hasta la primera
+ * huella de otro mueble con cuerpo (lo que se pisa, como la zona libre de
+ * 5 cm, no tapa nada) o hasta el borde del plano. Con menos de un hombro de
+ * persona (`HOMBRO`, 0,56 m), avisa.
+ *
+ * `libre` se mide desde el plano de la cara; `vecino` es el código del mueble
+ * que la tapa (`null`: el borde del plano). Las paredes que no están dibujadas
+ * como mueble no cuentan. Sólo avisa: nunca cambia el tipo ni un contrato.
+ */
+export function carasInaccesibles(fixtures: MuebleRevisable[]):
+  { fixtureId: string; cara: "A" | "B"; libre: number; vecino: string | null; vecinoId: string | null }[] {
+  const fuera: { fixtureId: string; cara: "A" | "B"; libre: number; vecino: string | null; vecinoId: string | null }[] = [];
+  if (fixtures.length === 0) return fuera;
+  const enPlanta = fixtures.map((f) => ({ x: f.cx, z: f.cz, w: f.w, d: f.d, rotY: f.rotY }));
+  const lim = limitesDePlanta(enPlanta);
+  const conCajas = fixtures.map((f) => ({ f, caja: caja(f) }));
+  for (const f of fixtures) {
+    if (carasDe(f) !== 2) continue;
+    for (const cara of ["A", "B"] as const) {
+      const n = normalDeCara(f.rotY ?? 0, cara);
+      const o = { x: f.cx + n.x * f.d / 2, z: f.cz + n.z * f.d / 2 };
+      let libre = hastaElBorde(o, n, lim);
+      let vecino: MuebleRevisable | null = null;
+      for (const { f: g, caja: c } of conCajas) {
+        if (g === f || !conCuerpo(g)) continue;
+        const t = hastaLaCaja(o, n, c);
+        if (t !== null && t < libre) { libre = t; vecino = g; }
+      }
+      if (libre < HOMBRO) fuera.push({ fixtureId: f.id, cara, libre, vecino: vecino ? vecino.code : null, vecinoId: vecino ? vecino.id : null });
+    }
+  }
+  return fuera;
+}
+
+/** Cuánto se avanza desde `o` en la dirección `n` hasta salir del plano. */
+function hastaElBorde(o: { x: number; z: number }, n: { x: number; z: number }, lim: Caja): number {
+  let t = Infinity;
+  if (n.x > 1e-12) t = Math.min(t, (lim.maxX - o.x) / n.x);
+  else if (n.x < -1e-12) t = Math.min(t, (lim.minX - o.x) / n.x);
+  if (n.z > 1e-12) t = Math.min(t, (lim.maxZ - o.z) / n.z);
+  else if (n.z < -1e-12) t = Math.min(t, (lim.minZ - o.z) / n.z);
+  return Math.max(0, t);
+}
+
+/** Dónde entra el rayo `o + t·n` (t ≥ 0) en la caja, o null si no la toca.
+ *  Una caja que ya contiene el centro de la cara la tapa desde el vamos: es
+ *  la góndola pegada de espaldas que se mete un centímetro (dentro de la
+ *  tolerancia de contacto, que no es «encimado»). Las huellas no se inflan
+ *  con el cuerpo de la persona, así que un mueble arrimado al costado nunca
+ *  contiene ese centro. */
+function hastaLaCaja(o: { x: number; z: number }, n: { x: number; z: number }, c: Caja): number | null {
+  if (o.x > c.minX && o.x < c.maxX && o.z > c.minZ && o.z < c.maxZ) return 0;
+  let t0 = 0, t1 = Infinity;
+  for (const [p, d, lo, hi] of [[o.x, n.x, c.minX, c.maxX], [o.z, n.z, c.minZ, c.maxZ]] as const) {
+    if (Math.abs(d) < 1e-12) {
+      if (p <= lo || p >= hi) return null;   // corre paralelo, por fuera (rozar el canto no tapa)
+      continue;
+    }
+    let a = (lo - p) / d, b = (hi - p) / d;
+    if (a > b) [a, b] = [b, a];
+    t0 = Math.max(t0, a);
+    t1 = Math.min(t1, b);
+    if (t0 >= t1) return null;
+  }
+  return t0;
+}
+
 const m2 = (v: number) => v.toFixed(2).replace(".", ",");
 const m = (v: number) => v.toFixed(2).replace(".", ",");
+
+/** «Una cara de GON-01 queda a 0,30 m de GON-02: nadie se para a mirarla. Si
+ *  va contra la pared o contra otra, hacela mural.» Lo usa también el panel
+ *  del Editor 3D para el mueble elegido. */
+export function textoDeCaraInaccesible(codigo: string, libre: number, vecino: string | null): string {
+  const donde = vecino ? `de ${vecino}` : "del borde del plano";
+  return `Una cara de ${codigo} queda a ${m(libre)} m ${donde}: nadie se para a mirarla. `
+    + "Si va contra la pared o contra otra, hacela mural.";
+}
 
 /** La revisión completa, ordenada: primero lo que rompe, después lo que avisa. */
 export function revisarPlano(fixtures: MuebleRevisable[]): Hallazgo[] {
@@ -201,6 +286,17 @@ export function revisarPlano(fixtures: MuebleRevisable[]): Hallazgo[] {
         ? `Los pasillos ${h.entre[0]} y ${h.entre[1]} se tocan`
         : `Entre los pasillos ${h.entre[0]} y ${h.entre[1]} quedan ${m(h.hueco)} m` +
           (h.hueco < HOMBRO ? " — no pasa una persona" : " — no pasa un carrito"),
+    });
+  }
+
+  // Una cara doble sin lugar delante para pararse (D17). Nombra al vecino:
+  // «cara B» no es el mismo lado en el 2D, el tablero y el 3D.
+  const porId = new Map(fixtures.map((f) => [f.id, f]));
+  for (const c of carasInaccesibles(fixtures)) {
+    const f = porId.get(c.fixtureId)!;
+    hallazgos.push({
+      clase: "cara-inaccesible", severidad: "aviso", ids: c.vecinoId ? [f.id, c.vecinoId] : [f.id],
+      texto: textoDeCaraInaccesible(f.code, c.libre, c.vecino),
     });
   }
 

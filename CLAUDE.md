@@ -20,4 +20,13 @@ la calcula el servidor: la fusión la pisa antes de que el navegador la vea.
 Los scripts de `backend/scripts/` hacen lo mismo por consola, que en Render es
 plan pago; la lógica es la misma, en `app/services/importar_del_plano.py`.
 
+Si una cara que se vende por participación dice «tomada» (o «queda 0 %») y no
+se ve nada dibujado: lo ocupado lo deciden los términos vivos —contratos y
+reservas provisionales sin caducar—, nunca el dibujo. Se ve en Editor 3D →
+«Distribuir esta cara» (la leyenda dice contratado, dibujado y lo que falta) o
+en la ficha de la cara en Supervisar. Sin participaciones vivas, la ocupa una
+venta entera o por partes, o un contrato `…-PC<n>` sin término, que cuenta como
+la cara entera (Supervisar → «Para revisar» → *Contrato de participación sin
+término*). La cuenta: `fisicos_de` y `revisar_capacidad`, en `app/services/`.
+
 Verificación mínima: `cd frontend && npx tsc --noEmit` · `cd backend && python -c "import app.main"` · `npm install` requiere `--legacy-peer-deps`.

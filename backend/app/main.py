@@ -19,6 +19,7 @@ from app.routers import derechos as derechos_routes
 from app.routers import copia as copia_routes
 from app.routers import suscripcion as suscripcion_routes
 from app.routers import plataforma as plataforma_routes
+from app.routers import participaciones as participaciones_routes
 from app.models.models import Space, SpaceStatus
 from app.services.subidas import LimiteDeCuerpo
 # Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
@@ -26,6 +27,10 @@ from app.services.subidas import LimiteDeCuerpo
 # conozca ANTES de que corra `create_all()` en el lifespan de abajo — si no,
 # `create_all` nunca se entera de que existen.
 from app.models import identidad as identidad_models  # noqa: F401
+# Participaciones de cara (cuatro tablas nuevas en la base del supermercado,
+# sin columnas agregadas a nada existente). Mismo propósito: que `create_all()`
+# del lifespan las conozca.
+from app.models import participaciones as participaciones_models  # noqa: F401
 
 logger = logging.getLogger("retail.main")
 
@@ -452,6 +457,10 @@ app.include_router(catalogo.router,      prefix="/api")
 # Las fichas propias de los muebles de cada supermercado (`cli:<clave>`). Su
 # prefijo es `/muebles` porque `/catalogo` ya es el de las artes.
 app.include_router(muebles.router,       prefix="/api")
+# Participaciones de cara: el porcentaje de una cara vendido a un proveedor y
+# sus zonas (`routers/participaciones.py`). Todo de administrador salvo la
+# ocupación anónima, que leen Vender, Supervisar y el plano.
+app.include_router(participaciones_routes.router, prefix="/api")
 # Quién hizo qué. Sólo la lee el administrador.
 app.include_router(bitacora_routes.router, prefix="/api")
 

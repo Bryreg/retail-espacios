@@ -5,8 +5,10 @@ import type { EstadoPorEspacio } from "./estadoComercial";
 import { geometriaALaVista } from "./geometriaDelMueble";
 import {
   claseDe, codigoDeParte, comoSeVendeLaFicha, concordancia, divisionDe, esDivision, firmaDePartes, partesDe, piezasDe,
-  piezasDeLaFamilia, sufijoDeParte, textoDeComoSeVende,
+  piezasDeLaFamilia, porParticipacion, sufijoDeParte, textoDeComoSeVende,
 } from "./partes";
+import type { OcupacionDeCara } from "./participaciones";
+import { superficieDeCara, tieneSuperficie } from "./superficie";
 
 /**
  * «Cómo se vende» un mueble que se puede vender por partes, en el panel del
@@ -36,13 +38,22 @@ import {
  *    no se queda sin forro. «Aplicar a todas las cajas de la sede» escribe la
  *    misma cantidad en las demás, salta las que tienen una bahía vendida y lo
  *    dice.
+ *  · **Por participación** (participaciones de cara): la cara se reparte
+ *    entre proveedores por porcentaje, con la zona de cada uno dibujada en el
+ *    Editor 3D → Distribución. No es una división física (`divisionDe` da
+ *    `null`): se ofrece en las familias con superficie comercializable
+ *    (`superficie` del catálogo) y sólo si el mueble es comercializable. No
+ *    pasa con espacios internos vendidos vivos, ni deja de venderse así con
+ *    participaciones vivas (contratos o reservas provisionales): el servidor
+ *    frena lo mismo al guardar el plano (`slots_vendidos_en_participacion`,
+ *    `participaciones_vivas`); acá se dice antes, sin nombrar a nadie.
  */
 
 type Mueble = {
-  id: string; code: string; type: string; sede?: string; w: number; h?: number;
+  id: string; code: string; type: string; sede?: string; w: number; h?: number; d?: number;
   gondolaType?: string | null; rentable?: boolean; partes?: PartesDeMueble | null;
   entrepanos?: number | null; modulo?: number | null;
-  slots?: readonly { status: string }[] | null;
+  slots?: readonly { status: string; endDate?: string | null }[] | null;
   /** La ficha con que se colocó (`base:…` de RECABRA o `cli:…` propia). */
   modelo?: string | null;
 };
@@ -58,11 +69,21 @@ export function divisionesDe(tipo: string): string[] {
 /** Las piezas que lleva un mueble de esa familia (vive en `partes.ts`). */
 export { piezasDeLaFamilia };
 
+/** La forma «por participación» del panel (`partes.division`). */
+export const POR_PARTICIPACION = "participacion";
+
+/** Las formas de vender que ofrece el panel para esa familia: sus divisiones
+ *  físicas y, si tiene superficie comercializable, «por participación». */
+export function formasDeVenderDe(tipo: string): string[] {
+  return tieneSuperficie(tipo) ? [...divisionesDe(tipo), POR_PARTICIPACION] : divisionesDe(tipo);
+}
+
 /** ¿El panel «Cómo se vende» tiene algo que decir de esa familia? Las que se
- *  dividen y las que tienen piezas: también la caja y la columna, que no son
- *  comercializables pero venden sus piezas. */
+ *  dividen, las que tienen piezas —también la caja y la columna, que no son
+ *  comercializables pero venden sus piezas— y las que se pueden vender por
+ *  participación (el robatope, la ristra, la cruz, la vitrina, la zona libre). */
 export function vendePorPartes(tipo: string): boolean {
-  return divisionesDe(tipo).length > 0 || piezasDeLaFamilia(tipo).length > 0;
+  return divisionesDe(tipo).length > 0 || piezasDeLaFamilia(tipo).length > 0 || tieneSuperficie(tipo);
 }
 
 /** Lo que el panel dice de un mueble que nunca se alquila (`alquilable:
@@ -198,6 +219,41 @@ function internosVendidos(f: Mueble): number {
   return (f.slots ?? []).filter((s) => s.status === "occupied" || s.status === "reserved").length;
 }
 
+/** Lo que el panel sabe de las participaciones de la sede para revisar un
+ *  cambio: la ocupación ANÓNIMA (por código de cara completo, con la sede del
+ *  plano; sólo intervalos que terminan hoy o después) y el día de hoy (el del
+ *  servidor si la ocupación se leyó). Sin esto se revisa lo que se puede con
+ *  el mapa crudo, y el servidor decide el resto al guardar. */
+export interface DatosDeParticipacion {
+  ocupacion?: Readonly<Record<string, OcupacionDeCara>>;
+  hoy?: string;
+}
+
+/** Los espacios internos vendidos que todavía rigen (sin fin, o con fin hoy
+ *  o después): los que frenan pasar a participación (como
+ *  `slots_vendidos_en_participacion` del servidor). Sin `hoy`, todos. */
+function internosVendidosVivos(f: Mueble, hoy?: string): number {
+  return (f.slots ?? []).filter((s) => (s.status === "occupied" || s.status === "reserved")
+    && (!hoy || !s.endDate || s.endDate >= hoy)).length;
+}
+
+/** La frase si el mueble tiene participaciones vivas (contratos `…-PC<n>`
+ *  vivos o firmados en el mapa crudo, o intervalos de la ocupación anónima
+ *  que terminan hoy o después: ésos incluyen las reservas provisionales, que
+ *  no son contratos); `null` si no se le conoce ninguna. */
+function participacionesVivas(f: Mueble, estado: EstadoPorEspacio, sede: string, p?: DatosDeParticipacion): string | null {
+  const contratos = vendidasDeLaClase(f, estado, sede, claseDe(POR_PARTICIPACION)?.token ?? "PC");
+  const completo = fullSpaceCode(sede, f.code);
+  const caras = [completo, `${completo}-B`];
+  const enLaOcupacion = caras.some((c) => {
+    const o = p?.ocupacion && Object.prototype.hasOwnProperty.call(p.ocupacion, c) ? p.ocupacion[c] : undefined;
+    return !!o && (o.intervalos ?? []).some((i) => !p?.hoy || i.hasta >= p.hoy);
+  });
+  if (contratos.length === 0 && !enLaOcupacion) return null;
+  return `${f.code} tiene participaciones vivas (contratos o reservas provisionales). `
+    + "Cancelalas o dejá que venzan antes de cambiar cómo se vende.";
+}
+
 /** «la puerta vendida quedaría» / «las puertas vendidas quedarían»: con tres
  *  vendidas, el panel decía «Con 3 puertas vendidas (…): la puerta vendida
  *  quedaría en otro lugar». */
@@ -222,8 +278,27 @@ export interface RevisionDePartes {
  * parte. Lo demás, se escribe.
  */
 export function revisarCambioDePartes(
-  f: Mueble, cambio: CambioDePartes, estado: EstadoPorEspacio, sede: string,
+  f: Mueble, cambio: CambioDePartes, estado: EstadoPorEspacio, sede: string, participacion?: DatosDeParticipacion,
 ): RevisionDePartes {
+  // Por participación (§4.4): con participaciones vivas no deja de venderse
+  // así; con espacios internos vendidos vivos no pasa a venderse así.
+  const porParticipacionAntes = porParticipacion(f);
+  const porParticipacionDespues = porParticipacion(conElCambio(f, cambio));
+  if (porParticipacionAntes && !porParticipacionDespues) {
+    const vivas = participacionesVivas(f, estado, sede, participacion);
+    if (vivas) return { bloqueo: vivas, aviso: null };
+  }
+  if (!porParticipacionAntes && porParticipacionDespues) {
+    const internos = internosVendidosVivos(f, participacion?.hoy);
+    if (internos > 0) {
+      return {
+        bloqueo: `${f.code} tiene ${internos === 1 ? "un espacio interno vendido" : `${internos} espacios internos vendidos`}: `
+          + "no pasa a participación hasta que terminen.",
+        aviso: null,
+      };
+    }
+  }
+
   // Las piezas: con una vendida, su clase no cambia de cantidad (las bahías
   // parten la mesa parejo: la «bahía 1» quedaría en otro lugar) ni desaparece
   // (el forro vendido).
@@ -281,6 +356,11 @@ export function revisarCambioDePartes(
         `sin contrato. Los ${clase.plural} se venden igual: revisá que no caigan encima de lo que ya se vendió.`,
     };
   }
+  if (!porParticipacionAntes && porParticipacionDespues && entera) {
+    // Una cara con contrato ENTERO vivo puede pasar: el contrato sigue y la
+    // capacidad da 0 % hasta que termine (§4.4). Se dice antes.
+    return { bloqueo: null, aviso: "Está vendida entera: el contrato sigue, y hasta que termine no queda nada que repartir por participación." };
+  }
   return { bloqueo: null, aviso: null };
 }
 
@@ -295,6 +375,25 @@ export function revisarCambioDePartes(
 export function cambioParaDividir(f: Mueble, clase: string): { cambio: CambioDePartes } | { problema: string } {
   const regla = claseDe(clase);
   if (!regla) return { problema: "Esa forma de vender no existe." };
+  if (clase === POR_PARTICIPACION) {
+    // La cara se reparte por porcentaje: hace falta una superficie que
+    // repartir (la receta de su familia, con estas medidas) y que el mueble
+    // se alquile. La división física que tuviera se reemplaza (una sola
+    // forma de vender a la vez).
+    if (!tieneSuperficie(f.type)) return { problema: "Este mueble no tiene una superficie que se pueda repartir por participación." };
+    if (!superficieDeCara(f, "A")) {
+      return {
+        problema: (CATALOGO_DE_MUEBLES.alias[f.type]?.tipo ?? f.type) === "metro"
+          ? "Sólo la zona libre que se pisa (de menos de 25 cm de alto) se reparte por participación."
+          : "Con estas medidas no queda superficie para repartir por participación.",
+      };
+    }
+    const cambio: CambioDePartes = { division: POR_PARTICIPACION };
+    if (!porParticipacion(conElCambio(f, cambio))) {
+      return { problema: "Este mueble no se alquila: marcalo como comercializable para venderlo por participación." };
+    }
+    return { cambio };
+  }
   if (clase === "puertas") {
     const n = puertasDibujadas(f);
     if (n < regla.minimo) {
@@ -431,7 +530,7 @@ export function loDeLaFicha(f: Mueble): LoDeLaFicha | null {
       if (typeof f.entrepanos !== "number") cambio.entrepanos = m.entrepanos ?? null;
     } else {
       cambio.division = como.division;
-      (cambio as Record<string, unknown>)[regla.campo] = (m.partes as Record<string, unknown>)[regla.campo];
+      (cambio as Record<string, unknown>)[regla.campo!] = (m.partes as Record<string, unknown>)[regla.campo!];
     }
   }
   for (const p of como.piezas) {

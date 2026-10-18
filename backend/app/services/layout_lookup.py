@@ -23,11 +23,11 @@ from sqlalchemy.orm import Session
 from app.models.models import LayoutSnapshot
 from app.services import catalogo_muebles
 from app.services.partes import (
-    CodigoPartido, Parte, chocan, codigo_de_parte, concordancia, division_de, es_division, es_pieza,
-    firma_de_partes, partes_de, partir_codigo, piezas_de, termina_reservado, texto_de_parte,
+    CodigoPartido, Parte, chocan, codigo_de_parte, concordancia, division_de, es_division, es_participacion,
+    es_pieza, firma_de_partes, partes_de, partir_codigo, piezas_de, termina_reservado, texto_de_parte,
 )
 from app.services.catalogo_muebles import (
-    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, PIEZAS_POR_TIPO, tipo_base,
+    CAMPOS_DE_PARTES, CLASES_DE_PARTE, DIVISIONES_POR_TIPO, PIEZAS_POR_TIPO, TIPOS, tipo_base,
 )
 
 
@@ -207,6 +207,44 @@ def caras_de(fixture: dict) -> int:
     return 2 if variante is None or variante == "double" else 1
 
 
+def por_participacion(fixture: dict) -> bool:
+    """¿La cara se vende por participación? Lo dice el mueble
+    (``partes.division == "participacion"``), su tipo tiene receta de
+    superficie (``tipos[t].superficie`` del catálogo) y es comercializable.
+    Una sola forma de dividir: vale para las dos caras de una doble (D5 del
+    diseño de participaciones). Es ``porParticipacion`` del navegador.
+
+    ``division_de`` sigue dando ``None`` para ese mueble —una participación no
+    es una división física— y ``espacios_de`` da sus caras, no sus
+    participaciones: sus números los da el servidor y no tienen tope."""
+    partes = fixture.get("partes") if isinstance(fixture, dict) else None
+    return (
+        isinstance(partes, dict) and partes.get("division") == "participacion"
+        and bool((TIPOS.get(tipo_base(str(fixture.get("type") or ""))) or {}).get("superficie"))
+        and es_comercializable(fixture)
+    )
+
+
+def caras_por_participacion(fixtures: list, sede: str) -> set[str]:
+    """Los códigos COMPLETOS de las caras de los muebles que se venden por
+    participación (``NAVE-GON-01``, ``NAVE-GON-01-B``), armados con la sede del
+    PLANO —nunca con el campo ``sede`` del mueble—, como
+    ``espacios_ofrecidos``. Una participación (``…-PC3``) se ofrece si su cara
+    está acá (``ofrece``). Es ``carasPorParticipacion`` del navegador."""
+    caras: set[str] = set()
+    for f in fixtures or ():
+        if not isinstance(f, dict) or not por_participacion(f):
+            continue
+        code = normalizar(f.get("code"))
+        if not code:
+            continue
+        completo = _full_code(code, normalizar(sede))
+        caras.add(completo)
+        if caras_de(f) == 2:
+            caras.add(f"{completo}-B")
+    return caras
+
+
 #: Lo que contesta ``motivo_para_no_vender``.
 NO_COMERCIALIZABLE = "no_comercializable"
 SIN_CARA_B = "sin_cara_b"
@@ -216,6 +254,9 @@ PARTE_INEXISTENTE = "parte_inexistente"
 #: Un mueble que nunca se vende entero pero tiene piezas a la venta: la caja
 #: con sus bahías de impulso, la columna con su forro. La frase dice cuáles.
 SOLO_SUS_PIEZAS = "solo_sus_piezas"
+#: Una cara que se vende por participación no se vende entera ni por partes
+#: físicas: se carga el porcentaje en el Editor 3D → Distribución.
+POR_PARTICIPACION = "por_participacion"
 
 
 def pide_cara_b_inexistente(fixture: dict, espacio: str) -> bool:
@@ -249,6 +290,11 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
       por tramos colocada desde una ficha, antes de fijarlos en el panel);
     · la caja o la columna enteras: nunca, pero si tienen piezas configuradas
       se dice cuáles se venden (``SOLO_SUS_PIEZAS``);
+    · la cara entera de una cara que se vende por participación
+      (``POR_PARTICIPACION``), o una división física de ella; y una
+      participación (``…-PC3``) de una cara que NO se vende así. La compuerta
+      dice si la participación EXISTE; quién la puede escribir lo dicen los
+      caminos;
     · una pieza que su familia no lleva, que el plano no configuró o con un
       número de más (``CAJ-04-BI3`` en una caja de dos). Una pieza se vende
       aunque el mueble no sea comercializable: es lo único que se vende de él.
@@ -277,6 +323,20 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
             # cómo se pone a la venta lo que sí se vende de ellas.
             return NO_COMERCIALIZABLE, f"{frase} {como_se_venden_sus_piezas(fixture)}"
         return NO_COMERCIALIZABLE, frase
+    if por_participacion(fixture):
+        if parte is None:
+            return POR_PARTICIPACION, (
+                f"«{corto}» se vende por participación: cargá el porcentaje en el Editor 3D → "
+                "Distribución (podés darle el 100 %)."
+            )
+        if not es_participacion(parte):
+            return PARTE_INEXISTENTE, f"«{corto}» se vende por participación: no hay {parte.sufijo}."
+        return None  # una participación de una cara por participación existe
+    if es_participacion(parte):
+        return PARTE_INEXISTENTE, (
+            f"«{corto}» no se vende por participación: elegí «por participación» en «Cómo se vende» "
+            "del Editor 3D."
+        )
     if parte is None:
         return None
     regla = CLASES_DE_PARTE[parte.clase]
@@ -1139,6 +1199,25 @@ def espacios_ofrecidos(fixtures: list[dict], sede: str) -> set[str]:
     return ofrecidos
 
 
+def ofrece(ofrecidos: set[str], caras_pc: set[str], codigo: str) -> bool:
+    """¿El plano pone a la venta este código COMPLETO? Una participación
+    (``NAVE-GON-01-PC3``) no está en ``espacios_ofrecidos`` —sus números no
+    tienen tope—: se ofrece si su cara se vende por participación
+    (``caras_pc``, de ``caras_por_participacion``). Todo lo demás, si está en
+    ``ofrecidos``. Lo usan el guardarraíl de contratos vivos, la auditoría de
+    la pantalla (``utils/auditoriaDesfase.ts``) y ``scripts/auditar_desfase.py``.
+
+    El texto tal cual primero, como ``PlanoIndexado.resolver``: un mueble de
+    antes del token que ya se llamaba ``GON-07-PC1`` (riesgo R1 del diseño;
+    un nombre nuevo así no entra) es su cara entera, y está en ``ofrecidos``.
+    Sin esto, retirarlo del plano dejaba su contrato vivo sin frenar."""
+    c = normalizar(codigo)
+    if c in ofrecidos:
+        return True
+    p = partir_codigo(c)
+    return es_participacion(p.parte) and codigo_de_parte(p.base, p.cara, None) in caras_pc
+
+
 def contratos_que_quedarian_sin_mueble(
     db: Session, sede: str, previas: list[dict], nuevas: list[dict],
 ) -> list[str]:
@@ -1155,11 +1234,17 @@ def contratos_que_quedarian_sin_mueble(
     La plata no entra en las frases. Para decidir alcanza con el proveedor y
     hasta cuándo va; el valor no ayuda a nadie a elegir y es un dato menos
     viajando.
+
+    Una participación (``GON-01-PC3``) queda perdida si su cara se vendía por
+    participación antes de este guardado y deja de venderse así (``ofrece``):
+    sacar la división, cambiar el tipo, marcarlo no comercializable, borrar el
+    mueble o pasar la doble a mural.
     """
     if not previas:
         return []
-    perdidos = espacios_ofrecidos(previas, sede) - espacios_ofrecidos(nuevas, sede)
-    if not perdidos:
+    ofrecidos_antes, ofrecidos_despues = espacios_ofrecidos(previas, sede), espacios_ofrecidos(nuevas, sede)
+    pc_antes, pc_despues = caras_por_participacion(previas, sede), caras_por_participacion(nuevas, sede)
+    if not (ofrecidos_antes - ofrecidos_despues) and not (pc_antes - pc_despues):
         return []
 
     from app.fechas import hoy as hoy_en_colombia
@@ -1182,7 +1267,7 @@ def contratos_que_quedarian_sin_mueble(
         # Por la forma completa: una fila guardada sin la sede (`NEV-03-PU3`)
         # es el mismo espacio que el plano ofrece como `NAVE-NEV-03-PU3`.
         completo = _full_code(sin_prefijo_de_sede(normalizar(space.code), sede), sede)
-        if completo not in perdidos:
+        if not ofrece(ofrecidos_antes, pc_antes, completo) or ofrece(ofrecidos_despues, pc_despues, completo):
             continue
         # Se nombra por el código CORTO: es el que está en el plano y en la
         # cartelería de la tienda, y es el que la persona acaba de tocar.
@@ -1219,6 +1304,12 @@ def forma_canonica(db: Session, sede: str, codigo: str) -> str | None:
     se vende por partes: ahí no se exige nada, como siempre (un espacio
     sembrado sin sede, una cara de un mueble que se vende entero).
 
+    Una cara que se vende por participación, o que tiene participaciones
+    (filas ``…-PC<n>`` de esa cara en ``spaces``, aunque ya no se venda así),
+    también exige la forma completa: ``GON-01`` y ``NAVE-GON-01`` dan claves de
+    candado distintas (``candado.clave_de_candado``), y el contrato de la cara
+    entera tiene que tomar la misma que sus participaciones.
+
     Para qué: la regla «entera o por partes, nunca las dos» compara CÓDIGOS
     (``contratos_que_chocan``). El contrato suelto aceptaba ``NEV-03-PU2`` sin
     sede, o con un espacio adelante, porque la compuerta resuelve el mueble por
@@ -1233,10 +1324,40 @@ def forma_canonica(db: Session, sede: str, codigo: str) -> str | None:
         if r is None:
             continue
         f = r.fixture
-        if r.parte is not None or partes_de(f, caras_de(f), es_comercializable(f)):
+        if r.parte is not None or partes_de(f, caras_de(f), es_comercializable(f)) or por_participacion(f) \
+                or _tiene_participaciones(db, s, r.codigo):
             return r.codigo
         return None
     return None
+
+
+def _tiene_participaciones(db: Session, sede: str, cara: str) -> bool:
+    """¿Hay alguna fila de ``spaces`` que sea una participación de esa cara
+    (``NAVE-GON-01-PC3`` de ``NAVE-GON-01``; también la forma corta de esa
+    sede y la archivada, ``…-PC3#12``)? Una sola consulta por prefijo. Una
+    participación se crea con su fila y no se borra nunca, así que esto ve
+    toda cara que tuvo términos de participación."""
+    from sqlalchemy import func, or_
+    from app.models.models import Space
+
+    cara = normalizar(cara)
+    s = normalizar(sede)
+    formas = {cara} | ({sin_prefijo_de_sede(cara, s)} if s else set())
+    guardado = func.upper(func.trim(Space.code))
+    filas = (
+        db.query(Space.code, Space.sede)
+        .filter(or_(*[guardado.like(f"{_escapar_like(c)}-PC%", escape="\\") for c in sorted(formas)]))
+        .all()
+    )
+    for code, sede_fila in filas:
+        bruto = normalizar(code).split("#", 1)[0]
+        # La forma corta es de ESTA sede sólo si su fila lo dice (o no dice ninguna).
+        if s and not bruto.startswith(f"{s}-") and normalizar(sede_fila) not in ("", s):
+            continue
+        p = partir_codigo(_full_code(sin_prefijo_de_sede(bruto, s), s) if s else bruto)
+        if es_participacion(p.parte) and codigo_de_parte(p.base, p.cara, None) == cara:
+            return True
+    return False
 
 
 def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int | None = None,
@@ -1406,7 +1527,9 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
         # Por la forma completa: una parte guardada sin la sede (`NEV-03-PU1`,
         # de antes de que el contrato suelto la exigiera) también se mueve.
         mueble = _full_code(sin_prefijo_de_sede(p.base, sede), sede)
-        if p.parte is None or mueble not in cambiadas:
+        # Una participación no tiene un lugar físico que moverse: si su cara
+        # deja de venderse así, la frena `contratos_que_quedarian_sin_mueble`.
+        if p.parte is None or es_participacion(p.parte) or mueble not in cambiadas:
             continue
         fa, fd = cambiadas[mueble]
         n_antes, n_despues = fa.get(p.parte.clase), fd.get(p.parte.clase)

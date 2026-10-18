@@ -3063,6 +3063,8 @@ function lienzoFalso() {
     // Las formas de la etiqueta del relleno de venta: se anotan como un
     // relleno más.
     beginPath() {}, ellipse() {}, arc() {}, fill() { this.rects.push({ color: this.fillStyle, forma: true }); },
+    // Las rayas del rayado de las zonas de Distribución (sólo trazos).
+    moveTo() {}, lineTo() {}, stroke() {},
     createLinearGradient: () => ({ addColorStop() {} }), createRadialGradient: () => ({ addColorStop() {} }),
     getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
     putImageData() {},
@@ -6115,6 +6117,994 @@ prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del edi
   assert.ok(!/export function fixturesToStore\(/.test(editorCodigo), "`fixturesToStore` se exporta: el visor podría escribir el plano");
   // Vive en `utils/convertirPlano.ts`; el editor la usa, pero no la reexporta.
   assert.ok(!/export\s*\{[^}]*\bfixturesToStore\b/.test(editorCodigo), "`fixturesToStore` se reexporta desde el editor");
+});
+
+// ── Distribución: la escena, el modo y el mueble desnudo (paso 6a) ──────────
+//
+// Participaciones de cara (§9.2, §9.5, §9.6 y §10 del diseño). Las guardas
+// fijadas de arriba siguen tal cual: lo nuevo entra como PREFIJO de sus
+// secuencias o fuera de ellas, y acá se exige que esté. Lo que se puede, se
+// CORRE: la condición única con cada modo, el oyente del teclado con teclas
+// falsas, el freno de la cámara con los controles de three, las zonas armadas
+// con el React mínimo (dónde caen, que no roban el clic) y el color por
+// ocupación con las reglas de verdad.
+
+console.log("\nmuebles · Distribución (participaciones de cara)");
+
+/** Un componente de React mínimo para correr las zonas: react, R3F y drei de
+ *  mentira (Html no dibuja nada); three, el de verdad. */
+const conReactYDrei = async (contents) => {
+  const r = await build({
+    stdin: { contents, resolveDir: join(raiz, muebles), loader: "ts" },
+    bundle: true, write: false, format: "esm", platform: "node", jsx: "automatic", logLevel: "silent",
+    plugins: [{
+      name: "react-minimo-con-drei",
+      setup(b) {
+        b.onResolve({ filter: /^(react(\/jsx-runtime)?|@react-three\/fiber|@react-three\/drei)$/ }, (a) => ({ path: a.path, namespace: "rm" }));
+        b.onLoad({ filter: /.*/, namespace: "rm" }, (a) => ({
+          contents: a.path === "react"
+            ? "export const memo = (f) => f; export const useMemo = (f) => f(); export const useEffect = () => {};" +
+              "export const useCallback = (f) => f; export const createContext = (v) => ({ v }); export const useContext = (c) => c.v;" +
+              "export const useState = (v) => [typeof v === \"function\" ? v() : v, () => {}]; export const useRef = (v) => ({ current: v });"
+            : a.path === "@react-three/fiber"
+              ? "export const useThree = () => ({ invalidate() {} }); export const useFrame = () => {};"
+              : a.path === "@react-three/drei"
+                ? "export const Html = () => null;"
+                : "export const jsx = (type, props) => ({ type, props }); export const jsxs = jsx; export const Fragment = 'frag';",
+          loader: "js",
+        }));
+      },
+    }],
+  });
+  return import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+};
+const ZD = await conReactYDrei(`
+  export { ZonasDelMueble, geometriaDeRelleno, geometriaDeCinta, zonasValidas, DISTANCIA_MAXIMA_M, REPETICIONES_POR_METRO, CINTA_M } from "./ZonasDelMueble";
+  export { DesnudoDelMueble } from "./desnudo";
+  export { ProductoEnGondola } from "./ProductoEnGondola";
+  export { ProductoEnPunta } from "./ProductoEnPunta";
+  export { ProductoAGranel } from "./ProductoAGranel";
+  export { superficieDeCara } from "../../../utils/superficie";
+  export { transformDeCara, puntoDeLaCara } from "../../../utils/zonas3d";
+  export { trapecios } from "../../../utils/zonasGeometria";
+`);
+
+/** Las mallas de un árbol con su matriz en el marco del mueble y sus props
+ *  (raycast, userData, renderOrder), compuestas grupo por grupo. */
+function mallasConProps(el, padre = new THREE_.Matrix4(), fuera = []) {
+  if (el == null || typeof el !== "object") return fuera;
+  if (Array.isArray(el)) { el.forEach((x) => mallasConProps(x, padre, fuera)); return fuera; }
+  if (typeof el.type === "function") return mallasConProps(el.type(el.props), padre, fuera);
+  let m = padre;
+  if (el.type === "group" || el.type === "mesh") {
+    const p = el.props.position ?? [0, 0, 0], r = el.props.rotation ?? [0, 0, 0];
+    m = padre.clone().multiply(new THREE_.Matrix4().compose(
+      new THREE_.Vector3(...p), new THREE_.Quaternion().setFromEuler(new THREE_.Euler(...r)), new THREE_.Vector3(1, 1, 1)));
+  }
+  if (el.type === "group" && el.props.userData) fuera.push({ grupo: true, userData: el.props.userData });
+  if (el.type === "mesh") fuera.push({ props: el.props, matriz: m });
+  mallasConProps(el.props?.children, m, fuera);
+  return fuera;
+}
+const caraDe = (sup, cara, zonas, editada = true) => ({ cara, superficie: sup, editada, zonas, historia: [] });
+const ESTAMPA = { indice: 0, tono: "#1A67C2", textura: "rayado45" };
+const comoSeVe = (extra = {}) => ({ estampa: ESTAMPA, reserva: false, cuenta: true, rotulo: "1 · 50 %", ...extra });
+
+prueba("las zonas van pegadas a su cara, con la fórmula u,v de los gemelos (el robatope, en el marco girado de sus repisas)", () => {
+  const casos = [
+    { f: { type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, cara: "A" },
+    { f: { type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, cara: "B" },
+    { f: { type: "robatope", w: 0.3, d: 0.4, h: 1.6 }, cara: "A" },
+    { f: { type: "metro", w: 1, d: 1, h: 0.05 }, cara: "A" },
+  ];
+  for (const { f, cara } of casos) {
+    const sup = ZD.superficieDeCara(f, cara);
+    assert.ok(sup, `${f.type}: sin superficie`);
+    const zona = { clave: "z1", spaceId: 7, vertices: [[0.1, 0.1], [0.6, 0.1], [0.6, 0.7], [0.1, 0.7]] };
+    const arbol = ZD.ZonasDelMueble({ caras: [caraDe(sup, cara, [zona])], participaciones: new Map([[7, comoSeVe()]]), resaltada: null, seleccionada: null });
+    const mallas = mallasConProps(arbol).filter((x) => !x.grupo);
+    assert.ok(mallas.length >= 2, `${f.type}·${cara}: no se dibujó relleno y cinta`);
+    const relleno = mallas.find((x) => x.props.renderOrder === 2);
+    assert.ok(relleno, `${f.type}·${cara}: falta el relleno`);
+    // Cada vértice del relleno, llevado al marco del mueble por los grupos que
+    // arma el componente, cae en el punto (u, v) de la cara que dice
+    // `puntoDeLaCara` (la misma cuenta del rayo y de los gemelos), y dentro
+    // de la zona.
+    const pos = relleno.props.geometry.getAttribute("position");
+    assert.ok(pos.count >= 4, `${f.type}·${cara}: el relleno está vacío`);
+    for (let i = 0; i < pos.count; i++) {
+      const sx = pos.getX(i), sy = pos.getY(i);
+      const [u, vv] = sup.orientacion === "arriba"
+        ? [0.5 - sx / sup.ancho, 0.5 - sy / sup.alto] : [sx / sup.ancho + 0.5, sy / sup.alto];
+      assert.ok(u >= 0.1 - 1e-6 && u <= 0.6 + 1e-6 && vv >= 0.1 - 1e-6 && vv <= 0.7 + 1e-6, `${f.type}·${cara}: el relleno sale de la zona (${u}, ${vv})`);
+      const v = new THREE_.Vector3(sx, sy, pos.getZ(i)).applyMatrix4(relleno.matriz);
+      const [x, y, z] = ZD.puntoDeLaCara(sup, cara, u, vv);
+      assert.ok(Math.hypot(v.x - x, v.y - y, v.z - z) < 1e-5, `${f.type}·${cara}: el relleno no cae donde la fórmula u,v dice`);
+    }
+    // La cara visible mira hacia quien mira esa cara (FrontSide): la normal
+    // de cada triángulo, en el marco del mueble.
+    const esperada = sup.orientacion === "arriba" ? new THREE_.Vector3(0, 1, 0) : new THREE_.Vector3(0, 0, cara === "A" ? -1 : 1);
+    if (sup.giroX) esperada.applyAxisAngle(new THREE_.Vector3(1, 0, 0), sup.giroX);
+    const idx = relleno.props.geometry.index;
+    for (let t = 0; t < idx.count; t += 3) {
+      const [a, b, c] = [0, 1, 2].map((k) => new THREE_.Vector3(pos.getX(idx.getX(t + k)), pos.getY(idx.getX(t + k)), pos.getZ(idx.getX(t + k))).applyMatrix4(relleno.matriz));
+      const n = new THREE_.Vector3().subVectors(b, a).cross(new THREE_.Vector3().subVectors(c, a));
+      if (n.length() < 1e-12) continue;
+      assert.ok(n.normalize().dot(esperada) > 0.99, `${f.type}·${cara}: un triángulo del relleno da la espalda a quien mira`);
+    }
+  }
+});
+
+prueba("las zonas no roban el clic, no salen en las capturas y no pelean por la profundidad", () => {
+  const sup = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "A");
+  const zonas = [
+    { clave: "z1", spaceId: 7, vertices: [[0.1, 0.1], [0.5, 0.1], [0.5, 0.5], [0.1, 0.5]] },
+    { clave: "z2", spaceId: 8, vertices: [[0.6, 0.1], [0.9, 0.1], [0.9, 0.5]] },
+  ];
+  const otra = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "B");
+  const arbol = ZD.ZonasDelMueble({
+    caras: [caraDe(sup, "A", zonas), { ...caraDe(otra, "B", [{ clave: "o1", spaceId: 9, vertices: [[0.2, 0.2], [0.4, 0.2], [0.4, 0.4]] }], false), historia: [[[0, 0], [0.1, 0], [0.1, 0.1]]] }],
+    participaciones: new Map([[7, comoSeVe()], [8, comoSeVe({ reserva: true })], [9, comoSeVe()]]),
+    resaltada: 7, seleccionada: "z1",
+  });
+  const todo = mallasConProps(arbol);
+  assert.ok(todo.some((x) => x.grupo && x.userData?.chrome), "el grupo de las zonas no va marcado `chrome` (saldría en la lámina)");
+  const mallas = todo.filter((x) => !x.grupo);
+  assert.ok(mallas.length >= 7, `se dibujaron ${mallas.length} mallas`);
+  for (const m of mallas) {
+    assert.equal(typeof m.props.raycast, "function", "una malla de zonas recibe el raycast de three: le roba el clic al volumen del mueble");
+    assert.equal(m.props.raycast(), null, "una malla de zonas responde al raycast");
+    assert.equal(m.props.userData?.chrome, true, "una malla de zonas sale en las capturas");
+    const mat = m.props.material;
+    assert.equal(mat.polygonOffset, true, "sin polygonOffset: z-fighting contra el frente del mueble");
+    assert.ok(mat.polygonOffsetFactor <= -1 && mat.polygonOffsetUnits <= -4, "el polygonOffset no alcanza a 80 m");
+    assert.equal(mat.side, THREE_.FrontSide, "la zona se ve de espaldas, a través del mueble");
+    assert.ok(m.props.renderOrder >= 2, "las zonas se dibujan antes que el mueble");
+  }
+  // Un relleno por participación que cuenta (dos en la A, una en la B), sin
+  // escribir profundidad; una cinta por zona y por zona de historia.
+  const rellenosSinProfundidad = mallas.filter((m) => m.props.material.depthWrite === false);
+  assert.equal(rellenosSinProfundidad.length, 3, "un relleno escribe profundidad (tapa lo que va detrás) o falta uno");
+  assert.equal(mallas.length - rellenosSinProfundidad.length, 4, "falta la cinta de una zona o de la historia");
+  // La cara que no se edita va a la mitad; la resaltada, más llena que las demás.
+  const rellenos = mallas.filter((m) => m.props.material.depthWrite === false);
+  const opac = rellenos.map((m) => m.props.material.opacity);
+  assert.ok(Math.max(...opac) > Math.min(...opac) * 2, "lo resaltado no se distingue");
+  // El rayado: 25 repeticiones por metro (4 cm en cualquier mueble).
+  assert.equal(ZD.REPETICIONES_POR_METRO, 25);
+  assert.equal(ZD.DISTANCIA_MAXIMA_M, 40, "las zonas se dibujan a cualquier distancia (o a otra)");
+  const z = sinComentarios(leer(join(muebles, "ZonasDelMueble.tsx")));
+  assert.ok(!/store\//.test(z), "las zonas leen un store: `Scene` y sus hijas no leen stores");
+  assert.match(z, /g\.visible = camera\.position\.distanceTo\(donde\) <= DISTANCIA_MAXIMA_M;/, "lejos se siguen dibujando");
+  assert.match(z, /tex\.repeat\.set\(REPETICIONES_POR_METRO, REPETICIONES_POR_METRO\)/);
+  assert.match(z, /export function olvidarTexturasDeZonas\(\): void \{\s*for \(const t of texturas\.values\(\)\) t\.dispose\(\);/);
+  assert.match(editorCodigo, /useEffect\(\(\) => olvidarTexturasDeZonas, \[\]\);/, "las texturas del rayado quedan en la GPU al salir del editor");
+});
+
+prueba("la letra de la cara de atrás se esconde cuando el mueble la tapa (el `Html` no sabe de profundidad)", () => {
+  // Verificación del paso 6a: «la letra de la cara de atrás (A o B) se ve a
+  // través del mueble». La cuenta (`letraTapada`, contra un rayo de three) la
+  // prueba `probar-superficies`; acá, que la escena la use en cada cuadro, con
+  // la cámara en el marco del mueble, y que esconda sin volver a dibujar.
+  const z = sinComentarios(leer(join(muebles, "ZonasDelMueble.tsx")));
+  const i = z.indexOf("useFrame(() => {");
+  assert.ok(i >= 0, "no está el useFrame de las zonas");
+  const cuadro = z.slice(i, z.indexOf("\n  });", i));
+  assert.match(cuadro, /g\.worldToLocal\(camaraLocal\.copy\(camera\.position\)\)/, "la cámara no se pasa al marco del mueble");
+  assert.match(cuadro, /const tapada = letraTapada\(c\.superficie, cam, letraDeCara\(c\.superficie, c\.cara\)\);/);
+  assert.match(cuadro, /el\.style\.visibility = visibilidad;/, "la letra tapada no se esconde");
+  assert.ok(cuadro.indexOf("g.visible = camera.position.distanceTo(donde) <= DISTANCIA_MAXIMA_M;") < cuadro.indexOf("letraTapada("),
+    "la letra se cuenta antes de saber si las zonas están lo bastante cerca para verse");
+  assert.match(z, /<div ref=\{\(el\) => \{ letras\.current\[c\.cara\] = el; \}\} data-letra-de-cara=\{c\.cara\}/, "la letra no queda a mano para esconderla");
+});
+
+prueba("el relleno pinta la unión sin lo que no se vende, y la cinta no dispara picos", () => {
+  const sup = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "A");
+  // Dos zonas de la misma participación que se pisan: el relleno es la unión
+  // (cada punto una vez) y no cae sobre zócalo, parantes ni copete.
+  const P = [[[0.05, 0], [0.6, 0], [0.6, 1], [0.05, 1]], [[0.4, 0.2], [0.95, 0.2], [0.95, 0.8], [0.4, 0.8]]];
+  const g = ZD.geometriaDeRelleno(sup, "A", ZD.trapecios(ZD.zonasValidas(sup, P), sup.exclusiones));
+  const pos = g.getAttribute("position"), idx = g.index;
+  let area = 0;
+  for (let t = 0; t < idx.count; t += 3) {
+    const [a, b, c] = [0, 1, 2].map((k) => [pos.getX(idx.getX(t + k)), pos.getY(idx.getX(t + k))]);
+    area += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2;
+  }
+  let esperada = 0;
+  for (const q of ZD.trapecios(ZD.zonasValidas(sup, P), sup.exclusiones)) {
+    for (let i = 0; i < 4; i++) { const a = q[i], b = q[(i + 1) % 4]; esperada += (a[0] * b[1] - b[0] * a[1]) / 2; }
+  }
+  esperada *= sup.ancho * sup.alto;
+  // (Las posiciones van en Float32: 1e-6 relativo.)
+  assert.ok(Math.abs(area - esperada) < 1e-6 * esperada, `el relleno mide ${area} m² y la unión útil ${esperada}`);
+  assert.ok(area < (0.9 * 1) * sup.ancho * sup.alto, "el relleno cuenta dos veces lo que se pisa, o pinta lo que no se vende");
+  // Una zona finísima: la cinta continua no se aleja más de 2× su ancho de los vértices.
+  const fina = [[0.1, 0.1], [0.9, 0.1], [0.1, 0.1004]];
+  const c = ZD.geometriaDeCinta(sup, "A", fina, ZD.CINTA_M, "continua");
+  const cp = c.getAttribute("position");
+  const q = fina.map(([u, v]) => [(u - 0.5) * sup.ancho, v * sup.alto]);
+  for (let i = 0; i < cp.count; i++) {
+    const d = Math.min(...q.map(([x, y]) => Math.hypot(cp.getX(i) - x, cp.getY(i) - y)));
+    assert.ok(d <= 2 * ZD.CINTA_M + 1e-9, `la cinta dispara un pico de ${d.toFixed(4)} m en una zona fina`);
+  }
+  // La discontinua (reserva) tiene huecos: más pedazos que lados.
+  const caja = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]];
+  const cont = ZD.geometriaDeCinta(sup, "A", caja, ZD.CINTA_M, "continua").index.count / 6;
+  const disc = ZD.geometriaDeCinta(sup, "A", caja, ZD.CINTA_M, "discontinua").index.count / 6;
+  assert.equal(cont, 4);
+  assert.ok(disc > 8, "la reserva no se dibuja discontinua");
+});
+
+prueba("el mueble desnudo: sin patrón, sin envases y sin foto, y entrar al modo no cambia el orden de los hooks", () => {
+  // Corridos con el React mínimo: con `DesnudoDelMueble` en true no dibujan
+  // nada; en false, lo de siempre.
+  const correr = (desnudo, fn) => { ZD.DesnudoDelMueble.v = desnudo; try { return fn(); } finally { ZD.DesnudoDelMueble.v = false; } };
+  const gon = (d) => correr(d, () => ZD.ProductoEnGondola({ w: 2.5, d: 0.9, h: 1.8, esMural: false, vendidoEntero: { rubro: "Lácteos", hondo: false } }));
+  assert.ok(gon(false), "la góndola vestida no dibuja su relleno");
+  assert.equal(gon(true), null, "la góndola desnuda dibuja el relleno de lo vendido entero");
+  const pun = (d) => correr(d, () => ZD.ProductoEnPunta({ w: 0.9, d: 0.4, h: 1.8, vendidoEntero: { rubro: "Lácteos", hondo: false } }));
+  assert.ok(pun(false));
+  assert.equal(pun(true), null, "la punta desnuda dibuja su relleno");
+  const gra = (d) => correr(d, () => ZD.ProductoAGranel({ ancho: 1, fondo: 0.8, y: 0.5, altoLibre: 0.3, rubro: "Frutas", semilla: "b1" }));
+  assert.ok(gra(false), "la batea vestida quedó vacía");
+  assert.equal(gra(true), null, "el granel se dibuja desnudo");
+  // El `return null` va DESPUÉS de todos los hooks (el mismo mueble entra y
+  // sale del modo sin remontarse: un return antes de un hook rompe React).
+  for (const a of ["ProductoEnGondola.tsx", "ProductoEnPunta.tsx", "ProductoAGranel.tsx", "ProductoDePrueba.tsx"]) {
+    const t = sinComentarios(leer(join(muebles, a)));
+    const i = t.indexOf("export const Producto");
+    const cuerpo = t.slice(i, t.indexOf("\n});", i));
+    assert.match(cuerpo, /const desnudo = useContext\(DesnudoDelMueble\);/, `${a} no mira si el mueble va desnudo`);
+    const corte = cuerpo.search(/if \((?:[^)]*\|\| )?desnudo|if \(desnudo/);
+    assert.ok(corte > 0, `${a} no corta cuando el mueble va desnudo`);
+    assert.ok(!/\buse[A-Z]\w*\(/.test(cuerpo.slice(corte)), `${a}: hay un hook después del corte del mueble desnudo`);
+  }
+  // La escena: el proveedor del contexto SIEMPRE montado (el mueble no se
+  // remonta), y el mueble que se distribuye, sin rubro, sin slots y sin foto.
+  assert.match(cuerpoEscena, /<DesnudoDelMueble\.Provider value=\{enDistribucion\}>\s*<FixtureMesh\s+fixture=\{paraPintar\.get\(fix\.id\) \?\? fix\}/);
+  assert.match(cuerpoEscena, /facePaint=\{enDistribucion \? null : \(facePaintById\.get\(fix\.id\) \?\? null\)\}/, "el mueble que se distribuye sigue con la foto o la prueba");
+  assert.match(cuerpoEscena, /if \(fix\.id === idEnDistribucion\) m\.set\(fix\.id, \{ \.\.\.fix, brandCategory: "", slots: \[\] \}\);/, "el mueble que se distribuye no va desnudo");
+  assert.match(cuerpoEscena, /else if \(fix\.slots\?\.length && porParticipacion\(fix\)\) m\.set\(fix\.id, \{ \.\.\.fix, slots: \[\] \}\);/,
+    "un mueble por participación sigue mostrando paneles «libres»");
+});
+
+prueba("una sola condición para el modo, corrida con cada modo que lo excluye", () => {
+  const i = editorCodigo.indexOf("function distribucionALaVista(");
+  const j = editorCodigo.indexOf("\n}\n", i);
+  assert.ok(i > 0 && j > i, "no se encontró `distribucionALaVista`");
+  const f = new Function(`${esbuildTransform(editorCodigo.slice(i, j + 2))}\nreturn distribucionALaVista;`)();
+  const activa = { cliente: "super", sede: "NAVE", fixtureId: "g1", codigo: "GON-01", cara: "A" };
+  const base = { activa, cliente: "super", sede: "NAVE", muebleEnElPlano: true, presentationMode: false, privadoPara: undefined,
+    soloVenta: false, firstPerson: false, enReunion: false, colocando: false };
+  assert.equal(f(base), true);
+  for (const [k, v] of [["activa", null], ["cliente", "otro"], ["sede", "CENTRO"], ["muebleEnElPlano", false], ["presentationMode", true],
+    ["privadoPara", null], ["privadoPara", 12], ["soloVenta", true], ["firstPerson", true], ["enReunion", true], ["colocando", true]]) {
+    assert.equal(f({ ...base, [k]: v }), false, `con ${k} = ${JSON.stringify(v)} se sigue viendo la distribución`);
+  }
+  // Calculada UNA vez y de ella dependen el panel, el lienzo y la capa de la escena.
+  assert.equal((editorCodigo.match(/const distribucionVisible = /g) || []).length, 1, "la condición se calcula más de una vez");
+  assert.match(editorCodigo, /const distribucionVisible = distribucionALaVista\(\{[^}]*presentationMode, privadoPara, soloVenta: false, firstPerson, enReunion, colocando: placingDef !== null,\s*\}\);/);
+  const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
+  const escena = enEditor.match(/<Scene\b[^]*?\/>/)[0];
+  assert.match(escena, /distribucion=\{distribucionVisible \? propsDeDistribucion : undefined\}/, "la escena recibe la capa sin la condición única");
+  assert.match(enEditor, /\{distribucionVisible && distribucionActiva && \(\s*<div data-distribucion[^>]*>\s*<React\.Suspense fallback=\{<div [^>]*\/>\}>\s*<LienzoDeZonas /, "el lienzo se monta sin la condición");
+  assert.match(enEditor, /\{distribucionVisible && distribucionActiva \? \(\s*<React\.Suspense fallback=\{<div [^>]*\/>\}>\s*<PanelDeDistribucion fixtureId=\{distribucionActiva\.fixtureId\} sede=\{distribucionActiva\.sede\} onEncuadrarCara=\{encuadrarCara\} \/>/,
+    "el panel se monta sin la condición (o no reemplaza al comercial)");
+  assert.match(editorCodigo, /const PanelDeDistribucion = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/PanelDeDistribucion"\)\);/, "el panel no es perezoso");
+  assert.match(editorCodigo, /const LienzoDeZonas = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/LienzoDeZonas"\)\);/, "el lienzo no es perezoso");
+  // Si deja de cumplirse con una cara activa, el store sale forzado; también al desmontar.
+  assert.match(enEditor, /if \(distribucionActiva && !distribucionVisible\) void useDistribucionStore\.getState\(\)\.salir\(\{ forzado: true \}\);/);
+  // Al desmontar (cambiar de pestaña) sale forzado; con `StrictMode` (que
+  // desmonta y vuelve a montar al nacer) no corta la entrada que el mismo
+  // montaje pidió. Ejecutado: el efecto de verdad, con un store y una cola de
+  // microtareas de mentira.
+  const iDesm = editor.indexOf("useEffect(() => {\n    editoresMontados += 1;");
+  const jDesm = editor.indexOf("}, []);", iDesm);
+  assert.ok(iDesm > 0 && jDesm > iDesm, "cambiar de pestaña deja la distribución activa (y dibujada) sin autoguardar");
+  assert.match(editorCodigo, /^let editoresMontados = 0;$/m, "el contador de editores montados no vive afuera del componente");
+  const efectoDesm = new Function("useDistribucionStore", "queueMicrotask",
+    `let editoresMontados = 0;\n${esbuildTransform(`const efecto = ${editor.slice(iDesm + "useEffect(".length, jDesm + 1)};`)}\nreturn efecto;`);
+  let activaDesm = null, salidas = 0;
+  const storeDesm = { getState: () => ({ activa: activaDesm, salir: async (o) => { assert.deepEqual(o, { forzado: true }); salidas++; activaDesm = null; } }) };
+  const cola = [];
+  const efecto = efectoDesm(storeDesm, (f) => cola.push(f));
+  const limpiar1 = efecto();
+  activaDesm = { fixtureId: "g1" };                    // el montaje pidió entrar (Supervisar → «Abrir en Distribución»)
+  limpiar1(); const limpiar2 = efecto();               // StrictMode: desmonta y vuelve a montar
+  cola.splice(0).forEach((f) => f());
+  assert.equal(salidas, 0, "con StrictMode, la salida al desmontar corta la entrada que pidió el mismo montaje");
+  limpiar2();                                          // ahora sí, cambio de pestaña
+  cola.splice(0).forEach((f) => f());
+  assert.equal(salidas, 1, "cambiar de pestaña deja la distribución activa (y dibujada) sin autoguardar");
+  assert.equal(activaDesm, null);
+  // Con el modo abierto: ni Presentar, ni la lámina, ni la caminata, ni la paleta.
+  assert.match(enEditor, /onClick=\{\(\) => setFirstPerson\(p => !p\)\} disabled=\{distribucionVisible\}/);
+  assert.match(enEditor, /onClick=\{exportarPropuesta\} disabled=\{exportando \|\| distribucionVisible\}/);
+  assert.match(enEditor, /onClick=\{alternarPresentar\}\s*disabled=\{distribucionVisible && !presentationMode\}/);
+  assert.match(enEditor, /\$\{presentationMode \|\| distribucionVisible \? 'hidden' : ''\}/, "la paleta se ve en Distribución (R de rectángulo chocaba con R de girar)");
+  // La escena repite la condición por defensa.
+  assert.match(cuerpoEscena, /const enModoDistribucion = distribucion !== undefined && !presentationMode && privadoPara === undefined\s*&& !soloVenta && !firstPerson \? distribucion : undefined;/);
+  // `Scene` no lee ningún store (le llega todo por la prop).
+  const sceneFn = editorCodigo.slice(editorCodigo.indexOf("export function Scene({"), editorCodigo.indexOf("export function storeToFixtures("));
+  assert.ok(!/useDistribucionStore|useOcupacionStore/.test(sceneFn), "`Scene` lee un store de participaciones");
+});
+
+prueba("el puntero en Distribución: sin arrastre ni gizmo ni caja, clic contra arrastre, y los vecinos no se comen el clic", () => {
+  // Prefijos: las secuencias fijadas de arriba siguen pasando.
+  assert.match(cuerpoEscena, /\{!enDistribucion && fix\.id===selectedId && !selectedSlotId && !presentationMode && <SelectionBox/, "la caja de selección sale en Distribución");
+  assert.match(cuerpoEscena, /\{!enDistribucionDelMueble\(selectedId\) && selectedId && !placingDef && !firstPerson && !presentationMode && \(\(\) => \{/,
+    "el gizmo de mover sale en Distribución (un giro de cámara que empezaba en la flecha corría la góndola)");
+  assert.match(cuerpoEscena, /if \(firstPerson\) return;\s*if \(enModoDistribucion\) \{ e\.stopPropagation\(\); return; \}\s*e\.stopPropagation\(\);\s*onSelectFixture\(fix\.id\);/,
+    "en Distribución un arrastre sobre el mueble lo corre");
+  assert.match(cuerpoEscena, /const vecinoEnDistribucion = enModoDistribucion !== undefined && !enDistribucion;/);
+  assert.match(cuerpoEscena, /\{\.\.\.\(vecinoEnDistribucion \? \{ raycast: \(\) => null \} : \{\}\)\}/, "los vecinos se comen el clic (o `raycast={undefined}` pisa el de Mesh)");
+  // El clic: sólo si el puntero se movió ≤ 4 px, con un rayo contra el plano en el marco del mueble.
+  assert.match(cuerpoEscena, /if \(enDistribucion && enModoDistribucion && e\.delta <= UMBRAL_CLIC_PX\) \{/, "girar la cámara dibuja (o elige)");
+  assert.match(cuerpoEscena, /const inversa = grupo\.matrixWorld\.clone\(\)\.invert\(\);/);
+  assert.match(cuerpoEscena, /e\.ray\.direction\.clone\(\)\.transformDirection\(inversa\)/);
+  assert.match(cuerpoEscena, /if \(r\) enModoDistribucion\.onTocar\(r\.cara, r\.u, r\.v\);/);
+  // Las zonas, hijas del grupo del mueble, después del volumen de toque.
+  const i = cuerpoEscena.indexOf("position={[0, fix.h/2, hasSlots ? 0.03 : 0]}");
+  const j = cuerpoEscena.indexOf("{enDistribucion && enModoDistribucion?.zonas}", i);
+  const k = cuerpoEscena.indexOf("</group>", i);
+  assert.ok(i > 0 && j > i && j < k, "las zonas no van adentro del grupo del mueble, después del volumen de toque");
+  // El piso, el cartel y el fantasma no hacen nada mientras dura el modo.
+  const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
+  assert.match(enEditor, /function onFloorClick\(x:number, z:number\)\{\s*if \(distribucionVisible\) return;/, "el clic en el piso suelta el mueble en Distribución");
+  assert.match(enEditor, /const onFloorMove = useCallback\(\(x:number, z:number\) => \{\s*if \(distribucionVisibleRef\.current\) return;/);
+  assert.match(enEditor, /const onHoverFixture = useCallback\(\(id: string\|null, x: number, y: number\) => \{\s*if \(distribucionVisibleRef\.current\) return;/);
+});
+
+prueba("el teclado en Distribución: el atajo global no borra ni gira el mueble, Esc no saca del modo, lo demás pasa (ejecutado)", () => {
+  const i = editor.indexOf("function enCaptura(e: KeyboardEvent) {");
+  const j = editor.indexOf("window.addEventListener(\"keydown\", enCaptura, { capture: true });", i);
+  assert.ok(i > 0 && j > i, "no se encontró el oyente del teclado de Distribución (en captura)");
+  const fuente = esbuildTransform(editor.slice(i, j));
+  const correr = (ev, { dialogo = false } = {}) => {
+    let cortada = false;
+    const doc = { querySelector: () => (dialogo ? {} : null) };
+    const delEditor = new Set(["Delete", "Backspace", "r", "R", "f", "F", "Escape"]);
+    const enCaptura = new Function("document", "delEditor", `${fuente}\nreturn enCaptura;`)(doc, delEditor);
+    const target = ev.target ?? { tagName: "BODY", closest: () => null, isContentEditable: false };
+    enCaptura({ ctrlKey: false, metaKey: false, shiftKey: false, ...ev, target, stopPropagation() { cortada = true; } });
+    return cortada;
+  };
+  for (const key of ["Delete", "Backspace", "r", "R", "f", "F", "Escape"]) assert.ok(correr({ key }), `«${key}» le llega al atajo global: toca el mueble que se distribuye`);
+  assert.ok(correr({ key: "z", ctrlKey: true }), "Ctrl+Z deshace el PLANO en plena distribución");
+  assert.ok(correr({ key: "y", metaKey: true }), "⌘+Y rehace el plano en plena distribución");
+  for (const key of ["w", "a", "s", "d", "p", "v", "g", "Enter", "Tab", "ArrowLeft", "0"]) assert.ok(!correr({ key }), `«${key}» se corta: mata los onKeyDown de React`);
+  const input = { tagName: "INPUT", closest: () => null, isContentEditable: false };
+  assert.ok(!correr({ key: "Backspace", target: input }), "no se puede borrar escribiendo en un campo");
+  assert.ok(!correr({ key: "Escape" }, { dialogo: true }), "con un diálogo abierto, Esc no le llega al diálogo");
+  const enDialogo = { tagName: "BUTTON", closest: (s) => (s.includes("dialog") ? {} : null), isContentEditable: false };
+  assert.ok(!correr({ key: "Escape", target: enDialogo }));
+  // Con un diálogo abierto, Esc es suyo, pero lo demás se corta igual: el
+  // atajo global no mira diálogos, y Supr con el foco en un botón del diálogo
+  // borraba del plano el mueble que se distribuye (visto en el navegador).
+  for (const key of ["Delete", "Backspace", "r", "F"]) {
+    assert.ok(correr({ key }, { dialogo: true }), `con un diálogo abierto, «${key}» le llega al atajo global: toca el mueble debajo del diálogo`);
+    assert.ok(correr({ key, target: enDialogo }), `con el foco en un diálogo, «${key}» le llega al atajo global`);
+  }
+  assert.ok(correr({ key: "z", ctrlKey: true }, { dialogo: true }), "con un diálogo abierto, Ctrl+Z deshace el PLANO");
+  assert.ok(!correr({ key: "w" }, { dialogo: true }), "con un diálogo abierto se cortan teclas que no son del editor");
+  // El efecto: en captura, sólo con el modo a la vista; el atajo global, intacto.
+  assert.match(editorCodigo, /const TECLAS_DEL_EDITOR = \["Delete", "Backspace", "r", "R", "f", "F", "Escape"\] as const;/);
+  assert.match(editorCodigo, /window\.removeEventListener\("keydown", enCaptura, \{ capture: true \}\);\s*\}, \[distribucionVisible\]\);/);
+  assert.match(editorCodigo, /\},\[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson,soltarPruebasDe\]\);/, "se tocó el atajo global");
+});
+
+const compiladoDibujo = await build({
+  stdin: {
+    contents: [
+      'export { estampasDeLaCara } from "./src/utils/coloresDeMarca.ts";',
+      'export { cuentaElDia, cuentaEseDia, pct, vivo } from "./src/utils/participaciones.ts";',
+    ].join("\n"),
+    resolveDir: raiz, loader: "ts",
+  },
+  bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+});
+const DB = await import("data:text/javascript;base64," + Buffer.from(compiladoDibujo.outputFiles[0].text).toString("base64"));
+
+prueba("lo que se dibuja en el 3D sale de la cara leída: la reserva discontinua, lo que no rige sin relleno, la historia en gris y la otra cara a la mitad (ejecutado)", () => {
+  // Las funciones de verdad del editor, del store (`capaQueSeMuestra`,
+  // `zonasEditables`) y del cliente (`terminoDeOut`, `superficieDeOut`),
+  // sacadas de su fuente: sin React ni red.
+  const tramo = (txt, desde, hasta) => {
+    const i = txt.indexOf(desde), j = txt.indexOf(hasta, i);
+    assert.ok(i >= 0 && j > i, `no se encontró ${desde}`);
+    return txt.slice(i, j).replace(/^export /gm, "");
+  };
+  const store = sinComentarios(leer(join("src", "store", "distribucionStore.ts")));
+  const api = sinComentarios(leer(join("src", "api", "participaciones.ts")));
+  const fuente = [
+    tramo(store, "export function capaQueSeMuestra(", "export function planoAlDia("),
+    tramo(api, "export function terminoDeOut(", "export function terminosPorParticipacion("),
+    tramo(api, "export function superficieDeOut(", "export function espacioDeLaCara("),
+    tramo(editorCodigo, "function comoSeVenLasParticipaciones(", "function ZonasDeLaDistribucion("),
+  ].map(esbuildTransform).join("\n");
+  const { comoSeVenLasParticipaciones, carasParaDibujar } = new Function(
+    "estampasDeLaCara", "cuentaElDia", "cuentaEseDia", "pct", "vivo",
+    `${fuente}\nreturn { comoSeVenLasParticipaciones, carasParaDibujar };`,
+  )(DB.estampasDeLaCara, DB.cuentaElDia, DB.cuentaEseDia, DB.pct, DB.vivo);
+  const hoy = "2026-10-17";
+  const sup = { orientacion: "frente", ancho: 2.5, alto: 1.5, plano: 0.46, giro_x: 0, exclusiones: [], area_util_m2: 3.75 };
+  const termino = (id, sid, estado, prov, pb, desde, hasta, extra = {}) => ({
+    id, space_id: sid, numero: sid, estado, puntos_basicos: pb, proveedor: { id: prov, nombre: `P${prov}` }, marca: null,
+    desde, hasta, caduca: estado === "reserva" ? "2026-10-30" : null, baja_fecha: null,
+    estado_visible: estado === "reserva" ? "reserva" : "vigente", lease_id: estado === "contrato" ? id : null, ...extra,
+  });
+  const part = (sid, numero, viva, pb, terminos) => ({ space_id: sid, numero, viva, contratado_pb: pb, terminos });
+  const zona = (id, sid, v) => ({ id, participacion_space_id: sid, vertices: v });
+  const caja = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+  const A = {
+    hoy, cara: "A", fixture: { id: "g1", code: "GON-01", label: "GON-01", type: "gondola", caras: 2 }, superficie: sup,
+    participaciones: [
+      part(11, 1, true, 3000, [termino(1, 11, "contrato", 7, 3000, "2026-10-01", "2026-12-31")]),
+      part(12, 2, true, 2500, [termino(2, 12, "reserva", 8, 2500, "2026-10-01", "2026-11-30")]),
+      part(13, 3, true, 2000, [termino(3, 13, "contrato", 9, 2000, "2026-12-01", "2027-01-31")]),
+      part(14, 4, false, 1000, [termino(4, 14, "contrato", 5, 1000, "2026-01-01", "2026-06-30", { estado_visible: "vencido" })]),
+    ],
+    distribucion: { version: 3, borrador: null, confirmada: [zona(1, 11, caja(0, 0, 0.3, 1)), zona(2, 14, caja(0.8, 0, 1, 0.5))] },
+  };
+  const B = { ...A, cara: "B",
+    participaciones: [part(21, 1, true, 5000, [termino(5, 21, "contrato", 7, 5000, "2026-10-01", "2026-12-31")])],
+    distribucion: { version: 1, borrador: null, confirmada: [zona(9, 21, caja(0.5, 0, 1, 1))] } };
+  const vistos = comoSeVenLasParticipaciones(A, hoy);
+  assert.deepEqual([...vistos.keys()].sort(), [11, 12, 13], "la historia (o una viva) entra mal en lo que se dibuja");
+  assert.equal(vistos.get(11).reserva, false);
+  assert.equal(vistos.get(12).reserva, true, "una reserva provisional no sale con la cinta discontinua");
+  assert.equal(vistos.get(11).cuenta, true);
+  assert.equal(vistos.get(13).cuenta, false, "una participación que empieza en diciembre se pinta llena hoy");
+  assert.equal(comoSeVenLasParticipaciones(A, "2026-12-15").get(13).cuenta, true, "«Ver al día» no mueve lo que cuenta");
+  assert.equal(vistos.get(11).rotulo, `1 · ${DB.pct(3000)}`);
+  assert.ok(!/P7|\$/.test([...vistos.values()].map((v) => v.rotulo).join(" ")), "el rótulo del 3D nombra al proveedor o un monto");
+  assert.deepEqual(comoSeVenLasParticipaciones(B, hoy).get(21).estampa, vistos.get(11).estampa,
+    "el mismo proveedor sale con otra estampa en la otra cara (y en la leyenda)");
+  // Las caras: la que se edita, con lo de la edición y la historia en gris; la otra, sólo lectura.
+  const enEdicion = [{ clave: "n1", participacionSpaceId: 11, vertices: caja(0, 0, 0.4, 1) }];
+  const caras = carasParaDibujar(A, enEdicion, B);
+  assert.equal(caras.length, 2);
+  assert.deepEqual(caras.map((c) => [c.cara, c.editada]), [["A", true], ["B", false]]);
+  assert.deepEqual(caras[0].zonas, [{ clave: "n1", spaceId: 11, vertices: caja(0, 0, 0.4, 1) }], "el 3D no dibuja lo que se está editando");
+  assert.deepEqual(caras[0].historia, [caja(0.8, 0, 1, 0.5)], "la zona de una participación terminada no sale en gris");
+  assert.deepEqual(caras[1].zonas.map((z) => z.spaceId), [21]);
+  assert.equal(caras[1].superficie.giroX, 0);
+  assert.equal(carasParaDibujar(A, enEdicion, { ...B, fixture: { ...B.fixture, id: "otro" } }).length, 1, "se dibuja la cara de OTRO mueble");
+  assert.equal(carasParaDibujar(A, enEdicion, A).length, 1, "la cara que se edita se dibuja dos veces");
+  assert.deepEqual(carasParaDibujar({ ...A, superficie: null }, enEdicion, B), [], "sin superficie se dibuja igual");
+  // En la escena: la otra cara a la mitad, y lo que no cuenta ese día sin relleno y punteado.
+  const supA = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "A");
+  const supB = ZD.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "B");
+  const z1 = { clave: "z1", spaceId: 7, vertices: caja(0.1, 0.1, 0.4, 0.4) };
+  const z2 = { clave: "z2", spaceId: 8, vertices: caja(0.5, 0.1, 0.9, 0.4) };
+  const mallas = mallasConProps(ZD.ZonasDelMueble({
+    caras: [caraDe(supA, "A", [z1, z2]), caraDe(supB, "B", [{ ...z1, clave: "o1", spaceId: 9 }], false)],
+    participaciones: new Map([[7, comoSeVe()], [8, comoSeVe({ cuenta: false })], [9, comoSeVe()]]),
+    resaltada: null, seleccionada: null,
+  })).filter((x) => !x.grupo);
+  const rellenos = mallas.filter((m) => m.props.material.depthWrite === false);
+  const ladoB = (m) => new THREE_.Vector3(m.props.geometry.getAttribute("position").getX(0), m.props.geometry.getAttribute("position").getY(0), 0)
+    .applyMatrix4(m.matriz).z > 0;
+  assert.equal(rellenos.length, 2, "una participación que no cuenta ese día se pinta con relleno");
+  const [rA, rB] = [rellenos.find((m) => !ladoB(m)), rellenos.find(ladoB)];
+  assert.ok(rA && rB);
+  assert.ok(Math.abs(rB.props.material.opacity - rA.props.material.opacity / 2) < 1e-9, "la cara que no se edita no va a la mitad");
+  const cintaNoCuenta = mallas.find((m) => m.props.material.depthWrite !== false && !ladoB(m)
+    && m.props.geometry.index.count / 6 > 4);
+  assert.ok(cintaNoCuenta, "lo que no cuenta ese día no sale con la cinta punteada");
+});
+
+const { OrbitControls: OrbitaDeThree } = await import("three/examples/jsm/controls/OrbitControls.js");
+// `PL` (de más arriba) es `utils/planta.ts` compilado: de ahí sale `frenarMira`.
+
+prueba("la cámara no pasa por debajo del piso: el freno corre con los controles de three, antes del que guarda la cámara", () => {
+  const camara = cuerpoDe("function CameraControls({", "function ScreenshotCapture(");
+  assert.ok(!/screenSpacePanning = false/.test(camara), "se apagó el paneo vertical (no hay cómo subir a mirar un copete)");
+  const iFreno = camara.indexOf("ctrl.addEventListener('change', frenar);");
+  const iListo = camara.indexOf("onReady?.(ctrl)");
+  assert.ok(iFreno > 0 && iListo > iFreno, "el freno no va antes del oyente que guarda la cámara");
+  assert.match(camara, /ctrl\.removeEventListener\('change', frenar\);/, "el freno queda colgado al desmontar");
+  assert.match(cuerpoEscena, /const sana = sanearOrbita\(\{ position: \{ x: posX, y: posY, z: posZ \}, target: \{ x: targetX, y: targetY, z: targetZ \} \}\);/,
+    "la cámara guardada bajo el piso vuelve tal cual");
+  // Ejecutado: los controles de three de verdad, con un lienzo de mentira, el
+  // freno del editor y después un oyente que «guarda» la cámara.
+  const i = editor.indexOf("const frenar = () => {");
+  const j = editor.indexOf("ctrl.addEventListener('change', frenar);", i);
+  const fuente = esbuildTransform(editor.slice(i, j));
+  const nada = { addEventListener() {}, removeEventListener() {} };
+  const lienzo = { ...nada, style: {}, clientWidth: 1200, clientHeight: 800, getRootNode: () => nada, ownerDocument: nada };
+  const camera = new THREE_.PerspectiveCamera(50, 1.5, 0.1, 500);
+  camera.position.set(0, 2, 6);
+  const ctrl = new OrbitaDeThree(camera, lienzo);
+  ctrl.target.set(0, 0.4, 0);
+  ctrl.maxPolarAngle = Math.PI / 2.1;
+  ctrl.update();
+  const frenar = new Function("ctrl", "camera", "frenarMira", `${fuente}\nreturn frenar;`)(ctrl, camera, PL.frenarMira);
+  ctrl.addEventListener("change", frenar);
+  let guardada = null;
+  ctrl.addEventListener("change", () => { guardada = { t: ctrl.target.clone(), p: camera.position.clone() }; });
+  for (let k = 0; k < 12; k++) { ctrl._pan(0, -300); ctrl.update(); }   // paneo hacia abajo, en espacio de pantalla
+  assert.ok(ctrl.target.y >= -1e-9, `la mira quedó bajo el piso (${ctrl.target.y.toFixed(3)})`);
+  assert.ok(camera.position.y > ctrl.target.y, "la cámara quedó bajo la mira");
+  assert.ok(guardada && guardada.t.y >= -1e-9, "el oyente que guarda la cámara vio la mira bajo el piso (va antes que el freno)");
+  // Sin el freno, la misma secuencia la mandaba abajo (la prueba prueba algo).
+  const cam2 = new THREE_.PerspectiveCamera(50, 1.5, 0.1, 500);
+  cam2.position.set(0, 2, 6);
+  const sin = new OrbitaDeThree(cam2, lienzo);
+  sin.target.set(0, 0.4, 0); sin.maxPolarAngle = Math.PI / 2.1; sin.update();
+  for (let k = 0; k < 12; k++) { sin._pan(0, -300); sin.update(); }
+  assert.ok(sin.target.y < -0.1, "sin el freno la mira no bajaba: la prueba no prueba nada");
+});
+
+const compiladoReglas = await build({
+  stdin: {
+    contents: [
+      'export { dispoPorParticipacion } from "./src/utils/participaciones.ts";',
+      'export { porParticipacion, rotuloPorOcupacion, PALABRA_POR_OCUPACION, notaDeEstadoPorOcupacion } from "./src/utils/partes.ts";',
+      'export { carasDe, fullSpaceCode } from "./src/types/espacio.ts";',
+      'export { formasDeVenderDe, vendePorPartes, cambioParaDividir, revisarCambioDePartes, POR_PARTICIPACION } from "./src/utils/partesDelMueble.ts";',
+    ].join("\n"),
+    resolveDir: raiz, loader: "ts",
+  },
+  bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+});
+const RG = await import("data:text/javascript;base64," + Buffer.from(compiladoReglas.outputFiles[0].text).toString("base64"));
+
+prueba("el color de estado de una cara por participación sale de la ocupación: lo contratado no se ve libre (ejecutado)", () => {
+  assert.match(editorCodigo, /const sc = neutro\s*\? COLOR_NEUTRO\s*: colorDeEstado \?\? \(isRentable\(fixture\)/, "`FixtureMesh` no pinta el color por ocupación (o Presentar lo pinta)");
+  assert.match(cuerpoEscena, /colorDeEstado=\{coloresDeEstado\?\.get\(fix\.id\)\}/);
+  const i = editorCodigo.indexOf("function ocupacionDelMueble(");
+  const j = editorCodigo.indexOf("function textoDeOcupacion(", i);
+  assert.ok(i > 0 && j > i, "no se encontró la cuenta del color por ocupación");
+  const STATUS_COLORS = { free: "verde", occupied: "rojo", reserved: "ambar" };
+  const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
+    reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
+  const { ocupacionDelMueble, coloresPorOcupacion, estadoQueSeVe } = new Function(
+    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META", "PALABRA_POR_OCUPACION",
+    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { ocupacionDelMueble, coloresPorOcupacion, estadoQueSeVe };`,
+  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, STATUS_COLORS, STATUS_META, RG.PALABRA_POR_OCUPACION);
+  const hoy = "2026-10-17";
+  const rob = (id, code) => ({ id, code, type: "robatope", w: 0.3, d: 0.4, h: 1.6, partes: { division: "participacion" } });
+  const muebles = [rob("r1", "ROB-01"), rob("r2", "ROB-02"), rob("r3", "ROB-03"),
+    { id: "g", code: "GON-01", type: "gondola", gondolaType: "double", w: 2.5, d: 0.9, h: 1.8, partes: { division: "participacion" } },
+    { id: "x", code: "ROB-09", type: "robatope", w: 0.3, d: 0.4, h: 1.6 }];
+  const intervalo = (pb) => ({ desde: "2026-10-01", hasta: "2026-12-31", pb });
+  const o = { sede: "NAVE", hoy, caras: {
+    "NAVE-ROB-01": { intervalos: [intervalo(6000), intervalo(4000)], fisicos: [] },
+    "NAVE-ROB-02": { intervalos: [intervalo(2500)], fisicos: [] },
+    "NAVE-ROB-03": { intervalos: [], fisicos: [] },
+    "NAVE-GON-01": { intervalos: [], fisicos: [{ desde: "2026-10-01", hasta: "2026-12-31" }] },
+    "NAVE-GON-01-B": { intervalos: [], fisicos: [] },
+    "NAVE-ROB-09": { intervalos: [intervalo(10000)], fisicos: [] },
+  } };
+  const c = coloresPorOcupacion(muebles, o, "NAVE");
+  assert.equal(c.get("r1"), "rojo", "cuatro participaciones que suman 100 % se ven libres");
+  assert.equal(c.get("r2"), "ambar", "una cara con 25 % comprometido se ve libre");
+  assert.equal(c.has("r3"), false, "una cara sin nada comprometido cambia de color");
+  assert.equal(c.get("g"), "ambar", "una doble con una cara tomada y la otra libre no avisa");
+  assert.equal(c.has("x"), false, "un mueble que no se vende por participación se pinta por la ocupación");
+  assert.equal(coloresPorOcupacion(muebles, undefined, "NAVE").size, 0);
+  assert.deepEqual(ocupacionDelMueble(muebles[1], o, "NAVE"), [{ cara: "A", dispo: "parcial", quedaPb: 7500 }]);
+  // El cartel de estado (el del mouse y el del panel) dice lo mismo que la
+  // banda: lo contratado no dice «Disponible» (pedido §6).
+  const visto = (m) => estadoQueSeVe(STATUS_META.free, ocupacionDelMueble(m, o, "NAVE"));
+  assert.equal(visto(muebles[0]).label, "Tomada", "un robatope con su cara repartida al 100 % dice «Disponible» (o «Ocupado», que el plano y Supervisar no dicen)");
+  assert.equal(visto(muebles[0]).bg, STATUS_META.occupied.bg);
+  assert.equal(visto(muebles[1]).label, "Parcial", "una cara con 25 % comprometido dice «Disponible»");
+  assert.equal(visto(muebles[1]).bg, STATUS_META.reserved.bg);
+  assert.equal(visto(muebles[3]).label, "Parcial", "una doble con una cara tomada y la otra libre dice «Disponible»");
+  assert.equal(visto(muebles[2]), STATUS_META.free, "una cara sin nada comprometido cambia de cartel");
+  assert.equal(visto(muebles[4]), STATUS_META.free, "un mueble que no se vende por participación cambia de cartel");
+  assert.match(editorCodigo, /const ocupacionHover = ocupacionDelMueble\(fix, ocupacionDeLaSede, sede\);\s*const sm = estadoQueSeVe\(STATUS_META\[fix\.status\], ocupacionHover\);/,
+    "el cartel del mouse dice «Disponible» sobre lo contratado");
+  const panelCartel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+  assert.match(panelCartel, /const sm {2}= estadoQueSeVe\(STATUS_META\[fix\.status\], ocupacionDelMueble\(fix, ocupacionDelPanel, sedeDelPanel\)\);/,
+    "el cartel del panel dice «Disponible» sobre lo contratado");
+  // El cartel del mouse: anónimo.
+  assert.match(editorCodigo, /\{ocupacionHover && <p className="mt-0\.5 text-\[10px\] text-dark-ink-2" data-ocupacion-participacion>\{textoDeOcupacion\(ocupacionHover\)\}<\/p>\}/);
+  assert.match(editorCodigo, /return `Por participación · queda \$\{/);
+});
+
+// Recorrido final (2026-10-17): sobre una cara por participación la pastilla
+// del panel del 3D decía «Ocupado» donde el plano y Supervisar decían
+// «Tomada», y «Estado fixture» decía «Disponible» sin la nota que el plano
+// agrega. La palabra y la nota salen ahora de `utils/partes.ts`, una sola vez.
+prueba("el Editor 3D dice de una cara por participación la MISMA palabra que el plano 2D («Tomada», «Parcial») y «Estado fixture» lleva la misma nota (ejecutado)", () => {
+  const i = editorCodigo.indexOf("function ocupacionDelMueble(");
+  const j = editorCodigo.indexOf("function textoDeOcupacion(", i);
+  const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
+    reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
+  const { estadoQueSeVe } = new Function(
+    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META", "PALABRA_POR_OCUPACION",
+    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { estadoQueSeVe };`,
+  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, {}, STATUS_META, RG.PALABRA_POR_OCUPACION);
+  // La palabra del 3D es la de la ficha del plano para la misma ocupación.
+  const tomada = estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "tomado" }]);
+  const parcial = estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "parcial" }]);
+  assert.equal(tomada.label, RG.rotuloPorOcupacion("free", { dispo: "tomado" }), `el 3D dice «${tomada.label}» y el plano «${RG.rotuloPorOcupacion("free", { dispo: "tomado" })}»`);
+  assert.equal(parcial.label, RG.rotuloPorOcupacion("free", { dispo: "parcial" }));
+  assert.deepEqual([tomada.label, parcial.label], ["Tomada", "Parcial"]);
+  // El color sigue siendo el de la banda (rojo / ámbar), y la palabra de la base no cambia.
+  assert.deepEqual([tomada.bg, tomada.text, parcial.bg, parcial.text], ["bg-r", "t-r", "bg-a", "t-a"]);
+  assert.equal(STATUS_META.occupied.label, "Ocupado", "la prueba cambió la tabla de estados");
+  // Una doble con las dos caras tomadas: «Tomada»; con una sola, «Parcial».
+  assert.equal(estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "tomado" }, { cara: "B", dispo: "tomado" }]).label, "Tomada");
+  assert.equal(estadoQueSeVe(STATUS_META.free, [{ cara: "A", dispo: "tomado" }, { cara: "B", dispo: "libre" }]).label, "Parcial");
+  // Nada escrito a mano en el 3D: la palabra es la de `utils/partes.ts`.
+  const fn = editorCodigo.slice(editorCodigo.indexOf("function estadoQueSeVe("), editorCodigo.indexOf("function textoDeOcupacion("));
+  assert.match(fn, /return \{ \.\.\.STATUS_META\.occupied, label: PALABRA_POR_OCUPACION\.tomado \};/);
+  assert.match(fn, /return \{ \.\.\.STATUS_META\.reserved, label: PALABRA_POR_OCUPACION\.parcial \};/);
+  assert.ok(!/return STATUS_META\.occupied;|"Tomada"|"Parcial"/.test(fn), "el 3D escribe la palabra a mano (o vuelve a «Ocupado»)");
+
+  // La nota de «Estado fixture»: la misma frase que el selector del plano.
+  const nota = RG.notaDeEstadoPorOcupacion("Tomada");
+  assert.equal(nota, "Se ve «Tomada»: lo dice la ocupación de hoy de sus participaciones.");
+  assert.match(nota, /lo dice la ocupación de hoy de sus participaciones/i);
+  const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+  assert.match(panel, /const estadoPorOcupacion = sm !== STATUS_META\[fix\.status\];/, "la nota no mira si lo que se ve lo puso la ocupación");
+  const k = panel.indexOf("Estado fixture</label>");
+  assert.ok(k > 0, "no está «Estado fixture»");
+  const bloque = panel.slice(k, panel.indexOf("{estadoError && (", k));
+  assert.match(bloque, /<option value="free">Disponible<\/option>/, "«Estado fixture» dejó de ser el selector de siempre");
+  assert.match(bloque, /\{estadoPorOcupacion && \(\s*<p [^>]*data-estado-por-ocupacion>\s*\{notaDeEstadoPorOcupacion\(sm\.label\)\}\s*<\/p>\s*\)\}/,
+    "«Estado fixture» dice «Disponible» sin la nota de la ocupación");
+  // Y el plano usa la misma nota en su selector (no una copia escrita aparte).
+  const plano = sinComentarios(leer("src/components/FloorPlan2D/FloorPlan2D.tsx"));
+  assert.match(plano, /\{estadoVisto !== face\.status && \(\s*<p data-estado-por-ocupacion[^>]*>\s*\{notaDeEstadoPorOcupacion\(rotuloVisto\)\}\s*<\/p>/,
+    "el selector del plano no usa la nota compartida");
+  assert.ok(!/Hoy se ve «\{rotuloVisto\}»/.test(plano), "el plano conserva su nota escrita aparte");
+});
+
+// Verificación del recorrido final: un mueble que se vende por participación
+// con la cara VENDIDA ENTERA (vendida antes de pasar a participación: `status`
+// «occupied» y un físico del 100 % en la ocupación). El plano dice «Ocupado»
+// sin nota (`estadoParaPintar` sólo cambia una cara libre); el 3D decía
+// «Tomada» y, debajo de «Ocupado · Lo pone el contrato», «Se ve «Tomada»: lo
+// dice la ocupación de hoy de sus participaciones», que no es cierto.
+prueba("una cara por participación ya ocupada por su propio contrato (vendida entera) dice en el 3D lo mismo que el plano («Ocupado») y sin la nota de la ocupación (ejecutado)", () => {
+  const i = editorCodigo.indexOf("function ocupacionDelMueble(");
+  const j = editorCodigo.indexOf("function textoDeOcupacion(", i);
+  const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
+    reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
+  const { ocupacionDelMueble, estadoQueSeVe } = new Function(
+    "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META", "PALABRA_POR_OCUPACION",
+    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { ocupacionDelMueble, estadoQueSeVe };`,
+  )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, {}, STATUS_META, RG.PALABRA_POR_OCUPACION);
+  const rob = { id: "r2", code: "ROB-02", type: "robatope", w: 0.3, d: 0.4, h: 1.6, partes: { division: "participacion" } };
+  const o = { sede: "NAVE", hoy: "2026-10-17", caras: { "NAVE-ROB-02": { intervalos: [], fisicos: [{ desde: "2026-10-01", hasta: "2026-12-31" }] } } };
+  const caras = ocupacionDelMueble(rob, o, "NAVE");
+  assert.deepEqual(caras.map((c) => c.dispo), ["tomado"], "la cara vendida entera no cuenta tomada");
+  // El plano: `rotuloPorOcupacion` no cambia una cara que no está libre, y la
+  // ficha dice el rótulo de su estado («Ocupado») sin nota.
+  assert.equal(RG.rotuloPorOcupacion("occupied", { dispo: "tomado" }), null);
+  const visto = estadoQueSeVe(STATUS_META.occupied, caras);
+  assert.equal(visto.label, "Ocupado", `el 3D dice «${visto.label}» donde el plano dice «Ocupado»`);
+  // Mismo objeto: `estadoPorOcupacion` (sm !== STATUS_META[fix.status]) queda
+  // falso y «Estado fixture» no suma la nota de la ocupación.
+  assert.equal(visto, STATUS_META.occupied, "el cartel de una cara ocupada por su contrato lo cambia la ocupación (y «Estado fixture» suma la nota)");
+  // Una cara libre tomada por sus participaciones sigue diciendo «Tomada».
+  assert.equal(estadoQueSeVe(STATUS_META.free, caras).label, "Tomada");
+  const fn = editorCodigo.slice(editorCodigo.indexOf("function estadoQueSeVe("), editorCodigo.indexOf("function textoDeOcupacion("));
+  assert.match(fn, /if \(caras\.every\(\(c\) => c\.dispo === "tomado"\) && sm === STATUS_META\.occupied\) return sm;\s*if \(caras\.every\(\(c\) => c\.dispo === "tomado"\)\) return \{ \.\.\.STATUS_META\.occupied, label: PALABRA_POR_OCUPACION\.tomado \};/);
+});
+
+prueba("los slots de la cara B: el contorno no roba el rayo, la malla corta el arrastre y el panel dice que vale para las dos caras", () => {
+  const contorno = cuerpoDe("function ContornoDeSlot(", "interface PuntaMeshProps");
+  assert.match(contorno, /<lineSegments geometry=\{geometria\} position=\{\[0, 0, z\]\} raycast=\{\(\) => null\}>/,
+    "el contorno del slot responde al raycast (Line.threshold = 1 m: elige el slot vecino)");
+  for (const [n, cuerpo] of [["GondolaMesh", cuerpoGondolaMesh], ["PuntaMesh", cuerpoPuntaMesh]]) {
+    assert.match(cuerpo, /onPointerDown=\{e => e\.stopPropagation\(\)\}\s*onClick=\{e\s*=> \{ e\.stopPropagation\(\); onSlotClick\?\.\(slot\.id\); \}\}/,
+      `el slot de \`${n}\` deja pasar el pointerdown: elige el mueble y arranca el arrastre`);
+  }
+  // El mismo slot se dibuja en las dos caras (es del mueble): se dice.
+  assert.match(editorCodigo, /\{carasDe\(fix\) === 2 && \(\s*<p [^>]*data-slot-dos-caras>\s*Este espacio vale para las dos caras de la góndola\./);
+  assert.match(cuerpoGondolaMesh, /renderSlotFace\(-1\)/);
+  // Un mueble por participación no ofrece espacios internos: no se abre su ficha.
+  assert.match(editorCodigo, /const selectedSlot = selectedFix && !porParticipacion\(selectedFix\)/, "un mueble por participación abre la ficha de un slot");
+  assert.match(editorCodigo, /data-slots-por-participacion>\s*Este mueble se vende por participación: lo vendido va con contrato en Distribución/);
+  // Y no ofrece «N disponible» al lado de esa nota (verificación del paso 6a).
+  assert.match(editorCodigo, /if \(!cnt\) return null;[\s\S]{0,260}if \(s === "free" && porParticipacion\(fix\)\) return null;/,
+    "el resumen de slots de un mueble por participación dice «N disponible»");
+});
+
+prueba("el aviso de cara inaccesible sale en el panel del mueble elegido (al colocar o mover una doble)", () => {
+  const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+  assert.match(panel, /if \(carasDe\(fix\) !== 2\) return \[\];/);
+  assert.match(panel, /return carasInaccesibles\(plano\)\.filter\(\(c\) => c\.fixtureId === fix\.id\);\s*\}, \[muebles, fix\]\);/);
+  assert.match(panel, /cx: m\.x, cz: m\.z, w: m\.w, d: m\.d, h: m\.h, rotY: m\.rotY, gondolaType: m\.gondolaType/, "el aviso no mide con la planta de verdad");
+  assert.match(panel, /textoDeCaraInaccesible\(nombreDeMueble\(fix\), carasTapadas\[0\]\.libre, carasTapadas\[0\]\.vecino\)/);
+});
+
+prueba("la zona libre que se pisa es una placa de su alto: nada sube del plano de sus zonas", () => {
+  const metro = cuerpoDe("function MetroMesh(", "function MuebleMesh(");
+  const i = metro.indexOf("if (h < ALTURA_PISABLE) {");
+  assert.ok(i > 0 && i < metro.indexOf("const nShelves"), "la zona libre baja sigue con estantes y rieles por encima de su alto");
+  const placa = metro.slice(i, metro.indexOf("const FR", i));
+  assert.ok(!/h \+|0\.16|shelfYs/.test(placa), "la placa de la zona libre pasa su propio alto");
+  assert.match(placa, /const yTapa = h - tapa \/ 2;/);
+  assert.match(editorCodigo, /const BANDA_DE_LA_ZONA_LIBRE = 0\.04;/);
+});
+
+prueba("«Cómo se vende»: «Por participación» en las familias con superficie, con las mismas guardas que el servidor (ejecutado)", () => {
+  assert.deepEqual(RG.formasDeVenderDe("robatope"), ["participacion"]);
+  assert.deepEqual(RG.formasDeVenderDe("gondola"), ["tramos", "entrepanos", "participacion"]);
+  assert.ok(!RG.formasDeVenderDe("nevera_puertas").includes("participacion"), "la nevera se ofrece por participación sin superficie");
+  assert.equal(RG.vendePorPartes("robatope"), true);
+  assert.equal(RG.vendePorPartes("servicio_cliente"), false);
+  const gon = { id: "g", code: "GON-01", type: "gondola", gondolaType: "double", sede: "NAVE", w: 2.5, d: 0.9, h: 1.8 };
+  assert.deepEqual(RG.cambioParaDividir(gon, "participacion"), { cambio: { division: "participacion" } });
+  assert.match(RG.cambioParaDividir({ ...gon, rentable: false }, "participacion").problema, /no se alquila/);
+  assert.match(RG.cambioParaDividir({ id: "m", code: "MET-01", type: "metro", sede: "NAVE", w: 1, d: 1, h: 1.2 }, "participacion").problema, /se pisa/);
+  assert.deepEqual(RG.cambioParaDividir({ id: "m", code: "MET-01", type: "metro", sede: "NAVE", w: 1, d: 1, h: 0.05 }, "participacion"),
+    { cambio: { division: "participacion" } });
+  const hoy = "2026-10-17";
+  const pasar = { division: "participacion" };
+  // Con espacios internos vendidos vivos, no pasa; con uno ya vencido, sí.
+  const conSlots = (endDate) => ({ ...gon, slots: [{ status: "occupied", endDate }] });
+  assert.match(RG.revisarCambioDePartes(conSlots("2026-12-31"), pasar, {}, "NAVE", { hoy }).bloqueo, /GON-01 tiene un espacio interno vendido: no pasa a participación/);
+  assert.equal(RG.revisarCambioDePartes(conSlots("2026-10-01"), pasar, {}, "NAVE", { hoy }).bloqueo, null, "un slot vencido frena el paso");
+  assert.ok(RG.revisarCambioDePartes(conSlots(null), pasar, {}, "NAVE", { hoy }).bloqueo, "un slot sin fin no frena");
+  // Vendida entera: pasa, avisando que no queda nada que repartir hasta que termine.
+  const entera = RG.revisarCambioDePartes(gon, pasar, { "NAVE-GON-01": { status: "occupied" } }, "NAVE", { hoy });
+  assert.equal(entera.bloqueo, null);
+  assert.match(entera.aviso, /vendida entera/);
+  // Con participaciones vivas no deja de venderse así: por la ocupación
+  // anónima (incluye reservas) o por un contrato PC en el mapa crudo.
+  const porPart = { ...gon, partes: { division: "participacion" } };
+  const vivas = { "NAVE-GON-01-B": { intervalos: [{ desde: "2026-10-01", hasta: "2026-11-30", pb: 2500 }], fisicos: [] } };
+  assert.match(RG.revisarCambioDePartes(porPart, { division: null }, {}, "NAVE", { ocupacion: vivas, hoy }).bloqueo, /participaciones vivas/);
+  assert.match(RG.revisarCambioDePartes(porPart, { division: "tramos", tramos: 2 }, {}, "NAVE", { ocupacion: vivas, hoy }).bloqueo, /participaciones vivas/);
+  assert.match(RG.revisarCambioDePartes(porPart, { division: null }, { "NAVE-GON-01-PC2": { status: "occupied" } }, "NAVE").bloqueo, /participaciones vivas/);
+  assert.equal(RG.revisarCambioDePartes(porPart, { division: null }, {}, "NAVE", { ocupacion: {}, hoy }).bloqueo, null);
+  assert.ok(!/Postob|\$/.test(RG.revisarCambioDePartes(porPart, { division: null }, {}, "NAVE", { ocupacion: vivas, hoy }).bloqueo), "el bloqueo nombra a alguien o un monto");
+  // El panel: las formas con «por participación», la revisión con la ocupación, y el cambio se manda ya.
+  const comp = sinComentarios(leer(join("src", "components", "PartesDelMueble.tsx")));
+  assert.match(comp, /const formas = formasDeVenderDe\(f\.type\);/);
+  assert.match(comp, /revisarCambioDePartes\(f, cambio, estado, sede, datosDeParticipacion\)/, "el panel no revisa las participaciones vivas antes de escribir");
+  assert.match(comp, /if \(antes !== \(!!ahora && porParticipacion\(ahora\)\)\) void st\.flushPending\(\);/, "pasar a participación espera el guardado de 1,2 s: Distribución da 409");
+  assert.match(comp, /if \(forma === POR_PARTICIPACION\) return "Por participación";/);
+});
+
+prueba("los rechazos del guardado de las participaciones y la entrada a Distribución desde otra pantalla", () => {
+  const st = sinComentarios(leer(join("src", "store", "fixtureStore.ts")));
+  const set = st.match(/const RECHAZOS_CONOCIDOS = new Set\(\[([^\]]*)\]\);/);
+  assert.ok(set, "no se encontró `RECHAZOS_CONOCIDOS`");
+  for (const c of ["nombres_repetidos", "contratos_vivos", "partes_vendidas", "nombre_reservado",
+    "participaciones_vivas", "slots_vendidos_en_participacion", "slots_en_participacion"]) {
+    assert.ok(set[1].includes(`"${c}"`), `el 409 \`${c}\` se mostraría como una caída del guardado`);
+  }
+  assert.match(st, /enfoque3D: \{ fixtureId: string; cara: "A" \| "B"; n: number; distribucion\?: PedidoDeDistribucion \} \| null;/);
+  assert.match(st, /\.\.\.\(opciones\?\.distribucion \? \{ distribucion: \{ \.\.\.opciones\.distribucion \} \} : \{\}\)/);
+  const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
+  // Una vez por pedido, también entre montajes: lo atendido vive afuera del
+  // componente (con una ref, volver a la pestaña del 3D entraba otra vez).
+  assert.match(enEditor, /if \(!enfoquePedido\?\.distribucion \|\| ultimaDistribucionPedida === enfoquePedido\.n\) return;/);
+  assert.match(enEditor, /ultimaDistribucionPedida = enfoquePedido\.n;/);
+  const iLet = editorCodigo.search(/^let ultimaDistribucionPedida = -1;$/m);
+  assert.ok(iLet > 0 && iLet < editorCodigo.indexOf("export default function StoreEditor3D("),
+    "lo atendido vive en el componente: cada montaje vuelve a entrar a Distribución");
+  assert.ok(!/distribucionPedidaAtendida/.test(editorCodigo));
+  // «Distribuir esta cara» entra en la cara que se mira en el panel.
+  assert.match(enEditor, /const mirada = caraDelPanel\.current\?\.fixtureId === fixtureId \? caraDelPanel\.current\.cara : "A";/);
+  assert.match(enEditor, /entrar\(\{ sede, fixtureId, codigo: fix\.code, cara: carasDe\(fix\) === 2 \? mirada : "A" \}\)/,
+    "«Distribuir esta cara» entra siempre en la A aunque se esté mirando la B");
+  assert.match(enEditor, /if \(enReunion \|\| presentationMode\) \{ setWarning\("Terminá la reunión \(o Presentar\) para distribuir\."\); return; \}/);
+  assert.match(enEditor, /st\.abrirFormulario\(\{ modo: "renovar", terminoId: renovar \}\)/);
+  // El botón del panel, con el mismo bloqueo.
+  const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+  assert.match(panel, /\{isAdmin && onDistribuir && tieneSuperficie\(fix\.type\) && \(/);
+  assert.match(panel, /disabled=\{!!motivoSinDistribuir\}/);
+  assert.match(editorCodigo, /return c\.enReunion \|\| c\.presentationMode \|\| c\.privadoPara !== undefined \|\| c\.firstPerson\s*\? "Terminá la reunión \(o Presentar\) para distribuir\."/);
+});
+
+// ── Distribución: arreglos del Editor 3D tras la revisión final ────────────
+//
+// La revisión final y el recorrido dejaron cinco cosas del 3D (escena-uso y
+// recorrido I.25): las cintas coplanares de dos marcas vecinas peleaban por la
+// profundidad, los rótulos `Html` seguían en pantalla más allá de 40 m, una
+// zona de una participación que la cara no nombra se rellenaba en gris sólo
+// en el 3D, un clic sobre un vecino que tapa al mueble elegía la cara tapada,
+// y la tarjeta CONTRATADO de un mueble por participación decía «Sin contrato
+// activo». Lo que se puede, se CORRE (las zonas con el React mínimo, la
+// tarjeta con las reglas de verdad); el resto se fija en el código.
+
+console.log("\nmuebles · Distribución, arreglos de la revisión final");
+
+const ZR = await conReactYDrei(`
+  export { ZonasDelMueble, nivelDeCinta, desfaseDeCinta, separacionDeCinta, comoSeDibuja, materialDeCinta, PASO_DE_DESFASE, Z_POR_NIVEL_M, NIVEL_MAXIMO_DE_CINTA, CINTA_M, CINTA_ELEGIDA_M } from "./ZonasDelMueble";
+  export { superficieDeCara } from "../../../utils/superficie";
+`);
+
+prueba("las cintas coplanares de dos marcas vecinas no pelean por la profundidad: cada participación tiene su nivel, la historia abajo y la elegida arriba (ejecutado)", () => {
+  // Lo puro: niveles distintos, siempre más cerca que el relleno (−4).
+  assert.ok(ZR.PASO_DE_DESFASE >= 2, "un paso de 1 unidad no alcanza a separar dos triangulaciones distintas");
+  const n = 3;
+  const vivos = [0, 1, 2].map((i) => ZR.nivelDeCinta({ indice: i, cuantas: n }));
+  assert.equal(new Set(vivos).size, 3, "dos participaciones comparten el nivel de su cinta");
+  const historia = ZR.nivelDeCinta({ historia: true, indice: 0, cuantas: n });
+  const gruesa = ZR.nivelDeCinta({ indice: 0, cuantas: n, gruesa: true });
+  const elegida = ZR.nivelDeCinta({ indice: 2, cuantas: n, gruesa: true, elegida: true });
+  assert.ok(vivos.every((v) => v > historia), "la historia no queda debajo de las vivas");
+  assert.ok(vivos.every((v) => v < gruesa) && gruesa < elegida, "la resaltada o la elegida no quedan arriba de todo");
+  for (const nv of [historia, ...vivos, gruesa, elegida]) assert.ok(ZR.desfaseDeCinta(nv) <= -4, "una cinta queda detrás del relleno");
+  assert.ok(ZR.desfaseDeCinta(1) - ZR.desfaseDeCinta(2) >= 2, "el desfase no sube con el nivel");
+  assert.equal(ZR.nivelDeCinta({ indice: 500, cuantas: 900 }), ZR.NIVEL_MAXIMO_DE_CINTA, "el nivel no tiene tope");
+  // En la escena: dos zonas de DOS participaciones con un borde exacto (lo que
+  // deja el imán), una zona de historia en el mismo lugar que una viva, la 8
+  // resaltada y la zona z3 elegida.
+  const sup = ZR.superficieDeCara({ type: "gondola", w: 0.9, d: 0.9, h: 1.8 }, "A");
+  const z1 = { clave: "z1", spaceId: 7, vertices: [[0.1, 0.2], [0.5, 0.2], [0.5, 0.8], [0.1, 0.8]] };
+  const z2 = { clave: "z2", spaceId: 8, vertices: [[0.5, 0.2], [0.9, 0.2], [0.9, 0.8], [0.5, 0.8]] };
+  const z3 = { clave: "z3", spaceId: 9, vertices: [[0.1, 0.85], [0.3, 0.85], [0.3, 0.95], [0.1, 0.95]] };
+  const como = { estampa: { indice: 0, tono: "#1A67C2", textura: "rayado45" }, reserva: false, cuenta: true, rotulo: "1 · 20 %" };
+  const cintas = (resaltada, seleccionada) => mallasConProps(ZR.ZonasDelMueble({
+    caras: [{ cara: "A", superficie: sup, editada: true, zonas: [z1, z2, z3], historia: [z1.vertices] }],
+    participaciones: new Map([[7, como], [8, { ...como, estampa: { indice: 1, tono: "#A4338F", textura: "rayado135" } }], [9, como]]),
+    resaltada, seleccionada,
+  })).filter((x) => !x.grupo && x.props.material.depthWrite !== false);
+  const sueltas = cintas(null, null);
+  assert.equal(sueltas.length, 4, "faltan cintas (tres zonas y una de historia)");
+  const unidades = sueltas.map((m) => m.props.material.polygonOffsetUnits);
+  assert.equal(new Set(unidades).size, 4, `dos cintas coplanares comparten el desfase (${unidades.join(", ")}): el color gana a pedazos`);
+  // La de historia (gris, punteada) es la de menos desfase: debajo de la viva del mismo polígono.
+  const deHistoria = sueltas.find((m) => m.props.material.color.getHexString() === "8d9499");
+  assert.ok(deHistoria, "no está la cinta de historia");
+  assert.equal(Math.max(...unidades), deHistoria.props.material.polygonOffsetUnits, "la historia queda encima de una viva");
+  // Lo que separa es la POSICIÓN (0,2 mm por nivel: el polygonOffset solo no
+  // alcanza, medido en Chromium); el orden de dibujo y el desfase siguen al nivel.
+  const zs = sueltas.map((m) => (m.props.position ?? [0, 0, 0])[2]);
+  assert.equal(new Set(zs).size, 4, `dos cintas coplanares quedan en el mismo plano (${zs.join(", ")}): el color gana a pedazos`);
+  assert.equal(Math.min(...zs), (deHistoria.props.position ?? [0, 0, 0])[2], "la historia no queda en el plano de más adentro");
+  for (const m of sueltas) {
+    const nivel = m.props.renderOrder - 2;
+    assert.equal(m.props.material.polygonOffsetUnits, ZR.desfaseDeCinta(nivel), "el desfase no sigue al nivel");
+    assert.ok(Math.abs(m.props.position[2] - nivel * ZR.Z_POR_NIVEL_M) < 1e-12, "la separación no sigue al nivel");
+  }
+  assert.ok(ZR.Z_POR_NIVEL_M >= 0.0002, "menos de 0,2 mm por nivel no separa a 4 m (medido)");
+  assert.ok(ZR.separacionDeCinta(ZR.NIVEL_MAXIMO_DE_CINTA) <= 0.003 + 1e-12, "la cinta de más arriba se despega de la cara (más de 3 mm)");
+  // Con la 8 resaltada y la z3 elegida: la elegida arriba de todo, la resaltada debajo de ella.
+  const con = cintas(8, "z3");
+  const u = (ancho, tono) => con.filter((m) => m.props.material.color.getHexString() === tono)
+    .map((m) => m.props.material.polygonOffsetUnits);
+  const masCerca = Math.min(...con.map((m) => m.props.material.polygonOffsetUnits));
+  const deLaElegida = con.find((m) => {
+    const p = m.props.geometry.getAttribute("position");
+    return p.getY(0) > 0.85 * sup.alto;
+  });
+  assert.ok(deLaElegida, "no está la cinta de la zona elegida");
+  assert.equal(deLaElegida.props.material.polygonOffsetUnits, masCerca, "la cinta de la zona elegida no queda arriba de todo");
+  assert.equal(deLaElegida.props.position[2], Math.max(...con.map((m) => m.props.position[2])), "la cinta de la zona elegida no queda en el plano de más afuera");
+  assert.ok(u(0, "a4338f").every((x) => x < Math.min(...u(0, "1a67c2").filter((y) => y !== masCerca))),
+    "la cinta gruesa de la participación resaltada queda debajo de su vecina");
+  // Las cintas siguen pegadas al plano: el desfase es de profundidad, no de posición.
+  const z = sinComentarios(leer(join(muebles, "ZonasDelMueble.tsx")));
+  assert.match(z, /polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: desfaseDeCinta\(nivel\),/);
+  assert.match(z, /position=\{\[0, 0, separacionDeCinta\(nivel\)\]\} renderOrder=\{2 \+ nivel\}/);
+  assert.match(z, /empujarCuadrilatero\(pos, uv, idx, \[adentro\[i\], adentro\[j\], afuera\[j\], afuera\[i\]\], SOBRE_EL_RELLENO\);/, "la cinta se despegó de la cara");
+});
+
+prueba("lejos (más de 40 m) tampoco quedan las letras A/B ni el rótulo: los `Html` no se montan, con histéresis (y las mallas, como antes)", () => {
+  const z = sinComentarios(leer(join(muebles, "ZonasDelMueble.tsx")));
+  const i = z.indexOf("useFrame(() => {");
+  const cuadro = z.slice(i, z.indexOf("\n  });", i));
+  assert.match(cuadro, /g\.visible = camera\.position\.distanceTo\(donde\) <= DISTANCIA_MAXIMA_M;/, "las mallas se dibujan lejos");
+  assert.match(cuadro, /const siguen = sigueLejos\(lejosAhora\.current, camera\.position\.distanceTo\(donde\), DISTANCIA_MAXIMA_M\);\s*if \(siguen !== lejosAhora\.current\) \{ lejosAhora\.current = siguen; setLejos\(siguen\); \}/,
+    "lejos se decide en cada cuadro con un setState (un render por cuadro) o sin histéresis");
+  assert.match(z, /\{!lejos && caras\.length > 1 && caras\.map\(\(c\) => \(\s*<Html key=\{`letra\$\{c\.cara\}`\}/, "las letras A/B se montan lejos");
+  assert.match(z, /\{c\.editada && !lejos && c\.zonas\.map\(\(z\) => \{/, "el rótulo resaltado se monta lejos");
+  assert.match(z, /lejos=\{lejos\} \/>/, "la cara no se entera de que está lejos");
+  // Cerca (el React mínimo arranca con `useState(false)`): se montan.
+  const sup = ZR.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "A");
+  const supB = ZR.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "B");
+  const arbol = ZR.ZonasDelMueble({
+    caras: [{ cara: "A", superficie: sup, editada: true, zonas: [], historia: [] }, { cara: "B", superficie: supB, editada: false, zonas: [], historia: [] }],
+    participaciones: new Map(), resaltada: null, seleccionada: null,
+  });
+  const letras = (el, n = 0) => {
+    if (el == null || typeof el !== "object") return n;
+    if (Array.isArray(el)) return el.reduce((k, x) => letras(x, k), n);
+    if (el.props && "position" in el.props && "center" in el.props) n++;
+    return letras(el.props?.children, n);
+  };
+  assert.equal(letras(arbol), 2, "cerca, las letras de una doble no se montan");
+});
+
+prueba("una zona de una participación que la cara no nombra se ve igual en el 3D y en el lienzo: sin relleno y con la cinta punteada (ejecutado)", () => {
+  // La regla, contra la del lienzo (`if (!info?.cuenta || !info.estampa) return null;`, fijada por probar-distribucion).
+  const E = { indice: 0, tono: "#1A67C2", textura: "rayado45" };
+  const casos = [undefined, { estampa: E, reserva: false, cuenta: true }, { estampa: E, reserva: true, cuenta: true },
+    { estampa: E, reserva: false, cuenta: false }, { estampa: null, reserva: false, cuenta: true }];
+  for (const c of casos) {
+    const lienzoRellena = !(!c?.cuenta || !c.estampa);
+    const lienzoPunteado = !c?.cuenta || c.reserva;
+    const d = ZR.comoSeDibuja(c);
+    assert.equal(d.relleno, lienzoRellena, `${JSON.stringify(c)}: el 3D y el lienzo no rellenan igual`);
+    assert.equal(d.estilo !== "continua", lienzoPunteado, `${JSON.stringify(c)}: el 3D y el lienzo no puntean igual`);
+  }
+  assert.equal(ZR.comoSeDibuja(undefined).estilo, "punteada");
+  assert.equal(ZR.comoSeDibuja({ estampa: E, reserva: true, cuenta: true }).estilo, "discontinua");
+  // En la escena: la 77 no está en `participaciones` (la cara no la nombra).
+  const sup = ZR.superficieDeCara({ type: "gondola", w: 2.5, d: 0.9, h: 1.8 }, "A");
+  const mallas = mallasConProps(ZR.ZonasDelMueble({
+    caras: [{ cara: "A", superficie: sup, editada: true, zonas: [
+      { clave: "z1", spaceId: 7, vertices: [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4], [0.1, 0.4]] },
+      { clave: "z2", spaceId: 77, vertices: [[0.5, 0.1], [0.9, 0.1], [0.9, 0.4], [0.5, 0.4]] },
+    ], historia: [] }],
+    participaciones: new Map([[7, { estampa: E, reserva: false, cuenta: true, rotulo: "1 · 20 %" }]]),
+    resaltada: null, seleccionada: null,
+  })).filter((x) => !x.grupo);
+  const rellenos = mallas.filter((m) => m.props.material.depthWrite === false);
+  assert.equal(rellenos.length, 1, "la zona de una participación que la cara no nombra se rellena en el 3D (en el lienzo no)");
+  const cintas = mallas.filter((m) => m.props.material.depthWrite !== false);
+  assert.equal(cintas.length, 2);
+  const tramos = (m) => m.props.geometry.index.count / 6;
+  assert.ok(Math.max(...cintas.map(tramos)) > 8 && Math.min(...cintas.map(tramos)) === 4,
+    "la cinta de la participación que la cara no nombra no sale punteada (o la viva sí)");
+  const z = sinComentarios(leer(join(muebles, "ZonasDelMueble.tsx")));
+  assert.match(z, /if \(!comoSeDibuja\(como\)\.relleno \|\| !como\?\.estampa\) return null;/);
+  assert.match(z, /estilo=\{comoSeDibuja\(como\)\.estilo\}/);
+});
+
+prueba("un clic sobre un vecino que tapa al mueble distribuido no elige la cara tapada: si otro mueble corta el rayo antes, nada", () => {
+  // La cuenta (`rayoTapado`, contra el raycaster de three) la prueba probar-superficies; acá, que el clic la use.
+  const i = cuerpoEscena.indexOf("if (enDistribucion && enModoDistribucion && e.delta <= UMBRAL_CLIC_PX) {");
+  assert.ok(i > 0);
+  const clic = cuerpoEscena.slice(i, cuerpoEscena.indexOf("onPointerOver=", i));
+  assert.match(clic, /const corte = corteConLaCara\(\s*\{ origen: \[origen\.x, origen\.y, origen\.z\], dir: \[dir\.x, dir\.y, dir\.z\] \}, enModoDistribucion\.superficies,\s*\);/);
+  assert.match(clic, /const delante = corte !== null && rayoTapado\(\s*\{ origen: \[e\.ray\.origin\.x, e\.ray\.origin\.y, e\.ray\.origin\.z\], dir: \[e\.ray\.direction\.x, e\.ray\.direction\.y, e\.ray\.direction\.z\] \},\s*corte\.t, placedFixtures\.filter\(\(f\) => f\.id !== fix\.id\),\s*\);/,
+    "el clic no mira si otro mueble corta el rayo antes que la cara");
+  assert.match(clic, /const r = corte && !delante \? corte : null;\s*if \(r\) enModoDistribucion\.onTocar\(r\.cara, r\.u, r\.v\);/);
+  assert.ok(!/elegirCaraYPunto\(/.test(cuerpoEscena), "quedó un camino que elige la cara sin mirar lo que hay delante");
+});
+
+prueba("la tarjeta CONTRATADO de un mueble por participación dice «Por participación · comprometido X % · queda Y %», nunca «Sin contrato activo» (ejecutado)", () => {
+  const i = editorCodigo.indexOf("function lineasDeContratadoPorParticipacion(");
+  const j = editorCodigo.indexOf("export default function StoreEditor3D(", i);
+  assert.ok(i > 0 && j > i, "no está la cuenta de la tarjeta");
+  const { lineasDeContratadoPorParticipacion: lineas } = new Function(
+    "fullSpaceCode", "carasDe", "dispoPorParticipacion", "pct", "CARA_ENTERA_PB",
+    `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { lineasDeContratadoPorParticipacion };`,
+  )(RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, (pb) => `${(pb / 100).toLocaleString("es-CO")} %`, 10000);
+  const iv = (pb) => ({ desde: "2026-10-01", hasta: "2026-12-31", pb });
+  const o = { sede: "NAVE", hoy: "2026-10-17", caras: {
+    "NAVE-ROB-01": { intervalos: [iv(2500), iv(2500), iv(2500), iv(2500)], fisicos: [] },
+    "NAVE-GON-01": { intervalos: [iv(3000), iv(2500)], fisicos: [] },
+  } };
+  const rob = { id: "r", code: "ROB-01", type: "robatope", w: 1.2, d: 0.5, h: 1, partes: { division: "participacion" } };
+  const gon = { id: "g", code: "GON-01", type: "gondola", gondolaType: "double", w: 3, d: 0.9, h: 1.8, partes: { division: "participacion" } };
+  assert.deepEqual(lineas(rob, o, "NAVE", false), ["Por participación · comprometido 100 % · queda 0 %"]);
+  assert.deepEqual(lineas(gon, o, "NAVE", false), [
+    "Cara A · Por participación · comprometido 55 % · queda 45 %",
+    "Cara B · Por participación · comprometido 0 % · queda 100 %",
+  ], "una cara sin participaciones (que la ocupación no nombra) no dice lo suyo");
+  assert.deepEqual(lineas(gon, o, "NAVE", true), ["Cara A · Por participación · queda 45 %", "Cara B · Por participación · queda 100 %"],
+    "con un proveedor mirando dice cuánto está comprometido");
+  assert.deepEqual(lineas(rob, undefined, "NAVE", false), ["Por participación · leyendo la ocupación…"]);
+  for (const l of [...lineas(rob, o, "NAVE", false), ...lineas(gon, o, "NAVE", false)]) assert.ok(!/Sin contrato|Disponible|\$/.test(l), l);
+  // En la tarjeta: la rama por participación va PRIMERO (antes que la del contrato de la cara y que «Sin contrato activo»).
+  const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+  const k = panel.indexOf("data-contratado>");
+  assert.ok(k > 0);
+  const tarjeta = panel.slice(k, panel.indexOf("<VistaProveedor", k));
+  const a = tarjeta.indexOf("{porParticipacion(fix) ? (");
+  assert.ok(a > 0 && a < tarjeta.indexOf("fix.supplierName && contratoDiscreto") && a < tarjeta.indexOf("Sin contrato activo."),
+    "la tarjeta de un mueble por participación todavía puede decir «Sin contrato activo»");
+  assert.match(tarjeta, /lineasDeContratadoPorParticipacion\(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto\)\.map\(/);
+  assert.match(tarjeta, /\{isAdmin && \(porParticipacion\(fix\) \? \(/, "a un mueble por participación lo sigue mandando a «Sede → Vender»");
+});
+
+prueba("al entrar en Distribución, «De frente» abarca la cara entera en el panel partido (la cuenta, en probar-superficies)", () => {
+  const toma = cuerpoDe("const tomaDeVenta = useCallback(", "const ponerCampoVisual = useCallback(");
+  assert.match(toma, /if \(!enVenta && toma === "frente" && distribucionDeLaToma\.current\?\.fixtureId === fix\.id\) \{\s*ponerCampoVisual\(FOV_DEL_EDITOR\);\s*aplicarVista\(encuadreDeLaCara\(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto\)\.vista\);\s*return;\s*\}/,
+    "en Distribución la toma no abarca la cara entera");
+  assert.ok(toma.indexOf("const aspecto = size.width / Math.max(1, size.height);") < toma.indexOf("encuadreDeLaCara("),
+    "el encuadre no usa el aspecto del lienzo de ahora");
+  assert.ok(toma.indexOf("encuadreDeLaCara(") < toma.indexOf("const fov = toma ==="), "el encuadre de Distribución llega tarde");
+  assert.match(cuerpoEscena, /const distribucionDeLaToma = useRef\(enModoDistribucion\);\s*distribucionDeLaToma\.current = enModoDistribucion;/);
+  // El panel pide la toma después del redimensionado del lienzo partido, y la escena re-encuadra si el tamaño cambia con la cámara quieta.
+  assert.match(sinComentarios(leer(join("src", "components", "Distribucion", "PanelDeDistribucion.tsx"))),
+    /const r1 = requestAnimationFrame\(\(\) => \{ r2 = requestAnimationFrame\(\(\) => encuadrar\.current\(cara\)\); \}\);/);
+  assert.match(cuerpoEscena, /\? `\$\{pedidoDeToma\.n\}\|\$\{tamanoDelLienzo\}\|\$\{filasDeLaToma\(pedidoDeToma\)\}` : "";/);
 });
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

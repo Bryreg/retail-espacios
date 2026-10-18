@@ -39,7 +39,7 @@ def test_como_se_parte_un_codigo(client):
 
 
 def test_que_ofrece_cada_mueble(client):
-    from app.services.layout_lookup import espacios_de
+    from app.services.layout_lookup import caras_por_participacion, espacios_de
     from app.services.partes import division_de, firma_de_partes
 
     for c in CASOS["muebles"]:
@@ -48,6 +48,8 @@ def test_que_ofrece_cada_mueble(client):
         assert (list(d) if d else None) == c["division"], c["nombre"]
         if "firma" in c:
             assert firma_de_partes(c["mueble"]) == c["firma"], c["nombre"]
+        if "carasPorParticipacion" in c:
+            assert sorted(caras_por_participacion([c["mueble"]], "NAVE")) == c["carasPorParticipacion"], c["nombre"]
 
 
 def test_que_choca_con_que(client):
@@ -85,6 +87,66 @@ def test_los_textos_de_una_parte(client):
     pu2 = partir_codigo("NEV-03-PU2").parte
     assert texto_de_parte(pu2, 3) == "Puerta 2 de 3"
     assert texto_para_montar(pu2, 3) == "Puerta 2 de 3, contando de izquierda a derecha mirando el frente"
+
+
+def test_la_compuerta_de_una_cara_por_participacion(client):
+    """Una cara que se vende por participación no se vende entera ni por
+    partes físicas; su participación (``…-PC3``) existe. Y una participación
+    de una cara que NO se vende así no existe. Las frases dicen qué hacer y no
+    nombran a nadie (Vender las lee delante del proveedor)."""
+    from app.services.layout_lookup import (
+        NO_COMERCIALIZABLE, PARTE_INEXISTENTE, POR_PARTICIPACION, SIN_CARA_B, caras_por_participacion,
+        motivo_para_no_vender_parte, ofrece, por_participacion,
+    )
+    from app.services.partes import cantidad_de, partir_codigo, texto_de_parte, texto_para_montar
+
+    doble = {"code": "GON-01", "type": "gondola", "entrepanos": 4, "partes": {"division": "participacion"}}
+    mural = {"code": "GON-02", "type": "gondola", "gondolaType": "wall", "partes": {"division": "participacion"}}
+    nevera = {"code": "NEV-03", "type": "nevera_puertas", "partes": {"puertas": 3, "division": "puertas"}}
+    tapada = {**doble, "rentable": False}
+
+    def motivo(f, codigo):
+        m = motivo_para_no_vender_parte(f, partir_codigo(codigo))
+        return m[0] if m else None
+
+    entera = motivo_para_no_vender_parte(doble, partir_codigo("NAVE-GON-01"))
+    assert entera[0] == POR_PARTICIPACION
+    assert "se vende por participación" in entera[1] and "Distribución" in entera[1], entera
+    assert motivo(doble, "NAVE-GON-01-B") == POR_PARTICIPACION
+    assert motivo(doble, "NAVE-GON-01-PC1") is None
+    assert motivo(doble, "NAVE-GON-01-B-PC7") is None
+    # Con entrepaños guardados no se vende por entrepaños: una sola forma.
+    en = motivo_para_no_vender_parte(doble, partir_codigo("NAVE-GON-01-EN1"))
+    assert en[0] == PARTE_INEXISTENTE and "no hay EN1" in en[1], en
+    assert motivo(doble, "NAVE-GON-01-TR2") == PARTE_INEXISTENTE
+    # El mural no tiene cara B, tampoco por participación.
+    assert motivo(mural, "NAVE-GON-02-B-PC1") == SIN_CARA_B
+    assert motivo(mural, "NAVE-GON-02-PC1") is None
+    # Una participación de lo que no se vende así: no existe.
+    pc = motivo_para_no_vender_parte(nevera, partir_codigo("NAVE-NEV-03-PC1"))
+    assert pc[0] == PARTE_INEXISTENTE and "no se vende por participación" in pc[1], pc
+    # Lo de siempre de la nevera no cambia.
+    assert motivo(nevera, "NAVE-NEV-03") is None and motivo(nevera, "NAVE-NEV-03-PU2") is None
+    # No comercializable: ni la cara ni sus participaciones.
+    assert not por_participacion(tapada)
+    assert motivo(tapada, "NAVE-GON-01") == NO_COMERCIALIZABLE
+    assert motivo(tapada, "NAVE-GON-01-PC1") == NO_COMERCIALIZABLE
+    # Una caja no se vende por participación (no tiene receta ni es comercializable).
+    caja = {"code": "CAJ-04", "type": "checkout", "partes": {"bahias": 2, "division": "participacion"}}
+    assert motivo(caja, "NAVE-CAJ-04-PC1") == NO_COMERCIALIZABLE
+    assert motivo(caja, "NAVE-CAJ-04-BI1") is None
+
+    # «Ofrecido»: una participación, si su cara se vende por participación.
+    caras = caras_por_participacion([doble, mural, nevera], "NAVE")
+    assert caras == {"NAVE-GON-01", "NAVE-GON-01-B", "NAVE-GON-02"}
+    assert ofrece(set(), caras, "NAVE-GON-01-PC9") and ofrece(set(), caras, "nave-gon-01-b-pc1")
+    assert not ofrece(set(), caras, "NAVE-NEV-03-PC1") and not ofrece(set(), caras, "NAVE-GON-02-B-PC1")
+    assert ofrece({"NAVE-NEV-03"}, caras, "NAVE-NEV-03") and not ofrece(set(), caras, "NAVE-GON-01")
+
+    # La participación no la cuenta ningún campo del mueble, y se lee así.
+    p3 = partir_codigo("NAVE-GON-01-PC3").parte
+    assert cantidad_de(doble, "participacion") is None
+    assert texto_de_parte(p3) == "Participación 3" and texto_para_montar(p3) == "Participación 3"
 
 
 def test_un_plano_sin_partes_ofrece_lo_mismo_que_antes(client):

@@ -20,7 +20,9 @@ from app.services.layout_lookup import (
     NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, como_se_venden_sus_piezas, contratos_que_chocan, describe_location,
     find_fixture_by_space_code, forma_canonica, frase_de_choque, por_que_no_se_vende,
 )
-from app.services.partes import cantidad_de, partir_codigo, texto_para_montar
+from app.services.partes import cantidad_de, es_participacion, partir_codigo, texto_para_montar
+from app.services.ciclo_participaciones import actor_de, al_cancelar_contrato
+from app.services.participaciones import bloqueo_por_participaciones
 from app.services.mailer import (
     app_base_url, format_cop, html_shell, send_mail_to_bg, correo_configurado,
 )
@@ -340,6 +342,14 @@ def update_status(
     space = db.query(Space).filter(Space.id == space_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    # «Reservado» a mano sobre una participación serían dos nociones de reserva
+    # sobre lo mismo (la provisional de Distribución tiene caducidad y cuenta
+    # en la capacidad de la cara; ésta no). Su estado lo llevan sus términos.
+    if es_participacion(partir_codigo(space.code).parte):
+        raise HTTPException(
+            status_code=409,
+            detail="Una participación no se marca a mano: su reserva provisional se carga en Distribución.",
+        )
     antes = space.status.value if space.status else "—"
     space.status = payload.status
     if payload.notes is not None:
@@ -382,6 +392,12 @@ def create_lease(
     # dos sesiones que venden a la vez pasan las dos la revisión de abajo
     # (`services/candado.py`). Va antes de revisar, y se suelta en el commit.
     tomar_candados(db, [space.code])
+    # Lectura fresca después del candado (regla dura de participaciones): la
+    # sesión ya tiene `space` en memoria, y SQLAlchemy no refresca un objeto
+    # que vuelve a consultar. Sin esto, lo que otra sesión escribió mientras se
+    # esperaba el candado (una reserva de participación que subió, una puerta
+    # vendida) se leería viejo en la revisión de abajo.
+    db.expire_all()
 
     # The UI hides the contract form for infrastructure, but the rule belongs
     # here too: a stale tab or a direct API call must not create a lease on a
@@ -422,7 +438,22 @@ def create_lease(
         raise HTTPException(status_code=409, detail=detalle)
     if motivo:
         # Una parte que el plano no ofrece: la frase de la compuerta dice qué hacer.
+        # También la cara entera de una cara que se vende por participación, y
+        # una participación de una cara que no se vende así.
         raise HTTPException(status_code=409, detail=motivo[1])
+    # Una participación (`…-PC3`) de una cara que sí se vende así EXISTE (la
+    # compuerta la deja pasar), pero no se escribe por acá: su contrato lleva
+    # el porcentaje, la capacidad de la cara y la distribución, que viven en
+    # Distribución (`/api/participaciones`). Un contrato suelto sobre ella
+    # sería un lease sin término, que cuenta como la cara entera.
+    if es_participacion(partir_codigo(space.code).parte):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"«{space.code}» es una participación: se carga y se renueva en el Editor 3D → "
+                "Distribución."
+            ),
+        )
     # Un mueble que se vende por partes se reconoce por su código COMPLETO: la
     # regla «entera o por partes, nunca las dos» compara códigos, y una puerta
     # guardada como `NEV-03-PU2` (sin sede) o ` NAVE-NEV-03-PU2` (con un
@@ -458,6 +489,17 @@ def create_lease(
         else:
             detalle = frase_de_choque(space.code, otro_space.code or "", overlapping)
         raise HTTPException(status_code=409, detail=detalle)
+    # Defensa en profundidad: la cara entera (o una división física suya) de
+    # una cara que tiene reservas o contratos de participación que cuentan en
+    # esas fechas. La compuerta ya frena la de una cara POR participación; esto
+    # cubre la que dejó de serlo con términos vivos (un plano escrito a mano).
+    # `forma_canonica` ya exigió el código completo: la misma clave de candado
+    # que las participaciones de esa cara.
+    bloqueo = bloqueo_por_participaciones(
+        db, space.sede or "", space.code, payload.start_date, payload.end_date,
+    )
+    if bloqueo:
+        raise HTTPException(status_code=409, detail=bloqueo)
 
     lease = SpaceLease(space_id=space_id, **payload.model_dump())
     db.add(lease)
@@ -638,4 +680,8 @@ def cancel_lease(
         entidad="contrato", entidad_id=lease.id,
         detalle=f"{space.code if space else space_id} · {lease.marca or '—'}",
     )
+    # Si es el contrato de una participación de cara, su término queda
+    # «cancelado» (`baja_en`) con su historia; si ya había vencido por fecha,
+    # «vencido». Nada para cualquier otro contrato. Misma transacción.
+    al_cancelar_contrato(db, lease, actor_de(request, rol))
     db.commit()

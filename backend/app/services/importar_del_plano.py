@@ -36,11 +36,14 @@ from app.fechas import hoy as hoy_en_colombia
 from app.models.models import (
     LayoutSnapshot, Space, SpaceLease, SpaceStatus, Supplier,
 )
+from app.models.participaciones import Participacion
 from app.services.candado import tomar_candados
 from app.services.layout_lookup import (
-    _full_code, caras_de, contratos_que_chocan, es_comercializable, sin_prefijo_de_sede,
+    _full_code, caras_de, contratos_que_chocan, es_comercializable, motivo_para_no_vender_parte,
+    sin_prefijo_de_sede,
 )
-from app.services.partes import texto_de_parte
+from app.services.partes import CodigoPartido, es_participacion, partir_codigo, texto_de_parte
+from app.services.participaciones import bloqueo_por_participaciones
 
 
 @dataclass
@@ -94,6 +97,25 @@ class Importacion:
     ya_estaban: int = 0
 
 
+def _caras_vendidas_con_mueble(fixtures: list[dict]) -> list[tuple[str, dict, dict]]:
+    """``caras_vendidas`` con el mueble de cada cara (la B vive en ``faceB``,
+    pero la compuerta pregunta al mueble)."""
+    out: list[tuple[str, dict, dict]] = []
+    for f in fixtures:
+        if not isinstance(f, dict):
+            continue
+        code = (f.get("code") or "").strip().upper()
+        if not code or not es_comercializable(f):
+            continue
+        if (f.get("status") or "free") == "occupied":
+            out.append((code, f, f))
+        if caras_de(f) == 2:
+            b = f.get("faceB") or {}
+            if (b.get("status") or "free") == "occupied":
+                out.append((f"{code}-B", b, f))
+    return out
+
+
 def caras_vendidas(fixtures: list[dict]) -> list[tuple[str, dict]]:
     """Los espacios que el plano da por vendidos, con su contrato.
 
@@ -104,20 +126,18 @@ def caras_vendidas(fixtures: list[dict]) -> list[tuple[str, dict]]:
     contrato, y crearle uno haría una fila que después la propia aplicación
     rechaza.
     """
-    out: list[tuple[str, dict]] = []
-    for f in fixtures:
-        if not isinstance(f, dict):
-            continue
-        code = (f.get("code") or "").strip().upper()
-        if not code or not es_comercializable(f):
-            continue
-        if (f.get("status") or "free") == "occupied":
-            out.append((code, f))
-        if caras_de(f) == 2:
-            b = f.get("faceB") or {}
-            if (b.get("status") or "free") == "occupied":
-                out.append((f"{code}-B", b))
-    return out
+    return [(code, cara) for code, cara, _mueble in _caras_vendidas_con_mueble(fixtures)]
+
+
+def caras_con_participaciones(db: Session) -> set[str]:
+    """Los códigos de las caras que tienen algún término de participación
+    (vivo o no), en UNA consulta. Lo usan esta importación y la planilla para
+    no preguntar ``bloqueo_por_participaciones`` —que relee el plano— por cada
+    cara: sólo las de este conjunto pueden estar frenadas por participaciones.
+    Vacío en un supermercado que no vende así."""
+    filas = (db.query(Space.code).join(Participacion, Participacion.cara_space_id == Space.id)
+             .distinct().all())
+    return {(c or "").strip().upper() for (c,) in filas}
 
 
 def _fecha(v) -> date | None:
@@ -162,7 +182,7 @@ def _motivo(proveedor: str, desde: date | None, hasta: date | None) -> str | Non
 
 def _caras_de_los_planos(db: Session):
     """Cada cara que el JSON de algún plano da por vendida, leída del snapshot
-    crudo: ``(sede, corto, completo, cara, proveedor, desde, hasta)``."""
+    crudo: ``(sede, corto, completo, cara, proveedor, desde, hasta, mueble)``."""
     for snap in db.query(LayoutSnapshot).all():
         sede = (snap.sede or "").strip().upper()
         try:
@@ -171,10 +191,35 @@ def _caras_de_los_planos(db: Session):
             continue
         if not isinstance(fixtures, list):
             continue
-        for corto, cara in caras_vendidas(fixtures):
+        for corto, cara, mueble in _caras_vendidas_con_mueble(fixtures):
             desde, hasta = _fecha(cara.get("startDate")), _fecha(cara.get("endDate"))
             proveedor = (cara.get("supplierName") or "").strip()
-            yield sede, corto, _full_code(corto, sede), cara, proveedor, desde, hasta
+            yield sede, corto, _full_code(corto, sede), cara, proveedor, desde, hasta, mueble
+
+
+def _por_participacion(corto: str, mueble: dict) -> str | None:
+    """Por qué el contrato del JSON de esta cara no se importa por ser de
+    participaciones, o ``None``.
+
+    · La cara entera de un mueble que se vende por participación: la
+      compuerta de la planilla y del contrato suelto
+      (``motivo_para_no_vender_parte``), aunque la cara no tenga
+      participaciones todavía. Se carga el porcentaje en Distribución.
+    · Un código que se lee como una participación (``GON-09-PC1``: un mueble
+      de antes de que ``PC`` fuera token, riesgo R1 del diseño; uno nuevo así
+      no se puede guardar). Importarlo dejaría un contrato que la aplicación
+      lee como una participación sin término, que cuenta como la cara entera
+      de otro mueble: se mira a mano.
+    """
+    if es_participacion(partir_codigo(corto).parte):
+        return (f"«{corto}» se lee como una participación: se carga y se renueva en el Editor 3D → "
+                "Distribución, no se importa del plano. Si es un mueble que se llama así, renombralo.")
+    # La cara entera del mueble, con su código tal cual (`caras_vendidas`
+    # arma `CODE` y `CODE-B`): nada de partirlo otra vez.
+    code = (mueble.get("code") or "").strip().upper()
+    letra = "B" if corto != code else "A"
+    motivo = motivo_para_no_vender_parte(mueble, CodigoPartido(code, letra, None))
+    return motivo[1] if motivo else None
 
 
 def contratos_en_el_plano(db: Session) -> list[tuple[str, str, date | None, date | None]]:
@@ -188,7 +233,7 @@ def contratos_en_el_plano(db: Session) -> list[tuple[str, str, date | None, date
     proveedor."""
     return [
         (completo, proveedor, desde, hasta)
-        for _, _, completo, cara, proveedor, desde, hasta in _caras_de_los_planos(db)
+        for _, _, completo, cara, proveedor, desde, hasta, _mueble in _caras_de_los_planos(db)
         if not _es_residuo(cara, proveedor, desde, hasta)
     ]
 
@@ -196,8 +241,11 @@ def contratos_en_el_plano(db: Session) -> list[tuple[str, str, date | None, date
 def revisar(db: Session) -> Importacion:
     """Qué habría para importar. **No escribe una sola fila.**"""
     salida = Importacion()
+    #: Las caras con términos de participación, en una consulta: sólo ésas
+    #: pueden estar frenadas por `bloqueo_por_participaciones`.
+    caras_pc = caras_con_participaciones(db)
 
-    for sede, corto, completo, cara, proveedor, desde, hasta in _caras_de_los_planos(db):
+    for sede, corto, completo, cara, proveedor, desde, hasta, mueble in _caras_de_los_planos(db):
         motivo = _motivo(proveedor, desde, hasta)
         if motivo:
             residuo = _es_residuo(cara, proveedor, desde, hasta)
@@ -219,6 +267,26 @@ def revisar(db: Session) -> Importacion:
         space = db.query(Space).filter(Space.code == completo).first()
         if space and (space.active_lease or space.upcoming_lease):
             salida.ya_estaban += 1
+            continue
+
+        # Participaciones de cara: la cara entera de un mueble que se vende por
+        # participación no se vende entera (la compuerta, como la planilla), y
+        # un código que se lee como una participación no se importa. Y como
+        # defensa, una cara que dejó de venderse así con términos vivos en esas
+        # fechas (`bloqueo_por_participaciones`, la frase de la planilla).
+        frase = _por_participacion(corto, mueble)
+        if frase is None and partir_codigo(completo).cara_entera in caras_pc:
+            frase = bloqueo_por_participaciones(db, sede, completo, desde, hasta)
+        if frase:
+            salida.incompletos.append(Incompleto(
+                espacio=completo, sede=sede, code=corto,
+                proveedor=proveedor,
+                desde=(cara.get("startDate") or ""),
+                hasta=(cara.get("endDate") or ""),
+                motivo=frase,
+                marca=(cara.get("brandCategory") or "").strip(),
+                valor=float(cara.get("negotiatedValue") or 0),
+            ))
             continue
 
         # El contrato del plano es siempre de una CARA. Si en esas fechas la
@@ -271,6 +339,9 @@ def aplicar(db: Session) -> Importacion:
     # Con el candado de esos muebles puesto, se vuelve a revisar: entre la
     # primera mirada y la escritura, alguien pudo vender una de sus puertas.
     tomar_candados(db, [f.espacio for f in plan.importables])
+    # Lectura fresca (regla dura de participaciones): lo que la primera mirada
+    # cargó en la sesión no se refresca solo al volver a consultarlo.
+    db.expire_all()
     plan = revisar(db)
     if not plan.importables:
         return plan

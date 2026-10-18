@@ -5,7 +5,8 @@ import {
   filasDePunta, filasDeProducto, nivelesDeEntrepano, techoDeCara, tramosValidos, vanosDeCorrido,
 } from "../components/StoreEditor3D/muebles/medidas";
 import type { EstadoPorEspacio } from "./estadoComercial";
-import { claseDe, divisionDe } from "./partes";
+import { claseDe, divisionDe, porParticipacion } from "./partes";
+import { firmaDeCara } from "./superficie";
 
 /**
  * Alto, entrepaños y módulo de una góndola o una punta: lo que el panel deja
@@ -35,6 +36,15 @@ import { claseDe, divisionDe } from "./partes";
  * interno cae sobre ciertos entrepaños (`entrepanosDelEspacio`), y con otros
  * entrepaños lo vendido pasaría a ser otra cosa.
  *
+ * Una cara que se vende POR PARTICIPACIÓN es otra cosa: sus contratos (`…-PC3`)
+ * no caen en un lugar fijo del mueble —se reparten en zonas dibujadas— y la
+ * fusión con la base no los ve (no cambian el estado de la cara). Lo que pasa
+ * al cambiarle el alto, los entrepaños o el módulo es que cambia su firma
+ * (§3.9 del diseño de participaciones) y una distribución confirmada queda
+ * «para revisar». Eso se dice con lo que sabe la ocupación anónima (que cuenta
+ * también las reservas provisionales) y, si se leyó, el estado de su
+ * distribución.
+ *
  * ── Ausente, número o null ───────────────────────────────────────────────────
  *
  * `entrepanos` y `modulo` ausentes son la cuenta de siempre (`nivelesDeEntrepano`,
@@ -58,6 +68,9 @@ export interface MuebleConGeometria {
   sede?: string;
   w: number;
   h: number;
+  /** El fondo: la firma no lo lleva, pero sin él no hay superficie que
+   *  firmar (si falta, se firma con uno cualquiera). */
+  d?: number;
   modelo?: string | null;
   entrepanos?: number | null;
   modulo?: number | null;
@@ -281,6 +294,40 @@ export interface CaraVendida {
   arte: boolean;
 }
 
+/** Una cara que se vende por participación, para la revisión del cambio. */
+export interface ParticipacionDeLaCara {
+  cara: "A" | "B";
+  /** Tiene términos vivos o por venir (contratos o reservas provisionales),
+   *  según la ocupación anónima. `null`: no se pudo leer. */
+  comprometida: boolean | null;
+  /** Tiene una distribución confirmada. `null`: no se sabe. */
+  confirmada: boolean | null;
+}
+
+/** Lo que se sabe de las participaciones de la sede (lo arma el editor con
+ *  `ocupacionStore`). */
+export interface DatosDeParticipacion {
+  /** Las caras de `GET /participaciones/ocupacion`, por código completo
+   *  (`NAVE-GON-01`, `NAVE-GON-01-B`). `null`: no se pudo leer. */
+  ocupacion: Readonly<Record<string, { intervalos?: readonly unknown[] | null }>> | null;
+  /** Los códigos completos de las caras con distribución confirmada (del
+   *  resumen o de la lectura de la cara). `null` o ausente: no se sabe. */
+  confirmadas?: ReadonlySet<string> | null;
+}
+
+/** Las caras con distribución CONFIRMADA del resumen de la sede (también la
+ *  que quedó «para revisar», y una confirmada con un borrador encima, que
+ *  sigue `confirmada`): lo que `DatosDeParticipacion.confirmadas` necesita.
+ *  `null` sin resumen (no se sabe). */
+export function confirmadasDelResumen(
+  r: { caras: readonly { codigo_cara: string; estado_distribucion: string }[] } | null | undefined,
+): Set<string> | null {
+  if (!r) return null;
+  return new Set(r.caras
+    .filter((c) => c.estado_distribucion === "confirmada" || c.estado_distribucion === "para_revisar")
+    .map((c) => c.codigo_cara));
+}
+
 export interface LoVendido {
   /** Sólo las caras con algo. */
   caras: CaraVendida[];
@@ -290,8 +337,12 @@ export interface LoVendido {
   arteSinRevisar: boolean;
   /** Vender por partes: las partes con contrato vivo o firmado (`EN2`,
    *  `B-TR1`), del mapa crudo de la base: vender una parte no cambia el
-   *  mueble fusionado. Sin nombres. */
+   *  mueble fusionado. Sin nombres. Nunca una participación (`PC3`): ésa no
+   *  tiene lugar fijo en el mueble. */
   partes?: string[];
+  /** Las caras que se venden por participación (sólo si el mueble se vende
+   *  así). */
+  participacion?: ParticipacionDeLaCara[];
 }
 
 /**
@@ -301,18 +352,25 @@ export interface LoVendido {
  * con imagen designada, en mayúsculas, como los devuelve
  * `GET /spaces/face-images`; `null` es que no se pudo preguntar, y entonces
  * se avisa igual: ante la duda, se pregunta.
+ *
+ * `participaciones`: lo que se sabe de la sede si el mueble se vende por
+ * participación (sin el dato, cada cara queda «no se sabe», y se avisa).
  */
 export function loVendidoDe(
   f: MuebleConGeometria, sede: string, carasConArte: ReadonlySet<string> | null,
-  estado?: EstadoPorEspacio,
+  estado?: EstadoPorEspacio, participaciones?: DatosDeParticipacion,
 ): LoVendido {
   const codigo = fullSpaceCode(f.sede || sede, f.code);
   // Las partes vendidas de este mueble, por su código (`SEDE-GON-05-B-TR2`):
   // dos letras y un número al final, con la cara B adelante si es de ella.
+  // Una participación (`-PC3`) tiene esa misma forma y NO es una parte: no
+  // se para a ninguna altura.
+  const tokenPC = claseDe("participacion")?.token ?? "PC";
   const partes = estado
     ? Object.entries(estado)
       .filter(([c, e]) => e.status === "occupied" && c.startsWith(`${codigo}-`)
-        && /^(?:B-)?[A-Z]{2}[1-9][0-9]?$/.test(c.slice(codigo.length + 1)))
+        && /^(?:B-)?[A-Z]{2}[1-9][0-9]?$/.test(c.slice(codigo.length + 1))
+        && !c.slice(codigo.length + 1).replace(/^B-/, "").startsWith(tokenPC))
       .map(([c]) => c.slice(codigo.length + 1)).sort()
     : [];
   const caras: CaraVendida[] = [];
@@ -324,7 +382,53 @@ export function loVendidoDe(
     if (contrato || arte) caras.push({ cara, contrato, arte });
   }
   const slots = (f.slots ?? []).filter((s) => SLOT_VENDIDO.has(s.status)).length;
-  return { caras, slots, arteSinRevisar: carasConArte === null, ...(partes.length ? { partes } : {}) };
+  const participacion: ParticipacionDeLaCara[] = [];
+  if (porParticipacion(f)) {
+    for (const cara of carasDe(f) === 2 ? ["A", "B"] as const : ["A"] as const) {
+      const completo = cara === "A" ? codigo : `${codigo}-B`;
+      const oc = participaciones?.ocupacion;
+      const deLaCara = oc ? (Object.prototype.hasOwnProperty.call(oc, completo) ? oc[completo] : undefined) : undefined;
+      const confirmadas = participaciones?.confirmadas;
+      participacion.push({
+        cara,
+        comprometida: oc ? (deLaCara?.intervalos?.length ?? 0) > 0 : null,
+        confirmada: confirmadas ? confirmadas.has(completo) : null,
+      });
+    }
+  }
+  return {
+    caras, slots, arteSinRevisar: carasConArte === null,
+    ...(partes.length ? { partes } : {}),
+    ...(participacion.length ? { participacion } : {}),
+  };
+}
+
+/** La firma de la cara antes y después del cambio (§3.9). Sin fondo, se firma
+ *  con uno cualquiera: la firma no lo lleva. */
+function cambiaLaFirma(f: MuebleConGeometria, cambio: CambioDeGeometria, cara: "A" | "B"): boolean {
+  const conFondo = { ...f, d: typeof f.d === "number" && f.d > 0 ? f.d : 1 };
+  return firmaDeCara(conFondo, cara) !== firmaDeCara({ ...conFondo, ...conCambio(cambio) }, cara);
+}
+
+/** Qué le pasa a cada cara por participación con el cambio: sólo las caras
+ *  cuya firma cambia y que tienen (o pueden tener) algo dibujado. */
+function lineasDeParticipacion(f: MuebleConGeometria, cambio: CambioDeGeometria, vendido: LoVendido): string[] {
+  const lineas: string[] = [];
+  for (const p of vendido.participacion ?? []) {
+    if (!cambiaLaFirma(f, cambio, p.cara)) continue;
+    if (p.confirmada === true) {
+      lineas.push(`La cara ${p.cara} se vende por participación y tiene una distribución confirmada: `
+        + "con este cambio queda para revisar.");
+    } else if (p.comprometida === true) {
+      lineas.push(`La cara ${p.cara} se vende por participación y tiene participaciones vivas (contratos o reservas `
+        + "provisionales): con este cambio cambia la superficie que se reparte, y si su distribución estaba "
+        + "confirmada queda para revisar.");
+    } else if (p.comprometida === null && p.confirmada !== false) {
+      lineas.push(`No se pudo revisar si la cara ${p.cara} tiene participaciones: si tiene una distribución `
+        + "confirmada, con este cambio queda para revisar.");
+    }
+  }
+  return lineas;
 }
 
 // ─── La revisión ──────────────────────────────────────────────────────────────
@@ -394,7 +498,9 @@ export function revisarCambioDeGeometria(
     };
   }
 
-  if (vendido.caras.length === 0 && vendido.slots === 0 && !vendido.arteSinRevisar && partesVendidas.length === 0) {
+  const deParticipacion = lineasDeParticipacion(f, cambio, vendido);
+  if (vendido.caras.length === 0 && vendido.slots === 0 && !vendido.arteSinRevisar && partesVendidas.length === 0
+    && deParticipacion.length === 0) {
     return { cambios, bloqueo: null, aviso: null };
   }
 
@@ -420,6 +526,7 @@ export function revisarCambioDeGeometria(
     lineas.push(`Tiene partes vendidas (${partesVendidas.join(", ")}): `
       + (filas ? "su producto se para a otra altura." : "su producto se reparte en otros módulos."));
   }
+  lineas.push(...deParticipacion);
   if (vendido.arteSinRevisar) {
     lineas.push("No se pudo revisar si alguna cara tiene arte pintado: si lo tiene, cambian sus filas.");
   }

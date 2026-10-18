@@ -30,7 +30,12 @@ import type { UnifiedFixture } from "../types/fixtures";
 export interface FilaContrato {
   /** La sede del contrato, no la que esté abierta. */
   sede: string;
-  /** El código corto del mueble: `IMP-17`, sin la sede y sin el `-B`. */
+  /** El código corto del MUEBLE: `IMP-17`, sin la sede, sin el `-B` y sin la
+   *  parte. Una puerta (`NEV-03-PU2`) o una participación de la cara
+   *  (`GON-01-PC3`, `GON-01-B-PC1`) se buscan por su mueble: quien arma la fila
+   *  lo parte con `partirCodigo` (`utils/partes.ts`). Esto mira que el mueble
+   *  esté dibujado; si el plano ofrece ESA parte lo dice la auditoría de
+   *  «Para revisar» (`utils/auditoriaDesfase.ts`). */
   code: string;
   face: "A" | "B";
 }

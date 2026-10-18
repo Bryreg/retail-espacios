@@ -66,7 +66,9 @@ from datetime import date, datetime, timezone
 
 from app.services.catalogo_muebles import CLASES_DE_PARTE, tarifa_del_mueble, tipo_de_tarifa
 from app.services.layout_lookup import caras_de, es_comercializable
-from app.services.partes import codigo_de_parte, es_division, partes_de, partir_codigo, redondear
+from app.services.partes import (
+    codigo_de_parte, es_division, es_participacion, partes_de, partir_codigo, redondear,
+)
 
 log = logging.getLogger("recabra.plataforma.metricas")
 
@@ -376,9 +378,16 @@ def tarifa_de_parte(tarifas: dict, entrada: tuple) -> float | None:
 
 def cara_ocupada(codigo: str) -> str:
     """El código de la cara que ocupa un contrato: el suyo, o el de su cara si
-    es una división (la puerta 2 ocupa la nevera). La ocupación es por cara."""
+    es una división (la puerta 2 ocupa la nevera) o una participación de cara
+    (``NAVE-GON-01-PC3`` ocupa ``NAVE-GON-01``: la cara con algo vendido
+    cuenta ocupada, la misma regla, sin ponderar por el porcentaje). La
+    ocupación es por cara.
+
+    Una participación no tiene tarifa propia (la clase no tiene ``tarifa``):
+    su contrato no está en ``mapa_tipos`` ni en las partes del plano, así que
+    cuenta en ``contratos_sin_tarifa`` y no entra al spread."""
     p = partir_codigo(codigo)
-    return p.cara_entera if es_division(p.parte) else codigo
+    return p.cara_entera if es_division(p.parte) or es_participacion(p.parte) else codigo
 
 
 # ─── Un cliente ───────────────────────────────────────────────────────────────
@@ -743,6 +752,9 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
             # puertas. Comparar su canon con la de la nevera entera la daría
             # por un 66 % debajo de la tarifa.
             tarifa_valor = tarifa_de_parte(tarifas, partes[codigo])
+        # Una participación de cara (`…-PC3`) no está en ninguno de los dos:
+        # no tiene tarifa propia, y compararla con la de su cara la daría por
+        # un 75 % debajo. Cuenta sin tarifa (diseño de participaciones §11).
         if tarifa_valor is None:
             contratos_sin_tarifa += 1
             continue

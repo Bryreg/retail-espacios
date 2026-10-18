@@ -95,6 +95,9 @@ export const saveLayoutSettings = (
 export interface DeleteImpact {
   spaces: number;
   active_leases: number;
+  /** Las reservas provisionales de participación que el archivo de la sede
+   *  cancela (`sede_archive.count_commercial_rows`): no son leases. */
+  reservas_vivas: number;
 }
 
 /** What deleting a sede would close on the commercial side. Admin only. */

@@ -23,7 +23,7 @@ import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +34,14 @@ const { outputFiles } = await build({
 });
 writeFileSync(salida, outputFiles[0].text);
 const { espaciosSinMueble } = await import(pathToFileURL(salida).href);
+// `partirCodigo`, con el que quien arma la fila saca la parte del código.
+const salidaPartes = join(dirname(salida), "p.mjs");
+const { outputFiles: partes } = await build({
+  entryPoints: [join(aqui, "..", "src", "utils", "partes.ts")],
+  bundle: true, format: "esm", write: false, platform: "neutral",
+});
+writeFileSync(salidaPartes, partes[0].text);
+const { partirCodigo } = await import(pathToFileURL(salidaPartes).href);
 
 let hechas = 0;
 const prueba = (n, fn) => {
@@ -143,6 +151,26 @@ prueba("un plano que no es un arreglo no rompe la cuenta", () => {
     espaciosSinMueble(planos, [fila("NAVE", "IMP-17"), fila("CIUDAD JARDIN", "IMP-17")]),
     ["NAVE · IMP-17"],
   );
+});
+
+/** La fila como la arma la pantalla al guardar la planilla
+ *  (`DashboardView`): la sede, y el MUEBLE del código con `partirCodigo`. */
+const filaDe = (sede, completo) => {
+  const corto = completo.startsWith(`${sede}-`) ? completo.slice(sede.length + 1) : completo;
+  const p = partirCodigo(corto);
+  return fila(sede, p.base, p.cara);
+};
+
+prueba("una participación se busca por su mueble: `GON-01-PC3` es de `GON-01`", () => {
+  const planos = { "NAVE": [mueble("GON-01", { type: "gondola", partes: { division: "participacion" } })] };
+  assert.deepEqual(espaciosSinMueble(planos, [filaDe("NAVE", "NAVE-GON-01-PC3"), filaDe("NAVE", "NAVE-GON-01-B-PC1")]), []);
+  // Sin el mueble se reporta el mueble (con la B si era de la B), no la participación.
+  assert.deepEqual(espaciosSinMueble(planos, [filaDe("NAVE", "NAVE-GON-09-PC1")]), ["NAVE · GON-09"]);
+  assert.deepEqual(espaciosSinMueble(planos, [filaDe("NAVE", "NAVE-GON-09-B-PC2")]), ["NAVE · GON-09-B"]);
+  // Y la pantalla sigue partiendo el código antes de preguntar.
+  const pantalla = readFileSync(join(aqui, "..", "src", "pages", "DashboardView.tsx"), "utf8");
+  assert.match(pantalla, /const partido = partirCodigo\(corto\);[\s\S]{0,200}code: partido\.base,[\s\S]{0,400}espaciosSinMueble\(fixturesBySede, filas\)/,
+    "la pantalla dejó de buscar la parte (una puerta, una participación) por su mueble");
 });
 
 console.log(`\n${hechas} pruebas · nada que se pinte sin mueble se calla\n`);

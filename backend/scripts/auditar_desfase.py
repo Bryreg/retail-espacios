@@ -38,7 +38,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.database import SessionLocal  # noqa: E402
 from app.fechas import hoy as hoy_en_colombia  # noqa: E402
 from app.models.models import LayoutSnapshot, Space, SpaceLease  # noqa: E402
-from app.services.layout_lookup import caras_de, es_comercializable  # noqa: E402
+from app.services.layout_lookup import (  # noqa: E402
+    caras_de, caras_por_participacion, es_comercializable, ofrece, sin_prefijo_de_sede,
+)
 from app.services.partes import codigo_de_parte, partes_de, termina_reservado  # noqa: E402
 
 
@@ -60,6 +62,10 @@ def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
     el JSON: el plano nunca guardó contratos de partes. Las PIEZAS de lo que no
     se vende entero (la bahía de impulso de una caja, ``CAJ-04-BI1``; el forro
     de una columna, ``COL-07-FO``) también: la caja no se ofrece, sus bahías sí.
+
+    Las participaciones de una cara que se vende por participación
+    (``GON-01-PC3``) no están acá —sus números no tienen tope—: las cuenta
+    ``participaciones_del_plano`` y las decide ``ofrecido``.
     """
     caras: dict[str, dict] = {}
     for f in fixtures:
@@ -74,6 +80,21 @@ def caras_del_plano(fixtures: list[dict]) -> dict[str, dict]:
         for cara, parte in partes_de(f, caras_de(f), comercializable):
             caras[codigo_de_parte(code, cara, parte)] = {}
     return caras
+
+
+def participaciones_del_plano(fixtures: list[dict], sede: str) -> set[str]:
+    """Los códigos CORTOS de las caras que el plano vende por participación
+    (``GON-01``, ``GON-01-B``): una participación de una de ellas
+    (``GON-01-PC3``) tiene mueble. La misma regla que la aplicación
+    (``caras_por_participacion``)."""
+    return {sin_prefijo_de_sede(c, sede) for c in caras_por_participacion(fixtures, sede)}
+
+
+def ofrecido(caras: dict[str, dict], caras_pc: set[str], corto: str) -> bool:
+    """¿El plano muestra este código corto? Lo de ``caras_del_plano`` o una
+    participación de una cara que se vende por participación (``ofrece`` de
+    la aplicación, con códigos cortos)."""
+    return ofrece(set(caras), caras_pc, corto)
 
 
 def nombres_que_parecen_partes(fixtures: list[dict]) -> list[str]:
@@ -155,6 +176,7 @@ def auditar(db, solo_sede: str | None = None) -> int:
             continue
 
         caras = caras_del_plano(fixtures)
+        caras_pc = participaciones_del_plano(fixtures, sede)
         raros = nombres_que_parecen_partes(fixtures)
         if raros:
             print(f"\n■ {sede} — {len(raros)} mueble(s) con un código que se lee como una "
@@ -163,9 +185,9 @@ def auditar(db, solo_sede: str | None = None) -> int:
         for lease, space in contratos:
             code = (space.code or "").strip().upper()
             corto = code[len(sede) + 1:] if code.startswith(f"{sede}-") else code
-            if corto not in caras:
+            if not ofrecido(caras, caras_pc, corto):
                 fantasmas.append((corto, lease, "el plano no lo ofrece"))
-            elif "status" in caras[corto] and caras[corto].get("status") != "occupied":
+            elif corto in caras and "status" in caras[corto] and caras[corto].get("status") != "occupied":
                 # El plano lo ofrece y lo pinta LIBRE: la pantalla dice «vendé
                 # esto» y el servidor lo va a rechazar.
                 #

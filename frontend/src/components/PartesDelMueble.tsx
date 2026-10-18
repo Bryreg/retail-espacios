@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
-import { claseDe, concordancia, divisionDe } from "../utils/partes";
+import { claseDe, concordancia, divisionDe, porParticipacion } from "../utils/partes";
 import {
   aplicarATodos, aplicarLoDeLaFicha, bahiasMaximas, cambioParaDividir, colocadosConLaFicha, conPartes, divisionSinFijar,
-  divisionesDe, loDeLaFicha, partesConEstado, piezasDeLaFamilia, puertasDibujadas, revisarCambioDePartes, seCuentaEnElPlano,
-  textoDeAplicarATodos, tramosDibujados, tramosQueEntran, type CambioDePartes,
+  formasDeVenderDe, loDeLaFicha, partesConEstado, piezasDeLaFamilia, POR_PARTICIPACION, puertasDibujadas, revisarCambioDePartes,
+  seCuentaEnElPlano, textoDeAplicarATodos, tramosDibujados, tramosQueEntran, type CambioDePartes, type DatosDeParticipacion,
 } from "../utils/partesDelMueble";
 import { useFichasPropias } from "../store/fichasPropias";
+import { useAuthStore } from "../store/authStore";
+import { claveDeSede, useOcupacionStore } from "../store/ocupacionStore";
 
 /**
  * «Cómo se vende» un mueble que se puede vender por partes, en el panel del
@@ -42,6 +44,15 @@ import { useFichasPropias } from "../store/fichasPropias";
  * ficha», y «Aplicar a los N colocados con esta ficha en la sede», que salta
  * los que tienen algo vendido. Lo colocado no cambia solo: espera el clic, y
  * pasa por las mismas revisiones que cualquier cambio de este panel.
+ *
+ * Y «Por participación» (participaciones de cara): en las familias con
+ * superficie comercializable, la cara se reparte entre proveedores por
+ * porcentaje y se carga en el Editor 3D → Distribución. Las mismas guardas
+ * que el servidor al guardar el plano, dichas antes: no pasa con espacios
+ * internos vendidos vivos, y no deja de venderse así con participaciones
+ * vivas (la ocupación anónima de la sede, que incluye las reservas
+ * provisionales). El cambio se manda enseguida (`flushPending`): si no, Vender
+ * y Distribución todavía ven la cara como se vendía antes.
  */
 export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
   id: string; puedeEditar: boolean;
@@ -52,6 +63,16 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
   const f = useFixtureStore((s) => selectFixtures(s).find((x) => x.id === id));
   const sede = useFixtureStore((s) => s.sede);
   const estado = useFixtureStore((s) => s.estadoComercial);
+  // Lo anónimo de las participaciones de la sede (contratos y reservas que
+  // siguen vivos): con eso se dice antes que una cara con participaciones
+  // vivas no deja de venderse así. Se lee si el mueble se vende así.
+  const cliente = useAuthStore((s) => s.cliente) ?? "";
+  const ocupacion = useOcupacionStore((s) => s.ocupacion[claveDeSede(cliente, sede)]);
+  const enParticipacion = !!f && porParticipacion(f);
+  useEffect(() => {
+    if (enParticipacion) void useOcupacionStore.getState().cargarOcupacion(sede);
+  }, [enParticipacion, sede, cliente]);
+  const datosDeParticipacion: DatosDeParticipacion = { ocupacion: ocupacion?.caras, hoy: ocupacion?.hoy };
   const [problema, setProblema] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; cambio: CambioDePartes } | null>(null);
   const [cuenta, setCuenta] = useState("");
@@ -80,7 +101,7 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
   const ficha = useMemo(() => (f ? loDeLaFicha(f) : null), [f, fichasPropias]);
   const conLaFicha = useMemo(() => colocadosConLaFicha(todos, f?.modelo), [todos, f?.modelo, fichasPropias]);
   if (!f) return null;
-  const formas = divisionesDe(f.type);
+  const formas = formasDeVenderDe(f.type);
   const piezas = piezasDeLaFamilia(f.type);
   if (formas.length === 0 && piezas.length === 0) return null;
   const sinFijar = divisionSinFijar(f);
@@ -88,14 +109,21 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
 
   function escribir(cambio: CambioDePartes) {
     const st = useFixtureStore.getState();
-    st.commit(conPartes(selectFixtures(st), id, cambio));
+    const antes = !!f && porParticipacion(f);
+    const nuevos = conPartes(selectFixtures(st), id, cambio);
+    st.commit(nuevos);
+    // Entrar o salir de «por participación» se manda ya: Distribución y
+    // Vender le preguntan al servidor, que si no seguiría viendo la cara como
+    // se vendía antes (409 «no se vende por participación»).
+    const ahora = nuevos.find((x) => x.id === id);
+    if (antes !== (!!ahora && porParticipacion(ahora))) void st.flushPending();
   }
 
   function proponer(cambio: CambioDePartes) {
     if (!f || !puedeEditar) return;
     setProblema(null);
     setEnTodas(null);
-    const r = revisarCambioDePartes(f, cambio, estado, sede);
+    const r = revisarCambioDePartes(f, cambio, estado, sede, datosDeParticipacion);
     if (r.bloqueo) {
       setProblema(r.bloqueo);
       setCuenta(typeof guardada === "number" ? String(guardada) : "");
@@ -154,8 +182,9 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
    *  estira. */
   function elegir(forma: string | null) {
     if (!f) return;
-    if (forma === null) { if (division || sinFijar) proponer({ division: null }); return; }
+    if (forma === null) { if (division || sinFijar || f.partes?.division === POR_PARTICIPACION) proponer({ division: null }); return; }
     if (division?.clase === forma) return;
+    if (forma === POR_PARTICIPACION && enParticipacion) return;
     const r = cambioParaDividir(f, forma);
     if ("problema" in r) { setProblema(r.problema); return; }
     proponer(r.cambio);
@@ -191,8 +220,9 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
     `rounded border px-2 py-1 text-[11px] ${activa
       ? "border-accent bg-accent/15 text-dark-ink-1 font-semibold"
       : "border-dark-line-2 text-dark-ink-2 hover:text-dark-ink-1"} disabled:opacity-60`;
-  const formaActiva = division?.clase ?? null;
+  const formaActiva = division?.clase ?? (enParticipacion ? POR_PARTICIPACION : null);
   const textoDeForma = (forma: string) => {
+    if (forma === POR_PARTICIPACION) return "Por participación";
     const c = claseDe(forma)!;
     const n = cuantas(forma);
     return `Entera o por ${c.plural}${formaActiva === forma && n ? ` (${n})` : ""}`;
@@ -275,7 +305,7 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
         </div>
       ) : (
         <p className="text-xs text-dark-ink-2">
-          {division && clase ? `Entera o por ${clase.plural} (${division.n})` : "Entera"}
+          {division && clase ? `Entera o por ${clase.plural} (${division.n})` : enParticipacion ? "Por participación" : "Entera"}
         </p>
       )}
       {puedeEditar && campo && clase && (
@@ -305,7 +335,7 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
         const fijar = cambioParaDividir(f, sinFijar);
         const c = claseDe(sinFijar)!;
         const g = concordancia(sinFijar);
-        const n = "cambio" in fijar ? (fijar.cambio as Record<string, unknown>)[c.campo] : null;
+        const n = "cambio" in fijar ? (fijar.cambio as Record<string, unknown>)[c.campo!] : null;
         return (
           <div className="flex flex-col gap-1" data-partes-sin-fijar>
             <p className="text-[11px] leading-snug text-warning">
@@ -322,7 +352,18 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false }: {
           </div>
         );
       })()}
-      {!division && !sinFijar && (
+      {enParticipacion && (
+        <p className="text-[10px] leading-snug text-dark-ink-3" data-partes-participacion>
+          Se vende por participación: el porcentaje de cada proveedor se carga en el Editor 3D → Distribución
+          (podés darle el 100 %). Ni entera ni por partes, mientras se venda así.
+        </p>
+      )}
+      {!enParticipacion && f.partes?.division === POR_PARTICIPACION && (
+        <p className="text-[11px] leading-snug text-warning" data-partes-participacion-sin-alquilar>
+          Está elegida «por participación», pero el mueble no se alquila: hasta que sea comercializable, no se vende.
+        </p>
+      )}
+      {!division && !sinFijar && !enParticipacion && (
         <p className="text-[10px] leading-snug text-dark-ink-3">
           Se vende entera. Con «Entera o por …», Vender ofrece la cara entera o cada parte, nunca las dos en las
           mismas fechas.

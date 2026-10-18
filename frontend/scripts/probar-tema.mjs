@@ -679,4 +679,67 @@ prueba("adentro del cajón oscuro el acento es claro también en el tema claro",
   assert.ok(c >= 3, `el acento activo da ${c.toFixed(2)}:1 sobre el cajón`);
 });
 
+console.log("\ntema · la paleta de marcas de una cara por participación");
+
+/* Las cuentas del validador de paletas categóricas de la skill de gráficos
+   (OKLab ΔE×100, daltonismo simulado con Machado-Oliveira-Fernandes 2009 a
+   severidad 1), las mismas con que se eligieron los tres tonos (§9.7). */
+const MACHADO = {
+  protan: [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
+  deutan: [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]],
+};
+const lineal = (c) => [c.r, c.g, c.b].map((v) => { const s = v / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+const oklab = ([r, g, b]) => {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+};
+const simular = (lin, k) => MACHADO[k].map((f) => Math.max(0, Math.min(1, f[0] * lin[0] + f[1] * lin[1] + f[2] * lin[2])));
+const deltaE = (a, b, k) => {
+  const A = oklab(k ? simular(lineal(a), k) : lineal(a)), B = oklab(k ? simular(lineal(b), k) : lineal(b));
+  return 100 * Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+};
+const MARCAS = ["--marca-1", "--marca-2", "--marca-3"];
+
+prueba("--marca-1..3 viven en :root y en el bloque oscuro, con el mismo valor (sin prefers-color-scheme)", () => {
+  for (const n of MARCAS) {
+    assert.ok(claro[n], `${n} no está en :root`);
+    assert.ok(oscuro[n], `${n} no está en html[data-tema="oscuro"]`);
+    assert.equal(hex(color("claro", n)), hex(color("oscuro", n)), `${n} cambia entre temas`);
+  }
+  assert.ok(!/prefers-color-scheme/.test(sinComentarios(temaCss)), "tema.css usa prefers-color-scheme");
+});
+
+for (const m of ["claro", "oscuro"]) {
+  prueba(`la paleta de marcas pasa el validador en ${m}: banda de luz, croma, daltonismo ≥ 8, visión normal ≥ 15, ≥ 3:1 contra papel y tarjeta`, () => {
+    const tonos = MARCAS.map((n) => color(m, n));
+    const banda = m === "claro" ? [0.43, 0.77] : [0.48, 0.67];
+    const malos = [];
+    for (let i = 0; i < tonos.length; i++) {
+      const [L, a, b] = oklab(lineal(tonos[i]));
+      if (L < banda[0] || L > banda[1]) malos.push(`${MARCAS[i]}: L ${L.toFixed(3)} fuera de la banda`);
+      if (Math.hypot(a, b) < 0.10) malos.push(`${MARCAS[i]}: croma ${Math.hypot(a, b).toFixed(3)} se lee gris`);
+      for (const fondo of ["--surface", "--bg"]) {
+        const r = contraste(tonos[i], color(m, fondo));
+        if (r < 3) malos.push(`${MARCAS[i]} sobre ${fondo}: ${r.toFixed(2)}:1`);
+      }
+      for (let j = i + 1; j < tonos.length; j++) {
+        const cvd = Math.min(deltaE(tonos[i], tonos[j], "protan"), deltaE(tonos[i], tonos[j], "deutan"));
+        if (cvd < 8) malos.push(`${MARCAS[i]}↔${MARCAS[j]}: ΔE con daltonismo ${cvd.toFixed(1)} < 8`);
+        const normal = deltaE(tonos[i], tonos[j]);
+        if (normal < 15) malos.push(`${MARCAS[i]}↔${MARCAS[j]}: ΔE ${normal.toFixed(1)} < 15`);
+      }
+      // Que una marca no se confunda con un estado (libre, se libera, tomado).
+      for (const estado of ["--libre", "--entra", "--ocupado"]) {
+        const e = color(m, estado);
+        const normal = deltaE(tonos[i], e), cvd = Math.min(deltaE(tonos[i], e, "protan"), deltaE(tonos[i], e, "deutan"));
+        if (normal < 15 || cvd < 8) malos.push(`${MARCAS[i]} se confunde con ${estado} (ΔE ${normal.toFixed(1)} · daltonismo ${cvd.toFixed(1)})`);
+      }
+    }
+    assert.deepEqual(malos, [], `\n         ${malos.join("\n         ")}`);
+  });
+}
+
 console.log(`\n${hechas} pruebas del tema`);
