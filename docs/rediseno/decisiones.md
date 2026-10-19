@@ -18,3 +18,14 @@ Dibujo: `docs/maquetas/rediseno-2026-10/plano.html`.
    («las dos caras» si las tiene), por el mismo camino del Plano (`PUT /layout` con sus
    guardas). Si no se puede, la opción se ve deshabilitada con el motivo y sin nombrar a nadie.
    Las líneas de ese mueble que ya estaban en el contrato se reemplazan por la forma nueva.
+5. **El panel del mueble es el B** (aprobado el 2026-10-20, `panel-plano.html`): encabezado con
+   el código y su lápiz, una línea con tipo · sede (candado) · pasillo, una franja de resumen y
+   tres pestañas — **Venta** (se vende, cómo, estado, contratado), **Medidas** (medidas,
+   entrepaños con − y +, módulo) y **Documentos** (archivos; «Usar como foto de la cara en el
+   3D», con la foto en chiquito; y la **«Nota del contrato»**, que es la de Vender, o «Nota del
+   espacio» sin contrato). Abre siempre en Venta. Varios elegidos, Revisar y Atajos, en el mismo
+   estilo.
+
+## Vender (PR 1), 2026-10-20
+- Una reserva puede cobrar por **% de las ventas**: guarda el porcentaje y el corte, y al
+  confirmarla el contrato queda cobrando por ventas (`vender-api.md` §1).

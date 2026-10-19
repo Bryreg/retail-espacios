@@ -40,10 +40,19 @@ ninguna (un solo commit; cualquier error hace rollback).
   contrato (`monthly_rent`, que en Vender nunca se prorrateó). `modo_precio` y
   `valor_tecleado` sólo recuerdan cómo se escribió («al mes» × la duración = el total; ver §6).
 - Con `cobro.modo = "ventas"`, `valor` va en 0 y no se exige; el monto sale de los cortes (§3).
+  Si viene otro valor, la línea vuelve en el 409 con `code: "valor"`. Una reserva no se cobra
+  por ventas (422 `cobro`): el cobro por ventas se elige al guardar el contrato.
+- Con `tipo = "contrato"` y cobro fijo, cada línea lleva `valor` > 0 (si no, 409 `valor`). Con
+  `modo_precio = "mensual"` el servidor comprueba `round(valor_tecleado × meses) = valor` (±1
+  peso, la cuenta de §6); si no coincide, 409 `valor`.
 - `tipo = "reserva"` vale para **cualquier** línea (decisión del dueño, 2026-10-19): un
   porcentaje se reserva como hoy (término `reserva` de participaciones, con su precio en §2) y
   una cara entera o una parte con la reserva de espacio nueva (§8). Una reserva guarda su
   precio acordado. Todo el pedido es una reserva o todo es un contrato.
+- Una reserva también puede cobrar por **% de las ventas** (decisión del dueño, 2026-10-20):
+  guarda `cobro` (porcentaje y corte) en vez de un precio, y al confirmarla el contrato queda
+  cobrando por ventas (se crea su `cobros_por_venta`). Las tablas de reserva guardan el cobro en
+  columnas propias de esas tablas nuevas (`cobro_modo`, `cobro_porcentaje`, `cobro_corte`).
 - `participacion.renueva`: id del término que se renueva (Renovar desde Supervisar). Mismas
   invariantes que `POST /api/participaciones/{id}/renovar`: mismo proveedor, marca y %, y
   empieza después de los vivos.
@@ -61,9 +70,17 @@ de avisos con todas las filas, como `bulk_leases._avisar`.
 **Respuesta 200**
 ```jsonc
 { "contratos": [{ "espacio": "CENTRO-PUN-02-EN1", "lease_id": 41 }],
-  "participaciones": [{ "cara": "CENTRO-GON-02", "espacio": "CENTRO-GON-02-PC2", "termino_id": 9, "tipo": "contrato" }],
-  "avisos": { /* la misma forma que devuelve hoy confirmarLote */ } }
+  // lease_id: el contrato del porcentaje (para colgarle la planometría); null en una reserva.
+  // reserva_id: en una reserva de porcentaje es el mismo termino_id; null en un contrato.
+  "participaciones": [{ "cara": "CENTRO-GON-02", "espacio": "CENTRO-GON-02-PC2", "termino_id": 9,
+                        "tipo": "contrato", "lease_id": 42, "reserva_id": null }],
+  // Las caras enteras y las partes reservadas (§8); vacío en un contrato.
+  "reservas": [{ "espacio": "CENTRO-PUN-02-EN1", "reserva_id": 3 }],
+  "avisos": { /* la misma forma que devuelve hoy confirmarLote; null en una reserva */ } }
 ```
+Errores del pedido entero (antes de mirar las líneas): 422 `{ "detail": { "code", "message" } }`
+con `code` `sede`, `proveedor`, `sin_lineas`, `demasiadas_lineas`, `fechas`, `reserva_pasada`,
+`caduca`, `cobro` o `linea` (una línea con espacio Y porcentaje, o ninguno). Campos de más → 422.
 
 **Respuesta 409** (no se escribió nada)
 ```jsonc
@@ -73,7 +90,10 @@ de avisos con todas las filas, como `bulk_leases._avisar`.
                "queda_pb": 7000, "desde_dia": "2026-11-03" } ] } }
 ```
 Los mensajes **no nombran a nadie** ni dicen el % de otro: sólo lo que queda y desde cuándo.
-`?validar=1` contesta 200 `{ "ok": true, "filas": [] }` o el mismo 409.
+`?validar=1` contesta 200 `{ "ok": true, "filas": [] }` o el mismo 409. Una línea de cara entera
+o de parte que no entra trae `code: "linea_invalida"`, la primera frase de la planilla en
+`mensaje` y todas en `mensajes`. Si el plano cambió entre las dos revisiones: 409
+`plano_cambio` (nada escrito).
 
 ## 2. El precio de una reserva: tabla `precios_de_reserva`
 
@@ -92,22 +112,37 @@ Rutas (sólo administración):
   `[{ lease_id, espacio, proveedor, porcentaje, periodo_desde, periodo_hasta }]`.
 - `POST /api/cobros/{lease_id}/cortes` `{ periodo_desde, periodo_hasta, ventas }` → `{ monto }`
   (monto = ventas × porcentaje, redondeado al peso).
-- `GET /api/cobros?sede=` → por contrato: porcentaje, corte, cortes cargados y próximo corte.
+- `GET /api/cobros?sede=` → por contrato: `[{ lease_id, espacio, sede, proveedor, marca, desde,
+  hasta, porcentaje, corte, cortes: [{ periodo_desde, periodo_hasta, ventas, monto, cargado_en,
+  cargado_por }], cobrado, proximo_corte: { periodo_desde, periodo_hasta } | null }]`.
+
+Los períodos: con corte mensual, uno por mes calendario dentro del contrato (19 oct – 18 dic →
+19–31 oct, 1–30 nov, 1–18 dic); «al final», uno solo. Vencido = su último día es anterior a hoy
+(Colombia); un contrato cancelado debe igual sus períodos terminados. El corte tiene que ser
+exactamente uno de esos períodos (422 `periodo`), ya terminado (422 `periodo_abierto`) y no
+cargado (409 `corte_cargado`).
 
 Las métricas (dashboard, plataforma, tendencia, detalle, asesoría, transparencia) **no cuentan
 estos contratos como de $ 0**: los sacan de los promedios y suman lo cobrado en los cortes.
+Lo cobrado de un corte que cruza meses se reparte por días. La serie histórica
+(`snapshot_metricas`) no tiene columna para lo cobrado (y no se agregan columnas): el mes en
+curso lo suma, los meses ya guardados cuentan sólo el canon fijo.
 
 ## 4. El aviso de montaje de un porcentaje: tabla `montajes_pendientes`
 
 `(lease_id PK, cara_space_id, creado_en)`. Al firmar un porcentaje se avisa a comercial y al
 proveedor, pero no al montaje: queda pendiente. Al confirmar la distribución de esa cara
 (después del commit y sólo si no quedó inválida), sale el correo de montaje de los pendientes
-cuya participación tiene zona confirmada, y se borran.
+cuya participación tiene zona confirmada, y se borran. Si la participación YA tiene zona
+confirmada al firmar (una renovación: mismo espacio PC, mismas zonas) no hay nada que esperar y
+el aviso de montaje sale enseguida, como siempre. Vale para todos los caminos que crean un
+contrato de porcentaje (este guardado, `POST /api/participaciones/`, confirmar y renovar).
 
 ## 5. Completar el proveedor: `GET /api/suppliers/completar?prefijo=`
 
-Sólo administración. Desde 3 letras; sin tildes ni mayúsculas. Devuelve `{ "nombre": "…" }` o
-`{ "nombre": null }`: **un solo nombre**, el de más contratos entre los que empiezan así.
+Sólo administración. Desde 3 letras (con menos, `{ "nombre": null }`); sin tildes ni mayúsculas.
+Devuelve `{ "nombre": "…" }` o `{ "nombre": null }`: **un solo nombre**, el de más contratos
+entre los que empiezan así (a igualdad, el más viejo).
 Nunca una lista, nunca montos.
 
 ## 6. La duración en meses (para «al mes» y para Supervisar)
@@ -116,7 +151,9 @@ Una sola cuenta, escrita dos veces con los mismos casos (`frontend/src/utils/mes
 `backend/app/services/meses.py`, `frontend/scripts/casos/meses.json`): los meses calendario
 completos entre `desde` y `hasta + 1 día`, más los días que sobran ÷ 30. 1 nov – 30 nov = 1;
 1 nov – 31 ene = 3; 19 oct – 18 nov = 1. «Al mes» × meses = total (redondeado al peso), y en
-Supervisar (PR 2) total ÷ meses = al mes.
+Supervisar (PR 2) total ÷ meses = al mes. Un mes se suma desde el día de arranque y, si ese día
+no existe en el mes de llegada, se queda en el último (31 ene + 1 mes = 28 feb; 31 ene – 27 feb
+= 1, 31 ene – 28 feb = 1 mes y 1 día). Los casos llevan los meses redondeados a 6 decimales.
 
 ## 7. Todas las tablas nuevas
 
@@ -124,7 +161,13 @@ Entran a `TABLAS_DEL_CLIENTE` (`services/traspaso.py`), a la copia (`copia.py`) 
 exportación (`derechos.py`); se importan en `main.py`; se suman a los barridos de fuga de plata
 (`test_auditoria_hardening`, `test_identidad`, `test_montaje_enlace`, `test_suite_sin_fuga`).
 La quinta tabla es `condiciones_de_contrato(lease_id PK FK, modo_precio, valor_tecleado,
-creado_en)`, que recuerda cómo se escribió el precio de un contrato entero o de una parte.
+creado_en)`, que recuerda cómo se escribió el precio de un contrato (entero, parte o porcentaje).
+La sexta es `reservas_de_espacio` (§8). En la exportación salen juntas bajo
+`condiciones_comerciales: { <tabla>: [filas] }`.
+
+Los correos dicen «Valor del contrato» (nunca «Valor mensual» ni «Total mensual»: lo guardado
+es el total) y, si se escribió por mes, «$ 1.800.000 ($ 600.000 al mes)»; un contrato por
+ventas, «8 % de las ventas (corte mensual)». La plata, entera y con punto de miles.
 
 ## 8. Reservar una cara entera o una parte: tabla `reservas_de_espacio`
 
@@ -151,4 +194,17 @@ algo choca o se puede vender.
   con el precio guardado; el cuerpo puede cambiarlo; revisa choques con candado como §1),
   `DELETE /api/reservas/{id}` (cancelar; queda en el registro con `baja_en`).
 - Delante del proveedor, una cara reservada por otro se ve **Tomada**, sin decir que es una
-  reserva ni de quién. Sus avisos por correo siguen a los de una reserva de participación.
+  reserva ni de quién. Sus avisos por correo siguen a los de una reserva de participación (no
+  manda ninguno; al confirmarla salen los de un contrato).
+- Lo que quedó implementado (2026-10-19): en `GET /api/spaces/comercial` una cara o parte con
+  reserva viva (y sin contrato) sale con `status: "occupied"`; quien administra ve además
+  `supplierName`, `brandCategory`, `negotiatedValue` (el valor guardado), `startDate`/`endDate`
+  (los de la reserva) y `reservaHasta` (la caducidad); el trabajador, todo vacío y
+  `reservaHasta: null`. Los choques la dicen «tomado» (««X» está tomado del … al …: ajustá las
+  fechas.»). `GET /api/reservas` devuelve `[{ id, espacio, sede, proveedor, marca, desde, hasta,
+  caduca, caduca_pronto, valor, modo_precio, valor_tecleado, notas, creado_en, creado_por }]`
+  (sólo las vivas; `caduca_pronto` = caduca dentro de 7 días). `POST
+  /api/reservas/{id}/confirmar` recibe `{ valor?, modo_precio?, valor_tecleado?, correo?,
+  notas? }` y contesta `{ reserva_id, lease_id, espacio, avisos }`; una reserva que ya no vive
+  (confirmada, cancelada o caducada) da 409. Bitácora: `reserva_espacio.alta`,
+  `reserva_espacio.confirmada` (+ `contrato.alta`) y `reserva_espacio.baja`.
