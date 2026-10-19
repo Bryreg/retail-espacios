@@ -14,6 +14,9 @@
    `.plat`, así que la consola vieja (`--con-*`), Vender, Supervisar, Montaje y
    el editor 3D no ven una sola de sus reglas. */
 @import "./plataforma.css";
+/* Capa de presentación de la consola comercial: jerarquía, responsive y estados
+   interactivos. No contiene lógica de negocio ni altera el motor 3D. */
+@import "./dashboard-ux.css";
 
 @tailwind base;
 @tailwind components;
