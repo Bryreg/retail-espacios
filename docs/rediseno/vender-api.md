@@ -40,8 +40,10 @@ ninguna (un solo commit; cualquier error hace rollback).
   contrato (`monthly_rent`, que en Vender nunca se prorrateó). `modo_precio` y
   `valor_tecleado` sólo recuerdan cómo se escribió («al mes» × la duración = el total; ver §6).
 - Con `cobro.modo = "ventas"`, `valor` va en 0 y no se exige; el monto sale de los cortes (§3).
-- `tipo = "reserva"` sólo vale si **todas** las líneas son porcentajes (los espacios enteros y
-  las partes no tienen reserva en el modelo). La reserva guarda su precio acordado (§2).
+- `tipo = "reserva"` vale para **cualquier** línea (decisión del dueño, 2026-10-19): un
+  porcentaje se reserva como hoy (término `reserva` de participaciones, con su precio en §2) y
+  una cara entera o una parte con la reserva de espacio nueva (§8). Una reserva guarda su
+  precio acordado. Todo el pedido es una reserva o todo es un contrato.
 - `participacion.renueva`: id del término que se renueva (Renovar desde Supervisar). Mismas
   invariantes que `POST /api/participaciones/{id}/renovar`: mismo proveedor, marca y %, y
   empieza después de los vivos.
@@ -123,3 +125,30 @@ exportación (`derechos.py`); se importan en `main.py`; se suman a los barridos 
 (`test_auditoria_hardening`, `test_identidad`, `test_montaje_enlace`, `test_suite_sin_fuga`).
 La quinta tabla es `condiciones_de_contrato(lease_id PK FK, modo_precio, valor_tecleado,
 creado_en)`, que recuerda cómo se escribió el precio de un contrato entero o de una parte.
+
+## 8. Reservar una cara entera o una parte: tabla `reservas_de_espacio`
+
+Decisión del dueño (2026-10-19): «Reservar hasta…» vale también para espacios enteros y partes,
+no sólo para porcentajes. Es un concepto nuevo: **lo reservado cuenta como ocupado** en sus
+fechas mientras la reserva viva, igual que un contrato, en TODOS los caminos que hoy deciden si
+algo choca o se puede vender.
+
+- Tabla `reservas_de_espacio(id, space_id FK spaces, supplier_id FK, marca, desde, hasta,
+  caduca, valor, modo_precio, valor_tecleado, correo, notas, estado "viva"|"confirmada"|
+  "cancelada", lease_id NULL FK al confirmar, creado_en, creado_por, baja_en, baja_por)`.
+  Viva = `estado = "viva"` y `caduca ≥ hoy` (fecha de Colombia). La caducidad la elige quien
+  opera, sin valor por defecto: `hoy ≤ caduca ≤ hasta`, como las reservas de participación.
+- **Cuenta como ocupado** mientras vive, en sus fechas: el choque de contratos
+  (`contratos_que_chocan` / `chocan` y la compuerta de partes `motivo_para_no_vender_parte`), la
+  planilla (`bulk_leases._revisar`), el contrato suelto (`POST /spaces/{id}/leases`), el guardado
+  único (§1), la capacidad de una cara por participación (una cara entera o una parte física
+  reservada cuenta como lo físico, `fisicos_de`), el guardarraíl del plano (sacar de circulación
+  algo reservado se frena igual que algo vendido) y el mapa comercial que lee el navegador
+  (`GET /api/spaces/comercial`: la cara sale tomada en esas fechas, con `reservaHasta` para
+  quien administra; al trabajador, tomada y nada más).
+- Rutas (administración): `GET /api/reservas?sede=` (las vivas y las que caducan pronto, para
+  «Reservas por caducar» de Supervisar), `POST /api/reservas/{id}/confirmar` (crea el contrato
+  con el precio guardado; el cuerpo puede cambiarlo; revisa choques con candado como §1),
+  `DELETE /api/reservas/{id}` (cancelar; queda en el registro con `baja_en`).
+- Delante del proveedor, una cara reservada por otro se ve **Tomada**, sin decir que es una
+  reserva ni de quién. Sus avisos por correo siguen a los de una reserva de participación.
