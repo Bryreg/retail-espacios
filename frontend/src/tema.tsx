@@ -104,6 +104,9 @@ export function useTema(): [Tema, () => void] {
  * lleva `aria-label` con la acción escrita y `aria-pressed` para que un lector
  * de pantalla pueda decir en qué estado está sin depender del ícono. El foco
  * de teclado lo dibuja `.foco-tema` en `index.css` con el `--ring` del tema.
+ *
+ * Mide lo que miden los botones de ícono de la barra (32 px) y el ícono va con
+ * la regla de la hoja de piezas del rediseño: 16 px, trazo 1,75, en gris.
  */
 export function TemaToggle({ estilo }: { estilo?: React.CSSProperties }) {
   const [tema, alternar] = useTema();
@@ -118,7 +121,7 @@ export function TemaToggle({ estilo }: { estilo?: React.CSSProperties }) {
       title="Claro / oscuro"
       style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        width: 28, height: 28, padding: 0,
+        width: 32, height: 32, padding: 0,
         borderRadius: "var(--r-md)",
         background: "transparent", border: "none",
         color: "var(--ink-2)", cursor: "pointer",
@@ -126,7 +129,7 @@ export function TemaToggle({ estilo }: { estilo?: React.CSSProperties }) {
         ...estilo,
       }}
     >
-      {vaAOscuro ? <Moon size={14} /> : <Sun size={14} />}
+      {vaAOscuro ? <Moon size={16} strokeWidth={1.75} aria-hidden /> : <Sun size={16} strokeWidth={1.75} aria-hidden />}
     </button>
   );
 }

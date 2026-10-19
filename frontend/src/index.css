@@ -223,9 +223,18 @@ html[data-modal-abierto] [data-capa-modal] .btn-principal:not(:disabled) {
   box-sizing: border-box;
 }
 
-/* Spinner used by the sync status indicator in the header. */
+/* El giro de los `Loader2` (guardar el contrato, la carga masiva). */
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+/* El punto de la sincronización mientras trae o sube: late, no gira (es un
+   punto, no un ícono). Sin movimiento para quien lo pidió. */
+@keyframes pulso-sync {
+  from { opacity: 1; }
+  to { opacity: .35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*="pulso-sync"] { animation: none !important; }
 }
 
 /* ─── Consola de plataforma (back-office / BI) ──────────────────────────────

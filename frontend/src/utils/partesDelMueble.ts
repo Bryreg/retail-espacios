@@ -4,9 +4,10 @@ import { fullSpaceCode } from "../types/espacio";
 import type { EstadoPorEspacio } from "./estadoComercial";
 import { geometriaALaVista } from "./geometriaDelMueble";
 import {
-  claseDe, codigoDeParte, comoSeVendeLaFicha, concordancia, divisionDe, esDivision, firmaDePartes, partesDe, piezasDe,
-  piezasDeLaFamilia, porParticipacion, sufijoDeParte, textoDeComoSeVende,
+  claseDe, codigoDeParte, comoSeVendeLaFicha, concordancia, divisionDe, esDivision, firmaDePartes, partesDe, partirCodigo,
+  piezasDe, piezasDeLaFamilia, porParticipacion, sufijoDeParte, textoDeComoSeVende, type FormaDeLaLinea,
 } from "./partes";
+import { isRentable } from "../types/fixtures";
 import type { OcupacionDeCara } from "./participaciones";
 import { superficieDeCara, tieneSuperficie } from "./superficie";
 
@@ -580,4 +581,93 @@ export function colocadosConLaFicha(fixtures: readonly Mueble[], modelo: string 
   if (!modelo) return { todos: 0, distintos: 0 };
   const con = fixtures.filter((f) => f.modelo === modelo);
   return { todos: con.length, distintos: con.filter((f) => !!loDeLaFicha(f)?.cambio).length };
+}
+
+// ─── Cómo se vende, desde la línea de Vender ─────────────────────────────────
+
+/** Las formas que ofrece una línea de Vender para una cara: «Entera», «Por
+ *  <partes>» (cada división que admite su familia) y «Por porcentaje» (si la
+ *  familia tiene superficie). Lo que la FAMILIA permite, no lo que el mueble es
+ *  hoy: si hoy se vende de otra forma, la línea ofrece cambiarla
+ *  (`cambioDesdeVender`). Vacío para lo que no se vende entero (la caja, la
+ *  columna: sus piezas van en el renglón) o si hay una sola forma. */
+export function formasDeLaLinea(f: Mueble): { forma: FormaDeLaLinea; texto: string }[] {
+  if (!isRentable(f)) return [];
+  const formas: { forma: FormaDeLaLinea; texto: string }[] = [{ forma: "entera", texto: "Entera" }];
+  for (const forma of formasDeVenderDe(f.type)) {
+    formas.push({ forma, texto: forma === POR_PARTICIPACION ? "Por porcentaje" : `Por ${claseDe(forma)?.plural ?? forma}` });
+  }
+  return formas.length > 1 ? formas : [];
+}
+
+/** ¿El mueble, tal como está, ya se vende de esa forma? La entera se vende
+ *  siempre, salvo por participación (una cara así no se vende entera). */
+export function seVendeAsi(f: Mueble, forma: FormaDeLaLinea): boolean {
+  if (forma === "entera") return !porParticipacion(f);
+  if (forma === POR_PARTICIPACION) return porParticipacion(f);
+  return divisionDe(f)?.clase === forma;
+}
+
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const diaCortoDe = (iso: string) => (/^\d{4}-\d{2}-\d{2}/.test(iso) ? `${Number(iso.slice(8, 10))} ${MESES_CORTOS[Number(iso.slice(5, 7)) - 1]}` : "");
+
+/**
+ * Por qué no se puede cambiar cómo se vende el mueble desde Vender, o `null`:
+ * algo de él —de CUALQUIERA de sus caras, porque la forma de venderse es del
+ * mueble— está vendido, firmado o reservado (un contrato o una reserva viva en
+ * el mapa de la base, o un porcentaje o una reserva de participación vivos en
+ * la ocupación anónima). Dice QUÉ y hasta cuándo, nunca de quién: «EN4 está
+ * vendido hasta el 31 dic: no se puede cambiar cómo se vende».
+ */
+export function porQueNoSeCambia(f: Mueble, estado: EstadoPorEspacio, sede: string, participacion?: DatosDeParticipacion): string | null {
+  const completo = fullSpaceCode(f.sede || sede, f.code).toUpperCase();
+  for (const [codigo, e] of Object.entries(estado)) {
+    if (e.status !== "occupied" && e.status !== "reserved") continue;
+    const p = partirCodigo(codigo.toUpperCase());
+    if (p.base !== completo) continue;
+    const que = p.parte ? `${p.cara === "B" ? "B·" : ""}${sufijoDeParte(p.parte)}` : `La cara ${p.cara}`;
+    const verbo = e.status === "reserved" ? "reservad" : "vendid";
+    const g = p.parte ? "o" : "a";
+    const hasta = e.endDate ? ` hasta el ${diaCortoDe(e.endDate)}` : "";
+    return `${que} está ${verbo}${g}${hasta}: no se puede cambiar cómo se vende.`;
+  }
+  const caras = [completo, `${completo}-B`];
+  for (const c of caras) {
+    const o = participacion?.ocupacion && Object.prototype.hasOwnProperty.call(participacion.ocupacion, c) ? participacion.ocupacion[c] : undefined;
+    const vivos = (o?.intervalos ?? []).filter((i) => !participacion?.hoy || i.hasta >= participacion.hoy);
+    if (vivos.length > 0) {
+      const hasta = vivos.reduce((m, i) => (i.hasta > m ? i.hasta : m), vivos[0].hasta);
+      return `Tiene porcentajes vendidos o reservados hasta el ${diaCortoDe(hasta)}: no se puede cambiar cómo se vende.`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Lo que hace falta para que una línea de Vender venda una cara de esa forma,
+ * cuando el mueble hoy se vende de otra. El MISMO camino que el panel «Cómo se
+ * vende» del Plano, con sus guardas: `cambioParaDividir` (lo que se escribe) y
+ * `revisarCambioDePartes` (lo que lo frena o lo que hay que decir antes). Y una
+ * más, propia de Vender: sólo con el mueble LIBRE, sin nada vendido ni firmado
+ * en ninguna de sus caras —cambiar cómo se vende un mueble con contratos es
+ * una decisión del Plano, no de una reunión—. El cambio lo escribe quien
+ * dibuja el plano (`conPartes` + el guardado de siempre, `PUT /layout`). La
+ * forma es del MUEBLE: se revisan sus dos caras (`porQueNoSeCambia`).
+ *
+ * · `{ listo: true }`: ya se vende así.
+ * · `{ cambio, aviso }`: se puede; `aviso` es lo que el Plano pediría
+ *   confirmar con «Cambiar igual» (o `null`).
+ * · `{ problema }`: no se puede, dicho en una línea y sin nombrar a nadie.
+ */
+export function cambioDesdeVender(
+  f: Mueble, forma: FormaDeLaLinea, estado: EstadoPorEspacio, sede: string, participacion?: DatosDeParticipacion,
+): { listo: true } | { cambio: CambioDePartes; aviso: string | null } | { problema: string } {
+  if (seVendeAsi(f, forma)) return { listo: true };
+  const vendido = porQueNoSeCambia(f, estado, sede, participacion);
+  if (vendido) return { problema: vendido };
+  const r = forma === "entera" ? { cambio: { division: null } as CambioDePartes } : cambioParaDividir(f, forma);
+  if ("problema" in r) return { problema: r.problema };
+  const revision = revisarCambioDePartes(f, r.cambio, estado, sede, participacion);
+  if (revision.bloqueo) return { problema: revision.bloqueo };
+  return { cambio: r.cambio, aviso: revision.aviso };
 }

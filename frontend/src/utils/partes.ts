@@ -727,8 +727,15 @@ export function partirClave(clave: string): { id: string; cara: "A" | "B"; parte
 }
 
 /** Un espacio del contrato que se está armando: el mueble, la cara y, si es
- *  una parte, su sufijo (`PU2`). */
-export interface EnContrato { id: string; face: "A" | "B"; parte?: string }
+ *  una parte, su sufijo (`PU2`).
+ *
+ *  Rediseño de Vender (PR 1): `pc` es un PORCENTAJE de esa cara (la línea
+ *  «GON-02 · A · 75 %»: el % y el precio los guarda el contrato, el número
+ *  `PC` lo pone el servidor); `porPartes` es la cara elegida «por
+ *  entrepaños» (o puertas, tramos) sin ninguna parte marcada todavía: la línea
+ *  se queda en el contrato con su lista de partes abierta, y la primera parte
+ *  que se marca la reemplaza (`alternarParte`: choca con ella como la entera). */
+export interface EnContrato { id: string; face: "A" | "B"; parte?: string; pc?: true; porPartes?: string }
 
 /**
  * Tocar un mueble en el plano de Vender: lo suma al contrato o, tocado de
@@ -740,16 +747,19 @@ export interface EnContrato { id: string; face: "A" | "B"; parte?: string }
  * · Una caja o una columna, que nunca se venden enteras, suman su primera
  *   PIEZA libre en el periodo (`libre`; si ninguna, la primera): la BI1, o la
  *   que siga, o el forro. Nunca la caja entera, que el servidor rechaza.
- * · Una cara POR PARTICIPACIÓN no se vende así: ni entera ni la participación
- *   (`…-PC3`), que se carga en el Editor 3D → Distribución. Tocarla no suma
- *   nada y tampoco vacía lo que ya se armó: el contrato queda como estaba, el
- *   plano dice «Por participación · queda 40 %» (`textoDeParticipacion`) y la
- *   ficha del contrato avisa dónde se vende (`textoAlTocarEnVender`).
+ * · Una cara POR PARTICIPACIÓN suma una línea de PORCENTAJE de esa cara
+ *   (`pc`): nunca la cara entera ni un `…-PC3` escrito a mano (el número lo
+ *   pone el servidor al guardar). Tocada de nuevo, sale. Hasta el rediseño de
+ *   Vender no sumaba nada y la ficha mandaba al Editor 3D → Distribución.
  */
 export function alTocarEnVender(
   lista: EnContrato[], f: ConPartes & { id: string }, cara: "A" | "B", libre: (p: ParteRef) => boolean,
 ): EnContrato[] {
-  if (porParticipacion(f)) return lista;
+  if (porParticipacion(f)) {
+    return lista.some((x) => x.id === f.id && x.face === cara)
+      ? lista.filter((x) => !(x.id === f.id && x.face === cara))
+      : [...lista, { id: f.id, face: cara, pc: true }];
+  }
   if (!seVendeAlgo(f)) return [];
   if (!isRentable(f)) {
     const piezas = piezasDe(f);
@@ -774,7 +784,8 @@ export function interruptoresDeLaCara(f: ConPartes, cara: "A" | "B"): (string | 
 }
 
 const mismo = (a: EnContrato, b: EnContrato) =>
-  a.id === b.id && a.face === b.face && (a.parte ?? null) === (b.parte ?? null);
+  a.id === b.id && a.face === b.face && (a.parte ?? null) === (b.parte ?? null)
+  && !!a.pc === !!b.pc && (a.porPartes ?? null) === (b.porPartes ?? null);
 
 /**
  * Sumar o sacar un espacio del contrato, con la regla de la dueña: prender una
@@ -790,6 +801,59 @@ export function alternarParte(lista: EnContrato[], item: EnContrato): EnContrato
     return !chocan(yo, otro);
   });
   return [...sigue, item];
+}
+
+/** Las formas en que una línea de Vender vende una cara: entera, por una
+ *  clase de partes (`"entrepanos"`, `"puertas"`, `"tramos"`) o por porcentaje. */
+export type FormaDeLaLinea = "entera" | "participacion" | string;
+
+/**
+ * Cambiar la forma de UNA línea del contrato (el control «Entera · Por
+ * entrepaños · Por porcentaje»): saca lo que esa cara tenía en el contrato y
+ * pone la cara entera, el porcentaje, o la cara «por partes» sin ninguna
+ * marcada todavía. Las otras caras y los otros muebles, intactos.
+ */
+export function conLaForma(lista: EnContrato[], id: string, face: "A" | "B", forma: FormaDeLaLinea): EnContrato[] {
+  const sigue = lista.filter((x) => !(x.id === id && x.face === face));
+  const nueva: EnContrato = forma === "entera" ? { id, face }
+    : forma === "participacion" ? { id, face, pc: true }
+    : { id, face, porPartes: forma };
+  return [...sigue, nueva];
+}
+
+/**
+ * Lo que queda en el contrato de un mueble DESPUÉS de cambiar cómo se vende
+ * (la forma es del MUEBLE: vale para sus dos caras). Cada cara de ese mueble
+ * que estaba en el contrato —y la que se tocó— pasa al estado VACÍO de la
+ * forma nueva: la cara entera, el porcentaje sin elegir, o la lista de partes
+ * sin ninguna marcada. Nunca se queda nada con la forma de antes (el servidor
+ * ya no lo aceptaría) ni se adivina qué parte o qué % se quería.
+ */
+export function aLaFormaNueva(lista: EnContrato[], id: string, face: "A" | "B", forma: FormaDeLaLinea): EnContrato[] {
+  const caras: ("A" | "B")[] = [];
+  for (const x of lista) if (x.id === id && !caras.includes(x.face)) caras.push(x.face);
+  if (!caras.includes(face)) caras.push(face);
+  let fuera = lista.filter((x) => x.id !== id);
+  for (const c of caras) fuera = conLaForma(fuera, id, c, forma);
+  return fuera;
+}
+
+/**
+ * Las partes de una cara para elegir en la línea de Vender, en el orden en que
+ * se ven paradas frente al mueble: los entrepaños de ARRIBA a abajo (`EN5 ·
+ * arriba` … `EN1 · la base`, que es como se cuentan: el 1 es la base) y las
+ * puertas y los tramos de izquierda a derecha. Sin estado: si está tomada lo
+ * dice quien la dibuja, con `disponibilidad`, sin decir de quién.
+ */
+export function partesParaElegir(f: ConPartes, cara: "A" | "B", clase: string): { sufijo: string; texto: string }[] {
+  const regla = claseDe(clase);
+  const deLaCara = partesDe(f).filter((p) => p.cara === cara && p.parte.clase === clase).map((p) => p.parte);
+  if (!regla?.base) return deLaCara.map((p) => ({ sufijo: sufijoDeParte(p), texto: sufijoDeParte(p) }));
+  const n = deLaCara.length;
+  return [...deLaCara].reverse().map((p) => {
+    const sufijo = sufijoDeParte(p);
+    return { sufijo, texto: p.n === n ? `${sufijo} · arriba` : p.n === 1 ? `${sufijo} · la base` : sufijo };
+  });
 }
 
 // ─── La disponibilidad, con lo que choca ─────────────────────────────────────
@@ -1087,18 +1151,39 @@ export function textoDeParticipacion(d: Pick<DispoDeParticipacion, "dispo" | "qu
  *  con las mismas palabras. */
 export const DONDE_SE_CARGAN = "Las participaciones se cargan en el Editor 3D → Distribución.";
 
-/** Lo que se dice al tocar una cara por participación en Vender (el aviso de
- *  la ficha del contrato): no se vende entera ni la participación, y se dice
- *  dónde. Para quien vende, cuánto queda EN EL PERIODO —el mismo número del
- *  rótulo del plano—: «Se vende por participación: queda 40 %. Las
- *  participaciones se cargan en el Editor 3D → Distribución.». Sin el % para
- *  el trabajador, ni sin la ocupación todavía. Nunca un nombre ni un monto:
- *  es la ocupación anónima, y del otro lado de la mesa puede estar otro
- *  proveedor. */
+/** Lo que dice la línea de PORCENTAJE que suma tocar una cara por
+ *  participación en Vender (rediseño de Vender, PR 1: la cara ya no manda al
+ *  Editor 3D → Distribución, se vende acá). Para quien vende, cuánto queda EN
+ *  LAS FECHAS DEL CONTRATO: «Por porcentaje · queda 40 %», o «Por porcentaje ·
+ *  no queda nada en estas fechas». Sin el % para el trabajador, ni sin la
+ *  ocupación todavía. Nunca un nombre, el % de otro ni un monto: es la
+ *  ocupación anónima, y del otro lado de la mesa está el proveedor. */
 export function textoAlTocarEnVender(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb"> | null, conPorcentaje: boolean): string {
-  return d && conPorcentaje
-    ? `Se vende por participación: queda ${pct(d.quedaPb)}. ${DONDE_SE_CARGAN}`
-    : `Se vende por participación. ${DONDE_SE_CARGAN}`;
+  if (!d || !conPorcentaje) return "Por porcentaje";
+  return d.quedaPb <= 0 ? "Por porcentaje · no queda nada en estas fechas" : `Por porcentaje · queda ${pct(d.quedaPb)}`;
+}
+
+/**
+ * Cuánto queda para vender de una cara por participación en TODO el plazo
+ * del contrato, y desde qué día queda eso: «desde el 3 nov queda 70 %». Es
+ * `disponible` de las reglas gemelas (el pasado no se vende; lo vendido entero
+ * o por partes cuenta como la cara entera) con el día del pico. `null` si el
+ * mueble no se vende así o la ocupación no llegó. Sólo lo que queda: nunca lo
+ * comprometido de otro (`revisarCapacidad` lo dice, y no va delante del
+ * proveedor).
+ */
+export function quedaEnLaCara(
+  f: ConPartes, participacion: ParticipacionDeLaCara | null | undefined, desde: string, hasta: string,
+): { quedaPb: number; dia: string } | null {
+  if (!participacion || !porParticipacion(f)) return null;
+  const o = participacion.ocupacion;
+  const I: { desde: string; hasta: string; pb: number }[] = [];
+  for (const x of o.fisicos ?? []) I.push({ desde: x.desde, hasta: x.hasta, pb: CARA_ENTERA_PB });
+  for (const x of o.intervalos ?? []) I.push({ desde: x.desde, hasta: x.hasta, pb: x.pb });
+  const a = desde > participacion.hoy ? desde : participacion.hoy;
+  if (a > hasta) return { quedaPb: 0, dia: a };
+  const p = pico(I, a, hasta);
+  return { quedaPb: Math.max(0, CARA_ENTERA_PB - p.pb), dia: p.pb > 0 ? p.dia : a };
 }
 
 /**
@@ -1307,12 +1392,15 @@ export function enParte(c: ConteoDelPeriodo): number {
   return c.dias + c.partes + c.participacion;
 }
 
-/** Lo que ESTE contrato puede tomar al cerrar: las libres que no se venden
- *  por participación, las que se liberan en el periodo y las que tienen otra
- *  parte libre. Una cara por participación (libre o en parte) nunca entra a un
- *  contrato de Vender: se carga en el Editor 3D → Distribución. */
+/** Lo que ESTE contrato puede tomar al cerrar: todo lo que no está tomado —las
+ *  libres, las que se liberan en el periodo, las que tienen otra parte libre y
+ *  las caras por participación a las que les queda lugar—. Desde el rediseño
+ *  de Vender (PR 1) una cara por participación SE VENDE EN VENDER, como una
+ *  línea de porcentaje, así que cuenta como cualquier otra: antes se restaba,
+ *  porque «se cargaba en el Editor 3D → Distribución». Es la misma cuenta que
+ *  la columna «Libres · en parte» (libres + el «+N»), fila por fila y en el pie. */
 export function alCerrar(c: ConteoDelPeriodo): number {
-  return c.libres - c.libresPc + c.dias + c.partes;
+  return c.libres + enParte(c);
 }
 
 /** El desglose del ámbar, sin nombres: «3 se liberan en el periodo · 1 con
@@ -1325,14 +1413,15 @@ export function desgloseDelParcial(c: ConteoDelPeriodo): string {
   return t.join(" · ");
 }
 
-/** El `title` de «N al cerrar» cuando deja afuera caras por participación;
- *  `null` si no hay ninguna. */
-export function sinLasDeParticipacion(c: ConteoDelPeriodo): string | null {
+/** El `title` de «N al cerrar» cuando cuenta caras por participación: cuántas
+ *  y cómo entran (como una línea de porcentaje); `null` si no hay ninguna. Sólo
+ *  la cuenta: ni un %, ni un nombre, ni un monto (lo mira el proveedor). */
+export function conLasDeParticipacion(c: ConteoDelPeriodo): string | null {
   const k = c.libresPc + c.participacion;
   if (k <= 0) return null;
   return k === 1
-    ? "Sin la 1 por participación: se carga en el Editor 3D → Distribución."
-    : `Sin las ${k} por participación: se cargan en el Editor 3D → Distribución.`;
+    ? "Incluye 1 por participación: entra al contrato como una línea de porcentaje."
+    : `Incluye ${k} por participación: entran al contrato como una línea de porcentaje cada una.`;
 }
 
 /**

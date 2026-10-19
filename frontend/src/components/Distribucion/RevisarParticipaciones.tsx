@@ -7,7 +7,7 @@ import { useFixtureStore } from "../../store/fixtureStore";
 import { claveDeResumen, useOcupacionStore } from "../../store/ocupacionStore";
 import { pct } from "../../utils/participaciones";
 import {
-  PALABRA_DE_LA_DISTRIBUCION, cuantasParaRevisar, fechaCorta, huerfanosDelEstado, paraRevisarDeResumen,
+  DIAS_DE_APURO, PALABRA_DE_LA_DISTRIBUCION, cuantasParaRevisar, fechaCorta, huerfanosDelEstado, paraRevisarDeResumen,
   rotuloDeCara, type MuebleDelPlano, type SeccionDeRevision,
 } from "../../utils/revisarParticipaciones";
 import { useAbrirEnDistribucion } from "./ParticipacionesDeLaCara";
@@ -102,6 +102,24 @@ export default function RevisarParticipaciones({ secciones }: { secciones: reado
                 borderTop: "1px solid var(--line-soft)",
               }}
             >
+              {/* «Falta distribuir»: cuántos días faltan para que empiece, con
+                  la forma del renglón de «Por vencer» (la cifra en una cajita);
+                  roja con 7 días o menos, porque ahí ya hay alguien que pagó y
+                  espera ver su exhibición. */}
+              {it.empiezaEn !== undefined && (
+                <span
+                  title={it.empiezaEn <= 0 ? "Ya corre" : `Empieza en ${it.empiezaEn} día${it.empiezaEn === 1 ? "" : "s"}`}
+                  style={{
+                    flexShrink: 0, minWidth: 44, textAlign: "center", padding: "2px 5px",
+                    fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "var(--t-xs)",
+                    borderRadius: "var(--r-xs)",
+                    color: it.empiezaEn <= DIAS_DE_APURO ? "var(--ocupado-txt)" : "var(--ink-2)",
+                    background: it.empiezaEn <= DIAS_DE_APURO ? "var(--ocupado-suave)" : "var(--surface-3)",
+                  }}
+                >
+                  {it.empiezaEn <= 0 ? "corre" : `${it.empiezaEn}d`}
+                </span>
+              )}
               <span style={{ flex: 1, minWidth: 0, fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
                 {it.rotulo && (
                   <b style={{ fontFamily: "var(--font-mono)", color: "var(--ink-1)", marginRight: 6 }}>{it.rotulo}</b>
@@ -120,7 +138,7 @@ export default function RevisarParticipaciones({ secciones }: { secciones: reado
                     fontSize: "var(--t-3xs)", fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
                   }}
                 >
-                  <Layers size={11} /> Abrir en Distribución
+                  <Layers size={16} strokeWidth={1.75} aria-hidden /> Abrir en Distribución
                 </button>
               )}
             </div>

@@ -1215,8 +1215,17 @@ await prueba("la caja nunca se vende entera en Vender: ni al tocarla ni en su re
   const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
   assert.match(dash, /setEnContrato\(\(lista\) => alTocarEnVender\(lista, f, cara, libre\)\);/, "tocar en Vender no pasa por `alTocarEnVender`");
   const mv = leer(join(raiz, "src", "components", "Contrato", "ModoVender.tsx"));
-  assert.match(mv, /const interruptores = interruptoresDeLaCara\(l\.fixture, l\.face\);/, "el renglón arma sus interruptores a mano");
-  assert.match(mv, /\{interruptores\.map\(\(suf\) => \{/, "el renglón no dibuja los interruptores de la cara");
+  // Rediseño de Vender: las PIEZAS (la caja, la columna) siguen con sus
+  // interruptores, de `interruptoresDeLaCara`; las partes de una cara se eligen
+  // en su lista (`ElegirPartes`, con `partesParaElegir`), nunca armadas a mano.
+  assert.match(mv, /const interruptores = l\.tipo === "pieza" \? interruptoresDeLaCara\(l\.fixture, l\.face\) : \[\];/,
+    "el renglón arma sus interruptores a mano, o se los ofrece a algo que no es una pieza");
+  assert.match(mv, /\{interruptores\.map\(\(suf\) => \{/, "el renglón no dibuja los interruptores de las piezas");
+  assert.match(mv, /l\.tipo === "partes" && <ElegirPartes l=\{l\} c=\{c\} \/>/, "las partes de una cara no se eligen en su lista");
+  const linea = leer(join(raiz, "src", "components", "Contrato", "LineaDelContrato.tsx"));
+  assert.match(linea, /const lista = partesParaElegir\(l\.fixture, l\.face, clase\);/, "la lista de partes se arma a mano");
+  assert.match(linea, /disabled=\{tomada && !puesta\}/, "una parte tomada se puede marcar");
+  assert.match(linea, /\{tomada \? "Tomado" : /, "la parte tomada no dice «Tomado»");
 });
 
 await prueba("el plano 2D pone el punto del tramo vendido de la cara B donde está", () => {

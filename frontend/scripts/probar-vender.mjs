@@ -102,13 +102,19 @@ const VISTA = "src/pages/DashboardView.tsx";
 const ARCHIVOS_VENDER = [
   "src/components/Contrato/ModoVender.tsx",
   "src/components/Contrato/Contrato.tsx",
-  "src/components/Contrato/Planometria.tsx",
   "src/components/Libera/Libera.tsx",
   // El visor 3D que se abre ENCIMA de la ficha (la fila de cada cara), y la
   // prueba de producto que vive en la ficha. Se dibujan dentro de Vender: los
   // mira el proveedor, así que pasan por todas las guardas de este archivo.
   "src/components/Contrato/VisorDeVenta.tsx",
   "src/components/Contrato/sesionDeVenta.ts",
+  // Rediseño de Vender (PR 1): las piezas de cada línea (cómo se vende, las
+  // partes, el porcentaje, el precio, el 409), los campos nuevos (el proveedor
+  // que se completa, los atajos de fecha, el cobro) y el ÚNICO módulo con que
+  // Vender escribe. Los mira el proveedor: pasan por todas las guardas.
+  "src/components/Contrato/LineaDelContrato.tsx",
+  "src/components/Contrato/CamposDelContrato.tsx",
+  "src/api/vender.ts",
 ];
 /** Los estilos que bajan con el visor (`VisorDeVenta.tsx` los importa): la
  *  misma escala de letra y el mismo rótulo que `vender.css`. */
@@ -329,15 +335,23 @@ const COMPONENTES_VENDER = new Set([
   // La rama de Vender de `DashboardView`.
   "ModoVender", "Libera", "Card", "CardHeader", "IsoMap", "MapLegend",
   "ChipEspacio", "SeasonPicker", "Fragment", "Search", "X", "EmptyDashboard",
-  "Planometria", "CancelarContrato",
+  "CancelarContrato",
   // La ficha (`ModoVender.tsx`): sus piezas, los íconos y el aviso de a quién
   // se le escribe (el personal de la sede, no otro proveedor).
   "Panel", "Fila", "NoComercializable", "Cerrado", "Ficha", "NotifyPreview",
-  "Box", "Lock", "Check", "ImageUp", "AlertTriangle", "Loader2",
+  "Box", "Lock", "Check", "AlertTriangle", "Loader2",
+  // Rediseño de Vender (PR 1): el ícono de la tarjeta y los de cada línea y
+  // campo (lucide, de la hoja de piezas aprobada), las piezas de la línea
+  // —cómo se vende, las partes para elegir, el porcentaje con lo que queda,
+  // «Total | Al mes», el 409, la oferta de cambiar cómo se vende— y los
+  // campos —el proveedor que completa UN nombre, los atajos de fecha, el
+  // cobro—. Y `Avisos` (a quién se le escribió: el personal de la sede).
+  "FilePenLine", "Square", "Columns3", "Rows3", "Percent", "Building2", "BadgeCheck", "Calendar", "Tag",
+  "Pencil", "Hourglass", "Mail", "StickyNote", "Receipt", "RotateCcw", "TriangleAlert",
+  "IconoDeLinea", "FormasDeLaLinea", "ElegirPartes", "Porcentaje", "PrecioDeLinea",
+  "RechazoDeLinea", "CampoProveedor", "AtajosDeFecha", "ComoSeCobra", "Avisos",
   // Lo que rodea al visor 3D: el límite de errores, la espera y el aviso.
   "LimiteDelVisor", "Suspense", "AbriendoEl3D", "FallaDelVisor", "VisorDeVenta",
-  // La planometría adjunta.
-  "ImageIcon", "FileText", "Trash2",
   // El visor (`VisorDeVenta.tsx`). Las piezas del editor que usa —la escena,
   // el panel «Cómo va», el HUD y la ficha del envase— se leen abajo
   // (PIEZAS_DEL_VISOR) con las mismas guardas que el resto de Vender.
@@ -406,7 +420,7 @@ prueba("ningún componente de Vender pinta dos botones principales", () => {
     });
   }
   const unicos = [...new Map(donde.map((d) => [`${d.a}:${d.n}`, d])).values()];
-  assert.ok(unicos.length >= 1, "Vender no tiene botón principal: «Guardar contrato y avisar» es el amarillo de esta pantalla");
+  assert.ok(unicos.length >= 1, "Vender no tiene botón principal: «Guardar contrato» es el amarillo de esta pantalla");
   if (unicos.length > 1) {
     aviso(`${unicos.length} botones principales en la superficie de Vender: ${unicos.map((d) => `${d.a}:${d.n}`).join(" · ")}. `
       + "Si son estados excluyentes no hay dos amarillos a la vez —lo confirma el conteo del DOM, más abajo— "
@@ -560,7 +574,9 @@ const LLAMADAS_AJENAS = [
   [/\bgetFaceImages\s*\(/, "getFaceImages( — las fotos de las caras de otros"],
   [/\blistarCatalogo\s*\(/, "listarCatalogo( — el catálogo entero (va `listarDelProveedor`)"],
   [/\bsubirArte\s*\(/, "subirArte( — el alta con proveedor de una lista (va `subirArteDelProveedor`)"],
-  [/["'`]\/suppliers/, "'/suppliers' — la lista de proveedores"],
+  // Sólo `/suppliers/completar` (UN nombre: `api/vender.ts`). Cualquier otra
+  // ruta de proveedores es la lista.
+  [/["'`]\/suppliers(?!\/completar["'`])/, "'/suppliers' — la lista de proveedores"],
   [/face-images/, "'face-images' — las fotos de las caras de otros"],
 ];
 /** Lo que el visor no puede escribir: el plano, el store, la cámara del
@@ -646,6 +662,7 @@ prueba("el visor no le pasa la capa Distribución a la escena: nunca delante de 
 
 prueba("Vender no baja el 3D al entrar: el visor entra SÓLO por el import perezoso", () => {
   const archivos = [RUTA_MODO, "src/components/Contrato/Contrato.tsx", RUTA_SESION,
+    "src/components/Contrato/LineaDelContrato.tsx", "src/components/Contrato/CamposDelContrato.tsx", "src/api/vender.ts",
     "src/components/Contrato/Planometria.tsx", "src/components/Libera/Libera.tsx", VISTA];
   const hits = [];
   for (const f of archivos) {
@@ -698,8 +715,13 @@ prueba("el «Ver en 3D» va en la cabecera del contrato, no en cada fila, y el c
   assert.ok(fila.length > 500, "no se encontró la fila del contrato");
   assert.ok(!/data-ver-3d|ver3d/.test(fila), "la fila del contrato volvió a llevar el botón del 3D");
   assert.equal((modoCodigo.match(/\sdata-ver-3d\b/g) || []).length, 1, "tiene que haber UN «Ver en 3D»");
-  assert.match(modoCodigo, /<Panel\s+derecha=\{[^]*?className="ver3d"[^]*?<span className="vpill">sin firmar<\/span>/,
-    "el «Ver en 3D» no está en la cabecera del panel, junto a «sin firmar»");
+  assert.match(modoCodigo, /<Panel\s+pie=\{pie\}\s+derecha=\{[^]*?className="ver3d"[^]*?<span className="vpill">\{c\.reservando \? "Reservando" : "Sin firmar"\}<\/span>/,
+    "el «Ver en 3D» no está en la cabecera del panel, junto a «Sin firmar»");
+  // La tarjeta lleva su ícono (FilePenLine, 16 px, trazo 1,75, en --ink-2),
+  // y el pie con el total va AFUERA del cuerpo que rueda.
+  assert.match(modoCodigo, /<FilePenLine size=\{16\} strokeWidth=\{1\.75\} color="var\(--ink-2\)"/, "la tarjeta del contrato no lleva su ícono");
+  const panel = (modoCodigo.match(/function Panel\([^]*?\n\}\n/) || [""])[0];
+  assert.match(panel, /\{children\}\s*\{pie\}\s*<\/section>/, "el pie del contrato no queda afuera del cuerpo que rueda");
   // El choque, fuera de la columna del tipo y a todo el ancho.
   assert.ok(!/className="choque"/.test(fila), "el choque volvió a la columna angosta del tipo");
   assert.match(fila, /className="aviso choque"/, "el choque no es un aviso de la fila");
@@ -710,7 +732,7 @@ prueba("el «Ver en 3D» va en la cabecera del contrato, no en cada fila, y el c
     "el visor recibe caras que ya están vendidas en el periodo");
 });
 
-prueba("la lámina del visor: del proveedor de los artes, sin período ni valor, y a la planometría de la FICHA", () => {
+prueba("la lámina del visor: del proveedor de los artes, sin período ni valor, y sólo para bajarla (nunca al contrato)", () => {
   const datos = (visorCodigo.match(/const datos: DatosPropuesta = \{[^]*?\n\s*\};/) || [""])[0];
   assert.ok(datos, "el visor no arma el pie de la lámina");
   for (const [re, que] of [
@@ -721,40 +743,25 @@ prueba("la lámina del visor: del proveedor de los artes, sin período ni valor,
     [/\bmueble: cara\.tipo,/, "el mueble por su tipo, no por su rótulo (texto libre)"],
   ]) assert.match(datos, re, `el pie de la lámina: ${que}`);
   assert.equal((visorCodigo.match(/\bcomponerPropuesta\(/g) || []).length, 1, "el visor compone la lámina en más de un lugar");
-  // La planometría: SÓLO el archivo de la lámina, y sólo al campo de la ficha.
-  const llamadas = [...visorCodigo.matchAll(/\bonPlanometria\(([^;]*)\);/g)].map((m) => m[1]);
-  assert.deepEqual(llamadas.map((x) => x.startsWith("new File([jpg.blob]")), [true], `onPlanometria recibe otra cosa: ${llamadas.join(" · ")}`);
-  assert.match(modoCodigo, /const adjuntarLamina = useCallback\(\(archivo: File, cara: string, proveedor: string\) => \{\s*if \(normalizarProveedor\(proveedor\) !== normalizarProveedor\(proveedorVigente\.current\)\) return false;\s*setPlanometria\(archivo\);\s*marcarLamina\(\{ archivo, cara \}\);\s*setMasDatos\(true\);\s*return true;\s*\}, \[setPlanometria, marcarLamina\]\);/,
-    "la lámina adjunta escribe algo más que el campo de planometría de la ficha (y la marca de la sesión), o entra aunque el contrato ya sea de otro proveedor");
-  assert.match(modoCodigo, /const proveedorVigente = useRef\(c\.proveedor\);\s*proveedorVigente\.current = c\.proveedor;/,
-    "la ficha compara la lámina con el proveedor del render del clic, no con el vigente");
-  assert.match(modoCodigo, /onPlanometria=\{adjuntarLamina\}/, "el visor no recibe el adjuntar de la ficha");
+  // La lámina se BAJA para el proveedor y nada más: adjuntarla al contrato
+  // como planometría se fue de Vender (la dueña, 2026-10-20: la planometría
+  // se carga sólo en Supervisar). Ni el camino, ni el botón, ni la prop.
+  for (const [re, que] of [
+    [/\bonPlanometria\b/, "`onPlanometria`"], [/usarComoPlanometria/, "`usarComoPlanometria`"],
+    [/Usarla como planometría|Reemplazar la planometría/, "el botón de adjuntarla"], [/\bplanometria\b/, "la prop `planometria`"],
+  ]) assert.doesNotMatch(visorCodigo, re, `el visor sigue teniendo ${que}`);
+  assert.match(visorCodigo, /onClick=\{bajarLamina\}/, "el visor ya no deja bajar la lámina");
+  assert.doesNotMatch(modoCodigo, /adjuntarLamina|marcarLamina|laminaQuitada|proveedorVigente/, "la ficha sigue adjuntando la lámina al contrato");
 });
 
-prueba("la lámina adjunta se va con el proveedor: cambiarlo la saca de la planometría", () => {
-  // La crítica: con Alpina se adjuntaba la lámina, se escribía «Postobón» y el
-  // contrato de Postobón salía con la lámina de Alpina («PROVEEDOR Alpina» y
-  // su producto), que viaja por correo y guía al mercaderista.
-  assert.match(sesionCodigo, /const vaciar = useCallback\(\(\) => \{[^}]*marcarLamina\(null\);[^}]*\}, \[\]\);/,
-    "vaciar la sesión no olvida la lámina adjunta");
+prueba("la prueba del 3D se va con el proveedor y con «Empezar de nuevo»; la sesión no guarda ninguna lámina", () => {
+  // Con la planometría fuera de Vender, la sesión no recuerda láminas: lo que
+  // se probó en el 3D se olvida al cambiar de proveedor y al empezar de nuevo.
   assert.match(sesionCodigo, /if \(ahora === anterior\.current\) return;\s*anterior\.current = ahora;\s*vaciar\(\);/,
     "cambiar de proveedor no vacía la sesión");
-  assert.match(modoCodigo, /if \(antes && !sesion\.lamina && c\.planometria === antes\.archivo\) \{\s*setPlanometria\(null\);/,
-    "cuando la lámina se olvida, la planometría de la ficha sigue siendo la lámina del proveedor anterior");
-  // Y lo que el visor dice de la planometría: la lámina (de qué cara) u «otra»,
-  // sin el nombre del archivo, que puso la dueña y puede ser de cualquiera.
-  assert.match(modoCodigo, /planometria=\{!c\.planometria \? null\s*: sesion\.lamina && c\.planometria === sesion\.lamina\.archivo \? \{ lamina: sesion\.lamina\.cara \} : "otra"\}/,
-    "el visor no sabe de quién es la planometría que ya tiene el contrato");
-  assert.ok(!/planometria\.name|planometria\?\.name/.test(visorCodigo), "el visor nombra el archivo de la planometría");
-  // El aviso de que se quitó, sin decir POR QUÉ: la ficha la mira el
-  // proveedor, y «era de otro proveedor» le contaba que el espacio se le
-  // estuvo ofreciendo a otro (la tercera crítica).
-  const quitada = (modoCodigo.match(/data-lamina-quitada>([^<]*)</) || [, ""])[1];
-  assert.ok(quitada.trim().length > 10, "no se encontró el aviso de la lámina quitada");
-  assert.ok(!/proveedor|otr[oa]s?\b/i.test(quitada), `el aviso de la lámina quitada sugiere otra negociación: «${quitada.trim()}»`);
-  // «Empezar de nuevo» saca la lámina él mismo, sin aviso.
-  assert.match(modoCodigo, /const empezarDeNuevo = \(\) => \{\s*if \(sesion\.lamina && c\.planometria === sesion\.lamina\.archivo\) setPlanometria\(null\);\s*setLaminaQuitada\(false\);\s*sesion\.vaciar\(\);\s*onCancelar\(\);\s*\};/,
-    "«Empezar de nuevo» deja el aviso de la lámina quitada en una ficha que empieza de cero");
+  assert.doesNotMatch(sesionCodigo, /lamina|Lamina|File\b/, "la sesión de la prueba guarda una lámina o un archivo");
+  assert.match(modoCodigo, /const empezarDeNuevo = \(\) => \{\s*sesion\.vaciar\(\);\s*onCancelar\(\);\s*\};/,
+    "«Empezar de nuevo» no olvida la prueba del 3D");
   assert.match(modoCodigo, /onClick=\{empezarDeNuevo\}/, "«Empezar de nuevo» no pasa por `empezarDeNuevo`");
 });
 
@@ -808,10 +815,6 @@ prueba("lo que llega tarde no pisa lo vigente: el catálogo, la subida y la lám
   assert.ok(vigentes >= 4, `la lámina mira si sigue vigente en ${vigentes} lugares (entre tomas, después de cada toma y del armado)`);
   assert.match(arma, /const blob = await componerPropuesta\(tomas, datos\);\s*vigente\(\);/, "la lámina compuesta no se vuelve a mirar antes de devolverse");
   assert.match(arma, /proveedor: quien, sigue/, "la lámina no dice con qué proveedor se armó");
-  const usar = (visorCodigo.match(/const usarComoPlanometria = async[^]*?\n {2}\};/) || [""])[0];
-  assert.match(usar, /const jpg = await aJpeg\(r\.blob\);[^]*?if \(!r\.sigue\(\)\) throw INTERRUMPIDA;[^]*?onPlanometria\(/,
-    "«Usarla como planometría» adjunta sin volver a mirar después del JPG");
-  assert.match(usar, /, r\.cara, r\.proveedor\);\s*if \(!adjunta\) throw INTERRUMPIDA;/, "la ficha no recibe el proveedor de la lámina, o el visor no se entera de que la rechazó");
   const bajar = (visorCodigo.match(/const bajarLamina = async[^]*?\n {2}\};/) || [""])[0];
   assert.match(bajar, /if \(!r\.sigue\(\)\) throw INTERRUMPIDA;\s*descargar\(/, "«Bajar la propuesta» baja una lámina interrumpida");
   // Quieto mientras se arma: ni otra cara, ni otra toma, ni el cajón, ni el
@@ -1056,17 +1059,90 @@ console.log("\nvender · las participaciones de cara");
   const dispo = (f, par) => P.disponibilidadDeCara(f, "A", {}, ix, "NAVE", nov[0], nov[1], par);
   const como = (f, par, conPorcentaje) => P.comoSeLiberaLaCara(f, "A", {}, ix, "NAVE", nov[0], nov[1], par && { ...par, conPorcentaje });
 
-  prueba("una cara por participación no se vende desde Vender: tocarla no suma nada ni vacía el contrato (ejecutado)", () => {
+  /* Rediseño de Vender (PR 1, decisión del dueño 2026-10-19): una cara por
+     participación SE VENDE en Vender, como una línea de PORCENTAJE de esa
+     cara. La guarda de antes fijaba que tocarla no sumaba nada; ésta fija lo
+     nuevo con la misma dureza: suma su porcentaje y NUNCA la cara entera ni un
+     `…-PC3` escrito a mano (el número lo pone el servidor), sin vaciar lo
+     armado, y tocada de nuevo sale sólo esa cara. */
+  prueba("una cara por participación se vende en Vender como su PORCENTAJE: nunca entera, nunca un `PC` a mano (ejecutado)", () => {
     assert.equal(P.porParticipacion(gon), true, "la góndola de prueba no se vende por participación: la prueba no prueba nada");
-    const vacia = [];
-    assert.equal(P.alTocarEnVender(vacia, gon, "A", () => true), vacia, "tocarla cambió el contrato");
+    assert.deepEqual(P.alTocarEnVender([], gon, "A", () => true), [{ id: "g1", face: "A", pc: true }]);
     const armado = [{ id: "g2", face: "B" }];
-    assert.equal(P.alTocarEnVender(armado, gon, "B", () => true), armado, "tocarla vació (o cambió) lo que ya se había armado");
+    assert.deepEqual(P.alTocarEnVender(armado, gon, "B", () => true), [{ id: "g2", face: "B" }, { id: "g1", face: "B", pc: true }],
+      "tocarla vació (o cambió) lo que ya se había armado");
+    assert.deepEqual(P.alTocarEnVender([{ id: "g1", face: "A", pc: true }, { id: "g1", face: "B", pc: true }], gon, "A", () => true),
+      [{ id: "g1", face: "B", pc: true }], "tocarla de nuevo no la saca, o saca la otra cara");
+    for (const x of P.alTocarEnVender([], gon, "B", () => true)) {
+      assert.equal(x.parte, undefined, "tocarla suma una parte (o un `PC` escrito a mano)");
+      assert.equal(x.pc, true, "tocarla suma la cara entera");
+    }
     // Y la entera de al lado sigue sumándose como siempre.
     assert.deepEqual(P.alTocarEnVender([], entera, "B", () => true), [{ id: "g2", face: "B" }]);
     // No ofrece la cara entera ni las participaciones como interruptores del renglón.
     assert.deepEqual(P.interruptoresDeLaCara(gon, "A"), []);
     assert.deepEqual(P.partesDe(gon), []);
+    // La forma de una línea, y lo que queda del contrato cuando el mueble
+    // cambia cómo se vende (las dos caras de una doble).
+    assert.deepEqual(P.conLaForma([{ id: "g2", face: "A" }, { id: "x", face: "A" }], "g2", "A", "participacion"),
+      [{ id: "x", face: "A" }, { id: "g2", face: "A", pc: true }]);
+    assert.deepEqual(P.conLaForma([], "p1", "A", "entrepanos"), [{ id: "p1", face: "A", porPartes: "entrepanos" }]);
+    // Cambiar cómo se vende el mueble deja TODAS sus líneas en el estado vacío
+    // de la forma nueva (las dos caras), nunca con la forma de antes.
+    assert.deepEqual(P.aLaFormaNueva([{ id: "g1", face: "A" }, { id: "x", face: "A" }, { id: "g1", face: "B", parte: "EN2" }], "g1", "A", "participacion"),
+      [{ id: "x", face: "A" }, { id: "g1", face: "A", pc: true }, { id: "g1", face: "B", pc: true }],
+      "una línea del mueble quedó con la forma de antes");
+    assert.deepEqual(P.aLaFormaNueva([{ id: "g2", face: "B", pc: true }], "g2", "B", "entrepanos"), [{ id: "g2", face: "B", porPartes: "entrepanos" }]);
+    // La primera parte marcada reemplaza a la cara «por partes» sin elegir.
+    assert.deepEqual(P.alternarParte([{ id: "p1", face: "A", porPartes: "entrepanos" }], { id: "p1", face: "A", parte: "EN1" }),
+      [{ id: "p1", face: "A", parte: "EN1" }]);
+  });
+
+  // `prueba` es sincrónica: el módulo se arma antes.
+  const rM = await build({
+    stdin: { contents: 'export * from "./src/utils/partesDelMueble.ts";', resolveDir: raiz, loader: "ts" },
+    bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+  });
+  const M = await import("data:text/javascript;base64," + Buffer.from(rM.outputFiles[0].text).toString("base64"));
+  prueba("cambiar cómo se vende desde Vender: las guardas del Plano, las dos caras, y el porqué sin nombres (ejecutado y leído)", () => {
+    const g = { id: "g9", code: "GON-09", sede: "NAVE", type: "gondola", gondolaType: "double", w: 3, h: 2, d: 0.9, entrepanos: 4 };
+    const vivo = { status: "occupied", supplierName: "", brandCategory: "", startDate: "2026-10-01", endDate: "2026-12-31" };
+    // Libre: se puede, y es lo que escribe el Plano.
+    const libre = M.cambioDesdeVender(g, "entrepanos", {}, "NAVE");
+    assert.deepEqual(libre, { cambio: { division: "entrepanos" }, aviso: null });
+    assert.deepEqual(M.cambioDesdeVender(g, "entera", {}, "NAVE"), { listo: true });
+    // Algo vendido en la OTRA cara también frena: la forma es del mueble.
+    const enLaB = M.cambioDesdeVender(g, "entrepanos", { "NAVE-GON-09-B": vivo }, "NAVE");
+    assert.equal(enLaB.problema, "La cara B está vendida hasta el 31 dic: no se puede cambiar cómo se vende.");
+    const parte = M.porQueNoSeCambia({ ...g, partes: { division: "entrepanos" } }, { "NAVE-GON-09-EN4": vivo }, "NAVE");
+    assert.equal(parte, "EN4 está vendido hasta el 31 dic: no se puede cambiar cómo se vende.");
+    // Un porcentaje o una reserva de participación vivos (la ocupación anónima).
+    const pcViva = M.porQueNoSeCambia({ ...g, partes: { division: "participacion" } }, {}, "NAVE",
+      { ocupacion: { "NAVE-GON-09": { intervalos: [{ desde: "2026-10-01", hasta: "2026-11-30", pb: 2500 }], fisicos: [] } }, hoy: "2026-10-19" });
+    assert.match(pcViva, /hasta el 30 nov: no se puede cambiar cómo se vende\.$/);
+    for (const t of [enLaB.problema, parte, pcViva]) assert.doesNotMatch(t, /proveedor|marca|POSTOB|\$|%/i, "el porqué nombra a alguien o dice un %");
+    // Leído: las guardas son las del Plano, y el cambio va por el store.
+    const pdm = codigo("src/utils/partesDelMueble.ts");
+    const cdv = (pdm.match(/export function cambioDesdeVender\([^]*?\n\}/) || [""])[0];
+    for (const t of ["porQueNoSeCambia(", "cambioParaDividir(f, forma)", "revisarCambioDePartes(f, r.cambio, estado, sede, participacion)"]) {
+      assert.ok(cdv.includes(t), `cambiar desde Vender no pasa por ${t}`);
+    }
+    const va = DEF_INT.get("venderAsi")?.texto ?? "";
+    assert.match(va, /await fs\.flushPending\(\);\s*const antes = useFixtureStore\.getState\(\);\s*antes\.commit\(conPartes\(selectFixtures\(antes\), id, cambio\)\);\s*await useFixtureStore\.getState\(\)\.flushPending\(\);/,
+      "el cambio no guarda primero lo pendiente del plano, o no va por el store y `PUT /layout`");
+    assert.match(va, /setEnContrato\(\(lista\) => aLaFormaNueva\(lista, id, face, forma\)\);/, "las líneas del mueble se quedan con la forma de antes");
+    const linea = codigo("src/components/Contrato/LineaDelContrato.tsx");
+    assert.match(linea, /Cambia cómo se vende \{l\.fixture\.code\} en toda la tienda\{l\.doble \? " \(las dos caras\)" : ""\}\./, "no se confirma en la línea");
+    assert.match(linea, /disabled=\{"problema" in rr \|\| cambiando\}/, "la forma que no se puede no se ve apagada");
+    assert.doesNotMatch(linea, /window\.confirm|createPortal|role="dialog"/, "la confirmación es un diálogo");
+  });
+
+  prueba("los entrepaños se eligen de arriba a abajo: EN5 · arriba … EN1 · la base (ejecutado)", () => {
+    const punta = { id: "p1", code: "PUN-02", sede: "NAVE", type: "punta", entrepanos: 4, partes: { division: "entrepanos" } };
+    assert.deepEqual(P.partesParaElegir(punta, "A", "entrepanos").map((x) => x.texto),
+      ["EN5 · arriba", "EN4", "EN3", "EN2", "EN1 · la base"]);
+    const nev = { id: "n1", code: "NEV-03", sede: "NAVE", type: "nevera_puertas", partes: { division: "puertas", puertas: 3 } };
+    assert.deepEqual(P.partesParaElegir(nev, "A", "puertas").map((x) => x.sufijo), ["PU1", "PU2", "PU3"], "las puertas no van de izquierda a derecha");
   });
 
   prueba("una participación (`…-PC3`) nunca está «libre» en Vender, y no tiene tarifa propia (ejecutado)", () => {
@@ -1109,61 +1185,62 @@ console.log("\nvender · las participaciones de cara");
     assert.doesNotMatch(P.textoDeParticipacion({ dispo: "parcial", quedaPb: 3333 }, false), /%|\d/);
   });
 
-  /* Tocar en Vender una cara por participación no la suma (arriba) y, hasta la
-     revisión final (2026-10-17), tampoco decía nada: el panel seguía en
-     «Elegí el primer espacio» y `textoAlTocarEnVender` no lo llamaba nadie.
-     Ahora la ficha dice dónde se vende y cuánto queda en el PERIODO (el número
-     del rótulo del plano), sin nombres ni montos. */
-  prueba("tocar una cara por participación en Vender dice dónde se vende y cuánto queda, sin nombres ni montos (ejecutado)", () => {
-    const DONDE = "Las participaciones se cargan en el Editor 3D → Distribución.";
-    assert.equal(P.textoAlTocarEnVender({ dispo: "parcial", quedaPb: 3333 }, true),
-      `Se vende por participación: queda 33,33 %. ${DONDE}`);
-    assert.match(P.textoAlTocarEnVender({ dispo: "parcial", quedaPb: 3333 }, true),
-      /^Se vende por participación: queda 33,33 %\. Las participaciones se cargan en el Editor 3D → Distribución\.$/);
-    // Con la ocupación del periodo, el mismo número que el rótulo del plano.
-    const parcial = ocup([iv("2026-10-01", "2026-12-31", 2500), iv("2026-11-05", "2026-11-25", 3500)]);
-    const dNov = P.dispoDeParticipacion(gon, parcial, nov[0], nov[1]);
-    assert.equal(P.textoAlTocarEnVender(dNov, true), `Se vende por participación: queda 40 %. ${DONDE}`);
-    assert.equal(como(gon, parcial, true).porPartes, "Por participación · queda 40 %", "el aviso y el rótulo dicen números distintos");
-    // Tomada: queda 0 %, y sigue diciendo dónde se carga (no «disponible»).
-    const tomada = P.textoAlTocarEnVender(P.dispoDeParticipacion(gon, ocup([iv("2026-10-01", "2026-12-31", 10000)]), nov[0], nov[1]), true);
-    assert.equal(tomada, `Se vende por participación: queda 0 %. ${DONDE}`);
-    assert.doesNotMatch(tomada, /disponible/i);
-    // Sin la ocupación todavía, o para quien no vende: sin el %.
+  /* Lo que la línea de porcentaje dice de la cara: SU % y lo que queda en
+     las fechas DEL CONTRATO (no del periodo de la barra), y desde qué día.
+     Nunca lo comprometido de otro, nombres ni montos. Reemplaza a la guarda
+     del aviso «se cargan en el Editor 3D → Distribución», igual de fijada. */
+  prueba("la línea de porcentaje dice sólo lo que queda, en las fechas del contrato, y desde cuándo (ejecutado)", () => {
+    assert.equal(P.textoAlTocarEnVender({ dispo: "parcial", quedaPb: 3333 }, true), "Por porcentaje · queda 33,33 %");
+    assert.equal(P.textoAlTocarEnVender({ dispo: "tomado", quedaPb: 0 }, true), "Por porcentaje · no queda nada en estas fechas");
     for (const t of [P.textoAlTocarEnVender(null, true), P.textoAlTocarEnVender({ dispo: "parcial", quedaPb: 3333 }, false)]) {
-      assert.equal(t, `Se vende por participación. ${DONDE}`);
-      // (El «3D» del Editor es el único número que puede tener.)
-      assert.doesNotMatch(t.replace("Editor 3D", "Editor"), /%|\d/);
+      assert.equal(t, "Por porcentaje");
     }
-    // Lo que la arma es la ocupación anónima: ni un monto ni un nombre posible.
-    assert.doesNotMatch(P.textoAlTocarEnVender(dNov, true), /\$|COP|proveedor|marca/i);
+    const parcial = ocup([iv("2026-10-01", "2026-12-31", 2500), iv("2026-11-05", "2026-11-25", 3500)]);
+    const nov = P.quedaEnLaCara(gon, parcial, "2026-11-01", "2026-11-30");
+    assert.deepEqual(nov, { quedaPb: 4000, dia: "2026-11-05" }, "lo que queda o el día en que queda eso");
+    assert.deepEqual(Object.keys(nov).sort(), ["dia", "quedaPb"], "la cuenta de Vender devuelve algo más que lo que queda");
+    assert.equal(nov.quedaPb, P.dispoDeParticipacion(gon, parcial, "2026-11-01", "2026-11-30").quedaPb, "la línea y el rótulo del plano dicen números distintos");
+    // Las fechas cambian, la cuenta también.
+    assert.deepEqual(P.quedaEnLaCara(gon, parcial, "2026-12-01", "2026-12-31"), { quedaPb: 7500, dia: "2026-12-01" });
+    // Lo vendido entero cuenta como la cara entera; un mueble que no se
+    // vende así, o sin la ocupación, no dice nada.
+    assert.equal(P.quedaEnLaCara(gon, ocup([], [{ desde: "2026-10-01", hasta: "2026-12-31" }]), "2026-11-01", "2026-11-30").quedaPb, 0);
+    assert.equal(P.quedaEnLaCara(entera, parcial, "2026-11-01", "2026-11-30"), null);
+    assert.equal(P.quedaEnLaCara(gon, undefined, "2026-11-01", "2026-11-30"), null);
+    for (const t of [P.textoAlTocarEnVender({ dispo: "parcial", quedaPb: 4000 }, true), P.textoAlTocarEnVender(null, true)]) {
+      assert.doesNotMatch(t, /\$|COP|proveedor|marca|Distribuci|comprometid/i);
+    }
   });
 
-  prueba("la ficha de Vender muestra el aviso de la cara por participación tocada, sin ir a Distribución", () => {
-    const aviso = DEF_INT.get("avisoDeParticipacion")?.texto ?? "";
-    assert.ok(aviso, "no está `avisoDeParticipacion` en DashboardView: tocar una cara por participación no dice nada");
-    assert.match(aviso, /if \(!selected \|\| !porParticipacion\(selected\)\) return null;/,
-      "el aviso sale para caras que no se venden por participación");
-    assert.match(aviso, /participacionDe\(selected, detailFace\)/, "el aviso no mira la cara que se tocó");
-    assert.match(aviso, /dispoDeParticipacion\(selected, par, mapRange\?\.from \?\? par\.hoy, mapRange\?\.to \?\? par\.hoy\)/,
-      "el aviso no cuenta lo que queda en el periodo del plano");
-    assert.match(aviso, /return textoAlTocarEnVender\(d, isAdmin\);/, "el aviso no es `textoAlTocarEnVender`, o el % no depende de quién mira");
-    // Vender lo mira el proveedor: el aviso no lleva a Distribución (que
-    // muestra las participaciones de todos) ni toca lo de administración.
-    assert.doesNotMatch(aviso, /abrirEnDistribucion|pedirEnfoque3D|leerCara|revisionPc/, "el aviso de Vender lleva a las participaciones de todos");
+  prueba("Vender arma el % con la ocupación ANÓNIMA que ya tiene, y no lee nada de lo de otros", () => {
     if (!RAMA) throw new Error("sin rama de Vender");
-    assert.match(podar(RAMA.texto), /avisoDeParticipacion=\{avisoDeParticipacion\}/, "Vender no le pasa el aviso a la ficha");
-    assert.match(modoCodigo, /\{avisoDeParticipacion && \(/, "la ficha no muestra el aviso");
-    // (Verificación del arreglo: la caja del aviso podía quedar vacía.) La
-    // caja dice el texto, no sólo aparece.
-    const caja = modoCodigo.slice(modoCodigo.indexOf("data-aviso-participacion"), modoCodigo.indexOf("</div>", modoCodigo.indexOf("data-aviso-participacion")));
-    assert.match(caja, /<span[^>]*>\s*\{avisoDeParticipacion\}\s*<\/span>/, "la caja del aviso sale vacía");
-    assert.match(modoCodigo, /onGuardado, onCancelar, onResaltar, avisoDeParticipacion,/, "la ficha no recibe el aviso");
-    // Y el aviso no quedó adentro de la rama «sin espacios»: tocar la cara con
-    // un contrato a medio armar también lo dice.
-    const i = modoCodigo.indexOf("{avisoDeParticipacion && (");
-    const antes = modoCodigo.slice(Math.max(0, i - 400), i);
-    assert.doesNotMatch(antes.slice(antes.lastIndexOf("{")), /c\.lineas\.length === 0/, "el aviso sólo sale con el contrato vacío");
+    assert.match(podar(RAMA.texto), /ocupacionDe=\{participacionDe\}/, "Vender no le pasa la ocupación anónima a la ficha");
+    assert.doesNotMatch(vista, /avisoDeParticipacion/, "volvió el aviso que mandaba a Distribución");
+    const contratoTs = codigo("src/components/Contrato/Contrato.tsx");
+    assert.match(contratoTs, /const par = tipo === "pc" \? ocupacionDe\?\.\(fixture, face\) : undefined;/, "el % no sale de la ocupación de esa cara");
+    assert.match(contratoTs, /const queda = tipo === "pc" \? quedaEnLaCara\(fixture, par, f0, t0\) : null;/,
+      "lo que queda no se cuenta en las fechas del contrato");
+    // Nada de lo que dice lo comprometido de otro, ni la reserva de otro
+    // proveedor (`reservaHasta`, que el mapa trae para Supervisar).
+    const AJENO = /\b(revisarCapacidad|comprometido|contratadoPb|loDelProveedor|useLoSuyo|textoDeLoComprometido|reservaHasta|intervalosQueCuentan|leerCara|cargarResumen)\b/;
+    const hits = [];
+    for (const f of ARCHIVOS_VENDER.filter(hay)) {
+      codigo(f).split("\n").forEach((l, k) => { const m = l.match(AJENO); if (m) hits.push(`${f}:${k + 1} — ${m[1]}`); });
+    }
+    assert.deepEqual(hits, [], `Vender lee lo de otros:\n         ${hits.join("\n         ")}`);
+    // La barra: este contrato, lo libre y lo rayado «no disponible», sin dueño.
+    const linea = codigo("src/components/Contrato/LineaDelContrato.tsx");
+    const por = (linea.match(/export function Porcentaje\([^]*?\n\}\n/) || [""])[0];
+    assert.ok(por.length > 300, "no se encontró el porcentaje de la línea");
+    for (const t of ['className="suyo"', 'className="queda"', 'className="no"', "en este contrato", "sigue libre", "lo rayado no está disponible", "Todo lo que queda"]) {
+      assert.ok(por.includes(t), `al porcentaje le falta ${t}`);
+    }
+    assert.doesNotMatch(por, /proveedor|marca|zona|supplier|comprometid/i, "el porcentaje habla de alguien o de una forma");
+    assert.match(linea, /const RAPIDOS = \[1000, 2500, 5000\];/, "los botones rápidos no son 10 · 25 · 50 %");
+    assert.match(por, /\{RAPIDOS\.map\(/, "el porcentaje no dibuja los botones rápidos");
+    const noEntra = (linea.match(/export function textoDeNoEntra\([^]*?\n\}/) || [""])[0];
+    assert.match(noEntra, /Ya no entra el \$\{pct\(l\.pb\)\}/, "la línea no avisa antes de guardar que el % ya no entra");
+    assert.doesNotMatch(noEntra, /proveedor|marca|nombre/i);
   });
 
   prueba("la ocupación que lee Vender es anónima: intervalos y fechas, sin proveedor, marca, valor ni número", () => {
@@ -1183,35 +1260,42 @@ console.log("\nvender · las participaciones de cara");
       "el rótulo de la cara por participación no sale de la ocupación, o el % no depende de quién mira");
     const carasDef = DEF_INT.get("carasConSusPartes")?.texto ?? "";
     assert.match(carasDef, /ocupadoPorParticipacion\(participacionDe\(f, c\.face\)\)/, "«Cuándo se libera» da libre una cara por participación con algo comprometido");
-    assert.match(sinComentarios(leer("src/utils/partes.ts")), /if \(porParticipacion\(f\)\) return lista;\s*if \(!seVendeAlgo\(f\)\) return \[\];/,
-      "tocar en Vender una cara por participación hace otra cosa que dejar el contrato como estaba");
+    assert.match(sinComentarios(leer("src/utils/partes.ts")),
+      /if \(porParticipacion\(f\)\) \{\s*return lista\.some\(\(x\) => x\.id === f\.id && x\.face === cara\)\s*\? lista\.filter\(\(x\) => !\(x\.id === f\.id && x\.face === cara\)\)\s*: \[\.\.\.lista, \{ id: f\.id, face: cara, pc: true \}\];\s*\}\s*if \(!seVendeAlgo\(f\)\) return \[\];/,
+      "tocar en Vender una cara por participación hace otra cosa que sumar (o sacar) su porcentaje");
   });
 
-  prueba("ni una pastilla de la tarifa ni «Negociar» meten una cara por participación al contrato", () => {
+  prueba("la pastilla de la tarifa y «Negociar» meten una cara por participación como su PORCENTAJE, nunca entera", () => {
     const alternar = DEF_INT.get("alternarCara")?.texto ?? "";
-    assert.match(alternar, /if \(f && porParticipacion\(f\)\) return lista;/, "alternarCara suma una cara por participación");
-    assert.match(vista, /if \(!d\.porParticipacion\) alternarCara\(d\.fixture\.id, d\.face\);/, "la pastilla de una cara por participación la suma al contrato");
-    // Y se VE que no se suma (verificación del paso 7: aria-disabled sin nada
-    // a la vista, con el puntero de siempre, invitaba a tocarla), con un rótulo
-    // aunque la cara no tenga nada comprometido (antes lo decía sólo el title).
-    assert.match(vista, /aria-disabled=\{d\.porParticipacion \? true : undefined\}/, "la pastilla de una cara por participación no dice que está deshabilitada");
-    assert.match(vista, /style=\{d\.porParticipacion \? \{ cursor: "not-allowed", borderStyle: "dashed" \} : undefined\}/,
-      "la pastilla de una cara por participación se ve igual a las que se suman");
-    assert.match(vista, /\{!entra && d\.porParticipacion && <span className="chip__f">por participación<\/span>\}/,
-      "la pastilla de una cara por participación libre no dice por qué no entra");
+    assert.match(alternar, /if \(f && porParticipacion\(f\)\) return \[\.\.\.lista, \{ id, face, pc: true \}\];/,
+      "la pastilla suma entera una cara por participación");
+    assert.match(vista, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); destacar\(null\); alternarCara\(d\.fixture\.id, d\.face\); \}\}/,
+      "la pastilla de una cara por participación no la suma al contrato");
+    assert.doesNotMatch(vista, /aria-disabled=\{d\.porParticipacion/, "la pastilla sigue diciendo que no se suma");
+    assert.match(vista, /\{!entra && d\.porParticipacion && <span className="chip__f">por porcentaje<\/span>\}/,
+      "la pastilla de una cara por participación no dice que entra como porcentaje");
     const negociar = DEF_INT.get("negociar")?.texto ?? "";
-    assert.match(negociar, /if \(porParticipacion\(f\)\) return;/, "«Negociar este espacio» vende entera una cara por participación");
+    assert.match(negociar, /setEnContrato\(\[porParticipacion\(f\) \? \{ id: f\.id, face, pc: true \}/,
+      "«Negociar» vende entera una cara por participación");
   });
 
-  prueba("renovar una participación manda a Distribución con su formulario, no al contrato de Vender", () => {
+  prueba("renovar una participación abre Vender con el contrato armado (su %, el término que renueva), no Distribución", () => {
     const renovar = DEF_INT.get("renovar")?.texto ?? "";
     assert.match(renovar, /if \(entry\.parte && esParticipacion\(entry\.parte\)\) \{\s*void renovarParticipacion\(entry\);\s*return;\s*\}/,
-      "renovar una participación arma un contrato de Vender");
+      "renovar una participación no pasa por su semilla");
     const rp = DEF_INT.get("renovarParticipacion")?.texto ?? "";
-    assert.match(rp, /abrirEnDistribucion\(f\.id, entry\.face, termino\)/, "renovar una participación no abre Distribución");
+    assert.match(rp, /negociar\(f, entry\.face, semillaPc\);/, "renovar una participación no abre Vender");
+    assert.doesNotMatch(rp, /abrirEnDistribucion|pedirEnfoque3D/, "renovar una participación sigue yendo a Distribución");
+    assert.match(rp, /if \(t && t\.estado === "contrato" && \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)\) termino = t\.id;/,
+      "renovar marca para renovar una reserva, un vencido o un cancelado");
+    assert.match(rp, /porcentajes: \{ \[caraCompleta\]: t\.puntos_basicos \},/, "la semilla no trae el % que se renueva");
+    assert.match(rp, /renueva: termino \? \{ \[caraCompleta\]: termino \} : \{\},/, "la semilla no dice qué término renueva");
+    const contratoTs = codigo("src/components/Contrato/Contrato.tsx");
+    assert.match(contratoTs, /participacion: \{ cara: l\.codigoCara, puntos_basicos: l\.pb, renueva: l\.renueva \},/,
+      "el guardado no manda el término que se renueva");
     const comp = sinComentarios(leer("src/components/Distribucion/ParticipacionesDeLaCara.tsx"));
     assert.match(comp, /pedir\(fixtureId, cara, \{ distribucion: renovar \? \{ renovar \} : \{\} \}\)/,
-      "«Abrir en Distribución» no pide entrar a Distribución (`pedirEnfoque3D` con `distribucion`)");
+      "«Abrir en Distribución» de Supervisar no pide entrar a Distribución (`pedirEnfoque3D` con `distribucion`)");
   });
 
   prueba("lo de las participaciones que es de administración no se alcanza desde Vender", () => {
@@ -1283,6 +1367,417 @@ console.log("\nvender · delante del proveedor, ninguna forma (fase 2)");
       for (const ruta of rutas) assert.doesNotMatch(ruta, prohibido, `${f} importa ${ruta}`);
     }
     assert.ok(leidos >= 2, "no se leyó ModoVender ni VisorDeVenta");
+  });
+}
+
+/* ── rediseño de Vender (PR 1): el contrato que se guarda todo junto ────────
+   Reemplazan, más estrictas, a las de antes: «Vender no toca
+   /api/participaciones» sigue (arriba) y además Vender ESCRIBE por un solo
+   módulo; «prohibido /suppliers» pasa a «sólo la ruta que completa UN
+   nombre»; y lo que la línea dice de un % es sólo lo suyo y lo que queda. */
+console.log("\nvender · el contrato del rediseño (todo o nada)");
+{
+  const CONTRATO_ARCHIVOS = [
+    "src/components/Contrato/Contrato.tsx", "src/components/Contrato/ModoVender.tsx",
+    "src/components/Contrato/LineaDelContrato.tsx", "src/components/Contrato/CamposDelContrato.tsx",
+  ];
+  const apiVender = codigo("src/api/vender.ts");
+
+  prueba("el contrato escribe por UN módulo (`api/vender.ts`) y ese módulo sólo habla con sus dos rutas", () => {
+    const hits = [];
+    for (const f of CONTRATO_ARCHIVOS) {
+      const t = codigo(f);
+      assert.ok(t.length > 200, `no se pudo leer ${f}`);
+      for (const m of t.matchAll(/(?:^|\n)\s*import\s[^;]*?from\s+["']([^"']+)["']/g)) {
+        if (/\/api\//.test(m[1]) && !/\/api\/(vender|client)$/.test(m[1])) hits.push(`${f} importa ${m[1]}`);
+      }
+    }
+    for (const f of ARCHIVOS_VENDER.filter(hay)) if (/api\/bulkLeases|confirmarLote|validarLote/.test(codigo(f))) hits.push(`${f} usa la tanda de la planilla (no es todo o nada)`);
+    assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+    const rutas = [...apiVender.matchAll(/client\s*\.\s*(get|post|put|patch|delete)\s*<[^>]*>\s*\(\s*["'`]([^"'`]+)["'`]/g)].map((m) => `${m[1]} ${m[2]}`);
+    assert.deepEqual(rutas.sort(), ["get /suppliers/completar", "post /contratos/vender", "post /contratos/vender"], `api/vender.ts habla con: ${rutas.join(", ")}`);
+    const reexportes = [...apiVender.matchAll(/export\s*(?:\*|\{[^}]*\})\s*from\s*["']([^"']+)["']/g)].map((m) => m[1]);
+    assert.deepEqual(reexportes, [], "api/vender.ts pasa otro módulo de escritura");
+    assert.match(apiVender, /params: \{ validar: 1 \}/, "la vista previa no es `?validar=1` (escribiría)");
+    const contratoTs = codigo("src/components/Contrato/Contrato.tsx");
+    assert.match(contratoTs, /const resp = await guardarContrato\(lo\);/, "el contrato no se guarda con `guardarContrato`");
+    assert.equal((contratoTs.match(/\bguardarContrato\(/g) || []).length, 1, "el contrato se guarda por más de un camino");
+  });
+
+  prueba("el proveedor se completa con UN nombre: nunca una lista", () => {
+    const comp = (apiVender.match(/export const completarProveedor = [^]*?;\n/) || [""])[0];
+    assert.match(comp, /Promise<string \| null>/, "completar el proveedor devuelve algo más que un nombre");
+    assert.match(comp, /client\s*\.get<\{ nombre: string \| null \}>\("\/suppliers\/completar"/, "completar el proveedor no pide UN nombre");
+    const campos = codigo("src/components/Contrato/CamposDelContrato.tsx");
+    const campo = (campos.match(/export function CampoProveedor\([^]*?\n\}\n/) || [""])[0];
+    assert.ok(campo.length > 300, "no se encontró el campo del proveedor");
+    assert.match(campo, /completarProveedor\(escrito\)/, "el campo no completa desde lo escrito");
+    assert.match(campo, /plano\(escrito\)\.length < 3/, "el campo pregunta antes de la tercera letra");
+    assert.match(campo, /e\.key === "Tab"/, "Tab no acepta el nombre");
+    assert.doesNotMatch(campo, /\.map\(|<li\b|<ul\b|listbox|<option\b|datalist/, "el campo del proveedor dibuja una lista");
+    // En toda la superficie de Vender, `/suppliers` sólo para completar.
+    const rutas = [];
+    for (const f of ARCHIVOS_VENDER.filter(hay)) for (const m of codigo(f).matchAll(/["'`](\/suppliers[^"'`]*)["'`]/g)) rutas.push(m[1]);
+    assert.deepEqual(rutas, ["/suppliers/completar"], `Vender pide: ${rutas.join(", ")}`);
+  });
+
+  prueba("un 409 se dice en la línea —«Ya no entra… No se guardó nada.»— con «Bajar a X %» y «Cambiar fechas»", () => {
+    const contratoTs = codigo("src/components/Contrato/Contrato.tsx");
+    assert.match(contratoTs, /const filas = filasRechazadas\(e\);/, "el guardado no lee el 409 por línea");
+    assert.match(apiVender, /d\.code !== "contrato_invalido"/, "el 409 que se lee no es `contrato_invalido`");
+    assert.match(contratoTs, /titulo: pbPedido \? `Ya no entra el \$\{pct\(pbPedido\)\}\.` : /, "el rechazo no dice qué % ya no entra");
+    assert.match(contratoTs, /detalle: `\$\{f\.desde_dia \? `Desde el \$\{diaCorto\(f\.desde_dia\)\} queda` : "Queda"\} \$\{pct\(f\.queda_pb\)\}\.`/,
+      "el rechazo no dice cuánto queda y desde cuándo");
+    const linea = codigo("src/components/Contrato/LineaDelContrato.tsx");
+    const rech = (linea.match(/export function RechazoDeLinea\([^]*?\n\}\n/) || [""])[0];
+    for (const t of ["No se guardó nada.", "Bajar a {pct(queda)}", "Cambiar fechas", 'role="alert"']) assert.ok(rech.includes(t), `al rechazo le falta ${t}`);
+    assert.doesNotMatch(rech, /proveedor|marca|supplier/i, "el rechazo habla de alguien");
+  });
+
+  prueba("«Total | Al mes»: la línea entrega siempre el total (× los meses de `utils/meses.ts`)", () => {
+    const contratoTs = codigo("src/components/Contrato/Contrato.tsx");
+    assert.match(contratoTs, /const nMeses = fechasEnOrden \? meses\(desde, hasta\) : 0;/, "los meses no salen de `utils/meses.ts`");
+    assert.match(contratoTs, /: modo === "mensual" \? redondear\(numero \* nMeses\) : numero;/, "«al mes» no se convierte en el total de la línea");
+    assert.match(contratoTs, /valor: conVentas \? 0 : relleno \? \(l\.monto > 0 \? l\.monto : 1\) : l\.monto,/, "un % manda otra cosa que el total");
+    assert.match(contratoTs, /modo_precio: l\.modo, valor_tecleado:/, "el servidor no se entera de cómo se escribió el precio");
+  });
+
+  prueba("«Reservar hasta…»: para cualquier línea, la fecha arranca vacía y el amarillo es uno solo", () => {
+    const contratoTs = codigo("src/components/Contrato/Contrato.tsx");
+    assert.match(contratoTs, /const \[caduca, setCaduca\] = useState\(""\);/, "la reserva arranca con una fecha");
+    assert.match(contratoTs, /const faltaReserva = !caduca\s*\? "Elegí hasta cuándo se sostiene la reserva\."/, "sin fecha, la reserva no lo dice");
+    assert.match(contratoTs, /caduca > hasta\s*\? "La reserva no puede durar más que el contrato\."/, "la reserva puede durar más que el contrato");
+    // Para cualquier línea y con cualquier cobro (el dueño, 2026-10-19 y
+    // 2026-10-20): lo mismo que pide el contrato, ni más ni menos.
+    assert.match(contratoTs, /const puedeReservar = puedeGuardar;/, "la reserva pide otra cosa que el contrato");
+    assert.doesNotMatch(contratoTs, /every\(\(l\) => l\.tipo === "pc"\)/, "la reserva quedó sólo para porcentajes (el dueño la abrió a todo)");
+    assert.match(contratoTs, /tipo,\s*caduca: tipo === "reserva" \? caduca \|\| null : null,\s*cobro: conVentas && !relleno \? cobro :/,
+      "la reserva no manda su cobro (el % de las ventas y el corte)");
+    // Lo guardado dice, una vez y sin alarma, dónde se carga la planometría.
+    assert.match(modoCodigo, /data-planometria-en-supervisar>La planometría se carga en Supervisar, en la ficha del espacio\.<\/p>/,
+      "lo guardado no dice dónde se carga la planometría");
+    assert.doesNotMatch(contratoTs, /avisoPlanometria|subirPlanometria/, "el guardado de Vender sigue subiendo la planometría");
+    assert.equal((modoCodigo.match(/className="btn-principal"/g) || []).length, 1, "ModoVender pinta más de un botón principal");
+    assert.match(modoCodigo, /<Hourglass \{\.\.\.ICONO\} \/> Reservar hasta…/, "falta «Reservar hasta…»");
+    assert.match(modoCodigo, /<Check \{\.\.\.ICONO\} \/> Guardar contrato/, "el principal no dice «Guardar contrato»");
+    assert.match(modoCodigo, /`Reservado hasta el \$\{diaCorto\(datos\.caduca\)\}\$\{porVentas \? ` · \$\{porVentas\}` : ""\}`/,
+      "lo guardado no dice hasta cuándo se reservó, o calla que cobra por ventas");
+  });
+}
+
+/* ── rediseño 2026-10 (PR 1): las barras, los íconos, la plata entera ───────
+   La hoja de piezas aprobada (`docs/maquetas/rediseno-2026-10/hoja-iconos-y-piezas.html`)
+   escribe cinco reglas que un refactor rompe sin que nada falle: un juego de
+   íconos con UN tamaño y UN trazo, ningún ícono en pestañas ni pastillas, la
+   plata siempre entera, la fila de la tarifa que también se toca (con el
+   dedo no hay mouse que pase) y lo de Supervisar que Vender no puede ni
+   importar: los cobros por ventas y las reservas llevan proveedores y plata. */
+console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo que Vender no alcanza");
+{
+  const RUTA_DASH = "src/pages/Dashboard.tsx";
+  const RUTA_COBROS_RESERVAS = "src/components/Supervisar/CobrosYReservas.tsx";
+  const dashCodigo = codigo(RUTA_DASH);
+  const supCodigo = codigo(RUTA_COBROS_RESERVAS);
+  /** Los nombres que el archivo trae de lucide (con su alias, si lo tiene). */
+  const deLucide = (t) => {
+    const m = t.match(/import\s*\{([^}]*)\}\s*from\s*["']lucide-react["']/);
+    if (!m) return new Set();
+    return new Set(m[1].split(",").map((x) => x.trim()).filter(Boolean).map((x) => x.split(/\s+as\s+/).pop().trim()));
+  };
+  /** Cada ícono de lucide dibujado en `texto` que NO va con la medida de todos:
+   *  una de las constantes de 16 × 1,75 o `size={16} strokeWidth={1.75}`. */
+  const ICONO_OK = /\{\.\.\.(?:ICONO_TARJETA|ICONO_BARRA|ICONO)\}|size=\{16\}\s+strokeWidth=\{1\.75\}/;
+  const fueraDeMedida = (texto, lucide, donde) => {
+    const out = [];
+    for (const m of texto.matchAll(/<([A-Z][A-Za-z0-9]*)\b([^<>]*?)\/>/g)) {
+      if (!lucide.has(m[1])) continue;
+      if (!ICONO_OK.test(m[2])) out.push(`${donde}: <${m[1]}${m[2]}/>`);
+    }
+    return out;
+  };
+  const entre = (t, desde, hasta) => {
+    const i = t.indexOf(desde);
+    const j = i < 0 ? -1 : t.indexOf(hasta, i + desde.length);
+    return i < 0 || j < 0 ? "" : t.slice(i, j);
+  };
+
+  prueba("un tamaño y un trazo: los íconos de las dos barras, las tarjetas, las cifras, el plano y «Para revisar» miden 16 con trazo 1,75", () => {
+    const UNA_MEDIDA = /\{ size: 16, strokeWidth: 1\.75, "aria-hidden": true \} as const;/;
+    assert.match(vista, new RegExp(`const ICONO_TARJETA = ${UNA_MEDIDA.source}`), "`ICONO_TARJETA` no es 16 × 1,75");
+    assert.match(dashCodigo, new RegExp(`const ICONO_BARRA = ${UNA_MEDIDA.source}`), "`ICONO_BARRA` no es 16 × 1,75");
+    assert.match(supCodigo, new RegExp(`const ICONO = ${UNA_MEDIDA.source}`), "el `ICONO` de «Para revisar» no es 16 × 1,75");
+    const lucideVista = deLucide(vista);
+    const regiones = [
+      [`${RUTA_DASH} (Topbar)`, entre(dashCodigo, "function Topbar(", "export default function Dashboard("), deLucide(dashCodigo)],
+      [`${VISTA} (la barra de la sede)`, entre(vista, '<div className="barra-pantalla">', "{periodoAbierto && ("), lucideVista],
+      [`${VISTA} (las herramientas del plano)`, entre(vista, '<div className="herr">', "<svg"), lucideVista],
+      [`${VISTA} (las tarjetas de Vender)`, ["panelPlano", "panelEscalera", "panelTarifas"].map((n) => DEF_INT.get(n)?.texto ?? "").join("\n"), lucideVista],
+      [`${VISTA} (CardHeader y Cifra)`, [...vista.matchAll(/<(?:CardHeader|Cifra)\b[\s\S]{0,260}/g)].map((m) => m[0]).join("\n"), lucideVista],
+      [RUTA_COBROS_RESERVAS, supCodigo, deLucide(supCodigo)],
+      ["src/components/Distribucion/RevisarParticipaciones.tsx", entre(codigo("src/components/Distribucion/RevisarParticipaciones.tsx"), "export default function RevisarParticipaciones(", "\nconst celda"), deLucide(codigo("src/components/Distribucion/RevisarParticipaciones.tsx"))],
+      ["src/tema.tsx (TemaToggle)", entre(codigo("src/tema.tsx"), "export function TemaToggle(", "\n}\n"), deLucide(codigo("src/tema.tsx"))],
+    ];
+    const vacias = regiones.filter(([, t]) => t.length < 80).map(([d]) => d);
+    assert.deepEqual(vacias, [], `no se encontraron estas regiones (cambió el anclaje): ${vacias.join(", ")}`);
+    const mal = regiones.flatMap(([d, t, l]) => fueraDeMedida(t, l, d));
+    assert.deepEqual(mal, [], `íconos fuera de la medida de la hoja de piezas:\n         ${mal.join("\n         ")}`);
+    // Cada región dibuja al menos un ícono: un test que no mira nada no pasa.
+    const sinIconos = regiones.filter(([, t, l]) => ![...t.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g)].some((m) => l.has(m[1]))).map(([d]) => d);
+    assert.deepEqual(sinIconos, [], `regiones sin un solo ícono: ${sinIconos.join(", ")}`);
+    // Los botones de ícono de la barra miden 32, y el sol/luna también.
+    assert.match(entre(dashCodigo, "function Topbar(", "export default function Dashboard("), /width: 32, height: 32, borderRadius: "var\(--r-md\)"/, "los botones de ícono de la barra no miden 32");
+    assert.match(entre(codigo("src/tema.tsx"), "export function TemaToggle(", "\n}\n"), /width: 32, height: 32/, "el sol/luna no mide 32");
+    // La sincronización es un punto y su palabra: sin nube, sin ícono.
+    assert.equal(deLucide(codigo("src/components/SyncStatus/SyncStatus.tsx")).size, 0, "la sincronización volvió a llevar ícono (va punto y palabra)");
+    // «Tarifas» lleva la etiqueta (`Tag`), la misma de la tarjeta: un concepto, un ícono.
+    assert.doesNotMatch(vista, /SlidersHorizontal/, "«Tarifas» volvió a `SlidersHorizontal`");
+  });
+
+  prueba("sin ícono en las pestañas ni en las pastillas: la de la app, Vender | Supervisar y la cuenta roja dicen sólo la palabra o el número", () => {
+    const topbar = entre(dashCodigo, "function Topbar(", "export default function Dashboard(");
+    const tab = entre(topbar, "onClick={() => setViewMode(id)}", "</button>");
+    assert.ok(tab.length > 50, "no se encontró el botón de la pestaña");
+    assert.match(tab, />\s*\{label\}\s*$/, "la pestaña de la app dibuja algo más que su palabra");
+    const barra = entre(vista, '<div className="barra-pantalla">', "{periodoAbierto && (");
+    const modo = entre(barra, "onClick={() => setModo(id)}", "</button>");
+    assert.ok(modo.length > 30, "no se encontró el botón de Vender | Supervisar");
+    assert.match(modo, /\{label\}\s*\{badge > 0 && \(\s*<span className="cuenta" aria-label=\{`\$\{badge\} para revisar`\}>\{badge\}<\/span>\s*\)\}/,
+      "Vender | Supervisar lleva algo más que la palabra y la cuenta, o la cuenta lleva algo más que el número");
+    // La pastilla roja de la cuenta: fondo rojo, número en mono, sin ícono.
+    const css = sinComentarios(leer("src/vender.css"));
+    const cuenta = (css.match(/\.barra-pantalla \.cuenta \{([^}]*)\}/) || [, ""])[1];
+    assert.match(cuenta, /background: var\(--ocupado\);/, "la cuenta de Supervisar no es la pastilla roja");
+    // Las tres piezas, en su orden: dónde, qué y de qué fechas; a la derecha, hoy y lo de la sede.
+    const orden = ["<MapPin", 'className="sede-sel"', 'className="cuantos"', 'className="pieza modos"', 'className="pieza periodo"', "<CalendarRange",
+      'className="hoy"', "<FileSpreadsheet", "<Tag", "<RefreshCw"].map((t) => [t, barra.indexOf(t)]);
+    for (const [t, k] of orden) assert.ok(k >= 0, `a la barra de la sede le falta ${t}`);
+    assert.deepEqual(orden.map(([, k]) => k), [...orden.map(([, k]) => k)].sort((a, b) => a - b),
+      `la barra de la sede no va en el orden de la hoja de piezas: ${orden.map(([t]) => t).join(" → ")}`);
+    // A lo angosto envuelve, sin empujar la página de costado.
+    assert.match((css.match(/\.barra-pantalla \{([^}]*)\}/) || [, ""])[1], /flex-wrap: wrap;/, "la barra de la sede no envuelve");
+    assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.barra-pantalla \.hoy, \.barra-pantalla \.cuantos, \.btn-barra \.txt \{ display: none; \}/,
+      "a lo angosto la barra de la sede no se aprieta");
+    for (const etiqueta of ["Planilla", "Tarifas", "Actualizar"]) {
+      assert.match(barra, new RegExp(`aria-label="${etiqueta}"`), `«${etiqueta}» pierde su nombre cuando a lo angosto queda sólo el ícono`);
+    }
+  });
+
+  prueba("cada tarjeta lleva su ícono antes del título: el piso, cuándo se libera y la tarifa en Vender; la franja, «Para revisar», la tabla, el canon y las participaciones en Supervisar", () => {
+    // CardHeader dibuja el ícono ANTES del título.
+    const cab = DEF_TOP.get("CardHeader")?.texto ?? "";
+    assert.ok(cab.indexOf("{icon}") > 0 && cab.indexOf("{icon}") < cab.indexOf("{title}"), "CardHeader no dibuja el ícono antes del título");
+    const ESPERADO = [
+      ["title={`Piso de ${sede}`}", "MapIcon"], ["title={sede}", "Gauge"], ['title="Para revisar"', "ClipboardCheck"],
+      ["title={titulo}", "Table2"], ['title="Quién paga el canon"', "Building2"], ['title="Participaciones de cara"', "Percent"],
+    ];
+    const tags = [...vista.matchAll(/<CardHeader\b[\s\S]{0,260}/g)].map((m) => m[0]);
+    for (const [titulo, icono] of ESPERADO) {
+      const t = tags.find((x) => x.slice(0, x.indexOf(titulo) + 1).length && x.includes(titulo) && x.indexOf(titulo) < 200);
+      assert.ok(t, `no hay una tarjeta con ${titulo}`);
+      assert.match(t.slice(0, t.indexOf(titulo)), new RegExp(`icon=\\{<${icono} \\{\\.\\.\\.ICONO_TARJETA\\} />\\}`), `la tarjeta ${titulo} no lleva el ícono ${icono}`);
+    }
+    assert.equal(tags.length, ESPERADO.length, `hay ${tags.length} encabezados de tarjeta y se esperaban ${ESPERADO.length}: una tarjeta nueva tiene que decir su ícono acá`);
+    // Vender: el ícono donde iba el número del panel.
+    for (const [icono, titulo] of [["MapIcon", "Piso de {sede}"], ["Clock", "Cuándo se libera cada espacio"], ["Tag", "Tarifa de referencia"]]) {
+      assert.match(vista, new RegExp(`<${icono} \\{\\.\\.\\.ICONO_TARJETA\\} className="ico-tarjeta" />\\s*<h2>${titulo.replace(/[{}]/g, "\\$&")}</h2>`),
+        `la tarjeta «${titulo}» de Vender no lleva su ícono (${icono}) antes del título`);
+    }
+    assert.doesNotMatch(vista, /className="ojo"/, "volvió el número de panel");
+    // Las cifras de Supervisar: su ícono al lado del rótulo; rojo sólo en la alarma.
+    const CIFRAS = [["Canon vigente", "Banknote"], ["Sin alquilar", "CircleDashed"], ["Vence en 30 días", "AlarmClock"],
+      ["Libres", "CircleDashed"], ["Ocupación", "PieChart"], ["Sin montar", "Hammer"]];
+    for (const [rotulo, icono] of CIFRAS) {
+      assert.match(vista, new RegExp(`<Cifra\\s+icono=\\{<${icono} \\{\\.\\.\\.ICONO_TARJETA\\} />\\}\\s+rotulo="${rotulo}"`), `la cifra «${rotulo}» no lleva ${icono}`);
+    }
+    assert.equal((vista.match(/<Cifra\b/g) || []).length, 7, "una cifra nueva tiene que decir su ícono acá");
+    const cifra = DEF_TOP.get("Cifra")?.texto ?? "";
+    assert.match(cifra, /color: alarma \? "var\(--ocupado-txt\)" : "var\(--ink-3\)",/, "el ícono de la cifra no es gris en reposo y rojo en la alarma");
+    for (const m of vista.matchAll(/<Cifra\s+icono=\{<AlarmClock[\s\S]*?\/>\s*\n/g)) assert.match(m[0], /\balarma\b/, "«Vence en 30 días» dejó de ser una alarma");
+    // La pista del plano lleva el mouse, y el ícono no va en la ayuda del dedo.
+    assert.match(vista, /<span className="con-mouse"><Mouse \{\.\.\.ICONO_TARJETA\} \/>Arrastrá para girar/, "la pista del plano no lleva el ícono `Mouse`");
+  });
+
+  prueba("la plata se escribe entera en Vender y en Supervisar: ni «M», ni «k», ni `compactCOP`", () => {
+    const ARCHIVOS_PLATA = [VISTA, ...ARCHIVOS_VENDER, RUTA_COBROS_RESERVAS, "src/components/Distribucion/RevisarParticipaciones.tsx",
+      "src/components/Distribucion/ParticipacionesDeLaCara.tsx"].filter(hay);
+    const ABREVIA = /compactCOP|notation\s*:\s*["']compact|\/\s*1e[36]\b|\/\s*1_?000(?:_?000)?\b|["'`]\s*(?:M|k|mil|millones|mill\.?)\s*["'`]/;
+    const hits = [];
+    for (const f of ARCHIVOS_PLATA) codigo(f).split("\n").forEach((l, k) => { if (ABREVIA.test(l)) hits.push(`${f}:${k + 1} ${l.trim().slice(0, 100)}`); });
+    assert.deepEqual(hits, [], `plata abreviada:\n         ${hits.join("\n         ")}`);
+    assert.match(vista, /function formatCOP\(n: number\): string \{\s*if \(!n\) return "—";\s*return money\(n\);\s*\}/, "`formatCOP` no es la plata entera de `money`");
+    assert.match(codigo("src/components/Contrato/Contrato.tsx"), /export const money = \(n: number\) => "\$ " \+ Math\.round\(n\)\.toLocaleString\("es-CO"\);/);
+    assert.match(supCodigo, /import \{ money \} from "\.\.\/Contrato\/Contrato";/, "«Para revisar» escribe la plata con otra cuenta");
+    assert.equal((1400000).toLocaleString("es-CO"), "1.400.000", "este Node no tiene el formato de Colombia: la prueba de la plata no puede afirmar nada");
+  });
+
+  prueba("la fila de la tarifa se FIJA con un clic o un toque (y con Enter), y las pastillas siguen sumando al contrato", () => {
+    const panel = DEF_INT.get("panelTarifas")?.texto ?? "";
+    assert.ok(panel.length > 500, "no se encontró `panelTarifas`");
+    const tr = entre(panel, "<tr\n", ">\n                <td>{nombreDeTarifa(cat, nombresPropios)}</td>");
+    assert.ok(tr.length > 100, "no se encontró la fila del tipo");
+    assert.match(tr, /onClick=\{\(\) => setTipoFijado\(\(x\) => \(x === cat \? null : cat\)\)\}/, "tocar la fila no la fija (con el dedo no hay mouse que pase)");
+    assert.match(tr, /onKeyDown=\{\(e\) => \{\s*if \(e\.key !== "Enter" && e\.key !== " "\) return;\s*e\.preventDefault\(\);\s*setTipoFijado\(\(x\) => \(x === cat \? null : cat\)\);/, "la fila no se fija con el teclado");
+    assert.match(tr, /tabIndex=\{0\}/, "la fila no entra en el orden del teclado");
+    assert.match(tr, /onMouseEnter=\{\(\) => destacar\(claves\)\}\s*onMouseLeave=\{\(\) => destacar\(null\)\}/, "pasar el mouse dejó de encender los muebles");
+    assert.match(tr, /tipoFijado === cat \? "fijada" : ""/, "la fila fijada no se distingue");
+    // Apagar vuelve a lo fijado, no a la sala entera; y lo fijado sigue a las caras del tipo.
+    const dest = DEF_INT.get("destacar")?.texto ?? "";
+    assert.match(dest, /const claves = claves0 \?\? fijadoEnPlano\.current;/, "apagar el resaltado suelta lo fijado");
+    assert.match(vista, /fijadoEnPlano\.current = fila \? fila\.claves : null;\s*destacar\(null\);/, "lo fijado no enciende las caras de su tipo");
+    assert.match(vista, /if \(tipoFijado && !fila\) \{ setTipoFijado\(null\); return; \}/, "un tipo que se fue de la tabla queda fijado");
+    // La pastilla: un clic la suma al contrato (y no fija la fila de abajo).
+    assert.match(panel, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); destacar\(null\); alternarCara\(d\.fixture\.id, d\.face\); \}\}/, "la pastilla dejó de sumar al contrato con un clic");
+    const css = sinComentarios(leer("src/vender.css"));
+    assert.match(css, /\.vender \.tabla tr\.fijada td,[\s\S]*?\{ background: var\(--libre-suave\); \}/, "la fila fijada no se pinta");
+  });
+
+  prueba("el mínimo para el dedo: cada mueble que vende algo se toca en por lo menos 44 × 44 px de pantalla, sin cambiar lo dibujado ni el deschoque", () => {
+    const iso = DEF_TOP.get("IsoMap")?.texto ?? "";
+    assert.match(vista, /const MINIMO_AL_TOCAR = 44;/, "el mínimo para tocar no es 44 px");
+    const ajuste = entre(iso, "const ajustarMinimos = useCallback(", "}, [encuadre]);");
+    assert.match(ajuste, /const lado = MINIMO_AL_TOCAR \/ c\.k;/, "el mínimo no se mide en píxeles de PANTALLA (no divide por la escala)");
+    assert.match(ajuste, /if \(w \* c\.k >= MINIMO_AL_TOCAR && h \* c\.k >= MINIMO_AL_TOCAR\) \{\s*el\.setAttribute\("width", "0"\);/, "un mueble que ya mide eso igual lleva la caja");
+    assert.match(iso, /const aplicar = useCallback\(\(\) => \{ escribir\(\); ajustarMinimos\(\); acomodar\(\); \}/, "el mínimo no se recalcula con cada acercamiento");
+    const capa = entre(iso, '<g className="impactos">', "</g>");
+    const min = capa.indexOf('className="pl-hit pl-min"'), rot = capa.indexOf('className="pl-hit"\n');
+    assert.ok(min > 0 && rot > min, "las cajas mínimas no van debajo de las de los rótulos (que tienen que seguir cobrando su clic)");
+    assert.match(capa, /scene\.prisms\.filter\(\(p\) => seVendeAlgo\(p\.f\)\)/, "una columna o una caja que no vende nada roba el toque de al lado");
+    // No entra al deschoque: `acomodar` mide sólo las herramientas y los rótulos.
+    assert.match(iso, /querySelectorAll\("\.herr, \.herr-ayuda"\)/);
+    assert.doesNotMatch(entre(iso, "const acomodar = useCallback(", "}, [aPantalla, encuadre]);"), /pl-min|minRefs/, "el deschoque de los rótulos mira las cajas mínimas");
+  });
+
+  /** Lo que un archivo importa (relativo, dentro de `src`), de punta a punta. */
+  const cierreDeImportes = (archivo) => {
+    const vistos = new Set();
+    const cola = [archivo];
+    while (cola.length) {
+      const f = cola.pop();
+      if (vistos.has(f) || !hay(f)) continue;
+      vistos.add(f);
+      const t = leer(f);
+      for (const m of t.matchAll(/(?:from\s*|import\s*\(\s*|import\s+)["'](\.{1,2}\/[^"']+)["']/g)) {
+        const base = join(dirname(f), m[1]);
+        const cand = [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]
+          .map((x) => relative(raiz, join(raiz, x)));
+        const ok = cand.find((x) => hay(x) && statSync(join(raiz, x)).isFile());
+        if (ok) cola.push(ok);
+      }
+    }
+    return vistos;
+  };
+  const DE_SUPERVISAR = ["src/api/cobros.ts", "src/api/reservas.ts"];
+
+  prueba("`api/cobros` y `api/reservas` no se alcanzan desde Vender: ni un archivo de Vender los importa, ni la parte de DashboardView que Vender dibuja", () => {
+    for (const f of DE_SUPERVISAR) assert.ok(hay(f), `no está ${f}`);
+    const malos = [];
+    for (const f of ARCHIVOS_VENDER.filter(hay)) {
+      const cierre = cierreDeImportes(f);
+      for (const api of DE_SUPERVISAR) if (cierre.has(api)) malos.push(`${f} → … → ${api}`);
+    }
+    assert.deepEqual(malos, [], `Vender llega a lo de Supervisar:\n         ${malos.join("\n         ")}`);
+    // En DashboardView: los nombres que vienen de un módulo que llega a esas
+    // APIs no pueden aparecer en lo que Vender dibuja.
+    const crudo = leer(VISTA);
+    const nombres = new Set();
+    for (const m of crudo.matchAll(/import\s*\{([^}]*)\}\s*from\s*["'](\.{1,2}\/[^"']+)["']/g)) {
+      const base = relative(raiz, join(raiz, dirname(VISTA), m[2]));
+      const archivo = [`${base}.ts`, `${base}.tsx`, base].find((x) => hay(x) && statSync(join(raiz, x)).isFile());
+      if (!archivo) continue;
+      const cierre = cierreDeImportes(archivo);
+      if (!DE_SUPERVISAR.some((api) => cierre.has(api))) continue;
+      for (const n of m[1].split(",").map((x) => x.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()).filter(Boolean)) nombres.add(n);
+    }
+    assert.ok(nombres.has("VentasPorCargar") && nombres.has("ReservasSinConfirmar"), "no se encontraron los bloques de Supervisar que leen cobros y reservas");
+    const usados = [...nombres, "cortesSinCargar", "reservasSinConfirmar"];
+    const hits = [];
+    for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
+      const ids = identificadores(r.texto);
+      for (const n of usados) if (ids.has(n)) hits.push(`${n} en ${VISTA}:${r.desde + 1}${r.nombre ? ` (${r.nombre})` : ""}`);
+    }
+    assert.deepEqual([...new Set(hits)], [], `Vender alcanza lo de los cobros o las reservas:\n         ${[...new Set(hits)].join("\n         ")}`);
+    // Y en Supervisar, sólo para quien administra.
+    assert.match(vista, /const cortesSinCargar = useCobrosPorVentas\(\{ sede, activo: isAdmin \}\);/);
+    assert.match(vista, /const reservasSinConfirmar = useReservasDeEspacio\(\{ sede, activo: isAdmin \}\);/);
+    assert.match(vista, /\{isAdmin && cortesSinCargar\.pendientes\.length > 0 && \(\s*<VentasPorCargar\b/, "«Ventas por cargar» se monta sin `isAdmin`");
+    assert.match(vista, /\{isAdmin && reservasSinConfirmar\.vivas\.length > 0 && \(\s*<ReservasSinConfirmar\b/, "«Reservas» se monta sin `isAdmin`");
+    assert.match(vista, /\(isAdmin\s*\? kpis\.belowReference\.length[^;]*cortesSinCargar\.porCargar \+ reservasSinConfirmar\.vivas\.length[^;]*revisionPc\.total\s*: 0\)/,
+      "los cortes sin cargar y las reservas no suman a «Para revisar», o le suman al trabajador");
+    // Las rutas de cada módulo, y nada más.
+    const rutas = (f) => [...codigo(f).matchAll(/client\s*\.(get|post|delete|put|patch)(?:<[^>]*>)?\(\s*[`"']([^`"']+)[`"']/g)].map((m) => `${m[1]} ${m[2]}`).sort();
+    assert.deepEqual(rutas("src/api/cobros.ts"), ["get /cobros", "get /cobros/pendientes", "post /cobros/${leaseId}/cortes"]);
+    assert.deepEqual(rutas("src/api/reservas.ts"), ["delete /reservas/${id}", "get /reservas", "post /reservas/${id}/confirmar"]);
+    // Confirmar usa el precio guardado: el cuerpo va vacío.
+    assert.match(codigo("src/api/reservas.ts"), /client\.post\(`\/reservas\/\$\{id\}\/confirmar`, \{\}\)/, "confirmar una reserva manda otro precio que el guardado");
+  });
+}
+
+/* ── la planometría no es de Vender (decisión de la dueña, 2026-10-20) ──────
+   Se carga SÓLO en Supervisar, en la ficha del espacio, con el contrato ya
+   hecho. Reemplaza, más estricta, a las guardas de la lámina adjunta y de la
+   subida después de guardar: ni Vender ni nada de lo que Vender importa
+   (siguiendo los imports, de verdad) llega al módulo de planometrías ni a una
+   ruta `/planometria`, y ninguna ficha de Vender tiene un campo de archivo
+   para ella. */
+console.log("\nvender · la planometría se carga en Supervisar, nunca en Vender");
+{
+  const resolver = (desde, ruta) => {
+    if (!ruta.startsWith(".")) return null;
+    const base = join(dirname(join(raiz, desde)), ruta);
+    for (const c of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]) {
+      if (existsSync(c) && statSync(c).isFile()) return relative(raiz, c).split("\\").join("/");
+    }
+    return null;
+  };
+  /** Lo que un archivo importa de VERDAD (sin los `import type`, que no bajan
+   *  código), también lo perezoso y lo reexportado. */
+  const importsDe = (f) => {
+    const t = sinComentarios(leer(f));
+    return [
+      ...[...t.matchAll(/(?:^|\n)\s*import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/g)].map((m) => m[1]),
+      ...[...t.matchAll(/(?:^|\n)\s*import\s+["']([^"']+)["']/g)].map((m) => m[1]),
+      ...[...t.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1]),
+      ...[...t.matchAll(/(?:^|\n)\s*export\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/g)].map((m) => m[1]),
+    ];
+  };
+  const alcanzados = new Set();
+  const cola = ARCHIVOS_VENDER.filter(hay);
+  while (cola.length) {
+    const f = cola.pop();
+    if (alcanzados.has(f) || !/\.(ts|tsx)$/.test(f)) continue;
+    alcanzados.add(f);
+    for (const r of importsDe(f)) { const x = resolver(f, r); if (x && !alcanzados.has(x)) cola.push(x); }
+  }
+
+  prueba(`Vender y todo lo que importa (${alcanzados.size} archivos) no llegan a las planometrías`, () => {
+    assert.ok(alcanzados.size > ARCHIVOS_VENDER.length, "no se siguió ningún import: la guarda no prueba nada");
+    assert.ok(alcanzados.has("src/components/StoreEditor3D/StoreEditor3D.tsx"), "no se siguió el import perezoso del visor");
+    const hits = [];
+    for (const f of alcanzados) {
+      const t = sinComentarios(leer(f));
+      for (const r of importsDe(f)) if (/api\/planograms|\/Planometria$/.test(r)) hits.push(`${f} importa ${r}`);
+      if (/["'`][^"'`]*\/planometria/.test(t)) hits.push(`${f} llama a una ruta /planometria`);
+    }
+    assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+  });
+
+  prueba("ninguna ficha de Vender tiene un campo para la planometría, y Vender no dibuja la de Supervisar", () => {
+    const hits = [];
+    for (const f of ARCHIVOS_VENDER.filter(hay)) {
+      const t = sinComentarios(leer(f));
+      for (const m of t.matchAll(/type=["']file["']/g)) {
+        const cerca = t.slice(Math.max(0, m.index - 600), m.index + 300);
+        if (/planometr/i.test(cerca)) hits.push(`${f}: un campo de archivo para la planometría`);
+      }
+      if (/Adjuntar cómo debe quedar|Planometría ·/.test(t)) hits.push(`${f}: el campo de planometría`);
+    }
+    for (const f of ["src/components/Contrato/Contrato.tsx", "src/components/Contrato/ModoVender.tsx",
+      "src/components/Contrato/LineaDelContrato.tsx", "src/components/Contrato/CamposDelContrato.tsx"]) {
+      if (/type=["']file["']/.test(sinComentarios(leer(f)))) hits.push(`${f}: un campo de archivo en el contrato`);
+    }
+    if (SUP) for (const r of SUP.regiones) if (/<\s*Planometria\b/.test(r.texto)) hits.push(`${r.archivo}${r.nombre ? ` (${r.nombre})` : ""}: dibuja <Planometria> en Vender`);
+    assert.match(modoCodigo, /\{masDatos \? "− " : "\+ "\}Correo y nota/, "el desplegable sigue ofreciendo la planometría");
+    assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
   });
 }
 
@@ -1649,7 +2144,7 @@ if (!URL_VENDER) {
           if (esLista(r.url()) && r.request().method() === "GET") listas.push({ u: r.url(), json: await r.json() });
           else if (/\.js(\?|$)/.test(r.url())) {
             const b = await r.body();
-            if (b.includes("Guardar contrato y avisar")) pesosVender.push(gzipSync(b).length);
+            if (b.includes("Correo y nota")) pesosVender.push(gzipSync(b).length);
           }
         } catch { /* una respuesta sin cuerpo */ }
       });
@@ -1672,8 +2167,10 @@ if (!URL_VENDER) {
       if (!panel) return null;
       return {
         filas: [...panel.querySelectorAll(".eitem")].map((e) => [e.querySelector(".cod")?.textContent, e.querySelector(".m input")?.value]),
-        campos: [...panel.querySelectorAll("input.entrada, textarea.entrada")].map((i) => i.value),
-        planometria: [...panel.querySelectorAll("div.entrada span")].map((s) => s.textContent).join("|"),
+        campos: [...panel.querySelectorAll(".entrada input, .entrada textarea, input.entrada")].map((i) => i.value),
+        // La planometría no se carga en Vender: cualquier campo de archivo en
+        // la ficha es una falla (ver «la planometría se carga en Supervisar»).
+        archivos: panel.querySelectorAll('input[type="file"]').length,
       };
     })()`);
     const almacen = (pg) => pg.evaluate(() => {
@@ -1755,9 +2252,8 @@ if (!URL_VENDER) {
     // Al revés: «Ver en 3D» abre la ÚLTIMA cara tocada, y las pruebas miran
     // la primera de la lista (la punta).
     for (const c of [...CARAS].reverse()) await tocar(pv, c);
-    const campos = pv.locator(".vender input.entrada");
-    await campos.nth(0).fill(PROVEEDOR);
-    await campos.nth(1).fill("Finesse");
+    await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
+    await pv.locator('.vender input[aria-label="Marca"]').fill("Finesse");
     const valores = pv.locator(".eitem .m input");
     for (let i = 0; i < await valores.count(); i++) await valores.nth(i).fill(String(1_200_000 + i * 100_000));
     await pv.mouse.move(5, 5);
@@ -1802,15 +2298,14 @@ if (!URL_VENDER) {
     });
 
     // Lo opcional, que también tiene que sobrevivir al 3D.
-    await pv.locator("button", { hasText: "Correo, nota y planometría" }).click();
+    await pv.locator("button", { hasText: "Correo y nota" }).click();
     await pv.locator('.vender input[inputmode="email"]').fill("compras@proveedor.example");
-    await pv.locator(".vender textarea.entrada").fill("Probar la punta con el yogur");
-    await pv.locator('.vender input[type="file"]').setInputFiles({
-      name: "planometria-de-prueba.png", mimeType: "image/png",
-      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
-    });
+    await pv.locator('.vender textarea[aria-label="Nota"]').fill("Probar la punta con el yogur");
     await pv.waitForTimeout(400);
     const antes = await contrato(pv);
+    prueba("navegador · la ficha de Vender no tiene campo para la planometría (se carga en Supervisar)", () => {
+      assert.equal(antes.archivos, 0, "la ficha del contrato tiene un campo de archivo");
+    });
 
     prueba("navegador · visor: antes de abrirlo, Vender no bajó nada del 3D", () => {
       const del3D = pedidos.filter((x) => /StoreEditor3D-|three\.module-|VisorDeVenta-/.test(x.u)).map((x) => x.u.replace(ORIGEN, ""));
@@ -1881,7 +2376,7 @@ if (!URL_VENDER) {
     const pestana = await pv.evaluate(() => ({
       cajones: document.querySelectorAll("[data-cajon-oscuro]").length,
       hoja: !!document.querySelector(".vender-hoja"),
-      boton: /Guardar contrato y avisar/.test(document.body.textContent || ""),
+      boton: /Guardar contrato/.test(document.body.textContent || ""),
     }));
     prueba("navegador · visor: nada se escribe — ni la cámara del editor, ni el plano, ni otra pestaña", () => {
       assert.equal(almacenDespues.camara, almacenAntes.camara, "girar en el visor movió la cámara guardada del Editor 3D");
@@ -2006,7 +2501,7 @@ if (!URL_VENDER) {
     const seccion = async (nombre, fn) => { try { await fn(); } catch (e) { prueba(nombre, () => { throw e; }); } };
     const hudDelVisor = (pg) => pg.evaluate(() => [...document.querySelectorAll(".visor-hud-boton")].map((b) => b.textContent.trim()));
     await seccion("navegador · visor: cambiar de proveedor se lleva la prueba del anterior", async () => {
-      await pv.locator(".vender input.entrada").nth(0).fill(OTRO);
+      await pv.locator('.vender input[aria-label="Proveedor"]').fill(OTRO);
       await pv.waitForTimeout(500);
       const desdeOtro = pedidos.length;
       await abrirVisor(pv);
@@ -2021,7 +2516,7 @@ if (!URL_VENDER) {
       await pv.locator(".visor-volver").click();
       await pv.waitForTimeout(500);
       // Y de vuelta al primero: la prueba no reaparece, se olvidó al cambiar.
-      await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
       await pv.waitForTimeout(500);
       await abrirVisor(pv);
       await pv.waitForTimeout(2500);
@@ -2042,7 +2537,7 @@ if (!URL_VENDER) {
 
     // ── Sin proveedor: se pregunta, y no se pide nada ───────────────────
     await seccion("navegador · visor: sin proveedor, el cajón lo pregunta y no se pide ningún catálogo ni imagen", async () => {
-    await pv.locator(".vender input.entrada").nth(0).fill("");
+    await pv.locator('.vender input[aria-label="Proveedor"]').fill("");
     await pv.waitForTimeout(500);
     const desdeNadie = pedidos.length;
     await abrirVisor(pv);
@@ -2061,7 +2556,7 @@ if (!URL_VENDER) {
 
     // ── Abrir y cerrar cinco veces: sin contextos perdidos ni lienzo en blanco
     await seccion("navegador · visor: abrir y cerrar cinco veces no pierde el contexto de WebGL ni deja el lienzo en blanco", async () => {
-    await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+    await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
     await pv.waitForTimeout(500);
     let varianza = 0;
     for (let i = 0; i < 5; i++) {
@@ -2172,8 +2667,10 @@ if (!URL_VENDER) {
       });
     });
 
-    // ── La lámina: se baja y se adjunta como planometría DEL CONTRATO ────
-    await seccion("navegador · visor: la lámina se baja y se adjunta como planometría de la ficha, sin escribir nada", async () => {
+    // ── La lámina: se baja para el proveedor, y nada más ─────────────────
+    // (Adjuntarla al contrato se fue de Vender: la planometría se carga sólo
+    // en Supervisar.)
+    await seccion("navegador · visor: la lámina se baja, sin escribir nada y sin adjuntarse al contrato", async () => {
       const antesL = await contrato(pv);
       const almacenL0 = await almacen(pv);
       await abrirVisor(pv);
@@ -2189,59 +2686,43 @@ if (!URL_VENDER) {
       const nombre = descarga.suggestedFilename();
       const bytes = readFileSync(await descarga.path());
       await pv.waitForFunction(() => !document.querySelector("[data-bajar-lamina]")?.disabled, null, { timeout: 60000 });
-      await pv.locator("[data-lamina-planometria]").click();
-      const adjunta = await pv.waitForSelector("[data-lamina-adjunta]", { timeout: 180000 }).then(() => true).catch(() => false);
+      const adjuntar = await pv.locator("[data-lamina-planometria], [data-lamina-adjunta]").count();
       const textoL = await textoDelVisor(pv);
       const escritos = pedidos.slice(desdeLamina).filter((x) => x.m !== "GET").map((x) => `${x.m} ${x.u.replace(ORIGEN, "")}`);
       const almacenL1 = await almacen(pv);
       await pv.locator(".visor-volver").click();
       await pv.waitForTimeout(800);
       const despuesL = await contrato(pv);
-      prueba("navegador · visor: la lámina se baja y se adjunta como planometría de la ficha, sin escribir nada", () => {
+      prueba("navegador · visor: la lámina se baja, sin escribir nada y sin adjuntarse al contrato", () => {
         assert.match(nombre, /\.png$/, `la lámina bajó como ${nombre}`);
         assert.ok(nombre.toLowerCase().includes(PROVEEDOR.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()), `la lámina no es la de ${PROVEEDOR}: ${nombre}`);
         assert.equal(bytes.subarray(1, 4).toString("latin1"), "PNG", "la lámina no es un PNG");
         assert.ok(bytes.length > 20_000, `la lámina pesa ${bytes.length} B: no trae las tomas`);
-        assert.ok(adjunta, "«Usarla como planometría» no confirmó");
+        assert.equal(adjuntar, 0, "el visor sigue ofreciendo «Usarla como planometría»");
         assert.deepEqual(escritos, [], "armar la lámina escribió en el servidor");
         assert.equal(almacenL1.camara, almacenL0.camara, "la lámina movió la cámara guardada del Editor 3D");
         assert.equal(almacenL1.planos, almacenL0.planos, "la lámina tocó el plano guardado");
         const salen = AJENOS.filter((n) => new RegExp(n, "i").test(textoL));
         assert.deepEqual(salen, [], `con la lámina se lee: ${salen.join(", ")}`);
-        assert.match(despuesL.planometria, /\.jpg/, `la planometría de la ficha no es la lámina: «${despuesL.planometria}»`);
-        assert.deepEqual(despuesL.filas, antesL.filas, "adjuntar la lámina cambió las filas del contrato");
+        assert.equal(despuesL.archivos, 0, "después de la lámina, la ficha tiene un campo de archivo");
+        assert.deepEqual(despuesL.filas, antesL.filas, "bajar la lámina cambió las filas del contrato");
       });
     });
 
-    // ── La lámina adjunta se va con su proveedor ─────────────────────────
-    // La crítica: con Alpina se adjuntaba la lámina y se escribía «Postobón»;
-    // el contrato de Postobón salía con la lámina de Alpina y su nombre a la
-    // vista en la ficha.
-    await seccion("navegador · visor: cambiar de proveedor saca su lámina de la planometría, sin nombrarlo", async () => {
-      const conLamina = await contrato(pv);
-      await pv.locator(".vender input.entrada").nth(0).fill(OTRO);
+    // ── Otro proveedor: la ficha no nombra al anterior ───────────────────
+    await seccion("navegador · visor: cambiar de proveedor no deja al anterior nombrado en la ficha", async () => {
+      await pv.locator('.vender input[aria-label="Proveedor"]').fill(OTRO);
       await pv.waitForTimeout(700);
-      const conOtro = await contrato(pv);
       const ficha = await pv.evaluate(`(() => {
         const panel = ${PANEL};
         const t = [panel.innerText];
         for (const n of panel.querySelectorAll("[title],[aria-label]")) t.push(n.getAttribute("title"), n.getAttribute("aria-label"));
-        const q = panel.querySelector("[data-lamina-quitada]");
-        return { texto: t.filter(Boolean).join("\\n"), quitada: !!q, quitadaTexto: q?.textContent ?? "" };
+        return { texto: t.filter(Boolean).join("\\n") };
       })()`);
-      await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
       await pv.waitForTimeout(500);
-      const deVuelta = await contrato(pv);
-      prueba("navegador · visor: cambiar de proveedor saca su lámina de la planometría, sin nombrarlo", () => {
-        const plano = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        assert.ok(plano(conLamina.planometria).includes(plano(PROVEEDOR)), `antes de cambiar, la planometría no es la lámina de ${PROVEEDOR}: «${conLamina.planometria}»`);
-        assert.equal(conOtro.planometria, "", `con ${OTRO} el contrato sigue con la planometría «${conOtro.planometria}»`);
+      prueba("navegador · visor: cambiar de proveedor no deja al anterior nombrado en la ficha", () => {
         assert.ok(!new RegExp(PROVEEDOR, "i").test(ficha.texto), `con ${OTRO}, la ficha nombra a ${PROVEEDOR}`);
-        assert.ok(ficha.quitada, "la ficha no dice que se quitó la lámina del 3D");
-        // Y sin decir por qué: «era de otro proveedor» le contaba al que mira
-        // que ese espacio se le estuvo ofreciendo a otro.
-        assert.ok(!/proveedor|\botr[oa]s?\b/i.test(ficha.quitadaTexto), `el aviso de la lámina quitada sugiere otra negociación: «${ficha.quitadaTexto}»`);
-        assert.equal(deVuelta.planometria, "", "volver al proveedor anterior trajo de vuelta su lámina");
       });
     });
 
@@ -2255,7 +2736,7 @@ if (!URL_VENDER) {
       const unArte = [...idsDe(PROVEEDOR)][0];
       const foto = Buffer.from(await fetch(`${ORIGEN}/api/catalogo/${unArte}/imagen?token=${encodeURIComponent(TOKEN)}`).then((r) => r.arrayBuffer()));
       const antesN = await contar();
-      await pv.locator(".vender input.entrada").nth(0).fill(sinTilde);
+      await pv.locator('.vender input[aria-label="Proveedor"]').fill(sinTilde);
       await pv.waitForTimeout(600);
       await abrirVisor(pv);
       await pv.waitForSelector("[data-sin-productos]", { timeout: 30000 });
@@ -2273,7 +2754,7 @@ if (!URL_VENDER) {
       const despuesN = await contar();
       await pv.locator(".visor-volver").click();
       await pv.waitForTimeout(500);
-      await pv.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
       await pv.waitForTimeout(500);
       prueba("navegador · visor: el proveedor sin tilde no dice «no tiene productos» ni da de alta sin preguntar", () => {
         assert.ok(texto.includes(`No encontré productos a nombre de «${sinTilde}»`), "el cajón no dice que no encontró productos con ESE nombre");
@@ -2322,7 +2803,7 @@ if (!URL_VENDER) {
       await campo.fill(nombre);
       await campo.press("Enter");
     };
-    const proveedorDeLaFicha = (pg, nombre) => pg.locator(".vender input.entrada").nth(0).fill(nombre);
+    const proveedorDeLaFicha = (pg, nombre) => pg.locator('.vender input[aria-label="Proveedor"]').fill(nombre);
 
     await seccion("navegador · visor: cambiar el proveedor desde el cajón, letra por letra, no deja a la vista la lista del anterior", async () => {
       await abrirVisor(pv);
@@ -2441,28 +2922,13 @@ if (!URL_VENDER) {
       });
     });
 
-    /** La ficha sin el aviso de «se quitó la lámina» que dejó una prueba de
-     *  arriba (queda hasta que se adjunta otra planometría): se adjunta un
-     *  archivo y se quita a mano, que es lo que lo apaga. */
-    const sinAvisoDeLamina = async (pg) => {
-      const desplegable = pg.locator("button", { hasText: "Correo, nota y planometría" });
-      if ((await desplegable.getAttribute("aria-expanded")) !== "true") await desplegable.click();
-      if (!(await pg.locator("[data-lamina-quitada]").count())) return;
-      await pg.locator('.vender input[type="file"]').setInputFiles({
-        name: "otra.png", mimeType: "image/png",
-        buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
-      });
-      await pg.waitForTimeout(300);
-      await pg.locator('[aria-label="Quitar la planometría"]').click();
-      await pg.waitForTimeout(300);
-    };
     /** El visor en PUN-03 con un producto puesto y «Para llevarse» a la vista. */
     const conLamina = async (pg) => {
       await abrirVisor(pg);
       await conCajon(pg);
       await pg.waitForSelector(".visor-producto", { timeout: 60000 });
       if (!(await pg.locator('.visor-producto[aria-pressed="true"]').count())) await pg.locator(".visor-producto").first().click();
-      await pg.waitForSelector("[data-lamina-planometria]", { timeout: 60000 });
+      await pg.waitForSelector("[data-bajar-lamina]", { timeout: 60000 });
       await pg.waitForTimeout(4000);
     };
     /** Cambia el proveedor de la ficha desde afuera de la pantalla: la ficha
@@ -2471,17 +2937,18 @@ if (!URL_VENDER) {
      *  nueva que alguien abra mañana; las dos defensas tienen que aguantarla. */
     const proveedorPorDetras = (pg, nombre) => pg.evaluate(`(() => {
       const panel = ${PANEL};
-      const inp = panel.querySelector("input.entrada");
+      const inp = panel.querySelector('input[aria-label="Proveedor"]');
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(inp, ${JSON.stringify(nombre)});
       inp.dispatchEvent(new Event("input", { bubbles: true }));
       return inp.value;
     })()`);
 
-    await seccion("navegador · visor: mientras se arma la lámina el visor queda quieto, y si cambia el proveedor no se adjunta", async () => {
-      await sinAvisoDeLamina(pv);
-      const antesQ = await contrato(pv);
+    await seccion("navegador · visor: mientras se arma la lámina el visor queda quieto, y si cambia el proveedor no se baja", async () => {
       await conLamina(pv);
-      await pv.locator("[data-lamina-planometria]").click();
+      const bajadas = [];
+      const oyente = (d) => bajadas.push(d.suggestedFilename());
+      pv.on("download", oyente);
+      await pv.locator("[data-bajar-lamina]").click();
       await pv.waitForSelector("[data-armando]", { timeout: 30000 });
       const quieto = await pv.evaluate(() => ({
         pestanas: [...document.querySelectorAll(".visor-pestana")].map((b) => b.disabled),
@@ -2494,14 +2961,14 @@ if (!URL_VENDER) {
       const escrito = await proveedorPorDetras(pv, OTRO);
       await pv.waitForSelector("[data-armando]", { state: "detached", timeout: 180000 });
       await pv.waitForTimeout(800);
-      const visor = { adjunta: await pv.locator("[data-lamina-adjunta]").count(), texto: await textoDelVisor(pv) };
+      pv.off("download", oyente);
       await pv.locator(".visor-volver").click();
       await pv.waitForTimeout(800);
       const despuesQ = await contrato(pv);
-      const fichaQ = await pv.evaluate(`(() => { const p = ${PANEL}; return { texto: p.innerText, quitada: !!p.querySelector("[data-lamina-quitada]") }; })()`);
+      const fichaQ = await pv.evaluate(`(() => { const p = ${PANEL}; return { texto: p.innerText }; })()`);
       await proveedorDeLaFicha(pv, PROVEEDOR);
       await pv.waitForTimeout(500);
-      prueba("navegador · visor: mientras se arma la lámina el visor queda quieto, y si cambia el proveedor no se adjunta", () => {
+      prueba("navegador · visor: mientras se arma la lámina el visor queda quieto, y si cambia el proveedor no se baja", () => {
         const sueltos = [];
         if (!quieto.pestanas.length || quieto.pestanas.some((d) => !d)) sueltos.push(`la chapa deja saltar de cara (${quieto.pestanas.join(",")})`);
         if (!quieto.hud.length || quieto.hud.some((d) => !d)) sueltos.push(`el HUD sigue activo (${quieto.hud.join(",")})`);
@@ -2510,51 +2977,48 @@ if (!URL_VENDER) {
         if (quieto.productos.some((d) => !d)) sueltos.push("se puede elegir otro producto");
         assert.deepEqual(sueltos, [], `mientras se arma la lámina:\n         ${sueltos.join("\n         ")}`);
         assert.ok(mismo(escrito, OTRO), "no se pudo cambiar el proveedor de la ficha: la prueba no mide nada");
-        assert.equal(antesQ.planometria, "", `la ficha ya tenía planometría («${antesQ.planometria}»): la prueba no mide nada`);
-        assert.equal(visor.adjunta, 0, "con el proveedor cambiado en el medio, el visor dice que la lámina quedó adjunta");
-        assert.equal(despuesQ.planometria, "", `el contrato de ${OTRO} quedó con la planometría «${despuesQ.planometria}»`);
+        assert.deepEqual(bajadas, [], `con el proveedor cambiado en el medio, se bajó la lámina del anterior: ${bajadas.join(", ")}`);
+        assert.equal(despuesQ.archivos, 0, "la ficha tiene un campo de archivo");
         assert.ok(!new RegExp(PROVEEDOR, "i").test(fichaQ.texto), `la ficha de ${OTRO} nombra a ${PROVEEDOR}`);
-        assert.ok(!fichaQ.quitada, "la ficha avisa que se quitó una lámina que nunca entró");
       });
     });
 
-    await seccion("navegador · visor: cerrar a mitad de la lámina no adjunta nada después", async () => {
-      await sinAvisoDeLamina(pv);
-      const antesC = await contrato(pv);
+    await seccion("navegador · visor: cerrar a mitad de la lámina no baja ni adjunta nada después", async () => {
       await conLamina(pv);
-      await pv.locator("[data-lamina-planometria]").click();
+      const bajadas = [];
+      const oyente = (d) => bajadas.push(d.suggestedFilename());
+      pv.on("download", oyente);
+      await pv.locator("[data-bajar-lamina]").click();
       await pv.waitForSelector("[data-armando]", { timeout: 30000 });
       await pv.waitForTimeout(1000);
       await pv.locator(".visor-volver").click();
-      // Sin el arreglo, la lámina aparecía sola en la ficha unos 25 s después.
-      let despuesC = await contrato(pv);
-      for (let i = 0; i < 35 && !despuesC.planometria; i++) { await pv.waitForTimeout(1000); despuesC = await contrato(pv); }
-      const quitada = await pv.locator("[data-lamina-quitada]").count();
-      prueba("navegador · visor: cerrar a mitad de la lámina no adjunta nada después", () => {
-        assert.equal(antesC.planometria, "", `la ficha ya tenía planometría («${antesC.planometria}»): la prueba no mide nada`);
-        assert.equal(despuesC.planometria, "", `después de cerrar, la ficha recibió la planometría «${despuesC.planometria}» sin que nadie la pidiera`);
-        assert.equal(quitada, 0, "la ficha avisa que se quitó una lámina");
+      // Sin el arreglo, la lámina terminaba sola unos 25 s después.
+      await pv.waitForTimeout(35000);
+      pv.off("download", oyente);
+      const despuesC = await contrato(pv);
+      prueba("navegador · visor: cerrar a mitad de la lámina no baja ni adjunta nada después", () => {
+        assert.deepEqual(bajadas, [], `después de cerrar, se bajó ${bajadas.join(", ")} sin que nadie lo pidiera`);
+        assert.equal(despuesC.archivos, 0, "la ficha tiene un campo de archivo");
         assert.deepEqual(erroresDePagina, [], `errores de la página: ${erroresDePagina.join(" · ")}`);
       });
     });
 
-    await seccion("navegador · visor: «Empezar de nuevo» con la lámina adjunta la saca sin avisar nada", async () => {
+    await seccion("navegador · visor: «Empezar de nuevo» olvida la prueba del 3D y deja el proveedor", async () => {
       await conLamina(pv);
-      await pv.locator("[data-lamina-planometria]").click();
-      const adjunta = await pv.waitForSelector("[data-lamina-adjunta]", { timeout: 180000 }).then(() => true).catch(() => false);
       await pv.locator(".visor-volver").click();
       await pv.waitForTimeout(800);
-      const conL = await contrato(pv);
       await pv.locator(".vender button", { hasText: "Empezar de nuevo" }).click();
       await pv.waitForTimeout(600);
       await tocar(pv, CARAS[0]);
       await pv.waitForTimeout(600);
       const deNuevo = await contrato(pv);
-      const quitada = await pv.locator("[data-lamina-quitada]").count();
-      prueba("navegador · visor: «Empezar de nuevo» con la lámina adjunta la saca sin avisar nada", () => {
-        assert.ok(adjunta && /\.jpg/.test(conL.planometria), `la lámina no quedó adjunta antes de empezar de nuevo («${conL.planometria}»): la prueba no mide nada`);
-        assert.equal(deNuevo.planometria, "", `después de «Empezar de nuevo» la ficha sigue con «${deNuevo.planometria}»`);
-        assert.equal(quitada, 0, "«Empezar de nuevo» deja el aviso de la lámina quitada");
+      await abrirVisor(pv);
+      await conCajon(pv);
+      const probado = await pv.locator('.visor-producto[aria-pressed="true"]').count();
+      await pv.locator(".visor-volver").click();
+      await pv.waitForTimeout(600);
+      prueba("navegador · visor: «Empezar de nuevo» olvida la prueba del 3D y deja el proveedor", () => {
+        assert.equal(probado, 0, "después de «Empezar de nuevo», el visor sigue con el producto probado");
         assert.ok(mismo(deNuevo.campos[0], PROVEEDOR), `el proveedor quedó en «${deNuevo.campos[0]}»`);
       });
     });
@@ -2569,19 +3033,19 @@ if (!URL_VENDER) {
         await pg.route("**/VisorDeVenta-*.js", (r) => r.abort());
       } });
       await tocar(pf, CARAS[0]);
-      await pf.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await pf.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
       await pf.locator(".eitem .m input").first().fill("1500000");
       await pf.waitForTimeout(400);
       const antesFalla = await contrato(pf);
       await pf.locator("[data-ver-3d]").click();
       const aviso3D = await pf.waitForSelector("text=No se pudo abrir el 3D", { timeout: 30000 }).then(() => true).catch(() => false);
-      const sigue = await pf.evaluate(() => /Guardar contrato y avisar/.test(document.body.textContent || ""));
+      const sigue = await pf.evaluate(() => /Guardar contrato/.test(document.body.textContent || ""));
       await pf.locator(".visor-volver").click().catch(() => {});
       await pf.waitForTimeout(500);
       const despuesFalla = await contrato(pf);
       prueba("navegador · visor: si el archivo del 3D no baja, se avisa y el contrato queda intacto", () => {
         assert.ok(aviso3D, "no apareció «No se pudo abrir el 3D»");
-        assert.ok(sigue, "Vender se desmontó: no está «Guardar contrato y avisar»");
+        assert.ok(sigue, "Vender se desmontó: no está «Guardar contrato»");
         assert.deepEqual(despuesFalla, antesFalla, "el contrato cambió después de la falla");
         assert.deepEqual(caidas, [], `la página se cayó: ${caidas.join(" · ")}`);
       });
@@ -2592,7 +3056,7 @@ if (!URL_VENDER) {
     await seccion("navegador · visor: contraste de «Ver en 3D» y del visor (oscuro)", async () => {
       const { ctx: co, p: po } = await abrir("dark");
       await tocar(po, CARAS[0]);
-      await po.locator(".vender input.entrada").nth(0).fill(PROVEEDOR);
+      await po.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
       await po.mouse.move(5, 5);
       await po.waitForTimeout(500);
       const botonOscuro = await po.evaluate(() => {

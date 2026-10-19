@@ -110,6 +110,22 @@ export interface ItemDeRevision {
   frase: string;
   /** Para «Abrir en Distribución»; null si no hay un mueble del plano que abrir. */
   abrir: { fixtureId: string; cara: "A" | "B" } | null;
+  /** Sólo en «Falta distribuir»: cuántos días faltan para que empiece lo que
+   *  hay que distribuir (0 o menos: ya corre). En rojo con 7 o menos
+   *  (`DIAS_DE_APURO`): es el montaje de alguien que ya pagó. */
+  empiezaEn?: number;
+}
+
+/** Con cuántos días o menos para empezar «Falta distribuir» se pinta de rojo. */
+export const DIAS_DE_APURO = 7;
+
+/** «ya corre», «empieza hoy», «empieza mañana», «empieza el 3 nov (en 15 días)». */
+export function cuandoEmpieza(desde: string, hoy: string): string {
+  const n = diasEntre(hoy, desde);
+  if (n < 0) return "ya corre";
+  if (n === 0) return "empieza hoy";
+  if (n === 1) return "empieza mañana";
+  return `empieza el ${fechaCorta(desde, hoy)} (en ${n} días)`;
 }
 
 export interface SeccionDeRevision {
@@ -124,7 +140,7 @@ export interface SeccionDeRevision {
 const ORDEN: TipoDeRevision[] = ["sin_termino", "sin_mueble", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"];
 
 const TITULOS: Record<TipoDeRevision, string> = {
-  sin_dibujar: "Contratado sin dibujar",
+  sin_dibujar: "Falta distribuir",
   con_problemas: "Distribución con problemas",
   para_revisar: "Distribución para revisar",
   por_caducar: "Reservas por caducar",
@@ -138,9 +154,16 @@ const TITULOS: Record<TipoDeRevision, string> = {
  * resumen del servidor de HOY (sin filtros: el resumen filtrado por proveedor
  * deja afuera lo que hay que revisar de los demás).
  *
- *  1. *Contratado sin dibujar*: una cara con participaciones que cuentan hoy y
- *     les falta superficie («GON-01 · A: falta dibujar 15 % (2 participaciones).»),
- *     o que todavía no se distribuyó.
+ *  1. *Falta distribuir* (era «Contratado sin dibujar»): una cara con
+ *     participaciones que cuentan hoy y les falta superficie («GON-01 · A:
+ *     falta distribuir 15 % (2 participaciones) · ya corre.»), cada contrato
+ *     FIRMADO para más adelante al que le falta («falta distribuir 25 % ·
+ *     empieza el 3 nov (en 15 días).»: desde que se firma, no desde que
+ *     arranca, que es cuando ya hay que montarlo), o una que todavía no se
+ *     distribuyó. Cada renglón dice cuántos días faltan (`empiezaEn`) y la
+ *     sección va de lo más urgente a lo menos. El servidor manda en el resumen
+ *     el término que rige hoy o, si ninguno, el PRÓXIMO vivo de cada
+ *     participación (con sus fechas y lo dibujado): con eso alcanza.
  *  2. *Distribución con problemas*: excesos, solapes o zonas fuera de lugar.
  *  3. *Distribución para revisar*: el mueble cambió desde que se confirmó.
  *  4. *Reservas por caducar* (≤ 7 días).
@@ -181,16 +204,33 @@ export function paraRevisarDeResumen(
     const clave = `${c.codigo_cara}`;
     const conTermino = c.participaciones.length;
 
+    // Lo que corre hoy y le falta superficie: la cuenta del servidor, de UN día.
+    let faltaAlgo = false;
     if (c.pendiente_dia_pb > 0) {
       const faltan = c.participaciones.filter((p) => p.cuenta_el_dia && p.puntos_basicos > p.dibujado_pb).length;
       sumar("sin_dibujar", {
-        clave: `${clave}|pend`, rotulo, abrir,
-        frase: `falta dibujar ${pct(c.pendiente_dia_pb)}${faltan > 0 ? ` (${plural(faltan, "participación", "participaciones")})` : ""}.`,
+        clave: `${clave}|pend`, rotulo, abrir, empiezaEn: 0,
+        frase: `falta distribuir ${pct(c.pendiente_dia_pb)}${faltan > 0 ? ` (${plural(faltan, "participación", "participaciones")})` : ""} · ya corre.`,
       });
-    } else if (c.estado_distribucion === "sin_distribuir" && conTermino > 0) {
+      faltaAlgo = true;
+    }
+    // Lo firmado para más adelante: cada contrato, con su día. No se suman
+    // entre sí ni con lo de hoy: con fechas que no se cruzan pueden ocupar la
+    // misma región, y la suma diría más de lo que falta.
+    for (const p of c.participaciones) {
+      if (p.cuenta_el_dia || p.estado_visible !== "firmado" || p.puntos_basicos <= p.dibujado_pb) continue;
+      sumar("sin_dibujar", {
+        clave: `${clave}|fut|${p.codigo ?? p.numero}`, rotulo, abrir, empiezaEn: diasEntre(r.hoy, p.desde),
+        frase: `falta distribuir ${pct(p.puntos_basicos - p.dibujado_pb)} · ${cuandoEmpieza(p.desde, r.hoy)}.`,
+      });
+      faltaAlgo = true;
+    }
+    if (!faltaAlgo && c.estado_distribucion === "sin_distribuir" && conTermino > 0) {
+      const primero = c.participaciones.map((p) => p.desde).filter(Boolean).sort()[0];
       sumar("sin_dibujar", {
         clave: `${clave}|sin`, rotulo, abrir,
-        frase: `todavía sin distribuir (${plural(conTermino, "participación", "participaciones")}).`,
+        ...(primero ? { empiezaEn: diasEntre(r.hoy, primero) } : {}),
+        frase: `todavía sin distribuir (${plural(conTermino, "participación", "participaciones")})${primero ? ` · ${cuandoEmpieza(primero, r.hoy)}` : ""}.`,
       });
     }
     if (c.errores > 0) {
@@ -252,6 +292,15 @@ export function paraRevisarDeResumen(
       clave: "huerfanos", rotulo: "", abrir: null,
       frase: `${plural(r.totales.huerfanos, "contrato de participación sin término cuenta", "contratos de participación sin término cuentan")} como la cara entera hasta que se aclare.`,
     });
+  }
+
+  // «Falta distribuir», de lo más urgente a lo menos (lo que ya corre primero).
+  const falta = secciones.get("sin_dibujar");
+  if (falta) {
+    secciones.set("sin_dibujar", falta
+      .map((it, i) => ({ it, i }))
+      .sort((a, b) => Math.max(0, a.it.empiezaEn ?? 0) - Math.max(0, b.it.empiezaEn ?? 0) || a.i - b.i)
+      .map((x) => x.it));
   }
 
   return ORDEN.filter((t) => secciones.has(t)).map((t) => ({ tipo: t, titulo: TITULOS[t], items: secciones.get(t)! }));

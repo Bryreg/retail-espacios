@@ -566,11 +566,16 @@ prueba("«Para revisar»: una cara en orden no aparece; cada problema cae en su 
   // cancelado y lo vencido (ver la prueba de abajo).
   assert.deepEqual(s.map((x) => x.tipo), ["sin_termino", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"]);
   assert.deepEqual(s.map((x) => x.titulo).slice(0, 1), ["Contrato de participación sin término"]);
+  // Rediseño (PR 1): la sección se llama «Falta distribuir» y cada renglón
+  // dice cuándo empieza lo que falta (`empiezaEn`: 0 o menos, ya corre).
+  assert.equal(s.find((x) => x.tipo === "sin_dibujar").titulo, "Falta distribuir");
   assert.equal(por.sin_dibujar[0].rotulo, "GON-01 · A");
-  assert.equal(por.sin_dibujar[0].frase, "falta dibujar 15 % (2 participaciones).");
+  assert.equal(por.sin_dibujar[0].frase, "falta distribuir 15 % (2 participaciones) · ya corre.");
+  assert.equal(por.sin_dibujar[0].empiezaEn, 0);
   assert.deepEqual(por.sin_dibujar[0].abrir, { fixtureId: "f1", cara: "A" });
   // Sin el mueble en el plano, se nombra igual pero no hay qué abrir.
-  assert.equal(por.sin_dibujar[1].frase, "todavía sin distribuir (1 participación).");
+  assert.equal(por.sin_dibujar[1].frase, "todavía sin distribuir (1 participación) · ya corre.");
+  assert.ok(por.sin_dibujar[1].empiezaEn <= 0, "lo que ya empezó no dice que falta");
   assert.equal(por.sin_dibujar[1].abrir, null);
   assert.equal(por.con_problemas[0].frase, "2 problemas en la distribución.");
   assert.equal(por.con_problemas[0].rotulo, "GON-01 · B");
@@ -597,6 +602,46 @@ prueba("«Para revisar»: reservas que caducan hoy y dentro de 7 días; los hué
     "Reserva de Postobón (Hit) en GON-01 · A caduca el 24 oct.",
   ]);
   assert.deepEqual(por.sin_termino.map((i) => i.frase), ["2 contratos de participación sin término cuentan como la cara entera hasta que se aclare."]);
+});
+
+prueba("«Falta distribuir»: lo firmado para más adelante cuenta desde que se firma, con sus días, rojo con 7 o menos y de lo urgente a lo menos (ejecutado)", () => {
+  assert.equal(R.DIAS_DE_APURO, 7);
+  assert.equal(R.cuandoEmpieza("2026-10-10", HOY), "ya corre");
+  assert.equal(R.cuandoEmpieza(HOY, HOY), "empieza hoy");
+  assert.equal(R.cuandoEmpieza("2026-10-18", HOY), "empieza mañana");
+  assert.equal(R.cuandoEmpieza("2026-11-16", HOY), "empieza el 16 nov (en 30 días)");
+  const futura = (extra) => pcRes({ cuenta_el_dia: false, estado_visible: "firmado", dibujado_pb: 0, ...extra });
+  const r = resumen([
+    // Lejos: 30 días. Sin nada dibujado.
+    caraRes({ codigo_cara: "NAVE-PUN-03", fixture_code: "PUN-03", comprometido_dia_pb: 0, dibujado_dia_pb: 0,
+      participaciones: [futura({ codigo: "NAVE-PUN-03-PC1", desde: "2026-11-16", hasta: "2026-12-15" })] }),
+    // Cerca: 5 días, con la mitad dibujada; y otra, del mismo mueble, entera
+    // dibujada (no falta nada) y una reserva futura (no es un contrato firmado).
+    caraRes({ participaciones: [
+      pcRes(),
+      futura({ codigo: "NAVE-GON-01-PC2", numero: 2, desde: "2026-10-22", hasta: "2026-11-21", puntos_basicos: 4000, dibujado_pb: 2000 }),
+      futura({ codigo: "NAVE-GON-01-PC3", numero: 3, desde: "2026-10-20", hasta: "2026-11-21", dibujado_pb: 2500 }),
+      futura({ codigo: "NAVE-GON-01-PC4", numero: 4, estado_visible: "reserva", desde: "2026-10-19", caduca: "2026-12-01" }),
+    ] }),
+    // Lo que corre hoy: primero.
+    caraRes({ codigo_cara: "NAVE-GON-01-B", cara: "B", pendiente_dia_pb: 1000, dibujado_dia_pb: 1500,
+      participaciones: [pcRes({ codigo: "NAVE-GON-01-B-PC1", dibujado_pb: 1500 })] }),
+  ]);
+  const s = R.paraRevisarDeResumen(r, plano);
+  const falta = s.find((x) => x.tipo === "sin_dibujar");
+  assert.ok(falta, "lo firmado para más adelante sin distribuir no sale en «Para revisar»");
+  assert.deepEqual(falta.items.map((i) => [i.rotulo, i.frase, i.empiezaEn]), [
+    ["GON-01 · B", "falta distribuir 10 % (1 participación) · ya corre.", 0],
+    ["GON-01 · A", "falta distribuir 20 % · empieza el 22 oct (en 5 días).", 5],
+    ["PUN-03", "falta distribuir 25 % · empieza el 16 nov (en 30 días).", 30],
+  ], "lo futuro no se cuenta desde la firma, se suma con lo de hoy, cuenta lo ya dibujado o una reserva, o no va de lo urgente a lo menos");
+  assert.deepEqual(falta.items[1].abrir, { fixtureId: "f1", cara: "A" }, "«Abrir en Distribución» se perdió en lo futuro");
+  assert.equal(R.cuantasParaRevisar(s), 3, "lo que falta distribuir no suma a la cuenta de «Para revisar»");
+  // Y en pantalla: la cifra de días en rojo con 7 o menos, y el botón de siempre.
+  const comp = sinComent(fuenteDe("components/Distribucion/RevisarParticipaciones.tsx"));
+  assert.match(comp, /color: it\.empiezaEn <= DIAS_DE_APURO \? "var\(--ocupado-txt\)" : "var\(--ink-2\)"/, "los días de «Falta distribuir» no se pintan de rojo con 7 o menos");
+  assert.match(comp, /\{it\.empiezaEn <= 0 \? "corre" : `\$\{it\.empiezaEn\}d`\}/, "el renglón no dice cuántos días faltan");
+  assert.match(comp, /onClick=\{\(\) => abrir\(it\.abrir!\.fixtureId, it\.abrir!\.cara\)\}[\s\S]{0,600}Abrir en Distribución/, "«Abrir en Distribución» se fue");
 });
 
 prueba("los contratos de participación sin término se nombran: vivos, sobre una cara por participación, y fuera del resumen (ejecutado)", () => {
@@ -798,10 +843,17 @@ prueba("una cara por participación no ofrece «Negociar» en la ficha ni en el 
   assert.match(v, /\{!hasContract && pc \? \(\s*!isAdmin && <CaraPorParticipacion fixture=\{fixture\} face=\{entry\.face\} \/>/);
 });
 
-prueba("«Renovar» de una participación sólo lleva a Distribución un contrato vivo", () => {
+prueba("«Renovar» de una participación abre Vender armado, y sólo renueva un contrato vivo", () => {
+  // Rediseño de Vender (PR 1): ya no va a Distribución; abre Vender con el %
+  // de la cara. Marca el término que renueva (`renueva`) sólo si es un
+  // contrato vigente o firmado: sobre una reserva, un vencido o un cancelado
+  // es un contrato nuevo, sin `renueva` y sin las fechas que lo seguirían.
   const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(v, /if \(t && t\.estado === "contrato" && \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)\) termino = t\.id;/,
-    "renovar abre el formulario sobre una reserva, un vencido o un cancelado");
+    "renovar marca para renovar una reserva, un vencido o un cancelado");
+  assert.match(v, /renueva: termino \? \{ \[caraCompleta\]: termino \} : \{\},/, "renueva un término que no es un contrato vivo");
+  assert.match(v, /desde: termino && desde \? toISODate\(desde\) : "",/, "sobre algo que no se renueva, arranca después de un contrato que no corre");
+  assert.match(v, /negociar\(f, entry\.face, semillaPc\);/, "renovar una participación no abre Vender");
 });
 
 /* ── fase 2 · I4: Vender y los bajos ─────────────────────────────────────────
@@ -838,21 +890,33 @@ prueba("fase 2 · UNA cuenta para la clave, la columna y el pie; «al cerrar» e
   const c = PC.contarElPeriodo(caras);
   assert.deepEqual(c, { libres: 2, libresPc: 1, dias: 1, partes: 1, participacion: 2, tomados: 1 });
   assert.equal(PC.enParte(c), 4);
-  assert.equal(PC.alCerrar(c), 3, "«al cerrar» suma caras por participación (o resta lo que sí entra)");
+  // Rediseño de Vender (PR 1): una cara por participación se vende EN VENDER
+  // (una línea de porcentaje), así que «al cerrar» la cuenta como cualquier
+  // otra: es libres + el «+N», lo mismo que la columna. Nunca lo tomado ni lo
+  // que ya está en el contrato.
+  assert.equal(PC.alCerrar(c), 6, "«al cerrar» no es libres + en parte (deja afuera las caras por participación o cuenta lo tomado)");
+  assert.equal(PC.alCerrar(c), c.libres + PC.enParte(c));
+  for (const k of [0, 1, 2, 3, 5, 8]) {
+    const muchas = Array.from({ length: k * 3 }, (_, i) => caras[(i * 7 + k) % caras.length]);
+    const cc = PC.contarElPeriodo(muchas);
+    assert.equal(PC.alCerrar(cc), cc.libres + cc.dias + cc.partes + cc.participacion, "«al cerrar» se aparta de la columna");
+    assert.equal(PC.alCerrar(cc) + cc.tomados, muchas.filter((x) => !x.enContrato).length, "«al cerrar» + tomadas no da lo que hay fuera del contrato");
+  }
   assert.equal(PC.desgloseDelParcial(c), "1 se libera en el periodo · 1 con partes vendidas · 2 por participación");
-  assert.equal(PC.sinLasDeParticipacion(c), "Sin las 3 por participación: se cargan en el Editor 3D → Distribución.");
+  assert.equal(PC.sinLasDeParticipacion, undefined, "volvió «Sin las N por participación: se cargan en el Editor 3D → Distribución»");
+  assert.equal(PC.conLasDeParticipacion(c), "Incluye 3 por participación: entran al contrato como una línea de porcentaje cada una.");
   // Singular, plural y vacío.
   assert.equal(PC.desgloseDelParcial({ ...c, dias: 3, partes: 0, participacion: 0 }), "3 se liberan en el periodo");
   assert.equal(PC.desgloseDelParcial(PC.contarElPeriodo([])), "");
   assert.deepEqual(PC.contarElPeriodo([]), { libres: 0, libresPc: 0, dias: 0, partes: 0, participacion: 0, tomados: 0 });
-  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: true }])),
-    "Sin la 1 por participación: se carga en el Editor 3D → Distribución.");
-  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: false }])), null);
+  assert.equal(PC.conLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: true }])),
+    "Incluye 1 por participación: entra al contrato como una línea de porcentaje.");
+  assert.equal(PC.conLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: false }])), null);
   // Lo que está en el contrato no cuenta en ningún lado; un parcial sin motivo ni participación es «días».
   assert.deepEqual(PC.contarElPeriodo([{ dispo: "tomado", deParticipacion: false, enContrato: true }, { dispo: "parcial", deParticipacion: false }]),
     { libres: 0, libresPc: 0, dias: 1, partes: 0, participacion: 0, tomados: 0 });
   // Vender lo mira el proveedor: sólo cuentas, ni un % ni un nombre.
-  assert.doesNotMatch(PC.desgloseDelParcial(c) + PC.sinLasDeParticipacion(c), /%|\$|proveedor|marca/i);
+  assert.doesNotMatch(PC.desgloseDelParcial(c) + PC.conLasDeParticipacion(c), /%|\$|proveedor|marca|Distribuci/i);
 });
 
 prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElPeriodo`: nada a mano, ni «Vence dentro» ni «Se libera en el periodo»", () => {
@@ -880,11 +944,14 @@ prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElP
   // La tarifa: el encabezado, el «+N» con su porqué y «al cerrar» sin lo que no entra.
   assert.match(t, /<th scope="col" className="der2 c2">Libres · en parte<\/th>/);
   assert.doesNotMatch(t, /Libres · entran|adentro del periodo`/);
-  assert.match(t, /title=\{cuenta\.participacion > 0 \? `\$\{porQue\}\. \$\{DONDE_SE_CARGAN\}` : porQue\}/);
+  // El «+N» dice por qué sin mandar a nadie al Editor 3D: una cara por
+  // participación se vende acá (rediseño de Vender, PR 1).
+  assert.match(t, /className="entran"\s*title=\{porQue\}/);
+  assert.doesNotMatch(t, /DONDE_SE_CARGAN|se cargan? en el Editor 3D/, "Vender (o Supervisar) vuelve a decir que las participaciones se cargan en Distribución");
   assert.match(t, /\+\{nParte\}/);
   assert.match(t, /\{alCerrar\(tallyVender\)\} al cerrar/);
   assert.doesNotMatch(t, /tallyVender\.libres \+ tallyVender\.parciales/, "«al cerrar» vuelve a sumar todo lo ámbar");
-  assert.match(t, /title=\{sinLasDeParticipacion\(tallyVender\) \?\? undefined\}/);
+  assert.match(t, /title=\{conLasDeParticipacion\(tallyVender\) \?\? undefined\}>\s*\{alCerrar\(tallyVender\)\} al cerrar/);
   assert.match(t, /title=\{desgloseDelParcial\(tallyVender\)\}>\+\{enParte\(tallyVender\)\}/);
 });
 

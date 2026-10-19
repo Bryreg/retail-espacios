@@ -134,7 +134,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Abajo, más aire que arriba: la última acción («Usarla como planometría»
+  /* Abajo, más aire que arriba: la última acción («Bajar la propuesta»
      y su confirmación) no queda pegada al borde del pie fijo. */
   padding: 14px 16px 28px;
   display: flex;

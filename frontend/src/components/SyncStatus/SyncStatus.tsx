@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Cloud, CloudOff, RefreshCw, AlertTriangle, UploadCloud } from "lucide-react";
 import { useFixtureStore, selectHasPendingWork } from "../../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { fetchRevisions } from "../../api/layout";
@@ -118,21 +117,27 @@ export default function SyncStatus() {
     await store.syncFromServer();
   }
 
-  const { label, color, Icon } = (() => {
+  /* El estado se dice con un PUNTO y su PALABRA (hoja de piezas del rediseño,
+     «Las dos barras de arriba»): el punto lleva el color y la palabra el
+     dato, así que nunca depende sólo del color. Antes era una pastilla con
+     borde y una nube; la nube no decía nada que la palabra no dijera.
+     `alarma` pinta también la palabra: es lo único de la barra que pide que
+     alguien haga algo. */
+  const { label, color, alarma } = (() => {
     if (hayConflicto)
-      return { label: "Conflicto", color: "var(--warning)", Icon: AlertTriangle };
+      return { label: "Conflicto", color: "var(--warning)", alarma: true };
     // El servidor contestó, no escribió nada y dijo por qué. Decir «Sin
     // conexión» acá —que es lo que pasaba, con la nube tachada— manda a
     // revisar el wifi por un nombre repetido que está explicado abajo, en el
-    // panel. Es el mismo triángulo del conflicto porque es la misma clase de
-    // cosa: algo que hay que resolver, no algo que se arregle solo.
+    // panel. Es la misma clase de cosa que el conflicto: algo que hay que
+    // resolver, no algo que se arregle solo.
     if (hayRechazo)
-      return { label: "Rechazado por el servidor", color: "var(--danger)", Icon: AlertTriangle };
-    if (syncState === "pulling") return { label: "Actualizando…", color: "var(--ink-3)", Icon: RefreshCw };
-    if (syncState === "pushing") return { label: "Guardando…", color: "var(--ink-3)", Icon: UploadCloud };
-    if (syncState === "error") return { label: "Sin conexión", color: "var(--danger)", Icon: CloudOff };
-    if (hasPending) return { label: "Cambios sin subir", color: "var(--ink-2)", Icon: UploadCloud };
-    return { label: "Sincronizado", color: "var(--success)", Icon: Cloud };
+      return { label: "Rechazado por el servidor", color: "var(--danger)", alarma: true };
+    if (syncState === "pulling") return { label: "Actualizando…", color: "var(--ink-4)", alarma: false };
+    if (syncState === "pushing") return { label: "Guardando…", color: "var(--ink-4)", alarma: false };
+    if (syncState === "error") return { label: "Sin conexión", color: "var(--danger)", alarma: true };
+    if (hasPending) return { label: "Cambios sin subir", color: "var(--ink-3)", alarma: false };
+    return { label: "Sincronizado", color: "var(--libre)", alarma: false };
   })();
 
   const lastSyncLabel = lastSyncedAt
@@ -148,21 +153,26 @@ export default function SyncStatus() {
           syncMessage ??
           (lastSyncLabel ? `Última sincronización ${lastSyncLabel}` : "Sincronizar con el servidor")
         }
+        aria-label={`${label}. Sincronizar con el servidor`}
         style={{
           display: "flex", alignItems: "center", gap: 6,
-          height: 26, padding: "0 9px",
+          height: 32, padding: "0 6px",
           borderRadius: "var(--r-md)",
-          border: "1px solid var(--line)",
+          border: "none",
           background: "transparent",
-          color,
-          fontSize: 11.5, fontWeight: 500, fontFamily: "inherit",
+          color: alarma ? color : "var(--ink-2)",
+          fontSize: "var(--t-xs)", fontWeight: 500, fontFamily: "inherit",
           cursor: busy ? "wait" : "pointer",
           whiteSpace: "nowrap",
         }}
       >
-        <Icon
-          size={13}
-          style={busy ? { animation: "spin 1s linear infinite" } : undefined}
+        <span
+          aria-hidden
+          style={{
+            width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+            background: color,
+            animation: busy ? "pulso-sync 1s ease-in-out infinite alternate" : undefined,
+          }}
         />
         {label}
       </button>
