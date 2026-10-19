@@ -419,10 +419,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const [editingSedeVal, setEditingSedeVal]       = useState("");
   const [addingNewSede, setAddingNewSede]         = useState(false);
   const [confirmDeleteSede, setConfirmDeleteSede] = useState(false);
-  /** El renombre que espera confirmación: renombrar una sede la borra y la
-   *  crea de nuevo (cierra contratos, cancela reservas; D21/D22, tarea aparte),
-   *  así que se dice ANTES con lo que cuenta el servidor. */
+  /** El renombre que espera confirmación (fase 2 · I5): con contratos o
+   *  reservas en la sede, se dice ANTES adónde van (pasan al nombre nuevo),
+   *  con lo que cuenta el servidor. */
   const [renombreEnEspera, setRenombreEnEspera] = useState<{ de: string; a: string; aviso: string } | null>(null);
+  /** El renombre que el servidor no hizo, con sus motivos: la sede quedó como estaba. */
+  const [renombreFallido, setRenombreFallido] = useState<{ de: string; a: string; error: string; motivos: string[] } | null>(null);
   const renombrando = useRef(false);
   const [newSedeVal, setNewSedeVal]               = useState("");
   const [clipboard, setClipboard]               = useState<PlacedItem2D[]>([]);
@@ -1183,15 +1185,16 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setResizeState({ id, ox: pt.x - item.w, oy: pt.y - item.h, origW: item.w, origH: item.h });
   }
 
-  // ── Renombrar la sede ───────────────────────────────────────────────────────
+  // ── Renombrar la sede (fase 2 · I5) ─────────────────────────────────────────
   //
-  // El renombre es «borrar + crear» (`renameSede` borra el plano del nombre
-  // viejo en el servidor, y el archivo de la sede cierra sus contratos y
-  // cancela sus reservas provisionales de participación). Arreglarlo es una
-  // tarea aparte (D21/D22); acá se dice antes: con algo comercial en juego, un
-  // diálogo con lo que cuenta el servidor (`GET /layout/{sede}/impact`, el
-  // mismo de «Borrar sede»). Sin nada en juego, como siempre. Enter y el blur
-  // del campo llegan los dos: sólo cuenta el primero.
+  // El renombre es del servidor (`renameSede` → `POST /layout/{sede}/renombrar`):
+  // los códigos pasan al nombre nuevo y lo vendido sigue vivo. Antes era
+  // «borrar + crear», y el borrado cerraba los contratos y cancelaba las
+  // reservas. Con contratos o reservas en la sede, un diálogo dice antes
+  // adónde van (con lo que cuenta `GET /layout/{sede}/impact`, el mismo de
+  // «Borrar sede»); sin nada, directo. Si el servidor se niega, se dice por
+  // qué y la sede queda como estaba. Enter y el blur del campo llegan los dos:
+  // sólo cuenta el primero.
   async function pedirRenombre(nuevo: string) {
     if (renombrando.current) return;
     renombrando.current = true;
@@ -1203,8 +1206,18 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     }
     const aviso = isAdmin ? avisoDelRenombre(viejo, nuevo, impacto) : null;
     if (aviso) { setRenombreEnEspera({ de: viejo, a: nuevo, aviso }); return; }
-    renameSede(viejo, nuevo);
-    setSede(nuevo);
+    const hecho = await renameSede(viejo, nuevo);
+    trasElRenombre(viejo, nuevo, hecho);
+  }
+
+  /** Con éxito, el lienzo pasa al nombre nuevo; si no, se dice por qué. */
+  function trasElRenombre(de: string, a: string, hecho: { ok: boolean; error?: string; motivos?: string[] }) {
+    if (hecho.ok) {
+      setRenombreFallido(null);
+      setSede(a);
+      return;
+    }
+    setRenombreFallido({ de, a, error: hecho.error ?? `No se pudo renombrar «${de}».`, motivos: hecho.motivos ?? [] });
   }
 
   // ── Renombrar un mueble ─────────────────────────────────────────────────────
@@ -2767,13 +2780,17 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
         <RenombrarSedeDialog
           {...renombreEnEspera}
           onCancel={() => setRenombreEnEspera(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
             const { de, a } = renombreEnEspera;
             setRenombreEnEspera(null);
-            renameSede(de, a);
-            setSede(a);
+            const hecho = await renameSede(de, a);
+            trasElRenombre(de, a, hecho);
           }}
         />
+      )}
+
+      {renombreFallido && (
+        <RenombreRechazadoDialog {...renombreFallido} onCerrar={() => setRenombreFallido(null)} />
       )}
 
       {confirmDeleteSede && (
@@ -2811,9 +2828,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 // ─── Renombrar sede: el aviso ────────────────────────────────────────────────
 
 /**
- * Renombrar una sede con contratos activos o reservas provisionales los cierra
- * y las cancela (es «borrar + crear»; D21/D22, tarea aparte). Este diálogo lo
- * dice antes, con el texto de `avisoDelRenombre`, y deja seguir o no.
+ * Renombrar una sede con contratos activos o reservas provisionales de
+ * participación los pasa al nombre nuevo (fase 2 · I5: el renombre es del
+ * servidor y no pierde nada). Este diálogo lo dice antes, con el texto de
+ * `avisoDelRenombre`, y deja seguir o no.
  */
 function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
   de: string; a: string; aviso: string; onCancel: () => void; onConfirm: () => void;
@@ -2856,11 +2874,65 @@ function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
           <button
             onClick={onConfirm}
             style={{
-              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "none", background: "var(--danger)",
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "none", background: "var(--accent)",
               color: "#fff", fontSize: 12.5, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
             }}
           >
-            Renombrar igual
+            Renombrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El renombre que el servidor no hizo (fase 2 · I5): ya hay una sede con ese
+ * nombre, otro equipo guardó el plano en el medio, un código destino está
+ * tomado… Se dice por qué, con sus motivos, y la sede queda como estaba.
+ */
+function RenombreRechazadoDialog({ de, a, error, motivos, onCerrar }: {
+  de: string; a: string; error: string; motivos: string[]; onCerrar: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCerrar(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCerrar]);
+  return (
+    <div
+      onClick={onCerrar}
+      style={{
+        position: "fixed", inset: 0, zIndex: 200, background: "rgba(26,24,20,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div
+        role="alertdialog" aria-modal="true" aria-label={`No se renombró «${de}»`} data-renombre-rechazado
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 440, maxWidth: "100%", background: "var(--surface)", border: "1px solid var(--line)",
+          borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-lg)", overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid var(--line-soft)", fontSize: 15, fontWeight: 700, color: "var(--ink-1)" }}>
+          «{de}» no se renombró a «{a}»
+        </div>
+        <p style={{ margin: 0, padding: "14px 18px 4px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>{error}</p>
+        {motivos.length > 0 && (
+          <ul style={{ margin: 0, padding: "6px 18px 4px 34px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>
+            {motivos.map((m) => <li key={m}>{m}</li>)}
+          </ul>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 18px 16px" }}>
+          <button
+            onClick={onCerrar} autoFocus
+            style={{
+              height: 32, padding: "0 14px", borderRadius: "var(--r-md)", border: "1px solid var(--line)",
+              background: "var(--surface)", color: "var(--ink-2)", fontSize: 12.5, fontWeight: 500, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            Entendido
           </button>
         </div>
       </div>
@@ -3807,7 +3879,7 @@ const EMPTY_FACE: FaceData = {
 };
 
 function AssignmentPanel({
-  item, items, sede, sedes, editMode, isAdmin, initialFace, pasillo, porParticipacion: esPc = false, dispoDeCara,
+  item, items, sede, editMode, isAdmin, initialFace, pasillo, porParticipacion: esPc = false, dispoDeCara,
   onUpdate, onRenombrar, onIntercambiar, onDelete, onDuplicate, onClose,
 }: {
   /** En qué pasillo cae, deducido de la geometría. */
@@ -3823,7 +3895,9 @@ function AssignmentPanel({
    *  está escribiendo ya es de otro, que es la comprobación que faltaba acá. */
   items: PlacedItem2D[];
   sede: string;
-  sedes: string[];
+  /** La lista de sedes. Ya no la usa el panel (la «Sede» es de sólo lectura,
+   *  fase 2 · I5); queda en el tipo para no tocar a quien lo llama. */
+  sedes?: string[];
   editMode: boolean;
   isAdmin: boolean;
   initialFace?: "A" | "B";
@@ -4138,15 +4212,16 @@ function AssignmentPanel({
       </Field>
       )}
 
-      {/* Sede */}
+      {/* Sede — de sólo lectura (fase 2 · I5, V16): la sede la define el plano.
+          El selector le escribía a un mueble una sede ajena, y con ella sus
+          espacios se armaban con otro prefijo que las participaciones (que usan
+          la del plano) no veían. Para mover la sede entera: «Renombrar sede». */}
       <Field label="Sede" icon="🏢">
-        {editMode ? (
-          <select className={sel} value={item.sede || sede}
-            onChange={(e) => onUpdate({ sede: e.target.value })}>
-            {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{item.sede || sede}</p>
+        <p data-sede-del-plano style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{sede}</p>
+        {item.sede && normalizeSede(item.sede) !== normalizeSede(sede) && (
+          <span style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
+            Este mueble guardó la sede «{item.sede}», que no es la de su plano: vale «{sede}».
+          </span>
         )}
       </Field>
 

@@ -2,6 +2,7 @@ from datetime import date
 from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from app.auth import create_mount_token, dias_del_enlace_de_montaje, require_admin, require_auth
@@ -198,19 +199,31 @@ def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_d
 
     Used when fixtures are assigned in the 2D/3D editors without a pre-seeded Space record.
     The generated svg_id is prefixed with "fix-" to avoid conflicts with the seeded SVG IDs.
+
+    **Sin distinguir mayúsculas** (fase 2 · I5): comparaba y guardaba el código
+    tal cual, así que ``nave-imp-05`` creaba una segunda fila junto a
+    ``NAVE-IMP-05`` —el mismo espacio, dos veces— y la renumeración reventaba
+    al mandar las dos al mismo destino. Ahora busca primero el código exacto,
+    después el mismo en mayúsculas y sin espacios a los costados, y crea en
+    esa forma (la de ``normalizar``, la que arma el plano).
     """
-    space = (
-        db.query(Space)
-        .options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
-        .filter(Space.code == payload.code)
-        .first()
-    )
+    def buscar(filtro):
+        return (
+            db.query(Space)
+            .options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
+            .filter(filtro)
+            .order_by(Space.id)
+            .first()
+        )
+
+    codigo = (payload.code or "").strip().upper()
+    space = buscar(Space.code == payload.code) or buscar(func.upper(func.trim(Space.code)) == codigo)
     if space:
         return space
 
     space = Space(
-        code=payload.code,
-        svg_id=f"fix-{payload.code}",
+        code=codigo,
+        svg_id=f"fix-{codigo}",
         name=payload.name or payload.code,
         zone=payload.zone or "Sin zona",
         sede=payload.sede,
@@ -223,22 +236,10 @@ def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_d
     except IntegrityError:
         # Concurrent insert (race condition): roll back and fetch the winner's row.
         db.rollback()
-        space = (
-            db.query(Space)
-            .options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
-            .filter(Space.code == payload.code)
-            .first()
-        )
-        return space
+        return buscar(Space.code == codigo)
 
     # Re-query to load relationships (needed for SpaceOut serialization)
-    space = (
-        db.query(Space)
-        .options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
-        .filter(Space.code == payload.code)
-        .first()
-    )
-    return space
+    return buscar(Space.code == codigo)
 
 
 @router.post("/", response_model=SpaceOut, status_code=201, dependencies=[Depends(require_admin)])

@@ -7687,6 +7687,8 @@ export default function StoreEditor3D() {
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [warning, setWarning]               = useState<string|null>(null);
   const [sede, setSede]                     = useState(()=>useFixtureStore.getState().sede);
+  // fase 2 · I5 (V16): las sedes que existen, para el selector «Sede».
+  const sedesDelStore = useFixtureStore((s) => s.sedes);
 
   // MEJORA 4: Presentation mode
   const [presentationMode, setPresentationMode] = useState(false);
@@ -8148,8 +8150,15 @@ export default function StoreEditor3D() {
   useEffect(() => {
     if (isFirstRender3D.current) { isFirstRender3D.current = false; return; }
     if (suppressCommitRef.current) { suppressCommitRef.current = false; return; }
+    // fase 2 · I5 (V16): mientras se cambia de sede no se escribe nada. Este
+    // efecto corre ANTES que el que cambia la sede del store, y con la sede
+    // nueva escribía los muebles de la vieja (con la sede nueva estampada)
+    // en el plano de la vieja: un guardado fantasma por cada cambio. Y la
+    // sede que se estampa es la del store —la del plano que se está
+    // escribiendo—, nunca la local.
+    if (prevSede3DRef.current !== sede) return;
     const existingStore = selectFixtures(useFixtureStore.getState());
-    const converted = fixturesToStore(placedFixtures, sede, existingStore);
+    const converted = fixturesToStore(placedFixtures, useFixtureStore.getState().sede, existingStore);
     lastCommittedRef.current = converted;
     if (draggingId.current) {
       // During drag: update display without creating an undo entry or triggering server sync
@@ -8176,6 +8185,9 @@ export default function StoreEditor3D() {
     // Switch sede in store (clears undo/redo) then reinit canvas
     pushSedeToStore(sede);
     const newFixtures = useFixtureStore.getState().fixturesBySede[sede] ?? [];
+    // Lo que se carga de la sede nueva viene del store: no se devuelve como
+    // un cambio (abrir una sede no la ensucia ni la sube).
+    suppressCommitRef.current = true;
     setPlacedFixtures(storeToFixtures(newFixtures));
   }, [sede, pushSedeToStore]);
 
@@ -8702,9 +8714,17 @@ export default function StoreEditor3D() {
 
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</label>
-          <input type="text" value={sede} maxLength={10} onChange={e=>setSede(e.target.value.toUpperCase())}
-            className="w-full border-0 border-b-2 border-dark-line-2 bg-transparent rounded-none px-0 font-mono text-sm text-accent-200 focus:border-accent focus:outline-none"
-            placeholder="CENTRO" />
+          {/* fase 2 · I5 (V16): un selector con las sedes que existen, como el
+              de Supervisar —navegar, nunca escribir—. Era un texto libre que
+              cambiaba de sede en cada tecla: «N», «NA», «NAV»… y cada letra
+              dejaba un plano fantasma en el servidor. Crear o renombrar una
+              sede es del plano 2D. */}
+          <select data-sede-3d aria-label="Sede" value={sede} onChange={e=>setSede(e.target.value)}
+            className="w-full border-0 border-b-2 border-dark-line-2 bg-transparent rounded-none px-0 font-mono text-sm text-accent-200 focus:border-accent focus:outline-none">
+            {(sedesDelStore.includes(sede) ? sedesDelStore : [sede, ...sedesDelStore]).map((s) => (
+              <option key={s} value={s} className="bg-dark-surface text-dark-ink-1">{s}</option>
+            ))}
+          </select>
         </div>
 
         <div className="border-t border-dark-line" />

@@ -17,6 +17,13 @@ import {
   saveReferenceRates,
   saveSeasonWindows,
 } from "../api/layout";
+// El renombre de una sede (fase 2 · I5) por el espacio de nombres, y no con
+// una importación con nombre: las pruebas que cargan este store reemplazan
+// `api/layout` por una lista fija de funciones (`probar-geometria`,
+// `probar-nombres`), y una importación con nombre que esa lista no tiene
+// rompería su compilación aunque nunca renombren nada.
+import * as servidorDeSedes from "../api/layout";
+import type { SedeRenombrada } from "../api/layout";
 import { fetchEstadoComercial } from "../api/spaces";
 import { useAuthStore } from "./authStore";
 import { conFichaQuitada, sinComercial } from "../utils/guardadoDelPlano";
@@ -266,6 +273,9 @@ export type SyncState = "idle" | "pulling" | "pushing" | "error" | "conflict";
 const RECHAZOS_CONOCIDOS = new Set([
   "nombres_repetidos", "contratos_vivos", "partes_vendidas", "nombre_reservado",
   "participaciones_vivas", "slots_vendidos_en_participacion", "slots_en_participacion",
+  // fase 2 · I5: un ancho, fondo, alto, módulo o entrepaños que no se pueden
+  // dibujar (`medidas_imposibles` de `services/layout_lookup.py`).
+  "medidas_imposibles",
 ]);
 
 /** Entrar a Distribución desde otra pantalla (`pedirEnfoque3D`): sólo tipos
@@ -378,8 +388,12 @@ interface FixtureStore {
   /** Add a new sede to the list. */
   addSede: (name: string) => void;
 
-  /** Rename a sede — updates key in fixturesBySede and active sede if needed. */
-  renameSede: (oldName: string, newName: string) => void;
+  /** Renombrar una sede. Es del servidor (`POST /layout/{sede}/renombrar`):
+   *  los códigos pasan al nombre nuevo y lo vendido sigue vivo. Resuelve
+   *  `{ ok: false, error, motivos }` cuando no se pudo —el servidor se negó,
+   *  o la sede tiene cambios que el servidor todavía no guardó—, y entonces
+   *  no cambió nada, ni acá ni allá. Sin permiso de escritura, sólo acá. */
+  renameSede: (oldName: string, newName: string) => Promise<{ ok: boolean; error?: string; motivos?: string[] }>;
 
   /** Remove a sede (clears its fixtures). The active sede is moved to the first available. */
   /** Delete a sede everywhere. Resolves `{ ok: false, error }` when the server
@@ -487,6 +501,78 @@ function planosVacios(): Partial<FixtureStore> {
   };
 }
 
+/**
+ * El store con la sede `oldName` pasada a `newName` (fase 2 · I5). Con `hecho`
+ * —lo que contestó el servidor al renombrar—, el plano es el SUYO (con los
+ * códigos y la sede de cada mueble ya mudados allá) y su revisión y la de la
+ * lista son las nuevas: no hay nada que volver a subir. Sin `hecho` (una
+ * sesión que no escribe), el plano local con el campo `sede` de cada mueble
+ * mudado, como siempre.
+ *
+ * El deshacer de la sede renombrada se vacía: sus pasos tienen los códigos
+ * viejos, y deshacer uno los volvería a subir.
+ */
+function sedeMudada(
+  state: FixtureStore,
+  oldName: string,
+  newName: string,
+  hecho: SedeRenombrada | null,
+): Partial<FixtureStore> {
+  const esLaVieja = (s: string) => s === oldName || normalizeSede(s) === normalizeSede(oldName);
+  const fixturesBySede = { ...state.fixturesBySede };
+  const dirty = { ...state.dirty };
+  const serverRev = { ...state.serverRev };
+  const conflicts = { ...state.conflicts };
+  const rechazos = { ...state.rechazos };
+  const locales = fixturesBySede[oldName];
+  for (const clave of Object.keys(fixturesBySede)) if (esLaVieja(clave)) delete fixturesBySede[clave];
+  for (const mapa of [dirty, serverRev, conflicts, rechazos] as Record<string, unknown>[]) {
+    for (const clave of Object.keys(mapa)) if (esLaVieja(clave)) delete mapa[clave];
+  }
+  if (hecho) {
+    fixturesBySede[newName] = fusionarEstadoComercial(newName, hecho.fixtures ?? [], state.estadoComercial);
+    // Sin revisión (una sede que estaba sólo en la lista, sin plano), el
+    // próximo guardado es el primero: va sin base.
+    if (hecho.updated_at) serverRev[newName] = hecho.updated_at;
+    else delete serverRev[newName];
+  } else if (locales) {
+    // Cada mueble lleva también su sede, y con ella se arma el código
+    // «SEDE-CODIGO» de contratos y archivos.
+    fixturesBySede[newName] = locales.map((f) => (f.sede && esLaVieja(f.sede) ? { ...f, sede: newName } : f));
+  }
+  const sedes: string[] = [];
+  for (const s of state.sedes) {
+    const nombre = esLaVieja(s) ? newName : s;
+    if (!sedes.includes(nombre)) sedes.push(nombre);
+  }
+  if (!sedes.includes(newName)) sedes.push(newName);
+  const activa = esLaVieja(state.sede);
+  let referenceRates = state.referenceRates;
+  const viejaEnTarifas = referenceRates ? Object.keys(referenceRates.by_sede ?? {}).find(esLaVieja) : undefined;
+  if (referenceRates && viejaEnTarifas) {
+    const { [viejaEnTarifas]: suyas, ...resto } = referenceRates.by_sede;
+    referenceRates = { ...referenceRates, by_sede: { ...resto, [newName]: suyas } };
+  }
+  const conflictos = Object.keys(conflicts).length;
+  return {
+    sedes,
+    fixturesBySede,
+    dirty,
+    serverRev,
+    conflicts,
+    rechazos,
+    referenceRates,
+    sede: activa ? newName : state.sede,
+    ...(activa ? { past: [], future: [] } : {}),
+    ...(hecho ? {
+      settingsRev: hecho.settings_updated_at ?? state.settingsRev,
+      syncState: conflictos ? "conflict" as const : "idle" as const,
+      syncMessage: conflictos ? state.syncMessage : null,
+      lastSyncedAt: Date.now(),
+    } : {}),
+  };
+}
+
 export const useFixtureStore = create<FixtureStore>()(
   persist(
     (set, get) => ({
@@ -555,51 +641,81 @@ export const useFixtureStore = create<FixtureStore>()(
           return { sedes: [...state.sedes, name] };
         }),
 
-      renameSede: (oldName, rawNewName) =>
-        set((state) => {
-          const newName = normalizeSede(rawNewName);
-          if (!newName || newName === oldName) return state;
-          // A rename is a removal plus an addition, and the merge has to see it
-          // as both or it will bring the old name back from a stale list.
-          _addedSedes.add(newName);
-          _removedSedes.delete(newName);
-          _removedSedes.add(normalizeSede(oldName));
-          _addedSedes.delete(normalizeSede(oldName));
-          const newFixturesBySede = { ...state.fixturesBySede };
-          const newDirty = { ...state.dirty };
-          const newRev = { ...state.serverRev };
-          if (newFixturesBySede[oldName]) {
-            // Each fixture also carries its own sede, and that field is what
-            // builds the "SEDE-CODE" space code used for contracts and files.
-            // Leaving it behind would point the renamed sede at the old codes.
-            newFixturesBySede[newName] = newFixturesBySede[oldName].map((f) =>
-              f.sede === oldName ? { ...f, sede: newName } : f,
-            );
-            delete newFixturesBySede[oldName];
+      // ── Renombrar una sede (fase 2 · I5) ──────────────────────────────────
+      //
+      // Era «borrar + crear»: mover la clave local y mandar `deleteLayout` del
+      // nombre viejo, y el plano subía como el primer guardado de una sede
+      // nueva. El borrado archiva la sede en el servidor —cierra los contratos,
+      // cancela las reservas de participación, archiva los montajes— y las
+      // tarifas de la sede quedaban huérfanas. Ahora el renombre es del
+      // servidor (`renombrarSede`, una transacción) y acá sólo se adopta lo que
+      // contesta. Antes de pedirlo: nada pendiente de la sede vieja puede
+      // llegar DESPUÉS (un guardado en vuelo con el nombre viejo daría 409
+      // `layout_deleted` y se perdería), así que se cancela lo programado, se
+      // espera lo que está en vuelo y se sube lo sucio.
+      renameSede: async (oldName, rawNewName) => {
+        const newName = normalizeSede(rawNewName);
+        if (!newName || newName === oldName) return { ok: true };
+        const yaExiste = (st: FixtureStore) =>
+          [...st.sedes, ...Object.keys(st.fixturesBySede)]
+            .some((s) => s !== oldName && normalizeSede(s) === newName);
+        if (yaExiste(get())) return { ok: false, error: `Ya hay una sede «${newName}»: elegí otro nombre.` };
+
+        // Sin permiso de escritura no hay servidor que renombre: sólo acá,
+        // como siempre (el `PUT` de la lista tampoco sale).
+        if (!canWrite()) {
+          set((state) => sedeMudada(state, oldName, newName, null));
+          return { ok: true };
+        }
+
+        cancelScheduledSave(oldName);
+        const flight = _inFlight.get(oldName);
+        if (flight) await flight.catch(() => {});
+        if (get().dirty[oldName]) await get().pushSede(oldName);
+        {
+          const st = get();
+          if (st.dirty[oldName] || st.conflicts[oldName] || st.rechazos[oldName]) {
+            return {
+              ok: false,
+              error: `«${oldName}» tiene cambios que el servidor todavía no guardó: resolvelos antes de renombrar.`,
+            };
           }
-          // The renamed sede is a brand new snapshot server-side: it has no
-          // revision yet, and its fixtures still need to be uploaded. The old
-          // snapshot has to go, or both names would keep coming back on pull.
-          delete newRev[oldName];
-          delete newDirty[oldName];
-          if (canWrite()) {
-            void deleteLayout(oldName).catch((err) =>
-              console.warn(`[layout sync] no se pudo eliminar «${oldName}» del servidor:`, err),
-            );
-          }
-          if (newFixturesBySede[newName]?.length) {
-            newDirty[newName] = true;
-            scheduleSave(newName);
-          }
-          scheduleSettingsSave();
-          return {
-            sedes: state.sedes.map((s) => (s === oldName ? newName : s)),
-            fixturesBySede: newFixturesBySede,
-            serverRev: newRev,
-            dirty: newDirty,
-            sede: state.sede === oldName ? newName : state.sede,
-          };
-        }),
+        }
+        // La lista de sedes también: el servidor la cambia en el renombre, y una
+        // copia en cola sin el nombre nuevo lo pisaría después.
+        if (_settingsTimer) {
+          clearTimeout(_settingsTimer);
+          _settingsTimer = null;
+          await get().pushSettings();
+        }
+
+        let hecho: SedeRenombrada;
+        try {
+          hecho = await servidorDeSedes.renombrarSede(oldName, newName, get().serverRev[oldName] ?? null);
+        } catch (err: any) {
+          const status = err?.response?.status;
+          const rechazo = servidorDeSedes.rechazoDelRenombre(err);
+          const error =
+            status === 401 || status === 403
+              ? `No tenés permiso para renombrar «${oldName}».`
+              : rechazo?.message || `No se pudo renombrar «${oldName}» en el servidor. Sigue con el nombre de antes.`;
+          return { ok: false, error, motivos: rechazo?.motivos ?? [] };
+        }
+
+        // El servidor ya renombró. El nombre viejo se recuerda como borrado y
+        // el nuevo como agregado, para que una lista vieja de otro equipo no
+        // devuelva el viejo al fusionar.
+        _addedSedes.add(newName);
+        _removedSedes.delete(newName);
+        _removedSedes.add(normalizeSede(oldName));
+        _addedSedes.delete(normalizeSede(oldName));
+        set((state) => sedeMudada(state, oldName, newName, hecho));
+        // Los códigos de la sede cambiaron en la base: lo comercial se vuelve a
+        // leer con los nombres nuevos (y los muebles de otros planos que decían
+        // la sede vieja llegan con la próxima vuelta del poll).
+        void get().refrescarComercial();
+        return { ok: true };
+      },
 
       removeSede: async (name) => {
         const target = normalizeSede(name);

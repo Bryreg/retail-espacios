@@ -1555,7 +1555,7 @@ await prueba("la fila de la leyenda: dos botones hermanos (elegir y acciones), n
     "las acciones no son el botón hermano que sigue");
 });
 
-await prueba("«Borrar sede» y el renombre nombran las reservas provisionales que se cancelan (ejecutado)", () => {
+await prueba("«Borrar sede» nombra las reservas provisionales que se cancelan; el renombre dice adónde van (ejecutado)", () => {
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
     "2 contratos activos se cerrarán", "3 reservas provisionales de participación se cancelan"]);
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 1, reservas_vivas: 1 }), [
@@ -1563,10 +1563,14 @@ await prueba("«Borrar sede» y el renombre nombran las reservas provisionales q
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 0, reservas_vivas: 0 }), []);
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 0 }), [], "un servidor viejo sin `reservas_vivas`");
   // El renombre: sin nada comercial, sin pregunta; con algo, lo dice; sin saberlo, avisa igual.
+  // fase 2 · I5: el renombre ya no borra la sede (era «borrar + crear»): el
+  // aviso dice adónde va lo vendido, nunca que se pierde. Las guardas que
+  // exigen que no se pierda nada están en el bloque «fase 2 · I5» de abajo.
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 0 }), null);
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 2 }),
-    "Renombrar «NAVE» a «NAVE NORTE» borra la sede y la vuelve a crear con el nombre nuevo: 2 reservas provisionales de participación se cancelan. No se puede deshacer.");
-  assert.match(IMP.avisoDelRenombre("NAVE", "X", null), /No se pudo saber cuántos hay\.$/);
+    "Las 2 reservas provisionales de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje ya enviados siguen andando.");
+  assert.equal(IMP.avisoDelRenombre("NAVE", "X", null),
+    "Los contratos y las reservas provisionales de participación de «NAVE», si tiene, pasan a «X». Los enlaces de montaje ya enviados siguen andando.");
   // El tipo del cliente lleva el dato del servidor, y el diálogo lo muestra.
   assert.match(fuente("api/layout.ts"), /export interface DeleteImpact \{[^}]*reservas_vivas: number;/);
   const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
@@ -1587,6 +1591,142 @@ await prueba("«Borrar sede» y el renombre nombran las reservas provisionales q
   assert.equal((plano.match(/renameSede\(sede, n\)/g) || []).length, 0, "el campo de la sede renombra sin avisar");
   assert.equal((plano.match(/void pedirRenombre\(normalizeSede\(editingSedeVal\)\)/g) || []).length, 2);
   assert.match(plano, /<RenombrarSedeDialog[\s\S]{0,300}renameSede\(de, a\);/, "«Renombrar igual» no renombra");
+});
+
+// fase 2 · I5 — Renombrar una sede ya no la borra. Era «borrar + crear»:
+// `renameSede` movía la clave local y mandaba `deleteLayout` del nombre viejo,
+// y el archivo de la sede cerraba los contratos, cancelaba las reservas de
+// participación y archivaba los montajes. Ahora el renombre es del servidor
+// (`POST /layout/{sede}/renombrar`, una transacción) y lo vendido sigue vivo.
+// Estas guardas REEMPLAZAN a las que pedían el aviso «borra la sede y la
+// vuelve a crear» (arriba) y son más estrictas: `renameSede` no puede llamar a
+// `deleteLayout`, el renombre pasa por `renombrarSede` de `api/layout.ts`, y
+// lo que se dice antes de renombrar no dice «borra», «se cancelan» ni «No se
+// puede deshacer» con ningún impacto.
+await prueba("fase 2 · I5: el renombre no borra la sede: sin `deleteLayout` en `renameSede`, por `renombrarSede` de api/, y nada dice que se pierde", () => {
+  const store = sinComentTs2(fuente("store/fixtureStore.ts"));
+  const i = store.indexOf("renameSede: async (oldName, rawNewName) => {");
+  assert.ok(i >= 0, "renameSede dejó de ser async: el renombre volvió a ser local");
+  const cuerpo = store.slice(i, store.indexOf("removeSede: async", i));
+  assert.ok(cuerpo.length > 0 && !/deleteLayout/.test(cuerpo), "renameSede vuelve a borrar la sede en el servidor");
+  assert.match(cuerpo, /servidorDeSedes\.renombrarSede\(oldName, newName, get\(\)\.serverRev\[oldName\] \?\? null\)/,
+    "renameSede no le pide el renombre al servidor con la revisión que tiene");
+  // Lo que pasa en el store después: sin borrar ni volver a subir nada.
+  const k = store.indexOf("function sedeMudada(");
+  assert.ok(k >= 0, "no está sedeMudada");
+  const mudada = store.slice(k, store.indexOf("export const useFixtureStore", k));
+  assert.ok(!/deleteLayout|scheduleSave\(|dirty\[newName\] = true/.test(mudada), "adoptar el renombre borra o vuelve a subir el plano");
+  const api = sinComentTs2(fuente("api/layout.ts"));
+  assert.match(api, /export const renombrarSede = \([\s\S]{0,200}?client\s*\.post\(`\/layout\/\$\{encodeURIComponent\(sede\)\}\/renombrar`, \{\s*nuevo,\s*base_updated_at: baseUpdatedAt \?\? null,\s*\}\)/,
+    "renombrarSede no llama a POST /layout/{sede}/renombrar con el nombre nuevo y la revisión");
+  // Lo que se dice antes: adónde va lo vendido, con cualquier impacto (también sin saberlo).
+  for (const impacto of [null, { spaces: 3, active_leases: 2, reservas_vivas: 1 }, { spaces: 1, active_leases: 1, reservas_vivas: 0 },
+    { spaces: 2, active_leases: 0, reservas_vivas: 3 }, { spaces: 2, active_leases: 4 }]) {
+    const t = IMP.avisoDelRenombre("NAVE", "NAVE NORTE", impacto);
+    assert.ok(typeof t === "string" && !/borra|se cancela|se cierra|cerrar|deshacer|vuelve a crear/i.test(t),
+      `el aviso del renombre dice que se pierde algo: «${t}»`);
+    assert.ok(t.endsWith(IMP.SIGUEN_LOS_ENLACES), `el aviso no dice que los enlaces de montaje siguen andando: «${t}»`);
+  }
+  assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 2, reservas_vivas: 1 }),
+    "Los 2 contratos activos y la reserva provisional de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje ya enviados siguen andando.");
+  assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 1, active_leases: 1, reservas_vivas: 0 }),
+    "El contrato activo de «NAVE» pasa a «NAVE NORTE». Los enlaces de montaje ya enviados siguen andando.");
+  // «Borrar sede» sigue diciendo lo que se pierde: esa mitad no cambia.
+  assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
+    "2 contratos activos se cerrarán", "3 reservas provisionales de participación se cancelan"]);
+  // El diálogo del 2D: sin «borra», «se cancelan», «Renombrar igual» ni el botón rojo de peligro.
+  const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
+  const a = plano.indexOf("function RenombrarSedeDialog("), b = plano.indexOf("function RenombreRechazadoDialog(");
+  assert.ok(a >= 0 && b > a, "no están los dos diálogos del renombre");
+  assert.ok(!/borra|se cancelan|Renombrar igual|deshacer|var\(--danger\)/.test(plano.slice(a, b)),
+    "el diálogo del renombre todavía dice que se pierde algo");
+  // Se espera al servidor; si se niega, se dice por qué con sus motivos y la sede queda como estaba.
+  assert.equal((plano.match(/const hecho = await renameSede\((viejo, nuevo|de, a)\);\s*trasElRenombre\(/g) || []).length, 2,
+    "un renombre que no espera la respuesta del servidor");
+  assert.match(plano, /function trasElRenombre\(de: string, a: string, hecho: \{ ok: boolean; error\?: string; motivos\?: string\[\] \}\) \{\s*if \(hecho\.ok\) \{\s*setRenombreFallido\(null\);\s*setSede\(a\);\s*return;\s*\}/,
+    "el lienzo cambia de sede aunque el servidor no haya renombrado");
+  assert.match(plano, /\{renombreFallido && \(\s*<RenombreRechazadoDialog \{\.\.\.renombreFallido\} onCerrar=\{\(\) => setRenombreFallido\(null\)\} \/>/);
+  assert.match(plano.slice(b, b + 4000), /\{motivos\.map\(\(m\) => <li key=\{m\}>\{m\}<\/li>\)\}/, "el rechazo no muestra sus motivos");
+  // La «Sede» del panel del mueble es de sólo lectura (V16): el plano define la sede.
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("));
+  const sede = panel.slice(panel.indexOf('<Field label="Sede"'), panel.indexOf("</Field>", panel.indexOf('<Field label="Sede"')));
+  assert.ok(sede.length > 0 && !/<select|onUpdate\(\{ sede/.test(sede), "la «Sede» del panel 2D vuelve a escribirle una sede al mueble");
+  assert.match(sede, /<p data-sede-del-plano[^>]*>\{sede\}<\/p>/);
+});
+
+await prueba("fase 2 · I5: renombrar una sede es UN pedido al servidor —ningún DELETE—; se adopta lo que contesta y, si se niega, no cambia nada (ejecutado)", async () => {
+  const st = () => S.useFixtureStore.getState();
+  const REV = "2026-10-17T15:00:00+00:00", REV2 = "2026-10-17T15:05:00+00:00", AJUSTES2 = "2026-10-17T15:05:00.500000+00:00";
+  const plano = [{ id: "f-1", code: "GON-01", sede: "NAVE", type: "gondola", gondolaType: "double", cx: 2, cz: 2, rotY: 0, w: 0.9, d: 0.9, h: 1.8 }];
+  const antes = {
+    sedes: S.useFixtureStore.getState().sedes, sede: st().sede, fixturesBySede: st().fixturesBySede, serverRev: st().serverRev,
+    dirty: st().dirty, conflicts: st().conflicts, rechazos: st().rechazos, settingsRev: st().settingsRev, referenceRates: st().referenceRates,
+  };
+  S.useAuthStore.getState().setAuth("t-sede", "admin", "galerias");
+  S.useFixtureStore.setState({
+    sedes: ["NAVE", "SUR"], sede: "NAVE", fixturesBySede: { NAVE: plano, SUR: [] }, serverRev: { NAVE: REV, SUR: REV },
+    dirty: {}, conflicts: {}, rechazos: {}, settingsRev: "s1", referenceRates: { default: {}, by_sede: { NAVE: { gondola: 900000 } } },
+  });
+  try {
+    // 1 · El servidor renombra: un POST con el nombre nuevo y la revisión, ningún DELETE.
+    servidor.pedidos = [];
+    servidor.responder = async (cfg) => (cfg.method === "post" && cfg.url === "/layout/NAVE/renombrar"
+      ? { sede: "NAVE NORTE", fixtures: plano.map((f) => ({ ...f, sede: "NAVE NORTE" })), updated_at: REV2,
+          settings_updated_at: AJUSTES2, espacios: 3, contratos: 1, montajes: 0, avisos: [] }
+      : {});
+    assert.deepEqual(await st().renameSede("NAVE", " nave norte "), { ok: true });
+    await esperar(5); // el `refrescarComercial` que sale después
+    assert.deepEqual(servidor.pedidos.filter((p) => p.method === "delete"), [], "el renombre borró la sede en el servidor");
+    const posts = servidor.pedidos.filter((p) => p.method === "post");
+    assert.deepEqual(posts.map((p) => [p.url, p.data]), [["/layout/NAVE/renombrar", { nuevo: "NAVE NORTE", base_updated_at: REV }]]);
+    assert.deepEqual(st().sedes, ["NAVE NORTE", "SUR"]);
+    assert.equal(st().sede, "NAVE NORTE");
+    assert.ok(!("NAVE" in st().fixturesBySede) && !("NAVE" in st().serverRev), "quedó la sede vieja en el store");
+    assert.deepEqual(st().fixturesBySede["NAVE NORTE"].map((f) => [f.code, f.sede]), [["GON-01", "NAVE NORTE"]]);
+    assert.equal(st().serverRev["NAVE NORTE"], REV2, "no adoptó la revisión que contestó el servidor");
+    assert.equal(st().settingsRev, AJUSTES2, "no adoptó la revisión nueva de la lista de sedes");
+    assert.ok(!st().dirty["NAVE NORTE"], "el plano renombrado quedó para volver a subir");
+    assert.deepEqual(st().referenceRates.by_sede, { "NAVE NORTE": { gondola: 900000 } }, "las tarifas quedaron con el nombre viejo");
+
+    // 2 · El servidor se niega: nada cambia, ni acá ni allá, y se dice por qué.
+    const MOTIVO = "«SUR NORTE-GON-01» ya es el código del espacio #9, que no es de «NAVE NORTE»: archivalo o cambiale el código antes de renombrar.";
+    servidor.pedidos = [];
+    servidor.responder = async (cfg) => {
+      if (cfg.method === "post" && cfg.url.endsWith("/renombrar")) {
+        throw rechazo(409, { detail: { code: "renombre_bloqueado", message: "No se puede renombrar «NAVE NORTE» a «SUR NORTE» sin romper algo.", motivos: [MOTIVO] } });
+      }
+      return {};
+    };
+    const foto = () => JSON.stringify([st().sedes, st().sede, st().fixturesBySede, st().serverRev, st().settingsRev, st().referenceRates]);
+    const quieto = foto();
+    const r = await st().renameSede("NAVE NORTE", "sur norte");
+    assert.deepEqual(r, { ok: false, error: "No se puede renombrar «NAVE NORTE» a «SUR NORTE» sin romper algo.", motivos: [MOTIVO] });
+    assert.equal(foto(), quieto, "un renombre rechazado cambió el store");
+    assert.deepEqual(servidor.pedidos.filter((p) => p.method === "delete"), []);
+    assert.ok(servidor.pedidos.some((p) => p.method === "post" && p.url === "/layout/NAVE%20NORTE/renombrar"), "no le pidió el renombre al servidor");
+
+    // 3 · Un nombre que ya existe ni se pregunta; con cambios sin guardar, tampoco.
+    servidor.pedidos = [];
+    assert.deepEqual(await st().renameSede("NAVE NORTE", "sur"), { ok: false, error: "Ya hay una sede «SUR»: elegí otro nombre." });
+    S.useFixtureStore.setState({ conflicts: { "NAVE NORTE": true } });
+    const conCambios = await st().renameSede("NAVE NORTE", "OESTE");
+    assert.equal(conCambios.ok, false);
+    assert.match(conCambios.error, /tiene cambios que el servidor todavía no guardó/);
+    S.useFixtureStore.setState({ conflicts: {} });
+    assert.deepEqual(servidor.pedidos.filter((p) => p.url.endsWith("/renombrar")), [], "pidió el renombre con cambios sin guardar");
+    assert.equal(foto(), quieto);
+
+    // 4 · Sin permiso de escritura no hay servidor que renombre: sólo acá, y sin pedidos.
+    S.useAuthStore.getState().setAuth("t-sede-w", "worker", "galerias");
+    servidor.pedidos = [];
+    assert.deepEqual(await st().renameSede("NAVE NORTE", "OESTE"), { ok: true });
+    assert.deepEqual(servidor.pedidos.filter((p) => p.method !== "get"), [], "una sesión que no escribe le pidió algo al servidor");
+    assert.deepEqual(st().sedes, ["OESTE", "SUR"]);
+    assert.deepEqual(st().fixturesBySede.OESTE.map((f) => f.sede), ["OESTE"]);
+  } finally {
+    S.useAuthStore.getState().setAuth("t-sede", "admin", "galerias");
+    S.useFixtureStore.setState(antes);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

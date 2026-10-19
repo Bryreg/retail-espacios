@@ -27,13 +27,16 @@ términos de los contratos que el archivo cierra ganan `baja_en`
 cuenta `reservas_vivas`, que el diálogo de «Borrar sede» muestra.
 """
 
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.auth import get_config
 from app.models.models import (
     ArchivedSpace,
+    LayoutSnapshot,
     MountConfirmation,
     Space,
     SpaceLease,
@@ -43,6 +46,40 @@ from app.services.candado import tomar_candados
 from app.services.ciclo_participaciones import (
     al_archivar_sede, codigos_de_caras_con_terminos, reservas_vivas,
 )
+from app.services.layout_lookup import _escapar_like, _full_code, normalizar, sin_prefijo_de_sede
+
+#: La lista compartida de sedes en ``app_config``. Es ``SEDES_KEY`` de
+#: ``routers/layout.py`` (un servicio no importa de un router: la capa al
+#: revés da un import circular); ``tests/test_sede_delete.py`` exige que las
+#: dos digan lo mismo.
+SEDES_KEY = "layout_sedes"
+
+
+def sedes_conocidas(db: Session) -> set[str]:
+    """Los nombres de sede que existen, normalizados: los que tienen plano
+    guardado y los de la lista compartida (una sede recién creada puede no
+    tener plano todavía)."""
+    nombres = {normalizar(s) for (s,) in db.query(LayoutSnapshot.sede).all()}
+    try:
+        lista = json.loads(get_config(db, SEDES_KEY) or "[]")
+    except (ValueError, TypeError):
+        lista = []
+    if isinstance(lista, list):
+        nombres |= {normalizar(s) for s in lista if isinstance(s, str)}
+    return {n for n in nombres if n}
+
+
+def _mas_largas(db: Session, target: str) -> list[str]:
+    """Las sedes que existen y empiezan como ``target`` seguida de un guion
+    (``SAN-JOSE`` para ``SAN``): sus códigos también empiezan con ``SAN-``."""
+    return sorted(s for s in sedes_conocidas(db) if s != target and s.startswith(f"{target}-"))
+
+
+def _de_una_sede_mas_larga(codigo: str, mas_largas: list[str]) -> bool:
+    """¿El código lleva el prefijo de una de esas sedes más largas?
+    ``SAN-JOSE-IMP-01`` es de ``SAN-JOSE``, no de ``SAN``."""
+    c = normalizar(codigo)
+    return any(c.startswith(f"{otra}-") for otra in mas_largas)
 
 
 def _spaces_of_sede(db: Session, sede: str) -> list[Space]:
@@ -52,18 +89,61 @@ def _spaces_of_sede(db: Session, sede: str) -> list[Space]:
     before it existed have it empty. The code is the reliable second signal:
     every fixture-mapped space is stored as ``"{SEDE}-{code}"`` (see the 2D
     plan's ``fullCode``), so a prefix match catches what the column misses.
+
+    **El prefijo cuenta sólo para las filas con la columna vacía**, y no para
+    las que calzan con el prefijo de una sede MÁS LARGA que existe (fase 2 ·
+    I5, medido): con las sedes ``SAN`` y ``SAN-JOSE``, borrar ``SAN`` archivaba
+    ``SAN-JOSE-IMP-01`` —con contratos, los habría cerrado y habría cancelado
+    sus reservas—. Una fila que dice su sede es de esa sede, diga lo que diga
+    el código. El código se compara en mayúsculas: en Postgres ``LIKE``
+    distingue mayúsculas y en SQLite no, y una fila guardada ``nave-imp-05``
+    es de ``NAVE`` en las dos. Lo usan el archivo, ``count_commercial_rows``
+    y el renombre de sede (``services/renombre_sede.py``).
     """
-    target = sede.strip().upper()
+    target = normalizar(sede)
     if not target:
         return []
-    return (
+    columna = func.upper(func.trim(func.coalesce(Space.sede, "")))
+    filas = (
         db.query(Space)
         .filter(
-            (func.upper(func.trim(func.coalesce(Space.sede, ""))) == target)
-            | (Space.code.like(f"{target}-%"))
+            (columna == target)
+            | ((columna == "") & func.upper(Space.code).like(f"{_escapar_like(target)}-%", escape="\\"))
         )
         .all()
     )
+    if all(normalizar(s.sede) for s in filas):
+        return filas
+    mas_largas = _mas_largas(db, target)
+    if not mas_largas:
+        return filas
+    return [s for s in filas if normalizar(s.sede) or not _de_una_sede_mas_larga(s.code, mas_largas)]
+
+
+def _mount_confirmations_of_sede(db: Session, sede: str) -> list[MountConfirmation]:
+    """Los reportes de montaje vivos (no archivados) de ``sede``, con la regla
+    de ``_spaces_of_sede``: por la columna, y por el prefijo del código sólo
+    los que no dicen su sede y no son de una sede más larga."""
+    target = normalizar(sede)
+    if not target:
+        return []
+    columna = func.upper(func.trim(func.coalesce(MountConfirmation.sede, "")))
+    filas = (
+        db.query(MountConfirmation)
+        .filter(
+            MountConfirmation.archivado_en.is_(None),
+            (columna == target)
+            | ((columna == "")
+               & func.upper(MountConfirmation.space_code).like(f"{_escapar_like(target)}-%", escape="\\")),
+        )
+        .all()
+    )
+    if all(normalizar(r.sede) for r in filas):
+        return filas
+    mas_largas = _mas_largas(db, target)
+    if not mas_largas:
+        return filas
+    return [r for r in filas if normalizar(r.sede) or not _de_una_sede_mas_larga(r.space_code, mas_largas)]
 
 
 def _archive_mount_confirmations(db: Session, sede: str) -> int:
@@ -76,38 +156,70 @@ def _archive_mount_confirmations(db: Session, sede: str) -> int:
     code alone, so a brand new gondola would open already marked as mounted.
 
     Matched the same two ways as the spaces: by the column, and by the code
-    prefix for the rows whose ``sede`` was never filled in.
+    prefix for the rows whose ``sede`` was never filled in
+    (``_mount_confirmations_of_sede``).
     """
-    target = sede.strip().upper()
-    if not target:
-        return 0
-    rows = (
-        db.query(MountConfirmation)
-        .filter(
-            MountConfirmation.archivado_en.is_(None),
-            (func.upper(func.trim(func.coalesce(MountConfirmation.sede, ""))) == target)
-            | (MountConfirmation.space_code.like(f"{target}-%")),
-        )
-        .all()
-    )
+    rows = _mount_confirmations_of_sede(db, sede)
     now = datetime.now(timezone.utc)
     for row in rows:
         row.archivado_en = now
     return len(rows)
 
 
+def codigos_del_plano(db: Session, sede: str) -> set[str]:
+    """Los códigos COMPLETOS de los muebles del plano guardado de ``sede``,
+    armados con la sede del PLANO, como arma la cara un alta de participación
+    (``participaciones.codigo_cara``): las claves de sus candados.
+
+    Se lee la columna, no la fila: quien borra la sede ya marcó la fila para
+    borrar (``db.delete``) y con ``autoflush=False`` (``database.py``) el
+    ``DELETE`` todavía no se escribió, así que la consulta la ve."""
+    crudo = db.query(LayoutSnapshot.fixtures_json).filter(LayoutSnapshot.sede == sede).scalar()
+    if crudo is None:
+        # El renombre pasa el nombre normalizado; una fila guardada «Nave»
+        # (de una lista vieja) es la misma sede.
+        fila = (db.query(LayoutSnapshot.fixtures_json)
+                .filter(func.upper(func.trim(LayoutSnapshot.sede)) == normalizar(sede)).first())
+        crudo = fila[0] if fila else None
+    try:
+        fixtures = json.loads(crudo or "[]")
+    except (ValueError, TypeError):
+        return set()
+    if not isinstance(fixtures, list):
+        return set()
+    s = normalizar(sede)
+    codigos: set[str] = set()
+    for f in fixtures:
+        if not isinstance(f, dict):
+            continue
+        code = normalizar(f.get("code"))
+        if code:
+            codigos.add(_full_code(sin_prefijo_de_sede(code, s), s))
+    return codigos
+
+
 def _tomar_candados_de_participaciones(db: Session, sede: str) -> None:
     """Los candados de las caras de la sede que tienen términos de
-    participación, ANTES de leer lo que se va a cambiar: un alta, una
-    confirmación o una renovación concurrente sobre esa cara espera a que el
-    archivo termine (o el archivo a ella). Con los códigos de ANTES del
+    participación **y los de todos los muebles de su plano**
+    (``codigos_del_plano``), ANTES de leer lo que se va a cambiar: un alta,
+    una confirmación o una renovación concurrente sobre esa cara espera a que
+    el archivo termine (o el archivo a ella). Con los códigos de ANTES del
     renombre a ``#id``: la clave del candado sale del código.
 
-    Una sede sin participaciones no toma nada y no relee nada: lo de siempre,
-    igual. Con candados, ``expire_all`` (regla dura del diseño §5.4): lo que se
-    lee después es lo de la base, no lo que la sesión tenía en memoria; el
-    ``flush`` de antes es para no perder lo pendiente de quien llama (el
-    borrado del plano).
+    Los muebles del plano (fase 2 · I5, E1): sin ellos, la PRIMERA alta de una
+    cara que nunca tuvo términos pasaba a la par del borrado —el alta relee el
+    plano y el ``DELETE`` todavía no se ve— y dejaba cara, participación,
+    contrato y término vivos en una sede borrada, que ninguna pantalla lista y
+    cuyos avisos de vencimiento seguían saliendo. Con el candado del mueble, el
+    alta que esperaba relee el plano y da 404 («No hay ningún mueble…»), y la
+    que ganó la ve el ``_spaces_of_sede`` de después y se archiva. Cierra
+    también la venta concurrente de una cara entera.
+
+    Una sede sin plano y sin participaciones no toma nada y no relee nada: lo
+    de siempre, igual. Con candados, ``expire_all`` (regla dura del diseño
+    §5.4): lo que se lee después es lo de la base, no lo que la sesión tenía
+    en memoria; el ``flush`` de antes es para no perder lo pendiente de quien
+    llama (el borrado del plano).
 
     El orden es candado → ``flush`` → ``expire_all``, y no ``flush`` primero:
     el ``flush`` escribe el ``DELETE`` de la fila del plano, que en Postgres
@@ -118,6 +230,7 @@ def _tomar_candados_de_participaciones(db: Session, sede: str) -> None:
     Postgres corta con un 500. Con el candado primero, el borrado espera a que
     el guardado termine y recién ahí toca la fila."""
     codigos = codigos_de_caras_con_terminos(db, [s.id for s in _spaces_of_sede(db, sede)])
+    codigos |= codigos_del_plano(db, sede)
     if not codigos:
         return
     tomar_candados(db, codigos)

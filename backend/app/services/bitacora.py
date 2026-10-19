@@ -77,6 +77,12 @@ ACCIONES = {
     "distribucion.copiada": "Zonas copiadas de otra cara (borrador)",
 }
 
+# fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,
+# `services/renombre_sede.py`): sus códigos pasan al nombre nuevo y lo vendido
+# sigue vivo. No termina en «.baja» a propósito: no se pierde nada, y la
+# pantalla pinta de rojo lo que termina así.
+ACCIONES["sede.renombrar"] = "Sede renombrada"
+
 # Lo que ya no puede pasar (2026-10-02) y por eso el filtro de la pantalla no lo
 # ofrece. El título se queda en ACCIONES: las filas viejas, de hasta un año, se
 # siguen leyendo con su nombre.
