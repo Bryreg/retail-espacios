@@ -815,4 +815,178 @@ await prueba("el editor es puro: sin React, sin catálogo, sin reloj y sin guard
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I2 · el imán de una zona que se mueve y «Ajustar el borde a la vecina»
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// El imán de la zona entera vivía en línea en el lienzo; ahora es
+// `imantarTraslado` y lo usan el lienzo y el 3D («Editar en el 3D»): tiene que
+// dar EXACTAMENTE lo que daba el bloque de antes. «Ajustar el borde» pega un
+// borde de la zona elegida al de enfrente de la vecina (hasta 5 cm), con las
+// salidas de `casos/zonas.json` (`bordes`) revisadas a mano: el navegador las
+// exige exactas y el servidor (`test_participaciones_geometria.py`) que pasen
+// su validación sin pisar a nadie.
+
+console.log("zonas · fase 2 · I2: el imán de la zona que se mueve y «Ajustar el borde a la vecina»");
+
+await prueba("imantarTraslado: pega el vértice que queda más cerca de su objetivo (en metros) y los demás lo siguen; radio por eje; sin nada cerca, el mismo desplazamiento", () => {
+  const z = cuadrado(0.2, 0.2, 0.4, 0.4);
+  const cerca2 = (a, b, quien) => assert.ok(Math.abs(a[0] - b[0]) < 1e-12 && Math.abs(a[1] - b[1]) < 1e-12, `${quien}: [${a}] y no [${b}]`);
+  // Moviendo 0,095 en u, el vértice (0,4; 0,2) queda a 0,005 de la esquina (0,5; 0,2) de otra zona: se pega y la zona lo sigue.
+  cerca2(E.imantarTraslado(z, 0.095, 0, [[0.5, 0.2]], [], 0.01, 1, 1), [0.1, 0], "un objetivo");
+  // Dos candidatos: (0,4; 0,2) a 0,004 en u de T1 y (0,2; 0,4) a 0,006 en v de T2. En una cara
+  // cuadrada gana T1; en una de 3 m × 1 m, 0,004 en u son 12 mm y 0,006 en v, 6 mm: gana T2.
+  const objetivos = [[0.404, 0.2], [0.2, 0.406]];
+  cerca2(E.imantarTraslado(z, 0, 0, objetivos, [], 0.01, 1, 1), [0.004, 0], "cara cuadrada");
+  cerca2(E.imantarTraslado(z, 0, 0, objetivos, [], 0.01, 3, 1), [0, 0.006], "en metros (3 × 1)");
+  // Radio por eje: con 0,001 en u T1 queda afuera.
+  cerca2(E.imantarTraslado(z, 0, 0, objetivos, [], { u: 0.001, v: 0.02 }, 1, 1), [0, 0.006], "radio por eje");
+  // Una arista también imanta (el borde de la cara en u = 1).
+  cerca2(E.imantarTraslado(z, 0.597, 0, [], [[[1, 0], [1, 1]]], 0.01, 1, 1), [0.6, 0], "a una arista");
+  // Sin nada en el radio, el desplazamiento tal cual (el MISMO número).
+  assert.deepEqual(E.imantarTraslado(z, 0.05, -0.02, [[0.9, 0.9]], [], 0.01, 1, 1), [0.05, -0.02]);
+  assert.deepEqual(E.imantarTraslado(z, 0.05, -0.02, [[0.4, 0.2]], [], 0, 1, 1), [0.05, -0.02], "con radio 0 imantó");
+});
+
+await prueba("imantarTraslado da EXACTAMENTE lo que daba el bloque en línea del lienzo (300 movimientos al azar, con objetivos de otras zonas y del borde)", () => {
+  // El bloque de antes, copiado tal cual de LienzoDeZonas.tsx (2ffecd2).
+  const deAntes = (zv, du, dv, objetivos, segmentos, r, W, H) => {
+    let mejor = null, dmin = Infinity;
+    for (const q of zv) {
+      const a = [q[0] + du, q[1] + dv];
+      const b = E.imantar(a, objetivos, segmentos, r);
+      const dd = Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H);
+      if ((b[0] !== a[0] || b[1] !== a[1]) && dd < dmin) { dmin = dd; mejor = [b[0] - a[0], b[1] - a[1]]; }
+    }
+    if (mejor) { du += mejor[0]; dv += mejor[1]; }
+    return [du, dv];
+  };
+  let s = 31;
+  const az = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  let imantados = 0;
+  for (let k = 0; k < 300; k++) {
+    const u0 = 0.1 + 0.4 * az(), v0 = 0.1 + 0.4 * az();
+    const zv = cuadrado(u0, v0, u0 + 0.05 + 0.3 * az(), v0 + 0.05 + 0.3 * az());
+    const e = conZonas([zona("m", 1, zv), zona("o", 2, cuadrado(0.6, 0.1, 0.6 + 0.3 * az(), 0.2 + 0.6 * az()))]);
+    const { objetivos, segmentos } = E.objetivosDelIman(e, "m");
+    const r = az() < 0.5 ? 0.004 + 0.02 * az() : { u: 0.004 + 0.02 * az(), v: 0.004 + 0.02 * az() };
+    const W = 0.5 + 3 * az(), H = 0.5 + 2 * az();
+    const du = (az() - 0.5) * 0.6, dv = (az() - 0.5) * 0.6;
+    const ahora = E.imantarTraslado(zv, du, dv, objetivos, segmentos, r, W, H);
+    assert.deepEqual(ahora, deAntes(zv, du, dv, objetivos, segmentos, r, W, H), `movimiento ${k}`);
+    if (ahora[0] !== du || ahora[1] !== dv) imantados++;
+  }
+  assert.ok(imantados > 15, `sólo ${imantados} movimientos imantaron: la prueba no prueba el imán`);
+});
+
+await prueba("el lienzo usa imantarTraslado (sin el bloque en línea) y la distancia para tocar el primer punto es la de edicionDeZonas (8 px)", () => {
+  const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
+  const lienzo = sinComent(leer(join(raiz, "src", "components", "Distribucion", "LienzoDeZonas.tsx")));
+  assert.match(lienzo, /const \{ objetivos, segmentos \} = objetivosDelIman\(ed, g\.clave, guias\);\s*\[du, dv\] = imantarTraslado\(z\.vertices, du, dv, objetivos, segmentos, radioUV\(\), W, H\);/,
+    "el lienzo no imanta la zona que se mueve con imantarTraslado");
+  assert.ok(!/for \(const q of z\.vertices\)/.test(lienzo), "quedó el imán de la zona en línea en el lienzo");
+  assert.ok(!/const TOQUE_PX\s*=/.test(lienzo), "el lienzo tiene su propio TOQUE_PX");
+  assert.match(lienzo, /import \{[^}]*\bTOQUE_PX\b[^}]*\} from "\.\.\/\.\.\/utils\/edicionDeZonas";/);
+  assert.equal(E.TOQUE_PX, 8);
+});
+
+const BORDES = CASOS.bordes ?? [];
+
+await prueba(`ajustar el borde: la salida revisada a mano, exacta (${BORDES.length} casos de casos/zonas.json)`, () => {
+  assert.ok(BORDES.length >= 8, "faltan los casos `bordes` en casos/zonas.json");
+  assert.equal(E.DISTANCIA_MAXIMA_DE_AJUSTE_M, 0.05);
+  assert.equal(E.ANGULO_MAXIMO_DE_AJUSTE_RAD, (10 * Math.PI) / 180);
+  assert.equal(E.TRAMO_MINIMO_DE_AJUSTE, 0.3);
+  const motivos = new Set();
+  for (const c of BORDES) {
+    assert.ok(typeof c.revisado === "string" && c.revisado.length > 20, `${c.nombre}: no dice cómo se revisó`);
+    assert.ok(("salida" in c) !== ("motivo" in c), `${c.nombre}: tiene que tener salida o motivo, no las dos`);
+    const r = E.ajustarBordeAVecina(c.zona, c.vecinas, c.cara);
+    if (c.motivo) {
+      motivos.add(c.motivo);
+      assert.deepEqual(r, { motivo: c.motivo }, `${c.nombre}: ${JSON.stringify(r)}`);
+      continue;
+    }
+    assert.ok(r.vertices, `${c.nombre}: no ajustó (${JSON.stringify(r)})`);
+    assert.deepEqual(r.vertices, c.salida, `${c.nombre}: la salida cambió`);
+    if (c.vecina !== undefined) assert.equal(r.vecina, c.vecina, `${c.nombre}: se pegó a otra vecina`);
+    if (c.distancia_m !== undefined) cerca(r.distanciaM, c.distancia_m, 1e-6, `${c.nombre}: la distancia`);
+    // Lo que el servidor también exige: válida y sin pisar a ninguna vecina (1 cm²).
+    assert.equal(G.validarZona(r.vertices, c.cara.ancho, c.cara.alto).codigo, null, `${c.nombre}: la salida no es válida`);
+    for (const v of c.vecinas) {
+      assert.ok(G.areaCubierta([r.vertices], [], [v]) * c.cara.ancho * c.cara.alto < G.AREA_MINIMA_M2, `${c.nombre}: la salida pisa a una vecina`);
+    }
+  }
+  assert.deepEqual([...motivos].sort(), ["SIN_VECINA", "YA_PEGADA"], "los casos no cubren los motivos");
+});
+
+await prueba("ajustar el borde: sólo se mueven los dos puntos del borde (o se saca uno repetido), y la zona horaria conserva su sentido", () => {
+  const c = BORDES.find((x) => /primer clic/.test(x.nombre));
+  assert.ok(c, "falta el caso de la L");
+  const r = E.ajustarBordeAVecina(c.zona, c.vecinas, c.cara);
+  const movidos = c.zona.map((p, i) => (p[0] !== r.vertices[i][0] || p[1] !== r.vertices[i][1] ? i : -1)).filter((i) => i >= 0);
+  assert.deepEqual(movidos, [1, 2], "se movieron otros puntos que los dos del borde");
+  assert.equal(r.borde, 1);
+  const horaria = BORDES.find((x) => /horaria/.test(x.nombre));
+  assert.ok(G.areaFirmada(E.ajustarBordeAVecina(horaria.zona, horaria.vecinas, horaria.cara).vertices) < 0, "la zona horaria quedó antihoraria");
+});
+
+await prueba("ajustar el borde: 500 al azar, toda salida pasa validarZona y no pisa a la vecina más que antes", () => {
+  let s = 7;
+  const az = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  let hechos = 0;
+  for (let k = 0; k < 500; k++) {
+    const u0 = 0.05 + 0.3 * az(), x = 0.4 + 0.2 * az(), g = (az() - 0.5) * 0.1;
+    const z = cuadrado(u0, 0.1 * az(), x, 0.9 + 0.1 * az()).map((p) => p.map(G.cuantizarNumero));
+    const n = cuadrado(x + g, 0.2 * az(), 0.95, 0.8 + 0.2 * az()).map((p) => p.map(G.cuantizarNumero));
+    const cara = { ancho: 1 + 2 * az(), alto: 1 + az() };
+    const r = E.ajustarBordeAVecina(z, [n], cara);
+    if (!r.vertices) continue;
+    hechos++;
+    assert.equal(G.validarZona(r.vertices, cara.ancho, cara.alto).codigo, null, `juego ${k}: la salida no es válida`);
+    const umbral = G.AREA_MINIMA_M2 / (cara.ancho * cara.alto) / 2;
+    assert.ok(G.areaCubierta([r.vertices], [], [n]) <= Math.max(G.areaCubierta([z], [], [n]), umbral) + 1e-12, `juego ${k}: pisa más que antes`);
+    assert.ok(Math.abs(r.distanciaM) <= E.DISTANCIA_MAXIMA_DE_AJUSTE_M, `juego ${k}: ajustó más de 5 cm`);
+  }
+  assert.ok(hechos > 200, `sólo ${hechos} ajustes en 500: la prueba casi no prueba nada`);
+});
+
+await prueba("ajustar el borde en el reductor: un paso de deshacer, la zona queda elegida, «Mirar» no hace nada, `ignorar` deja fuera a una vecina y los tres avisos", () => {
+  const z1 = zona("z1", 1, cuadrado(0, 0, 0.48, 1)), z2 = zona("z2", 2, cuadrado(0.49, 0, 1, 0.5)), z3 = zona("z3", 3, cuadrado(0.5, 0.5, 1, 1));
+  const e = conZonas([z1, z2, z3], { seleccion: { zona: "z1", vertice: 2 } });
+  // La más cercana es z2 (1 cm): el borde derecho va a u = 0,49.
+  const f = E.reducir(e, { tipo: "ajustarBorde", clave: "z1" });
+  assert.deepEqual(f.zonas[0].vertices, cuadrado(0, 0, 0.49, 1));
+  assert.equal(f.zonas[1], z2, "se tocó la vecina");
+  assert.equal(f.atras.length, 1, "no es un paso de deshacer");
+  assert.deepEqual(f.seleccion, { zona: "z1", vertice: null });
+  assert.equal(f.sucio, true);
+  assert.equal(f.aviso, null);
+  assert.deepEqual(E.reducir(f, { tipo: "deshacer" }).zonas[0].vertices, z1.vertices, "deshacer no vuelve a lo de antes");
+  // Si z2 no cuenta (sus fechas no se cruzan con las de z1), se pega a z3 (2 cm).
+  const g = E.reducir(e, { tipo: "ajustarBorde", clave: "z1", ignorar: ["z2"] });
+  assert.deepEqual(g.zonas[0].vertices, cuadrado(0, 0, 0.5, 1), "`ignorar` no dejó fuera a la vecina");
+  // Un segundo clic: pegarse a z3 pisaría a z2 → no cambia nada y lo dice.
+  const h = E.reducir(f, { tipo: "ajustarBorde", clave: "z1" });
+  assert.equal(h.zonas, f.zonas);
+  assert.equal(h.aviso, E.AVISO_NO_QUEDA_LIMPIA);
+  assert.equal(h.atras.length, f.atras.length);
+  // Sin vecina cerca y ya pegada.
+  const lejos = conZonas([zona("a", 1, cuadrado(0, 0, 0.3, 1)), z2], { seleccion: { zona: "a", vertice: null } });
+  const sin = E.reducir(lejos, { tipo: "ajustarBorde", clave: "a" });
+  assert.equal(sin.zonas, lejos.zonas);
+  assert.equal(sin.aviso, E.AVISO_SIN_VECINA);
+  const pegadas = conZonas([zona("a", 1, cuadrado(0, 0, 0.5, 1)), zona("b", 2, cuadrado(0.5, 0, 1, 1))]);
+  assert.equal(E.reducir(pegadas, { tipo: "ajustarBorde", clave: "a" }).aviso, E.AVISO_YA_PEGADA);
+  // Los avisos son los de la pantalla (voseo).
+  assert.match(E.AVISO_SIN_VECINA, /acercala con el imán/);
+  assert.match(E.AVISO_NO_QUEDA_LIMPIA, /ajustalo a mano/);
+  // «Mirar» no edita; una clave que no está o sin medidas, nada.
+  const mirar = E.reducir(e, { tipo: "elegirModo", modo: "mirar" });
+  assert.equal(E.reducir(mirar, { tipo: "ajustarBorde", clave: "z1" }), mirar, "en «Mirar» ajustó");
+  assert.equal(E.reducir(e, { tipo: "ajustarBorde", clave: "nadie" }), e);
+  const sinMedidas = { ...e, medidas: null };
+  assert.equal(E.reducir(sinMedidas, { tipo: "ajustarBorde", clave: "z1" }), sinMedidas);
+});
+
 console.log(`\n${hechas} pruebas de zonas en verde`);

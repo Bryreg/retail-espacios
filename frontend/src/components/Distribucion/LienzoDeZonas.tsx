@@ -1,9 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Grid3x3, Magnet, Maximize2, MousePointer2, Pentagon, Redo2, Square, Undo2, X } from "lucide-react";
+import { ArrowRightToLine, Grid3x3, Magnet, Maximize2, MousePointer2, Pentagon, Redo2, Square, Undo2, X } from "lucide-react";
 import { capaQueSeMuestra, planoAlDia, useDistribucionStore } from "../../store/distribucionStore";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import {
-  AVISO_SIN_ACTIVA, RADIO_DEL_IMAN_PX, esClic, imantar, objetivosDelIman, puntoInterior, zonaEnPunto,
+  AVISO_SIN_ACTIVA, RADIO_DEL_IMAN_PX, TOQUE_PX, esClic, imantar, imantarTraslado, objetivosDelIman, puntoInterior, zonaEnPunto,
   type Accion, type Herramienta, type Manija,
 } from "../../utils/edicionDeZonas";
 import { cuentaEseDia, pct, seCruzanEnFechas } from "../../utils/participaciones";
@@ -68,8 +68,8 @@ const NOMBRES_DE_EXCLUSION: Record<string, string> = {
 
 const ZOOM_MAXIMO = 20;
 const PASO_DE_RUEDA = 1.15;
-/** Distancia (px de pantalla) para tocar una manija, el primer punto o un borde. */
-const TOQUE_PX = 8;
+// La distancia para tocar una manija, el primer punto o un borde (`TOQUE_PX`)
+// vive en `edicionDeZonas.ts`: la misma en el lienzo y en el 3D.
 
 const metros = (x: number) => x.toFixed(2).replace(".", ",");
 const camino = (pts: readonly Punto[], W: number, H: number) =>
@@ -319,17 +319,10 @@ export default function LienzoDeZonas({ fixtureId, sede }: { fixtureId: string; 
         const z = (ed.arrastre?.antes ?? ed.zonas).find((x) => x.clave === g.clave);
         if (z && ed.iman) {
           // El imán mueve la zona entera: el punto suyo que caiga más cerca
-          // de un objetivo se pega, y los demás lo siguen.
+          // de un objetivo se pega, y los demás lo siguen (la misma cuenta
+          // que el 3D, `imantarTraslado`).
           const { objetivos, segmentos } = objetivosDelIman(ed, g.clave, guias);
-          const r = radioUV();
-          let mejor: [number, number] | null = null, dmin = Infinity;
-          for (const q of z.vertices) {
-            const a: Punto = [q[0] + du, q[1] + dv];
-            const b = imantar(a, objetivos, segmentos, r);
-            const dd = Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H);
-            if ((b[0] !== a[0] || b[1] !== a[1]) && dd < dmin) { dmin = dd; mejor = [b[0] - a[0], b[1] - a[1]]; }
-          }
-          if (mejor) { du += mejor[0]; dv += mejor[1]; }
+          [du, dv] = imantarTraslado(z.vertices, du, dv, objetivos, segmentos, radioUV(), W, H);
         }
         programar({ tipo: "moverZona", clave: g.clave, du, dv });
         return;
@@ -534,6 +527,20 @@ export default function LienzoDeZonas({ fixtureId, sede }: { fixtureId: string; 
     </button>
   );
 
+  /** «Ajustar el borde a la vecina»: no cuentan como vecinas las zonas de
+   *  participaciones cuyas fechas no se cruzan con las de la elegida (pueden
+   *  pisarse), como en «Ajustar al contratado» de la leyenda. */
+  const ajustarBorde = () => {
+    if (!elegida || !d) return;
+    const mias = d.terminosPorS.get(elegida.participacionSpaceId) ?? [];
+    const ignorar = ed.zonas.filter((z) => {
+      if (z.clave === elegida.clave || z.participacionSpaceId === elegida.participacionSpaceId) return false;
+      const suyas = d.terminosPorS.get(z.participacionSpaceId);
+      return !suyas || !seCruzanEnFechas(mias, suyas, hoy);
+    }).map((z) => z.clave);
+    despachar({ tipo: "ajustarBorde", clave: elegida.clave, ignorar });
+  };
+
   const pista = ed.aviso
     ?? (!alDia ? "El plano tiene cambios sin guardar: esperá un momento."
       : ed.modo === "mirar" ? "Mirar: tocá una zona para ver de quién es. Para dibujar, pasá a «Editar»."
@@ -569,6 +576,13 @@ export default function LienzoDeZonas({ fixtureId, sede }: { fixtureId: string; 
           "Ver los entrepaños y los parantes (sólo para ver: no imantan).")}
         {ed.guias && interruptor(ed.imanAGuias, { tipo: "alternarImanAGuias" }, <Magnet size={12} />, "Imán a guías",
           "Que el imán también pegue a los entrepaños y los parantes.")}
+        <button
+          type="button" data-ajustar-borde disabled={!puedeEditar || !elegida || !!ed.trazo} onClick={ajustarBorde}
+          title="Ajustar el borde a la vecina: pega el borde más cercano de la zona elegida al de la zona de al lado (hasta 5 cm). Sólo mueve los dos puntos de ese borde."
+          className="flex items-center gap-1 rounded-md border border-dark-line-2 px-2 py-1 text-[11px] font-semibold text-dark-ink-2 hover:text-dark-ink-1 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ArrowRightToLine size={12} /><span>Ajustar el borde</span>
+        </button>
         <span className="ml-auto flex items-center gap-1">
           <span className="text-[10px] text-dark-ink-3">
             Cara {activaCara.cara} · {metros(W)} × {metros(H)} m · {Math.round(vista.zoom * 100)} %

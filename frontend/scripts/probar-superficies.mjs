@@ -963,4 +963,102 @@ await prueba("el tres cuartos de Distribución es el de MENOR giro que abarca la
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I2 · «Editar en el 3D»: el corte SIN recortar y el radio del imán
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Para arrastrar en el 3D hace falta el corte del rayo con el plano de la
+// cara SIN recortar (`uvEnElPlano`: el reductor recorta), y el imán de 6 px de
+// pantalla pasado a u,v con la escala local de la proyección (`radioEnLaCara`:
+// en tres cuartos u se achica). Contra `puntoDeLaCara` y una cámara de three.
+
+console.log("superficies · fase 2 · I2: el corte sin recortar y el radio del imán en el 3D");
+
+await prueba("uvEnElPlano: ida y vuelta con puntoDeLaCara en todas las caras (robatope y tapa incluidos), también FUERA de la cara; adentro, lo mismo que corteConLaCara (u, v y t)", () => {
+  let s = 8;
+  const az = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (const [nombre, f, cara] of CARAS_3D) {
+    const sup = supDe(f, cara);
+    const normal = rotarX(sup.orientacion === "arriba" ? [0, 1, 0] : cara === "B" ? [0, 0, 1] : [0, 0, -1], sup.giroX);
+    let vistos = 0, adentro = 0;
+    for (let k = 0; k < 400; k++) {
+      const u = -0.5 + 2 * az(), v = -0.5 + 2 * az();
+      const p = Z.puntoDeLaCara(sup, cara, u, v);
+      const d = 1 + 5 * az();
+      const camara = [p[0] + normal[0] * d + (az() - 0.5) * 2, p[1] + normal[1] * d + (az() - 0.5), p[2] + normal[2] * d + (az() - 0.5) * 2];
+      const dir = [p[0] - camara[0], p[1] - camara[1], p[2] - camara[2]];
+      if (dir[0] * normal[0] + dir[1] * normal[1] + dir[2] * normal[2] >= -1e-6) continue;
+      const q = Z.uvEnElPlano({ origen: camara, dir }, sup, cara);
+      assert.ok(q, `${nombre}: el rayo de enfrente no cortó el plano`);
+      assert.ok(Math.abs(q.u - u) < 1e-9 && Math.abs(q.v - v) < 1e-9, `${nombre}: (${q.u}, ${q.v}) y no (${u}, ${v})`);
+      vistos++;
+      if (u > 0.01 && u < 0.99 && v > 0.01 && v < 0.99) {
+        const c = Z.corteConLaCara({ origen: camara, dir }, { [cara]: sup });
+        assert.ok(c && c.cara === cara, `${nombre}: corteConLaCara no tocó la cara`);
+        assert.ok(Math.abs(c.u - q.u) < 1e-12 && Math.abs(c.v - q.v) < 1e-12 && Math.abs(c.t - q.t) < 1e-12, `${nombre}: no coincide con corteConLaCara`);
+        adentro++;
+      }
+    }
+    assert.ok(vistos > 300 && adentro > 50, `${nombre}: ${vistos} rayos (${adentro} adentro): la prueba casi no prueba nada`);
+    assert.ok(vistos - adentro > 100, `${nombre}: casi ningún rayo cayó fuera de la cara`);
+    // Desde atrás y paralelo al plano: null.
+    const m = Z.puntoDeLaCara(sup, cara, 0.5, 0.5);
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] - normal[0] * 2, m[1] - normal[1] * 2, m[2] - normal[2] * 2], dir: normal }, sup, cara), null, `${nombre}: desde atrás`);
+    const paralelo = sup.orientacion === "arriba" ? [1, 0, 0] : rotarX([1, 0, 0], sup.giroX);
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] + normal[0], m[1] + normal[1], m[2] + normal[2]], dir: paralelo }, sup, cara), null, `${nombre}: paralelo`);
+    // De frente pero con el plano ya detrás del origen (t < 0): null.
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] - normal[0] * 2, m[1] - normal[1] * 2, m[2] - normal[2] * 2], dir: [-normal[0], -normal[1], -normal[2]] }, sup, cara), null, `${nombre}: el plano detrás del origen`);
+    // Y alejándose de la cara desde adelante: null.
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] + normal[0] * 2, m[1] + normal[1] * 2, m[2] + normal[2] * 2], dir: normal }, sup, cara), null, `${nombre}: alejándose de la cara`);
+  }
+  // La mural no tiene B; desde atrás (+z) su A no se corta.
+  const mural = { type: "gondola", gondolaType: "wall", w: 1, d: 0.4, h: 1.9 };
+  assert.equal(S.superficieDeCara(mural, "B"), null);
+  assert.equal(Z.uvEnElPlano({ origen: [0, 1, 3], dir: [0, 0, -1] }, supDe(mural, "A"), "A"), null, "la A de la mural se corta desde atrás");
+});
+
+await prueba("radioEnLaCara: 6 px de pantalla son 6 ± 0,3 px en u y en v, de frente y en tres cuartos (30°, 50°, 70°), con una cámara de three", () => {
+  const f = { type: "gondola", w: 3, d: 0.9, h: 1.8, modulo: 1 };
+  const sup = supDe(f, "A");
+  const W = 560, H = 700;
+  let peor = 0;
+  for (const giro of [0, 30, 50, 70]) {
+    const cam = new THREE.PerspectiveCamera(50, W / H, 0.1, 500);
+    const a = (giro * Math.PI) / 180, dist = 3.2;
+    cam.position.set(Math.sin(a) * dist, 1.3, -sup.plano - Math.cos(a) * dist);
+    cam.lookAt(0, 0.9, -sup.plano);
+    cam.updateMatrixWorld();
+    cam.updateProjectionMatrix();
+    const aPantalla = ([u, v]) => {
+      const [x, y, z] = Z.puntoDeLaCara(sup, "A", u, v);
+      const w = new THREE.Vector3(x, y, z).project(cam);
+      return w.z < 1 ? { x: ((w.x + 1) / 2) * W, y: ((1 - w.y) / 2) * H } : null;
+    };
+    for (const p of [[0.2, 0.3], [0.5, 0.5], [0.85, 0.8]]) {
+      const r = Z.radioEnLaCara(aPantalla, p, 6);
+      assert.ok(r && r.u > 0 && r.v > 0, `giro ${giro}°, ${p}: sin radio`);
+      const c = aPantalla(p), cu = aPantalla([p[0] + r.u, p[1]]), cv = aPantalla([p[0], p[1] + r.v]);
+      const du = Math.hypot(cu.x - c.x, cu.y - c.y), dv = Math.hypot(cv.x - c.x, cv.y - c.y);
+      assert.ok(Math.abs(du - 6) < 0.3 && Math.abs(dv - 6) < 0.3, `giro ${giro}°, ${p}: ${du.toFixed(3)} px en u y ${dv.toFixed(3)} en v`);
+      peor = Math.max(peor, Math.abs(du - 6), Math.abs(dv - 6));
+    }
+    // En tres cuartos u se achica en pantalla: el radio en u crece.
+    if (giro === 70) {
+      const frente = (() => {
+        const c0 = new THREE.PerspectiveCamera(50, W / H, 0.1, 500);
+        c0.position.set(0, 1.3, -sup.plano - 3.2); c0.lookAt(0, 0.9, -sup.plano); c0.updateMatrixWorld(); c0.updateProjectionMatrix();
+        return Z.radioEnLaCara(([u, v]) => {
+          const w = new THREE.Vector3(...Z.puntoDeLaCara(sup, "A", u, v)).project(c0);
+          return { x: ((w.x + 1) / 2) * W, y: ((1 - w.y) / 2) * H };
+        }, [0.5, 0.5], 6);
+      })();
+      assert.ok(Z.radioEnLaCara(aPantalla, [0.5, 0.5], 6).u > 1.5 * frente.u, "en tres cuartos el radio en u no crece");
+    }
+  }
+  console.log(`         peor diferencia: ${peor.toFixed(3)} px`);
+  // Detrás de la cámara no hay radio.
+  assert.equal(Z.radioEnLaCara(() => null, [0.5, 0.5], 6), null);
+  assert.equal(Z.radioEnLaCara(() => ({ x: 10, y: 10 }), [0.5, 0.5], 6), null, "una proyección degenerada dio radio");
+});
+
 console.log(`\n${hechas} pruebas de superficies en verde`);

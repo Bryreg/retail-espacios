@@ -7107,4 +7107,49 @@ prueba("al entrar en Distribución, «De frente» abarca la cara entera en el pa
   assert.match(cuerpoEscena, /\? `\$\{pedidoDeToma\.n\}\|\$\{tamanoDelLienzo\}\|\$\{filasDeLaToma\(pedidoDeToma\)\}` : "";/);
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I2 · el trazo en curso, también en el 3D
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Mientras se arrastraba un rectángulo (en el lienzo), el 3D no mostraba nada
+// hasta soltar; con «Editar en el 3D» se dibuja ahí mismo. `ZonasDelMueble`
+// recibe el trazo armado (no lee stores) y lo dibuja como una cinta más.
+
+console.log("\nmuebles · fase 2 · I2: el trazo en curso en el 3D");
+
+prueba("el trazo en curso se dibuja en el 3D: una cinta discontinua en el tono de la participación activa, arriba de todo, sólo en la cara que se edita y sin robar el clic (ejecutado)", () => {
+  const mueble = { type: "gondola", w: 0.9, d: 0.9, h: 1.8 };
+  const sup = ZR.superficieDeCara(mueble, "A"), otra = ZR.superficieDeCara(mueble, "B");
+  const z1 = { clave: "z1", spaceId: 7, vertices: [[0.1, 0.2], [0.5, 0.2], [0.5, 0.8], [0.1, 0.8]] };
+  const como = { estampa: { indice: 0, tono: "#1A67C2", textura: "rayado45" }, reserva: false, cuenta: true, rotulo: "1 · 20 %" };
+  const trazo = { vertices: [[0.55, 0.2], [0.85, 0.2], [0.85, 0.6], [0.55, 0.6]], tono: "#A4338F" };
+  const caras = [
+    { cara: "A", superficie: sup, editada: true, zonas: [z1], historia: [] },
+    { cara: "B", superficie: otra, editada: false, zonas: [], historia: [] },
+  ];
+  const cintas = (t) => mallasConProps(ZR.ZonasDelMueble({ caras, participaciones: new Map([[7, como]]), resaltada: 7, seleccionada: "z1", trazo: t }))
+    .filter((x) => !x.grupo && x.props.material.depthWrite !== false);
+  const sin = cintas(null), con = cintas(trazo);
+  assert.equal(con.length, sin.length + 1, "el trazo no es UNA cinta más (o se dibuja en las dos caras)");
+  const nueva = con.find((m) => m.props.material.color.getHexString() === "a4338f");
+  assert.ok(nueva, "el trazo no va en el tono de la participación activa");
+  assert.equal(typeof nueva.props.raycast, "function");
+  assert.equal(nueva.props.raycast(), null, "el trazo roba el clic al volumen del mueble");
+  assert.equal(nueva.props.userData?.chrome, true, "el trazo sale en las capturas");
+  assert.equal(nueva.props.renderOrder, 2 + ZR.NIVEL_MAXIMO_DE_CINTA, "el trazo no va en el nivel más alto");
+  assert.ok(con.every((m) => m === nueva || m.props.renderOrder < nueva.props.renderOrder), "una cinta queda encima del trazo");
+  // Discontinua: tramos sueltos a lo largo del perímetro, no un anillo.
+  assert.ok(nueva.props.geometry.index.count / 6 > 4, "el trazo es una cinta continua");
+  // En la cara que se edita (la A, en −plano).
+  const pos = nueva.props.geometry.getAttribute("position");
+  const v = new THREE_.Vector3(pos.getX(0), pos.getY(0), pos.getZ(0)).applyMatrix4(nueva.matriz);
+  assert.ok(v.z < 0, "el trazo no está en la cara que se edita");
+  // Sin tono (la participación activa sin estampa): gris.
+  const gris = cintas({ ...trazo, tono: null }).filter((m) => m.props.renderOrder === 2 + ZR.NIVEL_MAXIMO_DE_CINTA);
+  assert.equal(gris.length, 1);
+  assert.equal(gris[0].props.material.color.getHexString(), "8d9499", "el trazo sin tono no va en gris");
+  // Con menos de dos puntos, nada.
+  assert.equal(cintas({ vertices: [[0.5, 0.5]], tono: "#A4338F" }).length, sin.length);
+});
+
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

@@ -25,7 +25,7 @@
  * con esa rotación la cara visible da siempre hacia quien mira.)
  */
 import type { Superficie } from "./superficie";
-import type { Poligono } from "./zonasGeometria";
+import type { Poligono, Punto } from "./zonasGeometria";
 
 export type V3 = [number, number, number];
 
@@ -138,6 +138,51 @@ export function corteConLaCara(rayo: { origen: V3; dir: V3 }, caras: { A?: Super
     if (mejor === null || t < mejor.t) mejor = { t, cara, u: enLaCara(u), v: enLaCara(v) };
   }
   return mejor;
+}
+
+/**
+ * Dónde corta el rayo el plano de ESA cara, en u,v SIN recortar y sin mirar
+ * el rectángulo de la cara: es para ARRASTRAR («Editar en el 3D»), que sigue
+ * al puntero más allá del borde (el reductor recorta). `corteConLaCara` es
+ * para empezar un gesto: recorta y descarta lo que cae a más de 2 cm. Rayo en
+ * el marco del mueble; se lleva al marco girado del robatope como en
+ * `corteConLaCara`. `null` si el rayo es paralelo, va hacia atrás o llega por
+ * la espalda de la cara (A sólo desde −z, B desde +z, la tapa desde arriba).
+ */
+export function uvEnElPlano(rayo: { origen: V3; dir: V3 }, sup: Superficie, cara: Cara): { u: number; v: number; t: number } | null {
+  const W = sup.ancho, H = sup.alto;
+  const o = girarX(rayo.origen, -sup.giroX);
+  const d = girarX(rayo.dir, -sup.giroX);
+  if (sup.orientacion === "arriba") {
+    if (!(d[1] < 0)) return null;
+    const t = (sup.plano - o[1]) / d[1];
+    if (!(t > 0)) return null;
+    const x = o[0] + t * d[0], z = o[2] + t * d[2];
+    return { u: 0.5 - x / W, v: (z + H / 2) / H, t };
+  }
+  const plano = cara === "A" ? -sup.plano : sup.plano;
+  if (cara === "A" ? !(d[2] > 0) : !(d[2] < 0)) return null;
+  const t = (plano - o[2]) / d[2];
+  if (!(t > 0)) return null;
+  const x = o[0] + t * d[0], y = o[1] + t * d[1];
+  return { u: cara === "A" ? 0.5 - x / W : 0.5 + x / W, v: y / H, t };
+}
+
+/**
+ * El radio del imán en u,v que mide `px` píxeles de pantalla alrededor de p:
+ * la escala local de la proyección, por diferencias finitas en u y en v (en
+ * tres cuartos u se achica y v no, y el radio se agranda en el eje que se
+ * achica). `aPantalla` lleva un punto de la cara a píxeles. `null` si la
+ * proyección no sirve (detrás de la cámara, o degenerada).
+ */
+export function radioEnLaCara(aPantalla: (p: Punto) => { x: number; y: number } | null, p: Punto, px: number):
+  { u: number; v: number } | null {
+  const h = 1e-3;
+  const a = aPantalla(p), bu = aPantalla([p[0] + h, p[1]]), bv = aPantalla([p[0], p[1] + h]);
+  if (!a || !bu || !bv) return null;
+  const su = Math.hypot(bu.x - a.x, bu.y - a.y) / h, sv = Math.hypot(bv.x - a.x, bv.y - a.y) / h;
+  if (!(su > 0) || !(sv > 0) || !Number.isFinite(su) || !Number.isFinite(sv)) return null;
+  return { u: px / su, v: px / sv };
 }
 
 /** Un mueble del plano como caja: centro de la huella en el piso, medidas y

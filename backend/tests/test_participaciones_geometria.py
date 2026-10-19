@@ -166,6 +166,26 @@ def test_ajustar_al_contratado_no_pasa_el_tope():
         assert dibujado_pb(c["salida"], _exclusiones(c["exclusiones"])) <= c["tope"], c["nombre"]
 
 
+def test_ajustar_el_borde_a_la_vecina_deja_zonas_que_el_servidor_acepta():
+    """Fase 2 · I2. Las salidas de «Ajustar el borde a la vecina»
+    (``ajustarBordeAVecina``, sólo del navegador: el servidor nunca ajusta,
+    sólo juzga lo que llega): cada una pasa la validación de este lado y no
+    pisa a ninguna de sus vecinas 1 cm² o más, contado de este lado."""
+    from app.services.zonas_geometria import AREA_MINIMA_M2, area_cubierta, validar_zona
+
+    casos = CASOS.get("bordes", [])
+    assert len(casos) >= 8, "faltan los casos `bordes` en casos/zonas.json"
+    con_salida = [c for c in casos if "salida" in c]
+    assert len(con_salida) >= 5, "los casos `bordes` casi no tienen salidas"
+    for c in con_salida:
+        ancho, alto = c["cara"]["ancho"], c["cara"]["alto"]
+        _, codigo = validar_zona(c["salida"], ancho, alto)
+        assert codigo is None, f"{c['nombre']}: la salida no pasa la validación del servidor ({codigo})"
+        for k, v in enumerate(c["vecinas"]):
+            m2 = area_cubierta([c["salida"]], [], [v]) * ancho * alto
+            assert m2 < AREA_MINIMA_M2, f"{c['nombre']}: la salida pisa a la vecina {k} ({m2 * 1e4:.2f} cm²)"
+
+
 def test_el_peor_caso_es_rapido():
     """§6.5: 240 vértices de estrellas que se cruzan sobre zócalo y parante.
     Medido ≈ 0,09 s la intersección y ≈ 0,12 s la medición entera en CPython;

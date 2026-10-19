@@ -18,12 +18,14 @@
  *
  * También viven acá, puras, las cuentas del editor que no son del servidor:
  * la fusión de tres vías ante `version_vieja` (§9.8), «Ajustar al
- * contratado», el imán y el punto interior donde va el rótulo.
+ * contratado», «Ajustar el borde a la vecina», el imán (también el de una
+ * zona que se mueve entera, el mismo en el lienzo y en el 3D) y el punto
+ * interior donde va el rótulo.
  */
 import type { ZonaOut } from "../api/participaciones";
 import { juzgar, type OpcionesDeJuicio, type Juicio, type Termino } from "./participaciones";
 import {
-  AREA_MINIMA_M2, MAX_VERTICES, areaCubierta, areaFirmada, cajas, cuantizarNumero, limpiar, medir,
+  AREA_MINIMA_M2, MAX_VERTICES, areaCubierta, areaFirmada, cajas, cuantizarNumero, limpiar, medir, validarZona,
   type Exclusion, type Medidas, type Poligono, type Punto,
 } from "./zonasGeometria";
 
@@ -99,6 +101,9 @@ export type Accion =
   | { tipo: "borrarVertice"; clave: string; vertice: number }
   | { tipo: "borrarZona"; clave: string }
   | { tipo: "ajustarZonas"; spaceId: number; vertices: readonly Poligono[] }
+  /** «Ajustar el borde a la vecina»: `ignorar`, las claves de las zonas que
+   *  no cuentan como vecinas (participaciones cuyas fechas no se cruzan). */
+  | { tipo: "ajustarBorde"; clave: string; ignorar?: readonly string[] }
   | { tipo: "usarZonas"; spaceId: number; zonas: readonly ZonaEnEdicion[] }
   | { tipo: "deshacer" }
   | { tipo: "rehacer" }
@@ -119,6 +124,9 @@ export const UMBRAL_CLIC_PX = 4;
 export const PASO_DE_FLECHA_M = 0.01;
 /** El radio del imán, en píxeles de pantalla (el lienzo lo pasa a u,v). */
 export const RADIO_DEL_IMAN_PX = 6;
+/** Distancia (px de pantalla) para tocar una manija, el primer punto del
+ *  polígono o un borde: la misma en el lienzo y en el 3D. */
+export const TOQUE_PX = 8;
 /** Ni el escalado ni un rectángulo dejan una zona más angosta que esto (u,v). */
 const MIN_EXTENSION = 0.001;
 
@@ -126,6 +134,9 @@ export const AVISO_TRIANGULO = "Un triángulo no puede perder un punto: borrá l
 export const AVISO_SIN_ACTIVA = "Elegí una participación en la lista para dibujar su zona.";
 export const AVISO_TOPE_DE_PUNTOS = `Una zona tiene hasta ${MAX_VERTICES} puntos: cerrala (Enter o un clic en el primero) o partila en dos.`;
 export const AVISO_POCOS_PUNTOS = "Una zona necesita al menos tres puntos.";
+export const AVISO_SIN_VECINA = "No hay una zona vecina a menos de 5 cm con un borde de frente a éste: acercala con el imán.";
+export const AVISO_YA_PEGADA = "La zona ya está pegada a su vecina.";
+export const AVISO_NO_QUEDA_LIMPIA = "Ajustar ese borde pisaría otra zona o cruzaría la zona: ajustalo a mano.";
 
 export function estadoInicial(): EstadoDeEdicion {
   return {
@@ -385,7 +396,7 @@ function reemplazarZona(zonas: readonly ZonaEnEdicion[], clave: string, f: (z: Z
 /** Las acciones que cambian zonas: en «Mirar» no hacen nada. */
 const EDITAN = new Set<Accion["tipo"]>([
   "empezarTrazo", "estirarTrazo", "agregarPunto", "quitarPunto", "cerrarTrazo", "empezarArrastre", "moverZona", "empujar",
-  "moverVertice", "escalar", "insertarVertice", "borrarVertice", "borrarZona", "ajustarZonas", "usarZonas",
+  "moverVertice", "escalar", "insertarVertice", "borrarVertice", "borrarZona", "ajustarZonas", "ajustarBorde", "usarZonas",
   "deshacer", "rehacer", "descartarCambios",
 ]);
 
@@ -525,6 +536,19 @@ export function reducir(e: EstadoDeEdicion, a: Accion): EstadoDeEdicion {
       const zonas = e.zonas.map((z) => (z.participacionSpaceId === a.spaceId
         ? { ...z, vertices: a.vertices[k++].map((p) => enLaCara(p)) } : z));
       return identicas(zonas, e.zonas) ? e : conZonas(e, zonas);
+    }
+    case "ajustarBorde": {
+      // «Ajustar el borde a la vecina»: un borde por clic, un paso de
+      // deshacer; si no se puede, la pista dice por qué (el aviso sólo lo
+      // escribe el reductor).
+      const z = e.zonas.find((x) => x.clave === a.clave);
+      if (!z || !e.medidas || !(e.medidas.ancho > 0) || !(e.medidas.alto > 0)) return e;
+      const fuera = new Set(a.ignorar ?? []);
+      const vecinas = e.zonas.filter((x) => x.clave !== a.clave && !fuera.has(x.clave)).map((x) => x.vertices);
+      const r = ajustarBordeAVecina(z.vertices, vecinas, e.medidas);
+      if ("motivo" in r) return conAviso(e, AVISOS_DEL_AJUSTE[r.motivo]);
+      return conZonas({ ...e, arrastre: null }, reemplazarZona(e.zonas, a.clave, () => ({ ...z, vertices: r.vertices })),
+        { seleccion: { zona: a.clave, vertice: null } });
     }
     case "usarZonas": {
       const otras = e.zonas.filter((z) => z.participacionSpaceId !== a.spaceId);
@@ -709,6 +733,26 @@ export function objetivosDelIman(e: Pick<EstadoDeEdicion, "zonas" | "imanAGuias"
   return { objetivos, segmentos };
 }
 
+/**
+ * El imán de una zona que se MUEVE entera: se imanta cada vértice desplazado
+ * (du, dv) y gana el que queda más cerca de su objetivo, medido en metros
+ * (`ancho` × `alto`); los demás lo siguen. Devuelve el desplazamiento ya
+ * imantado (el mismo si nada cae en el radio). Es la cuenta que antes vivía
+ * en línea en el lienzo: la usan el lienzo y el 3D («Editar en el 3D»), así
+ * los dos pegan igual. `radio` en u,v, como en `imantar`.
+ */
+export function imantarTraslado(z: Poligono, du: number, dv: number, objetivos: readonly Punto[],
+  segmentos: readonly (readonly [Punto, Punto])[], radio: number | { u: number; v: number }, ancho: number, alto: number): [number, number] {
+  let mejor: [number, number] | null = null, dmin = Infinity;
+  for (const q of z) {
+    const a: Punto = [q[0] + du, q[1] + dv];
+    const b = imantar(a, objetivos, segmentos, radio);
+    const dd = Math.hypot((b[0] - a[0]) * ancho, (b[1] - a[1]) * alto);
+    if ((b[0] !== a[0] || b[1] !== a[1]) && dd < dmin) { dmin = dd; mejor = [b[0] - a[0], b[1] - a[1]]; }
+  }
+  return mejor ? [du + mejor[0], dv + mejor[1]] : [du, dv];
+}
+
 /* ── Ajustar al contratado ─────────────────────────────────────────────────── */
 
 /**
@@ -775,6 +819,177 @@ export function ajustarAlContratado(zonasS: readonly Poligono[], E: readonly Exc
     }
   }
   return mejor;
+}
+
+/* ── Ajustar el borde a la vecina ──────────────────────────────────────────── */
+
+/** Hasta dónde se ajusta un borde (hueco o solape), en metros. */
+export const DISTANCIA_MAXIMA_DE_AJUSTE_M = 0.05;
+/** Cuánto pueden diferir de «de frente» las normales de los dos bordes. */
+export const ANGULO_MAXIMO_DE_AJUSTE_RAD = (10 * Math.PI) / 180;
+/** El tramo que comparten los dos bordes, como fracción del más corto. */
+export const TRAMO_MINIMO_DE_AJUSTE = 0.3;
+/** Más cerca que esto (en metros) el borde ya está pegado. */
+const YA_PEGADA_M = 1e-4;
+/** Un punto se desliza por su otra arista sólo si ésta corta al borde de la
+ *  vecina con al menos 20°; si no, va perpendicular al borde. */
+const SENO_RASANTE = Math.sin((20 * Math.PI) / 180);
+/** Ni deslizándose un punto se va más lejos que esto (metros). */
+const DESLIZ_MAXIMO_M = 3 * DISTANCIA_MAXIMA_DE_AJUSTE_M;
+
+export type AjusteDeBorde =
+  | { vertices: Poligono; borde: number; vecina: number; distanciaM: number }
+  | { motivo: "SIN_VECINA" | "YA_PEGADA" | "NO_QUEDA_LIMPIA" };
+
+const AVISOS_DEL_AJUSTE: Record<"SIN_VECINA" | "YA_PEGADA" | "NO_QUEDA_LIMPIA", string> = {
+  SIN_VECINA: AVISO_SIN_VECINA, YA_PEGADA: AVISO_YA_PEGADA, NO_QUEDA_LIMPIA: AVISO_NO_QUEDA_LIMPIA,
+};
+
+type Metros = [number, number];
+/** +1 si el polígono (en metros) es antihorario, −1 si es horario. */
+const sentido = (p: readonly Metros[]): number => {
+  let s = 0;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length];
+    s += a[0] * b[1] - b[0] * a[1];
+  }
+  return s >= 0 ? 1 : -1;
+};
+/** La normal hacia AFUERA del borde a → b de un polígono de ese sentido. */
+const normalAfuera = (a: Metros, b: Metros, s: number): Metros => {
+  const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+  return [(s * dy) / l, (-s * dx) / l];
+};
+
+/**
+ * «Ajustar el borde a la vecina»: pega UN borde de la zona al borde de
+ * enfrente de una vecina, hasta 5 cm (hueco o solape), moviendo sólo los dos
+ * puntos de ese borde. Todo en METROS (u·ancho, v·alto), así los ángulos y
+ * las distancias son los de verdad:
+ *
+ *   1. Candidatos: cada par (borde e de la zona, borde f de una vecina) que se
+ *      MIRAN de frente (normales hacia afuera opuestas, hasta 10°; el sentido
+ *      de cada polígono se calcula, así una zona horaria da lo mismo), se
+ *      ACOMPAÑAN (la proyección de f sobre la recta de e comparte al menos el
+ *      30 % del más corto) y están CERCA (0,1 mm < |λ| ≤ 5 cm, λ desde el
+ *      medio del tramo compartido hasta la recta de f, a lo largo de la
+ *      normal de e: + hueco, − se pisan; |λ| ≤ 0,1 mm es «ya pegada»).
+ *   2. Orden: menor |λ|; a igual, mayor tramo; después el menor índice de
+ *      borde, de vecina y de borde de la vecina (determinista).
+ *   3. El movimiento: los dos puntos de e van hasta la recta de f, cada uno
+ *      DESLIZÁNDOSE por su otra arista (un rectángulo sigue rectángulo y las
+ *      esquinas sobre el borde de la cara se quedan ahí); si esa arista es casi
+ *      paralela a f (menos de 20°) o el deslizamiento pasa de 15 cm, el punto
+ *      va perpendicular a e. Después, recorte a la cara y cuantización, y se
+ *      sacan los puntos consecutivos repetidos (si quedan tres o más).
+ *   4. Se acepta el primer candidato cuyo resultado pasa `validarZona`, pisa a
+ *      esa vecina menos de medio cm² (la mitad del umbral del servidor, como
+ *      «Ajustar al contratado») y no pisa a ninguna otra más que antes (o más
+ *      que medio cm²). Si ninguno, no cambia nada y dice por qué.
+ *
+ * No pega a entrepaños, parantes ni zócalo (el pedido no deja imponer la
+ * atracción a baldas) ni al borde de la cara (eso lo hace el imán), y no mira
+ * lo contratado: es dibujo, no comercio (cerrar un hueco agranda la zona; la
+ * revisión en vivo lo marca y Ctrl+Z lo deshace).
+ */
+export function ajustarBordeAVecina(zona: Poligono, vecinas: readonly Poligono[], cara: { ancho: number; alto: number }): AjusteDeBorde {
+  const W = cara.ancho, H = cara.alto;
+  if (!(W > 0) || !(H > 0)) return { motivo: "SIN_VECINA" };
+  const aMetros = (p: Punto): Metros => [p[0] * W, p[1] * H];
+  const Z = zona.map(aMetros);
+  const n = Z.length;
+  if (n < 3) return { motivo: "SIN_VECINA" };
+  const sZ = sentido(Z);
+  const cosFrente = Math.cos(ANGULO_MAXIMO_DE_AJUSTE_RAD);
+  type Candidato = { i: number; k: number; j: number; lam: number; largo: number; c: Metros; nf: Metros };
+  const candidatos: Candidato[] = [];
+  let pegada = false;
+  vecinas.forEach((vp, k) => {
+    const N = vp.map(aMetros);
+    if (N.length < 3) return;
+    const sN = sentido(N);
+    for (let i = 0; i < n; i++) {
+      const a = Z[i], b = Z[(i + 1) % n];
+      const le = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (le < 1e-9) continue;
+      const te: Metros = [(b[0] - a[0]) / le, (b[1] - a[1]) / le];
+      const ne = normalAfuera(a, b, sZ);
+      for (let j = 0; j < N.length; j++) {
+        const c = N[j], d = N[(j + 1) % N.length];
+        const lf = Math.hypot(d[0] - c[0], d[1] - c[1]);
+        if (lf < 1e-9) continue;
+        const nf = normalAfuera(c, d, sN);
+        const cos = ne[0] * nf[0] + ne[1] * nf[1];
+        if (!(cos <= -cosFrente)) continue;                                   // no se miran de frente
+        const sc = (c[0] - a[0]) * te[0] + (c[1] - a[1]) * te[1];
+        const sd = (d[0] - a[0]) * te[0] + (d[1] - a[1]) * te[1];
+        const s0 = Math.max(0, Math.min(sc, sd)), s1 = Math.min(le, Math.max(sc, sd));
+        const largo = s1 - s0;
+        if (!(largo >= TRAMO_MINIMO_DE_AJUSTE * Math.min(le, lf))) continue;   // no se acompañan
+        const sm = (s0 + s1) / 2;
+        const p: Metros = [a[0] + sm * te[0], a[1] + sm * te[1]];
+        const lam = ((c[0] - p[0]) * nf[0] + (c[1] - p[1]) * nf[1]) / cos;  // + hueco, − se pisan
+        if (Math.abs(lam) > DISTANCIA_MAXIMA_DE_AJUSTE_M) continue;
+        if (Math.abs(lam) <= YA_PEGADA_M) { pegada = true; continue; }
+        candidatos.push({ i, k, j, lam, largo, c, nf });
+      }
+    }
+  });
+  if (candidatos.length === 0) return { motivo: pegada ? "YA_PEGADA" : "SIN_VECINA" };
+  candidatos.sort((x, y) => (Math.abs(x.lam) - Math.abs(y.lam)) || (y.largo - x.largo) || (x.i - y.i) || (x.k - y.k) || (x.j - y.j));
+  const umbral = AREA_MINIMA_M2 / (W * H) / 2;
+  const pisa = (P: Poligono, Q: Poligono) => areaCubierta([P], [], [Q]);
+  for (const cd of candidatos) {
+    const { i, c, nf } = cd;
+    const ne = normalAfuera(Z[i], Z[(i + 1) % n], sZ);
+    const hastaF = (p: Metros, w: Metros): Metros | null => {
+      const den = w[0] * nf[0] + w[1] * nf[1];
+      if (Math.abs(den) < 1e-12) return null;
+      const mu = ((c[0] - p[0]) * nf[0] + (c[1] - p[1]) * nf[1]) / den;
+      return [p[0] + mu * w[0], p[1] + mu * w[1]];
+    };
+    /** El punto p llevado a la recta de f, deslizándose hacia `vecino`. */
+    const llevar = (p: Metros, vecino: Metros): Metros => {
+      const perpendicular = hastaF(p, ne) ?? p;
+      const dx = vecino[0] - p[0], dy = vecino[1] - p[1], l = Math.hypot(dx, dy);
+      if (!(l > 1e-12)) return perpendicular;
+      const w: Metros = [dx / l, dy / l];
+      if (Math.abs(w[0] * nf[0] + w[1] * nf[1]) < SENO_RASANTE) return perpendicular;
+      const q = hastaF(p, w);
+      if (!q || Math.hypot(q[0] - p[0], q[1] - p[1]) > DESLIZ_MAXIMO_M) return perpendicular;
+      return q;
+    };
+    const ia = i, ib = (i + 1) % n;
+    const nuevoA = llevar(Z[ia], Z[(ia - 1 + n) % n]);
+    const nuevoB = llevar(Z[ib], Z[(ib + 1) % n]);
+    const crudo: Poligono = zona.map((p, idx) => (
+      idx === ia ? enLaCara([nuevoA[0] / W, nuevoA[1] / H]) : idx === ib ? enLaCara([nuevoB[0] / W, nuevoB[1] / H]) : [p[0], p[1]]
+    ) as Punto);
+    const V = sinPuntosRepetidos(crudo);
+    if (validarZona(V, W, H).codigo !== null) continue;
+    let limpia = true;
+    for (let k = 0; k < vecinas.length && limpia; k++) {
+      const antes = pisa(zona, vecinas[k]), despues = pisa(V, vecinas[k]);
+      if (despues > umbral && despues > antes + 1e-12) limpia = false;   // no pisa a nadie más que antes
+      if (k === cd.k && despues > umbral) limpia = false;               // y con la elegida queda sin pisarse
+    }
+    if (!limpia) continue;
+    return { vertices: V, borde: i, vecina: cd.k, distanciaM: cd.lam };
+  }
+  return { motivo: "NO_QUEDA_LIMPIA" };
+}
+
+/** Sin puntos consecutivos repetidos (tampoco el último igual al primero),
+ *  si quedan tres o más; si no, como estaba (y `validarZona` lo rechaza). */
+function sinPuntosRepetidos(p: Poligono): Poligono {
+  const fuera: Poligono = [];
+  for (const q of p) {
+    const ult = fuera[fuera.length - 1];
+    if (ult && ult[0] === q[0] && ult[1] === q[1]) continue;
+    fuera.push(q);
+  }
+  while (fuera.length > 1 && fuera[0][0] === fuera[fuera.length - 1][0] && fuera[0][1] === fuera[fuera.length - 1][1]) fuera.pop();
+  return fuera.length >= 3 ? fuera : p;
 }
 
 /* ── Fusión de tres vías (§9.8) ────────────────────────────────────────────── */
