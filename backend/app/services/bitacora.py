@@ -72,6 +72,9 @@ ACCIONES = {
     "distribucion.borrador": "Borrador de distribución guardado",
     "distribucion.confirmada": "Distribución confirmada",
     "distribucion.descartada": "Borrador de distribución descartado",
+    # fase 2 · I1 · «Copiar zonas de otra cara»: las zonas llegan como borrador
+    # (no se copia ningún contrato ni reserva) y hay que confirmarlas.
+    "distribucion.copiada": "Zonas copiadas de otra cara (borrador)",
 }
 
 # Lo que ya no puede pasar (2026-10-02) y por eso el filtro de la pantalla no lo

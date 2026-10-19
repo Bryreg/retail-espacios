@@ -1907,4 +1907,261 @@ await prueba("historial: la fecha se escribe igual en las reales y en las deriva
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I1 · «COPIAR ZONAS DE OTRA CARA» (pedido §17, D20, Caso F)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Lo pegado se guarda enseguida por el borrador de siempre, como la persona,
+// con `origen` (sólo historial y bitácora). Si ese guardado no sale (red, 409),
+// el origen viaja con el próximo guardado que lleve alguna zona pegada —el
+// autoguardado después de «Traer lo nuevo», el de red al cambiar de cara o
+// salir, «Recuperar», el que hace confirmar antes de confirmar—, y nunca si la
+// copia se deshizo. Confirmar no cambia: ni su cuerpo ni su ruta. La cuenta de
+// la copia (pura) la prueba `probar-zonas.mjs`.
+
+console.log("distribución · copiar zonas de otra cara (fase 2 · I1)");
+
+// `copiaALaVista` es pura (lee el estado que se le pasa): se usa con el estado del store de `S`.
+const rSC = await build({
+  stdin: { contents: 'export { copiaALaVista } from "./src/store/distribucionStore.ts";', resolveDir: raiz, loader: "ts" },
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+  plugins: [{
+    name: "sin-red",
+    setup(b) {
+      b.onResolve({ filter: /^axios$/ }, () => ({ path: "axios", namespace: "falso" }));
+      b.onLoad({ filter: /^axios$/, namespace: "falso" }, () => ({ contents: AXIOS_FALSO, loader: "js" }));
+      b.onResolve({ filter: /api[\\/]firebase$/ }, (a) => ({ path: a.path, namespace: "firebase-falso" }));
+      b.onLoad({ filter: /.*/, namespace: "firebase-falso" }, () => ({ contents: "export const signOutFirebase = async () => {};", loader: "js" }));
+    },
+  }],
+});
+const dirSC = mkdtempSync(join(tmpdir(), "distribucion-copia-"));
+writeFileSync(join(dirSC, "c.mjs"), rSC.outputFiles[0].text);
+const SC = await import(pathToFileURL(join(dirSC, "c.mjs")).href);
+rmSync(dirSC, { recursive: true, force: true });
+
+const ORIGEN_COPIA = { sede: "NAVE", espacio: "GON-01-B", capa: "confirmada", version: 3, espejo: false, mapa: [{ origen: 1, destino: 1 }], sin_copiar: 0 };
+const PEGADA = { participacionSpaceId: 812, vertices: cuadradoZ(0.5, 0.2, 0.7, 0.6) };
+const ROTULO = "NAVE · GON-01 · cara B";
+const escriturasDeBorrador = () => servidor.pedidos.filter((p) => p.url === "/participaciones/distribucion/borrador");
+/** El servidor de borradores con su versión, que tira los PUT del borrador mientras `cae()` diga que sí. */
+const servidorQueCae = (inicial, cae) => {
+  const s = servidorConVersion(inicial);
+  const bien = servidor.responder;
+  servidor.responder = async (cfg) => {
+    if (cfg.url === "/participaciones/distribucion/borrador" && cae()) throw rechazo(503, { detail: "Servicio no disponible" });
+    return bien(cfg);
+  };
+  return s;
+};
+
+await prueba("pegar una copia: UN paso de deshacer y un PUT del borrador como la persona, con el origen; el autoguardado de después ya no lo declara; Ctrl+Z saca la franja (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-1", "admin", "galerias");
+  await conRelojFalso(async () => {
+    servidorConVersion(4);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    servidor.pedidos = [];
+    const antes = D().edicion;
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), true);
+    assert.equal(escriturasDeBorrador().length, 1);
+    const [put] = escriturasDeBorrador();
+    assert.deepEqual([put.data.version, put.data.automatico, put.data.origen], [4, false, ORIGEN_COPIA]);
+    assert.deepEqual(put.data.zonas, [{ participacion_space_id: 812, vertices: cuadradoZ(0.5, 0.2, 0.7, 0.6) }]);
+    assert.deepEqual(D().edicion.zonas.map((z) => z.clave), [`n${antes.proxima}`]);
+    assert.equal(D().edicion.atras.length, antes.atras.length + 1, "pegar no fue UN paso de deshacer");
+    assert.deepEqual([D().copia.cara, D().copia.rotulo, D().copia.claves, D().copia.declarada],
+      ["galerias|NAVE|f-1|A", ROTULO, [`n${antes.proxima}`], true]);
+    assert.equal(SC.copiaALaVista(D()), D().copia, "la franja de la copia no está a la vista");
+    assert.equal(D().edicion.sucio, false);
+    // Se sigue dibujando: el autoguardado sale como siempre, sin origen (la copia ya quedó en el historial).
+    dibujar(812, 0.1, 0.1, 0.2, 0.2);
+    relojes.filter((r) => r.vivo).at(-1).f();
+    await esperar(20);
+    assert.equal(escriturasDeBorrador().length, 2);
+    const auto = escriturasDeBorrador().at(-1);
+    assert.equal(auto.data.automatico, true);
+    assert.ok(!("origen" in auto.data), "el autoguardado volvió a declarar la copia");
+    // Ctrl+Z hasta sacar lo pegado: la franja se va (y vuelve con Ctrl+Y).
+    D().despachar({ tipo: "deshacer" });
+    assert.ok(SC.copiaALaVista(D()));
+    D().despachar({ tipo: "deshacer" });
+    assert.equal(SC.copiaALaVista(D()), null, "la franja de la copia quedó después de deshacerla");
+    D().despachar({ tipo: "rehacer" });
+    assert.ok(SC.copiaALaVista(D()));
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("una copia que no se pudo guardar y se deshizo no se declara con el próximo guardado; en «Mirar» no se pega nada (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-2", "admin", "galerias");
+  await conRelojFalso(async () => {
+    let cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    servidor.pedidos = [];
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(D().guardado.estado, "error");
+    assert.deepEqual(escriturasDeBorrador()[0].data.origen, ORIGEN_COPIA, "el primer intento no llevó el origen");
+    assert.equal(D().copia.declarada, false);
+    assert.equal(D().edicion.zonas.length, 1, "lo pegado se fue del lienzo cuando el guardado falló");
+    assert.ok(SC.copiaALaVista(D()), "lo pegado y no guardado no se dice en la franja");
+    // Ctrl+Z antes de que llegue al servidor: el próximo guardado no la declara.
+    D().despachar({ tipo: "deshacer" });
+    dibujar(812, 0.1, 0.1, 0.2, 0.2);
+    cae = false;
+    servidor.pedidos = [];
+    assert.equal(await D().guardarBorrador(), true);
+    const [put] = escriturasDeBorrador();
+    assert.equal(put.data.automatico, false);
+    assert.ok(!("origen" in put.data), "se declaró una copia que se había deshecho");
+    // En «Mirar» no se pega (ni se escribe nada).
+    D().despachar({ tipo: "elegirModo", modo: "mirar" });
+    servidor.pedidos = [];
+    const quieta = D().edicion;
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(D().edicion, quieta, "se pegó en «Mirar»");
+    assert.deepEqual(servidor.pedidos, []);
+    D().despachar({ tipo: "elegirModo", modo: "editar" });
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("pegar con un 409 version_vieja → «Traer lo nuevo» (lo pegado es «lo mío») → el autoguardado siguiente lleva el origen, como la persona (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-3", "admin", "galerias");
+  await conRelojFalso(async () => {
+    const base = [zo(1, 813, cuadradoZ(0.1, 0.6, 0.2, 0.7))];
+    await entrarA(caraOut({ distribucion: distribucion(4, base) }));
+    servidor.pedidos = [];
+    servidor.responder = async (cfg) => {
+      if (cfg.url === "/participaciones/distribucion/borrador") {
+        throw rechazo(409, { detail: { code: "version_vieja", message: "Otra sesión cambió esta distribución mientras la editabas.", version_actual: 5 } });
+      }
+      return {};
+    };
+    assert.equal(await D().pegarCopia({ quedan: D().edicion.zonas, nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(D().guardado.estado, "version_vieja");
+    // El autoguardado espera a «Traer lo nuevo», como siempre.
+    assert.equal(await D().guardarBorrador(true), false);
+    assert.equal(escriturasDeBorrador().length, 1);
+    // La otra sesión agregó una zona de la 814: se combina por participación y lo pegado (de la 812) queda.
+    const suyas = [...base, zo(2, 814, cuadradoZ(0.8, 0.8, 0.9, 0.9), 1)];
+    servidor.responder = async (cfg) => (cfg.url === "/participaciones/cara"
+      ? caraOut({ distribucion: distribucion(5, suyas) })
+      : { version: 6, distribucion: distribucion(6, suyas, cfg.data.zonas.map((z, i) => zo(60 + i, z.participacion_space_id, z.vertices, i))),
+        participaciones: [], revision: { capa: "borrador", errores: [], avisos: [] } });
+    await D().traerLoNuevo();
+    assert.deepEqual(D().edicion.zonas.map((z) => z.participacionSpaceId).sort((a, b) => a - b), [812, 813, 814]);
+    assert.ok(SC.copiaALaVista(D()), "la fusión se llevó lo pegado (o su clave)");
+    servidor.pedidos = [];
+    relojes.filter((r) => r.vivo).at(-1).f();
+    await esperar(20);
+    const [put] = escriturasDeBorrador();
+    assert.ok(put, "no salió el autoguardado después de traer lo nuevo");
+    assert.deepEqual([put.data.version, put.data.automatico, put.data.origen], [5, false, ORIGEN_COPIA]);
+    assert.equal(D().copia.declarada, true);
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("confirmar con una copia que no llegó al servidor: primero el borrador con el origen y después confirmar (con su cuerpo de siempre); si el borrador no sale, no se confirma (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-4", "admin", "galerias");
+  await conRelojFalso(async () => {
+    let cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    servidor.pedidos = [];
+    await D().confirmar();
+    assert.deepEqual(servidor.pedidos.map((p) => p.url.split("/").at(-1)), ["borrador"], "se confirmó sin haber guardado antes la copia");
+    assert.equal(D().copia.declarada, false);
+    cae = false;
+    servidor.pedidos = [];
+    await D().confirmar();
+    assert.deepEqual(servidor.pedidos.map((p) => [p.url.split("/").at(-1), p.data.version]), [["borrador", 4], ["confirmar", 5]]);
+    assert.deepEqual([servidor.pedidos[0].data.automatico, servidor.pedidos[0].data.origen], [false, ORIGEN_COPIA]);
+    assert.ok(!("origen" in servidor.pedidos[1].data) && !("automatico" in servidor.pedidos[1].data), "el cuerpo de confirmar cambió");
+    assert.equal(D().copia, null, "la copia siguió pendiente después de confirmar");
+    assert.equal(SC.copiaALaVista(D()), null);
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("cambiar de cara con una copia sin guardar: el guardado de red lleva el origen y la otra cara empieza sin copia; salir: queda en memoria y «Recuperar» la trae (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-5", "admin", "galerias");
+  await conRelojFalso(async () => {
+    let cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    cae = false;
+    servidor.pedidos = [];
+    assert.equal(await D().cambiarCara("B"), true);
+    const [put] = escriturasDeBorrador();
+    assert.deepEqual([put.data.espacio, put.data.automatico, put.data.origen], ["GON-01", false, ORIGEN_COPIA]);
+    assert.equal(D().activa.cara, "B");
+    assert.equal(D().copia, null, "la copia de la cara A siguió en la B");
+    await D().salir({ forzado: true, descartar: true });
+
+    // Salir con el guardado cayéndose: lo no guardado se queda en memoria con su copia, y «Recuperar» la trae.
+    D().reiniciar();
+    S.useAuthStore.getState().setAuth("t-copia-6", "admin", "galerias");
+    cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(await D().salir({ forzado: true }), true);
+    assert.deepEqual(D().sinGuardar["galerias|NAVE|f-1|A"]?.copia?.origen, ORIGEN_COPIA, "lo no guardado perdió de dónde venía la copia");
+    cae = false;
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(D().copia, null);
+    D().recuperar();
+    assert.equal(D().copia?.declarada, false, "«Recuperar» no trajo la copia pendiente");
+    servidor.pedidos = [];
+    assert.equal(await D().guardarBorrador(true), true);
+    const [otro] = escriturasDeBorrador();
+    assert.deepEqual([otro.data.automatico, otro.data.origen], [false, ORIGEN_COPIA]);
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("guardas de la copia: el diálogo con los tokens del cajón, UN botón principal y sin montos; el panel lo apaga en «Mirar» y con el plano sin guardar; pegarZonas en EDITAN; confirmar sin origen; E5a sin tipo local", () => {
+  const css = [leer(join(raiz, "src", "tema.css")), leer(join(raiz, "src", "index.css"))].join("\n");
+  const crudo = fuente(`${DIST}/CopiarZonas.tsx`), t = sinComentTs2(crudo);
+  assert.equal((crudo.match(/["'\s`]btn-principal["'\s`]/g) || []).length, 1, "CopiarZonas tiene que tener UN botón principal («Copiar como borrador»)");
+  assert.match(crudo, /className="btn-principal[^"]*"[\s\S]{0,260}Copiar como borrador/);
+  for (const m of t.matchAll(/var\(\s*(--[\w-]+)\s*[,)]/g)) assert.ok(new RegExp(`${m[1]}\\s*:`).test(css), `CopiarZonas: ${m[1]} no existe en el tema`);
+  const raiz1 = /var\(--(surface|surface-2|surface-3|ink-[1-4]|danger|warning|success|line|line-strong|accent|bg)\)/.exec(t);
+  assert.equal(raiz1, null, `CopiarZonas: ${raiz1?.[0]} se resuelve en :root (usá rgb(var(--x-rgb)))`);
+  assert.ok(!/--superficie|--tinta\b|prefers-color-scheme/.test(t), "CopiarZonas: token inventado o prefers-color-scheme");
+  assert.ok(!/localStorage|sessionStorage|indexedDB/.test(t), "CopiarZonas guarda algo en el navegador");
+  assert.ok(!/useDistribucionStore\.setState\(/.test(t), "CopiarZonas escribe el store de edición por fuera de sus acciones");
+  assert.ok(!/from\s+["'][^"']*StoreEditor3D\/StoreEditor3D["']/.test(t), "CopiarZonas importa StoreEditor3D");
+  assert.ok(!/valor_mensual|monthly_rent|negotiatedValue|sombra/i.test(crudo), "CopiarZonas nombra montos (o «sombra»)");
+  assert.match(t, /useDistribucionStore\.getState\(\)\.pegarCopia\(/, "el diálogo no pega por el store");
+  assert.match(t, /<Dialogo titulo="Copiar zonas a esta cara"/, "el diálogo no es el de siempre (role=dialog, aria-modal, Esc propio)");
+  // El panel: el botón se apaga en «Mirar», con el plano sin guardar y con lo que dice `motivoParaNoCopiar`.
+  const panel = codigo6b("PanelDeDistribucion");
+  assert.match(panel, /disabled=\{enMirar \|\| !editable \|\| motivoCopiar !== null\}[\s\S]{0,300}Copiar zonas de otra cara…/);
+  assert.match(panel, /\{copiando && <CopiarZonas caras=\{caras\} onCerrar=\{\(\) => setCopiando\(false\)\} \/>\}/);
+  assert.match(panel, /\{copiaVisible && \(/, "la franja de la copia no está en el panel");
+  // pegarZonas está entre las acciones que no hacen nada en «Mirar».
+  const ed = sinComentTs2(fuente("utils/edicionDeZonas.ts"));
+  const editan = /const EDITAN = new Set<Accion\["tipo"\]>\(\[([\s\S]*?)\]\);/.exec(ed);
+  assert.ok(editan && /"pegarZonas"/.test(editan[1]), "pegarZonas no está en EDITAN (pegaría en «Mirar»)");
+  // Confirmar no cambia: su cuerpo no lleva `origen` (una copia se guarda antes como borrador).
+  const api = sinComentTs2(fuente("api/participaciones.ts"));
+  assert.match(api, /export type ConfirmarDistribucionIn = Omit<BorradorIn, "automatico" \| "origen">;/);
+  assert.match(api, /origen\?: OrigenDeCopiaIn;/);
+  // copiaDeZonas no entra por la lista de lo que guarda en el navegador… porque no guarda nada.
+  assert.ok(!/localStorage|sessionStorage|indexedDB/.test(sinComentTs2(fuente("utils/copiaDeZonas.ts"))));
+  // E5a: el historial trae `dia` y `derivado` en su tipo; el panel ya no los agrega con un tipo local.
+  assert.match(api, /derivados: \{ en: string; dia\?: string; derivado\?: true;/);
+  assert.ok(!/HistorialOut\["derivados"\]\[number\] &/.test(fuente(`${DIST}/PanelDeDistribucion.tsx`)), "el panel sigue leyendo dia/derivado con un tipo local");
+});
+
 console.log(`\n${hechas} pruebas de distribución en verde`);

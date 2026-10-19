@@ -72,6 +72,7 @@ from app.services.layout_lookup import (
 from app.services.partes import CodigoPartido, Parte, codigo_de_parte, es_division, es_participacion, partir_codigo
 from app.services.superficie import firma as firma_de_cara
 from app.services.superficie import superficie as superficie_de_cara
+from app.services.superficie import tiene_superficie
 
 #: El período por defecto de la capacidad y del informe: un año desde hoy.
 DIAS_DEL_PERIODO = 364
@@ -993,9 +994,18 @@ def zona_out(z: Zona) -> dict:
             "vertices": json.loads(z.vertices_json), "orden": z.orden}
 
 
+#: fase 2 · I1: lo que se le dice a un tipo de mueble sin receta de superficie
+#: (isla, impulsador, batea…): «Cómo se vende» no le ofrece «por participación»,
+#: así que mandarlo a elegirlo ahí era un callejón. La misma frase dice
+#: ``layout_lookup.motivo_para_no_vender_parte`` (frente F).
+TIPO_SIN_PARTICIPACION = "Este tipo de mueble todavía no se vende por participación."
+
+
 def _exigir_distribuible(cara: Cara) -> None:
     """§3.8 paso 0b: sin superficie no se dibuja (no se guarda nada)."""
     if not cara.por_participacion:
+        if cara.fixture is not None and not tiene_superficie(str(cara.fixture.get("type") or "")):
+            raise _error(409, "cara_no_distribuible", TIPO_SIN_PARTICIPACION)
         raise _error(409, "cara_no_distribuible",
                      f"«{cara.corto}» no se vende por participación: elegí «por participación» en «Cómo se vende» "
                      "del Editor 3D.")
@@ -1129,19 +1139,76 @@ class HechoDistribucion:
     invalida: bool = False
 
 
+def _origen_de_copia(db: Session, origen: dict, cara: Cara) -> dict:
+    """fase 2 · I1 · «Copiar zonas de otra cara»: de dónde vienen las zonas de
+    este borrador, como lo guarda el historial. Lo declara el navegador —es
+    historia de la dueña, no una regla—: las zonas se validan como las de
+    cualquier borrador, y una de otra cara sigue siendo ``espacio_ajeno``.
+
+    La cara de origen se resuelve contra el plano como ``GET /cara``; si ya no
+    resuelve (el mueble se borró, una B que no existe) se arma el código con la
+    sede y queda ``en_el_plano: False``: el origen NUNCA frena el guardado,
+    salvo que sea la MISMA cara (422 ``copia_de_la_misma_cara``, antes de
+    escribir nada). Sin montos ni vértices."""
+    sede = normalizar(origen.get("sede"))
+    espacio = normalizar(origen.get("espacio"))
+    try:
+        codigo, en_el_plano = resolver_cara(db, sede, espacio).codigo, True
+    except HTTPException:
+        codigo, en_el_plano = codigo_cara(sede, espacio), False
+    if codigo == cara.codigo:
+        raise _error(422, "copia_de_la_misma_cara", "Elegí otra cara para copiar: ésta es la misma.")
+    fila = (db.query(Distribucion.id).join(Space, Space.id == Distribucion.cara_space_id)
+            .filter(Space.code == codigo).first())
+    return {
+        "sede": sede, "codigo_cara": codigo, "capa": origen.get("capa"), "version": origen.get("version"),
+        "distribucion_id": fila[0] if fila is not None else None, "espejo": bool(origen.get("espejo")),
+        "mapa": {str(p["origen"]): p.get("destino") for p in (origen.get("mapa") or ())},
+        "sin_copiar": int(origen.get("sin_copiar") or 0), "en_el_plano": en_el_plano,
+    }
+
+
+def _detalle_de_copia(origen: dict, zonas: list[dict], datos: Datos) -> str:
+    """«Copia de NAVE · GON-01 · cara A (confirmada): 5 zonas de 3
+    participaciones; 2 sin copiar». Cuenta las zonas de las participaciones de
+    esta cara que recibieron algo (las del ``mapa``): las que no recibieron
+    nada se quedan como estaban y no son de la copia."""
+    sede = origen["sede"]
+    p = partir_codigo(sin_prefijo_de_sede(origen["codigo_cara"], sede))
+    de = f"{sede} · {p.base} · cara {p.cara}" if sede else f"{p.base} · cara {p.cara}"
+    destinos = {n for n in origen["mapa"].values() if n is not None}
+    numeros = {s: ts[0]["numero"] for s, ts in datos.por_s.items() if ts}
+    copiadas = [z for z in zonas if numeros.get(z["participacion_space_id"]) in destinos]
+    n = len(copiadas)
+    m = len({numeros[z["participacion_space_id"]] for z in copiadas})
+    texto = (f"Copia de {de} ({origen['capa']}): {n} zona{'' if n == 1 else 's'} de {m} "
+             f"participaci{'ón' if m == 1 else 'ones'}")
+    if origen["sin_copiar"]:
+        texto += f"; {origen['sin_copiar']} sin copiar"
+    return texto
+
+
 def guardar_borrador(db: Session, e: dict, actor: str) -> HechoDistribucion:
     """10 · Guardar el borrador (con errores marcados): sin candado, con
     versión. Reemplaza toda la capa ``borrador``. ``automatico`` (el
-    autoguardado) no escribe historial ni bitácora."""
+    autoguardado) no escribe historial ni bitácora.
+
+    fase 2 · I1: con ``origen`` las zonas vienen de «Copiar zonas de otra
+    cara»: se anota ``distribucion.copiada`` (aunque venga ``automatico``: una
+    copia siempre queda en el historial) con de dónde vinieron. Nada más
+    cambia: ni candado (no cambia la capacidad), ni términos, ni la versión
+    optimista. La cara de origen no se anota (la copia no la cambia)."""
     cara = resolver_cara(db, e["sede"], e["espacio"])
     zonas = e["zonas"]
     _exigir_topes(zonas)
     _exigir_distribuible(cara)
+    origen = _origen_de_copia(db, e["origen"], cara) if e.get("origen") else None
+    automatico = bool(e.get("automatico")) and origen is None
     datos = leer(db, cara.codigo)
     _validar_zonas(datos, zonas)
     medidas = medir_capa(zonas, cara.superficie)
     anterior = None
-    if not e.get("automatico") and datos.distribucion is not None and datos.distribucion.borrador_en is not None \
+    if not automatico and datos.distribucion is not None and datos.distribucion.borrador_en is not None \
             and not _otro_mueble(datos, cara):
         crudas = _crudas(datos.capas.get("borrador", []))
         anterior = _resumen_de_capa(crudas, medir_capa(crudas, cara.superficie) if crudas else None, datos)
@@ -1152,8 +1219,16 @@ def guardar_borrador(db: Session, e: dict, actor: str) -> HechoDistribucion:
     dist.borrador_por = actor
     juicio = juzgar_capa(medidas, datos.por_s, hoy(), confirmada=False, firma_cambio=False,
                          orientacion=cara.superficie["orientacion"])
-    if e.get("automatico"):
+    if automatico:
         return HechoDistribucion(cara, dist, None, "", juicio)
+    if origen is not None:
+        anotar_historial(db, tipo="geometria", accion="distribucion.copiada", actor=actor,
+                         cara_space_id=dist.cara_space_id, distribucion_id=dist.id,
+                         detalle=_detalle_de_copia(origen, zonas, datos),
+                         antes=anterior, despues={**_resumen_de_capa(zonas, medidas, datos), "origen": origen})
+        return HechoDistribucion(cara, dist, "distribucion.copiada",
+                                 f"{cara.codigo} · {len(zonas)} zona{'' if len(zonas) == 1 else 's'} · "
+                                 f"copia de {origen['codigo_cara']}", juicio)
     anotar_historial(db, tipo="geometria", accion="distribucion.borrador", actor=actor,
                      cara_space_id=dist.cara_space_id, distribucion_id=dist.id,
                      detalle=f"Borrador guardado: {len(zonas)} zona{'' if len(zonas) == 1 else 's'}",
@@ -1244,11 +1319,21 @@ def confirmar_distribucion(db: Session, e: dict, actor: str) -> HechoDistribucio
 
 
 def descartar_borrador(db: Session, e: dict, actor: str) -> HechoDistribucion:
-    """12 · Borrar el borrador (la confirmada queda). Sin candado, con versión."""
+    """12 · Borrar el borrador (la confirmada queda). Sin candado, con versión.
+
+    fase 2 · I1 (E6): sin borrador no hay nada que descartar. Con la versión
+    al día no se escribe nada —ni sube la versión (le daría a otra sesión un
+    ``version_vieja`` de balde) ni se anota «Borrador descartado» en el
+    historial, que es para siempre—; con otra versión, 409 como siempre. La
+    distribución de OTRO mueble sigue el camino de siempre (se cierra)."""
     cara = resolver_cara(db, e["sede"], e["espacio"])
     datos = leer(db, cara.codigo)
     if datos.distribucion is None and e["version"] == 0:
         return HechoDistribucion(cara, None, None, "")
+    if datos.distribucion is not None and datos.distribucion.borrador_en is None and not _otro_mueble(datos, cara):
+        if e["version"] != datos.distribucion.version:
+            raise _version_vieja_distribucion(datos.distribucion.version)
+        return HechoDistribucion(cara, datos.distribucion, None, "")
     anterior = None
     if datos.distribucion is not None and datos.distribucion.borrador_en is not None and not _otro_mueble(datos, cara):
         crudas = _crudas(datos.capas.get("borrador", []))

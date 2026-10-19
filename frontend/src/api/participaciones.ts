@@ -217,7 +217,11 @@ export interface EntradaDeHistorial {
 }
 export interface HistorialOut {
   entradas: EntradaDeHistorial[];
-  derivados: { en: string; tipo: "evento"; accion: string; participacion_id: number; detalle: string }[];
+  /** Las DERIVADAS (el vencimiento de un contrato, la caducidad de una reserva):
+   *  no tienen fila, salen de las fechas. `dia` es el día de Colombia en que
+   *  pasó y `en`, la medianoche de ese día con su zona. Un servidor viejo no
+   *  manda `dia` ni `derivado`, y manda `en` como día solo (fase 2 · I1, E5a). */
+  derivados: { en: string; dia?: string; derivado?: true; tipo: "evento"; accion: string; participacion_id: number; detalle: string }[];
 }
 
 /* ── Cuerpos ───────────────────────────────────────────────────────────────── */
@@ -271,6 +275,28 @@ export interface RenovarIn {
   notas?: string | null;
 }
 export interface ZonaIn { participacion_space_id: number; vertices: Poligono }
+/** fase 2 · I1 · «Copiar zonas de otra cara»: a qué participación de esta cara
+ *  fueron las zonas de cada participación del origen (por NÚMERO, el n de PC<n>). */
+export interface ParDeCopiaIn {
+  origen: number;
+  /** null: no se copió. */
+  destino: number | null;
+}
+/** De qué cara vienen las zonas de un borrador. Sólo va al historial y a la
+ *  bitácora (`distribucion.copiada`): el servidor valida las zonas como las de
+ *  cualquier borrador y no recalcula la copia. */
+export interface OrigenDeCopiaIn {
+  sede: string;
+  /** «GON-01» o «GON-01-B», como en `GET /cara`. */
+  espacio: string;
+  capa: "confirmada" | "borrador";
+  /** La versión de la distribución de origen que se leyó. */
+  version: number;
+  espejo: boolean;
+  mapa: ParDeCopiaIn[];
+  /** Las zonas del origen que quedaron afuera. */
+  sin_copiar: number;
+}
 /** 10 · `PUT /participaciones/distribucion/borrador`. */
 export interface BorradorIn {
   sede: string;
@@ -280,9 +306,14 @@ export interface BorradorIn {
   /** true = autoguardado: sin historial ni bitácora. */
   automatico: boolean;
   zonas: ZonaIn[];
+  /** fase 2 · I1: las zonas vienen de «Copiar zonas de otra cara». Con él se
+   *  anota aunque sea autoguardado (el store lo manda con `automatico: false`). */
+  origen?: OrigenDeCopiaIn;
 }
-/** 11 · `POST /participaciones/distribucion/confirmar`: el mismo, sin `automatico`. */
-export type ConfirmarDistribucionIn = Omit<BorradorIn, "automatico">;
+/** 11 · `POST /participaciones/distribucion/confirmar`: el mismo, sin
+ *  `automatico` ni `origen` (confirmar no cambia: una copia se guarda antes
+ *  como borrador, con su origen). */
+export type ConfirmarDistribucionIn = Omit<BorradorIn, "automatico" | "origen">;
 /** 12 · `POST /participaciones/distribucion/descartar`. */
 export interface DescartarIn { sede: string; espacio: string; version: number }
 

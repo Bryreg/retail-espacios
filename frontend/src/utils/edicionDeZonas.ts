@@ -100,6 +100,8 @@ export type Accion =
   | { tipo: "borrarZona"; clave: string }
   | { tipo: "ajustarZonas"; spaceId: number; vertices: readonly Poligono[] }
   | { tipo: "usarZonas"; spaceId: number; zonas: readonly ZonaEnEdicion[] }
+  // fase 2 · I1 · «Copiar zonas de otra cara» (`pegarZonas`, al final del archivo).
+  | { tipo: "pegarZonas"; quedan: readonly ZonaEnEdicion[]; nuevas: readonly ZonaPegada[] }
   | { tipo: "deshacer" }
   | { tipo: "rehacer" }
   | { tipo: "elegirHerramienta"; herramienta: Herramienta }
@@ -387,6 +389,8 @@ const EDITAN = new Set<Accion["tipo"]>([
   "empezarTrazo", "estirarTrazo", "agregarPunto", "quitarPunto", "cerrarTrazo", "empezarArrastre", "moverZona", "empujar",
   "moverVertice", "escalar", "insertarVertice", "borrarVertice", "borrarZona", "ajustarZonas", "usarZonas",
   "deshacer", "rehacer", "descartarCambios",
+  // fase 2 · I1
+  "pegarZonas",
 ]);
 
 /** El reductor del editor. Devuelve el MISMO objeto si la acción no cambia
@@ -539,6 +543,9 @@ export function reducir(e: EstadoDeEdicion, a: Accion): EstadoDeEdicion {
       const zonas = [...otras, ...nuevas];
       return identicas(zonas, e.zonas) ? e : conZonas(e, zonas, { proxima });
     }
+    // fase 2 · I1
+    case "pegarZonas":
+      return pegarZonas(e, a.quedan, a.nuevas);
     case "deshacer": {
       if (e.atras.length === 0) return e;
       const zonas = e.atras[e.atras.length - 1];
@@ -898,4 +905,31 @@ export function revisarZonas(zonas: readonly ZonaEnEdicion[],
   const medidas = medir(zonas.map((z) => ({ participacionSpaceId: z.participacionSpaceId, vertices: z.vertices })), sup);
   const juicio = juzgar(medidas, terminosPorS, hoy, { orientacion: sup.orientacion, ...opciones });
   return { medidas, juicio };
+}
+
+/* ── fase 2 · I1 · Pegar las zonas copiadas de otra cara ───────────────────── */
+
+/** Una zona que llega de «Copiar zonas de otra cara» (`utils/copiaDeZonas.ts`):
+ *  ya llevada a una participación de ESTA cara, sin clave todavía. */
+export interface ZonaPegada {
+  participacionSpaceId: number;
+  vertices: Poligono;
+}
+
+/**
+ * Pega lo que armó «Copiar zonas de otra cara»: quedan las zonas `quedan` (las
+ * de esta edición que siguen, con sus claves) y, al final —arriba en el
+ * dibujo—, las copiadas, con claves `n<proxima>`, `n<proxima+1>`… (sólo `z<id>`
+ * tiene significado para el servidor). Es UN paso de deshacer: Ctrl+Z vuelve
+ * exactamente a lo de antes. Se suelta la selección y el trazo. En «Mirar» no
+ * hace nada (`pegarZonas` está en `EDITAN`). Los vértices pasan por
+ * `enLaCara`, como todo lo que escribe el editor.
+ */
+export function pegarZonas(e: EstadoDeEdicion, quedan: readonly ZonaEnEdicion[], nuevas: readonly ZonaPegada[]): EstadoDeEdicion {
+  const copiadas: ZonaEnEdicion[] = nuevas.map((z, i) => ({
+    clave: `n${e.proxima + i}`, participacionSpaceId: z.participacionSpaceId, vertices: z.vertices.map((p) => enLaCara(p)),
+  }));
+  const zonas = [...quedan.map((z) => ({ ...z, vertices: z.vertices.map(([u, v]) => [u, v] as Punto) })), ...copiadas];
+  if (identicas(zonas, e.zonas)) return e;
+  return conZonas({ ...e, arrastre: null }, zonas, { trazo: null, seleccion: null, proxima: e.proxima + copiadas.length });
 }

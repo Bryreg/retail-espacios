@@ -815,4 +815,378 @@ await prueba("el editor es puro: sin React, sin catálogo, sin reloj y sin guard
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I1 · «COPIAR ZONAS DE OTRA CARA» (pedido §17, D20, Caso F)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// `copiarZonas` (src/utils/copiaDeZonas.ts) lleva las zonas de una capa de otra
+// cara a las participaciones que esta cara YA tiene, en u,v (escalan con la
+// cara), y dice qué no se copia y por qué; `pegarZonas` (edicionDeZonas.ts) las
+// pega en UN paso de deshacer. Nada de esto crea términos: sólo zonas de
+// participaciones vivas del destino (el servidor lo vuelve a exigir:
+// `espacio_ajeno`). Los números de lo dibujado se comparan contra `medir` en
+// la superficie de destino, no contra números escritos a mano.
+
+console.log("zonas · copiar zonas de otra cara (fase 2 · I1)");
+
+const rCo = await build({
+  stdin: { contents: 'export * from "./src/utils/copiaDeZonas.ts";', resolveDir: raiz, loader: "ts" },
+  bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+});
+const CO = await import("data:text/javascript;base64," + Buffer.from(rCo.outputFiles[0].text).toString("base64"));
+
+const HOY_C = "2026-10-17";
+const franjaC = (u0, u1, v0 = 0, v1 = 1) => cuadrado(u0, v0, u1, v1);
+const SUP_090 = superficiePorNombre["gondola-doble-090"];
+const SUP_300 = superficiePorNombre["gondola-300-dos-vanos"];
+const SUP_ROB = superficiePorNombre["robatope-030"];
+const SUP_METRO = superficiePorNombre["metro-100"];
+/** Una participación como la manda `GET /cara` (con su término más nuevo). */
+const partC = (sid, numero, viva, proveedorId, proveedor, marca, pb) => {
+  const [desde, hasta] = viva ? ["2026-10-01", "2026-12-31"] : ["2026-08-01", "2026-09-30"];
+  return {
+    space_id: sid, codigo: `NAVE-X-PC${numero}`, numero, viva, contratado_pb: pb, dibujado_pb: 0, pendiente_pb: pb,
+    terminos: [{
+      id: sid * 10, space_id: sid, codigo: `NAVE-X-PC${numero}`, numero, cara: "A", estado: "contrato",
+      estado_visible: viva ? "vigente" : "vencido", puntos_basicos: pb, porcentaje: "",
+      proveedor: proveedorId ? { id: proveedorId, nombre: proveedor } : null, marca, desde, hasta, caduca: null,
+      lease_id: sid * 10, valor_mensual: null, renueva_a: null, notas: null, baja_en: null, baja_fecha: null, version: 1,
+      creada_en: "", creada_por: null,
+    }],
+  };
+};
+/** Los términos como los leen las reglas (lo que arma `terminosPorParticipacion`). */
+const terminosC = (parts) => new Map(parts.map((p) => [p.space_id, p.terminos.map((t) => ({
+  id: t.id, spaceId: p.space_id, numero: p.numero, estado: "contrato", pb: t.puntos_basicos, supplierId: t.proveedor?.id ?? 0,
+  marca: t.marca, desde: t.desde, hasta: t.hasta, caduca: null, bajaFecha: null,
+  lease: { isActive: p.viva, startDate: t.desde, endDate: t.hasta },
+}))]));
+const ladoC = (superficie, participaciones) => ({ superficie, participaciones });
+const destinoC = (superficie, participaciones) => ({ superficie, participaciones, terminosPorS: terminosC(participaciones), hoy: HOY_C });
+const zoC = (id, s, vertices, orden) => ({ id, participacion_space_id: s, vertices, orden });
+const SIN = { espejo: false, elegidas: new Map(), quitarLasDemas: false };
+/** Lo dibujado por `s` si sus zonas se midieran solas en `sup`. */
+const dibujadoEn = (sup, ...vs) => G.medir(vs.map((vertices) => ({ participacionSpaceId: 1, vertices })),
+  { exclusiones: sup.exclusiones, ancho: sup.ancho, alto: sup.alto }).dibujadoPb.get(1) ?? 0;
+
+// El origen: una GON 0,9 doble, cara A. Tres franjas de toda la altura, una zona sobre el remate y una de historia.
+const ORIGEN_C = ladoC(SUP_090, [
+  partC(101, 1, true, 7, "Café A", "Sello Rojo", 3000),
+  partC(102, 2, true, 8, "Postobón", "Hit", 2500),
+  partC(103, 3, true, 9, "Alpina", "Bon Yurt", 4500),
+  partC(104, 4, false, 10, "Vieja", null, 1000),
+]);
+const ZONAS_ORIGEN_C = [
+  zoC(1, 101, franjaC(0.05, 0.30), 0),
+  zoC(2, 102, franjaC(0.30, 0.55), 1),
+  zoC(3, 103, franjaC(0.55, 0.95), 2),
+  zoC(4, 102, franjaC(0.40, 0.60, 0.95, 1), 3),     // entera sobre el remate
+  zoC(5, 104, franjaC(0, 0.05), 4),                  // de una participación que ya no rige
+];
+const todasLasFrases = [];
+const anotarFrases = (f) => {
+  for (const x of f.filas) todasLasFrases.push(x.titulo, x.nota ?? "", x.comoQueda ?? "", x.reemplaza ?? "", x.junta ?? "");
+  todasLasFrases.push(...f.noSeCopia, ...f.avisos.map((a) => a.texto));
+  return f;
+};
+
+await prueba("copiar a la otra cara del mismo mueble: cada zona va sola a la del mismo proveedor y marca (aunque la marca esté escrita distinto), con lo mismo dibujado", () => {
+  const destino = destinoC(SUP_090, [
+    partC(201, 1, true, 7, "Café A", "  SELLO ROJO ", 3000),
+    partC(202, 2, true, 8, "Postobón", "Hit", 3000),
+    partC(203, 3, true, 9, "Alpina", "Bon Yurt", 4500),
+  ]);
+  const c = CO.copiarZonas(ORIGEN_C, ZONAS_ORIGEN_C, destino, [], SIN);
+  assert.equal(c.compatible, true);
+  assert.deepEqual(c.grupos.map((g) => [g.numeroOrigen, g.como, g.destino, g.zonas]), [[1, "automatico", 201, 1], [2, "automatico", 202, 2], [3, "automatico", 203, 1]]);
+  assert.deepEqual(c.nuevas.map((z) => z.participacionSpaceId), [201, 202, 203]);
+  assert.deepEqual(c.nuevas[0].vertices, G.validarZona(franjaC(0.05, 0.30), SUP_090.ancho, SUP_090.alto).vertices);
+  assert.deepEqual(c.descartadas.map((d) => [d.indice, d.origen, d.motivo]), [[3, 102, "sin_superficie_util"], [4, 104, "no_rige"]]);
+  assert.deepEqual([c.reemplazadas, c.quitadas, c.quedan.length, c.enLosTopes, c.estiramiento, c.solapesNuevos], [0, 0, 0, true, 1, 0]);
+  // La misma superficie: lo dibujado en el destino es lo que dibujaba en el origen.
+  assert.equal(c.revision.medidas.dibujadoPb.get(201), dibujadoEn(SUP_090, franjaC(0.05, 0.30)));
+  assert.equal(c.revision.medidas.dibujadoPb.get(203), dibujadoEn(SUP_090, franjaC(0.55, 0.95)));
+  assert.equal(CO.bloqueoDeLaCopia(c), null);
+  const f = anotarFrases(CO.frasesDeLaCopia(c, ORIGEN_C, destino));
+  assert.equal(f.filas[0].titulo, "Participación 1 · Café A · Sello Rojo · 30 % · 1 zona");
+  assert.equal(f.filas[1].titulo, "Participación 2 · Postobón · Hit · 25 % · 2 zonas");
+  assert.equal(f.filas[0].nota, "Elegida sola: mismo proveedor y marca.");
+  assert.match(f.filas[0].comoQueda, /^\d+(,\d+)? % dibujado de 30 % · falta \d+(,\d+)? %$/);
+  assert.deepEqual(f.noSeCopia, [
+    "1 zona de Postobón · Hit: cae entera sobre lo que no se vende de esta cara (zócalo, parantes, copete).",
+    "1 zona de la participación 4: ya no rige en el origen.",
+  ]);
+  assert.deepEqual(f.avisos, [], "una copia limpia no avisa nada");
+});
+
+await prueba("copiar a otra góndola: ambigua (dos de Postobón · Hit sin el mismo %), sin destino, la que reemplaza; elegir a mano (y a otro proveedor) la destraba", () => {
+  const destino = destinoC(SUP_300, [
+    partC(301, 1, true, 7, "Café A", "Sello Rojo", 3000),
+    partC(302, 2, true, 8, "Postobón", "Hit", 2000),
+    partC(303, 3, true, 8, "Postobón", "hit", 500),
+    partC(304, 4, true, 11, "Colanta", null, 2000),
+  ]);
+  const yaTenia = [zona("z9", 301, franjaC(0.6, 0.85)), zona("z10", 304, franjaC(0.9, 0.98))];
+  const c = CO.copiarZonas(ORIGEN_C, ZONAS_ORIGEN_C, destino, yaTenia, SIN);
+  assert.deepEqual(c.grupos.map((g) => [g.numeroOrigen, g.como, g.destino, g.candidatos]),
+    [[1, "automatico", 301, [301]], [2, "ambiguo", null, [302, 303]], [3, "sin_destino", null, []]]);
+  assert.deepEqual(c.descartadas.map((d) => [d.indice, d.motivo]), [[1, "ambiguo"], [2, "sin_destino"], [3, "ambiguo"], [4, "no_rige"]]);
+  assert.deepEqual(c.nuevas.map((z) => z.participacionSpaceId), [301]);
+  assert.deepEqual(c.quedan.map((z) => z.clave), ["z10"], "la que recibe no perdió lo suyo (o la otra lo perdió)");
+  assert.equal(c.quedan[0], yaTenia[1], "lo que queda no es la MISMA zona (con su clave)");
+  assert.deepEqual([c.reemplazadas, [...c.reemplazadasPor]], [1, [[301, 1]]]);
+  assert.equal(CO.bloqueoDeLaCopia(c), "Elegí a qué participación va cada fila marcada antes de copiar.");
+  const f = anotarFrases(CO.frasesDeLaCopia(c, ORIGEN_C, destino));
+  assert.deepEqual([f.filas[1].nota, f.filas[1].tono], ["Hay dos participaciones de Postobón · Hit en esta cara: elegí a cuál va.", "ambar"]);
+  assert.equal(f.filas[2].nota, "No hay una participación de Alpina · Bon Yurt en esta cara: elegí otra o no la copies.");
+  assert.equal(f.filas[0].reemplaza, "Ya tenía 1 zona acá: se reemplaza.");
+  assert.deepEqual(f.noSeCopia, [
+    "2 zonas de Postobón · Hit: no elegiste a qué participación van.",
+    "1 zona de Alpina · Bon Yurt: esta cara no tiene una participación de ese proveedor y marca.",
+    "1 zona de la participación 4: ya no rige en el origen.",
+  ]);
+  assert.deepEqual(f.avisos.map((a) => [a.texto, a.bloquea]),
+    [["Esta cara es 3,3 veces más ancha en proporción: las zonas se estiran a lo ancho.", false]]);
+  // Elegidas a mano: Postobón a la 302 y Alpina… a Colanta (otro proveedor: se permite, es dibujo, y se dice).
+  const e = CO.copiarZonas(ORIGEN_C, ZONAS_ORIGEN_C, destino, yaTenia, { ...SIN, elegidas: new Map([[102, 302], [103, 304]]) });
+  assert.deepEqual(e.grupos.map((g) => [g.numeroOrigen, g.como, g.destino]), [[1, "automatico", 301], [2, "elegido", 302], [3, "elegido", 304]]);
+  assert.deepEqual(e.nuevas.map((z) => z.participacionSpaceId), [301, 302, 304]);
+  assert.deepEqual(e.descartadas.map((d) => [d.indice, d.motivo]), [[3, "sin_superficie_util"], [4, "no_rige"]]);
+  assert.deepEqual([e.quedan.length, e.reemplazadas], [0, 2]);
+  assert.equal(CO.bloqueoDeLaCopia(e), null);
+  // Otra superficie: lo dibujado es el de la zona medida en ESTA cara (el parante del medio no suma).
+  assert.equal(e.revision.medidas.dibujadoPb.get(302), dibujadoEn(SUP_300, franjaC(0.30, 0.55)));
+  const g = anotarFrases(CO.frasesDeLaCopia(e, ORIGEN_C, destino));
+  assert.deepEqual([g.filas[1].nota, g.filas[2].nota, g.filas[2].tono], ["Elegida a mano.", "Va a otro proveedor (Colanta).", "ambar"]);
+  assert.equal(g.filas[2].reemplaza, "Ya tenía 1 zona acá: se reemplaza.");
+  // Lo que el borrador declara: a qué participación (por NÚMERO) fue cada una y cuántas quedaron afuera.
+  assert.deepEqual(CO.origenDeLaCopia(e, { sede: "NAVE", espacio: "GON-01" }, "confirmada", 7, false, destino), {
+    sede: "NAVE", espacio: "GON-01", capa: "confirmada", version: 7, espejo: false,
+    mapa: [{ origen: 1, destino: 1 }, { origen: 2, destino: 2 }, { origen: 3, destino: 4 }], sin_copiar: 2,
+  });
+  // «No copiar» una fila: sus zonas quedan afuera con su motivo y el mapa lo dice.
+  const n = CO.copiarZonas(ORIGEN_C, ZONAS_ORIGEN_C, destino, yaTenia, { ...SIN, elegidas: new Map([[101, null], [102, 302], [103, null]]) });
+  assert.deepEqual(n.grupos.map((x) => [x.numeroOrigen, x.como, x.destino]), [[1, "no_copiar", null], [2, "elegido", 302], [3, "no_copiar", null]]);
+  assert.deepEqual(n.quedan.map((z) => z.clave), ["z9", "z10"]);
+  const nf = anotarFrases(CO.frasesDeLaCopia(n, ORIGEN_C, destino));
+  assert.equal(nf.noSeCopia[0], "1 zona de Café A · Sello Rojo: elegiste no copiarla.");
+  assert.deepEqual(CO.origenDeLaCopia(n, { sede: "NAVE", espacio: "GON-01-B" }, "borrador", 2, true, destino).mapa,
+    [{ origen: 1, destino: null }, { origen: 2, destino: 2 }, { origen: 3, destino: null }]);
+});
+
+await prueba("desempate: con dos del mismo proveedor y marca va sola a la del MISMO porcentaje; con las dos iguales, la persona elige", () => {
+  const origen = ladoC(SUP_090, [partC(102, 2, true, 8, "Postobón", "Hit", 2500)]);
+  const zs = [zoC(1, 102, franjaC(0.3, 0.55), 0)];
+  const unaDeCada = destinoC(SUP_090, [partC(402, 1, true, 8, "Postobón", "Hit", 500), partC(403, 2, true, 8, "Postobón", "HIT", 2500)]);
+  const c = CO.copiarZonas(origen, zs, unaDeCada, [], SIN);
+  assert.deepEqual(c.grupos.map((g) => [g.como, g.destino, g.desempate]), [["automatico", 403, true]]);
+  assert.equal(CO.frasesDeLaCopia(c, origen, unaDeCada).filas[0].nota, "Elegida sola: mismo proveedor, marca y porcentaje.");
+  const iguales = destinoC(SUP_090, [partC(402, 1, true, 8, "Postobón", "Hit", 2500), partC(403, 2, true, 8, "Postobón", "Hit", 2500)]);
+  assert.equal(CO.copiarZonas(origen, zs, iguales, [], SIN).grupos[0].como, "ambiguo");
+  // Sin proveedor no se lleva sola a ninguna (aunque del otro lado tampoco haya).
+  const sinProveedor = ladoC(SUP_090, [partC(102, 2, true, 0, null, null, 2500)]);
+  const otraSin = destinoC(SUP_090, [partC(402, 1, true, 0, null, null, 2500)]);
+  assert.equal(CO.copiarZonas(sinProveedor, zs, otraSin, [], SIN).grupos[0].como, "sin_destino");
+  // Una del destino que ya no rige no es candidata (daría ZONA_DE_PARTICIPACION_TERMINADA al confirmar).
+  const muerta = destinoC(SUP_090, [partC(402, 1, false, 8, "Postobón", "Hit", 2500)]);
+  const m = CO.copiarZonas(origen, zs, muerta, [], { ...SIN, elegidas: new Map([[102, 402]]) });
+  assert.deepEqual([m.grupos[0].como, m.grupos[0].destino], ["sin_destino", null], "se eligió una participación que ya no rige");
+});
+
+await prueba("espejo: u → 1 − u (cuantizado), v igual, y la zona sigue antihoraria; lo de la izquierda queda a la derecha", () => {
+  const destino = destinoC(SUP_090, [partC(201, 1, true, 7, "Café A", "Sello Rojo", 3000)]);
+  const zs = [zoC(1, 101, [[0.05, 0.1], [0.3, 0.1], [0.3, 0.5], [0.12, 0.8]], 0)];
+  const c = CO.copiarZonas(ORIGEN_C, zs, destino, [], { ...SIN, espejo: true });
+  const esperada = G.validarZona([[0.05, 0.1], [0.3, 0.1], [0.3, 0.5], [0.12, 0.8]].map(([u, v]) => [G.cuantizarNumero(1 - u), v]),
+    SUP_090.ancho, SUP_090.alto).vertices;
+  assert.deepEqual(c.nuevas[0].vertices, esperada);
+  assert.ok(G.areaFirmada(c.nuevas[0].vertices) > 0, "la zona en espejo quedó horaria");
+  const us = c.nuevas[0].vertices.map(([u]) => u).sort((a, b) => a - b), vs = c.nuevas[0].vertices.map(([, v]) => v).sort((a, b) => a - b);
+  assert.deepEqual(us, [0.7, 0.7, 0.88, 0.95]);
+  assert.deepEqual(vs, [0.1, 0.1, 0.5, 0.8]);
+  // Sin espejo, tal cual.
+  assert.deepEqual(CO.copiarZonas(ORIGEN_C, zs, destino, [], SIN).nuevas[0].vertices,
+    G.validarZona(zs[0].vertices, SUP_090.ancho, SUP_090.alto).vertices);
+});
+
+await prueba("compatibilidad: un frente no va a la tapa de una zona libre (ni al revés); sin superficie no hay copia", () => {
+  const metro = destinoC(SUP_METRO, [partC(501, 1, true, 7, "Café A", "Sello Rojo", 3000)]);
+  const c = CO.copiarZonas(ORIGEN_C, ZONAS_ORIGEN_C, metro, [], SIN);
+  assert.deepEqual(c, { compatible: false, motivo: "Esta cara es una zona libre (se dibuja vista desde arriba): no se le copian zonas de un frente." });
+  assert.equal(CO.bloqueoDeLaCopia(c), c.motivo);
+  const alReves = CO.copiarZonas(ladoC(SUP_METRO, ORIGEN_C.participaciones), ZONAS_ORIGEN_C, destinoC(SUP_090, []), [], SIN);
+  assert.equal(alReves.motivo, "La cara de origen es una zona libre (se dibuja vista desde arriba): sus zonas no se copian a un frente.");
+  assert.equal(CO.copiarZonas(ladoC(null, []), [], destinoC(SUP_090, []), [], SIN).compatible, false);
+  assert.equal(CO.copiarZonas(ORIGEN_C, [], destinoC(null, []), [], SIN).motivo, "Esta cara no tiene superficie para dibujar zonas.");
+  // Otro tipo con la misma orientación (góndola → robatope) sí: lo que no se vende lo dice la medición.
+  const rob = destinoC(SUP_ROB, [partC(601, 1, true, 7, "Café A", "Sello Rojo", 3000)]);
+  const r = CO.copiarZonas(ORIGEN_C, [zoC(1, 101, franjaC(0.2, 0.8), 0)], rob, [], SIN);
+  assert.equal(r.compatible, true);
+  assert.equal(r.revision.medidas.dibujadoPb.get(601), dibujadoEn(SUP_ROB, franjaC(0.2, 0.8)));
+  assert.match(anotarFrases(CO.frasesDeLaCopia(r, ORIGEN_C, rob)).avisos[0].texto, /^Esta cara es \d+,\d veces más alta en proporción: las zonas se estiran a lo alto\.$/);
+});
+
+await prueba("de una cara grande a una chica: la zona de 1,2 cm de una de 5 m queda de menos de 1 cm² y no se copia (y no queda nada para copiar)", () => {
+  const sup5 = { orientacion: "frente", ancho: 5, alto: 2.1, plano: 0.3, giro_x: 0, area_util_m2: 10.5, exclusiones: [] };
+  const origen = ladoC(sup5, [partC(101, 1, true, 7, "Café A", "Sello Rojo", 3000)]);
+  const chica = franjaC(0.5, 0.5 + 0.012 / 5, 0.5, 0.5 + 0.012 / 2.1);
+  assert.equal(G.validarZona(chica, 5, 2.1).codigo, null, "la zona ya era inválida en el origen");
+  const destino = destinoC(SUP_090, [partC(201, 1, true, 7, "Café A", "Sello Rojo", 3000)]);
+  const c = CO.copiarZonas(origen, [zoC(1, 101, chica, 0)], destino, [], SIN);
+  assert.deepEqual(c.descartadas.map((d) => d.motivo), ["sin_area"]);
+  assert.deepEqual(c.nuevas, []);
+  assert.equal(CO.bloqueoDeLaCopia(c), "No queda ninguna zona para copiar.");
+  const f = anotarFrases(CO.frasesDeLaCopia(c, origen, destino));
+  assert.deepEqual(f.noSeCopia, ["1 zona de Café A · Sello Rojo: acá queda de menos de 1 cm²."]);
+  assert.ok(f.avisos.some((a) => a.bloquea && a.texto === "No queda ninguna zona para copiar."));
+});
+
+await prueba("topes: con la copia la cara pasaría de 60 zonas → bloquea; «Quitar las zonas de las demás» lo destraba (y no saca las que la cara no nombra)", () => {
+  const caja = (k, v) => franjaC(0.05 + (k % 10) * 0.09, 0.10 + (k % 10) * 0.09, v + Math.floor(k / 10) * 0.1, v + 0.05 + Math.floor(k / 10) * 0.1);
+  const origen = ladoC(SUP_090, [partC(101, 1, true, 7, "Café A", "Sello Rojo", 3000)]);
+  const zs = Array.from({ length: 31 }, (_, k) => zoC(k + 1, 101, caja(k, 0.5), k));
+  const destino = destinoC(SUP_090, [partC(201, 1, true, 7, "Café A", "Sello Rojo", 3000), partC(202, 2, true, 8, "Postobón", "Hit", 2500)]);
+  const ya = [...Array.from({ length: 30 }, (_, k) => zona(`z${100 + k}`, 202, caja(k, 0.1))), zona("z999", 999, franjaC(0.9, 0.95, 0.1, 0.2))];
+  const c = CO.copiarZonas(origen, zs, destino, ya.slice(0, 30), SIN);
+  assert.deepEqual([c.nuevas.length, c.quedan.length, c.enLosTopes], [31, 30, false]);
+  assert.equal(CO.bloqueoDeLaCopia(c), "Con la copia la cara pasaría los topes (60 zonas, 240 puntos).");
+  const f = anotarFrases(CO.frasesDeLaCopia(c, origen, destino));
+  assert.ok(f.avisos.some((a) => a.bloquea && a.texto === "Con la copia la cara tendría 61 zonas: el tope es 60. Quitá zonas o marcá «Quitar las zonas de las participaciones que no reciben nada»."));
+  const q = CO.copiarZonas(origen, zs, destino, ya, { ...SIN, quitarLasDemas: true });
+  assert.deepEqual([q.nuevas.length, q.quitadas, q.enLosTopes], [31, 30, true]);
+  assert.deepEqual(q.quedan.map((z) => z.clave), ["z999"], "«Quitar las demás» se llevó una zona que la cara no nombra (que el servidor la marque)");
+  assert.equal(CO.bloqueoDeLaCopia(q), null);
+});
+
+await prueba("dos del origen a la misma del destino: se suman sus zonas y lo que se pisa cuenta una vez (D9), sin solape", () => {
+  const origen = ladoC(SUP_090, [partC(101, 1, true, 7, "Café A", "Sello Rojo", 1000), partC(105, 5, true, 7, "Café A", "sello rojo", 2000)]);
+  const zs = [zoC(1, 101, franjaC(0.1, 0.4), 0), zoC(2, 105, franjaC(0.3, 0.6), 1)];
+  const destino = destinoC(SUP_090, [partC(201, 1, true, 7, "Café A", "Sello Rojo", 5000)]);
+  const c = CO.copiarZonas(origen, zs, destino, [], SIN);
+  assert.deepEqual(c.grupos.map((g) => [g.numeroOrigen, g.como, g.destino]), [[1, "automatico", 201], [5, "automatico", 201]]);
+  assert.equal(c.revision.medidas.dibujadoPb.get(201), dibujadoEn(SUP_090, franjaC(0.1, 0.4), franjaC(0.3, 0.6)));
+  assert.equal(c.revision.medidas.dibujadoPb.get(201), dibujadoEn(SUP_090, franjaC(0.1, 0.6)), "lo que se pisa contó dos veces");
+  assert.equal(c.solapesNuevos, 0);
+  const f = anotarFrases(CO.frasesDeLaCopia(c, origen, destino));
+  assert.equal(f.filas[0].junta, "Junta las zonas de las participaciones 1 y 5 del origen: lo que se pisa cuenta una vez.");
+  assert.equal(f.filas[1].junta, null, "la junta se dijo dos veces");
+});
+
+await prueba("lo que queda se juzga como la revisión en vivo: un solape NUEVO con lo que ya estaba y un exceso se avisan (no se esconden)", () => {
+  const origen = ladoC(SUP_090, [partC(102, 2, true, 8, "Postobón", "Hit", 2500)]);
+  const destino = destinoC(SUP_090, [partC(201, 1, true, 7, "Café A", "Sello Rojo", 3000), partC(202, 2, true, 8, "Postobón", "Hit", 2500)]);
+  const ya = [zona("z5", 201, franjaC(0.1, 0.35))];
+  const c = CO.copiarZonas(origen, [zoC(1, 102, franjaC(0.3, 0.95), 0)], destino, ya, SIN);
+  assert.equal(c.solapesNuevos, 1);
+  assert.deepEqual(c.revision.juicio.errores.map((p) => p.codigo).sort(), ["EXCESO", "SOLAPE"]);
+  const f = anotarFrases(CO.frasesDeLaCopia(c, origen, destino, { sucio: true }));
+  assert.equal(f.filas[0].sobra, true);
+  assert.match(f.filas[0].comoQueda, /^\d+(,\d+)? % dibujado de 25 % · sobra \d+(,\d+)? %$/);
+  assert.deepEqual(f.avisos.map((a) => a.texto), [
+    "Con la copia queda 1 solape entre participaciones con fechas que se cruzan: se ve marcado y hay que resolverlo antes de confirmar.",
+    "Alguna participación queda con más dibujado que contratado: no se va a poder confirmar hasta achicarla («Ajustar al contratado», en el menú de su fila de la leyenda).",
+    "Tenés cambios sin guardar en esta cara: se guardan junto con la copia, en el mismo borrador.",
+  ]);
+  assert.ok(f.avisos.every((a) => !a.bloquea), "un aviso de la revisión bloqueó la copia (se arregla después, en el lienzo)");
+  // El solape que ya estaba antes de copiar no es nuevo.
+  const yaPisaban = [zona("z5", 201, franjaC(0.1, 0.4)), zona("z6", 202, franjaC(0.35, 0.5))];
+  const sinCambio = CO.copiarZonas(ladoC(SUP_090, [partC(101, 1, true, 7, "Café A", "Sello Rojo", 3000)]),
+    [zoC(1, 101, franjaC(0.1, 0.4), 0)], destino, yaPisaban, SIN);
+  assert.equal(sinCambio.solapesNuevos, 0);
+});
+
+await prueba("las caras que se ofrecen de origen: la otra cara del mueble primero (aunque el resumen no haya llegado), nunca la de destino ni las que no tienen zonas", () => {
+  const destino = { sede: "NAVE", codigo: "GON-01", cara: "A", caras: 2 };
+  assert.deepEqual(CO.opcionesDeOrigen(destino, "NAVE", null), [
+    { clave: "NAVE|GON-01-B", sede: "NAVE", espacio: "GON-01-B", codigo: "GON-01", cara: "B", otraCara: true, texto: "La otra cara de este mueble (cara B)" },
+  ]);
+  const cara = (fixture_code, c, estado_distribucion, numeros) => ({ fixture_code, cara: c, estado_distribucion, participaciones: numeros.map((numero) => ({ numero })) });
+  const resumen = { caras: [
+    cara("GON-01", "A", "confirmada", [1, 2]), cara("GON-01", "B", "borrador", [1, 1]), cara("GON-02", "A", "sin_distribuir", []),
+    cara("PUN-01", "A", "para_revisar", [1, 2]), cara("MET-01", "A", "confirmada", [3]),
+  ] };
+  assert.deepEqual(CO.opcionesDeOrigen(destino, "NAVE", resumen).map((o) => [o.espacio, o.texto]), [
+    ["GON-01-B", "La otra cara de este mueble (cara B) — Borrador · 1 participación"],
+    ["PUN-01", "PUN-01 · cara A — Para revisar · 2 participaciones"],
+    ["MET-01", "MET-01 · cara A — Confirmada · 1 participación"],
+  ]);
+  // Un mueble de una cara no ofrece «la otra cara»; desde la B, la otra es la A.
+  assert.ok(!CO.opcionesDeOrigen({ ...destino, caras: 1 }, "NAVE", resumen).some((o) => o.otraCara));
+  assert.equal(CO.opcionesDeOrigen({ ...destino, cara: "B" }, "NAVE", resumen)[0].texto, "La otra cara de este mueble (cara A) — Confirmada · 2 participaciones");
+  // Otra sede: el GON-01 de allá es otro mueble (y se ofrece); no hay «otra cara».
+  const otra = CO.opcionesDeOrigen(destino, "TERRON", resumen);
+  assert.ok(!otra.some((o) => o.otraCara));
+  assert.deepEqual(otra.map((o) => o.clave).slice(0, 2), ["TERRON|GON-01", "TERRON|GON-01-B"]);
+});
+
+await prueba("el selector de cada fila: primero el mismo proveedor y marca, después el mismo proveedor, después el resto; nunca una que no rige", () => {
+  const destino = { participaciones: [
+    partC(301, 1, true, 7, "Café A", "Sello Rojo", 3000), partC(302, 2, true, 8, "Postobón", "Hit", 2000),
+    partC(303, 3, true, 8, "Postobón", " hit", 500), partC(304, 4, true, 11, "Colanta", null, 2000),
+    partC(305, 5, true, 8, "Postobón", "Otra", 1000), partC(306, 6, false, 8, "Postobón", "Hit", 2000),
+  ] };
+  assert.deepEqual(CO.destinosEnOrden({ supplierId: 8, marca: "Hit" }, destino).map((p) => p.space_id), [302, 303, 305, 301, 304]);
+  assert.equal(CO.nombreDeDestino(destino.participaciones[1]), "Participación 2 · Postobón · Hit · 20 %");
+  assert.equal(CO.nombreDeDestino(destino.participaciones[3]), "Participación 4 · Colanta · 20 %");
+});
+
+await prueba("lo que dicen el panel y el diálogo: por qué el botón espera, el encabezado y la franja (voseo; nunca «sombra» ni montos)", () => {
+  const listo = { conSuperficie: true, alDia: true, enMirar: false, guardando: false, versionVieja: false, vivas: 2 };
+  assert.equal(CO.motivoParaNoCopiar(listo), null);
+  assert.equal(CO.motivoParaNoCopiar({ ...listo, enMirar: true }), "Pasá a «Editar» para copiar zonas.");
+  assert.equal(CO.motivoParaNoCopiar({ ...listo, alDia: false, enMirar: true }), "El plano tiene cambios sin guardar: esperá un momento.");
+  assert.equal(CO.motivoParaNoCopiar({ ...listo, versionVieja: true }), "Traé lo nuevo antes de copiar.");
+  assert.equal(CO.motivoParaNoCopiar({ ...listo, guardando: true }), "Esperá a que termine de guardar.");
+  assert.equal(CO.motivoParaNoCopiar({ ...listo, vivas: 0 }),
+    "Esta cara no tiene participaciones vivas: cargalas con «Nueva participación» y después copiá las zonas.");
+  assert.equal(CO.motivoParaNoCopiar({ ...listo, conSuperficie: false }), "Esta cara no tiene superficie para dibujar zonas.");
+  assert.equal(CO.encabezadoDeLaCopia({ sede: "NAVE", codigo: "GON-02", cara: "A" }),
+    "Las zonas se copian como borrador a NAVE · GON-02 · cara A. No se copia ningún contrato ni reserva: cada zona va a una "
+    + "participación que esta cara ya tiene, y para que valga tenés que confirmar la distribución.");
+  assert.equal(CO.franjaDeLaCopia(CO.rotuloDeCara("NAVE", "GON-01", "B"), true),
+    "Copiaste zonas de NAVE · GON-01 · cara B: quedaron como borrador. Revisalas y confirmá cuando estén bien. Ctrl+Z deshace la copia.");
+  assert.match(CO.franjaDeLaCopia("NAVE · GON-01 · cara B", false), /todavía no se guardaron/);
+  todasLasFrases.push(CO.encabezadoDeLaCopia({ sede: "NAVE", codigo: "GON-02", cara: "A" }), CO.franjaDeLaCopia("x", true), CO.franjaDeLaCopia("x", false));
+  assert.ok(todasLasFrases.length > 20, "las pruebas de arriba no anotaron sus frases");
+  for (const t of todasLasFrases) {
+    assert.ok(!/sombra/i.test(t), `«${t}» dice «sombra»`);
+    assert.ok(!/\$|valor|pesos/i.test(t), `«${t}» habla de plata`);
+  }
+});
+
+await prueba("pegarZonas: lo que queda y lo copiado al final con claves n<proxima…>, UN paso de deshacer que vuelve exacto; en «Mirar» no hace nada", () => {
+  const z1 = zona("z1", 7, cuadrado(0.1, 0.1, 0.2, 0.2)), n3 = zona("n3", 8, cuadrado(0.5, 0.5, 0.6, 0.6));
+  const e = conZonas([z1, n3], { proxima: 4, seleccion: { zona: "z1", vertice: null } });
+  const nuevas = [{ participacionSpaceId: 8, vertices: cuadrado(0.3, 0.3, 0.4, 0.4) }, { participacionSpaceId: 9, vertices: [[0.7, 0.1], [1.3, 0.1], [0.9, 0.4]] }];
+  const p = E.reducir(e, { tipo: "pegarZonas", quedan: [z1], nuevas });
+  assert.deepEqual(p.zonas.map((z) => [z.clave, z.participacionSpaceId]), [["z1", 7], ["n4", 8], ["n5", 9]]);
+  assert.deepEqual(p.zonas[2].vertices, [[0.7, 0.1], [1, 0.1], [0.9, 0.4]], "un vértice afuera de la cara no se recortó");
+  assert.deepEqual([p.proxima, p.atras.length, p.seleccion, p.trazo, p.sucio], [6, 1, null, null, true]);
+  assert.deepEqual(p.base, e.base, "pegar tocó la base (lo guardado)");
+  assert.deepEqual(E.pegarZonas(e, [z1], nuevas), p);
+  const d = E.reducir(p, { tipo: "deshacer" });
+  assert.deepEqual(d.zonas, e.zonas, "deshacer no volvió exacto a lo de antes");
+  assert.equal(d.sucio, false);
+  assert.deepEqual(E.reducir(d, { tipo: "rehacer" }).zonas, p.zonas);
+  // En «Mirar», el MISMO objeto; sin nada que cambie, también.
+  const mirar = E.reducir(e, { tipo: "elegirModo", modo: "mirar" });
+  assert.equal(E.reducir(mirar, { tipo: "pegarZonas", quedan: [z1], nuevas }), mirar);
+  assert.equal(E.reducir(e, { tipo: "pegarZonas", quedan: [z1, n3], nuevas: [] }), e);
+  // Con un trazo a medias, el trazo se suelta.
+  const conTrazo = { ...e, trazo: [[0.1, 0.1], [0.2, 0.2]] };
+  assert.equal(E.reducir(conTrazo, { tipo: "pegarZonas", quedan: [], nuevas }).trazo, null);
+});
+
+await prueba("copiaDeZonas es pura: de la API sólo tipos; sin store, React, reloj ni navegador; nunca nombra montos ni compara «double»", () => {
+  const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
+  const ts = sinComent(leer(join(raiz, "src", "utils", "copiaDeZonas.ts")));
+  const imports = [...ts.matchAll(/^import\s+(type\s+)?[^;]*from\s+"([^"]+)"/gm)].map((m) => [m[2], !!m[1]]);
+  for (const [de, soloTipos] of imports) {
+    assert.ok(["./edicionDeZonas", "./participaciones", "./zonasGeometria"].includes(de) || (soloTipos && de === "../api/participaciones"),
+      `copiaDeZonas.ts importa ${de}${soloTipos ? " (tipos)" : ""}`);
+  }
+  assert.ok(!/localStorage|sessionStorage|indexedDB|new Date\(|Date\.now|from "react"|store\//.test(ts));
+  assert.ok(!/valor_mensual|monthly_rent|negotiatedValue|"double"/.test(ts));
+});
+
 console.log(`\n${hechas} pruebas de zonas en verde`);
