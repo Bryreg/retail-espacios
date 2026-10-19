@@ -1290,4 +1290,136 @@ await prueba("radioEnLaCara: 6 px de pantalla son 6 ± 0,3 px en u y en v, de fr
   assert.equal(Z.radioEnLaCara(() => ({ x: 10, y: 10 }), [0.5, 0.5], 6), null, "una proyección degenerada dio radio");
 });
 
+// ── fase 2 · I4 (D3 + E3 + E4): el tres cuartos centrado, lo que tapa y la cara de 6 m ──
+//
+// Medido con el plano del recorrido (exp-D/exp-E de la fase 2): mirando al
+// centro de la cara, el extremo cercano del tres cuartos quedaba pegado a un
+// borde (GON-01·A a 560 × 720: x de −0,93 a +0,47); una estiba del pasillo
+// podía tapar una esquina de la toma elegida; y una cara de 6 m frente a un
+// pasillo de 2,5 m «no entraba» por 0,96, cuando centrada ocupa 0,75.
+
+{
+  const f = (code, x, z, w, d, h, rotY = 0) => ({ code, x, z, w, d, h, rotY });
+  const NAVE = [f("GON-01", 4, 4, 3, 0.9, 1.8), f("GON-04", 4, 14, 3, 0.5, 1.9), f("PUN-01", 11, 4, 0.9, 0.4, 1.8), f("ROB-01", 13, 4, 1.2, 0.5, 1),
+    f("RIS-01", 15, 4, 0.4, 0.4, 1.6), f("CRO-01", 17, 4, 0.8, 0.8, 1.8), f("MUE-01", 19.5, 4, 1.2, 0.6, 2), f("GON-02", 4, 9, 3, 0.9, 1.8),
+    f("GON-03", 11, 9, 3, 0.9, 1.8), f("GON-05", 11, 14, 3, 0.9, 1.8)];
+  const salon = { minX: 0, maxX: 30, minZ: 0, maxZ: 42 };
+  const delMueble = (m) => ({ cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: m.rotY });
+  /** Los x de las esquinas en el cuadro. */
+  const xs = (vista, esquinas, aspecto) => esquinas.map((p) => PL.proyectar(vista, 50, aspecto, p).x);
+  /** La misma toma mirando al centro de la cara (como antes de centrar). */
+  const alCentro = (vista, m, cara) => {
+    const n = PL.normalDeCara(m.rotY ?? 0, cara);
+    return { ...vista, targetX: m.x + (n.x * m.d) / 2, targetY: m.h / 2, targetZ: m.z + (n.z * m.d) / 2 };
+  };
+  /** ¿Alguna esquina tapada por otro mueble? La misma cuenta del clic, a mano. */
+  const tapadas = (vista, esquinas, otros) => esquinas.filter((p) => {
+    const o = [vista.posX, vista.posY, vista.posZ];
+    const d = [p.x - o[0], p.y - o[1], p.z - o[2]];
+    const largo = Math.hypot(...d);
+    return Z.rayoTapado({ origen: o, dir: d.map((c) => c / largo) }, largo - 0.02, otros);
+  }).length;
+
+  await prueba("el tres cuartos de Distribución sale CENTRADO: la cara a la misma distancia de los dos bordes, la mira a la misma distancia y altura (D3)", () => {
+    const limites = PL.limitesDePlanta(NAVE, 2.5, salon);
+    let centrados = 0;
+    for (const aspecto of [560 / 720, 521 / 700]) {
+      // Los mismos seis casos que la prueba de arriba afirma enteros.
+      for (const [code, cara] of [["GON-01", "A"], ["GON-01", "B"], ["GON-03", "A"], ["GON-02", "B"], ["PUN-01", "A"], ["CRO-01", "A"]]) {
+        const m = NAVE.find((x) => x.code === code);
+        const mueble = delMueble(m);
+        const e = ED.encuadreDeLaCara(mueble, cara, PL.murosDeCaminata(NAVE.filter((x) => x !== m)), limites, 50, aspecto);
+        if (e.toma !== "tres_cuartos") continue;
+        centrados++;
+        const quien = `${code}·${cara} a ${aspecto.toFixed(2)}`;
+        const esquinas = ED.esquinasDeLaCara(mueble, cara);
+        const x = xs(e.vista, esquinas, aspecto);
+        const [xMin, xMax] = [Math.min(...x), Math.max(...x)];
+        assert.ok(Math.abs(xMin + xMax) <= 0.03, `${quien}: la cara no queda centrada (x de ${xMin.toFixed(3)} a ${xMax.toFixed(3)})`);
+        assert.ok(Math.max(-xMin, xMax) <= 0.9, `${quien}: una punta queda a ${Math.max(-xMin, xMax).toFixed(3)} del borde`);
+        assert.ok(e.entera && e.ocupa <= ED.BORDE_DEL_ENCUADRE, `${quien}: centrada dejó de entrar`);
+        assert.ok(Math.abs(e.ocupa - ED.cuantoOcupa(e.vista, 50, aspecto, esquinas)) < 1e-9, `${quien}: lo que ocupa no se contó con la toma centrada`);
+        // La cámara no se movió y la mira sólo giró: misma distancia en planta y misma altura (el rango polar de los controles no cambia).
+        const antes = alCentro(e.vista, m, cara);
+        assert.ok(Math.abs(Math.hypot(e.vista.targetX - e.vista.posX, e.vista.targetZ - e.vista.posZ) - Math.hypot(antes.targetX - antes.posX, antes.targetZ - antes.posZ)) < 1e-9,
+          `${quien}: centrar cambió el radio de la órbita`);
+        assert.equal(e.vista.targetY, m.h / 2, `${quien}: centrar cambió la altura de la mira`);
+        // Mirando al centro, en cambio, quedaba corrida hacia un borde.
+        const xa = xs(antes, esquinas, aspecto);
+        assert.ok(Math.abs(Math.min(...xa) + Math.max(...xa)) > Math.abs(xMin + xMax), `${quien}: centrar no mejoró nada`);
+      }
+    }
+    assert.ok(centrados >= 4, `pocos casos en tres cuartos (${centrados}): la prueba no prueba nada`);
+    // GON-01·A a 560 × 720, el caso del recorrido: de −0,93…+0,47 a ±0,70.
+    const m = NAVE[0], mueble = delMueble(m);
+    const e = ED.encuadreDeLaCara(mueble, "A", PL.murosDeCaminata(NAVE.slice(1)), limites, 50, 560 / 720);
+    const esquinas = ED.esquinasDeLaCara(mueble, "A");
+    const x = xs(e.vista, esquinas, 560 / 720), xa = xs(alCentro(e.vista, m, "A"), esquinas, 560 / 720);
+    assert.ok(Math.min(...xa) < -0.9 && Math.max(...xa) < 0.55, `GON-01·A ya no se reproduce mirando al centro (${Math.min(...xa).toFixed(3)} a ${Math.max(...xa).toFixed(3)})`);
+    assert.ok(Math.abs(Math.max(...x) - 0.7) <= 0.03 && Math.abs(Math.min(...x) + 0.7) <= 0.03,
+      `GON-01·A centrada: x de ${Math.min(...x).toFixed(3)} a ${Math.max(...x).toFixed(3)} y no ±0,70`);
+    // Puro: centrar dos veces no mueve nada, y sin esquinas devuelve la misma vista.
+    const otra = ED.centrarLaMira(e.vista, esquinas, 50, 560 / 720);
+    assert.ok(Math.abs(otra.targetX - e.vista.targetX) < 1e-6 && Math.abs(otra.targetZ - e.vista.targetZ) < 1e-6, "centrar una toma centrada la movió");
+    assert.equal(ED.centrarLaMira(e.vista, [], 50, 560 / 720), e.vista);
+  });
+
+  await prueba("una esquina tapada por una estiba del pasillo no cuenta como que la cara entra: se elige otra toma (E3); sin cajas, la de antes", () => {
+    const plano = [f("GON-01", 6, 4, 3, 0.9, 1.8), f("GON-02", 6, 9, 3, 0.9, 1.8), f("EST-01", 5, 2.2, 1.0, 0.8, 1.5)];
+    const limites = PL.limitesDePlanta(plano, 2.5, salon);
+    const m = plano[0], mueble = delMueble(m), otros = plano.slice(1);
+    const obstaculos = PL.murosDeCaminata(otros);
+    const esquinas = ED.esquinasDeLaCara(mueble, "A");
+    const sinCajas = ED.encuadreDeLaCara(mueble, "A", obstaculos, limites, 50, 560 / 720);
+    // El caso reproduce el problema: la toma de antes tiene una esquina detrás de la estiba.
+    assert.ok(tapadas(sinCajas.vista, esquinas, otros) > 0, "la estiba ya no tapa la toma de antes: el caso no prueba nada");
+    assert.equal(ED.esquinaTapada(sinCajas.vista, esquinas, otros), true);
+    // Sin cajas es exactamente lo de antes (el parámetro es opcional).
+    assert.deepEqual(ED.encuadreDeLaCara(mueble, "A", obstaculos, limites, 50, 560 / 720, []), sinCajas);
+    // Con los demás muebles, una toma que la abarca entera SIN esquinas tapadas.
+    const conCajas = ED.encuadreDeLaCara(mueble, "A", obstaculos, limites, 50, 560 / 720, otros);
+    assert.ok(conCajas.entera, `con la estiba no se encontró toma entera (${conCajas.toma}, ${conCajas.ocupa.toFixed(2)})`);
+    assert.equal(tapadas(conCajas.vista, esquinas, otros), 0, "la toma elegida tiene una esquina tapada");
+    for (const p of esquinas) {
+      const q = PL.proyectar(conCajas.vista, 50, 560 / 720, p);
+      assert.ok(q.profundidad > 0 && Math.abs(q.x) <= ED.BORDE_DEL_ENCUADRE + 1e-9 && Math.abs(q.y) <= ED.BORDE_DEL_ENCUADRE + 1e-9, "una esquina queda fuera de cuadro");
+    }
+    assert.ok(!PL.chocaEn(obstaculos, conCajas.vista.posX, conCajas.vista.posZ), "la cámara queda adentro de un mueble");
+    // Nada en el medio (los muebles lejos del pasillo): las cajas no cambian la toma.
+    const libre = [f("GON-01", 6, 4, 3, 0.9, 1.8), f("GON-02", 6, 9, 3, 0.9, 1.8)];
+    const lim2 = PL.limitesDePlanta(libre, 2.5, salon);
+    const a = ED.encuadreDeLaCara(delMueble(libre[0]), "A", PL.murosDeCaminata([libre[1]]), lim2, 50, 560 / 720);
+    const b = ED.encuadreDeLaCara(delMueble(libre[0]), "A", PL.murosDeCaminata([libre[1]]), lim2, 50, 560 / 720, [libre[1]]);
+    assert.deepEqual(b, a, "un mueble que no tapa nada cambió la toma");
+  });
+
+  await prueba("una cara de 6 m frente a un pasillo de 2,5 m entra ENTERA centrada (E4); una de 10 m, la toma que muestra más, sin mentir", () => {
+    // El panel partido a 1440 × 900 (el caso medido: 0,96 mirando al centro, 0,75 centrada).
+    for (const aspecto of [560 / 720]) {
+      const plano = [f("GON-01", 6, 4, 6, 0.9, 1.8)];
+      const limites = PL.limitesDePlanta(plano, 2.5, salon);
+      const m = plano[0], mueble = delMueble(m);
+      const e = ED.encuadreDeLaCara(mueble, "A", [], limites, 50, aspecto);
+      const quien = `6 m a ${aspecto.toFixed(2)}`;
+      assert.equal(e.entera, true, `${quien}: no entra entera (${e.toma}, ${e.ocupa.toFixed(2)})`);
+      assert.equal(e.toma, "tres_cuartos", quien);
+      const esquinas = ED.esquinasDeLaCara(mueble, "A");
+      for (const p of esquinas) {
+        const q = PL.proyectar(e.vista, 50, aspecto, p);
+        assert.ok(q.profundidad > 0 && Math.abs(q.x) <= ED.BORDE_DEL_ENCUADRE + 1e-9 && Math.abs(q.y) <= ED.BORDE_DEL_ENCUADRE + 1e-9,
+          `${quien}: una esquina queda fuera de cuadro (${q.x.toFixed(2)}, ${q.y.toFixed(2)})`);
+      }
+      const x = xs(e.vista, esquinas, aspecto);
+      assert.ok(Math.abs(Math.min(...x) + Math.max(...x)) <= 0.03, `${quien}: no queda centrada`);
+      // Mirando al centro (como antes) no entraba: lo que la hace entrar es centrar.
+      assert.ok(ED.cuantoOcupa(alCentro(e.vista, m, "A"), 50, aspecto, esquinas) > ED.BORDE_DEL_ENCUADRE, `${quien}: ya entraba sin centrar (el caso no prueba nada)`);
+    }
+    const largo = [f("GON-01", 8, 4, 10, 0.9, 1.8)];
+    const m = largo[0], mueble = delMueble(m);
+    const e = ED.encuadreDeLaCara(mueble, "A", [], PL.limitesDePlanta(largo, 2.5, salon), 50, 560 / 720);
+    assert.equal(e.entera, false, `10 m dice que entra entera (${e.ocupa.toFixed(2)})`);
+    assert.ok(e.ocupa <= ED.cuantoOcupa(alCentro(e.vista, m, "A"), 50, 560 / 720, ED.esquinasDeLaCara(mueble, "A")) + 1e-9, "10 m: centrada muestra menos que mirando al centro");
+  });
+}
+
 console.log(`\n${hechas} pruebas de superficies en verde`);

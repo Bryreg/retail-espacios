@@ -7100,14 +7100,19 @@ prueba("la tarjeta CONTRATADO de un mueble por participación dice «Por partici
   const a = tarjeta.indexOf("{porParticipacion(fix) ? (");
   assert.ok(a > 0 && a < tarjeta.indexOf("fix.supplierName && contratoDiscreto") && a < tarjeta.indexOf("Sin contrato activo."),
     "la tarjeta de un mueble por participación todavía puede decir «Sin contrato activo»");
-  assert.match(tarjeta, /lineasDeContratadoPorParticipacion\(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto\)\.map\(/);
+  // (Fase 2 · I4, G2b: también recibe lo suyo del proveedor de la reunión,
+  // `loSuyoVigente`; la guarda exige eso además de lo de antes.)
+  assert.match(tarjeta, /lineasDeContratadoPorParticipacion\(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto, loSuyoVigente\)\.map\(/);
   assert.match(tarjeta, /\{isAdmin && \(porParticipacion\(fix\) \? \(/, "a un mueble por participación lo sigue mandando a «Sede → Vender»");
 });
 
 prueba("al entrar en Distribución, «De frente» abarca la cara entera en el panel partido (la cuenta, en probar-superficies)", () => {
   const toma = cuerpoDe("const tomaDeVenta = useCallback(", "const ponerCampoVisual = useCallback(");
-  assert.match(toma, /if \(!enVenta && toma === "frente" && distribucionDeLaToma\.current\?\.fixtureId === fix\.id\) \{\s*ponerCampoVisual\(FOV_DEL_EDITOR\);\s*aplicarVista\(encuadreDeLaCara\(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto\)\.vista\);\s*return;\s*\}/,
-    "en Distribución la toma no abarca la cara entera");
+  // (Fase 2 · I4, E3: la llamada pasa también los demás muebles —las mismas
+  // cajas que el clic, `placedFixtures` sin el propio— para no elegir una
+  // toma con una esquina tapada. La guarda exige eso además de lo de antes.)
+  assert.match(toma, /if \(!enVenta && toma === "frente" && distribucionDeLaToma\.current\?\.fixtureId === fix\.id\) \{\s*ponerCampoVisual\(FOV_DEL_EDITOR\);\s*aplicarVista\(encuadreDeLaCara\(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures\.filter\(\(f\) => f\.id !== fix\.id\)\)\.vista\);\s*return;\s*\}/,
+    "en Distribución la toma no abarca la cara entera, o no mira lo que la tapa");
   assert.ok(toma.indexOf("const aspecto = size.width / Math.max(1, size.height);") < toma.indexOf("encuadreDeLaCara("),
     "el encuadre no usa el aspecto del lienzo de ahora");
   assert.ok(toma.indexOf("encuadreDeLaCara(") < toma.indexOf("const fov = toma ==="), "el encuadre de Distribución llega tarde");
@@ -7162,5 +7167,124 @@ prueba("el trazo en curso se dibuja en el 3D: una cinta discontinua en el tono d
   // Con menos de dos puntos, nada.
   assert.equal(cintas({ vertices: [[0.5, 0.5]], tono: "#A4338F" }).length, sin.length);
 });
+
+// ── fase 2 · I4: lo puesto a mano manda en el 3D, Esc con un modal, lo suyo en la reunión ──
+{
+  const r4 = await build({
+    stdin: { contents: 'export { estadoParaPintar, PALABRA_POR_OCUPACION } from "./src/utils/partes.ts";', resolveDir: raiz, loader: "ts" },
+    bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
+  });
+  const P4 = await import("data:text/javascript;base64," + Buffer.from(r4.outputFiles[0].text).toString("base64"));
+  const STATUS_META = { free: { bg: "bg-v", text: "t-v", label: "Disponible" }, occupied: { bg: "bg-r", text: "t-r", label: "Ocupado" },
+    reserved: { bg: "bg-a", text: "t-a", label: "Reservado" }, maintenance: { bg: "bg-m", text: "t-m", label: "Mantenimiento" } };
+  const STATUS_COLORS = { free: "verde", occupied: "rojo", reserved: "ambar", maintenance: "gris" };
+
+  prueba("fase 2 · lo puesto a mano (Mantenimiento, Reservado) o la venta entera mandan en el 3D: ni el color ni el cartel salen de la ocupación, como en el plano 2D (ejecutado)", () => {
+    const i = editorCodigo.indexOf("function ocupacionDelMueble(");
+    const j = editorCodigo.indexOf("function textoDeOcupacion(", i);
+    assert.ok(i > 0 && j > i, "no se encontró la cuenta del color por ocupación");
+    const { coloresPorOcupacion, estadoQueSeVe } = new Function(
+      "porParticipacion", "fullSpaceCode", "carasDe", "dispoPorParticipacion", "STATUS_COLORS", "STATUS_META", "PALABRA_POR_OCUPACION",
+      `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { coloresPorOcupacion, estadoQueSeVe };`,
+    )(RG.porParticipacion, RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, STATUS_COLORS, STATUS_META, RG.PALABRA_POR_OCUPACION);
+    const iv = (pb) => ({ desde: "2026-10-01", hasta: "2026-12-31", pb });
+    const o = { sede: "NAVE", hoy: "2026-10-17", caras: {
+      "NAVE-ROB-01": { intervalos: [iv(6000), iv(4000)], fisicos: [] },
+      "NAVE-ROB-02": { intervalos: [iv(2500)], fisicos: [] },
+    } };
+    const rob = (id, code, status) => ({ id, code, type: "robatope", w: 0.3, d: 0.4, h: 1.6, status, partes: { division: "participacion" } });
+    const c = coloresPorOcupacion([rob("m", "ROB-01", "maintenance"), rob("r", "ROB-02", "reserved"), rob("o", "ROB-01", "occupied"),
+      rob("l", "ROB-01", "free"), rob("p", "ROB-02", "free")], o, "NAVE");
+    assert.equal(c.has("m"), false, "un robatope en Mantenimiento con 60 + 40 % se pinta por la ocupación (el plano lo pinta gris)");
+    assert.equal(c.has("r"), false, "uno Reservado a mano con 25 % se pinta por la ocupación");
+    assert.equal(c.has("o"), false, "uno vendido entero se pinta por la ocupación");
+    assert.equal(c.get("l"), "rojo", "uno Disponible con 100 % comprometido dejó de pintarse por la ocupación");
+    assert.equal(c.get("p"), "ambar");
+    // La tabla cruzada: 4 estados × 3 ocupaciones, la MISMA regla que el plano (`estadoParaPintar`).
+    for (const propio of ["free", "occupied", "reserved", "maintenance"]) {
+      for (const dispo of ["libre", "parcial", "tomado"]) {
+        const visto = estadoQueSeVe(STATUS_META[propio], [{ cara: "A", dispo }]);
+        const pintado = P4.estadoParaPintar(propio, { dispo });
+        const quien = `${propio} con ${dispo}`;
+        if (pintado === propio) {
+          assert.equal(visto, STATUS_META[propio], `${quien}: el 3D cambia el cartel y el plano no`);
+        } else {
+          assert.equal(propio, "free", `${quien}: la ocupación cambió un estado que no es Disponible`);
+          assert.equal(visto.bg, STATUS_META[pintado].bg, `${quien}: el 3D pinta otro color que el plano`);
+          assert.equal(visto.label, pintado === "occupied" ? P4.PALABRA_POR_OCUPACION.tomado : P4.PALABRA_POR_OCUPACION.parcial, quien);
+        }
+      }
+    }
+    const fn = editorCodigo.slice(editorCodigo.indexOf("function estadoQueSeVe("), editorCodigo.indexOf("function textoDeOcupacion("));
+    assert.match(fn, /if \(!caras \|\| caras\.length === 0\) return sm;\s*if \(sm !== STATUS_META\.free\) return sm;/);
+    const colores = editorCodigo.slice(editorCodigo.indexOf("function coloresPorOcupacion("), editorCodigo.indexOf("function estadoQueSeVe("));
+    assert.match(colores, /if \(f\.status !== undefined && f\.status !== "free"\) continue;/);
+  });
+
+  prueba("fase 2 · Esc con un diálogo modal abierto es del diálogo: no suelta el mueble; sin modal lo suelta como siempre (ejecutado)", () => {
+    const i = editor.indexOf("function onKey(e: KeyboardEvent){");
+    const j = editor.indexOf('window.addEventListener("keydown",onKey);', i);
+    assert.ok(i > 0 && j > i, "no se encontró el manejador de teclas");
+    const fuente = esbuildTransform(editor.slice(i, j));
+    const correr = (modal, ev, presentationMode = false) => {
+      const llamadas = [], preguntas = [];
+      const anota = (n) => (...a) => { llamadas.push(n); return a[0]; };
+      const deps = {
+        presentationMode, firstPerson: false, selectedId: "PUN-01", placingDef: null,
+        undo: anota("undo"), redo: anota("redo"), u: anota("u"), soltarPruebasDe: anota("soltar"),
+        setPlacedFixtures: anota("setPlacedFixtures"), storeToFixtures: (x) => x, selectFixtures: (x) => x,
+        useFixtureStore: { getState: () => ({}) },
+        setPresentationMode: anota("setPresentationMode"), setGhostRotY: anota("setGhostRotY"),
+        setPlacingDef: anota("setPlacingDef"), setSelectedId: anota("setSelectedId"),
+        setSelectedSlotId: anota("setSelectedSlotId"), setFirstPerson: anota("setFirstPerson"),
+        document: { pointerLockElement: null, querySelector: (sel) => { preguntas.push(sel); return modal ? {} : null; } },
+      };
+      const onKey = new Function(...Object.keys(deps), `${fuente}\nreturn onKey;`)(...Object.values(deps));
+      onKey({ target: { tagName: "CANVAS" }, preventDefault() {}, shiftKey: false, ctrlKey: false, ...ev });
+      return { llamadas, preguntas };
+    };
+    const con = correr(true, { key: "Escape" });
+    assert.deepEqual(con.llamadas, [], `con un modal abierto Esc llamó ${con.llamadas.join(", ")}: soltó el mueble`);
+    assert.deepEqual(con.preguntas, ['[role="dialog"][aria-modal="true"]'], "Esc no pregunta si hay un diálogo modal abierto");
+    const sin = correr(false, { key: "Escape" });
+    assert.ok(sin.llamadas.includes("setSelectedId") && sin.llamadas.includes("setPlacingDef") && sin.llamadas.includes("setSelectedSlotId"),
+      "sin modal Esc ya no suelta el mueble");
+    // Las demás teclas no preguntan, y Presentar sigue igual: Esc sale de Presentar.
+    assert.deepEqual(correr(true, { key: "r" }).preguntas, []);
+    assert.deepEqual(correr(false, { key: "Escape" }, true).llamadas, ["setPresentationMode"]);
+  });
+
+  prueba("fase 2 · delante del proveedor de la reunión la tarjeta CONTRATADO dice SU % y lo que queda; nunca el de otro ni cómo está distribuido (ejecutado)", () => {
+    const i = editorCodigo.indexOf("function lineasDeContratadoPorParticipacion(");
+    const j = editorCodigo.indexOf("export default function StoreEditor3D(", i);
+    assert.ok(i > 0 && j > i, "no está la cuenta de la tarjeta");
+    const { lineasDeContratadoPorParticipacion: lineas } = new Function(
+      "fullSpaceCode", "carasDe", "dispoPorParticipacion", "pct", "CARA_ENTERA_PB",
+      `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { lineasDeContratadoPorParticipacion };`,
+    )(RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, (pb) => `${(pb / 100).toLocaleString("es-CO")} %`, 10000);
+    const iv = (pb) => ({ desde: "2026-10-01", hasta: "2026-12-31", pb });
+    const o = { sede: "NAVE", hoy: "2026-10-17", caras: { "NAVE-GON-01": { intervalos: [iv(3000), iv(2500)], fisicos: [] } } };
+    const gon = { id: "g", code: "GON-01", type: "gondola", gondolaType: "double", w: 3, d: 0.9, h: 1.8, partes: { division: "participacion" } };
+    const suyo = { proveedor: "Kellogg's", pbPorCara: { A: 2500 } };
+    assert.deepEqual(lineas(gon, o, "NAVE", true, suyo), ["Cara A · Por participación · Kellogg's 25 % · queda 45 %", "Cara B · Por participación · queda 100 %"]);
+    // Sin lo suyo, o sin nada suyo en la cara, lo de siempre (sólo lo libre).
+    assert.deepEqual(lineas(gon, o, "NAVE", true, null), ["Cara A · Por participación · queda 45 %", "Cara B · Por participación · queda 100 %"]);
+    assert.deepEqual(lineas(gon, o, "NAVE", true, { proveedor: "Kellogg's", pbPorCara: { A: 0 } }), lineas(gon, o, "NAVE", true));
+    // Sin un proveedor mirando (no discreto) es la cuenta de quien administra: lo suyo no se agrega.
+    assert.deepEqual(lineas(gon, o, "NAVE", false, suyo), lineas(gon, o, "NAVE", false));
+    // Nunca el % de otro (el 30 % es de otro proveedor) ni lo comprometido.
+    for (const l of lineas(gon, o, "NAVE", true, suyo)) assert.ok(!/30 %|comprometido/.test(l), l);
+    // El panel lo pide sólo con un proveedor de reunión nombrado, a quien administra, en una cara por participación,
+    // y guarda UN número por cara: lo de los demás proveedores no sale de la cuenta.
+    const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
+    assert.match(panel, /const proveedorDelante = contratoDiscreto && isAdmin && porParticipacion\(fix\) \? \(proveedorDeReunion \?\? ""\)\.trim\(\) : "";/);
+    assert.match(panel, /if \(!claveDeLoSuyo\) return;/);
+    assert.match(panel, /pbPorCara\[c\] = loDelProveedor\(terminos, proveedorDelante, r\.hoy, r\.hoy, r\.hoy\);/);
+    assert.match(panel, /setLoSuyo\(\{ clave: claveDeLoSuyo, proveedor: proveedorDelante, pbPorCara \}\);/);
+    assert.match(panel, /const loSuyoVigente = loSuyo && loSuyo\.clave === claveDeLoSuyo \? loSuyo : null;/);
+    assert.equal((panel.match(/leerCara\(/g) ?? []).length, 1, "el panel lee las participaciones de la cara en otro lado");
+    assert.ok(!/<ZonasDeLaDistribucion|zonasEditables|capaQueSeMuestra/.test(panel), "el panel dibuja o lee zonas (delante del proveedor, ninguna forma)");
+  });
+}
 
 console.log(`\n${hechas} pruebas del mobiliario 3D`);

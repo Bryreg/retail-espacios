@@ -102,6 +102,8 @@ import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NU
 import {
   PALABRA_POR_OCUPACION, claseDe, codigoDeParte, codigoVisibleDe, divisionDe, notaDeEstadoPorOcupacion, porParticipacion,
 } from "../../utils/partes";
+// fase 2 · I4 (G2b): lo suyo del proveedor de la reunión, y nada de otros.
+import { loDelProveedor } from "../../utils/partes";
 import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
@@ -5941,10 +5943,13 @@ export function Scene({
     // cara ENTERA en el panel partido, con el campo visual horizontal del
     // lienzo de ahora (`aspecto`); si de frente no entra desde el pasillo, el
     // tres cuartos menos oblicuo que la abarca (`encuadreDeLaCara`). Sin
-    // persona de escala: no es una toma de venta.
+    // persona de escala: no es una toma de venta. Fase 2 · I4 (E3): con los
+    // demás muebles de la sala —las mismas cajas que mira el clic—, una toma
+    // con una esquina de la cara tapada por una estiba o un exhibidor del
+    // pasillo no cuenta como que entra (lo tapado no se puede dibujar acá).
     if (!enVenta && toma === "frente" && distribucionDeLaToma.current?.fixtureId === fix.id) {
       ponerCampoVisual(FOV_DEL_EDITOR);
-      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto).vista);
+      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures.filter((f) => f.id !== fix.id)).vista);
       return;
     }
     const fov = toma === "cerca" ? FOV_DE_CERCA
@@ -6675,6 +6680,40 @@ function CommercialPanel({
   // «Estado fixture» dice el de la base («Disponible»); si lo que se ve lo
   // pone la ocupación, se dice debajo, como en la ficha del plano 2D.
   const estadoPorOcupacion = sm !== STATUS_META[fix.status];
+
+  // ── Fase 2 · I4 (G2b): lo suyo, delante del proveedor ─────────────────────
+  // Decisión de la dueña (2026-10-18): delante del proveedor, en una cara por
+  // participación, «sólo lo suyo y lo libre». La reunión ya sabe quién está
+  // del otro lado (`proveedorDeReunion`): la tarjeta discreta dice su % y lo
+  // que queda —«Por participación · Kellogg's 25 % · queda 40 %»—, nunca cómo
+  // está distribuido ni nada de otros. Las participaciones de la cara se leen
+  // como en Distribución (`leerCara`, sólo quien administra) y se quedan acá:
+  // a la tarjeta llega UN número por cara, el del proveedor nombrado
+  // (`loDelProveedor`: otro proveedor nunca suma). Sin proveedor nombrado (la
+  // reunión todavía sin elegir) o sin participación suya, lo de siempre.
+  const proveedorDelante = contratoDiscreto && isAdmin && porParticipacion(fix) ? (proveedorDeReunion ?? "").trim() : "";
+  const dosCaras = carasDe(fix) === 2;
+  const claveDeLoSuyo = proveedorDelante ? `${sedeDelPanel}|${fix.code}|${dosCaras ? "AB" : "A"}|${proveedorDelante}` : "";
+  const [loSuyo, setLoSuyo] = useState<(LoSuyoEnLaReunion & { clave: string }) | null>(null);
+  useEffect(() => {
+    if (!claveDeLoSuyo) return;
+    let vigente = true;
+    const caras: ("A" | "B")[] = dosCaras ? ["A", "B"] : ["A"];
+    void Promise.all(caras.map((c) => leerCara(sedeDelPanel, espacioDeLaCara(fix.code, c)).then((r) => [c, r] as const)))
+      .then((leidas) => {
+        if (!vigente) return;
+        const pbPorCara: Partial<Record<"A" | "B", number>> = {};
+        for (const [c, r] of leidas) {
+          const terminos = r.participaciones.flatMap((p) => p.terminos.map((t) => ({ proveedor: t.proveedor?.nombre ?? null, termino: terminoDeOut(t) })));
+          pbPorCara[c] = loDelProveedor(terminos, proveedorDelante, r.hoy, r.hoy, r.hoy);
+        }
+        setLoSuyo({ clave: claveDeLoSuyo, proveedor: proveedorDelante, pbPorCara });
+      })
+      // Si no se pudo leer, la tarjeta dice lo de siempre (sólo lo libre).
+      .catch(() => {});
+    return () => { vigente = false; };
+  }, [claveDeLoSuyo, dosCaras, fix.code, proveedorDelante, sedeDelPanel]);
+  const loSuyoVigente = loSuyo && loSuyo.clave === claveDeLoSuyo ? loSuyo : null;
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
   const modeloDelMueble = modeloPorId(fix.modelo);
   // Infrastructure holds no contract: the commercial half of the panel hides.
@@ -7102,7 +7141,7 @@ function CommercialPanel({
             // banda roja (revisión final, recorrido I.25). Lo que se dice es
             // la ocupación anónima del store de lectura, como en Vender.
             <div data-contratado-por-participacion>
-              {lineasDeContratadoPorParticipacion(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto).map((linea) => (
+              {lineasDeContratadoPorParticipacion(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto, loSuyoVigente).map((linea) => (
                 <p key={linea} className="text-xs text-dark-ink-1">{linea}</p>
               ))}
             </div>
@@ -7505,11 +7544,18 @@ function ocupacionDelMueble(f: PlacedFixture, o: OcupacionOut | undefined, sede:
  * D6 dice que el estado de la cara no cambia —y no cambia—; cambia sólo el
  * color. Todo tomado → el de ocupado; algo comprometido → el ámbar de
  * reservado; nada → el de siempre. Sin nombres: es la ocupación anónima.
+ *
+ * Fase 2 · I4 (la regla del plano 2D, `estadoParaPintar`): lo puesto a mano
+ * (Mantenimiento, Reservado) o la venta entera mandan; la ocupación sólo pinta
+ * un mueble Disponible. Un robatope en Mantenimiento con 60 + 40 % se pintaba
+ * rojo acá y gris en el plano. (Sin estado escrito se lee libre, como lo
+ * estrena la fusión.)
  */
 function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut | undefined, sede: string): Map<string, string> {
   const fuera = new Map<string, string>();
   if (!o) return fuera;
   for (const f of muebles) {
+    if (f.status !== undefined && f.status !== "free") continue;
     const caras = ocupacionDelMueble(f, o, sede);
     if (!caras) continue;
     if (caras.every((c) => c.dispo === "tomado")) fuera.set(f.id, STATUS_COLORS.occupied);
@@ -7530,12 +7576,18 @@ function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut 
  *  que la ocupación cuenta como un físico del 100 %—: la toma ese contrato, no
  *  las participaciones, y el plano dice «Ocupado» sin nota (`estadoParaPintar`
  *  sólo cambia una cara libre). Se queda con su cartel, y así «Estado fixture»
- *  no suma la nota de la ocupación debajo de «Lo pone el contrato». */
+ *  no suma la nota de la ocupación debajo de «Lo pone el contrato».
+ *
+ *  Fase 2 · I4: lo mismo con cualquier estado que no sea «Disponible»
+ *  (Mantenimiento, Reservado a mano): manda sobre la ocupación, como en el
+ *  plano 2D, Vender y el globo de Supervisar. La línea de «Ocupado» de abajo
+ *  queda cubierta por ésta; se deja escrita porque es el caso que se vio. */
 function estadoQueSeVe(
   sm: { bg: string; text: string; label: string },
   caras: readonly { dispo: "tomado" | "parcial" | "libre" }[] | null,
 ): { bg: string; text: string; label: string } {
   if (!caras || caras.length === 0) return sm;
+  if (sm !== STATUS_META.free) return sm;
   if (caras.every((c) => c.dispo === "tomado") && sm === STATUS_META.occupied) return sm;
   if (caras.every((c) => c.dispo === "tomado")) return { ...STATUS_META.occupied, label: PALABRA_POR_OCUPACION.tomado };
   if (caras.some((c) => c.dispo !== "libre")) return { ...STATUS_META.reserved, label: PALABRA_POR_OCUPACION.parcial };
@@ -7548,6 +7600,10 @@ function textoDeOcupacion(caras: { cara: "A" | "B"; quedaPb: number }[]): string
   return `Por participación · queda ${caras.length === 1 ? pct(caras[0].quedaPb) : caras.map((c) => `${pct(c.quedaPb)} (${c.cara})`).join(" · ")}`;
 }
 
+/** Fase 2 · I4 (G2b): lo suyo del proveedor de la reunión en cada cara, en
+ *  puntos básicos (`loDelProveedor`), y cómo se lo nombra. Nada de otros. */
+interface LoSuyoEnLaReunion { proveedor: string; pbPorCara: Partial<Record<"A" | "B", number>> }
+
 /**
  * La tarjeta CONTRATADO de un mueble por participación: «Por participación ·
  * comprometido 55 % · queda 45 %» (una línea por cara en una doble), con la
@@ -7555,9 +7611,15 @@ function textoDeOcupacion(caras: { cara: "A" | "B"; quedaPb: number }[]): string
  * del mouse—. Nunca «Sin contrato activo». Una cara que la ocupación no nombra
  * no tiene nada comprometido; sin la ocupación leída, lo dice. Con un
  * proveedor mirando (`discreto`), sólo lo que queda, como en Vender.
+ *
+ * Fase 2 · I4 (G2b): con el proveedor de la reunión nombrado y algo suyo en
+ * la cara (`loSuyo`, de `loDelProveedor`), la línea discreta dice además SU
+ * porcentaje: «Por participación · Kellogg's 25 % · queda 40 %». Nunca el de
+ * otro, nunca cómo está distribuido. Sin `loSuyo`, lo de siempre.
  */
 function lineasDeContratadoPorParticipacion(
   f: PlacedFixture, o: OcupacionOut | undefined, sede: string, discreto: boolean,
+  loSuyo?: LoSuyoEnLaReunion | null,
 ): string[] {
   if (!o) return ["Por participación · leyendo la ocupación…"];
   const completo = fullSpaceCode(sede, f.code);
@@ -7566,8 +7628,11 @@ function lineasDeContratadoPorParticipacion(
     const oc = Object.prototype.hasOwnProperty.call(o.caras, codigo) ? o.caras[codigo] : { intervalos: [], fisicos: [] };
     const { quedaPb } = dispoPorParticipacion(oc, o.hoy, o.hoy, o.hoy);
     const deLaCara = caras.length === 2 ? `Cara ${cara} · ` : "";
+    const suyo = discreto && loSuyo ? (loSuyo.pbPorCara[cara] ?? 0) : 0;
     return discreto
-      ? `${deLaCara}Por participación · queda ${pct(quedaPb)}`
+      ? suyo > 0 && loSuyo
+        ? `${deLaCara}Por participación · ${loSuyo.proveedor} ${pct(suyo)} · queda ${pct(quedaPb)}`
+        : `${deLaCara}Por participación · queda ${pct(quedaPb)}`
       : `${deLaCara}Por participación · comprometido ${pct(CARA_ENTERA_PB - quedaPb)} · queda ${pct(quedaPb)}`;
   });
 }
@@ -8161,6 +8226,12 @@ export default function StoreEditor3D() {
         // con ella el primer Esc lo atiende el navegador y suelta sólo la
         // pantalla completa. En primera persona, o con el mouse capturado,
         // Esc suelta el mouse como siempre.)
+        // Fase 2 · I4: con un diálogo modal abierto, Esc es del diálogo (un
+        // Esc, una capa). Con el foco en `body` —el botón que lo abrió se
+        // deshabilitó o se desmontó— cerraba el modal Y soltaba el mueble.
+        // No corta nada en captura: los modales que escuchan en `window`
+        // siguen recibiendo su Esc.
+        if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
         setPlacingDef(null); setSelectedId(null); setSelectedSlotId(null);
         setFirstPerson(false);
       }

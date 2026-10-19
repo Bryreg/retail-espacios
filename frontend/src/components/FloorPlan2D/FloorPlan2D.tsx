@@ -4012,20 +4012,24 @@ function AssignmentPanel({
         <button onClick={onClose} style={{ color: "var(--dark-ink-3)", fontSize: 18, lineHeight: 1, marginTop: 2, background: "none", border: "none", cursor: "pointer" }}>×</button>
       </div>
 
-      {/* Face tabs (gondola doble) */}
+      {/* Face tabs (gondola doble). La ficha va sobre `--dark-bg` en los dos
+          temas: la pestaña activa en `--accent` era tinta sobre casi negro en
+          tema claro (1,05:1, invisible). Fase 2 · I4: los tokens del cajón
+          oscuro (`--dark-ink-1` sobre `--dark-surface`). */}
       {isDouble && rentable && (
         <div style={{ display: "flex", borderBottom: "1px solid var(--dark-line)" }}>
           {(["A", "B"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setActiveFace(f)}
+              aria-pressed={activeFace === f}
               style={{
                 flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 600,
-                background: "none", border: "none", cursor: "pointer",
+                background: activeFace === f ? "var(--dark-surface)" : "none", border: "none", cursor: "pointer",
                 fontFamily: "inherit",
-                color: activeFace === f ? "var(--accent)" : "var(--dark-ink-3)",
-                borderBottom: activeFace === f ? "2px solid var(--accent)" : "2px solid transparent",
-                transition: "color .12s, border-color .12s",
+                color: activeFace === f ? "var(--dark-ink-1)" : "var(--dark-ink-3)",
+                borderBottom: activeFace === f ? "2px solid var(--dark-ink-1)" : "2px solid transparent",
+                transition: "color .12s, border-color .12s, background .12s",
               }}
             >
               Cara {f}
@@ -4064,11 +4068,13 @@ function AssignmentPanel({
                   flex: 1, padding: "7px 4px", borderRadius: "var(--r-sm)",
                   fontSize: 11.5, fontWeight: 600, cursor: "pointer",
                   fontFamily: "inherit", transition: "background .12s, border-color .12s",
+                  // Fase 2 · I4: el elegido en los tokens del cajón oscuro
+                  // (con `--accent` no se leía en tema claro).
                   border: rentable === value
-                    ? "1px solid var(--accent)"
+                    ? "1px solid var(--dark-ink-1)"
                     : "1px solid var(--dark-line-2)",
-                  background: rentable === value ? "var(--accent)" : "transparent",
-                  color: rentable === value ? "var(--accent-ink)" : "var(--dark-ink-3)",
+                  background: rentable === value ? "var(--dark-ink-1)" : "transparent",
+                  color: rentable === value ? "var(--dark-bg)" : "var(--dark-ink-3)",
                 }}
               >
                 {value ? "Comercializable" : "No comercializable"}
@@ -4242,7 +4248,12 @@ function AssignmentPanel({
           Tenerlo editable acá no era "también se puede": los campos escribían
           el JSON del layout sin tocar la base, y el botón de guardar creaba un
           contrato NUEVO cada vez —nunca editó ninguno—. Dos lugares para lo
-          mismo, y uno de los dos mentía. */}
+          mismo, y uno de los dos mentía.
+
+          Fase 2 · I4: una cara por participación dice lo comprometido sin «en
+          el Editor 3D → Distribución» (lo dice `DONDE_SE_CARGAN` debajo: salía
+          dos veces seguidas), y Mantenimiento o Reservado a mano mandan sobre
+          la ocupación: nunca «disponible para vender» sobre ellos. */}
       {rentable && (
         <Field label="Contratado" icon="🤝">
           {face.supplierName ? (
@@ -4269,7 +4280,7 @@ function AssignmentPanel({
             </>
           ) : esPc ? (
             <p data-contratado-por-participacion style={{ fontSize: 13, color: "var(--dark-ink-2)", lineHeight: 1.45 }}>
-              {textoDeLoComprometido(dispoPc, isAdmin)}
+              {textoDeLoComprometido(dispoPc, isAdmin, { propio: face.status, conLugar: false })}
             </p>
           ) : (
             <p style={{ fontSize: 13, color: "var(--dark-ink-3)" }}>Sin contrato activo.</p>
