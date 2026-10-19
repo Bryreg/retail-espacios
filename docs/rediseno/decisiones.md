@@ -29,3 +29,7 @@ Dibujo: `docs/maquetas/rediseno-2026-10/plano.html`.
 ## Vender (PR 1), 2026-10-20
 - Una reserva puede cobrar por **% de las ventas**: guarda el porcentaje y el corte, y al
   confirmarla el contrato queda cobrando por ventas (`vender-api.md` §1).
+- **La planometría se carga sólo en Supervisar** (ficha del espacio), nunca en Vender ni en una
+  reserva: así el área comercial siempre pasa por Supervisar una vez que el contrato existe.
+  Vender pierde el campo de planometría y la opción del visor 3D de usar la lámina como
+  planometría (la lámina se sigue pudiendo armar para el proveedor).
