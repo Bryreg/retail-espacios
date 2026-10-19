@@ -31,6 +31,25 @@ montajeClient.interceptors.request.use((config) => {
   return config;
 });
 
+/** La cara de una participación, sólo su forma (`SuperficieDeMontaje` del
+ *  servidor): medidas en metros y lo que no se vende, en u,v. */
+export interface SuperficieDeMontaje {
+  orientacion: "frente" | "arriba";
+  ancho: number;
+  alto: number;
+  exclusiones: { por: string; u0: number; u1: number; v0: number; v1: number }[];
+}
+
+/** La zona de quien monta sobre su cara (fase 2 · G1): sólo SUS polígonos de
+ *  la distribución confirmada, `[[u, v], …]` (u = 0 a la izquierda de quien
+ *  mira, v = 0 abajo o el borde delantero). El servidor filtra: las formas de
+ *  las otras participaciones nunca llegan, ni sus números ni sus nombres. */
+export interface DibujoDeMontaje {
+  cara: "A" | "B";
+  superficie: SuperficieDeMontaje;
+  zonas: [number, number][][];
+}
+
 /** Lo que la pantalla muestra, en una sola llamada.
  *
  *  Una y no cuatro: del otro lado hay un celular con señal de supermercado, y
@@ -68,6 +87,10 @@ export interface EspacioMontaje {
    *  se puede: la víspera del arranque del contrato del enlace (2026-10-02).
    *  Antes, el espacio puede seguir siendo de otro contrato. */
   se_confirma_desde?: string | null;
+  /** Una participación de cara con la distribución confirmada: su zona
+   *  dibujada sobre la cara. Sólo llega con el enlace (o a un admin); sin
+   *  esto, la pantalla de siempre. */
+  dibujo?: DibujoDeMontaje | null;
 }
 
 export const miEspacio = (): Promise<EspacioMontaje> =>

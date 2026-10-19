@@ -1227,6 +1227,65 @@ console.log("\nvender · las participaciones de cara");
   });
 }
 
+/* ── fase 2 · I6 — G2: delante del proveedor, ninguna forma ─────────────────
+   Decisión de la dueña (2026-10-18, «sólo lo suyo y lo libre»): delante del
+   proveedor, ninguna zona dibujada —ni la suya— y nada de otros. Hoy se
+   cumple: las zonas se dibujan sólo en el Editor 3D → Distribución, que no
+   entra en Presentar, en el visor ni en Vender (la guarda «el visor no le pasa
+   la capa Distribución a la escena», arriba). Esto fija el resto: lo que
+   Vender dice de una cara por participación no recibe proveedor ni nombre
+   —no puede decir de quién es nada, sólo lo libre— y ningún archivo de Vender
+   importa la API ni el store de las participaciones, ni lo que dibuja zonas. */
+console.log("\nvender · delante del proveedor, ninguna forma (fase 2)");
+{
+  const partesTs = sinComentarios(leer("src/utils/partes.ts"));
+  /** La firma (sus paréntesis) y el cuerpo (sus llaves) de una función exportada. */
+  const funcionTs = (nombre) => {
+    const i = partesTs.indexOf(`export function ${nombre}(`);
+    assert.ok(i >= 0, `no está ${nombre} en utils/partes.ts: un renombre falla, no se saltea`);
+    const desde = i + `export function ${nombre}`.length;
+    let j = desde, prof = 0;
+    for (; j < partesTs.length; j++) {
+      if (partesTs[j] === "(") prof++;
+      else if (partesTs[j] === ")" && --prof === 0) break;
+    }
+    const k = partesTs.indexOf("{", j);
+    let fin = k, llaves = 0;
+    for (; fin < partesTs.length; fin++) {
+      if (partesTs[fin] === "{") llaves++;
+      else if (partesTs[fin] === "}" && --llaves === 0) break;
+    }
+    return { firma: partesTs.slice(desde, j + 1), cuerpo: partesTs.slice(k, fin + 1) };
+  };
+
+  prueba("lo que Vender dice de una cara por participación no recibe proveedor ni nombre: sólo lo libre", () => {
+    for (const nombre of ["textoAlTocarEnVender", "textoDeParticipacion"]) {
+      const { firma, cuerpo } = funcionTs(nombre);
+      assert.ok(firma.startsWith("(") && firma.endsWith(")"), `no se pudo leer la firma de ${nombre}`);
+      assert.doesNotMatch(firma, /proveedor|supplier|marca|nombre|termino|zona|participaciones/i,
+        `${nombre} recibe algo con nombre o con formas: ${firma}`);
+      assert.doesNotMatch(cuerpo, /proveedor|supplier|marca|\bzonas?\b|vertices/i, `${nombre} habla de alguien o de una forma`);
+    }
+  });
+
+  prueba("ningún archivo de Vender importa la API ni el store de las participaciones, ni lo que dibuja zonas", () => {
+    const prohibido = /api\/participaciones|store\/distribucionStore|components\/Distribucion\/|\.\.\/Distribucion\/|ZonasDelMueble|zonas3d|edicionDeZonas|edicionEnElMueble|zonasGeometria/;
+    let leidos = 0;
+    for (const f of ARCHIVOS_VENDER) {
+      if (!hay(f)) continue; // lo hace fallar «los archivos de Vender existen»
+      leidos++;
+      const t = sinComentarios(leer(f));
+      const rutas = [
+        ...[...t.matchAll(/(?:^|\n)\s*import\s[^;]*?from\s+["']([^"']+)["']/g)].map((m) => m[1]),
+        ...[...t.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map((m) => m[1]),
+      ];
+      assert.ok(rutas.length > 0, `no se leyó ningún import de ${f}: la guarda no prueba nada`);
+      for (const ruta of rutas) assert.doesNotMatch(ruta, prohibido, `${f} importa ${ruta}`);
+    }
+    assert.ok(leidos >= 2, "no se leyó ModoVender ni VisorDeVenta");
+  });
+}
+
 /* ── avisos: reglas de D que no están en el encargo de estas cinco pruebas ── */
 console.log("\nvender · avisos (no fallan, pero están medidos)");
 if (/--ring\s*:\s*var\(--signal/.test(temaCss)) {

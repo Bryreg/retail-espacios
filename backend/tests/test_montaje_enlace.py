@@ -11,6 +11,9 @@ no sea ``/api/montaje``.
 from datetime import timedelta
 
 from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+# Los ayudantes de las participaciones (plano, alta, distribuir), para las
+# pruebas de la fase 2 de abajo: el mismo escenario, sin copiarlo.
+from tests import test_participaciones as tp
 
 JPG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 HOY = hoy_en_colombia()
@@ -756,3 +759,215 @@ def test_cada_enlace_del_lote_dice_su_contrato(client, admin, monkeypatch):
             assert lease is not None and lease.space.code == codigo, codigo
     finally:
         db.close()
+
+
+# ─── Fase 2 · el enlace sigue a su contrato aunque el espacio cambie de código ─
+#
+# El enlace firma el código del día en que se vendió. Una renumeración o un
+# renombre de sede le cambian el código a la fila —contrato, fotos y reportes
+# siguen pegados por id— y el enlace respondía «Ese contrato se canceló», que era
+# falso. Ahora el código sale del contrato, con evidencia de que el del enlace
+# era de ESE espacio (`_contrato_mudado`); sin evidencia, el 410 de siempre
+# (`test_el_contrato_del_enlace_tiene_que_ser_de_su_espacio`, que no cambia).
+
+@tp.RELOJ
+def test_el_enlace_con_contrato_sobrevive_a_una_renumeracion_que_intercambia_los_codigos(client, admin):
+    from app.auth import create_mount_token
+
+    # GON-01 queda después de GON-02 en el recorrido: renumerar los intercambia,
+    # y las dos se venden por participación, así que el código viejo de cada
+    # una pasa a ser de la OTRA (la permutación, el caso difícil).
+    gon_02 = {**tp.GON_02, "cx": 2, "partes": {"division": "participacion"}}
+    tp._plano(client, admin, [{**tp.GON_01, "cx": 6}, gon_02, tp.PUN_01])
+    postobon = tp._alta(client, admin, pb=2500, desde=tp.D(2026, 10, 1), hasta=tp.D(2026, 12, 31))["termino"]
+    alpina = tp._alta(client, admin, espacio="GON-02", pb=4000, proveedor="Alpina", marca="Yogurt",
+                      desde=tp.D(2026, 10, 1), hasta=tp.D(2026, 12, 31))["termino"]
+    assert (postobon["codigo"], alpina["codigo"]) == ("NAVE-GON-01-PC1", "NAVE-GON-02-PC1")
+    _subir_plano(client, admin, postobon["lease_id"])
+
+    # Los enlaces salen al vender, con el código de ese día.
+    enlace_postobon = create_mount_token("NAVE-GON-01-PC1", days=120, contrato=postobon["lease_id"])
+    enlace_alpina = create_mount_token("NAVE-GON-02-PC1", days=120, contrato=alpina["lease_id"])
+
+    r = client.post("/api/layout/renumeracion/aplicar", headers=admin, json={"sedes": ["NAVE"]})
+    assert r.status_code == 200, r.text
+
+    # Cada enlace abre SU contrato, con el código de hoy.
+    r = client.get("/api/montaje/mi-espacio", headers=_cab(enlace_postobon))
+    assert r.status_code == 200, r.text
+    e = r.json()
+    assert (e["code"], e["corto"], e["fixture_code"]) == ("NAVE-GON-02-PC1", "GON-02-PC1", "GON-02")
+    assert (e["proveedor"], e["marca"]) == ("Postobón", "Hit")
+    assert e["parte"]["texto"] == "Participación 1 · 25 % de la cara A"
+    assert e["tiene_planometria"] is True
+    assert client.get("/api/montaje/planometria", headers=_cab(enlace_postobon)).status_code == 200
+
+    e = client.get("/api/montaje/mi-espacio", headers=_cab(enlace_alpina)).json()
+    assert (e["code"], e["proveedor"]) == ("NAVE-GON-01-PC1", "Alpina")
+    assert e["parte"]["texto"] == "Participación 1 · 40 % de la cara A"
+    assert e["tiene_planometria"] is False, "la planometría de Postobón se le mostró a Alpina"
+
+    # El reporte cae en el código de HOY, donde lo busca el tablero, y vuelve
+    # en la pantalla del mismo enlace.
+    r = _reportar(client, enlace_postobon, reportado_por="Yenny")
+    assert r.status_code == 201, r.text
+    assert r.json()["space_code"] == "NAVE-GON-02-PC1"
+    assert [m["space_code"] for m in client.get("/api/mounts/", headers=admin).json()] == ["NAVE-GON-02-PC1"]
+    assert client.get("/api/montaje/mi-espacio", headers=_cab(enlace_postobon)).json()["ultimo"]["reportado_por"] == "Yenny"
+    assert client.get("/api/montaje/mi-espacio", headers=_cab(enlace_alpina)).json()["ultimo"] is None, \
+        "el reporte de Postobón le quedó a Alpina"
+
+    # Cancelado el contrato, el enlace ya no tiene nada que montar: ni por el
+    # código viejo ni siguiendo al contrato.
+    r = client.delete(f"/api/spaces/{postobon['space_id']}/leases/{postobon['lease_id']}", headers=admin)
+    assert r.status_code == 204, r.text
+    for r in (
+        client.get("/api/montaje/mi-espacio", headers=_cab(enlace_postobon)),
+        client.get("/api/montaje/planometria", headers=_cab(enlace_postobon)),
+        _reportar(client, enlace_postobon),
+    ):
+        assert r.status_code == 410, r.text
+
+
+def test_el_enlace_con_contrato_sigue_al_espacio_si_su_codigo_viejo_ya_no_es_de_nadie(client, admin):
+    """Lo que hace un renombre de sede: todos los códigos cambian de prefijo y
+    el viejo queda libre. Se simula escribiendo la fila como la deja el
+    renombre (el endpoint es de otro frente): lo que se prueba es el enlace."""
+    from app.database import SessionLocal
+    from app.models.models import Space
+
+    space_id, lease_id = _armado(client, admin)
+    token = _enlace_de(lease_id)
+    db = SessionLocal()
+    try:
+        s = db.get(Space, space_id)
+        s.code, s.svg_id, s.sede = "NAVA-PUN-04", "fix-NAVA-PUN-04", "NAVA"
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/api/montaje/mi-espacio", headers=_cab(token))
+    assert r.status_code == 200, r.text
+    e = r.json()
+    assert (e["code"], e["sede"], e["proveedor"]) == ("NAVA-PUN-04", "NAVA", "Alpina")
+    r = _reportar(client, token)
+    assert r.status_code == 201, r.text
+    assert r.json()["space_code"] == "NAVA-PUN-04"
+
+    # Un enlace SIN contrato (los de antes del 2026-10-02) no tiene a quién
+    # seguir: el código viejo y nada más, como siempre.
+    viejo = client.get("/api/montaje/mi-espacio", headers=_cab(_mount_token())).json()
+    assert viejo["code"] == "NAVE-PUN-04" and viejo["proveedor"] == ""
+
+    # Si el código viejo vuelve a ser de alguien (otra fila con ese nombre, sin
+    # ese contrato) y ninguna renumeración une los dos, no se adivina: 410.
+    _espacio(client, admin, "NAVE-PUN-04", "Punta nueva")
+    r = client.get("/api/montaje/mi-espacio", headers=_cab(token))
+    assert r.status_code == 410, r.text
+
+
+# ─── Fase 2 · G1: quien monta una participación ve SU zona, y nada más ───────
+
+def _mi_espacio_pc(client, code, contrato):
+    from app.auth import create_mount_token
+
+    token = create_mount_token(code, days=120, contrato=contrato)
+    r = client.get("/api/montaje/mi-espacio", headers=_cab(token))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+@tp.RELOJ
+def test_quien_monta_una_participacion_ve_solo_su_zona_y_el_trabajador_ninguna(client, admin, worker):
+    import json
+    from datetime import date
+
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
+    from app.services.zonas_geometria import limpiar
+
+    tp._plano(client, admin)
+    a = tp._alta(client, admin, pb=2500, desde=tp.D(2026, 10, 1), hasta=tp.D(2026, 12, 31))["termino"]
+    b = tp._alta(client, admin, pb=3000, proveedor="Colcafé", marca="Sello Rojo", valor=2_345_678,
+                 desde=tp.D(2026, 10, 1), hasta=tp.D(2026, 12, 31))["termino"]
+    sup = tp._cara(client, admin)["superficie"]
+    # Cada una dibuja menos de lo contratado (20 % de 25 % y de 30 %): falta
+    # dibujar es un aviso, no frena la confirmación, y no hay exceso posible.
+    suya, ajena = tp._franja(sup, 0, 0.2), tp._franja(sup, 0.4, 0.6)
+    zonas = tp._zonas((a["space_id"], suya), (b["space_id"], ajena))
+
+    def dibujo():
+        return _mi_espacio_pc(client, "NAVE-GON-01-PC1", a["lease_id"])["dibujo"]
+
+    # Sin distribución, y con un borrador sin confirmar: nada (la pantalla de siempre).
+    assert dibujo() is None
+    tp._distribuir(client, admin, "borrador", "GON-01", 0, zonas)
+    assert dibujo() is None, "se dibujó un borrador"
+
+    # Confirmada: su zona, sólo la suya, sobre la cara entera.
+    tp._distribuir(client, admin, "confirmar", "GON-01", 1, zonas)
+    e = _mi_espacio_pc(client, "NAVE-GON-01-PC1", a["lease_id"])
+    d = e["dibujo"]
+    assert d is not None
+    assert set(d) == {"cara", "superficie", "zonas"}
+    assert d["cara"] == "A"
+    assert d["zonas"] == [limpiar(suya)], "viajaron formas que no son de esta participación"
+    assert set(d["superficie"]) == {"orientacion", "ancho", "alto", "exclusiones"}
+    assert (d["superficie"]["orientacion"], d["superficie"]["ancho"], d["superficie"]["alto"]) == \
+        (sup["orientacion"], sup["ancho"], sup["alto"])
+    assert d["superficie"]["exclusiones"] == sup["exclusiones"]
+    assert all(set(x) == {"por", "u0", "u1", "v0", "v1"} for x in d["superficie"]["exclusiones"])
+    # El renglón de siempre no cambia (decisión J), y de la otra participación no llega nada.
+    assert e["parte"]["texto"] == "Participación 1 · 25 % de la cara A"
+    crudo = json.dumps(e, ensure_ascii=False)
+    for ajeno in ("Colcafé", "Sello Rojo", "2345678", "1200000", "PC2", "30 %"):
+        assert ajeno not in crudo, f"quien monta ve «{ajeno}»"
+    assert limpiar(ajena) not in d["zonas"]
+    # Y la otra participación ve la suya, no la de Postobón.
+    otra = _mi_espacio_pc(client, "NAVE-GON-01-PC2", b["lease_id"])["dibujo"]
+    assert otra["zonas"] == [limpiar(ajena)]
+
+    # El admin, con ?code=, ve lo mismo que la mercaderista; el trabajador, nada:
+    # con ?code= de cada …-PC<n> armaría la distribución entera de la cara (D7).
+    r = client.get("/api/montaje/mi-espacio", params={"code": "NAVE-GON-01-PC1"}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["dibujo"] == d
+    r = client.get("/api/montaje/mi-espacio", params={"code": "NAVE-GON-01-PC1"}, headers=worker)
+    assert r.status_code == 200, r.text
+    assert r.json()["dibujo"] is None, "el trabajador recibe el dibujo de las zonas"
+
+    # Un borrador encima de la confirmada no se dibuja: vale lo confirmado.
+    otro_borrador = tp._zonas((a["space_id"], tp._franja(sup, 0.7, 0.9)), (b["space_id"], ajena))
+    tp._distribuir(client, admin, "borrador", "GON-01", 2, otro_borrador)
+    assert dibujo()["zonas"] == [limpiar(suya)], "se dibujó el borrador en vez de lo confirmado"
+
+    # El mueble cambió de medida: la confirmada queda «para revisar» y no se
+    # dibuja lo que ya no es. Vuelve a la medida confirmada: vuelve el dibujo.
+    tp._guardar(client, admin, tp._con("GON-01", w=1.25))
+    assert dibujo() is None, "se dibujó una distribución para revisar"
+    tp._guardar(client, admin, tp.PLANO)
+    assert dibujo()["zonas"] == [limpiar(suya)]
+
+    # Un lease de participación hecho a mano, sin término: sin zona que dibujar.
+    db = SessionLocal()
+    try:
+        pc = Space(code="NAVE-GON-01-PC4", svg_id="NAVE-GON-01-PC4", name="x", zone="gondola", sede="NAVE",
+                   area_m2=0.0, status=SpaceStatus.free)
+        sup_huerfano = Supplier(name="Huérfano SA")
+        db.add_all([pc, sup_huerfano])
+        db.flush()
+        huerfano = SpaceLease(space_id=pc.id, supplier_id=sup_huerfano.id, start_date=date(2026, 12, 1),
+                              end_date=date(2026, 12, 31), monthly_rent=1, is_active=True)
+        db.add(huerfano)
+        db.commit()
+        huerfano_id = huerfano.id
+    finally:
+        db.close()
+    e = _mi_espacio_pc(client, "NAVE-GON-01-PC4", huerfano_id)
+    assert e["parte"]["texto"] == "Participación 4 de la cara A"
+    assert e["dibujo"] is None
+
+    # Una cara entera o una puerta no son participaciones: nunca llevan dibujo.
+    r = client.get("/api/montaje/mi-espacio", params={"code": "NAVE-GON-02"}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["dibujo"] is None
