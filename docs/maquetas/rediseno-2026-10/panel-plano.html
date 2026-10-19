@@ -1,0 +1,642 @@
+<title>RECABRA · Panel del Plano</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Hoja de piezas del rediseño de Vender, Supervisar y Plano.
+   Layout: una columna de 1200 px; cada pieza se ve dos veces, en claro y en
+   oscuro, con los valores de frontend/src/tema.css copiados tal cual. */
+:root {
+  /* Tokens de la app (tema.css · claro). Las muestras los fijan por panel. */
+  --bg: #EFF1ED; --surface: #FFFFFF; --surface-2: #F7F8F5; --surface-3: #E4E7E1;
+  --line-soft: #F0F1F1; --line: #DDDEDE; --line-strong: #BBBCBE; --brd-control: #68788A;
+  --ink-1: #0A1014; --ink-2: #4A5B65; --ink-3: #54646E; --ink-4: #68788A;
+  --signal: #F2B300; --signal-borde: #A87C00; --on-signal: #120E00; --ring: #8A6100;
+  --libre: #00805A; --libre-suave: #E0F0EB; --libre-borde: #9ECFC0; --libre-txt: #006B4C;
+  --entra: #CE8A0A; --entra-suave: #F9F1E2; --entra-borde: #ECD3A2; --entra-txt: #8A5A06;
+  --ocupado: #D8342E; --ocupado-suave: #FAE7E6; --ocupado-borde: #F0B2B0; --ocupado-txt: #B32720;
+  --on-ocupado: #FFFFFF;
+  --resto: #AAB3BE; --resto-suave: #ECEEF1; --resto-borde: #D5D9DF;
+  --sh-2: 0 10px 28px -14px rgba(16,21,30,.24), 0 2px 6px rgba(16,21,30,.05);
+
+  /* La página que envuelve las muestras. */
+  --pg-bg: #E9ECE7; --pg-fg: #0A1014; --pg-fg-2: #4A5B65; --pg-line: #D3D7D2; --pg-panel: #F4F6F2;
+
+  --f-text: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --f-display: "Helvetica Neue", "Segoe UI Variable Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --f-mono: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --t-3xs: 10px; --t-2xs: 11.5px; --t-xs: 12.5px; --t-sm: 13.5px; --t-base: 15px; --t-md: 17.5px; --t-lg: 21px; --t-xl: 30px;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #04070A; --surface: #0B1116; --surface-2: #101820; --surface-3: #16212A;
+    --line-soft: #1A1F24; --line: #262B30; --line-strong: #3E4347; --brd-control: #6E8190;
+    --ink-1: #EDF3F2; --ink-2: #9DAEB6; --ink-3: #788A94; --ink-4: #6E8190;
+    --signal: #FFD028; --signal-borde: transparent; --on-signal: #0A0C06; --ring: #FFE067;
+    --libre: #00BE86; --libre-suave: #092D28; --libre-borde: #065A45; --libre-txt: #00BE86;
+    --entra: #F5A524; --entra-suave: #302918; --entra-borde: #6D4F1C; --entra-txt: #F5A524;
+    --ocupado: #F4544E; --ocupado-suave: #301C1F; --ocupado-borde: #6D2D2E; --ocupado-txt: #F4544E;
+    --on-ocupado: #04070A;
+    --resto: #33414F; --resto-suave: #1B242D; --resto-borde: #293541;
+    --sh-2: 0 12px 34px -14px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.4);
+    --pg-bg: #070B0F; --pg-fg: #EDF3F2; --pg-fg-2: #9DAEB6; --pg-line: #1F2C36; --pg-panel: #0B1116;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #04070A; --surface: #0B1116; --surface-2: #101820; --surface-3: #16212A;
+  --line-soft: #1A1F24; --line: #262B30; --line-strong: #3E4347; --brd-control: #6E8190;
+  --ink-1: #EDF3F2; --ink-2: #9DAEB6; --ink-3: #788A94; --ink-4: #6E8190;
+  --signal: #FFD028; --signal-borde: transparent; --on-signal: #0A0C06; --ring: #FFE067;
+  --libre: #00BE86; --libre-suave: #092D28; --libre-borde: #065A45; --libre-txt: #00BE86;
+  --entra: #F5A524; --entra-suave: #302918; --entra-borde: #6D4F1C; --entra-txt: #F5A524;
+  --ocupado: #F4544E; --ocupado-suave: #301C1F; --ocupado-borde: #6D2D2E; --ocupado-txt: #F4544E;
+  --on-ocupado: #04070A;
+  --resto: #33414F; --resto-suave: #1B242D; --resto-borde: #293541;
+  --sh-2: 0 12px 34px -14px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.4);
+  --pg-bg: #070B0F; --pg-fg: #EDF3F2; --pg-fg-2: #9DAEB6; --pg-line: #1F2C36; --pg-panel: #0B1116;
+}
+
+/* Los paneles de muestra: claro y oscuro FIJOS, sin importar el tema de quien mira. */
+.claro {
+  color-scheme: light;
+  --bg: #EFF1ED; --surface: #FFFFFF; --surface-2: #F7F8F5; --surface-3: #E4E7E1;
+  --line-soft: #F0F1F1; --line: #DDDEDE; --line-strong: #BBBCBE; --brd-control: #68788A;
+  --ink-1: #0A1014; --ink-2: #4A5B65; --ink-3: #54646E; --ink-4: #68788A;
+  --signal: #F2B300; --signal-borde: #A87C00; --on-signal: #120E00; --ring: #8A6100;
+  --libre: #00805A; --libre-suave: #E0F0EB; --libre-borde: #9ECFC0; --libre-txt: #006B4C;
+  --entra: #CE8A0A; --entra-suave: #F9F1E2; --entra-borde: #ECD3A2; --entra-txt: #8A5A06;
+  --ocupado: #D8342E; --ocupado-suave: #FAE7E6; --ocupado-borde: #F0B2B0; --ocupado-txt: #B32720;
+  --on-ocupado: #FFFFFF;
+  --resto: #AAB3BE; --resto-suave: #ECEEF1; --resto-borde: #D5D9DF;
+  --sh-2: 0 10px 28px -14px rgba(16,21,30,.24), 0 2px 6px rgba(16,21,30,.05);
+}
+.oscuro {
+  color-scheme: dark;
+  --bg: #04070A; --surface: #0B1116; --surface-2: #101820; --surface-3: #16212A;
+  --line-soft: #1A1F24; --line: #262B30; --line-strong: #3E4347; --brd-control: #6E8190;
+  --ink-1: #EDF3F2; --ink-2: #9DAEB6; --ink-3: #788A94; --ink-4: #6E8190;
+  --signal: #FFD028; --signal-borde: transparent; --on-signal: #0A0C06; --ring: #FFE067;
+  --libre: #00BE86; --libre-suave: #092D28; --libre-borde: #065A45; --libre-txt: #00BE86;
+  --entra: #F5A524; --entra-suave: #302918; --entra-borde: #6D4F1C; --entra-txt: #F5A524;
+  --ocupado: #F4544E; --ocupado-suave: #301C1F; --ocupado-borde: #6D2D2E; --ocupado-txt: #F4544E;
+  --on-ocupado: #04070A;
+  --resto: #33414F; --resto-suave: #1B242D; --resto-borde: #293541;
+  --sh-2: 0 12px 34px -14px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.4);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--pg-bg); color: var(--pg-fg);
+  font-family: var(--f-text); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 72px;
+}
+.hoja { max-width: 1200px; margin: 0 auto; display: grid; gap: 56px; }
+.ico { flex-shrink: 0; display: block; }
+button { font-family: inherit; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* ── Cabecera de la hoja ─────────────────────────────────────────── */
+.portada { display: grid; gap: 18px; }
+.paso { font: 600 var(--t-3xs)/1 var(--f-text); letter-spacing: .1em; text-transform: uppercase; color: var(--pg-fg-2); }
+.portada h1 { font: 800 clamp(26px, 4vw, 38px)/1.05 var(--f-display); letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+.portada p { margin: 0; max-width: 68ch; color: var(--pg-fg-2); font-size: 15px; }
+.regla { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1px; background: var(--pg-line); border: 1px solid var(--pg-line); border-radius: 14px; overflow: hidden; }
+.regla > div { background: var(--pg-panel); padding: 14px 16px; display: grid; gap: 4px; }
+.regla b { font-size: 13.5px; }
+.regla span { font-size: 12.5px; color: var(--pg-fg-2); }
+.regla code { font-family: var(--f-mono); font-size: 12px; }
+
+/* ── Secciones ───────────────────────────────────────────────────── */
+section { display: grid; gap: 16px; min-width: 0; }
+section > header { display: grid; gap: 6px; }
+section h2 { font: 800 22px/1.15 var(--f-display); letter-spacing: -.015em; margin: 0; }
+section > header p { margin: 0; color: var(--pg-fg-2); max-width: 72ch; }
+.par { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 980px) { .par { grid-template-columns: minmax(0, 1fr); } }
+.esp { background: var(--bg); color: var(--ink-1); border-radius: 18px; padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-width: 0; border: 1px solid var(--pg-line); }
+.esp > .tema { font: 600 var(--t-3xs)/1 var(--f-text); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+.ancho { overflow-x: auto; border-radius: 14px; }
+.ancho > .esp { min-width: 1080px; }
+.nota { font-size: 12.5px; color: var(--ink-3); margin: 0; }
+.nota b { color: var(--ink-1); font-weight: 600; }
+
+/* ── Las piezas (lo que se implementa) ───────────────────────────── */
+.rotulo { font: 600 var(--t-3xs)/1.2 var(--f-text); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* Tarjeta */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); display: grid; min-width: 0; }
+.card-h { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; min-width: 0; }
+.card-h > .ico { color: var(--ink-2); }
+.card-h h3 { margin: 0; font-size: var(--t-base); font-weight: 700; letter-spacing: -.005em; white-space: nowrap; }
+.card-h .sub { font-size: var(--t-xs); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.card-h .der { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: var(--t-xs); color: var(--ink-3); }
+.card-b { padding: 0 16px 16px; display: grid; gap: 12px; min-width: 0; }
+.cards4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 12px; }
+@media (max-width: 640px) { .cards4 { grid-template-columns: 1fr; } }
+
+/* Pastillas */
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: var(--t-2xs); font-weight: 600; white-space: nowrap; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); }
+.pill.mayus { text-transform: uppercase; letter-spacing: .06em; font-size: var(--t-3xs); }
+.pill.libre { background: var(--libre-suave); border-color: var(--libre-borde); color: var(--libre-txt); }
+.pill.entra { background: var(--entra-suave); border-color: var(--entra-borde); color: var(--entra-txt); }
+.pill.ocupado { background: var(--ocupado-suave); border-color: var(--ocupado-borde); color: var(--ocupado-txt); }
+.pill.resto { background: var(--resto-suave); border-color: var(--resto-borde); color: var(--ink-2); }
+.pill.cod { font-family: var(--f-mono); font-weight: 500; font-size: var(--t-2xs); background: var(--surface); border-color: var(--libre-borde); color: var(--ink-1); cursor: pointer; }
+.pill.cod.resaltado { background: var(--libre-suave); border-color: var(--libre); }
+.cuenta { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ocupado); color: var(--on-ocupado); font: 700 var(--t-3xs)/1 var(--f-mono); }
+.punto { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--ink-2); white-space: nowrap; }
+.punto::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--ink-4)); }
+.fila-piezas { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.grupo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+
+/* Botones */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: var(--r-md); font-size: var(--t-sm); font-weight: 600; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-1); cursor: pointer; white-space: nowrap; }
+.btn .ico { color: currentColor; }
+.btn.principal { background: var(--signal); border-color: var(--signal-borde); color: var(--on-signal); }
+.btn.principal[disabled] { background: var(--surface-3); border-color: var(--line); color: var(--ink-4); cursor: not-allowed; }
+.btn.fantasma { border-color: transparent; background: transparent; color: var(--ink-2); padding: 0 10px; }
+.btn.peligro { color: var(--ocupado-txt); border-color: var(--ocupado-borde); }
+.btn.barra { height: 30px; padding: 0 11px; font-size: var(--t-xs); font-weight: 500; border-color: var(--line); color: var(--ink-2); }
+.btn.barra .ico { color: var(--ink-3); }
+.btn.solo { width: 32px; height: 32px; padding: 0; border-color: var(--line); color: var(--ink-2); }
+.btn.ancho-total { width: 100%; }
+
+/* Controles segmentados */
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); max-width: 100%; overflow-x: auto; }
+.seg button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--ink-2); font-size: var(--t-xs); font-weight: 500; cursor: pointer; white-space: nowrap; }
+.seg button .n { font-family: var(--f-mono); font-size: var(--t-2xs); color: var(--ink-3); }
+.seg button[aria-pressed="true"] { background: var(--ink-1); color: var(--surface); font-weight: 600; }
+.seg button[aria-pressed="true"] .n { color: var(--surface); opacity: .8; }
+.modos { display: flex; align-self: stretch; }
+.modos button { display: inline-flex; align-items: center; gap: 7px; padding: 0 16px; border: 0; border-bottom: 2px solid transparent; background: transparent; font-size: var(--t-sm); font-weight: 500; color: var(--ink-3); cursor: pointer; }
+.modos button[aria-pressed="true"] { color: var(--ink-1); font-weight: 700; border-bottom-color: var(--ink-1); }
+.opciones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+@media (max-width: 520px) { .opciones { grid-template-columns: 1fr; } }
+.opcion { display: grid; gap: 4px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; cursor: pointer; color: var(--ink-1); position: relative; }
+.opcion .ico { color: var(--ink-2); }
+.opcion b { font-size: var(--t-xs); }
+.opcion span { font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.35; }
+.opcion[aria-pressed="true"] { border-color: var(--ink-1); box-shadow: inset 0 0 0 1px var(--ink-1); }
+.opcion[aria-pressed="true"] .ico { color: var(--ink-1); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: var(--t-xs); font-weight: 500; cursor: pointer; white-space: nowrap; }
+.chip[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); font-weight: 600; }
+
+/* Campos */
+.campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) { .campos { grid-template-columns: 1fr; } }
+.campo { display: grid; gap: 6px; min-width: 0; position: relative; }
+.campo.lleno { grid-column: 1 / -1; }
+.entrada { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 11px; border: 1px solid var(--brd-control); border-radius: var(--r-md); background: var(--surface); color: var(--ink-1); font-size: var(--t-sm); min-width: 0; }
+.entrada > .ico { color: var(--ink-3); }
+.entrada .ph { color: var(--ink-4); }
+.entrada .fant { color: var(--ink-4); }
+.entrada .fin { margin-left: auto; font-size: var(--t-2xs); color: var(--ink-3); white-space: nowrap; }
+.entrada.foco { border-color: var(--ink-1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink-1) 12%, transparent); }
+.entrada.area { height: 64px; align-items: flex-start; padding-top: 10px; }
+.lista { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--sh-2); padding: 4px; display: grid; }
+.lista div { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 7px; font-size: var(--t-sm); }
+.lista div.on { background: var(--surface-2); }
+.lista div .ico { color: var(--ink-3); }
+.ayuda { font-size: var(--t-2xs); color: var(--ink-3); }
+.ayuda .enlace { color: var(--ink-1); display: inline-flex; align-items: center; gap: 6px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.kbd { font: 600 10px/1 var(--f-mono); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; padding: 2px 4px; color: var(--ink-2); }
+
+/* Cifras */
+.cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.cifra { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 13px 14px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.cifra .cab { display: flex; align-items: center; gap: 7px; }
+.cifra .cab .ico { color: var(--ink-3); }
+.cifra .v { font: 700 var(--t-lg)/1.15 var(--f-mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.cifra i { font-style: normal; font-size: var(--t-2xs); color: var(--ink-3); }
+.cifra.alarma .cab .ico, .cifra.alarma .rotulo { color: var(--ocupado-txt); }
+.cifra.alarma .v { color: var(--ocupado-txt); }
+.barrita { height: 4px; background: var(--surface-3); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.barrita span { display: block; height: 100%; background: var(--ocupado); }
+.total { display: grid; gap: 4px; }
+.total .v { font: 700 var(--t-xl)/1 var(--f-mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+
+/* Barras de arriba */
+.appbar { display: flex; align-items: center; gap: 18px; height: 52px; padding: 0 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.marca { font: 700 14px/1 var(--f-text); letter-spacing: .055em; }
+.tabs { display: flex; align-self: stretch; }
+.tabs button { padding: 0 11px; border: 0; background: transparent; border-bottom: 2px solid transparent; font-size: var(--t-xs); color: var(--ink-3); cursor: pointer; }
+.tabs button[aria-pressed="true"] { color: var(--ink-1); font-weight: 600; border-bottom-color: var(--ink-1); }
+.tabs .sep { width: 1px; height: 18px; background: var(--line); align-self: center; margin: 0 7px; }
+.der-bar { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.quien { display: grid; text-align: right; line-height: 1.25; }
+.quien b { font-size: 12px; color: var(--ink-2); font-weight: 600; }
+.quien span { font-size: 11px; color: var(--ink-4); }
+.icobtn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-md); border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.sedebar { display: flex; align-items: center; gap: 10px; }
+.pieza { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.pieza .ico { color: var(--ink-3); }
+.pieza .sede { font-weight: 700; font-size: var(--t-md); letter-spacing: -.01em; display: inline-flex; align-items: center; gap: 4px; }
+.pieza .cuantos { font-size: var(--t-xs); color: var(--ink-3); white-space: nowrap; }
+.pieza.modos-p { padding: 0 4px; }
+.pieza .periodo { font-size: var(--t-sm); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.hoy { font-size: var(--t-sm); font-weight: 500; white-space: nowrap; }
+
+/* Plano en miniatura, leyenda y escalera */
+.leyenda { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.leyenda .punto b { font-family: var(--f-mono); font-weight: 600; color: var(--ink-1); }
+.mini { height: 112px; border-radius: 12px; background: var(--surface-2); border: 1px dashed var(--line); position: relative; overflow: hidden; }
+.mini svg { width: 100%; height: 100%; display: block; }
+.pista { display: flex; align-items: center; gap: 8px; font-size: var(--t-2xs); color: var(--ink-3); }
+.pista .ico { color: var(--ink-3); }
+.herr { display: flex; gap: 6px; margin-left: auto; }
+.linea { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.linea .ico { color: var(--ink-2); }
+.linea .cod { font: 600 var(--t-sm)/1.2 var(--f-mono); white-space: nowrap; }
+.linea .que { font-size: var(--t-2xs); color: var(--ink-3); }
+.linea .precio { margin-left: auto; font: 600 var(--t-sm)/1 var(--f-mono); white-space: nowrap; }
+.linea .txt { display: grid; min-width: 0; }
+.tarifa { display: grid; gap: 0; }
+.tarifa .fila { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; padding: 9px 8px; border-top: 1px solid var(--line-soft); align-items: center; border-radius: 10px; }
+.tarifa .fila.on { background: var(--libre-suave); border-top-color: transparent; }
+.tarifa .fila .t { font-size: var(--t-sm); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.tarifa .fila .t .ico { color: var(--ink-3); }
+.tarifa .fila .n { font: 500 var(--t-xs)/1 var(--f-mono); color: var(--ink-2); }
+.tarifa .fila .p { font: 600 var(--t-sm)/1 var(--f-mono); text-align: right; }
+.tarifa .fila .cods { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
+.tarifa .pie { font-size: var(--t-2xs); color: var(--ink-3); padding: 8px 8px 0; border-top: 1px solid var(--line-soft); }
+.lectura { font-size: var(--t-xs); color: var(--ink-2); margin: 0; }
+.lectura b { color: var(--ink-1); }
+
+/* Panel del Plano */
+.secc { display: grid; grid-template-columns: 16px 1fr auto; gap: 4px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.secc > .ico { color: var(--ink-3); }
+.secc .val { font-size: var(--t-sm); grid-column: 2 / -1; }
+.secc .der { font-size: var(--t-2xs); color: var(--ink-3); display: inline-flex; align-items: center; gap: 5px; }
+
+/* Barra de capacidad de un % */
+.cap { display: grid; gap: 6px; }
+.cap .barra { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--surface-3); }
+.cap .barra .suyo { background: var(--ink-1); }
+.cap .barra .queda { background: var(--libre-suave); box-shadow: inset 0 0 0 1px var(--libre-borde); }
+.cap .barra .no { background: repeating-linear-gradient(135deg, var(--resto-suave) 0 4px, var(--resto-borde) 4px 5px); }
+.cap .lee { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--t-2xs); color: var(--ink-3); }
+.cap .lee b { color: var(--ink-1); font-family: var(--f-mono); }
+.repisas { display: grid; gap: 4px; }
+.repisa { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; font-size: var(--t-xs); background: var(--surface); }
+.repisa .caja { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--brd-control); display: grid; place-items: center; }
+.repisa.si { border-color: var(--ink-1); }
+.repisa.si .caja { background: var(--ink-1); border-color: var(--ink-1); color: var(--surface); }
+.repisa.tomada { background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--surface-3) 6px 7px); color: var(--ink-3); }
+.repisa.tomada .caja { border-style: dashed; }
+.repisa .mono { font-weight: 600; }
+
+/* Inventario */
+.inv { overflow-x: auto; border: 1px solid var(--pg-line); border-radius: 14px; background: var(--pg-panel); }
+.inv table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.inv caption { text-align: left; padding: 14px 16px 6px; font: 700 15px/1.2 var(--f-text); }
+.inv th { text-align: left; font: 600 var(--t-3xs)/1.2 var(--f-text); letter-spacing: .08em; text-transform: uppercase; color: var(--pg-fg-2); padding: 8px 12px; border-bottom: 1px solid var(--pg-line); }
+.inv td { padding: 8px 12px; border-bottom: 1px solid var(--pg-line); vertical-align: middle; font-size: 13px; }
+.inv tr:last-child td { border-bottom: 0; }
+.inv td.sw { width: 84px; }
+.sws { display: flex; gap: 4px; }
+.sw1 { width: 34px; height: 30px; border-radius: 8px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); }
+.inv code { font-family: var(--f-mono); font-size: 12px; }
+.inv .hoy-c { color: var(--pg-fg-2); font-size: 12px; }
+.inv .por { color: var(--pg-fg-2); font-size: 12.5px; }
+.tag { display: inline-block; font: 600 9.5px/1 var(--f-text); letter-spacing: .06em; text-transform: uppercase; padding: 3px 6px; border-radius: 5px; border: 1px solid var(--pg-line); color: var(--pg-fg-2); margin-left: 6px; vertical-align: 1px; }
+.tag.nuevo { border-color: var(--libre-borde); color: var(--libre-txt); }
+.tag.cambia { border-color: var(--entra-borde); color: var(--entra-txt); }
+.tag.duda { border-color: var(--ocupado-borde); color: var(--ocupado-txt); }
+
+/* Choques y aprobación */
+.choques { display: grid; gap: 1px; background: var(--pg-line); border: 1px solid var(--pg-line); border-radius: 14px; overflow: hidden; }
+.choques > div { background: var(--pg-panel); padding: 12px 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 4px 20px; }
+@media (max-width: 720px) { .choques > div { grid-template-columns: 1fr; } }
+.choques .m { color: var(--pg-fg-2); font-size: 13px; }
+.choques .d { font-size: 13.5px; }
+.aprobar { display: grid; gap: 10px; counter-reset: q; }
+.aprobar > div { background: var(--pg-panel); border: 1px solid var(--pg-line); border-radius: 14px; padding: 14px 16px; display: grid; gap: 6px; }
+.aprobar h3 { margin: 0; font-size: 15px; }
+.aprobar p { margin: 0; color: var(--pg-fg-2); font-size: 13.5px; max-width: 80ch; }
+.aprobar .op { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 4px; }
+
+.card, .card-b, .lpct, .pie-contrato, .total, .campo, .cap { grid-template-columns: minmax(0, 1fr); }
+.lpct-h .cod { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 480px) { .acciones2 { grid-template-columns: minmax(0, 1fr); } .marco { padding: 10px; } }
+.flujo { max-width: 1200px; margin: 0 auto; display: grid; gap: 52px; }
+.paso-f { display: grid; gap: 14px; }
+.paso-h { display: flex; gap: 14px; align-items: flex-start; }
+.paso-h .num { flex-shrink: 0; display: grid; place-items: center; min-width: 34px; height: 34px; padding: 0 8px; border-radius: 999px; background: var(--pg-fg); color: var(--pg-bg); font: 700 14px/1 var(--f-mono); }
+.paso-h h2 { margin: 2px 0 4px; }
+.paso-h p { margin: 0; color: var(--pg-fg-2); max-width: 78ch; }
+.marco { background: var(--bg); color: var(--ink-1); border: 1px solid var(--pg-line); border-radius: 18px; padding: 14px; display: grid; gap: 12px; min-width: 0; }
+.mini-bar { flex-wrap: wrap; }
+.pantalla { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 900px) { .pantalla { grid-template-columns: minmax(0, 1fr); } }
+.lienzo { border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.lienzo svg { display: block; width: 100%; height: auto; }
+.pista-c { display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px; border: 1px dashed var(--line-strong); border-radius: 12px; font-size: var(--t-xs); color: var(--ink-2); }
+.tarifa-chica { display: flex; justify-content: space-between; gap: 10px; font-size: var(--t-xs); color: var(--ink-2); padding: 0 2px; }
+.tarifa-chica .t { display: inline-flex; gap: 7px; align-items: center; }
+.tarifa-chica .t .ico { color: var(--ink-3); }
+.tarifa-chica .p { font-family: var(--f-mono); color: var(--ink-1); font-weight: 600; }
+.lpct { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--ink-1); border-radius: 12px; }
+.lpct-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.lpct-h > .ico { color: var(--ink-1); }
+.lpct-h .txt { display: grid; min-width: 0; }
+.lpct-h .cod { font: 600 var(--t-sm)/1.2 var(--f-mono); white-space: nowrap; }
+.lpct-h .que { font-size: var(--t-2xs); color: var(--ink-3); }
+.lpct-h .pct { margin-left: auto; font-size: var(--t-md); font-weight: 700; }
+.lpct-h .icobtn { margin-left: auto; }
+.lpct-h .pct + .icobtn { margin-left: 0; }
+.selpct { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.selpct .entrada.otro { height: 36px; width: 104px; }
+.pie-contrato { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.pie-contrato .total .rotulo { display: inline-flex; gap: 6px; align-items: center; }
+.pie-contrato .total .rotulo .ico { color: var(--ink-3); }
+.acciones2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.acciones2 .principal { grid-column: 1 / -1; }
+.acciones2 > .btn { min-width: 0; padding: 0 10px; }
+.hecho { display: flex; gap: 12px; padding: 14px; border-radius: 12px; background: var(--libre-suave); border: 1px solid var(--libre-borde); }
+.hecho > .ico { color: var(--libre-txt); margin-top: 2px; }
+.hecho div { display: grid; gap: 3px; font-size: var(--t-xs); color: var(--ink-2); }
+.hecho b { font-size: var(--t-base); color: var(--ink-1); }
+.hecho .mono { color: var(--ink-1); font-weight: 600; }
+.falta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--t-xs); color: var(--ink-2); padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 12px; }
+.falta > .ico { color: var(--ink-3); }
+.falta .btn { margin-left: auto; }
+.aviso-error { display: flex; gap: 10px; padding: 12px; border-radius: 12px; background: var(--ocupado-suave); border: 1px solid var(--ocupado-borde); }
+.aviso-error > .ico { color: var(--ocupado-txt); margin-top: 2px; }
+.aviso-error div { display: grid; gap: 4px; font-size: var(--t-xs); color: var(--ink-2); }
+.aviso-error b { color: var(--ocupado-txt); font-size: var(--t-sm); }
+.aviso-error .fila-piezas { display: flex; margin-top: 4px; }
+.notas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 10px; }
+.ve, .ojo { display: flex; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--pg-panel); border: 1px solid var(--pg-line); }
+.ve > .ico, .ojo > .ico { color: var(--pg-fg-2); margin-top: 2px; }
+.ojo { border-color: var(--entra-borde); }
+.ojo > .ico { color: var(--entra-txt); }
+.ve div, .ojo div { display: grid; gap: 2px; font-size: 13px; color: var(--pg-fg-2); }
+.ve b, .ojo b { color: var(--pg-fg); }
+.preguntas { display: grid; gap: 10px; }
+.preguntas > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 4px 20px; padding: 14px 16px; border-radius: 14px; background: var(--pg-panel); border: 1px solid var(--pg-line); }
+@media (max-width: 720px) { .preguntas > div { grid-template-columns: 1fr; } }
+.preguntas b { font-size: 14px; }
+.preguntas span { font-size: 13.5px; color: var(--pg-fg-2); }
+.escrito { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1px; background: var(--pg-line); border: 1px solid var(--pg-line); border-radius: 14px; overflow: hidden; }
+.escrito > div { background: var(--pg-panel); padding: 12px 14px; display: grid; gap: 2px; }
+.escrito span { font-size: 12px; color: var(--pg-fg-2); }
+.escrito b { font-family: var(--f-mono); font-size: 13.5px; }
+
+:root { --marca-1: #1A67C2; --marca-2: #A4338F; --marca-3: #B165FD; }
+.dist-g { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1.15fr); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .dist-g { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .panel-d { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .dist-g { grid-template-columns: minmax(0, 1fr); } .tresd-c { display: none; } }
+.herramientas { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.herramientas .seg button { padding: 0 9px; }
+.herramientas .seg button .ico { color: currentColor; }
+.btn.solo[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); }
+.lienzo-d { background: var(--bg); border-radius: 12px; border: 1px solid var(--line); }
+.lienzo-d svg, .tresd svg, .m-cara svg { display: block; width: 100%; height: auto; max-height: 420px; }
+.tresd { background: linear-gradient(var(--surface-2), var(--bg)); border-radius: 12px; border: 1px solid var(--line); padding: 18px 10px; perspective: 700px; overflow: hidden; }
+.tresd-i { transform: rotateY(-28deg) rotateX(4deg); transform-origin: 40% 50%; }
+.panel-d { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.pd-h { display: flex; align-items: flex-start; gap: 10px; }
+.pd-h h3 { margin: 2px 0 0; font-size: var(--t-md); }
+.pd-h .btn { margin-left: auto; }
+.panel-d .seg button .ico { color: currentColor; }
+.part { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.part.activa { border-color: var(--ink-1); }
+.num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: #fff; font: 700 11px/1 var(--f-text); }
+.part .dat { display: grid; gap: 1px; min-width: 0; }
+.part .dat b { font-size: var(--t-sm); }
+.part .dat span { font-size: var(--t-2xs); color: var(--ink-3); }
+.part .dat .mono { color: var(--ink-2); }
+.part .dib { color: var(--ink-1) !important; font-weight: 600; }
+.part .pill .ico { width: 12px; height: 12px; }
+.acc { display: flex; flex-wrap: wrap; gap: 8px; }
+.cap .barra span { display: block; height: 100%; }
+.sec-r { padding: 12px 0 6px; border-top: 1px solid var(--line-soft); }
+.sec-r:first-child { border-top: 0; padding-top: 0; }
+.fila-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; }
+.fila-r.destacada { background: var(--entra-suave); }
+.fila-r > .ico { color: var(--ink-3); }
+.fila-r .dat { display: grid; min-width: 0; }
+.fila-r .dat span { font-size: var(--t-2xs); color: var(--ink-3); }
+@media (max-width: 560px) { .fila-r { grid-template-columns: auto minmax(0, 1fr); } .fila-r .btn, .fila-r > .ico { grid-column: 2; justify-self: start; } .fila-r > .ico { display: none; } }
+.dialogo { max-width: 560px; margin: 0 auto; width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 16px; display: grid; gap: 10px; }
+.dg-h { display: flex; gap: 10px; align-items: center; }
+.dg-h h3 { margin: 0; font-size: var(--t-base); }
+.dg-h .ico { color: var(--ink-2); }
+.dg-f { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-soft); font-size: var(--t-sm); }
+.dg-f .pill .ico { width: 12px; height: 12px; }
+.movil-g { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: center; }
+.movil { width: 300px; max-width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 28px; padding: 18px 16px; display: grid; gap: 12px; }
+.m-h { display: grid; gap: 2px; }
+.m-h b { font-size: var(--t-md); }
+.m-h span:last-child { font-size: var(--t-xs); color: var(--ink-3); }
+.m-cara { background: var(--surface-2); border-radius: 14px; padding: 6px 30px; }
+.m-t { margin: 0; font-size: var(--t-xs); color: var(--ink-2); }
+.m-nota { max-width: 360px; display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.m-nota b { color: var(--ink-1); }
+
+.col { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.precio-r { font-size: var(--t-xs); font-weight: 600; }
+.lpct .seg button .ico, .campo .seg button .ico, .card-h .seg button .ico { color: currentColor; }
+.pv-c { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; grid-column: 2 / -1; }
+.pv-c .entrada { width: 220px; max-width: 100%; }
+.pv-r { font-weight: 700; }
+.fila-r.pv { grid-template-columns: auto minmax(0, 1fr); }
+.dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+.v-canon { font-size: var(--t-xl); font-weight: 700; letter-spacing: -.02em; }
+.ejemplo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); font-size: var(--t-xs); color: var(--ink-3); }
+.ejemplo .mono:first-child { color: var(--ink-1); font-weight: 600; }
+.ejemplo b { grid-column: 2; grid-row: 1 / 3; align-self: center; color: var(--ink-1); }
+
+.sup { gap: 12px; }
+.marco { grid-template-columns: minmax(0, 1fr); }
+.mini-bar .der-bar { flex-wrap: wrap; }
+.card-h { flex-wrap: wrap; }
+@media (max-width: 560px) { .mini-bar .pieza { flex-wrap: wrap; height: auto; min-height: 46px; padding-block: 6px; } .mini-bar .der-bar { margin-left: 0; } }
+.franja .cifras { grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+.franja .card-h .der .seg button { height: 26px; }
+.hoja-sup { display: grid; grid-template-columns: minmax(0, 2.5fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.hoja-sup .full { grid-column: 1 / -1; }
+@media (max-width: 1000px) { .hoja-sup { grid-template-columns: minmax(0, 1fr); } .hoja-sup .revisar { order: -1; } }
+.entrada.chica { height: 30px; font-size: var(--t-xs); }
+.seg.ancho { display: flex; width: 100%; }
+.seg.ancho button { flex: 1; justify-content: center; }
+.revisar .fila-r { grid-template-columns: auto minmax(0, 1fr) auto; }
+.revisar .fila-r .btn { grid-column: 2; grid-row: 2; justify-self: start; }
+.revisar .fila-r > .ico { grid-column: 3; grid-row: 1; }
+.revisar .fila-r .dat b { white-space: nowrap; }
+.revisar .fila-r.pv .pv-c { grid-column: 2 / -1; }
+.revisar, .revisar .card-b { align-content: start; }
+.lista-r { display: grid; max-height: 330px; overflow-y: auto; }
+.tabla-w { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+.tabla { width: 100%; border-collapse: collapse; min-width: 760px; font-size: var(--t-xs); }
+.tabla th { position: sticky; top: 0; background: var(--surface-2); text-align: left; font: 600 var(--t-3xs)/1.2 var(--f-text); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); padding: 9px 10px; border-bottom: 1px solid var(--line); }
+.tabla td { padding: 8px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.tabla td .ico { color: var(--ink-4); }
+.tabla .d { text-align: right; }
+.tabla .b { font-weight: 600; }
+.quien-l { display: grid; gap: 10px; }
+.qp { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; font-size: var(--t-xs); }
+.qp .barrita { grid-column: 1 / -1; margin-top: 0; }
+.donde { display: grid; gap: 1px; background: var(--pg-line); border: 1px solid var(--pg-line); border-radius: 14px; overflow: hidden; }
+.donde > div { background: var(--pg-panel); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.6fr); gap: 4px 18px; padding: 11px 16px; font-size: 13px; }
+.donde > div.cab { font: 600 10px/1.2 var(--f-text); letter-spacing: .08em; text-transform: uppercase; color: var(--pg-fg-2); }
+.donde .q { color: var(--pg-fg-2); }
+@media (max-width: 760px) { .donde > div { grid-template-columns: 1fr; } .donde > div.cab { display: none; } }
+.tres { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.cadena { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cadena .e { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 999px; background: var(--pg-panel); border: 1px solid var(--pg-line); font-size: 13px; }
+.cadena .e .ico { color: var(--pg-fg-2); }
+.cadena .f { color: var(--pg-fg-2); }
+
+.pbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grupo-h { display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.grupo-h .seg { border: 0; padding: 0; background: transparent; }
+.grupo-h .seg button .ico, .seg button .ico { color: currentColor; }
+.sepv { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
+.btn.solo.peligro { color: var(--ocupado-txt); }
+.pbar .der-bar { flex-wrap: wrap; }
+.plano-g { display: grid; grid-template-columns: minmax(0, 250px) minmax(0, 1fr) minmax(0, 320px); gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .plano-g { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .plano-g > :nth-child(2) { grid-column: 1 / -1; order: -1; } }
+@media (max-width: 640px) { .plano-g { grid-template-columns: minmax(0, 1fr); } }
+.fam { border-top: 1px solid var(--line-soft); padding: 8px 0; display: grid; gap: 4px; }
+.fam-h div { display: grid; }
+.fam-h { display: grid; grid-template-columns: 16px minmax(0, 1fr) 16px; gap: 8px; align-items: center; font-size: var(--t-sm); }
+.fam-h .ico { color: var(--ink-3); }
+.fam-h span { font-size: var(--t-2xs); color: var(--ink-3); }
+.tipo { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; align-items: center; padding: 7px 8px; border-radius: 10px; }
+.tipo .ico { color: var(--ink-2); }
+.tipo div { display: grid; }
+.tipo b { font-size: var(--t-xs); font-weight: 600; }
+.tipo span { font-size: var(--t-2xs); color: var(--ink-3); }
+.tipo.on { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.lienzo-p { padding: 12px; gap: 10px; }
+.sobre { display: grid; gap: 8px; }
+.sobre .entrada { max-width: 380px; }
+.chip .mono { color: var(--ink-3); font-size: var(--t-2xs); }
+.pie-l { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pie-l .herr { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.zoom { font-size: var(--t-xs); min-width: 42px; text-align: center; }
+.psec { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.psec-h { display: flex; align-items: center; gap: 8px; }
+.psec-h .ico { color: var(--ink-3); }
+.psec-h .der { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: var(--t-2xs); color: var(--ink-3); }
+.psec .val { font-size: var(--t-sm); }
+.opciones.dos { grid-template-columns: 1fr 1fr; }
+.panel-m .opciones { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.panel-m .opciones .opcion { display: flex; align-items: center; gap: 10px; }
+.panel-m .opciones.dos .opcion { display: grid; }
+.panel-m .opciones.dos { grid-template-columns: 1fr 1fr; }
+.panel-m .opcion { padding: 9px 10px; }
+.tres-c { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ctr { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: var(--t-xs); color: var(--ink-2); }
+.panel-m .btn.barra { justify-self: start; }
+
+.pb { padding: 14px; gap: 12px; align-content: start; grid-template-columns: minmax(0, 1fr); }
+.pb-h { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.pb-h > .ico { color: var(--ink-2); margin-top: 4px; }
+.pb-t { display: grid; gap: 2px; min-width: 0; }
+.pb-c { display: flex; align-items: center; gap: 4px; }
+.pb-c h3 { margin: 0; font-size: var(--t-md); }
+.pb-t > span { font-size: var(--t-2xs); color: var(--ink-3); display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pb-t > span .ico { width: 12px; height: 12px; }
+.icobtn.chico { width: 26px; height: 26px; }
+.pb-res span { white-space: nowrap; }
+.pb-res { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); font-size: var(--t-2xs); color: var(--ink-3); }
+.pb-res b { color: var(--ink-1); font-size: var(--t-xs); }
+.pb .seg.ancho button .ico { color: currentColor; }
+.pb-b { display: grid; gap: 2px; }
+.kv { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--line-soft); }
+.kv .k { font-size: var(--t-xs); color: var(--ink-3); }
+.kv .v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.kv .seg button { height: 28px; padding: 0 9px; }
+.kv .seg button .ico { color: currentColor; }
+.ayu { font-size: var(--t-xs); color: var(--ink-2); }
+.sw { width: 34px; height: 20px; border-radius: 999px; background: var(--surface-3); border: 1px solid var(--brd-control); position: relative; flex-shrink: 0; }
+.sw span { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.sw.on { background: var(--ink-1); border-color: var(--ink-1); }
+.sw.on span { left: 16px; }
+.vend { display: grid; gap: 6px; padding-top: 10px; }
+.vend-f { display: flex; align-items: center; gap: 8px; font-size: var(--t-xs); color: var(--ink-2); flex-wrap: wrap; }
+.vend-f .r { margin-left: auto; color: var(--ink-3); }
+.vend-f .btn.r { color: var(--ink-2); }
+.tri { display: flex; align-items: center; gap: 4px; }
+.in { display: inline-grid; place-items: center; min-width: 52px; height: 32px; padding: 0 8px; border: 1px solid var(--brd-control); border-radius: 8px; font-size: var(--t-xs); background: var(--surface); }
+.x, .u { font-size: var(--t-2xs); color: var(--ink-3); }
+.paso-n { display: flex; align-items: center; gap: 10px; }
+.paso-n .btn.solo { width: 28px; height: 28px; }
+.aviso-s { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: var(--t-2xs); color: var(--ink-3); }
+.aviso-s .ico { width: 13px; height: 13px; }
+.obs { display: flex; justify-content: space-between; align-items: flex-start; min-height: 72px; margin-top: 10px; padding: 10px 11px; border: 1px solid var(--brd-control); border-radius: 10px; font-size: var(--t-xs); }
+.obs .mono { color: var(--ink-3); font-size: var(--t-2xs); }
+.comp { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px; align-items: start; }
+.comp > div { display: grid; gap: 8px; }
+.comp .rotulo { color: var(--pg-fg-2); }
+.tres-p { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; align-items: start; }
+</style>
+<main class="flujo">
+<div class="portada"><span class="paso">Rediseño · PR 3 · para revisar</span>
+  <h1>Un panel del mueble más limpio</h1>
+  <p>El panel A tenía nueve secciones apiladas, cada una con su ícono y su rótulo: había que bajar mucho y todas pesaban igual. El B dice lo importante arriba, de un vistazo, y reparte el resto en tres pestañas según para qué se abre el panel: vender, medir o anotar. No se pierde ningún dato ni ningún control.</p></div>
+
+<section class="paso-f"><header class="paso-h"><span class="num">1</span><div><h2>Antes y después</h2><p>A la izquierda el panel A del dibujo anterior; a la derecha el B, con la pestaña Venta abierta.</p></div></header>
+  <div class="marco claro"><div class="comp"><div><span class="rotulo">A · nueve secciones</span><div class="card panel-m"><div class="card-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><h3 class="mono">PUN-02</h3><button class="icobtn" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button><span class="der"><span class="pill entra">Vendido en parte</span></span></div>
+  <div class="card-b" style="gap:0">
+  <p class="nota" style="margin:0 0 10px">Punta de góndola · modelo PUN-070-200 · pasillo 2</p>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-store" aria-hidden="true" focusable="false"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"></path><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"></path><path d="M2 7h20"></path><path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"></path></svg><span class="rotulo">Destino del mueble</span></div><div class="opciones dos"><button class="opcion" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-store" aria-hidden="true" focusable="false"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"></path><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"></path><path d="M2 7h20"></path><path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"></path></svg><b>Comercializable</b><span>Se vende</span></button><button class="opcion"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ban" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><path d="m4.9 4.9 14.2 14.2"></path></svg><b>No comercializable</b><span>Sólo se dibuja</span></button></div></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-circle-dot" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="1"></circle></svg><span class="rotulo">Estado del espacio</span></div><div class="seg"><button aria-pressed="true">Disponible</button><button>Mantenimiento</button></div><span class="ayuda">Ocupado y Reservado los ponen el contrato y la reserva, no se marcan a mano.</span></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-map-pin" aria-hidden="true" focusable="false"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg><span class="rotulo">Sede</span><span class="der"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>sólo lectura</span></div><span class="val">CENTRO</span></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg><span class="rotulo">Contratado</span></div><div class="ctr"><span class="pill ocupado mono">EN4</span><span>Café Montaña · hasta el 31 dic</span></div><div class="ctr"><span class="pill libre mono">EN1 · EN2 · EN3 · EN5</span><span>libres</span></div><button class="btn barra"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-file-pen-line" aria-hidden="true" focusable="false"><path d="m18 5-2.414-2.414A2 2 0 0 0 14.172 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"></path><path d="M21.378 12.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path><path d="M8 18h1"></path></svg>Vender en Sede → Vender</button></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg><span class="rotulo">Dimensiones</span></div><div class="campos tres-c"><div class="campo"><span class="rotulo">Ancho</span><div class="entrada"><span class="mono">0,90</span><span class="fin">m</span></div></div><div class="campo"><span class="rotulo">Prof.</span><div class="entrada"><span class="mono">0,40</span><span class="fin">m</span></div></div><div class="campo"><span class="rotulo">Alto</span><div class="entrada"><span class="mono">2,00</span><span class="fin">m</span></div></div></div></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-rows3" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path></svg><span class="rotulo">Entrepaños y módulo</span></div><div class="campos"><div class="campo"><span class="rotulo">Entrepaños</span><div class="entrada"><span class="mono">5</span></div></div><div class="campo"><span class="rotulo">Módulo</span><div class="entrada"><span class="mono">0,90</span><span class="fin">m</span></div></div></div><span class="ayuda">Con un entrepaño vendido, la cantidad no cambia (como hoy).</span></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-puzzle" aria-hidden="true" focusable="false"><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"></path></svg><span class="rotulo">Cómo se vende</span></div><div class="opciones"><button class="opcion"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-square" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg><b>Entera</b></button><button class="opcion" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-rows3" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path></svg><b>Por entrepaños</b></button><button class="opcion"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-percent" aria-hidden="true" focusable="false"><line x1="19" x2="5" y1="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg><b>Por participación</b></button></div></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-file-text" aria-hidden="true" focusable="false"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg><span class="rotulo">Archivos</span></div><div class="fila-piezas"><span class="pill"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-image-up" aria-hidden="true" focusable="false"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"></path><path d="m14 19.5 3-3 3 3"></path><path d="M17 22v-5.5"></path><circle cx="9" cy="9" r="2"></circle></svg>frente-pun02.jpg · cara designada</span><button class="btn barra"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-image-up" aria-hidden="true" focusable="false"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"></path><path d="m14 19.5 3-3 3 3"></path><path d="M17 22v-5.5"></path><circle cx="9" cy="9" r="2"></circle></svg>Subir</button></div></div>
+  <div class="psec"><div class="psec-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg><span class="rotulo">Observación</span></div><div class="entrada area"><span class="ph">Notas adicionales</span><span class="fin mono">0/500</span></div></div>
+  </div></div></div><div><span class="rotulo">B · resumen y tres pestañas</span><div class="card pb"><div class="pb-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><div class="pb-t"><div class="pb-c"><h3 class="mono">PUN-02</h3><button class="icobtn chico" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button></div><span>Punta de góndola · CENTRO <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> · pasillo 2</span></div><span class="pill entra">Vendido en parte</span></div>
+  <div class="pb-res"><span><b class="mono">0,90 × 0,40 × 2,00</b> m</span><span><b class="mono">5</b> entrepaños</span><span><b class="mono">1 de 5</b> vendido</span></div><div class="seg ancho"><button aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>Venta</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg>Medidas</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>Notas <span class="n">1</span></button></div><div class="pb-b"><div class="kv"><span class="k">Se vende</span><div class="v"><span class="sw on" role="switch" aria-checked="true"><span></span></span><span class="ayu">Comercializable</span></div></div>
+  <div class="kv"><span class="k">Cómo</span><div class="v"><div class="seg"><button title="Entera"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-square" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg></button><button aria-pressed="true" title="Por entrepaños"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-rows3" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path></svg>Entrepaños</button><button title="Por participación"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-percent" aria-hidden="true" focusable="false"><line x1="19" x2="5" y1="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg></button></div></div></div>
+  <div class="kv"><span class="k">Estado</span><div class="v"><div class="seg"><button aria-pressed="true">Disponible</button><button>Mantenimiento</button></div></div></div>
+  <div class="vend"><div class="vend-f"><span class="pill ocupado mono">EN4</span><span>Café Montaña</span><span class="mono r">hasta 31 dic</span></div>
+  <div class="vend-f"><span class="pill libre mono">EN1–3 · EN5</span><span>libres</span><button class="btn barra r"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-file-pen-line" aria-hidden="true" focusable="false"><path d="m18 5-2.414-2.414A2 2 0 0 0 14.172 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"></path><path d="M21.378 12.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path><path d="M8 18h1"></path></svg>Vender</button></div></div></div></div></div></div></div></section>
+
+<section class="paso-f"><header class="paso-h"><span class="num">2</span><div><h2>Las tres pestañas, en claro</h2><p>Abre siempre en Venta, que es para lo que más se usa. Cada pestaña entra sin bajar en una pantalla de 900 px de alto.</p></div></header>
+  <div class="marco claro"><div class="tres-p"><div class="card pb"><div class="pb-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><div class="pb-t"><div class="pb-c"><h3 class="mono">PUN-02</h3><button class="icobtn chico" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button></div><span>Punta de góndola · CENTRO <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> · pasillo 2</span></div><span class="pill entra">Vendido en parte</span></div>
+  <div class="pb-res"><span><b class="mono">0,90 × 0,40 × 2,00</b> m</span><span><b class="mono">5</b> entrepaños</span><span><b class="mono">1 de 5</b> vendido</span></div><div class="seg ancho"><button aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>Venta</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg>Medidas</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>Notas <span class="n">1</span></button></div><div class="pb-b"><div class="kv"><span class="k">Se vende</span><div class="v"><span class="sw on" role="switch" aria-checked="true"><span></span></span><span class="ayu">Comercializable</span></div></div>
+  <div class="kv"><span class="k">Cómo</span><div class="v"><div class="seg"><button title="Entera"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-square" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg></button><button aria-pressed="true" title="Por entrepaños"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-rows3" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path></svg>Entrepaños</button><button title="Por participación"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-percent" aria-hidden="true" focusable="false"><line x1="19" x2="5" y1="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg></button></div></div></div>
+  <div class="kv"><span class="k">Estado</span><div class="v"><div class="seg"><button aria-pressed="true">Disponible</button><button>Mantenimiento</button></div></div></div>
+  <div class="vend"><div class="vend-f"><span class="pill ocupado mono">EN4</span><span>Café Montaña</span><span class="mono r">hasta 31 dic</span></div>
+  <div class="vend-f"><span class="pill libre mono">EN1–3 · EN5</span><span>libres</span><button class="btn barra r"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-file-pen-line" aria-hidden="true" focusable="false"><path d="m18 5-2.414-2.414A2 2 0 0 0 14.172 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"></path><path d="M21.378 12.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path><path d="M8 18h1"></path></svg>Vender</button></div></div></div></div><div class="card pb"><div class="pb-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><div class="pb-t"><div class="pb-c"><h3 class="mono">PUN-02</h3><button class="icobtn chico" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button></div><span>Punta de góndola · CENTRO <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> · pasillo 2</span></div><span class="pill entra">Vendido en parte</span></div>
+  <div class="pb-res"><span><b class="mono">0,90 × 0,40 × 2,00</b> m</span><span><b class="mono">5</b> entrepaños</span><span><b class="mono">1 de 5</b> vendido</span></div><div class="seg ancho"><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>Venta</button><button aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg>Medidas</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>Notas <span class="n">1</span></button></div><div class="pb-b"><div class="kv"><span class="k">Medidas</span><div class="v"><div class="tri"><span class="in mono">0,90</span><span class="x">×</span><span class="in mono">0,40</span><span class="x">×</span><span class="in mono">2,00</span><span class="u">m</span></div></div></div>
+  <div class="kv"><span class="k">Entrepaños</span><div class="v"><div class="paso-n"><button class="btn solo" title="Uno menos"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-minus" aria-hidden="true" focusable="false"><path d="M5 12h14"></path></svg></button><span class="mono">5</span><button class="btn solo" title="Uno más"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-plus" aria-hidden="true" focusable="false"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></button></div></div></div>
+  <div class="kv"><span class="k">Módulo</span><div class="v"><span class="in mono">0,90</span><span class="u">m</span></div></div>
+  <p class="aviso-s"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Con un entrepaño vendido, la cantidad no cambia.</p></div></div><div class="card pb"><div class="pb-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><div class="pb-t"><div class="pb-c"><h3 class="mono">PUN-02</h3><button class="icobtn chico" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button></div><span>Punta de góndola · CENTRO <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> · pasillo 2</span></div><span class="pill entra">Vendido en parte</span></div>
+  <div class="pb-res"><span><b class="mono">0,90 × 0,40 × 2,00</b> m</span><span><b class="mono">5</b> entrepaños</span><span><b class="mono">1 de 5</b> vendido</span></div><div class="seg ancho"><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>Venta</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg>Medidas</button><button aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>Notas <span class="n">1</span></button></div><div class="pb-b"><div class="kv"><span class="k">Archivos</span><div class="v"><span class="pill"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-image-up" aria-hidden="true" focusable="false"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"></path><path d="m14 19.5 3-3 3 3"></path><path d="M17 22v-5.5"></path><circle cx="9" cy="9" r="2"></circle></svg>frente-pun02.jpg</span><button class="icobtn chico" title="Subir"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-plus" aria-hidden="true" focusable="false"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></button></div></div>
+  <div class="obs"><span class="ph">Algo que el montaje tenga que saber</span><span class="mono">0/500</span></div></div></div></div></div></section>
+
+<section class="paso-f"><header class="paso-h"><span class="num">3</span><div><h2>Y en oscuro</h2><p>Sigue el tema elegido, como el resto de la app.</p></div></header>
+  <div class="marco oscuro"><div class="tres-p"><div class="card pb"><div class="pb-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><div class="pb-t"><div class="pb-c"><h3 class="mono">PUN-02</h3><button class="icobtn chico" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button></div><span>Punta de góndola · CENTRO <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> · pasillo 2</span></div><span class="pill entra">Vendido en parte</span></div>
+  <div class="pb-res"><span><b class="mono">0,90 × 0,40 × 2,00</b> m</span><span><b class="mono">5</b> entrepaños</span><span><b class="mono">1 de 5</b> vendido</span></div><div class="seg ancho"><button aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>Venta</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg>Medidas</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>Notas <span class="n">1</span></button></div><div class="pb-b"><div class="kv"><span class="k">Se vende</span><div class="v"><span class="sw on" role="switch" aria-checked="true"><span></span></span><span class="ayu">Comercializable</span></div></div>
+  <div class="kv"><span class="k">Cómo</span><div class="v"><div class="seg"><button title="Entera"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-square" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg></button><button aria-pressed="true" title="Por entrepaños"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-rows3" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path></svg>Entrepaños</button><button title="Por participación"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-percent" aria-hidden="true" focusable="false"><line x1="19" x2="5" y1="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg></button></div></div></div>
+  <div class="kv"><span class="k">Estado</span><div class="v"><div class="seg"><button aria-pressed="true">Disponible</button><button>Mantenimiento</button></div></div></div>
+  <div class="vend"><div class="vend-f"><span class="pill ocupado mono">EN4</span><span>Café Montaña</span><span class="mono r">hasta 31 dic</span></div>
+  <div class="vend-f"><span class="pill libre mono">EN1–3 · EN5</span><span>libres</span><button class="btn barra r"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-file-pen-line" aria-hidden="true" focusable="false"><path d="m18 5-2.414-2.414A2 2 0 0 0 14.172 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2"></path><path d="M21.378 12.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path><path d="M8 18h1"></path></svg>Vender</button></div></div></div></div><div class="card pb"><div class="pb-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><div class="pb-t"><div class="pb-c"><h3 class="mono">PUN-02</h3><button class="icobtn chico" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button></div><span>Punta de góndola · CENTRO <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> · pasillo 2</span></div><span class="pill entra">Vendido en parte</span></div>
+  <div class="pb-res"><span><b class="mono">0,90 × 0,40 × 2,00</b> m</span><span><b class="mono">5</b> entrepaños</span><span><b class="mono">1 de 5</b> vendido</span></div><div class="seg ancho"><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>Venta</button><button aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg>Medidas</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>Notas <span class="n">1</span></button></div><div class="pb-b"><div class="kv"><span class="k">Medidas</span><div class="v"><div class="tri"><span class="in mono">0,90</span><span class="x">×</span><span class="in mono">0,40</span><span class="x">×</span><span class="in mono">2,00</span><span class="u">m</span></div></div></div>
+  <div class="kv"><span class="k">Entrepaños</span><div class="v"><div class="paso-n"><button class="btn solo" title="Uno menos"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-minus" aria-hidden="true" focusable="false"><path d="M5 12h14"></path></svg></button><span class="mono">5</span><button class="btn solo" title="Uno más"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-plus" aria-hidden="true" focusable="false"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></button></div></div></div>
+  <div class="kv"><span class="k">Módulo</span><div class="v"><span class="in mono">0,90</span><span class="u">m</span></div></div>
+  <p class="aviso-s"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Con un entrepaño vendido, la cantidad no cambia.</p></div></div><div class="card pb"><div class="pb-h"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-panel-left" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M9 3v18"></path></svg><div class="pb-t"><div class="pb-c"><h3 class="mono">PUN-02</h3><button class="icobtn chico" title="Cambiar el código"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-pencil" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path></svg></button></div><span>Punta de góndola · CENTRO <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-lock" aria-hidden="true" focusable="false"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> · pasillo 2</span></div><span class="pill entra">Vendido en parte</span></div>
+  <div class="pb-res"><span><b class="mono">0,90 × 0,40 × 2,00</b> m</span><span><b class="mono">5</b> entrepaños</span><span><b class="mono">1 de 5</b> vendido</span></div><div class="seg ancho"><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-handshake" aria-hidden="true" focusable="false"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>Venta</button><button><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-ruler" aria-hidden="true" focusable="false"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"></path><path d="m14.5 12.5 2-2"></path><path d="m11.5 9.5 2-2"></path><path d="m8.5 6.5 2-2"></path><path d="m17.5 15.5 2-2"></path></svg>Medidas</button><button aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-sticky-note" aria-hidden="true" focusable="false"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></svg>Notas <span class="n">1</span></button></div><div class="pb-b"><div class="kv"><span class="k">Archivos</span><div class="v"><span class="pill"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-image-up" aria-hidden="true" focusable="false"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"></path><path d="m14 19.5 3-3 3 3"></path><path d="M17 22v-5.5"></path><circle cx="9" cy="9" r="2"></circle></svg>frente-pun02.jpg</span><button class="icobtn chico" title="Subir"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="ico lucide lucide-plus" aria-hidden="true" focusable="false"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></button></div></div>
+  <div class="obs"><span class="ph">Algo que el montaje tenga que saber</span><span class="mono">0/500</span></div></div></div></div></div></section>
+
+<section><header><h2>Dónde queda cada cosa</h2><p>Las nueve secciones de A, en el panel B.</p></header>
+  <div class="donde"><div class="cab"><span>Qué</span><span>Dónde</span><span>Cómo</span></div>
+  <div><span><b>Código y su lápiz</b></span><span class="q">Arriba, en el encabezado</span><span class="q">Igual que en A; es el nombre del mueble.</span></div><div><span><b>Tipo, sede y pasillo</b></span><span class="q">Una línea bajo el código</span><span class="q">La sede con su candado: sigue siendo de sólo lectura, ahora sin una sección entera para un dato que no se cambia.</span></div><div><span><b>Medidas, entrepaños y cuánto está vendido</b></span><span class="q">La franja de resumen</span><span class="q">Se lee sin abrir nada. Para cambiarlos, la pestaña Medidas.</span></div><div><span><b>Destino del mueble</b></span><span class="q">Venta → «Se vende»</span><span class="q">Un interruptor en vez de dos tarjetas. Apagado = no comercializable.</span></div><div><span><b>Cómo se vende</b></span><span class="q">Venta → «Cómo»</span><span class="q">Tres botones con ícono; la opción elegida dice su nombre. Mismas protecciones.</span></div><div><span><b>Estado del espacio</b></span><span class="q">Venta → «Estado»</span><span class="q">Disponible o Mantenimiento. Si lo pone un contrato, se lee y no se toca.</span></div><div><span><b>Contratado</b></span><span class="q">Venta, abajo</span><span class="q">Qué está tomado y hasta cuándo, qué está libre y «Vender».</span></div><div><span><b>Dimensiones · Alto, entrepaños y módulo</b></span><span class="q">Pestaña Medidas</span><span class="q">Las tres medidas en una fila; los entrepaños con − y +. Los avisos de lo vendido, igual que hoy.</span></div><div><span><b>Archivos y cara designada · Observación</b></span><span class="q">Pestaña Notas</span><span class="q">El número en la pestaña dice si hay archivos sin abrirla.</span></div></div></section>
+
+<section><header><h2>Para decidir</h2></header><div class="preguntas">
+  <div><b>¿B en vez de A?</b><span>Si te gusta, el PR 3 usa el B. Los paneles de varios elegidos, de Revisar y de Atajos siguen el mismo estilo: encabezado, resumen y el contenido sin secciones apiladas.</span></div>
+  <div><b>¿Recordar la pestaña?</b><span>Propongo que abra siempre en Venta. La otra opción es que recuerde la última pestaña usada mientras se trabaja.</span></div>
+</div></section>
+</main>
