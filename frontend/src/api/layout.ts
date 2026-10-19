@@ -104,6 +104,56 @@ export interface DeleteImpact {
 export const fetchDeleteImpact = (sede: string): Promise<DeleteImpact> =>
   client.get(`/layout/${encodeURIComponent(sede)}/impact`).then((r) => r.data);
 
+// ─── Renombrar una sede (fase 2 · I5) ────────────────────────────────────────
+//
+// El renombre es del servidor, en UNA transacción: los códigos de la sede
+// pasan al nombre nuevo y lo vendido sigue vivo (contratos, reservas de
+// participación, zonas, historial, fotos, montajes, tarifas). Antes el
+// navegador lo hacía borrando la sede y creándola de nuevo, y el borrado
+// cerraba los contratos y cancelaba las reservas.
+
+/** Lo que contesta el renombre: el plano ya con el nombre nuevo, su revisión
+ *  y la de la lista de sedes (las dos cambiaron), y lo que se mudó. */
+export interface SedeRenombrada {
+  sede: string;
+  fixtures: UnifiedFixture[];
+  updated_at?: string | null;
+  settings_updated_at?: string | null;
+  espacios: number;
+  contratos: number;
+  montajes: number;
+  avisos: string[];
+}
+
+/** Renombra `sede` a `nuevo` en el servidor. `baseUpdatedAt`: la revisión del
+ *  plano que tiene este equipo; si otro guardó en el medio, 409 y no se
+ *  renombra. Admin only. */
+export const renombrarSede = (
+  sede: string,
+  nuevo: string,
+  baseUpdatedAt?: string | null,
+): Promise<SedeRenombrada> =>
+  client
+    .post(`/layout/${encodeURIComponent(sede)}/renombrar`, {
+      nuevo,
+      base_updated_at: baseUpdatedAt ?? null,
+    })
+    .then((r) => r.data);
+
+/** El detalle de un renombre rechazado (`sede_existe`, `renombre_bloqueado`,
+ *  `layout_conflict`…), o `null` si el error es otra cosa (red, sesión). */
+export function rechazoDelRenombre(err: unknown): { code: string; message: string; motivos: string[] } | null {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (!detail || typeof detail !== "object") return null;
+  const d = detail as { code?: unknown; message?: unknown; motivos?: unknown };
+  if (typeof d.code !== "string") return null;
+  return {
+    code: d.code,
+    message: String(d.message ?? ""),
+    motivos: Array.isArray(d.motivos) ? d.motivos.map(String) : [],
+  };
+}
+
 // ─── Renumerar: el código pasa a ser EL nombre ───────────────────────────────
 //
 // DOS PASOS, y son dos endpoints distintos a propósito — la misma forma que la

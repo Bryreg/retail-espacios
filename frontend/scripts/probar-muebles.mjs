@@ -2133,6 +2133,71 @@ prueba("la ficha del modelo: la góndola con sus entrepaños y su módulo, o los
     "el editor pide una venta de otra forma que con el mueble y su ficha");
 });
 
+// fase 2 · I5 — Topes al DIBUJAR y la «Sede» del 3D (V16). `PUT /layout` no
+// miraba las medidas: un ancho de 1e6 con un módulo de 1e-9 pedía mil billones
+// de vanos y colgaba la pestaña; un ancho infinito tiraba `RangeError`. El
+// servidor ya rechaza lo NUEVO (`medidas_imposibles`), pero un plano que ya
+// las trae se sigue abriendo: el 3D recorta al dibujar, nunca lo escribe de
+// vuelta. Y la «Sede» del 3D era un texto libre que cambiaba de sede en cada
+// tecla y dejaba un plano fantasma por letra.
+prueba("fase 2 · I5: un ancho, un módulo, un alto o unos entrepaños imposibles no cuelgan el 3D (ejecutado)", () => {
+  const tope = /export const MAX_VANOS = (\d+);/.exec(leer(join("src", "utils", "superficie.ts")));
+  assert.ok(tope, "no encontré MAX_VANOS en superficie.ts");
+  assert.equal(M.MAX_VANOS_A_DIBUJAR, Number(tope[1]), "el tope del dibujo no es el de la superficie (y el del servidor)");
+  assert.equal(M.MAX_ENTREPANOS_A_DIBUJAR, 50);
+  // El caso medido.
+  const muchos = M.vanosDeCorrido(1e6, 1e-9);
+  assert.equal(muchos.length, M.MAX_VANOS_A_DIBUJAR);
+  assert.ok(muchos.every((v) => Number.isFinite(v.x) && Number.isFinite(v.ancho)), "vanos que no se pueden dibujar");
+  assert.equal(M.vanosDeCorrido(3.0, 5e-324).length, M.MAX_VANOS_A_DIBUJAR, "un módulo con un cociente infinito");
+  // Un ancho que no es un número finito no tiene vanos (antes: RangeError).
+  assert.doesNotThrow(() => M.vanosDeCorrido(Infinity));
+  assert.deepEqual(M.vanosDeCorrido(Infinity), []);
+  assert.deepEqual(M.vanosDeCorrido(NaN, 1.0), []);
+  // Lo de siempre, igual: el tope está lejos de cualquier góndola de verdad.
+  assert.equal(M.vanosDeCorrido(5).length, 4);
+  assert.equal(M.vanosDeCorrido(250, 1.25).length, 200);
+  // Los niveles: un alto infinito era un `for` sin fin; mil millones de
+  // entrepaños, un arreglo de mil millones.
+  assert.deepEqual(M.nivelesDeEntrepano(Infinity), []);
+  assert.deepEqual(M.nivelesDeEntrepano(Infinity, 4), []);
+  assert.equal(M.nivelesDeEntrepano(2.0, 1e9).length, M.MAX_ENTREPANOS_A_DIBUJAR + 1, "la base y el tope de entrepaños");
+  assert.deepEqual(M.nivelesDeEntrepano(2.0, Infinity), M.nivelesDeEntrepano(2.0), "unos entrepaños infinitos no son la cuenta de siempre");
+  assert.deepEqual(M.nivelesDeEntrepano(2.0, NaN), M.nivelesDeEntrepano(2.0));
+  assert.equal(M.nivelesDeEntrepano(2.0, 4).length, 5, "la ficha de siempre cambió");
+  // El tope vive sólo en la cuenta del dibujo.
+  assert.match(medidasCodigo, /Math\.min\(\s*MAX_VANOS_A_DIBUJAR,/);
+  // Lo nuevo imposible lo rechaza el servidor con su clave, y el navegador lo muestra como rechazo.
+  const store = sinComentarios(leer(join("src", "store", "fixtureStore.ts")));
+  assert.match(store, /const RECHAZOS_CONOCIDOS = new Set\(\[[^\]]*"medidas_imposibles"[^\]]*\]\);/,
+    "`medidas_imposibles` no está entre los rechazos conocidos");
+});
+
+prueba("fase 2 · I5 (V16): la «Sede» del 3D es un selector de las sedes que existen, y cambiar de sede no escribe nada", () => {
+  const i = editorCodigo.indexOf("data-sede-3d");
+  assert.ok(i >= 0, "no está el selector «Sede» del 3D");
+  assert.ok(!/<input[^>]*value=\{sede\}/.test(editorCodigo), "la «Sede» del 3D vuelve a ser un texto libre");
+  const sel = editorCodigo.slice(editorCodigo.lastIndexOf("<select", i), editorCodigo.indexOf("</select>", i));
+  assert.match(sel, /value=\{sede\} onChange=\{e=>setSede\(e\.target\.value\)\}/);
+  assert.match(sel, /\(sedesDelStore\.includes\(sede\) \? sedesDelStore : \[sede, \.\.\.sedesDelStore\]\)\.map\(/,
+    "el selector no ofrece las sedes del store");
+  assert.match(editorCodigo, /const sedesDelStore = useFixtureStore\(\(s\) => s\.sedes\);/);
+  // El espejo: mientras se cambia de sede no escribe, y estampa la sede del
+  // store (la del plano que se escribe), nunca la local.
+  const desde = editorCodigo.indexOf("const prevSede3DRef = useRef(sede);");
+  assert.ok(desde >= 0, "no está prevSede3DRef");
+  const espejo = editorCodigo.slice(desde);
+  const cuerpo = espejo.slice(0, espejo.indexOf("}, [placedFixtures, sede, pushToStore, commit]);"));
+  const guarda = cuerpo.indexOf("if (prevSede3DRef.current !== sede) return;");
+  const escribe = cuerpo.indexOf("fixturesToStore(placedFixtures, useFixtureStore.getState().sede, existingStore)");
+  assert.ok(guarda >= 0 && escribe > guarda, "el espejo escribe los muebles de la sede vieja con la sede nueva");
+  assert.ok(!/fixturesToStore\(placedFixtures, sede,/.test(editorCodigo), "el espejo estampa la sede local del 3D");
+  // Lo que se carga de la sede nueva no se devuelve como un cambio.
+  const cambio = espejo.slice(espejo.indexOf("if (prevSede3DRef.current === sede) return;"));
+  assert.match(cambio.slice(0, 600), /pushSedeToStore\(sede\);[\s\S]*suppressCommitRef\.current = true;\s*setPlacedFixtures\(storeToFixtures\(newFixtures\)\);/,
+    "abrir otra sede la ensucia y la sube");
+});
+
 prueba("la nevera de puertas dibuja las puertas de su ficha, o las de siempre", () => {
   // `partes.puertas` del mueble manda; si falta, la cuenta de siempre. Las
   // puertas sólo dicen cómo se ve y dónde se para el producto de prueba —un

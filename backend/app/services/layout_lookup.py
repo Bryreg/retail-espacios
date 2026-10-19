@@ -258,6 +258,13 @@ SOLO_SUS_PIEZAS = "solo_sus_piezas"
 #: físicas: se carga el porcentaje en el Editor 3D → Distribución.
 POR_PARTICIPACION = "por_participacion"
 
+#: fase 2 · I5: la frase para una participación de un tipo de mueble sin receta
+#: de superficie (la isla, el impulsador, la batea…): «Cómo se vende» no le
+#: ofrece «por participación», así que mandar a elegirlo ahí era un callejón.
+#: Es la MISMA frase que ``services/participaciones.TIPO_SIN_PARTICIPACION``
+#: (frente A): no se importa de ahí porque ese módulo importa de éste.
+TIPO_SIN_PARTICIPACION = "Este tipo de mueble todavía no se vende por participación."
+
 
 def pide_cara_b_inexistente(fixture: dict, espacio: str) -> bool:
     """¿El código pide la cara B de un mueble que tiene una sola?
@@ -333,6 +340,14 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
             return PARTE_INEXISTENTE, f"«{corto}» se vende por participación: no hay {parte.sufijo}."
         return None  # una participación de una cara por participación existe
     if es_participacion(parte):
+        # fase 2 · I5: un tipo sin receta de superficie (la isla, el
+        # impulsador…) no ofrece «por participación» en «Cómo se vende»:
+        # mandar a elegirlo ahí era mandar a buscar una opción que no está.
+        # La misma frase que `services/participaciones.py`
+        # (`TIPO_SIN_PARTICIPACION`), con el código adelante como el resto de
+        # los mensajes de esta función.
+        if not (TIPOS.get(tipo_base(str(fixture.get("type") or ""))) or {}).get("superficie"):
+            return PARTE_INEXISTENTE, f"«{corto}»: {TIPO_SIN_PARTICIPACION}"
         return PARTE_INEXISTENTE, (
             f"«{corto}» no se vende por participación: elegí «por participación» en «Cómo se vende» "
             "del Editor 3D."
@@ -1133,6 +1148,132 @@ def choques_nuevos(previas: list[dict], nuevas: list[dict]) -> list[str]:
         "espacios compartiendo contratos, archivos y correos de montaje."
         for code, ids in por_codigo
     ]
+
+
+# ─── Medidas que no se pueden dibujar (fase 2 · I5) ──────────────────────────
+#
+# ``PUT /layout`` recibe ``fixtures: list[Any]`` y no miraba las medidas. La
+# superficie se cuida sola (``superficie.MEDIDA_MAXIMA``/``MAX_VANOS``), pero el
+# 3D no: con un ancho de 1e6 y un módulo de 1e-9 ``vanosDeCorrido`` pedía un
+# arreglo de mil billones de módulos y colgaba la pestaña de quien abriera el
+# plano; con un ancho infinito, ``RangeError``. Medido: ``PUT`` con
+# ``w=1e308, modulo=1e-9`` → 200.
+#
+# La misma política que ``choques_nuevos``: sólo lo que ESTE guardado crea o
+# cambia, por ``id``. Un plano que ya traía una medida rota se sigue abriendo y
+# guardando (moviendo otro mueble, o ese mismo); sólo se frena escribir una
+# medida imposible nueva. El primer guardado de una sede no se compara con nada
+# y entra, como siempre.
+
+#: Las medidas que se miran, en el primer nivel del mueble.
+_MEDIDAS = ("w", "d", "h")
+_NOMBRE_DE_MEDIDA = {"w": "el ancho", "d": "el fondo", "h": "el alto"}
+#: Las claves cuyo cambio hace que el mueble se vuelva a mirar entero.
+_MEDIDAS_QUE_SE_MIRAN = (*_MEDIDAS, "modulo", "entrepanos")
+#: Entrepaños por cara: la familia que más lleva admite 6 (``geometria`` del
+#: catálogo); 50 es un número roto, no una góndola alta.
+MAX_ENTREPANOS = 50
+
+
+def _cifra(x: float) -> str:
+    """Un número para la frase, a la colombiana: «0,001», «3.600», «1e+308»."""
+    if not math.isfinite(x):
+        return "infinito" if x > 0 else "menos infinito" if x < 0 else "sin número"
+    if x != 0 and (abs(x) >= 1e7 or abs(x) < 1e-3):
+        return f"{x:.3g}".replace(".", ",")
+    if float(x).is_integer():
+        return f"{int(x):,}".replace(",", ".")
+    texto = f"{x:,.3f}".rstrip("0").rstrip(".")
+    return texto.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+def _flotante(x) -> float | None:
+    """El número como ``float``, o ``None`` si no es un número (un texto, un
+    booleano). Un entero que no entra en un ``float`` (``10**400`` escrito en
+    el JSON) es infinito: ``float()`` se caería con ``OverflowError``."""
+    if not isinstance(x, (int, float)) or isinstance(x, bool):
+        return None
+    try:
+        return float(x)
+    except OverflowError:
+        return math.inf if x > 0 else -math.inf
+
+
+def _problemas_de_medidas(f: dict) -> list[str]:
+    """Lo imposible de UN mueble, en frases cortas (sin el nombre)."""
+    from app.services.superficie import MAX_VANOS, MEDIDA_MAXIMA
+
+    malas: list[str] = []
+    for clave in _MEDIDAS:
+        if f.get(clave) is None:
+            continue
+        x = _flotante(f[clave])
+        if x is None:
+            malas.append(f"{_NOMBRE_DE_MEDIDA[clave]} no es un número")
+        elif not math.isfinite(x) or x <= 0 or x > MEDIDA_MAXIMA:
+            malas.append(
+                f"{_NOMBRE_DE_MEDIDA[clave]} de {_cifra(x)} m no se puede dibujar "
+                f"(va de más de 0 a {_cifra(MEDIDA_MAXIMA)} m)"
+            )
+    if f.get("modulo") is not None:
+        modulo = _flotante(f["modulo"])
+        if modulo is None or not math.isfinite(modulo) or modulo <= 0:
+            cual = "un texto" if modulo is None else f"{_cifra(modulo)} m"
+            malas.append(f"un módulo de {cual} no se puede dibujar")
+        else:
+            w = _flotante(f.get("w"))
+            if w is not None and math.isfinite(w) and 0 < w <= MEDIDA_MAXIMA:
+                cuenta = w / modulo
+                n = round(cuenta) if math.isfinite(cuenta) else None
+                if n is None or n > MAX_VANOS:
+                    cuantos = _cifra(float(n)) if n is not None else "incontables"
+                    malas.append(
+                        f"con un módulo de {_cifra(modulo)} m saldrían {cuantos} módulos; "
+                        f"el tope es {MAX_VANOS}"
+                    )
+    if f.get("entrepanos") is not None:
+        e = _flotante(f["entrepanos"])
+        if e is None:
+            malas.append("los entrepaños no son un número")
+        elif not math.isfinite(e) or not e.is_integer() or not 0 <= e <= MAX_ENTREPANOS:
+            malas.append(f"{_cifra(e)} entrepaños no se pueden dibujar (van de 0 a {MAX_ENTREPANOS}, enteros)")
+    return malas
+
+
+def _misma(a, b) -> bool:
+    """¿La misma medida? Un ``NaN`` guardado (``json`` lo lee y lo escribe)
+    es igual a sí mismo: si no, el plano que ya lo traía no se podría volver a
+    guardar tal cual."""
+    if isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b):
+        return True
+    return a == b
+
+
+def medidas_imposibles(previas: list[dict], nuevas: list[dict]) -> list[str]:
+    """Las frases de los muebles a los que ESTE guardado les pone (o les deja,
+    al cambiarlas) medidas que no se pueden dibujar. Vacío = se guarda.
+
+    Un mueble se mira si es nuevo (un ``id`` que el plano guardado no tiene, o
+    sin ``id``) o si cambió alguna de ``_MEDIDAS_QUE_SE_MIRAN``. Imposible:
+    ``w``/``d``/``h`` que no son un número finito, ≤ 0 o > ``MEDIDA_MAXIMA``;
+    un ``modulo`` que no es finito o ≤ 0, o con el que ``round(w / modulo)``
+    pasa de ``MAX_VANOS``; ``entrepanos`` que no es un entero de 0 a
+    ``MAX_ENTREPANOS``. Una clave ausente o ``null`` no se juzga (el navegador
+    usa la cuenta de siempre). Las frases nombran al mueble por su código, que
+    es lo que la persona ve."""
+    previos = {f.get("id"): f for f in previas if isinstance(f, dict) and f.get("id")}
+    frases: list[str] = []
+    for f in nuevas:
+        if not isinstance(f, dict):
+            continue
+        previo = previos.get(f.get("id")) if f.get("id") else None
+        if previo is not None and all(_misma(previo.get(k), f.get(k)) for k in _MEDIDAS_QUE_SE_MIRAN):
+            continue
+        malas = _problemas_de_medidas(f)
+        if malas:
+            nombre = normalizar(f.get("code")) or "un mueble sin código"
+            frases.append(f"{nombre}: {'; '.join(malas)}.")
+    return sorted(frases)
 
 
 # ─── La tercera puerta: sacar de circulación algo que está vendido ────────────

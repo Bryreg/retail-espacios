@@ -2021,4 +2021,22 @@ await prueba("la comparación saca SÓLO lo nuevo: un cambio en un tipo de antes
   }
 });
 
+// fase 2 · I5 (V16) — De vuelta del 3D, un mueble guardado conserva SU sede;
+// sólo uno nuevo toma la del plano. `fixturesToStore` le estampaba a todos la
+// sede que tuviera el editor en ese momento, y la «Sede» del 3D era un texto
+// que cambiaba en cada tecla: una góndola de «NAVE» terminaba diciendo «NAV».
+await prueba("fase 2 · I5: de vuelta del 3D, un mueble guardado conserva su sede y sólo el nuevo toma la del plano", async () => {
+  const CP = await cargar("src/utils/convertirPlano.ts");
+  const gondola = (id, code, cx, extra = {}) => ({ id, code, type: "gondola", gondolaType: "double", label: code, cx, cz: 2, rotY: 0,
+    w: 0.9, d: 0.9, h: 1.8, color: "#6366f1", ...libre, ...extra });
+  const guardados = [gondola("g-1", "GON-01", 2, { sede: "NAVE" }), gondola("g-2", "GON-02", 4, { sede: "TERRON" }), gondola("g-3", "GON-03", 6)];
+  const colocados = guardados.map((f) => ({ id: f.id, code: f.code, type: f.type, gondolaType: f.gondolaType, label: f.label,
+    x: f.cx + 1, z: f.cz, rotY: f.rotY, w: f.w, d: f.d, h: f.h, color: f.color, ...libre }));
+  colocados.push({ ...colocados[0], id: "g-nuevo", code: "GON-04", x: 9 });
+  const vuelta = CP.fixturesToStore(colocados, "NAV", guardados);
+  assert.deepEqual(Object.fromEntries(vuelta.map((f) => [f.id, f.sede])), { "g-1": "NAVE", "g-2": "TERRON", "g-3": "NAV", "g-nuevo": "NAV" },
+    "fixturesToStore le estampó a un mueble guardado la sede que tenía el editor");
+  assert.equal(vuelta.find((f) => f.id === "g-1").cx, 3, "el movimiento del 3D no volvió al plano");
+});
+
 console.log(`\n${hechas} pruebas del catálogo de muebles`);

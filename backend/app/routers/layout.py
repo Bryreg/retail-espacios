@@ -2,8 +2,10 @@ import copy
 import json
 import logging
 from datetime import date, datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth import get_config, require_admin, require_auth, set_config
@@ -17,6 +19,11 @@ from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de, anotar_historial
 from app.services.catalogo_muebles import tipo_base
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
+from app.services.renombre_sede import (
+    RenombreRechazado,
+    plano_de_la_sede,
+    renombrar as renombrar_la_sede,
+)
 from app.services.candado import tomar_candados
 from app.services.catalogo_muebles import CAMPOS_DE_PARTES
 from app.services.layout_lookup import (
@@ -26,6 +33,7 @@ from app.services.layout_lookup import (
     choques_nuevos,
     contratos_que_quedarian_sin_mueble,
     espacios_ofrecidos,
+    medidas_imposibles,
     nombres_reservados_nuevos,
     normalizar,
     partes_que_se_moverian,
@@ -1044,6 +1052,136 @@ def renumeracion_aplicar(
     return _a_salida(planes, aplicado=True)
 
 
+# ─── Renombrar una sede (fase 2 · I5) ─────────────────────────────────────────
+#
+# Dos segmentos con la cola literal: no choca con "/{sede}" (un segmento) y se
+# declara antes de las rutas paramétricas de un segmento, como manda la regla
+# de este router. Los modelos viven acá: son de este endpoint y de nadie más.
+
+
+class RenombreSedeIn(BaseModel):
+    nuevo: str = Field(max_length=200)
+    #: La revisión del plano que el navegador tenía, como en `PUT /layout`: si
+    #: otro equipo guardó en el medio, 409 y no se renombra.
+    base_updated_at: datetime | None = None
+
+
+class RenombreSedeOut(BaseModel):
+    sede: str
+    fixtures: list[Any] = Field(default=[])
+    updated_at: datetime | None = None
+    #: La revisión nueva de la lista de sedes (el renombre la cambió).
+    settings_updated_at: datetime | None = None
+    espacios: int = 0
+    contratos: int = 0
+    montajes: int = 0
+    avisos: list[str] = Field(default=[])
+
+
+@router.post("/{sede}/renombrar", response_model=RenombreSedeOut)
+def renombrar_sede(
+    sede: str,
+    payload: RenombreSedeIn,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> RenombreSedeOut:
+    """Renombra la sede de verdad: sus códigos pasan al nombre nuevo y lo
+    vendido sigue vivo (``services/renombre_sede.py``). Antes el navegador lo
+    hacía borrando la sede y creándola de nuevo, y el borrado cerraba los
+    contratos, cancelaba las reservas de participación y archivaba los
+    montajes.
+
+    Todo en UNA transacción, con la lista de sedes, las tarifas ``by_sede`` y
+    la bitácora adentro: o cae todo o no cae nada."""
+    snap = plano_de_la_sede(db, sede)
+    leido = snap.updated_at if snap else None
+    snap_id = snap.id if snap else None
+    if payload.base_updated_at is not None:
+        if snap is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "layout_deleted", "message": f"«{sede}» fue eliminada desde otro equipo."},
+            )
+        guardada, base = _as_utc(leido), _as_utc(payload.base_updated_at)
+        if guardada and base and _truncate_ms(guardada) != _truncate_ms(base):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "layout_conflict",
+                    "message": (
+                        f"Otro equipo guardó cambios en «{sede}» mientras editabas. "
+                        "Actualizá para ver la versión del servidor antes de renombrar."
+                    ),
+                    "server_updated_at": guardada.isoformat(),
+                },
+            )
+    try:
+        hecho = renombrar_la_sede(db, snap.sede if snap else sede, payload.nuevo, leido, snap_id)
+    except RenombreRechazado as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=e.status, detail={"code": e.code, "message": e.mensaje, "motivos": e.motivos},
+        )
+    except Exception:
+        db.rollback()
+        raise
+
+    ahora = datetime.now(timezone.utc)
+    # La lista de sedes: el nombre nuevo en el lugar del viejo (o al final, si
+    # la sede tenía plano y no estaba en la lista).
+    try:
+        sedes = json.loads(get_config(db, SEDES_KEY) or "[]")
+    except (ValueError, TypeError):
+        sedes = []
+    lista: list[str] = []
+    for nombre in sedes if isinstance(sedes, list) else []:
+        if not isinstance(nombre, str):
+            continue
+        if normalizar(nombre) == hecho.viejo:
+            nombre = hecho.nuevo
+        if nombre not in lista:
+            lista.append(nombre)
+    if hecho.nuevo not in lista:
+        lista.append(hecho.nuevo)
+    set_config(db, SEDES_KEY, json.dumps(lista))
+    set_config(db, SETTINGS_UPDATED_KEY, ahora.isoformat())
+
+    # Las tarifas de la sede: sin esto quedaban huérfanas en `by_sede[VIEJO]` y
+    # la sede renombrada caía a la tarifa general.
+    tarifas = reference_rates_raw(db)
+    por_sede = tarifas.get("by_sede")
+    if isinstance(por_sede, dict):
+        suyas = [k for k in por_sede if isinstance(k, str) and normalizar(k) == hecho.viejo]
+        if suyas:
+            nuevas = {k: v for k, v in por_sede.items() if k not in suyas}
+            nuevas[hecho.nuevo] = por_sede[suyas[0]]
+            set_config(db, RATES_KEY, json.dumps({**tarifas, "by_sede": nuevas}))
+            set_config(db, RATES_UPDATED_KEY, ahora.isoformat())
+
+    anotar(
+        db, request, rol, "sede.renombrar", entidad="sede", entidad_id=hecho.nuevo,
+        detalle=f"{hecho.viejo} → {hecho.nuevo} · {hecho.espacios} espacios · {hecho.montajes} montajes",
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        # Otra sede con el nombre nuevo nació en el medio (`UNIQUE sede`).
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "sede_existe", "message": f"Ya hay una sede «{hecho.nuevo}»: elegí otro nombre.",
+                    "motivos": []},
+        )
+    fila = db.get(LayoutSnapshot, snap_id) if snap_id is not None else None
+    out = _to_out(fila) if fila is not None else LayoutOut(sede=hecho.nuevo, fixtures=[])
+    _con_nombre_viejo(db, [out])
+    return RenombreSedeOut(
+        sede=hecho.nuevo, fixtures=out.fixtures, updated_at=out.updated_at, settings_updated_at=ahora,
+        espacios=hecho.espacios, contratos=hecho.contratos, montajes=hecho.montajes, avisos=hecho.avisos,
+    )
+
+
 @router.get("/{sede}", response_model=LayoutOut)
 def get_layout(sede: str, response: Response, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     """Return the fixture layout for a single sede (empty list if none saved yet)."""
@@ -1059,6 +1197,31 @@ def get_layout(sede: str, response: Response, role: str = Depends(require_auth),
 # ─── Write ────────────────────────────────────────────────────────────────────
 
 
+def _escritura_perdida(db: Session, sede: str) -> HTTPException:
+    """El 409 de un guardado que llegó tarde (fase 2 · I5): la fila del plano
+    ya no está en la revisión que se leyó al empezar —otro equipo guardó, una
+    renumeración o un renombre la movió— o ya no existe. Con la sesión ya
+    deshecha: lo que se lee acá es lo que hay."""
+    actual = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+    if actual is None:
+        return HTTPException(
+            status_code=409,
+            detail={"code": "layout_deleted", "message": f"«{sede}» fue eliminada desde otro equipo."},
+        )
+    guardada = _as_utc(actual.updated_at)
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "layout_conflict",
+            "message": (
+                f"Otro equipo guardó cambios en «{sede}» mientras editabas. "
+                "Actualizá para ver la versión del servidor antes de volver a guardar."
+            ),
+            "server_updated_at": guardada.isoformat() if guardada else None,
+        },
+    )
+
+
 @router.put("/{sede}", response_model=LayoutOut, dependencies=[Depends(require_admin)])
 def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = Depends(get_db)):
     """Upsert the fixture layout for a sede — creates or replaces atomically.
@@ -1068,6 +1231,12 @@ def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = De
     stale copy can no longer silently wipe someone else's work.
     """
     snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+    # La revisión que se leyó, ANTES de cualquier candado (fase 2 · I5). El
+    # `expire_all` de `_candados_del_guardado` relee `snap` de la base: lo que
+    # se compara al escribir es lo que se leyó acá, no lo que haya después.
+    # Ver la escritura condicional al final.
+    leido = snap.updated_at if snap else None
+    snap_id = snap.id if snap else None
 
     # The row is gone but this client is saving on top of a revision it once
     # read: the sede was deleted from another workstation while it held a copy.
@@ -1186,6 +1355,32 @@ def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = De
                 },
             )
 
+        # ── Medidas que no se pueden dibujar (fase 2 · I5) ───────────────────
+        #
+        # Un ancho infinito o un módulo de 1e-9 colgaban el 3D de quien abriera
+        # el plano. Sólo lo que este guardado crea o cambia: un plano que ya
+        # traía una medida rota se sigue guardando. Ver `medidas_imposibles`.
+        imposibles = medidas_imposibles(
+            [f for f in previous if isinstance(f, dict)],
+            [f for f in fixtures if isinstance(f, dict)],
+        )
+        if imposibles:
+            logger.info(
+                "layout %s: guardado rechazado por medidas imposibles — %s",
+                sede, " · ".join(imposibles),
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "medidas_imposibles",
+                    "message": (
+                        f"Este guardado le pondría a {len(imposibles)} mueble(s) de «{sede}» "
+                        "medidas que no se pueden dibujar."
+                    ),
+                    "choques": imposibles,
+                },
+            )
+
         # Los candados de los muebles que este guardado retira, cuya forma de
         # venderse por partes cambia o cuya cara entra o sale de «por
         # participación»: una venta que confirma al mismo tiempo espera, y las
@@ -1290,17 +1485,49 @@ def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = De
         # Sin esto, un guardado hecho desde una copia redactada borraría la
         # plata de todos los slots de la sede sin manera de recuperarla.
         _restore_missing_slot_prices(fixtures, previous)
-        snap.fixtures_json = json.dumps(fixtures)
-        # fixtures_json is unchanged when a client re-saves identical data, and
-        # SQLAlchemy would then skip the UPDATE and leave updated_at stale.
-        snap.updated_at = datetime.now(timezone.utc)
+        # ── La escritura condicional (fase 2 · I5) ────────────────────────────
+        #
+        # `base_updated_at` se comparó arriba, ANTES de los candados: dos
+        # guardados con la misma base pasaban los dos, y uno podía pisar una
+        # renumeración (o un renombre de sede) que entró en el medio —con
+        # `previous` viejo, los códigos viejos volvían y los contratos quedaban
+        # sin mueble—. Ahora la fila se escribe SÓLO si sigue en la revisión
+        # que se leyó al empezar: si otra escritura la movió, cero filas, nada
+        # escrito y 409. No es un `FOR UPDATE` arriba a propósito: invertiría
+        # el orden candado → fila de la renumeración y del archivo de la sede,
+        # y se abrazarían (`sede_archive._tomar_candados_de_participaciones`).
+        # Con éxito, `previous` era el vigente: las guardas leyeron lo correcto.
+        #
+        # `updated_at` se pone siempre: con el mismo JSON, SQLAlchemy no
+        # escribiría nada y la revisión quedaría vieja.
+        escritas = (
+            db.query(LayoutSnapshot)
+            .filter(LayoutSnapshot.id == snap_id, LayoutSnapshot.updated_at == leido)
+            .update(
+                {LayoutSnapshot.fixtures_json: json.dumps(fixtures),
+                 LayoutSnapshot.updated_at: datetime.now(timezone.utc)},
+                synchronize_session=False,
+            )
+        )
+        if escritas == 0:
+            db.rollback()
+            raise _escritura_perdida(db, sede)
     else:
         # Primer guardado de la sede: nada que conservar, pero un `null` de la
         # ficha tampoco se guarda.
         _con_la_ficha_de_antes(fixtures, [])
         snap = LayoutSnapshot(sede=sede, fixtures_json=json.dumps(fixtures))
         db.add(snap)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Dos «primeros guardados» de la misma sede a la vez: los dos leyeron
+        # que no había fila e insertaron, y el segundo chocaba con `UNIQUE
+        # sede` → 500. Pierde como cualquier escritura vieja: 409.
+        db.rollback()
+        raise _escritura_perdida(db, sede)
+    # El `commit` vence lo que la sesión tenía; esto relee la fila escrita
+    # (la escritura condicional no tocó el objeto en memoria).
     db.refresh(snap)
     out = _to_out(snap)
     # La respuesta del guardado tiene la misma forma que la de una lectura: el

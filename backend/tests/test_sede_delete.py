@@ -306,3 +306,161 @@ def test_a_blind_write_over_a_known_revision_is_rejected(client, admin):
     assert blind.status_code == 409
     assert blind.json()["detail"]["code"] == "settings_conflict"
     assert client.get("/api/layout/settings", headers=admin).json()["sedes"] == ["TERRON"]
+
+
+# ── fase 2 · I5: el prefijo de otra sede, el candado de todo el plano y el ───
+# ── guardado que llega tarde ─────────────────────────────────────────────────
+
+def _fila_a_mano(code, sede=None, *, contrato=False, proveedor="Doria"):
+    """Una fila de ``spaces`` escrita directo en la base, como las dejaron los
+    caminos de antes: sin la columna ``sede`` o con el código en minúsculas.
+    Con ``contrato``, un lease activo colgando."""
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
+
+    db = SessionLocal()
+    try:
+        space = Space(code=code, svg_id=code, name=code, zone="Z", sede=sede, area_m2=1.0,
+                      status=SpaceStatus.free)
+        db.add(space)
+        db.flush()
+        if contrato:
+            prov = db.query(Supplier).filter_by(name=proveedor).first()
+            if prov is None:
+                prov = Supplier(name=proveedor)
+                db.add(prov)
+                db.flush()
+            db.add(SpaceLease(
+                space_id=space.id, supplier_id=prov.id, marca="Marca",
+                start_date=hoy_en_colombia() - timedelta(days=5),
+                end_date=hoy_en_colombia() + timedelta(days=30),
+                monthly_rent=500000, is_active=True,
+            ))
+        db.commit()
+        return space.id
+    finally:
+        db.close()
+
+
+def _fila(space_id):
+    from app.database import SessionLocal
+    from app.models.models import Space
+
+    db = SessionLocal()
+    try:
+        s = db.get(Space, space_id)
+        return s.code, s.sede, any(lease.is_active for lease in s.leases)
+    finally:
+        db.close()
+
+
+def test_borrar_SAN_no_se_lleva_lo_de_SAN_JOSE(client, admin):
+    """Medido (fase 2 · I5): con las sedes SAN y SAN-JOSE, borrar SAN archivaba
+    SAN-JOSE-IMP-01 —el prefijo «SAN-» calza con las dos— y, con contratos, los
+    cerraba. Una fila que dice su sede es de esa sede; el prefijo cuenta sólo
+    para las que no la dicen, y no si es el de una sede más larga que existe.
+    El código se compara en mayúsculas (en Postgres `LIKE` las distingue)."""
+    _put(client, admin, "SAN", [dict(FIXTURE, sede="SAN")])
+    _put(client, admin, "SAN-JOSE", [dict(FIXTURE, id="j1", sede="SAN-JOSE")])
+    suyo = _fila_a_mano("SAN-GON-01", "SAN", contrato=True)
+    ajeno = _fila_a_mano("SAN-JOSE-GON-01", "SAN-JOSE", contrato=True, proveedor="Colgate")
+    # Filas viejas sin la columna `sede`: sólo el código dice de quién son.
+    suya_sin_sede = _fila_a_mano("san-imp-02")
+    ajena_sin_sede = _fila_a_mano("SAN-JOSE-IMP-03", contrato=True)
+
+    impacto = client.get("/api/layout/SAN/impact", headers=admin).json()
+    assert (impacto["spaces"], impacto["active_leases"]) == (2, 1), impacto
+
+    assert client.delete("/api/layout/SAN", headers=admin).status_code == 204
+
+    code, _, vivo = _fila(suyo)
+    assert code.startswith("SAN-GON-01#") and not vivo, "la fila de SAN no se archivó"
+    assert _fila(suya_sin_sede)[0].startswith("san-imp-02#"), "la fila sin sede con el prefijo de SAN no se archivó"
+    assert _fila(ajeno) == ("SAN-JOSE-GON-01", "SAN-JOSE", True), "borrar SAN tocó una fila de SAN-JOSE"
+    assert _fila(ajena_sin_sede) == ("SAN-JOSE-IMP-03", None, True), \
+        "borrar SAN se llevó una fila sin sede con el prefijo de SAN-JOSE"
+    assert len(client.get("/api/layout/SAN-JOSE", headers=admin).json()["fixtures"]) == 1
+
+
+def test_borrar_la_sede_toma_el_candado_de_todos_los_muebles_del_plano(client, admin, monkeypatch):
+    """E1 (fase 2 · I5): el archivo tomaba candado sólo de las caras que ya
+    tenían términos. La PRIMERA alta de una cara sin términos pasaba a la par
+    del borrado —relee el plano y el DELETE todavía no se ve— y dejaba cara,
+    participación, contrato y término vivos en una sede borrada. Ahora toma el
+    candado de cada mueble del plano, con el orden de siempre: candado →
+    flush → expire_all. (La carrera de verdad, con dos hilos, sólo se puede
+    ver en Postgres; acá alcanza con el espía.)"""
+    from sqlalchemy.orm import Session
+
+    import app.services.sede_archive as archivo
+    from conftest import esperar_mantenimiento
+
+    esperar_mantenimiento()
+    _put(client, admin, "NAVE", [FIXTURE, dict(FIXTURE, id="f2", code="GON-02", cx=6)])
+
+    candados, eventos = [], []
+    tomar = archivo.tomar_candados
+
+    def espia_candado(db, c):
+        candados.append(set(c))
+        eventos.append(("candado", set(c)))
+        return tomar(db, c)
+
+    flush, expire_all = Session.flush, Session.expire_all
+    monkeypatch.setattr(archivo, "tomar_candados", espia_candado)
+    monkeypatch.setattr(Session, "flush", lambda self, *a, **k: eventos.append("flush") or flush(self, *a, **k))
+    monkeypatch.setattr(Session, "expire_all", lambda self: eventos.append("expire_all") or expire_all(self))
+    assert client.delete("/api/layout/NAVE", headers=admin).status_code == 204
+
+    todos = {"NAVE-GON-01", "NAVE-GON-02"}
+    assert candados == [todos], "el archivo no tomó el candado de cada mueble del plano"
+    assert eventos[:3] == [("candado", todos), "flush", "expire_all"], eventos[:4]
+
+
+def test_un_guardado_que_llega_tarde_no_pisa_lo_que_otro_escribio_en_el_medio(client, admin, monkeypatch):
+    """`save_layout` comparaba `base_updated_at` ANTES de los candados y
+    escribía sin condición: dos guardados con la misma base pasaban los dos, y
+    uno podía pisar una renumeración que entró en el medio (fase 2 · I5).
+    Ahora la fila se escribe sólo si sigue en la revisión que se leyó al
+    empezar. Se simula la otra escritura justo donde dolía: con los candados."""
+    import json
+    from datetime import datetime, timezone
+
+    import app.routers.layout as lay
+    from app.database import SessionLocal
+    from app.models.models import LayoutSnapshot
+
+    _put(client, admin, "NAVE", [FIXTURE])
+    rev = client.get("/api/layout/NAVE", headers=admin).json()["updated_at"]
+    otro = dict(FIXTURE, id="f9", code="GON-09", cx=9)
+    original = lay._candados_del_guardado
+
+    def otra_escritura_en_el_medio(db, sede, previas, nuevas):
+        otra = SessionLocal()
+        try:
+            fila = otra.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).one()
+            fila.fixtures_json = json.dumps([FIXTURE, otro])
+            fila.updated_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
+            otra.commit()
+        finally:
+            otra.close()
+        return original(db, sede, previas, nuevas)
+
+    monkeypatch.setattr(lay, "_candados_del_guardado", otra_escritura_en_el_medio)
+    r = _put(client, admin, "NAVE", [dict(FIXTURE, cx=5)], base=rev)
+    monkeypatch.setattr(lay, "_candados_del_guardado", original)
+
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "layout_conflict"
+    guardado = {f["id"]: f for f in client.get("/api/layout/NAVE", headers=admin).json()["fixtures"]}
+    assert set(guardado) == {"f1", "f9"}, "el guardado que llegó tarde pisó la otra escritura"
+    assert guardado["f1"]["cx"] == 3
+
+
+def test_la_lista_de_sedes_es_la_misma_clave_en_el_archivo_y_en_el_router(client):
+    """`sede_archive.SEDES_KEY` copia la del router (un servicio no importa de
+    un router): si se separan, «SAN» dejaría de ver a «SAN-JOSE» en la lista."""
+    import app.routers.layout as lay
+    import app.services.sede_archive as archivo
+
+    assert archivo.SEDES_KEY == lay.SEDES_KEY

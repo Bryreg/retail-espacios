@@ -416,6 +416,11 @@ class PlanSede:
     fixtures_nuevas: list[dict] = field(default_factory=list, repr=False)
     #: ``{código completo viejo: código completo nuevo}``, sin las caras B.
     mapa: dict[str, str] = field(default_factory=dict, repr=False)
+    #: Los ``id`` de las filas vacías que son el mismo código que otra escrito
+    #: con otras mayúsculas (``nave-imp-05`` junto a ``NAVE-IMP-05``): ``aplicar``
+    #: las archiva antes de mudar (fase 2 · I5). No viaja en la respuesta: el
+    #: aviso sí.
+    archivar: list[int] = field(default_factory=list, repr=False)
 
 
 def _corto(codigo: str, sede: str) -> str:
@@ -470,8 +475,14 @@ def planificar_sede(db: Session, sede: str) -> PlanSede:
 
     filas: list[MuebleRenumerado] = []
     nuevas: list[dict] = []
-    mapa: dict[str, str] = {}
     nomenclaturas = 0
+    # Los pares (código completo viejo → nuevo) de cada mueble, con su id, y
+    # todos los códigos viejos que reclama cada mueble (para los repetidos).
+    pares: list[tuple[str, str, str]] = []
+    reclamados: dict[str, list[str]] = defaultdict(list)
+    # Los muebles con una «Sede» propia distinta de la del plano (V16): su par
+    # con la sede propia se decide después de mirar los otros planos.
+    ajenos: list[tuple[str, str, str, str, str]] = []
     for banda, f, nuevo in calculado:
         propia = str(f.get("sede") or sede or "").strip()
         viejo_corto = normalizar(f.get("code"))
@@ -489,8 +500,28 @@ def planificar_sede(db: Session, sede: str) -> PlanSede:
         copia.pop("nomenclatura", None)
         nuevas.append(copia)
 
-        if viejo_completo and viejo_completo != nuevo_completo:
-            mapa[viejo_completo] = nuevo_completo
+        ident = str(f.get("id") or "")
+        # fase 2 · I5 (V16): un mueble cuya «Sede» propia no es la del plano.
+        # Las participaciones arman su cara con la sede del PLANO
+        # (`participaciones.codigo_cara`, `caras_por_participacion`), así que
+        # el par con la sede del plano se muda siempre; el par con la sede
+        # propia, sólo si ningún otro plano tiene un mueble con ese código
+        # (si lo tiene, esas filas son de ese otro mueble: se avisa y no se
+        # tocan). Antes se mudaba sólo el par propio: la cara `NAVE-IMP-05` y
+        # su `…-PC1` quedaban con el nombre viejo, y el par propio podía mudar
+        # filas de la sede real.
+        ajeno = bool(viejo_corto) and normalizar(propia) != normalizar(sede)
+        if viejo_completo:
+            reclamados[viejo_completo].append(ident)
+        if ajeno:
+            del_plano = _full_code(viejo_corto, sede)
+            if del_plano != viejo_completo:
+                reclamados[del_plano].append(ident)
+            if viejo_corto != nuevo:
+                pares.append((del_plano, _full_code(nuevo, sede), ident))
+                ajenos.append((propia, viejo_corto, viejo_completo, nuevo_completo, ident))
+        elif viejo_completo and viejo_completo != nuevo_completo:
+            pares.append((viejo_completo, nuevo_completo, ident))
 
         filas.append(
             MuebleRenumerado(
@@ -513,20 +544,31 @@ def planificar_sede(db: Session, sede: str) -> PlanSede:
     # nombres. Si esto falla, no se sigue.
     verificar_invariantes(sede, fixtures, nuevas)
 
+    # V16: el par con la sede propia, sólo si ningún otro plano lo dibuja.
+    avisos_de_sede: list[str] = []
+    if ajenos:
+        de_otros = _codigos_de_otros_planos(db, sede)
+        for propia, corto, viejo_propio, nuevo_propio, ident in ajenos:
+            if viejo_propio in de_otros:
+                avisos_de_sede.append(
+                    f"El mueble «{corto}» del plano de «{sede}» dice ser de la sede «{propia}», y otro plano "
+                    f"tiene un mueble «{viejo_propio}»: los espacios «{viejo_propio}…» son de ese otro mueble "
+                    f"y no se mudan; se mudan los de «{_full_code(corto, sede)}». Revisá la sede de ese mueble."
+                )
+            else:
+                pares.append((viejo_propio, nuevo_propio, ident))
+
     # Un plano sucio puede tener DOS muebles con el mismo código, y entonces el
     # espacio que cuelga de ese código no se puede repartir: no hay forma de
     # saber a cuál de los dos pertenece el contrato. Se detecta acá y se bloquea
     # más adelante, pero sólo si ese espacio existe: si no existe, renumerar es
-    # justamente lo que arregla el duplicado.
-    por_codigo_viejo: dict[str, list[str]] = defaultdict(list)
-    for fila in filas:
-        if fila.codigo_antes:
-            por_codigo_viejo[fila.codigo_antes].append(fila.id)
-    duplicados = {c: ids for c, ids in por_codigo_viejo.items() if len(ids) > 1}
-    for c in duplicados:
-        mapa.pop(c, None)
+    # justamente lo que arregla el duplicado. Cuenta cada código que reclama un
+    # mueble: el propio y, con una «Sede» ajena, también el del plano.
+    duplicados = {c: sorted(set(ids)) for c, ids in reclamados.items() if len(set(ids)) > 1}
+    mapa: dict[str, str] = {viejo: nuevo for viejo, nuevo, _ in pares if viejo not in duplicados}
 
-    espacios, montajes, avisos = _arrastre(db, sede, mapa, duplicados)
+    espacios, montajes, avisos, archivar = _arrastre(db, sede, mapa, duplicados)
+    avisos = avisos_de_sede + avisos
 
     plan = PlanSede(
         sede=sede,
@@ -543,9 +585,28 @@ def planificar_sede(db: Session, sede: str) -> PlanSede:
         avisos=avisos,
         fixtures_nuevas=nuevas,
         mapa=mapa,
+        archivar=archivar,
     )
     plan.texto = informe_texto(plan)
     return plan
+
+
+def _codigos_de_otros_planos(db: Session, sede: str) -> set[str]:
+    """Los códigos COMPLETOS de los muebles de los OTROS planos, con la sede
+    de su plano y con su «Sede» propia: lo que un par con sede ajena no puede
+    pisar (V16)."""
+    s = normalizar(sede)
+    codigos: set[str] = set()
+    for snap in db.query(LayoutSnapshot).all():
+        if normalizar(snap.sede) == s:
+            continue
+        for f in _fixtures_de(snap):
+            corto = normalizar(f.get("code"))
+            if not corto:
+                continue
+            codigos.add(_full_code(corto, snap.sede or ""))
+            codigos.add(_full_code(corto, str(f.get("sede") or snap.sede or "").strip()))
+    return codigos
 
 
 def _base_y_cara(codigo: str) -> tuple[str, str]:
@@ -581,18 +642,22 @@ def _arrastre(
     sede: str,
     mapa: dict[str, str],
     duplicados: dict[str, list[str]] | None = None,
-) -> tuple[list[EspacioArrastrado], int, list[str]]:
+) -> tuple[list[EspacioArrastrado], int, list[str], list[int]]:
     """Qué se mueve con los muebles, y qué bloquea la mudanza.
 
     ``spaces.code`` y ``spaces.svg_id`` son UNIQUE. Acá sólo se CALCULA el
     destino de cada fila y se detecta el choque que la haría fallar a mitad de
     camino; escribir es tarea de ``aplicar``, que lo hace en dos pasadas dentro
     de una transacción.
+
+    Devuelve también los ``id`` de las filas vacías que hay que archivar
+    porque son el mismo código que otra escrito con otras mayúsculas (ver
+    ``_mismo_codigo_escrito_distinto``).
     """
     avisos: list[str] = []
     duplicados = duplicados or {}
     if not mapa and not duplicados:
-        return [], 0, avisos
+        return [], 0, avisos, []
 
     todos = db.query(Space).all()
     bloqueos: list[str] = []
@@ -643,12 +708,51 @@ def _arrastre(
         )
         ids_que_se_mudan.add(space.id)
 
+    # fase 2 · I5: dos filas que son el mismo código escrito distinto
+    # (`NAVE-IMP-05` y `nave-imp-05`) iban al MISMO destino, y aplicar
+    # reventaba contra `UNIQUE spaces.svg_id` → 500 (el previo daba 200 sin
+    # verlo). Las vacías se archivan; si dos tienen algo, se frena.
+    por_destino: dict[str, list[EspacioArrastrado]] = defaultdict(list)
+    for mudanza in arrastrados:
+        por_destino[normalizar(mudanza.ahora)].append(mudanza)
+    archivar: list[int] = []
+    por_id = {s.id: s for s in todos}
+    for grupo in por_destino.values():
+        if len(grupo) < 2:
+            continue
+        quedan, vacias, frase = _mismo_codigo_escrito_distinto(db, [por_id[m.space_id] for m in grupo])
+        if frase:
+            bloqueos.append(frase)
+            continue
+        for vacia in vacias:
+            archivar.append(vacia.id)
+            avisos.append(
+                f"El espacio #{vacia.id} («{vacia.code}») es el mismo código que el #{quedan.id} "
+                f"(«{quedan.code}») escrito con otras mayúsculas y está vacío: se archiva al renumerar."
+            )
+    if archivar:
+        arrastrados = [m for m in arrastrados if m.space_id not in archivar]
+        ids_que_se_mudan -= set(archivar)
+    # Lo mismo con el otro UNIQUE entre las que sí se mudan (un `svg_id`
+    # sembrado a mano que sólo difiere en mayúsculas).
+    svg_destinos: dict[str, list[int]] = defaultdict(list)
+    for mudanza in arrastrados:
+        if (mudanza.svg_ahora or "").strip():
+            svg_destinos[normalizar(mudanza.svg_ahora)].append(mudanza.space_id)
+    for svg, ids in svg_destinos.items():
+        if len(ids) > 1:
+            bloqueos.append(
+                f"los espacios {_y([f'#{i}' for i in sorted(ids)])} quedarían con el mismo svg_id {svg}: "
+                "arreglalo a mano antes de renumerar"
+            )
+
     # El otro UNIQUE. Un ``svg_id`` sembrado a mano no se deriva del código y no
-    # se toca, así que puede quedar pisando el destino de otro.
+    # se toca, así que puede quedar pisando el destino de otro. Las filas que
+    # se archivan no cuentan: su `svg_id` gana el `#id` al archivarse.
     svg_quietos = {
         normalizar(s.svg_id): s.id
         for s in todos
-        if s.id not in ids_que_se_mudan and (s.svg_id or "").strip()
+        if s.id not in ids_que_se_mudan and s.id not in archivar and (s.svg_id or "").strip()
     }
     for mudanza in arrastrados:
         if not (mudanza.svg_ahora or "").strip():
@@ -688,7 +792,57 @@ def _arrastre(
         if base in mapa:
             montajes += 1
 
-    return arrastrados, montajes, avisos
+    return arrastrados, montajes, avisos, archivar
+
+
+def _tiene_algo(db: Session, space: Space) -> bool:
+    """¿La fila tiene algo colgado —contratos (vivos o no), archivos, caras,
+    participaciones, distribuciones, zonas o historial—? Una que no tiene
+    nada es un duplicado inofensivo que se puede archivar."""
+    from app.models.models import SpaceFace, SpaceFile, SpaceLease
+    from app.models.participaciones import Distribucion, HistorialParticipacion, Participacion, Zona
+
+    sid = space.id
+    consultas = (
+        db.query(SpaceLease.id).filter(SpaceLease.space_id == sid),
+        db.query(SpaceFile.id).filter(SpaceFile.space_id == sid),
+        db.query(SpaceFace.space_id).filter(SpaceFace.space_id == sid),
+        db.query(Participacion.id).filter((Participacion.space_id == sid) | (Participacion.cara_space_id == sid)),
+        db.query(Distribucion.id).filter(Distribucion.cara_space_id == sid),
+        db.query(Zona.id).filter(Zona.participacion_space_id == sid),
+        db.query(HistorialParticipacion.id).filter(
+            (HistorialParticipacion.cara_space_id == sid) | (HistorialParticipacion.participacion_space_id == sid)),
+    )
+    return any(q.first() is not None for q in consultas)
+
+
+def _mismo_codigo_escrito_distinto(db: Session, filas: list[Space]) -> tuple[Space | None, list[Space], str]:
+    """Dos o más filas que son el mismo código con otras mayúsculas (las crea
+    un ``find-or-create`` de antes, que comparaba tal cual). Devuelve
+    ``(la que queda, las vacías que se archivan, "")``, o una frase de
+    bloqueo si más de una tiene algo colgado: unir dos filas con contratos es
+    un arreglo de datos a mano, no algo que la renumeración decide sola.
+
+    Queda la que tiene algo; si ninguna tiene nada, la escrita en mayúsculas
+    (si hay) y si no la más vieja."""
+    con_algo = [s for s in filas if _tiene_algo(db, s)]
+    if len(con_algo) > 1:
+        def describir(s: Space) -> str:
+            vivos = sum(1 for lease in s.leases if lease.is_active)
+            que = (f"{vivos} contrato{'s' if vivos != 1 else ''}" if vivos
+                   else "con historia" if s in con_algo else "vacío")
+            return f"#{s.id} ({s.code}, {que})"
+        lista = _y([describir(s) for s in sorted(filas, key=lambda s: s.id)])
+        return None, [], (
+            f"los espacios {lista} son el mismo código escrito distinto y más de uno tiene algo: "
+            "unilos o archivá los que sobran a mano antes de renumerar"
+        )
+    if con_algo:
+        queda = con_algo[0]
+    else:
+        en_mayusculas = [s for s in filas if (s.code or "") == normalizar(s.code)]
+        queda = min(en_mayusculas or filas, key=lambda s: s.id)
+    return queda, [s for s in filas if s.id != queda.id], ""
 
 
 # ─── El paso que sí escribe ───────────────────────────────────────────────────
@@ -767,6 +921,7 @@ def aplicar(db: Session, planes: list[PlanSede]) -> None:
         # leyó al planificar: si algo cambió en el medio, esto lo caza y aborta.
         verificar_invariantes(plan.sede, _fixtures_de(snap), plan.fixtures_nuevas)
 
+        _archivar_duplicados(db, plan)
         _mudar_espacios(db, plan)
         _mudar_montajes(db, plan)
         _anotar_nombres(db, plan)
@@ -779,7 +934,31 @@ def _ahora() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _archivar_duplicados(db: Session, plan: PlanSede) -> None:
+    """Archiva las filas vacías que eran el mismo código que otra escrito con
+    otras mayúsculas (``PlanSede.archivar``), como archiva el borrado de una
+    sede: una fila en ``archived_spaces`` y el ``#id`` en ``code`` y ``svg_id``
+    para liberar los UNIQUE. Nada se borra."""
+    from app.models.models import ArchivedSpace
+
+    if not plan.archivar:
+        return
+    for space in db.query(Space).filter(Space.id.in_(plan.archivar)).all():
+        record = ArchivedSpace(space_id=space.id, sede=normalizar(plan.sede), original_code=space.code)
+        db.add(record)
+        db.flush()
+        space.code = f"{record.original_code}#{record.id}"
+        space.svg_id = f"{space.svg_id}#{record.id}"
+    db.flush()
+
+
 def _mudar_espacios(db: Session, plan: PlanSede) -> None:
+    """Las dos pasadas, que es lo que un UNIQUE obliga a hacer. Ver
+    ``mudar_espacios``; la renumeración no cambia de sede."""
+    mudar_espacios(db, plan.espacios, plan.sede, plan.sede)
+
+
+def mudar_espacios(db: Session, espacios: list[EspacioArrastrado], sede_vieja: str, sede_nueva: str) -> None:
     """Las dos pasadas, que es lo que un UNIQUE obliga a hacer.
 
     Renumerar es casi siempre una PERMUTACIÓN: el nombre que deja uno lo toma
@@ -788,14 +967,19 @@ def _mudar_espacios(db: Session, plan: PlanSede) -> None:
     el id de la fila adentro, que no puede existir como código— y recién después
     al definitivo. Las dos pasadas viven en la misma transacción: nadie ve nunca
     el estado intermedio.
+
+    La usan la renumeración (la misma sede) y el renombre de una sede
+    (``services/renombre_sede.py``, de ``sede_vieja`` a ``sede_nueva``): el
+    rótulo que era el código completo viejo pasa a ser el nuevo, y el que era
+    el código corto pasa a ser el corto nuevo.
     """
-    if not plan.espacios:
+    if not espacios:
         return
     por_id = {s.id: s for s in db.query(Space).filter(
-        Space.id.in_([e.space_id for e in plan.espacios])
+        Space.id.in_([e.space_id for e in espacios])
     ).all()}
 
-    for e in plan.espacios:
+    for e in espacios:
         space = por_id.get(e.space_id)
         if space is None:
             continue
@@ -803,7 +987,7 @@ def _mudar_espacios(db: Session, plan: PlanSede) -> None:
         space.svg_id = f"{TEMPORAL}{space.id}~svg"
     db.flush()
 
-    for e in plan.espacios:
+    for e in espacios:
         space = por_id.get(e.space_id)
         if space is None:
             continue
@@ -812,11 +996,11 @@ def _mudar_espacios(db: Session, plan: PlanSede) -> None:
         # Cuando es el código, se muda; cuando es un rótulo de verdad —«Punta
         # Góndola»— no se toca, que es lo que alguien quiso escribir ahí.
         nombre = normalizar(space.name)
-        corto_viejo = _corto(e.antes, plan.sede)
+        corto_viejo = _corto(e.antes, sede_vieja)
         if nombre == e.antes:
             space.name = e.ahora
         elif nombre == corto_viejo:
-            space.name = _corto(e.ahora, plan.sede)
+            space.name = _corto(e.ahora, sede_nueva)
         space.code = e.ahora
         space.svg_id = e.svg_ahora or e.ahora
     db.flush()
