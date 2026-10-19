@@ -16,6 +16,9 @@
  *   · la góndola, la punta y el robatope, de `muebles/medidas.ts`, que este
  *     archivo IMPORTA (Python las copia, y `test_participaciones_geometria.py`
  *     compara la copia con este archivo de medidas);
+ *   · las dos neveras (la de puertas y la de bebidas abierta, el mismo cuerpo
+ *     `NeveraReal`), de `NEVERA` y `MONTANTE_DE_TRAMO` de `muebles/medidas.ts`,
+ *     también importadas (y copiadas en Python, con la misma comparación);
  *   · la ristra, la cruz y la vitrina se dibujan con números escritos en
  *     `StoreEditor3D.tsx` (`RistraMesh`, `CrossMesh`, `MuebleMesh`): acá van
  *     con nombre, y `probar-superficies.mjs` los busca en ese archivo y
@@ -23,9 +26,9 @@
  *
  * El plano del dibujo queda delante de todo lo que sobresale del frente con
  * el mueble desnudo (entrepaños y porta precios, rieles y tablas del robatope,
- * postes, cenefa, tiras de estado): al menos 6 mm en los frentes (la prueba de
- * holgura lo ejecuta para los siete tipos). En la zona libre, 4 mm sobre la
- * tapa, que se mira desde arriba.
+ * postes, cenefa, tiras de estado, manijas): al menos 6 mm en los frentes (la
+ * prueba de holgura lo ejecuta para cada tipo). En la zona libre, 4 mm sobre
+ * la tapa, que se mira desde arriba.
  *
  * Coordenadas (§8 del diseño): el marco local del mueble tiene el origen en el
  * centro de la huella, en el piso, `y` arriba y el frente hacia −z; la cara B
@@ -35,8 +38,9 @@
  */
 import { CATALOGO_DE_MUEBLES, type RecetaDeSuperficie, type TipoDeMueble } from "../catalogo/catalogo";
 import {
-  ANCHO_MODULO_TIPICO, ESPESOR_ESPINA, PARANTE, ROBATOPE, ZOCALO,
-  cotasDeRobatope, fondoPorCara, nivelesDeEntrepano, nivelesDePunta, techoDeCara, tramosValidos,
+  ANCHO_MODULO_TIPICO, ESPESOR_ESPINA, MONTANTE_DE_TRAMO, NEVERA, PARANTE, ROBATOPE, ZOCALO,
+  cotasDeRobatope, fondoPorCara, montantesDeTramos, nivelesDeEntrepano, nivelesDeNevera, nivelesDePunta, puertasDe,
+  techoDeCara, tramosValidos,
 } from "../components/StoreEditor3D/muebles/medidas";
 import { carasDe } from "../types/espacio";
 import { ALTURA_PISABLE } from "./planta";
@@ -63,6 +67,13 @@ export const SEPARACION_RISTRA = 0.012;
 export const SEPARACION_CROSS = 0.006;
 /** La vitrina: la tira de estado de la base sale hasta `d/2 + 0,014`. */
 export const SEPARACION_VITRINA = 0.020;
+/** La nevera de puertas: lo que más sale es la manija de cada hoja (su caja
+ *  llega a `d/2 + 0,023`); quedan 7 mm. La manija NO va como exclusión: es
+ *  una barra delante del vidrio, y la salva esta separación. */
+export const SEPARACION_NEVERA_PUERTAS = 0.030;
+/** La nevera de bebidas abierta: la tira de estado del zócalo sale hasta
+ *  `d/2 + 0,014`; quedan 6 mm (rejillas y porta precios quedan adentro). */
+export const SEPARACION_NEVERA_ABIERTA = 0.020;
 /** La zona libre se dibuja 4 mm sobre su tapa. */
 export const SOBRE_LA_TAPA = 0.004;
 /** Un mueble de más de un kilómetro es un plano roto o un número mal escrito
@@ -85,6 +96,14 @@ export const CROSS = { ejeDelPoste: 0.032, ladoDelPoste: 0.055, primerNivel: 0.1
 /** La vitrina que dibuja `MuebleMesh`: zócalo de `min(0,22·h, 0,40)`, marco
  *  de 3,6 cm, una puerta cada 60 cm y divisores de 1,8 cm. */
 export const VITRINA = { fraccionDeBase: 0.22, baseMaxima: 0.40, marco: 0.036, puerta: 0.60, medioDivisor: 0.009 } as const;
+/** El ancho interior de una nevera, de costado a costado, nunca baja de
+ *  10 cm (`anchoInterior = Math.max(0.1, w - NEVERA.chapa * 2)` en
+ *  `NeveraReal`). */
+export const INTERIOR_MINIMO_DE_NEVERA = 0.1;
+/** La nevera abierta reparte sus montantes sobre ese interior menos 3 cm
+ *  (`montantesDeTramos(anchoInterior - 0.03, tramos)` en `NeveraReal`: el
+ *  mismo ancho del relleno y de `ventaDeNevera`). */
+export const RECORTE_DE_TRAMOS_DE_NEVERA = 0.03;
 
 export interface Superficie {
   orientacion: "frente" | "arriba";
@@ -112,11 +131,11 @@ export interface MuebleParaSuperficie {
   gondolaType?: string | null;
   modulo?: number | null;
   entrepanos?: number | null;
-  partes?: { tramos?: number | null } | null;
+  partes?: { tramos?: number | null; puertas?: number | null } | null;
 }
 
 interface Rect { por: string; x0: number; x1: number; y0: number; y1: number }
-interface Medidas { w: number; d: number; h: number; mural: boolean; modulo?: number; tramos?: number }
+interface Medidas { w: number; d: number; h: number; mural: boolean; modulo?: number; tramos?: number; puertas?: number }
 interface Dibujo {
   orientacion: "frente" | "arriba";
   exterior: { x0: number; x1: number; y0: number; y1: number };
@@ -256,6 +275,62 @@ const RECETARIO: Record<RecetaDeSuperficie, (m: Medidas) => Dibujo | null> = {
       giroX: 0,
     };
   },
+  nevera_puertas: ({ w, d, h, puertas }) => {
+    // `NeveraReal variante="puertas"`: zócalo y copete a todo el ancho (el
+    // cabezote es de la nevera entera, como el copete de la punta) y cada
+    // hoja de `w / n`, del zócalo al copete, con su marco de aluminio
+    // alrededor del vidrio. Lo que se vende es lo que se ve por el vidrio.
+    // Las puertas, las guardadas (`partes.puertas`, aunque la división pase
+    // a participación: el 3D las sigue dibujando) o una cada 75 cm.
+    const n = puertasDe(w, puertas);
+    if (!(n <= MAX_VANOS)) return null;
+    const Z = NEVERA.zocalo, C = NEVERA.copete, M = NEVERA.marcoPuerta;
+    const y0 = Z + M, y1 = h - C - M;
+    const exclusiones: Rect[] = [
+      rect("zocalo", -w / 2, w / 2, 0, Z),
+      rect("marco", -w / 2, w / 2, Z, y0),
+      rect("marco", -w / 2, w / 2, y1, h - C),
+      rect("copete", -w / 2, w / 2, h - C, h),
+    ];
+    // Los marcos verticales: en cada unión los de las dos hojas vecinas
+    // (±M) y, en las puntas, el de la hoja (recortado al mueble).
+    for (let i = 0; i <= n; i++) {
+      const x = -w / 2 + (w / n) * i;
+      exclusiones.push(rect("marco", Math.max(-w / 2, x - M), Math.min(w / 2, x + M), y0, y1));
+    }
+    return {
+      orientacion: "frente",
+      exterior: { x0: -w / 2, x1: w / 2, y0: 0, y1: h },
+      exclusiones,
+      plano: d / 2 + SEPARACION_NEVERA_PUERTAS,
+      giroX: 0,
+    };
+  },
+  nevera_abierta: ({ w, d, h, tramos }) => {
+    // `NeveraReal variante="multideck"` (la nevera de bebidas): frente
+    // abierto, con los costados de la carrocería de piso a techo y, vendida
+    // por tramos, un montante entre tramo y tramo. Los montantes salen de los
+    // `tramos` guardados aunque la división pase a participación: el 3D los
+    // sigue dibujando (como la góndola descuenta sus parantes).
+    const Z = NEVERA.zocalo, C = NEVERA.copete, K = NEVERA.chapa;
+    const exclusiones: Rect[] = [
+      rect("zocalo", -w / 2, w / 2, 0, Z),
+      rect("copete", -w / 2, w / 2, h - C, h),
+      rect("costado", -w / 2, -w / 2 + K, Z, h - C),
+      rect("costado", w / 2 - K, w / 2, Z, h - C),
+    ];
+    const interior = Math.max(INTERIOR_MINIMO_DE_NEVERA, w - K * 2);
+    for (const x of montantesDeTramos(interior - RECORTE_DE_TRAMOS_DE_NEVERA, tramos)) {
+      exclusiones.push(rect("montante", x - MONTANTE_DE_TRAMO / 2, x + MONTANTE_DE_TRAMO / 2, Z, h - C));
+    }
+    return {
+      orientacion: "frente",
+      exterior: { x0: -w / 2, x1: w / 2, y0: 0, y1: h },
+      exclusiones,
+      plano: d / 2 + SEPARACION_NEVERA_ABIERTA,
+      giroX: 0,
+    };
+  },
   zona_libre: ({ w, d, h }) => {
     // La tapa entera, vista desde arriba (D16). Sólo la zona libre que se
     // pisa (h < ALTURA_PISABLE): ésa el 3D la dibuja como una placa de alto h
@@ -305,6 +380,7 @@ function dibujoDe(f: MuebleParaSuperficie, cara: "A" | "B"): { clave: string; re
     w: f.w, d: f.d, h: f.h, mural: caras === 1,
     modulo: typeof f.modulo === "number" ? f.modulo : undefined,
     tramos: typeof f.partes?.tramos === "number" ? f.partes.tramos : undefined,
+    puertas: typeof f.partes?.puertas === "number" ? f.partes.puertas : undefined,
   });
   return dibujo ? { clave: t.clave, receta, dibujo } : null;
 }
@@ -350,8 +426,8 @@ const q4 = (x: number) => Math.floor(x * 10000 + 0.5);
  * confirmada «para revisar». Lleva el tipo, mural o doble (de `carasDe`,
  * nunca de `"double"` escrito), ancho y alto en mm, los entrepaños guardados
  * (un entero; otra cosa es «-») y las exclusiones a 1e-4, que llevan el
- * módulo y los tramos. El fondo no entra: mueve el plano del dibujo en el 3D
- * pero no cambia u,v.
+ * módulo, los tramos y las puertas. El fondo no entra: mueve el plano del
+ * dibujo en el 3D pero no cambia u,v.
  */
 export function firmaDeCara(f: MuebleParaSuperficie, cara: "A" | "B"): string | null {
   const s = superficieDeCara(f, cara);
@@ -371,9 +447,10 @@ export function firmaDeCara(f: MuebleParaSuperficie, cara: "A" | "B"): string | 
 
 /**
  * Sólo para dibujar las guías del lienzo (líneas punteadas, interruptor
- * «Guías»): las alturas de los entrepaños, repisas o ganchos (`v`) y los ejes
- * de los parantes o divisores (`u`), en la cara pedida, de menor a mayor. No
- * entra en ninguna cuenta y no tiene gemelo.
+ * «Guías»): las alturas de los entrepaños, repisas, rejillas o ganchos (`v`)
+ * y los ejes de los parantes, divisores, uniones de puertas o montantes
+ * (`u`), en la cara pedida, de menor a mayor. No entra en ninguna cuenta y no
+ * tiene gemelo.
  */
 export function guiasDeCara(f: MuebleParaSuperficie, cara: "A" | "B"): { entrepanos: number[]; parantes: number[] } {
   const s = superficieDeCara(f, cara);
@@ -422,6 +499,19 @@ export function guiasDeCara(f: MuebleParaSuperficie, cara: "A" | "B"): { entrepa
       for (let i = 1; i < nP; i++) xs.push(-w / 2 + i * (w / nP));
       break;
     }
+    case "nevera_puertas": {
+      // Las rejillas de fábrica de `NeveraReal` y la unión entre hoja y hoja.
+      ys = nivelesDeNevera(h);
+      const p = f.partes?.puertas;
+      const n = puertasDe(w, typeof p === "number" ? p : undefined);
+      for (let i = 1; i < n; i++) xs.push(-w / 2 + (w / n) * i);
+      break;
+    }
+    case "nevera_abierta":
+      // Las rejillas de fábrica y los montantes de los tramos.
+      ys = nivelesDeNevera(h);
+      xs = montantesDeTramos(Math.max(INTERIOR_MINIMO_DE_NEVERA, w - NEVERA.chapa * 2) - RECORTE_DE_TRAMOS_DE_NEVERA, tramos);
+      break;
   }
   const x0 = -W / 2, x1 = W / 2;
   const us = xs.map((x) => enLaCara(cara === "B" ? (x - x0) / W : (x1 - x) / W));

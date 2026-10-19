@@ -108,8 +108,18 @@ await prueba("la participación: no la cuenta el mueble, no tiene tarifa propia 
   assert.ok(!P.esParticipacion(P.partirCodigo("NAVE-GON-01-EN3").parte) && !P.esParticipacion(null));
   assert.equal(P.cantidadDe(doble, "participacion"), null);
   assert.ok(P.porParticipacion(doble) && !P.porParticipacion({ ...doble, rentable: false }));
-  assert.ok(!P.porParticipacion({ code: "NEV-03", type: "nevera_puertas", partes: { division: "participacion" } }),
-    "una nevera de puertas no tiene receta de superficie");
+  assert.ok(!P.porParticipacion({ code: "EXP-03", type: "isla", partes: { division: "participacion" } }),
+    "una estiba no tiene receta de superficie");
+  // fase 2 · I3: las dos neveras sí (y su división física guardada no la reemplaza).
+  assert.ok(P.porParticipacion({ code: "NEV-03", type: "nevera_puertas", partes: { puertas: 3, division: "participacion" } }),
+    "la nevera de puertas tiene receta de superficie");
+  assert.ok(P.porParticipacion({ code: "BEB-03", type: "nevera_refrescos", partes: { tramos: 3, division: "participacion" } }),
+    "la nevera de bebidas tiene receta de superficie");
+  assert.ok(!P.porParticipacion({ code: "NEV-03", type: "nevera_puertas", partes: { puertas: 3, division: "puertas" } }),
+    "una nevera por puertas pasó a venderse por participación");
+  for (const type of ["impulsador", "puesto_impulso", "batea", "isla_fria", "nevera_vegetales", "nevera_carnes", "stand_frutas"]) {
+    assert.ok(!P.porParticipacion({ code: "X-01", type, partes: { division: "participacion" } }), `${type} no tiene receta de superficie`);
+  }
   assert.equal(P.divisionDe(doble), null);
   assert.deepEqual(P.interruptoresDeLaCara(doble, "A"), [], "Vender no ofrece partes físicas de una cara por participación");
   assert.equal(P.textoDeParte(pc3), "Participación 3");

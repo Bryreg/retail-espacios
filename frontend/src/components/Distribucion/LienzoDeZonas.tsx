@@ -64,6 +64,8 @@ const C = {
 const NOMBRES_DE_EXCLUSION: Record<string, string> = {
   zocalo: "zócalo", parante: "parante", remate: "remate", copete: "copete", base: "base", marco: "marco",
   divisor: "divisor", poste: "poste", cabezal: "cabezal", tapa: "tapa",
+  // fase 2 · I3: las neveras (los costados de la de bebidas y el montante entre tramo y tramo).
+  costado: "costado", montante: "montante",
 };
 
 const ZOOM_MAXIMO = 20;

@@ -108,13 +108,17 @@ await prueba("las recetas son las de `RecetaDeSuperficie` (catalogo.ts) y las pi
   const union = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
   assert.deepEqual([...S.RECETAS].sort(), union.sort());
   const conSuperficie = Object.entries(CATALOGO.tipos).filter(([, d]) => d.superficie);
-  assert.deepEqual(conSuperficie.map(([t]) => t).sort(), ["cross", "gondola", "metro", "mueble", "punta", "ristra", "robatope"]);
+  assert.deepEqual(conSuperficie.map(([t]) => t).sort(),
+    ["cross", "gondola", "metro", "mueble", "nevera_puertas", "nevera_refrescos", "punta", "ristra", "robatope"]);
   for (const [t, d] of conSuperficie) {
     assert.ok(S.RECETAS.includes(d.superficie.receta), `${t}: la receta «${d.superficie.receta}» no la calcula nadie`);
     assert.ok(S.tieneSuperficie(t), t);
   }
   for (const [alias, a] of Object.entries(CATALOGO.alias)) assert.equal(S.tieneSuperficie(alias), !!CATALOGO.tipos[a.tipo].superficie, alias);
-  for (const t of ["nevera_puertas", "isla", "checkout", "constructor", "__proto__", "toString", ""]) assert.ok(!S.tieneSuperficie(t), t);
+  // Los que quedan fuera a propósito (fase 2, frente C, §2), enteros, y lo que no es un tipo.
+  for (const t of ["isla", "impulsador", "puesto_impulso", "batea", "isla_fria", "nevera_vegetales", "nevera_carnes", "stand_frutas",
+    "checkout", "servicio_cliente", "columna", "exhibicion", "constructor", "__proto__", "toString", ""]) assert.ok(!S.tieneSuperficie(t), t);
+  for (const t of ["nevera_puertas", "nevera_refrescos"]) assert.ok(S.tieneSuperficie(t), `${t} no tiene receta`);
 });
 
 await prueba("la cara B de una doble es la A en espejo, y la mural no tiene B", () => {
@@ -178,7 +182,7 @@ await prueba("las guías del lienzo caen en la cara, ordenadas, y salen de la mi
     }
   }
   assert.deepEqual(S.guiasDeCara({ type: "metro", w: 1, d: 1, h: 0.05 }, "A"), { entrepanos: [], parantes: [] });
-  assert.deepEqual(S.guiasDeCara({ type: "nevera_puertas", w: 1, d: 1, h: 2 }, "A"), { entrepanos: [], parantes: [] });
+  assert.deepEqual(S.guiasDeCara({ type: "isla", w: 1, d: 1, h: 2 }, "A"), { entrepanos: [], parantes: [] });
 });
 
 /* ── La holgura, ejecutada contra lo que dibuja el 3D ────────────────────── */
@@ -507,6 +511,226 @@ await prueba(`holgura ejecutada: todo el frente queda ≥ 6 mm detrás del dibuj
     .map(([t, p]) => `${t} ${(p.mm * 1000).toFixed(1)} mm (${p.pieza.replace(/^[^:]+: /, "")})`).join(" · "));
 });
 
+// ── fase 2 · I3: las neveras por participación ──────────────────────────────
+//
+// La nevera de puertas (receta `nevera_puertas`) y la de bebidas, abierta
+// (`nevera_abierta`), son el mismo cuerpo: `NeveraReal`, que dibuja
+// `NeveraRefrescosMesh` del editor con las puertas o los tramos guardados. Sus
+// cotas son de `NEVERA` (medidas.ts), que la receta importa; lo que sale del
+// frente (manija, cabezote, tira de estado, rejilla del zócalo, marcos) está
+// escrito en `NeveraReal.tsx`: acá se busca y se ejecuta la holgura con eso.
+
+const FUENTE_NEVERA = leer(join(muebles, "NeveraReal.tsx"));
+const NEVERA_REAL = FUENTE_NEVERA.slice(FUENTE_NEVERA.indexOf("export const NeveraReal = memo("));
+const MARCO_DE_PUERTA = cuerpo(FUENTE.perfiles, "export function geometriaMarcoDePuerta(");
+
+/** Lo que tienen las dos variantes: carrocería, zócalo con su rejilla y su
+ *  tira de estado, el cabezote, las rejillas con porta precios y tira de luz. */
+function puntosDeNevera(f, quien) {
+  const src = NEVERA_REAL, N = M.NEVERA;
+  assert.ok(NEVERA_REAL.length > 0 && FUENTE_NEVERA.includes("export const NeveraReal = memo("), "no encontré NeveraReal");
+  tiene(src, "const zFrente = -d / 2;", quien);
+  tiene(src, "<boxGeometry args={[NEVERA.chapa, h, d]} />", quien);
+  tiene(src, "<boxGeometry args={[w, NEVERA.zocalo, d]} />", quien);
+  tiene(src, "<boxGeometry args={[w, NEVERA.copete, d]} />", quien);
+  tiene(src, "Array.from({ length: 4 }, (_, i) => (", quien);
+  const [r0, rPaso, rSale, rAlto, rFondo] = numeros(src,
+    /position=\{\[0, NEVERA\.zocalo \* \(([\d.]+) \+ i \* ([\d.]+)\), zFrente - ([\d.]+)\]\}\s*material=\{m\.hueco\}\s*>\s*<boxGeometry args=\{\[w \* [\d.]+, ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: rejilla del zócalo`);
+  const [tFr, tSale, tAlto, tFondo] = numeros(src,
+    /<mesh position=\{\[0, NEVERA\.zocalo \* ([\d.]+), zFrente - ([\d.]+)\]\} material=\{m\.estado\}>\s*<boxGeometry args=\{\[w \* [\d.]+, ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: tira de estado`);
+  const [cSale, cFr, cFondo] = numeros(src,
+    /position=\{\[0, h - NEVERA\.copete \/ 2, zFrente - ([\d.]+)\]\}\s*material=\{chapaDelCabezote\}\s*>\s*<boxGeometry args=\{\[w - NEVERA\.chapa \* 2, NEVERA\.copete \* ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: cabezote`);
+  // Las rejillas de adentro, con su porta precios (la sección arranca en su canto, ver PIEZAS) y la tira de luz.
+  tiene(src, "const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);", quien);
+  tiene(src, "position={[0, y, NEVERA.chapa / 2]}", quien);
+  tiene(src, "anchoInterior - 0.01, esMural ? 0.016 : 0.009, fondoInterior,", quien);
+  tiene(src, "zFrente + NEVERA.fondoPuerta + NEVERA.portaAdentro]}", quien);
+  const [luzBaja, luzAdentro, luzAlto, luzFondo] = numeros(src,
+    /position=\{\[0, y - ([\d.]+), zFrente \+ NEVERA\.fondoPuerta \+ ([\d.]+)\]\}\s*material=\{m\.luz\}\s*>\s*<boxGeometry args=\{\[anchoInterior - [\d.]+, ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: tira de luz`);
+  const zF = -f.d / 2;
+  const fondoInterior = Math.max(0.1, f.d - N.chapa - N.fondoPuerta);
+  const P = [];
+  for (const y of [0, f.h]) P.push({ pieza: `${quien}: carrocería`, y, z: zF });
+  for (let i = 0; i < 4; i++) {
+    const y = N.zocalo * (r0 + i * rPaso);
+    for (const dy of [-rAlto / 2, rAlto / 2]) P.push({ pieza: `${quien}: rejilla del zócalo`, y: y + dy, z: zF - rSale - rFondo / 2 });
+  }
+  for (const dy of [-tAlto / 2, tAlto / 2]) P.push({ pieza: `${quien}: tira de estado`, y: N.zocalo * tFr + dy, z: zF - tSale - tFondo / 2 });
+  for (const dy of [-N.copete * cFr / 2, N.copete * cFr / 2]) P.push({ pieza: `${quien}: cabezote`, y: f.h - N.copete / 2 + dy, z: zF - cSale - cFondo / 2 });
+  for (const y of M.nivelesDeNevera(f.h)) {
+    P.push({ pieza: `${quien}: rejilla`, y, z: N.chapa / 2 - fondoInterior / 2 });
+    P.push({ pieza: `${quien}: porta precios`, y: y - M.PORTA_PRECIOS.alto / 2 - N.portaBaja, z: zF + N.fondoPuerta + N.portaAdentro });
+    P.push({ pieza: `${quien}: tira de luz`, y: y - luzBaja - luzAlto / 2, z: zF + N.fondoPuerta + luzAdentro - luzFondo / 2 });
+  }
+  return P;
+}
+
+/** La nevera de puertas: además, cada hoja con su marco (biselado), el vidrio
+ *  y la manija, que es lo más saliente del mueble. */
+function puntosDeNeveraDePuertas(f) {
+  const src = NEVERA_REAL, N = M.NEVERA, q = "nevera de puertas";
+  tiene(src, "const altoDePuerta = h - NEVERA.zocalo - NEVERA.copete;", q);
+  tiene(src, "const yPuerta = NEVERA.zocalo + altoDePuerta / 2;", q);
+  tiene(src, "<group key={`pu${i}`} position={[cx, yPuerta, zFrente + NEVERA.fondoPuerta]}>", q);
+  tiene(src, "anchoDePuerta, altoDePuerta, NEVERA.marcoPuerta, NEVERA.fondoPuerta,", q);
+  tiene(MARCO_DE_PUERTA, "g.translate(0, 0, -fondo);", "marco de la puerta");
+  const [bisel] = numeros(MARCO_DE_PUERTA, /bevelThickness: ([\d.]+),/, "marco de la puerta");
+  const [vidrioFondo] = numeros(src, /<mesh position=\{\[0, 0, -NEVERA\.fondoPuerta \/ 2\]\} material=\{m\.vidrio\}>\s*<boxGeometry args=\{\[vidrioAncho, vidrioAlto, ([\d.]+)\]\} \/>/, "vidrio");
+  const [manijaSale, manijaFraccion, manijaFondo] = numeros(src,
+    /-NEVERA\.fondoPuerta - ([\d.]+),\s*\]\}\s*material=\{m\.manija\}[\s\S]{0,80}?<boxGeometry args=\{\[[\d.]+, Math\.min\(NEVERA\.manija, altoDePuerta \* ([\d.]+)\), ([\d.]+)\]\} \/>/, "manija");
+  const zF = -f.d / 2, zPuerta = zF + N.fondoPuerta;
+  const alto = f.h - N.zocalo - N.copete, yPuerta = N.zocalo + alto / 2;
+  const medioManija = Math.min(N.manija, alto * manijaFraccion) / 2;
+  return [
+    ...puntosDeNevera(f, q),
+    { pieza: `${q}: marco`, y: N.zocalo, z: zPuerta - N.fondoPuerta - bisel },
+    { pieza: `${q}: marco`, y: f.h - N.copete, z: zPuerta - N.fondoPuerta - bisel },
+    { pieza: `${q}: vidrio`, y: yPuerta, z: zPuerta - N.fondoPuerta / 2 - vidrioFondo / 2 },
+    { pieza: `${q}: manija`, y: yPuerta - medioManija, z: zPuerta - N.fondoPuerta - manijaSale - manijaFondo / 2 },
+    { pieza: `${q}: manija`, y: yPuerta + medioManija, z: zPuerta - N.fondoPuerta - manijaSale - manijaFondo / 2 },
+  ];
+}
+
+/** La nevera de bebidas (multideck): además, la cortina de aire (boca de
+ *  impulsión y reja de retorno) y los montantes de los tramos. */
+function puntosDeNeveraAbierta(f) {
+  const src = NEVERA_REAL, N = M.NEVERA, q = "nevera de bebidas";
+  const [bocaBaja, bocaAdentro, bocaAlto, bocaFondo] = numeros(src,
+    /position=\{\[0, h - NEVERA\.copete - ([\d.]+), zFrente \+ ([\d.]+)\]\}\s*material=\{m\.hueco\}\s*>\s*<boxGeometry args=\{\[anchoInterior, ([\d.]+), ([\d.]+)\]\} \/>/, "boca de impulsión");
+  const [rejaSube, rejaAdentro, rejaAlto, rejaFondo] = numeros(src,
+    /position=\{\[0, NEVERA\.zocalo \+ ([\d.]+), zFrente \+ ([\d.]+)\]\}\s*material=\{m\.hueco\}\s*>\s*<boxGeometry args=\{\[anchoInterior, ([\d.]+), ([\d.]+)\]\} \/>/, "reja de retorno");
+  tiene(src, "position={[x, yInterior, (NEVERA.fondoPuerta - NEVERA.chapa) / 2]}", q);
+  tiene(src, "<boxGeometry args={[MONTANTE_DE_TRAMO, util, fondoInterior]} />", q);
+  const zF = -f.d / 2;
+  const fondoInterior = Math.max(0.1, f.d - N.chapa - N.fondoPuerta);
+  const P = puntosDeNevera(f, q);
+  for (const dy of [-bocaAlto / 2, bocaAlto / 2]) P.push({ pieza: `${q}: boca de impulsión`, y: f.h - N.copete - bocaBaja + dy, z: zF + bocaAdentro - bocaFondo / 2 });
+  for (const dy of [-rejaAlto / 2, rejaAlto / 2]) P.push({ pieza: `${q}: reja de retorno`, y: N.zocalo + rejaSube + dy, z: zF + rejaAdentro - rejaFondo / 2 });
+  if (M.montantesDeTramos(1, f.partes?.tramos).length > 0) {
+    for (const y of [N.zocalo, f.h - N.copete]) P.push({ pieza: `${q}: montante`, y, z: (N.fondoPuerta - N.chapa) / 2 - fondoInterior / 2 });
+  }
+  return P;
+}
+
+Object.assign(PUNTOS, { nevera_puertas: puntosDeNeveraDePuertas, nevera_refrescos: puntosDeNeveraAbierta });
+
+await prueba("las neveras: el editor dibuja `NeveraReal` con las MISMAS puertas y tramos que mide la receta", () => {
+  const editor = FUENTE.editor;
+  assert.match(editor, /case "nevera_puertas":\s+return <NeveraRefrescosMesh\s+\{\.\.\.base\} facePaint=\{facePaint\} puertas=\{puertasDe\(fixture\.w, geometria\.puertas\)\} \/>;/,
+    "la nevera de puertas ya no se dibuja con `puertasDe(w, partes.puertas)`: revisá la receta");
+  assert.match(editor, /case "nevera_refrescos":\s+return <NeveraRefrescosMesh\s+\{\.\.\.base\} facePaint=\{facePaint\} tramos=\{geometria\.tramos\} \/>;/,
+    "la nevera de bebidas ya no se dibuja con sus tramos guardados: revisá la receta");
+  tiene(editor, 'variante={conPuertas ? "puertas" : "multideck"}', "NeveraRefrescosMesh");
+  tiene(editor, "tramos={conPuertas ? undefined : tramos}", "NeveraRefrescosMesh");
+  // El interior de los montantes, el de la receta.
+  tiene(NEVERA_REAL, "const anchoInterior = Math.max(0.1, w - NEVERA.chapa * 2);", "NeveraReal");
+  tiene(NEVERA_REAL, "{!conPuertas && montantesDeTramos(anchoInterior - 0.03, tramos).map((x) => (", "NeveraReal");
+  assert.deepEqual([S.INTERIOR_MINIMO_DE_NEVERA, S.RECORTE_DE_TRAMOS_DE_NEVERA], [0.1, 0.03]);
+  // Las puertas: la exclusión de cada marco vertical cae en la unión del dibujo (`-w/2 + i·w/n`).
+  for (const [w, puertas, n] of [[1.4, undefined, 2], [2.07, 3, 3], [2.07, 2.5, 3], [0.6, 1, 1], [3.2, 6, 6]]) {
+    const s = S.superficieDeCara({ type: "nevera_puertas", w, d: 0.74, h: 2.1, partes: puertas === undefined ? undefined : { puertas } }, "A");
+    assert.equal(M.puertasDe(w, puertas), n);
+    const verticales = s.exclusiones.filter((e) => e.por === "marco" && e.v1 - e.v0 > 0.5).sort((a, b) => a.u0 - b.u0);
+    assert.equal(verticales.length, n + 1, `${w} m con ${puertas} puertas`);
+    verticales.forEach((e, i) => {
+      const u = i / n, medio = M.NEVERA.marcoPuerta / w;
+      cerca(e.u0, Math.max(0, u - medio), 2e-6, `${w}·${puertas}: el marco ${i} empieza`);
+      cerca(e.u1, Math.min(1, u + medio), 2e-6, `${w}·${puertas}: el marco ${i} termina`);
+    });
+  }
+  // Los tramos: cada montante de la exclusión rodea el del dibujo.
+  const w = 3.75, s = S.superficieDeCara({ type: "nevera_refrescos", w, d: 0.75, h: 1.8, partes: { tramos: 3 } }, "A");
+  const xs = M.montantesDeTramos(Math.max(0.1, w - M.NEVERA.chapa * 2) - 0.03, 3);
+  const montantes = s.exclusiones.filter((e) => e.por === "montante").sort((a, b) => a.u0 - b.u0);
+  assert.equal(montantes.length, xs.length);
+  for (const x of xs) {
+    const u = (w / 2 - x) / w;
+    assert.ok(montantes.some((e) => Math.abs((e.u0 + e.u1) / 2 - u) < 2e-6 && Math.abs((e.u1 - e.u0) * w - M.MONTANTE_DE_TRAMO) < 2e-5),
+      `el montante del dibujo en x = ${x.toFixed(4)} no tiene su exclusión`);
+  }
+});
+
+const medidasDeNevera = [];
+for (const h of [1.7, 2.1, 2.3]) {
+  for (const d of [0.55, 0.74, 0.9]) {
+    for (const w of [0.6, 1.4, 3.2]) {
+      for (const puertas of [undefined, 1, 3, 6]) {
+        medidasDeNevera.push({ type: "nevera_puertas", w, d, h, ...(puertas === undefined ? {} : { partes: { puertas, division: "participacion" } }) });
+      }
+    }
+  }
+}
+for (const h of [1.2, 1.8, 2.4]) {
+  for (const d of [0.5, 0.75, 1.2]) {
+    for (const w of [0.6, 1.2, 3.75]) {
+      for (const tramos of [undefined, 3]) {
+        medidasDeNevera.push({ type: "nevera_refrescos", w, d, h, ...(tramos === undefined ? {} : { partes: { tramos, division: "participacion" } }) });
+      }
+    }
+  }
+}
+
+await prueba(`holgura ejecutada de las neveras: todo el frente queda ≥ 6 mm detrás del dibujo (${medidasDeNevera.length} neveras de dos clases)`, () => {
+  const peores = {};
+  for (const f of medidasDeNevera) {
+    const p = holgura(f);
+    if (!peores[f.type] || p.mm < peores[f.type].mm) peores[f.type] = { ...p, f };
+    assert.ok(p.mm >= HOLGURA_MINIMA - 1e-9,
+      `${JSON.stringify(f)}: «${p.pieza}» queda a ${(p.mm * 1000).toFixed(1)} mm del dibujo (mínimo ${HOLGURA_MINIMA * 1000} mm)`);
+  }
+  // Lo que manda es lo que dicen las separaciones: la manija (7 mm) y la tira de estado (6 mm).
+  assert.match(peores.nevera_puertas.pieza, /manija/, `en la nevera de puertas manda «${peores.nevera_puertas.pieza}»`);
+  assert.match(peores.nevera_refrescos.pieza, /tira de estado/, `en la de bebidas manda «${peores.nevera_refrescos.pieza}»`);
+  assert.deepEqual([S.SEPARACION_NEVERA_PUERTAS, S.SEPARACION_NEVERA_ABIERTA], [0.030, 0.020]);
+  for (const t of ["nevera_puertas", "nevera_refrescos"]) assert.equal(S.superficieDeCara({ type: t, w: 1.2, d: 0.75, h: 1.8 }, "A").giroX, 0, `${t} gira`);
+  console.log("         lo que manda: " + Object.entries(peores)
+    .map(([t, p]) => `${t} ${(p.mm * 1000).toFixed(1)} mm (${p.pieza.replace(/^[^:]+: /, "")})`).join(" · "));
+});
+
+await prueba("las puertas de más no se distribuyen: los dos lados del filo de MAX_VANOS, guardadas o por el ancho", () => {
+  const sup = (extra) => S.superficieDeCara({ type: "nevera_puertas", d: 0.7, h: 2.1, ...extra }, "A");
+  const justo = sup({ w: 200, partes: { puertas: S.MAX_VANOS } });
+  assert.ok(justo, "200 puertas no tienen superficie");
+  assert.equal(justo.exclusiones.filter((e) => e.por === "marco").length, 2 + S.MAX_VANOS + 1);
+  assert.equal(sup({ w: 200, partes: { puertas: S.MAX_VANOS + 1 } }), null);
+  assert.ok(sup({ w: M.NEVERA.anchoMaximoDePuerta * S.MAX_VANOS }), "200 puertas por el ancho no tienen superficie");
+  assert.equal(sup({ w: 150.01 }), null);
+  assert.equal(sup({ w: 2, partes: { puertas: Infinity } }), null);
+  assert.equal(sup({ w: 2, partes: { puertas: 1e300 } }), null);
+});
+
+await prueba("las guías de las neveras: las rejillas de fábrica y la unión de las hojas o los montantes", () => {
+  const nev = S.guiasDeCara({ type: "nevera_puertas", w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3 } }, "A");
+  assert.equal(nev.entrepanos.length, M.nivelesDeNevera(2.1).length);
+  assert.ok(nev.entrepanos.length > 0, "la nevera de puertas sin guías de rejillas");
+  assert.deepEqual(nev.parantes.map((u) => +u.toFixed(9)), [1 / 3, 2 / 3].map((u) => +u.toFixed(9)));
+  assert.deepEqual(S.guiasDeCara({ type: "nevera_puertas", w: 0.6, d: 0.6, h: 1.7, partes: { puertas: 1 } }, "A").parantes, []);
+  const beb = S.guiasDeCara({ type: "nevera_refrescos", w: 3.75, d: 0.75, h: 1.8, partes: { tramos: 3 } }, "A");
+  assert.ok(beb.entrepanos.length > 0, "la nevera de bebidas sin guías de rejillas");
+  const montantes = S.superficieDeCara({ type: "nevera_refrescos", w: 3.75, d: 0.75, h: 1.8, partes: { tramos: 3 } }, "A")
+    .exclusiones.filter((e) => e.por === "montante");
+  assert.equal(beb.parantes.length, 2);
+  for (const u of beb.parantes) assert.ok(montantes.some((e) => e.u0 <= u && u <= e.u1), `la guía en u = ${u} no cae en su montante`);
+  assert.deepEqual(S.guiasDeCara({ type: "nevera_refrescos", w: 1.2, d: 0.75, h: 1.8 }, "A").parantes, []);
+  for (const l of [nev.entrepanos, nev.parantes, beb.entrepanos, beb.parantes]) {
+    assert.ok(l.every((x) => x >= 0 && x <= 1), "una guía fuera de la cara");
+    assert.deepEqual(l, [...l].sort((a, b) => a - b), "guías desordenadas");
+  }
+  assert.deepEqual(S.guiasDeCara({ type: "nevera_puertas", w: 1.4, d: 0.74, h: 2.1 }, "B"), { entrepanos: [], parantes: [] });
+});
+
+await prueba("cada exclusión que emiten las recetas tiene nombre en el lienzo (`NOMBRES_DE_EXCLUSION`)", () => {
+  const lienzo = leer(join(raiz, "src", "components", "Distribucion", "LienzoDeZonas.tsx"));
+  const m = /const NOMBRES_DE_EXCLUSION: Record<string, string> = \{([\s\S]*?)\};/.exec(lienzo);
+  assert.ok(m, "no encontré `NOMBRES_DE_EXCLUSION` en LienzoDeZonas.tsx");
+  const nombres = new Set([...m[1].matchAll(/(\w+):\s*"/g)].map((x) => x[1]));
+  const por = new Set();
+  for (const c of CASOS.casos) if (c.superficie && typeof c.superficie === "object") for (const e of c.superficie.exclusiones) por.add(e.por);
+  for (const f of [...medidas, ...medidasDeNevera]) for (const e of S.superficieDeCara(f, "A")?.exclusiones ?? []) por.add(e.por);
+  for (const p of ["costado", "montante", "marco", "zocalo", "copete"]) assert.ok(por.has(p), `ninguna receta emite «${p}»: la prueba no prueba nada`);
+  for (const p of por) assert.ok(nombres.has(p), `la exclusión «${p}» no tiene nombre en el lienzo (se vería «${p}: no se vende»)`);
+});
+
 await prueba("el robatope dibuja en el marco girado de sus repisas: con el plano sin girar, las repisas lo atravesarían", () => {
   const f = { type: "robatope", w: 0.3, d: 0.4, h: 1.6 };
   const s = S.superficieDeCara(f, "A");
@@ -567,6 +791,11 @@ const CARAS_3D = [
   ["ristra", { type: "ristra", w: 0.4, d: 0.4, h: 1.6 }, "A"],
   ["metro (desde arriba)", { type: "metro", w: 1.2, d: 0.8, h: 0.05 }, "A"],
 ];
+// fase 2 · I3: una nevera de cada clase (de frente, sin giro, una sola cara).
+CARAS_3D.push(
+  ["nevera de puertas", { type: "nevera_puertas", w: 1.4, d: 0.74, h: 2.1, partes: { puertas: 2, division: "participacion" } }, "A"],
+  ["nevera de bebidas por tramos", { type: "nevera_refrescos", w: 1.2, d: 0.75, h: 1.8, partes: { tramos: 3, division: "participacion" } }, "A"],
+);
 let sem3 = 4242;
 const az3 = () => ((sem3 = (sem3 * 16807) % 2147483647) / 2147483647);
 const cerca3 = ([a, b, c], [x, y, z], tol, quien) => assert.ok(Math.abs(a - x) <= tol && Math.abs(b - y) <= tol && Math.abs(c - z) <= tol,
