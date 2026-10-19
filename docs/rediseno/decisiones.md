@@ -33,3 +33,9 @@ Dibujo: `docs/maquetas/rediseno-2026-10/plano.html`.
   reserva: así el área comercial siempre pasa por Supervisar una vez que el contrato existe.
   Vender pierde el campo de planometría y la opción del visor 3D de usar la lámina como
   planometría (la lámina se sigue pudiendo armar para el proveedor).
+
+## Supervisar (PR 2), 2026-10-20
+- **«Falta planometría»** en «Para revisar»: los contratos con montaje próximo que todavía no
+  tienen planometría cargada.
+- **El correo de montaje espera a la planometría**: sale cuando está cargada (y, en un contrato
+  por porcentaje de cara, además, cuando la distribución está confirmada).
