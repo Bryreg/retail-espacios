@@ -311,6 +311,15 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
+### Lo que sigue: el rediseño para vender más (2026-10-19)
+
+**Empezá por `README.md` → «Rediseño: vender más y más fácil».** El dueño
+mandó tres maquetas (Vender, Supervisar, Plano) y el objetivo: vender más y más
+fácil (porcentajes y puntas desde Vender, contratos más simples) con un diseño
+premium, minimalista y limpio, sin sacar información. Ahí están las decisiones,
+las maquetas descritas, lo que se respeta, el PR #83 descartado y el paso donde
+se retoma (la hoja de íconos y piezas). Todavía no hay código.
+
 ### Lo que sigue de las participaciones de cara (2026-10-19)
 
 Lo hecho está en *Participaciones de cara y zonas (2026-10-17)* y *Participaciones de cara,
