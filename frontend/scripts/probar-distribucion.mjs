@@ -1358,6 +1358,55 @@ await prueba("el formulario frena antes de mandar lo que el servidor rechazaría
   assert.equal(F.valorDeTexto("-5"), null);
 });
 
+// fase 2 · I6 — G3: la caducidad de una reserva provisional la elige quien
+// opera (decisión de la dueña, 2026-10-18: «hasta una fecha límite elegida por
+// quien esté manejando el sistema»). Sin tope fijo —el servidor ya exige
+// `hoy ≤ caduca ≤ hasta`— y sin un valor propuesto: antes el formulario
+// precargaba «hoy + 7» y la decidía por él.
+await prueba("la caducidad de una reserva la elige quien opera: el formulario no la propone en ningún modo y sin ella no se guarda (ejecutado)", () => {
+  const F = P6.FORM;
+  const hoy = "2026-10-17";
+  const ELEGI = "Elegí hasta cuándo se sostiene la reserva.";
+  const RANGO = "La reserva tiene que caducar entre hoy y el último día que reserva.";
+  const reserva = { tipo: "reserva", proveedor: "Postobón", correo: "", marca: "", porcentaje: "25", desde: "2026-10-17", hasta: "2026-12-31",
+    caduca: "", valor: "", notas: "" };
+  // Sin elegir, frena con su frase, en todos los modos que dejan una reserva.
+  assert.equal(F.problemaDeLosCampos("alta", reserva, hoy), ELEGI);
+  assert.equal(F.problemaDeLosCampos("cargarDeNuevo", reserva, hoy), ELEGI);
+  assert.equal(F.problemaDeLosCampos("renovar", reserva, hoy), ELEGI);
+  assert.equal(F.problemaDeLosCampos("editar", { ...reserva, tipo: "contrato" }, hoy), ELEGI, "cambiar una reserva siempre deja una reserva");
+  // La vista previa dice lo mismo, y por eso «Guardar» queda frenado.
+  const v = F.vistaPrevia("alta", reserva, caraOut(), null, null, "A");
+  assert.equal(v.problema, ELEGI);
+  assert.equal(F.fraseDeLaVistaPrevia(v), ELEGI);
+  // Un contrato no tiene caducidad: vacía no frena.
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, tipo: "contrato", valor: "900.000" }, hoy), null, "un contrato con `caduca: \"\"` se frenó");
+  assert.equal(F.problemaDeLosCampos("confirmar", { ...reserva, valor: "900.000" }, hoy), null);
+  // Elegida, entra: sin tope fijo, hasta el último día que reserva. Las frases de rango no cambian.
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: hoy }, hoy), null);
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2026-12-31" }, hoy), null, "se le puso un tope que la dueña no pidió");
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2027-01-01" }, hoy), RANGO);
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2026-10-16" }, hoy), RANGO);
+  // Ningún modo la trae escrita: ni el alta, ni «Cargar de nuevo», ni renovar,
+  // ni cambiar una reserva que no tenía (la que ya tenía, ésa).
+  assert.equal(F.camposIniciales("alta", null, null, hoy).caduca, "");
+  const vieja = pOut([tOut({ estado: "contrato", desde: "2026-01-01", hasta: "2026-06-30" })]);
+  for (const modo of ["cargarDeNuevo", "renovar", "confirmar"]) {
+    assert.equal(F.camposIniciales(modo, vieja.terminos[0], vieja, hoy).caduca, "", `«${modo}» propone una caducidad`);
+  }
+  const res = pOut([tOut({ estado: "reserva", estado_visible: "reserva", lease_id: null, valor_mensual: null, caduca: "2026-10-25", desde: "2026-10-17", hasta: "2026-12-31" })]);
+  assert.equal(F.camposIniciales("editar", res.terminos[0], res, hoy).caduca, "2026-10-25", "cambiar una reserva perdió la caducidad que tenía");
+  const sinCaduca = pOut([tOut({ estado: "reserva", estado_visible: "reserva", lease_id: null, valor_mensual: null, caduca: null, desde: "2026-10-17", hasta: "2026-12-31" })]);
+  assert.equal(F.camposIniciales("editar", sinCaduca.terminos[0], sinCaduca, hoy).caduca, "");
+  // En la fuente: ninguna caducidad calculada, y el campo con su rango.
+  const form = codigo6b("FormularioDeParticipacion");
+  assert.doesNotMatch(form, /caduca: sumarDias\(/, "el formulario volvió a proponer la caducidad");
+  assert.doesNotMatch(form, /caduca \?\? sumarDias\(/);
+  assert.match(form, /<input id="part-caduca" type="date" className=\{CAMPO\} value=\{c\.caduca\} min=\{hoy\} max=\{c\.hasta \|\| undefined\}/,
+    "el campo de la caducidad no ofrece sólo entre hoy y el último día que reserva");
+  assert.match(form, /if \(!c\.caduca\) return "Elegí hasta cuándo se sostiene la reserva\.";/);
+});
+
 // ── Verificación del paso 6b ─────────────────────────────────────────────────
 
 await prueba("teclado (verificación 6b): desde el PANEL andan V/R/P/G, deshacer y Esc —clic en la fila de la leyenda y R—; Supr, flechas y Enter siguen siendo sólo del lienzo", () => {
@@ -1555,7 +1604,7 @@ await prueba("la fila de la leyenda: dos botones hermanos (elegir y acciones), n
     "las acciones no son el botón hermano que sigue");
 });
 
-await prueba("«Borrar sede» y el renombre nombran las reservas provisionales que se cancelan (ejecutado)", () => {
+await prueba("«Borrar sede» nombra las reservas provisionales que se cancelan; el renombre dice adónde van (ejecutado)", () => {
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
     "2 contratos activos se cerrarán", "3 reservas provisionales de participación se cancelan"]);
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 1, reservas_vivas: 1 }), [
@@ -1563,10 +1612,14 @@ await prueba("«Borrar sede» y el renombre nombran las reservas provisionales q
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 0, reservas_vivas: 0 }), []);
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 0 }), [], "un servidor viejo sin `reservas_vivas`");
   // El renombre: sin nada comercial, sin pregunta; con algo, lo dice; sin saberlo, avisa igual.
+  // fase 2 · I5: el renombre ya no borra la sede (era «borrar + crear»): el
+  // aviso dice adónde va lo vendido, nunca que se pierde. Las guardas que
+  // exigen que no se pierda nada están en el bloque «fase 2 · I5» de abajo.
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 0 }), null);
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 2 }),
-    "Renombrar «NAVE» a «NAVE NORTE» borra la sede y la vuelve a crear con el nombre nuevo: 2 reservas provisionales de participación se cancelan. No se puede deshacer.");
-  assert.match(IMP.avisoDelRenombre("NAVE", "X", null), /No se pudo saber cuántos hay\.$/);
+    "Las 2 reservas provisionales de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
+  assert.equal(IMP.avisoDelRenombre("NAVE", "X", null),
+    "Los contratos y las reservas provisionales de participación de «NAVE», si tiene, pasan a «X». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
   // El tipo del cliente lleva el dato del servidor, y el diálogo lo muestra.
   assert.match(fuente("api/layout.ts"), /export interface DeleteImpact \{[^}]*reservas_vivas: number;/);
   const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
@@ -1587,6 +1640,151 @@ await prueba("«Borrar sede» y el renombre nombran las reservas provisionales q
   assert.equal((plano.match(/renameSede\(sede, n\)/g) || []).length, 0, "el campo de la sede renombra sin avisar");
   assert.equal((plano.match(/void pedirRenombre\(normalizeSede\(editingSedeVal\)\)/g) || []).length, 2);
   assert.match(plano, /<RenombrarSedeDialog[\s\S]{0,300}renameSede\(de, a\);/, "«Renombrar igual» no renombra");
+});
+
+// fase 2 · I5 — Renombrar una sede ya no la borra. Era «borrar + crear»:
+// `renameSede` movía la clave local y mandaba `deleteLayout` del nombre viejo,
+// y el archivo de la sede cerraba los contratos, cancelaba las reservas de
+// participación y archivaba los montajes. Ahora el renombre es del servidor
+// (`POST /layout/{sede}/renombrar`, una transacción) y lo vendido sigue vivo.
+// Estas guardas REEMPLAZAN a las que pedían el aviso «borra la sede y la
+// vuelve a crear» (arriba) y son más estrictas: `renameSede` no puede llamar a
+// `deleteLayout`, el renombre pasa por `renombrarSede` de `api/layout.ts`, y
+// lo que se dice antes de renombrar no dice «borra», «se cancelan» ni «No se
+// puede deshacer» con ningún impacto.
+await prueba("fase 2 · I5: el renombre no borra la sede: sin `deleteLayout` en `renameSede`, por `renombrarSede` de api/, y nada dice que se pierde", () => {
+  const store = sinComentTs2(fuente("store/fixtureStore.ts"));
+  const i = store.indexOf("renameSede: async (oldName, rawNewName) => {");
+  assert.ok(i >= 0, "renameSede dejó de ser async: el renombre volvió a ser local");
+  const cuerpo = store.slice(i, store.indexOf("removeSede: async", i));
+  assert.ok(cuerpo.length > 0 && !/deleteLayout/.test(cuerpo), "renameSede vuelve a borrar la sede en el servidor");
+  assert.match(cuerpo, /servidorDeSedes\.renombrarSede\(oldName, newName, get\(\)\.serverRev\[oldName\] \?\? null\)/,
+    "renameSede no le pide el renombre al servidor con la revisión que tiene");
+  // Lo que pasa en el store después: sin borrar ni volver a subir nada.
+  const k = store.indexOf("function sedeMudada(");
+  assert.ok(k >= 0, "no está sedeMudada");
+  const mudada = store.slice(k, store.indexOf("export const useFixtureStore", k));
+  assert.ok(!/deleteLayout|scheduleSave\(|dirty\[newName\] = true/.test(mudada), "adoptar el renombre borra o vuelve a subir el plano");
+  const api = sinComentTs2(fuente("api/layout.ts"));
+  assert.match(api, /export const renombrarSede = \([\s\S]{0,200}?client\s*\.post\(`\/layout\/\$\{encodeURIComponent\(sede\)\}\/renombrar`, \{\s*nuevo,\s*base_updated_at: baseUpdatedAt \?\? null,\s*\}\)/,
+    "renombrarSede no llama a POST /layout/{sede}/renombrar con el nombre nuevo y la revisión");
+  // Lo que se dice antes: adónde va lo vendido, con cualquier impacto (también sin saberlo).
+  for (const impacto of [null, { spaces: 3, active_leases: 2, reservas_vivas: 1 }, { spaces: 1, active_leases: 1, reservas_vivas: 0 },
+    { spaces: 2, active_leases: 0, reservas_vivas: 3 }, { spaces: 2, active_leases: 4 }]) {
+    const t = IMP.avisoDelRenombre("NAVE", "NAVE NORTE", impacto);
+    assert.ok(typeof t === "string" && !/borra|se cancela|se cierra|cerrar|deshacer|vuelve a crear/i.test(t),
+      `el aviso del renombre dice que se pierde algo: «${t}»`);
+    assert.ok(t.endsWith(IMP.SIGUEN_LOS_ENLACES), `el aviso no dice que los enlaces de montaje siguen andando: «${t}»`);
+  }
+  assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 2, reservas_vivas: 1 }),
+    "Los 2 contratos activos y la reserva provisional de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
+  assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 1, active_leases: 1, reservas_vivas: 0 }),
+    "El contrato activo de «NAVE» pasa a «NAVE NORTE». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
+  // «Borrar sede» sigue diciendo lo que se pierde: esa mitad no cambia.
+  assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
+    "2 contratos activos se cerrarán", "3 reservas provisionales de participación se cancelan"]);
+  // El diálogo del 2D: sin «borra», «se cancelan», «Renombrar igual» ni el botón rojo de peligro.
+  const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
+  const a = plano.indexOf("function RenombrarSedeDialog("), b = plano.indexOf("function RenombreRechazadoDialog(");
+  assert.ok(a >= 0 && b > a, "no están los dos diálogos del renombre");
+  assert.ok(!/borra|se cancelan|Renombrar igual|deshacer|var\(--danger\)/.test(plano.slice(a, b)),
+    "el diálogo del renombre todavía dice que se pierde algo");
+  // Se espera al servidor; si se niega, se dice por qué con sus motivos y la sede queda como estaba.
+  assert.equal((plano.match(/const hecho = await renameSede\((viejo, nuevo|de, a)\);\s*trasElRenombre\(/g) || []).length, 2,
+    "un renombre que no espera la respuesta del servidor");
+  assert.match(plano, /function trasElRenombre\(de: string, a: string, hecho: \{ ok: boolean; error\?: string; motivos\?: string\[\] \}\) \{\s*if \(hecho\.ok\) \{\s*setRenombreFallido\(null\);\s*setSede\(a\);\s*return;\s*\}/,
+    "el lienzo cambia de sede aunque el servidor no haya renombrado");
+  assert.match(plano, /\{renombreFallido && \(\s*<RenombreRechazadoDialog \{\.\.\.renombreFallido\} onCerrar=\{\(\) => setRenombreFallido\(null\)\} \/>/);
+  assert.match(plano.slice(b, b + 4000), /\{motivos\.map\(\(m\) => <li key=\{m\}>\{m\}<\/li>\)\}/, "el rechazo no muestra sus motivos");
+  // La «Sede» del panel del mueble es de sólo lectura (V16): el plano define la sede.
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("));
+  const sede = panel.slice(panel.indexOf('<Field label="Sede"'), panel.indexOf("</Field>", panel.indexOf('<Field label="Sede"')));
+  // Lo único que puede escribir es la sede DEL PLANO (`onUpdate({ sede })`, el
+  // arreglo de un mueble viejo que guardó otra), sólo en edición y para quien
+  // administra, y diciendo antes que lo vendido con el código viejo no se muda.
+  assert.ok(sede.length > 0 && !/<select/.test(sede), "la «Sede» del panel 2D vuelve a tener un selector");
+  assert.deepEqual(sede.match(/onUpdate\([^)]*\)/g) ?? [], ["onUpdate({ sede })"],
+    "la «Sede» del panel 2D le escribe al mueble otra cosa que la sede del plano");
+  assert.match(sede, /\{editMode && isAdmin && \(\s*<button type="button" data-usar-sede-del-plano onClick=\{\(\) => onUpdate\(\{ sede \}\)\}/);
+  assert.match(sede, /sus espacios se arman como\s+«\{fullCode\}»[\s\S]{0,80}no se muda solo/,
+    "el aviso de la sede ajena vuelve a decir que vale la del plano (los espacios se arman con la suya)");
+  assert.ok(!/vale «\{sede\}»/.test(sede), "el aviso de la sede ajena promete que vale la del plano");
+  assert.match(sede, /<p data-sede-del-plano[^>]*>\{sede\}<\/p>/);
+});
+
+await prueba("fase 2 · I5: renombrar una sede es UN pedido al servidor —ningún DELETE—; se adopta lo que contesta y, si se niega, no cambia nada (ejecutado)", async () => {
+  const st = () => S.useFixtureStore.getState();
+  const REV = "2026-10-17T15:00:00+00:00", REV2 = "2026-10-17T15:05:00+00:00", AJUSTES2 = "2026-10-17T15:05:00.500000+00:00";
+  const plano = [{ id: "f-1", code: "GON-01", sede: "NAVE", type: "gondola", gondolaType: "double", cx: 2, cz: 2, rotY: 0, w: 0.9, d: 0.9, h: 1.8 }];
+  const antes = {
+    sedes: S.useFixtureStore.getState().sedes, sede: st().sede, fixturesBySede: st().fixturesBySede, serverRev: st().serverRev,
+    dirty: st().dirty, conflicts: st().conflicts, rechazos: st().rechazos, settingsRev: st().settingsRev, referenceRates: st().referenceRates,
+  };
+  S.useAuthStore.getState().setAuth("t-sede", "admin", "galerias");
+  S.useFixtureStore.setState({
+    sedes: ["NAVE", "SUR"], sede: "NAVE", fixturesBySede: { NAVE: plano, SUR: [] }, serverRev: { NAVE: REV, SUR: REV },
+    dirty: {}, conflicts: {}, rechazos: {}, settingsRev: "s1", referenceRates: { default: {}, by_sede: { NAVE: { gondola: 900000 } } },
+  });
+  try {
+    // 1 · El servidor renombra: un POST con el nombre nuevo y la revisión, ningún DELETE.
+    servidor.pedidos = [];
+    servidor.responder = async (cfg) => (cfg.method === "post" && cfg.url === "/layout/NAVE/renombrar"
+      ? { sede: "NAVE NORTE", fixtures: plano.map((f) => ({ ...f, sede: "NAVE NORTE" })), updated_at: REV2,
+          settings_updated_at: AJUSTES2, espacios: 3, contratos: 1, montajes: 0, avisos: [] }
+      : {});
+    assert.deepEqual(await st().renameSede("NAVE", " nave norte "), { ok: true });
+    await esperar(5); // el `refrescarComercial` que sale después
+    assert.deepEqual(servidor.pedidos.filter((p) => p.method === "delete"), [], "el renombre borró la sede en el servidor");
+    const posts = servidor.pedidos.filter((p) => p.method === "post");
+    assert.deepEqual(posts.map((p) => [p.url, p.data]), [["/layout/NAVE/renombrar", { nuevo: "NAVE NORTE", base_updated_at: REV }]]);
+    assert.deepEqual(st().sedes, ["NAVE NORTE", "SUR"]);
+    assert.equal(st().sede, "NAVE NORTE");
+    assert.ok(!("NAVE" in st().fixturesBySede) && !("NAVE" in st().serverRev), "quedó la sede vieja en el store");
+    assert.deepEqual(st().fixturesBySede["NAVE NORTE"].map((f) => [f.code, f.sede]), [["GON-01", "NAVE NORTE"]]);
+    assert.equal(st().serverRev["NAVE NORTE"], REV2, "no adoptó la revisión que contestó el servidor");
+    assert.equal(st().settingsRev, AJUSTES2, "no adoptó la revisión nueva de la lista de sedes");
+    assert.ok(!st().dirty["NAVE NORTE"], "el plano renombrado quedó para volver a subir");
+    assert.deepEqual(st().referenceRates.by_sede, { "NAVE NORTE": { gondola: 900000 } }, "las tarifas quedaron con el nombre viejo");
+
+    // 2 · El servidor se niega: nada cambia, ni acá ni allá, y se dice por qué.
+    const MOTIVO = "«SUR NORTE-GON-01» ya es el código del espacio #9, que no es de «NAVE NORTE»: archivalo o cambiale el código antes de renombrar.";
+    servidor.pedidos = [];
+    servidor.responder = async (cfg) => {
+      if (cfg.method === "post" && cfg.url.endsWith("/renombrar")) {
+        throw rechazo(409, { detail: { code: "renombre_bloqueado", message: "No se puede renombrar «NAVE NORTE» a «SUR NORTE» sin romper algo.", motivos: [MOTIVO] } });
+      }
+      return {};
+    };
+    const foto = () => JSON.stringify([st().sedes, st().sede, st().fixturesBySede, st().serverRev, st().settingsRev, st().referenceRates]);
+    const quieto = foto();
+    const r = await st().renameSede("NAVE NORTE", "sur norte");
+    assert.deepEqual(r, { ok: false, error: "No se puede renombrar «NAVE NORTE» a «SUR NORTE» sin romper algo.", motivos: [MOTIVO] });
+    assert.equal(foto(), quieto, "un renombre rechazado cambió el store");
+    assert.deepEqual(servidor.pedidos.filter((p) => p.method === "delete"), []);
+    assert.ok(servidor.pedidos.some((p) => p.method === "post" && p.url === "/layout/NAVE%20NORTE/renombrar"), "no le pidió el renombre al servidor");
+
+    // 3 · Un nombre que ya existe ni se pregunta; con cambios sin guardar, tampoco.
+    servidor.pedidos = [];
+    assert.deepEqual(await st().renameSede("NAVE NORTE", "sur"), { ok: false, error: "Ya hay una sede «SUR»: elegí otro nombre." });
+    S.useFixtureStore.setState({ conflicts: { "NAVE NORTE": true } });
+    const conCambios = await st().renameSede("NAVE NORTE", "OESTE");
+    assert.equal(conCambios.ok, false);
+    assert.match(conCambios.error, /tiene cambios que el servidor todavía no guardó/);
+    S.useFixtureStore.setState({ conflicts: {} });
+    assert.deepEqual(servidor.pedidos.filter((p) => p.url.endsWith("/renombrar")), [], "pidió el renombre con cambios sin guardar");
+    assert.equal(foto(), quieto);
+
+    // 4 · Sin permiso de escritura no hay servidor que renombre: sólo acá, y sin pedidos.
+    S.useAuthStore.getState().setAuth("t-sede-w", "worker", "galerias");
+    servidor.pedidos = [];
+    assert.deepEqual(await st().renameSede("NAVE NORTE", "OESTE"), { ok: true });
+    assert.deepEqual(servidor.pedidos.filter((p) => p.method !== "get"), [], "una sesión que no escribe le pidió algo al servidor");
+    assert.deepEqual(st().sedes, ["OESTE", "SUR"]);
+    assert.deepEqual(st().fixturesBySede.OESTE.map((f) => f.sede), ["OESTE"]);
+  } finally {
+    S.useAuthStore.getState().setAuth("t-sede", "admin", "galerias");
+    S.useFixtureStore.setState(antes);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1905,6 +2103,735 @@ await prueba("historial: la fecha se escribe igual en las reales y en las deriva
   } finally {
     if (tzAntes === undefined) delete process.env.TZ; else process.env.TZ = tzAntes;
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I1 · «COPIAR ZONAS DE OTRA CARA» (pedido §17, D20, Caso F)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Lo pegado se guarda enseguida por el borrador de siempre, como la persona,
+// con `origen` (sólo historial y bitácora). Si ese guardado no sale (red, 409),
+// el origen viaja con el próximo guardado que lleve alguna zona pegada —el
+// autoguardado después de «Traer lo nuevo», el de red al cambiar de cara o
+// salir, «Recuperar», el que hace confirmar antes de confirmar—, y nunca si la
+// copia se deshizo. Confirmar no cambia: ni su cuerpo ni su ruta. La cuenta de
+// la copia (pura) la prueba `probar-zonas.mjs`.
+
+console.log("distribución · copiar zonas de otra cara (fase 2 · I1)");
+
+// `copiaALaVista` es pura (lee el estado que se le pasa): se usa con el estado del store de `S`.
+const rSC = await build({
+  stdin: { contents: 'export { copiaALaVista } from "./src/store/distribucionStore.ts";', resolveDir: raiz, loader: "ts" },
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+  plugins: [{
+    name: "sin-red",
+    setup(b) {
+      b.onResolve({ filter: /^axios$/ }, () => ({ path: "axios", namespace: "falso" }));
+      b.onLoad({ filter: /^axios$/, namespace: "falso" }, () => ({ contents: AXIOS_FALSO, loader: "js" }));
+      b.onResolve({ filter: /api[\\/]firebase$/ }, (a) => ({ path: a.path, namespace: "firebase-falso" }));
+      b.onLoad({ filter: /.*/, namespace: "firebase-falso" }, () => ({ contents: "export const signOutFirebase = async () => {};", loader: "js" }));
+    },
+  }],
+});
+const dirSC = mkdtempSync(join(tmpdir(), "distribucion-copia-"));
+writeFileSync(join(dirSC, "c.mjs"), rSC.outputFiles[0].text);
+const SC = await import(pathToFileURL(join(dirSC, "c.mjs")).href);
+rmSync(dirSC, { recursive: true, force: true });
+
+const ORIGEN_COPIA = { sede: "NAVE", espacio: "GON-01-B", capa: "confirmada", version: 3, espejo: false, mapa: [{ origen: 1, destino: 1 }], sin_copiar: 0 };
+const PEGADA = { participacionSpaceId: 812, vertices: cuadradoZ(0.5, 0.2, 0.7, 0.6) };
+const ROTULO = "NAVE · GON-01 · cara B";
+const escriturasDeBorrador = () => servidor.pedidos.filter((p) => p.url === "/participaciones/distribucion/borrador");
+/** El servidor de borradores con su versión, que tira los PUT del borrador mientras `cae()` diga que sí. */
+const servidorQueCae = (inicial, cae) => {
+  const s = servidorConVersion(inicial);
+  const bien = servidor.responder;
+  servidor.responder = async (cfg) => {
+    if (cfg.url === "/participaciones/distribucion/borrador" && cae()) throw rechazo(503, { detail: "Servicio no disponible" });
+    return bien(cfg);
+  };
+  return s;
+};
+
+await prueba("pegar una copia: UN paso de deshacer y un PUT del borrador como la persona, con el origen; el autoguardado de después ya no lo declara; Ctrl+Z saca la franja (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-1", "admin", "galerias");
+  await conRelojFalso(async () => {
+    servidorConVersion(4);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    servidor.pedidos = [];
+    const antes = D().edicion;
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), true);
+    assert.equal(escriturasDeBorrador().length, 1);
+    const [put] = escriturasDeBorrador();
+    assert.deepEqual([put.data.version, put.data.automatico, put.data.origen], [4, false, ORIGEN_COPIA]);
+    assert.deepEqual(put.data.zonas, [{ participacion_space_id: 812, vertices: cuadradoZ(0.5, 0.2, 0.7, 0.6) }]);
+    assert.deepEqual(D().edicion.zonas.map((z) => z.clave), [`n${antes.proxima}`]);
+    assert.equal(D().edicion.atras.length, antes.atras.length + 1, "pegar no fue UN paso de deshacer");
+    assert.deepEqual([D().copia.cara, D().copia.rotulo, D().copia.claves, D().copia.declarada],
+      ["galerias|NAVE|f-1|A", ROTULO, [`n${antes.proxima}`], true]);
+    assert.equal(SC.copiaALaVista(D()), D().copia, "la franja de la copia no está a la vista");
+    assert.equal(D().edicion.sucio, false);
+    // Se sigue dibujando: el autoguardado sale como siempre, sin origen (la copia ya quedó en el historial).
+    dibujar(812, 0.1, 0.1, 0.2, 0.2);
+    relojes.filter((r) => r.vivo).at(-1).f();
+    await esperar(20);
+    assert.equal(escriturasDeBorrador().length, 2);
+    const auto = escriturasDeBorrador().at(-1);
+    assert.equal(auto.data.automatico, true);
+    assert.ok(!("origen" in auto.data), "el autoguardado volvió a declarar la copia");
+    // Ctrl+Z hasta sacar lo pegado: la franja se va (y vuelve con Ctrl+Y).
+    D().despachar({ tipo: "deshacer" });
+    assert.ok(SC.copiaALaVista(D()));
+    D().despachar({ tipo: "deshacer" });
+    assert.equal(SC.copiaALaVista(D()), null, "la franja de la copia quedó después de deshacerla");
+    D().despachar({ tipo: "rehacer" });
+    assert.ok(SC.copiaALaVista(D()));
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("una copia que no se pudo guardar y se deshizo no se declara con el próximo guardado; en «Mirar» no se pega nada (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-2", "admin", "galerias");
+  await conRelojFalso(async () => {
+    let cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    servidor.pedidos = [];
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(D().guardado.estado, "error");
+    assert.deepEqual(escriturasDeBorrador()[0].data.origen, ORIGEN_COPIA, "el primer intento no llevó el origen");
+    assert.equal(D().copia.declarada, false);
+    assert.equal(D().edicion.zonas.length, 1, "lo pegado se fue del lienzo cuando el guardado falló");
+    assert.ok(SC.copiaALaVista(D()), "lo pegado y no guardado no se dice en la franja");
+    // Ctrl+Z antes de que llegue al servidor: el próximo guardado no la declara.
+    D().despachar({ tipo: "deshacer" });
+    dibujar(812, 0.1, 0.1, 0.2, 0.2);
+    cae = false;
+    servidor.pedidos = [];
+    assert.equal(await D().guardarBorrador(), true);
+    const [put] = escriturasDeBorrador();
+    assert.equal(put.data.automatico, false);
+    assert.ok(!("origen" in put.data), "se declaró una copia que se había deshecho");
+    // En «Mirar» no se pega (ni se escribe nada).
+    D().despachar({ tipo: "elegirModo", modo: "mirar" });
+    servidor.pedidos = [];
+    const quieta = D().edicion;
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(D().edicion, quieta, "se pegó en «Mirar»");
+    assert.deepEqual(servidor.pedidos, []);
+    D().despachar({ tipo: "elegirModo", modo: "editar" });
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("pegar con un 409 version_vieja → «Traer lo nuevo» (lo pegado es «lo mío») → el autoguardado siguiente lleva el origen, como la persona (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-3", "admin", "galerias");
+  await conRelojFalso(async () => {
+    const base = [zo(1, 813, cuadradoZ(0.1, 0.6, 0.2, 0.7))];
+    await entrarA(caraOut({ distribucion: distribucion(4, base) }));
+    servidor.pedidos = [];
+    servidor.responder = async (cfg) => {
+      if (cfg.url === "/participaciones/distribucion/borrador") {
+        throw rechazo(409, { detail: { code: "version_vieja", message: "Otra sesión cambió esta distribución mientras la editabas.", version_actual: 5 } });
+      }
+      return {};
+    };
+    assert.equal(await D().pegarCopia({ quedan: D().edicion.zonas, nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(D().guardado.estado, "version_vieja");
+    // El autoguardado espera a «Traer lo nuevo», como siempre.
+    assert.equal(await D().guardarBorrador(true), false);
+    assert.equal(escriturasDeBorrador().length, 1);
+    // La otra sesión agregó una zona de la 814: se combina por participación y lo pegado (de la 812) queda.
+    const suyas = [...base, zo(2, 814, cuadradoZ(0.8, 0.8, 0.9, 0.9), 1)];
+    servidor.responder = async (cfg) => (cfg.url === "/participaciones/cara"
+      ? caraOut({ distribucion: distribucion(5, suyas) })
+      : { version: 6, distribucion: distribucion(6, suyas, cfg.data.zonas.map((z, i) => zo(60 + i, z.participacion_space_id, z.vertices, i))),
+        participaciones: [], revision: { capa: "borrador", errores: [], avisos: [] } });
+    await D().traerLoNuevo();
+    assert.deepEqual(D().edicion.zonas.map((z) => z.participacionSpaceId).sort((a, b) => a - b), [812, 813, 814]);
+    assert.ok(SC.copiaALaVista(D()), "la fusión se llevó lo pegado (o su clave)");
+    servidor.pedidos = [];
+    relojes.filter((r) => r.vivo).at(-1).f();
+    await esperar(20);
+    const [put] = escriturasDeBorrador();
+    assert.ok(put, "no salió el autoguardado después de traer lo nuevo");
+    assert.deepEqual([put.data.version, put.data.automatico, put.data.origen], [5, false, ORIGEN_COPIA]);
+    assert.equal(D().copia.declarada, true);
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("confirmar con una copia que no llegó al servidor: primero el borrador con el origen y después confirmar (con su cuerpo de siempre); si el borrador no sale, no se confirma (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-4", "admin", "galerias");
+  await conRelojFalso(async () => {
+    let cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    servidor.pedidos = [];
+    await D().confirmar();
+    assert.deepEqual(servidor.pedidos.map((p) => p.url.split("/").at(-1)), ["borrador"], "se confirmó sin haber guardado antes la copia");
+    assert.equal(D().copia.declarada, false);
+    cae = false;
+    servidor.pedidos = [];
+    await D().confirmar();
+    assert.deepEqual(servidor.pedidos.map((p) => [p.url.split("/").at(-1), p.data.version]), [["borrador", 4], ["confirmar", 5]]);
+    assert.deepEqual([servidor.pedidos[0].data.automatico, servidor.pedidos[0].data.origen], [false, ORIGEN_COPIA]);
+    assert.ok(!("origen" in servidor.pedidos[1].data) && !("automatico" in servidor.pedidos[1].data), "el cuerpo de confirmar cambió");
+    assert.equal(D().copia, null, "la copia siguió pendiente después de confirmar");
+    assert.equal(SC.copiaALaVista(D()), null);
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("cambiar de cara con una copia sin guardar: el guardado de red lleva el origen y la otra cara empieza sin copia; salir: queda en memoria y «Recuperar» la trae (ejecutado)", async () => {
+  D().reiniciar();
+  S.useAuthStore.getState().setAuth("t-copia-5", "admin", "galerias");
+  await conRelojFalso(async () => {
+    let cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    cae = false;
+    servidor.pedidos = [];
+    assert.equal(await D().cambiarCara("B"), true);
+    const [put] = escriturasDeBorrador();
+    assert.deepEqual([put.data.espacio, put.data.automatico, put.data.origen], ["GON-01", false, ORIGEN_COPIA]);
+    assert.equal(D().activa.cara, "B");
+    assert.equal(D().copia, null, "la copia de la cara A siguió en la B");
+    await D().salir({ forzado: true, descartar: true });
+
+    // Salir con el guardado cayéndose: lo no guardado se queda en memoria con su copia, y «Recuperar» la trae.
+    D().reiniciar();
+    S.useAuthStore.getState().setAuth("t-copia-6", "admin", "galerias");
+    cae = true;
+    servidorQueCae(4, () => cae);
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(await D().pegarCopia({ quedan: [], nuevas: [PEGADA] }, ORIGEN_COPIA, ROTULO), false);
+    assert.equal(await D().salir({ forzado: true }), true);
+    assert.deepEqual(D().sinGuardar["galerias|NAVE|f-1|A"]?.copia?.origen, ORIGEN_COPIA, "lo no guardado perdió de dónde venía la copia");
+    cae = false;
+    await D().entrar({ sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" });
+    assert.equal(D().copia, null);
+    D().recuperar();
+    assert.equal(D().copia?.declarada, false, "«Recuperar» no trajo la copia pendiente");
+    servidor.pedidos = [];
+    assert.equal(await D().guardarBorrador(true), true);
+    const [otro] = escriturasDeBorrador();
+    assert.deepEqual([otro.data.automatico, otro.data.origen], [false, ORIGEN_COPIA]);
+    await D().salir({ forzado: true, descartar: true });
+  });
+});
+
+await prueba("guardas de la copia: el diálogo con los tokens del cajón, UN botón principal y sin montos; el panel lo apaga en «Mirar» y con el plano sin guardar; pegarZonas en EDITAN; confirmar sin origen; E5a sin tipo local", () => {
+  const css = [leer(join(raiz, "src", "tema.css")), leer(join(raiz, "src", "index.css"))].join("\n");
+  const crudo = fuente(`${DIST}/CopiarZonas.tsx`), t = sinComentTs2(crudo);
+  assert.equal((crudo.match(/["'\s`]btn-principal["'\s`]/g) || []).length, 1, "CopiarZonas tiene que tener UN botón principal («Copiar como borrador»)");
+  assert.match(crudo, /className="btn-principal[^"]*"[\s\S]{0,260}Copiar como borrador/);
+  for (const m of t.matchAll(/var\(\s*(--[\w-]+)\s*[,)]/g)) assert.ok(new RegExp(`${m[1]}\\s*:`).test(css), `CopiarZonas: ${m[1]} no existe en el tema`);
+  const raiz1 = /var\(--(surface|surface-2|surface-3|ink-[1-4]|danger|warning|success|line|line-strong|accent|bg)\)/.exec(t);
+  assert.equal(raiz1, null, `CopiarZonas: ${raiz1?.[0]} se resuelve en :root (usá rgb(var(--x-rgb)))`);
+  assert.ok(!/--superficie|--tinta\b|prefers-color-scheme/.test(t), "CopiarZonas: token inventado o prefers-color-scheme");
+  assert.ok(!/localStorage|sessionStorage|indexedDB/.test(t), "CopiarZonas guarda algo en el navegador");
+  assert.ok(!/useDistribucionStore\.setState\(/.test(t), "CopiarZonas escribe el store de edición por fuera de sus acciones");
+  assert.ok(!/from\s+["'][^"']*StoreEditor3D\/StoreEditor3D["']/.test(t), "CopiarZonas importa StoreEditor3D");
+  assert.ok(!/valor_mensual|monthly_rent|negotiatedValue|sombra/i.test(crudo), "CopiarZonas nombra montos (o «sombra»)");
+  assert.match(t, /useDistribucionStore\.getState\(\)\.pegarCopia\(/, "el diálogo no pega por el store");
+  assert.match(t, /<Dialogo titulo="Copiar zonas a esta cara"/, "el diálogo no es el de siempre (role=dialog, aria-modal, Esc propio)");
+  // El panel: el botón se apaga en «Mirar», con el plano sin guardar y con lo que dice `motivoParaNoCopiar`.
+  const panel = codigo6b("PanelDeDistribucion");
+  assert.match(panel, /disabled=\{enMirar \|\| !editable \|\| motivoCopiar !== null\}[\s\S]{0,300}Copiar zonas de otra cara…/);
+  assert.match(panel, /\{copiando && <CopiarZonas caras=\{caras\} onCerrar=\{\(\) => setCopiando\(false\)\} \/>\}/);
+  assert.match(panel, /\{copiaVisible && \(/, "la franja de la copia no está en el panel");
+  // pegarZonas está entre las acciones que no hacen nada en «Mirar».
+  const ed = sinComentTs2(fuente("utils/edicionDeZonas.ts"));
+  const editan = /const EDITAN = new Set<Accion\["tipo"\]>\(\[([\s\S]*?)\]\);/.exec(ed);
+  assert.ok(editan && /"pegarZonas"/.test(editan[1]), "pegarZonas no está en EDITAN (pegaría en «Mirar»)");
+  // Confirmar no cambia: su cuerpo no lleva `origen` (una copia se guarda antes como borrador).
+  const api = sinComentTs2(fuente("api/participaciones.ts"));
+  assert.match(api, /export type ConfirmarDistribucionIn = Omit<BorradorIn, "automatico" \| "origen">;/);
+  assert.match(api, /origen\?: OrigenDeCopiaIn;/);
+  // copiaDeZonas no entra por la lista de lo que guarda en el navegador… porque no guarda nada.
+  assert.ok(!/localStorage|sessionStorage|indexedDB/.test(sinComentTs2(fuente("utils/copiaDeZonas.ts"))));
+  // E5a: el historial trae `dia` y `derivado` en su tipo; el panel ya no los agrega con un tipo local.
+  assert.match(api, /derivados: \{ en: string; dia\?: string; derivado\?: true;/);
+  assert.ok(!/HistorialOut\["derivados"\]\[number\] &/.test(fuente(`${DIST}/PanelDeDistribucion.tsx`)), "el panel sigue leyendo dia/derivado con un tipo local");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I2 · «Editar en el 3D», el trazo en el 3D y «Ajustar el borde»
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// El control del puntero del 3D (`components/Distribucion/punteroEnElMueble.ts`)
+// se EJECUTA con un contenedor y eventos de mentira: qué eventos corta (los
+// que no, los ve OrbitControls o el clic de siempre), qué acciones del
+// reductor manda y que al desengancharse no deja nada. Lo que decide sin DOM
+// (`utils/edicionEnElMueble.ts`) va con su tabla entera. Y lo que sólo se ve
+// en el navegador se fija en el código: perezoso y montado sólo con el
+// interruptor, la órbita intacta salvo el botón derecho, `Scene` sin cambios,
+// el mismo `puedeEditar` que el lienzo.
+
+console.log("distribución · fase 2 · I2: «Editar en el 3D» y «Ajustar el borde»");
+
+const rI2 = await build({
+  stdin: {
+    contents: [
+      'export * as EM from "./src/utils/edicionEnElMueble.ts";',
+      'export * as PM from "./src/components/Distribucion/punteroEnElMueble.ts";',
+      'export { useDistribucionStore } from "./src/store/distribucionStore.ts";',
+      'export { estadoInicial, reducir } from "./src/utils/edicionDeZonas.ts";',
+    ].join("\n"),
+    resolveDir: raiz, loader: "ts",
+  },
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+  plugins: [{
+    name: "sin-red",
+    setup(b) {
+      b.onResolve({ filter: /^axios$/ }, () => ({ path: "axios", namespace: "falso" }));
+      b.onLoad({ filter: /^axios$/, namespace: "falso" }, () => ({ contents: AXIOS_FALSO, loader: "js" }));
+      b.onResolve({ filter: /api[\\/]firebase$/ }, (a) => ({ path: a.path, namespace: "firebase-falso" }));
+      b.onLoad({ filter: /.*/, namespace: "firebase-falso" }, () => ({ contents: "export const signOutFirebase = async () => {};", loader: "js" }));
+    },
+  }],
+});
+const dirI2 = mkdtempSync(join(tmpdir(), "distribucion-i2-"));
+writeFileSync(join(dirI2, "i2.mjs"), rI2.outputFiles[0].text);
+const I2 = await import(pathToFileURL(join(dirI2, "i2.mjs")).href);
+rmSync(dirI2, { recursive: true, force: true });
+
+const cuadI2 = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+const zonaI2 = (clave, s, vertices) => ({ clave, participacionSpaceId: s, vertices });
+
+await prueba("qué hace el botón izquierdo en el 3D: la tabla entera (apagado, otro botón, dedo, «Mirar», otra cara, tapado, R, P, mover —la elegida gana si se pisan—, cara vacía)", () => {
+  const q = I2.EM.queHaceElBotonIzquierdo;
+  const z1 = zonaI2("z1", 7, cuadI2(0.1, 0.1, 0.5, 0.5)), z2 = zonaI2("z2", 8, cuadI2(0.3, 0.3, 0.7, 0.7));
+  const base = {
+    prendido: true, puedeEditar: true, boton: 0, tipoDePuntero: "mouse", toque: { cara: "A", u: 0.4, v: 0.4 }, tapado: false,
+    caraEditada: "A", edicion: { herramienta: "seleccionar", zonas: [z1, z2], seleccion: null },
+  };
+  // Sin nada elegido, en lo que se pisan gana la de arriba (la última).
+  assert.deepEqual(q(base), { gesto: "mover", clave: "z2" });
+  // La elegida gana si el punto cae adentro de ella.
+  assert.deepEqual(q({ ...base, edicion: { ...base.edicion, seleccion: { zona: "z1", vertice: null } } }), { gesto: "mover", clave: "z1" });
+  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.2, v: 0.2 } }), { gesto: "mover", clave: "z1" });
+  // Cara vacía con Seleccionar: nada (gira, y el clic de siempre suelta la zona).
+  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.9, v: 0.9 } }), { gesto: "nada" });
+  // Las herramientas de dibujo, en cualquier punto de la cara.
+  assert.deepEqual(q({ ...base, edicion: { ...base.edicion, herramienta: "rectangulo" } }), { gesto: "rectangulo" });
+  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.9, v: 0.9 }, edicion: { ...base.edicion, herramienta: "poligono" } }), { gesto: "poligono" });
+  // Lo que nunca es del dibujo.
+  for (const [quien, c] of [
+    ["apagado", { prendido: false }], ["botón derecho", { boton: 2 }], ["botón del medio", { boton: 1 }], ["el dedo", { tipoDePuntero: "touch" }],
+    ["sin poder editar («Mirar», el plano sin guardar)", { puedeEditar: false }], ["fuera de la cara", { toque: null }],
+    ["la otra cara", { toque: { cara: "B", u: 0.4, v: 0.4 } }], ["algo lo tapa", { tapado: true }], ["sin cara activa", { caraEditada: null }],
+  ]) {
+    for (const herramienta of ["seleccionar", "rectangulo", "poligono"]) {
+      assert.deepEqual(q({ ...base, ...c, edicion: { ...base.edicion, herramienta } }), { gesto: "nada" }, `${quien} con ${herramienta}: no es «nada»`);
+    }
+  }
+  // El lápiz sí (sólo el dedo queda afuera).
+  assert.deepEqual(q({ ...base, tipoDePuntero: "pen", edicion: { ...base.edicion, herramienta: "rectangulo" } }), { gesto: "rectangulo" });
+});
+
+await prueba("el trazo que se dibuja punteado: el rectángulo de sus dos esquinas, el polígono con el cursor, y nada con menos de dos puntos", () => {
+  const t = I2.EM.trazoParaDibujar;
+  assert.deepEqual(t({ herramienta: "rectangulo", trazo: [[0.6, 0.7], [0.2, 0.1]] }, null), cuadI2(0.2, 0.1, 0.6, 0.7));
+  assert.deepEqual(t({ herramienta: "rectangulo", trazo: [[0.6, 0.7], [0.2, 0.1]] }, [0.9, 0.9]), cuadI2(0.2, 0.1, 0.6, 0.7), "el cursor cambió el rectángulo");
+  assert.deepEqual(t({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.5, 0.1]] }, [0.5, 0.5]), [[0.1, 0.1], [0.5, 0.1], [0.5, 0.5]]);
+  assert.deepEqual(t({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.5, 0.1]] }, null), [[0.1, 0.1], [0.5, 0.1]]);
+  assert.deepEqual(t({ herramienta: "poligono", trazo: [[0.1, 0.1]] }, [0.3, 0.3]), [[0.1, 0.1], [0.3, 0.3]]);
+  assert.equal(t({ herramienta: "poligono", trazo: [[0.1, 0.1]] }, null), null);
+  assert.equal(t({ herramienta: "rectangulo", trazo: [[0.1, 0.1]] }, null), null);
+  assert.equal(t({ herramienta: "rectangulo", trazo: null }, [0.3, 0.3]), null);
+  assert.equal(t({ herramienta: "seleccionar", trazo: null }, null), null);
+  // No devuelve el arreglo del estado (el 3D no lo puede mutar).
+  const trazo = [[0.1, 0.1], [0.5, 0.1]];
+  const fuera = t({ herramienta: "poligono", trazo }, null);
+  assert.notEqual(fuera, trazo);
+  assert.notEqual(fuera[0], trazo[0]);
+});
+
+/** Un contenedor del canvas de mentira: cuenta los oyentes (por tipo y fase),
+ *  la captura del puntero y el cursor. */
+function contenedorDeMentira() {
+  const oyentes = new Map();
+  const k = (tipo, o) => `${tipo}|${o && o.capture ? "captura" : "burbuja"}`;
+  const c = {
+    style: { cursor: "auto" }, altas: 0, bajas: 0, capturas: new Set(),
+    addEventListener(tipo, f, o) { c.altas++; if (!oyentes.has(k(tipo, o))) oyentes.set(k(tipo, o), new Set()); oyentes.get(k(tipo, o)).add(f); },
+    removeEventListener(tipo, f, o) { if (oyentes.get(k(tipo, o))?.delete(f)) c.bajas++; },
+    setPointerCapture(id) { c.capturas.add(id); },
+    hasPointerCapture(id) { return c.capturas.has(id); },
+    releasePointerCapture(id) { c.capturas.delete(id); },
+    /** Dispara en CAPTURA (lo único que escucha el control) y devuelve el evento. */
+    disparar(tipo, ev) { for (const f of [...(oyentes.get(`${tipo}|captura`) ?? [])]) f(ev); return ev; },
+    vivos() { let n = 0; for (const s of oyentes.values()) n += s.size; return n; },
+    tipos() { return [...oyentes.entries()].filter(([, s]) => s.size > 0).map(([t]) => t).sort(); },
+  };
+  return c;
+}
+/** Un evento del puntero: cuenta cuántas veces se lo cortó y se lo frenó. */
+const punteroI2 = (x, y, extra = {}) => ({
+  button: 0, pointerType: "mouse", pointerId: 1, clientX: x, clientY: y, shiftKey: false, cortado: 0, prevenido: 0,
+  stopPropagation() { this.cortado++; }, preventDefault() { this.prevenido++; }, ...extra,
+});
+/**
+ * El 3D de mentira: la cara A ocupa la pantalla de (0, 0) a (1000, 1000) px,
+ * u = x/1000 y v = (1000 − y)/1000 (1 m = 1000 px: el imán de 6 px es 6 mm).
+ * El estado de la edición es el del reductor de verdad; cada acción despachada
+ * se anota.
+ */
+function tresDeMentira(edicion) {
+  const m = {
+    ed: { ...I2.estadoInicial(), medidas: { ancho: 1, alto: 1 }, activa: 7, ...edicion },
+    acciones: [], cuadros: [], cursores: [], focos: 0,
+    puede: true, tapado: false, caraTocada: "A", prendido: true,
+  };
+  const enLaCara = (ev) => ev.clientX >= 0 && ev.clientX <= 1000 && ev.clientY >= 0 && ev.clientY <= 1000;
+  m.deps = {
+    prendido: () => m.prendido,
+    puedeEditar: () => m.puede,
+    caraEditada: () => "A",
+    edicion: () => m.ed,
+    toque: (ev) => (enLaCara(ev) ? { cara: m.caraTocada, u: ev.clientX / 1000, v: (1000 - ev.clientY) / 1000, tapado: m.tapado } : null),
+    uvEnLaCara: (ev, cara) => (cara === "A" ? [ev.clientX / 1000, (1000 - ev.clientY) / 1000] : null),
+    aPantalla: (cara, [u, v]) => (cara === "A" ? { x: u * 1000, y: 1000 - v * 1000 } : null),
+    guias: () => ({ entrepanos: [], parantes: [] }),
+    despachar: (a) => { m.acciones.push(a); m.ed = I2.reducir(m.ed, a); },
+    ponerCursor: (p) => { m.cursores.push(p); },
+    soltarFoco: () => { m.focos++; },
+    pedirCuadro: (f) => { m.cuadros.push(f); return m.cuadros.length; },
+    soltarCuadro: (id) => { m.cuadros[id - 1] = null; },
+  };
+  /** Corre los cuadros pendientes (un despacho por cuadro, como el lienzo). */
+  m.cuadro = () => { const fs = m.cuadros; m.cuadros = []; for (const f of fs) if (f) f(); };
+  m.tipos = () => m.acciones.map((a) => a.tipo);
+  return m;
+}
+
+await prueba("el control del 3D (ejecutado), Rectángulo: corta el pointerdown, captura el puntero, empezarTrazo → estirarTrazo por cuadro → cerrarTrazo; el click y el dblclick de ese gesto no le llegan a R3F", () => {
+  const m = tresDeMentira({ herramienta: "rectangulo" });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  const baja = c.disparar("pointerdown", punteroI2(200, 800));
+  assert.equal(baja.cortado, 1, "el pointerdown del dibujo le llegó a OrbitControls / R3F");
+  assert.equal(baja.prevenido, 1);
+  assert.ok(c.capturas.has(1), "no capturó el puntero");
+  assert.equal(m.focos, 1, "el foco no volvió a body (las teclas del lienzo no andarían)");
+  assert.deepEqual(m.acciones, [{ tipo: "empezarTrazo", punto: [0.2, 0.2] }]);
+  // Dos movimientos en el mismo cuadro: un solo despacho, con el último.
+  assert.equal(c.disparar("pointermove", punteroI2(300, 700)).cortado, 1, "el arrastre del dibujo le llegó a R3F");
+  c.disparar("pointermove", punteroI2(400, 600));
+  assert.equal(m.cuadros.length, 1, "se pidió más de un cuadro");
+  assert.deepEqual(m.tipos(), ["empezarTrazo"], "se despachó antes del cuadro");
+  m.cuadro();
+  assert.deepEqual(m.acciones[1], { tipo: "estirarTrazo", punto: [0.4, 0.4] });
+  assert.deepEqual(m.ed.trazo, [[0.2, 0.2], [0.4, 0.4]], "el trazo no está en el store (el lienzo y el 3D no lo verían)");
+  // Un movimiento más sin cuadro y se suelta: el pendiente sale antes de cerrar.
+  c.disparar("pointermove", punteroI2(450, 550));
+  const sube = c.disparar("pointerup", punteroI2(450, 550));
+  assert.equal(sube.cortado, 1);
+  assert.ok(!c.capturas.has(1), "no soltó la captura");
+  assert.deepEqual(m.tipos(), ["empezarTrazo", "estirarTrazo", "estirarTrazo", "cerrarTrazo"]);
+  assert.equal(m.ed.zonas.length, 1);
+  assert.deepEqual(m.ed.zonas[0].vertices, cuadI2(0.2, 0.2, 0.45, 0.45));
+  assert.equal(m.ed.zonas[0].participacionSpaceId, 7);
+  assert.equal(m.ed.atras.length, 1, "dibujar en el 3D no es UN paso de deshacer");
+  // El click y el dblclick que siguen a ese gesto se cortan.
+  assert.equal(c.disparar("click", punteroI2(450, 550)).cortado, 1, "R3F mediría este clic contra un pointerdown que no vio");
+  assert.equal(c.disparar("dblclick", punteroI2(450, 550)).cortado, 1, "el doble clic movería la mira de la órbita");
+  // Un clic sin moverse (menos de 4 px) no dibuja: cancela el trazo.
+  c.disparar("pointerdown", punteroI2(600, 400));
+  c.disparar("pointerup", punteroI2(602, 401));
+  assert.deepEqual(m.tipos().slice(-2), ["empezarTrazo", "cancelarTrazo"]);
+  assert.equal(m.ed.zonas.length, 1);
+  assert.equal(m.ed.trazo, null);
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado): fuera de la cara, tapado, en la otra cara, con el botón derecho, con el dedo o sin poder editar NO corta nada (lo ven OrbitControls y el clic de siempre)", () => {
+  for (const [quien, preparar, ev] of [
+    ["fuera de la cara", () => {}, punteroI2(1200, 500)],
+    ["tapado por otro mueble", (m) => { m.tapado = true; }, punteroI2(500, 500)],
+    ["en la otra cara", (m) => { m.caraTocada = "B"; }, punteroI2(500, 500)],
+    ["botón derecho", () => {}, punteroI2(500, 500, { button: 2 })],
+    ["botón del medio", () => {}, punteroI2(500, 500, { button: 1 })],
+    ["el dedo", () => {}, punteroI2(500, 500, { pointerType: "touch" })],
+    ["sin poder editar", (m) => { m.puede = false; }, punteroI2(500, 500)],
+    ["el interruptor apagado", (m) => { m.prendido = false; }, punteroI2(500, 500)],
+  ]) {
+    for (const herramienta of ["rectangulo", "poligono", "seleccionar"]) {
+      const m = tresDeMentira({ herramienta, zonas: [zonaI2("z1", 7, cuadI2(0.3, 0.3, 0.7, 0.7))] });
+      preparar(m);
+      const c = contenedorDeMentira();
+      const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+      const baja = c.disparar("pointerdown", ev);
+      assert.equal(baja.cortado + baja.prevenido, 0, `${quien} (${herramienta}): cortó el pointerdown`);
+      assert.equal(c.capturas.size, 0, `${quien} (${herramienta}): capturó el puntero`);
+      assert.equal(c.disparar("pointermove", { ...ev, clientX: ev.clientX + 30 }).cortado, 0, `${quien} (${herramienta}): cortó el arrastre (la órbita no giraría)`);
+      assert.equal(c.disparar("pointerup", { ...ev, clientX: ev.clientX + 30 }).cortado, 0);
+      assert.equal(c.disparar("click", { ...ev }).cortado, 0, `${quien} (${herramienta}): cortó el clic de siempre (elegir la zona o cambiar de cara)`);
+      assert.equal(c.disparar("dblclick", { ...ev }).cortado, 0);
+      assert.deepEqual(m.acciones, [], `${quien} (${herramienta}): despachó algo`);
+      soltar();
+    }
+  }
+  // Seleccionar sobre la cara vacía: tampoco (gira; el clic suelta la zona).
+  const m = tresDeMentira({ herramienta: "seleccionar", zonas: [zonaI2("z1", 7, cuadI2(0.3, 0.3, 0.7, 0.7))] });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  assert.equal(c.disparar("pointerdown", punteroI2(100, 900)).cortado, 0, "Seleccionar sobre la cara vacía cortó el pointerdown");
+  assert.equal(c.disparar("click", punteroI2(100, 900)).cortado, 0);
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado), Polígono: un clic por punto (con el imán), clic a ≤ 8 px del primero cierra; un arrastre no agrega; el punteado sigue al puntero", () => {
+  const m = tresDeMentira({ herramienta: "poligono", zonas: [zonaI2("z9", 8, cuadI2(0.6, 0.6, 0.8, 0.8))] });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  const clic = (x, y) => {
+    const b = c.disparar("pointerdown", punteroI2(x, y));
+    c.disparar("pointerup", punteroI2(x, y));
+    c.disparar("click", punteroI2(x, y));
+    return b;
+  };
+  assert.equal(clic(200, 800).cortado, 1, "el pointerdown del polígono le llegó a la órbita");
+  // A 4,2 px de la esquina (0,6; 0,6) de otra zona: el imán lo pega.
+  clic(603, 397);
+  clic(200, 400);
+  assert.deepEqual(m.tipos(), ["agregarPunto", "agregarPunto", "agregarPunto"]);
+  assert.deepEqual(m.ed.trazo, [[0.2, 0.2], [0.6, 0.6], [0.2, 0.6]], "el imán del 3D no pegó el punto (o el trazo no está en el store)");
+  // El punteado: sin gesto, el cursor del polígono sigue al puntero (y lo apaga fuera de la cara).
+  const mov = c.disparar("pointermove", punteroI2(300, 650));
+  assert.equal(mov.cortado, 0, "el movimiento sin gesto se cortó (la órbita no lo vería)");
+  assert.deepEqual(m.cursores.at(-1), [0.3, 0.35]);
+  assert.equal(c.style.cursor, "crosshair", "sobre la cara con P el cursor no es una cruz");
+  c.disparar("pointermove", punteroI2(1500, 650));
+  assert.equal(m.cursores.at(-1), null);
+  assert.equal(c.style.cursor, "auto", "fuera de la cara el cursor no volvió al de antes");
+  // Un arrastre con P no agrega nada (como en el lienzo).
+  c.disparar("pointerdown", punteroI2(500, 500));
+  c.disparar("pointerup", punteroI2(560, 500));
+  assert.deepEqual(m.tipos(), ["agregarPunto", "agregarPunto", "agregarPunto"]);
+  // Clic a 6 px del primero (200, 800): cierra.
+  clic(206, 800);
+  assert.deepEqual(m.tipos().at(-1), "cerrarTrazo");
+  assert.equal(m.ed.trazo, null);
+  assert.equal(m.ed.zonas.length, 2);
+  assert.deepEqual(m.ed.zonas[1].vertices, [[0.2, 0.2], [0.6, 0.6], [0.2, 0.6]]);
+  assert.equal(m.ed.zonas[1].participacionSpaceId, 7);
+  assert.equal(m.cursores.at(-1), null, "al cerrar quedó el punteado");
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado), mover con Seleccionar: elige la zona al bajar; 3 px no arrastran; a los 10 px empezarArrastre UNA vez, moverZona por cuadro y terminarArrastre al soltar (un paso de deshacer)", () => {
+  const z1 = zonaI2("z1", 7, cuadI2(0.2, 0.2, 0.4, 0.4));
+  const m = tresDeMentira({ herramienta: "seleccionar", zonas: [z1], base: [z1] });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  c.disparar("pointermove", punteroI2(300, 700));
+  assert.equal(c.style.cursor, "move", "sobre una zona con V el cursor no es «mover»");
+  assert.equal(c.disparar("pointerdown", punteroI2(300, 700)).cortado, 1);
+  assert.deepEqual(m.acciones, [{ tipo: "seleccionar", zona: "z1" }]);
+  c.disparar("pointermove", punteroI2(303, 700));
+  assert.deepEqual(m.tipos(), ["seleccionar"], "3 px ya arrastraron");
+  c.disparar("pointermove", punteroI2(310, 700));
+  c.disparar("pointermove", punteroI2(320, 700));
+  assert.deepEqual(m.tipos(), ["seleccionar", "empezarArrastre"], "empezarArrastre no fue una sola vez");
+  m.cuadro();
+  assert.equal(m.tipos().at(-1), "moverZona");
+  assert.equal(m.acciones.at(-1).clave, "z1");
+  assert.ok(Math.abs(m.acciones.at(-1).du - 0.02) < 1e-12 && m.acciones.at(-1).dv === 0, `movió ${m.acciones.at(-1).du}, ${m.acciones.at(-1).dv}`);
+  c.disparar("pointerup", punteroI2(320, 700));
+  assert.equal(m.tipos().at(-1), "terminarArrastre");
+  assert.deepEqual(m.ed.zonas[0].vertices, cuadI2(0.22, 0.2, 0.42, 0.4));
+  assert.equal(m.ed.atras.length, 1, "el arrastre en el 3D no es UN paso de deshacer");
+  assert.equal(c.disparar("click", punteroI2(320, 700)).cortado, 1);
+  // Con el imán: llevar la zona hasta 4 px del borde de la cara la pega al borde.
+  c.disparar("pointerdown", punteroI2(300, 700));
+  c.disparar("pointermove", punteroI2(84, 700));       // −0,216: el borde izquierdo a u = 0,22 − 0,216 = 0,004
+  m.cuadro();
+  c.disparar("pointerup", punteroI2(84, 700));
+  assert.equal(m.ed.zonas[0].vertices[0][0], 0, "el imán del 3D no pegó la zona al borde de la cara");
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado): pointercancel / lostpointercapture cancelan el rectángulo y cierran el arrastre; desconectar saca TODOS los oyentes y devuelve el cursor", () => {
+  const m = tresDeMentira({ herramienta: "rectangulo" });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  assert.deepEqual(c.tipos(), ["click|captura", "dblclick|captura", "lostpointercapture|captura", "pointercancel|captura", "pointerdown|captura", "pointermove|captura", "pointerup|captura"],
+    "el control no escucha en captura (OrbitControls y R3F verían el gesto antes)");
+  c.disparar("pointerdown", punteroI2(200, 800));
+  c.disparar("pointermove", punteroI2(300, 700));
+  c.disparar("lostpointercapture", punteroI2(300, 700));
+  m.cuadro();
+  assert.deepEqual(m.tipos(), ["empezarTrazo", "cancelarTrazo"], "perder la captura no canceló el rectángulo (o el movimiento pendiente salió después)");
+  assert.equal(m.ed.trazo, null);
+  // Mover: el arrastre se cierra (un paso), sin quedar a medias.
+  m.ed = { ...m.ed, herramienta: "seleccionar", zonas: [zonaI2("z1", 7, cuadI2(0.2, 0.2, 0.4, 0.4))] };
+  c.disparar("pointerdown", punteroI2(300, 700));
+  c.disparar("pointermove", punteroI2(340, 700));
+  c.disparar("pointercancel", punteroI2(340, 700));
+  assert.equal(m.tipos().at(-1), "terminarArrastre");
+  assert.equal(m.ed.arrastre, null, "el arrastre quedó a medias");
+  // Desconectar en medio de un gesto: lo cierra, saca todo y devuelve el cursor.
+  c.disparar("pointermove", punteroI2(300, 700));       // pasivo: «mover» sobre la zona
+  assert.equal(c.style.cursor, "move");
+  c.disparar("pointerdown", punteroI2(300, 700));
+  c.disparar("pointermove", punteroI2(340, 700));
+  soltar();
+  assert.equal(c.vivos(), 0, `quedaron oyentes: ${c.tipos().join(", ")}`);
+  assert.equal(c.altas, 7);
+  assert.equal(c.bajas, 7);
+  assert.equal(c.style.cursor, "auto", "desconectar dejó el cursor cambiado");
+  assert.equal(m.tipos().at(-1), "terminarArrastre", "desconectar dejó el arrastre a medias");
+  assert.equal(m.cuadros.filter(Boolean).length, 0, "desconectar dejó un cuadro pedido");
+  assert.equal(c.capturas.size, 0, "desconectar dejó el puntero capturado");
+});
+
+await prueba("el interruptor «Editar en el 3D»: apagado al entrar; se apaga al salir, al reiniciar, al pasar a «Mirar» y al cambiar de mueble; cambiar de cara lo deja; nunca va al navegador", async () => {
+  const D2 = I2.useDistribucionStore, EE = I2.PM.useEditarEnEl3D;
+  const activaI2 = { cliente: "galerias", sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" };
+  const entrar = () => D2.setState({ activa: activaI2, edicion: { ...I2.estadoInicial(), modo: "editar" } });
+  assert.equal(EE.getState().prendido, false, "arranca prendido");
+  entrar();
+  EE.getState().alternar();
+  assert.equal(EE.getState().prendido, true);
+  EE.getState().ponerCursor([0.3, 0.3]);
+  // Cambiar de cara del mismo mueble: sigue prendido.
+  D2.setState({ activa: { ...activaI2, cara: "B" } });
+  assert.equal(EE.getState().prendido, true, "cambiar de cara lo apagó");
+  // Salir (el camino de Presentar, la reunión, la caminata): se apaga.
+  assert.equal(await D2.getState().salir(), true);
+  assert.equal(D2.getState().activa, null);
+  assert.deepEqual([EE.getState().prendido, EE.getState().cursor], [false, null], "salir lo dejó prendido");
+  // Reiniciar (cambio de sesión o de cliente).
+  entrar(); EE.getState().alternar();
+  D2.getState().reiniciar();
+  assert.equal(EE.getState().prendido, false, "reiniciar lo dejó prendido");
+  // Pasar a «Mirar».
+  entrar(); EE.getState().alternar();
+  D2.getState().despachar({ tipo: "elegirModo", modo: "mirar" });
+  assert.equal(EE.getState().prendido, false, "pasar a «Mirar» lo dejó prendido");
+  // Otro mueble.
+  entrar(); EE.getState().alternar();
+  D2.setState({ activa: { ...activaI2, fixtureId: "f-2", codigo: "GON-02" } });
+  assert.equal(EE.getState().prendido, false, "pasar a otro mueble lo dejó prendido");
+  // Alternar dos veces vuelve a apagado y limpia el cursor.
+  entrar(); EE.getState().alternar(); EE.getState().ponerCursor([0.5, 0.5]); EE.getState().alternar();
+  assert.deepEqual([EE.getState().prendido, EE.getState().cursor], [false, null]);
+  D2.getState().reiniciar();
+  // Nada al navegador.
+  for (const f of ["components/Distribucion/punteroEnElMueble.ts", "components/Distribucion/EdicionEnElMueble.tsx", "utils/edicionEnElMueble.ts"]) {
+    const t = sinComentTs2(fuente(f));
+    assert.ok(!/localStorage|sessionStorage|indexedDB|\bpersist\b/.test(t), `${f} guarda algo en el navegador`);
+  }
+  for (const k of escritas) assert.ok(["retail-auth-v1", "retail-fixtures-v1"].includes(k), `clave nueva en localStorage: ${k}`);
+});
+
+await prueba("«Editar en el 3D» en el código: perezoso y montado sólo con el interruptor, por el nodo de las zonas y nunca por `Scene`; la órbita intacta salvo el botón derecho (que se devuelve); oyentes en captura en el contenedor del canvas; edita sólo por despachar; el mismo `puedeEditar` que el lienzo", () => {
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  const eem = sinComentTs2(fuente(`${DIST}/EdicionEnElMueble.tsx`));
+  const pem = sinComentTs2(fuente(`${DIST}/punteroEnElMueble.ts`));
+  const lienzo = codigo6b("LienzoDeZonas");
+  // Perezoso, como el panel y el lienzo, y montado sólo con el interruptor, dentro del nodo de las zonas.
+  assert.match(editor, /const EdicionEnElMueble = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/EdicionEnElMueble"\)\);/, "el control del 3D no es perezoso");
+  assert.ok(!/import[^;]*from\s+["']\.\.\/Distribucion\/EdicionEnElMueble["']/.test(editor), "el control del 3D se importa de una");
+  assert.match(editor, /const editarEnEl3D = useEditarEnEl3D\(\(s\) => s\.prendido\);/);
+  assert.match(editor, /\{editarEnEl3D && \(\s*<React\.Suspense fallback=\{null\}>\s*<EdicionEnElMueble orbitRef=\{orbitRef\} muebles=\{muebles\} superficies=\{superficies\} \/>/,
+    "el control del 3D se monta sin el interruptor");
+  const zdd = editor.slice(editor.indexOf("function ZonasDeLaDistribucion("), editor.indexOf("function BotonDeEditarEnEl3D("));
+  assert.ok(zdd.includes("<EdicionEnElMueble "), "el control no entra por el nodo de las zonas");
+  assert.match(editor, /const zonasDeLaDistribucion = useMemo\(\(\) => <ZonasDeLaDistribucion orbitRef=\{orbitRef\} muebles=\{placedFixturesRef\} \/>, \[\]\);/,
+    "el nodo de las zonas se rearma (y con él las props de la escena)");
+  // `Scene` no cambia: ni el control ni el interruptor aparecen en ella.
+  const scene = editor.slice(editor.indexOf("export function Scene({"), editor.indexOf("export function storeToFixtures("));
+  assert.ok(scene.length > 5000, "no se encontró el cuerpo de `Scene`");
+  assert.ok(!/EdicionEnElMueble|useEditarEnEl3D|punteroEnElMueble|conectarEdicionEnElMueble/.test(scene), "`Scene` sabe de «Editar en el 3D»");
+  // El trazo en curso llega al 3D.
+  assert.match(editor, /<ZonasDelMueble caras=\{caras\} participaciones=\{participaciones\} resaltada=\{resaltada\} seleccionada=\{seleccionada\} trazo=\{trazo\} \/>/);
+  assert.match(editor, /trazoParaDibujar\(\{ trazo: trazoEnCurso, herramienta \}, cursorDelPoligono\)/);
+  // La órbita: sólo el botón derecho pasa a girar, y se devuelve al desmontar.
+  assert.match(eem, /const derechoDeAntes = orbita \? orbita\.mouseButtons\.RIGHT : undefined;\s*if \(orbita\) orbita\.mouseButtons\.RIGHT = THREE\.MOUSE\.ROTATE;/);
+  assert.match(eem, /return \(\) => \{\s*desconectar\(\);\s*if \(orbita\) orbita\.mouseButtons\.RIGHT = derechoDeAntes;\s*\};/, "el botón derecho no se devuelve al desmontar");
+  for (const t of [eem, pem]) {
+    assert.ok(!/\.(enabled|minPolarAngle|maxPolarAngle|minDistance|maxDistance|enableZoom|enableRotate|enablePan)\s*=(?!=)/.test(t),
+      "el control toca la órbita más allá del botón derecho (la rueda tiene que seguir andando)");
+    assert.ok(!/setState\(/.test(t), "el control escribe un store por fuera de sus acciones");
+    assert.ok(!/raycast=|onPointerDown=|onClick=/.test(t), "el control usa eventos de R3F o una malla para el gesto");
+  }
+  // Los oyentes: en captura, en el contenedor del canvas, y cada uno se saca con el mismo par.
+  assert.match(eem, /const contenedor = gl\.domElement\.parentElement;/);
+  assert.match(eem, /const desconectar = conectarEdicionEnElMueble\(contenedor, deps\);/);
+  for (const tipo of ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture", "click", "dblclick"]) {
+    const m = new RegExp(`contenedor\\.addEventListener\\("${tipo}", (\\w+), \\{ capture: true \\}\\);`).exec(pem);
+    assert.ok(m, `el control no escucha «${tipo}» en captura`);
+    assert.ok(pem.includes(`contenedor.removeEventListener("${tipo}", ${m[1]}, { capture: true });`), `«${tipo}» no se saca con el mismo par`);
+  }
+  // Edita SÓLO por el reductor del store.
+  assert.match(eem, /despachar: \(a\) => useDistribucionStore\.getState\(\)\.despachar\(a\),/);
+  assert.ok(!/[^.\w]despachar\(/.test(pem), "el control despacha por otro lado que `deps.despachar`");
+  assert.ok(!/useDistribucionStore\.getState\(\)\.despachar|useDistribucionStore\.setState/.test(pem));
+  // El mismo `puedeEditar` que el lienzo (no se saca a una función común: la línea del lienzo está fijada).
+  const expr = (t) => (/const puedeEditar = ([^;]*);/.exec(t) ?? [])[1]?.replace(/\s+/g, " ").trim();
+  assert.ok(expr(lienzo), "no está el `puedeEditar` del lienzo");
+  assert.equal(expr(eem), expr(lienzo), "el 3D y el lienzo no deciden igual cuándo se puede editar");
+  // Sin teclas nuevas: las de `atajoDeDistribucion` alcanzan.
+  assert.ok(!/keydown|keyup/.test(pem + eem), "«Editar en el 3D» agrega teclas");
+  // El control no trae React ni three (se ejecuta en Node), y lo que decide es puro.
+  assert.ok(!/from\s+"(react|three|@react-three\/fiber|@react-three\/drei)"/.test(pem), "el control del puntero importa React o three");
+  const puro = sinComentTs2(fuente("utils/edicionEnElMueble.ts"));
+  for (const m of puro.matchAll(/^import\s+(type\s+)?[^;]*from\s+"([^"]+)"/gm)) {
+    assert.ok(m[1] || m[2] === "./edicionDeZonas", `utils/edicionEnElMueble.ts importa ${m[2]}`);
+  }
+  assert.ok(!/document\.|window\.|requestAnimationFrame|Date\.now|new Date\(/.test(puro), "utils/edicionEnElMueble.ts no es puro");
+});
+
+await prueba("el botón «Editar en el 3D» y su pista: sólo con el 3D a la vista, apagado al entrar, deshabilitado en «Mirar» o con el plano sin guardar (con el motivo)", () => {
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.match(editor, /\{distribucionVisible && distribucionActiva && !ocultar3D && \(\s*<BotonDeEditarEnEl3D fixtureId=\{distribucionActiva\.fixtureId\} sede=\{distribucionActiva\.sede\} \/>/,
+    "el botón se ve con el 3D oculto o fuera de Distribución");
+  const boton = editor.slice(editor.indexOf("function BotonDeEditarEnEl3D("), editor.indexOf("function PistaDeEditarEnEl3D("));
+  assert.match(boton, /aria-pressed=\{prendido\} data-editar-en-3d/);
+  assert.match(boton, /modo !== "editar" \? "Pasá a «Editar» para dibujar en el 3D\."/);
+  assert.match(boton, /!planoAlDia\(datos, mueble\) \? "El plano tiene cambios sin guardar: esperá un momento\."/);
+  assert.match(boton, /disabled=\{motivo !== null && !prendido\}/, "prendido no se puede apagar, o apagado se prende en «Mirar»");
+  assert.match(boton, /useEditarEnEl3D\.getState\(\)\.alternar\(\)/);
+  const pista = editor.slice(editor.indexOf("function PistaDeEditarEnEl3D("), editor.indexOf("function PistaDeEditarEnEl3D(") + 800);
+  assert.match(pista, /if \(!prendido\) return null;/);
+  assert.match(pista, /Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho\./);
+  assert.match(editor, /\{distribucionVisible && !ocultar3D && <PistaDeEditarEnEl3D \/>\}/);
+  assert.ok(!/sombra/i.test(boton + pista), "«sombra» en la interfaz");
+});
+
+await prueba("«Ajustar el borde» en el lienzo: habilitado sólo en «Editar» con una zona elegida, y deja fuera a las vecinas cuyas fechas no se cruzan (seCruzanEnFechas)", () => {
+  const lienzo = codigo6b("LienzoDeZonas");
+  assert.match(lienzo, /data-ajustar-borde disabled=\{!puedeEditar \|\| !elegida \|\| !!ed\.trazo\} onClick=\{ajustarBorde\}/,
+    "«Ajustar el borde» se puede tocar en «Mirar», sin zona elegida o con un trazo a medias");
+  const i = lienzo.indexOf("const ajustarBorde = () => {");
+  assert.ok(i >= 0, "no está ajustarBorde");
+  const cuerpo = lienzo.slice(i, lienzo.indexOf("\n  };", i));
+  assert.match(cuerpo, /const mias = d\.terminosPorS\.get\(elegida\.participacionSpaceId\) \?\? \[\];/);
+  assert.match(cuerpo, /return !suyas \|\| !seCruzanEnFechas\(mias, suyas, hoy\);/, "las vecinas no se filtran por fechas");
+  assert.match(cuerpo, /despachar\(\{ tipo: "ajustarBorde", clave: elegida\.clave, ignorar \}\);/);
+  // El botón va después de «Imán a guías» y no tiene tecla.
+  assert.ok(lienzo.indexOf("data-ajustar-borde") > lienzo.indexOf('"Imán a guías"'), "«Ajustar el borde» no va después de «Imán a guías»");
+  // Ejecutado contra el reductor de verdad: una zona de fechas que no se cruzan no cuenta como vecina.
+  const e0 = { ...I2.estadoInicial(), medidas: { ancho: 1, alto: 1 }, zonas: [zonaI2("a", 7, cuadI2(0, 0, 0.48, 1)), zonaI2("b", 8, cuadI2(0.49, 0, 1, 1))] };
+  assert.deepEqual(I2.reducir(e0, { tipo: "ajustarBorde", clave: "a" }).zonas[0].vertices, cuadI2(0, 0, 0.49, 1));
+  assert.equal(I2.reducir(e0, { tipo: "ajustarBorde", clave: "a", ignorar: ["b"] }).zonas, e0.zonas, "`ignorar` no dejó fuera a la vecina");
+});
+
+await prueba("el trazo en el 3D: `ZonasDelMueble` sigue sin leer stores y lo dibuja como una cinta discontinua, en el nivel más alto y sólo en la cara que se edita", () => {
+  const z = sinComentTs2(fuente("components/StoreEditor3D/muebles/ZonasDelMueble.tsx"));
+  assert.ok(!/store\//.test(z), "las zonas leen un store");
+  assert.match(z, /\{c\.editada && trazo && trazo\.vertices\.length >= 2 && \(\s*<Cinta key="trazo" sup=\{sup\} cara=\{c\.cara\} vertices=\{trazo\.vertices\} ancho=\{CINTA_ELEGIDA_M\} estilo="discontinua"\s*tono=\{trazo\.tono \?\? GRIS_DE_HISTORIA\} opacidad=\{1\} nivel=\{NIVEL_MAXIMO_DE_CINTA\} \/>/,
+    "el trazo no es una cinta discontinua arriba de todo en la cara que se edita");
 });
 
 console.log(`\n${hechas} pruebas de distribución en verde`);

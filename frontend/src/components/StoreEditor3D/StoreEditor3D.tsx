@@ -18,12 +18,15 @@ import { ProductoEnPunta, ventaDePunta } from "./muebles/ProductoEnPunta";
 // desnudo, las zonas pegadas a su cara y el store de edición, que sólo lee
 // el editor (las zonas le llegan a la escena armadas: `Scene` no lee stores).
 import { DesnudoDelMueble } from "./muebles/desnudo";
-import { ZonasDelMueble, olvidarTexturasDeZonas, type CaraParaDibujar, type ComoSeVe } from "./muebles/ZonasDelMueble";
-import { useDistribucionStore, capaQueSeMuestra, zonasEditables, type DistribucionActiva } from "../../store/distribucionStore";
+import { ZonasDelMueble, olvidarTexturasDeZonas, type CaraParaDibujar, type ComoSeVe, type TrazoParaDibujar } from "./muebles/ZonasDelMueble";
+import { useDistribucionStore, capaQueSeMuestra, planoAlDia, zonasEditables, type DistribucionActiva } from "../../store/distribucionStore";
 import { useOcupacionStore, claveDeSede } from "../../store/ocupacionStore";
 import { espacioDeLaCara, leerCara, superficieDeOut, terminoDeOut, type CaraOut, type OcupacionOut } from "../../api/participaciones";
 import { UMBRAL_CLIC_PX, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
 import { corteConLaCara, rayoTapado } from "../../utils/zonas3d";
+// fase 2 · I2: el trazo en curso en el 3D y el interruptor «Editar en el 3D».
+import { trazoParaDibujar } from "../../utils/edicionEnElMueble";
+import { useEditarEnEl3D } from "../Distribucion/punteroEnElMueble";
 import { encuadreDeLaCara } from "../../utils/encuadreDeDistribucion";
 import { superficieDeCara, tieneSuperficie, type Superficie } from "../../utils/superficie";
 import { estampasDeLaCara } from "../../utils/coloresDeMarca";
@@ -99,6 +102,8 @@ import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NU
 import {
   PALABRA_POR_OCUPACION, claseDe, codigoDeParte, codigoVisibleDe, divisionDe, notaDeEstadoPorOcupacion, porParticipacion,
 } from "../../utils/partes";
+// fase 2 · I4 (G2b): lo suyo del proveedor de la reunión, y nada de otros.
+import { loDelProveedor, POR_QUE_NO_SE_OFRECE } from "../../utils/partes";
 import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
@@ -5938,10 +5943,13 @@ export function Scene({
     // cara ENTERA en el panel partido, con el campo visual horizontal del
     // lienzo de ahora (`aspecto`); si de frente no entra desde el pasillo, el
     // tres cuartos menos oblicuo que la abarca (`encuadreDeLaCara`). Sin
-    // persona de escala: no es una toma de venta.
+    // persona de escala: no es una toma de venta. Fase 2 · I4 (E3): con los
+    // demás muebles de la sala —las mismas cajas que mira el clic—, una toma
+    // con una esquina de la cara tapada por una estiba o un exhibidor del
+    // pasillo no cuenta como que entra (lo tapado no se puede dibujar acá).
     if (!enVenta && toma === "frente" && distribucionDeLaToma.current?.fixtureId === fix.id) {
       ponerCampoVisual(FOV_DEL_EDITOR);
-      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto).vista);
+      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures.filter((f) => f.id !== fix.id)).vista);
       return;
     }
     const fov = toma === "cerca" ? FOV_DE_CERCA
@@ -6668,10 +6676,25 @@ function CommercialPanel({
   // (`estadoQueSeVe`), el mismo que su banda y el cartel del mouse.
   const clienteDelPanel = useAuthStore((s) => s.cliente) ?? "";
   const ocupacionDelPanel = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteDelPanel, sedeDelPanel)]);
-  const sm  = estadoQueSeVe(STATUS_META[fix.status], ocupacionDelMueble(fix, ocupacionDelPanel, sedeDelPanel));
+  const estadoDeLaB = useFixtureStore((s) => selectFixtures(s).find((f) => f.id === fix.id)?.faceB?.status);
+  const sm  = estadoQueSeVe(STATUS_META[fix.status],
+    carasQuePintan(ocupacionDelMueble(fix, ocupacionDelPanel, sedeDelPanel), fix.status, estadoDeLaB));
   // «Estado fixture» dice el de la base («Disponible»); si lo que se ve lo
   // pone la ocupación, se dice debajo, como en la ficha del plano 2D.
   const estadoPorOcupacion = sm !== STATUS_META[fix.status];
+
+  // ── Fase 2 · I4 (G2b): lo suyo, delante del proveedor ─────────────────────
+  // Decisión de la dueña (2026-10-18): delante del proveedor, en una cara por
+  // participación, «sólo lo suyo y lo libre». La reunión ya sabe quién está
+  // del otro lado (`proveedorDeReunion`): la tarjeta discreta dice su % y lo
+  // que queda —«Por participación · Kellogg's 25 % · queda 40 %»—, nunca cómo
+  // está distribuido ni nada de otros. Las participaciones de la cara se leen
+  // como en Distribución (`leerCara`, sólo quien administra) y se quedan acá:
+  // a la tarjeta llega UN número por cara, el del proveedor nombrado
+  // (`loDelProveedor`: otro proveedor nunca suma). Sin proveedor nombrado (la
+  // reunión todavía sin elegir) o sin participación suya, lo de siempre.
+  const proveedorDelante = contratoDiscreto && isAdmin && porParticipacion(fix) ? (proveedorDeReunion ?? "").trim() : "";
+  const loSuyoVigente = useLoSuyo(sedeDelPanel, fix, proveedorDelante);
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
   const modeloDelMueble = modeloPorId(fix.modelo);
   // Infrastructure holds no contract: the commercial half of the panel hides.
@@ -7099,7 +7122,7 @@ function CommercialPanel({
             // banda roja (revisión final, recorrido I.25). Lo que se dice es
             // la ocupación anónima del store de lectura, como en Vender.
             <div data-contratado-por-participacion>
-              {lineasDeContratadoPorParticipacion(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto).map((linea) => (
+              {lineasDeContratadoPorParticipacion(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto, loSuyoVigente, estadoDeLaB).map((linea) => (
                 <p key={linea} className="text-xs text-dark-ink-1">{linea}</p>
               ))}
             </div>
@@ -7265,6 +7288,9 @@ export class CanvasErrorBoundary extends React.Component<
  *  con el editor. */
 const PanelDeDistribucion = React.lazy(() => import("../Distribucion/PanelDeDistribucion"));
 const LienzoDeZonas = React.lazy(() => import("../Distribucion/LienzoDeZonas"));
+/** «Editar en el 3D» (fase 2 · I2): el control del puntero sobre el mueble,
+ *  perezoso y montado sólo con el interruptor prendido. */
+const EdicionEnElMueble = React.lazy(() => import("../Distribucion/EdicionEnElMueble"));
 
 /** Las teclas que el atajo global del editor usaría sobre el mueble elegido
  *  (borrar, girar, ancho por fondo, soltar). En Distribución no le llegan. */
@@ -7367,8 +7393,18 @@ function carasParaDibujar(d: CaraOut | null, zonas: readonly ZonaEnEdicion[], ot
  * `components/Distribucion/`). Con selectores propios: un `pointermove` del
  * lienzo vuelve a dibujar sólo esto, no la escena ni los muebles. En una
  * doble lee también la otra cara (sólo lectura), para dibujarla a la mitad.
+ *
+ * Fase 2 · I2: también el trazo en curso (punteado en el 3D mientras se
+ * dibuja, en el lienzo o en el 3D) y, con «Editar en el 3D» prendido, el
+ * control del puntero (`EdicionEnElMueble`, perezoso): entra por acá, dentro
+ * del grupo del mueble, y no por `Scene`. `orbitRef` y `muebles` son refs: el
+ * nodo se arma una vez (`useMemo` sin dependencias) y no rearma las props de
+ * la escena.
  */
-function ZonasDeLaDistribucion() {
+function ZonasDeLaDistribucion({ orbitRef, muebles }: {
+  orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
+  muebles: React.MutableRefObject<PlacedFixture[]>;
+}) {
   const activa = useDistribucionStore((s) => s.activa);
   const datos = useDistribucionStore((s) => s.datos);
   const zonas = useDistribucionStore((s) => s.edicion.zonas);
@@ -7393,8 +7429,76 @@ function ZonasDeLaDistribucion() {
     for (const d of [otra, datos]) if (d) comoSeVenLasParticipaciones(d, verAlDia).forEach((v, k) => m.set(k, v));
     return m;
   }, [datos, otra, verAlDia]);
+  // fase 2 · I2: el trazo en curso, en el tono de la participación activa, y
+  // las superficies de las caras para el control del puntero.
+  const trazoEnCurso = useDistribucionStore((s) => s.edicion.trazo);
+  const herramienta = useDistribucionStore((s) => s.edicion.herramienta);
+  const cursorDelPoligono = useEditarEnEl3D((s) => s.cursor);
+  const editarEnEl3D = useEditarEnEl3D((s) => s.prendido);
+  const trazo = useMemo<TrazoParaDibujar | null>(() => {
+    const vertices = trazoParaDibujar({ trazo: trazoEnCurso, herramienta }, cursorDelPoligono);
+    if (!vertices) return null;
+    return { vertices, tono: (resaltada !== null ? participaciones.get(resaltada)?.estampa?.tono : null) ?? null };
+  }, [trazoEnCurso, herramienta, cursorDelPoligono, resaltada, participaciones]);
+  const superficies = useMemo(() => {
+    const s: Partial<Record<"A" | "B", Superficie>> = {};
+    for (const c of caras) s[c.cara] = c.superficie;
+    return s;
+  }, [caras]);
   if (caras.length === 0) return null;
-  return <ZonasDelMueble caras={caras} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} />;
+  return (
+    <>
+      <ZonasDelMueble caras={caras} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} trazo={trazo} />
+      {editarEnEl3D && (
+        <React.Suspense fallback={null}>
+          <EdicionEnElMueble orbitRef={orbitRef} muebles={muebles} superficies={superficies} />
+        </React.Suspense>
+      )}
+    </>
+  );
+}
+
+/**
+ * El interruptor «Editar en el 3D» de la barra (fase 2 · I2): apagado al
+ * entrar a la cara. Prendido, sobre la cara que se edita el botón izquierdo
+ * dibuja o mueve con la herramienta del lienzo, y el derecho gira. Se
+ * deshabilita en «Mirar» y con el plano sin guardar (la misma cuenta que el
+ * lienzo), con el motivo en el `title`; prendido, siempre se puede apagar.
+ */
+function BotonDeEditarEnEl3D({ fixtureId, sede }: { fixtureId: string; sede: string }) {
+  const prendido = useEditarEnEl3D((s) => s.prendido);
+  const modo = useDistribucionStore((s) => s.edicion.modo);
+  const datos = useDistribucionStore((s) => s.datos);
+  const mueble = useFixtureStore((s) => (s.fixturesBySede[sede] ?? selectFixtures(s)).find((f) => f.id === fixtureId) ?? null);
+  const motivo = modo !== "editar" ? "Pasá a «Editar» para dibujar en el 3D."
+    : !planoAlDia(datos, mueble) ? "El plano tiene cambios sin guardar: esperá un momento."
+    : null;
+  return (
+    <button onClick={() => useEditarEnEl3D.getState().alternar()} disabled={motivo !== null && !prendido}
+      aria-pressed={prendido} data-editar-en-3d
+      title={motivo ?? (prendido
+        ? "Dejar de editar en el 3D: el botón izquierdo vuelve a girar."
+        : "Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho.")}
+      className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+        prendido
+          ? 'border-accent/50 bg-accent/15 text-accent-200'
+          : 'border-dark-line-2 bg-dark-surface text-dark-ink-2 hover:bg-dark-surface-2'
+      }`}>
+      Editar en el 3D
+    </button>
+  );
+}
+
+/** La pista sobre el 3D con «Editar en el 3D» prendido (fase 2 · I2). */
+function PistaDeEditarEnEl3D() {
+  const prendido = useEditarEnEl3D((s) => s.prendido);
+  if (!prendido) return null;
+  return (
+    <div data-pista-editar-en-3d
+      className="pointer-events-none absolute inset-x-2 bottom-2 z-10 rounded-md border border-dark-line-2 bg-dark-bg/85 px-3 py-1.5 text-[11px] text-dark-ink-2 backdrop-blur-sm">
+      Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho.
+    </div>
+  );
 }
 
 /** Lo que dice la ocupación anónima de las caras por participación de un
@@ -7421,17 +7525,40 @@ function ocupacionDelMueble(f: PlacedFixture, o: OcupacionOut | undefined, sede:
  * D6 dice que el estado de la cara no cambia —y no cambia—; cambia sólo el
  * color. Todo tomado → el de ocupado; algo comprometido → el ámbar de
  * reservado; nada → el de siempre. Sin nombres: es la ocupación anónima.
+ *
+ * Fase 2 · I4 (la regla del plano 2D, `estadoParaPintar`): lo puesto a mano
+ * (Mantenimiento, Reservado) o la venta entera mandan; la ocupación sólo pinta
+ * un mueble Disponible. Un robatope en Mantenimiento con 60 + 40 % se pintaba
+ * rojo acá y gris en el plano. (Sin estado escrito se lee libre, como lo
+ * estrena la fusión.)
  */
-function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut | undefined, sede: string): Map<string, string> {
+function coloresPorOcupacion(
+  muebles: readonly PlacedFixture[], o: OcupacionOut | undefined, sede: string,
+  estadoDeB: ReadonlyMap<string, SpaceStatus | undefined> = new Map(),
+): Map<string, string> {
   const fuera = new Map<string, string>();
   if (!o) return fuera;
   for (const f of muebles) {
-    const caras = ocupacionDelMueble(f, o, sede);
-    if (!caras) continue;
+    if (f.status !== undefined && f.status !== "free") continue;
+    const caras = carasQuePintan(ocupacionDelMueble(f, o, sede), f.status, estadoDeB.get(f.id));
+    if (!caras.length) continue;
     if (caras.every((c) => c.dispo === "tomado")) fuera.set(f.id, STATUS_COLORS.occupied);
     else if (caras.some((c) => c.dispo !== "libre")) fuera.set(f.id, STATUS_COLORS.reserved);
   }
   return fuera;
+}
+
+/** D6 por cara: la ocupación sólo pinta una cara «Disponible» por su PROPIO
+ *  estado —la A por el `status` del mueble, la B por el de su `faceB`—. Una
+ *  doble con la cara B en Mantenimiento y tomada se pintaba ámbar por la B
+ *  aunque la A estuviera libre (el plano 2D ya pintaba cada cara por la suya). */
+function carasQuePintan<C extends { cara: "A" | "B" }>(
+  caras: readonly C[] | null, estadoA: SpaceStatus | undefined, estadoB: SpaceStatus | undefined,
+): C[] {
+  return (caras ?? []).filter((c) => {
+    const propio = c.cara === "A" ? estadoA : (estadoB ?? estadoA);
+    return propio === undefined || propio === "free";
+  });
 }
 
 /** El cartel de estado que se ve de un mueble (§10.8): el de su `status`,
@@ -7446,12 +7573,18 @@ function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut 
  *  que la ocupación cuenta como un físico del 100 %—: la toma ese contrato, no
  *  las participaciones, y el plano dice «Ocupado» sin nota (`estadoParaPintar`
  *  sólo cambia una cara libre). Se queda con su cartel, y así «Estado fixture»
- *  no suma la nota de la ocupación debajo de «Lo pone el contrato». */
+ *  no suma la nota de la ocupación debajo de «Lo pone el contrato».
+ *
+ *  Fase 2 · I4: lo mismo con cualquier estado que no sea «Disponible»
+ *  (Mantenimiento, Reservado a mano): manda sobre la ocupación, como en el
+ *  plano 2D, Vender y el globo de Supervisar. La línea de «Ocupado» de abajo
+ *  queda cubierta por ésta; se deja escrita porque es el caso que se vio. */
 function estadoQueSeVe(
   sm: { bg: string; text: string; label: string },
   caras: readonly { dispo: "tomado" | "parcial" | "libre" }[] | null,
 ): { bg: string; text: string; label: string } {
   if (!caras || caras.length === 0) return sm;
+  if (sm !== STATUS_META.free) return sm;
   if (caras.every((c) => c.dispo === "tomado") && sm === STATUS_META.occupied) return sm;
   if (caras.every((c) => c.dispo === "tomado")) return { ...STATUS_META.occupied, label: PALABRA_POR_OCUPACION.tomado };
   if (caras.some((c) => c.dispo !== "libre")) return { ...STATUS_META.reserved, label: PALABRA_POR_OCUPACION.parcial };
@@ -7464,6 +7597,41 @@ function textoDeOcupacion(caras: { cara: "A" | "B"; quedaPb: number }[]): string
   return `Por participación · queda ${caras.length === 1 ? pct(caras[0].quedaPb) : caras.map((c) => `${pct(c.quedaPb)} (${c.cara})`).join(" · ")}`;
 }
 
+/** Fase 2 · I4 (G2b): lo suyo del proveedor de la reunión en cada cara, en
+ *  puntos básicos (`loDelProveedor`), y cómo se lo nombra. Nada de otros. */
+interface LoSuyoEnLaReunion { proveedor: string; pbPorCara: Partial<Record<"A" | "B", number>> }
+
+/** G2b: lee las participaciones de las caras de `fix` como Distribución
+ *  (`leerCara`, sólo quien administra) y se queda con UN número por cara, el
+ *  de `proveedor` (`loDelProveedor`: otro proveedor nunca suma). Sin
+ *  proveedor (`""`) o sin mueble por participación, `null`: lo de siempre.
+ *  La usan la tarjeta CONTRATADO de la reunión y el HUD de Presentar. */
+function useLoSuyo(sede: string, fix: PlacedFixture | null, proveedor: string): LoSuyoEnLaReunion | null {
+  const codigo = fix && porParticipacion(fix) ? fix.code : "";
+  const dosCaras = !!fix && carasDe(fix) === 2;
+  const clave = proveedor && codigo ? `${sede}|${codigo}|${dosCaras ? "AB" : "A"}|${proveedor}` : "";
+  const [loSuyo, setLoSuyo] = useState<(LoSuyoEnLaReunion & { clave: string }) | null>(null);
+  useEffect(() => {
+    if (!clave) return;
+    let vigente = true;
+    const caras: ("A" | "B")[] = dosCaras ? ["A", "B"] : ["A"];
+    void Promise.all(caras.map((c) => leerCara(sede, espacioDeLaCara(codigo, c)).then((r) => [c, r] as const)))
+      .then((leidas) => {
+        if (!vigente) return;
+        const pbPorCara: Partial<Record<"A" | "B", number>> = {};
+        for (const [c, r] of leidas) {
+          const terminos = r.participaciones.flatMap((p) => p.terminos.map((t) => ({ proveedor: t.proveedor?.nombre ?? null, termino: terminoDeOut(t) })));
+          pbPorCara[c] = loDelProveedor(terminos, proveedor, r.hoy, r.hoy, r.hoy);
+        }
+        setLoSuyo({ clave, proveedor, pbPorCara });
+      })
+      // Si no se pudo leer, se dice lo de siempre (sólo lo libre).
+      .catch(() => {});
+    return () => { vigente = false; };
+  }, [clave, codigo, dosCaras, proveedor, sede]);
+  return loSuyo && loSuyo.clave === clave ? loSuyo : null;
+}
+
 /**
  * La tarjeta CONTRATADO de un mueble por participación: «Por participación ·
  * comprometido 55 % · queda 45 %» (una línea por cara en una doble), con la
@@ -7471,9 +7639,16 @@ function textoDeOcupacion(caras: { cara: "A" | "B"; quedaPb: number }[]): string
  * del mouse—. Nunca «Sin contrato activo». Una cara que la ocupación no nombra
  * no tiene nada comprometido; sin la ocupación leída, lo dice. Con un
  * proveedor mirando (`discreto`), sólo lo que queda, como en Vender.
+ *
+ * Fase 2 · I4 (G2b): con el proveedor de la reunión nombrado y algo suyo en
+ * la cara (`loSuyo`, de `loDelProveedor`), la línea discreta dice además SU
+ * porcentaje: «Por participación · Kellogg's 25 % · queda 40 %». Nunca el de
+ * otro, nunca cómo está distribuido. Sin `loSuyo`, lo de siempre.
  */
 function lineasDeContratadoPorParticipacion(
   f: PlacedFixture, o: OcupacionOut | undefined, sede: string, discreto: boolean,
+  loSuyo?: LoSuyoEnLaReunion | null,
+  estadoB?: SpaceStatus,
 ): string[] {
   if (!o) return ["Por participación · leyendo la ocupación…"];
   const completo = fullSpaceCode(sede, f.code);
@@ -7482,8 +7657,21 @@ function lineasDeContratadoPorParticipacion(
     const oc = Object.prototype.hasOwnProperty.call(o.caras, codigo) ? o.caras[codigo] : { intervalos: [], fisicos: [] };
     const { quedaPb } = dispoPorParticipacion(oc, o.hoy, o.hoy, o.hoy);
     const deLaCara = caras.length === 2 ? `Cara ${cara} · ` : "";
+    const suyo = discreto && loSuyo ? (loSuyo.pbPorCara[cara] ?? 0) : 0;
+    // D6: el estado puesto a mano en ESA cara (la B, el de su `faceB`) manda:
+    // nunca «queda X %» —que delante del proveedor es ofrecerla— sobre una
+    // cara en Mantenimiento, Reservada a mano o vendida entera (recorrido 8.12).
+    const propio = cara === "A" ? f.status : (estadoB ?? f.status);
+    const aMano = propio && Object.prototype.hasOwnProperty.call(POR_QUE_NO_SE_OFRECE, propio) ? POR_QUE_NO_SE_OFRECE[propio] : null;
+    if (aMano) {
+      return discreto
+        ? `${deLaCara}Por participación${suyo > 0 && loSuyo ? ` · ${loSuyo.proveedor} ${pct(suyo)}` : ""} · ${aMano}`
+        : `${deLaCara}Por participación · comprometido ${pct(CARA_ENTERA_PB - quedaPb)} · queda ${pct(quedaPb)} · ${aMano}`;
+    }
     return discreto
-      ? `${deLaCara}Por participación · queda ${pct(quedaPb)}`
+      ? suyo > 0 && loSuyo
+        ? `${deLaCara}Por participación · ${loSuyo.proveedor} ${pct(suyo)} · queda ${pct(quedaPb)}`
+        : `${deLaCara}Por participación · queda ${pct(quedaPb)}`
       : `${deLaCara}Por participación · comprometido ${pct(CARA_ENTERA_PB - quedaPb)} · queda ${pct(quedaPb)}`;
   });
 }
@@ -7538,6 +7726,8 @@ export default function StoreEditor3D() {
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [warning, setWarning]               = useState<string|null>(null);
   const [sede, setSede]                     = useState(()=>useFixtureStore.getState().sede);
+  // fase 2 · I5 (V16): las sedes que existen, para el selector «Sede».
+  const sedesDelStore = useFixtureStore((s) => s.sedes);
 
   // MEJORA 4: Presentation mode
   const [presentationMode, setPresentationMode] = useState(false);
@@ -7930,8 +8120,10 @@ export default function StoreEditor3D() {
   useEffect(() => {
     if (hayPorParticipacion) void useOcupacionStore.getState().cargarOcupacion(sede);
   }, [hayPorParticipacion, sede, clienteActual]);
+  const estadoDeB = useMemo(() => new Map(fixtures.map((f) => [f.id, f.faceB?.status])), [fixtures]);
   const coloresDeEstado = useMemo(
-    () => coloresPorOcupacion(placedFixtures, ocupacionDeLaSede, sede), [placedFixtures, ocupacionDeLaSede, sede],
+    () => coloresPorOcupacion(placedFixtures, ocupacionDeLaSede, sede, estadoDeB),
+    [placedFixtures, ocupacionDeLaSede, sede, estadoDeB],
   );
 
   // Lo que la escena necesita del modo: el mueble, la cara, las superficies
@@ -7940,7 +8132,12 @@ export default function StoreEditor3D() {
   const superficieLeida = useDistribucionStore((s) => s.datos?.superficie ?? null);
   const caraLeida = useDistribucionStore((s) => s.datos?.cara ?? null);
   const tocarEnElMueble = useDistribucionStore((s) => s.tocarEnElMueble);
-  const zonasDeLaDistribucion = useMemo(() => <ZonasDeLaDistribucion />, []);
+  // fase 2 · I2: «Editar en el 3D» necesita la órbita (el botón derecho gira)
+  // y los muebles (lo que tapa el rayo); van por refs, así el nodo sigue
+  // armándose una sola vez.
+  const placedFixturesRef = useRef(placedFixtures);
+  placedFixturesRef.current = placedFixtures;
+  const zonasDeLaDistribucion = useMemo(() => <ZonasDeLaDistribucion orbitRef={orbitRef} muebles={placedFixturesRef} />, []);
   const muebleDistribuido = muebleEnDistribucion ? placedFixtures.find((f) => f.id === muebleEnDistribucion) ?? null : null;
   const propsDeDistribucion = useMemo<PropsDeDistribucion | undefined>(() => {
     if (!muebleDistribuido || !caraEnDistribucion) return undefined;
@@ -7994,8 +8191,15 @@ export default function StoreEditor3D() {
   useEffect(() => {
     if (isFirstRender3D.current) { isFirstRender3D.current = false; return; }
     if (suppressCommitRef.current) { suppressCommitRef.current = false; return; }
+    // fase 2 · I5 (V16): mientras se cambia de sede no se escribe nada. Este
+    // efecto corre ANTES que el que cambia la sede del store, y con la sede
+    // nueva escribía los muebles de la vieja (con la sede nueva estampada)
+    // en el plano de la vieja: un guardado fantasma por cada cambio. Y la
+    // sede que se estampa es la del store —la del plano que se está
+    // escribiendo—, nunca la local.
+    if (prevSede3DRef.current !== sede) return;
     const existingStore = selectFixtures(useFixtureStore.getState());
-    const converted = fixturesToStore(placedFixtures, sede, existingStore);
+    const converted = fixturesToStore(placedFixtures, useFixtureStore.getState().sede, existingStore);
     lastCommittedRef.current = converted;
     if (draggingId.current) {
       // During drag: update display without creating an undo entry or triggering server sync
@@ -8022,6 +8226,9 @@ export default function StoreEditor3D() {
     // Switch sede in store (clears undo/redo) then reinit canvas
     pushSedeToStore(sede);
     const newFixtures = useFixtureStore.getState().fixturesBySede[sede] ?? [];
+    // Lo que se carga de la sede nueva viene del store: no se devuelve como
+    // un cambio (abrir una sede no la ensucia ni la sube).
+    suppressCommitRef.current = true;
     setPlacedFixtures(storeToFixtures(newFixtures));
   }, [sede, pushSedeToStore]);
 
@@ -8072,6 +8279,12 @@ export default function StoreEditor3D() {
         // con ella el primer Esc lo atiende el navegador y suelta sólo la
         // pantalla completa. En primera persona, o con el mouse capturado,
         // Esc suelta el mouse como siempre.)
+        // Fase 2 · I4: con un diálogo modal abierto, Esc es del diálogo (un
+        // Esc, una capa). Con el foco en `body` —el botón que lo abrió se
+        // deshabilitó o se desmontó— cerraba el modal Y soltaba el mueble.
+        // No corta nada en captura: los modales que escuchan en `window`
+        // siguen recibiendo su Esc.
+        if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
         setPlacingDef(null); setSelectedId(null); setSelectedSlotId(null);
         setFirstPerson(false);
       }
@@ -8301,6 +8514,23 @@ export default function StoreEditor3D() {
         pedidoDeToma?.fixtureId === muebleDelHud.id ? pedidoDeToma.cara : null,
       )
     : null;
+  // G2b en Presentar: el proveedor que mira (`privadoPara`) ve SU % de la cara
+  // que se le muestra y lo que queda —nunca formas ni nada de otros—, como la
+  // tarjeta CONTRATADO de la reunión. Sin nadie identificado, nada.
+  const proveedorQueMira = presentationMode && isAdmin && typeof privadoPara === "number"
+    ? (catalogo.find((a) => a.supplier_id === privadoPara)?.proveedor ?? "").trim() : "";
+  const loSuyoEnPresentar = useLoSuyo(sede, muebleDelHud, proveedorQueMira);
+  const lineaDeLoSuyo = (() => {
+    if (!loSuyoEnPresentar || !muebleDelHud || !caraConPrueba) return null;
+    const propio = caraConPrueba === "A" ? muebleDelHud.status : (estadoDeB.get(muebleDelHud.id) ?? muebleDelHud.status);
+    if (propio !== undefined && propio !== "free") return null;
+    const oc = ocupacionDelMueble(muebleDelHud, ocupacionDeLaSede, sede)?.find((c) => c.cara === caraConPrueba);
+    if (!oc) return null;
+    const suyo = loSuyoEnPresentar.pbPorCara[caraConPrueba] ?? 0;
+    return suyo > 0
+      ? `Por participación · ${loSuyoEnPresentar.proveedor} ${pct(suyo)} · queda ${pct(oc.quedaPb)}`
+      : `Por participación · queda ${pct(oc.quedaPb)}`;
+  })();
   // Presentar sin proveedor identificado no dibuja ninguna prueba. Si hay
   // alguna puesta, se avisa SIN NOMBRES —la pantalla ya puede estar
   // compartida— y se ofrece mostrar la última.
@@ -8542,9 +8772,17 @@ export default function StoreEditor3D() {
 
         <div>
           <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</label>
-          <input type="text" value={sede} maxLength={10} onChange={e=>setSede(e.target.value.toUpperCase())}
-            className="w-full border-0 border-b-2 border-dark-line-2 bg-transparent rounded-none px-0 font-mono text-sm text-accent-200 focus:border-accent focus:outline-none"
-            placeholder="CENTRO" />
+          {/* fase 2 · I5 (V16): un selector con las sedes que existen, como el
+              de Supervisar —navegar, nunca escribir—. Era un texto libre que
+              cambiaba de sede en cada tecla: «N», «NA», «NAV»… y cada letra
+              dejaba un plano fantasma en el servidor. Crear o renombrar una
+              sede es del plano 2D. */}
+          <select data-sede-3d aria-label="Sede" value={sede} onChange={e=>setSede(e.target.value)}
+            className="w-full border-0 border-b-2 border-dark-line-2 bg-transparent rounded-none px-0 font-mono text-sm text-accent-200 focus:border-accent focus:outline-none">
+            {(sedesDelStore.includes(sede) ? sedesDelStore : [sede, ...sedesDelStore]).map((s) => (
+              <option key={s} value={s} className="bg-dark-surface text-dark-ink-1">{s}</option>
+            ))}
+          </select>
         </div>
 
         <div className="border-t border-dark-line" />
@@ -8782,6 +9020,11 @@ export default function StoreEditor3D() {
               {presentationMode ? 'Salir' : 'Presentar'}
             </button>
 
+            {/* fase 2 · I2: «Editar en el 3D», sólo con el 3D a la vista. */}
+            {distribucionVisible && distribucionActiva && !ocultar3D && (
+              <BotonDeEditarEnEl3D fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} />
+            )}
+
             {distribucionVisible && angosta && (
               <button onClick={() => setOcultar3D((o) => !o)} data-ocultar-3d
                 className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
@@ -8885,6 +9128,9 @@ export default function StoreEditor3D() {
           </Canvas>
         </CanvasErrorBoundary>
 
+        {/* fase 2 · I2: la pista de «Editar en el 3D», sobre el 3D. */}
+        {distribucionVisible && !ocultar3D && <PistaDeEditarEnEl3D />}
+
         {/* MEJORA 9: Tooltip on hover */}
         {/* En Presentar no hay tooltip: la pantalla la está mirando el
             proveedor. Y fuera de Presentar, mientras se prueba un producto, no
@@ -8894,7 +9140,7 @@ export default function StoreEditor3D() {
           const fix = placedFixtures.find(f => f.id === hoveredFixtureId);
           if (!fix || fix.id === selectedId) return null;
           const ocupacionHover = ocupacionDelMueble(fix, ocupacionDeLaSede, sede);
-          const sm = estadoQueSeVe(STATUS_META[fix.status], ocupacionHover);
+          const sm = estadoQueSeVe(STATUS_META[fix.status], carasQuePintan(ocupacionHover, fix.status, estadoDeB.get(fix.id)));
           // La misma cuenta que el panel (`hayReunion`): con la reunión fijada y
           // la prueba recién quitada, el cartel volvía a decir quién paga qué.
           const discreto = enReunion;
@@ -8925,6 +9171,9 @@ export default function StoreEditor3D() {
         {presentationMode && (
           <HudQueSeEsconde contenedor={contenedorRef}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 backdrop-blur-sm">
+            {muebleDelHud && caraConPrueba && lineaDeLoSuyo && (
+              <span data-lo-suyo-en-presentar className="px-1 text-sm text-white/80">{lineaDeLoSuyo}</span>
+            )}
             {muebleDelHud && caraConPrueba ? (
               /* Las tres tomas quietas de la cámara del vendedor. Un corte, sin
                  animación: por videollamada el movimiento se empasta. */

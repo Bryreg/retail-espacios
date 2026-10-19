@@ -170,6 +170,12 @@ const ORILLAS = /^[ \t\n\r  ]+|[ \t\n\r  ]+$/g;
 function marcaNormal(m: string | null | undefined): string {
   return (m ?? "").replace(ORILLAS, "").toLowerCase();
 }
+// fase 2 · I1: «Copiar zonas de otra cara» (`copiaDeZonas.ts`) reconoce la
+// misma participación en la otra cara con ESTA regla («Hit» = « HIT »). Va como
+// `export { }` y no como `export function`: no es una regla más del contrato
+// gemelo (la guarda de `probar-distribucion` lista las públicas de los dos
+// lados), es la ayuda cuya gemela es `_marca_normal` de `reglas_participacion.py`.
+export { marcaNormal };
 
 /* ── Qué cuenta un día (§3.3) ──────────────────────────────────────────────── */
 

@@ -429,16 +429,20 @@ prueba("el globo de Supervisar dice lo comprometido de una cara por participaci�
   assert.match(globo, /const dispoPc = useDispoDeHoy\(fixture, entry\.face\);/);
   assert.match(globo, /<StatusPill fixture=\{fixture\} face=\{entry\} \/>/);
   // La rama de participación va ANTES de la frase de siempre: ésa queda para
-  // las caras que no se venden así.
-  assert.match(globo, /\? esPc\s*\? textoDeLoComprometido\(dispoPc, isAdmin\)\s*: puertas\.some\(\(p\) => p\.vendida\) && claseDelPopover/,
-    "el globo de una cara por participación no dice lo comprometido");
-  const i = globo.indexOf("textoDeLoComprometido(dispoPc, isAdmin)");
+  // las caras que no se venden así. (Fase 2 · I4: con el estado propio de la
+  // cara, que manda sobre la ocupación —Mantenimiento no dice «disponible»—.
+  // La guarda exige eso además de lo de antes.)
+  assert.match(globo, /\? esPc\s*\? textoDeLoComprometido\(dispoPc, isAdmin, \{ propio: entry\.status \}\)\s*: puertas\.some\(\(p\) => p\.vendida\) && claseDelPopover/,
+    "el globo de una cara por participación no dice lo comprometido (con su estado propio)");
+  const i = globo.indexOf("textoDeLoComprometido(dispoPc, isAdmin, { propio: entry.status })");
   const j = globo.indexOf('"Sin contrato activo — disponible para vender."');
   assert.ok(i > 0 && j > i, "«Sin contrato activo — disponible para vender.» se alcanza antes que la rama de participación");
   // «Abrir en Distribución» sólo para quien administra, y sólo en una cara así.
+  // (Fase 2 · I4, E5b: con la cara que se tocó —la de la ficha, `entradaDetalle`—
+  // y no siempre la A. La guarda exige eso además de lo de antes.)
   assert.match(globo, /\{esPc && isAdmin && onAbrirEnDistribucion && \(/);
-  assert.match(t, /onAbrirEnDistribucion=\{isAdmin && porParticipacion\(selected\)\s*\? \(\) => abrirEnDistribucion\(selected\.id, facesOf\(selected\)\[0\]\.face\)\s*: undefined\}/,
-    "el globo ofrece Distribución a quien no administra, o a una cara que no es por participación");
+  assert.match(t, /onAbrirEnDistribucion=\{isAdmin && porParticipacion\(selected\)\s*\? \(\) => abrirEnDistribucion\(selected\.id, entradaDetalle\.face\)\s*: undefined\}/,
+    "el globo ofrece Distribución a quien no administra, a una cara que no es por participación, o a otra cara que la tocada");
 });
 
 prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por participación, no «Disponible» ni «Sede → Vender» (ejecutado)", () => {
@@ -465,9 +469,12 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   assert.match(panel, /\{rentable \? rotuloVisto : NON_RENTABLE_LABEL\}/, "la pastilla dice «Disponible» sobre una cara por participación");
   assert.doesNotMatch(panel, /STATUS_BADGE_STYLE\[face\.status\]|\{rentable \? STATUS_LABELS\[face\.status\]/, "queda una pastilla con el estado crudo");
   // «Contratado»: lo comprometido, y dónde se vende (no «Sede → Vender»).
-  assert.match(panel, /\) : esPc \? \(\s*<p data-contratado-por-participacion[^>]*>\s*\{textoDeLoComprometido\(dispoPc, isAdmin\)\}/,
-    "«Contratado» de una cara por participación no dice lo comprometido");
-  const k = panel.indexOf("{textoDeLoComprometido(dispoPc, isAdmin)}");
+  // (Fase 2 · I4: con el estado propio de la cara y sin repetir «en el Editor
+  // 3D → Distribución», que dice el renglón de abajo. La guarda exige eso
+  // además de lo de antes.)
+  assert.match(panel, /\) : esPc \? \(\s*<p data-contratado-por-participacion[^>]*>\s*\{textoDeLoComprometido\(dispoPc, isAdmin, \{ propio: face\.status, conLugar: false \}\)\}/,
+    "«Contratado» de una cara por participación no dice lo comprometido (con su estado propio, sin repetir dónde se carga)");
+  const k = panel.indexOf("{textoDeLoComprometido(dispoPc, isAdmin, { propio: face.status, conLugar: false })}");
   const sin = panel.indexOf("Sin contrato activo.");
   assert.ok(k > 0 && sin > k, "«Sin contrato activo.» se alcanza antes que la rama de participación");
   assert.match(panel, /\{isAdmin && esPc \? \(\s*<>\s*<p[^>]*>\s*\{DONDE_SE_CARGAN\}/, "a quien administra no le dice dónde se cargan las participaciones");
@@ -783,8 +790,10 @@ prueba("el resumen (proveedores y marcas) no se pide sin `activo`: lo cumple el 
 prueba("una cara por participación no ofrece «Negociar» en la ficha ni en el globito", () => {
   const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(v, /\{rentable && onNegociar && !pc && \(/, "la ficha ofrece vender entera una cara por participación");
-  assert.match(v, /onNegociar=\{isAdmin && !porParticipacion\(selected\) \? \(\) => negociar\(selected\) : undefined\}/,
-    "el globito de Supervisar ofrece vender entera una cara por participación");
+  // (Fase 2 · I4, E5b: con la cara que se tocó. La guarda exige eso además
+  // de lo de antes.)
+  assert.match(v, /onNegociar=\{isAdmin && !porParticipacion\(selected\) \? \(\) => negociar\(selected, entradaDetalle\.face\) : undefined\}/,
+    "el globito de Supervisar ofrece vender entera una cara por participación, u otra cara que la tocada");
   // Lo del trabajador va sólo al trabajador (la administración tiene el bloque completo).
   assert.match(v, /\{!hasContract && pc \? \(\s*!isAdmin && <CaraPorParticipacion fixture=\{fixture\} face=\{entry\.face\} \/>/);
 });
@@ -793,6 +802,240 @@ prueba("«Renovar» de una participación sólo lleva a Distribución un contrat
   const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(v, /if \(t && t\.estado === "contrato" && \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)\) termino = t\.id;/,
     "renovar abre el formulario sobre una reserva, un vencido o un cancelado");
+});
+
+/* ── fase 2 · I4: Vender y los bajos ─────────────────────────────────────────
+   El ámbar de Vender contaba tres hechos como si fueran días (se libera en el
+   periodo, partes vendidas, una participación comprometida) y «al cerrar»
+   sumaba caras por participación que nunca entran a ese contrato; la pestaña
+   activa de la ficha del plano 2D no se leía en tema claro; los rótulos largos
+   de once muebles por participación tapaban la sala; una cara en Mantenimiento
+   con participaciones vivas salía «parcial» y «queda 75 %»; el globo de
+   Supervisar hablaba de la A al tocar la B; y delante del proveedor de la
+   reunión, la dueña pidió «sólo lo suyo y lo libre». */
+console.log("\nFase 2 · Vender y los bajos\n");
+
+prueba("fase 2 · el ámbar se separa por motivo: se libera, partes vendidas o participación (`motivoDelParcial`, ejecutado)", () => {
+  assert.equal(PC.motivoDelParcial(true, null), "participacion");
+  assert.equal(PC.motivoDelParcial(true, { porPartes: "Por participación · queda 40 %" }), "participacion");
+  assert.equal(PC.motivoDelParcial(false, { porPartes: "1 de 3 puertas vendida" }), "partes");
+  assert.equal(PC.motivoDelParcial(false, { desde: new Date(2026, 10, 3), diasLibres: 12 }), "dias");
+  assert.equal(PC.motivoDelParcial(false, null), "dias");
+  assert.equal(PC.motivoDelParcial(false, undefined), "dias");
+});
+
+prueba("fase 2 · UNA cuenta para la clave, la columna y el pie; «al cerrar» es lo que ESTE contrato puede tomar (`contarElPeriodo`, ejecutado)", () => {
+  const caras = [
+    { dispo: "libre", deParticipacion: false },
+    { dispo: "libre", deParticipacion: true },
+    { dispo: "parcial", deParticipacion: false, motivo: "dias" },
+    { dispo: "parcial", deParticipacion: false, motivo: "partes" },
+    { dispo: "parcial", deParticipacion: true, motivo: "participacion" },
+    { dispo: "parcial", deParticipacion: true },                          // sin motivo: por participación
+    { dispo: "tomado", deParticipacion: false },
+    { dispo: "libre", deParticipacion: false, enContrato: true },        // ya en el contrato: no cuenta
+  ];
+  const c = PC.contarElPeriodo(caras);
+  assert.deepEqual(c, { libres: 2, libresPc: 1, dias: 1, partes: 1, participacion: 2, tomados: 1 });
+  assert.equal(PC.enParte(c), 4);
+  assert.equal(PC.alCerrar(c), 3, "«al cerrar» suma caras por participación (o resta lo que sí entra)");
+  assert.equal(PC.desgloseDelParcial(c), "1 se libera en el periodo · 1 con partes vendidas · 2 por participación");
+  assert.equal(PC.sinLasDeParticipacion(c), "Sin las 3 por participación: se cargan en el Editor 3D → Distribución.");
+  // Singular, plural y vacío.
+  assert.equal(PC.desgloseDelParcial({ ...c, dias: 3, partes: 0, participacion: 0 }), "3 se liberan en el periodo");
+  assert.equal(PC.desgloseDelParcial(PC.contarElPeriodo([])), "");
+  assert.deepEqual(PC.contarElPeriodo([]), { libres: 0, libresPc: 0, dias: 0, partes: 0, participacion: 0, tomados: 0 });
+  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: true }])),
+    "Sin la 1 por participación: se carga en el Editor 3D → Distribución.");
+  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: false }])), null);
+  // Lo que está en el contrato no cuenta en ningún lado; un parcial sin motivo ni participación es «días».
+  assert.deepEqual(PC.contarElPeriodo([{ dispo: "tomado", deParticipacion: false, enContrato: true }, { dispo: "parcial", deParticipacion: false }]),
+    { libres: 0, libresPc: 0, dias: 1, partes: 0, participacion: 0, tomados: 0 });
+  // Vender lo mira el proveedor: sólo cuentas, ni un % ni un nombre.
+  assert.doesNotMatch(PC.desgloseDelParcial(c) + PC.sinLasDeParticipacion(c), /%|\$|proveedor|marca/i);
+});
+
+prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElPeriodo`: nada a mano, ni «Vence dentro» ni «Se libera en el periodo»", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const def = (nombre) => {
+    const i = t.indexOf(`function ${nombre}(`);
+    return i < 0 ? "" : t.slice(i, t.indexOf("\n}\n", i));
+  };
+  const leyenda = def("MapLegend");
+  assert.ok(leyenda.length > 200, "no está MapLegend");
+  assert.doesNotMatch(leyenda, /Vence dentro|Se libera en el periodo/, "la clave nombra el ámbar como si fueran días");
+  assert.match(leyenda, /tally: ConteoDelPeriodo;/);
+  assert.match(leyenda, /l: modo === "vender" \? RANGE_LABEL\.parcial : RANGE_LABEL_PARCIAL_SUPERVISAR, n: enParte\(tally\),\s*t: desgloseDelParcial\(tally\) \|\| undefined/,
+    "el renglón ámbar no cuenta las tres cosas o no las desglosa");
+  assert.match(leyenda, /<span title=\{o\.t\}>/);
+  assert.match(t, /parcial: "Disponible en parte",/);
+  assert.match(t, /const RANGE_LABEL_PARCIAL_SUPERVISAR = "Vendido en parte";/);
+  // Las tres cuentas, de la misma fila por cara.
+  assert.match(t, /motivo: motivoDelParcial\(deParticipacion, como\)/, "la fila de cada cara no dice por qué está en parte");
+  assert.match(t, /const rangeTally = useMemo\(\(\) => contarElPeriodo\(filasDelPeriodo\.values\(\)\), \[filasDelPeriodo\]\);/);
+  assert.match(t, /const tallyVender = useMemo\(\s*\(\) => contarElPeriodo\(\[\.\.\.filasDelPeriodo\]\.map\(\(\[clave, fila\]\) => \(\{ \.\.\.fila, enContrato: carasDelContrato\.includes\(clave\) \}\)\)\),/);
+  assert.match(t, /cuenta: contarElPeriodo\(filas\)/, "la fila de la tarifa no cuenta con contarElPeriodo");
+  assert.match(t, /if \(fila\) e\.filas\.push\(\{ \.\.\.fila, enContrato \}\);/);
+  assert.doesNotMatch(t, /parciales\+\+|libres\+\+|tomados\+\+/, "queda un conteo a mano");
+  // La tarifa: el encabezado, el «+N» con su porqué y «al cerrar» sin lo que no entra.
+  assert.match(t, /<th scope="col" className="der2 c2">Libres · en parte<\/th>/);
+  assert.doesNotMatch(t, /Libres · entran|adentro del periodo`/);
+  assert.match(t, /title=\{cuenta\.participacion > 0 \? `\$\{porQue\}\. \$\{DONDE_SE_CARGAN\}` : porQue\}/);
+  assert.match(t, /\+\{nParte\}/);
+  assert.match(t, /\{alCerrar\(tallyVender\)\} al cerrar/);
+  assert.doesNotMatch(t, /tallyVender\.libres \+ tallyVender\.parciales/, "«al cerrar» vuelve a sumar todo lo ámbar");
+  assert.match(t, /title=\{sinLasDeParticipacion\(tallyVender\) \?\? undefined\}/);
+  assert.match(t, /title=\{desgloseDelParcial\(tallyVender\)\}>\+\{enParte\(tallyVender\)\}/);
+});
+
+prueba("fase 2 · la ficha del plano 2D: la pestaña de la cara activa y el destino elegido se leen en los dos temas (tokens del cajón oscuro, nada de --accent)", () => {
+  const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
+  assert.ok(panel.length > 1000, "no está AssignmentPanel");
+  // La ficha va sobre --dark-bg en los dos temas: --accent es tinta en tema claro (1,05:1).
+  assert.doesNotMatch(panel, /var\(--accent\)|var\(--accent-ink\)/, "la ficha pinta con --accent: en tema claro no se lee");
+  assert.match(panel, /background: activeFace === f \? "var\(--dark-surface\)" : "none",/);
+  assert.match(panel, /color: activeFace === f \? "var\(--dark-ink-1\)" : "var\(--dark-ink-3\)",/);
+  assert.match(panel, /borderBottom: activeFace === f \? "2px solid var\(--dark-ink-1\)" : "2px solid transparent",/);
+  assert.match(panel, /aria-pressed=\{activeFace === f\}/);
+  assert.match(panel, /background: rentable === value \? "var\(--dark-ink-1\)" : "transparent",\s*color: rentable === value \? "var\(--dark-bg\)" : "var\(--dark-ink-3\)",/);
+  assert.doesNotMatch(panel, /--signal/, "el amarillo es sólo del botón principal");
+});
+
+prueba("fase 2 · el rótulo del plano de una cara por participación es la línea CORTA; el cartel del mouse sigue con la larga (ejecutado)", () => {
+  assert.equal(PC.textoCortoDeParticipacion({ dispo: "parcial", quedaPb: 4500 }, true), "queda 45 %");
+  assert.equal(PC.textoCortoDeParticipacion({ dispo: "parcial", quedaPb: 3333 }, true), "queda 33,33 %");
+  assert.equal(PC.textoCortoDeParticipacion({ dispo: "parcial", quedaPb: 4500 }, false), "por participación");
+  assert.equal(PC.textoCortoDeParticipacion({ dispo: "tomado", quedaPb: 0 }, true), "tomada");
+  assert.equal(PC.textoCortoDeParticipacion({ dispo: "tomado", quedaPb: 0 }, false), "tomada");
+  for (const d of [{ dispo: "parcial", quedaPb: 4500 }, { dispo: "tomado", quedaPb: 0 }, { dispo: "libre", quedaPb: 10000 }]) {
+    assert.doesNotMatch(PC.textoCortoDeParticipacion(d, false), /%|\d/, "el trabajador ve un %");
+    assert.ok(PC.textoCortoDeParticipacion(d, true).length <= 18, "la línea corta no es corta");
+  }
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const k = t.indexOf("function IsoMap(");
+  const iso = t.slice(k, t.indexOf("\n}\n", k));
+  assert.ok(iso.length > 2000, "no está IsoMap");
+  assert.match(iso, /const corto = dispo === "parcial" \? cortoDe\?\.\(f, entry\) \?\? null : null;/);
+  assert.match(iso, /\.\.\.\(corto \? \{ corto \} : \{\}\),/);
+  // La de participación cede como una libre ante «libre 14 oct».
+  assert.match(iso, /peso: choque \? 0 : corto \? 2 : dispo === "parcial" \? 1 : dispo === "libre" \? 2 : 3,/);
+  assert.match(iso, /const linea = l\.corto \|\| l\.fecha;/);
+  assert.match(iso, /\{linea && <tspan className="p-fec" x=\{ax\} dy="1\.18em">\{linea\}<\/tspan>\}/);
+  // El cartel del mouse sigue diciendo la larga («Por participación · queda 45 %»).
+  assert.match(iso, /const partes = porPartes\?\.\(f, face\) \?\? null;\s*if \(partes\) return partes;/);
+  assert.equal((t.match(/cortoDe=\{cortoDeCara\}/g) ?? []).length, 2, "Vender y Supervisar no dibujan el plano con el mismo rótulo");
+  assert.match(t, /const d = dispoDeParticipacion\(f, participacionDe\(f, face\.face\), mapRange\.from, mapRange\.to\);\s*return d && d\.dispo !== "libre" \? textoCortoDeParticipacion\(d, isAdmin\) : null;/,
+    "la línea corta no sale de la ocupación del periodo, o el % no depende de quién mira");
+});
+
+prueba("fase 2 · lo puesto a mano y la venta entera mandan sobre la ocupación de las participaciones: en Vender, en el globo y en la ficha, como en el plano (ejecutado)", () => {
+  const p2 = (n) => String(n).padStart(2, "0");
+  const dia = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const en = (n) => { const d = new Date(hoy); d.setDate(d.getDate() + n); return d; };
+  const rob = (status) => porPc("ROB-01", { type: "robatope", gondolaType: undefined, status, startDate: "", endDate: "" });
+  const par = { ocupacion: { intervalos: [{ desde: dia(en(-30)), hasta: dia(en(120)), pb: 2500 }], fisicos: [] }, hoy: dia(hoy) };
+  const ix = PC.indiceDePartes({});
+  const dispo = (f, desde, hasta) => PC.disponibilidadDeCara(f, "A", {}, ix, "NAVE", desde, hasta, par);
+  // Disponible: la ocupación la pinta.
+  assert.equal(dispo(rob("free"), hoy, en(30)), "parcial");
+  // En Mantenimiento o Reservada a mano HOY: tomada, aunque quede 75 %.
+  assert.equal(dispo(rob("maintenance"), hoy, en(30)), "tomado", "una cara en Mantenimiento con 25 % comprometido sale «parcial» en Vender");
+  assert.equal(dispo(rob("reserved"), hoy, en(30)), "tomado");
+  // Esos estados no tienen fechas: un periodo que no incluye hoy no lo cubren, y la ocupación vuelve a pintar.
+  assert.equal(dispo(rob("maintenance"), en(40), en(70)), "parcial");
+  assert.equal(PC.tomadaPorLoSuyo(rob("maintenance"), "A", {}, "NAVE", hoy, en(30)), true);
+  assert.equal(PC.tomadaPorLoSuyo(rob("free"), "A", {}, "NAVE", hoy, en(30)), false);
+  // «Cuándo se libera» tampoco dice «queda 75 %» de una cara en Mantenimiento.
+  const como = (f) => PC.comoSeLiberaLaCara(f, "A", {}, ix, "NAVE", hoy, en(30), { ...par, conPorcentaje: true });
+  assert.deepEqual(como(rob("free")), { porPartes: "Por participación · queda 75 %" });
+  assert.ok(!/queda|participaci/i.test(JSON.stringify(como(rob("maintenance")) ?? null)), "una cara en Mantenimiento dice lo que queda de sus participaciones");
+  // El globo y la ficha: nunca «disponible para vender» sobre lo puesto a mano.
+  const d = PC.dispoDeParticipacion(rob("free"), par, dia(hoy), dia(hoy));
+  const mant = PC.textoDeLoComprometido(d, true, { propio: "maintenance" });
+  assert.equal(mant, "Por participación · comprometido 25 % · queda 75 % · En mantenimiento: no se ofrece.");
+  assert.doesNotMatch(mant, /disponible/i);
+  assert.equal(PC.textoDeLoComprometido(d, true, { propio: "reserved" }), "Por participación · comprometido 25 % · queda 75 % · Reservada a mano: no se ofrece.");
+  assert.equal(PC.textoDeLoComprometido(d, false, { propio: "maintenance" }), "Por participación · En mantenimiento: no se ofrece.");
+  assert.equal(PC.textoDeLoComprometido(null, true, { propio: "maintenance" }), "Se vende por participación · En mantenimiento: no se ofrece.");
+  // Disponible: lo de antes, con la opción o sin ella.
+  assert.equal(PC.textoDeLoComprometido(d, true, { propio: "free" }), PC.textoDeLoComprometido(d, true));
+  assert.equal(PC.textoDeLoComprometido(d, true), "Por participación · comprometido 25 % · queda 75 % — disponible para vender en el Editor 3D → Distribución.");
+  // Vender y Supervisar: lo puesto a mano pasa antes que la ocupación en «Cuándo se libera».
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /\? \(tomadaPorLoSuyo\(f, face\.face, estadoComercial, sede, mapRange\.from, mapRange\.to\)\s*\? comoSeLiberaLaCara\(f, face\.face, estadoComercial, indicePartes, sede, mapRange\.from, mapRange\.to\)\s*: comoSeLiberaPorParticipacion\(/,
+    "«Cuándo se libera» mira la ocupación antes que lo puesto a mano");
+});
+
+prueba("fase 2 · la ficha del plano 2D no repite «en el Editor 3D → Distribución» (`conLugar`, ejecutado)", () => {
+  const g = porPc("ROB-01", { type: "robatope", gondolaType: undefined });
+  const hoy = "2026-10-17";
+  const d = PC.dispoDeParticipacion(g, { ocupacion: { intervalos: [{ desde: "2026-10-01", hasta: "2026-12-31", pb: 5500 }], fisicos: [] }, hoy }, hoy, hoy);
+  assert.equal(PC.textoDeLoComprometido(d, true, { conLugar: false }), "Por participación · comprometido 55 % · queda 45 % — disponible para vender.");
+  assert.equal(PC.textoDeLoComprometido(d, true, { conLugar: true }), PC.textoDeLoComprometido(d, true));
+  // Tomada: igual con y sin el lugar.
+  const tomada = { dispo: "tomado", quedaPb: 0 };
+  assert.equal(PC.textoDeLoComprometido(tomada, true, { conLugar: false }), PC.textoDeLoComprometido(tomada, true));
+  // La ficha lo pide sin lugar; el renglón de abajo dice dónde se cargan (una vez).
+  const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
+  assert.equal((panel.match(/\{DONDE_SE_CARGAN\}/g) ?? []).length, 1);
+  assert.match(panel, /textoDeLoComprometido\(dispoPc, isAdmin, \{ propio: face\.status, conLugar: false \}\)/);
+});
+
+prueba("fase 2 · el globo de Supervisar habla de la cara TOCADA, no siempre de la A (E5b)", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const i = t.indexOf("function FixturePopover(");
+  const globo = t.slice(i, t.indexOf("\n}\n", i));
+  assert.ok(globo.length > 1000, "no está FixturePopover");
+  assert.match(globo, /fixture, cara = "A", anchor, isAdmin,/);
+  assert.match(globo, /const entry = faces\.find\(\(x\) => x\.face === cara\) \?\? faces\[0\];/, "el globo mira la A al tocar la B");
+  assert.doesNotMatch(globo, /const entry = faces\[0\];/);
+  // Las puertas, la ocupación de hoy y la pastilla son de ESA cara.
+  assert.match(globo, /\.filter\(\(p\) => p\.sufijo\.startsWith\("B·"\) === \(entry\.face === "B"\)\)/);
+  assert.match(globo, /const dispoPc = useDispoDeHoy\(fixture, entry\.face\);/);
+  assert.match(globo, /<StatusPill fixture=\{fixture\} face=\{entry\} \/>/);
+  // La llamada: la cara de la ficha (`entradaDetalle`), y Renovar y «Abrir en Distribución» con ella.
+  assert.match(t, /<FixturePopover\s+fixture=\{selected\}\s+cara=\{entradaDetalle\.face\}/);
+  assert.match(t, /onRenovar=\{isAdmin && renovable\(entradaDetalle\)\s*\? \(\) => renovar\(entradaDetalle\)\s*: undefined\}/);
+  assert.doesNotMatch(t, /facesOf\(selected\)\[0\]/, "algo del globo sigue yendo a la A");
+});
+
+prueba("fase 2 · lo SUYO del proveedor que está delante: su pico en el periodo; otro proveedor nunca suma (`loDelProveedor`, ejecutado)", () => {
+  const hoy = "2026-10-19";
+  let id = 0;
+  const contrato = (pb, desde, hasta, extra = {}) => ({ id: ++id, spaceId: id, numero: id, estado: "contrato", pb, supplierId: 0, marca: null,
+    desde, hasta, caduca: null, bajaFecha: null, lease: { isActive: true, startDate: desde, endDate: hasta }, ...extra });
+  const reserva = (pb, desde, hasta, caduca) => ({ id: ++id, spaceId: id, numero: id, estado: "reserva", pb, supplierId: 0, marca: null,
+    desde, hasta, caduca, bajaFecha: null, lease: null });
+  const de = (proveedor, termino) => ({ proveedor, termino });
+  const terminos = [
+    de("Kellogg's", contrato(2500, "2026-10-01", "2026-12-31")),
+    de("Kellogg's", reserva(1000, "2026-11-01", "2026-11-30", "2026-10-25")),   // se sostiene: cuenta en noviembre
+    de("Alpina", contrato(4000, "2026-10-01", "2026-12-31")),
+    de("Postobón", contrato(3000, "2026-10-01", "2026-12-31")),
+    de(null, contrato(500, "2026-10-01", "2026-12-31")),
+  ];
+  assert.equal(PC.loDelProveedor(terminos, "Kellogg's", hoy, hoy, hoy), 2500);
+  assert.equal(PC.loDelProveedor(terminos, "Kellogg's", "2026-11-01", "2026-11-30", hoy), 3500, "su reserva no cuenta");
+  assert.equal(PC.loDelProveedor(terminos, "  KELLOGG'S ", hoy, hoy, hoy), 2500, "mayúsculas y espacios lo vuelven otro proveedor");
+  assert.equal(PC.loDelProveedor(terminos, "Alpina", hoy, hoy, hoy), 4000);
+  // Otro proveedor (o uno sin nada en la cara) nunca suma lo de los demás.
+  assert.equal(PC.loDelProveedor(terminos, "Nutresa", hoy, hoy, hoy), 0, "suma lo de otros");
+  assert.equal(PC.loDelProveedor(terminos, "Postobon", hoy, hoy, hoy), 0, "sin la tilde es otro nombre: no se adivina");
+  // Sin proveedor nombrado, nada: la pantalla dice sólo lo libre.
+  for (const p of [null, undefined, "", "   "]) assert.equal(PC.loDelProveedor(terminos, p, hoy, hoy, hoy), 0);
+  // Lo que no cuenta: una reserva caducada, un contrato cancelado, lo que cae fuera del periodo.
+  const otros = [
+    de("Kellogg's", reserva(2000, "2026-10-01", "2026-12-31", "2026-10-18")),
+    de("Kellogg's", contrato(3000, "2026-10-01", "2026-12-31", { lease: { isActive: false, startDate: "2026-10-01", endDate: "2026-12-31" }, bajaFecha: "2026-10-10" })),
+    de("Kellogg's", contrato(5000, "2027-02-01", "2027-03-31")),
+  ];
+  assert.equal(PC.loDelProveedor(otros, "Kellogg's", hoy, "2026-12-31", hoy), 0);
+  assert.equal(PC.loDelProveedor(otros, "Kellogg's", hoy, "2027-03-31", hoy), 5000);
+  // Nunca más que la cara entera.
+  assert.equal(PC.loDelProveedor([de("K", contrato(8000, "2026-10-01", "2026-12-31")), de("k", contrato(8000, "2026-10-01", "2026-12-31"))], "K", hoy, hoy, hoy), 10000);
 });
 
 console.log(`\n${hechas} pruebas\n`);

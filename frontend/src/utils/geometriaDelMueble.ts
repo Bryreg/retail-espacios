@@ -5,7 +5,7 @@ import {
   filasDePunta, filasDeProducto, nivelesDeEntrepano, techoDeCara, tramosValidos, vanosDeCorrido,
 } from "../components/StoreEditor3D/muebles/medidas";
 import type { EstadoPorEspacio } from "./estadoComercial";
-import { claseDe, divisionDe, porParticipacion } from "./partes";
+import { claseDe, codigoDeParte, divisionDe, porParticipacion } from "./partes";
 import { firmaDeCara } from "./superficie";
 
 /**
@@ -385,7 +385,12 @@ export function loVendidoDe(
   const participacion: ParticipacionDeLaCara[] = [];
   if (porParticipacion(f)) {
     for (const cara of carasDe(f) === 2 ? ["A", "B"] as const : ["A"] as const) {
-      const completo = cara === "A" ? codigo : `${codigo}-B`;
+      // Fase 2 · I4: con la sede del PLANO, no la del mueble: la ocupación y
+      // las distribuciones confirmadas las arma el servidor así (Supervisar
+      // también). Un mueble con otra «Sede» escrita daba `comprometida:
+      // false` y cambiar Alto/Entrepaños/Módulo no avisaba de participaciones
+      // vivas. El arte y las partes siguen con el código de arriba.
+      const completo = fullSpaceCode(sede, codigoDeParte(f.code, cara, null));
       const oc = participaciones?.ocupacion;
       const deLaCara = oc ? (Object.prototype.hasOwnProperty.call(oc, completo) ? oc[completo] : undefined) : undefined;
       const confirmadas = participaciones?.confirmadas;

@@ -706,6 +706,105 @@ def test_caso_f_las_dos_caras_son_independientes_y_el_robatope_dibuja_girado(cli
     assert _cara(client, admin, espacio="GON-01-B")["distribucion"]["version"] == 1, "nada se guardó"
     assert _cara(client, admin, espacio="GON-02")["distribucion"] is None
 
+    # ── fase 2 · I1 · «Copiar zonas de otra cara» (D20, Caso F) ──────────────────
+    # La copia entra por el borrador de siempre con `origen`, que sólo va al
+    # historial y a la bitácora: no crea ni toca términos, contratos, reservas
+    # ni capacidad. La red del mapeo es la de arriba: una zona de la A mandada
+    # a la B sigue siendo `espacio_ajeno`.
+    import json
+
+    from app.models.models import AuditEntry, SpaceLease
+    from app.models.participaciones import HistorialParticipacion, Participacion
+
+    def filas():
+        db = _bd()
+        try:
+            return db.query(Participacion).count(), db.query(SpaceLease).count()
+        finally:
+            db.close()
+
+    def anotadas(accion):
+        db = _bd()
+        try:
+            hist = [(h.cara_space_id, h.detalle, json.loads(h.despues_json) if h.despues_json else None)
+                    for h in db.query(HistorialParticipacion).filter_by(accion=accion).order_by(HistorialParticipacion.id)]
+            bit = [(x.entidad_id, x.detalle) for x in db.query(AuditEntry).filter_by(accion=accion).order_by(AuditEntry.id)]
+            return hist, bit
+        finally:
+            db.close()
+
+    def cara_de(termino_id):
+        db = _bd()
+        try:
+            return db.get(Participacion, termino_id).cara_space_id
+        finally:
+            db.close()
+
+    def con_origen(origen, version, automatico=False):
+        return client.put("/api/participaciones/distribucion/borrador", headers=admin, json={
+            "sede": "NAVE", "espacio": "GON-01-B", "version": version, "automatico": automatico,
+            "zonas": _zonas((s, _franja(sup, 0, 0.5))), "origen": origen})
+
+    antes = filas()
+    capacidad_b = _cara(client, admin, espacio="GON-01-B")["capacidad"]
+    borradores = len(anotadas("distribucion.borrador")[0])
+    dist_a = _cara(client, admin)["distribucion"]["id"]
+    copia = {"sede": "NAVE", "espacio": "GON-01", "capa": "borrador", "version": 1, "mapa": [{"origen": 1, "destino": 1}]}
+    r = con_origen(copia, 1)
+    assert r.status_code == 200, r.text
+    r = r.json()
+    assert (r["version"], r["distribucion"]["estado"], r["distribucion"]["confirmada"]) == (2, "borrador", [])
+    assert [z["participacion_space_id"] for z in r["distribucion"]["borrador"]] == [s]
+    hist, bit = anotadas("distribucion.copiada")
+    assert [(c, d) for c, d, _ in hist] == [
+        (cara_de(b["id"]), "Copia de NAVE · GON-01 · cara A (borrador): 1 zona de 1 participación")]
+    assert cara_de(b["id"]) != cara_de(a["id"]), "la copia se anotó en la cara de origen"
+    assert hist[0][2]["origen"] == {
+        "sede": "NAVE", "codigo_cara": "NAVE-GON-01", "capa": "borrador", "version": 1, "distribucion_id": dist_a,
+        "espejo": False, "mapa": {"1": 1}, "sin_copiar": 0, "en_el_plano": True}
+    assert hist[0][2]["zonas"] == {"1": 1}, "el historial de la copia no trae el resumen de la capa"
+    assert len(anotadas("distribucion.borrador")[0]) == borradores, "la copia se anotó también como «borrador guardado»"
+    assert len(bit) == 1 and bit[0][0] == "NAVE-GON-01-B", bit
+    assert bit[0][1].startswith("NAVE-GON-01-B · 1 zona · copia de NAVE-GON-01"), bit
+    assert filas() == antes, "la copia creó o tocó términos (o contratos)"
+    assert _cara(client, admin, espacio="GON-01-B")["capacidad"] == capacidad_b, "la copia cambió la capacidad"
+
+    # Con `automatico`, igual se anota: una copia siempre queda en el historial.
+    r = con_origen({**copia, "espejo": True, "sin_copiar": 2, "mapa": [{"origen": 1, "destino": 1}, {"origen": 2}]}, 2,
+                   automatico=True)
+    assert r.status_code == 200 and r.json()["version"] == 3, r.text
+    hist, bit = anotadas("distribucion.copiada")
+    assert len(hist) == 2 and len(bit) == 2
+    assert hist[1][1] == "Copia de NAVE · GON-01 · cara A (borrador): 1 zona de 1 participación; 2 sin copiar"
+    assert (hist[1][2]["origen"]["espejo"], hist[1][2]["origen"]["mapa"]) == (True, {"1": 1, "2": None})
+
+    # La misma cara (escrita como sea) no es un origen: 422 antes de escribir nada. Un campo de más, tampoco.
+    for misma in ("GON-01-B", "nave-gon-01-b"):
+        r = con_origen({**copia, "espacio": misma}, 3)
+        assert (r.status_code, r.json()["detail"]["code"]) == (422, "copia_de_la_misma_cara"), r.text
+        assert r.json()["detail"]["message"] == "Elegí otra cara para copiar: ésta es la misma."
+    for de_mas in ({**copia, "proveedor": "Postobón"}, {**copia, "mapa": [{"origen": 1, "destino": 1, "valor_mensual": 1}]},
+                   {**copia, "capa": "historia"}, {**copia, "mapa": [{"origen": 0, "destino": 1}]}):
+        assert con_origen(de_mas, 3).status_code == 422, de_mas
+    assert _cara(client, admin, espacio="GON-01-B")["distribucion"]["version"] == 3, "un origen rechazado guardó algo"
+    assert len(anotadas("distribucion.copiada")[0]) == 2
+    # Un origen que ya no está en el plano no frena el guardado: queda dicho.
+    r = con_origen({**copia, "espacio": "GON-09"}, 3)
+    assert r.status_code == 200, r.text
+    o = anotadas("distribucion.copiada")[0][-1][2]["origen"]
+    assert (o["codigo_cara"], o["en_el_plano"], o["distribucion_id"]) == ("NAVE-GON-09", False, None)
+    assert filas() == antes
+
+    # fase 2 · I1: un tipo sin receta de superficie no tiene «por participación» en «Cómo se vende»: no se lo
+    # manda ahí. Uno que sí la tiene, sí.
+    r = borrador("GON-02", 0, [])
+    assert r.json()["detail"]["message"] == (
+        "«GON-02» no se vende por participación: elegí «por participación» en «Cómo se vende» del Editor 3D.")
+    _plano(client, admin, PLANO + [_mueble("EXP-01", "isla", 1.2, 0.8, 1.4, 16, division=None, label="Estiba")])
+    r = borrador("EXP-01", 0, [])
+    assert (r.status_code, r.json()["detail"]) == (409, {
+        "code": "cara_no_distribuible", "message": "Este tipo de mueble todavía no se vende por participación."}), r.text
+
 
 # ─── 9 · Caso G con el reloj ──────────────────────────────────────────────────
 
@@ -931,6 +1030,15 @@ def test_caso_h_dos_sesiones_con_la_misma_version_la_segunda_recibe_version_viej
     assert cuentas() == (antes[0] + 1, antes[1] + 1)
     r = _distribuir(client, admin, "descartar", "MET-01", 4, [])
     assert r["distribucion"]["borrador"] is None and r["version"] == 5
+    # fase 2 · I1 (E6): descartar sin borrador no sube la versión (otra sesión recibiría un version_vieja de balde)
+    # ni anota «Borrador descartado» (el historial es para siempre); con otra versión, 409 como siempre.
+    antes = cuentas()
+    assert _distribuir(client, admin, "descartar", "MET-01", 5, [])["version"] == 5
+    assert cuentas() == antes, "descartar sin borrador anotó historial o bitácora"
+    r = client.post("/api/participaciones/distribucion/descartar", headers=admin,
+                    json={"sede": "NAVE", "espacio": "MET-01", "version": 4})
+    assert r.status_code == 409, r.text
+    assert (r.json()["detail"]["code"], r.json()["detail"]["version_actual"]) == ("version_vieja", 5)
 
     # Lo mismo con un término: dos sesiones cambian la misma reserva.
     reserva = _alta(client, admin, espacio="MET-01", tipo="reserva", pb=1000, desde=D(2026, 11, 1),
@@ -1035,9 +1143,10 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
     assert d["code"] == "participaciones_vivas"
     assert d["choques"] == ["GON-01 · cara A tiene 1 participación viva (1 reserva provisional). Cancelala o "
                             "dejá que venza antes de cambiar cómo se vende."]
-    # Borrar el mueble, renombrarlo sin la renumeración o cambiarle el tipo a uno sin superficie: lo mismo.
+    # Borrar el mueble, renombrarlo sin la renumeración o cambiarle el tipo a uno sin superficie (la estiba;
+    # la nevera de bebidas ya tiene receta): lo mismo.
     for fixtures in ([f for f in PLANO if f["code"] != "GON-01"], _con("GON-01", code="GON-09"),
-                     _con("GON-01", type="nevera_refrescos", gondolaType=None)):
+                     _con("GON-01", type="isla", gondolaType=None)):
         assert _rechazo(client, admin, fixtures)["code"] == "participaciones_vivas"
     # Doble → mural con dos reservas en la B: sale sólo la B, y es la que frena.
     _alta(client, admin, espacio="GON-01-B", tipo="reserva", caduca=D(2026, 10, 25), proveedor="Alpina")

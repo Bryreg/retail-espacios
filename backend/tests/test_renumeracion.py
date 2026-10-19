@@ -30,6 +30,8 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+
 from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 HOY = hoy_en_colombia()
@@ -1151,3 +1153,164 @@ def test_las_dos_caras_de_la_gondola_doble_se_mudan_juntas(client, admin):
     assert not {viejo, f"{viejo}-B"} & set(espacios)
     # Y siguen siendo dos contratos distintos sobre dos espacios distintos.
     assert espacios[nuevo]["id"] != espacios[f"{nuevo}-B"]["id"]
+
+
+# ─── fase 2 · I5: la «Sede» propia de un mueble y el mismo código escrito ─────
+# ─── con otras mayúsculas ─────────────────────────────────────────────────────
+
+def _fila_a_mano(code, sede=None, *, contrato=False, proveedor="DORIA"):
+    """Una fila de ``spaces`` escrita directo en la base, como la dejaba un
+    ``find-or-create`` de antes (que guardaba el código tal cual vino). Con
+    ``contrato``, un lease activo colgando."""
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
+
+    db = SessionLocal()
+    try:
+        space = Space(code=code, svg_id=code, name=code, zone="Z", sede=sede, area_m2=1.0,
+                      status=SpaceStatus.free)
+        db.add(space)
+        db.flush()
+        if contrato:
+            prov = db.query(Supplier).filter_by(name=proveedor).first()
+            if prov is None:
+                prov = Supplier(name=proveedor)
+                db.add(prov)
+                db.flush()
+            db.add(SpaceLease(
+                space_id=space.id, supplier_id=prov.id, marca="ASEO",
+                start_date=hoy_en_colombia() - timedelta(days=5),
+                end_date=hoy_en_colombia() + timedelta(days=30),
+                monthly_rent=200_000, is_active=True,
+            ))
+        db.commit()
+        return space.id
+    finally:
+        db.close()
+
+
+def _gondola_pc(code, cx, sede=SEDE, division="participacion", ident=None):
+    """La góndola doble de las pruebas de participaciones (0,90 × 0,90 × 1,80),
+    sobre la misma fila: renumerar ordena por `cx`."""
+    f = {"id": ident or f"f-{code}", "code": code, "sede": sede, "type": "gondola", "gondolaType": "double",
+         "label": code, "cx": cx, "cz": 2, "rotY": 0, "w": 0.9, "d": 0.9, "h": 1.8, "color": "#818cf8"}
+    if division:
+        f["partes"] = {"division": division}
+    return f
+
+
+@pytest.mark.reloj("2026-10-17T15:00:00+00:00")
+def test_un_mueble_con_otra_sede_muda_la_cara_de_su_plano_y_no_toca_la_sede_real(client, admin):
+    """V16, medido (fase 2 · I5): un mueble del plano NAVE que dice «Sede:
+    TERRON». Las participaciones arman su cara con la sede del PLANO
+    (`NAVE-GON-01`, `NAVE-GON-01-PC1`), pero la renumeración mudaba sólo el
+    par con la sede del mueble (`TERRON-GON-01`): la cara y su participación
+    quedaban con el nombre viejo, y el par propio mudaba la fila de la sede
+    TERRON de verdad, que su plano sí dibuja. Ahora se muda el par del plano
+    siempre, y el propio sólo si ningún otro plano tiene ese código."""
+    from app.database import SessionLocal
+    from app.models.models import Space
+    from app.models.participaciones import Participacion
+
+    # GON-01 queda después de GON-02 en el recorrido: renumerar los intercambia.
+    _plano(client, admin, [_gondola_pc("GON-01", 6, sede="TERRON"), _gondola_pc("GON-02", 2)])
+    _plano(client, admin, [_gondola_pc("GON-01", 2, sede="TERRON", division=None, ident="t-GON-01")], sede="TERRON")
+    terron = _fila_a_mano("TERRON-GON-01", "TERRON", contrato=True)
+
+    r = client.post("/api/participaciones/", headers=admin, json={
+        "sede": SEDE, "espacio": "GON-01", "tipo": "contrato", "proveedor": "Postobón", "marca": "Hit",
+        "puntos_basicos": 3000, "desde": "2026-11-01", "hasta": "2027-01-31", "valor_mensual": 1_200_000})
+    assert r.status_code == 201, r.text
+    pc = r.json()["termino"]
+    assert pc["codigo"] == "NAVE-GON-01-PC1"
+
+    plan = _previo(client, admin, [SEDE])["sedes"][0]
+    assert any("TERRON-GON-01" in a and "no se mudan" in a for a in plan["avisos"]), plan["avisos"]
+    _aplicar(client, admin, [SEDE])
+
+    db = SessionLocal()
+    try:
+        assert db.get(Space, pc["space_id"]).code == "NAVE-GON-02-PC1", "la participación quedó con el nombre viejo"
+        cara = db.get(Space, db.get(Participacion, pc["id"]).cara_space_id)
+        assert cara.code == "NAVE-GON-02", "la cara quedó con el nombre viejo"
+        real = db.get(Space, terron)
+        assert real.code == "TERRON-GON-01", "la renumeración de NAVE mudó una fila de la sede TERRON"
+        assert any(lease.is_active for lease in real.leases)
+    finally:
+        db.close()
+
+
+def test_el_mismo_codigo_con_otras_mayusculas_y_los_dos_con_algo_da_409_y_no_500(client, admin):
+    """Medido (fase 2 · I5): las filas `NAVE-IMP-05` y `nave-imp-05` (las
+    creaba el `find-or-create` de antes, que comparaba y guardaba tal cual)
+    iban las dos al mismo destino: el previo daba 200 sin verlo y aplicar
+    reventaba contra `UNIQUE spaces.svg_id` → 500. Ahora es un 409 en los dos
+    pasos, que nombra a las dos, y no se escribe nada: unir dos filas con
+    contratos es un arreglo de datos a mano."""
+    tres = [_impulsador(cx, f"IMP-{n:02d}") for cx, n in ((1.0, 5), (2.0, 6), (3.0, 7))]
+    _plano(client, admin, tres)
+    mayus = _fila_a_mano("NAVE-IMP-05", SEDE, contrato=True)
+    minus = _fila_a_mano("nave-imp-05", SEDE, contrato=True, proveedor="COLGATE")
+    antes = _leer(client, admin)
+
+    for paso in ("previo", "aplicar"):
+        r = client.post(f"/api/layout/renumeracion/{paso}", json={}, headers=admin)
+        assert r.status_code == 409, (paso, r.text)
+        detalle = r.json()["detail"]
+        assert detalle["code"] == "renumeracion_bloqueada"
+        motivos = " ".join(detalle["motivos"])
+        assert f"#{mayus} (NAVE-IMP-05, 1 contrato)" in motivos, motivos
+        assert f"#{minus} (nave-imp-05, 1 contrato)" in motivos, motivos
+        assert "el mismo código escrito distinto" in motivos
+
+    assert _leer(client, admin)["fixtures"] == antes["fixtures"]
+    espacios = _espacios(client, admin)
+    assert {"NAVE-IMP-05", "nave-imp-05"} <= set(espacios), "se escribió algo con el 409"
+
+
+def test_la_fila_vacia_con_el_mismo_codigo_en_minusculas_se_archiva_al_renumerar(client, admin):
+    """La otra mitad: si todas menos una están vacías (sin contratos, archivos,
+    caras, participaciones, zonas ni historial), la renumeración archiva las
+    vacías en la misma transacción —`archived_spaces` y el `#id` en el código,
+    como el borrado de una sede— y lo dice en los avisos."""
+    from app.database import SessionLocal
+    from app.models.models import ArchivedSpace, Space
+
+    tres = [_impulsador(cx, f"IMP-{n:02d}") for cx, n in ((1.0, 5), (2.0, 6), (3.0, 7))]
+    _plano(client, admin, tres)
+    mayus = _fila_a_mano("NAVE-IMP-05", SEDE, contrato=True)
+    minus = _fila_a_mano("nave-imp-05", SEDE)
+
+    plan = _previo(client, admin)["sedes"][0]
+    assert any(f"#{minus}" in a and "se archiva" in a for a in plan["avisos"]), plan["avisos"]
+    _aplicar(client, admin)
+
+    db = SessionLocal()
+    try:
+        queda = db.get(Space, mayus)
+        assert queda.code == "NAVE-IMP-01" and any(lease.is_active for lease in queda.leases)
+        vacia = db.get(Space, minus)
+        assert vacia.code.startswith("nave-imp-05#") and vacia.svg_id.startswith("nave-imp-05#"), vacia.code
+        archivo = db.query(ArchivedSpace).filter(ArchivedSpace.space_id == minus).one()
+        assert archivo.original_code == "nave-imp-05"
+    finally:
+        db.close()
+
+
+def test_find_or_create_no_crea_el_mismo_codigo_dos_veces_con_otras_mayusculas(client, admin):
+    """La prevención (fase 2 · I5): `find-or-create` busca sin distinguir
+    mayúsculas y crea en la forma del plano (trim + mayúsculas)."""
+    def pedir(code):
+        r = client.post("/api/spaces/find-or-create", json={"code": code, "sede": SEDE}, headers=admin)
+        assert r.status_code in (200, 201), r.text
+        return r.json()
+
+    primera = pedir("nave-imp-09")
+    assert primera["code"] == "NAVE-IMP-09" and primera["svg_id"] == "fix-NAVE-IMP-09"
+    assert pedir("NAVE-IMP-09")["id"] == primera["id"]
+    assert pedir(" Nave-Imp-09 ")["id"] == primera["id"]
+    # Una fila de antes, guardada en minúsculas, se encuentra y no se duplica.
+    vieja = _fila_a_mano("nave-imp-10", SEDE)
+    assert pedir("NAVE-IMP-10")["id"] == vieja
+    codigos = [c for c in _espacios(client, admin) if c.upper().startswith("NAVE-IMP-1")]
+    assert codigos == ["nave-imp-10"], codigos

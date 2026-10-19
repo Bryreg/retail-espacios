@@ -108,8 +108,18 @@ await prueba("la participación: no la cuenta el mueble, no tiene tarifa propia 
   assert.ok(!P.esParticipacion(P.partirCodigo("NAVE-GON-01-EN3").parte) && !P.esParticipacion(null));
   assert.equal(P.cantidadDe(doble, "participacion"), null);
   assert.ok(P.porParticipacion(doble) && !P.porParticipacion({ ...doble, rentable: false }));
-  assert.ok(!P.porParticipacion({ code: "NEV-03", type: "nevera_puertas", partes: { division: "participacion" } }),
-    "una nevera de puertas no tiene receta de superficie");
+  assert.ok(!P.porParticipacion({ code: "EXP-03", type: "isla", partes: { division: "participacion" } }),
+    "una estiba no tiene receta de superficie");
+  // fase 2 · I3: las dos neveras sí (y su división física guardada no la reemplaza).
+  assert.ok(P.porParticipacion({ code: "NEV-03", type: "nevera_puertas", partes: { puertas: 3, division: "participacion" } }),
+    "la nevera de puertas tiene receta de superficie");
+  assert.ok(P.porParticipacion({ code: "BEB-03", type: "nevera_refrescos", partes: { tramos: 3, division: "participacion" } }),
+    "la nevera de bebidas tiene receta de superficie");
+  assert.ok(!P.porParticipacion({ code: "NEV-03", type: "nevera_puertas", partes: { puertas: 3, division: "puertas" } }),
+    "una nevera por puertas pasó a venderse por participación");
+  for (const type of ["impulsador", "puesto_impulso", "batea", "isla_fria", "nevera_vegetales", "nevera_carnes", "stand_frutas"]) {
+    assert.ok(!P.porParticipacion({ code: "X-01", type, partes: { division: "participacion" } }), `${type} no tiene receta de superficie`);
+  }
   assert.equal(P.divisionDe(doble), null);
   assert.deepEqual(P.interruptoresDeLaCara(doble, "A"), [], "Vender no ofrece partes físicas de una cara por participación");
   assert.equal(P.textoDeParte(pc3), "Participación 3");
@@ -1356,6 +1366,24 @@ await prueba("el panel de geometría le pasa a `loVendidoDe` las caras confirmad
   assert.deepEqual(r.aviso?.lineas.filter((l) => /cara [AB]/.test(l)),
     ["La cara A se vende por participación y tiene una distribución confirmada: con este cambio queda para revisar."]);
   assert.ok(!r.aviso.lineas.some((l) => l.startsWith("No se pudo revisar")), "con los datos a mano igual dice «No se pudo revisar»");
+});
+
+// ── fase 2 · I4 (E8): la ocupación de la cara por participación, con la sede del PLANO ──
+await prueba("fase 2 · un mueble por participación con OTRA «Sede» escrita avisa igual al cambiar su geometría: la ocupación se busca con la sede del plano (E8)", () => {
+  const g = gondola({ partes: { division: "participacion" }, status: "free", faceB: { status: "free" }, sede: "OTRA" });
+  const iv = [{ desde: "2026-11-01", hasta: "2026-11-30", pb: 2500 }];
+  // El servidor arma la ocupación y las distribuciones con la sede del plano (NAVE), no la del mueble.
+  const v = P.loVendidoDe(g, "NAVE", new Set(), {}, { ocupacion: { "NAVE-GON-05": { intervalos: iv, fisicos: [] } }, confirmadas: new Set(["NAVE-GON-05"]) });
+  assert.deepEqual(v.participacion, [{ cara: "A", comprometida: true, confirmada: true }, { cara: "B", comprometida: false, confirmada: false }],
+    "con otra «Sede» escrita en el mueble, la cara A no encuentra su ocupación");
+  const r = P.revisarCambioDeGeometria(g, { h: 2.2 }, v);
+  assert.ok(r.aviso && r.aviso.lineas.some((l) => l.startsWith("La cara A se vende por participación")), "cambiar el alto no avisa de las participaciones vivas");
+  // Escrita con la sede del mueble (como el servidor NUNCA la arma), no se encuentra: la cuenta no mira esa sede.
+  const conLaDelMueble = P.loVendidoDe(g, "NAVE", new Set(), {}, { ocupacion: { "OTRA-GON-05": { intervalos: iv, fisicos: [] } }, confirmadas: new Set(["OTRA-GON-05"]) });
+  assert.deepEqual(conLaDelMueble.participacion.map((x) => [x.comprometida, x.confirmada]), [[false, false], [false, false]]);
+  // Con la misma sede en los dos, como siempre.
+  const igual = P.loVendidoDe({ ...g, sede: "NAVE" }, "NAVE", new Set(), {}, { ocupacion: { "NAVE-GON-05-B": { intervalos: iv, fisicos: [] } }, confirmadas: new Set() });
+  assert.deepEqual(igual.participacion.map((x) => x.comprometida), [false, true]);
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);

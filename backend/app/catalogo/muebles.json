@@ -179,7 +179,8 @@
       "referencia": { "corto": "Neveras", "frase": "las neveras" },
       "rango": { "w": [0.6, 3.75], "d": [0.5, 1.2], "h": [1.2, 2.4] },
       "geometria": { "tramos": [2, 40] },
-      "partes": { "divisiones": ["tramos"] }
+      "partes": { "divisiones": ["tramos"] },
+      "superficie": { "orientacion": "frente", "receta": "nevera_abierta" }
     },
     "nevera_puertas": {
       "prefijo": "NEV", "alquilable": "si", "tarifa": "nevera_puertas",
@@ -188,10 +189,11 @@
       "banderas": ["producto", "prueba3D", "frio"],
       "rotuloEditor": "Nevera de Puertas",
       "medidas": { "w": 1.40, "d": 0.74, "h": 2.10 }, "color": "#1e293b", "emoji": "🧊",
-      "descripcion": "Nevera vertical cerrada, con puertas de vidrio: se vende entera o por puertas",
+      "descripcion": "Nevera vertical cerrada, con puertas de vidrio: se vende entera, por puertas o por participación",
       "rango": { "w": [0.6, 3.2], "d": [0.55, 0.9], "h": [1.7, 2.3] },
       "geometria": { "puertas": [1, 6] },
-      "partes": { "divisiones": ["puertas"] }
+      "partes": { "divisiones": ["puertas"] },
+      "superficie": { "orientacion": "frente", "receta": "nevera_puertas" }
     },
     "stand_frutas": {
       "prefijo": "FRU", "alquilable": "si", "tarifa": "stand_frutas",

@@ -197,3 +197,102 @@ def test_las_claves_de_la_ficha_son_las_mismas_que_las_del_navegador():
     m = re.search(r"export const CLAVES_DE_FICHA = \[([^\]]*)\]", ts)
     assert m, "no se encontró `CLAVES_DE_FICHA` en guardadoDelPlano.ts"
     assert sorted(re.findall(r'"(\w+)"', m.group(1))) == sorted(CLAVES_DE_FICHA)
+
+
+# ─── fase 2 · I5: medidas que no se pueden dibujar ───────────────────────────
+#
+# `PUT /layout` recibía `fixtures: list[Any]` y no miraba las medidas: un ancho
+# de 1e308 con un módulo de 1e-9 entraba con un 200 y colgaba el 3D de quien
+# abriera el plano. Ahora `medidas_imposibles` frena SÓLO lo que el guardado
+# crea o cambia (la política de `choques_nuevos`): un plano que ya traía una
+# medida rota se sigue abriendo y guardando.
+
+def _put(client, headers, fixtures, sede="NAVE"):
+    return client.put(f"/api/layout/{sede}", headers=headers,
+                      json={"fixtures": fixtures, "base_updated_at": None})
+
+
+def _rechazo(r):
+    assert r.status_code == 409, r.text
+    detalle = r.json()["detail"]
+    assert detalle["code"] == "medidas_imposibles", detalle
+    return detalle["choques"]
+
+
+def test_UNA_MEDIDA_IMPOSIBLE_NUEVA_NO_SE_GUARDA_Y_LA_QUE_YA_ESTABA_SI(client, admin):
+    rota = {**GONDOLA, "w": 1e308, "modulo": 1e-9}
+    # El primer guardado de una sede no se compara con nada: entra, como entra
+    # un plano que ya existe (el arranque, otra estación, una restauración).
+    _guardar(client, admin, [rota, NEVERA])
+    # Guardarlo igual, mover otro mueble o mover la góndola rota misma: entra.
+    _guardar(client, admin, [rota, NEVERA])
+    _guardar(client, admin, [rota, {**NEVERA, "cx": 11}])
+    _guardar(client, admin, [{**rota, "cx": 7}, {**NEVERA, "cx": 11}])
+    base = [{**rota, "cx": 7}, {**NEVERA, "cx": 11}]
+
+    # Cambiarle una medida a un mueble por una imposible: 409, con la frase.
+    assert _rechazo(_put(client, admin, [base[0], {**base[1], "w": 0}])) == [
+        "NEV-01: el ancho de 0 m no se puede dibujar (va de más de 0 a 1.000 m)."]
+    # Un mueble nuevo con un módulo que lo parte en miles.
+    sana = {**GONDOLA, "id": "g2", "code": "GON-04", "cx": 12}
+    assert _rechazo(_put(client, admin, [*base, {**sana, "modulo": 0.001}])) == [
+        "GON-04: con un módulo de 0,001 m saldrían 3.000 módulos; el tope es 200."]
+    # Entrepaños de más (o rotos).
+    assert _rechazo(_put(client, admin, [*base, {**sana, "entrepanos": 1e9}])) == [
+        "GON-04: 1e+09 entrepaños no se pueden dibujar (van de 0 a 50, enteros)."]
+    assert _rechazo(_put(client, admin, [*base, {**sana, "entrepanos": 2.5, "h": -1}])) == [
+        "GON-04: el alto de -1 m no se puede dibujar (va de más de 0 a 1.000 m); "
+        "2,5 entrepaños no se pueden dibujar (van de 0 a 50, enteros)."]
+    # Cambiar el módulo de la góndola que ya estaba rota TAMBIÉN es cambiarla:
+    # se mira entera y su ancho no se puede dibujar.
+    assert _rechazo(_put(client, admin, [{**base[0], "modulo": 1.0}, base[1]])) == [
+        "GON-03: el ancho de 1e+308 m no se puede dibujar (va de más de 0 a 1.000 m)."]
+
+    # Nada de eso quedó escrito.
+    crudo = {f["id"]: f for f in json.loads(_crudo())}
+    assert set(crudo) == {"g1", "n1"}
+    assert crudo["n1"]["w"] == NEVERA["w"] and crudo["g1"]["modulo"] == 1e-9
+
+    # Y una medida sana nueva entra como siempre.
+    _guardar(client, admin, [*base, {**sana, "modulo": 1.0, "entrepanos": 4}])
+
+
+def test_los_topes_del_dibujo_son_los_del_servidor(client):
+    """El 3D recorta al DIBUJAR con `MAX_VANOS_A_DIBUJAR` y
+    `MAX_ENTREPANOS_A_DIBUJAR` (`muebles/medidas.ts`, no importa de
+    `superficie.ts`: sería un ciclo). Si se separan de los del servidor, un
+    plano que el servidor deja guardar se dibujaría recortado, o al revés."""
+    import re
+    from pathlib import Path
+
+    from app.services.layout_lookup import MAX_ENTREPANOS
+    from app.services.superficie import MAX_VANOS
+
+    ts = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "StoreEditor3D"
+          / "muebles" / "medidas.ts").read_text(encoding="utf-8")
+    vanos = re.search(r"export const MAX_VANOS_A_DIBUJAR = (\d+);", ts)
+    entrepanos = re.search(r"export const MAX_ENTREPANOS_A_DIBUJAR = (\d+);", ts)
+    assert vanos and entrepanos, "no están los topes del dibujo en medidas.ts"
+    assert int(vanos.group(1)) == MAX_VANOS
+    assert int(entrepanos.group(1)) == MAX_ENTREPANOS
+
+
+# ─── fase 2 · I5: una participación de un tipo sin receta ────────────────────
+
+def test_una_participacion_de_un_tipo_sin_superficie_no_manda_a_buscar_una_opcion_que_no_esta(client):
+    """La isla (o el impulsador) no tiene receta de superficie, así que «Cómo
+    se vende» no le ofrece «por participación»: la frase ya no manda a
+    elegirlo ahí. Es la misma frase que `services/participaciones.py`."""
+    from app.services.layout_lookup import PARTE_INEXISTENTE, TIPO_SIN_PARTICIPACION, motivo_para_no_vender_parte
+    from app.services.partes import partir_codigo
+
+    assert TIPO_SIN_PARTICIPACION == "Este tipo de mueble todavía no se vende por participación."
+    isla = {"code": "ISL-01", "type": "isla", "w": 1.2, "d": 0.8, "h": 1.0}
+    motivo, frase = motivo_para_no_vender_parte(isla, partir_codigo("NAVE-ISL-01-PC1"))
+    assert motivo == PARTE_INEXISTENTE
+    assert frase == f"«NAVE-ISL-01»: {TIPO_SIN_PARTICIPACION}"
+    assert "Cómo se vende" not in frase
+    # Con receta (una góndola que se vende entera) sigue diciendo dónde se elige.
+    gondola = {"code": "GON-01", "type": "gondola", "gondolaType": "double", "w": 0.9, "d": 0.9, "h": 1.8}
+    motivo, frase = motivo_para_no_vender_parte(gondola, partir_codigo("NAVE-GON-01-PC1"))
+    assert motivo == PARTE_INEXISTENTE and "elegí «por participación» en «Cómo se vende»" in frase

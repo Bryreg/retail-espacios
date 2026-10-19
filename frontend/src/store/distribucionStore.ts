@@ -2,11 +2,11 @@ import { create } from "zustand";
 import { describeError } from "../api/client";
 import {
   confirmarDistribucion, descartarBorrador, espacioDeLaCara, guardarBorrador as escribirBorrador, leerCara, rechazoDe,
-  type CaraOut, type DistribucionEscrita, type DistribucionOut, type ProblemaOut, type ZonaOut,
+  type CaraOut, type DistribucionEscrita, type DistribucionOut, type OrigenDeCopiaIn, type ProblemaOut, type ZonaOut,
 } from "../api/participaciones";
 import {
   descartarEnCualquierModo, desdeElServidor, estadoInicial, fusionarZonas, reducir, zonaEnPunto, zonasParaEnviar,
-  type Accion, type EstadoDeEdicion, type ZonaEnEdicion,
+  type Accion, type EstadoDeEdicion, type ZonaEnEdicion, type ZonaPegada,
 } from "../utils/edicionDeZonas";
 import { firmaDeCara, type MuebleParaSuperficie } from "../utils/superficie";
 import { useAuthStore } from "./authStore";
@@ -40,6 +40,14 @@ import { useOcupacionStore } from "./ocupacionStore";
  *   · Una escritura de términos que vuelve con un 409 (otra sesión vendió en
  *     el medio): `releerTrasConflicto` vuelve a leer la cara y la ocupación
  *     sin cerrar el formulario, y su vista previa dice lo que queda de verdad.
+ *   · «Copiar zonas de otra cara» (fase 2 · I1, `pegarCopia`): lo pegado es
+ *     UN paso de deshacer y se guarda enseguida como la persona, con `origen`
+ *     (sólo historial y bitácora). Si ese guardado no sale (red, 409), el
+ *     origen viaja con el próximo guardado que lleve alguna zona pegada —el
+ *     autoguardado después de «Traer lo nuevo», el de red al cambiar de cara o
+ *     salir, el que hace `confirmar` antes de confirmar—; si la copia se
+ *     deshizo antes (ninguna clave pegada sigue en lo que se guarda), no se
+ *     declara nada. Confirmar y su candado no cambian.
  */
 
 export interface DistribucionActiva {
@@ -62,10 +70,28 @@ export interface EstadoDelGuardado {
   ultimoAuto: number | null;
 }
 
+/** fase 2 · I1 · «Copiar zonas de otra cara»: de dónde vinieron las zonas
+ *  pegadas en una cara. */
+export interface CopiaDeZonas {
+  /** `claveDeCara` de la cara a la que se pegaron. */
+  cara: string;
+  /** Lo que el borrador declara (sólo historial y bitácora). */
+  origen: OrigenDeCopiaIn;
+  /** «NAVE · GON-01 · cara A», para la franja del panel. */
+  rotulo: string;
+  /** Las claves (`n<k>`) de las zonas pegadas. Si ninguna sigue en lo que se
+   *  guarda (se deshizo la copia), el origen no se declara. */
+  claves: string[];
+  /** Un guardado ya la llevó al servidor (no se vuelve a declarar). */
+  declarada: boolean;
+}
+
 /** Lo que no se pudo guardar al salir de una cara. */
 export interface EdicionSinGuardar {
   zonas: ZonaEnEdicion[];
   base: ZonaEnEdicion[];
+  /** fase 2 · I1: una copia pegada que todavía no llegó al servidor. */
+  copia?: CopiaDeZonas;
 }
 
 interface DistribucionStore {
@@ -86,6 +112,8 @@ interface DistribucionStore {
   pedidoDeCara: "A" | "B" | null;
   /** Por `claveDeCara`: lo que no se pudo guardar al salir. */
   sinGuardar: Record<string, EdicionSinGuardar>;
+  /** fase 2 · I1: la última copia pegada en la cara activa (declarada o no). */
+  copia: CopiaDeZonas | null;
 
   entrar: (a: { sede: string; fixtureId: string; codigo: string; cara: "A" | "B" }) => Promise<void>;
   /** `true` si salió. Sin forzar, con cambios que no se pudieron guardar, se
@@ -115,6 +143,11 @@ interface DistribucionStore {
    *  dibujado. `true` si la puso al día; con cualquier otro rechazo, nada. */
   releerTrasConflicto: (e: unknown) => Promise<boolean>;
   elegirDia: (dia: string) => void;
+  /** fase 2 · I1 · «Copiar como borrador»: pega lo que armó «Copiar zonas de
+   *  otra cara» (`utils/copiaDeZonas.ts`) en UN paso de deshacer y lo guarda
+   *  enseguida como la persona, con `origen`. `true` si quedó guardado; si el
+   *  guardado falla, lo pegado sigue en el lienzo como cualquier cambio. */
+  pegarCopia: (c: { quedan: readonly ZonaEnEdicion[]; nuevas: readonly ZonaPegada[] }, origen: OrigenDeCopiaIn, rotulo: string) => Promise<boolean>;
   /** Vacía todo: activa, datos, edición, formulario y lo no guardado. */
   reiniciar: () => void;
 }
@@ -228,11 +261,20 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     }, AUTOGUARDADO_MS);
   };
 
-  /** Deja la edición de la cara activa en memoria (no se pudo guardar). */
+  /** Deja la edición de la cara activa en memoria (no se pudo guardar), con
+   *  la copia pegada que todavía no llegó al servidor (fase 2 · I1). */
   const guardarEnMemoria = () => {
     const { activa, edicion } = get();
     if (!activa || !edicion.sucio) return;
-    set((s) => ({ sinGuardar: { ...s.sinGuardar, [claveDeCara(activa)]: { zonas: edicion.zonas, base: edicion.base } } }));
+    const copia = copiaPorDeclarar(activa, edicion.zonas);
+    set((s) => ({ sinGuardar: { ...s.sinGuardar, [claveDeCara(activa)]: { zonas: edicion.zonas, base: edicion.base, ...(copia ? { copia } : {}) } } }));
+  };
+
+  /** fase 2 · I1: la copia pegada en ESTA cara que todavía no se declaró y
+   *  sigue en `zonas` (alguna de sus claves). null si no hay nada que declarar. */
+  const copiaPorDeclarar = (a: DistribucionActiva, zonas: readonly ZonaEnEdicion[]): CopiaDeZonas | null => {
+    const c = get().copia;
+    return c && !c.declarada && c.cara === claveDeCara(a) && zonas.some((z) => c.claves.includes(z.clave)) ? c : null;
   };
 
   const olvidarDeEstaCara = (a: DistribucionActiva) => {
@@ -262,7 +304,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     generacion++;
     set((s) => ({
       activa: null, datos: null, cargando: false, error: null, edicion: edicionLimpia(s.edicion), guardado: QUIETO,
-      formulario: null, fusion: null, pedidoDeCara: null,
+      formulario: null, fusion: null, pedidoDeCara: null, copia: null,
     }));
   };
 
@@ -286,6 +328,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     fusion: null,
     pedidoDeCara: null,
     sinGuardar: {},
+    copia: null,
 
     entrar: async ({ sede, fixtureId, codigo, cara }) => {
       const { token, cliente } = sesion();
@@ -304,7 +347,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       const activa: DistribucionActiva = { cliente, sede, fixtureId, codigo, cara };
       set((s) => ({
         activa, datos: null, cargando: true, error: null, edicion: edicionLimpia(s.edicion), guardado: QUIETO,
-        formulario: null, fusion: null, pedidoDeCara: null,
+        formulario: null, fusion: null, pedidoDeCara: null, copia: null,
       }));
       try {
         await useFixtureStore.getState().flushPending();
@@ -400,7 +443,12 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       const f = fusionarZonas(guardada.base, guardada.zonas, suyas);
       const zonas = f.zonas.filter((z) => !muertas.has(z.participacionSpaceId));
       const ed = reducir(edicion, { tipo: "fusionar", zonas, base: desdeElServidor(suyas) });
-      set({ edicion: ed, fusion: f.conflictos.length > 0 ? { conflictos: f.conflictos, mias: guardada.zonas } : null });
+      // fase 2 · I1: la copia que no llegó al servidor vuelve con lo suyo (la
+      // regla de las claves decide si se declara después de la fusión).
+      set({
+        edicion: ed, fusion: f.conflictos.length > 0 ? { conflictos: f.conflictos, mias: guardada.zonas } : null,
+        ...(guardada.copia ? { copia: guardada.copia } : {}),
+      });
       olvidarDeEstaCara(activa);
       if (ed.sucio) programarAutoguardado();
     },
@@ -430,18 +478,25 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       const gen = generacion;
       const foto = get().edicion.zonas;
       const version = d.distribucion?.version ?? 0;
+      // fase 2 · I1: lo que se guarda lleva zonas pegadas que el servidor todavía
+      // no sabe de dónde vinieron: va con su `origen` y como la persona (una
+      // copia siempre queda en el historial), aunque sea el autoguardado.
+      const copia = copiaPorDeclarar(a, foto);
+      const auto = automatico && copia === null;
       cancelarAutoguardado();
       set((s) => ({ guardado: { ...s.guardado, estado: "guardando", mensaje: null } }));
       const pedido = (async () => {
         try {
           const r = await escribirBorrador({
-            sede: a.sede, espacio: espacioDeLaCara(a.codigo, a.cara), version, automatico, zonas: zonasParaEnviar(foto),
+            sede: a.sede, espacio: espacioDeLaCara(a.codigo, a.cara), version, automatico: auto, zonas: zonasParaEnviar(foto),
+            ...(copia ? { origen: copia.origen } : {}),
           });
           if (!mismaCara(a, gen)) return false;
           set((s) => ({
             datos: s.datos ? conEscritura(s.datos, r) : s.datos,
             edicion: reducir(s.edicion, { tipo: "guardado", base: foto }),
-            guardado: { estado: "quieto", mensaje: null, ultimoAuto: automatico ? Date.now() : s.guardado.ultimoAuto },
+            guardado: { estado: "quieto", mensaje: null, ultimoAuto: auto ? Date.now() : s.guardado.ultimoAuto },
+            ...(copia && s.copia === copia ? { copia: { ...copia, declarada: true } } : {}),
           }));
           olvidarDeEstaCara(a);
           // El estado de la distribución (borrador) y su dibujado cambian en el resumen de Supervisar.
@@ -459,6 +514,15 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
 
     confirmar: async () => {
       while (enCurso) await enCurso;
+      // fase 2 · I1: una copia pegada que todavía no llegó al servidor se guarda
+      // ANTES como borrador, con su `origen` (el historial dice «copiada» y
+      // después «confirmada»). Si ese guardado no sale, no se confirma. El
+      // cuerpo de confirmar y el candado del servidor no cambian.
+      const a0 = get().activa;
+      if (a0 && copiaPorDeclarar(a0, get().edicion.zonas)) {
+        if (!(await get().guardarBorrador(false))) return;
+        while (enCurso) await enCurso;
+      }
       const a = get().activa, d = get().datos;
       if (!a || !d) return;
       const gen = generacion;
@@ -473,7 +537,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
           set((s) => ({
             datos: s.datos ? conEscritura(s.datos, r) : s.datos,
             edicion: reducir(s.edicion, { tipo: "guardado", base: foto }),
-            guardado: { ...s.guardado, estado: "quieto", mensaje: null }, fusion: null,
+            guardado: { ...s.guardado, estado: "quieto", mensaje: null }, fusion: null, copia: null,
           }));
           olvidarDeEstaCara(a);
           useOcupacionStore.getState().invalidarResumen(a.sede);
@@ -528,7 +592,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
           set((s) => {
             const datos = s.datos ? conEscritura(s.datos, r) : s.datos;
             return {
-              datos, guardado: QUIETO, fusion: null,
+              datos, guardado: QUIETO, fusion: null, copia: null,
               edicion: reducir(s.edicion, { tipo: "cargar", zonas: zonasEditables(datos), medidas: medidasDe(datos) }),
             };
           });
@@ -601,17 +665,37 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
 
     elegirDia: (dia) => set({ verAlDia: dia }),
 
+    pegarCopia: async (c, origen, rotulo) => {
+      const a = get().activa;
+      if (!a || !get().datos) return false;
+      const antes = get().edicion;
+      // Las mismas claves que pone `pegarZonas`: `n<proxima>`, `n<proxima+1>`…
+      const claves = c.nuevas.map((_, i) => `n${antes.proxima + i}`);
+      get().despachar({ tipo: "pegarZonas", quedan: c.quedan, nuevas: c.nuevas });
+      if (get().edicion === antes) return false;              // «Mirar», o nada que pegar
+      set({ copia: { cara: claveDeCara(a), origen, rotulo, claves, declarada: false } });
+      return get().guardarBorrador(false);
+    },
+
     reiniciar: () => {
       cancelarAutoguardado();
       generacion++;
       enCurso = null;
       set({
         activa: null, datos: null, cargando: false, error: null, edicion: estadoInicial(), guardado: QUIETO,
-        verAlDia: "", formulario: null, fusion: null, pedidoDeCara: null, sinGuardar: {},
+        verAlDia: "", formulario: null, fusion: null, pedidoDeCara: null, sinGuardar: {}, copia: null,
       });
     },
   };
 });
+
+/** fase 2 · I1: la copia pegada en la cara activa que sigue a la vista (alguna
+ *  de sus zonas está en lo que se edita): la franja del panel. Ctrl+Z la saca. */
+export function copiaALaVista(s: Pick<DistribucionStore, "activa" | "copia" | "edicion">): CopiaDeZonas | null {
+  const c = s.copia;
+  if (!c || !s.activa || c.cara !== claveDeCara(s.activa)) return null;
+  return s.edicion.zonas.some((z) => c.claves.includes(z.clave)) ? c : null;
+}
 
 /** ¿Hay algo sin guardar de esta cara, de una salida anterior? */
 export function hayParaRecuperar(s: Pick<DistribucionStore, "activa" | "sinGuardar">): boolean {
@@ -636,9 +720,14 @@ let reservaDeLaSesion: { cliente: string; email: string | null; sinGuardar: Reco
 /** Lo no guardado de la sesión que se cierra: lo que ya estaba en
  *  `sinGuardar` y la edición en curso, si tiene cambios. */
 function loNoGuardado(): Record<string, EdicionSinGuardar> {
-  const { activa, edicion, sinGuardar } = useDistribucionStore.getState();
+  const { activa, edicion, sinGuardar, copia } = useDistribucionStore.getState();
   const fuera = { ...sinGuardar };
-  if (activa && edicion.sucio) fuera[claveDeCara(activa)] = { zonas: edicion.zonas, base: edicion.base };
+  if (activa && edicion.sucio) {
+    // fase 2 · I1: con la copia pegada que todavía no llegó al servidor.
+    const k = claveDeCara(activa);
+    const pendiente = copia && !copia.declarada && copia.cara === k ? copia : null;
+    fuera[k] = { zonas: edicion.zonas, base: edicion.base, ...(pendiente ? { copia: pendiente } : {}) };
+  }
   return fuera;
 }
 

@@ -456,11 +456,20 @@ prueba("una participación de una cara por participación no es fantasma; de una
   assert.deepEqual(
     contratosSinMueble(mural, { "NAVE-GON-01-PC1": vendido(), "NAVE-GON-01-B-PC2": vendido() }).map((x) => x.espacio),
     ["NAVE-GON-01-B-PC2"]);
-  // Un tipo sin receta de superficie (la nevera de puertas) no se vende así.
-  const nevera = { "NAVE": [mueble("NEV-03", { type: "nevera_puertas", partes: { puertas: 3, division: "participacion" } })] };
-  const r = contratosSinMueble(nevera, { "NAVE-NEV-03-PC1": vendido() });
+  // Un tipo sin receta de superficie (la estiba) no se vende así.
+  const estiba = { "NAVE": [mueble("EXP-03", { type: "isla", partes: { division: "participacion" } })] };
+  const r = contratosSinMueble(estiba, { "NAVE-EXP-03-PC1": vendido() });
   assert.equal(r.length, 1);
-  assert.equal(r[0].code, "NEV-03-PC1", "se nombra por el código corto, con la participación");
+  assert.equal(r[0].code, "EXP-03-PC1", "se nombra por el código corto, con la participación");
+  // fase 2 · I3: las dos neveras tienen receta: su participación tiene mueble donde verse.
+  const nevera = { "NAVE": [mueble("NEV-03", { type: "nevera_puertas", partes: { puertas: 3, division: "participacion" } })] };
+  assert.deepEqual(contratosSinMueble(nevera, { "NAVE-NEV-03-PC1": vendido() }), []);
+  const bebidas = { "NAVE": [mueble("BEB-03", { type: "nevera_refrescos", partes: { tramos: 3, division: "participacion" } })] };
+  assert.deepEqual(contratosSinMueble(bebidas, { "NAVE-BEB-03-PC2": vendido() }), []);
+  // Una nevera de puertas por puertas no ofrece participaciones (ni le sobra la cara B).
+  const porPuertas = { "NAVE": [mueble("NEV-04", { type: "nevera_puertas", partes: { puertas: 3, division: "puertas" } })] };
+  assert.deepEqual(contratosSinMueble(porPuertas, { "NAVE-NEV-04-PC1": vendido(), "NAVE-NEV-04-B-PC1": vendido() }).map((x) => x.espacio).sort(),
+    ["NAVE-NEV-04-B-PC1", "NAVE-NEV-04-PC1"]);
 });
 
 prueba("un mueble de antes que ya se llamaba `GON-07-PC1` sigue siendo su cara entera (R1)", () => {

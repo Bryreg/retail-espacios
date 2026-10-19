@@ -12,7 +12,8 @@ mismos números, bit a bit (ver ``zonas_geometria.py``).
 Cada tipo que se vende por participación declara su receta en el catálogo
 (``tipos[t].superficie.receta``; la unión ``RecetaDeSuperficie`` de
 ``frontend/src/catalogo/catalogo.ts``). Las cotas salen de lo que dibuja el 3D:
-las de la góndola, la punta y el robatope son de
+las de la góndola, la punta, el robatope y las dos neveras (la de puertas y
+la de bebidas abierta, el mismo cuerpo ``NeveraReal``) son de
 ``frontend/src/components/StoreEditor3D/muebles/medidas.ts`` y van COPIADAS
 acá (``test_participaciones_geometria.py`` compara la copia con ese archivo);
 las de la ristra, la cruz y la vitrina están escritas en
@@ -51,6 +52,16 @@ ROBATOPE_GIRO = -0.06
 TRAMOS_MAXIMOS = 40
 #: ``ALTURA_PISABLE`` de ``utils/planta.ts``: por debajo, el mueble se pisa.
 ALTURA_PISABLE = 0.25
+#: ``NEVERA`` (el cuerpo de ``NeveraReal``): zócalo del compresor, copete,
+#: carrocería, marco de aluminio de cada puerta y la hoja más ancha que se
+#: fabrica (``puertasDeNevera``).
+NEVERA_ZOCALO = 0.17
+NEVERA_COPETE = 0.14
+NEVERA_CHAPA = 0.035
+NEVERA_MARCO_PUERTA = 0.045
+NEVERA_ANCHO_MAXIMO_DE_PUERTA = 0.75
+#: El montante entre tramo y tramo de la nevera abierta.
+MONTANTE_DE_TRAMO = 0.03
 
 # ── Propias de la superficie (las mismas en superficie.ts) ──────────────────
 REMATE_GONDOLA = 0.10
@@ -60,6 +71,10 @@ SEPARACION_ROBATOPE = 0.014
 SEPARACION_RISTRA = 0.012
 SEPARACION_CROSS = 0.006
 SEPARACION_VITRINA = 0.020
+#: La nevera de puertas: la manija de cada hoja llega a ``d/2 + 0,023``.
+SEPARACION_NEVERA_PUERTAS = 0.030
+#: La nevera abierta: la tira de estado del zócalo llega a ``d/2 + 0,014``.
+SEPARACION_NEVERA_ABIERTA = 0.020
 SOBRE_LA_TAPA = 0.004
 #: Un mueble de más de un kilómetro es un plano roto o un número mal escrito
 #: (la API no acota las medidas): no se distribuye. Sin este tope, un ancho de
@@ -88,6 +103,10 @@ VITRINA_BASE_MAXIMA = 0.40
 VITRINA_MARCO = 0.036
 VITRINA_PUERTA = 0.60
 VITRINA_MEDIO_DIVISOR = 0.009
+#: El interior de la nevera, ``max(0,1, w − 2·chapa)``, y lo que la abierta le
+#: descuenta para repartir sus montantes (``NeveraReal``).
+INTERIOR_MINIMO_DE_NEVERA = 0.1
+RECORTE_DE_TRAMOS_DE_NEVERA = 0.03
 
 
 def _redondear(x: float) -> int:
@@ -157,10 +176,33 @@ def _bandas(w: float, xs, y0: float, y1: float) -> list[tuple]:
     return [("parante", max(-w / 2, x - PARANTE_ANCHO / 2), min(w / 2, x + PARANTE_ANCHO / 2), y0, y1) for x in xs]
 
 
+def _puertas_de(w: float, puertas):
+    """Las puertas de la nevera, como ``puertasDe``: las guardadas (≥ 1,
+    redondeadas como ``Math.round``) o una cada ``anchoMaximoDePuerta``. None
+    si las guardadas no son finitas: ``_redondear`` se caería con
+    OverflowError, y en el navegador ``Math.round(Infinity)`` pasa el tope de
+    ``MAX_VANOS`` y da lo mismo (sin superficie)."""
+    if puertas is not None and puertas >= 1:
+        if not math.isfinite(puertas):
+            return None
+        return _redondear(puertas)
+    return max(1, math.ceil(w / NEVERA_ANCHO_MAXIMO_DE_PUERTA))
+
+
+def _montantes_de_tramos(ancho: float, tramos) -> list[float]:
+    """Dónde va el montante de cada junta entre tramos, como
+    ``montantesDeTramos``: sin tramos válidos (o con uno), ninguno."""
+    n = _tramos_validos(tramos)
+    if n is None or n < 2:
+        return []
+    paso = ancho / n
+    return [-ancho / 2 + paso * (i + 1) for i in range(n - 1)]
+
+
 # Cada receta devuelve (orientacion, (x0, x1, y0, y1), [(por, x0, x1, y0, y1)…],
 # plano, giro_x) en metros y en el marco del mueble (§7.3), o None.
 
-def _gondola(w, d, h, mural, modulo, tramos):
+def _gondola(w, d, h, mural, modulo, tramos, puertas):
     n = _vanos(w, modulo, tramos)
     if n > MAX_VANOS:
         return None
@@ -172,7 +214,7 @@ def _gondola(w, d, h, mural, modulo, tramos):
     return "frente", (-w / 2, w / 2, 0, h), excl, ESPESOR_ESPINA / 2 + _fondo_por_cara(d, mural) + SEPARACION_GONDOLA, 0
 
 
-def _punta(w, d, h, mural, modulo, tramos):
+def _punta(w, d, h, mural, modulo, tramos, puertas):
     n = _vanos(w, modulo, None)
     if n > MAX_VANOS:
         return None
@@ -185,7 +227,7 @@ def _punta(w, d, h, mural, modulo, tramos):
     return "frente", (-w / 2, w / 2, 0, h), excl, d / 2 + SEPARACION_PUNTA, 0
 
 
-def _robatope(w, d, h, mural, modulo, tramos):
+def _robatope(w, d, h, mural, modulo, tramos, puertas):
     # En el marco de las repisas, girado ROBATOPE_GIRO alrededor del origen.
     cuerpo, apoyo = _cotas_de_robatope(w, d, h)
     excl = [
@@ -197,13 +239,13 @@ def _robatope(w, d, h, mural, modulo, tramos):
     return "frente", (-w / 2, w / 2, 0, h), excl, d / 2 + SEPARACION_ROBATOPE, ROBATOPE_GIRO
 
 
-def _ristra(w, d, h, mural, modulo, tramos):
+def _ristra(w, d, h, mural, modulo, tramos, puertas):
     a = min(RISTRA_ANCHO_MAXIMO, max(RISTRA_ANCHO_MINIMO, RISTRA_FRACCION_DEL_ANCHO * w))
     excl = [("base", -a / 2, a / 2, 0, RISTRA_BASE), ("cabezal", -a / 2, a / 2, h - RISTRA_CABEZAL, h)]
     return "frente", (-a / 2, a / 2, 0, h), excl, RISTRA_GANCHO * d + SEPARACION_RISTRA, 0
 
 
-def _cross(w, d, h, mural, modulo, tramos):
+def _cross(w, d, h, mural, modulo, tramos, puertas):
     poste = CROSS_EJE_DEL_POSTE + CROSS_LADO_DEL_POSTE / 2
     base = CROSS_PRIMER_NIVEL + CROSS_MEDIO_ESPESOR
     tapa = CROSS_PRIMER_NIVEL + (h - CROSS_RECORRIDO) - CROSS_MEDIO_ESPESOR
@@ -216,7 +258,7 @@ def _cross(w, d, h, mural, modulo, tramos):
     return "frente", (-w / 2, w / 2, 0, h), excl, d / 2 + SEPARACION_CROSS, 0
 
 
-def _vitrina(w, d, h, mural, modulo, tramos):
+def _vitrina(w, d, h, mural, modulo, tramos, puertas):
     base_h = min(VITRINA_FRACCION_DE_BASE * h, VITRINA_BASE_MAXIMA)
     techo = h - VITRINA_MARCO
     n_p = max(1, _redondear(w / VITRINA_PUERTA))
@@ -235,7 +277,46 @@ def _vitrina(w, d, h, mural, modulo, tramos):
     return "frente", (-w / 2, w / 2, 0, h), excl, d / 2 + SEPARACION_VITRINA, 0
 
 
-def _zona_libre(w, d, h, mural, modulo, tramos):
+def _nevera_puertas(w, d, h, mural, modulo, tramos, puertas):
+    # NeveraReal con puertas: zócalo y copete a todo el ancho y cada hoja de
+    # w/n con su marco alrededor del vidrio. Las puertas, las guardadas
+    # (aunque la división pase a participación: el 3D las sigue dibujando) o
+    # una cada 75 cm.
+    n = _puertas_de(w, puertas)
+    if n is None or n > MAX_VANOS:
+        return None
+    y0, y1 = NEVERA_ZOCALO + NEVERA_MARCO_PUERTA, h - NEVERA_COPETE - NEVERA_MARCO_PUERTA
+    excl = [
+        ("zocalo", -w / 2, w / 2, 0, NEVERA_ZOCALO),
+        ("marco", -w / 2, w / 2, NEVERA_ZOCALO, y0),
+        ("marco", -w / 2, w / 2, y1, h - NEVERA_COPETE),
+        ("copete", -w / 2, w / 2, h - NEVERA_COPETE, h),
+    ]
+    # Los marcos verticales: en cada unión los de las dos hojas vecinas y, en
+    # las puntas, el de la hoja (recortado al mueble).
+    for i in range(n + 1):
+        x = -w / 2 + (w / n) * i
+        excl.append(("marco", max(-w / 2, x - NEVERA_MARCO_PUERTA), min(w / 2, x + NEVERA_MARCO_PUERTA), y0, y1))
+    return "frente", (-w / 2, w / 2, 0, h), excl, d / 2 + SEPARACION_NEVERA_PUERTAS, 0
+
+
+def _nevera_abierta(w, d, h, mural, modulo, tramos, puertas):
+    # NeveraReal multideck (la de bebidas): frente abierto, costados de piso a
+    # techo y un montante entre tramo y tramo de los tramos guardados (el 3D
+    # los dibuja aunque la división pase a participación).
+    excl = [
+        ("zocalo", -w / 2, w / 2, 0, NEVERA_ZOCALO),
+        ("copete", -w / 2, w / 2, h - NEVERA_COPETE, h),
+        ("costado", -w / 2, -w / 2 + NEVERA_CHAPA, NEVERA_ZOCALO, h - NEVERA_COPETE),
+        ("costado", w / 2 - NEVERA_CHAPA, w / 2, NEVERA_ZOCALO, h - NEVERA_COPETE),
+    ]
+    interior = max(INTERIOR_MINIMO_DE_NEVERA, w - NEVERA_CHAPA * 2)
+    for x in _montantes_de_tramos(interior - RECORTE_DE_TRAMOS_DE_NEVERA, tramos):
+        excl.append(("montante", x - MONTANTE_DE_TRAMO / 2, x + MONTANTE_DE_TRAMO / 2, NEVERA_ZOCALO, h - NEVERA_COPETE))
+    return "frente", (-w / 2, w / 2, 0, h), excl, d / 2 + SEPARACION_NEVERA_ABIERTA, 0
+
+
+def _zona_libre(w, d, h, mural, modulo, tramos, puertas):
     # La tapa entera, vista desde arriba (D16), sólo si se pisa
     # (h < ALTURA_PISABLE): ésa el 3D la dibuja como una placa de alto h. Una
     # más alta es un exhibidor con rieles 8 mm por encima de h (MetroMesh).
@@ -251,6 +332,8 @@ _RECETARIO = {
     "ristra": _ristra,
     "cross": _cross,
     "vitrina": _vitrina,
+    "nevera_puertas": _nevera_puertas,
+    "nevera_abierta": _nevera_abierta,
     "zona_libre": _zona_libre,
 }
 
@@ -301,10 +384,12 @@ def _dibujo_de(f, cara):
     modulo = _como_en_el_navegador(f.get("modulo"))
     partes = f.get("partes")
     tramos = _como_en_el_navegador(partes.get("tramos")) if isinstance(partes, dict) else None
+    puertas = _como_en_el_navegador(partes.get("puertas")) if isinstance(partes, dict) else None
     dibujo = _RECETARIO[receta](
         w, d, h, caras == 1,
         modulo if _numero(modulo) else None,
         tramos if _numero(tramos) else None,
+        puertas if _numero(puertas) else None,
     )
     return (clave, receta, caras, dibujo) if dibujo is not None else None
 
@@ -359,7 +444,8 @@ def firma(f: dict, cara: str) -> str | None:
     confirmada «para revisar». Lleva el tipo, mural o doble (de ``caras_de``,
     nunca de ``"double"`` escrito), ancho y alto en mm, los entrepaños
     guardados (un entero; otra cosa es «-») y las exclusiones a 1e-4, que
-    llevan el módulo y los tramos. El fondo no entra. Es ``firmaDeCara``."""
+    llevan el módulo, los tramos y las puertas. El fondo no entra. Es
+    ``firmaDeCara``."""
     s = superficie(f, cara)
     r = _dibujo_de(f, cara) if s is not None else None
     if s is None or r is None:

@@ -81,6 +81,10 @@ import {
   tarifaDeLaFila, textoDeParte, comoSeLiberaLaCara, type ComoSeLibera, type EnContrato, type IndiceDePartes, type ParteRef,
   comoSeLiberaPorParticipacion, dispoDeParticipacion, esParticipacion, ocupadoPorParticipacion, parteVisible,
   porParticipacion, textoAlTocarEnVender, textoDeLoComprometido, type ParticipacionDeLaCara,
+  // fase 2 · I4: el ámbar de Vender contado por motivo, el rótulo corto de una
+  // cara por participación y lo puesto a mano que manda sobre la ocupación.
+  DONDE_SE_CARGAN, alCerrar, contarElPeriodo, desgloseDelParcial, enParte, motivoDelParcial, sinLasDeParticipacion,
+  textoCortoDeParticipacion, tomadaPorLoSuyo, type CaraDelPeriodo, type ConteoDelPeriodo,
 } from "../utils/partes";
 // Las participaciones de cara (§4.8, §9.9, §11): la ocupación ANÓNIMA para
 // Vender, Supervisar y el plano (store de LECTURA, el de edición es del 3D) y
@@ -710,12 +714,20 @@ function rangeTop(): Record<RangeAvailability, string> {
 
 const RANGE_LABEL: Record<RangeAvailability, string> = {
   libre: "Libre todo el periodo",
-  // Decía «Libre parte del periodo», que nombra el estado. «Se libera en el
-  // periodo» nombra el HECHO, que es lo que se está por vender: dentro de esta
-  // ventana esa cara queda disponible, y esa es la razón para mirarla.
-  parcial: "Se libera en el periodo",
+  // Decía «Libre parte del periodo», que nombra el estado; después «Se libera
+  // en el periodo», que nombra UNO de los tres hechos que pintan ámbar. Fase
+  // 2 (2026-10-19): el ámbar es «se vende una parte» —una cara que se libera
+  // adentro del periodo, una con puertas vendidas, una por participación con
+  // algo comprometido— y contaba las tres como días. El desglose va en el
+  // `title` del renglón (`desgloseDelParcial`).
+  parcial: "Disponible en parte",
   tomado: "Tomado",
 };
+
+/** El mismo ámbar mirado desde Supervisar: lo vendido de una cara que no
+ *  está tomada entera. En Supervisar el periodo por defecto es un día, y ahí
+ *  el ámbar nunca es «vence dentro»: son partes o participaciones. */
+const RANGE_LABEL_PARCIAL_SUPERVISAR = "Vendido en parte";
 
 /** Infrastructure on the isometric map: present, but visibly not for sale.
  *
@@ -789,6 +801,12 @@ interface IsoMapProps {
    *  vendida, «libre 14 oct» leía como que la nevera entera se libera hoy.
    *  `null` si la cara está parcial por sus días: ahí manda la fecha. */
   porPartes?: (f: UnifiedFixture, face: FaceEntry) => string | null;
+  /** Fase 2 · I4: la segunda línea CORTA del rótulo de una cara por
+   *  participación en el plano («queda 45 %», «tomada», «por participación»:
+   *  `textoCortoDeParticipacion`). La larga («Por participación · queda
+   *  45 %») sigue en el cartel del mouse (`porPartes`): once renglones largos
+   *  tapaban la sala. `null` si la cara no es por participación. */
+  cortoDe?: (f: UnifiedFixture, face: FaceEntry) => string | null;
   /** Desde qué día se puede vender la cara ENTERA y cuántos días tiene libres
    *  en el periodo, mirando lo que choca con ella (`comoSeLiberaLaCara`): con
    *  la entera vendida hasta el 20 y la puerta 2 desde el 21, «libre 21 oct»
@@ -810,6 +828,9 @@ interface Rotulo {
   clave: string;
   cod: string;
   fecha: string;
+  /** Fase 2 · I4: lo que se escribe en el plano en lugar de `fecha` cuando la
+   *  cara es por participación: la línea corta («queda 45 %»). */
+  corto?: string;
   /** La tercera línea, y sólo la llevan los que CHOCAN: cuántos muebles de la
    *  sede se dibujan con este mismo nombre y cuál es el código de éste.
    *  «×2 · IMP-12». Vacía es lo normal.
@@ -898,7 +919,7 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
  *    tiembla y —peor— la medición del deschoque se hace contra la geometría
  *    del paso anterior.
  */
-function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, libreDesde }: IsoMapProps) {
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde }: IsoMapProps) {
   /** La disponibilidad de una cara en el periodo: la combinada con sus
    *  partes si quien dibuja la sabe, y si no la de la cara sola. */
   const dispoDe = useCallback(
@@ -1141,16 +1162,22 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         const desde = dispo === "parcial" && !partes
           ? (libreDesde ? libreDesde(f, entry)?.desde : primerDiaLibre(entry, range.from, range.to))
           : undefined;
+        // Fase 2 · I4: una cara por participación lleva en el plano la línea
+        // CORTA («queda 45 %»); la larga sigue en el cartel del mouse.
+        const corto = dispo === "parcial" ? cortoDe?.(f, entry) ?? null : null;
         salida.push({
           clave: `${f.id}-${entry.face}`,
           cod: doble ? `${nombre}·${entry.face}` : nombre,
           fecha: partes ?? (desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : ""),
+          ...(corto ? { corto } : {}),
           // Sólo la cuenta. Antes acompañaba el código del mueble, que era lo
           // único que distinguía a los dos gemelos; ahora los dos se llaman
           // igual de verdad y el código no distingue nada: lo que hay que hacer
           // es renombrar uno, y eso lo dice la revisión del plano.
           choque: choque ? choque.marca : "",
-          peso: choque ? 0 : dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
+          // La de participación cede como una libre: lo que se vende en este
+          // plano es «libre 14 oct», no lo que se carga en Distribución.
+          peso: choque ? 0 : corto ? 2 : dispo === "parcial" ? 1 : dispo === "libre" ? 2 : 3,
         });
       }
     }
@@ -1158,7 +1185,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     // cede—, después lo que se libera (lleva fecha), lo libre y lo tomado: si
     // dos se pisan, el que cede es el que menos se está vendiendo.
     return salida.sort((a, b) => a.peso - b.peso || (a.cod < b.cod ? -1 : 1));
-  }, [fixtures, range, dispoDe, porPartes, libreDesde]);
+  }, [fixtures, range, dispoDe, porPartes, cortoDe, libreDesde]);
 
   // ── Del plano a la pantalla ──────────────────────────────────────────────
   //
@@ -1699,6 +1726,8 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
             const a = scene.anclas.get(l.clave);
             if (!a) return null;
             const ax = a[0].toFixed(3), ay = a[1].toFixed(3);
+            // La segunda línea: la corta de una cara por participación, si la hay.
+            const linea = l.corto || l.fecha;
             return (
               <text
                 key={l.clave}
@@ -1710,8 +1739,8 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
                 y={ay}
                 ref={(el) => { if (el) txtRefs.current.set(l.clave, el); else txtRefs.current.delete(l.clave); }}
               >
-                <tspan x={ax} dy={l.fecha || l.choque ? "-.22em" : ".36em"}>{l.cod}</tspan>
-                {l.fecha && <tspan className="p-fec" x={ax} dy="1.18em">{l.fecha}</tspan>}
+                <tspan x={ax} dy={linea || l.choque ? "-.22em" : ".36em"}>{l.cod}</tspan>
+                {linea && <tspan className="p-fec" x={ax} dy="1.18em">{linea}</tspan>}
                 {l.choque && <tspan className="p-chq" x={ax} dy="1.18em">{l.choque}</tspan>}
               </text>
             );
@@ -1790,22 +1819,26 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
  *  pantalla no se puede contradecir a sí misma.
  *
  *  Las palabras cambian con el modo porque la pregunta cambia: quien vende mira
- *  hacia adelante —«esta cara SE LIBERA dentro de la ventana, la puedo
- *  ofrecer»— y quien supervisa mira el contrato que se le está por caer
- *  —«VENCE dentro»—. Es el mismo hecho y el mismo color. */
+ *  lo que puede ofrecer —«Disponible en parte»— y quien supervisa lo que ya
+ *  vendió —«Vendido en parte»—. Es el mismo hecho y el mismo color. El ámbar
+ *  junta tres motivos (se libera adentro del periodo, partes vendidas, una
+ *  participación comprometida): el número es la suma y el `title` los separa,
+ *  sin nombres (`desgloseDelParcial`). Decía «Se libera en el periodo» /
+ *  «Vence dentro» y contaba como días las doce caras por participación. */
 function MapLegend({
   tally, modo, enContrato,
 }: {
-  tally: { libres: number; parciales: number; tomados: number };
+  tally: ConteoDelPeriodo;
   modo: "vender" | "supervisar";
   /** Cuántas caras hay en el contrato que se está armando. Sólo en Vender. */
   enContrato?: number;
 }) {
-  const items: { c: string; b: string; l: string; n?: number; sep?: boolean }[] = [
+  const items: { c: string; b: string; l: string; n?: number; sep?: boolean; t?: string }[] = [
     { c: rangeTop().libre, b: "var(--libre-borde)",
       l: modo === "vender" ? RANGE_LABEL.libre : "Libre", n: tally.libres },
     { c: rangeTop().parcial, b: "var(--entra-borde)",
-      l: modo === "vender" ? RANGE_LABEL.parcial : "Vence dentro", n: tally.parciales },
+      l: modo === "vender" ? RANGE_LABEL.parcial : RANGE_LABEL_PARCIAL_SUPERVISAR, n: enParte(tally),
+      t: desgloseDelParcial(tally) || undefined },
     { c: rangeTop().tomado, b: "var(--ocupado-borde)", l: RANGE_LABEL.tomado, n: tally.tomados },
     { c: noRentableTop(), b: "var(--resto)", l: NON_RENTABLE_LABEL },
   ];
@@ -1817,7 +1850,7 @@ function MapLegend({
       {items.map((o) => (
         <Fragment key={o.l}>
           {o.sep && <span className="sep" aria-hidden />}
-          <span>
+          <span title={o.t}>
             <i style={{ background: o.c, borderColor: o.b }} />
             {o.l}
             {o.n !== undefined && <b>{o.n}</b>}
@@ -2091,9 +2124,13 @@ function NoContractState({ fixture, isAdmin }: { fixture: UnifiedFixture; isAdmi
 // ─── Quick-look popover, anchored to the fixture on the map ─────────────────
 
 function FixturePopover({
-  fixture, anchor, isAdmin, onExpand, onNegociar, onRenovar, onAbrirEnDistribucion, onClose,
+  fixture, cara = "A", anchor, isAdmin, onExpand, onNegociar, onRenovar, onAbrirEnDistribucion, onClose,
 }: {
   fixture: UnifiedFixture;
+  /** Fase 2 · I4: la cara que se tocó en el plano (`detailFace`). El globo
+   *  decía siempre la A: en una góndola doble por participación, tocar la B
+   *  daba el % de la A. */
+  cara?: "A" | "B";
   anchor: MapAnchor;
   isAdmin: boolean;
   onExpand: () => void;
@@ -2108,7 +2145,7 @@ function FixturePopover({
 }) {
   const rentable = isRentable(fixture);
   const faces = facesOf(fixture);
-  const entry = faces[0];
+  const entry = faces.find((x) => x.face === cara) ?? faces[0];
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   // Por el código COMPLETO, igual que el panel de detalle: `by-code` guarda
   // `NAVE-PUN-04`, y buscando `PUN-04` contestaba 404 siempre — el contador de
@@ -2126,13 +2163,16 @@ function FixturePopover({
   // cuánto queda, y «disponible» sólo si queda algo (`textoDeLoComprometido`).
   const esPc = rentable && porParticipacion(fixture);
   const dispoPc = useDispoDeHoy(fixture, entry.face);
-  // Vender por partes: qué puertas de la cara A están vendidas, sin nombres
-  // (el detalle, con «Ver todo», dice de quién y hasta cuándo).
+  // Vender por partes: qué puertas de la cara del globo están vendidas, sin
+  // nombres (el detalle, con «Ver todo», dice de quién y hasta cuándo).
   const sedeActiva = useFixtureStore((s) => s.sede);
   const estado = useFixtureStore((s) => s.estadoComercial);
   const puertas = useMemo(
-    () => (rentable ? partesConEstado(fixture, estado, sedeActiva).filter((p) => !p.codigo.includes("-B-")) : []),
-    [rentable, fixture, estado, sedeActiva],
+    () => (rentable
+      // Las de la B llevan su letra en el sufijo (`B·EN2`, `partesConEstado`).
+      ? partesConEstado(fixture, estado, sedeActiva).filter((p) => p.sufijo.startsWith("B·") === (entry.face === "B"))
+      : []),
+    [rentable, fixture, estado, sedeActiva, entry.face],
   );
   // De qué clase son (puertas, tramos, entrepaños), para decirlas bien.
   const divisionDelPopover = divisionDe(fixture);
@@ -2227,7 +2267,7 @@ function FixturePopover({
           <div data-globo-participacion={esPc ? "" : undefined} style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
             {rentable
               ? esPc
-                ? textoDeLoComprometido(dispoPc, isAdmin)
+                ? textoDeLoComprometido(dispoPc, isAdmin, { propio: entry.status })
                 : puertas.some((p) => p.vendida) && claseDelPopover
                 ? `Entera, sin contrato: hay ${claseDelPopover.plural} vendid${generoDelPopover}s.`
                 : "Sin contrato activo — disponible para vender."
@@ -4445,13 +4485,30 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  cartel del mouse y la lista de precios. */
   const comoSeLibera = useCallback(
     (f: UnifiedFixture, face: FaceEntry): ComoSeLibera | null => (mapRange
-      // Una cara por participación con algo comprometido dice «Por
-      // participación · queda 40 %» (el % sólo para quien administra: el
-      // trabajador ve la palabra) en el rótulo, el cartel y la tarifa.
-      ? comoSeLiberaPorParticipacion(f, participacionDe(f, face.face), mapRange.from, mapRange.to, isAdmin)
-        ?? comoSeLiberaLaCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to)
+      // Fase 2 · I4: lo puesto a mano (Mantenimiento, Reservado) o la venta
+      // entera mandan sobre la ocupación (`tomadaPorLoSuyo`, la regla de
+      // `disponibilidadDeCara`): una cara así no dice «queda 75 %».
+      ? (tomadaPorLoSuyo(f, face.face, estadoComercial, sede, mapRange.from, mapRange.to)
+        ? comoSeLiberaLaCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to)
+        // Una cara por participación con algo comprometido dice «Por
+        // participación · queda 40 %» (el % sólo para quien administra: el
+        // trabajador ve la palabra) en el cartel y la tarifa.
+        : comoSeLiberaPorParticipacion(f, participacionDe(f, face.face), mapRange.from, mapRange.to, isAdmin)
+          ?? comoSeLiberaLaCara(f, face.face, estadoComercial, indicePartes, sede, mapRange.from, mapRange.to))
       : null),
     [mapRange, estadoComercial, indicePartes, sede, participacionDe, isAdmin],
+  );
+  /** Fase 2 · I4: la línea corta del rótulo de una cara por participación en
+   *  el plano («queda 45 %» / «tomada» / «por participación»). El plano la pide
+   *  sólo para una cara «parcial», que ya pasó por la regla de lo puesto a
+   *  mano (`dispoDeCara`). */
+  const cortoDeCara = useCallback(
+    (f: UnifiedFixture, face: FaceEntry): string | null => {
+      if (!mapRange) return null;
+      const d = dispoDeParticipacion(f, participacionDe(f, face.face), mapRange.from, mapRange.to);
+      return d && d.dispo !== "libre" ? textoCortoDeParticipacion(d, isAdmin) : null;
+    },
+    [mapRange, participacionDe, isAdmin],
   );
   /** Lo que dice la ficha de Vender al tocar una cara POR PARTICIPACIÓN.
    *  Tocarla no suma nada (`alTocarEnVender`), y antes tampoco decía nada: el
@@ -4583,6 +4640,29 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   // hay un proveedor del otro lado del teléfono lo que se busca es qué es lo
   // caro que todavía está disponible. La cantidad ya se ve en la columna de al
   // lado y no necesita mandar el orden.
+  //
+  // Fase 2 · I4: cada cara del periodo se mira UNA vez (`filasDelPeriodo`):
+  // cómo está, qué dice si está en parte y POR QUÉ está en parte
+  // (`motivoDelParcial`: se libera adentro, partes vendidas o participación).
+  // La clave del plano, la columna «Libres · en parte» y el pie cuentan con
+  // `contarElPeriodo`: eran tres bucles que contaban como días las caras por
+  // participación y sumaban a «al cerrar» lo que nunca entra a este contrato.
+  const filasDelPeriodo = useMemo(() => {
+    const filas = new Map<string, CaraDelPeriodo & { como: ComoSeLibera | null }>();
+    if (!mapRange) return filas;
+    fixtures.forEach((f) => {
+      const deParticipacion = porParticipacion(f);
+      commercialFacesOf(f).forEach((face) => {
+        const dispo = dispoDeCara(f, face);
+        const como = dispo === "parcial" ? comoSeLibera(f, face) : null;
+        filas.set(`${f.id}-${face.face}`, {
+          dispo, deParticipacion, como,
+          ...(dispo === "parcial" ? { motivo: motivoDelParcial(deParticipacion, como) } : {}),
+        });
+      });
+    });
+    return filas;
+  }, [fixtures, mapRange, fichasPropias, dispoDeCara, comoSeLibera]);
   const porCategoria = useMemo(() => {
     if (!mapRange) return [];
     const acum = new Map<string, {
@@ -4591,22 +4671,27 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
        *  resaltado enciende cuando el mouse pasa por la fila. Lo tomado no
        *  entra — no es lo que se está mostrando. */
       claves: string[];
+      /** Las caras de este tipo, para la cuenta de la fila (`contarElPeriodo`). */
+      filas: CaraDelPeriodo[];
     }>();
     fixtures.forEach((f) => {
       const cat = rateTypeOf(f);
       const ref = referenceRateFor(referenceRates, f.sede || sede, cat);
       commercialFacesOf(f).forEach((face) => {
         const e = acum.get(cat)
-          ?? { libres: [], parciales: [], total: 0, tarifa: ref, claves: [] };
-        const a = dispoDeCara(f, face);
+          ?? { libres: [], parciales: [], total: 0, tarifa: ref, claves: [], filas: [] };
         const clave = `${f.id}-${face.face}`;
+        const fila = filasDelPeriodo.get(clave);
+        const a = fila ? fila.dispo : dispoDeCara(f, face);
+        const enContrato = carasDelContrato.includes(clave);
         // Lo que ya entró al contrato DEJA DE ESTAR LIBRE, acá y en el pie y en
         // la clave del plano: son la misma cuenta mirada tres veces.
+        if (fila) e.filas.push({ ...fila, enContrato });
         if (a === "libre") {
           // El conteo NO cuenta lo que ya entró al contrato; el resaltado SÍ lo
           // enciende: la fila dice «de este tipo, esto es lo que hay», y lo que
           // uno acaba de tomar es parte de esa respuesta —se ve en tinta.
-          if (!carasDelContrato.includes(clave)) {
+          if (!enContrato) {
             e.libres.push({
               code: codigoVisible(face), fixture: f, face: face.face,
               ...(porParticipacion(f) ? { porParticipacion: true as const } : {}),
@@ -4614,7 +4699,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           }
           e.claves.push(clave);
         } else if (a === "parcial") {
-          const como = comoSeLibera(f, face);
+          const como = fila ? fila.como : comoSeLibera(f, face);
           e.parciales.push({
             code: codigoVisible(face), fixture: f, face: face.face,
             ...(como?.porPartes ? { porPartes: como.porPartes } : { desde: como?.desde }),
@@ -4627,9 +4712,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
         acum.set(cat, e);
       });
     });
-    return [...acum].map(([cat, v]) => ({ cat, ...v }))
+    return [...acum].map(([cat, { filas, ...v }]) => ({ cat, ...v, cuenta: contarElPeriodo(filas) }))
       .sort((a, b) => (b.tarifa ?? -1) - (a.tarifa ?? -1));
-  }, [fixtures, mapRange, referenceRates, sede, carasDelContrato, fichasPropias, dispoDeCara, comoSeLibera]);
+  }, [fixtures, mapRange, referenceRates, sede, carasDelContrato, fichasPropias, filasDelPeriodo, dispoDeCara, comoSeLibera]);
 
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
@@ -4767,42 +4852,24 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   }, [fixtures, referenceRates, sede, fichasPropias, partesVendidasDe, partesVisiblesDe, isAdmin, participacionDe]);
 
   // How much of the sede can actually be sold for the chosen period. Counted
-  // per face, like every other total on this page.
-  const rangeTally = useMemo(() => {
-    if (!mapRange) return { libres: 0, parciales: 0, tomados: 0 };
-    let libres = 0, parciales = 0, tomados = 0;
-    fixtures.flatMap(commercialFacesOf).forEach((face) => {
-      const a = dispoDeCara(face.fixture, face);
-      if (a === "libre") libres++;
-      else if (a === "parcial") parciales++;
-      else tomados++;
-    });
-    return { libres, parciales, tomados };
-  }, [fixtures, mapRange, dispoDeCara]);
+  // per face, like every other total on this page. Fase 2 · I4: la misma
+  // cuenta que la tarifa (`contarElPeriodo`), con el ámbar separado por motivo.
+  const rangeTally = useMemo(() => contarElPeriodo(filasDelPeriodo.values()), [filasDelPeriodo]);
 
   /** El mismo recuento, DESCONTANDO lo que ya entró al contrato que se está
    *  armando. Es el que ve la clave del plano y el pie de la tarifa en Vender:
    *  un espacio que uno acaba de meter al contrato no se le puede seguir
    *  ofreciendo al proveedor como libre. Supervisar sigue viendo el crudo, que
-   *  es de lo que ese tablero habla. */
-  const tallyVender = useMemo(() => {
-    if (!mapRange) return { libres: 0, parciales: 0, tomados: 0 };
-    let libres = 0, parciales = 0, tomados = 0;
-    fixtures.forEach((f) => {
-      commercialFacesOf(f).forEach((face) => {
-        // Lo que está en el contrato no es libre NI tomado: se cuenta aparte,
-        // en el quinto estado de la clave. Sumarlo a «tomado» hacía que meter
-        // un espacio al contrato subiera el contador de lo que no se puede
-        // vender, que es lo contrario de lo que acaba de pasar.
-        if (carasDelContrato.includes(`${f.id}-${face.face}`)) return;
-        const a = dispoDeCara(f, face);
-        if (a === "libre") libres++;
-        else if (a === "parcial") parciales++;
-        else tomados++;
-      });
-    });
-    return { libres, parciales, tomados };
-  }, [fixtures, mapRange, carasDelContrato, dispoDeCara]);
+   *  es de lo que ese tablero habla.
+   *
+   *  Lo que está en el contrato no es libre NI tomado: se cuenta aparte, en el
+   *  quinto estado de la clave (`enContrato`). Sumarlo a «tomado» hacía que
+   *  meter un espacio al contrato subiera el contador de lo que no se puede
+   *  vender, que es lo contrario de lo que acaba de pasar. */
+  const tallyVender = useMemo(
+    () => contarElPeriodo([...filasDelPeriodo].map(([clave, fila]) => ({ ...fila, enContrato: carasDelContrato.includes(clave) }))),
+    [filasDelPeriodo, carasDelContrato],
+  );
 
   // ── Montaje: lo que hay que mirar ────────────────────────────────────────
   //
@@ -5025,6 +5092,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 range={mapRange}
                 dispo={dispoDeCara}
                 porPartes={porPartesDeCara}
+                cortoDe={cortoDeCara}
                 libreDesde={libreDesdeDeCara}
               />
             )}
@@ -5032,18 +5100,22 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
           {/* Quick look, anchored to the fixture. Hidden once the full
               detail takes over the rail so the two never compete. */}
-          {selected && anchor && !detailFull && (
+          {selected && anchor && !detailFull && entradaDetalle && (
             <FixturePopover
               fixture={selected}
+              /* Fase 2 · I4: la cara que se tocó, la misma de la ficha
+                 (`entradaDetalle`): el globo, Renovar y «Abrir en
+                 Distribución» decían y hacían siempre la A. */
+              cara={entradaDetalle.face}
               anchor={anchor}
               isAdmin={isAdmin}
               onExpand={() => setDetailFull(true)}
-              onNegociar={isAdmin && !porParticipacion(selected) ? () => negociar(selected) : undefined}
-              onRenovar={isAdmin && renovable(facesOf(selected)[0])
-                ? () => renovar(facesOf(selected)[0])
+              onNegociar={isAdmin && !porParticipacion(selected) ? () => negociar(selected, entradaDetalle.face) : undefined}
+              onRenovar={isAdmin && renovable(entradaDetalle)
+                ? () => renovar(entradaDetalle)
                 : undefined}
               onAbrirEnDistribucion={isAdmin && porParticipacion(selected)
-                ? () => abrirEnDistribucion(selected.id, facesOf(selected)[0].face)
+                ? () => abrirEnDistribucion(selected.id, entradaDetalle.face)
                 : undefined}
               onClose={closeDetail}
             />
@@ -5085,6 +5157,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           resaltar={resaltarPlano}
           dispo={dispoDeCara}
           porPartes={porPartesDeCara}
+          cortoDe={cortoDeCara}
           libreDesde={libreDesdeDeCara}
         />
       </div>
@@ -5127,10 +5200,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  ofrezco?»: detrás de un botón obligaba a abrir, mirar, cerrar y volver al
    *  plano — cuatro gestos para un dato que se usa en cada llamada.
    *
-   *  LOS CONTEOS SE DERIVAN, NO SE ESCRIBEN. La columna «Libres · entran», el
-   *  pie y la clave del plano son la misma cuenta mirada tres veces, así que
-   *  un espacio que entra al contrato deja de estar libre en los tres lugares
-   *  a la vez.
+   *  LOS CONTEOS SE DERIVAN, NO SE ESCRIBEN. La columna «Libres · en parte»,
+   *  el pie y la clave del plano son la misma cuenta mirada tres veces
+   *  (`contarElPeriodo`), así que un espacio que entra al contrato deja de
+   *  estar libre en los tres lugares a la vez.
+   *
+   *  Fase 2 · I4: el «+N» ámbar es «se vende una parte» y su `title` dice por
+   *  qué, sin nombres: se liberan en el periodo, con partes vendidas, por
+   *  participación. Y «N al cerrar» es lo que ESTE contrato puede tomar
+   *  (`alCerrar`): sin las caras por participación, que se cargan en el Editor
+   *  3D → Distribución (decía libres + parciales, contándolas).
    *
    *  Pasar el mouse por una fila APAGA LA SALA y enciende los muebles de ese
    *  tipo (los libres y los que se liberan). Y debajo de cada tipo van las
@@ -5151,13 +5230,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           <thead>
             <tr>
               <th scope="col">Tipo de espacio</th>
-              <th scope="col" className="der2 c2">Libres · entran</th>
+              <th scope="col" className="der2 c2">Libres · en parte</th>
               <th scope="col" className="der2 c3">Tarifa</th>
             </tr>
           </thead>
           <tbody>
-            {porCategoria.map(({ cat, libres, parciales, tarifa, claves }) => {
+            {porCategoria.map(({ cat, libres, parciales, tarifa, claves, cuenta }) => {
               const chips = conCodigos ? [...libres, ...parciales] : [];
+              const nParte = enParte(cuenta);
+              const porQue = desgloseDelParcial(cuenta);
               return (
               <Fragment key={cat}>
               <tr
@@ -5167,17 +5248,17 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               >
                 <td>{nombreDeTarifa(cat, nombresPropios)}</td>
                 <td className="der2 cif">
-                  {libres.length === 0
+                  {cuenta.libres === 0
                     ? <span className="cero">0</span>
-                    : libres.length}
-                  {parciales.length > 0 && (
+                    : cuenta.libres}
+                  {nParte > 0 && (
                     <>
                       {" "}
                       <span
                         className="entran"
-                        title={`${parciales.length} se libera${parciales.length === 1 ? "" : "n"} adentro del periodo`}
+                        title={cuenta.participacion > 0 ? `${porQue}. ${DONDE_SE_CARGAN}` : porQue}
                       >
-                        +{parciales.length}
+                        +{nParte}
                       </span>
                     </>
                   )}
@@ -5245,12 +5326,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 {tallyVender.libres === 0
                   ? <span className="cero">0</span>
                   : tallyVender.libres}
-                {tallyVender.parciales > 0 && (
-                  <> <span className="entran">+{tallyVender.parciales}</span></>
+                {enParte(tallyVender) > 0 && (
+                  <> <span className="entran" title={desgloseDelParcial(tallyVender)}>+{enParte(tallyVender)}</span></>
                 )}
               </td>
-              <td className="der2 cif">
-                {tallyVender.libres + tallyVender.parciales} al cerrar
+              <td className="der2 cif" title={sinLasDeParticipacion(tallyVender) ?? undefined}>
+                {alCerrar(tallyVender)} al cerrar
               </td>
             </tr>
           </tfoot>

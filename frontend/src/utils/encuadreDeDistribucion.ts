@@ -17,8 +17,21 @@
  * El aspecto es el del lienzo DESPUÉS del redimensionado (el que llega con
  * cada cambio de tamaño: la escena vuelve a encuadrar si la cámara sigue
  * donde la dejó la toma), y el campo visual horizontal sale de él.
+ *
+ * Fase 2 (2026-10-19), tres cosas que la revisión dejó abiertas:
+ *  · el tres cuartos CENTRA la cara en el cuadro (`centrarLaMira`): mirando
+ *    al centro de la cara, en oblicuo el extremo cercano se agranda y quedaba
+ *    pegado a un borde (GON-01·A, de −0,93 a +0,47) con un cuarto de cuadro
+ *    vacío del otro lado;
+ *  · con eso una cara de 6 m frente a un pasillo de 2,5 m entra entera (`ocupa`
+ *    y `entera` se cuentan después de centrar): «no entra desde ningún lado»
+ *    era inexacto;
+ *  · lo que tapa: con los muebles de la sala (`cajas`), una toma con una
+ *    esquina de la cara detrás de una estiba o un exhibidor del pasillo no
+ *    cuenta como que entra (lo tapado no se toca en el 3D: `rayoTapado`).
  */
 import { ALTURA_PISABLE, chocaEn, distanciaLibre, normalDeCara, proyectar, vistaDeVenta, type Caja, type Vista3D } from "./planta";
+import { rayoTapado, type CajaDeMueble } from "./zonas3d";
 
 /** Hasta dónde del cuadro (±1 es el borde) tiene que caer la cara: con aire. */
 export const BORDE_DEL_ENCUADRE = 0.94;
@@ -77,13 +90,100 @@ export interface EncuadreDeLaCara {
   giro: number;
 }
 
+/** ¿Algún mueble de la sala tapa alguna esquina de la cara vista desde la
+ *  cámara de `v`? El rayo de la cámara a cada esquina, contra las cajas reales
+ *  de los demás muebles (`rayoTapado`, la misma cuenta que descarta el clic),
+ *  hasta 2 cm antes de la esquina. Sin cajas, nada tapa. */
+export function esquinaTapada(v: Vista3D, esquinas: readonly Punto3[], cajas: readonly CajaDeMueble[]): boolean {
+  if (cajas.length === 0) return false;
+  for (const p of esquinas) {
+    const d: [number, number, number] = [p.x - v.posX, p.y - v.posY, p.z - v.posZ];
+    const largo = Math.hypot(d[0], d[1], d[2]);
+    if (!(largo > 0.02)) continue;
+    if (rayoTapado({ origen: [v.posX, v.posY, v.posZ], dir: [d[0] / largo, d[1] / largo, d[2] / largo] }, largo - 0.02, cajas)) return true;
+  }
+  return false;
+}
+
+/**
+ * La misma toma con la cara CENTRADA a lo ancho del cuadro: la cámara no se
+ * mueve; gira sobre sí misma lo justo para que los extremos de la cara queden
+ * a la misma distancia de los dos bordes. Mirando al centro de la cara, en un
+ * tres cuartos el extremo cercano se agranda y quedaba pegado a un borde
+ * (GON-01·A a 560 × 720: de −0,93 a +0,47, con un cuarto del cuadro vacío del
+ * otro lado); centrada, de −0,70 a +0,70.
+ *
+ * Primero la bisectriz horizontal de los rayos a las esquinas; después se
+ * afina en el cuadro (por bisección), porque la inclinación de la cámara
+ * corre un poco las esquinas de arriba respecto de las de abajo. La mira se
+ * corre sólo de costado, a la misma distancia y a la misma altura: la
+ * inclinación y el radio de la órbita son los de la toma de partida, así que
+ * el rango polar de los controles no la corrige y la órbita sigue girando
+ * alrededor del mueble. Correrla hasta el plano de la cara la acercaba a la
+ * cámara y la inclinaba más (una góndola de 5 m pasaba a mirarse desde menos
+ * de 5 m de la mira). No acerca la cámara: volvería a dejar las dos puntas en
+ * el borde.
+ */
+export function centrarLaMira(
+  vista: Vista3D, esquinas: readonly Punto3[], fovGrados: number, aspecto: number,
+): Vista3D {
+  const dx = vista.targetX - vista.posX, dz = vista.targetZ - vista.posZ;
+  const d = Math.hypot(dx, dz);
+  if (!(d > 1e-9) || esquinas.length === 0) return vista;
+  const a0 = Math.atan2(dz, dx);
+  const girada = (phi: number): Vista3D => ({
+    ...vista, targetX: vista.posX + Math.cos(a0 + phi) * d, targetZ: vista.posZ + Math.sin(a0 + phi) * d,
+  });
+  const envolver = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+  // La bisectriz horizontal de los rayos extremos.
+  let menor = Infinity, mayor = -Infinity;
+  for (const p of esquinas) {
+    const a = envolver(Math.atan2(p.z - vista.posZ, p.x - vista.posX) - a0);
+    if (a < menor) menor = a;
+    if (a > mayor) mayor = a;
+  }
+  let phi = (menor + mayor) / 2;
+  // Afinada en el cuadro: la cara queda centrada cuando el x de más a la
+  // izquierda y el de más a la derecha suman cero.
+  const desvio = (giro: number): number => {
+    const v = girada(giro);
+    let xMin = Infinity, xMax = -Infinity;
+    for (const p of esquinas) {
+      const q = proyectar(v, fovGrados, aspecto, p);
+      if (!(q.profundidad > 0)) return NaN;
+      if (q.x < xMin) xMin = q.x;
+      if (q.x > xMax) xMax = q.x;
+    }
+    return xMin + xMax;
+  };
+  let lo = phi - 0.15, hi = phi + 0.15;
+  let fLo = desvio(lo);
+  const fHi = desvio(hi);
+  if (Number.isFinite(fLo) && Number.isFinite(fHi) && fLo * fHi < 0) {
+    for (let k = 0; k < 40; k++) {
+      const medio = (lo + hi) / 2, fMedio = desvio(medio);
+      if (!Number.isFinite(fMedio)) break;
+      if ((fMedio < 0) === (fLo < 0)) { lo = medio; fLo = fMedio; } else hi = medio;
+    }
+    phi = (lo + hi) / 2;
+  }
+  return girada(phi);
+}
+
 /**
  * La toma que abarca la cara entera: de frente si entra (la de siempre,
  * `vistaDeVenta`); si no, el tres cuartos de menor giro que la abarca, lo más
  * cerca que se pueda (la cara más grande en el cuadro), dentro del pasillo y
  * del salón y fuera de los muebles (`obstaculos`, ya inflados por el cuerpo:
- * `murosDeCaminata`). Mira al centro de la cara a media altura, con la cámara
- * a la altura de un comprador, como la de frente.
+ * `murosDeCaminata`). Con la cámara a la altura de un comprador, como la de
+ * frente. El tres cuartos sale centrado (`centrarLaMira`) y lo que ocupa —y si
+ * entra entera— se cuenta ya centrado: una cara de 6 m frente a un pasillo de
+ * 2,5 m entra (hasta ~8 m); más larga, la toma que muestra más.
+ *
+ * `cajas`: los OTROS muebles de la sala con su caja real, lo mismo que mira el
+ * clic (`rayoTapado`). Una toma con una esquina de la cara tapada no cuenta
+ * como que entra: se deja ese lado y se prueba el otro o el giro siguiente
+ * (también «De frente»). Sin cajas, como antes de mirar lo que tapa.
  */
 export function encuadreDeLaCara(
   mueble: MuebleDelEncuadre,
@@ -92,14 +192,26 @@ export function encuadreDeLaCara(
   limites: Caja,
   fovGrados: number,
   aspecto: number,
+  cajas: readonly CajaDeMueble[] = [],
 ): EncuadreDeLaCara {
   const esquinas = esquinasDeLaCara(mueble, cara);
   const frente = vistaDeVenta(mueble, cara, "frente", { yBajo: 0, yAlto: mueble.h }, obstaculos, limites, fovGrados, aspecto);
   const ocupaFrente = cuantoOcupa(frente, fovGrados, aspecto, esquinas);
-  if (ocupaFrente <= BORDE_DEL_ENCUADRE) return { vista: frente, toma: "frente", entera: true, ocupa: ocupaFrente, giro: 0 };
+  if (ocupaFrente <= BORDE_DEL_ENCUADRE && !esquinaTapada(frente, esquinas, cajas)) {
+    return { vista: frente, toma: "frente", entera: true, ocupa: ocupaFrente, giro: 0 };
+  }
 
   const n = normalDeCara(mueble.rotY ?? 0, cara);
   const centro = { x: mueble.cx + (n.x * mueble.d) / 2, z: mueble.cz + (n.z * mueble.d) / 2 };
+  /** El tres cuartos elegido, centrado; lo que ocupa y si entra, contados
+   *  después de centrar. Si centrado mostrara menos (la cámara no se mueve:
+   *  no debería), queda el de partida. */
+  const centrar = (e: EncuadreDeLaCara): EncuadreDeLaCara => {
+    const vista = centrarLaMira(e.vista, esquinas, fovGrados, aspecto);
+    const ocupa = cuantoOcupa(vista, fovGrados, aspecto, esquinas);
+    if (!(ocupa <= e.ocupa) && !(ocupa <= BORDE_DEL_ENCUADRE)) return e;
+    return { ...e, vista, ocupa, entera: ocupa <= BORDE_DEL_ENCUADRE };
+  };
   const mira = mueble.h / 2;
   const yCamara = Math.min(1.6, Math.max(1.2, mira + 0.35));
   const vistaDesde = (x: number, z: number): Vista3D => {
@@ -109,8 +221,9 @@ export function encuadreDeLaCara(
   };
   const adentro = (x: number, z: number) => x > limites.minX && x < limites.maxX && z > limites.minZ && z < limites.maxZ;
 
-  // Si nada la abarca, la que muestra más (de frente incluida).
-  let mejor: EncuadreDeLaCara = { vista: frente, toma: "frente", entera: false, ocupa: ocupaFrente, giro: 0 };
+  // Si nada la abarca, la que muestra más (de frente incluida: con una esquina
+  // tapada puede entrar y no ser la elegida).
+  let mejor: EncuadreDeLaCara = { vista: frente, toma: "frente", entera: ocupaFrente <= BORDE_DEL_ENCUADRE, ocupa: ocupaFrente, giro: 0 };
   for (const giro of GIROS_DEL_TRES_CUARTOS) {
     let entra: (EncuadreDeLaCara & { dist: number }) | null = null;
     for (const signo of [1, -1]) {
@@ -124,13 +237,16 @@ export function encuadreDeLaCara(
         const ocupa = cuantoOcupa(vista, fovGrados, aspecto, esquinas);
         if (ocupa < mejor.ocupa) mejor = { vista, toma: "tres_cuartos", entera: false, ocupa, giro: signo * giro };
         if (ocupa <= BORDE_DEL_ENCUADRE) {
+          // Con una esquina tapada, desde más lejos en la misma dirección lo
+          // que tapa sigue en el medio: se deja este lado.
+          if (esquinaTapada(vista, esquinas, cajas)) break;
           // Lo más cerca que entra (la cara más grande), del lado que sea.
           if (!entra || dist < entra.dist) entra = { vista, toma: "tres_cuartos", entera: true, ocupa, giro: signo * giro, dist };
           break;
         }
       }
     }
-    if (entra) return { vista: entra.vista, toma: entra.toma, entera: true, ocupa: entra.ocupa, giro: entra.giro };
+    if (entra) return centrar({ vista: entra.vista, toma: entra.toma, entera: true, ocupa: entra.ocupa, giro: entra.giro });
   }
-  return mejor;
+  return mejor.toma === "tres_cuartos" ? centrar(mejor) : mejor;
 }

@@ -395,6 +395,7 @@ export function fixturesToStore(
   const porId = new Map(guardados.map((f) => [f.id, f]));
 
   const updated: UnifiedFixture[] = fixtures.map((f) => {
+    const guardado = porId.get(f.id);
     const loQueSabe: UnifiedFixture = {
       id:              f.id,
       code:            f.code,
@@ -409,7 +410,11 @@ export function fixturesToStore(
       h:               f.h,
       color:           f.color,
       status:          f.status,
-      sede,
+      // fase 2 · I5 (V16): un mueble guardado conserva SU sede; sólo uno
+      // nuevo toma la del plano. Antes se le estampaba a todos la sede que
+      // tuviera el editor en ese momento —y el 3D cambiaba de sede en cada
+      // tecla—, así que una góndola de «NAVE» terminaba diciendo «NAV».
+      sede:            guardado?.sede || sede,
       supplierName:    f.supplierName,
       brandCategory:   f.brandCategory,
       negotiatedValue: f.negotiatedValue,
@@ -421,7 +426,6 @@ export function fixturesToStore(
     };
     // La ficha no está en `loQueSabe`: la del guardado se queda como estaba.
     // Un mueble NUEVO (sin guardado) nace con la que trae del editor.
-    const guardado = porId.get(f.id);
     return { ...(guardado ?? fichaDe(f)), ...loQueSabe };
   });
 

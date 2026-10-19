@@ -108,13 +108,17 @@ await prueba("las recetas son las de `RecetaDeSuperficie` (catalogo.ts) y las pi
   const union = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
   assert.deepEqual([...S.RECETAS].sort(), union.sort());
   const conSuperficie = Object.entries(CATALOGO.tipos).filter(([, d]) => d.superficie);
-  assert.deepEqual(conSuperficie.map(([t]) => t).sort(), ["cross", "gondola", "metro", "mueble", "punta", "ristra", "robatope"]);
+  assert.deepEqual(conSuperficie.map(([t]) => t).sort(),
+    ["cross", "gondola", "metro", "mueble", "nevera_puertas", "nevera_refrescos", "punta", "ristra", "robatope"]);
   for (const [t, d] of conSuperficie) {
     assert.ok(S.RECETAS.includes(d.superficie.receta), `${t}: la receta «${d.superficie.receta}» no la calcula nadie`);
     assert.ok(S.tieneSuperficie(t), t);
   }
   for (const [alias, a] of Object.entries(CATALOGO.alias)) assert.equal(S.tieneSuperficie(alias), !!CATALOGO.tipos[a.tipo].superficie, alias);
-  for (const t of ["nevera_puertas", "isla", "checkout", "constructor", "__proto__", "toString", ""]) assert.ok(!S.tieneSuperficie(t), t);
+  // Los que quedan fuera a propósito (fase 2, frente C, §2), enteros, y lo que no es un tipo.
+  for (const t of ["isla", "impulsador", "puesto_impulso", "batea", "isla_fria", "nevera_vegetales", "nevera_carnes", "stand_frutas",
+    "checkout", "servicio_cliente", "columna", "exhibicion", "constructor", "__proto__", "toString", ""]) assert.ok(!S.tieneSuperficie(t), t);
+  for (const t of ["nevera_puertas", "nevera_refrescos"]) assert.ok(S.tieneSuperficie(t), `${t} no tiene receta`);
 });
 
 await prueba("la cara B de una doble es la A en espejo, y la mural no tiene B", () => {
@@ -178,7 +182,7 @@ await prueba("las guías del lienzo caen en la cara, ordenadas, y salen de la mi
     }
   }
   assert.deepEqual(S.guiasDeCara({ type: "metro", w: 1, d: 1, h: 0.05 }, "A"), { entrepanos: [], parantes: [] });
-  assert.deepEqual(S.guiasDeCara({ type: "nevera_puertas", w: 1, d: 1, h: 2 }, "A"), { entrepanos: [], parantes: [] });
+  assert.deepEqual(S.guiasDeCara({ type: "isla", w: 1, d: 1, h: 2 }, "A"), { entrepanos: [], parantes: [] });
 });
 
 /* ── La holgura, ejecutada contra lo que dibuja el 3D ────────────────────── */
@@ -507,6 +511,226 @@ await prueba(`holgura ejecutada: todo el frente queda ≥ 6 mm detrás del dibuj
     .map(([t, p]) => `${t} ${(p.mm * 1000).toFixed(1)} mm (${p.pieza.replace(/^[^:]+: /, "")})`).join(" · "));
 });
 
+// ── fase 2 · I3: las neveras por participación ──────────────────────────────
+//
+// La nevera de puertas (receta `nevera_puertas`) y la de bebidas, abierta
+// (`nevera_abierta`), son el mismo cuerpo: `NeveraReal`, que dibuja
+// `NeveraRefrescosMesh` del editor con las puertas o los tramos guardados. Sus
+// cotas son de `NEVERA` (medidas.ts), que la receta importa; lo que sale del
+// frente (manija, cabezote, tira de estado, rejilla del zócalo, marcos) está
+// escrito en `NeveraReal.tsx`: acá se busca y se ejecuta la holgura con eso.
+
+const FUENTE_NEVERA = leer(join(muebles, "NeveraReal.tsx"));
+const NEVERA_REAL = FUENTE_NEVERA.slice(FUENTE_NEVERA.indexOf("export const NeveraReal = memo("));
+const MARCO_DE_PUERTA = cuerpo(FUENTE.perfiles, "export function geometriaMarcoDePuerta(");
+
+/** Lo que tienen las dos variantes: carrocería, zócalo con su rejilla y su
+ *  tira de estado, el cabezote, las rejillas con porta precios y tira de luz. */
+function puntosDeNevera(f, quien) {
+  const src = NEVERA_REAL, N = M.NEVERA;
+  assert.ok(NEVERA_REAL.length > 0 && FUENTE_NEVERA.includes("export const NeveraReal = memo("), "no encontré NeveraReal");
+  tiene(src, "const zFrente = -d / 2;", quien);
+  tiene(src, "<boxGeometry args={[NEVERA.chapa, h, d]} />", quien);
+  tiene(src, "<boxGeometry args={[w, NEVERA.zocalo, d]} />", quien);
+  tiene(src, "<boxGeometry args={[w, NEVERA.copete, d]} />", quien);
+  tiene(src, "Array.from({ length: 4 }, (_, i) => (", quien);
+  const [r0, rPaso, rSale, rAlto, rFondo] = numeros(src,
+    /position=\{\[0, NEVERA\.zocalo \* \(([\d.]+) \+ i \* ([\d.]+)\), zFrente - ([\d.]+)\]\}\s*material=\{m\.hueco\}\s*>\s*<boxGeometry args=\{\[w \* [\d.]+, ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: rejilla del zócalo`);
+  const [tFr, tSale, tAlto, tFondo] = numeros(src,
+    /<mesh position=\{\[0, NEVERA\.zocalo \* ([\d.]+), zFrente - ([\d.]+)\]\} material=\{m\.estado\}>\s*<boxGeometry args=\{\[w \* [\d.]+, ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: tira de estado`);
+  const [cSale, cFr, cFondo] = numeros(src,
+    /position=\{\[0, h - NEVERA\.copete \/ 2, zFrente - ([\d.]+)\]\}\s*material=\{chapaDelCabezote\}\s*>\s*<boxGeometry args=\{\[w - NEVERA\.chapa \* 2, NEVERA\.copete \* ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: cabezote`);
+  // Las rejillas de adentro, con su porta precios (la sección arranca en su canto, ver PIEZAS) y la tira de luz.
+  tiene(src, "const fondoInterior = Math.max(0.1, d - NEVERA.chapa - NEVERA.fondoPuerta);", quien);
+  tiene(src, "position={[0, y, NEVERA.chapa / 2]}", quien);
+  tiene(src, "anchoInterior - 0.01, esMural ? 0.016 : 0.009, fondoInterior,", quien);
+  tiene(src, "zFrente + NEVERA.fondoPuerta + NEVERA.portaAdentro]}", quien);
+  const [luzBaja, luzAdentro, luzAlto, luzFondo] = numeros(src,
+    /position=\{\[0, y - ([\d.]+), zFrente \+ NEVERA\.fondoPuerta \+ ([\d.]+)\]\}\s*material=\{m\.luz\}\s*>\s*<boxGeometry args=\{\[anchoInterior - [\d.]+, ([\d.]+), ([\d.]+)\]\} \/>/, `${quien}: tira de luz`);
+  const zF = -f.d / 2;
+  const fondoInterior = Math.max(0.1, f.d - N.chapa - N.fondoPuerta);
+  const P = [];
+  for (const y of [0, f.h]) P.push({ pieza: `${quien}: carrocería`, y, z: zF });
+  for (let i = 0; i < 4; i++) {
+    const y = N.zocalo * (r0 + i * rPaso);
+    for (const dy of [-rAlto / 2, rAlto / 2]) P.push({ pieza: `${quien}: rejilla del zócalo`, y: y + dy, z: zF - rSale - rFondo / 2 });
+  }
+  for (const dy of [-tAlto / 2, tAlto / 2]) P.push({ pieza: `${quien}: tira de estado`, y: N.zocalo * tFr + dy, z: zF - tSale - tFondo / 2 });
+  for (const dy of [-N.copete * cFr / 2, N.copete * cFr / 2]) P.push({ pieza: `${quien}: cabezote`, y: f.h - N.copete / 2 + dy, z: zF - cSale - cFondo / 2 });
+  for (const y of M.nivelesDeNevera(f.h)) {
+    P.push({ pieza: `${quien}: rejilla`, y, z: N.chapa / 2 - fondoInterior / 2 });
+    P.push({ pieza: `${quien}: porta precios`, y: y - M.PORTA_PRECIOS.alto / 2 - N.portaBaja, z: zF + N.fondoPuerta + N.portaAdentro });
+    P.push({ pieza: `${quien}: tira de luz`, y: y - luzBaja - luzAlto / 2, z: zF + N.fondoPuerta + luzAdentro - luzFondo / 2 });
+  }
+  return P;
+}
+
+/** La nevera de puertas: además, cada hoja con su marco (biselado), el vidrio
+ *  y la manija, que es lo más saliente del mueble. */
+function puntosDeNeveraDePuertas(f) {
+  const src = NEVERA_REAL, N = M.NEVERA, q = "nevera de puertas";
+  tiene(src, "const altoDePuerta = h - NEVERA.zocalo - NEVERA.copete;", q);
+  tiene(src, "const yPuerta = NEVERA.zocalo + altoDePuerta / 2;", q);
+  tiene(src, "<group key={`pu${i}`} position={[cx, yPuerta, zFrente + NEVERA.fondoPuerta]}>", q);
+  tiene(src, "anchoDePuerta, altoDePuerta, NEVERA.marcoPuerta, NEVERA.fondoPuerta,", q);
+  tiene(MARCO_DE_PUERTA, "g.translate(0, 0, -fondo);", "marco de la puerta");
+  const [bisel] = numeros(MARCO_DE_PUERTA, /bevelThickness: ([\d.]+),/, "marco de la puerta");
+  const [vidrioFondo] = numeros(src, /<mesh position=\{\[0, 0, -NEVERA\.fondoPuerta \/ 2\]\} material=\{m\.vidrio\}>\s*<boxGeometry args=\{\[vidrioAncho, vidrioAlto, ([\d.]+)\]\} \/>/, "vidrio");
+  const [manijaSale, manijaFraccion, manijaFondo] = numeros(src,
+    /-NEVERA\.fondoPuerta - ([\d.]+),\s*\]\}\s*material=\{m\.manija\}[\s\S]{0,80}?<boxGeometry args=\{\[[\d.]+, Math\.min\(NEVERA\.manija, altoDePuerta \* ([\d.]+)\), ([\d.]+)\]\} \/>/, "manija");
+  const zF = -f.d / 2, zPuerta = zF + N.fondoPuerta;
+  const alto = f.h - N.zocalo - N.copete, yPuerta = N.zocalo + alto / 2;
+  const medioManija = Math.min(N.manija, alto * manijaFraccion) / 2;
+  return [
+    ...puntosDeNevera(f, q),
+    { pieza: `${q}: marco`, y: N.zocalo, z: zPuerta - N.fondoPuerta - bisel },
+    { pieza: `${q}: marco`, y: f.h - N.copete, z: zPuerta - N.fondoPuerta - bisel },
+    { pieza: `${q}: vidrio`, y: yPuerta, z: zPuerta - N.fondoPuerta / 2 - vidrioFondo / 2 },
+    { pieza: `${q}: manija`, y: yPuerta - medioManija, z: zPuerta - N.fondoPuerta - manijaSale - manijaFondo / 2 },
+    { pieza: `${q}: manija`, y: yPuerta + medioManija, z: zPuerta - N.fondoPuerta - manijaSale - manijaFondo / 2 },
+  ];
+}
+
+/** La nevera de bebidas (multideck): además, la cortina de aire (boca de
+ *  impulsión y reja de retorno) y los montantes de los tramos. */
+function puntosDeNeveraAbierta(f) {
+  const src = NEVERA_REAL, N = M.NEVERA, q = "nevera de bebidas";
+  const [bocaBaja, bocaAdentro, bocaAlto, bocaFondo] = numeros(src,
+    /position=\{\[0, h - NEVERA\.copete - ([\d.]+), zFrente \+ ([\d.]+)\]\}\s*material=\{m\.hueco\}\s*>\s*<boxGeometry args=\{\[anchoInterior, ([\d.]+), ([\d.]+)\]\} \/>/, "boca de impulsión");
+  const [rejaSube, rejaAdentro, rejaAlto, rejaFondo] = numeros(src,
+    /position=\{\[0, NEVERA\.zocalo \+ ([\d.]+), zFrente \+ ([\d.]+)\]\}\s*material=\{m\.hueco\}\s*>\s*<boxGeometry args=\{\[anchoInterior, ([\d.]+), ([\d.]+)\]\} \/>/, "reja de retorno");
+  tiene(src, "position={[x, yInterior, (NEVERA.fondoPuerta - NEVERA.chapa) / 2]}", q);
+  tiene(src, "<boxGeometry args={[MONTANTE_DE_TRAMO, util, fondoInterior]} />", q);
+  const zF = -f.d / 2;
+  const fondoInterior = Math.max(0.1, f.d - N.chapa - N.fondoPuerta);
+  const P = puntosDeNevera(f, q);
+  for (const dy of [-bocaAlto / 2, bocaAlto / 2]) P.push({ pieza: `${q}: boca de impulsión`, y: f.h - N.copete - bocaBaja + dy, z: zF + bocaAdentro - bocaFondo / 2 });
+  for (const dy of [-rejaAlto / 2, rejaAlto / 2]) P.push({ pieza: `${q}: reja de retorno`, y: N.zocalo + rejaSube + dy, z: zF + rejaAdentro - rejaFondo / 2 });
+  if (M.montantesDeTramos(1, f.partes?.tramos).length > 0) {
+    for (const y of [N.zocalo, f.h - N.copete]) P.push({ pieza: `${q}: montante`, y, z: (N.fondoPuerta - N.chapa) / 2 - fondoInterior / 2 });
+  }
+  return P;
+}
+
+Object.assign(PUNTOS, { nevera_puertas: puntosDeNeveraDePuertas, nevera_refrescos: puntosDeNeveraAbierta });
+
+await prueba("las neveras: el editor dibuja `NeveraReal` con las MISMAS puertas y tramos que mide la receta", () => {
+  const editor = FUENTE.editor;
+  assert.match(editor, /case "nevera_puertas":\s+return <NeveraRefrescosMesh\s+\{\.\.\.base\} facePaint=\{facePaint\} puertas=\{puertasDe\(fixture\.w, geometria\.puertas\)\} \/>;/,
+    "la nevera de puertas ya no se dibuja con `puertasDe(w, partes.puertas)`: revisá la receta");
+  assert.match(editor, /case "nevera_refrescos":\s+return <NeveraRefrescosMesh\s+\{\.\.\.base\} facePaint=\{facePaint\} tramos=\{geometria\.tramos\} \/>;/,
+    "la nevera de bebidas ya no se dibuja con sus tramos guardados: revisá la receta");
+  tiene(editor, 'variante={conPuertas ? "puertas" : "multideck"}', "NeveraRefrescosMesh");
+  tiene(editor, "tramos={conPuertas ? undefined : tramos}", "NeveraRefrescosMesh");
+  // El interior de los montantes, el de la receta.
+  tiene(NEVERA_REAL, "const anchoInterior = Math.max(0.1, w - NEVERA.chapa * 2);", "NeveraReal");
+  tiene(NEVERA_REAL, "{!conPuertas && montantesDeTramos(anchoInterior - 0.03, tramos).map((x) => (", "NeveraReal");
+  assert.deepEqual([S.INTERIOR_MINIMO_DE_NEVERA, S.RECORTE_DE_TRAMOS_DE_NEVERA], [0.1, 0.03]);
+  // Las puertas: la exclusión de cada marco vertical cae en la unión del dibujo (`-w/2 + i·w/n`).
+  for (const [w, puertas, n] of [[1.4, undefined, 2], [2.07, 3, 3], [2.07, 2.5, 3], [0.6, 1, 1], [3.2, 6, 6]]) {
+    const s = S.superficieDeCara({ type: "nevera_puertas", w, d: 0.74, h: 2.1, partes: puertas === undefined ? undefined : { puertas } }, "A");
+    assert.equal(M.puertasDe(w, puertas), n);
+    const verticales = s.exclusiones.filter((e) => e.por === "marco" && e.v1 - e.v0 > 0.5).sort((a, b) => a.u0 - b.u0);
+    assert.equal(verticales.length, n + 1, `${w} m con ${puertas} puertas`);
+    verticales.forEach((e, i) => {
+      const u = i / n, medio = M.NEVERA.marcoPuerta / w;
+      cerca(e.u0, Math.max(0, u - medio), 2e-6, `${w}·${puertas}: el marco ${i} empieza`);
+      cerca(e.u1, Math.min(1, u + medio), 2e-6, `${w}·${puertas}: el marco ${i} termina`);
+    });
+  }
+  // Los tramos: cada montante de la exclusión rodea el del dibujo.
+  const w = 3.75, s = S.superficieDeCara({ type: "nevera_refrescos", w, d: 0.75, h: 1.8, partes: { tramos: 3 } }, "A");
+  const xs = M.montantesDeTramos(Math.max(0.1, w - M.NEVERA.chapa * 2) - 0.03, 3);
+  const montantes = s.exclusiones.filter((e) => e.por === "montante").sort((a, b) => a.u0 - b.u0);
+  assert.equal(montantes.length, xs.length);
+  for (const x of xs) {
+    const u = (w / 2 - x) / w;
+    assert.ok(montantes.some((e) => Math.abs((e.u0 + e.u1) / 2 - u) < 2e-6 && Math.abs((e.u1 - e.u0) * w - M.MONTANTE_DE_TRAMO) < 2e-5),
+      `el montante del dibujo en x = ${x.toFixed(4)} no tiene su exclusión`);
+  }
+});
+
+const medidasDeNevera = [];
+for (const h of [1.7, 2.1, 2.3]) {
+  for (const d of [0.55, 0.74, 0.9]) {
+    for (const w of [0.6, 1.4, 3.2]) {
+      for (const puertas of [undefined, 1, 3, 6]) {
+        medidasDeNevera.push({ type: "nevera_puertas", w, d, h, ...(puertas === undefined ? {} : { partes: { puertas, division: "participacion" } }) });
+      }
+    }
+  }
+}
+for (const h of [1.2, 1.8, 2.4]) {
+  for (const d of [0.5, 0.75, 1.2]) {
+    for (const w of [0.6, 1.2, 3.75]) {
+      for (const tramos of [undefined, 3]) {
+        medidasDeNevera.push({ type: "nevera_refrescos", w, d, h, ...(tramos === undefined ? {} : { partes: { tramos, division: "participacion" } }) });
+      }
+    }
+  }
+}
+
+await prueba(`holgura ejecutada de las neveras: todo el frente queda ≥ 6 mm detrás del dibujo (${medidasDeNevera.length} neveras de dos clases)`, () => {
+  const peores = {};
+  for (const f of medidasDeNevera) {
+    const p = holgura(f);
+    if (!peores[f.type] || p.mm < peores[f.type].mm) peores[f.type] = { ...p, f };
+    assert.ok(p.mm >= HOLGURA_MINIMA - 1e-9,
+      `${JSON.stringify(f)}: «${p.pieza}» queda a ${(p.mm * 1000).toFixed(1)} mm del dibujo (mínimo ${HOLGURA_MINIMA * 1000} mm)`);
+  }
+  // Lo que manda es lo que dicen las separaciones: la manija (7 mm) y la tira de estado (6 mm).
+  assert.match(peores.nevera_puertas.pieza, /manija/, `en la nevera de puertas manda «${peores.nevera_puertas.pieza}»`);
+  assert.match(peores.nevera_refrescos.pieza, /tira de estado/, `en la de bebidas manda «${peores.nevera_refrescos.pieza}»`);
+  assert.deepEqual([S.SEPARACION_NEVERA_PUERTAS, S.SEPARACION_NEVERA_ABIERTA], [0.030, 0.020]);
+  for (const t of ["nevera_puertas", "nevera_refrescos"]) assert.equal(S.superficieDeCara({ type: t, w: 1.2, d: 0.75, h: 1.8 }, "A").giroX, 0, `${t} gira`);
+  console.log("         lo que manda: " + Object.entries(peores)
+    .map(([t, p]) => `${t} ${(p.mm * 1000).toFixed(1)} mm (${p.pieza.replace(/^[^:]+: /, "")})`).join(" · "));
+});
+
+await prueba("las puertas de más no se distribuyen: los dos lados del filo de MAX_VANOS, guardadas o por el ancho", () => {
+  const sup = (extra) => S.superficieDeCara({ type: "nevera_puertas", d: 0.7, h: 2.1, ...extra }, "A");
+  const justo = sup({ w: 200, partes: { puertas: S.MAX_VANOS } });
+  assert.ok(justo, "200 puertas no tienen superficie");
+  assert.equal(justo.exclusiones.filter((e) => e.por === "marco").length, 2 + S.MAX_VANOS + 1);
+  assert.equal(sup({ w: 200, partes: { puertas: S.MAX_VANOS + 1 } }), null);
+  assert.ok(sup({ w: M.NEVERA.anchoMaximoDePuerta * S.MAX_VANOS }), "200 puertas por el ancho no tienen superficie");
+  assert.equal(sup({ w: 150.01 }), null);
+  assert.equal(sup({ w: 2, partes: { puertas: Infinity } }), null);
+  assert.equal(sup({ w: 2, partes: { puertas: 1e300 } }), null);
+});
+
+await prueba("las guías de las neveras: las rejillas de fábrica y la unión de las hojas o los montantes", () => {
+  const nev = S.guiasDeCara({ type: "nevera_puertas", w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3 } }, "A");
+  assert.equal(nev.entrepanos.length, M.nivelesDeNevera(2.1).length);
+  assert.ok(nev.entrepanos.length > 0, "la nevera de puertas sin guías de rejillas");
+  assert.deepEqual(nev.parantes.map((u) => +u.toFixed(9)), [1 / 3, 2 / 3].map((u) => +u.toFixed(9)));
+  assert.deepEqual(S.guiasDeCara({ type: "nevera_puertas", w: 0.6, d: 0.6, h: 1.7, partes: { puertas: 1 } }, "A").parantes, []);
+  const beb = S.guiasDeCara({ type: "nevera_refrescos", w: 3.75, d: 0.75, h: 1.8, partes: { tramos: 3 } }, "A");
+  assert.ok(beb.entrepanos.length > 0, "la nevera de bebidas sin guías de rejillas");
+  const montantes = S.superficieDeCara({ type: "nevera_refrescos", w: 3.75, d: 0.75, h: 1.8, partes: { tramos: 3 } }, "A")
+    .exclusiones.filter((e) => e.por === "montante");
+  assert.equal(beb.parantes.length, 2);
+  for (const u of beb.parantes) assert.ok(montantes.some((e) => e.u0 <= u && u <= e.u1), `la guía en u = ${u} no cae en su montante`);
+  assert.deepEqual(S.guiasDeCara({ type: "nevera_refrescos", w: 1.2, d: 0.75, h: 1.8 }, "A").parantes, []);
+  for (const l of [nev.entrepanos, nev.parantes, beb.entrepanos, beb.parantes]) {
+    assert.ok(l.every((x) => x >= 0 && x <= 1), "una guía fuera de la cara");
+    assert.deepEqual(l, [...l].sort((a, b) => a - b), "guías desordenadas");
+  }
+  assert.deepEqual(S.guiasDeCara({ type: "nevera_puertas", w: 1.4, d: 0.74, h: 2.1 }, "B"), { entrepanos: [], parantes: [] });
+});
+
+await prueba("cada exclusión que emiten las recetas tiene nombre en el lienzo (`NOMBRES_DE_EXCLUSION`)", () => {
+  const lienzo = leer(join(raiz, "src", "components", "Distribucion", "LienzoDeZonas.tsx"));
+  const m = /const NOMBRES_DE_EXCLUSION: Record<string, string> = \{([\s\S]*?)\};/.exec(lienzo);
+  assert.ok(m, "no encontré `NOMBRES_DE_EXCLUSION` en LienzoDeZonas.tsx");
+  const nombres = new Set([...m[1].matchAll(/(\w+):\s*"/g)].map((x) => x[1]));
+  const por = new Set();
+  for (const c of CASOS.casos) if (c.superficie && typeof c.superficie === "object") for (const e of c.superficie.exclusiones) por.add(e.por);
+  for (const f of [...medidas, ...medidasDeNevera]) for (const e of S.superficieDeCara(f, "A")?.exclusiones ?? []) por.add(e.por);
+  for (const p of ["costado", "montante", "marco", "zocalo", "copete"]) assert.ok(por.has(p), `ninguna receta emite «${p}»: la prueba no prueba nada`);
+  for (const p of por) assert.ok(nombres.has(p), `la exclusión «${p}» no tiene nombre en el lienzo (se vería «${p}: no se vende»)`);
+});
+
 await prueba("el robatope dibuja en el marco girado de sus repisas: con el plano sin girar, las repisas lo atravesarían", () => {
   const f = { type: "robatope", w: 0.3, d: 0.4, h: 1.6 };
   const s = S.superficieDeCara(f, "A");
@@ -567,6 +791,11 @@ const CARAS_3D = [
   ["ristra", { type: "ristra", w: 0.4, d: 0.4, h: 1.6 }, "A"],
   ["metro (desde arriba)", { type: "metro", w: 1.2, d: 0.8, h: 0.05 }, "A"],
 ];
+// fase 2 · I3: una nevera de cada clase (de frente, sin giro, una sola cara).
+CARAS_3D.push(
+  ["nevera de puertas", { type: "nevera_puertas", w: 1.4, d: 0.74, h: 2.1, partes: { puertas: 2, division: "participacion" } }, "A"],
+  ["nevera de bebidas por tramos", { type: "nevera_refrescos", w: 1.2, d: 0.75, h: 1.8, partes: { tramos: 3, division: "participacion" } }, "A"],
+);
 let sem3 = 4242;
 const az3 = () => ((sem3 = (sem3 * 16807) % 2147483647) / 2147483647);
 const cerca3 = ([a, b, c], [x, y, z], tol, quien) => assert.ok(Math.abs(a - x) <= tol && Math.abs(b - y) <= tol && Math.abs(c - z) <= tol,
@@ -962,5 +1191,235 @@ await prueba("el tres cuartos de Distribución es el de MENOR giro que abarca la
     assert.ok(Math.hypot(e.vista.posX - e.vista.targetX, e.vista.posZ - e.vista.targetZ) > 5, `góndola de 5 m · ${cara}: la toma no quedó lejos (el caso no prueba la subida)`);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I2 · «Editar en el 3D»: el corte SIN recortar y el radio del imán
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Para arrastrar en el 3D hace falta el corte del rayo con el plano de la
+// cara SIN recortar (`uvEnElPlano`: el reductor recorta), y el imán de 6 px de
+// pantalla pasado a u,v con la escala local de la proyección (`radioEnLaCara`:
+// en tres cuartos u se achica). Contra `puntoDeLaCara` y una cámara de three.
+
+console.log("superficies · fase 2 · I2: el corte sin recortar y el radio del imán en el 3D");
+
+await prueba("uvEnElPlano: ida y vuelta con puntoDeLaCara en todas las caras (robatope y tapa incluidos), también FUERA de la cara; adentro, lo mismo que corteConLaCara (u, v y t)", () => {
+  let s = 8;
+  const az = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (const [nombre, f, cara] of CARAS_3D) {
+    const sup = supDe(f, cara);
+    const normal = rotarX(sup.orientacion === "arriba" ? [0, 1, 0] : cara === "B" ? [0, 0, 1] : [0, 0, -1], sup.giroX);
+    let vistos = 0, adentro = 0;
+    for (let k = 0; k < 400; k++) {
+      const u = -0.5 + 2 * az(), v = -0.5 + 2 * az();
+      const p = Z.puntoDeLaCara(sup, cara, u, v);
+      const d = 1 + 5 * az();
+      const camara = [p[0] + normal[0] * d + (az() - 0.5) * 2, p[1] + normal[1] * d + (az() - 0.5), p[2] + normal[2] * d + (az() - 0.5) * 2];
+      const dir = [p[0] - camara[0], p[1] - camara[1], p[2] - camara[2]];
+      if (dir[0] * normal[0] + dir[1] * normal[1] + dir[2] * normal[2] >= -1e-6) continue;
+      const q = Z.uvEnElPlano({ origen: camara, dir }, sup, cara);
+      assert.ok(q, `${nombre}: el rayo de enfrente no cortó el plano`);
+      assert.ok(Math.abs(q.u - u) < 1e-9 && Math.abs(q.v - v) < 1e-9, `${nombre}: (${q.u}, ${q.v}) y no (${u}, ${v})`);
+      vistos++;
+      if (u > 0.01 && u < 0.99 && v > 0.01 && v < 0.99) {
+        const c = Z.corteConLaCara({ origen: camara, dir }, { [cara]: sup });
+        assert.ok(c && c.cara === cara, `${nombre}: corteConLaCara no tocó la cara`);
+        assert.ok(Math.abs(c.u - q.u) < 1e-12 && Math.abs(c.v - q.v) < 1e-12 && Math.abs(c.t - q.t) < 1e-12, `${nombre}: no coincide con corteConLaCara`);
+        adentro++;
+      }
+    }
+    assert.ok(vistos > 300 && adentro > 50, `${nombre}: ${vistos} rayos (${adentro} adentro): la prueba casi no prueba nada`);
+    assert.ok(vistos - adentro > 100, `${nombre}: casi ningún rayo cayó fuera de la cara`);
+    // Desde atrás y paralelo al plano: null.
+    const m = Z.puntoDeLaCara(sup, cara, 0.5, 0.5);
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] - normal[0] * 2, m[1] - normal[1] * 2, m[2] - normal[2] * 2], dir: normal }, sup, cara), null, `${nombre}: desde atrás`);
+    const paralelo = sup.orientacion === "arriba" ? [1, 0, 0] : rotarX([1, 0, 0], sup.giroX);
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] + normal[0], m[1] + normal[1], m[2] + normal[2]], dir: paralelo }, sup, cara), null, `${nombre}: paralelo`);
+    // De frente pero con el plano ya detrás del origen (t < 0): null.
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] - normal[0] * 2, m[1] - normal[1] * 2, m[2] - normal[2] * 2], dir: [-normal[0], -normal[1], -normal[2]] }, sup, cara), null, `${nombre}: el plano detrás del origen`);
+    // Y alejándose de la cara desde adelante: null.
+    assert.equal(Z.uvEnElPlano({ origen: [m[0] + normal[0] * 2, m[1] + normal[1] * 2, m[2] + normal[2] * 2], dir: normal }, sup, cara), null, `${nombre}: alejándose de la cara`);
+  }
+  // La mural no tiene B; desde atrás (+z) su A no se corta.
+  const mural = { type: "gondola", gondolaType: "wall", w: 1, d: 0.4, h: 1.9 };
+  assert.equal(S.superficieDeCara(mural, "B"), null);
+  assert.equal(Z.uvEnElPlano({ origen: [0, 1, 3], dir: [0, 0, -1] }, supDe(mural, "A"), "A"), null, "la A de la mural se corta desde atrás");
+});
+
+await prueba("radioEnLaCara: 6 px de pantalla son 6 ± 0,3 px en u y en v, de frente y en tres cuartos (30°, 50°, 70°), con una cámara de three", () => {
+  const f = { type: "gondola", w: 3, d: 0.9, h: 1.8, modulo: 1 };
+  const sup = supDe(f, "A");
+  const W = 560, H = 700;
+  let peor = 0;
+  for (const giro of [0, 30, 50, 70]) {
+    const cam = new THREE.PerspectiveCamera(50, W / H, 0.1, 500);
+    const a = (giro * Math.PI) / 180, dist = 3.2;
+    cam.position.set(Math.sin(a) * dist, 1.3, -sup.plano - Math.cos(a) * dist);
+    cam.lookAt(0, 0.9, -sup.plano);
+    cam.updateMatrixWorld();
+    cam.updateProjectionMatrix();
+    const aPantalla = ([u, v]) => {
+      const [x, y, z] = Z.puntoDeLaCara(sup, "A", u, v);
+      const w = new THREE.Vector3(x, y, z).project(cam);
+      return w.z < 1 ? { x: ((w.x + 1) / 2) * W, y: ((1 - w.y) / 2) * H } : null;
+    };
+    for (const p of [[0.2, 0.3], [0.5, 0.5], [0.85, 0.8]]) {
+      const r = Z.radioEnLaCara(aPantalla, p, 6);
+      assert.ok(r && r.u > 0 && r.v > 0, `giro ${giro}°, ${p}: sin radio`);
+      const c = aPantalla(p), cu = aPantalla([p[0] + r.u, p[1]]), cv = aPantalla([p[0], p[1] + r.v]);
+      const du = Math.hypot(cu.x - c.x, cu.y - c.y), dv = Math.hypot(cv.x - c.x, cv.y - c.y);
+      assert.ok(Math.abs(du - 6) < 0.3 && Math.abs(dv - 6) < 0.3, `giro ${giro}°, ${p}: ${du.toFixed(3)} px en u y ${dv.toFixed(3)} en v`);
+      peor = Math.max(peor, Math.abs(du - 6), Math.abs(dv - 6));
+    }
+    // En tres cuartos u se achica en pantalla: el radio en u crece.
+    if (giro === 70) {
+      const frente = (() => {
+        const c0 = new THREE.PerspectiveCamera(50, W / H, 0.1, 500);
+        c0.position.set(0, 1.3, -sup.plano - 3.2); c0.lookAt(0, 0.9, -sup.plano); c0.updateMatrixWorld(); c0.updateProjectionMatrix();
+        return Z.radioEnLaCara(([u, v]) => {
+          const w = new THREE.Vector3(...Z.puntoDeLaCara(sup, "A", u, v)).project(c0);
+          return { x: ((w.x + 1) / 2) * W, y: ((1 - w.y) / 2) * H };
+        }, [0.5, 0.5], 6);
+      })();
+      assert.ok(Z.radioEnLaCara(aPantalla, [0.5, 0.5], 6).u > 1.5 * frente.u, "en tres cuartos el radio en u no crece");
+    }
+  }
+  console.log(`         peor diferencia: ${peor.toFixed(3)} px`);
+  // Detrás de la cámara no hay radio.
+  assert.equal(Z.radioEnLaCara(() => null, [0.5, 0.5], 6), null);
+  assert.equal(Z.radioEnLaCara(() => ({ x: 10, y: 10 }), [0.5, 0.5], 6), null, "una proyección degenerada dio radio");
+});
+
+// ── fase 2 · I4 (D3 + E3 + E4): el tres cuartos centrado, lo que tapa y la cara de 6 m ──
+//
+// Medido con el plano del recorrido (exp-D/exp-E de la fase 2): mirando al
+// centro de la cara, el extremo cercano del tres cuartos quedaba pegado a un
+// borde (GON-01·A a 560 × 720: x de −0,93 a +0,47); una estiba del pasillo
+// podía tapar una esquina de la toma elegida; y una cara de 6 m frente a un
+// pasillo de 2,5 m «no entraba» por 0,96, cuando centrada ocupa 0,75.
+
+{
+  const f = (code, x, z, w, d, h, rotY = 0) => ({ code, x, z, w, d, h, rotY });
+  const NAVE = [f("GON-01", 4, 4, 3, 0.9, 1.8), f("GON-04", 4, 14, 3, 0.5, 1.9), f("PUN-01", 11, 4, 0.9, 0.4, 1.8), f("ROB-01", 13, 4, 1.2, 0.5, 1),
+    f("RIS-01", 15, 4, 0.4, 0.4, 1.6), f("CRO-01", 17, 4, 0.8, 0.8, 1.8), f("MUE-01", 19.5, 4, 1.2, 0.6, 2), f("GON-02", 4, 9, 3, 0.9, 1.8),
+    f("GON-03", 11, 9, 3, 0.9, 1.8), f("GON-05", 11, 14, 3, 0.9, 1.8)];
+  const salon = { minX: 0, maxX: 30, minZ: 0, maxZ: 42 };
+  const delMueble = (m) => ({ cx: m.x, cz: m.z, w: m.w, d: m.d, h: m.h, rotY: m.rotY });
+  /** Los x de las esquinas en el cuadro. */
+  const xs = (vista, esquinas, aspecto) => esquinas.map((p) => PL.proyectar(vista, 50, aspecto, p).x);
+  /** La misma toma mirando al centro de la cara (como antes de centrar). */
+  const alCentro = (vista, m, cara) => {
+    const n = PL.normalDeCara(m.rotY ?? 0, cara);
+    return { ...vista, targetX: m.x + (n.x * m.d) / 2, targetY: m.h / 2, targetZ: m.z + (n.z * m.d) / 2 };
+  };
+  /** ¿Alguna esquina tapada por otro mueble? La misma cuenta del clic, a mano. */
+  const tapadas = (vista, esquinas, otros) => esquinas.filter((p) => {
+    const o = [vista.posX, vista.posY, vista.posZ];
+    const d = [p.x - o[0], p.y - o[1], p.z - o[2]];
+    const largo = Math.hypot(...d);
+    return Z.rayoTapado({ origen: o, dir: d.map((c) => c / largo) }, largo - 0.02, otros);
+  }).length;
+
+  await prueba("el tres cuartos de Distribución sale CENTRADO: la cara a la misma distancia de los dos bordes, la mira a la misma distancia y altura (D3)", () => {
+    const limites = PL.limitesDePlanta(NAVE, 2.5, salon);
+    let centrados = 0;
+    for (const aspecto of [560 / 720, 521 / 700]) {
+      // Los mismos seis casos que la prueba de arriba afirma enteros.
+      for (const [code, cara] of [["GON-01", "A"], ["GON-01", "B"], ["GON-03", "A"], ["GON-02", "B"], ["PUN-01", "A"], ["CRO-01", "A"]]) {
+        const m = NAVE.find((x) => x.code === code);
+        const mueble = delMueble(m);
+        const e = ED.encuadreDeLaCara(mueble, cara, PL.murosDeCaminata(NAVE.filter((x) => x !== m)), limites, 50, aspecto);
+        if (e.toma !== "tres_cuartos") continue;
+        centrados++;
+        const quien = `${code}·${cara} a ${aspecto.toFixed(2)}`;
+        const esquinas = ED.esquinasDeLaCara(mueble, cara);
+        const x = xs(e.vista, esquinas, aspecto);
+        const [xMin, xMax] = [Math.min(...x), Math.max(...x)];
+        assert.ok(Math.abs(xMin + xMax) <= 0.03, `${quien}: la cara no queda centrada (x de ${xMin.toFixed(3)} a ${xMax.toFixed(3)})`);
+        assert.ok(Math.max(-xMin, xMax) <= 0.9, `${quien}: una punta queda a ${Math.max(-xMin, xMax).toFixed(3)} del borde`);
+        assert.ok(e.entera && e.ocupa <= ED.BORDE_DEL_ENCUADRE, `${quien}: centrada dejó de entrar`);
+        assert.ok(Math.abs(e.ocupa - ED.cuantoOcupa(e.vista, 50, aspecto, esquinas)) < 1e-9, `${quien}: lo que ocupa no se contó con la toma centrada`);
+        // La cámara no se movió y la mira sólo giró: misma distancia en planta y misma altura (el rango polar de los controles no cambia).
+        const antes = alCentro(e.vista, m, cara);
+        assert.ok(Math.abs(Math.hypot(e.vista.targetX - e.vista.posX, e.vista.targetZ - e.vista.posZ) - Math.hypot(antes.targetX - antes.posX, antes.targetZ - antes.posZ)) < 1e-9,
+          `${quien}: centrar cambió el radio de la órbita`);
+        assert.equal(e.vista.targetY, m.h / 2, `${quien}: centrar cambió la altura de la mira`);
+        // Mirando al centro, en cambio, quedaba corrida hacia un borde.
+        const xa = xs(antes, esquinas, aspecto);
+        assert.ok(Math.abs(Math.min(...xa) + Math.max(...xa)) > Math.abs(xMin + xMax), `${quien}: centrar no mejoró nada`);
+      }
+    }
+    assert.ok(centrados >= 4, `pocos casos en tres cuartos (${centrados}): la prueba no prueba nada`);
+    // GON-01·A a 560 × 720, el caso del recorrido: de −0,93…+0,47 a ±0,70.
+    const m = NAVE[0], mueble = delMueble(m);
+    const e = ED.encuadreDeLaCara(mueble, "A", PL.murosDeCaminata(NAVE.slice(1)), limites, 50, 560 / 720);
+    const esquinas = ED.esquinasDeLaCara(mueble, "A");
+    const x = xs(e.vista, esquinas, 560 / 720), xa = xs(alCentro(e.vista, m, "A"), esquinas, 560 / 720);
+    assert.ok(Math.min(...xa) < -0.9 && Math.max(...xa) < 0.55, `GON-01·A ya no se reproduce mirando al centro (${Math.min(...xa).toFixed(3)} a ${Math.max(...xa).toFixed(3)})`);
+    assert.ok(Math.abs(Math.max(...x) - 0.7) <= 0.03 && Math.abs(Math.min(...x) + 0.7) <= 0.03,
+      `GON-01·A centrada: x de ${Math.min(...x).toFixed(3)} a ${Math.max(...x).toFixed(3)} y no ±0,70`);
+    // Puro: centrar dos veces no mueve nada, y sin esquinas devuelve la misma vista.
+    const otra = ED.centrarLaMira(e.vista, esquinas, 50, 560 / 720);
+    assert.ok(Math.abs(otra.targetX - e.vista.targetX) < 1e-6 && Math.abs(otra.targetZ - e.vista.targetZ) < 1e-6, "centrar una toma centrada la movió");
+    assert.equal(ED.centrarLaMira(e.vista, [], 50, 560 / 720), e.vista);
+  });
+
+  await prueba("una esquina tapada por una estiba del pasillo no cuenta como que la cara entra: se elige otra toma (E3); sin cajas, la de antes", () => {
+    const plano = [f("GON-01", 6, 4, 3, 0.9, 1.8), f("GON-02", 6, 9, 3, 0.9, 1.8), f("EST-01", 5, 2.2, 1.0, 0.8, 1.5)];
+    const limites = PL.limitesDePlanta(plano, 2.5, salon);
+    const m = plano[0], mueble = delMueble(m), otros = plano.slice(1);
+    const obstaculos = PL.murosDeCaminata(otros);
+    const esquinas = ED.esquinasDeLaCara(mueble, "A");
+    const sinCajas = ED.encuadreDeLaCara(mueble, "A", obstaculos, limites, 50, 560 / 720);
+    // El caso reproduce el problema: la toma de antes tiene una esquina detrás de la estiba.
+    assert.ok(tapadas(sinCajas.vista, esquinas, otros) > 0, "la estiba ya no tapa la toma de antes: el caso no prueba nada");
+    assert.equal(ED.esquinaTapada(sinCajas.vista, esquinas, otros), true);
+    // Sin cajas es exactamente lo de antes (el parámetro es opcional).
+    assert.deepEqual(ED.encuadreDeLaCara(mueble, "A", obstaculos, limites, 50, 560 / 720, []), sinCajas);
+    // Con los demás muebles, una toma que la abarca entera SIN esquinas tapadas.
+    const conCajas = ED.encuadreDeLaCara(mueble, "A", obstaculos, limites, 50, 560 / 720, otros);
+    assert.ok(conCajas.entera, `con la estiba no se encontró toma entera (${conCajas.toma}, ${conCajas.ocupa.toFixed(2)})`);
+    assert.equal(tapadas(conCajas.vista, esquinas, otros), 0, "la toma elegida tiene una esquina tapada");
+    for (const p of esquinas) {
+      const q = PL.proyectar(conCajas.vista, 50, 560 / 720, p);
+      assert.ok(q.profundidad > 0 && Math.abs(q.x) <= ED.BORDE_DEL_ENCUADRE + 1e-9 && Math.abs(q.y) <= ED.BORDE_DEL_ENCUADRE + 1e-9, "una esquina queda fuera de cuadro");
+    }
+    assert.ok(!PL.chocaEn(obstaculos, conCajas.vista.posX, conCajas.vista.posZ), "la cámara queda adentro de un mueble");
+    // Nada en el medio (los muebles lejos del pasillo): las cajas no cambian la toma.
+    const libre = [f("GON-01", 6, 4, 3, 0.9, 1.8), f("GON-02", 6, 9, 3, 0.9, 1.8)];
+    const lim2 = PL.limitesDePlanta(libre, 2.5, salon);
+    const a = ED.encuadreDeLaCara(delMueble(libre[0]), "A", PL.murosDeCaminata([libre[1]]), lim2, 50, 560 / 720);
+    const b = ED.encuadreDeLaCara(delMueble(libre[0]), "A", PL.murosDeCaminata([libre[1]]), lim2, 50, 560 / 720, [libre[1]]);
+    assert.deepEqual(b, a, "un mueble que no tapa nada cambió la toma");
+  });
+
+  await prueba("una cara de 6 m frente a un pasillo de 2,5 m entra ENTERA centrada (E4); una de 10 m, la toma que muestra más, sin mentir", () => {
+    // El panel partido a 1440 × 900 (el caso medido: 0,96 mirando al centro, 0,75 centrada).
+    for (const aspecto of [560 / 720]) {
+      const plano = [f("GON-01", 6, 4, 6, 0.9, 1.8)];
+      const limites = PL.limitesDePlanta(plano, 2.5, salon);
+      const m = plano[0], mueble = delMueble(m);
+      const e = ED.encuadreDeLaCara(mueble, "A", [], limites, 50, aspecto);
+      const quien = `6 m a ${aspecto.toFixed(2)}`;
+      assert.equal(e.entera, true, `${quien}: no entra entera (${e.toma}, ${e.ocupa.toFixed(2)})`);
+      assert.equal(e.toma, "tres_cuartos", quien);
+      const esquinas = ED.esquinasDeLaCara(mueble, "A");
+      for (const p of esquinas) {
+        const q = PL.proyectar(e.vista, 50, aspecto, p);
+        assert.ok(q.profundidad > 0 && Math.abs(q.x) <= ED.BORDE_DEL_ENCUADRE + 1e-9 && Math.abs(q.y) <= ED.BORDE_DEL_ENCUADRE + 1e-9,
+          `${quien}: una esquina queda fuera de cuadro (${q.x.toFixed(2)}, ${q.y.toFixed(2)})`);
+      }
+      const x = xs(e.vista, esquinas, aspecto);
+      assert.ok(Math.abs(Math.min(...x) + Math.max(...x)) <= 0.03, `${quien}: no queda centrada`);
+      // Mirando al centro (como antes) no entraba: lo que la hace entrar es centrar.
+      assert.ok(ED.cuantoOcupa(alCentro(e.vista, m, "A"), 50, aspecto, esquinas) > ED.BORDE_DEL_ENCUADRE, `${quien}: ya entraba sin centrar (el caso no prueba nada)`);
+    }
+    const largo = [f("GON-01", 8, 4, 10, 0.9, 1.8)];
+    const m = largo[0], mueble = delMueble(m);
+    const e = ED.encuadreDeLaCara(mueble, "A", [], PL.limitesDePlanta(largo, 2.5, salon), 50, 560 / 720);
+    assert.equal(e.entera, false, `10 m dice que entra entera (${e.ocupa.toFixed(2)})`);
+    assert.ok(e.ocupa <= ED.cuantoOcupa(alCentro(e.vista, m, "A"), 50, 560 / 720, ED.esquinasDeLaCara(mueble, "A")) + 1e-9, "10 m: centrada muestra menos que mirando al centro");
+  });
+}
 
 console.log(`\n${hechas} pruebas de superficies en verde`);

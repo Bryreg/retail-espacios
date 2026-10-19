@@ -5,7 +5,10 @@ import {
   type RangeAvailability, type ReferenceRates, type SpaceStatus,
 } from "../types/fixtures";
 import { LIBRE, type EstadoComercial, type EstadoPorEspacio } from "./estadoComercial";
-import { CARA_ENTERA_PB, dispoPorParticipacion, pct, type OcupacionDeCara } from "./participaciones";
+import {
+  CARA_ENTERA_PB, dispoPorParticipacion, intervalosQueCuentan, pct, pico, type OcupacionDeCara, type Termino,
+} from "./participaciones";
+import { normalizarProveedor } from "./proveedor";
 
 /**
  * Vender por partes: la nevera entera o por puertas; el mural, la góndola, la
@@ -897,21 +900,28 @@ export function disponibilidadDeEspacio(
  * nada para vender en todo el periodo, «tomado»; con algo comprometido,
  * «parcial» (se vende otra participación, en Distribución); sin nada
  * comprometido, lo de siempre. Sin la ocupación, todo como antes.
+ *
+ * Fase 2 · I4 (una sola regla en el plano 2D, el 3D, Vender y el globo): lo
+ * que la cara tiene por sí misma —Mantenimiento o Reservado puestos a mano
+ * que cubren el periodo, o la venta entera— MANDA. La ocupación de las
+ * participaciones sólo pinta y nombra una cara que está Disponible. Antes la
+ * ocupación se miraba primero: un robatope en Mantenimiento hoy con 25 %
+ * comprometido salía «parcial» y «queda 75 %» en Vender y rojo en el plano.
  */
 export function disponibilidadDeCara(
   f: ConPartes & MuebleConEstado, cara: "A" | "B",
   estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string, desde: Date, hasta: Date,
   participacion?: ParticipacionDeLaCara,
 ): RangeAvailability {
+  const entera = rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta);
+  if (entera === "tomado") return "tomado";
   const porPc = dispoDeParticipacion(f, participacion, desde, hasta);
   if (porPc && porPc.dispo !== "libre") return porPc.dispo;
-  const entera = rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta);
   const caraCompleta = fullSpaceCode(f.sede || sede, codigoDeParte(f.code, cara, null));
   // Sólo las divisiones: una pieza (la bahía de una caja) no es de ninguna
   // cara que se venda entera.
   const divisiones = partesDe(f).filter((p) => p.cara === cara && esDivision(p.parte));
   const conAlgo = (indice.get(caraCompleta) ?? []).filter((o) => esDivision(o.partido.parte));
-  if (entera === "tomado") return "tomado";
   if (divisiones.length === 0 && conAlgo.length === 0) return entera;
   const deCadaUna = divisiones.map(({ parte }) =>
     rangeAvailability(estadoDeEspacio(f, cara, parte, estado, sede), desde, hasta));
@@ -989,8 +999,12 @@ export function comoSeLiberaLaCara(
   estado: EstadoPorEspacio, indice: IndiceDePartes, sede: string, desde: Date, hasta: Date,
   participacion?: ParticipacionDeLaCara & { conPorcentaje?: boolean },
 ): ComoSeLibera | null {
-  const porPc = comoSeLiberaPorParticipacion(f, participacion, desde, hasta, participacion?.conPorcentaje ?? false);
-  if (porPc) return porPc;
+  // Lo puesto a mano o la venta entera mandan sobre la ocupación (la regla
+  // de `disponibilidadDeCara`): una cara en Mantenimiento no dice «queda 75 %».
+  if (!tomadaPorLoSuyo(f, cara, estado, sede, desde, hasta)) {
+    const porPc = comoSeLiberaPorParticipacion(f, participacion, desde, hasta, participacion?.conPorcentaje ?? false);
+    if (porPc) return porPc;
+  }
   const r = partesVendidasDeLaCara(f, cara, estado, sede, desde, hasta);
   if (r) return { porPartes: textoDePartesVendidas(r) };
   const libres = diasLibresDeLaCara(f, cara, estado, indice, sede, desde, hasta);
@@ -1103,14 +1117,37 @@ export function textoAlTocarEnVender(d: Pick<DispoDeParticipacion, "dispo" | "qu
  *   participación · tomada». Nunca el % ni «disponible».
  * · Sin la ocupación todavía, que se vende así y nada más: nunca «disponible»
  *   sobre lo que no se sabe.
+ *
+ * Fase 2 · I4, dos opciones:
+ * · `propio`: el estado de la cara en la base. Mantenimiento, Reservado a mano
+ *   o la venta entera mandan sobre la ocupación (la regla de
+ *   `disponibilidadDeCara` y `estadoParaPintar`): nunca «disponible para
+ *   vender»; se dice por qué no se ofrece.
+ * · `conLugar = false`: sin «en el Editor 3D → Distribución» (la ficha del
+ *   plano 2D lo dice en el renglón de abajo, `DONDE_SE_CARGAN`: salía dos
+ *   veces seguidas).
  */
-export function textoDeLoComprometido(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb"> | null, conPorcentaje: boolean): string {
-  if (!d) return "Se vende por participación.";
-  if (!conPorcentaje) return `${textoDeParticipacion(d, false)}.`;
+export function textoDeLoComprometido(
+  d: Pick<DispoDeParticipacion, "dispo" | "quedaPb"> | null, conPorcentaje: boolean,
+  { propio = "free", conLugar = true }: { propio?: string; conLugar?: boolean } = {},
+): string {
+  const aMano = Object.prototype.hasOwnProperty.call(POR_QUE_NO_SE_OFRECE, propio) ? POR_QUE_NO_SE_OFRECE[propio] : null;
+  const cola = aMano ? ` · ${aMano}.` : ".";
+  if (!d) return `Se vende por participación${cola}`;
+  if (!conPorcentaje) return `${textoDeParticipacion(d, false)}${cola}`;
   const queda = Math.max(0, Math.min(CARA_ENTERA_PB, d.quedaPb));
   const cuenta = `Por participación · comprometido ${pct(CARA_ENTERA_PB - queda)} · queda ${pct(queda)}`;
-  return queda > 0 ? `${cuenta} — disponible para vender en el Editor 3D → Distribución.` : `${cuenta}.`;
+  if (aMano || queda <= 0) return `${cuenta}${cola}`;
+  return conLugar ? `${cuenta} — disponible para vender en el Editor 3D → Distribución.` : `${cuenta} — disponible para vender.`;
 }
+
+/** Por qué no se ofrece una cara por participación que tiene un estado propio
+ *  que manda sobre la ocupación (`textoDeLoComprometido`). */
+export const POR_QUE_NO_SE_OFRECE: Readonly<Record<string, string>> = {
+  maintenance: "En mantenimiento: no se ofrece",
+  reserved: "Reservada a mano: no se ofrece",
+  occupied: "Vendida entera: no se ofrece",
+};
 
 /** La palabra de la ocupación de una cara por participación, UNA para todas
  *  las pantallas: la ficha del plano 2D (`rotuloPorOcupacion`), la pastilla
@@ -1190,4 +1227,150 @@ export function ocupadoPorParticipacion(
   const o = participacion.ocupacion;
   return [...(o.fisicos ?? []), ...(o.intervalos ?? [])]
     .map((i) => ({ status: "occupied" as const, startDate: i.desde, endDate: i.hasta }));
+}
+
+// ─── fase 2 · I4: el ámbar de Vender, el rótulo corto y lo del proveedor ─────
+
+/**
+ * ¿La cara la toma en el periodo lo que tiene por sí misma? Mantenimiento o
+ * Reservado puestos a mano (cubren el periodo si incluye hoy: no tienen
+ * fechas, `daysTakenInRange`) o la venta entera de todo el periodo. Es lo que
+ * manda sobre la ocupación de las participaciones, que sólo pinta y nombra una
+ * cara Disponible (`disponibilidadDeCara`, `comoSeLiberaLaCara`,
+ * `estadoParaPintar`).
+ */
+export function tomadaPorLoSuyo(
+  f: MuebleConEstado, cara: "A" | "B", estado: EstadoPorEspacio, sede: string, desde: Date, hasta: Date,
+): boolean {
+  return rangeAvailability(estadoDeEspacio(f, cara, null, estado, sede), desde, hasta) === "tomado";
+}
+
+/**
+ * Por qué una cara está «parcial» (ámbar) en el periodo. Son tres hechos
+ * distintos que caen en el mismo color y se contaban como si fueran días:
+ * · `"dias"`: tiene días tomados y se libera adentro del periodo;
+ * · `"partes"`: tiene divisiones vendidas («1 de 3 puertas vendida»), se vende
+ *   otra parte;
+ * · `"participacion"`: se vende por participación y tiene algo comprometido:
+ *   se vende otra participación, en el Editor 3D → Distribución, NUNCA en este
+ *   contrato.
+ */
+export type MotivoDelParcial = "dias" | "partes" | "participacion";
+
+export function motivoDelParcial(deParticipacion: boolean, como: ComoSeLibera | null | undefined): MotivoDelParcial {
+  if (deParticipacion) return "participacion";
+  return como?.porPartes ? "partes" : "dias";
+}
+
+/** Una cara del periodo, para contarla: cómo está, por qué está en parte, si
+ *  se vende por participación y si ya entró al contrato que se arma. */
+export interface CaraDelPeriodo {
+  dispo: RangeAvailability;
+  /** Sólo de una «parcial»; sin él, días (o participación si `deParticipacion`). */
+  motivo?: MotivoDelParcial;
+  deParticipacion: boolean;
+  /** Lo que ya entró al contrato no se cuenta: ni libre ni tomado. */
+  enContrato?: boolean;
+}
+
+/** La cuenta del periodo: las libres (y cuántas de ellas son por
+ *  participación), las que están en parte por cada motivo y las tomadas. */
+export interface ConteoDelPeriodo {
+  libres: number; libresPc: number;
+  dias: number; partes: number; participacion: number;
+  tomados: number;
+}
+
+/**
+ * LA cuenta de la clave del plano, la columna «Libres · en parte» de la tarifa
+ * y su pie: una sola función, así la pantalla no se puede contradecir (eran
+ * tres copias del mismo bucle). Lo que ya entró al contrato no cuenta.
+ */
+export function contarElPeriodo(caras: Iterable<CaraDelPeriodo>): ConteoDelPeriodo {
+  const c: ConteoDelPeriodo = { libres: 0, libresPc: 0, dias: 0, partes: 0, participacion: 0, tomados: 0 };
+  for (const x of caras) {
+    if (x.enContrato) continue;
+    if (x.dispo === "libre") {
+      c.libres++;
+      if (x.deParticipacion) c.libresPc++;
+    } else if (x.dispo === "parcial") {
+      c[x.motivo ?? motivoDelParcial(x.deParticipacion, null)]++;
+    } else {
+      c.tomados++;
+    }
+  }
+  return c;
+}
+
+/** Cuántas están en parte, por cualquier motivo (el «+N» ámbar). */
+export function enParte(c: ConteoDelPeriodo): number {
+  return c.dias + c.partes + c.participacion;
+}
+
+/** Lo que ESTE contrato puede tomar al cerrar: las libres que no se venden
+ *  por participación, las que se liberan en el periodo y las que tienen otra
+ *  parte libre. Una cara por participación (libre o en parte) nunca entra a un
+ *  contrato de Vender: se carga en el Editor 3D → Distribución. */
+export function alCerrar(c: ConteoDelPeriodo): number {
+  return c.libres - c.libresPc + c.dias + c.partes;
+}
+
+/** El desglose del ámbar, sin nombres: «3 se liberan en el periodo · 1 con
+ *  partes vendidas · 8 por participación». Vacío si no hay ninguna. */
+export function desgloseDelParcial(c: ConteoDelPeriodo): string {
+  const t: string[] = [];
+  if (c.dias > 0) t.push(`${c.dias} se libera${c.dias === 1 ? "" : "n"} en el periodo`);
+  if (c.partes > 0) t.push(`${c.partes} con partes vendidas`);
+  if (c.participacion > 0) t.push(`${c.participacion} por participación`);
+  return t.join(" · ");
+}
+
+/** El `title` de «N al cerrar» cuando deja afuera caras por participación;
+ *  `null` si no hay ninguna. */
+export function sinLasDeParticipacion(c: ConteoDelPeriodo): string | null {
+  const k = c.libresPc + c.participacion;
+  if (k <= 0) return null;
+  return k === 1
+    ? "Sin la 1 por participación: se carga en el Editor 3D → Distribución."
+    : `Sin las ${k} por participación: se cargan en el Editor 3D → Distribución.`;
+}
+
+/**
+ * La segunda línea CORTA del rótulo de una cara por participación en el plano
+ * isométrico: «queda 45 %» para quien administra, «tomada», o la palabra «por
+ * participación» para el trabajador (nunca el %). Con once muebles por
+ * participación, «Por participación · queda 45 %» en cada uno tapaba la sala
+ * (captura DUENA-06); el texto entero sigue en el cartel del mouse, en la
+ * pastilla de la tarifa y en la ficha.
+ */
+export function textoCortoDeParticipacion(d: Pick<DispoDeParticipacion, "dispo" | "quedaPb">, conPorcentaje: boolean): string {
+  if (d.dispo === "tomado") return "tomada";
+  if (d.dispo === "libre" || !conPorcentaje) return "por participación";
+  return `queda ${pct(Math.max(0, Math.min(CARA_ENTERA_PB, d.quedaPb)))}`;
+}
+
+/** Un término de participación con el nombre de su proveedor (el de
+ *  `TerminoOut.proveedor.nombre`). */
+export interface TerminoDeProveedor { proveedor: string | null | undefined; termino: Termino }
+
+/**
+ * Lo SUYO de un proveedor en una cara por participación: el pico de lo que
+ * tiene comprometido entre `desde` y `hasta` (contratos activos y reservas que
+ * se sostienen, `intervalosQueCuentan`), en puntos básicos. Para mostrárselo
+ * delante (decisión de la dueña, 2026-10-18: «sólo lo suyo y lo libre»): su
+ * porcentaje y nada más —ni cómo está distribuido, ni nada de otros—.
+ *
+ * El proveedor se compara como «Guardar contrato» (`normalizarProveedor`: sin
+ * espacios de más ni mayúsculas). Un término de OTRO proveedor nunca suma; sin
+ * proveedor nombrado, 0 (la pantalla dice lo de siempre: sólo lo libre).
+ */
+export function loDelProveedor(
+  terminos: readonly TerminoDeProveedor[], proveedor: string | null | undefined,
+  desde: string, hasta: string, hoy: string,
+): number {
+  const quien = normalizarProveedor(proveedor ?? "");
+  if (!quien) return 0;
+  const suyos = terminos.filter((t) => normalizarProveedor(t.proveedor ?? "") === quien).map((t) => t.termino);
+  if (suyos.length === 0) return 0;
+  return Math.min(CARA_ENTERA_PB, pico(intervalosQueCuentan(suyos, [], hoy), desde, hasta).pb);
 }

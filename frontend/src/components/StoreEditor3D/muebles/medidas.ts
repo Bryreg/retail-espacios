@@ -139,6 +139,18 @@ export function inclinacionDeNivel(apoyo: number, altoDeCara: number): number {
   return apoyo / altoDeCara >= ENTREPANO.desdeFraccionDeAlto ? -ENTREPANO.inclinacion : 0;
 }
 
+/** Lo más que se DIBUJA (fase 2 · I5), nunca escrito de vuelta: un alto
+ *  infinito (la API no lo acotaba) daba un `for` sin fin y unos entrepaños de
+ *  mil millones, un arreglo de mil millones. Un alto que no es un número finito
+ *  no tiene niveles; unos entrepaños que no lo son se cuentan como si no
+ *  estuvieran, y de más se dibujan como el tope. Son los mismos topes que el
+ *  servidor exige al guardar algo nuevo (`layout_lookup.medidas_imposibles`). Los módulos son
+ *  `MAX_VANOS` de `utils/superficie.ts` (no se importa: `superficie.ts` importa
+ *  de este archivo y sería un ciclo; `probar-muebles.mjs` exige que digan lo
+ *  mismo). */
+export const MAX_VANOS_A_DIBUJAR = 200;
+export const MAX_ENTREPANOS_A_DIBUJAR = 50;
+
 /** Cuántos entrepaños entran, y a qué altura va cada uno.
  *
  *  Devuelve las alturas del PLANO SUPERIOR de cada entrepaño, ya redondeadas
@@ -158,7 +170,11 @@ export function nivelesDeEntrepano(alto: number, entrepanos?: number): number[] 
   // góndola tiene, y es de las cosas que más delatan un modelo inventado.
   //
   // Aire arriba: el último entrepaño no toca el remate.
-  if (entrepanos !== undefined) return nivelesDeFicha(ZOCALO.alto, alto - 0.1, entrepanos);
+  // Topes sólo al dibujar (ver MAX_ENTREPANOS_A_DIBUJAR).
+  if (!Number.isFinite(alto)) return [];
+  if (Number.isFinite(entrepanos)) {
+    return nivelesDeFicha(ZOCALO.alto, alto - 0.1, Math.min(entrepanos as number, MAX_ENTREPANOS_A_DIBUJAR));
+  }
   return nivelesEntre(ZOCALO.alto, alto - 0.1);
 }
 
@@ -395,8 +411,19 @@ export function vanosDeCorrido(w: number, modulo?: number, tramos?: number): Van
   // tramos iguales, mande lo que mande el módulo: un tramo es siempre un vano,
   // así el producto de prueba y el relleno se paran adentro, y estirar el
   // corrido estira los tramos sin cambiar cuál es cuál.
+  //
+  // fase 2 · I5: con un tope, sólo al DIBUJAR. Un ancho de 1e6 con un módulo
+  // de 1e-9 (la API no los acotaba) pedía un arreglo de mil billones de
+  // módulos y colgaba la pestaña; un ancho infinito tiraba `RangeError`. Un
+  // ancho que no es un número finito no tiene vanos, y nunca salen más de
+  // MAX_VANOS_A_DIBUJAR. No se recorta lo guardado: `storeToFixtures` →
+  // `fixturesToStore` lo volvería a escribir recortado.
+  if (!Number.isFinite(w)) return [];
   const fijos = tramosValidos(tramos);
-  const cuantos = fijos ?? Math.max(1, Math.round(w / (modulo && modulo > 0 ? modulo : ANCHO_MODULO_TIPICO)));
+  const cuantos = fijos ?? Math.min(
+    MAX_VANOS_A_DIBUJAR,
+    Math.max(1, Math.round(w / (modulo && modulo > 0 ? modulo : ANCHO_MODULO_TIPICO))),
+  );
   const anchoModulo = w / cuantos;
   const libre = Math.max(0.1, anchoModulo - PARANTE.ancho);
   return Array.from({ length: cuantos }, (_, i) => ({

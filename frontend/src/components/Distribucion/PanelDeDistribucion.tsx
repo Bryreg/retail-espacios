@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Crosshair, Eye, LogOut, Pencil } from "lucide-react";
 import { describeError } from "../../api/client";
 import { espacioDeLaCara, historial, type HistorialOut, type ZonaOut } from "../../api/participaciones";
-import { hayParaRecuperar, planoAlDia, useDistribucionStore } from "../../store/distribucionStore";
+import { copiaALaVista, hayParaRecuperar, planoAlDia, useDistribucionStore } from "../../store/distribucionStore";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import { carasDe } from "../../types/espacio";
+import { franjaDeLaCopia, motivoParaNoCopiar } from "../../utils/copiaDeZonas";
 import { accionDeTecla, type Accion } from "../../utils/edicionDeZonas";
 import { cambioParaDividir, conPartes, revisarCambioDePartes, type CambioDePartes } from "../../utils/partesDelMueble";
 import { pct, type EstadoDeDistribucion } from "../../utils/participaciones";
 import type { Estampa } from "../../utils/coloresDeMarca";
+import CopiarZonas from "./CopiarZonas";
 import FormularioDeParticipacion from "./FormularioDeParticipacion";
 import LeyendaDeParticipaciones, {
   BOTON, BOTON_PELIGRO, Dialogo, ESTILO_PELIGRO, capacidadDe, fechaLegible, fondoDeEstampa, irAlProblema, tonoCss,
@@ -181,7 +183,7 @@ export function lineasDelHistorial(h: HistorialOut): LineaDelHistorial[] {
     const instante = SOLO_DIA.test(e.en) ? medianocheDeColombia(e.en) : Date.parse(e.en);
     lineas.push({ clave: `e${e.id}`, instante, cuando: cuandoFue(e.en), derivada: false, actor: e.actor, detalle: e.detalle, en: e.en, zonas });
   }
-  h.derivados.forEach((d: HistorialOut["derivados"][number] & { dia?: unknown; derivado?: unknown }, i) => {
+  h.derivados.forEach((d, i) => {
     const dia = typeof d.dia === "string" && SOLO_DIA.test(d.dia) ? d.dia : SOLO_DIA.test(d.en) ? d.en : null;
     const conZona = SOLO_DIA.test(d.en) ? NaN : Date.parse(d.en);
     const instante = Number.isNaN(conZona) ? (dia ? medianocheDeColombia(dia) : NaN) : conZona;
@@ -220,6 +222,7 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
   const formulario = useDistribucionStore((s) => s.formulario);
   const pedidoDeCara = useDistribucionStore((s) => s.pedidoDeCara);
   const recuperable = useDistribucionStore(hayParaRecuperar);
+  const copiaVisible = useDistribucionStore(copiaALaVista);
   const mueble = useFixtureStore((s) => (s.fixturesBySede[sede] ?? selectFixtures(s)).find((f) => f.id === fixtureId) ?? null);
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
   const planoSinGuardar = useFixtureStore((s) => !!s.dirty[sede]);
@@ -235,6 +238,8 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
   const [verHistorial, setVerHistorial] = useState(false);
   const [lineas, setLineas] = useState<HistorialOut | null>(null);
   const [errorHistorial, setErrorHistorial] = useState<string | null>(null);
+  /** fase 2 · I1: el diálogo «Copiar zonas de otra cara» abierto. */
+  const [copiando, setCopiando] = useState(false);
 
   const st = useDistribucionStore.getState;
 
@@ -315,6 +320,11 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
   const errores = rev?.juicio.errores ?? [];
   const avisos = rev?.juicio.avisos ?? [];
   const hayBorrador = !!datos?.distribucion?.borrador;
+  // fase 2 · I1: por qué «Copiar zonas de otra cara…» está apagado (o null).
+  const motivoCopiar = motivoParaNoCopiar({
+    conSuperficie: !!datos?.superficie, alDia, enMirar, guardando: guardado.estado === "guardando",
+    versionVieja: guardado.estado === "version_vieja", vivas: datos?.participaciones.filter((p) => p.viva).length ?? 0,
+  });
 
   /* ── Acciones ─────────────────────────────────────────────────────────────── */
 
@@ -591,6 +601,12 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
           </div>
         )}
         <ConflictosDeLaFusion />
+        {/* fase 2 · I1: lo copiado de otra cara, mientras siga a la vista (Ctrl+Z la saca). */}
+        {copiaVisible && (
+          <p role="status" data-copia-de-zonas className="rounded-md border border-dark-line-2 px-2.5 py-2 text-xs text-dark-ink-2">
+            {franjaDeLaCopia(copiaVisible.rotulo, copiaVisible.declarada)}
+          </p>
+        )}
         {/* 6 · Botones */}
         {datos && datos.por_participacion && (
           <div className="flex flex-col gap-1.5">
@@ -601,6 +617,13 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
                 Guardar borrador
               </button>
             </div>
+            {/* fase 2 · I1: traer las zonas de otra cara como borrador (nunca contratos ni reservas). */}
+            <button type="button" className={`${BOTON} w-full`} data-copiar-zonas-de-otra-cara
+              disabled={enMirar || !editable || motivoCopiar !== null}
+              title={motivoCopiar ?? "Traer las zonas de otra cara (de este mueble, de otro o de otra sede) como borrador"}
+              onClick={() => setCopiando(true)}>
+              Copiar zonas de otra cara…
+            </button>
             <button type="button" className="btn-principal w-full rounded-md px-3 py-2 text-xs"
               disabled={enMirar || !editable || guardado.estado === "guardando" || guardado.estado === "version_vieja"}
               onClick={() => setResumen(true)}>
@@ -710,6 +733,7 @@ export default function PanelDeDistribucion({ fixtureId, sede, onEncuadrarCara }
       )}
       {resumen && <ResumenDeCambios onCerrar={() => setResumen(false)} />}
       {formulario && <FormularioDeParticipacion />}
+      {copiando && <CopiarZonas caras={caras} onCerrar={() => setCopiando(false)} />}
     </aside>
   );
 }

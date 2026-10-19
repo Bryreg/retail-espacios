@@ -87,10 +87,16 @@ export interface Campos {
   notas: string;
 }
 
-function camposIniciales(modo: Modo, t: TerminoOut | null, p: ParticipacionOut | null, hoy: string): Campos {
+/** Lo que el formulario trae escrito al abrirse, según el modo (pura: la
+ *  corre `probar-distribucion`). */
+export function camposIniciales(modo: Modo, t: TerminoOut | null, p: ParticipacionOut | null, hoy: string): Campos {
+  // La caducidad de una reserva la elige quien opera (decisión de la dueña,
+  // 2026-10-18): sin tope fijo y sin un valor propuesto. Antes se precargaba
+  // «hoy + 7» y el formulario la decidía por él; ahora arranca vacía y
+  // «Guardar» espera a que se elija (`problemaDeLosCampos`).
   const base: Campos = {
     tipo: "contrato", proveedor: "", correo: "", marca: "", porcentaje: "", desde: hoy, hasta: sumarDias(hoy, 89),
-    caduca: sumarDias(hoy, 7), valor: "", notas: "",
+    caduca: "", valor: "", notas: "",
   };
   if (!t || !p) return base;
   const duracion = Math.max(0, diasEntre(t.desde, t.hasta));
@@ -102,7 +108,7 @@ function camposIniciales(modo: Modo, t: TerminoOut | null, p: ParticipacionOut |
     case "cargarDeNuevo": {
       const desde = despuesDeLosVivos();
       return { ...base, proveedor: t.proveedor?.nombre ?? "", marca: t.marca ?? "", porcentaje: textoDePb(t.puntos_basicos),
-        desde, hasta: sumarDias(desde, duracion), caduca: sumarDias(hoy, 7) };
+        desde, hasta: sumarDias(desde, duracion), caduca: "" };
     }
     case "renovar": {
       const desde = despuesDeLosVivos();
@@ -114,7 +120,7 @@ function camposIniciales(modo: Modo, t: TerminoOut | null, p: ParticipacionOut |
         desde: t.desde, hasta: t.hasta, notas: t.notas ?? "" };
     case "editar":
       return { ...base, tipo: "reserva", proveedor: t.proveedor?.nombre ?? "", marca: t.marca ?? "", porcentaje: textoDePb(t.puntos_basicos),
-        desde: t.desde, hasta: t.hasta, caduca: t.caduca ?? sumarDias(hoy, 7), notas: t.notas ?? "" };
+        desde: t.desde, hasta: t.hasta, caduca: t.caduca ?? "", notas: t.notas ?? "" };
     default:
       return base;
   }
@@ -131,6 +137,7 @@ export function problemaDeLosCampos(modo: Modo, c: Campos, hoy: string): string 
   const tipo = modo === "confirmar" ? "contrato" : modo === "editar" ? "reserva" : c.tipo;
   if (tipo === "reserva") {
     if (c.hasta < hoy) return "Una reserva provisional tiene que terminar hoy o después.";
+    if (!c.caduca) return "Elegí hasta cuándo se sostiene la reserva.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(c.caduca) || c.caduca < hoy || c.caduca > c.hasta) {
       return "La reserva tiene que caducar entre hoy y el último día que reserva.";
     }
@@ -473,7 +480,8 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
         {tipo === "reserva" ? (
           <div>
             <label className={ETIQUETA} htmlFor="part-caduca">La reserva se sostiene hasta</label>
-            <input id="part-caduca" type="date" className={CAMPO} value={c.caduca} onChange={(e) => cambiar("caduca", e.target.value)} />
+            <input id="part-caduca" type="date" className={CAMPO} value={c.caduca} min={hoy} max={c.hasta || undefined}
+              onChange={(e) => cambiar("caduca", e.target.value)} />
             <p className="mt-1 text-[10px] text-dark-ink-3">Si para entonces no se confirmó como contrato, caduca y el porcentaje queda libre.</p>
           </div>
         ) : modo !== "editar" && (

@@ -125,9 +125,38 @@ class DistribucionIn(_Estricto):
     zonas: list[ZonaIn] = Field(default_factory=list)
 
 
+# fase 2 · I1 · «Copiar zonas de otra cara» (D20, Caso F): de dónde vienen las
+# zonas de un borrador. Es historia, no una regla: el servidor valida las zonas
+# como las de cualquier borrador (una de otra cara es `espacio_ajeno`) y no
+# recalcula la copia; esto sólo va al historial y a la bitácora.
+
+class ParDeCopiaIn(_Estricto):
+    #: El número de la participación en la cara de origen (el n de PC<n>).
+    origen: StrictInt = Field(ge=1, le=99)
+    #: El de la participación de ESTA cara que recibió sus zonas; None: no se copió.
+    destino: Optional[StrictInt] = Field(default=None, ge=1, le=99)
+
+
+class OrigenDeCopiaIn(_Estricto):
+    sede: str = Field(min_length=1, max_length=120)
+    #: «GON-01» o «GON-01-B», como en ``GET /cara``.
+    espacio: str = Field(min_length=1, max_length=200)
+    capa: Literal["confirmada", "borrador"]
+    #: La versión de la distribución de origen que se leyó.
+    version: StrictInt = Field(ge=0)
+    espejo: bool = False
+    mapa: list[ParDeCopiaIn] = Field(default_factory=list, max_length=99)
+    #: Las zonas del origen que quedaron afuera (no rigen, sin destino, sin lugar).
+    sin_copiar: StrictInt = Field(default=0, ge=0, le=500)
+
+
 class BorradorIn(DistribucionIn):
     #: El autoguardado del navegador (§9.8): sin historial ni bitácora.
     automatico: bool = False
+    #: fase 2 · I1: las zonas vienen de «Copiar zonas de otra cara». Sólo para
+    #: el historial y la bitácora; con él, el guardado se anota aunque venga
+    #: ``automatico`` (una copia siempre queda en el historial).
+    origen: Optional[OrigenDeCopiaIn] = None
 
 
 class DescartarIn(_Estricto):
@@ -249,7 +278,9 @@ def guardar_borrador(
     rol: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """10 · Guardar el borrador, con sus errores marcados (sin candado)."""
+    """10 · Guardar el borrador, con sus errores marcados (sin candado). Con
+    ``origen`` (fase 2 · I1, «Copiar zonas de otra cara») se anota como
+    ``distribucion.copiada``: ningún término, contrato ni reserva se toca."""
     e = {**cuerpo.model_dump(exclude={"zonas"}), "zonas": _zonas(cuerpo)}
     hecho = servicio.guardar_borrador(db, e, actor_de(request, rol))
     _bitacora(db, request, rol, hecho.accion, "distribucion", hecho.cara.codigo, hecho.detalle)
