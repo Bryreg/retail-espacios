@@ -53,7 +53,7 @@ import type {
 import SeasonPicker, { describeRange, hoyComoRango, type DateRange } from "../components/SeasonPicker/SeasonPicker";
 import Libera from "../components/Libera/Libera";
 import ModoVender from "../components/Contrato/ModoVender";
-import { claveDePrecio, fechaCorta, money } from "../components/Contrato/Contrato";
+import { claveDePrecio, diaCorto, fechaCorta, money } from "../components/Contrato/Contrato";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
@@ -73,7 +73,7 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
    donde hay que ir a buscarlas si el parte vuelve. */
 import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
 import { conNombrePropio, nombreDeTarifa, tipoDelMueble, type NombresPropios } from "../catalogo/nombresPropios";
-import type { SemillaContrato } from "../components/Contrato/Contrato";
+import type { CaraElegida, SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
@@ -182,6 +182,28 @@ interface FaceEntry {
    *  cara, con su propio contrato. `code` es entonces el de la parte
    *  (`NEV-03-PU2`). Sin esto, la cara entera, como siempre. */
   parte?: ParteRef | null;
+  /** Una RESERVA viva (rediseño de Vender, §8), no un contrato: hasta cuándo
+   *  se sostiene. Sólo en Supervisar y sólo para quien administra
+   *  (`conLaReserva`); con esto la fila va como «Reservado» y no suma canon,
+   *  contratos, vencimientos ni montaje. */
+  reservaHasta?: string | null;
+}
+
+/** Vender, cuando el Plano no deja cambiar cómo se vende un mueble: sin el
+ *  mensaje del servidor, que puede nombrar a otro proveedor (`venderAsi`). */
+const NO_SE_CAMBIO_LA_FORMA = "No se pudo cambiar cómo se vende: tiene algo vendido o tomado. Revisalo en el Plano.";
+
+/** Supervisar: una cara o una parte TOMADA por una reserva viva no es un
+ *  contrato. La base la manda `occupied` con su proveedor, sus fechas y su
+ *  precio (`GET /spaces/comercial`, con `reservaHasta` sólo para quien
+ *  administra); acá pasa a «Reservado» con su fecha, y con eso queda fuera del
+ *  canon, de «N contratos», de «Por vencer», de «Contratado sin montar», de
+ *  «Quién paga el canon» y del bajo tarifa (`contractPhase` = sin contrato).
+ *  Vender no pasa por acá: la ve «Tomado», sin decir que es una reserva. */
+function conLaReserva(e: FaceEntry, estado: EstadoPorEspacio, sede: string): FaceEntry {
+  const corto = (e.code || "").trim().toUpperCase();
+  const hasta = (estado[fullSpaceCode(e.fixture.sede || sede, corto)] ?? estado[corto])?.reservaHasta;
+  return hasta ? { ...e, status: "reserved", reservaHasta: hasta } : e;
 }
 
 const EMPTY_FACE: FaceData = {
@@ -230,7 +252,8 @@ function facesOf(f: UnifiedFixture): FaceEntry[] {
 const DIAS_PARA_RENOVAR = 60;
 
 function renovable(entry: FaceEntry): boolean {
-  if (!entry.supplierName.trim() || !entry.endDate) return false;
+  // Una reserva no se renueva: se confirma o se cancela («Reservas»).
+  if (entry.reservaHasta || !entry.supplierName.trim() || !entry.endDate) return false;
   const dias = daysUntil(entry.endDate);
   return dias !== null && dias <= DIAS_PARA_RENOVAR;
 }
@@ -248,6 +271,9 @@ interface Disponible {
   face: "A" | "B";
   /** El primer día en que queda libre. Ausente = libre desde el arranque. */
   desde?: Date;
+  /** Libre desde el arranque y tomada más adelante: el último día libre
+   *  (`ultimoDiaLibreDesdeElArranque`), como el rótulo del plano. */
+  hasta?: Date;
   /** Parcial por sus partes: «1 de 3 puertas vendida», en vez del día. */
   porPartes?: string;
   /** La cara se vende por participación: no se suma al contrato de Vender
@@ -276,6 +302,29 @@ function primerDiaLibre(
     if (daysTakenInRange(face, d, d) === 0) return d;
   }
   return undefined;
+}
+
+/** Si la cara está libre desde el ARRANQUE del periodo y se toma más adelante
+ *  (un contrato o una reserva que empiezan después), el último día libre de
+ *  ese primer tramo; si no, `null`. Con eso el rótulo dice «libre hasta 31 oct»
+ *  y no «libre 19 oct», que se lee como «se libera el 19 oct». Lo mismo para
+ *  un contrato que para una reserva: las dos llegan `occupied` con sus fechas. */
+function ultimoDiaLibreDesdeElArranque(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  desde: Date, from: Date, to: Date,
+): Date | null {
+  const dia = 86_400_000;
+  const d0 = new Date(from); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(desde); d1.setHours(0, 0, 0, 0);
+  const fin = new Date(to); fin.setHours(0, 0, 0, 0);
+  if (d1.getTime() !== d0.getTime()) return null;
+  let ultimo: Date | null = null;
+  for (let t = d0.getTime(); t <= fin.getTime(); t += dia) {
+    const d = new Date(t);
+    if (daysTakenInRange(face, d, d) > 0) return ultimo;
+    ultimo = d;
+  }
+  return null;
 }
 
 /** Faces that take part in the COMMERCIAL picture.
@@ -1209,10 +1258,16 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         // Fase 2 · I4: una cara por participación lleva en el plano la línea
         // CORTA («queda 45 %»); la larga sigue en el cartel del mouse.
         const corto = dispo === "parcial" ? cortoDe?.(f, entry) ?? null : null;
+        // Libre HOY (el primer día del periodo) y tomada más adelante —un
+        // contrato o una reserva que arrancan después—: «libre 19 oct» se leía
+        // como «se libera el 19 oct». Dice hasta cuándo se puede vender.
+        const hastaLibre = desde && !partes ? ultimoDiaLibreDesdeElArranque(entry, desde, range.from, range.to) : null;
         salida.push({
           clave: `${f.id}-${entry.face}`,
           cod: doble ? `${nombre}·${entry.face}` : nombre,
-          fecha: partes ?? (desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : ""),
+          fecha: partes ?? (hastaLibre
+            ? `libre hasta ${hastaLibre.getDate()} ${MONTHS_ES[hastaLibre.getMonth()]}`
+            : desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : ""),
           ...(corto ? { corto } : {}),
           // Sólo la cuenta. Antes acompañaba el código del mueble, que era lo
           // único que distinguía a los dos gemelos; ahora los dos se llaman
@@ -2610,7 +2665,10 @@ function FixtureDetailCard({
   const rentable = isRentable(fixture);
   const faces = facesOf(fixture);
   const double = isDoubleGondola(fixture) && rentable;
-  const entry = face === "B" && faces.length > 1 ? faces[1] : faces[0];
+  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  const sedeDelMapa = useFixtureStore((s) => s.sede);
+  // Una reserva viva se dice «Reservado», con su fecha (`conLaReserva`).
+  const entry = conLaReserva(face === "B" && faces.length > 1 ? faces[1] : faces[0], estadoComercial, sedeDelMapa);
   // Por el código COMPLETO. Buscaba por el corto —`PUN-04` en vez de
   // `NAVE-PUN-04`— y `by-code` devolvía 404 siempre, así que "Archivos del
   // contrato" nunca mostró nada: los que se suben desde el plano quedaban
@@ -2751,6 +2809,11 @@ function FixtureDetailCard({
         ) : (
           <>
             <SupplierLine entry={entry} />
+            {entry.reservaHasta && (
+              <div style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.45 }}>
+                Reservado hasta el {diaCorto(entry.reservaHasta)}: todavía no es un contrato. Se confirma o se cancela en «Reservas».
+              </div>
+            )}
             {(entry.startDate || entry.endDate) && <PeriodBox entry={entry} />}
             {isAdmin && entry.negotiatedValue > 0 && (
               <div
@@ -2804,6 +2867,12 @@ function FixtureDetailCard({
             cara={entry.face}
             sede={sedeDelPlano}
             doble={double}
+            onRenovar={onRenovarParte
+              ? (n) => {
+                const parte = partirCodigo(`X-PC${n}`).parte;
+                onRenovarParte({ ...entry, code: codigoDeParte(fixture.code, entry.face, parte), parte });
+              }
+              : undefined}
           />
         )}
 
@@ -3881,6 +3950,9 @@ function SpacesTable({
                     fontWeight: ds === "expiring" || ds === "expired" || ds === "no_contract" ? 600 : 400,
                   }}>
                     {pin.palabra}
+                    {entry.reservaHasta && (
+                      <span style={{ color: "var(--ink-3)" }}> hasta {diaCorto(entry.reservaHasta)}</span>
+                    )}
                   </span>
                 </td>
                 <td style={celda}>
@@ -4190,12 +4262,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  si la sede vende alguna cara así (si no, no se pide nada). */
   const revisionPc = useRevisionDeParticipaciones({ sede, activo: isAdmin && hayParticipaciones, muebles: fixtures });
   const abrirEnDistribucion = useAbrirEnDistribucion();
-  /** Los cortes de ventas sin cargar y cuántos contratos de hoy se cobran por
-   *  ventas (para la nota del canon), y las reservas de espacio vivas. Sólo
-   *  quien administra: es plata y son proveedores. Se dibujan sólo en
-   *  Supervisar; en Vender sólo suman a la cuenta roja de la pestaña. */
-  const cortesSinCargar = useCobrosPorVentas({ sede, activo: isAdmin });
-  const reservasSinConfirmar = useReservasDeEspacio({ sede, activo: isAdmin });
 
   /** La OTRA mitad del desfase: contratos que viven sólo en el JSON del layout.
    *
@@ -4255,6 +4321,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  segundo. */
   const [modo, setModo] = useState<"vender" | "supervisar">("vender");
   const modoEfectivo: "vender" | "supervisar" = isAdmin ? modo : "supervisar";
+  /** Los cortes de ventas sin cargar y cuántos contratos de hoy se cobran por
+   *  ventas (para la nota del canon), y las reservas de espacio vivas. Sólo
+   *  quien administra (es plata y son proveedores) y sólo en Supervisar, que es
+   *  donde se dibujan: en Vender ni se piden. */
+  const cortesSinCargar = useCobrosPorVentas({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  const reservasSinConfirmar = useReservasDeEspacio({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
   /** El contrato que se acaba de cerrar.
    *
    *  Vive en la pantalla y no adentro del formulario a propósito: al guardar,
@@ -4352,12 +4424,13 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       const antes = useFixtureStore.getState();
       antes.commit(conPartes(selectFixtures(antes), id, cambio));
       await useFixtureStore.getState().flushPending();
-      const rechazo = useFixtureStore.getState().rechazos[sede];
-      if (rechazo) {
-        return `El plano no se guardó, y cómo se vende sigue como estaba: ${rechazo.message}${rechazo.choques.length ? ` ${rechazo.choques.join(" ")}` : ""}`;
-      }
-    } catch (e) {
-      return describeError(e, "No se pudo guardar el plano: probá de nuevo en un momento.");
+      // Delante del proveedor: el rechazo del servidor (`message`, `choques`)
+      // puede nombrar a otro proveedor y la fecha de su reserva. Se dice una
+      // frase genérica; el detalle lo ve quien administra en el Plano.
+      if (useFixtureStore.getState().rechazos[sede]) return NO_SE_CAMBIO_LA_FORMA;
+    } catch {
+      // Tampoco el texto del error: sólo que no se pudo.
+      return "No se pudo guardar el plano: probá de nuevo en un momento.";
     }
     setEnContrato((lista) => aLaFormaNueva(lista, id, face, forma));
     return null;
@@ -4386,11 +4459,19 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const espaciosDelContrato = useMemo(
     () =>
       enContrato
-        .map(({ id, face, parte }) => {
+        .map(({ id, face, parte, pc, porPartes }): CaraElegida | null => {
           const fixture = fixtures.find((f) => f.id === id);
-          return fixture ? { fixture, face, ...(parte ? { parte } : {}) } : null;
+          // El % (`pc`) y la cara por partes sin ninguna marcada (`porPartes`)
+          // tienen que llegar a la ficha: sin ellos una cara por participación
+          // entraba como «Entera» y «Por entrepaños» no hacía nada.
+          return fixture ? {
+            fixture, face,
+            ...(parte ? { parte } : {}),
+            ...(pc ? { pc } : {}),
+            ...(porPartes ? { porPartes } : {}),
+          } : null;
         })
-        .filter((x): x is { fixture: UnifiedFixture; face: "A" | "B"; parte?: string } => x !== null),
+        .filter((x): x is CaraElegida => x !== null),
     [enContrato, fixtures],
   );
 
@@ -4552,8 +4633,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const entradaDetalle = useMemo((): FaceEntry | null => {
     if (!selected) return null;
     const caras = facesOf(selected);
-    return detailFace === "B" && caras.length > 1 ? caras[1] : caras[0];
-  }, [selected, detailFace]);
+    // Una reserva viva no se renueva (`renovable`): va con su fecha.
+    return conLaReserva(detailFace === "B" && caras.length > 1 ? caras[1] : caras[0], estadoComercial, sede);
+  }, [selected, detailFace, estadoComercial, sede]);
 
   /** Renovar: el mismo acuerdo otra vez, empezando cuando termina el que corre.
    *
@@ -4756,9 +4838,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const espaciosDelMueble = useCallback(
     (f: UnifiedFixture): FaceEntry[] => {
       const partes = partesVisiblesDe(f);
-      return partes.length ? [...commercialFacesOf(f), ...partes] : commercialFacesOf(f);
+      // Una reserva viva va «Reservado» (`conLaReserva`): no se monta ni vence.
+      return (partes.length ? [...commercialFacesOf(f), ...partes] : commercialFacesOf(f))
+        .map((e) => conLaReserva(e, estadoComercial, sede));
     },
-    [partesVisiblesDe],
+    [partesVisiblesDe, estadoComercial, sede],
   );
 
   // Deselect when switching sedes: ese mueble es de la otra tienda, y un
@@ -4883,9 +4967,13 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           e.claves.push(clave);
         } else if (a === "parcial") {
           const como = fila ? fila.como : comoSeLibera(f, face);
+          // Libre hoy y tomada más adelante: «hasta 31 oct», como el rótulo.
+          const hasta = !como?.porPartes && como?.desde
+            ? ultimoDiaLibreDesdeElArranque(face, como.desde, mapRange.from, mapRange.to) : null;
           e.parciales.push({
             code: codigoVisible(face), fixture: f, face: face.face,
             ...(como?.porPartes ? { porPartes: como.porPartes } : { desde: como?.desde }),
+            ...(hasta ? { hasta } : {}),
             ...(porParticipacion(f) ? { porParticipacion: true as const } : {}),
           });
           e.claves.push(clave);
@@ -4915,16 +5003,18 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
   const kpis = useMemo(() => {
-    const caras = fixtures.flatMap(commercialFacesOf);
+    // Una reserva viva no es un contrato (`conLaReserva`): va «Reservado».
+    const reserva = (e: FaceEntry) => conLaReserva(e, estadoComercial, sede);
+    const caras = fixtures.flatMap(commercialFacesOf).map(reserva);
     // Vender por partes: las partes vendidas son contratos como cualquier
     // otro —plata, vencimientos, proveedores, bajo la tarifa— pero NO son
     // unidades nuevas: la ocupación sigue contando caras, y una cara con una
     // puerta que corre está trabajando (`estadoDeUnidad`).
-    const partes = fixtures.flatMap(partesVendidasDe);
+    const partes = fixtures.flatMap(partesVendidasDe).map(reserva);
     // Las filas, las listas y las cuentas de contratos se hacen con lo que se
     // MUESTRA (los contratos de participación, sólo a quien administra); la
     // ocupación, con todo: una cara por participación que trabaja, trabaja.
-    const visibles = isAdmin ? partes : fixtures.flatMap(partesVisiblesDe);
+    const visibles = isAdmin ? partes : fixtures.flatMap(partesVisiblesDe).map(reserva);
     const faces = visibles.length ? [...caras, ...visibles] : caras;
     const total = caras.length;
     // Kept separate so the strip can explain why "Espacios" is lower than the
@@ -5045,7 +5135,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
     };
-  }, [fixtures, referenceRates, sede, fichasPropias, partesVendidasDe, partesVisiblesDe, isAdmin, participacionDe]);
+  }, [fixtures, referenceRates, sede, fichasPropias, partesVendidasDe, partesVisiblesDe, isAdmin, participacionDe, estadoComercial]);
 
   // How much of the sede can actually be sold for the chosen period. Counted
   // per face, like every other total on this page. Fase 2 · I4: la misma
@@ -5505,6 +5595,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                               ? `Sumar ${d.code} al contrato · por porcentaje${d.porPartes ? ` · ${d.porPartes}` : ""}`
                               : d.porPartes
                               ? `Sumar ${d.code} al contrato · ${d.porPartes}: se vende otra parte, no la entera`
+                              : entra && d.hasta
+                              ? `Sumar ${d.code} al contrato · libre hasta el ${fechaEnCurso(toISODate(d.hasta))}`
                               : entra
                               ? `Sumar ${d.code} al contrato · se libera el ${fechaEnCurso(toISODate(d.desde as Date))}`
                               : `Sumar ${d.code} al contrato`}
@@ -5515,7 +5607,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                             onClick={(e) => { e.stopPropagation(); destacar(null); alternarCara(d.fixture.id, d.face); }}
                           >
                             {d.code}
-                            {entra && <span className="chip__f">{d.porPartes ?? fechaEnCurso(toISODate(d.desde as Date))}</span>}
+                            {entra && <span className="chip__f">{d.porPartes ?? (d.hasta
+                              ? `hasta ${fechaEnCurso(toISODate(d.hasta))}`
+                              : fechaEnCurso(toISODate(d.desde as Date)))}</span>}
                             {/* Una cara por participación sin nada comprometido dice
                                 que entra como porcentaje. */}
                             {!entra && d.porParticipacion && <span className="chip__f">por porcentaje</span>}
@@ -5615,7 +5709,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           <nav className="pieza modos" aria-label="Modo de la pantalla">
             {([
               { id: "vender", label: "Vender", badge: 0 },
-              { id: "supervisar", label: "Supervisar", badge: attentionCount },
+              // En Vender la cuenta roja no se dibuja: mezcla vencimientos,
+              // bajo tarifa, reservas y cortes de ventas, y la pantalla la
+              // mira el proveedor.
+              { id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" ? attentionCount : 0 },
             ] as const).map(({ id, label, badge }) => {
               const activo = modoEfectivo === id;
               return (
@@ -6117,12 +6214,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                         ))}
                         {montaje.viejosSinReporte > 0 && (
                           <div style={{ padding: "8px 6px 0", fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
-                            Además, {montaje.viejosSinReporte} contrato
-                            {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
-                            {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
-                            {VENTANA_MONTAJE_DIAS} días nunca se reportó
-                            {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
-                            espacio ya está armado: lo que falta es el reporte.
+                            {montaje.viejosSinReporte === 1
+                              ? `Además, 1 contrato que arrancó hace más de ${VENTANA_MONTAJE_DIAS} días nunca se reportó.`
+                              : `Además, ${montaje.viejosSinReporte} contratos que arrancaron hace más de ${VENTANA_MONTAJE_DIAS} días nunca se reportaron.`}
+                            {" "}A esa altura el espacio ya está armado: lo que falta es el reporte.
                           </div>
                         )}
                       </div>

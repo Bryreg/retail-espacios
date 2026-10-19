@@ -315,9 +315,9 @@ prueba("Supervisar: las participaciones sólo para quien administra; puertas, tr
     "«Por puertas» lista participaciones (las muestra ParticipacionesDeLaCara)");
   assert.match(t, /const partesVisiblesDe = useCallback\(\s*\(f: UnifiedFixture\): FaceEntry\[\] => partesConContrato\(f, estadoComercial, indicePartes, sede, isAdmin\),/,
     "las filas de Supervisar no dependen de quién mira");
-  assert.match(t, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\);\s*const faces = visibles\.length \? \[\.\.\.caras, \.\.\.visibles\] : caras;/,
+  assert.match(t, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\)\.map\(reserva\);\s*const faces = visibles\.length \? \[\.\.\.caras, \.\.\.visibles\] : caras;/,
     "los totales y las listas de «Para revisar» le muestran al trabajador contratos de participación");
-  assert.match(t, /const partes = partesVisiblesDe\(f\);\s*return partes\.length \? \[\.\.\.commercialFacesOf\(f\), \.\.\.partes\] : commercialFacesOf\(f\);/,
+  assert.match(t, /const partes = partesVisiblesDe\(f\);\s*return \(partes\.length \? \[\.\.\.commercialFacesOf\(f\), \.\.\.partes\] : commercialFacesOf\(f\)\)\s*\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\);/,
     "«Estado por espacio» le muestra al trabajador contratos de participación");
 });
 
@@ -795,6 +795,47 @@ prueba("«Libres»: una cara por participación que una reserva deja hoy sin lug
     "los totales no le pasan a estadoDeUnidad si la cara se quedó sin lugar hoy");
 });
 
+prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar: «Reservado», fuera del canon, los contratos, los vencimientos, el montaje y «Quién paga» (conLaReserva, ejecutado)", () => {
+  const t = fuenteDe("pages/DashboardView.tsx");
+  const i = t.indexOf("function conLaReserva(");
+  assert.ok(i >= 0, "no está conLaReserva");
+  const fuente = t.slice(i, t.indexOf("\n}\n", i) + 2);
+  const js = esbuildMod.transformSync(fuente, { loader: "ts" }).code;
+  const fullSpaceCode = (sede, c) => (c.startsWith(`${sede}-`) ? c : `${sede}-${c}`);
+  const conLaReserva = new Function("fullSpaceCode", `${js}\nreturn conLaReserva;`)(fullSpaceCode);
+  const f = { sede: "CENTRO", code: "GON-02" };
+  const cara = { fixture: f, face: "A", code: "GON-02", status: "occupied", supplierName: "X", endDate: "2026-11-30", negotiatedValue: 9 };
+  const mapa = { "CENTRO-GON-02": { status: "occupied", reservaHasta: "2026-11-02" }, "CENTRO-GON-03": { status: "occupied", reservaHasta: null } };
+  const r = conLaReserva(cara, mapa, "CENTRO");
+  assert.equal(r.status, "reserved", "una reserva viva sigue contando como contrato");
+  assert.equal(r.reservaHasta, "2026-11-02");
+  assert.equal(conLaReserva({ ...cara, code: "GON-03" }, mapa, "CENTRO").status, "occupied", "un contrato pasó a «Reservado»");
+  const parte = { ...cara, code: "GON-02-EN1" };
+  assert.equal(conLaReserva(parte, { "CENTRO-GON-02-EN1": { reservaHasta: "2026-11-05" } }, "CENTRO").status, "reserved", "una parte reservada cuenta como contrato");
+  // Las cuentas de Supervisar pasan TODAS por ahí: caras, partes y filas.
+  const v = sinComent(t);
+  const k = v.slice(v.indexOf("const kpis = useMemo("), v.indexOf("const rangeTally"));
+  assert.match(k, /const reserva = \(e: FaceEntry\) => conLaReserva\(e, estadoComercial, sede\);/);
+  assert.match(k, /const caras = fixtures\.flatMap\(commercialFacesOf\)\.map\(reserva\);/, "el canon y la ocupación cuentan una reserva de cara como contrato");
+  assert.match(k, /const partes = fixtures\.flatMap\(partesVendidasDe\)\.map\(reserva\);/, "una parte reservada cuenta como contrato");
+  assert.match(k, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\)\.map\(reserva\);/);
+  assert.match(v, /const espaciosDelMueble = useCallback\(\s*\(f: UnifiedFixture\): FaceEntry\[\] => \{[^}]*?\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\);/,
+    "la tabla y «Contratado sin montar» cuentan una reserva como contrato");
+  const m = v.slice(v.indexOf("const montaje = useMemo("), v.indexOf("const montaje = useMemo(") + 1500);
+  assert.match(m, /fixtures\.flatMap\(espaciosDelMueble\)/, "el montaje no sale de las filas con la reserva marcada");
+  assert.match(m, /if \(fase !== "vigente" && fase !== "pendiente"\) return;/, "el montaje cuenta lo que no es contrato");
+  // «Reservado» dice hasta cuándo, en la tabla y en la ficha; y no se renueva.
+  assert.match(v, /\{entry\.reservaHasta && \(\s*<span style=\{\{ color: "var\(--ink-3\)" \}\}> hasta \{diaCorto\(entry\.reservaHasta\)\}<\/span>/);
+  assert.match(v, /if \(entry\.reservaHasta \|\| !entry\.supplierName\.trim\(\) \|\| !entry\.endDate\) return false;/, "una reserva se ofrece a renovar");
+  // La fecha no se le pega al mueble (ni viaja en el PUT del plano), y el mapa crudo la compara.
+  const mueble0 = { id: "f", code: "GON-02", type: "cross", sede: "CENTRO" };
+  const [fusionado] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservaHasta: "2026-11-02" } });
+  assert.ok(!("reservaHasta" in fusionado), "la fecha de la reserva se pegó al mueble");
+  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta",\s*\] as const;/);
+  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\)\) return false;/,
+    "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos");
+});
+
 prueba("Vender, Supervisar y el plano 2D LEEN la ocupación (sin esto, toda cara por participación se ve libre)", () => {
   const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(v, /useEffect\(\(\) => \{\s*if \(hayParticipaciones\) void cargarOcupacion\(sede\);\s*\}, \[hayParticipaciones, sede, cargarOcupacion\]\);/,
@@ -854,6 +895,17 @@ prueba("«Renovar» de una participación abre Vender armado, y sólo renueva un
   assert.match(v, /renueva: termino \? \{ \[caraCompleta\]: termino \} : \{\},/, "renueva un término que no es un contrato vivo");
   assert.match(v, /desde: termino && desde \? toISODate\(desde\) : "",/, "sobre algo que no se renueva, arranca después de un contrato que no corre");
   assert.match(v, /negociar\(f, entry\.face, semillaPc\);/, "renovar una participación no abre Vender");
+  // El botón «Renovar» de la ficha de Supervisar (las participaciones de la
+  // cara) también abre Vender: nunca el Editor 3D → Distribución.
+  const pdc = sinComent(fuenteDe("components/Distribucion/ParticipacionesDeLaCara.tsx"));
+  assert.doesNotMatch(pdc, /abrir\([^)]*,[^)]*,[^)]*\)/, "«Renovar» de la ficha abre Distribución con el término");
+  assert.doesNotMatch(pdc, /renovable\.id/, "«Renovar» de la ficha manda el término a Distribución");
+  assert.match(pdc, /\{renovable && onRenovar && \(\s*<button\s+type="button"\s+onClick=\{\(\) => onRenovar\(p\.numero\)\}/,
+    "«Renovar» de la ficha no pasa por `onRenovar`");
+  assert.match(v, /<ParticipacionesDeLaCara\b[^>]*?onRenovar=\{onRenovarParte\s*\? \(n\) => \{\s*const parte = partirCodigo\(`X-PC\$\{n\}`\)\.parte;\s*onRenovarParte\(\{ \.\.\.entry, code: codigoDeParte\(fixture\.code, entry\.face, parte\), parte \}\);/,
+    "la ficha no conecta «Renovar» de una participación con `renovar` (que abre Vender)");
+  assert.match(v, /if \(entry\.parte && esParticipacion\(entry\.parte\)\) \{\s*void renovarParticipacion\(entry\);\s*return;\s*\}/,
+    "`renovar` no manda una participación a `renovarParticipacion`");
 });
 
 /* ── fase 2 · I4: Vender y los bajos ─────────────────────────────────────────

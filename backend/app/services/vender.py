@@ -38,7 +38,7 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.fechas import hoy
+from app.fechas import dia_corto, hoy
 from app.models.models import Supplier
 from app.models.participaciones import Participacion
 from app.models.vender import CobroPorVenta, CondicionesDeContrato, PrecioDeReserva, ReservaDeEspacio
@@ -52,8 +52,6 @@ from app.services.candado import clave_de_candado, tomar_candados
 from app.services.layout_lookup import PlanoIndexado, normalizar
 from app.services.meses import meses_entre
 
-_MESES = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
-
 
 def _error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status, detail={"code": code, "message": message})
@@ -61,8 +59,7 @@ def _error(status: int, code: str, message: str) -> HTTPException:
 
 def _dia_corto(d: date) -> str:
     """«3 nov»; con el año si no es el de hoy («3 ene 2027»)."""
-    texto = f"{d.day} {_MESES[d.month - 1]}"
-    return texto if d.year == hoy().year else f"{texto} {d.year}"
+    return dia_corto(d)
 
 
 # ─── Lo que se revisó de cada línea ───────────────────────────────────────────
@@ -115,6 +112,11 @@ def _fila_de_rechazo(indice: int, espacio: str, pb: int, e: HTTPException) -> di
         return _fila_de_error(indice, espacio, "capacidad_excedida",
                               f"Ya no entra el {reglas.pct(pb)}: desde el {cuando} queda {reglas.pct(queda)}.",
                               queda_pb=queda, desde_dia=desde_dia)
+    if d.get("code") == "rompe_distribucion":
+        # La frase de Distribución nombra participaciones («las zonas de la
+        # participación 3 pisan las de la 2»): delante del proveedor, no.
+        return _fila_de_error(indice, espacio, "rompe_distribucion",
+                              "Con esas fechas no entra: revisá la distribución en Supervisar.")
     return _fila_de_error(indice, espacio, d.get("code") or "linea_invalida", d.get("message") or "No entra.")
 
 
@@ -191,7 +193,8 @@ def revisar(db: Session, p: dict) -> Revision:
             for i, x in enteras
         ])
         # El valor lo mira `_errores_de_valor` (un contrato por ventas va en 0).
-        por_fila = {f.fila: f for f in _revisar(db, lote, exigir_valor=False)}
+        # Delante del proveedor: un choque se dice «tomado», sea contrato o reserva.
+        por_fila = {f.fila: f for f in _revisar(db, lote, exigir_valor=False, delante_del_proveedor=True)}
         for i, x in enteras:
             f = por_fila[i]
             linea = Linea(indice=i, entrada=x, fila=f)

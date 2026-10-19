@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useFichasPropias } from "../../store/fichasPropias";
+import { useOcupacionStore } from "../../store/ocupacionStore";
 import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { parseISODate, upcomingSeasons } from "../../types/seasons";
@@ -679,6 +680,8 @@ export function useContrato({
    *  espacio. Vale para las líneas y las fechas con que se pidió: si cambian,
    *  se va. */
   const [rechazo, setRechazo] = useState<{ firma: string; porLlave: Record<string, FilaRechazada> } | null>(null);
+  /** Volver a leer la ocupación anónima de la sede (tras un % que ya no entra). */
+  const recargarOcupacion = useOcupacionStore((s) => s.recargarOcupacion);
   const rechazoVigente = rechazo && rechazo.firma === firmaValidacion ? rechazo.porLlave : null;
 
   /** Las mismas líneas, con lo que dijo el servidor pegado a cada una. Va en
@@ -808,6 +811,12 @@ export function useContrato({
           if (de) porLlave[de.item.llave] = f;
         }
         setRechazo({ firma, porLlave });
+        // Un % que ya no entra: otro lo tomó mientras se armaba. Se vuelve a
+        // leer la ocupación anónima, así «queda X %» de la línea dice lo
+        // mismo que el rechazo.
+        if (filas.some((f) => f.code === "capacidad_excedida")) {
+          void recargarOcupacion(sede);
+        }
         setError(Object.keys(porLlave).length === filas.length
           ? "No se guardó nada: revisá las líneas marcadas."
           : `No se guardó nada. ${filas.map((f) => f.mensaje).filter(Boolean).join(" ")}`);

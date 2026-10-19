@@ -1017,7 +1017,10 @@ await prueba("el plano y la lista de precios dicen «1 de 3 puertas vendida», n
   const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
   assert.match(dash, /const partes = dispo === "parcial" \? porPartes\?\.\(f, entry\) \?\? null : null;\s*const desde = dispo === "parcial" && !partes\s*\? \(libreDesde \? libreDesde\(f, entry\)\?\.desde : primerDiaLibre/,
     "el rótulo de una cara parcial por sus partes vuelve a decir «libre» y el día");
-  assert.match(dash, /fecha: partes \?\? \(desde \?/, "el rótulo no dice las partes vendidas");
+  // Las partes vendidas mandan; después «libre hasta 31 oct» (libre hoy y tomada
+  // más adelante) o «libre 21 oct» (se libera ese día).
+  assert.match(dash, /fecha: partes \?\? \(hastaLibre\s*\? `libre hasta \$\{hastaLibre\.getDate\(\)\} [^`]*`\s*: desde \?/, "el rótulo no dice las partes vendidas");
+  assert.match(dash, /const hastaLibre = desde && !partes \? ultimoDiaLibreDesdeElArranque\(entry, desde, range\.from, range\.to\) : null;/);
   assert.match(dash, /const partes = porPartes\?\.\(f, face\) \?\? null;\s*if \(partes\) return partes;/, "el cartel del mouse dice «libre los 31 días»");
   assert.match(dash, /\.\.\.\(como\?\.porPartes \? \{ porPartes: como\.porPartes \} : \{ desde: como\?\.desde \}\)/, "la lista de precios vuelve a poner el día");
   assert.equal((dash.match(/porPartes=\{porPartesDeCara\}/g) ?? []).length, 2, "Vender y Supervisar dibujan el plano con el mismo rótulo");

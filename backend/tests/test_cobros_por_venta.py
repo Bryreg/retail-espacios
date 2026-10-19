@@ -126,6 +126,20 @@ def test_el_tablero_suma_lo_cobrado_y_no_un_contrato_de_cero(client, admin, work
 
 
 @RELOJ
+def test_al_trabajador_los_proveedores_van_por_nombre_y_no_por_plata(client, admin, worker):
+    """Los cinco primeros por plata son un ranking aunque las cifras vayan en
+    cero: al trabajador, por nombre."""
+    tp._plano(client, admin)
+    oct_ = {"desde": D(2026, 10, 1), "hasta": D(2026, 10, 31)}
+    _vender(client, admin, _pedido(_entera("GON-02", 9_000_000), proveedor="Zeta Bebidas", **oct_))
+    _vender(client, admin, _pedido(_entera("NEV-03-PU1", 100_000), proveedor="Alfa Lácteos", **oct_))
+    k = client.get("/api/dashboard/kpis", headers=admin).json()
+    assert [s["name"] for s in k["top_suppliers"]] == ["Zeta Bebidas", "Alfa Lácteos"]
+    w = client.get("/api/dashboard/kpis", headers=worker).json()
+    assert [s["name"] for s in w["top_suppliers"]] == ["Alfa Lácteos", "Zeta Bebidas"], "al trabajador le llega un ranking"
+
+
+@RELOJ
 def test_las_metricas_de_la_plataforma_lo_sacan_del_promedio(client, admin):
     from app.clientes import buscar, sesion_registro
     from app.database import SessionLocal

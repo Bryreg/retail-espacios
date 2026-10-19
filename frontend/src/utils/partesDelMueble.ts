@@ -614,10 +614,12 @@ const diaCortoDe = (iso: string) => (/^\d{4}-\d{2}-\d{2}/.test(iso) ? `${Number(
 /**
  * Por qué no se puede cambiar cómo se vende el mueble desde Vender, o `null`:
  * algo de él —de CUALQUIERA de sus caras, porque la forma de venderse es del
- * mueble— está vendido, firmado o reservado (un contrato o una reserva viva en
- * el mapa de la base, o un porcentaje o una reserva de participación vivos en
- * la ocupación anónima). Dice QUÉ y hasta cuándo, nunca de quién: «EN4 está
- * vendido hasta el 31 dic: no se puede cambiar cómo se vende».
+ * mueble— está vendido, firmado o tomado (un contrato o una reserva viva en el
+ * mapa de la base, o un porcentaje o una reserva de participación vivos en la
+ * ocupación anónima). Lo lee el proveedor: dice hasta cuándo y nada más —ni
+ * qué parte, ni qué cara, ni qué participación (`PC1`), ni de quién, ni si es
+ * un contrato o una reserva—: «Tiene algo vendido hasta el 31 dic: no se
+ * puede cambiar cómo se vende».
  */
 export function porQueNoSeCambia(f: Mueble, estado: EstadoPorEspacio, sede: string, participacion?: DatosDeParticipacion): string | null {
   const completo = fullSpaceCode(f.sede || sede, f.code).toUpperCase();
@@ -625,11 +627,9 @@ export function porQueNoSeCambia(f: Mueble, estado: EstadoPorEspacio, sede: stri
     if (e.status !== "occupied" && e.status !== "reserved") continue;
     const p = partirCodigo(codigo.toUpperCase());
     if (p.base !== completo) continue;
-    const que = p.parte ? `${p.cara === "B" ? "B·" : ""}${sufijoDeParte(p.parte)}` : `La cara ${p.cara}`;
-    const verbo = e.status === "reserved" ? "reservad" : "vendid";
-    const g = p.parte ? "o" : "a";
+    const que = e.status === "reserved" ? "tomado" : "vendido";
     const hasta = e.endDate ? ` hasta el ${diaCortoDe(e.endDate)}` : "";
-    return `${que} está ${verbo}${g}${hasta}: no se puede cambiar cómo se vende.`;
+    return `Tiene algo ${que}${hasta}: no se puede cambiar cómo se vende.`;
   }
   const caras = [completo, `${completo}-B`];
   for (const c of caras) {
@@ -637,7 +637,7 @@ export function porQueNoSeCambia(f: Mueble, estado: EstadoPorEspacio, sede: stri
     const vivos = (o?.intervalos ?? []).filter((i) => !participacion?.hoy || i.hasta >= participacion.hoy);
     if (vivos.length > 0) {
       const hasta = vivos.reduce((m, i) => (i.hasta > m ? i.hasta : m), vivos[0].hasta);
-      return `Tiene porcentajes vendidos o reservados hasta el ${diaCortoDe(hasta)}: no se puede cambiar cómo se vende.`;
+      return `Tiene porcentajes vendidos o tomados hasta el ${diaCortoDe(hasta)}: no se puede cambiar cómo se vende.`;
     }
   }
   return null;

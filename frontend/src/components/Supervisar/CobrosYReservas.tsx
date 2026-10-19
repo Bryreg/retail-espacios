@@ -6,6 +6,9 @@ import { cancelarReserva, confirmarReserva, reservasDeEspacio, type ReservaDeEsp
 import { money } from "../Contrato/Contrato";
 import { fechaEnCurso } from "../../utils/propuesta";
 import { toISODate } from "../../types/seasons";
+import { isDoubleGondola } from "../../types/espacio";
+import { codigoVisibleDe, partirCodigo } from "../../utils/partes";
+import { useFixtureStore } from "../../store/fixtureStore";
 
 /**
  * Dos bloques de «Para revisar» que nacieron con el rediseño de Vender (PR 1,
@@ -34,6 +37,31 @@ const HOY = () => toISODate(new Date());
 function codigoEnLaSede(espacio: string, sede: string): string {
   const pre = `${(sede || "").toUpperCase()}-`;
   return espacio.toUpperCase().startsWith(pre) ? espacio.slice(pre.length) : espacio;
+}
+
+/** Cómo se LEE el código en pantalla, como en la tabla y la ficha
+ *  (`codigoVisibleDe`): `GON-04·B`, `GON-04·A`, `NEV-03·PU2`. La cara A de una
+ *  góndola doble lleva su letra si el mueble del plano la tiene. */
+function useCodigoVisible(sede: string): (espacio: string) => string {
+  const muebles = useFixtureStore((s) => s.fixturesBySede[sede]);
+  return useCallback((espacio: string) => {
+    const p = partirCodigo(codigoEnLaSede(espacio, sede));
+    const f = (muebles ?? []).find((x) => (x.code || "").toUpperCase() === p.base);
+    const doble = f ? isDoubleGondola(f) : p.cara === "B";
+    return codigoVisibleDe(p.base, p.cara, doble, p.parte);
+  }, [muebles, sede]);
+}
+
+/** Lo que se va a cobrar por lo vendido: ventas × %, redondeado al peso como
+ *  el servidor (`monto_de`, el `round` de Python: la mitad va al par). Es la
+ *  vista previa mientras se escribe; lo que vale es lo que contesta el
+ *  servidor al guardar. */
+export function montoDeVentas(ventas: number, porcentaje: number): number {
+  const x = (ventas * porcentaje) / 100;
+  const piso = Math.floor(x);
+  const resto = x - piso;
+  if (Math.abs(resto - 0.5) < 1e-9) return piso % 2 === 0 ? piso : piso + 1;
+  return resto > 0.5 ? piso + 1 : piso;
 }
 
 /** «1 oct – 31 oct»; el año sólo si no es el de hoy. */
@@ -164,9 +192,10 @@ function CorteParaCargar({ corte, sede, monto, onCargado }: {
   const [cifras, setCifras] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cod = codigoEnLaSede(corte.espacio, sede);
   const cuando = periodo(corte.periodo_desde, corte.periodo_hasta);
   const ventas = cifras === "" ? null : Number(cifras);
+  const visible = useCodigoVisible(sede);
+  const cod = visible(corte.espacio);
 
   async function guardar() {
     if (ventas === null || guardando) return;
@@ -221,6 +250,10 @@ function CorteParaCargar({ corte, sede, monto, onCargado }: {
               }}
             />
           </label>
+          {/* Lo que se cobra, mientras se escribe: «→ $ 360.000». */}
+          <b style={{ ...cifra, fontWeight: 700, minWidth: "11ch", textAlign: "right" }} data-monto-previo>
+            {ventas !== null ? `→ ${money(montoDeVentas(ventas, corte.porcentaje))}` : ""}
+          </b>
           <button
             type="submit"
             disabled={ventas === null || guardando}
@@ -276,7 +309,7 @@ function FilaDeReserva({ r, sede, onCambio }: { r: ReservaDeEspacio; sede: strin
   const [enCurso, setEnCurso] = useState<"confirmar" | "cancelar" | null>(null);
   const [preguntando, setPreguntando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cod = codigoEnLaSede(r.espacio, sede);
+  const cod = useCodigoVisible(sede)(r.espacio);
   const hoy = HOY();
   const caduca = r.caduca <= hoy ? "caduca hoy" : `caduca el ${fechaEnCurso(r.caduca)}`;
 

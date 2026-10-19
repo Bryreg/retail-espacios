@@ -51,11 +51,11 @@ export const CLAVES_DE_FICHA = ["modelo", "partes", "entrepanos", "modulo"] as c
  */
 export const CAMPOS_DE_CONTRATO = [
   "status", "supplierName", "brandCategory", "negotiatedValue",
-  "startDate", "endDate", "observation",
+  "startDate", "endDate", "observation", "reservaHasta",
 ] as const;
 
 /** El mismo plano sin una sola palabra de lo comercial. No toca el original.
- *  Saca sólo esos siete campos: la ficha viaja como está, `null` incluido. */
+ *  Saca sólo esos ocho campos: la ficha viaja como está, `null` incluido. */
 export function sinComercial(fixtures: UnifiedFixture[]): UnifiedFixture[] {
   return fixtures.map((f) => {
     const limpio: Record<string, unknown> = { ...f };

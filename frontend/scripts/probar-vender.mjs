@@ -1042,7 +1042,7 @@ prueba("StoreView y Legend están borrados, o al menos nadie los importa", () =>
    pura (`dispoPorParticipacion`) que usan Supervisar y el plano 2D. */
 console.log("\nvender · las participaciones de cara");
 {
-  const { build } = await import("esbuild");
+  const { build, transformSync } = await import("esbuild");
   const r = await build({
     stdin: { contents: 'export * from "./src/utils/partes.ts";', resolveDir: raiz, loader: "ts" },
     bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
@@ -1104,6 +1104,29 @@ console.log("\nvender · las participaciones de cara");
     bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
   });
   const M = await import("data:text/javascript;base64," + Buffer.from(rM.outputFiles[0].text).toString("base64"));
+  prueba("lo que se toca en el plano llega ENTERO a la ficha: el % (`pc`) y la cara por partes sin elegir (`porPartes`), no sólo cara y parte (ejecutado)", () => {
+    const i = vista.indexOf("const espaciosDelContrato = useMemo(");
+    assert.ok(i >= 0, "no está espaciosDelContrato");
+    const bloque = vista.slice(i, vista.indexOf("[enContrato, fixtures],", i));
+    assert.match(bloque, /\.map\(\(\{ id, face, parte, pc, porPartes \}\): CaraElegida \| null =>/, "espaciosDelContrato pierde `pc` o `porPartes`");
+    assert.match(bloque, /\.filter\(\(x\): x is CaraElegida => x !== null\)/);
+    // Ejecutado: la función del map, con dos muebles.
+    const a = bloque.indexOf(".map(") + 5, b = bloque.indexOf(")\n        .filter(");
+    assert.ok(a > 5 && b > a, "no se pudo leer el map de espaciosDelContrato");
+    const js = transformSync(`const f = ${bloque.slice(a, b)};`, { loader: "ts" }).code;
+    const fixtures = [{ id: "g1" }, { id: "p2" }];
+    const map = new Function("fixtures", `${js}\nreturn f;`)(fixtures);
+    assert.deepEqual(map({ id: "g1", face: "B", pc: true }), { fixture: fixtures[0], face: "B", pc: true }, "un % entra como «Entera»");
+    assert.deepEqual(map({ id: "p2", face: "A", porPartes: "entrepanos" }), { fixture: fixtures[1], face: "A", porPartes: "entrepanos" }, "«Por entrepaños» no llega a la ficha");
+    assert.deepEqual(map({ id: "p2", face: "A", parte: "EN1" }), { fixture: fixtures[1], face: "A", parte: "EN1" });
+    assert.equal(map({ id: "x", face: "A" }), null);
+    // Y la lista de partes de esa línea sigue abierta al tildar la primera:
+    // la clave (\`…-EN*\`) es la misma con o sin partes, y queda abierta.
+    const mv = codigo("src/components/Contrato/ModoVender.tsx");
+    assert.match(mv, /const sinElegir = c\.lineas\.find\(\(l\) => l\.sinElegir\)\?\.clave \?\? null;\s*useEffect\(\(\) => \{\s*if \(sinElegir\) setAbierta\(sinElegir\);\s*\}, \[sinElegir\]\);/,
+      "la lista de entrepaños se cierra al tildar EN1");
+  });
+
   prueba("cambiar cómo se vende desde Vender: las guardas del Plano, las dos caras, y el porqué sin nombres (ejecutado y leído)", () => {
     const g = { id: "g9", code: "GON-09", sede: "NAVE", type: "gondola", gondolaType: "double", w: 3, h: 2, d: 0.9, entrepanos: 4 };
     const vivo = { status: "occupied", supplierName: "", brandCategory: "", startDate: "2026-10-01", endDate: "2026-12-31" };
@@ -1113,14 +1136,22 @@ console.log("\nvender · las participaciones de cara");
     assert.deepEqual(M.cambioDesdeVender(g, "entera", {}, "NAVE"), { listo: true });
     // Algo vendido en la OTRA cara también frena: la forma es del mueble.
     const enLaB = M.cambioDesdeVender(g, "entrepanos", { "NAVE-GON-09-B": vivo }, "NAVE");
-    assert.equal(enLaB.problema, "La cara B está vendida hasta el 31 dic: no se puede cambiar cómo se vende.");
+    // Lo lee el proveedor: sin qué cara, qué parte ni qué participación.
+    assert.equal(enLaB.problema, "Tiene algo vendido hasta el 31 dic: no se puede cambiar cómo se vende.");
     const parte = M.porQueNoSeCambia({ ...g, partes: { division: "entrepanos" } }, { "NAVE-GON-09-EN4": vivo }, "NAVE");
-    assert.equal(parte, "EN4 está vendido hasta el 31 dic: no se puede cambiar cómo se vende.");
+    assert.equal(parte, "Tiene algo vendido hasta el 31 dic: no se puede cambiar cómo se vende.");
+    const pc1 = M.porQueNoSeCambia({ ...g, partes: { division: "participacion" } }, { "NAVE-GON-09-PC1": { ...vivo, endDate: "2027-03-31" } }, "NAVE");
+    assert.equal(pc1, "Tiene algo vendido hasta el 31 mar: no se puede cambiar cómo se vende.");
+    const aMano = M.porQueNoSeCambia(g, { "NAVE-GON-09": { ...vivo, status: "reserved" } }, "NAVE");
+    assert.equal(aMano, "Tiene algo tomado hasta el 31 dic: no se puede cambiar cómo se vende.");
     // Un porcentaje o una reserva de participación vivos (la ocupación anónima).
     const pcViva = M.porQueNoSeCambia({ ...g, partes: { division: "participacion" } }, {}, "NAVE",
       { ocupacion: { "NAVE-GON-09": { intervalos: [{ desde: "2026-10-01", hasta: "2026-11-30", pb: 2500 }], fisicos: [] } }, hoy: "2026-10-19" });
-    assert.match(pcViva, /hasta el 30 nov: no se puede cambiar cómo se vende\.$/);
-    for (const t of [enLaB.problema, parte, pcViva]) assert.doesNotMatch(t, /proveedor|marca|POSTOB|\$|%/i, "el porqué nombra a alguien o dice un %");
+    assert.equal(pcViva, "Tiene porcentajes vendidos o tomados hasta el 30 nov: no se puede cambiar cómo se vende.");
+    for (const t of [enLaB.problema, parte, pc1, aMano, pcViva]) {
+      assert.doesNotMatch(t, /proveedor|marca|POSTOB|\$|%/i, "el porqué nombra a alguien o dice un %");
+      assert.doesNotMatch(t, /reserv|contrato|\bPC\d|\b(EN|PU|TR|BI)\d|\bcara [AB]\b|B·/i, "el porqué dice qué es (reserva, contrato), qué parte o qué participación");
+    }
     // Leído: las guardas son las del Plano, y el cambio va por el store.
     const pdm = codigo("src/utils/partesDelMueble.ts");
     const cdv = (pdm.match(/export function cambioDesdeVender\([^]*?\n\}/) || [""])[0];
@@ -1131,6 +1162,11 @@ console.log("\nvender · las participaciones de cara");
     assert.match(va, /await fs\.flushPending\(\);\s*const antes = useFixtureStore\.getState\(\);\s*antes\.commit\(conPartes\(selectFixtures\(antes\), id, cambio\)\);\s*await useFixtureStore\.getState\(\)\.flushPending\(\);/,
       "el cambio no guarda primero lo pendiente del plano, o no va por el store y `PUT /layout`");
     assert.match(va, /setEnContrato\(\(lista\) => aLaFormaNueva\(lista, id, face, forma\)\);/, "las líneas del mueble se quedan con la forma de antes");
+    // El rechazo del servidor puede nombrar a otro proveedor y la fecha de su
+    // reserva: en Vender, una frase genérica y nunca su texto.
+    assert.doesNotMatch(va, /rechazo\.(message|choques)|\.message\b|choques|describeError/, "Vender muestra el texto del rechazo del plano");
+    assert.match(va, /if \(useFixtureStore\.getState\(\)\.rechazos\[sede\]\) return NO_SE_CAMBIO_LA_FORMA;/);
+    assert.match(codigo("src/pages/DashboardView.tsx"), /const NO_SE_CAMBIO_LA_FORMA = "No se pudo cambiar cómo se vende: tiene algo vendido o tomado\. Revisalo en el Plano\.";/);
     const linea = codigo("src/components/Contrato/LineaDelContrato.tsx");
     assert.match(linea, /Cambia cómo se vende \{l\.fixture\.code\} en toda la tienda\{l\.doble \? " \(las dos caras\)" : ""\}\./, "no se confirma en la línea");
     assert.match(linea, /disabled=\{"problema" in rr \|\| cambiando\}/, "la forma que no se puede no se ve apagada");
@@ -1668,7 +1704,7 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
   };
   const DE_SUPERVISAR = ["src/api/cobros.ts", "src/api/reservas.ts"];
 
-  prueba("`api/cobros` y `api/reservas` no se alcanzan desde Vender: ni un archivo de Vender los importa, ni la parte de DashboardView que Vender dibuja", () => {
+  prueba("`api/cobros` y `api/reservas` no se alcanzan desde Vender: ni un archivo de Vender los importa, ni la parte de DashboardView que Vender dibuja, ni se piden con Vender abierto", () => {
     for (const f of DE_SUPERVISAR) assert.ok(hay(f), `no está ${f}`);
     const malos = [];
     for (const f of ARCHIVOS_VENDER.filter(hay)) {
@@ -1696,13 +1732,20 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       for (const n of usados) if (ids.has(n)) hits.push(`${n} en ${VISTA}:${r.desde + 1}${r.nombre ? ` (${r.nombre})` : ""}`);
     }
     assert.deepEqual([...new Set(hits)], [], `Vender alcanza lo de los cobros o las reservas:\n         ${[...new Set(hits)].join("\n         ")}`);
-    // Y en Supervisar, sólo para quien administra.
-    assert.match(vista, /const cortesSinCargar = useCobrosPorVentas\(\{ sede, activo: isAdmin \}\);/);
-    assert.match(vista, /const reservasSinConfirmar = useReservasDeEspacio\(\{ sede, activo: isAdmin \}\);/);
+    // Y en Supervisar, sólo para quien administra: en Vender ni se piden.
+    assert.match(vista, /const cortesSinCargar = useCobrosPorVentas\(\{ sede, activo: isAdmin && modoEfectivo === "supervisar" \}\);/,
+      "los cortes por ventas se piden también en Vender");
+    assert.match(vista, /const reservasSinConfirmar = useReservasDeEspacio\(\{ sede, activo: isAdmin && modoEfectivo === "supervisar" \}\);/,
+      "las reservas de espacio se piden también en Vender");
     assert.match(vista, /\{isAdmin && cortesSinCargar\.pendientes\.length > 0 && \(\s*<VentasPorCargar\b/, "«Ventas por cargar» se monta sin `isAdmin`");
     assert.match(vista, /\{isAdmin && reservasSinConfirmar\.vivas\.length > 0 && \(\s*<ReservasSinConfirmar\b/, "«Reservas» se monta sin `isAdmin`");
     assert.match(vista, /\(isAdmin\s*\? kpis\.belowReference\.length[^;]*cortesSinCargar\.porCargar \+ reservasSinConfirmar\.vivas\.length[^;]*revisionPc\.total\s*: 0\)/,
       "los cortes sin cargar y las reservas no suman a «Para revisar», o le suman al trabajador");
+    // La cuenta roja de «Supervisar» mezcla vencimientos, bajo tarifa, reservas
+    // y cortes de ventas: con Vender abierto no se dibuja.
+    assert.match(vista, /\{ id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" \? attentionCount : 0 \}/,
+      "la pastilla roja de «Supervisar» se dibuja en Vender");
+    assert.match(vista, /\{badge > 0 && \(\s*<span className="cuenta"/, "la pastilla roja se dibuja aunque la cuenta sea cero");
     // Las rutas de cada módulo, y nada más.
     const rutas = (f) => [...codigo(f).matchAll(/client\s*\.(get|post|delete|put|patch)(?:<[^>]*>)?\(\s*[`"']([^`"']+)[`"']/g)].map((m) => `${m[1]} ${m[2]}`).sort();
     assert.deepEqual(rutas("src/api/cobros.ts"), ["get /cobros", "get /cobros/pendientes", "post /cobros/${leaseId}/cortes"]);
@@ -2251,7 +2294,33 @@ if (!URL_VENDER) {
     // ── La hoja, con tres espacios y el contrato completo ──────────────
     // Al revés: «Ver en 3D» abre la ÚLTIMA cara tocada, y las pruebas miran
     // la primera de la lista (la punta).
-    for (const c of [...CARAS].reverse()) await tocar(pv, c);
+    const alReves = [...CARAS].reverse();
+    await tocar(pv, alReves[0]);
+    await pv.mouse.move(5, 5);
+    await pv.waitForTimeout(600);
+    // Con UNA línea a 1440×900 la ficha entra entera: el cuerpo no rueda (la
+    // línea, proveedor y marca, las fechas y sus atajos, el cobro) y el pie
+    // (el total y los botones) cierra con su aire.
+    const unaLinea = await pv.evaluate(`(() => {
+      const panel = ${PANEL};
+      const cuerpo = panel.querySelector(".cuerpo"), pie = panel.querySelector(".pie-contrato");
+      const r = panel.getBoundingClientRect(), acc = pie.querySelector(".acciones").getBoundingClientRect();
+      const visible = (sel) => { const e = panel.querySelector(sel); if (!e) return false; const b = e.getBoundingClientRect(), c = cuerpo.getBoundingClientRect(); return b.top >= c.top - 0.5 && b.bottom <= c.bottom + 0.5; };
+      return { ancho: innerWidth, alto: innerHeight, rueda: cuerpo.scrollHeight > cuerpo.clientHeight + 1, sobra: cuerpo.scrollHeight - cuerpo.clientHeight,
+        aire: r.bottom - acc.bottom, enElPie: !!pie && pie.contains(panel.querySelector(".btn-principal")),
+        ven: { linea: visible(".eitem"), proveedor: visible('input[aria-label="Proveedor"]'), marca: visible('input[aria-label="Marca"]'),
+          desde: visible('input[aria-label="Desde"]'), hasta: visible('input[aria-label="Hasta"]'), atajos: visible(".atajos") } };
+    })()`);
+    prueba("navegador · con UNA línea a 1440×900 el cuerpo del contrato no rueda: la línea, proveedor y marca, las fechas y sus atajos a la vista; el pie cierra con aire", () => {
+      const malas = [];
+      if (unaLinea.ancho !== 1440 || unaLinea.alto !== 900) malas.push(`la ventana mide ${unaLinea.ancho}×${unaLinea.alto}, no 1440×900`);
+      if (unaLinea.rueda) malas.push(`el cuerpo rueda ${unaLinea.sobra} px con una línea`);
+      for (const [k, v] of Object.entries(unaLinea.ven)) if (!v) malas.push(`${k} no se ve sin rodar`);
+      if (!unaLinea.enElPie) malas.push("«Guardar contrato» no está en el pie");
+      if (unaLinea.aire < 12) malas.push(`el pie cierra con ${unaLinea.aire.toFixed(1)} px de aire (piso: 12)`);
+      assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+    });
+    for (const c of alReves.slice(1)) await tocar(pv, c);
     await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
     await pv.locator('.vender input[aria-label="Marca"]').fill("Finesse");
     const valores = pv.locator(".eitem .m input");
@@ -2261,7 +2330,8 @@ if (!URL_VENDER) {
     const hoja = await pv.evaluate(`(() => {
       const panel = ${PANEL};
       const r = panel.getBoundingClientRect();
-      const acc = panel.querySelector(".acciones").getBoundingClientRect();
+      // Los botones viven en el PIE (\`.pie-contrato\`), que no rueda.
+      const acc = panel.querySelector(".pie-contrato .acciones").getBoundingClientRect();
       const cab = panel.querySelector("header").getBoundingClientRect();
       const v = panel.querySelectorAll("[data-ver-3d]");
       const vb = v[0]?.getBoundingClientRect();
@@ -2340,7 +2410,11 @@ if (!URL_VENDER) {
       const malos = [];
       for (const x of pedidos) {
         const ruta = new URL(x.u).pathname;
-        if (/^\/api\/suppliers/.test(ruta)) malos.push(`pidió ${ruta}: la lista de proveedores`);
+        // Sólo la ruta que completa UN nombre (`/suppliers/completar`, exacta);
+        // cualquier otra de proveedores es la lista.
+        if (/^\/api\/suppliers/.test(ruta) && ruta !== "/api/suppliers/completar") malos.push(`pidió ${ruta}: la lista de proveedores`);
+        // Los cobros por ventas y las reservas son de Supervisar: en Vender ni se piden.
+        if (/^\/api\/(cobros|reservas)\b/.test(ruta)) malos.push(`pidió ${ruta}: plata o reservas de otros`);
         if (/face-images/.test(ruta)) malos.push(`pidió ${ruta}: las fotos de las caras de otros`);
       }
       for (const x of desdeAbrir.filter((y) => esLista(y.u) && y.m === "GET")) {

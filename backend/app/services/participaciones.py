@@ -408,10 +408,10 @@ def bloqueo_por_participaciones(db: Session, sede: str, codigo: str, desde: date
         return None
     primero = min(i["desde"] for i in cuentan)
     ultimo = max(i["hasta"] for i in cuentan)
-    n = len(cuentan)
+    # Sin cuántos términos: delante del proveedor (Vender) eso dice cuántos
+    # otros tienen algo en la cara.
     return (f"«{sin_prefijo_de_sede(cara, s)}» se vende por participación del {reglas._fecha_corta(max(primero, a))} "
-            f"al {reglas._fecha_corta(min(ultimo, hasta))} ({n} término{'' if n == 1 else 's'} de participación "
-            "vivo" + ("" if n == 1 else "s") + "): en esas fechas no se vende entera ni por partes.")
+            f"al {reglas._fecha_corta(min(ultimo, hasta))}: en esas fechas no se vende entera ni por partes.")
 
 
 # ─── La geometría (afuera del candado) ───────────────────────────────────────

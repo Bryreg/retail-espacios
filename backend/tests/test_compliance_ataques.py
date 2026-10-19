@@ -252,6 +252,8 @@ def test_x2_el_export_no_lleva_ips_ni_hashes_ni_tablas_de_intentos(client, monke
 
     assert set(r.json()) == {
         "cliente", "generado_en", "version_politica", "spaces", "leases", "suppliers", "layouts",
+        # Las seis tablas del rediseño de Vender, juntas (vender-api.md §7).
+        "condiciones_comerciales",
     }
 
 

@@ -375,3 +375,47 @@ def test_completar_devuelve_un_solo_nombre_y_es_de_administracion(client, admin,
 def test_el_trabajador_no_entra_al_guardado(client, admin, worker):
     tp._plano(client, admin)
     assert client.post("/api/contratos/vender", headers=worker, json=_pedido(_entera("GON-02"))).status_code == 403
+
+
+# ─── Delante del proveedor: un choque es «tomado», sea contrato o reserva ─────
+
+@RELOJ
+def test_un_choque_en_vender_se_dice_tomado_sin_decir_contrato_ni_reserva(client, admin):
+    """Lo que choca se dice con UNA frase (``frase_tomada``): no distingue un
+    contrato de una reserva, no nombra a nadie y las fechas van como se leen
+    («1 nov», nunca ISO). La planilla (administración) sigue con la suya."""
+    tp._plano(client, admin)
+    _vender(client, admin, _pedido(_entera("GON-02"), _entera("NEV-03-PU1"), proveedor="Postobón"))
+    _vender(client, admin, _pedido(_entera("GON-02-B"), proveedor="Postobón", tipo="reserva",
+                                   caduca=D(2026, 10, 25)))
+
+    r = _vender(client, admin, _pedido(_entera("GON-02"), _entera("NEV-03"), _entera("GON-02-B")), codigo=409)
+    mensajes = [f["mensaje"] for f in r["detail"]["filas"]]
+    assert mensajes == [
+        "«GON-02» está tomado del 1 nov al 30 nov: ajustá las fechas.",
+        "«NEV-03-PU1» está tomado del 1 nov al 30 nov: ajustá las fechas.",
+        "«GON-02-B» está tomado del 1 nov al 30 nov: ajustá las fechas.",
+    ], mensajes
+    todo = " ".join(m for f in r["detail"]["filas"] for m in [f["mensaje"], *f.get("mensajes", [])])
+    for prohibido in ("contrato", "reserv", "Postobón", "vendid", "2026-11"):
+        assert prohibido not in todo, (prohibido, todo)
+    # La vista previa (?validar=1) dice lo mismo.
+    previa = _vender(client, admin, _pedido(_entera("GON-02")), codigo=409, validar=True)
+    assert previa["detail"]["filas"][0]["mensaje"] == "«GON-02» está tomado del 1 nov al 30 nov: ajustá las fechas."
+    # La planilla de administración no cambia.
+    fila = tp._planilla(client, admin, "GON-02")["filas"][0]
+    assert any("ya tiene un contrato" in m for m in fila["mensajes"]), fila
+
+
+def test_rompe_distribucion_no_nombra_participaciones_en_vender():
+    """Una renovación que rompe la distribución: en Vender, sin números de
+    participación («las zonas de la participación 3 pisan las de la 2»)."""
+    from fastapi import HTTPException
+
+    from app.services.vender import _fila_de_rechazo
+
+    e = HTTPException(409, detail={"code": "rompe_distribucion", "message":
+                                   "Con esas fechas, las zonas de la participación 3 pisan las de la 2 desde el 1 nov."})
+    fila = _fila_de_rechazo(0, "NAVE-GON-01", 2500, e)
+    assert fila["mensaje"] == "Con esas fechas no entra: revisá la distribución en Supervisar."
+    assert "participación" not in fila["mensaje"] and "problemas" not in fila

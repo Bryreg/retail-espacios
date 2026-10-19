@@ -244,6 +244,10 @@ function Fila({
   };
   const conVentas = c.cobroModo === "ventas";
   const conPrecio = !conVentas && !l.sinElegir && !(l.tipo === "pc" && l.pb <= 0);
+  /* Un porcentaje no se vende «por cara» (el rótulo de la tarifa de la
+     góndola): «Góndola, por participación». */
+  const tipo = tipoDelMueble(l.fixture, nombresPropios);
+  const tipoDeLaLinea = l.tipo === "pc" ? `${tipo.replace(/,\s*por cara$/i, "")}, por participación` : tipo;
 
   return (
     <div
@@ -274,7 +278,7 @@ function Fila({
         )}
       </span>
       <span className="d">
-        <span title={conNombrePropio(l.fixture, nombresPropios, l.fixture.label || l.fixture.code)}>{tipoDelMueble(l.fixture, nombresPropios)}</span>
+        <span title={conNombrePropio(l.fixture, nombresPropios, l.fixture.label || l.fixture.code)}>{tipoDeLaLinea}</span>
         <span title={segunda}>{segunda}</span>
       </span>
       {l.tipo === "pc" && l.pb > 0 && <span className="pct">{pct(l.pb)}</span>}
@@ -663,6 +667,14 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     if (c.lineas.length > cuantas.current) setAbierta(c.lineas[c.lineas.length - 1]?.clave ?? null);
     cuantas.current = c.lineas.length;
   }, [c.lineas]);
+  /* Una línea que pasa a «por partes» sin ninguna marcada (cambió la forma, o
+     entró así) queda ABIERTA por su clave, que es la misma con o sin partes
+     (`…-EN*`): antes se mostraba sólo mientras no tenía ninguna y al tildar
+     EN1 se cerraba en la cara del que estaba eligiendo. */
+  const sinElegir = c.lineas.find((l) => l.sinElegir)?.clave ?? null;
+  useEffect(() => {
+    if (sinElegir) setAbierta(sinElegir);
+  }, [sinElegir]);
   const conVentas = c.cobroModo === "ventas";
   const porVentas = conVentas ? totalPorVentas(c) : null;
   const queSeReserva = c.lineas.length === 1
@@ -683,20 +695,24 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>
         )}
       </div>
-      <p className="total-sub">
-        {porVentas ? porVentas.detalle
-          : c.fechasEnOrden && c.lineas.length > 0
-          ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.lineas.length} ${c.lineas.length === 1 ? "línea" : "líneas"}`
-          : "\u00a0"}
-      </p>
-      {/* Las temporadas que el plazo cubre: el argumento de venta que una
-          planilla no puede dar, y el control de que las fechas quedaron donde
-          se querían. */}
-      {c.cubre.length > 0 && (
-        <div className="cubre">
-          {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
-        </div>
-      )}
+      {/* El plazo («31 días · 1 mes · 1 línea») y las temporadas que cubre,
+          en UN renglón: con una o dos líneas la ficha entra entera sin rodar
+          (antes eran tres renglones, y el plazo se repetía en el cuerpo). Las
+          temporadas son el argumento de venta que una planilla no puede dar,
+          y el control de que las fechas quedaron donde se querían. */}
+      <div className="total-fila">
+        <p className="total-sub">
+          {porVentas ? porVentas.detalle
+            : c.fechasEnOrden && c.lineas.length > 0
+            ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.textoDeMeses(c.nMeses)} · ${c.lineas.length} ${c.lineas.length === 1 ? "línea" : "líneas"}`
+            : "\u00a0"}
+        </p>
+        {c.cubre.length > 0 && (
+          <div className="cubre">
+            {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
+          </div>
+        )}
+      </div>
       {/* El error del servidor sí se dice acá, pegado al botón que lo
           provocó: es lo que pasó al tocarlo, no lo que falta antes. */}
       {c.error && (
@@ -807,21 +823,23 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             <NoComercializable fixture={ultimo} />
           )}
         </div>
-        {/* Un solo renglón de guía, y dice lo que falta AHORA. Del tercer
-            espacio en adelante, y sólo si no falta nada, se va. */}
+        {/* UN solo renglón de guía, y dice lo que falta AHORA. Si no falta
+            nada y es la primera cara, dónde está el 3D (el botón de la
+            cabecera es chico); si no, sumar otro espacio. Del tercer espacio
+            en adelante, y sólo si no falta nada, se va. Eran dos renglones
+            («Falta el proveedor» y el del 3D) y con una línea la ficha rodaba. */}
         {(c.lineas.length < 3 || c.falta) && (
-          <p className="pista">
-            {c.lineas.length === 0
-              ? <>Elegí el primer espacio <b>tocándolo en el plano</b></>
-              : c.falta
-              ? c.falta
-              : <>Agregá otro espacio <b>tocándolo en el plano</b></>}
-          </p>
-        )}
-        {/* La primera vez que se toca una cara, dónde está el 3D: el botón
-            de la cabecera es chico y nada más en la ficha decía que existe. */}
-        {c.lineas.length === 1 && caraParaVer && !vio3D && (
-          <p className="pista" data-pista-3d>Tocá <b>Ver en 3D</b> para mostrarle cómo queda</p>
+          c.lineas.length === 1 && !c.falta && caraParaVer && !vio3D ? (
+            <p className="pista" data-pista-3d>Tocá <b>Ver en 3D</b> para mostrarle cómo queda</p>
+          ) : (
+            <p className="pista">
+              {c.lineas.length === 0
+                ? <>Elegí el primer espacio <b>tocándolo en el plano</b></>
+                : c.falta
+                ? c.falta
+                : <>Agregá otro espacio <b>tocándolo en el plano</b></>}
+            </p>
+          )
         )}
 
         <hr className="corte" />
@@ -855,25 +873,14 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             </label>
           </div>
         </div>
+        {/* Los atajos de fecha. El plazo («31 días · 1 mes») va en el pie,
+            junto al total; acá sólo si las fechas no sirven. */}
         <AtajosDeFecha c={c} />
-        {/* El plazo y el desplegable comparten renglón: son las dos cosas que
-            cuelgan de las fechas. */}
-        <div className="plazo-fila">
-          <p className={`plazo${c.desde && c.hasta && !c.fechasEnOrden ? " mal" : ""}`}>
-            {c.desde && c.hasta && !c.fechasEnOrden
-              ? "La fecha de fin es anterior a la de inicio"
-              : c.fechasEnOrden
-              ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.textoDeMeses(c.nMeses)}`
-              : "Elegí las fechas del acuerdo"}
+        {!c.fechasEnOrden && (
+          <p className="plazo mal">
+            {c.desde && c.hasta ? "La fecha de fin es anterior a la de inicio" : "Elegí las fechas del acuerdo"}
           </p>
-          <button
-            className="btn2"
-            onClick={() => setMasDatos((v) => !v)}
-            aria-expanded={masDatos}
-          >
-            {masDatos ? "− " : "+ "}Correo y nota
-          </button>
-        </div>
+        )}
 
         {masDatos && (
           <div style={{ marginTop: 4 }}>
@@ -908,7 +915,19 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           </div>
         )}
 
-        <ComoSeCobra c={c} />
+        {/* El cobro y, en el mismo renglón, el desplegable del correo y la nota. */}
+        <ComoSeCobra
+          c={c}
+          extra={(
+            <button
+              className="btn2"
+              onClick={() => setMasDatos((v) => !v)}
+              aria-expanded={masDatos}
+            >
+              {masDatos ? "− " : "+ "}Correo y nota
+            </button>
+          )}
+        />
 
         {/* «Reservar hasta…»: la fecha la elige quien opera y arranca VACÍA
             (decisión de la dueña). De hoy al último día del contrato. */}

@@ -55,6 +55,9 @@ from app.services.catalogo_muebles import (
 CAMPOS_DE_CONTRATO = (
     "status", "supplierName", "brandCategory", "negotiatedValue",
     "startDate", "endDate", "observation",
+    # La caducidad de una reserva de espacio (`GET /spaces/comercial`): tampoco
+    # se guarda en el plano.
+    "reservaHasta",
 )
 
 #: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa
@@ -1641,6 +1644,18 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
             fuera.append((lease, space, otro))
     fuera.sort(key=lambda x: (x[0].start_date, x[0].id))
     return fuera
+
+
+def frase_tomada(otro_codigo: str, lease, sede: str = "") -> str:
+    """La frase de un choque DELANTE DEL PROVEEDOR (Vender, ``?validar=1`` y el
+    guardado de ``POST /api/contratos/vender``): una sola, para cualquier
+    choque. No dice si lo otro es un contrato o una reserva, ni de quién, ni
+    cuántos: que está tomado y en qué fechas, que es lo que hay que mover. La
+    planilla y el contrato suelto (administración) siguen con
+    ``frase_de_choque``."""
+    from app.fechas import dia_corto
+    return (f"«{sin_prefijo_de_sede(otro_codigo, sede)}» está tomado del {dia_corto(lease.start_date)} "
+            f"al {dia_corto(lease.end_date)}: ajustá las fechas.")
 
 
 def frase_de_choque(codigo: str, otro_codigo: str, lease) -> str:

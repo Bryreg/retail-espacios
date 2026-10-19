@@ -799,9 +799,15 @@ vende por participación no se vende entera ni por partes físicas (la compuerta
 `motivo_para_no_vender_parte`, en la planilla, Vender, el contrato suelto y la importación); una
 participación de una cara que no se vende así no existe; y `chocan` no deja convivir en fechas
 que se pisan la cara entera o una división con una participación. Dos participaciones de la
-misma cara no chocan por código: las frena la capacidad. **Un código `PC` se carga, se renueva y
-se cancela sólo en Distribución** (`/api/participaciones`): la planilla y el contrato suelto lo
-rechazan y mandan ahí, y `PATCH /spaces/{id}/status` no lo marca a mano. El `n` lo pone el
+misma cara no chocan por código: las frena la capacidad. **Un código `PC` lo crea el servidor, y
+sólo por los caminos de participaciones**: desde el rediseño de Vender (PR 1) un porcentaje de
+cara **se vende —o se reserva— en Vender**, como una línea más del contrato
+(`POST /api/contratos/vender`, que escribe con `participaciones.escribir_alta`), y **se renueva
+desde Supervisar** («Renovar» en la ficha o en la lista de participaciones de la cara abre
+Vender armado con el % y el término que renueva, `renueva`). Distribución sigue cargando,
+cambiando y cancelando reservas provisionales y dibujando zonas (`/api/participaciones`); un
+contrato `PC` se cancela desde su ficha. La planilla y el contrato suelto lo rechazan, y
+`PATCH /spaces/{id}/status` no lo marca a mano. El `n` lo pone el
 servidor y no se reutiliza nunca (el montaje atribuye por código y fecha), y un mueble nuevo no
 puede llamarse `…-PC<n>` (`nombres_reservados_nuevos`). Ver *Participaciones de cara y zonas
 (2026-10-17)*.
@@ -854,7 +860,14 @@ quién está delante: la tarjeta CONTRATADO del Editor 3D con el proveedor de la
 y el HUD de Presentar con el proveedor en pantalla (`privadoPara`). Lo cuenta `loDelProveedor`
 (`utils/partes.ts`, puro: otro proveedor nunca suma) a partir de `useLoSuyo`
 (`StoreEditor3D.tsx`), que lee la cara como Distribución y se queda con UN número por cara.
-Vender sigue como antes (sólo «queda X %»). El modo Distribución depende de UNA condición, `distribucionALaVista`
+En Vender, un porcentaje es una línea del contrato: el % que se elige y lo que queda («queda X %»,
+«X % sigue libre»), nunca zonas, ni números `PC`, ni el % o el nombre de otro, ni si lo tomado
+es un contrato o una reserva (sí hasta cuándo: «tomado hasta el 31 mar»). Los textos que el
+servidor le manda a Vender salen neutros (`frase_tomada`, `vender._fila_de_rechazo`: ««X» está
+tomado del 2 nov al 30 nov: ajustá las fechas.», «Con esas fechas no entra: revisá la
+distribución en Supervisar.»), y un rechazo del guardado del plano se dice con una frase
+genérica, nunca con su `message`. **La planometría se carga sólo en Supervisar** (la ficha del
+espacio, con el contrato ya hecho), nunca en Vender ni en una reserva. El modo Distribución depende de UNA condición, `distribucionALaVista`
 (`StoreEditor3D.tsx`): sin Presentar, sin `privadoPara`, fuera del visor de Vender, sin reunión
 y sin primera persona; adentro, Presentar y la lámina están deshabilitados, y el visor de Vender
 nunca le pasa la capa a la escena (`probar-vender`). Vender dice «Por participación · queda
@@ -1097,6 +1110,13 @@ guardado de Vender, la importación del plano y la capacidad de una cara (`fisic
 sin saber que existe; el guardarraíl de `PUT /layout` la frena como a algo vendido y
 `GET /spaces/comercial` la da tomada. Un camino nuevo que decida si algo choca pregunta ahí, no
 a `space_leases` a mano. Delante del proveedor se dice «tomado», nunca «reservado» ni de quién.
+Una reserva guarda su precio o, si cobra por **% de las ventas**, el porcentaje y el corte; al
+confirmarla el contrato nace cobrando así. **En Supervisar una reserva no es un contrato**: la
+base la manda `occupied` con `reservaHasta` (sólo a quien administra) y `conLaReserva`
+(`DashboardView.tsx`) la pasa a «Reservado · hasta el …», fuera del canon, de «N contratos», de
+«Por vencer», de «Contratado sin montar», de «Quién paga el canon» y de Renovar; se confirma o se
+cancela en «Reservas». `reservaHasta` no se le pega al mueble ni viaja en el layout
+(`CAMPOS_DE_CONTRATO`).
 
 **Un contrato que se cobra por ventas no es un contrato de $ 0.** Su `monthly_rent` va en 0 y
 la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
@@ -1142,6 +1162,22 @@ archivo; esto es el resumen).
   los casos de `frontend/scripts/casos/meses.json`.
 - Pendiente: la serie histórica (`snapshot_metricas`) no guarda lo cobrado por ventas (no tiene
   columna y no se agregan): los meses cerrados cuentan sólo el canon fijo.
+
+**La ronda de correcciones del dueño (2026-10-20).** El % y «por partes» llegan enteros de lo
+que se toca al contrato (`espaciosDelContrato` pasa `pc` y `porPartes`); «Renovar» de la lista
+de participaciones de la ficha abre Vender, no Distribución; la lista de entrepaños queda
+abierta mientras la línea es «por partes»; un 409 de capacidad vuelve a leer la ocupación
+anónima. Privacidad: las reservas no cuentan como contratos en Supervisar (ver la regla dura
+*Lo reservado cuenta como ocupado*); los choques en Vender dicen «tomado» con la fecha corta;
+«cómo se vende» no dice qué parte, qué cara ni qué `PC` está vendida; `bloqueo_por_participaciones`
+no cuenta términos; en Vender no se piden cobros ni reservas y la pastilla roja de Supervisar no
+se dibuja; `/dashboard/kpis` le ordena los proveedores al trabajador por nombre, no por plata.
+«Ventas por cargar» dice «→ $ 360.000» mientras se escribe, y los códigos van como se leen
+(`GON-04·B`). El rótulo de una cara libre hoy y tomada más adelante (contrato o reserva) dice
+«libre hasta 31 oct», y la pastilla de la tarifa «hasta 31 oct». La ficha del contrato, con una
+línea a 1440×900, entra sin rodar (una sola pista, el plazo junto al total, el cobro con «Correo
+y nota» en un renglón). A 390 px la barra de la aplicación entra en un renglón y la ayuda del
+plano no tapa los botones.
 
 ### Auditoría de producción (2026-10-02): lo que quedó del modelo viejo
 

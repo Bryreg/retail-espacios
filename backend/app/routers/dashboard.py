@@ -76,10 +76,14 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
         fila = por_proveedor.setdefault(sid, {"name": name, "leases": 0, "revenue": 0.0})
         fila["leases"] += 1
         fila["revenue"] += float(rent or 0) + cobrado.get(lease_id, 0.0)
-    top_suppliers = sorted(por_proveedor.values(), key=lambda r: -r["revenue"])[:5]
-
     # Workers never receive negotiated amounts — zero out every revenue field.
     is_admin = role == "admin"
+    # Al trabajador, ni el orden por plata: los cinco primeros por plata son un
+    # ranking aunque las cifras vayan en cero. Para él, por nombre.
+    if is_admin:
+        top_suppliers = sorted(por_proveedor.values(), key=lambda r: -r["revenue"])[:5]
+    else:
+        top_suppliers = sorted(por_proveedor.values(), key=lambda r: ((r["name"] or "").casefold(), r["name"] or ""))[:5]
     return {
         "total_spaces": total,
         "occupied": counts.get("occupied", 0),

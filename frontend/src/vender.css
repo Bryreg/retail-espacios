@@ -139,6 +139,10 @@
   .barra-pantalla .modos button { padding: 0 8px; }
   .barra-pantalla .sede-sel { max-width: 130px; }
   .btn-barra { width: 32px; padding: 0; justify-content: center; }
+  /* La barra de la aplicación (`Dashboard.tsx`, estilos en línea): menos aire
+     para que las cuatro pestañas entren en un renglón a 390 px. */
+  .barra-app { gap: 10px !important; padding: 0 12px !important; }
+  .barra-app .pestana-app { padding: 0 7px !important; }
 }
 
 /* LA HOJA DE SUPERVISAR: la rejilla de Vender, con otras cuatro tarjetas.
@@ -691,13 +695,13 @@ html[data-tema="oscuro"] .vender {
 .vp > header .ver3d[aria-disabled="true"] { cursor: not-allowed; background: var(--surface); color: var(--ink-2); }
 .vp > header .ver3d[aria-disabled="true"]:hover { border-color: var(--line-strong); }
 .vp > header .ver3d:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 1px; }
-.vender .pista { margin: 6px 0 0; font-size: var(--t-2xs); color: var(--ink-3); }
+.vender .pista { margin: var(--s1) 0 0; font-size: var(--t-2xs); color: var(--ink-3); }
 .vender .pista b { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line-strong); }
 /* La nota debajo de un campo (la reserva: hasta cuándo y qué pasa después). */
 .vender .nota-campo { display: block; margin: -1px 0 4px; font-size: var(--t-2xs); color: var(--ink-3); }
-.corte { border: 0; border-top: 1px dashed var(--brd); margin: 8px 0 6px; }
-.vender .campo { margin-bottom: 5px; }
-.vender .campo .rotulo { display: block; margin-bottom: 4px; }
+.corte { border: 0; border-top: 1px dashed var(--brd); margin: var(--s2) 0 var(--s1); }
+.vender .campo { margin-bottom: var(--s1); }
+.vender .campo .rotulo { display: block; margin-bottom: 2px; }
 .vender .entrada {
   border: var(--hair) solid var(--brd-control);
   border-radius: var(--r-sm);
@@ -780,10 +784,8 @@ html[data-tema="oscuro"] .vender {
   cursor: pointer;
 }
 .btn2:hover { color: var(--fg); }
-.plazo-fila {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-}
-.plazo-fila .btn2 { width: auto; margin: 0; padding: 0; flex: none; text-align: right; }
+/* «+ Correo y nota», a la derecha del cobro (`ComoSeCobra`). */
+.vender .cobro > .btn2 { width: auto; margin: 0 0 0 auto; padding: 0; flex: none; text-align: right; }
 .vender .error-txt {
   margin: 6px 0 0; font-size: var(--t-2xs); line-height: 1.4;
   color: var(--ocupado-txt); background: var(--ocupado-suave);
@@ -944,6 +946,10 @@ html[data-tema="oscuro"] .vender {
   .vender-hoja > .vp { grid-area: auto !important; min-height: 0; }
   .vender .lienzo { height: 62vw; min-height: 280px; }
   .herr { right: 12px; top: auto; bottom: 12px; }
+  /* Las herramientas bajan a la esquina de abajo a la derecha: la ayuda de
+     los gestos termina antes de ellas (tres botones de 32 px, dos huecos de
+     5 px y su margen), y si no entra se parte en dos renglones. */
+  .herr-ayuda { right: calc(12px + 3 * 32px + 2 * 5px + var(--s2)); }
   .vender .graf { flex: none; height: auto; overflow-x: auto; overflow-y: hidden; }
   /* La escalera no se aplasta: a lo angosto mide 880 px (como D) y se desliza,
      con los rótulos a su cuerpo real; el verificador midió 10 choques de
@@ -1055,25 +1061,36 @@ html[data-tema="oscuro"] .vender {
    campos con ícono, el cobro, la reserva y el pie con el total, que no rueda.
    Sólo tokens de `tema.css`; la letra sólo de la escala `--t-*`; ningún
    amarillo fuera del botón principal. */
-.vp.contrato > header { align-items: center; }
+.vp.contrato > header { align-items: center; padding-top: var(--s2); padding-bottom: var(--s1); }
 .vp.contrato > header .ico-tarjeta { flex: none; }
+/* Con una o dos líneas la ficha entra entera a 1440×900 sin rodar el cuerpo
+   (la línea, proveedor y marca, las fechas y sus atajos, el cobro): campos y
+   controles de la línea un punto más bajos. */
+.vp.contrato .entrada { min-height: 30px; }
+.vp.contrato .entrada.con-ico input { padding: 3px 0; }
+.vp.contrato .eitem .seg button { height: 24px; }
 /* El pie, siempre a la vista: el cuerpo rueda y esto no. */
 .pie-contrato {
   flex: none;
-  padding: 0 16px 12px;
+  padding: 0 16px var(--s3);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   border-top: var(--hair) solid var(--line-soft);
   background: var(--surface);
 }
-.pie-contrato .total { margin-top: 6px; }
+.pie-contrato .total { margin-top: 2px; padding-top: 5px; }
 .pie-contrato .total .rotulo { display: inline-flex; align-items: center; gap: 6px; }
 .pie-contrato .total .rotulo svg { color: var(--ink-3); }
 .vender .total .n.n-ventas { font-size: var(--t-md); letter-spacing: 0; }
 .total-sub { margin: 0; font-size: var(--t-2xs); color: var(--ink-3); font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
-.pie-contrato .cubre { margin-top: 2px; }
-.pie-contrato .acciones { margin: 4px 0 0; padding-top: 4px; }
+.pie-contrato .cubre { margin-top: 0; flex: none; }
+/* El plazo y lo que cubre, en un renglón (se parte sólo si no entran). */
+.total-fila { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
+.total-fila .total-sub { min-width: 0; }
+.pie-contrato .acciones { margin: 2px 0 0; padding-top: 2px; }
+.pie-contrato .btn-principal { padding: 8px; }
+.pie-contrato .btn3 { min-height: 30px; }
 .acciones2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
 .acciones2 .btn-principal { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 /* Botón de tinta: «Reservar hasta…», «Bajar a 70 %», «Cambiar fechas». */
@@ -1135,7 +1152,7 @@ html[data-tema="oscuro"] .vender {
 .eitem > .precio-fila,
 .eitem > .aviso-error,
 .eitem > .aviso-acciones { flex: 0 0 100%; min-width: 0; }
-.eitem > .seg-linea { flex: 0 1 auto; margin-top: 4px; }
+.eitem > .seg-linea { flex: 0 1 auto; margin-top: 2px; }
 
 /* «PUN-02 hoy no se vende por entrepaños…»: lo que haría falta, o por qué no. */
 .oferta {
@@ -1190,7 +1207,7 @@ html[data-tema="oscuro"] .vender {
 .nota-linea { font-size: var(--t-2xs); color: var(--ocupado-txt); }
 
 /* Los atajos: 1 mes · 3 meses · la temporada; 10 · 25 · 50 % · todo lo que queda. */
-.atajos { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; }
+.atajos { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 var(--s1); }
 .atajo {
   height: 26px; padding: 0 10px; border-radius: var(--r-pill);
   border: var(--hair) solid var(--line); background: var(--surface); color: var(--ink-2);
@@ -1200,7 +1217,7 @@ html[data-tema="oscuro"] .vender {
 .atajo:disabled { color: var(--ink-4); cursor: not-allowed; }
 
 /* «Total | Al mes» y de dónde sale el precio. */
-.precio-fila { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
+.precio-fila { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 2px; }
 .precio-fila .origen { display: inline-flex; align-items: center; gap: 5px; font-size: var(--t-2xs); color: var(--ink-3); font-family: var(--f-mono); }
 .vender .enlace {
   all: unset; cursor: pointer; font-size: var(--t-2xs); color: var(--ink-1);
@@ -1248,7 +1265,9 @@ html[data-tema="oscuro"] .vender {
 }
 
 /* Cómo se cobra y la reserva. */
-.vender .cobro { display: grid; gap: 6px; margin-top: 6px; }
+/* «Cómo se cobra» y sus dos opciones en un renglón; el % y el corte, abajo. */
+.vender .cobro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; }
+.vender .cobro > .cobro-ventas { flex: 0 0 100%; order: 2; }
 .cobro-ventas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .vender .entrada.pct-ventas { width: 88px; gap: 4px; }
 .vender .entrada.pct-ventas input { text-align: right; }

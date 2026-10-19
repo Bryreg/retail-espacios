@@ -1249,6 +1249,7 @@ function Topbar({
 
   return (
     <header
+      className="barra-app"
       style={{
         display: "flex", alignItems: "center", gap: 18,
         height: 52, padding: "0 18px",
@@ -1301,11 +1302,14 @@ function Topbar({
                 generados que hay. El subrayado dice cuál está activa sin
                 pintar un fondo de color. */}
             <button
+              className="pestana-app"
               onClick={() => setViewMode(id)}
               title={para}
               aria-current={active ? "page" : undefined}
               style={{
                 display: "flex", alignItems: "center",
+                // «Editor 3D» en un renglón, también a 390 px.
+                whiteSpace: "nowrap",
                 padding: "0 11px",
                 borderRadius: 0,
                 fontSize: "var(--t-xs)", fontWeight: active ? 600 : 450,

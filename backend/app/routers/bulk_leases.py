@@ -40,7 +40,7 @@ from app.database import get_db
 from app.models.models import SpaceLease, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
-    Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, frase_de_choque,
+    Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, frase_de_choque, frase_tomada,
     motivo_para_no_vender_parte, sin_prefijo_de_sede,
 )
 from app.services.alta_de_contrato import (
@@ -291,9 +291,15 @@ def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: dat
     return bloqueo_por_participaciones(db, sede, codigo, desde, hasta)
 
 
-def _revisar(db: Session, lote: LoteIn, exigir_valor: bool = True) -> list[FilaOut]:
+def _revisar(
+    db: Session, lote: LoteIn, exigir_valor: bool = True, delante_del_proveedor: bool = False,
+) -> list[FilaOut]:
     """``exigir_valor=False``: el guardado de Vender de un contrato que se cobra
-    por un % de las ventas (``services/vender.py``), cuyo valor va en 0."""
+    por un % de las ventas (``services/vender.py``), cuyo valor va en 0.
+
+    ``delante_del_proveedor=True``: también Vender. Un choque se dice con UNA
+    frase neutra (``frase_tomada``): sin distinguir un contrato de una reserva y
+    con las fechas como se leen («2 nov»)."""
     if len(lote.filas) > MAX_FILAS:
         raise HTTPException(
             status_code=400,
@@ -532,17 +538,22 @@ def _revisar(db: Session, lote: LoteIn, exigir_valor: bool = True) -> list[FilaO
             for otro_codigo, otro_desde, otro_hasta, otra_fila in tomados:
                 if (otro_codigo == codigo or chocan(yo, partir_codigo(otro_codigo))) \
                         and _se_pisan(desde, hasta, otro_desde, otro_hasta):
-                    errores.append(
-                        f"Choca con la fila {otra_fila} de esta misma planilla, "
-                        f"que ya toma «{otro_codigo}» del {otro_desde} al {otro_hasta}."
-                    )
+                    if delante_del_proveedor:
+                        errores.append(f"«{sin_prefijo_de_sede(otro_codigo, out.sede or '')}» ya está en otra "
+                                       "línea de este contrato.")
+                    else:
+                        errores.append(
+                            f"Choca con la fila {otra_fila} de esta misma planilla, "
+                            f"que ya toma «{otro_codigo}» del {otro_desde} al {otro_hasta}."
+                        )
                     break
 
         if not errores and desde and hasta and codigo:
             choques = contratos_que_chocan(db, codigo, desde, hasta, sede=out.sede)
             if choques:
                 lease, space, _otro = choques[0]
-                errores.append(frase_de_choque(codigo, space.code or "", lease))
+                errores.append(frase_tomada(space.code or "", lease, out.sede or "") if delante_del_proveedor
+                               else frase_de_choque(codigo, space.code or "", lease))
 
         # Defensa en profundidad: la cara entera (o una división física suya)
         # de una cara con reservas o contratos de participación que cuentan en
