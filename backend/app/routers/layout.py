@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from app.services.contacts import get_contacts, save_contacts
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
 from app.fechas import hoy
@@ -1123,6 +1124,17 @@ def renombrar_sede(
         raise HTTPException(
             status_code=e.status, detail={"code": e.code, "message": e.mensaje, "motivos": e.motivos},
         )
+    except IntegrityError:
+        # Otro equipo creó en el medio el plano o un código con el nombre nuevo:
+        # la escritura de `renombrar_la_sede` choca con un UNIQUE antes del commit.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "renombre_bloqueado",
+                    "message": f"Otro equipo creó algo con el nombre «{payload.nuevo}» mientras renombrabas: "
+                               "actualizá y volvé a intentar.",
+                    "motivos": []},
+        )
     except Exception:
         db.rollback()
         raise
@@ -1158,6 +1170,20 @@ def renombrar_sede(
             nuevas[hecho.nuevo] = por_sede[suyas[0]]
             set_config(db, RATES_KEY, json.dumps({**tarifas, "by_sede": nuevas}))
             set_config(db, RATES_UPDATED_KEY, ahora.isoformat())
+
+    # La libreta de contactos de la sede: igual que las tarifas, está escrita con
+    # el nombre. Sin esto el admin y la mercaderista de la sede dejaban de recibir
+    # los avisos comerciales y las órdenes de montaje.
+    libreta = get_contacts(db)
+    de_la_vieja = [k for k in libreta["by_sede"] if normalizar(k) == hecho.viejo]
+    if de_la_vieja:
+        por_sede_c = {k: v for k, v in libreta["by_sede"].items() if k not in de_la_vieja}
+        destino = por_sede_c.get(normalizar(hecho.nuevo), {})
+        for k in de_la_vieja:
+            for rol_c, correos in libreta["by_sede"][k].items():
+                destino[rol_c] = list(dict.fromkeys([*destino.get(rol_c, []), *correos]))
+        por_sede_c[normalizar(hecho.nuevo)] = destino
+        save_contacts(db, libreta["gerente"], por_sede_c)
 
     anotar(
         db, request, rol, "sede.renombrar", entidad="sede", entidad_id=hecho.nuevo,

@@ -1143,7 +1143,7 @@ export function textoDeLoComprometido(
 
 /** Por qué no se ofrece una cara por participación que tiene un estado propio
  *  que manda sobre la ocupación (`textoDeLoComprometido`). */
-const POR_QUE_NO_SE_OFRECE: Readonly<Record<string, string>> = {
+export const POR_QUE_NO_SE_OFRECE: Readonly<Record<string, string>> = {
   maintenance: "En mantenimiento: no se ofrece",
   reserved: "Reservada a mano: no se ofrece",
   occupied: "Vendida entera: no se ofrece",
@@ -1257,8 +1257,8 @@ export function tomadaPorLoSuyo(
  */
 export type MotivoDelParcial = "dias" | "partes" | "participacion";
 
-export function motivoDelParcial(porPc: boolean, como: ComoSeLibera | null | undefined): MotivoDelParcial {
-  if (porPc) return "participacion";
+export function motivoDelParcial(deParticipacion: boolean, como: ComoSeLibera | null | undefined): MotivoDelParcial {
+  if (deParticipacion) return "participacion";
   return como?.porPartes ? "partes" : "dias";
 }
 
@@ -1266,9 +1266,9 @@ export function motivoDelParcial(porPc: boolean, como: ComoSeLibera | null | und
  *  se vende por participación y si ya entró al contrato que se arma. */
 export interface CaraDelPeriodo {
   dispo: RangeAvailability;
-  /** Sólo de una «parcial»; sin él, días (o participación si `porPc`). */
+  /** Sólo de una «parcial»; sin él, días (o participación si `deParticipacion`). */
   motivo?: MotivoDelParcial;
-  porPc: boolean;
+  deParticipacion: boolean;
   /** Lo que ya entró al contrato no se cuenta: ni libre ni tomado. */
   enContrato?: boolean;
 }
@@ -1292,9 +1292,9 @@ export function contarElPeriodo(caras: Iterable<CaraDelPeriodo>): ConteoDelPerio
     if (x.enContrato) continue;
     if (x.dispo === "libre") {
       c.libres++;
-      if (x.porPc) c.libresPc++;
+      if (x.deParticipacion) c.libresPc++;
     } else if (x.dispo === "parcial") {
-      c[x.motivo ?? motivoDelParcial(x.porPc, null)]++;
+      c[x.motivo ?? motivoDelParcial(x.deParticipacion, null)]++;
     } else {
       c.tomados++;
     }

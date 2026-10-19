@@ -392,13 +392,23 @@ def create_lease(
     # La nevera entera y su puerta 2 son dos filas de `spaces`: sin candado,
     # dos sesiones que venden a la vez pasan las dos la revisión de abajo
     # (`services/candado.py`). Va antes de revisar, y se suelta en el commit.
-    tomar_candados(db, [space.code])
+    codigo_del_candado = space.code
+    tomar_candados(db, [codigo_del_candado])
     # Lectura fresca después del candado (regla dura de participaciones): la
     # sesión ya tiene `space` en memoria, y SQLAlchemy no refresca un objeto
     # que vuelve a consultar. Sin esto, lo que otra sesión escribió mientras se
     # esperaba el candado (una reserva de participación que subió, una puerta
     # vendida) se leería viejo en la revisión de abajo.
     db.expire_all()
+    # El candado es del CÓDIGO: si mientras se esperaba un renombre de sede o una
+    # renumeración le cambió el código a la fila, este candado ya no serializa con
+    # quien venda el código nuevo, y los dos pasarían la revisión (fase 2).
+    if (space.code or "").strip().upper() != (codigo_del_candado or "").strip().upper():
+        raise HTTPException(
+            status_code=409,
+            detail=(f"«{codigo_del_candado}» cambió de código mientras se guardaba (ahora es «{space.code}»): "
+                    "recargá y volvé a intentar."),
+        )
 
     # The UI hides the contract form for infrastructure, but the rule belongs
     # here too: a stale tab or a direct API call must not create a lease on a

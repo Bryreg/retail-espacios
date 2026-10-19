@@ -52,7 +52,13 @@ from sqlalchemy.orm import Session
 from app.models.models import ArchivedSpace, LayoutSnapshot, RenumeracionNombre, Space
 from app.services.candado import tomar_candados
 from app.services.layout_lookup import _y, normalizar
-from app.services.renumeracion import EspacioArrastrado, _svg_nuevo, mudar_espacios
+from app.services.renumeracion import (
+    EspacioArrastrado,
+    _archivar_vacias,
+    _mismo_codigo_escrito_distinto,
+    _svg_nuevo,
+    mudar_espacios,
+)
 from app.services.sede_archive import (
     _mount_confirmations_of_sede,
     _spaces_of_sede,
@@ -84,12 +90,15 @@ class PlanDeRenombre:
     #: Las filas de la sede con código corto (sin prefijo): sólo cambia `sede`.
     solo_sede: list[int] = field(default_factory=list)
     montajes: int = 0
+    #: Filas vacías que son el mismo código que otra con otras mayúsculas: se
+    #: archivan en vez de mudarse (como en la renumeración).
+    archivar: list[int] = field(default_factory=list)
     bloqueos: list[str] = field(default_factory=list)
 
     def firma(self) -> tuple:
         """Para comparar la mirada de antes del candado con la de después."""
         return (tuple(sorted((e.space_id, e.antes, e.ahora) for e in self.espacios)),
-                tuple(sorted(self.solo_sede)))
+                tuple(sorted(self.solo_sede)), tuple(sorted(self.archivar)))
 
 
 @dataclass
@@ -119,8 +128,10 @@ def planificar(db: Session, viejo: str, nuevo: str) -> PlanDeRenombre:
     La selección es la del archivo de la sede (``_spaces_of_sede``, con el
     prefijo corregido: ``SAN`` no se lleva lo de ``SAN-JOSE``), sin las
     archivadas. Se frena si un código destino ya lo tiene una fila que no se
-    muda, si dos filas que se mudan van al mismo destino (el mismo código
-    escrito con otras mayúsculas) o si un ``svg_id`` destino está tomado."""
+    muda o si un ``svg_id`` destino está tomado. Si dos filas que se mudan van
+    al mismo destino (el mismo código escrito con otras mayúsculas), las
+    vacías se archivan (``_mismo_codigo_escrito_distinto``, la regla de la
+    renumeración) y sólo se frena si más de una tiene algo colgado."""
     v, n = normalizar(viejo), normalizar(nuevo)
     plan = PlanDeRenombre(viejo=v, nuevo=n)
     seleccion = _spaces_of_sede(db, v)
@@ -145,12 +156,24 @@ def planificar(db: Session, viejo: str, nuevo: str) -> PlanDeRenombre:
 
     if plan.espacios:
         se_mudan = {e.space_id for e in plan.espacios}
-        quietas = [s for s in db.query(Space).all() if s.id not in se_mudan]
-        codigos = {normalizar(s.code): s for s in quietas}
-        svgs = {normalizar(s.svg_id): s for s in quietas if (s.svg_id or "").strip()}
         por_destino: dict[str, list[EspacioArrastrado]] = defaultdict(list)
         for e in plan.espacios:
             por_destino[normalizar(e.ahora)].append(e)
+        filas = {s.id: s for s in seleccion}
+        for destino, grupo in por_destino.items():
+            if len(grupo) < 2:
+                continue
+            _, vacias, bloqueo = _mismo_codigo_escrito_distinto(db, [filas[e.space_id] for e in grupo])
+            if bloqueo:
+                plan.bloqueos.append(bloqueo[0].upper() + bloqueo[1:] + f" (irían a «{destino}»).")
+            plan.archivar.extend(s.id for s in vacias)
+        if plan.archivar:
+            plan.espacios = [e for e in plan.espacios if e.space_id not in plan.archivar]
+            se_mudan = {e.space_id for e in plan.espacios}
+        quietas = [s for s in db.query(Space).all() if s.id not in se_mudan and s.id not in plan.archivar]
+        codigos = {normalizar(s.code): s for s in quietas}
+        svgs = {normalizar(s.svg_id): s for s in quietas if (s.svg_id or "").strip()}
+        for e in plan.espacios:
             duena = codigos.get(normalizar(e.ahora))
             if duena is not None:
                 plan.bloqueos.append(
@@ -162,13 +185,6 @@ def planificar(db: Session, viejo: str, nuevo: str) -> PlanDeRenombre:
                 plan.bloqueos.append(
                     f"El svg_id «{e.svg_ahora}» ya lo tiene el espacio #{duena_svg.id}: el espacio #{e.space_id} "
                     "no puede tomarlo."
-                )
-        for destino, grupo in por_destino.items():
-            if len(grupo) > 1:
-                lista = _y([f"#{e.space_id} («{e.antes}»)" for e in grupo])
-                plan.bloqueos.append(
-                    f"Los espacios {lista} son el mismo código escrito distinto y los dos irían a «{destino}»: "
-                    "unilos o archivá el que sobra antes de renombrar."
                 )
     return plan
 
@@ -202,7 +218,8 @@ def _mudar_muebles(fixtures: list, viejo: str, nuevo: str, propio: bool) -> tupl
     """El plano con la sede nueva: el campo ``sede`` que decía la vieja y, en
     el plano propio, el prefijo de los códigos con la sede adentro. Devuelve
     también los códigos de los muebles del plano propio cuya «Sede» es OTRA
-    (quedan como están: se avisa)."""
+    (quedan como están, código incluido: su código completo se arma con SU
+    sede y no cambia con el renombre; se avisa)."""
     ajenos: list[str] = []
     for f in fixtures:
         if not isinstance(f, dict):
@@ -212,7 +229,7 @@ def _mudar_muebles(fixtures: list, viejo: str, nuevo: str, propio: bool) -> tupl
             f["sede"] = nuevo
         elif propio and sede_propia and sede_propia != nuevo:
             ajenos.append(normalizar(f.get("code")) or "sin código")
-        if propio:
+        if propio and sede_propia in ("", viejo):
             otro = _con_prefijo(f.get("code") or "", viejo, nuevo)
             if otro:
                 f["code"] = otro
@@ -273,8 +290,10 @@ def renombrar(db: Session, viejo: str, nuevo: str, leido=None, snap_id: int | No
             "renombre_bloqueado", f"No se puede renombrar «{v}» a «{n}» sin romper algo.", plan.bloqueos,
         )
 
-    # Las filas: el código, el svg_id y el rótulo cuando son el código; y la
-    # columna `sede` de todas, las de código corto también.
+    # Las vacías repetidas con otras mayúsculas se archivan (liberan el
+    # código); después, las filas: el código, el svg_id y el rótulo cuando son
+    # el código; y la columna `sede` de todas, las de código corto también.
+    archivadas = _archivar_vacias(db, plan.archivar, v)
     mudar_espacios(db, plan.espacios, v, n)
     ids = [e.space_id for e in plan.espacios] + plan.solo_sede
     for space in db.query(Space).filter(Space.id.in_(ids or [-1])).all():
@@ -294,6 +313,11 @@ def renombrar(db: Session, viejo: str, nuevo: str, leido=None, snap_id: int | No
 
     ahora = datetime.now(timezone.utc)
     avisos: list[str] = []
+    if archivadas:
+        avisos.append(
+            f"Se archivaron {len(archivadas)} espacio(s) vacíos que repetían un código con otras mayúsculas "
+            f"({_y(archivadas[:5])})."
+        )
     fixtures: list = []
     updated_at = None
     if snap_id is not None:

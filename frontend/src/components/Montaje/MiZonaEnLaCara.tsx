@@ -142,9 +142,10 @@ export default function MiZonaEnLaCara({
           </pattern>
         </defs>
 
-        {/* La cara entera, en gris neutro. */}
+        {/* La cara entera, en gris neutro (`--surface-3`: el pie dice «lo gris
+            es el resto», y `--surface-2` era casi blanco). */}
         <rect x={0} y={0} width={g.W} height={g.H}
-          style={{ fill: "var(--surface-2)", stroke: "var(--line-strong)" }}
+          style={{ fill: "var(--surface-3)", stroke: "var(--line-strong)" }}
           strokeWidth={1} vectorEffect="non-scaling-stroke" />
 
         {/* Lo que no se vende, rayado. */}
@@ -164,10 +165,12 @@ export default function MiZonaEnLaCara({
           </g>
         )}
 
-        {/* SU zona (o sus zonas): lo único pintado. */}
+        {/* SU zona (o sus zonas): lo único pintado, en color. Con `--accent`
+            (la tinta, casi negra) al 35 % salía un gris sobre la cara casi
+            blanca y el pie le decía que lo gris era de otros (recorrido). */}
         {g.zonas.map((d, i) => (
           <path key={i} d={d} data-zona-propia
-            style={{ fill: "var(--accent)", stroke: "var(--accent-700)" }}
+            style={{ fill: "var(--marca-1)", stroke: "var(--marca-1)" }}
             fillOpacity={0.35} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         ))}
       </svg>

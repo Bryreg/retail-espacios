@@ -4218,9 +4218,21 @@ function AssignmentPanel({
           la del plano) no veían. Para mover la sede entera: «Renombrar sede». */}
       <Field label="Sede" icon="🏢">
         <p data-sede-del-plano style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{sede}</p>
+        {/* Un mueble viejo que guardó otra sede: sus espacios (y los contratos
+            que cuelgan de ellos) se siguen armando con ESA sede, y sus
+            participaciones con la del plano. Se dice tal cual y, a quien
+            administra, se le ofrece pasarlo a la del plano —lo vendido con el
+            código viejo no se muda solo: se avisa antes—. Nunca otra sede. */}
         {item.sede && normalizeSede(item.sede) !== normalizeSede(sede) && (
-          <span style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
-            Este mueble guardó la sede «{item.sede}», que no es la de su plano: vale «{sede}».
+          <span data-sede-ajena style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
+            Este mueble guardó la sede «{item.sede}», que no es la de su plano: sus espacios se arman como
+            «{fullCode}». Si es un error, pasalo a «{sede}»; lo vendido con «{fullCode}» no se muda solo.
+            {editMode && isAdmin && (
+              <button type="button" data-usar-sede-del-plano onClick={() => onUpdate({ sede })}
+                style={{ display: "block", marginTop: 4, fontSize: 11, color: "var(--dark-ink-1)", textDecoration: "underline" }}>
+                Usar la sede del plano
+              </button>
+            )}
           </span>
         )}
       </Field>

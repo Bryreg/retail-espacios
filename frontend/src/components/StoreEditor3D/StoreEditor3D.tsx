@@ -103,7 +103,7 @@ import {
   PALABRA_POR_OCUPACION, claseDe, codigoDeParte, codigoVisibleDe, divisionDe, notaDeEstadoPorOcupacion, porParticipacion,
 } from "../../utils/partes";
 // fase 2 · I4 (G2b): lo suyo del proveedor de la reunión, y nada de otros.
-import { loDelProveedor } from "../../utils/partes";
+import { loDelProveedor, POR_QUE_NO_SE_OFRECE } from "../../utils/partes";
 import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import {
@@ -6676,7 +6676,9 @@ function CommercialPanel({
   // (`estadoQueSeVe`), el mismo que su banda y el cartel del mouse.
   const clienteDelPanel = useAuthStore((s) => s.cliente) ?? "";
   const ocupacionDelPanel = useOcupacionStore((s) => s.ocupacion[claveDeSede(clienteDelPanel, sedeDelPanel)]);
-  const sm  = estadoQueSeVe(STATUS_META[fix.status], ocupacionDelMueble(fix, ocupacionDelPanel, sedeDelPanel));
+  const estadoDeLaB = useFixtureStore((s) => selectFixtures(s).find((f) => f.id === fix.id)?.faceB?.status);
+  const sm  = estadoQueSeVe(STATUS_META[fix.status],
+    carasQuePintan(ocupacionDelMueble(fix, ocupacionDelPanel, sedeDelPanel), fix.status, estadoDeLaB));
   // «Estado fixture» dice el de la base («Disponible»); si lo que se ve lo
   // pone la ocupación, se dice debajo, como en la ficha del plano 2D.
   const estadoPorOcupacion = sm !== STATUS_META[fix.status];
@@ -6692,28 +6694,7 @@ function CommercialPanel({
   // (`loDelProveedor`: otro proveedor nunca suma). Sin proveedor nombrado (la
   // reunión todavía sin elegir) o sin participación suya, lo de siempre.
   const proveedorDelante = contratoDiscreto && isAdmin && porParticipacion(fix) ? (proveedorDeReunion ?? "").trim() : "";
-  const dosCaras = carasDe(fix) === 2;
-  const claveDeLoSuyo = proveedorDelante ? `${sedeDelPanel}|${fix.code}|${dosCaras ? "AB" : "A"}|${proveedorDelante}` : "";
-  const [loSuyo, setLoSuyo] = useState<(LoSuyoEnLaReunion & { clave: string }) | null>(null);
-  useEffect(() => {
-    if (!claveDeLoSuyo) return;
-    let vigente = true;
-    const caras: ("A" | "B")[] = dosCaras ? ["A", "B"] : ["A"];
-    void Promise.all(caras.map((c) => leerCara(sedeDelPanel, espacioDeLaCara(fix.code, c)).then((r) => [c, r] as const)))
-      .then((leidas) => {
-        if (!vigente) return;
-        const pbPorCara: Partial<Record<"A" | "B", number>> = {};
-        for (const [c, r] of leidas) {
-          const terminos = r.participaciones.flatMap((p) => p.terminos.map((t) => ({ proveedor: t.proveedor?.nombre ?? null, termino: terminoDeOut(t) })));
-          pbPorCara[c] = loDelProveedor(terminos, proveedorDelante, r.hoy, r.hoy, r.hoy);
-        }
-        setLoSuyo({ clave: claveDeLoSuyo, proveedor: proveedorDelante, pbPorCara });
-      })
-      // Si no se pudo leer, la tarjeta dice lo de siempre (sólo lo libre).
-      .catch(() => {});
-    return () => { vigente = false; };
-  }, [claveDeLoSuyo, dosCaras, fix.code, proveedorDelante, sedeDelPanel]);
-  const loSuyoVigente = loSuyo && loSuyo.clave === claveDeLoSuyo ? loSuyo : null;
+  const loSuyoVigente = useLoSuyo(sedeDelPanel, fix, proveedorDelante);
   const def = FIXTURE_DEFS.find(d=>d.type===fix.type && (fix.type!=="gondola"||d.gondolaType===fix.gondolaType)) ?? FIXTURE_DEFS[0];
   const modeloDelMueble = modeloPorId(fix.modelo);
   // Infrastructure holds no contract: the commercial half of the panel hides.
@@ -7141,7 +7122,7 @@ function CommercialPanel({
             // banda roja (revisión final, recorrido I.25). Lo que se dice es
             // la ocupación anónima del store de lectura, como en Vender.
             <div data-contratado-por-participacion>
-              {lineasDeContratadoPorParticipacion(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto, loSuyoVigente).map((linea) => (
+              {lineasDeContratadoPorParticipacion(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto, loSuyoVigente, estadoDeLaB).map((linea) => (
                 <p key={linea} className="text-xs text-dark-ink-1">{linea}</p>
               ))}
             </div>
@@ -7551,17 +7532,33 @@ function ocupacionDelMueble(f: PlacedFixture, o: OcupacionOut | undefined, sede:
  * rojo acá y gris en el plano. (Sin estado escrito se lee libre, como lo
  * estrena la fusión.)
  */
-function coloresPorOcupacion(muebles: readonly PlacedFixture[], o: OcupacionOut | undefined, sede: string): Map<string, string> {
+function coloresPorOcupacion(
+  muebles: readonly PlacedFixture[], o: OcupacionOut | undefined, sede: string,
+  estadoDeB: ReadonlyMap<string, SpaceStatus | undefined> = new Map(),
+): Map<string, string> {
   const fuera = new Map<string, string>();
   if (!o) return fuera;
   for (const f of muebles) {
     if (f.status !== undefined && f.status !== "free") continue;
-    const caras = ocupacionDelMueble(f, o, sede);
-    if (!caras) continue;
+    const caras = carasQuePintan(ocupacionDelMueble(f, o, sede), f.status, estadoDeB.get(f.id));
+    if (!caras.length) continue;
     if (caras.every((c) => c.dispo === "tomado")) fuera.set(f.id, STATUS_COLORS.occupied);
     else if (caras.some((c) => c.dispo !== "libre")) fuera.set(f.id, STATUS_COLORS.reserved);
   }
   return fuera;
+}
+
+/** D6 por cara: la ocupación sólo pinta una cara «Disponible» por su PROPIO
+ *  estado —la A por el `status` del mueble, la B por el de su `faceB`—. Una
+ *  doble con la cara B en Mantenimiento y tomada se pintaba ámbar por la B
+ *  aunque la A estuviera libre (el plano 2D ya pintaba cada cara por la suya). */
+function carasQuePintan<C extends { cara: "A" | "B" }>(
+  caras: readonly C[] | null, estadoA: SpaceStatus | undefined, estadoB: SpaceStatus | undefined,
+): C[] {
+  return (caras ?? []).filter((c) => {
+    const propio = c.cara === "A" ? estadoA : (estadoB ?? estadoA);
+    return propio === undefined || propio === "free";
+  });
 }
 
 /** El cartel de estado que se ve de un mueble (§10.8): el de su `status`,
@@ -7604,6 +7601,37 @@ function textoDeOcupacion(caras: { cara: "A" | "B"; quedaPb: number }[]): string
  *  puntos básicos (`loDelProveedor`), y cómo se lo nombra. Nada de otros. */
 interface LoSuyoEnLaReunion { proveedor: string; pbPorCara: Partial<Record<"A" | "B", number>> }
 
+/** G2b: lee las participaciones de las caras de `fix` como Distribución
+ *  (`leerCara`, sólo quien administra) y se queda con UN número por cara, el
+ *  de `proveedor` (`loDelProveedor`: otro proveedor nunca suma). Sin
+ *  proveedor (`""`) o sin mueble por participación, `null`: lo de siempre.
+ *  La usan la tarjeta CONTRATADO de la reunión y el HUD de Presentar. */
+function useLoSuyo(sede: string, fix: PlacedFixture | null, proveedor: string): LoSuyoEnLaReunion | null {
+  const codigo = fix && porParticipacion(fix) ? fix.code : "";
+  const dosCaras = !!fix && carasDe(fix) === 2;
+  const clave = proveedor && codigo ? `${sede}|${codigo}|${dosCaras ? "AB" : "A"}|${proveedor}` : "";
+  const [loSuyo, setLoSuyo] = useState<(LoSuyoEnLaReunion & { clave: string }) | null>(null);
+  useEffect(() => {
+    if (!clave) return;
+    let vigente = true;
+    const caras: ("A" | "B")[] = dosCaras ? ["A", "B"] : ["A"];
+    void Promise.all(caras.map((c) => leerCara(sede, espacioDeLaCara(codigo, c)).then((r) => [c, r] as const)))
+      .then((leidas) => {
+        if (!vigente) return;
+        const pbPorCara: Partial<Record<"A" | "B", number>> = {};
+        for (const [c, r] of leidas) {
+          const terminos = r.participaciones.flatMap((p) => p.terminos.map((t) => ({ proveedor: t.proveedor?.nombre ?? null, termino: terminoDeOut(t) })));
+          pbPorCara[c] = loDelProveedor(terminos, proveedor, r.hoy, r.hoy, r.hoy);
+        }
+        setLoSuyo({ clave, proveedor, pbPorCara });
+      })
+      // Si no se pudo leer, se dice lo de siempre (sólo lo libre).
+      .catch(() => {});
+    return () => { vigente = false; };
+  }, [clave, codigo, dosCaras, proveedor, sede]);
+  return loSuyo && loSuyo.clave === clave ? loSuyo : null;
+}
+
 /**
  * La tarjeta CONTRATADO de un mueble por participación: «Por participación ·
  * comprometido 55 % · queda 45 %» (una línea por cara en una doble), con la
@@ -7620,6 +7648,7 @@ interface LoSuyoEnLaReunion { proveedor: string; pbPorCara: Partial<Record<"A" |
 function lineasDeContratadoPorParticipacion(
   f: PlacedFixture, o: OcupacionOut | undefined, sede: string, discreto: boolean,
   loSuyo?: LoSuyoEnLaReunion | null,
+  estadoB?: SpaceStatus,
 ): string[] {
   if (!o) return ["Por participación · leyendo la ocupación…"];
   const completo = fullSpaceCode(sede, f.code);
@@ -7629,6 +7658,16 @@ function lineasDeContratadoPorParticipacion(
     const { quedaPb } = dispoPorParticipacion(oc, o.hoy, o.hoy, o.hoy);
     const deLaCara = caras.length === 2 ? `Cara ${cara} · ` : "";
     const suyo = discreto && loSuyo ? (loSuyo.pbPorCara[cara] ?? 0) : 0;
+    // D6: el estado puesto a mano en ESA cara (la B, el de su `faceB`) manda:
+    // nunca «queda X %» —que delante del proveedor es ofrecerla— sobre una
+    // cara en Mantenimiento, Reservada a mano o vendida entera (recorrido 8.12).
+    const propio = cara === "A" ? f.status : (estadoB ?? f.status);
+    const aMano = propio && Object.prototype.hasOwnProperty.call(POR_QUE_NO_SE_OFRECE, propio) ? POR_QUE_NO_SE_OFRECE[propio] : null;
+    if (aMano) {
+      return discreto
+        ? `${deLaCara}Por participación${suyo > 0 && loSuyo ? ` · ${loSuyo.proveedor} ${pct(suyo)}` : ""} · ${aMano}`
+        : `${deLaCara}Por participación · comprometido ${pct(CARA_ENTERA_PB - quedaPb)} · queda ${pct(quedaPb)} · ${aMano}`;
+    }
     return discreto
       ? suyo > 0 && loSuyo
         ? `${deLaCara}Por participación · ${loSuyo.proveedor} ${pct(suyo)} · queda ${pct(quedaPb)}`
@@ -8081,8 +8120,10 @@ export default function StoreEditor3D() {
   useEffect(() => {
     if (hayPorParticipacion) void useOcupacionStore.getState().cargarOcupacion(sede);
   }, [hayPorParticipacion, sede, clienteActual]);
+  const estadoDeB = useMemo(() => new Map(fixtures.map((f) => [f.id, f.faceB?.status])), [fixtures]);
   const coloresDeEstado = useMemo(
-    () => coloresPorOcupacion(placedFixtures, ocupacionDeLaSede, sede), [placedFixtures, ocupacionDeLaSede, sede],
+    () => coloresPorOcupacion(placedFixtures, ocupacionDeLaSede, sede, estadoDeB),
+    [placedFixtures, ocupacionDeLaSede, sede, estadoDeB],
   );
 
   // Lo que la escena necesita del modo: el mueble, la cara, las superficies
@@ -8473,6 +8514,23 @@ export default function StoreEditor3D() {
         pedidoDeToma?.fixtureId === muebleDelHud.id ? pedidoDeToma.cara : null,
       )
     : null;
+  // G2b en Presentar: el proveedor que mira (`privadoPara`) ve SU % de la cara
+  // que se le muestra y lo que queda —nunca formas ni nada de otros—, como la
+  // tarjeta CONTRATADO de la reunión. Sin nadie identificado, nada.
+  const proveedorQueMira = presentationMode && isAdmin && typeof privadoPara === "number"
+    ? (catalogo.find((a) => a.supplier_id === privadoPara)?.proveedor ?? "").trim() : "";
+  const loSuyoEnPresentar = useLoSuyo(sede, muebleDelHud, proveedorQueMira);
+  const lineaDeLoSuyo = (() => {
+    if (!loSuyoEnPresentar || !muebleDelHud || !caraConPrueba) return null;
+    const propio = caraConPrueba === "A" ? muebleDelHud.status : (estadoDeB.get(muebleDelHud.id) ?? muebleDelHud.status);
+    if (propio !== undefined && propio !== "free") return null;
+    const oc = ocupacionDelMueble(muebleDelHud, ocupacionDeLaSede, sede)?.find((c) => c.cara === caraConPrueba);
+    if (!oc) return null;
+    const suyo = loSuyoEnPresentar.pbPorCara[caraConPrueba] ?? 0;
+    return suyo > 0
+      ? `Por participación · ${loSuyoEnPresentar.proveedor} ${pct(suyo)} · queda ${pct(oc.quedaPb)}`
+      : `Por participación · queda ${pct(oc.quedaPb)}`;
+  })();
   // Presentar sin proveedor identificado no dibuja ninguna prueba. Si hay
   // alguna puesta, se avisa SIN NOMBRES —la pantalla ya puede estar
   // compartida— y se ofrece mostrar la última.
@@ -9082,7 +9140,7 @@ export default function StoreEditor3D() {
           const fix = placedFixtures.find(f => f.id === hoveredFixtureId);
           if (!fix || fix.id === selectedId) return null;
           const ocupacionHover = ocupacionDelMueble(fix, ocupacionDeLaSede, sede);
-          const sm = estadoQueSeVe(STATUS_META[fix.status], ocupacionHover);
+          const sm = estadoQueSeVe(STATUS_META[fix.status], carasQuePintan(ocupacionHover, fix.status, estadoDeB.get(fix.id)));
           // La misma cuenta que el panel (`hayReunion`): con la reunión fijada y
           // la prueba recién quitada, el cartel volvía a decir quién paga qué.
           const discreto = enReunion;
@@ -9113,6 +9171,9 @@ export default function StoreEditor3D() {
         {presentationMode && (
           <HudQueSeEsconde contenedor={contenedorRef}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2 backdrop-blur-sm">
+            {muebleDelHud && caraConPrueba && lineaDeLoSuyo && (
+              <span data-lo-suyo-en-presentar className="px-1 text-sm text-white/80">{lineaDeLoSuyo}</span>
+            )}
             {muebleDelHud && caraConPrueba ? (
               /* Las tres tomas quietas de la cámara del vendedor. Un corte, sin
                  animación: por videollamada el movimiento se empasta. */

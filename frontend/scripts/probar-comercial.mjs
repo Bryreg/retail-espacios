@@ -826,14 +826,14 @@ prueba("fase 2 · el ámbar se separa por motivo: se libera, partes vendidas o p
 
 prueba("fase 2 · UNA cuenta para la clave, la columna y el pie; «al cerrar» es lo que ESTE contrato puede tomar (`contarElPeriodo`, ejecutado)", () => {
   const caras = [
-    { dispo: "libre", porPc: false },
-    { dispo: "libre", porPc: true },
-    { dispo: "parcial", porPc: false, motivo: "dias" },
-    { dispo: "parcial", porPc: false, motivo: "partes" },
-    { dispo: "parcial", porPc: true, motivo: "participacion" },
-    { dispo: "parcial", porPc: true },                          // sin motivo: por participación
-    { dispo: "tomado", porPc: false },
-    { dispo: "libre", porPc: false, enContrato: true },        // ya en el contrato: no cuenta
+    { dispo: "libre", deParticipacion: false },
+    { dispo: "libre", deParticipacion: true },
+    { dispo: "parcial", deParticipacion: false, motivo: "dias" },
+    { dispo: "parcial", deParticipacion: false, motivo: "partes" },
+    { dispo: "parcial", deParticipacion: true, motivo: "participacion" },
+    { dispo: "parcial", deParticipacion: true },                          // sin motivo: por participación
+    { dispo: "tomado", deParticipacion: false },
+    { dispo: "libre", deParticipacion: false, enContrato: true },        // ya en el contrato: no cuenta
   ];
   const c = PC.contarElPeriodo(caras);
   assert.deepEqual(c, { libres: 2, libresPc: 1, dias: 1, partes: 1, participacion: 2, tomados: 1 });
@@ -845,11 +845,11 @@ prueba("fase 2 · UNA cuenta para la clave, la columna y el pie; «al cerrar» e
   assert.equal(PC.desgloseDelParcial({ ...c, dias: 3, partes: 0, participacion: 0 }), "3 se liberan en el periodo");
   assert.equal(PC.desgloseDelParcial(PC.contarElPeriodo([])), "");
   assert.deepEqual(PC.contarElPeriodo([]), { libres: 0, libresPc: 0, dias: 0, partes: 0, participacion: 0, tomados: 0 });
-  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", porPc: true }])),
+  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: true }])),
     "Sin la 1 por participación: se carga en el Editor 3D → Distribución.");
-  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", porPc: false }])), null);
+  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: false }])), null);
   // Lo que está en el contrato no cuenta en ningún lado; un parcial sin motivo ni participación es «días».
-  assert.deepEqual(PC.contarElPeriodo([{ dispo: "tomado", porPc: false, enContrato: true }, { dispo: "parcial", porPc: false }]),
+  assert.deepEqual(PC.contarElPeriodo([{ dispo: "tomado", deParticipacion: false, enContrato: true }, { dispo: "parcial", deParticipacion: false }]),
     { libres: 0, libresPc: 0, dias: 1, partes: 0, participacion: 0, tomados: 0 });
   // Vender lo mira el proveedor: sólo cuentas, ni un % ni un nombre.
   assert.doesNotMatch(PC.desgloseDelParcial(c) + PC.sinLasDeParticipacion(c), /%|\$|proveedor|marca/i);
@@ -871,7 +871,7 @@ prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElP
   assert.match(t, /parcial: "Disponible en parte",/);
   assert.match(t, /const RANGE_LABEL_PARCIAL_SUPERVISAR = "Vendido en parte";/);
   // Las tres cuentas, de la misma fila por cara.
-  assert.match(t, /motivo: motivoDelParcial\(porPc, como\)/, "la fila de cada cara no dice por qué está en parte");
+  assert.match(t, /motivo: motivoDelParcial\(deParticipacion, como\)/, "la fila de cada cara no dice por qué está en parte");
   assert.match(t, /const rangeTally = useMemo\(\(\) => contarElPeriodo\(filasDelPeriodo\.values\(\)\), \[filasDelPeriodo\]\);/);
   assert.match(t, /const tallyVender = useMemo\(\s*\(\) => contarElPeriodo\(\[\.\.\.filasDelPeriodo\]\.map\(\(\[clave, fila\]\) => \(\{ \.\.\.fila, enContrato: carasDelContrato\.includes\(clave\) \}\)\)\),/);
   assert.match(t, /cuenta: contarElPeriodo\(filas\)/, "la fila de la tarifa no cuenta con contarElPeriodo");

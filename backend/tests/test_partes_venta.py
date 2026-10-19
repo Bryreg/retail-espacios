@@ -261,15 +261,22 @@ def test_el_contrato_suelto_exige_el_codigo_completo_de_lo_que_se_vende_por_part
             "cx": 1, "cz": 1, "rotY": 0, "w": 1.8, "d": 0.7, "h": 0.9, "color": "#8b5cf6",
             "partes": {"bahias": 2}}
     _plano(client, admin, [_nevera(), caja, _mural()])
-    for escrito, canonico in [("NEV-03-PU2", "NAVE-NEV-03-PU2"), (" NAVE-NEV-03-PU2", "NAVE-NEV-03-PU2"),
-                              ("nave-nev-03-pu3", "NAVE-NEV-03-PU3"), ("CAJ-01-BI1", "NAVE-CAJ-01-BI1"),
+    for escrito, canonico in [("NEV-03-PU2", "NAVE-NEV-03-PU2"), ("CAJ-01-BI1", "NAVE-CAJ-01-BI1"),
                               ("NEV-03", "NAVE-NEV-03")]:
         r = _suelto(client, admin, escrito)
         assert r.status_code == 409, (escrito, r.text)
         assert f"Escribilo «{canonico}»" in r.json()["detail"], (escrito, r.text)
     assert client.get("/api/spaces/comercial", headers=admin).json() == {}
-    # Escrita completa, entra; y la entera, después, choca como siempre.
-    assert _suelto(client, admin, "NAVE-NEV-03-PU2").status_code == 201
+    # Con espacios de más o en minúsculas ya no hace falta pedirlo: find-or-create
+    # guarda el código en su forma completa (fase 2), así que la fila es la misma
+    # que arma la planilla y la regla «entera o por partes» la ve igual.
+    for escrito, canonico in [(" NAVE-NEV-03-PU2", "NAVE-NEV-03-PU2"), ("nave-nev-03-pu3", "NAVE-NEV-03-PU3")]:
+        s = client.post("/api/spaces/find-or-create", headers=admin,
+                        json={"code": escrito, "name": escrito, "zone": "Z", "sede": "NAVE", "area_m2": 1}).json()
+        assert s["code"] == canonico, (escrito, s)
+    # Escrita así, entra en la fila completa; y la entera, después, choca como siempre.
+    assert _suelto(client, admin, " NAVE-NEV-03-PU2").status_code == 201
+    assert set(client.get("/api/spaces/comercial", headers=admin).json()) == {"NAVE-NEV-03-PU2"}
     assert _validar(client, admin, _fila("NEV-03", proveedor="Coca-Cola"))[0]["estado"] == "error"
     # Un mueble que se vende entero sigue como siempre: sin exigir nada.
     assert _suelto(client, admin, "GON-07").status_code == 201

@@ -1617,9 +1617,9 @@ await prueba("«Borrar sede» nombra las reservas provisionales que se cancelan;
   // exigen que no se pierda nada están en el bloque «fase 2 · I5» de abajo.
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 0 }), null);
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 0, reservas_vivas: 2 }),
-    "Las 2 reservas provisionales de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje ya enviados siguen andando.");
+    "Las 2 reservas provisionales de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
   assert.equal(IMP.avisoDelRenombre("NAVE", "X", null),
-    "Los contratos y las reservas provisionales de participación de «NAVE», si tiene, pasan a «X». Los enlaces de montaje ya enviados siguen andando.");
+    "Los contratos y las reservas provisionales de participación de «NAVE», si tiene, pasan a «X». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
   // El tipo del cliente lleva el dato del servidor, y el diálogo lo muestra.
   assert.match(fuente("api/layout.ts"), /export interface DeleteImpact \{[^}]*reservas_vivas: number;/);
   const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
@@ -1677,9 +1677,9 @@ await prueba("fase 2 · I5: el renombre no borra la sede: sin `deleteLayout` en 
     assert.ok(t.endsWith(IMP.SIGUEN_LOS_ENLACES), `el aviso no dice que los enlaces de montaje siguen andando: «${t}»`);
   }
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 3, active_leases: 2, reservas_vivas: 1 }),
-    "Los 2 contratos activos y la reserva provisional de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje ya enviados siguen andando.");
+    "Los 2 contratos activos y la reserva provisional de participación de «NAVE» pasan a «NAVE NORTE». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
   assert.equal(IMP.avisoDelRenombre("NAVE", "NAVE NORTE", { spaces: 1, active_leases: 1, reservas_vivas: 0 }),
-    "El contrato activo de «NAVE» pasa a «NAVE NORTE». Los enlaces de montaje ya enviados siguen andando.");
+    "El contrato activo de «NAVE» pasa a «NAVE NORTE». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
   // «Borrar sede» sigue diciendo lo que se pierde: esa mitad no cambia.
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
     "2 contratos activos se cerrarán", "3 reservas provisionales de participación se cancelan"]);
@@ -1699,7 +1699,16 @@ await prueba("fase 2 · I5: el renombre no borra la sede: sin `deleteLayout` en 
   // La «Sede» del panel del mueble es de sólo lectura (V16): el plano define la sede.
   const panel = plano.slice(plano.indexOf("function AssignmentPanel("));
   const sede = panel.slice(panel.indexOf('<Field label="Sede"'), panel.indexOf("</Field>", panel.indexOf('<Field label="Sede"')));
-  assert.ok(sede.length > 0 && !/<select|onUpdate\(\{ sede/.test(sede), "la «Sede» del panel 2D vuelve a escribirle una sede al mueble");
+  // Lo único que puede escribir es la sede DEL PLANO (`onUpdate({ sede })`, el
+  // arreglo de un mueble viejo que guardó otra), sólo en edición y para quien
+  // administra, y diciendo antes que lo vendido con el código viejo no se muda.
+  assert.ok(sede.length > 0 && !/<select/.test(sede), "la «Sede» del panel 2D vuelve a tener un selector");
+  assert.deepEqual(sede.match(/onUpdate\([^)]*\)/g) ?? [], ["onUpdate({ sede })"],
+    "la «Sede» del panel 2D le escribe al mueble otra cosa que la sede del plano");
+  assert.match(sede, /\{editMode && isAdmin && \(\s*<button type="button" data-usar-sede-del-plano onClick=\{\(\) => onUpdate\(\{ sede \}\)\}/);
+  assert.match(sede, /sus espacios se arman como\s+«\{fullCode\}»[\s\S]{0,80}no se muda solo/,
+    "el aviso de la sede ajena vuelve a decir que vale la del plano (los espacios se arman con la suya)");
+  assert.ok(!/vale «\{sede\}»/.test(sede), "el aviso de la sede ajena promete que vale la del plano");
   assert.match(sede, /<p data-sede-del-plano[^>]*>\{sede\}<\/p>/);
 });
 

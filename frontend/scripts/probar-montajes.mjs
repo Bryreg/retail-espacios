@@ -237,6 +237,13 @@ prueba("la tarjeta «Tu zona» no lee el store ni la API de las participaciones,
   assert.doesNotMatch(c, /distribucionStore|api\/participaciones|LienzoDeZonas|useFixtureStore|axios/);
   assert.doesNotMatch(c, /sombra/i, "en la interfaz nunca se dice «sombra»");
   assert.doesNotMatch(c, /<text\b/, "el dibujo escribe algo (un número, un nombre) sobre la cara");
+  // Lo pintado es SU zona y lo gris el resto, como dice el pie: la zona en color (no la tinta ni un gris) y la
+  // cara en `--surface-3` (recorrido: con `--accent` al 35 % sobre `--surface-2` se leía al revés).
+  const zona = (c.match(/<path key=\{i\} d=\{d\} data-zona-propia[\s\S]*?\/>/) || [""])[0];
+  assert.match(zona, /fill: "var\(--marca-1\)"/, "la zona propia no se pinta en color");
+  assert.doesNotMatch(zona, /--accent|--ink|--surface|--line/, "la zona propia se pinta con un neutro (se lee gris)");
+  assert.match(c, /<rect x=\{0\} y=\{0\} width=\{g\.W\} height=\{g\.H\}\s*style=\{\{ fill: "var\(--surface-3\)"/,
+    "el resto de la cara no es el gris que nombra el pie");
 });
 
 prueba("la tarjeta va entre «Así debe quedar» y «Dónde queda», y sólo la pasa la pantalla del enlace", () => {

@@ -37,9 +37,12 @@ export function lineasDelImpacto(i: ImpactoDeSede | null | undefined): string[] 
   return fuera;
 }
 
-/** Lo que el renombre promete y cumple (el enlace de montaje toma el código
- *  del contrato, `routers/montaje.py`). */
-export const SIGUEN_LOS_ENLACES = "Los enlaces de montaje ya enviados siguen andando.";
+/** Lo que el renombre promete y cumple: el enlace de montaje que dice su
+ *  contrato toma el código del contrato (`routers/montaje.py`). Los de antes
+ *  del 2026-10-02 no lo dicen —llevan sólo el código— y con el código viejo ya
+ *  no encuentran el espacio: se avisa que hay que volver a mandarlos. */
+export const SIGUEN_LOS_ENLACES =
+  "Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.";
 
 /**
  * Lo que se dice antes de renombrar `de` a `a` (fase 2 · I5): adónde va lo

@@ -22,7 +22,9 @@ Lo que se prueba:
 · lo que no se puede (el nombre ya existe, un código destino tomado, otro
   equipo guardó en el medio, una sede que no existe) no escribe nada;
 · «SAN» no se lleva lo de «SAN-JOSE», y el mueble del plano que dice ser de
-  otra sede queda como está;
+  otra sede queda como está (también su código, aunque empiece con «SAN-»);
+· una fila vacía que repite un código con otras mayúsculas se archiva en vez
+  de frenar el renombre; si las dos tienen algo, se frena;
 · los candados son los de los códigos viejos y los nuevos, y la ruta va antes
   que las paramétricas de un segmento.
 
@@ -172,6 +174,9 @@ def test_renombrar_muda_los_codigos_y_lo_vendido_sigue_vivo(client, admin):
     r = client.put("/api/layout/rates", headers=admin, json={
         "default": {"gondola": 400_000}, "by_sede": {"NAVE": {"gondola": 900_000}, "SUR": {"gondola": 500_000}}})
     assert r.status_code == 200, r.text
+    r = client.put("/api/notifications/contacts", headers=admin, json={"gerente": ["g@x.co"], "by_sede": {
+        "NAVE": {"admin": ["a@x.co"], "mercaderista": ["m@x.co"]}, "SUR": {"admin": ["s@x.co"], "mercaderista": []}}})
+    assert r.status_code == 200, r.text
 
     contrato = _alta(client, admin, pb=3000, desde=D(2026, 10, 1), hasta=D(2026, 12, 31))
     reserva = _alta(client, admin, tipo="reserva", pb=2000, proveedor="Alpina")
@@ -244,6 +249,11 @@ def test_renombrar_muda_los_codigos_y_lo_vendido_sigue_vivo(client, admin):
     assert client.get("/api/layout/settings", headers=admin).json()["sedes"] == ["NAVE NORTE", "SUR"]
     tarifas = client.get("/api/layout/rates", headers=admin).json()
     assert tarifas["by_sede"] == {"NAVE NORTE": {"gondola": 900_000.0}, "SUR": {"gondola": 500_000.0}}
+    # La libreta de contactos de la sede también: si no, nadie de la sede recibía avisos.
+    libreta = client.get("/api/notifications/contacts", headers=admin).json()
+    assert libreta["by_sede"] == {"NAVE NORTE": {"admin": ["a@x.co"], "mercaderista": ["m@x.co"]},
+                                  "SUR": {"admin": ["s@x.co"], "mercaderista": []}}, libreta
+    assert libreta["gerente"] == ["g@x.co"]
     # El mueble de SUR que decía «NAVE» dice el nombre nuevo; el de SUR, SUR.
     otros = {f["id"]: f for f in client.get("/api/layout/SUR", headers=admin).json()["fixtures"]}
     assert (otros["s-GON-01"]["sede"], otros["s-GON-05"]["sede"]) == ("SUR", "NAVE NORTE")
@@ -306,8 +316,10 @@ def test_renombrar_SAN_no_toca_lo_de_SAN_JOSE_ni_al_mueble_que_dice_ser_de_otra_
     from app.models.models import Space
 
     ajeno_en_el_plano = _mueble("GON-03", "gondola", 0.9, 0.9, 1.8, 6, division=None, sede="SAN-JOSE")
+    # Su código completo es «SAN-JOSE-SAN-GON-04»: el renombre de SAN no lo cambia.
+    ajeno_con_prefijo = _mueble("SAN-GON-04", "gondola", 0.9, 0.9, 1.8, 8, division=None, sede="SAN-JOSE")
     _guardar(client, admin, "SAN", [_mueble("GON-01", "gondola", 0.9, 0.9, 1.8, 2, division=None, sede="SAN"),
-                                    ajeno_en_el_plano])
+                                    ajeno_en_el_plano, ajeno_con_prefijo])
     _guardar(client, admin, "SAN-JOSE", [_mueble("GON-01", "gondola", 0.9, 0.9, 1.8, 2, division=None,
                                                  sede="SAN-JOSE", id="j-GON-01")])
     suyo, _ = _fila_a_mano("SAN-GON-01", "SAN", contrato=True)
@@ -332,7 +344,46 @@ def test_renombrar_SAN_no_toca_lo_de_SAN_JOSE_ni_al_mueble_que_dice_ser_de_otra_
         db.close()
     plano = {f["code"]: f for f in client.get("/api/layout/SANTO", headers=admin).json()["fixtures"]}
     assert (plano["GON-01"]["sede"], plano["GON-03"]["sede"]) == ("SANTO", "SAN-JOSE")
+    assert plano["SAN-GON-04"]["sede"] == "SAN-JOSE", "el renombre reescribió el código de un mueble de otra sede"
     assert len(client.get("/api/layout/SAN-JOSE", headers=admin).json()["fixtures"]) == 1
+
+
+def test_la_fila_vacia_que_repite_el_codigo_con_otras_mayusculas_se_archiva(client, admin):
+    """Un ``find-or-create`` de antes comparaba tal cual y dejó «nave-gon-02»
+    al lado de «NAVE-GON-02». Las dos irían a «NORTE-GON-02»: la vacía se
+    archiva (como en la renumeración) y la que tiene el contrato se muda. Si
+    las dos tienen algo, unirlas es un arreglo a mano: se frena."""
+    from app.models.models import ArchivedSpace, Space
+
+    _guardar(client, admin, "NAVE", [GON_02])
+    _sedes(client, admin, ["NAVE"])
+    con_contrato, lease = _fila_a_mano("NAVE-GON-02", "NAVE", contrato=True)
+    vacia, _ = _fila_a_mano("nave-gon-02", "NAVE")
+
+    r = _renombrar(client, admin, "NAVE", "Norte")
+    assert r.status_code == 200, r.text
+    assert any("archivaron 1" in a and "nave-gon-02" in a for a in r.json()["avisos"]), r.json()["avisos"]
+    db = _bd()
+    try:
+        assert db.get(Space, con_contrato).code == "NORTE-GON-02"
+        assert db.get(Space, vacia).code.startswith("nave-gon-02#")
+        assert db.query(ArchivedSpace).filter_by(space_id=vacia).count() == 1
+    finally:
+        db.close()
+    assert client.get(f"/api/spaces/{con_contrato}", headers=admin).json()["active_lease"]["id"] == lease
+
+    # Las dos con contrato: se frena, nada escrito.
+    _guardar(client, admin, "SUR", [_mueble("GON-02", "gondola", 0.9, 0.9, 1.8, 4, division=None, sede="SUR")])
+    a, _ = _fila_a_mano("SUR-GON-02", "SUR", contrato=True)
+    b, _ = _fila_a_mano("sur-gon-02", "SUR", contrato=True, proveedor="Colgate")
+    r = _renombrar(client, admin, "SUR", "OESTE")
+    assert (r.status_code, r.json()["detail"]["code"]) == (409, "renombre_bloqueado"), r.text
+    assert any("más de uno tiene algo" in m for m in r.json()["detail"]["motivos"]), r.json()["detail"]
+    db = _bd()
+    try:
+        assert (db.get(Space, a).code, db.get(Space, b).code) == ("SUR-GON-02", "sur-gon-02")
+    finally:
+        db.close()
 
 
 # ─── 4 · Candados y la ruta ───────────────────────────────────────────────────
@@ -372,3 +423,37 @@ def test_la_ruta_del_renombre_va_antes_de_las_parametricas_de_un_segmento(client
     for metodo in ("GET", "PUT", "DELETE"):
         param = next(i for i, r in enumerate(rutas) if r.path == "/api/layout/{sede}" and metodo in r.methods)
         assert renombre < param, metodo
+
+
+def test_un_contrato_que_espera_el_candado_mientras_se_renombra_no_se_guarda(client, admin, monkeypatch):
+    """El candado del contrato suelto es del CÓDIGO. Si mientras esperaba otro
+    equipo renombró la sede (o renumeró), la fila ya tiene otro código y ese
+    candado no serializa con quien venda el nuevo: 409 y nada escrito."""
+    import app.routers.spaces as rutas
+    from app.database import SessionLocal
+    from app.models.models import Space
+
+    _guardar(client, admin, "NAVE", [GON_01])
+    s = client.post("/api/spaces/find-or-create", headers=admin, json={
+        "code": "NAVE-GON-01", "name": "GON-01", "zone": "Z", "sede": "NAVE", "area_m2": 1}).json()
+    sup = client.post("/api/suppliers/find-or-create", headers=admin, json={"name": "Postobón"}).json()
+
+    tomar = rutas.tomar_candados
+
+    def tomar_y_que_otro_renombre(db, codigos):
+        tomar(db, codigos)
+        otra = SessionLocal()
+        try:
+            otra.query(Space).filter(Space.id == s["id"]).update({"code": "OESTE-GON-01", "sede": "OESTE"})
+            otra.commit()
+        finally:
+            otra.close()
+
+    monkeypatch.setattr(rutas, "tomar_candados", tomar_y_que_otro_renombre)
+    hoy = hoy_en_colombia()
+    r = client.post(f"/api/spaces/{s['id']}/leases", headers=admin, json={
+        "supplier_id": sup["id"], "start_date": hoy.isoformat(),
+        "end_date": (hoy + timedelta(days=30)).isoformat(), "monthly_rent": 1})
+    assert r.status_code == 409, r.text
+    assert "cambió de código" in r.json()["detail"]
+    assert client.get("/api/spaces/comercial", headers=admin).json() == {}

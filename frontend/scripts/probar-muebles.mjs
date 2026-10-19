@@ -6705,7 +6705,7 @@ const compiladoReglas = await build({
   stdin: {
     contents: [
       'export { dispoPorParticipacion } from "./src/utils/participaciones.ts";',
-      'export { porParticipacion, rotuloPorOcupacion, PALABRA_POR_OCUPACION, notaDeEstadoPorOcupacion } from "./src/utils/partes.ts";',
+      'export { porParticipacion, rotuloPorOcupacion, PALABRA_POR_OCUPACION, notaDeEstadoPorOcupacion, POR_QUE_NO_SE_OFRECE } from "./src/utils/partes.ts";',
       'export { carasDe, fullSpaceCode } from "./src/types/espacio.ts";',
       'export { formasDeVenderDe, vendePorPartes, cambioParaDividir, revisarCambioDePartes, POR_PARTICIPACION } from "./src/utils/partesDelMueble.ts";',
     ].join("\n"),
@@ -6760,10 +6760,10 @@ prueba("el color de estado de una cara por participación sale de la ocupación:
   assert.equal(visto(muebles[3]).label, "Parcial", "una doble con una cara tomada y la otra libre dice «Disponible»");
   assert.equal(visto(muebles[2]), STATUS_META.free, "una cara sin nada comprometido cambia de cartel");
   assert.equal(visto(muebles[4]), STATUS_META.free, "un mueble que no se vende por participación cambia de cartel");
-  assert.match(editorCodigo, /const ocupacionHover = ocupacionDelMueble\(fix, ocupacionDeLaSede, sede\);\s*const sm = estadoQueSeVe\(STATUS_META\[fix\.status\], ocupacionHover\);/,
+  assert.match(editorCodigo, /const ocupacionHover = ocupacionDelMueble\(fix, ocupacionDeLaSede, sede\);\s*const sm = estadoQueSeVe\(STATUS_META\[fix\.status\], carasQuePintan\(ocupacionHover, fix\.status, estadoDeB\.get\(fix\.id\)\)\);/,
     "el cartel del mouse dice «Disponible» sobre lo contratado");
   const panelCartel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
-  assert.match(panelCartel, /const sm {2}= estadoQueSeVe\(STATUS_META\[fix\.status\], ocupacionDelMueble\(fix, ocupacionDelPanel, sedeDelPanel\)\);/,
+  assert.match(panelCartel, /const sm {2}= estadoQueSeVe\(STATUS_META\[fix\.status\],\s*carasQuePintan\(ocupacionDelMueble\(fix, ocupacionDelPanel, sedeDelPanel\), fix\.status, estadoDeLaB\)\);/,
     "el cartel del panel dice «Disponible» sobre lo contratado");
   // El cartel del mouse: anónimo.
   assert.match(editorCodigo, /\{ocupacionHover && <p className="mt-0\.5 text-\[10px\] text-dark-ink-2" data-ocupacion-participacion>\{textoDeOcupacion\(ocupacionHover\)\}<\/p>\}/);
@@ -7138,9 +7138,9 @@ prueba("la tarjeta CONTRATADO de un mueble por participación dice «Por partici
   const j = editorCodigo.indexOf("export default function StoreEditor3D(", i);
   assert.ok(i > 0 && j > i, "no está la cuenta de la tarjeta");
   const { lineasDeContratadoPorParticipacion: lineas } = new Function(
-    "fullSpaceCode", "carasDe", "dispoPorParticipacion", "pct", "CARA_ENTERA_PB",
+    "fullSpaceCode", "carasDe", "dispoPorParticipacion", "pct", "CARA_ENTERA_PB", "POR_QUE_NO_SE_OFRECE",
     `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { lineasDeContratadoPorParticipacion };`,
-  )(RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, (pb) => `${(pb / 100).toLocaleString("es-CO")} %`, 10000);
+  )(RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, (pb) => `${(pb / 100).toLocaleString("es-CO")} %`, 10000, RG.POR_QUE_NO_SE_OFRECE);
   const iv = (pb) => ({ desde: "2026-10-01", hasta: "2026-12-31", pb });
   const o = { sede: "NAVE", hoy: "2026-10-17", caras: {
     "NAVE-ROB-01": { intervalos: [iv(2500), iv(2500), iv(2500), iv(2500)], fisicos: [] },
@@ -7167,7 +7167,8 @@ prueba("la tarjeta CONTRATADO de un mueble por participación dice «Por partici
     "la tarjeta de un mueble por participación todavía puede decir «Sin contrato activo»");
   // (Fase 2 · I4, G2b: también recibe lo suyo del proveedor de la reunión,
   // `loSuyoVigente`; la guarda exige eso además de lo de antes.)
-  assert.match(tarjeta, /lineasDeContratadoPorParticipacion\(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto, loSuyoVigente\)\.map\(/);
+  // (Y el estado de la cara B, `estadoDeLaB`: D6 por cara, recorrido 8.12.)
+  assert.match(tarjeta, /lineasDeContratadoPorParticipacion\(fix, ocupacionDelPanel, sedeDelPanel, contratoDiscreto, loSuyoVigente, estadoDeLaB\)\.map\(/);
   assert.match(tarjeta, /\{isAdmin && \(porParticipacion\(fix\) \? \(/, "a un mueble por participación lo sigue mandando a «Sede → Vender»");
 });
 
@@ -7284,6 +7285,21 @@ prueba("el trazo en curso se dibuja en el 3D: una cinta discontinua en el tono d
     assert.match(fn, /if \(!caras \|\| caras\.length === 0\) return sm;\s*if \(sm !== STATUS_META\.free\) return sm;/);
     const colores = editorCodigo.slice(editorCodigo.indexOf("function coloresPorOcupacion("), editorCodigo.indexOf("function estadoQueSeVe("));
     assert.match(colores, /if \(f\.status !== undefined && f\.status !== "free"\) continue;/);
+    // Y por CARA (revisión final): una doble con la A libre y la B en Mantenimiento y tomada no se pinta por la B;
+    // la A sigue pintando por la suya. El estado de la B es el de su `faceB` (el 3D lo lee del plano unificado).
+    const dob = { id: "d", code: "GON-07", type: "gondola", gondolaType: "double", w: 2.5, d: 0.9, h: 1.8, status: "free", partes: { division: "participacion" } };
+    const o2 = { sede: "NAVE", hoy: "2026-10-17", caras: {
+      "NAVE-GON-07": { intervalos: [], fisicos: [] },
+      "NAVE-GON-07-B": { intervalos: [iv(10000)], fisicos: [] },
+    } };
+    assert.equal(coloresPorOcupacion([dob], o2, "NAVE", new Map([["d", "maintenance"]])).has("d"), false,
+      "la cara B en Mantenimiento pinta la doble por su ocupación");
+    assert.equal(coloresPorOcupacion([dob], o2, "NAVE", new Map([["d", "free"]])).get("d"), "ambar");
+    assert.equal(coloresPorOcupacion([dob], o2, "NAVE").get("d"), "ambar", "sin el estado de la B, la B lee el del mueble");
+    assert.match(editorCodigo, /const sm = estadoQueSeVe\(STATUS_META\[fix\.status\], carasQuePintan\(ocupacionHover, fix\.status, estadoDeB\.get\(fix\.id\)\)\);/,
+      "el cartel del mouse no filtra las caras por su propio estado");
+    assert.match(editorCodigo, /carasQuePintan\(ocupacionDelMueble\(fix, ocupacionDelPanel, sedeDelPanel\), fix\.status, estadoDeLaB\)\);/,
+      "el cartel del panel no filtra las caras por su propio estado");
   });
 
   prueba("fase 2 · Esc con un diálogo modal abierto es del diálogo: no suelta el mueble; sin modal lo suelta como siempre (ejecutado)", () => {
@@ -7324,9 +7340,9 @@ prueba("el trazo en curso se dibuja en el 3D: una cinta discontinua en el tono d
     const j = editorCodigo.indexOf("export default function StoreEditor3D(", i);
     assert.ok(i > 0 && j > i, "no está la cuenta de la tarjeta");
     const { lineasDeContratadoPorParticipacion: lineas } = new Function(
-      "fullSpaceCode", "carasDe", "dispoPorParticipacion", "pct", "CARA_ENTERA_PB",
+      "fullSpaceCode", "carasDe", "dispoPorParticipacion", "pct", "CARA_ENTERA_PB", "POR_QUE_NO_SE_OFRECE",
       `${esbuildTransform(editorCodigo.slice(i, j))}\nreturn { lineasDeContratadoPorParticipacion };`,
-    )(RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, (pb) => `${(pb / 100).toLocaleString("es-CO")} %`, 10000);
+    )(RG.fullSpaceCode, RG.carasDe, RG.dispoPorParticipacion, (pb) => `${(pb / 100).toLocaleString("es-CO")} %`, 10000, RG.POR_QUE_NO_SE_OFRECE);
     const iv = (pb) => ({ desde: "2026-10-01", hasta: "2026-12-31", pb });
     const o = { sede: "NAVE", hoy: "2026-10-17", caras: { "NAVE-GON-01": { intervalos: [iv(3000), iv(2500)], fisicos: [] } } };
     const gon = { id: "g", code: "GON-01", type: "gondola", gondolaType: "double", w: 3, d: 0.9, h: 1.8, partes: { division: "participacion" } };
@@ -7339,16 +7355,45 @@ prueba("el trazo en curso se dibuja en el 3D: una cinta discontinua en el tono d
     assert.deepEqual(lineas(gon, o, "NAVE", false, suyo), lineas(gon, o, "NAVE", false));
     // Nunca el % de otro (el 30 % es de otro proveedor) ni lo comprometido.
     for (const l of lineas(gon, o, "NAVE", true, suyo)) assert.ok(!/30 %|comprometido/.test(l), l);
+    // D6 (recorrido 8.12): una cara en Mantenimiento, Reservada a mano o vendida entera NO se ofrece: nunca «queda X %»
+    // delante del proveedor; quien administra ve la cuenta con el porqué. La B, por el estado de su `faceB`.
+    const enMant = { ...gon, status: "maintenance" };
+    assert.deepEqual(lineas(enMant, o, "NAVE", true, null, "free"),
+      ["Cara A · Por participación · En mantenimiento: no se ofrece", "Cara B · Por participación · queda 100 %"]);
+    assert.deepEqual(lineas(enMant, o, "NAVE", true, suyo, "free")[0], "Cara A · Por participación · Kellogg's 25 % · En mantenimiento: no se ofrece");
+    assert.deepEqual(lineas({ ...gon, status: "free" }, o, "NAVE", true, null, "reserved")[1], "Cara B · Por participación · Reservada a mano: no se ofrece");
+    assert.deepEqual(lineas(enMant, o, "NAVE", false, null, "free")[0], "Cara A · Por participación · comprometido 55 % · queda 45 % · En mantenimiento: no se ofrece");
+    for (const propio of ["maintenance", "reserved", "occupied"]) {
+      for (const l of lineas({ ...gon, status: propio }, o, "NAVE", true, suyo, propio)) assert.ok(!/queda/.test(l), `${propio}: ${l}`);
+    }
     // El panel lo pide sólo con un proveedor de reunión nombrado, a quien administra, en una cara por participación,
     // y guarda UN número por cara: lo de los demás proveedores no sale de la cuenta.
     const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
     assert.match(panel, /const proveedorDelante = contratoDiscreto && isAdmin && porParticipacion\(fix\) \? \(proveedorDeReunion \?\? ""\)\.trim\(\) : "";/);
-    assert.match(panel, /if \(!claveDeLoSuyo\) return;/);
-    assert.match(panel, /pbPorCara\[c\] = loDelProveedor\(terminos, proveedorDelante, r\.hoy, r\.hoy, r\.hoy\);/);
-    assert.match(panel, /setLoSuyo\(\{ clave: claveDeLoSuyo, proveedor: proveedorDelante, pbPorCara \}\);/);
-    assert.match(panel, /const loSuyoVigente = loSuyo && loSuyo\.clave === claveDeLoSuyo \? loSuyo : null;/);
-    assert.equal((panel.match(/leerCara\(/g) ?? []).length, 1, "el panel lee las participaciones de la cara en otro lado");
+    assert.match(panel, /const loSuyoVigente = useLoSuyo\(sedeDelPanel, fix, proveedorDelante\);/);
+    assert.equal((panel.match(/leerCara\(/g) ?? []).length, 0, "el panel lee las participaciones de la cara por su cuenta (va por `useLoSuyo`)");
     assert.ok(!/<ZonasDeLaDistribucion|zonasEditables|capaQueSeMuestra/.test(panel), "el panel dibuja o lee zonas (delante del proveedor, ninguna forma)");
+    // La lectura vive en `useLoSuyo` (la tarjeta de la reunión y el HUD de Presentar): UN número por cara, el del
+    // proveedor nombrado; sin proveedor o sin mueble por participación, no lee nada.
+    const hook = cuerpoDe("function useLoSuyo(", "\nfunction lineasDeContratadoPorParticipacion(");
+    assert.match(hook, /const codigo = fix && porParticipacion\(fix\) \? fix\.code : "";/);
+    assert.match(hook, /const clave = proveedor && codigo \?/);
+    assert.match(hook, /if \(!clave\) return;/);
+    assert.match(hook, /pbPorCara\[c\] = loDelProveedor\(terminos, proveedor, r\.hoy, r\.hoy, r\.hoy\);/);
+    assert.match(hook, /setLoSuyo\(\{ clave, proveedor, pbPorCara \}\);/);
+    assert.match(hook, /return loSuyo && loSuyo\.clave === clave \? loSuyo : null;/);
+    assert.equal((hook.match(/leerCara\(/g) ?? []).length, 1);
+    assert.ok(!/zonas|forma|poligono/i.test(hook), "`useLoSuyo` lee zonas o formas (delante del proveedor, ninguna)");
+    // Presentar (walkthrough 4.8): el proveedor que mira —`privadoPara`, nadie más— ve SU % y lo que queda de la
+    // cara que se le muestra; sin nadie identificado, nada. Ni nombres ni % de otros.
+    const editor = cuerpoDe("export default function StoreEditor3D(", "\n}\n");
+    assert.match(editor, /const proveedorQueMira = presentationMode && isAdmin && typeof privadoPara === "number"\s*\? \(catalogo\.find\(\(a\) => a\.supplier_id === privadoPara\)\?\.proveedor \?\? ""\)\.trim\(\) : "";/);
+    assert.match(editor, /const loSuyoEnPresentar = useLoSuyo\(sede, muebleDelHud, proveedorQueMira\);/);
+    assert.match(editor, /const suyo = loSuyoEnPresentar\.pbPorCara\[caraConPrueba\] \?\? 0;/);
+    assert.match(editor, /if \(propio !== undefined && propio !== "free"\) return null;\s*const oc = ocupacionDelMueble\(muebleDelHud/,
+      "el HUD de Presentar ofrece «queda X %» de una cara en Mantenimiento");
+    assert.match(editor, /<span data-lo-suyo-en-presentar[^>]*>\{lineaDeLoSuyo\}<\/span>/);
+    assert.equal((editor.match(/useLoSuyo\(/g) ?? []).length, 1, "otra pantalla del editor pide lo suyo de un proveedor");
   });
 }
 

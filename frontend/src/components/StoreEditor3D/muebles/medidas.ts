@@ -139,6 +139,18 @@ export function inclinacionDeNivel(apoyo: number, altoDeCara: number): number {
   return apoyo / altoDeCara >= ENTREPANO.desdeFraccionDeAlto ? -ENTREPANO.inclinacion : 0;
 }
 
+/** Lo más que se DIBUJA (fase 2 · I5), nunca escrito de vuelta: un alto
+ *  infinito (la API no lo acotaba) daba un `for` sin fin y unos entrepaños de
+ *  mil millones, un arreglo de mil millones. Un alto que no es un número finito
+ *  no tiene niveles; unos entrepaños que no lo son se cuentan como si no
+ *  estuvieran, y de más se dibujan como el tope. Son los mismos topes que el
+ *  servidor exige al guardar algo nuevo (`layout_lookup.medidas_imposibles`). Los módulos son
+ *  `MAX_VANOS` de `utils/superficie.ts` (no se importa: `superficie.ts` importa
+ *  de este archivo y sería un ciclo; `probar-muebles.mjs` exige que digan lo
+ *  mismo). */
+export const MAX_VANOS_A_DIBUJAR = 200;
+export const MAX_ENTREPANOS_A_DIBUJAR = 50;
+
 /** Cuántos entrepaños entran, y a qué altura va cada uno.
  *
  *  Devuelve las alturas del PLANO SUPERIOR de cada entrepaño, ya redondeadas
@@ -158,27 +170,13 @@ export function nivelesDeEntrepano(alto: number, entrepanos?: number): number[] 
   // góndola tiene, y es de las cosas que más delatan un modelo inventado.
   //
   // Aire arriba: el último entrepaño no toca el remate.
-  //
-  // fase 2 · I5: sólo al DIBUJAR, nunca se escribe de vuelta. Un alto
-  // infinito (la API no lo acotaba) daba un `for` sin fin; unos entrepaños
-  // de mil millones, un arreglo de mil millones. Un alto que no es un número
-  // finito no tiene niveles; unos entrepaños que no son un número finito se
-  // cuentan como si no estuvieran, y más de MAX_ENTREPANOS_A_DIBUJAR se dibujan
-  // como ese tope. El servidor ya no deja guardarlos (`medidas_imposibles`).
+  // Topes sólo al dibujar (ver MAX_ENTREPANOS_A_DIBUJAR).
   if (!Number.isFinite(alto)) return [];
-  if (entrepanos !== undefined && Number.isFinite(entrepanos)) {
-    return nivelesDeFicha(ZOCALO.alto, alto - 0.1, Math.min(entrepanos, MAX_ENTREPANOS_A_DIBUJAR));
+  if (Number.isFinite(entrepanos)) {
+    return nivelesDeFicha(ZOCALO.alto, alto - 0.1, Math.min(entrepanos as number, MAX_ENTREPANOS_A_DIBUJAR));
   }
   return nivelesEntre(ZOCALO.alto, alto - 0.1);
 }
-
-/** Lo más que se DIBUJA (fase 2 · I5): los mismos topes que el servidor exige
- *  al guardar algo nuevo (`layout_lookup.medidas_imposibles`). Los módulos son
- *  `MAX_VANOS` de `utils/superficie.ts` (no se importa: `superficie.ts` importa
- *  de este archivo y sería un ciclo; `probar-muebles.mjs` exige que digan lo
- *  mismo). */
-export const MAX_VANOS_A_DIBUJAR = 200;
-export const MAX_ENTREPANOS_A_DIBUJAR = 50;
 
 /** La base y `entrepanos` entrepaños, repartidos parejo entre `desde` y
  *  `hasta` dejando arriba una fila del mismo paso, al ras de ranura. */

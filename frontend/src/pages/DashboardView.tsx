@@ -4651,13 +4651,13 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     const filas = new Map<string, CaraDelPeriodo & { como: ComoSeLibera | null }>();
     if (!mapRange) return filas;
     fixtures.forEach((f) => {
-      const porPc = porParticipacion(f);
+      const deParticipacion = porParticipacion(f);
       commercialFacesOf(f).forEach((face) => {
         const dispo = dispoDeCara(f, face);
         const como = dispo === "parcial" ? comoSeLibera(f, face) : null;
         filas.set(`${f.id}-${face.face}`, {
-          dispo, porPc, como,
-          ...(dispo === "parcial" ? { motivo: motivoDelParcial(porPc, como) } : {}),
+          dispo, deParticipacion, como,
+          ...(dispo === "parcial" ? { motivo: motivoDelParcial(deParticipacion, como) } : {}),
         });
       });
     });

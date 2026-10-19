@@ -936,20 +936,29 @@ def _ahora() -> datetime:
 
 def _archivar_duplicados(db: Session, plan: PlanSede) -> None:
     """Archiva las filas vacías que eran el mismo código que otra escrito con
-    otras mayúsculas (``PlanSede.archivar``), como archiva el borrado de una
-    sede: una fila en ``archived_spaces`` y el ``#id`` en ``code`` y ``svg_id``
-    para liberar los UNIQUE. Nada se borra."""
+    otras mayúsculas (``PlanSede.archivar``). Ver ``_archivar_vacias``."""
+    _archivar_vacias(db, plan.archivar, plan.sede)
+
+
+def _archivar_vacias(db: Session, ids: list[int], sede: str) -> list[str]:
+    """Archiva las filas ``ids`` como archiva el borrado de una sede: una fila
+    en ``archived_spaces`` y el ``#id`` en ``code`` y ``svg_id`` para liberar
+    los UNIQUE. Nada se borra. Devuelve los códigos que tenían. La usan la
+    renumeración y el renombre de una sede (``services/renombre_sede.py``)."""
     from app.models.models import ArchivedSpace
 
-    if not plan.archivar:
-        return
-    for space in db.query(Space).filter(Space.id.in_(plan.archivar)).all():
-        record = ArchivedSpace(space_id=space.id, sede=normalizar(plan.sede), original_code=space.code)
+    if not ids:
+        return []
+    codigos: list[str] = []
+    for space in db.query(Space).filter(Space.id.in_(ids)).order_by(Space.id).all():
+        record = ArchivedSpace(space_id=space.id, sede=normalizar(sede), original_code=space.code)
         db.add(record)
         db.flush()
+        codigos.append(record.original_code)
         space.code = f"{record.original_code}#{record.id}"
         space.svg_id = f"{space.svg_id}#{record.id}"
     db.flush()
+    return codigos
 
 
 def _mudar_espacios(db: Session, plan: PlanSede) -> None:

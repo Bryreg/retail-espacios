@@ -523,8 +523,8 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
   return (
     <group ref={grupo} userData={CHROME}>
       {caras.map((c) => (
-        <ZonasDeUnaCara key={c.cara} c={c} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} lejos={lejos}
-          trazo={trazo} />
+        <ZonasDeUnaCara key={c.cara} c={c} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada}
+          trazo={trazo} lejos={lejos} />
       ))}
       {!lejos && caras.length > 1 && caras.map((c) => (
         <Html key={`letra${c.cara}`} position={letraDeCara(c.superficie, c.cara)} center zIndexRange={[6, 0]}
