@@ -382,7 +382,8 @@ def test_la_participacion_y_la_superficie_estan_en_el_catalogo():
     """La venta por participación (diseño de participaciones, §4.1 y §7.2):
     la clase ``participacion`` con su token ``PC`` reservado y sin ``campo`` ni
     ``tarifa``; las demás clases siguen con los dos; y la clave ``superficie``
-    en los siete tipos del pedido, con una receta que se sabe calcular (las de
+    en los siete tipos del pedido más las dos neveras (fase 2: la de puertas y
+    la de bebidas), con una receta que se sabe calcular (las de
     ``RecetaDeSuperficie`` en ``frontend/src/catalogo/catalogo.ts``). Los
     demás alquilables no se venden por participación en esta fase. Sin
     ``client``: lee el archivo y módulos que no tocan la base."""
@@ -410,9 +411,53 @@ def test_la_participacion_y_la_superficie_estan_en_el_catalogo():
     assert {t: s["receta"] for t, s in con_superficie.items()} == {
         "gondola": "gondola", "punta": "punta", "robatope": "robatope", "ristra": "ristra",
         "cross": "cross", "mueble": "vitrina", "metro": "zona_libre",
+        "nevera_puertas": "nevera_puertas", "nevera_refrescos": "nevera_abierta",
     }
     for t, s in con_superficie.items():
         assert set(s) == {"orientacion", "receta"}, t
         assert s["receta"] in recetas, f"{t}: la receta «{s['receta']}» no la calcula nadie"
         assert s["orientacion"] == ("arriba" if s["receta"] == "zona_libre" else "frente"), t
         assert cat["tipos"][t]["alquilable"] != "nunca", t
+
+
+# ── fase 2 · I3: las neveras por participación y lo que queda fuera ─────────
+
+#: Los tipos que NO se venden por participación, y por qué (diseño de la fase
+#: 2 de participaciones, frente C, §2). Está escrito entero a propósito: un
+#: tipo nuevo del catálogo tiene que caer de un lado o del otro, y sacar uno
+#: de acá es una decisión, no un descuido.
+FUERA_DE_LA_PARTICIPACION = {
+    "isla": "la estiba: carga de un proveedor; su subdivisión ya son modelos (media, cuarta)",
+    "impulsador": "POP de una marca (también el exhibidor de cartón, que es un modelo suyo)",
+    "puesto_impulso": "mostrador de promotora de una marca",
+    "batea": "canasto de una oferta: se vende entero",
+    "isla_fria": "por ahora: pide medir desde arriba a 0,9 m (guarda de acrílico y encuadre)",
+    "nevera_vegetales": "fruta a granel del supermercado, en bandejas inclinadas",
+    "nevera_carnes": "mostrador atendido, con vidrio curvo",
+    "stand_frutas": "granel",
+    "checkout": "nunca se alquila: vende sus piezas",
+    "servicio_cliente": "nunca se alquila",
+    "columna": "nunca se alquila: vende su forro",
+    "exhibicion": "legado",
+}
+
+
+def test_cada_tipo_se_vende_por_participacion_o_queda_fuera_por_escrito():
+    """Las dos neveras (la de puertas, receta ``nevera_puertas``, y la de
+    bebidas abierta, ``nevera_abierta``) se venden por participación, de
+    frente, sin dejar de venderse por sus partes físicas; los demás tipos sin
+    ``superficie`` están en ``FUERA_DE_LA_PARTICIPACION`` con su razón, y
+    ninguno de ésos la tiene. Sin ``client``."""
+    from app.services.superficie import tiene_superficie
+
+    cat = _catalogo()
+    assert cat["tipos"]["nevera_puertas"]["superficie"] == {"orientacion": "frente", "receta": "nevera_puertas"}
+    assert cat["tipos"]["nevera_refrescos"]["superficie"] == {"orientacion": "frente", "receta": "nevera_abierta"}
+    # La participación no es una división: las puertas y los tramos siguen ahí.
+    assert cat["tipos"]["nevera_puertas"]["partes"]["divisiones"] == ["puertas"]
+    assert cat["tipos"]["nevera_refrescos"]["partes"]["divisiones"] == ["tramos"]
+    sin_superficie = {t for t, d in cat["tipos"].items() if "superficie" not in d}
+    assert sin_superficie == set(FUERA_DE_LA_PARTICIPACION)
+    for t in FUERA_DE_LA_PARTICIPACION:
+        assert not tiene_superficie(t), t
+    assert tiene_superficie("nevera_puertas") and tiene_superficie("nevera_refrescos")

@@ -367,9 +367,30 @@
       "carasPorParticipacion": []
     },
     {
-      "nombre": "una nevera de puertas no tiene receta de superficie: no se vende por participación, sigue entera",
+      "nombre": "una nevera de puertas por participación (receta `nevera_puertas`) ofrece su cara: sus puertas guardadas sólo dicen cómo se dibuja, no la dividen",
       "mueble": { "id": "n7", "code": "NEV-07", "type": "nevera_puertas", "partes": { "puertas": 3, "division": "participacion" } },
       "espacios": ["NAVE-NEV-07"], "division": null,
+      "firma": { "puertas": null, "tramos": null, "entrepanos": null, "bahias": null, "forro": null },
+      "carasPorParticipacion": ["NAVE-NEV-07"]
+    },
+    {
+      "nombre": "la nevera de bebidas por participación (receta `nevera_abierta`), con sus tramos guardados: no se vende por tramos",
+      "mueble": { "id": "b7", "code": "BEB-07", "type": "nevera_refrescos", "partes": { "tramos": 3, "division": "participacion" } },
+      "espacios": ["NAVE-BEB-07"], "division": null,
+      "firma": { "puertas": null, "tramos": null, "entrepanos": null, "bahias": null, "forro": null },
+      "carasPorParticipacion": ["NAVE-BEB-07"]
+    },
+    {
+      "nombre": "una estiba no tiene receta de superficie: no se vende por participación, sigue entera",
+      "mueble": { "id": "e7", "code": "EXP-07", "type": "isla", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-EXP-07"], "division": null,
+      "firma": { "puertas": null, "tramos": null, "entrepanos": null, "bahias": null, "forro": null },
+      "carasPorParticipacion": []
+    },
+    {
+      "nombre": "un exhibidor de cartón (impulsador) no tiene receta de superficie: no se vende por participación, sigue entero",
+      "mueble": { "id": "i7", "code": "IMP-07", "type": "impulsador", "modelo": "base:exhibidor-carton", "partes": { "division": "participacion" } },
+      "espacios": ["NAVE-IMP-07"], "division": null,
       "firma": { "puertas": null, "tramos": null, "entrepanos": null, "bahias": null, "forro": null },
       "carasPorParticipacion": []
     },

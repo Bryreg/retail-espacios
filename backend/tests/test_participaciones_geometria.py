@@ -240,14 +240,17 @@ def test_las_recetas_son_las_del_catalogo():
     assert union, "no encontré `RecetaDeSuperficie` en catalogo.ts"
     assert sorted(RECETAS) == sorted(re.findall(r'"([^"]+)"', union.group(1)))
     con_superficie = {t for t, d in TIPOS.items() if d.get("superficie")}
-    assert con_superficie == {"gondola", "punta", "robatope", "ristra", "cross", "mueble", "metro"}
+    assert con_superficie == {"gondola", "punta", "robatope", "ristra", "cross", "mueble", "metro",
+                              "nevera_puertas", "nevera_refrescos"}
     for t in con_superficie:
         assert TIPOS[t]["superficie"]["receta"] in RECETAS, t
         assert tiene_superficie(t), t
     for alias, a in ALIAS.items():
         assert tiene_superficie(alias) is (a["tipo"] in con_superficie), alias
-    for t in ("nevera_puertas", "isla", "checkout", "constructor", "__proto__", ""):
+    for t in ("isla", "impulsador", "puesto_impulso", "batea", "isla_fria", "nevera_vegetales", "nevera_carnes",
+              "stand_frutas", "checkout", "servicio_cliente", "columna", "exhibicion", "constructor", "__proto__", ""):
         assert not tiene_superficie(t), t
+    assert tiene_superficie("nevera_puertas") and tiene_superficie("nevera_refrescos")
 
 
 def test_la_cara_b_de_una_doble_es_la_a_en_espejo():
@@ -351,3 +354,108 @@ def test_la_zona_libre_solo_si_se_pisa():
     assert s["plano"] == pytest.approx(0.054)
     assert superficie({"type": "metro", "w": 1, "d": 1, "h": ALTURA_PISABLE - 1e-9}, "A") is not None
     assert superficie({"type": "metro", "w": 1, "d": 1, "h": ALTURA_PISABLE}, "A") is None
+
+
+# ── fase 2 · I3: las neveras por participación ───────────────────────────────
+
+
+def test_la_copia_de_las_medidas_de_la_nevera():
+    """Las dos neveras (la de puertas y la de bebidas abierta) se miden con
+    ``NEVERA`` y ``MONTANTE_DE_TRAMO`` de ``muebles/medidas.ts``, que el
+    navegador importa y Python copia; las cuentas que la copia repite
+    (``puertasDe``, ``montantesDeTramos``) y el interior que ``NeveraReal``
+    reparte entre los tramos tienen que seguir siendo ésas."""
+    from app.services import superficie as S
+
+    medidas = (RAIZ / "frontend/src/components/StoreEditor3D/muebles/medidas.ts").read_text(encoding="utf-8")
+    nevera = (RAIZ / "frontend/src/components/StoreEditor3D/muebles/NeveraReal.tsx").read_text(encoding="utf-8")
+    navegador = (RAIZ / "frontend/src/utils/superficie.ts").read_text(encoding="utf-8")
+    bloque = re.search(r"export const NEVERA = \{([\s\S]*?)\} as const;", medidas)
+    assert bloque, "no encontré `NEVERA` en medidas.ts"
+
+    def cota(clave):
+        m = re.search(rf"\b{clave}:\s*(-?[\d.]+)", bloque.group(1))
+        assert m, f"NEVERA.{clave}"
+        return float(m.group(1))
+
+    for clave, valor in (("zocalo", S.NEVERA_ZOCALO), ("copete", S.NEVERA_COPETE), ("chapa", S.NEVERA_CHAPA),
+                         ("marcoPuerta", S.NEVERA_MARCO_PUERTA), ("anchoMaximoDePuerta", S.NEVERA_ANCHO_MAXIMO_DE_PUERTA)):
+        assert valor == cota(clave), clave
+    m = re.search(r"export const MONTANTE_DE_TRAMO = ([\d.]+);", medidas)
+    assert m and S.MONTANTE_DE_TRAMO == float(m.group(1))
+    # Las fórmulas que la copia repite.
+    assert "return puertas !== undefined && puertas >= 1 ? Math.round(puertas) : puertasDeNevera(ancho);" in medidas
+    assert "return Math.max(1, Math.ceil(ancho / NEVERA.anchoMaximoDePuerta));" in medidas
+    assert "if (n === undefined || n < 2) return [];" in medidas
+    assert "return Array.from({ length: n - 1 }, (_, i) => -ancho / 2 + paso * (i + 1));" in medidas
+    # El interior de la nevera y lo que la abierta le descuenta para sus montantes (NeveraReal).
+    m = re.search(r"const anchoInterior = Math\.max\(([\d.]+), w - NEVERA\.chapa \* 2\);", nevera)
+    assert m and S.INTERIOR_MINIMO_DE_NEVERA == float(m.group(1))
+    m = re.search(r"montantesDeTramos\(anchoInterior - ([\d.]+), tramos\)", nevera)
+    assert m and S.RECORTE_DE_TRAMOS_DE_NEVERA == float(m.group(1))
+    # Las propias de la superficie, las mismas en los dos gemelos.
+    for nombre in ("SEPARACION_NEVERA_PUERTAS", "SEPARACION_NEVERA_ABIERTA", "INTERIOR_MINIMO_DE_NEVERA",
+                   "RECORTE_DE_TRAMOS_DE_NEVERA"):
+        m = re.search(rf"export const {nombre} = ([\d.]+);", navegador)
+        assert m and getattr(S, nombre) == float(m.group(1)), nombre
+
+
+def test_las_neveras_descuentan_marcos_costados_y_montantes():
+    """Lo útil de la nevera de puertas es el vidrio: el ancho menos dos marcos
+    por hoja, por el alto entre los marcos de arriba y de abajo. El de la
+    abierta, el ancho menos los costados y un montante por junta de tramos,
+    por el alto entre zócalo y copete. Cuantizado a 1e-6, así que con una
+    tolerancia de 1e-4 m²; la cara B no existe y el fondo sólo mueve el plano."""
+    from app.services.superficie import (
+        MONTANTE_DE_TRAMO, NEVERA_CHAPA, NEVERA_COPETE, NEVERA_MARCO_PUERTA, NEVERA_ZOCALO,
+        SEPARACION_NEVERA_ABIERTA, SEPARACION_NEVERA_PUERTAS, firma, superficie,
+    )
+
+    for w in (0.6, 1.4, 2.07, 3.2):
+        for h in (1.7, 2.1, 2.3):
+            for puertas in (None, 1, 2, 3, 6):
+                n = puertas if puertas is not None else math.ceil(w / 0.75)
+                if w / n <= 2 * NEVERA_MARCO_PUERTA:
+                    continue
+                f = {"type": "nevera_puertas", "w": w, "d": 0.74, "h": h}
+                if puertas is not None:
+                    f["partes"] = {"puertas": puertas, "division": "participacion"}
+                s = superficie(f, "A")
+                quien = (w, h, puertas)
+                util = (w - 2 * NEVERA_MARCO_PUERTA * n) * (h - NEVERA_ZOCALO - NEVERA_COPETE - 2 * NEVERA_MARCO_PUERTA)
+                assert s["area_util_m2"] == pytest.approx(util, abs=1e-4), quien
+                assert len(s["exclusiones"]) == 4 + n + 1, quien
+                assert s["plano"] == pytest.approx(0.37 + SEPARACION_NEVERA_PUERTAS), quien
+                assert superficie(f, "B") is None and firma(f, "B") is None, quien
+                assert firma({**f, "d": 0.9}, "A") == firma(f, "A"), quien
+    for w in (0.6, 1.2, 3.75):
+        for tramos in (None, 2, 3, 5):
+            f = {"type": "nevera_refrescos", "w": w, "d": 0.75, "h": 1.8}
+            if tramos is not None:
+                f["partes"] = {"tramos": tramos, "division": "participacion"}
+            s = superficie(f, "A")
+            juntas = tramos - 1 if tramos else 0
+            util = (w - 2 * NEVERA_CHAPA - juntas * MONTANTE_DE_TRAMO) * (1.8 - NEVERA_ZOCALO - NEVERA_COPETE)
+            assert s["area_util_m2"] == pytest.approx(util, abs=1e-4), (w, tramos)
+            assert [e["por"] for e in s["exclusiones"]].count("montante") == juntas, (w, tramos)
+            assert s["plano"] == pytest.approx(0.375 + SEPARACION_NEVERA_ABIERTA), (w, tramos)
+    # La firma lleva las puertas y los tramos (mueven los marcos y los montantes).
+    base = {"type": "nevera_puertas", "w": 2.07, "d": 0.7, "h": 2.1}
+    assert firma({**base, "partes": {"puertas": 2}}, "A") != firma({**base, "partes": {"puertas": 3}}, "A")
+    abierta = {"type": "nevera_refrescos", "w": 3.75, "d": 0.75, "h": 1.8}
+    assert firma({**abierta, "partes": {"tramos": 2}}, "A") != firma({**abierta, "partes": {"tramos": 3}}, "A")
+
+
+def test_las_puertas_de_mas_no_se_distribuyen():
+    """``MAX_VANOS`` también cuenta las puertas: las guardadas o las que pide el
+    ancho. Los dos lados del filo (los casos compartidos tienen el de afuera)."""
+    from app.services.superficie import MAX_VANOS, superficie
+
+    adentro = superficie({"type": "nevera_puertas", "w": 200, "d": 0.7, "h": 2.1, "partes": {"puertas": MAX_VANOS}}, "A")
+    assert adentro is not None and len(adentro["exclusiones"]) == 4 + MAX_VANOS + 1
+    assert superficie({"type": "nevera_puertas", "w": 200, "d": 0.7, "h": 2.1, "partes": {"puertas": MAX_VANOS + 1}}, "A") is None
+    assert superficie({"type": "nevera_puertas", "w": 0.75 * MAX_VANOS, "d": 0.7, "h": 2.1}, "A") is not None
+    assert superficie({"type": "nevera_puertas", "w": 150.01, "d": 0.7, "h": 2.1}, "A") is None
+    # Un número enorme (o infinito, como lo lee el navegador) no revienta: no hay superficie.
+    for puertas in (1e300, int("1" + "0" * 400)):
+        assert superficie({"type": "nevera_puertas", "w": 2, "d": 0.7, "h": 2.1, "partes": {"puertas": puertas}}, "A") is None

@@ -61,9 +61,14 @@ const RECETAS = (() => {
   const m = /export type RecetaDeSuperficie =([^;]*);/.exec(leer(join(raiz, "src", "catalogo", "catalogo.ts")));
   return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
 })();
-/** Los tipos que se venden por participación en esta fase (§7.1 del diseño
- *  de participaciones): los demás alquilables NO se habilitan. */
-const CON_SUPERFICIE = { gondola: "gondola", punta: "punta", robatope: "robatope", ristra: "ristra", cross: "cross", mueble: "vitrina", metro: "zona_libre" };
+/** Los tipos que se venden por participación (§7.1 del diseño de
+ *  participaciones, y las dos neveras de la fase 2): los demás alquilables NO
+ *  se habilitan (la lista de los que quedan fuera, con su razón, está más
+ *  abajo: «fase 2 · I3»). */
+const CON_SUPERFICIE = {
+  gondola: "gondola", punta: "punta", robatope: "robatope", ristra: "ristra", cross: "cross", mueble: "vitrina", metro: "zona_libre",
+  nevera_puertas: "nevera_puertas", nevera_refrescos: "nevera_abierta",
+};
 
 let hechas = 0;
 const prueba = async (n, fn) => {
@@ -639,10 +644,12 @@ await prueba("la consola nombra el tipo propio `participacion` con el nombre de 
 
 await prueba("qué tipos se venden por participación, y con qué receta", () => {
   // §7.1 del diseño de participaciones: los siete tipos del pedido llevan
-  // receta; los demás alquilables (la nevera de puertas, la isla, el cartón…)
-  // no se habilitan. Y la clase `participacion` está, con su token reservado.
-  assert.deepEqual(RECETAS.slice().sort(), ["cross", "gondola", "punta", "ristra", "robatope", "vitrina", "zona_libre"],
-    "`RecetaDeSuperficie` (catalogo.ts) no son las siete recetas del diseño");
+  // receta, y desde la fase 2 las dos neveras (la de puertas y la de bebidas,
+  // receta `nevera_abierta`); los demás alquilables (la isla, el cartón…) no
+  // se habilitan. Y la clase `participacion` está, con su token reservado.
+  assert.deepEqual(RECETAS.slice().sort(),
+    ["cross", "gondola", "nevera_abierta", "nevera_puertas", "punta", "ristra", "robatope", "vitrina", "zona_libre"],
+    "`RecetaDeSuperficie` (catalogo.ts) no son las nueve recetas del diseño");
   const conSuperficie = Object.fromEntries(Object.entries(CATALOGO.tipos)
     .filter(([, d]) => d.superficie).map(([t, d]) => [t, d.superficie.receta]));
   assert.deepEqual(conSuperficie, CON_SUPERFICIE);
@@ -653,6 +660,41 @@ await prueba("qué tipos se venden por participación, y con qué receta", () =>
   for (const [t, d] of Object.entries(CATALOGO.tipos)) {
     assert.ok(!(d.partes?.divisiones ?? []).includes("participacion"), `${t} se divide por participación como si fuera física`);
   }
+});
+
+// fase 2 · I3: las neveras por participación y, POR ESCRITO, lo que queda fuera.
+/** Los tipos que no se venden por participación, y por qué (diseño de la
+ *  fase 2, frente C, §2). Entera a propósito: un tipo nuevo tiene que caer de
+ *  un lado o del otro, y sacar uno de acá es una decisión. La misma lista en
+ *  `test_catalogo_muebles.py` (`FUERA_DE_LA_PARTICIPACION`). */
+const FUERA_DE_LA_PARTICIPACION = {
+  isla: "la estiba: carga de un proveedor; su subdivisión ya son modelos (media, cuarta)",
+  impulsador: "POP de una marca (también el exhibidor de cartón, que es un modelo suyo)",
+  puesto_impulso: "mostrador de promotora de una marca",
+  batea: "canasto de una oferta: se vende entero",
+  isla_fria: "por ahora: pide medir desde arriba a 0,9 m (guarda de acrílico y encuadre)",
+  nevera_vegetales: "fruta a granel del supermercado, en bandejas inclinadas",
+  nevera_carnes: "mostrador atendido, con vidrio curvo",
+  stand_frutas: "granel",
+  checkout: "nunca se alquila: vende sus piezas",
+  servicio_cliente: "nunca se alquila",
+  columna: "nunca se alquila: vende su forro",
+  exhibicion: "legado",
+};
+
+await prueba("las dos neveras se venden por participación sin dejar sus partes; lo demás queda fuera, por escrito", () => {
+  assert.deepEqual(CATALOGO.tipos.nevera_puertas.superficie, { orientacion: "frente", receta: "nevera_puertas" });
+  assert.deepEqual(CATALOGO.tipos.nevera_refrescos.superficie, { orientacion: "frente", receta: "nevera_abierta" });
+  // La participación no es una división: las puertas y los tramos siguen.
+  assert.deepEqual(CATALOGO.tipos.nevera_puertas.partes.divisiones, ["puertas"]);
+  assert.deepEqual(CATALOGO.tipos.nevera_refrescos.partes.divisiones, ["tramos"]);
+  const sinSuperficie = Object.entries(CATALOGO.tipos).filter(([, d]) => !d.superficie).map(([t]) => t).sort();
+  assert.deepEqual(sinSuperficie, Object.keys(FUERA_DE_LA_PARTICIPACION).sort(),
+    "un tipo sin superficie no está en la lista de los que quedan fuera (o uno de la lista ganó una)");
+  // «isla» es la receta inexistente de la prueba de arriba: ninguna receta se llama así.
+  assert.ok(!RECETAS.includes("isla"), "hay una receta «isla»: la prueba de la receta inexistente ya no prueba nada");
+  // Ninguna receta nueva mide desde arriba (cambiaría «la zona libre se mide desde arriba, y sólo ella»).
+  for (const t of ["nevera_puertas", "nevera_refrescos"]) assert.equal(CATALOGO.tipos[t].superficie.orientacion, "frente", t);
 });
 
 await prueba("la copia del servidor es idéntica byte a byte", () => {

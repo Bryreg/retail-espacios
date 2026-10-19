@@ -156,11 +156,13 @@ export interface ClaseDeParte {
  *  la cuenta que hacen `utils/superficie.ts` y `app/services/superficie.py`
  *  con las medidas del dibujo. `probar-catalogo.mjs` lee esta lista y exige
  *  que el catálogo use sólo éstas. */
-export type RecetaDeSuperficie = "gondola" | "punta" | "robatope" | "ristra" | "cross" | "vitrina" | "zona_libre";
+export type RecetaDeSuperficie =
+  "gondola" | "punta" | "robatope" | "ristra" | "cross" | "vitrina" | "zona_libre" | "nevera_puertas" | "nevera_abierta";
 
 /** Cómo se mide la superficie comercializable de una cara: de `frente` (las
- *  góndolas, la punta, el robatope, la ristra, la cruz, la vitrina) o desde
- *  `arriba` (la zona libre). */
+ *  góndolas, la punta, el robatope, la ristra, la cruz, la vitrina y las dos
+ *  neveras: la de puertas y la de bebidas, que es abierta) o desde `arriba`
+ *  (la zona libre). */
 export interface SuperficieDelTipo { orientacion: "frente" | "arriba"; receta: RecetaDeSuperficie }
 
 /** Vender por partes, en el catálogo. */

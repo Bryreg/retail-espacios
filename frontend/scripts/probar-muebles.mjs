@@ -6828,7 +6828,18 @@ prueba("la zona libre que se pisa es una placa de su alto: nada sube del plano d
 prueba("«Cómo se vende»: «Por participación» en las familias con superficie, con las mismas guardas que el servidor (ejecutado)", () => {
   assert.deepEqual(RG.formasDeVenderDe("robatope"), ["participacion"]);
   assert.deepEqual(RG.formasDeVenderDe("gondola"), ["tramos", "entrepanos", "participacion"]);
-  assert.ok(!RG.formasDeVenderDe("nevera_puertas").includes("participacion"), "la nevera se ofrece por participación sin superficie");
+  assert.ok(!RG.formasDeVenderDe("isla").includes("participacion"), "la estiba se ofrece por participación sin superficie");
+  // fase 2 · I3: las dos neveras tienen receta: sus divisiones físicas y, además, por participación.
+  assert.deepEqual(RG.formasDeVenderDe("nevera_puertas"), ["puertas", "participacion"]);
+  assert.deepEqual(RG.formasDeVenderDe("nevera_refrescos"), ["tramos", "participacion"]);
+  for (const t of ["impulsador", "puesto_impulso", "batea", "isla_fria", "nevera_vegetales", "nevera_carnes", "stand_frutas"]) {
+    assert.ok(!RG.formasDeVenderDe(t).includes("participacion"), `${t} se ofrece por participación sin superficie`);
+  }
+  const nev = { id: "n", code: "NEV-01", type: "nevera_puertas", sede: "NAVE", w: 1.4, d: 0.74, h: 2.1, partes: { puertas: 2, division: "puertas" } };
+  assert.deepEqual(RG.cambioParaDividir(nev, "participacion"), { cambio: { division: "participacion" } });
+  assert.match(RG.cambioParaDividir({ ...nev, h: 0.4 }, "participacion").problema, /no queda superficie/);
+  assert.match(RG.cambioParaDividir({ id: "e", code: "EXP-01", type: "isla", sede: "NAVE", w: 1.2, d: 0.8, h: 1.4 }, "participacion").problema,
+    /no tiene una superficie/);
   assert.equal(RG.vendePorPartes("robatope"), true);
   assert.equal(RG.vendePorPartes("servicio_cliente"), false);
   const gon = { id: "g", code: "GON-01", type: "gondola", gondolaType: "double", sede: "NAVE", w: 2.5, d: 0.9, h: 1.8 };

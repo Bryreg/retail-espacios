@@ -1035,9 +1035,10 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
     assert d["code"] == "participaciones_vivas"
     assert d["choques"] == ["GON-01 · cara A tiene 1 participación viva (1 reserva provisional). Cancelala o "
                             "dejá que venza antes de cambiar cómo se vende."]
-    # Borrar el mueble, renombrarlo sin la renumeración o cambiarle el tipo a uno sin superficie: lo mismo.
+    # Borrar el mueble, renombrarlo sin la renumeración o cambiarle el tipo a uno sin superficie (la estiba;
+    # la nevera de bebidas ya tiene receta): lo mismo.
     for fixtures in ([f for f in PLANO if f["code"] != "GON-01"], _con("GON-01", code="GON-09"),
-                     _con("GON-01", type="nevera_refrescos", gondolaType=None)):
+                     _con("GON-01", type="isla", gondolaType=None)):
         assert _rechazo(client, admin, fixtures)["code"] == "participaciones_vivas"
     # Doble → mural con dos reservas en la B: sale sólo la B, y es la que frena.
     _alta(client, admin, espacio="GON-01-B", tipo="reserva", caduca=D(2026, 10, 25), proveedor="Alpina")
