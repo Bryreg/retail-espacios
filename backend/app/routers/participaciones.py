@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
+from app.models.models import SpaceLease
 from app.routers.bulk_leases import FilaOut, _avisar
 from app.services import participaciones as servicio
 from app.services.bitacora import anotar
@@ -183,22 +184,55 @@ def _respuesta_de_termino(db: Session, hecho: "servicio.Hecho") -> dict:
     return {"termino": termino, "cara": bloque}
 
 
+def fila_de_participacion(lease, t, letra: str, supplier=None) -> FilaOut:
+    """La fila de los correos de un contrato de participación, con la parte
+    dicha para quien monta: «Participación 3 · 25 % de la cara A»."""
+    pc = lease.space
+    supplier = supplier or lease.supplier
+    return FilaOut(
+        fila=0, estado="ok", codigo=pc.code, nombre=pc.name, sede=pc.sede,
+        proveedor=supplier.name if supplier else None, marca=lease.marca,
+        correo=supplier.email if supplier else None, valor=lease.monthly_rent,
+        desde=lease.start_date.isoformat(), hasta=lease.end_date.isoformat(), lease_id=lease.id,
+        parte=f"Participación {t.numero} · {pct(t.puntos_basicos)} de la cara {letra}",
+    )
+
+
 def _correos(db: Session, background_tasks: BackgroundTasks, hecho: "servicio.Hecho", cliente: Cliente):
     """Los correos de un contrato nuevo, los mismos de la planilla
-    (``bulk_leases._avisar``), con la parte dicha para quien monta: «Participación
-    3 · 25 % de la cara A». Una reserva no manda correos."""
+    (``bulk_leases._avisar``). Una reserva no manda correos. El de montaje
+    queda pendiente si la participación todavía no tiene zona confirmada
+    (``montajes_pendientes``, ``docs/rediseno/vender-api.md`` §4): sale al
+    confirmar la distribución de la cara (``_montajes_que_esperaban``)."""
     if hecho.lease is None:
         return None
-    lease, t = hecho.lease, hecho.termino
-    pc = lease.space
-    fila = FilaOut(
-        fila=0, estado="ok", codigo=pc.code, nombre=pc.name, sede=pc.sede,
-        proveedor=hecho.supplier.name if hecho.supplier else None, marca=lease.marca,
-        correo=hecho.supplier.email if hecho.supplier else None, valor=lease.monthly_rent,
-        desde=lease.start_date.isoformat(), hasta=lease.end_date.isoformat(), lease_id=lease.id,
-        parte=f"Participación {t.numero} · {pct(t.puntos_basicos)} de la cara {hecho.cara.letra}",
-    )
-    return _avisar(db, background_tasks, pc.sede, [fila], cliente).model_dump()
+    lease = hecho.lease
+    fila = fila_de_participacion(lease, hecho.termino, hecho.cara.letra, hecho.supplier)
+    sin_montaje = {lease.id} if hecho.montaje_diferido else frozenset()
+    return _avisar(db, background_tasks, lease.space.sede, [fila], cliente, sin_montaje=sin_montaje).model_dump()
+
+
+def _montajes_que_esperaban(db: Session, background_tasks: BackgroundTasks, hecho: "servicio.HechoDistribucion",
+                            cliente: Cliente) -> None:
+    """Después de confirmar la distribución (ya con commit, y sólo si quedó
+    válida): el aviso de montaje de los contratos de participación de esta cara
+    que esperaban su zona. Sólo a quien monta —comercial y el proveedor ya lo
+    recibieron al firmar— y en un solo correo por sede. Las filas pendientes se
+    borran: el aviso sale una vez."""
+    if hecho.distribucion is None:
+        return
+    listos = servicio.montajes_listos(db, hecho.distribucion.cara_space_id)
+    if not listos:
+        return
+    filas = []
+    for pendiente, t in listos:
+        lease = db.get(SpaceLease, pendiente.lease_id)
+        if lease is not None and lease.is_active:
+            filas.append(fila_de_participacion(lease, t, hecho.cara.letra))
+        db.delete(pendiente)
+    db.commit()
+    if filas:
+        _avisar(db, background_tasks, filas[0].sede, filas, cliente, roles=("montaje",))
 
 
 def _bitacora(db: Session, request: Request, rol: str, accion: Optional[str], entidad: str, entidad_id: str,
@@ -292,7 +326,9 @@ def guardar_borrador(
 def confirmar_distribucion(
     cuerpo: DistribucionIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     rol: str = Depends(require_admin),
+    cliente: Cliente = Depends(cliente_del_pedido),
     db: Session = Depends(get_db),
 ):
     """11 · Validar estricto y confirmar. Con errores, las zonas quedan como
@@ -309,6 +345,7 @@ def confirmar_distribucion(
             "errores": hecho.juicio["errores"], "avisos": hecho.juicio["avisos"],
             "version": hecho.distribucion.version,
         }}))
+    _montajes_que_esperaban(db, background_tasks, hecho, cliente)
     return _respuesta_de_distribucion(db, hecho)
 
 

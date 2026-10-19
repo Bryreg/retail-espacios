@@ -75,6 +75,14 @@ ACCIONES = {
     # fase 2 · I1 · «Copiar zonas de otra cara»: las zonas llegan como borrador
     # (no se copia ningún contrato ni reserva) y hay que confirmarlas.
     "distribucion.copiada": "Zonas copiadas de otra cara (borrador)",
+    # El rediseño de Vender (`docs/rediseno/vender-api.md`): la reserva de una
+    # cara entera o de una parte (§8), cuya cancelación termina en «.baja» como
+    # la de una reserva de participación, y los cortes de un contrato que se
+    # cobra por ventas (§3).
+    "reserva_espacio.alta": "Reserva de espacio creada",
+    "reserva_espacio.confirmada": "Reserva de espacio confirmada como contrato",
+    "reserva_espacio.baja": "Reserva de espacio cancelada",
+    "cobro.corte": "Corte de ventas cargado",
 }
 
 # fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,

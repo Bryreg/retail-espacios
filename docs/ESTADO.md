@@ -1089,9 +1089,59 @@ una copia local del store. Los guards que evitan el eco comparan la *identidad d
 no una bandera: un booleano lo consume la pasada equivocada del ciclo de montaje, y eso
 causó una pérdida de datos real (ver más abajo).
 
+**Lo reservado cuenta como ocupado.** Una reserva viva de una cara entera o de una parte
+(`reservas_de_espacio`: `estado = "viva"` y `caduca ≥ hoy`, día de Colombia) choca en sus
+fechas igual que un contrato en TODOS los caminos: `layout_lookup.contratos_que_chocan` la
+devuelve como `ReservaComoContrato` (id negativo), así que la planilla, el contrato suelto, el
+guardado de Vender, la importación del plano y la capacidad de una cara (`fisicos_de`) la ven
+sin saber que existe; el guardarraíl de `PUT /layout` la frena como a algo vendido y
+`GET /spaces/comercial` la da tomada. Un camino nuevo que decida si algo choca pregunta ahí, no
+a `space_leases` a mano. Delante del proveedor se dice «tomado», nunca «reservado» ni de quién.
+
+**Un contrato que se cobra por ventas no es un contrato de $ 0.** Su `monthly_rent` va en 0 y
+la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
+(`_contratos_activos` ya no lo trae) y toda la que suma ingreso le agrega lo cobrado
+(`services/cobros.cobrado_por_contrato`). Ver *Rediseño de Vender, PR 1*.
+
 ---
 
 ## Qué está hecho
+
+### Rediseño de Vender, PR 1: el servidor (2026-10-19)
+
+El contrato entre la pantalla y el servidor está en `docs/rediseno/vender-api.md` (manda ese
+archivo; esto es el resumen).
+
+- **`POST /api/contratos/vender`** (`routers/vender.py`, `services/vender.py`): un contrato de
+  Vender con varias líneas —caras enteras, partes y porcentajes— se guarda de una vez, todo o
+  nada. Cada línea pasa por la revisión de su camino (`bulk_leases._revisar` lo entero y las
+  partes, `participaciones.revisar_alta` los porcentajes); dos porcentajes de la misma cara se
+  suman. Revisar → `tomar_candados` de todo el pedido UNA vez → `expire_all` → revisar → escribir.
+  `?validar=1` no escribe. Para escribir con el candado ya tomado, `participaciones.alta` y
+  `renovar` se partieron en revisar + `escribir_alta` / `escribir_renovacion`, sin cambiar lo que
+  hacen. `tipo: "reserva"` vale para todo: un porcentaje es un término `reserva` con su precio
+  en `precios_de_reserva` (que `confirmar_reserva` usa si no le mandan valor), lo entero y las
+  partes van a `reservas_de_espacio` (`/api/reservas`: listar, confirmar, cancelar).
+- **Seis tablas nuevas** (`models/vender.py`): `condiciones_de_contrato` (cómo se tecleó el
+  precio: «al mes» o el total), `precios_de_reserva`, `cobros_por_venta` + `cortes_de_venta`
+  (`/api/cobros`), `montajes_pendientes` y `reservas_de_espacio`. Una reserva
+  —de porcentaje o de espacio— también puede cobrar por ventas: guarda el cobro y su contrato
+  nace con `cobros_por_venta`. Todas en
+  `TABLAS_DEL_CLIENTE` (copia y traspaso) y en la exportación del owner
+  (`condiciones_comerciales`). Ninguna columna nueva en tablas viejas.
+- **El montaje de un porcentaje espera su zona**: al firmar el contrato de una participación
+  sin zona confirmada, comercial y el proveedor reciben su correo y el de montaje queda en
+  `montajes_pendientes`; sale después de `POST /participaciones/distribucion/confirmar` (válida)
+  y se borra. `_avisar` ganó `roles=` y `sin_montaje=`.
+- **Los correos dicen «Valor del contrato»** (lo guardado es el total del plazo) y, si se
+  escribió por mes, «$ 1.800.000 ($ 600.000 al mes)» (`services/condiciones.py`): la planilla,
+  el contrato suelto, el aviso de vencimiento y Vender.
+- **`GET /api/suppliers/completar?prefijo=`**: un solo nombre (el de más contratos), desde 3
+  letras, sin tildes; sólo administración.
+- **`services/meses.py`**: la duración en meses, gemela de `frontend/src/utils/meses.ts`, con
+  los casos de `frontend/scripts/casos/meses.json`.
+- Pendiente: la serie histórica (`snapshot_metricas`) no guarda lo cobrado por ventas (no tiene
+  columna y no se agregan): los meses cerrados cuentan sólo el canon fijo.
 
 ### Auditoría de producción (2026-10-02): lo que quedó del modelo viejo
 

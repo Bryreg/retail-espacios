@@ -165,6 +165,32 @@ def _lease_dict(lease) -> dict:
     }
 
 
+def _fila_dict(fila) -> dict:
+    """Una fila de las tablas de Vender (``models/vender.py``), columna por
+    columna, con las fechas en ISO. Son tablas nuevas y chicas, de columnas
+    planas: lo que se les agregue mañana sale solo, porque todo es negocio del
+    cliente (precio, cobro por ventas, reservas) y el owner es admin."""
+    fuera = {}
+    for col in fila.__table__.columns:
+        valor = getattr(fila, col.name)
+        fuera[col.name] = valor.isoformat() if hasattr(valor, "isoformat") else valor
+    return fuera
+
+
+def _condiciones_comerciales(db) -> dict:
+    """Lo que el rediseño de Vender guarda de cada contrato, tabla por tabla."""
+    from app.models.vender import (
+        CobroPorVenta, CondicionesDeContrato, CorteDeVenta, MontajePendiente, PrecioDeReserva, ReservaDeEspacio,
+    )
+
+    tablas = (CondicionesDeContrato, PrecioDeReserva, CobroPorVenta, CorteDeVenta, MontajePendiente,
+              ReservaDeEspacio)
+    return {
+        t.__tablename__: [_fila_dict(f) for f in db.query(t).all()]
+        for t in tablas
+    }
+
+
 def _supplier_dict(sup) -> dict:
     return {
         "id": sup.id,
@@ -193,6 +219,7 @@ def mi_export(dueno: tuple = Depends(require_owner)):
         spaces = [_space_dict(s) for s in db.query(Space).order_by(Space.id).all()]
         leases = [_lease_dict(l) for l in db.query(SpaceLease).order_by(SpaceLease.id).all()]
         suppliers = [_supplier_dict(s) for s in db.query(Supplier).order_by(Supplier.id).all()]
+        condiciones = _condiciones_comerciales(db)
 
         layouts: dict = {}
         for snap in db.query(LayoutSnapshot).order_by(LayoutSnapshot.sede).all():
@@ -213,6 +240,10 @@ def mi_export(dueno: tuple = Depends(require_owner)):
         "leases": leases,
         "suppliers": suppliers,
         "layouts": layouts,
+        # Cómo se escribió el precio, el de las reservas, el cobro por ventas
+        # con sus cortes, los montajes que esperan zona y las reservas de
+        # espacio (`models/vender.py`).
+        "condiciones_comerciales": condiciones,
     }
 
     nombre_archivo = f"recabra-export-{cliente.slug}-{hoy().isoformat()}.json"

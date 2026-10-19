@@ -971,3 +971,29 @@ def test_quien_monta_una_participacion_ve_solo_su_zona_y_el_trabajador_ninguna(c
     r = client.get("/api/montaje/mi-espacio", params={"code": "NAVE-GON-02"}, headers=admin)
     assert r.status_code == 200, r.text
     assert r.json()["dibujo"] is None
+
+
+@tp.RELOJ
+def test_el_enlace_de_un_contrato_de_vender_no_lleva_la_plata_nueva(client, admin):
+    """El rediseño de Vender guarda cómo se tecleó el precio y el cobro por
+    ventas (docs/rediseno/vender-api.md §3, §5): nada de eso llega a quien
+    monta, ni con el enlace del contrato."""
+    from app.auth import create_mount_token
+
+    tp._plano(client, admin)
+    base = {"sede": "NAVE", "proveedor": "Alpina", "marca": "Yogurt", "desde": "2026-11-01", "hasta": "2026-11-30",
+            "tipo": "contrato"}
+    fijo = client.post("/api/contratos/vender", headers=admin, json={**base, "lineas": [
+        {"espacio": "GON-02", "valor": 2_468_000, "modo_precio": "mensual", "valor_tecleado": 2_468_000}]})
+    assert fijo.status_code == 200, fijo.text
+    ventas = client.post("/api/contratos/vender", headers=admin, json={
+        **base, "cobro": {"modo": "ventas", "porcentaje": 13.7, "corte": "al_final"},
+        "lineas": [{"espacio": "NEV-03-PU1", "valor": 0}]})
+    assert ventas.status_code == 200, ventas.text
+    for r in (fijo.json(), ventas.json()):
+        (c,) = r["contratos"]
+        token = create_mount_token(c["espacio"], days=60, contrato=c["lease_id"])
+        crudo = client.get("/api/montaje/mi-espacio", headers=_cab(token))
+        assert crudo.status_code == 200, crudo.text
+        for plata in ("2468000", "13.7", "valor_tecleado", "porcentaje", "corte", "ventas"):
+            assert plata not in crudo.text, f"quien monta ve «{plata}»"

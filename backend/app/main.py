@@ -20,6 +20,9 @@ from app.routers import copia as copia_routes
 from app.routers import suscripcion as suscripcion_routes
 from app.routers import plataforma as plataforma_routes
 from app.routers import participaciones as participaciones_routes
+from app.routers import vender as vender_routes
+from app.routers import cobros as cobros_routes
+from app.routers import reservas as reservas_routes
 from app.models.models import Space, SpaceStatus
 from app.services.subidas import LimiteDeCuerpo
 # Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
@@ -31,6 +34,11 @@ from app.models import identidad as identidad_models  # noqa: F401
 # sin columnas agregadas a nada existente). Mismo propósito: que `create_all()`
 # del lifespan las conozca.
 from app.models import participaciones as participaciones_models  # noqa: F401
+# Lo que guarda Vender de un contrato (seis tablas nuevas: cómo se escribió el
+# precio, el de una reserva, el cobro por ventas con sus cortes, el aviso de
+# montaje que espera zona y la reserva de una cara entera o de una parte).
+# Mismo propósito.
+from app.models import vender as vender_models  # noqa: F401
 
 logger = logging.getLogger("retail.main")
 
@@ -461,6 +469,15 @@ app.include_router(muebles.router,       prefix="/api")
 # sus zonas (`routers/participaciones.py`). Todo de administrador salvo la
 # ocupación anónima, que leen Vender, Supervisar y el plano.
 app.include_router(participaciones_routes.router, prefix="/api")
+# Guardar un contrato de Vender de una vez, todo o nada
+# (`routers/vender.py`, `docs/rediseno/vender-api.md`).
+app.include_router(vender_routes.router, prefix="/api")
+# Los contratos que se cobran por un % de lo vendido: sus cortes. Sólo
+# administración.
+app.include_router(cobros_routes.router, prefix="/api")
+# La reserva de una cara entera o de una parte: listar, confirmar y cancelar
+# (`routers/reservas.py`). Sólo administración.
+app.include_router(reservas_routes.router, prefix="/api")
 # Quién hizo qué. Sólo la lee el administrador.
 app.include_router(bitacora_routes.router, prefix="/api")
 

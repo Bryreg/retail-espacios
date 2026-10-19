@@ -141,6 +141,37 @@ class BaseIlegible(RuntimeError):
 _Contrato = namedtuple("_Contrato", "codigo proveedor marca canon inicio fin activo")
 
 
+def _clave_de_contrato(c) -> tuple:
+    """Cómo se reconoce un contrato sin su id (``_contratos_del_cliente`` no lo
+    trae): el espacio, el proveedor y las fechas."""
+    return (c.codigo, c.proveedor, c.inicio, c.fin)
+
+
+def _contratos_por_ventas_del_cliente(db, desde: date, hasta: date) -> dict[tuple, float]:
+    """``{clave: cobrado en el período}`` de los contratos que se cobran por
+    un % de las ventas (``docs/rediseno/vender-api.md`` §3). Su canon es 0 y
+    la plata sale de los cortes: en el detalle valen lo cobrado y quedan fuera
+    de todo promedio (como una participación de cara)."""
+    from app.models.models import Space, SpaceLease, Supplier
+    from app.models.vender import CobroPorVenta
+    from app.services.cobros import cobrado_por_contrato
+
+    filas = (
+        db.query(SpaceLease.id, Space.code, Supplier.name, SpaceLease.start_date, SpaceLease.end_date)
+        .join(CobroPorVenta, CobroPorVenta.lease_id == SpaceLease.id)
+        .join(Space, Space.id == SpaceLease.space_id)
+        .join(Supplier, Supplier.id == SpaceLease.supplier_id)
+        .all()
+    )
+    if not filas:
+        return {}
+    cobrado = cobrado_por_contrato(db, desde, hasta)
+    return {
+        ((codigo or "").strip().upper(), (nombre or "").strip(), inicio, fin): float(cobrado.get(lid, 0.0))
+        for lid, codigo, nombre, inicio, fin in filas
+    }
+
+
 # ─── Lo que hay que leer del plano y de las filas ─────────────────────────────
 
 def _fixtures_por_codigo(db) -> dict[str, dict]:
@@ -541,7 +572,8 @@ def _armar_sedes(espacios: list[dict]) -> list[dict]:
 
 def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dict,
                             partes: dict | None = None,
-                            publicados: dict | None = None) -> list[dict]:
+                            publicados: dict | None = None,
+                            por_ventas: set | None = None) -> list[dict]:
     """Total, ocupados, libres y la estadística de canon por tipo de espacio.
 
     ``canon_promedio`` / ``canon_minimo`` / ``canon_maximo`` salen de los
@@ -553,7 +585,12 @@ def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dic
     El valor de la tarifa no sale, ni su suma, ni su promedio: es la única cifra
     del negocio del cliente que la Fase 6 dejó fuera de la frontera y la Fase 8
     no la mueve.
+
+    ``por_ventas``: los códigos cuyo contrato publicado se cobra por un % de
+    las ventas (``docs/rediseno/vender-api.md`` §3). Ocupan, pero su canon no
+    entra a la estadística: no tienen un valor fijo que promediar.
     """
+    por_ventas = por_ventas or set()
     sedes_por_tipo: dict[str, set] = {}
     for sede, tipo in mapa_tipos.values():
         sedes_por_tipo.setdefault(tipo, set()).add(sede)
@@ -580,6 +617,7 @@ def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dic
         partida = partir_codigo(codigo)
         tapada = es_division(partida.parte) and partida.cara_entera in publicados
         por_tipo.setdefault(clase, []).append({
+            "codigo": codigo,
             "estado": "ocupado" if (propio is not None or tapada) else "libre",
             "contrato": {"canon_mensual": _plata(propio.canon)} if propio is not None else None,
         })
@@ -588,7 +626,8 @@ def _armar_resumen_por_tipo(espacios: list[dict], mapa_tipos: dict, tarifas: dic
     for tipo in sorted(por_tipo):
         filas = por_tipo[tipo]
         ocupados = sum(1 for e in filas if e["estado"] != "libre")
-        canones = [e["contrato"]["canon_mensual"] for e in filas if e["contrato"] is not None]
+        canones = [e["contrato"]["canon_mensual"] for e in filas
+                   if e["contrato"] is not None and e.get("codigo") not in por_ventas]
         salida.append({
             "tipo": tipo,
             "total": len(filas),
@@ -635,7 +674,7 @@ def _armar_piezas(partes: dict, publicados: dict, desde: date) -> list[dict]:
 # ─── Los proveedores del cliente ──────────────────────────────────────────────
 
 def _indice_de_proveedores(del_periodo: list, historicos: list, mapa_tipos: dict,
-                           desde: date) -> list[dict]:
+                           desde: date, por_ventas: set | None = None) -> list[dict]:
     """Un registro por proveedor con contratos en el período.
 
     **Se agrupa por el nombre CRUDO y se publica el saneado**, exactamente como
@@ -646,7 +685,13 @@ def _indice_de_proveedores(del_periodo: list, historicos: list, mapa_tipos: dict
     proveedor en la base —vencidos y cancelados incluidos—: la antigüedad de la
     relación comercial es lo que el asesor necesita, y esa no empieza el día
     del contrato vigente.
+
+    ``por_ventas``: las claves (``_clave_de_contrato``) de los contratos que
+    se cobran por ventas. Suman lo cobrado al ``canon_total`` y cuentan como
+    contratos, pero no entran al ``canon_promedio`` (``None`` si el proveedor
+    sólo tiene de ésos).
     """
+    por_ventas = por_ventas or set()
     indice: dict[str, dict] = {}
     for c in del_periodo:
         if not c.proveedor:
@@ -660,10 +705,15 @@ def _indice_de_proveedores(del_periodo: list, historicos: list, mapa_tipos: dict
             "sedes": set(),
             "codigos": set(),
             "por_vencer": 0,
+            "_fijos": 0,
+            "_canon_fijo": 0.0,
         })
         entrada = mapa_tipos.get(c.codigo)
         registro["contratos"] += 1
         registro["canon_total"] += c.canon
+        if _clave_de_contrato(c) not in por_ventas:
+            registro["_fijos"] += 1
+            registro["_canon_fijo"] += c.canon
         registro["codigos"].add(c.codigo)
         if entrada is None:
             registro["tipos"].add(TIPO_FUERA_DEL_PLANO)
@@ -685,7 +735,8 @@ def _indice_de_proveedores(del_periodo: list, historicos: list, mapa_tipos: dict
     # proveedor, dos cifras que el asesor lee juntas no cerrarían entre sí.
     total = len(del_periodo)
     for crudo, registro in indice.items():
-        registro["canon_promedio"] = _plata(registro["canon_total"] / registro["contratos"])
+        fijos, canon_fijo = registro.pop("_fijos"), registro.pop("_canon_fijo")
+        registro["canon_promedio"] = _plata(canon_fijo / fijos) if fijos else None
         registro["canon_total"] = _plata(registro["canon_total"])
         registro["participacion_pct"] = _pct(registro["contratos"], total)
         registro["desde"] = primeros.get(crudo)
@@ -796,7 +847,8 @@ def _candidatos(indice: list[dict], tipo: str, codigos_ocupados: set) -> list[di
     """
     elegibles = [r for r in indice if not (r["codigos"] & codigos_ocupados)]
     elegibles.sort(key=lambda r: (
-        0 if tipo in r["tipos"] else 1, -r["canon_promedio"], r["nombre"], r["crudo"],
+        # Sin promedio (sólo contratos por ventas): al final de su grupo.
+        0 if tipo in r["tipos"] else 1, -(r["canon_promedio"] or 0), r["nombre"], r["crudo"],
     ))
     return [
         {
@@ -1157,6 +1209,7 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
             fixtures = _fixtures_por_codigo(db)
             geo = _zona_y_area(db)
             crudos = _contratos_del_cliente(db)
+            ventas = _contratos_por_ventas_del_cliente(db, desde, hasta)
             tarifas = _tarifas_limpias(db)
         finally:
             # Sólo se leyó: nada que comitear ni que revertir.
@@ -1166,6 +1219,10 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
         raise BaseIlegible(slug) from e
 
     historicos = [_Contrato(*fila) for fila in crudos]
+    # Un contrato por ventas vale lo cobrado en el período (para el ingreso,
+    # los proveedores y lo que está en juego), nunca «$ 0».
+    historicos = [c._replace(canon=ventas[_clave_de_contrato(c)]) if _clave_de_contrato(c) in ventas else c
+                  for c in historicos]
     del_periodo = [
         c for c in historicos if _del_periodo(c.inicio, c.fin, c.activo, desde, hasta)
     ]
@@ -1174,15 +1231,16 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
     for c in del_periodo:
         por_codigo.setdefault(c.codigo, []).append(c)
     publicados = {codigo: _contrato_publicado(lista) for codigo, lista in por_codigo.items()}
+    codigos_por_ventas = {codigo for codigo, c in publicados.items() if _clave_de_contrato(c) in ventas}
 
     espacios = _armar_espacios(mapa_tipos, fixtures, geo, publicados, desde, hasta, partes)
     sedes = _armar_sedes(espacios)
-    resumen = _armar_resumen_por_tipo(espacios, mapa_tipos, tarifas, partes, publicados)
+    resumen = _armar_resumen_por_tipo(espacios, mapa_tipos, tarifas, partes, publicados, codigos_por_ventas)
     piezas = _armar_piezas(partes, publicados, desde)
     # Lo que puede tener contrato: las caras y las partes. El universo de
     # espacios sigue siendo `mapa_tipos`.
     tipos = _tipos_de_contrato(mapa_tipos, partes, (c.codigo for c in historicos))
-    indice = _indice_de_proveedores(del_periodo, historicos, tipos, desde)
+    indice = _indice_de_proveedores(del_periodo, historicos, tipos, desde, set(ventas))
     benchmark = benchmark_por_tipo(anio_mes)
     precios = _precios_sugeridos(resumen, benchmark)
 

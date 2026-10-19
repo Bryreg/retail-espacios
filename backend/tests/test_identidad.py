@@ -457,6 +457,21 @@ def test_worker_por_membresia_no_ve_negotiatedvalue_ni_monthly_rent(client, admi
         "/api/layout/NAVE", headers=admin).json()["fixtures"][0]
 
 
+def test_worker_por_membresia_no_entra_a_lo_nuevo_de_vender(client, admin):
+    """El rediseño de Vender (docs/rediseno/vender-api.md) trajo plata nueva:
+    el precio de una reserva, el cobro por ventas con sus cortes, la reserva de
+    una cara entera y el proveedor que se completa. Nada de eso es del worker,
+    tampoco por membresía."""
+    _invitar(client, admin, "mercaderista2@x.co", rol="worker")
+    _usar_verificador(client, {"t": _claims("uid-merc2", "mercaderista2@x.co")})
+    worker_membresia = _cab(_oauth(client, "t").json()["token"])
+    for url in ("/api/cobros", "/api/cobros/pendientes", "/api/reservas", "/api/suppliers/completar?prefijo=alp"):
+        assert client.get(url, headers=worker_membresia).status_code == 403, url
+    assert client.post("/api/contratos/vender?validar=1", json={}, headers=worker_membresia).status_code == 403
+    assert client.post("/api/cobros/1/cortes", json={}, headers=worker_membresia).status_code == 403
+    assert client.post("/api/reservas/1/confirmar", json={}, headers=worker_membresia).status_code == 403
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # Cross-cliente: una membresía en A no abre B
 # ════════════════════════════════════════════════════════════════════════════

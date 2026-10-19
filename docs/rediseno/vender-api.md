@@ -40,8 +40,8 @@ ninguna (un solo commit; cualquier error hace rollback).
   contrato (`monthly_rent`, que en Vender nunca se prorrateó). `modo_precio` y
   `valor_tecleado` sólo recuerdan cómo se escribió («al mes» × la duración = el total; ver §6).
 - Con `cobro.modo = "ventas"`, `valor` va en 0 y no se exige; el monto sale de los cortes (§3).
-  Si viene otro valor, la línea vuelve en el 409 con `code: "valor"`. Una reserva no se cobra
-  por ventas (422 `cobro`): el cobro por ventas se elige al guardar el contrato.
+  Si viene otro valor, la línea vuelve en el 409 con `code: "valor"`. Sin `porcentaje` (0 < p ≤
+  100) o sin `corte`: 422 `cobro`.
 - Con `tipo = "contrato"` y cobro fijo, cada línea lleva `valor` > 0 (si no, 409 `valor`). Con
   `modo_precio = "mensual"` el servidor comprueba `round(valor_tecleado × meses) = valor` (±1
   peso, la cuenta de §6); si no coincide, 409 `valor`.
@@ -101,6 +101,12 @@ o de parte que no entra trae `code: "linea_invalida"`, la primera frase de la pl
 escribe al reservar desde Vender. `confirmar_reserva` usa ese valor si el cuerpo no trae
 `valor_mensual`, y borra la fila al confirmar. Sale como `valor_acordado` en las rutas de
 administración de participaciones. Nunca en el historial (que no lleva plata).
+
+Lleva también el cobro (`cobro_modo` "fijo"|"ventas", `cobro_porcentaje`, `cobro_corte`; con
+ventas, `valor` va en null). Con cobro por ventas y sin `valor_mensual` en el cuerpo,
+`confirmar_reserva` crea el contrato en 0 con su `cobros_por_venta`; un `valor_mensual` en el
+cuerpo lo pasa a fijo. En las rutas de administración sale como `cobro_acordado: { modo,
+porcentaje, corte }` (null si es fijo).
 
 ## 3. Cobro por % de las ventas: tablas `cobros_por_venta` y `cortes_de_venta`
 
@@ -208,3 +214,9 @@ algo choca o se puede vender.
   notas? }` y contesta `{ reserva_id, lease_id, espacio, avisos }`; una reserva que ya no vive
   (confirmada, cancelada o caducada) da 409. Bitácora: `reserva_espacio.alta`,
   `reserva_espacio.confirmada` (+ `contrato.alta`) y `reserva_espacio.baja`.
+- Cobro por ventas (2026-10-20): `reservas_de_espacio` guarda `cobro_modo`, `cobro_porcentaje`
+  y `cobro_corte`; `GET /api/reservas` lo dice en `cobro: { modo, porcentaje?, corte? }`. Al
+  confirmar, el cobro guardado manda salvo que el cuerpo traiga `valor` (contrato fijo) o `cobro: { modo, porcentaje, corte }` (el que se diga). Con ventas, el contrato
+  nace en 0 con su `cobros_por_venta`. Borrar una sede cancela sus reservas de espacio.
+- La planometría NO se carga en una reserva (decisión del dueño, 2026-10-20): comercial la
+  cuelga del contrato una vez confirmado, con `POST /api/leases/{id}/planometria` como siempre.
