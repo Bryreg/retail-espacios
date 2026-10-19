@@ -5,6 +5,8 @@ import type { MountConfirmation, MountMotivo } from "../../api/mounts";
 import MiniMapa, { describirUbicacion } from "../MiniMapa/MiniMapa";
 import { prepararFoto, MAX_SUBIDA } from "../../utils/foto";
 import type { UnifiedFixture } from "../../types/fixtures";
+import type { DibujoDeMontaje } from "../../api/montaje";
+import MiZonaEnLaCara from "./MiZonaEnLaCara";
 
 /**
  * La única pregunta del montaje: ¿lo montaste?
@@ -74,7 +76,7 @@ function fecha(iso: string): string {
 
 
 export default function FormularioMontaje({
-  item, vecinos, plano, donde: dondeDelServidor, quienReporta, onEnviar, onCancel, onSaved,
+  item, vecinos, plano, dibujo, donde: dondeDelServidor, quienReporta, onEnviar, onCancel, onSaved,
 }: {
   item: EspacioAMontar;
   /** Todos los muebles de la sede: el plano necesita el contexto, no solo el destino. */
@@ -86,6 +88,11 @@ export default function FormularioMontaje({
    *  propio token— y el formulario no tiene por qué saber cuál de los dos lo
    *  está usando. */
   plano?: PlanoDelEspacio | null;
+  /** Una participación de cara con la distribución confirmada: SU zona sobre
+   *  la cara, ya filtrada por el servidor (fase 2 · G1). Sólo la pasa la
+   *  pantalla del enlace (`pages/Montaje.tsx`); el tablero no, y sin esto la
+   *  tarjeta no sale. */
+  dibujo?: DibujoDeMontaje | null;
   /** La frase de ubicación del servidor. Sólo se usa si el plano no se puede
    *  dibujar: cuando sí, la calcula MiniMapa con la misma regla. */
   donde?: string | null;
@@ -118,6 +125,12 @@ export default function FormularioMontaje({
   const tieneMapa = useMemo(
     () => vecinos.some((f) => f.code.toUpperCase() === item.fixtureCode.trim().toUpperCase()),
     [vecinos, item.fixtureCode],
+  );
+  // El mueble de la zona, para las guías de sus entrepaños (sólo geometría:
+  // los vecinos llegan sin nada comercial). Sin él, el dibujo va sin guías.
+  const muebleDeLaZona = useMemo(
+    () => (dibujo ? vecinos.find((f) => f.code.toUpperCase() === item.fixtureCode.trim().toUpperCase()) ?? null : null),
+    [dibujo, vecinos, item.fixtureCode],
   );
   const ubicacion = useMemo(
     () => (tieneMapa ? describirUbicacion(vecinos, item.fixtureCode) : null) ?? dondeDelServidor ?? null,
@@ -313,6 +326,11 @@ export default function FormularioMontaje({
           </div>
         </a>
       )}
+
+      {/* Tu zona en la cara (fase 2 · G1): entre «Así debe quedar» y «Dónde
+          queda». Sólo la de quien monta, en gris lo demás; sin distribución
+          confirmada no llega `dibujo` y no sale nada. */}
+      {dibujo && <MiZonaEnLaCara dibujo={dibujo} mueble={muebleDeLaZona} />}
 
       {tieneMapa && (
         <div

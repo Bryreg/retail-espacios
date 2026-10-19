@@ -1358,6 +1358,55 @@ await prueba("el formulario frena antes de mandar lo que el servidor rechazaría
   assert.equal(F.valorDeTexto("-5"), null);
 });
 
+// fase 2 · I6 — G3: la caducidad de una reserva provisional la elige quien
+// opera (decisión de la dueña, 2026-10-18: «hasta una fecha límite elegida por
+// quien esté manejando el sistema»). Sin tope fijo —el servidor ya exige
+// `hoy ≤ caduca ≤ hasta`— y sin un valor propuesto: antes el formulario
+// precargaba «hoy + 7» y la decidía por él.
+await prueba("la caducidad de una reserva la elige quien opera: el formulario no la propone en ningún modo y sin ella no se guarda (ejecutado)", () => {
+  const F = P6.FORM;
+  const hoy = "2026-10-17";
+  const ELEGI = "Elegí hasta cuándo se sostiene la reserva.";
+  const RANGO = "La reserva tiene que caducar entre hoy y el último día que reserva.";
+  const reserva = { tipo: "reserva", proveedor: "Postobón", correo: "", marca: "", porcentaje: "25", desde: "2026-10-17", hasta: "2026-12-31",
+    caduca: "", valor: "", notas: "" };
+  // Sin elegir, frena con su frase, en todos los modos que dejan una reserva.
+  assert.equal(F.problemaDeLosCampos("alta", reserva, hoy), ELEGI);
+  assert.equal(F.problemaDeLosCampos("cargarDeNuevo", reserva, hoy), ELEGI);
+  assert.equal(F.problemaDeLosCampos("renovar", reserva, hoy), ELEGI);
+  assert.equal(F.problemaDeLosCampos("editar", { ...reserva, tipo: "contrato" }, hoy), ELEGI, "cambiar una reserva siempre deja una reserva");
+  // La vista previa dice lo mismo, y por eso «Guardar» queda frenado.
+  const v = F.vistaPrevia("alta", reserva, caraOut(), null, null, "A");
+  assert.equal(v.problema, ELEGI);
+  assert.equal(F.fraseDeLaVistaPrevia(v), ELEGI);
+  // Un contrato no tiene caducidad: vacía no frena.
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, tipo: "contrato", valor: "900.000" }, hoy), null, "un contrato con `caduca: \"\"` se frenó");
+  assert.equal(F.problemaDeLosCampos("confirmar", { ...reserva, valor: "900.000" }, hoy), null);
+  // Elegida, entra: sin tope fijo, hasta el último día que reserva. Las frases de rango no cambian.
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: hoy }, hoy), null);
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2026-12-31" }, hoy), null, "se le puso un tope que la dueña no pidió");
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2027-01-01" }, hoy), RANGO);
+  assert.equal(F.problemaDeLosCampos("alta", { ...reserva, caduca: "2026-10-16" }, hoy), RANGO);
+  // Ningún modo la trae escrita: ni el alta, ni «Cargar de nuevo», ni renovar,
+  // ni cambiar una reserva que no tenía (la que ya tenía, ésa).
+  assert.equal(F.camposIniciales("alta", null, null, hoy).caduca, "");
+  const vieja = pOut([tOut({ estado: "contrato", desde: "2026-01-01", hasta: "2026-06-30" })]);
+  for (const modo of ["cargarDeNuevo", "renovar", "confirmar"]) {
+    assert.equal(F.camposIniciales(modo, vieja.terminos[0], vieja, hoy).caduca, "", `«${modo}» propone una caducidad`);
+  }
+  const res = pOut([tOut({ estado: "reserva", estado_visible: "reserva", lease_id: null, valor_mensual: null, caduca: "2026-10-25", desde: "2026-10-17", hasta: "2026-12-31" })]);
+  assert.equal(F.camposIniciales("editar", res.terminos[0], res, hoy).caduca, "2026-10-25", "cambiar una reserva perdió la caducidad que tenía");
+  const sinCaduca = pOut([tOut({ estado: "reserva", estado_visible: "reserva", lease_id: null, valor_mensual: null, caduca: null, desde: "2026-10-17", hasta: "2026-12-31" })]);
+  assert.equal(F.camposIniciales("editar", sinCaduca.terminos[0], sinCaduca, hoy).caduca, "");
+  // En la fuente: ninguna caducidad calculada, y el campo con su rango.
+  const form = codigo6b("FormularioDeParticipacion");
+  assert.doesNotMatch(form, /caduca: sumarDias\(/, "el formulario volvió a proponer la caducidad");
+  assert.doesNotMatch(form, /caduca \?\? sumarDias\(/);
+  assert.match(form, /<input id="part-caduca" type="date" className=\{CAMPO\} value=\{c\.caduca\} min=\{hoy\} max=\{c\.hasta \|\| undefined\}/,
+    "el campo de la caducidad no ofrece sólo entre hoy y el último día que reserva");
+  assert.match(form, /if \(!c\.caduca\) return "Elegí hasta cuándo se sostiene la reserva\.";/);
+});
+
 // ── Verificación del paso 6b ─────────────────────────────────────────────────
 
 await prueba("teclado (verificación 6b): desde el PANEL andan V/R/P/G, deshacer y Esc —clic en la fila de la leyenda y R—; Supr, flechas y Enter siguen siendo sólo del lienzo", () => {

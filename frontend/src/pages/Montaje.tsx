@@ -227,6 +227,7 @@ export default function Montaje() {
         item={item}
         vecinos={espacio.vecinos as UnifiedFixture[]}
         plano={plano}
+        dibujo={espacio.dibujo ?? null}
         donde={espacio.donde}
         onEnviar={reportar}
         onCancel={corrigiendo ? () => setCorrigiendo(false) : undefined}

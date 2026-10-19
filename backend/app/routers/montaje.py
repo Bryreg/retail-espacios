@@ -14,10 +14,20 @@ acordarse de este archivo.
 
 Tres cosas necesita esa pantalla y tres cosas hay acá: qué montar y dónde
 queda, cómo debe quedar armado, y el botón para reportarlo.
+
+Desde la fase 2 de participaciones (2026-10-19), dos cosas más:
+
+· El enlace que dice su contrato sigue a ESE contrato aunque el espacio cambie
+  de código (una renumeración, un renombre de sede): antes respondía «Ese
+  contrato se canceló», que era falso (``_resolver``).
+· Quien monta una participación de cara ve SU zona dibujada sobre la cara —y
+  nada de las otras—, si la distribución está confirmada (``dibujo``,
+  ``_dibujo_de_participacion``). El filtro va acá, en el servidor: las formas
+  ajenas nunca viajan.
 """
 import json
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel
@@ -27,12 +37,17 @@ from sqlalchemy.orm import Session, defer
 from app.auth import Quien, require_montaje
 from app.database import get_db
 from app.fechas import ZONA_DEL_NEGOCIO, hoy
-from app.models.models import LayoutSnapshot, LeaseFile, MountConfirmation, Space, SpaceFile, SpaceLease
+from app.models.models import (
+    ArchivedSpace, LayoutSnapshot, LeaseFile, MountConfirmation, RenumeracionNombre, Space, SpaceFile, SpaceLease,
+)
 from app.models.participaciones import Participacion
 from app.routers.mounts import MountOut, registrar_montaje
 from app.services.contratos import contrato_para_montar
 from app.services.layout_lookup import describe_location
-from app.services.partes import cantidad_de, es_participacion, partes_tipadas, partir_codigo, texto_para_montar
+from app.services.participaciones import cara_del_termino, estado_de_distribucion, leer
+from app.services.partes import (
+    cantidad_de, es_participacion, normalizar, partes_tipadas, partir_codigo, texto_para_montar,
+)
 from app.services.reglas_participacion import pct
 
 router = APIRouter(prefix="/montaje", tags=["montaje"], dependencies=[Depends(require_montaje)])
@@ -63,6 +78,40 @@ def _es_numero(v: object) -> bool:
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
+
+class ExclusionDeMontaje(BaseModel):
+    """Un pedazo de la cara que no se vende (parante, zócalo, copete…), en u,v."""
+    por: str
+    u0: float
+    u1: float
+    v0: float
+    v1: float
+
+
+class SuperficieDeMontaje(BaseModel):
+    """La cara, sólo su forma: medidas en metros y lo que no se vende."""
+    orientacion: Literal["frente", "arriba"]
+    ancho: float
+    alto: float
+    exclusiones: list[ExclusionDeMontaje] = []
+
+
+class DibujoDeMontaje(BaseModel):
+    """La zona de quien monta sobre su cara (fase 2 · G1, decisión de la dueña
+    del 2026-10-18: «con su zona dibujada, sólo la suya; el resto gris»).
+
+    Tipado clave por clave, como ``_solo_geometria``: una lista blanca. No hay
+    lugar acá para el nombre de otro proveedor, su marca, su porcentaje, su
+    número de participación ni plata; y ``zonas`` son SÓLO los polígonos de la
+    participación del enlace —el filtro va en el servidor
+    (``_dibujo_de_participacion``)—, así que las formas ajenas no viajan.
+    """
+    cara: Literal["A", "B"]
+    superficie: SuperficieDeMontaje
+    #: Los polígonos de SU participación en la capa confirmada, ``[[u, v], …]``
+    #: (u = 0 a la izquierda de quien mira, v = 0 abajo o el borde delantero).
+    zonas: list[list[list[float]]]
+
 
 class EspacioMontaje(BaseModel):
     """Todo lo que la pantalla muestra, en una sola llamada.
@@ -105,6 +154,11 @@ class EspacioMontaje(BaseModel):
     #: armarla: «Puerta 2 de 3, contando de izquierda a derecha mirando el
     #: frente». ``None`` es la cara entera. Ni plata ni quién tiene las otras.
     parte: Optional[dict] = None
+    #: Una participación de cara con la distribución confirmada: su zona
+    #: dibujada sobre la cara (sólo la suya). Sólo con el enlace de montaje o
+    #: para un admin, nunca para el trabajador; ``None`` en todo lo demás, y
+    #: la pantalla queda como antes.
+    dibujo: Optional[DibujoDeMontaje] = None
 
 
 # ─── Resolución ───────────────────────────────────────────────────────────────
@@ -233,6 +287,94 @@ def _espacio(db: Session, code: str) -> Optional[Space]:
     return db.query(Space).filter(func.upper(func.trim(Space.code)) == code).first()
 
 
+def _renumeracion_lo_llevo(db: Session, antes: str, ahora: str) -> bool:
+    """¿Una renumeración llevó al mueble que se llamaba ``antes`` (código
+    completo, sin cara ni parte) a llamarse ``ahora``?
+
+    Se contesta con el registro de la renumeración (``RenumeracionNombre``),
+    que existe para esta pregunta: «¿cómo se llamaba este mueble cuando se
+    negoció el contrato que tengo en la mano?». No se elige un mueble con
+    esto: el espacio lo elige el contrato del enlace; esto sólo confirma que
+    el código del enlace es un nombre viejo de ESE mueble y no otro.
+    """
+    if not antes or not ahora:
+        return False
+    muebles = {
+        fila.fixture_id for fila in db.query(RenumeracionNombre.fixture_id)
+        .filter(func.upper(func.trim(RenumeracionNombre.codigo_anterior)) == antes).all()
+    }
+    if not muebles:
+        return False
+    return db.query(RenumeracionNombre.id).filter(
+        RenumeracionNombre.fixture_id.in_(sorted(muebles)),
+        func.upper(func.trim(RenumeracionNombre.codigo_nuevo)) == ahora,
+    ).first() is not None
+
+
+def _contrato_mudado(db: Session, quien: Quien, codigo: str, del_codigo: Optional[Space]) -> Optional[SpaceLease]:
+    """El contrato del enlace cuando su espacio ya no se llama como dice el
+    enlace (fase 2 · enlace por contrato).
+
+    El enlace firma el código que tenía el espacio el día que se vendió. Una
+    renumeración o un renombre de sede le cambian el código a la fila —el
+    contrato, las fotos y los reportes siguen pegados por id—, y con el código
+    viejo no se encontraba nada: la pantalla decía «Ese contrato se canceló»,
+    que era falso. Ahora se sigue al contrato, pero sólo si todo esto vale:
+
+    · el contrato existe, no se canceló, y su fila no está archivada (una sede
+      borrada cierra sus contratos y archiva sus filas);
+    · la cara y la parte son las mismas (lo que se muda es el mueble: la
+      ``…-B-PC2`` de antes es la ``…-B-PC2`` de ahora);
+    · y hay evidencia de que el código del enlace era de ESE espacio: nadie se
+      llama así hoy (el nombre se fue con su mueble, como en un renombre de
+      sede), o el registro de la renumeración dice que ese mueble se llamaba
+      así. Sin evidencia —el código del enlace es hoy de otro espacio que no
+      tiene ese contrato y ninguna renumeración los une—, nada: el contrato y
+      el código van firmados juntos, y que no calcen es un error que no se
+      adivina (``test_el_contrato_del_enlace_tiene_que_ser_de_su_espacio``).
+    """
+    if quien.contrato is None:
+        return None
+    lease = db.get(SpaceLease, quien.contrato)
+    if lease is None or not lease.is_active or lease.space is None:
+        return None
+    if db.query(ArchivedSpace.id).filter(ArchivedSpace.space_id == lease.space_id).first() is not None:
+        return None
+    nuevo = normalizar(lease.space.code)
+    if not nuevo or nuevo == codigo:
+        return None
+    antes, ahora = partir_codigo(codigo), partir_codigo(nuevo)
+    if (antes.cara, antes.parte) != (ahora.cara, ahora.parte):
+        return None
+    if del_codigo is None or _renumeracion_lo_llevo(db, antes.base, ahora.base):
+        return lease
+    return None
+
+
+def _resolver(db: Session, quien: Quien, code: Optional[str]) -> tuple[str, Optional[Space], Optional[SpaceLease]]:
+    """El código, la fila y el contrato sobre los que se está pidiendo.
+
+    Con un enlace que dice su contrato, el código sale del CONTRATO cuando el
+    espacio cambió de código desde que se mandó el enlace (``_contrato_mudado``):
+    la pantalla, la planometría y el reporte caen en el código de hoy. Si el
+    contrato se canceló —o no se puede probar que es de ese espacio—, 410.
+    Sin contrato en el enlace (los de antes del 2026-10-02, que vencen en
+    semanas), el código del token y nada más, como siempre.
+    """
+    codigo = _codigo(quien, code)
+    if not codigo:
+        raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    space = _espacio(db, codigo)
+    lease = _contrato(quien, space)
+    if quien.contrato is not None and lease is None:
+        lease = _contrato_mudado(db, quien, codigo, space)
+        if lease is None:
+            raise HTTPException(status_code=410, detail=CONTRATO_CANCELADO)
+        space = lease.space
+        codigo = normalizar(space.code)
+    return codigo, space, lease
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/mi-espacio", response_model=EspacioMontaje)
@@ -247,9 +389,9 @@ def mi_espacio(
     # armada. Una respuesta cacheada diría "pendiente" después de reportar.
     response.headers["Cache-Control"] = "no-store, max-age=0"
 
-    codigo = _codigo(quien, code)
-    if not codigo:
-        raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    # El código sale del token (o del contrato del enlace, si el espacio cambió
+    # de código desde que se mandó: `_resolver`), nunca del pedido.
+    codigo, space, lease = _resolver(db, quien, code)
 
     sede = _sede_de(codigo, db)
     base = _base(codigo)
@@ -268,10 +410,6 @@ def mi_espacio(
             mueble = f
             break
 
-    space = _espacio(db, codigo)
-    lease = _contrato(quien, space)
-    if quien.contrato is not None and lease is None:
-        raise HTTPException(status_code=410, detail=CONTRATO_CANCELADO)
     plano = _planometria(db, lease)
 
     reportes = (
@@ -312,14 +450,18 @@ def mi_espacio(
     if partido.cara == "B":
         corto = f"{corto}-B"
     parte = None
+    dibujo = None
     if partido.parte is not None:
         corto = f"{corto}-{partido.parte.sufijo}"
         if es_participacion(partido.parte):
             # Una participación de cara (D13): quien monta ve cuál y qué parte
-            # de la cara le toca, en palabras. Sin dibujo de la zona y sin
-            # plata (el porcentaje no es plata: es lo que se monta).
+            # de la cara le toca, en palabras, sin plata (el porcentaje no es
+            # plata: es lo que se monta). Y, con la distribución confirmada, su
+            # zona dibujada sobre la cara: sólo la suya (fase 2 · G1).
             de = None
-            texto = _texto_de_participacion(db, lease, partido)
+            termino = _termino_del_contrato(db, lease)
+            texto = _texto_de_participacion(termino, partido)
+            dibujo = _dibujo_de_participacion(db, termino, quien)
         else:
             de = cantidad_de(mueble, partido.parte.clase) if mueble else None
             texto = texto_para_montar(partido.parte, de)
@@ -344,20 +486,76 @@ def mi_espacio(
         vence=quien.vence,
         se_confirma_desde=se_confirma_desde,
         parte=parte,
+        dibujo=dibujo,
     )
 
 
-def _texto_de_participacion(db: Session, lease: Optional[SpaceLease], partido) -> str:
+def _termino_del_contrato(db: Session, lease: Optional[SpaceLease]) -> Optional[Participacion]:
+    """El término de participación de ESTE contrato, o None (un lease de
+    participación hecho a mano, o sin contrato que mostrar)."""
+    if lease is None:
+        return None
+    return db.query(Participacion).filter(Participacion.lease_id == lease.id).first()
+
+
+def _texto_de_participacion(termino: Optional[Participacion], partido) -> str:
     """«Participación 3 · 25 % de la cara A» con el porcentaje del término de
-    ESTE contrato; sin término (un lease de participación hecho a mano, o sin
-    contrato que mostrar), «Participación 3 de la cara A»."""
-    termino = None
-    if lease is not None:
-        termino = db.query(Participacion).filter(Participacion.lease_id == lease.id).first()
+    ESTE contrato; sin término, «Participación 3 de la cara A»."""
     n = partido.parte.n
     if termino is None:
         return f"Participación {n} de la cara {partido.cara}"
     return f"Participación {n} · {pct(termino.puntos_basicos)} de la cara {partido.cara}"
+
+
+def _dibujo_de_participacion(db: Session, termino: Optional[Participacion], quien: Quien) -> Optional[DibujoDeMontaje]:
+    """La zona de ESTA participación sobre su cara, para quien la monta.
+
+    Sale sólo si todo esto vale; si no, ``None`` y la pantalla queda como antes:
+
+    1. quien pide es el enlace de montaje o un admin. El trabajador NO: con
+       ``?code=`` de cada ``…-PC<n>`` armaría la distribución entera de la cara
+       (D7);
+    2. hay término de este contrato (un lease hecho a mano no tiene zona);
+    3. la cara está en el plano, se vende por participación, y su distribución
+       está CONFIRMADA y al día (``estado_de_distribucion``): ni el borrador, ni
+       la de otro mueble con el mismo código, ni la que quedó «para revisar»
+       porque el mueble cambió —dibujaría algo que ya no es—;
+    4. tiene al menos una zona suya (una cara toda gris no le dice nada).
+
+    **El filtro va acá**: de la capa confirmada viajan sólo los polígonos con
+    ``participacion_space_id ==`` el espacio de la participación. Las formas de
+    las otras participaciones nunca salen del servidor, ni sus números ni sus
+    nombres. Sólo lectura: sin candado (nada se escribe).
+    """
+    if termino is None or not (quien.es_montaje or quien.role == "admin"):
+        return None
+    cara = cara_del_termino(db, termino)
+    if cara.superficie is None:
+        return None
+    datos = leer(db, cara.codigo)
+    if estado_de_distribucion(cara, datos) != "confirmada":
+        return None
+    zonas = [
+        json.loads(z.vertices_json)
+        for z in datos.capas.get("confirmada", [])
+        if z.participacion_space_id == termino.space_id
+    ]
+    if not zonas:
+        return None
+    sup = cara.superficie
+    return DibujoDeMontaje(
+        cara=cara.letra,
+        superficie=SuperficieDeMontaje(
+            orientacion=sup["orientacion"],
+            ancho=sup["ancho"],
+            alto=sup["alto"],
+            exclusiones=[
+                ExclusionDeMontaje(por=str(x["por"]), u0=x["u0"], u1=x["u1"], v0=x["v0"], v1=x["v1"])
+                for x in sup["exclusiones"]
+            ],
+        ),
+        zonas=zonas,
+    )
 
 
 def _utc(t: datetime) -> datetime:
@@ -378,10 +576,7 @@ def planometria(
     comprobación; acá el archivo se resuelve DESDE el token y no hay id que
     cambiar en la barra de direcciones.
     """
-    codigo = _codigo(quien, code)
-    lease = _contrato(quien, _espacio(db, codigo))
-    if quien.contrato is not None and lease is None:
-        raise HTTPException(status_code=410, detail=CONTRATO_CANCELADO)
+    _codigo_de_hoy, _space, lease = _resolver(db, quien, code)
     row = _planometria(db, lease)
     if row is None:
         raise HTTPException(status_code=404, detail="Ese espacio no tiene planometría cargada")
@@ -421,13 +616,11 @@ async def reportar(
     un enlace repartido por correo eso alcanza para escribir sobre el espacio
     de cualquier otro proveedor.
     """
-    codigo = _codigo(quien, space_code)
-    if not codigo:
-        raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    # Con un enlace que dice su contrato, el código es el de HOY del espacio de
+    # ese contrato (`_resolver`): después de una renumeración el reporte cae
+    # en el código nuevo, donde lo busca el tablero.
+    codigo, _space, lease = _resolver(db, quien, space_code)
     if quien.contrato is not None:
-        lease = _contrato(quien, _espacio(db, codigo))
-        if lease is None:
-            raise HTTPException(status_code=410, detail=CONTRATO_CANCELADO)
         desde = _se_confirma_desde(lease)
         if hoy() < desde:
             raise HTTPException(
