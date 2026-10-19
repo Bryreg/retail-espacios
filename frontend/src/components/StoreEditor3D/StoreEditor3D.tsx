@@ -18,12 +18,15 @@ import { ProductoEnPunta, ventaDePunta } from "./muebles/ProductoEnPunta";
 // desnudo, las zonas pegadas a su cara y el store de edición, que sólo lee
 // el editor (las zonas le llegan a la escena armadas: `Scene` no lee stores).
 import { DesnudoDelMueble } from "./muebles/desnudo";
-import { ZonasDelMueble, olvidarTexturasDeZonas, type CaraParaDibujar, type ComoSeVe } from "./muebles/ZonasDelMueble";
-import { useDistribucionStore, capaQueSeMuestra, zonasEditables, type DistribucionActiva } from "../../store/distribucionStore";
+import { ZonasDelMueble, olvidarTexturasDeZonas, type CaraParaDibujar, type ComoSeVe, type TrazoParaDibujar } from "./muebles/ZonasDelMueble";
+import { useDistribucionStore, capaQueSeMuestra, planoAlDia, zonasEditables, type DistribucionActiva } from "../../store/distribucionStore";
 import { useOcupacionStore, claveDeSede } from "../../store/ocupacionStore";
 import { espacioDeLaCara, leerCara, superficieDeOut, terminoDeOut, type CaraOut, type OcupacionOut } from "../../api/participaciones";
 import { UMBRAL_CLIC_PX, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
 import { corteConLaCara, rayoTapado } from "../../utils/zonas3d";
+// fase 2 · I2: el trazo en curso en el 3D y el interruptor «Editar en el 3D».
+import { trazoParaDibujar } from "../../utils/edicionEnElMueble";
+import { useEditarEnEl3D } from "../Distribucion/punteroEnElMueble";
 import { encuadreDeLaCara } from "../../utils/encuadreDeDistribucion";
 import { superficieDeCara, tieneSuperficie, type Superficie } from "../../utils/superficie";
 import { estampasDeLaCara } from "../../utils/coloresDeMarca";
@@ -7265,6 +7268,9 @@ export class CanvasErrorBoundary extends React.Component<
  *  con el editor. */
 const PanelDeDistribucion = React.lazy(() => import("../Distribucion/PanelDeDistribucion"));
 const LienzoDeZonas = React.lazy(() => import("../Distribucion/LienzoDeZonas"));
+/** «Editar en el 3D» (fase 2 · I2): el control del puntero sobre el mueble,
+ *  perezoso y montado sólo con el interruptor prendido. */
+const EdicionEnElMueble = React.lazy(() => import("../Distribucion/EdicionEnElMueble"));
 
 /** Las teclas que el atajo global del editor usaría sobre el mueble elegido
  *  (borrar, girar, ancho por fondo, soltar). En Distribución no le llegan. */
@@ -7367,8 +7373,18 @@ function carasParaDibujar(d: CaraOut | null, zonas: readonly ZonaEnEdicion[], ot
  * `components/Distribucion/`). Con selectores propios: un `pointermove` del
  * lienzo vuelve a dibujar sólo esto, no la escena ni los muebles. En una
  * doble lee también la otra cara (sólo lectura), para dibujarla a la mitad.
+ *
+ * Fase 2 · I2: también el trazo en curso (punteado en el 3D mientras se
+ * dibuja, en el lienzo o en el 3D) y, con «Editar en el 3D» prendido, el
+ * control del puntero (`EdicionEnElMueble`, perezoso): entra por acá, dentro
+ * del grupo del mueble, y no por `Scene`. `orbitRef` y `muebles` son refs: el
+ * nodo se arma una vez (`useMemo` sin dependencias) y no rearma las props de
+ * la escena.
  */
-function ZonasDeLaDistribucion() {
+function ZonasDeLaDistribucion({ orbitRef, muebles }: {
+  orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
+  muebles: React.MutableRefObject<PlacedFixture[]>;
+}) {
   const activa = useDistribucionStore((s) => s.activa);
   const datos = useDistribucionStore((s) => s.datos);
   const zonas = useDistribucionStore((s) => s.edicion.zonas);
@@ -7393,8 +7409,76 @@ function ZonasDeLaDistribucion() {
     for (const d of [otra, datos]) if (d) comoSeVenLasParticipaciones(d, verAlDia).forEach((v, k) => m.set(k, v));
     return m;
   }, [datos, otra, verAlDia]);
+  // fase 2 · I2: el trazo en curso, en el tono de la participación activa, y
+  // las superficies de las caras para el control del puntero.
+  const trazoEnCurso = useDistribucionStore((s) => s.edicion.trazo);
+  const herramienta = useDistribucionStore((s) => s.edicion.herramienta);
+  const cursorDelPoligono = useEditarEnEl3D((s) => s.cursor);
+  const editarEnEl3D = useEditarEnEl3D((s) => s.prendido);
+  const trazo = useMemo<TrazoParaDibujar | null>(() => {
+    const vertices = trazoParaDibujar({ trazo: trazoEnCurso, herramienta }, cursorDelPoligono);
+    if (!vertices) return null;
+    return { vertices, tono: (resaltada !== null ? participaciones.get(resaltada)?.estampa?.tono : null) ?? null };
+  }, [trazoEnCurso, herramienta, cursorDelPoligono, resaltada, participaciones]);
+  const superficies = useMemo(() => {
+    const s: Partial<Record<"A" | "B", Superficie>> = {};
+    for (const c of caras) s[c.cara] = c.superficie;
+    return s;
+  }, [caras]);
   if (caras.length === 0) return null;
-  return <ZonasDelMueble caras={caras} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} />;
+  return (
+    <>
+      <ZonasDelMueble caras={caras} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} trazo={trazo} />
+      {editarEnEl3D && (
+        <React.Suspense fallback={null}>
+          <EdicionEnElMueble orbitRef={orbitRef} muebles={muebles} superficies={superficies} />
+        </React.Suspense>
+      )}
+    </>
+  );
+}
+
+/**
+ * El interruptor «Editar en el 3D» de la barra (fase 2 · I2): apagado al
+ * entrar a la cara. Prendido, sobre la cara que se edita el botón izquierdo
+ * dibuja o mueve con la herramienta del lienzo, y el derecho gira. Se
+ * deshabilita en «Mirar» y con el plano sin guardar (la misma cuenta que el
+ * lienzo), con el motivo en el `title`; prendido, siempre se puede apagar.
+ */
+function BotonDeEditarEnEl3D({ fixtureId, sede }: { fixtureId: string; sede: string }) {
+  const prendido = useEditarEnEl3D((s) => s.prendido);
+  const modo = useDistribucionStore((s) => s.edicion.modo);
+  const datos = useDistribucionStore((s) => s.datos);
+  const mueble = useFixtureStore((s) => (s.fixturesBySede[sede] ?? selectFixtures(s)).find((f) => f.id === fixtureId) ?? null);
+  const motivo = modo !== "editar" ? "Pasá a «Editar» para dibujar en el 3D."
+    : !planoAlDia(datos, mueble) ? "El plano tiene cambios sin guardar: esperá un momento."
+    : null;
+  return (
+    <button onClick={() => useEditarEnEl3D.getState().alternar()} disabled={motivo !== null && !prendido}
+      aria-pressed={prendido} data-editar-en-3d
+      title={motivo ?? (prendido
+        ? "Dejar de editar en el 3D: el botón izquierdo vuelve a girar."
+        : "Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho.")}
+      className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+        prendido
+          ? 'border-accent/50 bg-accent/15 text-accent-200'
+          : 'border-dark-line-2 bg-dark-surface text-dark-ink-2 hover:bg-dark-surface-2'
+      }`}>
+      Editar en el 3D
+    </button>
+  );
+}
+
+/** La pista sobre el 3D con «Editar en el 3D» prendido (fase 2 · I2). */
+function PistaDeEditarEnEl3D() {
+  const prendido = useEditarEnEl3D((s) => s.prendido);
+  if (!prendido) return null;
+  return (
+    <div data-pista-editar-en-3d
+      className="pointer-events-none absolute inset-x-2 bottom-2 z-10 rounded-md border border-dark-line-2 bg-dark-bg/85 px-3 py-1.5 text-[11px] text-dark-ink-2 backdrop-blur-sm">
+      Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho.
+    </div>
+  );
 }
 
 /** Lo que dice la ocupación anónima de las caras por participación de un
@@ -7940,7 +8024,12 @@ export default function StoreEditor3D() {
   const superficieLeida = useDistribucionStore((s) => s.datos?.superficie ?? null);
   const caraLeida = useDistribucionStore((s) => s.datos?.cara ?? null);
   const tocarEnElMueble = useDistribucionStore((s) => s.tocarEnElMueble);
-  const zonasDeLaDistribucion = useMemo(() => <ZonasDeLaDistribucion />, []);
+  // fase 2 · I2: «Editar en el 3D» necesita la órbita (el botón derecho gira)
+  // y los muebles (lo que tapa el rayo); van por refs, así el nodo sigue
+  // armándose una sola vez.
+  const placedFixturesRef = useRef(placedFixtures);
+  placedFixturesRef.current = placedFixtures;
+  const zonasDeLaDistribucion = useMemo(() => <ZonasDeLaDistribucion orbitRef={orbitRef} muebles={placedFixturesRef} />, []);
   const muebleDistribuido = muebleEnDistribucion ? placedFixtures.find((f) => f.id === muebleEnDistribucion) ?? null : null;
   const propsDeDistribucion = useMemo<PropsDeDistribucion | undefined>(() => {
     if (!muebleDistribuido || !caraEnDistribucion) return undefined;
@@ -8782,6 +8871,11 @@ export default function StoreEditor3D() {
               {presentationMode ? 'Salir' : 'Presentar'}
             </button>
 
+            {/* fase 2 · I2: «Editar en el 3D», sólo con el 3D a la vista. */}
+            {distribucionVisible && distribucionActiva && !ocultar3D && (
+              <BotonDeEditarEnEl3D fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} />
+            )}
+
             {distribucionVisible && angosta && (
               <button onClick={() => setOcultar3D((o) => !o)} data-ocultar-3d
                 className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
@@ -8884,6 +8978,9 @@ export default function StoreEditor3D() {
             />
           </Canvas>
         </CanvasErrorBoundary>
+
+        {/* fase 2 · I2: la pista de «Editar en el 3D», sobre el 3D. */}
+        {distribucionVisible && !ocultar3D && <PistaDeEditarEnEl3D />}
 
         {/* MEJORA 9: Tooltip on hover */}
         {/* En Presentar no hay tooltip: la pantalla la está mirando el

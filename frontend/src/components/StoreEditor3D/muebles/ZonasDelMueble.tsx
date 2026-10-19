@@ -34,6 +34,10 @@ import { puntoInterior } from "../../../utils/edicionDeZonas";
  *     cintas coplanares (dos marcas vecinas, la historia bajo una viva, la
  *     elegida) decide su NIVEL (`nivelDeCinta`): cada nivel va 0,2 mm más
  *     afuera (`separacionDeCinta`), nunca el orden en que la GPU las triangula.
+ *   · **El trazo en curso** (un rectángulo o un polígono a medio dibujar, en
+ *     el lienzo o en el 3D con «Editar en el 3D»): una cinta discontinua en
+ *     el tono de la participación activa, en el nivel más alto de la cara que
+ *     se edita. Antes el 3D no mostraba nada hasta soltar.
  *   · **Lejos (más de 40 m)**, ni mallas ni `Html`: las letras y el rótulo no
  *     se montan (`sigueLejos`, con histéresis).
  *   · **No roban el clic**: toda malla lleva `raycast` nulo y va marcada
@@ -155,6 +159,10 @@ export interface CaraParaDibujar {
   /** Zonas de participaciones que ya no rigen: cinta gris punteada. */
   historia: readonly Poligono[];
 }
+
+/** El trazo en curso (`trazoParaDibujar`): sus vértices en u,v y el tono de
+ *  la participación activa (`null`: gris). */
+export interface TrazoParaDibujar { vertices: Poligono; tono: string | null }
 
 /** Cómo se ve cada participación (por `spaceId`). */
 export interface ComoSeVe {
@@ -400,10 +408,12 @@ function Rotulo({ sup, cara, vertices, texto }: { sup: Superficie; cara: "A" | "
   );
 }
 
-function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada, lejos }: {
+function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada, lejos, trazo }: {
   c: CaraParaDibujar; participaciones: ReadonlyMap<number, ComoSeVe>; resaltada: number | null; seleccionada: string | null;
   /** Lejos (más de `DISTANCIA_MAXIMA_M`): los rótulos `Html` no se montan. */
   lejos: boolean;
+  /** El trazo en curso: sólo en la cara que se edita. */
+  trazo?: TrazoParaDibujar | null;
 }) {
   const sup = c.superficie;
   const t = transformDeCara(sup, c.cara);
@@ -446,6 +456,11 @@ function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada, lejos }: 
         <Cinta key={`h${k}`} sup={sup} cara={c.cara} vertices={p} ancho={CINTA_M} estilo="punteada"
           tono={GRIS_DE_HISTORIA} opacidad={0.8 * mitad} nivel={nivelDeCinta({ historia: true, indice: 0, cuantas: ordenadas.length })} />
       ))}
+      {/* El trazo en curso, discontinuo, encima de todo lo de la cara. */}
+      {c.editada && trazo && trazo.vertices.length >= 2 && (
+        <Cinta key="trazo" sup={sup} cara={c.cara} vertices={trazo.vertices} ancho={CINTA_ELEGIDA_M} estilo="discontinua"
+          tono={trazo.tono ?? GRIS_DE_HISTORIA} opacidad={1} nivel={NIVEL_MAXIMO_DE_CINTA} />
+      )}
       {c.editada && !lejos && c.zonas.map((z) => {
         const como = participaciones.get(z.spaceId);
         if (!como || (z.clave !== seleccionada && z.spaceId !== resaltada)) return null;
@@ -460,13 +475,15 @@ function ZonasDeUnaCara({ c, participaciones, resaltada, seleccionada, lejos }: 
  * Las zonas de las caras del mueble que se distribuye, y la letra de cada
  * cara. La monta la escena adentro del grupo del mueble.
  */
-export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participaciones, resaltada, seleccionada }: {
+export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participaciones, resaltada, seleccionada, trazo = null }: {
   caras: readonly CaraParaDibujar[];
   participaciones: ReadonlyMap<number, ComoSeVe>;
   /** La participación activa (con la que se dibuja): sus zonas resaltan. */
   resaltada: number | null;
   /** La zona elegida (su `clave`). */
   seleccionada: string | null;
+  /** El trazo en curso (se dibuja en la cara que se edita), o nada. */
+  trazo?: TrazoParaDibujar | null;
 }) {
   const grupo = useRef<THREE.Group>(null);
   const { camera } = useThree();
@@ -506,7 +523,8 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
   return (
     <group ref={grupo} userData={CHROME}>
       {caras.map((c) => (
-        <ZonasDeUnaCara key={c.cara} c={c} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} lejos={lejos} />
+        <ZonasDeUnaCara key={c.cara} c={c} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} lejos={lejos}
+          trazo={trazo} />
       ))}
       {!lejos && caras.length > 1 && caras.map((c) => (
         <Html key={`letra${c.cara}`} position={letraDeCara(c.superficie, c.cara)} center zIndexRange={[6, 0]}

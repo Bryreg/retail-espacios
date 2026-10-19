@@ -2164,4 +2164,476 @@ await prueba("guardas de la copia: el diálogo con los tokens del cajón, UN bot
   assert.ok(!/HistorialOut\["derivados"\]\[number\] &/.test(fuente(`${DIST}/PanelDeDistribucion.tsx`)), "el panel sigue leyendo dia/derivado con un tipo local");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// fase 2 · I2 · «Editar en el 3D», el trazo en el 3D y «Ajustar el borde»
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// El control del puntero del 3D (`components/Distribucion/punteroEnElMueble.ts`)
+// se EJECUTA con un contenedor y eventos de mentira: qué eventos corta (los
+// que no, los ve OrbitControls o el clic de siempre), qué acciones del
+// reductor manda y que al desengancharse no deja nada. Lo que decide sin DOM
+// (`utils/edicionEnElMueble.ts`) va con su tabla entera. Y lo que sólo se ve
+// en el navegador se fija en el código: perezoso y montado sólo con el
+// interruptor, la órbita intacta salvo el botón derecho, `Scene` sin cambios,
+// el mismo `puedeEditar` que el lienzo.
+
+console.log("distribución · fase 2 · I2: «Editar en el 3D» y «Ajustar el borde»");
+
+const rI2 = await build({
+  stdin: {
+    contents: [
+      'export * as EM from "./src/utils/edicionEnElMueble.ts";',
+      'export * as PM from "./src/components/Distribucion/punteroEnElMueble.ts";',
+      'export { useDistribucionStore } from "./src/store/distribucionStore.ts";',
+      'export { estadoInicial, reducir } from "./src/utils/edicionDeZonas.ts";',
+    ].join("\n"),
+    resolveDir: raiz, loader: "ts",
+  },
+  bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent",
+  plugins: [{
+    name: "sin-red",
+    setup(b) {
+      b.onResolve({ filter: /^axios$/ }, () => ({ path: "axios", namespace: "falso" }));
+      b.onLoad({ filter: /^axios$/, namespace: "falso" }, () => ({ contents: AXIOS_FALSO, loader: "js" }));
+      b.onResolve({ filter: /api[\\/]firebase$/ }, (a) => ({ path: a.path, namespace: "firebase-falso" }));
+      b.onLoad({ filter: /.*/, namespace: "firebase-falso" }, () => ({ contents: "export const signOutFirebase = async () => {};", loader: "js" }));
+    },
+  }],
+});
+const dirI2 = mkdtempSync(join(tmpdir(), "distribucion-i2-"));
+writeFileSync(join(dirI2, "i2.mjs"), rI2.outputFiles[0].text);
+const I2 = await import(pathToFileURL(join(dirI2, "i2.mjs")).href);
+rmSync(dirI2, { recursive: true, force: true });
+
+const cuadI2 = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+const zonaI2 = (clave, s, vertices) => ({ clave, participacionSpaceId: s, vertices });
+
+await prueba("qué hace el botón izquierdo en el 3D: la tabla entera (apagado, otro botón, dedo, «Mirar», otra cara, tapado, R, P, mover —la elegida gana si se pisan—, cara vacía)", () => {
+  const q = I2.EM.queHaceElBotonIzquierdo;
+  const z1 = zonaI2("z1", 7, cuadI2(0.1, 0.1, 0.5, 0.5)), z2 = zonaI2("z2", 8, cuadI2(0.3, 0.3, 0.7, 0.7));
+  const base = {
+    prendido: true, puedeEditar: true, boton: 0, tipoDePuntero: "mouse", toque: { cara: "A", u: 0.4, v: 0.4 }, tapado: false,
+    caraEditada: "A", edicion: { herramienta: "seleccionar", zonas: [z1, z2], seleccion: null },
+  };
+  // Sin nada elegido, en lo que se pisan gana la de arriba (la última).
+  assert.deepEqual(q(base), { gesto: "mover", clave: "z2" });
+  // La elegida gana si el punto cae adentro de ella.
+  assert.deepEqual(q({ ...base, edicion: { ...base.edicion, seleccion: { zona: "z1", vertice: null } } }), { gesto: "mover", clave: "z1" });
+  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.2, v: 0.2 } }), { gesto: "mover", clave: "z1" });
+  // Cara vacía con Seleccionar: nada (gira, y el clic de siempre suelta la zona).
+  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.9, v: 0.9 } }), { gesto: "nada" });
+  // Las herramientas de dibujo, en cualquier punto de la cara.
+  assert.deepEqual(q({ ...base, edicion: { ...base.edicion, herramienta: "rectangulo" } }), { gesto: "rectangulo" });
+  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.9, v: 0.9 }, edicion: { ...base.edicion, herramienta: "poligono" } }), { gesto: "poligono" });
+  // Lo que nunca es del dibujo.
+  for (const [quien, c] of [
+    ["apagado", { prendido: false }], ["botón derecho", { boton: 2 }], ["botón del medio", { boton: 1 }], ["el dedo", { tipoDePuntero: "touch" }],
+    ["sin poder editar («Mirar», el plano sin guardar)", { puedeEditar: false }], ["fuera de la cara", { toque: null }],
+    ["la otra cara", { toque: { cara: "B", u: 0.4, v: 0.4 } }], ["algo lo tapa", { tapado: true }], ["sin cara activa", { caraEditada: null }],
+  ]) {
+    for (const herramienta of ["seleccionar", "rectangulo", "poligono"]) {
+      assert.deepEqual(q({ ...base, ...c, edicion: { ...base.edicion, herramienta } }), { gesto: "nada" }, `${quien} con ${herramienta}: no es «nada»`);
+    }
+  }
+  // El lápiz sí (sólo el dedo queda afuera).
+  assert.deepEqual(q({ ...base, tipoDePuntero: "pen", edicion: { ...base.edicion, herramienta: "rectangulo" } }), { gesto: "rectangulo" });
+});
+
+await prueba("el trazo que se dibuja punteado: el rectángulo de sus dos esquinas, el polígono con el cursor, y nada con menos de dos puntos", () => {
+  const t = I2.EM.trazoParaDibujar;
+  assert.deepEqual(t({ herramienta: "rectangulo", trazo: [[0.6, 0.7], [0.2, 0.1]] }, null), cuadI2(0.2, 0.1, 0.6, 0.7));
+  assert.deepEqual(t({ herramienta: "rectangulo", trazo: [[0.6, 0.7], [0.2, 0.1]] }, [0.9, 0.9]), cuadI2(0.2, 0.1, 0.6, 0.7), "el cursor cambió el rectángulo");
+  assert.deepEqual(t({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.5, 0.1]] }, [0.5, 0.5]), [[0.1, 0.1], [0.5, 0.1], [0.5, 0.5]]);
+  assert.deepEqual(t({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.5, 0.1]] }, null), [[0.1, 0.1], [0.5, 0.1]]);
+  assert.deepEqual(t({ herramienta: "poligono", trazo: [[0.1, 0.1]] }, [0.3, 0.3]), [[0.1, 0.1], [0.3, 0.3]]);
+  assert.equal(t({ herramienta: "poligono", trazo: [[0.1, 0.1]] }, null), null);
+  assert.equal(t({ herramienta: "rectangulo", trazo: [[0.1, 0.1]] }, null), null);
+  assert.equal(t({ herramienta: "rectangulo", trazo: null }, [0.3, 0.3]), null);
+  assert.equal(t({ herramienta: "seleccionar", trazo: null }, null), null);
+  // No devuelve el arreglo del estado (el 3D no lo puede mutar).
+  const trazo = [[0.1, 0.1], [0.5, 0.1]];
+  const fuera = t({ herramienta: "poligono", trazo }, null);
+  assert.notEqual(fuera, trazo);
+  assert.notEqual(fuera[0], trazo[0]);
+});
+
+/** Un contenedor del canvas de mentira: cuenta los oyentes (por tipo y fase),
+ *  la captura del puntero y el cursor. */
+function contenedorDeMentira() {
+  const oyentes = new Map();
+  const k = (tipo, o) => `${tipo}|${o && o.capture ? "captura" : "burbuja"}`;
+  const c = {
+    style: { cursor: "auto" }, altas: 0, bajas: 0, capturas: new Set(),
+    addEventListener(tipo, f, o) { c.altas++; if (!oyentes.has(k(tipo, o))) oyentes.set(k(tipo, o), new Set()); oyentes.get(k(tipo, o)).add(f); },
+    removeEventListener(tipo, f, o) { if (oyentes.get(k(tipo, o))?.delete(f)) c.bajas++; },
+    setPointerCapture(id) { c.capturas.add(id); },
+    hasPointerCapture(id) { return c.capturas.has(id); },
+    releasePointerCapture(id) { c.capturas.delete(id); },
+    /** Dispara en CAPTURA (lo único que escucha el control) y devuelve el evento. */
+    disparar(tipo, ev) { for (const f of [...(oyentes.get(`${tipo}|captura`) ?? [])]) f(ev); return ev; },
+    vivos() { let n = 0; for (const s of oyentes.values()) n += s.size; return n; },
+    tipos() { return [...oyentes.entries()].filter(([, s]) => s.size > 0).map(([t]) => t).sort(); },
+  };
+  return c;
+}
+/** Un evento del puntero: cuenta cuántas veces se lo cortó y se lo frenó. */
+const punteroI2 = (x, y, extra = {}) => ({
+  button: 0, pointerType: "mouse", pointerId: 1, clientX: x, clientY: y, shiftKey: false, cortado: 0, prevenido: 0,
+  stopPropagation() { this.cortado++; }, preventDefault() { this.prevenido++; }, ...extra,
+});
+/**
+ * El 3D de mentira: la cara A ocupa la pantalla de (0, 0) a (1000, 1000) px,
+ * u = x/1000 y v = (1000 − y)/1000 (1 m = 1000 px: el imán de 6 px es 6 mm).
+ * El estado de la edición es el del reductor de verdad; cada acción despachada
+ * se anota.
+ */
+function tresDeMentira(edicion) {
+  const m = {
+    ed: { ...I2.estadoInicial(), medidas: { ancho: 1, alto: 1 }, activa: 7, ...edicion },
+    acciones: [], cuadros: [], cursores: [], focos: 0,
+    puede: true, tapado: false, caraTocada: "A", prendido: true,
+  };
+  const enLaCara = (ev) => ev.clientX >= 0 && ev.clientX <= 1000 && ev.clientY >= 0 && ev.clientY <= 1000;
+  m.deps = {
+    prendido: () => m.prendido,
+    puedeEditar: () => m.puede,
+    caraEditada: () => "A",
+    edicion: () => m.ed,
+    toque: (ev) => (enLaCara(ev) ? { cara: m.caraTocada, u: ev.clientX / 1000, v: (1000 - ev.clientY) / 1000, tapado: m.tapado } : null),
+    uvEnLaCara: (ev, cara) => (cara === "A" ? [ev.clientX / 1000, (1000 - ev.clientY) / 1000] : null),
+    aPantalla: (cara, [u, v]) => (cara === "A" ? { x: u * 1000, y: 1000 - v * 1000 } : null),
+    guias: () => ({ entrepanos: [], parantes: [] }),
+    despachar: (a) => { m.acciones.push(a); m.ed = I2.reducir(m.ed, a); },
+    ponerCursor: (p) => { m.cursores.push(p); },
+    soltarFoco: () => { m.focos++; },
+    pedirCuadro: (f) => { m.cuadros.push(f); return m.cuadros.length; },
+    soltarCuadro: (id) => { m.cuadros[id - 1] = null; },
+  };
+  /** Corre los cuadros pendientes (un despacho por cuadro, como el lienzo). */
+  m.cuadro = () => { const fs = m.cuadros; m.cuadros = []; for (const f of fs) if (f) f(); };
+  m.tipos = () => m.acciones.map((a) => a.tipo);
+  return m;
+}
+
+await prueba("el control del 3D (ejecutado), Rectángulo: corta el pointerdown, captura el puntero, empezarTrazo → estirarTrazo por cuadro → cerrarTrazo; el click y el dblclick de ese gesto no le llegan a R3F", () => {
+  const m = tresDeMentira({ herramienta: "rectangulo" });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  const baja = c.disparar("pointerdown", punteroI2(200, 800));
+  assert.equal(baja.cortado, 1, "el pointerdown del dibujo le llegó a OrbitControls / R3F");
+  assert.equal(baja.prevenido, 1);
+  assert.ok(c.capturas.has(1), "no capturó el puntero");
+  assert.equal(m.focos, 1, "el foco no volvió a body (las teclas del lienzo no andarían)");
+  assert.deepEqual(m.acciones, [{ tipo: "empezarTrazo", punto: [0.2, 0.2] }]);
+  // Dos movimientos en el mismo cuadro: un solo despacho, con el último.
+  assert.equal(c.disparar("pointermove", punteroI2(300, 700)).cortado, 1, "el arrastre del dibujo le llegó a R3F");
+  c.disparar("pointermove", punteroI2(400, 600));
+  assert.equal(m.cuadros.length, 1, "se pidió más de un cuadro");
+  assert.deepEqual(m.tipos(), ["empezarTrazo"], "se despachó antes del cuadro");
+  m.cuadro();
+  assert.deepEqual(m.acciones[1], { tipo: "estirarTrazo", punto: [0.4, 0.4] });
+  assert.deepEqual(m.ed.trazo, [[0.2, 0.2], [0.4, 0.4]], "el trazo no está en el store (el lienzo y el 3D no lo verían)");
+  // Un movimiento más sin cuadro y se suelta: el pendiente sale antes de cerrar.
+  c.disparar("pointermove", punteroI2(450, 550));
+  const sube = c.disparar("pointerup", punteroI2(450, 550));
+  assert.equal(sube.cortado, 1);
+  assert.ok(!c.capturas.has(1), "no soltó la captura");
+  assert.deepEqual(m.tipos(), ["empezarTrazo", "estirarTrazo", "estirarTrazo", "cerrarTrazo"]);
+  assert.equal(m.ed.zonas.length, 1);
+  assert.deepEqual(m.ed.zonas[0].vertices, cuadI2(0.2, 0.2, 0.45, 0.45));
+  assert.equal(m.ed.zonas[0].participacionSpaceId, 7);
+  assert.equal(m.ed.atras.length, 1, "dibujar en el 3D no es UN paso de deshacer");
+  // El click y el dblclick que siguen a ese gesto se cortan.
+  assert.equal(c.disparar("click", punteroI2(450, 550)).cortado, 1, "R3F mediría este clic contra un pointerdown que no vio");
+  assert.equal(c.disparar("dblclick", punteroI2(450, 550)).cortado, 1, "el doble clic movería la mira de la órbita");
+  // Un clic sin moverse (menos de 4 px) no dibuja: cancela el trazo.
+  c.disparar("pointerdown", punteroI2(600, 400));
+  c.disparar("pointerup", punteroI2(602, 401));
+  assert.deepEqual(m.tipos().slice(-2), ["empezarTrazo", "cancelarTrazo"]);
+  assert.equal(m.ed.zonas.length, 1);
+  assert.equal(m.ed.trazo, null);
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado): fuera de la cara, tapado, en la otra cara, con el botón derecho, con el dedo o sin poder editar NO corta nada (lo ven OrbitControls y el clic de siempre)", () => {
+  for (const [quien, preparar, ev] of [
+    ["fuera de la cara", () => {}, punteroI2(1200, 500)],
+    ["tapado por otro mueble", (m) => { m.tapado = true; }, punteroI2(500, 500)],
+    ["en la otra cara", (m) => { m.caraTocada = "B"; }, punteroI2(500, 500)],
+    ["botón derecho", () => {}, punteroI2(500, 500, { button: 2 })],
+    ["botón del medio", () => {}, punteroI2(500, 500, { button: 1 })],
+    ["el dedo", () => {}, punteroI2(500, 500, { pointerType: "touch" })],
+    ["sin poder editar", (m) => { m.puede = false; }, punteroI2(500, 500)],
+    ["el interruptor apagado", (m) => { m.prendido = false; }, punteroI2(500, 500)],
+  ]) {
+    for (const herramienta of ["rectangulo", "poligono", "seleccionar"]) {
+      const m = tresDeMentira({ herramienta, zonas: [zonaI2("z1", 7, cuadI2(0.3, 0.3, 0.7, 0.7))] });
+      preparar(m);
+      const c = contenedorDeMentira();
+      const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+      const baja = c.disparar("pointerdown", ev);
+      assert.equal(baja.cortado + baja.prevenido, 0, `${quien} (${herramienta}): cortó el pointerdown`);
+      assert.equal(c.capturas.size, 0, `${quien} (${herramienta}): capturó el puntero`);
+      assert.equal(c.disparar("pointermove", { ...ev, clientX: ev.clientX + 30 }).cortado, 0, `${quien} (${herramienta}): cortó el arrastre (la órbita no giraría)`);
+      assert.equal(c.disparar("pointerup", { ...ev, clientX: ev.clientX + 30 }).cortado, 0);
+      assert.equal(c.disparar("click", { ...ev }).cortado, 0, `${quien} (${herramienta}): cortó el clic de siempre (elegir la zona o cambiar de cara)`);
+      assert.equal(c.disparar("dblclick", { ...ev }).cortado, 0);
+      assert.deepEqual(m.acciones, [], `${quien} (${herramienta}): despachó algo`);
+      soltar();
+    }
+  }
+  // Seleccionar sobre la cara vacía: tampoco (gira; el clic suelta la zona).
+  const m = tresDeMentira({ herramienta: "seleccionar", zonas: [zonaI2("z1", 7, cuadI2(0.3, 0.3, 0.7, 0.7))] });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  assert.equal(c.disparar("pointerdown", punteroI2(100, 900)).cortado, 0, "Seleccionar sobre la cara vacía cortó el pointerdown");
+  assert.equal(c.disparar("click", punteroI2(100, 900)).cortado, 0);
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado), Polígono: un clic por punto (con el imán), clic a ≤ 8 px del primero cierra; un arrastre no agrega; el punteado sigue al puntero", () => {
+  const m = tresDeMentira({ herramienta: "poligono", zonas: [zonaI2("z9", 8, cuadI2(0.6, 0.6, 0.8, 0.8))] });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  const clic = (x, y) => {
+    const b = c.disparar("pointerdown", punteroI2(x, y));
+    c.disparar("pointerup", punteroI2(x, y));
+    c.disparar("click", punteroI2(x, y));
+    return b;
+  };
+  assert.equal(clic(200, 800).cortado, 1, "el pointerdown del polígono le llegó a la órbita");
+  // A 4,2 px de la esquina (0,6; 0,6) de otra zona: el imán lo pega.
+  clic(603, 397);
+  clic(200, 400);
+  assert.deepEqual(m.tipos(), ["agregarPunto", "agregarPunto", "agregarPunto"]);
+  assert.deepEqual(m.ed.trazo, [[0.2, 0.2], [0.6, 0.6], [0.2, 0.6]], "el imán del 3D no pegó el punto (o el trazo no está en el store)");
+  // El punteado: sin gesto, el cursor del polígono sigue al puntero (y lo apaga fuera de la cara).
+  const mov = c.disparar("pointermove", punteroI2(300, 650));
+  assert.equal(mov.cortado, 0, "el movimiento sin gesto se cortó (la órbita no lo vería)");
+  assert.deepEqual(m.cursores.at(-1), [0.3, 0.35]);
+  assert.equal(c.style.cursor, "crosshair", "sobre la cara con P el cursor no es una cruz");
+  c.disparar("pointermove", punteroI2(1500, 650));
+  assert.equal(m.cursores.at(-1), null);
+  assert.equal(c.style.cursor, "auto", "fuera de la cara el cursor no volvió al de antes");
+  // Un arrastre con P no agrega nada (como en el lienzo).
+  c.disparar("pointerdown", punteroI2(500, 500));
+  c.disparar("pointerup", punteroI2(560, 500));
+  assert.deepEqual(m.tipos(), ["agregarPunto", "agregarPunto", "agregarPunto"]);
+  // Clic a 6 px del primero (200, 800): cierra.
+  clic(206, 800);
+  assert.deepEqual(m.tipos().at(-1), "cerrarTrazo");
+  assert.equal(m.ed.trazo, null);
+  assert.equal(m.ed.zonas.length, 2);
+  assert.deepEqual(m.ed.zonas[1].vertices, [[0.2, 0.2], [0.6, 0.6], [0.2, 0.6]]);
+  assert.equal(m.ed.zonas[1].participacionSpaceId, 7);
+  assert.equal(m.cursores.at(-1), null, "al cerrar quedó el punteado");
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado), mover con Seleccionar: elige la zona al bajar; 3 px no arrastran; a los 10 px empezarArrastre UNA vez, moverZona por cuadro y terminarArrastre al soltar (un paso de deshacer)", () => {
+  const z1 = zonaI2("z1", 7, cuadI2(0.2, 0.2, 0.4, 0.4));
+  const m = tresDeMentira({ herramienta: "seleccionar", zonas: [z1], base: [z1] });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  c.disparar("pointermove", punteroI2(300, 700));
+  assert.equal(c.style.cursor, "move", "sobre una zona con V el cursor no es «mover»");
+  assert.equal(c.disparar("pointerdown", punteroI2(300, 700)).cortado, 1);
+  assert.deepEqual(m.acciones, [{ tipo: "seleccionar", zona: "z1" }]);
+  c.disparar("pointermove", punteroI2(303, 700));
+  assert.deepEqual(m.tipos(), ["seleccionar"], "3 px ya arrastraron");
+  c.disparar("pointermove", punteroI2(310, 700));
+  c.disparar("pointermove", punteroI2(320, 700));
+  assert.deepEqual(m.tipos(), ["seleccionar", "empezarArrastre"], "empezarArrastre no fue una sola vez");
+  m.cuadro();
+  assert.equal(m.tipos().at(-1), "moverZona");
+  assert.equal(m.acciones.at(-1).clave, "z1");
+  assert.ok(Math.abs(m.acciones.at(-1).du - 0.02) < 1e-12 && m.acciones.at(-1).dv === 0, `movió ${m.acciones.at(-1).du}, ${m.acciones.at(-1).dv}`);
+  c.disparar("pointerup", punteroI2(320, 700));
+  assert.equal(m.tipos().at(-1), "terminarArrastre");
+  assert.deepEqual(m.ed.zonas[0].vertices, cuadI2(0.22, 0.2, 0.42, 0.4));
+  assert.equal(m.ed.atras.length, 1, "el arrastre en el 3D no es UN paso de deshacer");
+  assert.equal(c.disparar("click", punteroI2(320, 700)).cortado, 1);
+  // Con el imán: llevar la zona hasta 4 px del borde de la cara la pega al borde.
+  c.disparar("pointerdown", punteroI2(300, 700));
+  c.disparar("pointermove", punteroI2(84, 700));       // −0,216: el borde izquierdo a u = 0,22 − 0,216 = 0,004
+  m.cuadro();
+  c.disparar("pointerup", punteroI2(84, 700));
+  assert.equal(m.ed.zonas[0].vertices[0][0], 0, "el imán del 3D no pegó la zona al borde de la cara");
+  soltar();
+});
+
+await prueba("el control del 3D (ejecutado): pointercancel / lostpointercapture cancelan el rectángulo y cierran el arrastre; desconectar saca TODOS los oyentes y devuelve el cursor", () => {
+  const m = tresDeMentira({ herramienta: "rectangulo" });
+  const c = contenedorDeMentira();
+  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
+  assert.deepEqual(c.tipos(), ["click|captura", "dblclick|captura", "lostpointercapture|captura", "pointercancel|captura", "pointerdown|captura", "pointermove|captura", "pointerup|captura"],
+    "el control no escucha en captura (OrbitControls y R3F verían el gesto antes)");
+  c.disparar("pointerdown", punteroI2(200, 800));
+  c.disparar("pointermove", punteroI2(300, 700));
+  c.disparar("lostpointercapture", punteroI2(300, 700));
+  m.cuadro();
+  assert.deepEqual(m.tipos(), ["empezarTrazo", "cancelarTrazo"], "perder la captura no canceló el rectángulo (o el movimiento pendiente salió después)");
+  assert.equal(m.ed.trazo, null);
+  // Mover: el arrastre se cierra (un paso), sin quedar a medias.
+  m.ed = { ...m.ed, herramienta: "seleccionar", zonas: [zonaI2("z1", 7, cuadI2(0.2, 0.2, 0.4, 0.4))] };
+  c.disparar("pointerdown", punteroI2(300, 700));
+  c.disparar("pointermove", punteroI2(340, 700));
+  c.disparar("pointercancel", punteroI2(340, 700));
+  assert.equal(m.tipos().at(-1), "terminarArrastre");
+  assert.equal(m.ed.arrastre, null, "el arrastre quedó a medias");
+  // Desconectar en medio de un gesto: lo cierra, saca todo y devuelve el cursor.
+  c.disparar("pointermove", punteroI2(300, 700));       // pasivo: «mover» sobre la zona
+  assert.equal(c.style.cursor, "move");
+  c.disparar("pointerdown", punteroI2(300, 700));
+  c.disparar("pointermove", punteroI2(340, 700));
+  soltar();
+  assert.equal(c.vivos(), 0, `quedaron oyentes: ${c.tipos().join(", ")}`);
+  assert.equal(c.altas, 7);
+  assert.equal(c.bajas, 7);
+  assert.equal(c.style.cursor, "auto", "desconectar dejó el cursor cambiado");
+  assert.equal(m.tipos().at(-1), "terminarArrastre", "desconectar dejó el arrastre a medias");
+  assert.equal(m.cuadros.filter(Boolean).length, 0, "desconectar dejó un cuadro pedido");
+  assert.equal(c.capturas.size, 0, "desconectar dejó el puntero capturado");
+});
+
+await prueba("el interruptor «Editar en el 3D»: apagado al entrar; se apaga al salir, al reiniciar, al pasar a «Mirar» y al cambiar de mueble; cambiar de cara lo deja; nunca va al navegador", async () => {
+  const D2 = I2.useDistribucionStore, EE = I2.PM.useEditarEnEl3D;
+  const activaI2 = { cliente: "galerias", sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" };
+  const entrar = () => D2.setState({ activa: activaI2, edicion: { ...I2.estadoInicial(), modo: "editar" } });
+  assert.equal(EE.getState().prendido, false, "arranca prendido");
+  entrar();
+  EE.getState().alternar();
+  assert.equal(EE.getState().prendido, true);
+  EE.getState().ponerCursor([0.3, 0.3]);
+  // Cambiar de cara del mismo mueble: sigue prendido.
+  D2.setState({ activa: { ...activaI2, cara: "B" } });
+  assert.equal(EE.getState().prendido, true, "cambiar de cara lo apagó");
+  // Salir (el camino de Presentar, la reunión, la caminata): se apaga.
+  assert.equal(await D2.getState().salir(), true);
+  assert.equal(D2.getState().activa, null);
+  assert.deepEqual([EE.getState().prendido, EE.getState().cursor], [false, null], "salir lo dejó prendido");
+  // Reiniciar (cambio de sesión o de cliente).
+  entrar(); EE.getState().alternar();
+  D2.getState().reiniciar();
+  assert.equal(EE.getState().prendido, false, "reiniciar lo dejó prendido");
+  // Pasar a «Mirar».
+  entrar(); EE.getState().alternar();
+  D2.getState().despachar({ tipo: "elegirModo", modo: "mirar" });
+  assert.equal(EE.getState().prendido, false, "pasar a «Mirar» lo dejó prendido");
+  // Otro mueble.
+  entrar(); EE.getState().alternar();
+  D2.setState({ activa: { ...activaI2, fixtureId: "f-2", codigo: "GON-02" } });
+  assert.equal(EE.getState().prendido, false, "pasar a otro mueble lo dejó prendido");
+  // Alternar dos veces vuelve a apagado y limpia el cursor.
+  entrar(); EE.getState().alternar(); EE.getState().ponerCursor([0.5, 0.5]); EE.getState().alternar();
+  assert.deepEqual([EE.getState().prendido, EE.getState().cursor], [false, null]);
+  D2.getState().reiniciar();
+  // Nada al navegador.
+  for (const f of ["components/Distribucion/punteroEnElMueble.ts", "components/Distribucion/EdicionEnElMueble.tsx", "utils/edicionEnElMueble.ts"]) {
+    const t = sinComentTs2(fuente(f));
+    assert.ok(!/localStorage|sessionStorage|indexedDB|\bpersist\b/.test(t), `${f} guarda algo en el navegador`);
+  }
+  for (const k of escritas) assert.ok(["retail-auth-v1", "retail-fixtures-v1"].includes(k), `clave nueva en localStorage: ${k}`);
+});
+
+await prueba("«Editar en el 3D» en el código: perezoso y montado sólo con el interruptor, por el nodo de las zonas y nunca por `Scene`; la órbita intacta salvo el botón derecho (que se devuelve); oyentes en captura en el contenedor del canvas; edita sólo por despachar; el mismo `puedeEditar` que el lienzo", () => {
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  const eem = sinComentTs2(fuente(`${DIST}/EdicionEnElMueble.tsx`));
+  const pem = sinComentTs2(fuente(`${DIST}/punteroEnElMueble.ts`));
+  const lienzo = codigo6b("LienzoDeZonas");
+  // Perezoso, como el panel y el lienzo, y montado sólo con el interruptor, dentro del nodo de las zonas.
+  assert.match(editor, /const EdicionEnElMueble = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/EdicionEnElMueble"\)\);/, "el control del 3D no es perezoso");
+  assert.ok(!/import[^;]*from\s+["']\.\.\/Distribucion\/EdicionEnElMueble["']/.test(editor), "el control del 3D se importa de una");
+  assert.match(editor, /const editarEnEl3D = useEditarEnEl3D\(\(s\) => s\.prendido\);/);
+  assert.match(editor, /\{editarEnEl3D && \(\s*<React\.Suspense fallback=\{null\}>\s*<EdicionEnElMueble orbitRef=\{orbitRef\} muebles=\{muebles\} superficies=\{superficies\} \/>/,
+    "el control del 3D se monta sin el interruptor");
+  const zdd = editor.slice(editor.indexOf("function ZonasDeLaDistribucion("), editor.indexOf("function BotonDeEditarEnEl3D("));
+  assert.ok(zdd.includes("<EdicionEnElMueble "), "el control no entra por el nodo de las zonas");
+  assert.match(editor, /const zonasDeLaDistribucion = useMemo\(\(\) => <ZonasDeLaDistribucion orbitRef=\{orbitRef\} muebles=\{placedFixturesRef\} \/>, \[\]\);/,
+    "el nodo de las zonas se rearma (y con él las props de la escena)");
+  // `Scene` no cambia: ni el control ni el interruptor aparecen en ella.
+  const scene = editor.slice(editor.indexOf("export function Scene({"), editor.indexOf("export function storeToFixtures("));
+  assert.ok(scene.length > 5000, "no se encontró el cuerpo de `Scene`");
+  assert.ok(!/EdicionEnElMueble|useEditarEnEl3D|punteroEnElMueble|conectarEdicionEnElMueble/.test(scene), "`Scene` sabe de «Editar en el 3D»");
+  // El trazo en curso llega al 3D.
+  assert.match(editor, /<ZonasDelMueble caras=\{caras\} participaciones=\{participaciones\} resaltada=\{resaltada\} seleccionada=\{seleccionada\} trazo=\{trazo\} \/>/);
+  assert.match(editor, /trazoParaDibujar\(\{ trazo: trazoEnCurso, herramienta \}, cursorDelPoligono\)/);
+  // La órbita: sólo el botón derecho pasa a girar, y se devuelve al desmontar.
+  assert.match(eem, /const derechoDeAntes = orbita \? orbita\.mouseButtons\.RIGHT : undefined;\s*if \(orbita\) orbita\.mouseButtons\.RIGHT = THREE\.MOUSE\.ROTATE;/);
+  assert.match(eem, /return \(\) => \{\s*desconectar\(\);\s*if \(orbita\) orbita\.mouseButtons\.RIGHT = derechoDeAntes;\s*\};/, "el botón derecho no se devuelve al desmontar");
+  for (const t of [eem, pem]) {
+    assert.ok(!/\.(enabled|minPolarAngle|maxPolarAngle|minDistance|maxDistance|enableZoom|enableRotate|enablePan)\s*=(?!=)/.test(t),
+      "el control toca la órbita más allá del botón derecho (la rueda tiene que seguir andando)");
+    assert.ok(!/setState\(/.test(t), "el control escribe un store por fuera de sus acciones");
+    assert.ok(!/raycast=|onPointerDown=|onClick=/.test(t), "el control usa eventos de R3F o una malla para el gesto");
+  }
+  // Los oyentes: en captura, en el contenedor del canvas, y cada uno se saca con el mismo par.
+  assert.match(eem, /const contenedor = gl\.domElement\.parentElement;/);
+  assert.match(eem, /const desconectar = conectarEdicionEnElMueble\(contenedor, deps\);/);
+  for (const tipo of ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture", "click", "dblclick"]) {
+    const m = new RegExp(`contenedor\\.addEventListener\\("${tipo}", (\\w+), \\{ capture: true \\}\\);`).exec(pem);
+    assert.ok(m, `el control no escucha «${tipo}» en captura`);
+    assert.ok(pem.includes(`contenedor.removeEventListener("${tipo}", ${m[1]}, { capture: true });`), `«${tipo}» no se saca con el mismo par`);
+  }
+  // Edita SÓLO por el reductor del store.
+  assert.match(eem, /despachar: \(a\) => useDistribucionStore\.getState\(\)\.despachar\(a\),/);
+  assert.ok(!/[^.\w]despachar\(/.test(pem), "el control despacha por otro lado que `deps.despachar`");
+  assert.ok(!/useDistribucionStore\.getState\(\)\.despachar|useDistribucionStore\.setState/.test(pem));
+  // El mismo `puedeEditar` que el lienzo (no se saca a una función común: la línea del lienzo está fijada).
+  const expr = (t) => (/const puedeEditar = ([^;]*);/.exec(t) ?? [])[1]?.replace(/\s+/g, " ").trim();
+  assert.ok(expr(lienzo), "no está el `puedeEditar` del lienzo");
+  assert.equal(expr(eem), expr(lienzo), "el 3D y el lienzo no deciden igual cuándo se puede editar");
+  // Sin teclas nuevas: las de `atajoDeDistribucion` alcanzan.
+  assert.ok(!/keydown|keyup/.test(pem + eem), "«Editar en el 3D» agrega teclas");
+  // El control no trae React ni three (se ejecuta en Node), y lo que decide es puro.
+  assert.ok(!/from\s+"(react|three|@react-three\/fiber|@react-three\/drei)"/.test(pem), "el control del puntero importa React o three");
+  const puro = sinComentTs2(fuente("utils/edicionEnElMueble.ts"));
+  for (const m of puro.matchAll(/^import\s+(type\s+)?[^;]*from\s+"([^"]+)"/gm)) {
+    assert.ok(m[1] || m[2] === "./edicionDeZonas", `utils/edicionEnElMueble.ts importa ${m[2]}`);
+  }
+  assert.ok(!/document\.|window\.|requestAnimationFrame|Date\.now|new Date\(/.test(puro), "utils/edicionEnElMueble.ts no es puro");
+});
+
+await prueba("el botón «Editar en el 3D» y su pista: sólo con el 3D a la vista, apagado al entrar, deshabilitado en «Mirar» o con el plano sin guardar (con el motivo)", () => {
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.match(editor, /\{distribucionVisible && distribucionActiva && !ocultar3D && \(\s*<BotonDeEditarEnEl3D fixtureId=\{distribucionActiva\.fixtureId\} sede=\{distribucionActiva\.sede\} \/>/,
+    "el botón se ve con el 3D oculto o fuera de Distribución");
+  const boton = editor.slice(editor.indexOf("function BotonDeEditarEnEl3D("), editor.indexOf("function PistaDeEditarEnEl3D("));
+  assert.match(boton, /aria-pressed=\{prendido\} data-editar-en-3d/);
+  assert.match(boton, /modo !== "editar" \? "Pasá a «Editar» para dibujar en el 3D\."/);
+  assert.match(boton, /!planoAlDia\(datos, mueble\) \? "El plano tiene cambios sin guardar: esperá un momento\."/);
+  assert.match(boton, /disabled=\{motivo !== null && !prendido\}/, "prendido no se puede apagar, o apagado se prende en «Mirar»");
+  assert.match(boton, /useEditarEnEl3D\.getState\(\)\.alternar\(\)/);
+  const pista = editor.slice(editor.indexOf("function PistaDeEditarEnEl3D("), editor.indexOf("function PistaDeEditarEnEl3D(") + 800);
+  assert.match(pista, /if \(!prendido\) return null;/);
+  assert.match(pista, /Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho\./);
+  assert.match(editor, /\{distribucionVisible && !ocultar3D && <PistaDeEditarEnEl3D \/>\}/);
+  assert.ok(!/sombra/i.test(boton + pista), "«sombra» en la interfaz");
+});
+
+await prueba("«Ajustar el borde» en el lienzo: habilitado sólo en «Editar» con una zona elegida, y deja fuera a las vecinas cuyas fechas no se cruzan (seCruzanEnFechas)", () => {
+  const lienzo = codigo6b("LienzoDeZonas");
+  assert.match(lienzo, /data-ajustar-borde disabled=\{!puedeEditar \|\| !elegida \|\| !!ed\.trazo\} onClick=\{ajustarBorde\}/,
+    "«Ajustar el borde» se puede tocar en «Mirar», sin zona elegida o con un trazo a medias");
+  const i = lienzo.indexOf("const ajustarBorde = () => {");
+  assert.ok(i >= 0, "no está ajustarBorde");
+  const cuerpo = lienzo.slice(i, lienzo.indexOf("\n  };", i));
+  assert.match(cuerpo, /const mias = d\.terminosPorS\.get\(elegida\.participacionSpaceId\) \?\? \[\];/);
+  assert.match(cuerpo, /return !suyas \|\| !seCruzanEnFechas\(mias, suyas, hoy\);/, "las vecinas no se filtran por fechas");
+  assert.match(cuerpo, /despachar\(\{ tipo: "ajustarBorde", clave: elegida\.clave, ignorar \}\);/);
+  // El botón va después de «Imán a guías» y no tiene tecla.
+  assert.ok(lienzo.indexOf("data-ajustar-borde") > lienzo.indexOf('"Imán a guías"'), "«Ajustar el borde» no va después de «Imán a guías»");
+  // Ejecutado contra el reductor de verdad: una zona de fechas que no se cruzan no cuenta como vecina.
+  const e0 = { ...I2.estadoInicial(), medidas: { ancho: 1, alto: 1 }, zonas: [zonaI2("a", 7, cuadI2(0, 0, 0.48, 1)), zonaI2("b", 8, cuadI2(0.49, 0, 1, 1))] };
+  assert.deepEqual(I2.reducir(e0, { tipo: "ajustarBorde", clave: "a" }).zonas[0].vertices, cuadI2(0, 0, 0.49, 1));
+  assert.equal(I2.reducir(e0, { tipo: "ajustarBorde", clave: "a", ignorar: ["b"] }).zonas, e0.zonas, "`ignorar` no dejó fuera a la vecina");
+});
+
+await prueba("el trazo en el 3D: `ZonasDelMueble` sigue sin leer stores y lo dibuja como una cinta discontinua, en el nivel más alto y sólo en la cara que se edita", () => {
+  const z = sinComentTs2(fuente("components/StoreEditor3D/muebles/ZonasDelMueble.tsx"));
+  assert.ok(!/store\//.test(z), "las zonas leen un store");
+  assert.match(z, /\{c\.editada && trazo && trazo\.vertices\.length >= 2 && \(\s*<Cinta key="trazo" sup=\{sup\} cara=\{c\.cara\} vertices=\{trazo\.vertices\} ancho=\{CINTA_ELEGIDA_M\} estilo="discontinua"\s*tono=\{trazo\.tono \?\? GRIS_DE_HISTORIA\} opacidad=\{1\} nivel=\{NIVEL_MAXIMO_DE_CINTA\} \/>/,
+    "el trazo no es una cinta discontinua arriba de todo en la cara que se edita");
+});
+
 console.log(`\n${hechas} pruebas de distribución en verde`);
