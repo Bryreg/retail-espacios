@@ -1,0 +1,249 @@
+/* ==========================================================================
+   RECABRA · UX refinement layer
+   Solo presentación: no modifica lógica comercial, persistencia o geometría.
+   ========================================================================== */
+:root {
+  --ux-card-radius: 16px;
+  --ux-card-shadow: 0 1px 2px rgba(10,16,20,.025), 0 8px 24px rgba(10,16,20,.035);
+}
+.supervisar {
+  box-sizing: border-box;
+  min-width: 0;
+  scrollbar-gutter: stable;
+  padding: 12px 18px 24px !important;
+  background: var(--bg) !important;
+}
+.supervisar > .barra-pantalla {
+  gap: 8px !important;
+  padding: 7px 12px !important;
+  margin-bottom: 12px !important;
+  min-height: 54px !important;
+  border-radius: 14px !important;
+  border-color: var(--line) !important;
+  box-shadow: 0 1px 2px rgba(10,16,20,.025);
+}
+.supervisar > .barra-pantalla > div:first-child {
+  gap: 9px !important;
+  padding-right: 13px !important;
+}
+.supervisar > .barra-pantalla select {
+  max-width: 200px;
+  min-height: 36px;
+  border-radius: 8px;
+}
+.supervisar > .barra-pantalla nav {
+  gap: 2px;
+  margin-left: 8px !important;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.supervisar > .barra-pantalla nav button {
+  min-height: 36px;
+  padding: 0 14px !important;
+  margin-bottom: 0 !important;
+  border: 0 !important;
+  border-radius: 8px;
+}
+.supervisar > .barra-pantalla nav button:hover { background: var(--surface); }
+.supervisar > .barra-pantalla nav button:focus-visible,
+.supervisar > .barra-pantalla button:focus-visible,
+.supervisar > .barra-pantalla select:focus-visible {
+  outline: 2px solid var(--ink-2);
+  outline-offset: 2px;
+}
+.supervisar > .barra-pantalla > button {
+  min-height: 36px;
+  padding: 0 11px !important;
+  border-radius: 9px !important;
+  transition: background .15s ease, border-color .15s ease;
+}
+.supervisar > .barra-pantalla > button:hover {
+  background: var(--surface-2) !important;
+  border-color: var(--line-strong) !important;
+}
+.supervisar .panel-recabra {
+  border: 1px solid var(--line) !important;
+  border-radius: var(--ux-card-radius) !important;
+  box-shadow: var(--ux-card-shadow);
+  min-width: 0;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.supervisar .panel-recabra > div:first-child {
+  padding: 14px 18px 10px !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+.supervisar .panel-recabra > div:first-child h2 {
+  font-size: 15.5px !important;
+  line-height: 1.25 !important;
+  letter-spacing: -.018em !important;
+}
+.supervisar .panel-recabra > div:first-child > div { gap: 10px !important; }
+.supervisar > .panel-recabra { margin-bottom: 12px !important; }
+.supervisar > .panel-recabra > div:nth-child(2) {
+  padding: 0 18px 16px !important;
+  gap: 14px !important;
+}
+.supervisar > .panel-recabra > div:nth-child(2) > div[aria-hidden="true"] { opacity: .7; }
+.supervisar .panel-recabra .rotulo {
+  letter-spacing: .075em;
+  line-height: 1.4;
+}
+.supervisar .panel-recabra .fig,
+.supervisar .panel-recabra table { font-variant-numeric: tabular-nums; }
+.supervisar .panel-recabra button { -webkit-tap-highlight-color: transparent; }
+.supervisar .panel-recabra button:focus-visible,
+.supervisar .panel-recabra input:focus-visible,
+.supervisar .panel-recabra select:focus-visible {
+  outline: 2px solid var(--ink-2);
+  outline-offset: 2px;
+}
+
+/* Plano + pendientes: misma fuente de datos, jerarquía más clara y más tabla
+   visible en la primera ventana. */
+.supervisar .supervisar-hoja {
+  grid-template-columns: minmax(0, 2.45fr) minmax(320px, 1fr) !important;
+  grid-template-rows: clamp(350px, 44vh, 425px) minmax(280px, auto) !important;
+  grid-auto-rows: minmax(240px, auto) !important;
+  gap: 12px !important;
+  align-items: stretch;
+}
+.supervisar .supervisar-hoja > .panel-recabra { min-width: 0; min-height: 0; }
+.supervisar .supervisar-hoja > .panel-recabra:first-child { background: var(--surface); }
+.supervisar .supervisar-hoja .panel-recabra > div:first-child { flex-wrap: wrap; }
+.supervisar .supervisar-hoja .panel-recabra [data-fila-revisar] {
+  border-top-color: var(--line-soft) !important;
+  border-left-width: 3px !important;
+}
+.supervisar .supervisar-hoja .panel-recabra [data-fila-revisar] > button {
+  min-height: 42px;
+  padding: 7px 8px !important;
+  gap: 10px !important;
+  border-radius: 8px;
+}
+.supervisar .supervisar-hoja .panel-recabra [data-fila-revisar] > button:hover { background: var(--surface-2); }
+.supervisar .supervisar-hoja .panel-recabra [data-fila-revisar] > button:focus-visible {
+  outline: 2px solid var(--ink-2);
+  outline-offset: -2px;
+}
+.supervisar .supervisar-hoja > .panel-recabra:first-child > div:nth-child(2) {
+  min-height: 0;
+  overflow: hidden;
+}
+.supervisar .supervisar-hoja .panel-recabra table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+.supervisar .supervisar-hoja .panel-recabra table thead th {
+  padding-top: 8px !important;
+  padding-bottom: 9px !important;
+  font-size: 10px !important;
+  line-height: 1.35;
+  letter-spacing: .065em;
+  border-bottom-color: var(--line) !important;
+}
+.supervisar .supervisar-hoja .panel-recabra table tbody td {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  line-height: 1.4 !important;
+  border-bottom-color: var(--line-soft) !important;
+  vertical-align: middle;
+}
+.supervisar .supervisar-hoja .panel-recabra table tbody tr { transition: background .12s ease; }
+.supervisar .supervisar-hoja .panel-recabra table tbody tr:hover td { background: var(--surface-2); }
+.supervisar .supervisar-hoja .panel-recabra table td,
+.supervisar .supervisar-hoja .panel-recabra table th { font-variant-numeric: tabular-nums; }
+.supervisar .supervisar-hoja .panel-recabra input,
+.supervisar .supervisar-hoja .panel-recabra select {
+  min-height: 36px;
+  border-radius: 9px;
+}
+.supervisar .supervisar-hoja .panel-recabra .chip,
+.supervisar .supervisar-hoja .panel-recabra [role="tab"] { min-height: 28px; }
+.supervisar .supervisar-hoja > .panel-recabra[style*="grid-column"] { grid-column: 1 / -1; }
+
+/* Vender: conservar la composición implementada, elevar consistencia y tacto. */
+.vender .vp {
+  border-radius: var(--ux-card-radius);
+  box-shadow: var(--ux-card-shadow);
+}
+.vender .vp > header { padding: 13px 17px 9px; }
+.vender .vp > header h2 { font-size: 15px; letter-spacing: -.018em; }
+.vender .herr button {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 9px;
+  transition: background .14s ease, border-color .14s ease;
+}
+.vender .herr button:hover {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+.vender .entrada { min-height: 38px; border-radius: 10px; }
+.vender .entrada:focus-visible,
+.vender button:focus-visible,
+.vender select:focus-visible {
+  outline: 2px solid var(--ink-2);
+  outline-offset: 2px;
+}
+.vender .eitem { border-radius: 10px; }
+.vender .btn-principal {
+  min-height: 43px;
+  border-radius: 11px;
+  transition: transform .12s ease, filter .12s ease;
+}
+.vender .btn-principal:hover:not(:disabled) { filter: brightness(.97); }
+.vender .btn-principal:active:not(:disabled) { transform: translateY(1px); }
+.vender .btn2 { min-height: 32px; border-radius: 8px; }
+.vender .chip { min-height: 24px; border-radius: 7px; }
+.vender .tabla td { line-height: 1.4; }
+
+/* En anchos medios, la lista queda debajo del plano antes de apretar sus datos. */
+@media (max-width: 1180px) {
+  .supervisar .supervisar-hoja {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(350px, 46vh) minmax(300px, auto) minmax(280px, auto) minmax(220px, auto) !important;
+    grid-auto-rows: auto !important;
+  }
+  .supervisar .supervisar-hoja > .panel-recabra[style*="grid-column"] { grid-column: 1 / -1; }
+  .supervisar > .panel-recabra > div:nth-child(2) { flex-wrap: wrap !important; }
+  .supervisar .supervisar-hoja .panel-recabra > div:first-child { padding: 12px 14px 9px !important; }
+}
+@media (max-width: 760px) {
+  .supervisar { padding: 8px 8px 18px !important; }
+  .supervisar > .barra-pantalla {
+    align-items: stretch !important;
+    padding: 8px !important;
+    gap: 8px !important;
+  }
+  .supervisar > .barra-pantalla > div:first-child {
+    width: 100%;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--line) !important;
+    padding: 0 0 8px !important;
+    align-items: center;
+  }
+  .supervisar > .barra-pantalla nav { margin: 0 !important; flex: 1; }
+  .supervisar > .barra-pantalla nav button {
+    flex: 1;
+    justify-content: center;
+    padding: 0 8px !important;
+  }
+  .supervisar > .barra-pantalla > button { flex: 1; justify-content: center; }
+  .supervisar .supervisar-hoja {
+    grid-template-rows: minmax(320px, 68vw) minmax(270px, auto) minmax(280px, auto) minmax(220px, auto) !important;
+  }
+  .supervisar .panel-recabra > div:first-child { padding: 12px 13px 8px !important; }
+  .supervisar > .panel-recabra > div:nth-child(2) { padding: 0 13px 13px !important; gap: 10px !important; }
+  .supervisar .supervisar-hoja .panel-recabra table { min-width: 680px; }
+  .supervisar .supervisar-hoja .panel-recabra:has(table) { overflow-x: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .supervisar *, .vender * {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

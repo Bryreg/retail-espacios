@@ -532,6 +532,7 @@ function Card({
 }) {
   return (
     <div
+      className="panel-recabra"
       style={{
         background: "var(--surface)",
         border: "1px solid var(--line)",
@@ -5348,7 +5349,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
          válvula declarada es la ficha del contrato del cuarto espacio en
          adelante). En Supervisar sigue siendo un documento largo que rueda,
          que es lo que esa pantalla es. */
-      className={modoEfectivo === "vender" && fixtures.length > 0 ? "vender" : undefined}
+      className={fixtures.length > 0 ? (modoEfectivo === "vender" ? "vender" : "supervisar") : undefined}
       style={
         modoEfectivo === "vender" && fixtures.length > 0
           ? { padding: "10px 12px 12px", background: "var(--bg)" }
