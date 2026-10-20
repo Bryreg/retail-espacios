@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { Minus, Plus } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { useOcupacionStore } from "../store/ocupacionStore";
 import { getFaceImages } from "../api/files";
@@ -45,7 +46,40 @@ async function datosDeParticipacionDeLaSede(sede: string): Promise<DatosDePartic
  * Los campos vacíos son «la cuenta de siempre»; la ficha del modelo, si la
  * tiene, aparece como sugerencia.
  */
-export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEditar: boolean }) {
+/** Las clases de cada papel, en el cajón oscuro del Editor 3D (siempre oscuro)
+ *  y en el tema de la app (el panel del Plano desde el rediseño, PR 3: sigue
+ *  el tema claro u oscuro). Escritas enteras: Tailwind genera lo que lee. */
+const CLASES = {
+  oscuro: {
+    input: "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors disabled:opacity-60",
+    etiqueta: "mb-0.5 block text-[10px] uppercase tracking-widest text-dark-ink-3 font-medium",
+    texto: "text-xs text-dark-ink-2",
+    nota: "text-[10px] leading-snug text-dark-ink-3",
+    aviso: "rounded border border-warning/60 bg-warning/10 p-2 text-[11px] leading-snug text-dark-ink-1",
+    si: "flex-1 rounded border border-warning/60 bg-warning/20 px-2 py-1 font-semibold text-dark-ink-1 hover:bg-warning/30",
+    no: "flex-1 rounded border border-dark-line-2 px-2 py-1 text-dark-ink-2 hover:text-dark-ink-1",
+  },
+  tema: {
+    input: "w-full h-8 rounded-lg border border-[color:var(--brd-control)] bg-surface px-2 text-[12.5px] font-mono tabular-nums text-ink-1 focus:border-ink-1 focus:outline-none placeholder:text-ink-4 transition-colors disabled:opacity-60",
+    etiqueta: "mb-1 block text-[11.5px] text-ink-3",
+    texto: "text-[12.5px] text-ink-2",
+    nota: "text-[11.5px] leading-snug text-ink-3",
+    aviso: "rounded-lg border border-entra-100 bg-entra-50 p-2.5 text-[12px] leading-snug text-ink-1",
+    si: "flex-1 rounded-lg border border-entra-100 bg-surface px-2 py-1.5 font-semibold text-ink-1 hover:border-ink-3",
+    no: "flex-1 rounded-lg border border-line px-2 py-1.5 text-ink-2 hover:text-ink-1",
+  },
+} as const;
+
+export function GeometriaDelMueble({ id, puedeEditar, enElTema = false, antesDelAlto }: {
+  id: string; puedeEditar: boolean;
+  /** Con los colores del tema de la app (el panel del Plano) y no los del
+   *  cajón oscuro (el Editor 3D, que es oscuro siempre). Además: los
+   *  entrepaños con − y +, y «Alto» en el renglón de las medidas. */
+  enElTema?: boolean;
+  /** Lo que va antes de «Alto» en ese renglón: el ancho y el fondo del Plano
+   *  («Ancho × Prof. × Alto», en una fila). Sólo con `enElTema`. */
+  antesDelAlto?: React.ReactNode;
+}) {
   const f = useFixtureStore((s) => selectFixtures(s).find((x) => x.id === id));
   const sede = useFixtureStore((s) => s.sede);
   // El mapa CRUDO de la base: vender una parte (un entrepaño, un tramo) no
@@ -87,9 +121,11 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
     st.commit(conGeometria(selectFixtures(st), id, cambio));
   }
 
-  /** Lo que se tecleó en un campo, como cambio; `undefined` si no se puede leer. */
-  function leer(campo: "h" | "entrepanos" | "modulo"): CambioDeGeometria | undefined {
-    const crudo = (campo === "h" ? alto : campo === "entrepanos" ? entrepanos : modulo).trim().replace(",", ".");
+  /** Lo que se tecleó en un campo, como cambio; `undefined` si no se puede leer.
+   *  `dado`: lo que puso un botón (− y + de los entrepaños) en el mismo clic,
+   *  antes de que el borrador se entere. */
+  function leer(campo: "h" | "entrepanos" | "modulo", dado?: string): CambioDeGeometria | undefined {
+    const crudo = (dado ?? (campo === "h" ? alto : campo === "entrepanos" ? entrepanos : modulo)).trim().replace(",", ".");
     if (campo === "h") {
       const n = Number(crudo);
       return crudo && Number.isFinite(n) ? { h: n } : undefined;
@@ -99,10 +135,10 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
     return Number.isFinite(n) ? { [campo]: n } : undefined;
   }
 
-  async function proponer(campo: "h" | "entrepanos" | "modulo") {
+  async function proponer(campo: "h" | "entrepanos" | "modulo", dado?: string) {
     if (!f || !puedeEditar || revisando) return;
     setProblema(null);
-    const cambio = leer(campo);
+    const cambio = leer(campo, dado);
     if (!cambio) { setProblema("Ese número no se entiende."); volver(); return; }
     const malo = problemaDelCambio(f, cambio);
     if (malo) { setProblema(malo); volver(); return; }
@@ -138,33 +174,63 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
     if (e.key === "Escape") { volver(); setProblema(null); }
   };
 
-  const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors disabled:opacity-60";
-  const etiquetaCls = "mb-0.5 block text-[10px] uppercase tracking-widest text-dark-ink-3 font-medium";
+  const cl = enElTema ? CLASES.tema : CLASES.oscuro;
+  const inputCls = cl.input;
+  const etiquetaCls = cl.etiqueta;
+  /** − y + de los entrepaños (el panel del Plano): desde lo guardado o la cuenta
+   *  de siempre, dentro de los límites, por la MISMA revisión que el campo. */
+  const pasoDeEntrepanos = (d: -1 | 1) => {
+    const base = typeof e0 === "number" ? e0 : vista.entrepanos;
+    const n = Math.min(lim.entrepanos[1], Math.max(lim.entrepanos[0], base + d));
+    if (n === base) return;
+    setEntrepanos(String(n));
+    void proponer("entrepanos", String(n));
+  };
 
   if (!puedeEditar) {
     return (
-      <p className="text-xs text-dark-ink-2" data-geometria={f.id}>
+      <p className={cl.texto} data-geometria={f.id}>
         {metros(f.h)} m · la base y {vista.entrepanos} {vista.entrepanos === 1 ? "entrepaño" : "entrepaños"} con producto{vista.techo ? " (y el techo)" : ""} · {vista.modulos} {vista.modulos === 1 ? "módulo" : "módulos"} de {metros(vista.anchoDeModulo)} m
       </p>
     );
   }
 
+  const campoAlto = (
+    <label>
+      <span className={etiquetaCls}>Alto (m)</span>
+      <input type="number" step={0.05} min={lim.alto[0]} max={lim.alto[1]} className={inputCls}
+        value={alto} disabled={!!pendiente || revisando}
+        placeholder={ficha.h !== undefined ? String(ficha.h) : undefined}
+        onChange={(e) => setAlto(e.target.value)} onBlur={alSalir("h")} onKeyDown={conEnter} />
+    </label>
+  );
+  const campoEntrepanos = (
+    <input type="number" step={1} min={lim.entrepanos[0]} max={lim.entrepanos[1]} className={inputCls}
+      value={entrepanos} disabled={!!pendiente || revisando}
+      placeholder={ficha.entrepanos !== undefined ? String(ficha.entrepanos) : `auto (${vista.entrepanos})`}
+      onChange={(e) => setEntrepanos(e.target.value)} onBlur={alSalir("entrepanos")} onKeyDown={conEnter} />
+  );
+  const bloqueado = !!pendiente || revisando;
+
   return (
-    <div className="flex flex-col gap-1.5" data-geometria={f.id}>
-      <div className="grid grid-cols-3 gap-2">
-        <label>
-          <span className={etiquetaCls}>Alto (m)</span>
-          <input type="number" step={0.05} min={lim.alto[0]} max={lim.alto[1]} className={inputCls}
-            value={alto} disabled={!!pendiente || revisando}
-            placeholder={ficha.h !== undefined ? String(ficha.h) : undefined}
-            onChange={(e) => setAlto(e.target.value)} onBlur={alSalir("h")} onKeyDown={conEnter} />
-        </label>
+    <div className={enElTema ? "flex flex-col gap-2" : "flex flex-col gap-1.5"} data-geometria={f.id}>
+      {enElTema && (
+        // «Ancho × Prof. × Alto», en una fila (panel B, pestaña Medidas).
+        <div className="p2-tri" data-medidas-en-fila>{antesDelAlto}{antesDelAlto && <span className="p2-x" aria-hidden>×</span>}{campoAlto}</div>
+      )}
+      <div className={enElTema ? "grid grid-cols-2 gap-2" : "grid grid-cols-3 gap-2"}>
+        {!enElTema && campoAlto}
         <label>
           <span className={etiquetaCls}>Entrepaños</span>
-          <input type="number" step={1} min={lim.entrepanos[0]} max={lim.entrepanos[1]} className={inputCls}
-            value={entrepanos} disabled={!!pendiente || revisando}
-            placeholder={ficha.entrepanos !== undefined ? String(ficha.entrepanos) : `auto (${vista.entrepanos})`}
-            onChange={(e) => setEntrepanos(e.target.value)} onBlur={alSalir("entrepanos")} onKeyDown={conEnter} />
+          {enElTema ? (
+            <span className="p2-paso" data-entrepanos-paso>
+              <button type="button" className="p2-icobtn" title="Un entrepaño menos" aria-label="Un entrepaño menos"
+                disabled={bloqueado} onClick={() => pasoDeEntrepanos(-1)}><Minus size={16} strokeWidth={1.75} aria-hidden /></button>
+              {campoEntrepanos}
+              <button type="button" className="p2-icobtn" title="Un entrepaño más" aria-label="Un entrepaño más"
+                disabled={bloqueado} onClick={() => pasoDeEntrepanos(1)}><Plus size={16} strokeWidth={1.75} aria-hidden /></button>
+            </span>
+          ) : campoEntrepanos}
         </label>
         <label>
           <span className={etiquetaCls}>Módulo (m)</span>
@@ -177,7 +243,7 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
             onChange={(e) => setModulo(e.target.value)} onBlur={alSalir("modulo")} onKeyDown={conEnter} />
         </label>
       </div>
-      <p className="text-[10px] leading-snug text-dark-ink-3">
+      <p className={cl.nota}>
         Se dibujan la base y {vista.entrepanos} {vista.entrepanos === 1 ? "entrepaño" : "entrepaños"} con producto
         {vista.techo ? ", más uno de techo sin producto" : ""}{vista.entrepanosGuardados ? "" : " (la cuenta de siempre)"},
         en {vista.modulos} {vista.modulos === 1 ? "módulo" : "módulos"} de {metros(vista.anchoDeModulo)} m
@@ -189,13 +255,13 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
           ].filter(Boolean).join(" y ")}.</>
         )}
       </p>
-      {revisando && <p className="text-[10px] text-dark-ink-3">Revisando lo vendido…</p>}
+      {revisando && <p className={cl.nota}>Revisando lo vendido…</p>}
       {problema && (
         <p className="text-[11px] leading-snug text-danger" data-geometria-rechazo>{problema}</p>
       )}
       {pendiente && (
         <div role="alertdialog" aria-label="Esto mueve lo vendido" data-geometria-aviso
-          className="rounded border border-warning/60 bg-warning/10 p-2 text-[11px] leading-snug text-dark-ink-1">
+          className={cl.aviso}>
           <p className="font-semibold">{pendiente.aviso.titulo}</p>
           <ul className="mt-1 list-disc pl-4">
             {pendiente.aviso.lineas.map((l) => <li key={l}>{l}</li>)}
@@ -203,13 +269,13 @@ export function GeometriaDelMueble({ id, puedeEditar }: { id: string; puedeEdita
           <div className="mt-2 flex gap-1.5">
             <button
               onClick={() => { const c = pendiente.cambio; setPendiente(null); escribir(c); }}
-              className="flex-1 rounded border border-warning/60 bg-warning/20 px-2 py-1 font-semibold text-dark-ink-1 hover:bg-warning/30"
+              className={cl.si}
             >
               Cambiar igual
             </button>
             <button
               onClick={() => { setPendiente(null); volver(); }}
-              className="flex-1 rounded border border-dark-line-2 px-2 py-1 text-dark-ink-2 hover:text-dark-ink-1"
+              className={cl.no}
             >
               Dejarlo como estaba
             </button>

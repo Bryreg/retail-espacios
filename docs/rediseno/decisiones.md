@@ -2,8 +2,11 @@
 
 Se pasan a `docs/ESTADO.md` en el PR que las implementa.
 
-## Plano (PR 3), aprobadas el 2026-10-19
-Dibujo: `docs/maquetas/rediseno-2026-10/plano.html`.
+## Plano (PR 3), aprobadas el 2026-10-19 — HECHAS (2026-10-20)
+Dibujo: `docs/maquetas/rediseno-2026-10/plano.html`. Pasaron a `docs/ESTADO.md` (*Rediseño, PR 3
+(Plano)* y la regla dura «Un espacio se ocupa vendiéndolo, y se reserva en Vender»): 1, 2, 3 y 5
+están en el código; la 4 la cerró Vender (PR 1, «Cambia cómo se vende … en toda la tienda» de
+`LineaDelContrato.tsx`), y en el Plano «Cómo» sigue escribiendo la misma `partes.division`.
 
 1. **Sin «Reservado» a mano** en «Estado del espacio»: queda Disponible / Mantenimiento. La
    reserva de verdad sale de Vender, con proveedor y fecha (`vender-api.md` §8). Los espacios

@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+// Un solo juego de íconos, 16 px y trazo 1,75 (la hoja de íconos del
+// rediseño, tabla «Plano»); los de cada tipo de mueble, en `iconos.ts`.
 import {
-  MousePointer2,
-  RotateCw,
-  Trash2,
-  Save,
-  Eye,
-  EyeOff,
-  Search,
-  X,
+  MousePointer2, RotateCw, Trash2, Eye, Search, X, Undo2, Redo2, Pencil, Plus, Minus, Ellipsis, MapPin, Shapes,
+  ChevronDown, ChevronRight, PanelLeftClose, Mouse, Focus, Captions, Maximize2, Minimize2, TriangleAlert,
+  ClipboardCheck, Keyboard, ListOrdered, Lock, Handshake, Ruler, FileText, FilePenLine, Percent, Copy, ImageUp,
+  Image as ImageIcon, Store, Ban,
 } from "lucide-react";
-import { ClipboardCheck, Keyboard, ListOrdered } from "lucide-react";
+import { ICONO, iconoDeFamilia, iconoDelTipo } from "./iconos";
+import { TIPOS_CON_GEOMETRIA, geometriaALaVista, metros } from "../../utils/geometriaDelMueble";
+import { fechaEnCurso } from "../../utils/propuesta";
+import type { Space } from "../../types";
 import { useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FaceData } from "../../types/fixtures";
@@ -32,11 +33,12 @@ import {
 } from "../../catalogo/nombresPropios";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
-import { textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
+import { partesConEstado, textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
 import {
-  codigoDeParte, concordancia, dispoDeParticipacion, divisionDe, estadoParaPintar, juntasDePartes, piezasDe,
+  codigoDeParte, concordancia, dispoDeParticipacion, divisionDe, estadoParaPintar, juntasDePartes, partirCodigo, piezasDe,
   porParticipacion, puntosDePartesVendidas, sufijoDeParte, vanoDeParte,
-  DONDE_SE_CARGAN, notaDeEstadoPorOcupacion, rotuloPorOcupacion, textoDeLoComprometido, type DispoDeParticipacion,
+  DONDE_SE_CARGAN, notaDeEstadoPorOcupacion, rotuloPorOcupacion, textoCortoDeParticipacion, textoDeLoComprometido,
+  type DispoDeParticipacion,
 } from "../../utils/partes";
 // «Abrir en Distribución» (el Editor 3D en esa cara): el mismo pedido que la
 // ficha de Supervisar, sólo tipos y el store de lectura.
@@ -49,13 +51,12 @@ import { TOLERANCIA_CONTACTO } from "../../utils/planta";
 import { buscarHuecoGrupo } from "../../utils/acomodar";
 import { detectarCorridas, pasilloPorMueble } from "../../utils/pasillos";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
-import { findOrCreateSpace, updateSpaceStatus } from "../../api/spaces";
+import { findOrCreateSpace, getSpaceByCode, guardarNotaDelEspacio, updateSpaceStatus } from "../../api/spaces";
 import { fetchDeleteImpact } from "../../api/layout";
 import type { DeleteImpact } from "../../api/layout";
 import { avisoDelRenombre, lineasDelImpacto } from "../../utils/impactoDeSede";
-import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl } from "../../api/files";
+import { listSpaceFiles, uploadSpaceFile, deleteSpaceFile, fileUrl, getFaceImages } from "../../api/files";
 import type { SpaceFileMeta } from "../../api/files";
-import client from "../../api/client";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -125,7 +126,15 @@ const NON_RENTABLE_BADGE_STYLE: React.CSSProperties = {
 
 // ─── Search + status filter (canvas control bar) ─────────────────────────────
 
-type StatusFilter2D = "all" | "free" | "occupied" | "expiring" | "expired";
+type StatusFilter2D = "all" | "free" | "occupied" | "partial" | "reserved" | "expiring" | "expired";
+
+/** Lo que los dos filtros nuevos (decisión 3 del rediseño) saben de cada
+ *  mueble, del mapa CRUDO de la base y de la ocupación anónima: algo vendido
+ *  en parte (puertas, tramos o entrepaños vendidos y otros libres, o una cara
+ *  por participación con algo comprometido y lugar) y algo reservado (una
+ *  reserva de Vender, de la cara o de una parte, o un «Reservado» a mano de
+ *  antes). */
+interface MarcasDelMueble { parcial: boolean; reservado: boolean }
 
 /** Accent/case-insensitive normalization: NFD + strip combining marks. */
 function normalizeText(s: string): string {
@@ -144,11 +153,13 @@ function daysUntil(dateStr: string): number | null {
 }
 
 /** True when ANY face (A = top-level fields, B = faceB) passes the chip filter. */
-function matchesStatusFilter(item: PlacedItem2D, filter: StatusFilter2D): boolean {
+function matchesStatusFilter(item: PlacedItem2D, filter: StatusFilter2D, marcas?: MarcasDelMueble): boolean {
   if (filter === "all") return true;
   // A non-rentable fixture has no contract state — it can never match a
   // commercial filter like "libres" or "por vencer".
   if (!isRentable(item)) return false;
+  if (filter === "partial") return !!marcas?.parcial;
+  if (filter === "reserved") return !!marcas?.reservado || item.status === "reserved" || item.faceB?.status === "reserved";
   const faces: { status: SpaceStatus; endDate: string }[] = [
     { status: item.status, endDate: item.endDate },
   ];
@@ -186,12 +197,16 @@ function matchesQuery(item: PlacedItem2D, normalizedQuery: string, nombres: Nomb
   return fields.some((f) => normalizeText(f).includes(normalizedQuery));
 }
 
-const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string; color: string; fill: string }[] = [
-  { value: "all",      label: "Todos",      color: "var(--accent)",        fill: "var(--accent-50)" },
-  { value: "free",     label: "Libres",     color: STATUS_COLORS.free,     fill: STATUS_FILL.free },
-  { value: "occupied", label: "Ocupados",   color: STATUS_COLORS.occupied, fill: STATUS_FILL.occupied },
-  { value: "expiring", label: "Por vencer", color: STATUS_COLORS.reserved, fill: STATUS_FILL.reserved },
-  { value: "expired",  label: "Vencidos",   color: STATUS_COLORS.occupied, fill: STATUS_FILL.occupied },
+/** Los filtros del lienzo, con cuántos muebles hay en cada uno (la palabra,
+ *  sin color: el chip elegido va en tinta plena, como en la hoja de piezas). */
+const STATUS_FILTER_CHIPS: { value: StatusFilter2D; label: string }[] = [
+  { value: "all",      label: "Todos" },
+  { value: "free",     label: "Libres" },
+  { value: "occupied", label: "Ocupados" },
+  { value: "partial",  label: "Vendido en parte" },
+  { value: "reserved", label: "Reservados" },
+  { value: "expiring", label: "Por vencer" },
+  { value: "expired",  label: "Vencidos" },
 ];
 
 // SEDES is now managed in the store — see storeSedeList below.
@@ -351,6 +366,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     removeSede,
     catalogLabels,
     setCatalogLabel,
+    pedirVender,
   } = useFixtureStore();
 
   // Same array object seeds the state AND the "came from the store" ref below,
@@ -1330,6 +1346,33 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   const ghostTipo = pendingType ? CATALOG.find((c) => c.type === pendingType) : null;
   const ghostDef = ghostTipo && pendingModelo ? { ...ghostTipo, w: pendingModelo.w, h: pendingModelo.h } : ghostTipo;
 
+  // «Vendido en parte» y «Reservados» (decisión 3): lo que dice la base de
+  // cada mueble. Las reservas se buscan por la base del código (la cara o
+  // cualquiera de sus partes, `partirCodigo`), una vez por mapa.
+  const marcasDe = useMemo(() => {
+    const conReserva = new Set<string>();
+    for (const [codigo, e] of Object.entries(estadoCrudo)) {
+      if (e?.reservado || e?.reservaHasta) conReserva.add(partirCodigo(codigo.toUpperCase()).base);
+    }
+    const m = new Map<string, MarcasDelMueble>();
+    for (const it of items) {
+      const f = muebleDelStore.get(it.id);
+      if (!f) continue;
+      const caras: ("A" | "B")[] = it.faceB ? ["A", "B"] : ["A"];
+      const partes = partesConEstado(f, estadoCrudo, sede).filter((p) => !p.pieza);
+      const parcialPorPartes = caras.some((c) => {
+        const deLaCara = partes.filter((p) => p.sufijo.startsWith("B·") === (c === "B"));
+        return deLaCara.some((p) => p.vendida) && deLaCara.some((p) => !p.vendida);
+      });
+      const parcialPorParticipacion = caras.some((c) => dispoDeLaCara(it.id, c)?.dispo === "parcial");
+      m.set(it.id, {
+        parcial: parcialPorPartes || parcialPorParticipacion,
+        reservado: conReserva.has(fullSpaceCode(f.sede || sede, f.code).toUpperCase()),
+      });
+    }
+    return m;
+  }, [items, muebleDelStore, estadoCrudo, sede, dispoDeLaCara]);
+
   // Search + status filter matching (AND-combined); null set = no filter active
   const normalizedQuery = normalizeText(searchQuery.trim());
   const filterActive = normalizedQuery.length > 0 || statusFilter !== "all";
@@ -1337,12 +1380,21 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     if (!filterActive) return null;
     const s = new Set<string>();
     for (const it of items) {
-      if (matchesQuery(it, normalizedQuery, catalogLabels) && matchesStatusFilter(it, statusFilter)) {
+      if (matchesQuery(it, normalizedQuery, catalogLabels) && matchesStatusFilter(it, statusFilter, marcasDe.get(it.id))) {
         s.add(it.id);
       }
     }
     return s;
-  }, [items, normalizedQuery, statusFilter, filterActive, catalogLabels]);
+  }, [items, normalizedQuery, statusFilter, filterActive, catalogLabels, marcasDe]);
+  /** Cuántos muebles hay en cada filtro, con lo que se está buscando. */
+  const cuentaDeFiltro = useMemo(() => {
+    const n = Object.fromEntries(STATUS_FILTER_CHIPS.map((c) => [c.value, 0])) as Record<StatusFilter2D, number>;
+    for (const it of items) {
+      if (!matchesQuery(it, normalizedQuery, catalogLabels)) continue;
+      for (const c of STATUS_FILTER_CHIPS) if (matchesStatusFilter(it, c.value, marcasDe.get(it.id))) n[c.value] += 1;
+    }
+    return n;
+  }, [items, normalizedQuery, catalogLabels, marcasDe]);
 
   // Smart alignment guides — derived from the live drag/resize state so no
   // extra setState happens inside mousemove. Empty outside drag/resize (and
@@ -1365,6 +1417,102 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     return [];
   }, [items, dragState, resizeState, dragOrigPositions, editMode]);
 
+  // ── Rediseño, PR 3: la barra de arriba, el catálogo plegable y el pie ─────
+  // (`docs/maquetas/rediseno-2026-10/plano.html`). Nada de lo que hacía la
+  // barra de abajo se fue: la sede subió a la primera pieza de arriba (sin
+  // repetirse abajo, decisión 2), Editar | Mirar reemplaza a «Vista previa»,
+  // Revisar · Renumerar · Atajos y el guardado subieron a la derecha, y el
+  // zoom, el centrado, los códigos y la pantalla completa quedaron juntos en
+  // el pie del lienzo.
+  const raizRef = useRef<HTMLDivElement>(null);
+  const [pantallaCompleta, setPantallaCompleta] = useState(false);
+  useEffect(() => {
+    const alCambiar = () => setPantallaCompleta(!!raizRef.current && document.fullscreenElement === raizRef.current);
+    document.addEventListener("fullscreenchange", alCambiar);
+    return () => document.removeEventListener("fullscreenchange", alCambiar);
+  }, []);
+  function alternarPantallaCompleta() {
+    if (document.fullscreenElement) { void document.exitFullscreen().catch(() => {}); return; }
+    const el = raizRef.current;
+    if (!el?.requestFullscreen) { setAviso("Este navegador no deja pasar a pantalla completa"); return; }
+    void el.requestFullscreen().catch(() => setAviso("Este navegador no deja pasar a pantalla completa"));
+  }
+
+  /** El catálogo se pliega a una franja con su ícono: a lo angosto arranca
+   *  plegado, para que el lienzo no quede en cero. */
+  const [catalogoAbierto, setCatalogoAbierto] = useState(() => typeof window === "undefined" || window.innerWidth > 760);
+  /** Las familias del catálogo, en el orden del catálogo de muebles, con su ícono. */
+  const familias = useMemo(() => Array.from(
+    CATALOG.reduce((map, def) => {
+      if (!map.has(def.category)) map.set(def.category, []);
+      map.get(def.category)!.push(def);
+      return map;
+    }, new Map<string, typeof CATALOG>()),
+  ), []);
+  const [familiasAbiertas, setFamiliasAbiertas] = useState<Set<string>>(() => new Set(familias.slice(0, 1).map(([f]) => f)));
+  // Lo que se está por colocar se ve: su familia se abre sola.
+  useEffect(() => {
+    const fam = pendingType ? CATALOG.find((c) => c.type === pendingType)?.category : undefined;
+    if (fam) setFamiliasAbiertas((prev) => (prev.has(fam) ? prev : new Set([...prev, fam])));
+  }, [pendingType]);
+
+  /** El menú «⋯» de la sede: Renombrar, Agregar y Eliminar (los mismos
+   *  campos y diálogos de antes). Se cierra al tocar afuera o con Esc. */
+  const [menuSede, setMenuSede] = useState(false);
+  const menuSedeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuSede) return;
+    const fuera = (e: MouseEvent) => { if (!menuSedeRef.current?.contains(e.target as Node)) setMenuSede(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuSede(false); };
+    window.addEventListener("mousedown", fuera);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("mousedown", fuera); window.removeEventListener("keydown", esc); };
+  }, [menuSede]);
+
+  /** Editar | Mirar. Lo que hacía el botón «Vista previa»: soltar la
+   *  herramienta, lo que se arrastraba y lo elegido. */
+  function cambiarModo(editar: boolean) {
+    if (editar === editMode) return;
+    setEditMode(editar);
+    setActiveTool("select");
+    setPendingType(null);
+    setDragState(null);
+    setDragOrigPositions(null);
+    setResizeState(null);
+    setSelectionRect(null);
+    setSelectedIds(new Set());
+  }
+
+  /** «Centrar en todo»: el encuadre que hacía ⊡; sin muebles, el de ⌂. */
+  function centrarEnTodo() {
+    const svgEl = svgRef.current;
+    if (!svgEl || items.length === 0) { setZoom(1); setPanOffset({ x: 60, y: 60 }); return; }
+    const rect = svgEl.getBoundingClientRect();
+    const pad = 60;
+    const minX = Math.min(...items.map(i => i.x));
+    const minY = Math.min(...items.map(i => i.y));
+    const maxX = Math.max(...items.map(i => i.x + i.w));
+    const maxY = Math.max(...items.map(i => i.y + i.h));
+    const bbW = (maxX - minX) * PX_PER_M;
+    const bbH = (maxY - minY) * PX_PER_M;
+    const scaleX = (rect.width  - pad * 2) / Math.max(bbW, 1);
+    const scaleY = (rect.height - pad * 2) / Math.max(bbH, 1);
+    const newZoom = Math.min(4, Math.max(0.1, Math.min(scaleX, scaleY)));
+    setZoom(newZoom);
+    setPanOffset({ x: pad - minX * PX_PER_M * newZoom, y: pad - minY * PX_PER_M * newZoom });
+  }
+
+  /** La línea de ayuda del pie: lo que se puede hacer ahora. */
+  const pista = activeTool === "place"
+    ? "Hacé clic en el lienzo para colocar · Esc para cancelar"
+    : selectedIds.size > 1
+    ? `${selectedIds.size} elementos seleccionados · Shift+clic suma o quita · arrastrá uno para mover el grupo`
+    : editMode
+    ? RESUMEN_ATAJOS
+    : "Clic en un mueble para ver su ficha · rueda para acercar · espacio + arrastrar para desplazar";
+
+  const posicionDeLaSede = storeSedeList.indexOf(sede);
+
   // ── Grid pattern defs ────────────────────────────────────────────────────────
 
   const gridCell = PX_PER_M; // 1m in px (at zoom=1)
@@ -1373,268 +1521,334 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // ─────────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden">
+    <div ref={raizRef} className="plano2d flex flex-col h-full w-full overflow-hidden" data-pantalla-completa={pantallaCompleta || undefined}>
 
-      {/* Toolbar */}
-      {editMode && (
-        <div
-          className="flex items-center gap-1 flex-shrink-0 flex-wrap"
-          style={{
-            padding: "6px 10px",
-            background: "var(--surface)",
-            borderBottom: "1px solid var(--line)",
-          }}
-        >
-          <ToolbarBtn
-            active={activeTool === "select"}
-            onClick={() => { setActiveTool("select"); setPendingType(null); }}
-            title="Seleccionar (Esc)"
-          >
-            <MousePointer2 size={14} /> <span className="text-xs">Seleccionar</span>
-          </ToolbarBtn>
-
-          <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
-
-          <ToolbarBtn
-            active={false}
-            onClick={() => undo()}
-            title="Deshacer (Ctrl+Z)"
-          >
-            <span className="text-xs">↩ Deshacer</span>
-          </ToolbarBtn>
-          <ToolbarBtn
-            active={false}
-            onClick={() => redo()}
-            title="Rehacer (Ctrl+Y)"
-          >
-            <span className="text-xs">↪ Rehacer</span>
-          </ToolbarBtn>
-
-          <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
-
-          <ToolbarBtn
-            active={false}
-            onClick={() => rotateItem(selectedId)}
-            disabled={!selectedId}
-            title="Rotar (R)"
-          >
-            <RotateCw size={14} /> <span className="text-xs">Rotar</span>
-          </ToolbarBtn>
-          <ToolbarBtn
-            active={false}
-            onClick={() => {
-              if (selectedIds.size > 0) {
-                setItems((prev) => prev.filter((i) => !selectedIds.has(i.id)));
-                setSelectedIds(new Set());
-              }
-            }}
-            disabled={selectedIds.size === 0}
-            title={selectedIds.size > 1 ? `Eliminar ${selectedIds.size} seleccionados (Del)` : "Eliminar (Del)"}
-            danger
-          >
-            <Trash2 size={14} />
-            <span className="text-xs">
-              {selectedIds.size > 1 ? `Eliminar (${selectedIds.size})` : "Eliminar"}
-            </span>
-          </ToolbarBtn>
-
-          <div style={{ width: 1, height: 18, background: "var(--line)", margin: "0 6px" }} />
-
-          <ToolbarBtn
-            active={false}
-            onClick={() => {/* auto-saved via store */}}
-            title="Guardado automático"
-          >
-            <Save size={14} /> <span className="text-xs">Guardado ✓</span>
-          </ToolbarBtn>
-
-          <div className="ml-auto flex items-center gap-2">
-            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
-              {activeTool === "place"
-                ? "Hacé clic en el canvas para colocar · Esc para cancelar"
-                : selectedIds.size > 1
-                ? `${selectedIds.size} elementos seleccionados`
-                : "Drag: mover vista · Shift+drag: abarcar área · Shift+clic: multi-sel"}
-            </span>
+      {/* ── La barra de arriba ─────────────────────────────────────────────
+          1 · la sede (la misma pieza que Vender y Supervisar), 2 · Editar |
+          Mirar, 3 · las herramientas y, a la derecha, el guardado, Revisar,
+          Renumerar y Atajos. La sede se dice UNA vez, acá: abajo ya no se
+          repite (decisión 2). */}
+      <div className="barra-pantalla p2-barra">
+        <div className="pieza p2-sede" data-sede-pieza>
+          <MapPin {...ICONO} className="ico" />
+          {editingSedeInline ? (
+            <input
+              className="p2-sede-campo"
+              aria-label="Nuevo nombre de la sede"
+              value={editingSedeVal}
+              onChange={(e) => setEditingSedeVal(e.target.value)}
+              onBlur={() => { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }
+                if (e.key === "Escape") { renombrando.current = true; setEditingSedeInline(false); }
+              }}
+              autoFocus
+            />
+          ) : (
+            <select className="sede-sel" value={sede} onChange={(e) => setSede(e.target.value)} aria-label="Sede">
+              {storeSedeList.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+          {addingNewSede && (
+            <input
+              className="p2-sede-campo"
+              aria-label="Nombre de la sede nueva"
+              placeholder="Nueva sede…"
+              value={newSedeVal}
+              onChange={(e) => setNewSedeVal(e.target.value)}
+              onBlur={() => {
+                const n = normalizeSede(newSedeVal);
+                if (n) { addSede(n); setSede(n); }
+                setAddingNewSede(false); setNewSedeVal("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { const n = normalizeSede(newSedeVal); if (n) { addSede(n); setSede(n); } setAddingNewSede(false); setNewSedeVal(""); }
+                if (e.key === "Escape") { setAddingNewSede(false); setNewSedeVal(""); }
+              }}
+              autoFocus
+            />
+          )}
+          <span className="cuantos">
+            {posicionDeLaSede >= 0 && <>{posicionDeLaSede + 1} de {storeSedeList.length}{" · "}</>}
+            {items.length} mueble{items.length === 1 ? "" : "s"}
+          </span>
+          <div className="p2-menu-w" ref={menuSedeRef}>
+            <button type="button" className="p2-icobtn" title="Renombrar, agregar o eliminar sede"
+              aria-label="Renombrar, agregar o eliminar sede" aria-haspopup="menu" aria-expanded={menuSede}
+              onClick={() => setMenuSede((v) => !v)}>
+              <Ellipsis {...ICONO} />
+            </button>
+            {menuSede && (
+              <div className="p2-menu" role="menu" data-menu-sede>
+                <button type="button" role="menuitem" title="Renombrar sede"
+                  onClick={() => { setMenuSede(false); renombrando.current = false; setEditingSedeInline(true); setEditingSedeVal(sede); }}>
+                  <Pencil {...ICONO} /> Renombrar sede
+                </button>
+                <button type="button" role="menuitem" title="Agregar nueva sede"
+                  onClick={() => { setMenuSede(false); setAddingNewSede(true); }}>
+                  <Plus {...ICONO} /> Agregar sede
+                </button>
+                {/* Admin only, and never the last one standing */}
+                {isAdmin && storeSedeList.length > 1 && (
+                  <button type="button" role="menuitem" className="peligro" title="Eliminar sede"
+                    onClick={() => { setMenuSede(false); setConfirmDeleteSede(true); }}>
+                    <Trash2 {...ICONO} /> Eliminar sede
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Main area */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* Sidebar: catalog (edit mode only) */}
-        {editMode && (
-          <div
-            className="flex-shrink-0 overflow-y-auto"
-            style={{
-              width: 178,
-              background: "var(--surface)",
-              borderRight: "1px solid var(--line)",
-            }}
-          >
-            <div style={{ padding: "10px 12px 6px", borderBottom: "1px solid var(--line-soft)" }}>
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)" }}>Catálogo</div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>Click para colocar</div>
+        {isAdmin && (
+          <div className="p2-grupo">
+            <div className="p2-seg" role="group" aria-label="Modo del plano" data-modo-del-plano>
+              <button type="button" aria-pressed={editMode} onClick={() => cambiarModo(true)}>
+                <Pencil {...ICONO} /> Editar
+              </button>
+              <button type="button" aria-pressed={!editMode} onClick={() => cambiarModo(false)}>
+                <Eye {...ICONO} /> Mirar
+              </button>
             </div>
-            {Array.from(
-              CATALOG.reduce((map, def) => {
-                if (!map.has(def.category)) map.set(def.category, []);
-                map.get(def.category)!.push(def);
-                return map;
-              }, new Map<string, typeof CATALOG>()),
-            ).map(([cat, defs]) => (
-              <div key={cat} style={{ borderBottom: "1px solid var(--line-soft)" }}>
-                <p style={{ padding: "8px 12px 4px", margin: 0, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)" }}>
-                  {cat}
-                </p>
-                {defs.map((def) => {
-                  const displayLabel = nombrePropio(def.type, catalogLabels) ?? def.label;
-                  const isEditingThis = editingCatalogType === def.type;
-                  const isActive = pendingType === def.type && activeTool === "place" && !pendingModelo;
-                  const modelos = modelosDelPlano[def.type] ?? [];
-                  return (
-                    <div
-                      key={cat + def.type}
-                      className="group relative"
-                      style={{
-                        background: isActive ? "var(--accent-50)" : "transparent",
-                        borderLeft: isActive ? "2px solid var(--accent)" : "2px solid transparent",
-                      }}
-                    >
-                      <button
-                        onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(null); }}
-                        style={{
-                          width: "100%", textAlign: "left",
-                          padding: "6px 12px",
-                          display: "flex", alignItems: "center", gap: 8,
-                          background: "transparent", border: "none", cursor: "pointer",
-                          fontFamily: "inherit",
-                        }}
-                        onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-                      >
-                        {/* Glyph box */}
-                        <div style={{
-                          width: 24, height: 24, borderRadius: "var(--r-sm)",
-                          background: isActive ? "var(--accent-100)" : "var(--surface-3)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 12, flexShrink: 0,
-                        }}>
-                          {def.emoji}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {isEditingThis ? (
-                            <input
-                              style={{
-                                width: "100%", fontSize: 11.5,
-                                border: "1px solid var(--accent)",
-                                borderRadius: "var(--r-xs)",
-                                padding: "2px 4px",
-                                background: "var(--surface)",
-                                outline: "none",
-                                color: "var(--ink-1)",
-                              }}
-                              value={editingCatalogVal}
-                              maxLength={LARGO_DEL_NOMBRE_PROPIO}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => setEditingCatalogVal(e.target.value)}
-                              onBlur={() => {
-                                // Vacío, o el de RECABRA, deja la familia sin nombre propio.
-                                setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal));
-                                setEditingCatalogType(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") { setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal)); setEditingCatalogType(null); }
-                                if (e.key === "Escape") setEditingCatalogType(null);
-                                e.stopPropagation();
-                              }}
-                              autoFocus
-                            />
-                          ) : (
-                            <div style={{ fontSize: 11.5, fontWeight: 500, color: "var(--ink-1)", lineHeight: 1.2 }}>
-                              {displayLabel}
-                            </div>
-                          )}
-                          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-4)", marginTop: 1 }}>
-                            {def.w}×{def.h}×{H_DEFAULTS[def.type] ?? '?'}m
-                          </div>
-                        </div>
-                      </button>
-                      {/* Rename button */}
-                      {!isEditingThis && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingCatalogType(def.type);
-                            setEditingCatalogVal(displayLabel);
-                          }}
-                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100"
-                          style={{
-                            padding: 2, borderRadius: 4, border: "none",
-                            background: "transparent", cursor: "pointer",
-                            color: "var(--ink-4)",
-                            transition: "opacity .12s",
-                          }}
-                          title="Cómo le dicen en esta tienda (vacío: el nombre de RECABRA). También en Configuración."
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
-                        >
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                      )}
-                      {/* Los modelos de la familia: muebles de verdad, con las
-                          medidas de su ficha —los de RECABRA y después las
-                          fichas propias del supermercado—. Lo de arriba es el
-                          modelo base, que se coloca como siempre. «≈»: medidas
-                          deducidas. */}
-                      {modelos.length > 0 && (
-                        <details data-modelos-2d={def.type}
-                          open={(pendingType === def.type && !!pendingModelo) || undefined}
-                          style={{ padding: "0 12px 6px 44px" }}>
-                          <summary style={{ cursor: "pointer", fontSize: 10, color: "var(--ink-3)", userSelect: "none" }}>
-                            {modelos.length} {modelos.length === 1 ? "modelo" : "modelos"}
-                          </summary>
-                          {modelos.map((m) => {
-                            const activo = pendingModelo?.id === m.id && activeTool === "place";
-                            return (
-                              <button key={m.id} data-modelo={m.id}
-                                onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(m); }}
-                                style={{
-                                  width: "100%", textAlign: "left", display: "block",
-                                  padding: "3px 6px", marginTop: 2,
-                                  background: activo ? "var(--accent-50)" : "transparent",
-                                  border: "none", borderLeft: activo ? "2px solid var(--accent)" : "2px solid transparent",
-                                  cursor: "pointer", fontFamily: "inherit",
-                                }}>
-                                <span style={{ display: "block", fontSize: 11, color: "var(--ink-1)", lineHeight: 1.2 }}>
-                                  {m.estimado ? "≈ " : ""}{m.nombre}
-                                </span>
-                                <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-4)" }}>
-                                  {m.w}×{m.h}×{m.nace.h}m
-                                </span>
-                                {/* Cómo se vende lo que se coloca desde este
-                                    modelo («por puertas»): lo dice su ficha. */}
-                                {m.comoSeVende && (
-                                  <span data-como-se-vende={m.comoSeVende} style={{ display: "block", fontSize: 9.5, color: "var(--ink-3)" }}>
-                                    {m.comoSeVende}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </details>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
           </div>
         )}
 
-        {/* SVG Canvas */}
-        <div className="flex-1 relative overflow-hidden" style={{ background: "var(--surface-2)" }}>
+        {editMode && (
+          <div className="p2-grupo" role="toolbar" aria-label="Herramientas">
+            <button type="button" className="p2-icobtn" title="Seleccionar (Esc)" aria-label="Seleccionar"
+              aria-pressed={activeTool === "select"}
+              onClick={() => { setActiveTool("select"); setPendingType(null); }}>
+              <MousePointer2 {...ICONO} />
+            </button>
+            <span className="p2-sepv" />
+            <button type="button" className="p2-icobtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" onClick={() => undo()}>
+              <Undo2 {...ICONO} />
+            </button>
+            <button type="button" className="p2-icobtn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" onClick={() => redo()}>
+              <Redo2 {...ICONO} />
+            </button>
+            <span className="p2-sepv" />
+            <button type="button" className="p2-icobtn" title="Rotar (R)" aria-label="Rotar"
+              onClick={() => rotateItem(selectedId)} disabled={!selectedId}>
+              <RotateCw {...ICONO} />
+            </button>
+            <button type="button" className="p2-icobtn peligro" aria-label="Eliminar"
+              title={selectedIds.size > 1 ? `Eliminar ${selectedIds.size} seleccionados (Supr)` : "Eliminar (Supr)"}
+              disabled={selectedIds.size === 0}
+              onClick={() => {
+                if (selectedIds.size > 0) {
+                  setItems((prev) => prev.filter((i) => !selectedIds.has(i.id)));
+                  setSelectedIds(new Set());
+                }
+              }}>
+              <Trash2 {...ICONO} />
+            </button>
+          </div>
+        )}
+
+        <div className="der">
+          {/* El guardado es automático: el punto y la palabra dicen cómo va. */}
+          {isAdmin && <SyncButton />}
+          <button type="button" className="btn-barra" aria-pressed={revisionAbierta}
+            onClick={() => { setRevisionAbierta((v) => !v); setAtajosAbiertos(false); setSelectedIds(new Set()); }}
+            title="Revisar el plano: códigos repetidos, muebles encimados y pasillos angostos" aria-label="Revisar">
+            <ClipboardCheck {...ICONO} className="ico" /> <span className="txt">Revisar</span>
+          </button>
+          {/* Al lado de «Revisar», que es donde vive la higiene del plano: uno
+              lista lo que está mal, el otro lo arregla de raíz. Sólo admin —
+              renumerar mueve los contratos y los montajes con su mueble. */}
+          {isAdmin && (
+            <button type="button" className="btn-barra" onClick={() => navigate("/renumerar")} aria-label="Renumerar"
+              title="Renumerar el plano siguiendo el recorrido de la tienda, con el informe antes → después para llevar a la sede">
+              <ListOrdered {...ICONO} className="ico" /> <span className="txt">Renumerar</span>
+            </button>
+          )}
+          <button type="button" className="p2-icobtn borde" aria-pressed={atajosAbiertos}
+            onClick={() => { setAtajosAbiertos((v) => !v); setRevisionAbierta(false); setSelectedIds(new Set()); }}
+            title="Atajos de teclado" aria-label="Atajos de teclado">
+            <Keyboard {...ICONO} />
+          </button>
+        </div>
+      </div>
+
+      {/* Main area */}
+      <div className="p2-cuerpo flex flex-1 overflow-hidden">
+
+        {/* El catálogo (sólo editando): familias plegables con su ícono, y
+            cada tipo con su ícono, sus medidas y cuántos modelos tiene. */}
+        {editMode && (
+          <aside className="p2-catalogo" data-catalogo-2d data-plegado={!catalogoAbierto || undefined}>
+            <div className="p2-cat-h">
+              {catalogoAbierto ? (
+                <>
+                  <Shapes {...ICONO} />
+                  <h3>Catálogo</h3>
+                  <span className="sub">clic para colocar</span>
+                  <button type="button" className="p2-icobtn chico" title="Plegar el catálogo" aria-label="Plegar el catálogo"
+                    onClick={() => setCatalogoAbierto(false)}>
+                    <PanelLeftClose {...ICONO} />
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="p2-icobtn" title="Abrir el catálogo" aria-label="Abrir el catálogo"
+                  onClick={() => setCatalogoAbierto(true)}>
+                  <Shapes {...ICONO} />
+                </button>
+              )}
+            </div>
+            {catalogoAbierto && (
+              <div className="p2-cat-b">
+                {familias.map(([cat, defs]) => {
+                  const IconoFamilia = iconoDeFamilia(cat, defs[0]?.type);
+                  const abierta = familiasAbiertas.has(cat);
+                  const modelosDeLaFamilia = defs.reduce((n, d) => n + (modelosDelPlano[d.type]?.length ?? 0), 0);
+                  return (
+                    <div key={cat} className="p2-fam" data-familia={cat}>
+                      <button type="button" className="p2-fam-h" aria-expanded={abierta}
+                        onClick={() => setFamiliasAbiertas((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(cat)) next.delete(cat); else next.add(cat);
+                          return next;
+                        })}>
+                        <IconoFamilia {...ICONO} />
+                        <div>
+                          <b>{cat}</b>
+                          <span>
+                            {defs.length} {defs.length === 1 ? "tipo" : "tipos"}
+                            {modelosDeLaFamilia > 0 && <> · {modelosDeLaFamilia} {modelosDeLaFamilia === 1 ? "modelo" : "modelos"}</>}
+                          </span>
+                        </div>
+                        {abierta ? <ChevronDown {...ICONO} /> : <ChevronRight {...ICONO} />}
+                      </button>
+                      {abierta && defs.map((def) => {
+                        const displayLabel = nombrePropio(def.type, catalogLabels) ?? def.label;
+                        const isEditingThis = editingCatalogType === def.type;
+                        const isActive = pendingType === def.type && activeTool === "place" && !pendingModelo;
+                        const modelos = modelosDelPlano[def.type] ?? [];
+                        const IconoTipo = iconoDelTipo(def.type);
+                        return (
+                          <div key={cat + def.type} className="p2-tipo" data-tipo-2d={def.type} data-activo={isActive || undefined}>
+                            <button type="button" className="p2-tipo-b"
+                              onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(null); }}>
+                              <IconoTipo {...ICONO} />
+                              <div style={{ minWidth: 0 }}>
+                                {isEditingThis ? (
+                                  <input
+                                    className="p2-tipo-campo"
+                                    aria-label="Cómo le dicen en esta tienda"
+                                    value={editingCatalogVal}
+                                    maxLength={LARGO_DEL_NOMBRE_PROPIO}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => setEditingCatalogVal(e.target.value)}
+                                    onBlur={() => {
+                                      // Vacío, o el de RECABRA, deja la familia sin nombre propio.
+                                      setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal));
+                                      setEditingCatalogType(null);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") { setCatalogLabel(def.type, nombreParaGuardar(def.type, editingCatalogVal)); setEditingCatalogType(null); }
+                                      if (e.key === "Escape") setEditingCatalogType(null);
+                                      e.stopPropagation();
+                                    }}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <b>{displayLabel}</b>
+                                )}
+                                <span className="med">
+                                  {metros(def.w)} × {metros(def.h)} × {metros(H_DEFAULTS[def.type] ?? 0)} m
+                                  {modelos.length > 0 && ` · ${modelos.length} ${modelos.length === 1 ? "modelo" : "modelos"}`}
+                                </span>
+                              </div>
+                            </button>
+                            {/* El nombre propio de la familia: el lápiz de siempre. */}
+                            {!isEditingThis && (
+                              <button type="button" className="p2-icobtn chico p2-lapiz"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingCatalogType(def.type);
+                                  setEditingCatalogVal(displayLabel);
+                                }}
+                                title="Cómo le dicen en esta tienda (vacío: el nombre de RECABRA). También en Configuración."
+                                aria-label="Cómo le dicen en esta tienda">
+                                <Pencil {...ICONO} />
+                              </button>
+                            )}
+                            {/* Los modelos de la familia: muebles de verdad, con las
+                                medidas de su ficha —los de RECABRA y después las
+                                fichas propias del supermercado—. Lo de arriba es el
+                                modelo base, que se coloca como siempre. «≈»: medidas
+                                deducidas. */}
+                            {modelos.length > 0 && (
+                              <details className="p2-modelos" data-modelos-2d={def.type}
+                                open={(pendingType === def.type && !!pendingModelo) || undefined}>
+                                <summary>Elegir el modelo</summary>
+                                {modelos.map((m) => {
+                                  const activo = pendingModelo?.id === m.id && activeTool === "place";
+                                  return (
+                                    <button key={m.id} data-modelo={m.id} type="button" className="p2-modelo" data-activo={activo || undefined}
+                                      onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(m); }}>
+                                      <span className="nom">{m.estimado ? "≈ " : ""}{m.nombre}</span>
+                                      <span className="med">{metros(m.w)} × {metros(m.h)} × {metros(m.nace.h)} m</span>
+                                      {/* Cómo se vende lo que se coloca desde este
+                                          modelo («por puertas»): lo dice su ficha. */}
+                                      {m.comoSeVende && (
+                                        <span className="como" data-como-se-vende={m.comoSeVende}>{m.comoSeVende}</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </details>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+                <p className="p2-nota">El nombre de cada tipo se cambia con el lápiz: es cómo le dicen en esta tienda.</p>
+              </div>
+            )}
+          </aside>
+        )}
+
+        {/* El lienzo: arriba el buscador y los filtros con su cuenta, abajo el
+            zoom, el centrado, los códigos y la pantalla completa. */}
+        <div className="p2-lienzo">
+          <div className="p2-sobre">
+            <label className="p2-buscar">
+              <Search {...ICONO} />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearchQuery("");
+                    e.currentTarget.blur();
+                    e.stopPropagation();
+                  }
+                }}
+                placeholder="Buscar espacio, categoría o proveedor…"
+                aria-label="Buscar espacio, categoría o proveedor"
+              />
+              {filterActive && <span className="cuenta">{matchedIds?.size ?? 0} de {items.length}</span>}
+              {searchQuery.length > 0 && (
+                <button type="button" className="p2-icobtn chico" onClick={() => setSearchQuery("")} title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+                  <X {...ICONO} />
+                </button>
+              )}
+            </label>
+            <div className="p2-chips" role="group" aria-label="Filtrar por estado" data-filtros-2d>
+              {STATUS_FILTER_CHIPS.map((chip) => (
+                <button key={chip.value} type="button" className="p2-chip" data-filtro={chip.value}
+                  aria-pressed={statusFilter === chip.value} onClick={() => setStatusFilter(chip.value)}>
+                  {chip.label} <span className="mono">{cuentaDeFiltro[chip.value]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="p2-svg" style={{ background: "var(--surface-2)" }}>
           <svg
             ref={svgRef}
             width="100%"
@@ -1705,7 +1919,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 const ph = item.h * PX_PER_M;
                 const isSelected = selectedIds.has(item.id);
                 const isCollidingDrag = isColliding && dragState?.id === item.id;
-                const catDef = CATALOG.find((c) => c.type === item.type);
                 const isFilterMatch = matchedIds === null || matchedIds.has(item.id);
                 const isDimmed = filterActive && !isFilterMatch;
                 // Qué se dibuja sobre el mueble: el nombre adentro de la caja
@@ -2031,7 +2244,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
                     {/* Labels — progressive disclosure based on on-screen size.
                         pw/ph are SVG coords; multiply by zoom for screen pixels.
-                        Emoji: show only when code isn't visible (avoids double clutter).
+                        Ícono del tipo (el de la biblioteca, `iconos.ts`; antes un
+                        emoji): sólo cuando el código no entra.
                         Code: show only when fixture is at least 46 px wide on screen.
                         El nombre de un mueble que tiene gemelo en la sede se lee
                         en rojo, igual que la marca «×2» de su pastilla: la caja
@@ -2040,22 +2254,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       const screenW = pw * zoom;
                       const screenH = ph * zoom;
                       const showCode = rotulos.adentro !== null;
-                      const showEmoji = !showCode && screenW > 22 && screenH > 16;
+                      const showIcono = !showCode && screenW > 22 && screenH > 16;
+                      const lado = Math.min(12 / zoom, pw * 0.6, ph * 0.7);
+                      const IconoDelMueble = iconoDelTipo(item.type);
                       // Font size: stays ~11 px on screen but capped to 45 % of fixture width
                       const fs = Math.min(11 / zoom, pw * 0.45, ph * 0.7);
                       return (
                         <>
-                          {showEmoji && (
-                            <text
-                              x={px + pw / 2}
-                              y={py + ph / 2}
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                              fontSize={Math.min(10 / zoom, pw * 0.6, ph * 0.7)}
-                              style={{ userSelect: "none", pointerEvents: "none" }}
-                            >
-                              {catDef?.emoji ?? ""}
-                            </text>
+                          {showIcono && (
+                            <IconoDelMueble
+                              x={px + pw / 2 - lado / 2}
+                              y={py + ph / 2 - lado / 2}
+                              width={lado}
+                              height={lado}
+                              strokeWidth={1.75}
+                              color="var(--ink-2)"
+                              aria-hidden
+                              style={{ pointerEvents: "none" }}
+                            />
                           )}
                           {showCode && (
                             editingCodeId === item.id ? (
@@ -2108,15 +2324,16 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       !item.endDate ||
                       new Date(item.endDate) < new Date()
                     ) && (
-                      <text
-                        x={px + pw - 2 / zoom}
-                        y={py + 14 / zoom}
-                        textAnchor="end"
-                        fontSize={12 / zoom}
-                        style={{ pointerEvents: "none", userSelect: "none" }}
-                      >
-                        ⚠️
-                      </text>
+                      <TriangleAlert
+                        x={px + pw - 14 / zoom}
+                        y={py + 2 / zoom}
+                        width={12 / zoom}
+                        height={12 / zoom}
+                        strokeWidth={2}
+                        color="var(--ocupado)"
+                        aria-hidden
+                        style={{ pointerEvents: "none" }}
+                      />
                     )}
 
                     {/* Resize handle */}
@@ -2240,21 +2457,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
 
             </g>
           </svg>
-
           {/* Lo que acaba de pasar. Antes no había ninguno: un atajo que no
               hacía nada era indistinguible de uno que no existía. */}
-          {aviso && (
-            <div style={{
-              position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)",
-              zIndex: 20, pointerEvents: "none",
-              padding: "7px 14px", borderRadius: 999,
-              background: "var(--ink-1)", color: "var(--surface)",
-              fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
-              boxShadow: "0 4px 14px rgba(0,0,0,.18)",
-            }}>
-              {aviso}
-            </div>
-          )}
+          {aviso && <div className="p2-toast" role="status">{aviso}</div>}
 
           {/* El nombre que se rechazó, quién lo tiene, y la salida.
               No se va solo: el campo sigue abierto hasta que se corrija, y un
@@ -2304,140 +2509,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             </div>
           )}
 
-          {/* Search + status filter — floating card, top-left over the canvas */}
-          <div
-            style={{
-              position: "absolute", top: 12, left: 12, zIndex: 10,
-              maxWidth: "calc(100% - 24px)",
-              display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6,
-              background: "var(--surface)", border: "1px solid var(--line)",
-              borderRadius: "var(--r-lg)", padding: "6px 8px",
-              boxShadow: "var(--shadow-md)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-              <Search size={13} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setSearchQuery("");
-                    e.currentTarget.blur();
-                    e.stopPropagation();
-                  }
-                }}
-                placeholder="Buscar espacio, categoría o proveedor…"
-                style={{
-                  width: 230, fontSize: 12, background: "transparent",
-                  border: "none", outline: "none", color: "var(--ink-1)",
-                  fontFamily: "inherit",
-                }}
-              />
-              {searchQuery.length > 0 && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  title="Limpiar búsqueda"
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    padding: 2, borderRadius: 4, border: "none",
-                    background: "transparent", cursor: "pointer", color: "var(--ink-4)",
-                    flexShrink: 0,
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-1)"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
-                >
-                  <X size={12} />
-                </button>
-              )}
-              {filterActive && (
-                <span style={{ fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                  {matchedIds?.size ?? 0} de {items.length}
-                </span>
-              )}
-            </div>
-
-            <div style={{ width: 1, height: 16, background: "var(--line)", flexShrink: 0 }} />
-
-            {STATUS_FILTER_CHIPS.map((chip) => {
-              const active = statusFilter === chip.value;
-              return (
-                <button
-                  key={chip.value}
-                  onClick={() => setStatusFilter(chip.value)}
-                  style={{
-                    fontSize: 11, fontWeight: 500, fontFamily: "inherit",
-                    padding: "2px 9px", borderRadius: 999, cursor: "pointer",
-                    border: `1px solid ${active ? chip.color : "var(--line)"}`,
-                    background: active ? chip.fill : "transparent",
-                    color: active ? chip.color : "var(--ink-3)",
-                    transition: "all .12s", whiteSpace: "nowrap",
-                  }}
-                >
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Zoom indicator */}
-          <div
-            style={{
-              position: "absolute", bottom: 14, right: 14,
-              display: "flex", alignItems: "center", gap: 2,
-              background: "var(--surface)", border: "1px solid var(--line)",
-              borderRadius: "var(--r-md)", padding: "2px 4px",
-              fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-2)",
-              boxShadow: "var(--shadow-sm)",
-            }}
-          >
-            <span style={{ padding: "0 6px" }}>{Math.round(zoom * 100)}%</span>
-            <button
-              onClick={() => setZoom((z) => Math.min(4, z * 1.2))}
-              style={{ padding: "0 4px", background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }}
-            >+</button>
-            <button
-              onClick={() => setZoom((z) => Math.max(0.25, z / 1.2))}
-              style={{ padding: "0 4px", background: "none", border: "none", cursor: "pointer", color: "var(--ink-2)" }}
-            >−</button>
-            <button
-              onClick={() => { setZoom(1); setPanOffset({ x: 60, y: 60 }); }}
-              style={{
-                padding: "0 4px", background: "none", border: "none", cursor: "pointer",
-                color: "var(--ink-2)", borderLeft: "1px solid var(--line)", paddingLeft: 6,
-              }}
-              title="Restablecer vista"
-            >⌂</button>
-            {items.length > 0 && (
-              <button
-                onClick={() => {
-                  const svgEl = svgRef.current;
-                  if (!svgEl) return;
-                  const rect = svgEl.getBoundingClientRect();
-                  const pad = 60;
-                  const minX = Math.min(...items.map(i => i.x));
-                  const minY = Math.min(...items.map(i => i.y));
-                  const maxX = Math.max(...items.map(i => i.x + i.w));
-                  const maxY = Math.max(...items.map(i => i.y + i.h));
-                  const bbW = (maxX - minX) * PX_PER_M;
-                  const bbH = (maxY - minY) * PX_PER_M;
-                  const scaleX = (rect.width  - pad * 2) / Math.max(bbW, 1);
-                  const scaleY = (rect.height - pad * 2) / Math.max(bbH, 1);
-                  const newZoom = Math.min(4, Math.max(0.1, Math.min(scaleX, scaleY)));
-                  const newPanX = pad - minX * PX_PER_M * newZoom;
-                  const newPanY = pad - minY * PX_PER_M * newZoom;
-                  setZoom(newZoom);
-                  setPanOffset({ x: newPanX, y: newPanY });
-                }}
-                style={{
-                  padding: "0 4px", background: "none", border: "none", cursor: "pointer",
-                  color: "var(--ink-2)", borderLeft: "1px solid var(--line)", paddingLeft: 6,
-                }}
-                title="Ajustar a todos los fixtures"
-              >⊡</button>
-            )}
-          </div>
-
           {/* Empty state */}
           {items.length === 0 && (
             <div
@@ -2453,33 +2524,60 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                   width: 72, height: 72, borderRadius: 16,
                   background: "var(--surface-3)", color: "var(--ink-3)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  marginBottom: 16, fontSize: 32,
+                  marginBottom: 16,
                 }}
               >
-                🏪
+                <Shapes size={32} strokeWidth={1.75} aria-hidden />
               </div>
               <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", marginBottom: 4 }}>
-                {editMode ? "Catálogo vacío" : "Sin fixtures en el plano"}
+                {editMode ? "El plano está vacío" : "Sin muebles en el plano"}
               </p>
               <p style={{ fontSize: 12, color: "var(--ink-3)", maxWidth: 280 }}>
                 {editMode
-                  ? "Elegí un fixture del catálogo para empezar a diseñar el plano."
-                  : "Activá el modo edición para agregar elementos."}
+                  ? "Elegí un mueble del catálogo para empezar a dibujar el plano."
+                  : "Pasá a «Editar» para agregar muebles."}
               </p>
             </div>
           )}
+          </div>
+
+          <div className="p2-pie">
+            <span className="p2-pista" title={pista}><Mouse {...ICONO} /><span>{pista}</span></span>
+            <span className="p2-herr" data-pie-del-lienzo>
+              <button type="button" className="p2-icobtn" title="Alejar" aria-label="Alejar"
+                onClick={() => setZoom((z) => Math.max(0.25, z / 1.2))}>
+                <Minus {...ICONO} />
+              </button>
+              <button type="button" className="p2-zoom" title="Volver al 100 %" aria-label="Volver al 100 %"
+                onClick={() => { setZoom(1); setPanOffset({ x: 60, y: 60 }); }}>
+                {Math.round(zoom * 100)} %
+              </button>
+              <button type="button" className="p2-icobtn" title="Acercar" aria-label="Acercar"
+                onClick={() => setZoom((z) => Math.min(4, z * 1.2))}>
+                <Plus {...ICONO} />
+              </button>
+              <button type="button" className="p2-icobtn" title="Centrar en todo" aria-label="Centrar en todo" onClick={centrarEnTodo}>
+                <Focus {...ICONO} />
+              </button>
+              <button type="button" className="p2-icobtn" aria-pressed={showLabels}
+                onClick={() => setShowLabels((v) => !v)}
+                title={showLabels ? "Ocultar los códigos" : "Mostrar los códigos"}
+                aria-label="Mostrar los códigos">
+                <Captions {...ICONO} />
+              </button>
+              <button type="button" className="p2-icobtn" aria-pressed={pantallaCompleta}
+                title={pantallaCompleta ? "Salir de pantalla completa" : "Pantalla completa"}
+                aria-label="Pantalla completa" onClick={alternarPantallaCompleta}>
+                {pantallaCompleta ? <Minimize2 {...ICONO} /> : <Maximize2 {...ICONO} />}
+              </button>
+            </span>
+          </div>
         </div>
 
-        {/* Right panel — dark drawer */}
+        {/* El panel de la derecha: sigue el tema claro u oscuro (dejó de ser
+            el cajón oscuro de siempre). A lo angosto, una hoja desde abajo. */}
         {selectedIds.size > 1 ? (
-          <div
-            style={{
-              width: "clamp(200px, 24vw, 280px)", flexShrink: 0,
-              overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
-              background: "var(--dark-bg)",
-              borderLeft: "1px solid var(--dark-line)",
-            }}
-          >
+          <aside className="p2-panel" aria-label="Varios elegidos">
             <MultiSelectPanel
               count={selectedIds.size}
               editMode={editMode}
@@ -2501,7 +2599,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               }}
               onClose={() => setSelectedIds(new Set())}
             />
-          </div>
+          </aside>
         ) : atajosAbiertos ? (
           <AtajosPanel onClose={() => setAtajosAbiertos(false)} />
         ) : revisionAbierta ? (
@@ -2515,14 +2613,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             onClose={() => setRevisionAbierta(false)}
           />
         ) : selectedItem ? (
-          <div
-            style={{
-              width: "clamp(220px, 26vw, 300px)", flexShrink: 0,
-              overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
-              background: "var(--dark-bg)",
-              borderLeft: "1px solid var(--dark-line)",
-            }}
-          >
+          <aside className="p2-panel" aria-label="El mueble elegido">
             <AssignmentPanel
               item={selectedItem}
               items={items}
@@ -2537,243 +2628,13 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               onUpdate={updateSelected}
               onRenombrar={aplicarRenombre}
               onIntercambiar={aplicarIntercambio}
+              onVender={(cara) => pedirVender(selectedItem.id, cara)}
               onDelete={() => { deleteItem(selectedItem.id); }}
               onDuplicate={() => duplicateSelected(new Set([selectedItem.id]))}
               onClose={() => setSelectedIds(new Set())}
             />
-          </div>
+          </aside>
         ) : null}
-      </div>
-
-      {/* Bottom bar */}
-      <div
-        className="flex items-center gap-3 flex-shrink-0"
-        style={{
-          padding: "6px 12px",
-          background: "var(--surface)",
-          borderTop: "1px solid var(--line)",
-          fontSize: 11.5,
-          overflow: "hidden",
-          minWidth: 0,
-        }}
-      >
-        {isAdmin && (
-          <>
-            <button
-              onClick={() => {
-                setEditMode((m) => !m);
-                setActiveTool("select");
-                setPendingType(null);
-                setDragState(null);
-                setDragOrigPositions(null);
-                setResizeState(null);
-                setSelectionRect(null);
-                setSelectedIds(new Set());
-              }}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                height: 26, padding: "0 10px",
-                borderRadius: "var(--r-md)",
-                border: "1px solid",
-                fontSize: 11.5, fontWeight: 500, cursor: "pointer",
-                fontFamily: "inherit",
-                background: editMode ? "var(--accent)" : "var(--surface-2)",
-                color: editMode ? "#fff" : "var(--ink-2)",
-                borderColor: editMode ? "var(--accent)" : "var(--line)",
-                transition: "all .12s",
-              }}
-            >
-              {editMode ? <EyeOff size={12} /> : <Eye size={12} />}
-              {editMode ? "Vista previa" : "Editar plano"}
-            </button>
-
-            <div style={{ width: 1, height: 14, background: "var(--line)" }} />
-          </>
-        )}
-        <span style={{ color: "var(--ink-3)" }}>
-          <span style={{ color: "var(--ink-1)", fontWeight: 600 }}>{items.length}</span>{" "}
-          fixture{items.length !== 1 ? "s" : ""}
-        </span>
-
-        <div style={{ width: 1, height: 14, background: "var(--line)" }} />
-        <div className="flex items-center gap-1.5" style={{ color: "var(--ink-3)" }}>
-          <span>Sede:</span>
-          {editingSedeInline ? (
-            <input
-              style={{
-                borderRadius: "var(--r-xs)", border: "1px solid var(--accent)",
-                background: "var(--surface)", padding: "1px 6px",
-                fontSize: 11.5, color: "var(--ink-1)", outline: "none", width: 96,
-              }}
-              value={editingSedeVal}
-              onChange={(e) => setEditingSedeVal(e.target.value)}
-              onBlur={() => { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { void pedirRenombre(normalizeSede(editingSedeVal)); setEditingSedeInline(false); }
-                if (e.key === "Escape") { renombrando.current = true; setEditingSedeInline(false); }
-              }}
-              autoFocus
-            />
-          ) : (
-            <select
-              value={sede}
-              onChange={(e) => setSede(e.target.value)}
-              style={{
-                borderRadius: "var(--r-xs)", border: "1px solid var(--line)",
-                background: "var(--surface)", padding: "1px 6px",
-                fontSize: 11.5, color: "var(--ink-1)", outline: "none", cursor: "pointer",
-                fontFamily: "var(--font-mono)", fontWeight: 600,
-              }}
-            >
-              {storeSedeList.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          )}
-          {/* Rename sede */}
-          {!editingSedeInline && (
-            <button
-              onClick={() => { renombrando.current = false; setEditingSedeInline(true); setEditingSedeVal(sede); }}
-              style={{
-                padding: 2, borderRadius: 4, border: "none",
-                background: "transparent", cursor: "pointer", color: "var(--ink-4)",
-              }}
-              title="Renombrar sede"
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--accent)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
-          )}
-          {/* Delete sede — admin only, and never the last one standing */}
-          {!editingSedeInline && isAdmin && storeSedeList.length > 1 && (
-            <button
-              onClick={() => setConfirmDeleteSede(true)}
-              style={{
-                padding: 2, borderRadius: 4, border: "none",
-                background: "transparent", cursor: "pointer", color: "var(--ink-4)",
-              }}
-              title="Eliminar sede"
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--danger)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
-            >
-              <Trash2 size={11} />
-            </button>
-          )}
-          {/* Add sede */}
-          {addingNewSede ? (
-            <input
-              style={{
-                borderRadius: "var(--r-xs)", border: "1px solid var(--success)",
-                background: "var(--surface)", padding: "1px 6px",
-                fontSize: 11.5, color: "var(--ink-1)", outline: "none", width: 96, marginLeft: 4,
-              }}
-              placeholder="Nueva sede…"
-              value={newSedeVal}
-              onChange={(e) => setNewSedeVal(e.target.value)}
-              onBlur={() => {
-                const n = normalizeSede(newSedeVal);
-                if (n) { addSede(n); setSede(n); }
-                setAddingNewSede(false); setNewSedeVal("");
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { const n = normalizeSede(newSedeVal); if (n) { addSede(n); setSede(n); } setAddingNewSede(false); setNewSedeVal(""); }
-                if (e.key === "Escape") { setAddingNewSede(false); setNewSedeVal(""); }
-              }}
-              autoFocus
-            />
-          ) : (
-            <button
-              onClick={() => setAddingNewSede(true)}
-              style={{
-                padding: 2, borderRadius: 4, border: "none",
-                background: "transparent", cursor: "pointer", color: "var(--ink-4)",
-              }}
-              title="Agregar nueva sede"
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--success)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--ink-4)"; }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
-          )}
-        </div>
-
-        <div style={{ width: 1, height: 14, background: "var(--line)" }} />
-        <button
-          onClick={() => { setAtajosAbiertos((v) => !v); setRevisionAbierta(false); setSelectedIds(new Set()); }}
-          title="Ver todos los atajos de teclado"
-          style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "2px 8px", borderRadius: "var(--r-md)",
-            border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
-            cursor: "pointer", fontFamily: "inherit",
-            background: atajosAbiertos ? "var(--accent-50)" : "var(--surface-2)",
-            color: atajosAbiertos ? "var(--accent-700)" : "var(--ink-3)",
-            transition: "all .12s",
-          }}
-        >
-          <Keyboard size={12} /> Atajos
-        </button>
-
-        <button
-          onClick={() => { setRevisionAbierta((v) => !v); setAtajosAbiertos(false); setSelectedIds(new Set()); }}
-          title="Revisar el plano: códigos repetidos, muebles encimados y pasillos angostos"
-          style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "2px 8px", borderRadius: "var(--r-md)",
-            border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
-            cursor: "pointer", fontFamily: "inherit",
-            background: revisionAbierta ? "var(--accent-50)" : "var(--surface-2)",
-            color: revisionAbierta ? "var(--accent-700)" : "var(--ink-3)",
-            transition: "all .12s",
-          }}
-        >
-          <ClipboardCheck size={12} /> Revisar
-        </button>
-
-        {/* Al lado de «Revisar», que es donde vive la higiene del plano: uno
-            lista lo que está mal, el otro lo arregla de raíz. Sólo admin —
-            renumerar mueve los contratos y los montajes con su mueble. */}
-        {isAdmin && (
-          <button
-            onClick={() => navigate("/renumerar")}
-            title="Renumerar el plano siguiendo el recorrido de la tienda, con el informe antes → después para llevar a la sede"
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              padding: "2px 8px", borderRadius: "var(--r-md)",
-              border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
-              cursor: "pointer", fontFamily: "inherit",
-              background: "var(--surface-2)", color: "var(--ink-3)",
-              transition: "all .12s",
-            }}
-          >
-            <ListOrdered size={12} /> Renumerar
-          </button>
-        )}
-
-        <button
-          onClick={() => setShowLabels((v) => !v)}
-          title={showLabels ? "Ocultar las etiquetas de nombre" : "Mostrar las etiquetas de nombre"}
-          style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "2px 8px", borderRadius: "var(--r-md)",
-            border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
-            cursor: "pointer", fontFamily: "inherit",
-            background: showLabels ? "var(--accent-50)" : "var(--surface-2)",
-            color: showLabels ? "var(--accent-700)" : "var(--ink-3)",
-            transition: "all .12s",
-          }}
-        >
-          {showLabels ? <Eye size={12} /> : <EyeOff size={12} />} Etiquetas
-        </button>
-
-        {isAdmin && <SyncButton />}
-
-        <div style={{
-          marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)",
-          overflow: "hidden", minWidth: 0, whiteSpace: "nowrap", textOverflow: "ellipsis",
-          flexShrink: 1,
-        }}>
-          {editMode ? RESUMEN_ATAJOS : "Clic en fixture para ver detalles"}
-        </div>
       </div>
 
       {renombreEnEspera && (
@@ -3132,8 +2993,14 @@ function DeleteSedeDialog({
   );
 }
 
-// ─── Sync Button ─────────────────────────────────────────────────────────────
+// ─── El estado del guardado ──────────────────────────────────────────────────
 
+/**
+ * El guardado es automático; esto dice cómo va, con un punto y su palabra
+ * (rediseño, PR 3: «Guardado · Guardando… · Sin conexión», como el
+ * «Sincronizado» de la barra de la app). Tocarlo sigue sincronizando en los dos
+ * sentidos, como el botón de antes.
+ */
 function SyncButton() {
   // Two-way on purpose. The old version only PUT the active sede and always
   // ended up showing "✓ Sincronizado", even when the request failed or when
@@ -3161,56 +3028,42 @@ function SyncButton() {
   };
 
   const label =
-    conflictCount > 0 ? "⚠ Conflicto"
-    : rechazado ? "⚠ Rechazado por el servidor"
-    : syncState === "pushing" ? "Subiendo…"
+    conflictCount > 0 ? "Conflicto"
+    : rechazado ? "Rechazado por el servidor"
+    : syncState === "pushing" || hasPending ? "Guardando…"
     : syncState === "pulling" ? "Actualizando…"
     : syncState === "error" ? "Sin conexión"
-    : hasPending ? "↑ Cambios sin subir"
-    : "✓ Sincronizado";
+    : "Guardado";
 
   const color =
-    conflictCount > 0 ? "var(--warning)"
-    : rechazado || syncState === "error" ? "var(--danger)"
-    : !hasPending && syncState === "idle" ? "var(--success)"
-    : "var(--ink-2)";
+    conflictCount > 0 ? "var(--entra)"
+    : rechazado || syncState === "error" ? "var(--ocupado)"
+    : !hasPending && syncState === "idle" ? "var(--libre)"
+    : "var(--entra)";
 
   return (
     <button
+      type="button"
+      className="p2-guardado"
+      data-guardado
       onClick={handleSync}
       disabled={busy}
+      style={{ ["--c" as string]: color }}
       title={
         rechazado
           ? [rechazado.message, ...rechazado.choques].join(" ")
           : lastSyncedAt
-            ? `Última sincronización ${new Date(lastSyncedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}`
+            ? `Última sincronización ${new Date(lastSyncedAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}. Tocá para sincronizar.`
             : "Sincronizar con el servidor"
       }
-      style={{
-        display: "flex", alignItems: "center", gap: 4,
-        padding: "2px 8px", borderRadius: "var(--r-md)",
-        border: "1px solid var(--line)", fontSize: 11.5, fontWeight: 500,
-        cursor: busy ? "wait" : "pointer",
-        fontFamily: "inherit",
-        background: "var(--surface-2)",
-        color,
-        transition: "all .15s",
-      }}
     >
       {label}
     </button>
   );
 }
 
-// ─── Multi-select Panel ───────────────────────────────────────────────────────
+// ─── Atajos ───────────────────────────────────────────────────────────────────
 
-/**
- * Qué está mal en el plano, antes de que se use para negociar.
- *
- * De acá salen los espacios que se venden, el metraje que se cobra y el
- * recorrido que se le muestra al proveedor: un código repetido o un mueble
- * encima de otro no se nota hasta que ya viajó a un contrato.
- */
 /**
  * Los atajos, escritos en un solo lugar.
  *
@@ -3273,51 +3126,40 @@ const RESUMEN_ATAJOS = [
 
 function AtajosPanel({ onClose }: { onClose: () => void }) {
   return (
-    <div style={{
-      width: "clamp(240px, 28vw, 340px)", flexShrink: 0,
-      overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
-      background: "var(--dark-bg)", borderLeft: "1px solid var(--dark-line)",
-    }}>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "11px 13px",
-        borderBottom: "1px solid var(--dark-line)",
-      }}>
-        <p style={{ flex: 1, fontSize: 13, fontWeight: 700, color: "var(--dark-ink-1)" }}>Atajos</p>
-        <button onClick={onClose} title="Cerrar"
-          style={{ background: "none", border: "none", color: "var(--dark-ink-3)", cursor: "pointer", padding: 2 }}>
-          <X size={14} />
-        </button>
+    <aside className="p2-panel" aria-label="Atajos de teclado" data-panel-atajos>
+      <div className="p2-panel-h">
+        <Keyboard {...ICONO} />
+        <div><h3>Atajos</h3><span className="sub">Casi todo pide «Editar». Deshacer y rehacer andan siempre.</span></div>
+        <button type="button" className="p2-icobtn" onClick={onClose} title="Cerrar" aria-label="Cerrar"><X {...ICONO} /></button>
       </div>
-      <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="p2-panel-b">
         {ATAJOS.map((g) => (
           <div key={g.grupo}>
-            <p style={{
-              fontSize: 9.5, fontWeight: 700, textTransform: "uppercase",
-              letterSpacing: "0.08em", color: "var(--dark-ink-3)", marginBottom: 6,
-            }}>{g.grupo}</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <p className="p2-rotulo">{g.grupo}</p>
+            <div style={{ display: "grid", gap: 6 }}>
               {g.filas.map(([tecla, que]) => (
-                <div key={tecla} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <kbd style={{
-                    flexShrink: 0, minWidth: 92, padding: "2px 6px", borderRadius: 4,
-                    border: "1px solid var(--dark-line-2)", background: "var(--dark-surface)",
-                    color: "var(--dark-ink-2)", fontSize: 10.5,
-                    fontFamily: "var(--font-mono)", textAlign: "center",
-                  }}>{tecla}</kbd>
-                  <span style={{ fontSize: 11.5, color: "var(--dark-ink-2)", lineHeight: 1.4 }}>{que}</span>
+                <div key={tecla} className="p2-tecla">
+                  <kbd>{tecla}</kbd>
+                  <span>{que}</span>
                 </div>
               ))}
             </div>
           </div>
         ))}
-        <p style={{ fontSize: 10.5, color: "var(--dark-ink-3)", lineHeight: 1.5 }}>
-          Casi todo pide el modo edición. Deshacer y rehacer andan siempre.
-        </p>
       </div>
-    </div>
+    </aside>
   );
 }
 
+// ─── Revisar ──────────────────────────────────────────────────────────────────
+
+/**
+ * Qué está mal en el plano, antes de que se use para negociar.
+ *
+ * De acá salen los espacios que se venden, el metraje que se cobra y el
+ * recorrido que se le muestra al proveedor: un código repetido o un mueble
+ * encima de otro no se nota hasta que ya viajó a un contrato.
+ */
 function RevisionPanel({
   items, sede, corridas, isAdmin, onIr, onRenumerar, onClose,
 }: {
@@ -3374,36 +3216,25 @@ function RevisionPanel({
   }, [items, sede]);
 
   return (
-    <div style={{
-      width: "clamp(240px, 28vw, 340px)", flexShrink: 0,
-      overflowX: "hidden", overflowY: "auto", display: "flex", flexDirection: "column",
-      background: "var(--dark-bg)", borderLeft: "1px solid var(--dark-line)",
-    }}>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "11px 13px",
-        borderBottom: "1px solid var(--dark-line)",
-      }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "var(--dark-ink-1)" }}>Revisión del plano</p>
-          <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 2 }}>
-            {items.length} muebles · {corridas} pasillo{corridas === 1 ? "" : "s"}
-          </p>
+    <aside className="p2-panel" aria-label="Revisión del plano" data-panel-revision>
+      <div className="p2-panel-h">
+        <ClipboardCheck {...ICONO} />
+        <div style={{ minWidth: 0 }}>
+          <h3>Revisión del plano</h3>
+          <span className="sub">{items.length} muebles · {corridas} pasillo{corridas === 1 ? "" : "s"}</span>
         </div>
-        <button onClick={onClose} title="Cerrar"
-          style={{ background: "none", border: "none", color: "var(--dark-ink-3)", cursor: "pointer", padding: 2 }}>
-          <X size={14} />
-        </button>
+        <button type="button" className="p2-icobtn" onClick={onClose} title="Cerrar" aria-label="Cerrar"><X {...ICONO} /></button>
       </div>
 
-      <div style={{ padding: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="p2-panel-b">
         {hallazgos.length === 0 ? (
-          <p style={{ fontSize: 12.5, color: "var(--success)", lineHeight: 1.5 }}>
+          <p className="p2-limpio">
             El plano está limpio: sin dos muebles llamados igual, sin muebles
             encimados y con pasillos por donde se puede caminar.
           </p>
         ) : (
           <>
-            <p style={{ fontSize: 11.5, color: "var(--dark-ink-3)", lineHeight: 1.5 }}>
+            <p className="p2-msj">
               {errores > 0
                 ? `${errores} ${errores === 1 ? "cosa rompe" : "cosas rompen"} algo aguas abajo.`
                 : "Nada roto; lo de abajo puede ser deliberado."}
@@ -3411,23 +3242,14 @@ function RevisionPanel({
             {hallazgos.map((h, i) => (
               <button
                 key={i}
+                type="button"
+                className="p2-hallazgo"
+                data-error={h.severidad === "error" || undefined}
                 onClick={() => h.ids.length && onIr(h.ids)}
                 disabled={h.ids.length === 0}
-                style={{
-                  textAlign: "left", padding: "8px 10px", borderRadius: "var(--r-md)",
-                  border: `1px solid ${h.severidad === "error" ? "var(--danger)" : "var(--dark-line-2)"}`,
-                  background: h.severidad === "error" ? "var(--danger-50)" : "var(--dark-surface)",
-                  color: h.severidad === "error" ? "var(--danger)" : "var(--dark-ink-2)",
-                  fontSize: 11.5, lineHeight: 1.45, fontFamily: "inherit",
-                  cursor: h.ids.length ? "pointer" : "default",
-                }}
               >
                 {h.texto}
-                {h.ids.length > 0 && (
-                  <span style={{ display: "block", marginTop: 3, fontSize: 10, opacity: 0.75 }}>
-                    Tocá para ir
-                  </span>
-                )}
+                {h.ids.length > 0 && <span className="ir">Tocá para ir</span>}
               </button>
             ))}
           </>
@@ -3435,48 +3257,42 @@ function RevisionPanel({
 
         {/* Lo que ya está cargado, que ninguna validación arregla ─────────── */}
         {aRevisar.length > 0 && (
-          <div style={{ marginTop: 6, paddingTop: 11, borderTop: "1px solid var(--dark-line)" }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--dark-ink-1)" }}>
+          <div className="p2-sep" style={{ display: "grid", gap: 6 }}>
+            <p className="p2-v" style={{ fontWeight: 700, fontSize: "var(--t-xs)" }}>
               Contratos para revisar uno por uno
             </p>
-            <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 3, lineHeight: 1.5 }}>
+            <p className="p2-msj">
               {aRevisar.length} contrato{aRevisar.length === 1 ? "" : "s"} vigente
               {aRevisar.length === 1 ? "" : "s"} sobre muebles que hoy se llaman distinto
               de como se llamaban cuando se negociaron. El papel y el cartel de la
               góndola dicen el nombre viejo; el plano dice el de ahora.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-              {aRevisar.map((c) => (
-                <button
-                  key={`${c.id}-${c.cara ?? "A"}`}
-                  onClick={() => onIr([c.id])}
-                  style={{
-                    textAlign: "left", padding: "8px 10px", borderRadius: "var(--r-md)",
-                    border: `1px solid ${c.loTieneAhora ? "var(--danger)" : "var(--dark-line-2)"}`,
-                    background: c.loTieneAhora ? "var(--danger-50)" : "var(--dark-surface)",
-                    color: c.loTieneAhora ? "var(--danger)" : "var(--dark-ink-2)",
-                    fontSize: 11.5, lineHeight: 1.45, fontFamily: "inherit", cursor: "pointer",
-                  }}
-                >
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>{c.codigo}</span>
-                  <span style={{ opacity: 0.8 }}> · se negoció como </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>«{c.seNegocioComo}»</span>
-                  <span style={{ display: "block", marginTop: 3 }}>
-                    {c.proveedor}{c.marca ? ` · ${c.marca}` : ""}
+            {aRevisar.map((c) => (
+              <button
+                key={`${c.id}-${c.cara ?? "A"}`}
+                type="button"
+                className="p2-hallazgo"
+                data-error={c.loTieneAhora ? true : undefined}
+                onClick={() => onIr([c.id])}
+              >
+                <span className="mono">{c.codigo}</span>
+                <span style={{ opacity: 0.8 }}> · se negoció como </span>
+                <span className="mono">«{c.seNegocioComo}»</span>
+                <span style={{ display: "block", marginTop: 3 }}>
+                  {c.proveedor}{c.marca ? ` · ${c.marca}` : ""}
+                </span>
+                <span style={{ display: "block", fontFamily: "var(--f-mono)", fontSize: "var(--t-2xs)", opacity: 0.85 }}>
+                  {c.desde || "—"} → {c.hasta || "—"}
+                </span>
+                {c.loTieneAhora && (
+                  <span style={{ display: "block", marginTop: 3, fontWeight: 600 }}>
+                    Cuidado: «{c.seNegocioComo}» hoy es el nombre de OTRO mueble
+                    ({c.loTieneAhora}). Quien lea el papel y camine hasta el cartel se
+                    va a parar frente al mueble equivocado.
                   </span>
-                  <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: 10.5, opacity: 0.85 }}>
-                    {c.desde || "—"} → {c.hasta || "—"}
-                  </span>
-                  {c.loTieneAhora && (
-                    <span style={{ display: "block", marginTop: 3, fontWeight: 600 }}>
-                      Cuidado: «{c.seNegocioComo}» hoy es el nombre de OTRO mueble
-                      ({c.loTieneAhora}). Quien lea el papel y camine hasta el cartel se
-                      va a parar frente al mueble equivocado.
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+                )}
+              </button>
+            ))}
           </div>
         )}
 
@@ -3486,17 +3302,11 @@ function RevisionPanel({
             a ir en el mismo orden—. Va al pie y no arriba a propósito: primero
             se mira qué hay, después se decide. */}
         {isAdmin && (
-          <div style={{ marginTop: 6, paddingTop: 11, borderTop: "1px solid var(--dark-line)" }}>
-            <button
-              onClick={onRenumerar}
-              style={{
-                width: "100%", textAlign: "left", padding: "9px 10px",
-                borderRadius: "var(--r-md)", border: "1px solid var(--dark-line-2)",
-                background: "var(--dark-surface)", color: "var(--dark-ink-2)",
-                fontSize: 11.5, lineHeight: 1.45, fontFamily: "inherit", cursor: "pointer",
-              }}
-            >
-              <b style={{ color: "var(--dark-ink-1)" }}>Renumerar el plano →</b>
+          <div className="p2-sep">
+            <button type="button" className="p2-hallazgo" onClick={onRenumerar}>
+              <b style={{ color: "var(--ink-1)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <ListOrdered {...ICONO} /> Renumerar el plano →
+              </b>
               <span style={{ display: "block", marginTop: 3 }}>
                 El sistema reasigna los nombres siguiendo el recorrido de la tienda, en todas
                 las sedes. Primero muestra el antes → después completo, imprimible, y no
@@ -3506,9 +3316,11 @@ function RevisionPanel({
           </div>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
+
+// ─── Varios elegidos ──────────────────────────────────────────────────────────
 
 function MultiSelectPanel({
   count,
@@ -3526,34 +3338,21 @@ function MultiSelectPanel({
   onClose: () => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", color: "var(--dark-ink-1)", minHeight: "100%" }}>
-      <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--dark-line)", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <p style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--dark-ink-3)", marginBottom: 2 }}>SELECCIÓN MÚLTIPLE</p>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>{count} elementos</p>
-        </div>
-        <button onClick={onClose} style={{ color: "var(--dark-ink-3)", fontSize: 18, lineHeight: 1, marginTop: 2, background: "none", border: "none", cursor: "pointer" }}>×</button>
+    <div data-panel-varios>
+      <div className="p2-panel-h">
+        <MousePointer2 {...ICONO} />
+        <div><h3>{count} elegidos</h3><span className="sub">Selección múltiple</span></div>
+        <button type="button" className="p2-icobtn" onClick={onClose} title="Soltar la selección (Esc)" aria-label="Soltar la selección"><X {...ICONO} /></button>
       </div>
-      <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="p2-panel-b">
         {editMode && isAdmin && (
           <div>
-            <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--dark-ink-3)", marginBottom: 6 }}>
-              Destino de los {count}
-            </p>
-            <div style={{ display: "flex", gap: 6 }}>
+            <p className="p2-rotulo">Destino de los {count}</p>
+            <div className="p2-dos">
               {([true, false] as const).map((value) => (
-                <button
-                  key={String(value)}
-                  onClick={() => onSetRentable(value)}
-                  style={{
-                    flex: 1, padding: "7px 4px", borderRadius: "var(--r-sm)",
-                    fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                    border: "1px solid var(--dark-line-2)",
-                    background: "transparent",
-                    color: "var(--dark-ink-2)",
-                  }}
-                >
-                  {value ? "Comercializable" : "No comercial."}
+                <button key={String(value)} type="button" className="p2-btn" onClick={() => onSetRentable(value)}>
+                  {value ? <Store {...ICONO} /> : <Ban {...ICONO} />}
+                  {value ? "Comercializable" : "No comercializable"}
                 </button>
               ))}
             </div>
@@ -3561,55 +3360,31 @@ function MultiSelectPanel({
         )}
 
         {editMode && (
-          <button
-            onClick={onDelete}
-            style={{
-              width: "100%", borderRadius: "var(--r-sm)", padding: "8px 0",
-              fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "background .12s",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              background: "rgba(185,28,28,0.12)", border: "1px solid rgba(185,28,28,0.3)", color: "var(--danger)",
-            }}
-          >
-            <Trash2 size={13} /> Eliminar {count} elementos
+          <button type="button" className="p2-btn peligro ancho" onClick={onDelete}>
+            <Trash2 {...ICONO} /> Eliminar {count} elementos
           </button>
         )}
-        <div style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "flex", flexDirection: "column", gap: 4 }}>
-          <p>· <kbd style={{ fontFamily: "var(--font-mono)", background: "var(--dark-surface-2)", padding: "0 4px", borderRadius: "var(--r-xs)" }}>Shift+clic</kbd> agrega o quita del grupo</p>
-          <p>· <kbd style={{ fontFamily: "var(--font-mono)", background: "var(--dark-surface-2)", padding: "0 4px", borderRadius: "var(--r-xs)" }}>Del</kbd> elimina todos</p>
-          <p>· <kbd style={{ fontFamily: "var(--font-mono)", background: "var(--dark-surface-2)", padding: "0 4px", borderRadius: "var(--r-xs)" }}>Esc</kbd> deselecciona</p>
-          <p>· Arrastrá cualquiera para mover todo el grupo</p>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div className="p2-tecla"><kbd>Shift + clic</kbd><span>agrega o quita del grupo</span></div>
+          <div className="p2-tecla"><kbd>Supr</kbd><span>elimina todos</span></div>
+          <div className="p2-tecla"><kbd>Esc</kbd><span>suelta la selección</span></div>
+          <div className="p2-tecla"><kbd>Arrastrar</kbd><span>mueve todo el grupo</span></div>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Assignment Panel (dark, unified edit + view) ─────────────────────────────
+// ─── El panel del mueble (panel B) ───────────────────────────────────────────
 
-// Badges follow STATUS_COLORS: occupied is violet everywhere, so red stays
-// reserved for what is actually wrong (an expired contract — see DaysLeftStrip).
-// El violeta de «ocupado» se va con el resto de la copia de la paleta: era una
-// quinta versión del mismo estado, esta vez para que no chocara con el rojo de
-// «vencido». Vencido se distingue por otro lado —la tabla lo dice con todas las
-// letras y el filtro lo aísla—, que es lo que el comentario de STATUS_COLORS ya
-// decía. Un estado, un color.
+// Badges follow STATUS_COLORS: un estado, un color (los tokens del tema, en
+// claro y en oscuro).
 const STATUS_BADGE_STYLE: Record<SpaceStatus, React.CSSProperties> = {
   free:        { background: "var(--libre-suave)",   color: "var(--libre-txt)",    border: "1px solid var(--libre-borde)" },
   occupied:    { background: "var(--ocupado-suave)", color: "var(--ocupado-txt)",  border: "1px solid var(--ocupado-borde)" },
   reserved:    { background: "var(--entra-suave)",   color: "var(--entra-txt)",    border: "1px solid var(--entra-borde)" },
   maintenance: { background: "var(--resto-suave)",   color: "var(--muted-status)", border: "1px solid var(--resto-borde)" },
 };
-
-function Field({ label, icon, children }: { label: string; icon?: string; children: React.ReactNode }) {
-  return (
-    <div style={{ borderBottom: "1px solid var(--dark-line)", padding: "10px 16px" }}>
-      <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--dark-ink-3)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-        {icon && <span>{icon}</span>}{label}
-      </p>
-      {children}
-    </div>
-  );
-}
 
 // ─── Days-left strip (contract dates emphasis) ────────────────────────────────
 
@@ -3626,7 +3401,7 @@ function DaysLeftStrip({ startDate, endDate }: { startDate: string; endDate: str
   const pct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
   const expired = daysLeft < 0;
   const critical = expired || daysLeft <= 7;
-  const color = critical ? "var(--danger)" : daysLeft <= 30 ? "var(--warning)" : "var(--success)";
+  const color = critical ? "var(--ocupado)" : daysLeft <= 30 ? "var(--entra)" : "var(--libre)";
   // Same visual language as the status badges
   const badge = critical
     ? STATUS_BADGE_STYLE.occupied
@@ -3637,90 +3412,104 @@ function DaysLeftStrip({ startDate, endDate }: { startDate: string; endDate: str
     ? `Vencido hace ${Math.abs(daysLeft)} día${Math.abs(daysLeft) === 1 ? "" : "s"}`
     : `${daysLeft} día${daysLeft === 1 ? "" : "s"} restantes`;
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ height: 4, borderRadius: 999, background: "var(--dark-surface-2)", overflow: "hidden" }}>
+    <div style={{ marginTop: 4, width: "100%" }}>
+      <div style={{ height: 4, borderRadius: 999, background: "var(--surface-3)", overflow: "hidden" }}>
         <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width .2s" }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-        {daysLeft <= 30 && (
-          <span className="animate-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
-        )}
-        <span style={{ ...badge, display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "1px 8px", fontSize: 10.5, fontWeight: 600 }}>
-          {label}
-        </span>
+        <span className="p2-pill" style={badge}>{label}</span>
       </div>
     </div>
   );
 }
 
-// ─── Files section (contract documents per space) ─────────────────────────────
+// ─── Documentos (los archivos del espacio y su nota) ─────────────────────────
 
 const ALLOWED_FILE_EXTS = [".pdf", ".xls", ".xlsx", ".csv", ".jpg", ".jpeg", ".png", ".webp"];
 // Extensiones que SÍ pueden declararse como cara vigente (fix H8, Fase 3) —
 // coincide con las que `files.py` acepta como imagen.
 const IMAGE_FILE_EXTS = [".jpg", ".jpeg", ".png", ".webp"];
 
-function FilesSection({
-  code, name, zone, sedeName, areaM2, isAdmin, editMode,
-}: {
-  code: string;
-  name: string;
-  zone: string;
-  sedeName: string;
-  areaM2: number;
-  isAdmin: boolean;
-  editMode: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [files, setFiles] = useState<SpaceFileMeta[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-  // Declaración explícita de "esta imagen es la cara vigente" (fix H8, Fase
-  // 3) — ya no se infiere de cuándo se sube, hay que marcarla a propósito.
-  const [marcarComoCara, setMarcarComoCara] = useState(false);
-  // Space id resolved lazily on first expand/upload — ref so callbacks stay stable
-  const spaceIdRef = useRef<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+/** El tamaño de un archivo, como lo dice la lista: «240 KB», «1,2 MB». */
+function tamano(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
 
-  const resolveSpaceId = useCallback(async (): Promise<number | null> => {
-    if (spaceIdRef.current != null) return spaceIdRef.current;
+/**
+ * Los archivos de un espacio (la cara activa), la foto que pinta su cara en el
+ * 3D y su fila de `spaces` (para la «Nota del espacio»).
+ *
+ * Se leen al abrir el panel y no al desplegar una sección: la pestaña
+ * «Documentos» dice cuántos hay. Leer NO crea la fila de `spaces`
+ * (`GET /spaces/by-code`; un espacio que nunca se vendió no tiene archivos):
+ * la crea —sólo quien administra— el primer archivo que se sube o la primera
+ * nota que se escribe, como antes.
+ */
+function useDocumentosDelEspacio(code: string, isAdmin: boolean, alta: { name: string; zone: string; sede: string; areaM2: number }) {
+  const [espacio, setEspacio] = useState<Space | null>(null);
+  const [files, setFiles] = useState<SpaceFileMeta[]>([]);
+  // La imagen DECLARADA como la cara vigente (fix H8): la que pinta el 3D.
+  const [caraId, setCaraId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const spaceIdRef = useRef<number | null>(null);
+
+  const leer = useCallback(async (vivo: () => boolean) => {
+    setLoading(true);
+    setError("");
+    const s = await getSpaceByCode(code);
+    if (!vivo()) return;
+    setEspacio(s);
+    spaceIdRef.current = s?.id ?? null;
+    if (!s) { setFiles([]); setCaraId(null); setLoading(false); return; }
     try {
-      if (isAdmin) {
-        const space = await findOrCreateSpace({ code, name, zone, sede: sedeName, area_m2: areaM2 });
-        spaceIdRef.current = space.id;
-      } else {
-        // Workers cannot create spaces — only resolve existing ones by code.
-        const r = await client.get<{ id: number }>(`/spaces/by-code/${encodeURIComponent(code)}`);
-        spaceIdRef.current = r.data.id;
-      }
-      return spaceIdRef.current;
+      const [lista, caras] = await Promise.all([listSpaceFiles(s.id), getFaceImages().catch(() => [])]);
+      if (!vivo()) return;
+      setFiles(lista);
+      const suya = caras.find((c) => c.code.trim().toUpperCase() === code.trim().toUpperCase());
+      setCaraId(suya ? suya.file_id : null);
+    } catch {
+      if (vivo()) setError("No se pudieron cargar los archivos");
+    } finally {
+      if (vivo()) setLoading(false);
+    }
+  }, [code]);
+
+  useEffect(() => {
+    let vivo = true;
+    setEspacio(null); setFiles([]); setCaraId(null); spaceIdRef.current = null;
+    void leer(() => vivo);
+    return () => { vivo = false; };
+  }, [leer]);
+
+  /** El id para escribir: el que ya se leyó o, para quien administra, la fila
+   *  que se crea (como hacía siempre el panel). */
+  const idParaEscribir = useCallback(async (): Promise<number | null> => {
+    if (spaceIdRef.current != null) return spaceIdRef.current;
+    if (!isAdmin) return null;
+    try {
+      const space = await findOrCreateSpace({ code, name: alta.name, zone: alta.zone, sede: alta.sede, area_m2: alta.areaM2 });
+      spaceIdRef.current = space.id;
+      setEspacio(space);
+      return space.id;
     } catch {
       return null;
     }
-  }, [isAdmin, code, name, zone, sedeName, areaM2]);
+  }, [isAdmin, code, alta.name, alta.zone, alta.sede, alta.areaM2]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    const id = await resolveSpaceId();
-    if (id == null) {
-      setFiles([]);
-      setLoading(false);
-      return;
-    }
-    try {
-      setFiles(await listSpaceFiles(id));
-    } catch {
-      setError("No se pudieron cargar los archivos");
-    } finally {
-      setLoading(false);
-    }
-  }, [resolveSpaceId]);
+  return { espacio, setEspacio, files, setFiles, caraId, setCaraId, loading, error, setError, idParaEscribir, releer: () => leer(() => true) };
+}
 
-  useEffect(() => {
-    if (expanded) void refresh();
-  }, [expanded, refresh]);
+type Documentos = ReturnType<typeof useDocumentosDelEspacio>;
+
+function FilesSection({ docs, isAdmin, editMode }: { docs: Documentos; isAdmin: boolean; editMode: boolean }) {
+  const { files, caraId, loading, error, setError } = docs;
+  const [uploading, setUploading] = useState(false);
+  // Declaración explícita de "esta imagen es la cara vigente" (fix H8, Fase
+  // 3) — ya no se infiere de cuándo se sube, hay que marcarla a propósito.
+  const [marcarComoCara, setMarcarComoCara] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleUpload(file: File) {
     const dot = file.name.lastIndexOf(".");
@@ -3730,16 +3519,17 @@ function FilesSection({
       return;
     }
     if (marcarComoCara && !IMAGE_FILE_EXTS.includes(ext)) {
-      setError("Sólo una imagen (JPG, PNG o WEBP) puede marcarse como cara del mueble.");
+      setError("Sólo una imagen (JPG, PNG o WEBP) puede usarse como foto de la cara en el 3D.");
       return;
     }
     setUploading(true);
     setError("");
     try {
-      const id = await resolveSpaceId();
+      const id = await docs.idParaEscribir();
       if (id == null) throw new Error("space unresolved");
-      await uploadSpaceFile(id, file, marcarComoCara ? "cara" : undefined);
-      setFiles(await listSpaceFiles(id));
+      const subido = await uploadSpaceFile(id, file, marcarComoCara ? "cara" : undefined);
+      docs.setFiles(await listSpaceFiles(id));
+      if (marcarComoCara) docs.setCaraId(subido.id);
     } catch {
       setError("Error al subir el archivo");
     } finally {
@@ -3751,7 +3541,8 @@ function FilesSection({
   async function handleDelete(fileId: number) {
     try {
       await deleteSpaceFile(fileId);
-      setFiles((prev) => prev.filter((f) => f.id !== fileId));
+      docs.setFiles((prev) => prev.filter((f) => f.id !== fileId));
+      if (caraId === fileId) docs.setCaraId(null);
     } catch {
       setError("No se pudo eliminar el archivo");
     }
@@ -3759,112 +3550,90 @@ function FilesSection({
 
   return (
     <div
-      style={{ borderBottom: "1px solid var(--dark-line)" }}
+      className="p2-docs"
+      data-archivos
       onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
       onDrop={isAdmin ? (e) => {
         e.preventDefault();
-        if (!expanded) setExpanded(true);
         const file = e.dataTransfer.files?.[0];
         if (file) void handleUpload(file);
       } : undefined}
     >
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          width: "100%", textAlign: "left", padding: "10px 16px",
-          background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-          fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em",
-          color: "var(--dark-ink-3)", display: "flex", alignItems: "center", gap: 4,
-        }}
-      >
-        <span>📎</span>Archivos
-        <span style={{ marginLeft: "auto", fontSize: 11 }}>{expanded ? "▾" : "▸"}</span>
-      </button>
-      {expanded && (
-        <div style={{ padding: "0 16px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-          {loading ? (
-            <p style={{ fontSize: 11, color: "var(--dark-ink-3)" }}>Cargando…</p>
-          ) : files.length === 0 ? (
-            <p style={{ fontSize: 11, color: "var(--dark-ink-3)" }}>Sin archivos adjuntos</p>
-          ) : (
-            files.map((f) => (
-              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <button
-                  onClick={() => window.open(fileUrl(f.id), "_blank")}
-                  title={f.filename}
-                  style={{
-                    flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
-                    background: "none", border: "none", cursor: "pointer", padding: 0,
-                    fontFamily: "inherit", textAlign: "left",
-                  }}
-                >
-                  <span style={{ fontSize: 12, flexShrink: 0 }}>📄</span>
-                  <span style={{ fontSize: 12, color: "var(--dark-ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.filename}
-                  </span>
-                  <span style={{ fontSize: 10, color: "var(--dark-ink-3)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>
-                    {Math.max(1, Math.round(f.size / 1024))} KB
-                  </span>
-                </button>
-                {isAdmin && editMode && (
-                  <button
-                    onClick={() => void handleDelete(f.id)}
-                    title="Eliminar archivo"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12, padding: "0 2px", flexShrink: 0 }}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))
-          )}
-          {error && <p style={{ fontSize: 10, color: "var(--danger)" }}>{error}</p>}
-          {isAdmin && (
-            <>
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleUpload(file);
-                  e.target.value = "";
-                }}
-              />
-              <label
-                title="Sólo aplica si el próximo archivo que subís es una imagen. Reemplaza la cara designada anterior de este espacio."
-                style={{
-                  display: "flex", alignItems: "center", gap: 5, marginTop: 2,
-                  fontSize: 10.5, color: "var(--dark-ink-3)", cursor: "pointer", userSelect: "none",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={marcarComoCara}
-                  onChange={(e) => setMarcarComoCara(e.target.checked)}
-                  style={{ margin: 0 }}
-                />
-                Es la cara del mueble (textura del 3D)
-              </label>
-              <button
-                onClick={() => inputRef.current?.click()}
-                disabled={uploading}
-                style={{
-                  marginTop: 2, borderRadius: "var(--r-sm)", border: "1px dashed var(--dark-line-2)",
-                  background: "transparent", color: uploading ? "var(--dark-ink-3)" : "var(--dark-ink-2)",
-                  padding: "6px 0", fontSize: 11.5, fontWeight: 500,
-                  cursor: uploading ? "wait" : "pointer", fontFamily: "inherit",
-                }}
-              >
-                {uploading ? "Subiendo…" : "＋ Subir archivo"}
+      {loading ? (
+        <p className="p2-msj">Cargando…</p>
+      ) : files.length === 0 ? (
+        <p className="p2-msj">Sin archivos adjuntos.</p>
+      ) : (
+        files.map((f) => {
+          const esLaCara = f.id === caraId;
+          return (
+            <div key={f.id} className="p2-doc" data-archivo={f.id} data-foto-de-la-cara={esLaCara || undefined}>
+              <span className="p2-mini">
+                {esLaCara
+                  // La foto que pinta la cara en el 3D, en chiquito.
+                  ? <img src={fileUrl(f.id)} alt="" />
+                  : f.content_type.startsWith("image/") ? <ImageIcon {...ICONO} /> : <FileText {...ICONO} />}
+              </span>
+              <button type="button" className="p2-doc-abrir" onClick={() => window.open(fileUrl(f.id), "_blank")} title={f.filename}>
+                <b>{f.filename}</b>
+                <span className="mono">{esLaCara ? "Foto de la cara en el 3D · " : ""}{tamano(f.size)}</span>
               </button>
-            </>
-          )}
+              {isAdmin && editMode ? (
+                <button type="button" className="p2-icobtn chico" onClick={() => void handleDelete(f.id)}
+                  title="Eliminar archivo" aria-label={`Eliminar ${f.filename}`}>
+                  <X {...ICONO} />
+                </button>
+              ) : <span />}
+            </div>
+          );
+        })
+      )}
+      {error && <p className="p2-msj mal">{error}</p>}
+      {isAdmin && (
+        <div className="p2-subir">
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".pdf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleUpload(file);
+              e.target.value = "";
+            }}
+          />
+          <button type="button" className="p2-btn" onClick={() => inputRef.current?.click()} disabled={uploading}>
+            <ImageUp {...ICONO} /> {uploading ? "Subiendo…" : "Subir archivo"}
+          </button>
+          <label className="p2-ck"
+            title="Sólo para una imagen (JPG, PNG o WEBP). Reemplaza a la foto de la cara anterior de este espacio.">
+            <input type="checkbox" checked={marcarComoCara} onChange={(e) => setMarcarComoCara(e.target.checked)} data-usar-como-cara />
+            Usar como foto de la cara en el 3D
+          </label>
         </div>
       )}
     </div>
   );
+}
+
+/** Junta los sufijos de las partes para leerlos de corrido: EN1, EN2, EN3 y
+ *  EN5 → «EN1–3 · EN5». */
+function juntarSufijos(sufijos: string[]): string {
+  const tramos: string[] = [];
+  let i = 0;
+  while (i < sufijos.length) {
+    const m = /^(.*?)(\d+)$/.exec(sufijos[i]);
+    if (!m) { tramos.push(sufijos[i]); i += 1; continue; }
+    let j = i;
+    while (j + 1 < sufijos.length) {
+      const s = /^(.*?)(\d+)$/.exec(sufijos[j + 1]);
+      if (!s || s[1] !== m[1] || Number(s[2]) !== Number(m[2]) + (j + 1 - i)) break;
+      j += 1;
+    }
+    tramos.push(j > i ? `${sufijos[i]}–${Number(m[2]) + (j - i)}` : sufijos[i]);
+    i = j + 1;
+  }
+  return tramos.join(" · ");
 }
 
 /** Empty defaults used when face B is edited for the first time. */
@@ -3878,9 +3647,22 @@ const EMPTY_FACE: FaceData = {
   status: "free",
 };
 
+type PestanaDelPanel = "venta" | "medidas" | "documentos";
+
+/**
+ * El panel del mueble: el B de `docs/maquetas/rediseno-2026-10/panel-plano.html`
+ * (aprobado el 2026-10-20). Arriba lo importante de un vistazo —el código con
+ * su lápiz, «tipo · sede (candado) · pasillo», la pastilla del estado y una
+ * franja con las medidas y lo vendido— y el resto en tres pestañas, según para
+ * qué se abre: **Venta** (se vende, cómo, estado, lo contratado y «Vender»),
+ * **Medidas** (ancho × prof. × alto, entrepaños con − y +, módulo) y
+ * **Documentos** (los archivos, la foto de la cara en el 3D y la nota). Abre
+ * SIEMPRE en Venta. Ninguna sección del panel de antes se perdió: cada una
+ * está en una pestaña (`probar-plano`), con las mismas guardas.
+ */
 function AssignmentPanel({
   item, items, sede, editMode, isAdmin, initialFace, pasillo, porParticipacion: esPc = false, dispoDeCara,
-  onUpdate, onRenombrar, onIntercambiar, onDelete, onDuplicate, onClose,
+  onUpdate, onRenombrar, onIntercambiar, onVender, onDelete, onDuplicate, onClose,
 }: {
   /** En qué pasillo cae, deducido de la geometría. */
   pasillo?: number;
@@ -3908,6 +3690,8 @@ function AssignmentPanel({
   onRenombrar: (id: string, nombre: string) => RechazoDeNombre<PlacedItem2D> | null;
   /** Los dos nombres a la vez, que es cómo se renumera una corrida a mano. */
   onIntercambiar: (esteId: string, otroId: string) => void;
+  /** «Vender»: Sede → Vender con esta cara (`pedirVender` del store). */
+  onVender: (cara: "A" | "B") => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onClose: () => void;
@@ -3921,8 +3705,12 @@ function AssignmentPanel({
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const modeloDelMueble = modeloPorId(item.nace?.modelo);
   const fullCode = `${item.sede || sede}-${item.code}`;
-  const inp = "w-full bg-transparent border-b border-dark-line-2 text-dark-ink-1 text-sm py-1 focus:outline-none focus:border-accent placeholder:text-dark-ink-3";
-  const sel = "w-full bg-dark-surface-2 border border-dark-line-2 text-dark-ink-1 text-sm rounded px-2 py-1.5 focus:outline-none focus:border-accent";
+  // El mueble del store (con su alto, sus entrepaños y sus partes) y el mapa
+  // CRUDO de la base: lo vendido de cada parte (vender una parte no cambia el
+  // mueble fusionado).
+  const muebleDelStore = useFixtureStore((s) => selectFixtures(s).find((f) => f.id === item.id));
+  const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
+  const IconoDelTipo = iconoDelTipo(item.type);
 
   // ── Faces (gondola doble) ─────────────────────────────────────────────────
   // Face A maps to the item's top-level commercial fields; face B lives in
@@ -3936,17 +3724,21 @@ function AssignmentPanel({
     setActiveFace(isDouble ? (initialFace ?? "A") : "A");
   }, [item.id, initialFace, isDouble]);
 
+  // ── Las pestañas: abre SIEMPRE en Venta (panel B), también al elegir otro mueble.
+  const [pestana, setPestana] = useState<PestanaDelPanel>("venta");
+  useEffect(() => { setPestana("venta"); }, [item.id]);
+
   // ── El nombre del mueble ──────────────────────────────────────────────────
-  // Este campo escribía DIRECTO en el layout, sin ninguna comprobación, mientras
-  // el doble clic sobre la caja del plano sí validaba. Dos maneras de poner el
-  // mismo nombre y una sola protegida: por acá se metieron los nombres que eran
-  // el código de otro mueble. Ahora los dos caminos son el mismo: `onRenombrar`,
-  // que llama a `renombrar` de `utils/nomenclatura.ts`.
+  // Un mueble tiene UN nombre y es su código: el encabezado lo muestra y su
+  // lápiz lo cambia (reemplaza a la sección «Nombre» de antes). Pasa por
+  // `onRenombrar`, que llama a `renombrar` de `utils/nomenclatura.ts`: el mismo
+  // camino que el doble clic sobre la caja.
   //
   // Se escribe en un borrador y se guarda al salir del campo o con Enter, no en
   // cada tecla. Escribiendo el nombre en el propio código, tecla a tecla, el
   // mueble pasaría por «I», «IM», «IMP-1»… y cualquiera de esos podría chocar o
   // quedarse guardado. Rechazar es no escribir, no borrar lo que había.
+  const [editandoNombre, setEditandoNombre] = useState(false);
   const [nombreBorrador, setNombreBorrador] = useState(item.code);
   const [rechazo, setRechazo] = useState<RechazoDeNombre<PlacedItem2D> | null>(null);
   // Sólo al cambiar de mueble: mientras se escribe, el borrador manda.
@@ -3955,6 +3747,8 @@ function AssignmentPanel({
     setRechazo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, item.code]);
+  useEffect(() => { setEditandoNombre(false); }, [item.id]);
+  useEffect(() => { if (!editMode) setEditandoNombre(false); }, [editMode]);
 
   // Lo que se está tecleando, para teñir el campo antes de intentar guardarlo.
   // No escribe nada: es el mismo `choqueDeNombre` que usa `renombrar`.
@@ -3985,7 +3779,7 @@ function AssignmentPanel({
   function guardarNombre() {
     const r = onRenombrar(item.id, nombreBorrador);
     setRechazo(r);
-    if (!r) setNombreBorrador(normalizarNombre(nombreBorrador));
+    if (!r) { setNombreBorrador(normalizarNombre(nombreBorrador)); setEditandoNombre(false); }
   }
 
   const face: FaceData = activeFace === "B"
@@ -4006,19 +3800,70 @@ function AssignmentPanel({
   // y la ficha decía «Disponible» en verde y «Sin contrato activo… Sede →
   // Vender» sobre un robatope tomado al 100 % (la revisión final, 2026-10-17).
   // Lo que se ve sale de su ocupación anónima de HOY, la misma regla que su
-  // color en el plano (`estadoParaPintar`): la pastilla y «Estado del espacio»
-  // dicen «Tomada» o «Parcial» en ese color, y «Contratado» dice cuánto está
+  // color en el plano (`estadoParaPintar`): la pastilla y «Estado» dicen
+  // «Tomada» o «Parcial» en ese color, y «Contratado» dice cuánto está
   // comprometido y cuánto queda (`textoDeLoComprometido`).
   const dispoPc = esPc ? (dispoDeCara?.(activeFace) ?? null) : null;
   const estadoVisto: SpaceStatus = estadoParaPintar(face.status, dispoPc);
   const rotuloVisto = rotuloPorOcupacion(face.status, dispoPc) ?? STATUS_LABELS[face.status];
   const abrirEnDistribucion = useAbrirEnDistribucion();
 
-  function updateFace(patch: Partial<FaceData>) {
-    if (activeFace === "B") {
-      onUpdate({ faceB: { ...(item.faceB ?? EMPTY_FACE), ...patch } });
-    } else {
-      onUpdate(patch as Partial<PlacedItem2D>);
+  // ── Lo vendido por partes, de la cara que se mira (o las piezas) ──────────
+  const partesDeLaCara = useMemo(() => {
+    if (!muebleDelStore) return [];
+    const todas = partesConEstado(muebleDelStore, estadoCrudo, sede);
+    const divisiones = todas.filter((p) => !p.pieza && p.sufijo.startsWith("B·") === (activeFace === "B"));
+    return divisiones.length ? divisiones : todas.filter((p) => p.pieza);
+  }, [muebleDelStore, estadoCrudo, sede, activeFace]);
+  const vendidas = partesDeLaCara.filter((p) => p.vendida);
+  const division = muebleDelStore ? divisionDe(muebleDelStore) : null;
+  const sufijoCorto = (s: string) => s.replace(/^B·/, "");
+  // «Vendido en parte»: algo vendido y algo libre (o una cara por
+  // participación con algo comprometido y lugar). La pastilla lo dice con la
+  // palabra de Supervisar; el color y la palabra de la ocupación siguen
+  // mandando en todo lo demás.
+  const enParte = rentable && face.status === "free"
+    && ((vendidas.length > 0 && vendidas.length < partesDeLaCara.length) || dispoPc?.dispo === "parcial");
+
+  // ── La franja de resumen ──────────────────────────────────────────────────
+  const vista = muebleDelStore && TIPOS_CON_GEOMETRIA.has(muebleDelStore.type) ? geometriaALaVista(muebleDelStore) : null;
+  const ancho = muebleDelStore?.w ?? item.w;
+  const fondo = muebleDelStore?.d ?? item.h;
+  const alto = muebleDelStore?.h ?? H_DEFAULTS[item.type];
+
+  // ── Documentos: los archivos de la cara y su nota ─────────────────────────
+  const docs = useDocumentosDelEspacio(activeCode, isAdmin, {
+    name: catDef?.label ?? item.code, zone: item.type, sede: item.sede || sede,
+    areaM2: parseFloat((item.w * item.h).toFixed(2)),
+  });
+  /** «Nota del contrato» con un contrato o una reserva vivos (la misma de
+   *  Vender, que la base manda como `observation` sólo a quien administra);
+   *  sin contrato, «Nota del espacio» (`spaces.notes`). El servidor la escribe
+   *  donde la lee (`PUT /spaces/{id}/nota`). Antes este campo escribía la
+   *  observación en el JSON del layout, que `PUT /layout` descarta: se veía
+   *  cambiar y no se guardaba. */
+  const conContrato = face.status === "occupied";
+  const notaGuardada = (conContrato || face.status !== "free" ? face.observation : (docs.espacio?.notes ?? face.observation)) ?? "";
+  const [nota, setNota] = useState(notaGuardada);
+  const [notaError, setNotaError] = useState("");
+  const [guardandoNota, setGuardandoNota] = useState(false);
+  useEffect(() => { setNota(notaGuardada); setNotaError(""); }, [notaGuardada, activeCode]);
+
+  async function guardarNota() {
+    if (nota.trim() === notaGuardada.trim()) return;
+    setGuardandoNota(true);
+    setNotaError("");
+    try {
+      const id = await docs.idParaEscribir();
+      if (id == null) throw new Error("space unresolved");
+      const r = await guardarNotaDelEspacio(id, nota);
+      if (r.donde === "espacio") docs.setEspacio((e) => (e ? { ...e, notes: r.nota || null } : e));
+      // El mapa se pinta de la base: se vuelve a leer y la nota llega sola.
+      await useFixtureStore.getState().refrescarComercial();
+    } catch {
+      setNotaError("No se pudo guardar la nota. Probá de nuevo.");
+    } finally {
+      setGuardandoNota(false);
     }
   }
 
@@ -4033,9 +3878,11 @@ function AssignmentPanel({
    *
    * «Ocupado» no está entre las opciones y es a propósito: un espacio se ocupa
    * vendiéndolo. Ponerlo a mano crearía un ocupado sin contrato, sin proveedor
-   * y sin fechas — el fantasma exacto que todo esto vino a eliminar.
+   * y sin fechas — el fantasma exacto que todo esto vino a eliminar. Y desde el
+   * rediseño (PR 3, decisión 1) tampoco «Reservado»: la reserva de verdad sale
+   * de Vender, con proveedor y fecha, y el servidor rechaza la de a mano.
    */
-  async function cambiarEstado(nuevo: SpaceStatus) {
+  async function cambiarEstado(nuevo: "free" | "maintenance") {
     setEstadoError("");
     setGuardandoEstado(true);
     try {
@@ -4052,480 +3899,490 @@ function AssignmentPanel({
     }
   }
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", color: "var(--dark-ink-1)", minHeight: "100%" }}>
+  const botonVender = isAdmin && rentable && (
+    <button type="button" className="p2-btn" data-vender onClick={() => onVender(activeFace)}
+      title="Abre Vender (en la pantalla de la sede) con este espacio">
+      <FilePenLine {...ICONO} /> Vender
+    </button>
+  );
 
-      {/* Header */}
-      <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--dark-line)", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <p style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--dark-ink-3)", marginBottom: 2 }}>{activeCode}</p>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
-            {catDef?.emoji} {conNombrePropio(item, nombresPropios, catDef?.label ?? "")}
-          </p>
+  return (
+    <div className="p2-ficha" data-panel-b>
+
+      {/* El encabezado: el ícono del tipo, el código con su lápiz (el código
+          ES el nombre), «tipo · sede (candado) · pasillo» y el estado. */}
+      <div className="p2-ficha-h">
+        <IconoDelTipo {...ICONO} />
+        <div className="p2-ficha-t">
+          <div className="p2-codigo">
+            {editMode && editandoNombre ? (
+              <input
+                className="p2-codigo-campo"
+                aria-label="El código del mueble"
+                aria-invalid={choqueEscrito || rechazo ? true : undefined}
+                value={nombreBorrador}
+                onChange={(e) => { setNombreBorrador(e.target.value); setRechazo(null); }}
+                onBlur={guardarNombre}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); guardarNombre(); }
+                  if (e.key === "Escape") { setNombreBorrador(item.code); setRechazo(null); setEditandoNombre(false); }
+                }}
+                autoFocus
+              />
+            ) : (
+              <h3 data-codigo-del-mueble title={activeCode}>{nombreDeMueble(item)}{activeFace === "B" && isDouble ? "-B" : ""}</h3>
+            )}
+            {editMode && !editandoNombre && (
+              <button type="button" className="p2-icobtn chico" title="Cambiar el código" aria-label="Cambiar el código"
+                onClick={() => { setNombreBorrador(item.code); setRechazo(null); setEditandoNombre(true); }}>
+                <Pencil {...ICONO} />
+              </button>
+            )}
+          </div>
+          {/* La sede es de sólo lectura (fase 2 · I5, V16): la define el plano.
+              Va con su candado en la línea, sin una sección entera para un dato
+              que no se cambia. Para mover la sede entera: «Renombrar sede». */}
+          <span className="p2-linea" data-linea-del-mueble>
+            <span data-tipo-del-mueble>{conNombrePropio(item, nombresPropios, catDef?.label ?? "")}</span>
+            <span aria-hidden>·</span>
+            <span className="mono" data-sede-del-plano title="La sede la define el plano: no se cambia acá">{sede}</span>
+            <Lock size={12} strokeWidth={1.75} aria-label="sólo lectura" />
+            {/* Nadie dice «PUN-07» en una reunión: dice «la punta del pasillo 4».
+                Sale de la geometría, así que mover el mueble lo actualiza solo. */}
+            {pasillo !== undefined && <><span aria-hidden>·</span><span>pasillo {pasillo}</span></>}
+          </span>
           {/* La ficha de la que nació, si nació de una: su nombre y, si sus
               medidas son una deducción, «≈». */}
           {modeloDelMueble && (
-            <p data-modelo={modeloDelMueble.id}
-              title={textoDeFuente(modeloDelMueble)}
-              style={{ fontSize: 11, color: "var(--dark-ink-2)", marginTop: 2 }}>
+            <span className="p2-linea" data-modelo={modeloDelMueble.id} title={textoDeFuente(modeloDelMueble)}>
               {nombreDeModelo(modeloDelMueble)}
+            </span>
+          )}
+        </div>
+        <span className="p2-pill" data-estado-del-mueble
+          style={{ ...(rentable ? STATUS_BADGE_STYLE[estadoVisto] : NON_RENTABLE_BADGE_STYLE), ...(enParte ? STATUS_BADGE_STYLE.reserved : {}) }}>
+          {enParte ? "Vendido en parte" : <>{rentable ? rotuloVisto : NON_RENTABLE_LABEL}</>}
+        </span>
+        <button type="button" className="p2-icobtn chico" onClick={onClose} title="Cerrar" aria-label="Cerrar"><X {...ICONO} /></button>
+      </div>
+
+      {/* Lo que dice el código: el rechazo, el choque mientras se escribe, el
+          gemelo guardado y el nombre de antes. */}
+      {(editandoNombre || rechazo || choqueGuardado || viejo) && (
+        <div className="p2-avisos" data-nombre-del-mueble>
+          {rechazo ? (
+            <>
+              <p className="p2-msj mal">
+                No se guardó: {textoDelChoque(nombreBorrador, rechazo, (m) => conNombrePropio(m, nombresPropios, ""))}
+                {" "}Sigue llamándose «{item.code}».
+              </p>
+              {/* Renumerar una corrida es intercambiar nombres entre muebles
+                  que ya existen: sin esto, con todos los nombres del medio
+                  tomados, no habría forma de hacerlo. Debajo del botón dice
+                  qué le pasa al OTRO mueble, que nadie está mirando. */}
+              {rechazo.razon === "ocupado" && (
+                <>
+                  <button
+                    type="button"
+                    className="p2-btn peligro"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onIntercambiar(item.id, (rechazo as { ocupa: PlacedItem2D }).ocupa.id);
+                      setRechazo(null);
+                      setEditandoNombre(false);
+                    }}
+                  >
+                    Intercambiar con ese mueble
+                  </button>
+                  <p className="p2-msj">
+                    {textoDelIntercambio(item, (rechazo as { ocupa: PlacedItem2D }).ocupa)}
+                  </p>
+                </>
+              )}
+            </>
+          ) : choqueEscrito ? (
+            <p className="p2-msj mal">
+              {textoDelChoque(nombreBorrador, choqueEscrito, (m) => conNombrePropio(m, nombresPropios, ""))}
+            </p>
+          ) : editandoNombre ? (
+            <p className="p2-msj">
+              Es el nombre y es la llave: con él se arma {fullCode} y con eso viaja
+              al contrato, al correo de montaje y a la lámina.
+            </p>
+          ) : null}
+          {/* Lo que ya estaba guardado así se avisa, nunca se bloquea. */}
+          {!rechazo && !choqueEscrito && choqueGuardado && (
+            <p className="p2-msj ojo">
+              Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
+              {choqueGuardado.label ? ` (${conNombrePropio(choqueGuardado, nombresPropios, choqueGuardado.label)})` : ""}.
+              {editMode ? " Renombrá uno de los dos para que un contrato pueda decir a cuál va." : ""}
             </p>
           )}
-          {/* Nadie dice «PUN-07» en una reunión: dice «la punta del pasillo 4».
-              Sale de la geometría, así que mover el mueble lo actualiza solo. */}
-          {pasillo !== undefined && (
-            <p style={{
-              display: "inline-block", marginTop: 6, padding: "2px 8px", borderRadius: 999,
-              background: "var(--accent-50)", color: "var(--accent-700)",
-              fontSize: 11, fontWeight: 700,
-            }}>
-              Pasillo {pasillo}
+          {/* El nombre viejo. No se edita ni se dibuja: está para reconciliar con
+              la cartelería de la tienda y con el papel que firmó el proveedor. */}
+          {viejo && (
+            <p className="p2-msj">
+              Antes se llamaba «{viejo}». Es lo que puede seguir diciendo el cartel de
+              la góndola y lo que vio quien negoció lo que ya está contratado.
             </p>
           )}
         </div>
-        <button onClick={onClose} style={{ color: "var(--dark-ink-3)", fontSize: 18, lineHeight: 1, marginTop: 2, background: "none", border: "none", cursor: "pointer" }}>×</button>
-      </div>
+      )}
 
-      {/* Face tabs (gondola doble). La ficha va sobre `--dark-bg` en los dos
-          temas: la pestaña activa en `--accent` era tinta sobre casi negro en
-          tema claro (1,05:1, invisible). Fase 2 · I4: los tokens del cajón
-          oscuro (`--dark-ink-1` sobre `--dark-surface`). */}
+      {/* Un mueble viejo que guardó otra sede: sus espacios (y los contratos
+          que cuelgan de ellos) se siguen armando con ESA sede, y sus
+          participaciones con la del plano. Se dice tal cual y, a quien
+          administra, se le ofrece pasarlo a la del plano —lo vendido con el
+          código viejo no se muda solo: se avisa antes—. Nunca otra sede. */}
+      {item.sede && normalizeSede(item.sede) !== normalizeSede(sede) && (
+        <p className="p2-msj ojo" data-sede-ajena>
+          Este mueble guardó la sede «{item.sede}», que no es la de su plano: sus espacios se arman como
+          «{fullCode}». Si es un error, pasalo a «{sede}»; lo vendido con «{fullCode}» no se muda solo.
+          {editMode && isAdmin && (
+            <button type="button" data-usar-sede-del-plano onClick={() => onUpdate({ sede })} className="p2-enlace" style={{ display: "block" }}>
+              Usar la sede del plano
+            </button>
+          )}
+        </p>
+      )}
+
+      {/* Las dos caras de una góndola doble. */}
       {isDouble && rentable && (
-        <div style={{ display: "flex", borderBottom: "1px solid var(--dark-line)" }}>
+        <div className="p2-seg ancho" role="group" aria-label="Cara" data-caras>
           {(["A", "B"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setActiveFace(f)}
-              aria-pressed={activeFace === f}
-              style={{
-                flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 600,
-                background: activeFace === f ? "var(--dark-surface)" : "none", border: "none", cursor: "pointer",
-                fontFamily: "inherit",
-                color: activeFace === f ? "var(--dark-ink-1)" : "var(--dark-ink-3)",
-                borderBottom: activeFace === f ? "2px solid var(--dark-ink-1)" : "2px solid transparent",
-                transition: "color .12s, border-color .12s, background .12s",
-              }}
-            >
+            <button key={f} type="button" onClick={() => setActiveFace(f)} aria-pressed={activeFace === f}>
               Cara {f}
             </button>
           ))}
         </div>
       )}
 
-      {/* Status badge */}
-      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--dark-line)" }}>
-        <span style={{
-          ...(rentable ? STATUS_BADGE_STYLE[estadoVisto] : NON_RENTABLE_BADGE_STYLE),
-          display: "inline-flex", alignItems: "center", borderRadius: 999,
-          padding: "2px 10px", fontSize: 11, fontWeight: 600,
-        }}>
-          {rentable ? rotuloVisto : NON_RENTABLE_LABEL}
-        </span>
+      {/* La franja de resumen: se lee sin abrir nada. */}
+      <div className="p2-resumen" data-resumen>
+        <span><b>{metros(ancho)} × {metros(fondo)}{alto !== undefined ? ` × ${metros(alto)}` : ""}</b> m</span>
+        {vista && <span><b>{vista.entrepanos}</b> {vista.entrepanos === 1 ? "entrepaño" : "entrepaños"}</span>}
+        {rentable && partesDeLaCara.length > 0 ? (
+          <span><b>{vendidas.length} de {partesDeLaCara.length}</b> vendid{division ? concordancia(division.clase).o : "o"}{vendidas.length === 1 ? "" : "s"}</span>
+        ) : rentable && esPc && dispoPc ? (
+          <span>{dispoPc.dispo === "parcial" ? "Vendido en parte · " : ""}<b>{textoCortoDeParticipacion(dispoPc, isAdmin)}</b></span>
+        ) : null}
       </div>
 
-      {/* Destino del mueble — decides whether it can ever hold a contract.
-          Salvo cuando el TIPO ya lo decide: una columna, una caja registradora
-          y el mostrador de servicio al cliente son operación de la tienda y no
-          se venden nunca. Ahí el par de botones sería un control muerto —se
-          pintaría el elegido y `isRentable` lo seguiría negando—, así que en
-          su lugar va la razón escrita. */}
-      <Field label="Destino del mueble" icon="🎯">
-        {NUNCA_ALQUILABLE.has(item.type) ? (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>No comercializable</p>
-        ) : editMode && isAdmin ? (
-          <div style={{ display: "flex", gap: 6 }}>
-            {([true, false] as const).map((value) => (
-              <button
-                key={String(value)}
-                onClick={() => onUpdate({ rentable: value })}
-                style={{
-                  flex: 1, padding: "7px 4px", borderRadius: "var(--r-sm)",
-                  fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-                  fontFamily: "inherit", transition: "background .12s, border-color .12s",
-                  // Fase 2 · I4: el elegido en los tokens del cajón oscuro
-                  // (con `--accent` no se leía en tema claro).
-                  border: rentable === value
-                    ? "1px solid var(--dark-ink-1)"
-                    : "1px solid var(--dark-line-2)",
-                  background: rentable === value ? "var(--dark-ink-1)" : "transparent",
-                  color: rentable === value ? "var(--dark-bg)" : "var(--dark-ink-3)",
-                }}
-              >
-                {value ? "Comercializable" : "No comercializable"}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-            {rentable ? "Comercializable" : "No comercializable"}
-          </p>
-        )}
-        <p style={{ marginTop: 6, fontSize: 10, color: "var(--dark-ink-3)", lineHeight: 1.45 }}>
-          {NUNCA_ALQUILABLE.has(item.type)
-            ? textoDeLoQueNuncaSeAlquila(item.type)
-            : rentable
-            ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
-            : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
-        </p>
-      </Field>
+      {/* Las tres pestañas. */}
+      <div className="p2-seg ancho" role="tablist" aria-label="Qué mirar del mueble" data-pestanas>
+        <button type="button" role="tab" aria-selected={pestana === "venta"} aria-pressed={pestana === "venta"} data-pestana="venta"
+          onClick={() => setPestana("venta")}>
+          <Handshake {...ICONO} /> Venta
+        </button>
+        <button type="button" role="tab" aria-selected={pestana === "medidas"} aria-pressed={pestana === "medidas"} data-pestana="medidas"
+          onClick={() => setPestana("medidas")}>
+          <Ruler {...ICONO} /> Medidas
+        </button>
+        <button type="button" role="tab" aria-selected={pestana === "documentos"} aria-pressed={pestana === "documentos"} data-pestana="documentos"
+          onClick={() => setPestana("documentos")}>
+          <FileText {...ICONO} /> Documentos {rentable && <span className="n">{docs.files.length}</span>}
+        </button>
+      </div>
 
-      {/* Estado */}
-      {rentable && (
-      <Field label="Estado del espacio" icon="◉">
-        {editMode && face.status !== "occupied" ? (
-          <>
-            <select className={sel} value={face.status} disabled={guardandoEstado}
-              onChange={(e) => void cambiarEstado(e.target.value as SpaceStatus)}>
-              <option value="free">Disponible</option>
-              <option value="reserved">Reservado</option>
-              <option value="maintenance">Mantenimiento</option>
-            </select>
-            {estadoError && (
-              <p style={{ fontSize: 11, color: "var(--danger, #b91c1c)", marginTop: 4 }}>
-                {estadoError}
-              </p>
-            )}
-            {/* El estado de arriba es el de la base; el que se VE de una cara
-                por participación lo pone su ocupación. Se dice, para que el
-                «Disponible» del selector no se lea como «se puede vender». */}
-            {estadoVisto !== face.status && (
-              <p data-estado-por-ocupacion style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
-                {notaDeEstadoPorOcupacion(rotuloVisto)}
-              </p>
-            )}
-          </>
-        ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>
-            {rotuloVisto}
-            {face.status === "occupied" && (
-              <span style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
-                Lo pone el contrato. Para liberarlo hay que cancelarlo.
+      {/* ── VENTA: se vende, cómo, estado y lo contratado ─────────────────── */}
+      {pestana === "venta" && (
+        <div className="p2-pestana" role="tabpanel" data-pestana-venta>
+          {/* Se vende = el destino del mueble. Salvo cuando el TIPO ya lo
+              decide: una columna, una caja registradora y el mostrador de
+              servicio al cliente son operación de la tienda y no se venden
+              nunca. Ahí el interruptor sería un control muerto —se pintaría el
+              elegido y `isRentable` lo seguiría negando—, así que en su lugar
+              va la razón escrita. */}
+          <FilaDelPanel k="Se vende" titulo="Destino del mueble" campo="destino">
+            {NUNCA_ALQUILABLE.has(item.type) ? (
+              <p className="p2-v">No comercializable</p>
+            ) : editMode && isAdmin ? (
+              <span className="p2-sw-fila">
+                <button type="button" role="switch" className="p2-sw" aria-checked={rentable}
+                  aria-label="Se vende (comercializable)"
+                  onClick={() => onUpdate({ rentable: !rentable })} />
+                <span className="p2-ayu">{rentable ? "Comercializable" : "No comercializable"}</span>
               </span>
-            )}
-            {estadoVisto !== face.status && (
-              <span data-estado-por-ocupacion style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
-                Lo dice la ocupación de hoy de sus participaciones.
-              </span>
-            )}
-          </p>
-        )}
-      </Field>
-      )}
-
-      {/* Sede — de sólo lectura (fase 2 · I5, V16): la sede la define el plano.
-          El selector le escribía a un mueble una sede ajena, y con ella sus
-          espacios se armaban con otro prefijo que las participaciones (que usan
-          la del plano) no veían. Para mover la sede entera: «Renombrar sede». */}
-      <Field label="Sede" icon="🏢">
-        <p data-sede-del-plano style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{sede}</p>
-        {/* Un mueble viejo que guardó otra sede: sus espacios (y los contratos
-            que cuelgan de ellos) se siguen armando con ESA sede, y sus
-            participaciones con la del plano. Se dice tal cual y, a quien
-            administra, se le ofrece pasarlo a la del plano —lo vendido con el
-            código viejo no se muda solo: se avisa antes—. Nunca otra sede. */}
-        {item.sede && normalizeSede(item.sede) !== normalizeSede(sede) && (
-          <span data-sede-ajena style={{ fontSize: 11, color: "var(--dark-ink-3)", display: "block", marginTop: 2 }}>
-            Este mueble guardó la sede «{item.sede}», que no es la de su plano: sus espacios se arman como
-            «{fullCode}». Si es un error, pasalo a «{sede}»; lo vendido con «{fullCode}» no se muda solo.
-            {editMode && isAdmin && (
-              <button type="button" data-usar-sede-del-plano onClick={() => onUpdate({ sede })}
-                style={{ display: "block", marginTop: 4, fontSize: 11, color: "var(--dark-ink-1)", textDecoration: "underline" }}>
-                Usar la sede del plano
-              </button>
-            )}
-          </span>
-        )}
-      </Field>
-
-      {/* Nombre — el del mueble, que es su código. Uno solo.
-          Este campo decía «Nomenclatura» y escribía OTRA cosa, sin comprobar
-          nada, mientras el plano dibujaba el código: dos nombres para el mismo
-          mueble y sólo uno protegido. Ahora escribe el nombre —el código— por el
-          mismo camino que el doble clic sobre la caja. */}
-      <Field label="Nombre" icon="🔖">
-        {editMode ? (
-          <>
-            <input
-              className={inp}
-              value={nombreBorrador}
-              style={choqueEscrito ? { color: "var(--danger)", borderBottomColor: "var(--danger)" } : undefined}
-              onChange={(e) => { setNombreBorrador(e.target.value); setRechazo(null); }}
-              onBlur={guardarNombre}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); guardarNombre(); }
-                if (e.key === "Escape") { setNombreBorrador(item.code); setRechazo(null); }
-              }} />
-            {rechazo ? (
-              <>
-                <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
-                  No se guardó: {textoDelChoque(nombreBorrador, rechazo, (m) => conNombrePropio(m, nombresPropios, ""))}
-                  {" "}Sigue llamándose «{item.code}».
-                </p>
-                {/* Renumerar una corrida es intercambiar nombres entre muebles
-                    que ya existen: sin esto, con todos los nombres del medio
-                    tomados, no habría forma de hacerlo. Debajo del botón dice
-                    qué le pasa al OTRO mueble, que nadie está mirando. */}
-                {rechazo.razon === "ocupado" && (
-                  <>
-                    <button
-                      onClick={() => {
-                        onIntercambiar(item.id, (rechazo as { ocupa: PlacedItem2D }).ocupa.id);
-                        setRechazo(null);
-                      }}
-                      style={{
-                        marginTop: 6, padding: "5px 10px", borderRadius: "var(--r-sm)",
-                        border: "1px solid var(--danger)", background: "var(--danger-50)",
-                        color: "var(--danger)", fontSize: 11.5, fontWeight: 700,
-                        cursor: "pointer", fontFamily: "inherit",
-                      }}
-                    >
-                      Intercambiar con ese mueble
-                    </button>
-                    <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
-                      {textoDelIntercambio(item, (rechazo as { ocupa: PlacedItem2D }).ocupa)}
-                    </p>
-                  </>
-                )}
-              </>
-            ) : choqueEscrito ? (
-              <p style={{ fontSize: 11, color: "var(--danger)", marginTop: 4, lineHeight: 1.45 }}>
-                {textoDelChoque(nombreBorrador, choqueEscrito, (m) => conNombrePropio(m, nombresPropios, ""))}
-              </p>
             ) : (
-              <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 4, lineHeight: 1.45 }}>
-                Es el nombre y es la llave: con él se arma {fullCode} y con eso viaja
-                al contrato, al correo de montaje y a la lámina.
-              </p>
+              <p className="p2-v">{rentable ? "Comercializable" : "No comercializable"}</p>
             )}
-            {/* Lo que ya estaba guardado así se avisa, nunca se bloquea. */}
-            {!rechazo && !choqueEscrito && choqueGuardado && (
-              <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
-                Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
-                {choqueGuardado.label ? ` (${conNombrePropio(choqueGuardado, nombresPropios, choqueGuardado.label)})` : ""}. Renombrá
-                uno de los dos para que un contrato pueda decir a cuál va.
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{nombreDeMueble(item)}</p>
-            {choqueGuardado && (
-              <p style={{ fontSize: 11, color: "var(--warning)", marginTop: 4, lineHeight: 1.45 }}>
-                Ojo: otro mueble de esta sede también se llama «{normalizarNombre(item.code)}»
-                {choqueGuardado.label ? ` (${conNombrePropio(choqueGuardado, nombresPropios, choqueGuardado.label)})` : ""}.
-              </p>
-            )}
-          </>
-        )}
-        {/* El nombre viejo. No se edita ni se dibuja: está para reconciliar con
-            la cartelería de la tienda y con el papel que firmó el proveedor. */}
-        {viejo && (
-          <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 6, lineHeight: 1.45 }}>
-            Antes se llamaba «{viejo}». Es lo que puede seguir diciendo el cartel de
-            la góndola y lo que vio quien negoció lo que ya está contratado.
-          </p>
-        )}
-      </Field>
+            <p className="p2-msj">
+              {NUNCA_ALQUILABLE.has(item.type)
+                ? textoDeLoQueNuncaSeAlquila(item.type)
+                : rentable
+                ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
+                : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
+            </p>
+          </FilaDelPanel>
 
-      {/* Lo contratado, de sólo lectura ─────────────────────────────────────
-          El plano es el lugar del DISEÑO: qué mueble es, cuánto mide, dónde
-          está, qué artes lleva. El contrato se hace en Sede → Vender, sobre el
-          mapa y con la disponibilidad del periodo a la vista.
+          {/* Vender por partes: la nevera entera o por puertas; el mural, la
+              góndola, la nevera abierta y la de vegetales, por tramos; la
+              góndola y la punta, por entrepaños; por participación; y las
+              piezas de la caja (sus bahías de impulso) y de la columna (su
+              forro), que no se venden enteras. El mismo componente que el
+              Editor 3D (`components/PartesDelMueble.tsx`), con sus guardas. */}
+          {vendePorPartes(item.type) && (
+            <FilaDelPanel k="Cómo" titulo="Cómo se vende" campo="como" bloque>
+              <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} sinTitulo enElTema />
+            </FilaDelPanel>
+          )}
 
-          Tenerlo editable acá no era "también se puede": los campos escribían
-          el JSON del layout sin tocar la base, y el botón de guardar creaba un
-          contrato NUEVO cada vez —nunca editó ninguno—. Dos lugares para lo
-          mismo, y uno de los dos mentía.
-
-          Fase 2 · I4: una cara por participación dice lo comprometido sin «en
-          el Editor 3D → Distribución» (lo dice `DONDE_SE_CARGAN` debajo: salía
-          dos veces seguidas), y Mantenimiento o Reservado a mano mandan sobre
-          la ocupación: nunca «disponible para vender» sobre ellos. */}
-      {rentable && (
-        <Field label="Contratado" icon="🤝">
-          {face.supplierName ? (
-            <>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dark-ink-1)" }}>
-                {face.supplierName}
-                {face.brandCategory && (
-                  <span style={{ fontWeight: 400, color: "var(--dark-ink-2)" }}> · {face.brandCategory}</span>
-                )}
-              </p>
-              {face.startDate && face.endDate && (
+          {/* El estado del espacio: Disponible o Mantenimiento (decisión 1:
+              sin «Reservado» a mano). Ocupado y reservado los ponen el
+              contrato y la reserva: se leen y no se tocan. */}
+          {rentable && (
+            <FilaDelPanel k="Estado" titulo="Estado del espacio" campo="estado">
+              {editMode && face.status !== "occupied" ? (
                 <>
-                  <p style={{ fontSize: 12, color: "var(--dark-ink-2)", marginTop: 3, fontFamily: "var(--font-mono)" }}>
-                    {face.startDate} → {face.endDate}
+                  <div className="p2-seg" role="group" aria-label="Estado del espacio" data-estado-a-mano>
+                    {ESTADOS_A_MANO.map((s) => (
+                      <button key={s} type="button" aria-pressed={face.status === s} disabled={guardandoEstado}
+                        onClick={() => { if (face.status !== s) void cambiarEstado(s); }}>
+                        {STATUS_LABELS[s]}
+                      </button>
+                    ))}
+                  </div>
+                  {face.status === "reserved" ? (
+                    <p className="p2-msj ojo" data-reservado-a-mano>
+                      Está marcado «Reservado» a mano, sin proveedor ni fecha, y ya no se marca así:
+                      pasalo a Disponible o reservalo de verdad en Vender. Está también en
+                      Supervisar → Para revisar → Corregir.
+                    </p>
+                  ) : (
+                    <p className="p2-msj">Ocupado y Reservado los ponen el contrato y la reserva, no se marcan a mano.</p>
+                  )}
+                  {estadoError && <p className="p2-msj mal">{estadoError}</p>}
+                  {/* El estado de arriba es el de la base; el que se VE de una cara
+                      por participación lo pone su ocupación. Se dice, para que el
+                      «Disponible» del selector no se lea como «se puede vender». */}
+                  {estadoVisto !== face.status && (
+                    <p data-estado-por-ocupacion className="p2-msj">
+                      {notaDeEstadoPorOcupacion(rotuloVisto)}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="p2-v">
+                  {rotuloVisto}
+                  {face.status === "occupied" && (
+                    <small>Lo pone el contrato o la reserva. Para liberarlo hay que cancelarlo.</small>
+                  )}
+                  {estadoVisto !== face.status && (
+                    <small data-estado-por-ocupacion>Lo dice la ocupación de hoy de sus participaciones.</small>
+                  )}
+                </p>
+              )}
+            </FilaDelPanel>
+          )}
+
+          {/* Lo contratado, de sólo lectura ───────────────────────────────────
+              El plano es el lugar del DISEÑO: qué mueble es, cuánto mide, dónde
+              está, qué artes lleva. El contrato se hace en Sede → Vender, sobre
+              el mapa y con la disponibilidad del periodo a la vista; «Vender» lo
+              abre con este espacio. Qué está tomado y hasta cuándo, qué está
+              libre, y nunca un monto. */}
+          {rentable && (
+            <div className="p2-vend" data-contratado>
+              <p className="p2-rotulo">Contratado</p>
+              {face.supplierName ? (
+                <>
+                  <div className="p2-vend-f">
+                    <span className="p2-pill ocupado mono">{activeFace === "B" && isDouble ? `${item.code}-B` : item.code}</span>
+                    <span>
+                      <b style={{ color: "var(--ink-1)" }}>{face.supplierName}</b>
+                      {face.brandCategory && <> · {face.brandCategory}</>}
+                    </span>
+                    {face.endDate && <span className="r">hasta {fechaEnCurso(face.endDate)}</span>}
+                  </div>
+                  {face.startDate && face.endDate && (
+                    <>
+                      <span className="p2-codigo-completo">{face.startDate} → {face.endDate}</span>
+                      <DaysLeftStrip startDate={face.startDate} endDate={face.endDate} />
+                    </>
+                  )}
+                </>
+              ) : partesDeLaCara.length > 0 && vendidas.length > 0 ? (
+                <>
+                  {vendidas.map((p) => {
+                    const e = estadoCrudo[p.codigo];
+                    return (
+                      <div key={p.codigo} className="p2-vend-f" data-parte-tomada={p.codigo}>
+                        <span className="p2-pill ocupado mono">{sufijoCorto(p.sufijo)}</span>
+                        <span>{e?.supplierName || "Tomada"}</span>
+                        {e?.endDate && <span className="r">hasta {fechaEnCurso(e.endDate)}</span>}
+                      </div>
+                    );
+                  })}
+                  {vendidas.length < partesDeLaCara.length && (
+                    <div className="p2-vend-f">
+                      <span className="p2-pill libre mono">
+                        {juntarSufijos(partesDeLaCara.filter((p) => !p.vendida).map((p) => sufijoCorto(p.sufijo)))}
+                      </span>
+                      <span>{partesDeLaCara.length - vendidas.length === 1 ? "libre" : "libres"}</span>
+                    </div>
+                  )}
+                </>
+              ) : esPc ? (
+                <p data-contratado-por-participacion className="p2-msj" style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)" }}>
+                  {textoDeLoComprometido(dispoPc, isAdmin, { propio: face.status, conLugar: false })}
+                </p>
+              ) : (
+                <p className="p2-msj">Sin contrato activo.</p>
+              )}
+              {isAdmin && esPc ? (
+                <>
+                  <p className="p2-msj">
+                    {DONDE_SE_CARGAN}
                   </p>
-                  <DaysLeftStrip startDate={face.startDate} endDate={face.endDate} />
+                  <div className="p2-vend-f">
+                    <button
+                      type="button"
+                      className="p2-btn"
+                      onClick={() => abrirEnDistribucion(item.id, activeFace)}
+                      title="Abre el Editor 3D en esta cara, en Distribución"
+                    >
+                      <Percent {...ICONO} /> Distribuir
+                    </button>
+                    {botonVender}
+                  </div>
+                </>
+              ) : isAdmin && (
+                <>
+                  <div className="p2-vend-f">{botonVender}</div>
+                  <p className="p2-msj">
+                    Los contratos se hacen en <b style={{ color: "var(--ink-2)" }}>Sede → Vender</b>, sobre el
+                    mapa y con la disponibilidad del periodo a la vista.
+                  </p>
                 </>
               )}
-              {isAdmin && face.negotiatedValue > 0 && (
-                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--success)", marginTop: 6, fontFamily: "var(--font-mono)" }}>
-                  ${face.negotiatedValue.toLocaleString()} / mes
-                </p>
-              )}
-            </>
-          ) : esPc ? (
-            <p data-contratado-por-participacion style={{ fontSize: 13, color: "var(--dark-ink-2)", lineHeight: 1.45 }}>
-              {textoDeLoComprometido(dispoPc, isAdmin, { propio: face.status, conLugar: false })}
-            </p>
-          ) : (
-            <p style={{ fontSize: 13, color: "var(--dark-ink-3)" }}>Sin contrato activo.</p>
-          )}
-          {isAdmin && esPc ? (
-            <>
-              <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 8, lineHeight: 1.45 }}>
-                {DONDE_SE_CARGAN}
-              </p>
-              <button
-                onClick={() => abrirEnDistribucion(item.id, activeFace)}
-                title="Abre el Editor 3D en esta cara, en Distribución"
-                style={{
-                  marginTop: 8, padding: "5px 10px", borderRadius: "var(--r-sm)",
-                  border: "1px solid var(--dark-line-2)", background: "transparent",
-                  color: "var(--dark-ink-1)", fontSize: 11.5, fontWeight: 600,
-                  fontFamily: "inherit", cursor: "pointer",
-                }}
-              >
-                Abrir en Distribución
-              </button>
-            </>
-          ) : isAdmin && (
-            <p style={{ fontSize: 11, color: "var(--dark-ink-3)", marginTop: 8, lineHeight: 1.45 }}>
-              Los contratos se hacen en <b style={{ color: "var(--dark-ink-2)" }}>Sede → Vender</b>, sobre el
-              mapa y con la disponibilidad del periodo a la vista.
-            </p>
-          )}
-        </Field>
-      )}
-
-      {/* Dimensiones */}
-      {editMode && (
-        <Field label="Dimensiones" icon="📐">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <p style={{ fontSize: 10, color: "var(--dark-ink-3)", marginBottom: 4 }}>ANCHO (m)</p>
-              <input type="number" className={inp} step={0.05} min={0.25}
-                value={item.w}
-                onChange={(e) => onUpdate({ w: parseFloat(e.target.value) || 0.25 })} />
             </div>
-            <div>
-              <p style={{ fontSize: 10, color: "var(--dark-ink-3)", marginBottom: 4 }}>PROF. (m)</p>
-              <input type="number" className={inp} step={0.05} min={0.25}
-                value={item.h}
-                onChange={(e) => onUpdate({ h: parseFloat(e.target.value) || 0.25 })} />
-            </div>
-          </div>
-        </Field>
-      )}
-
-      {/* Alto, entrepaños y módulo (góndola y punta). El plano no dibuja el
-          alto, pero acá es donde se arma la tienda: el mismo componente que el
-          Editor 3D, que escribe en el store después de revisar lo vendido
-          (`components/GeometriaDelMueble.tsx`). */}
-      {(item.type === "gondola_doble" || item.type === "gondola_mural" || item.type === "punta") && (
-        <Field label="Alto, entrepaños y módulo" icon="📏">
-          <GeometriaDelMueble id={item.id} puedeEditar={editMode && isAdmin} />
-        </Field>
-      )}
-
-      {/* Vender por partes: la nevera entera o por puertas; el mural, la
-          góndola, la nevera abierta y la de vegetales, por tramos; la góndola
-          y la punta, por entrepaños; y las piezas de la caja (sus bahías de
-          impulso) y de la columna (su forro), que no se venden enteras. Fuera
-          de lo comercial del panel a propósito: es cómo ES el mueble —y la
-          caja y la columna no son comercializables—, y el mismo componente
-          que el Editor 3D (`components/PartesDelMueble.tsx`). */}
-      {vendePorPartes(item.type) && (
-        <Field label="Cómo se vende" icon="🧩">
-          <PartesDelMueble id={item.id} puedeEditar={editMode && isAdmin} sinTitulo />
-        </Field>
-      )}
-
-      {/* Observación */}
-      <Field label="Observación" icon="📝">
-        {editMode ? (
-          <textarea rows={2} className={`${inp} resize-none`}
-            style={{ border: "1px solid var(--dark-line-2)", borderRadius: "var(--r-sm)", padding: "4px 8px" }}
-            placeholder="Notas adicionales"
-            value={face.observation}
-            onChange={(e) => updateFace({ observation: e.target.value })} />
-        ) : (
-          <p style={{ fontSize: 14, color: "var(--dark-ink-1)" }}>{face.observation || <span style={{ color: "var(--dark-ink-3)" }}>—</span>}</p>
-        )}
-      </Field>
-
-      {/* Archivos — keyed by active face code so state resets on face switch */}
-      {rentable && (
-      <FilesSection
-        key={activeCode}
-        code={activeCode}
-        name={catDef?.label ?? item.code}
-        zone={item.type}
-        sedeName={item.sede || sede}
-        areaM2={parseFloat((item.w * item.h).toFixed(2))}
-        isAdmin={isAdmin}
-        editMode={editMode}
-      />
-      )}
-
-      {/* Code chip */}
-      <div style={{ padding: "12px 16px", marginTop: "auto" }}>
-        <span style={{ display: "inline-block", borderRadius: "var(--r-sm)", background: "var(--dark-surface-2)", padding: "4px 10px", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--dark-ink-2)" }}>
-          {activeCode}
-        </span>
-      </div>
-
-      {/* Actions (admin edit mode only) */}
-      {editMode && isAdmin && (
-        <div style={{ padding: "0 16px 16px", display: "flex", gap: 8 }}>
-          <button onClick={onDuplicate}
-            style={{ flex: 1, borderRadius: "var(--r-sm)", border: "1px solid var(--dark-line-2)", padding: "6px 0", fontSize: 12, fontWeight: 500, color: "var(--dark-ink-2)", background: "transparent", cursor: "pointer", transition: "background .12s" }}>
-            Duplicar
-          </button>
-          <button onClick={onDelete}
-            style={{ flex: 1, borderRadius: "var(--r-sm)", border: "1px solid rgba(185,28,28,0.35)", background: "rgba(185,28,28,0.12)", padding: "6px 0", fontSize: 12, fontWeight: 500, color: "var(--danger)", cursor: "pointer", transition: "background .12s" }}>
-            Eliminar
-          </button>
+          )}
         </div>
       )}
+
+      {/* ── MEDIDAS: ancho × prof. × alto, entrepaños y módulo ─────────────── */}
+      {pestana === "medidas" && (
+        <div className="p2-pestana" role="tabpanel" data-pestana-medidas>
+          {(() => {
+            // Ancho y fondo: los del plano (`onUpdate`, como siempre). Para la
+            // góndola y la punta van en la misma fila que el «Alto» del
+            // componente de la geometría.
+            const anchoYFondo = editMode ? (
+              <>
+                <label>
+                  <span className="p2-campo-l">Ancho (m)</span>
+                  <input type="number" className="p2-campo" step={0.05} min={0.25} aria-label="Ancho (m)"
+                    value={item.w}
+                    onChange={(e) => onUpdate({ w: parseFloat(e.target.value) || 0.25 })} />
+                </label>
+                <span className="p2-x" aria-hidden>×</span>
+                <label>
+                  <span className="p2-campo-l">Prof. (m)</span>
+                  <input type="number" className="p2-campo" step={0.05} min={0.25} aria-label="Profundidad (m)"
+                    value={item.h}
+                    onChange={(e) => onUpdate({ h: parseFloat(e.target.value) || 0.25 })} />
+                </label>
+              </>
+            ) : null;
+            // Alto, entrepaños y módulo (góndola y punta). El plano no dibuja el
+            // alto, pero acá es donde se arma la tienda: el mismo componente que
+            // el Editor 3D, que escribe en el store después de revisar lo vendido
+            // (`components/GeometriaDelMueble.tsx`): «Cambiar igual», lo vendido
+            // no se mueve sin aviso.
+            const conGeometria = item.type === "gondola_doble" || item.type === "gondola_mural" || item.type === "punta";
+            return (
+              <FilaDelPanel k="Medidas" titulo="Dimensiones · alto, entrepaños y módulo" campo="medidas" bloque>
+                {!editMode && (
+                  <p className="p2-v mono" data-dimensiones>
+                    {metros(ancho)} × {metros(fondo)}{alto !== undefined ? ` × ${metros(alto)}` : ""} m
+                  </p>
+                )}
+                {conGeometria ? (
+                  <GeometriaDelMueble id={item.id} puedeEditar={editMode && isAdmin} enElTema antesDelAlto={anchoYFondo} />
+                ) : anchoYFondo && (
+                  <div className="p2-tri dos" data-medidas-en-fila>{anchoYFondo}</div>
+                )}
+              </FilaDelPanel>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── DOCUMENTOS: los archivos, la foto de la cara y la nota ─────────── */}
+      {pestana === "documentos" && (
+        <div className="p2-pestana" role="tabpanel" data-pestana-documentos>
+          {/* Archivos — de la cara activa: cambiar de cara cambia la lista. */}
+          {rentable ? (
+            <FilesSection key={activeCode} docs={docs} isAdmin={isAdmin} editMode={editMode} />
+          ) : (
+            <p className="p2-msj">Un mueble que no se vende no lleva documentos.</p>
+          )}
+          {/* La nota: la del contrato (la misma de Vender) o, sin contrato, la
+              del espacio. Texto libre de administración: el servidor no se la
+              manda al trabajador, y acá tampoco se le muestra. */}
+          {rentable && isAdmin && (
+            <div className="p2-nota-c" data-nota-del-espacio>
+              <label className="k" htmlFor={`nota-${item.id}`}>{conContrato ? "Nota del contrato" : "Nota del espacio"}</label>
+              {editMode ? (
+                <>
+                  <textarea
+                    id={`nota-${item.id}`}
+                    className="p2-area"
+                    maxLength={LARGO_DE_LA_NOTA}
+                    placeholder={conContrato ? "Algo que el montaje tenga que saber" : "Notas del espacio"}
+                    value={nota}
+                    disabled={guardandoNota}
+                    onChange={(e) => setNota(e.target.value)}
+                    onBlur={() => void guardarNota()}
+                  />
+                  <span className="p2-cuenta-nota">{nota.length}/{LARGO_DE_LA_NOTA}</span>
+                </>
+              ) : (
+                <p className="p2-v" style={{ whiteSpace: "pre-wrap" }}>{nota || <span style={{ color: "var(--ink-3)" }}>—</span>}</p>
+              )}
+              {notaError && <p className="p2-msj mal">{notaError}</p>}
+              <p className="p2-msj">
+                Es la misma nota del contrato de Vender. Sin contrato, es la nota del espacio. Sólo la ven los administradores.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* El código completo y las acciones (admin, editando) */}
+      <div className="p2-pie-ficha">
+        <span className="p2-codigo-completo" data-codigo-completo>{activeCode}</span>
+        {editMode && isAdmin && (
+          <div className="p2-acciones">
+            <button type="button" className="p2-btn" onClick={onDuplicate}>
+              <Copy {...ICONO} /> Duplicar
+            </button>
+            <button type="button" className="p2-btn peligro" onClick={onDelete}>
+              <Trash2 {...ICONO} /> Eliminar
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
+/** Lo que se marca a mano en «Estado» (decisión 1: sin «Reservado»). */
+const ESTADOS_A_MANO = ["free", "maintenance"] as const;
 
-// ─── Toolbar Button ───────────────────────────────────────────────────────────
+/** El largo de la nota, el mismo que la observación de Vender. */
+const LARGO_DE_LA_NOTA = 500;
 
-function ToolbarBtn({
-  children,
-  active,
-  onClick,
-  disabled,
-  title,
-  danger,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-  danger?: boolean;
+/** Un renglón del panel B: el rótulo a la izquierda y el control a la
+ *  derecha (o debajo, `bloque`, para lo que necesita el ancho). */
+function FilaDelPanel({ k, titulo, campo, bloque = false, children }: {
+  k: string; titulo?: string; campo?: string; bloque?: boolean; children: React.ReactNode;
 }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-        active
-          ? "bg-accent-50 text-accent-700 ring-1 ring-accent-200"
-          : danger
-          ? "text-danger hover:bg-danger-50"
-          : "text-ink-2 hover:bg-surface-3"
-      }`}
-    >
-      {children}
-    </button>
+    <div className="p2-kv" data-campo={campo} data-bloque={bloque || undefined}>
+      <span className="k" title={titulo}>{k}</span>
+      <div className="v">{children}</div>
+    </div>
   );
 }
 

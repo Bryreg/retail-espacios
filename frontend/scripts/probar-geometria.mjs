@@ -381,9 +381,12 @@ prueba("la punta se DIBUJA con lo que guardó: estructura, producto, relleno, ha
 const plano2D = sinComentarios(leer("src/components/FloorPlan2D/FloorPlan2D.tsx"));
 
 prueba("el plano 2D y el Editor 3D muestran «Alto», «Entrepaños» y «Módulo» con el mismo componente", () => {
-  assert.match(plano2D, /<GeometriaDelMueble id=\{item\.id\} puedeEditar=\{editMode && isAdmin\} \/>/,
+  // Rediseño, PR 3: en la pestaña Medidas del panel B, en los colores del tema
+  // y con el ancho y el fondo del plano en la misma fila que «Alto».
+  assert.match(plano2D, /<GeometriaDelMueble id=\{item\.id\} puedeEditar=\{editMode && isAdmin\} enElTema antesDelAlto=\{anchoYFondo\} \/>/,
     "el panel del plano 2D no tiene los campos (o los deja editar sin modo edición)");
-  assert.match(recorte(plano2D, "function AssignmentPanel(", "// ─── Toolbar Button"),
+  assert.equal((plano2D.match(/<GeometriaDelMueble /g) ?? []).length, 1, "el panel del 2D monta los campos dos veces");
+  assert.match(recorte(plano2D, "function AssignmentPanel(", "function FilaDelPanel("),
     /item\.type === "gondola_doble" \|\| item\.type === "gondola_mural" \|\| item\.type === "punta"/,
     "el panel del 2D no los muestra para la góndola y la punta");
   const panel3D = recorte(editor, "const modeloDelMueble = modeloPorId(fix.modelo);", "// ─── Canvas error boundary");

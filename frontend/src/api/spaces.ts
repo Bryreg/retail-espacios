@@ -44,6 +44,14 @@ export const getSpaceByCode = (code: string): Promise<Space | null> =>
 export const updateSpaceStatus = (spaceId: number, status: SpaceStatus, notes?: string) =>
   client.patch<Space>(`/spaces/${spaceId}/status`, { status, notes }).then((r) => r.data);
 
+/** La nota del panel del Plano («Nota del contrato» / «Nota del espacio»): el
+ *  servidor la guarda donde la lee el mapa comercial —el contrato que manda, si
+ *  no la reserva viva, si no el espacio— y dice dónde quedó. Sólo administración. */
+export const guardarNotaDelEspacio = (spaceId: number, nota: string) =>
+  client
+    .put<{ donde: "contrato" | "reserva" | "espacio"; nota: string }>(`/spaces/${spaceId}/nota`, { nota })
+    .then((r) => r.data);
+
 export const cancelLease = (spaceId: number, leaseId: number) =>
   client.delete(`/spaces/${spaceId}/leases/${leaseId}`);
 

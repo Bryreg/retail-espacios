@@ -740,10 +740,27 @@ pre-crear ningún `space`: la fila aparece cuando se vende. Y la fusión no rell
 —escribe los siete campos siempre—, porque rellenar dejaría un contrato cancelado pintado
 desde la copia vieja de `localStorage` hasta que alguien recargara.
 
-**Un espacio se ocupa vendiéndolo.** Los selectores de estado del 2D y del 3D ofrecen
-sólo «Disponible», «Reservado» y «Mantenimiento», y escriben en la BASE
+**Un espacio se ocupa vendiéndolo, y se reserva en Vender.** Los selectores de estado del 2D
+y del 3D ofrecen sólo «Disponible» y «Mantenimiento», y escriben en la BASE
 (`PATCH /spaces/{id}/status`). Poner «Ocupado» a mano creaba un ocupado sin contrato, sin
-proveedor y sin fechas: el fantasma exacto que todo esto vino a eliminar.
+proveedor y sin fechas: el fantasma exacto que todo esto vino a eliminar. **«Reservado» a mano
+tampoco** (rediseño, PR 3, decisión 1): era un apartado sin proveedor ni fecha que no se vencía
+nunca y se confundía con la reserva de verdad, que sale de Vender (`vender-api.md` §8). El
+servidor lo rechaza en todo espacio (409 «Las reservas se hacen desde Vender, con proveedor y
+fecha.», `RESERVA_SOLO_DESDE_VENDER`); los que ya estaban así se siguen leyendo igual (`GET
+/spaces/comercial` los da `reserved`, sin `reservado`) y salen en Supervisar → Para revisar →
+Corregir, **«Marcado reservado a mano»**, con «Liberar» (Disponible) y «Reservar de verdad» (libera
+la marca y abre Vender con el espacio). Esa sección también la ve el trabajador: no lleva plata
+ni proveedor —no tiene ninguno— y el estado ya le llega pintado en su mapa; las dos acciones son
+de administración.
+
+**La nota del panel del Plano es la de la base.** «Nota del contrato» (con contrato o reserva
+vivos: la misma de Vender) o «Nota del espacio» se escribe con `PUT /spaces/{id}/nota` (admin,
+hasta 500 letras), que la guarda donde la lee `GET /spaces/comercial` —el contrato que manda, si
+no la reserva viva, si no `spaces.notes`— y la bitácora dice dónde, nunca el texto. Antes el
+panel la escribía en el JSON del layout, que `PUT /layout` descarta (`CAMPOS_DE_CONTRATO`): se veía
+cambiar y no se guardaba. Es texto libre de administración: `GET /spaces/…` ya no le manda
+`notes` del espacio al trabajador (lo de los contratos ya se tachaba).
 
 **Sacar de circulación algo vendido se frena al guardar el plano.** Borrar el mueble,
 pasar la góndola de doble a simple o marcarlo no comercializable retira el espacio de la
@@ -1137,6 +1154,51 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### Rediseño, PR 3 (Plano): la barra, el catálogo, el lienzo y el panel B (2026-10-20)
+
+Los dibujos aprobados son `docs/maquetas/rediseno-2026-10/plano.html` (su lista «Dónde queda cada
+cosa» es la lista de control: nada se fue) y `panel-plano.html` (el panel B); los íconos, los de la
+hoja (`hoja-iconos-y-piezas.html`, tablas «Plano» y «Catálogo del Plano»). Todo cuelga de
+`.plano2d` (`src/plano.css`).
+
+- **La barra de arriba**: la sede con la MISMA pieza que Vender y Supervisar (`.barra-pantalla
+  .pieza`, con «N de M · X muebles» y el menú «⋯» con Renombrar / Agregar / Eliminar, los campos y
+  diálogos de siempre), **Editar | Mirar** (reemplaza a «Vista previa»), las herramientas como
+  íconos con su atajo en el globo (Eliminar en rojo) y, a la derecha, el guardado con punto y
+  palabra («Guardado · Guardando… · Sin conexión»; tocarlo sincroniza), Revisar, Renumerar y
+  Atajos. **La sede se dice una sola vez** (decisión 2): la barra de abajo se fue entera.
+- **El catálogo**: familias plegables con su ícono, cada tipo con el suyo (un solo mapa,
+  `components/FloorPlan2D/iconos.ts`; el `emoji` de `muebles.json` sigue para quien lo lea, el
+  plano ya no lo dibuja —tampoco en el lienzo: un mueble chico lleva el ícono de su tipo—), sus
+  medidas y cuántos modelos; el lápiz del nombre propio y las fichas propias, como siempre. Se
+  pliega a una franja (a lo angosto arranca plegado).
+- **El lienzo**: buscador y filtros con su cuenta —Todos · Libres · Ocupados · **Vendido en parte**
+  · **Reservados** · Por vencer · Vencidos (decisión 3: «en parte» son partes vendidas y libres en
+  una cara, o una cara por participación con algo comprometido y lugar; «reservados», una reserva
+  de Vender de la cara o de una parte, o un «Reservado» a mano de antes)— y, al pie, − / % / + /
+  Centrar en todo / Mostrar los códigos / Pantalla completa (tocar el % vuelve al 100 %).
+- **El panel B** (decisión 5): el código con su lápiz (reemplaza a la sección «Nombre», por el
+  mismo `renombrar`), «tipo · sede (candado) · pasillo», la pastilla, la franja «medidas ·
+  entrepaños · X de N vendido» y tres pestañas: **Venta** (se vende —el destino—, cómo —el mismo
+  `PartesDelMueble`—, estado —Disponible | Mantenimiento—, lo contratado sin plata y «Vender», que
+  abre Sede → Vender con el espacio por `pedirVender` del store y el `negociar` de siempre; en una
+  cara por participación, «Distribuir»), **Medidas** (ancho × prof. × alto en una fila, entrepaños
+  con − y +, módulo: el mismo `GeometriaDelMueble`, las mismas guardas) y **Documentos** (los
+  archivos con su tamaño, «Usar como foto de la cara en el 3D» —el `uso: "cara"` del upload— con
+  la foto en chiquito, y la nota; la pestaña dice cuántos archivos hay). Abre siempre en Venta.
+  Varios elegidos, Revisar y Atajos, con el mismo lenguaje. **Sigue el tema** claro u oscuro: el
+  plano no lee ningún `--dark-*`; `PartesDelMueble` y `GeometriaDelMueble` toman `enElTema` en el
+  Plano y siguen en el cajón oscuro en el Editor 3D, que no cambió.
+- **A lo angosto**: por debajo de 860 px el panel es una hoja que sube desde abajo, a todo el ancho;
+  por debajo de 640 px el catálogo abierto flota sobre el lienzo. Nada empuja la página de costado.
+- Los archivos del panel se leen al abrirlo con `GET /spaces/by-code` (leer no crea la fila de
+  `spaces`; la crea, como antes, el primer archivo o la primera nota de quien administra).
+- Guardas: `probar-plano` (sin emoji, sin «Reservado» a mano, la sede una vez y de sólo lectura,
+  abre en Venta, cada sección del panel de antes en su pestaña, sin `--dark-*`, los filtros y el
+  pie); las de `probar-comercial`, `probar-distribucion`, `probar-geometria`, `probar-partes`,
+  `probar-nombres` y `probar-comercializable` miran la forma nueva. Servidor:
+  `tests/test_panel_del_plano.py`.
 
 ### Rediseño, PR 2 (Supervisar): el correo de montaje espera a la planometría (2026-10-20)
 

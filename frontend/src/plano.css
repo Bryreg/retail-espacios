@@ -1,0 +1,707 @@
+/* ============================================================================
+   RECABRA · EL PLANO (editor 2D) — rediseño, PR 3
+
+   Capa 3 del sistema: consume los tokens de `tema.css` y no define ningún
+   color. Dibujos aprobados: `docs/maquetas/rediseno-2026-10/plano.html` (la
+   barra, el catálogo y el lienzo) y `panel-plano.html` (el panel B del
+   mueble). La barra de la sede es la MISMA pieza que la de Vender y
+   Supervisar (`.barra-pantalla .pieza`, en `vender.css`).
+
+   El panel del mueble deja de ser el cajón oscuro de siempre: sigue el tema
+   claro u oscuro, como el resto de la app (el Editor 3D sigue oscuro siempre).
+   Por eso acá no se lee ningún `--dark-*`: `probar-plano` lo vigila.
+
+   TODO cuelga de `.plano2d`: ninguna otra pantalla ve una sola de estas reglas.
+   ========================================================================== */
+
+.plano2d {
+  background: var(--bg);
+  color: var(--ink-1);
+  min-width: 0;
+}
+
+/* ── La barra de arriba ──────────────────────────────────────────────────── */
+.plano2d .p2-barra {
+  flex: none;
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: var(--hair) solid var(--line);
+  background: var(--bg);
+}
+.plano2d .p2-barra .pieza { height: 44px; }
+.plano2d .p2-barra .pieza.p2-sede { padding-right: 6px; }
+.plano2d .p2-sede-campo {
+  width: 120px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: var(--hair) solid var(--brd-control);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-1);
+  font: 600 var(--t-sm) / 1 var(--f-mono);
+  outline: none;
+}
+.plano2d .p2-sede-campo:focus { border-color: var(--ink-1); }
+
+.plano2d .p2-grupo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 4px;
+  min-width: 0;
+  background: var(--surface);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-lg);
+}
+.plano2d .p2-sepv { width: 1px; height: 20px; background: var(--line); margin: 0 2px; flex: none; }
+
+/* Un botón de sólo ícono: 32 × 32, tinta 2, el atajo en el `title`. */
+.plano2d .p2-icobtn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  border: var(--hair) solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-family: inherit;
+}
+.plano2d .p2-icobtn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink-1); }
+.plano2d .p2-icobtn:disabled { color: var(--ink-4); cursor: not-allowed; }
+.plano2d .p2-icobtn[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); background: var(--surface); }
+.plano2d .p2-icobtn.peligro { color: var(--ocupado-txt); }
+.plano2d .p2-icobtn.peligro:disabled { color: var(--ink-4); }
+.plano2d .p2-icobtn.borde { border-color: var(--line); background: var(--surface); }
+.plano2d .p2-icobtn.chico { width: 26px; height: 26px; }
+.plano2d .p2-icobtn:focus-visible,
+.plano2d .p2-seg button:focus-visible,
+.plano2d .p2-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+/* El control segmentado de la hoja de piezas: el elegido en tinta plena. */
+.plano2d .p2-seg {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: var(--hair) solid var(--line);
+  overflow-x: auto;
+}
+.plano2d .p2-grupo .p2-seg { border: 0; padding: 0; background: transparent; }
+.plano2d .p2-seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plano2d .p2-seg button:hover:not(:disabled):not([aria-pressed="true"]) { color: var(--ink-1); }
+.plano2d .p2-seg button[aria-pressed="true"] { background: var(--ink-1); color: var(--surface); font-weight: 600; }
+.plano2d .p2-seg button:disabled { color: var(--ink-4); cursor: not-allowed; }
+.plano2d .p2-seg button .n { font-family: var(--f-mono); font-size: var(--t-2xs); color: var(--ink-3); }
+.plano2d .p2-seg button[aria-pressed="true"] .n { color: var(--surface); opacity: .8; }
+.plano2d .p2-seg.ancho { display: flex; width: 100%; }
+.plano2d .p2-seg.ancho button { flex: 1; min-width: 0; padding: 0 8px; }
+.plano2d .p2-seg-como button { height: 28px; padding: 0 9px; }
+
+.plano2d .btn-barra[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); }
+
+/* El estado del guardado: un punto y su palabra, como «Sincronizado». */
+.plano2d .p2-guardado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plano2d .p2-guardado::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c, var(--ink-4));
+  flex: none;
+}
+.plano2d .p2-guardado:disabled { cursor: wait; }
+
+/* El menú «⋯» de la sede. */
+.plano2d .p2-menu-w { position: relative; display: inline-flex; }
+.plano2d .p2-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: var(--surface);
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+}
+.plano2d .p2-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.plano2d .p2-menu button svg { color: var(--ink-3); flex: none; }
+.plano2d .p2-menu button:hover { background: var(--surface-2); }
+.plano2d .p2-menu button.peligro { color: var(--ocupado-txt); }
+.plano2d .p2-menu button.peligro svg { color: var(--ocupado-txt); }
+
+/* ── El cuerpo: catálogo · lienzo · panel ────────────────────────────────── */
+.plano2d .p2-cuerpo { position: relative; min-width: 0; }
+
+.plano2d .p2-catalogo {
+  width: 240px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-right: var(--hair) solid var(--line);
+}
+.plano2d .p2-catalogo[data-plegado] { width: 48px; align-items: center; }
+.plano2d .p2-cat-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 8px 14px;
+  border-bottom: var(--hair) solid var(--line-soft);
+}
+.plano2d .p2-catalogo[data-plegado] .p2-cat-h { padding: 8px 0; border: 0; }
+.plano2d .p2-cat-h > svg { color: var(--ink-2); flex: none; }
+.plano2d .p2-cat-h h3 { margin: 0; font-size: var(--t-sm); font-weight: 700; }
+.plano2d .p2-cat-h .sub { font-size: var(--t-2xs); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.plano2d .p2-cat-b { overflow-y: auto; overflow-x: hidden; padding: 4px 8px 12px; flex: 1; min-height: 0; }
+.plano2d .p2-fam { border-top: var(--hair) solid var(--line-soft); padding: 6px 0; }
+.plano2d .p2-fam:first-child { border-top: 0; }
+.plano2d .p2-fam-h {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-1);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.plano2d .p2-fam-h:hover { background: var(--surface-2); }
+.plano2d .p2-fam-h svg { color: var(--ink-3); }
+.plano2d .p2-fam-h b { display: block; font-size: var(--t-sm); font-weight: 600; }
+.plano2d .p2-fam-h span { display: block; font-size: var(--t-2xs); color: var(--ink-3); }
+.plano2d .p2-tipo { position: relative; border-radius: var(--r-md); }
+.plano2d .p2-tipo[data-activo] { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.plano2d .p2-tipo-b {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 7px 30px 7px 8px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-1);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.plano2d .p2-tipo-b:hover { background: var(--surface-2); }
+.plano2d .p2-tipo-b > svg { color: var(--ink-2); }
+.plano2d .p2-tipo-b b { display: block; font-size: var(--t-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plano2d .p2-tipo-b .med { display: block; font: var(--t-2xs) / 1.3 var(--f-mono); color: var(--ink-3); }
+.plano2d .p2-tipo .p2-lapiz { position: absolute; top: 5px; right: 4px; opacity: 0; }
+.plano2d .p2-tipo:hover .p2-lapiz,
+.plano2d .p2-tipo .p2-lapiz:focus-visible { opacity: 1; }
+.plano2d .p2-tipo-campo {
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border: var(--hair) solid var(--ink-1);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: var(--t-xs);
+  outline: none;
+}
+.plano2d .p2-modelos { padding: 0 8px 6px 34px; }
+.plano2d .p2-modelos summary { cursor: pointer; font-size: var(--t-2xs); color: var(--ink-3); user-select: none; padding: 2px 0; }
+.plano2d .p2-modelo {
+  width: 100%;
+  display: block;
+  margin-top: 2px;
+  padding: 4px 6px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: transparent;
+  color: var(--ink-1);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.plano2d .p2-modelo:hover { background: var(--surface-2); }
+.plano2d .p2-modelo[data-activo] { background: var(--surface-2); border-left-color: var(--ink-1); }
+.plano2d .p2-modelo .nom { display: block; font-size: var(--t-2xs); line-height: 1.25; }
+.plano2d .p2-modelo .med { display: block; font: var(--t-3xs) / 1.3 var(--f-mono); color: var(--ink-3); }
+.plano2d .p2-modelo .como { display: block; font-size: var(--t-3xs); color: var(--ink-3); }
+.plano2d .p2-nota { margin: 10px 4px 0; font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
+
+/* ── El lienzo ───────────────────────────────────────────────────────────── */
+.plano2d .p2-lienzo { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface-2); }
+.plano2d .p2-sobre {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-bottom: var(--hair) solid var(--line);
+  min-width: 0;
+}
+.plano2d .p2-buscar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  width: 340px;
+  max-width: 100%;
+  padding: 0 10px;
+  border: var(--hair) solid var(--brd-control);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  min-width: 0;
+}
+.plano2d .p2-buscar > svg { color: var(--ink-3); flex: none; }
+.plano2d .p2-buscar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: var(--t-xs);
+}
+.plano2d .p2-buscar input::placeholder { color: var(--ink-4); }
+.plano2d .p2-buscar:focus-within { border-color: var(--ink-1); }
+.plano2d .p2-buscar .cuenta { font-size: var(--t-2xs); color: var(--ink-3); white-space: nowrap; }
+.plano2d .p2-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.plano2d .p2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: var(--r-pill);
+  border: var(--hair) solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plano2d .p2-chip .mono { font: var(--t-2xs) / 1 var(--f-mono); color: var(--ink-3); }
+.plano2d .p2-chip[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); font-weight: 600; }
+.plano2d .p2-svg { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.plano2d .p2-pie {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-top: var(--hair) solid var(--line);
+  min-width: 0;
+}
+.plano2d .p2-pista {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+}
+.plano2d .p2-pista span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.plano2d .p2-pista svg { color: var(--ink-3); flex: none; }
+.plano2d .p2-herr { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+.plano2d .p2-zoom {
+  min-width: 52px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-2);
+  font: var(--t-xs) / 1 var(--f-mono);
+  text-align: center;
+  cursor: pointer;
+}
+.plano2d .p2-zoom:hover { background: var(--surface-2); color: var(--ink-1); }
+
+/* ── El panel de la derecha (el mueble, varios, Revisar, Atajos) ─────────── */
+.plano2d .p2-panel {
+  width: clamp(300px, 27vw, 360px);
+  flex: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--surface);
+  border-left: var(--hair) solid var(--line);
+  color: var(--ink-1);
+}
+.plano2d .p2-ficha { display: grid; gap: 12px; padding: 14px; grid-template-columns: minmax(0, 1fr); align-content: start; }
+.plano2d .p2-ficha-h { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; gap: 10px; align-items: start; }
+.plano2d .p2-ficha-h > svg { color: var(--ink-2); margin-top: 5px; }
+.plano2d .p2-ficha-t { display: grid; gap: 2px; min-width: 0; }
+.plano2d .p2-codigo { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.plano2d .p2-codigo h3 { margin: 0; font: 700 var(--t-md) / 1.2 var(--f-mono); letter-spacing: -.01em; overflow-wrap: anywhere; }
+.plano2d .p2-codigo-campo {
+  width: 100%;
+  max-width: 180px;
+  height: 30px;
+  padding: 0 8px;
+  border: var(--hair) solid var(--ink-1);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-1);
+  font: 700 var(--t-sm) / 1 var(--f-mono);
+  outline: none;
+}
+.plano2d .p2-codigo-campo[aria-invalid="true"] { border-color: var(--ocupado); color: var(--ocupado-txt); }
+.plano2d .p2-linea { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: var(--t-2xs); color: var(--ink-3); }
+.plano2d .p2-linea svg { color: var(--ink-3); }
+.plano2d .p2-linea .mono { font-family: var(--f-mono); color: var(--ink-2); }
+.plano2d .p2-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.plano2d .p2-pill.mono { font-family: var(--f-mono); font-weight: 500; }
+.plano2d .p2-pill.libre { background: var(--libre-suave); border: var(--hair) solid var(--libre-borde); color: var(--libre-txt); }
+.plano2d .p2-pill.ocupado { background: var(--ocupado-suave); border: var(--hair) solid var(--ocupado-borde); color: var(--ocupado-txt); }
+.plano2d .p2-pill.entra { background: var(--entra-suave); border: var(--hair) solid var(--entra-borde); color: var(--entra-txt); }
+.plano2d .p2-avisos { display: grid; gap: 6px; }
+.plano2d .p2-msj { margin: 0; font-size: var(--t-2xs); line-height: 1.45; color: var(--ink-3); }
+.plano2d .p2-msj.mal { color: var(--ocupado-txt); }
+.plano2d .p2-msj.ojo { color: var(--entra-txt); }
+.plano2d .p2-enlace {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-1);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.plano2d .p2-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: var(--t-2xs);
+  color: var(--ink-3);
+}
+.plano2d .p2-resumen span { white-space: nowrap; }
+.plano2d .p2-resumen b { color: var(--ink-1); font: 600 var(--t-xs) / 1.2 var(--f-mono); }
+.plano2d .p2-pestana { display: grid; gap: 2px; min-width: 0; }
+.plano2d .p2-kv {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 0;
+  border-bottom: var(--hair) solid var(--line-soft);
+  min-width: 0;
+}
+.plano2d .p2-kv[data-bloque] { grid-template-columns: minmax(0, 1fr); gap: 6px; align-items: start; }
+.plano2d .p2-kv > .k { font-size: var(--t-xs); color: var(--ink-3); }
+.plano2d .p2-kv > .v { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.plano2d .p2-kv > .v > * { max-width: 100%; }
+.plano2d .p2-v { margin: 0; font-size: var(--t-sm); color: var(--ink-1); }
+.plano2d .p2-v small { display: block; margin-top: 2px; font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
+.plano2d .p2-sw-fila { display: flex; align-items: center; gap: 8px; }
+.plano2d .p2-sw {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border-radius: var(--r-pill);
+  border: var(--hair) solid var(--brd-control);
+  background: var(--surface-3);
+  cursor: pointer;
+}
+.plano2d .p2-sw::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  transition: left var(--dur-1);
+}
+.plano2d .p2-sw[aria-checked="true"] { background: var(--ink-1); border-color: var(--ink-1); }
+.plano2d .p2-sw[aria-checked="true"]::after { left: 16px; }
+.plano2d .p2-sw:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.plano2d .p2-ayu { font-size: var(--t-xs); color: var(--ink-2); }
+.plano2d .p2-vend { display: grid; gap: 6px; padding-top: 10px; }
+.plano2d .p2-vend-f { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--t-xs); color: var(--ink-2); min-width: 0; }
+.plano2d .p2-vend-f .r { margin-left: auto; font-family: var(--f-mono); font-size: var(--t-2xs); color: var(--ink-3); }
+.plano2d .p2-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--r-md);
+  border: var(--hair) solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plano2d .p2-btn svg { color: var(--ink-3); flex: none; }
+.plano2d .p2-btn:hover:not(:disabled) { border-color: var(--line-strong); color: var(--ink-1); }
+.plano2d .p2-btn:disabled { color: var(--ink-4); cursor: not-allowed; }
+.plano2d .p2-btn.peligro { color: var(--ocupado-txt); border-color: var(--ocupado-borde); }
+.plano2d .p2-btn.peligro svg { color: var(--ocupado-txt); }
+.plano2d .p2-btn.ancho { width: 100%; justify-content: center; }
+.plano2d .p2-acciones { display: flex; gap: 8px; }
+.plano2d .p2-acciones .p2-btn { flex: 1; justify-content: center; }
+.plano2d .p2-pie-ficha { display: grid; gap: 10px; padding-top: 4px; }
+.plano2d .p2-codigo-completo { font: var(--t-2xs) / 1 var(--f-mono); color: var(--ink-3); }
+
+/* Medidas: «Ancho × Prof. × Alto» en una fila; los entrepaños con − y +. */
+.plano2d .p2-tri { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 4px; align-items: end; }
+.plano2d .p2-tri.dos { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.plano2d .p2-x { font-size: var(--t-2xs); color: var(--ink-3); padding-bottom: 8px; }
+.plano2d .p2-paso { display: flex; align-items: center; gap: 4px; }
+.plano2d .p2-paso input { text-align: center; }
+.plano2d .p2-paso .p2-icobtn { width: 28px; height: 28px; border-color: var(--line); background: var(--surface); }
+.plano2d .p2-campo-l { display: block; margin-bottom: 4px; font-size: var(--t-2xs); color: var(--ink-3); }
+.plano2d .p2-campo {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: var(--hair) solid var(--brd-control);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-1);
+  font: var(--t-xs) / 1 var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.plano2d .p2-campo:focus { border-color: var(--ink-1); }
+
+/* Documentos: los archivos con su tamaño, la foto de la cara en chiquito. */
+.plano2d .p2-docs { display: grid; gap: 8px; padding-top: 6px; }
+.plano2d .p2-doc { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.plano2d .p2-doc-abrir {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-1);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.plano2d .p2-doc-abrir b { font-size: var(--t-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plano2d .p2-doc-abrir span { font-size: var(--t-2xs); color: var(--ink-3); }
+.plano2d .p2-mini {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: var(--hair) solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.plano2d .p2-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.plano2d .p2-ck { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-xs); color: var(--ink-2); cursor: pointer; user-select: none; }
+.plano2d .p2-subir { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 4px; }
+.plano2d .p2-nota-c { display: grid; gap: 6px; padding-top: 12px; margin-top: 6px; border-top: var(--hair) solid var(--line-soft); }
+.plano2d .p2-nota-c .k { font-size: var(--t-xs); font-weight: 600; color: var(--ink-1); }
+.plano2d .p2-area {
+  width: 100%;
+  min-height: 72px;
+  padding: 9px 10px;
+  border: var(--hair) solid var(--brd-control);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+}
+.plano2d .p2-area:focus { border-color: var(--ink-1); }
+.plano2d .p2-cuenta-nota { justify-self: end; font: var(--t-3xs) / 1 var(--f-mono); color: var(--ink-3); }
+
+/* Varios elegidos, Revisar y Atajos: el mismo lenguaje. */
+.plano2d .p2-panel-h { display: flex; align-items: flex-start; gap: 10px; padding: 14px 14px 10px; border-bottom: var(--hair) solid var(--line-soft); }
+.plano2d .p2-panel-h > svg { color: var(--ink-2); flex: none; margin-top: 2px; }
+.plano2d .p2-panel-h h3 { margin: 0; font-size: var(--t-base); font-weight: 700; }
+.plano2d .p2-panel-h .sub { display: block; margin-top: 2px; font-size: var(--t-2xs); color: var(--ink-3); }
+.plano2d .p2-panel-h .p2-icobtn { margin-left: auto; }
+.plano2d .p2-panel-b { display: grid; gap: 10px; padding: 12px 14px 16px; grid-template-columns: minmax(0, 1fr); }
+.plano2d .p2-rotulo { margin: 0 0 6px; font-size: var(--t-3xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.plano2d .p2-hallazgo {
+  width: 100%;
+  padding: 9px 11px;
+  border: var(--hair) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  line-height: 1.45;
+  text-align: left;
+}
+.plano2d button.p2-hallazgo { cursor: pointer; }
+.plano2d button.p2-hallazgo:hover:not(:disabled) { border-color: var(--line-strong); }
+.plano2d button.p2-hallazgo:disabled { cursor: default; }
+.plano2d .p2-hallazgo[data-error] { border-color: var(--ocupado-borde); background: var(--ocupado-suave); color: var(--ocupado-txt); }
+.plano2d .p2-hallazgo .ir { display: block; margin-top: 3px; font-size: var(--t-3xs); opacity: .8; }
+.plano2d .p2-hallazgo .mono { font-family: var(--f-mono); font-weight: 700; }
+.plano2d .p2-limpio { margin: 0; font-size: var(--t-xs); line-height: 1.5; color: var(--libre-txt); }
+.plano2d .p2-sep { padding-top: 12px; border-top: var(--hair) solid var(--line-soft); }
+.plano2d .p2-tecla { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.plano2d .p2-tecla kbd {
+  padding: 2px 6px;
+  border: var(--hair) solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: var(--t-2xs) / 1.3 var(--f-mono);
+  text-align: center;
+}
+.plano2d .p2-tecla span { font-size: var(--t-xs); color: var(--ink-2); line-height: 1.4; }
+.plano2d .p2-dos { display: flex; gap: 6px; }
+.plano2d .p2-dos .p2-btn { flex: 1; justify-content: center; }
+
+/* Lo de abajo del lienzo: el aviso de lo que acaba de pasar y el nombre rechazado. */
+.plano2d .p2-toast {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: calc(100% - 28px);
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  background: var(--ink-1);
+  color: var(--surface);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--sh-2);
+  pointer-events: none;
+}
+
+/* ── Angosto ─────────────────────────────────────────────────────────────── */
+/* A 1100 px entran las tres columnas (el catálogo se puede plegar). Por debajo
+   de 860 px el panel del mueble pasa a ser una hoja que sube desde abajo, a
+   todo el ancho, sobre el lienzo: nunca empuja la página de costado. Por
+   debajo de 640 px el catálogo abierto también flota, sobre el lienzo. */
+@media (max-width: 860px) {
+  .plano2d .p2-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    width: auto;
+    max-height: 62%;
+    border-left: 0;
+    border-top: var(--hair) solid var(--line);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    box-shadow: var(--sh-3);
+  }
+}
+@media (max-width: 640px) {
+  .plano2d .p2-barra { padding: 8px; }
+  .plano2d .p2-catalogo:not([data-plegado]) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 31;
+    width: min(280px, 86vw);
+    box-shadow: var(--sh-3);
+  }
+  .plano2d .p2-catalogo[data-plegado] { width: 44px; }
+  .plano2d .p2-buscar { width: 100%; }
+  .plano2d .p2-pista { flex-basis: 100%; }
+  .plano2d .p2-herr { margin-left: 0; }
+}

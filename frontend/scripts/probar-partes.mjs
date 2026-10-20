@@ -1050,8 +1050,11 @@ await prueba("lo que dice el panel: «1 caja», «las puertas vendidas quedaría
   assert.match(comp, /setEnTodas\(textoDeAplicarATodos\(r, singular, plural\)\)/, "el panel arma el texto a mano otra vez");
   assert.match(comp, /aplicarEnTodas\(\{ bahias: [^}]*\}, "caja", "cajas"\)/, "«Aplicar a todas» no dice la caja en singular");
   const plano = leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx"));
-  assert.match(plano, /<Field label="Cómo se vende" icon="🧩">\s*<PartesDelMueble id=\{item\.id\} puedeEditar=\{editMode && isAdmin\} sinTitulo \/>/,
+  // Rediseño, PR 3: el renglón «Cómo» del panel B (pestaña Venta), con el
+  // componente sin su título y en los colores del tema.
+  assert.match(plano, /<FilaDelPanel k="Cómo" titulo="Cómo se vende" campo="como" bloque>\s*<PartesDelMueble id=\{item\.id\} puedeEditar=\{editMode && isAdmin\} sinTitulo enElTema \/>/,
     "el panel del 2D dice «Cómo se vende» dos veces seguidas");
+  assert.equal((plano.match(/<PartesDelMueble /g) ?? []).length, 1, "el panel del 2D monta «Cómo se vende» dos veces");
 });
 
 await prueba("Supervisar: una fila por puerta que se distingue, claves únicas y los contratos contados como contratos", () => {

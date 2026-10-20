@@ -329,6 +329,15 @@ interface FixtureStore {
    *  (el id del término), abre su formulario de renovación. */
   enfoque3D: { fixtureId: string; cara: "A" | "B"; n: number; distribucion?: PedidoDeDistribucion } | null;
 
+  /** Pedido de abrir Sede → Vender con un espacio (rediseño, PR 3: «Vender» del
+   *  panel del Plano). Como `enfoque3D`: el Plano y la pantalla de sede son
+   *  pestañas hermanas, el pedido viaja por acá (por id de mueble, no por
+   *  código) y `Dashboard.tsx` cambia de pestaña. La pantalla de sede lo arma
+   *  con su `negociar` —el mismo camino que el globo del mapa— y lo suelta
+   *  (`soltarPedidoVender`), para que volver a esa pestaña no lo repita. No se
+   *  persiste. */
+  pedidoVender: { fixtureId: string; cara: "A" | "B"; n: number } | null;
+
   // ── Sync bookkeeping ────────────────────────────────────────────────────────
   /** Server revision (updated_at) last seen for each sede. */
   serverRev: Record<string, string>;
@@ -428,6 +437,9 @@ interface FixtureStore {
   /** Pedir el 3D encuadrando este espacio. Lo consume StoreEditor3D. Con
    *  `distribucion`, entra además a Distribución en esa cara. */
   pedirEnfoque3D: (fixtureId: string, cara: "A" | "B", opciones?: { distribucion?: PedidoDeDistribucion }) => void;
+  /** Pedir Sede → Vender con este espacio. Lo consume DashboardView. */
+  pedirVender: (fixtureId: string, cara: "A" | "B") => void;
+  soltarPedidoVender: () => void;
   /** Guardar la cámara actual como la vista de este espacio. */
   guardarVista3D: (fixtureId: string, cara: "A" | "B", vista: Vista3D) => void;
   /** Olvidar la vista guardada: se vuelve al encuadre calculado. */
@@ -587,6 +599,7 @@ export const useFixtureStore = create<FixtureStore>()(
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
       enfoque3D: null,
+      pedidoVender: null,
       serverRev: {},
       settingsRev: null,
       dirty: {},
@@ -930,6 +943,10 @@ export const useFixtureStore = create<FixtureStore>()(
             ...(opciones?.distribucion ? { distribucion: { ...opciones.distribucion } } : {}),
           },
         })),
+
+      pedirVender: (fixtureId, cara) =>
+        set((state) => ({ pedidoVender: { fixtureId, cara, n: (state.pedidoVender?.n ?? 0) + 1 } })),
+      soltarPedidoVender: () => set({ pedidoVender: null }),
 
       // Guardar y borrar escriben el layout y lo mandan al servidor, pero NO
       // entran al historial: que Ctrl+Z deshaga un encuadre de cámara mezcla
