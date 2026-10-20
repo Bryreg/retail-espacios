@@ -342,8 +342,13 @@ prueba("BLOQUES DE SUPERVISAR DENTRO DE isAdmin: tarjetas, ficha y tabla de part
   assert.match(t, /useRevisionDeParticipaciones\(\{ sede, activo: isAdmin && hayParticipaciones,/,
     "«Para revisar» pide el resumen de participaciones sin ser administración");
   // Y lo que suma a la cuenta de «Para revisar», también sólo con isAdmin.
-  assert.match(t, /\(isAdmin\s*\? kpis\.belowReference\.length[^;]*revisionPc\.total\s*: 0\)/,
-    "la cuenta de «Para revisar» suma participaciones para el trabajador");
+  // (Rediseño, PR 2: la cuenta es la suma de los tres grupos de `avisos`; lo
+  // de las participaciones se suma DESPUÉS del corte del trabajador. Ver
+  // «Para revisar en tres grupos», más abajo.)
+  const avisosDef = t.slice(t.indexOf("const avisos = useMemo("), t.indexOf("const cuentasDeRevision = useMemo("));
+  const corte = avisosDef.indexOf("if (!isAdmin) return a;");
+  assert.ok(corte > 0, "los avisos no cortan para el trabajador");
+  assert.ok(avisosDef.indexOf("revisionPc.secciones") > corte, "la cuenta de «Para revisar» suma participaciones para el trabajador");
   // Los dos componentes van en el pedazo del tablero: sólo el store de lectura.
   for (const f of ["components/Distribucion/ParticipacionesDeLaCara.tsx", "components/Distribucion/RevisarParticipaciones.tsx"]) {
     const c = sinComent(fuenteDe(f));
@@ -639,8 +644,12 @@ prueba("«Falta distribuir»: lo firmado para más adelante cuenta desde que se 
   assert.equal(R.cuantasParaRevisar(s), 3, "lo que falta distribuir no suma a la cuenta de «Para revisar»");
   // Y en pantalla: la cifra de días en rojo con 7 o menos, y el botón de siempre.
   const comp = sinComent(fuenteDe("components/Distribucion/RevisarParticipaciones.tsx"));
-  assert.match(comp, /color: it\.empiezaEn <= DIAS_DE_APURO \? "var\(--ocupado-txt\)" : "var\(--ink-2\)"/, "los días de «Falta distribuir» no se pintan de rojo con 7 o menos");
-  assert.match(comp, /\{it\.empiezaEn <= 0 \? "corre" : `\$\{it\.empiezaEn\}d`\}/, "el renglón no dice cuántos días faltan");
+  // (Rediseño, PR 2: la cifra va en la pastilla del renglón, roja con 7 o
+  // menos; una reserva, con los días que le quedan antes de caducar.)
+  assert.match(comp, /const dias = it\.caducaEn \?\? it\.empiezaEn;/, "el renglón no sabe cuántos días faltan");
+  assert.match(comp, /const apuro = dias !== undefined && dias <= \(it\.caducaEn !== undefined \? 0 : DIAS_DE_APURO\);/, "los días de «Falta distribuir» no se pintan de rojo con 7 o menos");
+  assert.match(comp, /className=\{`pill mono \$\{dias === undefined \? "resto" : apuro \? "ocupado" : "entra"\}`\}/, "la pastilla de los días no es roja con apuro");
+  assert.match(comp, /: dias <= 0 \? "corre" : `\$\{dias\}d`\}/, "el renglón no dice cuántos días faltan");
   assert.match(comp, /onClick=\{\(\) => abrir\(it\.abrir!\.fixtureId, it\.abrir!\.cara\)\}[\s\S]{0,600}Abrir en Distribución/, "«Abrir en Distribución» se fue");
 });
 
@@ -1155,6 +1164,191 @@ prueba("fase 2 · lo SUYO del proveedor que está delante: su pico en el periodo
   assert.equal(PC.loDelProveedor(otros, "Kellogg's", hoy, "2027-03-31", hoy), 5000);
   // Nunca más que la cara entera.
   assert.equal(PC.loDelProveedor([de("K", contrato(8000, "2026-10-01", "2026-12-31")), de("k", contrato(8000, "2026-10-01", "2026-12-31"))], "K", hoy, hoy, hoy), 10000);
+});
+
+/* ── Supervisar, PR 2: «Para revisar» en tres grupos y la plata en una unidad ──
+   El dibujo aprobado (`docs/maquetas/rediseno-2026-10/supervisar.html`) trae la
+   lista «Dónde queda cada cosa»: nada se va de la pantalla. Cada sección de
+   esa lista está en exactamente un grupo (o en «Hoy» / «30 días» según cuándo
+   hay que actuar, y entonces cada aviso en uno solo), la pastilla roja es la
+   suma de los tres y cada sección cuenta, el selector «Al mes | Total» manda
+   en las tres cosas que dicen plata y «Al mes» reparte con `utils/meses.ts`. */
+console.log("\nSupervisar · «Para revisar» en tres grupos y la plata en una unidad\n");
+const cargarTs = async (rel) => {
+  const { outputFiles: o } = await build({
+    entryPoints: [join(aqui, "..", "src", ...rel.split("/"))], bundle: true, format: "esm", write: false, platform: "neutral",
+  });
+  const f = join(mkdtempSync(join(tmpdir(), "sup-")), "m.mjs");
+  writeFileSync(f, o[0].text);
+  return import(pathToFileURL(f).href);
+};
+const G = await cargarTs("components/Supervisar/paraRevisar.ts");
+const PL = await cargarTs("components/Supervisar/plata.ts");
+
+/** La lista del dibujo, renglón por renglón, con dónde va cada cosa. */
+const DEL_DIBUJO = [
+  ["Ventas por cargar", "ventas_por_cargar", ["hoy"]],
+  ["Falta distribuir", "falta_distribuir", ["hoy", "dias30"]],
+  ["Falta planometría", "falta_planometria", ["hoy", "dias30"]],
+  ["Vencidos", "vencidos", ["hoy"]],
+  ["No se pudo montar", "no_se_pudo_montar", ["hoy"]],
+  ["Reservas que caducan hoy · Reservas por caducar", "reservas", ["hoy", "dias30"]],
+  ["Por vencer", "por_vencer", ["dias30"]],
+  ["Contratado sin montar", "sin_montar", ["dias30"]],
+  ["Borradores sin confirmar", "borradores", ["dias30"]],
+  ["Contrato sin mueble", "contrato_sin_mueble", ["corregir"]],
+  ["Sólo en el plano", "solo_en_el_plano", ["corregir"]],
+  ["Ocupado sin contrato", "ocupado_sin_contrato", ["corregir"]],
+  ["Participación sin mueble", "participacion_sin_mueble", ["corregir"]],
+  ["Sin término", "sin_termino", ["corregir"]],
+  ["Distribución con problemas", "distribucion_con_problemas", ["corregir"]],
+  ["Distribución para revisar", "distribucion_para_revisar", ["corregir"]],
+  ["Bajo tarifa", "bajo_tarifa", ["corregir"]],
+  ["Montajes viejos sin reporte", "montajes_viejos", ["corregir"]],
+];
+
+prueba("cada sección del dibujo está en «Para revisar», en su grupo, y cada aviso en uno solo (ejecutado)", () => {
+  assert.deepEqual(Object.keys(G.DONDE_VA).sort(), DEL_DIBUJO.map(([, id]) => id).sort(), "una sección de la lista no tiene grupo, o hay una de más");
+  for (const [que, id, grupos] of DEL_DIBUJO) {
+    const vistos = new Set();
+    for (const dias of [undefined, null, -3, 0, 1, 6, 7, 8, 29, 45]) {
+      const g = G.grupoDelAviso(id, dias);
+      assert.ok(["hoy", "dias30", "corregir"].includes(g), `${que}: grupo ${g}`);
+      vistos.add(g);
+    }
+    assert.deepEqual([...vistos].sort(), [...grupos].sort(), `«${que}» no está donde dice el dibujo`);
+    assert.ok(G.tituloDeSeccion(id, grupos[0]).length > 3, `«${que}» no tiene título`);
+  }
+  // Los umbrales: 7 días o menos para empezar es de hoy; una reserva, si caduca hoy.
+  assert.equal(G.grupoDelAviso("falta_distribuir", 7), "hoy");
+  assert.equal(G.grupoDelAviso("falta_distribuir", 8), "dias30");
+  assert.equal(G.grupoDelAviso("falta_planometria", -2), "hoy", "lo que ya corre sin planometría no es de hoy");
+  assert.equal(G.grupoDelAviso("reservas", 0), "hoy");
+  assert.equal(G.grupoDelAviso("reservas", 1), "dias30");
+  // Las secciones de las participaciones caen en la suya.
+  assert.deepEqual(Object.values(G.SECCION_DE_PARTICIPACIONES).every((x) => x in G.DONDE_VA), true);
+  const secs = [
+    { tipo: "sin_dibujar", items: [{ clave: "a", empiezaEn: 3 }, { clave: "b", empiezaEn: 20 }] },
+    { tipo: "por_caducar", items: [{ clave: "c", caducaEn: 0 }, { clave: "d", caducaEn: 5 }] },
+    { tipo: "borradores", items: [{ clave: "e" }] },
+    { tipo: "sin_termino", items: [{ clave: "f" }] },
+  ];
+  const claves = (g) => G.deParticipacionesEn(secs, g).flatMap((x) => x.items.map((i) => i.clave)).sort();
+  assert.deepEqual(claves("hoy"), ["a", "c"]);
+  assert.deepEqual(claves("dias30"), ["b", "d", "e"]);
+  assert.deepEqual(claves("corregir"), ["f"]);
+});
+
+prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sección cuenta (ejecutado)", () => {
+  const avisos = DEL_DIBUJO.flatMap(([, id], k) => [{ seccion: id, clave: `${id}1`, dias: k - 3 }, { seccion: id, clave: `${id}2`, dias: 40 }]);
+  const n = G.contarPorGrupo(avisos);
+  assert.equal(G.cuentaDelBadge(n), avisos.length, "un aviso no cuenta");
+  assert.equal(G.cuentaDelBadge(n), n.hoy + n.dias30 + n.corregir);
+  assert.equal(G.grupoParaAbrir({ hoy: 2, dias30: 1, corregir: 0 }), "hoy", "con algo hoy no abre en «Hoy»");
+  assert.equal(G.grupoParaAbrir({ hoy: 0, dias30: 3, corregir: 1 }), "dias30", "sin nada hoy no abre en «30 días»");
+  assert.equal(G.grupoParaAbrir({ hoy: 0, dias30: 0, corregir: 0 }), "dias30");
+  // La tarjeta: los mismos avisos que se cuentan, y la cuenta es la de la barra.
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /const cuentasDeRevision = useMemo\(\(\) => contarPorGrupo\(avisos\), \[avisos\]\);\s*const attentionCount = cuentaDelBadge\(cuentasDeRevision\);/,
+    "la pastilla roja no es la suma de los tres grupos");
+  assert.match(t, /\{ id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" \? attentionCount : 0 \}/);
+  assert.match(t, /const grupoDeRevision: GrupoDeRevision = grupoElegido \?\? grupoParaAbrir\(cuentasDeRevision\);/, "no abre en «Hoy» o en «30 días»");
+  assert.match(t, /<PestanasDeRevision cuentas=\{cuentasDeRevision\} grupo=\{grupoDeRevision\}/, "las pestañas no dicen las cuentas de los grupos");
+  // Cada lista que se cuenta se dibuja, y en UN solo grupo.
+  const avisosDef = t.slice(t.indexOf("const avisos = useMemo("), t.indexOf("const cuentasDeRevision = useMemo("));
+  const bloque = (g) => {
+    const i = t.indexOf(`{grupoDeRevision === "${g}" && (`);
+    assert.ok(i > 0, `no está el grupo ${g}`);
+    const fin = ["hoy", "dias30", "corregir"].map((x) => t.indexOf(`{grupoDeRevision === "${x}" && (`)).filter((k) => k > i);
+    return t.slice(i, fin.length ? Math.min(...fin) : t.indexOf("<SpacesTable", i));
+  };
+  const DIBUJO = {
+    hoy: ["cortesSinCargar.pendientes", "participacionesPorGrupo.hoy", "planometriaPorGrupo.hoy", "kpis.expired.map", "montaje.noMontado.map", "reservasPorGrupo.hoy"],
+    dias30: ["kpis.expiring.map", "participacionesPorGrupo.dias30", "planometriaPorGrupo.dias30", "montaje.sinMontar.map", "reservasPorGrupo.dias30"],
+    corregir: ["fantasmas.map", "<ImportarDelPlano", "kpis.noContract.map", "participacionesPorGrupo.corregir", "kpis.belowReference.map", "montaje.viejos.map"],
+  };
+  const bloques = Object.fromEntries(Object.keys(DIBUJO).map((g) => [g, bloque(g)]));
+  for (const [g, listas] of Object.entries(DIBUJO)) {
+    for (const l of listas) {
+      assert.ok(bloques[g].includes(l), `«${l}» no se dibuja en ${g}`);
+      for (const otro of Object.keys(DIBUJO)) if (otro !== g) assert.ok(!bloques[otro].includes(l), `«${l}» se dibuja en ${g} y en ${otro}`);
+    }
+  }
+  for (const l of ["kpis.expired", "kpis.expiring", "kpis.noContract", "fantasmas", "cortesSinCargar.pendientes", "revisionPc.secciones",
+    "faltaPlanometria.filas", "montaje.noMontado", "montaje.sinMontar", "montaje.viejos", "reservasSinConfirmar.vivas", "kpis.belowReference", "importacion.importables"]) {
+    assert.ok(avisosDef.includes(`of ${l}`) || avisosDef.includes(`...${l}`), `«${l}» se dibuja y no cuenta`);
+  }
+  // Lo partido entre «Hoy» y «30 días» se parte con la misma regla que se cuenta.
+  assert.match(t, /hoy: faltaPlanometria\.filas\.filter\(\(f\) => grupoDelAviso\("falta_planometria", f\.dias_para_empezar\) === "hoy"\)/);
+  assert.match(t, /hoy: deParticipacionesEn\(revisionPc\.secciones, "hoy"\)/);
+  assert.match(t, /hoy: reservasSinConfirmar\.vivas\.filter\(\(r\) => r\.caduca <= hoyIso\),\s*dias30: reservasSinConfirmar\.vivas\.filter\(\(r\) => r\.caduca > hoyIso\),/);
+  // Las reservas y los cortes, dentro de `isAdmin &&`, como siempre.
+  assert.match(t, /\{isAdmin && reservasPorGrupo\.hoy\.length > 0 && \(\s*<ReservasSinConfirmar\b/);
+  assert.match(t, /\{isAdmin && reservasPorGrupo\.dias30\.length > 0 && \(\s*<ReservasSinConfirmar\b/);
+  assert.match(t, /\{isAdmin && planometriaPorGrupo\.hoy\.length > 0 && \(\s*<FaltaPlanometria\b/);
+  assert.match(t, /\{isAdmin && planometriaPorGrupo\.dias30\.length > 0 && \(\s*<FaltaPlanometria\b/);
+  // «Contratado sin montar» en rojo con un umbral que PUEDE pasar: la lista corta a los 30 días.
+  assert.ok(G.DIAS_SIN_MONTAR_EN_ROJO < 30, "el rojo de «Contratado sin montar» no puede pasar nunca");
+  assert.match(t, /tono=\{entry\.dias > DIAS_SIN_MONTAR_EN_ROJO \? "alarma" : "espera"\}/);
+  assert.doesNotMatch(t, /entry\.dias > 60/);
+  assert.match(t, /const VENTANA_MONTAJE_DIAS = 30;/);
+});
+
+prueba("las chinchetas: sólo lo que está en «Para revisar», una por cara, del grupo más urgente (ejecutado)", () => {
+  const ch = G.chinchetasDe([
+    { seccion: "bajo_tarifa", clave: "x1", fixtureId: "f1", cara: "A" },
+    { seccion: "vencidos", clave: "x2", fixtureId: "f1", cara: "A" },
+    { seccion: "sin_montar", clave: "x3", fixtureId: "f2" },
+    { seccion: "contrato_sin_mueble", clave: "x4" },
+  ]);
+  assert.deepEqual(ch.map((c) => [c.fixtureId, c.cara, c.grupo, c.clave]).sort(), [["f1", "A", "hoy", "x2"], ["f2", "A", "dias30", "x3"]]);
+});
+
+prueba("«Al mes» reparte cada contrato en SUS meses (`utils/meses.ts`), «Total» es lo firmado (ejecutado)", () => {
+  assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "mes"), 300000);
+  assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "total"), 900000);
+  assert.equal(PL.enLaUnidad(600000, "2026-11-01", "2026-11-30", "mes"), 600000);
+  assert.equal(PL.enLaUnidad(500000, "", "", "mes"), 500000, "sin fechas se inventó un plazo");
+  assert.equal(PL.enLaUnidad(0, "2026-11-01", "2026-11-30", "mes"), 0);
+  assert.equal(PL.tarifaEnLaUnidad(800000, "2026-10-18", "2026-11-17", "total"), 800000);
+  assert.equal(PL.tarifaEnLaUnidad(800000, "2026-11-01", "2027-01-31", "total"), 2400000);
+  assert.equal(PL.tarifaEnLaUnidad(800000, "2026-11-01", "2027-01-31", "mes"), 800000);
+  assert.deepEqual(PL.ROTULO_DEL_VALOR, { mes: "Valor al mes", total: "Valor total" });
+  const plata = sinComent(fuenteDe("components/Supervisar/plata.ts"));
+  assert.match(plata, /import \{ meses \} from "\.\.\/\.\.\/utils\/meses";/, "«Al mes» no usa la cuenta gemela del servidor");
+  assert.doesNotMatch(plata, /\/\s*30\b/, "«Al mes» divide por 30 a mano");
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const memo = t.slice(t.indexOf("const plata = useMemo("), t.indexOf("}, [isAdmin, unidad, kpis,"));
+  assert.ok(memo.length > 500, "no está la plata de Supervisar");
+  assert.doesNotMatch(memo, /\/\s*30\b/, "la plata de Supervisar divide por 30 a mano");
+  assert.match(memo, /enLaUnidad\(x\.negotiatedValue, x\.startDate, x\.endDate, unidad\)/);
+  assert.match(memo, /canon \+= enLaUnidad\(c\.cobrado, c\.desde, c\.hasta, unidad\);/, "el canon no suma lo cargado de los contratos por % de venta");
+});
+
+prueba("el selector «Al mes | Total» manda en las cifras, la columna de la tabla y «Quién paga»; el trabajador no ve plata", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /const \[unidad, setUnidad\] = useUnidadDePlata\(\);/);
+  assert.match(t, /right=\{isAdmin \? <SelectorDePlata unidad=\{unidad\} onCambio=\{setUnidad\} \/> : undefined\}/, "el selector se le ofrece al trabajador");
+  // 1 · las cifras: las de plata salen de `plata`, que no existe para el trabajador.
+  assert.match(t, /const plata = useMemo\(\(\) => \{\s*if \(!isAdmin\) return null;/, "la plata se calcula para el trabajador");
+  assert.match(t, /\{isAdmin && plata \? \(\s*<>\s*<Cifra\s+icono=\{<Banknote/, "las cifras de plata no van sólo para quien administra");
+  assert.match(t, /valor=\{formatCOP\(plata\.canon\)\}/);
+  assert.match(t, /valor=\{formatCOP\(plata\.vence\)\}/);
+  assert.match(t, /valor=\{formatCOP\(plata\.sinAlquilar\)\}/);
+  // 2 · la tabla: el encabezado y cada fila.
+  assert.match(t, /if \(isAdmin\) pedidas\.push\(\{ etiqueta: ROTULO_DEL_VALOR\[unidad\],/, "la columna de valor no sigue al selector, o se le muestra al trabajador");
+  assert.match(t, /formatCOP\(enLaUnidad\(entry\.negotiatedValue, entry\.startDate, entry\.endDate, unidad\)\)/);
+  assert.match(t, /<SpacesTable[\s\S]*?unidad=\{unidad\}/);
+  // 3 · Quién paga: con la misma cuenta, y sólo para quien administra.
+  assert.match(t, /\{isAdmin && plata && \(\s*<Card[\s\S]{0,200}title="Quién paga el canon"/, "«Quién paga» se le muestra al trabajador");
+  assert.match(t, /plata\.quienes\.map/);
+  // La ficha: el cobro y la reserva, sólo para quien administra.
+  assert.match(t, /const reservaViva = isAdmin && entry\.reservaHasta \? reservaDe\?\.\(codigoDeLaCara\) : undefined;/);
+  assert.match(t, /const cobroDeLaCara = isAdmin && hasContract \? cobroDe\?\.\(codigoDeLaCara\) : undefined;/);
+  assert.match(t, /\{isAdmin && \(entry\.negotiatedValue > 0 \|\| cobroDeLaCara\) && \(/, "el valor de la ficha se le muestra al trabajador");
+  // Lo que se elige se recuerda con try/catch.
+  const hook = sinComent(fuenteDe("components/Supervisar/useUnidadDePlata.ts"));
+  assert.equal((hook.match(/try \{/g) ?? []).length, 2, "el almacenamiento del navegador no va con try/catch");
 });
 
 console.log(`\n${hechas} pruebas\n`);

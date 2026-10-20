@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, Image as ImageIcon, ImageUp, Trash2 } from "lucide-react";
 import {
   borrarPlanometria, planometriaDelEspacio, planometriaUrl, subirPlanometria,
-  type Planometria as PlanometriaFile,
+  type AvisoDeMontaje, type Planometria as PlanometriaFile,
 } from "../../api/planograms";
 import { getSpaceByCode } from "../../api/spaces";
 import { describeError } from "../../api/client";
@@ -21,19 +21,24 @@ import { describeError } from "../../api/client";
  */
 
 export default function Planometria({
-  spaceCode, isAdmin, compacta = false,
+  spaceCode, isAdmin, compacta = false, onCargada,
 }: {
   /** `SEDE-CODIGO`, el completo. El corto se repite entre sedes. */
   spaceCode: string;
   isAdmin: boolean;
   /** Sin encabezado ni acciones: sólo la miniatura. */
   compacta?: boolean;
+  /** Se cargó una: quien la muestra puede volver a leer lo que la esperaba
+   *  («Falta planometría» en Supervisar). */
+  onCargada?: () => void;
 }) {
   const [plano, setPlano] = useState<PlanometriaFile | null>(null);
   const [leaseId, setLeaseId] = useState<number | null>(null);
   const [cargando, setCargando] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
+  /** Qué pasó con el aviso de montaje que esperaba esta planometría. */
+  const [aviso, setAviso] = useState<AvisoDeMontaje | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const buscar = useCallback(async () => {
@@ -64,8 +69,10 @@ export default function Planometria({
     setSubiendo(true);
     setError("");
     try {
-      await subirPlanometria(leaseId, archivo);
+      const r = await subirPlanometria(leaseId, archivo);
+      setAviso(r.aviso_de_montaje ?? null);
       await buscar();
+      onCargada?.();
     } catch (e) {
       setError(describeError(e, "No se pudo subir la planometría."));
     } finally {
@@ -206,9 +213,24 @@ export default function Planometria({
         </div>
       )}
 
+      {aviso && (
+        <div data-aviso-de-montaje style={{ marginTop: 6, fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.45 }}>
+          {textoDelAvisoDeMontaje(aviso)}
+        </div>
+      )}
+
       {error && (
         <div style={{ marginTop: 6, fontSize: "var(--t-2xs)", color: "var(--danger)" }}>{error}</div>
       )}
     </div>
   );
+}
+
+/** Una línea con lo que pasó con el aviso de montaje al cargar la
+ *  planometría. Sin correo configurado, la frase de siempre de la app. */
+export function textoDelAvisoDeMontaje(a: AvisoDeMontaje): string {
+  if (a.estado === "espera_distribucion") return "El aviso de montaje sale cuando confirmes la distribución.";
+  if (!a.smtp_listo) return "No se avisó a nadie: el correo no está configurado en el servidor.";
+  if (a.montaje.length === 0) return "No se avisó a nadie: no hay mercaderista cargado para esta sede.";
+  return `Salió el aviso de montaje a ${a.montaje.join(", ")}.`;
 }

@@ -1115,7 +1115,8 @@ confirmarla el contrato nace cobrando así. **En Supervisar una reserva no es un
 base la manda `occupied` con `reservaHasta` (sólo a quien administra) y `conLaReserva`
 (`DashboardView.tsx`) la pasa a «Reservado · hasta el …», fuera del canon, de «N contratos», de
 «Por vencer», de «Contratado sin montar», de «Quién paga el canon» y de Renovar; se confirma o se
-cancela en «Reservas». `reservaHasta` no se le pega al mueble ni viaja en el layout
+cancela en «Para revisar» («Reservas que caducan hoy» en Hoy, «Reservas por caducar» en 30 días) o
+en la ficha del espacio. `reservaHasta` no se le pega al mueble ni viaja en el layout
 (`CAMPOS_DE_CONTRATO`).
 
 **Un contrato que se cobra por ventas no es un contrato de $ 0.** Su `monthly_rent` va en 0 y
@@ -1159,6 +1160,48 @@ Decisión del dueño. Manda `docs/rediseno/vender-api.md` §4.
 - **«Falta planometría»**: `GET /api/montajes/pendientes?sede=` (sólo administración, sin plata):
   los contratos vigentes o por empezar con el aviso pendiente, con `falta_planometria`,
   `falta_distribucion` y `dias_para_empezar`. Pruebas: `tests/test_montaje_espera_planometria.py`.
+
+### Rediseño de Supervisar, PR 2: la pantalla (2026-10-20)
+
+El dibujo aprobado es `docs/maquetas/rediseno-2026-10/supervisar.html`; su lista «Dónde queda
+cada cosa» es la lista de control (nada se fue). Lo nuevo vive en `components/Supervisar/`
+(`plata.ts`, `useUnidadDePlata.ts`, `paraRevisar.ts`, `piezas.tsx`, `FaltaPlanometria.tsx`) y en
+`src/supervisar.css`, todo colgado de `.sup`, la raíz de Supervisar. Vender no llega a ninguno
+(`probar-vender`).
+
+- **«Plata: Al mes | Total»**, uno solo, en la franja. Lo guardado es el TOTAL del contrato: «Al
+  mes» lo reparte en los meses de cada contrato con `utils/meses.ts` (nunca `/ 30`), «Total» lo
+  deja como está. Lo siguen las cifras, la columna «Valor al mes / Valor total» de «Estado por
+  espacio» y «Quién paga el canon». Un contrato por % de las ventas suma lo cargado en sus cortes
+  (`GET /api/cobros`) y la tabla dice «8 % ventas»; una reserva no cuenta nunca. La tarifa de
+  referencia es al mes: en «Total», por los meses del periodo. Se recuerda en el navegador
+  (`recabra-supervisar-plata`, con try/catch). El trabajador no ve plata ni el selector.
+- **«Para revisar» en tres grupos**: Hoy · 30 días · Corregir, con su cuenta siempre a la vista.
+  Cada aviso es una fila de `avisos` (`DashboardView`): de ahí salen las cuentas, la pastilla roja
+  de la pestaña Supervisar (la SUMA de los tres) y las chinchetas del plano. Abre en «Hoy» si tiene
+  algo, si no en «30 días». Qué va dónde está en `paraRevisar.ts` (`DONDE_VA`): lo que falta
+  distribuir o le falta la planometría va en «Hoy» con 7 días o menos para empezar; una reserva,
+  si caduca hoy. Nuevas: **«Falta planometría»** (`GET /api/montajes/pendientes`, con «Cargar
+  planometría», que abre la ficha con esa planometría arriba) y **«Montaje sin reporte»** (los
+  contratos que arrancaron hace más de 30 días sin reporte: antes una nota que no contaba).
+  «Contratado sin montar» va en rojo desde los 14 días (`DIAS_SIN_MONTAR_EN_ROJO`): el «más de 60»
+  de antes no podía pasar, la lista corta a los 30.
+- **La ficha**: el código como se lee, el estado en pastilla y el montaje con punto. Una cara por
+  participación muestra la barra «Comprometido X % · queda Y %», una fila por marca con su %, su
+  cobro y su montaje, y Distribuir · Renovar · «Vender el Y %» (Vender con esa cara y lo que queda
+  hoy). Una reserva: «Reservado hasta …» con Confirmar y Cancelar ahí mismo.
+- **El plano**: el mismo panel que el de Vender (`vp vp-plano`) y del mismo alto en las dos
+  pantallas, por construcción: las dos filas del plano miden `--alto-plano`, la cuenta cerrada de
+  la rejilla de Vender contra el alto MEDIDO del área de las pantallas (`--alto-area`, que
+  `Dashboard.tsx` escribe en `.area-pantallas`). Antes Supervisar adivinaba el marco (132 px) y el
+  verificador midió 520/525, 430/448 y otro alto a 1100 (donde Vender pasaba a `62vw`). Las
+  chinchetas (`Pin`) marcan los muebles con algo en «Para revisar», del color de su grupo (Hoy
+  rojo, 30 días ámbar, Corregir tinta); tocar una lleva a su aviso. Vender no las recibe.
+- Al cargar una planometría la ficha dice qué pasó con el aviso de montaje (`aviso_de_montaje` del
+  servidor), y Vender ya no dice «Nadie va a montar» de un contrato cuyo aviso espera la
+  planometría (`montaje_pendiente`).
+- Vender: la cuarta forma de «Cómo se vende» envuelve a 390 px y el porqué de una forma que no se
+  puede sale sólo al tocarla.
 
 ### Rediseño de Vender, PR 1: el servidor (2026-10-19)
 

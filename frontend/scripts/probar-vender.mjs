@@ -1169,7 +1169,16 @@ console.log("\nvender · las participaciones de cara");
     assert.match(codigo("src/pages/DashboardView.tsx"), /const NO_SE_CAMBIO_LA_FORMA = "No se pudo cambiar cómo se vende: tiene algo vendido o tomado\. Revisalo en el Plano\.";/);
     const linea = codigo("src/components/Contrato/LineaDelContrato.tsx");
     assert.match(linea, /Cambia cómo se vende \{l\.fixture\.code\} en toda la tienda\{l\.doble \? " \(las dos caras\)" : ""\}\./, "no se confirma en la línea");
-    assert.match(linea, /disabled=\{"problema" in rr \|\| cambiando\}/, "la forma que no se puede no se ve apagada");
+    // (Rediseño de Supervisar, PR 2: apagada con `aria-disabled` y su porqué
+    // en el `title`; el aviso de una línea sale SÓLO al tocar la que no se
+    // puede —antes estaba siempre arriba de la barra—, y tocarla no la elige.)
+    assert.match(linea, /aria-disabled=\{"problema" in rr \|\| undefined\}/, "la forma que no se puede no se ve apagada");
+    assert.match(linea, /title=\{"problema" in rr \? rr\.problema : undefined\}/, "la forma apagada no dice por qué");
+    assert.match(linea, /if \("problema" in rr\) \{ setPedida\(null\); setProbada\(\(x\) => \(x === forma \? null : forma\)\); return; \}/,
+      "tocar la forma que no se puede la elige, o no dice por qué");
+    assert.match(linea, /\{porque && !pedida && \(\s*<span className="oferta no" role="note" data-no-se-cambia>/, "el porqué sale sin que nadie lo pida");
+    assert.doesNotMatch(linea, /porques\.join/, "volvió el aviso de siempre arriba de la barra");
+    assert.match(sinComentarios(leer("src/vender.css")), /\.vender \.seg\.seg-linea \{ flex-wrap: wrap; overflow: visible; \}/, "a 390 px la cuarta forma queda escondida");
     assert.doesNotMatch(linea, /window\.confirm|createPortal|role="dialog"/, "la confirmación es un diálogo");
   });
 
@@ -1552,6 +1561,12 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       [RUTA_COBROS_RESERVAS, supCodigo, deLucide(supCodigo)],
       ["src/components/Distribucion/RevisarParticipaciones.tsx", entre(codigo("src/components/Distribucion/RevisarParticipaciones.tsx"), "export default function RevisarParticipaciones(", "\nconst celda"), deLucide(codigo("src/components/Distribucion/RevisarParticipaciones.tsx"))],
       ["src/tema.tsx (TemaToggle)", entre(codigo("src/tema.tsx"), "export function TemaToggle(", "\n}\n"), deLucide(codigo("src/tema.tsx"))],
+      // Rediseño de Supervisar (PR 2): «Falta planometría», la ficha de una
+      // cara por participación, la chincheta del plano y la ficha del espacio.
+      ["src/components/Supervisar/FaltaPlanometria.tsx", codigo("src/components/Supervisar/FaltaPlanometria.tsx"), deLucide(codigo("src/components/Supervisar/FaltaPlanometria.tsx"))],
+      ["src/components/Distribucion/ParticipacionesDeLaCara.tsx", codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"), deLucide(codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"))],
+      [`${VISTA} (las chinchetas del plano)`, entre(vista, '<div className="chinchetas">', "</div>"), lucideVista],
+      [`${VISTA} (la ficha del espacio)`, entre(vista, '<div className="ficha-cab">', "{double && ("), lucideVista],
     ];
     const vacias = regiones.filter(([, t]) => t.length < 80).map(([d]) => d);
     assert.deepEqual(vacias, [], `no se encontraron estas regiones (cambió el anclaje): ${vacias.join(", ")}`);
@@ -1602,8 +1617,11 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     // CardHeader dibuja el ícono ANTES del título.
     const cab = DEF_TOP.get("CardHeader")?.texto ?? "";
     assert.ok(cab.indexOf("{icon}") > 0 && cab.indexOf("{icon}") < cab.indexOf("{title}"), "CardHeader no dibuja el ícono antes del título");
+    // (Rediseño de Supervisar, PR 2: el piso de Supervisar es el MISMO panel
+    // que el de Vender —`vp vp-plano`, con su `MapIcon`—, para que el plano
+    // mida lo mismo; ya no es un `CardHeader`. Se exige abajo, en las dos.)
     const ESPERADO = [
-      ["title={`Piso de ${sede}`}", "MapIcon"], ["title={sede}", "Gauge"], ['title="Para revisar"', "ClipboardCheck"],
+      ["title={sede}", "Gauge"], ['title="Para revisar"', "ClipboardCheck"],
       ["title={titulo}", "Table2"], ['title="Quién paga el canon"', "Building2"], ['title="Participaciones de cara"', "Percent"],
     ];
     const tags = [...vista.matchAll(/<CardHeader\b[\s\S]{0,260}/g)].map((m) => m[0]);
@@ -1614,6 +1632,8 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     }
     assert.equal(tags.length, ESPERADO.length, `hay ${tags.length} encabezados de tarjeta y se esperaban ${ESPERADO.length}: una tarjeta nueva tiene que decir su ícono acá`);
     // Vender: el ícono donde iba el número del panel.
+    assert.equal((vista.match(/<MapIcon \{\.\.\.ICONO_TARJETA\} className="ico-tarjeta" \/>\s*<h2>Piso de \{sede\}<\/h2>/g) ?? []).length, 2,
+      "el piso no lleva su ícono (MapIcon) antes del título en las DOS pantallas");
     for (const [icono, titulo] of [["MapIcon", "Piso de {sede}"], ["Clock", "Cuándo se libera cada espacio"], ["Tag", "Tarifa de referencia"]]) {
       assert.match(vista, new RegExp(`<${icono} \\{\\.\\.\\.ICONO_TARJETA\\} className="ico-tarjeta" />\\s*<h2>${titulo.replace(/[{}]/g, "\\$&")}</h2>`),
         `la tarjeta «${titulo}» de Vender no lleva su ícono (${icono}) antes del título`);
@@ -1635,7 +1655,9 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
 
   prueba("la plata se escribe entera en Vender y en Supervisar: ni «M», ni «k», ni `compactCOP`", () => {
     const ARCHIVOS_PLATA = [VISTA, ...ARCHIVOS_VENDER, RUTA_COBROS_RESERVAS, "src/components/Distribucion/RevisarParticipaciones.tsx",
-      "src/components/Distribucion/ParticipacionesDeLaCara.tsx"].filter(hay);
+      "src/components/Distribucion/ParticipacionesDeLaCara.tsx",
+      // Rediseño de Supervisar (PR 2): la plata en una unidad y sus piezas.
+      "src/components/Supervisar/plata.ts", "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/piezas.tsx"].filter(hay);
     const ABREVIA = /compactCOP|notation\s*:\s*["']compact|\/\s*1e[36]\b|\/\s*1_?000(?:_?000)?\b|["'`]\s*(?:M|k|mil|millones|mill\.?)\s*["'`]/;
     const hits = [];
     for (const f of ARCHIVOS_PLATA) codigo(f).split("\n").forEach((l, k) => { if (ABREVIA.test(l)) hits.push(`${f}:${k + 1} ${l.trim().slice(0, 100)}`); });
@@ -1673,7 +1695,9 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     const ajuste = entre(iso, "const ajustarMinimos = useCallback(", "}, [encuadre]);");
     assert.match(ajuste, /const lado = MINIMO_AL_TOCAR \/ c\.k;/, "el mínimo no se mide en píxeles de PANTALLA (no divide por la escala)");
     assert.match(ajuste, /if \(w \* c\.k >= MINIMO_AL_TOCAR && h \* c\.k >= MINIMO_AL_TOCAR\) \{\s*el\.setAttribute\("width", "0"\);/, "un mueble que ya mide eso igual lleva la caja");
-    assert.match(iso, /const aplicar = useCallback\(\(\) => \{ escribir\(\); ajustarMinimos\(\); acomodar\(\); \}/, "el mínimo no se recalcula con cada acercamiento");
+    // (Rediseño de Supervisar, PR 2: con cada acercamiento también se ubican
+    // las chinchetas, que Vender no recibe.)
+    assert.match(iso, /const aplicar = useCallback\(\(\) => \{ escribir\(\); ajustarMinimos\(\); acomodar\(\); ubicarChinchetas\(\); \}/, "el mínimo no se recalcula con cada acercamiento");
     const capa = entre(iso, '<g className="impactos">', "</g>");
     const min = capa.indexOf('className="pl-hit pl-min"'), rot = capa.indexOf('className="pl-hit"\n');
     assert.ok(min > 0 && rot > min, "las cajas mínimas no van debajo de las de los rótulos (que tienen que seguir cobrando su clic)");
@@ -1702,7 +1726,7 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     }
     return vistos;
   };
-  const DE_SUPERVISAR = ["src/api/cobros.ts", "src/api/reservas.ts"];
+  const DE_SUPERVISAR = ["src/api/cobros.ts", "src/api/reservas.ts", "src/api/montajesPendientes.ts"];
 
   prueba("`api/cobros` y `api/reservas` no se alcanzan desde Vender: ni un archivo de Vender los importa, ni la parte de DashboardView que Vender dibuja, ni se piden con Vender abierto", () => {
     for (const f of DE_SUPERVISAR) assert.ok(hay(f), `no está ${f}`);
@@ -1738,9 +1762,26 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.match(vista, /const reservasSinConfirmar = useReservasDeEspacio\(\{ sede, activo: isAdmin && modoEfectivo === "supervisar" \}\);/,
       "las reservas de espacio se piden también en Vender");
     assert.match(vista, /\{isAdmin && cortesSinCargar\.pendientes\.length > 0 && \(\s*<VentasPorCargar\b/, "«Ventas por cargar» se monta sin `isAdmin`");
-    assert.match(vista, /\{isAdmin && reservasSinConfirmar\.vivas\.length > 0 && \(\s*<ReservasSinConfirmar\b/, "«Reservas» se monta sin `isAdmin`");
-    assert.match(vista, /\(isAdmin\s*\? kpis\.belowReference\.length[^;]*cortesSinCargar\.porCargar \+ reservasSinConfirmar\.vivas\.length[^;]*revisionPc\.total\s*: 0\)/,
-      "los cortes sin cargar y las reservas no suman a «Para revisar», o le suman al trabajador");
+    // (Rediseño de Supervisar, PR 2: las reservas van en «Hoy» las que caducan
+    // hoy y en «30 días» las demás, las dos con `isAdmin`; la cuenta es la de
+    // los avisos, que corta para el trabajador ANTES de los cortes, las
+    // reservas y lo que falta de planometría. Más estricto que la suma de antes:
+    // `probar-comercial` corre la regla de los grupos.)
+    for (const g of ["hoy", "dias30"]) {
+      assert.match(vista, new RegExp(`\\{isAdmin && reservasPorGrupo\\.${g}\\.length > 0 && \\(\\s*<ReservasSinConfirmar\\b`), `«Reservas» (${g}) se monta sin \`isAdmin\``);
+      assert.match(vista, new RegExp(`\\{isAdmin && planometriaPorGrupo\\.${g}\\.length > 0 && \\(\\s*<FaltaPlanometria\\b`), `«Falta planometría» (${g}) se monta sin \`isAdmin\``);
+    }
+    const avisosDef = entre(vista, "const avisos = useMemo(", "const cuentasDeRevision = useMemo(");
+    const corte = avisosDef.indexOf("if (!isAdmin) return a;");
+    assert.ok(corte > 0, "los avisos de «Para revisar» no cortan para el trabajador");
+    for (const n of ["cortesSinCargar.pendientes", "reservasSinConfirmar.vivas", "faltaPlanometria.filas", "revisionPc.secciones"]) {
+      const k = avisosDef.indexOf(n);
+      assert.ok(k > corte, `«${n}» no suma a «Para revisar», o le suma al trabajador`);
+    }
+    assert.match(vista, /const attentionCount = cuentaDelBadge\(cuentasDeRevision\);/, "la pastilla roja no es la suma de los tres grupos");
+    // «Falta planometría» sólo se pide en Supervisar y para quien administra.
+    assert.match(vista, /const faltaPlanometria = useFaltaPlanometria\(\{ sede, activo: isAdmin && modoEfectivo === "supervisar" \}\);/,
+      "«Falta planometría» se pide también en Vender");
     // La cuenta roja de «Supervisar» mezcla vencimientos, bajo tarifa, reservas
     // y cortes de ventas: con Vender abierto no se dibuja.
     assert.match(vista, /\{ id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" \? attentionCount : 0 \}/,
@@ -1752,6 +1793,40 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.deepEqual(rutas("src/api/reservas.ts"), ["delete /reservas/${id}", "get /reservas", "post /reservas/${id}/confirmar"]);
     // Confirmar usa el precio guardado: el cuerpo va vacío.
     assert.match(codigo("src/api/reservas.ts"), /client\.post\(`\/reservas\/\$\{id\}\/confirmar`, \{\}\)/, "confirmar una reserva manda otro precio que el guardado");
+    assert.deepEqual(rutas("src/api/montajesPendientes.ts"), ["get /montajes/pendientes"]);
+  });
+
+  /* Rediseño de Supervisar (PR 2): sus módulos nuevos —la plata en una unidad,
+     los tres grupos de «Para revisar», sus piezas y «Falta planometría»— no se
+     alcanzan desde Vender: ni un archivo de Vender los importa, ni la parte de
+     `DashboardView` que Vender dibuja usa un nombre que venga de ellos. */
+  prueba("los módulos de Supervisar (PR 2) no se alcanzan desde Vender", () => {
+    const MODULOS = ["src/components/Supervisar/plata.ts", "src/components/Supervisar/useUnidadDePlata.ts",
+      "src/components/Supervisar/paraRevisar.ts", "src/components/Supervisar/piezas.tsx",
+      "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/CobrosYReservas.tsx"];
+    for (const f of MODULOS) assert.ok(hay(f), `no está ${f}`);
+    const malos = [];
+    for (const f of ARCHIVOS_VENDER.filter(hay)) {
+      const cierre = cierreDeImportes(f);
+      for (const m of MODULOS) if (cierre.has(m)) malos.push(`${f} → … → ${m}`);
+    }
+    assert.deepEqual(malos, [], `Vender llega a Supervisar:\n         ${malos.join("\n         ")}`);
+    const crudo = leer(VISTA);
+    const nombres = new Set();
+    for (const m of crudo.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["'](\.{1,2}\/[^"']+)["']/g)) {
+      const base = relative(raiz, join(raiz, dirname(VISTA), m[2]));
+      const archivo = [`${base}.ts`, `${base}.tsx`, base].find((x) => hay(x) && statSync(join(raiz, x)).isFile());
+      if (!archivo || !MODULOS.includes(archivo)) continue;
+      for (const n of m[1].split(",").map((x) => x.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()).filter(Boolean)) nombres.add(n);
+    }
+    assert.ok(nombres.has("useUnidadDePlata") && nombres.has("chinchetasDe") && nombres.has("FaltaPlanometria"), "no se encontraron los módulos de Supervisar en DashboardView");
+    const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision"];
+    const hits = [];
+    for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
+      const ids = identificadores(r.texto);
+      for (const n of usados) if (ids.has(n)) hits.push(`${n} en ${VISTA}:${r.desde + 1}${r.nombre ? ` (${r.nombre})` : ""}`);
+    }
+    assert.deepEqual([...new Set(hits)], [], `Vender alcanza lo de Supervisar:\n         ${[...new Set(hits)].join("\n         ")}`);
   });
 }
 

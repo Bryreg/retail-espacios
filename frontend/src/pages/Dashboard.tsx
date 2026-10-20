@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
@@ -1409,6 +1409,22 @@ export default function Dashboard() {
   const mountCode = MOUNT_DEEP_LINK;
   const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "kpis");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** El alto del área de las pantallas, medido: Vender y Supervisar cuentan
+   *  el alto de su plano contra él (`--alto-area` → `--alto-plano`,
+   *  `vender.css`). Ya descuenta la barra de la aplicación y el aviso de la
+   *  cuenta, que la cuenta con `100dvh` tenía que adivinar. */
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [altoArea, setAltoArea] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    const medir = () => setAltoArea(el.clientHeight);
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [seccionConfig, setSeccionConfig] = useState<"suscripcion" | null>(null);
   const isAdmin = useAuthStore(selectIsAdmin);
   const role = useAuthStore((s) => s.role);
@@ -1475,7 +1491,17 @@ export default function Dashboard() {
         onLogout={logout}
       />
 
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {/* El área de las pantallas: Vender y Supervisar miden el alto de su
+          plano contra ESTE alto (`--alto-area`, medido), así el plano mide lo
+          mismo en las dos sin adivinar cuánto mide el marco. */}
+      <div
+        ref={areaRef}
+        className="area-pantallas"
+        style={{
+          flex: 1, overflow: "hidden", display: "flex", flexDirection: "column",
+          ...(altoArea ? { ["--alto-area" as string]: `${altoArea}px` } : {}),
+        }}
+      >
         {effectiveMode === "store" ? (
           <Suspense fallback={
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)", fontSize: 13 }}>

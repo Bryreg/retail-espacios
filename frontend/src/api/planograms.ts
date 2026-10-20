@@ -15,6 +15,18 @@ export interface Planometria {
   size: number;
   subido_por?: string | null;
   uploaded_at?: string | null;
+  /** Sólo al CARGARLA, y sólo si el contrato esperaba la planometría para
+   *  avisar al montaje (`docs/rediseno/vender-api.md` §4): `salio` (a quién se
+   *  encoló; vacío sin correo o sin mercaderista) o `espera_distribucion` (un
+   *  porcentaje de cara con la zona sin confirmar). `null`: no había nada que
+   *  avisar (un contrato de antes, o ya avisado). */
+  aviso_de_montaje?: AvisoDeMontaje | null;
+}
+
+export interface AvisoDeMontaje {
+  estado: "salio" | "espera_distribucion";
+  smtp_listo: boolean;
+  montaje: string[];
 }
 
 /** Mismo tope que la foto de montaje: en tienda la señal es irregular y sin

@@ -20,6 +20,9 @@ import {
   // `Map` de lucide con su otro nombre: `Map` a secas taparía el de JS.
   MapPin, Tag, MapIcon, Clock, Gauge, ClipboardCheck, Table2, Percent,
   Banknote, CircleDashed, AlarmClock, PieChart, Hammer, Minus, Focus, Mouse,
+  // Rediseño de Supervisar (PR 2): la chincheta del plano, la flecha de la
+  // ficha, el orden de «Quién paga», Renovar y las acciones de la ficha.
+  Pin, ArrowLeft, ArrowDownWideNarrow, Repeat, FilePenLine,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { useFichasPropias } from "../store/fichasPropias";
@@ -113,8 +116,26 @@ import { revisarImportacion, aplicarImportacion, type Importacion } from "../api
 // las ventas y de las reservas de espacio. SÓLO Supervisar y sólo quien
 // administra: Vender no llega a este módulo (`probar-vender`).
 import {
-  ReservasSinConfirmar, VentasPorCargar, useCobrosPorVentas, useReservasDeEspacio,
+  FilaDeReserva, ReservasSinConfirmar, VentasPorCargar, useCobrosPorVentas, useReservasDeEspacio,
 } from "../components/Supervisar/CobrosYReservas";
+// Rediseño de Supervisar (PR 2): «Falta planometría», la plata en una unidad
+// (`Al mes | Total`), los tres grupos de «Para revisar» y sus piezas. SÓLO
+// Supervisar: Vender no llega a ninguno de estos módulos (`probar-vender`).
+import { FaltaPlanometria, useFaltaPlanometria } from "../components/Supervisar/FaltaPlanometria";
+import type { MontajePendiente } from "../api/montajesPendientes";
+import type { CobroPorVentas } from "../api/cobros";
+import type { ReservaDeEspacio } from "../api/reservas";
+import {
+  ROTULO_DEL_VALOR, enLaUnidad, tarifaEnLaUnidad, textoCortoDelCobro, textoDelCobro,
+  type UnidadDePlata,
+} from "../components/Supervisar/plata";
+import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
+import {
+  DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, chinchetasDe, contarPorGrupo, cuentaDelBadge,
+  deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, tituloDeSeccion,
+  type Aviso, type Chincheta, type GrupoDeRevision,
+} from "../components/Supervisar/paraRevisar";
+import { EncabezadoDeSeccion, PestanasDeRevision, SelectorDePlata } from "../components/Supervisar/piezas";
 import {
   ALTURA, UNIDAD_ISO, VISTA_INICIAL, ZOOM_MAX, ZOOM_MIN, encuadreInicial, enElMundo, ejes,
   esquinasDelLado, factorDeRueda, girar, ladosVisibles, ordenDePintado, proyectar, sombraDelLado,
@@ -514,7 +535,7 @@ const STATUS_META: Record<
  *  obligan a aprenderse la pantalla. */
 type MapFilter =
   | "todos" | "free" | "occupied" | "committed" | "expiring" | "expired"
-  | "sin_montar";
+  | "sin_montar" | "en_parte";
 
 
 /** Accent- and case-insensitive comparison base. */
@@ -554,10 +575,17 @@ function faceMatchesFilter(
   filter: MapFilter,
   /** Claves (`claveDeFila`) de las caras y partes contratadas y sin reportar. */
   sinMontar?: Set<string>,
+  /** Claves (`id-cara`) de las caras vendidas en parte en el periodo: con
+   *  partes vendidas o por participación con algo comprometido. La pestaña
+   *  «Vendido en parte» muestra la cara y sus partes. */
+  enParte?: Set<string>,
 ): boolean {
   if (filter === "todos") return true;
   if (filter === "sin_montar") {
     return sinMontar ? sinMontar.has(claveDeFila(entry)) : false;
+  }
+  if (filter === "en_parte") {
+    return enParte ? enParte.has(`${entry.fixture.id}-${entry.face}`) : false;
   }
   const ds = displayStatus(entry);
   // "Ocupados" means earning today. A committed-but-not-started contract is
@@ -646,7 +674,9 @@ function CardHeader({
   return (
     <div
       style={{
-        display: "flex", alignItems: "center", gap: 10,
+        // Envuelve: a lo angosto lo de la derecha baja a su renglón y nunca
+        // empuja la tarjeta de costado (390 px, sin scroll de página).
+        display: "flex", alignItems: "center", gap: "6px 10px", flexWrap: "wrap",
         padding: "11px 15px 9px", flexShrink: 0, minWidth: 0,
       }}
     >
@@ -676,7 +706,7 @@ function CardHeader({
         <div style={{
           marginLeft: "auto", display: "flex", alignItems: "center", gap: 14,
           flexWrap: "wrap", justifyContent: "flex-end",
-          fontSize: "var(--t-xs)", color: "var(--ink-3)", flexShrink: 0,
+          fontSize: "var(--t-xs)", color: "var(--ink-3)", flexShrink: 1, minWidth: 0,
         }}>
           {right}
         </div>
@@ -891,6 +921,12 @@ interface IsoMapProps {
    *  la entera vendida hasta el 20 y la puerta 2 desde el 21, «libre 21 oct»
    *  era falso. Sin esto, los días de la cara sola, como siempre. */
   libreDesde?: (f: UnifiedFixture, face: FaceEntry) => { desde: Date; diasLibres: number } | undefined;
+  /** SÓLO Supervisar: las chinchetas de los muebles que tienen algo en «Para
+   *  revisar» (`chinchetasDe`, nada que no esté en la lista), con el color de
+   *  su grupo, y qué hacer al tocar una (llevar a su aviso). Vender no las
+   *  pasa nunca: delante del proveedor no hay avisos. */
+  chinchetas?: readonly (Chincheta & { titulo: string })[];
+  onChincheta?: (c: Chincheta) => void;
 }
 
 /** Un rótulo del plano: el código del espacio y, si se libera adentro del
@@ -1002,7 +1038,7 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
  *    tiembla y —peor— la medición del deschoque se hace contra la geometría
  *    del paso anterior.
  */
-function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde }: IsoMapProps) {
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde, chinchetas, onChincheta }: IsoMapProps) {
   /** La disponibilidad de una cara en el periodo: la combinada con sus
    *  partes si quien dibuja la sabe, y si no la de la cara sola. */
   const dispoDe = useCallback(
@@ -1444,7 +1480,37 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     }
   }, [encuadre]);
 
-  const aplicar = useCallback(() => { escribir(); ajustarMinimos(); acomodar(); }, [escribir, ajustarMinimos, acomodar]);
+  /** LAS CHINCHETAS (Supervisar): un botón por mueble con algo en «Para
+   *  revisar», sobre su rótulo. Son HTML encima del lienzo —se tocan, se leen
+   *  y miden lo mismo a todo acercamiento— y se ubican como los rótulos: con el
+   *  ancla de su cara y la cámara recién escrita, sin preguntarle nada al DOM
+   *  del plano. Un mueble que no se vende entero (la caja de una bahía) no tiene
+   *  ancla de rótulo: va al centro de lo alto de su caja. */
+  const pinRefs = useRef(new Map<string, HTMLButtonElement>());
+  const ubicarChinchetas = useCallback(() => {
+    if (pinRefs.current.size === 0) return;
+    const c = encuadre();
+    const lz = wrapRef.current?.getBoundingClientRect();
+    const sc = escenaActual.current;
+    if (!c || !lz || !sc) return;
+    for (const [k, el] of pinRefs.current) {
+      let a = sc.anclas.get(k);
+      if (!a) {
+        const p = sc.prisms.find((x) => `${x.f.id}-A` === k || `${x.f.id}-B` === k);
+        if (p) a = [(p.caja2d.x0 + p.caja2d.x1) / 2, p.caja2d.y0];
+      }
+      if (!a) { el.style.display = "none"; continue; }
+      const [x, y] = aPantalla(a[0], a[1], c);
+      const fuera = x < lz.left || x > lz.right || y < lz.top || y > lz.bottom;
+      el.style.display = fuera ? "none" : "";
+      el.style.left = `${(x - lz.left).toFixed(1)}px`;
+      el.style.top = `${(y - lz.top).toFixed(1)}px`;
+    }
+  }, [aPantalla, encuadre]);
+
+  const aplicar = useCallback(() => { escribir(); ajustarMinimos(); acomodar(); ubicarChinchetas(); }, [escribir, ajustarMinimos, acomodar, ubicarChinchetas]);
+  // Una lista nueva de chinchetas se ubica en cuanto existe.
+  useLayoutEffect(() => { ubicarChinchetas(); }, [chinchetas, ubicarChinchetas]);
 
   /** Medir bien es todo el asunto. Un `requestAnimationFrame` NO alcanza: el
    *  navegador corre esos avisos ANTES de rehacer el dibujo, así que la caja
@@ -1619,7 +1685,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     // soltarse afuera del plano). Antes de mirar las herramientas, o el «+»
     // quedaba sin responder una vez.
     if (punteros.current.size === 0) arrastro.current = false;
-    if ((ev.target as Element).closest?.(".herr")) return;
+    if ((ev.target as Element).closest?.(".herr, .chinchetas")) return;
 
     // El segundo dedo: acercar y mover a la vez.
     if (punteros.current.size === 1 && ev.pointerType === "touch") {
@@ -1761,6 +1827,26 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
           <Focus {...ICONO_TARJETA} />
         </button>
       </div>
+      {chinchetas && chinchetas.length > 0 && (
+        <div className="chinchetas">
+          {chinchetas.map((ch) => {
+            const k = `${ch.fixtureId}-${ch.cara}`;
+            return (
+              <button
+                key={k}
+                type="button"
+                data-grupo={ch.grupo}
+                ref={(el) => { if (el) pinRefs.current.set(k, el); else pinRefs.current.delete(k); }}
+                title={ch.titulo}
+                aria-label={ch.titulo}
+                onClick={(e) => { e.stopPropagation(); onChincheta?.(ch); }}
+              >
+                <Pin {...ICONO_TARJETA} />
+              </button>
+            );
+          })}
+        </div>
+      )}
       {ayuda && (
         <p className="herr-ayuda" aria-hidden>
           <span className="con-mouse"><Mouse {...ICONO_TARJETA} />Arrastrá para girar · clic derecho para mover · rueda para acercar</span>
@@ -1994,12 +2080,14 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
  *  sin nombres (`desgloseDelParcial`). Decía «Se libera en el periodo» /
  *  «Vence dentro» y contaba como días las doce caras por participación. */
 function MapLegend({
-  tally, modo, enContrato,
+  tally, modo, enContrato, chinchetas,
 }: {
   tally: ConteoDelPeriodo;
   modo: "vender" | "supervisar";
   /** Cuántas caras hay en el contrato que se está armando. Sólo en Vender. */
   enContrato?: number;
+  /** Cuántas chinchetas hay en el plano. Sólo en Supervisar. */
+  chinchetas?: number;
 }) {
   const items: { c: string; b: string; l: string; n?: number; sep?: boolean; t?: string }[] = [
     { c: rangeTop().libre, b: "var(--libre-borde)",
@@ -2025,6 +2113,13 @@ function MapLegend({
           </span>
         </Fragment>
       ))}
+      {chinchetas !== undefined && (
+        <span className="clave-pin" title="Los muebles con algo en «Para revisar»">
+          <Pin {...ICONO_TARJETA} />
+          Para revisar
+          <b>{chinchetas}</b>
+        </span>
+      )}
     </div>
   );
 }
@@ -2115,25 +2210,41 @@ const META_DE_PARTICIPACION: Record<"parcial" | "tomado", { meta: (typeof STATUS
   tomado: { meta: { ...STATUS_META.expired, label: palabraDeLaCara("tomado") }, anillo: "active" },
 };
 
-function StatusPill({ fixture, face }: { fixture: UnifiedFixture; face: FaceEntry }) {
+/** La pastilla de cada estado (rediseño, PR 2; hoja de piezas): verde lo que
+ *  trabaja o se puede vender, rojo lo que se cae o no cuadra, ámbar lo vendido
+ *  en parte, gris lo apartado. La palabra va siempre adentro: el color nunca va
+ *  solo. Las clases están en `supervisar.css`. */
+const PASTILLA_DE_ESTADO: Record<DisplayStatus, "libre" | "entra" | "ocupado" | "resto" | ""> = {
+  active: "libre",
+  free: "libre",
+  committed: "",
+  expiring: "ocupado",
+  expired: "ocupado",
+  no_contract: "ocupado",
+  reserved: "resto",
+  maintenance: "resto",
+};
+
+/** La palabra de una cara entera que está libre pero tiene partes vendidas. */
+const VENDIDO_EN_PARTE = "Vendido en parte";
+
+function StatusPill({ fixture, face, enParte = false }: {
+  fixture: UnifiedFixture; face: FaceEntry;
+  /** La cara está libre entera pero tiene partes vendidas que corren. */
+  enParte?: boolean;
+}) {
   const rentable = isRentable(fixture) || esPieza(face.parte);
   const ds = displayStatus(face);
   const pc = useDispoDeHoy(fixture, face.face);
   const porPc = !face.parte && ds === "free" && pc && pc.dispo !== "libre" ? META_DE_PARTICIPACION[pc.dispo] : null;
-  const ring = porPc ? colorEstado()[porPc.anillo] : rentable ? colorEstado()[ds] : noRentableTop();
   const meta = porPc ? porPc.meta : STATUS_META[ds];
+  const claseDePastilla = !rentable ? "resto"
+    : porPc ? (porPc.anillo === "active" ? "ocupado" : "entra")
+    : enParte && ds === "free" ? "entra"
+    : PASTILLA_DE_ESTADO[ds];
   return (
-    <span
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0,
-        fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: "var(--r-sm)",
-        background: rentable ? meta.fill : "var(--surface-3)",
-        color:      rentable ? meta.ring : "var(--ink-2)",
-        border: `1px solid ${rentable ? meta.edge : "var(--line)"}`,
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: 99, background: ring }} />
-      {rentable ? meta.label : NON_RENTABLE_LABEL}
+    <span className={`pill ${claseDePastilla}`}>
+      {!rentable ? NON_RENTABLE_LABEL : !porPc && enParte && ds === "free" ? VENDIDO_EN_PARTE : meta.label}
     </span>
   );
 }
@@ -2642,7 +2753,27 @@ function botonDeParte(lleno: boolean): React.CSSProperties {
 function FixtureDetailCard({
   fixture, isAdmin, face, onFace, onBack, onNegociar, onRenovar, onCancelado, onOpenFile,
   onNegociarParte, onRenovarParte,
+  unidad = "mes", montajeDe, montajeDelCodigo, cobroDe, reservaDe, onReservaCambio,
+  planometriaPedida, onPlanometriaCargada, onVenderLoQueQueda,
 }: {
+  /** La unidad de la plata de la franja (rediseño, PR 2). */
+  unidad?: UnidadDePlata;
+  /** El montaje del contrato de la cara, como en la tabla. */
+  montajeDe?: (entry: FaceEntry) => MountConfirmation | undefined;
+  /** El montaje de un contrato por su código completo (las participaciones). */
+  montajeDelCodigo?: (codigo: string, desde: string) => MountConfirmation | undefined;
+  /** El cobro por % de las ventas de un contrato, por su código completo. */
+  cobroDe?: (codigo: string) => CobroPorVentas | undefined;
+  /** La reserva viva de ese espacio (código completo), para «Reservado hasta
+   *  …» con Confirmar y Cancelar. Sólo quien administra. */
+  reservaDe?: (codigo: string) => ReservaDeEspacio | undefined;
+  onReservaCambio?: () => void;
+  /** Se llegó por «Cargar planometría»: el código completo del contrato al
+   *  que le falta. La ficha la muestra arriba y la trae a la vista. */
+  planometriaPedida?: string | null;
+  onPlanometriaCargada?: () => void;
+  /** «Vender el Y %» de una cara por participación: abre Vender con ella. */
+  onVenderLoQueQueda?: (quedaPb: number) => void;
   /** Vender por partes: abrir Vender con una parte de esta cara (`PU2`). */
   onNegociarParte?: (parte: string) => void;
   /** Renovar el contrato de una parte. */
@@ -2682,101 +2813,110 @@ function FixtureDetailCard({
   /** La cara se vende por participación: no se negocia entera (se carga en
    *  Distribución) y lo que tiene lo dice `ParticipacionesDeLaCara`. */
   const pc = porParticipacion(fixture);
+  /** La cara entera está libre pero tiene partes vendidas que corren: la
+   *  pastilla dice «Vendido en parte». */
+  const indiceDeLaFicha = useMemo(() => indiceDePartes(estadoComercial), [estadoComercial]);
+  const partesQueCorren = useMemo(() => partesConContrato(fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, isAdmin)
+    .some((p) => p.face === entry.face && ["active", "expiring", "committed"].includes(displayStatus(p))),
+  [fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, isAdmin, entry.face]);
+  const codigoDeLaCara = fullSpaceCode(fixture.sede || sedeDelMapa, entry.code);
+  const reservaViva = isAdmin && entry.reservaHasta ? reservaDe?.(codigoDeLaCara) : undefined;
+  const cobroDeLaCara = isAdmin && hasContract ? cobroDe?.(codigoDeLaCara) : undefined;
+  /** La planometría pedida, si es de OTRO contrato que el de la cara (una
+   *  parte o una participación): va arriba, aparte. */
+  const pedidaAparte = planometriaPedida && planometriaPedida.toUpperCase() !== codigoDeLaCara.toUpperCase()
+    ? planometriaPedida : null;
+  const pedidaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (planometriaPedida) pedidaRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [planometriaPedida, entry.code]);
 
   return (
     <Card style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 14px", borderBottom: "1px solid var(--line-soft)" }}>
-        <button
-          onClick={onBack}
-          title="Volver"
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 26, height: 26, flexShrink: 0, marginTop: 1, borderRadius: "var(--r-md)",
-            border: "1px solid var(--line)", background: "var(--surface-2)",
-            color: "var(--ink-2)", cursor: "pointer", padding: 0,
-          }}
-        >
-          <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
+      {/* El encabezado de la ficha (dibujo aprobado, paso 3): la flecha que
+          vuelve a «Para revisar», el código como se lee, el nombre y la sede,
+          y el estado en pastilla. */}
+      <div className="ficha-cab">
+        <button type="button" className="icobtn" onClick={onBack} title="Volver" aria-label="Volver a «Para revisar»">
+          <ArrowLeft {...ICONO_TARJETA} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-1)", letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)}
-          </div>
-          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-3)", marginTop: 2 }}>
-            {entry.code} · {fixture.sede}
+          <h3 className="mono">{codigoVisible(entry)}</h3>
+          <div className="sub">
+            {conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)} · {fixture.sede}
           </div>
         </div>
-        <StatusPill fixture={fixture} face={entry} />
+        <StatusPill fixture={fixture} face={entry} enParte={partesQueCorren} />
       </div>
 
       {double && (
-        <div style={{ display: "flex", gap: 6, padding: "10px 14px 0" }}>
-          {(["A", "B"] as const).map((id) => {
-            const active = face === id;
-            const other = faces[id === "A" ? 0 : 1];
-            return (
-              <button
-                key={id}
-                onClick={() => onFace(id)}
-                style={{
-                  flex: 1, minWidth: 0, height: 28, borderRadius: "var(--r-md)",
-                  fontSize: 11.5, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
-                  border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
-                  background: active ? "var(--accent-50)" : "var(--surface)",
-                  color: active ? "var(--accent-700)" : "var(--ink-2)",
-                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                }}
-              >
-                {/* The supplier on the tab saves a click just to find out
-                    whether the other face holds anything. */}
-                Cara {id}{other?.supplierName ? ` · ${other.supplierName}` : ""}
-              </button>
-            );
-          })}
+        <div style={{ padding: "10px 14px 0" }}>
+          <div className="seg ancho" role="group" aria-label="Qué cara">
+            {(["A", "B"] as const).map((id) => {
+              const other = faces[id === "A" ? 0 : 1];
+              return (
+                <button key={id} type="button" aria-pressed={face === id} onClick={() => onFace(id)}>
+                  {/* The supplier on the tab saves a click just to find out
+                      whether the other face holds anything. */}
+                  Cara {id}{other?.supplierName ? ` · ${other.supplierName}` : ""}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto" }}>
-        {/* Renovar es la acción de esta pantalla, y por eso es el botón lleno.
-            No abre un contrato en blanco: abre el mismo acuerdo otra vez —mismo
-            proveedor, misma marca, mismo valor— arrancando el día después de
-            que termina el que corre. Lo que se cambia es el precio, que es de
-            lo único que se habla en una renovación.
+        {/* «Cargar planometría» de «Para revisar»: la del contrato que la
+            espera, arriba y a la vista. */}
+        {isAdmin && pedidaAparte && (
+          <div ref={pedidaRef} className="pedida" data-planometria-pedida>
+            <span className="rotulo">Planometría de {pedidaAparte}</span>
+            <Planometria key={pedidaAparte} spaceCode={pedidaAparte} isAdmin={isAdmin} onCargada={onPlanometriaCargada} />
+          </div>
+        )}
 
-            Aparece cuando el contrato se cae dentro de 60 días o ya se cayó.
-            Antes de eso no hay nada que renovar y el botón sería una trampa:
-            crearía un contrato solapado con uno que sigue vivo. */}
+        {/* Las participaciones de esta cara (dibujo aprobado, paso 3): la barra
+            de lo comprometido, una fila por marca con su % y su cobro y su
+            montaje, y Distribuir · Renovar · Vender lo que queda. Sólo para
+            quien administra: lleva proveedores, marcas y fechas de todos, y su
+            ruta es de administración (§4.8, §11). */}
+        {isAdmin && pc && (
+          <ParticipacionesDeLaCara
+            fixtureId={fixture.id}
+            codigo={fixture.code}
+            cara={entry.face}
+            sede={sedeDelPlano}
+            doble={double}
+            onRenovar={onRenovarParte
+              ? (n) => {
+                const parte = partirCodigo(`X-PC${n}`).parte;
+                onRenovarParte({ ...entry, code: codigoDeParte(fixture.code, entry.face, parte), parte });
+              }
+              : undefined}
+            unidad={unidad}
+            montajeDe={montajeDelCodigo}
+            cobroDe={cobroDe}
+            onVender={onVenderLoQueQueda}
+          />
+        )}
+
+        {/* Las acciones de la cara, en un renglón (hoja de piezas): Renovar
+            —el mismo acuerdo otra vez, mismo proveedor, marca y valor,
+            arrancando el día después de que termina el que corre; aparece
+            cuando el contrato se cae dentro de 60 días o ya se cayó—, vender
+            otra vez o a otro proveedor, y ver la exhibición en 3D. */}
+        <div className="acc">
         {rentable && onRenovar && (
-          <button
-            onClick={onRenovar}
-            style={{
-              width: "100%", height: 36, borderRadius: "var(--r-md)", border: "none",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-              background: "var(--accent)", color: "#fff",
-              fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
-            }}
-          >
-            <RefreshCw size={14} />
+          <button type="button" className="btn-s" onClick={onRenovar}>
+            <Repeat {...ICONO_TARJETA} />
             Renovar {entry.supplierName ? `con ${entry.supplierName}` : "este contrato"}
           </button>
         )}
         {rentable && onNegociar && !pc && (
-          <button
-            onClick={onNegociar}
-            style={{
-              width: "100%", height: onRenovar ? 32 : 36, borderRadius: "var(--r-md)",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-              border: onRenovar ? "1px solid var(--line)" : "none",
-              background: onRenovar ? "var(--surface-2)"
-                : hasContract ? "var(--accent-50)" : "var(--accent)",
-              color: onRenovar ? "var(--ink-2)"
-                : hasContract ? "var(--accent-700)" : "#fff",
-              fontSize: onRenovar ? 12.5 : 13, fontWeight: 700,
-              fontFamily: "inherit", cursor: "pointer",
-            }}
-          >
-            <Handshake size={14} />
-            {/* Con «Renovar» arriba, éste es el otro camino: cambiar de
+          <button type="button" className="btn-s" onClick={onNegociar}>
+            <FilePenLine {...ICONO_TARJETA} />
+            {/* Con «Renovar» al lado, éste es el otro camino: cambiar de
                 proveedor. Decirlo así ahorra tener que deducirlo. */}
             {onRenovar ? "Contrato con otro proveedor"
               : hasContract ? "Nuevo contrato para esta cara"
@@ -2785,23 +2925,14 @@ function FixtureDetailCard({
         )}
 
         {/* Ver la exhibición como la va a ver el proveedor. El 3D es la única
-            pantalla que muestra el arte puesto sobre el mueble, y hasta ahora
-            había que entrar a mano y buscar el espacio entre 104 muebles. */}
+            pantalla que muestra el arte puesto sobre el mueble. */}
         {rentable && (
-          <button
-            onClick={() => pedirEnfoque3D(fixture.id, face)}
-            style={{
-              width: "100%", height: 32, borderRadius: "var(--r-md)",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-              border: "1px solid var(--line)", background: "var(--surface-2)",
-              color: "var(--ink-2)", fontSize: 12, fontWeight: 600,
-              fontFamily: "inherit", cursor: "pointer",
-            }}
-          >
-            <Box size={13} />
+          <button type="button" className="btn-s" onClick={() => pedirEnfoque3D(fixture.id, face)}>
+            <Box {...ICONO_TARJETA} />
             Ver la exhibición en 3D
           </button>
         )}
+        </div>
         {!hasContract && pc ? (
           !isAdmin && <CaraPorParticipacion fixture={fixture} face={entry.face} />
         ) : !hasContract ? (
@@ -2811,32 +2942,38 @@ function FixtureDetailCard({
             <SupplierLine entry={entry} />
             {entry.reservaHasta && (
               <div style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.45 }}>
-                Reservado hasta el {diaCorto(entry.reservaHasta)}: todavía no es un contrato. Se confirma o se cancela en «Reservas».
+                Reservado hasta el {diaCorto(entry.reservaHasta)}: todavía no es un contrato.
+                {reservaViva ? "" : " Se confirma o se cancela en «Reservas»."}
               </div>
             )}
+            {/* La reserva se confirma o se cancela acá mismo, con el precio
+                que se guardó al reservar. */}
+            {isAdmin && reservaViva && onReservaCambio && (
+              <FilaDeReserva r={reservaViva} sede={sedeDelMapa} onCambio={onReservaCambio} />
+            )}
             {(entry.startDate || entry.endDate) && <PeriodBox entry={entry} />}
-            {isAdmin && entry.negotiatedValue > 0 && (
-              <div
-                style={{
-                  display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
-                  padding: "10px 12px", border: "1px solid var(--success-100)",
-                  background: "var(--success-50)", borderRadius: "var(--r-lg)",
-                }}
-              >
-                <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--success)" }}>
-                  Valor / mes
+            {isAdmin && (entry.negotiatedValue > 0 || cobroDeLaCara) && (
+              <div className="valor-ficha">
+                <span className="rotulo">{cobroDeLaCara ? "Cobro" : ROTULO_DEL_VALOR[unidad]}</span>
+                <span className="mono">
+                  {cobroDeLaCara
+                    ? `${textoDelCobro(cobroDeLaCara.porcentaje)}${cobroDeLaCara.proximo_corte ? ` · próximo corte ${fechaEnCurso(cobroDeLaCara.proximo_corte.periodo_hasta)}` : ""}`
+                    : formatCOP(enLaUnidad(entry.negotiatedValue, entry.startDate, entry.endDate, unidad))}
                 </span>
-                <span style={{ fontSize: 16, fontWeight: 700, fontFamily: "var(--font-mono)", color: "var(--success)" }}>
-                  {formatCOP(entry.negotiatedValue)}
-                </span>
+              </div>
+            )}
+            {!entry.reservaHasta && (
+              <div className="fila-dist">
+                <span className="rotulo">Montaje</span>
+                <MontajeChip entry={entry} reporte={montajeDe?.(entry)} />
               </div>
             )}
             {entry.observation && (
               <div>
-                <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)", marginBottom: 5 }}>
+                <div style={{ fontSize: "var(--t-3xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)", marginBottom: 5 }}>
                   Observación
                 </div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>{entry.observation}</div>
+                <div style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.55 }}>{entry.observation}</div>
               </div>
             )}
           </>
@@ -2856,35 +2993,18 @@ function FixtureDetailCard({
           />
         )}
 
-        {/* Las participaciones de esta cara: la barra de capacidad de hoy, la
-            lista, el estado de la distribución y «Abrir en Distribución».
-            Sólo para quien administra: lleva proveedores, marcas y fechas de
-            todos, y su ruta es de administración (§4.8, §11). */}
-        {isAdmin && pc && (
-          <ParticipacionesDeLaCara
-            fixtureId={fixture.id}
-            codigo={fixture.code}
-            cara={entry.face}
-            sede={sedeDelPlano}
-            doble={double}
-            onRenovar={onRenovarParte
-              ? (n) => {
-                const parte = partirCodigo(`X-PC${n}`).parte;
-                onRenovarParte({ ...entry, code: codigoDeParte(fixture.code, entry.face, parte), parte });
-              }
-              : undefined}
-          />
-        )}
-
         {/* Qué le prometimos armar al proveedor. Se resuelve por el código del
             espacio —el layout no guarda ids de contrato— y sólo aparece si hay
             algo que mostrar o algo a lo que adjuntarle. */}
         {rentable && hasContract && (
-          <Planometria
-            key={entry.code}
-            spaceCode={fullSpaceCode(fixture.sede, entry.code)}
-            isAdmin={isAdmin}
-          />
+          <div ref={pedidaAparte ? undefined : pedidaRef} data-planometria-pedida={planometriaPedida && !pedidaAparte ? "" : undefined}>
+            <Planometria
+              key={entry.code}
+              spaceCode={fullSpaceCode(fixture.sede, entry.code)}
+              isAdmin={isAdmin}
+              onCargada={onPlanometriaCargada}
+            />
+          </div>
         )}
 
         {rentable && (state === "loading" || files.length > 0) && (
@@ -3011,34 +3131,13 @@ interface ContractEntry extends FaceEntry {
  *  días» sin cifra es una categoría; con «$3.700.000» al lado es una alarma
  *  con tamaño, y ése es el dato con el que se decide a quién llamar primero. */
 function AtencionSection({
-  label, color, monto,
+  label, monto,
 }: {
   label: string;
-  color: string;
   /** Lo que ese grupo vale: plata en los que vencen, cantidad en el resto. */
   monto?: React.ReactNode;
 }) {
-  return (
-    <div
-      style={{
-        display: "flex", alignItems: "baseline", justifyContent: "space-between",
-        gap: 10, padding: "0 6px 6px", margin: "0 0 2px",
-        borderBottom: "1px solid var(--line)",
-      }}
-    >
-      <span
-        style={{
-          fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 9.5,
-          letterSpacing: "0.11em", textTransform: "uppercase", color,
-        }}
-      >
-        {label}
-      </span>
-      {monto !== undefined && (
-        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-1)" }}>{monto}</span>
-      )}
-    </div>
-  );
+  return <EncabezadoDeSeccion titulo={label} valor={monto} />;
 }
 
 /**
@@ -3095,7 +3194,6 @@ function ImportarDelPlano({
     <div>
       <AtencionSection
         label="Contrato que sólo vive en el plano"
-        color="var(--warning, var(--ocupado))"
         monto={n + datos.incompletos.length}
       />
       {importados > 0 && (
@@ -3363,95 +3461,62 @@ function AtencionRow({
   selected,
   onSelect,
   onFoto,
+  aviso,
+  accion,
 }: {
   entry: FaceEntry;
   chip: string;
-  /** `alarma` = rojo (vence, vencido). `sordo` = gris (esperando algo). */
-  tono?: "alarma" | "sordo";
+  /** `alarma` = rojo (vence, vencido). `espera` = ámbar (falta poco).
+   *  `sordo` = gris (esperando algo). */
+  tono?: "alarma" | "espera" | "sordo";
   dates: string;
   selected?: boolean;
   onSelect?: () => void;
   /** Abre la foto del montaje. Solo la traen las filas que tienen prueba. */
   onFoto?: () => void;
+  /** La clave del aviso (`data-aviso`): la chincheta del plano lleva acá. */
+  aviso?: string;
+  /** La acción de la fila, si tiene una propia («Renovar»). */
+  accion?: { texto: string; icono: React.ReactNode; onClick: () => void };
 }) {
-  const [hover, setHover] = useState(false);
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   return (
     <div
       data-fila-revisar
-      style={{
-        display: "flex", alignItems: "center",
-        borderTop: "1px solid var(--line-soft)",
-        background: selected ? "var(--surface-2)" : hover ? "var(--surface-2)" : "transparent",
-        borderLeft: `2px solid ${selected ? "var(--ink-1)" : "transparent"}`,
-      }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      data-aviso={aviso}
+      className={"fila-r" + (selected ? " elegida" : "")}
     >
+      <span className={`pill mono ${tono === "alarma" ? "ocupado" : tono === "espera" ? "entra" : "resto"}`}>{chip}</span>
       <button
         type="button"
+        className="dat"
         onClick={onSelect}
         disabled={!onSelect}
-        title={onSelect ? "Verlo en el plano" : undefined}
-        style={{
-          flex: 1, minWidth: 0,
-          display: "flex", alignItems: "center", gap: 9,
-          padding: "5px 6px", border: "none", background: "none",
-          textAlign: "left", color: "inherit", fontFamily: "inherit",
-          cursor: onSelect ? "pointer" : "default",
-        }}
+        title={onSelect ? "Abrir la ficha del espacio" : undefined}
       >
-        <span
-          style={{
-            flexShrink: 0, minWidth: 38, textAlign: "center", padding: "2px 5px",
-            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 14.5,
-            borderRadius: "var(--r-xs)",
-            color: tono === "alarma" ? "var(--ocupado)" : "var(--ink-2)",
-            background: tono === "alarma" ? "var(--ocupado-suave)" : "var(--surface-3)",
-          }}
-        >
-          {chip}
-        </span>
-        <span
-          style={{
-            // «Se ajusta la columna, no la tipografía»: con `--font-mono`
-            // puesto, `1ch` es un avance de carácter, así que `9ch` es el ancho
-            // de `GON-60·A` POR CONSTRUCCIÓN, resuelva el sistema SF Mono,
-            // Cascadia o Liberation Mono. Los 56px de antes estaban medidos
-            // contra una condensada que ya no está y cortaban el código.
-            flexShrink: 0, minWidth: "9ch",
-            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13,
-            letterSpacing: 0, color: "var(--ink-1)",
-          }}
-        >
-          {codigoVisible(entry)}
-        </span>
-        <span
-          style={{
-            flex: 1, minWidth: 0, fontSize: 12, color: "var(--ink-2)",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}
-        >
+        {/* «Se ajusta la columna, no la tipografía»: el código en mono, con
+            `9ch` de mínimo, entra entero (`GON-60·A`). */}
+        <b className="mono">{codigoVisible(entry)}</b>
+        <span>
           {entry.supplierName || conNombrePropio(entry.fixture, nombresPropios, entry.fixture.label || entry.fixture.code)}
-        </span>
-        <span style={{ flexShrink: 0, fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-          {dates}
+          {" · "}{dates}
         </span>
       </button>
-      {onFoto && (
-        <button
-          onClick={onFoto}
-          title="Ver la foto del reporte"
-          aria-label="Ver la foto del reporte"
-          style={{
-            flexShrink: 0, display: "inline-flex", alignItems: "center",
-            background: "none", border: "none", padding: "0 8px 0 2px",
-            cursor: "pointer", color: "var(--ink-3)",
-          }}
-        >
-          <Camera size={12} />
-        </button>
+      {(accion || onFoto) && (
+        <span className="acc-r">
+          {accion && (
+            <button type="button" className="btn-s" onClick={accion.onClick}>
+              {accion.icono} {accion.texto}
+            </button>
+          )}
+          {onFoto && (
+            <button type="button" className="btn-s" onClick={onFoto} aria-label="Ver la foto del reporte">
+              <Camera {...ICONO_TARJETA} /> Ver foto
+            </button>
+          )}
+        </span>
       )}
+      {onSelect && <ChevronRight {...ICONO_TARJETA} className="ir" />}
     </div>
   );
 }
@@ -3469,24 +3534,21 @@ function MontajeChip({
 }) {
   const fase = contractPhase(entry);
   const aplica = fase === "vigente" || fase === "pendiente";
-  if (!aplica && !reporte) {
-    return <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>;
-  }
+  const nada = <span className="punto" style={{ "--c": "var(--ink-4)" } as React.CSSProperties}>—</span>;
+  if (!aplica && !reporte) return nada;
   const estado = estadoMontaje(reporte);
   // Firmado pero sin arrancar y sin reporte: no le toca todavía.
-  if (estado === "pendiente" && fase !== "vigente") {
-    return <span style={{ color: "var(--ink-4)", fontSize: 11.5 }}>—</span>;
-  }
+  if (estado === "pendiente" && fase !== "vigente") return nada;
+  // Punto y palabra (hoja de piezas): verde montado, rojo no se pudo, gris
+  // lo que todavía nadie reportó.
   const pinta =
-    estado === "montado" ? { c: "var(--success)", t: "Montado" }
-    : estado === "no_montado" ? { c: "var(--danger)", t: "No se pudo" }
-    : { c: "var(--warning)", t: "Pendiente" };
+    estado === "montado" ? { c: "var(--libre)", t: "Montado" }
+    : estado === "no_montado" ? { c: "var(--ocupado)", t: "No se pudo" }
+    : { c: "var(--ink-4)", t: "Sin montar" };
   return (
     <span
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 5,
-        fontSize: 11.5, fontWeight: 600, color: pinta.c,
-      }}
+      className="punto"
+      style={{ "--c": pinta.c } as React.CSSProperties}
       title={
         reporte
           ? [reporte.reportado_por, reporte.motivo ? MOTIVO_LABEL[reporte.motivo as MountMotivo] : "",
@@ -3494,7 +3556,6 @@ function MontajeChip({
           : "El contrato ya arrancó y nadie reportó el montaje"
       }
     >
-      <span style={{ width: 6, height: 6, borderRadius: 99, background: pinta.c, flexShrink: 0 }} />
       {pinta.t}
     </span>
   );
@@ -3513,7 +3574,7 @@ function MontajeChip({
  *  El número de contratos se fue de la fila: ocupaba lugar y no cambia
  *  ninguna decisión. Está en la tabla de abajo, que es donde se mira. */
 function SupplierRow({
-  name, revenue, pct, vence,
+  name, revenue, pct, vence, barra,
 }: {
   name: string;
   revenue: number;
@@ -3521,43 +3582,20 @@ function SupplierRow({
   pct: number;
   /** Tiene al menos una cara que vence dentro de los 30 días. */
   vence: boolean;
+  /** 0-100: el largo de su barra, contra el que más pone. */
+  barra: number;
 }) {
   return (
-    <div
-      style={{
-        display: "grid", gridTemplateColumns: "1fr auto auto 36px",
-        alignItems: "center", columnGap: 8,
-        padding: "4px 0", borderTop: "1px solid var(--line-soft)",
-      }}
-    >
-      <span
-        style={{
-          fontSize: 13, color: "var(--ink-1)", minWidth: 0,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}
-        title={name}
-      >
+    <div className="qp">
+      <span className="nombre" title={name}>
         {name}
+        {vence && (
+          <span className="pill ocupado chica" title="Tiene al menos un contrato que vence dentro de 30 días">vence</span>
+        )}
       </span>
-      {vence ? (
-        <span
-          title="Tiene al menos un contrato que vence dentro de 30 días"
-          style={{
-            fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 9.5,
-            letterSpacing: "0.09em", textTransform: "uppercase",
-            color: "var(--ocupado-txt)", background: "var(--ocupado-suave)",
-            borderRadius: "var(--r-xs)", padding: "1px 4px",
-          }}
-        >
-          vence
-        </span>
-      ) : (
-        <span />
-      )}
-      <span style={{ fontSize: 13, fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>
-        {formatCOP(revenue)}
-      </span>
-      <span style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right" }}>{pct}%</span>
+      <b className="mono">{formatCOP(revenue)}</b>
+      <span className="pct mono">{pct} %</span>
+      <div className="barrita"><span style={{ width: `${Math.max(0, Math.min(100, barra))}%` }} /></div>
     </div>
   );
 }
@@ -3693,7 +3731,22 @@ function anchoDeTexto(textos: string[], fuente: string): number {
 function SpacesTable({
   fixtures, isAdmin, query, filter, montajeDe, tarifaDe,
   selectedId, onSelect, sinMontar, titulo, sub, derecha, espaciosDe = commercialFacesOf,
+  unidad = "mes", cobroDe, periodo, enParte, pestanas,
 }: {
+  /** La unidad de la plata de la franja: la columna de valor dice «Valor al
+   *  mes» o «Valor total» y cada fila la sigue (rediseño, PR 2). */
+  unidad?: UnidadDePlata;
+  /** El cobro por % de las ventas de esa fila, si se cobra así: dice «8 %
+   *  ventas» en vez de un monto. */
+  cobroDe?: (entry: FaceEntry) => CobroPorVentas | undefined;
+  /** El periodo que se está mirando (ISO), para la tarifa de una cara libre
+   *  en «Total». */
+  periodo?: { desde: string; hasta: string };
+  /** Las caras (`id-cara`) vendidas en parte: la pestaña de ese nombre y la
+   *  pastilla. */
+  enParte?: Set<string>;
+  /** Las pestañas de la tabla, entre el encabezado y las filas. */
+  pestanas?: React.ReactNode;
   /** Las filas de un mueble: sus caras comerciales y, vendiendo por partes,
    *  sus partes vendidas (cada una con su contrato). */
   espaciosDe?: (f: UnifiedFixture) => FaceEntry[];
@@ -3713,7 +3766,8 @@ function SpacesTable({
   filter: MapFilter;
   /** El mueble abierto en el plano: la fila se marca y el plano la rotula. */
   selectedId?: string | null;
-  onSelect?: (f: UnifiedFixture) => void;
+  /** Abrir la ficha de esa cara (la flecha de cada fila). */
+  onSelect?: (f: UnifiedFixture, face: "A" | "B") => void;
   /** Claves de las caras contratadas y sin reportar, para el filtro. */
   sinMontar?: Set<string>;
   /** La tarifa de referencia de esa cara. Sin esto la columna de plata queda
@@ -3747,9 +3801,9 @@ function SpacesTable({
   const filtered = useMemo(() => {
     const q = normalizeText(query.trim());
     return rows.filter(
-      (e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, filter, sinMontar),
+      (e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, filter, sinMontar, enParte),
     );
-  }, [rows, filter, query, sinMontar, fichasPropias, nombresPropios]);
+  }, [rows, filter, query, sinMontar, enParte, fichasPropias, nombresPropios]);
 
   /* LOS ANCHOS, MEDIDOS.
      Proveedor no llevaba ancho y se quedaba con todo lo que sobraba: en una
@@ -3805,7 +3859,10 @@ function SpacesTable({
     { etiqueta: "Hasta", ancho: 88, minimo: 88 },
     { etiqueta: "Días", ancho: 56, minimo: 56, derecha: true },
   ];
-  if (isAdmin) pedidas.push({ etiqueta: "Renta / mes", ancho: 112, minimo: 112, derecha: true });
+  // La plata en la unidad de la franja: «Valor al mes» o «Valor total».
+  if (isAdmin) pedidas.push({ etiqueta: ROTULO_DEL_VALOR[unidad], ancho: 112, minimo: 112, derecha: true });
+  // La flecha que abre la ficha.
+  pedidas.push({ etiqueta: "", ancho: 30, minimo: 30 });
 
   /* LA TABLA LLENA SU CAJA: lo que sobra se reparte parejo entre las columnas
      y, si falta, ceden Proveedor y Tipo (ver `utils/anchosTabla.ts`). La caja
@@ -3831,6 +3888,7 @@ function SpacesTable({
   return (
     <>
     <CardHeader icon={<Table2 {...ICONO_TARJETA} />} title={titulo} sub={sub} right={derecha} />
+    {pestanas && <div style={{ padding: "0 15px 8px", minWidth: 0 }}>{pestanas}</div>}
     {/* Rueda adentro de su tarjeta, con los títulos de las columnas fijos
         arriba: la tarjeta mide lo mismo que la de al lado, como en Vender. */}
     <div ref={cajaRef} style={{ padding: "0 15px 12px", overflow: "auto", flex: 1, minHeight: 0 }}>
@@ -3842,9 +3900,9 @@ function SpacesTable({
       >
         <thead>
           <tr>
-            {columnas.map((c) => (
+            {columnas.map((c, i) => (
               <th
-                key={c.etiqueta}
+                key={i}
                 style={{
                   width: c.ancho,
                   padding: "0 8px 5px",
@@ -3881,6 +3939,13 @@ function SpacesTable({
             const pin = pcHoy && pcHoy.dispo !== "libre" ? pinDeParticipacion(pcHoy.dispo) : pinDe()[ds];
             const days = entry.endDate && !libre ? daysUntil(entry.endDate) : null;
             const sel = selectedId === entry.fixture.id;
+            // Una cara entera libre con partes vendidas: «Vendido en parte».
+            const enParteLaCara = !entry.parte && libre && !(pcHoy && pcHoy.dispo !== "libre")
+              && !!enParte?.has(`${entry.fixture.id}-${entry.face}`);
+            const claseDelEstado = pcHoy && pcHoy.dispo !== "libre"
+              ? (pcHoy.dispo === "tomado" ? "ocupado" : "entra")
+              : enParteLaCara ? "entra" : PASTILLA_DE_ESTADO[ds];
+            const cobro = !libre ? cobroDe?.(entry) : undefined;
 
             const celda: React.CSSProperties = {
               padding: "0 8px", height: 28,
@@ -3893,7 +3958,7 @@ function SpacesTable({
             return (
               <tr
                 key={claveDeFila(entry)}
-                onClick={onSelect ? () => onSelect(entry.fixture) : undefined}
+                onClick={onSelect ? () => onSelect(entry.fixture, entry.face) : undefined}
                 style={{ cursor: onSelect ? "pointer" : "default" }}
                 onMouseEnter={(e) => {
                   if (sel) return;
@@ -3916,13 +3981,6 @@ function SpacesTable({
                     boxShadow: sel ? "inset 2px 0 0 var(--ink-1)" : undefined,
                   }}
                 >
-                  <span
-                    aria-hidden
-                    style={{
-                      display: "inline-block", width: 7, height: 7, borderRadius: "50%",
-                      marginRight: 8, verticalAlign: 1, background: pin.punto,
-                    }}
-                  />
                   {codigoVisible(entry)}
                 </td>
                 {/* El TIPO, no el nombre propio del mueble. La maqueta dice
@@ -3945,15 +4003,11 @@ function SpacesTable({
                     : vacio}
                 </td>
                 <td style={celda}>
-                  <span style={{
-                    fontSize: 12, color: pin.texto,
-                    fontWeight: ds === "expiring" || ds === "expired" || ds === "no_contract" ? 600 : 400,
-                  }}>
-                    {pin.palabra}
-                    {entry.reservaHasta && (
-                      <span style={{ color: "var(--ink-3)" }}> hasta {diaCorto(entry.reservaHasta)}</span>
-                    )}
-                  </span>
+                  {/* El estado en pastilla (rediseño, PR 2): la palabra adentro. */}
+                  <span className={`pill ${claseDelEstado}`}>{enParteLaCara ? VENDIDO_EN_PARTE : pin.palabra}</span>
+                  {entry.reservaHasta && (
+                    <span style={{ color: "var(--ink-3)" }}> hasta {diaCorto(entry.reservaHasta)}</span>
+                  )}
                 </td>
                 <td style={celda}>
                   <MontajeChip entry={entry} reporte={montajeDe(entry)} />
@@ -3980,17 +4034,32 @@ function SpacesTable({
                   )}
                 </td>
                 {isAdmin && (
-                  <td style={{ ...celda, textAlign: "right", fontWeight: 700, color: "var(--ink-1)" }}>
+                  <td style={{ ...celda, textAlign: "right", fontWeight: 700, color: "var(--ink-1)", fontFamily: "var(--font-mono)" }}>
                     {/* En una cara libre esto no es lo que se cobra sino lo que
                         se pediría: va en gris y sin negrita, para que no se
-                        sume con la vista a lo que sí está entrando. */}
+                        sume con la vista a lo que sí está entrando. Una reserva
+                        tampoco cuenta: va en gris. La unidad es la de la
+                        franja; un contrato por ventas dice su porcentaje. */}
                     {libre
                       ? <span style={{ color: "var(--ink-3)", fontWeight: 400 }}>
-                          {(() => { const t = tarifaDe(entry); return t ? formatCOP(t) : "—"; })()}
+                          {(() => {
+                            const t = tarifaDe(entry);
+                            return t ? formatCOP(periodo ? tarifaEnLaUnidad(t, periodo.desde, periodo.hasta, unidad) : t) : "—";
+                          })()}
                         </span>
-                      : entry.negotiatedValue > 0 ? formatCOP(entry.negotiatedValue) : vacio}
+                      : cobro ? textoCortoDelCobro(cobro.porcentaje)
+                      : entry.negotiatedValue > 0
+                      ? (entry.reservaHasta
+                        ? <span style={{ color: "var(--ink-3)", fontWeight: 400 }} title="Una reserva no cuenta en el canon">
+                            {formatCOP(enLaUnidad(entry.negotiatedValue, entry.startDate, entry.endDate, unidad))}
+                          </span>
+                        : formatCOP(enLaUnidad(entry.negotiatedValue, entry.startDate, entry.endDate, unidad)))
+                      : vacio}
                   </td>
                 )}
+                <td style={{ ...celda, textAlign: "right", color: "var(--ink-3)" }}>
+                  <ChevronRight {...ICONO_TARJETA} style={{ verticalAlign: -3 }} />
+                </td>
               </tr>
             );
           })}
@@ -4048,56 +4117,30 @@ function Cifra({
   /** 0-100. Dibuja la barrita bajo el número. */
   barra?: number;
 }) {
-  const cero = valor === "0" || valor === "$0" || valor === "0%";
+  const cero = valor === "0" || valor === "—" || valor === "0 %";
+  // Una caja por cifra (rediseño, PR 2): el ícono y el rótulo arriba, la cifra
+  // en mono, las notas abajo. Las cajas se acomodan en `.cifras`.
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 130 }}>
-      <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+    <div className={"cifra" + (alarma ? " alarma" : "")}>
+      <span className="cab">
         <span aria-hidden style={{
           display: "inline-flex", flexShrink: 0,
           color: alarma ? "var(--ocupado-txt)" : "var(--ink-3)",
         }}>
           {icono}
         </span>
-        <span className="rotulo" style={alarma ? { color: "var(--ocupado-txt)" } : undefined}>
-          {rotulo}
-        </span>
+        <span className="rotulo">{rotulo}</span>
       </span>
-      <b style={{
-        fontSize: 17, fontWeight: cero ? 700 : 900, letterSpacing: "-0.015em", lineHeight: 1.15,
-        color: alarma ? "var(--ocupado)" : cero ? "var(--ink-3)" : "var(--ink-1)",
-      }}>
-        {valor}
-      </b>
-      {notas.map((n) => (
-        <i key={n} style={{
-          fontStyle: "normal", fontSize: 11, color: "var(--ink-3)",
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}>
-          {n}
-        </i>
-      ))}
-      {tasa && (
-        <i style={{ fontStyle: "normal", fontSize: 11, fontWeight: 600, color: "var(--ink-2)" }}>
-          {tasa}
-        </i>
-      )}
+      <b className={"v" + (cero ? " cero" : "")}>{valor}</b>
+      {notas.map((n) => <i key={n}>{n}</i>)}
+      {tasa && <i className="tasa">{tasa}</i>}
       {barra !== undefined && (
-        <div style={{
-          height: 4, background: "var(--surface-3)", borderRadius: 2,
-          marginTop: 4, overflow: "hidden",
-        }}>
-          <span style={{
-            display: "block", height: "100%", width: `${Math.max(0, Math.min(100, barra))}%`,
-            background: "var(--ocupado)", borderRadius: 2,
-          }} />
+        <div className="barrita">
+          <span style={{ width: `${Math.max(0, Math.min(100, barra))}%` }} />
         </div>
       )}
     </div>
   );
-}
-
-function Separador() {
-  return <div aria-hidden style={{ width: 1, alignSelf: "stretch", background: "var(--line)", flexShrink: 0 }} />;
 }
 
 /** La lectura del cursor de la escalera, en el encabezado del panel 02.
@@ -4327,6 +4370,22 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  donde se dibujan: en Vender ni se piden. */
   const cortesSinCargar = useCobrosPorVentas({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
   const reservasSinConfirmar = useReservasDeEspacio({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  /** Los contratos a los que les falta la planometría para que salga el aviso
+   *  de montaje («Falta planometría»). Igual: sólo quien administra, sólo acá. */
+  const faltaPlanometria = useFaltaPlanometria({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  /** «Plata: Al mes | Total», recordado por quien mira (rediseño, PR 2). */
+  const [unidad, setUnidad] = useUnidadDePlata();
+  /** El orden de «Quién paga el canon». */
+  const [ordenQuienPaga, setOrdenQuienPaga] = useState<"monto" | "nombre">("monto");
+  /** El grupo de «Para revisar» que se eligió; sin elegir, abre en «Hoy» si
+   *  tiene algo y si no en «30 días» (`grupoParaAbrir`). */
+  const [grupoElegido, setGrupoElegido] = useState<GrupoDeRevision | null>(null);
+  /** El aviso al que llevó una chincheta del plano: se trae a la vista y se
+   *  marca un momento. */
+  const [avisoMarcado, setAvisoMarcado] = useState<string | null>(null);
+  /** «Cargar planometría»: el contrato (código completo) cuya planometría la
+   *  ficha muestra arriba. */
+  const [planometriaPedida, setPlanometriaPedida] = useState<string | null>(null);
   /** El contrato que se acaba de cerrar.
    *
    *  Vive en la pantalla y no adentro del formulario a propósito: al guardar,
@@ -4553,6 +4612,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  de las dos y no da lo mismo cuál. */
   const revisar = (f: UnifiedFixture, face: "A" | "B" = "A") => {
     setSelected(f);
+    setPlanometriaPedida(null);
     setAnchor(null);
     setDetailFace(face);
     setDetailFull(true);
@@ -4851,6 +4911,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     setSelected(null);
     setCerrado(null);
     setEnContrato([]);
+    setGrupoElegido(null);
   }, [sede]);
 
   /** Las dos pantallas tienen SIEMPRE un periodo puesto.
@@ -5131,6 +5192,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       rentableFixtures, nonRentable,
       expired, expiring, noContract,
       topSuppliers, belowReference,
+      /** Los contratos que corren hoy con valor: la plata de la franja y de
+       *  «Quién paga» sale de acá, en la unidad que se elija. */
+      vigentes: faces.filter((x, i) => phases[i] === "vigente" && x.negotiatedValue > 0),
       partesOfrecidas, partesVendidas, rotuloPartes, piezasVendidas, contratos,
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
@@ -5166,7 +5230,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const montaje = useMemo(() => {
     const noMontado: (FaceEntry & { reporte: MountConfirmation })[] = [];
     const sinMontar: (FaceEntry & { dias: number })[] = [];
-    let viejosSinReporte = 0;
+    /** Los que arrancaron hace más de la ventana y nunca se reportaron: antes
+     *  una nota que no contaba; ahora una sección de «Corregir». */
+    const viejos: (FaceEntry & { dias: number })[] = [];
     // Con las partes vendidas: una puerta se monta como cualquier espacio.
     fixtures.flatMap(espaciosDelMueble).forEach((entry) => {
       const fase = contractPhase(entry);
@@ -5188,7 +5254,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       // accionable — en NAVE hay contratos de enero, de antes de que el
       // montaje existiera. No se descartan en silencio: se cuentan aparte.
       if (dias > VENTANA_MONTAJE_DIAS) {
-        viejosSinReporte++;
+        viejos.push({ ...entry, dias });
         return;
       }
       sinMontar.push({ ...entry, dias });
@@ -5196,7 +5262,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     noMontado.sort((a, b) =>
       (b.reporte.confirmado_en ?? "").localeCompare(a.reporte.confirmado_en ?? ""));
     sinMontar.sort((a, b) => b.dias - a.dias);
-    return { noMontado, sinMontar, viejosSinReporte };
+    viejos.sort((a, b) => b.dias - a.dias);
+    return { noMontado, sinMontar, viejos };
   }, [fixtures, montajeDe, espaciosDelMueble]);
 
 
@@ -5260,24 +5327,86 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     return { plata, caras, sinTarifa, porDia: Math.round(plata / 30) };
   }, [fixtures, tarifaDe, partesVendidasDe]);
 
-  /** Lo que se cae si no se renueva, en plata y en porcentaje del canon. */
-  const porVencer = useMemo(() => {
-    const plata = kpis.expiring.reduce((t, e) => t + (e.negotiatedValue ?? 0), 0);
-    return { plata, pct: kpis.revenue ? Math.round((plata * 100) / kpis.revenue) : 0 };
-  }, [kpis]);
+  // ─── La plata de Supervisar, en UNA unidad (rediseño, PR 2) ──────────────
+  //
+  // Lo guardado es el total del contrato. «Al mes» lo reparte en los meses de
+  // cada contrato (`utils/meses.ts`, la gemela del servidor) y «Total» lo deja
+  // como está. Un contrato por % de las ventas suma lo cargado en sus cortes.
+  // Sólo quien administra: para el trabajador esto no existe.
 
-  /** De quién depende el canon. Con el sello de vencimiento, que es lo que
-   *  convierte un ranking en una alarma: «COCA COLA es el 23%» es un dato;
-   *  «brayan es el 19% y vence» es una llamada que hay que hacer. */
-  const proveedores = useMemo(() => {
+  /** Los contratos que se cobran por ventas, por su código completo. */
+  const cobroPorCodigo = useMemo(
+    () => new Map(cortesSinCargar.cobros.map((c) => [c.espacio.toUpperCase(), c])),
+    [cortesSinCargar.cobros],
+  );
+  const cobroDeCodigo = useCallback((codigo: string) => cobroPorCodigo.get(codigo.toUpperCase()), [cobroPorCodigo]);
+  const cobroDeFila = useCallback(
+    (e: FaceEntry) => cobroPorCodigo.get(fullSpaceCode(e.fixture.sede || sede, e.code).toUpperCase()),
+    [cobroPorCodigo, sede],
+  );
+  /** Las reservas vivas, por su código completo (la ficha las confirma). */
+  const reservaPorCodigo = useMemo(
+    () => new Map(reservasSinConfirmar.vivas.map((r) => [r.espacio.toUpperCase(), r])),
+    [reservasSinConfirmar.vivas],
+  );
+  const reservaDeCodigo = useCallback((codigo: string) => reservaPorCodigo.get(codigo.toUpperCase()), [reservaPorCodigo]);
+  /** El montaje de un contrato por su código completo (las participaciones). */
+  const montajeDelCodigo = useCallback(
+    (codigo: string, desde: string) => reporteDelContrato(reportesDeMontaje, codigo, desde),
+    [reportesDeMontaje],
+  );
+
+  /** El periodo que se mira, en días ISO: la tarifa de lo libre en «Total». */
+  const periodoIso = useMemo(
+    () => (mapRange ? { desde: toISODate(mapRange.from), hasta: toISODate(mapRange.to) } : null),
+    [mapRange],
+  );
+
+  const plata = useMemo(() => {
+    if (!isAdmin) return null;
+    const hoyIso = toISODate(new Date());
+    const en = (x: FaceEntry) => enLaUnidad(x.negotiatedValue, x.startDate, x.endDate, unidad);
+    // Los que se cobran por ventas y corren hoy: lo cargado en sus cortes.
+    const porVentas = cortesSinCargar.cobros.filter((c) => c.desde <= hoyIso && hoyIso <= c.hasta);
+    let canon = 0;
+    for (const x of kpis.vigentes) canon += en(x);
+    let cargado = 0;
+    for (const c of porVentas) {
+      canon += enLaUnidad(c.cobrado, c.desde, c.hasta, unidad);
+      cargado += c.cobrado;
+    }
+    let vence = 0;
+    for (const x of kpis.expiring) vence += en(x);
+    // Lo libre, a tarifa: la tarifa es al mes; en «Total», por el periodo.
+    const sinAlquilarEn = periodoIso
+      ? tarifaEnLaUnidad(sinAlquilar.plata, periodoIso.desde, periodoIso.hasta, unidad) : sinAlquilar.plata;
+    // De quién depende el canon, con la misma cuenta.
     const venciendo = new Set(kpis.expiring.map((e) => e.supplierName).filter(Boolean));
-    const total = kpis.revenue || 1;
-    return kpis.topSuppliers.map((x) => ({
-      ...x,
-      pct: Math.round((x.revenue / total) * 100),
-      vence: venciendo.has(x.name),
+    const por = new Map<string, number>();
+    for (const x of kpis.vigentes) if (x.supplierName) por.set(x.supplierName, (por.get(x.supplierName) ?? 0) + en(x));
+    for (const c of porVentas) {
+      const monto = enLaUnidad(c.cobrado, c.desde, c.hasta, unidad);
+      if (c.proveedor && monto > 0) por.set(c.proveedor, (por.get(c.proveedor) ?? 0) + monto);
+    }
+    const total = canon || 1;
+    const maximo = Math.max(1, ...por.values());
+    const quienes = [...por].map(([name, revenue]) => ({
+      name, revenue,
+      pct: Math.round((revenue / total) * 100),
+      barra: (revenue / maximo) * 100,
+      vence: venciendo.has(name),
+      porVentas: porVentas.some((c) => c.proveedor === name && c.cobrado > 0),
     }));
-  }, [kpis]);
+    quienes.sort(ordenQuienPaga === "nombre"
+      ? (a, b) => a.name.localeCompare(b.name, "es")
+      : (a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name, "es"));
+    return {
+      canon, cargado, porVentas: porVentas.length,
+      vence, vencePct: canon ? Math.round((vence * 100) / canon) : 0,
+      sinAlquilar: sinAlquilarEn,
+      quienes,
+    };
+  }, [isAdmin, unidad, kpis, cortesSinCargar.cobros, sinAlquilar, periodoIso, ordenQuienPaga]);
 
   /** Las caras contratadas y sin reportar, para que el chip «Sin montar» de la
    *  tabla filtre exactamente la misma lista que muestran los pendientes. */
@@ -5294,43 +5423,162 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     );
   }, [mapRange, seasonWindows]);
 
-  const attentionCount =
-    kpis.expired.length + kpis.expiring.length + kpis.noContract.length +
+  // ─── «Para revisar» en tres grupos (rediseño, PR 2) ─────────────────────
+  //
+  // Cada aviso de cada sección es UNA fila de `avisos`: de ahí salen la cuenta
+  // de cada pestaña, la pastilla roja (la suma de las tres) y las chinchetas
+  // del plano. Una sección que se dibuja y no está acá no se contaría: por eso
+  // las secciones de la lista leen las MISMAS listas que se cuentan.
+
+  /** El mueble de un espacio de la sede, por su código completo. */
+  const muebleDelEspacio = useCallback((espacio: string): { fixture: UnifiedFixture; cara: "A" | "B" } | null => {
+    const pre = `${sede.toUpperCase()}-`;
+    const corto = espacio.toUpperCase().startsWith(pre) ? espacio.slice(pre.length) : espacio;
+    const p = partirCodigo(corto);
+    const f = fixtures.find((x) => (x.code || "").trim().toUpperCase() === p.base);
+    return f ? { fixture: f, cara: p.cara } : null;
+  }, [fixtures, sede]);
+
+  /** Las reservas de espacio que caducan hoy (Hoy) y las demás (30 días). */
+  const reservasPorGrupo = useMemo(() => {
+    const hoyIso = toISODate(new Date());
+    return {
+      hoy: reservasSinConfirmar.vivas.filter((r) => r.caduca <= hoyIso),
+      dias30: reservasSinConfirmar.vivas.filter((r) => r.caduca > hoyIso),
+    };
+  }, [reservasSinConfirmar.vivas]);
+  /** Lo que falta de planometría, en «Hoy» con 7 días o menos para empezar. */
+  const planometriaPorGrupo = useMemo(() => ({
+    hoy: faltaPlanometria.filas.filter((f) => grupoDelAviso("falta_planometria", f.dias_para_empezar) === "hoy"),
+    dias30: faltaPlanometria.filas.filter((f) => grupoDelAviso("falta_planometria", f.dias_para_empezar) === "dias30"),
+  }), [faltaPlanometria.filas]);
+  /** Las tarjetas de las participaciones, repartidas en los tres grupos. */
+  const participacionesPorGrupo = useMemo(() => ({
+    hoy: deParticipacionesEn(revisionPc.secciones, "hoy"),
+    dias30: deParticipacionesEn(revisionPc.secciones, "dias30"),
+    corregir: deParticipacionesEn(revisionPc.secciones, "corregir"),
+  }), [revisionPc.secciones]);
+
+  const avisos = useMemo((): Aviso[] => {
+    const a: Aviso[] = [];
+    const de = (e: FaceEntry) => ({ fixtureId: e.fixture.id, cara: e.face });
+    // Para todos (el trabajador ve estas, sin plata).
+    for (const e of kpis.expired) a.push({ seccion: "vencidos", clave: `v-${claveDeFila(e)}`, ...de(e) });
+    for (const e of kpis.expiring) a.push({ seccion: "por_vencer", clave: `pv-${claveDeFila(e)}`, ...de(e) });
+    for (const e of kpis.noContract) a.push({ seccion: "ocupado_sin_contrato", clave: `nc-${claveDeFila(e)}`, ...de(e) });
     // Los fantasmas cuentan para TODAS las sedes, no sólo la abierta: un
     // contrato sin mueble no se ve en ningún plano, así que si sólo contara en
     // la suya no se vería nunca. Es lo único de esta lista que cruza tiendas.
-    fantasmas.length +
-    (isAdmin
-      ? kpis.belowReference.length + montaje.noMontado.length +
-        montaje.sinMontar.length + pendientesDelPlano +
-        // Los cortes de ventas sin cargar y las reservas de espacio vivas.
-        cortesSinCargar.porCargar + reservasSinConfirmar.vivas.length +
-        // Lo de las participaciones: lo que falta distribuir, las
-        // distribuciones con problemas o para revisar, las reservas por caducar…
-        revisionPc.total
-      : 0);
+    for (const f of fantasmas) a.push({ seccion: "contrato_sin_mueble", clave: `fa-${f.espacio}` });
+    if (!isAdmin) return a;
+    // Sólo quien administra: llevan proveedores, plata o participaciones.
+    for (const c of cortesSinCargar.pendientes) {
+      const k = `${c.lease_id}|${c.periodo_desde}`;
+      if (k in cortesSinCargar.cargados) continue;
+      const m = muebleDelEspacio(c.espacio);
+      a.push({ seccion: "ventas_por_cargar", clave: `corte:${k}`, fixtureId: m?.fixture.id, cara: m?.cara });
+    }
+    for (const sec of revisionPc.secciones) {
+      for (const it of sec.items) {
+        a.push({
+          seccion: SECCION_DE_PARTICIPACIONES[sec.tipo], clave: `pc:${it.clave}`, dias: diasDelRenglon(it),
+          fixtureId: it.abrir?.fixtureId ?? null, cara: it.abrir?.cara,
+        });
+      }
+    }
+    for (const f of faltaPlanometria.filas) {
+      const m = muebleDelEspacio(f.espacio);
+      a.push({ seccion: "falta_planometria", clave: `pl:${f.lease_id}`, dias: f.dias_para_empezar, fixtureId: m?.fixture.id, cara: m?.cara });
+    }
+    for (const e of montaje.noMontado) a.push({ seccion: "no_se_pudo_montar", clave: `nm-${claveDeFila(e)}`, ...de(e) });
+    for (const e of montaje.sinMontar) a.push({ seccion: "sin_montar", clave: `sm-${claveDeFila(e)}`, ...de(e) });
+    for (const e of montaje.viejos) a.push({ seccion: "montajes_viejos", clave: `mv-${claveDeFila(e)}`, ...de(e) });
+    for (const r of reservasSinConfirmar.vivas) {
+      const m = muebleDelEspacio(r.espacio);
+      a.push({ seccion: "reservas", clave: `res:${r.id}`, dias: daysUntil(r.caduca), fixtureId: m?.fixture.id, cara: m?.cara });
+    }
+    for (const e of kpis.belowReference) a.push({ seccion: "bajo_tarifa", clave: `bt-${claveDeFila(e)}`, ...de(e) });
+    // Lo que sólo vive en el plano: cada contrato que falta pasar (o completar).
+    if (importacion) {
+      for (const x of [...importacion.importables, ...importacion.incompletos]) {
+        a.push({ seccion: "solo_en_el_plano", clave: `ip-${x.sede}-${x.code}` });
+      }
+    }
+    return a;
+  }, [kpis, fantasmas, isAdmin, cortesSinCargar.pendientes, cortesSinCargar.cargados, revisionPc.secciones,
+    faltaPlanometria.filas, montaje, reservasSinConfirmar.vivas, importacion, muebleDelEspacio]);
+
+  /** Cuántos avisos tiene cada grupo, y la pastilla roja: la suma de los tres. */
+  const cuentasDeRevision = useMemo(() => contarPorGrupo(avisos), [avisos]);
+  const attentionCount = cuentaDelBadge(cuentasDeRevision);
+  const grupoDeRevision: GrupoDeRevision = grupoElegido ?? grupoParaAbrir(cuentasDeRevision);
+
+  /** Las chinchetas del plano: los muebles con algo en «Para revisar», del
+   *  color del grupo más urgente. Nada que no esté en `avisos`. */
+  const chinchetasDeRevision = useMemo(
+    () => chinchetasDe(avisos).map((c) => ({ ...c, titulo: `Para revisar · ${tituloDeSeccion(c.seccion, c.grupo)}` })),
+    [avisos],
+  );
+  /** Tocar una chincheta lleva a su aviso: «Para revisar» en su grupo, con la
+   *  fila a la vista y marcada un momento. */
+  const irAlAviso = useCallback((c: Chincheta) => {
+    setSelected(null);
+    setDetailFull(false);
+    setAnchor(null);
+    setGrupoElegido(c.grupo);
+    setAvisoMarcado(c.clave);
+  }, []);
+  useEffect(() => {
+    if (!avisoMarcado) return;
+    const el = document.querySelector<HTMLElement>(`[data-aviso="${CSS.escape(avisoMarcado)}"]`);
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    el?.setAttribute("data-marcada", "1");
+    const t = window.setTimeout(() => { el?.removeAttribute("data-marcada"); setAvisoMarcado(null); }, 2400);
+    return () => window.clearTimeout(t);
+  }, [avisoMarcado]);
+
+  /** «Cargar planometría»: la ficha del espacio, con la planometría de ese
+   *  contrato arriba. */
+  const cargarPlanometria = (f: MontajePendiente) => {
+    const m = muebleDelEspacio(f.espacio);
+    if (!m) return;
+    revisar(m.fixture, m.cara);
+    setPlanometriaPedida(f.espacio.toUpperCase());
+  };
+
+  /** Las caras vendidas en parte en el periodo (con partes vendidas o por
+   *  participación con algo comprometido): la pestaña de la tabla y su
+   *  pastilla. La misma cuenta que «Vendido en parte» de la clave del plano. */
+  const enParteSet = useMemo(
+    () => new Set([...filasDelPeriodo].filter(([, f]) => f.dispo === "parcial").map(([k]) => k)),
+    [filasDelPeriodo],
+  );
 
   /** Cuántas filas deja ver la tabla con el filtro y el chip puestos: la misma
    *  cuenta que hace `SpacesTable`, para decir «12 de 68» en el encabezado. */
   const visiblesEnTabla = useMemo(() => {
     const q = normalizeText(mapQuery.trim());
     return fixtures.flatMap(espaciosDelMueble)
-      .filter((e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, mapFilter, sinMontarSet))
+      .filter((e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, mapFilter, sinMontarSet, enParteSet))
       .length;
-  }, [fixtures, mapQuery, mapFilter, sinMontarSet, fichasPropias, nombresPropios, espaciosDelMueble]);
+  }, [fixtures, mapQuery, mapFilter, sinMontarSet, enParteSet, fichasPropias, nombresPropios, espaciosDelMueble]);
 
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
    *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,
    *  y es lo que evita que alguien toque «Sin montar 0» y crea que se rompió. */
   const chipsTabla = useMemo(() => {
+    // Las cinco pestañas del dibujo, con su cuenta siempre a la vista: un
+    // cero dice que no hay, que es una respuesta (rediseño, PR 2).
+    const enParte = fixtures.flatMap(espaciosDelMueble).filter((e) => enParteSet.has(`${e.fixture.id}-${e.face}`)).length;
     const todos: { id: MapFilter; label: string; n: number }[] = [
       { id: "todos", label: "Todas", n: kpis.filas },
       { id: "expiring", label: "Por vencer", n: kpis.expiring.length },
       { id: "sin_montar", label: "Sin montar", n: montaje.sinMontar.length },
       { id: "free", label: "Libres", n: kpis.free },
+      { id: "en_parte", label: "Vendido en parte", n: enParte },
     ];
-    return todos.filter((c) => c.id === "todos" || c.n > 0);
-  }, [kpis, montaje.sinMontar.length]);
+    return todos;
+  }, [kpis, montaje.sinMontar.length, fixtures, espaciosDelMueble, enParteSet]);
 
   /** «lunes 31 de agosto de 2026». Es el único lugar de la pantalla donde se
    *  dice qué día es, y hace falta: todo lo demás —los días que faltan, lo que
@@ -5354,23 +5602,24 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  proporción del dibujo y el mismo plano salía mucho más grande acá
    *  (captura del dueño, 2026-09-23). */
   const tarjetaMapa = (
-        <Card style={{ position: "relative", minWidth: 0, minHeight: 0 }}>
-          <CardHeader
-            icon={<MapIcon {...ICONO_TARJETA} />}
-            title={`Piso de ${sede}`}
-            right={
-              <>
-                {/* El filtro estaba arriba, en la franja de controles, junto a
-                    cosas que no filtran el mapa. Filtrar tacha los muebles del
-                    plano: es un control DEL mapa y vive en el borde del mapa,
-                    como la regla al costado de un plano impreso. */}
-                <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar el plano" />
-                <MapLegend tally={rangeTally} modo="supervisar" />
-              </>
-            }
-          />
+        <section className="vp vp-plano" style={{ minWidth: 0 }}>
+          {/* El MISMO panel que el plano de Vender (`.vp-plano`: el mismo
+              encabezado, el mismo lienzo con el mismo relleno), en una fila
+              del mismo alto (`--alto-plano`): el plano mide lo mismo en las dos
+              pantallas. La clave lleva «Vendido en parte» y las chinchetas de
+              lo que hay para revisar; el filtro es un control DEL mapa y vive
+              en su borde, como la regla al costado de un plano impreso. */}
+          <header>
+            <MapIcon {...ICONO_TARJETA} className="ico-tarjeta" />
+            <h2>Piso de {sede}</h2>
+            <span className="sub">{fixtures.length} muebles</span>
+            <div className="der">
+              <MapLegend tally={rangeTally} modo="supervisar" chinchetas={chinchetasDeRevision.length} />
+              <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar el plano" />
+            </div>
+          </header>
 
-          <div style={{ padding: "0 14px 12px", display: "flex", flex: 1, minHeight: 0 }}>
+          <div className="lienzo">
             {mapRange && (
               <IsoMap
                 fixtures={fixtures}
@@ -5383,6 +5632,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 porPartes={porPartesDeCara}
                 cortoDe={cortoDeCara}
                 libreDesde={libreDesdeDeCara}
+                chinchetas={chinchetasDeRevision}
+                onChincheta={irAlAviso}
               />
             )}
           </div>
@@ -5409,7 +5660,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               onClose={closeDetail}
             />
           )}
-        </Card>
+        </section>
   );
 
   /* ══ LA HOJA DE VENDER · la composición de D ═══════════════════════════════
@@ -5429,7 +5680,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  —que son lo que hace verificable la promesa del rótulo («mide 10,5 px a
    *  todo acercamiento»)—. */
   const panelPlano = mapRange && (
-    <section className="vp" style={{ gridArea: "1 / 1" }}>
+    <section className="vp vp-plano" style={{ gridArea: "1 / 1" }}>
       <header>
         <MapIcon {...ICONO_TARJETA} className="ico-tarjeta" />
         <h2>Piso de {sede}</h2>
@@ -5655,7 +5906,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
          válvula declarada es la ficha del contrato del cuarto espacio en
          adelante). En Supervisar sigue siendo un documento largo que rueda,
          que es lo que esa pantalla es. */
-      className={modoEfectivo === "vender" && fixtures.length > 0 ? "vender" : undefined}
+      className={modoEfectivo === "vender" && fixtures.length > 0 ? "vender" : "sup"}
       style={
         modoEfectivo === "vender" && fixtures.length > 0
           ? { padding: "10px 12px 12px", background: "var(--bg)" }
@@ -5857,25 +6108,24 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       ) : (
         <>
           {/* ── La franja ──────────────────────────────────────────────────
-              Cinco cifras y ninguna oración. Acá había un parte escrito en
-              prosa; el que pone el canon sabe lo que hace y no necesita que
-              se le explique el negocio, necesita el dato a mano.
-
-              El orden no es decorativo: lo que entra, lo que no entra, lo que
-              se puede caer, cuánto de la sala está trabajando, y qué se está
-              cobrando sin haberlo armado. De izquierda a derecha, de lo
-              seguro a lo que hay que ir a resolver. */}
+              Cinco cifras y ninguna oración, cada una en su caja (rediseño,
+              PR 2). El orden no es decorativo: lo que entra, lo que no entra,
+              lo que se puede caer, cuánto de la sala está trabajando, y qué se
+              está cobrando sin haberlo armado. A la derecha, UN selector para
+              la plata —«Al mes | Total»— que siguen las cifras, la columna de
+              valor de la tabla y «Quién paga el canon». Sólo quien administra
+              lo ve: el trabajador no ve plata. */}
           <Card style={{ flexShrink: 0, marginBottom: 10 }}>
             <CardHeader
               icon={<Gauge {...ICONO_TARJETA} />}
               title={sede}
-              sub={mapRange ? describeRange(mapRange) : "Hoy"}
-              right={
-                <span>
-                  {kpis.contratos} contrato
+              sub={
+                <>
+                  {mapRange ? describeRange(mapRange) : "Hoy"} · {kpis.contratos} contrato
                   {kpis.contratos === 1 ? "" : "s"} · {kpis.total} caras
-                </span>
+                </>
               }
+              right={isAdmin ? <SelectorDePlata unidad={unidad} onCambio={setUnidad} /> : undefined}
             />
             {/* La plata sólo para quien la maneja. El servidor ya le borra el
                 `negotiatedValue` a un mercaderista y nunca le manda las
@@ -5883,42 +6133,37 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 «CANON VIGENTE $0» no es discreción, es una sede que parece
                 quebrada. Lo que él necesita saber es qué hay que montar y qué
                 se está por caer, y eso sí lo ve, contado en espacios. */}
-            <div style={{
-              padding: "0 15px 12px", display: "flex", alignItems: "flex-start",
-              gap: 16, flexWrap: "wrap",
-            }}>
-              {isAdmin ? (
+            <div className="cifras">
+              {isAdmin && plata ? (
                 <>
                   <Cifra
                     icono={<Banknote {...ICONO_TARJETA} />}
                     rotulo="Canon vigente"
-                    valor={formatCOP(kpis.revenue)}
+                    valor={formatCOP(plata.canon)}
                     notas={[
-                      "al mes",
-                      // Los contratos que se cobran por % de las ventas no tienen
-                      // canon fijo: no suman acá, y se dice cuántos son.
-                      ...(cortesSinCargar.vigentes > 0
-                        ? [`+ ${cortesSinCargar.vigentes} por % de venta`] : []),
+                      unidad === "mes" ? "al mes · cada contrato en sus meses" : "lo firmado en los contratos vigentes",
+                      // Los contratos que se cobran por % de las ventas suman
+                      // lo cargado en sus cortes, y se dice cuántos son.
+                      ...(plata.porVentas > 0
+                        ? [`+ ${plata.porVentas} por % de venta${plata.cargado > 0 ? ` · ${money(plata.cargado)} cargado` : ""}`] : []),
                     ]}
                   />
-                  <Separador />
                   <Cifra
                     icono={<CircleDashed {...ICONO_TARJETA} />}
                     rotulo="Sin alquilar"
-                    valor={formatCOP(sinAlquilar.plata)}
+                    valor={formatCOP(plata.sinAlquilar)}
                     notas={[
-                      `al mes a tarifa · ${sinAlquilar.caras} cara${sinAlquilar.caras === 1 ? "" : "s"}`,
+                      `${unidad === "mes" ? "al mes a tarifa" : "en el periodo, a tarifa"} · ${sinAlquilar.caras} cara${sinAlquilar.caras === 1 ? "" : "s"}`,
                       ...(sinAlquilar.sinTarifa > 0
                         ? [`${sinAlquilar.sinTarifa} sin tarifa, fuera de la cuenta`] : []),
                     ]}
                     tasa={`${formatCOP(sinAlquilar.porDia)} por día vacío`}
                   />
-                  <Separador />
                   <Cifra
                     icono={<AlarmClock {...ICONO_TARJETA} />}
                     rotulo="Vence en 30 días"
-                    valor={formatCOP(porVencer.plata)}
-                    notas={[`${porVencer.pct}% del canon · ${kpis.expiring.length} espacio${kpis.expiring.length === 1 ? "" : "s"}`]}
+                    valor={formatCOP(plata.vence)}
+                    notas={[`${plata.vencePct} % del canon · ${kpis.expiring.length} espacio${kpis.expiring.length === 1 ? "" : "s"}`]}
                     alarma
                   />
                 </>
@@ -5931,7 +6176,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                     notas={["contratos que se caen"]}
                     alarma
                   />
-                  <Separador />
                   <Cifra
                     icono={<CircleDashed {...ICONO_TARJETA} />}
                     rotulo="Libres"
@@ -5940,13 +6184,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   />
                 </>
               )}
-              <Separador />
               <Cifra
                 icono={<PieChart {...ICONO_TARJETA} />}
                 rotulo="Ocupación"
-                valor={`${kpis.occPct}%`}
+                valor={`${kpis.occPct} %`}
                 notas={[
-                  `${kpis.occupied} de ${kpis.total} caras`,
+                  `${kpis.occupied} de ${kpis.total} caras${enParte(rangeTally) > 0 ? ` · ${enParte(rangeTally)} vendida${enParte(rangeTally) === 1 ? "" : "s"} en parte` : ""}`,
                   // Vender por partes: cuántas partes corren o están firmadas,
                   // de las que se ofrecen. Sólo si alguien vende por partes.
                   ...(kpis.partesOfrecidas > 0
@@ -5956,7 +6199,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 ]}
                 barra={kpis.occPct}
               />
-              <Separador />
               <Cifra
                 icono={<Hammer {...ICONO_TARJETA} />}
                 rotulo="Sin montar"
@@ -5968,22 +6210,20 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
           {/* ── LA HOJA DE SUPERVISAR: la misma rejilla que la de Vender ──────
               Dos columnas en la misma proporción (1004 : 402) y filas del
-              mismo alto que el panel del plano de Vender:
+              mismo alto que el panel del plano de Vender (`--alto-plano`):
 
-                  el plano             │ para revisar
+                  el plano             │ para revisar (o la ficha)
                   estado por espacio   │ quién paga el canon
+                  participaciones de cara, a todo el ancho
 
-              Antes era una fila con el plano y una columna de dos tarjetas, y
-              debajo la tabla a todo el ancho: con la tabla apretada quedaba un
-              hueco a la derecha, y con la tabla estirada el hueco quedaba
-              adentro (capturas del dueño, 2026-09-23). Así cada tarjeta tiene
-              al lado otra de su mismo alto, y cada una desplaza lo suyo. */}
+              Cada tarjeta desplaza lo suyo. Por debajo de 1000 px, una sola
+              columna con «Para revisar» primero (dibujo aprobado). */}
           <div className="supervisar-hoja">
             {tarjetaMapa}
 
             {/* Lo que hay que revisar —o la ficha del espacio elegido, que
                 ocupa su lugar—, al lado del plano donde se lo busca. */}
-            <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+            <div className="col-revisar">
               {selected && detailFull ? (
                 <FixtureDetailCard
                   fixture={selected}
@@ -6007,246 +6247,337 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                     closeDetail();
                   }}
                   onOpenFile={setViewerFile}
+                  unidad={unidad}
+                  montajeDe={montajeDe}
+                  montajeDelCodigo={montajeDelCodigo}
+                  cobroDe={isAdmin ? cobroDeCodigo : undefined}
+                  reservaDe={isAdmin ? reservaDeCodigo : undefined}
+                  onReservaCambio={() => {
+                    reservasSinConfirmar.recargar();
+                    void refrescarComercial();
+                    if (hayParticipaciones) void recargarOcupacion(sede);
+                  }}
+                  planometriaPedida={planometriaPedida}
+                  onPlanometriaCargada={faltaPlanometria.recargar}
+                  /* «Vender el Y %»: Vender con esta cara y lo que queda hoy. */
+                  onVenderLoQueQueda={isAdmin && porParticipacion(selected)
+                    ? (queda) => {
+                      const cara = fullSpaceCode(sede, codigoDeParte(selected.code, detailFace, null));
+                      negociar(selected, detailFace, {
+                        id: `${cara}|queda`, proveedor: "", correo: "", marca: "", desde: "", hasta: "",
+                        valores: {}, porcentajes: { [cara]: queda },
+                      });
+                    }
+                    : undefined}
                 />
               ) : (
               <Card style={{ flex: 1, minHeight: 0 }}>
-                <CardHeader icon={<ClipboardCheck {...ICONO_TARJETA} />} title="Para revisar" right={<span>{attentionCount}</span>} />
-                {attentionCount === 0 ? (
-                  <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre-txt)" }}>
-                    Sin contratos vencidos ni próximos a vencer, y todo lo que la base
-                    tiene vendido se ve en el plano.
-                  </div>
-                ) : (
-                  <div style={{
-                    flex: 1, minHeight: 0, padding: "0 9px 10px",
-                    display: "flex", flexDirection: "column", gap: 12, overflowY: "auto",
-                  }}>
-                    {/* Las dos mitades del desfase van primero, juntas: son lo
-                        único acá que la pantalla no puede mostrar de ninguna otra
-                        forma. Todo lo demás se ve también en el mapa; esto, por
-                        definición, no.
+                <CardHeader
+                  icon={<ClipboardCheck {...ICONO_TARJETA} />}
+                  title="Para revisar"
+                  right={attentionCount > 0 ? <span className="cuenta" aria-label={`${attentionCount} para revisar`}>{attentionCount}</span> : undefined}
+                />
+                {/* Tres grupos por cuándo hay que actuar, con su cuenta siempre
+                    a la vista (`components/Supervisar/paraRevisar.ts`). */}
+                <div style={{ padding: "0 12px 8px" }}>
+                  <PestanasDeRevision cuentas={cuentasDeRevision} grupo={grupoDeRevision} onGrupo={setGrupoElegido} />
+                </div>
+                <div className="lista-r">
+                  {cuentasDeRevision[grupoDeRevision] === 0 && (
+                    <div className="vacio-r">
+                      {grupoDeRevision === "hoy" ? "Nada para hoy."
+                        : grupoDeRevision === "dias30" ? "Nada que venza ni que haya que preparar en los próximos 30 días."
+                        : "Nada que corregir: todo lo que la base tiene vendido se ve en el plano."}
+                    </div>
+                  )}
 
-                        Primero la importable, porque tiene arreglo de un botón. */}
-                    {isAdmin && importacion && (pendientesDelPlano > 0 || importados > 0) && (
-                      <ImportarDelPlano
-                        datos={importacion}
-                        importados={importados}
-                        onAplicado={(r) => {
-                          setImportados(r.importables.length);
-                          // Lo importado ya es de la base: el mapa se repinta de
-                          // ahí, y los fantasmas se recalculan solos.
-                          void refrescarComercial();
-                          // Y se vuelve a preguntar. La respuesta de aplicar dice
-                          // qué se ESCRIBIÓ, no qué queda: ponerla de vuelta tal
-                          // cual dejaría el botón ofreciendo lo que ya se importó.
-                          revisarImportacion().then(setImportacion).catch(() => {});
-                        }}
-                      />
-                    )}
-                    {fantasmas.length > 0 && (
-                      <div>
-                        <AtencionSection
-                          label="Contrato sin mueble en el plano"
-                          color="var(--warning, var(--ocupado))"
-                          monto={fantasmas.length}
+                  {/* ── HOY: lo que no espera ── */}
+                  {grupoDeRevision === "hoy" && (
+                    <>
+                      {/* Lo que se vende por % de las ventas: cada período que
+                          terminó, lo vendido, y el servidor dice cuánto se cobra. */}
+                      {isAdmin && cortesSinCargar.pendientes.length > 0 && (
+                        <VentasPorCargar
+                          sede={sede}
+                          pendientes={cortesSinCargar.pendientes}
+                          cargados={cortesSinCargar.cargados}
+                          onCargado={cortesSinCargar.marcarCargado}
                         />
-                        {fantasmas.map((f) => (
-                          <FantasmaRow
-                            key={f.espacio}
-                            fila={f}
-                            isAdmin={isAdmin}
-                            abierto={fantasmaAbierto === f.espacio}
-                            onAbrir={() => setFantasmaAbierto(
-                              fantasmaAbierto === f.espacio ? null : f.espacio,
-                            )}
-                            onCancelado={() => {
-                              setFantasmaAbierto(null);
-                              void refrescarComercial();
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {/* Las participaciones de cara: contratado sin dibujar,
-                        distribuciones con problemas o para revisar, reservas
-                        por caducar, contratos de participación sin término…
-                        Sólo para quien administra: lleva proveedores y marcas. */}
-                    {isAdmin && revisionPc.total > 0 && (
-                      <RevisarParticipaciones secciones={revisionPc.secciones} />
-                    )}
-                    {/* Lo que se vende por % de las ventas: cada período que
-                        terminó, lo vendido, y el servidor dice cuánto se cobra. */}
-                    {isAdmin && cortesSinCargar.pendientes.length > 0 && (
-                      <VentasPorCargar
-                        sede={sede}
-                        pendientes={cortesSinCargar.pendientes}
-                        cargados={cortesSinCargar.cargados}
-                        onCargado={cortesSinCargar.marcarCargado}
-                      />
-                    )}
-                    {/* Las reservas de una cara entera o de una parte: cuentan
-                        como ocupadas hasta que caducan. Confirmar usa el precio
-                        que se guardó al reservar. */}
-                    {isAdmin && reservasSinConfirmar.vivas.length > 0 && (
-                      <ReservasSinConfirmar
-                        sede={sede}
-                        vivas={reservasSinConfirmar.vivas}
-                        onCambio={() => {
-                          reservasSinConfirmar.recargar();
-                          // La cara reservada deja de estarlo o pasa a contrato:
-                          // el mapa se vuelve a leer de la base.
-                          void refrescarComercial();
-                          if (hayParticipaciones) void recargarOcupacion(sede);
-                        }}
-                      />
-                    )}
-                    {kpis.noContract.length > 0 && (
-                      <div>
-                        <AtencionSection
-                          label="Ocupado sin contrato"
-                          color="var(--ocupado)"
-                          monto={kpis.noContract.length}
+                      )}
+                      {/* Falta distribuir (7 días o menos) y las reservas de
+                          participación que caducan hoy. */}
+                      {isAdmin && participacionesPorGrupo.hoy.length > 0 && (
+                        <RevisarParticipaciones
+                          secciones={participacionesPorGrupo.hoy}
+                          tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "hoy")}
                         />
-                        {kpis.noContract.map((entry) => (
-                          <AtencionRow
-                            key={`nc-${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip="—"
-                            dates="sin papeles"
-                            selected={selected?.id === entry.fixture.id}
-                            onSelect={() => revisar(entry.fixture, entry.face)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {kpis.expired.length > 0 && (
-                      <div>
-                        <AtencionSection
-                          label="Vencidos"
-                          color="var(--ocupado)"
-                          monto={isAdmin
-                            ? formatCOP(kpis.expired.reduce((t, e) => t + (e.negotiatedValue ?? 0), 0))
-                            : kpis.expired.length}
+                      )}
+                      {isAdmin && planometriaPorGrupo.hoy.length > 0 && (
+                        <FaltaPlanometria
+                          sede={sede}
+                          filas={planometriaPorGrupo.hoy}
+                          titulo={tituloDeSeccion("falta_planometria", "hoy")}
+                          onCargar={cargarPlanometria}
                         />
-                        {kpis.expired.map((entry) => (
-                          <AtencionRow
-                            key={`v-${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip={`${Math.abs(entry.days)}d`}
-                            dates={entry.endDate ? fechaEnCurso(entry.endDate) : "—"}
-                            selected={selected?.id === entry.fixture.id}
-                            onSelect={() => revisar(entry.fixture, entry.face)}
+                      )}
+                      {kpis.expired.length > 0 && (
+                        <div>
+                          <AtencionSection
+                            label="Vencidos"
+                            monto={isAdmin
+                              ? formatCOP(kpis.expired.reduce((t, e) => t + enLaUnidad(e.negotiatedValue, e.startDate, e.endDate, unidad), 0))
+                              : kpis.expired.length}
                           />
-                        ))}
-                      </div>
-                    )}
-                    {kpis.expiring.length > 0 && (
-                      <div>
-                        <AtencionSection
-                          label="Por vencer en 30 días"
-                          color="var(--ocupado)"
-                          monto={isAdmin ? formatCOP(porVencer.plata) : kpis.expiring.length}
+                          {kpis.expired.map((entry) => (
+                            <AtencionRow
+                              key={`v-${entry.fixture.id}-${entry.face}`}
+                              aviso={`v-${claveDeFila(entry)}`}
+                              entry={entry}
+                              chip={`${Math.abs(entry.days)}d`}
+                              dates={entry.endDate ? `venció el ${fechaEnCurso(entry.endDate)}` : "—"}
+                              selected={selected?.id === entry.fixture.id}
+                              onSelect={() => revisar(entry.fixture, entry.face)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {isAdmin && montaje.noMontado.length > 0 && (
+                        <div>
+                          <AtencionSection label="No se pudo montar" monto={montaje.noMontado.length} />
+                          {montaje.noMontado.map((entry) => (
+                            <AtencionRow
+                              key={`nm-${entry.fixture.id}-${entry.face}`}
+                              aviso={`nm-${claveDeFila(entry)}`}
+                              entry={entry}
+                              chip="!"
+                              dates={entry.reporte.motivo
+                                ? `«${MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]}»`
+                                : "sin motivo"}
+                              selected={selected?.id === entry.fixture.id}
+                              onSelect={() => revisar(entry.fixture, entry.face)}
+                              onFoto={
+                                entry.reporte.file_id
+                                  ? () => setViewerFile({
+                                      id: entry.reporte.file_id as number,
+                                      filename: entry.reporte.foto_nombre ?? "montaje.jpg",
+                                      content_type: entry.reporte.foto_tipo ?? "image/jpeg",
+                                      size: 0,
+                                      uploaded_at: entry.reporte.confirmado_en ?? "",
+                                    })
+                                  : undefined
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {/* Las reservas de una cara entera o de una parte que
+                          caducan hoy. Confirmar usa el precio que se guardó al
+                          reservar. */}
+                      {isAdmin && reservasPorGrupo.hoy.length > 0 && (
+                        <ReservasSinConfirmar
+                          sede={sede}
+                          titulo={tituloDeSeccion("reservas", "hoy")}
+                          vivas={reservasPorGrupo.hoy}
+                          onCambio={() => {
+                            reservasSinConfirmar.recargar();
+                            void refrescarComercial();
+                            if (hayParticipaciones) void recargarOcupacion(sede);
+                          }}
                         />
-                        {kpis.expiring.map((entry) => (
-                          <AtencionRow
-                            key={`pv-${claveDeFila(entry)}`}
-                            entry={entry}
-                            chip={`${entry.days}d`}
-                            dates={entry.endDate ? fechaEnCurso(entry.endDate) : "—"}
-                            selected={selected?.id === entry.fixture.id}
-                            onSelect={() => revisar(entry.fixture, entry.face)}
+                      )}
+                    </>
+                  )}
+
+                  {/* ── 30 DÍAS: lo que viene ── */}
+                  {grupoDeRevision === "dias30" && (
+                    <>
+                      {kpis.expiring.length > 0 && (
+                        <div>
+                          <AtencionSection
+                            label="Por vencer en 30 días"
+                            monto={isAdmin && plata ? formatCOP(plata.vence) : kpis.expiring.length}
                           />
-                        ))}
-                      </div>
-                    )}
-                    {isAdmin && montaje.noMontado.length > 0 && (
-                      <div>
-                        <AtencionSection
-                          label="No se pudo montar"
-                          color="var(--ocupado)"
-                          monto={montaje.noMontado.length}
+                          {kpis.expiring.map((entry) => (
+                            <AtencionRow
+                              key={`pv-${claveDeFila(entry)}`}
+                              aviso={`pv-${claveDeFila(entry)}`}
+                              entry={entry}
+                              chip={`${entry.days}d`}
+                              dates={entry.endDate ? `vence el ${fechaEnCurso(entry.endDate)}` : "—"}
+                              selected={selected?.id === entry.fixture.id}
+                              onSelect={() => revisar(entry.fixture, entry.face)}
+                              /* «Renovar» abre Vender con el contrato armado. */
+                              accion={isAdmin && renovable(entry)
+                                ? { texto: "Renovar", icono: <Repeat {...ICONO_TARJETA} />, onClick: () => renovar(entry) }
+                                : undefined}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {/* Falta distribuir con más margen, reservas de
+                          participación por caducar y borradores sin confirmar. */}
+                      {isAdmin && participacionesPorGrupo.dias30.length > 0 && (
+                        <RevisarParticipaciones
+                          secciones={participacionesPorGrupo.dias30}
+                          tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "dias30")}
                         />
-                        {montaje.noMontado.map((entry) => (
-                          <AtencionRow
-                            key={`nm-${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip="!"
-                            dates={entry.reporte.motivo
-                              ? MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]
-                              : "sin motivo"}
-                            selected={selected?.id === entry.fixture.id}
-                            onSelect={() => revisar(entry.fixture, entry.face)}
-                            onFoto={
-                              entry.reporte.file_id
-                                ? () => setViewerFile({
-                                    id: entry.reporte.file_id as number,
-                                    filename: entry.reporte.foto_nombre ?? "montaje.jpg",
-                                    content_type: entry.reporte.foto_tipo ?? "image/jpeg",
-                                    size: 0,
-                                    uploaded_at: entry.reporte.confirmado_en ?? "",
-                                  })
-                                : undefined
-                            }
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {isAdmin && montaje.sinMontar.length > 0 && (
-                      <div>
-                        <AtencionSection
-                          label="Contratado sin montar"
-                          color="var(--ink-3)"
-                          monto={montaje.sinMontar.length}
+                      )}
+                      {isAdmin && planometriaPorGrupo.dias30.length > 0 && (
+                        <FaltaPlanometria
+                          sede={sede}
+                          filas={planometriaPorGrupo.dias30}
+                          titulo={tituloDeSeccion("falta_planometria", "dias30")}
+                          onCargar={cargarPlanometria}
                         />
-                        {montaje.sinMontar.map((entry) => (
-                          <AtencionRow
-                            key={`sm-${claveDeFila(entry)}`}
-                            entry={entry}
-                            chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
-                            /* Más de dos meses cobrando algo que nadie
-                               reportó armado deja de ser un pendiente y pasa
-                               a ser un problema. */
-                            tono={entry.dias > 60 ? "alarma" : "sordo"}
-                            dates="sin montar"
-                            selected={selected?.id === entry.fixture.id}
-                            onSelect={() => revisar(entry.fixture, entry.face)}
-                          />
-                        ))}
-                        {montaje.viejosSinReporte > 0 && (
-                          <div style={{ padding: "8px 6px 0", fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
-                            {montaje.viejosSinReporte === 1
-                              ? `Además, 1 contrato que arrancó hace más de ${VENTANA_MONTAJE_DIAS} días nunca se reportó.`
-                              : `Además, ${montaje.viejosSinReporte} contratos que arrancaron hace más de ${VENTANA_MONTAJE_DIAS} días nunca se reportaron.`}
-                            {" "}A esa altura el espacio ya está armado: lo que falta es el reporte.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {isAdmin && kpis.belowReference.length > 0 && (
-                      <div>
-                        <AtencionSection
-                          label="Bajo tarifa de referencia"
-                          color="var(--ink-3)"
-                          monto={kpis.belowReference.length}
+                      )}
+                      {isAdmin && montaje.sinMontar.length > 0 && (
+                        <div>
+                          <AtencionSection label="Contratado sin montar" monto={montaje.sinMontar.length} />
+                          {montaje.sinMontar.map((entry) => (
+                            <AtencionRow
+                              key={`sm-${claveDeFila(entry)}`}
+                              aviso={`sm-${claveDeFila(entry)}`}
+                              entry={entry}
+                              chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
+                              /* Dos semanas cobrando algo que nadie reportó
+                                 armado deja de ser un pendiente y pasa a ser
+                                 un problema (la lista corta a los 30 días: el
+                                 «más de 60» de antes no podía pasar). */
+                              tono={entry.dias > DIAS_SIN_MONTAR_EN_ROJO ? "alarma" : "espera"}
+                              dates={entry.dias === 0 ? "empieza hoy" : `empezó el ${fechaEnCurso(entry.startDate)}`}
+                              selected={selected?.id === entry.fixture.id}
+                              onSelect={() => revisar(entry.fixture, entry.face)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {isAdmin && reservasPorGrupo.dias30.length > 0 && (
+                        <ReservasSinConfirmar
+                          sede={sede}
+                          titulo={tituloDeSeccion("reservas", "dias30")}
+                          vivas={reservasPorGrupo.dias30}
+                          onCambio={() => {
+                            reservasSinConfirmar.recargar();
+                            void refrescarComercial();
+                            if (hayParticipaciones) void recargarOcupacion(sede);
+                          }}
                         />
-                        {kpis.belowReference.map((entry) => (
-                          <AtencionRow
-                            key={`bt-${entry.fixture.id}-${entry.face}`}
-                            entry={entry}
-                            chip={`−${entry.gapPct}%`}
-                            tono="sordo"
-                            dates={`${formatCOP(entry.negotiatedValue)} · ref ${formatCOP(entry.ref)}`}
-                            selected={selected?.id === entry.fixture.id}
-                            onSelect={() => revisar(entry.fixture, entry.face)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )}
+                    </>
+                  )}
+
+                  {/* ── CORREGIR: datos que no cuadran ── */}
+                  {grupoDeRevision === "corregir" && (
+                    <>
+                      {/* Las dos mitades del desfase van primero, juntas: son lo
+                          único acá que la pantalla no puede mostrar de ninguna
+                          otra forma. */}
+                      {fantasmas.length > 0 && (
+                        <div>
+                          <AtencionSection label="Contrato sin mueble en el plano" monto={fantasmas.length} />
+                          {fantasmas.map((f) => (
+                            <FantasmaRow
+                              key={f.espacio}
+                              fila={f}
+                              isAdmin={isAdmin}
+                              abierto={fantasmaAbierto === f.espacio}
+                              onAbrir={() => setFantasmaAbierto(
+                                fantasmaAbierto === f.espacio ? null : f.espacio,
+                              )}
+                              onCancelado={() => {
+                                setFantasmaAbierto(null);
+                                void refrescarComercial();
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {isAdmin && importacion && (pendientesDelPlano > 0 || importados > 0) && (
+                        <ImportarDelPlano
+                          datos={importacion}
+                          importados={importados}
+                          onAplicado={(r) => {
+                            setImportados(r.importables.length);
+                            // Lo importado ya es de la base: el mapa se repinta de
+                            // ahí, y los fantasmas se recalculan solos.
+                            void refrescarComercial();
+                            // Y se vuelve a preguntar. La respuesta de aplicar dice
+                            // qué se ESCRIBIÓ, no qué queda.
+                            revisarImportacion().then(setImportacion).catch(() => {});
+                          }}
+                        />
+                      )}
+                      {kpis.noContract.length > 0 && (
+                        <div>
+                          <AtencionSection label="Ocupado sin contrato" monto={kpis.noContract.length} />
+                          {kpis.noContract.map((entry) => (
+                            <AtencionRow
+                              key={`nc-${entry.fixture.id}-${entry.face}`}
+                              aviso={`nc-${claveDeFila(entry)}`}
+                              entry={entry}
+                              chip="—"
+                              tono="sordo"
+                              dates="sin papeles"
+                              selected={selected?.id === entry.fixture.id}
+                              onSelect={() => revisar(entry.fixture, entry.face)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {/* Participación sin mueble, sin término, distribución
+                          con problemas o para revisar. Sólo para quien
+                          administra: lleva proveedores y marcas. */}
+                      {isAdmin && participacionesPorGrupo.corregir.length > 0 && (
+                        <RevisarParticipaciones
+                          secciones={participacionesPorGrupo.corregir}
+                          tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "corregir")}
+                        />
+                      )}
+                      {isAdmin && kpis.belowReference.length > 0 && (
+                        <div>
+                          <AtencionSection label="Bajo tarifa de referencia" monto={kpis.belowReference.length} />
+                          {kpis.belowReference.map((entry) => (
+                            <AtencionRow
+                              key={`bt-${entry.fixture.id}-${entry.face}`}
+                              aviso={`bt-${claveDeFila(entry)}`}
+                              entry={entry}
+                              chip={`−${entry.gapPct} %`}
+                              tono="espera"
+                              /* La tarifa de referencia es AL MES: el contrato
+                                 se compara en sus meses, sea cual sea la
+                                 unidad de la franja. */
+                              dates={`${formatCOP(enLaUnidad(entry.negotiatedValue, entry.startDate, entry.endDate, "mes"))} al mes · ref ${formatCOP(entry.ref)}`}
+                              selected={selected?.id === entry.fixture.id}
+                              onSelect={() => revisar(entry.fixture, entry.face)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {/* Lo que arrancó hace más de 30 días y nunca se reportó:
+                          a esa altura el espacio ya está armado; lo que falta es
+                          el reporte. Antes una nota que no contaba. */}
+                      {isAdmin && montaje.viejos.length > 0 && (
+                        <div>
+                          <AtencionSection label={tituloDeSeccion("montajes_viejos", "corregir")} monto={montaje.viejos.length} />
+                          {montaje.viejos.map((entry) => (
+                            <AtencionRow
+                              key={`mv-${claveDeFila(entry)}`}
+                              aviso={`mv-${claveDeFila(entry)}`}
+                              entry={entry}
+                              chip={`${entry.dias}d`}
+                              tono="sordo"
+                              dates={`arrancó hace más de ${VENTANA_MONTAJE_DIAS} días y nadie reportó el montaje`}
+                              selected={selected?.id === entry.fixture.id}
+                              onSelect={() => revisar(entry.fixture, entry.face)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </Card>
               )}
-
             </div>
 
           {/* ── Estado por espacio: abajo del plano, y del mismo ancho. Para
@@ -6257,38 +6588,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               titulo="Estado por espacio"
               espaciosDe={espaciosDelMueble}
               sub={visiblesEnTabla === kpis.filas
-                ? `${sede} · ${kpis.filas} espacio${kpis.filas !== 1 ? "s" : ""}`
-                : `${sede} · ${visiblesEnTabla} de ${kpis.filas} espacios`}
-              derecha={
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar la tabla" ancho={160} />
-                <div style={{ display: "flex", alignItems: "center" }}>
-                  {chipsTabla.map((c, i) => {
-                    const on = mapFilter === c.id;
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => setMapFilter(c.id)}
-                        style={{
-                          fontSize: 11, fontFamily: "inherit", cursor: "pointer",
-                          padding: "3px 8px", whiteSpace: "nowrap",
-                          border: "1px solid var(--line)",
-                          borderRight: i === chipsTabla.length - 1 ? "1px solid var(--line)" : 0,
-                          borderRadius:
-                            i === 0 ? "2px 0 0 2px"
-                            : i === chipsTabla.length - 1 ? "0 2px 2px 0"
-                            : 0,
-                          background: on ? "var(--ink-1)" : "transparent",
-                          borderColor: on ? "var(--ink-1)" : "var(--line)",
-                          color: on ? "#fff" : "var(--ink-3)",
-                          fontWeight: on ? 600 : 400,
-                        }}
-                      >
-                        {c.label} {c.n}
-                      </button>
-                    );
-                  })}
-                </div>
+                ? `${kpis.filas} espacio${kpis.filas !== 1 ? "s" : ""}`
+                : `${visiblesEnTabla} de ${kpis.filas} espacios`}
+              derecha={<FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar la tabla" ancho={160} />}
+              pestanas={
+                <div className="seg" role="group" aria-label="Qué espacios">
+                  {chipsTabla.map((c) => (
+                    <button key={c.id} type="button" aria-pressed={mapFilter === c.id} onClick={() => setMapFilter(c.id)}>
+                      {c.label} <span className="n">{c.n}</span>
+                    </button>
+                  ))}
                 </div>
               }
               fixtures={fixtures}
@@ -6298,30 +6607,53 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               montajeDe={montajeDe}
               tarifaDe={tarifaDe}
               sinMontar={sinMontarSet}
+              enParte={enParteSet}
+              unidad={unidad}
+              cobroDe={isAdmin ? cobroDeFila : undefined}
+              periodo={periodoIso ?? undefined}
               selectedId={selected?.id ?? null}
-              onSelect={selectFixture}
+              onSelect={revisar}
             />
           </Card>
 
-          {isAdmin && (
+          {isAdmin && plata && (
             <Card style={{ minWidth: 0, minHeight: 0 }}>
-              <CardHeader icon={<Building2 {...ICONO_TARJETA} />} title="Quién paga el canon" right={<span>al mes</span>} />
-              <div style={{ flex: 1, minHeight: 0, padding: "0 15px 12px", overflowY: "auto" }}>
-                {proveedores.length === 0 ? (
-                  <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
-                    Sin contratos vigentes con valor registrado.
-                  </div>
+              <CardHeader
+                icon={<Building2 {...ICONO_TARJETA} />}
+                title="Quién paga el canon"
+                right={
+                  <label className="orden-sel">
+                    <ArrowDownWideNarrow {...ICONO_TARJETA} />
+                    <select
+                      value={ordenQuienPaga}
+                      onChange={(e) => setOrdenQuienPaga(e.target.value === "nombre" ? "nombre" : "monto")}
+                      aria-label="Ordenar quién paga el canon"
+                    >
+                      <option value="monto">Por monto</option>
+                      <option value="nombre">Por nombre</option>
+                    </select>
+                  </label>
+                }
+              />
+              <div className="quien-l">
+                {plata.quienes.length === 0 ? (
+                  <div className="nota">Sin contratos vigentes con valor registrado.</div>
                 ) : (
-                  proveedores.map((x) => (
+                  plata.quienes.map((x) => (
                     <SupplierRow
                       key={x.name}
                       name={x.name}
                       revenue={x.revenue}
                       pct={x.pct}
                       vence={x.vence}
+                      barra={x.barra}
                     />
                   ))
                 )}
+                <span className="nota">
+                  {unidad === "mes" ? "al mes" : "en total"} · sigue al selector de la franja
+                  {plata.quienes.some((x) => x.porVentas) ? " · lo cobrado por % de venta, ya cargado" : ""}
+                </span>
               </div>
             </Card>
           )}

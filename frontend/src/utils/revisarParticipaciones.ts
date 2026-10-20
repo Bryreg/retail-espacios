@@ -114,6 +114,10 @@ export interface ItemDeRevision {
    *  hay que distribuir (0 o menos: ya corre). En rojo con 7 o menos
    *  (`DIAS_DE_APURO`): es el montaje de alguien que ya pagó. */
   empiezaEn?: number;
+  /** Sólo en «Reservas por caducar»: cuántos días faltan para que caduque
+   *  (0 o menos: caduca hoy). Con eso Supervisar la pone en «Hoy» o en «30
+   *  días» (`components/Supervisar/paraRevisar.ts`). */
+  caducaEn?: number;
 }
 
 /** Con cuántos días o menos para empezar «Falta distribuir» se pinta de rojo. */
@@ -255,7 +259,7 @@ export function paraRevisarDeResumen(
       const quien = `${p.proveedor ?? "Un proveedor"}${p.marca ? ` (${p.marca})` : ""}`;
       const cuando = p.caduca <= r.hoy ? "caduca hoy" : `caduca el ${fechaCorta(p.caduca, r.hoy)}`;
       sumar("por_caducar", {
-        clave: `${clave}|res|${p.codigo ?? p.numero}`, rotulo: "", abrir,
+        clave: `${clave}|res|${p.codigo ?? p.numero}`, rotulo: "", abrir, caducaEn: diasEntre(r.hoy, p.caduca),
         frase: `Reserva de ${quien} en ${rotulo} ${cuando}.`,
       });
     }

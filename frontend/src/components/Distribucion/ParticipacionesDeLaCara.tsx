@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Layers, RefreshCw } from "lucide-react";
+import { FilePenLine, PenTool, Repeat } from "lucide-react";
 import { describeError } from "../../api/client";
 import { espacioDeLaCara, leerCara, type CaraOut } from "../../api/participaciones";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { claveDeSede, useOcupacionStore } from "../../store/ocupacionStore";
 import { useAuthStore } from "../../store/authStore";
 import { pct } from "../../utils/participaciones";
+import { estadoMontaje, type MountConfirmation } from "../../api/mounts";
+import { money } from "../Contrato/Contrato";
+import { enLaUnidad, textoDelCobro, type UnidadDePlata } from "../Supervisar/plata";
 import {
   PALABRA_DE_LA_DISTRIBUCION, PALABRA_DEL_TERMINO, fechaCorta, proveedorDe, segmentosDeHoy,
   terminoParaRenovar, terminoQueSeMuestra, type SegmentoDeCapacidad,
@@ -60,23 +63,31 @@ function relleno(s: SegmentoDeCapacidad): string {
   return tono;
 }
 
-const etiqueta: React.CSSProperties = {
-  fontSize: "var(--t-3xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--ink-3)",
-};
+const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
-function boton(lleno: boolean): React.CSSProperties {
-  return {
-    height: 28, padding: "0 10px", borderRadius: "var(--r-md)",
-    display: "inline-flex", alignItems: "center", gap: 5,
-    border: lleno ? "none" : "1px solid var(--line)",
-    background: lleno ? "var(--accent)" : "var(--surface-2)",
-    color: lleno ? "#fff" : "var(--ink-2)",
-    fontSize: "var(--t-xs)", fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
-  };
+/** Lo que de un cobro por ventas dice la ficha. Es la forma de
+ *  `CobroPorVentas` (`api/cobros`), escrita acá para que este archivo no
+ *  importe ese módulo: lo que trae el resto de la ficha no tiene por qué
+ *  cargar la plata de Supervisar. */
+export interface CobroDeLaFicha {
+  porcentaje: number;
+  proximo_corte: { periodo_desde: string; periodo_hasta: string } | null;
 }
 
+/** El montaje de una participación, como punto y palabra. */
+function MontajeDeLaParticipacion({ reporte, desde, hoy }: { reporte: MountConfirmation | undefined; desde: string; hoy: string }) {
+  const estado = estadoMontaje(reporte);
+  // Firmada para más adelante y sin reporte: todavía no le toca.
+  if (estado === "pendiente" && desde > hoy) return <span className="punto" style={{ "--c": "var(--ink-4)" } as React.CSSProperties}>—</span>;
+  const pinta = estado === "montado" ? { c: "var(--libre)", t: "Montado" }
+    : estado === "no_montado" ? { c: "var(--ocupado)", t: "No se pudo" }
+    : { c: "var(--ink-4)", t: "Sin montar" };
+  return <span className="punto" style={{ "--c": pinta.c } as React.CSSProperties}>{pinta.t}</span>;
+}
+
+
 export default function ParticipacionesDeLaCara({
-  fixtureId, codigo, cara, sede, doble, onRenovar,
+  fixtureId, codigo, cara, sede, doble, onRenovar, unidad = "mes", montajeDe, cobroDe, onVender,
 }: {
   fixtureId: string;
   /** El código del mueble en el plano (`GON-01`). */
@@ -90,6 +101,17 @@ export default function ParticipacionesDeLaCara({
    *  término que renueva (rediseño de Vender, PR 1). Sin esto no hay botón:
    *  Renovar ya no va a Distribución. */
   onRenovar?: (numero: number) => void;
+  /** La unidad de la plata de la franja (rediseño, PR 2): el precio de cada
+   *  marca al mes o en total, como el resto de la pantalla. */
+  unidad?: UnidadDePlata;
+  /** El último reporte de montaje del contrato de esa participación (por su
+   *  código completo y su arranque). */
+  montajeDe?: (codigoCompleto: string, desde: string) => MountConfirmation | undefined;
+  /** El cobro por % de las ventas del contrato de esa participación, si se
+   *  cobra así. */
+  cobroDe?: (codigoCompleto: string) => CobroDeLaFicha | undefined;
+  /** «Vender el Y %»: abre Vender con esta cara y lo que queda hoy. */
+  onVender?: (quedaPb: number) => void;
 }) {
   const abrir = useAbrirEnDistribucion();
   const cliente = useAuthStore((s) => s.cliente) ?? "";
@@ -117,128 +139,151 @@ export default function ParticipacionesDeLaCara({
   const vivas = datos?.participaciones.filter((p) => p.viva) ?? [];
   const terminadas = (datos?.participaciones.length ?? 0) - vivas.length;
   const titulo = doble ? `Participaciones de la cara ${cara}` : "Participaciones de la cara";
+  /** El tono de cada participación en la barra, para su número en la lista. */
+  const tonoDe = (numero: number): string => {
+    const s0 = segmentos.find((x) => x.clave.startsWith(`${numero}|`));
+    return s0 ? relleno(s0) : "var(--surface-3)";
+  };
+  /** Con UNA sola participación para renovar, «Renovar» va con las otras
+   *  acciones; con varias, cada una lleva el suyo. */
+  const paraRenovar = datos ? vivas.filter((p) => terminoParaRenovar(p, datos.hoy)) : [];
+  const unaSola = paraRenovar.length === 1 ? paraRenovar[0] : null;
+  const queda = datos?.capacidad.disponible_hoy_pb ?? 0;
 
   return (
-    <div data-participaciones-de-la-cara={`${fixtureId}-${cara}`} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={etiqueta}>{titulo}</span>
-        <button
-          type="button"
-          onClick={() => abrir(fixtureId, cara)}
-          style={{ ...boton(false), marginLeft: "auto" }}
-          title="Abre el Editor 3D en esta cara, en Distribución"
-        >
-          <Layers size={12} /> Abrir en Distribución
-        </button>
-      </div>
+    <div data-participaciones-de-la-cara={`${fixtureId}-${cara}`} className="ficha-pc">
+      <span className="rotulo">{titulo}</span>
 
-      {cargando && !datos && <div style={{ fontSize: "var(--t-2xs)", color: "var(--ink-3)" }}>Cargando…</div>}
-      {error && <div style={{ fontSize: "var(--t-2xs)", color: "var(--danger)" }}>{error}</div>}
+      {cargando && !datos && <div className="nota">Cargando…</div>}
+      {error && <div className="nota error">{error}</div>}
 
       {datos && !datos.por_participacion && (
-        <div style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.45 }}>
+        <div className="nota">
           En el plano guardado esta cara todavía no se vende por participación: esperá a que se guarde el plano.
         </div>
       )}
 
       {datos && datos.por_participacion && (
         <>
-          {/* La única figura: la barra de capacidad de HOY, con 2 px entre
-              segmentos, la leyenda siempre y los rótulos con número. */}
-          <div>
+          {/* La única figura: la barra de lo comprometido HOY, una franja por
+              participación con su tono y lo que queda en verde tenue; debajo
+              la lectura con las dos cifras. */}
+          <div className="cap">
             <div
+              className="barra"
               role="img"
               aria-label={`Hoy: comprometido ${pct(datos.capacidad.hoy_pb)}, queda ${pct(datos.capacidad.disponible_hoy_pb)}`}
-              style={{ display: "flex", gap: 2, height: 14, borderRadius: "var(--r-sm)", overflow: "hidden" }}
             >
-              {segmentos.map((s) => (
-                <div key={s.clave} title={s.rotulo} style={{ flex: `${s.pb} 0 0`, background: relleno(s), minWidth: 2 }} />
+              {segmentos.map((s0) => (
+                <span
+                  key={s0.clave}
+                  title={`${s0.rotulo}${s0.tipo === "reserva" ? " · reserva" : ""}`}
+                  className={s0.tipo === "libre" ? "queda" : undefined}
+                  style={{ flex: `${s0.pb} 0 0`, ...(s0.tipo === "libre" ? {} : { background: relleno(s0) }) }}
+                />
               ))}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginTop: 6 }}>
-              {segmentos.map((s) => (
-                <span key={s.clave} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "var(--t-3xs)", color: "var(--ink-2)" }}>
-                  <span style={{ width: 9, height: 9, borderRadius: 2, background: relleno(s), border: "1px solid var(--line)" }} />
-                  {s.rotulo}{s.tipo === "reserva" ? " · reserva" : ""}
-                </span>
-              ))}
-            </div>
-            <div style={{ fontSize: "var(--t-3xs)", color: "var(--ink-3)", marginTop: 5, fontFamily: "var(--font-mono)" }}>
-              Hoy {pct(datos.capacidad.hoy_pb)} comprometido · queda {pct(datos.capacidad.disponible_hoy_pb)}
-              {datos.capacidad.periodo.pico_pb > datos.capacidad.hoy_pb && datos.capacidad.periodo.dia_pico
-                ? ` · pico ${pct(datos.capacidad.periodo.pico_pb)} el ${fechaCorta(datos.capacidad.periodo.dia_pico, datos.hoy)}`
-                : ""}
+            <div className="lee">
+              <span>Comprometido <b>{pct(datos.capacidad.hoy_pb)}</b></span>
+              <span>queda <b>{pct(datos.capacidad.disponible_hoy_pb)}</b></span>
+              {datos.capacidad.periodo.pico_pb > datos.capacidad.hoy_pb && datos.capacidad.periodo.dia_pico && (
+                <span>pico <b>{pct(datos.capacidad.periodo.pico_pb)}</b> el {fechaCorta(datos.capacidad.periodo.dia_pico, datos.hoy)}</span>
+              )}
             </div>
           </div>
 
           {vivas.length === 0 ? (
-            <div style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)" }}>
-              No tiene participaciones vivas: un porcentaje se vende en Vender.
-            </div>
+            <div className="nota">No tiene participaciones vivas: un porcentaje se vende en Vender.</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className="partes-pc">
               {vivas.map((p) => {
                 const t = terminoQueSeMuestra(p, datos.hoy);
                 const prov = proveedorDe(p);
-                const renovable = terminoParaRenovar(p, datos.hoy);
+                // Con una sola para renovar, el botón va abajo, con las otras acciones.
+                const renovable = unaSola ? null : terminoParaRenovar(p, datos.hoy);
+                const completo = (p.codigo || t?.codigo || "").toUpperCase();
+                const cobro = completo ? cobroDe?.(completo) : undefined;
+                const precio = cobro
+                  ? `${textoDelCobro(cobro.porcentaje)}`
+                  : t && t.valor_mensual && t.valor_mensual > 0
+                  ? `${money(enLaUnidad(t.valor_mensual, t.desde, t.hasta, unidad))} ${unidad === "mes" ? "al mes" : "en total"}`
+                  : "";
+                const fechas = t ? (t.desde <= datos.hoy ? `hasta ${fechaCorta(t.hasta, datos.hoy)}` : `${fechaCorta(t.desde, datos.hoy)} – ${fechaCorta(t.hasta, datos.hoy)}`) : "";
                 return (
-                  <div
-                    key={p.space_id}
-                    style={{ border: "1px solid var(--line-soft)", borderRadius: "var(--r-md)", padding: "7px 9px", display: "flex", flexDirection: "column", gap: 4 }}
-                  >
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-                      <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "var(--t-xs)", color: "var(--ink-1)" }}>
-                        {p.numero}
+                  <div key={p.space_id} className="part">
+                    <span className="num" style={{ background: tonoDe(p.numero) }}>{p.numero}</span>
+                    <div className="dat">
+                      <b>{prov?.nombre ?? "Sin proveedor"}{t?.marca ? ` · ${t.marca}` : ""}</b>
+                      <span>
+                        {[pct(p.contratado_pb || t?.puntos_basicos || 0), fechas, precio].filter(Boolean).join(" · ")}
                       </span>
-                      <span style={{ fontSize: "var(--t-xs)", color: "var(--ink-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {prov?.nombre ?? "Sin proveedor"}{t?.marca ? ` · ${t.marca}` : ""}
-                      </span>
-                      <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "var(--t-xs)", color: "var(--ink-1)" }}>
-                        {pct(p.contratado_pb || t?.puntos_basicos || 0)}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--t-3xs)", color: "var(--ink-3)" }}>
-                      {t && <span style={{ fontFamily: "var(--font-mono)" }}>{fechaCorta(t.desde, datos.hoy)} → {fechaCorta(t.hasta, datos.hoy)}</span>}
-                      {t && <span>{PALABRA_DEL_TERMINO[t.estado_visible]}</span>}
-                      {t?.estado_visible === "reserva" && t.caduca && <span>· caduca el {fechaCorta(t.caduca, datos.hoy)}</span>}
-                      {renovable && onRenovar && (
-                        <button
-                          type="button"
-                          onClick={() => onRenovar(p.numero)}
-                          style={{ ...boton(true), height: 24, marginLeft: "auto" }}
-                        >
-                          <RefreshCw size={11} /> Renovar
-                        </button>
+                      {cobro?.proximo_corte && (
+                        <span>próximo corte {fechaCorta(cobro.proximo_corte.periodo_hasta, datos.hoy)}</span>
+                      )}
+                      {t && t.estado_visible !== "vigente" && (
+                        <span>
+                          {PALABRA_DEL_TERMINO[t.estado_visible]}
+                          {t.estado_visible === "reserva" && t.caduca ? ` · caduca el ${fechaCorta(t.caduca, datos.hoy)}` : ""}
+                        </span>
                       )}
                     </div>
+                    {t && t.estado === "contrato" && completo
+                      ? <MontajeDeLaParticipacion reporte={montajeDe?.(completo, t.desde)} desde={t.desde} hoy={datos.hoy} />
+                      : <span />}
+                    {renovable && onRenovar && (
+                      <button
+                        type="button"
+                        onClick={() => onRenovar(p.numero)}
+                        className="btn-s"
+                        title={`Renovar la participación ${p.numero}`}
+                      >
+                        <Repeat {...ICONO} /> Renovar
+                      </button>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
           {terminadas > 0 && (
-            <div style={{ fontSize: "var(--t-3xs)", color: "var(--ink-3)" }}>
+            <div className="nota">
               Y {terminadas} participación{terminadas === 1 ? "" : "es"} que ya no rige{terminadas === 1 ? "" : "n"}: su historia está en Distribución.
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: "var(--t-2xs)", color: "var(--ink-2)" }}>
-              <span style={etiqueta}>Distribución</span>
-              <span>{PALABRA_DE_LA_DISTRIBUCION[datos.distribucion?.estado ?? "sin_distribuir"]}</span>
-            </div>
+          <div className="acc">
+            <button type="button" className="btn-s" onClick={() => abrir(fixtureId, cara)} title="Abrir en Distribución: el Editor 3D en esta cara">
+              <PenTool {...ICONO} /> Distribuir
+            </button>
+            {unaSola && onRenovar && (
+              <button type="button" className="btn-s" onClick={() => onRenovar(unaSola.numero)} title={`Renovar la participación ${unaSola.numero}`}>
+                <Repeat {...ICONO} /> Renovar
+              </button>
+            )}
+            {onVender && queda > 0 && (
+              <button type="button" className="btn-s" onClick={() => onVender(queda)} title="Abre Vender con esta cara y lo que queda hoy">
+                <FilePenLine {...ICONO} /> Vender el {pct(queda)}
+              </button>
+            )}
+          </div>
+
+          <div className="fila-dist">
+            <span className="rotulo">Distribución</span>
+            <span className={`pill ${datos.distribucion?.estado === "confirmada" ? "libre" : "entra"}`}>
+              {PALABRA_DE_LA_DISTRIBUCION[datos.distribucion?.estado ?? "sin_distribuir"]}
+            </span>
             {vivas.length > 0 && (() => {
               let contratado = 0, dibujado = 0, pendiente = 0;
               for (const p of vivas) { contratado += p.contratado_pb; dibujado += p.dibujado_pb; pendiente += p.pendiente_pb; }
               return (
-                <span style={{ fontSize: "var(--t-3xs)", fontFamily: "var(--font-mono)", color: "var(--ink-3)" }}>
+                <span className="mono nota">
                   dibujado {pct(dibujado)} de {pct(contratado)} contratado{pendiente > 0 ? ` · falta ${pct(pendiente)}` : ""}
                 </span>
               );
             })()}
           </div>
           {datos.revision.errores.length > 0 && (
-            <div style={{ fontSize: "var(--t-2xs)", color: "var(--danger)", lineHeight: 1.45 }}>
+            <div className="nota error">
               {datos.revision.errores.length} problema{datos.revision.errores.length === 1 ? "" : "s"}: {datos.revision.errores[0].frase}
             </div>
           )}

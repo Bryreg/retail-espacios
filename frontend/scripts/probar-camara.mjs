@@ -355,9 +355,47 @@ prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", ()
   assert.match(vender, /1004fr 402fr/, "cambió la proporción de la hoja de Vender: ajustar las dos");
   assert.match(supervisar, /minmax\(0, 1004fr\) minmax\(0, 402fr\)/, "Supervisar no usa las columnas de Vender");
   assert.match(supervisar, /grid-auto-rows:\s*var\(--alto-plano\)/, "las filas de Supervisar no miden lo que el plano de Vender");
-  assert.match(css, /--alto-plano:\s*max\(448px/, "falta `--alto-plano` (con el piso de la fila 1 de Vender)");
-  assert.match(css, /550 \/ 804/, "`--alto-plano` ya no reparte como la hoja de Vender (550 : 254)");
+  // (Rediseño, PR 2: era `--alto-plano: max(448px, (100dvh − 132px) × 550/804)`
+  // en `:root`, una aproximación del marco que el verificador midió distinta de
+  // la fila de Vender a 1440×900, 1100×900 y 1440×760. Ahora la fila 1 de
+  // Vender ES `--alto-plano`, en todas las ventanas: lo de abajo es más estricto
+  // que lo de antes.)
+  const area = regla(".area-pantallas");
+  assert.match(area, /--fila1:\s*448px/, "el piso de la fila 1 ya no es 448");
+  assert.match(area, /--alto-plano:\s*max\(var\(--fila1\),\s*min\(/, "falta `--alto-plano` (con el piso de la fila 1 de Vender)");
+  assert.match(area, /550 \/ 804/, "`--alto-plano` ya no reparte como la hoja de Vender (550 : 254)");
+  assert.match(area, /var\(--alto-area,/, "`--alto-plano` no cuenta contra el alto medido del área de las pantallas");
+  assert.match(css, /@media \(max-height: 880px\) \{\s*\.area-pantallas \{ --marco-sede: 66px; --fila1: 430px; --fila2: 240px; \}/,
+    "en ventana baja `--alto-plano` no sigue el marco apretado de Vender");
+  assert.match(vender, /grid-template-rows: max\(var\(--fila1\), min\(var\(--alto-plano\),/, "la fila del plano de Vender no mide `--alto-plano`");
+  assert.match(css, /@media \(max-height: 790px\) \{[\s\S]*?\.vender-hoja \{ grid-template-rows: var\(--alto-plano\) /, "a 760 de alto la fila del plano de Vender vuelve a medir otra cosa");
+  assert.match(css, /@media \(max-width: 1100px\) \{[\s\S]*?\.vender-hoja > \.vp-plano \{ height: var\(--alto-plano\); \}/, "a lo angosto el plano de Vender no mide `--alto-plano`");
+  assert.doesNotMatch(css, /62vw/, "volvió el plano de Vender de `62vw`, que no mide lo de Supervisar");
+  assert.match(css, /\.vp-plano > header \{ min-height: 44px; \}/, "el encabezado del plano no mide lo mismo en las dos pantallas");
+  assert.match(css, /\.vender \.lienzo,\s*\.sup \.vp-plano > \.lienzo \{/, "el lienzo de Supervisar no tiene el relleno del de Vender");
+  assert.equal((vista.match(/className="vp vp-plano"/g) ?? []).length, 2, "los dos planos no son el mismo panel (`vp vp-plano`)");
+  const dash = readFileSync(join(raiz, "src", "pages", "Dashboard.tsx"), "utf8");
+  assert.match(dash, /className="area-pantallas"[\s\S]{0,200}"--alto-area" as string\]: `\$\{altoArea\}px`/, "nadie escribe el alto medido del área de las pantallas");
+  // La cuenta cerrada da lo mismo que la rejilla de antes (minmax(448, 550fr)
+  // minmax(248, 254fr)) en todo alto donde la hoja entra.
+  const porFr = (F) => {
+    let r1 = (F * 550) / 804, r2 = (F * 254) / 804;
+    if (r2 < 248) { r2 = 248; r1 = Math.max(448, F - 248); }
+    if (r1 < 448) r1 = 448;
+    return r1;
+  };
+  const cerrada = (F) => Math.max(448, Math.min((F * 550) / 804, F - 248));
+  for (let F = 696; F <= 2000; F += 7) assert.ok(Math.abs(porFr(F) - cerrada(F)) < 1e-9, `con ${F} px la cuenta cerrada se aparta de la rejilla`);
   assert.match(vista, /className="supervisar-hoja"/, "Supervisar no arma su hoja");
+});
+
+prueba("las chinchetas van sólo en el plano de Supervisar, y sólo con lo que está en «Para revisar»", () => {
+  const usos = [...vista.matchAll(/<IsoMap\b[\s\S]*?\/>/g)].map((m) => m[0]);
+  const conPins = usos.filter((u) => /chinchetas=\{chinchetasDeRevision\}/.test(u));
+  assert.equal(conPins.length, 1, "las chinchetas no están en exactamente un plano");
+  const iv = vista.indexOf("const panelPlano = ");
+  assert.ok(!/chinchetas/.test(vista.slice(iv, vista.indexOf("const panelEscalera", iv))), "el plano de Vender recibe chinchetas: delante del proveedor no hay avisos");
+  assert.match(vista, /const chinchetasDeRevision = useMemo\(\s*\(\) => chinchetasDe\(avisos\)/, "las chinchetas no salen de los avisos de «Para revisar»");
 });
 
 prueba("en la hoja, la tabla va debajo del plano y «Quién paga el canon» debajo de «Para revisar»", () => {

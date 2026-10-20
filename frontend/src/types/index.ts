@@ -54,6 +54,10 @@ export interface AvisosContrato {
   comercial: string[];
   montaje: string[];
   proveedor: string[];
+  /** Los contratos cuyo aviso de montaje NO salió al guardar: espera la
+   *  planometría (que se carga en Supervisar) o, en un porcentaje de cara, la
+   *  distribución confirmada (`docs/rediseno/vender-api.md` §4). */
+  montaje_pendiente?: number[];
 }
 
 export interface Space {
