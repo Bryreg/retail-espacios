@@ -459,4 +459,234 @@ prueba("2D → store → 3D → store → 2D → store: lo desconocido llega ent
   assert.equal(g1.nombreAnterior, "GON-09");
 });
 
+// ─── El Plano del rediseño (PR 3) ────────────────────────────────────────────
+// Los dibujos aprobados: `docs/maquetas/rediseno-2026-10/plano.html` y
+// `panel-plano.html` (el panel B). Estas guardas cuidan lo que se decidió:
+// nada de lo que hacía el editor 2D se fue —cada sección del panel de antes
+// está en una pestaña—, sin emoji, sin «Reservado» a mano, la sede de sólo
+// lectura y una sola vez, el panel en los tokens del tema y abriendo en Venta.
+
+console.log("\nEl Plano del rediseño (PR 3)\n");
+
+const { readFileSync } = await import("node:fs");
+const raizFe = join(aqui, "..");
+const fuenteDe = (rel) => readFileSync(join(raizFe, "src", ...rel.split("/")), "utf8");
+const sinComentPR3 = (s) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+const fp2d = sinComentPR3(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
+const tramo = (txt, a, b) => {
+  const i = txt.indexOf(a);
+  assert.ok(i >= 0, `no está \`${a}\``);
+  const j = b ? txt.indexOf(b, i + a.length) : -1;
+  assert.ok(!b || j > i, `no está \`${b}\` después de \`${a}\``);
+  return txt.slice(i, b ? j : undefined);
+};
+const panelB = tramo(fp2d, "function AssignmentPanel(", "function FilaDelPanel(");
+const pestanaDe = (k) => tramo(panelB, `{pestana === "${k}" && (`, k === "documentos" ? "data-codigo-completo" : "{pestana === ");
+const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
+
+prueba("sin emoji en el plano 2D: ni en el catálogo, ni en el panel, ni en el lienzo", () => {
+  const malos = fp2d.split("\n").map((l, n) => [n + 1, l]).filter(([, l]) => EMOJI.test(l));
+  assert.deepEqual(malos, [], "quedan emoji en FloorPlan2D.tsx (fuera de los comentarios)");
+  assert.doesNotMatch(fp2d, /\bdef\.emoji\b|catDef\??\.emoji/, "el plano vuelve a dibujar el `emoji` del catálogo");
+  // Un ícono por tipo, en UN lugar: cada tipo que la biblioteca coloca tiene el suyo.
+  const iconos = sinComentPR3(fuenteDe("components/FloorPlan2D/iconos.ts"));
+  const tabla = tramo(iconos, "export const ICONO_DEL_TIPO", "};");
+  const cat = JSON.parse(fuenteDe("catalogo/muebles.json"));
+  for (const tipo of cat.orden.plano2D) assert.match(tabla, new RegExp(`\\b${tipo}: [A-Z]\\w+,`), `«${tipo}» no tiene ícono en el catálogo del 2D`);
+  assert.match(iconos, /export const ICONO = \{ size: 16, strokeWidth: 1\.75, "aria-hidden": true \} as const;/, "los íconos no son de 16 con trazo 1,75");
+  assert.ok(!EMOJI.test(iconos.replace(/\/\/[^\n]*/g, "")), "iconos.ts tiene emoji");
+  assert.match(fp2d, /const IconoTipo = iconoDelTipo\(def\.type\);/, "la biblioteca no dibuja el ícono de cada tipo");
+  assert.match(fp2d, /const IconoFamilia = iconoDeFamilia\(cat, defs\[0\]\?\.type\);/, "las familias no llevan su ícono");
+  assert.match(panelB, /const IconoDelTipo = iconoDelTipo\(item\.type\);/, "el panel no lleva el ícono del tipo");
+});
+
+prueba("sin «Reservado» a mano (decisión 1): el panel ofrece Disponible y Mantenimiento, nada más", () => {
+  assert.doesNotMatch(fp2d, /value="reserved"|<option value=/, "el plano ofrece un estado como opción de un select");
+  assert.match(fp2d, /const ESTADOS_A_MANO = \["free", "maintenance"\] as const;/);
+  assert.match(panelB, /async function cambiarEstado\(nuevo: "free" \| "maintenance"\)/, "el estado a mano acepta otra cosa");
+  const estado = tramo(panelB, '<FilaDelPanel k="Estado" titulo="Estado del espacio"', "</FilaDelPanel>");
+  assert.match(estado, /\{ESTADOS_A_MANO\.map\(\(s\) => \(/, "el estado no sale de la lista de lo que se marca a mano");
+  assert.match(estado, /data-reservado-a-mano/, "uno marcado a mano de antes no dice qué hacer con él");
+  // El Editor 3D: uno de antes se ve (deshabilitado) y no se vuelve a marcar.
+  const ed = sinComentPR3(fuenteDe("components/StoreEditor3D/StoreEditor3D.tsx"));
+  const sel = tramo(ed, "Estado fixture</label>", "</select>");
+  assert.match(sel, /\{fix\.status === "reserved" && <option value="reserved" disabled>Reservado a mano<\/option>\}/);
+  assert.equal((sel.match(/value="reserved"/g) ?? []).length, 1, "el 3D sigue ofreciendo «Reservado» a mano");
+  // Y el servidor lo rechaza con la frase que lleva a Vender (`tests/test_panel_del_plano.py`).
+  const srv = readFileSync(join(raizFe, "..", "backend", "app", "routers", "spaces.py"), "utf8");
+  assert.match(srv, /RESERVA_SOLO_DESDE_VENDER = "Las reservas se hacen desde Vender, con proveedor y fecha\."/);
+  assert.match(srv, /if payload\.status == SpaceStatus\.reserved:\s*raise HTTPException\(status_code=409, detail=RESERVA_SOLO_DESDE_VENDER\)/);
+});
+
+prueba("la sede: de sólo lectura en el panel (con su candado), y una sola vez en la pantalla, arriba (decisión 2)", () => {
+  assert.equal((panelB.match(/data-sede-del-plano/g) ?? []).length, 1);
+  assert.match(panelB, /<span className="mono" data-sede-del-plano[^>]*>\{sede\}<\/span>\s*<Lock /);
+  assert.doesNotMatch(panelB, /<select|setSede/, "el panel cambia la sede");
+  // Arriba: la pieza de la sede (la de Vender y Supervisar) con su menú «⋯».
+  assert.equal((fp2d.match(/<select className="sede-sel"/g) ?? []).length, 1, "la sede se elige en más de un lugar");
+  const pieza = tramo(fp2d, '<div className="pieza p2-sede" data-sede-pieza>', '<div className="p2-grupo">');
+  assert.match(pieza, /<MapPin /);
+  for (const que of ["Renombrar sede", "Agregar sede", "Eliminar sede"]) assert.ok(pieza.includes(que), `el menú de la sede no tiene «${que}»`);
+  assert.match(pieza, /\{isAdmin && storeSedeList\.length > 1 && \(/, "«Eliminar sede» se ofrece a quien no administra o con una sola sede");
+  assert.doesNotMatch(fp2d, /Sede:<\/span>|Vista previa|Editar plano/, "queda la barra de abajo (la sede repetida o «Vista previa»)");
+  assert.match(fp2d, /aria-label="Modo del plano" data-modo-del-plano>[\s\S]{0,400}Editar[\s\S]{0,300}Mirar/, "falta «Editar | Mirar»");
+});
+
+prueba("el panel abre SIEMPRE en Venta, también al elegir otro mueble", () => {
+  assert.match(panelB, /const \[pestana, setPestana\] = useState<PestanaDelPanel>\("venta"\);\s*useEffect\(\(\) => \{ setPestana\("venta"\); \}, \[item\.id\]\);/);
+  assert.equal((panelB.match(/setPestana\(/g) ?? []).length, 4, "la pestaña cambia por otro lado que el clic y el cambio de mueble");
+  // Documentos dice cuántos archivos hay.
+  assert.match(panelB, /<FileText \{\.\.\.ICONO\} \/> Documentos \{rentable && <span className="n">\{docs\.files\.length\}<\/span>\}/);
+});
+
+prueba("las tres pestañas tienen cada sección del panel de antes (una por sección)", () => {
+  const venta = pestanaDe("venta"), medidas = pestanaDe("medidas"), documentos = pestanaDe("documentos");
+  const enca = tramo(panelB, '<div className="p2-ficha-h">', '<div className="p2-seg ancho" role="tablist"');
+  const secciones = [
+    // [la sección de antes, dónde quedó, lo que la prueba]
+    ["Nombre (el código, con su lápiz)", enca, /onBlur=\{guardarNombre\}[\s\S]*title="Cambiar el código"/],
+    ["Estado (la pastilla)", enca, /\{enParte \? "Vendido en parte" : <>\{rentable \? rotuloVisto : NON_RENTABLE_LABEL\}<\/>\}/],
+    ["Sede (sólo lectura)", enca, /data-sede-del-plano/],
+    ["Pasillo", enca, /\{pasillo !== undefined && /],
+    ["El modelo de la ficha", enca, /\{nombreDeModelo\(modeloDelMueble\)\}/],
+    ["Cara A · Cara B", panelB, /data-caras>[\s\S]*Cara \{f\}/],
+    ["Destino del mueble", venta, /<FilaDelPanel k="Se vende" titulo="Destino del mueble"[\s\S]*onUpdate\(\{ rentable: !rentable \}\)/],
+    ["Cómo se vende", venta, /<PartesDelMueble id=\{item\.id\}/],
+    ["Estado del espacio", venta, /<FilaDelPanel k="Estado" titulo="Estado del espacio"/],
+    ["Contratado (sin plata)", venta, /data-contratado>[\s\S]*Sin contrato activo\./],
+    ["«Vender» con este espacio", panelB, /onClick=\{\(\) => onVender\(activeFace\)\}/],
+    ["Abrir en Distribución", venta, /onClick=\{\(\) => abrirEnDistribucion\(item\.id, activeFace\)\}/],
+    ["Dimensiones", medidas, /onUpdate\(\{ w: [\s\S]*onUpdate\(\{ h: /],
+    ["Alto, entrepaños y módulo", medidas, /<GeometriaDelMueble id=\{item\.id\}/],
+    ["Archivos y cara designada", documentos, /<FilesSection key=\{activeCode\} docs=\{docs\}/],
+    ["Observación → Nota del contrato", documentos, /\{conContrato \? "Nota del contrato" : "Nota del espacio"\}/],
+  ];
+  for (const [que, donde, re] of secciones) assert.match(donde, re, `«${que}» no está donde dice el panel B`);
+  // Lo contratado nunca dice plata: en el bloque entero de «Contratado», ni el
+  // canon, ni un formateador de plata, ni la unidad, ni la reserva, ni «valor».
+  const contratado = tramo(panelB, "data-contratado>", '{pestana === "medidas"');
+  assert.doesNotMatch(contratado, /negotiatedValue|formatCOP|enLaUnidad|reservaHasta|valor/i, "«Contratado» vuelve a decir plata");
+  assert.doesNotMatch(panelB, /negotiatedValue\.toLocaleString|\/ mes/, "«Contratado» vuelve a decir el canon");
+  // El código completo y las acciones, al pie.
+  const pie = tramo(panelB, '<div className="p2-pie-ficha">', "</div>\n    </div>\n  );");
+  assert.match(pie, /\{activeCode\}/);
+  assert.match(pie, /onClick=\{onDuplicate\}[\s\S]*onClick=\{onDelete\}/);
+  // «Usar como foto de la cara en el 3D» es el `uso: "cara"` del upload, y la foto se ve en chiquito.
+  const archivos = tramo(fp2d, "function FilesSection(", "function juntarSufijos(");
+  assert.match(archivos, /uploadSpaceFile\(id, file, marcarComoCara \? "cara" : undefined\)/);
+  assert.match(archivos, /Usar como foto de la cara en el 3D/);
+  assert.match(archivos, /\? <img src=\{fileUrl\(f\.id\)\} alt="" \/>/);
+  // La nota: 500, el contador, y que se guarda en la base (no en el layout, que la descarta).
+  const docs = tramo(panelB, "data-nota-del-espacio", "</div>");
+  assert.match(docs, /maxLength=\{LARGO_DE_LA_NOTA\}/);
+  assert.match(docs, /\{nota\.length\}\/\{LARGO_DE_LA_NOTA\}/);
+  assert.match(docs, /Es la misma nota del contrato de Vender\. Sin contrato, es la nota del espacio\. Sólo la ven los administradores\./);
+  assert.match(panelB, /\{rentable && isAdmin && \(\s*<div className="p2-nota-c" data-nota-del-espacio>/, "la nota se le muestra al trabajador");
+  assert.match(panelB, /const r = await guardarNotaDelEspacio\(id, nota\);/);
+  assert.doesNotMatch(panelB, /observation: e\.target\.value|updateFace\(/, "la nota vuelve a escribirse en el layout (que la descarta)");
+  assert.match(fp2d, /const LARGO_DE_LA_NOTA = 500;/);
+});
+
+prueba("los `--dark-*` no se usan en el plano 2D: el panel sigue el tema (el Editor 3D, oscuro siempre)", () => {
+  assert.doesNotMatch(fp2d, /--dark-|\bdark-(?:ink|line|surface|bg)\b/, "FloorPlan2D lee el cajón oscuro");
+  assert.doesNotMatch(sinComentPR3(fuenteDe("plano.css")), /--dark-/, "plano.css lee el cajón oscuro");
+  // Los dos componentes compartidos con el 3D: en el plano, en el tema.
+  assert.match(fp2d, /<PartesDelMueble [^>]*\benElTema\b/);
+  assert.match(fp2d, /<GeometriaDelMueble [^>]*\benElTema\b/);
+  for (const f of ["components/PartesDelMueble.tsx", "components/GeometriaDelMueble.tsx"]) {
+    const c = sinComentPR3(fuenteDe(f));
+    const tema = tramo(c, "tema: {", "},\n} as const;");
+    assert.doesNotMatch(tema, /dark-/, `${f}: las clases del tema leen el cajón oscuro`);
+    assert.match(c, /const cl = enElTema \? CLASES\.tema : CLASES\.oscuro;/, `${f}: no elige las clases por el tema`);
+  }
+  // El panel ya no es el cajón: `.p2-panel` en la superficie del tema.
+  assert.match(fuenteDe("plano.css"), /\.plano2d \.p2-panel \{[^}]*background: var\(--surface\);/);
+  assert.match(fuenteDe("index.css"), /@import "\.\/plano\.css";/);
+});
+
+prueba("el lienzo: los filtros con su cuenta (con «Vendido en parte» y «Reservados», decisión 3) y el pie con zoom, centrar, códigos y pantalla completa", () => {
+  const chips = tramo(fp2d, "const STATUS_FILTER_CHIPS", "];");
+  const etiquetas = [...chips.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(etiquetas, ["Todos", "Libres", "Ocupados", "Vendido en parte", "Reservados", "Por vencer", "Vencidos"]);
+  assert.match(fp2d, /\{chip\.label\} <span className="mono">\{cuentaDeFiltro\[chip\.value\]\}<\/span>/, "los filtros no dicen cuántos hay");
+  assert.match(fp2d, /if \(filter === "partial"\) return !!marcas\?\.parcial;/);
+  assert.match(fp2d, /if \(filter === "reserved"\) return !!marcas\?\.reservado \|\| item\.status === "reserved" \|\| item\.faceB\?\.status === "reserved";/);
+  const pie = tramo(fp2d, "data-pie-del-lienzo", "</span>\n          </div>");
+  for (const t of ["Alejar", "Volver al 100 %", "Acercar", "Centrar en todo", "Mostrar los códigos", "Pantalla completa"]) {
+    assert.ok(pie.includes(`aria-label="${t}"`), `el pie del lienzo no tiene «${t}»`);
+  }
+  // Las herramientas, arriba, sólo íconos con su atajo en el globo; Eliminar en rojo.
+  const herr = tramo(fp2d, 'role="toolbar" aria-label="Herramientas"', '<div className="der">');
+  for (const t of ["Seleccionar (Esc)", "Deshacer (Ctrl+Z)", "Rehacer (Ctrl+Y)", "Rotar (R)"]) assert.ok(herr.includes(`title="${t}"`), `falta «${t}»`);
+  assert.match(herr, /className="p2-icobtn peligro" aria-label="Eliminar"/);
+  // A la derecha: el guardado (punto y palabra), Revisar, Renumerar y Atajos.
+  const der = tramo(fp2d, '<div className="der">', '<div className="p2-cuerpo');
+  for (const t of ["<SyncButton />", 'aria-label="Revisar"', 'aria-label="Renumerar"', 'aria-label="Atajos de teclado"']) assert.ok(der.includes(t), `falta ${t}`);
+  const sync = tramo(fp2d, "function SyncButton(", "function AtajosPanel(");
+  for (const w of ['"Guardado"', '"Guardando…"', '"Sin conexión"']) assert.ok(sync.includes(w), `el guardado no dice ${w}`);
+});
+
+prueba("«Vender» desde el Plano: sólo quien administra, sólo lo que se vende, y el pedido lleva el mueble y la cara (nada de plata)", () => {
+  // Las tres puertas: el botón, el cambio de pestaña y el armado en Vender.
+  assert.match(panelB, /const botonVender = isAdmin && rentable && \(/, "el botón «Vender» se le muestra a quien no administra o a lo que no se vende");
+  const dash = sinComentPR3(fuenteDe("pages/Dashboard.tsx"));
+  assert.match(dash, /if \(pedidoVender && isAdmin\) setViewMode\("kpis"\);/, "el pedido cambia de pestaña sin ser admin");
+  const dv = sinComentPR3(fuenteDe("pages/DashboardView.tsx"));
+  const armado = tramo(dv, "const pedidoVender = useFixtureStore((s) => s.pedidoVender);", "}, [pedidoVender, isAdmin]);");
+  assert.match(armado, /useEffect\(\(\) => \{\s*if \(!pedidoVender \|\| !isAdmin\) return;\s*useFixtureStore\.getState\(\)\.soltarPedidoVender\(\);/, "Vender arma el pedido sin ser admin (o no lo suelta)");
+  assert.match(armado, /if \(f\) negociar\(f, pedidoVender\.cara\);/);
+  // Un mueble por partes (una punta por entrepaños) entra con la lista de partes
+  // abierta: entero chocaría con la parte vendida (409 al validar).
+  const negociar = tramo(dv, "const negociar = (", "setModo(\"vender\");");
+  assert.match(negociar, /const division = !parte && !semilla \? divisionDe\(f\) : null;/, "«Vender» no mira si el mueble se vende por partes");
+  assert.match(negociar, /: division \? \{ id: f\.id, face, porPartes: division\.clase \} : \{ id: f\.id, face \}\]\);/,
+    "un mueble por partes entra a Vender como cara entera");
+  // El pedido: el id del mueble, la cara y el contador. Nada más (ni código, ni proveedor, ni plata), y no se persiste.
+  const store = sinComentPR3(fuenteDe("store/fixtureStore.ts"));
+  assert.match(store, /pedidoVender: \{ fixtureId: string; cara: "A" \| "B"; n: number \} \| null;/, "el pedido lleva algo más que {fixtureId, cara, n}");
+  assert.match(store, /pedirVender: \(fixtureId: string, cara: "A" \| "B"\) => void;/);
+  assert.match(store, /pedirVender: \(fixtureId, cara\) =>\s*set\(\(state\) => \(\{ pedidoVender: \{ fixtureId, cara, n: \(state\.pedidoVender\?\.n \?\? 0\) \+ 1 \} \}\)\),/);
+  assert.doesNotMatch(tramo(store, "partialize: (state) => ({", "}),"), /pedidoVender/, "el pedido se persiste");
+  assert.match(fp2d, /onVender=\{\(cara\) => pedirVender\(selectedItem\.id, cara\)\}/);
+});
+
+prueba("«Vender» desde el Plano abre el contrato CON el espacio: el reinicio por cambio de sede no corre al montar", () => {
+  // La pantalla de sede se vuelve a montar al llegar del Plano, y el efecto de
+  // `[sede]` corría DESPUÉS del que arma el pedido, en el mismo montaje:
+  // `setEnContrato([])` dejaba Vender vacío. Ahora reinicia sólo si la sede
+  // cambió de verdad (contra la última que vio).
+  const dv = sinComentPR3(fuenteDe("pages/DashboardView.tsx"));
+  const reinicio = tramo(dv, "const sedeDelContrato = useRef(sede);", "}, [sede]);");
+  assert.match(reinicio, /^const sedeDelContrato = useRef\(sede\);\s*useEffect\(\(\) => \{\s*if \(sedeDelContrato\.current === sede\) return;\s*sedeDelContrato\.current = sede;\s*setSelected\(null\);\s*setCerrado\(null\);\s*setEnContrato\(\[\]\);/, "el reinicio de la sede vuelve a correr al montar");
+  // Ningún otro efecto de `[sede]` vacía el contrato ni la selección.
+  for (const m of dv.matchAll(/useEffect\(\(\) => \{([\s\S]*?)\}, \[sede\]\);/g)) {
+    if (m[1].includes("sedeDelContrato.current === sede")) continue;
+    assert.doesNotMatch(m[1], /setEnContrato\(\[\]\)|setSelected\(null\)/, "otro efecto de [sede] vacía el contrato al montar");
+  }
+  // Las únicas formas de vaciarlo: cerrar, guardar, y el cambio de sede.
+  assert.equal((dv.match(/setEnContrato\(\[\]\)/g) ?? []).length, 3, "apareció otro lugar que vacía el contrato");
+});
+
+prueba("el panel B y el lienzo: códigos ocultables, entrepaños en una cuenta, «Mirar» sin subir, la pista del dibujo", () => {
+  // «Ocultar los códigos» apaga también los de adentro del mueble.
+  assert.match(fp2d, /const codigoALaVista = showLabels \|\| \(filterActive && isFilterMatch\) \|\| !!rotulos\.choque \|\| editingCodeId === item\.id;\s*const showCode = rotulos\.adentro !== null && codigoALaVista;/);
+  // La franja cuenta los entrepaños como se venden (con la base) cuando se venden por entrepaños.
+  assert.match(panelB, /const entrepanosDeLaFranja = division\?\.clase === "entrepanos" \? division\.n : \(vista\?\.entrepanos \?\? 0\);/);
+  assert.match(panelB, /\{vista && <span><b>\{entrepanosDeLaFranja\}<\/b>/);
+  // La sede y su candado, juntos.
+  assert.match(panelB, /<span className="p2-sede-candado">\s*<span className="mono" data-sede-del-plano[^>]*>\{sede\}<\/span>\s*<Lock /);
+  assert.match(fuenteDe("plano.css"), /\.plano2d \.p2-sede-candado \{[^}]*white-space: nowrap;/);
+  // En «Mirar», Documentos no sube ni marca la foto de la cara (como no elimina).
+  const archivos = tramo(fp2d, "function FilesSection(", "function juntarSufijos(");
+  assert.match(archivos, /\{isAdmin && editMode && \(\s*<div className="p2-subir">/, "«Subir archivo» se ofrece en Mirar");
+  assert.match(archivos, /onDrop=\{isAdmin && editMode \?/, "soltar un archivo sube en Mirar");
+  assert.equal((archivos.match(/isAdmin && editMode/g) ?? []).length, 4);
+  // La pista del pie: la del dibujo, y baja de renglón en vez de cortarse.
+  assert.ok(fp2d.includes('"Arrastrá para mover · rueda para acercar · espacio + arrastre para desplazar"'));
+  assert.doesNotMatch(fuenteDe("plano.css"), /\.p2-pista span \{[^}]*text-overflow: ellipsis/, "la pista se vuelve a cortar con «…»");
+  // Abrir el panel de un espacio que nunca se vendió no da 404: `si_existe=1`.
+  const api = sinComentPR3(fuenteDe("api/spaces.ts"));
+  assert.match(api, /\.get<Space \| null>\(`\/spaces\/by-code\/\$\{encodeURIComponent\(code\)\}`, \{ params: \{ si_existe: 1 \} \}\)/);
+});
+
 console.log(`\n${hechas} pruebas · el plano no pierde lo que no conoce\n`);

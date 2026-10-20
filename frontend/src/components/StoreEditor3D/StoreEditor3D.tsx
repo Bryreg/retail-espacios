@@ -7091,7 +7091,10 @@ function CommercialPanel({
               onChange={e=>void cambiarEstado(e.target.value as SpaceStatus)}
               className="w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:border-accent focus:outline-none">
               <option value="free">Disponible</option>
-              <option value="reserved">Reservado</option>
+              {/* «Reservado» a mano ya no se marca (rediseño, PR 3: el
+                  servidor contesta 409; la reserva de verdad sale de Vender,
+                  con proveedor y fecha). Uno de antes se ve y se libera. */}
+              {fix.status === "reserved" && <option value="reserved" disabled>Reservado a mano</option>}
               <option value="maintenance">Mantenimiento</option>
             </select>
           )}

@@ -34,15 +34,27 @@ export const fetchEstadoComercial = (sede?: string): Promise<EstadoPorEspacio> =
  *  contrato (sólo existe en `spaces` cuando alguno lo creó).
  *
  *  Sirve para llegar al id del contrato vigente, que el mapa comercial no
- *  trae: ahí está el estado, no las filas. */
+ *  trae: ahí está el estado, no las filas.
+ *
+ *  Con `si_existe=1` el servidor contesta `null` (200) en vez de 404: abrir el
+ *  panel de un espacio que nunca se vendió es lo normal, no un error, y el 404
+ *  ensuciaba la consola en cada clic. Leer no crea la fila. */
 export const getSpaceByCode = (code: string): Promise<Space | null> =>
   client
-    .get<Space>(`/spaces/by-code/${encodeURIComponent(code)}`)
-    .then((r) => r.data)
+    .get<Space | null>(`/spaces/by-code/${encodeURIComponent(code)}`, { params: { si_existe: 1 } })
+    .then((r) => r.data ?? null)
     .catch(() => null);
 
 export const updateSpaceStatus = (spaceId: number, status: SpaceStatus, notes?: string) =>
   client.patch<Space>(`/spaces/${spaceId}/status`, { status, notes }).then((r) => r.data);
+
+/** La nota del panel del Plano («Nota del contrato» / «Nota del espacio»): el
+ *  servidor la guarda donde la lee el mapa comercial —el contrato que manda, si
+ *  no la reserva viva, si no el espacio— y dice dónde quedó. Sólo administración. */
+export const guardarNotaDelEspacio = (spaceId: number, nota: string) =>
+  client
+    .put<{ donde: "contrato" | "reserva" | "espacio"; nota: string }>(`/spaces/${spaceId}/nota`, { nota })
+    .then((r) => r.data);
 
 export const cancelLease = (spaceId: number, leaseId: number) =>
   client.delete(`/spaces/${spaceId}/leases/${leaseId}`);

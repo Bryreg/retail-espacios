@@ -23,6 +23,8 @@ import {
   // Rediseño de Supervisar (PR 2): la chincheta del plano, la flecha de la
   // ficha, el orden de «Quién paga», Renovar y las acciones de la ficha.
   Pin, ArrowLeft, ArrowDownWideNarrow, Repeat, FilePenLine,
+  // «Reservar de verdad» (rediseño, PR 3): la reserva que se acaba sola.
+  Hourglass,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { useFichasPropias } from "../store/fichasPropias";
@@ -30,6 +32,7 @@ import { temaActual, useTema } from "../tema";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client, { describeError } from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
+import { findOrCreateSpace, updateSpaceStatus } from "../api/spaces";
 import FileViewerModal from "../components/FileViewerModal";
 import {
   fetchMounts, estadoMontaje, MOTIVO_LABEL,
@@ -3587,6 +3590,7 @@ function AtencionRow({
   onFoto,
   aviso,
   accion,
+  acciones,
 }: {
   entry: FaceEntry;
   chip: string;
@@ -3602,6 +3606,9 @@ function AtencionRow({
   aviso?: string;
   /** La acción de la fila, si tiene una propia («Renovar»). */
   accion?: { texto: string; icono: React.ReactNode; onClick: () => void };
+  /** Más de una («Liberar» y «Reservar de verdad» de «Marcado reservado a
+   *  mano»), después de `accion`. */
+  acciones?: { texto: string; icono: React.ReactNode; onClick: () => void; titulo?: string; ocupado?: boolean }[];
 }) {
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   return (
@@ -3626,13 +3633,18 @@ function AtencionRow({
           {" · "}{dates}
         </span>
       </button>
-      {(accion || onFoto) && (
+      {(accion || onFoto || (acciones && acciones.length > 0)) && (
         <span className="acc-r">
           {accion && (
             <button type="button" className="btn-s" onClick={accion.onClick}>
               {accion.icono} {accion.texto}
             </button>
           )}
+          {acciones?.map((a) => (
+            <button key={a.texto} type="button" className="btn-s" onClick={a.onClick} title={a.titulo} disabled={a.ocupado}>
+              {a.icono} {a.texto}
+            </button>
+          ))}
           {onFoto && (
             <button type="button" className="btn-s" onClick={onFoto} aria-label="Ver la foto del reporte">
               <Camera {...ICONO_TARJETA} /> Ver foto
@@ -4795,14 +4807,52 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // Arranca un contrato NUEVO con ese espacio. Sumarlo a uno que estuviera a
     // medio armar mezclaría dos negociaciones sin avisar. Vendiendo por
     // partes, con la puerta elegida (`PU2`); una cara por participación, con
-    // su línea de porcentaje (nunca entera).
+    // su línea de porcentaje (nunca entera). Un mueble que se vende por
+    // partes (`partes.division`) entra con su lista de partes abierta y
+    // ninguna marcada: entera chocaría con la parte que ya esté vendida. Una
+    // renovación (`semilla`) trae lo que renueva y entra como estaba.
+    const division = !parte && !semilla ? divisionDe(f) : null;
     setEnContrato([porParticipacion(f) ? { id: f.id, face, pc: true }
-      : parte ? { id: f.id, face, parte } : { id: f.id, face }]);
+      : parte ? { id: f.id, face, parte }
+      : division ? { id: f.id, face, porPartes: division.clase } : { id: f.id, face }]);
     setModo("vender");
   };
 
   /** Con qué abre el formulario cuando se llega por «Renovar». */
   const [semilla, setSemilla] = useState<SemillaContrato | null>(null);
+
+  /** «Vender» del panel del Plano (rediseño, PR 3): llega por el store
+   *  (`pedirVender`, `Dashboard.tsx` ya cambió de pestaña) y se arma con
+   *  `negociar`, el mismo camino que el globo del mapa. Se suelta enseguida:
+   *  volver a esta pestaña no lo repite. */
+  const pedidoVender = useFixtureStore((s) => s.pedidoVender);
+  useEffect(() => {
+    if (!pedidoVender || !isAdmin) return;
+    useFixtureStore.getState().soltarPedidoVender();
+    const f = fixtures.find((x) => x.id === pedidoVender.fixtureId);
+    if (f) negociar(f, pedidoVender.cara);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoVender, isAdmin]);
+
+  /** «Marcado reservado a mano» → «Liberar»: Disponible en la base, como el
+   *  selector del Plano. «Reservar de verdad» libera la marca y abre Vender
+   *  con el espacio: la reserva de verdad lleva proveedor y fecha, y con la
+   *  marca puesta Vender lo da tomado. */
+  const [liberando, setLiberando] = useState<string | null>(null);
+  const liberarReservadoAMano = async (entry: FaceEntry, despues?: () => void) => {
+    const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
+    setLiberando(codigo);
+    try {
+      const espacio = await findOrCreateSpace({ code: codigo, name: entry.fixture.code, sede: entry.fixture.sede || sede });
+      await updateSpaceStatus(espacio.id, "free");
+      await refrescarComercial();
+      despues?.();
+    } catch {
+      /* el mapa no cambió: la fila sigue ahí para volver a probar */
+    } finally {
+      setLiberando(null);
+    }
+  };
 
   /** Renovar una participación: Vender con el contrato armado (rediseño de
    *  Vender, PR 1; antes abría el Editor 3D → Distribución). La línea es el
@@ -5069,7 +5119,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   // Deselect when switching sedes: ese mueble es de la otra tienda, y un
   // contrato a medio llenar apuntaría al espacio equivocado.
+  //
+  // Sólo cuando la sede CAMBIÓ, no al montar: la pantalla se vuelve a montar
+  // al llegar desde el Plano con «Vender», y este efecto corre DESPUÉS del
+  // que arma el pedido (`pedidoVender`, más arriba) en el mismo montaje. Sin
+  // la guarda borraba el contrato recién armado y Vender abría vacío.
+  const sedeDelContrato = useRef(sede);
   useEffect(() => {
+    if (sedeDelContrato.current === sede) return;
+    sedeDelContrato.current = sede;
     setSelected(null);
     setCerrado(null);
     setEnContrato([]);
@@ -5300,10 +5358,17 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     const expired: ContractEntry[] = [];
     const expiring: ContractEntry[] = [];
     const noContract: FaceEntry[] = [];
+    /** «Marcado reservado a mano» (rediseño, PR 3, decisión 1): «Reservado»
+     *  sin proveedor ni fecha, del selector de antes. Una reserva de Vender
+     *  llega con la marca `reservado` (`conLaReserva`) y no cae acá. Ya no se
+     *  puede marcar así (`PATCH /spaces/{id}/status` contesta 409): los que
+     *  quedaron se liberan o se reservan de verdad desde Corregir. */
+    const reservadoAMano: FaceEntry[] = [];
     faces.forEach((x, i) => {
       if (ds[i] === "expired") expired.push({ ...x, days: daysUntil(x.endDate) });
       else if (ds[i] === "expiring") expiring.push({ ...x, days: daysUntil(x.endDate) });
       else if (ds[i] === "no_contract") noContract.push(x);
+      else if (ds[i] === "reserved" && !x.reservado) reservadoAMano.push(x);
     });
     expired.sort((a, b) => a.days - b.days);
     expiring.sort((a, b) => a.days - b.days);
@@ -5347,7 +5412,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     return {
       total, occupied, committed, free, held, occPct, revenue, committedRevenue,
       rentableFixtures, nonRentable,
-      expired, expiring, noContract,
+      expired, expiring, noContract, reservadoAMano,
       topSuppliers, belowReference,
       /** Los contratos que corren hoy con valor: la plata de la franja y de
        *  «Quién paga» sale de acá, en la unidad que se elija. */
@@ -5623,6 +5688,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     for (const e of kpis.expired) a.push({ seccion: "vencidos", clave: `v-${claveDeFila(e)}`, ...de(e) });
     for (const e of kpis.expiring) a.push({ seccion: "por_vencer", clave: `pv-${claveDeFila(e)}`, ...de(e) });
     for (const e of kpis.noContract) a.push({ seccion: "ocupado_sin_contrato", clave: `nc-${claveDeFila(e)}`, ...de(e) });
+    // Sin plata ni proveedor (no tiene ninguno): el trabajador ya lo ve en su
+    // mapa, como «Ocupado sin contrato». Las acciones son de administración.
+    for (const e of kpis.reservadoAMano) a.push({ seccion: "reservado_a_mano", clave: `ra-${claveDeFila(e)}`, ...de(e) });
     // Los fantasmas cuentan para TODAS las sedes, no sólo la abierta: un
     // contrato sin mueble no se ve en ningún plano, así que si sólo contara en
     // la suya no se vería nunca. Es lo único de esta lista que cruza tiendas.
@@ -6722,6 +6790,43 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                               onSelect={() => revisar(entry.fixture, entry.face)}
                             />
                           ))}
+                        </div>
+                      )}
+                      {/* «Reservado» a mano, del selector de antes: sin
+                          proveedor ni fecha. Se libera, o se reserva de verdad
+                          en Vender (rediseño, PR 3, decisión 1). */}
+                      {kpis.reservadoAMano.length > 0 && (
+                        <div data-reservado-a-mano>
+                          <AtencionSection label={tituloDeSeccion("reservado_a_mano", "corregir")} monto={kpis.reservadoAMano.length} />
+                          {kpis.reservadoAMano.map((entry) => {
+                            const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
+                            return (
+                              <AtencionRow
+                                key={`ra-${claveDeFila(entry)}`}
+                                aviso={`ra-${claveDeFila(entry)}`}
+                                entry={entry}
+                                chip="—"
+                                tono="sordo"
+                                dates="sin proveedor ni fecha"
+                                selected={selected?.id === entry.fixture.id}
+                                onSelect={() => revisar(entry.fixture, entry.face)}
+                                acciones={isAdmin ? [
+                                  {
+                                    texto: "Liberar", icono: <CircleDashed {...ICONO_TARJETA} />,
+                                    titulo: "Pasa el espacio a Disponible",
+                                    ocupado: liberando === codigo,
+                                    onClick: () => void liberarReservadoAMano(entry),
+                                  },
+                                  {
+                                    texto: "Reservar de verdad", icono: <Hourglass {...ICONO_TARJETA} />,
+                                    titulo: "Saca la marca a mano y abre Vender con este espacio, para reservarlo con proveedor y fecha",
+                                    ocupado: liberando === codigo,
+                                    onClick: () => void liberarReservadoAMano(entry, () => negociar(entry.fixture, entry.face)),
+                                  },
+                                ] : undefined}
+                              />
+                            );
+                          })}
                         </div>
                       )}
                       {/* Participación sin mueble, sin término, distribución

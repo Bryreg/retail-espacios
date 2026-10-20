@@ -166,7 +166,18 @@ def test_RESERVADO_Y_MANTENIMIENTO_TAMBIEN_SALEN(client, admin):
     b = _espacio(client, admin, "IMP-18")
     client.patch(f"/api/spaces/{a}/status", headers=admin,
                  json={"status": "maintenance", "notes": "vitrina rota"})
-    client.patch(f"/api/spaces/{b}/status", headers=admin, json={"status": "reserved"})
+    # «Reservado» a mano ya no se escribe (rediseño, PR 3: 409); los que
+    # quedaron así de antes se siguen leyendo, y es eso lo que se prueba acá.
+    r = client.patch(f"/api/spaces/{b}/status", headers=admin, json={"status": "reserved"})
+    assert r.status_code == 409, r.text
+    from app.database import SessionLocal
+    from app.models.models import Space, SpaceStatus
+    db = SessionLocal()
+    try:
+        db.query(Space).filter(Space.id == b).one().status = SpaceStatus.reserved
+        db.commit()
+    finally:
+        db.close()
 
     todo = _comercial(client, admin)
     assert todo["NAVE-IMP-17"]["status"] == "maintenance"

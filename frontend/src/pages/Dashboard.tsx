@@ -1460,6 +1460,13 @@ export default function Dashboard() {
     if (enfoque3D && isAdmin) setViewMode("store");
   }, [enfoque3D, isAdmin]);
 
+  // «Vender» del panel del Plano (rediseño, PR 3): el pedido viaja por el
+  // store y acá se pasa a la pantalla de sede, que lo arma en Vender.
+  const pedidoVender = useFixtureStore((s) => s.pedidoVender);
+  useEffect(() => {
+    if (pedidoVender && isAdmin) setViewMode("kpis");
+  }, [pedidoVender, isAdmin]);
+
   const effectiveMode: ViewMode =
     isAdmin || viewMode === "montaje" ? viewMode : "kpis";
 

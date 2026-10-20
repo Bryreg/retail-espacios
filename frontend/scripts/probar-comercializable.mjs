@@ -181,7 +181,8 @@ prueba("el panel no ofrece un botón que la regla ignora", () => {
   // qué el mueble no se alquila.
   for (const [nombre, ruta, boton] of [
     ["el editor 3D", join(raiz, "src/components/StoreEditor3D/StoreEditor3D.tsx"), "u({ rentable: value })"],
-    ["el plano 2D", join(raiz, "src/components/FloorPlan2D/FloorPlan2D.tsx"), "onUpdate({ rentable: value })"],
+    // Rediseño, PR 3: «Se vende» es un interruptor (el destino del mueble).
+    ["el plano 2D", join(raiz, "src/components/FloorPlan2D/FloorPlan2D.tsx"), "onUpdate({ rentable: !rentable })"],
   ]) {
     const t = leer(ruta);
     const label = t.indexOf("Destino del mueble");

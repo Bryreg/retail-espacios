@@ -39,6 +39,9 @@ ACCIONES = {
     "contrato.alta": "Contrato creado",
     "contrato.baja": "Contrato cancelado",
     "espacio.estado": "Estado de espacio cambiado",
+    # El panel del Plano (rediseño, PR 3): la nota del contrato, de la reserva o
+    # del espacio. La línea dice dónde, nunca el texto (es libre y de administración).
+    "espacio.nota": "Nota del espacio cambiada",
     "archivo.alta": "Documento subido",
     "archivo.baja": "Documento borrado",
     "archivo.descarga": "Documento descargado",

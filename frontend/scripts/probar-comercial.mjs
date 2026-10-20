@@ -352,7 +352,19 @@ prueba("BLOQUES DE SUPERVISAR DENTRO DE isAdmin: tarjetas, ficha y tabla de part
   assert.ok(avisosDef.length > 200, "no está `const avisos = useMemo(`");
   assert.deepEqual(revisarAvisos(avisosDef), [], "la cuenta de «Para revisar» le suma al trabajador lo de administración");
   // Y la lista misma no se afloja: lo que el trabajador ve, y nada más.
-  assert.deepEqual(PARA_TODOS, ["kpis.expired", "kpis.expiring", "kpis.noContract", "fantasmas"]);
+  // (Rediseño, PR 3, decisión 1: suma «Marcado reservado a mano», que no lleva
+  // plata ni proveedor —no tiene ninguno— y que el trabajador ya ve pintado en
+  // su mapa, como «Ocupado sin contrato». Lo que la guarda exige además: que
+  // salga SÓLO de las caras «reserved» sin la marca de una reserva de Vender,
+  // y que liberar o reservar de verdad sea de administración.)
+  assert.deepEqual(PARA_TODOS, ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas"]);
+  assert.match(t, /else if \(ds\[i\] === "reserved" && !x\.reservado\) reservadoAMano\.push\(x\);/,
+    "«Marcado reservado a mano» junta algo más que lo marcado a mano (una reserva de Vender lleva proveedor y fechas)");
+  assert.equal((t.match(/reservadoAMano\.push\(/g) ?? []).length, 1, "«Marcado reservado a mano» se llena por otro lado");
+  const seccionRa = t.slice(t.indexOf("<div data-reservado-a-mano>"), t.indexOf("</div>", t.indexOf("<div data-reservado-a-mano>")));
+  assert.ok(seccionRa.length > 200, "no está la sección «Marcado reservado a mano» en Corregir");
+  assert.match(seccionRa, /acciones=\{isAdmin \? \[/, "«Liberar» o «Reservar de verdad» se le ofrecen al trabajador");
+  assert.doesNotMatch(seccionRa, /negotiatedValue|formatCOP|supplierName|brandCategory|observation/, "la sección dice plata, proveedor o nota");
   for (const n of ["kpis.belowReference", "importacion", "montaje.noMontado", "montaje.sinMontar", "montaje.viejos",
     "cortesSinCargar.pendientes", "reservasSinConfirmar.vivas", "faltaPlanometria.filas", "revisionPc.secciones"]) {
     assert.ok(SOLO_ADMINISTRACION.includes(n), `«${n}» salió de la lista de lo de administración`);
@@ -474,7 +486,10 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   assert.equal(PC.rotuloPorOcupacion("maintenance", { dispo: "tomado" }), null, "lo propio de la cara dejó de mandar");
   assert.equal(PC.rotuloPorOcupacion("occupied", { dispo: "parcial" }), null);
   const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
-  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
+  // (Rediseño, PR 3: el panel B termina donde empieza su renglón,
+  // `FilaDelPanel`; antes, en `ToolbarBtn`, que se fue con la barra vieja.)
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function FilaDelPanel("));
+  assert.ok(plano.indexOf("function FilaDelPanel(") > plano.indexOf("function AssignmentPanel("), "el panel B no termina en `FilaDelPanel`");
   assert.ok(panel.length > 1000, "no está AssignmentPanel");
   // La ocupación de la cara que se mira, del mismo cálculo que su color.
   assert.match(plano, /const pintadoDe = useCallback\(\(itemId: string, cara: "A" \| "B", propio: SpaceStatus\): SpaceStatus =>\s*estadoParaPintar\(propio, dispoDeLaCara\(itemId, cara\)\), \[dispoDeLaCara\]\);/,
@@ -519,17 +534,22 @@ prueba("la ficha del plano 2D: «Estado del espacio» también por ocupación, y
   // «Es por participación» lo dice el mueble del store, no cualquier mueble.
   assert.match(plano, /const esPorParticipacion = useCallback\(\(itemId: string\): boolean => \{\s*const f = muebleDelStore\.get\(itemId\);\s*return !!f && porParticipacion\(f\);\s*\}, \[muebleDelStore\]\);/,
     "«es por participación» vale para muebles que no se venden así");
-  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
-  const i = panel.indexOf('<Field label="Estado del espacio"');
-  const estado = panel.slice(i, panel.indexOf("</Field>", i));
+  // (Rediseño, PR 3: el panel B termina donde empieza su renglón,
+  // `FilaDelPanel`; antes, en `ToolbarBtn`, que se fue con la barra vieja.)
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function FilaDelPanel("));
+  assert.ok(plano.indexOf("function FilaDelPanel(") > plano.indexOf("function AssignmentPanel("), "el panel B no termina en `FilaDelPanel`");
+  // (Rediseño, PR 3: «Estado del espacio» es el renglón «Estado» del panel B,
+  // en la pestaña Venta; la palabra de sólo lectura va en `.p2-v`.)
+  const i = panel.indexOf('<FilaDelPanel k="Estado" titulo="Estado del espacio"');
+  const estado = panel.slice(i, panel.indexOf("</FilaDelPanel>", i));
   assert.ok(i > 0 && estado.length > 200, "no está el campo «Estado del espacio»");
   // De sólo lectura dice la palabra por ocupación, nunca el estado crudo.
-  assert.match(estado, /<p style=\{\{ fontSize: 14, color: "var\(--dark-ink-1\)" \}\}>\s*\{rotuloVisto\}\s*\{face\.status === "occupied" && \(/,
+  assert.match(estado, /<p className="p2-v">\s*\{rotuloVisto\}\s*\{face\.status === "occupied" && \(/,
     "«Estado del espacio» dice «Disponible» sobre una cara por participación tomada");
   assert.doesNotMatch(estado, /STATUS_LABELS\[face\.status\]/, "«Estado del espacio» vuelve a leer el estado crudo");
   // La nota «lo dice la ocupación» sale sólo cuando lo que se ve no es lo de la base.
   assert.equal((estado.match(/data-estado-por-ocupacion/g) || []).length, 2);
-  assert.equal((estado.match(/\{estadoVisto !== face\.status && \(\s*<(?:p|span) data-estado-por-ocupacion/g) || []).length, 2,
+  assert.equal((estado.match(/\{estadoVisto !== face\.status && \(\s*<(?:p|span|small) data-estado-por-ocupacion/g) || []).length, 2,
     "la nota «lo dice la ocupación» sale también en caras que no se venden por participación");
 });
 
@@ -1045,18 +1065,29 @@ prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElP
   assert.match(t, /title=\{desgloseDelParcial\(tallyVender\)\}>\+\{enParte\(tallyVender\)\}/);
 });
 
-prueba("fase 2 · la ficha del plano 2D: la pestaña de la cara activa y el destino elegido se leen en los dos temas (tokens del cajón oscuro, nada de --accent)", () => {
+/* Rediseño, PR 3: la ficha deja de ser el cajón oscuro y sigue el tema (panel
+   B). Esta guarda REEMPLAZA a la que exigía los tokens del cajón oscuro en la
+   pestaña de la cara y en el destino, y es más estricta: ningún `--dark-*` ni
+   clase `dark-*` en todo el panel (tampoco --accent ni --signal), la cara
+   activa y el destino con su estado dicho a la tecnología de asistencia
+   (`aria-pressed`, `role="switch"` + `aria-checked`), y lo elegido pintado en
+   tinta plena sobre la superficie del tema (`plano.css`), que se lee en claro
+   y en oscuro. */
+prueba("rediseño PR 3 · la ficha del plano 2D sigue el tema: sin cajón oscuro, la cara activa y el destino se leen en los dos temas", () => {
   const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
-  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function FilaDelPanel("));
   assert.ok(panel.length > 1000, "no está AssignmentPanel");
-  // La ficha va sobre --dark-bg en los dos temas: --accent es tinta en tema claro (1,05:1).
-  assert.doesNotMatch(panel, /var\(--accent\)|var\(--accent-ink\)/, "la ficha pinta con --accent: en tema claro no se lee");
-  assert.match(panel, /background: activeFace === f \? "var\(--dark-surface\)" : "none",/);
-  assert.match(panel, /color: activeFace === f \? "var\(--dark-ink-1\)" : "var\(--dark-ink-3\)",/);
-  assert.match(panel, /borderBottom: activeFace === f \? "2px solid var\(--dark-ink-1\)" : "2px solid transparent",/);
-  assert.match(panel, /aria-pressed=\{activeFace === f\}/);
-  assert.match(panel, /background: rentable === value \? "var\(--dark-ink-1\)" : "transparent",\s*color: rentable === value \? "var\(--dark-bg\)" : "var\(--dark-ink-3\)",/);
+  assert.doesNotMatch(panel, /--dark-|\bdark-(?:ink|line|surface|bg)/, "la ficha vuelve a pintar con el cajón oscuro");
+  assert.doesNotMatch(panel, /var\(--accent\)|var\(--accent-ink\)/, "la ficha pinta con --accent");
   assert.doesNotMatch(panel, /--signal/, "el amarillo es sólo del botón principal");
+  assert.match(panel, /<div className="p2-seg ancho" role="group" aria-label="Cara" data-caras>[\s\S]{0,200}onClick=\{\(\) => setActiveFace\(f\)\} aria-pressed=\{activeFace === f\}/,
+    "la cara activa no se dice (o no es el control segmentado del tema)");
+  assert.match(panel, /<button type="button" role="switch" className="p2-sw" aria-checked=\{rentable\}/, "«Se vende» no dice si está encendido");
+  const css = sinComent(fuenteDe("plano.css"));
+  assert.match(css, /\.plano2d \.p2-seg button\[aria-pressed="true"\] \{ background: var\(--ink-1\); color: var\(--surface\);/,
+    "lo elegido no va en tinta plena sobre la superficie del tema");
+  assert.match(css, /\.plano2d \.p2-sw\[aria-checked="true"\] \{ background: var\(--ink-1\);/, "el interruptor encendido no se distingue");
+  assert.doesNotMatch(css, /--dark-/, "plano.css lee el cajón oscuro");
 });
 
 prueba("fase 2 · el rótulo del plano de una cara por participación es la línea CORTA; el cartel del mouse sigue con la larga (ejecutado)", () => {
@@ -1136,7 +1167,10 @@ prueba("fase 2 · la ficha del plano 2D no repite «en el Editor 3D → Distribu
   assert.equal(PC.textoDeLoComprometido(tomada, true, { conLugar: false }), PC.textoDeLoComprometido(tomada, true));
   // La ficha lo pide sin lugar; el renglón de abajo dice dónde se cargan (una vez).
   const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
-  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function ToolbarBtn("));
+  // (Rediseño, PR 3: el panel B termina donde empieza su renglón,
+  // `FilaDelPanel`; antes, en `ToolbarBtn`, que se fue con la barra vieja.)
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function FilaDelPanel("));
+  assert.ok(plano.indexOf("function FilaDelPanel(") > plano.indexOf("function AssignmentPanel("), "el panel B no termina en `FilaDelPanel`");
   assert.equal((panel.match(/\{DONDE_SE_CARGAN\}/g) ?? []).length, 1);
   assert.match(panel, /textoDeLoComprometido\(dispoPc, isAdmin, \{ propio: face\.status, conLugar: false \}\)/);
 });
@@ -1228,6 +1262,9 @@ const DEL_DIBUJO = [
   ["Contrato sin mueble", "contrato_sin_mueble", ["corregir"]],
   ["Sólo en el plano", "solo_en_el_plano", ["corregir"]],
   ["Ocupado sin contrato", "ocupado_sin_contrato", ["corregir"]],
+  // Rediseño, PR 3 (decisión 1): lo marcado «Reservado» a mano, para liberarlo
+  // o reservarlo de verdad en Vender.
+  ["Marcado reservado a mano", "reservado_a_mano", ["corregir"]],
   ["Participación sin mueble", "participacion_sin_mueble", ["corregir"]],
   ["Sin término", "sin_termino", ["corregir"]],
   ["Distribución con problemas", "distribucion_con_problemas", ["corregir"]],

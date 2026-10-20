@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -53,6 +53,11 @@ def _space_out_for_role(space: Space, role: str) -> SpaceOut:
                 # «descuento del 25% cerrado por teléfono». Tachar el número y
                 # dejar pasar la nota deja la plata fugándose en castellano.
                 lease.notes = None
+        # La nota del ESPACIO es la misma clase de texto (rediseño, PR 3: el
+        # panel del Plano la muestra como «Nota del espacio» cuando no hay
+        # contrato, y dice «Sólo la ven los administradores»). `GET
+        # /spaces/comercial` ya la tachaba; por acá se escapaba.
+        out.notes = None
     return out
 
 
@@ -361,14 +366,33 @@ def get_space_by_svg(svg_id: str, role: str = Depends(require_auth), db: Session
     return _space_out_for_role(space, role)
 
 
-@router.get("/by-code/{code}", response_model=SpaceOut)
-def get_space_by_code(code: str, role: str = Depends(require_auth), db: Session = Depends(get_db)):
+@router.get("/by-code/{code}", response_model=Optional[SpaceOut])
+def get_space_by_code(
+    code: str,
+    si_existe: bool = False,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """El espacio por su código completo.
+
+    Sin fila, 404; con ``si_existe=1``, ``null`` (200). El panel del Plano lee
+    los archivos de cada cara que se elige, y un espacio que nunca se vendió no
+    tiene fila: es lo normal, no un error, y el 404 ensuciaba la consola del
+    navegador en cada clic. Leer no crea la fila (la crea quien administra, con
+    ``find-or-create``), y lo que sale pasa por la misma tachadura por rol.
+    """
     space = db.query(Space).options(
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).filter(Space.code == code).first()
     if not space:
+        if si_existe:
+            return None
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
     return _space_out_for_role(space, role)
+
+
+#: Lo que contesta `PATCH /spaces/{id}/status` a un «Reservado» a mano.
+RESERVA_SOLO_DESDE_VENDER = "Las reservas se hacen desde Vender, con proveedor y fecha."
 
 
 @router.patch("/{space_id}/status", response_model=SpaceOut)
@@ -390,6 +414,13 @@ def update_status(
             status_code=409,
             detail="Una participación no se marca a mano: su reserva provisional se carga en Distribución.",
         )
+    # «Reservado» a mano tampoco, sobre ningún espacio (rediseño, PR 3,
+    # decisión 1): era un apartado sin proveedor ni fecha que no se vencía
+    # nunca, y con la reserva de verdad de Vender las dos cosas se confundían.
+    # Los que ya están así se siguen leyendo y se corrigen desde Supervisar →
+    # Corregir («Marcado reservado a mano»: liberarlos o reservarlos de verdad).
+    if payload.status == SpaceStatus.reserved:
+        raise HTTPException(status_code=409, detail=RESERVA_SOLO_DESDE_VENDER)
     antes = space.status.value if space.status else "—"
     space.status = payload.status
     if payload.notes is not None:
@@ -402,6 +433,65 @@ def update_status(
     db.commit()
     db.refresh(space)
     return space
+
+
+# ─── La nota del espacio (o la de su contrato) ──────────────────────────────
+
+
+class NotaDelEspacio(BaseModel):
+    """La nota que escribe el panel del Plano («Nota del contrato» o «Nota del
+    espacio»): texto libre, hasta 500 letras, como la observación de Vender."""
+    nota: str = Field("", max_length=500)
+
+
+class NotaGuardada(BaseModel):
+    #: Dónde quedó: ``contrato`` (la nota del contrato, la misma que se escribe
+    #: en Vender), ``reserva`` (la de la reserva viva) o ``espacio``.
+    donde: str
+    nota: str
+
+
+@router.put("/{space_id}/nota", response_model=NotaGuardada)
+def guardar_nota(
+    space_id: int,
+    payload: NotaDelEspacio,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Escribe la nota que `GET /spaces/comercial` devuelve como
+    ``observation``, en el MISMO lugar del que la lee: la del contrato que
+    manda (el que corre o, si no, el firmado que viene), si no la de la reserva
+    viva de la cara o de la parte, y si no la del espacio.
+
+    Antes el panel del Plano escribía la observación en el JSON del layout, y
+    `PUT /layout` la descarta al recibir (`CAMPOS_DE_CONTRATO`): se veía
+    cambiar y no se guardaba en ningún lado. Es texto libre —ahí se escribe
+    «descuento cerrado por teléfono»—, así que es de administración para leer
+    y para escribir; la bitácora dice dónde, nunca el texto."""
+    space = db.query(Space).options(joinedload(Space.leases)).filter(Space.id == space_id).first()
+    if not space:
+        raise HTTPException(status_code=404, detail="Espacio no encontrado")
+    texto = payload.nota.strip()
+    lease = space.active_lease or space.upcoming_lease
+    donde = "espacio"
+    if lease is not None:
+        lease.notes = texto or None
+        donde = "contrato"
+    else:
+        dia = hoy()
+        reserva = (db.query(ReservaDeEspacio)
+                   .filter(ReservaDeEspacio.space_id == space.id, ReservaDeEspacio.estado == "viva",
+                           ReservaDeEspacio.caduca >= dia, ReservaDeEspacio.hasta >= dia)
+                   .order_by(ReservaDeEspacio.desde, ReservaDeEspacio.id).first())
+        if reserva is not None:
+            reserva.notas = texto or None
+            donde = "reserva"
+        else:
+            space.notes = texto or None
+    anotar(db, request, rol, "espacio.nota", entidad="espacio", entidad_id=space.code, detalle=f"nota del {donde}")
+    db.commit()
+    return NotaGuardada(donde=donde, nota=texto)
 
 
 @router.post("/{space_id}/leases", response_model=LeaseOut, status_code=201)

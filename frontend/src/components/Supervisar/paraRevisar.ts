@@ -17,7 +17,7 @@
  *    planometría con más margen, lo contratado sin montar, las reservas por
  *    caducar y los borradores de distribución sin confirmar.
  *  · Corregir: datos que no cuadran — contrato sin mueble, sólo en el plano,
- *    ocupado sin contrato, participación sin mueble, sin término, distribución
+ *    ocupado sin contrato, marcado reservado a mano (PR 3), participación sin mueble, sin término, distribución
  *    con problemas o para revisar, bajo tarifa y los montajes viejos sin
  *    reporte (antes una nota que no contaba).
  */
@@ -33,7 +33,7 @@ export const GRUPOS: readonly { id: GrupoDeRevision; texto: string }[] = [
 export type SeccionDeRevisar =
   | "ventas_por_cargar" | "falta_distribuir" | "falta_planometria" | "vencidos" | "no_se_pudo_montar"
   | "reservas" | "por_vencer" | "sin_montar" | "borradores"
-  | "contrato_sin_mueble" | "solo_en_el_plano" | "ocupado_sin_contrato" | "participacion_sin_mueble"
+  | "contrato_sin_mueble" | "solo_en_el_plano" | "ocupado_sin_contrato" | "reservado_a_mano" | "participacion_sin_mueble"
   | "sin_termino" | "distribucion_con_problemas" | "distribucion_para_revisar" | "bajo_tarifa" | "montajes_viejos";
 
 /** Con cuántos días o menos para empezar algo que falta preparar (la
@@ -63,6 +63,9 @@ export const DONDE_VA: Record<SeccionDeRevisar, { grupo: GrupoDeRevision } | { h
   contrato_sin_mueble: { grupo: "corregir" },
   solo_en_el_plano: { grupo: "corregir" },
   ocupado_sin_contrato: { grupo: "corregir" },
+  // «Reservado» a mano, sin proveedor ni fecha (rediseño, PR 3, decisión 1):
+  // ya no se puede marcar; los que quedaron se liberan o se reservan de verdad.
+  reservado_a_mano: { grupo: "corregir" },
   participacion_sin_mueble: { grupo: "corregir" },
   sin_termino: { grupo: "corregir" },
   distribucion_con_problemas: { grupo: "corregir" },
@@ -86,6 +89,7 @@ export function tituloDeSeccion(s: SeccionDeRevisar, grupo: GrupoDeRevision): st
     case "contrato_sin_mueble": return "Contrato sin mueble en el plano";
     case "solo_en_el_plano": return "Contrato que sólo vive en el plano";
     case "ocupado_sin_contrato": return "Ocupado sin contrato";
+    case "reservado_a_mano": return "Marcado reservado a mano";
     case "participacion_sin_mueble": return "Participación sin mueble";
     case "sin_termino": return "Contrato de participación sin término";
     case "distribucion_con_problemas": return "Distribución con problemas";

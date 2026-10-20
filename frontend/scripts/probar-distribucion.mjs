@@ -1697,19 +1697,29 @@ await prueba("fase 2 · I5: el renombre no borra la sede: sin `deleteLayout` en 
   assert.match(plano, /\{renombreFallido && \(\s*<RenombreRechazadoDialog \{\.\.\.renombreFallido\} onCerrar=\{\(\) => setRenombreFallido\(null\)\} \/>/);
   assert.match(plano.slice(b, b + 4000), /\{motivos\.map\(\(m\) => <li key=\{m\}>\{m\}<\/li>\)\}/, "el rechazo no muestra sus motivos");
   // La «Sede» del panel del mueble es de sólo lectura (V16): el plano define la sede.
-  const panel = plano.slice(plano.indexOf("function AssignmentPanel("));
-  const sede = panel.slice(panel.indexOf('<Field label="Sede"'), panel.indexOf("</Field>", panel.indexOf('<Field label="Sede"')));
+  // (Rediseño, PR 3: va con su candado en la línea «tipo · sede · pasillo» del
+  // encabezado del panel B, y el aviso de la sede ajena justo debajo. La guarda
+  // mira las dos piezas, y además que no quede otro lugar del panel que diga
+  // la sede.)
+  const panel = plano.slice(plano.indexOf("function AssignmentPanel("), plano.indexOf("function FilaDelPanel("));
+  const iLinea = panel.indexOf("<span className=\"p2-linea\" data-linea-del-mueble>");
+  const linea = panel.slice(iLinea, panel.indexOf("</span>\n", panel.indexOf("{pasillo !== undefined", iLinea)));
+  const iAjena = panel.indexOf("{item.sede && normalizeSede(item.sede) !== normalizeSede(sede) && (");
+  const sede = linea + panel.slice(iAjena, panel.indexOf("</p>", iAjena));
+  assert.ok(iLinea > 0 && iAjena > iLinea && linea.length > 0, "no está la sede en la línea del encabezado, o su aviso");
   // Lo único que puede escribir es la sede DEL PLANO (`onUpdate({ sede })`, el
   // arreglo de un mueble viejo que guardó otra), sólo en edición y para quien
   // administra, y diciendo antes que lo vendido con el código viejo no se muda.
-  assert.ok(sede.length > 0 && !/<select/.test(sede), "la «Sede» del panel 2D vuelve a tener un selector");
+  assert.ok(sede.length > 0 && !/<select|<input/.test(sede), "la «Sede» del panel 2D vuelve a tener un selector");
+  assert.ok(!/<select/.test(panel), "el panel 2D tiene un selector (la sede, o el estado de antes)");
   assert.deepEqual(sede.match(/onUpdate\([^)]*\)/g) ?? [], ["onUpdate({ sede })"],
     "la «Sede» del panel 2D le escribe al mueble otra cosa que la sede del plano");
   assert.match(sede, /\{editMode && isAdmin && \(\s*<button type="button" data-usar-sede-del-plano onClick=\{\(\) => onUpdate\(\{ sede \}\)\}/);
   assert.match(sede, /sus espacios se arman como\s+«\{fullCode\}»[\s\S]{0,80}no se muda solo/,
     "el aviso de la sede ajena vuelve a decir que vale la del plano (los espacios se arman con la suya)");
   assert.ok(!/vale «\{sede\}»/.test(sede), "el aviso de la sede ajena promete que vale la del plano");
-  assert.match(sede, /<p data-sede-del-plano[^>]*>\{sede\}<\/p>/);
+  assert.match(linea, /<span className="mono" data-sede-del-plano[^>]*>\{sede\}<\/span>\s*<Lock /, "la sede del encabezado no lleva su candado");
+  assert.equal((panel.match(/data-sede-del-plano/g) ?? []).length, 1, "la sede se dice en más de un lugar del panel");
 });
 
 await prueba("fase 2 · I5: renombrar una sede es UN pedido al servidor —ningún DELETE—; se adopta lo que contesta y, si se niega, no cambia nada (ejecutado)", async () => {

@@ -9,6 +9,9 @@
 /* Capa 3 de Supervisar (rediseño, PR 2): todo cuelga de `.sup`, así que Vender
    no ve una sola de sus reglas. */
 @import "./supervisar.css";
+/* Capa 3 del Plano (rediseño, PR 3): todo cuelga de `.plano2d`. El panel del
+   mueble sigue el tema; el Editor 3D sigue oscuro siempre y no la ve. */
+@import "./plano.css";
 /* Capa 3 de Renumerar: la hoja del informe antes → después, que es tanto la
    pantalla como el papel que se lleva a la tienda. Todo cuelga de `.renum`, así
    que su `@media print` no puede alcanzar a ninguna otra pantalla. */

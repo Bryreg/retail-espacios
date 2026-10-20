@@ -15,9 +15,12 @@
  * parte de administración ENTERA dentro de la rama `isAdmin ?`.
  */
 
-/** Lo que ve el trabajador: vencidos, por vencer, ocupado sin contrato y los
- *  contratos sin mueble. Sin plata ni proveedor (el servidor ya se los tacha). */
-export const PARA_TODOS = ["kpis.expired", "kpis.expiring", "kpis.noContract", "fantasmas"];
+/** Lo que ve el trabajador: vencidos, por vencer, ocupado sin contrato, lo
+ *  marcado «Reservado» a mano (rediseño, PR 3: no lleva plata ni proveedor
+ *  —no tiene ninguno— y el estado ya le llega pintado en su mapa; liberarlo o
+ *  reservarlo de verdad es de administración) y los contratos sin mueble. Sin
+ *  plata ni proveedor (el servidor ya se los tacha). */
+export const PARA_TODOS = ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas"];
 
 /** Llevan proveedores, plata, fechas de otro o participaciones. */
 export const SOLO_ADMINISTRACION = [
