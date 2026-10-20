@@ -48,6 +48,11 @@ export interface EstadoComercial {
    *  se le pega al mueble (la fusión la deja en el mapa crudo) y nunca viaja
    *  en el layout (`CAMPOS_DE_CONTRATO`). */
   reservaHasta?: string | null;
+  /** La cara (o la parte) la toma una RESERVA, no un contrato. Es lo único que
+   *  le llega al trabajador de una reserva —sin fechas, plata ni proveedor—:
+   *  Supervisar la pone «Reservado» y no «Ocupado sin contrato». Como
+   *  `reservaHasta`, ni se le pega al mueble ni viaja en el layout. */
+  reservado?: boolean;
 }
 
 /** Por código COMPLETO del espacio: `NAVE-PUN-04`, y la cara B lleva `-B`. */
@@ -88,8 +93,8 @@ function loSuyo(
  *  mapa crudo. Pegada, una reserva que se confirma (o caduca) dejaba la fecha
  *  vieja en el mueble y además viajaba en el `PUT /layout`. */
 function sinReserva(e: EstadoComercial): EstadoComercial {
-  if (!("reservaHasta" in e)) return e;
-  const { reservaHasta: _fuera, ...resto } = e;
+  if (!("reservaHasta" in e) && !("reservado" in e)) return e;
+  const { reservaHasta: _fuera, reservado: _tampoco, ...resto } = e;
   return resto;
 }
 

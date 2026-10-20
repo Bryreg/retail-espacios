@@ -1275,12 +1275,12 @@ function Topbar({
       </div>
 
       {/* Divider */}
-      <div style={{ width: 1, height: 18, background: "var(--line)", flexShrink: 0 }} />
+      <div className="sep-app" style={{ width: 1, height: 18, background: "var(--line)", flexShrink: 0 }} />
 
       {/* Tabs: palabras con subrayado, sin ícono (hoja de piezas: «ni en las
           pestañas ni dentro de las pastillas: ahí manda la palabra»). El
           subrayado va al pie de la barra, como en la maqueta. */}
-      <div style={{ display: "flex", gap: 2, alignSelf: "stretch" }}>
+      <div className="pestanas-app" style={{ display: "flex", gap: 2, alignSelf: "stretch" }}>
         {visibleTabs.map(({ id, label, para, grupo }, i) => {
           const active = viewMode === id;
           // Una línea fina separa "operar" de "diseñar la tienda": son dos
@@ -1331,7 +1331,7 @@ function Topbar({
 
       {/* Right side: el estado de la sincronización (punto y palabra), el
           sol/luna, quién sos y los tres botones de ícono. */}
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+      <div className="der-app" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         {/* Server sync state — click to sync now */}
         <SyncStatus />
 

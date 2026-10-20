@@ -124,13 +124,22 @@ export function useCobrosPorVentas({ sede, activo }: { sede: string; activo: boo
   const [cobros, setCobros] = useState<CobroPorVentas[]>([]);
   const [cargados, setCargados] = useState<Record<string, number>>({});
   const [vuelta, setVuelta] = useState(0);
+  /** Se cargó un corte: los cobros (lo cargado de cada contrato) se vuelven a
+   *  leer —el canon vigente, «Quién paga» y la tabla lo suman— sin volver a
+   *  leer los pendientes, así la fila queda con su «→ $ monto». */
+  const [vueltaDeCobros, setVueltaDeCobros] = useState(0);
   useEffect(() => {
     setCargados({});
-    if (!activo || !sede) { setPendientes([]); setVigentes(0); setCobros([]); return; }
+    if (!activo || !sede) { setPendientes([]); return; }
     let vivo = true;
     cortesPendientes(sede)
       .then((r) => { if (vivo) setPendientes(Array.isArray(r) ? r : []); })
       .catch(() => { if (vivo) setPendientes([]); });
+    return () => { vivo = false; };
+  }, [sede, activo, vuelta]);
+  useEffect(() => {
+    if (!activo || !sede) { setVigentes(0); setCobros([]); return; }
+    let vivo = true;
     cobrosPorVentas(sede)
       .then((r) => {
         if (!vivo) return;
@@ -141,9 +150,11 @@ export function useCobrosPorVentas({ sede, activo }: { sede: string; activo: boo
       })
       .catch(() => { if (vivo) { setVigentes(0); setCobros([]); } });
     return () => { vivo = false; };
-  }, [sede, activo, vuelta]);
+  }, [sede, activo, vuelta, vueltaDeCobros]);
   const marcarCargado = useCallback((c: CortePendiente, monto: number) => {
     setCargados((x) => ({ ...x, [claveDeCorte(c)]: monto }));
+    // El canon vigente suma lo cargado: sin esto no cambiaba hasta recargar.
+    setVueltaDeCobros((n) => n + 1);
   }, []);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
   const porCargar = useMemo(() => pendientes.filter((c) => !(claveDeCorte(c) in cargados)).length, [pendientes, cargados]);

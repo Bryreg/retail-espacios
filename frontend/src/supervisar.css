@@ -22,6 +22,9 @@
   border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2);
   flex: none;
 }
+/* En la tabla la pastilla nunca se corta muda: si no entra, «…» (y la palabra
+   entera en su `title`). */
+.sup td > .pill { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; line-height: 20px; vertical-align: middle; }
 .sup .pill.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; min-width: 42px; justify-content: center; }
 .sup .pill.chica { height: 18px; padding: 0 6px; font-size: var(--t-3xs); margin-left: 6px; text-transform: uppercase; letter-spacing: .06em; }
 .sup .pill.libre { background: var(--libre-suave); border-color: var(--libre-borde); color: var(--libre-txt); }
@@ -203,7 +206,8 @@
 .chinchetas { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .chinchetas button {
   position: absolute; pointer-events: auto;
-  /* Encima del rótulo de su cara: la punta de la chincheta sobre el ancla. */
+  /* Sin rótulo a la vista (un mueble que no se vende entero, o un rótulo que
+     cedió): la punta de la chincheta sobre el ancla. */
   transform: translate(-50%, calc(-100% - 12px));
   display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
   border-radius: 50%; border: 1.5px solid var(--c, var(--ink-1)); background: var(--surface); color: var(--c, var(--ink-1));
@@ -214,6 +218,14 @@
 .chinchetas button[data-grupo="dias30"] { --c: var(--entra); }
 .chinchetas button[data-grupo="corregir"] { --c: var(--ink-1); }
 .chinchetas button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* Con su rótulo puesto, la chincheta se apoya ARRIBA de la caja del rótulo
+   (`ubicarChinchetas`): el código queda siempre a la vista. */
+.chinchetas button[data-sobre="rotulo"] { transform: translate(-50%, -100%); }
+/* A lo angosto, más chica: el plano mide la mitad. */
+@media (max-width: 560px) {
+  .chinchetas button { width: 20px; height: 20px; }
+  .chinchetas button svg { width: 12px; height: 12px; }
+}
 
 /* A lo angosto (390 px): sin desplazamiento de la página; las tablas ruedan
    adentro de su tarjeta y los encabezados envuelven. */

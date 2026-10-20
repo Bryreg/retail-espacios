@@ -144,6 +144,17 @@
   .barra-app { gap: 10px !important; padding: 0 12px !important; }
   .barra-app .pestana-app { padding: 0 7px !important; }
 }
+/* A 480 px o menos las cuatro pestañas y los controles no entran en un
+   renglón: la marca y los controles arriba, las pestañas en el renglón de
+   abajo, y la sincronización es el punto solo (la palabra queda en su `title`
+   y su `aria-label`). Nada se corta. */
+@media (max-width: 480px) {
+  .barra-app { flex-wrap: wrap; height: auto !important; row-gap: 0; padding-top: 6px !important; }
+  .barra-app .sep-app { display: none; }
+  .barra-app .pestanas-app { order: 3; flex: 1 0 100%; height: 40px; }
+  .barra-app .der-app { gap: 4px !important; }
+  .sync-palabra { display: none; }
+}
 
 /* LA HOJA DE SUPERVISAR: la rejilla de Vender, con otras cuatro tarjetas.
    Las mismas dos columnas (1004 : 402) y cada fila del alto del panel del

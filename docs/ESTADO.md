@@ -1116,8 +1116,11 @@ base la manda `occupied` con `reservaHasta` (sólo a quien administra) y `conLaR
 (`DashboardView.tsx`) la pasa a «Reservado · hasta el …», fuera del canon, de «N contratos», de
 «Por vencer», de «Contratado sin montar», de «Quién paga el canon» y de Renovar; se confirma o se
 cancela en «Para revisar» («Reservas que caducan hoy» en Hoy, «Reservas por caducar» en 30 días) o
-en la ficha del espacio. `reservaHasta` no se le pega al mueble ni viaja en el layout
-(`CAMPOS_DE_CONTRATO`).
+en la ficha del espacio. **Al trabajador** la base le manda la cara `occupied` con la marca
+`reservado: true` y NADA más de la reserva —ni fechas, ni plata, ni proveedor, ni `reservaHasta`—
+(`tests/test_reservas_de_espacio.py`): `conLaReserva` la pone «Reservado» a secas, y no cae en
+«Ocupado sin contrato» de Corregir. Ni `reservaHasta` ni `reservado` se le pegan al mueble ni
+viajan en el layout (`CAMPOS_DE_CONTRATO`, los dos lados).
 
 **Un contrato que se cobra por ventas no es un contrato de $ 0.** Su `monthly_rent` va en 0 y
 la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
@@ -1187,16 +1190,32 @@ cada cosa» es la lista de control (nada se fue). Lo nuevo vive en `components/S
   «Contratado sin montar» va en rojo desde los 14 días (`DIAS_SIN_MONTAR_EN_ROJO`): el «más de 60»
   de antes no podía pasar, la lista corta a los 30.
 - **La ficha**: el código como se lee, el estado en pastilla y el montaje con punto. Una cara por
-  participación muestra la barra «Comprometido X % · queda Y %», una fila por marca con su %, su
-  cobro y su montaje, y Distribuir · Renovar · «Vender el Y %» (Vender con esa cara y lo que queda
-  hoy). Una reserva: «Reservado hasta …» con Confirmar y Cancelar ahí mismo.
+  participación muestra la barra de hoy y «Comprometido X % · queda Y %» **del periodo** (el pico,
+  `capacidad.periodo`), una fila por marca con su %, su cobro y su montaje, y Distribuir · Renovar
+  · «Vender el Y %» (Vender con esa cara y lo que queda en el periodo: con lo de hoy, Vender lo
+  rechazaba si otra participación arrancaba adentro). El precio y el cobro de cada marca los
+  escribe Supervisar y llegan armados: `ParticipacionesDeLaCara` también la importa el plano 2D y
+  no carga la plata de Supervisar. Una reserva: «Reservado hasta …» con Confirmar y Cancelar ahí
+  mismo; la ficha sigue al mueble de la última sincronización, así que confirmar o cancelar la
+  deja al día. **«Cargar planometría»** carga sobre el contrato de la fila (`lease_id`), aunque
+  todavía no arranque; sin fila, el que corre hoy o el próximo (`active_lease ?? upcoming_lease`).
+- **«Vendido en parte» es lo vendido por partes o por participación**, una sola cuenta
+  (`comoLaVeSupervisar` en `utils/partes.ts`): la clave y el color del plano de Supervisar, la nota
+  de «Ocupación» y la pestaña de la tabla. Una cara vendida ENTERA que empieza o termina adentro
+  del periodo está tomada (Vender la sigue pintando «Disponible en parte»: ahí sí se vende). Las
+  pestañas «Libres» y «Vendido en parte» cuentan exactamente las filas que muestran (sólo caras,
+  con `faceMatchesFilter`), y «Libres» es lo libre en el periodo, la misma cuenta que la clave.
+- **«Bajo tarifa de referencia»** compara lo que el contrato paga AL MES (su total en sus meses,
+  `bajoLaTarifa` en `utils/meses.ts`) con la tarifa, que es al mes; la fila dice esa cifra.
 - **El plano**: el mismo panel que el de Vender (`vp vp-plano`) y del mismo alto en las dos
   pantallas, por construcción: las dos filas del plano miden `--alto-plano`, la cuenta cerrada de
   la rejilla de Vender contra el alto MEDIDO del área de las pantallas (`--alto-area`, que
   `Dashboard.tsx` escribe en `.area-pantallas`). Antes Supervisar adivinaba el marco (132 px) y el
   verificador midió 520/525, 430/448 y otro alto a 1100 (donde Vender pasaba a `62vw`). Las
   chinchetas (`Pin`) marcan los muebles con algo en «Para revisar», del color de su grupo (Hoy
-  rojo, 30 días ámbar, Corregir tinta); tocar una lleva a su aviso. Vender no las recibe.
+  rojo, 30 días ámbar, Corregir tinta); tocar una lleva a su aviso. Vender no las recibe. La
+  chincheta se apoya ARRIBA de la caja del rótulo de su cara, que al acomodarse cuenta con ella:
+  nunca tapa el código. «Participaciones de cara» va fuera de la hoja y mide lo que su contenido.
 - Al cargar una planometría la ficha dice qué pasó con el aviso de montaje (`aviso_de_montaje` del
   servidor), y Vender ya no dice «Nadie va a montar» de un contrato cuyo aviso espera la
   planometría (`montaje_pendiente`).

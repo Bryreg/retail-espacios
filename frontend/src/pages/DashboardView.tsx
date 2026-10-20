@@ -93,7 +93,7 @@ import {
   aLaFormaNueva, conLaForma, type FormaDeLaLinea,
   // fase 2 · I4: el ámbar de Vender contado por motivo, el rótulo corto de una
   // cara por participación y lo puesto a mano que manda sobre la ocupación.
-  alCerrar, conLasDeParticipacion, contarElPeriodo, desgloseDelParcial, enParte, motivoDelParcial,
+  alCerrar, comoLaVeSupervisar, conLasDeParticipacion, contarElPeriodo, desgloseDelParcial, enParte, motivoDelParcial,
   textoCortoDeParticipacion, tomadaPorLoSuyo, type CaraDelPeriodo, type ConteoDelPeriodo,
 } from "../utils/partes";
 // Las participaciones de cara (§4.8, §9.9, §11): la ocupación ANÓNIMA para
@@ -130,6 +130,10 @@ import {
   type UnidadDePlata,
 } from "../components/Supervisar/plata";
 import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
+// «Bajo tarifa» (el contrato al mes contra la tarifa): lo cuenta `kpis`, que
+// corre también con Vender abierto, así que vive en `utils/meses`, no en la
+// plata de Supervisar.
+import { bajoLaTarifa } from "../utils/meses";
 import {
   DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, chinchetasDe, contarPorGrupo, cuentaDelBadge,
   deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, tituloDeSeccion,
@@ -208,11 +212,24 @@ interface FaceEntry {
    *  (`conLaReserva`); con esto la fila va como «Reservado» y no suma canon,
    *  contratos, vencimientos ni montaje. */
   reservaHasta?: string | null;
+  /** La toma una reserva (con o sin `reservaHasta`): al trabajador le llega
+   *  sólo esto, sin fecha (`conLaReserva`). */
+  reservado?: boolean;
 }
 
 /** Vender, cuando el Plano no deja cambiar cómo se vende un mueble: sin el
  *  mensaje del servidor, que puede nombrar a otro proveedor (`venderAsi`). */
 const NO_SE_CAMBIO_LA_FORMA = "No se pudo cambiar cómo se vende: tiene algo vendido o tomado. Revisalo en el Plano.";
+
+/** «Cargar planometría» de «Para revisar»: el contrato que la espera. */
+interface PlanometriaPedida {
+  /** El código completo del espacio del contrato (`CENTRO-GON-01-PC2`). */
+  codigo: string;
+  /** El contrato: puede arrancar más adelante (no es el `active_lease`). */
+  leaseId: number;
+  /** El código como se lee (`GON-01·A·PC2`). */
+  rotulo: string;
+}
 
 /** Supervisar: una cara o una parte TOMADA por una reserva viva no es un
  *  contrato. La base la manda `occupied` con su proveedor, sus fechas y su
@@ -220,11 +237,16 @@ const NO_SE_CAMBIO_LA_FORMA = "No se pudo cambiar cómo se vende: tiene algo ven
  *  administra); acá pasa a «Reservado» con su fecha, y con eso queda fuera del
  *  canon, de «N contratos», de «Por vencer», de «Contratado sin montar», de
  *  «Quién paga el canon» y del bajo tarifa (`contractPhase` = sin contrato).
- *  Vender no pasa por acá: la ve «Tomado», sin decir que es una reserva. */
+ *  Vender no pasa por acá: la ve «Tomado», sin decir que es una reserva.
+ *  Al trabajador la base le manda sólo `reservado` (ni fecha, ni plata, ni
+ *  proveedor): va «Reservado» a secas, y no cae en «Ocupado sin contrato». */
 function conLaReserva(e: FaceEntry, estado: EstadoPorEspacio, sede: string): FaceEntry {
   const corto = (e.code || "").trim().toUpperCase();
-  const hasta = (estado[fullSpaceCode(e.fixture.sede || sede, corto)] ?? estado[corto])?.reservaHasta;
-  return hasta ? { ...e, status: "reserved", reservaHasta: hasta } : e;
+  const suyo = estado[fullSpaceCode(e.fixture.sede || sede, corto)] ?? estado[corto];
+  if (suyo?.reservaHasta) return { ...e, status: "reserved", reservaHasta: suyo.reservaHasta, reservado: true };
+  // Al trabajador le llega sólo la marca (sin fecha, plata ni proveedor): va
+  // «Reservado» a secas, y no «Ocupado sin contrato» en Corregir.
+  return suyo?.reservado ? { ...e, status: "reserved", reservado: true } : e;
 }
 
 const EMPTY_FACE: FaceData = {
@@ -577,16 +599,23 @@ function faceMatchesFilter(
   sinMontar?: Set<string>,
   /** Claves (`id-cara`) de las caras vendidas en parte en el periodo: con
    *  partes vendidas o por participación con algo comprometido. La pestaña
-   *  «Vendido en parte» muestra la cara y sus partes. */
+   *  «Vendido en parte» muestra LA CARA (no sus partes, que tienen su fila en
+   *  «Todas»): así su cuenta es la de la clave del plano. */
   enParte?: Set<string>,
+  /** Claves (`id-cara`) de las caras libres en el periodo, sin nada tomado.
+   *  Con esto «Libres» es esa cuenta (la de la clave del plano) y no el estado
+   *  de HOY de cada fila, que dejaba pasar una cara con una parte o una
+   *  participación vendida. */
+  libres?: Set<string>,
 ): boolean {
   if (filter === "todos") return true;
   if (filter === "sin_montar") {
     return sinMontar ? sinMontar.has(claveDeFila(entry)) : false;
   }
   if (filter === "en_parte") {
-    return enParte ? enParte.has(`${entry.fixture.id}-${entry.face}`) : false;
+    return enParte ? !entry.parte && enParte.has(`${entry.fixture.id}-${entry.face}`) : false;
   }
+  if (filter === "free" && libres) return !entry.parte && libres.has(`${entry.fixture.id}-${entry.face}`);
   const ds = displayStatus(entry);
   // "Ocupados" means earning today. A committed-but-not-started contract is
   // neither occupied nor available, so it answers to its own chip.
@@ -1393,8 +1422,18 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
    *  prueba las cuatro desviaciones de un único valor y, si ninguna entra,
    *  CEDE — y vuelve solo en cuanto el acercamiento le abre lugar. Nunca se
    *  achica: el cuerpo es constante. */
+  /** Las chinchetas de Supervisar, por cara (`id-cara`), y dónde quedó el
+   *  rótulo de cada cara en la última vuelta de `acomodar` (en pantalla): la
+   *  chincheta va ENCIMA de esa caja, nunca sobre el código. */
+  const pinRefs = useRef(new Map<string, HTMLButtonElement>());
+  const cajasDeRotulo = useRef(new Map<string, Caja>());
+  /** La chincheta de una cara cuyo rótulo cedió: dónde quedó ella sola, sin
+   *  pisar ningún rótulo puesto (en pantalla). */
+  const cajasDePin = useRef(new Map<string, Caja>());
   const acomodar = useCallback(() => {
     if (!calibrado.current) return;
+    cajasDeRotulo.current.clear();
+    cajasDePin.current.clear();
     const c = encuadre();
     const lz = wrapRef.current?.getBoundingClientRect();
     const sc = escenaActual.current;
@@ -1406,20 +1445,57 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
       b.left < lz.left + 2 || b.right > lz.right - 2 || b.top < lz.top + 2 || b.bottom > lz.bottom - 2;
 
     const ok: Caja[] = [];
-    for (const p of piezas.current) {
+    // Las caras con chincheta van antes que el resto (después del aviso de un
+    // nombre repetido, que nunca cede): su rótulo y su chincheta se ubican
+    // juntos, y una chincheta sin rótulo —que cae sobre el ancla— no tapa el
+    // código de otra cara.
+    const turno = (p: Pieza) => (p.peso === 0 ? 0 : pinRefs.current.has(p.clave) ? 1 : 2);
+    const enOrden = [...piezas.current].sort((a, b) => turno(a) - turno(b));
+    for (const p of enOrden) {
       const intentos: [number, number][] = [[0, 0], [-d, 0], [d, 0], [0, d], [0, -d]];
       let puesto: { b: Caja; dx: number; dy: number } | null = null;
+      // Con chincheta, el rótulo ocupa también lo que ella mide encima: ningún
+      // otro rótulo se mete debajo de la chincheta y ella no tapa el código.
+      const pin = pinRefs.current.get(p.clave);
+      const arriba = pin ? (pin.offsetHeight || 26) + 3 : 0;
       for (const [dx, dy] of intentos) {
         const a = aPantalla(p.ax + dx, p.ay + dy, c);
         const b: Caja = {
           left: a[0] + p.ox, top: a[1] + p.oy,
           right: a[0] + p.ox + p.w, bottom: a[1] + p.oy + p.h,
         };
-        if (seSale(b)) continue;
-        if (fijos.some((o) => cruza(b, o))) continue;
-        if (ok.some((o) => cruza(b, o))) continue;
-        puesto = { b, dx, dy };
+        const conPin: Caja = arriba ? { ...b, top: b.top - arriba } : b;
+        if (seSale(conPin)) continue;
+        if (fijos.some((o) => cruza(conPin, o))) continue;
+        if (ok.some((o) => cruza(conPin, o))) continue;
+        puesto = { b: conPin, dx, dy };
+        cajasDeRotulo.current.set(p.clave, b);
         break;
+      }
+      if (!puesto && pin) {
+        // El rótulo cedió pero el aviso no: la chincheta sola, sobre su ancla
+        // o corrida, donde no tape el código de otra cara. Si no hay lugar,
+        // sobre el ancla (un aviso no se esconde).
+        const pw = pin.offsetWidth || 26, ph = pin.offsetHeight || 26;
+        const corridas: [number, number][] = [[0, 0]];
+        for (const k of [1, 2, 3]) {
+          for (const [x, y] of [[-1, 0], [1, 0], [0, -1], [-1, -1], [1, -1], [0, 1], [-1, 1], [1, 1]]) corridas.push([x * k * d, y * k * d]);
+        }
+        const cajaDelPin = (dx: number, dy: number): Caja => {
+          const a = aPantalla(p.ax + dx, p.ay + dy, c);
+          return { left: a[0] - pw / 2, top: a[1] - ph - 12, right: a[0] + pw / 2, bottom: a[1] - 12 };
+        };
+        const rotulos = [...cajasDeRotulo.current.values()];
+        // Primero sin pisar nada; si no hay lugar, sin pisar ningún CÓDIGO
+        // (otra chincheta sí): lo que no se puede es tapar un rótulo.
+        const libre = corridas.map(([dx, dy]) => cajaDelPin(dx, dy)).find((b) =>
+          !seSale(b) && !fijos.some((o) => cruza(b, o)) && !ok.some((o) => cruza(b, o)))
+          ?? corridas.map(([dx, dy]) => cajaDelPin(dx, dy)).find((b) =>
+            !seSale(b) && !fijos.some((o) => cruza(b, o)) && !rotulos.some((o) => cruza(b, o)));
+        if (libre) {
+          cajasDePin.current.set(p.clave, libre);
+          ok.push(libre);
+        }
       }
       if (!puesto) {
         p.txt.style.display = "none";
@@ -1486,7 +1562,6 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
    *  ancla de su cara y la cámara recién escrita, sin preguntarle nada al DOM
    *  del plano. Un mueble que no se vende entero (la caja de una bahía) no tiene
    *  ancla de rótulo: va al centro de lo alto de su caja. */
-  const pinRefs = useRef(new Map<string, HTMLButtonElement>());
   const ubicarChinchetas = useCallback(() => {
     if (pinRefs.current.size === 0) return;
     const c = encuadre();
@@ -1494,6 +1569,25 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     const sc = escenaActual.current;
     if (!c || !lz || !sc) return;
     for (const [k, el] of pinRefs.current) {
+      // Con el rótulo puesto: la punta de la chincheta apoyada ARRIBA de su
+      // caja, centrada. Nunca sobre el código (a 390 px lo tapaba).
+      const caja = cajasDeRotulo.current.get(k);
+      const sola = caja ? undefined : cajasDePin.current.get(k);
+      if (sola) {
+        el.style.display = "";
+        el.style.left = `${((sola.left + sola.right) / 2 - lz.left).toFixed(1)}px`;
+        el.style.top = `${(sola.bottom - lz.top).toFixed(1)}px`;
+        el.dataset.sobre = "rotulo";
+        continue;
+      }
+      if (caja) {
+        const x = (caja.left + caja.right) / 2;
+        el.style.display = "";
+        el.style.left = `${(x - lz.left).toFixed(1)}px`;
+        el.style.top = `${(caja.top - lz.top - 2).toFixed(1)}px`;
+        el.dataset.sobre = "rotulo";
+        continue;
+      }
       let a = sc.anclas.get(k);
       if (!a) {
         const p = sc.prisms.find((x) => `${x.f.id}-A` === k || `${x.f.id}-B` === k);
@@ -1505,12 +1599,14 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
       el.style.display = fuera ? "none" : "";
       el.style.left = `${(x - lz.left).toFixed(1)}px`;
       el.style.top = `${(y - lz.top).toFixed(1)}px`;
+      el.dataset.sobre = "ancla";
     }
   }, [aPantalla, encuadre]);
 
   const aplicar = useCallback(() => { escribir(); ajustarMinimos(); acomodar(); ubicarChinchetas(); }, [escribir, ajustarMinimos, acomodar, ubicarChinchetas]);
-  // Una lista nueva de chinchetas se ubica en cuanto existe.
-  useLayoutEffect(() => { ubicarChinchetas(); }, [chinchetas, ubicarChinchetas]);
+  // Una lista nueva de chinchetas se ubica en cuanto existe; los rótulos se
+  // vuelven a acomodar, porque ahora cuentan con lo que mide cada chincheta.
+  useLayoutEffect(() => { acomodar(); ubicarChinchetas(); }, [chinchetas, acomodar, ubicarChinchetas]);
 
   /** Medir bien es todo el asunto. Un `requestAnimationFrame` NO alcanza: el
    *  navegador corre esos avisos ANTES de rehacer el dibujo, así que la caja
@@ -1537,7 +1633,13 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         const c = encuadre();
         if (!c) return;
         for (const p of piezas.current) {
-          const a = aPantalla(p.ax, p.ay, c);
+          // Contra donde el rótulo ESTÁ escrito, no contra su ancla: entre la
+          // vuelta al ancla y esta medida puede haber corrido un `acomodar()`
+          // (una lista nueva de chinchetas, una escena nueva) que lo movió, y
+          // medir contra el ancla contaba ese corrimiento como parte de la caja
+          // —la chincheta y el deschoque quedaban corridos del texto—.
+          const xa = Number(p.txt.getAttribute("x")), ya = Number(p.txt.getAttribute("y"));
+          const a = aPantalla(Number.isFinite(xa) ? xa : p.ax, Number.isFinite(ya) ? ya : p.ay, c);
           const r = p.txt.getBoundingClientRect();
           if (!(r.width > 0)) continue;
           if (Math.abs(p.w - r.width) > 0.5 || Math.abs(p.h - r.height) > 0.5) cambio = true;
@@ -1546,10 +1648,11 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         }
         calibrado.current = piezas.current.every((p) => p.w > 0);
         acomodar();
+        ubicarChinchetas();
         if (cambio && intento < 3) calibrar(intento + 1);
       });
     });
-  }, [aPantalla, acomodar, encuadre, escribir]);
+  }, [aPantalla, acomodar, encuadre, escribir, ubicarChinchetas]);
 
   /** Rearmar la lista de piezas cada vez que cambian los rótulos: lo que DICEN
    *  —que es lo que se mide—, no dónde caen. */
@@ -2770,7 +2873,7 @@ function FixtureDetailCard({
   onReservaCambio?: () => void;
   /** Se llegó por «Cargar planometría»: el código completo del contrato al
    *  que le falta. La ficha la muestra arriba y la trae a la vista. */
-  planometriaPedida?: string | null;
+  planometriaPedida?: PlanometriaPedida | null;
   onPlanometriaCargada?: () => void;
   /** «Vender el Y %» de una cara por participación: abre Vender con ella. */
   onVenderLoQueQueda?: (quedaPb: number) => void;
@@ -2824,7 +2927,7 @@ function FixtureDetailCard({
   const cobroDeLaCara = isAdmin && hasContract ? cobroDe?.(codigoDeLaCara) : undefined;
   /** La planometría pedida, si es de OTRO contrato que el de la cara (una
    *  parte o una participación): va arriba, aparte. */
-  const pedidaAparte = planometriaPedida && planometriaPedida.toUpperCase() !== codigoDeLaCara.toUpperCase()
+  const pedidaAparte = planometriaPedida && planometriaPedida.codigo.toUpperCase() !== codigoDeLaCara.toUpperCase()
     ? planometriaPedida : null;
   const pedidaRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2871,8 +2974,14 @@ function FixtureDetailCard({
             espera, arriba y a la vista. */}
         {isAdmin && pedidaAparte && (
           <div ref={pedidaRef} className="pedida" data-planometria-pedida>
-            <span className="rotulo">Planometría de {pedidaAparte}</span>
-            <Planometria key={pedidaAparte} spaceCode={pedidaAparte} isAdmin={isAdmin} onCargada={onPlanometriaCargada} />
+            <span className="rotulo">Planometría de <span className="mono">{pedidaAparte.rotulo}</span></span>
+            <Planometria
+              key={`${pedidaAparte.codigo}|${pedidaAparte.leaseId}`}
+              spaceCode={pedidaAparte.codigo}
+              leaseId={pedidaAparte.leaseId}
+              isAdmin={isAdmin}
+              onCargada={onPlanometriaCargada}
+            />
           </div>
         )}
 
@@ -2894,9 +3003,16 @@ function FixtureDetailCard({
                 onRenovarParte({ ...entry, code: codigoDeParte(fixture.code, entry.face, parte), parte });
               }
               : undefined}
-            unidad={unidad}
+            /* La plata la escribe Supervisar: el componente también lo carga
+               el plano 2D, que no tiene por qué traer estas cuentas. */
+            precioDe={(t) => `${formatCOP(enLaUnidad(t.valor_mensual, t.desde, t.hasta, unidad))} ${unidad === "mes" ? "al mes" : "en total"}`}
             montajeDe={montajeDelCodigo}
-            cobroDe={cobroDe}
+            cobroDe={cobroDe
+              ? (c) => {
+                const x = cobroDe(c);
+                return x ? { texto: textoDelCobro(x.porcentaje), proximo_corte: x.proximo_corte } : undefined;
+              }
+              : undefined}
             onVender={onVenderLoQueQueda}
           />
         )}
@@ -2935,6 +3051,11 @@ function FixtureDetailCard({
         </div>
         {!hasContract && pc ? (
           !isAdmin && <CaraPorParticipacion fixture={fixture} face={entry.face} />
+        ) : !hasContract && entry.reservado ? (
+          /* El trabajador: la base le dice sólo que la toma una reserva. */
+          <div data-reservada style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.5 }}>
+            Reservado: la toma una reserva, que todavía no es un contrato. No hay nada que montar.
+          </div>
         ) : !hasContract ? (
           <NoContractState fixture={fixture} isAdmin={isAdmin} />
         ) : (
@@ -2999,8 +3120,11 @@ function FixtureDetailCard({
         {rentable && hasContract && (
           <div ref={pedidaAparte ? undefined : pedidaRef} data-planometria-pedida={planometriaPedida && !pedidaAparte ? "" : undefined}>
             <Planometria
-              key={entry.code}
+              key={`${entry.code}|${planometriaPedida && !pedidaAparte ? planometriaPedida.leaseId : ""}`}
               spaceCode={fullSpaceCode(fixture.sede, entry.code)}
+              /* Llegando por «Cargar planometría», la del contrato que la
+                 espera, aunque todavía no arranque. */
+              leaseId={planometriaPedida && !pedidaAparte ? planometriaPedida.leaseId : null}
               isAdmin={isAdmin}
               onCargada={onPlanometriaCargada}
             />
@@ -3731,7 +3855,7 @@ function anchoDeTexto(textos: string[], fuente: string): number {
 function SpacesTable({
   fixtures, isAdmin, query, filter, montajeDe, tarifaDe,
   selectedId, onSelect, sinMontar, titulo, sub, derecha, espaciosDe = commercialFacesOf,
-  unidad = "mes", cobroDe, periodo, enParte, pestanas,
+  unidad = "mes", cobroDe, periodo, enParte, libres, pestanas,
 }: {
   /** La unidad de la plata de la franja: la columna de valor dice «Valor al
    *  mes» o «Valor total» y cada fila la sigue (rediseño, PR 2). */
@@ -3745,6 +3869,8 @@ function SpacesTable({
   /** Las caras (`id-cara`) vendidas en parte: la pestaña de ese nombre y la
    *  pastilla. */
   enParte?: Set<string>;
+  /** Las caras (`id-cara`) libres en el periodo: la pestaña «Libres». */
+  libres?: Set<string>;
   /** Las pestañas de la tabla, entre el encabezado y las filas. */
   pestanas?: React.ReactNode;
   /** Las filas de un mueble: sus caras comerciales y, vendiendo por partes,
@@ -3801,9 +3927,9 @@ function SpacesTable({
   const filtered = useMemo(() => {
     const q = normalizeText(query.trim());
     return rows.filter(
-      (e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, filter, sinMontar, enParte),
+      (e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, filter, sinMontar, enParte, libres),
     );
-  }, [rows, filter, query, sinMontar, enParte, fichasPropias, nombresPropios]);
+  }, [rows, filter, query, sinMontar, enParte, libres, fichasPropias, nombresPropios]);
 
   /* LOS ANCHOS, MEDIDOS.
      Proveedor no llevaba ancho y se quedaba con todo lo que sobraba: en una
@@ -3825,6 +3951,23 @@ function SpacesTable({
     const tipos = rows.map((e) => tipoDelMueble(e.fixture, nombresPropios));
     const nombres = rows.map((e) => (displayStatus(e) === "free" && e.supplierName
       ? `último: ${e.supplierName}` : e.supplierName));
+    // El ESTADO: la pastilla más larga («Por participación», «Vendido en
+    // parte») con su relleno (9 + 9), su borde y el de la celda (8 + 8); con
+    // una reserva, además «hasta 19 oct». En 100 px «Por participación» se
+    // cortaba sin «…».
+    const pastilla = `600 11.5px ${familia || "sans-serif"}`;
+    const palabras = [VENDIDO_EN_PARTE, palabraDeLaCara("parcial"), palabraDeLaCara("tomado"),
+      ...Object.values(pinDe()).map((x) => x.palabra)];
+    const conReserva = rows.filter((e) => e.reservaHasta).map((e) => ` hasta ${diaCorto(e.reservaHasta!)}`);
+    const estadoMinimo = anchoDeTexto(palabras, pastilla) + 20 + 18;
+    const estado = Math.max(
+      estadoMinimo,
+      conReserva.length ? anchoDeTexto(["Reservado"], pastilla) + 20 + anchoDeTexto(conReserva, fuente) + 18 : 0,
+    );
+    // Desde y Hasta, cada una con lo suyo y con el año cuando no es el de hoy
+    // («31 ene 2027»): en 88 px se cortaba en «31 ene 20…». Las fechas no
+    // ceden nunca.
+    const fechaDe = (isos: string[]) => anchoDeTexto(isos.filter(Boolean).map((iso) => fechaEnCurso(iso)), fuente) + 28;
     // El código de una PARTE es más largo que el de una cara, y en 104 px
     // las tres puertas de una nevera decían «NEV-01·P…» las tres (el recorrido
     // en el navegador, 2026-10-14): la columna se estira a lo que miden. Sin
@@ -3840,6 +3983,10 @@ function SpacesTable({
       codigo,
       tipo: Math.round(Math.min(200, Math.max(110, anchoDeTexto(tipos, fuente) + 24))),
       proveedor: Math.round(Math.min(340, Math.max(150, anchoDeTexto(nombres, fuente) + 24))),
+      estado: Math.round(Math.min(230, Math.max(100, estado))),
+      estadoMinimo: Math.round(Math.min(180, Math.max(100, estadoMinimo))),
+      desde: Math.round(Math.min(124, Math.max(88, fechaDe(rows.map((e) => e.startDate))))),
+      hasta: Math.round(Math.min(124, Math.max(88, fechaDe(rows.map((e) => e.endDate))))),
     };
   // `fuentes` vuelve a medir cuando llega la tipografía de la página.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3851,12 +3998,15 @@ function SpacesTable({
   // el ancho a ojo — que es exactamente lo que hacía antes de esto.
   const pedidas: (ColumnaTabla & { etiqueta: string; derecha?: boolean })[] = [
     { etiqueta: "Código", ancho: anchos.codigo, minimo: anchos.codigo },
-    { etiqueta: "Tipo", ancho: anchos.tipo, minimo: Math.min(anchos.tipo, 104), cede: 2 },
-    { etiqueta: "Proveedor", ancho: anchos.proveedor, minimo: Math.min(anchos.proveedor, 150), cede: 1 },
-    { etiqueta: "Estado", ancho: 100, minimo: 100 },
-    { etiqueta: "Montaje", ancho: 100, minimo: 100 },
-    { etiqueta: "Desde", ancho: 88, minimo: 88 },
-    { etiqueta: "Hasta", ancho: 88, minimo: 88 },
+    // Tipo y Proveedor ceden primero (se cortan con «…» y dicen todo en su
+    // `title`); el Estado, después, hasta lo que mide su pastilla más larga
+    // («hasta 25 oct» de una reserva se corta con «…»). Las fechas, nunca.
+    { etiqueta: "Tipo", ancho: anchos.tipo, minimo: Math.min(anchos.tipo, 88), cede: 2 },
+    { etiqueta: "Proveedor", ancho: anchos.proveedor, minimo: Math.min(anchos.proveedor, 120), cede: 1 },
+    { etiqueta: "Estado", ancho: anchos.estado, minimo: anchos.estadoMinimo, cede: 3 },
+    { etiqueta: "Montaje", ancho: 96, minimo: 96 },
+    { etiqueta: "Desde", ancho: anchos.desde, minimo: anchos.desde },
+    { etiqueta: "Hasta", ancho: anchos.hasta, minimo: anchos.hasta },
     { etiqueta: "Días", ancho: 56, minimo: 56, derecha: true },
   ];
   // La plata en la unidad de la franja: «Valor al mes» o «Valor total».
@@ -4002,9 +4152,11 @@ function SpacesTable({
                       : entry.supplierName
                     : vacio}
                 </td>
-                <td style={celda}>
+                <td style={celda} title={entry.reservaHasta ? `Reservado hasta ${diaCorto(entry.reservaHasta)}` : undefined}>
                   {/* El estado en pastilla (rediseño, PR 2): la palabra adentro. */}
-                  <span className={`pill ${claseDelEstado}`}>{enParteLaCara ? VENDIDO_EN_PARTE : pin.palabra}</span>
+                  <span className={`pill ${claseDelEstado}`} title={enParteLaCara ? VENDIDO_EN_PARTE : pin.palabra}>
+                    {enParteLaCara ? VENDIDO_EN_PARTE : pin.palabra}
+                  </span>
                   {entry.reservaHasta && (
                     <span style={{ color: "var(--ink-3)" }}> hasta {diaCorto(entry.reservaHasta)}</span>
                   )}
@@ -4337,6 +4489,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const [ratesOpen, setRatesOpen] = useState(false);
 
   const [selected, setSelected] = useState<UnifiedFixture | null>(null);
+  /** El mueble abierto, siempre el de la ÚLTIMA vuelta del store. El objeto
+   *  lo reemplaza cada sincronización: al cancelar o confirmar una reserva
+   *  desde la ficha el mapa se vuelve a leer, pero la ficha seguía con el
+   *  mueble de antes —con el proveedor de la reserva pegado— y ofrecía
+   *  «Renovar con …» algo que ya no existía. */
+  useEffect(() => {
+    if (!selected) return;
+    const fresco = fixtures.find((f) => f.id === selected.id);
+    if (fresco && fresco !== selected) setSelected(fresco);
+  }, [fixtures, selected]);
   /** Los espacios que van en el contrato que se está armando, en el orden en
    *  que se fueron tocando.
    *
@@ -4383,9 +4545,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   /** El aviso al que llevó una chincheta del plano: se trae a la vista y se
    *  marca un momento. */
   const [avisoMarcado, setAvisoMarcado] = useState<string | null>(null);
-  /** «Cargar planometría»: el contrato (código completo) cuya planometría la
-   *  ficha muestra arriba. */
-  const [planometriaPedida, setPlanometriaPedida] = useState<string | null>(null);
+  /** «Cargar planometría»: el contrato cuya planometría la ficha muestra
+   *  arriba (su código completo, su id y su código como se lee). */
+  const [planometriaPedida, setPlanometriaPedida] = useState<PlanometriaPedida | null>(null);
   /** El contrato que se acaba de cerrar.
    *
    *  Vive en la pantalla y no adentro del formulario a propósito: al guardar,
@@ -4935,27 +5097,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     setMapRange({ from, to });
   }, [modoEfectivo, mapRange]);
 
-  // ── Map search / status filter (per rentable face) ──
-  const mapMatch = useMemo<MapMatch | null>(() => {
-    const q = normalizeText(mapQuery.trim());
-    if (!q && mapFilter === "todos") return null;
-    const faceFlags = new Map<string, boolean[]>();
-    let count = 0;
-    fixtures.forEach((f) => {
-      // Una cara se enciende si ella o alguna de sus partes vendidas contesta
-      // (buscar al proveedor de la puerta 2 tiene que encontrar su nevera).
-      const partes = partesVisiblesDe(f);
-      const flags = commercialFacesOf(f).map((entry) => {
-        const contesta = (e: FaceEntry) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, mapFilter);
-        const deLasPartes = partes.filter((p) => p.face === entry.face && contesta(p)).length;
-        const ok = contesta(entry) || deLasPartes > 0;
-        if (ok) count += Math.max(1, deLasPartes);
-        return ok;
-      });
-      faceFlags.set(f.id, flags);
-    });
-    return { faceFlags, count };
-  }, [fixtures, mapQuery, mapFilter, fichasPropias, nombresPropios, partesVisiblesDe]);
 
   // La lista de precios de la sede: qué familias hay, cuántas caras de cada una
   // están libres en el periodo, cuántas se liberan adentro, y a cuánto sale.
@@ -4991,6 +5132,20 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     });
     return filas;
   }, [fixtures, mapRange, fichasPropias, dispoDeCara, comoSeLibera]);
+  /** Las mismas filas COMO LAS MIRA SUPERVISAR (`comoLaVeSupervisar`): una cara
+   *  vendida entera que empieza o termina adentro del periodo está tomada, no
+   *  «vendida en parte». De acá salen, en Supervisar, la clave y el color del
+   *  plano, la nota de «Ocupación» y las pestañas «Libres» y «Vendido en
+   *  parte» de la tabla: UNA cuenta. */
+  const filasSupervisar = useMemo(
+    () => new Map([...filasDelPeriodo].map(([clave, fila]) => [clave, comoLaVeSupervisar(fila)] as const)),
+    [filasDelPeriodo],
+  );
+  const dispoSupervisar = useCallback(
+    (f: UnifiedFixture, face: FaceEntry): RangeAvailability =>
+      filasSupervisar.get(`${f.id}-${face.face}`)?.dispo ?? dispoDeCara(f, face),
+    [filasSupervisar, dispoDeCara],
+  );
   const porCategoria = useMemo(() => {
     if (!mapRange) return [];
     const acum = new Map<string, {
@@ -5176,14 +5331,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // Includes contracts already signed for a future period: catching an
     // under-priced deal before it starts is the only moment it can still be
     // renegotiated.
-    const belowReference: (FaceEntry & { ref: number; gapPct: number })[] = [];
+    // La tarifa es AL MES y el contrato guarda su TOTAL: se compara lo que el
+    // contrato paga al mes (`bajoLaTarifa`), que es lo que dice la fila.
+    const belowReference: (FaceEntry & { ref: number; gapPct: number; alMes: number })[] = [];
     faces.forEach((x, i) => {
       if ((phases[i] !== "vigente" && phases[i] !== "pendiente") || !(x.negotiatedValue > 0)) return;
       // La de una puerta es la de su clase o la de la nevera ÷ puertas.
       const ref = tarifaDeLaFila(referenceRates, sede, x).valor;
       if (ref === null) return;
-      const gapPct = Math.round((1 - x.negotiatedValue / ref) * 100);
-      if (gapPct >= 1) belowReference.push({ ...x, ref, gapPct });
+      const bajo = bajoLaTarifa(x.negotiatedValue, x.startDate, x.endDate, ref);
+      if (bajo) belowReference.push({ ...x, ref, gapPct: bajo.brechaPct, alMes: bajo.alMes });
     });
     belowReference.sort((a, b) => b.gapPct - a.gapPct);
 
@@ -5204,7 +5361,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   // How much of the sede can actually be sold for the chosen period. Counted
   // per face, like every other total on this page. Fase 2 · I4: la misma
   // cuenta que la tarifa (`contarElPeriodo`), con el ámbar separado por motivo.
-  const rangeTally = useMemo(() => contarElPeriodo(filasDelPeriodo.values()), [filasDelPeriodo]);
+  const rangeTally = useMemo(() => contarElPeriodo(filasSupervisar.values()), [filasSupervisar]);
 
   /** El mismo recuento, DESCONTANDO lo que ya entró al contrato que se está
    *  armando. Es el que ve la clave del plano y el pie de la tarifa en Vender:
@@ -5539,46 +5696,85 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   /** «Cargar planometría»: la ficha del espacio, con la planometría de ese
    *  contrato arriba. */
-  const cargarPlanometria = (f: MontajePendiente) => {
+  const cargarPlanometria = (f: MontajePendiente, rotulo: string) => {
     const m = muebleDelEspacio(f.espacio);
     if (!m) return;
     revisar(m.fixture, m.cara);
-    setPlanometriaPedida(f.espacio.toUpperCase());
+    // Con el contrato de la fila: el que la espera puede arrancar más adelante
+    // y no ser el que corre hoy (`active_lease`).
+    setPlanometriaPedida({ codigo: f.espacio.toUpperCase(), leaseId: f.lease_id, rotulo });
   };
 
   /** Las caras vendidas en parte en el periodo (con partes vendidas o por
-   *  participación con algo comprometido): la pestaña de la tabla y su
-   *  pastilla. La misma cuenta que «Vendido en parte» de la clave del plano. */
+   *  participación con algo comprometido; NO una vendida entera que empieza o
+   *  termina adentro): la pestaña de la tabla y su pastilla. La misma cuenta
+   *  que «Vendido en parte» de la clave del plano y la nota de «Ocupación»
+   *  (`filasSupervisar`). */
   const enParteSet = useMemo(
-    () => new Set([...filasDelPeriodo].filter(([, f]) => f.dispo === "parcial").map(([k]) => k)),
-    [filasDelPeriodo],
+    () => new Set([...filasSupervisar].filter(([, f]) => f.dispo === "parcial").map(([k]) => k)),
+    [filasSupervisar],
   );
+  /** Las caras libres en el periodo: nada tomado, ni una parte ni una
+   *  participación. La pestaña «Libres» (su cuenta y sus filas) y «Libre» de
+   *  la clave del plano. */
+  const libresSet = useMemo(
+    () => new Set([...filasSupervisar].filter(([, f]) => f.dispo === "libre").map(([k]) => k)),
+    [filasSupervisar],
+  );
+
+  // ── Map search / status filter (per rentable face) ──
+  // Después de las cuentas del periodo: «Libres» y «Vendido en parte»
+  // encienden en el plano lo mismo que muestra la tabla.
+  const mapMatch = useMemo<MapMatch | null>(() => {
+    const q = normalizeText(mapQuery.trim());
+    if (!q && mapFilter === "todos") return null;
+    const faceFlags = new Map<string, boolean[]>();
+    let count = 0;
+    fixtures.forEach((f) => {
+      // Una cara se enciende si ella o alguna de sus partes vendidas contesta
+      // (buscar al proveedor de la puerta 2 tiene que encontrar su nevera).
+      const partes = partesVisiblesDe(f);
+      const flags = commercialFacesOf(f).map((entry) => {
+        const contesta = (e: FaceEntry) => (!q || faceMatchesQuery(e, q, nombresPropios))
+          && faceMatchesFilter(e, mapFilter, sinMontarSet, enParteSet, libresSet);
+        const deLasPartes = partes.filter((p) => p.face === entry.face && contesta(p)).length;
+        const ok = contesta(entry) || deLasPartes > 0;
+        if (ok) count += Math.max(1, deLasPartes);
+        return ok;
+      });
+      faceFlags.set(f.id, flags);
+    });
+    return { faceFlags, count };
+  }, [fixtures, mapQuery, mapFilter, fichasPropias, nombresPropios, partesVisiblesDe, sinMontarSet, enParteSet, libresSet]);
 
   /** Cuántas filas deja ver la tabla con el filtro y el chip puestos: la misma
    *  cuenta que hace `SpacesTable`, para decir «12 de 68» en el encabezado. */
   const visiblesEnTabla = useMemo(() => {
     const q = normalizeText(mapQuery.trim());
     return fixtures.flatMap(espaciosDelMueble)
-      .filter((e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, mapFilter, sinMontarSet, enParteSet))
+      .filter((e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, mapFilter, sinMontarSet, enParteSet, libresSet))
       .length;
-  }, [fixtures, mapQuery, mapFilter, sinMontarSet, enParteSet, fichasPropias, nombresPropios, espaciosDelMueble]);
+  }, [fixtures, mapQuery, mapFilter, sinMontarSet, enParteSet, libresSet, fichasPropias, nombresPropios, espaciosDelMueble]);
 
   /** Cuántas caras contesta cada chip de la tabla. Un filtro que no puede
    *  devolver nada no se dibuja: es la misma regla que ya gobernaba el parte,
    *  y es lo que evita que alguien toque «Sin montar 0» y crea que se rompió. */
   const chipsTabla = useMemo(() => {
     // Las cinco pestañas del dibujo, con su cuenta siempre a la vista: un
-    // cero dice que no hay, que es una respuesta (rediseño, PR 2).
-    const enParte = fixtures.flatMap(espaciosDelMueble).filter((e) => enParteSet.has(`${e.fixture.id}-${e.face}`)).length;
+    // cero dice que no hay, que es una respuesta (rediseño, PR 2). «Libres»
+    // y «Vendido en parte» cuentan EXACTAMENTE las filas que muestran: con la
+    // misma regla (`faceMatchesFilter`), sobre las mismas filas.
+    const filas = fixtures.flatMap(espaciosDelMueble);
+    const cuantas = (id: MapFilter) => filas.filter((e) => faceMatchesFilter(e, id, sinMontarSet, enParteSet, libresSet)).length;
     const todos: { id: MapFilter; label: string; n: number }[] = [
       { id: "todos", label: "Todas", n: kpis.filas },
       { id: "expiring", label: "Por vencer", n: kpis.expiring.length },
       { id: "sin_montar", label: "Sin montar", n: montaje.sinMontar.length },
-      { id: "free", label: "Libres", n: kpis.free },
-      { id: "en_parte", label: "Vendido en parte", n: enParte },
+      { id: "free", label: "Libres", n: cuantas("free") },
+      { id: "en_parte", label: "Vendido en parte", n: cuantas("en_parte") },
     ];
     return todos;
-  }, [kpis, montaje.sinMontar.length, fixtures, espaciosDelMueble, enParteSet]);
+  }, [kpis, montaje.sinMontar.length, fixtures, espaciosDelMueble, sinMontarSet, enParteSet, libresSet]);
 
   /** «lunes 31 de agosto de 2026». Es el único lugar de la pantalla donde se
    *  dice qué día es, y hace falta: todo lo demás —los días que faltan, lo que
@@ -5628,7 +5824,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 onSelect={selectFixture}
                 match={mapMatch}
                 range={mapRange}
-                dispo={dispoDeCara}
+                /* Como lo mira Supervisar: lo vendido entero parte del
+                   periodo, tomado; el ámbar es lo vendido en parte. */
+                dispo={dispoSupervisar}
                 porPartes={porPartesDeCara}
                 cortoDe={cortoDeCara}
                 libreDesde={libreDesdeDeCara}
@@ -6179,7 +6377,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   <Cifra
                     icono={<CircleDashed {...ICONO_TARJETA} />}
                     rotulo="Libres"
-                    valor={String(kpis.free)}
+                    /* La misma cuenta que la pestaña «Libres» y la clave del plano. */
+                    valor={String(libresSet.size)}
                     notas={[`de ${kpis.total} caras`]}
                   />
                 </>
@@ -6259,7 +6458,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   }}
                   planometriaPedida={planometriaPedida}
                   onPlanometriaCargada={faltaPlanometria.recargar}
-                  /* «Vender el Y %»: Vender con esta cara y lo que queda hoy. */
+                  /* «Vender el Y %»: Vender con esta cara y lo que queda en el
+                     periodo (el pico, `capacidad.periodo.disponible_pb`). */
                   onVenderLoQueQueda={isAdmin && porParticipacion(selected)
                     ? (queda) => {
                       const cara = fullSpaceCode(sede, codigoDeParte(selected.code, detailFace, null));
@@ -6546,7 +6746,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                               /* La tarifa de referencia es AL MES: el contrato
                                  se compara en sus meses, sea cual sea la
                                  unidad de la franja. */
-                              dates={`${formatCOP(enLaUnidad(entry.negotiatedValue, entry.startDate, entry.endDate, "mes"))} al mes · ref ${formatCOP(entry.ref)}`}
+                              dates={`${formatCOP(entry.alMes)} al mes · ref ${formatCOP(entry.ref)}`}
                               selected={selected?.id === entry.fixture.id}
                               onSelect={() => revisar(entry.fixture, entry.face)}
                             />
@@ -6608,6 +6808,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               tarifaDe={tarifaDe}
               sinMontar={sinMontarSet}
               enParte={enParteSet}
+              libres={libresSet}
               unidad={unidad}
               cobroDe={isAdmin ? cobroDeFila : undefined}
               periodo={periodoIso ?? undefined}
@@ -6658,17 +6859,21 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             </Card>
           )}
 
+          </div>
+
           {/* «Participaciones de cara»: por cara, lo comprometido y lo dibujado
               el día, el pico y lo disponible del período, con filtro por
               proveedor, día y período (D18). Una tabla a todo el ancho, sólo
-              para quien administra y sólo si la sede vende alguna cara así. */}
+              para quien administra y sólo si la sede vende alguna cara así.
+              FUERA de la hoja: las filas de la hoja miden `--alto-plano`, y en
+              una de ellas esta tarjeta dejaba un blanco de 250 px abajo. Mide
+              lo que mide su contenido. */}
           {isAdmin && hayParticipaciones && (
-            <Card style={{ minWidth: 0, minHeight: 0, gridColumn: "1 / -1" }}>
+            <Card style={{ minWidth: 0, marginTop: 10 }}>
               <CardHeader icon={<Percent {...ICONO_TARJETA} />} title="Participaciones de cara" right={<span>por cara</span>} />
               <TablaDeParticipaciones sede={sede} muebles={fixtures} />
             </Card>
           )}
-          </div>
         </>
       )}
 

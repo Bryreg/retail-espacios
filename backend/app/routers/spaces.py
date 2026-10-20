@@ -131,6 +131,11 @@ class EstadoComercial(BaseModel):
     #: (``models/vender.ReservaDeEspacio``): sólo para quien administra. El
     #: trabajador ve la cara tomada y nada más.
     reservaHasta: Optional[str] = None
+    #: La cara (o la parte) está tomada por una RESERVA, no por un contrato.
+    #: Es lo único que se le dice al trabajador de una reserva —sin fechas,
+    #: plata ni proveedor—: así Supervisar la pone «Reservado» y no la
+    #: confunde con un «Ocupado sin contrato» que hay que corregir.
+    reservado: bool = False
 
 
 @router.get("/comercial", response_model=dict[str, EstadoComercial])
@@ -196,6 +201,7 @@ def estado_comercial(
                 endDate=reserva.hasta.isoformat() if admin else "",
                 observation=(reserva.notas or "") if admin else "",
                 reservaHasta=reserva.caduca.isoformat() if admin else None,
+                reservado=True,
             )
             continue
         if lease is None:

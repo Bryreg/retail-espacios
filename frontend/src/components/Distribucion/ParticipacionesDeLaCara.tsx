@@ -7,8 +7,6 @@ import { claveDeSede, useOcupacionStore } from "../../store/ocupacionStore";
 import { useAuthStore } from "../../store/authStore";
 import { pct } from "../../utils/participaciones";
 import { estadoMontaje, type MountConfirmation } from "../../api/mounts";
-import { money } from "../Contrato/Contrato";
-import { enLaUnidad, textoDelCobro, type UnidadDePlata } from "../Supervisar/plata";
 import {
   PALABRA_DE_LA_DISTRIBUCION, PALABRA_DEL_TERMINO, fechaCorta, proveedorDe, segmentosDeHoy,
   terminoParaRenovar, terminoQueSeMuestra, type SegmentoDeCapacidad,
@@ -16,8 +14,14 @@ import {
 
 /**
  * Las participaciones de UNA cara en la ficha de Supervisar (§11): la barra de
- * capacidad de hoy, la lista (número, proveedor, marca, %, fechas, estado), el
- * estado de la distribución y «Abrir en Distribución».
+ * capacidad de hoy, lo comprometido y lo que queda EN EL PERIODO (el pico, que
+ * es lo que Vender deja vender), la lista (número, proveedor, marca, %, fechas,
+ * estado), el estado de la distribución y «Abrir en Distribución».
+ *
+ * Sin plata propia: el precio y el cobro de cada marca los escribe Supervisar
+ * y llegan ya armados (`precioDe`, `cobroDe`). Este archivo también lo importa
+ * el plano 2D (`useAbrirEnDistribucion`), y no tiene por qué cargar con las
+ * cuentas de la plata de Supervisar.
  *
  * SÓLO ADMINISTRACIÓN: lleva proveedores, marcas y fechas de todos, y
  * `GET /participaciones/cara` es de administración (al trabajador le daría
@@ -65,14 +69,17 @@ function relleno(s: SegmentoDeCapacidad): string {
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
-/** Lo que de un cobro por ventas dice la ficha. Es la forma de
- *  `CobroPorVentas` (`api/cobros`), escrita acá para que este archivo no
- *  importe ese módulo: lo que trae el resto de la ficha no tiene por qué
- *  cargar la plata de Supervisar. */
+/** Lo que de un cobro por ventas dice la ficha, ya escrito por Supervisar
+ *  («8 % de las ventas») y el próximo corte. Este archivo no importa
+ *  `api/cobros` ni la plata de Supervisar. */
 export interface CobroDeLaFicha {
-  porcentaje: number;
+  texto: string;
   proximo_corte: { periodo_desde: string; periodo_hasta: string } | null;
 }
+
+/** Lo que dice una participación de su precio, ya escrito por Supervisar en
+ *  la unidad de la franja («$ 500.000 al mes»). */
+export type PrecioDeLaFicha = (t: { valor_mensual: number; desde: string; hasta: string }) => string;
 
 /** El montaje de una participación, como punto y palabra. */
 function MontajeDeLaParticipacion({ reporte, desde, hoy }: { reporte: MountConfirmation | undefined; desde: string; hoy: string }) {
@@ -87,7 +94,7 @@ function MontajeDeLaParticipacion({ reporte, desde, hoy }: { reporte: MountConfi
 
 
 export default function ParticipacionesDeLaCara({
-  fixtureId, codigo, cara, sede, doble, onRenovar, unidad = "mes", montajeDe, cobroDe, onVender,
+  fixtureId, codigo, cara, sede, doble, onRenovar, precioDe, montajeDe, cobroDe, onVender,
 }: {
   fixtureId: string;
   /** El código del mueble en el plano (`GON-01`). */
@@ -101,16 +108,17 @@ export default function ParticipacionesDeLaCara({
    *  término que renueva (rediseño de Vender, PR 1). Sin esto no hay botón:
    *  Renovar ya no va a Distribución. */
   onRenovar?: (numero: number) => void;
-  /** La unidad de la plata de la franja (rediseño, PR 2): el precio de cada
-   *  marca al mes o en total, como el resto de la pantalla. */
-  unidad?: UnidadDePlata;
+  /** El precio de cada marca, en la unidad de la franja (rediseño, PR 2):
+   *  lo escribe Supervisar. Sin esto, la fila no dice precio. */
+  precioDe?: PrecioDeLaFicha;
   /** El último reporte de montaje del contrato de esa participación (por su
    *  código completo y su arranque). */
   montajeDe?: (codigoCompleto: string, desde: string) => MountConfirmation | undefined;
   /** El cobro por % de las ventas del contrato de esa participación, si se
    *  cobra así. */
   cobroDe?: (codigoCompleto: string) => CobroDeLaFicha | undefined;
-  /** «Vender el Y %»: abre Vender con esta cara y lo que queda hoy. */
+  /** «Vender el Y %»: abre Vender con esta cara y lo que queda EN EL PERIODO
+   *  (el pico): lo de hoy puede no entrar el día que arranca otra. */
   onVender?: (quedaPb: number) => void;
 }) {
   const abrir = useAbrirEnDistribucion();
@@ -148,7 +156,12 @@ export default function ParticipacionesDeLaCara({
    *  acciones; con varias, cada una lleva el suyo. */
   const paraRenovar = datos ? vivas.filter((p) => terminoParaRenovar(p, datos.hoy)) : [];
   const unaSola = paraRenovar.length === 1 ? paraRenovar[0] : null;
-  const queda = datos?.capacidad.disponible_hoy_pb ?? 0;
+  /** Lo que queda en el PERIODO: lo que se puede vender sin chocar con nada
+   *  el día más cargado (`capacidad.periodo`). Con lo de hoy, «Vender el 80 %»
+   *  rebotaba en Vender si otra participación arrancaba en cinco días. */
+  const periodo = datos?.capacidad.periodo;
+  const comprometido = periodo?.pico_pb ?? 0;
+  const queda = periodo?.disponible_pb ?? 0;
 
   return (
     <div data-participaciones-de-la-cara={`${fixtureId}-${cara}`} className="ficha-pc">
@@ -183,11 +196,15 @@ export default function ParticipacionesDeLaCara({
                 />
               ))}
             </div>
-            <div className="lee">
-              <span>Comprometido <b>{pct(datos.capacidad.hoy_pb)}</b></span>
-              <span>queda <b>{pct(datos.capacidad.disponible_hoy_pb)}</b></span>
-              {datos.capacidad.periodo.pico_pb > datos.capacidad.hoy_pb && datos.capacidad.periodo.dia_pico && (
-                <span>pico <b>{pct(datos.capacidad.periodo.pico_pb)}</b> el {fechaCorta(datos.capacidad.periodo.dia_pico, datos.hoy)}</span>
+            <div className="lee" title="Lo comprometido y lo que queda, en el día más cargado del periodo; la barra es la de hoy">
+              <span>
+                Comprometido <b>{pct(comprometido)}</b>
+                {comprometido > datos.capacidad.hoy_pb && datos.capacidad.periodo.dia_pico
+                  ? ` desde el ${fechaCorta(datos.capacidad.periodo.dia_pico, datos.hoy)}` : ""}
+              </span>
+              <span>queda <b>{pct(queda)}</b></span>
+              {comprometido > datos.capacidad.hoy_pb && (
+                <span>hoy <b>{pct(datos.capacidad.hoy_pb)}</b></span>
               )}
             </div>
           </div>
@@ -204,9 +221,9 @@ export default function ParticipacionesDeLaCara({
                 const completo = (p.codigo || t?.codigo || "").toUpperCase();
                 const cobro = completo ? cobroDe?.(completo) : undefined;
                 const precio = cobro
-                  ? `${textoDelCobro(cobro.porcentaje)}`
-                  : t && t.valor_mensual && t.valor_mensual > 0
-                  ? `${money(enLaUnidad(t.valor_mensual, t.desde, t.hasta, unidad))} ${unidad === "mes" ? "al mes" : "en total"}`
+                  ? cobro.texto
+                  : t && t.valor_mensual && t.valor_mensual > 0 && precioDe
+                  ? precioDe({ valor_mensual: t.valor_mensual, desde: t.desde, hasta: t.hasta })
                   : "";
                 const fechas = t ? (t.desde <= datos.hoy ? `hasta ${fechaCorta(t.hasta, datos.hoy)}` : `${fechaCorta(t.desde, datos.hoy)} – ${fechaCorta(t.hasta, datos.hoy)}`) : "";
                 return (
@@ -261,7 +278,7 @@ export default function ParticipacionesDeLaCara({
               </button>
             )}
             {onVender && queda > 0 && (
-              <button type="button" className="btn-s" onClick={() => onVender(queda)} title="Abre Vender con esta cara y lo que queda hoy">
+              <button type="button" className="btn-s" onClick={() => onVender(queda)} title="Abre Vender con esta cara y lo que queda en el periodo">
                 <FilePenLine {...ICONO} /> Vender el {pct(queda)}
               </button>
             )}

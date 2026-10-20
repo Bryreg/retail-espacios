@@ -71,6 +71,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { revisarAvisos } from "./casos/avisos-de-revision.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const raiz = join(aqui, "..");
@@ -1267,7 +1268,7 @@ console.log("\nvender · las participaciones de cara");
       "lo que queda no se cuenta en las fechas del contrato");
     // Nada de lo que dice lo comprometido de otro, ni la reserva de otro
     // proveedor (`reservaHasta`, que el mapa trae para Supervisar).
-    const AJENO = /\b(revisarCapacidad|comprometido|contratadoPb|loDelProveedor|useLoSuyo|textoDeLoComprometido|reservaHasta|intervalosQueCuentan|leerCara|cargarResumen)\b/;
+    const AJENO = /\b(revisarCapacidad|comprometido|contratadoPb|loDelProveedor|useLoSuyo|textoDeLoComprometido|reservaHasta|reservado|intervalosQueCuentan|leerCara|cargarResumen)\b/;
     const hits = [];
     for (const f of ARCHIVOS_VENDER.filter(hay)) {
       codigo(f).split("\n").forEach((l, k) => { const m = l.match(AJENO); if (m) hits.push(`${f}:${k + 1} — ${m[1]}`); });
@@ -1771,13 +1772,13 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       assert.match(vista, new RegExp(`\\{isAdmin && reservasPorGrupo\\.${g}\\.length > 0 && \\(\\s*<ReservasSinConfirmar\\b`), `«Reservas» (${g}) se monta sin \`isAdmin\``);
       assert.match(vista, new RegExp(`\\{isAdmin && planometriaPorGrupo\\.${g}\\.length > 0 && \\(\\s*<FaltaPlanometria\\b`), `«Falta planometría» (${g}) se monta sin \`isAdmin\``);
     }
+    // La MISMA lista que `probar-comercial` (`casos/avisos-de-revision.mjs`):
+    // todo lo de administración —bajo tarifa, lo que sólo vive en el plano, los
+    // montajes, los cortes, las reservas, la planometría, las participaciones—
+    // después del corte, y nada que no esté en la lista.
     const avisosDef = entre(vista, "const avisos = useMemo(", "const cuentasDeRevision = useMemo(");
-    const corte = avisosDef.indexOf("if (!isAdmin) return a;");
-    assert.ok(corte > 0, "los avisos de «Para revisar» no cortan para el trabajador");
-    for (const n of ["cortesSinCargar.pendientes", "reservasSinConfirmar.vivas", "faltaPlanometria.filas", "revisionPc.secciones"]) {
-      const k = avisosDef.indexOf(n);
-      assert.ok(k > corte, `«${n}» no suma a «Para revisar», o le suma al trabajador`);
-    }
+    assert.ok(avisosDef.length > 200, "no está `const avisos = useMemo(`");
+    assert.deepEqual(revisarAvisos(avisosDef), [], "«Para revisar» le suma al trabajador lo de administración");
     assert.match(vista, /const attentionCount = cuentaDelBadge\(cuentasDeRevision\);/, "la pastilla roja no es la suma de los tres grupos");
     // «Falta planometría» sólo se pide en Supervisar y para quien administra.
     assert.match(vista, /const faltaPlanometria = useFaltaPlanometria\(\{ sede, activo: isAdmin && modoEfectivo === "supervisar" \}\);/,

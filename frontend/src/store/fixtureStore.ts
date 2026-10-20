@@ -90,7 +90,8 @@ function mismoMapa(a: EstadoPorEspacio, b: EstadoPorEspacio): boolean {
         x.brandCategory !== y.brandCategory || x.negotiatedValue !== y.negotiatedValue ||
         x.startDate !== y.startDate || x.endDate !== y.endDate ||
         x.observation !== y.observation ||
-        (x.reservaHasta ?? null) !== (y.reservaHasta ?? null)) return false;
+        (x.reservaHasta ?? null) !== (y.reservaHasta ?? null) ||
+        !!x.reservado !== !!y.reservado) return false;
   }
   return true;
 }

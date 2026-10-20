@@ -50,8 +50,9 @@ export function FaltaPlanometria({ sede, filas, titulo, onCargar }: {
   sede: string;
   filas: readonly MontajePendiente[];
   titulo: string;
-  /** Abrir la ficha del espacio en su planometría. */
-  onCargar: (fila: MontajePendiente) => void;
+  /** Abrir la ficha del espacio en su planometría: la fila (con el contrato
+   *  que la espera, `lease_id`) y su código como se lee (`GON-01·A·PC1`). */
+  onCargar: (fila: MontajePendiente, codigoVisible: string) => void;
 }) {
   const visible = useCodigoVisible(sede);
   if (filas.length === 0) return null;
@@ -71,7 +72,7 @@ export function FaltaPlanometria({ sede, filas, titulo, onCargar }: {
               {f.falta_distribucion ? " · y falta distribuir" : ""}
             </span>
           </div>
-          <button type="button" className="btn-s" onClick={() => onCargar(f)}>
+          <button type="button" className="btn-s" onClick={() => onCargar(f, visible(f.espacio))}>
             <FileUp {...ICONO} /> Cargar planometría
           </button>
           <ChevronRight {...ICONO} className="ir" />

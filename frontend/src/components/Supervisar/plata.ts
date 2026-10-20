@@ -1,4 +1,4 @@
-import { meses } from "../../utils/meses";
+import { alMesDe, meses } from "../../utils/meses";
 
 /**
  * La plata de Supervisar en UNA unidad a la vez (rediseño, PR 2; dibujo
@@ -48,8 +48,7 @@ function alPeso(x: number): number {
 export function enLaUnidad(total: number, desde: string, hasta: string, unidad: UnidadDePlata): number {
   if (!(total > 0)) return 0;
   if (unidad === "total") return total;
-  const m = meses(desde, hasta);
-  return m > 0 ? alPeso(total / m) : total;
+  return alMesDe(total, desde, hasta);
 }
 
 /** Una tarifa de referencia (que es AL MES) en la unidad elegida: en «Total»,
@@ -60,6 +59,11 @@ export function tarifaEnLaUnidad(tarifaAlMes: number, desde: string, hasta: stri
   const m = meses(desde, hasta);
   return m > 0 ? alPeso(tarifaAlMes * m) : tarifaAlMes;
 }
+
+/** «Bajo tarifa de referencia» vive en `utils/meses.ts`: la cuenta la hace
+ *  `kpis`, que también corre con Vender abierto, y Vender no alcanza este
+ *  módulo (`probar-vender`). Se re-exporta para las pruebas. */
+export { bajoLaTarifa } from "../../utils/meses";
 
 /** «8 % de las ventas», con la coma de acá («7,5 %»). */
 export function textoDelCobro(porcentaje: number): string {

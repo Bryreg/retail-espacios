@@ -56,8 +56,8 @@ CAMPOS_DE_CONTRATO = (
     "status", "supplierName", "brandCategory", "negotiatedValue",
     "startDate", "endDate", "observation",
     # La caducidad de una reserva de espacio (`GET /spaces/comercial`): tampoco
-    # se guarda en el plano.
-    "reservaHasta",
+    # se guarda en el plano. Ni la marca de que es una reserva.
+    "reservaHasta", "reservado",
 )
 
 #: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa

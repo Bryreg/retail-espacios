@@ -58,6 +58,16 @@ export const planometriaDelEspacio = (spaceCode: string): Promise<Planometria | 
     .then((r) => r.data)
     .catch(() => null);
 
+/** La de UN contrato, por su id, o null si todavía no tiene. Es el camino de
+ *  «Falta planometría»: la fila trae el contrato que la espera, que puede no
+ *  ser el que corre hoy (uno que arranca en cinco días, o una participación
+ *  de una cara que ya tiene otro contrato andando). */
+export const planometriaDelContrato = (leaseId: number): Promise<Planometria | null> =>
+  client
+    .get<Planometria>(`/leases/${leaseId}/planometria`)
+    .then((r) => r.data)
+    .catch(() => null);
+
 /** URL para mostrarla. Se sirve inline, así que sirve tanto para un <img> como
  *  para abrirla en otra pestaña (el PDF del proveedor cae en el visor del
  *  navegador).

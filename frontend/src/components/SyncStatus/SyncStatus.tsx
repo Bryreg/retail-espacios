@@ -151,7 +151,7 @@ export default function SyncStatus() {
         disabled={busy}
         title={
           syncMessage ??
-          (lastSyncLabel ? `Última sincronización ${lastSyncLabel}` : "Sincronizar con el servidor")
+          (lastSyncLabel ? `${label} · última sincronización ${lastSyncLabel}` : `${label} · sincronizar con el servidor`)
         }
         aria-label={`${label}. Sincronizar con el servidor`}
         style={{
@@ -174,7 +174,9 @@ export default function SyncStatus() {
             animation: busy ? "pulso-sync 1s ease-in-out infinite alternate" : undefined,
           }}
         />
-        {label}
+        {/* A lo angosto (≤ 480 px) queda el punto: la palabra sigue en el
+            `title` y en el `aria-label` (`vender.css`, `.sync-palabra`). */}
+        <span className="sync-palabra">{label}</span>
       </button>
 
       {hayPanel && caja && createPortal(
