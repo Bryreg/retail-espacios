@@ -87,9 +87,8 @@ export function AtajosDeFecha({ c }: { c: Contrato }) {
 
 /** «Precio fijo | % de las ventas», a todo el ancho del bloque 3 («Cómo se
  *  cobra», que es su rótulo: el grupo se nombra igual para el lector de
- *  pantalla). Con «% de las ventas», el % y el corte debajo. `extra` va
- *  después, a todo el ancho. */
-export function ComoSeCobra({ c, extra }: { c: Contrato; extra?: React.ReactNode }) {
+ *  pantalla). Con «% de las ventas», el % y el corte debajo. */
+export function ComoSeCobra({ c }: { c: Contrato }) {
   return (
     <div className="campo cobro" data-cobro={c.cobroModo}>
       <span className="seg seg-ancho" role="group" aria-label="Cómo se cobra">
@@ -115,7 +114,6 @@ export function ComoSeCobra({ c, extra }: { c: Contrato; extra?: React.ReactNode
           </span>
         </span>
       )}
-      {extra}
     </div>
   );
 }

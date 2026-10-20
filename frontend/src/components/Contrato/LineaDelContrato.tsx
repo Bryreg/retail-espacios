@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Columns3, Lock, Pencil, Percent, Rows3, Square, Tag, TriangleAlert } from "lucide-react";
+import { Check, Columns3, Lock, Pencil, Percent, Rows3, Tag, TriangleAlert } from "lucide-react";
 import { diaCorto, money, rangoCorto, textoDelRechazo, type Contrato, type LineaDelContrato } from "./Contrato";
 import { claseDe, partesParaElegir, type FormaDeLaLinea } from "../../utils/partes";
 import { CARA_ENTERA_PB, pbDeTexto, pct } from "../../utils/participaciones";
@@ -9,8 +9,8 @@ import type { CambioDePartes } from "../../utils/partesDelMueble";
  * Las piezas de UNA línea del contrato de Vender (rediseño de Vender, PR 1;
  * los dibujos aprobados están en `docs/maquetas/rediseno-2026-10/`):
  *
- *  · `IconoDeLinea` — qué se vende: la cara entera (Square), por partes de
- *    lado a lado (Columns3), por entrepaños (Rows3) o un porcentaje (Percent).
+ *  · `IconoDeLinea` — qué se vende: por partes de lado a lado (Columns3), por
+ *    entrepaños (Rows3) o un porcentaje (Percent); la cara entera, sin ícono.
  *  · `FormasDeLaLinea` — «Entera · Por entrepaños · Por porcentaje», sólo lo
  *    que la familia del mueble permite; si hoy se vende de otra forma, ofrece
  *    cambiarla con las guardas del Plano, confirmado en la misma línea; si no
@@ -32,11 +32,16 @@ import type { CambioDePartes } from "../../utils/partesDelMueble";
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 export function IconoDeLinea({ l }: { l: LineaDelContrato }) {
+  /* La cara ENTERA no lleva ícono («aire y pines», el dibujo aprobado): el
+     cuadrado vacío de lucide, a la izquierda del código, se leía como una
+     casilla para tildar —que no existe: no hay forma de elegir líneas—. Las
+     otras formas sí lo llevan, porque dicen algo que el código no dice (por
+     partes, por entrepaños, un porcentaje). */
   const Icono = l.tipo === "pc" ? Percent
     : l.tipo === "partes" && claseDe(l.clase ?? "")?.base ? Rows3
     : l.tipo === "partes" || l.tipo === "pieza" ? Columns3
-    : Square;
-  return <span className="ico-linea"><Icono {...ICONO} /></span>;
+    : null;
+  return Icono ? <span className="ico-linea"><Icono {...ICONO} /></span> : null;
 }
 
 /** Lo que una línea puede hacer para venderse de otra forma: ya se vende así

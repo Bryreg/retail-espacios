@@ -80,6 +80,17 @@ prueba("el encuadre con el que abre es el viewBox de antes: la caja más 26 unid
   const alto = Math.max(...viejos.map((p) => p[1])) - Math.min(...viejos.map((p) => p[1])) + 52;
   assert.ok(Math.abs(r.ancho / C.UNIDAD_ISO - ancho) < 0.5, `ancho ${r.ancho / C.UNIDAD_ISO} contra ${ancho}`);
   assert.ok(Math.abs(r.alto / C.UNIDAD_ISO - alto) < 0.5, `alto ${r.alto / C.UNIDAD_ISO} contra ${alto}`);
+  // «Aire y pines», la corrección: el plano de la sede abre con 8 unidades por
+  // lado (`MARGEN_DEL_ENCUADRE`), no 26: con el plano al 60 % las 26 eran vacío
+  // y cedían rótulos. La caja sigue siendo la de la sede ENTERA (piso y muebles
+  // adentro: no se corta nada), con el mismo centro.
+  const r8 = C.encuadreInicial(puntos, 8);
+  assert.ok(Math.abs(r8.ancho / C.UNIDAD_ISO - (ancho - 52 + 16)) < 0.5, `ancho con 8 por lado: ${r8.ancho / C.UNIDAD_ISO}`);
+  assert.ok(Math.abs(r8.alto / C.UNIDAD_ISO - (alto - 52 + 16)) < 0.5, `alto con 8 por lado: ${r8.alto / C.UNIDAD_ISO}`);
+  assert.deepEqual(r8.mira, r.mira, "el margen corrió el centro del encuadre");
+  const iso = readFileSync(join(raiz, "src", "pages", "DashboardView.tsx"), "utf8");
+  assert.match(iso, /\nconst MARGEN_DEL_ENCUADRE = 8;\n/, "el plano no abre con 8 unidades por lado");
+  assert.match(iso, /const encuadre = encuadreInicial\(\[[\s\S]{0,400}\], MARGEN_DEL_ENCUADRE\);/, "el plano no usa su margen");
 });
 
 prueba("se gira alrededor del punto del PISO que cae en el centro del encuadre", () => {
@@ -389,11 +400,29 @@ prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", ()
   assert.match(area, /var\(--alto-area,/, "`--alto-plano` no cuenta contra el alto medido del área de las pantallas");
   assert.match(css, /@media \(max-height: 880px\) \{\s*\.area-pantallas \{ --marco-sede: 66px; --fila1: 430px; --fila2: 240px; \}/,
     "en ventana baja `--alto-plano` no sigue el marco apretado de Vender");
-  assert.match(vender, /grid-template-rows: max\(var\(--fila1\), min\(var\(--alto-plano\),/, "la fila del plano de Vender no mide `--alto-plano`");
-  assert.match(css, /@media \(max-height: 790px\) \{[\s\S]*?\.vender-hoja \{ grid-template-rows: var\(--alto-plano\) /, "a 760 de alto la fila del plano de Vender vuelve a medir otra cosa");
-  assert.match(css, /@media \(max-width: 1100px\) \{[\s\S]*?\.vender-hoja > \.vp-plano \{ height: var\(--alto-plano\); \}/, "a lo angosto el plano de Vender no mide `--alto-plano`");
+  // «Aire y pines», la corrección: la hoja de Vender son dos PILAS. La de la
+  // izquierda (el plano y «Cuándo se libera») tiene filas propias, y la del
+  // plano ES `--alto-plano`, sin el `max(…, min(…, 100% − …))` de antes (que
+  // a la ventana donde la hoja entra daba lo mismo, y si la barra se partía
+  // daba otra cosa): más estricto. Ninguna otra regla cambia esas filas —el
+  // bloque de 790 px de alto que las cambiaba se fue—, y la pila mide el alto
+  // de la hoja, que se cuenta con los mismos números que `--alto-plano`.
+  const izq = regla(".hoja-izq");
+  assert.match(izq, /grid-template-rows: var\(--alto-plano\) minmax\(var\(--fila2\), 1fr\);/, "la fila del plano de Vender no mide `--alto-plano`");
+  assert.match(izq, /height: var\(--alto-hoja\);/, "la pila del plano no mide el alto de la hoja");
+  const filasDe = [...css.matchAll(/([^{}]+)\{[^{}]*grid-template-rows:\s*([^;]+);/g)].map((m) => [m[1].trim(), m[2].trim()])
+    .filter(([sel]) => /vender-hoja|hoja-izq|hoja-der|hoja-col/.test(sel));
+  assert.deepEqual(filasDe, [[".hoja-izq", "var(--alto-plano) minmax(var(--fila2), 1fr)"], [".vender-hoja", "none"]], "otra regla cambia las filas de la hoja de Vender");
+  assert.doesNotMatch(css, /@media \(max-height: 790px\)/, "volvió el bloque de 790 px de alto, que cambiaba la fila del plano");
+  assert.match(regla(".vender"), /--alto-hoja: max\(calc\(var\(--fila1\) \+ var\(--aire-v\) \+ var\(--fila2\)\), calc\(var\(--alto-area, calc\(100dvh - 52px\)\) - var\(--marco-sede\) \+ var\(--aire-v\)\)\);/,
+    "el alto de la hoja no se cuenta con los números de `--alto-plano`");
+  assert.match(css, /@media \(max-width: 1100px\) \{[\s\S]*?\.vender-hoja \.vp-plano \{ height: var\(--alto-plano\); \}/, "a lo angosto el plano de Vender no mide `--alto-plano`");
   assert.doesNotMatch(css, /62vw/, "volvió el plano de Vender de `62vw`, que no mide lo de Supervisar");
-  assert.match(css, /\.vp-plano > header \{ min-height: 44px; \}/, "el encabezado del plano no mide lo mismo en las dos pantallas");
+  // El encabezado del plano mide lo mismo en las dos pantallas: dos renglones
+  // (el título y la cuenta; la clave a todo el ancho) y el de la clave con el
+  // alto del filtro de Supervisar también en Vender.
+  assert.match(css, /\.vp-plano > header \{ flex-wrap: wrap; row-gap: 6px; \}/, "el encabezado del plano no va en dos renglones");
+  assert.match(css, /\.vp-plano > header \.der \{\s*flex: 1 0 100%;[^}]*min-height: 28px;/, "el renglón de la clave no mide lo mismo en las dos pantallas");
   assert.match(css, /\.vender \.lienzo,\s*\.sup \.vp-plano > \.lienzo \{/, "el lienzo de Supervisar no tiene el relleno del de Vender");
   assert.equal((vista.match(/className="vp vp-plano"/g) ?? []).length, 2, "los dos planos no son el mismo panel (`vp vp-plano`)");
   const dash = readFileSync(join(raiz, "src", "pages", "Dashboard.tsx"), "utf8");
@@ -457,8 +486,20 @@ prueba("pasar por un renglón de «Para revisar» señala su mueble en el plano 
   assert.match(iso, /className="foco-marca" style=\{\{ display: "none" \}\}/);
   assert.match(iso, /senalar\.current = \(foco\) => \{\s*focoRef\.current = foco;\s*dibujarFocoPiso\(\);\s*ubicarFoco\(\);\s*\};/);
   assert.match(iso, /if \(!f \|\| !sc \|\| !p\) \{ el\.style\.display = "none"; return; \}/, "sin señalado el piso no se apaga");
-  assert.match(iso, /el\.style\.top = `\$\{\(caja\.top - lz\.top - 2\)\.toFixed\(1\)\}px`;\s*el\.dataset\.sobre = "rotulo";\s*return;/, "el punto del señalado no se apoya arriba del rótulo");
-  assert.match(iso, /const ubicarChinchetas = useCallback\(\(\) => \{[\s\S]{0,200}ubicarFoco\(\);\s*if \(pinRefs\.current\.size === 0\) return;/, "el punto del señalado no sigue a la cámara");
+  // Arriba del rótulo, con la caja del rótulo RELATIVA AL LIENZO: se usa tal
+  // cual, sin restarle el lienzo de ahora (antes `caja.top - lz.top - 2`, con
+  // la caja en pantalla del último `acomodar`: con la página rodada el punto
+  // caía corrido lo que hubiera rodado). Lo mide con la página rodada la
+  // prueba de navegador de `probar-vender`.
+  assert.match(iso, /el\.style\.left = `\$\{\(\(caja\.left \+ caja\.right\) \/ 2\)\.toFixed\(1\)\}px`;\s*el\.style\.top = `\$\{\(caja\.top - 2\)\.toFixed\(1\)\}px`;\s*el\.dataset\.sobre = "rotulo";\s*return;/, "el punto del señalado no se apoya arriba del rótulo");
+  // Lo que se guarda de `acomodar` pasa por el lienzo, y nadie le resta el
+  // lienzo de ahora a una caja guardada.
+  assert.match(iso, /const alLienzo = \(b: Caja\): Caja => \(\{\s*left: b\.left - lz\.left, top: b\.top - lz\.top, right: b\.right - lz\.left, bottom: b\.bottom - lz\.top,\s*\}\);/, "las cajas no se pasan al lienzo");
+  assert.match(iso, /cajasDeRotulo\.current\.set\(p\.clave, alLienzo\(puesto\.b\)\);/, "la caja del rótulo se guarda en pantalla");
+  assert.match(iso, /cajasDePin\.current\.set\(k, alLienzo\(elegido\)\);/, "la caja del punto se guarda en pantalla");
+  assert.equal((iso.match(/cajasDe(?:Rotulo|Pin)\.current\.set\(/g) ?? []).length, 2, "otra caja se guarda sin pasar por el lienzo");
+  assert.doesNotMatch(iso, /(?:caja|sola|b)\.(?:left|right|top|bottom)\s*-\s*lz\.(?:left|top)\)/, "a una caja guardada se le resta el lienzo de ahora");
+  assert.match(iso, /const ubicarChinchetas = useCallback\(\(\) => \{[\s\S]{0,200}ubicarFoco\(\);\s*(?:\/\/[^\n]*\n\s*)*for \(const \[k, el\] of pinRefs\.current\) \{/, "el punto del señalado no sigue a la cámara");
   // Los colores, de los tokens del tema (claro y oscuro): nada fijo.
   const sup = readFileSync(join(raiz, "src", "supervisar.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   const reglas = [...sup.matchAll(/(\.foco-[\w-]+[^{]*|\.chinchetas[^{]*)\{([^}]*)\}/g)].map((m) => m[2]).join("\n");

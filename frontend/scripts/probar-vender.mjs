@@ -266,6 +266,12 @@ const CAMPOS_AJENOS = [
 const TEXTOS_PROHIBIDOS = [
   [/ranking|los que m[áa]s pagan|qui[ée]n paga/i, "ranking de proveedores"],
   [/bajo (?:la )?tarifa/i, "quién está bajo tarifa"],
+  // Cuánto se aparta un precio de la tarifa de referencia («38 % bajo la
+  // referencia», «por debajo de la tarifa», «12 % menos que la tarifa»): es
+  // información de la negociación de la casa, y Vender lo ve el proveedor.
+  // (La tarifa sola, sin comparar, sí se ve: «tarifa $ 800.000 al mes».)
+  [/(?:\bbajo|debajo|encima|\bsobre|\bcontra|menos que|m[áa]s que|m[áa]s barat\w*|m[áa]s car\w*)\s+(?:de\s+|que\s+)?(?:la\s+|el\s+)?(?:referencia|tarifa|precio de lista)|%\s*(?:menos|m[áa]s)\b|descuento (?:sobre|de) (?:la\s+)?(?:tarifa|referencia)/i,
+    "cuánto se aparta el precio de la tarifa de referencia"],
   [/canon/i, "el canon de la sede"],
   [/vencid|por vencer|vence (?:en|dentro)/i, "el vencimiento de un contrato ajeno"],
   [/facturaci[óo]n|recaudo|ingresos del periodo|plata del periodo/i, "la plata del periodo"],
@@ -1994,7 +2000,13 @@ console.log("\nvender · aire y pines: tres bloques y el pie fijo");
     const b3 = deBloque(3);
     assert.match(b3, /^<Bloque n=\{3\} titulo="Cómo se cobra">\s*<ComoSeCobra c=\{c\} \/>/);
     assert.match(sinComentarios(leer("src/components/Contrato/CamposDelContrato.tsx")), /<span className="seg seg-ancho" role="group" aria-label="Cómo se cobra">/);
-    assert.match(b3, /<button\s+type="button"\s+className="plegable"\s+onClick=\{\(\) => setMasDatos\(\(v\) => !v\)\}\s+aria-expanded=\{masDatos\}\s+aria-controls=\{idMasDatos\}\s*>/);
+    // `aria-controls` sólo con lo plegado abierto: cerrado, el id no existe.
+    assert.match(b3, /<button\s+type="button"\s+className="plegable"\s+onClick=\{\(\) => setMasDatos\(\(v\) => !v\)\}\s+aria-expanded=\{masDatos\}\s+(?:\/\*[^*]*\*\/\s*)?aria-controls=\{masDatos \? idMasDatos : undefined\}\s*>/);
+    // Al abrirlo, lo abierto queda a la vista arriba del pie pegado (rodando
+    // la pantalla, suave salvo «menos animaciones»).
+    assert.match(ficha, /const masDatosRef = useRef<HTMLDivElement>\(null\);\s*useEffect\(\(\) => \{[\s\S]{0,1400}scrollBy\(\{ top: cuanto, behavior: suave \? "smooth" : "auto" \}\);\s*\}, \[masDatos\]\);/, "al abrir «Correo y nota» lo abierto no se trae a la vista");
+    assert.match(ficha, /prefers-reduced-motion: reduce/);
+    assert.match(b3, /<div className="mas-datos" id=\{idMasDatos\} ref=\{masDatosRef\}>/);
     assert.match(b3, /<ChevronDown \{\.\.\.ICONO\} className="chev" \/>/);
     const abre = entre(b3, "{masDatos && (", "</Bloque>") || b3.slice(b3.indexOf("{masDatos && ("));
     for (const t of ['aria-label="Correo para la constancia"', 'aria-label="Nota"', "<NotifyPreview sede={c.sede} />", "id={idMasDatos}"]) {
@@ -2016,11 +2028,26 @@ console.log("\nvender · aire y pines: tres bloques y el pie fijo");
     assert.ok(pos.every((k) => k >= 0), `falta en el pie: ${orden.filter((_, i) => pos[i] < 0).join(", ")}`);
     assert.deepEqual(pos, [...pos].sort((a, b) => a - b), "el pie no va en el orden del dibujo");
     assert.match(pie, /<p className="falta" data-falta role="status">\s*<CircleAlert \{\.\.\.ICONO\} \/> \{c\.falta\}\s*<\/p>/);
-    // El CSS: el cuerpo rueda dentro del panel, el pie no se encoge, y el
-    // principal ocupa las dos columnas de los botones.
+    // El CSS («aire y pines», la corrección): el cuerpo NO rueda —mide lo
+    // suyo y rueda la pantalla—; el pie no se encoge y va PEGADO al borde de
+    // abajo de la ventana (`sticky`, con la tarjeta sin recortar, que si no
+    // sería ella el contenedor del `sticky`); apilado (≤ 1100) vuelve al final
+    // de su tarjeta. El principal ocupa las dos columnas de los botones.
     const css = sinComentarios(leer("src/vender.css"));
-    assert.match(css, /\.vender \.cuerpo \{[^}]*flex: 1;[^}]*min-height: 0;[^}]*overflow-y: auto;/);
+    const reglaDe = (sel) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].trim() === sel).map((m) => m[2]);
+    assert.match(reglaDe(".vender .cuerpo")[0] ?? "", /flex: 1 0 auto;/, "el cuerpo no mide lo suyo");
+    for (const r of [...reglaDe(".vender .cuerpo"), ...reglaDe(".vp.contrato .cuerpo")]) assert.doesNotMatch(r, /overflow|max-height/, "el cuerpo del contrato rueda");
+    assert.doesNotMatch(css, /\.cuerpo \{[^}]*overflow-y: (?:auto|scroll)/, "el cuerpo del contrato rueda en algún lado");
+    assert.match(reglaDe(".vender")[0] ?? "", /overflow-y: auto;/, "la pantalla de Vender no rueda");
     assert.match(css, /\.pie-contrato \{\s*flex: none;/);
+    assert.match(css, /\.vp\.contrato \{ overflow: visible; \}/, "la tarjeta del contrato recorta: el pie no se puede pegar");
+    assert.match(css, /\.vp\.contrato > \.pie-contrato \{ position: sticky; bottom: -12px; z-index: 2; \}/, "el pie no va pegado abajo");
+    // Apilado vuelve al final de su tarjeta: la regla va DESPUÉS de la que lo
+    // pega (misma especificidad: si va antes, no hace nada y el pie tapa medio
+    // teléfono — pasó).
+    const pegado = css.indexOf(".vp.contrato > .pie-contrato { position: sticky;");
+    const suelto = css.search(/@media \(max-width: 1100px\) \{\s*\.vp\.contrato > \.pie-contrato \{ position: static; \}\s*\}/);
+    assert.ok(pegado > 0 && suelto > pegado, "apilado, el pie sigue pegado (la regla que lo suelta no está, o va antes de la que lo pega)");
     assert.match(css, /\.vp \{[^}]*display: flex;[^}]*flex-direction: column;[^}]*overflow: hidden;/);
     assert.match(css, /\.acciones2 \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/);
     assert.match(css, /\.acciones2 \.btn-principal \{ grid-column: 1 \/ -1;/);
@@ -2503,51 +2530,135 @@ if (!URL_VENDER) {
     await tocar(pv, alReves[0]);
     await pv.mouse.move(5, 5);
     await pv.waitForTimeout(600);
-    // «Aire y pines» (el dibujo aprobado después del PR 3): el contrato se
-    // ordena en tres bloques y el PIE ES FIJO —con muchas líneas lo que rueda
-    // es el cuerpo, y el total y «Guardar» quedan siempre a la vista—. Esto
-    // reemplaza a «con UNA línea el cuerpo no rueda» (que el dibujo aprobado
-    // ya no promete: los tres bloques con aire miden más que el panel a
-    // 1440×900) por lo que sí promete, medido: el pie entero a la vista y
-    // QUIETO mientras rueda el cuerpo, cada campo alcanzable rodando sólo el
-    // cuerpo, la página sin rodar, el contrato al 40 % de la hoja y nada que
-    // se salga de la tarjeta.
-    const unaLinea = await pv.evaluate(`(async () => {
+    // «Aire y pines», la corrección (el dibujo aprobado después del PR 3):
+    // la columna derecha es una PILA —el contrato de su alto natural y la
+    // tarifa debajo— y si el contrato es más alto que la ventana rueda LA
+    // PANTALLA, no el cuerpo del contrato; su pie (el total, lo que falta y
+    // «Guardar») queda pegado abajo. Reemplaza a «cada campo a un rodar del
+    // cuerpo» (que hacía `scrollIntoView` del cuerpo y pasaba siempre) por lo
+    // que el dibujo promete, medido SIN RODAR NADA: a 1440×900 con una línea
+    // el campo Proveedor está entero en la ventana y el pie no lo tapa.
+    const AREA = `document.querySelector(".vender")`;
+    const medirContrato = (pg) => pg.evaluate(`(() => {
       const panel = ${PANEL};
+      const area = ${AREA};
       const cuerpo = panel.querySelector(".cuerpo"), pie = panel.querySelector(".pie-contrato");
-      const r = panel.getBoundingClientRect(), acc = pie.querySelector(".acciones").getBoundingClientRect();
-      const hoja = panel.parentElement.getBoundingClientRect();
-      const piePrimero = pie.getBoundingClientRect();
-      const estaEnElCuerpo = (sel) => { const e = panel.querySelector(sel); if (!e) return false; e.scrollIntoView({ block: "nearest" }); const b = e.getBoundingClientRect(), c = cuerpo.getBoundingClientRect(); return b.top >= c.top - 0.5 && b.bottom <= c.bottom + 0.5; };
-      const ven = { linea: estaEnElCuerpo(".eitem"), proveedor: estaEnElCuerpo('input[aria-label="Proveedor"]'), marca: estaEnElCuerpo('input[aria-label="Marca"]'),
-        desde: estaEnElCuerpo('input[aria-label="Desde"]'), hasta: estaEnElCuerpo('input[aria-label="Hasta"]'), atajos: estaEnElCuerpo(".atajos"),
-        cobro: estaEnElCuerpo('[aria-label="Cómo se cobra"]'), correo: estaEnElCuerpo(".plegable") };
-      cuerpo.scrollTop = cuerpo.scrollHeight;
-      await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
-      const pieAlFondo = pie.getBoundingClientRect();
-      cuerpo.scrollTop = 0;
-      const dentro = (sel) => { const e = pie.querySelector(sel); if (!e) return false; const b = e.getBoundingClientRect(); return b.top >= r.top && b.bottom <= r.bottom && b.left >= r.left && b.right <= r.right; };
-      return { ancho: innerWidth, alto: innerHeight, bloques: panel.querySelectorAll(".bloque").length,
-        quieto: Math.abs(piePrimero.top - pieAlFondo.top) < 0.5, ven,
-        enElPie: { total: dentro(".total"), guardar: dentro(".btn-principal"), botones: [...pie.querySelectorAll(".acciones .btn3")].length === 2 && [...pie.querySelectorAll(".acciones .btn3")].every((b) => { const x = b.getBoundingClientRect(); return x.bottom <= r.bottom && x.right <= r.right; }) },
-        aire: r.bottom - acc.bottom, proporcion: r.width / hoja.width,
+      const r = panel.getBoundingClientRect(), pr = pie.getBoundingClientRect();
+      const hoja = panel.closest(".vender-hoja").getBoundingClientRect();
+      /** Entero en la ventana, arriba del pie y sin nada encima (lo que hay en
+       *  su centro es él o algo suyo). */
+      const aLaVista = (el, conPie = true) => {
+        if (!el) return "no está";
+        const b = el.getBoundingClientRect();
+        if (b.width < 1 || b.height < 1) return "no se ve";
+        if (b.top < -0.5 || b.left < -0.5 || b.bottom > innerHeight + 0.5 || b.right > innerWidth + 0.5) return "se sale de la ventana";
+        if (conPie && b.bottom > pr.top + 0.5) return "lo tapa el pie";
+        const enMedio = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        if (!enMedio || !(el === enMedio || el.contains(enMedio) || enMedio.contains(el))) return "algo lo tapa (" + (enMedio?.className || enMedio?.tagName) + ")";
+        return "";
+      };
+      return {
+        ancho: innerWidth, alto: innerHeight, rodado: area.scrollTop, bloques: panel.querySelectorAll(".bloque").length,
+        proveedor: aLaVista(panel.querySelector('input[aria-label="Proveedor"]')),
+        guardar: aLaVista(pie.querySelector(".btn-principal"), false),
+        fecha: aLaVista(pie.querySelector('input[aria-label="Reservar hasta"]'), false),
+        pieAlto: pr.height, pieAbajo: innerHeight - pr.bottom,
+        pegado: getComputedStyle(pie).position === "sticky",
+        cuerpoRueda: cuerpo.scrollHeight > cuerpo.clientHeight + 1 || /auto|scroll/.test(getComputedStyle(cuerpo).overflowY),
+        proporcion: r.width / hoja.width,
         pagina: document.scrollingElement.scrollHeight > innerHeight + 1,
-        desborda: panel.scrollWidth > panel.clientWidth + 0.5 };
+        ancha: document.documentElement.scrollWidth > innerWidth,
+        desborda: panel.scrollWidth > panel.clientWidth + 0.5,
+      };
     })()`);
-    prueba("navegador · con UNA línea a 1440×900: tres bloques, el pie fijo (total, Guardar, Reservar y Empezar de nuevo a la vista y quietos al rodar el cuerpo), cada campo a un rodar del cuerpo, el contrato al 40 %", () => {
+    /** Rueda LA PANTALLA (no el cuerpo) hasta que cada campo quede a la vista
+     *  arriba del pie, y en cada paso «Guardar» sigue a la vista y el plano
+     *  sigue en su lugar (pegado). Vuelve arriba al terminar. */
+    const rodandoLaPantalla = (pg) => pg.evaluate(`(async () => {
+      const panel = ${PANEL};
+      const area = ${AREA};
+      const cuerpo = panel.querySelector(".cuerpo"), pie = panel.querySelector(".pie-contrato");
+      const plano = document.querySelector(".vender .vp-plano");
+      const cuadro = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+      const malas = [];
+      const campos = { linea: ".eitem", proveedor: 'input[aria-label="Proveedor"]', marca: 'input[aria-label="Marca"]',
+        desde: 'input[aria-label="Desde"]', hasta: 'input[aria-label="Hasta"]', atajos: ".atajos",
+        cobro: '[aria-label="Cómo se cobra"]', correo: ".plegable" };
+      for (const [k, sel] of Object.entries(campos)) {
+        const el = panel.querySelector(sel);
+        if (!el) { malas.push(k + ": no está"); continue; }
+        // Lo que hay que rodar para que el campo quede a 140 px del borde de arriba.
+        area.scrollTop += el.getBoundingClientRect().top - 140;
+        await cuadro();
+        const b = el.getBoundingClientRect(), pr = pie.getBoundingClientRect(), g = pie.querySelector(".btn-principal").getBoundingClientRect();
+        if (b.top < 0 || b.bottom > pr.top + 0.5) malas.push(k + ": rodando la pantalla no queda a la vista arriba del pie");
+        if (g.top < 0 || g.bottom > innerHeight + 0.5) malas.push(k + ": rodando, «Guardar» se fue de la ventana");
+        // El plano, pegado arriba del área que rueda (a lo sumo su relleno y
+        // el hueco entre paneles) y entero a la vista.
+        const p = plano.getBoundingClientRect(), a = area.getBoundingClientRect();
+        if (area.scrollTop > 40 && innerWidth > 1100 && (p.top < a.top - 0.5 || p.top > a.top + 30 || p.bottom > innerHeight + 0.5)) malas.push(k + ": rodando, el plano no quedó quieto y entero arriba (" + (p.top - a.top).toFixed(0) + " px debajo del borde del área)");
+        if (cuerpo.scrollTop !== 0) malas.push(k + ": rodó el cuerpo del contrato");
+      }
+      area.scrollTop = 0;
+      await cuadro();
+      return malas;
+    })()`);
+    await pv.evaluate(`${AREA}.scrollTop = 0`);
+    const unaLinea = await medirContrato(pv);
+    const unaLineaRodando = await rodandoLaPantalla(pv);
+    prueba("navegador · con UNA línea a 1440×900, SIN RODAR: Proveedor entero en la ventana y sin el pie encima, «Guardar» a la vista, el pie pegado abajo (≤ 200 px), el cuerpo sin rodar, el contrato al 40 %", () => {
       const malas = [];
       if (unaLinea.ancho !== 1440 || unaLinea.alto !== 900) malas.push(`la ventana mide ${unaLinea.ancho}×${unaLinea.alto}, no 1440×900`);
+      if (unaLinea.rodado !== 0) malas.push(`la pantalla ya estaba rodada ${unaLinea.rodado} px`);
       if (unaLinea.bloques !== 3) malas.push(`el contrato tiene ${unaLinea.bloques} bloques`);
-      if (!unaLinea.quieto) malas.push("el pie se movió al rodar el cuerpo");
-      for (const [k, v] of Object.entries(unaLinea.ven)) if (!v) malas.push(`${k} no se alcanza rodando el cuerpo`);
-      for (const [k, v] of Object.entries(unaLinea.enElPie)) if (!v) malas.push(`${k} no está entero en el pie`);
-      if (unaLinea.aire < 12) malas.push(`el pie cierra con ${unaLinea.aire.toFixed(1)} px de aire (piso: 12)`);
+      if (unaLinea.proveedor) malas.push(`Proveedor: ${unaLinea.proveedor}`);
+      if (unaLinea.guardar) malas.push(`«Guardar»: ${unaLinea.guardar}`);
+      if (!unaLinea.pegado) malas.push("el pie no está pegado abajo (`position: sticky`)");
+      if (unaLinea.pieAbajo > 0.5) malas.push(`el pie no llega al borde de la ventana (quedan ${unaLinea.pieAbajo.toFixed(1)} px debajo)`);
+      if (unaLinea.pieAlto > 200.5) malas.push(`el pie mide ${unaLinea.pieAlto.toFixed(1)} px (tope: 200)`);
+      if (unaLinea.cuerpoRueda) malas.push("el cuerpo del contrato rueda (tiene que rodar la pantalla)");
       // 2 de 5 de la hoja, menos la mitad del hueco entre columnas.
       if (Math.abs(unaLinea.proporcion - 0.4) > 0.01) malas.push(`el contrato mide el ${(unaLinea.proporcion * 100).toFixed(1)} % de la hoja (40 %)`);
-      if (unaLinea.pagina) malas.push("la página rueda");
+      if (unaLinea.pagina) malas.push("rueda el documento (tiene que rodar el área de la pantalla)");
+      if (unaLinea.ancha) malas.push("la página se sale a lo ancho");
       if (unaLinea.desborda) malas.push("algo se sale de la tarjeta del contrato");
+      malas.push(...unaLineaRodando);
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
     });
+    // A 1366×768 reservando: la fecha de la reserva va en el pie pegado, y el
+    // pie entero (con «Guardar» y la fecha) se ve sin rodar; Proveedor se
+    // alcanza rodando la pantalla.
+    await pv.setViewportSize({ width: 1366, height: 768 });
+    await pv.waitForTimeout(700);
+    await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
+    await pv.mouse.move(5, 5);
+    await pv.waitForTimeout(500);
+    const reservar = pv.locator(".vender .pie-contrato button", { hasText: "Reservar hasta…" });
+    const sePuedeReservar = await reservar.isEnabled();
+    if (sePuedeReservar) await reservar.click();
+    else console.log(`       aviso · «Reservar hasta…» apagado con ${alReves[0]}: ${await reservar.getAttribute("title")} (la primera cara que se toca, la última de PROBAR_VENDER_CARAS, tiene que poder reservarse sola)`);
+    await pv.waitForTimeout(500);
+    await pv.evaluate(`${AREA}.scrollTop = 0`);
+    const reservando = await medirContrato(pv);
+    const reservandoRodando = await rodandoLaPantalla(pv);
+    prueba("navegador · reservando a 1366×768: «Guardar» y la fecha de la reserva a la vista sin rodar, el pie ≤ 200 px, y cada campo se alcanza rodando la pantalla", () => {
+      const malas = [];
+      if (!sePuedeReservar) malas.push(`no se pudo reservar ${alReves[0]} sola (ver el aviso de arriba)`);
+      if (reservando.ancho !== 1366 || reservando.alto !== 768) malas.push(`la ventana mide ${reservando.ancho}×${reservando.alto}`);
+      if (reservando.guardar) malas.push(`«Guardar»: ${reservando.guardar}`);
+      if (reservando.fecha) malas.push(`la fecha de la reserva: ${reservando.fecha}`);
+      if (!reservando.pegado) malas.push("el pie no está pegado abajo");
+      if (reservando.pieAlto > 200.5) malas.push(`el pie mide ${reservando.pieAlto.toFixed(1)} px (tope: 200)`);
+      if (reservando.cuerpoRueda) malas.push("el cuerpo del contrato rueda");
+      if (reservando.pagina) malas.push("rueda el documento");
+      if (reservando.ancha) malas.push("la página se sale a lo ancho");
+      malas.push(...reservandoRodando);
+      assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+    });
+    if (sePuedeReservar) await pv.locator(".vender .pie-contrato button", { hasText: "Volver" }).click();
+    await pv.setViewportSize({ width: 1440, height: 900 });
+    await pv.waitForTimeout(700);
+    await pv.evaluate(`${AREA}.scrollTop = 0`);
     for (const c of alReves.slice(1)) await tocar(pv, c);
     await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
     await pv.locator('.vender input[aria-label="Marca"]').fill("Finesse");
@@ -2567,7 +2678,8 @@ if (!URL_VENDER) {
         filas: [...panel.querySelectorAll(".eitem")].map((e) => {
           const b = e.getBoundingClientRect(), cod = e.querySelector(".cod");
           return { cod: cod.firstChild?.textContent?.trim(), alto: b.height, entero: cod.scrollWidth <= cod.clientWidth,
-            desborda: e.scrollWidth > e.clientWidth + 0.5, aviso: !!e.querySelector(".aviso"), abierta: e.classList.contains("abierta") };
+            desborda: e.scrollWidth > e.clientWidth + 0.5, aviso: !!e.querySelector(".aviso"), abierta: e.classList.contains("abierta"),
+            tipo: e.dataset.linea, partes: e.querySelectorAll(".repisas-lista .repisa").length };
         }),
         botones: v.length,
         boton: !!vb && vb.left >= cab.left && vb.right <= cab.right && vb.top >= cab.top - 5 && vb.bottom <= cab.bottom + 5,
@@ -2587,6 +2699,11 @@ if (!URL_VENDER) {
         // Cerrada, una línea sigue siendo un renglón de dos líneas; la abierta
         // (la última que se tocó) muestra sus botoneras con su rótulo.
         if (!f.aviso && !f.abierta && f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
+        // La ABIERTA también tiene tope (ya no está exenta): su cabecera, «Se
+        // vende» y «El precio es» (medida: 176 px entera, 200 un porcentaje a
+        // 1440), más un renglón por cada parte de la lista y el aviso, si hay.
+        const tope = 210 + 34 * f.partes + (f.aviso ? 40 : 0);
+        if (f.abierta && f.alto > tope) malas.push(`${f.cod}: la línea abierta mide ${f.alto.toFixed(1)} px (tope: ${tope}, ${f.tipo}${f.partes ? `, ${f.partes} partes` : ""})`);
         if (!f.entero) malas.push(`${f.cod}: el código se corta`);
         if (f.desborda) malas.push(`${f.cod}: la fila desborda su tarjeta`);
       }
@@ -2597,6 +2714,103 @@ if (!URL_VENDER) {
       if (hoja.rueda) malas.push("la página rueda");
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
     });
+
+
+    // ── Supervisar: el señalado con la página rodada, y los puntos ────────
+    // («Aire y pines», la corrección.) Pasar por un renglón de «Para revisar»
+    // pone un punto con anillo ARRIBA del rótulo de su mueble. Las cajas de
+    // los rótulos se guardaban en coordenadas de pantalla y, con la página
+    // rodada, el punto caía corrido lo que se hubiera rodado: se mide con la
+    // pantalla quieta Y rodada. Y prender los puntos no esconde ningún rótulo
+    // que apagados se ve, ni un punto tapa un código.
+    {
+      const { ctx: cs, p: ps } = await abrir("light");
+      await ps.locator("button", { hasText: /^Supervisar/ }).first().click();
+      await ps.waitForSelector(".sup .lista-r [data-aviso]", { timeout: 45000 }).catch(() => {});
+      await ps.waitForTimeout(2500);
+      const ocultos = () => ps.evaluate(() => [...document.querySelectorAll(".vp-plano text.p-cod")]
+        .filter((t) => getComputedStyle(t).display === "none" || t.getBoundingClientRect().width === 0).map((t) => t.getAttribute("data-cod")).sort());
+      /** Pasa el mouse por cada renglón hasta encontrar uno que señale, y mide
+       *  el punto contra el rótulo visible de su mueble. */
+      const senalado = async () => {
+        const filas = await ps.locator(".sup .lista-r [data-aviso] .dat").all();
+        for (const f of filas.slice(0, 12)) {
+          if (!(await f.isVisible())) continue;
+          await f.hover();
+          await ps.waitForTimeout(250);
+          const m = await ps.evaluate(() => {
+            const marca = document.querySelector(".foco-marca");
+            if (!marca || getComputedStyle(marca).display === "none" || marca.dataset.sobre !== "rotulo") return null;
+            const fila = document.querySelector(".sup [data-senalada]");
+            const cod = fila?.querySelector(".dat b")?.textContent?.trim() ?? "";
+            const base = cod.replace(/·[AB]$/, "");
+            const rotulos = [...document.querySelectorAll(".vp-plano text.p-cod")]
+              .filter((t) => getComputedStyle(t).display !== "none" && (t.getAttribute("data-cod") === cod || t.getAttribute("data-cod")?.replace(/·[AB]$/, "") === base))
+              .map((t) => t.getBoundingClientRect());
+            const b = marca.getBoundingClientRect();
+            const cx = b.left + b.width / 2;
+            // Arriba del rótulo (a 2 px), centrado: el de su cara o el de la otra.
+            const junto = rotulos.some((r) => Math.abs(cx - (r.left + r.width / 2)) < 3 && Math.abs(b.bottom - (r.top - 2)) < 4);
+            const ir = fila?.querySelector(".ir"), mira = fila?.querySelector(".mira");
+            return { cod, junto, rotulos: rotulos.length, grupo: fila?.dataset.senalada ?? "",
+              mira: !!mira && getComputedStyle(mira).display !== "none" && (!ir || getComputedStyle(ir).display === "none") };
+          });
+          if (m && m.rotulos > 0) return m;
+        }
+        return null;
+      };
+      await ps.evaluate(() => { document.querySelector(".sup").scrollTop = 0; });
+      const quieto = await senalado();
+      await ps.mouse.move(2, 2);
+      await ps.waitForTimeout(300);
+      const rodo = await ps.evaluate(() => { const s = document.querySelector(".sup"); s.scrollTop = 120; return s.scrollTop; });
+      await ps.waitForTimeout(300);
+      const rodado = await senalado();
+      await ps.mouse.move(2, 2);
+      await ps.evaluate(() => { document.querySelector(".sup").scrollTop = 0; });
+      await ps.waitForTimeout(300);
+      prueba("navegador · Supervisar: el punto con anillo del señalado cae arriba del rótulo de su mueble, con la página quieta y RODADA, y el renglón lleva la mira", () => {
+        const malas = [];
+        if (!quieto) malas.push("ningún renglón de «Para revisar» señaló un mueble con su rótulo a la vista");
+        else {
+          if (!quieto.junto) malas.push(`quieta: el punto de ${quieto.cod} no está arriba de su rótulo`);
+          if (!quieto.mira) malas.push(`quieta: el renglón de ${quieto.cod} no cambió el chevron por la mira`);
+          if (!/^(hoy|dias30|corregir)$/.test(quieto.grupo)) malas.push(`quieta: el renglón señalado no lleva el tono de su grupo («${quieto.grupo}»)`);
+        }
+        if (rodo < 60) malas.push(`la página de Supervisar no rodó (${rodo} px): no se puede medir el caso rodado`);
+        else if (!rodado) malas.push("rodada: ningún renglón señaló un mueble con su rótulo a la vista");
+        else if (!rodado.junto) malas.push(`rodada ${rodo} px: el punto de ${rodado.cod} no está arriba de su rótulo (quedó corrido)`);
+        assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+      });
+      const apagados = await ocultos();
+      const boton = ps.locator(".clave-pin");
+      const habia = await boton.count();
+      if (habia) { await boton.first().click(); await ps.waitForTimeout(1200); }
+      const prendidos = await ocultos();
+      const pisan = await ps.evaluate(() => {
+        const rot = [...document.querySelectorAll(".vp-plano text.p-cod")].filter((t) => getComputedStyle(t).display !== "none").map((t) => [t.getAttribute("data-cod"), t.getBoundingClientRect()]);
+        const out = [];
+        for (const p of document.querySelectorAll(".chinchetas button")) {
+          if (getComputedStyle(p).display === "none") continue;
+          const b = p.getBoundingClientRect();
+          // El punto pintado (10 px y su aro de 2) dentro del blanco de 16.
+          const c = { l: b.left + b.width / 2 - 7, r: b.left + b.width / 2 + 7, t: b.top + b.height / 2 - 7, b: b.top + b.height / 2 + 7 };
+          for (const [cod, r] of rot) if (c.l < r.right && r.left < c.r && c.t < r.bottom && r.top < c.b) out.push(`${p.getAttribute("aria-label")?.slice(0, 40)} tapa ${cod}`);
+        }
+        return { out, n: document.querySelectorAll(".chinchetas button").length };
+      });
+      if (habia) { await boton.first().click(); await ps.waitForTimeout(400); }
+      prueba("navegador · Supervisar: prender los puntos no esconde ningún rótulo que apagados se ve, y ningún punto tapa un código", () => {
+        const malas = [];
+        if (!habia) malas.push("no está el botón «Para revisar N» en la clave");
+        if (habia && pisan.n === 0) malas.push("prendidos, no hay ningún punto");
+        const nuevos = prendidos.filter((c) => !apagados.includes(c));
+        if (nuevos.length) malas.push(`prendidos ceden ${nuevos.join(", ")} (apagados se ven)`);
+        malas.push(...pisan.out);
+        assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+      });
+      await cs.close();
+    }
 
     // Lo opcional, que también tiene que sobrevivir al 3D.
     await pv.locator("button.plegable", { hasText: "Correo y nota para el proveedor" }).click();

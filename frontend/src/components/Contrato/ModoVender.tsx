@@ -60,8 +60,9 @@ const VisorDeVenta = lazy(() => import("./VisorDeVenta"));
  * · **Correo y nota viven en un desplegable.** Son opcionales y ninguno se
  *   toca en la llamada típica. La planometría NO está en Vender: se carga en
  *   Supervisar, en la ficha del espacio, con el contrato ya hecho.
- * · **El cuerpo rueda y el pie no**: el total y el botón no se pierden con
- *   cuatro líneas adentro.
+ * · **El pie, pegado abajo**: el contrato mide lo que mide y, si no entra,
+ *   rueda la PANTALLA (no el cuerpo); el total y «Guardar» quedan pegados al
+ *   borde de abajo de la ventana (`position: sticky`, «aire y pines»).
  *
  * «AIRE Y PINES» (el dibujo aprobado después del PR 3): el contrato mide 2 de
  * 5 partes de la hoja y el cuerpo se ordena en TRES bloques numerados, en el
@@ -69,9 +70,10 @@ const VisorDeVenta = lazy(() => import("./VisorDeVenta"));
  * rótulo arriba: «Se vende», «El precio es»; y la pista «Sumar otro espacio:
  * tocalo en el plano»), 2 «A quién y cuándo» (proveedor y marca, desde y
  * hasta, los atajos) y 3 «Cómo se cobra» (precio fijo o % de las ventas, y la
- * fila plegable «Correo y nota para el proveedor»)—. El pie, fijo: el total,
- * lo que FALTA (antes arriba), «Guardar contrato» a todo el ancho y, debajo,
- * «Reservar hasta…» y «Empezar de nuevo». Sólo cambió dónde va cada cosa.
+ * fila plegable «Correo y nota para el proveedor»)—. El pie, pegado abajo:
+ * el total, lo que FALTA (antes arriba), «Guardar contrato» a todo el ancho y,
+ * debajo, «Reservar hasta…» y «Empezar de nuevo» como botones de texto. Sólo
+ * cambió dónde va cada cosa.
  */
 
 interface ModoVenderProps {
@@ -114,7 +116,7 @@ interface ModoVenderProps {
  *  ícono de la tarjeta («un documento que todavía se está escribiendo»). */
 function Panel({ derecha, pie, children }: { derecha?: React.ReactNode; pie?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="vp contrato" style={{ gridArea: "1 / 2" }}>
+    <section className="vp contrato">
       <header>
         <FilePenLine size={16} strokeWidth={1.75} color="var(--ink-2)" aria-hidden className="ico-tarjeta" />
         <h2>Contrato</h2>
@@ -179,7 +181,11 @@ function Fila({
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
   /* Dos renglones y ni uno más en la cabecera de la línea. Arriba el TIPO
      —que es lo que se está vendiendo—, abajo cómo (la parte, el porcentaje y
-     lo que queda), dónde queda y el desvío contra la referencia, si lo hay. */
+     lo que queda) y dónde queda.
+     NUNCA cuánto se aparta el precio de la tarifa («38 % bajo la referencia»):
+     Vender lo ve el proveedor, y cuánto rebajó la casa es información de su
+     negociación. La tarifa misma ya está, sin comparar, junto a «El precio
+     es» de la línea abierta. */
   /* Vender por partes, pedido y sin fijar: la ficha dice «por tramos» pero
      nadie fijó cuántos (la de una góndola no los trae). Se vende entera hasta
      fijarlos en el panel del plano: se dice dónde. */
@@ -189,11 +195,7 @@ function Fila({
     l.textoParte,
     sinFijar ? `por ${claseDe(sinFijar)?.plural ?? "partes"}: fijalos en el plano` : "",
     l.ubicacion,
-    l.ref === null
-      ? (l.tipo === "pc" && l.pb <= 0 ? "" : "sin tarifa de referencia")
-      : l.desvio !== null && l.desvio !== 0
-      ? l.desvio >= 1 ? `${l.desvio}% bajo la referencia` : `${Math.abs(l.desvio)}% sobre la referencia`
-      : "",
+    l.ref === null && !(l.tipo === "pc" && l.pb <= 0) ? "sin tarifa de referencia" : "",
   ].filter(Boolean).join(" · ");
 
   /* El choque de fechas sale de la cabecera y se dibuja aparte, a todo el
@@ -694,12 +696,32 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     });
   }, []);
   /** Correo y nota: opcionales, y ninguno se toca en la llamada típica.
-   *  Cerrados, la ficha cierra con aire; abiertos, el cuerpo rueda y se ve que
-   *  rueda. (La planometría se fue de Vender: se carga sólo en Supervisar, en
+   *  Cerrados, la ficha cierra con aire; abiertos, la pantalla rueda hasta
+   *  dejarlos a la vista. (La planometría se fue de Vender: se carga sólo en Supervisar, en
    *  la ficha del espacio, con el contrato ya hecho — decisión de la dueña,
    *  2026-10-20. Con ella se fue adjuntar la lámina del visor al contrato.) */
   const [masDatos, setMasDatos] = useState(false);
   const idMasDatos = useId();
+  /** Al abrir «Correo y nota», lo abierto queda A LA VISTA: la pantalla rueda
+   *  lo justo para que termine arriba del pie pegado abajo (que si no lo
+   *  tapaba entero), con un desplazamiento suave salvo que se pidan menos
+   *  animaciones. */
+  const masDatosRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = masDatosRef.current;
+    if (!masDatos || !el) return;
+    const pie = el.closest(".vp.contrato")?.querySelector<HTMLElement>(".pie-contrato");
+    const piso = pie && getComputedStyle(pie).position === "sticky" ? pie.getBoundingClientRect().top : innerHeight;
+    const caja = el.getBoundingClientRect();
+    const falta = caja.bottom - (Math.min(piso, innerHeight) - 8);
+    if (falta <= 0) return;
+    let rueda: HTMLElement | null = el.parentElement;
+    while (rueda && !(rueda.scrollHeight > rueda.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(rueda).overflowY))) rueda = rueda.parentElement;
+    // Nunca tanto que el principio de lo abierto se vaya por arriba.
+    const cuanto = Math.min(falta, Math.max(0, caja.top - 8));
+    const suave = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    (rueda ?? document.scrollingElement)?.scrollBy({ top: cuanto, behavior: suave ? "smooth" : "auto" });
+  }, [masDatos]);
   /** «Empezar de nuevo»: la prueba del 3D se olvida con el contrato (la ficha
    *  no se remonta: su clave es la sede), así que se vacía a mano. */
   const empezarDeNuevo = () => {
@@ -731,9 +753,9 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     : "lo de este contrato";
 
   /* ── El pie: el total, lo que falta y los botones, SIEMPRE a la vista ────
-     Afuera del cuerpo que rueda (el dibujo aprobado de «aire y pines»): con
-     muchas líneas lo que se desplaza es lo de arriba, y el total y «Guardar»
-     quedan siempre a la vista. El total es la suma del total de cada línea (o
+     Afuera del cuerpo y pegado al borde de abajo de la ventana (el dibujo
+     aprobado de «aire y pines»): con muchas líneas rueda la pantalla, y el
+     total y «Guardar» quedan siempre a la vista. El total es la suma del total de cada línea (o
      el % de las ventas, que no se sabe todavía y se dice así). Debajo, lo que
      falta —justo sobre el botón que no se puede tocar todavía—, «Guardar
      contrato» a todo el ancho (el único amarillo) y, en dos columnas,
@@ -770,11 +792,12 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
       </div>
       {/* «Reservar hasta…»: la fecha la elige quien opera y arranca VACÍA
           (decisión de la dueña). De hoy al último día del contrato. Va en el
-          pie, junto al botón que reserva: abierto desde el pie, no puede
-          aparecer al fondo de un cuerpo que rueda. */}
+          pie, junto al botón que reserva, y en UN renglón —el rótulo, la
+          fecha y lo que pasa al vencer— para que el pie pegado abajo no pase
+          de unos 200 px. */}
       {c.reservando && (
-        <div className="campo reserva" data-reserva>
-          <span className="rotulo">Reservar hasta</span>
+        <div className="reserva-pie" data-reserva>
+          <span className="rotulo" aria-hidden>Reservar hasta</span>
           <label className="entrada con-ico cif">
             <Hourglass {...ICONO} />
             <input
@@ -824,12 +847,12 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             : <><Check {...ICONO} /> Guardar contrato</>}
         </button>
         {c.reservando ? (
-          <button className="btn3" type="button" onClick={() => c.setReservando(false)} disabled={guardando}>
+          <button className="btn-texto" type="button" onClick={() => c.setReservando(false)} disabled={guardando}>
             Volver
           </button>
         ) : (
           <button
-            className="btn3"
+            className="btn-texto"
             type="button"
             onClick={() => c.setReservando(true)}
             disabled={guardando || !c.puedeReservar}
@@ -839,7 +862,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           </button>
         )}
         <button
-          className="btn3 fantasma"
+          className="btn-texto"
           type="button"
           // La prueba del 3D se olvida con el contrato: «empezar de nuevo» no
           // remonta la ficha (su clave es la sede), así que se vacía a mano.
@@ -889,8 +912,8 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     >
       {/* EL CUERPO, en tres bloques numerados en el orden en que se negocia
           (el dibujo aprobado de «aire y pines»): QUÉ se vende, A QUIÉN Y
-          CUÁNDO, y CÓMO se cobra, separados por una línea fina. Es lo único
-          que rueda. */}
+          CUÁNDO, y CÓMO se cobra, separados por una línea fina. Mide lo suyo:
+          si no entra, rueda la pantalla, no él. */}
       <div className="cuerpo">
         <Bloque n={1} titulo="Qué se vende">
           <div className="espacios">
@@ -981,14 +1004,15 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             className="plegable"
             onClick={() => setMasDatos((v) => !v)}
             aria-expanded={masDatos}
-            aria-controls={idMasDatos}
+            /* Sólo apunta a lo que existe: cerrado, lo plegado no está. */
+            aria-controls={masDatos ? idMasDatos : undefined}
           >
             <Mail {...ICONO} />
             <span>Correo y nota para el proveedor <span className="opc">· opcional</span></span>
             <ChevronDown {...ICONO} className="chev" />
           </button>
           {masDatos && (
-            <div className="mas-datos" id={idMasDatos}>
+            <div className="mas-datos" id={idMasDatos} ref={masDatosRef}>
               <div className="campo">
                 <span className="rotulo">Correo · para la constancia</span>
                 <label className="entrada con-ico">

@@ -203,7 +203,7 @@
 /* --- El plano de Supervisar: los puntos de «Para revisar» y su botón ------
    «Aire y pines» (el dibujo aprobado, después del PR 3): al abrir, el plano NO
    muestra nada encima de los muebles. «Para revisar N», en la clave, es un
-   botón que prende y apaga TODOS los puntos (se recuerda por persona). Prendidos,
+   botón que prende y apaga TODOS los puntos (se recuerda en este navegador). Prendidos,
    cada mueble con algo pendiente lleva un PUNTO chico, sin globo, sin palito y
    sin ícono, del color de su grupo más urgente. Y pasar por un renglón de la
    lista señala su mueble: el piso punteado y un punto con anillo. Todos los
@@ -224,8 +224,8 @@
 .chinchetas { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .chinchetas button {
   position: absolute; pointer-events: auto;
-  /* Sin rótulo a la vista (un mueble que no se vende entero, o un rótulo que
-     cedió): el punto, centrado sobre el techo. */
+  /* `left`/`top` son el CENTRO del punto (`ubicarChinchetas`): pegado a su
+     rótulo, o sobre el techo si el rótulo cedió. */
   transform: translate(-50%, -50%);
   display: grid; place-items: center; width: 16px; height: 16px; padding: 0;
   border: 0; border-radius: 50%; background: transparent; cursor: pointer;
@@ -241,9 +241,6 @@
 .chinchetas button[data-grupo="dias30"] { --c: var(--entra); }
 .chinchetas button[data-grupo="corregir"] { --c: var(--ink-1); }
 .chinchetas button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-/* Con su rótulo puesto, el punto se apoya ARRIBA de la caja del rótulo
-   (`ubicarChinchetas`): el código queda siempre a la vista. */
-.chinchetas button[data-sobre="rotulo"] { transform: translate(-50%, -100%); }
 
 /* El mueble señalado desde un renglón de «Para revisar». */
 .foco-piso { fill: rgb(var(--ocupado-rgb) / 0.14); stroke: var(--ocupado); pointer-events: none; }
@@ -266,12 +263,25 @@
 .foco-marca[data-sobre="rotulo"] { transform: translate(-50%, -100%); }
 /* El renglón que se está mirando, marcado como su mueble en el plano. */
 .sup .lista-r .fila-r:focus-within { background: var(--surface-2); }
+/* Mientras señala su mueble (`data-senalada`, con el grupo del aviso): el
+   fondo suave y un borde fino del tono de su grupo —el mismo del piso
+   punteado y del punto con anillo— y la MIRA en lugar del chevron. */
+.sup .fila-r > .mira { grid-column: 3; grid-row: 1; }
+.sup .fila-r .mira { flex: none; margin-left: auto; place-items: center; }
+.sup .fila-r[data-senalada] > .ir { display: none; }
+.sup .fila-r[data-senalada] .mira { display: inline-grid; }
+.sup .fila-r[data-senalada="hoy"] { background: var(--ocupado-suave); outline: var(--hair) solid var(--ocupado-borde); outline-offset: -1px; }
+.sup .fila-r[data-senalada="hoy"] .mira { color: var(--ocupado-txt); }
+.sup .fila-r[data-senalada="dias30"] { background: var(--entra-suave); outline: var(--hair) solid var(--entra-borde); outline-offset: -1px; }
+.sup .fila-r[data-senalada="dias30"] .mira { color: var(--entra-txt); }
+.sup .fila-r[data-senalada="corregir"] { background: var(--surface-2); outline: var(--hair) solid var(--line-strong); outline-offset: -1px; }
+.sup .fila-r[data-senalada="corregir"] .mira { color: var(--ink-1); }
 
 /* A lo angosto (390 px): sin desplazamiento de la página; las tablas ruedan
    adentro de su tarjeta y los encabezados envuelven. */
 @media (max-width: 560px) {
   .sup .fila-r { grid-template-columns: auto minmax(0, 1fr); }
-  .sup .fila-r > .ir { display: none; }
+  .sup .fila-r > .ir, .sup .fila-r[data-senalada] .mira { display: none; }
   .sup .cifras { padding: 0 12px 12px; }
   .sup .vp-plano > header { flex-wrap: wrap; }
   .sup .vp-plano > header .der { flex-wrap: wrap; margin-left: 0; }

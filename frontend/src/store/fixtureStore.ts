@@ -317,8 +317,9 @@ interface FixtureStore {
   camera3D: Camera3D;
   /** Supervisar: si el plano muestra un punto sobre cada mueble con algo en
    *  «Para revisar» («aire y pines»). Arranca APAGADO —al abrir, el plano dice
-   *  sólo cómo está cada mueble— y se recuerda como las cámaras: es una
-   *  preferencia de vista de quien mira, no un dato. */
+   *  sólo cómo está cada mueble— y se recuerda como las cámaras, en ESTE
+   *  navegador (`retail-fixtures-v1` en localStorage), no en la cuenta: es una
+   *  preferencia de vista, no un dato. */
   pendientesEnElPlano: boolean;
   setPendientesEnElPlano: (v: boolean) => void;
 

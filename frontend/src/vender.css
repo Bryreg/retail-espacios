@@ -237,6 +237,13 @@
   --pl-ed: #131A1F;
   --pl-et: #46525B;
 
+  /* EL ALTO DE LA HOJA: lo que queda debajo de la barra de la pantalla (la
+     misma cuenta que `--alto-plano`: el área medida menos el marco, más el
+     hueco entre filas que el marco ya contaba), con el piso de las dos filas.
+     Es el alto de la pila de la izquierda (el plano y «Cuándo se libera») y lo
+     menos que mide la de la derecha (el contrato y la tarifa). */
+  --alto-hoja: max(calc(var(--fila1) + var(--aire-v) + var(--fila2)), calc(var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede) + var(--aire-v)));
+
   display: flex;
   flex-direction: column;
   /* Sin `gap`: la barra de la pantalla ya trae su propio margen abajo, y dos
@@ -246,7 +253,11 @@
   padding: 8px 12px 8px;
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  /* Rueda LA PANTALLA («aire y pines»): el contrato mide lo que mide, y si
+     es más alto que la ventana se baja rodando el área, no el cuerpo del
+     contrato. El documento no rueda nunca (el armazón es `100dvh`). */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 html[data-tema="oscuro"] .vender {
@@ -270,16 +281,34 @@ html[data-tema="oscuro"] .vender {
    Supervisar usa la MISMA proporción (`.supervisar-hoja`): el plano mide lo
    mismo en las dos pantallas (`probar-camara` lo guarda). */
 .vender-hoja {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   display: grid;
   gap: var(--aire-v);
   grid-template-columns: 3fr 2fr;
-  /* La fila del plano mide `--alto-plano`, lo mismo que en Supervisar; si la
-     barra de la pantalla se parte en dos renglones (o se abre el periodo) y
-     no entra, cede antes que dejar la tarifa bajo su piso. */
-  grid-template-rows: max(var(--fila1), min(var(--alto-plano), 100% - var(--fila2) - var(--aire-v))) minmax(var(--fila2), 1fr);
+  align-items: start;
+  min-height: var(--alto-hoja);
 }
+/* Dos pilas, una por columna («aire y pines»). */
+.hoja-col { display: flex; flex-direction: column; gap: var(--aire-v); min-width: 0; }
+/* LA IZQUIERDA: el plano, de `--alto-plano` (lo mismo que en Supervisar,
+   `probar-camara` lo guarda), y «Cuándo se libera» con el resto. Mide el alto
+   de la hoja y queda QUIETA mientras rueda la pantalla (`sticky`): el plano
+   sigue a la vista mientras se arma un contrato largo. Si la ventana es más
+   baja que la pila, se pega más arriba (el `top` negativo), lo justo para que
+   su borde de abajo se vea. */
+.hoja-izq {
+  display: grid;
+  grid-template-rows: var(--alto-plano) minmax(var(--fila2), 1fr);
+  height: var(--alto-hoja);
+  position: sticky;
+  top: min(var(--aire-v), calc(var(--alto-area, calc(100dvh - 52px)) - var(--alto-hoja) - var(--aire-v)));
+}
+/* LA DERECHA: el contrato con su alto natural —nunca menos que la fila del
+   plano— y la tarifa debajo, con lo que quede (y su piso). Cuando el contrato
+   crece, la pila crece y la pantalla rueda. */
+.hoja-der { min-height: var(--alto-hoja); }
+.hoja-der > .vp.contrato { flex: none; min-height: var(--alto-plano); }
+.hoja-der > .vp-tarifa { flex: 1 1 0; min-height: var(--fila2); }
 
 /* La barra de la pantalla es lo único que D no tenía: su rail ERA la barra de
    la aplicación. Acá hay dos, así que la de la pantalla va apretada en Vender
@@ -364,14 +393,24 @@ html[data-tema="oscuro"] .vender {
   overflow: hidden;
   display: flex;
 }
-/* El encabezado del plano mide lo mismo en las dos pantallas: Supervisar
-   suma el filtro (24 px) a la clave, y sin este piso su lienzo quedaba unos
-   píxeles más bajo que el de Vender. */
-.vp-plano > header { min-height: 44px; }
-/* «7 muebles» entero: con el plano al 60 % de la hoja («aire y pines») la
-   clave tiene menos ancho y se parte en dos renglones; lo que cede es ella, no
-   la cuenta de muebles. */
+/* El encabezado del plano, en DOS renglones (el dibujo aprobado de «aire y
+   pines»): arriba el título y la cuenta («13 muebles», entera: no cede nunca);
+   abajo, a todo el ancho, la clave —y en Supervisar el botón «Para revisar N»
+   y el filtro, contra el borde derecho—. Mide lo mismo en las dos pantallas:
+   el renglón de la clave tiene el alto del filtro (28 px) también en Vender,
+   así el lienzo queda igual de alto. */
+.vp-plano > header { flex-wrap: wrap; row-gap: 6px; }
 .vp-plano > header .sub { flex: none; }
+.vp-plano > header .der {
+  flex: 1 0 100%;
+  margin-left: 0;
+  min-height: 28px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.vp-plano > header .der > .clave { justify-content: flex-start; flex: 0 1 auto; min-width: 0; }
+.vp-plano > header .der > .clave + * { margin-left: auto; }
 .vender .lienzo > svg {
   width: 100%;
   height: 100%;
@@ -480,13 +519,6 @@ html[data-tema="oscuro"] .vender {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-}
-.clave .sep {
-  width: 1px;
-  height: 15px;
-  background: var(--line);
-  flex: none;
-  padding: 0;
 }
 
 /* EL ROTULO SOBRE EL MUEBLE ————————————————————————————————————
@@ -605,9 +637,11 @@ html[data-tema="oscuro"] .vender {
   padding: 0 16px 0;
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  /* Del alto de lo suyo («aire y pines»): el cuerpo NO rueda. Si el contrato
+     es más alto que la ventana, rueda la pantalla; el pie queda pegado abajo
+     (`.vp.contrato > .pie-contrato`). Con el contrato más bajo que la fila
+     del plano, el cuerpo se estira y el pie cierra la tarjeta. */
+  flex: 1 0 auto;
 }
 .espacios { display: flex; flex-direction: column; gap: 8px; }
 .eitem {
@@ -751,7 +785,6 @@ html[data-tema="oscuro"] .vender {
 .vender .pista b { font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line-strong); }
 /* La nota debajo de un campo (la reserva: hasta cuándo y qué pasa después). */
 .vender .nota-campo { display: block; margin: -1px 0 4px; font-size: var(--t-2xs); color: var(--ink-3); }
-.corte { border: 0; border-top: 1px dashed var(--brd); margin: var(--s2) 0 var(--s1); }
 .vender .campo { margin-bottom: var(--s1); }
 .vender .campo .rotulo { display: block; margin-bottom: 2px; }
 .vender .entrada {
@@ -771,8 +804,6 @@ html[data-tema="oscuro"] .vender {
 }
 .vender .entrada.cif { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: var(--t-sm); }
 .vender .entrada:focus { border-color: var(--ink-1); box-shadow: 0 0 0 2px var(--panel-2); }
-.vender .par { display: flex; gap: 8px; }
-.vender .par > * { flex: 1; min-width: 0; }
 .vender .plazo {
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
@@ -836,8 +867,6 @@ html[data-tema="oscuro"] .vender {
   cursor: pointer;
 }
 .btn2:hover { color: var(--fg); }
-/* «+ Correo y nota», a la derecha del cobro (`ComoSeCobra`). */
-.vender .cobro > .btn2 { width: auto; margin: 0 0 0 auto; padding: 0; flex: none; text-align: right; }
 .vender .error-txt {
   margin: 6px 0 0; font-size: var(--t-2xs); line-height: 1.4;
   color: var(--ocupado-txt); background: var(--ocupado-suave);
@@ -944,7 +973,6 @@ html[data-tema="oscuro"] .vender {
   .eitem { padding: 5px 9px; }
   .eitem .d { line-height: 1.22; }
   .vender .pista { margin-top: 4px; }
-  .corte { margin: 6px 0 5px; }
   .vender .campo { margin-bottom: 4px; }
   .vender .campo .rotulo { margin-bottom: 2px; }
   .vender .entrada { min-height: 28px; padding: 4px 9px; line-height: 1.2; }
@@ -976,27 +1004,29 @@ html[data-tema="oscuro"] .vender {
    poco más baja que la de D. Por encima de eso —1440×800, 1600×900,
    1920×1080— la hoja entra entera y no rueda; por debajo —1366×768— rueda
    como documento y no esconde un píxel. */
-@media (max-height: 790px) {
-  /* Rueda la PANTALLA y no el documento: el armazón de la aplicación es
-     `height:100dvh; overflow:hidden`, así que un documento más alto que la
-     ventana no se puede alcanzar — se recorta. Con la barra acá, se alcanza. */
-  .vender { overflow-y: auto; }
-  .vender-hoja { grid-template-rows: var(--alto-plano) minmax(var(--fila2), auto); }
-}
+/* (Hasta «aire y pines» había acá un bloque para ventanas de menos de 790 px
+   de alto, que hacía rodar la pantalla. Ahora la pantalla rueda siempre que
+   lo de la derecha no entra, a cualquier alto: el bloque sobra.) */
 
 /* --- ANGOSTO: razonable, no perfecto ------------------------------------
    El plano y la escalera no pueden quedar en `width:0`: los dos toman alto
    propio y la escalera se desliza. */
 @media (max-width: 1100px) {
-  .vender { overflow-y: auto; }
   .vender-hoja {
     grid-template-columns: 1fr;
     grid-template-rows: none;
     grid-auto-rows: min-content;
+    min-height: 0;
   }
-  .vender-hoja > .vp { grid-area: auto !important; min-height: 0; }
+  /* Apilado como antes: las dos pilas se disuelven y los cuatro paneles van
+     uno debajo del otro (el plano, cuándo se libera, el contrato y la tarifa),
+     sin nada pegado. */
+  .hoja-col { display: contents; }
+  .vender-hoja .vp,
+  .hoja-der > .vp.contrato,
+  .hoja-der > .vp-tarifa { min-height: 0; }
   /* El plano, del mismo alto que en Supervisar (era `62vw`). */
-  .vender-hoja > .vp-plano { height: var(--alto-plano); }
+  .vender-hoja .vp-plano { height: var(--alto-plano); }
   .herr { right: 12px; top: auto; bottom: 12px; }
   /* Las herramientas bajan a la esquina de abajo a la derecha: la ayuda de
      los gestos termina antes de ellas (tres botones de 32 px, dos huecos de
@@ -1124,13 +1154,30 @@ html[data-tema="oscuro"] .vender {
    «Reservar hasta…» y «Empezar de nuevo». */
 .pie-contrato {
   flex: none;
-  padding: var(--s3) 16px var(--s3);
+  padding: 10px 16px 10px;
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   border-top: var(--hair) solid var(--line);
   background: var(--surface);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
   min-width: 0;
+}
+/* EL PIE, PEGADO ABAJO: el contrato rueda con la pantalla y su pie —el total,
+   lo que falta, «Guardar contrato» y los botones— queda pegado al borde de
+   abajo de la ventana mientras haya contrato debajo. «Guardar» se ve siempre.
+   Para eso la tarjeta no recorta (`overflow: visible`: un recorte convierte a
+   la tarjeta en el contenedor del `sticky` y el pie dejaría de pegarse). */
+.vp.contrato { overflow: visible; }
+/* `bottom` negativo: lo que mide el relleno de abajo de la pantalla (12 px; 8
+   en ventana baja). Pegado al borde de la ventana y no 12 px más arriba, que
+   dejaba ver el cuerpo pasando por debajo del pie. */
+.vp.contrato > .pie-contrato { position: sticky; bottom: -12px; z-index: 2; }
+/* Apilado (≤ 1100), el pie vuelve a ir al final de su tarjeta, como antes:
+   pegado abajo taparía un tercio del teléfono mientras se escribe. (Va
+   DESPUÉS de la regla de arriba: con la misma especificidad, gana la última.) */
+@media (max-width: 1100px) {
+  .vp.contrato > .pie-contrato { position: static; }
 }
 .pie-contrato .total {
   display: grid;
@@ -1142,7 +1189,9 @@ html[data-tema="oscuro"] .vender {
   padding: 0;
 }
 .pie-contrato .total-izq { display: grid; gap: 4px; min-width: 0; }
-.pie-contrato .total-der { display: grid; justify-items: end; gap: 6px; min-width: 0; }
+/* La cifra y, a su izquierda, lo que cubre («Cubre Halloween»): en el mismo
+   renglón, así el pie pegado abajo no pasa de unos 200 px. */
+.pie-contrato .total-der { display: flex; flex-direction: row-reverse; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px 8px; min-width: 0; }
 .pie-contrato .total .rotulo { display: inline-flex; align-items: center; gap: 6px; }
 .pie-contrato .total .rotulo svg { color: var(--ink-3); flex: none; }
 .vender .total .n.n-ventas { font-size: var(--t-md); letter-spacing: 0; }
@@ -1156,13 +1205,16 @@ html[data-tema="oscuro"] .vender {
 .pie-contrato .falta svg { color: var(--ink-3); flex: none; }
 .pie-contrato .error-txt { margin: 0; display: flex; align-items: flex-start; gap: 6px; }
 .pie-contrato .error-txt svg { flex: none; }
-.pie-contrato .reserva { margin: 0; }
+/* La fecha de la reserva, en un renglón: la fecha y, al lado, lo que pasa al
+   vencer (o lo que falta). A lo angosto la nota baja abajo de la fecha. */
+.reserva-pie { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0; }
+.reserva-pie > .rotulo { flex: none; margin: 0; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--t-xs); color: var(--ink-3); }
+.reserva-pie > .entrada { flex: 0 0 auto; width: 168px; }
+.reserva-pie > .nota-campo { flex: 1 1 200px; min-width: 0; margin: 0; font-size: var(--t-2xs); line-height: 1.3; color: var(--ink-3); }
 .pie-contrato .acciones { margin: 0; padding: 0; }
-.pie-contrato .btn-principal { padding: 10px; }
-.pie-contrato .btn3 { min-height: 34px; }
+.pie-contrato .btn-principal { padding: 9px; }
 .acciones2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s2); }
 .acciones2 .btn-principal { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.acciones2 .btn3 { white-space: normal; text-align: center; padding: 4px 8px; }
 /* Botón de tinta: «Reservar hasta…», «Bajar a 70 %», «Cambiar fechas». */
 .btn3 {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -1175,9 +1227,23 @@ html[data-tema="oscuro"] .vender {
 .btn3:hover:not(:disabled) { border-color: var(--ink-1); }
 .btn3:disabled { color: var(--ink-4); border-color: var(--line); cursor: not-allowed; }
 .btn3:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-/* «Empezar de nuevo»: de la familia de «Reservar hasta…», más callado. */
-.btn3.fantasma { color: var(--ink-2); border-color: var(--line); font-weight: 500; }
-.btn2.fantasma { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 0; }
+/* «Reservar hasta…», «Volver» y «Empezar de nuevo», debajo de «Guardar»:
+   botones de TEXTO (el dibujo aprobado, `.btn.fantasma`), sin borde, con su
+   ícono. El borde aparece recién con el foco del teclado; el hover sólo
+   oscurece la letra. */
+.btn-texto {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 32px; padding: 4px 8px; min-width: 0;
+  border: 0; border-radius: var(--r-md); background: transparent; color: var(--ink-2);
+  font-family: inherit; font-size: var(--t-xs); font-weight: 500;
+  cursor: pointer; white-space: normal; text-align: center;
+}
+.btn-texto svg { flex: none; color: var(--ink-3); }
+.btn-texto:hover:not(:disabled) { color: var(--ink-1); background: var(--surface-2); }
+.btn-texto:hover:not(:disabled) svg { color: var(--ink-2); }
+.btn-texto:disabled { color: var(--ink-4); cursor: not-allowed; }
+.btn-texto:disabled svg { color: var(--ink-4); }
+.btn-texto:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .btn-tinta {
   display: block; width: 100%; padding: 11px;
   border-radius: var(--r-md); border: 0; cursor: pointer;
@@ -1450,15 +1516,16 @@ html[data-tema="oscuro"] .vender {
    pie y de los bloques, nunca un cuerpo de letra: el cuerpo del contrato
    conserva más alto para lo que rueda. */
 @media (max-height: 880px) {
+  .vp.contrato > .pie-contrato { bottom: -8px; }
   .pie-contrato { gap: 6px; padding-top: var(--s2); }
   .pie-contrato .btn-principal { padding: 8px; }
-  .pie-contrato .btn3 { min-height: 30px; }
+  .pie-contrato .btn-texto { min-height: 28px; }
   .bloque { padding: 10px 0 12px; }
 }
 /* A lo angosto (el teléfono): una columna, nada se sale de la tarjeta. */
 @media (max-width: 520px) {
   .campos2 { grid-template-columns: minmax(0, 1fr); }
   .pie-contrato .total { grid-template-columns: minmax(0, 1fr); }
-  .pie-contrato .total-der { justify-items: start; }
+  .pie-contrato .total-der { flex-direction: row; }
   .pie-contrato .cubre { justify-content: flex-start; }
 }

@@ -460,7 +460,6 @@ export function useContrato({
         numero,
         modo,
         monto,
-        desvio: ref !== null && numero > 0 && modo === "total" ? Math.round((1 - numero / ref) * 100) : null,
         disponibilidad: peor,
         pb,
         quedaPb: queda?.quedaPb ?? null,
