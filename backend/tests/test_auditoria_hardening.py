@@ -430,6 +430,41 @@ def test_h4b_worker_no_ve_la_plata_en_el_mapa_comercial(client, admin, worker):
         "negotiatedValue"] == 777777
 
 
+@pytest.mark.reloj("2026-10-17T15:00:00+00:00")
+def test_h4c_worker_no_ve_la_plata_nueva_de_vender(client, admin, worker):
+    """Lo que trajo el rediseño de Vender (docs/rediseno/vender-api.md): el
+    precio acordado de una reserva de porcentaje, cómo se tecleó el precio, el
+    cobro por ventas y la reserva de una cara entera. El trabajador ve lo
+    tomado y nada de la plata, por ninguna de las puertas que sí lee."""
+    from tests import test_participaciones as tp
+
+    tp._plano(client, admin)
+    base = {"sede": "NAVE", "proveedor": "Proveedor H4C", "marca": "Marca", "desde": "2026-11-01",
+            "hasta": "2026-11-30"}
+    caduca = (hoy_en_colombia()).isoformat()
+    ventas = client.post("/api/contratos/vender", headers=admin, json={
+        **base, "tipo": "contrato", "cobro": {"modo": "ventas", "porcentaje": 13.7, "corte": "mensual"},
+        "lineas": [{"espacio": "NEV-03-PU1", "valor": 0}]})
+    assert ventas.status_code == 200, ventas.text
+    reserva = client.post("/api/contratos/vender", headers=admin, json={
+        **base, "tipo": "reserva", "caduca": caduca,
+        "lineas": [{"espacio": "GON-02", "valor": 4_444_444, "modo_precio": "mensual", "valor_tecleado": 4_444_444},
+                   {"participacion": {"cara": "GON-01", "puntos_basicos": 2500}, "valor": 3_333_333}]})
+    assert reserva.status_code == 200, reserva.text
+
+    for url in ("/api/cobros", "/api/cobros/pendientes", "/api/reservas", "/api/suppliers/completar?prefijo=pro"):
+        assert client.get(url, headers=worker).status_code == 403, url
+    for url in ("/api/spaces/comercial", "/api/participaciones/ocupacion?sede=NAVE", "/api/dashboard/spaces",
+                "/api/dashboard/kpis", "/api/spaces/"):
+        r = client.get(url, headers=worker)
+        assert r.status_code == 200, url
+        for plata in ("4444444", "3333333", "13.7", "valor_acordado", "valor_tecleado", "porcentaje"):
+            assert plata not in r.text, f"el worker vio «{plata}» en {url}"
+    comercial = client.get("/api/spaces/comercial", headers=worker).json()
+    assert comercial["NAVE-GON-02"]["status"] == "occupied", "lo reservado se ve tomado"
+    assert comercial["NAVE-GON-02"]["reservaHasta"] is None
+
+
 # ─── Hipótesis 5: SVG rechazado en mounts (no ejecuta al servirse inline) ─────
 
 def test_h5_un_svg_disfrazado_de_foto_es_rechazado(client, worker):

@@ -1,20 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useFichasPropias } from "../../store/fichasPropias";
+import { useOcupacionStore } from "../../store/ocupacionStore";
 import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { parseISODate, upcomingSeasons } from "../../types/seasons";
-import { confirmarLote, validarLote } from "../../api/bulkLeases";
-import { subirPlanometria } from "../../api/planograms";
+import {
+  filasRechazadas, guardarContrato, validarContrato,
+  type Cobro, type FilaRechazada, type LineaDeVenta, type ModoPrecio, type PedidoDeVenta,
+} from "../../api/vender";
 import { describeError } from "../../api/client";
 import type { AvisosContrato } from "../../types";
 import {
   isDoubleGondola, type RangeAvailability, type UnifiedFixture,
 } from "../../types/fixtures";
+import { fullSpaceCode } from "../../types/espacio";
 import { nombreDeMueble } from "../../utils/nomenclatura";
-import { valoresDeLista } from "../../utils/precioDeLista";
+import { textoDePrecio, valoresDeLista } from "../../utils/precioDeLista";
+import { meses, sumarDias, sumarMeses, textoDeMeses } from "../../utils/meses";
+import { pbDeTexto, pct } from "../../utils/participaciones";
 import {
-  cantidadDe, codigoVisibleDe, comercialDelEspacio, textoDeParte, type OrigenDeTarifa,
+  cantidadDe, claseDe, codigoDeParte, codigoVisibleDe, comercialDelEspacio, esDivision, esParticipacion, parteDeSufijo,
+  partirCodigo, quedaEnLaCara, redondear, tarifaDeEspacio, textoAlTocarEnVender, textoDeParte, tomadaPorLoSuyo,
+  type OrigenDeTarifa, type ParticipacionDeLaCara,
 } from "../../utils/partes";
 
 /**
@@ -27,39 +35,46 @@ import {
  * plano suma y saca espacios, la barra de arriba mueve el periodo, «Renovar»
  * lo siembra desde otra pantalla—, así que tiene que vivir por encima de los
  * campos y no dentro de ellos.
+ *
+ * Rediseño de Vender (PR 1, `docs/rediseno/vender-api.md`). Un contrato tiene
+ * líneas de tres clases: una cara ENTERA, una cara POR PARTES (las partes
+ * elegidas van en UNA línea, «PUN-02 · EN1, EN2», con el precio de todas; al
+ * guardar es un contrato por parte, con el precio repartido parejo) y un
+ * PORCENTAJE de una cara («GON-02 · A · 75 %»). Las piezas de lo que no se
+ * vende entero (la bahía de una caja, el forro) siguen una por línea. Cada
+ * precio se escribe como total o «al mes» (× `meses()`), y lo que la línea
+ * entrega es SIEMPRE el total. Se guarda todo junto o nada
+ * (`POST /contratos/vender`), como contrato o como reserva hasta una fecha.
  */
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
 export interface ResumenContrato {
-  /** Los espacios que quedaron guardados, como se leen: `PUN-05`, `GON-60·A`. */
+  /** Las líneas que quedaron guardadas, como se leen: `PUN-02 · EN1, EN2`,
+   *  `GON-02·A · 75 %`. */
   espacios: string[];
   proveedor: string;
   desde: string;
   hasta: string;
-  /** El total del plazo, que es lo que quedó escrito. */
+  /** El total del plazo, que es lo que quedó escrito (0 con cobro por ventas). */
   total: number;
-  /** El contrato quedó pero la planometría no subió. Se dice en la
-   *  confirmación: callarlo dejaría al mercaderista sin la única imagen de
-   *  cómo debe quedar el mueble, y nadie se enteraría hasta el montaje. */
-  avisoPlanometria?: string;
-  /** Los espacios que NO se pudieron guardar, con su motivo.
-   *
-   *  Un contrato de tres espacios son tres filas en la base, y la segunda
-   *  puede fallar con la primera ya escrita. Deshacer la primera sería peor
-   *  —el correo ya salió y otra sesión pudo haberla leído—, así que no se
-   *  deshace nada: se dice exactamente qué quedó y qué no. */
-  fallaron?: { espacio: string; motivo: string }[];
+  /** Contrato o reserva, y hasta cuándo se sostiene la reserva. */
+  tipo: "contrato" | "reserva";
+  caduca: string | null;
+  cobro: Cobro;
   /** A quién avisó el servidor. Ausente = no se pudo saber. */
   avisos?: AvisosContrato;
 }
 
-/** Un espacio adentro del contrato que se está armando: una cara entera o,
- *  vendiendo por partes, una de sus partes (`parte: "PU2"`). */
+/** Un espacio adentro del contrato que se está armando: una cara entera, una
+ *  de sus partes (`parte: "PU2"`), un porcentaje de la cara (`pc`) o la cara
+ *  por partes sin ninguna marcada (`porPartes: "entrepanos"`). */
 export interface CaraElegida {
   fixture: UnifiedFixture;
   face: "A" | "B";
   parte?: string;
+  pc?: true;
+  porPartes?: string;
 }
 
 /** Con qué llega prellenado un contrato al que se entra por «Renovar». */
@@ -76,8 +91,12 @@ export interface SemillaContrato {
   desde: string;
   /** ISO. Mismo largo que el contrato vigente. */
   hasta: string;
-  /** Por código completo del espacio, como los escribe el formulario. */
+  /** Por la clave de precio de cada línea (`claveDePrecio`). */
   valores: Record<string, string>;
+  /** Un porcentaje que se renueva: su % (en puntos básicos) y el término que
+   *  renueva, por el código completo de la cara. */
+  porcentajes?: Record<string, number>;
+  renueva?: Record<string, number>;
 }
 
 export interface ArgsContrato {
@@ -86,7 +105,7 @@ export interface ArgsContrato {
    *  Un contrato con un proveedor sobre TRES puntas de góndola es un solo
    *  acuerdo —un proveedor, un periodo, una firma— y tecleado de a uno eran
    *  tres veces el mismo formulario, con tres oportunidades de escribir una
-   *  fecha distinta. Acá es una lista y el valor va por espacio, que es como
+   *  fecha distinta. Acá es una lista y el valor va por línea, que es como
    *  se negocia: la punta de la entrada no vale lo que la del fondo. */
   espacios: CaraElegida[];
   /** Sede activa, para los muebles sin `sede` propia (los dibujados antes de esa columna). */
@@ -96,17 +115,15 @@ export interface ArgsContrato {
   /** Con qué abre el formulario cuando se llega por «Renovar».
    *
    *  Renovar no es hacer un contrato en blanco sobre el mismo mueble: es el
-   *  mismo acuerdo otra vez, y lo único que suele cambiar es el precio. Sin
-   *  esto había que volver a tipear el proveedor, el correo, la marca y el
-   *  valor mirando la ficha de al lado, y cada uno de esos cuatro campos es una
-   *  oportunidad de escribir mal el nombre del proveedor y crear uno nuevo. */
+   *  mismo acuerdo otra vez, y lo único que suele cambiar es el precio. */
   semilla?: SemillaContrato | null;
-  /** Sacar un espacio de la lista desde la propia ficha: una cara, o una
-   *  parte de ella. */
+  /** La ocupación ANÓNIMA de una cara por participación (intervalos, sin
+   *  nombres ni montos), o `undefined`. Es lo único de las participaciones que
+   *  ve Vender: «queda X %» sale de acá, nunca de leer la cara. */
+  ocupacionDe?: (f: UnifiedFixture, cara: "A" | "B") => ParticipacionDeLaCara | undefined;
+  /** Sacar un espacio de la lista desde la propia ficha. */
   onQuitar: (fixtureId: string, face: "A" | "B", parte?: string) => void;
-  /** Sumar o sacar una cara de una góndola doble. Es un interruptor por cara,
-   *  no un selector entre las dos: vendérselas ambas al mismo proveedor en el
-   *  mismo contrato es lo normal, y con un selector había que hacer dos. */
+  /** Sumar o sacar una cara de una góndola doble. */
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
   /** Vender por partes: prender o apagar la entera (`null`) o una parte
    *  (`"PU2"`) de esa cara. La entera y sus partes nunca juntas. */
@@ -118,7 +135,8 @@ export interface ArgsContrato {
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
 
-export const money = (n: number) => "$" + Math.round(n).toLocaleString("es-CO");
+/** La plata, siempre entera y con su espacio: «$ 600.000». */
+export const money = (n: number) => "$ " + Math.round(n).toLocaleString("es-CO");
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -129,24 +147,53 @@ export function fechaCorta(iso: string): string {
   return `${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/** "2026-11-03" → "3 nov". */
+export function diaCorto(iso: string): string {
+  const d = parseISODate(iso);
+  return d ? `${d.getDate()} ${MESES[d.getMonth()]}` : iso;
+}
+
+/** «1 – 30 nov», «26 dic – 15 ene». */
+export function rangoCorto(desde: string, hasta: string): string {
+  const a = parseISODate(desde), b = parseISODate(hasta);
+  if (!a || !b) return `${desde} – ${hasta}`;
+  return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
+    ? `${a.getDate()} – ${b.getDate()} ${MESES[b.getMonth()]}`
+    : `${diaCorto(desde)} – ${diaCorto(hasta)}`;
+}
+
 function iso(d: Date): string {
   const m = `${d.getMonth() + 1}`.padStart(2, "0");
   const dd = `${d.getDate()}`.padStart(2, "0");
   return `${d.getFullYear()}-${m}-${dd}`;
 }
 
+/** La clave del PRECIO de una línea, por el código completo de lo que vende:
+ *  la cara entera, su código; una parte (`…-EN2`), la de todas las partes de
+ *  esa clase de esa cara (`…-EN*`: van en una línea con un solo precio); un
+ *  porcentaje de la cara, `…-PC*`. La usa «Renovar» para sembrar el valor. */
+export function claveDePrecio(codigo: string): string {
+  const p = partirCodigo(codigo);
+  if (!p.parte) return codigo;
+  const cara = codigoDeParte(p.base, p.cara, null);
+  if (esParticipacion(p.parte)) return `${cara}-${p.parte.token}*`;
+  if (esDivision(p.parte)) return `${cara}-${p.parte.token}*`;
+  return codigo;
+}
+
+/** Los mensajes del servidor que hablan de un campo que le mandamos RELLENO.
+ *
+ *  La validación en vivo pregunta por las fechas y la capacidad, y para eso
+ *  manda un proveedor y un valor de mentira cuando todavía están vacíos —si
+ *  no, la fila se cae por un campo obligatorio y no se llega nunca a la
+ *  respuesta sobre las fechas—. La contracara obligatoria: lo que se rellena,
+ *  no se cree. */
+const RELLENADO = /^(Proveedor nuevo|Falta el proveedor|Falta el valor)/i;
+
 /** El periodo con el que arranca el contrato cuando arriba no hay temporada.
  *
  *  Prellenar es deliberado: reescribir dos fechas a mano era el paso que más se
  *  equivocaba, y una pantalla en blanco tampoco dice qué hacer primero. */
-/** Los mensajes del servidor que hablan de un campo que le mandamos RELLENO.
- *
- *  La validación en vivo pregunta por las fechas, y para eso manda un proveedor
- *  y un valor de mentira cuando todavía están vacíos —si no, la fila se cae por
- *  un campo obligatorio y no se llega nunca a la respuesta sobre las fechas—.
- *  La contracara obligatoria: lo que se rellena, no se cree. */
-const RELLENADO = /^(Proveedor nuevo|Falta el proveedor|Falta el valor)/i;
-
 function rangoPorDefecto(): DateRange {
   const hoy = new Date();
   const to = new Date(hoy);
@@ -154,10 +201,69 @@ function rangoPorDefecto(): DateRange {
   return { from: hoy, to };
 }
 
+/** Los días de corte de un cobro por % de las ventas: el último día de cada
+ *  mes del plazo (el último, `hasta`) o sólo `hasta`. */
+export function cortesDe(desde: string, hasta: string, corte: "mensual" | "al_final"): string[] {
+  if (!desde || !hasta || hasta < desde) return [];
+  if (corte === "al_final") return [hasta];
+  const fuera: string[] = [];
+  let ini = desde;
+  while (ini <= hasta && fuera.length < 60) {
+    const finDeMes = sumarDias(sumarMeses(`${ini.slice(0, 7)}-01`, 1), -1);
+    const cae = finDeMes < hasta ? finDeMes : hasta;
+    fuera.push(cae);
+    ini = sumarDias(cae, 1);
+  }
+  return fuera;
+}
+
+/** «30 nov, 31 dic y 31 ene». */
+export function textoDeCortes(cortes: string[]): string {
+  const d = cortes.map(diaCorto);
+  return d.length <= 1 ? (d[0] ?? "") : `${d.slice(0, -1).join(", ")} y ${d[d.length - 1]}`;
+}
+
+/** Lo que dice el 409 de una línea: lo que queda y desde cuándo, nunca de quién. */
+export function textoDelRechazo(f: FilaRechazada, pbPedido: number | null): { titulo: string; detalle: string } {
+  if (f.code === "capacidad_excedida" && typeof f.queda_pb === "number") {
+    return {
+      titulo: pbPedido ? `Ya no entra el ${pct(pbPedido)}.` : "Ya no entra ese porcentaje.",
+      detalle: `${f.desde_dia ? `Desde el ${diaCorto(f.desde_dia)} queda` : "Queda"} ${pct(f.queda_pb)}.`,
+    };
+  }
+  return { titulo: f.mensaje || "Esta línea no se puede guardar.", detalle: "" };
+}
+
+// ─── Las piezas del cálculo ──────────────────────────────────────────────────
+
+type TipoDeItem = "entera" | "parte" | "pieza" | "pc" | "sinElegir";
+
+/** Un espacio del contrato (lo que se guarda: una fila por espacio). */
+interface Item {
+  fixture: UnifiedFixture;
+  face: "A" | "B";
+  tipo: TipoDeItem;
+  /** `EN2`, `BI1`; `null` para la cara entera y el porcentaje. */
+  parte: string | null;
+  /** La clase de la parte (`entrepanos`), o la de la cara por partes sin elegir. */
+  clase: string | null;
+  corto: string;
+  /** El código completo del espacio; del porcentaje, el de la cara. */
+  codigo: string;
+  /** Por qué fila de la vista previa del servidor se lo reconoce. */
+  llave: string;
+  ref: number | null;
+  origenRef: OrigenDeTarifa;
+  disponibilidad: RangeAvailability;
+  porQue: "propio" | "entera" | "partes" | null;
+}
+
+export type TipoDeLinea = "entera" | "partes" | "pieza" | "pc";
+
 // ─── El hook ─────────────────────────────────────────────────────────────────
 
 export function useContrato({
-  espacios, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte, onGuardado,
+  espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado,
 }: ArgsContrato) {
   const fixtures = useFixtureStore(selectFixtures);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
@@ -168,8 +274,7 @@ export function useContrato({
   const fichasPropias = useFichasPropias();
   // Lo que dice la BASE de cada espacio, por código completo. Con la venta
   // por partes no alcanza el mueble fusionado: vender la puerta 2 no le cambia
-  // nada a la nevera, y la entera choca con esa puerta. Va en las
-  // dependencias de las líneas: una puerta vendida en otra sesión se ve acá.
+  // nada a la nevera, y la entera choca con esa puerta.
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
 
   // El periodo con el que abre. Se congela al montar a propósito: cambiar la
@@ -178,27 +283,41 @@ export function useContrato({
   const [inicial] = useState<DateRange>(() => rango ?? rangoPorDefecto());
 
   // Al renovar mandan las fechas de la semilla —el día después de que termina
-  // el contrato vigente, por el mismo largo— y no el periodo de la barra de
-  // arriba: renovar «del 2 sep al 2 oct» cuando el contrato corre hasta el 26
-  // de septiembre solaparía tres semanas con un acuerdo que sigue vivo.
-  const [desde, setDesde] = useState(semilla?.desde ?? iso(inicial.from));
-  const [hasta, setHasta] = useState(semilla?.hasta ?? iso(inicial.to));
+  // el contrato vigente, por el mismo largo— y no el periodo de la barra.
+  const [desde, setDesde] = useState(semilla?.desde || iso(inicial.from));
+  const [hasta, setHasta] = useState(semilla?.hasta || iso(inicial.to));
   const [proveedor, setProveedor] = useState(semilla?.proveedor ?? "");
   const [correo, setCorreo] = useState(semilla?.correo ?? "");
   const [marca, setMarca] = useState(semilla?.marca ?? "");
   const [nota, setNota] = useState("");
-  /** El valor acordado de cada espacio, tecleado, indexado por su código
-   *  completo. Vive en un mapa y no adentro de la lista porque la lista la
-   *  manda la pantalla —se arma tocando el plano— y volver a montarla no
-   *  puede borrar lo que alguien ya escribió. */
+  /** El precio de cada línea, tecleado, por su clave de precio. Vive en un mapa
+   *  y no adentro de la lista porque la lista la manda la pantalla —se arma
+   *  tocando el plano— y volver a montarla no puede borrar lo que alguien ya
+   *  escribió. */
   const [valores, setValores] = useState<Record<string, string>>(
     () => semilla?.valores ?? {},
   );
-  /** La planometría que el proveedor mandó: cómo debe quedar armada la
-   *  exhibición. Se sube DESPUÉS de crear el contrato, porque cuelga de él. */
-  const [planometria, setPlanometria] = useState<File | null>(null);
+  /** Cómo se escribió cada precio: el total del plazo o «al mes». */
+  const [modos, setModos] = useState<Record<string, ModoPrecio>>({});
+  /** El porcentaje de cada línea de porcentaje (puntos básicos), por el
+   *  código completo de la cara. */
+  const [porcentajes, setPorcentajes] = useState<Record<string, number>>(() => semilla?.porcentajes ?? {});
+  /** Cómo se cobra: precio fijo, o un % de las ventas con su corte. */
+  const [cobroModo, setCobroModo] = useState<"fijo" | "ventas">("fijo");
+  const [ventasTexto, setVentasTexto] = useState("");
+  const [corte, setCorte] = useState<"mensual" | "al_final">("mensual");
+  /** «Reservar hasta…»: la fecha la elige quien opera. Arranca VACÍA y no
+   *  guarda sin ella (decisión de la dueña, 2026-10-18). */
+  const [reservando, setReservando] = useState(false);
+  const [caduca, setCaduca] = useState("");
   const [estado, setEstado] = useState<"idle" | "guardando" | "error">("idle");
   const [error, setError] = useState("");
+
+  // «Empezar de nuevo» vacía la lista sin remontar la ficha: la reserva a
+  // medio elegir se va con las líneas.
+  useEffect(() => {
+    if (espacios.length === 0) { setReservando(false); setCaduca(""); }
+  }, [espacios.length]);
 
   const fechasEnOrden = desde.length > 0 && hasta.length > 0 && desde <= hasta;
   // Los dos extremos cuentan: el proveedor ocupa el mueble el primer día y el
@@ -210,68 +329,160 @@ export function useContrato({
           86_400_000,
       ) + 1
     : 0;
+  /** Cuántos meses dura (la misma cuenta que el servidor, `utils/meses.ts`). */
+  const nMeses = fechasEnOrden ? meses(desde, hasta) : 0;
 
-  /** Cada espacio del contrato, con todo lo que su renglón necesita saber.
+  /** Cada espacio del contrato, con lo comercial suyo.
    *
    *  La disponibilidad responde por LAS FECHAS QUE ESTÁN ESCRITAS, no por el
    *  periodo con el que abrió: si alguien corre el «hasta» hasta pisar un
-   *  contrato que ya existe, el aviso aparece en ese renglón — y se va cuando
+   *  contrato que ya existe, el aviso aparece en esa línea — y se va cuando
    *  lo corre de vuelta. */
-  const lineas = useMemo(() => {
-    const f = fechasEnOrden ? parseISODate(desde) : null;
-    const t = fechasEnOrden ? parseISODate(hasta) : null;
-    return espacios.map(({ fixture, face, parte: sufijo }) => {
-      // Vender por partes: `NEV-03-PU2` es la puerta 2 de `NEV-03`. Una parte
-      // que el mueble ya no ofrece (alguien bajó las puertas en otra pestaña)
-      // se lee igual por su código y el servidor la rechaza al validar.
-      // Lo comercial —el código, la tarifa de ESA parte y si se puede vender
+  const items = useMemo((): Item[] => {
+    const f0 = fechasEnOrden ? parseISODate(desde) : null;
+    const t0 = fechasEnOrden ? parseISODate(hasta) : null;
+    const d = f0 && t0 ? f0 : inicial.from;
+    const h = f0 && t0 ? t0 : inicial.to;
+    return espacios.map(({ fixture, face, parte: sufijo, pc, porPartes }) => {
+      const sedeDe = fixture.sede || sede;
+      if (pc || porPartes) {
+        // El porcentaje y la cara por partes sin elegir no son un espacio:
+        // son la CARA. El código de la cara se arma con la sede del plano,
+        // como lo arma el servidor (`codigo_cara`).
+        const corto = codigoDeParte(fixture.code, face, null);
+        const codigo = fullSpaceCode(pc ? sede : sedeDe, corto);
+        return {
+          fixture, face, tipo: pc ? "pc" as const : "sinElegir" as const, parte: null, clase: porPartes ?? null,
+          corto, codigo, llave: `${codigo}#${pc ? "PC" : "?"}`,
+          ref: pc ? tarifaDeEspacio(referenceRates, sedeDe, fixture, null).valor : null,
+          origenRef: "cara" as const,
+          disponibilidad: pc && tomadaPorLoSuyo(fixture, face, estadoComercial, sede, d, h) ? "tomado" as const : "libre" as const,
+          porQue: null,
+        };
+      }
+      // Vender por partes: `NEV-03-PU2` es la puerta 2 de `NEV-03`. Lo
+      // comercial —el código, la tarifa de ESA parte y si se puede vender
       // mirando lo que choca— es una cuenta pura, probada en `probar-partes`.
       const { parte, corto, codigo, ref, origenRef, disponibilidad, porQue } = comercialDelEspacio(
         fixture, face, sufijo ?? null,
-        { rates: referenceRates, sede, estado: estadoComercial, desde: f && t ? f : inicial.from, hasta: f && t ? t : inicial.to },
+        { rates: referenceRates, sede, estado: estadoComercial, desde: d, hasta: h },
       );
-      const texto = valores[codigo] ?? "";
-      const monto = Number(texto.replace(/[^\d]/g, "")) || 0;
       return {
-        fixture, face, corto, codigo, ref,
-        /** De dónde salió la referencia: la del mueble, la de la clase
-         *  (`parte_puerta`) o la de la nevera dividida por sus puertas. */
-        origenRef: origenRef as OrigenDeTarifa,
-        /** `PU2`, si es una parte. */
-        parte: parte ? sufijo!.toUpperCase() : null,
-        /** «Puerta 2 de 3», si es una parte. */
-        textoParte: parte ? textoDeParte(parte, cantidadDe(fixture, parte.clase)) : null,
-        doble: isDoubleGondola(fixture),
-        /** `GON-60·A`, `NEV-03·PU2`: como se lee. El de la base es `corto`. */
-        visible: codigoVisibleDe(fixture.code, face, isDoubleGondola(fixture), parte),
-        // Un mueble tiene UN nombre y es su código: lo que se lee acá es lo
-        // mismo que dibuja el plano, sin resolver nada.
-        nombre: nombreDeMueble({ code: corto }),
-        ubicacion: describirUbicacion(fixtures, fixture.code),
-        valor: texto,
-        monto,
-        desvio: ref !== null && monto > 0 ? Math.round((1 - monto / ref) * 100) : null,
-        // Lo suyo y lo que choca con él (la nevera entera para una puerta, las
-        // puertas para la entera), del mapa de la base. Sin partes es la misma
-        // cuenta de siempre: la de la cara.
-        disponibilidad: disponibilidad as RangeAvailability,
-        /** Si no está libre, por qué: lo suyo, la entera vendida (para una
-         *  puerta) o puertas vendidas (para la entera). Sin nombres. */
-        porQue,
+        fixture, face, tipo: !parte ? "entera" as const : esDivision(parte) ? "parte" as const : "pieza" as const,
+        parte: parte ? sufijo!.toUpperCase() : null, clase: parte?.clase ?? null,
+        corto, codigo, llave: codigo.toUpperCase(),
+        ref, origenRef: origenRef as OrigenDeTarifa,
+        disponibilidad: disponibilidad as RangeAvailability, porQue,
       };
     });
-  }, [espacios, valores, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
+  }, [espacios, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
     estadoComercial]);
 
+  /** Las LÍNEAS del contrato, como se leen y se cobran: la cara entera, las
+   *  partes de una cara juntas («PUN-02 · EN1, EN2», un precio), el porcentaje
+   *  de una cara y cada pieza. Cada una entrega su TOTAL (`monto`). */
+  const lineas = useMemo(() => {
+    type Grupo = { clave: string; tipo: TipoDeLinea; base: Item; items: Item[] };
+    const grupos: Grupo[] = [];
+    const porClave = new Map<string, Grupo>();
+    for (const it of items) {
+      const tipo: TipoDeLinea = it.tipo === "sinElegir" || it.tipo === "parte" ? "partes" : it.tipo;
+      const token = it.clase ? (claseDe(it.clase)?.token ?? it.clase) : "";
+      const caraCompleta = fullSpaceCode(it.fixture.sede || sede, codigoDeParte(it.fixture.code, it.face, null));
+      const clave = tipo === "partes" ? `${caraCompleta}-${token}*` : tipo === "pc" ? `${it.codigo}-PC*` : it.codigo;
+      const ya = porClave.get(clave);
+      if (ya) { if (it.tipo !== "sinElegir") ya.items.push(it); continue; }
+      const g = { clave, tipo, base: it, items: it.tipo === "sinElegir" ? [] : [it] };
+      porClave.set(clave, g);
+      grupos.push(g);
+    }
+    const f0 = fechasEnOrden ? desde : iso(inicial.from);
+    const t0 = fechasEnOrden ? hasta : iso(inicial.to);
+    return grupos.map(({ clave, tipo, base, items: deLaLinea }) => {
+      const fixture = (deLaLinea[0] ?? base).fixture;
+      const face = (deLaLinea[0] ?? base).face;
+      const doble = isDoubleGondola(fixture);
+      const clase = (deLaLinea[0] ?? base).clase;
+      const partes = deLaLinea.map((i) => i.parte!).filter(Boolean);
+      const parteRef = partes.length === 1 ? parteDeSufijo(partes[0]) : null;
+      // El porcentaje: lo que queda en las fechas del contrato, de la
+      // ocupación anónima. Nunca de quién es lo demás.
+      const par = tipo === "pc" ? ocupacionDe?.(fixture, face) : undefined;
+      const queda = tipo === "pc" ? quedaEnLaCara(fixture, par, f0, t0) : null;
+      const pb = tipo === "pc" ? (porcentajes[base.codigo] ?? 0) : 0;
+      const tarifaCara = tipo === "pc" ? base.ref : null;
+      const ref = tipo === "pc"
+        ? (tarifaCara !== null && pb > 0 ? redondear(tarifaCara * pb / 10_000) : null)
+        : deLaLinea.length > 0 && deLaLinea.every((i) => i.ref !== null)
+        ? deLaLinea.reduce((t, i) => t + (i.ref ?? 0), 0)
+        : null;
+      const texto = valores[clave] ?? "";
+      const numero = Number(texto.replace(/[^\d]/g, "")) || 0;
+      const modo: ModoPrecio = modos[clave] ?? "total";
+      const monto = deLaLinea.length === 0 && tipo !== "pc" ? 0
+        : modo === "mensual" ? redondear(numero * nMeses) : numero;
+      const peor: RangeAvailability = tipo === "pc"
+        ? (base.disponibilidad === "tomado" || (queda !== null && queda.quedaPb <= 0) ? "tomado" : "libre")
+        : deLaLinea.reduce<RangeAvailability>((p, i) =>
+          (i.disponibilidad === "tomado" || p === "tomado" ? "tomado" : i.disponibilidad === "parcial" || p === "parcial" ? "parcial" : "libre"), "libre");
+      const n = clase ? cantidadDe(fixture, clase) : null;
+      const visibleCara = codigoVisibleDe(fixture.code, face, doble, null);
+      return {
+        clave,
+        /** Para `valoresDeLista`: la clave del precio. Los códigos de lo que se
+         *  guarda están en `items`. */
+        codigo: clave,
+        tipo,
+        fixture, face, doble, clase, partes, items: deLaLinea,
+        /** La cara (sin partes): de ella son el porcentaje, el resaltado y el visor. */
+        codigoCara: base.codigo,
+        /** Lo que choca de cada espacio, sin nombres. */
+        porQue: deLaLinea.find((i) => i.porQue)?.porQue ?? null,
+        parte: partes.length === 1 && tipo !== "partes" ? partes[0] : null,
+        /** «Puerta 2 de 3», «2 de 5 entrepaños». */
+        textoParte: tipo === "pieza" && parteRef ? textoDeParte(parteRef, cantidadDe(fixture, parteRef.clase))
+          : tipo === "partes" && clase ? `${partes.length} de ${n ?? "?"} ${claseDe(clase)?.plural ?? clase}`
+          : tipo === "pc" ? textoAlTocarEnVender(queda ? { dispo: "parcial", quedaPb: queda.quedaPb } : null, true)
+          : null,
+        /** `GON-60·A`, `PUN-02 · EN1, EN2`, `CAJ-04·BI1`: como se lee. */
+        visible: tipo === "partes" && partes.length > 0
+          ? `${visibleCara} · ${[...partes].sort().join(", ")}`
+          : tipo === "pieza" && parteRef ? codigoVisibleDe(fixture.code, face, doble, parteRef)
+          : visibleCara,
+        nombre: nombreDeMueble({ code: (deLaLinea[0] ?? base).corto }),
+        ubicacion: describirUbicacion(fixtures, fixture.code),
+        ref, origenRef: (deLaLinea[0] ?? base).origenRef,
+        /** De dónde sale la referencia, dicho: «75 % de $ 800.000 al mes»,
+         *  «$ 650.000 ÷ 5 × 2». */
+        tarifaCara,
+        refUnidad: deLaLinea[0]?.ref ?? null,
+        valor: texto,
+        numero,
+        modo,
+        monto,
+        desvio: ref !== null && numero > 0 && modo === "total" ? Math.round((1 - numero / ref) * 100) : null,
+        disponibilidad: peor,
+        pb,
+        quedaPb: queda?.quedaPb ?? null,
+        quedaDesde: queda?.dia ?? null,
+        hoy: par?.hoy ?? null,
+        /** Pide más de lo que queda en esas fechas: no se guarda. */
+        noEntra: tipo === "pc" && queda !== null && pb > queda.quedaPb,
+        renueva: tipo === "pc" ? (semilla?.renueva?.[base.codigo] ?? null) : null,
+        sinElegir: tipo === "partes" && deLaLinea.length === 0,
+      };
+    });
+  }, [items, valores, modos, porcentajes, nMeses, ocupacionDe, desde, hasta, fechasEnOrden, inicial, sede, fixtures,
+    semilla]);
 
-  /** Al entrar, cada espacio arranca con su tarifa de referencia escrita, y
-   *  el campo la SIGUE mientras nadie lo toque: la tarifa de un mueble de una
-   *  ficha propia llega con las fichas, después del primer dibujo. La cuenta
-   *  está en `utils/precioDeLista.ts`. */
+  /** Al entrar, cada línea arranca con su tarifa de referencia escrita, y el
+   *  campo la SIGUE mientras nadie lo toque: la tarifa de un mueble de una
+   *  ficha propia llega con las fichas, después del primer dibujo; la de un
+   *  porcentaje cambia con el %, y la de las partes con las que se marcan. La
+   *  cuenta está en `utils/precioDeLista.ts`. */
   // Lo que trae la semilla ya es de alguien: al renovar, el valor que manda es
-  // el que se está pagando hoy, no la tarifa de lista. Pisarlo con la tarifa
-  // haría que renovar arrancara proponiendo otro precio sin que nadie lo
-  // pidiera. Lo mismo lo que se teclea (`escribirValor`).
+  // el que se está pagando hoy, no la tarifa de lista. Lo mismo lo que se
+  // teclea (`escribirValor`).
   const tocados = useRef(new Set<string>(Object.keys(semilla?.valores ?? {})));
   useEffect(() => {
     const nuevos = valoresDeLista(lineas, tocados.current);
@@ -287,27 +498,43 @@ export function useContrato({
     }));
   }, []);
 
-  /** Lo que vale el contrato: la suma de lo tecleado, sin tocar.
+  /** «Volver a la tarifa»: escribe la de lista y deja de contarla como
+   *  tocada, así el campo la vuelve a seguir. Por `escribirValor`: no hay otro
+   *  camino que escriba el precio. */
+  const volverALaTarifa = useCallback((clave: string, ref: number) => {
+    escribirValor(clave, textoDePrecio(ref));
+    tocados.current.delete(clave);
+  }, [escribirValor]);
+  const tocado = (clave: string) => tocados.current.has(clave);
+
+  /** «Total | Al mes». Lo tecleado se convierte para que el total no salte;
+   *  lo que nadie tocó sigue siendo la tarifa (que es al mes), y pasa a
+   *  leerse como tal. */
+  const cambiarModo = useCallback((clave: string, modo: ModoPrecio) => {
+    setModos((m) => ({ ...m, [clave]: modo }));
+    if (!tocados.current.has(clave) || nMeses <= 0) return;
+    const l = lineas.find((x) => x.clave === clave);
+    if (!l || l.modo === modo || l.numero <= 0) return;
+    escribirValor(clave, String(modo === "mensual" ? redondear(l.numero / nMeses) : redondear(l.numero * nMeses)));
+  }, [lineas, nMeses, escribirValor]);
+
+  const escribirPorcentaje = useCallback((codigoCara: string, pb: number) => {
+    setPorcentajes((p) => ({ ...p, [codigoCara]: Math.max(0, Math.min(10_000, Math.round(pb))) }));
+  }, []);
+
+  /** Lo que vale el contrato: la suma del TOTAL de cada línea.
    *
-   *  Acá había un prorrateo —`(valor / 30) * dias`— que convertía lo tecleado
+   *  Acá hubo un prorrateo —`(valor / 30) * dias`— que convertía lo tecleado
    *  en otro número: $200.000 por un mes del 11 de septiembre al 11 de octubre
-   *  salían $206.667, porque los dos extremos cuentan (31 días) y el mes se
-   *  tomaba de 30. La cuenta estaba bien y la premisa estaba mal.
-   *
-   *  **Quien negocia vende el espacio al valor que quiera por el tiempo que
-   *  quiera** (decisión del dueño). Si acuerda un mes por $200.000, el
-   *  contrato vale $200.000; si acuerda 31 días por $200.000, vale lo mismo.
-   *  No hay un valor mensual del que se derive un total: hay un precio, y es
-   *  el que se teclea. Derivar otro número sólo servía para que la pantalla
-   *  contradijera al que lo acordó. */
+   *  salían $206.667. **Quien negocia vende el espacio al valor que quiera por
+   *  el tiempo que quiera** (decisión del dueño): el total es lo que se
+   *  teclea. «Al mes» no lo cambia: es otra forma de TECLEARLO (× los meses
+   *  calendario de `meses()`), y cada línea entrega igual su total. */
   const total = lineas.reduce((t, l) => t + l.monto, 0);
 
-  /** Las temporadas comerciales que caen adentro del plazo.
-   *
-   *  Es el argumento de venta que el sistema puede dar y una planilla no:
-   *  «este contrato cubre Amor y Amistad y Halloween». También es un control
-   *  —si la temporada que se estaba buscando NO aparece, las fechas están
-   *  mal— y por eso va al lado del total y no escondido en una ayuda. */
+  /** Las temporadas comerciales que caen adentro del plazo: el argumento de
+   *  venta que una planilla no da, y el control de que las fechas quedaron
+   *  donde se querían. */
   const cubre = useMemo(() => {
     const d = parseISODate(desde);
     const h = parseISODate(hasta);
@@ -317,25 +544,104 @@ export function useContrato({
       .map((t) => t.label);
   }, [desde, hasta, seasonWindows]);
 
-  /** El veredicto del SERVIDOR sobre las fechas, por código de espacio.
+  /** Los atajos de fecha: «1 mes · 3 meses · <la temporada que viene>». */
+  const atajos = useMemo(() => {
+    const base = parseISODate(desde) ? desde : iso(new Date());
+    const fuera = [
+      { texto: "1 mes", desde: base, hasta: sumarDias(sumarMeses(base, 1), -1) },
+      { texto: "3 meses", desde: base, hasta: sumarDias(sumarMeses(base, 3), -1) },
+    ];
+    const hoy = new Date();
+    const lista = upcomingSeasons(hoy, seasonWindows);
+    const viene = lista.find((t) => t.from > hoy) ?? lista[0];
+    if (viene) {
+      const a = iso(viene.from), b = iso(viene.to);
+      fuera.push({ texto: `${viene.label} · ${rangoCorto(a, b)}`, desde: a, hasta: b });
+    }
+    return fuera;
+  }, [desde, seasonWindows]);
+
+  /** Una parte de una cara, para la lista de partes de su línea: si se puede
+   *  vender en las fechas escritas (sin decir por qué no) y su tarifa. */
+  const parteEnElContrato = useCallback((fixture: UnifiedFixture, face: "A" | "B", sufijo: string) => {
+    const f0 = fechasEnOrden ? parseISODate(desde) : null;
+    const t0 = fechasEnOrden ? parseISODate(hasta) : null;
+    const r = comercialDelEspacio(fixture, face, sufijo, {
+      rates: referenceRates, sede, estado: estadoComercial,
+      desde: f0 && t0 ? f0 : inicial.from, hasta: f0 && t0 ? t0 : inicial.to,
+    });
+    return { disponibilidad: r.disponibilidad, ref: r.ref };
+  }, [fechasEnOrden, desde, hasta, referenceRates, sede, estadoComercial, inicial, fichasPropias]);
+
+  /** Cómo se cobra, como lo recibe el servidor. */
+  const ventasPb = pbDeTexto(ventasTexto);
+  const cobro: Cobro = cobroModo === "fijo"
+    ? { modo: "fijo" }
+    : { modo: "ventas", porcentaje: (ventasPb ?? 0) / 100, corte };
+  const cortes = cobroModo === "ventas" && fechasEnOrden ? cortesDe(desde, hasta, corte) : [];
+
+  /** El pedido, como lo recibe `POST /contratos/vender`, y de qué espacio
+   *  sale cada línea (para leer el 409 por índice). Las partes de una línea
+   *  van una por espacio, con el precio repartido parejo (lo que no se divide
+   *  justo, a la primera). Con `relleno`, para la vista previa: un proveedor y
+   *  un valor de mentira donde todavía no hay. */
+  const armarPedido = (tipo: "contrato" | "reserva", relleno: boolean) => {
+    const filas: LineaDeVenta[] = [];
+    const deDonde: { item: Item; linea: (typeof lineas)[number] }[] = [];
+    const conVentas = cobroModo === "ventas";
+    for (const l of lineas) {
+      if (l.sinElegir) continue;
+      if (l.tipo === "pc") {
+        if (relleno && l.pb <= 0) continue;
+        filas.push({
+          participacion: { cara: l.codigoCara, puntos_basicos: l.pb, renueva: l.renueva },
+          valor: conVentas ? 0 : relleno ? (l.monto > 0 ? l.monto : 1) : l.monto,
+          modo_precio: l.modo, valor_tecleado: conVentas ? 0 : l.numero,
+        });
+        deDonde.push({ item: l.items[0], linea: l });
+        continue;
+      }
+      const n = l.items.length;
+      const parte = Math.floor(l.monto / n), resto = l.monto - parte * n;
+      const tec = Math.floor(l.numero / n), restoTec = l.numero - tec * n;
+      l.items.forEach((it, k) => {
+        const monto = parte + (k === 0 ? resto : 0);
+        filas.push({
+          espacio: it.codigo,
+          valor: conVentas ? 0 : relleno ? (monto > 0 ? monto : 1) : monto,
+          modo_precio: l.modo, valor_tecleado: conVentas ? 0 : tec + (k === 0 ? restoTec : 0),
+        });
+        deDonde.push({ item: it, linea: l });
+      });
+    }
+    const pedido: PedidoDeVenta = {
+      sede: lineas[0]?.fixture.sede || sede,
+      proveedor: relleno ? proveedor.trim() || "—" : proveedor.trim(),
+      correo: correo.trim() || undefined,
+      marca: marca.trim() || undefined,
+      nota: nota.trim() || undefined,
+      desde, hasta,
+      tipo,
+      caduca: tipo === "reserva" ? caduca || null : null,
+      cobro: conVentas && !relleno ? cobro : conVentas ? { modo: "ventas", porcentaje: (ventasPb ?? 100) / 100, corte } : { modo: "fijo" },
+      lineas: filas,
+    };
+    return { pedido, deDonde };
+  };
+
+  /** El veredicto del SERVIDOR, por espacio (`llave`).
    *
-   *  Esto no es un lujo: el plano y la disponibilidad de cada renglón salen
-   *  del JSON del layout, que es una copia — quien la mantiene al día es el
-   *  navegador que vendió, en el momento de vender. Si un contrato entró por
-   *  otro camino (otra sesión, un arreglo a mano, una carga cuyo push del
-   *  layout no llegó), la copia dice «libre» y la base dice «ocupado». Ahí el
-   *  aviso local no aparece, el botón se habilita, y el choque se descubre al
-   *  guardar, con todo tecleado. Reproducido así: contrato del 8 de septiembre
-   *  al 8 de octubre en la base, el plano pintándolo libre todo el periodo.
-   *
-   *  `/leases/bulk/validar` es el mismo control que corre al guardar pero **no
-   *  escribe nada**, así que se le puede preguntar mientras se arma. Manda la
-   *  base, no la copia. */
-  const [veredicto, setVeredicto] = useState<Record<string, string[]>>({});
+   *  El plano y la disponibilidad de cada línea salen de lo que el navegador
+   *  bajó: una copia. Si un contrato entró por otro camino (otra sesión, otro
+   *  computador), la copia dice «libre» y la base dice «ocupado», y el choque
+   *  se descubría al guardar, con todo tecleado. `?validar=1` corre la MISMA
+   *  revisión que el guardado —fechas, choques, capacidad de cada porcentaje—
+   *  y no escribe nada, así que se le puede preguntar mientras se arma. */
+  const [veredicto, setVeredicto] = useState<Record<string, FilaRechazada[]>>({});
   const pedido = useRef(0);
   const sedeContrato = lineas[0]?.fixture.sede || sede;
   const firmaValidacion = JSON.stringify([
-    sedeContrato, desde, hasta, lineas.map((l) => l.codigo),
+    sedeContrato, desde, hasta, items.map((i) => i.llave), lineas.map((l) => l.pb),
   ]);
 
   useEffect(() => {
@@ -344,38 +650,18 @@ export function useContrato({
     // Se espera a que dejen de teclear las fechas: el campo de fecha dispara
     // un cambio por dígito y cada uno sería un viaje.
     const t = setTimeout(() => {
-      validarLote(
-        sedeContrato,
-        lineas.map((l, i) => ({
-          fila: i + 1, espacio: l.codigo, sede: l.fixture.sede || sede,
-          // El proveedor y el valor todavía pueden estar vacíos: lo que se le
-          // pregunta al servidor son LAS FECHAS. Un relleno acá no crea nada
-          // —`/validar` no escribe— y evita que falte un campo obligatorio.
-          //
-          // El valor iba de verdad, y ésa era la falla: la firma de abajo NO lo
-          // mira, así que la primera validación salía con el campo en cero, el
-          // servidor contestaba «Falta el valor mensual», y eso quedaba
-          // guardado para siempre — tipear el valor no volvía a preguntar. Peor
-          // todavía: `chocan` cuenta CUALQUIER mensaje del servidor como choque
-          // de fechas, así que el espacio quedaba marcado «ya está vendido en
-          // esas fechas» y no se podía guardar nunca más.
-          proveedor: proveedor.trim() || "—",
-          valor: l.monto > 0 ? l.monto : 1,
-          desde, hasta,
-        })),
-      ).then((r) => {
+      const { pedido: lo, deDonde } = armarPedido("contrato", true);
+      if (lo.lineas.length === 0) { setVeredicto({}); return; }
+      validarContrato(lo).then((r) => {
         if (mio !== pedido.current) return;  // llegó una respuesta vieja
-        const out: Record<string, string[]> = {};
+        const out: Record<string, FilaRechazada[]> = {};
         for (const f of r.filas) {
-          if (f.estado !== "error") continue;
-          // Lo que se rellena, no se cree. Arriba van un proveedor y un valor
-          // de mentira para que la fila no se caiga por un campo que todavía no
-          // se llenó; creerle al servidor sobre ESOS campos sería creerle sobre
-          // el relleno. El proveedor y el valor de verdad los controla la
-          // pantalla —`sinValor` y el botón— y el servidor los vuelve a mirar
-          // al guardar, que es donde manda.
-          const ms = (f.mensajes ?? []).filter((m) => !RELLENADO.test(m));
-          if (ms.length) out[(f.codigo || "").toUpperCase()] = ms;
+          // Lo que se rellena, no se cree: el proveedor y el valor de verdad
+          // los controla la pantalla y el servidor los vuelve a mirar al
+          // guardar, que es donde manda.
+          if (!f.mensaje || RELLENADO.test(f.mensaje)) continue;
+          const de = deDonde[f.indice];
+          if (de) out[de.item.llave] = [...(out[de.item.llave] ?? []), f];
         }
         setVeredicto(out);
       }).catch(() => {
@@ -385,45 +671,72 @@ export function useContrato({
       });
     }, 500);
     return () => clearTimeout(t);
-    // `proveedor` a propósito NO dispara: cambia mientras se teclea y no
-    // cambia el veredicto sobre las fechas.
+    // `proveedor` y los precios a propósito NO disparan: cambian mientras se
+    // teclea y no cambian el veredicto sobre las fechas y la capacidad.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firmaValidacion, fechasEnOrden]);
 
-  /** Las mismas líneas, con lo que dijo el servidor pegado a cada una.
-   *  Va en un paso aparte porque el veredicto llega después —es un viaje— y
+  /** Lo que el servidor rechazó al GUARDAR (409, no se escribió nada), por
+   *  espacio. Vale para las líneas y las fechas con que se pidió: si cambian,
+   *  se va. */
+  const [rechazo, setRechazo] = useState<{ firma: string; porLlave: Record<string, FilaRechazada> } | null>(null);
+  /** Volver a leer la ocupación anónima de la sede (tras un % que ya no entra). */
+  const recargarOcupacion = useOcupacionStore((s) => s.recargarOcupacion);
+  const rechazoVigente = rechazo && rechazo.firma === firmaValidacion ? rechazo.porLlave : null;
+
+  /** Las mismas líneas, con lo que dijo el servidor pegado a cada una. Va en
+   *  un paso aparte porque el veredicto llega después —es un viaje— y
    *  recalcular las líneas enteras al llegar borraría lo que se esté
    *  tecleando. */
   const lineasConVeredicto = useMemo(
-    () => lineas.map((l) => ({ ...l, choqueServidor: veredicto[l.codigo.toUpperCase()] ?? [] })),
-    [lineas, veredicto],
+    () => lineas.map((l) => {
+      const filas = l.items.flatMap((i) => veredicto[i.llave] ?? []);
+      return {
+        ...l,
+        choqueServidor: filas.map((f) => {
+          const t = textoDelRechazo(f, l.tipo === "pc" ? l.pb : null);
+          return t.detalle ? `${t.titulo} ${t.detalle}` : t.titulo;
+        }),
+        rechazo: l.items.map((i) => rechazoVigente?.[i.llave]).find(Boolean) ?? null,
+        items: l.items.map((i) => ({ ...i, choqueServidor: (veredicto[i.llave] ?? []).map((f) => f.mensaje) })),
+      };
+    }),
+    [lineas, veredicto, rechazoVigente],
   );
 
-  const sinValor = lineas.filter((l) => l.monto <= 0);
-  /** Los espacios cuyo periodo choca con un contrato que ya existe.
+  const sinValor = cobroModo === "fijo" ? lineas.filter((l) => !l.sinElegir && l.monto <= 0) : [];
+  const sinElegir = lineas.filter((l) => l.sinElegir);
+  const sinPorcentaje = lineas.filter((l) => l.tipo === "pc" && l.pb <= 0);
+  /** Las líneas cuyo periodo choca con algo que ya existe, o cuyo % ya no entra.
    *
    *  Antes esto no frenaba nada: el botón se habilitaba igual y el único que
-   *  se quejaba era el servidor, al guardar, con todo ya tecleado. Y el aviso
-   *  del renglón vivía adentro de un texto que se corta, así que en la
-   *  práctica no se veía. Se vendió dos veces el mismo espacio por ese hueco.
-   *
-   *  El servidor SIGUE validando —es él quien manda, y entre que se arma el
-   *  contrato y se toca el botón alguien pudo vender desde otra sesión—; esto
-   *  es para no llegar hasta ahí sabiéndolo desde el principio. */
+   *  se quejaba era el servidor, al guardar, con todo ya tecleado. Se vendió
+   *  dos veces el mismo espacio por ese hueco. El servidor SIGUE validando —es
+   *  él quien manda, y entre que se arma el contrato y se toca el botón alguien
+   *  pudo vender desde otra sesión—; esto es para no llegar hasta ahí
+   *  sabiéndolo desde el principio. */
   const chocan = lineas.filter(
-    (l) => l.disponibilidad !== "libre" || (veredicto[l.codigo.toUpperCase()] ?? []).length > 0,
+    (l) => l.disponibilidad !== "libre" || l.items.some((i) => (veredicto[i.llave] ?? []).length > 0) || l.noEntra,
   );
+  const ventasMal = cobroModo === "ventas" && ventasPb === null;
+  const lineasReales = lineas.filter((l) => !l.sinElegir);
   const puedeGuardar =
-    lineas.length > 0 && proveedor.trim().length > 0 && fechasEnOrden
-    && sinValor.length === 0 && chocan.length === 0;
+    lineasReales.length > 0 && proveedor.trim().length > 0 && fechasEnOrden
+    && sinValor.length === 0 && sinElegir.length === 0 && sinPorcentaje.length === 0 && !ventasMal
+    && chocan.length === 0;
 
   /** Qué falta para poder guardar, dicho antes de que alguien busque el botón.
-   *  Nombra el espacio al que le falta el valor: con tres renglones, «falta el
-   *  valor» obliga a buscar cuál. */
+   *  Nombra la línea: con tres, «falta el valor» obliga a buscar cuál. */
   const falta = lineas.length === 0
     ? "Tocá un espacio en el plano"
     : !proveedor.trim()
     ? "Falta el proveedor"
+    : sinElegir.length > 0
+    ? `Elegí qué ${claseDe(sinElegir[0].clase ?? "")?.plural ?? "partes"} de ${sinElegir[0].visible}`
+    : sinPorcentaje.length > 0
+    ? `Elegí cuánto de ${sinPorcentaje[0].visible}`
+    : ventasMal
+    ? "Escribí el % de las ventas"
     : sinValor.length > 0
     ? sinValor.length === 1
       ? `Falta el valor de ${sinValor[0].visible}`
@@ -431,108 +744,85 @@ export function useContrato({
     : !fechasEnOrden
     ? "Revisá las fechas"
     : chocan.length > 0
-    // Nombra el espacio, igual que con el valor que falta: con tres renglones,
-    // «hay un choque» obliga a ir a buscar cuál.
+    // Nombra la línea, igual que con el valor que falta.
     ? chocan.length === 1
-      ? `${chocan[0].visible} ya está vendido en esas fechas`
+      ? chocan[0].noEntra
+        ? `Ya no entra el ${pct(chocan[0].pb)} de ${chocan[0].visible}`
+        : `${chocan[0].visible} ya está vendido en esas fechas`
       : `${chocan.length} espacios ya están vendidos en esas fechas`
     : null;
 
+  /** El día de hoy del negocio (el del servidor, si la ocupación llegó). */
+  const hoy = lineas.find((l) => l.hoy)?.hoy ?? iso(new Date());
+  /** «Reservar hasta…»: con una fecha elegida, de hoy al último día del
+   *  contrato (el servidor exige lo mismo). Vale para cualquier línea y con
+   *  cualquier cobro: una reserva guarda su precio, o su % de las ventas y su
+   *  corte (decisión del dueño, 2026-10-20), y al confirmarla el contrato
+   *  queda cobrando igual. */
+  const faltaReserva = !caduca
+    ? "Elegí hasta cuándo se sostiene la reserva."
+    : caduca < hoy
+    ? "La reserva no puede terminar antes de hoy."
+    : caduca > hasta
+    ? "La reserva no puede durar más que el contrato."
+    : null;
+  const puedeReservar = puedeGuardar;
+
   async function guardar() {
-    if (!puedeGuardar || estado === "guardando") return;
+    const tipo = reservando ? "reserva" : "contrato";
+    if (!puedeGuardar || estado === "guardando" || (tipo === "reserva" && (faltaReserva || !puedeReservar))) return;
     setEstado("guardando");
     setError("");
+    setRechazo(null);
+    const firma = firmaValidacion;
+    const { pedido: lo, deDonde } = armarPedido(tipo, false);
     try {
-      // Un contrato de N espacios va por el camino de la TANDA y no por el de
-      // a uno, y no es una comodidad de implementación: por el camino de a uno
-      // cada espacio dispara su propio juego de correos, así que un acuerdo
-      // sobre tres puntas le llegaba al proveedor como tres confirmaciones, al
-      // comercial como tres contratos nuevos y al mercaderista como tres
-      // órdenes. Nueve correos para una sola firma es exactamente lo que hace
-      // que nadie los lea. El endpoint de tanda ya resolvía eso para la
-      // planilla —«un correo por rol para TODA la tanda»— y es el mismo
-      // problema.
-      //
-      // De paso trae dos cosas gratis: revalida cada espacio contra la base
-      // justo antes de escribir —entre que se armó el contrato y se tocó el
-      // botón, alguien pudo haber vendido una de esas puntas desde otra
-      // sesión— y devuelve fila por fila qué pasó con cada una.
-      const resp = await confirmarLote(
-        lineas[0]?.fixture.sede || sede,
-        lineas.map((l, i) => ({
-          fila: i + 1,
-          espacio: l.codigo,
-          sede: l.fixture.sede || sede,
-          proveedor: proveedor.trim(),
-          correo: correo.trim() || undefined,
-          marca: marca.trim() || undefined,
-          valor: l.monto,
-          desde,
-          hasta,
-          nota: nota.trim() || undefined,
-        })),
-      );
+      // TODO junto o nada (`POST /contratos/vender`): un candado para todas
+      // las caras, una revisión con la base de ahora y un commit. Antes era la
+      // tanda de la planilla, que guardaba lo que pasaba y saltaba lo demás —con
+      // una cara entera y un porcentaje en el mismo contrato quedaba medio
+      // contrato firmado—. Y un solo envío de avisos: un acuerdo es un correo
+      // por rol, no uno por espacio.
+      const resp = await guardarContrato(lo);
 
-      const porFila = new Map(resp.filas.map((f) => [f.fila, f]));
-      const guardados: string[] = [];
-      const fallaron: { espacio: string; motivo: string }[] = [];
-      let total = 0;
-
-      lineas.forEach((l, i) => {
-        const fila = porFila.get(i + 1);
-        if (!fila || fila.lease_id == null) {
-          fallaron.push({
-            espacio: l.visible,
-            motivo: fila?.mensajes.join(" ") || "el servidor no lo pudo crear",
-          });
-          return;
-        }
-        guardados.push(l.visible);
-        total += l.monto;
-      });
-
-      if (guardados.length === 0) {
-        setError(fallaron[0]?.motivo || "No se pudo guardar el contrato.");
-        setEstado("error");
-        return;
-      }
-
-      // La planometría va aparte y DESPUÉS: cuelga del contrato, que hasta acá
-      // no existía. Va a CADA espacio y no sólo al primero — el mercaderista
-      // abre el espacio que le toca montar, y una lámina que sólo cuelga de
-      // otro no la ve nunca. Si falla no se tira abajo el contrato —ya está
-      // guardado y los correos ya salieron—: se avisa, y se puede volver a
-      // cargar desde el detalle del espacio.
-      let avisoPlanometria: string | undefined;
-      if (planometria) {
-        for (const fila of resp.filas) {
-          if (fila.lease_id == null) continue;
-          try {
-            await subirPlanometria(fila.lease_id, planometria);
-          } catch (e) {
-            avisoPlanometria = describeError(
-              e,
-              "La planometría no se pudo subir. El contrato quedó guardado; cargala desde el detalle del espacio.",
-            );
-          }
-        }
-      }
-
+      // La planometría no va acá: se carga en Supervisar, en la ficha del
+      // espacio, con el contrato ya hecho (decisión de la dueña, 2026-10-20).
       onGuardado({
-        espacios: guardados,
+        espacios: lineasReales.map((l) => (l.tipo === "pc" ? `${l.visible} · ${pct(l.pb)}` : l.visible)),
         proveedor: proveedor.trim(),
         desde,
         hasta,
-        // Mismo criterio que el total de la pantalla: lo acordado, sumado y
-        // sin prorratear. Si estos dos números se separan, el aviso de
-        // «guardado» contradice a la ficha que se acaba de firmar.
-        total,
-        avisoPlanometria,
-        fallaron: fallaron.length ? fallaron : undefined,
+        // Mismo criterio que el total de la pantalla: la suma del total de
+        // cada línea. Si estos dos números se separan, el aviso de «guardado»
+        // contradice a la ficha que se acaba de firmar. Todo o nada: lo que se
+        // guardó es todo lo que está en pantalla.
+        total: cobroModo === "fijo" ? total : 0,
+        tipo,
+        caduca: tipo === "reserva" ? caduca : null,
+        cobro,
         avisos: resp.avisos ?? undefined,
       });
     } catch (e) {
-      setError(describeError(e, "No se pudo guardar el contrato."));
+      const filas = filasRechazadas(e);
+      if (filas) {
+        const porLlave: Record<string, FilaRechazada> = {};
+        for (const f of filas) {
+          const de = deDonde[f.indice];
+          if (de) porLlave[de.item.llave] = f;
+        }
+        setRechazo({ firma, porLlave });
+        // Un % que ya no entra: otro lo tomó mientras se armaba. Se vuelve a
+        // leer la ocupación anónima, así «queda X %» de la línea dice lo
+        // mismo que el rechazo.
+        if (filas.some((f) => f.code === "capacidad_excedida")) {
+          void recargarOcupacion(sede);
+        }
+        setError(Object.keys(porLlave).length === filas.length
+          ? "No se guardó nada: revisá las líneas marcadas."
+          : `No se guardó nada. ${filas.map((f) => f.mensaje).filter(Boolean).join(" ")}`);
+      } else {
+        setError(describeError(e, "No se pudo guardar el contrato. No se guardó nada."));
+      }
       setEstado("error");
     }
   }
@@ -542,30 +832,25 @@ export function useContrato({
     // columna no la traen, y ahí manda la sede activa.
     sede: lineas[0]?.fixture.sede || sede,
     lineas: lineasConVeredicto, onQuitar, onCambiarCara, onCambiarParte,
-    total, cubre,
+    total, cubre, atajos,
     desde, setDesde, hasta, setHasta,
     proveedor, setProveedor, correo, setCorreo, marca, setMarca,
-    escribirValor, nota, setNota,
-    planometria, setPlanometria,
-    dias, fechasEnOrden, puedeGuardar, falta,
+    escribirValor, volverALaTarifa, tocado, cambiarModo, escribirPorcentaje, parteEnElContrato,
+    nota, setNota,
+    cobroModo, setCobroModo, ventasTexto, setVentasTexto, ventasPb, corte, setCorte, cortes,
+    reservando, setReservando, caduca, setCaduca, faltaReserva, puedeReservar, hoy,
+    dias, nMeses, textoDeMeses, fechasEnOrden, puedeGuardar, falta,
     vienenDelPeriodo: !!rango && desde === iso(rango.from) && hasta === iso(rango.to),
     estado, error, guardar,
   };
 }
 
 export type Contrato = ReturnType<typeof useContrato>;
+export type LineaDelContrato = Contrato["lineas"][number];
 
-/* ── LO QUE SE FUE DE ESTE ARCHIVO (PR 2 · Vender con la forma de D) ────────
-   `CabezaContrato`, `CamposContrato`, `Renglon`, `Etiqueta`, el estilo `campo`
-   y la tabla `DISPONIBILIDAD` vivían acá y los dibujaba `ModoVender`. La ficha
-   de D no es la misma ficha con otra piel: cambian la composición (filas mono
-   con el valor adentro, separador punteado, total grande, sellos, botón dentro
-   del panel), el orden de los campos (Proveedor|Marca y Desde|Hasta en dos
-   pares) y dónde vive cada aviso. Reescribirla EN `ModoVender.tsx` —que es el
-   único que la usa— deja una pieza en un archivo en vez de una pieza repartida
-   en dos, y este archivo se queda con lo que de verdad comparte: el hook.
-
-   `useContrato` NO se tocó: la aritmética del contrato (el prorrateo por día
-   sobre 30, los dos extremos contando, la revalidación contra la base al
-   guardar, el reparto de parches por cara) es exactamente la misma. Lo que
-   cambió es la forma, que es lo que este PR vino a cambiar. */
+/* ── LO QUE SE FUE DE ESTE ARCHIVO (rediseño de Vender, PR 1) ───────────────
+   El contrato iba por la tanda de la planilla (`api/bulkLeases`: validar y
+   confirmar), que no es todo o nada y no sabe de porcentajes: los resultados
+   «por fila» con lo que no se pudo guardar (`fallaron`) se fueron con ella.
+   Ahora una sola llamada guarda todo o nada (`api/vender.ts`), y un 409 dice
+   en cada línea qué no entró, sin escribir ninguna. */

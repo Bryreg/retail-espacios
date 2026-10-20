@@ -60,6 +60,7 @@ from sqlalchemy.orm import Session
 from app.fechas import ZONA_DEL_NEGOCIO, hoy
 from app.models.models import Space, SpaceLease, Supplier
 from app.models.participaciones import Distribucion, HistorialParticipacion, Participacion, Zona
+from app.models.vender import CobroPorVenta, CondicionesDeContrato, MontajePendiente, PrecioDeReserva
 from app.services import reglas_participacion as reglas
 from app.services import zonas_geometria as geo
 from app.services.alta_de_contrato import escribir_contrato, espacio_para, proveedor_por_nombre
@@ -407,10 +408,10 @@ def bloqueo_por_participaciones(db: Session, sede: str, codigo: str, desde: date
         return None
     primero = min(i["desde"] for i in cuentan)
     ultimo = max(i["hasta"] for i in cuentan)
-    n = len(cuentan)
+    # Sin cuántos términos: delante del proveedor (Vender) eso dice cuántos
+    # otros tienen algo en la cara.
     return (f"«{sin_prefijo_de_sede(cara, s)}» se vende por participación del {reglas._fecha_corta(max(primero, a))} "
-            f"al {reglas._fecha_corta(min(ultimo, hasta))} ({n} término{'' if n == 1 else 's'} de participación "
-            "vivo" + ("" if n == 1 else "s") + "): en esas fechas no se vende entera ni por partes.")
+            f"al {reglas._fecha_corta(min(ultimo, hasta))}: en esas fechas no se vende entera ni por partes.")
 
 
 # ─── La geometría (afuera del candado) ───────────────────────────────────────
@@ -498,14 +499,26 @@ def validar_fechas(tipo: str, desde: date, hasta: date, caduca: Optional[date], 
             raise _error(422, "caduca", "La reserva tiene que caducar entre hoy y el último día que reserva.")
 
 
-def validar_tipo(tipo: str, caduca, valor) -> None:
+def _valor_valido(valor) -> bool:
+    return isinstance(valor, (int, float)) and math.isfinite(valor) and valor >= 0
+
+
+def validar_tipo(tipo: str, caduca, valor, *, admite_precio: bool = False) -> None:
     """Lo que cada tipo lleva y lo que no (§5.3): la reserva caduca y no tiene
-    valor; el contrato tiene valor (≥ 0) y no caduca."""
+    valor; el contrato tiene valor (≥ 0) y no caduca.
+
+    ``admite_precio``: sólo el guardado de Vender (``services/vender.py``),
+    que guarda el precio acordado de una reserva aparte, en
+    ``precios_de_reserva`` (``docs/rediseno/vender-api.md`` §2). Por
+    ``POST /api/participaciones/`` una reserva sigue sin valor."""
     if tipo == "contrato":
         if caduca is not None:
             raise _error(422, "caduca", "Un contrato no caduca: la caducidad es de la reserva provisional.")
-        if valor is None or not isinstance(valor, (int, float)) or not math.isfinite(valor) or valor < 0:
+        if valor is None or not _valor_valido(valor):
             raise _error(422, "valor_mensual", "Escribí el valor mensual del contrato.")
+    elif admite_precio:
+        if valor is not None and not _valor_valido(valor):
+            raise _error(422, "valor_mensual", "El precio acordado de la reserva tiene que ser un número de 0 o más.")
     elif valor is not None:
         raise _error(422, "valor_mensual",
                      "Una reserva provisional no lleva valor mensual: se escribe al confirmarla como contrato.")
@@ -642,6 +655,10 @@ class Hecho:
     avisos_distribucion: list = field(default_factory=list)
     #: El código de la participación, para la bitácora.
     entidad: str = ""
+    #: El aviso de montaje del contrato quedó pendiente (``montajes_pendientes``):
+    #: sale cuando la cara tenga su distribución confirmada con la zona de esta
+    #: participación (``montajes_listos``).
+    montaje_diferido: bool = False
 
 
 def _bajo_candado(db: Session, cara: Cara) -> None:
@@ -730,6 +747,38 @@ def _frase_del_termino(numero: int, pb: int, proveedor: str, marca: Optional[str
             f"{desde.isoformat()}→{hasta.isoformat()}")
 
 
+def _con_zona_confirmada(db: Session, cara_space_id: int, pc_space_id: int) -> bool:
+    """¿La participación ya tiene zona en la capa confirmada de su cara?"""
+    return (db.query(Zona.id).join(Distribucion, Distribucion.id == Zona.distribucion_id)
+            .filter(Distribucion.cara_space_id == cara_space_id, Zona.capa == "confirmada",
+                    Zona.participacion_space_id == pc_space_id).first()) is not None
+
+
+def diferir_montaje(db: Session, lease: SpaceLease, cara_space_id: int, pc_space_id: int) -> bool:
+    """El aviso de montaje de un contrato de participación espera a que su
+    cara tenga la distribución confirmada (``docs/rediseno/vender-api.md``
+    §4): sin zona, quien monta no sabe dónde va. Si la participación YA tiene
+    zona confirmada (una renovación: mismo espacio PC, mismas zonas), el aviso
+    sale ahora y no queda nada pendiente. Devuelve si quedó pendiente."""
+    if _con_zona_confirmada(db, cara_space_id, pc_space_id):
+        return False
+    db.add(MontajePendiente(lease_id=lease.id, cara_space_id=cara_space_id))
+    return True
+
+
+def montajes_listos(db: Session, cara_space_id: int) -> list[tuple[MontajePendiente, Participacion]]:
+    """Los avisos de montaje pendientes de esa cara cuya participación ya
+    tiene zona confirmada: los que salen después de confirmar la
+    distribución. Quien llama manda los correos y borra las filas."""
+    fuera = []
+    for pendiente in (db.query(MontajePendiente).filter(MontajePendiente.cara_space_id == cara_space_id)
+                      .order_by(MontajePendiente.lease_id).all()):
+        t = db.query(Participacion).filter(Participacion.lease_id == pendiente.lease_id).first()
+        if t is not None and _con_zona_confirmada(db, cara_space_id, t.space_id):
+            fuera.append((pendiente, t))
+    return fuera
+
+
 def alta(db: Session, e: dict, actor: str) -> Hecho:
     """5 · Alta de una reserva provisional o de un contrato sobre una
     participación NUEVA de la cara (§5.3). ``e``: el cuerpo ya validado por
@@ -752,14 +801,24 @@ def alta(db: Session, e: dict, actor: str) -> Hecho:
     # subió de 30 % a 70 % seguiría contando 30 %.
     datos = leer(db, fresca.codigo)
     revisar_alta(db, fresca, datos, cambio)
+    return escribir_alta(db, fresca, datos, e, actor)
 
+
+def escribir_alta(db: Session, fresca: Cara, datos: Datos, e: dict, actor: str,
+                  supplier: Optional[Supplier] = None) -> Hecho:
+    """La mitad que ESCRIBE el alta, con el candado ya tomado y la revisión de
+    adentro hecha (``alta`` y el guardado de Vender, ``services/vender.py``,
+    que toma los candados de todas sus líneas juntos). ``supplier``: el
+    proveedor ya buscado o creado por quien llama."""
+    tipo = e["tipo"]
     cara_space = _fila_de_cara(db, fresca, datos)
     n = siguiente_numero(db, cara_space, fresca)
     if n > NUMERO_MAXIMO:
         raise _error(409, "cara_llena", f"Esta cara ya usó {NUMERO_MAXIMO} números de participación.")
     pc = _crear_espacio_pc(db, fresca, n)
     marca = _marca(e.get("marca"))
-    supplier = proveedor_por_nombre(db, e["proveedor"], _correo(e.get("correo")))
+    if supplier is None:
+        supplier = proveedor_por_nombre(db, e["proveedor"], _correo(e.get("correo")))
     lease = None
     ahora = _ahora()
     if tipo == "contrato":
@@ -777,6 +836,7 @@ def alta(db: Session, e: dict, actor: str) -> Hecho:
     db.add(termino)
     db.flush()
     regla = termino_para_reglas(termino, lease)
+    diferido = diferir_montaje(db, lease, cara_space.id, pc.id) if lease is not None else False
     frase = _frase_del_termino(n, e["puntos_basicos"], supplier.name, marca, e["desde"], e["hasta"])
     accion = f"participacion.{tipo}"
     anotar_historial(
@@ -787,6 +847,7 @@ def alta(db: Session, e: dict, actor: str) -> Hecho:
         antes=None, despues={**_campos_historial(regla, supplier.name), "codigo": pc.code},
     )
     return Hecho(cara=fresca, termino=termino, accion=accion, lease=lease, supplier=supplier, entidad=pc.code,
+                 montaje_diferido=diferido,
                  detalle=f"{pc.code} · {reglas.pct(e['puntos_basicos'])} · {supplier.name} · "
                          f"{e['desde'].isoformat()}→{e['hasta'].isoformat()}")
 
@@ -876,8 +937,22 @@ def confirmar_reserva(db: Session, participacion_id: int, e: dict, presentes: se
     """7 · Reserva viva → contrato (§5.3), con el MISMO alta de contrato que la
     planilla, sobre el MISMO espacio PC. Proveedor, marca y fechas pasan al
     lease (la única verdad) y sus columnas quedan en NULL; lo que decía la
-    reserva queda en el ``antes`` del historial."""
-    validar_tipo("contrato", None, e.get("valor_mensual"))
+    reserva queda en el ``antes`` del historial.
+
+    Sin ``valor_mensual`` en el cuerpo, vale el precio acordado al reservar
+    desde Vender (``precios_de_reserva``, §2 de ``docs/rediseno/vender-api.md``),
+    que se borra al confirmar."""
+    valor = e.get("valor_mensual")
+    precio = db.get(PrecioDeReserva, participacion_id)
+    #: La reserva se cobraba por ventas y el cuerpo no trae otro valor: el
+    #: contrato nace cobrando por ventas, con su valor en 0 (decisión del
+    #: dueño, 2026-10-20). Un ``valor_mensual`` en el cuerpo lo pasa a fijo.
+    por_ventas = valor is None and precio is not None and precio.cobro_modo == "ventas"
+    if por_ventas:
+        valor = 0.0
+    elif valor is None and precio is not None:
+        valor = precio.valor
+    validar_tipo("contrato", None, valor)
     cambio = {"tipo": "confirmar", "id": participacion_id, "version": e["version"]}
     for clave, regla in (("puntos_basicos", "pb"), ("desde", "desde"), ("hasta", "hasta")):
         if clave in presentes and e.get(clave) is not None:
@@ -892,7 +967,17 @@ def confirmar_reserva(db: Session, participacion_id: int, e: dict, presentes: se
         supplier.email = correo  # completa el que falta, nunca pisa (como la planilla)
     pc = datos.pcs[t.space_id]
     notas = e.get("notas") if "notas" in presentes else t.notas
-    lease = escribir_contrato(db, pc, supplier, antes["marca"], desde, hasta, e["valor_mensual"], notas)
+    lease = escribir_contrato(db, pc, supplier, antes["marca"], desde, hasta, valor, notas)
+    if precio is not None:
+        if por_ventas:
+            db.add(CobroPorVenta(lease_id=lease.id, porcentaje=precio.cobro_porcentaje, corte=precio.cobro_corte,
+                                 creado_por=actor))
+        elif e.get("valor_mensual") is None and precio.modo_precio:
+            # Cómo se escribió el precio que se usó: lo dicen los correos.
+            db.add(CondicionesDeContrato(lease_id=lease.id, modo_precio=precio.modo_precio,
+                                         valor_tecleado=precio.valor_tecleado))
+        db.delete(precio)
+    diferido = diferir_montaje(db, lease, t.cara_space_id, t.space_id)
     _subir_version_termino(db, t.id, e["version"], {
         "estado": "contrato", "lease_id": lease.id, "puntos_basicos": pb, "supplier_id": None, "marca": None,
         "desde": None, "hasta": None, "caduca": None, "notas": None}, actor)
@@ -906,7 +991,7 @@ def confirmar_reserva(db: Session, participacion_id: int, e: dict, presentes: se
         despues={**_campos_historial(despues, supplier.name), "lease_id": lease.id},
     )
     return Hecho(cara=cara, termino=t, accion="participacion.confirmada", lease=lease, supplier=supplier,
-                 avisos_distribucion=avisos, entidad=pc.code,
+                 avisos_distribucion=avisos, entidad=pc.code, montaje_diferido=diferido,
                  detalle=f"{pc.code} · {reglas.pct(pb)} · {supplier.name} · {desde.isoformat()}→{hasta.isoformat()}")
 
 
@@ -946,6 +1031,14 @@ def renovar(db: Session, participacion_id: int, e: dict, actor: str) -> Hecho:
     cambio = {"tipo": "renovar", "renueva_a": participacion_id, "version": e["version"], "tipo_nuevo": tipo,
               "desde": e["desde"], "hasta": e["hasta"], "caduca": e.get("caduca")}
     cara, datos, t, avisos = _camino_de_termino(db, participacion_id, cambio)
+    return escribir_renovacion(db, cara, datos, t, e, actor, avisos)
+
+
+def escribir_renovacion(db: Session, cara: Cara, datos: Datos, t: Participacion, e: dict, actor: str,
+                        avisos: Optional[list] = None) -> Hecho:
+    """La mitad que ESCRIBE la renovación, con el candado ya tomado y la
+    revisión de adentro hecha (``renovar`` y el guardado de Vender)."""
+    tipo = e["tipo"]
     renovado = next(x for x in datos.por_s[t.space_id] if x["id"] == t.id)
     _subir_version_termino(db, t.id, e["version"], {}, actor)
     supplier = _proveedor_de(db, renovado)
@@ -971,6 +1064,7 @@ def renovar(db: Session, participacion_id: int, e: dict, actor: str) -> Hecho:
                               actualizada_en=ahora, actualizada_por=actor)
     db.add(nuevo)
     db.flush()
+    diferido = diferir_montaje(db, lease, t.cara_space_id, t.space_id) if lease is not None else False
     regla = termino_para_reglas(nuevo, lease)
     anotar_historial(
         db, tipo="contractual", accion="participacion.renovada", actor=actor, cara_space_id=t.cara_space_id,
@@ -981,7 +1075,7 @@ def renovar(db: Session, participacion_id: int, e: dict, actor: str) -> Hecho:
         despues={**_campos_historial(regla, supplier.name), "renueva_a": t.id},
     )
     return Hecho(cara=cara, termino=nuevo, accion="participacion.renovada", lease=lease, supplier=supplier,
-                 avisos_distribucion=avisos, entidad=pc.code,
+                 avisos_distribucion=avisos or [], entidad=pc.code, montaje_diferido=diferido,
                  detalle=f"{pc.code} · {reglas.pct(renovado['pb'])} · {supplier.name} · "
                          f"{e['desde'].isoformat()}→{e['hasta'].isoformat()}")
 
@@ -1353,9 +1447,10 @@ def descartar_borrador(db: Session, e: dict, actor: str) -> HechoDistribucion:
 
 
 def termino_out(t: Participacion, regla: dict, pc: Optional[Space], lease: Optional[SpaceLease],
-                proveedores: dict, dia: date) -> dict:
-    """``TerminoOut`` (§5.3). Lleva el valor del contrato: sólo lo leen rutas
-    de administrador."""
+                proveedores: dict, dia: date, precio: Optional[PrecioDeReserva] = None) -> dict:
+    """``TerminoOut`` (§5.3). Lleva el valor del contrato y, de una reserva
+    hecha desde Vender, su precio acordado (``valor_acordado``,
+    ``precios_de_reserva``): sólo lo leen rutas de administrador."""
     sid = regla.get("supplier_id")
     prov = proveedores.get(sid) if sid is not None else None
     return {
@@ -1367,6 +1462,10 @@ def termino_out(t: Participacion, regla: dict, pc: Optional[Space], lease: Optio
         "marca": regla.get("marca"), "desde": regla.get("desde"), "hasta": regla.get("hasta"),
         "caduca": regla.get("caduca"),
         "lease_id": t.lease_id, "valor_mensual": float(lease.monthly_rent) if lease is not None else None,
+        "valor_acordado": float(precio.valor) if precio is not None and precio.valor is not None else None,
+        # Una reserva que se cobra por ventas: el porcentaje y el corte acordados.
+        "cobro_acordado": ({"modo": "ventas", "porcentaje": precio.cobro_porcentaje, "corte": precio.cobro_corte}
+                           if precio is not None and precio.cobro_modo == "ventas" else None),
         "renueva_a": t.renueva_a,
         "notas": (lease.notes if lease is not None else None) if t.estado == "contrato" else t.notas,
         "baja_en": _iso(t.baja_en), "baja_fecha": regla.get("baja_fecha"),
@@ -1387,10 +1486,13 @@ def terminos_out(db: Session, datos: Datos, dia: date) -> dict[int, list[dict]]:
     """Los ``TerminoOut`` por participación, del más nuevo al más viejo."""
     proveedores = _proveedores(db, datos.por_s)
     filas = {t.id: t for t in datos.terminos}
+    ids = [t.id for t in datos.terminos]
+    precios = ({p.participacion_id: p for p in
+                db.query(PrecioDeReserva).filter(PrecioDeReserva.participacion_id.in_(ids)).all()} if ids else {})
     fuera = {}
     for s, ts in datos.por_s.items():
         fuera[s] = [termino_out(filas[r["id"]], r, datos.pcs.get(s), datos.leases.get(filas[r["id"]].lease_id),
-                                proveedores, dia)
+                                proveedores, dia, precios.get(r["id"]))
                     for r in sorted(ts, key=_orden_nuevo_primero, reverse=True)]
     return fuera
 

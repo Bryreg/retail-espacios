@@ -1222,6 +1222,10 @@ function QuienSoy({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+/** El ícono de la barra: un tamaño y un trazo para todos (hoja de piezas del
+ *  rediseño, 2026-10). `probar-vender` lo asevera. */
+const ICONO_BARRA = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
+
 function Topbar({
   viewMode, setViewMode, isAdmin, operador, onOpenSettings, onIrPlataforma, onLogout,
 }: TopbarProps) {
@@ -1231,19 +1235,24 @@ function Topbar({
     ? TABS
     : TABS.filter((t) => t.id === "kpis" || t.id === "montaje");
 
+  /* Los botones de ícono de la barra: 32 px, el ícono a 16 con trazo 1,75 y
+     en gris (`--ink-2`), como en la hoja de piezas del rediseño. Sin palabra
+     al lado: el `title` y el `aria-label` la dicen. */
   const iconButtonStyle: React.CSSProperties = {
     display: "flex", alignItems: "center", justifyContent: "center",
-    width: 28, height: 28, borderRadius: "var(--r-md)",
+    width: 32, height: 32, borderRadius: "var(--r-md)",
     background: "transparent", border: "none",
     color: "var(--ink-2)", cursor: "pointer",
     transition: "background .12s",
+    flexShrink: 0,
   };
 
   return (
     <header
+      className="barra-app"
       style={{
-        display: "flex", alignItems: "center", gap: 16,
-        padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: 18,
+        height: 52, padding: "0 18px",
         background: "var(--surface)",
         borderBottom: "1px solid var(--line)",
         flexShrink: 0,
@@ -1268,20 +1277,22 @@ function Topbar({
       {/* Divider */}
       <div style={{ width: 1, height: 18, background: "var(--line)", flexShrink: 0 }} />
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 2 }}>
+      {/* Tabs: palabras con subrayado, sin ícono (hoja de piezas: «ni en las
+          pestañas ni dentro de las pastillas: ahí manda la palabra»). El
+          subrayado va al pie de la barra, como en la maqueta. */}
+      <div style={{ display: "flex", gap: 2, alignSelf: "stretch" }}>
         {visibleTabs.map(({ id, label, para, grupo }, i) => {
           const active = viewMode === id;
           // Una línea fina separa "operar" de "diseñar la tienda": son dos
           // trabajos distintos y mezclarlos era parte de la confusión.
           const abreGrupo = i > 0 && visibleTabs[i - 1].grupo !== grupo;
           return (
-            <span key={id} style={{ display: "flex", alignItems: "center" }}>
+            <span key={id} style={{ display: "flex", alignItems: "stretch" }}>
             {abreGrupo && (
               <span
                 aria-hidden
                 style={{
-                  width: 1, height: 18, margin: "0 7px",
+                  width: 1, height: 18, margin: "0 7px", alignSelf: "center",
                   background: "var(--line)", flexShrink: 0,
                 }}
               />
@@ -1291,13 +1302,17 @@ function Topbar({
                 generados que hay. El subrayado dice cuál está activa sin
                 pintar un fondo de color. */}
             <button
+              className="pestana-app"
               onClick={() => setViewMode(id)}
               title={para}
+              aria-current={active ? "page" : undefined}
               style={{
                 display: "flex", alignItems: "center",
-                height: 30, padding: "0 10px",
+                // «Editor 3D» en un renglón, también a 390 px.
+                whiteSpace: "nowrap",
+                padding: "0 11px",
                 borderRadius: 0,
-                fontSize: 12.5, fontWeight: active ? 600 : 450,
+                fontSize: "var(--t-xs)", fontWeight: active ? 600 : 450,
                 border: "none",
                 borderBottom: `2px solid ${active ? "var(--ink-1)" : "transparent"}`,
                 background: "transparent",
@@ -1314,8 +1329,9 @@ function Topbar({
         })}
       </div>
 
-      {/* Right side */}
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+      {/* Right side: el estado de la sincronización (punto y palabra), el
+          sol/luna, quién sos y los tres botones de ícono. */}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         {/* Server sync state — click to sync now */}
         <SyncStatus />
 
@@ -1347,35 +1363,38 @@ function Topbar({
         {operador && (
           <button
             title="Plataforma"
+            aria-label="Plataforma"
             onClick={onIrPlataforma}
             style={iconButtonStyle}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
-            <ShieldCheck size={14} />
+            <ShieldCheck {...ICONO_BARRA} />
           </button>
         )}
 
         {isAdmin && (
           <button
             title="Configuración"
+            aria-label="Configuración"
             onClick={onOpenSettings}
             style={iconButtonStyle}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
           >
-            <Settings size={14} />
+            <Settings {...ICONO_BARRA} />
           </button>
         )}
 
         <button
           title="Cerrar sesión"
+          aria-label="Cerrar sesión"
           onClick={onLogout}
           style={iconButtonStyle}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
         >
-          <LogOut size={14} />
+          <LogOut {...ICONO_BARRA} />
         </button>
       </div>
     </header>

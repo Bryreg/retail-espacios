@@ -315,9 +315,9 @@ prueba("Supervisar: las participaciones sólo para quien administra; puertas, tr
     "«Por puertas» lista participaciones (las muestra ParticipacionesDeLaCara)");
   assert.match(t, /const partesVisiblesDe = useCallback\(\s*\(f: UnifiedFixture\): FaceEntry\[\] => partesConContrato\(f, estadoComercial, indicePartes, sede, isAdmin\),/,
     "las filas de Supervisar no dependen de quién mira");
-  assert.match(t, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\);\s*const faces = visibles\.length \? \[\.\.\.caras, \.\.\.visibles\] : caras;/,
+  assert.match(t, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\)\.map\(reserva\);\s*const faces = visibles\.length \? \[\.\.\.caras, \.\.\.visibles\] : caras;/,
     "los totales y las listas de «Para revisar» le muestran al trabajador contratos de participación");
-  assert.match(t, /const partes = partesVisiblesDe\(f\);\s*return partes\.length \? \[\.\.\.commercialFacesOf\(f\), \.\.\.partes\] : commercialFacesOf\(f\);/,
+  assert.match(t, /const partes = partesVisiblesDe\(f\);\s*return \(partes\.length \? \[\.\.\.commercialFacesOf\(f\), \.\.\.partes\] : commercialFacesOf\(f\)\)\s*\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\);/,
     "«Estado por espacio» le muestra al trabajador contratos de participación");
 });
 
@@ -566,11 +566,16 @@ prueba("«Para revisar»: una cara en orden no aparece; cada problema cae en su 
   // cancelado y lo vencido (ver la prueba de abajo).
   assert.deepEqual(s.map((x) => x.tipo), ["sin_termino", "por_caducar", "con_problemas", "para_revisar", "sin_dibujar", "borradores"]);
   assert.deepEqual(s.map((x) => x.titulo).slice(0, 1), ["Contrato de participación sin término"]);
+  // Rediseño (PR 1): la sección se llama «Falta distribuir» y cada renglón
+  // dice cuándo empieza lo que falta (`empiezaEn`: 0 o menos, ya corre).
+  assert.equal(s.find((x) => x.tipo === "sin_dibujar").titulo, "Falta distribuir");
   assert.equal(por.sin_dibujar[0].rotulo, "GON-01 · A");
-  assert.equal(por.sin_dibujar[0].frase, "falta dibujar 15 % (2 participaciones).");
+  assert.equal(por.sin_dibujar[0].frase, "falta distribuir 15 % (2 participaciones) · ya corre.");
+  assert.equal(por.sin_dibujar[0].empiezaEn, 0);
   assert.deepEqual(por.sin_dibujar[0].abrir, { fixtureId: "f1", cara: "A" });
   // Sin el mueble en el plano, se nombra igual pero no hay qué abrir.
-  assert.equal(por.sin_dibujar[1].frase, "todavía sin distribuir (1 participación).");
+  assert.equal(por.sin_dibujar[1].frase, "todavía sin distribuir (1 participación) · ya corre.");
+  assert.ok(por.sin_dibujar[1].empiezaEn <= 0, "lo que ya empezó no dice que falta");
   assert.equal(por.sin_dibujar[1].abrir, null);
   assert.equal(por.con_problemas[0].frase, "2 problemas en la distribución.");
   assert.equal(por.con_problemas[0].rotulo, "GON-01 · B");
@@ -597,6 +602,46 @@ prueba("«Para revisar»: reservas que caducan hoy y dentro de 7 días; los hué
     "Reserva de Postobón (Hit) en GON-01 · A caduca el 24 oct.",
   ]);
   assert.deepEqual(por.sin_termino.map((i) => i.frase), ["2 contratos de participación sin término cuentan como la cara entera hasta que se aclare."]);
+});
+
+prueba("«Falta distribuir»: lo firmado para más adelante cuenta desde que se firma, con sus días, rojo con 7 o menos y de lo urgente a lo menos (ejecutado)", () => {
+  assert.equal(R.DIAS_DE_APURO, 7);
+  assert.equal(R.cuandoEmpieza("2026-10-10", HOY), "ya corre");
+  assert.equal(R.cuandoEmpieza(HOY, HOY), "empieza hoy");
+  assert.equal(R.cuandoEmpieza("2026-10-18", HOY), "empieza mañana");
+  assert.equal(R.cuandoEmpieza("2026-11-16", HOY), "empieza el 16 nov (en 30 días)");
+  const futura = (extra) => pcRes({ cuenta_el_dia: false, estado_visible: "firmado", dibujado_pb: 0, ...extra });
+  const r = resumen([
+    // Lejos: 30 días. Sin nada dibujado.
+    caraRes({ codigo_cara: "NAVE-PUN-03", fixture_code: "PUN-03", comprometido_dia_pb: 0, dibujado_dia_pb: 0,
+      participaciones: [futura({ codigo: "NAVE-PUN-03-PC1", desde: "2026-11-16", hasta: "2026-12-15" })] }),
+    // Cerca: 5 días, con la mitad dibujada; y otra, del mismo mueble, entera
+    // dibujada (no falta nada) y una reserva futura (no es un contrato firmado).
+    caraRes({ participaciones: [
+      pcRes(),
+      futura({ codigo: "NAVE-GON-01-PC2", numero: 2, desde: "2026-10-22", hasta: "2026-11-21", puntos_basicos: 4000, dibujado_pb: 2000 }),
+      futura({ codigo: "NAVE-GON-01-PC3", numero: 3, desde: "2026-10-20", hasta: "2026-11-21", dibujado_pb: 2500 }),
+      futura({ codigo: "NAVE-GON-01-PC4", numero: 4, estado_visible: "reserva", desde: "2026-10-19", caduca: "2026-12-01" }),
+    ] }),
+    // Lo que corre hoy: primero.
+    caraRes({ codigo_cara: "NAVE-GON-01-B", cara: "B", pendiente_dia_pb: 1000, dibujado_dia_pb: 1500,
+      participaciones: [pcRes({ codigo: "NAVE-GON-01-B-PC1", dibujado_pb: 1500 })] }),
+  ]);
+  const s = R.paraRevisarDeResumen(r, plano);
+  const falta = s.find((x) => x.tipo === "sin_dibujar");
+  assert.ok(falta, "lo firmado para más adelante sin distribuir no sale en «Para revisar»");
+  assert.deepEqual(falta.items.map((i) => [i.rotulo, i.frase, i.empiezaEn]), [
+    ["GON-01 · B", "falta distribuir 10 % (1 participación) · ya corre.", 0],
+    ["GON-01 · A", "falta distribuir 20 % · empieza el 22 oct (en 5 días).", 5],
+    ["PUN-03", "falta distribuir 25 % · empieza el 16 nov (en 30 días).", 30],
+  ], "lo futuro no se cuenta desde la firma, se suma con lo de hoy, cuenta lo ya dibujado o una reserva, o no va de lo urgente a lo menos");
+  assert.deepEqual(falta.items[1].abrir, { fixtureId: "f1", cara: "A" }, "«Abrir en Distribución» se perdió en lo futuro");
+  assert.equal(R.cuantasParaRevisar(s), 3, "lo que falta distribuir no suma a la cuenta de «Para revisar»");
+  // Y en pantalla: la cifra de días en rojo con 7 o menos, y el botón de siempre.
+  const comp = sinComent(fuenteDe("components/Distribucion/RevisarParticipaciones.tsx"));
+  assert.match(comp, /color: it\.empiezaEn <= DIAS_DE_APURO \? "var\(--ocupado-txt\)" : "var\(--ink-2\)"/, "los días de «Falta distribuir» no se pintan de rojo con 7 o menos");
+  assert.match(comp, /\{it\.empiezaEn <= 0 \? "corre" : `\$\{it\.empiezaEn\}d`\}/, "el renglón no dice cuántos días faltan");
+  assert.match(comp, /onClick=\{\(\) => abrir\(it\.abrir!\.fixtureId, it\.abrir!\.cara\)\}[\s\S]{0,600}Abrir en Distribución/, "«Abrir en Distribución» se fue");
 });
 
 prueba("los contratos de participación sin término se nombran: vivos, sobre una cara por participación, y fuera del resumen (ejecutado)", () => {
@@ -750,6 +795,47 @@ prueba("«Libres»: una cara por participación que una reserva deja hoy sin lug
     "los totales no le pasan a estadoDeUnidad si la cara se quedó sin lugar hoy");
 });
 
+prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar: «Reservado», fuera del canon, los contratos, los vencimientos, el montaje y «Quién paga» (conLaReserva, ejecutado)", () => {
+  const t = fuenteDe("pages/DashboardView.tsx");
+  const i = t.indexOf("function conLaReserva(");
+  assert.ok(i >= 0, "no está conLaReserva");
+  const fuente = t.slice(i, t.indexOf("\n}\n", i) + 2);
+  const js = esbuildMod.transformSync(fuente, { loader: "ts" }).code;
+  const fullSpaceCode = (sede, c) => (c.startsWith(`${sede}-`) ? c : `${sede}-${c}`);
+  const conLaReserva = new Function("fullSpaceCode", `${js}\nreturn conLaReserva;`)(fullSpaceCode);
+  const f = { sede: "CENTRO", code: "GON-02" };
+  const cara = { fixture: f, face: "A", code: "GON-02", status: "occupied", supplierName: "X", endDate: "2026-11-30", negotiatedValue: 9 };
+  const mapa = { "CENTRO-GON-02": { status: "occupied", reservaHasta: "2026-11-02" }, "CENTRO-GON-03": { status: "occupied", reservaHasta: null } };
+  const r = conLaReserva(cara, mapa, "CENTRO");
+  assert.equal(r.status, "reserved", "una reserva viva sigue contando como contrato");
+  assert.equal(r.reservaHasta, "2026-11-02");
+  assert.equal(conLaReserva({ ...cara, code: "GON-03" }, mapa, "CENTRO").status, "occupied", "un contrato pasó a «Reservado»");
+  const parte = { ...cara, code: "GON-02-EN1" };
+  assert.equal(conLaReserva(parte, { "CENTRO-GON-02-EN1": { reservaHasta: "2026-11-05" } }, "CENTRO").status, "reserved", "una parte reservada cuenta como contrato");
+  // Las cuentas de Supervisar pasan TODAS por ahí: caras, partes y filas.
+  const v = sinComent(t);
+  const k = v.slice(v.indexOf("const kpis = useMemo("), v.indexOf("const rangeTally"));
+  assert.match(k, /const reserva = \(e: FaceEntry\) => conLaReserva\(e, estadoComercial, sede\);/);
+  assert.match(k, /const caras = fixtures\.flatMap\(commercialFacesOf\)\.map\(reserva\);/, "el canon y la ocupación cuentan una reserva de cara como contrato");
+  assert.match(k, /const partes = fixtures\.flatMap\(partesVendidasDe\)\.map\(reserva\);/, "una parte reservada cuenta como contrato");
+  assert.match(k, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\)\.map\(reserva\);/);
+  assert.match(v, /const espaciosDelMueble = useCallback\(\s*\(f: UnifiedFixture\): FaceEntry\[\] => \{[^}]*?\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\);/,
+    "la tabla y «Contratado sin montar» cuentan una reserva como contrato");
+  const m = v.slice(v.indexOf("const montaje = useMemo("), v.indexOf("const montaje = useMemo(") + 1500);
+  assert.match(m, /fixtures\.flatMap\(espaciosDelMueble\)/, "el montaje no sale de las filas con la reserva marcada");
+  assert.match(m, /if \(fase !== "vigente" && fase !== "pendiente"\) return;/, "el montaje cuenta lo que no es contrato");
+  // «Reservado» dice hasta cuándo, en la tabla y en la ficha; y no se renueva.
+  assert.match(v, /\{entry\.reservaHasta && \(\s*<span style=\{\{ color: "var\(--ink-3\)" \}\}> hasta \{diaCorto\(entry\.reservaHasta\)\}<\/span>/);
+  assert.match(v, /if \(entry\.reservaHasta \|\| !entry\.supplierName\.trim\(\) \|\| !entry\.endDate\) return false;/, "una reserva se ofrece a renovar");
+  // La fecha no se le pega al mueble (ni viaja en el PUT del plano), y el mapa crudo la compara.
+  const mueble0 = { id: "f", code: "GON-02", type: "cross", sede: "CENTRO" };
+  const [fusionado] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservaHasta: "2026-11-02" } });
+  assert.ok(!("reservaHasta" in fusionado), "la fecha de la reserva se pegó al mueble");
+  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta",\s*\] as const;/);
+  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\)\) return false;/,
+    "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos");
+});
+
 prueba("Vender, Supervisar y el plano 2D LEEN la ocupación (sin esto, toda cara por participación se ve libre)", () => {
   const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(v, /useEffect\(\(\) => \{\s*if \(hayParticipaciones\) void cargarOcupacion\(sede\);\s*\}, \[hayParticipaciones, sede, cargarOcupacion\]\);/,
@@ -798,10 +884,28 @@ prueba("una cara por participación no ofrece «Negociar» en la ficha ni en el 
   assert.match(v, /\{!hasContract && pc \? \(\s*!isAdmin && <CaraPorParticipacion fixture=\{fixture\} face=\{entry\.face\} \/>/);
 });
 
-prueba("«Renovar» de una participación sólo lleva a Distribución un contrato vivo", () => {
+prueba("«Renovar» de una participación abre Vender armado, y sólo renueva un contrato vivo", () => {
+  // Rediseño de Vender (PR 1): ya no va a Distribución; abre Vender con el %
+  // de la cara. Marca el término que renueva (`renueva`) sólo si es un
+  // contrato vigente o firmado: sobre una reserva, un vencido o un cancelado
+  // es un contrato nuevo, sin `renueva` y sin las fechas que lo seguirían.
   const v = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(v, /if \(t && t\.estado === "contrato" && \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)\) termino = t\.id;/,
-    "renovar abre el formulario sobre una reserva, un vencido o un cancelado");
+    "renovar marca para renovar una reserva, un vencido o un cancelado");
+  assert.match(v, /renueva: termino \? \{ \[caraCompleta\]: termino \} : \{\},/, "renueva un término que no es un contrato vivo");
+  assert.match(v, /desde: termino && desde \? toISODate\(desde\) : "",/, "sobre algo que no se renueva, arranca después de un contrato que no corre");
+  assert.match(v, /negociar\(f, entry\.face, semillaPc\);/, "renovar una participación no abre Vender");
+  // El botón «Renovar» de la ficha de Supervisar (las participaciones de la
+  // cara) también abre Vender: nunca el Editor 3D → Distribución.
+  const pdc = sinComent(fuenteDe("components/Distribucion/ParticipacionesDeLaCara.tsx"));
+  assert.doesNotMatch(pdc, /abrir\([^)]*,[^)]*,[^)]*\)/, "«Renovar» de la ficha abre Distribución con el término");
+  assert.doesNotMatch(pdc, /renovable\.id/, "«Renovar» de la ficha manda el término a Distribución");
+  assert.match(pdc, /\{renovable && onRenovar && \(\s*<button\s+type="button"\s+onClick=\{\(\) => onRenovar\(p\.numero\)\}/,
+    "«Renovar» de la ficha no pasa por `onRenovar`");
+  assert.match(v, /<ParticipacionesDeLaCara\b[^>]*?onRenovar=\{onRenovarParte\s*\? \(n\) => \{\s*const parte = partirCodigo\(`X-PC\$\{n\}`\)\.parte;\s*onRenovarParte\(\{ \.\.\.entry, code: codigoDeParte\(fixture\.code, entry\.face, parte\), parte \}\);/,
+    "la ficha no conecta «Renovar» de una participación con `renovar` (que abre Vender)");
+  assert.match(v, /if \(entry\.parte && esParticipacion\(entry\.parte\)\) \{\s*void renovarParticipacion\(entry\);\s*return;\s*\}/,
+    "`renovar` no manda una participación a `renovarParticipacion`");
 });
 
 /* ── fase 2 · I4: Vender y los bajos ─────────────────────────────────────────
@@ -838,21 +942,33 @@ prueba("fase 2 · UNA cuenta para la clave, la columna y el pie; «al cerrar» e
   const c = PC.contarElPeriodo(caras);
   assert.deepEqual(c, { libres: 2, libresPc: 1, dias: 1, partes: 1, participacion: 2, tomados: 1 });
   assert.equal(PC.enParte(c), 4);
-  assert.equal(PC.alCerrar(c), 3, "«al cerrar» suma caras por participación (o resta lo que sí entra)");
+  // Rediseño de Vender (PR 1): una cara por participación se vende EN VENDER
+  // (una línea de porcentaje), así que «al cerrar» la cuenta como cualquier
+  // otra: es libres + el «+N», lo mismo que la columna. Nunca lo tomado ni lo
+  // que ya está en el contrato.
+  assert.equal(PC.alCerrar(c), 6, "«al cerrar» no es libres + en parte (deja afuera las caras por participación o cuenta lo tomado)");
+  assert.equal(PC.alCerrar(c), c.libres + PC.enParte(c));
+  for (const k of [0, 1, 2, 3, 5, 8]) {
+    const muchas = Array.from({ length: k * 3 }, (_, i) => caras[(i * 7 + k) % caras.length]);
+    const cc = PC.contarElPeriodo(muchas);
+    assert.equal(PC.alCerrar(cc), cc.libres + cc.dias + cc.partes + cc.participacion, "«al cerrar» se aparta de la columna");
+    assert.equal(PC.alCerrar(cc) + cc.tomados, muchas.filter((x) => !x.enContrato).length, "«al cerrar» + tomadas no da lo que hay fuera del contrato");
+  }
   assert.equal(PC.desgloseDelParcial(c), "1 se libera en el periodo · 1 con partes vendidas · 2 por participación");
-  assert.equal(PC.sinLasDeParticipacion(c), "Sin las 3 por participación: se cargan en el Editor 3D → Distribución.");
+  assert.equal(PC.sinLasDeParticipacion, undefined, "volvió «Sin las N por participación: se cargan en el Editor 3D → Distribución»");
+  assert.equal(PC.conLasDeParticipacion(c), "Incluye 3 por participación: entran al contrato como una línea de porcentaje cada una.");
   // Singular, plural y vacío.
   assert.equal(PC.desgloseDelParcial({ ...c, dias: 3, partes: 0, participacion: 0 }), "3 se liberan en el periodo");
   assert.equal(PC.desgloseDelParcial(PC.contarElPeriodo([])), "");
   assert.deepEqual(PC.contarElPeriodo([]), { libres: 0, libresPc: 0, dias: 0, partes: 0, participacion: 0, tomados: 0 });
-  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: true }])),
-    "Sin la 1 por participación: se carga en el Editor 3D → Distribución.");
-  assert.equal(PC.sinLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: false }])), null);
+  assert.equal(PC.conLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: true }])),
+    "Incluye 1 por participación: entra al contrato como una línea de porcentaje.");
+  assert.equal(PC.conLasDeParticipacion(PC.contarElPeriodo([{ dispo: "libre", deParticipacion: false }])), null);
   // Lo que está en el contrato no cuenta en ningún lado; un parcial sin motivo ni participación es «días».
   assert.deepEqual(PC.contarElPeriodo([{ dispo: "tomado", deParticipacion: false, enContrato: true }, { dispo: "parcial", deParticipacion: false }]),
     { libres: 0, libresPc: 0, dias: 1, partes: 0, participacion: 0, tomados: 0 });
   // Vender lo mira el proveedor: sólo cuentas, ni un % ni un nombre.
-  assert.doesNotMatch(PC.desgloseDelParcial(c) + PC.sinLasDeParticipacion(c), /%|\$|proveedor|marca/i);
+  assert.doesNotMatch(PC.desgloseDelParcial(c) + PC.conLasDeParticipacion(c), /%|\$|proveedor|marca|Distribuci/i);
 });
 
 prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElPeriodo`: nada a mano, ni «Vence dentro» ni «Se libera en el periodo»", () => {
@@ -880,11 +996,14 @@ prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElP
   // La tarifa: el encabezado, el «+N» con su porqué y «al cerrar» sin lo que no entra.
   assert.match(t, /<th scope="col" className="der2 c2">Libres · en parte<\/th>/);
   assert.doesNotMatch(t, /Libres · entran|adentro del periodo`/);
-  assert.match(t, /title=\{cuenta\.participacion > 0 \? `\$\{porQue\}\. \$\{DONDE_SE_CARGAN\}` : porQue\}/);
+  // El «+N» dice por qué sin mandar a nadie al Editor 3D: una cara por
+  // participación se vende acá (rediseño de Vender, PR 1).
+  assert.match(t, /className="entran"\s*title=\{porQue\}/);
+  assert.doesNotMatch(t, /DONDE_SE_CARGAN|se cargan? en el Editor 3D/, "Vender (o Supervisar) vuelve a decir que las participaciones se cargan en Distribución");
   assert.match(t, /\+\{nParte\}/);
   assert.match(t, /\{alCerrar\(tallyVender\)\} al cerrar/);
   assert.doesNotMatch(t, /tallyVender\.libres \+ tallyVender\.parciales/, "«al cerrar» vuelve a sumar todo lo ámbar");
-  assert.match(t, /title=\{sinLasDeParticipacion\(tallyVender\) \?\? undefined\}/);
+  assert.match(t, /title=\{conLasDeParticipacion\(tallyVender\) \?\? undefined\}>\s*\{alCerrar\(tallyVender\)\} al cerrar/);
   assert.match(t, /title=\{desgloseDelParcial\(tallyVender\)\}>\+\{enParte\(tallyVender\)\}/);
 });
 

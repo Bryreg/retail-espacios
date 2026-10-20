@@ -30,3 +30,13 @@ def ahora() -> datetime:
 def hoy() -> date:
     """El día de hoy en Colombia."""
     return ahora().date()
+
+
+_MESES_CORTOS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
+
+
+def dia_corto(d: date) -> str:
+    """«3 nov»; con el año si no es el de hoy («3 ene 2027»). Es como se dicen
+    las fechas delante del proveedor, en Vender (nunca ISO)."""
+    texto = f"{d.day} {_MESES_CORTOS[d.month - 1]}"
+    return texto if d.year == hoy().year else f"{texto} {d.year}"

@@ -245,7 +245,8 @@ const SITIOS = [
   ["pages/DashboardView.tsx", "la búsqueda (por el nombre propio y por el tipo)",
     /function faceMatchesQuery\(entry: FaceEntry, q: string, nombres: NombresPropios\)[\s\S]*?conNombrePropio\(entry\.fixture, nombres, ""\)[\s\S]*?tipoDelMueble\(entry\.fixture, nombres\)/],
   ["components/Contrato/ModoVender.tsx", "la lista del contrato en Vender",
-    /\{tipoDelMueble\(l\.fixture, nombresPropios\)\}<\/span>/],
+    // Un porcentaje dice «…, por participación» con el MISMO nombre propio.
+    /const tipo = tipoDelMueble\(l\.fixture, nombresPropios\);\s*const tipoDeLaLinea = l\.tipo === "pc" \? `\$\{tipo\.replace\([^`]*\}, por participación` : tipo;[\s\S]*?\{tipoDeLaLinea\}<\/span>/],
   ["components/Contrato/ModoVender.tsx", "el visor 3D y la lámina de Vender (la chapa de cada cara)",
     // Por cara del visor (las puertas vendidas de una nevera son una cara).
     /const carasDelVisor = useMemo<CaraDelVisor\[\]>\(\(\) => \{[\s\S]*?tipo: tipoDelMueble\(l\.fixture, nombresPropios\),[\s\S]*?\}, \[c\.lineas, fichasPropias, nombresPropios\]\);/],

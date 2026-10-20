@@ -34,7 +34,8 @@ from app.auth import get_config
 from app.fechas import hoy
 from app.models.models import NotificationLog, SpaceLease
 from app.services.contacts import recipients_for
-from app.services.mailer import format_cop, html_shell, send_mail_to
+from app.services.condiciones import ETIQUETA_DEL_VALOR, valor_de_lease
+from app.services.mailer import html_shell, send_mail_to
 
 logger = logging.getLogger("retail.reminders")
 
@@ -115,7 +116,7 @@ def check_expiring_leases(db: Session) -> int:
             ("Marca", lease.marca or "—"),
             ("Inicio", str(lease.start_date)),
             ("Fin", str(lease.end_date)),
-            ("Valor mensual", format_cop(lease.monthly_rent)),
+            (ETIQUETA_DEL_VALOR, valor_de_lease(db, lease)),
             ("Días restantes", str(days_left)),
         ]
         footer = (

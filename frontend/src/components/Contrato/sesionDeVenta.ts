@@ -31,21 +31,12 @@ export interface SesionDeVenta {
    *  arranca en «Toda la cara» y parado: es lo primero que se muestra. */
   probar: (fixtureId: string, cara: "A" | "B", arteId: number | null) => void;
   ajustar: (fixtureId: string, cara: "A" | "B", cambios: Partial<ComoSePrueba>) => void;
-  /** La lámina del visor que quedó como planometría del contrato: el archivo
-   *  y la cara (`GON-02·A`). Es de ESTA prueba —de este proveedor— y se va
-   *  con ella: la ficha saca el archivo de la planometría cuando esto vuelve
-   *  a `null` (ver `ModoVender`). */
-  lamina: LaminaAdjunta | null;
-  marcarLamina: (l: LaminaAdjunta | null) => void;
   vaciar: () => void;
 }
-
-export interface LaminaAdjunta { archivo: File; cara: string }
 
 export function useSesionDeVenta(proveedor: string): SesionDeVenta {
   const [prueba, setPrueba] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [como, setComo] = useState<ReadonlyMap<string, ComoSePrueba>>(() => new Map());
-  const [lamina, marcarLamina] = useState<LaminaAdjunta | null>(null);
 
   // Siempre un mapa NUEVO y nunca una mutación: el memo de materiales de la
   // escena compara por identidad, y mutar el mismo Map no repinta nada
@@ -78,14 +69,11 @@ export function useSesionDeVenta(proveedor: string): SesionDeVenta {
   const vaciar = useCallback(() => {
     setPrueba(new Map());
     setComo(new Map());
-    marcarLamina(null);
   }, []);
 
   // Otro PROVEEDOR, otra prueba: si la ficha pasa de «Alpina» a «Postobón»,
   // el yogur de Alpina no puede quedar puesto en la punta que se le muestra a
-  // Postobón. Ni su lámina adjunta como planometría: trae «PROVEEDOR Alpina»
-  // y su producto, viaja por correo y es la guía con la que el mercaderista
-  // arma la exhibición de Postobón. Escribirlo distinto («alpina », «ALPINA») no es otro proveedor
+  // Postobón. Escribirlo distinto («alpina », «ALPINA») no es otro proveedor
   // —es la regla de «Guardar contrato»— y no vacía nada. El ref arranca con
   // el nombre del primer render: montar la ficha no vacía (y en desarrollo,
   // con StrictMode, el efecto doble tampoco: compara contra el mismo nombre).
@@ -98,7 +86,7 @@ export function useSesionDeVenta(proveedor: string): SesionDeVenta {
   }, [proveedor, vaciar]);
 
   return useMemo(
-    () => ({ prueba, como, probar, ajustar, lamina, marcarLamina, vaciar }),
-    [prueba, como, probar, ajustar, lamina, vaciar],
+    () => ({ prueba, como, probar, ajustar, vaciar }),
+    [prueba, como, probar, ajustar, vaciar],
   );
 }

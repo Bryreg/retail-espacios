@@ -9,13 +9,17 @@ import {
   FileText,
   ChevronRight,
   Search,
-  SlidersHorizontal,
   CalendarRange,
   ChevronDown,
   Handshake,
   FileSpreadsheet,
   Box,
   Layers,
+  // Rediseño 2026-10 (hoja de piezas): la barra de la sede, el ícono de cada
+  // tarjeta y de cada cifra, y las herramientas del plano. `MapIcon` es el
+  // `Map` de lucide con su otro nombre: `Map` a secas taparía el de JS.
+  MapPin, Tag, MapIcon, Clock, Gauge, ClipboardCheck, Table2, Percent,
+  Banknote, CircleDashed, AlarmClock, PieChart, Hammer, Minus, Focus, Mouse,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { useFichasPropias } from "../store/fichasPropias";
@@ -49,7 +53,7 @@ import type {
 import SeasonPicker, { describeRange, hoyComoRango, type DateRange } from "../components/SeasonPicker/SeasonPicker";
 import Libera from "../components/Libera/Libera";
 import ModoVender from "../components/Contrato/ModoVender";
-import { fechaCorta, money } from "../components/Contrato/Contrato";
+import { claveDePrecio, diaCorto, fechaCorta, money } from "../components/Contrato/Contrato";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
@@ -69,7 +73,7 @@ import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../type
    donde hay que ir a buscarlas si el parte vuelve. */
 import { nombreDeMueble, nombreAnterior, nombresChocados, choqueDeRotulo } from "../utils/nomenclatura";
 import { conNombrePropio, nombreDeTarifa, tipoDelMueble, type NombresPropios } from "../catalogo/nombresPropios";
-import type { SemillaContrato } from "../components/Contrato/Contrato";
+import type { CaraElegida, SemillaContrato } from "../components/Contrato/Contrato";
 import { fechaEnCurso } from "../utils/propuesta";
 import { espaciosSinMueble } from "../utils/espaciosSinMueble";
 import { contratosSinMueble, type ContratoSinMueble } from "../utils/auditoriaDesfase";
@@ -80,10 +84,13 @@ import {
   partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
   tarifaDeLaFila, textoDeParte, comoSeLiberaLaCara, type ComoSeLibera, type EnContrato, type IndiceDePartes, type ParteRef,
   comoSeLiberaPorParticipacion, dispoDeParticipacion, esParticipacion, ocupadoPorParticipacion, parteVisible,
-  porParticipacion, textoAlTocarEnVender, textoDeLoComprometido, type ParticipacionDeLaCara,
+  porParticipacion, textoDeLoComprometido, type ParticipacionDeLaCara,
+  // Rediseño de Vender: la forma de cada línea y lo que queda del contrato
+  // cuando el mueble cambia cómo se vende.
+  aLaFormaNueva, conLaForma, type FormaDeLaLinea,
   // fase 2 · I4: el ámbar de Vender contado por motivo, el rótulo corto de una
   // cara por participación y lo puesto a mano que manda sobre la ocupación.
-  DONDE_SE_CARGAN, alCerrar, contarElPeriodo, desgloseDelParcial, enParte, motivoDelParcial, sinLasDeParticipacion,
+  alCerrar, conLasDeParticipacion, contarElPeriodo, desgloseDelParcial, enParte, motivoDelParcial,
   textoCortoDeParticipacion, tomadaPorLoSuyo, type CaraDelPeriodo, type ConteoDelPeriodo,
 } from "../utils/partes";
 // Las participaciones de cara (§4.8, §9.9, §11): la ocupación ANÓNIMA para
@@ -94,6 +101,7 @@ import type { OcupacionOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
 import type { OcupacionDeCara } from "../utils/participaciones";
 import { palabraDeLaCara } from "../utils/revisarParticipaciones";
+import { conPartes, type CambioDePartes } from "../utils/partesDelMueble";
 import ParticipacionesDeLaCara, { useAbrirEnDistribucion } from "../components/Distribucion/ParticipacionesDeLaCara";
 import RevisarParticipaciones, {
   TablaDeParticipaciones, useRevisionDeParticipaciones,
@@ -101,6 +109,12 @@ import RevisarParticipaciones, {
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
 import { partesConEstado } from "../utils/partesDelMueble";
 import { revisarImportacion, aplicarImportacion, type Importacion } from "../api/layout";
+// Rediseño de Vender (PR 1): lo que Supervisar revisa de los cobros por % de
+// las ventas y de las reservas de espacio. SÓLO Supervisar y sólo quien
+// administra: Vender no llega a este módulo (`probar-vender`).
+import {
+  ReservasSinConfirmar, VentasPorCargar, useCobrosPorVentas, useReservasDeEspacio,
+} from "../components/Supervisar/CobrosYReservas";
 import {
   ALTURA, UNIDAD_ISO, VISTA_INICIAL, ZOOM_MAX, ZOOM_MIN, encuadreInicial, enElMundo, ejes,
   esquinasDelLado, factorDeRueda, girar, ladosVisibles, ordenDePintado, proyectar, sombraDelLado,
@@ -118,19 +132,17 @@ function daysUntil(dateStr: string): number {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
+/** Plata, SIEMPRE entera: «$ 1.400.000», nunca «1,4 M» ni «850 k» (regla del
+ *  dueño al aprobar la hoja de piezas, 2026-10). Es `money` del contrato, la
+ *  misma cuenta en las dos pantallas; cero o nada es «—».
+ *
+ *  Acá vivía `compactCOP` («$1,4 M» / «$850 k») para la fila «Bajo tarifa de
+ *  referencia», «donde los montos enteros chocan». Se fue: un monto abreviado
+ *  obliga a hacer la cuenta para saber cuánto es, y la fila cede el proveedor
+ *  antes que la cifra. `probar-vender` falla si vuelve una abreviatura. */
 function formatCOP(n: number): string {
   if (!n) return "—";
-  return "$" + n.toLocaleString("es-CO");
-}
-
-/** "$1,4 M" / "$850 k" — for narrow columns where full amounts collide. */
-function compactCOP(n: number): string {
-  if (!n) return "—";
-  if (n >= 995_000) {
-    return "$" + (n / 1e6).toLocaleString("es-CO", { maximumFractionDigits: 1 }) + " M";
-  }
-  if (n >= 1_000) return "$" + Math.round(n / 1e3).toLocaleString("es-CO") + " k";
-  return "$" + n.toLocaleString("es-CO");
+  return money(n);
 }
 
 const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -170,6 +182,28 @@ interface FaceEntry {
    *  cara, con su propio contrato. `code` es entonces el de la parte
    *  (`NEV-03-PU2`). Sin esto, la cara entera, como siempre. */
   parte?: ParteRef | null;
+  /** Una RESERVA viva (rediseño de Vender, §8), no un contrato: hasta cuándo
+   *  se sostiene. Sólo en Supervisar y sólo para quien administra
+   *  (`conLaReserva`); con esto la fila va como «Reservado» y no suma canon,
+   *  contratos, vencimientos ni montaje. */
+  reservaHasta?: string | null;
+}
+
+/** Vender, cuando el Plano no deja cambiar cómo se vende un mueble: sin el
+ *  mensaje del servidor, que puede nombrar a otro proveedor (`venderAsi`). */
+const NO_SE_CAMBIO_LA_FORMA = "No se pudo cambiar cómo se vende: tiene algo vendido o tomado. Revisalo en el Plano.";
+
+/** Supervisar: una cara o una parte TOMADA por una reserva viva no es un
+ *  contrato. La base la manda `occupied` con su proveedor, sus fechas y su
+ *  precio (`GET /spaces/comercial`, con `reservaHasta` sólo para quien
+ *  administra); acá pasa a «Reservado» con su fecha, y con eso queda fuera del
+ *  canon, de «N contratos», de «Por vencer», de «Contratado sin montar», de
+ *  «Quién paga el canon» y del bajo tarifa (`contractPhase` = sin contrato).
+ *  Vender no pasa por acá: la ve «Tomado», sin decir que es una reserva. */
+function conLaReserva(e: FaceEntry, estado: EstadoPorEspacio, sede: string): FaceEntry {
+  const corto = (e.code || "").trim().toUpperCase();
+  const hasta = (estado[fullSpaceCode(e.fixture.sede || sede, corto)] ?? estado[corto])?.reservaHasta;
+  return hasta ? { ...e, status: "reserved", reservaHasta: hasta } : e;
 }
 
 const EMPTY_FACE: FaceData = {
@@ -218,7 +252,8 @@ function facesOf(f: UnifiedFixture): FaceEntry[] {
 const DIAS_PARA_RENOVAR = 60;
 
 function renovable(entry: FaceEntry): boolean {
-  if (!entry.supplierName.trim() || !entry.endDate) return false;
+  // Una reserva no se renueva: se confirma o se cancela («Reservas»).
+  if (entry.reservaHasta || !entry.supplierName.trim() || !entry.endDate) return false;
   const dias = daysUntil(entry.endDate);
   return dias !== null && dias <= DIAS_PARA_RENOVAR;
 }
@@ -236,6 +271,9 @@ interface Disponible {
   face: "A" | "B";
   /** El primer día en que queda libre. Ausente = libre desde el arranque. */
   desde?: Date;
+  /** Libre desde el arranque y tomada más adelante: el último día libre
+   *  (`ultimoDiaLibreDesdeElArranque`), como el rótulo del plano. */
+  hasta?: Date;
   /** Parcial por sus partes: «1 de 3 puertas vendida», en vez del día. */
   porPartes?: string;
   /** La cara se vende por participación: no se suma al contrato de Vender
@@ -264,6 +302,29 @@ function primerDiaLibre(
     if (daysTakenInRange(face, d, d) === 0) return d;
   }
   return undefined;
+}
+
+/** Si la cara está libre desde el ARRANQUE del periodo y se toma más adelante
+ *  (un contrato o una reserva que empiezan después), el último día libre de
+ *  ese primer tramo; si no, `null`. Con eso el rótulo dice «libre hasta 31 oct»
+ *  y no «libre 19 oct», que se lee como «se libera el 19 oct». Lo mismo para
+ *  un contrato que para una reserva: las dos llegan `occupied` con sus fechas. */
+function ultimoDiaLibreDesdeElArranque(
+  face: { status: SpaceStatus; startDate?: string; endDate?: string },
+  desde: Date, from: Date, to: Date,
+): Date | null {
+  const dia = 86_400_000;
+  const d0 = new Date(from); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(desde); d1.setHours(0, 0, 0, 0);
+  const fin = new Date(to); fin.setHours(0, 0, 0, 0);
+  if (d1.getTime() !== d0.getTime()) return null;
+  let ultimo: Date | null = null;
+  for (let t = d0.getTime(); t <= fin.getTime(); t += dia) {
+    const d = new Date(t);
+    if (daysTakenInRange(face, d, d) > 0) return ultimo;
+    ultimo = d;
+  }
+  return null;
 }
 
 /** Faces that take part in the COMMERCIAL picture.
@@ -549,22 +610,35 @@ function Card({
 
 // ─── Encabezado de panel ──────────────────────────────────────────────────────
 
-/** Título, aclaración y lo que vaya a la derecha, todos sobre la misma línea
- *  de base.
+/** El ícono de una tarjeta, de una cifra o de un botón: UN tamaño y UN trazo
+ *  en toda la pantalla (hoja de piezas del rediseño, 2026-10: «16 px y trazo
+ *  1,75 en todos lados: tarjeta, cifra, campo y botón»). El color lo pone
+ *  quien lo dibuja: gris en reposo, tinta plena si está activo, rojo sólo en
+ *  una cifra que es alarma. Nunca amarillo. Lo comparten Vender y Supervisar:
+ *  es un objeto de tres números, no dibuja nada de ninguna de las dos. */
+const ICONO_TARJETA = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
+
+/** Título, aclaración y lo que vaya a la derecha, todos sobre la misma línea.
  *
  *  Sin línea divisoria abajo: el encabezado y su contenido son la misma cosa,
  *  y una regla entre los dos los parte en dos bloques que hay que volver a
  *  juntar leyendo. El aire alcanza para separarlos.
  *
- *  El ícono se fue. Había un triangulito, una flechita y una lupa —uno por
- *  panel— y ninguno decía nada que el título no dijera; es el patrón que se
- *  pone cuando hay que llenar un renglón. */
+ *  El ícono VOLVIÓ, con otra regla (rediseño 2026-10). Antes había un
+ *  triangulito, una flechita y una lupa —uno por panel— que no decían nada
+ *  que el título no dijera. Ahora es UN juego (lucide), un tamaño, un trazo y
+ *  un concepto por ícono: el mismo `Tag` en la tarjeta de la tarifa y en el
+ *  botón «Tarifas», el mismo `MapIcon` en el piso de Vender y en el de
+ *  Supervisar. Va suelto, en gris, antes del título. */
 function CardHeader({
   title,
+  icon,
   sub,
   right,
 }: {
   title: string;
+  /** El ícono de la tarjeta (`<X {...ICONO_TARJETA} />`), antes del título. */
+  icon?: React.ReactNode;
   sub?: React.ReactNode;
   /** La zona derecha: la clave del plano, los chips de filtro, «al mes». */
   right?: React.ReactNode;
@@ -572,12 +646,17 @@ function CardHeader({
   return (
     <div
       style={{
-        display: "flex", alignItems: "baseline", gap: 12,
-        padding: "11px 15px 9px", flexShrink: 0,
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "11px 15px 9px", flexShrink: 0, minWidth: 0,
       }}
     >
+      {icon && (
+        <span aria-hidden style={{ display: "inline-flex", flexShrink: 0, color: "var(--ink-2)" }}>
+          {icon}
+        </span>
+      )}
       <h2 style={{
-        fontSize: 14.5, fontWeight: 700, letterSpacing: "-0.005em",
+        fontSize: "var(--t-base)", fontWeight: 700, letterSpacing: "-0.005em",
         color: "var(--ink-1)", margin: 0, whiteSpace: "nowrap", flexShrink: 0,
       }}>
         {title}
@@ -587,7 +666,7 @@ function CardHeader({
           título es lo único de este renglón que no se puede leer a medias. */}
       {sub && (
         <span style={{
-          fontSize: 12, color: "var(--ink-3)", minWidth: 0,
+          fontSize: "var(--t-xs)", color: "var(--ink-3)", minWidth: 0,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>
           {sub}
@@ -597,7 +676,7 @@ function CardHeader({
         <div style={{
           marginLeft: "auto", display: "flex", alignItems: "center", gap: 14,
           flexWrap: "wrap", justifyContent: "flex-end",
-          fontSize: 12, color: "var(--ink-3)", flexShrink: 0,
+          fontSize: "var(--t-xs)", color: "var(--ink-3)", flexShrink: 0,
         }}>
           {right}
         </div>
@@ -887,6 +966,10 @@ const TRAZO = {
   filtro: 1.3 * UNIDAD_ISO,
 };
 
+/** Lo mínimo que mide, EN PANTALLA, lo que se toca de un mueble: 44 × 44 px,
+ *  el blanco para un dedo (WCAG 2.5.5). Ver `ajustarMinimos` en `IsoMap`. */
+const MINIMO_AL_TOCAR = 44;
+
 /** Dos cajas se pisan si se cruzan y también si se acercan a menos de esto: un
  *  rótulo pegado a otra letra se lee mal aunque no la toque. */
 const AIRE_TXT = 2;
@@ -1093,10 +1176,20 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         ? `A: ${rangeSub(faces[0])} · B: ${faces[1] ? rangeSub(faces[1]) : "—"}`
         : rangeSub(faces[0]);
 
+      // La caja del prisma en el plano (sus ocho esquinas proyectadas): con
+      // ella `ajustarMinimos()` sabe cuánto mide el mueble EN PANTALLA.
+      const esquinas = [
+        Q(x0, 0, z0), Q(x1, 0, z0), Q(x1, 0, z1), Q(x0, 0, z1), tA, tB, tC, tD,
+      ];
+      const caja2d = {
+        x0: Math.min(...esquinas.map((q) => q[0])), x1: Math.max(...esquinas.map((q) => q[0])),
+        y0: Math.min(...esquinas.map((q) => q[1])), y1: Math.max(...esquinas.map((q) => q[1])),
+      };
+
       return {
         f, topHalves, sides, rentable, double, faces, stroke,
         topOutline: pts(tA, tB, tC, tD),
-        tooltipSub,
+        tooltipSub, caja2d,
       };
     });
 
@@ -1165,10 +1258,16 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         // Fase 2 · I4: una cara por participación lleva en el plano la línea
         // CORTA («queda 45 %»); la larga sigue en el cartel del mouse.
         const corto = dispo === "parcial" ? cortoDe?.(f, entry) ?? null : null;
+        // Libre HOY (el primer día del periodo) y tomada más adelante —un
+        // contrato o una reserva que arrancan después—: «libre 19 oct» se leía
+        // como «se libera el 19 oct». Dice hasta cuándo se puede vender.
+        const hastaLibre = desde && !partes ? ultimoDiaLibreDesdeElArranque(entry, desde, range.from, range.to) : null;
         salida.push({
           clave: `${f.id}-${entry.face}`,
           cod: doble ? `${nombre}·${entry.face}` : nombre,
-          fecha: partes ?? (desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : ""),
+          fecha: partes ?? (hastaLibre
+            ? `libre hasta ${hastaLibre.getDate()} ${MONTHS_ES[hastaLibre.getMonth()]}`
+            : desde ? `libre ${desde.getDate()} ${MONTHS_ES[desde.getMonth()]}` : ""),
           ...(corto ? { corto } : {}),
           // Sólo la cuenta. Antes acompañaba el código del mueble, que era lo
           // único que distinguía a los dos gemelos; ahora los dos se llaman
@@ -1312,7 +1411,40 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     }
   }, [aPantalla, encuadre]);
 
-  const aplicar = useCallback(() => { escribir(); acomodar(); }, [escribir, acomodar]);
+  /** EL MÍNIMO PARA EL DEDO. Una punta o un impulsador miden, con la sede
+   *  entera a la vista, ocho o diez píxeles: con el mouse se apunta, con el
+   *  dedo no. Cada mueble que vende algo lleva una caja de impacto INVISIBLE
+   *  (`.pl-min`, en la capa de impactos) que mide por lo menos 44 × 44 px EN
+   *  PANTALLA, centrada en el mueble; se recalcula con cada acercamiento
+   *  (`aplicar`), y si el mueble ya mide eso, la caja queda en cero y manda
+   *  el prisma. No cambia nada de lo que se ve, no entra al deschoque de los
+   *  rótulos (que mide sólo los textos y las herramientas) y queda DEBAJO de
+   *  las cajas de los rótulos, que siguen cobrando su clic. */
+  const minRefs = useRef(new Map<string, SVGRectElement>());
+  const ajustarMinimos = useCallback(() => {
+    const c = encuadre();
+    const sc = escenaActual.current;
+    if (!c || !sc) return;
+    const lado = MINIMO_AL_TOCAR / c.k;
+    for (const p of sc.prisms) {
+      const el = minRefs.current.get(p.f.id);
+      if (!el) continue;
+      const { x0, x1, y0, y1 } = p.caja2d;
+      const w = x1 - x0, h = y1 - y0;
+      if (w * c.k >= MINIMO_AL_TOCAR && h * c.k >= MINIMO_AL_TOCAR) {
+        el.setAttribute("width", "0");
+        el.setAttribute("height", "0");
+        continue;
+      }
+      const W = Math.max(w, lado), H = Math.max(h, lado);
+      el.setAttribute("x", ((x0 + x1) / 2 - W / 2).toFixed(3));
+      el.setAttribute("y", ((y0 + y1) / 2 - H / 2).toFixed(3));
+      el.setAttribute("width", W.toFixed(3));
+      el.setAttribute("height", H.toFixed(3));
+    }
+  }, [encuadre]);
+
+  const aplicar = useCallback(() => { escribir(); ajustarMinimos(); acomodar(); }, [escribir, ajustarMinimos, acomodar]);
 
   /** Medir bien es todo el asunto. Un `requestAnimationFrame` NO alcanza: el
    *  navegador corre esos avisos ANTES de rehacer el dibujo, así que la caja
@@ -1610,19 +1742,28 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         if (arrastro.current) { arrastro.current = false; e.stopPropagation(); e.preventDefault(); }
       }}
     >
+      {/* Las herramientas: tres botones de ícono de 32 px (hoja de piezas:
+          `Plus` · `Minus` · `Focus`, el mismo trazo que el resto). «Centrar»
+          perdió la palabra en pantalla, no en el `aria-label` ni en el
+          `title`, que dicen qué hace. */}
       <div className="herr">
-        <button type="button" aria-label="Acercar el plano"
-          onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom * 1.25); }}>+</button>
-        <button type="button" aria-label="Alejar el plano"
-          onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom / 1.25); }}>−</button>
-        <button type="button" title="Volver a la vista de siempre, con la sede entera"
+        <button type="button" aria-label="Acercar el plano" title="Acercar"
+          onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom * 1.25); }}>
+          <Plus {...ICONO_TARJETA} />
+        </button>
+        <button type="button" aria-label="Alejar el plano" title="Alejar"
+          onClick={(e) => { e.stopPropagation(); ponerZoom(cam.current.zoom / 1.25); }}>
+          <Minus {...ICONO_TARJETA} />
+        </button>
+        <button type="button" aria-label="Centrar el plano"
+          title="Centrar: volver a la vista de siempre, con la sede entera"
           onClick={(e) => { e.stopPropagation(); centrar(); }}>
-          Centrar
+          <Focus {...ICONO_TARJETA} />
         </button>
       </div>
       {ayuda && (
         <p className="herr-ayuda" aria-hidden>
-          <span className="con-mouse">Arrastrá para girar · clic derecho para mover · rueda para acercar</span>
+          <span className="con-mouse"><Mouse {...ICONO_TARJETA} />Arrastrá para girar · clic derecho para mover · rueda para acercar</span>
           <span className="con-dedo">Un dedo gira · dos dedos acercan y mueven</span>
         </p>
       )}
@@ -1757,6 +1898,33 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
             —o uno que no se alquila, que además vaciaba el contrato—.
             Las miden `calibrar()` y `acomodar()`, no un `style`. */}
         <g className="impactos">
+          {/* El mínimo para el dedo (ver `ajustarMinimos`): debajo de las cajas
+              de los rótulos. Una góndola doble elige la cara cuyo rótulo
+              queda más cerca del toque. */}
+          {scene.prisms.filter((p) => seVendeAlgo(p.f)).map(({ f, faces, tooltipSub }) => (
+            <rect
+              key={`min-${f.id}`}
+              className="pl-hit pl-min"
+              x={0} y={0} width={0} height={0}
+              ref={(el) => { if (el) minRefs.current.set(f.id, el); else minRefs.current.delete(f.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                let cara: "A" | "B" = "A";
+                const c = encuadre();
+                if (faces.length > 1 && c) {
+                  const [px, py] = aPlano(e.clientX, e.clientY, c);
+                  const d = (k: string) => {
+                    const a = scene.anclas.get(k);
+                    return a ? Math.hypot(a[0] - px, a[1] - py) : Infinity;
+                  };
+                  if (d(`${f.id}-B`) < d(`${f.id}-A`)) cara = "B";
+                }
+                elegir(f, e, cara);
+              }}
+              onMouseMove={(e) => handleMove(e, conNombrePropio(f, nombresPropios, f.label || f.code), tooltipSub)}
+              onMouseLeave={() => setTip(null)}
+            />
+          ))}
           {labels.map((l) => {
             // Con `partirClave`: un `id` puede tener guiones, y una llave de
             // una parte (`${id}-A-PU2`) no es la de una cara.
@@ -2497,7 +2665,10 @@ function FixtureDetailCard({
   const rentable = isRentable(fixture);
   const faces = facesOf(fixture);
   const double = isDoubleGondola(fixture) && rentable;
-  const entry = face === "B" && faces.length > 1 ? faces[1] : faces[0];
+  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  const sedeDelMapa = useFixtureStore((s) => s.sede);
+  // Una reserva viva se dice «Reservado», con su fecha (`conLaReserva`).
+  const entry = conLaReserva(face === "B" && faces.length > 1 ? faces[1] : faces[0], estadoComercial, sedeDelMapa);
   // Por el código COMPLETO. Buscaba por el corto —`PUN-04` en vez de
   // `NAVE-PUN-04`— y `by-code` devolvía 404 siempre, así que "Archivos del
   // contrato" nunca mostró nada: los que se suben desde el plano quedaban
@@ -2638,6 +2809,11 @@ function FixtureDetailCard({
         ) : (
           <>
             <SupplierLine entry={entry} />
+            {entry.reservaHasta && (
+              <div style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.45 }}>
+                Reservado hasta el {diaCorto(entry.reservaHasta)}: todavía no es un contrato. Se confirma o se cancela en «Reservas».
+              </div>
+            )}
             {(entry.startDate || entry.endDate) && <PeriodBox entry={entry} />}
             {isAdmin && entry.negotiatedValue > 0 && (
               <div
@@ -2691,6 +2867,12 @@ function FixtureDetailCard({
             cara={entry.face}
             sede={sedeDelPlano}
             doble={double}
+            onRenovar={onRenovarParte
+              ? (n) => {
+                const parte = partirCodigo(`X-PC${n}`).parte;
+                onRenovarParte({ ...entry, code: codigoDeParte(fixture.code, entry.face, parte), parte });
+              }
+              : undefined}
           />
         )}
 
@@ -3648,7 +3830,7 @@ function SpacesTable({
 
   return (
     <>
-    <CardHeader title={titulo} sub={sub} right={derecha} />
+    <CardHeader icon={<Table2 {...ICONO_TARJETA} />} title={titulo} sub={sub} right={derecha} />
     {/* Rueda adentro de su tarjeta, con los títulos de las columnas fijos
         arriba: la tarjeta mide lo mismo que la de al lado, como en Vender. */}
     <div ref={cajaRef} style={{ padding: "0 15px 12px", overflow: "auto", flex: 1, minHeight: 0 }}>
@@ -3768,6 +3950,9 @@ function SpacesTable({
                     fontWeight: ds === "expiring" || ds === "expired" || ds === "no_contract" ? 600 : 400,
                   }}>
                     {pin.palabra}
+                    {entry.reservaHasta && (
+                      <span style={{ color: "var(--ink-3)" }}> hasta {diaCorto(entry.reservaHasta)}</span>
+                    )}
                   </span>
                 </td>
                 <td style={celda}>
@@ -3849,8 +4034,11 @@ function SpacesTable({
  *  vender es la clase de exageración que hace que después nadie crea el resto
  *  de los números. */
 function Cifra({
-  rotulo, valor, notas, tasa, alarma, barra,
+  icono, rotulo, valor, notas, tasa, alarma, barra,
 }: {
+  /** El ícono de la cifra (`<X {...ICONO_TARJETA} />`), chico y en gris al
+   *  lado del rótulo; rojo sólo si la cifra es una alarma (hoja de piezas). */
+  icono: React.ReactNode;
   rotulo: string;
   valor: string;
   notas: string[];
@@ -3863,8 +4051,16 @@ function Cifra({
   const cero = valor === "0" || valor === "$0" || valor === "0%";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 130 }}>
-      <span className="rotulo" style={alarma ? { color: "var(--ocupado-txt)" } : undefined}>
-        {rotulo}
+      <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+        <span aria-hidden style={{
+          display: "inline-flex", flexShrink: 0,
+          color: alarma ? "var(--ocupado-txt)" : "var(--ink-3)",
+        }}>
+          {icono}
+        </span>
+        <span className="rotulo" style={alarma ? { color: "var(--ocupado-txt)" } : undefined}>
+          {rotulo}
+        </span>
       </span>
       <b style={{
         fontSize: 17, fontWeight: cero ? 700 : 900, letterSpacing: "-0.015em", lineHeight: 1.15,
@@ -3903,17 +4099,6 @@ function Cifra({
 function Separador() {
   return <div aria-hidden style={{ width: 1, alignSelf: "stretch", background: "var(--line)", flexShrink: 0 }} />;
 }
-
-/** Los botones de la barra: lo que se le hace A LA SEDE —cargar una planilla,
- *  editar tarifas, traer los cambios—. Van juntos y al final porque ninguno
- *  cambia lo que se está leyendo; sólo lo actualizan. */
-const botonBarra: React.CSSProperties = {
-  display: "inline-flex", alignItems: "center", gap: 6,
-  height: 26, padding: "0 10px", borderRadius: "var(--r-md)",
-  border: "1px solid var(--line)", background: "var(--surface)",
-  color: "var(--ink-2)", fontSize: "var(--t-xs)", fontWeight: 500,
-  fontFamily: "inherit", cursor: "pointer", whiteSpace: "nowrap",
-};
 
 /** La lectura del cursor de la escalera, en el encabezado del panel 02.
  *
@@ -4136,6 +4321,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  segundo. */
   const [modo, setModo] = useState<"vender" | "supervisar">("vender");
   const modoEfectivo: "vender" | "supervisar" = isAdmin ? modo : "supervisar";
+  /** Los cortes de ventas sin cargar y cuántos contratos de hoy se cobran por
+   *  ventas (para la nota del canon), y las reservas de espacio vivas. Sólo
+   *  quien administra (es plata y son proveedores) y sólo en Supervisar, que es
+   *  donde se dibujan: en Vender ni se piden. */
+  const cortesSinCargar = useCobrosPorVentas({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  const reservasSinConfirmar = useReservasDeEspacio({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
   /** El contrato que se acaba de cerrar.
    *
    *  Vive en la pantalla y no adentro del formulario a propósito: al guardar,
@@ -4197,8 +4388,53 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  dueña —la nevera entera o por puertas, nunca las dos— está en
    *  `alternarParte`. */
   const alternarDeParte = useCallback((id: string, face: "A" | "B", parte: string | null) => {
-    setEnContrato((lista) => alternarParte(lista, parte ? { id, face, parte } : { id, face }));
+    setEnContrato((lista) => {
+      const nueva = alternarParte(lista, parte ? { id, face, parte } : { id, face });
+      // Desmarcar la última parte de una cara «por partes» no saca la cara del
+      // contrato: la línea queda, con su lista de partes abierta.
+      const p = parte ? partirCodigo(`X-${parte}`).parte : null;
+      if (p && esDivision(p) && !nueva.some((x) => x.id === id && x.face === face)) {
+        return [...nueva, { id, face, porPartes: p.clase }];
+      }
+      return nueva;
+    });
   }, []);
+
+  /** La forma de UNA línea del contrato («Entera · Por entrepaños · Por
+   *  porcentaje»). Si el mueble hoy se vende de otra forma, `cambio` es lo que
+   *  hay que escribirle —ya revisado en la ficha con las MISMAS guardas del
+   *  panel «Cómo se vende» del Plano (`cambioDesdeVender`), sobre sus dos
+   *  caras— y se escribe por el camino de siempre, como «Vender esta cara por
+   *  participación» de Distribución: primero se guarda lo pendiente del plano,
+   *  después el cambio (`commit`) y se manda ya (`PUT /layout`), así el Plano,
+   *  el Editor 3D y el servidor ven la forma nueva. Hay UNA verdad: el
+   *  `partes.division` del mueble. Las líneas de ese mueble que ya estaban en el
+   *  contrato pasan al estado vacío de la forma nueva (`aLaFormaNueva`).
+   *  Devuelve el problema, si el plano no se guardó. */
+  const venderAsi = useCallback(async (
+    id: string, face: "A" | "B", forma: FormaDeLaLinea, cambio: CambioDePartes | null,
+  ): Promise<string | null> => {
+    if (!cambio) {
+      setEnContrato((lista) => conLaForma(lista, id, face, forma));
+      return null;
+    }
+    try {
+      const fs = useFixtureStore.getState();
+      await fs.flushPending();
+      const antes = useFixtureStore.getState();
+      antes.commit(conPartes(selectFixtures(antes), id, cambio));
+      await useFixtureStore.getState().flushPending();
+      // Delante del proveedor: el rechazo del servidor (`message`, `choques`)
+      // puede nombrar a otro proveedor y la fecha de su reserva. Se dice una
+      // frase genérica; el detalle lo ve quien administra en el Plano.
+      if (useFixtureStore.getState().rechazos[sede]) return NO_SE_CAMBIO_LA_FORMA;
+    } catch {
+      // Tampoco el texto del error: sólo que no se pudo.
+      return "No se pudo guardar el plano: probá de nuevo en un momento.";
+    }
+    setEnContrato((lista) => aLaFormaNueva(lista, id, face, forma));
+    return null;
+  }, [sede]);
 
   /** Sumar o sacar una cara de una góndola doble.
    *
@@ -4211,10 +4447,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const alternarCara = useCallback((id: string, face: "A" | "B") => {
     setEnContrato((lista) => {
       if (lista.some((x) => x.id === id && x.face === face)) return lista.filter((x) => !(x.id === id && x.face === face));
-      // Una cara por participación no entra al contrato de Vender, ni desde una
-      // pastilla de la tarifa: se carga en el Editor 3D → Distribución.
+      // Una cara por participación entra como su PORCENTAJE (la línea de %),
+      // nunca entera: también desde una pastilla de la tarifa.
       const f = fixtures.find((x) => x.id === id);
-      if (f && porParticipacion(f)) return lista;
+      if (f && porParticipacion(f)) return [...lista, { id, face, pc: true }];
       return [...lista, { id, face }];
     });
   }, [fixtures]);
@@ -4223,11 +4459,19 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const espaciosDelContrato = useMemo(
     () =>
       enContrato
-        .map(({ id, face, parte }) => {
+        .map(({ id, face, parte, pc, porPartes }): CaraElegida | null => {
           const fixture = fixtures.find((f) => f.id === id);
-          return fixture ? { fixture, face, ...(parte ? { parte } : {}) } : null;
+          // El % (`pc`) y la cara por partes sin ninguna marcada (`porPartes`)
+          // tienen que llegar a la ficha: sin ellos una cara por participación
+          // entraba como «Entera» y «Por entrepaños» no hacía nada.
+          return fixture ? {
+            fixture, face,
+            ...(parte ? { parte } : {}),
+            ...(pc ? { pc } : {}),
+            ...(porPartes ? { porPartes } : {}),
+          } : null;
         })
-        .filter((x): x is { fixture: UnifiedFixture; face: "A" | "B"; parte?: string } => x !== null),
+        .filter((x): x is CaraElegida => x !== null),
     [enContrato, fixtures],
   );
 
@@ -4258,7 +4502,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  estado de React, pasar el mouse por una fila volvería a pintar ciento seis
    *  prismas por cada píxel que se mueve el mouse. */
   const resaltarPlano = useRef<((claves: string[] | null) => void) | null>(null);
-  const destacar = useCallback((claves: string[] | null) => {
+  /** Lo FIJADO: las caras de la fila de la tarifa que se tocó (clic o toque).
+   *  Con el dedo no hay `mouseenter` que valga, y antes tocar una fila no
+   *  encendía nada. Mientras hay algo fijado, «apagar» (`destacar(null)`)
+   *  vuelve a eso y no a la sala entera: el resaltado de un chip o de una
+   *  fila del contrato pasa por encima un momento y después vuelve. */
+  const fijadoEnPlano = useRef<string[] | null>(null);
+  const destacar = useCallback((claves0: string[] | null) => {
+    const claves = claves0 ?? fijadoEnPlano.current;
     resaltarPlano.current?.(claves);
     const set = new Set(claves ?? []);
     document.querySelectorAll<HTMLElement>(".eitem[data-clave]").forEach((el) => {
@@ -4313,9 +4564,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const negociar = (
     f: UnifiedFixture, face: "A" | "B" = "A", semilla: SemillaContrato | null = null, parte?: string,
   ) => {
-    // Una cara por participación no se vende entera ni por la planilla de
-    // Vender: se carga en Distribución (la ficha ni ofrece el botón).
-    if (porParticipacion(f)) return;
     setSelected(f);
     setDetailFace(face);
     setDetailFull(false);
@@ -4324,32 +4572,59 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     setSemilla(semilla);
     // Arranca un contrato NUEVO con ese espacio. Sumarlo a uno que estuviera a
     // medio armar mezclaría dos negociaciones sin avisar. Vendiendo por
-    // partes, con la puerta elegida (`PU2`).
-    setEnContrato([parte ? { id: f.id, face, parte } : { id: f.id, face }]);
+    // partes, con la puerta elegida (`PU2`); una cara por participación, con
+    // su línea de porcentaje (nunca entera).
+    setEnContrato([porParticipacion(f) ? { id: f.id, face, pc: true }
+      : parte ? { id: f.id, face, parte } : { id: f.id, face }]);
     setModo("vender");
   };
 
   /** Con qué abre el formulario cuando se llega por «Renovar». */
   const [semilla, setSemilla] = useState<SemillaContrato | null>(null);
 
-  /** Renovar una participación: el Editor 3D en esa cara, en Distribución, con
-   *  el formulario de renovar su término (`pedirEnfoque3D(…, { distribucion:
-   *  { renovar } })`, §9.2). El término sale de `GET /participaciones/cara`;
-   *  si no se puede leer o ya no se renueva (vencido, cancelado), Distribución
-   *  abre igual, sin el formulario, y ahí se ve por qué. */
+  /** Renovar una participación: Vender con el contrato armado (rediseño de
+   *  Vender, PR 1; antes abría el Editor 3D → Distribución). La línea es el
+   *  porcentaje de esa cara con el término que se renueva (`renueva`), el
+   *  mismo proveedor, marca y %, y el periodo siguiente por el mismo largo.
+   *  El término sale de `GET /participaciones/cara`: esto corre en
+   *  Supervisar, que es de administración —la ficha de Vender no lee
+   *  participaciones—. Si no se puede leer o ya no se renueva (vencido,
+   *  cancelado, una reserva), Vender abre con el porcentaje de esa cara y sin
+   *  `renueva`: lo que se carga es un contrato nuevo. */
   const renovarParticipacion = useCallback(async (entry: FaceEntry) => {
     const f = entry.fixture;
     const codigo = fullSpaceCode(sede, entry.code);
+    const caraCompleta = fullSpaceCode(sede, codigoDeParte(f.code, entry.face, null));
     let termino: number | undefined;
+    let semillaPc: SemillaContrato | null = null;
     try {
       const cara = await leerCara(sede, espacioDeLaCara(f.code, entry.face));
       const t = cara.participaciones.find((p) => p.codigo.toUpperCase() === codigo)?.terminos[0];
       if (t && t.estado === "contrato" && (t.estado_visible === "vigente" || t.estado_visible === "firmado")) termino = t.id;
+      if (t) {
+        const dia = 86_400_000;
+        const fin = parseISODate(t.hasta), ini = parseISODate(t.desde);
+        const largo = fin && ini ? Math.round((+fin - +ini) / dia) : null;
+        const desde = fin ? new Date(+fin + dia) : null;
+        const hasta = desde && largo !== null ? new Date(+desde + largo * dia) : null;
+        semillaPc = {
+          id: `${codigo}|${t.id}`,
+          proveedor: t.proveedor?.nombre ?? entry.supplierName ?? "",
+          correo: "",
+          marca: t.marca ?? entry.brandCategory ?? "",
+          desde: termino && desde ? toISODate(desde) : "",
+          hasta: termino && hasta ? toISODate(hasta) : "",
+          valores: t.valor_mensual && t.valor_mensual > 0
+            ? { [claveDePrecio(`${caraCompleta}-PC1`)]: t.valor_mensual.toLocaleString("es-CO") } : {},
+          porcentajes: { [caraCompleta]: t.puntos_basicos },
+          renueva: termino ? { [caraCompleta]: termino } : {},
+        };
+      }
     } catch {
-      /* sin el término, Distribución abre sin el formulario */
+      /* sin el término, Vender abre con el porcentaje de la cara y nada más */
     }
-    abrirEnDistribucion(f.id, entry.face, termino);
-  }, [sede, abrirEnDistribucion]);
+    negociar(f, entry.face, semillaPc);
+  }, [sede]);
 
   /** La cara que la ficha está mostrando. Se calcula acá y no adentro de la
    *  ficha porque el botón de renovar necesita la MISMA: dos cálculos separados
@@ -4358,8 +4633,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const entradaDetalle = useMemo((): FaceEntry | null => {
     if (!selected) return null;
     const caras = facesOf(selected);
-    return detailFace === "B" && caras.length > 1 ? caras[1] : caras[0];
-  }, [selected, detailFace]);
+    // Una reserva viva no se renueva (`renovable`): va con su fecha.
+    return conLaReserva(detailFace === "B" && caras.length > 1 ? caras[1] : caras[0], estadoComercial, sede);
+  }, [selected, detailFace, estadoComercial, sede]);
 
   /** Renovar: el mismo acuerdo otra vez, empezando cuando termina el que corre.
    *
@@ -4403,8 +4679,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       marca: entry.brandCategory,
       desde: desde ? toISODate(desde) : "",
       hasta: hasta ? toISODate(hasta) : "",
+      // Por la clave de PRECIO de su línea: una parte va en la línea de las
+      // partes de su cara («PUN-02 · EN1»), con un precio para todas.
       valores: entry.negotiatedValue > 0
-        ? { [codigo]: entry.negotiatedValue.toLocaleString("es-CO") }
+        ? { [claveDePrecio(codigo)]: entry.negotiatedValue.toLocaleString("es-CO") }
         : {},
     });
     setSelected(entry.fixture);
@@ -4510,19 +4788,6 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     },
     [mapRange, participacionDe, isAdmin],
   );
-  /** Lo que dice la ficha de Vender al tocar una cara POR PARTICIPACIÓN.
-   *  Tocarla no suma nada (`alTocarEnVender`), y antes tampoco decía nada: el
-   *  panel seguía en «Elegí el primer espacio» como si el toque no hubiera
-   *  llegado. Ahora dice dónde se vende y cuánto queda EN EL PERIODO —el mismo
-   *  número del rótulo del plano—, sin nombres ni montos: del otro lado de la
-   *  mesa puede estar otro proveedor. No ofrece ir a Distribución: eso muestra
-   *  las participaciones de todos, y Vender lo mira el proveedor. */
-  const avisoDeParticipacion = useMemo(() => {
-    if (!selected || !porParticipacion(selected)) return null;
-    const par = participacionDe(selected, detailFace);
-    const d = par ? dispoDeParticipacion(selected, par, mapRange?.from ?? par.hoy, mapRange?.to ?? par.hoy) : null;
-    return textoAlTocarEnVender(d, isAdmin);
-  }, [selected, detailFace, participacionDe, mapRange, isAdmin]);
   const porPartesDeCara = useCallback(
     (f: UnifiedFixture, face: FaceEntry): string | null => comoSeLibera(f, face)?.porPartes ?? null,
     [comoSeLibera],
@@ -4573,9 +4838,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const espaciosDelMueble = useCallback(
     (f: UnifiedFixture): FaceEntry[] => {
       const partes = partesVisiblesDe(f);
-      return partes.length ? [...commercialFacesOf(f), ...partes] : commercialFacesOf(f);
+      // Una reserva viva va «Reservado» (`conLaReserva`): no se monta ni vence.
+      return (partes.length ? [...commercialFacesOf(f), ...partes] : commercialFacesOf(f))
+        .map((e) => conLaReserva(e, estadoComercial, sede));
     },
-    [partesVisiblesDe],
+    [partesVisiblesDe, estadoComercial, sede],
   );
 
   // Deselect when switching sedes: ese mueble es de la otra tienda, y un
@@ -4700,9 +4967,13 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           e.claves.push(clave);
         } else if (a === "parcial") {
           const como = fila ? fila.como : comoSeLibera(f, face);
+          // Libre hoy y tomada más adelante: «hasta 31 oct», como el rótulo.
+          const hasta = !como?.porPartes && como?.desde
+            ? ultimoDiaLibreDesdeElArranque(face, como.desde, mapRange.from, mapRange.to) : null;
           e.parciales.push({
             code: codigoVisible(face), fixture: f, face: face.face,
             ...(como?.porPartes ? { porPartes: como.porPartes } : { desde: como?.desde }),
+            ...(hasta ? { hasta } : {}),
             ...(porParticipacion(f) ? { porParticipacion: true as const } : {}),
           });
           e.claves.push(clave);
@@ -4716,19 +4987,34 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       .sort((a, b) => (b.tarifa ?? -1) - (a.tarifa ?? -1));
   }, [fixtures, mapRange, referenceRates, sede, carasDelContrato, fichasPropias, filasDelPeriodo, dispoDeCara, comoSeLibera]);
 
+  /** La fila de la tarifa FIJADA con un clic o un toque: sus muebles quedan
+   *  encendidos hasta que se vuelve a tocar la fila (o se elige otra). Las
+   *  caras se rehacen con el periodo y el contrato, así que lo encendido las
+   *  sigue; si el tipo deja de estar en la tabla, se suelta. Al volver a
+   *  Vender el plano es otro (se montó de nuevo) y se le vuelve a pedir. */
+  const [tipoFijado, setTipoFijado] = useState<string | null>(null);
+  useEffect(() => {
+    const fila = tipoFijado ? porCategoria.find((c) => c.cat === tipoFijado) : undefined;
+    if (tipoFijado && !fila) { setTipoFijado(null); return; }
+    fijadoEnPlano.current = fila ? fila.claves : null;
+    destacar(null);
+  }, [tipoFijado, porCategoria, destacar, modoEfectivo]);
+
   // ── KPI computation (per rentable face — doubles count as 2 units) ──
   // Buckets use displayStatus() so KPIs, Atención, map chips and table agree.
   const kpis = useMemo(() => {
-    const caras = fixtures.flatMap(commercialFacesOf);
+    // Una reserva viva no es un contrato (`conLaReserva`): va «Reservado».
+    const reserva = (e: FaceEntry) => conLaReserva(e, estadoComercial, sede);
+    const caras = fixtures.flatMap(commercialFacesOf).map(reserva);
     // Vender por partes: las partes vendidas son contratos como cualquier
     // otro —plata, vencimientos, proveedores, bajo la tarifa— pero NO son
     // unidades nuevas: la ocupación sigue contando caras, y una cara con una
     // puerta que corre está trabajando (`estadoDeUnidad`).
-    const partes = fixtures.flatMap(partesVendidasDe);
+    const partes = fixtures.flatMap(partesVendidasDe).map(reserva);
     // Las filas, las listas y las cuentas de contratos se hacen con lo que se
     // MUESTRA (los contratos de participación, sólo a quien administra); la
     // ocupación, con todo: una cara por participación que trabaja, trabaja.
-    const visibles = isAdmin ? partes : fixtures.flatMap(partesVisiblesDe);
+    const visibles = isAdmin ? partes : fixtures.flatMap(partesVisiblesDe).map(reserva);
     const faces = visibles.length ? [...caras, ...visibles] : caras;
     const total = caras.length;
     // Kept separate so the strip can explain why "Espacios" is lower than the
@@ -4849,7 +5135,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
     };
-  }, [fixtures, referenceRates, sede, fichasPropias, partesVendidasDe, partesVisiblesDe, isAdmin, participacionDe]);
+  }, [fixtures, referenceRates, sede, fichasPropias, partesVendidasDe, partesVisiblesDe, isAdmin, participacionDe, estadoComercial]);
 
   // How much of the sede can actually be sold for the chosen period. Counted
   // per face, like every other total on this page. Fase 2 · I4: la misma
@@ -5017,8 +5303,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     (isAdmin
       ? kpis.belowReference.length + montaje.noMontado.length +
         montaje.sinMontar.length + pendientesDelPlano +
-        // Lo de las participaciones: lo que falta dibujar, las distribuciones
-        // con problemas o para revisar, las reservas por caducar…
+        // Los cortes de ventas sin cargar y las reservas de espacio vivas.
+        cortesSinCargar.porCargar + reservasSinConfirmar.vivas.length +
+        // Lo de las participaciones: lo que falta distribuir, las
+        // distribuciones con problemas o para revisar, las reservas por caducar…
         revisionPc.total
       : 0);
 
@@ -5068,6 +5356,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const tarjetaMapa = (
         <Card style={{ position: "relative", minWidth: 0, minHeight: 0 }}>
           <CardHeader
+            icon={<MapIcon {...ICONO_TARJETA} />}
             title={`Piso de ${sede}`}
             right={
               <>
@@ -5124,23 +5413,25 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   );
 
   /* ══ LA HOJA DE VENDER · la composición de D ═══════════════════════════════
-     Cuatro paneles numerados 01 · 02 · 03 · 04 con el conector, el plano
+     Cuatro paneles —el piso, cuándo se libera, el contrato y la tarifa—, cada
+     uno con su ícono donde iba su número (rediseño 2026-10: el número y el
+     conector decían el orden de lectura; el ícono dice QUÉ es), el plano
      arriba a la izquierda, la escalera debajo, el contrato a la derecha con
      lugar fijo y la tarifa abajo. Los cuatro alinean fila con fila y la hoja
      entera cabe en la ventana: sin scroll de documento y sin nada escondido
      adentro de un panel.
      Referencia: `outputs/vender/opciones/D-fusion/index.html`.             */
 
-  /** 01 · EL PISO.
+  /** EL PISO (era el panel 01).
    *
-   *  Encabezado: número, título, cuántos muebles, y la clave de CINCO estados
+   *  Encabezado: ícono (`MapIcon`, el mismo de Supervisar), título, cuántos muebles, y la clave de CINCO estados
    *  con sus conteos. Lienzo: el plano, con las herramientas de acercamiento
    *  —que son lo que hace verificable la promesa del rótulo («mide 10,5 px a
    *  todo acercamiento»)—. */
   const panelPlano = mapRange && (
     <section className="vp" style={{ gridArea: "1 / 1" }}>
       <header>
-        <span className="ojo">01</span>
+        <MapIcon {...ICONO_TARJETA} className="ico-tarjeta" />
         <h2>Piso de {sede}</h2>
         <span className="sub">{fixtures.length} muebles</span>
         <div className="der">
@@ -5164,16 +5455,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     </section>
   );
 
-  /** 02 · CUÁNDO SE LIBERA CADA ESPACIO.
+  /** CUÁNDO SE LIBERA CADA ESPACIO (era el panel 02), con `Clock`.
    *
    *  La escalera A·4 entera, con la lectura del cursor chica y en mono a la
    *  derecha del encabezado (pedido del dueño, 2026-09-07). La lectura la
    *  escribe `Lectura`, que es un componente propio con su estado: mover el
    *  cursor por la escalera no puede volver a pintar la pantalla. */
   const panelEscalera = mapRange && (
-    <section className="vp conect" style={{ gridArea: "2 / 1" }}>
+    <section className="vp" style={{ gridArea: "2 / 1" }}>
       <header>
-        <span className="ojo">02</span>
+        <Clock {...ICONO_TARJETA} className="ico-tarjeta" />
         <h2>Cuándo se libera cada espacio</h2>
         <div className="der">
           <Lectura registrar={lecturaRef} />
@@ -5194,7 +5485,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     </section>
   );
 
-  /** 04 · TARIFA DE REFERENCIA.
+  /** TARIFA DE REFERENCIA (era el panel 04), con `Tag`: la misma etiqueta que
+   *  el botón «Tarifas» de la barra, porque es la misma cosa.
    *
    *  Está en la pantalla y no en un modal porque es la respuesta a «¿qué le
    *  ofrezco?»: detrás de un botón obligaba a abrir, mirar, cerrar y volver al
@@ -5208,20 +5500,24 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  Fase 2 · I4: el «+N» ámbar es «se vende una parte» y su `title` dice por
    *  qué, sin nombres: se liberan en el periodo, con partes vendidas, por
    *  participación. Y «N al cerrar» es lo que ESTE contrato puede tomar
-   *  (`alCerrar`): sin las caras por participación, que se cargan en el Editor
-   *  3D → Distribución (decía libres + parciales, contándolas).
+   *  (`alCerrar`): desde el rediseño de Vender, también las caras por
+   *  participación, que se venden acá como una línea de porcentaje (hasta
+   *  entonces se restaban porque «se cargaban en el Editor 3D → Distribución»).
+   *  Así el pie es libres + el «+N», la misma cuenta que cada fila.
    *
    *  Pasar el mouse por una fila APAGA LA SALA y enciende los muebles de ese
-   *  tipo (los libres y los que se liberan). Y debajo de cada tipo van las
+   *  tipo (los libres y los que se liberan); TOCARLA (clic, toque o Enter) la
+   *  FIJA —con el dedo no hay mouse que pase— y volver a tocarla la suelta.
+   *  Las pastillas siguen sumando al contrato con un clic. Y debajo de cada tipo van las
    *  pastillas de código de lo que está libre, como antes del PR 2 (el dueño
    *  las pidió de vuelta, 2026-09-07): dicen CUÁLES son sin tocar el plano,
    *  y pasar el mouse por una enciende ESE mueble. Sólo mientras no hay
    *  contrato armado: con la ficha abierta la pregunta ya es otra. */
   const conCodigos = espaciosDelContrato.length === 0;
   const panelTarifas = (
-    <section className="vp conect" style={{ gridArea: "2 / 2" }}>
+    <section className="vp" style={{ gridArea: "2 / 2" }}>
       <header>
-        <span className="ojo">04</span>
+        <Tag {...ICONO_TARJETA} className="ico-tarjeta" />
         <h2>Tarifa de referencia</h2>
         <div className="der"><span className="vpill">al mes</span></div>
       </header>
@@ -5242,9 +5538,21 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               return (
               <Fragment key={cat}>
               <tr
-                className={[tiposDelContrato.has(cat) ? "mk" : "", chips.length ? "conchips" : ""].join(" ").trim() || undefined}
+                className={[
+                  tiposDelContrato.has(cat) ? "mk" : "", chips.length ? "conchips" : "",
+                  tipoFijado === cat ? "fijada" : "",
+                ].join(" ").trim() || undefined}
+                tabIndex={0}
+                data-fijada={tipoFijado === cat ? "1" : undefined}
+                title={tipoFijado === cat ? "Tocá de nuevo para soltar" : "Tocá para dejar encendidos estos muebles en el plano"}
                 onMouseEnter={() => destacar(claves)}
                 onMouseLeave={() => destacar(null)}
+                onClick={() => setTipoFijado((x) => (x === cat ? null : cat))}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  setTipoFijado((x) => (x === cat ? null : cat));
+                }}
               >
                 <td>{nombreDeTarifa(cat, nombresPropios)}</td>
                 <td className="der2 cif">
@@ -5256,7 +5564,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                       {" "}
                       <span
                         className="entran"
-                        title={cuenta.participacion > 0 ? `${porQue}. ${DONDE_SE_CARGAN}` : porQue}
+                        title={porQue}
                       >
                         +{nParte}
                       </span>
@@ -5284,28 +5592,27 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                             type="button"
                             className={"chip" + (entra ? " chip--entra" : "")}
                             title={d.porParticipacion
-                              ? `${d.code} ${d.porPartes ? `· ${d.porPartes}` : "se vende por participación"}: se carga en el Editor 3D → Distribución, no en este contrato`
+                              ? `Sumar ${d.code} al contrato · por porcentaje${d.porPartes ? ` · ${d.porPartes}` : ""}`
                               : d.porPartes
                               ? `Sumar ${d.code} al contrato · ${d.porPartes}: se vende otra parte, no la entera`
+                              : entra && d.hasta
+                              ? `Sumar ${d.code} al contrato · libre hasta el ${fechaEnCurso(toISODate(d.hasta))}`
                               : entra
                               ? `Sumar ${d.code} al contrato · se libera el ${fechaEnCurso(toISODate(d.desde as Date))}`
                               : `Sumar ${d.code} al contrato`}
                             onMouseEnter={() => destacar([clave])}
                             onMouseLeave={() => destacar(claves)}
-                            aria-disabled={d.porParticipacion ? true : undefined}
-                            /* Que se VEA que no se suma: el puntero de siempre y la
-                               pastilla igual a las demás invitaban a tocar algo que no
-                               hace nada (verificación del paso 7). Borde punteado y sin
-                               bajar la opacidad: el texto se tiene que seguir leyendo. */
-                            style={d.porParticipacion ? { cursor: "not-allowed", borderStyle: "dashed" } : undefined}
-                            onClick={(e) => { e.stopPropagation(); destacar(null); if (!d.porParticipacion) alternarCara(d.fixture.id, d.face); }}
+                            /* Una cara por participación también se suma: entra como su
+                               línea de porcentaje (`alternarCara`). */
+                            onClick={(e) => { e.stopPropagation(); destacar(null); alternarCara(d.fixture.id, d.face); }}
                           >
                             {d.code}
-                            {entra && <span className="chip__f">{d.porPartes ?? fechaEnCurso(toISODate(d.desde as Date))}</span>}
-                            {/* Una cara por participación sin nada comprometido no
-                                lleva rótulo: sin esto no hay nada que diga por qué no
-                                entra al contrato (lo decía sólo el `title`). */}
-                            {!entra && d.porParticipacion && <span className="chip__f">por participación</span>}
+                            {entra && <span className="chip__f">{d.porPartes ?? (d.hasta
+                              ? `hasta ${fechaEnCurso(toISODate(d.hasta))}`
+                              : fechaEnCurso(toISODate(d.desde as Date)))}</span>}
+                            {/* Una cara por participación sin nada comprometido dice
+                                que entra como porcentaje. */}
+                            {!entra && d.porParticipacion && <span className="chip__f">por porcentaje</span>}
                           </button>
                         );
                       })}
@@ -5330,7 +5637,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   <> <span className="entran" title={desgloseDelParcial(tallyVender)}>+{enParte(tallyVender)}</span></>
                 )}
               </td>
-              <td className="der2 cif" title={sinLasDeParticipacion(tallyVender) ?? undefined}>
+              <td className="der2 cif" title={conLasDeParticipacion(tallyVender) ?? undefined}>
                 {alCerrar(tallyVender)} al cerrar
               </td>
             </tr>
@@ -5366,37 +5673,17 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           canon total de la sede, y encima repetía datos que están en la tabla.
           El nombre de la sede tampoco es un hecho, es el estado de un control:
           se dice UNA vez, acá, y no vuelve a aparecer. */}
-      <div
-        className="barra-pantalla"
-        style={{
-          display: "flex", alignItems: "center", gap: 0,
-          marginBottom: 10, flexWrap: "wrap",
-          background: "var(--surface)", border: "1px solid var(--line)",
-          borderRadius: "var(--r-xl)", padding: "0 14px", minHeight: 46,
-        }}
-      >
-        <div
-          style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "0 16px 0 0", borderRight: "1px solid var(--line)",
-            alignSelf: "stretch",
-          }}
-        >
-          <span className="rotulo">Sede</span>
+      <div className="barra-pantalla">
+        {/* 1 · DÓNDE: la sede. El pin es la sede (en el Plano también); el
+            plano de la sede lleva el mapa, que es otra cosa. */}
+        <div className="pieza">
+          <MapPin {...ICONO_TARJETA} className="ico" />
           <select
+            className="sede-sel"
             value={sede}
             onChange={(e) => setSede(e.target.value)}
             aria-label="Sede"
-            style={{
-              background: "transparent", border: "none", outline: "none",
-              fontFamily: "inherit", fontWeight: 700, fontSize: "var(--t-md)",
-              letterSpacing: "-0.01em", color: "var(--ink-1)", cursor: "pointer",
-              padding: 0,
-            }}
           >
-            {/* Cada sede con cuántos muebles tiene: el selector lista TODAS,
-                tengan plano o no, así que acá se ve de una cuál está cargada y
-                cuál está en cero. */}
             {/* Sólo el nombre. El conteo iba adentro de la opción y un
                 `select` muestra el texto de la elegida: en pantalla se leía
                 «TERRON · 0» en cuerpo 17, con un número pegado al nombre que
@@ -5406,44 +5693,38 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               <option key={x} value={x}>{x}</option>
             ))}
           </select>
-          <span style={{ fontSize: "var(--t-xs)", color: "var(--ink-3)", whiteSpace: "nowrap" }}>
-            de {sedes.length}
-            {" · "}
+          {/* Cuál de cuántas y cuántos muebles tiene: el selector lista TODAS
+              las sedes, tengan plano o no, así que acá se ve de una cuál está
+              cargada y cuál está en cero. */}
+          <span className="cuantos">
+            {sedes.includes(sede) && <>{sedes.indexOf(sede) + 1} de {sedes.length}{" · "}</>}
             {(fixturesBySede[sede] ?? []).length} mueble
             {(fixturesBySede[sede] ?? []).length === 1 ? "" : "s"}
           </span>
         </div>
 
+        {/* 2 · QUÉ estás haciendo. Palabras con subrayado, sin ícono; la
+            cuenta de Supervisar es la pastilla roja (sin ícono adentro). */}
         {isAdmin && (
-          <nav style={{ display: "flex", marginLeft: 20, alignSelf: "stretch" }}>
+          <nav className="pieza modos" aria-label="Modo de la pantalla">
             {([
               { id: "vender", label: "Vender", badge: 0 },
-              { id: "supervisar", label: "Supervisar", badge: attentionCount },
+              // En Vender la cuenta roja no se dibuja: mezcla vencimientos,
+              // bajo tarifa, reservas y cortes de ventas, y la pantalla la
+              // mira el proveedor.
+              { id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" ? attentionCount : 0 },
             ] as const).map(({ id, label, badge }) => {
               const activo = modoEfectivo === id;
               return (
                 <button
                   key={id}
+                  type="button"
+                  aria-pressed={activo}
                   onClick={() => setModo(id)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "0 18px", border: "none",
-                    borderBottom: `3px solid ${activo ? "var(--ink-1)" : "transparent"}`,
-                    marginBottom: -1, background: "transparent",
-                    cursor: "pointer", fontFamily: "inherit",
-                    fontSize: "var(--t-base)", fontWeight: activo ? 700 : 500,
-                    color: activo ? "var(--ink-1)" : "var(--ink-3)",
-                    transition: "color .12s, border-color .12s",
-                  }}
                 >
                   {label}
                   {badge > 0 && (
-                    <span style={{
-                      fontFamily: "var(--font-mono)", fontSize: "var(--t-xs)", fontWeight: 700,
-                      color: "var(--ocupado-txt)",
-                    }}>
-                      {badge}
-                    </span>
+                    <span className="cuenta" aria-label={`${badge} para revisar`}>{badge}</span>
                   )}
                 </button>
               );
@@ -5451,9 +5732,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           </nav>
         )}
 
-        {/* El periodo, en los dos modos. El mercaderista está SIEMPRE en
-            Supervisar, así que sacarlo de ahí lo dejaría sin control de
-            periodo para siempre.
+        {/* 3 · DE QUÉ FECHAS hablás: el periodo, en los dos modos. El
+            mercaderista está SIEMPRE en Supervisar, así que sacarlo de ahí lo
+            dejaría sin control de periodo para siempre.
 
             Va como TEXTO y no como la fila de siete temporadas: esa fila mide
             700 px y partía la barra en dos renglones, con la fecha y los
@@ -5461,52 +5742,56 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             que se lee está medido contra él— pero elegirlo es algo que se
             hace de a ratos, así que se ve siempre y se despliega al tocarlo. */}
         <button
+          type="button"
+          className="pieza periodo"
           onClick={() => setPeriodoAbierto((x) => !x)}
+          aria-expanded={periodoAbierto}
           title="Elegir el periodo"
-          style={{
-            marginLeft: 20, display: "inline-flex", alignItems: "center", gap: 7,
-            border: "none", background: "transparent", cursor: "pointer",
-            fontFamily: "inherit", fontSize: "var(--t-sm)", color: "var(--ink-1)",
-            padding: "4px 0", borderBottom: `1px solid ${periodoAbierto ? "var(--ink-1)" : "var(--line-strong)"}`,
-          }}
         >
-          <CalendarRange size={13} style={{ color: "var(--ink-4)" }} />
+          <CalendarRange {...ICONO_TARJETA} className="ico" />
           {mapRange ? describeRange(mapRange) : "Hoy"}
-          <ChevronDown
-            size={12}
-            style={{
-              color: "var(--ink-4)",
-              transform: periodoAbierto ? "rotate(180deg)" : "none",
-              transition: "transform .12s",
-            }}
-          />
+          <ChevronDown {...ICONO_TARJETA} className="chev" />
         </button>
 
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: "var(--t-sm)", color: "var(--ink-1)", fontWeight: 500, whiteSpace: "nowrap" }}>
-            {hoyLargo}
-          </span>
+        {/* A la derecha: qué día es hoy y lo que se le hace A LA SEDE. Ninguno
+            cambia lo que se está leyendo; sólo lo actualizan. «Tarifas» lleva
+            la etiqueta: es la lista de precios, el mismo ícono que la tarjeta
+            «Tarifa de referencia» (un concepto, un ícono). */}
+        <div className="der">
+          <span className="hoy">{hoyLargo}</span>
           {isAdmin && (
             <button
+              type="button"
+              className="btn-barra"
               onClick={() => setCargaAbierta(true)}
               title="Cargar una tanda de contratos desde un Excel o un CSV"
-              style={botonBarra}
+              aria-label="Planilla"
             >
-              <FileSpreadsheet size={13} style={{ color: "var(--ink-3)" }} />
-              Planilla
+              <FileSpreadsheet {...ICONO_TARJETA} className="ico" />
+              <span className="txt">Planilla</span>
             </button>
           )}
           {isAdmin && (
             <button
+              type="button"
+              className="btn-barra"
               onClick={() => setRatesOpen(true)}
               title="Tarifas de referencia por tipo de mueble"
-              style={botonBarra}
+              aria-label="Tarifas"
             >
-              <SlidersHorizontal size={13} style={{ color: "var(--ink-3)" }} /> Tarifas
+              <Tag {...ICONO_TARJETA} className="ico" />
+              <span className="txt">Tarifas</span>
             </button>
           )}
-          <button onClick={() => syncFromServer()} title="Traer los cambios del servidor" style={botonBarra}>
-            <RefreshCw size={13} style={{ color: "var(--ink-3)" }} /> Actualizar
+          <button
+            type="button"
+            className="btn-barra"
+            onClick={() => syncFromServer()}
+            title="Traer los cambios del servidor"
+            aria-label="Actualizar"
+          >
+            <RefreshCw {...ICONO_TARJETA} className="ico" />
+            <span className="txt">Actualizar</span>
           </button>
         </div>
       </div>
@@ -5536,7 +5821,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           <ModoVender
             espacios={espaciosDelContrato}
             ultimo={selected}
-            avisoDeParticipacion={avisoDeParticipacion}
+            ocupacionDe={participacionDe}
+            onVenderAsi={venderAsi}
             onQuitar={quitarDelContrato}
             onCambiarCara={alternarCara}
             onCambiarParte={alternarDeParte}
@@ -5553,6 +5839,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               // quedaba en la base y el espacio se seguía viendo libre. Ahora
               // se vuelve a leer y listo.
               void refrescarComercial();
+              // Un porcentaje (o una reserva) no siempre cambia el mapa de la
+              // base: la ocupación se vuelve a leer igual.
+              if (hayParticipaciones) void recargarOcupacion(sede);
               setSelected(null);
               setAnchor(null);
               setEnContrato([]);
@@ -5578,6 +5867,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               seguro a lo que hay que ir a resolver. */}
           <Card style={{ flexShrink: 0, marginBottom: 10 }}>
             <CardHeader
+              icon={<Gauge {...ICONO_TARJETA} />}
               title={sede}
               sub={mapRange ? describeRange(mapRange) : "Hoy"}
               right={
@@ -5600,12 +5890,20 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               {isAdmin ? (
                 <>
                   <Cifra
+                    icono={<Banknote {...ICONO_TARJETA} />}
                     rotulo="Canon vigente"
                     valor={formatCOP(kpis.revenue)}
-                    notas={["al mes"]}
+                    notas={[
+                      "al mes",
+                      // Los contratos que se cobran por % de las ventas no tienen
+                      // canon fijo: no suman acá, y se dice cuántos son.
+                      ...(cortesSinCargar.vigentes > 0
+                        ? [`+ ${cortesSinCargar.vigentes} por % de venta`] : []),
+                    ]}
                   />
                   <Separador />
                   <Cifra
+                    icono={<CircleDashed {...ICONO_TARJETA} />}
                     rotulo="Sin alquilar"
                     valor={formatCOP(sinAlquilar.plata)}
                     notas={[
@@ -5617,6 +5915,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   />
                   <Separador />
                   <Cifra
+                    icono={<AlarmClock {...ICONO_TARJETA} />}
                     rotulo="Vence en 30 días"
                     valor={formatCOP(porVencer.plata)}
                     notas={[`${porVencer.pct}% del canon · ${kpis.expiring.length} espacio${kpis.expiring.length === 1 ? "" : "s"}`]}
@@ -5626,6 +5925,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               ) : (
                 <>
                   <Cifra
+                    icono={<AlarmClock {...ICONO_TARJETA} />}
                     rotulo="Vence en 30 días"
                     valor={String(kpis.expiring.length)}
                     notas={["contratos que se caen"]}
@@ -5633,6 +5933,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   />
                   <Separador />
                   <Cifra
+                    icono={<CircleDashed {...ICONO_TARJETA} />}
                     rotulo="Libres"
                     valor={String(kpis.free)}
                     notas={[`de ${kpis.total} caras`]}
@@ -5641,6 +5942,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               )}
               <Separador />
               <Cifra
+                icono={<PieChart {...ICONO_TARJETA} />}
                 rotulo="Ocupación"
                 valor={`${kpis.occPct}%`}
                 notas={[
@@ -5656,6 +5958,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               />
               <Separador />
               <Cifra
+                icono={<Hammer {...ICONO_TARJETA} />}
                 rotulo="Sin montar"
                 valor={String(montaje.sinMontar.length)}
                 notas={["contratados y sin armar"]}
@@ -5707,7 +6010,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 />
               ) : (
               <Card style={{ flex: 1, minHeight: 0 }}>
-                <CardHeader title="Para revisar" right={<span>{attentionCount}</span>} />
+                <CardHeader icon={<ClipboardCheck {...ICONO_TARJETA} />} title="Para revisar" right={<span>{attentionCount}</span>} />
                 {attentionCount === 0 ? (
                   <div style={{ padding: "0 15px 14px", fontSize: 13, color: "var(--libre-txt)" }}>
                     Sin contratos vencidos ni próximos a vencer, y todo lo que la base
@@ -5770,6 +6073,32 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                         Sólo para quien administra: lleva proveedores y marcas. */}
                     {isAdmin && revisionPc.total > 0 && (
                       <RevisarParticipaciones secciones={revisionPc.secciones} />
+                    )}
+                    {/* Lo que se vende por % de las ventas: cada período que
+                        terminó, lo vendido, y el servidor dice cuánto se cobra. */}
+                    {isAdmin && cortesSinCargar.pendientes.length > 0 && (
+                      <VentasPorCargar
+                        sede={sede}
+                        pendientes={cortesSinCargar.pendientes}
+                        cargados={cortesSinCargar.cargados}
+                        onCargado={cortesSinCargar.marcarCargado}
+                      />
+                    )}
+                    {/* Las reservas de una cara entera o de una parte: cuentan
+                        como ocupadas hasta que caducan. Confirmar usa el precio
+                        que se guardó al reservar. */}
+                    {isAdmin && reservasSinConfirmar.vivas.length > 0 && (
+                      <ReservasSinConfirmar
+                        sede={sede}
+                        vivas={reservasSinConfirmar.vivas}
+                        onCambio={() => {
+                          reservasSinConfirmar.recargar();
+                          // La cara reservada deja de estarlo o pasa a contrato:
+                          // el mapa se vuelve a leer de la base.
+                          void refrescarComercial();
+                          if (hayParticipaciones) void recargarOcupacion(sede);
+                        }}
+                      />
                     )}
                     {kpis.noContract.length > 0 && (
                       <div>
@@ -5885,12 +6214,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                         ))}
                         {montaje.viejosSinReporte > 0 && (
                           <div style={{ padding: "8px 6px 0", fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
-                            Además, {montaje.viejosSinReporte} contrato
-                            {montaje.viejosSinReporte === 1 ? "" : "s"} que arrancó
-                            {montaje.viejosSinReporte === 1 ? "" : "n"} hace más de{" "}
-                            {VENTANA_MONTAJE_DIAS} días nunca se reportó
-                            {montaje.viejosSinReporte === 1 ? "" : "n"}. A esa altura el
-                            espacio ya está armado: lo que falta es el reporte.
+                            {montaje.viejosSinReporte === 1
+                              ? `Además, 1 contrato que arrancó hace más de ${VENTANA_MONTAJE_DIAS} días nunca se reportó.`
+                              : `Además, ${montaje.viejosSinReporte} contratos que arrancaron hace más de ${VENTANA_MONTAJE_DIAS} días nunca se reportaron.`}
+                            {" "}A esa altura el espacio ya está armado: lo que falta es el reporte.
                           </div>
                         )}
                       </div>
@@ -5908,7 +6235,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                             entry={entry}
                             chip={`−${entry.gapPct}%`}
                             tono="sordo"
-                            dates={`${compactCOP(entry.negotiatedValue)} · ref ${compactCOP(entry.ref)}`}
+                            dates={`${formatCOP(entry.negotiatedValue)} · ref ${formatCOP(entry.ref)}`}
                             selected={selected?.id === entry.fixture.id}
                             onSelect={() => revisar(entry.fixture, entry.face)}
                           />
@@ -5978,7 +6305,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
           {isAdmin && (
             <Card style={{ minWidth: 0, minHeight: 0 }}>
-              <CardHeader title="Quién paga el canon" right={<span>al mes</span>} />
+              <CardHeader icon={<Building2 {...ICONO_TARJETA} />} title="Quién paga el canon" right={<span>al mes</span>} />
               <div style={{ flex: 1, minHeight: 0, padding: "0 15px 12px", overflowY: "auto" }}>
                 {proveedores.length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
@@ -6005,7 +6332,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               para quien administra y sólo si la sede vende alguna cara así. */}
           {isAdmin && hayParticipaciones && (
             <Card style={{ minWidth: 0, minHeight: 0, gridColumn: "1 / -1" }}>
-              <CardHeader title="Participaciones de cara" right={<span>por cara</span>} />
+              <CardHeader icon={<Percent {...ICONO_TARJETA} />} title="Participaciones de cara" right={<span>por cara</span>} />
               <TablaDeParticipaciones sede={sede} muebles={fixtures} />
             </Card>
           )}

@@ -1,26 +1,36 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Box, Check, ImageUp, Loader2, Lock, X } from "lucide-react";
+import {
+  AlertTriangle, BadgeCheck, Box, Calendar, Check, FilePenLine, Hourglass, Loader2, Lock, Mail, Receipt,
+  RotateCcw, StickyNote, X,
+} from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
-import type { UnifiedFixture } from "../../types/fixtures";
+import { isDoubleGondola, type UnifiedFixture } from "../../types/fixtures";
 import NotifyPreview from "../NotifyPreview";
 import { useModalAbierto } from "../../tema";
 import {
-  fechaCorta, money, useContrato,
-  type CaraElegida, type Contrato, type ResumenContrato, type SemillaContrato,
+  diaCorto, money, rangoCorto, useContrato,
+  type CaraElegida, type Contrato, type LineaDelContrato, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
+import {
+  ElegirPartes, FormasDeLaLinea, IconoDeLinea, Porcentaje, PrecioDeLinea, RechazoDeLinea, textoDeNoEntra,
+} from "./LineaDelContrato";
+import { AtajosDeFecha, CampoProveedor, ComoSeCobra, totalPorVentas } from "./CamposDelContrato";
 import { useSesionDeVenta } from "./sesionDeVenta";
 import { useFichasPropias } from "../../store/fichasPropias";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 // Cómo le dice este supermercado a cada familia: la lista, el visor y la lámina.
 import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
-// De `utils/` (no importa nada): la ficha la usa al entrar.
-import { normalizarProveedor } from "../../utils/proveedor";
+import { pct } from "../../utils/participaciones";
+import { fullSpaceCode } from "../../types/espacio";
 import {
   claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, esPieza, interruptoresDeLaCara, marcasDelContrato,
   parteDeSufijo, partesDe, piezasDe, seVendeAlgo, sufijoDeParte, textoDeParte,
+  type FormaDeLaLinea, type ParticipacionDeLaCara,
 } from "../../utils/partes";
-import { divisionSinFijar, piezasDeLaFamilia } from "../../utils/partesDelMueble";
+import {
+  cambioDesdeVender, divisionSinFijar, formasDeLaLinea, piezasDeLaFamilia, type CambioDePartes,
+} from "../../utils/partesDelMueble";
 import { internosVendidosEnLaParte } from "../../utils/slotsDeLasPartes";
 // Sólo los TIPOS: el visor (y con él three.js y la escena del editor) se baja
 // recién cuando se abre, por el `lazy` de abajo.
@@ -31,33 +41,27 @@ import type { CaraActiva, CaraDelVisor } from "./VisorDeVenta";
 const VisorDeVenta = lazy(() => import("./VisorDeVenta"));
 
 /**
- * 03 · EL CONTRATO — la ficha de D, con lugar fijo en la hoja.
+ * 03 · EL CONTRATO — la ficha, con lugar fijo en la hoja.
  *
- * Filas mono con el código a 17,5 px, separador punteado, los cuatro campos que
- * se teclean en cada acuerdo, el total en tinta a 30 px, los sellos de
- * temporada y el único botón amarillo de la pantalla.
+ * Rediseño de Vender (PR 1, los dibujos aprobados en
+ * `docs/maquetas/rediseno-2026-10/`): cada línea dice qué vende con su ícono
+ * —la cara entera, por partes, por entrepaños o un porcentaje— y cómo («Entera
+ * · Por entrepaños · Por porcentaje», lo que el mueble permite); las partes se
+ * eligen en una lista y el porcentaje con lo que queda en las fechas del
+ * contrato. Cada precio, total o al mes. Abajo, siempre a la vista, el total y
+ * los botones: «Guardar contrato» (el único amarillo), «Reservar hasta…» y
+ * «Empezar de nuevo». Se guarda todo junto o nada.
  *
- * LO QUE CAMBIÓ RESPECTO DE LO QUE HABÍA, y por qué:
+ * LO QUE SIGUE DE ANTES, y por qué:
  *
- * · **El botón volvió adentro de la ficha.** Estaba en una barra pegada al pie
- *   de la pantalla, y esa barra era la consecuencia de que la pantalla rodara.
- *   Con la hoja de D no rueda: los cuatro paneles caben, así que el botón puede
- *   estar donde termina lo que se está firmando. Una barra flotante menos.
- * · **La ficha existe siempre**, con espacios o sin ellos. La composición es
- *   fija —es la regla del dueño, «si armar el contrato es la mitad del trabajo,
- *   la mitad del trabajo tiene lugar fijo»— y el panel vacío no es un hueco
- *   reservado: se puede teclear el proveedor y las fechas antes de elegir el
- *   primer espacio, que es como de verdad empieza una llamada.
- * · **Correo, nota y planometría viven en un desplegable.** Son opcionales y
- *   ninguno de los tres se toca en la llamada típica; con los tres siempre
- *   abiertos la ficha no cierra con dos espacios sin esconder algo, y esconder
- *   sin avisar es exactamente lo que este PR vino a sacar. Abrirlos es un gesto
- *   deliberado, y ahí sí el cuerpo rueda con su barra a la vista.
- *
- * La válvula declarada: con dos y con tres espacios el panel cierra con 12 px de
- * aire —que los pone el margen de `.acciones`, así que se ven Y se cuentan como
- * contenido: la ficha avisa antes de romper—; del cuarto en adelante rueda, y
- * sólo él.
+ * · **La ficha existe siempre**, con espacios o sin ellos: se puede teclear el
+ *   proveedor y las fechas antes de elegir el primer espacio, que es como de
+ *   verdad empieza una llamada.
+ * · **Correo y nota viven en un desplegable.** Son opcionales y ninguno se
+ *   toca en la llamada típica. La planometría NO está en Vender: se carga en
+ *   Supervisar, en la ficha del espacio, con el contrato ya hecho.
+ * · **El cuerpo rueda y el pie no**: el total y el botón no se pierden con
+ *   cuatro líneas adentro.
  */
 
 interface ModoVenderProps {
@@ -66,15 +70,17 @@ interface ModoVenderProps {
   /** El que se tocó último: es el que decide si hay que explicar que ese mueble
    *  no se alquila. */
   ultimo: UnifiedFixture | null;
-  /** Si lo último que se tocó es una cara POR PARTICIPACIÓN, lo que hay que
-   *  decir (`textoAlTocarEnVender`): tocarla no la suma —se vende en el Editor
-   *  3D → Distribución— y sin esto el toque no decía nada. Viene armado, con
-   *  la ocupación ANÓNIMA: la ficha no lee participaciones. */
-  avisoDeParticipacion?: string | null;
+  /** La ocupación ANÓNIMA de una cara por participación (o `undefined`). De
+   *  acá sale «queda X %»: la ficha no lee participaciones. */
+  ocupacionDe?: (f: UnifiedFixture, cara: "A" | "B") => ParticipacionDeLaCara | undefined;
   onQuitar: (fixtureId: string, face: "A" | "B", parte?: string) => void;
   onCambiarCara: (fixtureId: string, face: "A" | "B") => void;
   /** Vender por partes: prender la entera (`null`) o una parte (`"PU2"`). */
   onCambiarParte: (fixtureId: string, face: "A" | "B", parte: string | null) => void;
+  /** La forma de una línea («Entera · Por entrepaños · Por porcentaje»). Con
+   *  `cambio`, el mueble hoy se vende de otra forma y hay que escribírselo en el
+   *  plano (ya revisado con las guardas del Plano: `cambioDesdeVender`). */
+  onVenderAsi?: (fixtureId: string, face: "A" | "B", forma: FormaDeLaLinea, cambio: CambioDePartes | null) => Promise<string | null> | void;
   /** Apagar la sala y encender estos muebles. Pasar el mouse por una fila del
    *  contrato señala en el plano de qué espacio habla. */
   onResaltar: (claves: string[] | null) => void;
@@ -94,104 +100,112 @@ interface ModoVenderProps {
   semilla?: SemillaContrato | null;
 }
 
-/** El panel 03 de la hoja. Siempre en el mismo lugar de la rejilla. */
-function Panel({ derecha, children }: { derecha?: React.ReactNode; children: React.ReactNode }) {
+/** El panel 03 de la hoja. Siempre en el mismo lugar de la rejilla. Con el
+ *  ícono de la tarjeta («un documento que todavía se está escribiendo»). */
+function Panel({ derecha, pie, children }: { derecha?: React.ReactNode; pie?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="vp" style={{ gridArea: "1 / 2" }}>
+    <section className="vp contrato" style={{ gridArea: "1 / 2" }}>
       <header>
-        <span className="ojo">03</span>
+        <FilePenLine size={16} strokeWidth={1.75} color="var(--ink-2)" aria-hidden className="ico-tarjeta" />
         <h2>Contrato</h2>
         <div className="der">{derecha}</div>
       </header>
       {children}
+      {pie}
     </section>
   );
 }
 
+const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
+
 // ─── Los espacios del contrato ───────────────────────────────────────────────
 
-/** Una fila: qué espacio es, dónde queda y cuánto sale.
+/** Una línea: qué se vende, dónde queda, cómo y cuánto sale.
  *
- *  El valor va ADENTRO de la fila y no en un campo aparte, porque en un
+ *  El valor va ADENTRO de la línea y no en un campo aparte, porque en un
  *  contrato de tres espacios hay tres precios y no uno: la punta de la entrada
  *  no vale lo que la del fondo, y ese es justamente el detalle que se negocia.
  *  Arranca con la tarifa de referencia escrita —el precio de lista es el punto
- *  de partida real— y al lado se ve el desvío, así que bajar el precio es una
- *  decisión que se toma mirando cuánto se está bajando. */
+ *  de partida real— y la sigue mientras nadie lo toque.
+ *
+ *  Cerrada, la línea es un renglón; abierta (la última que se tocó, o la que
+ *  todavía pide algo), muestra cómo se vende, las partes o el porcentaje, y de
+ *  dónde sale el precio. */
 function Fila({
-  l, c, sePuedeQuitar, onResaltar, onSumarEnTodas,
+  l, c, sePuedeQuitar, onResaltar, onSumarEnTodas, abierta, onAbrir, ocupacionDe, onVenderAsi,
 }: {
-  l: Contrato["lineas"][number];
+  l: LineaDelContrato;
   c: Contrato;
   sePuedeQuitar: boolean;
   onResaltar: (claves: string[] | null) => void;
   onSumarEnTodas?: (tipo: string, parte: string) => void;
+  abierta: boolean;
+  onAbrir: () => void;
+  ocupacionDe?: ModoVenderProps["ocupacionDe"];
+  onVenderAsi?: ModoVenderProps["onVenderAsi"];
 }) {
-  const clave = claveDeEspacio(l.fixture.id, l.face, l.parte);
+  const clave = claveDeEspacio(l.fixture.id, l.face, l.tipo === "pieza" ? l.parte : null);
   /** La llave de la CARA: la que conoce el plano (una puerta enciende su
    *  nevera). */
   const claveDeCara = claveDeEspacio(l.fixture.id, l.face);
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
-  /* Dos renglones y ni uno más: la fila mide 46 px y la ficha tiene que cerrar
-     con tres espacios adentro. Arriba el TIPO —que es lo que se está
-     vendiendo—, abajo dónde queda y lo único que hay que mirar del precio: el
-     desvío contra la referencia, si lo hay. La referencia entera («referencia
-     $1.200.000») era un tercer renglón para un número que ya está en la tabla
-     de tarifa, a dos paneles de distancia. */
+  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  /* Dos renglones y ni uno más en la cabecera de la línea. Arriba el TIPO
+     —que es lo que se está vendiendo—, abajo cómo (la parte, el porcentaje y
+     lo que queda), dónde queda y el desvío contra la referencia, si lo hay. */
   /* Vender por partes, pedido y sin fijar: la ficha dice «por tramos» pero
      nadie fijó cuántos (la de una góndola no los trae). Se vende entera hasta
      fijarlos en el panel del plano: se dice dónde. */
-  const sinFijar = !l.parte ? divisionSinFijar(l.fixture) : null;
+  const sinFijar = l.tipo === "entera" ? divisionSinFijar(l.fixture) : null;
   const segunda = [
-    // «Puerta 2 de 3», «Tramo 2 de 4»: qué parte del mueble se vende.
+    // «Puerta 2 de 3», «2 de 5 entrepaños», «Por porcentaje · queda 40 %».
     l.textoParte,
     sinFijar ? `por ${claseDe(sinFijar)?.plural ?? "partes"}: fijalos en el plano` : "",
     l.ubicacion,
     l.ref === null
-      ? "sin tarifa de referencia"
+      ? (l.tipo === "pc" && l.pb <= 0 ? "" : "sin tarifa de referencia")
       : l.desvio !== null && l.desvio !== 0
       ? l.desvio >= 1 ? `${l.desvio}% bajo la referencia` : `${Math.abs(l.desvio)}% sobre la referencia`
       : "",
   ].filter(Boolean).join(" · ");
 
-  /* El choque de fechas sale de ese renglón y se dibuja aparte.
-     Estaba ahí adentro, de tercero, en un texto de una línea que se corta con
-     puntos suspensivos: con una ubicación larga («a unos 2 m del mostrador de
-     carnes») más «sin tarifa de referencia», el aviso quedaba pasado el corte
-     y no se veía NUNCA. Se vendió un espacio ocupado y el único que avisó fue
-     el backend, al guardar, cuando ya estaba todo tecleado.
-     Un aviso que compite por ancho con la ubicación no es un aviso. */
-  /* Vender por partes: lo que choca puede no ser este espacio sino la nevera
-     entera (para una puerta) o una puerta (para la entera). Se dice cuál, sin
-     nombrar a nadie: ni de quién es la otra parte ni cuánto paga. */
+  /* El choque de fechas sale de la cabecera y se dibuja aparte, a todo el
+     ancho: en un texto que se corta con puntos suspensivos no se veía NUNCA, y
+     se vendió un espacio ocupado. Un aviso que compite por ancho con la
+     ubicación no es un aviso. Vender por partes: lo que choca puede no ser este
+     espacio sino la cara entera (para una parte) o una parte (para la entera).
+     Se dice cuál, sin nombrar a nadie: ni de quién es ni cuánto paga. De un
+     porcentaje, sólo lo que queda. */
   const division = divisionDe(l.fixture);
   const clase = division ? claseDe(division.clase) : undefined;
   const g = division ? concordancia(division.clase) : null;
   const choque = l.choqueServidor.length > 0
-    // Lo que dice la base gana: nombra las fechas del contrato que ya existe,
-    // que es lo que hace falta para corregir las propias.
+    // Lo que dice la base gana: nombra las fechas, que es lo que hace falta
+    // para corregir las propias.
     ? l.choqueServidor.join(" ")
+    : l.tipo === "pc"
+    ? (l.disponibilidad !== "libre"
+      ? l.quedaPb !== null && l.quedaPb <= 0 ? "No queda nada libre de esta cara en estas fechas" : "Esta cara no se ofrece en estas fechas"
+      : l.noEntra ? textoDeNoEntra(l) : null)
     : l.disponibilidad === "libre" ? null
     : l.porQue === "entera" ? "Ya está vendida entera en el periodo: no se vende por partes"
-    : l.porQue === "partes" && clase && g && !l.parte
+    : l.porQue === "partes" && clase && g && l.tipo === "entera"
     ? `Hay ${clase.plural} vendid${g.o}s en el periodo: se puede vender otr${g.o} ${clase.singular}, no la entera`
     : l.porQue === "partes"
     ? "Se pisa con otra parte vendida en el periodo: un mueble se divide de una sola forma"
+    : l.tipo === "partes" ? "Una parte elegida ya está tomada en el periodo"
     : l.disponibilidad === "parcial" ? "Parte del periodo ya está vendida"
     : "Ya está vendido en el periodo";
 
-  /* «Entera · PU1 · PU2 · PU3»: los interruptores de la venta por partes,
-     una vez por cara (en el primer renglón de esa cara). Prender una puerta
-     apaga la entera y al revés: nunca las dos en el mismo contrato. Una caja
-     o una columna (que nunca se venden enteras) ofrecen sólo sus piezas:
-     «BI1 · BI2», sin «Entera». */
+  /* «BI1 · BI2»: los interruptores de las PIEZAS de lo que no se vende entero
+     (una caja, una columna), en el primer renglón de ese mueble. Las partes de
+     una cara (puertas, tramos, entrepaños) se eligen en su lista
+     (`ElegirPartes`), con lo tomado a la vista. */
   const partesDeLaCara = partesDe(l.fixture).filter((p) => p.cara === l.face);
-  const interruptores = interruptoresDeLaCara(l.fixture, l.face);
+  const interruptores = l.tipo === "pieza" ? interruptoresDeLaCara(l.fixture, l.face) : [];
   const primeraDeLaCara = c.lineas.find((o) => o.fixture.id === l.fixture.id && o.face === l.face) === l;
   /* «Sumar la BI1 de todas las cajas de la sede (8)»: el contrato multiespacio
-     de una marca que compra la misma bahía en toda la línea de cajas. Cuenta
-     las cajas de la sede que tienen esa bahía configurada; desaparece cuando
-     ya están todas en el contrato. */
+     de una marca que compra la misma bahía en toda la línea de cajas. */
   const todos = useFixtureStore(selectFixtures);
   const piezaDelRenglon = l.parte && esPieza(parteDeSufijo(l.parte)) ? l.parte : null;
   const conEsaPieza = piezaDelRenglon
@@ -201,74 +215,88 @@ function Fila({
   const deTodas = piezaDelRenglon && parteDeSufijo(piezaDelRenglon)?.clase === "forro" ? "todas las columnas forradas" : "todas las cajas";
 
   /* Los espacios internos que el plano da por vendidos APARTE (los que se
-     marcan en el Editor 3D). No tienen contrato en la base —viven sólo en el
-     JSON del layout—, así que el plano de Vender, que mira contratos, da la
-     cara por libre entera, y el visor 3D también: la muestra libre, sin ellos
-     (`sinRepisasVendidas`), porque es lo que se vende. Se le dice a la dueña
-     ACÁ, antes de la reunión, sin nombres: es ella la que sabe si siguen
-     vigentes. Con la MISMA palabra que el editor («espacios internos») y la
-     misma cuenta (uno por espacio, no por entrepaño), y que son del MUEBLE:
-     valen para las dos caras de una góndola doble. No bloquea el guardado
-     —el servidor no los conoce—. */
-  //
-  // Vendiendo una parte (un tramo, un entrepaño), se cuentan sólo los que
-  // caen en ESA parte (`slotsDeLasPartes.ts`): el renglón del tramo que los
-  // pisa lo dice, el del otro tramo no.
-  const parteDelRenglon = l.parte ? parteDeSufijo(l.parte) : null;
-  const repisasVendidas = parteDelRenglon
-    ? internosVendidosEnLaParte(l.fixture, l.face, parteDelRenglon)
+     marcan en el Editor 3D). No tienen contrato en la base, así que Vender da
+     la cara por libre y el visor 3D también. Se le dice a la dueña ACÁ, sin
+     nombres. No bloquea el guardado. Vendiendo partes, sólo los que caen en
+     ESAS partes (`slotsDeLasPartes.ts`). */
+  const partesDelRenglon = l.partes.map((p) => parteDeSufijo(p)).filter((p): p is NonNullable<typeof p> => !!p);
+  const repisasVendidas = l.tipo === "pc" ? 0
+    : partesDelRenglon.length > 0
+    ? partesDelRenglon.reduce((t, p) => t + internosVendidosEnLaParte(l.fixture, l.face, p), 0)
     : (l.fixture.slots ?? []).filter((s) => s.status === "occupied" || s.status === "reserved").length;
+  const parteDelRenglon = partesDelRenglon[0] ?? null;
+
+  /* Cómo se vende esta línea, y lo que haría falta para venderla de otra
+     forma: las MISMAS guardas del panel «Cómo se vende» del Plano. */
+  const formas = formasDeLaLinea(l.fixture);
+  const actual: FormaDeLaLinea = l.tipo === "pc" ? "participacion" : l.tipo === "partes" ? (l.clase ?? "entera") : "entera";
+  const posible = (forma: FormaDeLaLinea) => {
+    const codigoA = fullSpaceCode(c.sede, l.fixture.code);
+    const parA = ocupacionDe?.(l.fixture, "A");
+    const parB = ocupacionDe?.(l.fixture, "B");
+    return cambioDesdeVender(l.fixture, forma, estadoComercial, c.sede, {
+      ocupacion: {
+        ...(parA ? { [codigoA]: parA.ocupacion } : {}),
+        ...(parB ? { [`${codigoA}-B`]: parB.ocupacion } : {}),
+      },
+      hoy: parA?.hoy ?? parB?.hoy,
+    });
+  };
+  const conVentas = c.cobroModo === "ventas";
+  const conPrecio = !conVentas && !l.sinElegir && !(l.tipo === "pc" && l.pb <= 0);
+  /* Un porcentaje no se vende «por cara» (el rótulo de la tarifa de la
+     góndola): «Góndola, por participación». */
+  const tipo = tipoDelMueble(l.fixture, nombresPropios);
+  const tipoDeLaLinea = l.tipo === "pc" ? `${tipo.replace(/,\s*por cara$/i, "")}, por participación` : tipo;
 
   return (
     <div
-      className="eitem"
+      className={`eitem${abierta ? " abierta" : ""}`}
       data-clave={clave}
+      data-linea={l.tipo}
       onMouseEnter={() => onResaltar(clave === claveDeCara ? [clave] : [claveDeCara, clave])}
       onMouseLeave={() => onResaltar(null)}
     >
+      <IconoDeLinea l={l} />
       <span className="cod">
-        {l.visible}
-        {/* Debajo del código, y no en un renglón propio: la fila no crece
-            (con un renglón más, la ficha de tres espacios rodaba). El texto
-            entero va en el `title`. */}
+        <button type="button" className="abrir" onClick={onAbrir} aria-expanded={abierta}
+          title={abierta ? undefined : `Ver cómo se vende ${l.visible}`}>
+          {l.visible}
+        </button>
+        {/* Debajo del código, y no en un renglón propio: la línea no crece. El
+            texto entero va en el `title`. */}
         {!choque && repisasVendidas > 0 && (
           <span
             className="repisas"
             data-repisas-vendidas={repisasVendidas}
             title={parteDelRenglon
-              ? `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base, y ${repisasVendidas === 1 ? "cae" : "caen"} en esta parte. Las partes se venden igual: revisá que no caigan encima de lo que se está vendiendo antes de cerrar.`
+              ? `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base, y ${repisasVendidas === 1 ? "cae" : "caen"} en lo elegido. Las partes se venden igual: revisá que no caigan encima de lo que se está vendiendo antes de cerrar.`
               : `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (Editor 3D), sin contrato en la base. Son del mueble, no de una cara: valen para las dos. Vender ofrece la cara entera, y el 3D se la muestra al proveedor libre, sin ellos: revisá si siguen vigentes antes de cerrar.`}
           >
-            {repisasVendidas === 1 ? "1 interno vendido" : `${repisasVendidas} internos vendidos`}{parteDelRenglon ? " en esta parte" : ""}
+            {repisasVendidas === 1 ? "1 interno vendido" : `${repisasVendidas} internos vendidos`}{parteDelRenglon ? " en lo elegido" : ""}
           </span>
         )}
       </span>
       <span className="d">
-        <span title={conNombrePropio(l.fixture, nombresPropios, l.fixture.label || l.fixture.code)}>{tipoDelMueble(l.fixture, nombresPropios)}</span>
+        <span title={conNombrePropio(l.fixture, nombresPropios, l.fixture.label || l.fixture.code)}>{tipoDeLaLinea}</span>
         <span title={segunda}>{segunda}</span>
       </span>
+      {l.tipo === "pc" && l.pb > 0 && <span className="pct">{pct(l.pb)}</span>}
       {/* Una góndola doble son DOS espacios que se venden por separado, y las
-          dos pueden ir en el mismo contrato: una marca que quiere el pasillo
-          entero compra las dos caras. Por eso cada letra es un interruptor y no
-          una opción — con un selector entre A y B eso eran dos contratos. */}
-      {l.doble && (
-        <span style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+          dos pueden ir en el mismo contrato. Por eso cada letra es un
+          interruptor y no una opción. */}
+      {l.doble && l.tipo !== "pieza" && (
+        <span className="caras">
           {(["A", "B"] as const).map((id) => {
             const propia = l.face === id;
             const puesta = c.lineas.some((o) => o.fixture.id === l.fixture.id && o.face === id);
             return (
               <button
                 key={id}
+                type="button"
+                className={`${propia ? "propia" : ""}${puesta ? " puesta" : ""}`.trim() || undefined}
                 onClick={() => c.onCambiarCara(l.fixture.id, id)}
                 title={puesta ? `Sacar la cara ${id} del contrato` : `Sumar la cara ${id} al contrato`}
-                style={{
-                  height: 22, padding: "0 6px", borderRadius: "var(--r-xs)", cursor: "pointer",
-                  border: `1px solid ${propia ? "var(--ink-1)" : puesta ? "var(--line-strong)" : "var(--line)"}`,
-                  background: "var(--surface)",
-                  color: puesta ? "var(--ink-1)" : "var(--ink-3)",
-                  fontFamily: "var(--f-mono)", fontSize: "var(--t-2xs)",
-                  fontWeight: propia ? 700 : 600,
-                }}
               >
                 {id}
               </button>
@@ -276,42 +304,44 @@ function Fila({
           })}
         </span>
       )}
-      <span className={`m${l.monto > 0 ? "" : " falta"}`}>
-        {/* El peso va como rótulo del campo y no adentro del texto: tecleado se
-            borra, y un campo de plata sin signo se confunde con los días. Con
-            su cuerpo declarado: heredado quedaba en los 16 px del navegador y
-            era el único tamaño de la pantalla fuera de la escala. */}
-        <span
-          aria-hidden
-          style={{
-            fontSize: "var(--t-sm)", fontFamily: "var(--f-mono)",
-            color: l.monto > 0 ? "var(--ink-3)" : "var(--ocupado-txt)",
-          }}
-        >
-          $
+      {conPrecio && (
+        <span className={`m${l.monto > 0 ? "" : " falta"}`}>
+          {/* El peso va como rótulo del campo y no adentro del texto: tecleado
+              se borra, y un campo de plata sin signo se confunde con los días. */}
+          <span aria-hidden className={`signo${l.monto > 0 ? "" : " falta"}`}>$</span>
+          <input
+            value={l.valor}
+            onChange={(e) => c.escribirValor(l.codigo, e.target.value)}
+            placeholder={l.modo === "mensual" ? "al mes" : "total"}
+            inputMode="numeric"
+            aria-label={`Precio ${l.modo === "mensual" ? "al mes" : "total"} de ${l.visible}`}
+          />
         </span>
-        <input
-          value={l.valor}
-          onChange={(e) => c.escribirValor(l.codigo, e.target.value)}
-          placeholder="al mes"
-          inputMode="numeric"
-          aria-label={`Valor acordado de ${l.visible}`}
-        />
-      </span>
+      )}
       {sePuedeQuitar && (
         <button
           className="x"
-          onClick={() => c.onQuitar(l.fixture.id, l.face, l.parte ?? undefined)}
+          onClick={() => {
+            if (l.tipo === "partes" && l.items.length > 0) {
+              // Las partes de la línea, de una: es una línea.
+              for (const it of l.items) c.onQuitar(l.fixture.id, l.face, it.parte ?? undefined);
+              c.onQuitar(l.fixture.id, l.face);
+            } else c.onQuitar(l.fixture.id, l.face, l.tipo === "pieza" ? l.parte ?? undefined : undefined);
+          }}
           aria-label={`Quitar ${l.visible} del contrato`}
         >
           ×
         </button>
       )}
-      {/* El choque va DEBAJO, a todo el ancho de la fila, y no en la columna
-          del tipo: ahí, angosta, salía con una palabra por renglón, la fila
-          pasaba de 150 a 255 px y empujaba Proveedor, fechas y «Guardar»
-          fuera del panel. (`.eitem` es flex con `wrap`; el aviso ocupa el
-          100 % y baja solo al renglón de abajo.) */}
+      {abierta && formas.length > 0 && onVenderAsi && (
+        <FormasDeLaLinea
+          l={l}
+          formas={formas}
+          actual={actual}
+          posible={posible}
+          onElegir={(forma, cambio) => onVenderAsi(l.fixture.id, l.face, forma, cambio)}
+        />
+      )}
       {primeraDeLaCara && interruptores.length > 0 && (
         <span className="partes" role="group" aria-label={`Cómo se vende ${codigoVisibleDe(l.fixture.code, l.face, l.doble, null)}`}
           data-partes-de={claveDeCara}>
@@ -341,7 +371,18 @@ function Fila({
           )}
         </span>
       )}
+      {(abierta || l.sinElegir) && l.tipo === "partes" && <ElegirPartes l={l} c={c} />}
+      {(abierta || l.pb <= 0) && l.tipo === "pc" && <Porcentaje l={l} c={c} />}
+      {conPrecio && (abierta || l.modo === "mensual") && <PrecioDeLinea l={l} c={c} />}
       {choque && <span className="aviso choque" role="alert">{choque}</span>}
+      {l.tipo === "pc" && l.noEntra && !l.rechazo && l.quedaPb !== null && l.quedaPb > 0 && (
+        <span className="aviso-acciones">
+          <button type="button" className="btn3" onClick={() => c.escribirPorcentaje(l.codigoCara, l.quedaPb!)}>
+            Bajar a {pct(l.quedaPb)}
+          </button>
+        </span>
+      )}
+      <RechazoDeLinea l={l} c={c} onCambiarFechas={() => document.getElementById("contrato-desde")?.focus()} />
     </div>
   );
 }
@@ -447,66 +488,51 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
 }
 
 function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => void }) {
+  const reserva = datos.tipo === "reserva";
+  const porVentas = datos.cobro.modo === "ventas" ? `${pct(Math.round(datos.cobro.porcentaje * 100))} de las ventas` : null;
+  const cobro = porVentas ?? (datos.total > 0 ? money(datos.total) : null);
   return (
-    <Panel derecha={<span className="vpill">guardado</span>}>
+    <Panel derecha={<span className="vpill">{reserva ? "Reservado" : "Firmado"}</span>}>
       <div className="cuerpo">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <Check size={16} style={{ color: "var(--libre-txt)" }} />
-          <b style={{ fontSize: "var(--t-base)" }}>Contrato guardado</b>
-        </div>
-        <div style={{ fontSize: "var(--t-sm)", color: "var(--ink-2)", lineHeight: 1.5 }}>
-          <b>{datos.espacios.join(", ")}</b>
-          {datos.espacios.length > 1 ? " quedan contratados" : " queda contratado"} para{" "}
-          <b>{datos.proveedor}</b>, del {fechaCorta(datos.desde)} al {fechaCorta(datos.hasta)}
-          {datos.total > 0 && <> por <b>{money(datos.total)}</b></>}.
-          <div style={{ marginTop: 8 }}><Avisos avisos={datos.avisos} /></div>
-        </div>
-
-        {/* Lo que NO quedó. Un contrato de tres espacios son tres filas en la
-            base y la segunda puede fallar con la primera ya escrita; deshacerla
-            sería peor —el correo ya salió—. Así que no se deshace nada y se dice
-            exactamente qué falta, con el código a mano para reintentarlo. */}
-        {datos.fallaron && datos.fallaron.length > 0 && (
-          <div className="error-txt">
+        {/* Lo que quedó escrito, como el paso 5 del dibujo aprobado: las
+            líneas en mono, el proveedor, las fechas y la plata. Sin
+            Distribución: dónde va la marca en una cara por porcentaje se
+            define después, en Supervisar, sin el proveedor delante. */}
+        <div className="hecho" data-guardado={datos.tipo}>
+          <Check {...ICONO} />
+          <div>
+            {/* «Reservado hasta el 25 oct · 8 % de las ventas»: una reserva
+                que cobra por ventas lo dice en el título, que es lo que se
+                apartó. */}
             <b>
-              {datos.fallaron.length === 1
-                ? "Un espacio no se pudo guardar."
-                : `${datos.fallaron.length} espacios no se pudieron guardar.`}
-            </b>{" "}
-            El resto del contrato sí quedó. Volvé a intentarlo con{" "}
-            {datos.fallaron.map((f) => f.espacio).join(", ")}.
-            {datos.fallaron.map((f) => (
-              <div key={f.espacio} style={{ color: "var(--ink-2)" }}>{f.espacio}: {f.motivo}</div>
-            ))}
+              {reserva && datos.caduca
+                ? `Reservado hasta el ${diaCorto(datos.caduca)}${porVentas ? ` · ${porVentas}` : ""}`
+                : "Contrato guardado"}
+            </b>
+            {datos.espacios.map((e) => <span className="mono" key={e}>{e}</span>)}
+            <span>
+              {datos.proveedor} · {rangoCorto(datos.desde, datos.hasta)}
+              {cobro && !(reserva && porVentas) && <> · {cobro}</>}
+            </span>
+            {reserva && (
+              <span>Hasta ese día nadie más puede tomarlo. Después se libera solo, si no se confirma.</span>
+            )}
           </div>
-        )}
-        {datos.avisoPlanometria && (
-          <div style={{
-            marginTop: 8, padding: "8px 10px", borderRadius: "var(--r-sm)",
-            background: "var(--warning-50)", color: "var(--warning)",
-            fontSize: "var(--t-2xs)", lineHeight: 1.45,
-          }}>
-            {datos.avisoPlanometria}
-          </div>
-        )}
+        </div>
+        <div className="avisos-guardado">
+          <Avisos avisos={datos.avisos} />
+        </div>
+        {/* La planometría no se carga en Vender (decisión de la dueña,
+            2026-10-20): se dice dónde, una vez, sin alarma. */}
+        <p className="nota-guardado" data-planometria-en-supervisar>La planometría se carga en Supervisar, en la ficha del espacio.</p>
         {/* En tinta y no en amarillo, y no es un descuido: el amarillo dice
             «acá está el trabajo», y con el contrato guardado el trabajo está
-            hecho. Además `probar:tema` cuenta los amarillos por archivo, y dos
-            usos de `.btn-principal` en el mismo componente —aunque nunca
-            aparezcan a la vez— es exactamente la forma en que la regla del
-            dueño se empieza a vaciar. */}
+            hecho. Además dos usos de `.btn-principal` en el mismo archivo
+            —aunque nunca aparezcan a la vez— es exactamente la forma en que la
+            regla del dueño se empieza a vaciar. */}
         <div className="acciones">
-          <button
-            type="button"
-            onClick={onSeguir}
-            style={{
-              display: "block", width: "100%", padding: 11,
-              borderRadius: "var(--r-md)", border: 0, cursor: "pointer",
-              background: "var(--accent)", color: "var(--accent-ink)",
-              fontSize: "var(--t-base)", fontWeight: 700, fontFamily: "inherit",
-            }}
-          >
-            Vender otro espacio
+          <button type="button" className="btn-tinta" onClick={onSeguir}>
+            Armar otro contrato
           </button>
         </div>
       </div>
@@ -519,9 +545,9 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
 function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const {
     espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte,
-    onGuardado, onCancelar, onResaltar, avisoDeParticipacion,
+    onGuardado, onCancelar, onResaltar, ocupacionDe, onVenderAsi,
   } = props;
-  const c = useContrato({ espacios, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte, onGuardado });
+  const c = useContrato({ espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado });
   const guardando = c.estado === "guardando";
   // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
@@ -552,13 +578,16 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   // la entera, la cara entera, como siempre.
   const carasDelVisor = useMemo<CaraDelVisor[]>(() => {
     const porCara = new Map<string, CaraDelVisor & { entera: boolean; sufijos: string[]; codigos: string[] }>();
-    for (const l of c.lineas
+    // Por ESPACIO (las partes de una línea van cada una), y un porcentaje es
+    // su cara entera: el visor nunca dibuja zonas ni porcentajes.
+    for (const l of c.lineas.flatMap((x) => x.items)
       // La exhibición no tiene 3D (`storeToFixtures` no la dibuja): ni botón ni pestaña.
       .filter((l) => l.fixture.type !== "exhibicion")
       .filter((l) => l.disponibilidad === "libre" && l.choqueServidor.length === 0)) {
       const k = `${l.fixture.id}|${l.face}`;
+      const doble = isDoubleGondola(l.fixture);
       const ya = porCara.get(k) ?? {
-        fixtureId: l.fixture.id, face: l.face, visible: l.visible, codigo: l.codigo,
+        fixtureId: l.fixture.id, face: l.face, visible: codigoVisibleDe(l.fixture.code, l.face, doble, null), codigo: l.codigo,
         tipo: tipoDelMueble(l.fixture, nombresPropios), entera: false, sufijos: [], codigos: [],
       };
       if (l.parte) { ya.sufijos.push(l.parte); ya.codigos.push(l.codigo); } else ya.entera = true;
@@ -567,12 +596,12 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     return [...porCara.values()].map(({ entera, sufijos, codigos, ...cara }) => {
       const f = c.lineas.find((l) => l.fixture.id === cara.fixtureId)!.fixture;
       if (entera || sufijos.length === 0) {
-        return { ...cara, visible: codigoVisibleDe(f.code, cara.face, c.lineas.find((l) => l.fixture.id === f.id)!.doble, null) };
+        return { ...cara, visible: codigoVisibleDe(f.code, cara.face, isDoubleGondola(f), null) };
       }
       // Las puertas, los tramos y las filas que van en el contrato, o el nicho
       // de una pieza: `marcasDelContrato`, probada con la cámara de venta.
       const { vanos, filas, dePiezas } = marcasDelContrato(f, cara.face, sufijos);
-      const doble = dePiezas ? false : c.lineas.find((l) => l.fixture.id === f.id)!.doble;
+      const doble = dePiezas ? false : isDoubleGondola(f);
       return {
         ...cara,
         visible: `${codigoVisibleDe(f.code, cara.face, doble, null)}·${sufijos.join("·")}`,
@@ -616,94 +645,145 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
       document.querySelector<HTMLElement>("[data-ver-3d]")?.focus();
     });
   }, []);
-  /** Correo, nota y planometría: opcionales, y ninguno se toca en la llamada
-   *  típica. Cerrados, la ficha cierra con aire; abiertos, el cuerpo rueda y se
-   *  ve que rueda. */
+  /** Correo y nota: opcionales, y ninguno se toca en la llamada típica.
+   *  Cerrados, la ficha cierra con aire; abiertos, el cuerpo rueda y se ve que
+   *  rueda. (La planometría se fue de Vender: se carga sólo en Supervisar, en
+   *  la ficha del espacio, con el contrato ya hecho — decisión de la dueña,
+   *  2026-10-20. Con ella se fue adjuntar la lámina del visor al contrato.) */
   const [masDatos, setMasDatos] = useState(false);
-  /** «Usarla como planometría», desde el visor: la lámina queda en el campo
-   *  de planometría de ESTE contrato (y se guarda con él), y el desplegable
-   *  se abre para que al volver se vea adjunta. Nunca el plano.
-   *
-   *  Sólo si es del proveedor que el contrato tiene AHORA. La lámina se arma
-   *  en segundo plano durante varios segundos y llega acá después; si en el
-   *  medio el proveedor cambió, es la lámina del anterior —«PROVEEDOR Alpina»
-   *  y su producto— y no entra al contrato de Postobón, donde además el visor
-   *  la habría atribuido al nuevo. El proveedor vigente sale de un ref: la
-   *  función que llama el visor se armó en el render del clic. Es la segunda
-   *  defensa; la primera es que el visor descarta lo armado si cambió lo que
-   *  se mostraba (`vigencia`). */
-  const { setPlanometria } = c;
-  const { marcarLamina } = sesion;
-  const proveedorVigente = useRef(c.proveedor);
-  proveedorVigente.current = c.proveedor;
-  const adjuntarLamina = useCallback((archivo: File, cara: string, proveedor: string) => {
-    if (normalizarProveedor(proveedor) !== normalizarProveedor(proveedorVigente.current)) return false;
-    setPlanometria(archivo);
-    marcarLamina({ archivo, cara });
-    setMasDatos(true);
-    return true;
-  }, [setPlanometria, marcarLamina]);
-  /* La lámina adjunta es de la PRUEBA, y se va con ella. La prueba se olvida
-     al cambiar de proveedor (`useSesionDeVenta`); si en ese momento la
-     planometría sigue siendo la lámina, sale del contrato. Pasaba: con Alpina
-     se adjuntaba la lámina, se escribía «Postobón» y el contrato de Postobón
-     se guardaba con la lámina de Alpina —«PROVEEDOR Alpina» y su yogur—, que
-     viaja por correo y es la guía con la que el mercaderista arma la
-     exhibición. Un archivo que subió la dueña no se toca: no es del 3D.
-     («Empezar de nuevo» también olvida la prueba, pero saca la lámina él
-     mismo y sin aviso: ver `empezarDeNuevo`.) */
-  const laminaAntes = useRef(sesion.lamina);
-  const [laminaQuitada, setLaminaQuitada] = useState(false);
-  useEffect(() => {
-    const antes = laminaAntes.current;
-    laminaAntes.current = sesion.lamina;
-    if (antes && !sesion.lamina && c.planometria === antes.archivo) {
-      setPlanometria(null);
-      setLaminaQuitada(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sesion.lamina]);
   /** «Empezar de nuevo»: la prueba del 3D se olvida con el contrato (la ficha
-   *  no se remonta: su clave es la sede). La lámina era de las caras que se
-   *  van, así que sale de la planometría ACÁ, en el mismo clic, y sin aviso:
-   *  con el efecto de arriba quedaba «se quitó la lámina» en una ficha que se
-   *  estaba empezando de cero, con el proveedor todavía escrito. */
+   *  no se remonta: su clave es la sede), así que se vacía a mano. */
   const empezarDeNuevo = () => {
-    if (sesion.lamina && c.planometria === sesion.lamina.archivo) setPlanometria(null);
-    setLaminaQuitada(false);
     sesion.vaciar();
     onCancelar();
   };
-  // Otra planometría (un archivo de la dueña, o quitarla a mano): ya no es la
-  // lámina, y el aviso de que se quitó tampoco hace falta.
+
+  /** La línea abierta: la última que se tocó (cerradas, las líneas son un
+   *  renglón y la ficha cierra con tres adentro). La que todavía pide algo
+   *  (sin partes elegidas, sin %) se abre sola. */
+  const [abierta, setAbierta] = useState<string | null>(null);
+  const cuantas = useRef(c.lineas.length);
   useEffect(() => {
-    if (sesion.lamina && c.planometria !== sesion.lamina.archivo) marcarLamina(null);
-    if (c.planometria) setLaminaQuitada(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [c.planometria]);
+    if (c.lineas.length > cuantas.current) setAbierta(c.lineas[c.lineas.length - 1]?.clave ?? null);
+    cuantas.current = c.lineas.length;
+  }, [c.lineas]);
+  /* Una línea que pasa a «por partes» sin ninguna marcada (cambió la forma, o
+     entró así) queda ABIERTA por su clave, que es la misma con o sin partes
+     (`…-EN*`): antes se mostraba sólo mientras no tenía ninguna y al tildar
+     EN1 se cerraba en la cara del que estaba eligiendo. */
+  const sinElegir = c.lineas.find((l) => l.sinElegir)?.clave ?? null;
+  useEffect(() => {
+    if (sinElegir) setAbierta(sinElegir);
+  }, [sinElegir]);
+  const conVentas = c.cobroModo === "ventas";
+  const porVentas = conVentas ? totalPorVentas(c) : null;
+  const queSeReserva = c.lineas.length === 1
+    ? c.lineas[0].tipo === "pc" && c.lineas[0].pb > 0 ? `este ${pct(c.lineas[0].pb)}` : c.lineas[0].visible
+    : "lo de este contrato";
+
+  /* ── El pie: el total y los botones, SIEMPRE a la vista ──────────────────
+     Afuera del cuerpo que rueda: con cuatro líneas abiertas el total y el
+     botón seguían ahí. El total es la suma del total de cada línea (o el % de
+     las ventas, que no se sabe todavía y se dice así). */
+  const pie = (
+    <div className="pie-contrato">
+      <div className="total">
+        <span className="rotulo"><Receipt {...ICONO} size={14} /> Total del contrato</span>
+        {porVentas ? (
+          <span className="n n-ventas">{porVentas.cifra}</span>
+        ) : (
+          <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>
+        )}
+      </div>
+      {/* El plazo («31 días · 1 mes · 1 línea») y las temporadas que cubre,
+          en UN renglón: con una o dos líneas la ficha entra entera sin rodar
+          (antes eran tres renglones, y el plazo se repetía en el cuerpo). Las
+          temporadas son el argumento de venta que una planilla no puede dar,
+          y el control de que las fechas quedaron donde se querían. */}
+      <div className="total-fila">
+        <p className="total-sub">
+          {porVentas ? porVentas.detalle
+            : c.fechasEnOrden && c.lineas.length > 0
+            ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.textoDeMeses(c.nMeses)} · ${c.lineas.length} ${c.lineas.length === 1 ? "línea" : "líneas"}`
+            : "\u00a0"}
+        </p>
+        {c.cubre.length > 0 && (
+          <div className="cubre">
+            {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
+          </div>
+        )}
+      </div>
+      {/* El error del servidor sí se dice acá, pegado al botón que lo
+          provocó: es lo que pasó al tocarlo, no lo que falta antes. */}
+      {c.error && (
+        <p className="error-txt">
+          <AlertTriangle size={12} style={{ verticalAlign: "-1px" }} /> {c.error}
+        </p>
+      )}
+      <div className="acciones acciones2">
+        {/* EL botón principal de Vender: el único amarillo de la pantalla. Con
+            «Reservar hasta…» abierto, el mismo botón reserva: nunca dos
+            amarillos. El estado deshabilitado lo pinta `.btn-principal:disabled`. */}
+        <button
+          className="btn-principal"
+          type="button"
+          onClick={c.guardar}
+          disabled={guardando || (c.reservando ? !c.puedeReservar || !!c.faltaReserva : !c.puedeGuardar)}
+          title={(c.reservando ? c.falta ?? c.faltaReserva : c.falta) ?? undefined}
+        >
+          {guardando
+            ? <><Loader2 size={14} style={{ verticalAlign: "-2px", animation: "spin .9s linear infinite" }} /> Guardando…</>
+            : c.reservando
+            ? <><Hourglass {...ICONO} /> {c.caduca && !c.faltaReserva ? `Reservar hasta el ${diaCorto(c.caduca)}` : "Reservar"}</>
+            : <><Check {...ICONO} /> Guardar contrato</>}
+        </button>
+        {c.reservando ? (
+          <button className="btn3" type="button" onClick={() => c.setReservando(false)} disabled={guardando}>
+            Volver
+          </button>
+        ) : (
+          <button
+            className="btn3"
+            type="button"
+            onClick={() => c.setReservando(true)}
+            disabled={guardando || !c.puedeReservar}
+            title={!c.puedeReservar ? c.falta ?? undefined : "Apartarlo hasta una fecha, sin firmar todavía"}
+          >
+            <Hourglass {...ICONO} /> Reservar hasta…
+          </button>
+        )}
+        <button
+          className="btn2 fantasma"
+          type="button"
+          // La prueba del 3D se olvida con el contrato: «empezar de nuevo» no
+          // remonta la ficha (su clave es la sede), así que se vacía a mano.
+          onClick={empezarDeNuevo}
+          disabled={guardando}
+        >
+          <RotateCcw {...ICONO} size={14} /> Empezar de nuevo
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <Panel
+      pie={pie}
       derecha={
         <>
           {/* «¿Y cómo queda?», sin salir del contrato: el 3D se abre ENCIMA
               de la ficha, que sigue montada debajo con todo lo tecleado. UNO
-              solo, en la cabecera, y no uno por fila: en la fila le comía
-              50 px a la descripción —a 1366 la góndola desbordaba la
-              tarjeta— y el aviso de choque quedaba de una palabra por
-              renglón. Abre la última cara que se tocó en el plano; las otras,
-              desde la chapa del visor. No va en el plano porque en Vender
-              tocar el plano suma o saca la cara del contrato. De la familia
-              de los interruptores A/B —borde fino, mono, tinta—: nunca
-              amarillo, que es de «Guardar contrato y avisar». */}
+              solo, en la cabecera, y no uno por línea. Abre la última cara que
+              se tocó en el plano; las otras, desde la chapa del visor. Nunca
+              amarillo, que es de «Guardar contrato». */}
           {(caraParaVer || ultima) && (
             <button
               type="button"
               className="ver3d"
               data-ver-3d
               // Ninguna cara del contrato se puede mostrar: el botón queda, y
-              // dice por qué (antes desaparecía sin explicación). `aria-disabled`
-              // y no `disabled`: con `disabled` no se ve el `title`.
+              // dice por qué. `aria-disabled` y no `disabled`: con `disabled`
+              // no se ve el `title`.
               aria-disabled={caraParaVer ? undefined : "true"}
               onClick={caraParaVer ? () => abrir3D(caraParaVer) : undefined}
               aria-label={caraParaVer ? `Ver ${caraParaVer.visible} en 3D` : undefined}
@@ -717,7 +797,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               <Box size={12} aria-hidden /> {caraParaVer && !ultimaSeVe ? `Ver ${caraParaVer.visible} en 3D` : "Ver en 3D"}
             </button>
           )}
-          <span className="vpill">sin firmar</span>
+          <span className="vpill">{c.reservando ? "Reservando" : "Sin firmar"}</span>
         </>
       }
     >
@@ -725,11 +805,15 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
         <div className="espacios">
           {c.lineas.map((l) => (
             <Fila
-              key={claveDeEspacio(l.fixture.id, l.face, l.parte)}
+              key={l.clave}
               l={l}
               c={c}
               onResaltar={onResaltar}
               onSumarEnTodas={props.onSumarEnTodas}
+              ocupacionDe={ocupacionDe}
+              onVenderAsi={onVenderAsi}
+              abierta={abierta === l.clave || !!l.rechazo}
+              onAbrir={() => setAbierta((a) => (a === l.clave ? null : l.clave))}
               /* Con un solo espacio no se ofrece quitarlo: dejaría un contrato
                  sin nada adentro, y para eso está «Empezar de nuevo». */
               sePuedeQuitar={c.lineas.length > 1}
@@ -738,47 +822,24 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           {c.lineas.length === 0 && ultimo && !seVendeAlgo(ultimo) && (
             <NoComercializable fixture={ultimo} />
           )}
-          {/* Una cara por participación no entra al contrato: se dice dónde se
-              vende, con o sin espacios ya sumados (el contrato queda como
-              estaba). Sin nombres ni montos: lo arma la ocupación anónima. */}
-          {avisoDeParticipacion && (
-            <div
-              data-aviso-participacion
-              role="status"
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "10px 11px", borderRadius: "var(--r-sm)",
-                border: "1px dashed var(--line-strong)", background: "var(--surface-2)",
-              }}
-            >
-              <Lock size={16} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-              <span style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
-                {avisoDeParticipacion}
-              </span>
-            </div>
-          )}
         </div>
-        {/* Un solo renglón de guía, y dice lo que falta AHORA. Antes eran dos
-            —la pista de arriba y el «falta el proveedor» sobre el botón— que
-            nunca hablan del mismo momento y sumaban 40 px a una ficha que tiene
-            que cerrar con tres espacios adentro. */}
-        {/* Del tercer espacio en adelante, y sólo si no falta nada, la pista se
-            va: quien ya sumó tres sabe cómo se suma el cuarto, y ese renglón es
-            justo lo que la ficha necesita para no empezar a rodar. Es la misma
-            regla de D (`$('.pista').hidden = contrato.length >= 3`). */}
+        {/* UN solo renglón de guía, y dice lo que falta AHORA. Si no falta
+            nada y es la primera cara, dónde está el 3D (el botón de la
+            cabecera es chico); si no, sumar otro espacio. Del tercer espacio
+            en adelante, y sólo si no falta nada, se va. Eran dos renglones
+            («Falta el proveedor» y el del 3D) y con una línea la ficha rodaba. */}
         {(c.lineas.length < 3 || c.falta) && (
-          <p className="pista">
-            {c.lineas.length === 0
-              ? <>Elegí el primer espacio <b>tocándolo en el plano</b></>
-              : c.falta
-              ? c.falta
-              : <>Agregá otro espacio <b>tocándolo en el plano</b></>}
-          </p>
-        )}
-        {/* La primera vez que se toca una cara, dónde está el 3D: el botón
-            de la cabecera es chico y nada más en la ficha decía que existe. */}
-        {c.lineas.length === 1 && caraParaVer && !vio3D && (
-          <p className="pista" data-pista-3d>Tocá <b>Ver en 3D</b> para mostrarle cómo queda</p>
+          c.lineas.length === 1 && !c.falta && caraParaVer && !vio3D ? (
+            <p className="pista" data-pista-3d>Tocá <b>Ver en 3D</b> para mostrarle cómo queda</p>
+          ) : (
+            <p className="pista">
+              {c.lineas.length === 0
+                ? <>Elegí el primer espacio <b>tocándolo en el plano</b></>
+                : c.falta
+                ? c.falta
+                : <>Agregá otro espacio <b>tocándolo en el plano</b></>}
+            </p>
+          )
         )}
 
         <hr className="corte" />
@@ -786,193 +847,109 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
         <div className="campo par">
           <div>
             <span className="rotulo">Proveedor</span>
-            <input
-              className="entrada"
-              value={c.proveedor}
-              onChange={(e) => c.setProveedor(e.target.value)}
-              placeholder="Alpina, Nutresa…"
-            />
+            <CampoProveedor valor={c.proveedor} onCambio={c.setProveedor} />
           </div>
           <div>
             <span className="rotulo">Marca</span>
-            <input
-              className="entrada"
-              value={c.marca}
-              onChange={(e) => c.setMarca(e.target.value)}
-              placeholder="opcional"
-            />
+            <label className="entrada con-ico">
+              <BadgeCheck {...ICONO} />
+              <input value={c.marca} onChange={(e) => c.setMarca(e.target.value)} placeholder="opcional" aria-label="Marca" />
+            </label>
           </div>
         </div>
         <div className="campo par">
           <div>
             <span className="rotulo">Desde</span>
-            <input
-              className="entrada cif" type="date"
-              value={c.desde} onChange={(e) => c.setDesde(e.target.value)}
-            />
+            <label className="entrada con-ico cif">
+              <Calendar {...ICONO} />
+              <input id="contrato-desde" type="date" value={c.desde} onChange={(e) => c.setDesde(e.target.value)} aria-label="Desde" />
+            </label>
           </div>
           <div>
             <span className="rotulo">Hasta</span>
-            <input
-              className="entrada cif" type="date"
-              value={c.hasta} onChange={(e) => c.setHasta(e.target.value)}
-            />
+            <label className="entrada con-ico cif">
+              <Calendar {...ICONO} />
+              <input type="date" value={c.hasta} onChange={(e) => c.setHasta(e.target.value)} aria-label="Hasta" />
+            </label>
           </div>
         </div>
-        {/* El plazo y el desplegable comparten renglón: son las dos cosas que
-            cuelgan de las fechas, y en una ficha que tiene que cerrar en 448 px
-            un renglón entero para un enlace de tres palabras es alto que le
-            falta al botón. */}
-        <div className="plazo-fila">
-          <p className={`plazo${c.desde && c.hasta && !c.fechasEnOrden ? " mal" : ""}`}>
-            {c.desde && c.hasta && !c.fechasEnOrden
-              ? "La fecha de fin es anterior a la de inicio"
-              : c.fechasEnOrden
-              ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.lineas.length} espacio${c.lineas.length === 1 ? "" : "s"}`
-              : "Elegí las fechas del acuerdo"}
+        {/* Los atajos de fecha. El plazo («31 días · 1 mes») va en el pie,
+            junto al total; acá sólo si las fechas no sirven. */}
+        <AtajosDeFecha c={c} />
+        {!c.fechasEnOrden && (
+          <p className="plazo mal">
+            {c.desde && c.hasta ? "La fecha de fin es anterior a la de inicio" : "Elegí las fechas del acuerdo"}
           </p>
-          <button
-            className="btn2"
-            onClick={() => setMasDatos((v) => !v)}
-            aria-expanded={masDatos}
-          >
-            {masDatos ? "− " : "+ "}Correo, nota y planometría
-          </button>
-        </div>
+        )}
 
         {masDatos && (
           <div style={{ marginTop: 4 }}>
             <div className="campo">
               <span className="rotulo">Correo · para la constancia</span>
-              <input
-                className="entrada"
-                value={c.correo}
-                onChange={(e) => c.setCorreo(e.target.value)}
-                placeholder="opcional"
-                inputMode="email"
-              />
+              <label className="entrada con-ico">
+                <Mail {...ICONO} />
+                <input
+                  value={c.correo}
+                  onChange={(e) => c.setCorreo(e.target.value)}
+                  placeholder="opcional"
+                  inputMode="email"
+                  aria-label="Correo para la constancia"
+                />
+              </label>
             </div>
             <div className="campo">
               <span className="rotulo">Nota</span>
-              <textarea
-                className="entrada"
-                rows={2}
-                value={c.nota}
-                onChange={(e) => c.setNota(e.target.value)}
-                placeholder="Algo que haya que saber de este acuerdo"
-                style={{ display: "block", resize: "none", lineHeight: 1.4, fontSize: "var(--t-sm)" }}
-              />
-            </div>
-            {/* La planometría: qué le prometimos armar al proveedor. Va acá y no
-                en el plano porque cuelga de ESTE contrato — la misma punta
-                recibe una distinta cada temporada. */}
-            <div className="campo">
-              <span className="rotulo">Planometría · foto o PDF del proveedor</span>
-              {/* Sin nombres y sin decir POR QUÉ: esta ficha la mira el
-                  proveedor, y «era de otro proveedor» le contaba que ese
-                  espacio se le estuvo ofreciendo a otro (y con sólo corregir
-                  cómo se escribe el mismo, era falso). La dueña sabe qué
-                  cambió; lo que necesita es saber que tiene que rehacerla. */}
-              {!c.planometria && laminaQuitada && (
-                <span className="nota-campo" data-lamina-quitada>La lámina del 3D se quitó: si la querés, armala de nuevo con «Ver en 3D».</span>
-              )}
-              {c.planometria ? (
-                <div className="entrada" style={{ gap: 8 }}>
-                  <ImageUp size={14} style={{ color: "var(--ink-3)", flexShrink: 0 }} />
-                  <span style={{
-                    flex: 1, minWidth: 0, fontSize: "var(--t-2xs)",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {c.planometria.name}
-                  </span>
-                  <button
-                    onClick={() => c.setPlanometria(null)}
-                    aria-label="Quitar la planometría"
-                    style={{ border: 0, background: "none", cursor: "pointer", color: "var(--ink-3)", display: "flex" }}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-              ) : (
-                <label
-                  className="entrada"
-                  style={{
-                    gap: 8, cursor: "pointer", borderStyle: "dashed",
-                    color: "var(--ink-3)", fontSize: "var(--t-2xs)",
-                  }}
-                >
-                  <ImageUp size={14} />
-                  Adjuntar cómo debe quedar la exhibición
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-                    style={{ display: "none" }}
-                    onChange={(e) => c.setPlanometria(e.target.files?.[0] ?? null)}
-                  />
-                </label>
-              )}
+              <label className="entrada con-ico area">
+                <StickyNote {...ICONO} />
+                <textarea
+                  rows={2}
+                  value={c.nota}
+                  onChange={(e) => c.setNota(e.target.value)}
+                  placeholder="Algo que haya que saber de este acuerdo"
+                  aria-label="Nota"
+                />
+              </label>
             </div>
             {/* Quién se va a enterar, ANTES de guardar. */}
             <NotifyPreview sede={c.sede} />
           </div>
         )}
 
-        {/* ── Lo que se firma ─────────────────────────────────────────────
-            La suma de lo acordado, sin prorratear. Acá había un total que se
-            derivaba del valor por día sobre un mes de 30 —$200.000 por un mes
-            del 11 de septiembre al 11 de octubre salían $206.667— y la cuenta
-            estaba bien pero la premisa estaba mal: quien negocia vende el
-            espacio al valor que quiera por el tiempo que quiera, así que lo
-            tecleado ES el precio. Es la única cifra grande de la pantalla y se
-            la gana: es lo que va a quedar escrito. */}
-        <div className="total">
-          <span className="rotulo">Total del contrato</span>
-          <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>
-        </div>
-        {/* Las temporadas que el plazo cubre: el argumento de venta que una
-            planilla no puede dar, y a la vez el control de que las fechas
-            quedaron donde se querían. */}
-        {c.cubre.length > 0 && (
-          <div className="cubre">
-            {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
+        {/* El cobro y, en el mismo renglón, el desplegable del correo y la nota. */}
+        <ComoSeCobra
+          c={c}
+          extra={(
+            <button
+              className="btn2"
+              onClick={() => setMasDatos((v) => !v)}
+              aria-expanded={masDatos}
+            >
+              {masDatos ? "− " : "+ "}Correo y nota
+            </button>
+          )}
+        />
+
+        {/* «Reservar hasta…»: la fecha la elige quien opera y arranca VACÍA
+            (decisión de la dueña). De hoy al último día del contrato. */}
+        {c.reservando && (
+          <div className="campo reserva" data-reserva>
+            <span className="rotulo">Reservar hasta</span>
+            <label className="entrada con-ico cif">
+              <Hourglass {...ICONO} />
+              <input
+                type="date"
+                value={c.caduca}
+                min={c.hoy}
+                max={c.hasta || undefined}
+                onChange={(e) => c.setCaduca(e.target.value)}
+                aria-label="Reservar hasta"
+              />
+            </label>
+            <span className="nota-campo">
+              {c.faltaReserva ?? `Hasta ese día nadie más puede tomar ${queSeReserva}. Después se libera solo.`}
+            </span>
           </div>
         )}
-
-        {/* El error del servidor sí se dice acá, pegado al botón que lo
-            provocó: es lo que pasó al tocarlo, no lo que falta antes. */}
-        {c.error && (
-          <p className="error-txt">
-            <AlertTriangle size={12} style={{ verticalAlign: "-1px" }} /> {c.error}
-          </p>
-        )}
-
-        <div className="acciones">
-          {/* EL botón principal de Vender: el único amarillo de la pantalla
-              (`outputs/tema.md` §2). El estado deshabilitado lo pinta
-              `.btn-principal:disabled`, así que acá no hay ternarios de color:
-              el color no es una decisión de este componente. */}
-          <button
-            className="btn-principal"
-            type="button"
-            onClick={c.guardar}
-            disabled={!c.puedeGuardar || guardando}
-            title={c.falta ?? undefined}
-          >
-            {guardando
-              ? <><Loader2 size={14} style={{ verticalAlign: "-2px", animation: "spin .9s linear infinite" }} /> Guardando…</>
-              : "Guardar contrato y avisar"}
-          </button>
-          <button
-            className="btn2"
-            type="button"
-            // La prueba del 3D se olvida con el contrato: «empezar de nuevo» no
-            // remonta la ficha (su clave es la sede), así que se vacía a mano.
-            onClick={empezarDeNuevo}
-            disabled={guardando}
-          >
-            Empezar de nuevo
-          </button>
-        </div>
       </div>
       {en3D && (
         <LimiteDelVisor onCerrar={cerrar3D}>
@@ -986,9 +963,6 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               sesion={sesion}
               onCerrar={cerrar3D}
               sede={c.sede}
-              onPlanometria={adjuntarLamina}
-              planometria={!c.planometria ? null
-                : sesion.lamina && c.planometria === sesion.lamina.archivo ? { lamina: sesion.lamina.cara } : "otra"}
             />
           </Suspense>
         </LimiteDelVisor>

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.fechas import hoy
 from app.models.models import Space, SpaceLease, Supplier
 from app.routers.spaces import expire_leases
+from app.services.cobros import cobrado_por_contrato
 
 # Read-only router: any authenticated role may consult the dashboard.
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_auth)])
@@ -42,6 +43,13 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
         .scalar()
         or 0.0
     )
+    # Los contratos que se cobran por un % de las ventas tienen el valor en 0:
+    # lo suyo es lo cobrado en los cortes de este mes (vender-api.md §3),
+    # repartido por días si el corte cruza meses.
+    inicio_mes = today.replace(day=1)
+    fin_mes = (inicio_mes + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    cobrado = cobrado_por_contrato(db, inicio_mes, fin_mes)
+    monthly_revenue += sum(cobrado.values())
 
     # Leases expiring within the next 30 days
     expiring_soon = int(
@@ -56,22 +64,26 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     )
 
     # Top 5 suppliers ranked by monthly revenue
-    top_suppliers = (
-        db.query(
-            Supplier.name,
-            func.count(SpaceLease.id).label("leases"),
-            func.sum(SpaceLease.monthly_rent).label("revenue"),
-        )
+    # Lo cobrado por ventas se suma al proveedor: por eso el orden y el tope
+    # de cinco se aplican después, acá, y no en la consulta.
+    por_proveedor: dict[int, dict] = {}
+    for sid, name, lease_id, rent in (
+        db.query(Supplier.id, Supplier.name, SpaceLease.id, SpaceLease.monthly_rent)
         .join(SpaceLease, SpaceLease.supplier_id == Supplier.id)
         .filter(*running)
-        .group_by(Supplier.id, Supplier.name)
-        .order_by(func.sum(SpaceLease.monthly_rent).desc())
-        .limit(5)
         .all()
-    )
-
+    ):
+        fila = por_proveedor.setdefault(sid, {"name": name, "leases": 0, "revenue": 0.0})
+        fila["leases"] += 1
+        fila["revenue"] += float(rent or 0) + cobrado.get(lease_id, 0.0)
     # Workers never receive negotiated amounts — zero out every revenue field.
     is_admin = role == "admin"
+    # Al trabajador, ni el orden por plata: los cinco primeros por plata son un
+    # ranking aunque las cifras vayan en cero. Para él, por nombre.
+    if is_admin:
+        top_suppliers = sorted(por_proveedor.values(), key=lambda r: -r["revenue"])[:5]
+    else:
+        top_suppliers = sorted(por_proveedor.values(), key=lambda r: ((r["name"] or "").casefold(), r["name"] or ""))[:5]
     return {
         "total_spaces": total,
         "occupied": counts.get("occupied", 0),
@@ -82,9 +94,9 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
         "expiring_soon": expiring_soon,
         "top_suppliers": [
             {
-                "name": r.name,
-                "leases": r.leases,
-                "revenue": float(r.revenue or 0) if is_admin else 0.0,
+                "name": r["name"],
+                "leases": r["leases"],
+                "revenue": float(r["revenue"] or 0) if is_admin else 0.0,
             }
             for r in top_suppliers
         ],

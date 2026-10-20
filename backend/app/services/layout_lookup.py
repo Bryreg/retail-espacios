@@ -16,6 +16,7 @@ Con eso la API puede negarle un contrato a un mueble marcado como infraestructur
 todavía tiene contrato vivo.
 """
 import json
+from dataclasses import dataclass
 import math
 
 from sqlalchemy.orm import Session
@@ -54,6 +55,9 @@ from app.services.catalogo_muebles import (
 CAMPOS_DE_CONTRATO = (
     "status", "supplierName", "brandCategory", "negotiatedValue",
     "startDate", "endDate", "observation",
+    # La caducidad de una reserva de espacio (`GET /spaces/comercial`): tampoco
+    # se guarda en el plano.
+    "reservaHasta",
 )
 
 #: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa
@@ -1359,6 +1363,43 @@ def ofrece(ofrecidos: set[str], caras_pc: set[str], codigo: str) -> bool:
     return es_participacion(p.parte) and codigo_de_parte(p.base, p.cara, None) in caras_pc
 
 
+def _vivos_de_la_sede(db: Session, sede: str) -> list[tuple]:
+    """``[(lease, space)]`` de los contratos vivos de la sede (no cancelados y
+    que terminan hoy o después) MÁS sus reservas vivas de una cara entera o de
+    una parte, como ``ReservaComoContrato`` (§8 de
+    ``docs/rediseno/vender-api.md``): sacar de circulación algo reservado se
+    frena igual que algo vendido."""
+    from app.fechas import hoy as hoy_en_colombia
+    from app.models.models import Space, SpaceLease
+    from app.models.vender import ReservaDeEspacio
+
+    hoy = hoy_en_colombia()
+    s = sede.strip().upper()
+    vivos = (
+        db.query(SpaceLease, Space)
+        .join(Space, Space.id == SpaceLease.space_id)
+        .filter(Space.sede == s, SpaceLease.is_active.is_(True), SpaceLease.end_date >= hoy)
+        .all()
+    )
+    reservas = (
+        db.query(ReservaDeEspacio, Space)
+        .join(Space, Space.id == ReservaDeEspacio.space_id)
+        .filter(Space.sede == s, ReservaDeEspacio.estado == "viva", ReservaDeEspacio.caduca >= hoy,
+                ReservaDeEspacio.hasta >= hoy)
+        .all()
+    )
+    return list(vivos) + [
+        (ReservaComoContrato(id=-r.id, reserva_id=r.id, start_date=r.desde, end_date=r.hasta, supplier=r.supplier),
+         space)
+        for r, space in reservas
+    ]
+
+
+def _que_tiene(lease) -> str:
+    """«un contrato» o «una reserva», para las frases de quien administra."""
+    return "una reserva" if getattr(lease, "es_reserva", False) else "un contrato"
+
+
 def contratos_que_quedarian_sin_mueble(
     db: Session, sede: str, previas: list[dict], nuevas: list[dict],
 ) -> list[str]:
@@ -1388,20 +1429,7 @@ def contratos_que_quedarian_sin_mueble(
     if not (ofrecidos_antes - ofrecidos_despues) and not (pc_antes - pc_despues):
         return []
 
-    from app.fechas import hoy as hoy_en_colombia
-    from app.models.models import Space, SpaceLease
-
-    hoy = hoy_en_colombia()
-    vivos = (
-        db.query(SpaceLease, Space)
-        .join(Space, Space.id == SpaceLease.space_id)
-        .filter(
-            Space.sede == sede.strip().upper(),
-            SpaceLease.is_active.is_(True),
-            SpaceLease.end_date >= hoy,
-        )
-        .all()
-    )
+    vivos = _vivos_de_la_sede(db, sede)
 
     frases = []
     for lease, space in vivos:
@@ -1414,6 +1442,14 @@ def contratos_que_quedarian_sin_mueble(
         # cartelería de la tienda, y es el que la persona acaba de tocar.
         corto = sin_prefijo_de_sede(completo, sede)
         quien = lease.supplier.name if lease.supplier else "sin proveedor"
+        if getattr(lease, "es_reserva", False):
+            frases.append(
+                f"«{corto}» tiene una reserva de {quien} hasta el "
+                f"{lease.end_date.isoformat()}. Cancelala primero, o volvé a poner "
+                f"el mueble: si se va del plano, la reserva queda viva y sin nada "
+                f"que la muestre."
+            )
+            continue
         frases.append(
             f"«{corto}» tiene un contrato de {quien} hasta el "
             f"{lease.end_date.isoformat()}. Cancelalo primero, o volvé a poner "
@@ -1501,8 +1537,25 @@ def _tiene_participaciones(db: Session, sede: str, cara: str) -> bool:
     return False
 
 
+@dataclass
+class ReservaComoContrato:
+    """Una reserva viva de una cara entera o de una parte
+    (``models/vender.ReservaDeEspacio``), con la forma de un contrato para
+    quien pregunta qué choca: lo reservado cuenta como ocupado en sus fechas
+    (``docs/rediseno/vender-api.md`` §8). ``id`` es NEGATIVO (``-reserva.id``):
+    nunca se confunde con el de un contrato. Nadie lee de acá quién reservó:
+    delante del proveedor una cara reservada por otro se ve tomada y nada más."""
+    id: int
+    reserva_id: int
+    start_date: object
+    end_date: object
+    supplier: object = None
+    is_active: bool = True
+    es_reserva: bool = True
+
+
 def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int | None = None,
-                         sede: str | None = None) -> list[tuple]:
+                         sede: str | None = None, excluir_reserva: int | None = None) -> list[tuple]:
     """Los contratos vivos (no cancelados) que no dejan vender ``codigo`` entre
     ``desde`` y ``hasta``, ambos inclusive: el del mismo espacio, el de la cara
     entera si es una puerta, y los de sus puertas si es la cara entera.
@@ -1519,9 +1572,18 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
     escritura no puede quedar ciego a la regla «entera o por partes, nunca las
     dos». El contrato suelto ya exige la forma completa (``forma_canonica``);
     esto cuida las filas que ya estaban.
+
+    Las reservas VIVAS de una cara entera o de una parte (§8 de
+    ``docs/rediseno/vender-api.md``) también chocan, como
+    ``ReservaComoContrato``: así la planilla, el contrato suelto, Vender, la
+    importación del plano y la capacidad de una cara por participación
+    (``fisicos_de``) las cuentan sin saber que existen. ``excluir_reserva``:
+    la que se está confirmando, que no choca consigo misma.
     """
     from sqlalchemy import func, or_
+    from app.fechas import hoy as hoy_en_colombia
     from app.models.models import Space, SpaceLease
+    from app.models.vender import ReservaDeEspacio
 
     s = normalizar(sede)
 
@@ -1548,6 +1610,27 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
         )
         .all()
     )
+    donde = or_(guardado.in_(sorted(codigos | caras)),
+                *[guardado.like(f"{_escapar_like(c)}-%", escape="\\") for c in sorted(caras)],
+                Space.id == (space_id if space_id is not None else -1))
+    reservas = (
+        db.query(ReservaDeEspacio, Space)
+        .join(Space, Space.id == ReservaDeEspacio.space_id)
+        .filter(
+            ReservaDeEspacio.estado == "viva",
+            ReservaDeEspacio.caduca >= hoy_en_colombia(),
+            ReservaDeEspacio.desde <= hasta,
+            ReservaDeEspacio.hasta >= desde,
+            ReservaDeEspacio.id != (excluir_reserva if excluir_reserva is not None else -1),
+            donde,
+        )
+        .all()
+    )
+    filas = list(filas) + [
+        (ReservaComoContrato(id=-r.id, reserva_id=r.id, start_date=r.desde, end_date=r.hasta, supplier=r.supplier),
+         space)
+        for r, space in reservas
+    ]
     fuera = []
     for lease, space in filas:
         bruto = normalizar(space.code)
@@ -1563,12 +1646,28 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
     return fuera
 
 
+def frase_tomada(otro_codigo: str, lease, sede: str = "") -> str:
+    """La frase de un choque DELANTE DEL PROVEEDOR (Vender, ``?validar=1`` y el
+    guardado de ``POST /api/contratos/vender``): una sola, para cualquier
+    choque. No dice si lo otro es un contrato o una reserva, ni de quién, ni
+    cuántos: que está tomado y en qué fechas, que es lo que hay que mover. La
+    planilla y el contrato suelto (administración) siguen con
+    ``frase_de_choque``."""
+    from app.fechas import dia_corto
+    return (f"«{sin_prefijo_de_sede(otro_codigo, sede)}» está tomado del {dia_corto(lease.start_date)} "
+            f"al {dia_corto(lease.end_date)}: ajustá las fechas.")
+
+
 def frase_de_choque(codigo: str, otro_codigo: str, lease) -> str:
     """Por qué no entra, sin decir de quién es lo otro: Vender lee esto en vivo,
     delante del proveedor. Las fechas sí: son las que hay que mover."""
     codigo, otro_codigo = normalizar(codigo), normalizar(otro_codigo)
     fechas = f"del {lease.start_date} al {lease.end_date}"
     if codigo == otro_codigo:
+        if getattr(lease, "es_reserva", False):
+            # Una reserva viva: tomado, sin decir que es una reserva ni de quién
+            # (§8 de docs/rediseno/vender-api.md).
+            return f"«{codigo}» está tomado {fechas}: ajustá las fechas."
         return f"«{codigo}» ya tiene un contrato {fechas}. Cancelalo primero o ajustá las fechas."
     yo, otro = partir_codigo(codigo), partir_codigo(otro_codigo)
     if yo.parte is not None and otro.parte is None:
@@ -1649,19 +1748,7 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
     if not cambiadas:
         return []
 
-    from app.fechas import hoy as hoy_en_colombia
-    from app.models.models import Space, SpaceLease
-
-    vivos = (
-        db.query(SpaceLease, Space)
-        .join(Space, Space.id == SpaceLease.space_id)
-        .filter(
-            Space.sede == sede.strip().upper(),
-            SpaceLease.is_active.is_(True),
-            SpaceLease.end_date >= hoy_en_colombia(),
-        )
-        .all()
-    )
+    vivos = _vivos_de_la_sede(db, sede)
     frases = []
     for lease, space in vivos:
         p = partir_codigo(space.code or "")
@@ -1695,7 +1782,7 @@ def partes_que_se_moverian(db: Session, sede: str, previas: list[dict], nuevas: 
         )
         quien = lease.supplier.name if lease.supplier else "sin proveedor"
         frases.append(
-            f"«{sin_prefijo_de_sede(space.code or '', sede)}» tiene un contrato de {quien} hasta el "
+            f"«{sin_prefijo_de_sede(space.code or '', sede)}» tiene {_que_tiene(lease)} de {quien} hasta el "
             f"{lease.end_date.isoformat()}: con {g['un']} {regla['singular']} vendid{g['o']}, «{corto_mueble}» {cambio}"
             f" ({g['el']} {regla['singular']} vendid{g['o']} quedaría en otro lugar). Esperá a que termine o cancelalo primero."
         )

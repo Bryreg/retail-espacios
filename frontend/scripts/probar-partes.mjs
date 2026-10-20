@@ -1017,7 +1017,10 @@ await prueba("el plano y la lista de precios dicen «1 de 3 puertas vendida», n
   const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
   assert.match(dash, /const partes = dispo === "parcial" \? porPartes\?\.\(f, entry\) \?\? null : null;\s*const desde = dispo === "parcial" && !partes\s*\? \(libreDesde \? libreDesde\(f, entry\)\?\.desde : primerDiaLibre/,
     "el rótulo de una cara parcial por sus partes vuelve a decir «libre» y el día");
-  assert.match(dash, /fecha: partes \?\? \(desde \?/, "el rótulo no dice las partes vendidas");
+  // Las partes vendidas mandan; después «libre hasta 31 oct» (libre hoy y tomada
+  // más adelante) o «libre 21 oct» (se libera ese día).
+  assert.match(dash, /fecha: partes \?\? \(hastaLibre\s*\? `libre hasta \$\{hastaLibre\.getDate\(\)\} [^`]*`\s*: desde \?/, "el rótulo no dice las partes vendidas");
+  assert.match(dash, /const hastaLibre = desde && !partes \? ultimoDiaLibreDesdeElArranque\(entry, desde, range\.from, range\.to\) : null;/);
   assert.match(dash, /const partes = porPartes\?\.\(f, face\) \?\? null;\s*if \(partes\) return partes;/, "el cartel del mouse dice «libre los 31 días»");
   assert.match(dash, /\.\.\.\(como\?\.porPartes \? \{ porPartes: como\.porPartes \} : \{ desde: como\?\.desde \}\)/, "la lista de precios vuelve a poner el día");
   assert.equal((dash.match(/porPartes=\{porPartesDeCara\}/g) ?? []).length, 2, "Vender y Supervisar dibujan el plano con el mismo rótulo");
@@ -1215,8 +1218,17 @@ await prueba("la caja nunca se vende entera en Vender: ni al tocarla ni en su re
   const dash = leer(join(raiz, "src", "pages", "DashboardView.tsx"));
   assert.match(dash, /setEnContrato\(\(lista\) => alTocarEnVender\(lista, f, cara, libre\)\);/, "tocar en Vender no pasa por `alTocarEnVender`");
   const mv = leer(join(raiz, "src", "components", "Contrato", "ModoVender.tsx"));
-  assert.match(mv, /const interruptores = interruptoresDeLaCara\(l\.fixture, l\.face\);/, "el renglón arma sus interruptores a mano");
-  assert.match(mv, /\{interruptores\.map\(\(suf\) => \{/, "el renglón no dibuja los interruptores de la cara");
+  // Rediseño de Vender: las PIEZAS (la caja, la columna) siguen con sus
+  // interruptores, de `interruptoresDeLaCara`; las partes de una cara se eligen
+  // en su lista (`ElegirPartes`, con `partesParaElegir`), nunca armadas a mano.
+  assert.match(mv, /const interruptores = l\.tipo === "pieza" \? interruptoresDeLaCara\(l\.fixture, l\.face\) : \[\];/,
+    "el renglón arma sus interruptores a mano, o se los ofrece a algo que no es una pieza");
+  assert.match(mv, /\{interruptores\.map\(\(suf\) => \{/, "el renglón no dibuja los interruptores de las piezas");
+  assert.match(mv, /l\.tipo === "partes" && <ElegirPartes l=\{l\} c=\{c\} \/>/, "las partes de una cara no se eligen en su lista");
+  const linea = leer(join(raiz, "src", "components", "Contrato", "LineaDelContrato.tsx"));
+  assert.match(linea, /const lista = partesParaElegir\(l\.fixture, l\.face, clase\);/, "la lista de partes se arma a mano");
+  assert.match(linea, /disabled=\{tomada && !puesta\}/, "una parte tomada se puede marcar");
+  assert.match(linea, /\{tomada \? "Tomado" : /, "la parte tomada no dice «Tomado»");
 });
 
 await prueba("el plano 2D pone el punto del tramo vendido de la cara B donde está", () => {

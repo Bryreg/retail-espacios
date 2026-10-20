@@ -299,8 +299,9 @@ def test_la_capacidad_suma_lo_que_cuenta_cada_dia_y_nada_mas(client, admin):
     db = _bd()
     try:
         frase = bloqueo_por_participaciones(db, "NAVE", "GON-01", date(2026, 11, 10), date(2026, 11, 20))
-        assert frase == ("«GON-01» se vende por participación del 10 nov 2026 al 20 nov 2026 (2 términos de "
-                         "participación vivos): en esas fechas no se vende entera ni por partes.")
+        # Sin cuántos términos: delante del proveedor eso cuenta a los demás.
+        assert frase == ("«GON-01» se vende por participación del 10 nov 2026 al 20 nov 2026: en esas fechas no "
+                         "se vende entera ni por partes.")
         assert "Postobón" not in frase and "Alpina" not in frase
         # La forma completa, una división y la B (con sus propios términos) también; una pieza o una PC, no.
         assert bloqueo_por_participaciones(db, "NAVE", "NAVE-GON-01-TR1", date(2026, 11, 10), date(2026, 11, 20))
@@ -514,13 +515,15 @@ def test_una_cara_que_dejo_de_venderse_por_participacion_con_terminos_vivos_no_s
     # con la reserva de su cara A viva, y su JSON trae un contrato de antes en esas fechas.
     sin_division = {k: v for k, v in GON_01.items() if k != "partes"}
     _plano_en_la_base([_vendido_en_el_json(sin_division) if f["code"] == "GON-01" else f for f in PLANO])
-    frase = ("«GON-01» se vende por participación del 1 nov 2026 al 30 nov 2026 (1 término de participación "
-             "vivo): en esas fechas no se vende entera ni por partes.")
+    frase = ("«GON-01» se vende por participación del 1 nov 2026 al 30 nov 2026: en esas fechas no se vende "
+             "entera ni por partes.")
     antes = _leases()
 
     fila = _planilla(client, admin, "GON-01")["filas"][0]
     assert fila["estado"] == "error" and frase in fila["mensajes"], fila
     assert "Postobón" not in " ".join(fila["mensajes"])
+    # Ni cuántos términos tiene la cara: delante del proveedor eso cuenta a los demás.
+    assert not any("término" in m for m in fila["mensajes"]), fila
     # Fuera de esas fechas, y la cara B (sin términos), sí.
     assert _planilla(client, admin, "GON-01", desde=D(2026, 12, 1), hasta=D(2026, 12, 31))["filas"][0]["estado"] == "ok"
     assert _planilla(client, admin, "GON-01-B")["filas"][0]["estado"] == "ok"

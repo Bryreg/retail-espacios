@@ -304,8 +304,26 @@ prueba("abre con el isométrico de siempre y «Centrar» vuelve a él", () => {
   const cuerpo = iso.slice(i, iso.indexOf("}, [", i));
   assert.match(cuerpo, /setVista\(VISTA_INICIAL\)/, "«Centrar» no vuelve a la vista de siempre");
   assert.match(cuerpo, /zoom: 1/, "«Centrar» no vuelve a encuadrar la sede entera");
-  const boton = iso.slice(iso.lastIndexOf("<button", iso.indexOf(">\n          Centrar")), iso.indexOf(">\n          Centrar"));
-  assert.match(boton, /centrar\(\)/, "el botón «Centrar» no llama a `centrar()`");
+  // «Centrar» es un botón de ícono (`Focus`, hoja de piezas del rediseño): la
+  // palabra vive en el `aria-label`. Se busca ESE botón —el que se llama
+  // «Centrar el plano»— y tiene que llamar a `centrar()` y dibujar el ícono;
+  // acercar y alejar, lo mismo con `Plus` y `Minus` y su cuenta.
+  const botonDe = (etiqueta) => {
+    const i = iso.indexOf(`aria-label="${etiqueta}"`);
+    assert.ok(i > 0, `no está el botón «${etiqueta}» del plano`);
+    const desde = iso.lastIndexOf("<button", i);
+    return iso.slice(desde, iso.indexOf("</button>", i));
+  };
+  const centrarB = botonDe("Centrar el plano");
+  assert.match(centrarB, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); centrar\(\); \}\}/, "el botón «Centrar» no llama a `centrar()`");
+  assert.match(centrarB, /<Focus \{\.\.\.ICONO_TARJETA\} \/>/, "«Centrar» no dibuja el ícono `Focus` con la medida de todos");
+  assert.match(centrarB, /title="Centrar[^"]*"/, "«Centrar» perdió la palabra también en el `title`");
+  const mas = botonDe("Acercar el plano");
+  assert.match(mas, /ponerZoom\(cam\.current\.zoom \* 1\.25\)/, "«+» no acerca");
+  assert.match(mas, /<Plus \{\.\.\.ICONO_TARJETA\} \/>/, "«+» no es el ícono `Plus`");
+  const menos = botonDe("Alejar el plano");
+  assert.match(menos, /ponerZoom\(cam\.current\.zoom \/ 1\.25\)/, "«−» no aleja");
+  assert.match(menos, /<Minus \{\.\.\.ICONO_TARJETA\} \/>/, "«−» no es el ícono `Minus`");
 });
 
 prueba("los gestos son los del editor: izquierdo gira, derecho o Shift mueve, rueda acerca", () => {

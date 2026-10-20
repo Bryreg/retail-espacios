@@ -10,7 +10,9 @@ from types import SimpleNamespace
 from conftest import CLAVE_ADMIN, CLAVE_WORKER
 
 MENSAJE_NO_OWNER = "Solo el owner del cliente puede hacer esto."
-CLAVES_DEL_EXPORT = {"cliente", "generado_en", "version_politica", "spaces", "leases", "suppliers", "layouts"}
+CLAVES_DEL_EXPORT = {"cliente", "generado_en", "version_politica", "spaces", "leases", "suppliers", "layouts",
+                     # Las tablas del rediseño de Vender (docs/rediseno/vender-api.md §7).
+                     "condiciones_comerciales"}
 
 # Una IP pública, reconocible, que se manda a propósito en una acción de
 # negocio para comprobar que el export NUNCA la repite (no es de bitácora).

@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Optional
 from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -10,7 +11,9 @@ from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.fechas import hoy
 from app.models.models import Space, SpaceFace, SpaceLease, Supplier, SpaceStatus
+from app.models.vender import ReservaDeEspacio
 from app.services.bitacora import anotar
+from app.services.condiciones import ETIQUETA_DEL_VALOR, valor_de_lease
 from app.schemas.spaces import (
     SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem,
     SpaceFindOrCreate, AvisosContrato,
@@ -25,7 +28,7 @@ from app.services.partes import cantidad_de, es_participacion, partir_codigo, te
 from app.services.ciclo_participaciones import actor_de, al_cancelar_contrato
 from app.services.participaciones import bloqueo_por_participaciones
 from app.services.mailer import (
-    app_base_url, format_cop, html_shell, send_mail_to_bg, correo_configurado,
+    app_base_url, html_shell, send_mail_to_bg, correo_configurado,
 )
 
 # Every route requires a valid token; mutations additionally require admin.
@@ -124,6 +127,10 @@ class EstadoComercial(BaseModel):
     startDate: str = ""
     endDate: str = ""
     observation: str = ""
+    #: Hasta cuándo se sostiene una reserva viva de la cara o de la parte
+    #: (``models/vender.ReservaDeEspacio``): sólo para quien administra. El
+    #: trabajador ve la cara tomada y nada más.
+    reservaHasta: Optional[str] = None
 
 
 @router.get("/comercial", response_model=dict[str, EstadoComercial])
@@ -162,9 +169,35 @@ def estado_comercial(
         q = q.filter(Space.sede == sede.strip().upper())
 
     admin = role == "admin"
+    # Las reservas vivas de una cara entera o de una parte (§8 de
+    # docs/rediseno/vender-api.md): la cara sale TOMADA en sus fechas, como con
+    # un contrato. Por espacio, la que corre hoy o, si no, la próxima.
+    dia = hoy()
+    reservas: dict[int, ReservaDeEspacio] = {}
+    for r in (db.query(ReservaDeEspacio)
+              .filter(ReservaDeEspacio.estado == "viva", ReservaDeEspacio.caduca >= dia,
+                      ReservaDeEspacio.hasta >= dia)
+              .order_by(ReservaDeEspacio.desde, ReservaDeEspacio.id).all()):
+        reservas.setdefault(r.space_id, r)
     salida: dict[str, EstadoComercial] = {}
     for space in q.all():
         lease = space.active_lease or space.upcoming_lease
+        reserva = reservas.get(space.id)
+        if lease is None and reserva is not None:
+            # Tomada. Quién, hasta cuándo y por cuánto, sólo para quien
+            # administra: delante del proveedor (Vender) y del trabajador una
+            # cara reservada se ve tomada, sin decir que es una reserva.
+            salida[(space.code or "").strip().upper()] = EstadoComercial(
+                status="occupied",
+                supplierName=(reserva.supplier.name if reserva.supplier else "") if admin else "",
+                brandCategory=(reserva.marca or "") if admin else "",
+                negotiatedValue=float(reserva.valor or 0) if admin else 0,
+                startDate=reserva.desde.isoformat() if admin else "",
+                endDate=reserva.hasta.isoformat() if admin else "",
+                observation=(reserva.notas or "") if admin else "",
+                reservaHasta=reserva.caduca.isoformat() if admin else None,
+            )
+            continue
         if lease is None:
             # Sin contrato vivo no se dice nada… salvo que el espacio esté
             # retirado a mano: «reservado» o «en mantenimiento» no es plata pero
@@ -492,7 +525,10 @@ def create_lease(
                                    sede=space.sede)
     if choques:
         overlapping, otro_space, _ = choques[0]
-        if otro_space.id == space.id:
+        if otro_space.id == space.id and getattr(overlapping, "es_reserva", False):
+            # Una reserva viva del espacio (§8 de docs/rediseno/vender-api.md).
+            detalle = frase_de_choque(space.code, space.code, overlapping)
+        elif otro_space.id == space.id:
             detalle = (
                 f"El espacio ya tiene un contrato activo del {overlapping.start_date}"
                 f" al {overlapping.end_date}. Cancelalo primero o ajustá las fechas."
@@ -570,7 +606,7 @@ def create_lease(
             ("Marca", lease.marca or "—"),
             ("Periodo", periodo),
             ("Duración", f"{duration_days} día{'s' if duration_days != 1 else ''}"),
-            ("Valor mensual", format_cop(lease.monthly_rent)),
+            (ETIQUETA_DEL_VALOR, valor_de_lease(db, lease)),
         ]
         if fila_parte:
             rows.insert(2, fila_parte)
@@ -638,7 +674,7 @@ def create_lease(
             ("Sede", space.sede or "—"),
             ("Marca", lease.marca or "—"),
             ("Periodo", periodo),
-            ("Valor mensual", format_cop(lease.monthly_rent)),
+            (ETIQUETA_DEL_VALOR, valor_de_lease(db, lease)),
         ]
         if fila_parte:
             rows.insert(1, fila_parte)

@@ -40,6 +40,14 @@ export interface EstadoComercial {
   startDate: string;
   endDate: string;
   observation: string;
+  /** Hasta cuándo se sostiene una RESERVA viva de la cara o de la parte
+   *  (rediseño de Vender, §8): la base la manda tomada (`occupied`) y, sólo a
+   *  quien administra, con esta fecha. No es un contrato: Supervisar no la
+   *  cuenta en el canon, los contratos, los vencimientos ni el montaje
+   *  (`conLaReserva` en `DashboardView`). Vender la ve «Tomado», sin más. No
+   *  se le pega al mueble (la fusión la deja en el mapa crudo) y nunca viaja
+   *  en el layout (`CAMPOS_DE_CONTRATO`). */
+  reservaHasta?: string | null;
 }
 
 /** Por código COMPLETO del espacio: `NAVE-PUN-04`, y la cara B lleva `-B`. */
@@ -76,6 +84,15 @@ function loSuyo(
   return estado[fullSpaceCode(sede, c)] ?? estado[c] ?? LIBRE;
 }
 
+/** Lo que se le pega al mueble: todo menos `reservaHasta`, que se lee del
+ *  mapa crudo. Pegada, una reserva que se confirma (o caduca) dejaba la fecha
+ *  vieja en el mueble y además viajaba en el `PUT /layout`. */
+function sinReserva(e: EstadoComercial): EstadoComercial {
+  if (!("reservaHasta" in e)) return e;
+  const { reservaHasta: _fuera, ...resto } = e;
+  return resto;
+}
+
 /**
  * ¿El objeto ya dice exactamente esto, con todos los campos escritos?
  *
@@ -100,11 +117,11 @@ export function fusionarEstadoComercial(
   let cambio = false;
   const salida = fixtures.map((f) => {
     const propia = f.sede || sede;
-    const a = loSuyo(estado, propia, f.code);
+    const a = sinReserva(loSuyo(estado, propia, f.code));
     // ¿Tiene cara B? Se pregunta por el tipo (`carasDe`), no por si existe
     // `faceB`: desde el corte, la cara B ya no guarda nada y puede no existir.
     const doble = carasDe(f) === 2;
-    const b = doble ? loSuyo(estado, propia, `${f.code}-B`) : null;
+    const b = doble ? sinReserva(loSuyo(estado, propia, `${f.code}-B`)) : null;
 
     if (yaEs(f as unknown as Record<string, unknown>, a) &&
         (!doble || yaEs(f.faceB as unknown as Record<string, unknown>, b!))) {

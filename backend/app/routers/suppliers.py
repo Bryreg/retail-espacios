@@ -1,4 +1,7 @@
+import unicodedata
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.auth import require_admin, require_auth
@@ -42,6 +45,43 @@ def _para_el_rol(supplier: Supplier, role: str):
 def list_suppliers(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     filas = db.query(Supplier).order_by(Supplier.name).all()
     return [_para_el_rol(s, role) for s in filas]
+
+
+def _sin_tildes(texto: str) -> str:
+    """Para comparar: sin tildes, sin mayúsculas y sin espacios de sobra
+    («Lácteos» y «lacteos» empiezan igual)."""
+    descompuesto = unicodedata.normalize("NFKD", texto or "")
+    return " ".join("".join(c for c in descompuesto if not unicodedata.combining(c)).lower().split())
+
+
+# Ruta LITERAL: va antes de `/{supplier_id}` (regla de orden de FastAPI,
+# docs/ESTADO.md), o «completar» se leería como un id.
+@router.get("/completar")
+def completar_proveedor(
+    prefijo: str = "",
+    role: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """El proveedor que Vender completa mientras se escribe
+    (``docs/rediseno/vender-api.md`` §5): desde 3 letras, sin tildes ni
+    mayúsculas, **un solo nombre** —el que tiene más contratos entre los que
+    empiezan así; a igualdad, el más viejo— o ``null``. Nunca una lista: la
+    pantalla está delante del proveedor, y una lista le mostraría con quién
+    más trabaja el supermercado. Nunca montos."""
+    buscado = _sin_tildes(prefijo)
+    if len(buscado.replace(" ", "")) < 3:
+        return {"nombre": None}
+    contratos = dict(
+        db.query(SpaceLease.supplier_id, func.count(SpaceLease.id)).group_by(SpaceLease.supplier_id).all()
+    )
+    mejor = None
+    for supplier in db.query(Supplier).order_by(Supplier.id).all():
+        if not _sin_tildes(supplier.name).startswith(buscado):
+            continue
+        n = contratos.get(supplier.id, 0)
+        if mejor is None or n > mejor[0]:
+            mejor = (n, supplier.name)
+    return {"nombre": mejor[1] if mejor else None}
 
 
 @router.post("/find-or-create", response_model=SupplierOut, status_code=200, dependencies=[Depends(require_admin)])

@@ -95,11 +95,16 @@ prueba("el total que viaja al aviso de guardado se suma con el mismo criterio", 
     /const total = lineas\.reduce\(\(t, l\) => t \+ l\.monto, 0\)/,
     "la pantalla dejó de sumar `l.monto`",
   );
+  // Rediseño de Vender: el guardado es TODO o nada (`POST /contratos/vender`),
+  // así que lo guardado es todo lo que está en pantalla y el aviso lleva el
+  // MISMO `total` (no una segunda suma que se pueda separar). Más estricta que
+  // la de antes: ninguna otra cuenta del total en el archivo.
   assert.match(
     codigoContrato,
-    /guardados\.push\(l\.visible\);\s*\n\s*total \+= l\.monto;/,
-    "el total del aviso ya no se suma línea por línea sobre lo guardado",
+    /onGuardado\(\{[\s\S]*?total: cobroModo === "fijo" \? total : 0,/,
+    "el aviso de guardado no lleva el total de la pantalla",
   );
+  assert.equal((codigoContrato.match(/\btotal \+=|const total =/g) ?? []).length, 1, "hay otra cuenta del total además de la suma de las líneas");
 });
 
 prueba("nada de la ficha se sigue llamando «mensual»", () => {
@@ -156,10 +161,15 @@ prueba("el bloqueo NO cuelga sólo del plano, que puede estar desfasado", () => 
 });
 
 prueba("se le pregunta al endpoint que NO escribe", () => {
-  assert.match(codigoContrato, /validarLote\(/, "no se consulta `/leases/bulk/validar`");
+  // `validarContrato` es `POST /contratos/vender?validar=1`: la misma
+  // revisión que el guardado, sin escribir (rediseño de Vender).
+  assert.match(codigoContrato, /validarContrato\(lo\)\.then\(/, "no se consulta la vista previa del guardado");
+  const api = sinComentarios(leer(join("src", "api", "vender.ts")));
+  const validar = (api.match(/export const validarContrato = [\s\S]*?;\n/) || [""])[0];
+  assert.match(validar, /params: \{ validar: 1 \}/, "la vista previa no lleva `?validar=1`: ESCRIBIRÍA");
   assert.ok(
-    !/confirmarLote\([\s\S]{0,200}veredicto/.test(codigoContrato),
-    "la comprobación previa no puede pasar por `confirmarLote`: eso ESCRIBE",
+    !/guardarContrato\([\s\S]{0,200}veredicto/.test(codigoContrato),
+    "la comprobación previa no puede pasar por `guardarContrato`: eso ESCRIBE",
   );
 });
 
@@ -177,13 +187,13 @@ prueba("se le pregunta al endpoint que NO escribe", () => {
    se podía guardar NUNCA. Reportado con PUN-15 en $1.000.000 en pantalla. */
 
 prueba("el valor que se manda a validar no puede ser cero", () => {
-  const m = codigoContrato.match(/validarLote\(([\s\S]*?)\n\s*\)\.then/);
-  assert.ok(m, "no se encontró la llamada a `validarLote`");
-  assert.match(
-    m[1], /valor:\s*l\.monto\s*>\s*0\s*\?\s*l\.monto\s*:/,
-    "el valor viaja tal cual: con el campo vacío el servidor contesta «falta el "
-    + "valor» y ese mensaje se queda pegado, porque la firma no mira el monto",
-  );
+  // La vista previa arma el pedido con `relleno`: cada línea —un % y cada
+  // parte— manda su total o 1, nunca cero.
+  assert.match(codigoContrato, /const \{ pedido: lo, deDonde \} = armarPedido\("contrato", true\);/, "la vista previa no pide el relleno");
+  assert.match(codigoContrato, /valor: conVentas \? 0 : relleno \? \(l\.monto > 0 \? l\.monto : 1\) : l\.monto,/,
+    "el % viaja con valor cero a la vista previa");
+  assert.match(codigoContrato, /valor: conVentas \? 0 : relleno \? \(monto > 0 \? monto : 1\) : monto,/,
+    "un espacio viaja con valor cero a la vista previa: el servidor contesta «falta el valor» y se queda pegado");
 });
 
 prueba("no se le cree al servidor sobre los campos que se le rellenaron", () => {
@@ -214,7 +224,7 @@ prueba("no se le cree al servidor sobre los campos que se le rellenaron", () => 
 
 prueba("el filtro se aplica donde se arma el veredicto", () => {
   assert.match(
-    codigoContrato, /mensajes\s*\?\?\s*\[\]\)\.filter\(\(m\) => !RELLENADO\.test\(m\)\)/,
+    codigoContrato, /if \(!f\.mensaje \|\| RELLENADO\.test\(f\.mensaje\)\) continue;/,
     "el veredicto no filtra los mensajes de los campos rellenados",
   );
 });
@@ -265,5 +275,39 @@ prueba("una respuesta vieja no pisa a una nueva", () => {
     "no se descartan las respuestas fuera de orden de la validación",
   );
 });
+
+/* ── 5 · «al mes» × los meses = el total: la cuenta gemela ──────────────────
+
+   `utils/meses.ts` y `backend/app/services/meses.py` corren los MISMOS casos
+   (`scripts/casos/meses.json`). Si se separan, la pantalla firma «$ 600.000 al
+   mes por 3 meses» y el servidor guarda otro total. */
+{
+  const { build } = await import("esbuild");
+  const r = await build({
+    entryPoints: [join(raiz, "src", "utils", "meses.ts")], bundle: true, write: false, format: "esm",
+    platform: "neutral", logLevel: "silent",
+  });
+  const M = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+  const casos = JSON.parse(leer(join("scripts", "casos", "meses.json"))).casos;
+
+  prueba(`los meses de un contrato dan lo mismo que el servidor (${casos.length} casos de casos/meses.json)`, () => {
+    assert.ok(casos.length >= 10, "casos/meses.json tiene muy pocos casos");
+    const mal = casos.filter((c) => Math.abs(M.meses(c.desde, c.hasta) - c.meses) > 0.000001)
+      .map((c) => `${c.desde} → ${c.hasta}: ${M.meses(c.desde, c.hasta)} (se esperaba ${c.meses}; ${c.por})`);
+    assert.deepEqual(mal, [], `\n         ${mal.join("\n         ")}`);
+  });
+
+  prueba("«al mes» × los meses = el total, al peso; y la pantalla usa ESA cuenta", () => {
+    assert.equal(M.totalDeMensual(600_000, "2026-11-01", "2027-01-31"), 1_800_000);
+    assert.equal(M.totalDeMensual(800_000, "2026-11-05", "2026-11-05"), 26_667);
+    assert.equal(M.totalDeMensual(650_000, "2026-10-19", "2026-11-30"), 910_000);
+    assert.equal(M.textoDeMeses(1), "1 mes");
+    assert.equal(M.textoDeMeses(1.4), "1,4 meses");
+    assert.match(codigoContrato, /import \{ meses, sumarDias, sumarMeses, textoDeMeses \} from "\.\.\/\.\.\/utils\/meses";/,
+      "el contrato cuenta los meses por su cuenta");
+    // Ni un `/ 30` en el contrato: los días sueltos ÷ 30 viven sólo en meses.ts.
+    assert.doesNotMatch(codigoContrato, /\/\s*30\b/, "el contrato divide por 30 por su cuenta");
+  });
+}
 
 console.log(`\n${hechas} pruebas del panel de contrato`);

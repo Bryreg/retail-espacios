@@ -40,7 +40,7 @@ from app.database import get_db
 from app.models.models import SpaceLease, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
-    Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, frase_de_choque,
+    Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, frase_de_choque, frase_tomada,
     motivo_para_no_vender_parte, sin_prefijo_de_sede,
 )
 from app.services.alta_de_contrato import (
@@ -57,6 +57,7 @@ from app.services.importar_del_plano import caras_con_participaciones
 from app.services.participaciones import bloqueo_por_participaciones, codigo_cara
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
+from app.services.condiciones import ETIQUETA_DEL_VALOR, condiciones_de, texto_del_total, texto_del_valor
 from app.services.contacts import recipients_for
 from app.services.mailer import (
     app_base_url, correo_configurado, format_cop, html_shell, send_mail_to_bg,
@@ -290,7 +291,15 @@ def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: dat
     return bloqueo_por_participaciones(db, sede, codigo, desde, hasta)
 
 
-def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
+def _revisar(
+    db: Session, lote: LoteIn, exigir_valor: bool = True, delante_del_proveedor: bool = False,
+) -> list[FilaOut]:
+    """``exigir_valor=False``: el guardado de Vender de un contrato que se cobra
+    por un % de las ventas (``services/vender.py``), cuyo valor va en 0.
+
+    ``delante_del_proveedor=True``: también Vender. Un choque se dice con UNA
+    frase neutra (``frase_tomada``): sin distinguir un contrato de una reserva y
+    con las fechas como se leen («2 nov»)."""
     if len(lote.filas) > MAX_FILAS:
         raise HTTPException(
             status_code=400,
@@ -497,7 +506,9 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
         # ── El valor ──────────────────────────────────────────────────────────
         valor = float(fila.valor or 0)
         out.valor = valor or None
-        if valor <= 0:
+        if valor <= 0 and not exigir_valor:
+            pass
+        elif valor <= 0:
             errores.append("Falta el valor, o quedó en cero.")
         elif out.referencia:
             desvio = round((1 - valor / out.referencia) * 100)
@@ -527,17 +538,22 @@ def _revisar(db: Session, lote: LoteIn) -> list[FilaOut]:
             for otro_codigo, otro_desde, otro_hasta, otra_fila in tomados:
                 if (otro_codigo == codigo or chocan(yo, partir_codigo(otro_codigo))) \
                         and _se_pisan(desde, hasta, otro_desde, otro_hasta):
-                    errores.append(
-                        f"Choca con la fila {otra_fila} de esta misma planilla, "
-                        f"que ya toma «{otro_codigo}» del {otro_desde} al {otro_hasta}."
-                    )
+                    if delante_del_proveedor:
+                        errores.append(f"«{sin_prefijo_de_sede(otro_codigo, out.sede or '')}» ya está en otra "
+                                       "línea de este contrato.")
+                    else:
+                        errores.append(
+                            f"Choca con la fila {otra_fila} de esta misma planilla, "
+                            f"que ya toma «{otro_codigo}» del {otro_desde} al {otro_hasta}."
+                        )
                     break
 
         if not errores and desde and hasta and codigo:
             choques = contratos_que_chocan(db, codigo, desde, hasta, sede=out.sede)
             if choques:
                 lease, space, _otro = choques[0]
-                errores.append(frase_de_choque(codigo, space.code or "", lease))
+                errores.append(frase_tomada(space.code or "", lease, out.sede or "") if delante_del_proveedor
+                               else frase_de_choque(codigo, space.code or "", lease))
 
         # Defensa en profundidad: la cara entera (o una división física suya)
         # de una cara con reservas o contratos de participación que cuentan en
@@ -670,12 +686,18 @@ def _enlace_de_montaje(fila: FilaOut, cliente: Cliente) -> str:
 
 # ─── Los avisos, uno por rol y uno por tanda ──────────────────────────────────
 
+#: Los tres que reciben aviso de un contrato nuevo.
+ROLES = ("comercial", "montaje", "proveedor")
+
+
 def _avisar(
     db: Session,
     background_tasks: BackgroundTasks,
     sede_lote,
     creados: list[FilaOut],
     cliente: Cliente,
+    roles=ROLES,
+    sin_montaje=frozenset(),
 ) -> AvisosContrato:
     """Un correo por rol para TODA la tanda, no uno por contrato.
 
@@ -686,9 +708,23 @@ def _avisar(
 
     Devuelve a quién se le encoló algo, que es lo que la pantalla muestra al
     cerrar. Sin SMTP configurado no se encola nada y se dice.
+
+    ``roles``: a quiénes se avisa (el montaje de una participación sale
+    después, cuando su cara tiene la distribución confirmada, sólo con
+    ``("montaje",)``). ``sin_montaje``: los contratos (por ``lease_id``) cuyo
+    aviso de montaje queda pendiente (``montajes_pendientes``): van a comercial
+    y al proveedor, no a quien monta.
+
+    El valor se dice «Valor del contrato» (lo que se guarda es el total del
+    plazo) y, si se escribió por mes, con lo de cada mes entre paréntesis
+    (``services/condiciones.py``).
     """
     listo = correo_configurado()
     encolados = AvisosContrato(smtp_listo=listo, comercial=[], montaje=[], proveedor=[])
+    condiciones, cobros = condiciones_de(db, [c.lease_id for c in creados])
+
+    def valor_de(f: FilaOut) -> str:
+        return texto_del_valor(f.valor, condiciones.get(f.lease_id), cobros.get(f.lease_id))
 
     por_sede: dict[str, list[FilaOut]] = defaultdict(list)
     for c in creados:
@@ -697,18 +733,19 @@ def _avisar(
     for sede, filas in por_sede.items():
         who = recipients_for(db, sede)
         cuantos = len(filas)
-        total = sum(float(f.valor or 0) for f in filas)
+        total = texto_del_total([(f.valor, condiciones.get(f.lease_id), cobros.get(f.lease_id)) for f in filas])
 
-        if who["comercial"] and listo:
+        if "comercial" in roles and who["comercial"] and listo:
             encolados.comercial.extend(who["comercial"])
             asunto = f"{cuantos} contrato{'s' if cuantos != 1 else ''} nuevo{'s' if cuantos != 1 else ''} — {sede or 'sede'}"
             rows = [
                 (f"{escape(f.codigo or '')} · {escape(f.proveedor or '')}",
                  (f"{escape(f.parte)}<br>" if f.parte else "")
-                 + f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
+                 + f"{f.desde} → {f.hasta} · {valor_de(f)}")
                 for f in filas
             ]
-            rows.append(("Total mensual", format_cop(total)))
+            if total is not None:
+                rows.append((ETIQUETA_DEL_VALOR, total))
             # Antes decía «Cargados desde una planilla.» también para lo vendido
             # en el mapa, que pasa por el mismo camino (2026-10-02).
             background_tasks.add_task(
@@ -716,9 +753,12 @@ def _avisar(
                 html_shell(asunto, rows, f"Contratos de {escape(cliente.nombre)}, recién guardados en RECABRA."),
             )
 
-        if who["montaje"] and listo:
+        a_montar = [f for f in filas if f.lease_id not in sin_montaje]
+        if "montaje" in roles and who["montaje"] and listo and a_montar:
             encolados.montaje.extend(who["montaje"])
-            asunto = f"{cuantos} espacio{'s' if cuantos != 1 else ''} por montar — {sede or 'sede'}"
+            cuantos_a_montar = len(a_montar)
+            asunto = (f"{cuantos_a_montar} espacio{'s' if cuantos_a_montar != 1 else ''} por montar — "
+                      f"{sede or 'sede'}")
             # Cada espacio con SU enlace firmado (2026-10-02). Entre el 2026-09-02
             # y esta fecha el correo sólo decía «Abrir RECABRA»: quien monta sin
             # cuenta propia —la mayoría, gente del proveedor— recibía un aviso
@@ -732,7 +772,7 @@ def _avisar(
                  f"desde el {f.desde}<br>"
                  f'<a href="{_enlace_de_montaje(f, cliente)}" style="color:#0369A1;font-weight:600;">'
                  "Ver dónde queda y confirmar</a>")
-                for f in filas
+                for f in a_montar
             ]
             pie = (
                 "Cada enlace abre ese espacio señalado en el plano, y ahí mismo se "
@@ -762,7 +802,7 @@ def _avisar(
         por_proveedor.setdefault(supplier.id, (supplier, []))[1].append(c)
 
     for supplier, filas in por_proveedor.values():
-        if not listo:
+        if not listo or "proveedor" not in roles:
             continue
         encolados.proveedor.append(supplier.email)
         cuantos = len(filas)
@@ -773,7 +813,7 @@ def _avisar(
         rows = [("Supermercado", escape(cliente.nombre))] + [
             (escape(f"{f.codigo} — {f.nombre or ''}".strip(" —")),
              (f"{escape(f.parte)}<br>" if f.parte else "")
-             + f"{f.desde} → {f.hasta} · {format_cop(float(f.valor or 0))}")
+             + f"{f.desde} → {f.hasta} · {valor_de(f)}")
             for f in filas
         ]
         background_tasks.add_task(

@@ -448,8 +448,15 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
 
     Devuelve una lista de TUPLAS, no filas del ORM, a propósito: lo que sale de
     esta función se agrega y se tira. Nada de esto viaja al JSON.
+
+    Los contratos que se cobran por un % de las ventas (``cobros_por_venta``,
+    ``docs/rediseno/vender-api.md`` §3) NO salen de acá: su canon es 0 y la
+    plata viene de los cortes, así que contarlos bajaría el canon promedio y
+    el spread con un contrato «de $ 0» que no lo es. Los trae
+    ``_contratos_por_ventas``, que ocupa su cara y suma lo cobrado al ingreso.
     """
     from app.models.models import Space, SpaceLease, Supplier
+    from app.models.vender import CobroPorVenta
 
     filas = (
         db.query(Space.code, Supplier.name, SpaceLease.monthly_rent)
@@ -459,12 +466,45 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
             SpaceLease.is_active == True,  # noqa: E712
             SpaceLease.start_date <= hasta,
             SpaceLease.end_date >= desde,
+            ~SpaceLease.id.in_(db.query(CobroPorVenta.lease_id)),
         )
         .all()
     )
     return [
         ((codigo or "").strip().upper(), (nombre or "").strip(), float(canon or 0.0))
         for codigo, nombre, canon in filas
+    ]
+
+
+def _contratos_por_ventas(db, desde: date, hasta: date) -> list[tuple[str, str, float]]:
+    """``(codigo_espacio, nombre_proveedor, cobrado)`` de cada contrato activo
+    en el período que se cobra por un % de las ventas: la MISMA regla de
+    «activo» que ``_contratos_activos``, y en vez del canon, lo cobrado en sus
+    cortes dentro del período (``services/cobros.cobrado_por_contrato``,
+    repartido por días). Ocupan su cara y cuentan en el top de proveedores y en
+    el ingreso; NO en el canon promedio ni en el spread."""
+    from app.models.models import Space, SpaceLease, Supplier
+    from app.models.vender import CobroPorVenta
+    from app.services.cobros import cobrado_por_contrato
+
+    filas = (
+        db.query(SpaceLease.id, Space.code, Supplier.name)
+        .join(CobroPorVenta, CobroPorVenta.lease_id == SpaceLease.id)
+        .join(Space, Space.id == SpaceLease.space_id)
+        .join(Supplier, Supplier.id == SpaceLease.supplier_id)
+        .filter(
+            SpaceLease.is_active == True,  # noqa: E712
+            SpaceLease.start_date <= hasta,
+            SpaceLease.end_date >= desde,
+        )
+        .all()
+    )
+    if not filas:
+        return []
+    cobrado = cobrado_por_contrato(db, desde, hasta)
+    return [
+        ((codigo or "").strip().upper(), (nombre or "").strip(), float(cobrado.get(lid, 0.0)))
+        for lid, codigo, nombre in filas
     ]
 
 
@@ -730,6 +770,7 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
     try:
         sedes, caras, mapa_tipos, partes = _numeros_del_layout_con_partes(db)
         contratos = _contratos_activos(db, desde, hasta)
+        por_ventas = _contratos_por_ventas(db, desde, hasta)
         tarifas = _tarifas_limpias(db)
     finally:
         # Sólo se leyó. Nada que comitear ni que revertir; la sesión se cierra
@@ -764,7 +805,7 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
 
     # Por CARA: la puerta 2 vendida ocupa su nevera (`cara_ocupada`); dos
     # puertas de la misma nevera son una cara ocupada, no dos.
-    ocupados = {cara_ocupada(codigo) for codigo, _n, _c in contratos}
+    ocupados = {cara_ocupada(codigo) for codigo, _n, _c in contratos + por_ventas}
     # Un contrato sobre un espacio que NO tiene mueble en el plano (un código
     # legado, un mueble borrado después de firmar) no puede contar como cara
     # ocupada: inflaría el numerador contra un denominador que no lo incluye,
@@ -774,7 +815,7 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
 
     canon_total = sum(canon for _c, _n, canon in contratos)
     conteo_proveedores: dict[str, int] = {}
-    for _codigo, nombre, _canon in contratos:
+    for _codigo, nombre, _canon in contratos + por_ventas:
         if not nombre:
             continue
         conteo_proveedores[nombre] = conteo_proveedores.get(nombre, 0) + 1
@@ -789,6 +830,12 @@ def _metricas_de_un_cliente(cliente, reg, desde: date, hasta: date) -> tuple[dic
         "canon_total": canon_total,
         "proveedores": conteo_proveedores,
         "usuarios": ids_usuarios,
+        # Los contratos que se cobran por ventas (vender-api.md §3): cuántos
+        # y lo cobrado en sus cortes del período. Fuera del canon promedio;
+        # adentro del ingreso. La serie histórica (`snapshot_metricas`) no
+        # tiene dónde guardarlos sin una columna nueva: los lee con `.get`.
+        "contratos_por_ventas": len(por_ventas),
+        "cobrado_por_ventas": sum(c for _c, _n, c in por_ventas),
         # ── Fase 6 (spread): NUNCA al JSON tal cual — sólo entran al público
         # transformados por `_spread` (una relación, jamás la tarifa ni su
         # suma). Ver `publicas_desde_crudos`: NO los toca -- se agregan
@@ -839,7 +886,7 @@ def publicas_desde_crudos(crudos: dict) -> dict:
         "espacios_comercializables": caras,
         "ocupacion_pct": _pct(crudos["ocupadas"], caras),
         "canon_promedio_mensual": _plata(crudos["canon_total"] / contratos) if contratos else None,
-        "ingreso_contratado_mes": _plata(crudos["canon_total"]),
+        "ingreso_contratado_mes": _plata(crudos["canon_total"] + crudos.get("cobrado_por_ventas", 0.0)),
         "top_proveedores": _top(crudos["proveedores"]),
         "usuarios_con_cuenta": len(crudos["usuarios"]),
     }
@@ -933,7 +980,7 @@ def _calcular(anio_mes: str, origen: str = "vista") -> tuple[dict, dict[str, int
                 # rota no deja crudos que guardar, igual que no suma al
                 # consolidado -- la serie de ese cliente tendrá un hueco ese mes.
                 crudos_por_slug[cliente.slug] = crudos
-                contratos_por_cliente[cliente.slug] = crudos["contratos"]
+                contratos_por_cliente[cliente.slug] = crudos["contratos"] + crudos.get("contratos_por_ventas", 0)
             clientes.append(fila)
     finally:
         reg.close()
@@ -1020,6 +1067,8 @@ def consolidar_crudos(acumulado: list[dict]) -> dict:
         "canon_total": sum(a["canon_total"] for a in acumulado),
         "proveedores": proveedores,
         "usuarios": usuarios,
+        "contratos_por_ventas": sum(a.get("contratos_por_ventas", 0) for a in acumulado),
+        "cobrado_por_ventas": sum(a.get("cobrado_por_ventas", 0.0) for a in acumulado),
     }
 
 
@@ -1057,7 +1106,8 @@ def consolidar_agregado(acumulado: list[dict]) -> dict:
         "espacios_comercializables": crudo["caras"],
         "ocupacion_pct": _pct(crudo["ocupadas"], crudo["caras"]),
         "canon_promedio_mensual": _plata(canon_total / contratos) if contratos else None,
-        "ingreso_contratado_mes": _plata(canon_total),
+        # Más lo cobrado por ventas (vender-api.md §3), que no entra al promedio.
+        "ingreso_contratado_mes": _plata(canon_total + crudo.get("cobrado_por_ventas", 0.0)),
         "top_proveedores": _top(crudo["proveedores"]),
         "usuarios_con_cuenta": len(crudo["usuarios"]),
     }

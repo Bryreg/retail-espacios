@@ -26,7 +26,10 @@ from app.models.participaciones import TIPOS_DE_HISTORIAL, HistorialParticipacio
 
 #: Claves que NUNCA entran al historial: el valor vive en el lease, y el
 #: historial no se purga ni pasa por la redacción de montos de `spaces.py`.
-_CLAVES_CON_PLATA = frozenset({"valor", "valor_mensual", "monthly_rent", "monto", "canon"})
+#: Las del rediseño de Vender (el precio de una reserva, lo que se tecleó y lo
+#: vendido de un corte) tampoco (`docs/rediseno/vender-api.md` §2–§3).
+_CLAVES_CON_PLATA = frozenset({"valor", "valor_mensual", "monthly_rent", "monto", "canon",
+                               "valor_acordado", "valor_tecleado", "ventas"})
 
 
 def _ahora() -> datetime:

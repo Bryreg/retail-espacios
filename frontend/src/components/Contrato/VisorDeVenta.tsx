@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import type { OrbitControls as ControlesDeOrbita } from "three/examples/jsm/controls/OrbitControls.js";
-import { Box, ChevronRight, Download, FileCheck, Loader2, Search, Upload, X } from "lucide-react";
+import { Box, ChevronRight, Download, Loader2, Search, Upload, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import { useModalAbierto } from "../../tema";
@@ -100,18 +100,6 @@ interface VisorDeVentaProps {
   onCerrar: () => void;
   /** La sede, para el pie de la lámina. */
   sede: string;
-  /** Adjunta la lámina como planometría DEL CONTRATO (el campo de la ficha,
-   *  que sigue montada debajo). Nunca el plano. `cara` es la de la lámina
-   *  (`GON-02·A`): la ficha la recuerda para decir de quién es, y la saca si
-   *  cambia el proveedor. `proveedor` es el nombre (normalizado) con que se
-   *  ARMÓ: si el contrato ya es de otro, la ficha no la adjunta y devuelve
-   *  `false`. */
-  onPlanometria: (archivo: File, cara: string, proveedor: string) => boolean;
-  /** Lo que la ficha tiene como planometría: la lámina de una cara (armada
-   *  acá, con el proveedor de ahora: si cambia, la ficha la saca), otro
-   *  archivo, o nada. El otro archivo NO se nombra: su nombre lo puso quien
-   *  lo subió y puede ser el de cualquiera. */
-  planometria: { lamina: string } | "otra" | null;
 }
 
 // ─── Constantes de la escena ─────────────────────────────────────────────────
@@ -243,7 +231,7 @@ const Lienzo = memo(function Lienzo({
 // ─── El visor ────────────────────────────────────────────────────────────────
 
 export default function VisorDeVenta({
-  caras, activa, onActiva, proveedor, onProveedor, sesion, onCerrar, sede, onPlanometria, planometria,
+  caras, activa, onActiva, proveedor, onProveedor, sesion, onCerrar, sede,
 }: VisorDeVentaProps) {
   const raiz = useRef<HTMLDivElement>(null);
   const volver = useRef<HTMLButtonElement>(null);
@@ -600,26 +588,26 @@ export default function VisorDeVenta({
     if (desde.cara === claveRef.current) elegir(nuevo);
   };
 
-  // ── La lámina: «Bajar la propuesta» y «Usarla como planometría» ────────
+  // ── La lámina: «Bajar la propuesta» ─────────────────────────────────────
   // La misma lámina del Editor 3D (`componerPropuesta`): «Hoy», «Con …» y «De
   // cerca» desde las tomas de venta, con el pie del producto. Faltaba acá, y
-  // es el paso natural de la reunión: mandársela al proveedor o adjuntarla
-  // como planometría del contrato que se está armando —que antes obligaba a
-  // ir al Editor 3D y perder el contrato—. La escena ya es privada para el
+  // es el paso natural de la reunión: mandársela al proveedor. (Adjuntarla
+  // como planometría del contrato se fue de Vender: la dueña decidió,
+  // 2026-10-20, que la planometría se carga sólo en Supervisar, en la ficha
+  // del espacio, con el contrato ya hecho.) La escena ya es privada para el
   // proveedor de los artes (`privadoPara`), así que en las tomas no sale nada
   // de otro. El pie va SIN período ni valor: el visor no los conoce (nada
   // comercial cruza desde la ficha) y lo que se está proponiendo todavía no
   // está acordado. Y el mueble se nombra por su TIPO, no por su rótulo, que
   // es texto libre de la dueña.
-  const [lamina, setLamina] = useState<"" | "bajando" | "adjuntando">("");
-  const [laminaLista, setLaminaLista] = useState<"" | "bajada" | "adjunta">("");
+  const [lamina, setLamina] = useState<"" | "bajando">("");
+  const [laminaLista, setLaminaLista] = useState<"" | "bajada">("");
   const [laminaFallo, setLaminaFallo] = useState("");
   useEffect(() => { setLaminaLista(""); setLaminaFallo(""); }, [clave, arteDeLaCara?.id]);
   /** El cuadro congelado mientras se arma la lámina (ver `armarLamina`). */
   const [congelado, setCongelado] = useState<string | null>(null);
   // La confirmación, a la vista: queda al pie del cuerpo del cajón, que rueda,
-  // y a 1440 × 900 caía debajo del borde —lo único que decía que se adjuntó
-  // era que el botón cambiaba de nombre—.
+  // y a 1440 × 900 caía debajo del borde.
   const confirmacion = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (laminaLista || laminaFallo) confirmacion.current?.scrollIntoView({ block: "nearest" });
@@ -768,31 +756,6 @@ export default function VisorDeVenta({
       if (!r.sigue()) throw INTERRUMPIDA;
       descargar(r.blob, r.archivo);
       setLaminaLista("bajada");
-    } catch (e) {
-      alFallarLamina(e);
-    } finally {
-      setLamina("");
-    }
-  };
-  /** La lámina, adjunta como planometría DEL CONTRATO: escribe el campo de la
-   *  ficha (que sigue montada debajo) y viaja con «Guardar contrato», como
-   *  la foto o el PDF que adjunta la dueña. En JPG: la planometría tiene un
-   *  tope de 10 MB y viaja por correo. Nunca toca el plano. */
-  const usarComoPlanometria = async () => {
-    if (lamina) return;
-    setLamina("adjuntando");
-    setLaminaLista("");
-    setLaminaFallo("");
-    try {
-      const r = await armarLamina();
-      if (!r) return;
-      const jpg = await aJpeg(r.blob);
-      // El JPG también tarda: se vuelve a mirar antes de tocar la ficha.
-      if (!r.sigue()) throw INTERRUMPIDA;
-      const base = r.archivo.replace(/\.png$/, "");
-      const adjunta = onPlanometria(new File([jpg.blob], `${base}.${jpg.extension}`, { type: jpg.blob.type }), r.cara, r.proveedor);
-      if (!adjunta) throw INTERRUMPIDA;
-      setLaminaLista("adjunta");
     } catch (e) {
       alFallarLamina(e);
     } finally {
@@ -1096,32 +1059,15 @@ export default function VisorDeVenta({
                 <p className="visor-nota">
                   La lámina de {cara.visible} con «Hoy», «Con {proveedorDeLosArtes}» y «De cerca», sin valores ni fechas.
                 </p>
-                {/* De quién es la planometría que ya tiene el contrato, antes
-                    de reemplazarla. Una lámina de acá es siempre de este
-                    proveedor (la ficha la saca si cambia); un archivo que
-                    subió la dueña no se nombra. */}
-                {planometria && (
-                  <p className="visor-nota" data-planometria-actual>
-                    {planometria === "otra"
-                      ? "El contrato ya tiene una planometría (un archivo adjunto): usar la lámina la reemplaza."
-                      : `La planometría del contrato es la lámina de ${planometria.lamina} con ${proveedorDeLosArtes}.`}
-                  </p>
-                )}
                 <div className="visor-lamina">
                   <button type="button" className="visor-boton-linea" onClick={bajarLamina} disabled={!!lamina} data-bajar-lamina>
                     {lamina === "bajando" ? <Loader2 size={13} className="visor-gira" aria-hidden /> : <Download size={13} aria-hidden />}
                     Bajar la propuesta
                   </button>
-                  <button type="button" className="visor-boton-linea" onClick={usarComoPlanometria} disabled={!!lamina} data-lamina-planometria>
-                    {lamina === "adjuntando" ? <Loader2 size={13} className="visor-gira" aria-hidden /> : <FileCheck size={13} aria-hidden />}
-                    {planometria ? "Reemplazar la planometría" : "Usarla como planometría"}
-                  </button>
                 </div>
                 <p ref={confirmacion} className={laminaFallo ? "visor-aviso" : "visor-nota"} role={laminaFallo ? "alert" : "status"}
-                  data-lamina-adjunta={laminaLista === "adjunta" || undefined} hidden={!laminaLista && !laminaFallo}>
-                  {laminaFallo || (laminaLista === "adjunta"
-                    ? `Quedó adjunta como planometría de este contrato (${cara.visible}): se guarda con él.`
-                    : laminaLista === "bajada" ? "La lámina se bajó." : "")}
+                  hidden={!laminaLista && !laminaFallo}>
+                  {laminaFallo || (laminaLista === "bajada" ? "La lámina se bajó." : "")}
                 </p>
               </section>
             )}
@@ -1145,27 +1091,6 @@ export default function VisorDeVenta({
 
 // ─── La lámina en JPG ────────────────────────────────────────────────────────
 
-/** La lámina (PNG) como JPG blanco de fondo, para la planometría: un PNG de
- *  tres tomas pesa varios megas y la planometría viaja por correo. Si el
- *  navegador no puede, queda en PNG. */
-async function aJpeg(png: Blob): Promise<{ blob: Blob; extension: "jpg" | "png" }> {
-  try {
-    const imagen = await createImageBitmap(png);
-    const c = document.createElement("canvas");
-    c.width = imagen.width;
-    c.height = imagen.height;
-    const g = c.getContext("2d");
-    if (!g) return { blob: png, extension: "png" };
-    g.fillStyle = "#ffffff";
-    g.fillRect(0, 0, c.width, c.height);
-    g.drawImage(imagen, 0, 0);
-    imagen.close();
-    const jpg = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/jpeg", 0.9));
-    return jpg ? { blob: jpg, extension: "jpg" } : { blob: png, extension: "png" };
-  } catch {
-    return { blob: png, extension: "png" };
-  }
-}
 
 // ─── Subir un producto, a nombre del proveedor del contrato ─────────────────
 

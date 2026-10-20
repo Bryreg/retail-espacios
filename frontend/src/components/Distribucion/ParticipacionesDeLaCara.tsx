@@ -76,7 +76,7 @@ function boton(lleno: boolean): React.CSSProperties {
 }
 
 export default function ParticipacionesDeLaCara({
-  fixtureId, codigo, cara, sede, doble,
+  fixtureId, codigo, cara, sede, doble, onRenovar,
 }: {
   fixtureId: string;
   /** El código del mueble en el plano (`GON-01`). */
@@ -86,6 +86,10 @@ export default function ParticipacionesDeLaCara({
   sede: string;
   /** El mueble tiene cara B (`carasDe`): el título nombra la cara. */
   doble: boolean;
+  /** Renovar la participación `PC<numero>`: abre Vender armado con su % y el
+   *  término que renueva (rediseño de Vender, PR 1). Sin esto no hay botón:
+   *  Renovar ya no va a Distribución. */
+  onRenovar?: (numero: number) => void;
 }) {
   const abrir = useAbrirEnDistribucion();
   const cliente = useAuthStore((s) => s.cliente) ?? "";
@@ -169,7 +173,7 @@ export default function ParticipacionesDeLaCara({
 
           {vivas.length === 0 ? (
             <div style={{ fontSize: "var(--t-2xs)", color: "var(--ink-2)" }}>
-              No tiene participaciones vivas. Se cargan en Distribución.
+              No tiene participaciones vivas: un porcentaje se vende en Vender.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -197,10 +201,10 @@ export default function ParticipacionesDeLaCara({
                       {t && <span style={{ fontFamily: "var(--font-mono)" }}>{fechaCorta(t.desde, datos.hoy)} → {fechaCorta(t.hasta, datos.hoy)}</span>}
                       {t && <span>{PALABRA_DEL_TERMINO[t.estado_visible]}</span>}
                       {t?.estado_visible === "reserva" && t.caduca && <span>· caduca el {fechaCorta(t.caduca, datos.hoy)}</span>}
-                      {renovable && (
+                      {renovable && onRenovar && (
                         <button
                           type="button"
-                          onClick={() => abrir(fixtureId, cara, renovable.id)}
+                          onClick={() => onRenovar(p.numero)}
                           style={{ ...boton(true), height: 24, marginLeft: "auto" }}
                         >
                           <RefreshCw size={11} /> Renovar

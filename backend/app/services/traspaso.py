@@ -79,6 +79,13 @@ TABLAS_DEL_CLIENTE = frozenset({
     # lo da `sorted_tables` y ninguna se apunta a sí misma (`renueva_a` es un
     # entero sin clave foránea), así que copiar sin `ORDER BY` no rompe nada.
     "participaciones", "distribuciones", "zonas", "historial_participaciones",
+    # Lo que guarda Vender de un contrato (`models/vender.py`): cómo se
+    # escribió el precio, el de una reserva, el cobro por ventas con sus cortes
+    # el aviso de montaje que espera zona y la reserva de una cara entera o de
+    # una parte. Cuelgan de `space_leases`, `participaciones`, `spaces` y
+    # `suppliers`, que viajan con ellas.
+    "condiciones_de_contrato", "precios_de_reserva", "cobros_por_venta", "cortes_de_venta",
+    "montajes_pendientes", "reservas_de_espacio",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar

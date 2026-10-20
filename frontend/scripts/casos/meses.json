@@ -1,0 +1,23 @@
+{
+  "que_es": "Casos de «¿cuántos meses dura un contrato?». Los corren meses_entre (backend/app/services/meses.py, en tests/test_meses.py) y su gemela de frontend/src/utils/meses.ts: si las dos cuentas se separan, falla uno de los dos lados. La regla (docs/rediseno/vender-api.md §6): los meses calendario completos entre desde y hasta + 1 día, más los días que sobran ÷ 30; un mes se suma desde el día de arranque y, si ese día no existe en el mes de llegada, se queda en el último. «meses» va redondeado a 6 decimales: se compara con tolerancia 0,000001.",
+  "casos": [
+    { "por": "un mes calendario justo", "desde": "2026-11-01", "hasta": "2026-11-30", "meses": 1 },
+    { "por": "tres meses que cruzan el año", "desde": "2026-11-01", "hasta": "2027-01-31", "meses": 3 },
+    { "por": "un mes que no arranca el primero", "desde": "2026-10-19", "hasta": "2026-11-18", "meses": 1 },
+    { "por": "dos meses con febrero en el medio", "desde": "2027-01-15", "hasta": "2027-03-14", "meses": 2 },
+    { "por": "un solo día", "desde": "2026-11-05", "hasta": "2026-11-05", "meses": 0.033333 },
+    { "por": "quince días", "desde": "2026-11-01", "hasta": "2026-11-15", "meses": 0.5 },
+    { "por": "31 ene + 1 mes cae el 28 feb: hasta el 27 es un mes", "desde": "2027-01-31", "hasta": "2027-02-27", "meses": 1 },
+    { "por": "31 ene al 28 feb: un mes y un día", "desde": "2027-01-31", "hasta": "2027-02-28", "meses": 1.033333 },
+    { "por": "bisiesto: 31 ene + 1 mes cae el 29 feb 2028", "desde": "2028-01-31", "hasta": "2028-02-28", "meses": 1 },
+    { "por": "bisiesto: hasta el 29 feb es un mes y un día", "desde": "2028-01-31", "hasta": "2028-02-29", "meses": 1.033333 },
+    { "por": "bisiesto: febrero entero de 2028", "desde": "2028-02-01", "hasta": "2028-02-29", "meses": 1 },
+    { "por": "bisiesto: arranca el 29 feb", "desde": "2028-02-29", "hasta": "2028-03-28", "meses": 1 },
+    { "por": "un año entero", "desde": "2026-12-01", "hasta": "2027-11-30", "meses": 12 },
+    { "por": "un mes y doce días", "desde": "2026-10-19", "hasta": "2026-11-30", "meses": 1.4 },
+    { "por": "arranca el 30: el mes siguiente cuenta desde el 30", "desde": "2026-11-30", "hasta": "2026-12-29", "meses": 1 },
+    { "por": "arranca el 30 y cruza el año", "desde": "2026-11-30", "hasta": "2027-01-29", "meses": 2 },
+    { "por": "fechas al revés: no hay plazo", "desde": "2026-11-01", "hasta": "2026-10-31", "meses": 0 },
+    { "por": "menos de un mes que cruza de mes", "desde": "2026-10-20", "hasta": "2026-11-10", "meses": 0.733333 }
+  ]
+}

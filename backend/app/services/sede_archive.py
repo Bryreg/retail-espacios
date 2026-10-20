@@ -42,6 +42,8 @@ from app.models.models import (
     SpaceLease,
     SpaceStatus,
 )
+from app.fechas import hoy
+from app.models.vender import ReservaDeEspacio
 from app.services.candado import tomar_candados
 from app.services.ciclo_participaciones import (
     al_archivar_sede, codigos_de_caras_con_terminos, reservas_vivas,
@@ -307,12 +309,24 @@ def archive_sede_spaces(db: Session, sede: str, actor: str | None = None) -> dic
         archived_count += 1
 
     participaciones = al_archivar_sede(db, sede, archivados, cerrados, actor)
+    # Las reservas de una cara entera o de una parte (`models/vender.py`, §8 de
+    # docs/rediseno/vender-api.md) de los espacios archivados se cancelan como
+    # las de participación: con el código liberado no chocarían con nada, y
+    # quedarían «vivas» sobre un espacio que ya no existe.
+    reservas_de_espacio = 0
+    if archivados:
+        for r in (db.query(ReservaDeEspacio)
+                  .filter(ReservaDeEspacio.space_id.in_(archivados), ReservaDeEspacio.estado == "viva").all()):
+            r.estado = "cancelada"
+            r.baja_en = datetime.now(timezone.utc)
+            r.baja_por = actor
+            reservas_de_espacio += 1
     db.flush()
     return {
         "spaces": archived_count,
         "leases_closed": closed_count,
         "mounts_archived": mounts_archived,
-        "reservas_canceladas": participaciones["reservas_canceladas"],
+        "reservas_canceladas": participaciones["reservas_canceladas"] + reservas_de_espacio,
     }
 
 
@@ -338,5 +352,13 @@ def count_commercial_rows(db: Session, sede: str) -> dict:
     # Las reservas provisionales de participación que el archivo cancelaría
     # (las de los mismos espacios que archiva). No son leases: sin esto el
     # diálogo no las nombraba.
+    # Y las reservas vivas de una cara entera o de una parte (§8 de
+    # docs/rediseno/vender-api.md), que el archivo también cancela.
+    de_espacio = (
+        db.query(ReservaDeEspacio)
+        .filter(ReservaDeEspacio.space_id.in_([s.id for s in live] or [-1]), ReservaDeEspacio.estado == "viva",
+                ReservaDeEspacio.caduca >= hoy())
+        .count()
+    )
     return {"spaces": len(live), "active_leases": active,
-            "reservas_vivas": reservas_vivas(db, [s.id for s in live])}
+            "reservas_vivas": reservas_vivas(db, [s.id for s in live]) + de_espacio}
