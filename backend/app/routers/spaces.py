@@ -366,12 +366,27 @@ def get_space_by_svg(svg_id: str, role: str = Depends(require_auth), db: Session
     return _space_out_for_role(space, role)
 
 
-@router.get("/by-code/{code}", response_model=SpaceOut)
-def get_space_by_code(code: str, role: str = Depends(require_auth), db: Session = Depends(get_db)):
+@router.get("/by-code/{code}", response_model=Optional[SpaceOut])
+def get_space_by_code(
+    code: str,
+    si_existe: bool = False,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """El espacio por su código completo.
+
+    Sin fila, 404; con ``si_existe=1``, ``null`` (200). El panel del Plano lee
+    los archivos de cada cara que se elige, y un espacio que nunca se vendió no
+    tiene fila: es lo normal, no un error, y el 404 ensuciaba la consola del
+    navegador en cada clic. Leer no crea la fila (la crea quien administra, con
+    ``find-or-create``), y lo que sale pasa por la misma tachadura por rol.
+    """
     space = db.query(Space).options(
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).filter(Space.code == code).first()
     if not space:
+        if si_existe:
+            return None
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
     return _space_out_for_role(space, role)
 

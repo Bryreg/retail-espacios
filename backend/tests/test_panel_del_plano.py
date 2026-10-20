@@ -136,6 +136,29 @@ def test_la_nota_de_un_espacio_con_contrato_es_la_del_contrato(client, admin, wo
     assert _comercial(client, admin)["NAVE-PUN-01"]["observation"] == ""
 
 
+def test_by_code_si_existe_contesta_null_sin_crear_la_fila(client, admin, worker):
+    """Abrir el panel de un espacio que nunca se vendió no es un error: con
+    `si_existe=1`, `null` y 200 (sin el 404 en la consola). Sin el parámetro,
+    404 como siempre. Leer no crea la fila, y con fila sale la misma tachadura
+    por rol."""
+    _plano(client, admin, ["PUN-05"])
+    for quien in (admin, worker):
+        r = client.get("/api/spaces/by-code/NAVE-PUN-05?si_existe=1", headers=quien)
+        assert r.status_code == 200, r.text
+        assert r.json() is None
+        assert client.get("/api/spaces/by-code/NAVE-PUN-05", headers=quien).status_code == 404
+    assert "NAVE-PUN-05" not in client.get("/api/spaces/", headers=admin).text, "leer creó la fila"
+    # Sin sesión, nada.
+    assert client.get("/api/spaces/by-code/NAVE-PUN-05?si_existe=1").status_code == 401
+    # Con fila y nota: el trabajador, sin la nota.
+    sid = _espacio(client, admin, "PUN-05")
+    assert client.put(f"/api/spaces/{sid}/nota", headers=admin, json={"nota": "falta el cartel"}).status_code == 200
+    r = client.get("/api/spaces/by-code/NAVE-PUN-05?si_existe=1", headers=worker)
+    assert r.status_code == 200 and r.json()["id"] == sid
+    assert r.json()["notes"] is None and "cartel" not in r.text
+    assert client.get("/api/spaces/by-code/NAVE-PUN-05?si_existe=1", headers=admin).json()["notes"] == "falta el cartel"
+
+
 def test_sin_contrato_es_la_nota_del_espacio_y_el_trabajador_no_la_ve(client, admin, worker):
     _plano(client, admin, ["PUN-02"])
     sid = _espacio(client, admin, "PUN-02")
@@ -151,7 +174,7 @@ def test_sin_contrato_es_la_nota_del_espacio_y_el_trabajador_no_la_ve(client, ad
     assert "luz rota" not in client.get("/api/spaces/", headers=worker).text
 
 
-def test_con_una_reserva_viva_es_la_nota_de_la_reserva(client, admin):
+def test_con_una_reserva_viva_es_la_nota_de_la_reserva(client, admin, worker):
     from app.database import SessionLocal
     from app.models.models import Supplier
     from app.models.vender import ReservaDeEspacio
@@ -171,6 +194,18 @@ def test_con_una_reserva_viva_es_la_nota_de_la_reserva(client, admin):
     assert r.status_code == 200, r.text
     assert r.json()["donde"] == "reserva"
     assert _comercial(client, admin)["NAVE-PUN-03"]["observation"] == "confirma el lunes"
+    # El trabajador ve la cara tomada y nada de la nota: ni en el mapa
+    # comercial, ni por `by-code`, ni por `by-svg`.
+    del_worker = _comercial(client, worker)["NAVE-PUN-03"]
+    assert del_worker["status"] == "occupied" and del_worker["observation"] == ""
+    assert del_worker["supplierName"] == "" and del_worker["negotiatedValue"] == 0
+    por_codigo = client.get("/api/spaces/by-code/NAVE-PUN-03", headers=worker)
+    assert por_codigo.status_code == 200, por_codigo.text
+    assert por_codigo.json()["notes"] is None and "confirma el lunes" not in por_codigo.text
+    svg_id = por_codigo.json()["svg_id"]
+    por_svg = client.get(f"/api/spaces/by-svg/{svg_id}", headers=worker)
+    assert por_svg.status_code == 200, por_svg.text
+    assert por_svg.json()["notes"] is None and "confirma el lunes" not in por_svg.text
 
 
 def test_la_nota_es_de_administracion_y_tiene_tope(client, admin, worker):

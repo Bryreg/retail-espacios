@@ -1177,26 +1177,37 @@ hoja (`hoja-iconos-y-piezas.html`, tablas «Plano» y «Catálogo del Plano»). 
   · **Reservados** · Por vencer · Vencidos (decisión 3: «en parte» son partes vendidas y libres en
   una cara, o una cara por participación con algo comprometido y lugar; «reservados», una reserva
   de Vender de la cara o de una parte, o un «Reservado» a mano de antes)— y, al pie, − / % / + /
-  Centrar en todo / Mostrar los códigos / Pantalla completa (tocar el % vuelve al 100 %).
+  Centrar en todo / Mostrar los códigos (apaga también los de adentro del mueble; un filtro que lo
+  encuentra o un nombre repetido se siguen viendo) / Pantalla completa (tocar el % vuelve al 100 %).
+  La pista del pie es la del dibujo y baja de renglón en vez de cortarse con «…».
 - **El panel B** (decisión 5): el código con su lápiz (reemplaza a la sección «Nombre», por el
   mismo `renombrar`), «tipo · sede (candado) · pasillo», la pastilla, la franja «medidas ·
   entrepaños · X de N vendido» y tres pestañas: **Venta** (se vende —el destino—, cómo —el mismo
   `PartesDelMueble`—, estado —Disponible | Mantenimiento—, lo contratado sin plata y «Vender», que
-  abre Sede → Vender con el espacio por `pedirVender` del store y el `negociar` de siempre; en una
+  abre Sede → Vender con el espacio por `pedirVender` del store y el `negociar` de siempre —la
+  pantalla de sede se vuelve a montar, y su reinicio por cambio de sede corre sólo si la sede
+  cambió de verdad: al montar borraba el contrato recién armado—; un mueble que se vende por
+  partes, como una punta por entrepaños, entra con su lista de partes abierta y ninguna marcada,
+  no con la cara entera que chocaría con la parte ya vendida; en una
   cara por participación, «Distribuir»), **Medidas** (ancho × prof. × alto en una fila, entrepaños
   con − y +, módulo: el mismo `GeometriaDelMueble`, las mismas guardas) y **Documentos** (los
   archivos con su tamaño, «Usar como foto de la cara en el 3D» —el `uso: "cara"` del upload— con
-  la foto en chiquito, y la nota; la pestaña dice cuántos archivos hay). Abre siempre en Venta.
+  la foto en chiquito, y la nota; la pestaña dice cuántos archivos hay; en «Mirar» no se sube ni
+  se borra). Abre siempre en Venta. La franja cuenta los entrepaños como se venden: vendido por
+  entrepaños, con la base (`divisionDe`), igual que el «X de N vendido» de al lado.
   Varios elegidos, Revisar y Atajos, con el mismo lenguaje. **Sigue el tema** claro u oscuro: el
   plano no lee ningún `--dark-*`; `PartesDelMueble` y `GeometriaDelMueble` toman `enElTema` en el
   Plano y siguen en el cajón oscuro en el Editor 3D, que no cambió.
-- **A lo angosto**: por debajo de 860 px el panel es una hoja que sube desde abajo, a todo el ancho;
+- **A lo angosto**: el panel mide `clamp(330px, 30vw, 360px)`; por debajo de 1280 px las pestañas
+  toman el ancho de lo que dicen. Por debajo de 860 px el panel es una hoja que sube desde abajo, a todo el ancho;
   por debajo de 640 px el catálogo abierto flota sobre el lienzo. Nada empuja la página de costado.
-- Los archivos del panel se leen al abrirlo con `GET /spaces/by-code` (leer no crea la fila de
-  `spaces`; la crea, como antes, el primer archivo o la primera nota de quien administra).
+- Los archivos del panel se leen al abrirlo con `GET /spaces/by-code?si_existe=1` (sin fila
+  contesta `null`, no 404: un espacio que nunca se vendió no ensucia la consola; leer no crea la
+  fila de `spaces`; la crea, como antes, el primer archivo o la primera nota de quien administra).
 - Guardas: `probar-plano` (sin emoji, sin «Reservado» a mano, la sede una vez y de sólo lectura,
   abre en Venta, cada sección del panel de antes en su pestaña, sin `--dark-*`, los filtros y el
-  pie); las de `probar-comercial`, `probar-distribucion`, `probar-geometria`, `probar-partes`,
+  pie, «Contratado» sin plata, las tres puertas de «Vender» —botón, pestaña y armado, sólo admin—
+  con el pedido `{fixtureId, cara, n}`, y el reinicio por sede que no corre al montar); las de `probar-comercial`, `probar-distribucion`, `probar-geometria`, `probar-partes`,
   `probar-nombres` y `probar-comercializable` miran la forma nueva. Servidor:
   `tests/test_panel_del_plano.py`.
 

@@ -1508,8 +1508,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     : selectedIds.size > 1
     ? `${selectedIds.size} elementos seleccionados · Shift+clic suma o quita · arrastrá uno para mover el grupo`
     : editMode
-    ? RESUMEN_ATAJOS
-    : "Clic en un mueble para ver su ficha · rueda para acercar · espacio + arrastrar para desplazar";
+    ? "Arrastrá para mover · rueda para acercar · espacio + arrastre para desplazar"
+    : "Clic en un mueble para ver su ficha · rueda para acercar · espacio + arrastre para desplazar";
 
   const posicionDeLaSede = storeSedeList.indexOf(sede);
 
@@ -2253,8 +2253,14 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                     {(() => {
                       const screenW = pw * zoom;
                       const screenH = ph * zoom;
-                      const showCode = rotulos.adentro !== null;
-                      const showIcono = !showCode && screenW > 22 && screenH > 16;
+                      // «Ocultar los códigos» también apaga los de adentro (la
+                      // misma regla que la pastilla de arriba): un filtro que
+                      // lo encuentra, un nombre repetido o el que se está
+                      // renombrando se siguen viendo. El ícono queda para el
+                      // mueble donde el código no entra.
+                      const codigoALaVista = showLabels || (filterActive && isFilterMatch) || !!rotulos.choque || editingCodeId === item.id;
+                      const showCode = rotulos.adentro !== null && codigoALaVista;
+                      const showIcono = rotulos.adentro === null && screenW > 22 && screenH > 16;
                       const lado = Math.min(12 / zoom, pw * 0.6, ph * 0.7);
                       const IconoDelMueble = iconoDelTipo(item.type);
                       // Font size: stays ~11 px on screen but capped to 45 % of fixture width
@@ -3114,16 +3120,6 @@ const ATAJOS: { grupo: string; filas: [string, string][] }[] = [
   },
 ];
 
-/** El resumen de la barra de estado, sacado de la misma lista. */
-const RESUMEN_ATAJOS = [
-  "Rueda: zoom",
-  "Espacio+arrastrar: mover",
-  "Shift+clic: multi",
-  "R: rotar",
-  "Ctrl+D: duplicar",
-  "Ctrl+Z: deshacer",
-].join(" · ");
-
 function AtajosPanel({ onClose }: { onClose: () => void }) {
   return (
     <aside className="p2-panel" aria-label="Atajos de teclado" data-panel-atajos>
@@ -3552,8 +3548,8 @@ function FilesSection({ docs, isAdmin, editMode }: { docs: Documentos; isAdmin: 
     <div
       className="p2-docs"
       data-archivos
-      onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
-      onDrop={isAdmin ? (e) => {
+      onDragOver={isAdmin && editMode ? (e) => e.preventDefault() : undefined}
+      onDrop={isAdmin && editMode ? (e) => {
         e.preventDefault();
         const file = e.dataTransfer.files?.[0];
         if (file) void handleUpload(file);
@@ -3589,7 +3585,9 @@ function FilesSection({ docs, isAdmin, editMode }: { docs: Documentos; isAdmin: 
         })
       )}
       {error && <p className="p2-msj mal">{error}</p>}
-      {isAdmin && (
+      {/* Subir y «Usar como foto…», como eliminar: sólo editando. En «Mirar»
+          se miran los archivos y nada más. */}
+      {isAdmin && editMode && (
         <div className="p2-subir">
           <input
             ref={inputRef}
@@ -3830,6 +3828,10 @@ function AssignmentPanel({
   const ancho = muebleDelStore?.w ?? item.w;
   const fondo = muebleDelStore?.d ?? item.h;
   const alto = muebleDelStore?.h ?? H_DEFAULTS[item.type];
+  // Vendido por entrepaños, la franja los cuenta como se venden —con la base,
+  // el EN1 (`divisionDe`/`cantidadDe`)—, la misma cuenta que «1 de 5
+  // vendido» al lado. Antes decía «4 entrepaños · 1 de 5 vendido».
+  const entrepanosDeLaFranja = division?.clase === "entrepanos" ? division.n : (vista?.entrepanos ?? 0);
 
   // ── Documentos: los archivos de la cara y su nota ─────────────────────────
   const docs = useDocumentosDelEspacio(activeCode, isAdmin, {
@@ -3945,8 +3947,12 @@ function AssignmentPanel({
           <span className="p2-linea" data-linea-del-mueble>
             <span data-tipo-del-mueble>{conNombrePropio(item, nombresPropios, catDef?.label ?? "")}</span>
             <span aria-hidden>·</span>
-            <span className="mono" data-sede-del-plano title="La sede la define el plano: no se cambia acá">{sede}</span>
-            <Lock size={12} strokeWidth={1.75} aria-label="sólo lectura" />
+            {/* La sede y su candado no se separan: si la línea no entra, baja
+                el pasillo, nunca el candado solo. */}
+            <span className="p2-sede-candado">
+              <span className="mono" data-sede-del-plano title="La sede la define el plano: no se cambia acá">{sede}</span>
+              <Lock size={12} strokeWidth={1.75} aria-label="sólo lectura" />
+            </span>
             {/* Nadie dice «PUN-07» en una reunión: dice «la punta del pasillo 4».
                 Sale de la geometría, así que mover el mueble lo actualiza solo. */}
             {pasillo !== undefined && <><span aria-hidden>·</span><span>pasillo {pasillo}</span></>}
@@ -4060,7 +4066,7 @@ function AssignmentPanel({
       {/* La franja de resumen: se lee sin abrir nada. */}
       <div className="p2-resumen" data-resumen>
         <span><b>{metros(ancho)} × {metros(fondo)}{alto !== undefined ? ` × ${metros(alto)}` : ""}</b> m</span>
-        {vista && <span><b>{vista.entrepanos}</b> {vista.entrepanos === 1 ? "entrepaño" : "entrepaños"}</span>}
+        {vista && <span><b>{entrepanosDeLaFranja}</b> {entrepanosDeLaFranja === 1 ? "entrepaño" : "entrepaños"}</span>}
         {rentable && partesDeLaCara.length > 0 ? (
           <span><b>{vendidas.length} de {partesDeLaCara.length}</b> vendid{division ? concordancia(division.clase).o : "o"}{vendidas.length === 1 ? "" : "s"}</span>
         ) : rentable && esPc && dispoPc ? (

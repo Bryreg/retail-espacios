@@ -4807,9 +4807,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // Arranca un contrato NUEVO con ese espacio. Sumarlo a uno que estuviera a
     // medio armar mezclaría dos negociaciones sin avisar. Vendiendo por
     // partes, con la puerta elegida (`PU2`); una cara por participación, con
-    // su línea de porcentaje (nunca entera).
+    // su línea de porcentaje (nunca entera). Un mueble que se vende por
+    // partes (`partes.division`) entra con su lista de partes abierta y
+    // ninguna marcada: entera chocaría con la parte que ya esté vendida. Una
+    // renovación (`semilla`) trae lo que renueva y entra como estaba.
+    const division = !parte && !semilla ? divisionDe(f) : null;
     setEnContrato([porParticipacion(f) ? { id: f.id, face, pc: true }
-      : parte ? { id: f.id, face, parte } : { id: f.id, face }]);
+      : parte ? { id: f.id, face, parte }
+      : division ? { id: f.id, face, porPartes: division.clase } : { id: f.id, face }]);
     setModo("vender");
   };
 
@@ -5114,7 +5119,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   // Deselect when switching sedes: ese mueble es de la otra tienda, y un
   // contrato a medio llenar apuntaría al espacio equivocado.
+  //
+  // Sólo cuando la sede CAMBIÓ, no al montar: la pantalla se vuelve a montar
+  // al llegar desde el Plano con «Vender», y este efecto corre DESPUÉS del
+  // que arma el pedido (`pedidoVender`, más arriba) en el mismo montaje. Sin
+  // la guarda borraba el contrato recién armado y Vender abría vacío.
+  const sedeDelContrato = useRef(sede);
   useEffect(() => {
+    if (sedeDelContrato.current === sede) return;
+    sedeDelContrato.current = sede;
     setSelected(null);
     setCerrado(null);
     setEnContrato([]);

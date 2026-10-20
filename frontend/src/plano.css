@@ -369,7 +369,7 @@
   font-size: var(--t-2xs);
   color: var(--ink-3);
 }
-.plano2d .p2-pista span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.plano2d .p2-pista span { min-width: 0; line-height: 1.4; }
 .plano2d .p2-pista svg { color: var(--ink-3); flex: none; }
 .plano2d .p2-herr { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
 .plano2d .p2-zoom {
@@ -387,7 +387,9 @@
 
 /* ── El panel de la derecha (el mueble, varios, Revisar, Atajos) ─────────── */
 .plano2d .p2-panel {
-  width: clamp(300px, 27vw, 360px);
+  /* A 1100 px, 330: el código, «Mantenimiento» y «Documentos N» entran sin
+     cortarse, y el lienzo conserva más de 500 px. */
+  width: clamp(330px, 30vw, 360px);
   flex: none;
   overflow-x: hidden;
   overflow-y: auto;
@@ -396,11 +398,17 @@
   color: var(--ink-1);
 }
 .plano2d .p2-ficha { display: grid; gap: 12px; padding: 14px; grid-template-columns: minmax(0, 1fr); align-content: start; }
-.plano2d .p2-ficha-h { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; gap: 10px; align-items: start; }
-.plano2d .p2-ficha-h > svg { color: var(--ink-2); margin-top: 5px; }
-.plano2d .p2-ficha-t { display: grid; gap: 2px; min-width: 0; }
-.plano2d .p2-codigo { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.plano2d .p2-codigo h3 { margin: 0; font: 700 var(--t-md) / 1.2 var(--f-mono); letter-spacing: -.01em; overflow-wrap: anywhere; }
+/* El código, el estado y cerrar en la primera fila; «tipo · sede · pasillo»
+   y el modelo debajo, a todo el ancho (pasan por debajo de la pastilla): así
+   la línea entra entera en una sola fila cuando cabe. */
+.plano2d .p2-ficha-h { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; gap: 2px 10px; align-items: start; }
+.plano2d .p2-ficha-h > svg { grid-column: 1; grid-row: 1; color: var(--ink-2); margin-top: 5px; }
+.plano2d .p2-ficha-t { display: contents; }
+.plano2d .p2-ficha-h > .p2-pill { grid-column: 3; grid-row: 1; margin-top: 3px; }
+.plano2d .p2-ficha-h > .p2-icobtn { grid-column: 4; grid-row: 1; }
+.plano2d .p2-ficha-t > .p2-linea { grid-column: 2 / -1; min-width: 0; }
+.plano2d .p2-codigo { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.plano2d .p2-codigo h3 { margin: 0; min-width: 0; font: 700 var(--t-md) / 1.2 var(--f-mono); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plano2d .p2-codigo-campo {
   width: 100%;
   max-width: 180px;
@@ -417,6 +425,7 @@
 .plano2d .p2-linea { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: var(--t-2xs); color: var(--ink-3); }
 .plano2d .p2-linea svg { color: var(--ink-3); }
 .plano2d .p2-linea .mono { font-family: var(--f-mono); color: var(--ink-2); }
+.plano2d .p2-sede-candado { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .plano2d .p2-pill {
   display: inline-flex;
   align-items: center;
@@ -460,7 +469,7 @@
 }
 .plano2d .p2-resumen span { white-space: nowrap; }
 .plano2d .p2-resumen b { color: var(--ink-1); font: 600 var(--t-xs) / 1.2 var(--f-mono); }
-.plano2d .p2-pestana { display: grid; gap: 2px; min-width: 0; }
+.plano2d .p2-pestana { display: grid; gap: 2px; min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .plano2d .p2-kv {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
@@ -475,6 +484,10 @@
 .plano2d .p2-kv > .k { font-size: var(--t-xs); color: var(--ink-3); }
 .plano2d .p2-kv > .v { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
 .plano2d .p2-kv > .v > * { max-width: 100%; }
+/* «Disponible | Mantenimiento»: si no entra en la fila, baja; nunca se sale
+   del panel. */
+.plano2d .p2-kv [data-estado-a-mano] { flex-wrap: wrap; overflow: visible; }
+.plano2d .p2-kv [data-estado-a-mano] button { padding: 0 10px; }
 .plano2d .p2-v { margin: 0; font-size: var(--t-sm); color: var(--ink-1); }
 .plano2d .p2-v small { display: block; margin-top: 2px; font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
 .plano2d .p2-sw-fila { display: flex; align-items: center; gap: 8px; }
@@ -670,6 +683,14 @@
 }
 
 /* ── Angosto ─────────────────────────────────────────────────────────────── */
+/* Por debajo de 1280 px el panel mide menos de 360: las pestañas toman el
+   ancho de lo que dicen (no tres tercios iguales) y aprietan el relleno, para
+   que «Documentos N» se lea entero; las filas, un poco más juntas. */
+@media (max-width: 1279px) {
+  .plano2d .p2-seg.ancho[role="tablist"] button { flex: 1 1 auto; gap: 5px; padding: 0 6px; }
+  .plano2d .p2-ficha { gap: 10px; padding: 12px 14px; }
+  .plano2d .p2-kv { grid-template-columns: 72px minmax(0, 1fr); min-height: 40px; padding: 5px 0; }
+}
 /* A 1100 px entran las tres columnas (el catálogo se puede plegar). Por debajo
    de 860 px el panel del mueble pasa a ser una hoja que sube desde abajo, a
    todo el ancho, sobre el lienzo: nunca empuja la página de costado. Por

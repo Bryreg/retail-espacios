@@ -562,7 +562,10 @@ prueba("las tres pestañas tienen cada sección del panel de antes (una por secc
     ["Observación → Nota del contrato", documentos, /\{conContrato \? "Nota del contrato" : "Nota del espacio"\}/],
   ];
   for (const [que, donde, re] of secciones) assert.match(donde, re, `«${que}» no está donde dice el panel B`);
-  // Lo contratado nunca dice plata.
+  // Lo contratado nunca dice plata: en el bloque entero de «Contratado», ni el
+  // canon, ni un formateador de plata, ni la unidad, ni la reserva, ni «valor».
+  const contratado = tramo(panelB, "data-contratado>", '{pestana === "medidas"');
+  assert.doesNotMatch(contratado, /negotiatedValue|formatCOP|enLaUnidad|reservaHasta|valor/i, "«Contratado» vuelve a decir plata");
   assert.doesNotMatch(panelB, /negotiatedValue\.toLocaleString|\/ mes/, "«Contratado» vuelve a decir el canon");
   // El código completo y las acciones, al pie.
   const pie = tramo(panelB, '<div className="p2-pie-ficha">', "</div>\n    </div>\n  );");
@@ -621,6 +624,69 @@ prueba("el lienzo: los filtros con su cuenta (con «Vendido en parte» y «Reser
   for (const t of ["<SyncButton />", 'aria-label="Revisar"', 'aria-label="Renumerar"', 'aria-label="Atajos de teclado"']) assert.ok(der.includes(t), `falta ${t}`);
   const sync = tramo(fp2d, "function SyncButton(", "function AtajosPanel(");
   for (const w of ['"Guardado"', '"Guardando…"', '"Sin conexión"']) assert.ok(sync.includes(w), `el guardado no dice ${w}`);
+});
+
+prueba("«Vender» desde el Plano: sólo quien administra, sólo lo que se vende, y el pedido lleva el mueble y la cara (nada de plata)", () => {
+  // Las tres puertas: el botón, el cambio de pestaña y el armado en Vender.
+  assert.match(panelB, /const botonVender = isAdmin && rentable && \(/, "el botón «Vender» se le muestra a quien no administra o a lo que no se vende");
+  const dash = sinComentPR3(fuenteDe("pages/Dashboard.tsx"));
+  assert.match(dash, /if \(pedidoVender && isAdmin\) setViewMode\("kpis"\);/, "el pedido cambia de pestaña sin ser admin");
+  const dv = sinComentPR3(fuenteDe("pages/DashboardView.tsx"));
+  const armado = tramo(dv, "const pedidoVender = useFixtureStore((s) => s.pedidoVender);", "}, [pedidoVender, isAdmin]);");
+  assert.match(armado, /useEffect\(\(\) => \{\s*if \(!pedidoVender \|\| !isAdmin\) return;\s*useFixtureStore\.getState\(\)\.soltarPedidoVender\(\);/, "Vender arma el pedido sin ser admin (o no lo suelta)");
+  assert.match(armado, /if \(f\) negociar\(f, pedidoVender\.cara\);/);
+  // Un mueble por partes (una punta por entrepaños) entra con la lista de partes
+  // abierta: entero chocaría con la parte vendida (409 al validar).
+  const negociar = tramo(dv, "const negociar = (", "setModo(\"vender\");");
+  assert.match(negociar, /const division = !parte && !semilla \? divisionDe\(f\) : null;/, "«Vender» no mira si el mueble se vende por partes");
+  assert.match(negociar, /: division \? \{ id: f\.id, face, porPartes: division\.clase \} : \{ id: f\.id, face \}\]\);/,
+    "un mueble por partes entra a Vender como cara entera");
+  // El pedido: el id del mueble, la cara y el contador. Nada más (ni código, ni proveedor, ni plata), y no se persiste.
+  const store = sinComentPR3(fuenteDe("store/fixtureStore.ts"));
+  assert.match(store, /pedidoVender: \{ fixtureId: string; cara: "A" \| "B"; n: number \} \| null;/, "el pedido lleva algo más que {fixtureId, cara, n}");
+  assert.match(store, /pedirVender: \(fixtureId: string, cara: "A" \| "B"\) => void;/);
+  assert.match(store, /pedirVender: \(fixtureId, cara\) =>\s*set\(\(state\) => \(\{ pedidoVender: \{ fixtureId, cara, n: \(state\.pedidoVender\?\.n \?\? 0\) \+ 1 \} \}\)\),/);
+  assert.doesNotMatch(tramo(store, "partialize: (state) => ({", "}),"), /pedidoVender/, "el pedido se persiste");
+  assert.match(fp2d, /onVender=\{\(cara\) => pedirVender\(selectedItem\.id, cara\)\}/);
+});
+
+prueba("«Vender» desde el Plano abre el contrato CON el espacio: el reinicio por cambio de sede no corre al montar", () => {
+  // La pantalla de sede se vuelve a montar al llegar del Plano, y el efecto de
+  // `[sede]` corría DESPUÉS del que arma el pedido, en el mismo montaje:
+  // `setEnContrato([])` dejaba Vender vacío. Ahora reinicia sólo si la sede
+  // cambió de verdad (contra la última que vio).
+  const dv = sinComentPR3(fuenteDe("pages/DashboardView.tsx"));
+  const reinicio = tramo(dv, "const sedeDelContrato = useRef(sede);", "}, [sede]);");
+  assert.match(reinicio, /^const sedeDelContrato = useRef\(sede\);\s*useEffect\(\(\) => \{\s*if \(sedeDelContrato\.current === sede\) return;\s*sedeDelContrato\.current = sede;\s*setSelected\(null\);\s*setCerrado\(null\);\s*setEnContrato\(\[\]\);/, "el reinicio de la sede vuelve a correr al montar");
+  // Ningún otro efecto de `[sede]` vacía el contrato ni la selección.
+  for (const m of dv.matchAll(/useEffect\(\(\) => \{([\s\S]*?)\}, \[sede\]\);/g)) {
+    if (m[1].includes("sedeDelContrato.current === sede")) continue;
+    assert.doesNotMatch(m[1], /setEnContrato\(\[\]\)|setSelected\(null\)/, "otro efecto de [sede] vacía el contrato al montar");
+  }
+  // Las únicas formas de vaciarlo: cerrar, guardar, y el cambio de sede.
+  assert.equal((dv.match(/setEnContrato\(\[\]\)/g) ?? []).length, 3, "apareció otro lugar que vacía el contrato");
+});
+
+prueba("el panel B y el lienzo: códigos ocultables, entrepaños en una cuenta, «Mirar» sin subir, la pista del dibujo", () => {
+  // «Ocultar los códigos» apaga también los de adentro del mueble.
+  assert.match(fp2d, /const codigoALaVista = showLabels \|\| \(filterActive && isFilterMatch\) \|\| !!rotulos\.choque \|\| editingCodeId === item\.id;\s*const showCode = rotulos\.adentro !== null && codigoALaVista;/);
+  // La franja cuenta los entrepaños como se venden (con la base) cuando se venden por entrepaños.
+  assert.match(panelB, /const entrepanosDeLaFranja = division\?\.clase === "entrepanos" \? division\.n : \(vista\?\.entrepanos \?\? 0\);/);
+  assert.match(panelB, /\{vista && <span><b>\{entrepanosDeLaFranja\}<\/b>/);
+  // La sede y su candado, juntos.
+  assert.match(panelB, /<span className="p2-sede-candado">\s*<span className="mono" data-sede-del-plano[^>]*>\{sede\}<\/span>\s*<Lock /);
+  assert.match(fuenteDe("plano.css"), /\.plano2d \.p2-sede-candado \{[^}]*white-space: nowrap;/);
+  // En «Mirar», Documentos no sube ni marca la foto de la cara (como no elimina).
+  const archivos = tramo(fp2d, "function FilesSection(", "function juntarSufijos(");
+  assert.match(archivos, /\{isAdmin && editMode && \(\s*<div className="p2-subir">/, "«Subir archivo» se ofrece en Mirar");
+  assert.match(archivos, /onDrop=\{isAdmin && editMode \?/, "soltar un archivo sube en Mirar");
+  assert.equal((archivos.match(/isAdmin && editMode/g) ?? []).length, 4);
+  // La pista del pie: la del dibujo, y baja de renglón en vez de cortarse.
+  assert.ok(fp2d.includes('"Arrastrá para mover · rueda para acercar · espacio + arrastre para desplazar"'));
+  assert.doesNotMatch(fuenteDe("plano.css"), /\.p2-pista span \{[^}]*text-overflow: ellipsis/, "la pista se vuelve a cortar con «…»");
+  // Abrir el panel de un espacio que nunca se vendió no da 404: `si_existe=1`.
+  const api = sinComentPR3(fuenteDe("api/spaces.ts"));
+  assert.match(api, /\.get<Space \| null>\(`\/spaces\/by-code\/\$\{encodeURIComponent\(code\)\}`, \{ params: \{ si_existe: 1 \} \}\)/);
 });
 
 console.log(`\n${hechas} pruebas · el plano no pierde lo que no conoce\n`);
