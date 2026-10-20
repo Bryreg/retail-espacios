@@ -1,7 +1,16 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-19, **participaciones de cara, fase 2**: lo que faltaba de la
+Última actualización: 2026-10-20, **aire y pines** (el ajuste aprobado después del PR 3 del
+rediseño): en Vender el plano y el contrato pasan a **3 : 2** (también en Supervisar: el plano
+mide lo mismo en las dos), y el contrato se ordena en **tres bloques numerados** —«Qué se
+vende», «A quién y cuándo», «Cómo se cobra»— con el **pie fijo** (total, lo que falta,
+«Guardar contrato», «Reservar hasta…» y «Empezar de nuevo»). En Supervisar el plano **abre sin
+chinchetas**: «Para revisar N» de la clave las prende como **puntos chicos** (se recuerda por
+persona), y pasar por un renglón de la lista **señala su mueble** en el plano. Ver *Aire y
+pines (2026-10-20)*.
+
+Antes, 2026-10-19, **participaciones de cara, fase 2**: lo que faltaba de la
 fase 1 y las cuatro decisiones de la dueña. Las zonas se **copian** de otra cara (de este
 mueble, de otro o de otra sede) y llegan como borrador; se **dibujan en el 3D** y se **ajustan
 al borde de la vecina**; la **nevera de puertas y la de bebidas** se venden por participación;
@@ -1155,6 +1164,76 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 
 ## Qué está hecho
 
+### Aire y pines: el contrato con aire y el mapa sin pines (2026-10-20)
+
+El dibujo aprobado por el dueño es la hoja «Un contrato con aire y un mapa sin pines» (su fuente,
+`build.cjs`: `contratoNuevo`, `mapa(modo)`, `tarjetaMapa` y `paraRevisar`). Ningún dato ni
+control se fue: cambió dónde y cómo se ve. Sin servidor, sin tablas.
+
+- **La hoja, 3 : 2.** `.vender-hoja` es `3fr 2fr` y `.supervisar-hoja` `minmax(0, 3fr)
+  minmax(0, 2fr)` (eran 1004 : 402): el contrato mide unos 560 px a 1440 y el plano sigue
+  entrando entero (el lienzo encuadra la sede en su caja; lo que se achicó es el vacío de
+  alrededor). Sigue siendo invariante que **el plano mida lo mismo en Vender y en Supervisar**:
+  `probar-camara` lee las dos proporciones como números, exige que sean iguales y 3 : 2, que no
+  quede `1004fr`/`402fr` en ninguna regla y que lo único que las cambie sea lo angosto (Vender
+  se apila a 1100 px, Supervisar a 1000, como antes). La cuenta de muebles del encabezado del
+  plano ya no se corta («7 mueb…»): cede la clave, que pasa a dos renglones.
+- **El contrato, en tres bloques** (`ModoVender.tsx`, `Bloque`): **1 «Qué se vende»** —las
+  líneas; en la abierta, cada botonera con su rótulo ARRIBA: «Se vende» (Entera · Por
+  entrepaños · Por porcentaje, o las piezas BI1 · BI2 de una caja) y «El precio es» (Total |
+  Al mes, con la tarifa al lado); debajo, la pista punteada «Sumar otro espacio: tocalo en el
+  plano» (una pista, no un control; con el contrato vacío sigue la de siempre, «Elegí el primer
+  espacio…», y nunca las dos) y, la primera vez, la del 3D—; **2 «A quién y cuándo»**
+  —proveedor y marca («· opcional»), desde y hasta, en dos columnas con el rótulo arriba en
+  letra de texto, y los atajos de duración debajo—; **3 «Cómo se cobra»** —«Precio fijo | % de
+  las ventas» a todo el ancho y la fila plegable «Correo y nota para el proveedor · opcional»
+  con chevron, que abre lo de siempre (el correo, la nota y quién se va a enterar)—. Una línea
+  fina separa los bloques. El cuerpo rueda.
+- **El pie, fijo** (`.pie-contrato`, afuera del cuerpo): el total del contrato con su plazo
+  («31 días · 1 mes · 1 línea») y lo que cubre, **lo que falta** («Falta el proveedor»,
+  «Falta el valor de PUN-04»…: antes iba arriba, ahora justo sobre el botón; con el contrato
+  vacío no se repite), el error del servidor si lo hubo, «Guardar contrato» a todo el ancho (el
+  único amarillo) y, debajo, en dos columnas, «Reservar hasta…» (o «Volver») y «Empezar de
+  nuevo». **La fecha de «Reservar hasta…» va en el pie**, junto al botón que reserva: abierta
+  desde el pie, no podía aparecer al fondo de un cuerpo que rueda. Lo guardado (`Cerrado`), el
+  409 por línea, la oferta de cambiar cómo se vende, las partes, el porcentaje, el cobro por
+  ventas, el autocompletar del proveedor y «Ver en 3D» siguen igual, en su bloque.
+- **Lo que cuesta**: a 1440×900, con una línea abierta, el cuerpo ya no entra sin rodar (los
+  tres bloques con aire miden más que la fila del plano); el pie queda a la vista y quieto. La
+  prueba de navegador de `probar-vender` que pedía «con una línea no rueda» se reemplazó por la
+  que el dibujo sí promete: tres bloques, el pie entero a la vista y quieto al rodar el cuerpo,
+  cada campo alcanzable rodando sólo el cuerpo, el contrato al 40 % de la hoja, la página sin
+  rodar y nada afuera de la tarjeta. En ventana baja (≤ 880 px de alto) se aprieta el aire del
+  pie y de los bloques, nunca la letra. A 390 px: una columna, el total arriba de la cifra, los
+  dos botones de abajo adentro de la tarjeta.
+- **Supervisar: el plano abre sin pines.** «Para revisar N», en la clave, es un **botón**
+  (`aria-pressed`) que prende y apaga TODOS los puntos; arranca apagado y se recuerda por
+  persona (`pendientesEnElPlano` en el store persistido, como las cámaras; sólo un `true`
+  escrito lo prende). Prendidos, cada **mueble** con algo pendiente lleva un **punto** de 10 px
+  —sin globo, sin palito, sin ícono— del color de su aviso más urgente (`puntosDelPlano` en
+  `paraRevisar.ts`, sobre `chinchetasDe`): **rojo** si tiene algo de «Hoy», **ámbar** si lo más
+  urgente es de «30 días», **tinta** si sólo tiene algo para «Corregir» (es lo que ya hacía la
+  chincheta: el mismo criterio de urgencia, y lo que «no cuadra» no es una alarma de fecha). Una
+  góndola doble con avisos en las dos caras es UN punto, el de la cara más urgente. El punto se
+  apoya arriba del rótulo (la misma maquinaria de la chincheta: el rótulo le reserva su lugar)
+  y nunca tapa un código; tocarlo sigue llevando a su aviso. La cuenta del botón es la de
+  muebles con punto.
+- **Pasar por un renglón señala su mueble.** El mouse (no el dedo) o el foco del teclado sobre
+  un renglón de «Para revisar» marca su mueble en el plano: el **piso punteado** alrededor
+  (debajo de los muebles, 0,5 m de margen) y un **punto con anillo** arriba de su rótulo, del
+  color del grupo del aviso; al salir del renglón —o al abrir la ficha, que reemplaza a la
+  lista— el plano vuelve a como estaba. La lista no sabe de qué mueble habla cada fila: lo
+  dice su `data-aviso` cruzado con `avisos` (`avisoPorClave`), así que vale para todas las
+  secciones (también las de participaciones, cobros, reservas y planometría) sin tocar
+  ninguna. Es imperativo (`senalar`, como `resaltar` de Vender): pasar por la lista no vuelve a
+  pintar la sala. Tocar el renglón hace lo de siempre. Vender no recibe ni puntos ni señalado.
+- Colores, sólo tokens del tema (`--ocupado`, `--entra`, `--ink-1`, sus `-rgb` y `--surface`),
+  claro y oscuro; `probar-camara` falla si aparece un color fijo en esos estilos.
+- Guardas: `probar-camara` (la proporción, los puntos apagados por defecto y su botón, el
+  señalado), `probar-comercial` (`puntosDelPlano` y `avisoPorClave` ejecutados, el punto sin
+  ícono), `probar-vender` (los tres bloques en orden, los rótulos de las botoneras, la pista sin
+  duplicar, el pie fijo con «Guardar», lo plegado sin planometría, y las de navegador ya dichas).
+
 ### Rediseño, PR 3 (Plano): la barra, el catálogo, el lienzo y el panel B (2026-10-20)
 
 Los dibujos aprobados son `docs/maquetas/rediseno-2026-10/plano.html` (su lista «Dónde queda cada
@@ -1286,7 +1365,8 @@ cada cosa» es la lista de control (nada se fue). Lo nuevo vive en `components/S
   `Dashboard.tsx` escribe en `.area-pantallas`). Antes Supervisar adivinaba el marco (132 px) y el
   verificador midió 520/525, 430/448 y otro alto a 1100 (donde Vender pasaba a `62vw`). Las
   chinchetas (`Pin`) marcan los muebles con algo en «Para revisar», del color de su grupo (Hoy
-  rojo, 30 días ámbar, Corregir tinta); tocar una lleva a su aviso. Vender no las recibe. La
+  rojo, 30 días ámbar, Corregir tinta); tocar una lleva a su aviso. **(Desde *Aire y pines*:
+  el plano abre sin ellas, son puntos chicos, uno por mueble, y se prenden desde la clave.)** Vender no las recibe. La
   chincheta se apoya ARRIBA de la caja del rótulo de su cara, que al acomodarse cuenta con ella:
   nunca tapa el código. «Participaciones de cara» va fuera de la hoja y mide lo que su contenido.
 - Al cargar una planometría la ficha dice qué pasó con el aviso de montaje (`aviso_de_montaje` del
@@ -4035,7 +4115,7 @@ títulos de las columnas fijos arriba.
 - *«La tabla quedó con un hueco grande a la derecha vacío. Miremos cómo reorganizar los
   módulos para que sea simétrico.»* La tabla apretada a la izquierda dejaba la mitad de
   una pantalla ancha en blanco. Supervisar pasó a ser **una hoja con la rejilla de
-  Vender**: las mismas dos columnas (1004 : 402) y filas del alto del panel del plano
+  Vender**: las mismas dos columnas (1004 : 402; **3 : 2 desde *Aire y pines***) y filas del alto del panel del plano
   (`--alto-plano`: 550/804 de lo que queda debajo de las barras, nunca menos de 448 px):
 
       el plano             │ para revisar (o la ficha del espacio elegido)

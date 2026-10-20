@@ -157,7 +157,8 @@
 }
 
 /* LA HOJA DE SUPERVISAR: la rejilla de Vender, con otras cuatro tarjetas.
-   Las mismas dos columnas (1004 : 402) y cada fila del alto del panel del
+   Las mismas dos columnas (3 : 2, «aire y pines»; eran 1004 : 402) y cada
+   fila del alto del panel del
    plano, así el plano mide lo mismo en las dos pantallas y cada tarjeta tiene
    al lado otra de su misma altura:
 
@@ -168,7 +169,7 @@
    que Vender. */
 .supervisar-hoja {
   display: grid;
-  grid-template-columns: minmax(0, 1004fr) minmax(0, 402fr);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   grid-auto-rows: var(--alto-plano);
   gap: 10px;
 }
@@ -259,13 +260,21 @@ html[data-tema="oscuro"] .vender {
    todo el alto que deja la barra y lo reparte entre las dos filas en la misma
    relación que tenía a 900 px (550 : 254), con un piso por fila.
      fila 1 : fila 2 = 550 : 254, nunca menos de --fila1 / --fila2
-     ancho           = 1004 : 402                                          */
+     ancho           = 3 : 2 (el plano al 60 %, el contrato al 40 %)
+
+   El ancho era 1004 : 402 (el de D): el contrato medía unos 400 px a 1440
+   para catorce controles, y el plano tenía vacío alrededor del piso. El
+   dibujo aprobado de «aire y pines» lo pasa a 3 : 2 —el contrato, unos 560 px
+   a 1440—; el piso sigue entrando entero porque el lienzo encuadra la sede en
+   la caja que tenga y lo que se achica es el vacío de alrededor. La hoja de
+   Supervisar usa la MISMA proporción (`.supervisar-hoja`): el plano mide lo
+   mismo en las dos pantallas (`probar-camara` lo guarda). */
 .vender-hoja {
   flex: 1;
   min-height: 0;
   display: grid;
   gap: var(--aire-v);
-  grid-template-columns: 1004fr 402fr;
+  grid-template-columns: 3fr 2fr;
   /* La fila del plano mide `--alto-plano`, lo mismo que en Supervisar; si la
      barra de la pantalla se parte en dos renglones (o se abre el periodo) y
      no entra, cede antes que dejar la tarifa bajo su piso. */
@@ -359,6 +368,10 @@ html[data-tema="oscuro"] .vender {
    suma el filtro (24 px) a la clave, y sin este piso su lienzo quedaba unos
    píxeles más bajo que el de Vender. */
 .vp-plano > header { min-height: 44px; }
+/* «7 muebles» entero: con el plano al 60 % de la hoja («aire y pines») la
+   clave tiene menos ancho y se parte en dos renglones; lo que cede es ella, no
+   la cuenta de muebles. */
+.vp-plano > header .sub { flex: none; }
 .vender .lienzo > svg {
   width: 100%;
   height: 100%;
@@ -596,7 +609,7 @@ html[data-tema="oscuro"] .vender {
   min-height: 0;
   overflow-y: auto;
 }
-.espacios { display: flex; flex-direction: column; gap: 5px; }
+.espacios { display: flex; flex-direction: column; gap: 8px; }
 .eitem {
   display: flex;
   align-items: center;
@@ -1069,13 +1082,13 @@ html[data-tema="oscuro"] .vender {
 /* Vender por partes: «Entera · PU1 · PU2 · PU3», debajo del renglón y a todo
    el ancho, como el aviso. Interruptores y no un selector: dos puertas
    distintas pueden ir en el mismo contrato; la entera y sus puertas, no. */
-.eitem > .partes {
+.eitem .partes {
   flex: 0 0 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
 }
-.eitem > .partes button {
+.eitem .partes button {
   height: 22px;
   padding: 0 7px;
   border-radius: var(--r-xs);
@@ -1087,7 +1100,7 @@ html[data-tema="oscuro"] .vender {
   font-weight: 600;
   cursor: pointer;
 }
-.eitem > .partes button.on {
+.eitem .partes button.on {
   border-color: var(--ink-1);
   color: var(--ink-1);
   font-weight: 700;
@@ -1102,36 +1115,54 @@ html[data-tema="oscuro"] .vender {
    amarillo fuera del botón principal. */
 .vp.contrato > header { align-items: center; padding-top: var(--s2); padding-bottom: var(--s1); }
 .vp.contrato > header .ico-tarjeta { flex: none; }
-/* Con una o dos líneas la ficha entra entera a 1440×900 sin rodar el cuerpo
-   (la línea, proveedor y marca, las fechas y sus atajos, el cobro): campos y
-   controles de la línea un punto más bajos. */
-.vp.contrato .entrada { min-height: 30px; }
-.vp.contrato .entrada.con-ico input { padding: 3px 0; }
-.vp.contrato .eitem .seg button { height: 24px; }
-/* El pie, siempre a la vista: el cuerpo rueda y esto no. */
+.vp.contrato .entrada { min-height: 34px; }
+.vp.contrato .entrada.con-ico input { padding: 4px 0; }
+.vp.contrato .eitem .seg button { height: 28px; }
+/* El pie, siempre a la vista: el cuerpo rueda y esto no (el dibujo aprobado
+   de «aire y pines»). Arriba el total con su plazo y lo que cubre; después lo
+   que falta, «Guardar contrato» a todo el ancho y, en dos columnas,
+   «Reservar hasta…» y «Empezar de nuevo». */
 .pie-contrato {
   flex: none;
-  padding: 0 16px var(--s3);
+  padding: var(--s3) 16px var(--s3);
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  border-top: var(--hair) solid var(--line-soft);
+  gap: var(--s2);
+  border-top: var(--hair) solid var(--line);
   background: var(--surface);
+  min-width: 0;
 }
-.pie-contrato .total { margin-top: 2px; padding-top: 5px; }
+.pie-contrato .total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 4px 12px;
+  border-top: 0;
+  margin: 0;
+  padding: 0;
+}
+.pie-contrato .total-izq { display: grid; gap: 4px; min-width: 0; }
+.pie-contrato .total-der { display: grid; justify-items: end; gap: 6px; min-width: 0; }
 .pie-contrato .total .rotulo { display: inline-flex; align-items: center; gap: 6px; }
-.pie-contrato .total .rotulo svg { color: var(--ink-3); }
+.pie-contrato .total .rotulo svg { color: var(--ink-3); flex: none; }
 .vender .total .n.n-ventas { font-size: var(--t-md); letter-spacing: 0; }
 .total-sub { margin: 0; font-size: var(--t-2xs); color: var(--ink-3); font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
-.pie-contrato .cubre { margin-top: 0; flex: none; }
-/* El plazo y lo que cubre, en un renglón (se parte sólo si no entran). */
-.total-fila { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
-.total-fila .total-sub { min-width: 0; }
-.pie-contrato .acciones { margin: 2px 0 0; padding-top: 2px; }
-.pie-contrato .btn-principal { padding: 8px; }
-.pie-contrato .btn3 { min-height: 30px; }
-.acciones2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.pie-contrato .cubre { margin-top: 0; flex: none; justify-content: flex-end; }
+/* Lo que falta, justo sobre el botón que todavía no se puede tocar. */
+.pie-contrato .falta {
+  margin: 0; display: flex; align-items: flex-start; gap: 6px;
+  font-size: var(--t-xs); line-height: 1.35; color: var(--ink-2);
+}
+.pie-contrato .falta svg { color: var(--ink-3); flex: none; }
+.pie-contrato .error-txt { margin: 0; display: flex; align-items: flex-start; gap: 6px; }
+.pie-contrato .error-txt svg { flex: none; }
+.pie-contrato .reserva { margin: 0; }
+.pie-contrato .acciones { margin: 0; padding: 0; }
+.pie-contrato .btn-principal { padding: 10px; }
+.pie-contrato .btn3 { min-height: 34px; }
+.acciones2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s2); }
 .acciones2 .btn-principal { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.acciones2 .btn3 { white-space: normal; text-align: center; padding: 4px 8px; }
 /* Botón de tinta: «Reservar hasta…», «Bajar a 70 %», «Cambiar fechas». */
 .btn3 {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -1143,6 +1174,9 @@ html[data-tema="oscuro"] .vender {
 }
 .btn3:hover:not(:disabled) { border-color: var(--ink-1); }
 .btn3:disabled { color: var(--ink-4); border-color: var(--line); cursor: not-allowed; }
+.btn3:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+/* «Empezar de nuevo»: de la familia de «Reservar hasta…», más callado. */
+.btn3.fantasma { color: var(--ink-2); border-color: var(--line); font-weight: 500; }
 .btn2.fantasma { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 0; }
 .btn-tinta {
   display: block; width: 100%; padding: 11px;
@@ -1192,6 +1226,15 @@ html[data-tema="oscuro"] .vender {
 .eitem > .aviso-error,
 .eitem > .aviso-acciones { flex: 0 0 100%; min-width: 0; }
 .eitem > .seg-linea { flex: 0 1 auto; margin-top: 2px; }
+/* «Se vende» y «El precio es»: cada botonera de la línea con su rótulo
+   ARRIBA, a todo el ancho de la línea (el dibujo aprobado de «aire y pines»). */
+.eitem > .opcion-linea { flex: 0 0 100%; min-width: 0; display: grid; gap: 5px; justify-items: start; }
+.opcion-linea > * { max-width: 100%; min-width: 0; }
+.opcion-linea > .oferta,
+.opcion-linea > .aviso { justify-self: stretch; }
+.opcion-linea > .aviso { font-size: var(--t-2xs); line-height: 1.3; font-weight: 600; }
+.opcion-linea > .aviso.choque { color: var(--danger); }
+.rotulo-l { font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.2; }
 /* «Entera · Por tramos · Por entrepaños · Por porcentaje» no entra a 390 px:
    envuelve a un segundo renglón en vez de esconder la cuarta detrás de un
    desplazamiento que nadie ve. */
@@ -1331,3 +1374,91 @@ html[data-tema="oscuro"] .vender {
 .avisos-guardado { margin-top: 10px; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.5; }
 /* Dónde se carga la planometría: una línea quieta, sin alarma. */
 .nota-guardado { margin: 8px 0 0; font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
+
+/* --- 03 · EL CONTRATO, CON AIRE («aire y pines», después del PR 3) --------
+   El dibujo aprobado (`hoja2/build.cjs`, `contratoNuevo`): el contrato al 40 %
+   de la hoja y en TRES bloques numerados, en el orden en que se negocia
+   —1 «Qué se vende», 2 «A quién y cuándo», 3 «Cómo se cobra»—, separados por
+   una línea fina. Cada botonera con su rótulo arriba; «Correo y nota» es una
+   fila plegable; el pie (total, lo que falta y los botones) no rueda. Sólo
+   tokens del tema: se ve igual de bien en claro y en oscuro. */
+.vp.contrato .cuerpo { padding: 0 16px; }
+.bloque {
+  display: flex; flex-direction: column; gap: var(--s2);
+  padding: 14px 0 16px;
+  border-top: var(--hair) solid var(--line-soft);
+  min-width: 0;
+}
+.bloque:first-child { border-top: 0; padding-top: 2px; }
+.bloque-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bloque-h h3 { margin: 0; font-size: var(--t-sm); font-weight: 650; color: var(--ink-1); line-height: 1.2; }
+.bloque-n {
+  flex: none; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-3); color: var(--ink-2);
+  font-family: var(--f-mono); font-size: var(--t-3xs); font-weight: 700; line-height: 1;
+}
+/* La línea abierta se lee como una tarjeta: con aire entre su cabecera y sus
+   botoneras. Cerrada sigue siendo un renglón de dos líneas. */
+.vp.contrato .eitem { padding: 7px 10px; background: var(--surface); }
+.vp.contrato .eitem.abierta { padding: 10px 12px; row-gap: 10px; border-color: var(--line-strong); }
+/* «Sumar otro espacio: tocalo en el plano»: una pista punteada, no un botón. */
+.pistas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.vender .bloque .pista { margin: 0; }
+.sumar-otro {
+  margin: 0; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: var(--hair) dashed var(--line-strong); border-radius: var(--r-md);
+  font-size: var(--t-xs); color: var(--ink-3);
+}
+.sumar-otro svg { flex: none; }
+/* Bloque 2: proveedor y marca, desde y hasta, en dos columnas con el rótulo
+   arriba (en letra de texto, no en versalita: se lee como pregunta). */
+.campos2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.vender .campos2 .campo { margin: 0; min-width: 0; }
+.vp.contrato .campo .rotulo,
+.vp.contrato .pie-contrato .total .rotulo {
+  text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--t-xs); color: var(--ink-3);
+  margin-bottom: 4px;
+}
+.vp.contrato .pie-contrato .total .rotulo { margin-bottom: 0; }
+.vp.contrato .campo .rotulo i { font-style: normal; font-weight: 400; color: var(--ink-3); }
+.vp.contrato .campo .rotulo i::before { content: "· "; }
+.bloque .atajos { margin: 0; }
+.bloque .plazo { margin: 0; }
+/* Bloque 3: «Precio fijo | % de las ventas» a todo el ancho; debajo, la fila
+   plegable del correo y la nota. */
+.vender .cobro { margin: 0; }
+.vender .seg.seg-ancho { flex: 0 0 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vender .seg.seg-ancho button { justify-content: center; height: 30px; }
+.plegable {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
+  padding: 9px 12px; text-align: left; cursor: pointer;
+  border: var(--hair) solid var(--line); border-radius: var(--r-md);
+  background: var(--surface-2); color: var(--ink-2);
+  font-family: inherit; font-size: var(--t-xs); font-weight: 500;
+}
+.plegable > svg { flex: none; color: var(--ink-3); }
+.plegable > span { min-width: 0; }
+.plegable .opc { color: var(--ink-3); font-weight: 400; }
+.plegable .chev { margin-left: auto; transition: transform var(--dur-1) var(--ease); }
+.plegable[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.plegable:hover { border-color: var(--line-strong); }
+.plegable:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.mas-datos { display: grid; gap: var(--s2); }
+.vender .mas-datos .campo { margin: 0; }
+/* En ventana baja (portátiles de 800 y de 768) lo que baja es el aire del
+   pie y de los bloques, nunca un cuerpo de letra: el cuerpo del contrato
+   conserva más alto para lo que rueda. */
+@media (max-height: 880px) {
+  .pie-contrato { gap: 6px; padding-top: var(--s2); }
+  .pie-contrato .btn-principal { padding: 8px; }
+  .pie-contrato .btn3 { min-height: 30px; }
+  .bloque { padding: 10px 0 12px; }
+}
+/* A lo angosto (el teléfono): una columna, nada se sale de la tarjeta. */
+@media (max-width: 520px) {
+  .campos2 { grid-template-columns: minmax(0, 1fr); }
+  .pie-contrato .total { grid-template-columns: minmax(0, 1fr); }
+  .pie-contrato .total-der { justify-items: start; }
+  .pie-contrato .cubre { justify-content: flex-start; }
+}

@@ -352,6 +352,11 @@ const COMPONENTES_VENDER = new Set([
   "IconoDeLinea", "FormasDeLaLinea", "ElegirPartes", "Porcentaje", "PrecioDeLinea",
   "RechazoDeLinea", "CampoProveedor", "AtajosDeFecha", "ComoSeCobra", "Avisos",
   // Lo que rodea al visor 3D: el límite de errores, la espera y el aviso.
+  // «Aire y pines» (después del PR 3): el contrato en tres bloques numerados
+  // (`Bloque`: un número, un título y lo suyo, sin datos propios), la pista
+  // punteada de «Sumar otro espacio» (`Plus`), lo que falta en el pie
+  // (`CircleAlert`) y el chevron de la fila plegable del correo y la nota.
+  "Bloque", "Plus", "CircleAlert", "ChevronDown",
   "LimiteDelVisor", "Suspense", "AbriendoEl3D", "FallaDelVisor", "VisorDeVenta",
   // El visor (`VisorDeVenta.tsx`). Las piezas del editor que usa —la escena,
   // el panel «Cómo va», el HUD y la ficha del envase— se leen abajo
@@ -1566,7 +1571,6 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       // cara por participación, la chincheta del plano y la ficha del espacio.
       ["src/components/Supervisar/FaltaPlanometria.tsx", codigo("src/components/Supervisar/FaltaPlanometria.tsx"), deLucide(codigo("src/components/Supervisar/FaltaPlanometria.tsx"))],
       ["src/components/Distribucion/ParticipacionesDeLaCara.tsx", codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"), deLucide(codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"))],
-      [`${VISTA} (las chinchetas del plano)`, entre(vista, '<div className="chinchetas">', "</div>"), lucideVista],
       [`${VISTA} (la ficha del espacio)`, entre(vista, '<div className="ficha-cab">', "{double && ("), lucideVista],
     ];
     const vacias = regiones.filter(([, t]) => t.length < 80).map(([d]) => d);
@@ -1581,6 +1585,16 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.match(entre(codigo("src/tema.tsx"), "export function TemaToggle(", "\n}\n"), /width: 32, height: 32/, "el sol/luna no mide 32");
     // La sincronización es un punto y su palabra: sin nube, sin ícono.
     assert.equal(deLucide(codigo("src/components/SyncStatus/SyncStatus.tsx")).size, 0, "la sincronización volvió a llevar ícono (va punto y palabra)");
+    // «Aire y pines»: los puntos del plano de Supervisar NO llevan ícono —ni
+    // globo ni palito—: un botón vacío que el CSS pinta como un punto. (Antes
+    // esta región estaba en la lista de arriba, que exige 16 × 1,75; ahora no
+    // puede dibujar ningún ícono, de ningún tamaño.)
+    const puntos = entre(vista, '<div className="chinchetas">', "</div>");
+    assert.ok(puntos.length > 80, "no se encontraron los puntos del plano");
+    const iconosEnPuntos = [...puntos.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g)].map((m) => m[1]).filter((n) => lucideVista.has(n));
+    assert.deepEqual(iconosEnPuntos, [], "un punto del plano volvió a llevar ícono");
+    assert.match(puntos, /<button\s+key=\{k\}\s+type="button"\s+className="punto-revisar"/, "el punto del plano no es un botón");
+    assert.doesNotMatch(puntos, /<\/button>/, "el punto del plano no es un botón vacío: lleva algo adentro");
     // «Tarifas» lleva la etiqueta (`Tag`), la misma de la tarjeta: un concepto, un ícono.
     assert.doesNotMatch(vista, /SlidersHorizontal/, "«Tarifas» volvió a `SlidersHorizontal`");
   });
@@ -1820,8 +1834,11 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       if (!archivo || !MODULOS.includes(archivo)) continue;
       for (const n of m[1].split(",").map((x) => x.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()).filter(Boolean)) nombres.add(n);
     }
-    assert.ok(nombres.has("useUnidadDePlata") && nombres.has("chinchetasDe") && nombres.has("FaltaPlanometria"), "no se encontraron los módulos de Supervisar en DashboardView");
-    const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision"];
+    assert.ok(nombres.has("useUnidadDePlata") && nombres.has("puntosDelPlano") && nombres.has("avisoPorClave") && nombres.has("FaltaPlanometria"), "no se encontraron los módulos de Supervisar en DashboardView");
+    // «Aire y pines»: los puntos del plano, su botón y el renglón que señala su
+    // mueble son de Supervisar: ninguno se alcanza desde Vender.
+    const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision",
+      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave"];
     const hits = [];
     for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
       const ids = identificadores(r.texto);
@@ -1895,8 +1912,120 @@ console.log("\nvender · la planometría se carga en Supervisar, nunca en Vender
       if (/type=["']file["']/.test(sinComentarios(leer(f)))) hits.push(`${f}: un campo de archivo en el contrato`);
     }
     if (SUP) for (const r of SUP.regiones) if (/<\s*Planometria\b/.test(r.texto)) hits.push(`${r.archivo}${r.nombre ? ` (${r.nombre})` : ""}: dibuja <Planometria> en Vender`);
-    assert.match(modoCodigo, /\{masDatos \? "− " : "\+ "\}Correo y nota/, "el desplegable sigue ofreciendo la planometría");
+    // «Aire y pines»: lo que era «+ Correo y nota» es una fila plegable que dice
+    // exactamente eso, y lo que abre no menciona la planometría.
+    assert.match(modoCodigo, /<span>Correo y nota para el proveedor <span className="opc">· opcional<\/span><\/span>/, "el desplegable sigue ofreciendo la planometría");
+    const plegado = modoCodigo.slice(modoCodigo.indexOf("{masDatos && ("), modoCodigo.indexOf("</Bloque>", modoCodigo.indexOf("{masDatos && (")));
+    assert.ok(plegado.length > 200, "no se encontró lo que abre «Correo y nota»");
+    assert.doesNotMatch(plegado, /planometr/i, "lo que abre «Correo y nota» habla de la planometría");
     assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+  });
+}
+
+/* ── «aire y pines» (el dibujo aprobado después del PR 3): el contrato ──────
+   El contrato al 40 % de la hoja (la proporción la guarda `probar-camara`, en
+   las dos hojas), en TRES bloques numerados en el orden en que se negocia y
+   con el pie FIJO: el cuerpo rueda, el total, lo que falta y «Guardar» no.
+   Nada de lo que había se fue: cada pieza de antes está en su bloque. */
+console.log("\nvender · aire y pines: tres bloques y el pie fijo");
+{
+  const entre = (t, desde, hasta, i0 = 0) => {
+    const i = t.indexOf(desde, i0);
+    const j = i < 0 ? -1 : t.indexOf(hasta, i + desde.length);
+    return i < 0 || j < 0 ? "" : t.slice(i, j);
+  };
+  const ficha = entre(modoCodigo, "function Ficha(", "\nfunction porQueNoSeVe(");
+  const cuerpo = entre(ficha, '<div className="cuerpo">', "{en3D && (");
+  const pie = entre(ficha, "const pie = (", "\n  );\n");
+  const bloques = [...cuerpo.matchAll(/<Bloque n=\{(\d)\} titulo="([^"]+)">/g)].map((m) => [Number(m[1]), m[2]]);
+  const deBloque = (n) => {
+    const i = cuerpo.indexOf(`<Bloque n={${n}}`);
+    return i < 0 ? "" : cuerpo.slice(i, cuerpo.indexOf("</Bloque>", i));
+  };
+
+  prueba("el contrato son TRES bloques numerados, en este orden: 1 «Qué se vende», 2 «A quién y cuándo», 3 «Cómo se cobra»", () => {
+    assert.ok(ficha.length > 2000 && cuerpo.length > 1500 && pie.length > 800, "no se encontró la ficha, su cuerpo o su pie");
+    assert.deepEqual(bloques, [[1, "Qué se vende"], [2, "A quién y cuándo"], [3, "Cómo se cobra"]]);
+    // El bloque: su número, su título (un h3, nombre del grupo para el lector) y lo suyo.
+    const b = entre(modoCodigo, "function Bloque(", "\n}\n");
+    assert.match(b, /<section className="bloque" data-bloque=\{n\} aria-labelledby=\{id\}>/);
+    assert.match(b, /<span className="bloque-n" aria-hidden>\{n\}<\/span>\s*<h3 id=\{id\}>\{titulo\}<\/h3>/);
+    // La línea fina entre bloques, y ninguna arriba del primero.
+    const css = sinComentarios(leer("src/vender.css"));
+    assert.match(css, /\.bloque \{[^}]*border-top: var\(--hair\) solid var\(--line-soft\);/);
+    assert.match(css, /\.bloque:first-child \{ border-top: 0;/);
+  });
+
+  prueba("1 «Qué se vende»: las líneas, con «Se vende» y «El precio es» arriba de su botonera, y la pista «Sumar otro espacio» sin duplicar la del contrato vacío", () => {
+    const b1 = deBloque(1);
+    assert.match(b1, /\{c\.lineas\.map\(\(l\) => \(\s*<Fila\b/, "las líneas no están en el bloque 1");
+    assert.match(b1, /<NoComercializable fixture=\{ultimo\} \/>/);
+    // Vacío: la pista de siempre; con algo: la punteada. Nunca las dos.
+    assert.match(b1, /\{c\.lineas\.length === 0 \? \(\s*<p className="pista">Elegí el primer espacio <b>tocándolo en el plano<\/b><\/p>\s*\) : \(/);
+    assert.match(b1, /<p className="sumar-otro" data-pista-sumar>\s*<Plus \{\.\.\.ICONO\} \/> Sumar otro espacio: tocalo en el plano\s*<\/p>/);
+    assert.ok(b1.indexOf("Elegí el primer espacio") < b1.indexOf("data-pista-sumar"), "la pista punteada no es la rama de un contrato con algo");
+    // Una pista, no un control: ni botón ni `onClick`.
+    assert.doesNotMatch(entre(b1, '<p className="sumar-otro"', "</p>"), /<button|onClick/);
+    assert.equal((modoCodigo.match(/Agregá otro espacio/g) || []).length, 0, "quedó la pista vieja además de la nueva");
+    // Lo que falta ya no va en el cuerpo (va en el pie, sobre el botón).
+    assert.doesNotMatch(cuerpo, /c\.falta\b/, "lo que falta sigue arriba, en el cuerpo");
+    // Cada botonera de la línea con su rótulo arriba.
+    const fila = entre(modoCodigo, "function Fila(", "\n}\n");
+    assert.match(fila, /<span className="rotulo-l">Se vende<\/span>\s*<FormasDeLaLinea\b/, "«Cómo se vende» sin su rótulo");
+    assert.match(fila, /<span className="rotulo-l">Se vende<\/span>\s*<span className="partes"/, "las piezas (BI1 · BI2) sin su rótulo");
+    assert.match(fila, /<span className="rotulo-l">El precio es<\/span>\s*<PrecioDeLinea l=\{l\} c=\{c\} \/>/, "«Total | Al mes» sin su rótulo");
+  });
+
+  prueba("2 «A quién y cuándo»: proveedor y marca (opcional), desde y hasta en dos columnas con el rótulo arriba, y los atajos debajo", () => {
+    const b2 = deBloque(2);
+    const orden = ['<div className="campos2">', '<span className="rotulo">Proveedor</span>', "<CampoProveedor ",
+      '<span className="rotulo">Marca <i>opcional</i></span>', 'aria-label="Marca"', '<span className="rotulo">Desde</span>',
+      'id="contrato-desde"', '<span className="rotulo">Hasta</span>', 'aria-label="Hasta"', "<AtajosDeFecha c={c} />"];
+    const pos = orden.map((t) => b2.indexOf(t));
+    assert.ok(pos.every((k) => k >= 0), `falta en el bloque 2: ${orden.filter((_, i) => pos[i] < 0).join(", ")}`);
+    assert.deepEqual(pos, [...pos].sort((a, b) => a - b), "el bloque 2 no va en el orden del dibujo");
+    assert.ok(b2.indexOf("<AtajosDeFecha") > b2.lastIndexOf("</div>", b2.indexOf("<AtajosDeFecha")), "los atajos no van debajo de los campos");
+    const css = sinComentarios(leer("src/vender.css"));
+    assert.match(css, /\.campos2 \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+    assert.match(css, /@media \(max-width: 520px\) \{\s*\.campos2 \{ grid-template-columns: minmax\(0, 1fr\); \}/, "a 390 px los campos no van en una columna");
+  });
+
+  prueba("3 «Cómo se cobra»: «Precio fijo | % de las ventas» a todo el ancho y «Correo y nota para el proveedor · opcional» plegable, que abre lo de siempre", () => {
+    const b3 = deBloque(3);
+    assert.match(b3, /^<Bloque n=\{3\} titulo="Cómo se cobra">\s*<ComoSeCobra c=\{c\} \/>/);
+    assert.match(sinComentarios(leer("src/components/Contrato/CamposDelContrato.tsx")), /<span className="seg seg-ancho" role="group" aria-label="Cómo se cobra">/);
+    assert.match(b3, /<button\s+type="button"\s+className="plegable"\s+onClick=\{\(\) => setMasDatos\(\(v\) => !v\)\}\s+aria-expanded=\{masDatos\}\s+aria-controls=\{idMasDatos\}\s*>/);
+    assert.match(b3, /<ChevronDown \{\.\.\.ICONO\} className="chev" \/>/);
+    const abre = entre(b3, "{masDatos && (", "</Bloque>") || b3.slice(b3.indexOf("{masDatos && ("));
+    for (const t of ['aria-label="Correo para la constancia"', 'aria-label="Nota"', "<NotifyPreview sede={c.sede} />", "id={idMasDatos}"]) {
+      assert.ok(abre.includes(t), `lo que abre «Correo y nota» perdió ${t}`);
+    }
+    assert.doesNotMatch(modoCodigo, /extra=\{/, "«Correo y nota» volvió al renglón del cobro");
+  });
+
+  prueba("el pie es FIJO: el total con su plazo y lo que cubre, lo que falta, «Guardar contrato» a todo el ancho y, debajo, «Reservar hasta…» y «Empezar de nuevo»", () => {
+    // El pie va afuera del cuerpo que rueda: es un hermano, después.
+    assert.match(modoCodigo, /<Panel\s+pie=\{pie\}/);
+    const panel = entre(modoCodigo, "function Panel(", "\n}\n");
+    assert.match(panel, /\{children\}\s*\{pie\}\s*<\/section>/, "el pie no va después del cuerpo, afuera de él");
+    assert.doesNotMatch(pie, /className="cuerpo"/);
+    assert.doesNotMatch(cuerpo, /btn-principal|Guardar contrato|Reservar hasta…|Empezar de nuevo|Total del contrato/, "algo del pie quedó adentro del cuerpo que rueda");
+    const orden = ['data-pie-fijo', "Total del contrato", 'className="total-sub"', 'className="sello"', "{c.reservando && (",
+      "c.lineas.length > 0 && c.falta", 'className="btn-principal"', "Guardar contrato", "Reservar hasta…", "Empezar de nuevo"];
+    const pos = orden.map((t) => pie.indexOf(t));
+    assert.ok(pos.every((k) => k >= 0), `falta en el pie: ${orden.filter((_, i) => pos[i] < 0).join(", ")}`);
+    assert.deepEqual(pos, [...pos].sort((a, b) => a - b), "el pie no va en el orden del dibujo");
+    assert.match(pie, /<p className="falta" data-falta role="status">\s*<CircleAlert \{\.\.\.ICONO\} \/> \{c\.falta\}\s*<\/p>/);
+    // El CSS: el cuerpo rueda dentro del panel, el pie no se encoge, y el
+    // principal ocupa las dos columnas de los botones.
+    const css = sinComentarios(leer("src/vender.css"));
+    assert.match(css, /\.vender \.cuerpo \{[^}]*flex: 1;[^}]*min-height: 0;[^}]*overflow-y: auto;/);
+    assert.match(css, /\.pie-contrato \{\s*flex: none;/);
+    assert.match(css, /\.vp \{[^}]*display: flex;[^}]*flex-direction: column;[^}]*overflow: hidden;/);
+    assert.match(css, /\.acciones2 \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/);
+    assert.match(css, /\.acciones2 \.btn-principal \{ grid-column: 1 \/ -1;/);
+    // A 390 px el total pasa a una columna (nada se sale de la tarjeta).
+    assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.pie-contrato \.total \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   });
 }
 
@@ -2374,26 +2503,49 @@ if (!URL_VENDER) {
     await tocar(pv, alReves[0]);
     await pv.mouse.move(5, 5);
     await pv.waitForTimeout(600);
-    // Con UNA línea a 1440×900 la ficha entra entera: el cuerpo no rueda (la
-    // línea, proveedor y marca, las fechas y sus atajos, el cobro) y el pie
-    // (el total y los botones) cierra con su aire.
-    const unaLinea = await pv.evaluate(`(() => {
+    // «Aire y pines» (el dibujo aprobado después del PR 3): el contrato se
+    // ordena en tres bloques y el PIE ES FIJO —con muchas líneas lo que rueda
+    // es el cuerpo, y el total y «Guardar» quedan siempre a la vista—. Esto
+    // reemplaza a «con UNA línea el cuerpo no rueda» (que el dibujo aprobado
+    // ya no promete: los tres bloques con aire miden más que el panel a
+    // 1440×900) por lo que sí promete, medido: el pie entero a la vista y
+    // QUIETO mientras rueda el cuerpo, cada campo alcanzable rodando sólo el
+    // cuerpo, la página sin rodar, el contrato al 40 % de la hoja y nada que
+    // se salga de la tarjeta.
+    const unaLinea = await pv.evaluate(`(async () => {
       const panel = ${PANEL};
       const cuerpo = panel.querySelector(".cuerpo"), pie = panel.querySelector(".pie-contrato");
       const r = panel.getBoundingClientRect(), acc = pie.querySelector(".acciones").getBoundingClientRect();
-      const visible = (sel) => { const e = panel.querySelector(sel); if (!e) return false; const b = e.getBoundingClientRect(), c = cuerpo.getBoundingClientRect(); return b.top >= c.top - 0.5 && b.bottom <= c.bottom + 0.5; };
-      return { ancho: innerWidth, alto: innerHeight, rueda: cuerpo.scrollHeight > cuerpo.clientHeight + 1, sobra: cuerpo.scrollHeight - cuerpo.clientHeight,
-        aire: r.bottom - acc.bottom, enElPie: !!pie && pie.contains(panel.querySelector(".btn-principal")),
-        ven: { linea: visible(".eitem"), proveedor: visible('input[aria-label="Proveedor"]'), marca: visible('input[aria-label="Marca"]'),
-          desde: visible('input[aria-label="Desde"]'), hasta: visible('input[aria-label="Hasta"]'), atajos: visible(".atajos") } };
+      const hoja = panel.parentElement.getBoundingClientRect();
+      const piePrimero = pie.getBoundingClientRect();
+      const estaEnElCuerpo = (sel) => { const e = panel.querySelector(sel); if (!e) return false; e.scrollIntoView({ block: "nearest" }); const b = e.getBoundingClientRect(), c = cuerpo.getBoundingClientRect(); return b.top >= c.top - 0.5 && b.bottom <= c.bottom + 0.5; };
+      const ven = { linea: estaEnElCuerpo(".eitem"), proveedor: estaEnElCuerpo('input[aria-label="Proveedor"]'), marca: estaEnElCuerpo('input[aria-label="Marca"]'),
+        desde: estaEnElCuerpo('input[aria-label="Desde"]'), hasta: estaEnElCuerpo('input[aria-label="Hasta"]'), atajos: estaEnElCuerpo(".atajos"),
+        cobro: estaEnElCuerpo('[aria-label="Cómo se cobra"]'), correo: estaEnElCuerpo(".plegable") };
+      cuerpo.scrollTop = cuerpo.scrollHeight;
+      await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+      const pieAlFondo = pie.getBoundingClientRect();
+      cuerpo.scrollTop = 0;
+      const dentro = (sel) => { const e = pie.querySelector(sel); if (!e) return false; const b = e.getBoundingClientRect(); return b.top >= r.top && b.bottom <= r.bottom && b.left >= r.left && b.right <= r.right; };
+      return { ancho: innerWidth, alto: innerHeight, bloques: panel.querySelectorAll(".bloque").length,
+        quieto: Math.abs(piePrimero.top - pieAlFondo.top) < 0.5, ven,
+        enElPie: { total: dentro(".total"), guardar: dentro(".btn-principal"), botones: [...pie.querySelectorAll(".acciones .btn3")].length === 2 && [...pie.querySelectorAll(".acciones .btn3")].every((b) => { const x = b.getBoundingClientRect(); return x.bottom <= r.bottom && x.right <= r.right; }) },
+        aire: r.bottom - acc.bottom, proporcion: r.width / hoja.width,
+        pagina: document.scrollingElement.scrollHeight > innerHeight + 1,
+        desborda: panel.scrollWidth > panel.clientWidth + 0.5 };
     })()`);
-    prueba("navegador · con UNA línea a 1440×900 el cuerpo del contrato no rueda: la línea, proveedor y marca, las fechas y sus atajos a la vista; el pie cierra con aire", () => {
+    prueba("navegador · con UNA línea a 1440×900: tres bloques, el pie fijo (total, Guardar, Reservar y Empezar de nuevo a la vista y quietos al rodar el cuerpo), cada campo a un rodar del cuerpo, el contrato al 40 %", () => {
       const malas = [];
       if (unaLinea.ancho !== 1440 || unaLinea.alto !== 900) malas.push(`la ventana mide ${unaLinea.ancho}×${unaLinea.alto}, no 1440×900`);
-      if (unaLinea.rueda) malas.push(`el cuerpo rueda ${unaLinea.sobra} px con una línea`);
-      for (const [k, v] of Object.entries(unaLinea.ven)) if (!v) malas.push(`${k} no se ve sin rodar`);
-      if (!unaLinea.enElPie) malas.push("«Guardar contrato» no está en el pie");
+      if (unaLinea.bloques !== 3) malas.push(`el contrato tiene ${unaLinea.bloques} bloques`);
+      if (!unaLinea.quieto) malas.push("el pie se movió al rodar el cuerpo");
+      for (const [k, v] of Object.entries(unaLinea.ven)) if (!v) malas.push(`${k} no se alcanza rodando el cuerpo`);
+      for (const [k, v] of Object.entries(unaLinea.enElPie)) if (!v) malas.push(`${k} no está entero en el pie`);
       if (unaLinea.aire < 12) malas.push(`el pie cierra con ${unaLinea.aire.toFixed(1)} px de aire (piso: 12)`);
+      // 2 de 5 de la hoja, menos la mitad del hueco entre columnas.
+      if (Math.abs(unaLinea.proporcion - 0.4) > 0.01) malas.push(`el contrato mide el ${(unaLinea.proporcion * 100).toFixed(1)} % de la hoja (40 %)`);
+      if (unaLinea.pagina) malas.push("la página rueda");
+      if (unaLinea.desborda) malas.push("algo se sale de la tarjeta del contrato");
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
     });
     for (const c of alReves.slice(1)) await tocar(pv, c);
@@ -2415,7 +2567,7 @@ if (!URL_VENDER) {
         filas: [...panel.querySelectorAll(".eitem")].map((e) => {
           const b = e.getBoundingClientRect(), cod = e.querySelector(".cod");
           return { cod: cod.firstChild?.textContent?.trim(), alto: b.height, entero: cod.scrollWidth <= cod.clientWidth,
-            desborda: e.scrollWidth > e.clientWidth + 0.5, aviso: !!e.querySelector(".aviso") };
+            desborda: e.scrollWidth > e.clientWidth + 0.5, aviso: !!e.querySelector(".aviso"), abierta: e.classList.contains("abierta") };
         }),
         botones: v.length,
         boton: !!vb && vb.left >= cab.left && vb.right <= cab.right && vb.top >= cab.top - 5 && vb.bottom <= cab.bottom + 5,
@@ -2432,10 +2584,13 @@ if (!URL_VENDER) {
       assert.equal(hoja.filas.length, CARAS.length, `filas en el contrato: ${hoja.filas.map((f) => f.cod).join(", ")}`);
       const malas = [];
       for (const f of hoja.filas) {
-        if (!f.aviso && f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
+        // Cerrada, una línea sigue siendo un renglón de dos líneas; la abierta
+        // (la última que se tocó) muestra sus botoneras con su rótulo.
+        if (!f.aviso && !f.abierta && f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
         if (!f.entero) malas.push(`${f.cod}: el código se corta`);
         if (f.desborda) malas.push(`${f.cod}: la fila desborda su tarjeta`);
       }
+      if (hoja.filas.filter((f) => f.abierta).length > 1) malas.push("hay más de una línea abierta");
       if (hoja.botones !== 1) malas.push(`hay ${hoja.botones} «Ver en 3D» (tiene que haber uno, en la cabecera)`);
       if (!hoja.boton) malas.push("«Ver en 3D» no está entero adentro de la cabecera del contrato");
       if (hoja.aire < 12) malas.push(`la ficha cierra con ${hoja.aire.toFixed(1)} px de aire (piso: 12)`);
@@ -2444,7 +2599,7 @@ if (!URL_VENDER) {
     });
 
     // Lo opcional, que también tiene que sobrevivir al 3D.
-    await pv.locator("button", { hasText: "Correo y nota" }).click();
+    await pv.locator("button.plegable", { hasText: "Correo y nota para el proveedor" }).click();
     await pv.locator('.vender input[inputmode="email"]').fill("compras@proveedor.example");
     await pv.locator('.vender textarea[aria-label="Nota"]').fill("Probar la punta con el yogur");
     await pv.waitForTimeout(400);

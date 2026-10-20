@@ -1,8 +1,8 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, BadgeCheck, Box, Calendar, Check, FilePenLine, Hourglass, Loader2, Lock, Mail, Receipt,
-  RotateCcw, StickyNote, X,
+  AlertTriangle, BadgeCheck, Box, Calendar, Check, ChevronDown, CircleAlert, FilePenLine, Hourglass, Loader2, Lock, Mail,
+  Plus, Receipt, RotateCcw, StickyNote, X,
 } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { isDoubleGondola, type UnifiedFixture } from "../../types/fixtures";
@@ -62,6 +62,16 @@ const VisorDeVenta = lazy(() => import("./VisorDeVenta"));
  *   Supervisar, en la ficha del espacio, con el contrato ya hecho.
  * · **El cuerpo rueda y el pie no**: el total y el botón no se pierden con
  *   cuatro líneas adentro.
+ *
+ * «AIRE Y PINES» (el dibujo aprobado después del PR 3): el contrato mide 2 de
+ * 5 partes de la hoja y el cuerpo se ordena en TRES bloques numerados, en el
+ * orden en que se negocia —1 «Qué se vende» (las líneas, cada botonera con su
+ * rótulo arriba: «Se vende», «El precio es»; y la pista «Sumar otro espacio:
+ * tocalo en el plano»), 2 «A quién y cuándo» (proveedor y marca, desde y
+ * hasta, los atajos) y 3 «Cómo se cobra» (precio fijo o % de las ventas, y la
+ * fila plegable «Correo y nota para el proveedor»)—. El pie, fijo: el total,
+ * lo que FALTA (antes arriba), «Guardar contrato» a todo el ancho y, debajo,
+ * «Reservar hasta…» y «Empezar de nuevo». Sólo cambió dónde va cada cosa.
  */
 
 interface ModoVenderProps {
@@ -117,6 +127,23 @@ function Panel({ derecha, pie, children }: { derecha?: React.ReactNode; pie?: Re
 }
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
+
+/** Un bloque del contrato: su número, su título y lo suyo, separado del de
+ *  arriba por una línea fina (el dibujo aprobado de «aire y pines»). Los tres
+ *  van en el orden en que se negocia: 1 «Qué se vende», 2 «A quién y cuándo»,
+ *  3 «Cómo se cobra». */
+function Bloque({ n, titulo, children }: { n: 1 | 2 | 3; titulo: string; children: React.ReactNode }) {
+  const id = useId();
+  return (
+    <section className="bloque" data-bloque={n} aria-labelledby={id}>
+      <header className="bloque-h">
+        <span className="bloque-n" aria-hidden>{n}</span>
+        <h3 id={id}>{titulo}</h3>
+      </header>
+      {children}
+    </section>
+  );
+}
 
 // ─── Los espacios del contrato ───────────────────────────────────────────────
 
@@ -333,47 +360,61 @@ function Fila({
           ×
         </button>
       )}
+      {/* Cada botonera dice qué elige, con su rótulo ARRIBA (el dibujo aprobado
+          de «aire y pines»): «Se vende» y «El precio es». Antes había que
+          adivinar qué elegía cada una. */}
       {abierta && formas.length > 0 && onVenderAsi && (
-        <FormasDeLaLinea
-          l={l}
-          formas={formas}
-          actual={actual}
-          posible={posible}
-          onElegir={(forma, cambio) => onVenderAsi(l.fixture.id, l.face, forma, cambio)}
-        />
+        <div className="opcion-linea" data-opcion="se-vende">
+          <span className="rotulo-l">Se vende</span>
+          <FormasDeLaLinea
+            l={l}
+            formas={formas}
+            actual={actual}
+            posible={posible}
+            onElegir={(forma, cambio) => onVenderAsi(l.fixture.id, l.face, forma, cambio)}
+          />
+        </div>
       )}
       {primeraDeLaCara && interruptores.length > 0 && (
-        <span className="partes" role="group" aria-label={`Cómo se vende ${codigoVisibleDe(l.fixture.code, l.face, l.doble, null)}`}
-          data-partes-de={claveDeCara}>
-          {interruptores.map((suf) => {
-            const puesta = c.lineas.some((o) => o.fixture.id === l.fixture.id && o.face === l.face && o.parte === suf);
-            const parte = suf ? parteDeSufijo(suf) : null;
-            const nombre = parte ? textoDeParte(parte, partesDeLaCara.length) : "Entera";
-            return (
-              <button
-                key={suf ?? "entera"}
-                type="button"
-                aria-pressed={puesta}
-                className={puesta ? "on" : undefined}
-                onClick={() => c.onCambiarParte(l.fixture.id, l.face, suf)}
-                title={puesta ? `Sacar ${nombre.toLowerCase()} del contrato` : `Vender ${nombre.toLowerCase()}`}
-              >
-                {suf ?? "Entera"}
+        <div className="opcion-linea" data-opcion="se-vende">
+          <span className="rotulo-l">Se vende</span>
+          <span className="partes" role="group" aria-label={`Cómo se vende ${codigoVisibleDe(l.fixture.code, l.face, l.doble, null)}`}
+            data-partes-de={claveDeCara}>
+            {interruptores.map((suf) => {
+              const puesta = c.lineas.some((o) => o.fixture.id === l.fixture.id && o.face === l.face && o.parte === suf);
+              const parte = suf ? parteDeSufijo(suf) : null;
+              const nombre = parte ? textoDeParte(parte, partesDeLaCara.length) : "Entera";
+              return (
+                <button
+                  key={suf ?? "entera"}
+                  type="button"
+                  aria-pressed={puesta}
+                  className={puesta ? "on" : undefined}
+                  onClick={() => c.onCambiarParte(l.fixture.id, l.face, suf)}
+                  title={puesta ? `Sacar ${nombre.toLowerCase()} del contrato` : `Vender ${nombre.toLowerCase()}`}
+                >
+                  {suf ?? "Entera"}
+                </button>
+              );
+            })}
+            {onSumarEnTodas && piezaDelRenglon && faltanEnElContrato.length > 0 && conEsaPieza.length > 1 && (
+              <button type="button" data-sumar-en-todas={piezaDelRenglon}
+                onClick={() => onSumarEnTodas(l.fixture.type, piezaDelRenglon)}
+                title={`Un renglón por cada una: la ${piezaDelRenglon} de ${deTodas} de la sede que la tienen configurada`}>
+                Sumar la {piezaDelRenglon} de {deTodas} de la sede ({conEsaPieza.length})
               </button>
-            );
-          })}
-          {onSumarEnTodas && piezaDelRenglon && faltanEnElContrato.length > 0 && conEsaPieza.length > 1 && (
-            <button type="button" data-sumar-en-todas={piezaDelRenglon}
-              onClick={() => onSumarEnTodas(l.fixture.type, piezaDelRenglon)}
-              title={`Un renglón por cada una: la ${piezaDelRenglon} de ${deTodas} de la sede que la tienen configurada`}>
-              Sumar la {piezaDelRenglon} de {deTodas} de la sede ({conEsaPieza.length})
-            </button>
-          )}
-        </span>
+            )}
+          </span>
+        </div>
       )}
       {(abierta || l.sinElegir) && l.tipo === "partes" && <ElegirPartes l={l} c={c} />}
       {(abierta || l.pb <= 0) && l.tipo === "pc" && <Porcentaje l={l} c={c} />}
-      {conPrecio && (abierta || l.modo === "mensual") && <PrecioDeLinea l={l} c={c} />}
+      {conPrecio && (abierta || l.modo === "mensual") && (
+        <div className="opcion-linea" data-opcion="el-precio-es">
+          <span className="rotulo-l">El precio es</span>
+          <PrecioDeLinea l={l} c={c} />
+        </div>
+      )}
       {choque && <span className="aviso choque" role="alert">{choque}</span>}
       {l.tipo === "pc" && l.noEntra && !l.rechazo && l.quedaPb !== null && l.quedaPb > 0 && (
         <span className="aviso-acciones">
@@ -658,6 +699,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
    *  la ficha del espacio, con el contrato ya hecho — decisión de la dueña,
    *  2026-10-20. Con ella se fue adjuntar la lámina del visor al contrato.) */
   const [masDatos, setMasDatos] = useState(false);
+  const idMasDatos = useId();
   /** «Empezar de nuevo»: la prueba del 3D se olvida con el contrato (la ficha
    *  no se remonta: su clave es la sede), así que se vacía a mano. */
   const empezarDeNuevo = () => {
@@ -688,43 +730,80 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
     ? c.lineas[0].tipo === "pc" && c.lineas[0].pb > 0 ? `este ${pct(c.lineas[0].pb)}` : c.lineas[0].visible
     : "lo de este contrato";
 
-  /* ── El pie: el total y los botones, SIEMPRE a la vista ──────────────────
-     Afuera del cuerpo que rueda: con cuatro líneas abiertas el total y el
-     botón seguían ahí. El total es la suma del total de cada línea (o el % de
-     las ventas, que no se sabe todavía y se dice así). */
+  /* ── El pie: el total, lo que falta y los botones, SIEMPRE a la vista ────
+     Afuera del cuerpo que rueda (el dibujo aprobado de «aire y pines»): con
+     muchas líneas lo que se desplaza es lo de arriba, y el total y «Guardar»
+     quedan siempre a la vista. El total es la suma del total de cada línea (o
+     el % de las ventas, que no se sabe todavía y se dice así). Debajo, lo que
+     falta —justo sobre el botón que no se puede tocar todavía—, «Guardar
+     contrato» a todo el ancho (el único amarillo) y, en dos columnas,
+     «Reservar hasta…» y «Empezar de nuevo». */
   const pie = (
-    <div className="pie-contrato">
+    <div className="pie-contrato" data-pie-fijo>
       <div className="total">
-        <span className="rotulo"><Receipt {...ICONO} size={14} /> Total del contrato</span>
-        {porVentas ? (
-          <span className="n n-ventas">{porVentas.cifra}</span>
-        ) : (
-          <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>
-        )}
+        <div className="total-izq">
+          <span className="rotulo"><Receipt {...ICONO} /> Total del contrato</span>
+          {/* El plazo («31 días · 1 mes · 1 línea») debajo del rótulo; con
+              cobro por ventas, cuándo se calcula. */}
+          <p className="total-sub">
+            {porVentas ? porVentas.detalle
+              : c.fechasEnOrden && c.lineas.length > 0
+              ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.textoDeMeses(c.nMeses)} · ${c.lineas.length} ${c.lineas.length === 1 ? "línea" : "líneas"}`
+              : " "}
+          </p>
+        </div>
+        <div className="total-der">
+          {porVentas ? (
+            <span className="n n-ventas">{porVentas.cifra}</span>
+          ) : (
+            <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>
+          )}
+          {/* Las temporadas que cubre: el argumento de venta que una planilla
+              no puede dar, y el control de que las fechas quedaron donde se
+              querían. */}
+          {c.cubre.length > 0 && (
+            <div className="cubre">
+              {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
+            </div>
+          )}
+        </div>
       </div>
-      {/* El plazo («31 días · 1 mes · 1 línea») y las temporadas que cubre,
-          en UN renglón: con una o dos líneas la ficha entra entera sin rodar
-          (antes eran tres renglones, y el plazo se repetía en el cuerpo). Las
-          temporadas son el argumento de venta que una planilla no puede dar,
-          y el control de que las fechas quedaron donde se querían. */}
-      <div className="total-fila">
-        <p className="total-sub">
-          {porVentas ? porVentas.detalle
-            : c.fechasEnOrden && c.lineas.length > 0
-            ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.textoDeMeses(c.nMeses)} · ${c.lineas.length} ${c.lineas.length === 1 ? "línea" : "líneas"}`
-            : "\u00a0"}
+      {/* «Reservar hasta…»: la fecha la elige quien opera y arranca VACÍA
+          (decisión de la dueña). De hoy al último día del contrato. Va en el
+          pie, junto al botón que reserva: abierto desde el pie, no puede
+          aparecer al fondo de un cuerpo que rueda. */}
+      {c.reservando && (
+        <div className="campo reserva" data-reserva>
+          <span className="rotulo">Reservar hasta</span>
+          <label className="entrada con-ico cif">
+            <Hourglass {...ICONO} />
+            <input
+              type="date"
+              value={c.caduca}
+              min={c.hoy}
+              max={c.hasta || undefined}
+              onChange={(e) => c.setCaduca(e.target.value)}
+              aria-label="Reservar hasta"
+            />
+          </label>
+          <span className="nota-campo">
+            {c.faltaReserva ?? `Hasta ese día nadie más puede tomar ${queSeReserva}. Después se libera solo.`}
+          </span>
+        </div>
+      )}
+      {/* Lo que falta para poder guardar, nombrando la línea («Falta el valor
+          de PUN-04»), justo sobre el botón. Con el contrato vacío lo dice el
+          bloque 1 («Elegí el primer espacio…»): acá no se repite. */}
+      {c.lineas.length > 0 && c.falta && (
+        <p className="falta" data-falta role="status">
+          <CircleAlert {...ICONO} /> {c.falta}
         </p>
-        {c.cubre.length > 0 && (
-          <div className="cubre">
-            {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
-          </div>
-        )}
-      </div>
+      )}
       {/* El error del servidor sí se dice acá, pegado al botón que lo
           provocó: es lo que pasó al tocarlo, no lo que falta antes. */}
       {c.error && (
         <p className="error-txt">
-          <AlertTriangle size={12} style={{ verticalAlign: "-1px" }} /> {c.error}
+          <AlertTriangle {...ICONO} /> {c.error}
         </p>
       )}
       <div className="acciones acciones2">
@@ -739,7 +818,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           title={(c.reservando ? c.falta ?? c.faltaReserva : c.falta) ?? undefined}
         >
           {guardando
-            ? <><Loader2 size={14} style={{ verticalAlign: "-2px", animation: "spin .9s linear infinite" }} /> Guardando…</>
+            ? <><Loader2 {...ICONO} style={{ animation: "spin .9s linear infinite" }} /> Guardando…</>
             : c.reservando
             ? <><Hourglass {...ICONO} /> {c.caduca && !c.faltaReserva ? `Reservar hasta el ${diaCorto(c.caduca)}` : "Reservar"}</>
             : <><Check {...ICONO} /> Guardar contrato</>}
@@ -760,14 +839,14 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           </button>
         )}
         <button
-          className="btn2 fantasma"
+          className="btn3 fantasma"
           type="button"
           // La prueba del 3D se olvida con el contrato: «empezar de nuevo» no
           // remonta la ficha (su clave es la sede), así que se vacía a mano.
           onClick={empezarDeNuevo}
           disabled={guardando}
         >
-          <RotateCcw {...ICONO} size={14} /> Empezar de nuevo
+          <RotateCcw {...ICONO} /> Empezar de nuevo
         </button>
       </div>
     </div>
@@ -801,162 +880,146 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
                 : `${ultima!.visible} no se muestra en 3D (${porQueNoSeVe(ultima!)}): se abre ${caraParaVer.visible}.`}
             >
               {/* Si la última tocada no se puede mostrar, dice cuál abre. */}
-              <Box size={12} aria-hidden /> {caraParaVer && !ultimaSeVe ? `Ver ${caraParaVer.visible} en 3D` : "Ver en 3D"}
+              <Box {...ICONO} /> {caraParaVer && !ultimaSeVe ? `Ver ${caraParaVer.visible} en 3D` : "Ver en 3D"}
             </button>
           )}
           <span className="vpill">{c.reservando ? "Reservando" : "Sin firmar"}</span>
         </>
       }
     >
+      {/* EL CUERPO, en tres bloques numerados en el orden en que se negocia
+          (el dibujo aprobado de «aire y pines»): QUÉ se vende, A QUIÉN Y
+          CUÁNDO, y CÓMO se cobra, separados por una línea fina. Es lo único
+          que rueda. */}
       <div className="cuerpo">
-        <div className="espacios">
-          {c.lineas.map((l) => (
-            <Fila
-              key={l.clave}
-              l={l}
-              c={c}
-              onResaltar={onResaltar}
-              onSumarEnTodas={props.onSumarEnTodas}
-              ocupacionDe={ocupacionDe}
-              onVenderAsi={onVenderAsi}
-              abierta={abierta === l.clave || !!l.rechazo}
-              onAbrir={() => setAbierta((a) => (a === l.clave ? null : l.clave))}
-              /* Con un solo espacio no se ofrece quitarlo: dejaría un contrato
-                 sin nada adentro, y para eso está «Empezar de nuevo». */
-              sePuedeQuitar={c.lineas.length > 1}
-            />
-          ))}
-          {c.lineas.length === 0 && ultimo && !seVendeAlgo(ultimo) && (
-            <NoComercializable fixture={ultimo} />
-          )}
-        </div>
-        {/* UN solo renglón de guía, y dice lo que falta AHORA. Si no falta
-            nada y es la primera cara, dónde está el 3D (el botón de la
-            cabecera es chico); si no, sumar otro espacio. Del tercer espacio
-            en adelante, y sólo si no falta nada, se va. Eran dos renglones
-            («Falta el proveedor» y el del 3D) y con una línea la ficha rodaba. */}
-        {(c.lineas.length < 3 || c.falta) && (
-          c.lineas.length === 1 && !c.falta && caraParaVer && !vio3D ? (
-            <p className="pista" data-pista-3d>Tocá <b>Ver en 3D</b> para mostrarle cómo queda</p>
-          ) : (
-            <p className="pista">
-              {c.lineas.length === 0
-                ? <>Elegí el primer espacio <b>tocándolo en el plano</b></>
-                : c.falta
-                ? c.falta
-                : <>Agregá otro espacio <b>tocándolo en el plano</b></>}
-            </p>
-          )
-        )}
-
-        <hr className="corte" />
-
-        <div className="campo par">
-          <div>
-            <span className="rotulo">Proveedor</span>
-            <CampoProveedor valor={c.proveedor} onCambio={c.setProveedor} />
-          </div>
-          <div>
-            <span className="rotulo">Marca</span>
-            <label className="entrada con-ico">
-              <BadgeCheck {...ICONO} />
-              <input value={c.marca} onChange={(e) => c.setMarca(e.target.value)} placeholder="opcional" aria-label="Marca" />
-            </label>
-          </div>
-        </div>
-        <div className="campo par">
-          <div>
-            <span className="rotulo">Desde</span>
-            <label className="entrada con-ico cif">
-              <Calendar {...ICONO} />
-              <input id="contrato-desde" type="date" value={c.desde} onChange={(e) => c.setDesde(e.target.value)} aria-label="Desde" />
-            </label>
-          </div>
-          <div>
-            <span className="rotulo">Hasta</span>
-            <label className="entrada con-ico cif">
-              <Calendar {...ICONO} />
-              <input type="date" value={c.hasta} onChange={(e) => c.setHasta(e.target.value)} aria-label="Hasta" />
-            </label>
-          </div>
-        </div>
-        {/* Los atajos de fecha. El plazo («31 días · 1 mes») va en el pie,
-            junto al total; acá sólo si las fechas no sirven. */}
-        <AtajosDeFecha c={c} />
-        {!c.fechasEnOrden && (
-          <p className="plazo mal">
-            {c.desde && c.hasta ? "La fecha de fin es anterior a la de inicio" : "Elegí las fechas del acuerdo"}
-          </p>
-        )}
-
-        {masDatos && (
-          <div style={{ marginTop: 4 }}>
-            <div className="campo">
-              <span className="rotulo">Correo · para la constancia</span>
-              <label className="entrada con-ico">
-                <Mail {...ICONO} />
-                <input
-                  value={c.correo}
-                  onChange={(e) => c.setCorreo(e.target.value)}
-                  placeholder="opcional"
-                  inputMode="email"
-                  aria-label="Correo para la constancia"
-                />
-              </label>
-            </div>
-            <div className="campo">
-              <span className="rotulo">Nota</span>
-              <label className="entrada con-ico area">
-                <StickyNote {...ICONO} />
-                <textarea
-                  rows={2}
-                  value={c.nota}
-                  onChange={(e) => c.setNota(e.target.value)}
-                  placeholder="Algo que haya que saber de este acuerdo"
-                  aria-label="Nota"
-                />
-              </label>
-            </div>
-            {/* Quién se va a enterar, ANTES de guardar. */}
-            <NotifyPreview sede={c.sede} />
-          </div>
-        )}
-
-        {/* El cobro y, en el mismo renglón, el desplegable del correo y la nota. */}
-        <ComoSeCobra
-          c={c}
-          extra={(
-            <button
-              className="btn2"
-              onClick={() => setMasDatos((v) => !v)}
-              aria-expanded={masDatos}
-            >
-              {masDatos ? "− " : "+ "}Correo y nota
-            </button>
-          )}
-        />
-
-        {/* «Reservar hasta…»: la fecha la elige quien opera y arranca VACÍA
-            (decisión de la dueña). De hoy al último día del contrato. */}
-        {c.reservando && (
-          <div className="campo reserva" data-reserva>
-            <span className="rotulo">Reservar hasta</span>
-            <label className="entrada con-ico cif">
-              <Hourglass {...ICONO} />
-              <input
-                type="date"
-                value={c.caduca}
-                min={c.hoy}
-                max={c.hasta || undefined}
-                onChange={(e) => c.setCaduca(e.target.value)}
-                aria-label="Reservar hasta"
+        <Bloque n={1} titulo="Qué se vende">
+          <div className="espacios">
+            {c.lineas.map((l) => (
+              <Fila
+                key={l.clave}
+                l={l}
+                c={c}
+                onResaltar={onResaltar}
+                onSumarEnTodas={props.onSumarEnTodas}
+                ocupacionDe={ocupacionDe}
+                onVenderAsi={onVenderAsi}
+                abierta={abierta === l.clave || !!l.rechazo}
+                onAbrir={() => setAbierta((a) => (a === l.clave ? null : l.clave))}
+                /* Con un solo espacio no se ofrece quitarlo: dejaría un contrato
+                   sin nada adentro, y para eso está «Empezar de nuevo». */
+                sePuedeQuitar={c.lineas.length > 1}
               />
-            </label>
-            <span className="nota-campo">
-              {c.faltaReserva ?? `Hasta ese día nadie más puede tomar ${queSeReserva}. Después se libera solo.`}
-            </span>
+            ))}
+            {c.lineas.length === 0 && ultimo && !seVendeAlgo(ultimo) && (
+              <NoComercializable fixture={ultimo} />
+            )}
           </div>
-        )}
+          {/* UNA pista y no un control: los espacios se suman tocándolos en
+              el plano. Con el contrato vacío, la de siempre («Elegí el primer
+              espacio…»); con algo adentro, la punteada del dibujo. La primera
+              vez, con un solo espacio, también dónde está el 3D (el botón de
+              la cabecera es chico). Lo que FALTA va en el pie, sobre el botón. */}
+          {c.lineas.length === 0 ? (
+            <p className="pista">Elegí el primer espacio <b>tocándolo en el plano</b></p>
+          ) : (
+            <div className="pistas">
+              <p className="sumar-otro" data-pista-sumar>
+                <Plus {...ICONO} /> Sumar otro espacio: tocalo en el plano
+              </p>
+              {c.lineas.length === 1 && caraParaVer && !vio3D && (
+                <p className="pista" data-pista-3d>Tocá <b>Ver en 3D</b> para mostrarle cómo queda</p>
+              )}
+            </div>
+          )}
+        </Bloque>
+
+        <Bloque n={2} titulo="A quién y cuándo">
+          <div className="campos2">
+            <div className="campo">
+              <span className="rotulo">Proveedor</span>
+              <CampoProveedor valor={c.proveedor} onCambio={c.setProveedor} />
+            </div>
+            <div className="campo">
+              <span className="rotulo">Marca <i>opcional</i></span>
+              <label className="entrada con-ico">
+                <BadgeCheck {...ICONO} />
+                <input value={c.marca} onChange={(e) => c.setMarca(e.target.value)} placeholder="La que va en el espacio" aria-label="Marca" />
+              </label>
+            </div>
+            <div className="campo">
+              <span className="rotulo">Desde</span>
+              <label className="entrada con-ico cif">
+                <Calendar {...ICONO} />
+                <input id="contrato-desde" type="date" value={c.desde} onChange={(e) => c.setDesde(e.target.value)} aria-label="Desde" />
+              </label>
+            </div>
+            <div className="campo">
+              <span className="rotulo">Hasta</span>
+              <label className="entrada con-ico cif">
+                <Calendar {...ICONO} />
+                <input type="date" value={c.hasta} onChange={(e) => c.setHasta(e.target.value)} aria-label="Hasta" />
+              </label>
+            </div>
+          </div>
+          {/* Los atajos de fecha, debajo. El plazo («31 días · 1 mes») va en
+              el pie, junto al total; acá sólo si las fechas no sirven. */}
+          <AtajosDeFecha c={c} />
+          {!c.fechasEnOrden && (
+            <p className="plazo mal">
+              {c.desde && c.hasta ? "La fecha de fin es anterior a la de inicio" : "Elegí las fechas del acuerdo"}
+            </p>
+          )}
+        </Bloque>
+
+        <Bloque n={3} titulo="Cómo se cobra">
+          <ComoSeCobra c={c} />
+          {/* Correo y nota: opcionales, y ninguno se toca en la llamada típica.
+              Una fila plegable a todo el ancho, con su chevron; abierta, lo de
+              siempre: el correo, la nota y quién se va a enterar. */}
+          <button
+            type="button"
+            className="plegable"
+            onClick={() => setMasDatos((v) => !v)}
+            aria-expanded={masDatos}
+            aria-controls={idMasDatos}
+          >
+            <Mail {...ICONO} />
+            <span>Correo y nota para el proveedor <span className="opc">· opcional</span></span>
+            <ChevronDown {...ICONO} className="chev" />
+          </button>
+          {masDatos && (
+            <div className="mas-datos" id={idMasDatos}>
+              <div className="campo">
+                <span className="rotulo">Correo · para la constancia</span>
+                <label className="entrada con-ico">
+                  <Mail {...ICONO} />
+                  <input
+                    value={c.correo}
+                    onChange={(e) => c.setCorreo(e.target.value)}
+                    placeholder="opcional"
+                    inputMode="email"
+                    aria-label="Correo para la constancia"
+                  />
+                </label>
+              </div>
+              <div className="campo">
+                <span className="rotulo">Nota</span>
+                <label className="entrada con-ico area">
+                  <StickyNote {...ICONO} />
+                  <textarea
+                    rows={2}
+                    value={c.nota}
+                    onChange={(e) => c.setNota(e.target.value)}
+                    placeholder="Algo que haya que saber de este acuerdo"
+                    aria-label="Nota"
+                  />
+                </label>
+              </div>
+              {/* Quién se va a enterar, ANTES de guardar. */}
+              <NotifyPreview sede={c.sede} />
+            </div>
+          )}
+        </Bloque>
       </div>
       {en3D && (
         <LimiteDelVisor onCerrar={cerrar3D}>

@@ -138,8 +138,8 @@ import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
 // plata de Supervisar.
 import { bajoLaTarifa } from "../utils/meses";
 import {
-  DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, chinchetasDe, contarPorGrupo, cuentaDelBadge,
-  deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, tituloDeSeccion,
+  DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, avisoPorClave, contarPorGrupo, cuentaDelBadge,
+  deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, puntosDelPlano, tituloDeSeccion,
   type Aviso, type Chincheta, type GrupoDeRevision,
 } from "../components/Supervisar/paraRevisar";
 import { EncabezadoDeSeccion, PestanasDeRevision, SelectorDePlata } from "../components/Supervisar/piezas";
@@ -959,7 +959,25 @@ interface IsoMapProps {
    *  pasa nunca: delante del proveedor no hay avisos. */
   chinchetas?: readonly (Chincheta & { titulo: string })[];
   onChincheta?: (c: Chincheta) => void;
+  /** SÓLO Supervisar: dónde deja el plano su función para SEÑALAR un mueble
+   *  —el piso punteado alrededor y un punto con anillo— mientras se pasa el
+   *  mouse (o el foco del teclado) por un renglón de «Para revisar»; `null` lo
+   *  apaga y el plano queda como estaba. Imperativa, como `resaltar`: pasar por
+   *  la lista no vuelve a pintar la sala. Vender no la pasa nunca. */
+  senalar?: React.MutableRefObject<((foco: FocoDelPlano | null) => void) | null>;
 }
+
+/** Lo que el plano señala al pasar por un renglón de «Para revisar»: el mueble,
+ *  la cara del aviso y su grupo (el color: Hoy rojo, 30 días ámbar, Corregir
+ *  tinta). */
+interface FocoDelPlano {
+  fixtureId: string;
+  cara: "A" | "B";
+  grupo: GrupoDeRevision;
+}
+
+/** Cuánto se abre el piso punteado alrededor del mueble señalado, en metros. */
+const MARGEN_DEL_FOCO = 0.5;
 
 /** Un rótulo del plano: el código del espacio y, si se libera adentro del
  *  periodo, cuándo. Dos `<tspan>` que miden lo mismo y se distinguen por peso
@@ -1070,7 +1088,7 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
  *    tiembla y —peor— la medición del deschoque se hace contra la geometría
  *    del paso anterior.
  */
-function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde, chinchetas, onChincheta }: IsoMapProps) {
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde, chinchetas, onChincheta, senalar }: IsoMapProps) {
   /** La disponibilidad de una cara en el periodo: la combinada con sus
    *  partes si quien dibuja la sabe, y si no la de la cara sola. */
   const dispoDe = useCallback(
@@ -1258,6 +1276,9 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         f, topHalves, sides, rentable, double, faces, stroke,
         topOutline: pts(tA, tB, tC, tD),
         tooltipSub, caja2d,
+        // La huella en el plano (metros, relativa al centro de la sala): de
+        // ella sale el piso punteado del mueble señalado.
+        caja,
       };
     });
 
@@ -1565,7 +1586,77 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
    *  ancla de su cara y la cámara recién escrita, sin preguntarle nada al DOM
    *  del plano. Un mueble que no se vende entero (la caja de una bahía) no tiene
    *  ancla de rótulo: va al centro de lo alto de su caja. */
+  /** EL MUEBLE SEÑALADO desde «Para revisar» («aire y pines»): el piso
+   *  punteado alrededor (en el plano, debajo de los muebles: se mueve con la
+   *  cámara sin que nadie lo reubique, y se rehace al girar) y un punto con
+   *  anillo, que es HTML y se ubica como las chinchetas: apoyado ARRIBA del
+   *  rótulo de su cara, nunca sobre el código. */
+  const focoRef = useRef<FocoDelPlano | null>(null);
+  const focoPisoRef = useRef<SVGPolygonElement>(null);
+  const focoMarcaRef = useRef<HTMLSpanElement>(null);
+  const dibujarFocoPiso = useCallback(() => {
+    const el = focoPisoRef.current;
+    if (!el) return;
+    const f = focoRef.current;
+    const sc = escenaActual.current;
+    const p = f && sc ? sc.prisms.find((x) => x.f.id === f.fixtureId) : undefined;
+    if (!f || !sc || !p) { el.style.display = "none"; return; }
+    const m = MARGEN_DEL_FOCO;
+    const { x0, x1, z0, z1 } = p.caja;
+    el.setAttribute("points", pts(
+      proyectar(sc.e, x0 - m, 0, z0 - m), proyectar(sc.e, x1 + m, 0, z0 - m),
+      proyectar(sc.e, x1 + m, 0, z1 + m), proyectar(sc.e, x0 - m, 0, z1 + m),
+    ));
+    el.dataset.grupo = f.grupo;
+    el.style.display = "";
+  }, []);
+  const ubicarFoco = useCallback(() => {
+    const el = focoMarcaRef.current;
+    if (!el) return;
+    const f = focoRef.current;
+    const c = encuadre();
+    const lz = wrapRef.current?.getBoundingClientRect();
+    const sc = escenaActual.current;
+    if (!f || !c || !lz || !sc) { el.style.display = "none"; return; }
+    el.dataset.grupo = f.grupo;
+    // Con el rótulo de su cara puesto (o el de la otra cara), arriba de él.
+    const otra = f.cara === "A" ? "B" : "A";
+    const caja = cajasDeRotulo.current.get(`${f.fixtureId}-${f.cara}`) ?? cajasDeRotulo.current.get(`${f.fixtureId}-${otra}`);
+    if (caja) {
+      el.style.display = "";
+      el.style.left = `${((caja.left + caja.right) / 2 - lz.left).toFixed(1)}px`;
+      el.style.top = `${(caja.top - lz.top - 2).toFixed(1)}px`;
+      el.dataset.sobre = "rotulo";
+      return;
+    }
+    // Sin rótulo (cedió, o el mueble no se vende entero): sobre el techo.
+    let a = sc.anclas.get(`${f.fixtureId}-${f.cara}`);
+    if (!a) {
+      const p = sc.prisms.find((x) => x.f.id === f.fixtureId);
+      if (p) a = [(p.caja2d.x0 + p.caja2d.x1) / 2, p.caja2d.y0];
+    }
+    if (!a) { el.style.display = "none"; return; }
+    const [x, y] = aPantalla(a[0], a[1], c);
+    const fuera = x < lz.left || x > lz.right || y < lz.top || y > lz.bottom;
+    el.style.display = fuera ? "none" : "";
+    el.style.left = `${(x - lz.left).toFixed(1)}px`;
+    el.style.top = `${(y - lz.top).toFixed(1)}px`;
+    el.dataset.sobre = "ancla";
+  }, [aPantalla, encuadre]);
+  useEffect(() => {
+    if (!senalar) return;
+    senalar.current = (foco) => {
+      focoRef.current = foco;
+      dibujarFocoPiso();
+      ubicarFoco();
+    };
+    return () => { if (senalar) senalar.current = null; };
+  }, [senalar, dibujarFocoPiso, ubicarFoco]);
+
   const ubicarChinchetas = useCallback(() => {
+    // El punto del mueble señalado se ubica con lo que flota sobre el plano:
+    // cada vez que se mueve la cámara o se acomodan los rótulos.
+    ubicarFoco();
     if (pinRefs.current.size === 0) return;
     const c = encuadre();
     const lz = wrapRef.current?.getBoundingClientRect();
@@ -1604,7 +1695,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
       el.style.top = `${(y - lz.top).toFixed(1)}px`;
       el.dataset.sobre = "ancla";
     }
-  }, [aPantalla, encuadre]);
+  }, [aPantalla, encuadre, ubicarFoco]);
 
   const aplicar = useCallback(() => { escribir(); ajustarMinimos(); acomodar(); ubicarChinchetas(); }, [escribir, ajustarMinimos, acomodar, ubicarChinchetas]);
   // Una lista nueva de chinchetas se ubica en cuanto existe; los rótulos se
@@ -1682,8 +1773,10 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
       const a = scene.anclas.get(p.clave);
       if (a) { p.ax = a[0]; p.ay = a[1]; }
     }
+    // El piso del mueble señalado se rehace con la escena (un giro lo cambia).
+    dibujarFocoPiso();
     aplicar();
-  }, [scene, aplicar]);
+  }, [scene, aplicar, dibujarFocoPiso]);
 
   // La tipografía del sistema puede llegar después del primer pintado: cada vez
   // que puede haber cambiado el ancho de una letra, se vuelve a medir.
@@ -1938,19 +2031,27 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
           {chinchetas.map((ch) => {
             const k = `${ch.fixtureId}-${ch.cara}`;
             return (
+              /* Un PUNTO chico sobre el techo, del color de su grupo: sin
+                 globo, sin palito y sin ícono («aire y pines»), apoyado arriba
+                 del rótulo para no tapar el código. Tocarlo lleva a su aviso. */
               <button
                 key={k}
                 type="button"
+                className="punto-revisar"
                 data-grupo={ch.grupo}
                 ref={(el) => { if (el) pinRefs.current.set(k, el); else pinRefs.current.delete(k); }}
                 title={ch.titulo}
                 aria-label={ch.titulo}
                 onClick={(e) => { e.stopPropagation(); onChincheta?.(ch); }}
-              >
-                <Pin {...ICONO_TARJETA} />
-              </button>
+              />
             );
           })}
+        </div>
+      )}
+      {/* El punto con anillo del mueble señalado desde «Para revisar». */}
+      {senalar && (
+        <div className="foco-capa" aria-hidden>
+          <span ref={focoMarcaRef} className="foco-marca" style={{ display: "none" }} />
         </div>
       )}
       {ayuda && (
@@ -1972,6 +2073,18 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
           stroke="var(--line)"
           strokeWidth={TRAZO.piso}
         />
+        {/* El piso punteado del mueble señalado desde «Para revisar»: debajo
+            de los muebles, como una marca en el suelo. */}
+        {senalar && (
+          <polygon
+            ref={focoPisoRef}
+            className="foco-piso"
+            style={{ display: "none" }}
+            strokeWidth={TRAZO.filtro}
+            strokeDasharray={`${(4 * UNIDAD_ISO).toFixed(3)} ${(3 * UNIDAD_ISO).toFixed(3)}`}
+            strokeLinejoin="round"
+          />
+        )}
 
         {scene.prisms.map(({ f, topHalves, sides, stroke, topOutline, tooltipSub, faces, rentable }) => {
           const selected = faces.some((x) => selectedKeys.includes(`${f.id}-${x.face}`));
@@ -2186,14 +2299,18 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
  *  sin nombres (`desgloseDelParcial`). Decía «Se libera en el periodo» /
  *  «Vence dentro» y contaba como días las doce caras por participación. */
 function MapLegend({
-  tally, modo, enContrato, chinchetas,
+  tally, modo, enContrato, chinchetas, pendientes, onPendientes,
 }: {
   tally: ConteoDelPeriodo;
   modo: "vender" | "supervisar";
   /** Cuántas caras hay en el contrato que se está armando. Sólo en Vender. */
   enContrato?: number;
-  /** Cuántas chinchetas hay en el plano. Sólo en Supervisar. */
+  /** Cuántos muebles tienen algo en «Para revisar». Sólo en Supervisar. */
   chinchetas?: number;
+  /** Si el plano muestra sus puntos, y prenderlos o apagarlos: «Para revisar
+   *  N» es un BOTÓN («aire y pines»). Sólo en Supervisar. */
+  pendientes?: boolean;
+  onPendientes?: () => void;
 }) {
   const items: { c: string; b: string; l: string; n?: number; sep?: boolean; t?: string }[] = [
     { c: rangeTop().libre, b: "var(--libre-borde)",
@@ -2219,12 +2336,22 @@ function MapLegend({
           </span>
         </Fragment>
       ))}
+      {/* «Para revisar N»: prende y apaga TODOS los puntos del plano. Arranca
+          apagado y se recuerda (`pendientesEnElPlano`, en el store). */}
       {chinchetas !== undefined && (
-        <span className="clave-pin" title="Los muebles con algo en «Para revisar»">
+        <button
+          type="button"
+          className="clave-pin"
+          aria-pressed={!!pendientes}
+          onClick={onPendientes}
+          title={pendientes
+            ? "Esconder los puntos de lo que hay para revisar"
+            : "Mostrar un punto sobre cada mueble con algo para revisar"}
+        >
           <Pin {...ICONO_TARJETA} />
           Para revisar
           <b>{chinchetas}</b>
-        </span>
+        </button>
       )}
     </div>
   );
@@ -5738,12 +5865,39 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const attentionCount = cuentaDelBadge(cuentasDeRevision);
   const grupoDeRevision: GrupoDeRevision = grupoElegido ?? grupoParaAbrir(cuentasDeRevision);
 
-  /** Las chinchetas del plano: los muebles con algo en «Para revisar», del
-   *  color del grupo más urgente. Nada que no esté en `avisos`. */
+  /** Los puntos del plano («aire y pines»): uno por mueble con algo en «Para
+   *  revisar», del color de su grupo más urgente (`puntosDelPlano`, que sale
+   *  de `chinchetasDe`). Nada que no esté en `avisos`. */
   const chinchetasDeRevision = useMemo(
-    () => chinchetasDe(avisos).map((c) => ({ ...c, titulo: `Para revisar · ${tituloDeSeccion(c.seccion, c.grupo)}` })),
+    () => puntosDelPlano(avisos).map((c) => ({ ...c, titulo: `Para revisar · ${tituloDeSeccion(c.seccion, c.grupo)}` })),
     [avisos],
   );
+  /** Al abrir, el plano NO los muestra: «Para revisar N» de la clave los prende
+   *  y los apaga, y se recuerda por persona (en el store persistido, como las
+   *  cámaras). */
+  const pendientesEnElPlano = useFixtureStore((s) => s.pendientesEnElPlano);
+  const setPendientesEnElPlano = useFixtureStore((s) => s.setPendientesEnElPlano);
+  /** Pasar el mouse —o el foco del teclado— por un renglón de «Para revisar»
+   *  SEÑALA su mueble en el plano (el piso punteado y un punto con anillo); al
+   *  salir del renglón, el plano vuelve a como estaba. La lista no sabe de qué
+   *  mueble habla cada fila: lo dice su aviso (`data-aviso` → `avisos`), así
+   *  que vale para todas las secciones sin tocar ninguna. Tocar el renglón
+   *  sigue haciendo lo de siempre; con el dedo no hay mouse que pase. */
+  const senalarEnElPlano = useRef<((foco: FocoDelPlano | null) => void) | null>(null);
+  const avisosPorClave = useMemo(() => avisoPorClave(avisos), [avisos]);
+  const filaSenalada = useRef<string | null>(null);
+  const senalarFila = useCallback((objetivo: EventTarget | null) => {
+    const fila = objetivo instanceof Element ? objetivo.closest<HTMLElement>("[data-aviso]") : null;
+    const clave = fila?.dataset.aviso ?? null;
+    if (clave === filaSenalada.current) return;
+    filaSenalada.current = clave;
+    const a = clave ? avisosPorClave.get(clave) : undefined;
+    senalarEnElPlano.current?.(a?.fixtureId ? { fixtureId: a.fixtureId, cara: a.cara ?? "A", grupo: a.grupo } : null);
+  }, [avisosPorClave]);
+  /** Tocar un renglón abre la ficha en el lugar de la lista: la lista se va
+   *  sin que el mouse «salga» de nada, y el plano vuelve a como estaba. */
+  const listaALaVista = !(selected && detailFull);
+  useEffect(() => { if (!listaALaVista) senalarFila(null); }, [listaALaVista, senalarFila]);
   /** Tocar una chincheta lleva a su aviso: «Para revisar» en su grupo, con la
    *  fila a la vista y marcada un momento. */
   const irAlAviso = useCallback((c: Chincheta) => {
@@ -5878,7 +6032,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             <h2>Piso de {sede}</h2>
             <span className="sub">{fixtures.length} muebles</span>
             <div className="der">
-              <MapLegend tally={rangeTally} modo="supervisar" chinchetas={chinchetasDeRevision.length} />
+              <MapLegend tally={rangeTally} modo="supervisar"
+                chinchetas={chinchetasDeRevision.length}
+                pendientes={pendientesEnElPlano}
+                onPendientes={() => setPendientesEnElPlano(!pendientesEnElPlano)}
+              />
               <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar el plano" />
             </div>
           </header>
@@ -5898,8 +6056,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 porPartes={porPartesDeCara}
                 cortoDe={cortoDeCara}
                 libreDesde={libreDesdeDeCara}
-                chinchetas={chinchetasDeRevision}
+                /* Los puntos de «Para revisar», sólo si se prendieron en la
+                   clave (arranca apagado). */
+                chinchetas={pendientesEnElPlano ? chinchetasDeRevision : undefined}
                 onChincheta={irAlAviso}
+                senalar={senalarEnElPlano}
               />
             )}
           </div>
@@ -6476,7 +6637,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           </Card>
 
           {/* ── LA HOJA DE SUPERVISAR: la misma rejilla que la de Vender ──────
-              Dos columnas en la misma proporción (1004 : 402) y filas del
+              Dos columnas en la misma proporción (3 : 2) y filas del
               mismo alto que el panel del plano de Vender (`--alto-plano`):
 
                   el plano             │ para revisar (o la ficha)
@@ -6550,7 +6711,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 <div style={{ padding: "0 12px 8px" }}>
                   <PestanasDeRevision cuentas={cuentasDeRevision} grupo={grupoDeRevision} onGrupo={setGrupoElegido} />
                 </div>
-                <div className="lista-r">
+                <div
+                  className="lista-r"
+                  data-senala-en-el-plano
+                  onPointerOver={(e) => { if (e.pointerType !== "touch") senalarFila(e.target); }}
+                  onPointerLeave={(e) => { if (e.pointerType !== "touch") senalarFila(null); }}
+                  onFocus={(e) => senalarFila(e.target)}
+                  onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) senalarFila(null); }}
+                >
                   {cuentasDeRevision[grupoDeRevision] === 0 && (
                     <div className="vacio-r">
                       {grupoDeRevision === "hoy" ? "Nada para hoy."

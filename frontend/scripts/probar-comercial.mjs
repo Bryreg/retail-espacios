@@ -1370,6 +1370,42 @@ prueba("las chinchetas: sólo lo que está en «Para revisar», una por cara, de
   assert.deepEqual(ch.map((c) => [c.fixtureId, c.cara, c.grupo, c.clave]).sort(), [["f1", "A", "hoy", "x2"], ["f2", "A", "dias30", "x3"]]);
 });
 
+prueba("los puntos del plano («aire y pines»): uno por MUEBLE, del grupo más urgente de sus caras —Hoy rojo, 30 días ámbar, Corregir tinta— y nada fuera de la lista (ejecutado)", () => {
+  const p = G.puntosDelPlano([
+    // Una góndola doble: la A sólo para corregir, la B de «30 días»: un punto, ámbar, el de la B.
+    { seccion: "bajo_tarifa", clave: "a1", fixtureId: "g1", cara: "A" },
+    { seccion: "por_vencer", clave: "a2", fixtureId: "g1", cara: "B" },
+    // Otra: «Hoy» en la A gana a «30 días» en la B, aunque llegue después.
+    { seccion: "sin_montar", clave: "b1", fixtureId: "g2", cara: "B" },
+    { seccion: "vencidos", clave: "b2", fixtureId: "g2", cara: "A" },
+    // Y al revés: «Hoy» primero, «30 días» después en la otra cara: sigue «Hoy».
+    { seccion: "vencidos", clave: "h1", fixtureId: "g6", cara: "A" },
+    { seccion: "por_vencer", clave: "h2", fixtureId: "g6", cara: "B" },
+    // Sólo para corregir: tinta.
+    { seccion: "ocupado_sin_contrato", clave: "c1", fixtureId: "g3" },
+    // Lo que depende de los días: una reserva que caduca hoy es «Hoy».
+    { seccion: "reservas", clave: "d1", fixtureId: "g4", cara: "A", dias: 0 },
+    { seccion: "falta_planometria", clave: "e1", fixtureId: "g5", dias: 12 },
+    // Sin mueble no hay punto.
+    { seccion: "contrato_sin_mueble", clave: "z1" },
+  ]);
+  assert.deepEqual(p.map((c) => [c.fixtureId, c.cara, c.grupo, c.clave]).sort(), [
+    ["g1", "B", "dias30", "a2"], ["g2", "A", "hoy", "b2"], ["g3", "A", "corregir", "c1"],
+    ["g4", "A", "hoy", "d1"], ["g5", "A", "dias30", "e1"], ["g6", "A", "hoy", "h1"],
+  ]);
+  assert.equal(new Set(p.map((c) => c.fixtureId)).size, p.length, "un mueble lleva dos puntos");
+  assert.deepEqual(G.puntosDelPlano([]), []);
+  // El renglón que se señala lleva el grupo de su aviso: el color del piso.
+  const m = G.avisoPorClave([
+    { seccion: "reservas", clave: "r1", fixtureId: "f9", cara: "B", dias: 0 },
+    { seccion: "reservas", clave: "r2", fixtureId: "f9", cara: "B", dias: 9 },
+    { seccion: "bajo_tarifa", clave: "t1", fixtureId: "f8" },
+  ]);
+  assert.deepEqual([...m.entries()].map(([k, a]) => [k, a.fixtureId, a.cara, a.grupo]), [
+    ["r1", "f9", "B", "hoy"], ["r2", "f9", "B", "dias30"], ["t1", "f8", undefined, "corregir"],
+  ]);
+});
+
 prueba("«Al mes» reparte cada contrato en SUS meses (`utils/meses.ts`), «Total» es lo firmado (ejecutado)", () => {
   assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "mes"), 300000);
   assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "total"), 900000);
@@ -1506,7 +1542,7 @@ prueba("Supervisar cuenta «Vendido en parte» UNA vez: sólo por partes o por p
     "la pestaña «Vendido en parte» no sale de la misma cuenta que la clave");
   // El color del plano de Supervisar, de la misma cuenta; Vender sigue con la suya.
   const isos = [...t.matchAll(/<IsoMap\b[\s\S]*?\/>/g)].map((m) => m[0]);
-  const deSup = isos.filter((u) => /chinchetas=\{chinchetasDeRevision\}/.test(u));
+  const deSup = isos.filter((u) => /chinchetas=\{pendientesEnElPlano \? chinchetasDeRevision : undefined\}/.test(u));
   assert.equal(deSup.length, 1);
   assert.match(deSup[0], /dispo=\{dispoSupervisar\}/, "el plano de Supervisar pinta ámbar lo vendido entero");
   assert.ok(isos.filter((u) => u !== deSup[0]).every((u) => /dispo=\{dispoDeCara\}/.test(u)), "Vender perdió su ámbar");
@@ -1612,7 +1648,11 @@ prueba("el aspecto: la chincheta no tapa el código, la pastilla y la fecha entr
   assert.match(t, /const xa = Number\(p\.txt\.getAttribute\("x"\)\), ya = Number\(p\.txt\.getAttribute\("y"\)\);/);
   const css = readFileSync(join(raiz, "src", "supervisar.css"), "utf8");
   assert.match(css, /\.chinchetas button\[data-sobre="rotulo"\] \{ transform: translate\(-50%, -100%\); \}/);
-  assert.match(css, /@media \(max-width: 560px\) \{\s*\.chinchetas button \{ width: 20px; height: 20px; \}/);
+  // «Aire y pines»: un PUNTO de 10 px (con un blanco de 16 para tocarlo), sin
+  // globo ni ícono: ningún `svg` adentro, a ningún ancho.
+  assert.match(css, /\.chinchetas button \{[^}]*width: 16px; height: 16px;[^}]*background: transparent;/);
+  assert.match(css, /\.chinchetas button::after \{[^}]*width: 10px; height: 10px; border-radius: 50%;\s*background: var\(--c, var\(--ink-1\)\);/);
+  assert.doesNotMatch(css, /\.chinchetas button svg/, "el punto volvió a llevar ícono");
   // La tabla: el estado y las fechas miden lo que su texto, y la pastilla corta con «…».
   assert.match(t, /\{ etiqueta: "Estado", ancho: anchos\.estado, minimo: anchos\.estadoMinimo, cede: 3 \}/);
   assert.match(t, /const estadoMinimo = anchoDeTexto\(palabras, pastilla\) \+ 20 \+ 18;/, "la pastilla más larga no entra en lo menos que mide el estado");

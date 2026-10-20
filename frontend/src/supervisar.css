@@ -200,32 +200,72 @@
   font-family: inherit; font-size: var(--t-xs); cursor: pointer;
 }
 
-/* --- El plano de Supervisar: la chincheta y su clave ---------------------- */
-.sup .clave-pin { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* --- El plano de Supervisar: los puntos de «Para revisar» y su botón ------
+   «Aire y pines» (el dibujo aprobado, después del PR 3): al abrir, el plano NO
+   muestra nada encima de los muebles. «Para revisar N», en la clave, es un
+   botón que prende y apaga TODOS los puntos (se recuerda por persona). Prendidos,
+   cada mueble con algo pendiente lleva un PUNTO chico, sin globo, sin palito y
+   sin ícono, del color de su grupo más urgente. Y pasar por un renglón de la
+   lista señala su mueble: el piso punteado y un punto con anillo. Todos los
+   colores son tokens del tema (claro y oscuro). */
+.sup .clave-pin {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  height: 28px; padding: 0 10px; border-radius: var(--r-pill);
+  border: var(--hair) solid var(--line); background: var(--surface); color: var(--ink-2);
+  font-family: inherit; font-size: var(--t-xs); cursor: pointer;
+}
 .sup .clave-pin svg { color: var(--ink-3); flex: none; }
+.sup .clave-pin b { font-family: var(--f-mono); color: var(--ink-1); }
+.sup .clave-pin:hover { border-color: var(--line-strong); }
+.sup .clave-pin:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.sup .clave-pin[aria-pressed="true"] { background: var(--ink-1); border-color: var(--ink-1); color: var(--surface); }
+.sup .clave-pin[aria-pressed="true"] svg,
+.sup .clave-pin[aria-pressed="true"] b { color: var(--surface); }
 .chinchetas { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .chinchetas button {
   position: absolute; pointer-events: auto;
   /* Sin rótulo a la vista (un mueble que no se vende entero, o un rótulo que
-     cedió): la punta de la chincheta sobre el ancla. */
-  transform: translate(-50%, calc(-100% - 12px));
-  display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
-  border-radius: 50%; border: 1.5px solid var(--c, var(--ink-1)); background: var(--surface); color: var(--c, var(--ink-1));
-  box-shadow: var(--sh-1); cursor: pointer;
+     cedió): el punto, centrado sobre el techo. */
+  transform: translate(-50%, -50%);
+  display: grid; place-items: center; width: 16px; height: 16px; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; cursor: pointer;
+}
+/* El punto: 10 px del color del grupo con un aro del fondo, que lo despega
+   del techo del mueble. Nada más. */
+.chinchetas button::after {
+  content: ""; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--c, var(--ink-1)); box-shadow: 0 0 0 2px var(--surface);
 }
 /* El color del grupo: Hoy rojo, 30 días ámbar, Corregir tinta. */
 .chinchetas button[data-grupo="hoy"] { --c: var(--ocupado); }
 .chinchetas button[data-grupo="dias30"] { --c: var(--entra); }
 .chinchetas button[data-grupo="corregir"] { --c: var(--ink-1); }
-.chinchetas button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-/* Con su rótulo puesto, la chincheta se apoya ARRIBA de la caja del rótulo
+.chinchetas button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+/* Con su rótulo puesto, el punto se apoya ARRIBA de la caja del rótulo
    (`ubicarChinchetas`): el código queda siempre a la vista. */
 .chinchetas button[data-sobre="rotulo"] { transform: translate(-50%, -100%); }
-/* A lo angosto, más chica: el plano mide la mitad. */
-@media (max-width: 560px) {
-  .chinchetas button { width: 20px; height: 20px; }
-  .chinchetas button svg { width: 12px; height: 12px; }
+
+/* El mueble señalado desde un renglón de «Para revisar». */
+.foco-piso { fill: rgb(var(--ocupado-rgb) / 0.14); stroke: var(--ocupado); pointer-events: none; }
+.foco-piso[data-grupo="dias30"] { fill: rgb(var(--entra-rgb) / 0.16); stroke: var(--entra); }
+.foco-piso[data-grupo="corregir"] { fill: rgb(var(--ink-1-rgb) / 0.08); stroke: var(--ink-2); }
+.foco-capa { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.foco-marca {
+  position: absolute; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  transform: translate(-50%, -50%);
+  --c: var(--ocupado); --c-rgb: var(--ocupado-rgb);
+  border: 1.5px solid rgb(var(--c-rgb) / 0.45);
 }
+.foco-marca::after {
+  content: ""; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--c); box-shadow: 0 0 0 2px var(--surface);
+}
+.foco-marca[data-grupo="dias30"] { --c: var(--entra); --c-rgb: var(--entra-rgb); }
+.foco-marca[data-grupo="corregir"] { --c: var(--ink-1); --c-rgb: var(--ink-1-rgb); }
+.foco-marca[data-sobre="rotulo"] { transform: translate(-50%, -100%); }
+/* El renglón que se está mirando, marcado como su mueble en el plano. */
+.sup .lista-r .fila-r:focus-within { background: var(--surface-2); }
 
 /* A lo angosto (390 px): sin desplazamiento de la página; las tablas ruedan
    adentro de su tarjeta y los encabezados envuelven. */

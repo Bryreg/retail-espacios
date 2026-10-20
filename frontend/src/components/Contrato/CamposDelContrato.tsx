@@ -85,14 +85,14 @@ export function AtajosDeFecha({ c }: { c: Contrato }) {
   );
 }
 
-/** «Precio fijo | % de las ventas». Sin rótulo a la vista (las dos opciones
- *  se explican solas y el grupo se nombra para el lector de pantalla): así
- *  entra en el renglón, con `extra` («+ Correo y nota») a la derecha, y con una
- *  o dos líneas la ficha no rueda. */
+/** «Precio fijo | % de las ventas», a todo el ancho del bloque 3 («Cómo se
+ *  cobra», que es su rótulo: el grupo se nombra igual para el lector de
+ *  pantalla). Con «% de las ventas», el % y el corte debajo. `extra` va
+ *  después, a todo el ancho. */
 export function ComoSeCobra({ c, extra }: { c: Contrato; extra?: React.ReactNode }) {
   return (
     <div className="campo cobro" data-cobro={c.cobroModo}>
-      <span className="seg" role="group" aria-label="Cómo se cobra">
+      <span className="seg seg-ancho" role="group" aria-label="Cómo se cobra">
         <button type="button" aria-pressed={c.cobroModo === "fijo"} onClick={() => c.setCobroModo("fijo")}>Precio fijo</button>
         <button type="button" aria-pressed={c.cobroModo === "ventas"} onClick={() => c.setCobroModo("ventas")}>% de las ventas</button>
       </span>
