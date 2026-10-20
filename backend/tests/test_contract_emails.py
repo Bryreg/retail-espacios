@@ -7,6 +7,10 @@ pruebas existen para que eso no vuelva a pasar por descuido.
 
 Se capturan los envíos en vez de mandarlos: lo que importa es el CONTENIDO, y
 un SMTP de mentira agrega una pieza que se puede romper sola.
+
+Desde el 2026-10-20 el de montaje no sale al guardar: espera la planometría
+(``services/montajes_pendientes.py``) y sale al cargarla, por el correo de la
+planilla (``bulk_leases._avisar``). Por eso ``_contratar`` la carga.
 """
 import re
 from datetime import timedelta
@@ -37,6 +41,7 @@ FIXTURES = [
 @pytest.fixture()
 def enviados(client, admin, monkeypatch):
     """Cada correo que la app intenta mandar, capturado tal cual."""
+    import app.routers.bulk_leases as bulk
     import app.routers.spaces as spaces
 
     capturados: list[dict] = []
@@ -45,7 +50,18 @@ def enviados(client, admin, monkeypatch):
         capturados.append({"to": recipients, "subject": subject, "html": html_body})
 
     monkeypatch.setattr(spaces, "send_mail_to_bg", fake)
+    # El de montaje sale al cargar la planometría, por la planilla.
+    monkeypatch.setattr(bulk, "send_mail_to_bg", fake)
+    monkeypatch.setattr(bulk, "correo_configurado", lambda: True)
     return capturados
+
+
+def _planometria(client, admin, lease_id):
+    """Cargarla es lo que libera el correo de montaje."""
+    r = client.post(f"/api/leases/{lease_id}/planometria", headers=admin,
+                    files={"file": ("plano.jpg", b"\xff\xd8\xff\xe0 jpg", "image/jpeg")})
+    assert r.status_code == 201, r.text
+    return r.json()
 
 
 def _texto(html: str) -> str:
@@ -94,6 +110,7 @@ def _contratar(client, admin, code="NAVE-PUN-01", monto=1_800_000):
         headers=admin,
     )
     assert r.status_code == 201, r.text
+    _planometria(client, admin, r.json()["id"])
     return r
 
 
@@ -182,6 +199,7 @@ def test_a_space_with_no_fixture_still_sends_the_email(client, admin, enviados):
         headers=admin,
     )
     assert r2.status_code == 201, r2.text
+    _planometria(client, admin, r2.json()["id"])
     montaje = _por_destinatario(enviados, "merca@galerias.co")
     assert montaje is not None
     assert "Dónde queda" not in _texto(montaje["html"])
@@ -229,6 +247,7 @@ def test_the_location_is_measured_edge_to_edge(client, admin, enviados):
         headers=admin,
     )
     assert r2.status_code == 201, r2.text
+    _planometria(client, admin, r2.json()["id"])
     texto = _texto(_por_destinatario(enviados, "merca@galerias.co")["html"])
     assert "2 m de las neveras" in texto, texto
 
@@ -285,7 +304,8 @@ def test_la_respuesta_dice_a_quien_se_aviso(client, admin, enviados, monkeypatch
     avisos = lease["avisos"]
     assert avisos["smtp_listo"] is True
     assert avisos["comercial"], "el comercial debía estar en la lista"
-    assert avisos["montaje"], "el mercaderista debía estar en la lista"
+    # El de montaje espera la planometría, y la respuesta lo dice.
+    assert avisos["montaje"] == [] and avisos["montaje_pendiente"] == [lease["id"]]
     # Y coincide con lo que de verdad se encoló.
     encolados = {d for e in enviados for d in e["to"]}
     prometidos = set(avisos["comercial"]) | set(avisos["montaje"]) | set(avisos["proveedor"])

@@ -1123,9 +1123,42 @@ la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
 (`_contratos_activos` ya no lo trae) y toda la que suma ingreso le agrega lo cobrado
 (`services/cobros.cobrado_por_contrato`). Ver *Rediseño de Vender, PR 1*.
 
+**El correo de montaje espera a la planometría.** Todo contrato nuevo nace con su fila en
+`montajes_pendientes` (`escribir_contrato` / `create_lease`) y `_avisar` no le manda el montaje
+mientras la tenga. Sale una vez, por `routers/montajes.avisar_los_listos`, cuando el contrato
+tiene planometría y, si es un porcentaje, zona confirmada. Un camino nuevo que cree contratos
+pasa por `escribir_contrato` (o deja la fila él mismo); uno que mande el montaje por su cuenta
+se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
+
 ---
 
 ## Qué está hecho
+
+### Rediseño, PR 2 (Supervisar): el correo de montaje espera a la planometría (2026-10-20)
+
+Decisión del dueño. Manda `docs/rediseno/vender-api.md` §4.
+
+- **El correo de montaje de cualquier contrato nuevo** —cara entera, parte o porcentaje, por
+  cualquier camino: planilla, Vender, contrato suelto, reserva confirmada, alta / confirmación /
+  renovación de un porcentaje— **sale cuando el contrato tiene su planometría** (`POST
+  /leases/{id}/planometria`, que se carga en Supervisar) y, en un porcentaje, además su zona
+  confirmada. Lo que pase último lo dispara (la carga de la planometría o la confirmación de la
+  distribución), sale **una vez** y su fila de `montajes_pendientes` se borra. Reemplazar la
+  planometría no lo reenvía. Comercial y el proveedor reciben su correo al guardar, como
+  siempre.
+- Cómo: `alta_de_contrato.escribir_contrato` (y `create_lease`) dejan la fila;
+  `bulk_leases._avisar` no manda el montaje de un contrato con fila; `routers/montajes.py`
+  (`avisar_los_listos`) lo manda cuando a la fila no le falta nada
+  (`services/montajes_pendientes.py`: lo que falta se mira, no se guarda). El correo es uno solo
+  para todos los caminos, el de la planilla, que ahora dice también **dónde queda** en palabras
+  (lo que tenía el del contrato suelto, que dejó de mandar el suyo).
+- Las respuestas lo dicen: `avisos.montaje` vacío y `avisos.montaje_pendiente: [lease_id]` al
+  guardar; la carga de la planometría devuelve `aviso_de_montaje` (`salio` /
+  `espera_distribucion` / `null`).
+- **Contratos de antes** (sin fila): nada cambia; su aviso ya salió al guardarlos.
+- **«Falta planometría»**: `GET /api/montajes/pendientes?sede=` (sólo administración, sin plata):
+  los contratos vigentes o por empezar con el aviso pendiente, con `falta_planometria`,
+  `falta_distribucion` y `dias_para_empezar`. Pruebas: `tests/test_montaje_espera_planometria.py`.
 
 ### Rediseño de Vender, PR 1: el servidor (2026-10-19)
 
@@ -1152,7 +1185,8 @@ archivo; esto es el resumen).
 - **El montaje de un porcentaje espera su zona**: al firmar el contrato de una participación
   sin zona confirmada, comercial y el proveedor reciben su correo y el de montaje queda en
   `montajes_pendientes`; sale después de `POST /participaciones/distribucion/confirmar` (válida)
-  y se borra. `_avisar` ganó `roles=` y `sin_montaje=`.
+  y se borra. `_avisar` ganó `roles=`. (En el PR 2 la espera vale para todo contrato nuevo y
+  también espera la planometría: ver la sección siguiente.)
 - **Los correos dicen «Valor del contrato»** (lo guardado es el total del plazo) y, si se
   escribió por mes, «$ 1.800.000 ($ 600.000 al mes)» (`services/condiciones.py`): la planilla,
   el contrato suelto, el aviso de vencimiento y Vender.
@@ -4827,12 +4861,14 @@ nadie.)
 
 ## El correo de un contrato
 
-Guardar un contrato dispara **tres** correos, uno por rol:
+Un contrato dispara **tres** correos, uno por rol. Comercial y el proveedor, al guardarlo;
+el de montaje, **cuando el contrato tiene su planometría** (y, en un porcentaje, su zona
+confirmada), una vez — ver *El correo de montaje espera a la planometría* (PR 2):
 
 | Para | Qué lleva |
 |---|---|
-| **Comercial** (gerente + admin de la sede) | resumen con el **valor mensual** |
-| **Montaje** (mercaderista de la sede) | orden de trabajo **sin valores**, con dónde queda en palabras y el enlace `/?montar=SEDE-CODE` |
+| **Comercial** (gerente + admin de la sede) | resumen con el **valor del contrato** |
+| **Montaje** (mercaderista de la sede) | orden de trabajo **sin valores**, con la parte, dónde queda en palabras y el enlace firmado `/?montar=SEDE-CODE&t=…` |
 | **Proveedor** | constancia de lo acordado, con el valor. Sólo si tiene correo cargado |
 
 Los destinatarios salen de la libreta (`notify_contacts` en `app_config`), por sede

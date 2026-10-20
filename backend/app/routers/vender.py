@@ -5,8 +5,9 @@ Sólo administración. ``?validar=1`` revisa todo y no escribe nada: es la vista
 previa antes de habilitar «Guardar». Sin ``validar``: un solo commit; cualquier
 error hace rollback y no queda nada escrito —ni contratos, ni términos, ni
 bitácora—. Los correos salen DESPUÉS del commit, en un solo envío con todas
-las filas (``bulk_leases._avisar``); el de montaje de un porcentaje sin zona
-confirmada queda pendiente (``montajes_pendientes``).
+las filas (``bulk_leases._avisar``); el de montaje queda pendiente hasta que
+cada contrato tenga su planometría (y un porcentaje, su zona confirmada):
+``services/montajes_pendientes.py``.
 """
 from datetime import date
 from typing import Literal, Optional
@@ -100,8 +101,7 @@ def vender(
     filas = list(hecho.filas) + [fila_de_participacion(*x) for x in hecho.de_participacion]
     avisos = None
     if filas:
-        avisos = _avisar(db, background_tasks, cuerpo.sede, filas, cliente,
-                         sin_montaje=hecho.sin_montaje).model_dump()
+        avisos = _avisar(db, background_tasks, cuerpo.sede, filas, cliente).model_dump()
     return {
         "contratos": hecho.contratos,
         "participaciones": hecho.participaciones,

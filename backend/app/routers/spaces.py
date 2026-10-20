@@ -1,12 +1,11 @@
 from datetime import date
 from typing import Optional
-from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
-from app.auth import create_mount_token, dias_del_enlace_de_montaje, require_admin, require_auth
+from app.auth import require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.fechas import hoy
@@ -21,14 +20,15 @@ from app.schemas.spaces import (
 from app.services.contacts import recipients_for
 from app.services.candado import tomar_candados
 from app.services.layout_lookup import (
-    NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, como_se_venden_sus_piezas, contratos_que_chocan, describe_location,
+    NO_COMERCIALIZABLE, NUNCA_ALQUILABLE, SIN_CARA_B, como_se_venden_sus_piezas, contratos_que_chocan,
     find_fixture_by_space_code, forma_canonica, frase_de_choque, por_que_no_se_vende,
 )
 from app.services.partes import cantidad_de, es_participacion, partir_codigo, texto_para_montar
 from app.services.ciclo_participaciones import actor_de, al_cancelar_contrato
+from app.services.montajes_pendientes import dejar_pendiente
 from app.services.participaciones import bloqueo_por_participaciones
 from app.services.mailer import (
-    app_base_url, html_shell, send_mail_to_bg, correo_configurado,
+    html_shell, send_mail_to_bg, correo_configurado,
 )
 
 # Every route requires a valid token; mutations additionally require admin.
@@ -558,6 +558,9 @@ def create_lease(
     # `flush` asigna el id sin cerrar la transacción, así que la bitácora puede
     # nombrar el contrato y seguir viajando con el mismo commit.
     db.flush()
+    # El aviso de montaje espera la planometría (decisión del dueño,
+    # 2026-10-20): sale al cargarla, una vez (`services/montajes_pendientes.py`).
+    dejar_pendiente(db, lease)
     anotar(
         db, request, rol, "contrato.alta",
         entidad="contrato", entidad_id=lease.id,
@@ -592,8 +595,9 @@ def create_lease(
     avisos = AvisosContrato(
         smtp_listo=listo,
         comercial=who["comercial"] if listo else [],
-        montaje=who["montaje"] if listo else [],
+        montaje=[],
         proveedor=[supplier.email] if (listo and supplier.email) else [],
+        montaje_pendiente=[lease.id],
     )
 
     # Comercial: gerente operacional + administrador de la sede.
@@ -614,56 +618,10 @@ def create_lease(
             send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
         )
 
-    # Montaje: orden de trabajo para el mercaderista. SIN valores.
-    if who["montaje"]:
-        subject = f"Montar {space.code} — {space.sede or 'sede'}"
-        # Dónde queda, en palabras. Se calcula ACÁ y no dentro del
-        # BackgroundTask: la tarea corre después de que la sesión de la request
-        # se cerró y no abre una propia. El plano dibujado vive del otro lado
-        # del enlace — Gmail descarta el SVG embebido, así que un mapa dentro
-        # del correo llegaría como un hueco.
-        ubicacion = describe_location(db, space.code, space.sede or "")
-        rows = [
-            ("Sede", space.sede or "—"),
-            ("Espacio", f"{space.code} — {space.name}"),
-            ("Qué va", f"{supplier.name}{f' · {lease.marca}' if lease.marca else ''}"),
-            ("Desde", str(lease.start_date)),
-            ("Hasta", str(lease.end_date)),
-        ]
-        if ubicacion:
-            rows.insert(2, ("Dónde queda", ubicacion))
-        if fila_parte:
-            rows.insert(2, fila_parte)
-        # Enlace directo al espacio, FIRMADO. El token va en el enlace y no hay
-        # contraseña de por medio: quien monta abre el correo, toca y está
-        # adentro de la pantalla de ese espacio y de ningún otro.
-        #
-        # Antes el enlace era pelado y del otro lado había un login con la
-        # contraseña compartida del rol worker. Eso ponía a la mercaderista
-        # dentro del tablero —el mapa de la sede entera, la tabla con el
-        # proveedor y el período de cada espacio— para responder una sola
-        # pregunta, y dejaba una contraseña compartida circulando por correo
-        # que sobrevive a la persona que deja de trabajar ahí.
-        # El enlace lleva el cliente adentro del token. Sin eso, el enlace de
-        # un supermercado abriría la pantalla de montaje contra la base de otro.
-        token = create_mount_token(
-            space.code, cliente.slug, days=dias_del_enlace_de_montaje(lease.start_date),
-            contrato=lease.id,
-        )
-        link = f"{app_base_url()}/?montar={quote(space.code)}&t={quote(token)}"
-        footer = (
-            "El enlace abre el espacio señalado en el plano, y ahí mismo se "
-            "confirma el montaje — sin contraseña. "
-            "<strong>La foto es obligatoria</strong>: es la prueba de que la "
-            "exhibición quedó armada.<br><br>"
-            f'<a href="{link}" '
-            'style="color:#0369A1;font-weight:600;">Ver dónde queda y confirmar</a>'
-            '<br><br><span style="color:#94A3B8;font-size:12px;">'
-            "El enlace es personal y vence un mes después de que arranca el contrato.</span>"
-        )
-        background_tasks.add_task(
-            send_mail_to_bg, who["montaje"], subject, html_shell(subject, rows, footer)
-        )
+    # Montaje: la orden de trabajo para el mercaderista (SIN valores) ya no sale
+    # acá. Espera a que el contrato tenga su planometría y sale entonces, una
+    # vez, por el mismo correo que la planilla (`routers/montajes.py` →
+    # `bulk_leases._avisar`, que dice también dónde queda).
 
     # Proveedor: constancia de lo acordado. Es el único que sale de la empresa,
     # así que solo se envía si el proveedor tiene correo cargado.

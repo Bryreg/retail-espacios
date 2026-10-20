@@ -69,6 +69,10 @@ class AvisosContrato(BaseModel):
     comercial: list[str] = []
     montaje: list[str] = []
     proveedor: list[str] = []
+    #: Los contratos (por id) cuyo aviso de montaje todavía espera: sale cuando
+    #: tengan su planometría (y, en un porcentaje, su zona confirmada), una vez
+    #: (``services/montajes_pendientes.py``). Al guardar, son todos.
+    montaje_pendiente: list[int] = []
 
 
 class LeaseOut(LeaseBase):

@@ -23,6 +23,7 @@ from app.routers import participaciones as participaciones_routes
 from app.routers import vender as vender_routes
 from app.routers import cobros as cobros_routes
 from app.routers import reservas as reservas_routes
+from app.routers import montajes as montajes_routes
 from app.models.models import Space, SpaceStatus
 from app.services.subidas import LimiteDeCuerpo
 # Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
@@ -478,6 +479,9 @@ app.include_router(cobros_routes.router, prefix="/api")
 # La reserva de una cara entera o de una parte: listar, confirmar y cancelar
 # (`routers/reservas.py`). Sólo administración.
 app.include_router(reservas_routes.router, prefix="/api")
+# Los avisos de montaje que esperan la planometría o la zona («Falta
+# planometría» de Supervisar, `routers/montajes.py`). Sólo administración.
+app.include_router(montajes_routes.router, prefix="/api")
 # Quién hizo qué. Sólo la lee el administrador.
 app.include_router(bitacora_routes.router, prefix="/api")
 

@@ -5,7 +5,10 @@ qué cuelga del contrato y no del mueble.
 
 Tres lectores, tres necesidades distintas:
 
-· el **admin** la carga al cerrar el trato y la mira después para comparar;
+· el **admin** la carga al cerrar el trato (en Supervisar) y la mira después
+  para comparar. Cargarla es lo que libera el correo de montaje de un contrato
+  nuevo (``services/montajes_pendientes.py``): sale entonces, una vez —en un
+  porcentaje, si además su zona ya está confirmada—. Reemplazarla no lo repite;
 · el **mercaderista** la abre al montar, y llega por el CÓDIGO del espacio (el
   enlace del correo no sabe de contratos), así que hay un endpoint que resuelve
   espacio → contrato vigente → planometría;
@@ -17,16 +20,20 @@ Tres lectores, tres necesidades distintas:
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session, defer
 
 from app.auth import require_admin, require_auth, require_auth_or_query_token
+from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.models.models import LeaseFile, Space, SpaceLease
+from app.models.vender import MontajePendiente
+from app.routers.montajes import avisar_los_listos
+from app.services import montajes_pendientes
 from app.services.contratos import contrato_para_montar
 from app.services.subidas import leer_con_tope
 
@@ -45,10 +52,21 @@ TIPOS = {
     ".pdf": "application/pdf",
 }
 
-KIND = "planometria"
+KIND = montajes_pendientes.PLANOMETRIA
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
+
+class AvisoDeMontajeOut(BaseModel):
+    """Qué pasó con el correo de montaje al cargar la planometría.
+
+    ``salio``: se encoló ahora (``montaje``: a quién; vacío sin SMTP o sin
+    mercaderista cargado). ``espera_distribucion``: es un porcentaje y su zona
+    todavía no está confirmada; sale al confirmarla."""
+    estado: Literal["salio", "espera_distribucion"]
+    smtp_listo: bool = False
+    montaje: list[str] = []
+
 
 class PlanometriaOut(BaseModel):
     id: int
@@ -58,6 +76,9 @@ class PlanometriaOut(BaseModel):
     size: int
     subido_por: Optional[str] = None
     uploaded_at: Optional[datetime] = None
+    #: Sólo al cargarla, y sólo si el contrato esperaba para avisar al montaje;
+    #: None en un contrato de antes de la regla o ya avisado (no se repite).
+    aviso_de_montaje: Optional[AvisoDeMontajeOut] = None
 
     model_config = {"from_attributes": True}
 
@@ -86,9 +107,11 @@ def _de_contrato(db: Session, lease_id: int) -> Optional[LeaseFile]:
 )
 async def subir_planometria(
     lease_id: int,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     subido_por: str = Form(""),
     db: Session = Depends(get_db),
+    cliente: Cliente = Depends(cliente_del_pedido),
 ):
     lease = db.query(SpaceLease).filter(SpaceLease.id == lease_id).first()
     if not lease:
@@ -140,7 +163,27 @@ async def subir_planometria(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return row
+    salida = PlanometriaOut.model_validate(row)
+    salida.aviso_de_montaje = _avisar_montaje(db, background_tasks, lease_id, cliente)
+    return salida
+
+
+def _avisar_montaje(db: Session, background_tasks: BackgroundTasks, lease_id: int,
+                    cliente: Cliente) -> Optional[AvisoDeMontajeOut]:
+    """Si el contrato esperaba su planometría para avisar al montaje: sale
+    ahora, salvo que sea un porcentaje sin zona confirmada (entonces sale al
+    confirmar la distribución). Sin fila pendiente no hay nada que hacer: un
+    contrato de antes de la regla, o una planometría que reemplaza a otra."""
+    pendiente = db.get(MontajePendiente, lease_id)
+    if pendiente is None:
+        return None
+    _falta_planometria, falta_distribucion = montajes_pendientes.que_falta(db, pendiente)
+    if falta_distribucion:
+        return AvisoDeMontajeOut(estado="espera_distribucion")
+    avisos = avisar_los_listos(db, background_tasks, montajes_pendientes.listos(db, lease_id=lease_id), cliente)
+    if avisos is None:
+        return None
+    return AvisoDeMontajeOut(estado="salio", smtp_listo=avisos.smtp_listo, montaje=avisos.montaje)
 
 
 # ─── Leer ─────────────────────────────────────────────────────────────────────

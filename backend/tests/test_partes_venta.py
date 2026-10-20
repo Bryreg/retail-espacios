@@ -340,7 +340,12 @@ def test_los_tres_correos_dicen_cual_puerta_y_el_de_montaje_sin_plata(client, ad
     client.post("/api/suppliers/find-or-create", headers=admin,
                 json={"name": "Postobón", "email": "ventas@postobon.co"})
     _plano(client, admin, [_nevera()])
-    _vendido(client, admin, "NEV-03-PU2", valor=350_000)
+    f = _vendido(client, admin, "NEV-03-PU2", valor=350_000)
+    # El de montaje sale al cargar la planometría (2026-10-20).
+    assert len(enviados) == 2, enviados
+    r = client.post(f"/api/leases/{f['lease_id']}/planometria", headers=admin,
+                    files={"file": ("plano.jpg", b"\xff\xd8\xff\xe0 jpg", "image/jpeg")})
+    assert r.status_code == 201, r.text
     assert len(enviados) == 3, enviados
     for to, _asunto, html in enviados:
         assert "Puerta 2 de 3" in html, (to, html)
