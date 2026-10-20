@@ -54,6 +54,13 @@ def _correos(monkeypatch, client, admin):
     return enviados
 
 
+def _planometria(client, admin, lease_id):
+    r = client.post(f"/api/leases/{lease_id}/planometria", headers=admin,
+                    files={"file": ("plano.jpg", b"\xff\xd8\xff\xe0 jpg", "image/jpeg")})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
 def _cuantos(modelo):
     db = tp._bd()
     try:
@@ -95,8 +102,9 @@ def test_guarda_enteras_partes_y_porcentajes_de_una_vez(client, admin, monkeypat
         acciones = sorted(a for (a,) in db.query(AuditEntry.accion).filter(
             AuditEntry.accion.in_(["contrato.alta", "participacion.contrato"])))
         assert acciones == ["contrato.alta", "contrato.alta", "participacion.contrato"]
-        # El montaje del porcentaje espera la zona.
-        assert [m.lease_id for m in db.query(MontajePendiente).all()] == [p["lease_id"]]
+        # El montaje de los tres espera su planometría (y el porcentaje, su zona).
+        assert sorted(m.lease_id for m in db.query(MontajePendiente).all()) == sorted(
+            [r["contratos"][0]["lease_id"], r["contratos"][1]["lease_id"], p["lease_id"]])
     finally:
         db.close()
 
@@ -105,10 +113,10 @@ def test_guarda_enteras_partes_y_porcentajes_de_una_vez(client, admin, monkeypat
     assert len(comercial) == 1
     assert "Valor del contrato" in comercial[0] and "Total mensual" not in comercial[0]
     assert "$ 500.000 ($ 500.000 al mes)" in comercial[0]
-    (montaje,) = [(asunto, h) for to, asunto, h in enviados if "por montar" in asunto]
-    assert montaje[0].startswith("2 espacios por montar"), "el porcentaje sin zona no va a quien monta"
-    assert "NAVE-GON-01-PC1" not in montaje[1]
-    assert r["avisos"]["montaje"] == ["m@x.co"]
+    assert not [1 for _to, asunto, _h in enviados if "por montar" in asunto], "salió el montaje sin planometría"
+    assert r["avisos"]["montaje_pendiente"] == sorted(
+        [r["contratos"][0]["lease_id"], r["contratos"][1]["lease_id"], p["lease_id"]])
+    assert r["avisos"]["montaje"] == [], "el de montaje espera la planometría"
 
 
 @RELOJ
@@ -324,6 +332,9 @@ def test_el_montaje_de_un_porcentaje_sale_al_confirmar_la_distribucion(client, a
     tp._plano(client, admin)
     enviados = _correos(monkeypatch, client, admin)
     a = tp._alta(client, admin, pb=2500, correo="trade@postobon.co")["termino"]
+    # Con la planometría cargada, el porcentaje todavía espera su zona.
+    assert _planometria(client, admin, a["lease_id"])["aviso_de_montaje"] == {
+        "estado": "espera_distribucion", "smtp_listo": False, "montaje": []}
     assert not [1 for _to, asunto, _h in enviados if "por montar" in asunto], "salió el montaje sin zona"
     assert [1 for _to, asunto, _h in enviados if "Confirmación" in asunto], "el proveedor sí recibe su constancia"
     assert _cuantos(MontajePendiente) == 1
@@ -341,12 +352,15 @@ def test_el_montaje_de_un_porcentaje_sale_al_confirmar_la_distribucion(client, a
     tp._distribuir(client, admin, "confirmar", "GON-01", 2, zonas)
     assert len([1 for _to, asunto, _h in enviados if "por montar" in asunto]) == 1
 
-    # Una renovación conserva la zona: su montaje sale enseguida.
+    # Una renovación conserva la zona: su montaje sale al cargar su planometría.
     t = tp._participacion(tp._cara(client, admin), 1)["terminos"][0]
     r = client.post(f"/api/participaciones/{t['id']}/renovar", headers=admin, json={
         "version": t["version"], "tipo": "contrato", "desde": D(2027, 2, 1), "hasta": D(2027, 2, 28),
         "valor_mensual": 1_000_000})
     assert r.status_code == 201, r.text
+    assert len([1 for _to, asunto, _h in enviados if "por montar" in asunto]) == 1
+    assert _cuantos(MontajePendiente) == 1
+    assert _planometria(client, admin, r.json()["termino"]["lease_id"])["aviso_de_montaje"]["estado"] == "salio"
     assert len([1 for _to, asunto, _h in enviados if "por montar" in asunto]) == 2
     assert _cuantos(MontajePendiente) == 0
 

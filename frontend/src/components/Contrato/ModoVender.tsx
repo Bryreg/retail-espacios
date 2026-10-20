@@ -478,7 +478,14 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
       {linea("Comercial", avisos.comercial, "· con el valor")}
       {linea("Montaje", avisos.montaje, "· sin valores")}
       {linea("Proveedor", avisos.proveedor)}
-      {avisos.montaje.length === 0 && (
+      {/* El aviso de montaje espera la planometría (rediseño, PR 2): no salió
+          todavía, y decir «nadie va a montar» sería falso. */}
+      {avisos.montaje.length === 0 && (avisos.montaje_pendiente?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 3, color: "var(--ink-3)" }}>
+          El aviso de montaje sale cuando se cargue la planometría en Supervisar.
+        </div>
+      )}
+      {avisos.montaje.length === 0 && !(avisos.montaje_pendiente?.length) && (
         <div style={alerta}>
           Nadie va a montar: no hay mercaderista cargado para esta sede.
         </div>

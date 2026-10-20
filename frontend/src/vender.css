@@ -144,6 +144,17 @@
   .barra-app { gap: 10px !important; padding: 0 12px !important; }
   .barra-app .pestana-app { padding: 0 7px !important; }
 }
+/* A 480 px o menos las cuatro pestañas y los controles no entran en un
+   renglón: la marca y los controles arriba, las pestañas en el renglón de
+   abajo, y la sincronización es el punto solo (la palabra queda en su `title`
+   y su `aria-label`). Nada se corta. */
+@media (max-width: 480px) {
+  .barra-app { flex-wrap: wrap; height: auto !important; row-gap: 0; padding-top: 6px !important; }
+  .barra-app .sep-app { display: none; }
+  .barra-app .pestanas-app { order: 3; flex: 1 0 100%; height: 40px; }
+  .barra-app .der-app { gap: 4px !important; }
+  .sync-palabra { display: none; }
+}
 
 /* LA HOJA DE SUPERVISAR: la rejilla de Vender, con otras cuatro tarjetas.
    Las mismas dos columnas (1004 : 402) y cada fila del alto del panel del
@@ -161,19 +172,41 @@
   grid-auto-rows: var(--alto-plano);
   gap: 10px;
 }
-@media (max-width: 1100px) {
+/* Por debajo de 1000 px, una sola columna con «Para revisar» primero (el
+   dibujo aprobado de Supervisar, PR 2). Las filas siguen midiendo
+   `--alto-plano`: el plano sigue midiendo lo mismo que en Vender. */
+@media (max-width: 1000px) {
   .supervisar-hoja { grid-template-columns: minmax(0, 1fr); }
+  .supervisar-hoja > .col-revisar { order: -1; }
 }
 
-/* EL ALTO DEL PLANO, el mismo en las dos pantallas. En Vender lo pone la
-   rejilla de la hoja: la fila 1 se lleva 550/804 de lo que queda debajo de las
-   dos barras y el hueco entre filas, y nunca menos de 448 px (`--fila1`).
-   Supervisar no tiene hoja —es un documento que rueda— y hace la misma cuenta
-   con esta variable: así el plano mide lo mismo al pasar de una a la otra. Los
-   132 px son la barra de la aplicación, la de la pantalla con su margen, el
-   aire de arriba y de abajo de la hoja y el hueco entre sus filas. */
-:root {
-  --alto-plano: max(448px, calc((100dvh - 132px) * 550 / 804));
+/* EL ALTO DEL PLANO, el mismo en las dos pantallas — por construcción.
+   Era una aproximación: Vender lo sacaba de su rejilla (`550fr` con pisos) y
+   Supervisar de una cuenta con «132 px de marco» a ojo, y el verificador midió
+   520 / 525 a 1440×900, 430 / 448 a 1440×760 y otro alto a 1100 (donde Vender
+   pasaba a `62vw`). Ahora las DOS filas del plano miden `--alto-plano`, la
+   misma cuenta cerrada que hacía la rejilla de Vender:
+
+       fila 1 = max(piso 1, min(F × 550/804, F − piso 2))
+
+   con F lo que queda debajo de la barra de la pantalla: el alto MEDIDO del área
+   de las pantallas (`--alto-area`, que `Dashboard.tsx` escribe en
+   `.area-pantallas`: ya descuenta la barra de la aplicación y el aviso de la
+   cuenta; antes de medir, `100dvh` menos la barra) menos el marco de la hoja de
+   Vender (relleno de arriba y abajo, la barra de la pantalla con su margen y
+   el hueco entre filas). Las dos pantallas leen los mismos números a la misma
+   ventana, y en Vender la fila 2 se queda con el resto. Todo vive en el mismo
+   elemento: un `var()` adentro de otro se resuelve donde se declara. */
+.area-pantallas {
+  /* 10 + 12 de relleno, 40 + 8 de la barra de la pantalla, 10 de hueco. */
+  --marco-sede: 80px;
+  --fila1: 448px;
+  --fila2: 248px;
+  --alto-plano: max(var(--fila1), min((var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede)) * 550 / 804, var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede) - var(--fila2)));
+}
+/* En ventana baja la hoja de Vender se aprieta: 8 + 8, 36 + 6 y 8. */
+@media (max-height: 880px) {
+  .area-pantallas { --marco-sede: 66px; --fila1: 430px; --fila2: 240px; }
 }
 
 .vender {
@@ -187,8 +220,6 @@
      miden, apretadas, la ficha del contrato y la tabla de la tarifa. Si la
      ventana no da para los dos pisos, el documento rueda; nunca esconde. */
   --aire-v: 10px;
-  --fila1: 448px;
-  --fila2: 248px;
 
   /* El plano: tres caras por estado. Los hex salen de los tokens, no de una
      paleta nueva. `-i` izquierda · `-d` derecha · `-t` tapa. Los colores del
@@ -235,7 +266,10 @@ html[data-tema="oscuro"] .vender {
   display: grid;
   gap: var(--aire-v);
   grid-template-columns: 1004fr 402fr;
-  grid-template-rows: minmax(var(--fila1), 550fr) minmax(var(--fila2), 254fr);
+  /* La fila del plano mide `--alto-plano`, lo mismo que en Supervisar; si la
+     barra de la pantalla se parte en dos renglones (o se abre el periodo) y
+     no entra, cede antes que dejar la tarifa bajo su piso. */
+  grid-template-rows: max(var(--fila1), min(var(--alto-plano), 100% - var(--fila2) - var(--aire-v))) minmax(var(--fila2), 1fr);
 }
 
 /* La barra de la pantalla es lo único que D no tenía: su rail ERA la barra de
@@ -312,7 +346,8 @@ html[data-tema="oscuro"] .vender {
 }
 
 /* --- 01 · EL PLANO ------------------------------------------------------ */
-.vender .lienzo {
+.vender .lienzo,
+.sup .vp-plano > .lienzo {
   flex: 1;
   min-height: 0;
   padding: 0 14px 10px;
@@ -320,6 +355,10 @@ html[data-tema="oscuro"] .vender {
   overflow: hidden;
   display: flex;
 }
+/* El encabezado del plano mide lo mismo en las dos pantallas: Supervisar
+   suma el filtro (24 px) a la clave, y sin este piso su lienzo quedaba unos
+   píxeles más bajo que el de Vender. */
+.vp-plano > header { min-height: 44px; }
 .vender .lienzo > svg {
   width: 100%;
   height: 100%;
@@ -878,14 +917,14 @@ html[data-tema="oscuro"] .vender {
    baja es el aire. Cada valor de acá es un relleno o un interlineado, nunca un
    cuerpo de la escala. */
 @media (max-height: 880px) {
-  .vender { --aire-v: 8px; --fila1: 430px; --fila2: 240px; padding: 8px 10px 8px !important; }
+  .vender { --aire-v: 8px; padding: 8px 10px 8px !important; }
   /* La barra de la pantalla es lo único que D no tenía: su rail era la barra
      de la aplicación. Acá hay dos, así que en ventana baja ésta se aprieta —
      sigue diciendo lo mismo, con menos aire. */
   .vender > .barra-pantalla { margin-bottom: 6px; }
   .vender > .barra-pantalla .pieza { height: 36px; }
   .vp > header { padding: 8px 14px 5px; }
-  .vender .lienzo { padding: 0 12px 8px; }
+  .vender .lienzo, .sup .vp-plano > .lienzo { padding: 0 12px 8px; }
   .vender .graf { padding: 0 12px 6px; }
   .vender .cuerpo { padding: 0 14px 0; }
   .espacios { gap: 5px; }
@@ -929,8 +968,7 @@ html[data-tema="oscuro"] .vender {
      `height:100dvh; overflow:hidden`, así que un documento más alto que la
      ventana no se puede alcanzar — se recorta. Con la barra acá, se alcanza. */
   .vender { overflow-y: auto; }
-  .vender-hoja { grid-template-rows: minmax(var(--fila1), auto) minmax(var(--fila2), auto); }
-  .vender .lienzo { min-height: 300px; }
+  .vender-hoja { grid-template-rows: var(--alto-plano) minmax(var(--fila2), auto); }
 }
 
 /* --- ANGOSTO: razonable, no perfecto ------------------------------------
@@ -944,7 +982,8 @@ html[data-tema="oscuro"] .vender {
     grid-auto-rows: min-content;
   }
   .vender-hoja > .vp { grid-area: auto !important; min-height: 0; }
-  .vender .lienzo { height: 62vw; min-height: 280px; }
+  /* El plano, del mismo alto que en Supervisar (era `62vw`). */
+  .vender-hoja > .vp-plano { height: var(--alto-plano); }
   .herr { right: 12px; top: auto; bottom: 12px; }
   /* Las herramientas bajan a la esquina de abajo a la derecha: la ayuda de
      los gestos termina antes de ellas (tres botones de 32 px, dos huecos de
@@ -1153,6 +1192,12 @@ html[data-tema="oscuro"] .vender {
 .eitem > .aviso-error,
 .eitem > .aviso-acciones { flex: 0 0 100%; min-width: 0; }
 .eitem > .seg-linea { flex: 0 1 auto; margin-top: 2px; }
+/* «Entera · Por tramos · Por entrepaños · Por porcentaje» no entra a 390 px:
+   envuelve a un segundo renglón en vez de esconder la cuarta detrás de un
+   desplazamiento que nadie ve. */
+.vender .seg.seg-linea { flex-wrap: wrap; overflow: visible; }
+/* Una forma que no se puede: apagada, y al tocarla dice por qué en una línea. */
+.vender .seg button[aria-disabled="true"] { color: var(--ink-4); cursor: not-allowed; }
 
 /* «PUN-02 hoy no se vende por entrepaños…»: lo que haría falta, o por qué no. */
 .oferta {

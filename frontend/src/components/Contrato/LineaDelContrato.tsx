@@ -57,12 +57,17 @@ export function FormasDeLaLinea({ l, formas, actual, posible, onElegir }: {
   const [pedida, setPedida] = useState<FormaDeLaLinea | null>(null);
   const [cambiando, setCambiando] = useState(false);
   const [fallo, setFallo] = useState<string | null>(null);
-  useEffect(() => { setPedida(null); setFallo(null); }, [actual]);
+  /** La forma apagada que se tocó: su porqué se dice recién entonces, en una
+   *  línea (antes el aviso estaba siempre arriba de la barra, aunque nadie
+   *  quisiera cambiar nada). */
+  const [probada, setProbada] = useState<FormaDeLaLinea | null>(null);
+  useEffect(() => { setPedida(null); setFallo(null); setProbada(null); }, [actual]);
   const deCadaUna = formas.map((x) => ({ ...x, r: x.forma === actual ? ({ listo: true } as const) : posible(x.forma) }));
   const r = pedida ? deCadaUna.find((x) => x.forma === pedida)?.r ?? null : null;
-  /* Las que no se pueden se ven, apagadas, con su porqué en una línea (sin
-     nombrar a nadie). Si varias dicen lo mismo, se dice una vez. */
-  const porques = [...new Set(deCadaUna.map((x) => ("problema" in x.r ? x.r.problema : null)).filter((x): x is string => !!x))];
+  /* Las que no se pueden se ven, apagadas, con su porqué en el `title`; y si
+     igual se toca una, el porqué en una línea (sin nombrar a nadie). */
+  const rProbada = probada ? deCadaUna.find((x) => x.forma === probada)?.r ?? null : null;
+  const porque = rProbada && "problema" in rProbada ? rProbada.problema : null;
   const confirmar = async () => {
     if (!pedida || !r || !("cambio" in r)) return;
     setCambiando(true);
@@ -83,10 +88,13 @@ export function FormasDeLaLinea({ l, formas, actual, posible, onElegir }: {
             key={forma}
             type="button"
             aria-pressed={forma === actual}
-            disabled={"problema" in rr || cambiando}
+            aria-disabled={"problema" in rr || undefined}
+            disabled={cambiando}
             title={"problema" in rr ? rr.problema : undefined}
             onClick={() => {
               setFallo(null);
+              if ("problema" in rr) { setPedida(null); setProbada((x) => (x === forma ? null : forma)); return; }
+              setProbada(null);
               if (forma === actual) { setPedida(null); return; }
               if ("listo" in rr) { setPedida(null); void onElegir(forma, null); return; }
               setPedida(forma);
@@ -96,10 +104,10 @@ export function FormasDeLaLinea({ l, formas, actual, posible, onElegir }: {
           </button>
         ))}
       </span>
-      {porques.length > 0 && !pedida && (
+      {porque && !pedida && (
         <span className="oferta no" role="note" data-no-se-cambia>
           <Lock {...ICONO} />
-          <span>{porques.join(" ")}</span>
+          <span>{porque}</span>
         </span>
       )}
       {pedida && r && "cambio" in r && (

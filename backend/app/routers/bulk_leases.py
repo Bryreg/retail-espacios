@@ -40,7 +40,7 @@ from app.database import get_db
 from app.models.models import SpaceLease, Supplier
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
-    Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, frase_de_choque, frase_tomada,
+    Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, describe_location, frase_de_choque, frase_tomada,
     motivo_para_no_vender_parte, sin_prefijo_de_sede,
 )
 from app.services.alta_de_contrato import (
@@ -54,6 +54,7 @@ from app.services.partes import (
     texto_para_montar,
 )
 from app.services.importar_del_plano import caras_con_participaciones
+from app.services.montajes_pendientes import ids_pendientes
 from app.services.participaciones import bloqueo_por_participaciones, codigo_cara
 from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
@@ -697,7 +698,6 @@ def _avisar(
     creados: list[FilaOut],
     cliente: Cliente,
     roles=ROLES,
-    sin_montaje=frozenset(),
 ) -> AvisosContrato:
     """Un correo por rol para TODA la tanda, no uno por contrato.
 
@@ -709,11 +709,12 @@ def _avisar(
     Devuelve a quién se le encoló algo, que es lo que la pantalla muestra al
     cerrar. Sin SMTP configurado no se encola nada y se dice.
 
-    ``roles``: a quiénes se avisa (el montaje de una participación sale
-    después, cuando su cara tiene la distribución confirmada, sólo con
-    ``("montaje",)``). ``sin_montaje``: los contratos (por ``lease_id``) cuyo
-    aviso de montaje queda pendiente (``montajes_pendientes``): van a comercial
-    y al proveedor, no a quien monta.
+    ``roles``: a quiénes se avisa. El montaje de un contrato que todavía tiene
+    fila en ``montajes_pendientes`` —todo contrato recién guardado: espera su
+    planometría y, si es un porcentaje, su zona confirmada— no sale: va a
+    comercial y al proveedor, y la pantalla lo sabe por ``montaje_pendiente``.
+    Sale después, una vez, sólo con ``("montaje",)``
+    (``routers/montajes.avisar_los_listos``).
 
     El valor se dice «Valor del contrato» (lo que se guarda es el total del
     plazo) y, si se escribió por mes, con lo de cada mes entre paréntesis
@@ -722,9 +723,20 @@ def _avisar(
     listo = correo_configurado()
     encolados = AvisosContrato(smtp_listo=listo, comercial=[], montaje=[], proveedor=[])
     condiciones, cobros = condiciones_de(db, [c.lease_id for c in creados])
+    sin_montaje = ids_pendientes(db, [c.lease_id for c in creados]) if "montaje" in roles else set()
+    encolados.montaje_pendiente = sorted(sin_montaje)
 
     def valor_de(f: FilaOut) -> str:
         return texto_del_valor(f.valor, condiciones.get(f.lease_id), cobros.get(f.lease_id))
+
+    def ubicacion(f: FilaOut, sede: str) -> str:
+        """Dónde queda, en palabras, para quien monta (lo que decía el correo
+        del contrato suelto, que desde el 2026-10-20 sale por acá). Se calcula
+        ACÁ y no en la tarea, que corre con la sesión ya cerrada; Gmail
+        descarta el SVG embebido, así que el plano dibujado vive del otro lado
+        del enlace."""
+        texto = describe_location(db, f.codigo or "", f.sede or sede)
+        return f"Dónde queda: {escape(texto)}<br>" if texto else ""
 
     por_sede: dict[str, list[FilaOut]] = defaultdict(list)
     for c in creados:
@@ -768,6 +780,7 @@ def _avisar(
                  # Cuál puerta, contada desde dónde: sin esto, la puerta 2
                  # de una nevera de tres se arma en la que primero se ve.
                  (f"<strong>{escape(f.parte)}</strong><br>" if f.parte else "")
+                 + ubicacion(f, sede)
                  + f"{escape(f.proveedor or '')}{f' · {escape(f.marca)}' if f.marca else ''} · "
                  f"desde el {f.desde}<br>"
                  f'<a href="{_enlace_de_montaje(f, cliente)}" style="color:#0369A1;font-weight:600;">'

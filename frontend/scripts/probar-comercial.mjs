@@ -27,6 +27,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { PARA_TODOS, SOLO_ADMINISTRACION, revisarAvisos } from "./casos/avisos-de-revision.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const salida = join(mkdtempSync(join(tmpdir(), "com-")), "c.mjs");
@@ -342,8 +343,27 @@ prueba("BLOQUES DE SUPERVISAR DENTRO DE isAdmin: tarjetas, ficha y tabla de part
   assert.match(t, /useRevisionDeParticipaciones\(\{ sede, activo: isAdmin && hayParticipaciones,/,
     "«Para revisar» pide el resumen de participaciones sin ser administración");
   // Y lo que suma a la cuenta de «Para revisar», también sólo con isAdmin.
-  assert.match(t, /\(isAdmin\s*\? kpis\.belowReference\.length[^;]*revisionPc\.total\s*: 0\)/,
-    "la cuenta de «Para revisar» suma participaciones para el trabajador");
+  // (Rediseño, PR 2: la cuenta es la suma de los tres grupos de `avisos`; lo
+  // de las participaciones se suma DESPUÉS del corte del trabajador. Ver
+  // «Para revisar en tres grupos», más abajo.)
+  // La MISMA lista que `probar-vender` (`casos/avisos-de-revision.mjs`): todo
+  // lo de administración después del corte, y nada fuera de la lista.
+  const avisosDef = t.slice(t.indexOf("const avisos = useMemo("), t.indexOf("const cuentasDeRevision = useMemo("));
+  assert.ok(avisosDef.length > 200, "no está `const avisos = useMemo(`");
+  assert.deepEqual(revisarAvisos(avisosDef), [], "la cuenta de «Para revisar» le suma al trabajador lo de administración");
+  // Y la lista misma no se afloja: lo que el trabajador ve, y nada más.
+  assert.deepEqual(PARA_TODOS, ["kpis.expired", "kpis.expiring", "kpis.noContract", "fantasmas"]);
+  for (const n of ["kpis.belowReference", "importacion", "montaje.noMontado", "montaje.sinMontar", "montaje.viejos",
+    "cortesSinCargar.pendientes", "reservasSinConfirmar.vivas", "faltaPlanometria.filas", "revisionPc.secciones"]) {
+    assert.ok(SOLO_ADMINISTRACION.includes(n), `«${n}» salió de la lista de lo de administración`);
+  }
+  // La guarda muerde: un aviso de administración antes del corte, o uno nuevo
+  // sin anotar, falla.
+  const conFuga = avisosDef.replace("if (!isAdmin) return a;", "for (const e of kpis.belowReference) a.push(e);\n    if (!isAdmin) return a;");
+  assert.ok(revisarAvisos(conFuga).length > 0, "la guarda no ve un aviso de administración antes del corte");
+  const conNuevo = avisosDef.replace("return a;\n  }, [", "for (const x of otraCosa.filas) a.push(x);\n    return a;\n  }, [");
+  assert.notEqual(conNuevo, avisosDef, "no se pudo armar el caso del aviso nuevo");
+  assert.ok(revisarAvisos(conNuevo).length > 0, "la guarda deja pasar un aviso nuevo sin anotar");
   // Los dos componentes van en el pedazo del tablero: sólo el store de lectura.
   for (const f of ["components/Distribucion/ParticipacionesDeLaCara.tsx", "components/Distribucion/RevisarParticipaciones.tsx"]) {
     const c = sinComent(fuenteDe(f));
@@ -639,8 +659,12 @@ prueba("«Falta distribuir»: lo firmado para más adelante cuenta desde que se 
   assert.equal(R.cuantasParaRevisar(s), 3, "lo que falta distribuir no suma a la cuenta de «Para revisar»");
   // Y en pantalla: la cifra de días en rojo con 7 o menos, y el botón de siempre.
   const comp = sinComent(fuenteDe("components/Distribucion/RevisarParticipaciones.tsx"));
-  assert.match(comp, /color: it\.empiezaEn <= DIAS_DE_APURO \? "var\(--ocupado-txt\)" : "var\(--ink-2\)"/, "los días de «Falta distribuir» no se pintan de rojo con 7 o menos");
-  assert.match(comp, /\{it\.empiezaEn <= 0 \? "corre" : `\$\{it\.empiezaEn\}d`\}/, "el renglón no dice cuántos días faltan");
+  // (Rediseño, PR 2: la cifra va en la pastilla del renglón, roja con 7 o
+  // menos; una reserva, con los días que le quedan antes de caducar.)
+  assert.match(comp, /const dias = it\.caducaEn \?\? it\.empiezaEn;/, "el renglón no sabe cuántos días faltan");
+  assert.match(comp, /const apuro = dias !== undefined && dias <= \(it\.caducaEn !== undefined \? 0 : DIAS_DE_APURO\);/, "los días de «Falta distribuir» no se pintan de rojo con 7 o menos");
+  assert.match(comp, /className=\{`pill mono \$\{dias === undefined \? "resto" : apuro \? "ocupado" : "entra"\}`\}/, "la pastilla de los días no es roja con apuro");
+  assert.match(comp, /: dias <= 0 \? "corre" : `\$\{dias\}d`\}/, "el renglón no dice cuántos días faltan");
   assert.match(comp, /onClick=\{\(\) => abrir\(it\.abrir!\.fixtureId, it\.abrir!\.cara\)\}[\s\S]{0,600}Abrir en Distribución/, "«Abrir en Distribución» se fue");
 });
 
@@ -812,6 +836,14 @@ prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar
   assert.equal(conLaReserva({ ...cara, code: "GON-03" }, mapa, "CENTRO").status, "occupied", "un contrato pasó a «Reservado»");
   const parte = { ...cara, code: "GON-02-EN1" };
   assert.equal(conLaReserva(parte, { "CENTRO-GON-02-EN1": { reservaHasta: "2026-11-05" } }, "CENTRO").status, "reserved", "una parte reservada cuenta como contrato");
+  // Al trabajador le llega sólo la marca `reservado`, sin fechas: «Reservado»
+  // sin fecha, nunca «Ocupado sin contrato» (que es `occupied` sin fechas).
+  const delTrabajador = { ...cara, supplierName: "", endDate: "", negotiatedValue: 0 };
+  const rt = conLaReserva(delTrabajador, { "CENTRO-GON-02": { status: "occupied", reservado: true } }, "CENTRO");
+  assert.equal(rt.status, "reserved", "al trabajador una reserva le queda «Ocupado sin contrato»");
+  assert.ok(!rt.reservaHasta, "al trabajador la reserva le inventa una fecha");
+  assert.equal(conLaReserva(delTrabajador, { "CENTRO-GON-02": { status: "occupied" } }, "CENTRO").status, "occupied",
+    "un ocupado sin contrato de verdad pasó a «Reservado»");
   // Las cuentas de Supervisar pasan TODAS por ahí: caras, partes y filas.
   const v = sinComent(t);
   const k = v.slice(v.indexOf("const kpis = useMemo("), v.indexOf("const rangeTally"));
@@ -831,9 +863,12 @@ prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar
   const mueble0 = { id: "f", code: "GON-02", type: "cross", sede: "CENTRO" };
   const [fusionado] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservaHasta: "2026-11-02" } });
   assert.ok(!("reservaHasta" in fusionado), "la fecha de la reserva se pegó al mueble");
-  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta",\s*\] as const;/);
-  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\)\) return false;/,
+  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta", "reservado",\s*\] as const;/);
+  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\) \|\|\s*!!x\.reservado !== !!y\.reservado\) return false;/,
     "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos");
+  // La marca de la reserva tampoco se le pega al mueble.
+  const [fusionado2] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservado: true } });
+  assert.ok(!("reservado" in fusionado2), "la marca de la reserva se pegó al mueble");
 });
 
 prueba("Vender, Supervisar y el plano 2D LEEN la ocupación (sin esto, toda cara por participación se ve libre)", () => {
@@ -988,7 +1023,10 @@ prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElP
   assert.match(t, /const RANGE_LABEL_PARCIAL_SUPERVISAR = "Vendido en parte";/);
   // Las tres cuentas, de la misma fila por cara.
   assert.match(t, /motivo: motivoDelParcial\(deParticipacion, como\)/, "la fila de cada cara no dice por qué está en parte");
-  assert.match(t, /const rangeTally = useMemo\(\(\) => contarElPeriodo\(filasDelPeriodo\.values\(\)\), \[filasDelPeriodo\]\);/);
+  // (Corrección de Supervisar, PR 2: la cuenta de Supervisar pasa por
+  // `comoLaVeSupervisar` —una cara vendida entera parte del periodo no está
+  // «vendida en parte»—; más abajo, «Supervisar cuenta UNA vez».)
+  assert.match(t, /const rangeTally = useMemo\(\(\) => contarElPeriodo\(filasSupervisar\.values\(\)\), \[filasSupervisar\]\);/);
   assert.match(t, /const tallyVender = useMemo\(\s*\(\) => contarElPeriodo\(\[\.\.\.filasDelPeriodo\]\.map\(\(\[clave, fila\]\) => \(\{ \.\.\.fila, enContrato: carasDelContrato\.includes\(clave\) \}\)\)\),/);
   assert.match(t, /cuenta: contarElPeriodo\(filas\)/, "la fila de la tarifa no cuenta con contarElPeriodo");
   assert.match(t, /if \(fila\) e\.filas\.push\(\{ \.\.\.fila, enContrato \}\);/);
@@ -1155,6 +1193,413 @@ prueba("fase 2 · lo SUYO del proveedor que está delante: su pico en el periodo
   assert.equal(PC.loDelProveedor(otros, "Kellogg's", hoy, "2027-03-31", hoy), 5000);
   // Nunca más que la cara entera.
   assert.equal(PC.loDelProveedor([de("K", contrato(8000, "2026-10-01", "2026-12-31")), de("k", contrato(8000, "2026-10-01", "2026-12-31"))], "K", hoy, hoy, hoy), 10000);
+});
+
+/* ── Supervisar, PR 2: «Para revisar» en tres grupos y la plata en una unidad ──
+   El dibujo aprobado (`docs/maquetas/rediseno-2026-10/supervisar.html`) trae la
+   lista «Dónde queda cada cosa»: nada se va de la pantalla. Cada sección de
+   esa lista está en exactamente un grupo (o en «Hoy» / «30 días» según cuándo
+   hay que actuar, y entonces cada aviso en uno solo), la pastilla roja es la
+   suma de los tres y cada sección cuenta, el selector «Al mes | Total» manda
+   en las tres cosas que dicen plata y «Al mes» reparte con `utils/meses.ts`. */
+console.log("\nSupervisar · «Para revisar» en tres grupos y la plata en una unidad\n");
+const cargarTs = async (rel) => {
+  const { outputFiles: o } = await build({
+    entryPoints: [join(aqui, "..", "src", ...rel.split("/"))], bundle: true, format: "esm", write: false, platform: "neutral",
+  });
+  const f = join(mkdtempSync(join(tmpdir(), "sup-")), "m.mjs");
+  writeFileSync(f, o[0].text);
+  return import(pathToFileURL(f).href);
+};
+const G = await cargarTs("components/Supervisar/paraRevisar.ts");
+const PL = await cargarTs("components/Supervisar/plata.ts");
+
+/** La lista del dibujo, renglón por renglón, con dónde va cada cosa. */
+const DEL_DIBUJO = [
+  ["Ventas por cargar", "ventas_por_cargar", ["hoy"]],
+  ["Falta distribuir", "falta_distribuir", ["hoy", "dias30"]],
+  ["Falta planometría", "falta_planometria", ["hoy", "dias30"]],
+  ["Vencidos", "vencidos", ["hoy"]],
+  ["No se pudo montar", "no_se_pudo_montar", ["hoy"]],
+  ["Reservas que caducan hoy · Reservas por caducar", "reservas", ["hoy", "dias30"]],
+  ["Por vencer", "por_vencer", ["dias30"]],
+  ["Contratado sin montar", "sin_montar", ["dias30"]],
+  ["Borradores sin confirmar", "borradores", ["dias30"]],
+  ["Contrato sin mueble", "contrato_sin_mueble", ["corregir"]],
+  ["Sólo en el plano", "solo_en_el_plano", ["corregir"]],
+  ["Ocupado sin contrato", "ocupado_sin_contrato", ["corregir"]],
+  ["Participación sin mueble", "participacion_sin_mueble", ["corregir"]],
+  ["Sin término", "sin_termino", ["corregir"]],
+  ["Distribución con problemas", "distribucion_con_problemas", ["corregir"]],
+  ["Distribución para revisar", "distribucion_para_revisar", ["corregir"]],
+  ["Bajo tarifa", "bajo_tarifa", ["corregir"]],
+  ["Montajes viejos sin reporte", "montajes_viejos", ["corregir"]],
+];
+
+prueba("cada sección del dibujo está en «Para revisar», en su grupo, y cada aviso en uno solo (ejecutado)", () => {
+  assert.deepEqual(Object.keys(G.DONDE_VA).sort(), DEL_DIBUJO.map(([, id]) => id).sort(), "una sección de la lista no tiene grupo, o hay una de más");
+  for (const [que, id, grupos] of DEL_DIBUJO) {
+    const vistos = new Set();
+    for (const dias of [undefined, null, -3, 0, 1, 6, 7, 8, 29, 45]) {
+      const g = G.grupoDelAviso(id, dias);
+      assert.ok(["hoy", "dias30", "corregir"].includes(g), `${que}: grupo ${g}`);
+      vistos.add(g);
+    }
+    assert.deepEqual([...vistos].sort(), [...grupos].sort(), `«${que}» no está donde dice el dibujo`);
+    assert.ok(G.tituloDeSeccion(id, grupos[0]).length > 3, `«${que}» no tiene título`);
+  }
+  // Los umbrales: 7 días o menos para empezar es de hoy; una reserva, si caduca hoy.
+  assert.equal(G.grupoDelAviso("falta_distribuir", 7), "hoy");
+  assert.equal(G.grupoDelAviso("falta_distribuir", 8), "dias30");
+  assert.equal(G.grupoDelAviso("falta_planometria", -2), "hoy", "lo que ya corre sin planometría no es de hoy");
+  assert.equal(G.grupoDelAviso("reservas", 0), "hoy");
+  assert.equal(G.grupoDelAviso("reservas", 1), "dias30");
+  // Las secciones de las participaciones caen en la suya.
+  assert.deepEqual(Object.values(G.SECCION_DE_PARTICIPACIONES).every((x) => x in G.DONDE_VA), true);
+  const secs = [
+    { tipo: "sin_dibujar", items: [{ clave: "a", empiezaEn: 3 }, { clave: "b", empiezaEn: 20 }] },
+    { tipo: "por_caducar", items: [{ clave: "c", caducaEn: 0 }, { clave: "d", caducaEn: 5 }] },
+    { tipo: "borradores", items: [{ clave: "e" }] },
+    { tipo: "sin_termino", items: [{ clave: "f" }] },
+  ];
+  const claves = (g) => G.deParticipacionesEn(secs, g).flatMap((x) => x.items.map((i) => i.clave)).sort();
+  assert.deepEqual(claves("hoy"), ["a", "c"]);
+  assert.deepEqual(claves("dias30"), ["b", "d", "e"]);
+  assert.deepEqual(claves("corregir"), ["f"]);
+});
+
+prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sección cuenta (ejecutado)", () => {
+  const avisos = DEL_DIBUJO.flatMap(([, id], k) => [{ seccion: id, clave: `${id}1`, dias: k - 3 }, { seccion: id, clave: `${id}2`, dias: 40 }]);
+  const n = G.contarPorGrupo(avisos);
+  assert.equal(G.cuentaDelBadge(n), avisos.length, "un aviso no cuenta");
+  assert.equal(G.cuentaDelBadge(n), n.hoy + n.dias30 + n.corregir);
+  assert.equal(G.grupoParaAbrir({ hoy: 2, dias30: 1, corregir: 0 }), "hoy", "con algo hoy no abre en «Hoy»");
+  assert.equal(G.grupoParaAbrir({ hoy: 0, dias30: 3, corregir: 1 }), "dias30", "sin nada hoy no abre en «30 días»");
+  assert.equal(G.grupoParaAbrir({ hoy: 0, dias30: 0, corregir: 0 }), "dias30");
+  // La tarjeta: los mismos avisos que se cuentan, y la cuenta es la de la barra.
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /const cuentasDeRevision = useMemo\(\(\) => contarPorGrupo\(avisos\), \[avisos\]\);\s*const attentionCount = cuentaDelBadge\(cuentasDeRevision\);/,
+    "la pastilla roja no es la suma de los tres grupos");
+  assert.match(t, /\{ id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" \? attentionCount : 0 \}/);
+  assert.match(t, /const grupoDeRevision: GrupoDeRevision = grupoElegido \?\? grupoParaAbrir\(cuentasDeRevision\);/, "no abre en «Hoy» o en «30 días»");
+  assert.match(t, /<PestanasDeRevision cuentas=\{cuentasDeRevision\} grupo=\{grupoDeRevision\}/, "las pestañas no dicen las cuentas de los grupos");
+  // Cada lista que se cuenta se dibuja, y en UN solo grupo.
+  const avisosDef = t.slice(t.indexOf("const avisos = useMemo("), t.indexOf("const cuentasDeRevision = useMemo("));
+  const bloque = (g) => {
+    const i = t.indexOf(`{grupoDeRevision === "${g}" && (`);
+    assert.ok(i > 0, `no está el grupo ${g}`);
+    const fin = ["hoy", "dias30", "corregir"].map((x) => t.indexOf(`{grupoDeRevision === "${x}" && (`)).filter((k) => k > i);
+    return t.slice(i, fin.length ? Math.min(...fin) : t.indexOf("<SpacesTable", i));
+  };
+  const DIBUJO = {
+    hoy: ["cortesSinCargar.pendientes", "participacionesPorGrupo.hoy", "planometriaPorGrupo.hoy", "kpis.expired.map", "montaje.noMontado.map", "reservasPorGrupo.hoy"],
+    dias30: ["kpis.expiring.map", "participacionesPorGrupo.dias30", "planometriaPorGrupo.dias30", "montaje.sinMontar.map", "reservasPorGrupo.dias30"],
+    corregir: ["fantasmas.map", "<ImportarDelPlano", "kpis.noContract.map", "participacionesPorGrupo.corregir", "kpis.belowReference.map", "montaje.viejos.map"],
+  };
+  const bloques = Object.fromEntries(Object.keys(DIBUJO).map((g) => [g, bloque(g)]));
+  for (const [g, listas] of Object.entries(DIBUJO)) {
+    for (const l of listas) {
+      assert.ok(bloques[g].includes(l), `«${l}» no se dibuja en ${g}`);
+      for (const otro of Object.keys(DIBUJO)) if (otro !== g) assert.ok(!bloques[otro].includes(l), `«${l}» se dibuja en ${g} y en ${otro}`);
+    }
+  }
+  for (const l of ["kpis.expired", "kpis.expiring", "kpis.noContract", "fantasmas", "cortesSinCargar.pendientes", "revisionPc.secciones",
+    "faltaPlanometria.filas", "montaje.noMontado", "montaje.sinMontar", "montaje.viejos", "reservasSinConfirmar.vivas", "kpis.belowReference", "importacion.importables"]) {
+    assert.ok(avisosDef.includes(`of ${l}`) || avisosDef.includes(`...${l}`), `«${l}» se dibuja y no cuenta`);
+  }
+  // Lo partido entre «Hoy» y «30 días» se parte con la misma regla que se cuenta.
+  assert.match(t, /hoy: faltaPlanometria\.filas\.filter\(\(f\) => grupoDelAviso\("falta_planometria", f\.dias_para_empezar\) === "hoy"\)/);
+  assert.match(t, /hoy: deParticipacionesEn\(revisionPc\.secciones, "hoy"\)/);
+  assert.match(t, /hoy: reservasSinConfirmar\.vivas\.filter\(\(r\) => r\.caduca <= hoyIso\),\s*dias30: reservasSinConfirmar\.vivas\.filter\(\(r\) => r\.caduca > hoyIso\),/);
+  // Las reservas y los cortes, dentro de `isAdmin &&`, como siempre.
+  assert.match(t, /\{isAdmin && reservasPorGrupo\.hoy\.length > 0 && \(\s*<ReservasSinConfirmar\b/);
+  assert.match(t, /\{isAdmin && reservasPorGrupo\.dias30\.length > 0 && \(\s*<ReservasSinConfirmar\b/);
+  assert.match(t, /\{isAdmin && planometriaPorGrupo\.hoy\.length > 0 && \(\s*<FaltaPlanometria\b/);
+  assert.match(t, /\{isAdmin && planometriaPorGrupo\.dias30\.length > 0 && \(\s*<FaltaPlanometria\b/);
+  // «Contratado sin montar» en rojo con un umbral que PUEDE pasar: la lista corta a los 30 días.
+  assert.ok(G.DIAS_SIN_MONTAR_EN_ROJO < 30, "el rojo de «Contratado sin montar» no puede pasar nunca");
+  assert.match(t, /tono=\{entry\.dias > DIAS_SIN_MONTAR_EN_ROJO \? "alarma" : "espera"\}/);
+  assert.doesNotMatch(t, /entry\.dias > 60/);
+  assert.match(t, /const VENTANA_MONTAJE_DIAS = 30;/);
+});
+
+prueba("las chinchetas: sólo lo que está en «Para revisar», una por cara, del grupo más urgente (ejecutado)", () => {
+  const ch = G.chinchetasDe([
+    { seccion: "bajo_tarifa", clave: "x1", fixtureId: "f1", cara: "A" },
+    { seccion: "vencidos", clave: "x2", fixtureId: "f1", cara: "A" },
+    { seccion: "sin_montar", clave: "x3", fixtureId: "f2" },
+    { seccion: "contrato_sin_mueble", clave: "x4" },
+  ]);
+  assert.deepEqual(ch.map((c) => [c.fixtureId, c.cara, c.grupo, c.clave]).sort(), [["f1", "A", "hoy", "x2"], ["f2", "A", "dias30", "x3"]]);
+});
+
+prueba("«Al mes» reparte cada contrato en SUS meses (`utils/meses.ts`), «Total» es lo firmado (ejecutado)", () => {
+  assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "mes"), 300000);
+  assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "total"), 900000);
+  assert.equal(PL.enLaUnidad(600000, "2026-11-01", "2026-11-30", "mes"), 600000);
+  assert.equal(PL.enLaUnidad(500000, "", "", "mes"), 500000, "sin fechas se inventó un plazo");
+  assert.equal(PL.enLaUnidad(0, "2026-11-01", "2026-11-30", "mes"), 0);
+  assert.equal(PL.tarifaEnLaUnidad(800000, "2026-10-18", "2026-11-17", "total"), 800000);
+  assert.equal(PL.tarifaEnLaUnidad(800000, "2026-11-01", "2027-01-31", "total"), 2400000);
+  assert.equal(PL.tarifaEnLaUnidad(800000, "2026-11-01", "2027-01-31", "mes"), 800000);
+  assert.deepEqual(PL.ROTULO_DEL_VALOR, { mes: "Valor al mes", total: "Valor total" });
+  const plata = sinComent(fuenteDe("components/Supervisar/plata.ts"));
+  assert.match(plata, /import \{ alMesDe, meses \} from "\.\.\/\.\.\/utils\/meses";/, "«Al mes» no usa la cuenta gemela del servidor");
+  // (Corrección única: el reparto al mes vive en `utils/meses.ts` —«Bajo
+  // tarifa» lo usa desde `kpis`, que corre con Vender abierto— y sale de `meses`.)
+  assert.match(plata, /if \(unidad === "total"\) return total;\s*return alMesDe\(total, desde, hasta\);/);
+  assert.match(sinComent(fuenteDe("utils/meses.ts")), /export function alMesDe\(total: number, desde: string, hasta: string\): number \{\s*const m = meses\(desde, hasta\);\s*return m > 0 \? redondear\(total \/ m\) : total;/);
+  assert.doesNotMatch(plata, /\/\s*30\b/, "«Al mes» divide por 30 a mano");
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  const memo = t.slice(t.indexOf("const plata = useMemo("), t.indexOf("}, [isAdmin, unidad, kpis,"));
+  assert.ok(memo.length > 500, "no está la plata de Supervisar");
+  assert.doesNotMatch(memo, /\/\s*30\b/, "la plata de Supervisar divide por 30 a mano");
+  assert.match(memo, /enLaUnidad\(x\.negotiatedValue, x\.startDate, x\.endDate, unidad\)/);
+  assert.match(memo, /canon \+= enLaUnidad\(c\.cobrado, c\.desde, c\.hasta, unidad\);/, "el canon no suma lo cargado de los contratos por % de venta");
+});
+
+prueba("el selector «Al mes | Total» manda en las cifras, la columna de la tabla y «Quién paga»; el trabajador no ve plata", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /const \[unidad, setUnidad\] = useUnidadDePlata\(\);/);
+  assert.match(t, /right=\{isAdmin \? <SelectorDePlata unidad=\{unidad\} onCambio=\{setUnidad\} \/> : undefined\}/, "el selector se le ofrece al trabajador");
+  // 1 · las cifras: las de plata salen de `plata`, que no existe para el trabajador.
+  assert.match(t, /const plata = useMemo\(\(\) => \{\s*if \(!isAdmin\) return null;/, "la plata se calcula para el trabajador");
+  assert.match(t, /\{isAdmin && plata \? \(\s*<>\s*<Cifra\s+icono=\{<Banknote/, "las cifras de plata no van sólo para quien administra");
+  assert.match(t, /valor=\{formatCOP\(plata\.canon\)\}/);
+  assert.match(t, /valor=\{formatCOP\(plata\.vence\)\}/);
+  assert.match(t, /valor=\{formatCOP\(plata\.sinAlquilar\)\}/);
+  // 2 · la tabla: el encabezado y cada fila.
+  assert.match(t, /if \(isAdmin\) pedidas\.push\(\{ etiqueta: ROTULO_DEL_VALOR\[unidad\],/, "la columna de valor no sigue al selector, o se le muestra al trabajador");
+  assert.match(t, /formatCOP\(enLaUnidad\(entry\.negotiatedValue, entry\.startDate, entry\.endDate, unidad\)\)/);
+  assert.match(t, /<SpacesTable[\s\S]*?unidad=\{unidad\}/);
+  // 3 · Quién paga: con la misma cuenta, y sólo para quien administra.
+  assert.match(t, /\{isAdmin && plata && \(\s*<Card[\s\S]{0,200}title="Quién paga el canon"/, "«Quién paga» se le muestra al trabajador");
+  assert.match(t, /plata\.quienes\.map/);
+  // La ficha: el cobro y la reserva, sólo para quien administra.
+  assert.match(t, /const reservaViva = isAdmin && entry\.reservaHasta \? reservaDe\?\.\(codigoDeLaCara\) : undefined;/);
+  assert.match(t, /const cobroDeLaCara = isAdmin && hasContract \? cobroDe\?\.\(codigoDeLaCara\) : undefined;/);
+  assert.match(t, /\{isAdmin && \(entry\.negotiatedValue > 0 \|\| cobroDeLaCara\) && \(/, "el valor de la ficha se le muestra al trabajador");
+  // Lo que se elige se recuerda con try/catch.
+  const hook = sinComent(fuenteDe("components/Supervisar/useUnidadDePlata.ts"));
+  assert.equal((hook.match(/try \{/g) ?? []).length, 2, "el almacenamiento del navegador no va con try/catch");
+});
+
+/* ── Supervisar, PR 2: la corrección única ───────────────────────────────────
+   Lo que el verificador vio en el navegador y el dueño mandó a corregir: la
+   planometría de un contrato que todavía no arranca no se podía cargar; «Bajo
+   tarifa» comparaba el total con una tarifa al mes; «Vendido en parte» contaba
+   caras vendidas enteras parte del periodo y las pestañas contaban otra cosa
+   que lo que mostraban; la ficha de un % decía lo de hoy y «Vender el Y %»
+   rebotaba en Vender; al trabajador una reserva le salía «sin papeles». */
+console.log("\nSupervisar · la corrección única\n");
+
+prueba("«Cargar planometría» llega al contrato de la fila aunque todavía no arranque (`lease_id`, y si no `active_lease ?? upcoming_lease`)", () => {
+  const pl = sinComent(fuenteDe("components/Contrato/Planometria.tsx"));
+  assert.match(pl, /setLeaseId\(espacio\?\.active_lease\?\.id \?\? espacio\?\.upcoming_lease\?\.id \?\? null\);/,
+    "sin `lease_id`, la planometría sólo se le carga al contrato que corre hoy");
+  assert.doesNotMatch(pl, /setLeaseId\(espacio\?\.active_lease\?\.id \?\? null\)/);
+  assert.match(pl, /if \(leaseIdPedido && isAdmin\) \{\s*\/?\/?[^\n]*\n?\s*setPlano\(await planometriaDelContrato\(leaseIdPedido\)\);\s*setLeaseId\(leaseIdPedido\);/,
+    "con el contrato de la fila, la planometría no se lee y se carga sobre ESE contrato");
+  const api = sinComent(fuenteDe("api/planograms.ts"));
+  assert.match(api, /export const planometriaDelContrato = \(leaseId: number\)[^=]*=>\s*client\s*\.get<Planometria>\(`\/leases\/\$\{leaseId\}\/planometria`\)/);
+  const fp = sinComent(fuenteDe("components/Supervisar/FaltaPlanometria.tsx"));
+  assert.match(fp, /onClick=\{\(\) => onCargar\(f, visible\(f\.espacio\)\)\}/, "«Cargar planometría» no manda la fila con su código visible");
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /setPlanometriaPedida\(\{ codigo: f\.espacio\.toUpperCase\(\), leaseId: f\.lease_id, rotulo \}\);/,
+    "«Cargar planometría» no le pasa a la ficha el contrato de la fila");
+  assert.match(t, /spaceCode=\{pedidaAparte\.codigo\}\s*leaseId=\{pedidaAparte\.leaseId\}/, "la planometría de una parte o participación no va con su contrato");
+  assert.match(t, /leaseId=\{planometriaPedida && !pedidaAparte \? planometriaPedida\.leaseId : null\}/, "la planometría de la cara no va con el contrato de la fila");
+  // El rótulo es el código como se lee, nunca el crudo («CENTRO-GON-01-PC1»).
+  assert.match(t, /Planometría de <span className="mono">\{pedidaAparte\.rotulo\}<\/span>/);
+  assert.doesNotMatch(t, /Planometría de \{pedidaAparte\}/);
+  // El servidor deja leer y cargar la de cualquier contrato por su id (cargar: sólo administración).
+  const back = readFileSync(join(raiz, "..", "backend", "app", "routers", "planograms.py"), "utf8");
+  assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*status_code=201,\s*dependencies=\[Depends\(require_admin\)\],/);
+  assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*dependencies=\[Depends\(require_auth\)\],/);
+});
+
+prueba("«Bajo tarifa» compara lo que el contrato paga AL MES con la tarifa (que es al mes), y la fila dice esa misma cifra (`bajoLaTarifa`, ejecutado)", () => {
+  // 3 meses por $ 1.500.000 = $ 500.000 al mes, contra $ 650.000: 23 % abajo.
+  assert.deepEqual(PL.bajoLaTarifa(1_500_000, "2026-10-10", "2027-01-09", 650_000), { alMes: 500_000, brechaPct: 23 });
+  // Comparando el total salía «por encima»: no se veía nunca.
+  assert.ok(Math.round((1 - 1_500_000 / 650_000) * 100) < 1);
+  // 15 días por $ 500.000 = $ 1.000.000 al mes, contra $ 800.000: NO está abajo
+  // (comparando el total salía «−38 %»).
+  assert.equal(PL.bajoLaTarifa(500_000, "2026-10-15", "2026-10-29", 800_000), null);
+  // A la par, o sin tarifa, o sin valor: nada.
+  assert.equal(PL.bajoLaTarifa(2_400_000, "2026-10-01", "2026-12-31", 800_000), null);
+  assert.equal(PL.bajoLaTarifa(400_000, "2026-10-10", "2026-11-09", null), null);
+  assert.equal(PL.bajoLaTarifa(0, "2026-10-10", "2026-11-09", 650_000), null);
+  // Un mes por $ 400.000 contra $ 650.000: 38 % abajo.
+  assert.deepEqual(PL.bajoLaTarifa(400_000, "2026-10-10", "2026-11-09", 650_000), { alMes: 400_000, brechaPct: 38 });
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /const bajo = bajoLaTarifa\(x\.negotiatedValue, x\.startDate, x\.endDate, ref\);\s*if \(bajo\) belowReference\.push\(\{ \.\.\.x, ref, gapPct: bajo\.brechaPct, alMes: bajo\.alMes \}\);/,
+    "«Bajo tarifa» no sale de `bajoLaTarifa`");
+  assert.doesNotMatch(t, /x\.negotiatedValue \/ ref/, "«Bajo tarifa» vuelve a comparar el total con la tarifa al mes");
+  assert.match(t, /chip=\{`−\$\{entry\.gapPct\} %`\}/);
+  assert.match(t, /dates=\{`\$\{formatCOP\(entry\.alMes\)\} al mes · ref \$\{formatCOP\(entry\.ref\)\}`\}/, "la fila de «Bajo tarifa» dice otra cifra que la que se comparó");
+});
+
+prueba("Supervisar cuenta «Vendido en parte» UNA vez: sólo por partes o por participación, en la clave, el color del plano, «Ocupación» y la pestaña (`comoLaVeSupervisar`, ejecutado)", () => {
+  const caras = [
+    { dispo: "libre", deParticipacion: false },
+    { dispo: "parcial", deParticipacion: false, motivo: "dias" },      // vendida ENTERA, arranca adentro
+    { dispo: "parcial", deParticipacion: false },                      // sin motivo y sin participación: días
+    { dispo: "parcial", deParticipacion: false, motivo: "partes" },
+    { dispo: "parcial", deParticipacion: true, motivo: "participacion" },
+    { dispo: "parcial", deParticipacion: true },
+    { dispo: "tomado", deParticipacion: false },
+  ];
+  const vistas = caras.map(PC.comoLaVeSupervisar);
+  assert.deepEqual(vistas.map((x) => x.dispo), ["libre", "tomado", "tomado", "parcial", "parcial", "parcial", "tomado"],
+    "una cara vendida entera parte del periodo cuenta como «vendida en parte»");
+  const c = PC.contarElPeriodo(vistas);
+  assert.equal(c.dias, 0, "Supervisar cuenta días en «Vendido en parte»");
+  assert.equal(PC.enParte(c), 3);
+  assert.equal(c.libres + PC.enParte(c) + c.tomados, caras.length, "la clave de Supervisar no suma las caras");
+  // Lo que ya está bien no se toca (la misma referencia).
+  assert.equal(PC.comoLaVeSupervisar(caras[3]), caras[3]);
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /const filasSupervisar = useMemo\(\s*\(\) => new Map\(\[\.\.\.filasDelPeriodo\]\.map\(\(\[clave, fila\]\) => \[clave, comoLaVeSupervisar\(fila\)\] as const\)\),/);
+  // La clave, la nota de «Ocupación» y la pestaña: de `filasSupervisar`.
+  assert.match(t, /const rangeTally = useMemo\(\(\) => contarElPeriodo\(filasSupervisar\.values\(\)\), \[filasSupervisar\]\);/);
+  assert.match(t, /<MapLegend tally=\{rangeTally\} modo="supervisar"/);
+  assert.match(t, /`\$\{kpis\.occupied\} de \$\{kpis\.total\} caras\$\{enParte\(rangeTally\) > 0 \? ` · \$\{enParte\(rangeTally\)\} vendida/, "la nota de «Ocupación» cuenta con otra cosa");
+  assert.match(t, /const enParteSet = useMemo\(\s*\(\) => new Set\(\[\.\.\.filasSupervisar\]\.filter\(\(\[, f\]\) => f\.dispo === "parcial"\)\.map\(\(\[k\]\) => k\)\),/,
+    "la pestaña «Vendido en parte» no sale de la misma cuenta que la clave");
+  // El color del plano de Supervisar, de la misma cuenta; Vender sigue con la suya.
+  const isos = [...t.matchAll(/<IsoMap\b[\s\S]*?\/>/g)].map((m) => m[0]);
+  const deSup = isos.filter((u) => /chinchetas=\{chinchetasDeRevision\}/.test(u));
+  assert.equal(deSup.length, 1);
+  assert.match(deSup[0], /dispo=\{dispoSupervisar\}/, "el plano de Supervisar pinta ámbar lo vendido entero");
+  assert.ok(isos.filter((u) => u !== deSup[0]).every((u) => /dispo=\{dispoDeCara\}/.test(u)), "Vender perdió su ámbar");
+  assert.match(t, /filasSupervisar\.get\(`\$\{f\.id\}-\$\{face\.face\}`\)\?\.dispo \?\? dispoDeCara\(f, face\)/);
+  assert.match(t, /const tallyVender = useMemo\(\s*\(\) => contarElPeriodo\(\[\.\.\.filasDelPeriodo\]/, "Vender cuenta como Supervisar");
+});
+
+prueba("las pestañas «Libres» y «Vendido en parte» cuentan EXACTAMENTE las filas que muestran (`faceMatchesFilter`, ejecutado)", () => {
+  const t = fuenteDe("pages/DashboardView.tsx");
+  const i = t.indexOf("function faceMatchesFilter(");
+  assert.ok(i >= 0, "no está faceMatchesFilter");
+  const fuente = t.slice(i, t.indexOf("\n}\n", i) + 2);
+  const js = esbuildMod.transformSync(fuente, { loader: "ts" }).code;
+  const displayStatus = (e) => e.ds;
+  const claveDeFila = (e) => `${e.fixture.id}-${e.face}${e.parte ? `-${e.parte.clase}` : ""}`;
+  const fmf = new Function("displayStatus", "claveDeFila", `${js}\nreturn faceMatchesFilter;`)(displayStatus, claveDeFila);
+  const f1 = { id: "f1" }, f2 = { id: "f2" }, f3 = { id: "f3" };
+  // f1-A libre en el periodo; f2-A con una parte vendida (la cara entera libre HOY);
+  // f3-A por participación con algo comprometido (libre HOY); f1-B tomada.
+  const filas = [
+    { fixture: f1, face: "A", ds: "free" },
+    { fixture: f1, face: "B", ds: "active" },
+    { fixture: f2, face: "A", ds: "free" },
+    { fixture: f2, face: "A", ds: "active", parte: { clase: "EN" } },
+    { fixture: f3, face: "A", ds: "free" },
+    { fixture: f3, face: "A", ds: "active", parte: { clase: "PC" } },
+  ];
+  const libres = new Set(["f1-A"]);
+  const enParte = new Set(["f2-A", "f3-A"]);
+  const de = (id) => filas.filter((e) => fmf(e, id, new Set(), enParte, libres));
+  assert.deepEqual(de("free").map((e) => `${e.fixture.id}-${e.face}`), ["f1-A"], "«Libres» muestra caras con una parte o una participación vendida");
+  assert.deepEqual(de("en_parte").map((e) => `${e.fixture.id}-${e.face}${e.parte ? "+" : ""}`), ["f2-A", "f3-A"], "«Vendido en parte» muestra otra cosa que las caras que cuenta");
+  assert.equal(de("free").length, libres.size);
+  assert.equal(de("en_parte").length, enParte.size);
+  // La cuenta de la pestaña es la de las filas: la misma función, con los mismos conjuntos.
+  const v = sinComent(t);
+  assert.match(v, /const cuantas = \(id: MapFilter\) => filas\.filter\(\(e\) => faceMatchesFilter\(e, id, sinMontarSet, enParteSet, libresSet\)\)\.length;/);
+  assert.match(v, /\{ id: "free", label: "Libres", n: cuantas\("free"\) \}/, "la pestaña «Libres» cuenta otra cosa que sus filas");
+  assert.match(v, /\{ id: "en_parte", label: "Vendido en parte", n: cuantas\("en_parte"\) \}/);
+  assert.doesNotMatch(v, /label: "Libres", n: kpis\.free/);
+  assert.match(v, /const filas = fixtures\.flatMap\(espaciosDelMueble\);/, "la cuenta no recorre las filas de la tabla");
+  assert.match(v, /espaciosDe=\{espaciosDelMueble\}/);
+  assert.match(v, /sinMontar=\{sinMontarSet\}\s*enParte=\{enParteSet\}\s*libres=\{libresSet\}/, "la tabla no filtra con los mismos conjuntos que cuenta la pestaña");
+  assert.match(v, /faceMatchesFilter\(e, filter, sinMontar, enParte, libres\)/);
+  assert.match(v, /const libresSet = useMemo\(\s*\(\) => new Set\(\[\.\.\.filasSupervisar\]\.filter\(\(\[, f\]\) => f\.dispo === "libre"\)/,
+    "«Libres» no es la cuenta de la clave del plano");
+  assert.match(v, /valor=\{String\(libresSet\.size\)\}/, "la cifra «Libres» del trabajador cuenta otra cosa que la pestaña");
+});
+
+prueba("la ficha de un % dice lo comprometido y lo que queda EN EL PERIODO (el pico), y «Vender el Y %» vende eso", () => {
+  const pdc = sinComent(fuenteDe("components/Distribucion/ParticipacionesDeLaCara.tsx"));
+  assert.match(pdc, /const comprometido = periodo\?\.pico_pb \?\? 0;\s*const queda = periodo\?\.disponible_pb \?\? 0;/,
+    "la ficha cuenta lo que queda con lo de hoy");
+  assert.match(pdc, /const periodo = datos\?\.capacidad\.periodo;/);
+  assert.doesNotMatch(pdc, /const queda = datos\?\.capacidad\.disponible_hoy_pb/);
+  assert.match(pdc, /Comprometido <b>\{pct\(comprometido\)\}<\/b>/);
+  assert.match(pdc, /queda <b>\{pct\(queda\)\}<\/b>/);
+  assert.match(pdc, /onClick=\{\(\) => onVender\(queda\)\}/);
+  assert.match(pdc, /Vender el \{pct\(queda\)\}/);
+  // Sin la plata de Supervisar adentro: la escribe quien la monta (el plano 2D
+  // también importa este archivo).
+  assert.doesNotMatch(pdc, /from "\.\.\/Supervisar\//, "la ficha de participaciones arrastra la plata de Supervisar al plano 2D");
+  assert.doesNotMatch(pdc, /from "\.\.\/Contrato\/Contrato"|\bmoney\(|enLaUnidad|textoDelCobro/);
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /<ParticipacionesDeLaCara\b[\s\S]*?precioDe=\{\(t\) => `\$\{formatCOP\(enLaUnidad\(t\.valor_mensual, t\.desde, t\.hasta, unidad\)\)\}/);
+  assert.match(t, /return x \? \{ texto: textoDelCobro\(x\.porcentaje\), proximo_corte: x\.proximo_corte \} : undefined;/);
+});
+
+prueba("la ficha sigue al mueble de la última sincronización: cancelar una reserva no la deja diciendo «Renovar con …»", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /useEffect\(\(\) => \{\s*if \(!selected\) return;\s*const fresco = fixtures\.find\(\(f\) => f\.id === selected\.id\);\s*if \(fresco && fresco !== selected\) setSelected\(fresco\);\s*\}, \[fixtures, selected\]\);/,
+    "la ficha se queda con el mueble de antes de cancelar o confirmar");
+  assert.match(t, /onReservaCambio=\{\(\) => \{\s*reservasSinConfirmar\.recargar\(\);\s*void refrescarComercial\(\);/);
+  // Y al trabajador una reserva le sale «Reservado» en la ficha, no «Disponible para vender».
+  assert.match(t, /\) : !hasContract && entry\.reservado \? \(/);
+});
+
+prueba("guardar un corte vuelve a leer los cobros: el canon vigente suma lo cargado sin recargar", () => {
+  const c = sinComent(fuenteDe("components/Supervisar/CobrosYReservas.tsx"));
+  assert.match(c, /setCargados\(\(x\) => \(\{ \.\.\.x, \[claveDeCorte\(c\)\]: monto \}\)\);\s*setVueltaDeCobros\(\(n\) => n \+ 1\);/,
+    "cargar un corte no vuelve a pedir `GET /api/cobros`");
+  assert.match(c, /cobrosPorVentas\(sede\)[\s\S]*?\}, \[sede, activo, vuelta, vueltaDeCobros\]\);/);
+  // Los pendientes NO se vuelven a pedir: la fila se queda con su «→ $ monto».
+  assert.match(c, /cortesPendientes\(sede\)[\s\S]*?\}, \[sede, activo, vuelta\]\);/);
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  assert.match(t, /onCargado=\{cortesSinCargar\.marcarCargado\}/);
+});
+
+prueba("el aspecto: la chincheta no tapa el código, la pastilla y la fecha entran, las participaciones miden lo suyo, la barra entra a 390", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  // La chincheta va ENCIMA de la caja de su rótulo, que cuenta con ella al acomodarse.
+  assert.match(t, /const conPin: Caja = arriba \? \{ \.\.\.b, top: b\.top - arriba \} : b;/, "el rótulo no reserva el lugar de su chincheta");
+  assert.match(t, /cajasDeRotulo\.current\.set\(p\.clave, b\);/);
+  assert.match(t, /if \(caja\) \{[\s\S]{0,300}el\.style\.top = `\$\{\(caja\.top - lz\.top - 2\)\.toFixed\(1\)\}px`;/,
+    "la chincheta no se apoya arriba del rótulo");
+  // La de un rótulo que cedió va sola donde no tape ningún código, y las caras
+  // con chincheta se acomodan antes que el resto.
+  assert.match(t, /!seSale\(b\) && !fijos\.some\(\(o\) => cruza\(b, o\)\) && !rotulos\.some\(\(o\) => cruza\(b, o\)\)\)/,
+    "la chincheta de un rótulo que cedió puede tapar el código de otra cara");
+  assert.match(t, /const turno = \(p: Pieza\) => \(p\.peso === 0 \? 0 : pinRefs\.current\.has\(p\.clave\) \? 1 : 2\);/);
+  // La caja del rótulo se mide contra donde está ESCRITO (un `acomodar()` entre
+  // la vuelta al ancla y la medida corría la caja del texto).
+  assert.match(t, /const xa = Number\(p\.txt\.getAttribute\("x"\)\), ya = Number\(p\.txt\.getAttribute\("y"\)\);/);
+  const css = readFileSync(join(raiz, "src", "supervisar.css"), "utf8");
+  assert.match(css, /\.chinchetas button\[data-sobre="rotulo"\] \{ transform: translate\(-50%, -100%\); \}/);
+  assert.match(css, /@media \(max-width: 560px\) \{\s*\.chinchetas button \{ width: 20px; height: 20px; \}/);
+  // La tabla: el estado y las fechas miden lo que su texto, y la pastilla corta con «…».
+  assert.match(t, /\{ etiqueta: "Estado", ancho: anchos\.estado, minimo: anchos\.estadoMinimo, cede: 3 \}/);
+  assert.match(t, /const estadoMinimo = anchoDeTexto\(palabras, pastilla\) \+ 20 \+ 18;/, "la pastilla más larga no entra en lo menos que mide el estado");
+  assert.match(t, /\{ etiqueta: "Desde", ancho: anchos\.desde, minimo: anchos\.desde \}/, "la fecha cede");
+  assert.match(t, /\{ etiqueta: "Hasta", ancho: anchos\.hasta, minimo: anchos\.hasta \}/, "la fecha cede");
+  assert.match(t, /\.map\(\(iso\) => fechaEnCurso\(iso\)\), fuente\) \+ 28;/, "las fechas no se miden con el año");
+  assert.match(css, /\.sup td > \.pill \{[^}]*text-overflow: ellipsis;/);
+  // «Participaciones de cara» fuera de la hoja (cuyas filas miden `--alto-plano`).
+  const i = t.indexOf('className="supervisar-hoja"');
+  const fin = t.indexOf('title="Participaciones de cara"');
+  assert.ok(i > 0 && fin > i);
+  const trozo = t.slice(i, fin);
+  let hondo = 0;
+  for (const m of trozo.matchAll(/<div\b[^>]*?(\/)?>|<\/div>/g)) {
+    if (m[0] === "</div>") hondo--; else if (!m[1]) hondo++;
+  }
+  // Desde adentro de la etiqueta de la hoja: su cierre deja la cuenta en −1.
+  assert.equal(hondo, -1, "«Participaciones de cara» quedó adentro de la hoja: su fila mide `--alto-plano` y deja un blanco abajo");
+  // La sincronización: a 480 px o menos, el punto solo, con la palabra en el title.
+  const sync = sinComent(fuenteDe("components/SyncStatus/SyncStatus.tsx"));
+  assert.match(sync, /<span className="sync-palabra">\{label\}<\/span>/);
+  assert.match(sync, /aria-label=\{`\$\{label\}\. Sincronizar con el servidor`\}/);
+  const vcss = readFileSync(join(raiz, "src", "vender.css"), "utf8");
+  assert.match(vcss, /@media \(max-width: 480px\) \{[^}]*\.barra-app \{ flex-wrap: wrap;[\s\S]*?\.sync-palabra \{ display: none; \}/);
 });
 
 console.log(`\n${hechas} pruebas\n`);

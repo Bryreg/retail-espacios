@@ -15,6 +15,18 @@ export interface Planometria {
   size: number;
   subido_por?: string | null;
   uploaded_at?: string | null;
+  /** Sólo al CARGARLA, y sólo si el contrato esperaba la planometría para
+   *  avisar al montaje (`docs/rediseno/vender-api.md` §4): `salio` (a quién se
+   *  encoló; vacío sin correo o sin mercaderista) o `espera_distribucion` (un
+   *  porcentaje de cara con la zona sin confirmar). `null`: no había nada que
+   *  avisar (un contrato de antes, o ya avisado). */
+  aviso_de_montaje?: AvisoDeMontaje | null;
+}
+
+export interface AvisoDeMontaje {
+  estado: "salio" | "espera_distribucion";
+  smtp_listo: boolean;
+  montaje: string[];
 }
 
 /** Mismo tope que la foto de montaje: en tienda la señal es irregular y sin
@@ -43,6 +55,16 @@ export const subirPlanometria = (
 export const planometriaDelEspacio = (spaceCode: string): Promise<Planometria | null> =>
   client
     .get<Planometria>(`/planometrias/por-espacio/${encodeURIComponent(spaceCode)}`)
+    .then((r) => r.data)
+    .catch(() => null);
+
+/** La de UN contrato, por su id, o null si todavía no tiene. Es el camino de
+ *  «Falta planometría»: la fila trae el contrato que la espera, que puede no
+ *  ser el que corre hoy (uno que arranca en cinco días, o una participación
+ *  de una cara que ya tiene otro contrato andando). */
+export const planometriaDelContrato = (leaseId: number): Promise<Planometria | null> =>
+  client
+    .get<Planometria>(`/leases/${leaseId}/planometria`)
     .then((r) => r.data)
     .catch(() => null);
 

@@ -38,4 +38,5 @@ Dibujo: `docs/maquetas/rediseno-2026-10/plano.html`.
 - **«Falta planometría»** en «Para revisar»: los contratos con montaje próximo que todavía no
   tienen planometría cargada.
 - **El correo de montaje espera a la planometría**: sale cuando está cargada (y, en un contrato
-  por porcentaje de cara, además, cuando la distribución está confirmada).
+  por porcentaje de cara, además, cuando la distribución está confirmada). El servidor ya lo hace
+  (`vender-api.md` §4, con `GET /api/montajes/pendientes` para «Falta planometría»).

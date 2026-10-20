@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, Image as ImageIcon, ImageUp, Trash2 } from "lucide-react";
 import {
-  borrarPlanometria, planometriaDelEspacio, planometriaUrl, subirPlanometria,
-  type Planometria as PlanometriaFile,
+  borrarPlanometria, planometriaDelContrato, planometriaDelEspacio, planometriaUrl, subirPlanometria,
+  type AvisoDeMontaje, type Planometria as PlanometriaFile,
 } from "../../api/planograms";
 import { getSpaceByCode } from "../../api/spaces";
 import { describeError } from "../../api/client";
 
 /**
- * La planometría del contrato que corre HOY sobre un espacio.
+ * La planometría del contrato que corre HOY sobre un espacio —o del firmado que
+ * todavía no arranca—, o la de UN contrato si se sabe cuál (`leaseId`).
  *
  * Se busca por el código del espacio y no por el id del contrato porque el JSON
  * del layout —que es de donde salen todas las pantallas— no guarda ids de
@@ -21,37 +22,56 @@ import { describeError } from "../../api/client";
  */
 
 export default function Planometria({
-  spaceCode, isAdmin, compacta = false,
+  spaceCode, leaseId: leaseIdPedido = null, isAdmin, compacta = false, onCargada,
 }: {
   /** `SEDE-CODIGO`, el completo. El corto se repite entre sedes. */
   spaceCode: string;
+  /** El contrato al que se le carga, si se sabe: «Cargar planometría» de
+   *  «Para revisar» trae el que la espera (`lease_id` de la fila), que puede
+   *  arrancar más adelante. Sin esto, el que corre hoy o, si no hay, el
+   *  próximo (`active_lease ?? upcoming_lease`). */
+  leaseId?: number | null;
   isAdmin: boolean;
   /** Sin encabezado ni acciones: sólo la miniatura. */
   compacta?: boolean;
+  /** Se cargó una: quien la muestra puede volver a leer lo que la esperaba
+   *  («Falta planometría» en Supervisar). */
+  onCargada?: () => void;
 }) {
   const [plano, setPlano] = useState<PlanometriaFile | null>(null);
   const [leaseId, setLeaseId] = useState<number | null>(null);
   const [cargando, setCargando] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
+  /** Qué pasó con el aviso de montaje que esperaba esta planometría. */
+  const [aviso, setAviso] = useState<AvisoDeMontaje | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const buscar = useCallback(async () => {
     setCargando(true);
+    if (leaseIdPedido && isAdmin) {
+      // El contrato ya se sabe: su planometría, o el lugar para cargarla.
+      setPlano(await planometriaDelContrato(leaseIdPedido));
+      setLeaseId(leaseIdPedido);
+      setCargando(false);
+      return;
+    }
     const p = await planometriaDelEspacio(spaceCode);
     setPlano(p);
     if (p) {
       setLeaseId(p.lease_id);
     } else if (isAdmin) {
-      // Sin planometría todavía: hace falta el contrato vigente para poder
-      // subirle una. Si no hay contrato, no hay nada que adjuntar.
+      // Sin planometría todavía: hace falta el contrato para poder subirle
+      // una — el que corre hoy o, si no hay, el firmado que todavía no
+      // arranca (la planometría se carga ANTES del montaje). Sin contrato no
+      // hay nada que adjuntar.
       const espacio = await getSpaceByCode(spaceCode);
-      setLeaseId(espacio?.active_lease?.id ?? null);
+      setLeaseId(espacio?.active_lease?.id ?? espacio?.upcoming_lease?.id ?? null);
     } else {
       setLeaseId(null);
     }
     setCargando(false);
-  }, [spaceCode, isAdmin]);
+  }, [spaceCode, isAdmin, leaseIdPedido]);
 
   useEffect(() => {
     let vivo = true;
@@ -64,8 +84,10 @@ export default function Planometria({
     setSubiendo(true);
     setError("");
     try {
-      await subirPlanometria(leaseId, archivo);
+      const r = await subirPlanometria(leaseId, archivo);
+      setAviso(r.aviso_de_montaje ?? null);
       await buscar();
+      onCargada?.();
     } catch (e) {
       setError(describeError(e, "No se pudo subir la planometría."));
     } finally {
@@ -206,9 +228,24 @@ export default function Planometria({
         </div>
       )}
 
+      {aviso && (
+        <div data-aviso-de-montaje style={{ marginTop: 6, fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.45 }}>
+          {textoDelAvisoDeMontaje(aviso)}
+        </div>
+      )}
+
       {error && (
         <div style={{ marginTop: 6, fontSize: "var(--t-2xs)", color: "var(--danger)" }}>{error}</div>
       )}
     </div>
   );
+}
+
+/** Una línea con lo que pasó con el aviso de montaje al cargar la
+ *  planometría. Sin correo configurado, la frase de siempre de la app. */
+export function textoDelAvisoDeMontaje(a: AvisoDeMontaje): string {
+  if (a.estado === "espera_distribucion") return "El aviso de montaje sale cuando confirmes la distribución.";
+  if (!a.smtp_listo) return "No se avisó a nadie: el correo no está configurado en el servidor.";
+  if (a.montaje.length === 0) return "No se avisó a nadie: no hay mercaderista cargado para esta sede.";
+  return `Salió el aviso de montaje a ${a.montaje.join(", ")}.`;
 }

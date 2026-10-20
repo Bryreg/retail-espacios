@@ -208,6 +208,31 @@ def test_el_mapa_comercial_la_da_tomada_y_al_trabajador_sin_plata(client, admin,
 
 
 @RELOJ
+def test_al_trabajador_una_reserva_le_llega_reservada_y_nada_mas(client, admin, worker):
+    """Supervisar le mostraba al trabajador una cara reservada como «Ocupado
+    sin contrato · sin papeles» en Corregir: le llegaba `occupied` sin fechas.
+    Ahora le llega la marca `reservado` —y NADA más de la reserva: ni fechas,
+    ni plata, ni proveedor, ni marca, ni nota, ni hasta cuándo se sostiene—.
+    Quien administra la sigue viendo entera, con `reservaHasta`."""
+    tp._plano(client, admin)
+    _reservar(client, admin, _entera("GON-02", 777_000))
+    crudo = client.get("/api/spaces/comercial", params={"sede": "NAVE"}, headers=worker)
+    ajeno = crudo.json()["NAVE-GON-02"]
+    assert ajeno == {
+        "status": "occupied", "supplierName": "", "brandCategory": "", "negotiatedValue": 0,
+        "startDate": "", "endDate": "", "observation": "", "reservaHasta": None, "reservado": True,
+    }
+    for dato in ("777000", "777.000", "Lácteos", "2026-10-25", "2026-11-"):
+        assert dato not in crudo.text, f"al trabajador le llega {dato!r} de la reserva"
+    suyo = client.get("/api/spaces/comercial", params={"sede": "NAVE"}, headers=admin).json()["NAVE-GON-02"]
+    assert suyo["reservado"] is True and suyo["reservaHasta"] == "2026-10-25"
+    # Un contrato no es una reserva: sin la marca, para los dos.
+    for quien in (admin, worker):
+        mapa = client.get("/api/spaces/comercial", params={"sede": "NAVE"}, headers=quien).json()
+        assert all(not v["reservado"] for k, v in mapa.items() if k != "NAVE-GON-02")
+
+
+@RELOJ
 def test_el_plano_no_saca_de_circulacion_algo_reservado(client, admin):
     tp._plano(client, admin)
     _reservar(client, admin, _entera("GON-02"))

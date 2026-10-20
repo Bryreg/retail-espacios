@@ -487,14 +487,18 @@ def test_sin_planometria_lo_dice_y_no_falla(client, admin):
 # ─── El correo ────────────────────────────────────────────────────────────────
 
 def test_el_correo_de_montaje_lleva_el_enlace_firmado(client, admin, monkeypatch):
-    """Sin esto no hay entrada sin contraseña: el enlace es la credencial."""
-    from urllib.parse import parse_qs, urlparse
+    """Sin esto no hay entrada sin contraseña: el enlace es la credencial.
+    Desde el 2026-10-20 sale al cargar la planometría, por el correo de la
+    planilla (``services/montajes_pendientes.py``)."""
+    from urllib.parse import parse_qs, unquote, urlparse
 
+    import app.routers.bulk_leases as lotes
     import app.services.mailer as mailer
     from app.auth import decode_montaje
 
     enviados = []
     monkeypatch.setattr(mailer, "correo_configurado", lambda: True)
+    monkeypatch.setattr(lotes, "correo_configurado", lambda: True)
     monkeypatch.setattr(
         mailer, "send_mail_to", lambda to, subject, html: enviados.append((to, subject, html))
     )
@@ -505,14 +509,16 @@ def test_el_correo_de_montaje_lleva_el_enlace_firmado(client, admin, monkeypatch
     )
 
     _space_id, lease_id = _armado(client, admin)
+    assert not [e for e in enviados if "por montar" in e[1]], "salió el montaje sin planometría"
+    _subir_plano(client, admin, lease_id)
 
-    montaje = [e for e in enviados if e[1].startswith("Montar ")]
+    montaje = [e for e in enviados if "por montar" in e[1]]
     assert montaje, f"no salió el correo de montaje: {[e[1] for e in enviados]}"
     html = montaje[0][2]
     assert "sin contraseña" in html
 
     inicio = html.index('href="') + 6
-    href = html[inicio:html.index('"', inicio)]
+    href = unquote(html[inicio:html.index('"', inicio)].replace("&amp;", "&"))
     token = parse_qs(urlparse(href).query)["t"][0]
     code, vence = decode_montaje(token)
     assert code == "NAVE-PUN-04"
@@ -543,7 +549,7 @@ def test_el_correo_comercial_no_lleva_ningun_enlace_firmado(client, admin, monke
     _armado(client, admin)
 
     for to, subject, html in enviados:
-        if not subject.startswith("Montar "):
+        if "por montar" not in subject:
             assert "?montar=" not in html and "&t=" not in html, subject
 
 
@@ -554,8 +560,10 @@ def test_el_correo_comercial_no_lleva_ningun_enlace_firmado(client, admin, monke
 # monta sin cuenta propia recibía un aviso con el que no podía hacer nada.
 
 def _vender_por_lote(client, admin, monkeypatch, desde, hasta):
-    """Contactos cargados y un contrato de DOS espacios por el camino del mapa.
-    Devuelve los correos que salieron: [(para, asunto, html)]."""
+    """Contactos cargados y un contrato de DOS espacios por el camino del mapa,
+    con sus planometrías (desde el 2026-10-20 el aviso de montaje sale al
+    cargarlas, uno por contrato). Devuelve los correos que salieron:
+    [(para, asunto, html)]."""
     import app.routers.bulk_leases as lotes
 
     enviados = []
@@ -579,6 +587,9 @@ def _vender_por_lote(client, admin, monkeypatch, desde, hasta):
     r = client.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": filas}, headers=admin)
     assert r.status_code == 200, r.text
     assert r.json()["creados"] == 2, r.json()
+    assert not [1 for _to, subject, _h in enviados if "por montar" in subject], "salió sin planometría"
+    for fila in r.json()["filas"]:
+        _subir_plano(client, admin, fila["lease_id"])
     return enviados
 
 
@@ -596,8 +607,9 @@ def _enlaces(html):
 def test_el_aviso_de_montaje_del_mapa_trae_un_enlace_por_espacio(client, admin, monkeypatch):
     enviados = _vender_por_lote(client, admin, monkeypatch, HOY, HOY + timedelta(days=60))
 
-    (montaje,) = [(to, html) for to, subject, html in enviados if "por montar" in subject]
-    assert montaje[0] == ["m@x.co"]
+    montajes = [(to, html) for to, subject, html in enviados if "por montar" in subject]
+    assert len(montajes) == 2 and all(to == ["m@x.co"] for to, _h in montajes)
+    montaje = (["m@x.co"], "".join(h for _to, h in montajes))
     enlaces = _enlaces(montaje[1])
     assert sorted(c for c, _t in enlaces) == ["NAVE-GON-09", "NAVE-PUN-04"]
     # Cada enlace abre SU espacio y nada más, sin contraseña.
@@ -630,7 +642,7 @@ def test_el_enlace_vive_hasta_un_mes_despues_de_que_arranca_el_contrato(client, 
 
     inicio = HOY + timedelta(days=60)
     enviados = _vender_por_lote(client, admin, monkeypatch, inicio, inicio + timedelta(days=30))
-    (html,) = [html for to, subject, html in enviados if "por montar" in subject]
+    html = "".join(html for to, subject, html in enviados if "por montar" in subject)
     enlaces = _enlaces(html)
     assert len(enlaces) == 2, html
     for _codigo, token in enlaces:
@@ -749,7 +761,7 @@ def test_cada_enlace_del_lote_dice_su_contrato(client, admin, monkeypatch):
     from app.models.models import SpaceLease
 
     enviados = _vender_por_lote(client, admin, monkeypatch, HOY, HOY + timedelta(days=60))
-    (html,) = [html for to, subject, html in enviados if "por montar" in subject]
+    html = "".join(html for to, subject, html in enviados if "por montar" in subject)
     enlaces = _enlaces(html)
     assert len(enlaces) == 2, html
     db = SessionLocal()

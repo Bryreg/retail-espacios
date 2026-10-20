@@ -22,9 +22,9 @@ lo tiene por clave primaria: lo que guardan es UNA cosa de ese contrato.
   si algo choca: `layout_lookup.contratos_que_chocan` la devuelve junto con los
   contratos. Al confirmarla nace el contrato (`lease_id`); al cancelarla queda
   en el registro con `baja_en`.
-· montajes_pendientes: el aviso de montaje de un contrato de participación,
-  que espera a que la cara tenga su distribución confirmada (sin zona, quien
-  monta no sabe dónde va).
+· montajes_pendientes: el aviso de montaje de un contrato nuevo, que espera
+  su planometría y, en un porcentaje, la distribución confirmada de su cara
+  (sin zona, quien monta no sabe dónde va). ``services/montajes_pendientes.py``.
 
 Todo esto es plata o la lleva cerca: sólo lo leen rutas de administración, y
 nada de acá entra al historial de participaciones (que no lleva montos) ni al
@@ -154,7 +154,9 @@ class ReservaDeEspacio(Base):
 
 
 class MontajePendiente(Base):
-    """El aviso de montaje de un contrato de participación que espera zona."""
+    """El aviso de montaje de un contrato nuevo que espera su planometría (y,
+    en un porcentaje, su zona). ``cara_space_id``: la cara que se distribuye en
+    un porcentaje; en una cara entera o una parte, el espacio del contrato."""
 
     __tablename__ = "montajes_pendientes"
 

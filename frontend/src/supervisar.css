@@ -1,0 +1,238 @@
+/* ============================================================================
+   RECABRA · SUPERVISAR — el rediseño (PR 2)
+
+   Capa 3 del sistema, como `vender.css`: consume los tokens de `tema.css` y no
+   define ningún color propio. Referencia exacta, la aprobada:
+   `docs/maquetas/rediseno-2026-10/supervisar.html` (las piezas en
+   `hoja-iconos-y-piezas.html`).
+
+   TODO cuelga de `.sup`, la raíz de Supervisar en `DashboardView`: Vender no
+   ve una sola de estas reglas. Lo que comparten las dos pantallas —el panel
+   del plano (`.vp`, `.vp-plano`), la rejilla y `--alto-plano`— sigue en
+   `vender.css`, que es donde lo leen las guardas de las dos.
+
+   Íconos de 16 con trazo 1,75 en gris en reposo; rojo sólo en la alarma. Sin
+   íconos en pestañas ni pastillas. La plata entera.
+   ========================================================================== */
+
+/* --- Las pastillas: la palabra adentro, el color como refuerzo ---------- */
+.sup .pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px;
+  border-radius: var(--r-pill); font-size: var(--t-2xs); font-weight: 600; white-space: nowrap;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2);
+  flex: none;
+}
+/* En la tabla la pastilla nunca se corta muda: si no entra, «…» (y la palabra
+   entera en su `title`). */
+.sup td > .pill { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; line-height: 20px; vertical-align: middle; }
+.sup .pill.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; min-width: 42px; justify-content: center; }
+.sup .pill.chica { height: 18px; padding: 0 6px; font-size: var(--t-3xs); margin-left: 6px; text-transform: uppercase; letter-spacing: .06em; }
+.sup .pill.libre { background: var(--libre-suave); border-color: var(--libre-borde); color: var(--libre-txt); }
+.sup .pill.entra { background: var(--entra-suave); border-color: var(--entra-borde); color: var(--entra-txt); }
+.sup .pill.ocupado { background: var(--ocupado-suave); border-color: var(--ocupado-borde); color: var(--ocupado-txt); }
+.sup .pill.resto { background: var(--resto-suave); border-color: var(--resto-borde); color: var(--ink-2); }
+.sup .celda-pills { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+/* El punto y su palabra (el montaje). */
+.sup .punto { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); color: var(--ink-2); white-space: nowrap; }
+.sup .punto::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--ink-4)); flex: none; }
+
+/* --- El control segmentado: el selector de la plata, las pestañas ------- */
+.sup .seg {
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: 12px; max-width: 100%;
+  background: var(--surface-2); border: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.sup .seg button {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+  border: 0; border-radius: 9px; background: transparent; color: var(--ink-2);
+  font-family: inherit; font-size: var(--t-xs); font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.sup .seg button .n { font-family: var(--f-mono); font-size: var(--t-2xs); color: var(--ink-3); }
+.sup .seg button:hover { color: var(--ink-1); }
+/* La activa, oscura: tinta de fondo y la letra del papel, en los dos temas
+   (el «#fff» de antes sobre `--ink-1` no se leía en oscuro, donde la tinta
+   es clara). */
+.sup .seg button[aria-pressed="true"] { background: var(--ink-1); color: var(--surface); font-weight: 600; }
+.sup .seg button[aria-pressed="true"] .n { color: var(--surface); opacity: .85; }
+.sup .seg.ancho { display: flex; width: 100%; flex-wrap: nowrap; }
+.sup .seg.ancho button { flex: 1; justify-content: center; min-width: 0; padding: 0 8px; }
+.sup .selector-plata { display: inline-flex; align-items: center; gap: 8px; }
+.sup .selector-plata .seg button { height: 26px; }
+
+/* --- Los botones de las filas y de la ficha (tinta: Supervisar no tiene amarillo) */
+.sup .btn-s {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+  border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink-1); font-family: inherit; font-size: var(--t-2xs); font-weight: 600;
+  cursor: pointer; white-space: nowrap; flex: none;
+}
+.sup .btn-s svg { color: var(--ink-3); flex: none; }
+.sup .btn-s:hover { border-color: var(--ink-3); }
+.sup .icobtn {
+  display: grid; place-items: center; width: 30px; height: 30px; flex: none; padding: 0;
+  border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2);
+  color: var(--ink-2); cursor: pointer;
+}
+.sup .cuenta {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: var(--r-pill); background: var(--ocupado); color: var(--surface);
+  font: 700 var(--t-3xs)/1 var(--f-mono);
+}
+.sup .nota { font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
+.sup .nota.error { color: var(--ocupado-txt); }
+.sup .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* --- La franja: una caja por cifra ------------------------------------- */
+.sup .cifras {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 10px; padding: 0 15px 14px;
+}
+.sup .cifra {
+  display: grid; gap: 4px; align-content: start; min-width: 0;
+  padding: 13px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
+}
+.sup .cifra .cab { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.sup .cifra .v {
+  font: 700 var(--t-lg)/1.15 var(--f-mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+  color: var(--ink-1); overflow-wrap: anywhere;
+}
+.sup .cifra .v.cero { color: var(--ink-3); }
+.sup .cifra i { font-style: normal; font-size: var(--t-2xs); color: var(--ink-3); overflow-wrap: anywhere; }
+.sup .cifra i.tasa { color: var(--ink-2); font-weight: 600; }
+.sup .cifra.alarma .rotulo, .sup .cifra.alarma .v { color: var(--ocupado-txt); }
+.sup .barrita { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; margin-top: 4px; }
+.sup .barrita > span { display: block; height: 100%; border-radius: 2px; background: var(--ink-2); }
+.sup .cifra .barrita > span { background: var(--ocupado); }
+
+/* --- La hoja --------------------------------------------------------------- */
+.sup .col-revisar { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* --- «Para revisar»: secciones y filas ---------------------------------- */
+.sup .lista-r {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 12px;
+  display: flex; flex-direction: column;
+}
+.sup .vacio-r { padding: 6px 4px; font-size: var(--t-xs); color: var(--libre-txt); }
+.sup .sec-r { padding: 12px 4px 6px; border-top: 1px solid var(--line-soft); }
+.sup .lista-r > :first-child .sec-r:first-child,
+.sup .lista-r > .sec-r:first-child { border-top: 0; padding-top: 2px; }
+.sup .sec-r .rotulo b { font-family: var(--f-mono); color: var(--ink-1); }
+.sup .fila-r {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+  padding: 9px 8px; border-radius: 12px; transition: background var(--dur-1);
+}
+.sup .fila-r:hover { background: var(--surface-2); }
+.sup .fila-r.elegida { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--ink-1); }
+.sup .fila-r.destacada { background: var(--entra-suave); }
+/* La chincheta llevó acá: se marca un momento. */
+.sup [data-aviso][data-marcada] { box-shadow: 0 0 0 2px var(--ink-1); background: var(--surface-2); }
+.sup .fila-r .dat {
+  display: grid; min-width: 0; text-align: left; padding: 0; border: 0; background: none;
+  color: inherit; font-family: inherit; cursor: pointer; grid-column: 2;
+}
+.sup .fila-r .dat:disabled { cursor: default; }
+.sup .fila-r .dat b { font-size: var(--t-sm); color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sup .fila-r .dat span { font-size: var(--t-2xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; }
+.sup .fila-r > .btn-s, .sup .fila-r > .acc-r { grid-column: 2; grid-row: 2; justify-self: start; }
+.sup .fila-r > .acc-r { display: flex; gap: 6px; flex-wrap: wrap; }
+.sup .fila-r > .ir { grid-column: 3; grid-row: 1; color: var(--ink-3); }
+
+/* --- La ficha ---------------------------------------------------------------- */
+.sup .ficha-cab {
+  display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.sup .ficha-cab h3 {
+  margin: 0; font-size: var(--t-base); font-weight: 700; color: var(--ink-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sup .ficha-cab .sub { font-size: var(--t-2xs); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sup .acc { display: flex; flex-wrap: wrap; gap: 8px; }
+.sup .acc:empty { display: none; }
+.sup .valor-ficha {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2);
+}
+.sup .valor-ficha .mono { font-size: var(--t-md); font-weight: 700; color: var(--ink-1); text-align: right; }
+.sup .fila-dist { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sup .pedida {
+  display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--r-lg);
+  border: 1px dashed var(--line-strong); background: var(--surface-2);
+}
+.sup [data-planometria-pedida] { scroll-margin: 12px; }
+
+/* Una cara por participación: la barra, las marcas y sus acciones. */
+.sup .ficha-pc { display: grid; gap: 10px; }
+.sup .cap { display: grid; gap: 6px; }
+.sup .cap .barra { display: flex; gap: 2px; height: 10px; border-radius: 6px; overflow: hidden; background: var(--surface-3); }
+.sup .cap .barra > span { display: block; height: 100%; min-width: 2px; }
+.sup .cap .barra > .queda { background: var(--libre-suave); box-shadow: inset 0 0 0 1px var(--libre-borde); }
+.sup .cap .lee { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--t-2xs); color: var(--ink-3); }
+.sup .cap .lee b { color: var(--ink-1); font-family: var(--f-mono); }
+.sup .partes-pc { display: grid; gap: 6px; }
+.sup .part {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 6px 10px; align-items: center;
+  padding: 10px; border: 1px solid var(--line); border-radius: 12px;
+}
+.sup .part > .num {
+  display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px;
+  font: 700 var(--t-3xs)/1 var(--f-mono); color: var(--surface);
+}
+.sup .part .dat { display: grid; gap: 1px; min-width: 0; }
+.sup .part .dat b { font-size: var(--t-sm); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sup .part .dat span { font-size: var(--t-2xs); color: var(--ink-3); }
+.sup .part > .btn-s { grid-column: 2; justify-self: start; }
+
+/* --- Quién paga el canon --------------------------------------------------- */
+.sup .quien-l { flex: 1; min-height: 0; overflow-y: auto; padding: 0 15px 12px; display: grid; gap: 12px; align-content: start; }
+.sup .qp { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: baseline; font-size: var(--t-xs); }
+.sup .qp .nombre { color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sup .qp b { font-weight: 700; color: var(--ink-1); }
+.sup .qp .pct { font-size: var(--t-2xs); color: var(--ink-3); min-width: 4ch; text-align: right; }
+.sup .qp .barrita { grid-column: 1 / -1; margin-top: 0; }
+.sup .orden-sel {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px;
+  border: 1px solid var(--brd-control); border-radius: var(--r-md); background: var(--surface); color: var(--ink-3);
+}
+.sup .orden-sel select {
+  border: 0; outline: none; background: transparent; color: var(--ink-1);
+  font-family: inherit; font-size: var(--t-xs); cursor: pointer;
+}
+
+/* --- El plano de Supervisar: la chincheta y su clave ---------------------- */
+.sup .clave-pin { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sup .clave-pin svg { color: var(--ink-3); flex: none; }
+.chinchetas { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.chinchetas button {
+  position: absolute; pointer-events: auto;
+  /* Sin rótulo a la vista (un mueble que no se vende entero, o un rótulo que
+     cedió): la punta de la chincheta sobre el ancla. */
+  transform: translate(-50%, calc(-100% - 12px));
+  display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border-radius: 50%; border: 1.5px solid var(--c, var(--ink-1)); background: var(--surface); color: var(--c, var(--ink-1));
+  box-shadow: var(--sh-1); cursor: pointer;
+}
+/* El color del grupo: Hoy rojo, 30 días ámbar, Corregir tinta. */
+.chinchetas button[data-grupo="hoy"] { --c: var(--ocupado); }
+.chinchetas button[data-grupo="dias30"] { --c: var(--entra); }
+.chinchetas button[data-grupo="corregir"] { --c: var(--ink-1); }
+.chinchetas button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+/* Con su rótulo puesto, la chincheta se apoya ARRIBA de la caja del rótulo
+   (`ubicarChinchetas`): el código queda siempre a la vista. */
+.chinchetas button[data-sobre="rotulo"] { transform: translate(-50%, -100%); }
+/* A lo angosto, más chica: el plano mide la mitad. */
+@media (max-width: 560px) {
+  .chinchetas button { width: 20px; height: 20px; }
+  .chinchetas button svg { width: 12px; height: 12px; }
+}
+
+/* A lo angosto (390 px): sin desplazamiento de la página; las tablas ruedan
+   adentro de su tarjeta y los encabezados envuelven. */
+@media (max-width: 560px) {
+  .sup .fila-r { grid-template-columns: auto minmax(0, 1fr); }
+  .sup .fila-r > .ir { display: none; }
+  .sup .cifras { padding: 0 12px 12px; }
+  .sup .vp-plano > header { flex-wrap: wrap; }
+  .sup .vp-plano > header .der { flex-wrap: wrap; margin-left: 0; }
+}

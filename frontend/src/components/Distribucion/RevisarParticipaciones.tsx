@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Layers } from "lucide-react";
+import { Layers, PenTool } from "lucide-react";
 import { describeError } from "../../api/client";
 import type { ParametrosDeResumen, ResumenOut } from "../../api/participaciones";
 import { useAuthStore } from "../../store/authStore";
@@ -73,81 +73,83 @@ export function useRevisionDeParticipaciones({ sede, activo, muebles }: {
   return { secciones, total: cuantasParaRevisar(secciones) };
 }
 
-const tituloDeSeccion: React.CSSProperties = {
-  fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "var(--t-3xs)",
-  letterSpacing: "0.11em", textTransform: "uppercase", color: "var(--entra-txt)",
-};
+/** Lo que dice el botón de cada renglón: es el mismo camino —abrir la cara en
+ *  el Editor 3D, en Distribución— con la palabra de lo que hay que hacer ahí
+ *  (hoja de piezas del rediseño: «Distribuir», «Revisar»). */
+function textoDelBoton(tipo: SeccionDeRevision["tipo"]): string {
+  return tipo === "sin_dibujar" ? "Distribuir"
+    : tipo === "para_revisar" || tipo === "con_problemas" ? "Revisar"
+    : "Abrir en Distribución";
+}
 
 /** Las tarjetas, una por sección con algo, cada renglón con «Abrir en
- *  Distribución» cuando hay un mueble del plano que abrir. */
-export default function RevisarParticipaciones({ secciones }: { secciones: readonly SeccionDeRevision[] }) {
+ *  Distribución» cuando hay un mueble del plano que abrir. Supervisar las
+ *  reparte en sus tres grupos (`components/Supervisar/paraRevisar.ts`) y le
+ *  pasa a cada grupo sólo lo suyo; el título de la sección puede cambiar con
+ *  el grupo (`tituloDe`). */
+export default function RevisarParticipaciones({ secciones, tituloDe }: {
+  secciones: readonly SeccionDeRevision[];
+  tituloDe?: (s: SeccionDeRevision) => string;
+}) {
   const abrir = useAbrirEnDistribucion();
   if (secciones.length === 0) return null;
   return (
-    <div data-revisar-participaciones style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div data-revisar-participaciones style={{ display: "flex", flexDirection: "column" }}>
       {secciones.map((s) => (
         <div key={s.tipo} data-seccion={s.tipo}>
-          <div style={{
-            display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10,
-            padding: "0 6px 6px", margin: "0 0 2px", borderBottom: "1px solid var(--line)",
-          }}>
-            <span style={tituloDeSeccion}>{s.titulo}</span>
-            <span style={{ fontSize: "var(--t-sm)", fontWeight: 700, color: "var(--ink-1)" }}>{s.items.length}</span>
+          <div className="sec-r">
+            <span className="rotulo">{tituloDe ? tituloDe(s) : s.titulo} · <b>{s.items.length}</b></span>
           </div>
-          {s.items.map((it) => (
-            <div
-              key={it.clave}
-              style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "7px 6px",
-                borderTop: "1px solid var(--line-soft)",
-              }}
-            >
-              {/* «Falta distribuir»: cuántos días faltan para que empiece, con
-                  la forma del renglón de «Por vencer» (la cifra en una cajita);
-                  roja con 7 días o menos, porque ahí ya hay alguien que pagó y
-                  espera ver su exhibición. */}
-              {it.empiezaEn !== undefined && (
+          {s.items.map((it) => {
+            // «Falta distribuir»: cuántos días faltan para que empiece, en la
+            // pastilla del renglón; roja con 7 días o menos, porque ahí ya hay
+            // alguien que pagó y espera ver su exhibición. Una reserva, cuántos
+            // le quedan antes de caducar.
+            const dias = it.caducaEn ?? it.empiezaEn;
+            const apuro = dias !== undefined && dias <= (it.caducaEn !== undefined ? 0 : DIAS_DE_APURO);
+            return (
+              <div key={it.clave} className="fila-r" data-aviso={`pc:${it.clave}`}>
                 <span
-                  title={it.empiezaEn <= 0 ? "Ya corre" : `Empieza en ${it.empiezaEn} día${it.empiezaEn === 1 ? "" : "s"}`}
-                  style={{
-                    flexShrink: 0, minWidth: 44, textAlign: "center", padding: "2px 5px",
-                    fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "var(--t-xs)",
-                    borderRadius: "var(--r-xs)",
-                    color: it.empiezaEn <= DIAS_DE_APURO ? "var(--ocupado-txt)" : "var(--ink-2)",
-                    background: it.empiezaEn <= DIAS_DE_APURO ? "var(--ocupado-suave)" : "var(--surface-3)",
-                  }}
+                  className={`pill mono ${dias === undefined ? "resto" : apuro ? "ocupado" : "entra"}`}
+                  title={it.empiezaEn !== undefined
+                    ? (it.empiezaEn <= 0 ? "Ya corre" : `Empieza en ${it.empiezaEn} día${it.empiezaEn === 1 ? "" : "s"}`)
+                    : undefined}
                 >
-                  {it.empiezaEn <= 0 ? "corre" : `${it.empiezaEn}d`}
+                  {dias === undefined ? "—" : it.caducaEn !== undefined
+                    ? (it.caducaEn <= 0 ? "hoy" : `${it.caducaEn}d`)
+                    : dias <= 0 ? "corre" : `${dias}d`}
                 </span>
-              )}
-              <span style={{ flex: 1, minWidth: 0, fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
-                {it.rotulo && (
-                  <b style={{ fontFamily: "var(--font-mono)", color: "var(--ink-1)", marginRight: 6 }}>{it.rotulo}</b>
+                <div className="dat">
+                  {it.rotulo && <b className="mono">{it.rotulo}</b>}
+                  <span>{it.frase}</span>
+                </div>
+                {it.abrir && (
+                  <button
+                    type="button"
+                    className="btn-s"
+                    onClick={() => abrir(it.abrir!.fixtureId, it.abrir!.cara)}
+                    title="Abrir en Distribución: el Editor 3D en esta cara"
+                  >
+                    <PenTool size={16} strokeWidth={1.75} aria-hidden /> {textoDelBoton(s.tipo)}
+                  </button>
                 )}
-                {it.frase}
-              </span>
-              {it.abrir && (
-                <button
-                  type="button"
-                  onClick={() => abrir(it.abrir!.fixtureId, it.abrir!.cara)}
-                  title="Abre el Editor 3D en esta cara, en Distribución"
-                  style={{
-                    flexShrink: 0, height: 24, padding: "0 8px", borderRadius: "var(--r-md)",
-                    display: "inline-flex", alignItems: "center", gap: 4,
-                    border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink-2)",
-                    fontSize: "var(--t-3xs)", fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
-                  }}
-                >
-                  <Layers size={16} strokeWidth={1.75} aria-hidden /> Abrir en Distribución
-                </button>
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>
   );
 }
+
+/** La clase de la pastilla de cada estado de la distribución. */
+const PASTILLA_DE_LA_DISTRIBUCION: Record<keyof typeof PALABRA_DE_LA_DISTRIBUCION, "libre" | "entra" | "ocupado"> = {
+  confirmada: "libre",
+  sin_distribuir: "entra",
+  borrador: "entra",
+  para_revisar: "entra",
+  sin_mueble: "ocupado",
+};
 
 const celda: React.CSSProperties = {
   padding: "6px 8px", borderTop: "1px solid var(--line-soft)", fontSize: "var(--t-2xs)",
@@ -263,8 +265,15 @@ export function TablaDeParticipaciones({ sede, muebles }: { sede: string; mueble
                     {c.pendiente_dia_pb > 0 ? <span style={{ color: "var(--ink-3)" }}> · falta {pct(c.pendiente_dia_pb)}</span> : null}
                   </td>
                   <td style={celda}>
-                    {PALABRA_DE_LA_DISTRIBUCION[c.estado_distribucion]}
-                    {c.errores > 0 ? <span style={{ color: "var(--danger)" }}> · {c.errores} problema{c.errores === 1 ? "" : "s"}</span> : null}
+                    {/* El estado de la distribución, en pastilla (rediseño, PR 2):
+                        confirmada en verde, lo que falta en ámbar, lo que no
+                        cuadra en rojo; la palabra va siempre adentro. */}
+                    <span className="celda-pills">
+                      <span className={`pill ${PASTILLA_DE_LA_DISTRIBUCION[c.estado_distribucion]}`}>
+                        {PALABRA_DE_LA_DISTRIBUCION[c.estado_distribucion]}
+                      </span>
+                      {c.errores > 0 ? <span className="pill ocupado">{c.errores} problema{c.errores === 1 ? "" : "s"}</span> : null}
+                    </span>
                   </td>
                   <td style={celda}>
                     {mueble && (

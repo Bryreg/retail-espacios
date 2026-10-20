@@ -75,3 +75,26 @@ export function textoDeMeses(m: number): string {
   const dos = Math.round(m * 100) / 100;
   return `${String(dos).replace(".", ",")} meses`;
 }
+
+/** Un total repartido en SUS meses, al peso (lo «al mes» de Supervisar,
+ *  `enLaUnidad`). Sin fechas que se entiendan (`meses` da 0) se queda con el
+ *  total: no se inventa un plazo. */
+export function alMesDe(total: number, desde: string, hasta: string): number {
+  const m = meses(desde, hasta);
+  return m > 0 ? redondear(total / m) : total;
+}
+
+/** «Bajo tarifa de referencia»: el contrato AL MES (su total repartido en sus
+ *  meses) contra la tarifa, que está escrita al mes. Comparaba el TOTAL con la
+ *  tarifa —y la fila mostraba el valor al mes—: un contrato de tres meses a
+ *  $ 500.000 al mes contra una tarifa de $ 650.000 nunca salía, y uno de
+ *  quince días por encima de la tarifa salía «bajo». Sólo una brecha que se
+ *  note (1 % o más). `null`: no está por debajo, o no hay con qué comparar. */
+export function bajoLaTarifa(
+  total: number, desde: string, hasta: string, tarifaAlMes: number | null,
+): { alMes: number; brechaPct: number } | null {
+  if (!(total > 0) || !(tarifaAlMes && tarifaAlMes > 0)) return null;
+  const alMes = alMesDe(total, desde, hasta);
+  const brechaPct = Math.round((1 - alMes / tarifaAlMes) * 100);
+  return brechaPct >= 1 ? { alMes, brechaPct } : null;
+}

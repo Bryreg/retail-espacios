@@ -1387,6 +1387,21 @@ export function contarElPeriodo(caras: Iterable<CaraDelPeriodo>): ConteoDelPerio
   return c;
 }
 
+/**
+ * Una cara del periodo COMO LA MIRA SUPERVISAR. Vender pinta ámbar todo lo que
+ * se puede vender en parte —también una cara vendida ENTERA que empieza o
+ * termina adentro del periodo (`"dias"`)—; Supervisar pregunta qué está
+ * vendido, y «Vendido en parte» es sólo lo vendido POR PARTES o POR
+ * PARTICIPACIÓN. Una cara vendida entera parte del periodo está tomada: así la
+ * clave del plano, la nota de «Ocupación», la pestaña de la tabla y el color
+ * del plano dicen la misma cuenta (la contaba como «vendida en parte»).
+ */
+export function comoLaVeSupervisar<T extends CaraDelPeriodo>(x: T): T {
+  if (x.dispo !== "parcial") return x;
+  const motivo = x.motivo ?? motivoDelParcial(x.deParticipacion, null);
+  return motivo === "dias" ? { ...x, dispo: "tomado", motivo: undefined } : x;
+}
+
 /** Cuántas están en parte, por cualquier motivo (el «+N» ámbar). */
 export function enParte(c: ConteoDelPeriodo): number {
   return c.dias + c.partes + c.participacion;

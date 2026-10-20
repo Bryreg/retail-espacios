@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.fechas import hoy
 from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
 from app.services.catalogo_muebles import CLASES_DE_PARTE
+from app.services.montajes_pendientes import dejar_pendiente
 from app.services.partes import Parte, cantidad_de, es_division
 
 
@@ -127,11 +128,16 @@ def escribir_contrato(
     hasta: date,
     valor: Optional[float],
     notas: Optional[str],
+    cara_space_id: Optional[int] = None,
 ) -> SpaceLease:
     """Inserta el contrato y hace `flush` (quien llama necesita su id).
 
     Sólo lo que ya arrancó ocupa: firmar en agosto para diciembre no puede
-    esconder cuatro meses vendibles detrás de un estado que no es cierto."""
+    esconder cuatro meses vendibles detrás de un estado que no es cierto.
+
+    El aviso de montaje del contrato queda pendiente hasta que tenga su
+    planometría (y, en un porcentaje —``cara_space_id``: la cara que se
+    distribuye—, su zona confirmada): ``services/montajes_pendientes.py``."""
     lease = SpaceLease(
         space_id=space.id,
         supplier_id=supplier.id,
@@ -143,6 +149,7 @@ def escribir_contrato(
     )
     db.add(lease)
     db.flush()
+    dejar_pendiente(db, lease, cara_space_id)
     if lease.start_date <= hoy():
         space.status = SpaceStatus.occupied
     return lease

@@ -35,8 +35,9 @@ from sqlalchemy.orm import Session
 from app.auth import require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
-from app.models.models import SpaceLease
 from app.routers.bulk_leases import FilaOut, _avisar
+from app.routers.montajes import avisar_los_listos
+from app.services import montajes_pendientes
 from app.services import participaciones as servicio
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de
@@ -201,38 +202,26 @@ def fila_de_participacion(lease, t, letra: str, supplier=None) -> FilaOut:
 def _correos(db: Session, background_tasks: BackgroundTasks, hecho: "servicio.Hecho", cliente: Cliente):
     """Los correos de un contrato nuevo, los mismos de la planilla
     (``bulk_leases._avisar``). Una reserva no manda correos. El de montaje
-    queda pendiente si la participación todavía no tiene zona confirmada
-    (``montajes_pendientes``, ``docs/rediseno/vender-api.md`` §4): sale al
-    confirmar la distribución de la cara (``_montajes_que_esperaban``)."""
+    queda pendiente (``montajes_pendientes``, ``docs/rediseno/vender-api.md``
+    §4): sale cuando el contrato tiene su planometría y la participación su
+    zona confirmada, lo que pase último (``routers/montajes.py``)."""
     if hecho.lease is None:
         return None
     lease = hecho.lease
     fila = fila_de_participacion(lease, hecho.termino, hecho.cara.letra, hecho.supplier)
-    sin_montaje = {lease.id} if hecho.montaje_diferido else frozenset()
-    return _avisar(db, background_tasks, lease.space.sede, [fila], cliente, sin_montaje=sin_montaje).model_dump()
+    return _avisar(db, background_tasks, lease.space.sede, [fila], cliente).model_dump()
 
 
 def _montajes_que_esperaban(db: Session, background_tasks: BackgroundTasks, hecho: "servicio.HechoDistribucion",
                             cliente: Cliente) -> None:
     """Después de confirmar la distribución (ya con commit, y sólo si quedó
     válida): el aviso de montaje de los contratos de participación de esta cara
-    que esperaban su zona. Sólo a quien monta —comercial y el proveedor ya lo
-    recibieron al firmar— y en un solo correo por sede. Las filas pendientes se
-    borran: el aviso sale una vez."""
+    que esperaban su zona y ya tienen su planometría. Sólo a quien monta
+    —comercial y el proveedor ya lo recibieron al firmar— y una vez."""
     if hecho.distribucion is None:
         return
-    listos = servicio.montajes_listos(db, hecho.distribucion.cara_space_id)
-    if not listos:
-        return
-    filas = []
-    for pendiente, t in listos:
-        lease = db.get(SpaceLease, pendiente.lease_id)
-        if lease is not None and lease.is_active:
-            filas.append(fila_de_participacion(lease, t, hecho.cara.letra))
-        db.delete(pendiente)
-    db.commit()
-    if filas:
-        _avisar(db, background_tasks, filas[0].sede, filas, cliente, roles=("montaje",))
+    listos = montajes_pendientes.listos(db, cara_space_id=hecho.distribucion.cara_space_id)
+    avisar_los_listos(db, background_tasks, listos, cliente)
 
 
 def _bitacora(db: Session, request: Request, rol: str, accion: Optional[str], entidad: str, entidad_id: str,

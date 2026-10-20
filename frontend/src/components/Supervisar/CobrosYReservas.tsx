@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 import { describeError } from "../../api/client";
-import { cargarCorte, cobrosPorVentas, cortesPendientes, type CortePendiente } from "../../api/cobros";
+import { cargarCorte, cobrosPorVentas, cortesPendientes, type CobroPorVentas, type CortePendiente } from "../../api/cobros";
 import { cancelarReserva, confirmarReserva, reservasDeEspacio, type ReservaDeEspacio } from "../../api/reservas";
 import { money } from "../Contrato/Contrato";
 import { fechaEnCurso } from "../../utils/propuesta";
@@ -9,6 +9,7 @@ import { toISODate } from "../../types/seasons";
 import { isDoubleGondola } from "../../types/espacio";
 import { codigoVisibleDe, partirCodigo } from "../../utils/partes";
 import { useFixtureStore } from "../../store/fixtureStore";
+import { EncabezadoDeSeccion } from "./piezas";
 
 /**
  * Dos bloques de «Para revisar» que nacieron con el rediseño de Vender (PR 1,
@@ -42,7 +43,7 @@ function codigoEnLaSede(espacio: string, sede: string): string {
 /** Cómo se LEE el código en pantalla, como en la tabla y la ficha
  *  (`codigoVisibleDe`): `GON-04·B`, `GON-04·A`, `NEV-03·PU2`. La cara A de una
  *  góndola doble lleva su letra si el mueble del plano la tiene. */
-function useCodigoVisible(sede: string): (espacio: string) => string {
+export function useCodigoVisible(sede: string): (espacio: string) => string {
   const muebles = useFixtureStore((s) => s.fixturesBySede[sede]);
   return useCallback((espacio: string) => {
     const p = partirCodigo(codigoEnLaSede(espacio, sede));
@@ -72,23 +73,6 @@ function periodo(desde: string, hasta: string): string {
 /** «8 %» con la coma de acá («7,5 %»). */
 function porcentaje(n: number): string {
   return `${Number(n).toLocaleString("es-CO", { maximumFractionDigits: 2 })} %`;
-}
-
-const tituloDeSeccion: React.CSSProperties = {
-  fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "var(--t-3xs)",
-  letterSpacing: "0.11em", textTransform: "uppercase",
-};
-
-function Encabezado({ titulo, n, color }: { titulo: string; n: number; color: string }) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10,
-      padding: "0 6px 6px", margin: "0 0 2px", borderBottom: "1px solid var(--line)",
-    }}>
-      <span style={{ ...tituloDeSeccion, color }}>{titulo}</span>
-      <span style={{ fontSize: "var(--t-sm)", fontWeight: 700, color: "var(--ink-1)" }}>{n}</span>
-    </div>
-  );
 }
 
 const fila: React.CSSProperties = {
@@ -134,30 +118,47 @@ const claveDeCorte = (c: Pick<CortePendiente, "lease_id" | "periodo_desde">) => 
 export function useCobrosPorVentas({ sede, activo }: { sede: string; activo: boolean }) {
   const [pendientes, setPendientes] = useState<CortePendiente[]>([]);
   const [vigentes, setVigentes] = useState(0);
+  /** Los contratos por ventas de la sede, con sus cortes cargados (`cobrado`) y
+   *  el próximo: con ellos el canon, «Quién paga» y la tabla dicen lo cargado
+   *  y la ficha «8 % de las ventas · próximo corte 30 nov». */
+  const [cobros, setCobros] = useState<CobroPorVentas[]>([]);
   const [cargados, setCargados] = useState<Record<string, number>>({});
   const [vuelta, setVuelta] = useState(0);
+  /** Se cargó un corte: los cobros (lo cargado de cada contrato) se vuelven a
+   *  leer —el canon vigente, «Quién paga» y la tabla lo suman— sin volver a
+   *  leer los pendientes, así la fila queda con su «→ $ monto». */
+  const [vueltaDeCobros, setVueltaDeCobros] = useState(0);
   useEffect(() => {
     setCargados({});
-    if (!activo || !sede) { setPendientes([]); setVigentes(0); return; }
+    if (!activo || !sede) { setPendientes([]); return; }
     let vivo = true;
     cortesPendientes(sede)
       .then((r) => { if (vivo) setPendientes(Array.isArray(r) ? r : []); })
       .catch(() => { if (vivo) setPendientes([]); });
+    return () => { vivo = false; };
+  }, [sede, activo, vuelta]);
+  useEffect(() => {
+    if (!activo || !sede) { setVigentes(0); setCobros([]); return; }
+    let vivo = true;
     cobrosPorVentas(sede)
       .then((r) => {
         if (!vivo) return;
         const hoy = HOY();
-        setVigentes((Array.isArray(r) ? r : []).filter((c) => c.desde <= hoy && hoy <= c.hasta).length);
+        const todos = Array.isArray(r) ? r : [];
+        setCobros(todos);
+        setVigentes(todos.filter((c) => c.desde <= hoy && hoy <= c.hasta).length);
       })
-      .catch(() => { if (vivo) setVigentes(0); });
+      .catch(() => { if (vivo) { setVigentes(0); setCobros([]); } });
     return () => { vivo = false; };
-  }, [sede, activo, vuelta]);
+  }, [sede, activo, vuelta, vueltaDeCobros]);
   const marcarCargado = useCallback((c: CortePendiente, monto: number) => {
     setCargados((x) => ({ ...x, [claveDeCorte(c)]: monto }));
+    // El canon vigente suma lo cargado: sin esto no cambiaba hasta recargar.
+    setVueltaDeCobros((n) => n + 1);
   }, []);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
   const porCargar = useMemo(() => pendientes.filter((c) => !(claveDeCorte(c) in cargados)).length, [pendientes, cargados]);
-  return { pendientes, cargados, marcarCargado, porCargar, vigentes, recargar };
+  return { pendientes, cargados, marcarCargado, porCargar, vigentes, cobros, recargar };
 }
 
 /** «Ventas por cargar»: cada corte con su campo «vendido» y «Guardar». */
@@ -171,7 +172,7 @@ export function VentasPorCargar({ sede, pendientes, cargados, onCargado }: {
   const faltan = pendientes.filter((c) => !(claveDeCorte(c) in cargados)).length;
   return (
     <div data-ventas-por-cargar>
-      <Encabezado titulo="Ventas por cargar" n={faltan} color="var(--entra-txt)" />
+      <EncabezadoDeSeccion titulo="Ventas por cargar" valor={faltan} />
       {pendientes.map((c) => (
         <CorteParaCargar
           key={claveDeCorte(c)}
@@ -214,7 +215,8 @@ function CorteParaCargar({ corte, sede, monto, onCargado }: {
   }
 
   return (
-    <div style={fila} data-corte={`${corte.lease_id}|${corte.periodo_desde}`}>
+    <div style={fila} className="fila-r destacada pv" data-corte={`${corte.lease_id}|${corte.periodo_desde}`}
+      data-aviso={`corte:${claveDeCorte(corte)}`}>
       <div style={renglon}>
         <span style={codigo}>{cod}</span>
         <span style={quien}>{corte.proveedor ?? "—"}</span>
@@ -290,8 +292,10 @@ export function useReservasDeEspacio({ sede, activo }: { sede: string; activo: b
 
 /** «Reservas»: cada una con Confirmar (con el precio que se guardó al
  *  reservar) y Cancelar (que pregunta antes: es un compromiso con alguien). */
-export function ReservasSinConfirmar({ sede, vivas, onCambio }: {
+export function ReservasSinConfirmar({ sede, vivas, onCambio, titulo = "Reservas" }: {
   sede: string;
+  /** «Reservas que caducan hoy» (Hoy) o «Reservas por caducar» (30 días). */
+  titulo?: string;
   vivas: readonly ReservaDeEspacio[];
   /** Una reserva se confirmó o se canceló: hay que volver a leer la lista y el mapa. */
   onCambio: () => void;
@@ -299,13 +303,15 @@ export function ReservasSinConfirmar({ sede, vivas, onCambio }: {
   if (vivas.length === 0) return null;
   return (
     <div data-reservas-de-espacio>
-      <Encabezado titulo="Reservas" n={vivas.length} color="var(--entra-txt)" />
+      <EncabezadoDeSeccion titulo={titulo} valor={vivas.length} />
       {vivas.map((r) => <FilaDeReserva key={r.id} r={r} sede={sede} onCambio={onCambio} />)}
     </div>
   );
 }
 
-function FilaDeReserva({ r, sede, onCambio }: { r: ReservaDeEspacio; sede: string; onCambio: () => void }) {
+/** Una reserva con Confirmar y Cancelar. También la usa la ficha del espacio
+ *  («Reservado hasta …»), con el mismo camino. */
+export function FilaDeReserva({ r, sede, onCambio }: { r: ReservaDeEspacio; sede: string; onCambio: () => void }) {
   const [enCurso, setEnCurso] = useState<"confirmar" | "cancelar" | null>(null);
   const [preguntando, setPreguntando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -330,7 +336,7 @@ function FilaDeReserva({ r, sede, onCambio }: { r: ReservaDeEspacio; sede: strin
   }
 
   return (
-    <div style={fila} data-reserva={r.id}>
+    <div style={fila} className="fila-r" data-reserva={r.id} data-aviso={`res:${r.id}`}>
       <div style={renglon}>
         <span style={codigo}>{cod}</span>
         <span style={quien}>{r.proveedor ?? "—"}{r.marca ? ` · ${r.marca}` : ""}</span>

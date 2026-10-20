@@ -303,9 +303,9 @@ class Hecho:
     reservas: list[dict] = field(default_factory=list)
     #: ``(accion, entidad, entidad_id, detalle)`` para la bitácora.
     bitacora: list[tuple] = field(default_factory=list)
-    #: Las filas de los correos (sólo contratos) y los de montaje diferido.
+    #: Las filas de los correos (sólo contratos). El de montaje de todas
+    #: espera su planometría (``services/montajes_pendientes.py``).
     filas: list[FilaOut] = field(default_factory=list)
-    sin_montaje: set = field(default_factory=set)
     #: Lo que el router arma con ``fila_de_participacion`` después del commit:
     #: ``(lease, termino, letra, supplier)``.
     de_participacion: list[tuple] = field(default_factory=list)
@@ -405,8 +405,6 @@ def _escribir(db: Session, p: dict, rev: Revision, actor: str) -> Hecho:
         if h.lease is not None:
             _condiciones(db, h.lease.id, x, cobro, actor)
             hecho.de_participacion.append((h.lease, h.termino, h.cara.letra, h.supplier))
-            if h.montaje_diferido:
-                hecho.sin_montaje.add(h.lease.id)
         elif valor is not None or ventas:
             db.add(PrecioDeReserva(participacion_id=h.termino.id, valor=None if ventas else valor,
                                    modo_precio=None if ventas else x.get("modo_precio"),

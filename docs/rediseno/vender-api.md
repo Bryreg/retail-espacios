@@ -134,15 +134,49 @@ Lo cobrado de un corte que cruza meses se reparte por días. La serie histórica
 (`snapshot_metricas`) no tiene columna para lo cobrado (y no se agregan columnas): el mes en
 curso lo suma, los meses ya guardados cuentan sólo el canon fijo.
 
-## 4. El aviso de montaje de un porcentaje: tabla `montajes_pendientes`
+## 4. El aviso de montaje espera a la planometría: tabla `montajes_pendientes`
 
-`(lease_id PK, cara_space_id, creado_en)`. Al firmar un porcentaje se avisa a comercial y al
-proveedor, pero no al montaje: queda pendiente. Al confirmar la distribución de esa cara
-(después del commit y sólo si no quedó inválida), sale el correo de montaje de los pendientes
-cuya participación tiene zona confirmada, y se borran. Si la participación YA tiene zona
-confirmada al firmar (una renovación: mismo espacio PC, mismas zonas) no hay nada que esperar y
-el aviso de montaje sale enseguida, como siempre. Vale para todos los caminos que crean un
-contrato de porcentaje (este guardado, `POST /api/participaciones/`, confirmar y renovar).
+`(lease_id PK, cara_space_id, creado_en)`. Decisión del dueño (2026-10-20, PR 2): el correo de
+montaje de **cualquier** contrato nuevo —cara entera, parte o porcentaje— sale cuando el
+contrato tiene su planometría cargada (`POST /api/leases/{id}/planometria`, en Supervisar) y,
+en un porcentaje, además cuando su cara tiene la distribución confirmada con la zona de esa
+participación. Lo que pase último lo dispara; sale **una vez** y la fila se borra.
+
+- Todo contrato nuevo deja su fila al escribirse (`alta_de_contrato.escribir_contrato`, que usan
+  la planilla, este guardado, las reservas confirmadas y los porcentajes —alta, confirmar,
+  renovar—; y el contrato suelto, `POST /spaces/{id}/leases`). `cara_space_id`: en un
+  porcentaje, la cara que se distribuye; en una entera o una parte, el espacio del contrato. Lo
+  que falta no se guarda: se mira cada vez (`lease_files`, `zonas`).
+- Al guardar, comercial y el proveedor reciben su correo como siempre; el de montaje no sale
+  mientras el contrato tenga fila (`bulk_leases._avisar`). `avisos.montaje` va vacío y
+  `avisos.montaje_pendiente` dice los `lease_id` que esperan (en el contrato suelto, también).
+- Al cargar la planometría (después del commit): si el contrato tenía fila y no le falta la
+  zona, sale el correo de montaje (el de la planilla: «N espacio por montar», con la parte, dónde
+  queda en palabras y el enlace firmado; sin plata). La respuesta suma `aviso_de_montaje`:
+  `{ estado: "salio", smtp_listo, montaje: [correos] }`, `{ estado: "espera_distribucion", … }`
+  si es un porcentaje sin zona, o `null` si no había nada pendiente (un contrato de antes de la
+  regla, o una planometría que reemplaza a otra: **no se reenvía**).
+- Al confirmar la distribución de una cara (válida, después del commit): salen los pendientes de
+  esa cara que ya tienen planometría y zona. Una renovación que conserva la zona espera igual su
+  planometría.
+- Un contrato cancelado mientras esperaba no se avisa (su fila se borra al dispararse). Sin SMTP
+  o sin mercaderista cargado no se encola nada y la fila se borra igual, como al guardar.
+- **Contratos de antes de esta regla** (sin fila): su aviso ya salió al guardarlos; cargarles la
+  planometría o confirmar su distribución no manda nada.
+
+**«Falta planometría» (Supervisar): `GET /api/montajes/pendientes?sede=`** — sólo
+administración (`routers/montajes.py`; el trabajador, 403). Los contratos activos que no
+terminaron (vigentes o por empezar) con el aviso de montaje pendiente, del que arranca antes al
+último. **Sin plata.**
+```jsonc
+[{ "lease_id": 41, "espacio": "CENTRO-GON-02-PC2", "cara": "CENTRO-GON-02", "sede": "CENTRO",
+   "proveedor": "Lácteos del Valle", "marca": "Yogur Valle",
+   "desde": "2026-11-01", "hasta": "2026-11-30",
+   "falta_planometria": true, "falta_distribucion": false,
+   "dias_para_empezar": 12 }]   // negativo si ya arrancó (Colombia, `hoy()`)
+```
+`cara` es el código de la cara (en una entera, el mismo `espacio`; en una parte o un porcentaje,
+la cara a la que pertenece). Cuál es «próximo» lo decide la pantalla con `dias_para_empezar`.
 
 ## 5. Completar el proveedor: `GET /api/suppliers/completar?prefijo=`
 
