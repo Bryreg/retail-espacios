@@ -106,6 +106,8 @@ import { claveDeSede, useOcupacionStore } from "../store/ocupacionStore";
 import type { OcupacionOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
 import type { OcupacionDeCara } from "../utils/participaciones";
+// «GON-02·A pasó a 8 % de las ventas» (el aviso de «Pasar a % de ventas»).
+import { pct as textoDePb } from "../utils/participaciones";
 import { palabraDeLaCara } from "../utils/revisarParticipaciones";
 import { conPartes, type CambioDePartes } from "../utils/partesDelMueble";
 import ParticipacionesDeLaCara, { useAbrirEnDistribucion } from "../components/Distribucion/ParticipacionesDeLaCara";
@@ -221,6 +223,10 @@ interface FaceEntry {
   /** La toma una reserva (con o sin `reservaHasta`): al trabajador le llega
    *  sólo esto, sin fecha (`conLaReserva`). */
   reservado?: boolean;
+  /** El contrato que dibuja la fila (`leaseId` de `GET /spaces/comercial`,
+   *  sólo para quien administra; `conLaReserva` lo lee del mapa crudo, como
+   *  `reservaHasta`). «Pasar a % de ventas» cambia ESE contrato. */
+  leaseId?: number | null;
 }
 
 /** Vender, cuando el Plano no deja cambiar cómo se vende un mueble: sin el
@@ -252,7 +258,10 @@ function conLaReserva(e: FaceEntry, estado: EstadoPorEspacio, sede: string): Fac
   if (suyo?.reservaHasta) return { ...e, status: "reserved", reservaHasta: suyo.reservaHasta, reservado: true };
   // Al trabajador le llega sólo la marca (sin fecha, plata ni proveedor): va
   // «Reservado» a secas, y no «Ocupado sin contrato» en Corregir.
-  return suyo?.reservado ? { ...e, status: "reserved", reservado: true } : e;
+  if (suyo?.reservado) return { ...e, status: "reserved", reservado: true };
+  // El contrato que dibuja la fila (sólo le llega a quien administra): como
+  // `reservaHasta`, del mapa crudo; la fusión no se lo pega al mueble.
+  return typeof suyo?.leaseId === "number" ? { ...e, leaseId: suyo.leaseId } : e;
 }
 
 const EMPTY_FACE: FaceData = {
@@ -5010,6 +5019,33 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const [liberando, setLiberando] = useState<string | null>(null);
   /** El renglón de «Bajo tarifa» abierto en «Pasar a % de ventas» (`claveDeFila`). */
   const [pasandoAVentas, setPasandoAVentas] = useState<string | null>(null);
+  /** «GON-02·A pasó a 8 % de las ventas»: lo dice el `role="status"` de «Para
+   *  revisar», que está siempre montado (si no, el lector no lo anuncia). */
+  const [anuncioDeVentas, setAnuncioDeVentas] = useState("");
+  /** Después de guardar, a dónde va el foco: el botón «Pasar a % de ventas»
+   *  del renglón siguiente (su `claveDeFila`) o, sin siguiente, el título de
+   *  la sección; si era el ÚNICO, la sección se va con él y el foco queda en la
+   *  pestaña «Corregir». `n` lo hace correr aunque la clave se repita. */
+  const [focoTrasVentas, setFocoTrasVentas] = useState<{ clave: string | null; unico: boolean; n: number } | null>(null);
+  useEffect(() => {
+    if (!focoTrasVentas) return;
+    // Corre después del efecto del renglón que se cerró (que devolvería el
+    // foco a su propio botón): los efectos del padre van después.
+    // La pestaña (el botón con `aria-pressed`): `data-grupo` también lo llevan
+    // los puntos y la marca del plano.
+    const pestana = document.querySelector<HTMLElement>('.sup button[data-grupo="corregir"][aria-pressed]');
+    if (focoTrasVentas.unico) { pestana?.focus(); return; }
+    const seccion = document.querySelector<HTMLElement>("[data-seccion-bajo-tarifa]");
+    const fila = focoTrasVentas.clave
+      ? seccion?.querySelector<HTMLElement>(`[data-aviso="${CSS.escape(`bt-${focoTrasVentas.clave}`)}"]`)
+      : null;
+    const boton = fila?.querySelector<HTMLButtonElement>("button[aria-expanded]");
+    if (boton) { boton.focus(); return; }
+    // El título de la sección (o, si ya no está, la pestaña «Corregir»).
+    const titulo = seccion?.querySelector<HTMLElement>(".sec-r");
+    if (titulo) { titulo.tabIndex = -1; titulo.focus(); return; }
+    pestana?.focus();
+  }, [focoTrasVentas]);
   const liberarReservadoAMano = async (entry: FaceEntry, despues?: () => void) => {
     const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
     setLiberando(codigo);
@@ -6775,6 +6811,20 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 <div style={{ padding: "0 12px 8px" }}>
                   <PestanasDeRevision cuentas={cuentasDeRevision} grupo={grupoDeRevision} onGrupo={setGrupoElegido} />
                 </div>
+                {/* Lo que pasó al guardar en «Pasar a % de ventas» (el renglón se
+                    va de «Bajo tarifa»). Siempre montado, vacío si no hay nada:
+                    un `role="status"` que aparece con el texto ya puesto no se
+                    anuncia. */}
+                <p
+                  role="status"
+                  aria-live="polite"
+                  data-anuncio-ventas
+                  style={anuncioDeVentas ? {
+                    margin: "0 12px 8px", fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4, minWidth: 0,
+                  } : { margin: 0 }}
+                >
+                  {isAdmin ? anuncioDeVentas : ""}
+                </p>
                 <div
                   className="lista-r"
                   data-senala-en-el-plano
@@ -7071,14 +7121,16 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                         />
                       )}
                       {isAdmin && kpis.belowReference.length > 0 && (
-                        <div>
+                        <div data-seccion-bajo-tarifa>
                           <AtencionSection label="Bajo tarifa de referencia" monto={kpis.belowReference.length} />
-                          {kpis.belowReference.map((entry) => {
+                          {kpis.belowReference.map((entry, i) => {
                             const clave = claveDeFila(entry);
                             const abierto = pasandoAVentas === clave;
                             return (
                               <AtencionRow
-                                key={`bt-${entry.fixture.id}-${entry.face}`}
+                                /* La clave de la FILA: dos partes de la misma
+                                   cara (PUN-03·EN1 y ·EN2) son dos renglones. */
+                                key={`bt-${clave}`}
                                 aviso={`bt-${clave}`}
                                 entry={entry}
                                 chip={`−${entry.gapPct} %`}
@@ -7096,15 +7148,25 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                                   texto: "Pasar a % de ventas", icono: <Percent {...ICONO_TARJETA} />,
                                   titulo: "Cobrar este contrato por un % de las ventas en vez del valor fijo",
                                   expandido: abierto,
-                                  onClick: () => setPasandoAVentas(abierto ? null : clave),
+                                  onClick: () => { setAnuncioDeVentas(""); setPasandoAVentas(abierto ? null : clave); },
                                 }]}
                                 debajo={abierto ? (
                                   <PasarAVentas
-                                    codigo={fullSpaceCode(entry.fixture.sede || sede, entry.code)}
+                                    /* EL contrato del renglón y lo que el
+                                       renglón muestra de él (`esperado`). */
+                                    leaseId={entry.leaseId}
                                     valorGuardado={entry.negotiatedValue}
+                                    desde={entry.startDate}
+                                    hasta={entry.endDate}
                                     onCancelar={() => setPasandoAVentas(null)}
-                                    onHecho={() => {
+                                    onHecho={(pb) => {
                                       setPasandoAVentas(null);
+                                      setAnuncioDeVentas(`${codigoVisible(entry)} pasó a ${textoDePb(pb)} de las ventas`);
+                                      const siguiente = kpis.belowReference[i + 1];
+                                      setFocoTrasVentas((f) => ({
+                                        clave: siguiente ? claveDeFila(siguiente) : null,
+                                        unico: kpis.belowReference.length === 1, n: (f?.n ?? 0) + 1,
+                                      }));
                                       // Como después de guardar en Vender: se
                                       // vuelve a leer la base (el valor quedó
                                       // en 0 y el renglón se va), y los cobros

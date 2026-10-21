@@ -84,13 +84,26 @@ export interface PasadoAVentas {
   valor_anterior: number;
 }
 
+/** Lo que el renglón mostró del contrato: el servidor lo compara con lo que el
+ *  contrato dice al guardar, bajo el mismo candado. */
+export interface EsperadoDelContrato {
+  /** `negotiatedValue` del renglón (el `monthly_rent`, el total del plazo). */
+  valor: number;
+  desde: string;
+  hasta: string;
+}
+
 /** `POST /api/cobros/{lease_id}/pasar-a-ventas`: un contrato de valor fijo pasa
  *  a cobrarse por un % de las ventas (Supervisar → «Para revisar» → Corregir →
- *  «Bajo tarifa de referencia»). El valor queda en 0, nace su fila de cobro y
- *  el valor viejo queda escrito al final de la nota. 422 `cobro` con un % fuera
- *  de (0, 100]; 409 si ya se cobra por ventas, si está cancelado o terminado;
- *  404 si no existe. */
+ *  «Bajo tarifa de referencia»). El `leaseId` es EL del renglón (`leaseId` de
+ *  `GET /spaces/comercial`), nunca «el que manda» en el espacio cuando se
+ *  aprieta Guardar; `esperado` es lo que el renglón mostró. El valor queda en
+ *  0, nace su fila de cobro y el valor viejo queda escrito al final de la nota.
+ *  409 `contrato_cambio` si el contrato ya no dice lo que el renglón mostró o
+ *  ya no está vigente ni por arrancar; 409 `ya_por_ventas`; 422 `cobro` con un
+ *  % fuera de (0, 100]; 404 si no existe. */
 export const pasarAVentas = (
-  leaseId: number, cobro: { porcentaje: number; corte: "mensual" | "al_final" },
+  leaseId: number,
+  cobro: { porcentaje: number; corte: "mensual" | "al_final"; esperado: EsperadoDelContrato },
 ): Promise<PasadoAVentas> =>
   client.post<PasadoAVentas>(`/cobros/${leaseId}/pasar-a-ventas`, cobro).then((r) => r.data);

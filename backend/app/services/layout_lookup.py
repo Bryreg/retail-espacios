@@ -58,6 +58,9 @@ CAMPOS_DE_CONTRATO = (
     # La caducidad de una reserva de espacio (`GET /spaces/comercial`): tampoco
     # se guarda en el plano. Ni la marca de que es una reserva.
     "reservaHasta", "reservado",
+    # El contrato que dibuja la cara (sólo para quien administra): es de la
+    # base, nunca del plano.
+    "leaseId",
 )
 
 #: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa

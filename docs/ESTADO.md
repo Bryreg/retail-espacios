@@ -7,8 +7,10 @@ pocos pesos, que salían «−100 %» y «— al mes» en «Bajo tarifa de refer
 renglón de Supervisar → «Para revisar» → Corregir → «Bajo tarifa de referencia» con **«Pasar a %
 de ventas»**: el renglón se abre en línea con el % precargado de lo guardado y el corte, y
 `POST /api/cobros/{lease_id}/pasar-a-ventas` deja el contrato como uno de Vender (valor en 0 y
-su `cobros_por_venta`) con el valor viejo escrito al final de la nota. Ver *Pasar un contrato a
-% de las ventas (2026-10-21)*.
+su `cobros_por_venta`) con el valor viejo escrito al final de la nota. Con la **corrección tras
+la ronda de prueba**: el pedido nombra EL contrato del renglón (`leaseId` de
+`GET /spaces/comercial`, sólo para quien administra) y lo que el renglón mostró (`esperado`); si
+cambió entretanto, 409 `contrato_cambio`. Ver *Pasar un contrato a % de las ventas (2026-10-21)*.
 
 Antes, 2026-10-20, **aire y pines** (el ajuste aprobado después del PR 3 del
 rediseño): en Vender el plano y el contrato pasan a **3 : 2** (también en Supervisar: el plano
@@ -1166,7 +1168,13 @@ la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
 se pasa a ventas SÓLO por `services/cobros.pasar_a_ventas` (Supervisar → «Bajo tarifa», sólo
 administración): valor en 0, su `cobros_por_venta` y el valor viejo al final de la nota, en un
 solo commit; nunca a mano en la base, que deja el contrato «−100 %» o sin sus cortes. El % se
-valida igual que en Vender (`validar_cobro_por_ventas`: más de 0 y hasta 100).
+valida igual que en Vender (`validar_cobro_por_ventas`: más de 0 y hasta 100). **Se cambia el
+contrato que el renglón dibuja, nunca «el que manda» en el espacio**: el pedido lleva su
+`lease_id` (el `leaseId` del mapa comercial, que al trabajador le llega `null`) y `esperado`
+(valor y fechas que se vieron), y el servidor compara bajo el candado del mueble: si no
+coincide, 409 `contrato_cambio`. Un camino nuevo que cambie un contrato desde una fila de
+Supervisar hace lo mismo; volver a pedir el espacio por código y elegir `active_lease ??
+upcoming_lease` cambia otro contrato si el primero se canceló entretanto.
 
 **El correo de montaje espera a la planometría.** Todo contrato nuevo nace con su fila en
 `montajes_pendientes` (`escribir_contrato` / `create_lease`) y `_avisar` no le manda el montaje
@@ -1195,34 +1203,66 @@ el % (8 = 8 %). No es seguro, así que nada se convierte solo: lo confirma quien
   (`porcentajeDeLoGuardado` en `paraRevisar.ts`: 8 → 8, 0,5 → 0,5, 150 → vacío, 800.000 →
   vacío) con «Valor guardado: $ 8» debajo para que se entienda de dónde sale, «Corte: Mensual |
   Al final» (mensual por defecto) y «Guardar» / «Cancelar». El % se lee con `pbDeTexto`, la
-  regla de Vender. Escape cierra y el foco vuelve al botón; un error del servidor se dice en el
-  renglón (`role="alert"`) y el foco vuelve al campo.
-- **Qué hace.** «Guardar» busca el contrato que manda en el mapa comercial
-  (`active_lease ?? upcoming_lease`, la regla de `GET /spaces/comercial` y de «Cancelar
-  contrato») y llama a `POST /api/cobros/{lease_id}/pasar-a-ventas` `{ porcentaje, corte }`
-  (`api/cobros.ts`, `pasarAVentas`). Bien: se vuelve a leer la base (`refrescarComercial`, como
-  después de guardar en Vender) y los cobros por ventas; el renglón se va de «Bajo tarifa»
-  porque el valor quedó en 0 (la sección sólo compara lo que tiene valor > 0) y los períodos ya
-  terminados aparecen en «Ventas por cargar».
+  regla de Vender. **Debajo del corte, antes de guardar, los cortes que nacen vencidos**
+  (`avisoDeCortes` en `paraRevisar.ts`, gemela de `periodos`/`pendientes` del servidor: mes
+  calendario, vencido = su último día antes de hoy en Colombia, `hoyEnColombia`): con Mensual
+  «Quedan 3 cortes ya vencidos por cargar (desde jul 2026)» (uno: «Queda 1 corte ya vencido por
+  cargar (sep 2026)»; ninguno: «Ningún corte vencido: el primero cierra el 31 oct 2026»); con
+  «Al final», «Un solo corte, al terminar el contrato (31 ene 2027)». Escape cierra y el foco
+  vuelve al botón; un error del servidor se dice en el renglón (`role="alert"`) y el foco
+  vuelve al campo. La `key` del renglón es su `claveDeFila` (dos partes de la misma cara,
+  PUN-03·EN1 y ·EN2, repetían `bt-${id}-${cara}`).
+- **Qué hace.** «Guardar» llama a `POST /api/cobros/{lease_id}/pasar-a-ventas` `{ porcentaje,
+  corte, esperado: { valor, desde, hasta } }` (`api/cobros.ts`, `pasarAVentas`) con **el
+  `leaseId` del renglón** —`GET /spaces/comercial` lo trae en cada cara o parte con contrato,
+  sólo para quien administra; `conLaReserva` lo lee del mapa crudo y lo pone en la fila
+  (`FaceEntry.leaseId`), como `reservaHasta`; la fusión no se lo pega al mueble
+  (`sinReserva`), no viaja en el layout (`CAMPOS_DE_CONTRATO`, los dos lados) y `mismoMapa` lo
+  compara— y lo que el renglón mostró. Ya no vuelve a pedir el espacio por código: elegía
+  `active_lease ?? upcoming_lease` y, con el vigente de $ 3 cancelado entretanto, pasaba a ventas
+  el próximo de $ 1.500.000 (hallazgo de la ronda de prueba). Bien: se vuelve a leer la base
+  (`refrescarComercial`, como después de guardar en Vender) y los cobros por ventas; el renglón
+  se va de «Bajo tarifa» porque el valor quedó en 0 (la sección sólo compara lo que tiene valor
+  > 0) y los períodos ya terminados aparecen en «Ventas por cargar». El foco va al botón «Pasar a
+  % de ventas» del renglón siguiente (sin siguiente, al título de la sección; si era el único
+  renglón, la sección se va con él y el foco queda en la pestaña «Corregir») y el `role="status"` de «Para revisar» (siempre montado) dice
+  «GON-02·A pasó a 8 % de las ventas».
 - **El servidor** (`routers/cobros.py`, `services/cobros.pasar_a_ventas`, sólo administración:
-  el trabajador 403, sin sesión 401). En un solo commit: `monthly_rent = 0`, la fila de
+  el trabajador 403, sin sesión 401). Bajo el candado del mueble (`tomar_candados` +
+  `expire_all`, como Vender y participaciones) y con la fila del contrato `FOR UPDATE` (la
+  cancelación y la edición no toman el candado del mueble, pero escriben la fila), compara el
+  contrato con `esperado`: cancelado, terminado, o con otro valor (al centavo) u otras fechas →
+  **409 `contrato_cambio`** «Ese contrato cambió mientras lo mirabas: recargá y volvé a
+  intentar.», sin escribir nada. Si coincide, en un solo commit: `monthly_rent = 0`, la fila de
   `cobros_por_venta` (`creado_por` = quien actúa), lo tecleado de `condiciones_de_contrato` en
-  0 si había (lo que manda Vender con ventas), la constancia **«Pasado a % de ventas el
-  AAAA-MM-DD (valor anterior: $ N)»** al final de la nota —sin borrar lo que decía: la bitácora
-  se purga al año y la nota no— y la línea `cobro.a_ventas` de la bitácora con el valor viejo.
-  404 `contrato_no_existe`; 409 `ya_por_ventas` (también si dos pedidos llegan a la vez),
-  `contrato_cancelado`, `contrato_terminado` (ya pasó su plazo: sólo uno que corre o que todavía
-  no arranca) y `no_es_contrato` (un término de participación que no es contrato); 422 `cobro`
+  0 si había (lo que manda Vender con ventas), la constancia **«Pasado a % de ventas el 21 oct
+  2026 (valor anterior: $ N)»** al final de la nota —la fecha como la dice la app
+  (`reglas_participacion._fecha_corta`), sin borrar lo que decía: la bitácora se purga al año y
+  la nota no— y la línea `cobro.a_ventas` de la bitácora con el valor viejo. `pesos_exactos`
+  redondea primero al centavo (`Decimal(repr(v))`, `ROUND_HALF_UP`) y, si queda entero, va con
+  `format_cop`: 0,999 → «$ 1» (antes «$ 1,»), 0,995 → «$ 1» como la pantalla (antes «$ 0,99»).
+  404 `contrato_no_existe`; 409 `contrato_cambio`, `ya_por_ventas` (también si dos pedidos llegan
+  a la vez) y `no_es_contrato` (un término de participación que no es contrato); 422 `cobro`
   con un % fuera de (0, 100] —el mismo validador que Vender, `validar_cobro_por_ventas`— y el
-  422 de siempre con un corte que no es `mensual`/`al_final` o un campo de más. Las reservas no
-  se tocan: guardan su propio cobro en sus tablas. Sin tablas ni columnas nuevas.
+  422 de siempre con un corte que no es `mensual`/`al_final`, sin `esperado` o con un campo de
+  más. Las reservas no se tocan: guardan su propio cobro en sus tablas. Sin tablas ni columnas
+  nuevas.
 - **Pruebas.** `tests/test_pasar_a_ventas.py` (éxito con la nota, la bitácora, el mapa en 0 y
-  los pendientes; cada 404/409/422; el trabajador; Vender con el mismo validador);
-  `probar-comercial` (la precarga y los pesos, ejecutados, y que lo precargado lo lee
-  `pbDeTexto`; el botón sólo en «Bajo tarifa» y adentro de `isAdmin`, en línea, con la ruta
-  correcta y sin amarillo); `probar-vender` (el módulo nuevo en la lista de lo que Vender no
-  alcanza, sus íconos de 16 × 1,75, su plata entera y la ruta nueva en la lista exacta de
-  `api/cobros`).
+  los pendientes; el hallazgo tal cual —vigente de $ 3 cancelado con un próximo de $ 1.500.000
+  en la misma cara → 409 y el próximo intacto—; `esperado` que no coincide en valor o fechas →
+  409; cada 404/409/422; el trabajador sin `leaseId`; los cortes vencidos de punta a punta;
+  Vender con el mismo validador) y `tests/test_reservas_de_espacio.py` (el trabajador recibe
+  `leaseId: null`). Los casos de `pesos_exactos` y de los cortes vencidos están en
+  `frontend/scripts/casos/cobro-por-ventas.json` y los corren los dos lados.
+  `probar-comercial` (la precarga, los pesos y los cortes, ejecutados contra ese JSON; el
+  botón sólo en «Bajo tarifa» y adentro de `isAdmin`, en línea, con la ruta correcta y sin
+  amarillo; que el componente mande el `leaseId` del renglón y `esperado` y que NO vuelva a
+  buscar el espacio —reemplaza a la guarda que exigía `active_lease ?? upcoming_lease`—; la key
+  por `claveDeFila`, el anuncio y el foco; que la fusión no pegue el `leaseId` y que el servidor
+  lo mande sólo con `admin`); `probar-vender` (el módulo nuevo en la lista de lo que Vender no
+  alcanza, sus íconos de 16 × 1,75, su plata entera, la ruta nueva en la lista exacta de
+  `api/cobros`, el estado nuevo del anuncio y del foco fuera de Vender y ningún `leaseId` en
+  Vender).
 - **Lo que queda.** Un contrato que ya terminó no se pasa (409): si alguno de POBLADO ya venció
   y debe ventas, hoy no hay pantalla para él. La fila cerrada sigue diciendo «— al mes» cuando
   lo guardado al mes redondea a 0 (el detalle está en el renglón abierto).

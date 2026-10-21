@@ -243,16 +243,121 @@ export function porcentajeDeLoGuardado(valor: number | null | undefined): string
   return String(r).replace(".", ",");
 }
 
+/** Los centavos de un número ≥ 0, redondeados con los medios hacia arriba
+ *  sobre su escritura decimal más corta (`String(v)`, la misma que `repr` de
+ *  Python): 0,995 se escribe «0.995» y da 100 centavos, aunque en binario sea
+ *  0,99499… y `Math.round(0.995 * 100)` dé 99. Es lo que hace el servidor con
+ *  `Decimal(repr(v)).quantize(…, ROUND_HALF_UP)`. */
+function centavosDe(a: number): number {
+  const s = String(a);
+  // Notación científica: o es menos de un millonésimo (0 centavos) o es un
+  // entero enorme (ya no tiene decimales que redondear).
+  if (/e/i.test(s)) return a < 1 ? 0 : Math.round(a * 100);
+  const [ent, dec = ""] = s.split(".");
+  const tres = (dec + "000").slice(0, 3);
+  return Number(ent) * 100 + Number(tres.slice(0, 2)) + (Number(tres[2]) >= 5 ? 1 : 0);
+}
+
 /** Lo guardado, tal cual, para «Valor guardado: $ 8»: entero y con punto de
- *  miles; con decimales, con su coma y hasta el centavo («$ 0,5»). La gemela
- *  de `pesos_exactos` del servidor, que escribe la constancia en la nota. */
+ *  miles; con decimales, con su coma y hasta el centavo («$ 0,5»). Primero se
+ *  redondea al centavo (medios hacia arriba) y recién después se mira si quedó
+ *  entero: 0,999 → «$ 1», nunca «$ 1,». La gemela de `pesos_exactos` del
+ *  servidor, que escribe la constancia en la nota: los mismos casos corren los
+ *  dos lados (`scripts/casos/cobro-por-ventas.json`). */
 export function pesosExactos(valor: number): string {
   const v = Number.isFinite(valor) ? valor : 0;
-  const centavos = Math.round(Math.abs(v) * 100);
+  const centavos = centavosDe(Math.abs(v));
   const entero = Math.floor(centavos / 100);
   const dec = centavos % 100;
   const miles = String(entero).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   const signo = v < 0 && centavos > 0 ? "-" : "";
   if (dec === 0) return `$ ${signo}${miles}`;
   return `$ ${signo}${miles},${String(dec).padStart(2, "0").replace(/0$/, "")}`;
+}
+
+/* ── Los cortes que ya vencieron, ANTES de guardar ──────────────────────────
+   Un contrato que empezó hace meses, pasado a ventas con corte mensual, nace
+   debiendo un corte por cada mes ya terminado (PUN-03·EN1, desde el 21 jul:
+   tres). El renglón abierto lo dice antes de «Guardar». La regla es la del
+   servidor (`services/cobros.periodos` y `pendientes`): con corte mensual,
+   un período por mes CALENDARIO dentro del contrato; «al final», uno solo; y
+   vencido = su último día es anterior a hoy, día de Colombia. Los mismos
+   casos corren los dos lados (`scripts/casos/cobro-por-ventas.json`). Las
+   fechas son días ISO, nunca `new Date("…")`. */
+
+export type CorteDeVentas = "mensual" | "al_final";
+
+const ISO_DIA = /^\d{4}-\d{2}-\d{2}$/;
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const dos = (n: number) => String(n).padStart(2, "0");
+
+function finDeMes(iso: string): string {
+  const anio = +iso.slice(0, 4), mes = +iso.slice(5, 7);
+  return `${iso.slice(0, 4)}-${dos(mes)}-${dos(new Date(Date.UTC(anio, mes, 0)).getUTCDate())}`;
+}
+
+function diaSiguiente(iso: string): string {
+  const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + 1));
+  return `${String(d.getUTCFullYear()).padStart(4, "0")}-${dos(d.getUTCMonth() + 1)}-${dos(d.getUTCDate())}`;
+}
+
+/** Los períodos de corte de un contrato (`periodos` del servidor). */
+export function periodosDeCorte(desde: string, hasta: string, corte: CorteDeVentas): [string, string][] {
+  if (!ISO_DIA.test(desde) || !ISO_DIA.test(hasta) || hasta < desde) return [];
+  if (corte !== "mensual") return [[desde, hasta]];
+  const fuera: [string, string][] = [];
+  for (let a = desde; a <= hasta;) {
+    const fin = finDeMes(a);
+    const b = fin < hasta ? fin : hasta;
+    fuera.push([a, b]);
+    a = diaSiguiente(b);
+  }
+  return fuera;
+}
+
+/** Los períodos ya vencidos (su último día es anterior a `hoy`): los que
+ *  aparecerían en «Ventas por cargar» apenas se guarde. */
+export function cortesVencidos(desde: string, hasta: string, corte: CorteDeVentas, hoy: string): [string, string][] {
+  return periodosDeCorte(desde, hasta, corte).filter(([, b]) => b < hoy);
+}
+
+/** El día de hoy en Colombia (UTC−5 todo el año, sin horario de verano), como
+ *  `app/fechas.hoy` del servidor: desde las 7 p. m. el UTC ya es mañana. */
+export function hoyEnColombia(ahora: Date = new Date()): string {
+  return new Date(ahora.getTime() - 5 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/** «21 oct 2026» (la fecha como la dice la app). */
+export function diaConAnio(iso: string): string {
+  if (!ISO_DIA.test(iso)) return iso;
+  return `${+iso.slice(8, 10)} ${MESES_CORTOS[+iso.slice(5, 7) - 1]} ${iso.slice(0, 4)}`;
+}
+
+/** «jul 2026». */
+function mesConAnio(iso: string): string {
+  return `${MESES_CORTOS[+iso.slice(5, 7) - 1]} ${iso.slice(0, 4)}`;
+}
+
+/** Lo que el renglón abierto dice debajo del corte, antes de guardar:
+ *  · Mensual, con vencidos: «Quedan 3 cortes ya vencidos por cargar (desde jul
+ *    2026)» (uno: «Queda 1 corte ya vencido por cargar (sep 2026)»).
+ *  · Mensual, sin vencidos: cuándo cierra el primero.
+ *  · Al final: «Un solo corte, al terminar el contrato (31 ene 2027)». Un
+ *    contrato que ya terminó no llega acá (el servidor lo rechaza); si llegara,
+ *    lo dice como vencido.
+ *  `null` sin fechas que se entiendan. */
+export function avisoDeCortes(desde: string, hasta: string, corte: CorteDeVentas, hoy: string): string | null {
+  const todos = periodosDeCorte(desde, hasta, corte);
+  if (todos.length === 0) return null;
+  const vencidos = todos.filter(([, b]) => b < hoy);
+  if (corte !== "mensual") {
+    return vencidos.length
+      ? `Queda 1 corte ya vencido por cargar (terminó el ${diaConAnio(hasta)})`
+      : `Un solo corte, al terminar el contrato (${diaConAnio(hasta)})`;
+  }
+  if (vencidos.length === 1) return `Queda 1 corte ya vencido por cargar (${mesConAnio(vencidos[0][0])})`;
+  if (vencidos.length > 1) {
+    return `Quedan ${vencidos.length} cortes ya vencidos por cargar (desde ${mesConAnio(vencidos[0][0])})`;
+  }
+  return `Ningún corte vencido: el primero cierra el ${diaConAnio(todos[0][1])}`;
 }

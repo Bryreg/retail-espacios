@@ -883,9 +883,9 @@ prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar
   const mueble0 = { id: "f", code: "GON-02", type: "cross", sede: "CENTRO" };
   const [fusionado] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservaHasta: "2026-11-02" } });
   assert.ok(!("reservaHasta" in fusionado), "la fecha de la reserva se pegó al mueble");
-  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta", "reservado",\s*\] as const;/);
-  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\) \|\|\s*!!x\.reservado !== !!y\.reservado\) return false;/,
-    "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos");
+  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta", "reservado",\s*"leaseId",\s*\] as const;/);
+  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\) \|\|\s*!!x\.reservado !== !!y\.reservado \|\|\s*\(x\.leaseId \?\? null\) !== \(y\.leaseId \?\? null\)\) return false;/,
+    "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos (o cambia el contrato que dibuja la cara)");
   // La marca de la reserva tampoco se le pega al mueble.
   const [fusionado2] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservado: true } });
   assert.ok(!("reservado" in fusionado2), "la marca de la reserva se pegó al mueble");
@@ -1716,10 +1716,34 @@ prueba("la precarga del % sale de lo guardado sólo si puede ser un % (ejecutado
     if (!esperado) continue;
     assert.equal(PARTICIPACIONES.pbDeTexto(esperado), Math.round(v * 100), `«${esperado}» no lo lee Vender como ${v} %`);
   }
-  // «Valor guardado: $ N», entero y con punto de miles; con decimales, con su coma.
-  for (const [v, t] of [[8, "$ 8"], [0.5, "$ 0,5"], [800000, "$ 800.000"], [1234567.25, "$ 1.234.567,25"], [0.995, "$ 1"], [0, "$ 0"]]) {
-    assert.equal(G.pesosExactos(v), t, `${v} → «${t}»`);
+});
+
+const CASOS_VENTAS = JSON.parse(readFileSync(join(aqui, "casos", "cobro-por-ventas.json"), "utf8"));
+
+prueba("«Valor guardado: $ N» da lo mismo que la constancia del servidor: al centavo y después, ¿entero? (casos/cobro-por-ventas.json, ejecutado)", () => {
+  // Los MISMOS casos corre `pesos_exactos` en `tests/test_pasar_a_ventas.py`.
+  // Antes: 0,999 → «$ 1,» en el servidor y 0,995 → «$ 0,99» allá y «$ 1» acá.
+  const casos = CASOS_VENTAS.pesos_exactos;
+  assert.ok(casos.length >= 20, "casos/cobro-por-ventas.json tiene muy pocos casos de plata");
+  for (const [v, t] of casos) assert.equal(G.pesosExactos(v), t, `${v} → «${t}»`);
+  for (const [v] of casos) assert.doesNotMatch(G.pesosExactos(v), /,$/, `${v} deja la coma colgando`);
+  assert.equal(G.pesosExactos(Number.NaN), "$ 0");
+  assert.equal(G.pesosExactos(Number.POSITIVE_INFINITY), "$ 0");
+});
+
+prueba("los cortes ya vencidos se avisan con la regla del servidor (casos/cobro-por-ventas.json, ejecutado)", () => {
+  // Los MISMOS casos corren contra `periodos` en `tests/test_pasar_a_ventas.py`:
+  // mes calendario, «al final» uno solo, vencido = su último día antes de hoy.
+  const casos = CASOS_VENTAS.cortes;
+  assert.ok(casos.length >= 10, "casos/cobro-por-ventas.json tiene muy pocos casos de cortes");
+  for (const c of casos) {
+    assert.deepEqual(G.cortesVencidos(c.desde, c.hasta, c.corte, c.hoy), c.vencidos, `${c.por}: vencidos`);
+    assert.equal(G.avisoDeCortes(c.desde, c.hasta, c.corte, c.hoy), c.aviso, `${c.por}: aviso`);
   }
+  // Hoy es el día de COLOMBIA: a las 10 p. m. del 21 el UTC ya es 22.
+  assert.equal(G.hoyEnColombia(new Date("2026-10-22T03:00:00Z")), "2026-10-21");
+  assert.equal(G.hoyEnColombia(new Date("2026-10-22T05:00:00Z")), "2026-10-22");
+  assert.equal(G.diaConAnio("2027-01-05"), "5 ene 2027");
 });
 
 prueba("«Pasar a % de ventas»: sólo en «Bajo tarifa», sólo para quien administra, en línea, y llama a la ruta del servidor", () => {
@@ -1736,8 +1760,32 @@ prueba("«Pasar a % de ventas»: sólo en «Bajo tarifa», sólo para quien admi
   assert.match(seccion, /expandido: abierto,/, "el botón no dice si el renglón está abierto (`aria-expanded`)");
   assert.match(seccion, /debajo=\{abierto \? \(\s*<PasarAVentas\b/, "«Pasar a % de ventas» no se abre en el renglón (o se abre siempre)");
   assert.match(seccion, /valorGuardado=\{entry\.negotiatedValue\}/, "la precarga no sale de lo guardado");
-  assert.match(seccion, /onHecho=\{\(\) => \{\s*setPasandoAVentas\(null\);[\s\S]*?void refrescarComercial\(\);\s*cortesSinCargar\.recargar\(\);\s*\}\}/,
+  // EL contrato del renglón y lo que el renglón muestra de él (`esperado`).
+  assert.match(seccion, /leaseId=\{entry\.leaseId\}\s*valorGuardado=\{entry\.negotiatedValue\}\s*desde=\{entry\.startDate\}\s*hasta=\{entry\.endDate\}/,
+    "el renglón no le pasa su contrato y lo que muestra de él");
+  // La clave de la FILA: dos partes de la misma cara son dos renglones.
+  assert.match(seccion, /key=\{`bt-\$\{clave\}`\}/, "la key del renglón se repite con dos partes de la misma cara");
+  assert.doesNotMatch(seccion, /key=\{`bt-\$\{entry\.fixture\.id\}-\$\{entry\.face\}`\}/);
+  assert.match(seccion, /onHecho=\{\(pb\) => \{\s*setPasandoAVentas\(null\);[\s\S]*?void refrescarComercial\(\);\s*cortesSinCargar\.recargar\(\);\s*\}\}/,
     "después de guardar no se vuelve a leer la base (el renglón no se iría de «Bajo tarifa»)");
+  // Después de guardar: el aviso y el foco al renglón siguiente.
+  assert.match(seccion, /setAnuncioDeVentas\(`\$\{codigoVisible\(entry\)\} pasó a \$\{textoDePb\(pb\)\} de las ventas`\);/,
+    "no se anuncia «GON-02·A pasó a 8 % de las ventas»");
+  assert.match(seccion, /const siguiente = kpis\.belowReference\[i \+ 1\];\s*setFocoTrasVentas\(\(f\) => \(\{\s*clave: siguiente \? claveDeFila\(siguiente\) : null,\s*unico: kpis\.belowReference\.length === 1,/,
+    "el foco no va al renglón siguiente (o, si era el único, a la pestaña)");
+  assert.match(seccion, /^\s*<div data-seccion-bajo-tarifa>/m);
+  // El anuncio vive FUERA de la sección (que se va con el último renglón) y siempre montado.
+  const tarjeta = t.slice(t.indexOf('title="Para revisar"'), t.indexOf('className="lista-r"'));
+  assert.match(tarjeta, /<p\s+role="status"\s+aria-live="polite"\s+data-anuncio-ventas[\s\S]*?>\s*\{isAdmin \? anuncioDeVentas : ""\}\s*<\/p>/,
+    "el anuncio no es un `role=\"status\"` siempre montado en «Para revisar»");
+  const efecto = t.slice(t.indexOf("useEffect(() => {\n    if (!focoTrasVentas) return;"), t.indexOf("}, [focoTrasVentas]);"));
+  assert.ok(efecto.length > 0, "no está el efecto del foco después de guardar");
+  assert.match(efecto, /button\[aria-expanded\]/, "el foco no va al botón «Pasar a % de ventas» del renglón siguiente");
+  assert.match(efecto, /\.sec-r/, "sin renglón siguiente, el foco no va al título de la sección");
+  assert.match(efecto, /if \(focoTrasVentas\.unico\) \{ pestana\?\.focus\(\); return; \}/, "si era el único renglón, el foco se pierde con la sección");
+  // `conLaReserva` le pone a la fila el contrato que dibuja, del mapa crudo.
+  assert.match(t, /return typeof suyo\?\.leaseId === "number" \? \{ \.\.\.e, leaseId: suyo\.leaseId \} : e;/,
+    "la fila no sabe qué contrato dibuja");
   // Un contrato por ventas guarda 0: no cae en «Bajo tarifa» (se compara sólo lo que tiene valor).
   assert.match(t, /if \(\(phases\[i\] !== "vigente" && phases\[i\] !== "pendiente"\) \|\| !\(x\.negotiatedValue > 0\)\) return;/,
     "«Bajo tarifa» compara un contrato sin valor fijo (uno por ventas saldría «−100 %»)");
@@ -1749,8 +1797,22 @@ prueba("«Pasar a % de ventas»: sólo en «Bajo tarifa», sólo para quien admi
   const c = sinComent(fuenteDe("components/Supervisar/PasarAVentas.tsx"));
   assert.match(c, /useState\(\(\) => porcentajeDeLoGuardado\(valorGuardado\)\)/, "el campo no se precarga con lo guardado");
   assert.match(c, /const pb = pbDeTexto\(texto\);/, "el % no se lee con la regla de Vender");
-  assert.match(c, /await pasarAVentas\(lease\.id, \{ porcentaje: pb \/ 100, corte \}\);/, "no llama a la ruta con el % y el corte");
-  assert.match(c, /const lease = espacio\?\.active_lease \?\? espacio\?\.upcoming_lease \?\? null;/, "no es el contrato que manda en el mapa comercial");
+  // EL contrato del renglón, con lo que el renglón mostró: nunca «el que manda»
+  // en el espacio cuando se aprieta Guardar (con el vigente cancelado
+  // entretanto, eso pasaba a ventas el próximo).
+  // Lo visto se fija al abrir: si la vuelta del mapa cambia el contrato del
+  // renglón abierto, el pedido sigue nombrando el que se abrió.
+  assert.match(c, /const \[visto\] = useState\(\(\) => \(\{ leaseId, valor: valorGuardado, desde, hasta \}\)\);/,
+    "lo que el renglón mostró no se fija al abrir");
+  assert.match(c, /await pasarAVentas\(visto\.leaseId, \{\s*porcentaje: pb \/ 100, corte, esperado: \{ valor: visto\.valor, desde: visto\.desde, hasta: visto\.hasta \},\s*\}\);/,
+    "no llama a la ruta con el contrato del renglón, el % y el corte, y lo que el renglón mostró");
+  assert.match(c, /if \(typeof visto\.leaseId !== "number"\) \{/, "sin contrato en el renglón, igual manda algo");
+  assert.match(c, /Valor guardado: <span[^>]*>\{pesosExactos\(visto\.valor\)\}<\/span>/, "«Valor guardado» no es lo que va en el pedido");
+  assert.doesNotMatch(c, /getSpaceByCode|active_lease|upcoming_lease|api\/spaces/, "vuelve a buscar el espacio por código y elige el contrato que manda");
+  // El aviso de los cortes vencidos, antes de guardar, con la regla del servidor.
+  assert.match(c, /const cortes = useMemo\(\(\) => avisoDeCortes\(visto\.desde, visto\.hasta, corte, hoyEnColombia\(\)\), \[visto, corte\]\);/,
+    "el aviso de los cortes vencidos no sale de `avisoDeCortes` con el corte elegido");
+  assert.match(c, /\{cortes && \(\s*<p id=\{`\$\{id\}-cortes`\} data-cortes-vencidos[^>]*>\s*\{cortes\}\s*<\/p>/, "el aviso de los cortes no se ve en el renglón");
   assert.match(c, /useState<Corte>\("mensual"\)/, "el corte no arranca en «Mensual»");
   assert.match(c, />Mensual<\/button>[\s\S]*>Al final<\/button>/);
   assert.match(c, /Valor guardado: /, "no dice de dónde sale el número");
@@ -1760,6 +1822,16 @@ prueba("«Pasar a % de ventas»: sólo en «Bajo tarifa», sólo para quien admi
   assert.doesNotMatch(c, /sombra/i);
   const api = sinComent(fuenteDe("api/cobros.ts"));
   assert.match(api, /client\.post<PasadoAVentas>\(`\/cobros\/\$\{leaseId\}\/pasar-a-ventas`, cobro\)/, "no llama a `POST /api/cobros/{lease_id}/pasar-a-ventas`");
+  assert.match(api, /cobro: \{ porcentaje: number; corte: "mensual" \| "al_final"; esperado: EsperadoDelContrato \}/, "`esperado` no es obligatorio en el pedido");
+  // El `leaseId` del mapa comercial no se le pega al mueble (ni viaja en el plano).
+  const [f] = fusionarEstadoComercial("CENTRO", [{ id: "f", code: "GON-02", type: "cross", sede: "CENTRO" }],
+    { "CENTRO-GON-02": { ...vendido(), leaseId: 17 } });
+  assert.ok(!("leaseId" in f), "el leaseId se pegó al mueble");
+  assert.equal(f.negotiatedValue, 1_000_000);
+  // Y el servidor lo manda SÓLO a quien administra.
+  const sp = readFileSync(join(raiz, "..", "backend", "app", "routers", "spaces.py"), "utf8");
+  assert.match(sp, /leaseId=lease\.id if admin else None,/, "el servidor le manda el leaseId al trabajador");
+  assert.equal((sp.match(/leaseId=/g) || []).length, 1, "el leaseId sale por otro lado del mapa comercial");
 });
 
 console.log(`\n${hechas} pruebas\n`);

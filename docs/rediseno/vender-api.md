@@ -122,19 +122,30 @@ Rutas (sólo administración):
   hasta, porcentaje, corte, cortes: [{ periodo_desde, periodo_hasta, ventas, monto, cargado_en,
   cargado_por }], cobrado, proximo_corte: { periodo_desde, periodo_hasta } | null }]`.
 
-- `POST /api/cobros/{lease_id}/pasar-a-ventas` `{ porcentaje, corte: "mensual" | "al_final" }`
-  (2026-10-21) → un contrato de valor fijo pasa a cobrarse por ventas: los que se cargaron
-  cuando esto no existía, con el % escrito como plata (Supervisar → «Para revisar» → Corregir →
-  «Bajo tarifa de referencia» → «Pasar a % de ventas»). En un solo commit: `monthly_rent = 0`,
-  su `cobros_por_venta` (`creado_por` = quien actúa), lo tecleado de `condiciones_de_contrato`
-  en 0 si había, y al final de la nota —sin borrar lo que decía— «Pasado a % de ventas el
-  AAAA-MM-DD (valor anterior: $ N)»; bitácora `cobro.a_ventas`. Responde 200 `{ lease_id,
-  espacio, sede, proveedor, marca, desde, hasta, monthly_rent: 0, notes, porcentaje, corte,
-  valor_anterior }`. Errores `{ "detail": { "code", "message" } }`: 404 `contrato_no_existe`;
-  409 `ya_por_ventas`, `contrato_cancelado`, `contrato_terminado` (sólo uno que corre o que
-  todavía no arranca), `no_es_contrato`; 422 `cobro` con un % fuera de (0, 100] (el mismo
-  validador que el `cobro` de §1, `validar_cobro_por_ventas`) y el 422 de la forma con un corte
-  desconocido o un campo de más. Una reserva no se toca: guarda su propio cobro (§2, §8).
+- `POST /api/cobros/{lease_id}/pasar-a-ventas` `{ porcentaje, corte: "mensual" | "al_final",
+  esperado: { valor, desde, hasta } }` (2026-10-21) → un contrato de valor fijo pasa a cobrarse
+  por ventas: los que se cargaron cuando esto no existía, con el % escrito como plata
+  (Supervisar → «Para revisar» → Corregir → «Bajo tarifa de referencia» → «Pasar a % de
+  ventas»). **El `lease_id` es EL del renglón**: `GET /api/spaces/comercial` trae `leaseId` en
+  cada cara o parte con contrato **sólo para quien administra** (al trabajador, `null`; una
+  reserva o un espacio retirado a mano, `null`; ni se le pega al mueble ni viaja en el layout:
+  `CAMPOS_DE_CONTRATO`, los dos lados). `esperado` (obligatorio, campos de más → 422) es lo que
+  el renglón mostró: `negotiatedValue`, `startDate` y `endDate`. Bajo el candado del mueble
+  (`tomar_candados` + `expire_all`) y con la fila del contrato `FOR UPDATE`, el servidor compara:
+  si el contrato ya no está vigente ni por arrancar (cancelado o terminado) o no dice lo mismo
+  —el valor al centavo (redondeo `ROUND_HALF_UP` sobre `repr`), las dos fechas exactas—, 409
+  `contrato_cambio` «Ese contrato cambió mientras lo mirabas: recargá y volvé a intentar.» y no
+  escribe nada. Si coincide, en un solo commit: `monthly_rent = 0`, su `cobros_por_venta`
+  (`creado_por` = quien actúa), lo tecleado de `condiciones_de_contrato` en 0 si había, y al
+  final de la nota —sin borrar lo que decía— «Pasado a % de ventas el 21 oct 2026 (valor
+  anterior: $ N)» (la fecha como la dice la app, `reglas_participacion._fecha_corta`; la plata
+  con `pesos_exactos`: al centavo y, si queda entero, sin coma); bitácora `cobro.a_ventas`.
+  Responde 200 `{ lease_id, espacio, sede, proveedor, marca, desde, hasta, monthly_rent: 0,
+  notes, porcentaje, corte, valor_anterior }`. Errores `{ "detail": { "code", "message" } }`:
+  404 `contrato_no_existe`; 409 `contrato_cambio`, `ya_por_ventas`, `no_es_contrato`; 422
+  `cobro` con un % fuera de (0, 100] (el mismo validador que el `cobro` de §1,
+  `validar_cobro_por_ventas`) y el 422 de la forma con un corte desconocido, sin `esperado` o
+  un campo de más. Una reserva no se toca: guarda su propio cobro (§2, §8).
 
 Los períodos: con corte mensual, uno por mes calendario dentro del contrato (19 oct – 18 dic →
 19–31 oct, 1–30 nov, 1–18 dic); «al final», uno solo. Vencido = su último día es anterior a hoy

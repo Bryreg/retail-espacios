@@ -29,7 +29,9 @@ rutas de administración.
 from __future__ import annotations
 
 import calendar
+import math
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from fastapi import HTTPException
@@ -39,6 +41,8 @@ from app.fechas import hoy
 from app.models.models import Space, SpaceLease
 from app.models.participaciones import Participacion
 from app.models.vender import CORTES, CobroPorVenta, CondicionesDeContrato, CorteDeVenta
+from app.services import reglas_participacion as reglas
+from app.services.candado import tomar_candados
 from app.services.mailer import format_cop
 
 
@@ -195,24 +199,46 @@ def cargar_corte(db: Session, lease_id: int, periodo_desde: date, periodo_hasta:
     return corte
 
 
+def _al_centavo(valor: float) -> Decimal:
+    """El número redondeado al centavo con los medios hacia arriba, sobre su
+    escritura decimal más corta (``repr``: 0,995 es «0.995», no el 0,99499…
+    binario). Un ``nan`` o un infinito, 0."""
+    v = float(valor)
+    if not math.isfinite(v):
+        v = 0.0
+    return Decimal(repr(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 def pesos_exactos(valor: float) -> str:
     """La plata entera y con punto de miles (``format_cop``); si trae
     decimales —un 0,5 que era «0,5 %»— con su coma, hasta el centavo: la
-    constancia tiene que decir lo que había, no «$ 1». La gemela es
-    ``pesosExactos`` (``components/Supervisar/paraRevisar.ts``)."""
-    if float(valor).is_integer():
-        return format_cop(valor)
-    entero, dec = f"{float(valor):,.2f}".split(".")
-    return f"$ {entero.replace(',', '.')},{dec.rstrip('0')}"
+    constancia tiene que decir lo que había, no «$ 1».
+
+    Primero se redondea al centavo, con los medios hacia arriba
+    (``ROUND_HALF_UP``) y sobre la escritura decimal más corta del número
+    (``repr``: 0,995 es «0.995», no el 0,99499… binario), y recién después se
+    mira si quedó entero: 0,999 → «$ 1», 2,004 → «$ 2», nunca «$ 1,». La
+    gemela es ``pesosExactos`` (``components/Supervisar/paraRevisar.ts``), con
+    los mismos casos en ``tests/test_pasar_a_ventas.py`` y ``probar-comercial``."""
+    centavos = _al_centavo(valor)
+    if centavos == centavos.to_integral_value():
+        return format_cop(int(centavos))
+    entero, dec = f"{abs(centavos):,.2f}".split(".")
+    signo = "-" if centavos < 0 else ""
+    return f"$ {signo}{entero.replace(',', '.')},{dec.rstrip('0')}"
 
 
 def linea_de_constancia(dia: date, anterior: float) -> str:
-    """La línea que queda al final de la nota del contrato."""
-    return f"Pasado a % de ventas el {dia.isoformat()} (valor anterior: {pesos_exactos(anterior)})"
+    """La línea que queda al final de la nota del contrato, con la fecha como
+    la dice la app («21 oct 2026», ``reglas_participacion._fecha_corta``)."""
+    return f"Pasado a % de ventas el {reglas._fecha_corta(dia)} (valor anterior: {pesos_exactos(anterior)})"
+
+
+_CAMBIO = ("contrato_cambio", "Ese contrato cambió mientras lo mirabas: recargá y volvé a intentar.")
 
 
 def pasar_a_ventas(db: Session, lease_id: int, porcentaje: float, corte: str,
-                   actor: Optional[str]) -> tuple[SpaceLease, CobroPorVenta, float]:
+                   esperado: dict, actor: Optional[str]) -> tuple[SpaceLease, CobroPorVenta, float]:
     """Pasa un contrato de valor fijo a cobro por un % de las ventas.
 
     Lo deja como lo deja Vender al guardar uno por ventas: `monthly_rent` en 0,
@@ -221,16 +247,39 @@ def pasar_a_ventas(db: Session, lease_id: int, porcentaje: float, corte: str,
     El valor viejo queda escrito al final de la nota —sin tocar lo que ya
     decía—: la bitácora se purga al año y la nota no.
 
-    Sólo un contrato que corre o que todavía no arranca: 404 si no existe; 409
-    ``ya_por_ventas``, ``no_es_contrato`` (el término de una participación que
-    no es contrato), ``contrato_cancelado`` o ``contrato_terminado``; 422
-    ``cobro`` con un % fuera de (0, 100] o un corte que no es de ``CORTES``.
-    Las reservas no tienen contrato (`reservas_de_espacio`, `precios_de_reserva`
-    guardan su propio cobro): acá no se tocan.
+    **El contrato es EL del renglón, no «el que manda» en el espacio.** El
+    renglón manda su ``lease_id`` (``leaseId`` de ``GET /spaces/comercial``) y
+    ``esperado`` = ``{ valor, desde, hasta }``, lo que mostró. Antes la
+    pantalla volvía a pedir el espacio y elegía ``active_lease ??
+    upcoming_lease``: con el vigente de $ 3 cancelado entretanto, pasaba a
+    ventas el próximo de $ 1.500.000. Ahora, si el contrato ya no está vigente
+    ni por arrancar (cancelado o terminado) o no dice lo mismo que el renglón
+    (el valor, al centavo —``_al_centavo``: el ruido de un float que viajó por
+    JSON no cuenta, un centavo sí—, y las dos fechas), 409
+    ``contrato_cambio`` y no se escribe nada.
+
+    La comparación y la escritura van bajo el mismo candado: el del mueble
+    (``tomar_candados``, el de Vender y participaciones), ``expire_all`` (lo
+    que SQLAlchemy tenía en memoria puede ser viejo) y la fila del contrato
+    ``FOR UPDATE`` (la cancelación y la edición de un contrato no toman el
+    candado del mueble; la fila, sí la escriben). En SQLite, sin efecto: un
+    solo proceso.
+
+    Además: 404 si no existe; 409 ``ya_por_ventas`` o ``no_es_contrato`` (el
+    término de una participación que no es contrato); 422 ``cobro`` con un %
+    fuera de (0, 100] o un corte que no es de ``CORTES``. Las reservas no
+    tienen contrato (`reservas_de_espacio`, `precios_de_reserva` guardan su
+    propio cobro): acá no se tocan.
 
     No hace commit. Devuelve ``(lease, cobro, valor_anterior)``."""
     validar_cobro_por_ventas(porcentaje, corte)
     lease = db.get(SpaceLease, lease_id)
+    if lease is None:
+        raise _error(404, "contrato_no_existe", "Ese contrato no existe.")
+    if lease.space is not None:
+        tomar_candados(db, [lease.space.code])
+    db.expire_all()
+    lease = db.query(SpaceLease).filter(SpaceLease.id == lease_id).with_for_update().one_or_none()
     if lease is None:
         raise _error(404, "contrato_no_existe", "Ese contrato no existe.")
     if db.get(CobroPorVenta, lease_id) is not None:
@@ -240,13 +289,15 @@ def pasar_a_ventas(db: Session, lease_id: int, porcentaje: float, corte: str,
         raise _error(409, "no_es_contrato", "Eso no es un contrato: una reserva guarda su propio cobro.")
     dia = hoy()
     # `is_active = False` lo deja la cancelación y también `expire_leases` al
-    # vencer: lo que distingue una de otra es si el plazo ya pasó (o, en una
-    # participación, la baja del término).
-    if (termino is not None and termino.baja_en is not None) or (not lease.is_active and lease.end_date >= dia):
-        raise _error(409, "contrato_cancelado", "Ese contrato está cancelado: no se cambia cómo se cobra.")
-    if lease.end_date < dia:
-        raise _error(409, "contrato_terminado",
-                     "Ese contrato ya terminó: se pasa a % de las ventas uno que corre o que todavía no arranca.")
+    # vencer; una participación cancelada lleva además la baja del término. El
+    # renglón sólo dibuja contratos vigentes o por arrancar: si éste ya no lo
+    # es, cambió mientras se miraba.
+    cancelado = (termino is not None and termino.baja_en is not None) or not lease.is_active
+    if cancelado or lease.end_date < dia:
+        raise _error(409, *_CAMBIO)
+    if (_al_centavo(lease.monthly_rent or 0) != _al_centavo(esperado["valor"])
+            or lease.start_date != esperado["desde"] or lease.end_date != esperado["hasta"]):
+        raise _error(409, *_CAMBIO)
 
     anterior = float(lease.monthly_rent or 0)
     lease.monthly_rent = 0

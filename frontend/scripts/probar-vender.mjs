@@ -1852,14 +1852,26 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     // mueble son de Supervisar: ninguno se alcanza desde Vender.
     const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision",
       "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave",
-      // «Pasar a % de ventas» (Corregir → «Bajo tarifa»): plata, sólo Supervisar.
-      "pasandoAVentas", "setPasandoAVentas"];
+      // «Pasar a % de ventas» (Corregir → «Bajo tarifa»): plata, sólo Supervisar,
+      // con su aviso y su foco después de guardar.
+      "pasandoAVentas", "setPasandoAVentas", "anuncioDeVentas", "setAnuncioDeVentas", "focoTrasVentas", "setFocoTrasVentas",
+      "textoDePb"];
     const hits = [];
     for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
       const ids = identificadores(r.texto);
       for (const n of usados) if (ids.has(n)) hits.push(`${n} en ${VISTA}:${r.desde + 1}${r.nombre ? ` (${r.nombre})` : ""}`);
     }
     assert.deepEqual([...new Set(hits)], [], `Vender alcanza lo de Supervisar:\n         ${[...new Set(hits)].join("\n         ")}`);
+  });
+
+  prueba("el contrato que dibuja cada cara (`leaseId` del mapa comercial) no se lee en Vender", () => {
+    // `GET /spaces/comercial` lo manda sólo a quien administra, para «Pasar a %
+    // de ventas» de Supervisar. Vender no lo necesita y no lo toca: ni sus
+    // archivos ni su rama del ternario de `DashboardView`.
+    const malos = ARCHIVOS_VENDER.filter(hay).filter((f) => /\bleaseId\b/.test(codigo(f)));
+    assert.deepEqual(malos, [], `Vender lee el leaseId del mapa comercial: ${malos.join(", ")}`);
+    assert.ok(RAMA, "no se encontró la rama de Vender");
+    assert.doesNotMatch(RAMA.texto, /\bleaseId\b/, "la rama de Vender de DashboardView lee el leaseId");
   });
 }
 

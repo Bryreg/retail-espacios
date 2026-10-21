@@ -1,10 +1,9 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, X } from "lucide-react";
 import { describeError } from "../../api/client";
 import { pasarAVentas } from "../../api/cobros";
-import { getSpaceByCode } from "../../api/spaces";
 import { pbDeTexto } from "../../utils/participaciones";
-import { pesosExactos, porcentajeDeLoGuardado } from "./paraRevisar";
+import { avisoDeCortes, hoyEnColombia, pesosExactos, porcentajeDeLoGuardado } from "./paraRevisar";
 
 /**
  * «Pasar a % de ventas», el renglón abierto de Corregir → «Bajo tarifa de
@@ -15,13 +14,23 @@ import { pesosExactos, porcentajeDeLoGuardado } from "./paraRevisar";
  * «−100 %» y «— al mes». Acá se pasan a % de las ventas: el campo trae lo
  * guardado si puede ser un % (`porcentajeDeLoGuardado`) y dice de dónde sale
  * («Valor guardado: $ 8»), el corte va mensual por defecto, y «Guardar» llama
- * a `POST /api/cobros/{lease_id}/pasar-a-ventas`. Bien: quien lo monta vuelve
- * a leer la base y el renglón se va de «Bajo tarifa» (el valor queda en 0).
- * Mal: el mensaje del servidor, en el renglón.
+ * a `POST /api/cobros/{lease_id}/pasar-a-ventas`. Debajo del corte dice, antes
+ * de guardar, cuántos cortes ya vencidos quedan por cargar (`avisoDeCortes`,
+ * la regla de períodos del servidor). Bien: quien lo monta vuelve a leer la
+ * base, el renglón se va de «Bajo tarifa» (el valor queda en 0), el foco pasa
+ * al renglón siguiente y se anuncia. Mal: el mensaje del servidor, en el
+ * renglón.
  *
- * El contrato es el que manda en el mapa comercial: el que corre hoy o, si no,
- * el firmado que todavía no arranca (`active_lease ?? upcoming_lease`), la
- * misma regla que `GET /spaces/comercial` y que «Cancelar contrato».
+ * **El contrato es EL DEL RENGLÓN** (`leaseId`, de `GET /spaces/comercial`),
+ * no «el que manda» en el espacio cuando se aprieta Guardar: volver a pedir el
+ * espacio elegía `active_lease ?? upcoming_lease` y, con el vigente cancelado
+ * entretanto, pasaba a ventas el próximo. Con el `lease_id` va `esperado` —el
+ * valor y las fechas que el renglón mostró—: si el contrato ya no dice eso, el
+ * servidor contesta 409 `contrato_cambio` y no toca nada. Lo visto se FIJA al
+ * abrir (`visto`): si la vuelta del mapa comercial (cada 20 s) cambia el
+ * contrato del renglón con el renglón abierto, el pedido sigue nombrando el
+ * que se abrió —y el servidor dice que cambió— en vez de pasar el nuevo con el
+ * % que se escribió para el otro.
  *
  * SÓLO ADMINISTRACIÓN y SÓLO SUPERVISAR (lo monta `DashboardView` adentro de
  * `isAdmin &&`): es plata. Vender no llega a este módulo (`probar-vender`).
@@ -32,15 +41,23 @@ const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 type Corte = "mensual" | "al_final";
 
-export function PasarAVentas({ codigo, valorGuardado, onHecho, onCancelar }: {
-  /** El código completo del espacio (`SEDE-CODE[-B][-PARTE]`). */
-  codigo: string;
+export function PasarAVentas({ leaseId, valorGuardado, desde, hasta, onHecho, onCancelar }: {
+  /** El contrato que dibuja el renglón (`leaseId` de `GET /spaces/comercial`,
+   *  sólo para quien administra). */
+  leaseId: number | null | undefined;
   /** Lo que guarda hoy el contrato (`monthly_rent`, el total del plazo). */
   valorGuardado: number;
-  /** Se guardó: hay que volver a leer la base (el renglón se va solo). */
-  onHecho: () => void;
+  /** Las fechas que el renglón mostró (ISO): van en `esperado`. */
+  desde: string;
+  hasta: string;
+  /** Se guardó, con el % en puntos básicos: hay que volver a leer la base (el
+   *  renglón se va solo), mover el foco y anunciarlo. */
+  onHecho: (pb: number) => void;
   onCancelar: () => void;
 }) {
+  // Lo que el renglón mostraba al abrirse: es lo que se ve acá y lo que va en
+  // el pedido, aunque el renglón cambie mientras tanto.
+  const [visto] = useState(() => ({ leaseId, valor: valorGuardado, desde, hasta }));
   const [texto, setTexto] = useState(() => porcentajeDeLoGuardado(valorGuardado));
   const [corte, setCorte] = useState<Corte>("mensual");
   const [guardando, setGuardando] = useState(false);
@@ -49,6 +66,8 @@ export function PasarAVentas({ codigo, valorGuardado, onHecho, onCancelar }: {
   const id = useId();
   const pb = pbDeTexto(texto);
   const mal = texto.trim() !== "" && pb === null;
+  // Lo que el servidor pondrá en «Ventas por cargar» apenas se guarde.
+  const cortes = useMemo(() => avisoDeCortes(visto.desde, visto.hasta, corte, hoyEnColombia()), [visto, corte]);
 
   // Abierto con el teclado, el foco va al campo.
   useEffect(() => { campo.current?.focus(); campo.current?.select(); }, []);
@@ -58,14 +77,14 @@ export function PasarAVentas({ codigo, valorGuardado, onHecho, onCancelar }: {
     setGuardando(true);
     setError(null);
     try {
-      const espacio = await getSpaceByCode(codigo);
-      const lease = espacio?.active_lease ?? espacio?.upcoming_lease ?? null;
-      if (!lease) {
-        setError("No se encontró el contrato de este espacio: recargá y probá de nuevo.");
+      if (typeof visto.leaseId !== "number") {
+        setError("No se encontró el contrato de este renglón: recargá y volvé a intentar.");
         return;
       }
-      await pasarAVentas(lease.id, { porcentaje: pb / 100, corte });
-      onHecho();
+      await pasarAVentas(visto.leaseId, {
+        porcentaje: pb / 100, corte, esperado: { valor: visto.valor, desde: visto.desde, hasta: visto.hasta },
+      });
+      onHecho(pb);
     } catch (e) {
       setError(describeError(e, "No se pudo pasar a % de las ventas: probá de nuevo en un momento."));
     } finally {
@@ -120,7 +139,7 @@ export function PasarAVentas({ codigo, valorGuardado, onHecho, onCancelar }: {
           <span id={`${id}-corte`} style={rotulo}>Corte</span>
           {/* El control segmentado de Supervisar (`.sup .seg`), como el
               «Cada mes | Al final» de «Cómo se cobra» en Vender. */}
-          <span className="seg" role="group" aria-labelledby={`${id}-corte`}>
+          <span className="seg" role="group" aria-labelledby={`${id}-corte`} aria-describedby={cortes ? `${id}-cortes` : undefined}>
             <button type="button" aria-pressed={corte === "mensual"} onClick={() => setCorte("mensual")}
               style={{ height: 24 }}>Mensual</button>
             <button type="button" aria-pressed={corte === "al_final"} onClick={() => setCorte("al_final")}
@@ -128,8 +147,13 @@ export function PasarAVentas({ codigo, valorGuardado, onHecho, onCancelar }: {
           </span>
         </div>
       </div>
+      {cortes && (
+        <p id={`${id}-cortes`} data-cortes-vencidos style={{ margin: 0, fontSize: "var(--t-2xs)", color: "var(--ink-2)", lineHeight: 1.4 }}>
+          {cortes}
+        </p>
+      )}
       <p id={`${id}-guardado`} style={{ margin: 0, fontSize: "var(--t-2xs)", color: "var(--ink-3)", lineHeight: 1.4 }}>
-        Valor guardado: <span style={{ fontFamily: "var(--font-mono)", color: "var(--ink-2)" }}>{pesosExactos(valorGuardado)}</span>
+        Valor guardado: <span style={{ fontFamily: "var(--font-mono)", color: "var(--ink-2)" }}>{pesosExactos(visto.valor)}</span>
         {mal ? " · Escribí un % de más de 0 y hasta 100, con dos decimales a lo sumo." : ""}
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
