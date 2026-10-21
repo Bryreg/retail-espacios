@@ -15,6 +15,13 @@ al peso).
 · **Las métricas** no lo cuentan como un contrato de $ 0: lo sacan de los
   promedios y suman lo cobrado (``cobrado_entre``), repartido por días entre
   los meses que cubre el corte.
+· **Pasar a ventas** (``pasar_a_ventas``): un contrato que se cargó con un
+  valor fijo cuando el cobro por ventas no existía —en POBLADO, ~30 con un
+  `monthly_rent` de unos pocos pesos, que era el % escrito como plata— se pasa
+  desde Supervisar → «Para revisar» → Corregir → «Bajo tarifa de referencia».
+  Queda como uno de Vender: `monthly_rent` en 0 y su fila de
+  `cobros_por_venta`; el valor viejo no se pierde (una línea al final de la
+  nota del contrato y la bitácora).
 
 Nada de esto hace commit: lo hace quien llama. Todo es plata: sólo lo leen
 rutas de administración.
@@ -30,11 +37,23 @@ from sqlalchemy.orm import Session
 
 from app.fechas import hoy
 from app.models.models import Space, SpaceLease
-from app.models.vender import CobroPorVenta, CorteDeVenta
+from app.models.participaciones import Participacion
+from app.models.vender import CORTES, CobroPorVenta, CondicionesDeContrato, CorteDeVenta
+from app.services.mailer import format_cop
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status, detail={"code": code, "message": message})
+
+
+def validar_cobro_por_ventas(porcentaje: Optional[float], corte: Optional[str]) -> None:
+    """La regla del % de las ventas, la misma para Vender (``cobro`` del pedido,
+    §1) y para pasar un contrato a ventas: más de 0 y hasta 100, y el corte
+    cada mes o al final. 422 ``cobro`` si no."""
+    if porcentaje is None or not (0 < porcentaje <= 100):
+        raise _error(422, "cobro", "Escribí el porcentaje de las ventas (más de 0 y hasta 100).")
+    if corte not in CORTES:
+        raise _error(422, "cobro", "Elegí cada cuánto se carga lo vendido: cada mes o al final.")
 
 
 def _fin_de_mes(d: date) -> date:
@@ -174,3 +193,70 @@ def cargar_corte(db: Session, lease_id: int, periodo_desde: date, periodo_hasta:
     db.add(corte)
     db.flush()
     return corte
+
+
+def pesos_exactos(valor: float) -> str:
+    """La plata entera y con punto de miles (``format_cop``); si trae
+    decimales —un 0,5 que era «0,5 %»— con su coma, hasta el centavo: la
+    constancia tiene que decir lo que había, no «$ 1». La gemela es
+    ``pesosExactos`` (``components/Supervisar/paraRevisar.ts``)."""
+    if float(valor).is_integer():
+        return format_cop(valor)
+    entero, dec = f"{float(valor):,.2f}".split(".")
+    return f"$ {entero.replace(',', '.')},{dec.rstrip('0')}"
+
+
+def linea_de_constancia(dia: date, anterior: float) -> str:
+    """La línea que queda al final de la nota del contrato."""
+    return f"Pasado a % de ventas el {dia.isoformat()} (valor anterior: {pesos_exactos(anterior)})"
+
+
+def pasar_a_ventas(db: Session, lease_id: int, porcentaje: float, corte: str,
+                   actor: Optional[str]) -> tuple[SpaceLease, CobroPorVenta, float]:
+    """Pasa un contrato de valor fijo a cobro por un % de las ventas.
+
+    Lo deja como lo deja Vender al guardar uno por ventas: `monthly_rent` en 0,
+    su fila de `cobros_por_venta` y, si el precio se había tecleado en Vender
+    (`condiciones_de_contrato`), lo tecleado en 0 (Vender manda 0 con ventas).
+    El valor viejo queda escrito al final de la nota —sin tocar lo que ya
+    decía—: la bitácora se purga al año y la nota no.
+
+    Sólo un contrato que corre o que todavía no arranca: 404 si no existe; 409
+    ``ya_por_ventas``, ``no_es_contrato`` (el término de una participación que
+    no es contrato), ``contrato_cancelado`` o ``contrato_terminado``; 422
+    ``cobro`` con un % fuera de (0, 100] o un corte que no es de ``CORTES``.
+    Las reservas no tienen contrato (`reservas_de_espacio`, `precios_de_reserva`
+    guardan su propio cobro): acá no se tocan.
+
+    No hace commit. Devuelve ``(lease, cobro, valor_anterior)``."""
+    validar_cobro_por_ventas(porcentaje, corte)
+    lease = db.get(SpaceLease, lease_id)
+    if lease is None:
+        raise _error(404, "contrato_no_existe", "Ese contrato no existe.")
+    if db.get(CobroPorVenta, lease_id) is not None:
+        raise _error(409, "ya_por_ventas", "Ese contrato ya se cobra por un % de las ventas.")
+    termino = db.query(Participacion).filter(Participacion.lease_id == lease_id).first()
+    if termino is not None and termino.estado != "contrato":
+        raise _error(409, "no_es_contrato", "Eso no es un contrato: una reserva guarda su propio cobro.")
+    dia = hoy()
+    # `is_active = False` lo deja la cancelación y también `expire_leases` al
+    # vencer: lo que distingue una de otra es si el plazo ya pasó (o, en una
+    # participación, la baja del término).
+    if (termino is not None and termino.baja_en is not None) or (not lease.is_active and lease.end_date >= dia):
+        raise _error(409, "contrato_cancelado", "Ese contrato está cancelado: no se cambia cómo se cobra.")
+    if lease.end_date < dia:
+        raise _error(409, "contrato_terminado",
+                     "Ese contrato ya terminó: se pasa a % de las ventas uno que corre o que todavía no arranca.")
+
+    anterior = float(lease.monthly_rent or 0)
+    lease.monthly_rent = 0
+    linea = linea_de_constancia(dia, anterior)
+    nota = (lease.notes or "").rstrip()
+    lease.notes = f"{nota}\n{linea}" if nota else linea
+    condicion = db.get(CondicionesDeContrato, lease_id)
+    if condicion is not None:
+        condicion.valor_tecleado = 0
+    cobro = CobroPorVenta(lease_id=lease_id, porcentaje=float(porcentaje), corte=corte, creado_por=actor)
+    db.add(cobro)
+    db.flush()
+    return lease, cobro, anterior

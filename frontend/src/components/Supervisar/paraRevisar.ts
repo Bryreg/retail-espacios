@@ -226,3 +226,33 @@ export function deParticipacionesEn<
   }
   return fuera;
 }
+
+/* ── «Pasar a % de ventas» (Corregir → «Bajo tarifa de referencia») ─────────
+   Los contratos que se cargaron como fijos cuando el cobro por ventas no
+   existía guardan el % escrito como plata: «8» de valor por todo el contrato
+   era el 8 %. El renglón se abre con ese número ya puesto, si puede ser un %;
+   lo que vale es lo que quien administra confirma al guardar. */
+
+/** El % para precargar desde lo guardado: el mismo número si es más de 0 y
+ *  hasta 100 (con dos decimales a lo sumo y la coma de acá, como lo escribe
+ *  Vender: «0,5»), y vacío si no puede ser un % ($ 800.000 es plata). */
+export function porcentajeDeLoGuardado(valor: number | null | undefined): string {
+  if (typeof valor !== "number" || !Number.isFinite(valor) || !(valor > 0) || valor > 100) return "";
+  const r = Math.round(valor * 100) / 100;
+  if (!(r > 0)) return "";
+  return String(r).replace(".", ",");
+}
+
+/** Lo guardado, tal cual, para «Valor guardado: $ 8»: entero y con punto de
+ *  miles; con decimales, con su coma y hasta el centavo («$ 0,5»). La gemela
+ *  de `pesos_exactos` del servidor, que escribe la constancia en la nota. */
+export function pesosExactos(valor: number): string {
+  const v = Number.isFinite(valor) ? valor : 0;
+  const centavos = Math.round(Math.abs(v) * 100);
+  const entero = Math.floor(centavos / 100);
+  const dec = centavos % 100;
+  const miles = String(entero).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const signo = v < 0 && centavos > 0 ? "-" : "";
+  if (dec === 0) return `$ ${signo}${miles}`;
+  return `$ ${signo}${miles},${String(dec).padStart(2, "0").replace(/0$/, "")}`;
+}

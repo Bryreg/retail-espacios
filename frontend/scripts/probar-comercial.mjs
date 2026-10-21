@@ -1694,4 +1694,72 @@ prueba("el aspecto: la chincheta no tapa el código, la pastilla y la fecha entr
   assert.match(vcss, /@media \(max-width: 480px\) \{[^}]*\.barra-app \{ flex-wrap: wrap;[\s\S]*?\.sync-palabra \{ display: none; \}/);
 });
 
+/* ── «Pasar a % de ventas» (Corregir → «Bajo tarifa de referencia») ─────────
+   En POBLADO quedaron ~30 contratos cargados como fijos cuando el cobro por
+   ventas no existía: «8» de valor era el 8 %. Desde su renglón de «Bajo tarifa»
+   se pasan a % de las ventas (`POST /api/cobros/{lease_id}/pasar-a-ventas`).
+   La precarga es una cuenta pura; el botón vive SÓLO en esa sección y SÓLO
+   para quien administra; llama a esa ruta con el % que lee Vender. */
+console.log("\nSupervisar · «Pasar a % de ventas» desde «Bajo tarifa»\n");
+const PARTICIPACIONES = await cargarTs("utils/participaciones.ts");
+
+prueba("la precarga del % sale de lo guardado sólo si puede ser un % (ejecutado)", () => {
+  const casos = [
+    [8, "8"], [0.5, "0,5"], [150, ""], [800000, ""],
+    [100, "100"], [12.25, "12,25"], [7.256, "7,26"], [0, ""], [-3, ""], [0.001, ""], [100.01, ""],
+    [Number.NaN, ""], [Number.POSITIVE_INFINITY, ""], [null, ""], [undefined, ""],
+  ];
+  for (const [v, esperado] of casos) assert.equal(G.porcentajeDeLoGuardado(v), esperado, `${v} → «${esperado}»`);
+  // Lo precargado se lee con la MISMA regla de Vender (`pbDeTexto`): nada de lo
+  // que se ofrece cae en el campo como inválido.
+  for (const [v, esperado] of casos) {
+    if (!esperado) continue;
+    assert.equal(PARTICIPACIONES.pbDeTexto(esperado), Math.round(v * 100), `«${esperado}» no lo lee Vender como ${v} %`);
+  }
+  // «Valor guardado: $ N», entero y con punto de miles; con decimales, con su coma.
+  for (const [v, t] of [[8, "$ 8"], [0.5, "$ 0,5"], [800000, "$ 800.000"], [1234567.25, "$ 1.234.567,25"], [0.995, "$ 1"], [0, "$ 0"]]) {
+    assert.equal(G.pesosExactos(v), t, `${v} → «${t}»`);
+  }
+});
+
+prueba("«Pasar a % de ventas»: sólo en «Bajo tarifa», sólo para quien administra, en línea, y llama a la ruta del servidor", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  // Una sola vez el botón y una sola vez el renglón abierto, los dos adentro de
+  // la sección «Bajo tarifa», que se monta con `isAdmin`.
+  assert.equal((t.match(/"Pasar a % de ventas"/g) || []).length, 1, "el botón aparece en otro lado (o en ninguno)");
+  assert.equal((t.match(/<PasarAVentas\b/g) || []).length, 1, "el renglón de «Pasar a % de ventas» se monta en otro lado (o en ninguno)");
+  const i = t.indexOf("{isAdmin && kpis.belowReference.length > 0 && (");
+  assert.ok(i > 0, "«Bajo tarifa» no se monta sólo para quien administra");
+  const seccion = t.slice(i, t.indexOf("</div>\n                      )}", i));
+  assert.match(seccion, /label="Bajo tarifa de referencia"/);
+  assert.match(seccion, /texto: "Pasar a % de ventas", icono: <Percent \{\.\.\.ICONO_TARJETA\} \/>/, "el botón no está en «Bajo tarifa» o no lleva su ícono de 16 × 1,75");
+  assert.match(seccion, /expandido: abierto,/, "el botón no dice si el renglón está abierto (`aria-expanded`)");
+  assert.match(seccion, /debajo=\{abierto \? \(\s*<PasarAVentas\b/, "«Pasar a % de ventas» no se abre en el renglón (o se abre siempre)");
+  assert.match(seccion, /valorGuardado=\{entry\.negotiatedValue\}/, "la precarga no sale de lo guardado");
+  assert.match(seccion, /onHecho=\{\(\) => \{\s*setPasandoAVentas\(null\);[\s\S]*?void refrescarComercial\(\);\s*cortesSinCargar\.recargar\(\);\s*\}\}/,
+    "después de guardar no se vuelve a leer la base (el renglón no se iría de «Bajo tarifa»)");
+  // Un contrato por ventas guarda 0: no cae en «Bajo tarifa» (se compara sólo lo que tiene valor).
+  assert.match(t, /if \(\(phases\[i\] !== "vigente" && phases\[i\] !== "pendiente"\) \|\| !\(x\.negotiatedValue > 0\)\) return;/,
+    "«Bajo tarifa» compara un contrato sin valor fijo (uno por ventas saldría «−100 %»)");
+  // El renglón abierto va en el renglón, a todo su ancho: nunca un modal.
+  const fila = t.slice(t.indexOf("function AtencionRow("), t.indexOf("function MontajeChip("));
+  assert.match(fila, /<Mira \/>\s*\{debajo\}\s*<\/div>/, "lo que abre el renglón no va adentro del renglón");
+  assert.match(fila, /aria-expanded=\{a\.expandido\}/);
+
+  const c = sinComent(fuenteDe("components/Supervisar/PasarAVentas.tsx"));
+  assert.match(c, /useState\(\(\) => porcentajeDeLoGuardado\(valorGuardado\)\)/, "el campo no se precarga con lo guardado");
+  assert.match(c, /const pb = pbDeTexto\(texto\);/, "el % no se lee con la regla de Vender");
+  assert.match(c, /await pasarAVentas\(lease\.id, \{ porcentaje: pb \/ 100, corte \}\);/, "no llama a la ruta con el % y el corte");
+  assert.match(c, /const lease = espacio\?\.active_lease \?\? espacio\?\.upcoming_lease \?\? null;/, "no es el contrato que manda en el mapa comercial");
+  assert.match(c, /useState<Corte>\("mensual"\)/, "el corte no arranca en «Mensual»");
+  assert.match(c, />Mensual<\/button>[\s\S]*>Al final<\/button>/);
+  assert.match(c, /Valor guardado: /, "no dice de dónde sale el número");
+  assert.match(c, /<p role="alert"[^>]*>\{error\}<\/p>/, "el error del servidor no se dice en el renglón");
+  assert.match(c, /if \(e\.key === "Escape"\)/, "Escape no cierra el renglón");
+  assert.doesNotMatch(c, /--y-\d00|btn-principal|amarillo/, "«Pasar a % de ventas» usa el amarillo del botón principal de Vender");
+  assert.doesNotMatch(c, /sombra/i);
+  const api = sinComent(fuenteDe("api/cobros.ts"));
+  assert.match(api, /client\.post<PasadoAVentas>\(`\/cobros\/\$\{leaseId\}\/pasar-a-ventas`, cobro\)/, "no llama a `POST /api/cobros/{lease_id}/pasar-a-ventas`");
+});
+
 console.log(`\n${hechas} pruebas\n`);

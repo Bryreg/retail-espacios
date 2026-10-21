@@ -125,6 +125,9 @@ import {
 // (`Al mes | Total`), los tres grupos de «Para revisar» y sus piezas. SÓLO
 // Supervisar: Vender no llega a ninguno de estos módulos (`probar-vender`).
 import { FaltaPlanometria, useFaltaPlanometria } from "../components/Supervisar/FaltaPlanometria";
+// «Pasar a % de ventas» de Corregir → «Bajo tarifa de referencia»: plata, sólo
+// Supervisar y sólo quien administra (`probar-vender`).
+import { PasarAVentas } from "../components/Supervisar/PasarAVentas";
 import type { MontajePendiente } from "../api/montajesPendientes";
 import type { CobroPorVentas } from "../api/cobros";
 import type { ReservaDeEspacio } from "../api/reservas";
@@ -3735,6 +3738,7 @@ function AtencionRow({
   aviso,
   accion,
   acciones,
+  debajo,
 }: {
   entry: FaceEntry;
   chip: string;
@@ -3752,9 +3756,25 @@ function AtencionRow({
   accion?: { texto: string; icono: React.ReactNode; onClick: () => void };
   /** Más de una («Liberar» y «Reservar de verdad» de «Marcado reservado a
    *  mano»), después de `accion`. */
-  acciones?: { texto: string; icono: React.ReactNode; onClick: () => void; titulo?: string; ocupado?: boolean }[];
+  acciones?: { texto: string; icono: React.ReactNode; onClick: () => void; titulo?: string; ocupado?: boolean;
+    /** El botón abre algo en línea (`debajo`): dice si está abierto (`aria-expanded`). */
+    expandido?: boolean }[];
+  /** Lo que el renglón abre en línea, a todo su ancho debajo de él («Pasar a %
+   *  de ventas» de «Bajo tarifa»): nunca un modal. */
+  debajo?: React.ReactNode;
 }) {
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
+  /** Al cerrar lo de `debajo` (Cancelar, Escape), el foco vuelve al botón que
+   *  lo abrió: con el teclado no se pierde el lugar. */
+  const accionesRef = useRef<HTMLSpanElement>(null);
+  const habiaDebajo = useRef(false);
+  useEffect(() => {
+    const hay = debajo !== undefined && debajo !== null;
+    if (habiaDebajo.current && !hay) {
+      accionesRef.current?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.focus();
+    }
+    habiaDebajo.current = hay;
+  }, [debajo]);
   return (
     <div
       data-fila-revisar
@@ -3778,14 +3798,15 @@ function AtencionRow({
         </span>
       </button>
       {(accion || onFoto || (acciones && acciones.length > 0)) && (
-        <span className="acc-r">
+        <span className="acc-r" ref={accionesRef}>
           {accion && (
             <button type="button" className="btn-s" onClick={accion.onClick}>
               {accion.icono} {accion.texto}
             </button>
           )}
           {acciones?.map((a) => (
-            <button key={a.texto} type="button" className="btn-s" onClick={a.onClick} title={a.titulo} disabled={a.ocupado}>
+            <button key={a.texto} type="button" className="btn-s" onClick={a.onClick} title={a.titulo} disabled={a.ocupado}
+              aria-expanded={a.expandido}>
               {a.icono} {a.texto}
             </button>
           ))}
@@ -3800,6 +3821,7 @@ function AtencionRow({
       {/* La mira, en lugar del chevron, mientras el renglón señala su mueble
           en el plano (`data-senalada`, lo pone `senalarFila`). */}
       <Mira />
+      {debajo}
     </div>
   );
 }
@@ -4986,6 +5008,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  con el espacio: la reserva de verdad lleva proveedor y fecha, y con la
    *  marca puesta Vender lo da tomado. */
   const [liberando, setLiberando] = useState<string | null>(null);
+  /** El renglón de «Bajo tarifa» abierto en «Pasar a % de ventas» (`claveDeFila`). */
+  const [pasandoAVentas, setPasandoAVentas] = useState<string | null>(null);
   const liberarReservadoAMano = async (entry: FaceEntry, despues?: () => void) => {
     const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
     setLiberando(codigo);
@@ -7049,21 +7073,50 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                       {isAdmin && kpis.belowReference.length > 0 && (
                         <div>
                           <AtencionSection label="Bajo tarifa de referencia" monto={kpis.belowReference.length} />
-                          {kpis.belowReference.map((entry) => (
-                            <AtencionRow
-                              key={`bt-${entry.fixture.id}-${entry.face}`}
-                              aviso={`bt-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip={`−${entry.gapPct} %`}
-                              tono="espera"
-                              /* La tarifa de referencia es AL MES: el contrato
-                                 se compara en sus meses, sea cual sea la
-                                 unidad de la franja. */
-                              dates={`${formatCOP(entry.alMes)} al mes · ref ${formatCOP(entry.ref)}`}
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                            />
-                          ))}
+                          {kpis.belowReference.map((entry) => {
+                            const clave = claveDeFila(entry);
+                            const abierto = pasandoAVentas === clave;
+                            return (
+                              <AtencionRow
+                                key={`bt-${entry.fixture.id}-${entry.face}`}
+                                aviso={`bt-${clave}`}
+                                entry={entry}
+                                chip={`−${entry.gapPct} %`}
+                                tono="espera"
+                                /* La tarifa de referencia es AL MES: el contrato
+                                   se compara en sus meses, sea cual sea la
+                                   unidad de la franja. */
+                                dates={`${formatCOP(entry.alMes)} al mes · ref ${formatCOP(entry.ref)}`}
+                                selected={selected?.id === entry.fixture.id}
+                                onSelect={() => revisar(entry.fixture, entry.face)}
+                                /* Un contrato que se cargó fijo cuando el cobro
+                                   por ventas no existía (el % escrito como
+                                   plata): se pasa acá, en línea. */
+                                acciones={[{
+                                  texto: "Pasar a % de ventas", icono: <Percent {...ICONO_TARJETA} />,
+                                  titulo: "Cobrar este contrato por un % de las ventas en vez del valor fijo",
+                                  expandido: abierto,
+                                  onClick: () => setPasandoAVentas(abierto ? null : clave),
+                                }]}
+                                debajo={abierto ? (
+                                  <PasarAVentas
+                                    codigo={fullSpaceCode(entry.fixture.sede || sede, entry.code)}
+                                    valorGuardado={entry.negotiatedValue}
+                                    onCancelar={() => setPasandoAVentas(null)}
+                                    onHecho={() => {
+                                      setPasandoAVentas(null);
+                                      // Como después de guardar en Vender: se
+                                      // vuelve a leer la base (el valor quedó
+                                      // en 0 y el renglón se va), y los cobros
+                                      // por ventas, que ahora lo cuentan.
+                                      void refrescarComercial();
+                                      cortesSinCargar.recargar();
+                                    }}
+                                  />
+                                ) : undefined}
+                              />
+                            );
+                          })}
                         </div>
                       )}
                       {/* Lo que arrancó hace más de 30 días y nunca se reportó:

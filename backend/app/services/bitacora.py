@@ -86,6 +86,9 @@ ACCIONES = {
     "reserva_espacio.confirmada": "Reserva de espacio confirmada como contrato",
     "reserva_espacio.baja": "Reserva de espacio cancelada",
     "cobro.corte": "Corte de ventas cargado",
+    # Un contrato de valor fijo que pasa a cobrarse por un % de las ventas
+    # (Supervisar → «Bajo tarifa de referencia»). El detalle lleva el valor viejo.
+    "cobro.a_ventas": "Contrato pasado a % de las ventas",
 }
 
 # fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,

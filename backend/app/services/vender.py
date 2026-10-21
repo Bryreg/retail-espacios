@@ -49,6 +49,7 @@ from app.services.alta_de_contrato import (
     cache_de_proveedores, clave_de_proveedor, escribir_contrato, espacio_para, proveedor_por_nombre,
 )
 from app.services.candado import clave_de_candado, tomar_candados
+from app.services.cobros import validar_cobro_por_ventas
 from app.services.layout_lookup import PlanoIndexado, normalizar
 from app.services.meses import meses_entre
 
@@ -142,12 +143,9 @@ def _validar_pedido(p: dict) -> None:
     cobro = p.get("cobro") or {"modo": "fijo"}
     if cobro.get("modo") == "ventas":
         # Una reserva también puede cobrar por ventas (decisión del dueño,
-        # 2026-10-20): guarda el cobro y su contrato nace cobrando así.
-        porcentaje = cobro.get("porcentaje")
-        if porcentaje is None or not (0 < porcentaje <= 100):
-            raise _error(422, "cobro", "Escribí el porcentaje de las ventas (más de 0 y hasta 100).")
-        if cobro.get("corte") not in ("mensual", "al_final"):
-            raise _error(422, "cobro", "Elegí cada cuánto se carga lo vendido: cada mes o al final.")
+        # 2026-10-20): guarda el cobro y su contrato nace cobrando así. La
+        # regla es la misma que la de pasar un contrato a ventas (Supervisar).
+        validar_cobro_por_ventas(cobro.get("porcentaje"), cobro.get("corte"))
     for i, linea in enumerate(lineas):
         if bool((linea.get("espacio") or "").strip()) == bool(linea.get("participacion")):
             raise _error(422, "linea", f"La línea {i + 1} tiene que ser un espacio o un porcentaje, no las dos.")

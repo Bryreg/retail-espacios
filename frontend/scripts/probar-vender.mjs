@@ -1576,6 +1576,8 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       // Rediseño de Supervisar (PR 2): «Falta planometría», la ficha de una
       // cara por participación, la chincheta del plano y la ficha del espacio.
       ["src/components/Supervisar/FaltaPlanometria.tsx", codigo("src/components/Supervisar/FaltaPlanometria.tsx"), deLucide(codigo("src/components/Supervisar/FaltaPlanometria.tsx"))],
+      // «Pasar a % de ventas», el renglón abierto de «Bajo tarifa».
+      ["src/components/Supervisar/PasarAVentas.tsx", codigo("src/components/Supervisar/PasarAVentas.tsx"), deLucide(codigo("src/components/Supervisar/PasarAVentas.tsx"))],
       ["src/components/Distribucion/ParticipacionesDeLaCara.tsx", codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"), deLucide(codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"))],
       [`${VISTA} (la ficha del espacio)`, entre(vista, '<div className="ficha-cab">', "{double && ("), lucideVista],
     ];
@@ -1678,7 +1680,9 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     const ARCHIVOS_PLATA = [VISTA, ...ARCHIVOS_VENDER, RUTA_COBROS_RESERVAS, "src/components/Distribucion/RevisarParticipaciones.tsx",
       "src/components/Distribucion/ParticipacionesDeLaCara.tsx",
       // Rediseño de Supervisar (PR 2): la plata en una unidad y sus piezas.
-      "src/components/Supervisar/plata.ts", "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/piezas.tsx"].filter(hay);
+      "src/components/Supervisar/plata.ts", "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/piezas.tsx",
+      // «Pasar a % de ventas»: «Valor guardado: $ 800.000», nunca «0,8 M».
+      "src/components/Supervisar/PasarAVentas.tsx", "src/components/Supervisar/paraRevisar.ts"].filter(hay);
     const ABREVIA = /compactCOP|notation\s*:\s*["']compact|\/\s*1e[36]\b|\/\s*1_?000(?:_?000)?\b|["'`]\s*(?:M|k|mil|millones|mill\.?)\s*["'`]/;
     const hits = [];
     for (const f of ARCHIVOS_PLATA) codigo(f).split("\n").forEach((l, k) => { if (ABREVIA.test(l)) hits.push(`${f}:${k + 1} ${l.trim().slice(0, 100)}`); });
@@ -1810,7 +1814,8 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.match(vista, /\{badge > 0 && \(\s*<span className="cuenta"/, "la pastilla roja se dibuja aunque la cuenta sea cero");
     // Las rutas de cada módulo, y nada más.
     const rutas = (f) => [...codigo(f).matchAll(/client\s*\.(get|post|delete|put|patch)(?:<[^>]*>)?\(\s*[`"']([^`"']+)[`"']/g)].map((m) => `${m[1]} ${m[2]}`).sort();
-    assert.deepEqual(rutas("src/api/cobros.ts"), ["get /cobros", "get /cobros/pendientes", "post /cobros/${leaseId}/cortes"]);
+    assert.deepEqual(rutas("src/api/cobros.ts"), ["get /cobros", "get /cobros/pendientes", "post /cobros/${leaseId}/cortes",
+      "post /cobros/${leaseId}/pasar-a-ventas"]);
     assert.deepEqual(rutas("src/api/reservas.ts"), ["delete /reservas/${id}", "get /reservas", "post /reservas/${id}/confirmar"]);
     // Confirmar usa el precio guardado: el cuerpo va vacío.
     assert.match(codigo("src/api/reservas.ts"), /client\.post\(`\/reservas\/\$\{id\}\/confirmar`, \{\}\)/, "confirmar una reserva manda otro precio que el guardado");
@@ -1824,7 +1829,8 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
   prueba("los módulos de Supervisar (PR 2) no se alcanzan desde Vender", () => {
     const MODULOS = ["src/components/Supervisar/plata.ts", "src/components/Supervisar/useUnidadDePlata.ts",
       "src/components/Supervisar/paraRevisar.ts", "src/components/Supervisar/piezas.tsx",
-      "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/CobrosYReservas.tsx"];
+      "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/CobrosYReservas.tsx",
+      "src/components/Supervisar/PasarAVentas.tsx"];
     for (const f of MODULOS) assert.ok(hay(f), `no está ${f}`);
     const malos = [];
     for (const f of ARCHIVOS_VENDER.filter(hay)) {
@@ -1840,11 +1846,14 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       if (!archivo || !MODULOS.includes(archivo)) continue;
       for (const n of m[1].split(",").map((x) => x.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()).filter(Boolean)) nombres.add(n);
     }
-    assert.ok(nombres.has("useUnidadDePlata") && nombres.has("puntosDelPlano") && nombres.has("avisoPorClave") && nombres.has("FaltaPlanometria"), "no se encontraron los módulos de Supervisar en DashboardView");
+    assert.ok(nombres.has("useUnidadDePlata") && nombres.has("puntosDelPlano") && nombres.has("avisoPorClave") && nombres.has("FaltaPlanometria")
+      && nombres.has("PasarAVentas"), "no se encontraron los módulos de Supervisar en DashboardView");
     // «Aire y pines»: los puntos del plano, su botón y el renglón que señala su
     // mueble son de Supervisar: ninguno se alcanza desde Vender.
     const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision",
-      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave"];
+      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave",
+      // «Pasar a % de ventas» (Corregir → «Bajo tarifa»): plata, sólo Supervisar.
+      "pasandoAVentas", "setPasandoAVentas"];
     const hits = [];
     for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
       const ids = identificadores(r.texto);

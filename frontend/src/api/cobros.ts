@@ -65,3 +65,32 @@ export const cargarCorte = (
   leaseId: number, corte: { periodo_desde: string; periodo_hasta: string; ventas: number },
 ): Promise<{ monto: number }> =>
   client.post<{ monto: number }>(`/cobros/${leaseId}/cortes`, corte).then((r) => r.data);
+
+/** Lo que contesta `pasarAVentas`: el contrato como quedó. */
+export interface PasadoAVentas {
+  lease_id: number;
+  espacio: string | null;
+  sede: string | null;
+  proveedor: string | null;
+  marca: string | null;
+  desde: string;
+  hasta: string;
+  /** Siempre 0: lo que se cobra sale de los cortes. */
+  monthly_rent: number;
+  /** La nota con la constancia al final: «Pasado a % de ventas el … (valor anterior: $ 8)». */
+  notes: string | null;
+  porcentaje: number;
+  corte: "mensual" | "al_final";
+  valor_anterior: number;
+}
+
+/** `POST /api/cobros/{lease_id}/pasar-a-ventas`: un contrato de valor fijo pasa
+ *  a cobrarse por un % de las ventas (Supervisar → «Para revisar» → Corregir →
+ *  «Bajo tarifa de referencia»). El valor queda en 0, nace su fila de cobro y
+ *  el valor viejo queda escrito al final de la nota. 422 `cobro` con un % fuera
+ *  de (0, 100]; 409 si ya se cobra por ventas, si está cancelado o terminado;
+ *  404 si no existe. */
+export const pasarAVentas = (
+  leaseId: number, cobro: { porcentaje: number; corte: "mensual" | "al_final" },
+): Promise<PasadoAVentas> =>
+  client.post<PasadoAVentas>(`/cobros/${leaseId}/pasar-a-ventas`, cobro).then((r) => r.data);

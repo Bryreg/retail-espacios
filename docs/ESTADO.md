@@ -1,7 +1,16 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-20, **aire y pines** (el ajuste aprobado después del PR 3 del
+Última actualización: 2026-10-21, **pasar a % de ventas**: los contratos que se cargaron con
+un valor fijo cuando el cobro por ventas no existía (en POBLADO, ~30 con `monthly_rent` de unos
+pocos pesos, que salían «−100 %» y «— al mes» en «Bajo tarifa de referencia») se pasan desde su
+renglón de Supervisar → «Para revisar» → Corregir → «Bajo tarifa de referencia» con **«Pasar a %
+de ventas»**: el renglón se abre en línea con el % precargado de lo guardado y el corte, y
+`POST /api/cobros/{lease_id}/pasar-a-ventas` deja el contrato como uno de Vender (valor en 0 y
+su `cobros_por_venta`) con el valor viejo escrito al final de la nota. Ver *Pasar un contrato a
+% de las ventas (2026-10-21)*.
+
+Antes, 2026-10-20, **aire y pines** (el ajuste aprobado después del PR 3 del
 rediseño): en Vender el plano y el contrato pasan a **3 : 2** (también en Supervisar: el plano
 mide lo mismo en las dos), y el contrato se ordena en **tres bloques numerados** —«Qué se
 vende», «A quién y cuándo», «Cómo se cobra»— con el **pie pegado abajo** (total, lo que falta,
@@ -1153,7 +1162,11 @@ viajan en el layout (`CAMPOS_DE_CONTRATO`, los dos lados).
 **Un contrato que se cobra por ventas no es un contrato de $ 0.** Su `monthly_rent` va en 0 y
 la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
 (`_contratos_activos` ya no lo trae) y toda la que suma ingreso le agrega lo cobrado
-(`services/cobros.cobrado_por_contrato`). Ver *Rediseño de Vender, PR 1*.
+(`services/cobros.cobrado_por_contrato`). Ver *Rediseño de Vender, PR 1*. Un contrato fijo
+se pasa a ventas SÓLO por `services/cobros.pasar_a_ventas` (Supervisar → «Bajo tarifa», sólo
+administración): valor en 0, su `cobros_por_venta` y el valor viejo al final de la nota, en un
+solo commit; nunca a mano en la base, que deja el contrato «−100 %» o sin sus cortes. El % se
+valida igual que en Vender (`validar_cobro_por_ventas`: más de 0 y hasta 100).
 
 **El correo de montaje espera a la planometría.** Todo contrato nuevo nace con su fila en
 `montajes_pendientes` (`escribir_contrato` / `create_lease`) y `_avisar` no le manda el montaje
@@ -1165,6 +1178,54 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### Pasar un contrato a % de las ventas (2026-10-21)
+
+Lo que pidió el dueño: en producción, en Supervisar → «Para revisar» → Corregir → «Bajo tarifa
+de referencia», ~30 contratos de POBLADO salían con «−100 %» y «— al mes». Tienen un
+`monthly_rent` (el TOTAL del contrato) de unos pocos pesos: eran contratos por **% de las
+ventas** cargados cuando esa forma de cobro no existía, y el número guardado es, casi seguro,
+el % (8 = 8 %). No es seguro, así que nada se convierte solo: lo confirma quien administra.
+
+- **Dónde se ve.** Cada renglón de «Bajo tarifa de referencia» (y sólo ése) lleva el botón
+  secundario **«Pasar a % de ventas»** (`Percent`, tinta: Supervisar no tiene amarillo). Sólo
+  quien administra ve la sección; Vender no llega al módulo (`probar-vender`). Tocarlo abre el
+  renglón **en línea** (`components/Supervisar/PasarAVentas.tsx`, montado por `AtencionRow`
+  con `debajo`): «% de las ventas» precargado con lo guardado si es más de 0 y hasta 100
+  (`porcentajeDeLoGuardado` en `paraRevisar.ts`: 8 → 8, 0,5 → 0,5, 150 → vacío, 800.000 →
+  vacío) con «Valor guardado: $ 8» debajo para que se entienda de dónde sale, «Corte: Mensual |
+  Al final» (mensual por defecto) y «Guardar» / «Cancelar». El % se lee con `pbDeTexto`, la
+  regla de Vender. Escape cierra y el foco vuelve al botón; un error del servidor se dice en el
+  renglón (`role="alert"`) y el foco vuelve al campo.
+- **Qué hace.** «Guardar» busca el contrato que manda en el mapa comercial
+  (`active_lease ?? upcoming_lease`, la regla de `GET /spaces/comercial` y de «Cancelar
+  contrato») y llama a `POST /api/cobros/{lease_id}/pasar-a-ventas` `{ porcentaje, corte }`
+  (`api/cobros.ts`, `pasarAVentas`). Bien: se vuelve a leer la base (`refrescarComercial`, como
+  después de guardar en Vender) y los cobros por ventas; el renglón se va de «Bajo tarifa»
+  porque el valor quedó en 0 (la sección sólo compara lo que tiene valor > 0) y los períodos ya
+  terminados aparecen en «Ventas por cargar».
+- **El servidor** (`routers/cobros.py`, `services/cobros.pasar_a_ventas`, sólo administración:
+  el trabajador 403, sin sesión 401). En un solo commit: `monthly_rent = 0`, la fila de
+  `cobros_por_venta` (`creado_por` = quien actúa), lo tecleado de `condiciones_de_contrato` en
+  0 si había (lo que manda Vender con ventas), la constancia **«Pasado a % de ventas el
+  AAAA-MM-DD (valor anterior: $ N)»** al final de la nota —sin borrar lo que decía: la bitácora
+  se purga al año y la nota no— y la línea `cobro.a_ventas` de la bitácora con el valor viejo.
+  404 `contrato_no_existe`; 409 `ya_por_ventas` (también si dos pedidos llegan a la vez),
+  `contrato_cancelado`, `contrato_terminado` (ya pasó su plazo: sólo uno que corre o que todavía
+  no arranca) y `no_es_contrato` (un término de participación que no es contrato); 422 `cobro`
+  con un % fuera de (0, 100] —el mismo validador que Vender, `validar_cobro_por_ventas`— y el
+  422 de siempre con un corte que no es `mensual`/`al_final` o un campo de más. Las reservas no
+  se tocan: guardan su propio cobro en sus tablas. Sin tablas ni columnas nuevas.
+- **Pruebas.** `tests/test_pasar_a_ventas.py` (éxito con la nota, la bitácora, el mapa en 0 y
+  los pendientes; cada 404/409/422; el trabajador; Vender con el mismo validador);
+  `probar-comercial` (la precarga y los pesos, ejecutados, y que lo precargado lo lee
+  `pbDeTexto`; el botón sólo en «Bajo tarifa» y adentro de `isAdmin`, en línea, con la ruta
+  correcta y sin amarillo); `probar-vender` (el módulo nuevo en la lista de lo que Vender no
+  alcanza, sus íconos de 16 × 1,75, su plata entera y la ruta nueva en la lista exacta de
+  `api/cobros`).
+- **Lo que queda.** Un contrato que ya terminó no se pasa (409): si alguno de POBLADO ya venció
+  y debe ventas, hoy no hay pantalla para él. La fila cerrada sigue diciendo «— al mes» cuando
+  lo guardado al mes redondea a 0 (el detalle está en el renglón abierto).
 
 ### Aire y pines: el contrato con aire y el mapa sin pines (2026-10-20)
 
