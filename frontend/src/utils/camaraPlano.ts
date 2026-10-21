@@ -151,14 +151,14 @@ export function factorDeRueda(deltaY: number, deltaMode = 0, ctrl = false): numb
 /** Cómo abre el plano: la sede vista con `VISTA_INICIAL`.
  *
  *  `ancho` y `alto` son la caja de la sede proyectada —el piso y cada mueble—,
- *  con el margen del isométrico de antes (26 unidades por lado): es el
- *  `viewBox` que aquel encajaba en el panel, así que abre del mismo tamaño y
- *  en el mismo lugar. `mira` es el punto del PISO que cae en el centro de esa
+ *  con un margen por lado en unidades del isométrico de antes (`margenIso`:
+ *  26 era el de aquel `viewBox`; el plano de la sede pide menos, ver
+ *  `MARGEN_DEL_ENCUADRE` en `DashboardView`). `mira` es el punto del PISO que cae en el centro de esa
  *  caja: el punto alrededor del cual se gira, como el `target` del editor.
  *
  *  No depende de hacia dónde mire la cámara después: girar no agranda ni
  *  achica la sala, igual que en el editor. */
-export function encuadreInicial(puntos: [number, number, number][]): {
+export function encuadreInicial(puntos: [number, number, number][], margenIso = 26): {
   ancho: number;
   alto: number;
   mira: [number, number, number];
@@ -173,7 +173,7 @@ export function encuadreInicial(puntos: [number, number, number][]): {
     if (sy > y1) y1 = sy;
   }
   if (!Number.isFinite(x0)) return { ancho: 1, alto: 1, mira: [0, 0, 0] };
-  const margen = 26 * UNIDAD_ISO;
+  const margen = margenIso * UNIDAD_ISO;
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   // El punto (x, 0, z) que se proyecta en (cx, cy): sobre el piso.
   const k = cy / e.cp;

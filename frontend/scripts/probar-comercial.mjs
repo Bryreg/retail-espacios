@@ -1038,7 +1038,7 @@ prueba("fase 2 · la clave, la columna y el pie de Vender cuentan con `contarElP
   assert.match(leyenda, /tally: ConteoDelPeriodo;/);
   assert.match(leyenda, /l: modo === "vender" \? RANGE_LABEL\.parcial : RANGE_LABEL_PARCIAL_SUPERVISAR, n: enParte\(tally\),\s*t: desgloseDelParcial\(tally\) \|\| undefined/,
     "el renglón ámbar no cuenta las tres cosas o no las desglosa");
-  assert.match(leyenda, /<span title=\{o\.t\}>/);
+  assert.match(leyenda, /<span key=\{o\.l\} title=\{o\.t\}>/);
   assert.match(t, /parcial: "Disponible en parte",/);
   assert.match(t, /const RANGE_LABEL_PARCIAL_SUPERVISAR = "Vendido en parte";/);
   // Las tres cuentas, de la misma fila por cara.
@@ -1370,6 +1370,42 @@ prueba("las chinchetas: sólo lo que está en «Para revisar», una por cara, de
   assert.deepEqual(ch.map((c) => [c.fixtureId, c.cara, c.grupo, c.clave]).sort(), [["f1", "A", "hoy", "x2"], ["f2", "A", "dias30", "x3"]]);
 });
 
+prueba("los puntos del plano («aire y pines»): uno por MUEBLE, del grupo más urgente de sus caras —Hoy rojo, 30 días ámbar, Corregir tinta— y nada fuera de la lista (ejecutado)", () => {
+  const p = G.puntosDelPlano([
+    // Una góndola doble: la A sólo para corregir, la B de «30 días»: un punto, ámbar, el de la B.
+    { seccion: "bajo_tarifa", clave: "a1", fixtureId: "g1", cara: "A" },
+    { seccion: "por_vencer", clave: "a2", fixtureId: "g1", cara: "B" },
+    // Otra: «Hoy» en la A gana a «30 días» en la B, aunque llegue después.
+    { seccion: "sin_montar", clave: "b1", fixtureId: "g2", cara: "B" },
+    { seccion: "vencidos", clave: "b2", fixtureId: "g2", cara: "A" },
+    // Y al revés: «Hoy» primero, «30 días» después en la otra cara: sigue «Hoy».
+    { seccion: "vencidos", clave: "h1", fixtureId: "g6", cara: "A" },
+    { seccion: "por_vencer", clave: "h2", fixtureId: "g6", cara: "B" },
+    // Sólo para corregir: tinta.
+    { seccion: "ocupado_sin_contrato", clave: "c1", fixtureId: "g3" },
+    // Lo que depende de los días: una reserva que caduca hoy es «Hoy».
+    { seccion: "reservas", clave: "d1", fixtureId: "g4", cara: "A", dias: 0 },
+    { seccion: "falta_planometria", clave: "e1", fixtureId: "g5", dias: 12 },
+    // Sin mueble no hay punto.
+    { seccion: "contrato_sin_mueble", clave: "z1" },
+  ]);
+  assert.deepEqual(p.map((c) => [c.fixtureId, c.cara, c.grupo, c.clave]).sort(), [
+    ["g1", "B", "dias30", "a2"], ["g2", "A", "hoy", "b2"], ["g3", "A", "corregir", "c1"],
+    ["g4", "A", "hoy", "d1"], ["g5", "A", "dias30", "e1"], ["g6", "A", "hoy", "h1"],
+  ]);
+  assert.equal(new Set(p.map((c) => c.fixtureId)).size, p.length, "un mueble lleva dos puntos");
+  assert.deepEqual(G.puntosDelPlano([]), []);
+  // El renglón que se señala lleva el grupo de su aviso: el color del piso.
+  const m = G.avisoPorClave([
+    { seccion: "reservas", clave: "r1", fixtureId: "f9", cara: "B", dias: 0 },
+    { seccion: "reservas", clave: "r2", fixtureId: "f9", cara: "B", dias: 9 },
+    { seccion: "bajo_tarifa", clave: "t1", fixtureId: "f8" },
+  ]);
+  assert.deepEqual([...m.entries()].map(([k, a]) => [k, a.fixtureId, a.cara, a.grupo]), [
+    ["r1", "f9", "B", "hoy"], ["r2", "f9", "B", "dias30"], ["t1", "f8", undefined, "corregir"],
+  ]);
+});
+
 prueba("«Al mes» reparte cada contrato en SUS meses (`utils/meses.ts`), «Total» es lo firmado (ejecutado)", () => {
   assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "mes"), 300000);
   assert.equal(PL.enLaUnidad(900000, "2026-11-01", "2027-01-31", "total"), 900000);
@@ -1506,7 +1542,7 @@ prueba("Supervisar cuenta «Vendido en parte» UNA vez: sólo por partes o por p
     "la pestaña «Vendido en parte» no sale de la misma cuenta que la clave");
   // El color del plano de Supervisar, de la misma cuenta; Vender sigue con la suya.
   const isos = [...t.matchAll(/<IsoMap\b[\s\S]*?\/>/g)].map((m) => m[0]);
-  const deSup = isos.filter((u) => /chinchetas=\{chinchetasDeRevision\}/.test(u));
+  const deSup = isos.filter((u) => /chinchetas=\{pendientesEnElPlano \? chinchetasDeRevision : undefined\}/.test(u));
   assert.equal(deSup.length, 1);
   assert.match(deSup[0], /dispo=\{dispoSupervisar\}/, "el plano de Supervisar pinta ámbar lo vendido entero");
   assert.ok(isos.filter((u) => u !== deSup[0]).every((u) => /dispo=\{dispoDeCara\}/.test(u)), "Vender perdió su ámbar");
@@ -1597,22 +1633,41 @@ prueba("guardar un corte vuelve a leer los cobros: el canon vigente suma lo carg
 
 prueba("el aspecto: la chincheta no tapa el código, la pastilla y la fecha entran, las participaciones miden lo suyo, la barra entra a 390", () => {
   const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
-  // La chincheta va ENCIMA de la caja de su rótulo, que cuenta con ella al acomodarse.
-  assert.match(t, /const conPin: Caja = arriba \? \{ \.\.\.b, top: b\.top - arriba \} : b;/, "el rótulo no reserva el lugar de su chincheta");
-  assert.match(t, /cajasDeRotulo\.current\.set\(p\.clave, b\);/);
-  assert.match(t, /if \(caja\) \{[\s\S]{0,300}el\.style\.top = `\$\{\(caja\.top - lz\.top - 2\)\.toFixed\(1\)\}px`;/,
-    "la chincheta no se apoya arriba del rótulo");
-  // La de un rótulo que cedió va sola donde no tape ningún código, y las caras
-  // con chincheta se acomodan antes que el resto.
-  assert.match(t, /!seSale\(b\) && !fijos\.some\(\(o\) => cruza\(b, o\)\) && !rotulos\.some\(\(o\) => cruza\(b, o\)\)\)/,
-    "la chincheta de un rótulo que cedió puede tapar el código de otra cara");
-  assert.match(t, /const turno = \(p: Pieza\) => \(p\.peso === 0 \? 0 : pinRefs\.current\.has\(p\.clave\) \? 1 : 2\);/);
+  // «Aire y pines», la corrección: los rótulos se acomodan SIN mirar los
+  // puntos —prender los puntos no puede esconder un código que apagados se
+  // ve (antes cada rótulo con chincheta reservaba arriba lo que ella medía, y
+  // esa reserva tapaba a los vecinos: cedían cuatro más)—, y cada punto va
+  // DESPUÉS, pegado a su rótulo, donde no pise ningún código, ni las
+  // herramientas, ni otro punto. Más estricto que la reserva: lo mide en el
+  // navegador `probar-vender` (ningún rótulo nuevo cede, ningún punto tapa
+  // un código).
+  const k0 = t.indexOf("const acomodar = useCallback(");
+  const acom = t.slice(k0, t.indexOf("}, [aPantalla, encuadre]);", k0));
+  const iPuntos = acom.indexOf("const puntos: Caja[] = [];");
+  assert.ok(k0 > 0 && iPuntos > 0, "no está `acomodar` o sus puntos");
+  const deRotulos = acom.slice(0, iPuntos), dePuntos = acom.slice(iPuntos);
+  assert.doesNotMatch(deRotulos, /pinRefs|offsetHeight|offsetWidth|conPin|turno/, "los rótulos se acomodan contando con los puntos");
+  assert.match(deRotulos, /for \(const p of piezas\.current\) \{/, "los rótulos no van en el orden de su peso");
+  assert.doesNotMatch(dePuntos, /ok\.push\(/, "un punto se vuelve obstáculo de los rótulos");
+  // Cada punto: debajo de su rótulo, arriba, a la derecha o a la izquierda;
+  // primero sin pisar nada, después sin pisar ningún código.
+  assert.match(dePuntos, /candidatos\.push\(caja\(cx, suyo\.bottom \+ sep\), caja\(cx, suyo\.top - sep\), caja\(suyo\.right \+ sep, cy\), caja\(suyo\.left - sep, cy\)\);/,
+    "el punto no se apoya pegado a su rótulo");
+  assert.match(dePuntos, /candidatos\.find\(\(b\) => !fuera\(b\) && !ok\.some\(\(o\) => cruza\(b, o\)\) && !puntos\.some\(\(o\) => cruza\(b, o\)\)\)\s*\?\? candidatos\.find\(\(b\) => !fuera\(b\) && !ok\.some\(\(o\) => cruza\(b, o\)\)\)/,
+    "un punto puede tapar el código de un rótulo");
+  assert.match(dePuntos, /const fuera = \(b: Caja\) => seSale\(b\) \|\| fijos\.some\(\(o\) => cruza\(b, o\)\);/, "un punto puede caer sobre las herramientas o fuera del lienzo");
   // La caja del rótulo se mide contra donde está ESCRITO (un `acomodar()` entre
   // la vuelta al ancla y la medida corría la caja del texto).
   assert.match(t, /const xa = Number\(p\.txt\.getAttribute\("x"\)\), ya = Number\(p\.txt\.getAttribute\("y"\)\);/);
   const css = readFileSync(join(raiz, "src", "supervisar.css"), "utf8");
-  assert.match(css, /\.chinchetas button\[data-sobre="rotulo"\] \{ transform: translate\(-50%, -100%\); \}/);
-  assert.match(css, /@media \(max-width: 560px\) \{\s*\.chinchetas button \{ width: 20px; height: 20px; \}/);
+  // `left`/`top` son el centro del punto: un solo `transform`, ninguno por encima del rótulo.
+  assert.match(css, /\.chinchetas button \{[^}]*transform: translate\(-50%, -50%\);/);
+  assert.doesNotMatch(css, /\.chinchetas button\[data-sobre/, "volvió el punto apoyado arriba del rótulo (el que reservaba lugar)");
+  // «Aire y pines»: un PUNTO de 10 px (con un blanco de 16 para tocarlo), sin
+  // globo ni ícono: ningún `svg` adentro, a ningún ancho.
+  assert.match(css, /\.chinchetas button \{[^}]*width: 16px; height: 16px;[^}]*background: transparent;/);
+  assert.match(css, /\.chinchetas button::after \{[^}]*width: 10px; height: 10px; border-radius: 50%;\s*background: var\(--c, var\(--ink-1\)\);/);
+  assert.doesNotMatch(css, /\.chinchetas button svg/, "el punto volvió a llevar ícono");
   // La tabla: el estado y las fechas miden lo que su texto, y la pastilla corta con «…».
   assert.match(t, /\{ etiqueta: "Estado", ancho: anchos\.estado, minimo: anchos\.estadoMinimo, cede: 3 \}/);
   assert.match(t, /const estadoMinimo = anchoDeTexto\(palabras, pastilla\) \+ 20 \+ 18;/, "la pastilla más larga no entra en lo menos que mide el estado");

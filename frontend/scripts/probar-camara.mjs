@@ -80,6 +80,17 @@ prueba("el encuadre con el que abre es el viewBox de antes: la caja más 26 unid
   const alto = Math.max(...viejos.map((p) => p[1])) - Math.min(...viejos.map((p) => p[1])) + 52;
   assert.ok(Math.abs(r.ancho / C.UNIDAD_ISO - ancho) < 0.5, `ancho ${r.ancho / C.UNIDAD_ISO} contra ${ancho}`);
   assert.ok(Math.abs(r.alto / C.UNIDAD_ISO - alto) < 0.5, `alto ${r.alto / C.UNIDAD_ISO} contra ${alto}`);
+  // «Aire y pines», la corrección: el plano de la sede abre con 8 unidades por
+  // lado (`MARGEN_DEL_ENCUADRE`), no 26: con el plano al 60 % las 26 eran vacío
+  // y cedían rótulos. La caja sigue siendo la de la sede ENTERA (piso y muebles
+  // adentro: no se corta nada), con el mismo centro.
+  const r8 = C.encuadreInicial(puntos, 8);
+  assert.ok(Math.abs(r8.ancho / C.UNIDAD_ISO - (ancho - 52 + 16)) < 0.5, `ancho con 8 por lado: ${r8.ancho / C.UNIDAD_ISO}`);
+  assert.ok(Math.abs(r8.alto / C.UNIDAD_ISO - (alto - 52 + 16)) < 0.5, `alto con 8 por lado: ${r8.alto / C.UNIDAD_ISO}`);
+  assert.deepEqual(r8.mira, r.mira, "el margen corrió el centro del encuadre");
+  const iso = readFileSync(join(raiz, "src", "pages", "DashboardView.tsx"), "utf8");
+  assert.match(iso, /\nconst MARGEN_DEL_ENCUADRE = 8;\n/, "el plano no abre con 8 unidades por lado");
+  assert.match(iso, /const encuadre = encuadreInicial\(\[[\s\S]{0,400}\], MARGEN_DEL_ENCUADRE\);/, "el plano no usa su margen");
 });
 
 prueba("se gira alrededor del punto del PISO que cae en el centro del encuadre", () => {
@@ -352,8 +363,30 @@ prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", ()
   const vender = regla(".vender-hoja");
   const supervisar = regla(".supervisar-hoja");
   assert.ok(supervisar, "no hay `.supervisar-hoja`");
-  assert.match(vender, /1004fr 402fr/, "cambió la proporción de la hoja de Vender: ajustar las dos");
-  assert.match(supervisar, /minmax\(0, 1004fr\) minmax\(0, 402fr\)/, "Supervisar no usa las columnas de Vender");
+  // «Aire y pines» (el dibujo aprobado después del PR 3): las dos hojas pasan
+  // de 1004 : 402 a 3 : 2, y el plano sigue midiendo lo mismo en las dos. Era
+  // un texto fijo en cada una; ahora se leen las DOS proporciones como números
+  // y tienen que ser la misma, y ser 3 : 2 (más estricto: una sola columna
+  // escrita distinta, o un `fr` cambiado en una sola de las dos, falla).
+  assert.match(vender, /grid-template-columns:\s*3fr 2fr;/, "cambió la proporción de la hoja de Vender: ajustar las dos");
+  assert.match(supervisar, /grid-template-columns:\s*minmax\(0, 3fr\) minmax\(0, 2fr\);/, "Supervisar no usa las columnas de Vender");
+  const proporcion = (regla) => {
+    const cols = /grid-template-columns:\s*([^;]+);/.exec(regla)?.[1] ?? "";
+    const fr = [...cols.matchAll(/([\d.]+)fr/g)].map((m) => Number(m[1]));
+    assert.equal(fr.length, 2, `la hoja no tiene dos columnas: «${cols}»`);
+    return fr[0] / fr[1];
+  };
+  assert.equal(proporcion(vender), proporcion(supervisar), "el plano no mide lo mismo en Vender y en Supervisar: las dos hojas tienen otra proporción");
+  assert.equal(proporcion(vender), 3 / 2, "la hoja no es 3 : 2 (el plano al 60 %, el contrato al 40 %)");
+  // Ni una sola mención de la proporción vieja en las reglas (fuera de comentarios).
+  assert.doesNotMatch(css, /1004fr|402fr/, "quedó la proporción vieja en alguna regla");
+  // Lo único que cambia la proporción es lo angosto: Vender se apila a 1100 y
+  // Supervisar a 1000, como antes.
+  const columnasDe = (sel) => [...css.matchAll(new RegExp(`${sel.replace(".", "\\.")}\\s*\\{[^}]*grid-template-columns:\\s*([^;]+);`, "g"))].map((m) => m[1].trim());
+  assert.deepEqual(columnasDe(".vender-hoja"), ["3fr 2fr", "1fr"], "la hoja de Vender cambia de columnas en otro lado");
+  assert.deepEqual(columnasDe(".supervisar-hoja"), ["minmax(0, 3fr) minmax(0, 2fr)", "minmax(0, 1fr)"], "la hoja de Supervisar cambia de columnas en otro lado");
+  assert.match(css, /@media \(max-width: 1100px\) \{[\s\S]*?\.vender-hoja \{\s*grid-template-columns: 1fr;/, "Vender ya no se apila a 1100");
+  assert.match(css, /@media \(max-width: 1000px\) \{\s*\.supervisar-hoja \{ grid-template-columns: minmax\(0, 1fr\); \}/, "Supervisar ya no se apila a 1000");
   assert.match(supervisar, /grid-auto-rows:\s*var\(--alto-plano\)/, "las filas de Supervisar no miden lo que el plano de Vender");
   // (Rediseño, PR 2: era `--alto-plano: max(448px, (100dvh − 132px) × 550/804)`
   // en `:root`, una aproximación del marco que el verificador midió distinta de
@@ -367,11 +400,29 @@ prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", ()
   assert.match(area, /var\(--alto-area,/, "`--alto-plano` no cuenta contra el alto medido del área de las pantallas");
   assert.match(css, /@media \(max-height: 880px\) \{\s*\.area-pantallas \{ --marco-sede: 66px; --fila1: 430px; --fila2: 240px; \}/,
     "en ventana baja `--alto-plano` no sigue el marco apretado de Vender");
-  assert.match(vender, /grid-template-rows: max\(var\(--fila1\), min\(var\(--alto-plano\),/, "la fila del plano de Vender no mide `--alto-plano`");
-  assert.match(css, /@media \(max-height: 790px\) \{[\s\S]*?\.vender-hoja \{ grid-template-rows: var\(--alto-plano\) /, "a 760 de alto la fila del plano de Vender vuelve a medir otra cosa");
-  assert.match(css, /@media \(max-width: 1100px\) \{[\s\S]*?\.vender-hoja > \.vp-plano \{ height: var\(--alto-plano\); \}/, "a lo angosto el plano de Vender no mide `--alto-plano`");
+  // «Aire y pines», la corrección: la hoja de Vender son dos PILAS. La de la
+  // izquierda (el plano y «Cuándo se libera») tiene filas propias, y la del
+  // plano ES `--alto-plano`, sin el `max(…, min(…, 100% − …))` de antes (que
+  // a la ventana donde la hoja entra daba lo mismo, y si la barra se partía
+  // daba otra cosa): más estricto. Ninguna otra regla cambia esas filas —el
+  // bloque de 790 px de alto que las cambiaba se fue—, y la pila mide el alto
+  // de la hoja, que se cuenta con los mismos números que `--alto-plano`.
+  const izq = regla(".hoja-izq");
+  assert.match(izq, /grid-template-rows: var\(--alto-plano\) minmax\(var\(--fila2\), 1fr\);/, "la fila del plano de Vender no mide `--alto-plano`");
+  assert.match(izq, /height: var\(--alto-hoja\);/, "la pila del plano no mide el alto de la hoja");
+  const filasDe = [...css.matchAll(/([^{}]+)\{[^{}]*grid-template-rows:\s*([^;]+);/g)].map((m) => [m[1].trim(), m[2].trim()])
+    .filter(([sel]) => /vender-hoja|hoja-izq|hoja-der|hoja-col/.test(sel));
+  assert.deepEqual(filasDe, [[".hoja-izq", "var(--alto-plano) minmax(var(--fila2), 1fr)"], [".vender-hoja", "none"]], "otra regla cambia las filas de la hoja de Vender");
+  assert.doesNotMatch(css, /@media \(max-height: 790px\)/, "volvió el bloque de 790 px de alto, que cambiaba la fila del plano");
+  assert.match(regla(".vender"), /--alto-hoja: max\(calc\(var\(--fila1\) \+ var\(--aire-v\) \+ var\(--fila2\)\), calc\(var\(--alto-area, calc\(100dvh - 52px\)\) - var\(--marco-sede\) \+ var\(--aire-v\)\)\);/,
+    "el alto de la hoja no se cuenta con los números de `--alto-plano`");
+  assert.match(css, /@media \(max-width: 1100px\) \{[\s\S]*?\.vender-hoja \.vp-plano \{ height: var\(--alto-plano\); \}/, "a lo angosto el plano de Vender no mide `--alto-plano`");
   assert.doesNotMatch(css, /62vw/, "volvió el plano de Vender de `62vw`, que no mide lo de Supervisar");
-  assert.match(css, /\.vp-plano > header \{ min-height: 44px; \}/, "el encabezado del plano no mide lo mismo en las dos pantallas");
+  // El encabezado del plano mide lo mismo en las dos pantallas: dos renglones
+  // (el título y la cuenta; la clave a todo el ancho) y el de la clave con el
+  // alto del filtro de Supervisar también en Vender.
+  assert.match(css, /\.vp-plano > header \{ flex-wrap: wrap; row-gap: 6px; \}/, "el encabezado del plano no va en dos renglones");
+  assert.match(css, /\.vp-plano > header \.der \{\s*flex: 1 0 100%;[^}]*min-height: 28px;/, "el renglón de la clave no mide lo mismo en las dos pantallas");
   assert.match(css, /\.vender \.lienzo,\s*\.sup \.vp-plano > \.lienzo \{/, "el lienzo de Supervisar no tiene el relleno del de Vender");
   assert.equal((vista.match(/className="vp vp-plano"/g) ?? []).length, 2, "los dos planos no son el mismo panel (`vp vp-plano`)");
   const dash = readFileSync(join(raiz, "src", "pages", "Dashboard.tsx"), "utf8");
@@ -389,13 +440,71 @@ prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", ()
   assert.match(vista, /className="supervisar-hoja"/, "Supervisar no arma su hoja");
 });
 
-prueba("las chinchetas van sólo en el plano de Supervisar, y sólo con lo que está en «Para revisar»", () => {
+prueba("los puntos de «Para revisar» van sólo en el plano de Supervisar, sólo con lo que está en la lista, y apagados hasta que se prenden", () => {
   const usos = [...vista.matchAll(/<IsoMap\b[\s\S]*?\/>/g)].map((m) => m[0]);
-  const conPins = usos.filter((u) => /chinchetas=\{chinchetasDeRevision\}/.test(u));
-  assert.equal(conPins.length, 1, "las chinchetas no están en exactamente un plano");
+  // «Aire y pines»: al abrir, el plano NO los muestra; los prende y los apaga
+  // «Para revisar N» de la clave, y se recuerda en el store.
+  const conPins = usos.filter((u) => /chinchetas=\{pendientesEnElPlano \? chinchetasDeRevision : undefined\}/.test(u));
+  assert.equal(conPins.length, 1, "los puntos no están en exactamente un plano, o no dependen del botón");
+  assert.equal(usos.filter((u) => /chinchetas=/.test(u)).length, 1, "otro plano recibe puntos");
   const iv = vista.indexOf("const panelPlano = ");
-  assert.ok(!/chinchetas/.test(vista.slice(iv, vista.indexOf("const panelEscalera", iv))), "el plano de Vender recibe chinchetas: delante del proveedor no hay avisos");
-  assert.match(vista, /const chinchetasDeRevision = useMemo\(\s*\(\) => chinchetasDe\(avisos\)/, "las chinchetas no salen de los avisos de «Para revisar»");
+  const deVender = vista.slice(iv, vista.indexOf("const panelEscalera", iv));
+  assert.ok(!/chinchetas|senalar|pendientesEnElPlano/.test(deVender), "el plano de Vender recibe puntos o el señalado: delante del proveedor no hay avisos");
+  assert.match(vista, /const chinchetasDeRevision = useMemo\(\s*\(\) => puntosDelPlano\(avisos\)/, "los puntos no salen de los avisos de «Para revisar»");
+  assert.match(vista, /<MapLegend tally=\{rangeTally\} modo="supervisar"\s+chinchetas=\{chinchetasDeRevision\.length\}\s+pendientes=\{pendientesEnElPlano\}\s+onPendientes=\{\(\) => setPendientesEnElPlano\(!pendientesEnElPlano\)\}/,
+    "«Para revisar N» de la clave no prende y apaga los puntos");
+  const leyenda = vista.slice(vista.indexOf("function MapLegend("), vista.indexOf("\n}\n", vista.indexOf("function MapLegend(")));
+  assert.match(leyenda, /<button\s+type="button"\s+className="clave-pin"\s+aria-pressed=\{!!pendientes\}\s+onClick=\{onPendientes\}/, "«Para revisar N» no es un botón con `aria-pressed`");
+  // Arranca APAGADO, se persiste, y sólo un `true` escrito lo prende.
+  const store = readFileSync(join(raiz, "src", "store", "fixtureStore.ts"), "utf8");
+  assert.match(store, /\n\s+pendientesEnElPlano: false,\n/, "los puntos no arrancan apagados");
+  const persistido = store.slice(store.indexOf("partialize: (state) => ({"), store.indexOf("merge: (persisted, current) =>"));
+  assert.match(persistido, /pendientesEnElPlano: state\.pendientesEnElPlano,/, "el botón no se recuerda");
+  assert.match(store, /pendientesEnElPlano: p\.pendientesEnElPlano === true,/, "lo persistido que no es `true` prende los puntos");
+});
+
+prueba("pasar por un renglón de «Para revisar» señala su mueble en el plano (el piso punteado y un punto con anillo), y al salir vuelve", () => {
+  const usos = [...vista.matchAll(/<IsoMap\b[\s\S]*?\/>/g)].map((m) => m[0]);
+  assert.equal(usos.filter((u) => /senalar=\{senalarEnElPlano\}/.test(u)).length, 1, "el señalado no está en exactamente un plano");
+  // La lista: el mouse (no el dedo) y el foco del teclado, por el `data-aviso`
+  // de la fila; al salir de la lista, nada.
+  const i = vista.indexOf("data-senala-en-el-plano");
+  assert.ok(i > 0, "la lista de «Para revisar» no señala en el plano");
+  const lista = vista.slice(i, vista.indexOf("{cuentasDeRevision[grupoDeRevision] === 0", i));
+  assert.ok(lista.length > 100 && lista.length < 700, "no se encontró la apertura de la lista de «Para revisar»");
+  assert.match(lista, /onPointerOver=\{\(e\) => \{ if \(e\.pointerType !== "touch"\) senalarFila\(e\.target\); \}\}/);
+  assert.match(lista, /onPointerLeave=\{\(e\) => \{ if \(e\.pointerType !== "touch"\) senalarFila\(null\); \}\}/);
+  assert.match(lista, /onFocus=\{\(e\) => senalarFila\(e\.target\)\}/);
+  assert.match(lista, /onBlur=\{\(e\) => \{ if \(!e\.currentTarget\.contains\(e\.relatedTarget as Node \| null\)\) senalarFila\(null\); \}\}/);
+  assert.match(vista, /objetivo\.closest<HTMLElement>\("\[data-aviso\]"\)/, "el renglón no se reconoce por su aviso");
+  assert.match(vista, /const listaALaVista = !\(selected && detailFull\);\s*useEffect\(\(\) => \{ if \(!listaALaVista\) senalarFila\(null\); \}/, "al abrir la ficha el plano queda señalado");
+  // El plano: el piso punteado DEBAJO de los muebles y el punto con anillo,
+  // los dos apagados hasta que se señala, y el punto arriba del rótulo.
+  const iso = vista.slice(vista.indexOf("function IsoMap("), vista.indexOf("function MapLegend("));
+  const piso = iso.indexOf('className="foco-piso"'), muebles = iso.indexOf("{scene.prisms.map(");
+  assert.ok(piso > 0 && muebles > piso, "el piso punteado no va debajo de los muebles");
+  assert.match(iso, /className="foco-marca" style=\{\{ display: "none" \}\}/);
+  assert.match(iso, /senalar\.current = \(foco\) => \{\s*focoRef\.current = foco;\s*dibujarFocoPiso\(\);\s*ubicarFoco\(\);\s*\};/);
+  assert.match(iso, /if \(!f \|\| !sc \|\| !p\) \{ el\.style\.display = "none"; return; \}/, "sin señalado el piso no se apaga");
+  // Arriba del rótulo, con la caja del rótulo RELATIVA AL LIENZO: se usa tal
+  // cual, sin restarle el lienzo de ahora (antes `caja.top - lz.top - 2`, con
+  // la caja en pantalla del último `acomodar`: con la página rodada el punto
+  // caía corrido lo que hubiera rodado). Lo mide con la página rodada la
+  // prueba de navegador de `probar-vender`.
+  assert.match(iso, /el\.style\.left = `\$\{\(\(caja\.left \+ caja\.right\) \/ 2\)\.toFixed\(1\)\}px`;\s*el\.style\.top = `\$\{\(caja\.top - 2\)\.toFixed\(1\)\}px`;\s*el\.dataset\.sobre = "rotulo";\s*return;/, "el punto del señalado no se apoya arriba del rótulo");
+  // Lo que se guarda de `acomodar` pasa por el lienzo, y nadie le resta el
+  // lienzo de ahora a una caja guardada.
+  assert.match(iso, /const alLienzo = \(b: Caja\): Caja => \(\{\s*left: b\.left - lz\.left, top: b\.top - lz\.top, right: b\.right - lz\.left, bottom: b\.bottom - lz\.top,\s*\}\);/, "las cajas no se pasan al lienzo");
+  assert.match(iso, /cajasDeRotulo\.current\.set\(p\.clave, alLienzo\(puesto\.b\)\);/, "la caja del rótulo se guarda en pantalla");
+  assert.match(iso, /cajasDePin\.current\.set\(k, alLienzo\(elegido\)\);/, "la caja del punto se guarda en pantalla");
+  assert.equal((iso.match(/cajasDe(?:Rotulo|Pin)\.current\.set\(/g) ?? []).length, 2, "otra caja se guarda sin pasar por el lienzo");
+  assert.doesNotMatch(iso, /(?:caja|sola|b)\.(?:left|right|top|bottom)\s*-\s*lz\.(?:left|top)\)/, "a una caja guardada se le resta el lienzo de ahora");
+  assert.match(iso, /const ubicarChinchetas = useCallback\(\(\) => \{[\s\S]{0,200}ubicarFoco\(\);\s*(?:\/\/[^\n]*\n\s*)*for \(const \[k, el\] of pinRefs\.current\) \{/, "el punto del señalado no sigue a la cámara");
+  // Los colores, de los tokens del tema (claro y oscuro): nada fijo.
+  const sup = readFileSync(join(raiz, "src", "supervisar.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const reglas = [...sup.matchAll(/(\.foco-[\w-]+[^{]*|\.chinchetas[^{]*)\{([^}]*)\}/g)].map((m) => m[2]).join("\n");
+  assert.ok(reglas.length > 200, "no están los estilos del señalado y los puntos");
+  assert.doesNotMatch(reglas, /#[0-9a-f]{3,8}\b|rgba?\(\s*\d/i, "un color fijo en los puntos o en el señalado");
 });
 
 prueba("en la hoja, la tabla va debajo del plano y «Quién paga el canon» debajo de «Para revisar»", () => {

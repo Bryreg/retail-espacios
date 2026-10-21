@@ -315,6 +315,13 @@ interface FixtureStore {
   seasonWindows: SeasonWindows;
   camera2D: Camera2D;
   camera3D: Camera3D;
+  /** Supervisar: si el plano muestra un punto sobre cada mueble con algo en
+   *  «Para revisar» («aire y pines»). Arranca APAGADO —al abrir, el plano dice
+   *  sólo cómo está cada mueble— y se recuerda como las cámaras, en ESTE
+   *  navegador (`retail-fixtures-v1` en localStorage), no en la cuenta: es una
+   *  preferencia de vista, no un dato. */
+  pendientesEnElPlano: boolean;
+  setPendientesEnElPlano: (v: boolean) => void;
 
   /** Pedido de abrir el Editor 3D encuadrando un espacio.
    *
@@ -598,6 +605,7 @@ export const useFixtureStore = create<FixtureStore>()(
       seasonWindows: {},
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
+      pendientesEnElPlano: false,
       enfoque3D: null,
       pedidoVender: null,
       serverRev: {},
@@ -935,6 +943,7 @@ export const useFixtureStore = create<FixtureStore>()(
         set((state) => ({ camera2D: { ...state.camera2D, ...c } })),
       setCamera3D: (c) =>
         set((state) => ({ camera3D: { ...state.camera3D, ...c } })),
+      setPendientesEnElPlano: (v) => set({ pendientesEnElPlano: v }),
 
       pedirEnfoque3D: (fixtureId, cara, opciones) =>
         set((state) => ({
@@ -1576,6 +1585,8 @@ export const useFixtureStore = create<FixtureStore>()(
         dataRole: state.dataRole,
         clienteCache: state.clienteCache,
         generacionCache: state.generacionCache,
+        // Una preferencia de vista, como las cámaras: sin datos ni plata.
+        pendientesEnElPlano: state.pendientesEnElPlano,
         // referenceRates stays out on purpose: it's admin-only money, and this
         // key survives logout — a worker on the same machine must not find it.
       }),
@@ -1615,6 +1626,9 @@ export const useFixtureStore = create<FixtureStore>()(
           lastSyncedAt: null,
           camera2D: { ...current.camera2D, ...(p.camera2D ?? {}) },
           camera3D: { ...current.camera3D, ...(p.camera3D ?? {}) },
+          // Sólo un `true` escrito la prende: lo de antes, o lo que no se
+          // entiende, arranca apagado.
+          pendientesEnElPlano: p.pendientesEnElPlano === true,
         };
       },
     }

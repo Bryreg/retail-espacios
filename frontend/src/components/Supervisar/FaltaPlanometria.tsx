@@ -3,7 +3,7 @@ import { ChevronRight, FileUp } from "lucide-react";
 import { montajesPendientes, type MontajePendiente } from "../../api/montajesPendientes";
 import { fechaEnCurso } from "../../utils/propuesta";
 import { useCodigoVisible } from "./CobrosYReservas";
-import { EncabezadoDeSeccion } from "./piezas";
+import { EncabezadoDeSeccion, Mira } from "./piezas";
 import { DIAS_PARA_HOY } from "./paraRevisar";
 
 /**
@@ -76,6 +76,7 @@ export function FaltaPlanometria({ sede, filas, titulo, onCargar }: {
             <FileUp {...ICONO} /> Cargar planometría
           </button>
           <ChevronRight {...ICONO} className="ir" />
+          <Mira />
         </div>
       ))}
     </div>

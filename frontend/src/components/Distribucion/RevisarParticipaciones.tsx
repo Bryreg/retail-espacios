@@ -11,6 +11,7 @@ import {
   rotuloDeCara, type MuebleDelPlano, type SeccionDeRevision,
 } from "../../utils/revisarParticipaciones";
 import { useAbrirEnDistribucion } from "./ParticipacionesDeLaCara";
+import { Mira } from "../Supervisar/piezas";
 
 /**
  * Las participaciones de cara en Supervisar (§11): las tarjetas de «Para
@@ -133,6 +134,7 @@ export default function RevisarParticipaciones({ secciones, tituloDe }: {
                     <PenTool size={16} strokeWidth={1.75} aria-hidden /> {textoDelBoton(s.tipo)}
                   </button>
                 )}
+                <Mira />
               </div>
             );
           })}

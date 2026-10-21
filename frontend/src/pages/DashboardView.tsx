@@ -138,11 +138,11 @@ import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
 // plata de Supervisar.
 import { bajoLaTarifa } from "../utils/meses";
 import {
-  DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, chinchetasDe, contarPorGrupo, cuentaDelBadge,
-  deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, tituloDeSeccion,
+  DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, avisoPorClave, contarPorGrupo, cuentaDelBadge,
+  deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, puntosDelPlano, tituloDeSeccion,
   type Aviso, type Chincheta, type GrupoDeRevision,
 } from "../components/Supervisar/paraRevisar";
-import { EncabezadoDeSeccion, PestanasDeRevision, SelectorDePlata } from "../components/Supervisar/piezas";
+import { EncabezadoDeSeccion, Mira, PestanasDeRevision, SelectorDePlata } from "../components/Supervisar/piezas";
 import {
   ALTURA, UNIDAD_ISO, VISTA_INICIAL, ZOOM_MAX, ZOOM_MIN, encuadreInicial, enElMundo, ejes,
   esquinasDelLado, factorDeRueda, girar, ladosVisibles, ordenDePintado, proyectar, sombraDelLado,
@@ -959,7 +959,36 @@ interface IsoMapProps {
    *  pasa nunca: delante del proveedor no hay avisos. */
   chinchetas?: readonly (Chincheta & { titulo: string })[];
   onChincheta?: (c: Chincheta) => void;
+  /** SÓLO Supervisar: dónde deja el plano su función para SEÑALAR un mueble
+   *  —el piso punteado alrededor y un punto con anillo— mientras se pasa el
+   *  mouse (o el foco del teclado) por un renglón de «Para revisar»; `null` lo
+   *  apaga y el plano queda como estaba. Imperativa, como `resaltar`: pasar por
+   *  la lista no vuelve a pintar la sala. Vender no la pasa nunca. */
+  senalar?: React.MutableRefObject<((foco: FocoDelPlano | null) => void) | null>;
 }
+
+/** Lo que el plano señala al pasar por un renglón de «Para revisar»: el mueble,
+ *  la cara del aviso y su grupo (el color: Hoy rojo, 30 días ámbar, Corregir
+ *  tinta). */
+interface FocoDelPlano {
+  fixtureId: string;
+  cara: "A" | "B";
+  grupo: GrupoDeRevision;
+}
+
+/** Cuánto se abre el piso punteado alrededor del mueble señalado, en metros. */
+const MARGEN_DEL_FOCO = 0.5;
+
+/** El aire alrededor de la sede con el que abre el plano, en unidades del
+ *  isométrico de antes (`encuadreInicial`; aquel usaba 26 por lado). Con el
+ *  plano al 60 % de la hoja («aire y pines») esas 26 unidades eran vacío que el
+ *  piso no usaba, y en Vender cedían cuatro rótulos (PUN-03, PUN-05, GON-02·B,
+ *  GON-03·A, contra uno en `main`). Con 8 el piso crece hasta llenar la caja
+ *  en su lado que manda y vuelven a entrar (a 1440×900 cede sólo PUN-03, como
+ *  en `main`); el piso y los muebles siguen enteros adentro —el encuadre es la
+ *  caja de la sede proyectada—, con el aire justo para que el rótulo del
+ *  mueble más alto no se salga por arriba. */
+const MARGEN_DEL_ENCUADRE = 8;
 
 /** Un rótulo del plano: el código del espacio y, si se libera adentro del
  *  periodo, cuándo. Dos `<tspan>` que miden lo mismo y se distinguen por peso
@@ -1070,7 +1099,7 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
  *    tiembla y —peor— la medición del deschoque se hace contra la geometría
  *    del paso anterior.
  */
-function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde, chinchetas, onChincheta }: IsoMapProps) {
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde, chinchetas, onChincheta, senalar }: IsoMapProps) {
   /** La disponibilidad de una cara en el periodo: la combinada con sus
    *  partes si quien dibuja la sabe, y si no la de la cara sola. */
   const dispoDe = useCallback(
@@ -1129,7 +1158,7 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         [c.x0, 0, c.z0], [c.x1, 0, c.z0], [c.x1, 0, c.z1], [c.x0, 0, c.z1],
         [c.x0, c.h, c.z0], [c.x1, c.h, c.z0], [c.x1, c.h, c.z1], [c.x0, c.h, c.z1],
       ]),
-    ]);
+    ], MARGEN_DEL_ENCUADRE);
     return { huellas, cajas, esquinasPiso, encuadre };
   }, [fixtures]);
 
@@ -1258,6 +1287,9 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         f, topHalves, sides, rentable, double, faces, stroke,
         topOutline: pts(tA, tB, tC, tD),
         tooltipSub, caja2d,
+        // La huella en el plano (metros, relativa al centro de la sala): de
+        // ella sale el piso punteado del mueble señalado.
+        caja,
       };
     });
 
@@ -1425,13 +1457,22 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
    *  prueba las cuatro desviaciones de un único valor y, si ninguna entra,
    *  CEDE — y vuelve solo en cuanto el acercamiento le abre lugar. Nunca se
    *  achica: el cuerpo es constante. */
-  /** Las chinchetas de Supervisar, por cara (`id-cara`), y dónde quedó el
-   *  rótulo de cada cara en la última vuelta de `acomodar` (en pantalla): la
-   *  chincheta va ENCIMA de esa caja, nunca sobre el código. */
+  /** Las chinchetas de Supervisar (los puntos de «Para revisar»), por cara
+   *  (`id-cara`), y dónde quedó en la última vuelta de `acomodar` el rótulo de
+   *  cada cara y el punto de cada aviso.
+   *
+   *  LAS CAJAS SE GUARDAN RELATIVAS AL LIENZO (a la esquina de arriba a la
+   *  izquierda de `wrapRef`), no en pantalla. La pantalla rueda —Supervisar
+   *  siempre, Vender cuando el contrato es más alto que la ventana— y una caja
+   *  guardada en coordenadas de pantalla quedaba corrida exactamente lo que
+   *  hubiera rodado la página entre el `acomodar` que la midió y el
+   *  `ubicarFoco` que la usaba (el punto con anillo del señalado caía lejos de
+   *  su rótulo). Relativas al lienzo no dependen de dónde esté el lienzo en la
+   *  pantalla: se usan tal cual, sin restarles nada. */
   const pinRefs = useRef(new Map<string, HTMLButtonElement>());
   const cajasDeRotulo = useRef(new Map<string, Caja>());
-  /** La chincheta de una cara cuyo rótulo cedió: dónde quedó ella sola, sin
-   *  pisar ningún rótulo puesto (en pantalla). */
+  /** El punto de cada aviso (relativo al lienzo), con su centro en el medio
+   *  de la caja. */
   const cajasDePin = useRef(new Map<string, Caja>());
   const acomodar = useCallback(() => {
     if (!calibrado.current) return;
@@ -1441,64 +1482,37 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     const lz = wrapRef.current?.getBoundingClientRect();
     const sc = escenaActual.current;
     if (!c || !lz || !sc) return;
+    // De la pantalla al lienzo: TODO lo que se guarda pasa por acá.
+    const alLienzo = (b: Caja): Caja => ({
+      left: b.left - lz.left, top: b.top - lz.top, right: b.right - lz.left, bottom: b.bottom - lz.top,
+    });
     const d = DESVIO * sc.unidad;
     const fijos: Caja[] = [];
     wrapRef.current?.querySelectorAll(".herr, .herr-ayuda").forEach((n) => fijos.push(n.getBoundingClientRect()));
     const seSale = (b: Caja) =>
       b.left < lz.left + 2 || b.right > lz.right - 2 || b.top < lz.top + 2 || b.bottom > lz.bottom - 2;
 
+    // LOS RÓTULOS. Se acomodan SIN mirar los puntos («aire y pines»): prender
+    // los puntos de «Para revisar» no puede esconder un código que apagados se
+    // ve. Antes cada rótulo con chincheta reservaba arriba lo que ella medía,
+    // y esa reserva era un obstáculo para los vecinos: prendidos, cedían
+    // cuatro rótulos más (PUN-02, PUN-04, GON-02·B, GON-03·B).
     const ok: Caja[] = [];
-    // Las caras con chincheta van antes que el resto (después del aviso de un
-    // nombre repetido, que nunca cede): su rótulo y su chincheta se ubican
-    // juntos, y una chincheta sin rótulo —que cae sobre el ancla— no tapa el
-    // código de otra cara.
-    const turno = (p: Pieza) => (p.peso === 0 ? 0 : pinRefs.current.has(p.clave) ? 1 : 2);
-    const enOrden = [...piezas.current].sort((a, b) => turno(a) - turno(b));
-    for (const p of enOrden) {
+    const enPantalla = new Map<string, Caja>();
+    for (const p of piezas.current) {
       const intentos: [number, number][] = [[0, 0], [-d, 0], [d, 0], [0, d], [0, -d]];
       let puesto: { b: Caja; dx: number; dy: number } | null = null;
-      // Con chincheta, el rótulo ocupa también lo que ella mide encima: ningún
-      // otro rótulo se mete debajo de la chincheta y ella no tapa el código.
-      const pin = pinRefs.current.get(p.clave);
-      const arriba = pin ? (pin.offsetHeight || 26) + 3 : 0;
       for (const [dx, dy] of intentos) {
         const a = aPantalla(p.ax + dx, p.ay + dy, c);
         const b: Caja = {
           left: a[0] + p.ox, top: a[1] + p.oy,
           right: a[0] + p.ox + p.w, bottom: a[1] + p.oy + p.h,
         };
-        const conPin: Caja = arriba ? { ...b, top: b.top - arriba } : b;
-        if (seSale(conPin)) continue;
-        if (fijos.some((o) => cruza(conPin, o))) continue;
-        if (ok.some((o) => cruza(conPin, o))) continue;
-        puesto = { b: conPin, dx, dy };
-        cajasDeRotulo.current.set(p.clave, b);
+        if (seSale(b)) continue;
+        if (fijos.some((o) => cruza(b, o))) continue;
+        if (ok.some((o) => cruza(b, o))) continue;
+        puesto = { b, dx, dy };
         break;
-      }
-      if (!puesto && pin) {
-        // El rótulo cedió pero el aviso no: la chincheta sola, sobre su ancla
-        // o corrida, donde no tape el código de otra cara. Si no hay lugar,
-        // sobre el ancla (un aviso no se esconde).
-        const pw = pin.offsetWidth || 26, ph = pin.offsetHeight || 26;
-        const corridas: [number, number][] = [[0, 0]];
-        for (const k of [1, 2, 3]) {
-          for (const [x, y] of [[-1, 0], [1, 0], [0, -1], [-1, -1], [1, -1], [0, 1], [-1, 1], [1, 1]]) corridas.push([x * k * d, y * k * d]);
-        }
-        const cajaDelPin = (dx: number, dy: number): Caja => {
-          const a = aPantalla(p.ax + dx, p.ay + dy, c);
-          return { left: a[0] - pw / 2, top: a[1] - ph - 12, right: a[0] + pw / 2, bottom: a[1] - 12 };
-        };
-        const rotulos = [...cajasDeRotulo.current.values()];
-        // Primero sin pisar nada; si no hay lugar, sin pisar ningún CÓDIGO
-        // (otra chincheta sí): lo que no se puede es tapar un rótulo.
-        const libre = corridas.map(([dx, dy]) => cajaDelPin(dx, dy)).find((b) =>
-          !seSale(b) && !fijos.some((o) => cruza(b, o)) && !ok.some((o) => cruza(b, o)))
-          ?? corridas.map(([dx, dy]) => cajaDelPin(dx, dy)).find((b) =>
-            !seSale(b) && !fijos.some((o) => cruza(b, o)) && !rotulos.some((o) => cruza(b, o)));
-        if (libre) {
-          cajasDePin.current.set(p.clave, libre);
-          ok.push(libre);
-        }
       }
       if (!puesto) {
         p.txt.style.display = "none";
@@ -1506,6 +1520,8 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         p.hit?.setAttribute("height", "0");
         continue;
       }
+      enPantalla.set(p.clave, puesto.b);
+      cajasDeRotulo.current.set(p.clave, alLienzo(puesto.b));
       p.txt.style.display = "";
       p.txt.setAttribute("x", (p.ax + puesto.dx).toFixed(3));
       p.txt.setAttribute("y", (p.ay + puesto.dy).toFixed(3));
@@ -1523,6 +1539,54 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
         p.hit.setAttribute("width", (p.w / c.k + 2 * m).toFixed(3));
         p.hit.setAttribute("height", (p.h / c.k + 2 * m).toFixed(3));
       }
+    }
+
+    // LOS PUNTOS, después de todos los rótulos y sin ser obstáculo de ninguno:
+    // cada uno se apoya pegado a SU rótulo —debajo, sobre el techo de su
+    // mueble; si no entra, arriba, a la derecha o a la izquierda— sin tapar
+    // ningún código, ni las herramientas, ni otro punto. Un rótulo que cedió
+    // deja su punto sobre el techo (el ancla), o corrido donde no tape nada.
+    const puntos: Caja[] = [];
+    for (const [k, pin] of pinRefs.current) {
+      const r = Math.max(pin.offsetWidth || 16, pin.offsetHeight || 16) / 2;
+      const caja = (x: number, y: number): Caja => ({ left: x - r, top: y - r, right: x + r, bottom: y + r });
+      const sep = r + AIRE_TXT + 1;
+      const candidatos: Caja[] = [];
+      const suyo = enPantalla.get(k);
+      if (suyo) {
+        const cx = (suyo.left + suyo.right) / 2, cy = (suyo.top + suyo.bottom) / 2;
+        candidatos.push(caja(cx, suyo.bottom + sep), caja(cx, suyo.top - sep), caja(suyo.right + sep, cy), caja(suyo.left - sep, cy));
+        for (const m of [1, 2]) {
+          for (const [x, y] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+            candidatos.push(caja(cx + x * (m * d + (suyo.right - suyo.left) / 2), cy + y * (suyo.bottom - suyo.top) / 2 + y * sep));
+          }
+        }
+      } else {
+        let a = sc.anclas.get(k);
+        if (!a) {
+          const pr = sc.prisms.find((x) => `${x.f.id}-A` === k || `${x.f.id}-B` === k);
+          if (pr) a = [(pr.caja2d.x0 + pr.caja2d.x1) / 2, pr.caja2d.y0];
+        }
+        if (!a) continue;
+        for (const m of [0, 1, 2, 3]) {
+          const vueltas: [number, number][] = m === 0 ? [[0, 0]]
+            : [[0, 1], [-1, 0], [1, 0], [0, -1], [-1, 1], [1, 1], [-1, -1], [1, -1]];
+          for (const [x, y] of vueltas) {
+            const [px, py] = aPantalla(a[0] + x * m * d, a[1] + y * m * d, c);
+            candidatos.push(caja(px, py));
+          }
+        }
+      }
+      const fuera = (b: Caja) => seSale(b) || fijos.some((o) => cruza(b, o));
+      // Primero sin pisar nada; después, sin pisar ningún CÓDIGO (otro punto
+      // sí); si ni eso, el primero que entre en el lienzo: un aviso no se
+      // esconde, y con su rótulo puesto queda pegado a él.
+      const elegido = candidatos.find((b) => !fuera(b) && !ok.some((o) => cruza(b, o)) && !puntos.some((o) => cruza(b, o)))
+        ?? candidatos.find((b) => !fuera(b) && !ok.some((o) => cruza(b, o)))
+        ?? candidatos.find((b) => !seSale(b));
+      if (!elegido) continue;
+      puntos.push(elegido);
+      cajasDePin.current.set(k, alLienzo(elegido));
     }
   }, [aPantalla, encuadre]);
 
@@ -1559,56 +1623,100 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     }
   }, [encuadre]);
 
-  /** LAS CHINCHETAS (Supervisar): un botón por mueble con algo en «Para
-   *  revisar», sobre su rótulo. Son HTML encima del lienzo —se tocan, se leen
-   *  y miden lo mismo a todo acercamiento— y se ubican como los rótulos: con el
-   *  ancla de su cara y la cámara recién escrita, sin preguntarle nada al DOM
-   *  del plano. Un mueble que no se vende entero (la caja de una bahía) no tiene
-   *  ancla de rótulo: va al centro de lo alto de su caja. */
-  const ubicarChinchetas = useCallback(() => {
-    if (pinRefs.current.size === 0) return;
+  /** LOS PUNTOS DE «PARA REVISAR» (Supervisar): un botón por mueble con algo
+   *  en la lista, pegado a su rótulo. Son HTML encima del lienzo —se tocan, se
+   *  leen y miden lo mismo a todo acercamiento—; dónde va cada uno lo decide
+   *  `acomodar`, después de los rótulos y sin ser obstáculo de ninguno. Un
+   *  mueble que no se vende entero (la caja de una bahía) no tiene ancla de
+   *  rótulo: va al centro de lo alto de su caja. */
+  /** EL MUEBLE SEÑALADO desde «Para revisar» («aire y pines»): el piso
+   *  punteado alrededor (en el plano, debajo de los muebles: se mueve con la
+   *  cámara sin que nadie lo reubique, y se rehace al girar) y un punto con
+   *  anillo, que es HTML y se ubica como las chinchetas: apoyado ARRIBA del
+   *  rótulo de su cara, nunca sobre el código. */
+  const focoRef = useRef<FocoDelPlano | null>(null);
+  const focoPisoRef = useRef<SVGPolygonElement>(null);
+  const focoMarcaRef = useRef<HTMLSpanElement>(null);
+  const dibujarFocoPiso = useCallback(() => {
+    const el = focoPisoRef.current;
+    if (!el) return;
+    const f = focoRef.current;
+    const sc = escenaActual.current;
+    const p = f && sc ? sc.prisms.find((x) => x.f.id === f.fixtureId) : undefined;
+    if (!f || !sc || !p) { el.style.display = "none"; return; }
+    const m = MARGEN_DEL_FOCO;
+    const { x0, x1, z0, z1 } = p.caja;
+    el.setAttribute("points", pts(
+      proyectar(sc.e, x0 - m, 0, z0 - m), proyectar(sc.e, x1 + m, 0, z0 - m),
+      proyectar(sc.e, x1 + m, 0, z1 + m), proyectar(sc.e, x0 - m, 0, z1 + m),
+    ));
+    el.dataset.grupo = f.grupo;
+    el.style.display = "";
+  }, []);
+  const ubicarFoco = useCallback(() => {
+    const el = focoMarcaRef.current;
+    if (!el) return;
+    const f = focoRef.current;
     const c = encuadre();
     const lz = wrapRef.current?.getBoundingClientRect();
     const sc = escenaActual.current;
-    if (!c || !lz || !sc) return;
-    for (const [k, el] of pinRefs.current) {
-      // Con el rótulo puesto: la punta de la chincheta apoyada ARRIBA de su
-      // caja, centrada. Nunca sobre el código (a 390 px lo tapaba).
-      const caja = cajasDeRotulo.current.get(k);
-      const sola = caja ? undefined : cajasDePin.current.get(k);
-      if (sola) {
-        el.style.display = "";
-        el.style.left = `${((sola.left + sola.right) / 2 - lz.left).toFixed(1)}px`;
-        el.style.top = `${(sola.bottom - lz.top).toFixed(1)}px`;
-        el.dataset.sobre = "rotulo";
-        continue;
-      }
-      if (caja) {
-        const x = (caja.left + caja.right) / 2;
-        el.style.display = "";
-        el.style.left = `${(x - lz.left).toFixed(1)}px`;
-        el.style.top = `${(caja.top - lz.top - 2).toFixed(1)}px`;
-        el.dataset.sobre = "rotulo";
-        continue;
-      }
-      let a = sc.anclas.get(k);
-      if (!a) {
-        const p = sc.prisms.find((x) => `${x.f.id}-A` === k || `${x.f.id}-B` === k);
-        if (p) a = [(p.caja2d.x0 + p.caja2d.x1) / 2, p.caja2d.y0];
-      }
-      if (!a) { el.style.display = "none"; continue; }
-      const [x, y] = aPantalla(a[0], a[1], c);
-      const fuera = x < lz.left || x > lz.right || y < lz.top || y > lz.bottom;
-      el.style.display = fuera ? "none" : "";
-      el.style.left = `${(x - lz.left).toFixed(1)}px`;
-      el.style.top = `${(y - lz.top).toFixed(1)}px`;
-      el.dataset.sobre = "ancla";
+    if (!f || !c || !lz || !sc) { el.style.display = "none"; return; }
+    el.dataset.grupo = f.grupo;
+    // Con el rótulo de su cara puesto (o el de la otra cara), arriba de él.
+    const otra = f.cara === "A" ? "B" : "A";
+    const caja = cajasDeRotulo.current.get(`${f.fixtureId}-${f.cara}`) ?? cajasDeRotulo.current.get(`${f.fixtureId}-${otra}`);
+    // La caja ya es relativa al lienzo (ver `cajasDeRotulo`): se usa tal cual,
+    // aunque la página haya rodado desde el último `acomodar`.
+    if (caja) {
+      el.style.display = "";
+      el.style.left = `${((caja.left + caja.right) / 2).toFixed(1)}px`;
+      el.style.top = `${(caja.top - 2).toFixed(1)}px`;
+      el.dataset.sobre = "rotulo";
+      return;
     }
+    // Sin rótulo (cedió, o el mueble no se vende entero): sobre el techo.
+    let a = sc.anclas.get(`${f.fixtureId}-${f.cara}`);
+    if (!a) {
+      const p = sc.prisms.find((x) => x.f.id === f.fixtureId);
+      if (p) a = [(p.caja2d.x0 + p.caja2d.x1) / 2, p.caja2d.y0];
+    }
+    if (!a) { el.style.display = "none"; return; }
+    const [x, y] = aPantalla(a[0], a[1], c);
+    const fuera = x < lz.left || x > lz.right || y < lz.top || y > lz.bottom;
+    el.style.display = fuera ? "none" : "";
+    el.style.left = `${(x - lz.left).toFixed(1)}px`;
+    el.style.top = `${(y - lz.top).toFixed(1)}px`;
+    el.dataset.sobre = "ancla";
   }, [aPantalla, encuadre]);
+  useEffect(() => {
+    if (!senalar) return;
+    senalar.current = (foco) => {
+      focoRef.current = foco;
+      dibujarFocoPiso();
+      ubicarFoco();
+    };
+    return () => { if (senalar) senalar.current = null; };
+  }, [senalar, dibujarFocoPiso, ubicarFoco]);
+
+  const ubicarChinchetas = useCallback(() => {
+    // El punto del mueble señalado se ubica con lo que flota sobre el plano:
+    // cada vez que se mueve la cámara o se acomodan los rótulos.
+    ubicarFoco();
+    // Cada punto, donde lo dejó `acomodar` (relativo al lienzo, centrado en su
+    // caja): pegado a su rótulo sin tapar ningún código. Sin lugar, escondido.
+    for (const [k, el] of pinRefs.current) {
+      const b = cajasDePin.current.get(k);
+      if (!b) { el.style.display = "none"; continue; }
+      el.style.display = "";
+      el.style.left = `${((b.left + b.right) / 2).toFixed(1)}px`;
+      el.style.top = `${((b.top + b.bottom) / 2).toFixed(1)}px`;
+    }
+  }, [ubicarFoco]);
 
   const aplicar = useCallback(() => { escribir(); ajustarMinimos(); acomodar(); ubicarChinchetas(); }, [escribir, ajustarMinimos, acomodar, ubicarChinchetas]);
-  // Una lista nueva de chinchetas se ubica en cuanto existe; los rótulos se
-  // vuelven a acomodar, porque ahora cuentan con lo que mide cada chincheta.
+  // Una lista nueva de puntos se ubica en cuanto existe. Los rótulos se
+  // vuelven a acomodar en la misma vuelta, pero sin contar con los puntos: lo
+  // que cambia es sólo dónde va cada punto, nunca qué rótulo se ve.
   useLayoutEffect(() => { acomodar(); ubicarChinchetas(); }, [chinchetas, acomodar, ubicarChinchetas]);
 
   /** Medir bien es todo el asunto. Un `requestAnimationFrame` NO alcanza: el
@@ -1682,8 +1790,10 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
       const a = scene.anclas.get(p.clave);
       if (a) { p.ax = a[0]; p.ay = a[1]; }
     }
+    // El piso del mueble señalado se rehace con la escena (un giro lo cambia).
+    dibujarFocoPiso();
     aplicar();
-  }, [scene, aplicar]);
+  }, [scene, aplicar, dibujarFocoPiso]);
 
   // La tipografía del sistema puede llegar después del primer pintado: cada vez
   // que puede haber cambiado el ancho de una letra, se vuelve a medir.
@@ -1938,19 +2048,28 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
           {chinchetas.map((ch) => {
             const k = `${ch.fixtureId}-${ch.cara}`;
             return (
+              /* Un PUNTO chico sobre el techo, del color de su grupo: sin
+                 globo, sin palito y sin ícono («aire y pines»), pegado a su
+                 rótulo sin tapar ningún código (`acomodar`). Tocarlo lleva a
+                 su aviso. */
               <button
                 key={k}
                 type="button"
+                className="punto-revisar"
                 data-grupo={ch.grupo}
                 ref={(el) => { if (el) pinRefs.current.set(k, el); else pinRefs.current.delete(k); }}
                 title={ch.titulo}
                 aria-label={ch.titulo}
                 onClick={(e) => { e.stopPropagation(); onChincheta?.(ch); }}
-              >
-                <Pin {...ICONO_TARJETA} />
-              </button>
+              />
             );
           })}
+        </div>
+      )}
+      {/* El punto con anillo del mueble señalado desde «Para revisar». */}
+      {senalar && (
+        <div className="foco-capa" aria-hidden>
+          <span ref={focoMarcaRef} className="foco-marca" style={{ display: "none" }} />
         </div>
       )}
       {ayuda && (
@@ -1972,6 +2091,18 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
           stroke="var(--line)"
           strokeWidth={TRAZO.piso}
         />
+        {/* El piso punteado del mueble señalado desde «Para revisar»: debajo
+            de los muebles, como una marca en el suelo. */}
+        {senalar && (
+          <polygon
+            ref={focoPisoRef}
+            className="foco-piso"
+            style={{ display: "none" }}
+            strokeWidth={TRAZO.filtro}
+            strokeDasharray={`${(4 * UNIDAD_ISO).toFixed(3)} ${(3 * UNIDAD_ISO).toFixed(3)}`}
+            strokeLinejoin="round"
+          />
+        )}
 
         {scene.prisms.map(({ f, topHalves, sides, stroke, topOutline, tooltipSub, faces, rentable }) => {
           const selected = faces.some((x) => selectedKeys.includes(`${f.id}-${x.face}`));
@@ -2186,16 +2317,20 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
  *  sin nombres (`desgloseDelParcial`). Decía «Se libera en el periodo» /
  *  «Vence dentro» y contaba como días las doce caras por participación. */
 function MapLegend({
-  tally, modo, enContrato, chinchetas,
+  tally, modo, enContrato, chinchetas, pendientes, onPendientes,
 }: {
   tally: ConteoDelPeriodo;
   modo: "vender" | "supervisar";
   /** Cuántas caras hay en el contrato que se está armando. Sólo en Vender. */
   enContrato?: number;
-  /** Cuántas chinchetas hay en el plano. Sólo en Supervisar. */
+  /** Cuántos muebles tienen algo en «Para revisar». Sólo en Supervisar. */
   chinchetas?: number;
+  /** Si el plano muestra sus puntos, y prenderlos o apagarlos: «Para revisar
+   *  N» es un BOTÓN («aire y pines»). Sólo en Supervisar. */
+  pendientes?: boolean;
+  onPendientes?: () => void;
 }) {
-  const items: { c: string; b: string; l: string; n?: number; sep?: boolean; t?: string }[] = [
+  const items: { c: string; b: string; l: string; n?: number; t?: string }[] = [
     { c: rangeTop().libre, b: "var(--libre-borde)",
       l: modo === "vender" ? RANGE_LABEL.libre : "Libre", n: tally.libres },
     { c: rangeTop().parcial, b: "var(--entra-borde)",
@@ -2205,26 +2340,35 @@ function MapLegend({
     { c: noRentableTop(), b: "var(--resto)", l: NON_RENTABLE_LABEL },
   ];
   if (enContrato !== undefined) {
-    items.push({ c: "var(--pl-ei)", b: "var(--ink-3)", l: "En el contrato", n: enContrato, sep: true });
+    items.push({ c: "var(--pl-ei)", b: "var(--ink-3)", l: "En el contrato", n: enContrato });
   }
+  /* Sin separadores: una raya suelta entre dos ítems quedaba colgando al
+     final del renglón cuando la clave se partía. Los separa el `gap`. */
   return (
     <div className="clave">
       {items.map((o) => (
-        <Fragment key={o.l}>
-          {o.sep && <span className="sep" aria-hidden />}
-          <span title={o.t}>
-            <i style={{ background: o.c, borderColor: o.b }} />
-            {o.l}
-            {o.n !== undefined && <b>{o.n}</b>}
-          </span>
-        </Fragment>
+        <span key={o.l} title={o.t}>
+          <i style={{ background: o.c, borderColor: o.b }} />
+          {o.l}
+          {o.n !== undefined && <b>{o.n}</b>}
+        </span>
       ))}
+      {/* «Para revisar N»: prende y apaga TODOS los puntos del plano. Arranca
+          apagado y se recuerda (`pendientesEnElPlano`, en el store). */}
       {chinchetas !== undefined && (
-        <span className="clave-pin" title="Los muebles con algo en «Para revisar»">
+        <button
+          type="button"
+          className="clave-pin"
+          aria-pressed={!!pendientes}
+          onClick={onPendientes}
+          title={pendientes
+            ? "Esconder los puntos de lo que hay para revisar"
+            : "Mostrar un punto sobre cada mueble con algo para revisar"}
+        >
           <Pin {...ICONO_TARJETA} />
           Para revisar
           <b>{chinchetas}</b>
-        </span>
+        </button>
       )}
     </div>
   );
@@ -3653,6 +3797,9 @@ function AtencionRow({
         </span>
       )}
       {onSelect && <ChevronRight {...ICONO_TARJETA} className="ir" />}
+      {/* La mira, en lugar del chevron, mientras el renglón señala su mueble
+          en el plano (`data-senalada`, lo pone `senalarFila`). */}
+      <Mira />
     </div>
   );
 }
@@ -5738,12 +5885,49 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   const attentionCount = cuentaDelBadge(cuentasDeRevision);
   const grupoDeRevision: GrupoDeRevision = grupoElegido ?? grupoParaAbrir(cuentasDeRevision);
 
-  /** Las chinchetas del plano: los muebles con algo en «Para revisar», del
-   *  color del grupo más urgente. Nada que no esté en `avisos`. */
+  /** Los puntos del plano («aire y pines»): uno por mueble con algo en «Para
+   *  revisar», del color de su grupo más urgente (`puntosDelPlano`, que sale
+   *  de `chinchetasDe`). Nada que no esté en `avisos`. */
   const chinchetasDeRevision = useMemo(
-    () => chinchetasDe(avisos).map((c) => ({ ...c, titulo: `Para revisar · ${tituloDeSeccion(c.seccion, c.grupo)}` })),
+    () => puntosDelPlano(avisos).map((c) => ({ ...c, titulo: `Para revisar · ${tituloDeSeccion(c.seccion, c.grupo)}` })),
     [avisos],
   );
+  /** Al abrir, el plano NO los muestra: «Para revisar N» de la clave los prende
+   *  y los apaga, y se recuerda por persona (en el store persistido, como las
+   *  cámaras). */
+  const pendientesEnElPlano = useFixtureStore((s) => s.pendientesEnElPlano);
+  const setPendientesEnElPlano = useFixtureStore((s) => s.setPendientesEnElPlano);
+  /** Pasar el mouse —o el foco del teclado— por un renglón de «Para revisar»
+   *  SEÑALA su mueble en el plano (el piso punteado y un punto con anillo); al
+   *  salir del renglón, el plano vuelve a como estaba. La lista no sabe de qué
+   *  mueble habla cada fila: lo dice su aviso (`data-aviso` → `avisos`), así
+   *  que vale para todas las secciones sin tocar ninguna. Tocar el renglón
+   *  sigue haciendo lo de siempre; con el dedo no hay mouse que pase. */
+  const senalarEnElPlano = useRef<((foco: FocoDelPlano | null) => void) | null>(null);
+  const avisosPorClave = useMemo(() => avisoPorClave(avisos), [avisos]);
+  const filaSenalada = useRef<string | null>(null);
+  /** El renglón que está señalando: se marca a mano (`data-senalada` con el
+   *  grupo del aviso, que le da el tono y la mira), sin volver a pintar la
+   *  lista, igual que el plano. */
+  const filaSenaladaEl = useRef<HTMLElement | null>(null);
+  const senalarFila = useCallback((objetivo: EventTarget | null) => {
+    const fila = objetivo instanceof Element ? objetivo.closest<HTMLElement>("[data-aviso]") : null;
+    const clave = fila?.dataset.aviso ?? null;
+    if (clave === filaSenalada.current) return;
+    filaSenalada.current = clave;
+    const a = clave ? avisosPorClave.get(clave) : undefined;
+    filaSenaladaEl.current?.removeAttribute("data-senalada");
+    filaSenaladaEl.current = null;
+    if (fila && a?.fixtureId) {
+      fila.dataset.senalada = a.grupo;
+      filaSenaladaEl.current = fila;
+    }
+    senalarEnElPlano.current?.(a?.fixtureId ? { fixtureId: a.fixtureId, cara: a.cara ?? "A", grupo: a.grupo } : null);
+  }, [avisosPorClave]);
+  /** Tocar un renglón abre la ficha en el lugar de la lista: la lista se va
+   *  sin que el mouse «salga» de nada, y el plano vuelve a como estaba. */
+  const listaALaVista = !(selected && detailFull);
+  useEffect(() => { if (!listaALaVista) senalarFila(null); }, [listaALaVista, senalarFila]);
   /** Tocar una chincheta lleva a su aviso: «Para revisar» en su grupo, con la
    *  fila a la vista y marcada un momento. */
   const irAlAviso = useCallback((c: Chincheta) => {
@@ -5878,7 +6062,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             <h2>Piso de {sede}</h2>
             <span className="sub">{fixtures.length} muebles</span>
             <div className="der">
-              <MapLegend tally={rangeTally} modo="supervisar" chinchetas={chinchetasDeRevision.length} />
+              <MapLegend tally={rangeTally} modo="supervisar"
+                chinchetas={chinchetasDeRevision.length}
+                pendientes={pendientesEnElPlano}
+                onPendientes={() => setPendientesEnElPlano(!pendientesEnElPlano)}
+              />
               <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar el plano" />
             </div>
           </header>
@@ -5898,8 +6086,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 porPartes={porPartesDeCara}
                 cortoDe={cortoDeCara}
                 libreDesde={libreDesdeDeCara}
-                chinchetas={chinchetasDeRevision}
+                /* Los puntos de «Para revisar», sólo si se prendieron en la
+                   clave (arranca apagado). */
+                chinchetas={pendientesEnElPlano ? chinchetasDeRevision : undefined}
                 onChincheta={irAlAviso}
+                senalar={senalarEnElPlano}
               />
             )}
           </div>
@@ -5933,10 +6124,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
      Cuatro paneles —el piso, cuándo se libera, el contrato y la tarifa—, cada
      uno con su ícono donde iba su número (rediseño 2026-10: el número y el
      conector decían el orden de lectura; el ícono dice QUÉ es), el plano
-     arriba a la izquierda, la escalera debajo, el contrato a la derecha con
-     lugar fijo y la tarifa abajo. Los cuatro alinean fila con fila y la hoja
-     entera cabe en la ventana: sin scroll de documento y sin nada escondido
-     adentro de un panel.
+     arriba a la izquierda, la escalera debajo, el contrato a la derecha y la
+     tarifa abajo. Desde «aire y pines» son dos PILAS: la izquierda mide la
+     ventana y queda quieta; la derecha mide lo que mide el contrato, y si no
+     entra rueda la pantalla (nunca el documento, nunca el cuerpo del
+     contrato), con el pie del contrato pegado abajo.
      Referencia: `outputs/vender/opciones/D-fusion/index.html`.             */
 
   /** EL PISO (era el panel 01).
@@ -5946,7 +6138,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  —que son lo que hace verificable la promesa del rótulo («mide 10,5 px a
    *  todo acercamiento»)—. */
   const panelPlano = mapRange && (
-    <section className="vp vp-plano" style={{ gridArea: "1 / 1" }}>
+    <section className="vp vp-plano">
       <header>
         <MapIcon {...ICONO_TARJETA} className="ico-tarjeta" />
         <h2>Piso de {sede}</h2>
@@ -5979,7 +6171,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  escribe `Lectura`, que es un componente propio con su estado: mover el
    *  cursor por la escalera no puede volver a pintar la pantalla. */
   const panelEscalera = mapRange && (
-    <section className="vp" style={{ gridArea: "2 / 1" }}>
+    <section className="vp vp-libera">
       <header>
         <Clock {...ICONO_TARJETA} className="ico-tarjeta" />
         <h2>Cuándo se libera cada espacio</h2>
@@ -6032,7 +6224,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  contrato armado: con la ficha abierta la pregunta ya es otra. */
   const conCodigos = espaciosDelContrato.length === 0;
   const panelTarifas = (
-    <section className="vp" style={{ gridArea: "2 / 2" }}>
+    <section className="vp vp-tarifa">
       <header>
         <Tag {...ICONO_TARJETA} className="ico-tarjeta" />
         <h2>Tarifa de referencia</h2>
@@ -6167,11 +6359,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   return (
     <div
       /* En Vender la pantalla es una HOJA: toma el alto que le deja la barra de
-         la aplicación y lo reparte entre las dos filas de la rejilla, sin
-         scroll de documento y sin esconder nada adentro de un panel (la única
-         válvula declarada es la ficha del contrato del cuarto espacio en
-         adelante). En Supervisar sigue siendo un documento largo que rueda,
-         que es lo que esa pantalla es. */
+         la aplicación; el plano y «Cuándo se libera» lo llenan y quedan
+         quietos, y si el contrato es más alto que la ventana rueda el área de
+         la pantalla, con su pie pegado abajo («aire y pines»). Sin scroll de
+         documento y sin esconder nada adentro de un panel. En Supervisar sigue
+         siendo un documento largo que rueda, que es lo que esa pantalla es. */
       className={modoEfectivo === "vender" && fixtures.length > 0 ? "vender" : "sup"}
       style={
         modoEfectivo === "vender" && fixtures.length > 0
@@ -6327,14 +6519,22 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       {fixtures.length === 0 ? (
         <EmptyDashboard sede={sede} isAdmin={isAdmin} onDisenarPlano={onDisenarPlano} />
       ) : modoEfectivo === "vender" ? (
-        /* Vender: la hoja de D. Cuatro paneles numerados, el plano y la
-           escalera a la izquierda, el contrato y la tarifa a la derecha, todo
-           en la ventana. Sin KPIs — para poner un precio no sirve la ocupación
+        /* Vender: la hoja de D. Cuatro paneles, el plano y la escalera a la
+           izquierda, el contrato y la tarifa a la derecha. Sin KPIs — para poner un precio no sirve la ocupación
            de hoy, sirve ver qué hay libre en el periodo, cuándo se suelta lo
            que falta y a cuánto sale. */
         <div className="vender-hoja">
-          {panelPlano}
-          {panelEscalera}
+          {/* Dos PILAS («aire y pines»): a la izquierda el plano y «Cuándo
+              se libera», del alto de la ventana y quietos (`position:
+              sticky`); a la derecha el contrato, de su alto natural, y la
+              tarifa debajo. Si el contrato es más alto que la ventana rueda
+              la pantalla —no el cuerpo del contrato— y su pie (el total y
+              «Guardar») queda pegado abajo. */}
+          <div className="hoja-col hoja-izq">
+            {panelPlano}
+            {panelEscalera}
+          </div>
+          <div className="hoja-col hoja-der">
           <ModoVender
             espacios={espaciosDelContrato}
             ultimo={selected}
@@ -6370,6 +6570,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             onSeguir={() => setCerrado(null)}
           />
           {panelTarifas}
+          </div>
         </div>
       ) : (
         <>
@@ -6476,7 +6677,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           </Card>
 
           {/* ── LA HOJA DE SUPERVISAR: la misma rejilla que la de Vender ──────
-              Dos columnas en la misma proporción (1004 : 402) y filas del
+              Dos columnas en la misma proporción (3 : 2) y filas del
               mismo alto que el panel del plano de Vender (`--alto-plano`):
 
                   el plano             │ para revisar (o la ficha)
@@ -6550,7 +6751,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 <div style={{ padding: "0 12px 8px" }}>
                   <PestanasDeRevision cuentas={cuentasDeRevision} grupo={grupoDeRevision} onGrupo={setGrupoElegido} />
                 </div>
-                <div className="lista-r">
+                <div
+                  className="lista-r"
+                  data-senala-en-el-plano
+                  onPointerOver={(e) => { if (e.pointerType !== "touch") senalarFila(e.target); }}
+                  onPointerLeave={(e) => { if (e.pointerType !== "touch") senalarFila(null); }}
+                  onFocus={(e) => senalarFila(e.target)}
+                  onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) senalarFila(null); }}
+                >
                   {cuentasDeRevision[grupoDeRevision] === 0 && (
                     <div className="vacio-r">
                       {grupoDeRevision === "hoy" ? "Nada para hoy."

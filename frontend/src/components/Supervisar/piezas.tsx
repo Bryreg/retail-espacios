@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Crosshair } from "lucide-react";
 import { GRUPOS, type CuentaPorGrupo, type GrupoDeRevision } from "./paraRevisar";
 import type { UnidadDePlata } from "./plata";
 
@@ -54,5 +55,17 @@ export function EncabezadoDeSeccion({ titulo, valor }: { titulo: string; valor?:
     <div className="sec-r">
       <span className="rotulo">{titulo}{valor !== undefined && valor !== null && <> · <b>{valor}</b></>}</span>
     </div>
+  );
+}
+
+/** La MIRA de un renglón de «Para revisar» mientras señala su mueble en el
+ *  plano («aire y pines»): reemplaza al chevron. Escondida (`hidden`) hasta que
+ *  el renglón lleva `data-senalada` (lo pone `senalarFila` en `DashboardView`,
+ *  sin volver a pintar la lista); la muestra `supervisar.css`. */
+export function Mira() {
+  return (
+    <span className="mira" hidden aria-hidden>
+      <Crosshair size={16} strokeWidth={1.75} />
+    </span>
   );
 }

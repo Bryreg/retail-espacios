@@ -9,7 +9,7 @@ import { toISODate } from "../../types/seasons";
 import { isDoubleGondola } from "../../types/espacio";
 import { codigoVisibleDe, partirCodigo } from "../../utils/partes";
 import { useFixtureStore } from "../../store/fixtureStore";
-import { EncabezadoDeSeccion } from "./piezas";
+import { EncabezadoDeSeccion, Mira } from "./piezas";
 
 /**
  * Dos bloques de «Para revisar» que nacieron con el rediseño de Vender (PR 1,
@@ -222,6 +222,7 @@ function CorteParaCargar({ corte, sede, monto, onCargado }: {
         <span style={quien}>{corte.proveedor ?? "—"}</span>
         <span style={cifra}>{porcentaje(corte.porcentaje)}</span>
         <span style={{ flexShrink: 0, whiteSpace: "nowrap", color: "var(--ink-3)" }}>{cuando}</span>
+        <Mira />
       </div>
       {monto !== undefined ? (
         <div style={{ ...renglon, justifyContent: "flex-end" }}>
@@ -341,6 +342,7 @@ export function FilaDeReserva({ r, sede, onCambio }: { r: ReservaDeEspacio; sede
         <span style={codigo}>{cod}</span>
         <span style={quien}>{r.proveedor ?? "—"}{r.marca ? ` · ${r.marca}` : ""}</span>
         {r.valor !== null && r.valor > 0 && <span style={cifra}>{money(r.valor)}</span>}
+        <Mira />
       </div>
       <div style={renglon}>
         <span style={{ flex: 1, minWidth: 0, color: "var(--ink-3)" }}>

@@ -169,6 +169,29 @@ export function chinchetasDe(avisos: readonly Aviso[]): Chincheta[] {
   return [...por.values()];
 }
 
+/** Los PUNTOS del plano de Supervisar («aire y pines»): uno por MUEBLE con algo
+ *  en «Para revisar», el de su aviso más urgente —rojo si tiene algo de «Hoy»,
+ *  ámbar si lo más urgente es de «30 días», tinta si sólo tiene algo para
+ *  «Corregir»—. Salen de `chinchetasDe`, así que tampoco marcan nada que no
+ *  esté en la lista. Una góndola doble con avisos en las dos caras es un
+ *  punto: el de la cara más urgente (a igual grupo, la primera que aparece). */
+export function puntosDelPlano(avisos: readonly Aviso[]): Chincheta[] {
+  const por = new Map<string, Chincheta>();
+  for (const c of chinchetasDe(avisos)) {
+    const ya = por.get(c.fixtureId);
+    if (!ya || PRIORIDAD[c.grupo] < PRIORIDAD[ya.grupo]) por.set(c.fixtureId, c);
+  }
+  return [...por.values()];
+}
+
+/** El grupo más urgente de los avisos de una clave de fila (`data-aviso`): el
+ *  color con que el plano marca su mueble al pasar por el renglón. */
+export function avisoPorClave(avisos: readonly Aviso[]): Map<string, Aviso & { grupo: GrupoDeRevision }> {
+  const m = new Map<string, Aviso & { grupo: GrupoDeRevision }>();
+  for (const a of avisos) if (!m.has(a.clave)) m.set(a.clave, { ...a, grupo: grupoDelAviso(a.seccion, a.dias) });
+  return m;
+}
+
 /** Las secciones de las participaciones (`utils/revisarParticipaciones.ts`)
  *  con la sección de esta lista que les toca. */
 export const SECCION_DE_PARTICIPACIONES: Record<

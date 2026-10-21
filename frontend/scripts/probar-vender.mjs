@@ -266,6 +266,12 @@ const CAMPOS_AJENOS = [
 const TEXTOS_PROHIBIDOS = [
   [/ranking|los que m[áa]s pagan|qui[ée]n paga/i, "ranking de proveedores"],
   [/bajo (?:la )?tarifa/i, "quién está bajo tarifa"],
+  // Cuánto se aparta un precio de la tarifa de referencia («38 % bajo la
+  // referencia», «por debajo de la tarifa», «12 % menos que la tarifa»): es
+  // información de la negociación de la casa, y Vender lo ve el proveedor.
+  // (La tarifa sola, sin comparar, sí se ve: «tarifa $ 800.000 al mes».)
+  [/(?:\bbajo|debajo|encima|\bsobre|\bcontra|menos que|m[áa]s que|m[áa]s barat\w*|m[áa]s car\w*)\s+(?:de\s+|que\s+)?(?:la\s+|el\s+)?(?:referencia|tarifa|precio de lista)|%\s*(?:menos|m[áa]s)\b|descuento (?:sobre|de) (?:la\s+)?(?:tarifa|referencia)/i,
+    "cuánto se aparta el precio de la tarifa de referencia"],
   [/canon/i, "el canon de la sede"],
   [/vencid|por vencer|vence (?:en|dentro)/i, "el vencimiento de un contrato ajeno"],
   [/facturaci[óo]n|recaudo|ingresos del periodo|plata del periodo/i, "la plata del periodo"],
@@ -352,6 +358,11 @@ const COMPONENTES_VENDER = new Set([
   "IconoDeLinea", "FormasDeLaLinea", "ElegirPartes", "Porcentaje", "PrecioDeLinea",
   "RechazoDeLinea", "CampoProveedor", "AtajosDeFecha", "ComoSeCobra", "Avisos",
   // Lo que rodea al visor 3D: el límite de errores, la espera y el aviso.
+  // «Aire y pines» (después del PR 3): el contrato en tres bloques numerados
+  // (`Bloque`: un número, un título y lo suyo, sin datos propios), la pista
+  // punteada de «Sumar otro espacio» (`Plus`), lo que falta en el pie
+  // (`CircleAlert`) y el chevron de la fila plegable del correo y la nota.
+  "Bloque", "Plus", "CircleAlert", "ChevronDown",
   "LimiteDelVisor", "Suspense", "AbriendoEl3D", "FallaDelVisor", "VisorDeVenta",
   // El visor (`VisorDeVenta.tsx`). Las piezas del editor que usa —la escena,
   // el panel «Cómo va», el HUD y la ficha del envase— se leen abajo
@@ -1566,7 +1577,6 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       // cara por participación, la chincheta del plano y la ficha del espacio.
       ["src/components/Supervisar/FaltaPlanometria.tsx", codigo("src/components/Supervisar/FaltaPlanometria.tsx"), deLucide(codigo("src/components/Supervisar/FaltaPlanometria.tsx"))],
       ["src/components/Distribucion/ParticipacionesDeLaCara.tsx", codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"), deLucide(codigo("src/components/Distribucion/ParticipacionesDeLaCara.tsx"))],
-      [`${VISTA} (las chinchetas del plano)`, entre(vista, '<div className="chinchetas">', "</div>"), lucideVista],
       [`${VISTA} (la ficha del espacio)`, entre(vista, '<div className="ficha-cab">', "{double && ("), lucideVista],
     ];
     const vacias = regiones.filter(([, t]) => t.length < 80).map(([d]) => d);
@@ -1581,6 +1591,16 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.match(entre(codigo("src/tema.tsx"), "export function TemaToggle(", "\n}\n"), /width: 32, height: 32/, "el sol/luna no mide 32");
     // La sincronización es un punto y su palabra: sin nube, sin ícono.
     assert.equal(deLucide(codigo("src/components/SyncStatus/SyncStatus.tsx")).size, 0, "la sincronización volvió a llevar ícono (va punto y palabra)");
+    // «Aire y pines»: los puntos del plano de Supervisar NO llevan ícono —ni
+    // globo ni palito—: un botón vacío que el CSS pinta como un punto. (Antes
+    // esta región estaba en la lista de arriba, que exige 16 × 1,75; ahora no
+    // puede dibujar ningún ícono, de ningún tamaño.)
+    const puntos = entre(vista, '<div className="chinchetas">', "</div>");
+    assert.ok(puntos.length > 80, "no se encontraron los puntos del plano");
+    const iconosEnPuntos = [...puntos.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g)].map((m) => m[1]).filter((n) => lucideVista.has(n));
+    assert.deepEqual(iconosEnPuntos, [], "un punto del plano volvió a llevar ícono");
+    assert.match(puntos, /<button\s+key=\{k\}\s+type="button"\s+className="punto-revisar"/, "el punto del plano no es un botón");
+    assert.doesNotMatch(puntos, /<\/button>/, "el punto del plano no es un botón vacío: lleva algo adentro");
     // «Tarifas» lleva la etiqueta (`Tag`), la misma de la tarjeta: un concepto, un ícono.
     assert.doesNotMatch(vista, /SlidersHorizontal/, "«Tarifas» volvió a `SlidersHorizontal`");
   });
@@ -1820,8 +1840,11 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       if (!archivo || !MODULOS.includes(archivo)) continue;
       for (const n of m[1].split(",").map((x) => x.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()).filter(Boolean)) nombres.add(n);
     }
-    assert.ok(nombres.has("useUnidadDePlata") && nombres.has("chinchetasDe") && nombres.has("FaltaPlanometria"), "no se encontraron los módulos de Supervisar en DashboardView");
-    const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision"];
+    assert.ok(nombres.has("useUnidadDePlata") && nombres.has("puntosDelPlano") && nombres.has("avisoPorClave") && nombres.has("FaltaPlanometria"), "no se encontraron los módulos de Supervisar en DashboardView");
+    // «Aire y pines»: los puntos del plano, su botón y el renglón que señala su
+    // mueble son de Supervisar: ninguno se alcanza desde Vender.
+    const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision",
+      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave"];
     const hits = [];
     for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
       const ids = identificadores(r.texto);
@@ -1895,8 +1918,141 @@ console.log("\nvender · la planometría se carga en Supervisar, nunca en Vender
       if (/type=["']file["']/.test(sinComentarios(leer(f)))) hits.push(`${f}: un campo de archivo en el contrato`);
     }
     if (SUP) for (const r of SUP.regiones) if (/<\s*Planometria\b/.test(r.texto)) hits.push(`${r.archivo}${r.nombre ? ` (${r.nombre})` : ""}: dibuja <Planometria> en Vender`);
-    assert.match(modoCodigo, /\{masDatos \? "− " : "\+ "\}Correo y nota/, "el desplegable sigue ofreciendo la planometría");
+    // «Aire y pines»: lo que era «+ Correo y nota» es una fila plegable que dice
+    // exactamente eso, y lo que abre no menciona la planometría.
+    assert.match(modoCodigo, /<span>Correo y nota para el proveedor <span className="opc">· opcional<\/span><\/span>/, "el desplegable sigue ofreciendo la planometría");
+    const plegado = modoCodigo.slice(modoCodigo.indexOf("{masDatos && ("), modoCodigo.indexOf("</Bloque>", modoCodigo.indexOf("{masDatos && (")));
+    assert.ok(plegado.length > 200, "no se encontró lo que abre «Correo y nota»");
+    assert.doesNotMatch(plegado, /planometr/i, "lo que abre «Correo y nota» habla de la planometría");
     assert.deepEqual(hits, [], `\n         ${hits.join("\n         ")}`);
+  });
+}
+
+/* ── «aire y pines» (el dibujo aprobado después del PR 3): el contrato ──────
+   El contrato al 40 % de la hoja (la proporción la guarda `probar-camara`, en
+   las dos hojas), en TRES bloques numerados en el orden en que se negocia y
+   con el pie FIJO: el cuerpo rueda, el total, lo que falta y «Guardar» no.
+   Nada de lo que había se fue: cada pieza de antes está en su bloque. */
+console.log("\nvender · aire y pines: tres bloques y el pie fijo");
+{
+  const entre = (t, desde, hasta, i0 = 0) => {
+    const i = t.indexOf(desde, i0);
+    const j = i < 0 ? -1 : t.indexOf(hasta, i + desde.length);
+    return i < 0 || j < 0 ? "" : t.slice(i, j);
+  };
+  const ficha = entre(modoCodigo, "function Ficha(", "\nfunction porQueNoSeVe(");
+  const cuerpo = entre(ficha, '<div className="cuerpo">', "{en3D && (");
+  const pie = entre(ficha, "const pie = (", "\n  );\n");
+  const bloques = [...cuerpo.matchAll(/<Bloque n=\{(\d)\} titulo="([^"]+)">/g)].map((m) => [Number(m[1]), m[2]]);
+  const deBloque = (n) => {
+    const i = cuerpo.indexOf(`<Bloque n={${n}}`);
+    return i < 0 ? "" : cuerpo.slice(i, cuerpo.indexOf("</Bloque>", i));
+  };
+
+  prueba("el contrato son TRES bloques numerados, en este orden: 1 «Qué se vende», 2 «A quién y cuándo», 3 «Cómo se cobra»", () => {
+    assert.ok(ficha.length > 2000 && cuerpo.length > 1500 && pie.length > 800, "no se encontró la ficha, su cuerpo o su pie");
+    assert.deepEqual(bloques, [[1, "Qué se vende"], [2, "A quién y cuándo"], [3, "Cómo se cobra"]]);
+    // El bloque: su número, su título (un h3, nombre del grupo para el lector) y lo suyo.
+    const b = entre(modoCodigo, "function Bloque(", "\n}\n");
+    assert.match(b, /<section className="bloque" data-bloque=\{n\} aria-labelledby=\{id\}>/);
+    assert.match(b, /<span className="bloque-n" aria-hidden>\{n\}<\/span>\s*<h3 id=\{id\}>\{titulo\}<\/h3>/);
+    // La línea fina entre bloques, y ninguna arriba del primero.
+    const css = sinComentarios(leer("src/vender.css"));
+    assert.match(css, /\.bloque \{[^}]*border-top: var\(--hair\) solid var\(--line-soft\);/);
+    assert.match(css, /\.bloque:first-child \{ border-top: 0;/);
+  });
+
+  prueba("1 «Qué se vende»: las líneas, con «Se vende» y «El precio es» arriba de su botonera, y la pista «Sumar otro espacio» sin duplicar la del contrato vacío", () => {
+    const b1 = deBloque(1);
+    assert.match(b1, /\{c\.lineas\.map\(\(l\) => \(\s*<Fila\b/, "las líneas no están en el bloque 1");
+    assert.match(b1, /<NoComercializable fixture=\{ultimo\} \/>/);
+    // Vacío: la pista de siempre; con algo: la punteada. Nunca las dos.
+    assert.match(b1, /\{c\.lineas\.length === 0 \? \(\s*<p className="pista">Elegí el primer espacio <b>tocándolo en el plano<\/b><\/p>\s*\) : \(/);
+    assert.match(b1, /<p className="sumar-otro" data-pista-sumar>\s*<Plus \{\.\.\.ICONO\} \/> Sumar otro espacio: tocalo en el plano\s*<\/p>/);
+    assert.ok(b1.indexOf("Elegí el primer espacio") < b1.indexOf("data-pista-sumar"), "la pista punteada no es la rama de un contrato con algo");
+    // Una pista, no un control: ni botón ni `onClick`.
+    assert.doesNotMatch(entre(b1, '<p className="sumar-otro"', "</p>"), /<button|onClick/);
+    assert.equal((modoCodigo.match(/Agregá otro espacio/g) || []).length, 0, "quedó la pista vieja además de la nueva");
+    // Lo que falta ya no va en el cuerpo (va en el pie, sobre el botón).
+    assert.doesNotMatch(cuerpo, /c\.falta\b/, "lo que falta sigue arriba, en el cuerpo");
+    // Cada botonera de la línea con su rótulo arriba.
+    const fila = entre(modoCodigo, "function Fila(", "\n}\n");
+    assert.match(fila, /<span className="rotulo-l">Se vende<\/span>\s*<FormasDeLaLinea\b/, "«Cómo se vende» sin su rótulo");
+    assert.match(fila, /<span className="rotulo-l">Se vende<\/span>\s*<span className="partes"/, "las piezas (BI1 · BI2) sin su rótulo");
+    assert.match(fila, /<span className="rotulo-l">El precio es<\/span>\s*<PrecioDeLinea l=\{l\} c=\{c\} \/>/, "«Total | Al mes» sin su rótulo");
+  });
+
+  prueba("2 «A quién y cuándo»: proveedor y marca (opcional), desde y hasta en dos columnas con el rótulo arriba, y los atajos debajo", () => {
+    const b2 = deBloque(2);
+    const orden = ['<div className="campos2">', '<span className="rotulo">Proveedor</span>', "<CampoProveedor ",
+      '<span className="rotulo">Marca <i>opcional</i></span>', 'aria-label="Marca"', '<span className="rotulo">Desde</span>',
+      'id="contrato-desde"', '<span className="rotulo">Hasta</span>', 'aria-label="Hasta"', "<AtajosDeFecha c={c} />"];
+    const pos = orden.map((t) => b2.indexOf(t));
+    assert.ok(pos.every((k) => k >= 0), `falta en el bloque 2: ${orden.filter((_, i) => pos[i] < 0).join(", ")}`);
+    assert.deepEqual(pos, [...pos].sort((a, b) => a - b), "el bloque 2 no va en el orden del dibujo");
+    assert.ok(b2.indexOf("<AtajosDeFecha") > b2.lastIndexOf("</div>", b2.indexOf("<AtajosDeFecha")), "los atajos no van debajo de los campos");
+    const css = sinComentarios(leer("src/vender.css"));
+    assert.match(css, /\.campos2 \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+    assert.match(css, /@media \(max-width: 520px\) \{\s*\.campos2 \{ grid-template-columns: minmax\(0, 1fr\); \}/, "a 390 px los campos no van en una columna");
+  });
+
+  prueba("3 «Cómo se cobra»: «Precio fijo | % de las ventas» a todo el ancho y «Correo y nota para el proveedor · opcional» plegable, que abre lo de siempre", () => {
+    const b3 = deBloque(3);
+    assert.match(b3, /^<Bloque n=\{3\} titulo="Cómo se cobra">\s*<ComoSeCobra c=\{c\} \/>/);
+    assert.match(sinComentarios(leer("src/components/Contrato/CamposDelContrato.tsx")), /<span className="seg seg-ancho" role="group" aria-label="Cómo se cobra">/);
+    // `aria-controls` sólo con lo plegado abierto: cerrado, el id no existe.
+    assert.match(b3, /<button\s+type="button"\s+className="plegable"\s+onClick=\{\(\) => setMasDatos\(\(v\) => !v\)\}\s+aria-expanded=\{masDatos\}\s+(?:\/\*[^*]*\*\/\s*)?aria-controls=\{masDatos \? idMasDatos : undefined\}\s*>/);
+    // Al abrirlo, lo abierto queda a la vista arriba del pie pegado (rodando
+    // la pantalla, suave salvo «menos animaciones»).
+    assert.match(ficha, /const masDatosRef = useRef<HTMLDivElement>\(null\);\s*useEffect\(\(\) => \{[\s\S]{0,1400}scrollBy\(\{ top: cuanto, behavior: suave \? "smooth" : "auto" \}\);\s*\}, \[masDatos\]\);/, "al abrir «Correo y nota» lo abierto no se trae a la vista");
+    assert.match(ficha, /prefers-reduced-motion: reduce/);
+    assert.match(b3, /<div className="mas-datos" id=\{idMasDatos\} ref=\{masDatosRef\}>/);
+    assert.match(b3, /<ChevronDown \{\.\.\.ICONO\} className="chev" \/>/);
+    const abre = entre(b3, "{masDatos && (", "</Bloque>") || b3.slice(b3.indexOf("{masDatos && ("));
+    for (const t of ['aria-label="Correo para la constancia"', 'aria-label="Nota"', "<NotifyPreview sede={c.sede} />", "id={idMasDatos}"]) {
+      assert.ok(abre.includes(t), `lo que abre «Correo y nota» perdió ${t}`);
+    }
+    assert.doesNotMatch(modoCodigo, /extra=\{/, "«Correo y nota» volvió al renglón del cobro");
+  });
+
+  prueba("el pie es FIJO: el total con su plazo y lo que cubre, lo que falta, «Guardar contrato» a todo el ancho y, debajo, «Reservar hasta…» y «Empezar de nuevo»", () => {
+    // El pie va afuera del cuerpo que rueda: es un hermano, después.
+    assert.match(modoCodigo, /<Panel\s+pie=\{pie\}/);
+    const panel = entre(modoCodigo, "function Panel(", "\n}\n");
+    assert.match(panel, /\{children\}\s*\{pie\}\s*<\/section>/, "el pie no va después del cuerpo, afuera de él");
+    assert.doesNotMatch(pie, /className="cuerpo"/);
+    assert.doesNotMatch(cuerpo, /btn-principal|Guardar contrato|Reservar hasta…|Empezar de nuevo|Total del contrato/, "algo del pie quedó adentro del cuerpo que rueda");
+    const orden = ['data-pie-fijo', "Total del contrato", 'className="total-sub"', 'className="sello"', "{c.reservando && (",
+      "c.lineas.length > 0 && c.falta", 'className="btn-principal"', "Guardar contrato", "Reservar hasta…", "Empezar de nuevo"];
+    const pos = orden.map((t) => pie.indexOf(t));
+    assert.ok(pos.every((k) => k >= 0), `falta en el pie: ${orden.filter((_, i) => pos[i] < 0).join(", ")}`);
+    assert.deepEqual(pos, [...pos].sort((a, b) => a - b), "el pie no va en el orden del dibujo");
+    assert.match(pie, /<p className="falta" data-falta role="status">\s*<CircleAlert \{\.\.\.ICONO\} \/> \{c\.falta\}\s*<\/p>/);
+    // El CSS («aire y pines», la corrección): el cuerpo NO rueda —mide lo
+    // suyo y rueda la pantalla—; el pie no se encoge y va PEGADO al borde de
+    // abajo de la ventana (`sticky`, con la tarjeta sin recortar, que si no
+    // sería ella el contenedor del `sticky`); apilado (≤ 1100) vuelve al final
+    // de su tarjeta. El principal ocupa las dos columnas de los botones.
+    const css = sinComentarios(leer("src/vender.css"));
+    const reglaDe = (sel) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].trim() === sel).map((m) => m[2]);
+    assert.match(reglaDe(".vender .cuerpo")[0] ?? "", /flex: 1 0 auto;/, "el cuerpo no mide lo suyo");
+    for (const r of [...reglaDe(".vender .cuerpo"), ...reglaDe(".vp.contrato .cuerpo")]) assert.doesNotMatch(r, /overflow|max-height/, "el cuerpo del contrato rueda");
+    assert.doesNotMatch(css, /\.cuerpo \{[^}]*overflow-y: (?:auto|scroll)/, "el cuerpo del contrato rueda en algún lado");
+    assert.match(reglaDe(".vender")[0] ?? "", /overflow-y: auto;/, "la pantalla de Vender no rueda");
+    assert.match(css, /\.pie-contrato \{\s*flex: none;/);
+    assert.match(css, /\.vp\.contrato \{ overflow: visible; \}/, "la tarjeta del contrato recorta: el pie no se puede pegar");
+    assert.match(css, /\.vp\.contrato > \.pie-contrato \{ position: sticky; bottom: -12px; z-index: 2; \}/, "el pie no va pegado abajo");
+    // Apilado vuelve al final de su tarjeta: la regla va DESPUÉS de la que lo
+    // pega (misma especificidad: si va antes, no hace nada y el pie tapa medio
+    // teléfono — pasó).
+    const pegado = css.indexOf(".vp.contrato > .pie-contrato { position: sticky;");
+    const suelto = css.search(/@media \(max-width: 1100px\) \{\s*\.vp\.contrato > \.pie-contrato \{ position: static; \}\s*\}/);
+    assert.ok(pegado > 0 && suelto > pegado, "apilado, el pie sigue pegado (la regla que lo suelta no está, o va antes de la que lo pega)");
+    assert.match(css, /\.vp \{[^}]*display: flex;[^}]*flex-direction: column;[^}]*overflow: hidden;/);
+    assert.match(css, /\.acciones2 \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\);/);
+    assert.match(css, /\.acciones2 \.btn-principal \{ grid-column: 1 \/ -1;/);
+    // A 390 px el total pasa a una columna (nada se sale de la tarjeta).
+    assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.pie-contrato \.total \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   });
 }
 
@@ -2374,28 +2530,135 @@ if (!URL_VENDER) {
     await tocar(pv, alReves[0]);
     await pv.mouse.move(5, 5);
     await pv.waitForTimeout(600);
-    // Con UNA línea a 1440×900 la ficha entra entera: el cuerpo no rueda (la
-    // línea, proveedor y marca, las fechas y sus atajos, el cobro) y el pie
-    // (el total y los botones) cierra con su aire.
-    const unaLinea = await pv.evaluate(`(() => {
+    // «Aire y pines», la corrección (el dibujo aprobado después del PR 3):
+    // la columna derecha es una PILA —el contrato de su alto natural y la
+    // tarifa debajo— y si el contrato es más alto que la ventana rueda LA
+    // PANTALLA, no el cuerpo del contrato; su pie (el total, lo que falta y
+    // «Guardar») queda pegado abajo. Reemplaza a «cada campo a un rodar del
+    // cuerpo» (que hacía `scrollIntoView` del cuerpo y pasaba siempre) por lo
+    // que el dibujo promete, medido SIN RODAR NADA: a 1440×900 con una línea
+    // el campo Proveedor está entero en la ventana y el pie no lo tapa.
+    const AREA = `document.querySelector(".vender")`;
+    const medirContrato = (pg) => pg.evaluate(`(() => {
       const panel = ${PANEL};
+      const area = ${AREA};
       const cuerpo = panel.querySelector(".cuerpo"), pie = panel.querySelector(".pie-contrato");
-      const r = panel.getBoundingClientRect(), acc = pie.querySelector(".acciones").getBoundingClientRect();
-      const visible = (sel) => { const e = panel.querySelector(sel); if (!e) return false; const b = e.getBoundingClientRect(), c = cuerpo.getBoundingClientRect(); return b.top >= c.top - 0.5 && b.bottom <= c.bottom + 0.5; };
-      return { ancho: innerWidth, alto: innerHeight, rueda: cuerpo.scrollHeight > cuerpo.clientHeight + 1, sobra: cuerpo.scrollHeight - cuerpo.clientHeight,
-        aire: r.bottom - acc.bottom, enElPie: !!pie && pie.contains(panel.querySelector(".btn-principal")),
-        ven: { linea: visible(".eitem"), proveedor: visible('input[aria-label="Proveedor"]'), marca: visible('input[aria-label="Marca"]'),
-          desde: visible('input[aria-label="Desde"]'), hasta: visible('input[aria-label="Hasta"]'), atajos: visible(".atajos") } };
+      const r = panel.getBoundingClientRect(), pr = pie.getBoundingClientRect();
+      const hoja = panel.closest(".vender-hoja").getBoundingClientRect();
+      /** Entero en la ventana, arriba del pie y sin nada encima (lo que hay en
+       *  su centro es él o algo suyo). */
+      const aLaVista = (el, conPie = true) => {
+        if (!el) return "no está";
+        const b = el.getBoundingClientRect();
+        if (b.width < 1 || b.height < 1) return "no se ve";
+        if (b.top < -0.5 || b.left < -0.5 || b.bottom > innerHeight + 0.5 || b.right > innerWidth + 0.5) return "se sale de la ventana";
+        if (conPie && b.bottom > pr.top + 0.5) return "lo tapa el pie";
+        const enMedio = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        if (!enMedio || !(el === enMedio || el.contains(enMedio) || enMedio.contains(el))) return "algo lo tapa (" + (enMedio?.className || enMedio?.tagName) + ")";
+        return "";
+      };
+      return {
+        ancho: innerWidth, alto: innerHeight, rodado: area.scrollTop, bloques: panel.querySelectorAll(".bloque").length,
+        proveedor: aLaVista(panel.querySelector('input[aria-label="Proveedor"]')),
+        guardar: aLaVista(pie.querySelector(".btn-principal"), false),
+        fecha: aLaVista(pie.querySelector('input[aria-label="Reservar hasta"]'), false),
+        pieAlto: pr.height, pieAbajo: innerHeight - pr.bottom,
+        pegado: getComputedStyle(pie).position === "sticky",
+        cuerpoRueda: cuerpo.scrollHeight > cuerpo.clientHeight + 1 || /auto|scroll/.test(getComputedStyle(cuerpo).overflowY),
+        proporcion: r.width / hoja.width,
+        pagina: document.scrollingElement.scrollHeight > innerHeight + 1,
+        ancha: document.documentElement.scrollWidth > innerWidth,
+        desborda: panel.scrollWidth > panel.clientWidth + 0.5,
+      };
     })()`);
-    prueba("navegador · con UNA línea a 1440×900 el cuerpo del contrato no rueda: la línea, proveedor y marca, las fechas y sus atajos a la vista; el pie cierra con aire", () => {
+    /** Rueda LA PANTALLA (no el cuerpo) hasta que cada campo quede a la vista
+     *  arriba del pie, y en cada paso «Guardar» sigue a la vista y el plano
+     *  sigue en su lugar (pegado). Vuelve arriba al terminar. */
+    const rodandoLaPantalla = (pg) => pg.evaluate(`(async () => {
+      const panel = ${PANEL};
+      const area = ${AREA};
+      const cuerpo = panel.querySelector(".cuerpo"), pie = panel.querySelector(".pie-contrato");
+      const plano = document.querySelector(".vender .vp-plano");
+      const cuadro = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+      const malas = [];
+      const campos = { linea: ".eitem", proveedor: 'input[aria-label="Proveedor"]', marca: 'input[aria-label="Marca"]',
+        desde: 'input[aria-label="Desde"]', hasta: 'input[aria-label="Hasta"]', atajos: ".atajos",
+        cobro: '[aria-label="Cómo se cobra"]', correo: ".plegable" };
+      for (const [k, sel] of Object.entries(campos)) {
+        const el = panel.querySelector(sel);
+        if (!el) { malas.push(k + ": no está"); continue; }
+        // Lo que hay que rodar para que el campo quede a 140 px del borde de arriba.
+        area.scrollTop += el.getBoundingClientRect().top - 140;
+        await cuadro();
+        const b = el.getBoundingClientRect(), pr = pie.getBoundingClientRect(), g = pie.querySelector(".btn-principal").getBoundingClientRect();
+        if (b.top < 0 || b.bottom > pr.top + 0.5) malas.push(k + ": rodando la pantalla no queda a la vista arriba del pie");
+        if (g.top < 0 || g.bottom > innerHeight + 0.5) malas.push(k + ": rodando, «Guardar» se fue de la ventana");
+        // El plano, pegado arriba del área que rueda (a lo sumo su relleno y
+        // el hueco entre paneles) y entero a la vista.
+        const p = plano.getBoundingClientRect(), a = area.getBoundingClientRect();
+        if (area.scrollTop > 40 && innerWidth > 1100 && (p.top < a.top - 0.5 || p.top > a.top + 30 || p.bottom > innerHeight + 0.5)) malas.push(k + ": rodando, el plano no quedó quieto y entero arriba (" + (p.top - a.top).toFixed(0) + " px debajo del borde del área)");
+        if (cuerpo.scrollTop !== 0) malas.push(k + ": rodó el cuerpo del contrato");
+      }
+      area.scrollTop = 0;
+      await cuadro();
+      return malas;
+    })()`);
+    await pv.evaluate(`${AREA}.scrollTop = 0`);
+    const unaLinea = await medirContrato(pv);
+    const unaLineaRodando = await rodandoLaPantalla(pv);
+    prueba("navegador · con UNA línea a 1440×900, SIN RODAR: Proveedor entero en la ventana y sin el pie encima, «Guardar» a la vista, el pie pegado abajo (≤ 200 px), el cuerpo sin rodar, el contrato al 40 %", () => {
       const malas = [];
       if (unaLinea.ancho !== 1440 || unaLinea.alto !== 900) malas.push(`la ventana mide ${unaLinea.ancho}×${unaLinea.alto}, no 1440×900`);
-      if (unaLinea.rueda) malas.push(`el cuerpo rueda ${unaLinea.sobra} px con una línea`);
-      for (const [k, v] of Object.entries(unaLinea.ven)) if (!v) malas.push(`${k} no se ve sin rodar`);
-      if (!unaLinea.enElPie) malas.push("«Guardar contrato» no está en el pie");
-      if (unaLinea.aire < 12) malas.push(`el pie cierra con ${unaLinea.aire.toFixed(1)} px de aire (piso: 12)`);
+      if (unaLinea.rodado !== 0) malas.push(`la pantalla ya estaba rodada ${unaLinea.rodado} px`);
+      if (unaLinea.bloques !== 3) malas.push(`el contrato tiene ${unaLinea.bloques} bloques`);
+      if (unaLinea.proveedor) malas.push(`Proveedor: ${unaLinea.proveedor}`);
+      if (unaLinea.guardar) malas.push(`«Guardar»: ${unaLinea.guardar}`);
+      if (!unaLinea.pegado) malas.push("el pie no está pegado abajo (`position: sticky`)");
+      if (unaLinea.pieAbajo > 0.5) malas.push(`el pie no llega al borde de la ventana (quedan ${unaLinea.pieAbajo.toFixed(1)} px debajo)`);
+      if (unaLinea.pieAlto > 200.5) malas.push(`el pie mide ${unaLinea.pieAlto.toFixed(1)} px (tope: 200)`);
+      if (unaLinea.cuerpoRueda) malas.push("el cuerpo del contrato rueda (tiene que rodar la pantalla)");
+      // 2 de 5 de la hoja, menos la mitad del hueco entre columnas.
+      if (Math.abs(unaLinea.proporcion - 0.4) > 0.01) malas.push(`el contrato mide el ${(unaLinea.proporcion * 100).toFixed(1)} % de la hoja (40 %)`);
+      if (unaLinea.pagina) malas.push("rueda el documento (tiene que rodar el área de la pantalla)");
+      if (unaLinea.ancha) malas.push("la página se sale a lo ancho");
+      if (unaLinea.desborda) malas.push("algo se sale de la tarjeta del contrato");
+      malas.push(...unaLineaRodando);
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
     });
+    // A 1366×768 reservando: la fecha de la reserva va en el pie pegado, y el
+    // pie entero (con «Guardar» y la fecha) se ve sin rodar; Proveedor se
+    // alcanza rodando la pantalla.
+    await pv.setViewportSize({ width: 1366, height: 768 });
+    await pv.waitForTimeout(700);
+    await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
+    await pv.mouse.move(5, 5);
+    await pv.waitForTimeout(500);
+    const reservar = pv.locator(".vender .pie-contrato button", { hasText: "Reservar hasta…" });
+    const sePuedeReservar = await reservar.isEnabled();
+    if (sePuedeReservar) await reservar.click();
+    else console.log(`       aviso · «Reservar hasta…» apagado con ${alReves[0]}: ${await reservar.getAttribute("title")} (la primera cara que se toca, la última de PROBAR_VENDER_CARAS, tiene que poder reservarse sola)`);
+    await pv.waitForTimeout(500);
+    await pv.evaluate(`${AREA}.scrollTop = 0`);
+    const reservando = await medirContrato(pv);
+    const reservandoRodando = await rodandoLaPantalla(pv);
+    prueba("navegador · reservando a 1366×768: «Guardar» y la fecha de la reserva a la vista sin rodar, el pie ≤ 200 px, y cada campo se alcanza rodando la pantalla", () => {
+      const malas = [];
+      if (!sePuedeReservar) malas.push(`no se pudo reservar ${alReves[0]} sola (ver el aviso de arriba)`);
+      if (reservando.ancho !== 1366 || reservando.alto !== 768) malas.push(`la ventana mide ${reservando.ancho}×${reservando.alto}`);
+      if (reservando.guardar) malas.push(`«Guardar»: ${reservando.guardar}`);
+      if (reservando.fecha) malas.push(`la fecha de la reserva: ${reservando.fecha}`);
+      if (!reservando.pegado) malas.push("el pie no está pegado abajo");
+      if (reservando.pieAlto > 200.5) malas.push(`el pie mide ${reservando.pieAlto.toFixed(1)} px (tope: 200)`);
+      if (reservando.cuerpoRueda) malas.push("el cuerpo del contrato rueda");
+      if (reservando.pagina) malas.push("rueda el documento");
+      if (reservando.ancha) malas.push("la página se sale a lo ancho");
+      malas.push(...reservandoRodando);
+      assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+    });
+    if (sePuedeReservar) await pv.locator(".vender .pie-contrato button", { hasText: "Volver" }).click();
+    await pv.setViewportSize({ width: 1440, height: 900 });
+    await pv.waitForTimeout(700);
+    await pv.evaluate(`${AREA}.scrollTop = 0`);
     for (const c of alReves.slice(1)) await tocar(pv, c);
     await pv.locator('.vender input[aria-label="Proveedor"]').fill(PROVEEDOR);
     await pv.locator('.vender input[aria-label="Marca"]').fill("Finesse");
@@ -2415,7 +2678,8 @@ if (!URL_VENDER) {
         filas: [...panel.querySelectorAll(".eitem")].map((e) => {
           const b = e.getBoundingClientRect(), cod = e.querySelector(".cod");
           return { cod: cod.firstChild?.textContent?.trim(), alto: b.height, entero: cod.scrollWidth <= cod.clientWidth,
-            desborda: e.scrollWidth > e.clientWidth + 0.5, aviso: !!e.querySelector(".aviso") };
+            desborda: e.scrollWidth > e.clientWidth + 0.5, aviso: !!e.querySelector(".aviso"), abierta: e.classList.contains("abierta"),
+            tipo: e.dataset.linea, partes: e.querySelectorAll(".repisas-lista .repisa").length };
         }),
         botones: v.length,
         boton: !!vb && vb.left >= cab.left && vb.right <= cab.right && vb.top >= cab.top - 5 && vb.bottom <= cab.bottom + 5,
@@ -2432,10 +2696,18 @@ if (!URL_VENDER) {
       assert.equal(hoja.filas.length, CARAS.length, `filas en el contrato: ${hoja.filas.map((f) => f.cod).join(", ")}`);
       const malas = [];
       for (const f of hoja.filas) {
-        if (!f.aviso && f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
+        // Cerrada, una línea sigue siendo un renglón de dos líneas; la abierta
+        // (la última que se tocó) muestra sus botoneras con su rótulo.
+        if (!f.aviso && !f.abierta && f.alto > 46.5) malas.push(`${f.cod}: la fila mide ${f.alto.toFixed(1)} px (dos renglones son 46)`);
+        // La ABIERTA también tiene tope (ya no está exenta): su cabecera, «Se
+        // vende» y «El precio es» (medida: 176 px entera, 200 un porcentaje a
+        // 1440), más un renglón por cada parte de la lista y el aviso, si hay.
+        const tope = 210 + 34 * f.partes + (f.aviso ? 40 : 0);
+        if (f.abierta && f.alto > tope) malas.push(`${f.cod}: la línea abierta mide ${f.alto.toFixed(1)} px (tope: ${tope}, ${f.tipo}${f.partes ? `, ${f.partes} partes` : ""})`);
         if (!f.entero) malas.push(`${f.cod}: el código se corta`);
         if (f.desborda) malas.push(`${f.cod}: la fila desborda su tarjeta`);
       }
+      if (hoja.filas.filter((f) => f.abierta).length > 1) malas.push("hay más de una línea abierta");
       if (hoja.botones !== 1) malas.push(`hay ${hoja.botones} «Ver en 3D» (tiene que haber uno, en la cabecera)`);
       if (!hoja.boton) malas.push("«Ver en 3D» no está entero adentro de la cabecera del contrato");
       if (hoja.aire < 12) malas.push(`la ficha cierra con ${hoja.aire.toFixed(1)} px de aire (piso: 12)`);
@@ -2443,8 +2715,105 @@ if (!URL_VENDER) {
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
     });
 
+
+    // ── Supervisar: el señalado con la página rodada, y los puntos ────────
+    // («Aire y pines», la corrección.) Pasar por un renglón de «Para revisar»
+    // pone un punto con anillo ARRIBA del rótulo de su mueble. Las cajas de
+    // los rótulos se guardaban en coordenadas de pantalla y, con la página
+    // rodada, el punto caía corrido lo que se hubiera rodado: se mide con la
+    // pantalla quieta Y rodada. Y prender los puntos no esconde ningún rótulo
+    // que apagados se ve, ni un punto tapa un código.
+    {
+      const { ctx: cs, p: ps } = await abrir("light");
+      await ps.locator("button", { hasText: /^Supervisar/ }).first().click();
+      await ps.waitForSelector(".sup .lista-r [data-aviso]", { timeout: 45000 }).catch(() => {});
+      await ps.waitForTimeout(2500);
+      const ocultos = () => ps.evaluate(() => [...document.querySelectorAll(".vp-plano text.p-cod")]
+        .filter((t) => getComputedStyle(t).display === "none" || t.getBoundingClientRect().width === 0).map((t) => t.getAttribute("data-cod")).sort());
+      /** Pasa el mouse por cada renglón hasta encontrar uno que señale, y mide
+       *  el punto contra el rótulo visible de su mueble. */
+      const senalado = async () => {
+        const filas = await ps.locator(".sup .lista-r [data-aviso] .dat").all();
+        for (const f of filas.slice(0, 12)) {
+          if (!(await f.isVisible())) continue;
+          await f.hover();
+          await ps.waitForTimeout(250);
+          const m = await ps.evaluate(() => {
+            const marca = document.querySelector(".foco-marca");
+            if (!marca || getComputedStyle(marca).display === "none" || marca.dataset.sobre !== "rotulo") return null;
+            const fila = document.querySelector(".sup [data-senalada]");
+            const cod = fila?.querySelector(".dat b")?.textContent?.trim() ?? "";
+            const base = cod.replace(/·[AB]$/, "");
+            const rotulos = [...document.querySelectorAll(".vp-plano text.p-cod")]
+              .filter((t) => getComputedStyle(t).display !== "none" && (t.getAttribute("data-cod") === cod || t.getAttribute("data-cod")?.replace(/·[AB]$/, "") === base))
+              .map((t) => t.getBoundingClientRect());
+            const b = marca.getBoundingClientRect();
+            const cx = b.left + b.width / 2;
+            // Arriba del rótulo (a 2 px), centrado: el de su cara o el de la otra.
+            const junto = rotulos.some((r) => Math.abs(cx - (r.left + r.width / 2)) < 3 && Math.abs(b.bottom - (r.top - 2)) < 4);
+            const ir = fila?.querySelector(".ir"), mira = fila?.querySelector(".mira");
+            return { cod, junto, rotulos: rotulos.length, grupo: fila?.dataset.senalada ?? "",
+              mira: !!mira && getComputedStyle(mira).display !== "none" && (!ir || getComputedStyle(ir).display === "none") };
+          });
+          if (m && m.rotulos > 0) return m;
+        }
+        return null;
+      };
+      await ps.evaluate(() => { document.querySelector(".sup").scrollTop = 0; });
+      const quieto = await senalado();
+      await ps.mouse.move(2, 2);
+      await ps.waitForTimeout(300);
+      const rodo = await ps.evaluate(() => { const s = document.querySelector(".sup"); s.scrollTop = 120; return s.scrollTop; });
+      await ps.waitForTimeout(300);
+      const rodado = await senalado();
+      await ps.mouse.move(2, 2);
+      await ps.evaluate(() => { document.querySelector(".sup").scrollTop = 0; });
+      await ps.waitForTimeout(300);
+      prueba("navegador · Supervisar: el punto con anillo del señalado cae arriba del rótulo de su mueble, con la página quieta y RODADA, y el renglón lleva la mira", () => {
+        const malas = [];
+        if (!quieto) malas.push("ningún renglón de «Para revisar» señaló un mueble con su rótulo a la vista");
+        else {
+          if (!quieto.junto) malas.push(`quieta: el punto de ${quieto.cod} no está arriba de su rótulo`);
+          if (!quieto.mira) malas.push(`quieta: el renglón de ${quieto.cod} no cambió el chevron por la mira`);
+          if (!/^(hoy|dias30|corregir)$/.test(quieto.grupo)) malas.push(`quieta: el renglón señalado no lleva el tono de su grupo («${quieto.grupo}»)`);
+        }
+        if (rodo < 60) malas.push(`la página de Supervisar no rodó (${rodo} px): no se puede medir el caso rodado`);
+        else if (!rodado) malas.push("rodada: ningún renglón señaló un mueble con su rótulo a la vista");
+        else if (!rodado.junto) malas.push(`rodada ${rodo} px: el punto de ${rodado.cod} no está arriba de su rótulo (quedó corrido)`);
+        assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+      });
+      const apagados = await ocultos();
+      const boton = ps.locator(".clave-pin");
+      const habia = await boton.count();
+      if (habia) { await boton.first().click(); await ps.waitForTimeout(1200); }
+      const prendidos = await ocultos();
+      const pisan = await ps.evaluate(() => {
+        const rot = [...document.querySelectorAll(".vp-plano text.p-cod")].filter((t) => getComputedStyle(t).display !== "none").map((t) => [t.getAttribute("data-cod"), t.getBoundingClientRect()]);
+        const out = [];
+        for (const p of document.querySelectorAll(".chinchetas button")) {
+          if (getComputedStyle(p).display === "none") continue;
+          const b = p.getBoundingClientRect();
+          // El punto pintado (10 px y su aro de 2) dentro del blanco de 16.
+          const c = { l: b.left + b.width / 2 - 7, r: b.left + b.width / 2 + 7, t: b.top + b.height / 2 - 7, b: b.top + b.height / 2 + 7 };
+          for (const [cod, r] of rot) if (c.l < r.right && r.left < c.r && c.t < r.bottom && r.top < c.b) out.push(`${p.getAttribute("aria-label")?.slice(0, 40)} tapa ${cod}`);
+        }
+        return { out, n: document.querySelectorAll(".chinchetas button").length };
+      });
+      if (habia) { await boton.first().click(); await ps.waitForTimeout(400); }
+      prueba("navegador · Supervisar: prender los puntos no esconde ningún rótulo que apagados se ve, y ningún punto tapa un código", () => {
+        const malas = [];
+        if (!habia) malas.push("no está el botón «Para revisar N» en la clave");
+        if (habia && pisan.n === 0) malas.push("prendidos, no hay ningún punto");
+        const nuevos = prendidos.filter((c) => !apagados.includes(c));
+        if (nuevos.length) malas.push(`prendidos ceden ${nuevos.join(", ")} (apagados se ven)`);
+        malas.push(...pisan.out);
+        assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+      });
+      await cs.close();
+    }
+
     // Lo opcional, que también tiene que sobrevivir al 3D.
-    await pv.locator("button", { hasText: "Correo y nota" }).click();
+    await pv.locator("button.plegable", { hasText: "Correo y nota para el proveedor" }).click();
     await pv.locator('.vender input[inputmode="email"]').fill("compras@proveedor.example");
     await pv.locator('.vender textarea[aria-label="Nota"]').fill("Probar la punta con el yogur");
     await pv.waitForTimeout(400);
