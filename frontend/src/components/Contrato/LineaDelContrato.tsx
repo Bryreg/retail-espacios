@@ -4,6 +4,7 @@ import { diaCorto, money, rangoCorto, textoDelRechazo, type Contrato, type Linea
 import { claseDe, partesParaElegir, type FormaDeLaLinea } from "../../utils/partes";
 import { CARA_ENTERA_PB, pbDeTexto, pct } from "../../utils/participaciones";
 import type { CambioDePartes } from "../../utils/partesDelMueble";
+import { pesosExactos } from "../../utils/edicionDeContrato";
 
 /**
  * Las piezas de UNA línea del contrato de Vender (rediseño de Vender, PR 1;
@@ -48,7 +49,7 @@ export function IconoDeLinea({ l }: { l: LineaDelContrato }) {
  *  (`listo`), se puede cambiando cómo se vende el mueble, o no se puede. */
 export type CambioPosible = { listo: true } | { cambio: CambioDePartes; aviso: string | null } | { problema: string };
 
-export function FormasDeLaLinea({ l, formas, actual, posible, onElegir }: {
+export function FormasDeLaLinea({ l, formas, actual, posible, onElegir, alGuardar = false }: {
   l: LineaDelContrato;
   formas: { forma: FormaDeLaLinea; texto: string }[];
   actual: FormaDeLaLinea;
@@ -56,6 +57,9 @@ export function FormasDeLaLinea({ l, formas, actual, posible, onElegir }: {
   /** Con `cambio`, escribe en el plano cómo se vende el mueble; devuelve el
    *  problema si el plano no se pudo guardar. */
   onElegir: (forma: FormaDeLaLinea, cambio: CambioDePartes | null) => Promise<string | null> | void;
+  /** «Editar contrato»: el cambio no se escribe al tocar «Cambiar», queda
+   *  pendiente y se escribe en el plano al guardar (se dice en la oferta). */
+  alGuardar?: boolean;
 }) {
   /** La forma pedida que obliga a cambiar cómo se vende el mueble: se pide
    *  confirmar acá mismo, sin un diálogo encima. */
@@ -119,6 +123,7 @@ export function FormasDeLaLinea({ l, formas, actual, posible, onElegir }: {
         <span className="oferta" role="group" data-oferta-cambio>
           <span>
             Cambia cómo se vende {l.fixture.code} en toda la tienda{l.doble ? " (las dos caras)" : ""}.
+            {alGuardar && " Se escribe en el plano al guardar los cambios."}
             {r.aviso && <> {r.aviso}</>}
           </span>
           <span className="oferta-botones">
@@ -244,7 +249,7 @@ export function Porcentaje({ l, c }: { l: LineaDelContrato; c: Contrato }) {
 export function PrecioDeLinea({ l, c }: { l: LineaDelContrato; c: Contrato }) {
   const editado = c.tocado(l.clave) && l.ref !== null && l.numero !== l.ref;
   const origen = l.modo === "mensual"
-    ? (c.nMeses > 0 ? `al mes × ${c.textoDeMeses(c.nMeses)} = ${money(l.monto)}` : "al mes")
+    ? (c.nMeses > 0 ? `al mes × ${c.textoDeMeses(c.nMeses)} = ${pesosExactos(l.monto)}` : "al mes")
     : l.tipo === "pc"
     ? (l.tarifaCara !== null ? `${pct(l.pb)} de ${money(l.tarifaCara)} al mes` : "sin tarifa de referencia")
     : l.tipo === "partes" && l.refUnidad !== null && l.items.length > 1 && l.items.every((i) => i.ref === l.refUnidad)

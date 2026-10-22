@@ -54,11 +54,11 @@ export const CAMPOS_DE_CONTRATO = [
   "startDate", "endDate", "observation", "reservaHasta", "reservado",
   // El contrato que dibuja la cara (`GET /spaces/comercial`, sólo para quien
   // administra): es de la base, nunca del plano.
-  "leaseId",
+  "leaseId", "proximoLeaseId",
 ] as const;
 
 /** El mismo plano sin una sola palabra de lo comercial. No toca el original.
- *  Saca sólo esos diez campos: la ficha viaja como está, `null` incluido. */
+ *  Saca sólo esos once campos: la ficha viaja como está, `null` incluido. */
 export function sinComercial(fixtures: UnifiedFixture[]): UnifiedFixture[] {
   return fixtures.map((f) => {
     const limpio: Record<string, unknown> = { ...f };

@@ -302,7 +302,8 @@ def _revisar(
 
     ``delante_del_proveedor=True``: también Vender. Un choque se dice con UNA
     frase neutra (``frase_tomada``): sin distinguir un contrato de una reserva y
-    con las fechas como se leen («2 nov»).
+    con las fechas como se leen («2 nov»). Y sin comparar con la tarifa de
+    referencia: ni «% por debajo» ni su monto, en ningún mensaje.
 
     ``excluir_lease`` / ``excluir_termino``: SÓLO «Editar contrato»
     (``services/editar_contrato.py``): el contrato que se edita (y, si era un
@@ -518,7 +519,10 @@ def _revisar(
             pass
         elif valor <= 0:
             errores.append("Falta el valor, o quedó en cero.")
-        elif out.referencia:
+        elif out.referencia and not delante_del_proveedor:
+            # Delante del proveedor (Vender) nunca se compara con la tarifa: ni
+            # en la frase, ni en el monto de referencia, ni en un 409 que no se
+            # pinte (viaja igual al navegador de la pantalla que él mira).
             desvio = round((1 - valor / out.referencia) * 100)
             if desvio >= 15:
                 avisos.append(

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ArrowRight, Building2, Send, Users, Wrench } from "lucide-react";
 import { useModalAbierto } from "../../tema";
 import type { Contrato } from "./Contrato";
-import { nombreDelContrato } from "../../utils/edicionDeContrato";
+import { nombreDelContrato, notaDelReemplazo } from "../../utils/edicionDeContrato";
 
 /**
  * «¿Guardar los cambios y reenviar?» — el último paso de «Editar contrato»
@@ -84,7 +84,9 @@ export default function ConfirmarEdicion({ c, onVolver, onGuardar }: {
             <li data-rol="proveedor">
               <Building2 {...ICONO} />
               <span>
-                <b>El proveedor</b> · {edita.correo ?? (c.correo.trim() || "sin correo cargado: no le llega")}
+                {/* El correo del proveedor QUE QUEDA: cambiar de proveedor no
+                    arrastra el del anterior (`correoDelProveedorQueQueda`). */}
+                <b>El proveedor</b> · {c.correoDestino}
               </span>
             </li>
             <li data-rol="montaje">
@@ -95,10 +97,12 @@ export default function ConfirmarEdicion({ c, onVolver, onGuardar }: {
               </span>
             </li>
           </ul>
+          {/* La lista ENTERA de lo que cambia (en el pie va plegada a una línea). */}
           {c.edicion && c.edicion.cambios.length > 0 && (
-            <ul className="que-cambia-lista">
+            <ul className="que-cambia-lista" data-que-cambia-dialogo>
               {c.edicion.cambios.map((x) => (
                 <li key={x.campo}>
+                  <span className="campo-cambia">{x.campo}</span>
                   <s>{x.antes}</s>
                   <ArrowRight {...ICONO} />
                   <b>{x.ahora}</b>
@@ -107,8 +111,8 @@ export default function ConfirmarEdicion({ c, onVolver, onGuardar }: {
             </ul>
           )}
           {c.edicion?.reemplazo && (
-            <p className="nota-edicion">
-              El contrato anterior se cierra como «reemplazado» y su planometría y su montaje se vuelven a pedir.
+            <p className="nota-edicion" data-reemplazo>
+              {notaDelReemplazo(edita, c.nuevos)}
             </p>
           )}
         </div>

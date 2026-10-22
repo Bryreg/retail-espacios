@@ -1244,8 +1244,9 @@ html[data-tema="oscuro"] .vender {
 .btn-texto:disabled { color: var(--ink-4); cursor: not-allowed; }
 .btn-texto:disabled svg { color: var(--ink-4); }
 .btn-texto:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+/* El ícono y el texto en UN renglón, centrados («← Volver a Supervisar»). */
 .btn-tinta {
-  display: block; width: 100%; padding: 11px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 11px;
   border-radius: var(--r-md); border: 0; cursor: pointer;
   background: var(--accent); color: var(--accent-ink);
   font-size: var(--t-base); font-weight: 700; font-family: inherit;
@@ -1261,6 +1262,11 @@ html[data-tema="oscuro"] .vender {
 .eitem .cod .abrir:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .eitem .cod { min-width: 0; max-width: 55%; }
 .eitem .pct { flex: none; font-family: var(--f-mono); font-weight: 700; font-size: var(--t-base); color: var(--ink-1); }
+/* «8 % ventas»: con cobro por % de las ventas, donde iría el precio. */
+.eitem .ventas-linea {
+  flex: none; margin-left: auto; font-family: var(--f-mono); font-variant-numeric: tabular-nums;
+  font-weight: 700; font-size: var(--t-sm); color: var(--ink-1); white-space: nowrap;
+}
 .eitem .caras { display: flex; gap: 3px; flex-shrink: 0; }
 .eitem .caras button {
   height: 22px; padding: 0 6px; border-radius: var(--r-xs); cursor: pointer;
@@ -1424,7 +1430,16 @@ html[data-tema="oscuro"] .vender {
 .vender .cobro > .cobro-ventas { flex: 0 0 100%; order: 2; }
 .cobro-ventas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .vender .entrada.pct-ventas { width: 88px; gap: 4px; }
-.vender .entrada.pct-ventas input { text-align: right; min-width: 0; width: 100%; }  /* sin el mínimo de 20 letras del campo: a 390 px se salía de su caja */
+/* El % de las ventas: el mismo reset que los demás campos (el borde, el fondo
+   y el foco son de la CAJA, nunca del input: con foco se veía una segunda caja
+   en claro y un fondo gris en oscuro), y el foco en el contenedor. Vale para
+   Vender y para «Editar contrato». Sin el mínimo de 20 letras del campo: a
+   390 px se salía de su caja. */
+.vender .entrada.pct-ventas input {
+  border: 0; outline: none; background: transparent; color: inherit; font: inherit; padding: 0;
+  text-align: right; min-width: 0; width: 100%;
+}
+.vender .entrada.pct-ventas:focus-within { border-color: var(--ink-1); box-shadow: 0 0 0 2px var(--panel-2); }
 .vender .entrada .fin { font-size: var(--t-2xs); color: var(--ink-3); }
 .vender .reserva { margin-top: 6px; }
 
@@ -1556,26 +1571,51 @@ html[data-tema="oscuro"] .vender {
 }
 .nota-edicion svg { flex: none; margin-top: 1px; }
 .vender .bloque .nota-edicion { margin-top: var(--s2); }
+/* «Qué cambia» y el aviso de los correos: UNA línea cada uno, para que el
+   pie en edición quede como el de Vender (≤ 200 px a 1366 × 768). La lista
+   entera, en el desplegable («ver») y en el diálogo. */
 .que-cambia { display: grid; gap: 6px; min-width: 0; font-size: var(--t-xs); }
-.que-cambia > .rotulo { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: var(--t-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.que-cambia-linea {
+  margin: 0; display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--ink-2); line-height: 1.35;
+}
+.que-cambia-linea > svg { flex: none; color: var(--ink-3); }
+.que-cambia-linea .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.que-cambia-linea b { color: var(--ink-1); font-weight: 600; }
+.que-cambia-linea .enlace { flex: none; margin-left: auto; font-size: var(--t-xs); }
+.que-cambia-detalle { display: grid; gap: 6px; max-height: 30vh; overflow: auto; padding: 2px 0 0 22px; }
 .que-cambia ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .que-cambia li,
 .que-cambia-lista li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; overflow-wrap: anywhere; }
 .que-cambia li svg,
 .que-cambia-lista li svg { flex: none; color: var(--ink-3); }
-.que-cambia .campo-cambia { color: var(--ink-3); min-width: 64px; }
+.que-cambia .campo-cambia,
+.que-cambia-lista .campo-cambia { color: var(--ink-3); min-width: 64px; }
 .que-cambia s,
 .que-cambia-lista s { color: var(--ink-3); }
 .que-cambia b,
 .que-cambia-lista b { color: var(--ink-1); }
 .aviso-correos {
-  display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; padding: 9px 12px; min-width: 0;
-  border-radius: var(--r-md); background: var(--entra-suave); border: var(--hair) solid var(--entra-borde); color: var(--ink-1);
+  margin: 0; display: flex; align-items: center; gap: 8px; padding: 6px 10px; min-width: 0;
+  border-radius: var(--r-md); background: var(--entra-suave); border: var(--hair) solid var(--entra-borde); color: var(--ink-2);
+  font-size: var(--t-2xs); line-height: 1.35;
 }
-.aviso-correos > svg { color: var(--entra-txt); margin-top: 1px; }
-.aviso-correos > div { display: grid; gap: 2px; min-width: 0; }
-.aviso-correos b { font-size: var(--t-xs); }
-.aviso-correos span { font-size: var(--t-2xs); color: var(--ink-2); overflow-wrap: anywhere; }
+.aviso-correos > svg { flex: none; color: var(--entra-txt); }
+/* Hasta dos renglones: a quién le llega va entero (el correo del proveedor
+   que queda, o que no tiene). */
+.aviso-correos > span {
+  min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+/* Editando, el detalle del total («se calcula en cada corte: …») en UN
+   renglón (entero en el `title`): el pie no pasa de ~200 px. */
+.pie-contrato.editando .total-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aviso-correos b { color: var(--ink-1); font-weight: 600; }
+/* A lo angosto (el contrato apilado, el pie no pegado) los dos se leen
+   enteros: hay lugar para el renglón de más. */
+@media (max-width: 1100px) {
+  .que-cambia-linea .txt { white-space: normal; overflow: visible; }
+  .aviso-correos > span { display: inline; -webkit-line-clamp: unset; overflow: visible; }
+  .pie-contrato.editando .total-sub { white-space: normal; }
+}
 
 /* La confirmación: un diálogo encima de todo, con el papel de la app (tema
    claro y oscuro por los tokens) y el fondo velado. */

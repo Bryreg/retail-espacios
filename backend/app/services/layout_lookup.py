@@ -60,7 +60,7 @@ CAMPOS_DE_CONTRATO = (
     "reservaHasta", "reservado",
     # El contrato que dibuja la cara (sólo para quien administra): es de la
     # base, nunca del plano.
-    "leaseId",
+    "leaseId", "proximoLeaseId",
 )
 
 #: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa

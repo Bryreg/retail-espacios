@@ -89,7 +89,11 @@ con `code` `sede`, `proveedor`, `sin_lineas`, `demasiadas_lineas`, `fechas`, `re
                "mensaje": "Ya no entra el 75 %: desde el 3 nov queda 70 %.",
                "queda_pb": 7000, "desde_dia": "2026-11-03" } ] } }
 ```
-Los mensajes **no nombran a nadie** ni dicen el % de otro: sólo lo que queda y desde cuándo.
+Los mensajes **no nombran a nadie** ni dicen el % de otro: sólo lo que queda y desde cuándo. **Ni
+comparan con la tarifa**: ni «% por debajo de la tarifa de referencia» ni su monto, en NINGÚN
+campo de la respuesta —tampoco en `mensajes`, que no se pintan pero viajan al navegador de la
+pantalla que mira el proveedor— (`bulk_leases._revisar` con `delante_del_proveedor=True` no
+calcula el desvío; la planilla de administración sí).
 `?validar=1` contesta 200 `{ "ok": true, "filas": [] }` o el mismo 409. Una línea de cara entera
 o de parte que no entra trae `code: "linea_invalida"`, la primera frase de la planilla en
 `mensaje` y todas en `mensajes`. Si el plano cambió entre las dos revisiones: 409
@@ -257,6 +261,11 @@ algo choca o se puede vender.
 
 ## 9. Editar un contrato guardado: `POST /api/contratos/vender` con `edita` (2026-10-22)
 
+> Corregido tras la ronda de prueba (2026-10-22): `esperado` es la huella entera; el próximo
+> contrato de una cara con vigente se edita (`proximoLeaseId`); la forma de venderse se escribe en
+> el plano al guardar; cambiar de proveedor no arrastra el correo del anterior; y ningún 409 de
+> Vender compara con la tarifa.
+
 Decisión del dueño (aprobada sobre el dibujo «Editar un contrato y reenviarlo»): un contrato YA
 guardado se reabre en el formulario de Vender —forma de venderse, proveedor, correo, marca,
 fechas, precio con su «Total | Al mes», precio fijo o % de las ventas con su corte, el % de una
@@ -276,15 +285,34 @@ sesión 401, 404 `contrato_no_existe`) devuelve lo que Vender carga, **sin la no
   "planometria": "planometria-pun04.pdf" | null, "montaje_pendiente": false, "hoy": "2026-10-22" }
 ```
 
+**El próximo contrato de una cara con vigente.** El mapa comercial dibuja el vigente (`leaseId`);
+el que arranca después en esa cara o parte viene como **`proximoLeaseId`** (`GET
+/api/spaces/comercial`): sólo para quien administra (al trabajador, `null`), sólo cuando hay un
+vigente (sin vigente, el que arranca ya es `leaseId`), y con las mismas exclusiones que `leaseId`
+(no se pega al mueble —`sinReserva`—, no viaja en el layout —`CAMPOS_DE_CONTRATO`, los dos
+lados—, y `mismoMapa` lo compara). La ficha del espacio (y cada parte) ofrece «Editar el próximo
+contrato», y la semilla y el `esperado` salen de ESE contrato (`GET …/edicion`).
+
 **El pedido** es el de §1 con un campo más (campos de más → 422, también adentro):
 ```jsonc
 { …el pedido de Vender…, "tipo": "contrato",
-  "edita": { "lease_id": 41, "esperado": { "valor": 6, "desde": "2026-08-01", "hasta": "2027-01-31" } } }
+  "edita": { "lease_id": 41, "esperado": {
+    "valor": 6, "desde": "2026-08-01", "hasta": "2027-01-31",
+    "proveedor": "COMERCIAL NUTRESA", "marca": "Zenú" | null,
+    "cobro": { "modo": "fijo" } | { "modo": "ventas", "porcentaje": 8, "corte": "mensual" | "al_final" },
+    "puntos_basicos": 5000 | null } } }
 ```
 - `lease_id` es **EL contrato del renglón** (`leaseId` de `GET /api/spaces/comercial`, sólo para
-  quien administra; al trabajador le llega `null`) y `esperado` lo que el renglón mostró
-  (`negotiatedValue`, `startDate`, `endDate`; de una participación, el `valor_mensual`, `desde`
-  y `hasta` de su término). Nunca se busca el contrato por código.
+  quien administra; al trabajador le llega `null`) o **el próximo** de esa cara (`proximoLeaseId`,
+  abajo). Nunca se busca el contrato por código.
+- `esperado` es **la huella entera** del contrato, y todos sus campos son obligatorios (falta
+  uno → 422): lo que el renglón mostró (`negotiatedValue`, `startDate`, `endDate`,
+  `supplierName`, `brandCategory`; de una participación, el `valor_mensual`, `desde`, `hasta`,
+  `proveedor` y `marca` de su término) y, de lo que el renglón no dice, lo que se leyó al abrir
+  (`cobro` y `puntos_basicos` de `GET …/edicion`). El próximo contrato no tiene renglón: su
+  huella sale entera de `GET …/edicion`. Con sólo valor y fechas, dos pestañas que cambiaban la
+  marca o el proveedor con el mismo `esperado` entraban las dos (200 y 200) y salían dos tandas
+  de correos (la ronda de prueba del 2026-10-22).
 - Siempre `tipo: "contrato"` (422 `edita_tipo`: una reserva no se edita por acá), sin `nota`
   (422 `edita_nota`: la nota interna no viaja a Vender), sin `renueva` (422 `edita_renueva`).
 - **Una línea** —el contrato que se edita— salvo cuando pasa a venderse por partes: entonces las
@@ -296,8 +324,12 @@ sesión 401, 404 `contrato_no_existe`) devuelve lo que Vender carga, **sin la no
 mueble, pero escribe la fila):
 - 404 `contrato_no_existe`; **409 `contrato_cambio`** «Ese contrato cambió mientras lo editabas:
   recargá y volvé a intentar.» si ya no está activo (cancelado, reemplazado, término dado de baja),
-  si terminó (`hasta` < hoy, Colombia) o si no coincide con `esperado` (el valor al centavo —
-  `ROUND_HALF_UP` sobre `repr`: el ruido de un float no cuenta, un centavo sí—, las fechas exactas).
+  si terminó (`hasta` < hoy, Colombia) o si no coincide con `esperado` (`editar_contrato.huella`:
+  el valor al centavo —`ROUND_HALF_UP` sobre `repr`: el ruido de un float no cuenta, un centavo
+  sí—, las fechas exactas, el proveedor y la marca sin mayúsculas ni espacios de los costados,
+  fijo o ventas con el % al centésimo y el corte, y los puntos básicos). Vender, tras un 409
+  `contrato_cambio`, apaga «Guardar cambios y reenviar» y ofrece «Volver a Supervisar»:
+  reintentar daría siempre lo mismo.
 - **Fechas.** Un contrato que ya arrancó (`desde` ≤ hoy) no mueve su «Desde»: 422
   `desde_arrancado` («El contrato arrancó el 1 ago 2026: su «Desde» no se mueve. Para otro
   arranque, renovalo o cancelalo.»). El «Hasta» no queda antes del último corte de ventas cargado
@@ -316,6 +348,15 @@ mueble, pero escribe la fila):
   romper la distribución confirmada (409 `rompe_distribucion`, con una frase neutra: lo ve el
   proveedor).
 
+**El correo al cambiar de proveedor.** Vender abre con el correo del proveedor cargado. Si la
+edición le pasa el contrato a OTRO proveedor, ese correo no viaja: en el navegador el campo se
+vacía (`correoAlCambiarDeProveedor`) y el aviso del pie y el diálogo dicen el correo del proveedor
+QUE QUEDA (`correoDelProveedorQueQueda`: el escrito para él; «su correo cargado» si ya existe —
+`/suppliers/completar` dice sólo el nombre—; o «sin correo cargado: el proveedor no recibe
+aviso»). En el servidor (`_sin_el_correo_del_anterior`), un `correo` igual al del proveedor
+anterior se ignora (no se lo da `proveedor_por_nombre` al nuevo ni a uno que existía sin correo),
+y «Tu contrato cambió» sale sólo al correo del proveedor que queda.
+
 **Mismo espacio = mismo contrato (en su lugar).** La misma cara entera, la misma parte, la misma
 pieza o un porcentaje de la misma cara: se corrigen `space_leases` (proveedor por
 `proveedor_por_nombre`, marca, fechas, `monthly_rent`), `condiciones_de_contrato` (modo y lo
@@ -325,6 +366,15 @@ ventas → ventas cambia % y corte). En un porcentaje, los puntos básicos del t
 `lease_id`): planometría, montaje pendiente, cortes, zona, enlace firmado, bitácora. El correo del
 proveedor se completa **sólo si estaba vacío** (la regla de siempre de `proveedor_por_nombre`): si
 el pedido trae otro, no pisa el que tiene. La nota interna no se toca.
+
+**La forma de venderse se escribe al GUARDAR.** En una edición, «Cambiar» la forma del mueble
+(«Por entrepaños») NO escribe el plano al tocarlo: queda pendiente (`formaPendiente` de
+`DashboardView`; Vender ve el mueble con ella encima) y se escribe por el camino de siempre
+(`commit` + `PUT /layout`) recién al guardar, justo antes del pedido —el servidor lee las partes
+del plano—. Si el pedido falla (409/422/red), el mueble vuelve a como estaba (`deshacer`, con
+`partes`/`entrepanos` en `null` explícito: un campo que no viaja el servidor lo conserva).
+«Salir sin cambios» no toca el plano. Mientras hay una forma pendiente, la vista previa
+(`?validar=1`) no se pide: las partes todavía no existen en el servidor.
 
 **Otro espacio u otra forma = reemplazo.** En la MISMA transacción: los nuevos nacen por el camino
 de Vender (`vender._escribir`, con la nota interna del viejo) y el viejo se cierra (`is_active =
@@ -350,12 +400,15 @@ nuevo), con el antes → ahora de lo que cambió. La bitácora es de administrac
 **Los correos «Contrato modificado», a todos y siempre** (después del commit,
 `services/aviso_de_edicion.py`, por los mismos caños que `_avisar`):
 - **Comercial** (gerente y administrador de la sede): «Contrato modificado — PUN-04 · POBLADO»,
-  cada campo —espacio, proveedor, marca, fechas, cobro— «antes → ahora» o «(igual)», y «Lo cambió:
-  quién · fecha, hora». La plata entera (`texto_del_valor`).
-- **El proveedor** (el correo del proveedor del contrato que queda): «Tu contrato cambió: PUN-04 —
-  Supermercado», antes → ahora de lo suyo. Si el contrato pasó a OTRO proveedor, el nuevo recibe
-  sólo lo de ahora y el de antes no recibe nada (no se le cuenta a quién se le dio).
-- **Montaje** (la mercaderista): sin plata, con el enlace firmado del contrato que queda. Si ese
+  «Se modificó un contrato de POBLADO:» y una tabla **Antes | Ahora** con cada campo —espacio,
+  proveedor, marca, fechas, cobro— (lo de antes tachado y lo nuevo en negrita, o «igual»), y
+  «Lo cambió: quién · fecha, hora». La plata entera (`texto_del_valor`).
+- **El proveedor** (el correo del proveedor del contrato QUE QUEDA, y ningún otro): «Tu contrato
+  cambió: PUN-04 — Supermercado», «Hola, {proveedor}.» y la tabla Antes | Ahora de lo suyo. Si el
+  contrato pasó a OTRO proveedor, el nuevo recibe sólo la columna «Ahora» y el de antes no recibe
+  nada (no se le cuenta a quién se le dio).
+- **Montaje** (la mercaderista): sin plata, con el espacio como lo escribe la app («PUN-03 · EN1»,
+  no con guion), proveedor · marca, fechas y el enlace firmado del contrato que queda. Si ese
   contrato todavía espera su planometría (uno nuevo de un reemplazo, o uno en su lugar que nunca la
   tuvo), su aviso espera como cualquier otro (`avisos.montaje_pendiente`) y sale al cargarla, con los
   datos de ese momento.

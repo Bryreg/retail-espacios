@@ -57,6 +57,9 @@
  *   PROBAR_VENDER_PROVEEDOR_2 otro proveedor con artes (por defecto «Postobón»)
  *   PROBAR_VENDER_CARAS       las caras del contrato del visor, como las rotula el plano
  *                             (por defecto «PUN-03,GON-02·B,NEV-01»; la primera, libre en el periodo)
+ *   PROBAR_VENDER_EDITA       el renglón de Supervisar → Corregir cuyo «Editar contrato» se mide
+ *                             (por ej. «PUN-03·EN1»); sin ella, el primero que lo tenga. Tiene
+ *                             que haber uno: el pie en edición también va ≤ 200 px
  *   PROBAR_VENDER_REGIONES    imprime qué entra en la superficie de Vender y por qué
  *                             (útil cuando una falla parece venir de un archivo ajeno)
  *
@@ -1136,7 +1139,10 @@ console.log("\nvender · las participaciones de cara");
   prueba("lo que se toca en el plano llega ENTERO a la ficha: el % (`pc`) y la cara por partes sin elegir (`porPartes`), no sólo cara y parte (ejecutado)", () => {
     const i = vista.indexOf("const espaciosDelContrato = useMemo(");
     assert.ok(i >= 0, "no está espaciosDelContrato");
-    const bloque = vista.slice(i, vista.indexOf("[enContrato, fixtures],", i));
+    // Los muebles del contrato: los del plano con la forma PENDIENTE de una
+    // edición encima (`fixturesDelContrato`, «Editar contrato»).
+    const bloque = vista.slice(i, vista.indexOf("[enContrato, fixturesDelContrato],", i));
+    assert.ok(bloque.length > 100, "espaciosDelContrato no depende de los muebles del contrato");
     assert.match(bloque, /\.map\(\(\{ id, face, parte, pc, porPartes \}\): CaraElegida \| null =>/, "espaciosDelContrato pierde `pc` o `porPartes`");
     assert.match(bloque, /\.filter\(\(x\): x is CaraElegida => x !== null\)/);
     // Ejecutado: la función del map, con dos muebles.
@@ -1144,7 +1150,7 @@ console.log("\nvender · las participaciones de cara");
     assert.ok(a > 5 && b > a, "no se pudo leer el map de espaciosDelContrato");
     const js = transformSync(`const f = ${bloque.slice(a, b)};`, { loader: "ts" }).code;
     const fixtures = [{ id: "g1" }, { id: "p2" }];
-    const map = new Function("fixtures", `${js}\nreturn f;`)(fixtures);
+    const map = new Function("fixturesDelContrato", `${js}\nreturn f;`)(fixtures);
     assert.deepEqual(map({ id: "g1", face: "B", pc: true }), { fixture: fixtures[0], face: "B", pc: true }, "un % entra como «Entera»");
     assert.deepEqual(map({ id: "p2", face: "A", porPartes: "entrepanos" }), { fixture: fixtures[1], face: "A", porPartes: "entrepanos" }, "«Por entrepaños» no llega a la ficha");
     assert.deepEqual(map({ id: "p2", face: "A", parte: "EN1" }), { fixture: fixtures[1], face: "A", parte: "EN1" });
@@ -2701,6 +2707,80 @@ if (!URL_VENDER) {
       malas.push(...reservandoRodando);
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
     });
+    // «Editar contrato» (la corrección tras la ronda de prueba): el pie en
+    // edición tampoco pasa de 200 px —con cuatro cambios medía 320 a 1366×768
+    // y tapaba el % y el corte—, «Guardar cambios y reenviar» se ve sin rodar,
+    // y el % de las ventas se alcanza rodando la pantalla, arriba del pie.
+    {
+      const { ctx: ce, p: pe } = await abrir("light");
+      const EDITA = process.env.PROBAR_VENDER_EDITA ?? "";
+      let abierta = "";
+      try {
+        if (!(await pe.getByRole("button", { name: /^Supervisar/ }).count())) await pe.getByRole("button", { name: /^Sede$/ }).first().click();
+        await pe.getByRole("button", { name: /^Supervisar/ }).first().click();
+        await pe.waitForTimeout(2500);
+        await pe.locator('.sup button[data-grupo="corregir"][aria-pressed]').first().click();
+        await pe.waitForTimeout(800);
+        const filas = pe.locator("[data-fila-revisar]", EDITA ? { hasText: EDITA } : {}).filter({ has: pe.locator("[data-editar-contrato]") });
+        if (await filas.count()) {
+          await filas.first().locator("[data-editar-contrato]").first().click();
+          await pe.waitForSelector("[data-editando]", { timeout: 20000 });
+          abierta = "sí";
+        }
+      } catch (e) { abierta = ""; console.log(`       aviso · no se pudo abrir «Editar contrato»: ${String(e).split("\n")[0]}`); }
+      const medidas = [];
+      if (abierta) {
+        // Cuatro cambios: proveedor, marca, «Hasta» y el cobro (% de las ventas).
+        await pe.locator('.vender input[aria-label="Proveedor"]').fill("Proveedor de prueba del pie");
+        await pe.locator('.vender input[aria-label="Marca"]').fill("Marca del pie");
+        const hasta = pe.locator('.vender input[aria-label="Hasta"]');
+        const h = await hasta.inputValue();
+        await hasta.fill(`${Number(h.slice(0, 4)) + 1}${h.slice(4)}`);
+        await pe.getByRole("button", { name: "% de las ventas" }).click();
+        await pe.getByLabel("Porcentaje de las ventas").fill("7,5");
+        await pe.mouse.move(5, 5);
+        await pe.waitForTimeout(900);
+        for (const [ancho, alto] of [[1366, 768], [1440, 900]]) {
+          await pe.setViewportSize({ width: ancho, height: alto });
+          await pe.waitForTimeout(600);
+          await pe.evaluate(`${AREA}.scrollTop = 0`);
+          const m = await medirContrato(pe);
+          const rueda = await rodandoLaPantalla(pe);
+          const linea = await pe.evaluate(() => document.querySelector("[data-que-cambia]")?.innerText.replace(/\s+/g, " ").trim() ?? "");
+          const lineaAlto = await pe.evaluate(() => document.querySelector("[data-que-cambia]")?.getBoundingClientRect().height ?? 0);
+          // Un contrato que ya arrancó no ofrece los atajos de fecha (moverían el «Desde»).
+          const arranco = await pe.evaluate(() => !!document.querySelector("[data-desde-bloqueado]"));
+          // El % de las ventas, rodando la pantalla, entero y arriba del pie.
+          const pct = await pe.evaluate(`(async () => {
+            const panel = ${PANEL}, area = ${AREA}, pie = panel.querySelector(".pie-contrato");
+            const el = panel.querySelector('input[aria-label="Porcentaje de las ventas"]');
+            if (!el) return "no está";
+            area.scrollTop += el.getBoundingClientRect().top - 140;
+            await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+            const b = el.getBoundingClientRect(), pr = pie.getBoundingClientRect();
+            area.scrollTop = 0;
+            return b.top < 0 || b.bottom > pr.top + 0.5 ? "rodando, lo tapa el pie" : "";
+          })()`);
+          medidas.push({ ancho, alto, m, rueda: rueda.filter((x) => !(arranco && x === "atajos: no está")), linea, lineaAlto, pct });
+        }
+      }
+      await ce.close();
+      prueba("navegador · «Editar contrato» con cuatro cambios a 1366×768 y 1440×900: el pie ≤ 200 px, «Qué cambia» en una línea, «Guardar cambios y reenviar» a la vista y el % de las ventas alcanzable arriba del pie", () => {
+        assert.ok(abierta, `no se pudo abrir «Editar contrato» desde Corregir${EDITA ? ` (${EDITA})` : ""}: sembrá un contrato con el botón y pasá PROBAR_VENDER_EDITA`);
+        const malas = [];
+        for (const { ancho, alto, m, rueda, linea, lineaAlto, pct } of medidas) {
+          const t = `${ancho}×${alto}`;
+          if (m.pieAlto > 200.5) malas.push(`${t}: el pie mide ${m.pieAlto.toFixed(1)} px en edición (tope: 200)`);
+          if (m.guardar) malas.push(`${t}: «Guardar cambios y reenviar»: ${m.guardar}`);
+          if (!m.pegado) malas.push(`${t}: el pie no está pegado abajo`);
+          if (m.ancha) malas.push(`${t}: la página se sale a lo ancho`);
+          if (!/^Qué cambia: \d+ cambios/.test(linea) || lineaAlto > 24) malas.push(`${t}: «Qué cambia» no está plegado a una línea («${linea.slice(0, 80)}», ${lineaAlto.toFixed(0)} px)`);
+          if (pct) malas.push(`${t}: el % de las ventas: ${pct}`);
+          malas.push(...rueda.map((x) => `${t}: ${x}`));
+        }
+        assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+      });
+    }
     if (sePuedeReservar) await pv.locator(".vender .pie-contrato button", { hasText: "Volver" }).click();
     await pv.setViewportSize({ width: 1440, height: 900 });
     await pv.waitForTimeout(700);

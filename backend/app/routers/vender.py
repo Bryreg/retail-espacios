@@ -59,12 +59,27 @@ class LineaIn(_Estricto):
     valor_tecleado: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
+class EsperadoCobroIn(_Estricto):
+    """Cómo se cobraba el contrato cuando se abrió: precio fijo, o el % de las
+    ventas con su corte."""
+    modo: Literal["fijo", "ventas"]
+    porcentaje: Optional[float] = Field(default=None, allow_inf_nan=False)
+    corte: Optional[Literal["mensual", "al_final"]] = None
+
+
 class EsperadoIn(_Estricto):
-    """Lo que Supervisar mostró del contrato que se edita: si el contrato ya no
-    dice esto, 409 ``contrato_cambio`` (``services/editar_contrato.py``)."""
+    """Lo que Supervisar mostró del contrato que se edita —la huella entera:
+    valor, fechas, proveedor, marca, cómo se cobra y, de un porcentaje, sus
+    puntos básicos—: si el contrato ya no dice esto, 409 ``contrato_cambio``
+    (``services/editar_contrato.py``). Todos obligatorios: dos pestañas que
+    editan la marca con el mismo «valor y fechas» se pisaban."""
     valor: float = Field(allow_inf_nan=False)
     desde: date
     hasta: date
+    proveedor: str = Field(max_length=200)
+    marca: Optional[str] = Field(max_length=200)
+    cobro: EsperadoCobroIn
+    puntos_basicos: Optional[StrictInt]
 
 
 class EditaIn(_Estricto):

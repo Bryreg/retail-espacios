@@ -15,9 +15,13 @@ import type { EstadoPorEspacio } from "./estadoComercial";
  *   servidor (`excluir_lease`, `excluir_termino`).
  * · «Qué cambia» (`queCambia`): lo de antes → lo nuevo, y si cambia la forma
  *   de venderse (el viejo se cierra como «reemplazado»).
- * · Los cortes de ventas que ya vencieron (`avisoDeCortes`): la regla de
- *   `services/cobros.periodos` del servidor, con los mismos casos
- *   (`scripts/casos/cobro-por-ventas.json`).
+ * · Los cortes de ventas que ya cerraron (`avisoDeCortes`, sobre
+ *   `periodosDeCorte`): la regla de `services/cobros.periodos` del servidor,
+ *   con los mismos casos (`scripts/casos/cobro-por-ventas.json`, que corren
+ *   los dos lados).
+ * · El correo del proveedor que QUEDA (`correoAlCambiarDeProveedor`,
+ *   `correoDelProveedorQueQueda`): cambiar de proveedor no arrastra el correo
+ *   del anterior.
  *
  * Sin la nota interna del contrato en ningún lado: Vender lo mira el proveedor.
  * Las fechas son días ISO, nunca `new Date("…")`.
@@ -26,8 +30,20 @@ import type { EstadoPorEspacio } from "./estadoComercial";
 export type CorteDeVentas = "mensual" | "al_final";
 export type FormaDelContrato = "entera" | "parte" | "pieza" | "participacion";
 
-/** Lo que el renglón de Supervisar mostró del contrato: va como `esperado`. */
-export interface EsperadoDelContrato { valor: number; desde: string; hasta: string }
+/** Lo que el renglón de Supervisar mostró del contrato —su huella entera—: va
+ *  como `esperado` y el servidor la compara bajo el candado (409
+ *  `contrato_cambio`). Con sólo valor y fechas, dos pestañas que cambiaban la
+ *  marca o el proveedor entraban las dos y salían dos tandas de correos. */
+export interface EsperadoDelContrato {
+  valor: number;
+  desde: string;
+  hasta: string;
+  proveedor: string;
+  marca: string | null;
+  cobro: { modo: "fijo" } | { modo: "ventas"; porcentaje: number; corte: CorteDeVentas };
+  /** De un porcentaje de la cara; si no, `null`. */
+  puntos_basicos: number | null;
+}
 
 /** Un contrato como lo lee «Qué cambia». Sin nota. */
 export interface FotoDelContrato {
@@ -212,6 +228,76 @@ export function queCambia(antes: FotoDelContrato, ahora: FotoDelContrato): {
   return { cambios, reemplazo };
 }
 
+/** «Qué cambia» en UNA línea del pie: «Cobro» (un cambio, se nombra) o «4
+ *  cambios»; la lista entera va en el diálogo y en el desplegable. */
+export function resumenDeCambios(cambios: CambioDelContrato[]): string {
+  if (cambios.length === 0) return "nada";
+  if (cambios.length === 1) return cambios[0].campo;
+  return `${cambios.length} cambios`;
+}
+
+/** Lo que se dice del contrato viejo cuando se REEMPLAZA (cambió la forma o el
+ *  espacio): se cierra como «reemplazado», lo suyo queda con él, y los
+ *  contratos NUEVOS (uno, o uno por parte) piden su planometría y su montaje. */
+export function notaDelReemplazo(e: Pick<EdicionDeContrato, "antes" | "planometria">, nuevos: number): string {
+  const suyo = e.planometria
+    ? `su planometría (${e.planometria}) y su montaje quedan con él`
+    : "su montaje queda con él";
+  const piden = nuevos > 1
+    ? `Los ${nuevos} contratos nuevos piden su planometría y su montaje en «Para revisar».`
+    : "El contrato nuevo pide su planometría y su montaje en «Para revisar».";
+  return `El contrato de ${nombreDelContrato(e.antes)} se cierra como «reemplazado», no cancelado: ${suyo}. ${piden}`;
+}
+
+/* ── El correo del proveedor que queda ──────────────────────────────────── */
+
+/** Cómo compara el servidor un proveedor (`clave_de_proveedor`): sin espacios
+ *  a los costados y sin mayúsculas. */
+export function claveDeProveedor(nombre: string | null | undefined): string {
+  return (nombre ?? "").trim().toLowerCase();
+}
+
+/** ¿Un correo que el servidor guardaría? (`participaciones._correo`). */
+function correoValido(t: string): string | null {
+  const x = t.trim();
+  return x && x.includes("@") && !/\s/.test(x) ? x : null;
+}
+
+export const SIN_CORREO = "sin correo cargado: el proveedor no recibe aviso";
+
+/** El campo «Correo» cuando cambia el proveedor: si el contrato pasa a OTRO
+ *  proveedor, el correo del de antes no viaja con él (se vacía); si vuelve al
+ *  de antes y el campo quedó vacío, vuelve su correo. Lo demás que se haya
+ *  escrito, se respeta. El servidor tampoco lo acepta
+ *  (`editar_contrato._sin_el_correo_del_anterior`). */
+export function correoAlCambiarDeProveedor(
+  e: Pick<EdicionDeContrato, "antes" | "correo">, proveedor: string, correo: string,
+): string {
+  const delAnterior = (e.correo ?? "").trim().toLowerCase();
+  if (claveDeProveedor(proveedor) === claveDeProveedor(e.antes.proveedor)) {
+    return correo.trim() === "" ? (e.correo ?? "") : correo;
+  }
+  return delAnterior && correo.trim().toLowerCase() === delAnterior ? "" : correo;
+}
+
+/** A qué correo le llega «Tu contrato cambió», como lo dicen el aviso del pie y
+ *  el diálogo: el del proveedor QUE QUEDA. El mismo proveedor: el que tiene (o
+ *  el que se escribió, si no tenía). Otro: el que se escribió para él —si ya
+ *  existía con uno (`existe`), manda el suyo: el servidor no lo pisa—, y si no
+ *  hay ninguno, `SIN_CORREO`. Nunca el del proveedor de antes. */
+export function correoDelProveedorQueQueda(
+  e: Pick<EdicionDeContrato, "antes" | "correo">, proveedor: string, correo: string, existe: boolean | null,
+): string {
+  const escrito = correoValido(correo);
+  if (claveDeProveedor(proveedor) === claveDeProveedor(e.antes.proveedor)) {
+    return e.correo ?? escrito ?? SIN_CORREO;
+  }
+  const delAnterior = (e.correo ?? "").trim().toLowerCase();
+  const propio = escrito && escrito.toLowerCase() !== delAnterior ? escrito : null;
+  if (existe) return propio ? `su correo cargado o, si no tiene, ${propio}` : "su correo cargado; si no tiene, no recibe aviso";
+  return propio ?? SIN_CORREO;
+}
+
 /** Lo que frena guardar una edición antes de preguntarle al servidor (que
  *  igual lo vuelve a mirar: 422/409), o `null`. */
 export function faltaDeLaEdicion(e: EdicionDeContrato, ahora: FotoDelContrato, lineas: number): string | null {
@@ -252,16 +338,6 @@ export function periodosDeCorte(desde: string, hasta: string, corte: CorteDeVent
     a = diaSiguiente(b);
   }
   return fuera;
-}
-
-/** Los períodos ya vencidos (su último día es anterior a `hoy`). */
-export function cortesCerrados(desde: string, hasta: string, corte: CorteDeVentas, hoy: string): [string, string][] {
-  return periodosDeCorte(desde, hasta, corte).filter(([, b]) => b < hoy);
-}
-
-/** El día de hoy en Colombia (UTC−5 todo el año), como `app/fechas.hoy`. */
-export function hoyEnColombia(ahora: Date = new Date()): string {
-  return new Date(ahora.getTime() - 5 * 3_600_000).toISOString().slice(0, 10);
 }
 
 function mesConAnio(iso: string): string {

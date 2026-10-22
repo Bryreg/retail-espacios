@@ -10,8 +10,8 @@ import { isDoubleGondola, type UnifiedFixture } from "../../types/fixtures";
 import NotifyPreview from "../NotifyPreview";
 import { useModalAbierto } from "../../tema";
 import {
-  diaCorto, money, rangoCorto, useContrato,
-  type CaraElegida, type Contrato, type LineaDelContrato, type ResumenContrato, type SemillaContrato,
+  diaCorto, rangoCorto, useContrato,
+  type ArgsContrato, type CaraElegida, type Contrato, type LineaDelContrato, type ResumenContrato, type SemillaContrato,
 } from "./Contrato";
 import {
   ElegirPartes, FormasDeLaLinea, IconoDeLinea, Porcentaje, PrecioDeLinea, RechazoDeLinea, textoDeNoEntra,
@@ -24,8 +24,8 @@ import { useFichasPropias } from "../../store/fichasPropias";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 // Cómo le dice este supermercado a cada familia: la lista, el visor y la lámina.
 import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
-import { pct } from "../../utils/participaciones";
-import { diaConAnio, nombreDelContrato } from "../../utils/edicionDeContrato";
+import { pbDeTexto, pct } from "../../utils/participaciones";
+import { diaConAnio, nombreDelContrato, notaDelReemplazo, pesosExactos, resumenDeCambios } from "../../utils/edicionDeContrato";
 import { fullSpaceCode } from "../../types/espacio";
 import {
   claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, esPieza, interruptoresDeLaCara, marcasDelContrato,
@@ -119,6 +119,9 @@ interface ModoVenderProps {
   onSalirDeEdicion?: () => void;
   /** «Editar contrato» guardado: «Volver a Supervisar». */
   onVolverASupervisar?: () => void;
+  /** «Editar contrato» con la forma de venderse cambiada: se escribe en el
+   *  plano al guardar, y se deshace si el guardado falla (`useContrato`). */
+  planoPendiente?: ArgsContrato["planoPendiente"];
 }
 
 /** El panel 03 de la hoja. Siempre en el mismo lugar de la rejilla. Con el
@@ -283,6 +286,7 @@ function Fila({
     });
   };
   const conVentas = c.cobroModo === "ventas";
+  const ventasPb = conVentas ? pbDeTexto(c.ventasTexto) : null;
   const conPrecio = !conVentas && !l.sinElegir && !(l.tipo === "pc" && l.pb <= 0);
   /* Un porcentaje no se vende «por cara» (el rótulo de la tarifa de la
      góndola): «Góndola, por participación». */
@@ -344,6 +348,11 @@ function Fila({
           })}
         </span>
       )}
+      {/* Con «% de las ventas» la línea no lleva precio: dice el % a la
+          derecha, donde iría la plata (el dibujo aprobado: «8 % ventas»). */}
+      {conVentas && !l.sinElegir && !(l.tipo === "pc" && l.pb <= 0) && ventasPb !== null && (
+        <span className="ventas-linea" data-ventas-linea>{pct(ventasPb)} ventas</span>
+      )}
       {conPrecio && (
         <span className={`m${l.monto > 0 ? "" : " falta"}`}>
           {/* El peso va como rótulo del campo y no adentro del texto: tecleado
@@ -385,6 +394,7 @@ function Fila({
             actual={actual}
             posible={posible}
             onElegir={(forma, cambio) => onVenderAsi(l.fixture.id, l.face, forma, cambio)}
+            alGuardar={!!c.edita}
           />
         </div>
       )}
@@ -555,7 +565,8 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
   /** «Editar contrato»: se corrigió en su lugar o se reemplazó. */
   const editado = datos.editado;
   const porVentas = datos.cobro.modo === "ventas" ? `${pct(Math.round(datos.cobro.porcentaje * 100))} de las ventas` : null;
-  const cobro = porVentas ?? (datos.total > 0 ? money(datos.total) : null);
+  // La plata COMPLETA, con sus centavos si los tiene («$ 0,5», no «$ 1»).
+  const cobro = porVentas ?? (datos.total > 0 ? pesosExactos(datos.total) : null);
   return (
     <Panel derecha={<span className="vpill">{reserva ? "Reservado" : editado ? "Modificado" : "Firmado"}</span>}>
       <div className="cuerpo">
@@ -584,7 +595,12 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
               <span>Hasta ese día nadie más puede tomarlo. Después se libera solo, si no se confirma.</span>
             )}
             {editado?.reemplazo && (
-              <span>El contrato anterior quedó cerrado como «reemplazado». La planometría y el montaje de los nuevos se piden en «Para revisar».</span>
+              <span>
+                El contrato anterior quedó cerrado como «reemplazado».{" "}
+                {editado.nuevos > 1
+                  ? "Los contratos nuevos piden su planometría y su montaje en «Para revisar»."
+                  : "El contrato nuevo pide su planometría y su montaje en «Para revisar»."}
+              </span>
             )}
           </div>
         </div>
@@ -593,7 +609,11 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
         </div>
         {/* La planometría no se carga en Vender (decisión de la dueña,
             2026-10-20): se dice dónde, una vez, sin alarma. */}
-        <p className="nota-guardado" data-planometria-en-supervisar>La planometría se carga en Supervisar, en la ficha del espacio.</p>
+        {/* Editando, sólo si hace falta: un reemplazo ya lo dijo arriba, y un
+            contrato que ya tiene su planometría no tiene nada que cargar. */}
+        {(!editado || (!editado.reemplazo && !editado.conPlanometria)) && (
+          <p className="nota-guardado" data-planometria-en-supervisar>La planometría se carga en Supervisar, en la ficha del espacio.</p>
+        )}
         {/* En tinta y no en amarillo, y no es un descuido: el amarillo dice
             «acá está el trabajo», y con el contrato guardado el trabajo está
             hecho. Además dos usos de `.btn-principal` en el mismo archivo
@@ -620,9 +640,14 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
 function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const {
     espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte,
-    onGuardado, onCancelar, onResaltar, ocupacionDe, onVenderAsi, onSalirDeEdicion,
+    onGuardado, onCancelar, onResaltar, ocupacionDe, onVenderAsi, onSalirDeEdicion, planoPendiente,
   } = props;
-  const c = useContrato({ espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado });
+  const c = useContrato({
+    espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado, planoPendiente,
+  });
+  /** «Qué cambia» desplegado en el pie (plegado, es UNA línea). */
+  const [verCambios, setVerCambios] = useState(false);
+  const idCambios = useId();
   /** «Editar contrato»: el contrato guardado que se reabrió. */
   const edita = c.edita;
   /** «¿Guardar los cambios y reenviar?»: se confirma antes de guardar. */
@@ -790,13 +815,13 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
      contrato» a todo el ancho (el único amarillo) y, en dos columnas,
      «Reservar hasta…» y «Empezar de nuevo». */
   const pie = (
-    <div className="pie-contrato" data-pie-fijo>
+    <div className={`pie-contrato${edita ? " editando" : ""}`} data-pie-fijo>
       <div className="total">
         <div className="total-izq">
           <span className="rotulo"><Receipt {...ICONO} /> Total del contrato</span>
           {/* El plazo («31 días · 1 mes · 1 línea») debajo del rótulo; con
               cobro por ventas, cuándo se calcula. */}
-          <p className="total-sub">
+          <p className="total-sub" title={edita && porVentas ? porVentas.detalle : undefined}>
             {porVentas ? porVentas.detalle
               : c.fechasEnOrden && c.lineas.length > 0
               ? `${c.dias} día${c.dias === 1 ? "" : "s"} · ${c.textoDeMeses(c.nMeses)} · ${c.lineas.length} ${c.lineas.length === 1 ? "línea" : "líneas"}`
@@ -807,7 +832,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           {porVentas ? (
             <span className="n n-ventas">{porVentas.cifra}</span>
           ) : (
-            <span className="n">{c.total > 0 ? money(c.total) : "—"}</span>
+            <span className="n">{c.total > 0 ? pesosExactos(c.total) : "—"}</span>
           )}
           {/* Las temporadas que cubre: el argumento de venta que una planilla
               no puede dar, y el control de que las fechas quedaron donde se
@@ -844,51 +869,60 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           </span>
         </div>
       )}
-      {/* «Editar contrato»: lo que cambia (lo de antes tachado → lo nuevo) y
-          que el contrato se envía de nuevo a los correos, siempre a la vista
-          sobre el botón (el dibujo aprobado). */}
-      {edita && c.edicion && c.edicion.cambios.length > 0 && (
+      {/* «Editar contrato»: lo que cambia y que el contrato se envía de nuevo
+          a los correos, cada uno en UNA línea para que el pie no pase de
+          ~200 px (con cuatro cambios llegaba a 320 y tapaba el % y el corte).
+          La lista entera, lo de antes tachado → lo nuevo, en el desplegable
+          y en el diálogo. */}
+      {edita && c.edicion && (c.edicion.cambios.length > 0 || c.edicion.reemplazo) && (
         <div className="que-cambia" data-que-cambia>
-          <span className="rotulo"><GitCompareArrows {...ICONO} /> Qué cambia</span>
-          <ul>
-            {c.edicion.cambios.map((x) => (
-              <li key={x.campo}>
-                <span className="campo-cambia">{x.campo}</span>
-                <s>{x.antes}</s>
-                <ArrowRight {...ICONO} />
-                <b>{x.ahora}</b>
-              </li>
-            ))}
-          </ul>
-          {c.edicion.reemplazo && (
-            <p className="nota-edicion" data-reemplazo>
-              <FileWarning {...ICONO} />
-              <span>
-                El contrato de {nombreDelContrato(edita.antes)} se cierra como «reemplazado», no cancelado.
-                {edita.planometria ? ` Su planometría (${edita.planometria}) y su montaje quedan con él` : " Su montaje queda con él"}:
-                {" "}los del contrato nuevo se vuelven a pedir en «Para revisar».
-              </span>
-            </p>
+          <p className="que-cambia-linea">
+            <GitCompareArrows {...ICONO} />
+            <span className="txt">
+              <b>Qué cambia:</b> {resumenDeCambios(c.edicion.cambios)}
+              {c.edicion.reemplazo ? " · se reemplaza el contrato" : ""}
+            </span>
+            <button type="button" className="enlace" onClick={() => setVerCambios((v) => !v)}
+              aria-expanded={verCambios} aria-controls={idCambios} data-ver-cambios>
+              {verCambios ? "ocultar" : "ver"}
+            </button>
+          </p>
+          {verCambios && (
+            <div id={idCambios} className="que-cambia-detalle">
+              <ul>
+                {c.edicion.cambios.map((x) => (
+                  <li key={x.campo}>
+                    <span className="campo-cambia">{x.campo}</span>
+                    <s>{x.antes}</s>
+                    <ArrowRight {...ICONO} />
+                    <b>{x.ahora}</b>
+                  </li>
+                ))}
+              </ul>
+              {c.edicion.reemplazo && (
+                <p className="nota-edicion" data-reemplazo>
+                  <FileWarning {...ICONO} />
+                  <span>{notaDelReemplazo(edita, c.nuevos)}</span>
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
       {edita && (
-        <div className="aviso-correos" data-aviso-correos>
+        <p className="aviso-correos" data-aviso-correos
+          title={`Comercial (gerente y administrador de ${edita.sede}) · el proveedor (${c.correoDestino}) · montaje (mercaderista de ${edita.sede}${c.edicion?.reemplazo || edita.montajePendiente ? ", cuando se cargue la planometría" : ""})`}>
           <Mail {...ICONO} />
-          <div>
-            <b>Al guardar, el contrato se envía de nuevo a los correos.</b>
-            <span>
-              Comercial (gerente y administrador de {edita.sede}) · el proveedor
-              {edita.correo ? ` (${edita.correo})` : " (si tiene correo cargado)"} · montaje (mercaderista de {edita.sede}
-              {c.edicion?.reemplazo || edita.montajePendiente ? ", cuando se cargue la planometría" : ""}).
-            </span>
-          </div>
-        </div>
+          <span>
+            <b>Al guardar, se envía de nuevo a los correos:</b> comercial · el proveedor ({c.correoDestino}) · montaje
+            {c.edicion?.reemplazo || edita.montajePendiente ? " (al cargar la planometría)" : ""}.
+          </span>
+        </p>
       )}
       {/* Lo que falta para poder guardar, nombrando la línea («Falta el valor
           de PUN-04»), justo sobre el botón. Con el contrato vacío lo dice el
           bloque 1 («Elegí el primer espacio…»): acá no se repite. */}
-      {c.lineas.length > 0 && c.falta && (
+      {c.lineas.length > 0 && c.falta && !c.cambioAjeno && (
         <p className="falta" data-falta role="status">
           <CircleAlert {...ICONO} /> {c.falta}
         </p>
@@ -922,8 +956,14 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             : <><Check {...ICONO} /> Guardar contrato</>}
         </button>
         {/* Editando no se reserva ni se empieza de nuevo: se guarda o se sale
-            sin cambios (la banda de arriba). */}
-        {edita ? null : c.reservando ? (
+            sin cambios (la banda de arriba). Tras un 409 `contrato_cambio`
+            reintentar daría lo mismo: el principal queda apagado y se vuelve a
+            Supervisar, que relee la base. */}
+        {edita ? (c.cambioAjeno ? (
+          <button className="btn-texto" type="button" onClick={onSalirDeEdicion ?? onCancelar} data-volver-tras-cambio>
+            <ArrowLeft {...ICONO} /> Volver a Supervisar
+          </button>
+        ) : null) : c.reservando ? (
           <button className="btn-texto" type="button" onClick={() => c.setReservando(false)} disabled={guardando}>
             Volver
           </button>

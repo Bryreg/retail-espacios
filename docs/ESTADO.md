@@ -1,7 +1,10 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-22, **editar un contrato y reenviarlo**: «Editar contrato» (sólo
+Última actualización: 2026-10-22, **editar un contrato y reenviarlo** (y su corrección tras la
+ronda de prueba: la huella entera en `esperado`, el próximo contrato editable, la forma de
+venderse escrita al guardar, el correo del proveedor que queda y ningún 409 de Vender que compare
+con la tarifa): «Editar contrato» (sólo
 administración) en Supervisar → «Para revisar» → Corregir («Bajo tarifa de referencia» y «Montajes
 viejos») y en la ficha del espacio (junto a Renovar, por parte y por participación) reabre un
 contrato YA guardado en Vender, con todo cargado menos la nota interna; Vender lo dice con una banda
@@ -1170,10 +1173,15 @@ la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
 **Un contrato se cambia desde una fila de Supervisar por SU `lease_id`, nunca por su código.**
 `GET /spaces/comercial` trae `leaseId` en cada cara o parte con contrato **sólo para quien
 administra** (al trabajador, `null`; una reserva no lo lleva); ni se le pega al mueble ni viaja en
-el layout (`CAMPOS_DE_CONTRATO`, los dos lados; `sinReserva`, `mismoMapa`). El pedido lleva ese
-`lease_id` y lo que la fila mostró (`esperado: { valor, desde, hasta }`), y el servidor compara
-bajo el candado del mueble, con `expire_all` y la fila `FOR UPDATE`: si no coincide (valor al
-centavo, fechas exactas), si se canceló o terminó, 409 `contrato_cambio`. Volver a pedir el espacio
+el layout (`CAMPOS_DE_CONTRATO`, los dos lados; `sinReserva`, `mismoMapa`). Con un vigente y otro
+firmado después en la misma cara o parte, el próximo viene como `proximoLeaseId`, con las MISMAS
+reglas (sólo a quien administra, ni pegado al mueble ni en el layout). El pedido lleva ese
+`lease_id` y la huella que la fila mostró (`esperado: { valor, desde, hasta, proveedor, marca,
+cobro, puntos_basicos }`, todos obligatorios), y el servidor compara bajo el candado del mueble,
+con `expire_all` y la fila `FOR UPDATE` (`editar_contrato.huella`): si no coincide (valor al
+centavo, fechas exactas, proveedor y marca sin mayúsculas, fijo o ventas con su % y su corte, el %
+de la participación), si se canceló o terminó, 409 `contrato_cambio`. Con sólo valor y fechas, dos
+pestañas que cambiaban la marca entraban las dos. Volver a pedir el espacio
 por código y elegir `active_lease ?? upcoming_lease` cambia OTRO contrato si el de la fila se
 canceló entretanto (el próximo de la misma cara). Lo usa «Editar contrato» (§9 de `vender-api.md`).
 
@@ -1185,7 +1193,16 @@ nacen los nuevos. El contrato que se edita no choca ni ocupa capacidad contra s�
 (`excluir_lease` / `excluir_termino`, SÓLO en esa ruta), y ningún otro deja de contar. Un contrato
 que ya arrancó no mueve su «Desde»; con ventas cargadas no cambia de cobro, de corte ni de forma.
 Cada edición manda «Contrato modificado» a comercial, al proveedor (sólo lo suyo) y a montaje (sin
-plata; si el contrato espera su planometría, espera). La nota interna nunca viaja a Vender.
+plata; si el contrato espera su planometría, espera). La nota interna nunca viaja a Vender. **Al
+cambiar de proveedor, el correo del anterior no viaja**: el campo se vacía en Vender y el servidor
+ignora un `correo` igual al del proveedor anterior; «Tu contrato cambió» sale sólo al correo del
+proveedor que queda. **La forma de venderse se escribe en el plano al GUARDAR**: en una edición,
+«Cambiar» la deja pendiente; se escribe justo antes del pedido y se deshace si el pedido falla.
+
+**Delante del proveedor, ningún 409 compara con la tarifa.** `bulk_leases._revisar` con
+`delante_del_proveedor=True` no calcula el desvío: ni «% por debajo de la tarifa de referencia» ni
+su monto viajan en ninguna parte de la respuesta de Vender (tampoco en `filas[].mensajes`, que no se
+pintan pero llegan al navegador). La planilla de administración sigue avisándolo.
 
 **El correo de montaje espera a la planometría.** Todo contrato nuevo nace con su fila en
 `montajes_pendientes` (`escribir_contrato` / `create_lease`) y `_avisar` no le manda el montaje
@@ -1262,8 +1279,33 @@ todos, siempre**; el «Desde» de un contrato que ya arrancó no se mueve.
   el «Desde», la banda, el aviso y el diálogo; el `leaseId` nunca al trabajador) y
   `probar-vender` (los archivos nuevos bajo todas sus guardas, la lista cerrada de componentes, el
   módulo de Supervisar que Vender no alcanza, y que Vender sólo nombra el `leaseId` de la edición).
-- **Lo que queda.** «Salir sin cambios» no deshace un cambio de cómo se vende el mueble que ya se
-  escribió en el plano (como en Vender: «Cambiar» del renglón escribe el plano al tocarlo). Un
+- **La corrección tras la ronda de prueba (2026-10-22).** (1) Cambiar de proveedor no arrastra el
+  correo del anterior: `correoAlCambiarDeProveedor` vacía el campo, el aviso y el diálogo leen el
+  del proveedor que queda (`correoDelProveedorQueQueda`; «sin correo cargado: el proveedor no
+  recibe aviso»), y el servidor ignora un `correo` igual al del anterior
+  (`_sin_el_correo_del_anterior`). (2) El precio se siembra EXACTO con su coma
+  (`textoDePrecioExacto`: «0,5», no «1»); el campo acepta una coma y dos decimales
+  (`precioTecleado`, `numeroDePrecio`) y los totales de Vender se dicen con sus centavos
+  (`pesosExactos`). (3) En edición, «Cambiar» la forma de venderse queda PENDIENTE
+  (`formaPendiente`, `fixturesDelContrato`): se escribe en el plano al guardar
+  (`planoPendiente.escribir`, justo antes del pedido) y, si el pedido falla, se deshace (con
+  `null` explícito); «Salir sin cambios» no toca el plano y la vista previa no se pide mientras
+  hay algo pendiente. (4) El % de las ventas con el reset de los demás campos y el foco en la caja.
+  (5) El pie en edición: «Qué cambia: 4 cambios · ver» en una línea (la lista entera, desplegable
+  y en el diálogo), el aviso de correos en hasta dos renglones y el detalle del total en uno: 179
+  px a 1366 × 768 con cuatro cambios (antes 320); `probar-vender` lo mide en el navegador. (6)
+  `esperado` es la huella entera (arriba). (7) «Volver a Supervisar» en un renglón
+  (`.btn-tinta` `inline-flex`). (8) Al salir sin cambios, al volver a Supervisar o tras un 409, el
+  foco vuelve al «Editar contrato» que abrió la edición (`origenDeEdicion`; si ya no está, al
+  título de su sección; si se abrió de la ficha, la ficha se vuelve a abrir). (9) El éxito pide
+  la planometría sólo si hace falta; los textos de reemplazo dicen que los contratos NUEVOS piden
+  la suya (`notaDelReemplazo`, con plural); tras un 409 `contrato_cambio` el principal queda
+  apagado y se ofrece «Volver a Supervisar». (10) «Editar el próximo contrato» (`proximoLeaseId`).
+  (11) «8 % ventas» a la derecha de la línea; los correos con tabla «Antes | Ahora», «Hola,
+  {proveedor}.» y el código como en la app («PUN-03 · EN1»); fuera `hoyEnColombia`,
+  `cortesCerrados` (la prueba compartida con el servidor corre sobre `periodosDeCorte`) y
+  `sinCambios` del hook. (12) Ningún 409 de Vender compara con la tarifa.
+- **Lo que queda.** Un
   contrato ya terminado no se edita (409). Un porcentaje reemplazado se lee «cancelado» en la lista
   de la cara (sin columna para distinguirlo; el historial y `contratos_reemplazados` lo dicen).
 

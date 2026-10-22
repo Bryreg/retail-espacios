@@ -60,6 +60,11 @@ export interface EstadoComercial {
    *  como tomado contra sí mismo. Como `reservaHasta`, ni se le pega al
    *  mueble ni viaja en el layout (`CAMPOS_DE_CONTRATO`). */
   leaseId?: number | null;
+  /** El PRÓXIMO contrato del mismo espacio cuando hay uno vigente
+   *  (`space_leases.id`): sólo para quien administra, con las mismas reglas
+   *  que `leaseId` (ni se pega al mueble ni viaja en el layout). Lo lee
+   *  «Editar el próximo contrato» de la ficha. */
+  proximoLeaseId?: number | null;
 }
 
 /** Por código COMPLETO del espacio: `NAVE-PUN-04`, y la cara B lleva `-B`. */
@@ -96,13 +101,13 @@ function loSuyo(
   return estado[fullSpaceCode(sede, c)] ?? estado[c] ?? LIBRE;
 }
 
-/** Lo que se le pega al mueble: todo menos `reservaHasta`, `reservado` y
- *  `leaseId`, que se leen del mapa crudo. Pegada, una reserva que se confirma
+/** Lo que se le pega al mueble: todo menos `reservaHasta`, `reservado`,
+ *  `leaseId` y `proximoLeaseId`, que se leen del mapa crudo. Pegada, una reserva que se confirma
  *  (o caduca) dejaba la fecha vieja en el mueble y además viajaba en el
  *  `PUT /layout`; el `leaseId` pegado sobreviviría al contrato que nombra. */
 function sinReserva(e: EstadoComercial): EstadoComercial {
-  if (!("reservaHasta" in e) && !("reservado" in e) && !("leaseId" in e)) return e;
-  const { reservaHasta: _fuera, reservado: _tampoco, leaseId: _ni, ...resto } = e;
+  if (!("reservaHasta" in e) && !("reservado" in e) && !("leaseId" in e) && !("proximoLeaseId" in e)) return e;
+  const { reservaHasta: _fuera, reservado: _tampoco, leaseId: _ni, proximoLeaseId: _niEse, ...resto } = e;
   return resto;
 }
 

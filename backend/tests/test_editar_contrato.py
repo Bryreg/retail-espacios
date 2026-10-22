@@ -17,12 +17,22 @@ VENTAS = {"modo": "ventas", "porcentaje": 8, "corte": "mensual"}
 
 
 def _esperado(lease_id):
+    """La huella ENTERA que el renglón mostró: valor, fechas, proveedor, marca,
+    cómo se cobra y, de un porcentaje, sus puntos básicos."""
     from app.models.models import SpaceLease
+    from app.models.participaciones import Participacion
+    from app.models.vender import CobroPorVenta
 
     db = tp._bd()
     try:
         lease = db.get(SpaceLease, lease_id)
-        return {"valor": lease.monthly_rent, "desde": lease.start_date.isoformat(), "hasta": lease.end_date.isoformat()}
+        cobro = db.get(CobroPorVenta, lease_id)
+        termino = db.query(Participacion).filter(Participacion.lease_id == lease_id).first()
+        return {"valor": lease.monthly_rent, "desde": lease.start_date.isoformat(), "hasta": lease.end_date.isoformat(),
+                "proveedor": lease.supplier.name if lease.supplier else "", "marca": lease.marca,
+                "cobro": ({"modo": "ventas", "porcentaje": cobro.porcentaje, "corte": cobro.corte} if cobro is not None
+                          else {"modo": "fijo"}),
+                "puntos_basicos": termino.puntos_basicos if termino is not None else None}
     finally:
         db.close()
 
@@ -293,13 +303,23 @@ def test_esperado_que_no_coincide_o_cancelado_entretanto_y_el_proximo_nunca_se_t
     vid, pid = vigente["contratos"][0]["lease_id"], proximo["contratos"][0]["lease_id"]
     fechas = {"desde": D(2026, 10, 1), "hasta": D(2026, 10, 31)}
 
-    for cambio in ({"valor": 4}, {"valor": 3.01}, {"hasta": D(2026, 10, 30)}, {"desde": D(2026, 10, 2)}):
+    # La huella ENTERA: valor, fechas, proveedor, marca, cómo se cobra y el %.
+    for cambio in ({"valor": 4}, {"valor": 3.01}, {"hasta": D(2026, 10, 30)}, {"desde": D(2026, 10, 2)},
+                   {"proveedor": "Alpina"}, {"marca": "Otra marca"}, {"marca": None},
+                   {"cobro": {"modo": "ventas", "porcentaje": 8, "corte": "mensual"}}, {"puntos_basicos": 2500}):
         r = _editar(client, admin, vid, _entera("GON-02", 0, valor_tecleado=0), codigo=409, cobro=VENTAS,
                     esperado={**_esperado(vid), **cambio}, **fechas)
-        assert r["detail"] == {"code": "contrato_cambio", "message": CAMBIO}
-    # El ruido de un float que viajó por JSON no es un cambio.
+        assert r["detail"] == {"code": "contrato_cambio", "message": CAMBIO}, cambio
+    # El ruido de un float que viajó por JSON no es un cambio, ni las
+    # mayúsculas o los espacios de los costados del proveedor y la marca.
     _editar(client, admin, vid, _entera("GON-02", 0, valor_tecleado=0), validar=True, cobro=VENTAS,
-            esperado={**_esperado(vid), "valor": 3.0000000001}, **fechas)
+            esperado={**_esperado(vid), "valor": 3.0000000001, "proveedor": "  lácteos del valle ",
+                      "marca": "YOGUR VALLE "}, **fechas)
+    # Lo que falta de la huella no se acepta (422): todos los campos son obligatorios.
+    for falta in ("proveedor", "marca", "cobro", "puntos_basicos"):
+        esp = {k: v for k, v in _esperado(vid).items() if k != falta}
+        _editar(client, admin, vid, _entera("GON-02", 0, valor_tecleado=0), codigo=422, cobro=VENTAS,
+                esperado=esp, **fechas)
 
     renglon = _esperado(vid)
     space_id = client.get("/api/spaces/by-code/NAVE-GON-02", headers=admin).json()["id"]
@@ -313,7 +333,8 @@ def test_esperado_que_no_coincide_o_cancelado_entretanto_y_el_proximo_nunca_se_t
     assert _lease(pid)["valor"] == 1_600_000
     # Un contrato que no existe: 404.
     assert _editar(client, admin, 9999, _entera("GON-02", 1), codigo=404,
-                   esperado={"valor": 1, "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30)})["detail"]["code"] == \
+                   esperado={"valor": 1, "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "proveedor": "X",
+                             "marca": None, "cobro": {"modo": "fijo"}, "puntos_basicos": None})["detail"]["code"] == \
         "contrato_no_existe"
 
 
@@ -384,6 +405,151 @@ def test_el_montaje_espera_la_planometria_y_otro_proveedor_no_ve_lo_de_antes(cli
     assert not [1 for _to, a, _h in enviados if _to == ["m@x.co"]], "salió el montaje sin planometría"
     (html,) = [h for to, _a, h in enviados if to == ["trade@alpina.co"]]
     assert "Lácteos del Valle" not in html and "Alpina" in html
+
+
+@RELOJ
+def test_cambiar_de_proveedor_no_arrastra_el_correo_del_anterior(client, admin, monkeypatch):
+    """Vender abre con el correo del proveedor cargado; si se cambia el nombre,
+    ese correo seguía en el campo y viajaba: ``proveedor_por_nombre`` se lo daba
+    al nuevo (o a uno que existía sin correo) y «Tu contrato cambió», con
+    precio, le llegaba al de ANTES. Un ``correo`` igual al del proveedor
+    anterior se ignora, y el del proveedor sale sólo al proveedor que queda."""
+    from app.models.models import Supplier
+
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    # Uno que ya existe SIN correo.
+    _vendido(client, admin, _entera("NEV-03-PU1", 200_000), proveedor="Postobón", correo=None)
+    lease_id = _vendido(client, admin, _entera("GON-02", 500_000))["contratos"][0]["lease_id"]
+    otro_id = _vendido(client, admin, _entera("NEV-03-PU2", 300_000))["contratos"][0]["lease_id"]
+    _planometria(client, admin, lease_id)
+    enviados.clear()
+
+    def correo_de(nombre):
+        db = tp._bd()
+        try:
+            return db.query(Supplier).filter(Supplier.name == nombre).one().email
+        finally:
+            db.close()
+
+    # El caso exacto: el pedido trae el correo del anterior (como lo sembró Vender).
+    out = _editar(client, admin, lease_id, _entera("GON-02", 500_000), proveedor="Alpina", correo="compras@valle.co")
+    assert correo_de("Alpina") is None, "el proveedor nuevo se quedó con el correo del anterior"
+    assert out["avisos"]["proveedor"] == []
+    assert not [1 for to, _a, _h in enviados if "compras@valle.co" in to], "«Tu contrato cambió» salió al anterior"
+    enviados.clear()
+    # A uno que ya existía sin correo, tampoco.
+    _editar(client, admin, otro_id, _entera("NEV-03-PU2", 300_000), proveedor="Postobón", correo="COMPRAS@valle.co ")
+    assert correo_de("Postobón") is None
+    assert not [1 for to, _a, _h in enviados if "compras@valle.co" in [x.lower() for x in to]]
+    enviados.clear()
+    # Otro correo, escrito a propósito para el nuevo: ése sí se usa, y es el único.
+    out = _editar(client, admin, lease_id, _entera("GON-02", 500_000), proveedor="Alpina", correo="trade@alpina.co")
+    assert correo_de("Alpina") == "trade@alpina.co"
+    assert out["avisos"]["proveedor"] == ["trade@alpina.co"]
+    destinos = [x for to, _a, _h in enviados for x in to]
+    assert "trade@alpina.co" in destinos and "compras@valle.co" not in destinos
+    (html,) = [h for to, _a, h in enviados if to == ["trade@alpina.co"]]
+    assert "Hola, Alpina." in html and "Postobón" not in html and "Lácteos del Valle" not in html
+    # El mismo proveedor de siempre sigue con su correo.
+    assert correo_de("Lácteos del Valle") == "compras@valle.co"
+
+
+@RELOJ
+def test_dos_pestanas_con_el_mismo_esperado_la_segunda_es_409_y_un_solo_envio(client, admin, monkeypatch):
+    """Dos pestañas abren el mismo contrato y las dos le cambian la marca (o el
+    proveedor) sin tocar valor ni fechas: con un ``esperado`` de valor y fechas
+    entraban las dos (200 y 200) y salían dos tandas de correos. Con la huella
+    entera, la segunda es 409 ``contrato_cambio`` y no escribe ni avisa."""
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    lease_id = _vendido(client, admin, _entera("GON-02", 500_000))["contratos"][0]["lease_id"]
+    _planometria(client, admin, lease_id)
+    renglon = _esperado(lease_id)
+    enviados.clear()
+    cuerpo = {**_pedido(_entera("GON-02", 500_000), marca="Kumis Valle"),
+              "edita": {"lease_id": lease_id, "esperado": renglon}}
+    primera = client.post("/api/contratos/vender", headers=admin, json=cuerpo)
+    segunda = client.post("/api/contratos/vender", headers=admin, json=cuerpo)
+    assert primera.status_code == 200, primera.text
+    assert segunda.status_code == 409 and segunda.json()["detail"] == {"code": "contrato_cambio", "message": CAMBIO}
+    assert len(enviados) == 3, [a for _t, a, _h in enviados]
+    assert len(_bitacora("contrato.editado")) == 1
+    # Lo mismo con el proveedor.
+    renglon = _esperado(lease_id)
+    enviados.clear()
+    cuerpo = {**_pedido(_entera("GON-02", 500_000), proveedor="Alpina", correo="trade@alpina.co", marca="Kumis Valle"),
+              "edita": {"lease_id": lease_id, "esperado": renglon}}
+    assert client.post("/api/contratos/vender", headers=admin, json=cuerpo).status_code == 200
+    assert client.post("/api/contratos/vender", headers=admin, json=cuerpo).status_code == 409
+    assert len({a for _t, a, _h in enviados}) == 2 and len(enviados) == 3, "dos tandas de correos"
+
+
+@RELOJ
+def test_el_proximo_contrato_de_una_cara_con_vigente_se_edita_por_su_id(client, admin, worker):
+    """El mapa dibuja el vigente (``leaseId``); el próximo de la misma cara viene
+    como ``proximoLeaseId``, sólo para quien administra, y se edita por ese id:
+    el vigente no se toca."""
+    tp._plano(client, admin)
+    vid = _vendido(client, admin, _entera("GON-02", 900_000), desde=D(2026, 10, 1),
+                   hasta=D(2026, 10, 31))["contratos"][0]["lease_id"]
+    pid = _vendido(client, admin, _entera("GON-02", 1_500_000), proveedor="Alpina", marca="Bon Yurt",
+                   desde=D(2026, 11, 1), hasta=D(2026, 11, 30))["contratos"][0]["lease_id"]
+    mapa = client.get("/api/spaces/comercial", params={"sede": "NAVE"}, headers=admin).json()
+    assert (mapa["NAVE-GON-02"]["leaseId"], mapa["NAVE-GON-02"]["proximoLeaseId"]) == (vid, pid)
+    del_trabajador = client.get("/api/spaces/comercial", params={"sede": "NAVE"}, headers=worker).json()
+    assert del_trabajador["NAVE-GON-02"]["leaseId"] is None
+    assert del_trabajador["NAVE-GON-02"]["proximoLeaseId"] is None, "el trabajador ve el id del próximo"
+    # Sin vigente no hay «próximo»: el que arranca es el que dibuja la fila.
+    assert client.get("/api/spaces/comercial", params={"sede": "NAVE"},
+                      headers=admin).json().get("NAVE-NEV-03") is None
+
+    datos = client.get(f"/api/contratos/{pid}/edicion", headers=admin).json()
+    assert (datos["proveedor"], datos["desde"], datos["valor"]) == ("Alpina", "2026-11-01", 1_500_000)
+    _editar(client, admin, pid, _entera("GON-02", 1_600_000), proveedor="Alpina", marca="Bon Yurt",
+            desde=D(2026, 11, 1), hasta=D(2026, 12, 15))
+    assert _lease(pid)["valor"] == 1_600_000 and _lease(pid)["hasta"] == "2026-12-15"
+    assert _lease(vid)["valor"] == 900_000 and _lease(vid)["hasta"] == "2026-10-31", "se tocó el vigente"
+    # Nunca se pega al mueble ni viaja en el layout.
+    from app.services.layout_lookup import CAMPOS_DE_CONTRATO
+    assert "proximoLeaseId" in CAMPOS_DE_CONTRATO and "leaseId" in CAMPOS_DE_CONTRATO
+
+
+@RELOJ
+def test_el_409_de_vender_no_compara_con_la_tarifa_en_ninguna_parte(client, admin):
+    """El 409 de ``POST /api/contratos/vender`` trae ``filas[].mensajes``: no se
+    pintan, pero viajan al navegador de la pantalla que mira el proveedor. Con
+    ``delante_del_proveedor`` no va ni «% por debajo de la tarifa de
+    referencia» ni su monto, en NINGUNA parte de la respuesta (la vista previa,
+    el guardado y una edición)."""
+    import json
+
+    tp._plano(client, admin)
+    assert client.put("/api/layout/rates", headers=admin, json={
+        "default": {t: 2_000_000 for t in ("gondola", "punta", "nevera_puertas", "nevera", "metro", "robatope")},
+        "by_sede": {}}).status_code == 200
+    _vendido(client, admin, _entera("GON-02", 1_000_000), proveedor="Postobón")
+    lease_id = _vendido(client, admin, _entera("NEV-03", 1_000_000), desde=D(2026, 12, 1),
+                        hasta=D(2026, 12, 31))["contratos"][0]["lease_id"]
+    # Una línea que choca, con un precio muy por debajo de la tarifa (el
+    # mensaje de la fila junta errores Y avisos).
+    respuestas = [
+        _vender(client, admin, _pedido(_entera("GON-02", 1), _entera("NEV-03-PU1", 1)), codigo=409),
+        _vender(client, admin, _pedido(_entera("GON-02", 1)), codigo=409, validar=True),
+        _editar(client, admin, lease_id, _entera("GON-02", 1), codigo=409),
+        _editar(client, admin, lease_id, _entera("GON-02", 1), codigo=409, validar=True),
+    ]
+    for r in respuestas:
+        assert r["detail"]["code"] == "contrato_invalido", r
+        todo = json.dumps(r, ensure_ascii=False).lower()
+        for prohibido in ("tarifa", "referencia", "por debajo", "2.000.000", "2000000"):
+            assert prohibido not in todo, (prohibido, todo)
+    # La planilla de administración sigue comparando (no es Vender).
+    r = client.post("/api/leases/bulk/validar", headers=admin, json={"sede": "NAVE", "filas": [{
+        "fila": 2, "espacio": "NEV-03-PU2", "sede": "NAVE", "proveedor": "Colombina", "valor": 1,
+        "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30)}]})
+    fila = r.json()["filas"][0]
+    assert any("por debajo de la tarifa" in m for m in fila["mensajes"]), fila
 
 
 # ─── Quién puede ──────────────────────────────────────────────────────────────

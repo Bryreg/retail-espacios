@@ -9,7 +9,9 @@ proveedor, las fechas, el precio o el % de las ventas. Y cada edición se manda
 de nuevo a los correos (comercial, proveedor y montaje).
 
 **El pedido es el de Vender** (``POST /api/contratos/vender``) con ``edita:
-{ lease_id, esperado: { valor, desde, hasta } }``. Una edición lleva UNA línea
+{ lease_id, esperado }``: ``esperado`` es la huella entera (``huella``: valor,
+fechas, proveedor, marca, cómo se cobra y, de un porcentaje, sus puntos
+básicos). Una edición lleva UNA línea
 —el contrato que se edita— salvo cuando pasa a venderse por partes: entonces
 las partes elegidas de UNA cara. Siempre es un contrato (una reserva no se edita
 por acá) y no lleva nota (la nota interna no viaja a Vender: lo mira el
@@ -19,8 +21,13 @@ proveedor).
 Supervisar mostró. Bajo el candado del mueble (``tomar_candados``), con
 ``expire_all`` y la fila del contrato ``FOR UPDATE`` (la cancelación no toma el
 candado del mueble, pero escribe la fila), si el contrato ya no existe → 404; si
-se canceló, terminó o ya no dice lo mismo (el valor al centavo, las dos fechas)
-→ 409 ``contrato_cambio`` y no se escribe nada. Es el patrón de «Pasar a % de
+se canceló, terminó o ya no dice lo mismo (la huella entera: dos pestañas que
+cambiaban la marca con el mismo «valor y fechas» entraban las dos) → 409
+``contrato_cambio`` y no se escribe nada.
+
+**El correo no viaja con otro proveedor** (``_sin_el_correo_del_anterior``):
+si la edición pasa el contrato a otro proveedor, un ``correo`` igual al del
+anterior se ignora. Es el patrón de «Pasar a % de
 ventas» (PR 88).
 
 **Las fechas.** Un contrato que ya arrancó no mueve su «Desde» (422
@@ -154,6 +161,14 @@ class Foto:
         return f"{self.corto}·{self.parte}" if self.parte else self.corto
 
     @property
+    def rotulo(self) -> str:
+        """El espacio con el formato de la app: «PUN-03 · EN1» (una parte, como
+        la línea de Vender), «CAJ-04·BI1» (una pieza), «PUN-04», «GON-01·A»."""
+        if self.forma == "parte" and self.parte:
+            return f"{self.corto} · {self.parte}"
+        return self.nombre
+
+    @property
     def texto_del_cobro(self) -> str:
         if self.cobro is not None:
             return texto_del_valor(self.valor, self.condicion, self.cobro)
@@ -277,15 +292,64 @@ def _validar_edicion(p: dict) -> None:
             raise _error(422, "edita_lineas", "Una edición lleva un solo espacio, o las partes de una misma cara.")
 
 
-def _vigente_y_esperado(lease: SpaceLease, termino: Optional[Participacion], esperado: dict) -> None:
-    """409 ``contrato_cambio`` si el contrato ya no es el que se mostró."""
+def _al_centesimo(p) -> Decimal:
+    """Un porcentaje de las ventas al centésimo («7,25 %»), sin el ruido de un float."""
+    return Decimal(repr(float(p or 0))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def huella(db: Session, lease: SpaceLease, termino: Optional[Participacion]) -> tuple:
+    """Lo que el contrato dice HOY, en la forma en que se compara con
+    ``esperado``: el valor al centavo, las dos fechas, el proveedor y la marca
+    (sin mayúsculas ni espacios a los costados), cómo se cobra (fijo, o el % al
+    centésimo con su corte) y, de un porcentaje, sus puntos básicos."""
+    cobro = db.get(CobroPorVenta, lease.id)
+    return (
+        al_centavo(lease.monthly_rent), lease.start_date, lease.end_date,
+        clave_de_proveedor(lease.supplier.name if lease.supplier else ""), reglas._marca_normal(lease.marca),
+        ("ventas", _al_centesimo(cobro.porcentaje), cobro.corte) if cobro is not None else ("fijo", None, None),
+        termino.puntos_basicos if termino is not None else None,
+    )
+
+
+def _huella_esperada(esperado: dict) -> tuple:
+    cobro = esperado.get("cobro") or {}
+    ventas = cobro.get("modo") == "ventas"
+    return (
+        al_centavo(esperado["valor"]), esperado["desde"], esperado["hasta"],
+        clave_de_proveedor(esperado.get("proveedor")), reglas._marca_normal(esperado.get("marca")),
+        ("ventas", _al_centesimo(cobro.get("porcentaje")), cobro.get("corte")) if ventas else ("fijo", None, None),
+        esperado.get("puntos_basicos"),
+    )
+
+
+def _vigente_y_esperado(db: Session, lease: SpaceLease, termino: Optional[Participacion], esperado: dict) -> None:
+    """409 ``contrato_cambio`` si el contrato ya no es el que se mostró: la
+    huella ENTERA (``huella``), no sólo el valor y las fechas. Con sólo eso, dos
+    pestañas que cambiaban la marca o el proveedor con el mismo ``esperado``
+    entraban las dos (200 y 200) y salían dos tandas de correos."""
     cancelado = not lease.is_active or (termino is not None and (termino.baja_en is not None
                                                                 or termino.estado != "contrato"))
     if cancelado or lease.end_date < hoy():
         raise _error(409, *CAMBIO)
-    if (al_centavo(lease.monthly_rent) != al_centavo(esperado["valor"])
-            or lease.start_date != esperado["desde"] or lease.end_date != esperado["hasta"]):
+    if huella(db, lease, termino) != _huella_esperada(esperado):
         raise _error(409, *CAMBIO)
+
+
+def _sin_el_correo_del_anterior(p: dict, lease: SpaceLease) -> dict:
+    """Si la edición le pasa el contrato a OTRO proveedor, el correo del
+    anterior no viaja con él: Vender abre con el correo del proveedor cargado,
+    y al cambiar el nombre ese correo seguía en el campo y
+    ``proveedor_por_nombre`` se lo daba al nuevo (o a uno que existía sin
+    correo), y «Tu contrato cambió» le llegaba al de antes. Un ``correo`` igual
+    al del proveedor anterior se ignora; cualquier otro, se usa como siempre
+    (sólo completa al que no tiene)."""
+    anterior = lease.supplier
+    if anterior is None or clave_de_proveedor(p.get("proveedor")) == clave_de_proveedor(anterior.name):
+        return p
+    correo = (p.get("correo") or "").strip().lower()
+    if correo and correo == (anterior.email or "").strip().lower():
+        return {**p, "correo": None}
+    return p
 
 
 def _cortes(db: Session, lease_id: int) -> list[CorteDeVenta]:
@@ -418,7 +482,7 @@ def _revisar(db: Session, p: dict, lease: SpaceLease, termino: Optional[Particip
     """Todo lo que se mira de una edición, sin escribir: devuelve la revisión
     de Vender y si va en su lugar."""
     sede = normalizar(p["sede"])
-    _vigente_y_esperado(lease, termino, p["edita"]["esperado"])
+    _vigente_y_esperado(db, lease, termino, p["edita"]["esperado"])
     cortes = _cortes(db, lease.id)
     _reglas_de_fechas(lease, p, cortes)
     rev = venta.revisar(db, p, excluir_lease=lease.id, excluir_termino=termino.id if termino is not None else None)
@@ -441,6 +505,7 @@ def editar(db: Session, p: dict, actor: str, validar: bool = False) -> Optional[
     if lease is None:
         raise _error(404, "contrato_no_existe", "Ese contrato no existe.")
     termino = termino_de(db, lease_id)
+    p = _sin_el_correo_del_anterior(p, lease)
     rev, _ = _revisar(db, p, lease, termino)
     if validar:
         return None
@@ -460,6 +525,7 @@ def editar(db: Session, p: dict, actor: str, validar: bool = False) -> Optional[
     if lease is None:
         raise _error(404, "contrato_no_existe", "Ese contrato no existe.")
     termino = termino_de(db, lease_id)
+    p = _sin_el_correo_del_anterior(p, lease)
     rev, en_lugar = _revisar(db, p, lease, termino)
     if any(clave_de_candado(c) not in tomados for c in rev.codigos):
         raise _error(409, "plano_cambio", "El plano cambió mientras guardabas: recargá y volvé a intentar.")
