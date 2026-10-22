@@ -86,6 +86,9 @@ TABLAS_DEL_CLIENTE = frozenset({
     # `suppliers`, que viajan con ellas.
     "condiciones_de_contrato", "precios_de_reserva", "cobros_por_venta", "cortes_de_venta",
     "montajes_pendientes", "reservas_de_espacio",
+    # «Editar contrato» (2026-10-22): el contrato que se cerró porque otro lo
+    # reemplazó. Cuelga de `space_leases`, que viaja con ella.
+    "contratos_reemplazados",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar

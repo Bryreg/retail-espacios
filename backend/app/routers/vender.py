@@ -23,6 +23,8 @@ from app.routers.bulk_leases import _avisar
 from app.routers.participaciones import fila_de_participacion
 from app.services import vender as servicio
 from app.services.bitacora import anotar
+from app.services import editar_contrato
+from app.services.aviso_de_edicion import avisar_edicion
 from app.services.ciclo_participaciones import actor_de
 
 router = APIRouter(prefix="/contratos", tags=["vender"])
@@ -57,6 +59,21 @@ class LineaIn(_Estricto):
     valor_tecleado: Optional[float] = Field(default=None, allow_inf_nan=False)
 
 
+class EsperadoIn(_Estricto):
+    """Lo que Supervisar mostró del contrato que se edita: si el contrato ya no
+    dice esto, 409 ``contrato_cambio`` (``services/editar_contrato.py``)."""
+    valor: float = Field(allow_inf_nan=False)
+    desde: date
+    hasta: date
+
+
+class EditaIn(_Estricto):
+    """«Editar contrato» (§9 de ``docs/rediseno/vender-api.md``): EL contrato
+    del renglón (``leaseId`` de ``GET /spaces/comercial``) y lo que se mostró."""
+    lease_id: StrictInt
+    esperado: EsperadoIn
+
+
 class VenderIn(_Estricto):
     sede: str = Field(min_length=1, max_length=120)
     proveedor: str = Field(min_length=1, max_length=200)
@@ -69,6 +86,15 @@ class VenderIn(_Estricto):
     caduca: Optional[date] = None
     cobro: CobroIn = Field(default_factory=CobroIn)
     lineas: list[LineaIn] = Field(default_factory=list)
+    #: Sólo «Editar contrato»: el pedido corrige (o reemplaza) ESE contrato.
+    edita: Optional[EditaIn] = None
+
+
+@router.get("/{lease_id}/edicion")
+def para_editar(lease_id: int, rol: str = Depends(require_admin), db: Session = Depends(get_db)):
+    """El contrato como lo carga Vender para editarlo («Editar contrato» de
+    Supervisar). Sin la nota interna. Sólo administración (lleva plata)."""
+    return editar_contrato.para_editar(db, lease_id)
 
 
 @router.post("/vender")
@@ -82,6 +108,9 @@ def vender(
     db: Session = Depends(get_db),
 ):
     pedido = cuerpo.model_dump()
+    if cuerpo.edita is not None:
+        return _editar(pedido, request, background_tasks, validar, rol, cliente, db)
+    pedido.pop("edita", None)
     if validar:
         try:
             servicio.guardar(db, pedido, actor_de(request, rol), validar=True)
@@ -107,4 +136,34 @@ def vender(
         "participaciones": hecho.participaciones,
         "reservas": hecho.reservas,
         "avisos": avisos,
+    }
+
+
+def _editar(pedido: dict, request: Request, background_tasks: BackgroundTasks, validar: bool, rol: str,
+            cliente: Cliente, db: Session) -> dict:
+    """«Editar contrato»: el mismo pedido, con ``edita``. Todo o nada; los
+    correos «Contrato modificado» salen después del commit, a todos
+    (``services/aviso_de_edicion.py``)."""
+    actor = actor_de(request, rol)
+    if validar:
+        try:
+            editar_contrato.editar(db, pedido, actor, validar=True)
+        finally:
+            db.rollback()
+        return {"ok": True, "filas": []}
+    try:
+        hecho = editar_contrato.editar(db, pedido, actor)
+        for accion, entidad, entidad_id, detalle in hecho.bitacora:
+            anotar(db, request, rol, accion, entidad=entidad, entidad_id=entidad_id, detalle=detalle)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    avisos = avisar_edicion(db, background_tasks, cliente, hecho, actor).model_dump()
+    return {
+        "contratos": hecho.contratos,
+        "participaciones": hecho.participaciones,
+        "reservas": [],
+        "avisos": avisos,
+        "edicion": {"modo": hecho.modo, "lease_id": hecho.lease_id, "reemplazado_por": hecho.reemplazado_por},
     }

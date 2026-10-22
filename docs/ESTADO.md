@@ -1,7 +1,19 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-20, **aire y pines** (el ajuste aprobado después del PR 3 del
+Última actualización: 2026-10-22, **editar un contrato y reenviarlo**: «Editar contrato» (sólo
+administración) en Supervisar → «Para revisar» → Corregir («Bajo tarifa de referencia» y «Montajes
+viejos») y en la ficha del espacio (junto a Renovar, por parte y por participación) reabre un
+contrato YA guardado en Vender, con todo cargado menos la nota interna; Vender lo dice con una banda
+(«Editando el contrato de PUN-04» · «Salir sin cambios»), el pie dice **«Qué cambia»** y que **el
+contrato se envía de nuevo a los correos**, y «Guardar cambios y reenviar» pide confirmación en un
+diálogo. El servidor (`POST /api/contratos/vender` con `edita: { lease_id, esperado }`) corrige
+EN SU LUGAR lo que sigue siendo el mismo espacio y la misma forma, o REEMPLAZA (el viejo se cierra
+como «reemplazado», tabla nueva `contratos_reemplazados`) cuando cambia la forma o el espacio; y
+manda «Contrato modificado» a comercial, al proveedor y a montaje. Ver *Editar un contrato y
+reenviarlo (2026-10-22)* y `docs/rediseno/vender-api.md` §9.
+
+Antes, 2026-10-20, **aire y pines** (el ajuste aprobado después del PR 3 del
 rediseño): en Vender el plano y el contrato pasan a **3 : 2** (también en Supervisar: el plano
 mide lo mismo en las dos), y el contrato se ordena en **tres bloques numerados** —«Qué se
 vende», «A quién y cuándo», «Cómo se cobra»— con el **pie pegado abajo** (total, lo que falta,
@@ -1155,6 +1167,26 @@ la plata sale de `cortes_de_venta`: toda métrica que promedia canon lo excluye
 (`_contratos_activos` ya no lo trae) y toda la que suma ingreso le agrega lo cobrado
 (`services/cobros.cobrado_por_contrato`). Ver *Rediseño de Vender, PR 1*.
 
+**Un contrato se cambia desde una fila de Supervisar por SU `lease_id`, nunca por su código.**
+`GET /spaces/comercial` trae `leaseId` en cada cara o parte con contrato **sólo para quien
+administra** (al trabajador, `null`; una reserva no lo lleva); ni se le pega al mueble ni viaja en
+el layout (`CAMPOS_DE_CONTRATO`, los dos lados; `sinReserva`, `mismoMapa`). El pedido lleva ese
+`lease_id` y lo que la fila mostró (`esperado: { valor, desde, hasta }`), y el servidor compara
+bajo el candado del mueble, con `expire_all` y la fila `FOR UPDATE`: si no coincide (valor al
+centavo, fechas exactas), si se canceló o terminó, 409 `contrato_cambio`. Volver a pedir el espacio
+por código y elegir `active_lease ?? upcoming_lease` cambia OTRO contrato si el de la fila se
+canceló entretanto (el próximo de la misma cara). Lo usa «Editar contrato» (§9 de `vender-api.md`).
+
+**Editar un contrato es Vender otra vez, y se reenvía a todos.** Lo de antes se corrige EN SU LUGAR
+si sigue siendo el mismo espacio y la misma forma (mismo `lease_id`: no se pierde la planometría,
+el montaje, los cortes ni la zona); si cambia la forma o el espacio, el viejo se cierra como
+**reemplazado** (`contratos_reemplazados`, nunca `contrato.baja`) en la misma transacción en que
+nacen los nuevos. El contrato que se edita no choca ni ocupa capacidad contra sí mismo
+(`excluir_lease` / `excluir_termino`, SÓLO en esa ruta), y ningún otro deja de contar. Un contrato
+que ya arrancó no mueve su «Desde»; con ventas cargadas no cambia de cobro, de corte ni de forma.
+Cada edición manda «Contrato modificado» a comercial, al proveedor (sólo lo suyo) y a montaje (sin
+plata; si el contrato espera su planometría, espera). La nota interna nunca viaja a Vender.
+
 **El correo de montaje espera a la planometría.** Todo contrato nuevo nace con su fila en
 `montajes_pendientes` (`escribir_contrato` / `create_lease`) y `_avisar` no le manda el montaje
 mientras la tenga. Sale una vez, por `routers/montajes.avisar_los_listos`, cuando el contrato
@@ -1165,6 +1197,75 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### Editar un contrato y reenviarlo (2026-10-22)
+
+Lo que pidió el dueño, aprobado sobre el dibujo «Editar un contrato y reenviarlo»: un botón que
+reabre un contrato YA guardado en el formulario de Vender —desde la forma de vender el mueble hasta
+el precio— y que, antes de guardar, avisa que el contrato se enviará de nuevo a los correos. El
+motivo inmediato: ~30 contratos de POBLADO se cargaron con un valor de pocos pesos porque eran por
+% de las ventas cuando esa forma de cobro no existía; se corrigen editándolos **uno por uno**.
+Decisiones: el botón va en Corregir y en la ficha, sólo para quien administra; los correos van **a
+todos, siempre**; el «Desde» de un contrato que ya arrancó no se mueve.
+
+- **Dónde está el botón** («Editar contrato», `FilePenLine` de 16 × 1,75, tinta, nunca amarillo):
+  en los renglones de Supervisar → «Para revisar» → Corregir que tienen un contrato detrás
+  —«Bajo tarifa de referencia» y «Montajes viejos» (`accionEditar`, con el `leaseId` de la fila)—;
+  «Contrato sin mueble en el plano» no lo lleva (sin mueble, Vender no tiene qué dibujar: se cancela
+  o se vuelve a dibujar el mueble). En la ficha del espacio, junto a Renovar y «Nuevo contrato»
+  (con un contrato de verdad: no una reserva), en cada parte con contrato (`PartesDeLaCara`) y en
+  cada participación vigente o firmada (`ParticipacionesDeLaCara`, `editable`). Todo adentro de
+  `isAdmin`.
+- **Qué hace al tocarlo** (`editarContrato`, `DashboardView`): lee `GET /api/contratos/{id}/edicion`
+  (`api/edicionDeContrato.ts`, de Supervisar: Vender no lo alcanza) y abre Vender con una semilla de
+  edición (`SemillaContrato.edita`, `modos`, `cobro`): la forma de venta (la cara, la parte o el %),
+  proveedor, correo, marca, fechas, el precio como se tecleó («Total | Al mes») o el % de las
+  ventas con su corte, y el % de una participación. **Nunca la nota interna.** El `esperado` es lo
+  que la FILA mostró (no lo que se leyó después): si cambió entretanto, el servidor lo frena.
+- **Vender en edición** (`ModoVender`, `Contrato.tsx`, `utils/edicionDeContrato.ts`): la banda
+  «Editando el contrato de PUN-04 · proveedor · desde → hasta» con «Salir sin cambios» (vuelve a
+  Supervisar); el «Desde» deshabilitado si ya arrancó («Ya arrancó: el «Desde» no se mueve.», y
+  sin los atajos de fecha, que lo moverían); con «% de las ventas», el aviso de los cortes que ya
+  cerraron («Quedan 3 cortes ya cerrados por cargar (desde jul 2026). Si ya los cobraste por fuera,
+  elegí «Al final».», `avisoDeCortes`, la regla de `cobros.periodos` con los mismos casos en
+  `casos/cobro-por-ventas.json`; «cerrado» y no «vencido», que es palabra prohibida en Vender); en el
+  pie, **«Qué cambia»** (lo de antes tachado → lo nuevo, `queCambia`), y si cambia la forma, que el
+  viejo se cierra como «reemplazado» y su planometría y su montaje se vuelven a pedir; el aviso
+  **«Al guardar, el contrato se envía de nuevo a los correos.»** con quiénes; y **«Guardar cambios y
+  reenviar»** (el único amarillo; sin «Reservar hasta…» ni «Empezar de nuevo»). Sin cambios reales,
+  apagado: «No cambiaste nada». Lo demás que frena antes del servidor: `faltaDeLaEdicion`. Al
+  tocarlo, **el diálogo** (`ConfirmarEdicion.tsx`: `role="dialog"`, `aria-modal`, la app `inert`,
+  Escape y «Volver» cierran, el foco vuelve al botón; se lleva el amarillo con `data-capa-modal`)
+  lista comercial, el proveedor con su correo y montaje, y el resumen. Bien guardado: el aviso de
+  Vender («Cambios guardados» / «Contrato reemplazado» y a quién se escribió) y «Volver a
+  Supervisar», con la base ya releída. Un 409/422 se dice en el pie, como siempre.
+- **El propio contrato no está tomado contra sí mismo**, en el navegador como en el servidor: el
+  mapa crudo sin el `leaseId` que se edita (`estadoSinElPropio`), el mueble vuelto a fusionar con
+  ese mapa (la cara entera se lee de la fusión) y la ocupación anónima de una cara por
+  participación sin su intervalo (`ocupacionSinElPropio`, «queda 100 %» en vez de «queda 50 %»).
+- **El servidor** (`services/editar_contrato.py`, `routers/vender.py`, §9 de `vender-api.md`):
+  `edita: { lease_id, esperado }` en el pedido de Vender; candado + `expire_all` + `FOR UPDATE`;
+  404 / 409 `contrato_cambio` / 422 `desde_arrancado`, `hasta_pasado`, `hasta_antes_del_corte`,
+  `edita_*`; la revisión de Vender con `excluir_lease` y `excluir_termino`; en su lugar o reemplazo;
+  409 `tiene_cortes`; bitácora `contrato.editado` / `contrato.reemplazado`; correos «Contrato
+  modificado» (`services/aviso_de_edicion.py`). Tabla nueva `contratos_reemplazados` (de negocio:
+  traspaso, copia y exportación). Sin columnas nuevas.
+- **Pruebas.** `tests/test_editar_contrato.py` (en su lugar con lo que cuelga intacto; fijo → ventas
+  de uno que arrancó; ventas → fijo con y sin cortes; el corte que no cambia; el % de una
+  participación sin contarse; entera → partes y entera ↔ % como reemplazo; `esperado` que no
+  coincide, cancelado entretanto y el próximo de la misma cara intacto; que no choca consigo mismo
+  pero sí con otro; lo que una edición no puede traer; los tres correos, el de montaje sin plata, el
+  proveedor sin lo ajeno, el montaje que espera la planometría; el trabajador 403 y sin sesión 401;
+  la tabla nueva; los períodos contra el JSON compartido). `probar-comercial` (las cuentas puras,
+  ejecutadas; el botón sólo de quien administra y en sus lugares; que el pedido lleva `edita` y
+  `esperado` y nunca busca por código; la semilla sin nota; el propio contrato fuera de lo tomado;
+  el «Desde», la banda, el aviso y el diálogo; el `leaseId` nunca al trabajador) y
+  `probar-vender` (los archivos nuevos bajo todas sus guardas, la lista cerrada de componentes, el
+  módulo de Supervisar que Vender no alcanza, y que Vender sólo nombra el `leaseId` de la edición).
+- **Lo que queda.** «Salir sin cambios» no deshace un cambio de cómo se vende el mueble que ya se
+  escribió en el plano (como en Vender: «Cambiar» del renglón escribe el plano al tocarlo). Un
+  contrato ya terminado no se edita (409). Un porcentaje reemplazado se lee «cancelado» en la lista
+  de la cara (sin columna para distinguirlo; el historial y `contratos_reemplazados` lo dicen).
 
 ### Aire y pines: el contrato con aire y el mapa sin pines (2026-10-20)
 

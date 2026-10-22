@@ -202,8 +202,8 @@ exportación (`derechos.py`); se importan en `main.py`; se suman a los barridos 
 (`test_auditoria_hardening`, `test_identidad`, `test_montaje_enlace`, `test_suite_sin_fuga`).
 La quinta tabla es `condiciones_de_contrato(lease_id PK FK, modo_precio, valor_tecleado,
 creado_en)`, que recuerda cómo se escribió el precio de un contrato (entero, parte o porcentaje).
-La sexta es `reservas_de_espacio` (§8). En la exportación salen juntas bajo
-`condiciones_comerciales: { <tabla>: [filas] }`.
+La sexta es `reservas_de_espacio` (§8) y la séptima, `contratos_reemplazados` (§9, «Editar
+contrato»). En la exportación salen juntas bajo `condiciones_comerciales: { <tabla>: [filas] }`.
 
 Los correos dicen «Valor del contrato» (nunca «Valor mensual» ni «Total mensual»: lo guardado
 es el total) y, si se escribió por mes, «$ 1.800.000 ($ 600.000 al mes)»; un contrato por
@@ -254,3 +254,108 @@ algo choca o se puede vender.
   nace en 0 con su `cobros_por_venta`. Borrar una sede cancela sus reservas de espacio.
 - La planometría NO se carga en una reserva (decisión del dueño, 2026-10-20): comercial la
   cuelga del contrato una vez confirmado, con `POST /api/leases/{id}/planometria` como siempre.
+
+## 9. Editar un contrato guardado: `POST /api/contratos/vender` con `edita` (2026-10-22)
+
+Decisión del dueño (aprobada sobre el dibujo «Editar un contrato y reenviarlo»): un contrato YA
+guardado se reabre en el formulario de Vender —forma de venderse, proveedor, correo, marca,
+fechas, precio con su «Total | Al mes», precio fijo o % de las ventas con su corte, el % de una
+participación— y al guardarlo **se envía de nuevo a los correos, a todos, siempre**. Motivo: ~30
+contratos de POBLADO cargados con un valor de pocos pesos cuando eran por % de las ventas. Se
+edita **de a uno** (nada de edición masiva). Sólo administración.
+
+**Cómo se abre.** `GET /api/contratos/{lease_id}/edicion` (administración; trabajador 403, sin
+sesión 401, 404 `contrato_no_existe`) devuelve lo que Vender carga, **sin la nota interna**:
+```jsonc
+{ "lease_id": 41, "espacio": "CENTRO-PUN-04", "sede": "CENTRO", "cara": "CENTRO-PUN-04",
+  "forma": "entera" | "parte" | "pieza" | "participacion", "parte": "EN2" | null,
+  "proveedor": "…", "correo": "…" | null, "marca": "…" | null, "desde": "2026-08-01", "hasta": "2027-01-31",
+  "valor": 6, "modo_precio": "total" | "mensual" | null, "valor_tecleado": 6 | null,
+  "cobro": { "porcentaje": 8, "corte": "mensual" } | null, "puntos_basicos": 5000 | null, "termino_id": 9 | null,
+  "activo": true, "arranco": true, "ultimo_corte": "2026-09-30" | null, "cortes": 2,
+  "planometria": "planometria-pun04.pdf" | null, "montaje_pendiente": false, "hoy": "2026-10-22" }
+```
+
+**El pedido** es el de §1 con un campo más (campos de más → 422, también adentro):
+```jsonc
+{ …el pedido de Vender…, "tipo": "contrato",
+  "edita": { "lease_id": 41, "esperado": { "valor": 6, "desde": "2026-08-01", "hasta": "2027-01-31" } } }
+```
+- `lease_id` es **EL contrato del renglón** (`leaseId` de `GET /api/spaces/comercial`, sólo para
+  quien administra; al trabajador le llega `null`) y `esperado` lo que el renglón mostró
+  (`negotiatedValue`, `startDate`, `endDate`; de una participación, el `valor_mensual`, `desde`
+  y `hasta` de su término). Nunca se busca el contrato por código.
+- Siempre `tipo: "contrato"` (422 `edita_tipo`: una reserva no se edita por acá), sin `nota`
+  (422 `edita_nota`: la nota interna no viaja a Vender), sin `renueva` (422 `edita_renueva`).
+- **Una línea** —el contrato que se edita— salvo cuando pasa a venderse por partes: entonces las
+  partes elegidas de **una** cara y una clase (`PUN-04-EN1` y `-EN2`). Si no, 422 `edita_lineas`.
+- `?validar=1` revisa todo sin escribir (la vista previa de Vender), igual que §1.
+
+**Cómo revisa.** Bajo `tomar_candados` (los muebles del pedido **y** el del contrato que se edita)
++ `expire_all` + la fila del contrato `SELECT … FOR UPDATE` (la cancelación no toma el candado del
+mueble, pero escribe la fila):
+- 404 `contrato_no_existe`; **409 `contrato_cambio`** «Ese contrato cambió mientras lo editabas:
+  recargá y volvé a intentar.» si ya no está activo (cancelado, reemplazado, término dado de baja),
+  si terminó (`hasta` < hoy, Colombia) o si no coincide con `esperado` (el valor al centavo —
+  `ROUND_HALF_UP` sobre `repr`: el ruido de un float no cuenta, un centavo sí—, las fechas exactas).
+- **Fechas.** Un contrato que ya arrancó (`desde` ≤ hoy) no mueve su «Desde»: 422
+  `desde_arrancado` («El contrato arrancó el 1 ago 2026: su «Desde» no se mueve. Para otro
+  arranque, renovalo o cancelalo.»). El «Hasta» no queda antes del último corte de ventas cargado
+  (422 `hasta_antes_del_corte`) ni antes de hoy (422 `hasta_pasado`). Uno que todavía no arrancó
+  mueve las dos.
+- **Choques y capacidad, sin contarse a sí mismo**: la revisión de §1 (`vender.revisar`) con
+  `excluir_lease` (en `contratos_que_chocan`, `bulk_leases._revisar` y `fisicos_de`) y
+  `excluir_termino` (en `intervalos_que_cuentan` de la capacidad y en `bloqueo_por_participaciones`).
+  Sólo ese contrato y sólo desde esta ruta: otro contrato real —también del mismo proveedor, o el
+  próximo de la misma cara— choca igual (409 `contrato_invalido` con sus `filas`, como §1).
+- **Cobro con ventas cargadas** (409 `tiene_cortes`): sigue por ventas, con el mismo corte, y en el
+  mismo contrato (no cambia de forma ni de espacio). El % sí cambia (vale para los cortes que
+  vienen; los cargados quedan con su monto).
+- Un porcentaje que se corrige en su lugar pasa además las invariantes de su participación
+  (`otro_proveedor`, `otro_porcentaje`, `termino_superpuesto`, como `revisar_terminos`) y no puede
+  romper la distribución confirmada (409 `rompe_distribucion`, con una frase neutra: lo ve el
+  proveedor).
+
+**Mismo espacio = mismo contrato (en su lugar).** La misma cara entera, la misma parte, la misma
+pieza o un porcentaje de la misma cara: se corrigen `space_leases` (proveedor por
+`proveedor_por_nombre`, marca, fechas, `monthly_rent`), `condiciones_de_contrato` (modo y lo
+tecleado) y el cobro (fijo → ventas crea `cobros_por_venta`; ventas → fijo la borra —sin cortes—;
+ventas → ventas cambia % y corte). En un porcentaje, los puntos básicos del término con su versión
+(mismo PC, mismo número, mismas zonas). Todo lo que cuelga del contrato sigue colgado (mismo
+`lease_id`): planometría, montaje pendiente, cortes, zona, enlace firmado, bitácora. El correo del
+proveedor se completa **sólo si estaba vacío** (la regla de siempre de `proveedor_por_nombre`): si
+el pedido trae otro, no pisa el que tiene. La nota interna no se toca.
+
+**Otro espacio u otra forma = reemplazo.** En la MISMA transacción: los nuevos nacen por el camino
+de Vender (`vender._escribir`, con la nota interna del viejo) y el viejo se cierra (`is_active =
+False`, su espacio libre si no le queda otro contrato) y queda en la tabla nueva
+**`contratos_reemplazados(lease_id PK FK, reemplazado_por JSON, en, por)`** —no se cancela: no
+hay `contrato.baja`—. Un porcentaje reemplazado se da de baja con el ciclo de siempre (`baja_en`,
+así deja de contar) y su historial lo dice `contrato.reemplazado` (`estado_visible` lo lee
+«cancelado»: no hay columna para distinguirlo; la constancia está en el historial y en la tabla).
+Lo que colgaba del viejo (planometría, montaje) se queda con él: los nuevos nacen con su fila en
+`montajes_pendientes` y la piden en «Para revisar» como cualquier contrato nuevo. Con cortes
+cargados no se reemplaza (409 `tiene_cortes`: los nuevos volverían a pedir los mismos meses).
+
+**Bitácora.** `contrato.editado` (en su lugar) o `contrato.reemplazado` (+ `contrato.alta` de cada
+nuevo), con el antes → ahora de lo que cambió. La bitácora es de administración.
+
+**Respuesta 200** — la de §1, más `edicion`:
+```jsonc
+{ "contratos": [{ "espacio": "CENTRO-PUN-04-EN1", "lease_id": 51 }, …], "participaciones": [ … ], "reservas": [],
+  "avisos": { /* AvisosContrato, como §1 */ },
+  "edicion": { "modo": "en_el_lugar" | "reemplazo", "lease_id": 41, "reemplazado_por": [51, 52] } }
+```
+
+**Los correos «Contrato modificado», a todos y siempre** (después del commit,
+`services/aviso_de_edicion.py`, por los mismos caños que `_avisar`):
+- **Comercial** (gerente y administrador de la sede): «Contrato modificado — PUN-04 · POBLADO»,
+  cada campo —espacio, proveedor, marca, fechas, cobro— «antes → ahora» o «(igual)», y «Lo cambió:
+  quién · fecha, hora». La plata entera (`texto_del_valor`).
+- **El proveedor** (el correo del proveedor del contrato que queda): «Tu contrato cambió: PUN-04 —
+  Supermercado», antes → ahora de lo suyo. Si el contrato pasó a OTRO proveedor, el nuevo recibe
+  sólo lo de ahora y el de antes no recibe nada (no se le cuenta a quién se le dio).
+- **Montaje** (la mercaderista): sin plata, con el enlace firmado del contrato que queda. Si ese
+  contrato todavía espera su planometría (uno nuevo de un reemplazo, o uno en su lugar que nunca la
+  tuvo), su aviso espera como cualquier otro (`avisos.montaje_pendiente`) y sale al cargarla, con los
+  datos de ese momento.

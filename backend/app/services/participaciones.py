@@ -342,7 +342,7 @@ def leer(db: Session, codigo: str) -> Datos:
     return datos
 
 
-def fisicos_de(db: Session, cara: Cara, desde: date, hasta: date) -> list[dict]:
+def fisicos_de(db: Session, cara: Cara, desde: date, hasta: date, excluir_lease: Optional[int] = None) -> list[dict]:
     """Lo que ocupa la cara ENTERA en [desde, hasta] (§3.2): sus contratos de
     cara entera o de partes físicas, y los leases de participación sin término
     (huérfanos: un script, un archivo viejo), que cuentan como la cara entera
@@ -354,8 +354,11 @@ def fisicos_de(db: Session, cara: Cara, desde: date, hasta: date) -> list[dict]:
     entre borrar la sede y la primera alta de la cara deja uno colgado de la
     fila archivada ``…#id``— no lo cuenta ningún término de esta cara: va
     como huérfano, cuenta como la cara entera (conservador: nunca sobreventa)
-    y Supervisar lo lista."""
-    choques = contratos_que_chocan(db, cara.codigo, desde, hasta, sede=cara.sede)
+    y Supervisar lo lista.
+
+    ``excluir_lease``: sólo «Editar contrato» (el contrato que se edita no
+    ocupa la cara contra sí mismo; ``services/editar_contrato.py``)."""
+    choques = contratos_que_chocan(db, cara.codigo, desde, hasta, sede=cara.sede, excluir_lease=excluir_lease)
     de_pc = [lease.id for lease, _space, p in choques if es_participacion(p.parte)]
     con_termino = set()
     if de_pc:
@@ -372,7 +375,8 @@ def fisicos_de(db: Session, cara: Cara, desde: date, hasta: date) -> list[dict]:
     return fuera
 
 
-def bloqueo_por_participaciones(db: Session, sede: str, codigo: str, desde: date, hasta: date) -> Optional[str]:
+def bloqueo_por_participaciones(db: Session, sede: str, codigo: str, desde: date, hasta: date,
+                                excluir_id: Optional[int] = None) -> Optional[str]:
     """La frase que frena vender la cara ENTERA de ``codigo`` (o una división
     física suya) si tiene reservas o contratos de participación que cuentan en
     ``[max(desde, HOY), hasta]``; None si no (§4.3). La usan la planilla, el
@@ -386,7 +390,10 @@ def bloqueo_por_participaciones(db: Session, sede: str, codigo: str, desde: date
     bahía de una caja) no choca con participaciones, y un código de
     participación lo rechaza cada camino con su propia frase: los dos dan None.
     Sin términos en la cara cuesta una consulta indexada vacía. La frase no
-    nombra proveedores ni montos (la lee Vender en vivo)."""
+    nombra proveedores ni montos (la lee Vender en vivo).
+
+    ``excluir_id``: el término del contrato que se edita (sólo «Editar
+    contrato»): no frena consigo mismo."""
     dia = hoy()
     a = max(desde, dia)
     if a > hasta:
@@ -403,7 +410,8 @@ def bloqueo_por_participaciones(db: Session, sede: str, codigo: str, desde: date
     datos = leer(db, cara)
     if not datos.terminos:
         return None
-    cuentan = [i for i in reglas.intervalos_que_cuentan(datos.todos, [], dia) if i["desde"] <= hasta and a <= i["hasta"]]
+    cuentan = [i for i in reglas.intervalos_que_cuentan(datos.todos, [], dia, excluir_id=excluir_id)
+               if i["desde"] <= hasta and a <= i["hasta"]]
     if not cuentan:
         return None
     primero = min(i["desde"] for i in cuentan)
@@ -549,7 +557,8 @@ def _terminos_despues(por_s: dict, tipo: str, t: Optional[dict], nuevo: dict) ->
     return despues
 
 
-def revisar_alta(db: Session, cara: Cara, datos: Datos, cambio: dict, medidas: Optional[dict] = None) -> list:
+def revisar_alta(db: Session, cara: Cara, datos: Datos, cambio: dict, medidas: Optional[dict] = None,
+                 excluir_lease: Optional[int] = None, excluir_termino: Optional[int] = None) -> list:
     """La revisión de un camino que crea o cambia un término (§4.3): versión,
     estado del término, compuerta, fechas, invariantes I1–I3, capacidad con lo
     físico de la cara y ``rompe_distribucion``. Levanta el 409 (o 422/404) con
@@ -564,6 +573,11 @@ def revisar_alta(db: Session, cara: Cara, datos: Datos, cambio: dict, medidas: O
     "renovar", …}`` con ``id`` y ``version`` (editar, confirmar, cancelar),
     ``renueva_a`` y ``version`` (renovar), y ``pb``, ``desde``, ``hasta``,
     ``caduca``, ``marca``, ``tipo_nuevo`` según el caso.
+
+    ``excluir_lease`` / ``excluir_termino`` (sólo en un alta, y sólo desde
+    «Editar contrato», ``services/editar_contrato.py``): el contrato que se
+    edita —una cara entera que pasa a porcentaje, o el porcentaje mismo— no
+    compite consigo mismo en la capacidad.
     """
     dia = hoy()
     tipo = cambio["tipo"]
@@ -594,7 +608,7 @@ def revisar_alta(db: Session, cara: Cara, datos: Datos, cambio: dict, medidas: O
     t = None if t_fila is None else next(x for x in datos.por_s[t_fila.space_id] if x["id"] == t_fila.id)
     if tipo == "alta":
         nuevo = {"pb": cambio["pb"], "desde": cambio["desde"], "hasta": cambio["hasta"]}
-        excluir = None
+        excluir = excluir_termino
     elif tipo == "renovar":
         nuevo = {"tipo_nuevo": cambio["tipo_nuevo"], "pb": t["pb"], "desde": cambio["desde"],
                  "hasta": cambio["hasta"], "caduca": cambio.get("caduca")}
@@ -623,7 +637,7 @@ def revisar_alta(db: Session, cara: Cara, datos: Datos, cambio: dict, medidas: O
         _rechazo(reglas.revisar_terminos(datos.por_s[t["space_id"]], {"tipo": tipo, "id": t["id"], **tocado}, dia))
         excluir = t["id"]
 
-    fisicos = fisicos_de(db, cara, nuevo["desde"], nuevo["hasta"])
+    fisicos = fisicos_de(db, cara, nuevo["desde"], nuevo["hasta"], excluir_lease=excluir_lease if tipo == "alta" else None)
     I = reglas.intervalos_que_cuentan(datos.todos, fisicos, dia, excluir_id=excluir)
     _rechazo(reglas.revisar_capacidad(I, fisicos, nuevo["pb"], nuevo["desde"], nuevo["hasta"], cara.letra, dia))
 

@@ -53,6 +53,13 @@ export interface EstadoComercial {
    *  Supervisar la pone «Reservado» y no «Ocupado sin contrato». Como
    *  `reservaHasta`, ni se le pega al mueble ni viaja en el layout. */
   reservado?: boolean;
+  /** El contrato que dibuja la cara o la parte (`space_leases.id`). Sólo para
+   *  quien administra (al trabajador le llega `null`); una reserva no lo
+   *  lleva. Lo lee Supervisar del mapa crudo (`conLaReserva`) para que
+   *  «Editar contrato» abra ESE contrato, y Vender en edición para no contarlo
+   *  como tomado contra sí mismo. Como `reservaHasta`, ni se le pega al
+   *  mueble ni viaja en el layout (`CAMPOS_DE_CONTRATO`). */
+  leaseId?: number | null;
 }
 
 /** Por código COMPLETO del espacio: `NAVE-PUN-04`, y la cara B lleva `-B`. */
@@ -89,12 +96,13 @@ function loSuyo(
   return estado[fullSpaceCode(sede, c)] ?? estado[c] ?? LIBRE;
 }
 
-/** Lo que se le pega al mueble: todo menos `reservaHasta`, que se lee del
- *  mapa crudo. Pegada, una reserva que se confirma (o caduca) dejaba la fecha
- *  vieja en el mueble y además viajaba en el `PUT /layout`. */
+/** Lo que se le pega al mueble: todo menos `reservaHasta`, `reservado` y
+ *  `leaseId`, que se leen del mapa crudo. Pegada, una reserva que se confirma
+ *  (o caduca) dejaba la fecha vieja en el mueble y además viajaba en el
+ *  `PUT /layout`; el `leaseId` pegado sobreviviría al contrato que nombra. */
 function sinReserva(e: EstadoComercial): EstadoComercial {
-  if (!("reservaHasta" in e) && !("reservado" in e)) return e;
-  const { reservaHasta: _fuera, reservado: _tampoco, ...resto } = e;
+  if (!("reservaHasta" in e) && !("reservado" in e) && !("leaseId" in e)) return e;
+  const { reservaHasta: _fuera, reservado: _tampoco, leaseId: _ni, ...resto } = e;
   return resto;
 }
 

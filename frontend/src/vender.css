@@ -1424,7 +1424,7 @@ html[data-tema="oscuro"] .vender {
 .vender .cobro > .cobro-ventas { flex: 0 0 100%; order: 2; }
 .cobro-ventas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .vender .entrada.pct-ventas { width: 88px; gap: 4px; }
-.vender .entrada.pct-ventas input { text-align: right; }
+.vender .entrada.pct-ventas input { text-align: right; min-width: 0; width: 100%; }  /* sin el mínimo de 20 letras del campo: a 390 px se salía de su caja */
 .vender .entrada .fin { font-size: var(--t-2xs); color: var(--ink-3); }
 .vender .reserva { margin-top: 6px; }
 
@@ -1529,3 +1529,74 @@ html[data-tema="oscuro"] .vender {
   .pie-contrato .total-der { flex-direction: row; }
   .pie-contrato .cubre { justify-content: flex-start; }
 }
+
+/* ─── «Editar contrato» (el dibujo aprobado del 2026-10-22) ─────────────────
+   Vender reabre un contrato guardado: arriba la banda de qué se edita, con
+   «Salir sin cambios»; en el pie, «Qué cambia» (lo de antes tachado → lo
+   nuevo), el aviso de que el contrato se reenvía a los correos y «Guardar
+   cambios y reenviar» (el único amarillo). Al tocarlo, la confirmación. Sin
+   amarillo fuera del botón principal: el aviso de correos va en el tono de
+   «entra» (crema), como los avisos que no son error. */
+.banda-edicion {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  margin: 0 0 var(--s3); padding: 10px 12px; border-radius: var(--r-md);
+  background: var(--surface-2); border: var(--hair) solid var(--line-strong); min-width: 0;
+}
+.banda-edicion > svg { color: var(--ink-2); }
+.banda-edicion > div { display: grid; gap: 2px; min-width: 0; }
+.banda-edicion b { font-size: var(--t-sm); color: var(--ink-1); overflow-wrap: anywhere; }
+.banda-edicion span { font-size: var(--t-2xs); color: var(--ink-3); overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .banda-edicion { grid-template-columns: 16px minmax(0, 1fr); }
+  .banda-edicion > .btn-texto { grid-column: 1 / -1; justify-self: start; }
+}
+.nota-edicion {
+  margin: 0; display: flex; gap: 6px; align-items: flex-start; min-width: 0;
+  font-size: var(--t-2xs); line-height: 1.4; color: var(--ink-3);
+}
+.nota-edicion svg { flex: none; margin-top: 1px; }
+.vender .bloque .nota-edicion { margin-top: var(--s2); }
+.que-cambia { display: grid; gap: 6px; min-width: 0; font-size: var(--t-xs); }
+.que-cambia > .rotulo { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: var(--t-2xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.que-cambia ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.que-cambia li,
+.que-cambia-lista li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; overflow-wrap: anywhere; }
+.que-cambia li svg,
+.que-cambia-lista li svg { flex: none; color: var(--ink-3); }
+.que-cambia .campo-cambia { color: var(--ink-3); min-width: 64px; }
+.que-cambia s,
+.que-cambia-lista s { color: var(--ink-3); }
+.que-cambia b,
+.que-cambia-lista b { color: var(--ink-1); }
+.aviso-correos {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; padding: 9px 12px; min-width: 0;
+  border-radius: var(--r-md); background: var(--entra-suave); border: var(--hair) solid var(--entra-borde); color: var(--ink-1);
+}
+.aviso-correos > svg { color: var(--entra-txt); margin-top: 1px; }
+.aviso-correos > div { display: grid; gap: 2px; min-width: 0; }
+.aviso-correos b { font-size: var(--t-xs); }
+.aviso-correos span { font-size: var(--t-2xs); color: var(--ink-2); overflow-wrap: anywhere; }
+
+/* La confirmación: un diálogo encima de todo, con el papel de la app (tema
+   claro y oscuro por los tokens) y el fondo velado. */
+.dialogo-fondo {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px;
+  background: color-mix(in srgb, var(--ink-1) 38%, transparent);
+}
+.dialogo-edicion {
+  width: min(100%, 460px); max-height: calc(100vh - 32px); overflow: auto;
+  background: var(--surface); color: var(--ink-1); border: var(--hair) solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--sh-2);
+}
+.dialogo-edicion > header { display: flex; align-items: center; gap: 8px; padding: 16px 18px 10px; }
+.dialogo-edicion > header svg { color: var(--ink-2); flex: none; }
+.dialogo-edicion h3 { margin: 0; font-size: var(--t-base); font-weight: 700; }
+.dialogo-cuerpo { display: grid; gap: 12px; padding: 0 18px; font-size: var(--t-sm); min-width: 0; }
+.dialogo-cuerpo p { margin: 0; overflow-wrap: anywhere; }
+.dialogo-cuerpo ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.destinatarios li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; font-size: var(--t-xs); color: var(--ink-2); overflow-wrap: anywhere; }
+.destinatarios li svg { color: var(--ink-3); margin-top: 1px; }
+.destinatarios li b { color: var(--ink-1); }
+.que-cambia-lista { font-size: var(--t-xs); padding-top: 4px !important; border-top: var(--hair) solid var(--line-soft); }
+.dialogo-acciones { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 16px 18px; }
+.dialogo-acciones .btn-principal { display: inline-flex; align-items: center; gap: 8px; width: auto; padding: 9px 14px; border-radius: var(--r-md); font-size: var(--t-sm); }

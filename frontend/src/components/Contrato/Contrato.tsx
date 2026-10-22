@@ -15,10 +15,15 @@ import {
   isDoubleGondola, type RangeAvailability, type UnifiedFixture,
 } from "../../types/fixtures";
 import { fullSpaceCode } from "../../types/espacio";
+import { fusionarEstadoComercial } from "../../utils/estadoComercial";
 import { nombreDeMueble } from "../../utils/nomenclatura";
 import { textoDePrecio, valoresDeLista } from "../../utils/precioDeLista";
 import { meses, sumarDias, sumarMeses, textoDeMeses } from "../../utils/meses";
 import { pbDeTexto, pct } from "../../utils/participaciones";
+import {
+  avisoDeCortes, estadoSinElPropio, faltaDeLaEdicion, ocupacionSinElPropio, queCambia,
+  type EdicionDeContrato, type FotoDelContrato,
+} from "../../utils/edicionDeContrato";
 import {
   cantidadDe, claseDe, codigoDeParte, codigoVisibleDe, comercialDelEspacio, esDivision, esParticipacion, parteDeSufijo,
   partirCodigo, quedaEnLaCara, redondear, tarifaDeEspacio, textoAlTocarEnVender, textoDeParte, tomadaPorLoSuyo,
@@ -64,6 +69,8 @@ export interface ResumenContrato {
   cobro: Cobro;
   /** A quién avisó el servidor. Ausente = no se pudo saber. */
   avisos?: AvisosContrato;
+  /** «Editar contrato»: se corrigió en su lugar o se reemplazó. */
+  editado?: { reemplazo: boolean };
 }
 
 /** Un espacio adentro del contrato que se está armando: una cara entera, una
@@ -97,6 +104,15 @@ export interface SemillaContrato {
    *  renueva, por el código completo de la cara. */
   porcentajes?: Record<string, number>;
   renueva?: Record<string, number>;
+  /** «Total | Al mes» de cada línea, por su clave de precio («Editar contrato»). */
+  modos?: Record<string, ModoPrecio>;
+  /** Cómo se cobra, como se guardó («Editar contrato»): el % va como texto,
+   *  con la coma de acá («8», «0,5»). */
+  cobro?: { modo: "fijo" } | { modo: "ventas"; texto: string; corte: "mensual" | "al_final" };
+  /** «Editar contrato»: EL contrato que se reabre (su `leaseId` y lo que el
+   *  renglón mostró, `esperado`) y lo que decía, para «Qué cambia». Nunca la
+   *  nota interna: Vender lo mira el proveedor. */
+  edita?: EdicionDeContrato;
 }
 
 export interface ArgsContrato {
@@ -263,7 +279,7 @@ export type TipoDeLinea = "entera" | "partes" | "pieza" | "pc";
 // ─── El hook ─────────────────────────────────────────────────────────────────
 
 export function useContrato({
-  espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado,
+  espacios, sede, rango, semilla, ocupacionDe: ocupacionCruda, onQuitar, onCambiarCara, onCambiarParte, onGuardado,
 }: ArgsContrato) {
   const fixtures = useFixtureStore(selectFixtures);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
@@ -272,10 +288,29 @@ export function useContrato({
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
   // primer dibujo, así que van en las dependencias de lo que la pregunta.
   const fichasPropias = useFichasPropias();
+  /** «Editar contrato»: el contrato que se reabre. */
+  const edita = semilla?.edita ?? null;
   // Lo que dice la BASE de cada espacio, por código completo. Con la venta
   // por partes no alcanza el mueble fusionado: vender la puerta 2 no le cambia
-  // nada a la nevera, y la entera choca con esa puerta.
-  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  // nada a la nevera, y la entera choca con esa puerta. Editando, SIN el propio
+  // contrato: no está tomado contra sí mismo (el servidor tampoco lo cuenta,
+  // `excluir_lease`).
+  const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
+  const estadoComercial = useMemo(() => estadoSinElPropio(estadoCrudo, edita?.leaseId), [estadoCrudo, edita]);
+  /** La ocupación anónima de una cara, sin el propio contrato si se edita uno
+   *  de esa cara (su % o lo físico que ocupaba). */
+  const ocupacionDe = useMemo(() => {
+    if (!edita || !ocupacionCruda) return ocupacionCruda;
+    return (f: UnifiedFixture, cara: "A" | "B") => {
+      const par = ocupacionCruda(f, cara);
+      const caraCompleta = fullSpaceCode(sede, codigoDeParte(f.code, cara, null)).toUpperCase();
+      if (caraCompleta !== edita.cara.toUpperCase()) return par;
+      return ocupacionSinElPropio(par, {
+        desde: edita.esperado.desde, hasta: edita.esperado.hasta,
+        pb: edita.antes.forma === "participacion" ? edita.antes.pb : null,
+      });
+    };
+  }, [ocupacionCruda, edita, sede]);
 
   // El periodo con el que abre. Se congela al montar a propósito: cambiar la
   // temporada de arriba no debe reescribirle las fechas a alguien que ya está
@@ -298,14 +333,15 @@ export function useContrato({
     () => semilla?.valores ?? {},
   );
   /** Cómo se escribió cada precio: el total del plazo o «al mes». */
-  const [modos, setModos] = useState<Record<string, ModoPrecio>>({});
+  const [modos, setModos] = useState<Record<string, ModoPrecio>>(() => semilla?.modos ?? {});
   /** El porcentaje de cada línea de porcentaje (puntos básicos), por el
    *  código completo de la cara. */
   const [porcentajes, setPorcentajes] = useState<Record<string, number>>(() => semilla?.porcentajes ?? {});
   /** Cómo se cobra: precio fijo, o un % de las ventas con su corte. */
-  const [cobroModo, setCobroModo] = useState<"fijo" | "ventas">("fijo");
-  const [ventasTexto, setVentasTexto] = useState("");
-  const [corte, setCorte] = useState<"mensual" | "al_final">("mensual");
+  const [cobroModo, setCobroModo] = useState<"fijo" | "ventas">(semilla?.cobro?.modo ?? "fijo");
+  const [ventasTexto, setVentasTexto] = useState(semilla?.cobro?.modo === "ventas" ? semilla.cobro.texto : "");
+  const [corte, setCorte] = useState<"mensual" | "al_final">(
+    semilla?.cobro?.modo === "ventas" ? semilla.cobro.corte : "mensual");
   /** «Reservar hasta…»: la fecha la elige quien opera. Arranca VACÍA y no
    *  guarda sin ella (decisión de la dueña, 2026-10-18). */
   const [reservando, setReservando] = useState(false);
@@ -338,12 +374,18 @@ export function useContrato({
    *  periodo con el que abrió: si alguien corre el «hasta» hasta pisar un
    *  contrato que ya existe, el aviso aparece en esa línea — y se va cuando
    *  lo corre de vuelta. */
+  /** Editando, cada mueble vuelto a fusionar con el mapa SIN el propio
+   *  contrato: la cara entera se lee de lo que la fusión le pega al mueble
+   *  (`estadoDeEspacio`), y ahí también tiene que quedar libre contra sí misma. */
+  const espaciosVistos = useMemo(() => (edita
+    ? espacios.map((e) => ({ ...e, fixture: fusionarEstadoComercial(sede, [e.fixture], estadoComercial)[0] }))
+    : espacios), [espacios, edita, sede, estadoComercial]);
   const items = useMemo((): Item[] => {
     const f0 = fechasEnOrden ? parseISODate(desde) : null;
     const t0 = fechasEnOrden ? parseISODate(hasta) : null;
     const d = f0 && t0 ? f0 : inicial.from;
     const h = f0 && t0 ? t0 : inicial.to;
-    return espacios.map(({ fixture, face, parte: sufijo, pc, porPartes }) => {
+    return espaciosVistos.map(({ fixture, face, parte: sufijo, pc, porPartes }) => {
       const sedeDe = fixture.sede || sede;
       if (pc || porPartes) {
         // El porcentaje y la cara por partes sin elegir no son un espacio:
@@ -375,7 +417,7 @@ export function useContrato({
         disponibilidad: disponibilidad as RangeAvailability, porQue,
       };
     });
-  }, [espacios, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
+  }, [espaciosVistos, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
     estadoComercial]);
 
   /** Las LÍNEAS del contrato, como se leen y se cobran: la cara entera, las
@@ -618,12 +660,17 @@ export function useContrato({
       proveedor: relleno ? proveedor.trim() || "—" : proveedor.trim(),
       correo: correo.trim() || undefined,
       marca: marca.trim() || undefined,
-      nota: nota.trim() || undefined,
+      // Editando, la nota interna no viaja: no se cargó (Vender lo mira el
+      // proveedor) y el servidor la rechaza (422 `edita_nota`).
+      nota: edita ? undefined : nota.trim() || undefined,
       desde, hasta,
       tipo,
       caduca: tipo === "reserva" ? caduca || null : null,
       cobro: conVentas && !relleno ? cobro : conVentas ? { modo: "ventas", porcentaje: (ventasPb ?? 100) / 100, corte } : { modo: "fijo" },
       lineas: filas,
+      // «Editar contrato»: EL contrato del renglón y lo que se mostró. Nunca
+      // se busca el contrato por su código.
+      ...(edita ? { edita: { lease_id: edita.leaseId, esperado: edita.esperado } } : {}),
     };
     return { pedido, deDonde };
   };
@@ -719,10 +766,40 @@ export function useContrato({
   );
   const ventasMal = cobroModo === "ventas" && ventasPb === null;
   const lineasReales = lineas.filter((l) => !l.sinElegir);
+  /** «Editar contrato»: el contrato como queda, para «Qué cambia». */
+  const fotoAhora = useMemo((): FotoDelContrato | null => {
+    if (!edita) return null;
+    const l = lineasReales[0];
+    if (!l) return null;
+    const conVentas = cobroModo === "ventas";
+    return {
+      forma: l.tipo === "pc" ? "participacion" : l.tipo === "partes" ? "parte" : l.tipo === "pieza" ? "pieza" : "entera",
+      visibleCara: codigoVisibleDe(l.fixture.code, l.face, l.tipo === "pieza" ? false : l.doble, null),
+      partes: lineasReales.flatMap((x) => x.partes),
+      proveedor, marca, desde, hasta,
+      valor: conVentas ? 0 : total,
+      modoPrecio: conVentas ? null : l.modo,
+      valorTecleado: !conVentas && l.modo === "mensual" ? l.numero : null,
+      cobro: conVentas && ventasPb !== null ? { porcentaje: ventasPb / 100, corte } : null,
+      pb: l.tipo === "pc" ? l.pb : null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edita, lineas, cobroModo, proveedor, marca, desde, hasta, total, ventasPb, corte]);
+  /** Lo de antes → lo nuevo, y si el viejo se cierra como «reemplazado». */
+  const edicion = edita && fotoAhora ? queCambia(edita.antes, fotoAhora) : null;
+  const sinCambios = !!edicion && edicion.cambios.length === 0 && !edicion.reemplazo;
+  const faltaEdicion = edita
+    ? (fotoAhora ? faltaDeLaEdicion(edita, fotoAhora, lineasReales.length) : null) ?? (sinCambios ? "No cambiaste nada" : null)
+    : null;
+  /** Los cortes de ventas que ya vencieron, antes de guardar (la regla de
+   *  `cobros.periodos` del servidor, `utils/edicionDeContrato.ts`). */
+  const avisoCortes = edita && cobroModo === "ventas" && fechasEnOrden
+    ? avisoDeCortes(desde, hasta, corte, edita.hoy, edita.ultimoCorte) : null;
+
   const puedeGuardar =
     lineasReales.length > 0 && proveedor.trim().length > 0 && fechasEnOrden
     && sinValor.length === 0 && sinElegir.length === 0 && sinPorcentaje.length === 0 && !ventasMal
-    && chocan.length === 0;
+    && chocan.length === 0 && !faltaEdicion;
 
   /** Qué falta para poder guardar, dicho antes de que alguien busque el botón.
    *  Nombra la línea: con tres, «falta el valor» obliga a buscar cuál. */
@@ -749,7 +826,7 @@ export function useContrato({
         ? `Ya no entra el ${pct(chocan[0].pb)} de ${chocan[0].visible}`
         : `${chocan[0].visible} ya está vendido en esas fechas`
       : `${chocan.length} espacios ya están vendidos en esas fechas`
-    : null;
+    : faltaEdicion;
 
   /** El día de hoy del negocio (el del servidor, si la ocupación llegó). */
   const hoy = lineas.find((l) => l.hoy)?.hoy ?? iso(new Date());
@@ -800,6 +877,7 @@ export function useContrato({
         caduca: tipo === "reserva" ? caduca : null,
         cobro,
         avisos: resp.avisos ?? undefined,
+        ...(edita ? { editado: { reemplazo: resp.edicion?.modo === "reemplazo" } } : {}),
       });
     } catch (e) {
       const filas = filasRechazadas(e);
@@ -841,6 +919,10 @@ export function useContrato({
     dias, nMeses, textoDeMeses, fechasEnOrden, puedeGuardar, falta,
     vienenDelPeriodo: !!rango && desde === iso(rango.from) && hasta === iso(rango.to),
     estado, error, guardar,
+    // «Editar contrato»: el contrato que se reabre, lo que cambia, el aviso de
+    // los cortes vencidos, y el mapa y la ocupación SIN el propio contrato
+    // (los usa la línea para lo que choca y para cambiar cómo se vende).
+    edita, edicion, sinCambios, avisoCortes, estadoComercial, ocupacionDe,
   };
 }
 

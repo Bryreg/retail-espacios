@@ -1,8 +1,9 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, BadgeCheck, Box, Calendar, Check, ChevronDown, CircleAlert, FilePenLine, Hourglass, Loader2, Lock, Mail,
-  Plus, Receipt, RotateCcw, StickyNote, X,
+  AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, Box, Calendar, CalendarClock, Check, ChevronDown, CircleAlert,
+  FilePenLine, FileWarning, GitCompareArrows, Hourglass, Loader2, Lock, Mail, Plus, Receipt, RotateCcw, Send,
+  StickyNote, X,
 } from "lucide-react";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { isDoubleGondola, type UnifiedFixture } from "../../types/fixtures";
@@ -16,12 +17,15 @@ import {
   ElegirPartes, FormasDeLaLinea, IconoDeLinea, Porcentaje, PrecioDeLinea, RechazoDeLinea, textoDeNoEntra,
 } from "./LineaDelContrato";
 import { AtajosDeFecha, CampoProveedor, ComoSeCobra, totalPorVentas } from "./CamposDelContrato";
+// «Editar contrato»: la confirmación antes de guardar y reenviar.
+import ConfirmarEdicion from "./ConfirmarEdicion";
 import { useSesionDeVenta } from "./sesionDeVenta";
 import { useFichasPropias } from "../../store/fichasPropias";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 // Cómo le dice este supermercado a cada familia: la lista, el visor y la lámina.
 import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 import { pct } from "../../utils/participaciones";
+import { diaConAnio, nombreDelContrato } from "../../utils/edicionDeContrato";
 import { fullSpaceCode } from "../../types/espacio";
 import {
   claseDe, claveDeEspacio, codigoVisibleDe, concordancia, divisionDe, esPieza, interruptoresDeLaCara, marcasDelContrato,
@@ -108,8 +112,13 @@ interface ModoVenderProps {
   onCancelar: () => void;
   onSeguir: () => void;
   /** Con qué abre el formulario cuando se llegó por «Renovar»: el mismo
-   *  proveedor, el mismo valor y el periodo siguiente al que está corriendo. */
+   *  proveedor, el mismo valor y el periodo siguiente al que está corriendo.
+   *  Con `edita`, «Editar contrato»: el contrato guardado, reabierto. */
   semilla?: SemillaContrato | null;
+  /** «Editar contrato» → «Salir sin cambios»: vuelve a Supervisar. */
+  onSalirDeEdicion?: () => void;
+  /** «Editar contrato» guardado: «Volver a Supervisar». */
+  onVolverASupervisar?: () => void;
 }
 
 /** El panel 03 de la hoja. Siempre en el mismo lugar de la rejilla. Con el
@@ -178,7 +187,9 @@ function Fila({
    *  nevera). */
   const claveDeCara = claveDeEspacio(l.fixture.id, l.face);
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
-  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  // Lo que dice la base, SIN el contrato que se edita (`c.estadoComercial`):
+  // editando, el propio contrato no está tomado contra sí mismo.
+  const estadoComercial = c.estadoComercial;
   /* Dos renglones y ni uno más en la cabecera de la línea. Arriba el TIPO
      —que es lo que se está vendiendo—, abajo cómo (la parte, el porcentaje y
      lo que queda) y dónde queda.
@@ -537,12 +548,16 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
   );
 }
 
-function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => void }) {
+function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
+  datos: ResumenContrato; onSeguir: () => void; onVolverASupervisar?: () => void;
+}) {
   const reserva = datos.tipo === "reserva";
+  /** «Editar contrato»: se corrigió en su lugar o se reemplazó. */
+  const editado = datos.editado;
   const porVentas = datos.cobro.modo === "ventas" ? `${pct(Math.round(datos.cobro.porcentaje * 100))} de las ventas` : null;
   const cobro = porVentas ?? (datos.total > 0 ? money(datos.total) : null);
   return (
-    <Panel derecha={<span className="vpill">{reserva ? "Reservado" : "Firmado"}</span>}>
+    <Panel derecha={<span className="vpill">{reserva ? "Reservado" : editado ? "Modificado" : "Firmado"}</span>}>
       <div className="cuerpo">
         {/* Lo que quedó escrito, como el paso 5 del dibujo aprobado: las
             líneas en mono, el proveedor, las fechas y la plata. Sin
@@ -557,6 +572,7 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
             <b>
               {reserva && datos.caduca
                 ? `Reservado hasta el ${diaCorto(datos.caduca)}${porVentas ? ` · ${porVentas}` : ""}`
+                : editado ? (editado.reemplazo ? "Contrato reemplazado" : "Cambios guardados")
                 : "Contrato guardado"}
             </b>
             {datos.espacios.map((e) => <span className="mono" key={e}>{e}</span>)}
@@ -566,6 +582,9 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
             </span>
             {reserva && (
               <span>Hasta ese día nadie más puede tomarlo. Después se libera solo, si no se confirma.</span>
+            )}
+            {editado?.reemplazo && (
+              <span>El contrato anterior quedó cerrado como «reemplazado». La planometría y el montaje de los nuevos se piden en «Para revisar».</span>
             )}
           </div>
         </div>
@@ -581,9 +600,15 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
             —aunque nunca aparezcan a la vez— es exactamente la forma en que la
             regla del dueño se empieza a vaciar. */}
         <div className="acciones">
-          <button type="button" className="btn-tinta" onClick={onSeguir}>
-            Armar otro contrato
-          </button>
+          {editado && onVolverASupervisar ? (
+            <button type="button" className="btn-tinta" onClick={onVolverASupervisar} data-volver-a-supervisar>
+              <ArrowLeft {...ICONO} /> Volver a Supervisar
+            </button>
+          ) : (
+            <button type="button" className="btn-tinta" onClick={onSeguir}>
+              Armar otro contrato
+            </button>
+          )}
         </div>
       </div>
     </Panel>
@@ -595,9 +620,13 @@ function Cerrado({ datos, onSeguir }: { datos: ResumenContrato; onSeguir: () => 
 function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const {
     espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte,
-    onGuardado, onCancelar, onResaltar, ocupacionDe, onVenderAsi,
+    onGuardado, onCancelar, onResaltar, ocupacionDe, onVenderAsi, onSalirDeEdicion,
   } = props;
   const c = useContrato({ espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado });
+  /** «Editar contrato»: el contrato guardado que se reabrió. */
+  const edita = c.edita;
+  /** «¿Guardar los cambios y reenviar?»: se confirma antes de guardar. */
+  const [confirmando, setConfirmando] = useState(false);
   const guardando = c.estado === "guardando";
   // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
@@ -783,7 +812,8 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           {/* Las temporadas que cubre: el argumento de venta que una planilla
               no puede dar, y el control de que las fechas quedaron donde se
               querían. */}
-          {c.cubre.length > 0 && (
+          {/* Editando, el pie dice qué cambia: las temporadas no. */}
+          {!edita && c.cubre.length > 0 && (
             <div className="cubre">
               {c.cubre.map((t) => <span className="sello" key={t}>Cubre {t}</span>)}
             </div>
@@ -814,6 +844,47 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           </span>
         </div>
       )}
+      {/* «Editar contrato»: lo que cambia (lo de antes tachado → lo nuevo) y
+          que el contrato se envía de nuevo a los correos, siempre a la vista
+          sobre el botón (el dibujo aprobado). */}
+      {edita && c.edicion && c.edicion.cambios.length > 0 && (
+        <div className="que-cambia" data-que-cambia>
+          <span className="rotulo"><GitCompareArrows {...ICONO} /> Qué cambia</span>
+          <ul>
+            {c.edicion.cambios.map((x) => (
+              <li key={x.campo}>
+                <span className="campo-cambia">{x.campo}</span>
+                <s>{x.antes}</s>
+                <ArrowRight {...ICONO} />
+                <b>{x.ahora}</b>
+              </li>
+            ))}
+          </ul>
+          {c.edicion.reemplazo && (
+            <p className="nota-edicion" data-reemplazo>
+              <FileWarning {...ICONO} />
+              <span>
+                El contrato de {nombreDelContrato(edita.antes)} se cierra como «reemplazado», no cancelado.
+                {edita.planometria ? ` Su planometría (${edita.planometria}) y su montaje quedan con él` : " Su montaje queda con él"}:
+                {" "}los del contrato nuevo se vuelven a pedir en «Para revisar».
+              </span>
+            </p>
+          )}
+        </div>
+      )}
+      {edita && (
+        <div className="aviso-correos" data-aviso-correos>
+          <Mail {...ICONO} />
+          <div>
+            <b>Al guardar, el contrato se envía de nuevo a los correos.</b>
+            <span>
+              Comercial (gerente y administrador de {edita.sede}) · el proveedor
+              {edita.correo ? ` (${edita.correo})` : " (si tiene correo cargado)"} · montaje (mercaderista de {edita.sede}
+              {c.edicion?.reemplazo || edita.montajePendiente ? ", cuando se cargue la planometría" : ""}).
+            </span>
+          </div>
+        </div>
+      )}
       {/* Lo que falta para poder guardar, nombrando la línea («Falta el valor
           de PUN-04»), justo sobre el botón. Con el contrato vacío lo dice el
           bloque 1 («Elegí el primer espacio…»): acá no se repite. */}
@@ -836,17 +907,23 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
         <button
           className="btn-principal"
           type="button"
-          onClick={c.guardar}
+          // Editando, primero se confirma a quiénes se reenvía (el diálogo).
+          onClick={edita ? () => setConfirmando(true) : c.guardar}
           disabled={guardando || (c.reservando ? !c.puedeReservar || !!c.faltaReserva : !c.puedeGuardar)}
           title={(c.reservando ? c.falta ?? c.faltaReserva : c.falta) ?? undefined}
+          data-guardar-edicion={edita ? "" : undefined}
         >
           {guardando
             ? <><Loader2 {...ICONO} style={{ animation: "spin .9s linear infinite" }} /> Guardando…</>
+            : edita
+            ? <><Send {...ICONO} /> Guardar cambios y reenviar</>
             : c.reservando
             ? <><Hourglass {...ICONO} /> {c.caduca && !c.faltaReserva ? `Reservar hasta el ${diaCorto(c.caduca)}` : "Reservar"}</>
             : <><Check {...ICONO} /> Guardar contrato</>}
         </button>
-        {c.reservando ? (
+        {/* Editando no se reserva ni se empieza de nuevo: se guarda o se sale
+            sin cambios (la banda de arriba). */}
+        {edita ? null : c.reservando ? (
           <button className="btn-texto" type="button" onClick={() => c.setReservando(false)} disabled={guardando}>
             Volver
           </button>
@@ -861,6 +938,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             <Hourglass {...ICONO} /> Reservar hasta…
           </button>
         )}
+        {!edita && (
         <button
           className="btn-texto"
           type="button"
@@ -871,6 +949,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
         >
           <RotateCcw {...ICONO} /> Empezar de nuevo
         </button>
+        )}
       </div>
     </div>
   );
@@ -906,7 +985,9 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               <Box {...ICONO} /> {caraParaVer && !ultimaSeVe ? `Ver ${caraParaVer.visible} en 3D` : "Ver en 3D"}
             </button>
           )}
-          <span className="vpill">{c.reservando ? "Reservando" : "Sin firmar"}</span>
+          {edita
+            ? <span className="vpill" data-pill-edicion>Editando</span>
+            : <span className="vpill">{c.reservando ? "Reservando" : "Sin firmar"}</span>}
         </>
       }
     >
@@ -915,6 +996,22 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           CUÁNDO, y CÓMO se cobra, separados por una línea fina. Mide lo suyo:
           si no entra, rueda la pantalla, no él. */}
       <div className="cuerpo">
+        {/* «Editar contrato»: qué contrato se está editando, como estaba, y la
+            salida sin guardar nada. */}
+        {edita && (
+          <div className="banda-edicion" data-editando={edita.leaseId}>
+            <FilePenLine {...ICONO} />
+            <div>
+              <b>Editando el contrato de {nombreDelContrato(edita.antes)}</b>
+              <span>
+                {edita.antes.proveedor} · {diaConAnio(edita.antes.desde)} → {diaConAnio(edita.antes.hasta)}
+              </span>
+            </div>
+            <button type="button" className="btn-texto" onClick={onSalirDeEdicion ?? onCancelar} disabled={guardando}>
+              <X {...ICONO} /> Salir sin cambios
+            </button>
+          </div>
+        )}
         <Bloque n={1} titulo="Qué se vende">
           <div className="espacios">
             {c.lineas.map((l) => (
@@ -924,7 +1021,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
                 c={c}
                 onResaltar={onResaltar}
                 onSumarEnTodas={props.onSumarEnTodas}
-                ocupacionDe={ocupacionDe}
+                ocupacionDe={c.ocupacionDe}
                 onVenderAsi={onVenderAsi}
                 abierta={abierta === l.clave || !!l.rechazo}
                 onAbrir={() => setAbierta((a) => (a === l.clave ? null : l.clave))}
@@ -973,8 +1070,18 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
               <span className="rotulo">Desde</span>
               <label className="entrada con-ico cif">
                 <Calendar {...ICONO} />
-                <input id="contrato-desde" type="date" value={c.desde} onChange={(e) => c.setDesde(e.target.value)} aria-label="Desde" />
+                <input
+                  id="contrato-desde" type="date" value={c.desde} onChange={(e) => c.setDesde(e.target.value)} aria-label="Desde"
+                  // Un contrato que ya arrancó no mueve su «Desde»: los cortes,
+                  // el montaje y lo cobrado cuelgan de ese día (el servidor
+                  // también lo frena, 422 `desde_arrancado`).
+                  disabled={!!edita?.arranco}
+                  aria-describedby={edita?.arranco ? "desde-arranco" : undefined}
+                />
               </label>
+              {edita?.arranco && (
+                <span className="nota-campo" id="desde-arranco" data-desde-bloqueado>Ya arrancó: el «Desde» no se mueve.</span>
+              )}
             </div>
             <div className="campo">
               <span className="rotulo">Hasta</span>
@@ -986,7 +1093,9 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           </div>
           {/* Los atajos de fecha, debajo. El plazo («31 días · 1 mes») va en
               el pie, junto al total; acá sólo si las fechas no sirven. */}
-          <AtajosDeFecha c={c} />
+          {/* Los atajos mueven también el «Desde»: con un contrato que ya
+              arrancó no se ofrecen. */}
+          {!edita?.arranco && <AtajosDeFecha c={c} />}
           {!c.fechasEnOrden && (
             <p className="plazo mal">
               {c.desde && c.hasta ? "La fecha de fin es anterior a la de inicio" : "Elegí las fechas del acuerdo"}
@@ -996,6 +1105,17 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
 
         <Bloque n={3} titulo="Cómo se cobra">
           <ComoSeCobra c={c} />
+          {/* «Editar contrato» a % de las ventas: los cortes que ya vencieron,
+              antes de guardar (la regla de períodos del servidor). */}
+          {c.avisoCortes && (
+            <p className="nota-edicion" data-aviso-cortes>
+              <CalendarClock {...ICONO} />
+              <span>
+                {c.avisoCortes}
+                {c.corte === "mensual" && /^Queda/.test(c.avisoCortes) ? ". Si ya los cobraste por fuera, elegí «Al final»." : "."}
+              </span>
+            </p>
+          )}
           {/* Correo y nota: opcionales, y ninguno se toca en la llamada típica.
               Una fila plegable a todo el ancho, con su chevron; abierta, lo de
               siempre: el correo, la nota y quién se va a enterar. */}
@@ -1008,7 +1128,10 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             aria-controls={masDatos ? idMasDatos : undefined}
           >
             <Mail {...ICONO} />
-            <span>Correo y nota para el proveedor <span className="opc">· opcional</span></span>
+            {/* Editando, sólo el correo: la nota interna no viaja a Vender. */}
+            {edita
+              ? <span>Correo del proveedor <span className="opc">· opcional</span></span>
+              : <span>Correo y nota para el proveedor <span className="opc">· opcional</span></span>}
             <ChevronDown {...ICONO} className="chev" />
           </button>
           {masDatos && (
@@ -1026,6 +1149,12 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
                   />
                 </label>
               </div>
+              {edita && (
+                <span className="nota-campo">Se completa sólo si el proveedor no tenía uno: el que ya tiene no se cambia.</span>
+              )}
+              {/* Editando, la nota interna no se carga ni se manda: Vender lo
+                  mira el proveedor. */}
+              {!edita && (
               <div className="campo">
                 <span className="rotulo">Nota</span>
                 <label className="entrada con-ico area">
@@ -1039,12 +1168,20 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
                   />
                 </label>
               </div>
+              )}
               {/* Quién se va a enterar, ANTES de guardar. */}
               <NotifyPreview sede={c.sede} />
             </div>
           )}
         </Bloque>
       </div>
+      {edita && confirmando && (
+        <ConfirmarEdicion
+          c={c}
+          onVolver={() => setConfirmando(false)}
+          onGuardar={() => { setConfirmando(false); void c.guardar(); }}
+        />
+      )}
       {en3D && (
         <LimiteDelVisor onCerrar={cerrar3D}>
           <Suspense fallback={<AbriendoEl3D />}>
@@ -1135,7 +1272,7 @@ class LimiteDelVisor extends Component<{ onCerrar: () => void; children: React.R
 
 export default function ModoVender(props: ModoVenderProps) {
   const { cerrado, onSeguir } = props;
-  if (cerrado) return <Cerrado datos={cerrado} onSeguir={onSeguir} />;
+  if (cerrado) return <Cerrado datos={cerrado} onSeguir={onSeguir} onVolverASupervisar={props.onVolverASupervisar} />;
   // La clave remonta el formulario cuando cambia la sede, no cuando cambia la
   // lista: agregar un segundo espacio no puede borrar el proveedor que alguien
   // ya tecleó. Por eso NO entra la lista en la clave.

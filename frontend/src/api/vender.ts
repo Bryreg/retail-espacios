@@ -62,6 +62,10 @@ export interface PedidoDeVenta {
   caduca: string | null;
   cobro: Cobro;
   lineas: LineaDeVenta[];
+  /** «Editar contrato» (§9): EL contrato del renglón (`leaseId` de
+   *  `GET /spaces/comercial`) y lo que el renglón mostró. Nunca se busca el
+   *  contrato por su código. */
+  edita?: { lease_id: number; esperado: { valor: number; desde: string; hasta: string } };
 }
 
 export interface VentaGuardada {
@@ -75,6 +79,8 @@ export interface VentaGuardada {
   /** Las reservas de una cara entera o de una parte (§8); vacío en un contrato. */
   reservas?: { espacio: string; reserva_id: number }[];
   avisos?: AvisosContrato | null;
+  /** «Editar contrato»: corregido en su lugar o reemplazado (§9). */
+  edicion?: { modo: "en_el_lugar" | "reemplazo"; lease_id: number; reemplazado_por: number[] };
 }
 
 /** Una línea que el servidor rechazó. `indice` es su lugar en `lineas` (desde 0).

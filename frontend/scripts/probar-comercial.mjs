@@ -883,9 +883,9 @@ prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar
   const mueble0 = { id: "f", code: "GON-02", type: "cross", sede: "CENTRO" };
   const [fusionado] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservaHasta: "2026-11-02" } });
   assert.ok(!("reservaHasta" in fusionado), "la fecha de la reserva se pegó al mueble");
-  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta", "reservado",\s*\] as const;/);
-  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\) \|\|\s*!!x\.reservado !== !!y\.reservado\) return false;/,
-    "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos");
+  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta", "reservado",\s*"leaseId",\s*\] as const;/);
+  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\) \|\|\s*!!x\.reservado !== !!y\.reservado \|\|\s*\(x\.leaseId \?\? null\) !== \(y\.leaseId \?\? null\)\) return false;/,
+    "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos (o cambia el contrato que dibuja la cara)");
   // La marca de la reserva tampoco se le pega al mueble.
   const [fusionado2] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservado: true } });
   assert.ok(!("reservado" in fusionado2), "la marca de la reserva se pegó al mueble");
@@ -1693,5 +1693,196 @@ prueba("el aspecto: la chincheta no tapa el código, la pastilla y la fecha entr
   const vcss = readFileSync(join(raiz, "src", "vender.css"), "utf8");
   assert.match(vcss, /@media \(max-width: 480px\) \{[^}]*\.barra-app \{ flex-wrap: wrap;[\s\S]*?\.sync-palabra \{ display: none; \}/);
 });
+
+
+/* ── «Editar contrato» (2026-10-22) ──────────────────────────────────────────
+   Un contrato guardado se reabre en Vender desde Supervisar («Para revisar» →
+   Corregir y la ficha del espacio) y se guarda otra vez, con aviso de que se
+   reenvía a los correos. Las cuentas son puras (`utils/edicionDeContrato.ts`,
+   que Vender puede importar); el botón es de quien administra; el pedido nombra
+   EL contrato del renglón (`edita.lease_id` + `esperado`) y nunca lo vuelve a
+   buscar por código; el propio contrato no está tomado contra sí mismo. */
+console.log("\nSupervisar · «Editar contrato»\n");
+const ED = await cargarTs("utils/edicionDeContrato.ts");
+const CASOS_VENTAS = JSON.parse(readFileSync(join(aqui, "casos", "cobro-por-ventas.json"), "utf8"));
+
+prueba("lo de antes se dice al centavo: la misma plata que el servidor (casos/cobro-por-ventas.json, ejecutado)", () => {
+  const casos = CASOS_VENTAS.pesos_exactos;
+  assert.ok(casos.length >= 20, "casos/cobro-por-ventas.json tiene muy pocos casos de plata");
+  for (const [v, t] of casos) assert.equal(ED.pesosExactos(v), t, `${v} → «${t}»`);
+  for (const [v] of casos) assert.doesNotMatch(ED.pesosExactos(v), /,$|M$|k$/, `${v}: coma colgando o plata abreviada`);
+  assert.equal(ED.pesosExactos(Number.NaN), "$ 0");
+});
+
+prueba("los cortes que ya cerraron se avisan con la regla de períodos del servidor (casos/cobro-por-ventas.json, ejecutado)", () => {
+  // Los MISMOS casos corren contra `cobros.periodos` en tests/test_editar_contrato.py.
+  const casos = CASOS_VENTAS.cortes;
+  assert.ok(casos.length >= 10, "casos/cobro-por-ventas.json tiene muy pocos casos de cortes");
+  for (const c of casos) {
+    assert.deepEqual(ED.cortesCerrados(c.desde, c.hasta, c.corte, c.hoy), c.vencidos, `${c.por}: cerrados`);
+    assert.equal(ED.avisoDeCortes(c.desde, c.hasta, c.corte, c.hoy, c.cargados_hasta ?? null), c.aviso, `${c.por}: aviso`);
+  }
+  assert.ok(casos.some((c) => /\(ago y sep 2026\)/.test(c.aviso ?? "")), "falta el caso del dibujo aprobado (ago y sep)");
+  assert.equal(ED.hoyEnColombia(new Date("2026-10-22T03:00:00Z")), "2026-10-21");
+  assert.equal(ED.hoyEnColombia(new Date("2026-10-22T05:00:00Z")), "2026-10-22");
+  assert.equal(ED.diaConAnio("2027-01-05"), "5 ene 2027");
+});
+
+prueba("el propio contrato no cuenta como tomado, y ningún otro deja de contar (ejecutado)", () => {
+  const estado = {
+    "NAVE-PUN-04": { ...vendido(), leaseId: 7 },
+    "NAVE-PUN-05": { ...vendido(), leaseId: 8 },
+    "NAVE-GON-02": { ...vendido() },
+  };
+  const sin = ED.estadoSinElPropio(estado, 7);
+  assert.deepEqual(Object.keys(sin).sort(), ["NAVE-GON-02", "NAVE-PUN-05"], "se fue otro contrato, o se quedó el propio");
+  assert.equal(ED.estadoSinElPropio(estado, null), estado, "sin edición, el mapa es el mismo");
+  assert.equal(ED.estadoSinElPropio(estado, 99), estado);
+  // La ocupación anónima de una cara por participación: se saca UN intervalo
+  // con las fechas y el % del propio; otro igual es de otro.
+  const par = { hoy: "2026-10-22", ocupacion: {
+    intervalos: [{ desde: "2026-11-01", hasta: "2026-11-30", pb: 2500 }, { desde: "2026-11-01", hasta: "2026-11-30", pb: 2500 },
+      { desde: "2026-11-01", hasta: "2026-11-30", pb: 6000 }],
+    fisicos: [{ desde: "2026-12-01", hasta: "2026-12-31" }] } };
+  const sinPc = ED.ocupacionSinElPropio(par, { desde: "2026-11-01", hasta: "2026-11-30", pb: 2500 });
+  assert.deepEqual(sinPc.ocupacion.intervalos.map((x) => x.pb), [2500, 6000]);
+  assert.equal(sinPc.ocupacion.fisicos.length, 1);
+  const sinFisico = ED.ocupacionSinElPropio(par, { desde: "2026-12-01", hasta: "2026-12-31", pb: null });
+  assert.equal(sinFisico.ocupacion.fisicos.length, 0);
+  assert.equal(sinFisico.ocupacion.intervalos.length, 3);
+  assert.equal(ED.ocupacionSinElPropio(par, { desde: "2027-01-01", hasta: "2027-01-31", pb: 2500 }), par, "sacó algo que no era el propio");
+});
+
+prueba("«Qué cambia»: lo de antes → lo nuevo, sólo lo que cambió, y si se reemplaza (ejecutado)", () => {
+  const antes = { forma: "entera", visibleCara: "PUN-04", partes: [], proveedor: "COMERCIAL NUTRESA", marca: "Zenú",
+    desde: "2026-08-01", hasta: "2027-01-31", valor: 6, modoPrecio: "total", valorTecleado: 6, cobro: null, pb: null };
+  const igual = ED.queCambia(antes, { ...antes });
+  assert.deepEqual(igual, { cambios: [], reemplazo: false }, "sin cambios no hay nada que decir (el botón queda apagado)");
+  const aVentas = ED.queCambia(antes, { ...antes, valor: 0, modoPrecio: null, valorTecleado: null, cobro: { porcentaje: 8, corte: "mensual" } });
+  assert.deepEqual(aVentas, { reemplazo: false, cambios: [
+    { campo: "Cobro", antes: "Precio fijo $ 6", ahora: "8 % de las ventas, corte mensual" }] });
+  const aPartes = ED.queCambia(antes, { ...antes, forma: "parte", partes: ["EN2", "EN1"] });
+  assert.equal(aPartes.reemplazo, true);
+  assert.deepEqual(aPartes.cambios[0], { campo: "Espacio", antes: "PUN-04 entera", ahora: "PUN-04 · EN1 y EN2" });
+  const pc = { ...antes, forma: "participacion", visibleCara: "GON-01·A", pb: 2500 };
+  const otroPct = ED.queCambia(pc, { ...pc, pb: 4000 });
+  assert.equal(otroPct.reemplazo, false, "cambiar el % de la misma cara es el mismo contrato");
+  assert.deepEqual(otroPct.cambios, [{ campo: "Espacio", antes: "GON-01·A · 25 %", ahora: "GON-01·A · 40 %" }]);
+  const alMes = ED.queCambia(antes, { ...antes, valor: 1_800_000, modoPrecio: "mensual", valorTecleado: 300_000 });
+  assert.equal(alMes.cambios[0].ahora, "Precio fijo $ 1.800.000 ($ 300.000 al mes)", "la plata va entera, con punto de miles");
+  for (const t of [aVentas, aPartes, otroPct, alMes]) {
+    assert.doesNotMatch(JSON.stringify(t), /nota|tarifa|referencia/i, "«Qué cambia» dice algo que Vender no puede decir");
+  }
+});
+
+prueba("lo que frena una edición antes del servidor: el «Desde» de uno que arrancó, el «Hasta», los cortes y un solo espacio (ejecutado)", () => {
+  const antes = { forma: "entera", visibleCara: "PUN-04", partes: [], proveedor: "X", marca: "", desde: "2026-08-01",
+    hasta: "2027-01-31", valor: 0, modoPrecio: null, valorTecleado: null, cobro: { porcentaje: 8, corte: "mensual" }, pb: null };
+  const e = { leaseId: 1, esperado: { valor: 0, desde: "2026-08-01", hasta: "2027-01-31" }, codigo: "NAVE-PUN-04",
+    cara: "NAVE-PUN-04", sede: "NAVE", antes, arranco: true, ultimoCorte: null, cortes: 0, planometria: null, correo: null,
+    montajePendiente: false, hoy: "2026-10-22" };
+  assert.equal(ED.faltaDeLaEdicion(e, antes, 1), null);
+  assert.match(ED.faltaDeLaEdicion(e, { ...antes, desde: "2026-09-01" }, 1), /Ya arrancó: el «Desde» sigue en el 1 ago 2026/);
+  assert.equal(ED.faltaDeLaEdicion({ ...e, arranco: false }, { ...antes, desde: "2026-09-01" }, 1), null, "uno que no arrancó mueve las dos fechas");
+  assert.match(ED.faltaDeLaEdicion(e, { ...antes, hasta: "2026-10-21" }, 1), /antes de hoy/);
+  const conCortes = { ...e, cortes: 2, ultimoCorte: "2026-09-30" };
+  assert.match(ED.faltaDeLaEdicion(conCortes, { ...antes, hasta: "2026-09-15" }, 1), /ventas cargadas hasta el 30 sep 2026/);
+  assert.match(ED.faltaDeLaEdicion(conCortes, { ...antes, cobro: null, valor: 9 }, 1), /sigue por % de las ventas/);
+  assert.match(ED.faltaDeLaEdicion(conCortes, { ...antes, cobro: { porcentaje: 8, corte: "al_final" } }, 1), /el corte no cambia/);
+  assert.match(ED.faltaDeLaEdicion(conCortes, { ...antes, forma: "parte", partes: ["EN1"] }, 1), /no cambia de forma/);
+  assert.equal(ED.faltaDeLaEdicion(conCortes, { ...antes, cobro: { porcentaje: 10, corte: "mensual" } }, 1), null, "el % sí cambia");
+  assert.match(ED.faltaDeLaEdicion(e, antes, 2), /un solo espacio/);
+  assert.equal(ED.faltaDeLaEdicion(e, { ...antes, forma: "parte", partes: ["EN1", "EN2"] }, 1), null);
+});
+
+prueba("«Editar contrato»: sólo para quien administra, en Corregir y en la ficha, y abre EL contrato del renglón", () => {
+  const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
+  // El botón de Corregir, en las dos secciones con un contrato detrás, y nada más.
+  assert.equal((t.match(/acciones=\{accionEditar\(entry\)\}/g) || []).length, 2, "«Editar contrato» en otra sección de Corregir (o en ninguna)");
+  for (const [seccion, abre] of [["Bajo tarifa de referencia", "{isAdmin && kpis.belowReference.length > 0 && ("],
+    ["montajes_viejos", "{isAdmin && montaje.viejos.length > 0 && ("]]) {
+    const i = t.indexOf(abre);
+    assert.ok(i > 0, `«${seccion}» no se monta sólo para quien administra`);
+    const trozo = t.slice(i, t.indexOf("</div>\n                      )}", i));
+    assert.match(trozo, /acciones=\{accionEditar\(entry\)\}/, `«${seccion}» no lleva «Editar contrato»`);
+  }
+  assert.match(t, /const accionEditar = \(entry: FaceEntry\) => \(isAdmin && typeof entry\.leaseId === "number" \? \[\{\s*texto: "Editar contrato", icono: <FilePenLine \{\.\.\.ICONO_TARJETA\} \/>,/,
+    "el botón de Corregir no es sólo de quien administra, o no lleva su ícono de 16 × 1,75");
+  // La ficha: junto a Renovar, sólo con un contrato de verdad (no una reserva).
+  assert.match(t, /\{isAdmin && rentable && onEditar && hasContract && !entry\.reservaHasta && typeof entry\.leaseId === "number" && \(/,
+    "el botón de la ficha no está guardado por quien administra, el contrato y su leaseId");
+  assert.match(t, /onEditar=\{isAdmin \? editarFila : undefined\}/);
+  assert.match(t, /onEditar=\{isAdmin \? onEditar : undefined\}/, "las partes ofrecen editar a quien no administra");
+  assert.match(t, /onEditarParticipacion=\{isAdmin\s*\?/);
+  // EL contrato del renglón: su leaseId y lo que el renglón mostró; lo demás
+  // se lee por su id. Nunca se vuelve a buscar el espacio por código.
+  const ed = t.slice(t.indexOf("const editarContrato = useCallback(async ("), t.indexOf("const accionEditar ="));
+  assert.ok(ed.length > 500, "no se encontró «editarContrato»");
+  assert.match(ed, /const d = await contratoParaEditar\(leaseId\);/);
+  assert.match(ed, /edita: \{\s*leaseId, esperado: mostrado,/, "el pedido no lleva lo que el renglón mostró");
+  assert.match(ed, /\{ valor: entry\.negotiatedValue, desde: entry\.startDate, hasta: entry\.endDate \}/);
+  assert.doesNotMatch(ed, /getSpaceByCode|findOrCreateSpace|active_lease|upcoming_lease|fetchSpace|\/spaces\//,
+    "vuelve a buscar el contrato por código");
+  // La semilla de edición nunca lleva la nota interna.
+  assert.doesNotMatch(ed, /\bnota\b|notes|observation/, "la semilla de edición lleva la nota interna");
+  // Sólo DashboardView (Supervisar) lee el contrato para editarlo.
+  const api = sinComent(fuenteDe("api/edicionDeContrato.ts"));
+  assert.match(api, /client\.get<ContratoParaEditar>\(`\/contratos\/\$\{leaseId\}\/edicion`\)/);
+  assert.doesNotMatch(api, /nota|notes|observation/, "el contrato para editar trae la nota");
+  // Las participaciones: el botón sólo para un contrato vigente o firmado.
+  const pc = sinComent(fuenteDe("components/Distribucion/ParticipacionesDeLaCara.tsx"));
+  assert.match(pc, /t\.estado === "contrato" && typeof t\.lease_id === "number"\s*&& \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)/);
+  assert.match(pc, /\{editable\(t\) && onEditar && t && \(/);
+});
+
+prueba("Vender en edición: manda `edita` con el leaseId y `esperado`, sin la nota, y no cuenta el propio contrato como tomado", () => {
+  const c = sinComent(fuenteDe("components/Contrato/Contrato.tsx"));
+  assert.match(c, /\.\.\.\(edita \? \{ edita: \{ lease_id: edita\.leaseId, esperado: edita\.esperado \} \} : \{\}\),/,
+    "el pedido no nombra el contrato por su leaseId y lo que se mostró");
+  assert.match(c, /nota: edita \? undefined : nota\.trim\(\) \|\| undefined,/, "editando, la nota interna viaja");
+  assert.match(c, /const estadoComercial = useMemo\(\(\) => estadoSinElPropio\(estadoCrudo, edita\?\.leaseId\), \[estadoCrudo, edita\]\);/,
+    "el propio contrato cuenta como tomado contra sí mismo");
+  assert.equal((c.match(/useFixtureStore\(\(s\) => s\.estadoComercial\)/g) || []).length, 1, "otra lectura del mapa crudo se salta la exclusión");
+  assert.match(c, /return ocupacionSinElPropio\(par, \{/);
+  assert.match(c, /&& chocan\.length === 0 && !faltaEdicion;/, "una edición sin cambios (o que no se puede) se guarda igual");
+  assert.match(c, /\(sinCambios \? "No cambiaste nada" : null\)/);
+  const m = sinComent(fuenteDe("components/Contrato/ModoVender.tsx"));
+  assert.match(m, /const estadoComercial = c\.estadoComercial;/, "la línea mira el mapa con el propio contrato");
+  assert.doesNotMatch(m, /useFixtureStore\(\(s\) => s\.estadoComercial\)/, "ModoVender lee el mapa crudo");
+  assert.match(m, /ocupacionDe=\{c\.ocupacionDe\}/);
+  // El «Desde» de uno que ya arrancó, deshabilitado y dicho.
+  assert.match(m, /disabled=\{!!edita\?\.arranco\}/);
+  assert.match(m, /Ya arrancó: el «Desde» no se mueve\./);
+  assert.match(m, /\{!edita\?\.arranco && <AtajosDeFecha c=\{c\} \/>\}/, "los atajos mueven el «Desde» de uno que arrancó");
+  // La banda, «Qué cambia», el aviso de los correos y el botón.
+  assert.match(m, /<b>Editando el contrato de \{nombreDelContrato\(edita\.antes\)\}<\/b>/);
+  assert.match(m, /<X \{\.\.\.ICONO\} \/> Salir sin cambios/);
+  assert.match(m, /<b>Al guardar, el contrato se envía de nuevo a los correos\.<\/b>/);
+  assert.match(m, /<Send \{\.\.\.ICONO\} \/> Guardar cambios y reenviar/);
+  assert.match(m, /onClick=\{edita \? \(\) => setConfirmando\(true\) : c\.guardar\}/, "se guarda sin confirmar a quiénes se reenvía");
+  assert.match(m, /se cierra como «reemplazado», no cancelado/);
+  // La nota interna no se ofrece editando.
+  assert.match(m, /\{!edita && \(\s*<div className="campo">\s*<span className="rotulo">Nota<\/span>/);
+  // El diálogo: accesible y con los tres destinatarios.
+  const d = sinComent(fuenteDe("components/Contrato/ConfirmarEdicion.tsx"));
+  assert.match(d, /role="dialog"\s*aria-modal="true"\s*aria-labelledby=\{titulo\}/);
+  assert.match(d, /if \(e\.key === "Escape"\) \{ e\.stopPropagation\(\); onVolver\(\); return; \}/);
+  assert.match(d, /app\?\.setAttribute\("inert", ""\);/, "el foco se escapa del diálogo");
+  assert.match(d, /data-capa-modal/, "el diálogo no se lleva el amarillo: quedan dos a la vez");
+  assert.match(d, /useModalAbierto\(\);/);
+  for (const rol of ["comercial", "proveedor", "montaje"]) assert.match(d, new RegExp(`data-rol="${rol}"`), `el diálogo no lista ${rol}`);
+  assert.match(d, />Volver<\/button>/);
+  assert.match(d, /<Send \{\.\.\.ICONO\} \/> Guardar y reenviar/);
+  assert.doesNotMatch(d + m, /sombra/i);
+  // El leaseId: sólo para quien administra, y nunca pegado al mueble.
+  const sp = readFileSync(join(raiz, "..", "backend", "app", "routers", "spaces.py"), "utf8");
+  assert.match(sp, /leaseId=lease\.id if admin else None,/, "el servidor le manda el leaseId al trabajador");
+  assert.equal((sp.match(/leaseId=/g) || []).length, 1, "el leaseId sale por otro lado del mapa comercial");
+  const [f] = fusionarEstadoComercial("CENTRO", [{ id: "f", code: "GON-02", type: "cross", sede: "CENTRO" }],
+    { "CENTRO-GON-02": { ...vendido(), leaseId: 17 } });
+  assert.ok(!("leaseId" in f), "el leaseId se pegó al mueble");
+  assert.match(t0(), /return typeof suyo\?\.leaseId === "number" \? \{ \.\.\.e, leaseId: suyo\.leaseId \} : e;/, "la fila no sabe qué contrato dibuja");
+});
+function t0() { return sinComent(fuenteDe("pages/DashboardView.tsx")); }
 
 console.log(`\n${hechas} pruebas\n`);

@@ -278,7 +278,8 @@ def _frase_participacion(codigo: str) -> str:
             "no en la planilla.")
 
 
-def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: date, hasta: date) -> Optional[str]:
+def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: date, hasta: date,
+            excluir_termino: Optional[int] = None) -> Optional[str]:
     """``bloqueo_por_participaciones`` sólo si la cara de ``codigo`` tiene
     términos (``caras_pc``, de ``caras_con_participaciones``): así no relee el
     plano en cada una de las trescientas filas de una planilla. Se mira con la
@@ -289,18 +290,24 @@ def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: dat
     cara = partir_codigo(codigo).cara_entera
     if cara not in caras_pc and codigo_cara(sede, codigo) not in caras_pc:
         return None
-    return bloqueo_por_participaciones(db, sede, codigo, desde, hasta)
+    return bloqueo_por_participaciones(db, sede, codigo, desde, hasta, excluir_id=excluir_termino)
 
 
 def _revisar(
     db: Session, lote: LoteIn, exigir_valor: bool = True, delante_del_proveedor: bool = False,
+    excluir_lease: Optional[int] = None, excluir_termino: Optional[int] = None,
 ) -> list[FilaOut]:
     """``exigir_valor=False``: el guardado de Vender de un contrato que se cobra
     por un % de las ventas (``services/vender.py``), cuyo valor va en 0.
 
     ``delante_del_proveedor=True``: también Vender. Un choque se dice con UNA
     frase neutra (``frase_tomada``): sin distinguir un contrato de una reserva y
-    con las fechas como se leen («2 nov»)."""
+    con las fechas como se leen («2 nov»).
+
+    ``excluir_lease`` / ``excluir_termino``: SÓLO «Editar contrato»
+    (``services/editar_contrato.py``): el contrato que se edita (y, si era un
+    porcentaje, su término) no choca consigo mismo. Ningún otro camino los
+    pasa: la planilla y Vender siguen viendo todo."""
     if len(lote.filas) > MAX_FILAS:
         raise HTTPException(
             status_code=400,
@@ -550,7 +557,7 @@ def _revisar(
                     break
 
         if not errores and desde and hasta and codigo:
-            choques = contratos_que_chocan(db, codigo, desde, hasta, sede=out.sede)
+            choques = contratos_que_chocan(db, codigo, desde, hasta, sede=out.sede, excluir_lease=excluir_lease)
             if choques:
                 lease, space, _otro = choques[0]
                 errores.append(frase_tomada(space.code or "", lease, out.sede or "") if delante_del_proveedor
@@ -562,7 +569,7 @@ def _revisar(
         # esto cubre la que dejó de serlo con términos vivos, que el guardado
         # del plano impide pero un plano escrito a mano podría traer.
         if not errores and desde and hasta and codigo:
-            bloqueo = _bloqueo(db, caras_pc, sede, codigo, desde, hasta)
+            bloqueo = _bloqueo(db, caras_pc, sede, codigo, desde, hasta, excluir_termino)
             if bloqueo:
                 errores.append(bloqueo)
 

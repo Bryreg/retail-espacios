@@ -116,6 +116,13 @@ const ARCHIVOS_VENDER = [
   "src/components/Contrato/LineaDelContrato.tsx",
   "src/components/Contrato/CamposDelContrato.tsx",
   "src/api/vender.ts",
+  // «Editar contrato» (2026-10-22): la confirmación antes de guardar y
+  // reenviar, que se abre ENCIMA de la ficha (la mira el proveedor), y las
+  // cuentas puras de la edición (lo que cambia, los cortes vencidos, el
+  // propio contrato que no está tomado contra sí mismo). Pasan por todas las
+  // guardas de este archivo.
+  "src/components/Contrato/ConfirmarEdicion.tsx",
+  "src/utils/edicionDeContrato.ts",
 ];
 /** Los estilos que bajan con el visor (`VisorDeVenta.tsx` los importa): la
  *  misma escala de letra y el mismo rótulo que `vender.css`. */
@@ -363,6 +370,16 @@ const COMPONENTES_VENDER = new Set([
   // punteada de «Sumar otro espacio» (`Plus`), lo que falta en el pie
   // (`CircleAlert`) y el chevron de la fila plegable del correo y la nota.
   "Bloque", "Plus", "CircleAlert", "ChevronDown",
+  // «Editar contrato» (2026-10-22): la confirmación (`ConfirmarEdicion`: a
+  // quiénes se reenvía —comercial y montaje por su rol, el proveedor con SU
+  // correo— y lo que cambia de ESTE contrato; nada de la nota ni de otros) y
+  // sus íconos: la flecha de «Qué cambia» (`ArrowRight`), el aviso del
+  // reemplazo (`FileWarning`), el de los cortes vencidos (`CalendarClock`),
+  // «Qué cambia» (`GitCompareArrows`), «Guardar cambios y reenviar» (`Send`),
+  // los tres destinatarios (`Users`, `Wrench`; `Building2` ya estaba) y
+  // «Volver a Supervisar» (`ArrowLeft`).
+  "ConfirmarEdicion", "ArrowRight", "ArrowLeft", "FileWarning", "CalendarClock", "GitCompareArrows", "Send",
+  "Users", "Wrench",
   "LimiteDelVisor", "Suspense", "AbriendoEl3D", "FallaDelVisor", "VisorDeVenta",
   // El visor (`VisorDeVenta.tsx`). Las piezas del editor que usa —la escena,
   // el panel «Cómo va», el HUD y la ficha del envase— se leen abajo
@@ -1824,7 +1841,11 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
   prueba("los módulos de Supervisar (PR 2) no se alcanzan desde Vender", () => {
     const MODULOS = ["src/components/Supervisar/plata.ts", "src/components/Supervisar/useUnidadDePlata.ts",
       "src/components/Supervisar/paraRevisar.ts", "src/components/Supervisar/piezas.tsx",
-      "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/CobrosYReservas.tsx"];
+      "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/CobrosYReservas.tsx",
+      // «Editar contrato» (2026-10-22): lo que Supervisar lee de UN contrato
+      // para reabrirlo (con plata) no se alcanza desde Vender; Vender guarda
+      // la edición con su propio módulo (`api/vender.ts`, `edita`).
+      "src/api/edicionDeContrato.ts"];
     for (const f of MODULOS) assert.ok(hay(f), `no está ${f}`);
     const malos = [];
     for (const f of ARCHIVOS_VENDER.filter(hay)) {
@@ -1844,7 +1865,9 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     // «Aire y pines»: los puntos del plano, su botón y el renglón que señala su
     // mueble son de Supervisar: ninguno se alcanza desde Vender.
     const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision",
-      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave"];
+      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave",
+      // «Editar contrato»: el botón y lo que abre son de Supervisar.
+      "editarContrato", "editarFila", "accionEditar", "contratoParaEditar", "avisoDeEdicion"];
     const hits = [];
     for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
       const ids = identificadores(r.texto);
@@ -1853,6 +1876,29 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.deepEqual([...new Set(hits)], [], `Vender alcanza lo de Supervisar:\n         ${[...new Set(hits)].join("\n         ")}`);
   });
 }
+
+/* ── «Editar contrato»: Vender sólo conoce el contrato que se edita ─────────
+   Vender reabre UN contrato guardado (`semilla.edita`). El `leaseId` del mapa
+   comercial es de administración: en los archivos que dibujan Vender sólo se
+   nombra el de la edición (`edita.leaseId`), nunca el de otro espacio, y
+   nunca se pinta como texto. La exclusión del propio contrato vive en
+   `utils/edicionDeContrato.ts` (pura). */
+prueba("Vender sólo usa el `leaseId` del contrato que se edita, y nunca lo pinta", () => {
+  const hits = [];
+  for (const f of ["src/components/Contrato/ModoVender.tsx", "src/components/Contrato/Contrato.tsx",
+    "src/components/Contrato/LineaDelContrato.tsx", "src/components/Contrato/CamposDelContrato.tsx",
+    "src/components/Contrato/ConfirmarEdicion.tsx", "src/components/Contrato/VisorDeVenta.tsx"].filter(hay)) {
+    sinComentarios(leer(f)).split("\n").forEach((l, k) => {
+      if (/leaseId|lease_id/.test(l) && !/edita\??\.leaseId|lease_id: edita\.leaseId/.test(l)) hits.push(`${f}:${k + 1} — ${l.trim().slice(0, 110)}`);
+      if (/>\s*\{[^}]*leaseId[^}]*\}\s*</.test(l)) hits.push(`${f}:${k + 1} pinta el leaseId`);
+    });
+  }
+  assert.deepEqual(hits, [], `Vender nombra otros contratos:\n         ${hits.join("\n         ")}`);
+  // La nota interna no se carga ni se manda editando, ni se ofrece el campo.
+  const contrato = sinComentarios(leer("src/components/Contrato/Contrato.tsx"));
+  assert.match(contrato, /nota: edita \? undefined : nota\.trim\(\) \|\| undefined,/);
+  assert.doesNotMatch(sinComentarios(leer("src/utils/edicionDeContrato.ts")), /\bnota\b|notes|observation/);
+});
 
 /* ── la planometría no es de Vender (decisión de la dueña, 2026-10-20) ──────
    Se carga SÓLO en Supervisar, en la ficha del espacio, con el contrato ya

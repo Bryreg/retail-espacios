@@ -91,7 +91,10 @@ function mismoMapa(a: EstadoPorEspacio, b: EstadoPorEspacio): boolean {
         x.startDate !== y.startDate || x.endDate !== y.endDate ||
         x.observation !== y.observation ||
         (x.reservaHasta ?? null) !== (y.reservaHasta ?? null) ||
-        !!x.reservado !== !!y.reservado) return false;
+        !!x.reservado !== !!y.reservado ||
+        // Otro contrato en el mismo espacio con los mismos datos: sin esto
+        // el mapa crudo se quedaría con el `leaseId` del que ya no está.
+        (x.leaseId ?? null) !== (y.leaseId ?? null)) return false;
   }
   return true;
 }

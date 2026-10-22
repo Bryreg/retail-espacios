@@ -86,6 +86,12 @@ ACCIONES = {
     "reserva_espacio.confirmada": "Reserva de espacio confirmada como contrato",
     "reserva_espacio.baja": "Reserva de espacio cancelada",
     "cobro.corte": "Corte de ventas cargado",
+    # «Editar contrato» (Supervisar → Vender con el contrato cargado,
+    # `services/editar_contrato.py`): corregido en su lugar, con el antes y el
+    # después; o reemplazado por otra forma de venderlo (el viejo se cierra,
+    # no se cancela). La bitácora es de administración (`routers/bitacora.py`).
+    "contrato.editado": "Contrato editado",
+    "contrato.reemplazado": "Contrato reemplazado por otra forma de venderlo",
 }
 
 # fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,
