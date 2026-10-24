@@ -139,7 +139,7 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
   }
 
   return (
-    <Dialogo titulo="Copiar de otra cara" onCerrar={onCerrar} ancho="max-w-2xl">
+    <Dialogo titulo={caras === 2 ? "Copiar de la otra cara" : "Copiar de otra cara"} onCerrar={onCerrar} ancho="max-w-2xl">
       <div className="flex flex-col gap-3 text-xs text-ink-2" data-copiar-zonas>
         <p className="leading-relaxed">{encabezadoDeLaCopia({ sede: activa.sede, codigo: activa.codigo, cara: activa.cara })}</p>
 

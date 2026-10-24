@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, Box, Check, CircleAlert, CircleCheck, Copy, Crosshair, Eraser, GripVertical, History, Maximize2, Minimize2,
-  MoreHorizontal, Redo2, RotateCcw, Trash2, Undo2, Wand2, X,
+  ArrowLeft, ArrowLeftToLine, ArrowRightToLine, Box, BoxSelect, Check, CircleAlert, CircleCheck, Copy, Crosshair, Eraser, GripVertical,
+  History, Maximize2, Minimize2, MoreHorizontal, PenLine, Redo2, RotateCcw, Trash2, Undo2, Wand2, X,
 } from "lucide-react";
 import { describeError } from "../../api/client";
-import { espacioDeLaCara, historial, terminoDeOut, type HistorialOut, type ZonaOut } from "../../api/participaciones";
+import { espacioDeLaCara, historial, terminoDeOut, type CaraOut, type EntradaDeHistorial, type HistorialOut, type ZonaOut } from "../../api/participaciones";
 import { copiaALaVista, hayParaRecuperar, planoAlDia, useDistribucionStore, claveDeCara } from "../../store/distribucionStore";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import { carasDe } from "../../types/espacio";
@@ -16,11 +16,11 @@ import { cambioParaDividir, conPartes, revisarCambioDePartes, type CambioDeParte
 import { pct, vivo, type EstadoDeDistribucion } from "../../utils/participaciones";
 import {
   FORMAS, acomodarSolas, cajaDe, contadorAMano, dejarJustaAMano, encajar, estantes, franja, lineasDeLaCara,
-  lineasDeOcupados, llevaAMano, poligonoDeRect, primeraQuePisa, type FormaDePieza, type Rect,
+  lineasDeOcupados, llevaAMano, poligonoDeRect, primeraQuePisa, ubicarSinArrastrar, type FormaDePieza, type Rect,
 } from "../../utils/piezas";
 import { areaUtil } from "../../utils/zonasGeometria";
 import RanuraDelLienzo from "../RanuraDelLienzo";
-import CaraDePiezas, { dondeCae, uvEnLaCara } from "./CaraDePiezas";
+import CaraDePiezas, { dondeCae, dondeQuedo, uvEnLaCara } from "./CaraDePiezas";
 import CopiarZonas from "./CopiarZonas";
 import FormularioDeParticipacion from "./FormularioDeParticipacion";
 import ResumenDeCambios from "./ResumenDeCambios";
@@ -29,7 +29,8 @@ import {
   useRevisionEnVivo, useVistaDeDistribucion, type PreguntaDeCancelarTipo,
 } from "./LeyendaDeParticipaciones";
 import {
-  cruzanEnFechas, enLista, ocupadosPara, textoDelEstado, useCaraDePiezas, usePiezas, usePiezasUI, type Pieza,
+  alCerrarAMano, cruzanEnFechas, enLista, ocupadosPara, patronDe, textoDelEstado, useCaraDePiezas, usePiezas, usePiezasUI,
+  type PatronDePieza, type Pieza,
 } from "./piezasDeLaCara";
 
 /**
@@ -120,16 +121,56 @@ export function atajoDeDistribucion(
     if (delEditor && e.key !== "Escape") e.stopPropagation();
     return;
   }
+  // «Más» abierto: Esc lo cierra (y el foco vuelve a su botón); las flechas
+  // las atiende el menú. Las teclas del editor igual se cortan.
+  if (t?.closest?.("[data-menu-mas]")) {
+    if (delEditor) e.stopPropagation();
+    if (e.key === "Escape") { e.preventDefault(); menuAbierto.cerrar?.(); }
+    return;
+  }
   const enLaCara = tag === "body" || !!t?.closest?.("[data-lienzo-de-zonas]");
   const enLaPantalla = enLaCara || !!t?.closest?.("[data-distribucion]");
   const posible = enLaPantalla ? accionDeTecla(st.edicion, { key: e.key, ctrl, shift: e.shiftKey }) : null;
   const permitida = posible && POR_TECLADO.has(posible.tipo) && (enLaCara || DESDE_EL_PANEL.has(posible.tipo)) ? posible : null;
-  // «A mano»: Enter cierra la forma y la deja como LA pieza de esa marca.
+  // «A mano»: Enter cierra la forma y la deja como LA pieza de esa marca, con
+  // el MISMO ajuste solo (±3 %) que tocar el primer punto (`alCerrarAMano`).
   const a: Accion | null = permitida && permitida.tipo === "cerrarTrazo" ? { tipo: "cerrarTrazo", reemplazar: true } : permitida;
   if (a || delEditor) {
     e.stopPropagation();                          // el atajo global no ve la tecla
-    if (a) { e.preventDefault(); st.despachar(a); }
-    else if (delEditor && enLaCara) e.preventDefault();
+    if (a) {
+      e.preventDefault();
+      if (a.tipo === "cerrarTrazo" && alCerrarAMano.actual) alCerrarAMano.actual();
+      else st.despachar(a);
+    } else if (delEditor && enLaCara) e.preventDefault();
+  }
+}
+
+/** El «Más» abierto: cómo cerrarlo desde el oyente del teclado (Esc). */
+const menuAbierto: { cerrar: (() => void) | null } = { cerrar: null };
+/** Los ítems de «Más» que se pueden usar, en orden. */
+const itemsDelMenu = (m: HTMLElement | null): HTMLButtonElement[] =>
+  m ? [...m.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')] : [];
+
+/** La pista mientras se dibuja «A mano»: qué tocar ahora. */
+export function pistaDelTrazo(puntos: number, rehaciendo: boolean): string {
+  if (puntos === 0) {
+    return rehaciendo
+      ? "Rehacela: tocá un punto por cada esquina. Lo de antes queda hasta que cierres la forma nueva."
+      : "Tocá un punto por cada esquina: se pegan a los estantes y a los bordes. El círculo grande es el primero: tocalo para cerrar.";
+  }
+  if (puntos < 3) return "Seguí tocando esquinas: hacen falta al menos tres.";
+  return "Seguí tocando esquinas, o tocá el círculo grande (el primer punto) o Enter para cerrar la forma.";
+}
+
+/** La pista de una pieza «A mano» YA hecha y elegida (no se está dibujando):
+ *  lo que se puede hacer según cómo quedó. Nunca «Tocá un punto…». */
+export function pistaDeAMano(p: Pick<Pieza, "corto" | "estado" | "pb" | "dibujado">): string {
+  switch (p.estado) {
+    case "ubicada": return `${p.corto} está hecha a mano, con ${pct(p.pb)} justo. Para cambiarla, «Rehacer a mano».`;
+    case "sobra": return `${p.corto} se pasa ${pct(p.dibujado - p.pb)}: tocá «Achicar a ${pct(p.pb)}» o «Rehacer a mano».`;
+    case "falta": return `A ${p.corto} le falta ${pct(p.pb - p.dibujado)}: tocá «Llevar a ${pct(p.pb)}» o «Rehacer a mano».`;
+    case "choca": return `${p.corto} pisa a otra marca: «Rehacer a mano» y dibujala en lo verde.`;
+    default: return `${p.corto}: «Rehacer a mano» para dibujarla de nuevo.`;
   }
 }
 
@@ -156,6 +197,12 @@ const cuandoFue = (iso: string) => {
  *  sede tiene seleccionada el usuario»). */
 export function tituloDelPanel(a: { sede: string; codigo: string; cara: "A" | "B" }): string {
   return `${a.sede} · ${a.codigo} · cara ${a.cara}`;
+}
+
+/** El título para mostrar: «cara A» nunca se parte en dos renglones (a 390 px
+ *  quedaba «cara» al final de uno y «A» solo en el siguiente). */
+export function sinCortarLaCara(titulo: string): string {
+  return titulo.replace(/cara ([AB])\b/g, "cara\u00A0$1");
 }
 
 /** Cómo se llama el mueble al lado del código: su nombre si tiene uno propio
@@ -189,6 +236,109 @@ export interface LineaDelHistorial {
   en: string;
   /** Lo que «Ver cómo estaba» dibuja (sólo las confirmaciones). */
   zonas: ZonaOut[] | null;
+  /** Lo que se lee, en palabras simples (`textoDelHistorial`): sin «zona»,
+   *  «participación N» ni fechas ISO. `detalle` es el texto del servidor. */
+  texto: string;
+}
+
+/** Con qué se nombra a cada marca en el historial (sin número interno). */
+export interface NombresDelHistorial {
+  porTermino: ReadonlyMap<number, string>;
+  porSpace: ReadonlyMap<number, string>;
+  porNumero: ReadonlyMap<number, string>;
+}
+
+/** Los nombres de las marcas de la cara leída: «Snacks Norte · Papitas». */
+export function nombresDelHistorial(datos: Pick<CaraOut, "participaciones"> | null): NombresDelHistorial {
+  const porTermino = new Map<number, string>(), porSpace = new Map<number, string>(), porNumero = new Map<number, string>();
+  for (const p of datos?.participaciones ?? []) {
+    const t = p.terminos[0];
+    const nombre = t ? (t.marca ? `${t.proveedor?.nombre ?? "Sin proveedor"} · ${t.marca}` : t.proveedor?.nombre ?? "Sin proveedor") : "una marca";
+    porSpace.set(p.space_id, nombre);
+    porNumero.set(p.numero, nombre);
+    for (const x of p.terminos) porTermino.set(x.id, x.marca ? `${x.proveedor?.nombre ?? "Sin proveedor"} · ${x.marca}` : x.proveedor?.nombre ?? nombre);
+  }
+  return { porTermino, porSpace, porNumero };
+}
+
+const ISO_DIA = /\b(\d{4}-\d{2}-\d{2})(T[\d:.+-]+)?\b/g;
+/** Un texto viejo del servidor, sin la jerga: «Participación 3» → «una marca»,
+ *  «zona» → «pieza», «2026-10-24→2027-03-31» → «24 oct 2026 al 31 mar 2027». */
+export function sinJerga(t: string): string {
+  return t
+    .replace(/[Ll]a participación \d+/g, "una marca").replace(/[Pp]articipación \d+/g, "una marca")
+    .replace(/participaciones/g, "marcas").replace(/participación/g, "marca")
+    .replace(/\bzonas\b/g, "piezas").replace(/\bzona\b/g, "pieza").replace(/\bZonas\b/g, "Piezas").replace(/\bZona\b/g, "Pieza")
+    .replace(ISO_DIA, (_m, dia: string) => fechaLegible(dia))
+    .replace(/\s*→\s*/g, " al ")
+    .replace(/\s*·\s*·\s*/g, " · ");
+}
+
+const leer = (o: Record<string, unknown> | null | undefined, k: string): unknown => (o && typeof o === "object" ? o[k] : undefined);
+const texto = (x: unknown): string | null => (typeof x === "string" && x.trim() ? x : null);
+const numero = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
+
+/**
+ * Una entrada del historial en palabras simples, armada EN EL CLIENTE desde
+ * los datos (acción, antes/después y los nombres de la cara): el texto del
+ * servidor dice «Contrato · Participación 1 · 60 % · … · 2026-10-01→2026-11-15»
+ * y «Confirmada: 1 zona de 1 participación», y lo usan también la bitácora y
+ * los correos (no se cambia allá). Lo que no se conoce pasa por `sinJerga`.
+ */
+export function textoDelHistorial(e: Pick<EntradaDeHistorial, "accion" | "detalle" | "antes" | "despues"> & { participacion_id?: number | null },
+  n: NombresDelHistorial): string {
+  const d = e.despues as Record<string, unknown> | null;
+  const proveedor = texto(leer(d, "proveedor")), marca = texto(leer(d, "marca"));
+  const quien = (proveedor ? (marca ? `${proveedor} · ${marca}` : proveedor) : null)
+    ?? (e.participacion_id != null ? n.porTermino.get(e.participacion_id) ?? null : null) ?? "una marca";
+  const pb = numero(leer(d, "puntos_basicos"));
+  const desde = texto(leer(d, "desde")), hasta = texto(leer(d, "hasta")), caduca = texto(leer(d, "caduca"));
+  const vig = desde && hasta ? `, del ${fechaLegible(desde)} al ${fechaLegible(hasta)}` : "";
+  const marcasDe = (zonas: unknown, porNumero: boolean): string[] => {
+    const nombres: string[] = [];
+    if (Array.isArray(zonas)) {
+      for (const z of zonas) {
+        const s = numero(leer(z as Record<string, unknown>, "participacion_space_id"));
+        const nom = s !== null ? n.porSpace.get(s) ?? null : null;
+        if (nom && !nombres.includes(nom)) nombres.push(nom);
+      }
+    } else if (zonas && typeof zonas === "object") {
+      for (const k of Object.keys(zonas)) {
+        const nom = (porNumero ? n.porNumero.get(Number(k)) : n.porSpace.get(Number(k))) ?? null;
+        if (nom && !nombres.includes(nom)) nombres.push(nom);
+      }
+    }
+    return nombres;
+  };
+  switch (e.accion) {
+    case "participacion.contrato": return `Se vendió ${pb !== null ? `el ${pct(pb)} de la cara ` : ""}a ${quien}${vig}.`;
+    case "participacion.reserva": return `Se reservó ${pb !== null ? `el ${pct(pb)} de la cara ` : ""}para ${quien}${vig}${caduca ? `; la reserva caduca el ${fechaLegible(caduca)}` : ""}.`;
+    case "participacion.confirmada": return `La reserva de ${quien} pasó a contrato${vig}.`;
+    case "participacion.renovada": return `Se renovó el contrato de ${quien}${vig}.`;
+    case "participacion.editada": return `Se cambió la reserva de ${quien}${vig}.`;
+    case "reserva.cancelada": case "reserva.baja": return `Se canceló la reserva de ${quien}.`;
+    case "contrato.cancelado": return `Se canceló el contrato de ${quien}.`;
+    case "contrato.editado": return `Se corrigió el contrato de ${quien}.`;
+    case "contrato.reemplazado": return `Se reemplazó el contrato de ${quien}.`;
+    case "contrato.importado": return `El contrato de ${quien} pasó a la base.`;
+    case "participacion.vencida": return `Venció el contrato de ${quien}.`;
+    case "reserva.caducada": return `Caducó la reserva de ${quien}.`;
+    case "distribucion.confirmada": {
+      const m = marcasDe(leer(d, "zonas"), false);
+      return m.length === 0 ? "Se guardó la cara sin piezas." : `Se guardó la cara: ${enLista(m)} ${m.length === 1 ? "quedó ubicada" : "quedaron ubicadas"}.`;
+    }
+    case "distribucion.borrador": {
+      if (/^Confirmación rechazada/.test(e.detalle)) return "No se pudo guardar como lista: quedó como borrador para revisarla.";
+      const m = marcasDe(leer(d, "zonas"), true);
+      return m.length === 0 ? "Se guardó un borrador sin piezas." : `Se guardó un borrador con ${enLista(m)}.`;
+    }
+    case "distribucion.descartada": return "Se descartó el borrador.";
+    case "distribucion.copiada": return "Se copiaron las piezas de otra cara, como borrador.";
+    case "distribucion.division": return "La cara pasó a venderse por partes, una por marca.";
+    case "distribucion.otro_mueble": return "El mueble del plano cambió: lo de antes quedó guardado acá.";
+    case "distribucion.para_revisar": return "El mueble cambió: hay que revisar la cara.";
+  }
+  return sinJerga(e.detalle);
 }
 
 /**
@@ -199,13 +349,14 @@ export interface LineaDelHistorial {
  * Se ordenan por el instante, no comparando textos. Un servidor viejo manda
  * `en` como día solo: se lee igual, como día de Colombia.
  */
-export function lineasDelHistorial(h: HistorialOut): LineaDelHistorial[] {
+export function lineasDelHistorial(h: HistorialOut, nombres: NombresDelHistorial = nombresDelHistorial(null)): LineaDelHistorial[] {
   const lineas: LineaDelHistorial[] = [];
   for (const e of h.entradas) {
     const zonas = e.accion === "distribucion.confirmada" && e.despues && Array.isArray((e.despues as { zonas?: unknown }).zonas)
       ? (e.despues as { zonas: ZonaOut[] }).zonas : null;
     const instante = SOLO_DIA.test(e.en) ? medianocheDeColombia(e.en) : Date.parse(e.en);
-    lineas.push({ clave: `e${e.id}`, instante, cuando: cuandoFue(e.en), derivada: false, actor: e.actor, detalle: e.detalle, en: e.en, zonas });
+    lineas.push({ clave: `e${e.id}`, instante, cuando: cuandoFue(e.en), derivada: false, actor: e.actor, detalle: e.detalle, en: e.en, zonas,
+      texto: textoDelHistorial(e, nombres) });
   }
   h.derivados.forEach((d, i) => {
     const dia = typeof d.dia === "string" && SOLO_DIA.test(d.dia) ? d.dia : SOLO_DIA.test(d.en) ? d.en : null;
@@ -214,6 +365,7 @@ export function lineasDelHistorial(h: HistorialOut): LineaDelHistorial[] {
     lineas.push({
       clave: `d${i}`, instante, cuando: dia ? fechaLegible(dia) : cuandoFue(d.en), derivada: true,
       actor: null, detalle: d.detalle, en: d.en, zonas: null,
+      texto: textoDelHistorial({ accion: d.accion, detalle: d.detalle, antes: null, despues: null, participacion_id: d.participacion_id }, nombres),
     });
   });
   const valor = (x: LineaDelHistorial) => (Number.isNaN(x.instante) ? -Infinity : x.instante);
@@ -260,12 +412,17 @@ export function resumenLlano(cambios: ReturnType<typeof diferencias>, nombre: (s
   });
 }
 
-/** El bloque de una marca en la lista: su color, del ancho de su %. */
-function Bloque({ p, chico = false }: { p: Pick<Pieza, "tono" | "pb">; chico?: boolean }) {
+/** El bloque de una marca en la lista: su color, del ancho de su %, LISO como
+ *  la pieza (con los mismos puntos si otra marca de la cara tiene su tono). */
+function Bloque({ p, chico = false, patron = "lisa" }: { p: Pick<Pieza, "tono" | "pb">; chico?: boolean; patron?: PatronDePieza }) {
   const ancho = Math.max(14, Math.min(46, Math.round((p.pb / 10000) * 92)));
+  const fondo = `color-mix(in srgb, ${p.tono} 22%, rgb(var(--surface-rgb)))`;
+  const paso = patron === "puntos" ? 7 : 11, r = patron === "puntos" ? 1.3 : 2.6;
   return (
-    <span aria-hidden className="inline-block flex-shrink-0 rounded-md border-2"
-      style={{ width: chico ? Math.min(ancho, 24) : ancho, height: chico ? 22 : 34, borderColor: p.tono, background: `color-mix(in srgb, ${p.tono} 22%, rgb(var(--surface-rgb)))` }} />
+    <span aria-hidden className="inline-block flex-shrink-0 rounded-md border-2" data-patron={patron}
+      style={{ width: chico ? Math.min(ancho, 24) : ancho, height: chico ? 22 : 34, borderColor: p.tono,
+        background: patron === "lisa" ? fondo
+          : `radial-gradient(circle, ${p.tono} ${r}px, transparent ${r + 0.6}px) ${paso / 2}px ${paso / 2}px / ${paso}px ${paso}px, ${fondo}` }} />
   );
 }
 
@@ -305,7 +462,12 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
   const elegida = usePiezasUI((s) => s.elegida);
   const arrastre = usePiezasUI((s) => s.arrastre);
   const ver3D = usePiezasUI((s) => s.ver3D);
-  const pista = usePiezasUI((s) => s.pista);
+  const pistaGuardada = usePiezasUI((s) => s.pista);
+  const ajuste = usePiezasUI((s) => s.ajuste);
+  // La pista vale mientras la cara siga como estaba cuando se dijo: deshacer,
+  // rehacer o mover otra pieza la vuelven vieja, y entonces habla el estado.
+  const pista = pistaGuardada && pistaGuardada.zonas === edicion.zonas ? pistaGuardada.texto : null;
+  const ajusteVigente = ajuste && ajuste.zonas === edicion.zonas ? ajuste : null;
   const acomodadas = usePiezasUI((s) => s.acomodadas);
 
   const [pregunta, setPregunta] = useState<Pregunta>(null);
@@ -329,12 +491,29 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
 
   /* ── «Más» se cierra tocando afuera ──────────────────────────────────────── */
   const menuMas = useRef<HTMLDivElement>(null);
+  const botonMas = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!mas) return;
     const afuera = (e: PointerEvent) => { if (menuMas.current && !menuMas.current.contains(e.target as Node)) setMas(false); };
     window.addEventListener("pointerdown", afuera, { capture: true });
-    return () => window.removeEventListener("pointerdown", afuera, { capture: true });
+    // Al abrirse, el foco entra al primer ítem que se puede usar; Esc (lo
+    // atiende el oyente del teclado) lo cierra y el foco vuelve a «Más».
+    menuAbierto.cerrar = () => { setMas(false); botonMas.current?.focus(); };
+    itemsDelMenu(menuMas.current)[0]?.focus();
+    return () => { window.removeEventListener("pointerdown", afuera, { capture: true }); menuAbierto.cerrar = null; };
   }, [mas]);
+  /** Flechas, Inicio y Fin entre los ítems de «Más»; Tab lo cierra. */
+  const teclaDelMenu = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = itemsDelMenu(menuMas.current);
+    if (items.length === 0) return;
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    const ir = (k: number) => { e.preventDefault(); items[(k + items.length) % items.length]?.focus(); };
+    if (e.key === "ArrowDown") ir(i + 1);
+    else if (e.key === "ArrowUp") ir(i < 0 ? items.length - 1 : i - 1);
+    else if (e.key === "Home") ir(0);
+    else if (e.key === "End") ir(items.length - 1);
+    else if (e.key === "Tab") setMas(false);
+  };
 
   /* ── El teclado: en captura, mientras la pantalla está montada ──────────── */
   useEffect(() => {
@@ -492,13 +671,37 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
     ui().elegir(s);
     const p = porS.get(s);
     if (p?.zonas[0]) st().despachar({ tipo: "seleccionar", zona: p.zonas[0].clave });
-    // La forma «A mano» de la elegida: el trazo es de ella.
-    if (p?.forma === "a_mano" && puedeEditar) {
-      st().despachar({ tipo: "elegirActiva", spaceId: s });
-      st().despachar({ tipo: "elegirHerramienta", herramienta: "poligono" });
-    } else if (st().edicion.herramienta !== "seleccionar") {
-      st().despachar({ tipo: "elegirHerramienta", herramienta: "seleccionar" });
+    // Elegir una pieza nunca empieza a dibujarla: una «A mano» YA hecha se
+    // rehace sólo con «Rehacer a mano» (un toque en lo libre la rehacía sin
+    // querer). Una «A mano» sin nada dibujado sí empieza el trazo: es lo único
+    // que se puede hacer con ella.
+    if (p?.forma === "a_mano" && p.poligonos.length === 0 && puedeEditar) empezarAMano(p);
+    else salirDelTrazo();
+  };
+  /** Empezar (o rehacer) el trazo «A mano» de una pieza. */
+  const empezarAMano = (p: Pieza) => {
+    st().despachar({ tipo: "elegirActiva", spaceId: p.spaceId });
+    st().despachar({ tipo: "elegirHerramienta", herramienta: "poligono" });
+    ui().decir(p.poligonos.length > 0
+      ? `Rehacé ${p.corto}: tocá un punto por cada esquina. Lo de antes queda hasta que cierres la forma nueva.`
+      : "A mano: tocá un punto por cada esquina. Se pegan a los estantes y a los bordes; el círculo grande es el primero: tocalo (o Enter) para cerrar.");
+  };
+  /** Dejar de dibujar (sin tocar lo ya dibujado). */
+  const salirDelTrazo = () => {
+    if (st().edicion.trazo) st().despachar({ tipo: "cancelarTrazo" });
+    if (st().edicion.herramienta !== "seleccionar") st().despachar({ tipo: "elegirHerramienta", herramienta: "seleccionar" });
+  };
+  /** Ubicar sin arrastrar (el menú de la pieza y, en la cara, las flechas). */
+  const ubicarSinArrastre = (p: Pieza, como: "primero" | "izquierda" | "derecha") => {
+    if (!cara || !puedeEditar || p.forma === "a_mano") return;
+    const r = ubicarSinArrastrar(cara, p.pb, p.forma, ocupadosPara(p.spaceId, piezas, hoy), p.estado === "sin_ubicar" ? null : p.rect, como);
+    if (!r) {
+      ui().decir(como === "primero" ? `${p.corto} no entra entera en ningún hueco libre: probá en Estantes o a mano.` : `${p.corto}: no hay más lugar libre a la ${como}.`);
+      return;
     }
+    mostrarLaCara();
+    soltar(p.spaceId, r, null);
+    ui().decir(`${p.corto} quedó ${dondeQuedo(r, cara.ancho)}: ${pct(p.pb)} justo.`);
   };
 
   /** Cambiar la forma de la elegida: «A mano» abre el trazo; Franja y
@@ -517,13 +720,8 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
     if (!p || !cara || !puedeEditar) return;
     mostrarLaCara();
     ui().ponerForma(p.spaceId, f);
-    if (f === "a_mano") {
-      st().despachar({ tipo: "elegirActiva", spaceId: p.spaceId });
-      st().despachar({ tipo: "elegirHerramienta", herramienta: "poligono" });
-      ui().decir("A mano: tocá un punto por cada esquina. Se pegan a los estantes y a los bordes; el círculo grande es el primero: tocalo para cerrar.");
-      return;
-    }
-    st().despachar({ tipo: "elegirHerramienta", herramienta: "seleccionar" });
+    if (f === "a_mano") { empezarAMano(p); return; }
+    salirDelTrazo();
     const caja = cajaDe(p.poligonos);
     if (!caja) return;
     const ocupados = ocupadosPara(p.spaceId, piezas, hoy);
@@ -654,6 +852,9 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
   const conProblema = piezas.filter((p) => p.estado !== "sin_ubicar" && p.estado !== "ubicada");
   const enLosTopes = rev?.enLosTopes ?? true;
   const ubicadas = piezas.filter((p) => p.estado === "ubicada").length;
+  // Guardada y sin cambios: «Listo» se apaga (cada toque creaba una versión y
+  // un «Confirmada» repetido en el historial).
+  const guardadaSinCambios = !sucio && datos?.distribucion?.estado === "confirmada" && !datos.distribucion.borrador;
   const motivoDeListo = !datos?.por_participacion ? "Esta cara se vende entera: no tiene marcas que ubicar."
     : !alDia ? "El plano tiene cambios sin guardar: esperá un momento."
     : piezas.length === 0 ? "Esta cara no tiene marcas vendidas: vendelas en Vender."
@@ -662,6 +863,7 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
     : errores.length > 0 || !enLosTopes ? "Hay piezas que el servidor no aceptaría: revisá la lista."
     : guardado.estado === "version_vieja" ? "Otra sesión cambió esta cara: tocá «Traer lo nuevo»."
     : guardado.estado === "guardando" || guardando ? "Guardando…"
+    : guardadaSinCambios ? "Guardada, sin cambios."
     : null;
   const bloqueado = errores.length > 0 || !enLosTopes || !alDia || motivoDeListo !== null;
 
@@ -707,6 +909,11 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
 
   /* ── Lo que se ve ─────────────────────────────────────────────────────────── */
 
+  // (Todos los hooks van ANTES del return temprano de abajo.)
+  const nombreDelMueble = useMemo(() => nombreDescriptivo(mueble, activa?.codigo ?? "", nombresPropios),
+    [mueble, activa?.codigo, nombresPropios, fichasPropias]);
+  const nombresHist = useMemo(() => nombresDelHistorial(datos), [datos]);
+
   if (!activa) {
     return (
       <div data-distribucion className="flex h-full items-center justify-center bg-bg p-6 text-sm text-ink-2">Elegí una cara para distribuir.</div>
@@ -722,20 +929,22 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
   });
   const queda = datos?.superficie && datos.por_participacion ? capacidadDe(datos, hoy).queda : null;
   const aMano = !!piezaElegida && piezaElegida.forma === "a_mano";
-  const trazo = aMano && edicion.activa === piezaElegida.spaceId ? edicion.trazo : null;
+  // Dibujando (el trazo es de la elegida) o mirando una ya hecha: el contador
+  // dice lo del trazo o lo dibujado, y la pista lo que se puede hacer.
+  const dibujando = aMano && edicion.herramienta === "poligono" && edicion.activa === piezaElegida.spaceId;
+  const trazo = dibujando ? edicion.trazo : null;
   const lleva = aMano && cara ? (trazo ? llevaAMano(trazo, cara) : piezaElegida.dibujado) : null;
-  const contador = aMano && piezaElegida ? contadorAMano(lleva, piezaElegida.pb) : null;
-  const nombreDelMueble = useMemo(() => nombreDescriptivo(mueble, activa?.codigo ?? "", nombresPropios),
-    [mueble, activa?.codigo, nombresPropios, fichasPropias]);
+  const contador = aMano && piezaElegida ? contadorAMano(lleva, piezaElegida.pb, !trazo && piezaElegida.poligonos.length > 0) : null;
   const piezaQueVuela = arrastre && arrastre.movida && !arrastre.rect ? porS.get(arrastre.spaceId) ?? null : null;
 
   const pistaQueSeVe = edicion.aviso
     ?? (!alDia && datos?.por_participacion ? "El plano tiene cambios sin guardar: esperá un momento." : null)
     ?? pista
-    ?? (aMano ? "Tocá un punto por cada esquina: se pegan a los estantes y a los bordes. El círculo grande es el primero: tocalo para cerrar." : null)
-    ?? (piezaElegida?.estado === "sin_ubicar" ? `Arrastrá «${piezaElegida.corto}» desde la lista y soltala sobre lo verde (o tocá lo verde).` : null)
-    ?? (sinUbicar[0] ? `Arrastrá «${sinUbicar[0].corto}» desde la lista y soltala sobre lo verde.` : null)
-    ?? "Arrastrá una pieza para moverla; las manijas la estiran sin cambiar su %.";
+    ?? (dibujando && piezaElegida ? pistaDelTrazo(trazo?.length ?? 0, piezaElegida.poligonos.length > 0) : null)
+    ?? (aMano && piezaElegida && piezaElegida.poligonos.length > 0 ? pistaDeAMano(piezaElegida) : null)
+    ?? (piezaElegida?.estado === "sin_ubicar" ? `Arrastrá «${piezaElegida.corto}» a lo verde, o tocá lo verde donde va.` : null)
+    ?? (sinUbicar[0] ? `Arrastrá «${sinUbicar[0].corto}» a lo verde, o tocala en la lista y después tocá lo verde.` : null)
+    ?? "Arrastrá una pieza para moverla, o elegila y movela con las flechas; las manijas la estiran sin cambiar su %.";
 
   const ITEM_MENU = "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-ink-1 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -747,17 +956,17 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-ink-3">Así queda</p>
-              <h2 className="text-balance break-words text-base font-bold leading-snug"><span className="codigo">{tituloDelPanel(activa)}</span> · en 3D</h2>
+              <h2 className="text-balance break-words text-base font-bold leading-snug"><span className="codigo">{sinCortarLaCara(tituloDelPanel(activa))}</span> · en 3D</h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={BOTON} onClick={() => onEncuadrarCara(activa.cara)}><Crosshair {...ICONO} />De frente</button>
+              <button type="button" className={BOTON} onClick={() => onEncuadrarCara(activa.cara)} data-encuadrar-cara><Crosshair {...ICONO} />Centrar la cara {activa.cara}</button>
               <button type="button" className={BOTON} onClick={() => ui().verEn3D(false)} data-volver-a-ubicar><ArrowLeft {...ICONO} />Volver a ubicar</button>
             </div>
           </div>
           <RanuraDelLienzo anfitrion={lienzo3D} className="relative min-h-[320px] flex-1 overflow-hidden rounded-xl border border-line" style={{ height: "62vh" }} />
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-xs text-ink-2">
             {piezas.map((p) => (
-              <span key={p.spaceId} className="inline-flex items-center gap-1.5"><Bloque p={p} chico />{p.nombre} · {pct(p.pb)}</span>
+              <span key={p.spaceId} className="inline-flex items-center gap-1.5"><Bloque p={p} chico patron={patronDe(p, piezas)} />{p.nombre} · {pct(p.pb)}</span>
             ))}
             {queda !== null && <span className="inline-flex items-center gap-1.5" style={{ color: "rgb(var(--libre-txt-rgb))" }}>
               <span aria-hidden className="inline-block h-3 w-3 rounded-sm border-2 border-dashed" style={{ borderColor: "rgb(var(--libre-borde-rgb))", background: "rgb(var(--libre-suave-rgb))" }} />Libre · {pct(queda)}</span>}
@@ -778,7 +987,7 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
             <div className="min-w-0">
               <p className="text-xs text-ink-3">Distribuir la cara</p>
               <h2 className="text-balance break-words text-base font-bold leading-snug" title={tituloDelPanel(activa)} data-titulo-de-distribucion>
-                <span className="codigo">{tituloDelPanel(activa)}</span>{nombreDelMueble ? ` · ${nombreDelMueble}` : ""}
+                <span className="codigo">{sinCortarLaCara(tituloDelPanel(activa))}</span>{nombreDelMueble ? ` · ${nombreDelMueble}` : ""}
               </h2>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-ink-3" data-estado-distribucion={estado}>
                 <span>{sucio && estado === "sin_distribuir" ? "Todavía sin guardar" : ESTADOS[estado]}</span>
@@ -801,12 +1010,12 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
               )}
               <button type="button" className={BOTON} onClick={() => ui().verEn3D(true)} disabled={!datos?.superficie} data-ver-en-3d><Box {...ICONO} />Ver en 3D</button>
               <div className="relative" ref={menuMas}>
-                <button type="button" className={BOTON} aria-haspopup="menu" aria-expanded={mas} onClick={() => setMas(!mas)} data-mas>
+                <button type="button" ref={botonMas} className={BOTON} aria-haspopup="menu" aria-expanded={mas} onClick={() => setMas(!mas)} data-mas>
                   <MoreHorizontal {...ICONO} />Más
                 </button>
                 {mas && (
-                  <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-64 rounded-xl border border-line bg-surface p-1.5 shadow-lg"
-                    onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setMas(false); } }}>
+                  <div role="menu" aria-label="Más" data-menu-mas className="absolute right-0 top-full z-20 mt-1 w-64 rounded-xl border border-line bg-surface p-1.5 shadow-lg"
+                    onKeyDown={teclaDelMenu}>
                     <button role="menuitem" type="button" className={ITEM_MENU} disabled={!puedeEditar || edicion.atras.length === 0}
                       onClick={() => { setMas(false); st().despachar({ tipo: "deshacer" }); }}><Undo2 {...ICONO} />Deshacer</button>
                     <button role="menuitem" type="button" className={ITEM_MENU} disabled={!puedeEditar || edicion.adelante.length === 0}
@@ -833,9 +1042,9 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
 
           {/* 2 · Lo que pasó con lo guardado */}
           {exito && (
-            <div role="status" data-exito className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm"
+            <div role="status" data-exito className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm"
               style={{ background: "rgb(var(--libre-suave-rgb))", borderColor: "rgb(var(--libre-borde-rgb))" }}>
-              <CircleCheck size={20} strokeWidth={1.75} aria-hidden style={{ color: "rgb(var(--libre-txt-rgb))" }} />
+              <CircleCheck {...ICONO} className="mt-0.5" style={{ color: "rgb(var(--libre-txt-rgb))" }} />
               <div><b>{exito.titulo}</b>{exito.texto && <span className="mt-0.5 block text-xs text-ink-2">{exito.texto}</span>}</div>
               <button type="button" className="rounded p-1 text-ink-3 hover:text-ink-1" aria-label="Cerrar el aviso" onClick={() => setExito(null)}><X {...ICONO} /></button>
             </div>
@@ -935,7 +1144,15 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
             <div className="grid gap-5 [grid-template-areas:'cara'_'piezas'_'mini'] lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:[grid-template-areas:'cara_piezas'_'mini_piezas']">
               <div className="flex min-w-0 flex-col items-center gap-2 [grid-area:cara]">
                 <div ref={caraRef} className="w-full scroll-mt-4"><CaraDePiezas fixtureId={fixtureId} sede={sede} onSoltar={soltar} /></div>
-                <p className="min-h-[1.4em] text-center text-xs text-ink-2" aria-live="polite" data-pista>{pistaQueSeVe}</p>
+                <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                  <p className="min-h-[1.4em] text-center text-xs text-ink-2" aria-live="polite" data-pista>{pistaQueSeVe}</p>
+                  {ajusteVigente && puedeEditar && (
+                    <button type="button" className={BOTON} data-deshacer-ajuste
+                      onClick={() => { st().despachar({ tipo: "deshacer" }); ui().anotarAjuste(null); }}>
+                      <Undo2 {...ICONO} />Deshacer el ajuste
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex min-w-0 flex-col gap-3 [grid-area:piezas]" aria-label="Las marcas de la cara" data-piezas>
@@ -972,14 +1189,14 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
                             onPointerDown={(e) => { arrastrada.current = false; empezarArrastre(p, e); }}
                             onClick={() => { if (arrastrada.current) { arrastrada.current = false; return; } elegirPieza(p.spaceId); }}
                             className={`flex min-w-0 flex-1 touch-none items-center gap-2.5 text-left ${puedeEditar && p.forma !== "a_mano" ? "cursor-grab" : "cursor-pointer"}`}>
-                            <Bloque p={p} />
+                            <Bloque p={p} patron={patronDe(p, piezas)} />
                             <span className="block min-w-0 flex-1">
                               <span className="block break-words text-sm font-bold leading-snug">{p.nombre}</span>
                               <span className="block text-xs text-ink-3">{pct(p.pb)} de la cara</span>
                               <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold"
                                 style={{ color: ok ? "rgb(var(--libre-txt-rgb))" : mal ? "rgb(var(--ocupado-txt-rgb))" : "rgb(var(--ink-2-rgb))" }}>
-                                {ok && <CircleCheck size={13} strokeWidth={1.75} aria-hidden />}
-                                {mal && <CircleAlert size={13} strokeWidth={1.75} aria-hidden />}
+                                {ok && <CircleCheck {...ICONO} />}
+                                {mal && <CircleAlert {...ICONO} />}
                                 {textoDelEstado(p, nombreDe, p.choca)}
                               </span>
                             </span>
@@ -1001,6 +1218,19 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
                         {menuDe === p.spaceId && (
                           <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2 p-2.5 text-xs">
                             {p.detalle && <p className="text-ink-2">{p.detalle}</p>}
+                            {p.forma !== "a_mano" && (
+                              <div className="flex flex-wrap gap-1.5" data-ubicar-sin-arrastrar>
+                                <button type="button" className={BOTON} disabled={!puedeEditar} onClick={() => { setMenuDe(null); ubicarSinArrastre(p, "primero"); }}>
+                                  <BoxSelect {...ICONO} />Ponerla en el primer hueco libre
+                                </button>
+                                <button type="button" className={BOTON} disabled={!puedeEditar} onClick={() => ubicarSinArrastre(p, "izquierda")}>
+                                  <ArrowLeftToLine {...ICONO} />A la izquierda
+                                </button>
+                                <button type="button" className={BOTON} disabled={!puedeEditar} onClick={() => ubicarSinArrastre(p, "derecha")}>
+                                  <ArrowRightToLine {...ICONO} />A la derecha
+                                </button>
+                              </div>
+                            )}
                             <div className="flex flex-wrap gap-1.5">
                               {p.poligonos.length > 0 && (
                                 <button type="button" className={BOTON} disabled={!puedeEditar} onClick={() => { setMenuDe(null); sacar(p); }}>Sacar de la cara</button>
@@ -1030,13 +1260,14 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
                   })}
                 </ul>
 
-                {queda !== null && (
+                {queda !== null && queda > 0 && (
                   <p className="flex items-center gap-2.5 px-1 text-xs" style={{ color: "rgb(var(--libre-txt-rgb))" }} data-libre>
                     <span aria-hidden className="inline-block h-[30px] w-[18px] rounded-md border-2 border-dashed"
                       style={{ borderColor: "rgb(var(--libre-borde-rgb))", background: "rgb(var(--libre-suave-rgb))" }} />
                     Libre · {pct(queda)} sin vender
                   </p>
                 )}
+                {queda === 0 && <p className="px-1 text-xs text-ink-2" data-libre data-sin-lugar>Sin lugar libre: la cara está toda vendida.</p>}
 
                 {piezaElegida && (
                   <div className="flex flex-col gap-1.5">
@@ -1084,6 +1315,16 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
                       {trazo && trazo.length > 0 && (
                         <button type="button" className={BOTON} onClick={() => st().despachar({ tipo: "cancelarTrazo" })}><Eraser {...ICONO} />Borrar los puntos</button>
                       )}
+                      {!dibujando && piezaElegida.poligonos.length > 0 && (
+                        <button type="button" className={BOTON} disabled={!puedeEditar} onClick={() => empezarAMano(piezaElegida)} data-rehacer-a-mano>
+                          <PenLine {...ICONO} />Rehacer a mano
+                        </button>
+                      )}
+                      {dibujando && piezaElegida.poligonos.length > 0 && (
+                        <button type="button" className={BOTON} onClick={() => { salirDelTrazo(); ui().decir(null); }} data-dejar-como-estaba>
+                          <X {...ICONO} />Dejarla como estaba
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1093,10 +1334,10 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
                 </button>
                 <button type="button" className="btn-principal inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-sm"
                   disabled={bloqueado} onClick={listo} data-listo>
-                  <Check {...ICONO} />{guardando ? "Guardando…" : "Listo, guardar la cara"}
+                  <Check {...ICONO} />{guardando ? "Guardando…" : guardadaSinCambios ? "Guardada, sin cambios" : "Listo, guardar la cara"}
                 </button>
-                {motivoDeListo && (
-                  <p className="flex items-center gap-1.5 text-xs text-ink-3" data-motivo-de-listo><CircleAlert size={13} strokeWidth={1.75} aria-hidden />{motivoDeListo}</p>
+                {motivoDeListo && !guardadaSinCambios && (
+                  <p className="flex items-center gap-1.5 text-xs text-ink-3" data-motivo-de-listo><CircleAlert {...ICONO} />{motivoDeListo}</p>
                 )}
               </div>
 
@@ -1120,7 +1361,7 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
       {piezaQueVuela && arrastre && (
         <div aria-hidden className="pointer-events-none fixed z-[900] flex items-center gap-2 rounded-xl border-2 bg-surface px-2.5 py-1.5 text-xs font-semibold shadow-lg"
           style={{ left: arrastre.x + 12, top: arrastre.y + 12, borderColor: piezaQueVuela.tono }}>
-          <Bloque p={piezaQueVuela} chico />{piezaQueVuela.corto} · {pct(piezaQueVuela.pb)}
+          <Bloque p={piezaQueVuela} chico patron={patronDe(piezaQueVuela, piezas)} />{piezaQueVuela.corto} · {pct(piezaQueVuela.pb)}
         </div>
       )}
 
@@ -1166,15 +1407,15 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
           guardando={guardando} bloqueado={bloqueado} onVolver={() => setResumen(null)} onGuardar={() => void confirmarYa()} />
       )}
       {verHistorial && (
-        <Dialogo titulo={`Qué pasó con ${activa.codigo} · cara ${activa.cara}`} onCerrar={() => setVerHistorial(false)} ancho="max-w-lg">
+        <Dialogo titulo={`Qué pasó con ${activa.codigo} · cara\u00A0${activa.cara}`} onCerrar={() => setVerHistorial(false)} ancho="max-w-lg">
           <div className="flex flex-col gap-1.5 text-xs text-ink-2">
             {errorHistorial && <p style={{ color: "rgb(var(--ocupado-txt-rgb))" }}>{errorHistorial}</p>}
             {!lineas && !errorHistorial && <p>Leyendo…</p>}
             {lineas && lineas.entradas.length === 0 && lineas.derivados.length === 0 && <p>Todavía no pasó nada en esta cara.</p>}
-            {lineas && lineasDelHistorial(lineas).map((e) => (
+            {lineas && lineasDelHistorial(lineas, nombresHist).map((e) => (
               <div key={e.clave} className="rounded-lg border border-line px-2.5 py-1.5" data-derivada={e.derivada || undefined}>
                 <p className="text-ink-3">{e.cuando}{e.actor ? ` · ${e.actor}` : ""}</p>
-                <p className="text-ink-1">{e.detalle}</p>
+                <p className="text-ink-1" data-texto-del-historial>{e.texto}</p>
                 {e.zonas && (
                   <button type="button" className="mt-0.5 text-[11px] underline underline-offset-2 hover:text-ink-1"
                     onClick={() => { useVistaDeDistribucion.getState().verComoEstaba({ titulo: `cómo quedó el ${cuandoFue(e.en)}`, zonas: e.zonas! }); setVerHistorial(false); }}>

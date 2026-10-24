@@ -178,23 +178,33 @@ function resolverLado(cara: CaraDePiezas, pb: number, armar: (x: number) => Rect
  *  izquierdo) se corre desde `u` hasta dar `pb`. */
 export function anchoExacto(cara: CaraDePiezas, pb: number, o: { v0: number; v1: number; u: number; hacia: "derecha" | "izquierda" }): Rect | null {
   const u = q(o.u), v0 = q(o.v0), v1 = q(o.v1);
-  if (o.hacia === "derecha") return resolverLado(cara, pb, (x) => ({ u0: u, v0, u1: x, v1 }), u, 1);
-  return resolverLado(cara, pb, (x) => ({ u0: x, v0, u1: u, v1 }), u, 0);
+  // Hasta el borde de lo que se VENDE (no hasta el de la cara): más allá no
+  // cuenta, y una pieza que necesita todo lo que queda (la última de
+  // «Acomodar solas», con el redondeo a pb) terminaba sobre el parante.
+  const b = bordesUtiles(cara.exclusiones);
+  if (o.hacia === "derecha") return resolverLado(cara, pb, (x) => ({ u0: u, v0, u1: x, v1 }), u, Math.max(u, b.u1));
+  return resolverLado(cara, pb, (x) => ({ u0: x, v0, u1: u, v1 }), u, Math.min(u, b.u0));
 }
 
 /** El alto exacto: con el ancho [u0, u1] fijo, el lado de arriba (o el de
  *  abajo) se corre desde `v` hasta dar `pb`. */
 export function altoExacto(cara: CaraDePiezas, pb: number, o: { u0: number; u1: number; v: number; hacia: "arriba" | "abajo" }): Rect | null {
   const v = q(o.v), u0 = q(o.u0), u1 = q(o.u1);
-  if (o.hacia === "arriba") return resolverLado(cara, pb, (x) => ({ u0, v0: v, u1, v1: x }), v, 1);
-  return resolverLado(cara, pb, (x) => ({ u0, v0: x, u1, v1: v }), v, 0);
+  const b = bordesUtiles(cara.exclusiones);
+  if (o.hacia === "arriba") return resolverLado(cara, pb, (x) => ({ u0, v0: v, u1, v1: x }), v, Math.max(v, b.v1));
+  return resolverLado(cara, pb, (x) => ({ u0, v0: x, u1, v1: v }), v, Math.min(v, b.v0));
 }
 
-/** Una franja de arriba a abajo (toda la altura de la cara: lo que no se
- *  vende arriba y abajo no cuenta) que arranca en `u` hacia la derecha, o que
- *  termina en `u` si va hacia la izquierda. */
+/** Una franja de arriba a abajo que arranca en `u` hacia la derecha, o que
+ *  termina en `u` si va hacia la izquierda. Va de borde a borde de lo que se
+ *  VENDE (arriba del zócalo, abajo del remate, adentro de los parantes de los
+ *  costados): lo que se ve en la cara es lo que se guarda, y el % es el mismo
+ *  que si cubriera lo que no se vende, que no cuenta (2026-10-24, la
+ *  corrección tras la ronda de prueba). */
 export function franja(cara: CaraDePiezas, pb: number, u: number, hacia: "derecha" | "izquierda" = "derecha"): Rect | null {
-  return anchoExacto(cara, pb, { v0: 0, v1: 1, u, hacia });
+  const b = bordesUtiles(cara.exclusiones);
+  const uu = Math.max(b.u0, Math.min(u, b.u1));
+  return anchoExacto(cara, pb, { v0: b.v0, v1: b.v1, u: uu, hacia });
 }
 
 /** «Estantes»: con el ancho [u0, u1], apoyada en el estante `v` (la altura
@@ -242,16 +252,16 @@ export function huecosLibres(cara: CaraDePiezas, ocupados: readonly Ocupado[], v
     tapas.push([c.u0, c.u1]);
   }
   tapas.sort((x, y) => x[0] - y[0]);
-  // Los huecos van de borde a borde de la cara (lo que no se vende en los
-  // costados no cuenta, pero la pieza lo cubre igual que una de verdad).
+  // Los huecos van de borde a borde de lo que se VENDE: una pieza no se
+  // dibuja sobre el parante del costado (lo que se ve es lo que se guarda).
   const fuera: [number, number][] = [];
-  let cur = 0;
+  let cur = b.u0;
   for (const [a, z] of tapas) {
-    if (a > cur + EPS) fuera.push([cur, Math.min(a, 1)]);
+    if (a > cur + EPS) fuera.push([cur, Math.min(a, b.u1)]);
     if (z > cur) cur = z;
-    if (cur >= 1) break;
+    if (cur >= b.u1) break;
   }
-  if (cur < 1 - EPS) fuera.push([cur, 1]);
+  if (cur < b.u1 - EPS) fuera.push([cur, b.u1]);
   return fuera.filter(([a, z]) => z - a > EPS);
 }
 
@@ -305,31 +315,39 @@ export function encajar(cara: CaraDePiezas, pb: number, forma: "franja" | "estan
   const radio = o.radio ?? 0.03;
   const lineas = lineasDeLaCara(cara);
   if (forma === "franja") {
-    const v0 = o.altura?.v0 ?? 0, v1 = o.altura?.v1 ?? 1;
+    const v0 = o.altura?.v0 ?? b.v0, v1 = o.altura?.v1 ?? b.v1;
     const conAltura = (desde: number, hacia: "derecha" | "izquierda") => anchoExacto(cara, pb, { v0, v1, u: desde, hacia });
-    const tanteo = conAltura(Math.max(0, Math.min(u, 1)), "derecha") ?? conAltura(Math.min(1, Math.max(u, 0)), "izquierda");
+    const uc = Math.max(0, Math.min(u, 1));
+    const todaLaAltura = v0 <= b.v0 + EPS && v1 >= b.v1 - EPS;
+    const hueco = huecosLibres(cara, ocupados, todaLaAltura ? undefined : (v0 + v1) / 2)
+      .find(([a, z]) => a - radio <= uc && uc <= z + radio) ?? null;
+    const izqH = hueco ? hueco[0] : b.u0, derH = hueco ? hueco[1] : b.u1;
+    // El ancho se mide desde el BORDE del hueco (o de lo que se vende), no
+    // desde el puntero: medido desde `u` hacia un solo lado, una pieza de más
+    // de la mitad no entraba soltada cerca del medio de una cara vacía.
+    const tanteo = conAltura(izqH, "derecha") ?? conAltura(derH, "izquierda")
+      ?? conAltura(b.u0, "derecha") ?? conAltura(b.u1, "izquierda");
     if (!tanteo) return null;
     const w = tanteo.u1 - tanteo.u0;
-    const enV = (v0 + v1) / 2;
-    const hueco = huecosLibres(cara, ocupados, v0 <= 0 && v1 >= 1 ? undefined : enV).find(([a, z]) => a - radio <= u && u <= z + radio) ?? null;
-    const bordesU = [...lineas.us];
-    if (hueco) bordesU.push(hueco[0], hueco[1]);
-    let r = conAltura(u - w / 2, "derecha");
-    const izq = pegar(u - w / 2, bordesU, radio);
-    const der = pegar(u + w / 2, bordesU, radio);
-    if (hueco && (u - w / 2 < hueco[0] || izq === hueco[0])) r = conAltura(hueco[0], "derecha");
-    else if (hueco && (u + w / 2 > hueco[1] || der === hueco[1])) r = conAltura(hueco[1], "izquierda");
+    const bordesU = [...lineas.us, izqH, derH];
+    const izq = pegar(uc - w / 2, bordesU, radio);
+    const der = pegar(uc + w / 2, bordesU, radio);
+    // Centrada en el puntero, pegada a un borde cercano y recortada al hueco.
+    let r: Rect | null;
+    if (uc - w / 2 < izqH || izq === izqH) r = conAltura(izqH, "derecha");
+    else if (uc + w / 2 > derH || der === derH) r = conAltura(derH, "izquierda");
     else if (izq !== null) r = conAltura(izq, "derecha");
     else if (der !== null) r = conAltura(der, "izquierda");
-    if (!r || r.u1 > 1) r = conAltura(1, "izquierda") ?? r;
-    if (r && r.u0 < 0) r = conAltura(0, "derecha") ?? r;
-    return r;
+    else r = conAltura(uc - w / 2, "derecha");
+    if (r && r.u1 > derH + EPS) r = conAltura(derH, "izquierda") ?? r;
+    if (r && r.u0 < izqH - EPS) r = conAltura(izqH, "derecha") ?? r;
+    return r ?? conAltura(b.u1, "izquierda") ?? conAltura(b.u0, "derecha");
   }
   // Estantes
   const hueco = huecosLibres(cara, ocupados, v).find(([a, z]) => a - radio <= u && u <= z + radio)
-    ?? [0, 1] as [number, number];
+    ?? [b.u0, b.u1] as [number, number];
   let ancho = o.ancho ?? (hueco[1] - hueco[0]);
-  ancho = Math.min(Math.max(ancho, 0.02), 1);
+  ancho = Math.min(Math.max(ancho, 0.02), b.u1 - b.u0);
   let u0 = u - ancho / 2;
   const izq = pegar(u0, [...lineas.us, hueco[0], hueco[1]], radio);
   const der = pegar(u0 + ancho, [...lineas.us, hueco[0], hueco[1]], radio);
@@ -337,7 +355,7 @@ export function encajar(cara: CaraDePiezas, pb: number, forma: "franja" | "estan
   else if (u0 + ancho > hueco[1] || der === hueco[1]) u0 = hueco[1] - ancho;
   else if (izq !== null) u0 = izq;
   else if (der !== null) u0 = der - ancho;
-  u0 = Math.max(0, Math.min(u0, 1 - ancho));
+  u0 = Math.max(b.u0, Math.min(u0, b.u1 - ancho));
   const u1 = Math.min(1, u0 + ancho);
   // El alto que tendría apoyada abajo, para centrarla en el puntero.
   const prueba = altoExacto(cara, pb, { u0, u1, v: b.v0, hacia: "arriba" });
@@ -370,6 +388,54 @@ export function estirar(cara: CaraDePiezas, pb: number, r: Rect, lado: "e" | "o"
   return anchoExacto(cara, pb, { v0, v1, u: r.u0, hacia: "derecha" }) ?? anchoExacto(cara, pb, { v0, v1, u: r.u1, hacia: "izquierda" });
 }
 
+/* ── Ubicar sin arrastrar (teclado y menú) ─────────────────────────────────── */
+
+/**
+ * Los lugares donde una pieza Franja o Estantes entra ENTERA, sin pisar a
+ * nadie y con su % exacto: pegada al borde izquierdo y al derecho de cada
+ * hueco libre, de izquierda a derecha. Una de Estantes conserva su ancho y su
+ * estante (sin ubicar, toma el ancho del hueco y se apoya abajo). Es la
+ * alternativa a arrastrar (accesibilidad): «Ponerla en el primer hueco libre»,
+ * «a la izquierda», «a la derecha» y las flechas.
+ */
+export function lugaresPosibles(cara: CaraDePiezas, pb: number, forma: "franja" | "estantes", ocupados: readonly Ocupado[],
+  actual: Rect | null): Rect[] {
+  const b = bordesUtiles(cara.exclusiones);
+  const fuera: Rect[] = [];
+  const enV = forma === "estantes" && actual ? (actual.v0 + actual.v1) / 2 : undefined;
+  for (const [a, z] of huecosLibres(cara, ocupados, enV)) {
+    let rs: (Rect | null)[];
+    if (forma === "franja") rs = [franja(cara, pb, a, "derecha"), franja(cara, pb, z, "izquierda")];
+    else {
+      const w = actual ? actual.u1 - actual.u0 : z - a;
+      if (z - a < w - EPS) continue;
+      const v = actual ? actual.v0 : b.v0;
+      rs = [estantes(cara, pb, a, a + w, v), estantes(cara, pb, z - w, z, v)];
+    }
+    for (const r of rs) {
+      if (!r || r.u0 < a - EPS || r.u1 > z + EPS) continue;
+      if (primeraQuePisa([poligonoDeRect(r)], ocupados, cara) !== null) continue;
+      if (fuera.some((x) => x.u0 === r.u0 && x.u1 === r.u1 && x.v0 === r.v0 && x.v1 === r.v1)) continue;
+      fuera.push(r);
+    }
+  }
+  return fuera.sort((x, y) => x.u0 - y.u0 || x.v0 - y.v0);
+}
+
+/** Adónde va una pieza sin arrastrarla: «primero» (el primer hueco libre,
+ *  desde la izquierda), o el lugar siguiente «izquierda» / «derecha» desde
+ *  donde está (sin ubicar: el de más a la izquierda o el de más a la
+ *  derecha). null si no hay a dónde (el % no cambia nunca). */
+export function ubicarSinArrastrar(cara: CaraDePiezas, pb: number, forma: "franja" | "estantes", ocupados: readonly Ocupado[],
+  actual: Rect | null, como: "primero" | "izquierda" | "derecha"): Rect | null {
+  const L = lugaresPosibles(cara, pb, forma, ocupados, actual);
+  if (L.length === 0) return null;
+  if (como === "primero" || (!actual && como === "izquierda")) return L[0];
+  if (!actual) return L[L.length - 1];
+  if (como === "izquierda") return [...L].reverse().find((r) => r.u0 < actual.u0 - 1e-6) ?? null;
+  return L.find((r) => r.u0 > actual.u0 + 1e-6) ?? null;
+}
+
 /* ── La forma de una pieza ya dibujada ─────────────────────────────────────── */
 
 /** Qué forma tiene lo dibujado de una marca: sin zonas, null; un rectángulo
@@ -398,16 +464,25 @@ export function llevaAMano(puntos: readonly Punto[], cara: CaraDePiezas): number
 
 export type EstadoDelContador = "lleva" | "justo" | "pasado";
 
-/** El contador grande de «A mano»: cuánto lleva, de cuánto, y qué decir. */
-export function contadorAMano(lleva: number | null, de: number): { estado: EstadoDelContador; titulo: string; texto: string; falta: number; sobra: number } {
+/** El contador grande de «A mano»: cuánto lleva, de cuánto, y qué decir.
+ *  `cerrada`: la forma ya está cerrada (se mira, no se dibuja): ahí no hay
+ *  puntos que tocar ni mover; se achica, se lleva al % o se rehace. */
+export function contadorAMano(lleva: number | null, de: number, cerrada = false): { estado: EstadoDelContador; titulo: string; texto: string; falta: number; sobra: number } {
   const l = lleva ?? 0;
   if (l > de) {
-    return { estado: "pasado", titulo: "Te pasaste", texto: `Sobra ${pct(l - de)}: mové un punto hacia adentro o tocá «Achicar a ${pct(de)}».`, falta: 0, sobra: l - de };
+    return {
+      estado: "pasado", titulo: "Te pasaste",
+      texto: cerrada ? `Sobra ${pct(l - de)}: tocá «Achicar a ${pct(de)}» o «Rehacer a mano».`
+        : `Sobra ${pct(l - de)}: sacá el último punto (Retroceso) o cerrala y tocá «Achicar a ${pct(de)}».`,
+      falta: 0, sobra: l - de,
+    };
   }
   if (l === de) return { estado: "justo", titulo: "Justo", texto: "Cerraste la forma con el % exacto.", falta: 0, sobra: 0 };
   return {
     estado: "lleva", titulo: "Llevás",
-    texto: lleva === null ? "Así la forma se cruza: mové o sacá el último punto." : `Faltan ${pct(de - l)}. Seguí tocando puntos; se pegan a los estantes y a los bordes.`,
+    texto: lleva === null ? "Así la forma se cruza: sacá el último punto (Retroceso)."
+      : cerrada ? `Faltan ${pct(de - l)}: tocá «Llevar a ${pct(de)}» o «Rehacer a mano».`
+        : `Faltan ${pct(de - l)}. Seguí tocando puntos; se pegan a los estantes y a los bordes.`,
     falta: de - l, sobra: 0,
   };
 }
@@ -480,6 +555,17 @@ export function ajustarUnLado(P: readonly Punto[], cara: CaraDePiezas, pb: numbe
     }
   }
   return mejor ? mejor.poly : null;
+}
+
+/**
+ * Lo que dice el rótulo de una pieza (en la cara y en el 3D): justa, su %; si
+ * no, lo que HAY y cuánto sobra o falta («42,42 % · sobra 12,42 %»). Antes
+ * decía el contratado aunque lo dibujado fuera otra cosa.
+ */
+export function rotuloDeLoQueHay(pb: number, hay: number): { texto: string; justo: boolean } {
+  if (hay === pb) return { texto: pct(pb), justo: true };
+  if (hay > pb) return { texto: `${pct(hay)} · sobra ${pct(hay - pb)}`, justo: false };
+  return { texto: `${pct(hay)} · faltan ${pct(pb - hay)}`, justo: false };
 }
 
 /** Cuánto puede faltar o sobrar al cerrar una forma a mano para que se deje

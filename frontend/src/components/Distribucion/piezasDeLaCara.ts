@@ -6,7 +6,7 @@ import { useDistribucionStore } from "../../store/distribucionStore";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import type { Estampa } from "../../utils/coloresDeMarca";
 import type { ZonaEnEdicion } from "../../utils/edicionDeZonas";
-import { pct, seCruzanEnFechas, vivo, type Termino } from "../../utils/participaciones";
+import { cuentaElDia, pct, seCruzanEnFechas, vivo, type Termino } from "../../utils/participaciones";
 import {
   formaDeLoDibujado, rectDePoligono, type CaraDePiezas, type FormaDePieza, type Ocupado, type Rect,
 } from "../../utils/piezas";
@@ -55,6 +55,13 @@ export interface Pieza {
   esReserva: boolean;
   terminos: Termino[];
   participacion: ParticipacionOut;
+  /** ¿Rige hoy? (algún término cuenta el día de hoy). La que todavía no
+   *  rige se dibuja sólo con su contorno punteado. */
+  rigeHoy: boolean;
+  /** Desde cuándo y hasta cuándo va (sus términos vivos): la vigencia corta
+   *  de dos marcas que comparten el lugar en fechas que no se cruzan. */
+  desde: string;
+  hasta: string;
 }
 
 /** «Café Montaña · Café A»: el proveedor y la marca, sin número (`marcaDe`). */
@@ -114,6 +121,8 @@ export function piezasDe(datos: CaraOut | null, zonas: readonly ZonaEnEdicion[],
     else estado = "ubicada";
     const detectada = formaDeLoDibujado(poligonos, E);
     const estampa = d.estampas.get(p.space_id) ?? null;
+    const vivos = terminos.filter((x) => vivo(x, datos.hoy));
+    const fechas = vivos.length > 0 ? vivos : terminos;
     return {
       spaceId: p.space_id, nombre: nombreDeMarca(p), corto: cortoDeMarca(p), pb, estampa,
       tono: estampa ? tonoCss(estampa) : "rgb(var(--ink-3-rgb))",
@@ -122,8 +131,22 @@ export function piezasDe(datos: CaraOut | null, zonas: readonly ZonaEnEdicion[],
       dibujado, estado, choca,
       detalle: t ? `${estadoComercialDe(t, datos.hoy)} · ${vigenciaDe(t)}` : "",
       esReserva: t?.estado === "reserva", terminos, participacion: p,
+      rigeHoy: terminos.some((x) => cuentaElDia(x, datos.hoy, datos.hoy)),
+      desde: fechas.reduce((m, x) => (x.desde < m ? x.desde : m), fechas[0]?.desde ?? datos.hoy),
+      hasta: fechas.reduce((m, x) => (x.hasta > m ? x.hasta : m), fechas[0]?.hasta ?? datos.hoy),
     };
   });
+}
+
+/** El patrón de una pieza en la cara y en su bloque de la lista: LISA (la
+ *  identidad es el color y el nombre). Sólo si otra marca de la cara tiene el
+ *  mismo tono se distingue con puntos —nunca con rayas, que en esta pantalla
+ *  quieren decir «no se vende»—. */
+export type PatronDePieza = "lisa" | "puntos" | "puntos_grandes";
+export function patronDe(p: Pick<Pieza, "spaceId" | "tono" | "estampa">, piezas: readonly Pick<Pieza, "spaceId" | "tono">[]): PatronDePieza {
+  if (!piezas.some((o) => o.spaceId !== p.spaceId && o.tono === p.tono)) return "lisa";
+  const t = p.estampa?.textura ?? "lleno";
+  return t === "lleno" ? "lisa" : t === "rayado45" ? "puntos" : "puntos_grandes";
 }
 
 /** Lo que una pieza no puede pisar: las otras piezas ubicadas cuyas fechas se
@@ -163,6 +186,11 @@ export function textoDelEstado(p: Pick<Pieza, "estado" | "pb" | "dibujado" | "fo
   }
 }
 
+/** Cerrar la forma «A mano» elegida con el ajuste solo (±3 %): lo registra la
+ *  cara (que tiene las líneas del imán) y lo usan tocar el primer punto y
+ *  Enter, para que las dos cosas hagan LO MISMO. */
+export const alCerrarAMano: { actual: (() => void) | null } = { actual: null };
+
 /* ── El estado de pantalla ─────────────────────────────────────────────────── */
 
 export interface ArrastreDePieza {
@@ -190,8 +218,13 @@ interface PiezasUI {
   ver3D: boolean;
   /** Las caras (clave de cara + versión) que ya se acomodaron solas al entrar. */
   acomodadas: string[];
-  /** La pista de la cara (lo que acaba de pasar, en palabras). */
-  pista: string | null;
+  /** La pista de la cara (lo que acaba de pasar, en palabras) y las zonas de
+   *  ese momento: si la cara cambia después (deshacer, rehacer, otra pieza),
+   *  la pista vieja deja de verse y vuelve la que corresponde al estado. */
+  pista: { texto: string; zonas: readonly ZonaEnEdicion[] } | null;
+  /** «A mano» quedó justa sola (le corrimos un lado): de qué marca y con qué
+   *  zonas, para el botón «Deshacer el ajuste» mientras siga así. */
+  ajuste: { spaceId: number; zonas: readonly ZonaEnEdicion[] } | null;
   elegir: (s: number | null) => void;
   ponerForma: (s: number, f: FormaDePieza) => void;
   ponerArrastre: (a: ArrastreDePieza | null) => void;
@@ -199,10 +232,11 @@ interface PiezasUI {
   verEn3D: (v: boolean) => void;
   anotarAcomodada: (k: string) => void;
   decir: (p: string | null) => void;
+  anotarAjuste: (spaceId: number | null) => void;
   reiniciar: () => void;
 }
 
-const VACIO = { elegida: null, formas: {}, arrastre: null, choque: null, ver3D: false, pista: null };
+const VACIO = { elegida: null, formas: {}, arrastre: null, choque: null, ver3D: false, pista: null, ajuste: null };
 
 export const usePiezasUI = create<PiezasUI>()((set) => ({
   ...VACIO,
@@ -213,7 +247,8 @@ export const usePiezasUI = create<PiezasUI>()((set) => ({
   ponerChoque: (choque) => set({ choque }),
   verEn3D: (ver3D) => set({ ver3D }),
   anotarAcomodada: (k) => set((st) => ({ acomodadas: [...st.acomodadas.slice(-20), k] })),
-  decir: (pista) => set({ pista }),
+  decir: (texto) => set({ pista: texto === null ? null : { texto, zonas: useDistribucionStore.getState().edicion.zonas } }),
+  anotarAjuste: (spaceId) => set({ ajuste: spaceId === null ? null : { spaceId, zonas: useDistribucionStore.getState().edicion.zonas } }),
   reiniciar: () => set({ ...VACIO, acomodadas: [] }),
 }));
 

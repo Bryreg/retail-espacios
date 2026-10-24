@@ -35,6 +35,11 @@ import { rayoTapado, type CajaDeMueble } from "./zonas3d";
 
 /** Hasta dónde del cuadro (±1 es el borde) tiene que caer la cara: con aire. */
 export const BORDE_DEL_ENCUADRE = 0.94;
+/** El aire de arriba que «Distribuir» le pide a la toma (m): la letra de la
+ *  cara (A/B) va 6 cm arriba del mueble y, con su círculo, quedaba cortada en
+ *  el borde de la miniatura y del 3D en grande (corrección tras la ronda de
+ *  prueba, 2026-10-24). */
+export const AIRE_DE_LA_LETRA_M = 0.22;
 /** Los giros del tres cuartos que se prueban, del menos al más oblicuo. */
 export const GIROS_DEL_TRES_CUARTOS: readonly number[] = [30, 35, 40, 45, 50, 55, 60, 65, 70];
 /** La subida mínima de la cámara por metro de distancia: el rango polar de
@@ -193,11 +198,22 @@ export function encuadreDeLaCara(
   fovGrados: number,
   aspecto: number,
   cajas: readonly CajaDeMueble[] = [],
+  aire = 0,
 ): EncuadreDeLaCara {
-  const esquinas = esquinasDeLaCara(mueble, cara);
-  const frente = vistaDeVenta(mueble, cara, "frente", { yBajo: 0, yAlto: mueble.h }, obstaculos, limites, fovGrados, aspecto);
+  // `aire`: lo que tiene que entrar arriba de la cara (la letra), en metros.
+  // Lo tapado se sigue mirando sólo en las esquinas de la cara.
+  const deLaCara = esquinasDeLaCara(mueble, cara);
+  // La letra va al medio de la cara, arriba: entra ese punto (no todo el
+  // borde de arriba más alto, que en un pasillo angosto llevaba a una toma
+  // mucho más oblicua).
+  const arriba = deLaCara.filter((p) => p.y === mueble.h);
+  const letra = aire > 0 && arriba.length >= 2
+    ? [{ x: (arriba[0].x + arriba[1].x) / 2, y: mueble.h + aire, z: (arriba[0].z + arriba[1].z) / 2 }]
+    : [];
+  const esquinas = [...deLaCara, ...letra];
+  const frente = vistaDeVenta(mueble, cara, "frente", { yBajo: 0, yAlto: mueble.h + aire / 2 }, obstaculos, limites, fovGrados, aspecto);
   const ocupaFrente = cuantoOcupa(frente, fovGrados, aspecto, esquinas);
-  if (ocupaFrente <= BORDE_DEL_ENCUADRE && !esquinaTapada(frente, esquinas, cajas)) {
+  if (ocupaFrente <= BORDE_DEL_ENCUADRE && !esquinaTapada(frente, deLaCara, cajas)) {
     return { vista: frente, toma: "frente", entera: true, ocupa: ocupaFrente, giro: 0 };
   }
 
@@ -239,7 +255,7 @@ export function encuadreDeLaCara(
         if (ocupa <= BORDE_DEL_ENCUADRE) {
           // Con una esquina tapada, desde más lejos en la misma dirección lo
           // que tapa sigue en el medio: se deja este lado.
-          if (esquinaTapada(vista, esquinas, cajas)) break;
+          if (esquinaTapada(vista, deLaCara, cajas)) break;
           // Lo más cerca que entra (la cara más grande), del lado que sea.
           if (!entra || dist < entra.dist) entra = { vista, toma: "tres_cuartos", entera: true, ocupa, giro: signo * giro, dist };
           break;

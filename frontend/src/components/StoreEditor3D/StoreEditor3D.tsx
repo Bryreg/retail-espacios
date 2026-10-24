@@ -28,10 +28,12 @@ import { corteConLaCara, rayoTapado } from "../../utils/zonas3d";
 // fase 2 · I2: el trazo en curso en el 3D y el interruptor «Editar en el 3D».
 import { trazoParaDibujar } from "../../utils/edicionEnElMueble";
 import RanuraDelLienzo from "../RanuraDelLienzo";
-import { encuadreDeLaCara } from "../../utils/encuadreDeDistribucion";
+import { AIRE_DE_LA_LETRA_M, encuadreDeLaCara } from "../../utils/encuadreDeDistribucion";
 import { superficieDeCara, tieneSuperficie, type Superficie } from "../../utils/superficie";
 import { estampasDeLaCara } from "../../utils/coloresDeMarca";
 import { CARA_ENTERA_PB, cuentaElDia, cuentaEseDia, dispoPorParticipacion, pct, vivo } from "../../utils/participaciones";
+import { rotuloDeLoQueHay } from "../../utils/piezas";
+import { medir } from "../../utils/zonasGeometria";
 import { carasInaccesibles, textoDeCaraInaccesible } from "../../utils/revision";
 import { carasDe } from "../../types/espacio";
 import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
@@ -5950,7 +5952,7 @@ export function Scene({
     // pasillo no cuenta como que entra (lo tapado no se puede dibujar acá).
     if (!enVenta && toma === "frente" && distribucionDeLaToma.current?.fixtureId === fix.id) {
       ponerCampoVisual(FOV_DEL_EDITOR);
-      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures.filter((f) => f.id !== fix.id)).vista);
+      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures.filter((f) => f.id !== fix.id), AIRE_DE_LA_LETRA_M).vista);
       return;
     }
     const fov = toma === "cerca" ? FOV_DE_CERCA
@@ -7365,6 +7367,21 @@ function comoSeVenLasParticipaciones(d: CaraOut, verAlDia: string): Map<number, 
   return fuera;
 }
 
+/** El rótulo de cada participación VIVA de la cara que se edita, con lo que
+ *  mide la edición (la misma `medir` que el servidor): justa, su %; si no, lo
+ *  que hay y cuánto sobra o falta (`rotuloDeLoQueHay`). Sin zonas, su %. */
+function rotulosMedidos(d: CaraOut, zonas: readonly ZonaEnEdicion[]): Map<number, string> {
+  const fuera = new Map<number, string>();
+  if (!d.superficie) return fuera;
+  const { dibujadoPb } = medir(zonas, { exclusiones: d.superficie.exclusiones, ancho: d.superficie.ancho, alto: d.superficie.alto });
+  for (const p of d.participaciones) {
+    if (!p.viva) continue;
+    const hay = dibujadoPb.get(p.space_id) ?? 0;
+    fuera.set(p.space_id, hay === 0 ? pct(p.contratado_pb) : rotuloDeLoQueHay(p.contratado_pb, hay).texto);
+  }
+  return fuera;
+}
+
 /**
  * Las caras que se dibujan sobre el mueble: la que se edita (con lo que hay
  * en la edición, en vivo, y la historia en gris desde lo leído) y, en una
@@ -7423,8 +7440,14 @@ function ZonasDeLaDistribucion() {
   const participaciones = useMemo(() => {
     const m = new Map<number, ComoSeVe>();
     for (const d of [otra, datos]) if (d) comoSeVenLasParticipaciones(d, verAlDia).forEach((v, k) => m.set(k, v));
+    // La cara que se edita: el rótulo dice lo MEDIDO en la edición (lo que
+    // hay), como la cara de piezas: «42,42 % · sobra 12,42 %», no el contratado.
+    if (datos?.superficie) {
+      const medido = rotulosMedidos(datos, zonas);
+      medido.forEach((rotulo, k) => { const v = m.get(k); if (v) m.set(k, { ...v, rotulo }); });
+    }
     return m;
-  }, [datos, otra, verAlDia]);
+  }, [datos, otra, verAlDia, zonas]);
   // El trazo «A mano» en curso, en el tono de la marca que se dibuja.
   const trazoEnCurso = useDistribucionStore((s) => s.edicion.trazo);
   const herramienta = useDistribucionStore((s) => s.edicion.herramienta);

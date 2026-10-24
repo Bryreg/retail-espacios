@@ -8,8 +8,11 @@ nunca pisa a otra; la forma es Franja (por defecto), Estantes o A mano (con cont
 % de Y %»); «Acomodar solas» y, al entrar a una cara sin nada dibujado, las acomoda solas;
 «Listo, guardar la cara» es el único amarillo. El 3D ya no se dibuja: es una miniatura viva
 debajo de la cara (el mismo lienzo del editor, mudado) y «Ver en 3D». Las participaciones se
-crean SÓLO en Vender. Ver *Distribuir con piezas (2026-10-24)* y, en *Dónde retomar*,
-*Próximas fases de la distribución*.
+crean SÓLO en Vender. Ver *Distribuir con piezas (2026-10-24)* —y su *corrección tras la ronda de
+prueba*: una pieza de más de la mitad ya se ubica soltada en el medio, el rótulo dice lo que HAY,
+las piezas van lisas y adentro de lo que se vende, dos marcas que se turnan el lugar se leen,
+«Listo» se apaga con la cara guardada y sin cambios, y se ubica sin arrastrar (teclado y menú)— y,
+en *Dónde retomar*, *Próximas fases de la distribución*.
 
 Antes, 2026-10-22, **editar un contrato y reenviarlo** (y su corrección tras la
 ronda de prueba: la huella entera en `esperado`, el próximo contrato editable, la forma de
@@ -1265,7 +1268,8 @@ cara», el título `SEDE · CÓDIGO · cara A · Góndola de 1,80 m` (`tituloDel
 `nombreDescriptivo`: el nombre propio si tiene uno distinto del código, si no el tipo y el
 ancho, como lo nombra Vender), Cara A | B, «Ver en 3D», «Más» y «Salir». A la izquierda la
 cara de frente (`CaraDePiezas.tsx`, un SVG en metros): lo que no se vende rayado, lo libre en
-verde, los estantes. A la derecha (debajo en angosto) **una pieza por marca** —«proveedor ·
+verde, los estantes y las piezas LISAS, adentro de lo que se vende (ver *La corrección tras la
+ronda de prueba*, al final de esta sección). A la derecha (debajo en angosto) **una pieza por marca** —«proveedor ·
 marca», nunca el número de participación—, su %, su estado («Arrastrala a la cara»,
 «Ubicada», «Le falta…», «Sobra…», «Pisa a…») y su menú «Más de {marca}» (sacarla de la
 cara; Renovar, Pasarla a contrato, Cambiar o Cancelar la reserva, Cancelar el contrato:
@@ -1278,7 +1282,7 @@ queda en 3D». En 390 px no hay desborde horizontal.
 según la cuenta del servidor: `pbDeRect(r) = dibujadoPb([poligonoDeRect(r)], E)` —la misma
 `dibujadoPb` de `zonasGeometria.ts`, idéntica bit a bit a `zonas_geometria.py`—. Franja fija
 un lado (u0 o u1) y Estantes fija el ancho y el piso (un estante), y el lado libre se
-**resuelve** (`resolverLado`): bisección sobre el área cruda (64 pasos) y después una búsqueda
+**resuelve** (hasta el borde de lo que se vende) (`resolverLado`): bisección sobre el área cruda (64 pasos) y después una búsqueda
 cuantizada a 1e-6 alrededor (±400 pasos) hasta que `pbDeRect` da exactamente el contratado y
 la zona es válida para `validarZona`. Como el redondeo es al punto básico y el paso es 1e-6,
 siempre hay un valor exacto; cruzar un parante la hace más ancha, no más grande. **Estirar**
@@ -1367,6 +1371,73 @@ internos en los textos visibles, «Acomodar solas» al entrar, desde Supervisar 
 imán, soltar y estirar sólo con cuentas exactas, el ajuste solo con tope y después de cerrar),
 `probar-superficies`, `probar-muebles` (montaje de `DistribuirCara`, sin panel comercial al
 distribuir), `probar-comercial` y `probar-vender`.
+
+#### La corrección tras la ronda de prueba (2026-10-24)
+
+La ÚNICA corrección después de la ronda de prueba de *Distribuir con piezas*. El servidor y los
+datos no cambiaron (ni tablas, ni columnas, ni rutas); la cuenta del % (`zonasGeometria` ↔
+`zonas_geometria.py`), la tolerancia 0, `SOLAPE`, `rompe_distribucion`, borrador/confirmar y
+`version_vieja` siguen igual.
+
+1. **Soltar una pieza grande cerca del medio.** El ancho se medía desde el puntero hacia un solo
+   lado: 60 % en u = 0,5 (70 % en 0,4–0,6, 90 % en 0,2–0,8) no se ubicaba. Ahora `encajar` mide el
+   ancho desde el BORDE del hueco (o de lo que se vende), la centra en el puntero, la pega a un
+   borde cercano y la recorta al hueco; «Cambiar la forma» usa lo mismo. Medido en el navegador:
+   0 de 10 sueltas ubicadas antes, 10 de 10 después (GON-02·B 60 %, GON-03·B 70 %, GON-01·B 90 %,
+   GON-05·A 100 %). Además el lado que se resuelve llega hasta el borde de lo que se VENDE, no el
+   de la cara: con la cara entera vendida (40 + 35 + 25) la última quedaba sin ubicar.
+2. **El rótulo dice lo que hay.** En la cara (`rotuloDePieza`) y en el 3D (`rotulosMedidos`, con
+   `medir` de la edición): justa, «30 % ✓»; si no, «42,42 % · sobra 12,42 %» / «25 % · faltan 5 %»
+   / «30 % · pisa a Aseo», en rojo (`rotuloDeLoQueHay`, `utils/piezas.ts`).
+3. **La letra de la cara en el 3D.** Nace oculta y pide un cuadro al montarse o cambiar de cara
+   (`invalidate`, el lienzo es a pedido): la «B» ya no aparece sobre la cara A. Y la toma de
+   Distribuir deja aire arriba para la letra (`AIRE_DE_LA_LETRA_M`, un punto al medio de la cara
+   en `encuadreDeLaCara`): en la miniatura y en grande ya no se corta.
+4. **Piezas lisas y adentro de lo que se vende.** Rayado quiere decir «no se vende»: las piezas van
+   lisas (color y nombre); si dos marcas de la cara comparten el tono, puntos (`patronDe`), y el
+   bloque de la lista los repite. Una Franja va de borde a borde de lo que se vende (arriba del
+   zócalo, abajo del remate, adentro de los parantes de los costados) y los huecos también: lo que
+   se ve es lo que se guarda, con el mismo % (lo que no se vende no cuenta). Lo guardado antes
+   (franjas de 0 a 1) se sigue viendo como está guardado. El relleno se ve más en oscuro
+   (`--pieza-alfa`, 0,24 claro / 0,5 oscuro).
+5. **Dos marcas que se turnan el lugar** (fechas que no se cruzan): los rótulos se apilan con la
+   vigencia corta («hasta 15 nov» / «desde 16 nov», `lugaresCompartidos`, `vigenciaCorta`), la que
+   todavía no rige va sólo con el contorno punteado, y el «Libre» de la cara es la cuenta de la
+   lista (`capacidadDe(datos, hoy).queda`): «Libre 40 %», no la suma de las dos.
+6. **Elegir una «A mano» ya hecha no entra a dibujar**: se rehace con «Rehacer a mano» (y «Dejarla
+   como estaba»). Cerrada la forma, se deja de dibujar. La pista y el contador dicen lo que se
+   puede hacer en cada estado (`pistaDeAMano`, `pistaDelTrazo`, `contadorAMano(…, cerrada)`):
+   nunca «Tocá un punto…» ni «mové un punto» con la forma cerrada.
+7. **«Listo» con la cara guardada y sin cambios**: apagado y «Guardada, sin cambios» (antes cada
+   toque creaba una versión y otro «Confirmada» en el historial). El servidor no cambió.
+8. **El ajuste solo (±3 %)**: «Deshacer el ajuste» junto al aviso; Enter cierra con el MISMO
+   ajuste que tocar el primer punto (`cerrarAMano`, registrado en `alCerrarAMano`); la pista
+   vale mientras la cara siga como estaba cuando se dijo (deshacer o rehacer la vuelven vieja y
+   habla el estado).
+9. **Sin arrastrar**: en el menú de cada pieza, «Ponerla en el primer hueco libre», «A la
+   izquierda» y «A la derecha»; en la cara, cada pieza es un botón con su nombre accesible
+   («Café A, 30 %, ubicada»), Tab la enfoca (anillo punteado sólo con teclado) y las flechas la
+   llevan al lugar siguiente donde entra entera (`lugaresPosibles`, `ubicarSinArrastrar`), con
+   el % exacto; la pista (`aria-live`) dice dónde quedó («de 1,25 a 1,77 m desde la
+   izquierda»). «Más» es un menú de verdad: el foco entra, flechas/Inicio/Fin, Esc lo cierra y
+   vuelve a «Más». La pista dice que alcanza con tocar la pieza y después lo verde.
+10. **Menores**: el historial en palabras simples, armado en el cliente desde la acción y los
+    datos (`textoDelHistorial`; lo desconocido pasa por `sinJerga`): «Se vendió el 60 % de la cara
+    a Snacks Norte · Papitas, del 1 oct 2026 al 15 nov 2026.»; el texto del servidor no cambia
+    (lo usan la bitácora y los correos). «Copiar de la otra cara» se titula así y no abre en rojo
+    antes de elegir (`faltaElegir`). El rojo del choque no se puede agarrar. Los hooks de
+    `DistribuirCara` van antes del return temprano. Íconos de 16. Con 0 % libre, «Sin lugar
+    libre». «De frente» se llama «Centrar la cara B»: en un pasillo angosto la toma es de tres
+    cuartos (es la cuenta de siempre, no un error). El título no parte «cara A» (`sinCortarLaCara`).
+
+**Guardas.** `probar-piezas` (soltar 60/70/90/100 % en el medio de todos los muebles y en huecos
+parciales; acomodar con la cara entera vendida; ubicar sin arrastrar; el rótulo; las franjas de
+borde a borde de lo que se vende; el contador cerrado; los casos nuevos en `casos/piezas.json`,
+que corre `test_piezas_exactas.py`), `probar-distribucion` (rótulo, lugar compartido, patrón,
+nombre accesible, «A mano» ya hecha, Enter con el ajuste, «Deshacer el ajuste», «Listo»
+guardada, «Más» por teclado ejecutado, historial ejecutado, «Sin lugar libre», íconos, hooks,
+«Centrar la cara»), `probar-zonas` (el cierre por `cerrarAMano`, copiar sin rojo antes de elegir)
+y `probar-muebles` (la letra nace oculta y pide cuadro; el aire de la toma).
 
 ### Editar un contrato y reenviarlo (2026-10-22)
 

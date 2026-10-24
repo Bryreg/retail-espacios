@@ -497,6 +497,13 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
    *  histéresis (`sigueLejos`): se vuelve a dibujar sólo al cruzar el borde. */
   const [lejos, setLejos] = useState(false);
   const lejosAhora = useRef(false);
+  // Con el lienzo a pedido (`frameloop="demand"`) el `useFrame` de abajo no
+  // corre hasta el próximo cuadro: las letras nacen OCULTAS y se pide un
+  // cuadro al montarlas o al cambiar de cara, para que la que el mueble tapa
+  // no se vea encima de la otra (la «B» sobre la cara A de la miniatura).
+  const invalidar = useThree((s) => s.invalidate);
+  const clavesDeCaras = caras.map((c) => c.cara).join("");
+  useEffect(() => { invalidar(); }, [clavesDeCaras, lejos, invalidar]);
   // Las mallas, lejos, no se dibujan: se decide en cada cuadro, sin estado.
   useFrame(() => {
     const g = grupo.current;
@@ -529,7 +536,8 @@ export const ZonasDelMueble = memo(function ZonasDelMueble({ caras, participacio
       {!lejos && caras.length > 1 && caras.map((c) => (
         <Html key={`letra${c.cara}`} position={letraDeCara(c.superficie, c.cara)} center zIndexRange={[6, 0]}
           style={{ pointerEvents: "none" }}>
-          <div ref={(el) => { letras.current[c.cara] = el; }} data-letra-de-cara={c.cara} style={{
+          <div ref={(el) => { if (el && letras.current[c.cara] !== el) invalidar(); letras.current[c.cara] = el; }} data-letra-de-cara={c.cara} style={{
+            visibility: "hidden",
             background: c.editada ? "var(--ink-1)" : "var(--surface)", color: c.editada ? "var(--surface)" : "var(--ink-1)",
             fontSize: 12, fontWeight: 800, width: 20, height: 20, lineHeight: "20px", textAlign: "center", borderRadius: 999,
             pointerEvents: "none", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",

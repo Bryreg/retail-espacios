@@ -6360,7 +6360,11 @@ prueba("la letra de la cara de atrás se esconde cuando el mueble la tapa (el `H
   assert.match(cuadro, /el\.style\.visibility = visibilidad;/, "la letra tapada no se esconde");
   assert.ok(cuadro.indexOf("g.visible = camera.position.distanceTo(donde) <= DISTANCIA_MAXIMA_M;") < cuadro.indexOf("letraTapada("),
     "la letra se cuenta antes de saber si las zonas están lo bastante cerca para verse");
-  assert.match(z, /<div ref=\{\(el\) => \{ letras\.current\[c\.cara\] = el; \}\} data-letra-de-cara=\{c\.cara\}/, "la letra no queda a mano para esconderla");
+  assert.match(z, /<div ref=\{\(el\) => \{ if \(el && letras\.current\[c\.cara\] !== el\) invalidar\(\); letras\.current\[c\.cara\] = el; \}\} data-letra-de-cara=\{c\.cara\} style=\{\{\s*visibility: "hidden",/,
+    "la letra no queda a mano para esconderla, o nace visible (con el lienzo a pedido la «B» se veía sobre la cara A)");
+  // Con `frameloop="demand"` el useFrame no corre solo: al montar o cambiar de cara se pide un cuadro.
+  assert.match(z, /const invalidar = useThree\(\(s\) => s\.invalidate\);/);
+  assert.match(z, /useEffect\(\(\) => \{ invalidar\(\); \}, \[clavesDeCaras, lejos, invalidar\]\);/, "las letras no piden un cuadro al montarse");
 });
 
 prueba("el relleno pinta la unión sin lo que no se vende, y la cinta no dispara picos", () => {
@@ -7182,8 +7186,10 @@ prueba("al entrar en Distribución, «De frente» abarca la cara entera en el pa
   // (Fase 2 · I4, E3: la llamada pasa también los demás muebles —las mismas
   // cajas que el clic, `placedFixtures` sin el propio— para no elegir una
   // toma con una esquina tapada. La guarda exige eso además de lo de antes.)
-  assert.match(toma, /if \(!enVenta && toma === "frente" && distribucionDeLaToma\.current\?\.fixtureId === fix\.id\) \{\s*ponerCampoVisual\(FOV_DEL_EDITOR\);\s*aplicarVista\(encuadreDeLaCara\(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures\.filter\(\(f\) => f\.id !== fix\.id\)\)\.vista\);\s*return;\s*\}/,
-    "en Distribución la toma no abarca la cara entera, o no mira lo que la tapa");
+  assert.match(toma, /if \(!enVenta && toma === "frente" && distribucionDeLaToma\.current\?\.fixtureId === fix\.id\) \{\s*ponerCampoVisual\(FOV_DEL_EDITOR\);\s*aplicarVista\(encuadreDeLaCara\(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures\.filter\(\(f\) => f\.id !== fix\.id\), AIRE_DE_LA_LETRA_M\)\.vista\);\s*return;\s*\}/,
+    "en Distribución la toma no abarca la cara entera, no mira lo que la tapa o no deja aire para la letra de la cara");
+  // Corrección tras la ronda de prueba (2026-10-24): la letra de la cara (A/B) quedaba cortada arriba.
+  assert.match(leer("src/utils/encuadreDeDistribucion.ts"), /export const AIRE_DE_LA_LETRA_M = 0\.22;/);
   assert.ok(toma.indexOf("const aspecto = size.width / Math.max(1, size.height);") < toma.indexOf("encuadreDeLaCara("),
     "el encuadre no usa el aspecto del lienzo de ahora");
   assert.ok(toma.indexOf("encuadreDeLaCara(") < toma.indexOf("const fov = toma ==="), "el encuadre de Distribución llega tarde");

@@ -1062,6 +1062,7 @@ const rP = await build({
     contents: [
       `export * as PANEL from "./src/${DIST}/DistribuirCara.tsx";`,
       `export * as PZC from "./src/${DIST}/piezasDeLaCara.ts";`,
+      `export * as CARA from "./src/${DIST}/CaraDePiezas.tsx";`,
       `export * as LEY from "./src/${DIST}/LeyendaDeParticipaciones.tsx";`,
       `export * as FORM from "./src/${DIST}/FormularioDeParticipacion.tsx";`,
       'export { useDistribucionStore } from "./src/store/distribucionStore.ts";',
@@ -1258,7 +1259,23 @@ await prueba("la cara: getScreenCTM().inverse() como Libera, y edita SÓLO por e
   // Cada texto de la cara va en un color de tinta del tema (o el rojo de texto), nunca en el tono de una marca.
   const textos = [...t.matchAll(/<text\b[^>]*>/g)].map((m) => m[0]);
   assert.ok(textos.length >= 3, "no encontré los rótulos de la cara");
-  for (const x of textos) assert.match(x, /fill: (o\.rojo \? C\.rojoTxt : C\.tinta|C\.tinta2|C\.libreTxt)\b/, `un rótulo con otro color: ${x}`);
+  for (const x of textos) assert.match(x, /fill: ((o|r2)\.rojo \? C\.rojoTxt : C\.tinta2?|C\.tinta2|C\.libreTxt)\b/, `un rótulo con otro color: ${x}`);
+  // Corrección tras la ronda de prueba (2026-10-24): el rótulo dice lo que HAY (no el contratado) y, si no está justa, en rojo.
+  assert.match(t, /const r2 = o\.rotulo !== undefined \? null : rotuloDePieza\(p,/, "el rótulo de la pieza no dice lo que hay");
+  assert.ok(!/\$\{pct\(p\.pb\)\}\$\{p\.estado === "ubicada"/.test(t), "el rótulo vuelve a decir el contratado");
+  // Piezas LISAS: el rayado es «no se vende»; si dos marcas comparten tono, puntos (nunca rayas).
+  assert.ok(!/patternTransform=\{`rotate\(\$\{p\.estampa/.test(t), "las piezas vuelven a ir rayadas según su estampa");
+  assert.match(t, /const patron = o\.rojo \? "rojo" : patronDe\(p, piezas\);/);
+  // El choque en rojo no se puede agarrar.
+  assert.match(t, /dibujoDePieza\(porS\.get\(choque\.spaceId\)!, \[poligonoDeRect\(choque\.rect\)\], \{ rojo: true, rotulo: null, inerte: true \}\)/, "el fantasma rojo del choque se puede agarrar");
+  assert.match(t, /data-pieza=\{real \? p\.spaceId : undefined\}/);
+  assert.match(t, /pointerEvents=\{o\.inerte \|\| o\.fantasma \? "none" : undefined\}/);
+  // Lo libre de la cara, por día: la misma cuenta que la lista (dos marcas que se turnan no se suman).
+  assert.match(t, /capacidadDe\(datos, hoy\)\.queda/, "el «Libre» de la cara no es la cuenta de la lista");
+  assert.ok(!/10000 - ubicado/.test(t), "el «Libre» de la cara vuelve a sumar lo dibujado de marcas que se turnan");
+  // Cada pieza con nombre accesible y movible con las flechas (sin arrastrar).
+  assert.match(t, /role=\{real \? "button" : undefined\} tabIndex=\{real \? 0 : undefined\} aria-label=\{nombre\}/);
+  assert.match(t, /e\.key === "ArrowLeft" \|\| e\.key === "ArrowRight"/);
 });
 
 
@@ -1522,7 +1539,8 @@ await prueba("pantalla (verificación 6b, con piezas): lo que sólo se ve en pan
   const piezas = sinComentTs2(fuente(`${DIST}/piezasDeLaCara.ts`));
   assert.match(piezas, /\.filter\(\(p\) => p\.spaceId !== spaceId && p\.poligonos\.length > 0 && seCruzanEnFechas\(yo\.terminos, p\.terminos, hoy\)\)/,
     "una pieza choca con otra aunque sus fechas no se crucen (§3.6)");
-  assert.match(cara, /strokeDasharray=\{o\.fantasma \|\| p\.esReserva \? /, "la reserva provisional no va punteada");
+  assert.match(cara, /strokeDasharray=\{o\.fantasma \|\| p\.esReserva \|\| futura \? /, "la reserva provisional (o la que todavía no rige) no va punteada");
+  assert.match(cara, /\{!futura && <path d=\{relleno\(P\)\} fill=\{tono\}/, "la que todavía no rige se pinta llena (tapa a la de ahora)");
   assert.match(panel, /const editable = !!datos\?\.por_participacion && !!datos\.superficie && alDia;/, "se edita con el plano sin guardar (§9.2: la firma tiene que coincidir)");
   assert.match(cara, /const puedeEditar = [^;]*alDia[^;]*edicion\.modo === "editar";/, "la cara edita con el plano sin guardar");
   assert.match(panel, /const bloqueado = errores\.length > 0 \|\| !enLosTopes \|\| !alDia \|\| motivoDeListo !== null;/, "«Listo» no se frena con errores, fuera de los topes o con el plano sin guardar");
@@ -1979,7 +1997,10 @@ await prueba("el encabezado dice la sede: «NAVE · GON-01 · cara A» (pedido �
   assert.equal(P6.PANEL.tituloDelPanel({ sede: "NAVE", codigo: "GON-01", cara: "A" }), "NAVE · GON-01 · cara A");
   assert.equal(P6.PANEL.tituloDelPanel({ sede: "TERRON", codigo: "ROB-01", cara: "B" }), "TERRON · ROB-01 · cara B");
   const panel = codigo6b("DistribuirCara");
-  assert.match(panel, /title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>\s*<span className="codigo">\{tituloDelPanel\(activa\)\}<\/span>/, "el encabezado no usa el título con la sede");
+  assert.match(panel, /title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>\s*<span className="codigo">\{sinCortarLaCara\(tituloDelPanel\(activa\)\)\}<\/span>/, "el encabezado no usa el título con la sede");
+  // «cara A» nunca en dos renglones (a 390 px quedaba «cara» / «A»).
+  assert.equal(P6.PANEL.sinCortarLaCara("NAVE · GON-01 · cara A"), "NAVE · GON-01 · cara\u00A0A");
+  assert.equal(P6.PANEL.sinCortarLaCara("TERRON · ROB-01 · cara B"), "TERRON · ROB-01 · cara\u00A0B");
   const clases = panel.match(/<h2 className="([^"]*)" title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>/);
   assert.ok(clases, "no está el título");
   assert.ok(!/(^|\s)truncate(\s|$)/.test(clases[1]), `el título se corta (${clases[1]})`);
@@ -2024,7 +2045,8 @@ await prueba("historial (contrato con el servidor): una derivada dice sólo el D
     assert.equal(viejo[1].detalle, "Venció la participación 4.");
     // El panel muestra eso, y ya no ordena por texto ni fecha las derivadas con su hora.
     const panel = codigo6b("DistribuirCara");
-    assert.match(panel, /\{lineas && lineasDelHistorial\(lineas\)\.map\(\(e\) => \(/);
+    assert.match(panel, /\{lineas && lineasDelHistorial\(lineas, nombresHist\)\.map\(\(e\) => \(/);
+    assert.match(panel, /<p className="text-ink-1" data-texto-del-historial>\{e\.texto\}<\/p>/, "el historial muestra el texto del servidor (con «zona» y fechas ISO)");
     assert.ok(!/\.sort\(\(a, b\) => \(a\.en < b\.en/.test(panel), "el historial se sigue ordenando comparando textos");
     assert.match(panel, /cuando: dia \? fechaLegible\(dia\) : cuandoFue\(d\.en\)/, "una derivada con su día pasa por new Date");
   } finally {
@@ -2410,7 +2432,7 @@ await prueba("guardas de la copia: el diálogo con los tokens del cajón, UN bot
   assert.ok(!/from\s+["'][^"']*StoreEditor3D\/StoreEditor3D["']/.test(t), "CopiarZonas importa StoreEditor3D");
   assert.ok(!/valor_mensual|monthly_rent|negotiatedValue|sombra/i.test(crudo), "CopiarZonas nombra montos (o «sombra»)");
   assert.match(t, /useDistribucionStore\.getState\(\)\.pegarCopia\(/, "el diálogo no pega por el store");
-  assert.match(t, /<Dialogo titulo="Copiar de otra cara"/, "el diálogo no es el de siempre (role=dialog, aria-modal, Esc propio)");
+  assert.match(t, /<Dialogo titulo=\{caras === 2 \? "Copiar de la otra cara" : "Copiar de otra cara"\}/, "el diálogo no es el de siempre (role=dialog, aria-modal, Esc propio), o no se llama como el ítem de «Más»");
   // Distribuir con piezas: abre en una cara que TIENE algo para copiar, y una vacía se dice sin rojo.
   assert.match(t, /setElegida\(opcionDeEntrada\(opciones\)\?\.clave \?\? ""\)/, "el diálogo abre en la primera cara aunque no tenga nada (y muestra un error de entrada)");
   assert.match(t, /\{copia && !copia\.compatible && !sinNada && <p role="alert"/, "una cara sin nada para copiar se dice en rojo");
@@ -2685,6 +2707,189 @@ await prueba("desde Supervisar y de vuelta: «Distribuir» pide volver; «Listo�
   const fs = sinComentTs2(fuente("store/fixtureStore.ts"));
   const parcial = fs.slice(fs.indexOf("partialize: (state) => ({"), fs.indexOf("}),", fs.indexOf("partialize: (state) => ({")));
   assert.ok(!/pedidoSupervisar/.test(parcial), "el pedido de volver a Supervisar se guarda en el navegador");
+});
+
+console.log("distribución · la corrección tras la ronda de prueba (2026-10-24)");
+
+/** Un término de las reglas (lo que lee `seCruzanEnFechas`) para una pieza de prueba. */
+const terminoR = (spaceId, desde, hasta) => ({ id: spaceId * 10, spaceId, numero: spaceId, estado: "contrato", pb: 6000, supplierId: spaceId,
+  marca: null, desde, hasta, caduca: null, bajaFecha: null, lease: { isActive: true, startDate: desde, endDate: hasta } });
+const piezaR = (spaceId, x) => ({ spaceId, corto: `M${spaceId}`, pb: 6000, dibujado: 6000, estado: "ubicada", tono: "var(--marca-1)", estampa: null,
+  poligonos: [], terminos: [], rigeHoy: true, desde: "2026-10-01", hasta: "2026-11-15", choca: null, ...x });
+
+await prueba("el rótulo de la pieza en la cara dice lo que HAY: justa con ✓; pasada, corta o pisando, lo medido y en rojo (ejecutado)", () => {
+  const R = P6.CARA.rotuloDePieza;
+  assert.deepEqual(R({ estado: "ubicada", pb: 3000, dibujado: 3000 }, null), { texto: "30 % ✓", rojo: false });
+  assert.deepEqual(R({ estado: "sobra", pb: 3000, dibujado: 4242 }, null), { texto: "42,42 % · sobra 12,42 %", rojo: true });
+  assert.deepEqual(R({ estado: "falta", pb: 3000, dibujado: 2500 }, null), { texto: "25 % · faltan 5 %", rojo: true });
+  assert.deepEqual(R({ estado: "choca", pb: 3000, dibujado: 3000 }, "Aseo"), { texto: "30 % · pisa a Aseo", rojo: true });
+  assert.equal(R({ estado: "sin_ubicar", pb: 3000, dibujado: 0 }, null).rojo, false);
+  // Y el 3D: lo medido en la edición, con la misma frase.
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.match(editor, /fuera\.set\(p\.space_id, hay === 0 \? pct\(p\.contratado_pb\) : rotuloDeLoQueHay\(p\.contratado_pb, hay\)\.texto\);/, "el 3D no dice lo medido");
+  assert.match(editor, /const medido = rotulosMedidos\(datos, zonas\);/);
+});
+
+await prueba("dos marcas con fechas que no se cruzan comparten el lugar: rótulos apilados con la vigencia corta, la que todavía no rige sólo punteada; las que se cruzan no (ejecutado)", () => {
+  const cara = { ancho: 1.8, alto: 1.8, exclusiones: [] };
+  const cuad = [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]];
+  const ahora = piezaR(1, { poligonos: [cuad], terminos: [terminoR(1, "2026-10-01", "2026-11-15")], desde: "2026-10-01", hasta: "2026-11-15", rigeHoy: true });
+  const despues = piezaR(2, { poligonos: [cuad], terminos: [terminoR(2, "2026-11-16", "2027-02-28")], desde: "2026-11-16", hasta: "2027-02-28", rigeHoy: false });
+  const m = P6.CARA.lugaresCompartidos([despues, ahora], cara, "2026-10-24");
+  assert.deepEqual([m.get(1), m.get(2)], [{ i: 0, n: 2 }, { i: 1, n: 2 }], "no se apilan de la que empieza antes a la de después");
+  assert.equal(P6.CARA.vigenciaCorta(ahora, "2026-10-24"), "hasta 15 nov");
+  assert.equal(P6.CARA.vigenciaCorta(despues, "2026-10-24"), "desde 16 nov");
+  // Fechas que se cruzan: es un choque (rojo), no un lugar compartido.
+  const cruzada = piezaR(3, { poligonos: [cuad], terminos: [terminoR(3, "2026-10-01", "2027-01-31")] });
+  assert.equal(P6.CARA.lugaresCompartidos([ahora, cruzada], cara, "2026-10-24").size, 0);
+  // Sin pisarse, tampoco.
+  const alLado = piezaR(4, { poligonos: [[[0.7, 0.1], [0.9, 0.1], [0.9, 0.9], [0.7, 0.9]]], terminos: [terminoR(4, "2026-11-16", "2027-02-28")] });
+  assert.equal(P6.CARA.lugaresCompartidos([ahora, alLado], cara, "2026-10-24").size, 0);
+  const t = codigo6b("CaraDePiezas");
+  assert.match(t, /const futura = real && !p\.rigeHoy;/);
+  assert.match(t, /const linea3 = o\.rotulo === undefined && \(apilado \|\| futura\) \? vigenciaCorta\(p, hoy\) : null;/);
+  // La pieza sabe si rige hoy (con la cuenta del día de las reglas).
+  assert.match(sinComentTs2(fuente(`${DIST}/piezasDeLaCara.ts`)), /rigeHoy: terminos\.some\(\(x\) => cuentaElDia\(x, datos\.hoy, datos\.hoy\)\),/);
+});
+
+await prueba("piezas LISAS; puntos sólo si dos marcas comparten el tono, y el bloque de la lista los repite (ejecutado)", () => {
+  const Z = P6.PZC.patronDe;
+  const a = { spaceId: 1, tono: "var(--marca-1)", estampa: { tono: "#1A67C2", textura: "rayado45" } };
+  const b = { spaceId: 2, tono: "var(--marca-2)", estampa: { tono: "#A4338F", textura: "lleno" } };
+  assert.equal(Z(a, [a, b]), "lisa", "una marca con tono propio va rayada o con puntos");
+  const c = { spaceId: 3, tono: "var(--marca-1)", estampa: { tono: "#1A67C2", textura: "lleno" } };
+  assert.equal(Z(a, [a, b, c]), "puntos");
+  assert.equal(Z(c, [a, b, c]), "lisa");
+  assert.equal(Z({ ...a, estampa: { tono: "#1A67C2", textura: "rayado135" } }, [a, c]), "puntos_grandes");
+  const panel = codigo6b("DistribuirCara");
+  assert.match(panel, /<Bloque p=\{p\} patron=\{patronDe\(p, piezas\)\} \/>/, "el bloque de la lista no repite el patrón de la pieza");
+  assert.ok(!/repeating-linear-gradient/.test(panel), "el bloque de la lista va rayado");
+});
+
+await prueba("nombre accesible de cada pieza y anuncio al moverla («Café A, 30 %, ubicada»; «de 0,25 a 0,79 m desde la izquierda») (ejecutado)", () => {
+  assert.equal(P6.CARA.nombreAccesible({ corto: "Café A", pb: 3000, estado: "ubicada", dibujado: 3000 }, null), "Café A, 30 %, ubicada");
+  assert.equal(P6.CARA.nombreAccesible({ corto: "Café A", pb: 3000, estado: "sobra", dibujado: 4242 }, null), "Café A, 30 %, sobra 12,42 %");
+  assert.equal(P6.CARA.nombreAccesible({ corto: "Café A", pb: 3000, estado: "choca", dibujado: 3000 }, "Aseo"), "Café A, 30 %, pisa a Aseo");
+  assert.equal(P6.CARA.dondeQuedo({ u0: 0.25 / 1.8, u1: 0.79 / 1.8, v0: 0, v1: 1 }, 1.8), "de 0,25 a 0,79 m desde la izquierda");
+  const panel = codigo6b("DistribuirCara");
+  // Sin arrastrar: en el menú de cada pieza, y la pista (aria-live) lo anuncia.
+  for (const x of ["Ponerla en el primer hueco libre", "A la izquierda", "A la derecha"]) assert.ok(panel.includes(x), `falta «${x}» en el menú de la pieza`);
+  assert.match(panel, /ubicarSinArrastrar\(cara, p\.pb, p\.forma, ocupadosPara\(p\.spaceId, piezas, hoy\), p\.estado === "sin_ubicar" \? null : p\.rect, como\)/);
+  assert.match(panel, /aria-live="polite" data-pista/);
+  // La pista dice que en una pantalla angosta alcanza con tocar (sin arrastrar).
+  assert.match(panel, /o tocala en la lista y después tocá lo verde/);
+});
+
+await prueba("«A mano» ya hecha: elegirla NO entra a dibujar; «Rehacer a mano» sí; Enter cierra con el MISMO ajuste que el primer punto (ejecutado)", () => {
+  const panel = codigo6b("DistribuirCara");
+  const i = panel.indexOf("const elegirPieza = (s: number) => {");
+  const cuerpo = panel.slice(i, panel.indexOf("\n  };", i));
+  assert.match(cuerpo, /if \(p\?\.forma === "a_mano" && p\.poligonos\.length === 0 && puedeEditar\) empezarAMano\(p\);\s*else salirDelTrazo\(\);/,
+    "elegir una pieza a mano ya hecha la deja en modo trazo");
+  assert.ok(!/elegirHerramienta", herramienta: "poligono"/.test(cuerpo), "elegirPieza entra a dibujar");
+  assert.match(panel, /onClick=\{\(\) => empezarAMano\(piezaElegida\)\} data-rehacer-a-mano>/);
+  assert.match(panel, /data-dejar-como-estaba>/);
+  // Las pistas por estado: nunca «Tocá un punto…» con la forma ya cerrada.
+  const A = P6.PANEL.pistaDeAMano;
+  for (const estado of ["ubicada", "sobra", "falta", "choca", "rehacer"]) assert.ok(!/Tocá un punto/.test(A({ corto: "Café A", estado, pb: 3000, dibujado: 4242 })), `${estado}: dice «Tocá un punto»`);
+  assert.equal(A({ corto: "Café A", estado: "sobra", pb: 3000, dibujado: 4242 }), "Café A se pasa 12,42 %: tocá «Achicar a 30 %» o «Rehacer a mano».");
+  assert.equal(A({ corto: "Café A", estado: "ubicada", pb: 3000, dibujado: 3000 }), "Café A está hecha a mano, con 30 % justo. Para cambiarla, «Rehacer a mano».");
+  assert.match(P6.PANEL.pistaDelTrazo(0, false), /^Tocá un punto por cada esquina/);
+  assert.match(P6.PANEL.pistaDelTrazo(4, false), /Enter para cerrar la forma\.$/);
+  assert.match(P6.PANEL.pistaDelTrazo(0, true), /^Rehacela/);
+  // Enter: el oyente cierra con `alCerrarAMano` (el mismo que tocar el primer punto), no con el reductor pelado.
+  enElModo({ herramienta: "poligono", activa: 7, seleccion: null, trazo: [[0.1, 0.1], [0.3, 0.1], [0.3, 0.3]] });
+  let cierres = 0;
+  P6.PZC.alCerrarAMano.actual = () => { cierres++; };
+  const antes = P6.useDistribucionStore.getState().edicion;
+  const ev = atajo(tecla("Enter", EN_LIENZO));
+  assert.deepEqual([cierres, ev.cortada, ev.prevenida], [1, true, true], "Enter no cerró con el ajuste solo");
+  assert.equal(P6.useDistribucionStore.getState().edicion, antes, "Enter cerró por el reductor además del ajuste");
+  P6.PZC.alCerrarAMano.actual = null;
+  atajo(tecla("Enter", EN_LIENZO));
+  assert.equal(P6.useDistribucionStore.getState().edicion.trazo, null, "sin la cara montada, Enter no cierra como siempre");
+});
+
+await prueba("el ajuste solo (±3 %): «Deshacer el ajuste» visible y la pista que vence al cambiar la cara (deshacer, rehacer, otra pieza) (ejecutado)", () => {
+  const panel = codigo6b("DistribuirCara");
+  assert.match(panel, /const pista = pistaGuardada && pistaGuardada\.zonas === edicion\.zonas \? pistaGuardada\.texto : null;/, "la pista vieja sigue después de deshacer");
+  assert.match(panel, /const ajusteVigente = ajuste && ajuste\.zonas === edicion\.zonas \? ajuste : null;/);
+  assert.match(panel, /\{ajusteVigente && puedeEditar && \(\s*<button type="button" className=\{BOTON\} data-deshacer-ajuste\s*onClick=\{\(\) => \{ st\(\)\.despachar\(\{ tipo: "deshacer" \}\); ui\(\)\.anotarAjuste\(null\); \}\}>\s*<Undo2 \{\.\.\.ICONO\} \/>Deshacer el ajuste/);
+  // El store anota las zonas del momento en que se dijo.
+  enElModo();
+  const ui = P6.PZC.usePiezasUI.getState();
+  ui.decir("algo");
+  ui.anotarAjuste(7);
+  const zonas = P6.useDistribucionStore.getState().edicion.zonas;
+  assert.equal(P6.PZC.usePiezasUI.getState().pista.zonas, zonas);
+  assert.equal(P6.PZC.usePiezasUI.getState().ajuste.zonas, zonas);
+  P6.useDistribucionStore.getState().despachar({ tipo: "ponerPiezas", piezas: [{ spaceId: 8, vertices: [] }] });
+  assert.notEqual(P6.useDistribucionStore.getState().edicion.zonas, zonas, "la prueba no cambió la cara");
+  ui.reiniciar();
+});
+
+await prueba("«Listo» con la cara guardada y sin cambios: apagado y «Guardada, sin cambios» (no crea otra versión ni otro «Confirmada»)", () => {
+  const panel = codigo6b("DistribuirCara");
+  assert.match(panel, /const guardadaSinCambios = !sucio && datos\?\.distribucion\?\.estado === "confirmada" && !datos\.distribucion\.borrador;/);
+  assert.match(panel, /: guardadaSinCambios \? "Guardada, sin cambios\." *\n? *: null;/, "guardada y sin cambios no frena «Listo»");
+  assert.match(panel, /\{guardando \? "Guardando…" : guardadaSinCambios \? "Guardada, sin cambios" : "Listo, guardar la cara"\}/);
+});
+
+await prueba("«Más»: el foco entra al abrir, flechas/Inicio/Fin entre los ítems, Esc lo cierra y vuelve a «Más» (ejecutado el oyente)", () => {
+  const panel = codigo6b("DistribuirCara");
+  assert.match(panel, /<div role="menu" aria-label="Más" data-menu-mas [^>]*\n?\s*onKeyDown=\{teclaDelMenu\}>/);
+  assert.match(panel, /itemsDelMenu\(menuMas\.current\)\[0\]\?\.focus\(\);/, "al abrir «Más» el foco no entra");
+  assert.match(panel, /menuAbierto\.cerrar = \(\) => \{ setMas\(false\); botonMas\.current\?\.focus\(\); \};/);
+  for (const k of ['e.key === "ArrowDown"', 'e.key === "ArrowUp"', 'e.key === "Home"', 'e.key === "End"']) assert.ok(panel.includes(k), `«Más» no atiende ${k}`);
+  // El oyente: Esc dentro de «Más» lo cierra y no despacha nada; las flechas le llegan al menú.
+  enElModo();
+  const EN_MENU = nodo("button", ["[data-menu-mas]", "[data-distribucion]"]);
+  const antes = P6.useDistribucionStore.getState().edicion;
+  const esc = atajo(tecla("Escape", EN_MENU));
+  assert.deepEqual([esc.cortada, esc.prevenida], [true, true], "Esc en «Más» llega al editor");
+  assert.equal(P6.useDistribucionStore.getState().edicion, antes, "Esc en «Más» soltó la pieza elegida");
+  const flecha = atajo(tecla("ArrowDown", EN_MENU));
+  assert.deepEqual([flecha.cortada, flecha.prevenida], [false, false], "la flecha no le llega al menú");
+  const supr = atajo(tecla("Delete", EN_MENU));
+  assert.equal(supr.cortada, true, "Supr en «Más» llega al editor (borraría el mueble)");
+});
+
+await prueba("menores: historial en palabras simples (ejecutado con lo que manda el servidor), «Sin lugar libre», íconos de 16, los hooks antes del return, «Centrar la cara»", () => {
+  const n = P6.PANEL.nombresDelHistorial({ participaciones: [
+    { space_id: 71, numero: 1, terminos: [{ id: 501, proveedor: { id: 1, nombre: "Snacks Norte" }, marca: "Papitas" }] },
+    { space_id: 72, numero: 2, terminos: [{ id: 502, proveedor: { id: 2, nombre: "Dulces Sur" }, marca: "Chocolatina" }] },
+  ] });
+  const T = (e) => P6.PANEL.textoDelHistorial({ antes: null, despues: null, ...e }, n);
+  const contrato = T({ accion: "participacion.contrato", participacion_id: 501,
+    detalle: "Contrato · Participación 1 · 60 % · Snacks Norte (Papitas) · 2026-10-01→2026-11-15",
+    despues: { puntos_basicos: 6000, desde: "2026-10-01", hasta: "2026-11-15", caduca: null, proveedor: "Snacks Norte", marca: "Papitas", estado: "contrato" } });
+  assert.equal(contrato, "Se vendió el 60 % de la cara a Snacks Norte · Papitas, del 1 oct 2026 al 15 nov 2026.");
+  const conf = T({ accion: "distribucion.confirmada", detalle: "Confirmada: 2 zonas de 2 participaciones",
+    despues: { zonas: [{ participacion_space_id: 71 }, { participacion_space_id: 72 }], cuentas: {} } });
+  assert.equal(conf, "Se guardó la cara: Snacks Norte · Papitas y Dulces Sur · Chocolatina quedaron ubicadas.");
+  assert.equal(T({ accion: "distribucion.division", detalle: "GON-04 · cara B pasó a venderse por participación." }), "La cara pasó a venderse por partes, una por marca.");
+  assert.equal(T({ accion: "participacion.vencida", participacion_id: 502, detalle: "Venció la participación 2." }), "Venció el contrato de Dulces Sur · Chocolatina.");
+  assert.equal(T({ accion: "algo.nuevo", detalle: "Participación 3 · 2 zonas · 2026-10-24→2027-03-31" }), "una marca · 2 piezas · 24 oct 2026 al 31 mar 2027");
+  for (const x of [contrato, conf]) assert.ok(!/\bzonas?\b|[Pp]articipaci[oó]n \d|\d{4}-\d{2}-\d{2}/.test(x), `jerga en el historial: ${x}`);
+  // Las líneas guardan el texto del servidor (`detalle`) y muestran el llano (`texto`).
+  const ls = P6.PANEL.lineasDelHistorial({ entradas: [{ id: 1, en: "2026-10-24T17:51:33+00:00", actor: "admin", tipo: "geometria", accion: "distribucion.descartada", detalle: "Borrador descartado", antes: null, despues: null }], derivados: [] }, n);
+  assert.deepEqual([ls[0].detalle, ls[0].texto], ["Borrador descartado", "Se descartó el borrador."]);
+  const panel = codigo6b("DistribuirCara"), cara = codigo6b("CaraDePiezas");
+  // 0 % libre.
+  assert.match(panel, /\{queda !== null && queda > 0 && \(/, "con 0 % la lista dice «Libre · 0 % sin vender»");
+  assert.match(panel, /\{queda === 0 && <p[^>]*data-sin-lugar>Sin lugar libre/);
+  // Íconos: lucide de 16 con trazo 1,75 (`ICONO`), nunca otra medida.
+  for (const [nombre, t] of [["DistribuirCara", panel], ["CaraDePiezas", cara]]) {
+    assert.ok(!/size=\{(?!16\b)\d+\}/.test(t), `${nombre}: un ícono que no es de 16`);
+  }
+  // Los hooks, todos antes del return temprano (`if (!activa)`).
+  const ret = panel.indexOf("if (!activa) {\n    return (");
+  assert.ok(ret > 0);
+  const despues = panel.slice(ret, panel.indexOf("\nexport default", ret) > 0 ? panel.indexOf("\nexport default", ret) : undefined);
+  assert.ok(!/\buse(Memo|State|Effect|Ref|Callback|DistribucionStore|PiezasUI|FixtureStore)\(/.test(despues.slice(0, despues.indexOf("\n}\n"))), "un hook después del return temprano");
+  // «De frente» en la cara B miraba de tres cuartos (el pasillo no deja): dice lo que hace.
+  assert.match(panel, /data-encuadrar-cara><Crosshair \{\.\.\.ICONO\} \/>Centrar la cara \{activa\.cara\}<\/button>/);
+  assert.ok(!/>De frente</.test(panel), "el botón vuelve a prometer «De frente»");
 });
 
 console.log(`\n${hechas} pruebas de distribución en verde`);

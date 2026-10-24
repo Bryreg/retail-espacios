@@ -2,14 +2,14 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import { capaQueSeMuestra, planoAlDia, useDistribucionStore } from "../../store/distribucionStore";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import { TOQUE_PX, esClic, puntoInterior } from "../../utils/edicionDeZonas";
-import { pct } from "../../utils/participaciones";
+import { pct, seCruzanEnFechas } from "../../utils/participaciones";
 import {
   AJUSTE_SOLO_PB, bordesUtiles, dejarJustaAMano, encajar, estirar, huecosLibres, imantarAMano, lineasDeLaCara,
-  lineasDeOcupados, llevaAMano, poligonoDeRect, primeraQuePisa, type CaraDePiezas as Cara, type Rect,
+  lineasDeOcupados, llevaAMano, poligonoDeRect, primeraQuePisa, rotuloDeLoQueHay, ubicarSinArrastrar, type CaraDePiezas as Cara, type Rect,
 } from "../../utils/piezas";
-import { trapecios, type Poligono, type Punto } from "../../utils/zonasGeometria";
-import { datosDeLaCara, useVistaDeDistribucion } from "./LeyendaDeParticipaciones";
-import { ocupadosPara, useCaraDePiezas, usePiezas, usePiezasUI, type Pieza } from "./piezasDeLaCara";
+import { AREA_MINIMA_M2, areaCubierta, trapecios, type Poligono, type Punto } from "../../utils/zonasGeometria";
+import { capacidadDe, datosDeLaCara, fechaLegible, useVistaDeDistribucion } from "./LeyendaDeParticipaciones";
+import { alCerrarAMano, ocupadosPara, patronDe, useCaraDePiezas, usePiezas, usePiezasUI, type Pieza } from "./piezasDeLaCara";
 
 /**
  * La cara de frente, con sus piezas (Distribuir «como un juego de piezas»,
@@ -91,6 +91,64 @@ export function dondeCae(cara: Cara, p: Pieza, piezas: readonly Pieza[], hoy: st
   const ancho = p.forma === "estantes" && p.rect && p.estado !== "sin_ubicar" ? p.rect.u1 - p.rect.u0 : null;
   const rect = encajar(cara, p.pb, p.forma, u, v, ocupados, { radio, ancho });
   return { rect, pisa: rect ? primeraQuePisa([poligonoDeRect(rect)], ocupados, cara) : null };
+}
+
+/** Lo que dice el rótulo de una pieza en la cara: justa, su % con ✓; si no,
+ *  lo que HAY y cuánto sobra o falta (o a quién pisa), en rojo. */
+export function rotuloDePieza(p: Pick<Pieza, "estado" | "pb" | "dibujado">, nombreDeLaOtra: string | null): { texto: string; rojo: boolean } {
+  if (p.estado === "ubicada") return { texto: `${pct(p.pb)} ✓`, rojo: false };
+  if (p.estado === "choca") return { texto: `${pct(p.dibujado)} · pisa a ${nombreDeLaOtra ?? "otra marca"}`, rojo: true };
+  if (p.estado === "rehacer") return { texto: `${pct(p.dibujado)} · hay que rehacerla`, rojo: true };
+  if (p.estado === "sin_ubicar") return { texto: pct(p.pb), rojo: false };
+  return { texto: rotuloDeLoQueHay(p.pb, p.dibujado).texto, rojo: true };
+}
+
+/** La vigencia corta de una marca que comparte el lugar con otra en fechas
+ *  que no se cruzan: «hasta 15 nov» la que rige hoy, «desde 16 nov» la que
+ *  viene después. */
+export function vigenciaCorta(p: Pick<Pieza, "rigeHoy" | "desde" | "hasta">, hoy: string): string {
+  return p.rigeHoy ? `hasta ${fechaLegible(p.hasta, hoy)}` : `desde ${fechaLegible(p.desde, hoy)}`;
+}
+
+/** Las marcas que comparten el lugar (se pisan en más de 1 cm² con fechas que
+ *  NO se cruzan): su lugar en la pila de rótulos, de la que empieza antes a la
+ *  que empieza después. Las que se pisan en fechas que se cruzan son un choque
+ *  (rojo), no un lugar compartido. */
+export function lugaresCompartidos(piezas: readonly Pieza[], cara: Pick<Cara, "ancho" | "alto" | "exclusiones">, hoy: string): Map<number, { i: number; n: number }> {
+  const con = piezas.filter((p) => p.poligonos.length > 0);
+  const padre = new Map(con.map((p) => [p.spaceId, p.spaceId]));
+  const raiz = (s: number): number => { let r = s; while (padre.get(r) !== r) r = padre.get(r)!; return r; };
+  const m2 = cara.ancho * cara.alto;
+  for (let i = 0; i < con.length; i++) for (let j = i + 1; j < con.length; j++) {
+    const a = con[i], b = con[j];
+    if (seCruzanEnFechas(a.terminos, b.terminos, hoy)) continue;
+    if (areaCubierta([...a.poligonos], cara.exclusiones, [...b.poligonos]) * m2 <= AREA_MINIMA_M2) continue;
+    padre.set(raiz(a.spaceId), raiz(b.spaceId));
+  }
+  const grupos = new Map<number, Pieza[]>();
+  for (const p of con) { const r = raiz(p.spaceId); grupos.set(r, [...(grupos.get(r) ?? []), p]); }
+  const fuera = new Map<number, { i: number; n: number }>();
+  for (const g of grupos.values()) {
+    if (g.length < 2) continue;
+    g.sort((a, b) => (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : a.spaceId - b.spaceId));
+    g.forEach((p, i) => fuera.set(p.spaceId, { i, n: g.length }));
+  }
+  return fuera;
+}
+
+/** El nombre de una pieza para un lector de pantalla: «Café A, 30 %, ubicada». */
+export function nombreAccesible(p: Pick<Pieza, "corto" | "pb" | "estado" | "dibujado">, nombreDeLaOtra: string | null): string {
+  const estado = p.estado === "ubicada" ? "ubicada" : p.estado === "sin_ubicar" ? "sin ubicar"
+    : p.estado === "choca" ? `pisa a ${nombreDeLaOtra ?? "otra marca"}` : p.estado === "rehacer" ? "hay que rehacerla"
+      : p.estado === "sobra" ? `sobra ${pct(p.dibujado - p.pb)}` : `le falta ${pct(p.pb - p.dibujado)}`;
+  return `${p.corto}, ${pct(p.pb)}, ${estado}`;
+}
+
+/** Dónde quedó una pieza, en palabras (para el anuncio al moverla con el
+ *  teclado): «de 0,25 a 0,79 m desde la izquierda». */
+export function dondeQuedo(r: Rect, ancho: number): string {
+  const m = (x: number) => (Math.round(x * ancho * 100) / 100).toFixed(2).replace(".", ",");
+  return `de ${m(r.u0)} a ${m(r.u1)} m desde la izquierda`;
 }
 
 type Gesto =
@@ -176,6 +234,32 @@ export default function CaraDePiezas({ fixtureId, sede, onSoltar }: {
   };
   const despachar = useDistribucionStore.getState().despachar;
 
+  /** Cerrar la forma «A mano» (tocando el primer punto o con Enter: lo mismo).
+   *  Si quedó cerca (±3 %), se deja JUSTA sola corriendo un lado suelto —el
+   *  que se puso a ojo—; los pegados a estantes y bordes no se tocan. Después
+   *  se deja de dibujar: un toque en lo libre ya no empieza otra forma. */
+  const cerrarAMano = () => {
+    const ed = useDistribucionStore.getState().edicion;
+    if (!cara || !ed.trazo || ed.trazo.length < 3 || !piezaElegida) return;
+    const lleva = llevaAMano(ed.trazo, cara);
+    const justa = lineasAMano && lleva !== null && lleva !== piezaElegida.pb && Math.abs(lleva - piezaElegida.pb) <= AJUSTE_SOLO_PB
+      ? dejarJustaAMano(ed.trazo, cara, piezaElegida.pb, ocupadosPara(piezaElegida.spaceId, piezas, hoy).flatMap((o) => [...o.poligonos]), lineasAMano)
+      : null;
+    despachar({ tipo: "cerrarTrazo", reemplazar: true });
+    if (useDistribucionStore.getState().edicion.trazo) return;      // no cerró (se cruza): sigue dibujando
+    despachar({ tipo: "elegirHerramienta", herramienta: "seleccionar" });
+    if (justa) {
+      despachar({ tipo: "ponerPiezas", piezas: [{ spaceId: piezaElegida.spaceId, vertices: [justa] }] });
+      usePiezasUI.getState().anotarAjuste(piezaElegida.spaceId);
+      usePiezasUI.getState().decir(`${piezaElegida.corto}: le corrimos un lado para que quede en ${pct(piezaElegida.pb)} justo.`);
+    }
+    setCursor(null);
+  };
+  useEffect(() => {
+    alCerrarAMano.actual = aMano ? cerrarAMano : null;
+    return () => { alCerrarAMano.actual = null; };
+  });
+
   /* ── El puntero ─────────────────────────────────────────────────────────── */
 
   const alBajar = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -249,18 +333,7 @@ export default function CaraDePiezas({ fixtureId, sede, onSoltar }: {
       const primero = ed.trazo?.[0];
       const pp = primero ? aPantalla(primero) : null;
       if (ed.trazo && ed.trazo.length >= 3 && pp && Math.hypot(pp.x - e.clientX, pp.y - e.clientY) <= TOQUE_PX * 2) {
-        // Si quedó cerca (±3 %), se deja JUSTA sola corriendo un lado suelto
-        // —el que se puso a ojo—; los pegados a estantes y bordes no se tocan.
-        const lleva = llevaAMano(ed.trazo, cara);
-        const justa = piezaElegida && lineasAMano && lleva !== null && lleva !== piezaElegida.pb && Math.abs(lleva - piezaElegida.pb) <= AJUSTE_SOLO_PB
-          ? dejarJustaAMano(ed.trazo, cara, piezaElegida.pb, ocupadosPara(piezaElegida.spaceId, piezas, hoy).flatMap((o) => [...o.poligonos]), lineasAMano)
-          : null;
-        despachar({ tipo: "cerrarTrazo", reemplazar: true });
-        if (justa && piezaElegida) {
-          despachar({ tipo: "ponerPiezas", piezas: [{ spaceId: piezaElegida.spaceId, vertices: [justa] }] });
-          usePiezasUI.getState().decir(`${piezaElegida.corto}: le corrimos un lado para que quede en ${pct(piezaElegida.pb)} justo. Deshacer la deja como la dibujaste.`);
-        }
-        setCursor(null);
+        cerrarAMano();
       } else {
         if (!ed.trazo?.length) usePiezasUI.getState().decir(null);   // empieza otra forma: la pista vuelve a explicar
         despachar({ tipo: "agregarPunto", punto: imantado(p) });
@@ -293,6 +366,15 @@ export default function CaraDePiezas({ fixtureId, sede, onSoltar }: {
     return capaQueSeMuestra(datos).filter((z) => muertas.has(z.participacion_space_id));
   }, [datos]);
 
+  /** Las marcas que comparten el lugar en fechas que no se cruzan (sus rótulos se apilan). */
+  const compartidas = useMemo(() => (cara ? lugaresCompartidos(piezas, cara, hoy) : new Map<number, { i: number; n: number }>()),
+    [piezas, cara, hoy]);
+  /** La pieza con el foco del teclado (se dibuja con un anillo). */
+  const [enfocada, setEnfocada] = useState<number | null>(null);
+  /** Lo libre de la cara HOY: la misma cuenta que la lista («Libre · 40 %»):
+   *  dos marcas que se turnan en el mismo lugar no se suman. */
+  const libre = useMemo(() => (datos?.superficie && datos.por_participacion ? capacidadDe(datos, hoy).queda : 0), [datos, hoy]);
+
   const marco = (texto: string) => (
     <div data-lienzo-de-zonas className="flex min-h-[220px] w-full items-center justify-center rounded-xl border border-dashed border-line p-6">
       <p className="max-w-sm text-center text-sm leading-relaxed text-ink-2">{texto}</p>
@@ -305,41 +387,99 @@ export default function CaraDePiezas({ fixtureId, sede, onSoltar }: {
 
   const b = bordesUtiles(E);
   const fs = px(12);
-  // Lo libre: el hueco más ancho, con lo que queda sin ubicar.
-  const ubicado = piezas.reduce((a, p) => a + Math.min(p.dibujado, p.pb), 0);
-  const libre = Math.max(0, 10000 - ubicado);
+  // Lo libre se dice en el hueco más ancho.
   const huecos = huecosLibres(cara, piezas.filter((p) => p.poligonos.length > 0).map((p) => ({ spaceId: p.spaceId, poligonos: p.poligonos })));
   const ancho = huecos.reduce((m, h) => (h[1] - h[0] > m[1] - m[0] ? h : m), [0, 0] as [number, number]);
   const mostrarLibre = libre > 0 && (ancho[1] - ancho[0]) * W >= px(90) && !arrastre && !vista;
 
+  /** Mover con el teclado (flechas) o ubicar sin arrastrar: al lugar
+   *  siguiente donde entra entera, con su % exacto. */
+  const moverConTeclado = (pz: Pieza, como: "izquierda" | "derecha" | "primero") => {
+    if (!puedeEditar || pz.forma === "a_mano") {
+      if (pz.forma === "a_mano") usePiezasUI.getState().decir(`${pz.corto} está hecha a mano: se rehace, no se mueve.`);
+      return;
+    }
+    const r = ubicarSinArrastrar(cara, pz.pb, pz.forma, ocupadosPara(pz.spaceId, piezas, hoy), pz.estado === "sin_ubicar" ? null : pz.rect, como);
+    if (!r) {
+      usePiezasUI.getState().decir(como === "primero" ? `${pz.corto} no entra entera en ningún hueco libre.`
+        : `${pz.corto}: no hay más lugar libre a la ${como}.`);
+      return;
+    }
+    onSoltar(pz.spaceId, r, null);
+    usePiezasUI.getState().decir(`${pz.corto} quedó ${dondeQuedo(r, W)}: ${pct(pz.pb)} justo.`);
+  };
+
   /** Una pieza: su relleno (sólo lo que se vende), su contorno y su rótulo. */
-  const dibujoDePieza = (p: Pieza, P: readonly Poligono[], o: { fantasma?: boolean; rojo?: boolean; rotulo?: string | null } = {}) => {
+  const dibujoDePieza = (p: Pieza, P: readonly Poligono[], o: { fantasma?: boolean; rojo?: boolean; rotulo?: string | null; inerte?: boolean } = {}) => {
     const tono = o.rojo ? C.rojo : p.tono;
-    const textura = p.estampa?.textura ?? "lleno";
-    const pat = o.rojo ? `${uid}-rojo` : textura !== "lleno" ? `${uid}-t${p.spaceId}` : null;
+    // Lisas: la identidad es el color y el nombre. Rayado quiere decir «no se
+    // vende»; si dos marcas tienen el mismo tono, puntos.
+    const patron = o.rojo ? "rojo" : patronDe(p, piezas);
+    const pat = patron === "rojo" ? `${uid}-rojo` : patron !== "lisa" ? `${uid}-t${p.spaceId}` : null;
+    const real = !o.fantasma && !o.inerte;
+    // La que todavía no rige (comparte el lugar con la de ahora): sólo el contorno punteado.
+    const futura = real && !p.rigeHoy;
+    const apilado = real ? compartidas.get(p.spaceId) ?? null : null;
     // El cartel del fantasma va arriba de la pieza (no encima del nombre de la
     // que está abajo), con un halo del color de la cara para que se lea.
     const arriba = o.fantasma && P[0] ? Math.max(...P[0].map((x) => x[1])) : null;
     const centro = P[0] ? (arriba !== null ? [puntoInterior(P[0], W, H)[0], arriba - (fs * 1.6) / H] as const : puntoInterior(P[0], W, H)) : null;
     const rotulo = o.rotulo !== undefined ? o.rotulo : `${p.corto}`;
-    const linea2 = o.rotulo !== undefined ? null : `${pct(p.pb)}${p.estado === "ubicada" ? " ✓" : ""}`;
+    const r2 = o.rotulo !== undefined ? null : rotuloDePieza(p, p.choca !== null ? porS.get(p.choca)?.corto ?? null : null);
+    const linea3 = o.rotulo === undefined && (apilado || futura) ? vigenciaCorta(p, hoy) : null;
+    // En una pieza angosta, «42,42 % · sobra 12,42 %» va en dos renglones (no se sale de la pieza).
+    const cajaP = P[0] ? P[0].reduce((m, [u]) => ({ u0: Math.min(m.u0, u), u1: Math.max(m.u1, u) }), { u0: 1, u1: 0 }) : null;
+    const anchoP = cajaP ? (cajaP.u1 - cajaP.u0) * W : W;
+    const r2Lineas = !r2 ? [] : r2.texto.includes(" · ") && r2.texto.length * fs * 0.92 * 0.62 > anchoP * 0.92
+      ? r2.texto.split(" · ") : [r2.texto];
+    const lineas = 1 + r2Lineas.length + (linea3 ? 1 : 0);
+    // Apiladas: una arriba de la otra, centradas en el lugar que comparten.
+    const dy = apilado ? (apilado.i - (apilado.n - 1) / 2) * fs * (lineas + 0.9) * 1.05 : 0;
+    const y0 = centro ? (1 - centro[1]) * H + dy - ((lineas - 1) * fs * 1.25) / 2 : 0;
+    const halo = { stroke: C.cara, strokeWidth: fs * 0.35, paintOrder: "stroke" as const, strokeLinejoin: "round" as const };
+    const conHalo = !!o.fantasma;
+    const nombre = real ? nombreAccesible(p, p.choca !== null ? porS.get(p.choca)?.corto ?? null : null) : undefined;
     return (
-      <g key={`${o.fantasma ? "f" : "p"}${p.spaceId}`} data-pieza={o.fantasma ? undefined : p.spaceId} data-estado={o.fantasma ? undefined : p.estado}
-        style={{ cursor: puedeEditar && !aMano && p.forma !== "a_mano" ? "grab" : "pointer" }} opacity={o.fantasma ? 0.92 : 1}>
-        <path d={relleno(P)} fill={tono} fillOpacity={o.rojo ? 0.18 : 0.22} />
-        {pat && <path d={relleno(P)} fill={`url(#${pat})`} />}
+      <g key={`${o.fantasma ? "f" : o.inerte ? "x" : "p"}${p.spaceId}`} data-pieza={real ? p.spaceId : undefined} data-estado={real ? p.estado : undefined}
+        data-rige-hoy={real ? (p.rigeHoy ? "si" : "no") : undefined}
+        role={real ? "button" : undefined} tabIndex={real ? 0 : undefined} aria-label={nombre}
+        aria-pressed={real ? elegida === p.spaceId : undefined}
+        onFocus={real ? (e) => { if (e.currentTarget.matches?.(":focus-visible") ?? true) setEnfocada(p.spaceId); } : undefined} onBlur={real ? () => setEnfocada((x) => (x === p.spaceId ? null : x)) : undefined}
+        onKeyDown={real ? (e) => {
+          if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            e.preventDefault(); e.stopPropagation();
+            moverConTeclado(p, e.key === "ArrowLeft" ? "izquierda" : "derecha");
+          } else if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault(); e.stopPropagation();
+            usePiezasUI.getState().elegir(p.spaceId);
+            if (p.zonas[0]) despachar({ tipo: "seleccionar", zona: p.zonas[0].clave });
+          }
+        } : undefined}
+        pointerEvents={o.inerte || o.fantasma ? "none" : undefined}
+        style={{ cursor: o.inerte ? undefined : puedeEditar && !aMano && p.forma !== "a_mano" ? "grab" : "pointer", outline: "none" }} opacity={o.fantasma ? 0.92 : 1}>
+        <title>{nombre ?? rotulo ?? ""}</title>
+        {!futura && <path d={relleno(P)} fill={tono} style={{ fillOpacity: o.rojo ? 0.18 : "var(--pieza-alfa)" }} />}
+        {pat && !futura && <path d={relleno(P)} fill={`url(#${pat})`} />}
         {P.map((poly, i) => (
           <path key={i} d={camino(poly, W, H)} fill="transparent" stroke={tono} strokeWidth={px(o.fantasma || elegida === p.spaceId ? 3 : 2.25)}
-            strokeDasharray={o.fantasma || p.esReserva ? `${px(7)} ${px(5)}` : undefined} strokeLinejoin="round" />
+            strokeDasharray={o.fantasma || p.esReserva || futura ? `${px(7)} ${px(5)}` : undefined} strokeLinejoin="round" />
+        ))}
+        {real && enfocada === p.spaceId && P.map((poly, i) => (
+          <path key={`f${i}`} d={camino(poly, W, H)} fill="none" stroke={C.tinta} strokeWidth={px(2)} strokeDasharray={`${px(3)} ${px(3)}`}
+            data-foco-de-pieza />
         ))}
         {centro && rotulo && (
           <g pointerEvents="none">
-            <text x={centro[0] * W} y={(1 - centro[1]) * H - (linea2 ? fs * 0.55 : 0)} textAnchor="middle" dominantBaseline="central"
-              stroke={o.fantasma ? C.cara : undefined} strokeWidth={o.fantasma ? fs * 0.35 : undefined} paintOrder="stroke" strokeLinejoin="round"
+            <text x={centro[0] * W} y={y0} textAnchor="middle" dominantBaseline="central"
+              {...(conHalo ? halo : {})}
               style={{ fill: o.rojo ? C.rojoTxt : C.tinta, fontSize: fs, fontWeight: 700 }}>{rotulo}</text>
-            {linea2 && (
-              <text x={centro[0] * W} y={(1 - centro[1]) * H + fs * 0.75} textAnchor="middle" dominantBaseline="central"
-                style={{ fill: C.tinta2, fontSize: fs * 0.92, fontWeight: 600, fontFamily: "var(--f-mono)" }}>{linea2}</text>
+            {r2 && r2Lineas.map((t, i) => (
+              <text key={i} x={centro[0] * W} y={y0 + fs * 1.25 * (i + 1)} textAnchor="middle" dominantBaseline="central" {...(conHalo ? halo : {})}
+                style={{ fill: r2.rojo ? C.rojoTxt : C.tinta2, fontSize: fs * 0.92, fontWeight: 600, fontFamily: "var(--f-mono)" }} data-rotulo-pct>{t}</text>
+            ))}
+            {linea3 && (
+              <text x={centro[0] * W} y={y0 + fs * 1.25 * (r2Lineas.length + 1)} textAnchor="middle" dominantBaseline="central" {...(conHalo ? halo : {})}
+                style={{ fill: C.tinta2, fontSize: fs * 0.92, fontWeight: 600 }} data-vigencia-corta>{linea3}</text>
             )}
           </g>
         )}
@@ -357,7 +497,7 @@ export default function CaraDePiezas({ fixtureId, sede, onSoltar }: {
       <svg
         ref={(el) => { svgRef.current = el; svgDeLaCara = el; }}
         role="application" tabIndex={0}
-        aria-label={`La cara ${activa.cara} de ${activa.codigo} de frente: arrastrá cada marca a su lugar`}
+        aria-label={`La cara ${activa.cara} de ${activa.codigo} de frente: arrastrá cada marca a su lugar, o elegila con Tab y movela con las flechas`}
         viewBox={`${-margen} ${-margen} ${W + 2 * margen} ${H + 2 * margen}`}
         className="block h-auto w-full touch-none select-none outline-none"
         style={{ maxHeight: "min(62vh, 560px)", cursor: aMano ? "crosshair" : undefined }}
@@ -371,10 +511,10 @@ export default function CaraDePiezas({ fixtureId, sede, onSoltar }: {
           <pattern id={`${uid}-rojo`} width={px(7)} height={px(7)} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1="0" y1="0" x2="0" y2={px(7)} stroke={C.rojo} strokeWidth={px(2.5)} />
           </pattern>
-          {piezas.filter((p) => p.estampa && p.estampa.textura !== "lleno").map((p) => (
-            <pattern key={p.spaceId} id={`${uid}-t${p.spaceId}`} width={px(8)} height={px(8)} patternUnits="userSpaceOnUse"
-              patternTransform={`rotate(${p.estampa!.textura === "rayado45" ? 45 : 135})`}>
-              <line x1="0" y1="0" x2="0" y2={px(8)} stroke={p.tono} strokeWidth={px(2)} strokeOpacity={0.55} />
+          {/* Puntos (nunca rayas: rayado es «no se vende») sólo si dos marcas comparten el tono. */}
+          {piezas.map((p) => ({ p, patron: patronDe(p, piezas) })).filter((x) => x.patron !== "lisa").map(({ p, patron }) => (
+            <pattern key={p.spaceId} id={`${uid}-t${p.spaceId}`} width={px(patron === "puntos" ? 7 : 11)} height={px(patron === "puntos" ? 7 : 11)} patternUnits="userSpaceOnUse">
+              <circle cx={px(patron === "puntos" ? 3.5 : 5.5)} cy={px(patron === "puntos" ? 3.5 : 5.5)} r={px(patron === "puntos" ? 1.3 : 2.6)} fill={p.tono} fillOpacity={0.75} />
             </pattern>
           ))}
         </defs>
@@ -417,8 +557,9 @@ export default function CaraDePiezas({ fixtureId, sede, onSoltar }: {
         )}
 
         {/* El choque de recién: en rojo, donde se soltó. */}
+        {/* Inerte: no se puede agarrar (se agarraba y movía la pieza de verdad). */}
         {choque && porS.get(choque.spaceId) && !fantasma &&
-          dibujoDePieza(porS.get(choque.spaceId)!, [poligonoDeRect(choque.rect)], { rojo: true, rotulo: null })}
+          dibujoDePieza(porS.get(choque.spaceId)!, [poligonoDeRect(choque.rect)], { rojo: true, rotulo: null, inerte: true })}
 
         {/* La pieza que se arrastra: dónde quedaría. */}
         {fantasma?.rect && piezaDelFantasma &&

@@ -107,11 +107,13 @@ await prueba(`Franja exacta: ${MUEBLES.length} muebles × ${PORCENTAJES.length} 
     for (const pb of PORCENTAJES) {
       const izq = PZ.franja(cara, pb, 0, "derecha");
       exacta(izq, pb, cara, `${nombre} ${pb} desde la izquierda`);
-      assert.equal(izq.u0, 0);
-      assert.ok(izq.v0 === 0 && izq.v1 === 1, "una franja va de arriba a abajo");
+      // De borde a borde de lo que se VENDE (no sobre el zócalo, el remate ni
+      // el parante del costado): lo que se ve es lo que se guarda.
+      assert.equal(izq.u0, b.u0, `${nombre}: la franja no arranca donde arranca lo que se vende`);
+      assert.ok(izq.v0 === b.v0 && izq.v1 === b.v1, `${nombre}: una franja va de arriba a abajo de lo que se vende`);
       const der = PZ.franja(cara, pb, 1, "izquierda");
       exacta(der, pb, cara, `${nombre} ${pb} desde la derecha`);
-      assert.equal(der.u1, 1);
+      assert.equal(der.u1, b.u1, `${nombre}: la franja no termina donde termina lo que se vende`);
       if (pb <= 5000) {
         const medio = PZ.franja(cara, pb, 0.37, "derecha") ?? PZ.franja(cara, pb, 0.37, "izquierda");
         exacta(medio, pb, cara, `${nombre} ${pb} desde el medio`);
@@ -127,7 +129,8 @@ await prueba("100 % es la cara entera; con lo que no se vende a los costados, la
   const t = PZ.franja(cara, 10000, 0, "derecha");
   exacta(t, 10000, cara, "100 %");
   const b = PZ.bordesUtiles(cara.exclusiones);
-  assert.ok(t.u1 <= 1 && t.u1 >= b.u1 - 1e-6, `la franja del 100 % termina en ${t.u1}`);
+  assert.ok(t.u1 <= b.u1 + 1e-9 && t.u1 >= b.u1 - 1e-6, `la franja del 100 % termina en ${t.u1}`);
+  assert.deepEqual([t.u0, t.v0, t.v1], [b.u0, b.v0, b.v1], "la franja del 100 % no es lo que se vende");
   // 10001 pb no existe; 0 tampoco.
   assert.equal(PZ.franja(cara, 10001, 0), null);
   assert.equal(PZ.franja(cara, 0, 0), null);
@@ -193,7 +196,9 @@ await prueba("«Acomodar solas»: en el orden de la lista, una al lado de la otr
     for (const p of LISTA) {
       const rr = puestas.get(p.spaceId);
       exacta(rr, p.pb, cara, `${nombre}: la ${p.spaceId}`);
-      assert.ok(rr.v0 === 0 && rr.v1 === 1, `${nombre}: acomodar no armó franjas`);
+      const bb = PZ.bordesUtiles(cara.exclusiones);
+      assert.ok(rr.v0 === bb.v0 && rr.v1 === bb.v1, `${nombre}: acomodar no armó franjas`);
+      if (!antes) assert.equal(rr.u0, bb.u0, `${nombre}: la primera no arranca donde arranca lo que se vende`);
       if (antes) assert.equal(rr.u0, antes.u1, `${nombre}: la ${p.spaceId} no va pegada a la anterior`);
       antes = rr;
     }
@@ -214,6 +219,26 @@ await prueba("«Acomodar solas»: en el orden de la lista, una al lado de la otr
   }
 });
 
+await prueba("«Acomodar solas» con la cara entera vendida (40 + 35 + 25, 50 + 50, 100): entran todas, la última termina donde termina lo que se vende (todos los muebles)", () => {
+  // La ronda de verificación (2026-10-24): con el redondeo a pb, la última
+  // necesitaba hasta el borde de la CARA y quedaba sin ubicar.
+  for (const { nombre, mueble } of MUEBLES) {
+    const cara = caraDe(mueble);
+    const b = PZ.bordesUtiles(cara.exclusiones);
+    for (const lista of [[4000, 3500, 2500], [5000, 5000], [10000], [3333, 3333, 3334]]) {
+      const L = lista.map((pb, i) => ({ spaceId: 20 + i, pb }));
+      const puestas = PZ.acomodarSolas(cara, L, [], () => true);
+      assert.equal(puestas.size, L.length, `${nombre}: ${lista.join(" + ")} — quedaron sin ubicar ${L.length - puestas.size}`);
+      for (const p of L) {
+        const r = puestas.get(p.spaceId);
+        exacta(r, p.pb, cara, `${nombre}: ${lista.join(" + ")}, la de ${p.pb}`);
+        assert.ok(r.u0 >= b.u0 - 1e-9 && r.u1 <= b.u1 + 1e-9, `${nombre}: ${lista.join(" + ")} se sale de lo que se vende`);
+      }
+      casos.push({ nombre: `${nombre} · acomodadas ${lista.join(" + ")}`, mueble, pb: null, piezas: L.map((p) => ({ s: p.spaceId, pb: p.pb, vertices: PZ.poligonoDeRect(puestas.get(p.spaceId)) })) });
+    }
+  }
+});
+
 await prueba("«Acomodar solas» respeta lo ya ubicado y las fechas: lo fijo no se toca; dos marcas que no se cruzan comparten el lugar", () => {
   const cara = caraDe(MUEBLES[0].mueble);
   const fija = PZ.franja(cara, 5000, 0, "derecha");
@@ -223,7 +248,7 @@ await prueba("«Acomodar solas» respeta lo ya ubicado y las fechas: lo fijo no 
   assert.equal(puestas.get(5).u0, fija.u1, "no quedó pegada a la que ya estaba");
   // Si sus fechas no se cruzan, la 5 puede ir en el mismo lugar que la 4.
   const juntas = PZ.acomodarSolas(cara, [{ spaceId: 5, pb: 3000 }], fijas, () => false);
-  assert.equal(juntas.get(5).u0, 0, "con fechas que no se cruzan, la 5 no usó el lugar de la 4");
+  assert.equal(juntas.get(5).u0, PZ.bordesUtiles(cara.exclusiones).u0, "con fechas que no se cruzan, la 5 no usó el lugar de la 4");
   // Lo que no entra queda sin ubicar.
   const llena = PZ.acomodarSolas(cara, [{ spaceId: 6, pb: 6000 }], fijas, () => true);
   assert.equal(llena.size, 0, "una pieza que no entra se ubicó igual");
@@ -243,7 +268,7 @@ await prueba("soltar en lo verde encaja pegada al costado de la otra marca; solt
   // Soltada contra el borde derecho: se pega a la derecha.
   const r2 = PZ.encajar(cara, 3000, "franja", 0.92, 0.5, ocupados, { radio: 0.04 });
   exacta(r2, 3000, cara, "contra la derecha");
-  assert.equal(r2.u1, 1, "no se pegó al borde derecho");
+  assert.equal(r2.u1, PZ.bordesUtiles(cara.exclusiones).u1, "no se pegó al borde derecho de lo que se vende");
   // Soltada encima de Aseo: el % sigue justo, pero pisa a la 4.
   const r3 = PZ.encajar(cara, 3000, "franja", 0.2, 0.5, ocupados, { radio: 0.01 });
   exacta(r3, 3000, cara, "encima");
@@ -255,6 +280,102 @@ await prueba("soltar en lo verde encaja pegada al costado de la otra marca; solt
   }
 });
 
+await prueba("soltar una pieza GRANDE cerca del medio: 60, 70, 90 y 100 % en una cara vacía (todos los muebles) y en un hueco parcial, siempre exacta y adentro del hueco", () => {
+  // La ronda de prueba (2026-10-24): el ancho se medía desde el puntero hacia
+  // un solo lado y una pieza de 60 % soltada en u = 0,5 no se ubicaba.
+  for (const { nombre, mueble } of MUEBLES) {
+    const cara = caraDe(mueble);
+    const b = PZ.bordesUtiles(cara.exclusiones);
+    for (const [pb, us] of [[6000, [0.5]], [7000, [0.4, 0.5, 0.6]], [9000, [0.2, 0.35, 0.5, 0.65, 0.8]], [10000, [0.5, 0.1, 0.9]]]) {
+      for (const u of us) {
+        const r = PZ.encajar(cara, pb, "franja", u, 0.5, [], { radio: 0.03 });
+        exacta(r, pb, cara, `${nombre}: ${pb} pb soltada en u = ${u}`);
+        assert.ok(r.u0 >= b.u0 - 1e-9 && r.u1 <= b.u1 + 1e-9, `${nombre}: ${pb} pb en u = ${u} se sale de lo que se vende`);
+        assert.ok(r.v0 === b.v0 && r.v1 === b.v1, `${nombre}: ${pb} pb en u = ${u} no es una franja`);
+        // Centrada en el puntero salvo que choque con un borde.
+        const centro = (r.u0 + r.u1) / 2;
+        assert.ok(Math.abs(centro - u) < 0.03 || r.u0 === b.u0 || r.u1 === b.u1, `${nombre}: ${pb} pb en u = ${u} quedó lejos (${centro})`);
+      }
+    }
+    // Lo mismo al cambiar la forma de una de Estantes a Franja (la cuenta de «cambiarForma»).
+    const est = PZ.estantes(cara, 7000, b.u0, b.u1, b.v0);
+    if (est) {
+      const f = PZ.encajar(cara, 7000, "franja", (est.u0 + est.u1) / 2, (est.v0 + est.v1) / 2, [], { radio: 0.03 });
+      exacta(f, 7000, cara, `${nombre}: de Estantes a Franja con 70 %`);
+    }
+  }
+  // En un hueco parcial: 30 % ocupado a la izquierda y la de 60 % (o 70 %) soltada en el medio de lo verde.
+  const cara = caraDe(MUEBLES[0].mueble);
+  const b = PZ.bordesUtiles(cara.exclusiones);
+  const aseo = PZ.franja(cara, 3000, 0, "derecha");
+  const ocupados = [{ spaceId: 4, poligonos: [PZ.poligonoDeRect(aseo)] }];
+  for (const pb of [6000, 7000]) {
+    for (const u of [aseo.u1 + 0.1, (aseo.u1 + b.u1) / 2, b.u1 - 0.1]) {
+      const r = PZ.encajar(cara, pb, "franja", u, 0.5, ocupados, { radio: 0.03 });
+      exacta(r, pb, cara, `${pb} pb en el hueco, soltada en u = ${u.toFixed(3)}`);
+      assert.ok(r.u0 >= aseo.u1 - 1e-9 && r.u1 <= b.u1 + 1e-9, `${pb} pb se sale del hueco (${r.u0}–${r.u1})`);
+      assert.equal(PZ.primeraQuePisa([PZ.poligonoDeRect(r)], ocupados, cara), null, `${pb} pb en el hueco pisa a la otra`);
+      casos.push({ nombre: `góndola doble 1,80 · ${pb} pb soltada en el hueco (u ${u.toFixed(3)})`, mueble: MUEBLES[0].mueble, pb: null,
+        piezas: [{ s: 4, pb: 3000, vertices: PZ.poligonoDeRect(aseo) }, { s: 5, pb, vertices: PZ.poligonoDeRect(r) }] });
+    }
+  }
+  // Y en el hueco de en medio (dos piezas a los costados): la de 40 % entra justa.
+  const otra = PZ.franja(cara, 3000, 1, "izquierda");
+  const dos = [...ocupados, { spaceId: 6, poligonos: [PZ.poligonoDeRect(otra)] }];
+  const medio = PZ.encajar(cara, 4000, "franja", 0.5, 0.5, dos, { radio: 0.03 });
+  exacta(medio, 4000, cara, "40 % entre dos de 30 %");
+  assert.deepEqual([medio.u0, PZ.primeraQuePisa([PZ.poligonoDeRect(medio)], dos, cara)], [aseo.u1, null]);
+  // Lo que no entra en el hueco se ve (pisa), nunca se achica.
+  const grande = PZ.encajar(cara, 8000, "franja", 0.6, 0.5, ocupados, { radio: 0.03 });
+  exacta(grande, 8000, cara, "80 % donde quedan 70 %");
+  assert.equal(PZ.primeraQuePisa([PZ.poligonoDeRect(grande)], ocupados, cara), 4, "una pieza que no entra en el hueco no dice a quién pisa");
+});
+
+await prueba("ubicar sin arrastrar (teclado y menú): el primer hueco libre, y el lugar siguiente a la izquierda o a la derecha, siempre exacta y sin pisar", () => {
+  const cara = caraDe(MUEBLES[0].mueble);
+  const b = PZ.bordesUtiles(cara.exclusiones);
+  const aseo = PZ.franja(cara, 3000, 0, "derecha");
+  const ocupados = [{ spaceId: 4, poligonos: [PZ.poligonoDeRect(aseo)] }];
+  const primero = PZ.ubicarSinArrastrar(cara, 2000, "franja", ocupados, null, "primero");
+  exacta(primero, 2000, cara, "en el primer hueco");
+  assert.equal(primero.u0, aseo.u1, "el primer hueco libre no es el de al lado de Aseo");
+  const derecha = PZ.ubicarSinArrastrar(cara, 2000, "franja", ocupados, null, "derecha");
+  exacta(derecha, 2000, cara, "a la derecha");
+  assert.equal(derecha.u1, b.u1, "«a la derecha» no la pegó al borde derecho");
+  // Las flechas: desde el primer lugar, a la derecha va al borde derecho del hueco; de ahí, a la izquierda vuelve.
+  const sig = PZ.ubicarSinArrastrar(cara, 2000, "franja", ocupados, primero, "derecha");
+  assert.deepEqual(sig, derecha);
+  assert.deepEqual(PZ.ubicarSinArrastrar(cara, 2000, "franja", ocupados, sig, "izquierda"), primero);
+  assert.equal(PZ.ubicarSinArrastrar(cara, 2000, "franja", ocupados, primero, "izquierda"), null, "a la izquierda de Aseo no hay lugar: no debería moverse");
+  // Con dos huecos (Aseo en el medio), salta de hueco en hueco.
+  const medio = PZ.franja(cara, 3000, 0.35, "derecha");
+  const oc2 = [{ spaceId: 4, poligonos: [PZ.poligonoDeRect(medio)] }];
+  const L = PZ.lugaresPosibles(cara, 2000, "franja", oc2, null);
+  assert.ok(L.length === 4, `en dos huecos hay 4 lugares (${L.length})`);
+  for (const r of L) {
+    exacta(r, 2000, cara, "un lugar posible");
+    assert.equal(PZ.primeraQuePisa([PZ.poligonoDeRect(r)], oc2, cara), null);
+  }
+  let x = PZ.ubicarSinArrastrar(cara, 2000, "franja", oc2, null, "izquierda");
+  const visitados = [x.u0];
+  for (let k = 0; k < 6; k++) { const y = PZ.ubicarSinArrastrar(cara, 2000, "franja", oc2, x, "derecha"); if (!y) break; x = y; visitados.push(x.u0); }
+  assert.deepEqual(visitados, L.map((r) => r.u0), "las flechas no recorren los lugares en orden");
+  // Estantes: conserva el ancho y el estante.
+  const est = PZ.estantes(cara, 1500, aseo.u1, aseo.u1 + 0.3, b.v0);
+  const movida = PZ.ubicarSinArrastrar(cara, 1500, "estantes", ocupados, est, "derecha");
+  exacta(movida, 1500, cara, "estantes movida");
+  assert.ok(Math.abs((movida.u1 - movida.u0) - (est.u1 - est.u0)) < 1e-6 && movida.v0 === est.v0, "la de Estantes cambió de ancho o de estante");
+  // Llena: no hay a dónde.
+  const llena = [{ spaceId: 4, poligonos: [PZ.poligonoDeRect(PZ.franja(cara, 9000, 0, "derecha"))] }];
+  assert.equal(PZ.ubicarSinArrastrar(cara, 2000, "franja", llena, null, "primero"), null);
+});
+
+await prueba("el rótulo dice lo que HAY: justa, su %; pasada o corta, lo medido y cuánto sobra o falta", () => {
+  assert.deepEqual(PZ.rotuloDeLoQueHay(3000, 3000), { texto: "30 %", justo: true });
+  assert.deepEqual(PZ.rotuloDeLoQueHay(3000, 4242), { texto: "42,42 % · sobra 12,42 %", justo: false });
+  assert.deepEqual(PZ.rotuloDeLoQueHay(3000, 2500), { texto: "25 % · faltan 5 %", justo: false });
+});
+
 await prueba("Estantes al soltar: toma el ancho del hueco y se apoya en el estante más cercano", () => {
   const m = MUEBLES[0].mueble;
   const cara = caraDe(m);
@@ -263,7 +384,7 @@ await prueba("Estantes al soltar: toma el ancho del hueco y se apoya en el estan
   const r = PZ.encajar(cara, 3000, "estantes", 0.75, 0.3, ocupados, { radio: 0.03 });
   exacta(r, 3000, cara, "estantes en el hueco");
   assert.equal(r.u0, aseo.u1, "no tomó el hueco desde la otra marca");
-  assert.equal(r.u1, 1, "no tomó el hueco hasta el borde");
+  assert.equal(r.u1, PZ.bordesUtiles(cara.exclusiones).u1, "no tomó el hueco hasta el borde de lo que se vende");
   const lineas = PZ.lineasDeLaCara(cara).vs;
   assert.ok(lineas.includes(r.v0), `no se apoyó en un estante (${r.v0})`);
   assert.equal(PZ.primeraQuePisa([PZ.poligonoDeRect(r)], ocupados, cara), null);
@@ -310,7 +431,10 @@ await prueba("«A mano»: la L del dibujo aprobado (dos estantes de abajo y una 
   const cp = PZ.contadorAMano(lleva, 3000);
   assert.equal(cp.estado, "pasado");
   assert.equal(cp.titulo, "Te pasaste");
-  assert.match(cp.texto, /^Sobra [\d,]+ %: mové un punto hacia adentro o tocá «Achicar a 30 %»\.$/);
+  assert.match(cp.texto, /^Sobra [\d,]+ %: sacá el último punto \(Retroceso\) o cerrala y tocá «Achicar a 30 %»\.$/);
+  // Cerrada (se mira, no se dibuja): nada de «mové un punto»; achicar o rehacer.
+  assert.match(PZ.contadorAMano(lleva, 3000, true).texto, /^Sobra [\d,]+ %: tocá «Achicar a 30 %» o «Rehacer a mano»\.$/);
+  assert.equal(PZ.contadorAMano(2500, 3000, true).texto, "Faltan 5 %: tocá «Llevar a 30 %» o «Rehacer a mano».");
   // «Achicar a 30 %» reusa el ajuste de siempre y queda justo.
   const ach = E.ajustarAlContratado([pasada], cara.exclusiones, 3000, G.areaUtil(cara.exclusiones), [[PZ.poligonoDeRect(aseo)]], { ancho: cara.ancho, alto: cara.alto });
   assert.equal(G.dibujadoPb(ach, cara.exclusiones), 3000, "«Achicar» no dejó el 30 % justo");
@@ -361,13 +485,14 @@ await prueba("«A mano» cerca del contratado (±3 %) queda JUSTA corriendo el l
 await prueba("el contador: llevando, justo y pasado, con las palabras del dibujo; una forma que se cruza no cuenta", () => {
   assert.deepEqual(PZ.contadorAMano(0, 3000), { estado: "lleva", titulo: "Llevás", texto: "Faltan 30 %. Seguí tocando puntos; se pegan a los estantes y a los bordes.", falta: 3000, sobra: 0 });
   assert.equal(PZ.contadorAMano(2000, 3000).texto, "Faltan 10 %. Seguí tocando puntos; se pegan a los estantes y a los bordes.");
-  assert.equal(PZ.contadorAMano(3400, 3000).texto, "Sobra 4 %: mové un punto hacia adentro o tocá «Achicar a 30 %».");
+  assert.equal(PZ.contadorAMano(3400, 3000).texto, "Sobra 4 %: sacá el último punto (Retroceso) o cerrala y tocá «Achicar a 30 %».");
   assert.equal(PZ.contadorAMano(1750, 1750).estado, "justo");
   const cara = caraDe(MUEBLES[0].mueble);
   assert.equal(PZ.llevaAMano([[0.1, 0.1], [0.5, 0.5], [0.5, 0.1], [0.1, 0.5]], cara), null, "un moño se contó");
   assert.equal(PZ.llevaAMano([], cara), 0);
   assert.equal(PZ.llevaAMano([[0.1, 0.1], [0.2, 0.2]], cara), null);
-  assert.equal(PZ.contadorAMano(null, 3000).texto, "Así la forma se cruza: mové o sacá el último punto.");
+  assert.equal(PZ.contadorAMano(null, 3000).texto, "Así la forma se cruza: sacá el último punto (Retroceso).");
+  for (const x of [0, 2000, 3400, null]) for (const c of [false, true]) assert.ok(!/mové/.test(PZ.contadorAMano(x, 3000, c).texto), "el contador pide mover un punto (no se puede)");
 });
 
 await prueba("la forma de lo ya dibujado: franja, estantes o a mano", () => {

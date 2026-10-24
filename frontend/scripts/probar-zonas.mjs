@@ -993,6 +993,22 @@ await prueba("desempate: con dos del mismo proveedor y marca va sola a la del MI
   assert.deepEqual([m.grupos[0].como, m.grupos[0].destino], ["sin_destino", null], "se eligió una participación que ya no rige");
 });
 
+await prueba("copiar antes de elegir: con una fila sin destino (la marca no está en esta cara) no dice en rojo «No queda ninguna pieza»; espera la elección, en neutro (ronda de prueba 2026-10-24)", () => {
+  const destino = destinoC(SUP_090, [partC(201, 1, true, 70, "Pastas Italia", "Spaghetti", 3000)]);
+  const c = CO.copiarZonas(ladoC(SUP_090, [partC(101, 1, true, 7, "Arroz Real", "Arroz", 3000)]), [zoC(1, 101, franjaC(0.05, 0.3), 0)], destino, [], SIN);
+  assert.equal(c.compatible, true);
+  assert.deepEqual([c.grupos[0].como, c.nuevas.length], ["sin_destino", 0]);
+  assert.equal(CO.bloqueoDeLaCopia(c), "Elegí a qué marca de esta cara va cada una.");
+  const f = CO.frasesDeLaCopia(c, ORIGEN_C, destino);
+  assert.ok(!f.avisos.some((a) => a.bloquea), `antes de elegir hay un aviso en rojo: ${f.avisos.map((a) => a.texto).join(" · ")}`);
+  // Elegida la marca, se copia; elegido «No copiar», ahí sí no queda nada (en rojo).
+  const elegida = CO.copiarZonas(ladoC(SUP_090, [partC(101, 1, true, 7, "Arroz Real", "Arroz", 3000)]), [zoC(1, 101, franjaC(0.05, 0.3), 0)], destino, [], { ...SIN, elegidas: new Map([[101, 201]]) });
+  assert.deepEqual([elegida.nuevas.length, CO.bloqueoDeLaCopia(elegida)], [1, null]);
+  const nada = CO.copiarZonas(ladoC(SUP_090, [partC(101, 1, true, 7, "Arroz Real", "Arroz", 3000)]), [zoC(1, 101, franjaC(0.05, 0.3), 0)], destino, [], { ...SIN, elegidas: new Map([[101, null]]) });
+  assert.equal(CO.bloqueoDeLaCopia(nada), "No queda ninguna pieza para copiar.");
+  assert.ok(CO.frasesDeLaCopia(nada, ORIGEN_C, destino).avisos.some((a) => a.bloquea && a.texto === "No queda ninguna pieza para copiar."));
+});
+
 await prueba("espejo: u → 1 − u (cuantizado), v igual, y la zona sigue antihoraria; lo de la izquierda queda a la derecha", () => {
   const destino = destinoC(SUP_090, [partC(201, 1, true, 7, "Café A", "Sello Rojo", 3000)]);
   const zs = [zoC(1, 101, [[0.05, 0.1], [0.3, 0.1], [0.3, 0.5], [0.12, 0.8]], 0)];
@@ -1277,14 +1293,30 @@ await prueba("la cara de las piezas: el primer punto con el TOQUE_PX de edicionD
   assert.match(cara, /import \{[^}]*\bTOQUE_PX\b[^}]*\} from "\.\.\/\.\.\/utils\/edicionDeZonas";/);
   const cierre = cara.match(/Math\.hypot\(pp\.x - e\.clientX, pp\.y - e\.clientY\) <= TOQUE_PX \* 2\) \{([\s\S]*?)\n {6}\} else \{/);
   assert.ok(cierre, "tocar el primer punto (con TOQUE_PX × 2) no cierra la forma");
-  assert.match(cierre[1], /despachar\(\{ tipo: "cerrarTrazo", reemplazar: true \}\);/, "tocar el primer punto no cierra la forma como LA pieza de esa marca");
+  // Corrección tras la ronda de prueba (2026-10-24): tocar el primer punto y
+  // Enter hacen LO MISMO (`cerrarAMano`, registrado en `alCerrarAMano` para el
+  // oyente del teclado). Antes Enter cerraba sin el ajuste solo.
+  assert.match(cierre[1], /^\s*cerrarAMano\(\);\s*$/, "tocar el primer punto no cierra con `cerrarAMano`");
+  const i0 = cara.indexOf("const cerrarAMano = () => {");
+  assert.ok(i0 >= 0, "no está `cerrarAMano`");
+  const cuerpo = cara.slice(i0, cara.indexOf("\n  };", i0));
+  assert.match(cuerpo, /despachar\(\{ tipo: "cerrarTrazo", reemplazar: true \}\);/, "cerrar no deja la forma como LA pieza de esa marca");
   // Dejarla justa sola: SÓLO cerca (AJUSTE_SOLO_PB), con la cuenta exacta de
   // utils/piezas, sin pisar a las que rigen en las mismas fechas, DESPUÉS de
-  // cerrar (deshacer la deja como se dibujó) y diciéndolo.
-  assert.match(cierre[1], /Math\.abs\(lleva - piezaElegida\.pb\) <= AJUSTE_SOLO_PB\s*\?\s*dejarJustaAMano\(ed\.trazo, cara, piezaElegida\.pb, ocupadosPara\(piezaElegida\.spaceId, piezas, hoy\)/,
+  // cerrar (deshacer la deja como se dibujó) y diciéndolo, con el botón
+  // «Deshacer el ajuste» (`anotarAjuste`).
+  assert.match(cuerpo, /Math\.abs\(lleva - piezaElegida\.pb\) <= AJUSTE_SOLO_PB\s*\?\s*dejarJustaAMano\(ed\.trazo, cara, piezaElegida\.pb, ocupadosPara\(piezaElegida\.spaceId, piezas, hoy\)/,
     "el ajuste solo al cerrar no es el de utils/piezas, o no tiene tope, o no mira a las demás marcas");
-  assert.ok(cierre[1].indexOf('tipo: "cerrarTrazo"') < cierre[1].indexOf('tipo: "ponerPiezas"'), "el ajuste solo va antes de cerrar (deshacer no volvería a lo dibujado)");
-  assert.match(cierre[1], /decir\(`\$\{piezaElegida\.corto\}: le corrimos un lado/, "el ajuste solo no se dice");
+  assert.ok(cuerpo.indexOf('tipo: "cerrarTrazo"') < cuerpo.indexOf('tipo: "ponerPiezas"'), "el ajuste solo va antes de cerrar (deshacer no volvería a lo dibujado)");
+  assert.match(cuerpo, /decir\(`\$\{piezaElegida\.corto\}: le corrimos un lado/, "el ajuste solo no se dice");
+  assert.match(cuerpo, /usePiezasUI\.getState\(\)\.anotarAjuste\(piezaElegida\.spaceId\);/, "el ajuste solo no deja «Deshacer el ajuste»");
+  // Cerrada, se deja de dibujar: un toque en lo libre ya no empieza otra forma.
+  assert.ok(cuerpo.indexOf('tipo: "cerrarTrazo"') < cuerpo.indexOf('despachar({ tipo: "elegirHerramienta", herramienta: "seleccionar" });'),
+    "después de cerrar la forma se sigue dibujando");
+  assert.match(cara, /alCerrarAMano\.actual = aMano \? cerrarAMano : null;/, "Enter no cierra con el mismo ajuste que tocar el primer punto");
+  const panelZ = sinComent(leer(join(raiz, "src", "components", "Distribucion", "DistribuirCara.tsx")));
+  assert.match(panelZ, /if \(a\.tipo === "cerrarTrazo" && alCerrarAMano\.actual\) alCerrarAMano\.actual\(\);\s*else st\.despachar\(a\);/,
+    "el oyente del teclado cierra con Enter sin el ajuste solo");
   assert.match(cara, /despachar\(\{ tipo: "agregarPunto", punto: imantado\(p\) \}\);/, "los puntos «A mano» no pasan por el imán");
   assert.match(cara, /return imantarAMano\(p, lineasAMano, \{ u: r \/ W, v: r \/ H \}\);/, "el imán «A mano» no es el de utils/piezas");
   assert.ok(!/for \(const q of z\.vertices\)/.test(cara), "quedó un imán en línea en la cara");

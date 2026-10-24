@@ -451,8 +451,15 @@ export function frasesDeLaCopia(c: CopiaCompatible, origen: Pick<LadoDeCopia, "p
       bloquea: true,
     });
   }
-  if (c.nuevas.length === 0) avisos.push({ texto: "No queda ninguna pieza para copiar.", bloquea: true });
+  // Sin nada elegido todavía (filas sin destino que se pueden elegir), no es un
+  // error: se espera la elección, sin rojo (lo dice el pie, `bloqueoDeLaCopia`).
+  if (c.nuevas.length === 0 && !faltaElegir(c)) avisos.push({ texto: "No queda ninguna pieza para copiar.", bloquea: true });
   return { filas, noSeCopia, avisos };
+}
+
+/** ¿Queda alguna fila sin destino que la persona todavía puede elegir? */
+function faltaElegir(c: CopiaCompatible): boolean {
+  return c.grupos.some((g) => g.como === "ambiguo" || g.como === "sin_destino");
 }
 
 /** Por qué «Copiar como borrador» espera, o null si se puede copiar. */
@@ -460,7 +467,7 @@ export function bloqueoDeLaCopia(c: Copia): string | null {
   if (!c.compatible) return c.motivo;
   if (c.grupos.some((g) => g.como === "ambiguo")) return "Elegí a qué marca va cada fila marcada antes de copiar.";
   if (!c.enLosTopes) return `Con la copia la cara pasaría los topes (${MAX_ZONAS_POR_CARA} formas, 240 puntos).`;
-  if (c.nuevas.length === 0) return "No queda ninguna pieza para copiar.";
+  if (c.nuevas.length === 0) return faltaElegir(c) ? "Elegí a qué marca de esta cara va cada una." : "No queda ninguna pieza para copiar.";
   return null;
 }
 
