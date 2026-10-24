@@ -132,9 +132,9 @@ export function desfaseDeCinta(nivel: number): number {
 }
 
 /**
- * Cómo se dibuja una zona según su participación: la MISMA regla que el
- * lienzo 2D (`LienzoDeZonas`: `if (!info?.cuenta || !info.estampa) return
- * null;` y punteado si no cuenta). Relleno sólo si cuenta el día que se mira
+ * Cómo se dibuja una zona según su participación: la misma regla que tenía el
+ * lienzo 2D de antes (`LienzoDeZonas`, hoy `Distribucion/CaraDePiezas`: sin
+ * relleno y punteado si no cuenta). Relleno sólo si cuenta el día que se mira
  * y tiene estampa; si no cuenta —o la cara no la nombra (un dato roto que el
  * servidor marca)—, sin relleno y con la cinta punteada; la reserva,
  * discontinua. Antes, una zona de una participación que la cara no nombra se

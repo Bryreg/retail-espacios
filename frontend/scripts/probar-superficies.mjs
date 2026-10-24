@@ -719,10 +719,11 @@ await prueba("las guías de las neveras: las rejillas de fábrica y la unión de
   assert.deepEqual(S.guiasDeCara({ type: "nevera_puertas", w: 1.4, d: 0.74, h: 2.1 }, "B"), { entrepanos: [], parantes: [] });
 });
 
-await prueba("cada exclusión que emiten las recetas tiene nombre en el lienzo (`NOMBRES_DE_EXCLUSION`)", () => {
-  const lienzo = leer(join(raiz, "src", "components", "Distribucion", "LienzoDeZonas.tsx"));
+await prueba("cada exclusión que emiten las recetas tiene nombre en la cara de Distribuir (`NOMBRES_DE_EXCLUSION`)", () => {
+  // Distribuir con piezas (2026-10-24): la cara de frente es `CaraDePiezas.tsx` (el lienzo de antes se fue).
+  const lienzo = leer(join(raiz, "src", "components", "Distribucion", "CaraDePiezas.tsx"));
   const m = /const NOMBRES_DE_EXCLUSION: Record<string, string> = \{([\s\S]*?)\};/.exec(lienzo);
-  assert.ok(m, "no encontré `NOMBRES_DE_EXCLUSION` en LienzoDeZonas.tsx");
+  assert.ok(m, "no encontré `NOMBRES_DE_EXCLUSION` en CaraDePiezas.tsx");
   const nombres = new Set([...m[1].matchAll(/(\w+):\s*"/g)].map((x) => x[1]));
   const por = new Set();
   for (const c of CASOS.casos) if (c.superficie && typeof c.superficie === "object") for (const e of c.superficie.exclusiones) por.add(e.por);

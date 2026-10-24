@@ -289,6 +289,8 @@ const RECHAZOS_CONOCIDOS = new Set([
 export interface PedidoDeDistribucion {
   /** El id del término a renovar: abre su formulario al entrar. */
   renovar?: number;
+  /** Se pidió desde Supervisar: al guardar la cara (o al salir) se vuelve ahí. */
+  volver?: "supervisar";
 }
 
 export interface RechazoDelServidor {
@@ -348,6 +350,11 @@ interface FixtureStore {
    *  (`soltarPedidoVender`), para que volver a esa pestaña no lo repita. No se
    *  persiste. */
   pedidoVender: { fixtureId: string; cara: "A" | "B"; n: number } | null;
+  /** Pedido de volver a Sede → Supervisar (Distribuir, al guardar una cara a
+   *  la que se entró desde «Falta distribuir»), con el aviso de lo que pasó.
+   *  Como `pedidoVender`: viaja por acá, `Dashboard.tsx` cambia de pestaña y la
+   *  pantalla de sede lo muestra y lo suelta. No se persiste. */
+  pedidoSupervisar: { aviso: string | null; n: number } | null;
 
   // ── Sync bookkeeping ────────────────────────────────────────────────────────
   /** Server revision (updated_at) last seen for each sede. */
@@ -451,6 +458,9 @@ interface FixtureStore {
   /** Pedir Sede → Vender con este espacio. Lo consume DashboardView. */
   pedirVender: (fixtureId: string, cara: "A" | "B") => void;
   soltarPedidoVender: () => void;
+  /** Volver a Sede → Supervisar, con un aviso (o sin). Lo consume DashboardView. */
+  pedirSupervisar: (aviso: string | null) => void;
+  soltarPedidoSupervisar: () => void;
   /** Guardar la cámara actual como la vista de este espacio. */
   guardarVista3D: (fixtureId: string, cara: "A" | "B", vista: Vista3D) => void;
   /** Olvidar la vista guardada: se vuelve al encuadre calculado. */
@@ -612,6 +622,7 @@ export const useFixtureStore = create<FixtureStore>()(
       pendientesEnElPlano: false,
       enfoque3D: null,
       pedidoVender: null,
+      pedidoSupervisar: null,
       serverRev: {},
       settingsRev: null,
       dirty: {},
@@ -960,6 +971,9 @@ export const useFixtureStore = create<FixtureStore>()(
       pedirVender: (fixtureId, cara) =>
         set((state) => ({ pedidoVender: { fixtureId, cara, n: (state.pedidoVender?.n ?? 0) + 1 } })),
       soltarPedidoVender: () => set({ pedidoVender: null }),
+      pedirSupervisar: (aviso) =>
+        set((state) => ({ pedidoSupervisar: { aviso, n: (state.pedidoSupervisar?.n ?? 0) + 1 } })),
+      soltarPedidoSupervisar: () => set({ pedidoSupervisar: null }),
 
       // Guardar y borrar escriben el layout y lo mandan al servidor, pero NO
       // entran al historial: que Ctrl+Z deshaga un encuadre de cámara mezcla

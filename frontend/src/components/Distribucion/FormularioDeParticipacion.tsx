@@ -14,7 +14,7 @@ import {
   disponible, intervalosQueCuentan, pbDeTexto, pct, revisarCapacidad, revisarTerminos, vivo, type CambioDeTermino, type Rechazo,
 } from "../../utils/participaciones";
 import {
-  BOTON, BOTON_PELIGRO, Dialogo, ESTILO_PELIGRO, datosDeLaCara, irAlProblema, nombreDeParticipacion, sumarDias, vigenciaDe,
+  BOTON, BOTON_PELIGRO, Dialogo, ESTILO_PELIGRO, datosDeLaCara, irAlProblema, marcaDe, sumarDias, vigenciaDe,
 } from "./LeyendaDeParticipaciones";
 
 /**
@@ -37,9 +37,11 @@ import {
  */
 
 type Modo = "alta" | "renovar" | "confirmar" | "editar" | "cargarDeNuevo";
+/** Lo que se abre desde Distribuir: nunca un alta. */
+const MODOS_DE_DISTRIBUIR: readonly Modo[] = ["renovar", "confirmar", "editar"];
 
-const ETIQUETA = "mb-0.5 block text-[10px] font-medium uppercase tracking-widest text-dark-ink-3";
-const CAMPO = "w-full border-0 border-b border-dark-line-2 bg-transparent px-0 py-1 text-sm text-dark-ink-1 placeholder:text-dark-ink-3 focus:border-accent focus:outline-none disabled:opacity-60";
+const ETIQUETA = "mb-0.5 block text-[10px] font-medium uppercase tracking-widest text-ink-3";
+const CAMPO = "w-full border-0 border-b border-line-strong bg-transparent px-0 py-1 text-sm text-ink-1 placeholder:text-ink-3 focus:border-accent focus:outline-none disabled:opacity-60";
 const ROJO = "rgb(var(--ocupado-txt-rgb))";
 
 /** `2500` → «25»; `3333` → «33,33» (lo que se escribe en el campo). */
@@ -210,6 +212,12 @@ export default function FormularioDeParticipacion() {
   const datos = useDistribucionStore((s) => s.datos);
   const activa = useDistribucionStore((s) => s.activa);
   if (!formulario || !datos || !activa) return null;
+  // Distribuir con piezas (2026-10-24): la parte que se vende se crea SÓLO en
+  // Vender. Este formulario ya no da de alta ni «carga de nuevo» (el store ni
+  // siquiera los pide: `FormularioDeParticipacion` del store no los tiene);
+  // queda para lo que se hace sobre una marca que ya está: confirmar, cambiar
+  // o renovar su reserva o su contrato.
+  if (!MODOS_DE_DISTRIBUIR.includes(formulario.modo)) return null;
   return <Formulario key={`${formulario.modo}|${formulario.terminoId ?? ""}`} modo={formulario.modo} terminoId={formulario.terminoId ?? null}
     datos={datos} activa={activa} />;
 }
@@ -254,8 +262,8 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
   const necesitaTermino = modo !== "alta";
   if (necesitaTermino && (!termino || !participacion)) {
     return (
-      <Dialogo titulo="La participación ya no está" onCerrar={cerrar} cerrarAfuera={false}>
-        <p className="text-xs text-dark-ink-2">Esa participación no aparece en la cara que se leyó. Cerrá y volvé a elegirla en la lista.</p>
+      <Dialogo titulo="Esa marca ya no está" onCerrar={cerrar} cerrarAfuera={false}>
+        <p className="text-xs text-ink-2">Esa marca no aparece en la cara que se leyó. Cerrá y volvé a elegirla en la lista.</p>
         <div className="mt-3 flex justify-end"><button type="button" className={BOTON} onClick={cerrar}>Cerrar</button></div>
       </Dialogo>
     );
@@ -272,11 +280,11 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
   const problemaCampos = vista.problema, noEntra = vista.noEntra;
   const puedeGuardar = !problemaCampos && !noEntra && !enviando;
 
-  const titulo = modo === "alta" ? `Nueva participación · ${activa.codigo} · cara ${activa.cara}`
-    : modo === "cargarDeNuevo" ? `Nueva participación (prellenada) · cara ${activa.cara}`
-    : modo === "renovar" ? `Renovar la participación ${participacion!.numero}`
-    : modo === "confirmar" ? `Confirmar la reserva de la participación ${participacion!.numero} como contrato`
-    : `Cambiar la reserva de la participación ${participacion!.numero}`;
+  const titulo = modo === "alta" ? `Nueva marca · ${activa.codigo} · cara ${activa.cara}`
+    : modo === "cargarDeNuevo" ? `Nueva marca (prellenada) · cara ${activa.cara}`
+    : modo === "renovar" ? `Renovar el contrato de ${marcaDe(participacion!)}`
+    : modo === "confirmar" ? `Pasar a contrato la reserva de ${marcaDe(participacion!)}`
+    : `Cambiar la reserva de ${marcaDe(participacion!)}`;
 
   async function guardar() {
     if (!puedeGuardar || pb === null) return;
@@ -324,12 +332,12 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
       // después de cualquier venta, y no a los 20 s del sondeo.
       if (r.termino.estado === "contrato") void useFixtureStore.getState().refrescarComercial();
       const extra = (r as TerminoEscrito & { avisos_distribucion?: ProblemaOut[] }).avisos_distribucion ?? [];
-      const n = r.termino.numero;
+      const quien = participacion ? marcaDe(participacion) : (r.termino.marca || r.termino.proveedor?.nombre || "la marca");
       setHecho({
-        texto: modo === "renovar" ? `Quedó renovada la participación ${n} ${vigenciaDe(r.termino)}.`
-          : modo === "confirmar" ? `La reserva de la participación ${n} quedó confirmada como contrato.`
-          : modo === "editar" ? `Quedó cambiada la reserva de la participación ${n}.`
-          : `Quedó cargada la participación ${n}: ${pct(r.termino.puntos_basicos)} de la cara ${activa.cara}, ${vigenciaDe(r.termino)}.`,
+        texto: modo === "renovar" ? `Quedó renovado el contrato de ${quien} ${vigenciaDe(r.termino)}.`
+          : modo === "confirmar" ? `La reserva de ${quien} quedó como contrato.`
+          : modo === "editar" ? `Quedó cambiada la reserva de ${quien}.`
+          : `Quedó cargada ${quien}: ${pct(r.termino.puntos_basicos)} de la cara ${activa.cara}, ${vigenciaDe(r.termino)}.`,
         avisos: r.avisos ?? null, distribucion: extra,
       });
     } catch (e) {
@@ -351,7 +359,7 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
   if (hecho) {
     return (
       <Dialogo titulo={titulo} onCerrar={cerrar}>
-        <p className="text-xs leading-relaxed text-dark-ink-1" role="status">{hecho.texto}</p>
+        <p className="text-xs leading-relaxed text-ink-1" role="status">{hecho.texto}</p>
         {hecho.avisos && <AvisosDeCorreo avisos={hecho.avisos} />}
         {hecho.distribucion.length > 0 && (
           <div className="mt-2 text-[11px] leading-snug" style={{ color: "rgb(var(--entra-txt-rgb))" }}>
@@ -393,7 +401,7 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
               {rechazo.code === "rompe_distribucion" && rechazo.problemas.length > 0 && (
                 <button type="button" className={BOTON}
                   onClick={() => { irAlProblema({ zona: null, participaciones: rechazo.problemas[0].participaciones }); cerrar(); }}>
-                  Ver en el lienzo
+                  Ver en la cara
                 </button>
               )}
               {(rechazo.code === "version_vieja" || rechazo.code === "plano_cambio") && (
@@ -406,17 +414,17 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
         )}
 
         {participacion && modo !== "cargarDeNuevo" && (
-          <p className="text-xs text-dark-ink-2">
-            <b className="text-dark-ink-1">{nombreDeParticipacion(participacion)}</b>
+          <p className="text-xs text-ink-2">
+            <b className="text-ink-1">{marcaDe(participacion)}</b>
             {termino && <> · ahora {pct(termino.puntos_basicos)}, {vigenciaDe(termino)}</>}
           </p>
         )}
 
         {(modo === "alta" || modo === "cargarDeNuevo" || modo === "renovar") && (
-          <div role="radiogroup" aria-label="Tipo" className="grid grid-cols-2 gap-1 rounded-md border border-dark-line-2 p-0.5">
+          <div role="radiogroup" aria-label="Tipo" className="grid grid-cols-2 gap-1 rounded-md border border-line-strong p-0.5">
             {(["reserva", "contrato"] as const).map((t) => (
               <button key={t} type="button" role="radio" aria-checked={c.tipo === t} onClick={() => cambiar("tipo", t)}
-                className={`rounded px-2 py-1 text-[11px] font-semibold ${c.tipo === t ? "bg-dark-surface-2 text-dark-ink-1" : "text-dark-ink-3 hover:text-dark-ink-1"}`}>
+                className={`rounded px-2 py-1 text-[11px] font-semibold ${c.tipo === t ? "bg-surface-2 text-ink-1" : "text-ink-3 hover:text-ink-1"}`}>
                 {t === "reserva" ? "Reserva provisional" : "Contrato"}
               </button>
             ))}
@@ -429,11 +437,11 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
             <input id="part-proveedor" className={CAMPO} list="part-proveedores" value={c.proveedor} autoComplete="off"
               onChange={(e) => cambiar("proveedor", e.target.value)} placeholder="Nombre del proveedor" />
             <datalist id="part-proveedores">{(proveedores ?? []).map((s) => <option key={s.id} value={s.name} />)}</datalist>
-            {proveedorNuevo && <p className="mt-1 text-[10px] text-dark-ink-3">Proveedor nuevo: se da de alta con este nombre.</p>}
+            {proveedorNuevo && <p className="mt-1 text-[10px] text-ink-3">Proveedor nuevo: se da de alta con este nombre.</p>}
           </div>
         ) : (
-          <p className="text-[11px] text-dark-ink-3">
-            Proveedor, marca{modo === "renovar" ? " y porcentaje" : ""} son los de la participación: otro proveedor u otra marca es otra participación.
+          <p className="text-[11px] text-ink-3">
+            Proveedor, marca{modo === "renovar" ? " y porcentaje" : ""} no cambian: otro proveedor, otra marca u otro porcentaje se venden en Vender.
           </p>
         )}
         {proveedorNuevo && (
@@ -457,11 +465,8 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
             {c.porcentaje.trim() !== "" && pb === null && (
               <p className="mt-1 text-[10px]" style={{ color: ROJO }}>Escribí un porcentaje entre 0,01 y 100.</p>
             )}
-            {modo === "renovar" && termino && (
-              <button type="button" className="mt-1 text-[10px] text-dark-ink-2 underline underline-offset-2 hover:text-dark-ink-1"
-                onClick={() => useDistribucionStore.getState().abrirFormulario({ modo: "cargarDeNuevo", terminoId: termino.id })}>
-                Cambiar el porcentaje
-              </button>
+            {modo === "renovar" && (
+              <p className="mt-1 text-[10px] text-ink-3">Para otro porcentaje, vendelo en Vender.</p>
             )}
           </div>
         </div>
@@ -482,14 +487,14 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
             <label className={ETIQUETA} htmlFor="part-caduca">La reserva se sostiene hasta</label>
             <input id="part-caduca" type="date" className={CAMPO} value={c.caduca} min={hoy} max={c.hasta || undefined}
               onChange={(e) => cambiar("caduca", e.target.value)} />
-            <p className="mt-1 text-[10px] text-dark-ink-3">Si para entonces no se confirmó como contrato, caduca y el porcentaje queda libre.</p>
+            <p className="mt-1 text-[10px] text-ink-3">Si para entonces no se confirmó como contrato, caduca y el porcentaje queda libre.</p>
           </div>
         ) : modo !== "editar" && (
           <div>
             <label className={ETIQUETA} htmlFor="part-valor">Valor mensual (pesos)</label>
             <input id="part-valor" className={CAMPO} inputMode="numeric" value={c.valor} onChange={(e) => cambiar("valor", e.target.value)}
               placeholder="900.000" />
-            <p className="mt-1 text-[10px] text-dark-ink-3">
+            <p className="mt-1 text-[10px] text-ink-3">
               {tarifa != null ? `Referencia: tarifa de la cara ${pesos(tarifa)} (la de la cara entera; no se prorratea).` : "Sin tarifa de referencia para este mueble."}
             </p>
           </div>
@@ -501,17 +506,17 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
         </div>
 
         {/* La vista previa, con las reglas del servidor */}
-        <div className="rounded-md border border-dark-line px-2.5 py-2 text-xs leading-snug" aria-live="polite" data-vista-previa>
+        <div className="rounded-md border border-line px-2.5 py-2 text-xs leading-snug" aria-live="polite" data-vista-previa>
           {problemaCampos ? (
-            <p className="text-dark-ink-2">{problemaCampos}</p>
+            <p className="text-ink-2">{problemaCampos}</p>
           ) : noEntra ? (
             <p style={{ color: ROJO }}>{noEntra.frase}</p>
           ) : (
-            <p className="text-dark-ink-1">{fraseDeLaVistaPrevia(vista)}</p>
+            <p className="text-ink-1">{fraseDeLaVistaPrevia(vista)}</p>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-dark-line pt-3">
+        <div className="flex justify-end gap-2 border-t border-line pt-3">
           <button type="button" className={BOTON} onClick={cerrar} disabled={enviando}>Cancelar</button>
           <button type="submit" className="btn-principal rounded-md px-3 py-1.5 text-xs" disabled={!puedeGuardar}>
             {enviando ? "Guardando…" : "Guardar"}
@@ -531,8 +536,8 @@ function AvisosDeCorreo({ avisos }: { avisos: AvisosContrato }) {
   if (total === 0) return <p className="mt-2 text-[11px]" style={{ color: "rgb(var(--entra-txt-rgb))" }}>No se avisó a nadie: no hay contactos cargados para esta sede.</p>;
   const linea = (etiqueta: string, l: string[]) => l.length > 0 && <li>{etiqueta}: {l.join(", ")}</li>;
   return (
-    <ul className="mt-2 text-[11px] text-dark-ink-2">
-      <li className="text-dark-ink-3">Salieron los avisos a:</li>
+    <ul className="mt-2 text-[11px] text-ink-2">
+      <li className="text-ink-3">Salieron los avisos a:</li>
       {linea("Comercial", avisos.comercial)}
       {linea("Montaje", avisos.montaje)}
       {linea("Proveedor", avisos.proveedor)}

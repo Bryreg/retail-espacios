@@ -39,17 +39,18 @@ import {
  *  renovar ese término. Es la firma de `pedirEnfoque3D` en `fixtureStore.ts`
  *  (el pedido lo atiende un efecto de `StoreEditor3D`). */
 export type PedirEnfoqueConDistribucion = (
-  fixtureId: string, cara: "A" | "B", opciones?: { distribucion?: { renovar?: number } },
+  fixtureId: string, cara: "A" | "B", opciones?: { distribucion?: { renovar?: number; volver?: "supervisar" } },
 ) => void;
 
-/** Abrir una cara en Distribución (y, con `renovar`, el formulario de renovar
- *  ese término). */
-export function useAbrirEnDistribucion(): (fixtureId: string, cara: "A" | "B", renovar?: number) => void {
+/** Abrir una cara en Distribuir (y, con `renovar`, el formulario de renovar
+ *  ese término). Con `volver = "supervisar"` (lo que se abre desde Supervisar),
+ *  al guardar la cara se vuelve ahí. */
+export function useAbrirEnDistribucion(volver?: "supervisar"): (fixtureId: string, cara: "A" | "B", renovar?: number) => void {
   const pedir: PedirEnfoqueConDistribucion = useFixtureStore((s) => s.pedirEnfoque3D);
   return useCallback(
     (fixtureId: string, cara: "A" | "B", renovar?: number) =>
-      pedir(fixtureId, cara, { distribucion: renovar ? { renovar } : {} }),
-    [pedir],
+      pedir(fixtureId, cara, { distribucion: { ...(renovar ? { renovar } : {}), ...(volver ? { volver } : {}) } }),
+    [pedir, volver],
   );
 }
 
@@ -132,7 +133,7 @@ export default function ParticipacionesDeLaCara({
    *  sólo quien administra; sin esto no hay botón (el plano 2D no lo pasa). */
   onEditar?: (t: TerminoOut, codigoCompleto: string) => void;
 }) {
-  const abrir = useAbrirEnDistribucion();
+  const abrir = useAbrirEnDistribucion("supervisar");
   const cliente = useAuthStore((s) => s.cliente) ?? "";
   // Una escritura de participaciones vuelve a leer la ocupación de la sede, y
   // un contrato que se cancela cambia el mapa de la base: con cualquiera de

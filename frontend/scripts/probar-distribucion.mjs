@@ -41,7 +41,7 @@
  *     `localStorage`.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -1052,13 +1052,16 @@ await prueba("`distribucionStore` lo importan sólo el Editor 3D y components/Di
 console.log("distribución · el panel, el lienzo y el teclado (paso 6b)");
 
 const DIST = "components/Distribucion";
-const ARCHIVOS_6B = ["PanelDeDistribucion", "LienzoDeZonas", "LeyendaDeParticipaciones", "FormularioDeParticipacion", "ResumenDeCambios"];
+// Distribuir con piezas (2026-10-24): la pantalla es `DistribuirCara` (reemplaza al panel y al
+// lienzo de antes) y la cara de frente, `CaraDePiezas`; las mismas reglas valen para las dos.
+const ARCHIVOS_6B = ["DistribuirCara", "CaraDePiezas", "LeyendaDeParticipaciones", "FormularioDeParticipacion", "ResumenDeCambios"];
 const codigo6b = (n) => sinComentTs2(fuente(`${DIST}/${n}.tsx`));
 
 const rP = await build({
   stdin: {
     contents: [
-      `export * as PANEL from "./src/${DIST}/PanelDeDistribucion.tsx";`,
+      `export * as PANEL from "./src/${DIST}/DistribuirCara.tsx";`,
+      `export * as PZC from "./src/${DIST}/piezasDeLaCara.ts";`,
       `export * as LEY from "./src/${DIST}/LeyendaDeParticipaciones.tsx";`,
       `export * as FORM from "./src/${DIST}/FormularioDeParticipacion.tsx";`,
       'export { useDistribucionStore } from "./src/store/distribucionStore.ts";',
@@ -1150,17 +1153,23 @@ await prueba("teclado: Supr, R, F, Esc y Ctrl+Z NUNCA le llegan al atajo global 
   }
 });
 
-await prueba("teclado: Ctrl+Z deshace la ZONA (desde el lienzo y desde el panel), R elige el rectángulo, Esc cancela el trazo y nunca saca del modo", () => {
+await prueba("teclado: Ctrl+Z deshace la PIEZA (desde la cara y desde la lista), R no elige herramientas (pero se corta), Esc cancela el trazo y nunca saca de la pantalla", () => {
   enElModo();
   atajo(tecla("Delete", EN_LIENZO));
   assert.deepEqual(claves(), ["z2"]);
   atajo(tecla("z", EN_BOTON_DEL_PANEL, { ctrlKey: true }));
-  assert.deepEqual(claves(), ["z1", "z2"], "Ctrl+Z desde el panel no deshizo la zona");
+  assert.deepEqual(claves(), ["z1", "z2"], "Ctrl+Z desde la lista no deshizo");
   atajo(tecla("Z", EN_LIENZO, { ctrlKey: true, shiftKey: true }));
   assert.deepEqual(claves(), ["z2"], "Ctrl+Shift+Z no rehízo");
-  enElModo();
-  atajo(tecla("r", EN_LIENZO));
-  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "rectangulo");
+  // Distribuir con piezas: no hay herramientas. R, P y V no cambian nada, y R
+  // igual se corta (si no, gira el mueble).
+  for (const k of ["r", "R", "p", "v", "g"]) {
+    enElModo();
+    const ev = atajo(tecla(k, EN_LIENZO));
+    assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "seleccionar", `«${k}» eligió una herramienta`);
+    assert.equal(P6.useDistribucionStore.getState().edicion.iman, true, `«${k}» tocó el imán`);
+    if (k === "r" || k === "R") assert.ok(ev.cortada, "R llegó al atajo global (gira el mueble)");
+  }
   enElModo({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.2, 0.1]], seleccion: null });
   atajo(tecla("Escape", EN_LIENZO));
   assert.equal(P6.useDistribucionStore.getState().edicion.trazo, null, "Esc no canceló el trazo");
@@ -1169,8 +1178,9 @@ await prueba("teclado: Ctrl+Z deshace la ZONA (desde el lienzo y desde el panel)
   atajo(tecla("Escape", EN_BOTON_DEL_PANEL));
   atajo(tecla("Escape", AFUERA));
   assert.equal(salidas, 0, "Esc llamó a salir");
-  assert.ok(P6.useDistribucionStore.getState().activa, "Esc sacó del modo");
+  assert.ok(P6.useDistribucionStore.getState().activa, "Esc sacó de la pantalla");
 });
+
 
 await prueba("teclado: lo que se escribe y los diálogos mandan (su Esc y su Enter siguen), pero Supr/R/F/Ctrl+Z no llegan al mueble; sin el modo, nada se toca", () => {
   enElModo();
@@ -1192,53 +1202,67 @@ await prueba("teclado: lo que se escribe y los diálogos mandan (su Esc y su Ent
   for (const k of ["Delete", "r", "Escape"]) assert.ok(!atajo(tecla(k, EN_BODY)).cortada, `sin el modo, «${k}» no llegó al editor`);
 });
 
-await prueba("el panel registra el oyente en captura y lo saca en captura, respeta role=\"dialog\" y no llama a salir desde el oyente", () => {
-  const t = codigo6b("PanelDeDistribucion");
+await prueba("la pantalla registra el oyente en captura y lo saca en captura, respeta role=\"dialog\" y no llama a salir desde el oyente", () => {
+  const t = codigo6b("DistribuirCara");
   const m = /window\.addEventListener\("keydown", (\w+), \{ capture: true \}\)/.exec(t);
-  assert.ok(m, "el panel no registra keydown con capture: true");
+  assert.ok(m, "la pantalla no registra keydown con capture: true");
   assert.ok(t.includes(`window.removeEventListener("keydown", ${m[1]}, { capture: true })`), "el oyente no se saca en captura (quedaría colgado)");
   assert.ok(t.includes('role="dialog"'), "el oyente no respeta los diálogos");
   const i = t.indexOf("export function atajoDeDistribucion(");
   assert.ok(i >= 0, "no está atajoDeDistribucion");
   const cuerpo = t.slice(i, t.indexOf("\n}\n", i));
-  assert.ok(!/\bsalir\b/.test(cuerpo), "el oyente del teclado llama a salir: Esc nunca saca del modo");
+  assert.ok(!/\bsalir\b/.test(cuerpo), "el oyente del teclado llama a salir: Esc nunca saca de la pantalla");
   assert.match(cuerpo, /e\.stopPropagation\(\)/);
   assert.match(cuerpo, /accionDeTecla\(/, "el teclado no pasa por el reductor");
-  // El panel no toca el atajo global (es de StoreEditor3D, fijado por probar-muebles).
-  assert.ok(!/StoreEditor3D/.test(t.replace(/import[^\n]*\n/g, "")) || !/from\s+["'][^"']*StoreEditor3D/.test(t));
+  assert.match(cuerpo, /POR_TECLADO\.has\(posible\.tipo\)/, "el teclado despacha acciones que no son de esta pantalla (herramientas, flechas)");
+  // Lo que el teclado puede hacer, escrito: ni herramientas, ni imán, ni flechas (una pieza corrida dejaría de dar su %).
+  const lista = /const POR_TECLADO: ReadonlySet<Accion\["tipo"\]> = new Set<Accion\["tipo"\]>\(\[([\s\S]*?)\]\);/.exec(t);
+  assert.ok(lista, "no está POR_TECLADO");
+  for (const prohibida of ["elegirHerramienta", "alternarIman", "empujar", "moverZona", "escalar"]) {
+    assert.ok(!lista[1].includes(`"${prohibida}"`), `el teclado puede «${prohibida}»`);
+  }
+  // La pantalla no toca el atajo global (es de StoreEditor3D, fijado por probar-muebles).
+  assert.ok(!/from\s+["'][^"']*StoreEditor3D\/StoreEditor3D/.test(t));
 });
 
-await prueba("contrato con 6a: las firmas exactas de PanelDeDistribucion y LienzoDeZonas, salir por el store", () => {
-  const panel = codigo6b("PanelDeDistribucion"), lienzo = codigo6b("LienzoDeZonas");
-  assert.match(panel, /export default function PanelDeDistribucion\(\{ fixtureId, sede, onEncuadrarCara \}: \{ fixtureId: string; sede: string; onEncuadrarCara: \(cara: "A" \| "B"\) => void \}\)/);
-  assert.match(lienzo, /export default function LienzoDeZonas\(\{ fixtureId, sede \}: \{ fixtureId: string; sede: string \}\)/);
-  assert.match(panel, /st\(\)\.salir\(\)/, "«Salir» no sale por el store");
+
+await prueba("contrato con el editor: las firmas exactas de DistribuirCara y CaraDePiezas, salir por el store", () => {
+  const panel = codigo6b("DistribuirCara"), cara = codigo6b("CaraDePiezas");
+  assert.match(panel, /export default function DistribuirCara\(\{ fixtureId, sede, onEncuadrarCara, lienzo3D \}: \{\s*fixtureId: string;\s*sede: string;\s*onEncuadrarCara: \(cara: "A" \| "B"\) => void;[\s\S]{0,160}lienzo3D: HTMLElement \| null;\s*\}\)/);
+  assert.match(cara, /export default function CaraDePiezas\(\{ fixtureId, sede, onSoltar \}: \{/);
+  assert.match(panel, /await st\(\)\.salir\(\)/, "«Salir» no sale por el store");
   for (const n of ARCHIVOS_6B) {
     const t = codigo6b(n);
     assert.ok(!/from\s+["'][^"']*StoreEditor3D\/StoreEditor3D["']/.test(t), `${n} importa StoreEditor3D`);
-    assert.ok(!/Marcador: lo reemplaza el paso 6b/.test(fuente(`${DIST}/${n}.tsx`)), `${n} sigue siendo el marcador de 6a`);
+  }
+  // Los archivos de antes se fueron (el panel, el lienzo y «Editar en el 3D»).
+  for (const n of ["PanelDeDistribucion.tsx", "LienzoDeZonas.tsx", "EdicionEnElMueble.tsx", "punteroEnElMueble.ts"]) {
+    assert.ok(!existsSync(join(raiz, "src", ...DIST.split("/"), n)), `quedó ${n}`);
   }
 });
 
-await prueba("el lienzo: getScreenCTM().inverse() como Libera, rueda nativa no pasiva, y edita SÓLO por el reductor del store (nunca el plano)", () => {
-  const t = codigo6b("LienzoDeZonas");
+
+await prueba("la cara: getScreenCTM().inverse() como Libera, y edita SÓLO por el reductor del store (nunca el plano); el rótulo nunca en el color de la marca", () => {
+  const t = codigo6b("CaraDePiezas");
   assert.match(t, /getScreenCTM\(\)/);
   assert.match(t, /matrixTransform\(m\.inverse\(\)\)/, "el puntero no pasa por la inversa de la matriz del SVG");
-  assert.match(t, /addEventListener\("wheel", (\w+), \{ passive: false \}\)/, "la rueda no es un oyente nativo con passive: false");
   assert.ok(!/onWheel=/.test(t), "con onWheel de React el preventDefault no vale");
-  assert.match(t, /useDistribucionStore\.getState\(\)\.despachar\(a\)/);
+  assert.match(t, /const despachar = useDistribucionStore\.getState\(\)\.despachar;/);
   for (const n of ARCHIVOS_6B) {
     const c = codigo6b(n);
     assert.ok(!/useDistribucionStore\.setState\(/.test(c), `${n} escribe el store de edición por fuera de sus acciones`);
   }
-  assert.ok(!/\.commit\(/.test(t), "el lienzo escribe el plano");
+  assert.ok(!/\.commit\(/.test(t), "la cara escribe el plano");
   // Los trazos, las manijas y los rótulos miden en pantalla, no en metros.
   assert.match(t, /const px = \(n: number\) => n \/ escala;/);
-  // El rótulo va sobre una pastilla y nunca en el color de la serie.
-  assert.match(t, /<text textAnchor="middle" dominantBaseline="central" style=\{\{ fill: error \? C\.rojo : C\.tinta \}\}>/);
+  // Cada texto de la cara va en un color de tinta del tema (o el rojo de texto), nunca en el tono de una marca.
+  const textos = [...t.matchAll(/<text\b[^>]*>/g)].map((m) => m[0]);
+  assert.ok(textos.length >= 3, "no encontré los rótulos de la cara");
+  for (const x of textos) assert.match(x, /fill: (o\.rojo \? C\.rojoTxt : C\.tinta|C\.tinta2|C\.libreTxt)\b/, `un rótulo con otro color: ${x}`);
 });
 
-await prueba("colores: un botón principal por archivo, tokens que existen y que el cajón oscuro redefine; nada guardado en el navegador", () => {
+
+await prueba("colores: un botón principal por archivo, tokens que existen (escritos como canales); nada guardado en el navegador", () => {
   const css = [leer(join(raiz, "src", "tema.css")), leer(join(raiz, "src", "index.css"))].join("\n");
   for (const n of ARCHIVOS_6B) {
     const crudo = fuente(`${DIST}/${n}.tsx`), t = codigo6b(n);
@@ -1249,17 +1273,19 @@ await prueba("colores: un botón principal por archivo, tokens que existen y que
     }
     // El único nombre armado en el momento es el tono de la estampa (--marca-1..3).
     for (const m of t.matchAll(/var\(\s*(--[\w-]*)\$\{/g)) assert.equal(m[1], "--marca-", `${n}: var(${m[1]}…) armado a mano`);
-    // Resueltos en :root: adentro del cajón oscuro del editor llegarían con el valor del tema claro.
     const raiz1 = /var\(--(surface|surface-2|surface-3|ink-[1-4]|danger|warning|success|line|line-strong|accent|bg)\)/.exec(t);
-    assert.equal(raiz1, null, `${n}: ${raiz1?.[0]} se resuelve en :root (usá rgb(var(--x-rgb)))`);
+    assert.equal(raiz1, null, `${n}: ${raiz1?.[0]} (usá rgb(var(--x-rgb)) o la clase del token)`);
     assert.ok(!/--superficie|--tinta\b|prefers-color-scheme/.test(t), `${n}: token inventado o prefers-color-scheme`);
     assert.ok(!/localStorage|sessionStorage|indexedDB/.test(t), `${n} guarda algo en el navegador`);
+    // Distribuir va en el tema de la app (claro u oscuro): nada del cajón oscuro congelado.
+    assert.ok(!/\bdark-(bg|surface|line|ink)/.test(t), `${n} pinta con el cajón oscuro (\`dark-*\`): la pantalla va en el tema de la app`);
   }
-  assert.match(fuente(`${DIST}/PanelDeDistribucion.tsx`), /className="btn-principal[^"]*"[\s\S]{0,260}Confirmar distribución…/,
-    "el botón principal del panel no es «Confirmar distribución…»");
+  assert.match(fuente(`${DIST}/DistribuirCara.tsx`), /className="btn-principal[^"]*"[\s\S]{0,320}Listo, guardar la cara/,
+    "el botón principal de la pantalla no es «Listo, guardar la cara»");
   // Las estampas son los --marca-k del tema.
   P6.LEY && C.ESTAMPAS.forEach((e) => assert.equal(P6.LEY.tonoCss(e), `var(--marca-${C.TONOS_DE_MARCA.indexOf(e.tono) + 1})`));
 });
+
 
 /** Un término como lo manda el servidor. */
 const tOut = (x) => ({
@@ -1304,9 +1330,12 @@ await prueba("la leyenda dice las cuatro magnitudes, el estado comercial y la vi
   f = L.filaDeLaLeyenda(renovado, cuenta(2500, 2500), "2026-10-17", "2026-10-17");
   assert.equal(f.termino.id, 1);
   assert.equal(f.despues?.id, 2);
-  // El código del componente las escribe (la fila, el chip y la vigencia; «Para vender» arriba).
-  const t = codigo6b("LeyendaDeParticipaciones");
-  for (const pieza of ["textoDeMagnitudes(f)", "{f.estado}", "{f.vigencia}", "Para vender:", "{f.rotuloDelDia}"]) assert.ok(t.includes(pieza), `la leyenda no muestra ${pieza}`);
+  // Distribuir con piezas: la lista de la derecha dice, por marca, su nombre (sin número), su %, su
+  // estado en palabras y —en su menú— el estado comercial y la vigencia; abajo, lo libre sin vender.
+  const t = codigo6b("DistribuirCara");
+  for (const pieza of ["{p.nombre}", "{pct(p.pb)} de la cara", "{textoDelEstado(p, nombreDe, p.choca)}", "{p.detalle}", "Libre · {pct(queda)} sin vender"]) {
+    assert.ok(t.includes(pieza), `la lista de piezas no muestra ${pieza}`);
+  }
 });
 
 await prueba("la capacidad del día y del período: un segmento por participación, lo vendido entero cuenta 100 %, lo que queda para vender", () => {
@@ -1409,42 +1438,54 @@ await prueba("la caducidad de una reserva la elige quien opera: el formulario no
 
 // ── Verificación del paso 6b ─────────────────────────────────────────────────
 
-await prueba("teclado (verificación 6b): desde el PANEL andan V/R/P/G, deshacer y Esc —clic en la fila de la leyenda y R—; Supr, flechas y Enter siguen siendo sólo del lienzo", () => {
-  // El camino que la pantalla sugiere: «Elegí una participación en la lista
-  // para dibujar su zona» → clic en la fila (el foco queda en la fila) → R.
-  // Antes la R se cortaba y no hacía nada.
+await prueba("teclado (verificación 6b, con piezas): desde la LISTA sólo deshacer, rehacer y Esc; en la cara, Supr saca la pieza, Retroceso saca el último punto y Enter cierra la forma «A mano» como LA pieza; las flechas nunca corren una pieza", () => {
+  // Desde la lista (el foco en una pieza): deshacer anda; nada elige herramienta ni toca el imán.
   enElModo({ seleccion: null });
-  let ev = atajo(tecla("r", EN_BOTON_DEL_PANEL));
-  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "rectangulo", "R con el foco en la fila de la leyenda no eligió el rectángulo");
-  assert.ok(ev.cortada && ev.prevenida, "la R siguió hasta el atajo global (gira el mueble)");
-  atajo(tecla("p", EN_BOTON_DEL_PANEL));
-  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "poligono");
-  atajo(tecla("v", EN_BOTON_DEL_PANEL));
-  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "seleccionar");
-  const iman = P6.useDistribucionStore.getState().edicion.iman;
-  atajo(tecla("g", EN_BOTON_DEL_PANEL));
-  assert.equal(P6.useDistribucionStore.getState().edicion.iman, !iman, "G desde el panel no alternó el imán");
-  // Lo que borra o mueve una zona, no: con una zona elegida, las flechas y Supr
-  // en un botón del panel no la tocan (son del botón o de la lista).
+  for (const k of ["r", "p", "v", "g"]) {
+    const ev = atajo(tecla(k, EN_BOTON_DEL_PANEL));
+    assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "seleccionar", `«${k}» desde la lista eligió una herramienta`);
+    assert.equal(P6.useDistribucionStore.getState().edicion.iman, true, `«${k}» desde la lista tocó el imán`);
+    if (k === "r") assert.ok(ev.cortada, "R desde la lista llegó al atajo global (gira el mueble)");
+    else assert.ok(!ev.cortada, `«${k}» desde la lista no le llegó a su botón`);
+  }
+  // Lo que saca o mueve una pieza, no: con una elegida, las flechas y Supr en un botón no la tocan.
   enElModo();
   const antes = JSON.stringify(P6.useDistribucionStore.getState().edicion.zonas);
-  ev = atajo(tecla("ArrowLeft", EN_BOTON_DEL_PANEL));
-  assert.ok(!ev.cortada, "la flecha en un botón del panel no le llegó al botón");
+  let ev = atajo(tecla("ArrowLeft", EN_BOTON_DEL_PANEL));
+  assert.ok(!ev.cortada, "la flecha en un botón de la lista no le llegó al botón");
   atajo(tecla("Delete", EN_BOTON_DEL_PANEL));
-  assert.equal(JSON.stringify(P6.useDistribucionStore.getState().edicion.zonas), antes, "una tecla en el panel movió o borró una zona");
-  // Enter en un botón del panel es del botón, aunque haya un polígono a medias.
-  enElModo({ herramienta: "poligono", trazo: [[0.1, 0.1], [0.2, 0.1], [0.2, 0.3]], seleccion: null });
+  assert.equal(JSON.stringify(P6.useDistribucionStore.getState().edicion.zonas), antes, "una tecla en la lista movió o sacó una pieza");
+  // Y en la cara las flechas tampoco corren la pieza elegida (dejaría de dar su % exacto).
+  for (const k of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) {
+    atajo(tecla(k, EN_LIENZO));
+    atajo(tecla(k, EN_LIENZO, { shiftKey: true }));
+  }
+  assert.equal(JSON.stringify(P6.useDistribucionStore.getState().edicion.zonas), antes, "una flecha en la cara corrió una pieza");
+  // «A mano» en la cara: Retroceso saca el último punto; Enter cierra la forma y REEMPLAZA lo que tenía esa marca.
+  enElModo({ herramienta: "poligono", activa: 7, trazo: [[0.1, 0.6], [0.3, 0.6], [0.3, 0.9], [0.2, 0.95]], seleccion: null });
+  atajo(tecla("Backspace", EN_LIENZO));
+  assert.equal(P6.useDistribucionStore.getState().edicion.trazo.length, 3, "Retroceso no sacó el último punto");
+  ev = atajo(tecla("Enter", EN_LIENZO));
+  assert.ok(ev.cortada && ev.prevenida);
+  const ed = P6.useDistribucionStore.getState().edicion;
+  assert.equal(ed.trazo, null, "Enter no cerró la forma");
+  assert.deepEqual(ed.zonas.filter((z) => z.participacionSpaceId === 7).map((z) => z.vertices), [[[0.1, 0.6], [0.3, 0.6], [0.3, 0.9]]],
+    "Enter agregó una forma más en vez de dejarla como LA pieza de la marca");
+  assert.ok(ed.zonas.some((z) => z.participacionSpaceId === 8), "Enter tocó la pieza de otra marca");
+  // Enter en un botón de la lista es del botón, aunque haya una forma a medias.
+  enElModo({ herramienta: "poligono", activa: 7, trazo: [[0.1, 0.1], [0.2, 0.1], [0.2, 0.3]], seleccion: null });
   ev = atajo(tecla("Enter", EN_BOTON_DEL_PANEL));
-  assert.ok(!ev.cortada && P6.useDistribucionStore.getState().edicion.trazo, "Enter en un botón del panel cerró el polígono del lienzo");
-  // Sin acción, en el lienzo, las teclas del atajo global se cortan Y se frenan (Retroceso no navega).
+  assert.ok(!ev.cortada && P6.useDistribucionStore.getState().edicion.trazo, "Enter en un botón de la lista cerró la forma de la cara");
+  // Sin acción, en la cara, las teclas del atajo global se cortan Y se frenan (Retroceso no navega).
   enElModo({ seleccion: null });
   ev = atajo(tecla("Backspace", EN_LIENZO));
-  assert.ok(ev.cortada && ev.prevenida, "Retroceso sin nada elegido, en el lienzo, no se frenó");
-  // Afuera del modo (la barra del editor) nada se despacha.
-  enElModo({ seleccion: null });
-  atajo(tecla("r", AFUERA));
-  assert.equal(P6.useDistribucionStore.getState().edicion.herramienta, "seleccionar", "una R afuera del modo eligió una herramienta");
+  assert.ok(ev.cortada && ev.prevenida, "Retroceso sin nada elegido, en la cara, no se frenó");
+  // Afuera de la pantalla (la barra del editor) nada se despacha.
+  enElModo();
+  atajo(tecla("Delete", AFUERA));
+  assert.deepEqual(claves(), ["z1", "z2"], "Supr afuera de la pantalla sacó una pieza");
 });
+
 
 await prueba("capacidad (verificación 6b): el pico de un período que empezó antes de hoy no mira los días que ya pasaron", () => {
   const L = P6.LEY;
@@ -1460,7 +1501,7 @@ await prueba("capacidad (verificación 6b): el pico de un período que empezó a
 });
 
 await prueba("panel y leyenda (verificación 6b): «Guardarlos como borrador» guarda como la persona (con historial), y un contrato escrito vuelve a leer el estado comercial del plano", () => {
-  const panel = codigo6b("PanelDeDistribucion");
+  const panel = codigo6b("DistribuirCara");
   const i = panel.indexOf("async function guardarYSeguir(");
   assert.ok(i >= 0, "no está guardarYSeguir");
   const cuerpo = panel.slice(i, panel.indexOf("\n  }\n", i));
@@ -1475,22 +1516,31 @@ await prueba("panel y leyenda (verificación 6b): «Guardarlos como borrador» g
     "un contrato nuevo no vuelve a leer el estado comercial del plano");
 });
 
-await prueba("pantalla (verificación 6b): lo que sólo se ve en pantalla, fijado — solape rojo sólo con fechas cruzadas, relleno sólo de lo que cuenta ese día, edición frenada con el plano sin guardar, confirmar frenado con errores, beforeunload, revisión congelada en el arrastre", () => {
-  // Sin DOM no se puede mirar el dibujo: se fija el código que lo decide (cada
-  // una de estas líneas, sacada, dejaba todas las pruebas en verde).
-  const lienzo = codigo6b("LienzoDeZonas"), panel = codigo6b("PanelDeDistribucion");
-  const resumen = codigo6b("ResumenDeCambios"), ley = codigo6b("LeyendaDeParticipaciones"), form = codigo6b("FormularioDeParticipacion");
-  assert.match(lienzo, /if \(!t1 \|\| !t2 \|\| !seCruzanEnFechas\(t1, t2, hoy\)\) continue;/, "el solape rojo no mira si las fechas se cruzan (§3.6)");
-  assert.match(lienzo, /if \(!info\?\.cuenta \|\| !info\.estampa\) return null;/, "se rellena una participación que no cuenta el día de «Ver al día» (va sólo punteada)");
+await prueba("pantalla (verificación 6b, con piezas): lo que sólo se ve en pantalla, fijado — una pieza choca sólo con fechas cruzadas, la reserva punteada, edición frenada con el plano sin guardar, «Listo» frenado con errores, beforeunload, revisión congelada en el arrastre", () => {
+  // Sin DOM no se puede mirar el dibujo: se fija el código que lo decide.
+  const cara = codigo6b("CaraDePiezas"), panel = codigo6b("DistribuirCara"), ley = codigo6b("LeyendaDeParticipaciones"), form = codigo6b("FormularioDeParticipacion");
+  const piezas = sinComentTs2(fuente(`${DIST}/piezasDeLaCara.ts`));
+  assert.match(piezas, /\.filter\(\(p\) => p\.spaceId !== spaceId && p\.poligonos\.length > 0 && seCruzanEnFechas\(yo\.terminos, p\.terminos, hoy\)\)/,
+    "una pieza choca con otra aunque sus fechas no se crucen (§3.6)");
+  assert.match(cara, /strokeDasharray=\{o\.fantasma \|\| p\.esReserva \? /, "la reserva provisional no va punteada");
   assert.match(panel, /const editable = !!datos\?\.por_participacion && !!datos\.superficie && alDia;/, "se edita con el plano sin guardar (§9.2: la firma tiene que coincidir)");
-  assert.match(lienzo, /const puedeEditar = [^;]*alDia[^;]*edicion\.modo === "editar";/, "el lienzo dibuja con el plano sin guardar o en «Mirar»");
-  assert.match(resumen, /const bloqueado = errores\.length > 0 \|\| !enTopes \|\| !alDia/, "«Confirmar» no se frena con errores, fuera de los topes o con el plano sin guardar");
+  assert.match(cara, /const puedeEditar = [^;]*alDia[^;]*edicion\.modo === "editar";/, "la cara edita con el plano sin guardar");
+  assert.match(panel, /const bloqueado = errores\.length > 0 \|\| !enLosTopes \|\| !alDia \|\| motivoDeListo !== null;/, "«Listo» no se frena con errores, fuera de los topes o con el plano sin guardar");
+  assert.match(panel, /disabled=\{bloqueado\} onClick=\{listo\} data-listo/, "el botón «Listo» no mira `bloqueado`");
   assert.match(panel, /window\.addEventListener\("beforeunload", (\w+)\)[\s\S]{0,80}window\.removeEventListener\("beforeunload", \1\)/, "cerrar la pestaña con cambios sin guardar no pregunta (§9.8)");
   assert.match(ley, /s\.edicion\.arrastre \? s\.edicion\.arrastre\.antes : s\.edicion\.zonas/, "la revisión en vivo se recalcula en cada movimiento del arrastre (§9.4: al soltar)");
-  assert.match(ley, /const renovable = masNuevo && masNuevo\.estado === "contrato" \? masNuevo : null;/, "«Renovar» se ofrece en una reserva (§4.7: sólo el contrato vivo más nuevo)");
+  assert.match(panel, /const renovable = masNuevo && masNuevo\.estado === "contrato" \? masNuevo : null;/, "«Renovar» se ofrece en una reserva (§4.7: sólo el contrato vivo más nuevo)");
   assert.match(form, /const excluir = \(modo === "editar" \|\| modo === "confirmar"\) && termino \? termino\.id : null;/,
     "la vista previa de cambiar o confirmar una reserva la cuenta dos veces (a ella misma)");
+  // Soltar encima de otra marca: queda marcada en rojo y NO se ubica.
+  const i = panel.indexOf("const soltar = (spaceId: number, rect: Rect | null, pisa: number | null) => {");
+  assert.ok(i >= 0, "no está `soltar`");
+  const cuerpo = panel.slice(i, panel.indexOf("\n  };", i));
+  const choca = cuerpo.indexOf("if (pisa !== null) {"), pone = cuerpo.indexOf('tipo: "ponerPiezas"');
+  assert.ok(choca >= 0 && pone > choca && cuerpo.slice(choca, pone).includes("return;"), "soltar encima de otra marca la ubica igual");
+  assert.match(cuerpo, /ui\(\)\.decir\(`Ahí ya está \$\{nombreDe\(pisa\)\}: soltala en lo verde\.`\);/);
 });
+
 
 await prueba("vista de pantalla (verificación 6b): «Ver cómo estaba» y el período se vacían al cambiar de cara, de sesión o de cliente (geometría de un supermercado en la pantalla de otro)", () => {
   const V = P6.LEY.useVistaDeDistribucion;
@@ -1529,29 +1579,40 @@ const rI = await build({
 });
 const IMP = await import("data:text/javascript;base64," + Buffer.from(rI.outputFiles[0].text).toString("base64"));
 
-await prueba("la zona elegida dice sus datos en «Editar» igual que en «Mirar»: participación, proveedor, %, área que cubre y estado (ejecutado)", () => {
-  const L = P6.LEY;
-  const sup = { ancho: 1.25, alto: 1.8, exclusiones: [{ por: "zocalo", u0: 0, u1: 1, v0: 0, v1: 0.1 }] };
-  const p = {
-    space_id: 7, codigo: "NAVE-GON-01-PC3", numero: 3, viva: true, contratado_pb: 2500, dibujado_pb: 0, pendiente_pb: 2500,
-    terminos: [{ id: 30, space_id: 7, numero: 3, estado: "contrato", estado_visible: "vigente", desde: "2026-10-01", hasta: "2027-01-31",
-      caduca: null, proveedor: { id: 4, nombre: "Postobón" }, marca: "Hit", puntos_basicos: 2500, baja_fecha: null, lease_id: 90 }],
-  };
-  // Media cara de ancho, de v = 0 a 0,5: pisa el zócalo (0 a 0,1), que no cuenta.
-  const zona = [[0, 0], [0.5, 0], [0.5, 0.5], [0, 0.5]];
-  const t = L.datosDeLaZona(1, zona, p, sup, "2026-10-17", "2026-10-17");
-  const m2 = 0.5 * 0.4 * 1.25 * 1.8;                       // 0,45 m² de lo que se vende
-  assert.equal(t, `Zona 2 · participación 3 · Postobón · Hit · 25 % contratado · esta zona cubre ${m2.toFixed(2).replace(".", ",")} m² (22,22 % de la cara) · Contrato vigente`);
-  // Un día en que no cuenta: lo dice.
-  const futuro = { ...p, terminos: [{ ...p.terminos[0], estado_visible: "firmado", desde: "2026-12-01" }] };
-  assert.match(L.datosDeLaZona(0, zona, futuro, sup, "2026-10-17", "2026-10-17"), /Contrato firmado · empieza el 1 dic · desde el 1 dic$/);
-  // Un trazo a medias no rompe la tarjeta.
-  assert.match(L.datosDeLaZona(0, [[0, 0], [0.1, 0]], p, sup, "2026-10-17", "2026-10-17"), /zona sin terminar de dibujar/);
-  // El lienzo la muestra con la zona elegida, sin mirar el modo.
-  const lienzo = codigo6b("LienzoDeZonas");
-  assert.ok(!/infoElegida/.test(lienzo) && !/elegida && \(ed\.modo === "mirar"/.test(lienzo), "la tarjeta de la zona sigue sólo en «Mirar»");
-  assert.match(lienzo, /\{elegida && partElegida && \([\s\S]{0,320}datosDeLaZona\(kElegida, elegida\.vertices, partElegida, sup, dia, hoy\)/);
+await prueba("cada pieza dice su marca (sin número), su %, su estado en palabras y su contrato (ejecutado con `piezasDe`)", () => {
+  const Z = P6.PZC;
+  const sup = { ancho: 1.8, alto: 1.8, orientacion: "frente", plano: 0.46, giro_x: 0, area_util_m2: 3,
+    exclusiones: [{ por: "zocalo", u0: 0, u1: 1, v0: 0, v1: 0.066667 }, { por: "remate", u0: 0, u1: 1, v0: 0.944444, v1: 1 }] };
+  const aseo = pOut([tOut({ id: 1, space_id: 62, numero: 4, puntos_basicos: 5000, proveedor: { id: 3, nombre: "Aseo Total" }, marca: "Marca 2", desde: "2026-10-01", hasta: "2027-03-31" })]);
+  const cafe = pOut([tOut({ id: 2, space_id: 63, numero: 5, puntos_basicos: 3000, proveedor: { id: 9, nombre: "Café Montaña" }, marca: "Café A", desde: "2026-10-23", hasta: "2027-03-31" })]);
+  const datos = { hoy: "2026-10-24", superficie: sup, participaciones: [aseo, cafe], capacidad: { periodo: { desde: "2026-10-24", hasta: "2027-10-23" }, fisicos: [] }, distribucion: null };
+  const mitad = { clave: "z1", participacionSpaceId: 62, vertices: [[0, 0], [0.5, 0], [0.5, 1], [0, 1]] };
+  const rev = P6.LEY.revisionEnVivo([mitad], datos);
+  const ps = Z.piezasDe(datos, [mitad], rev, {});
+  assert.deepEqual(ps.map((p) => [p.nombre, p.corto, p.pb, p.estado, p.forma]), [
+    ["Aseo Total · Marca 2", "Marca 2", 5000, "ubicada", "franja"],
+    ["Café Montaña · Café A", "Café A", 3000, "sin_ubicar", "franja"],
+  ]);
+  assert.equal(ps[0].detalle, "Contrato vigente · del 1 oct 2026 al 31 mar 2027");
+  const nombre = (s) => ps.find((p) => p.spaceId === s)?.corto ?? "?";
+  assert.deepEqual(ps.map((p) => Z.textoDelEstado(p, nombre, p.choca)), ["Ubicada", "Arrastrala a la cara"]);
+  for (const p of ps) assert.ok(!/\b4\b|\b5\b|participaci/i.test(`${p.nombre} ${p.corto} ${Z.textoDelEstado(p, nombre, p.choca)}`), `una pieza dice el número interno: ${p.nombre}`);
+  // Una pieza encima de la otra (fechas que se cruzan): «Pisa a Marca 2», y no está ubicada.
+  const encima = { clave: "n1", participacionSpaceId: 63, vertices: [[0.3, 0], [0.6, 0], [0.6, 1], [0.3, 1]] };
+  const ps2 = Z.piezasDe(datos, [mitad, encima], P6.LEY.revisionEnVivo([mitad, encima], datos), {});
+  assert.equal(ps2[1].estado, "choca");
+  assert.equal(Z.textoDelEstado(ps2[1], nombre, ps2[1].choca), "Pisa a Marca 2");
+  // Pasada o corta: lo dice con el %.
+  assert.equal(Z.textoDelEstado({ estado: "sobra", pb: 3000, dibujado: 3086, forma: "a_mano" }, nombre, null), "Sobra 0,86 %");
+  assert.equal(Z.textoDelEstado({ estado: "falta", pb: 3000, dibujado: 2000, forma: "franja" }, nombre, null), "Le falta 10 %");
+  // Con fechas que NO se cruzan, lo de la otra no la bloquea.
+  const despues = pOut([tOut({ id: 3, space_id: 64, numero: 6, puntos_basicos: 3000, proveedor: { id: 9, nombre: "Café Montaña" }, marca: "Café B", desde: "2027-04-01", hasta: "2027-06-30" })]);
+  const d3 = { ...datos, participaciones: [aseo, despues] };
+  const ps3 = Z.piezasDe(d3, [mitad], P6.LEY.revisionEnVivo([mitad], d3), {});
+  assert.deepEqual(Z.ocupadosPara(64, ps3, "2026-10-24"), [], "una marca de otras fechas bloquea el lugar");
+  assert.deepEqual(Z.ocupadosPara(63, Z.piezasDe(datos, [mitad], rev, {}), "2026-10-24").map((o) => o.spaceId), [62]);
 });
+
 
 await prueba("formulario: Esc con algo escrito pregunta y no cierra (tampoco desde un campo); sin nada escrito cierra; la pregunta se va con Esc (ejecutado)", () => {
   const q = P6.FORM.queHaceEsc;
@@ -1578,31 +1639,31 @@ await prueba("formulario: Esc con algo escrito pregunta y no cierra (tampoco des
 await prueba("«Descartar borrador» dice que también se pierde lo que no se guardó en pantalla (ejecutado)", () => {
   const T = P6.PANEL.textoDeDescartarBorrador;
   assert.deepEqual(T({ cara: "A", hayConfirmada: true, sucio: false }), [
-    "Se borra el borrador guardado de la cara A y vuelve a verse la distribución confirmada. Queda anotado en el historial."]);
+    "Se borra el borrador guardado de la cara A y vuelve a verse la que estaba guardada como lista. Queda anotado en el historial."]);
   const con = T({ cara: "B", hayConfirmada: false, sucio: true });
   assert.equal(con.length, 2, "con cambios sin guardar, el diálogo no avisa que se pierden");
   assert.equal(con[1], "También se pierden los cambios que hiciste en pantalla y todavía no guardaste.");
-  const panel = codigo6b("PanelDeDistribucion");
+  const panel = codigo6b("DistribuirCara");
   assert.match(panel, /textoDeDescartarBorrador\(\{ cara: activa\.cara, hayConfirmada: !!datos\?\.distribucion\?\.confirmada\.length, sucio \}\)/,
     "el diálogo no usa lo que se hizo en pantalla (`sucio`)");
   // Y descartar de verdad vuelve a cargar del servidor (por eso se pierde).
   assert.match(sinComentTs2(fuente("store/distribucionStore.ts")), /descartar: async \(\) => \{[\s\S]*?reducir\(s\.edicion, \{ tipo: "cargar"/);
 });
 
-await prueba("la fila de la leyenda: dos botones hermanos (elegir y acciones), ningún botón adentro de otro ni `role=\"button\"`", () => {
-  const ley = codigo6b("LeyendaDeParticipaciones");
-  assert.ok(!/role="button"/.test(ley), "la fila sigue siendo un role=\"button\" (con un <button> adentro)");
-  const i = ley.indexOf("data-elegir-participacion");
-  assert.ok(i >= 0, "no está el botón que elige la participación");
+await prueba("la pieza de la lista: dos botones hermanos (elegirla o arrastrarla, y su menú), ningún botón adentro de otro ni `role=\"button\"`", () => {
+  const ley = codigo6b("DistribuirCara");
+  assert.ok(!/role="button"/.test(ley), "la pieza es un role=\"button\" (con un <button> adentro)");
+  const i = ley.indexOf("data-elegir-pieza");
+  assert.ok(i >= 0, "no está el botón que elige la pieza");
   const abre = ley.lastIndexOf("<button", i);
   const cierra = ley.indexOf("</button>", i);
   const adentro = ley.slice(ley.indexOf(">", i) + 1, cierra);
-  assert.ok(!/<button/.test(adentro), "hay un botón adentro del botón de la fila");
+  assert.ok(!/<button/.test(adentro), "hay un botón adentro del botón de la pieza");
   assert.ok(!/<(div|p)\b/.test(adentro), "un botón con <div> o <p> adentro (sólo va contenido en línea)");
-  assert.match(ley.slice(abre, i + 200), /type="button"[\s\S]*aria-pressed=\{esActiva\}[\s\S]*onClick=\{\(\) => elegir\(p\.space_id\)\}/);
-  assert.match(ley.slice(cierra, cierra + 400), /<button[\s\S]{0,80}aria-label=\{`Acciones de la participación \$\{p\.numero\}`\}/,
-    "las acciones no son el botón hermano que sigue");
+  assert.match(ley.slice(abre, i + 400), /type="button"[\s\S]*aria-pressed=\{esElegida\}[\s\S]*data-elegir-pieza[\s\S]*onPointerDown=\{\(e\) => \{ arrastrada\.current = false; empezarArrastre\(p, e\); \}\}/);
+  assert.match(ley.slice(cierra, cierra + 400), /<button[\s\S]{0,80}aria-label=\{`Más de \$\{p\.nombre\}`\}/, "el menú no es el botón hermano que sigue");
 });
+
 
 await prueba("«Borrar sede» nombra las reservas provisionales que se cancelan; el renombre dice adónde van (ejecutado)", () => {
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
@@ -1848,7 +1909,7 @@ await prueba("«Descartarlos» con la edición en «Mirar» (al salir y al cambi
   assert.equal(await D().salir(), true);
   assert.equal(servidor.pedidos.filter((p) => p.url !== "/participaciones/cara").length, 1, "salir con cambios dejó de guardar el borrador");
   // El panel responde «Descartarlos» con la opción del store, no con el reductor.
-  const panel = codigo6b("PanelDeDistribucion");
+  const panel = codigo6b("DistribuirCara");
   const i = panel.indexOf("async function descartarYSeguir(");
   const cuerpo = panel.slice(i, panel.indexOf("\n  }\n", i));
   assert.match(cuerpo, /await st\(\)\.cambiarCara\(p\.cara, \{ descartar: true \}\)/);
@@ -1914,20 +1975,18 @@ await prueba("un 401 con el autoguardado frenado por un 409 no pierde lo dibujad
   D().reiniciar();
 });
 
-await prueba("el encabezado dice la sede: «Distribución · NAVE · GON-01 · cara A» (pedido §12)", () => {
-  assert.equal(P6.PANEL.tituloDelPanel({ sede: "NAVE", codigo: "GON-01", cara: "A" }), "Distribución · NAVE · GON-01 · cara A");
-  assert.equal(P6.PANEL.tituloDelPanel({ sede: "TERRON", codigo: "ROB-01", cara: "B" }), "Distribución · TERRON · ROB-01 · cara B");
-  const panel = codigo6b("PanelDeDistribucion");
-  assert.match(panel, /title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>\{tituloDelPanel\(activa\)\}<\/p>/, "el encabezado no usa el título con la sede");
-  assert.ok(!/>Distribución · \{activa\.codigo\}</.test(panel), "quedó el encabezado sin la sede");
-  // Verificación de los arreglos (recorrido a 1440 × 900): con `truncate`, el panel de 320 px decía
-  // «Distribución · NAVE · GON-…» (el mueble cortado; con una sede larga, la sede misma). Se parte, no se corta.
-  const clases = panel.match(/<p className="([^"]*)" title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>/);
-  assert.ok(clases, "no está el párrafo del título");
-  assert.ok(!/(^|\s)truncate(\s|$)/.test(clases[1]), `el título del panel se corta (${clases[1]}): con la sede adelante no entra en un renglón`);
-  assert.match(clases[1], /(^|\s)break-words(\s|$)/, "el título del panel no se parte en renglones");
-  assert.match(clases[1], /(^|\s)text-balance(\s|$)/, "el título se parte en el guion del código («GON-» / «01 · cara B»)");
+await prueba("el encabezado dice la sede: «NAVE · GON-01 · cara A» (pedido §12), partido y nunca cortado", () => {
+  assert.equal(P6.PANEL.tituloDelPanel({ sede: "NAVE", codigo: "GON-01", cara: "A" }), "NAVE · GON-01 · cara A");
+  assert.equal(P6.PANEL.tituloDelPanel({ sede: "TERRON", codigo: "ROB-01", cara: "B" }), "TERRON · ROB-01 · cara B");
+  const panel = codigo6b("DistribuirCara");
+  assert.match(panel, /title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>\s*<span className="codigo">\{tituloDelPanel\(activa\)\}<\/span>/, "el encabezado no usa el título con la sede");
+  const clases = panel.match(/<h2 className="([^"]*)" title=\{tituloDelPanel\(activa\)\} data-titulo-de-distribucion>/);
+  assert.ok(clases, "no está el título");
+  assert.ok(!/(^|\s)truncate(\s|$)/.test(clases[1]), `el título se corta (${clases[1]})`);
+  assert.match(clases[1], /(^|\s)break-words(\s|$)/, "el título no se parte en renglones");
+  assert.match(clases[1], /(^|\s)text-balance(\s|$)/, "el título se parte en el guion del código");
 });
+
 
 await prueba("historial (contrato con el servidor): una derivada dice sólo el DÍA en que dejó de valer —nunca el anterior— y se ordena por el instante contra las reales (ejecutado con TZ=America/Bogota)", () => {
   const tzAntes = process.env.TZ;
@@ -1964,7 +2023,7 @@ await prueba("historial (contrato con el servidor): una derivada dice sólo el D
     assert.deepEqual(viejo.map((l) => l.cuando)[1], "18 oct 2026");
     assert.equal(viejo[1].detalle, "Venció la participación 4.");
     // El panel muestra eso, y ya no ordena por texto ni fecha las derivadas con su hora.
-    const panel = codigo6b("PanelDeDistribucion");
+    const panel = codigo6b("DistribuirCara");
     assert.match(panel, /\{lineas && lineasDelHistorial\(lineas\)\.map\(\(e\) => \(/);
     assert.ok(!/\.sort\(\(a, b\) => \(a\.en < b\.en/.test(panel), "el historial se sigue ordenando comparando textos");
     assert.match(panel, /cuando: dia \? fechaLegible\(dia\) : cuandoFue\(d\.en\)/, "una derivada con su día pasa por new Date");
@@ -2077,7 +2136,7 @@ await prueba("un 409 de una escritura de términos (otra sesión vendió en el m
     "el rechazo del formulario no vuelve a leer la cara");
   assert.match(form, /<Formulario key=\{`\$\{formulario\.modo\}\|\$\{formulario\.terminoId \?\? ""\}`\}/, "la clave del formulario cambia con los datos: se perdería lo escrito");
   assert.match(form, /const vista = vistaPrevia\(modo, c, datos, termino, participacion, activa\.cara\);/, "la vista previa no sale de los datos de este dibujo");
-  assert.match(form, /<p className="text-dark-ink-1">\{fraseDeLaVistaPrevia\(vista\)\}<\/p>/);
+  assert.match(form, /<p className="text-ink-1">\{fraseDeLaVistaPrevia\(vista\)\}<\/p>/);
   const ley = codigo6b("LeyendaDeParticipaciones");
   const c = ley.indexOf("function PreguntaDeCancelar(");
   assert.match(ley.slice(c, ley.indexOf("return (", c)), /\} catch \(e\) \{[\s\S]*?void st\.releerTrasConflicto\(e\);/, "un 409 al cancelar no vuelve a leer la cara");
@@ -2107,7 +2166,7 @@ await prueba("historial: la fecha se escribe igual en las reales y en las deriva
       assert.ok(!/ de /.test(l.cuando), `«${l.cuando}» escribe la fecha con «de»`);
       assert.equal(/\d:\d\d/.test(l.cuando), !l.derivada, `«${l.cuando}»: la hora va sólo en las reales`);
     }
-    const panel = codigo6b("PanelDeDistribucion");
+    const panel = codigo6b("DistribuirCara");
     assert.match(panel, /return `\$\{fechaLegible\(dia\)\}, \$\{hora\(d\.getTime\(\)\)\}`;/, "una real no escribe su día con `fechaLegible`");
     assert.ok(!/toLocaleString\("es-CO"/.test(panel), "queda el formato largo de `es-CO` («17 de oct de 2026»)");
   } finally {
@@ -2351,10 +2410,19 @@ await prueba("guardas de la copia: el diálogo con los tokens del cajón, UN bot
   assert.ok(!/from\s+["'][^"']*StoreEditor3D\/StoreEditor3D["']/.test(t), "CopiarZonas importa StoreEditor3D");
   assert.ok(!/valor_mensual|monthly_rent|negotiatedValue|sombra/i.test(crudo), "CopiarZonas nombra montos (o «sombra»)");
   assert.match(t, /useDistribucionStore\.getState\(\)\.pegarCopia\(/, "el diálogo no pega por el store");
-  assert.match(t, /<Dialogo titulo="Copiar zonas a esta cara"/, "el diálogo no es el de siempre (role=dialog, aria-modal, Esc propio)");
-  // El panel: el botón se apaga en «Mirar», con el plano sin guardar y con lo que dice `motivoParaNoCopiar`.
-  const panel = codigo6b("PanelDeDistribucion");
-  assert.match(panel, /disabled=\{enMirar \|\| !editable \|\| motivoCopiar !== null\}[\s\S]{0,300}Copiar zonas de otra cara…/);
+  assert.match(t, /<Dialogo titulo="Copiar de otra cara"/, "el diálogo no es el de siempre (role=dialog, aria-modal, Esc propio)");
+  // Distribuir con piezas: abre en una cara que TIENE algo para copiar, y una vacía se dice sin rojo.
+  assert.match(t, /setElegida\(opcionDeEntrada\(opciones\)\?\.clave \?\? ""\)/, "el diálogo abre en la primera cara aunque no tenga nada (y muestra un error de entrada)");
+  assert.match(t, /\{copia && !copia\.compatible && !sinNada && <p role="alert"/, "una cara sin nada para copiar se dice en rojo");
+  // Tampoco los avisos de la copia («No queda ninguna pieza para copiar», en
+  // rojo) ni las opciones de una copia que no hay (recorrido 2026-10-24).
+  assert.match(t, /\{frases && frases\.avisos\.length > 0 && !sinNada && \(/, "una cara sin nada para copiar muestra los avisos en rojo");
+  assert.match(t, /\{!sinNada && \(\s*<label[^>]*>\s*<input type="checkbox" checked=\{quitarLasDemas\}/, "sin nada para copiar, sigue «Sacar las piezas…»");
+  assert.match(t, /\{!sinNada && \(\s*<label[^>]*>\s*<input type="checkbox" checked=\{espejo\}/, "sin nada para copiar, sigue «En espejo»");
+  assert.ok(!/A qué participación|Quitar las zonas de las participaciones/.test(crudo), "el diálogo habla de «participación» o de «zonas»");
+  // En «Más»: «Copiar de la otra cara», apagado mientras no se puede editar y con lo que dice `motivoParaNoCopiar`.
+  const panel = codigo6b("DistribuirCara");
+  assert.match(panel, /data-copiar-zonas-de-otra-cara disabled=\{!puedeEditar \|\| motivoCopiar !== null\}[\s\S]{0,260}Copiar de la otra cara/);
   assert.match(panel, /\{copiando && <CopiarZonas caras=\{caras\} onCerrar=\{\(\) => setCopiando\(false\)\} \/>\}/);
   assert.match(panel, /\{copiaVisible && \(/, "la franja de la copia no está en el panel");
   // pegarZonas está entre las acciones que no hacen nada en «Mirar».
@@ -2369,29 +2437,28 @@ await prueba("guardas de la copia: el diálogo con los tokens del cajón, UN bot
   assert.ok(!/localStorage|sessionStorage|indexedDB/.test(sinComentTs2(fuente("utils/copiaDeZonas.ts"))));
   // E5a: el historial trae `dia` y `derivado` en su tipo; el panel ya no los agrega con un tipo local.
   assert.match(api, /derivados: \{ en: string; dia\?: string; derivado\?: true;/);
-  assert.ok(!/HistorialOut\["derivados"\]\[number\] &/.test(fuente(`${DIST}/PanelDeDistribucion.tsx`)), "el panel sigue leyendo dia/derivado con un tipo local");
+  assert.ok(!/HistorialOut\["derivados"\]\[number\] &/.test(fuente(`${DIST}/DistribuirCara.tsx`)), "la pantalla lee dia/derivado con un tipo local");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// fase 2 · I2 · «Editar en el 3D», el trazo en el 3D y «Ajustar el borde»
+// DISTRIBUIR CON PIEZAS (2026-10-24) · el 3D se mira, la parte se vende en Vender
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// El control del puntero del 3D (`components/Distribucion/punteroEnElMueble.ts`)
-// se EJECUTA con un contenedor y eventos de mentira: qué eventos corta (los
-// que no, los ve OrbitControls o el clic de siempre), qué acciones del
-// reductor manda y que al desengancharse no deja nada. Lo que decide sin DOM
-// (`utils/edicionEnElMueble.ts`) va con su tabla entera. Y lo que sólo se ve
-// en el navegador se fija en el código: perezoso y montado sólo con el
-// interruptor, la órbita intacta salvo el botón derecho, `Scene` sin cambios,
-// el mismo `puedeEditar` que el lienzo.
+// El rediseño aprobado sacó «Editar en el 3D» (la zona flotando delante de los
+// estantes y el giro con el botón derecho confundían): el 3D queda como
+// miniatura viva y «Ver en 3D», con el MISMO motor del editor. El trazo «A
+// mano» se sigue viendo punteado en el 3D. Las guardas de antes del control
+// del puntero (puntero, interruptor, órbita) se fueron con él; éstas fijan que
+// no vuelva y que el 3D de Distribuir sea el del editor, y lo nuevo: sin alta
+// de participación en Distribuir, sin números internos ni palabras de antes, y
+// la entrada desde Supervisar con su vuelta.
 
-console.log("distribución · fase 2 · I2: «Editar en el 3D» y «Ajustar el borde»");
+console.log("distribución · con piezas: el 3D se mira, sin alta, sin números internos, Supervisar ida y vuelta");
 
 const rI2 = await build({
   stdin: {
     contents: [
       'export * as EM from "./src/utils/edicionEnElMueble.ts";',
-      'export * as PM from "./src/components/Distribucion/punteroEnElMueble.ts";',
       'export { useDistribucionStore } from "./src/store/distribucionStore.ts";',
       'export { estadoInicial, reducir } from "./src/utils/edicionDeZonas.ts";',
     ].join("\n"),
@@ -2414,38 +2481,6 @@ const I2 = await import(pathToFileURL(join(dirI2, "i2.mjs")).href);
 rmSync(dirI2, { recursive: true, force: true });
 
 const cuadI2 = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
-const zonaI2 = (clave, s, vertices) => ({ clave, participacionSpaceId: s, vertices });
-
-await prueba("qué hace el botón izquierdo en el 3D: la tabla entera (apagado, otro botón, dedo, «Mirar», otra cara, tapado, R, P, mover —la elegida gana si se pisan—, cara vacía)", () => {
-  const q = I2.EM.queHaceElBotonIzquierdo;
-  const z1 = zonaI2("z1", 7, cuadI2(0.1, 0.1, 0.5, 0.5)), z2 = zonaI2("z2", 8, cuadI2(0.3, 0.3, 0.7, 0.7));
-  const base = {
-    prendido: true, puedeEditar: true, boton: 0, tipoDePuntero: "mouse", toque: { cara: "A", u: 0.4, v: 0.4 }, tapado: false,
-    caraEditada: "A", edicion: { herramienta: "seleccionar", zonas: [z1, z2], seleccion: null },
-  };
-  // Sin nada elegido, en lo que se pisan gana la de arriba (la última).
-  assert.deepEqual(q(base), { gesto: "mover", clave: "z2" });
-  // La elegida gana si el punto cae adentro de ella.
-  assert.deepEqual(q({ ...base, edicion: { ...base.edicion, seleccion: { zona: "z1", vertice: null } } }), { gesto: "mover", clave: "z1" });
-  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.2, v: 0.2 } }), { gesto: "mover", clave: "z1" });
-  // Cara vacía con Seleccionar: nada (gira, y el clic de siempre suelta la zona).
-  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.9, v: 0.9 } }), { gesto: "nada" });
-  // Las herramientas de dibujo, en cualquier punto de la cara.
-  assert.deepEqual(q({ ...base, edicion: { ...base.edicion, herramienta: "rectangulo" } }), { gesto: "rectangulo" });
-  assert.deepEqual(q({ ...base, toque: { cara: "A", u: 0.9, v: 0.9 }, edicion: { ...base.edicion, herramienta: "poligono" } }), { gesto: "poligono" });
-  // Lo que nunca es del dibujo.
-  for (const [quien, c] of [
-    ["apagado", { prendido: false }], ["botón derecho", { boton: 2 }], ["botón del medio", { boton: 1 }], ["el dedo", { tipoDePuntero: "touch" }],
-    ["sin poder editar («Mirar», el plano sin guardar)", { puedeEditar: false }], ["fuera de la cara", { toque: null }],
-    ["la otra cara", { toque: { cara: "B", u: 0.4, v: 0.4 } }], ["algo lo tapa", { tapado: true }], ["sin cara activa", { caraEditada: null }],
-  ]) {
-    for (const herramienta of ["seleccionar", "rectangulo", "poligono"]) {
-      assert.deepEqual(q({ ...base, ...c, edicion: { ...base.edicion, herramienta } }), { gesto: "nada" }, `${quien} con ${herramienta}: no es «nada»`);
-    }
-  }
-  // El lápiz sí (sólo el dedo queda afuera).
-  assert.deepEqual(q({ ...base, tipoDePuntero: "pen", edicion: { ...base.edicion, herramienta: "rectangulo" } }), { gesto: "rectangulo" });
-});
 
 await prueba("el trazo que se dibuja punteado: el rectángulo de sus dos esquinas, el polígono con el cursor, y nada con menos de dos puntos", () => {
   const t = I2.EM.trazoParaDibujar;
@@ -2464,384 +2499,192 @@ await prueba("el trazo que se dibuja punteado: el rectángulo de sus dos esquina
   assert.notEqual(fuera, trazo);
   assert.notEqual(fuera[0], trazo[0]);
 });
-
-/** Un contenedor del canvas de mentira: cuenta los oyentes (por tipo y fase),
- *  la captura del puntero y el cursor. */
-function contenedorDeMentira() {
-  const oyentes = new Map();
-  const k = (tipo, o) => `${tipo}|${o && o.capture ? "captura" : "burbuja"}`;
-  const c = {
-    style: { cursor: "auto" }, altas: 0, bajas: 0, capturas: new Set(),
-    addEventListener(tipo, f, o) { c.altas++; if (!oyentes.has(k(tipo, o))) oyentes.set(k(tipo, o), new Set()); oyentes.get(k(tipo, o)).add(f); },
-    removeEventListener(tipo, f, o) { if (oyentes.get(k(tipo, o))?.delete(f)) c.bajas++; },
-    setPointerCapture(id) { c.capturas.add(id); },
-    hasPointerCapture(id) { return c.capturas.has(id); },
-    releasePointerCapture(id) { c.capturas.delete(id); },
-    /** Dispara en CAPTURA (lo único que escucha el control) y devuelve el evento. */
-    disparar(tipo, ev) { for (const f of [...(oyentes.get(`${tipo}|captura`) ?? [])]) f(ev); return ev; },
-    vivos() { let n = 0; for (const s of oyentes.values()) n += s.size; return n; },
-    tipos() { return [...oyentes.entries()].filter(([, s]) => s.size > 0).map(([t]) => t).sort(); },
-  };
-  return c;
-}
-/** Un evento del puntero: cuenta cuántas veces se lo cortó y se lo frenó. */
-const punteroI2 = (x, y, extra = {}) => ({
-  button: 0, pointerType: "mouse", pointerId: 1, clientX: x, clientY: y, shiftKey: false, cortado: 0, prevenido: 0,
-  stopPropagation() { this.cortado++; }, preventDefault() { this.prevenido++; }, ...extra,
-});
-/**
- * El 3D de mentira: la cara A ocupa la pantalla de (0, 0) a (1000, 1000) px,
- * u = x/1000 y v = (1000 − y)/1000 (1 m = 1000 px: el imán de 6 px es 6 mm).
- * El estado de la edición es el del reductor de verdad; cada acción despachada
- * se anota.
- */
-function tresDeMentira(edicion) {
-  const m = {
-    ed: { ...I2.estadoInicial(), medidas: { ancho: 1, alto: 1 }, activa: 7, ...edicion },
-    acciones: [], cuadros: [], cursores: [], focos: 0,
-    puede: true, tapado: false, caraTocada: "A", prendido: true,
-  };
-  const enLaCara = (ev) => ev.clientX >= 0 && ev.clientX <= 1000 && ev.clientY >= 0 && ev.clientY <= 1000;
-  m.deps = {
-    prendido: () => m.prendido,
-    puedeEditar: () => m.puede,
-    caraEditada: () => "A",
-    edicion: () => m.ed,
-    toque: (ev) => (enLaCara(ev) ? { cara: m.caraTocada, u: ev.clientX / 1000, v: (1000 - ev.clientY) / 1000, tapado: m.tapado } : null),
-    uvEnLaCara: (ev, cara) => (cara === "A" ? [ev.clientX / 1000, (1000 - ev.clientY) / 1000] : null),
-    aPantalla: (cara, [u, v]) => (cara === "A" ? { x: u * 1000, y: 1000 - v * 1000 } : null),
-    guias: () => ({ entrepanos: [], parantes: [] }),
-    despachar: (a) => { m.acciones.push(a); m.ed = I2.reducir(m.ed, a); },
-    ponerCursor: (p) => { m.cursores.push(p); },
-    soltarFoco: () => { m.focos++; },
-    pedirCuadro: (f) => { m.cuadros.push(f); return m.cuadros.length; },
-    soltarCuadro: (id) => { m.cuadros[id - 1] = null; },
-  };
-  /** Corre los cuadros pendientes (un despacho por cuadro, como el lienzo). */
-  m.cuadro = () => { const fs = m.cuadros; m.cuadros = []; for (const f of fs) if (f) f(); };
-  m.tipos = () => m.acciones.map((a) => a.tipo);
-  return m;
-}
-
-await prueba("el control del 3D (ejecutado), Rectángulo: corta el pointerdown, captura el puntero, empezarTrazo → estirarTrazo por cuadro → cerrarTrazo; el click y el dblclick de ese gesto no le llegan a R3F", () => {
-  const m = tresDeMentira({ herramienta: "rectangulo" });
-  const c = contenedorDeMentira();
-  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
-  const baja = c.disparar("pointerdown", punteroI2(200, 800));
-  assert.equal(baja.cortado, 1, "el pointerdown del dibujo le llegó a OrbitControls / R3F");
-  assert.equal(baja.prevenido, 1);
-  assert.ok(c.capturas.has(1), "no capturó el puntero");
-  assert.equal(m.focos, 1, "el foco no volvió a body (las teclas del lienzo no andarían)");
-  assert.deepEqual(m.acciones, [{ tipo: "empezarTrazo", punto: [0.2, 0.2] }]);
-  // Dos movimientos en el mismo cuadro: un solo despacho, con el último.
-  assert.equal(c.disparar("pointermove", punteroI2(300, 700)).cortado, 1, "el arrastre del dibujo le llegó a R3F");
-  c.disparar("pointermove", punteroI2(400, 600));
-  assert.equal(m.cuadros.length, 1, "se pidió más de un cuadro");
-  assert.deepEqual(m.tipos(), ["empezarTrazo"], "se despachó antes del cuadro");
-  m.cuadro();
-  assert.deepEqual(m.acciones[1], { tipo: "estirarTrazo", punto: [0.4, 0.4] });
-  assert.deepEqual(m.ed.trazo, [[0.2, 0.2], [0.4, 0.4]], "el trazo no está en el store (el lienzo y el 3D no lo verían)");
-  // Un movimiento más sin cuadro y se suelta: el pendiente sale antes de cerrar.
-  c.disparar("pointermove", punteroI2(450, 550));
-  const sube = c.disparar("pointerup", punteroI2(450, 550));
-  assert.equal(sube.cortado, 1);
-  assert.ok(!c.capturas.has(1), "no soltó la captura");
-  assert.deepEqual(m.tipos(), ["empezarTrazo", "estirarTrazo", "estirarTrazo", "cerrarTrazo"]);
-  assert.equal(m.ed.zonas.length, 1);
-  assert.deepEqual(m.ed.zonas[0].vertices, cuadI2(0.2, 0.2, 0.45, 0.45));
-  assert.equal(m.ed.zonas[0].participacionSpaceId, 7);
-  assert.equal(m.ed.atras.length, 1, "dibujar en el 3D no es UN paso de deshacer");
-  // El click y el dblclick que siguen a ese gesto se cortan.
-  assert.equal(c.disparar("click", punteroI2(450, 550)).cortado, 1, "R3F mediría este clic contra un pointerdown que no vio");
-  assert.equal(c.disparar("dblclick", punteroI2(450, 550)).cortado, 1, "el doble clic movería la mira de la órbita");
-  // Un clic sin moverse (menos de 4 px) no dibuja: cancela el trazo.
-  c.disparar("pointerdown", punteroI2(600, 400));
-  c.disparar("pointerup", punteroI2(602, 401));
-  assert.deepEqual(m.tipos().slice(-2), ["empezarTrazo", "cancelarTrazo"]);
-  assert.equal(m.ed.zonas.length, 1);
-  assert.equal(m.ed.trazo, null);
-  soltar();
-});
-
-await prueba("el control del 3D (ejecutado): fuera de la cara, tapado, en la otra cara, con el botón derecho, con el dedo o sin poder editar NO corta nada (lo ven OrbitControls y el clic de siempre)", () => {
-  for (const [quien, preparar, ev] of [
-    ["fuera de la cara", () => {}, punteroI2(1200, 500)],
-    ["tapado por otro mueble", (m) => { m.tapado = true; }, punteroI2(500, 500)],
-    ["en la otra cara", (m) => { m.caraTocada = "B"; }, punteroI2(500, 500)],
-    ["botón derecho", () => {}, punteroI2(500, 500, { button: 2 })],
-    ["botón del medio", () => {}, punteroI2(500, 500, { button: 1 })],
-    ["el dedo", () => {}, punteroI2(500, 500, { pointerType: "touch" })],
-    ["sin poder editar", (m) => { m.puede = false; }, punteroI2(500, 500)],
-    ["el interruptor apagado", (m) => { m.prendido = false; }, punteroI2(500, 500)],
-  ]) {
-    for (const herramienta of ["rectangulo", "poligono", "seleccionar"]) {
-      const m = tresDeMentira({ herramienta, zonas: [zonaI2("z1", 7, cuadI2(0.3, 0.3, 0.7, 0.7))] });
-      preparar(m);
-      const c = contenedorDeMentira();
-      const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
-      const baja = c.disparar("pointerdown", ev);
-      assert.equal(baja.cortado + baja.prevenido, 0, `${quien} (${herramienta}): cortó el pointerdown`);
-      assert.equal(c.capturas.size, 0, `${quien} (${herramienta}): capturó el puntero`);
-      assert.equal(c.disparar("pointermove", { ...ev, clientX: ev.clientX + 30 }).cortado, 0, `${quien} (${herramienta}): cortó el arrastre (la órbita no giraría)`);
-      assert.equal(c.disparar("pointerup", { ...ev, clientX: ev.clientX + 30 }).cortado, 0);
-      assert.equal(c.disparar("click", { ...ev }).cortado, 0, `${quien} (${herramienta}): cortó el clic de siempre (elegir la zona o cambiar de cara)`);
-      assert.equal(c.disparar("dblclick", { ...ev }).cortado, 0);
-      assert.deepEqual(m.acciones, [], `${quien} (${herramienta}): despachó algo`);
-      soltar();
-    }
-  }
-  // Seleccionar sobre la cara vacía: tampoco (gira; el clic suelta la zona).
-  const m = tresDeMentira({ herramienta: "seleccionar", zonas: [zonaI2("z1", 7, cuadI2(0.3, 0.3, 0.7, 0.7))] });
-  const c = contenedorDeMentira();
-  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
-  assert.equal(c.disparar("pointerdown", punteroI2(100, 900)).cortado, 0, "Seleccionar sobre la cara vacía cortó el pointerdown");
-  assert.equal(c.disparar("click", punteroI2(100, 900)).cortado, 0);
-  soltar();
-});
-
-await prueba("el control del 3D (ejecutado), Polígono: un clic por punto (con el imán), clic a ≤ 8 px del primero cierra; un arrastre no agrega; el punteado sigue al puntero", () => {
-  const m = tresDeMentira({ herramienta: "poligono", zonas: [zonaI2("z9", 8, cuadI2(0.6, 0.6, 0.8, 0.8))] });
-  const c = contenedorDeMentira();
-  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
-  const clic = (x, y) => {
-    const b = c.disparar("pointerdown", punteroI2(x, y));
-    c.disparar("pointerup", punteroI2(x, y));
-    c.disparar("click", punteroI2(x, y));
-    return b;
-  };
-  assert.equal(clic(200, 800).cortado, 1, "el pointerdown del polígono le llegó a la órbita");
-  // A 4,2 px de la esquina (0,6; 0,6) de otra zona: el imán lo pega.
-  clic(603, 397);
-  clic(200, 400);
-  assert.deepEqual(m.tipos(), ["agregarPunto", "agregarPunto", "agregarPunto"]);
-  assert.deepEqual(m.ed.trazo, [[0.2, 0.2], [0.6, 0.6], [0.2, 0.6]], "el imán del 3D no pegó el punto (o el trazo no está en el store)");
-  // El punteado: sin gesto, el cursor del polígono sigue al puntero (y lo apaga fuera de la cara).
-  const mov = c.disparar("pointermove", punteroI2(300, 650));
-  assert.equal(mov.cortado, 0, "el movimiento sin gesto se cortó (la órbita no lo vería)");
-  assert.deepEqual(m.cursores.at(-1), [0.3, 0.35]);
-  assert.equal(c.style.cursor, "crosshair", "sobre la cara con P el cursor no es una cruz");
-  c.disparar("pointermove", punteroI2(1500, 650));
-  assert.equal(m.cursores.at(-1), null);
-  assert.equal(c.style.cursor, "auto", "fuera de la cara el cursor no volvió al de antes");
-  // Un arrastre con P no agrega nada (como en el lienzo).
-  c.disparar("pointerdown", punteroI2(500, 500));
-  c.disparar("pointerup", punteroI2(560, 500));
-  assert.deepEqual(m.tipos(), ["agregarPunto", "agregarPunto", "agregarPunto"]);
-  // Clic a 6 px del primero (200, 800): cierra.
-  clic(206, 800);
-  assert.deepEqual(m.tipos().at(-1), "cerrarTrazo");
-  assert.equal(m.ed.trazo, null);
-  assert.equal(m.ed.zonas.length, 2);
-  assert.deepEqual(m.ed.zonas[1].vertices, [[0.2, 0.2], [0.6, 0.6], [0.2, 0.6]]);
-  assert.equal(m.ed.zonas[1].participacionSpaceId, 7);
-  assert.equal(m.cursores.at(-1), null, "al cerrar quedó el punteado");
-  soltar();
-});
-
-await prueba("el control del 3D (ejecutado), mover con Seleccionar: elige la zona al bajar; 3 px no arrastran; a los 10 px empezarArrastre UNA vez, moverZona por cuadro y terminarArrastre al soltar (un paso de deshacer)", () => {
-  const z1 = zonaI2("z1", 7, cuadI2(0.2, 0.2, 0.4, 0.4));
-  const m = tresDeMentira({ herramienta: "seleccionar", zonas: [z1], base: [z1] });
-  const c = contenedorDeMentira();
-  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
-  c.disparar("pointermove", punteroI2(300, 700));
-  assert.equal(c.style.cursor, "move", "sobre una zona con V el cursor no es «mover»");
-  assert.equal(c.disparar("pointerdown", punteroI2(300, 700)).cortado, 1);
-  assert.deepEqual(m.acciones, [{ tipo: "seleccionar", zona: "z1" }]);
-  c.disparar("pointermove", punteroI2(303, 700));
-  assert.deepEqual(m.tipos(), ["seleccionar"], "3 px ya arrastraron");
-  c.disparar("pointermove", punteroI2(310, 700));
-  c.disparar("pointermove", punteroI2(320, 700));
-  assert.deepEqual(m.tipos(), ["seleccionar", "empezarArrastre"], "empezarArrastre no fue una sola vez");
-  m.cuadro();
-  assert.equal(m.tipos().at(-1), "moverZona");
-  assert.equal(m.acciones.at(-1).clave, "z1");
-  assert.ok(Math.abs(m.acciones.at(-1).du - 0.02) < 1e-12 && m.acciones.at(-1).dv === 0, `movió ${m.acciones.at(-1).du}, ${m.acciones.at(-1).dv}`);
-  c.disparar("pointerup", punteroI2(320, 700));
-  assert.equal(m.tipos().at(-1), "terminarArrastre");
-  assert.deepEqual(m.ed.zonas[0].vertices, cuadI2(0.22, 0.2, 0.42, 0.4));
-  assert.equal(m.ed.atras.length, 1, "el arrastre en el 3D no es UN paso de deshacer");
-  assert.equal(c.disparar("click", punteroI2(320, 700)).cortado, 1);
-  // Con el imán: llevar la zona hasta 4 px del borde de la cara la pega al borde.
-  c.disparar("pointerdown", punteroI2(300, 700));
-  c.disparar("pointermove", punteroI2(84, 700));       // −0,216: el borde izquierdo a u = 0,22 − 0,216 = 0,004
-  m.cuadro();
-  c.disparar("pointerup", punteroI2(84, 700));
-  assert.equal(m.ed.zonas[0].vertices[0][0], 0, "el imán del 3D no pegó la zona al borde de la cara");
-  soltar();
-});
-
-await prueba("el control del 3D (ejecutado): pointercancel / lostpointercapture cancelan el rectángulo y cierran el arrastre; desconectar saca TODOS los oyentes y devuelve el cursor", () => {
-  const m = tresDeMentira({ herramienta: "rectangulo" });
-  const c = contenedorDeMentira();
-  const soltar = I2.PM.conectarEdicionEnElMueble(c, m.deps);
-  assert.deepEqual(c.tipos(), ["click|captura", "dblclick|captura", "lostpointercapture|captura", "pointercancel|captura", "pointerdown|captura", "pointermove|captura", "pointerup|captura"],
-    "el control no escucha en captura (OrbitControls y R3F verían el gesto antes)");
-  c.disparar("pointerdown", punteroI2(200, 800));
-  c.disparar("pointermove", punteroI2(300, 700));
-  c.disparar("lostpointercapture", punteroI2(300, 700));
-  m.cuadro();
-  assert.deepEqual(m.tipos(), ["empezarTrazo", "cancelarTrazo"], "perder la captura no canceló el rectángulo (o el movimiento pendiente salió después)");
-  assert.equal(m.ed.trazo, null);
-  // Mover: el arrastre se cierra (un paso), sin quedar a medias.
-  m.ed = { ...m.ed, herramienta: "seleccionar", zonas: [zonaI2("z1", 7, cuadI2(0.2, 0.2, 0.4, 0.4))] };
-  c.disparar("pointerdown", punteroI2(300, 700));
-  c.disparar("pointermove", punteroI2(340, 700));
-  c.disparar("pointercancel", punteroI2(340, 700));
-  assert.equal(m.tipos().at(-1), "terminarArrastre");
-  assert.equal(m.ed.arrastre, null, "el arrastre quedó a medias");
-  // Desconectar en medio de un gesto: lo cierra, saca todo y devuelve el cursor.
-  c.disparar("pointermove", punteroI2(300, 700));       // pasivo: «mover» sobre la zona
-  assert.equal(c.style.cursor, "move");
-  c.disparar("pointerdown", punteroI2(300, 700));
-  c.disparar("pointermove", punteroI2(340, 700));
-  soltar();
-  assert.equal(c.vivos(), 0, `quedaron oyentes: ${c.tipos().join(", ")}`);
-  assert.equal(c.altas, 7);
-  assert.equal(c.bajas, 7);
-  assert.equal(c.style.cursor, "auto", "desconectar dejó el cursor cambiado");
-  assert.equal(m.tipos().at(-1), "terminarArrastre", "desconectar dejó el arrastre a medias");
-  assert.equal(m.cuadros.filter(Boolean).length, 0, "desconectar dejó un cuadro pedido");
-  assert.equal(c.capturas.size, 0, "desconectar dejó el puntero capturado");
-});
-
-await prueba("el interruptor «Editar en el 3D»: apagado al entrar; se apaga al salir, al reiniciar, al pasar a «Mirar» y al cambiar de mueble; cambiar de cara lo deja; nunca va al navegador", async () => {
-  const D2 = I2.useDistribucionStore, EE = I2.PM.useEditarEnEl3D;
-  const activaI2 = { cliente: "galerias", sede: "NAVE", fixtureId: "f-1", codigo: "GON-01", cara: "A" };
-  const entrar = () => D2.setState({ activa: activaI2, edicion: { ...I2.estadoInicial(), modo: "editar" } });
-  assert.equal(EE.getState().prendido, false, "arranca prendido");
-  entrar();
-  EE.getState().alternar();
-  assert.equal(EE.getState().prendido, true);
-  EE.getState().ponerCursor([0.3, 0.3]);
-  // Cambiar de cara del mismo mueble: sigue prendido.
-  D2.setState({ activa: { ...activaI2, cara: "B" } });
-  assert.equal(EE.getState().prendido, true, "cambiar de cara lo apagó");
-  // Salir (el camino de Presentar, la reunión, la caminata): se apaga.
-  assert.equal(await D2.getState().salir(), true);
-  assert.equal(D2.getState().activa, null);
-  assert.deepEqual([EE.getState().prendido, EE.getState().cursor], [false, null], "salir lo dejó prendido");
-  // Reiniciar (cambio de sesión o de cliente).
-  entrar(); EE.getState().alternar();
-  D2.getState().reiniciar();
-  assert.equal(EE.getState().prendido, false, "reiniciar lo dejó prendido");
-  // Pasar a «Mirar».
-  entrar(); EE.getState().alternar();
-  D2.getState().despachar({ tipo: "elegirModo", modo: "mirar" });
-  assert.equal(EE.getState().prendido, false, "pasar a «Mirar» lo dejó prendido");
-  // Otro mueble.
-  entrar(); EE.getState().alternar();
-  D2.setState({ activa: { ...activaI2, fixtureId: "f-2", codigo: "GON-02" } });
-  assert.equal(EE.getState().prendido, false, "pasar a otro mueble lo dejó prendido");
-  // Alternar dos veces vuelve a apagado y limpia el cursor.
-  entrar(); EE.getState().alternar(); EE.getState().ponerCursor([0.5, 0.5]); EE.getState().alternar();
-  assert.deepEqual([EE.getState().prendido, EE.getState().cursor], [false, null]);
-  D2.getState().reiniciar();
-  // Nada al navegador.
-  for (const f of ["components/Distribucion/punteroEnElMueble.ts", "components/Distribucion/EdicionEnElMueble.tsx", "utils/edicionEnElMueble.ts"]) {
-    const t = sinComentTs2(fuente(f));
-    assert.ok(!/localStorage|sessionStorage|indexedDB|\bpersist\b/.test(t), `${f} guarda algo en el navegador`);
-  }
-  for (const k of escritas) assert.ok(["retail-auth-v1", "retail-fixtures-v1"].includes(k), `clave nueva en localStorage: ${k}`);
-});
-
-await prueba("«Editar en el 3D» en el código: perezoso y montado sólo con el interruptor, por el nodo de las zonas y nunca por `Scene`; la órbita intacta salvo el botón derecho (que se devuelve); oyentes en captura en el contenedor del canvas; edita sólo por despachar; el mismo `puedeEditar` que el lienzo", () => {
-  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
-  const eem = sinComentTs2(fuente(`${DIST}/EdicionEnElMueble.tsx`));
-  const pem = sinComentTs2(fuente(`${DIST}/punteroEnElMueble.ts`));
-  const lienzo = codigo6b("LienzoDeZonas");
-  // Perezoso, como el panel y el lienzo, y montado sólo con el interruptor, dentro del nodo de las zonas.
-  assert.match(editor, /const EdicionEnElMueble = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/EdicionEnElMueble"\)\);/, "el control del 3D no es perezoso");
-  assert.ok(!/import[^;]*from\s+["']\.\.\/Distribucion\/EdicionEnElMueble["']/.test(editor), "el control del 3D se importa de una");
-  assert.match(editor, /const editarEnEl3D = useEditarEnEl3D\(\(s\) => s\.prendido\);/);
-  assert.match(editor, /\{editarEnEl3D && \(\s*<React\.Suspense fallback=\{null\}>\s*<EdicionEnElMueble orbitRef=\{orbitRef\} muebles=\{muebles\} superficies=\{superficies\} \/>/,
-    "el control del 3D se monta sin el interruptor");
-  const zdd = editor.slice(editor.indexOf("function ZonasDeLaDistribucion("), editor.indexOf("function BotonDeEditarEnEl3D("));
-  assert.ok(zdd.includes("<EdicionEnElMueble "), "el control no entra por el nodo de las zonas");
-  assert.match(editor, /const zonasDeLaDistribucion = useMemo\(\(\) => <ZonasDeLaDistribucion orbitRef=\{orbitRef\} muebles=\{placedFixturesRef\} \/>, \[\]\);/,
-    "el nodo de las zonas se rearma (y con él las props de la escena)");
-  // `Scene` no cambia: ni el control ni el interruptor aparecen en ella.
-  const scene = editor.slice(editor.indexOf("export function Scene({"), editor.indexOf("export function storeToFixtures("));
-  assert.ok(scene.length > 5000, "no se encontró el cuerpo de `Scene`");
-  assert.ok(!/EdicionEnElMueble|useEditarEnEl3D|punteroEnElMueble|conectarEdicionEnElMueble/.test(scene), "`Scene` sabe de «Editar en el 3D»");
-  // El trazo en curso llega al 3D.
-  assert.match(editor, /<ZonasDelMueble caras=\{caras\} participaciones=\{participaciones\} resaltada=\{resaltada\} seleccionada=\{seleccionada\} trazo=\{trazo\} \/>/);
-  assert.match(editor, /trazoParaDibujar\(\{ trazo: trazoEnCurso, herramienta \}, cursorDelPoligono\)/);
-  // La órbita: sólo el botón derecho pasa a girar, y se devuelve al desmontar.
-  assert.match(eem, /const derechoDeAntes = orbita \? orbita\.mouseButtons\.RIGHT : undefined;\s*if \(orbita\) orbita\.mouseButtons\.RIGHT = THREE\.MOUSE\.ROTATE;/);
-  assert.match(eem, /return \(\) => \{\s*desconectar\(\);\s*if \(orbita\) orbita\.mouseButtons\.RIGHT = derechoDeAntes;\s*\};/, "el botón derecho no se devuelve al desmontar");
-  for (const t of [eem, pem]) {
-    assert.ok(!/\.(enabled|minPolarAngle|maxPolarAngle|minDistance|maxDistance|enableZoom|enableRotate|enablePan)\s*=(?!=)/.test(t),
-      "el control toca la órbita más allá del botón derecho (la rueda tiene que seguir andando)");
-    assert.ok(!/setState\(/.test(t), "el control escribe un store por fuera de sus acciones");
-    assert.ok(!/raycast=|onPointerDown=|onClick=/.test(t), "el control usa eventos de R3F o una malla para el gesto");
-  }
-  // Los oyentes: en captura, en el contenedor del canvas, y cada uno se saca con el mismo par.
-  assert.match(eem, /const contenedor = gl\.domElement\.parentElement;/);
-  assert.match(eem, /const desconectar = conectarEdicionEnElMueble\(contenedor, deps\);/);
-  for (const tipo of ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture", "click", "dblclick"]) {
-    const m = new RegExp(`contenedor\\.addEventListener\\("${tipo}", (\\w+), \\{ capture: true \\}\\);`).exec(pem);
-    assert.ok(m, `el control no escucha «${tipo}» en captura`);
-    assert.ok(pem.includes(`contenedor.removeEventListener("${tipo}", ${m[1]}, { capture: true });`), `«${tipo}» no se saca con el mismo par`);
-  }
-  // Edita SÓLO por el reductor del store.
-  assert.match(eem, /despachar: \(a\) => useDistribucionStore\.getState\(\)\.despachar\(a\),/);
-  assert.ok(!/[^.\w]despachar\(/.test(pem), "el control despacha por otro lado que `deps.despachar`");
-  assert.ok(!/useDistribucionStore\.getState\(\)\.despachar|useDistribucionStore\.setState/.test(pem));
-  // El mismo `puedeEditar` que el lienzo (no se saca a una función común: la línea del lienzo está fijada).
-  const expr = (t) => (/const puedeEditar = ([^;]*);/.exec(t) ?? [])[1]?.replace(/\s+/g, " ").trim();
-  assert.ok(expr(lienzo), "no está el `puedeEditar` del lienzo");
-  assert.equal(expr(eem), expr(lienzo), "el 3D y el lienzo no deciden igual cuándo se puede editar");
-  // Sin teclas nuevas: las de `atajoDeDistribucion` alcanzan.
-  assert.ok(!/keydown|keyup/.test(pem + eem), "«Editar en el 3D» agrega teclas");
-  // El control no trae React ni three (se ejecuta en Node), y lo que decide es puro.
-  assert.ok(!/from\s+"(react|three|@react-three\/fiber|@react-three\/drei)"/.test(pem), "el control del puntero importa React o three");
-  const puro = sinComentTs2(fuente("utils/edicionEnElMueble.ts"));
-  for (const m of puro.matchAll(/^import\s+(type\s+)?[^;]*from\s+"([^"]+)"/gm)) {
-    assert.ok(m[1] || m[2] === "./edicionDeZonas", `utils/edicionEnElMueble.ts importa ${m[2]}`);
-  }
-  assert.ok(!/document\.|window\.|requestAnimationFrame|Date\.now|new Date\(/.test(puro), "utils/edicionEnElMueble.ts no es puro");
-});
-
-await prueba("el botón «Editar en el 3D» y su pista: sólo con el 3D a la vista, apagado al entrar, deshabilitado en «Mirar» o con el plano sin guardar (con el motivo)", () => {
-  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
-  assert.match(editor, /\{distribucionVisible && distribucionActiva && !ocultar3D && \(\s*<BotonDeEditarEnEl3D fixtureId=\{distribucionActiva\.fixtureId\} sede=\{distribucionActiva\.sede\} \/>/,
-    "el botón se ve con el 3D oculto o fuera de Distribución");
-  const boton = editor.slice(editor.indexOf("function BotonDeEditarEnEl3D("), editor.indexOf("function PistaDeEditarEnEl3D("));
-  assert.match(boton, /aria-pressed=\{prendido\} data-editar-en-3d/);
-  assert.match(boton, /modo !== "editar" \? "Pasá a «Editar» para dibujar en el 3D\."/);
-  assert.match(boton, /!planoAlDia\(datos, mueble\) \? "El plano tiene cambios sin guardar: esperá un momento\."/);
-  assert.match(boton, /disabled=\{motivo !== null && !prendido\}/, "prendido no se puede apagar, o apagado se prende en «Mirar»");
-  assert.match(boton, /useEditarEnEl3D\.getState\(\)\.alternar\(\)/);
-  const pista = editor.slice(editor.indexOf("function PistaDeEditarEnEl3D("), editor.indexOf("function PistaDeEditarEnEl3D(") + 800);
-  assert.match(pista, /if \(!prendido\) return null;/);
-  assert.match(pista, /Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho\./);
-  assert.match(editor, /\{distribucionVisible && !ocultar3D && <PistaDeEditarEnEl3D \/>\}/);
-  assert.ok(!/sombra/i.test(boton + pista), "«sombra» en la interfaz");
-});
-
-await prueba("«Ajustar el borde» en el lienzo: habilitado sólo en «Editar» con una zona elegida, y deja fuera a las vecinas cuyas fechas no se cruzan (seCruzanEnFechas)", () => {
-  const lienzo = codigo6b("LienzoDeZonas");
-  assert.match(lienzo, /data-ajustar-borde disabled=\{!puedeEditar \|\| !elegida \|\| !!ed\.trazo\} onClick=\{ajustarBorde\}/,
-    "«Ajustar el borde» se puede tocar en «Mirar», sin zona elegida o con un trazo a medias");
-  const i = lienzo.indexOf("const ajustarBorde = () => {");
-  assert.ok(i >= 0, "no está ajustarBorde");
-  const cuerpo = lienzo.slice(i, lienzo.indexOf("\n  };", i));
-  assert.match(cuerpo, /const mias = d\.terminosPorS\.get\(elegida\.participacionSpaceId\) \?\? \[\];/);
-  assert.match(cuerpo, /return !suyas \|\| !seCruzanEnFechas\(mias, suyas, hoy\);/, "las vecinas no se filtran por fechas");
-  assert.match(cuerpo, /despachar\(\{ tipo: "ajustarBorde", clave: elegida\.clave, ignorar \}\);/);
-  // El botón va después de «Imán a guías» y no tiene tecla.
-  assert.ok(lienzo.indexOf("data-ajustar-borde") > lienzo.indexOf('"Imán a guías"'), "«Ajustar el borde» no va después de «Imán a guías»");
-  // Ejecutado contra el reductor de verdad: una zona de fechas que no se cruzan no cuenta como vecina.
-  const e0 = { ...I2.estadoInicial(), medidas: { ancho: 1, alto: 1 }, zonas: [zonaI2("a", 7, cuadI2(0, 0, 0.48, 1)), zonaI2("b", 8, cuadI2(0.49, 0, 1, 1))] };
-  assert.deepEqual(I2.reducir(e0, { tipo: "ajustarBorde", clave: "a" }).zonas[0].vertices, cuadI2(0, 0, 0.49, 1));
-  assert.equal(I2.reducir(e0, { tipo: "ajustarBorde", clave: "a", ignorar: ["b"] }).zonas, e0.zonas, "`ignorar` no dejó fuera a la vecina");
-});
-
 await prueba("el trazo en el 3D: `ZonasDelMueble` sigue sin leer stores y lo dibuja como una cinta discontinua, en el nivel más alto y sólo en la cara que se edita", () => {
   const z = sinComentTs2(fuente("components/StoreEditor3D/muebles/ZonasDelMueble.tsx"));
   assert.ok(!/store\//.test(z), "las zonas leen un store");
   assert.match(z, /\{c\.editada && trazo && trazo\.vertices\.length >= 2 && \(\s*<Cinta key="trazo" sup=\{sup\} cara=\{c\.cara\} vertices=\{trazo\.vertices\} ancho=\{CINTA_ELEGIDA_M\} estilo="discontinua"\s*tono=\{trazo\.tono \?\? GRIS_DE_HISTORIA\} opacidad=\{1\} nivel=\{NIVEL_MAXIMO_DE_CINTA\} \/>/,
     "el trazo no es una cinta discontinua arriba de todo en la cara que se edita");
+});
+await prueba("sin «Editar en el 3D»: ni el control, ni el interruptor, ni su pista; el clic en el 3D sólo elige (o cambia de cara), y `Scene` no sabe de ediciones", () => {
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.ok(!/EdicionEnElMueble|useEditarEnEl3D|punteroEnElMueble|conectarEdicionEnElMueble|BotonDeEditarEnEl3D|PistaDeEditarEnEl3D|data-editar-en-3d|Editar en el 3D/.test(editor),
+    "volvió «Editar en el 3D» al editor");
+  assert.ok(!/queHaceElBotonIzquierdo/.test(sinComentTs2(fuente("utils/edicionEnElMueble.ts"))), "quedó la tabla del botón izquierdo del 3D");
+  // Ningún archivo de Distribuir dibuja un 3D propio: se usa el motor del editor.
+  for (const n of readdirSync(join(raiz, "src", ...DIST.split("/")))) {
+    const t = sinComentTs2(leer(join(raiz, "src", ...DIST.split("/"), n)));
+    assert.ok(!/from\s+["'](three|@react-three\/fiber|@react-three\/drei)["']/.test(t), `${n} arma un 3D propio`);
+  }
+  // El nodo de las zonas: sin órbita ni muebles (nadie edita desde el 3D) y el trazo «A mano» sin cursor del 3D.
+  assert.match(editor, /const zonasDeLaDistribucion = useMemo\(\(\) => <ZonasDeLaDistribucion \/>, \[\]\);/);
+  assert.match(editor, /function ZonasDeLaDistribucion\(\) \{/);
+  assert.match(editor, /trazoParaDibujar\(\{ trazo: trazoEnCurso, herramienta \}, null\)/);
+  const scene = editor.slice(editor.indexOf("export function Scene({"), editor.indexOf("export function storeToFixtures("));
+  assert.ok(scene.length > 5000, "no se encontró el cuerpo de `Scene`");
+  assert.match(scene, /if \(r\) enModoDistribucion\.onTocar\(r\.cara, r\.u, r\.v\);/);
+  // Un toque en el 3D (`tocarEnElMueble`) sólo elige la zona o cambia de cara: nunca dibuja ni mueve.
+  const st = sinComentTs2(fuente("store/distribucionStore.ts"));
+  const i = st.indexOf("tocarEnElMueble: (cara, u, v) => {");
+  const cuerpo = st.slice(i, st.indexOf("\n    },", i));
+  assert.ok(i > 0 && !/empezarTrazo|agregarPunto|moverZona|ponerPiezas|cerrarTrazo/.test(cuerpo), "un toque en el 3D edita");
+});
+
+await prueba("el 3D de Distribuir es el del editor: el Canvas vive en un anfitrión que se muda (miniatura viva y «Ver en 3D»), sin volver a montarse", () => {
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  const panel = codigo6b("DistribuirCara");
+  const ranura = sinComentTs2(fuente("components/RanuraDelLienzo.tsx"));
+  // El Canvas se dibuja por un portal adentro del anfitrión, y el anfitrión se enchufa en una ranura.
+  assert.match(editor, /\{anfitrionDelLienzo && createPortal\(\s*<CanvasErrorBoundary>\s*<Canvas\b/, "el Canvas no va por el portal del anfitrión");
+  assert.match(editor, /<\/CanvasErrorBoundary>,\s*anfitrionDelLienzo\)\}/);
+  assert.equal((editor.match(/<Canvas\b/g) || []).length, 1, "hay más de un Canvas en el editor (un 3D nuevo)");
+  assert.match(editor, /\{!distribucionVisible && <RanuraDelLienzo anfitrion=\{anfitrionDelLienzo\} className="absolute inset-0" \/>\}/);
+  assert.match(editor, /<DistribuirCara fixtureId=\{distribucionActiva\.fixtureId\} sede=\{distribucionActiva\.sede\} onEncuadrarCara=\{encuadrarCara\} lienzo3D=\{anfitrionDelLienzo\} \/>/);
+  // En la pantalla: la miniatura (sin puntero: la toca el botón) y en grande, con «Volver a ubicar».
+  assert.equal((panel.match(/<RanuraDelLienzo anfitrion=\{lienzo3D\}/g) || []).length, 2, "la pantalla no enchufa el 3D en la miniatura y en grande");
+  assert.match(panel, /<RanuraDelLienzo anfitrion=\{lienzo3D\} className="pointer-events-none [^"]*" \/>/, "la miniatura deja girar el 3D (se toca para agrandarla)");
+  assert.match(panel, /Así queda en 3D/);
+  assert.match(panel, /Se actualiza al soltar cada pieza/);
+  assert.match(panel, /data-ver-en-3d><Box \{\.\.\.ICONO\} \/>Ver en 3D<\/button>/);
+  assert.match(panel, /onClick=\{\(\) => ui\(\)\.verEn3D\(false\)\} data-volver-a-ubicar><ArrowLeft \{\.\.\.ICONO\} \/>Volver a ubicar<\/button>/);
+  assert.match(panel, /Desde acá no se edita\./);
+  // La ranura muda el anfitrión con el DOM (appendChild) y sólo lo suelta si todavía lo tiene.
+  assert.match(ranura, /el\.appendChild\(anfitrion\);\s*return \(\) => \{ if \(anfitrion\.parentNode === el\) el\.removeChild\(anfitrion\); \};/);
+  // La pantalla va en el tema de la app: el editor deja de ser cajón oscuro mientras se distribuye.
+  assert.match(editor, /<div data-cajon-oscuro=\{distribucionVisible \? undefined : ""\}/, "Distribuir queda adentro del cajón oscuro (oscuro forzado)");
+});
+
+await prueba("sin alta de participación en Distribuir: el formulario no abre «alta» ni «Cargar de nuevo», el store no los pide y ninguna pantalla los ofrece", () => {
+  const store = sinComentTs2(fuente("store/distribucionStore.ts"));
+  assert.match(store, /\| \{ modo: "renovar" \| "confirmar" \| "editar"; terminoId\?: number \};/, "el store pide un alta");
+  const form = codigo6b("FormularioDeParticipacion");
+  assert.match(form, /const MODOS_DE_DISTRIBUIR: readonly Modo\[\] = \["renovar", "confirmar", "editar"\];/);
+  assert.match(form, /if \(!MODOS_DE_DISTRIBUIR\.includes\(formulario\.modo\)\) return null;/, "el formulario abre un alta");
+  const todos = [];
+  const recorrer = (dir) => {
+    for (const n of readdirSync(dir, { withFileTypes: true })) {
+      const q = join(dir, n.name);
+      if (n.isDirectory()) recorrer(q); else if (/\.(ts|tsx)$/.test(n.name)) todos.push(q);
+    }
+  };
+  recorrer(join(raiz, "src"));
+  for (const q of todos) {
+    const t = sinComentTs2(leer(q));
+    assert.ok(!/abrirFormulario\(\{ modo: "(alta|cargarDeNuevo)"/.test(t), `${q} abre el alta de una participación`);
+  }
+  for (const n of ["DistribuirCara", "CaraDePiezas", "LeyendaDeParticipaciones", "ResumenDeCambios", "CopiarZonas"]) {
+    assert.ok(!/Nueva participación|Cargar de nuevo/.test(codigo6b(n)), `${n} ofrece crear una participación`);
+  }
+  // Los textos que mandaban a crearlas en Distribución dicen Vender.
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.ok(!/Las participaciones se cargan en/.test(editor), "el panel del 3D sigue mandando a crear participaciones en Distribución");
+  assert.match(editor, /se vende en <b className="text-dark-ink-2">Vender<\/b>/);
+  const partes = sinComentTs2(fuente("components/PartesDelMueble.tsx"));
+  assert.ok(!/cargan en Distribución|se cargan en el Editor 3D/.test(partes), "PartesDelMueble sigue mandando a cargarlas en Distribución");
+  assert.match(partes, /se vende en Vender/);
+  // Y las frases compartidas (el globo de Supervisar, la ficha del plano 2D): se vende en Vender, se ubica en Distribuir.
+  const reglas = sinComentTs2(fuente("utils/partes.ts"));
+  assert.match(reglas, /export const DONDE_SE_CARGAN = "La parte de cada marca se vende en Vender; dónde va cada una se ubica con «Distribuir»\.";/);
+  assert.ok(!/disponible para vender en el Editor 3D|se cargan en el Editor 3D/.test(reglas), "una frase compartida manda a vender en Distribución");
+});
+
+/** Lo que se LEE en pantalla de un componente: los textos entre comillas (sin
+ *  lo que va en `${…}`) y el texto suelto de JSX. Los nombres de variables
+ *  (`p.dibujado`, `capacidadDe`) no son palabras de la pantalla. */
+const textosVisibles = (t) => {
+  const fuera = [];
+  const sinImports = t.replace(/^import[^;]*;/gm, "");
+  for (const m of sinImports.matchAll(/"([^"\n]*)"|'([^'\n]*)'|`([^`]*)`/g)) {
+    const x = (m[1] ?? m[2] ?? m[3]).replace(/\$\{[^}]*\}/g, " ");
+    // Un selector, una clave o un nombre de acción (sin espacios) no es texto de pantalla.
+    if (/^[\w.\-\[\]=#:/]*$/.test(x.trim())) continue;
+    fuera.push(x);
+  }
+  // El texto suelto de JSX (sin código: nada con `;`, `(`, `)` ni `=`, que es lo que deja un genérico o una flecha).
+  for (const m of t.matchAll(/>([^<>{}();=]+)</g)) fuera.push(m[1]);
+  return fuera.join("\n");
+};
+
+await prueba("sin números internos ni palabras de antes en la pantalla de Distribuir (ni «sombra»)", () => {
+  // Que la cuenta de los textos no esté vacía (si el extractor se rompe, la prueba no prueba nada).
+  assert.match(textosVisibles(codigo6b("DistribuirCara")), /Listo, guardar la cara/);
+  assert.match(textosVisibles(codigo6b("DistribuirCara")), /marcas ubicadas/);
+  assert.match(textosVisibles(sinComentTs2(fuente(`${DIST}/piezasDeLaCara.ts`))), /Arrastrala a la cara/);
+  const archivos = [["DistribuirCara", codigo6b("DistribuirCara")], ["CaraDePiezas", codigo6b("CaraDePiezas")], ["ResumenDeCambios", codigo6b("ResumenDeCambios")],
+    ["CopiarZonas", codigo6b("CopiarZonas")], ["piezasDeLaCara", sinComentTs2(fuente(`${DIST}/piezasDeLaCara.ts`))]];
+  for (const [n, t] of archivos) {
+    assert.ok(!/[Pp]articipaci[oó]n \$\{|\{p\.numero\}|\$\{p\.numero\}|numero\} ·|\$\{g\.numeroOrigen\}/.test(t), `${n} muestra el número interno de una participación`);
+    const v = textosVisibles(t);
+    assert.ok(!/\bsombra\b/i.test(v), `${n} dice «sombra»`);
+    for (const palabra of [/\bparticipaci[oó]n(es)?\b/i, /\bzonas?\b/i, /\bcapacidad\b/i, /\bpico\b/i, /comprometid/i, /\bcapa\b/i, /término/i, /\bMirar\b/, /\bdibujado\b/i, /\bcontratado\b/i, /\bconfirmar la distribución\b/i]) {
+      const m = palabra.exec(v);
+      assert.ok(!m, `${n} dice «${m?.[0]}» en pantalla`);
+    }
+  }
+  // El rótulo de las zonas en el 3D: el %, sin el número.
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.match(editor, /rotulo: pct\(p\.contratado_pb\),/);
+  assert.ok(!/rotulo: `\$\{p\.numero\} ·/.test(editor), "el rótulo del 3D dice el número interno");
+});
+
+await prueba("«Acomodar solas» al entrar: sólo una cara SIN nada ubicado, una vez por entrada, y nunca sobre lo que ya hay (ni con algo para recuperar)", () => {
+  const panel = codigo6b("DistribuirCara");
+  const i = panel.indexOf("const claveDeEntrada = activa && datos ?");
+  const efecto = panel.slice(i, panel.indexOf("}, [claveDeEntrada", i));
+  assert.match(efecto, /if \(!claveDeEntrada \|\| !puedeEditar \|\| recuperable \|\| acomodadas\.includes\(claveDeEntrada\)\) return;\s*ui\(\)\.anotarAcomodada\(claveDeEntrada\);/,
+    "se acomoda más de una vez, sin poder editar, o con algo para recuperar");
+  assert.match(efecto, /if \(edicion\.zonas\.length > 0 \|\| piezas\.length === 0\) return;\s*acomodar\(true\);/, "se acomoda una cara que ya tiene algo dibujado");
+  // Acomodar pone SÓLO las sin ubicar, con `acomodarSolas` (las exactas), en un paso.
+  const j = panel.indexOf("const acomodar = (alEntrar = false) => {");
+  const cuerpo = panel.slice(j, panel.indexOf("\n  };", j));
+  assert.match(cuerpo, /const sin = piezas\.filter\(\(p\) => p\.estado === "sin_ubicar"\);/);
+  assert.match(cuerpo, /acomodarSolas\(cara, sin\.map\(\(p\) => \(\{ spaceId: p\.spaceId, pb: p\.pb \}\)\), fijas, cruzanEnFechas\(piezas, hoy\)\)/);
+  assert.equal((cuerpo.match(/despachar\(/g) || []).length, 1, "acomodar despacha más de una vez (más de un paso de deshacer)");
+});
+
+await prueba("desde Supervisar y de vuelta: «Distribuir» pide volver; «Listo» guarda, sale y vuelve a Supervisar con el aviso (ejecutado el pedido del store)", () => {
+  for (const f of ["components/Distribucion/RevisarParticipaciones.tsx", "components/Distribucion/ParticipacionesDeLaCara.tsx", "pages/DashboardView.tsx"]) {
+    assert.match(sinComentTs2(fuente(f)), /useAbrirEnDistribucion\("supervisar"\)/, `${f} no pide volver a Supervisar`);
+  }
+  const hook = sinComentTs2(fuente("components/Distribucion/ParticipacionesDeLaCara.tsx"));
+  assert.match(hook, /pedir\(fixtureId, cara, \{ distribucion: \{ \.\.\.\(renovar \? \{ renovar \} : \{\}\), \.\.\.\(volver \? \{ volver \} : \{\}\) \} \}\)/);
+  const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.match(editor, /const \{ renovar, volver \} = enfoquePedido\.distribucion;/);
+  assert.match(editor, /\.\.\.\(volver \? \{ volverA: volver \} : \{\}\),/);
+  const panel = codigo6b("DistribuirCara");
+  const i = panel.indexOf("async function confirmarYa() {");
+  const cuerpo = panel.slice(i, panel.indexOf("\n  }\n", i));
+  const orden = ["const conAviso = piezas.filter((p) => !p.esReserva && p.poligonos.length > 0 && (!habia || cambian.has(p.spaceId))).map((p) => p.corto);",
+    "await st().confirmar();", 'if (g.estado !== "quieto" || g.mensaje)', "avisoDeMontaje(conAviso)",
+    'if (a.volverA === "supervisar") {', "if (await st().salir()) irseASupervisar(`${titulo} ${texto}`.trim());", "setExito({ titulo, texto });"];
+  let desde = 0;
+  for (const paso of orden) {
+    const k = cuerpo.indexOf(paso, desde);
+    assert.ok(k >= 0, `«Listo» no hace «${paso}» (o no en ese orden)`);
+    desde = k + paso.length;
+  }
+  assert.match(panel, /const titulo = `Listo: \$\{a\.codigo\} · cara \$\{a\.cara\} quedó distribuida\.`;/);
+  // El aviso de montaje, en palabras (ejecutado): las marcas con contrato, una vez cada una.
+  const A = P6.PANEL.avisoDeMontaje;
+  assert.equal(A(["Café A"]), "A Café A le llega el aviso de montaje con su lugar (si le falta la planometría, sale cuando la cargues en Supervisar).");
+  assert.equal(A(["Café A", "Marca 2", "Café A"]), "A Café A y Marca 2 les llega el aviso de montaje con su lugar (si les falta la planometría, sale cuando la cargues en Supervisar).");
+  assert.equal(A([]), "");
+  // Distribuir no lee lo de Supervisar (el visor de Vender alcanza esta pantalla por el editor).
+  assert.ok(!/montajesPendientes|api\/cobros|api\/reservas/.test(panel), "Distribuir lee una API de Supervisar");
+  // El pedido: viaja por el store, `Dashboard` cambia de pestaña y la pantalla de sede lo suelta y abre Supervisar.
+  const st = S.useFixtureStore.getState();
+  st.pedirSupervisar("Listo: GON-01 · cara A quedó distribuida.");
+  const pedido = S.useFixtureStore.getState().pedidoSupervisar;
+  assert.deepEqual([pedido.aviso, typeof pedido.n], ["Listo: GON-01 · cara A quedó distribuida.", "number"]);
+  S.useFixtureStore.getState().soltarPedidoSupervisar();
+  assert.equal(S.useFixtureStore.getState().pedidoSupervisar, null);
+  assert.match(sinComentTs2(fuente("pages/Dashboard.tsx")), /if \(pedidoSupervisar && isAdmin\) setViewMode\("kpis"\);/);
+  const dv = sinComentTs2(fuente("pages/DashboardView.tsx"));
+  assert.match(dv, /useFixtureStore\.getState\(\)\.soltarPedidoSupervisar\(\);\s*setModo\("supervisar"\);\s*setAvisoDeDistribucion\(pedidoSupervisar\.aviso\);/);
+  assert.match(dv, /\{isAdmin && avisoDeDistribucion && \(/, "el aviso de lo que dejó Distribuir no se muestra (o se le muestra a un trabajador)");
+  // No se persiste (no es una preferencia ni un dato).
+  const fs = sinComentTs2(fuente("store/fixtureStore.ts"));
+  const parcial = fs.slice(fs.indexOf("partialize: (state) => ({"), fs.indexOf("}),", fs.indexOf("partialize: (state) => ({")));
+  assert.ok(!/pedidoSupervisar/.test(parcial), "el pedido de volver a Supervisar se guarda en el navegador");
 });
 
 console.log(`\n${hechas} pruebas de distribución en verde`);

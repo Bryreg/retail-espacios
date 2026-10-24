@@ -57,11 +57,17 @@ export interface DistribucionActiva {
   /** El código del mueble en el plano (`GON-01`). */
   codigo: string;
   cara: "A" | "B";
+  /** Se entró desde Supervisar («Falta distribuir» → «Distribuir»): al guardar
+   *  la cara, se vuelve ahí con el aviso de lo que pasó. */
+  volverA?: "supervisar";
 }
 
+/** Lo que se abre sobre una marca que ya está en la cara. Desde el rediseño de
+ *  Distribuir (2026-10-24) la parte que se vende se crea SÓLO en Vender: acá no
+ *  hay alta ni «Cargar de nuevo». */
 export type FormularioDeParticipacion =
   | null
-  | { modo: "alta" | "renovar" | "confirmar" | "editar" | "cargarDeNuevo"; terminoId?: number };
+  | { modo: "renovar" | "confirmar" | "editar"; terminoId?: number };
 
 export interface EstadoDelGuardado {
   estado: "quieto" | "guardando" | "error" | "version_vieja";
@@ -115,7 +121,7 @@ interface DistribucionStore {
   /** fase 2 · I1: la última copia pegada en la cara activa (declarada o no). */
   copia: CopiaDeZonas | null;
 
-  entrar: (a: { sede: string; fixtureId: string; codigo: string; cara: "A" | "B" }) => Promise<void>;
+  entrar: (a: { sede: string; fixtureId: string; codigo: string; cara: "A" | "B"; volverA?: "supervisar" }) => Promise<void>;
   /** `true` si salió. Sin forzar, con cambios que no se pudieron guardar, se
    *  queda; forzado (Presentar, reunión, desmontar), sale y los deja en
    *  memoria. Con `descartar` («Descartarlos»), los cambios de la pantalla se
@@ -330,7 +336,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
     sinGuardar: {},
     copia: null,
 
-    entrar: async ({ sede, fixtureId, codigo, cara }) => {
+    entrar: async ({ sede, fixtureId, codigo, cara, volverA }) => {
       const { token, cliente } = sesion();
       if (!token) return;
       const antes = get().activa;
@@ -344,7 +350,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
       }
       cancelarAutoguardado();
       const gen = ++generacion;
-      const activa: DistribucionActiva = { cliente, sede, fixtureId, codigo, cara };
+      const activa: DistribucionActiva = { cliente, sede, fixtureId, codigo, cara, ...(volverA ? { volverA } : {}) };
       set((s) => ({
         activa, datos: null, cargando: true, error: null, edicion: edicionLimpia(s.edicion), guardado: QUIETO,
         formulario: null, fusion: null, pedidoDeCara: null, copia: null,
@@ -392,7 +398,7 @@ export const useDistribucionStore = create<DistribucionStore>()((set, get) => {
         if (!ok) return false;
       }
       if (get().activa !== a) return false;
-      await get().entrar({ sede: a.sede, fixtureId: a.fixtureId, codigo: a.codigo, cara: c });
+      await get().entrar({ sede: a.sede, fixtureId: a.fixtureId, codigo: a.codigo, cara: c, ...(a.volverA ? { volverA: a.volverA } : {}) });
       return true;
     },
 

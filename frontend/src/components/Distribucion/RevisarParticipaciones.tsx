@@ -92,7 +92,7 @@ export default function RevisarParticipaciones({ secciones, tituloDe }: {
   secciones: readonly SeccionDeRevision[];
   tituloDe?: (s: SeccionDeRevision) => string;
 }) {
-  const abrir = useAbrirEnDistribucion();
+  const abrir = useAbrirEnDistribucion("supervisar");
   if (secciones.length === 0) return null;
   return (
     <div data-revisar-participaciones style={{ display: "flex", flexDirection: "column" }}>
@@ -176,7 +176,7 @@ const campo: React.CSSProperties = {
  * que no se cruzan pueden ocupar la misma región, y sumarlas daría más de 100 %.
  */
 export function TablaDeParticipaciones({ sede, muebles }: { sede: string; muebles: readonly MuebleDelPlano[] }) {
-  const abrir = useAbrirEnDistribucion();
+  const abrir = useAbrirEnDistribucion("supervisar");
   const [dia, setDia] = useState("");
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");

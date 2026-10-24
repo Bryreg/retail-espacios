@@ -195,14 +195,14 @@ const claveDeSolape = (participaciones: readonly number[]) => [...participacione
 export function copiarZonas(origen: LadoDeCopia, zonasOrigen: readonly ZonaOut[], destino: DestinoDeCopia,
   zonasDestino: readonly ZonaEnEdicion[], o: OpcionesDeCopia): Copia {
   const so = origen.superficie, sd = destino.superficie;
-  if (!so) return { compatible: false, motivo: "La cara de origen no tiene superficie para dibujar zonas: no hay qué copiar." };
-  if (!sd) return { compatible: false, motivo: "Esta cara no tiene superficie para dibujar zonas." };
+  if (!so) return { compatible: false, motivo: "La cara de origen no tiene una cara para ubicar piezas: no hay qué copiar." };
+  if (!sd) return { compatible: false, motivo: "Esta cara no tiene una cara para ubicar piezas." };
   if (so.orientacion !== sd.orientacion) {
     return {
       compatible: false,
       motivo: sd.orientacion === "arriba"
-        ? "Esta cara es una zona libre (se dibuja vista desde arriba): no se le copian zonas de un frente."
-        : "La cara de origen es una zona libre (se dibuja vista desde arriba): sus zonas no se copian a un frente.",
+        ? "Esta cara es una zona libre (se mira desde arriba): no se le copian piezas de un frente."
+        : "La cara de origen es una zona libre (se mira desde arriba): sus piezas no se copian a un frente.",
     };
   }
   const delOrigen = new Map(origen.participaciones.map((p) => [p.space_id, p]));
@@ -277,9 +277,9 @@ export function copiarZonas(origen: LadoDeCopia, zonasOrigen: readonly ZonaOut[]
 
 /* ── Lo que se dice ────────────────────────────────────────────────────────── */
 
-/** «Participación 3 · Café A · Sello Rojo · 30 %»: una opción del selector. */
+/** «Café A · Sello Rojo · 30 %»: una opción del selector (sin el número interno). */
 export function nombreDeDestino(p: ParticipacionOut): string {
-  return `Participación ${p.numero} · ${quienEs(proveedorDe(p)?.nombre ?? null, marcaDe(p))} · ${pct(p.contratado_pb)}`;
+  return `${quienEs(proveedorDe(p)?.nombre ?? null, marcaDe(p))} · ${pct(p.contratado_pb)}`;
 }
 
 /** Las vivas del destino para el selector de una fila: primero las del mismo
@@ -347,10 +347,10 @@ export function frasesDeLaCopia(c: CopiaCompatible, origen: Pick<LadoDeCopia, "p
       else if (d && marcaNormal(marcaDe(d)) !== marcaNormal(g.marca)) nota = `Va a otra marca del mismo proveedor (${marcaDe(d) ?? "sin marca"}).`;
       else nota = "Elegida a mano.";
     } else if (g.como === "ambiguo") {
-      nota = `Hay ${cuantas(g.candidatos.length)} participaciones de ${quien} en esta cara: elegí a cuál va.`;
+      nota = `Hay ${cuantas(g.candidatos.length)} piezas de ${quien} en esta cara: elegí a cuál va.`;
       tono = "ambar";
     } else if (g.como === "sin_destino") {
-      nota = `No hay una participación de ${quien} en esta cara: elegí otra o no la copies.`;
+      nota = `${quien} no está en esta cara: elegí otra marca o no la copies.`;
       tono = "ambar";
     } else {
       nota = "No se copia.";
@@ -366,16 +366,16 @@ export function frasesDeLaCopia(c: CopiaCompatible, origen: Pick<LadoDeCopia, "p
       if (!yaDicho.has(g.destino)) {
         yaDicho.add(g.destino);
         const n = c.reemplazadasPor.get(g.destino) ?? 0;
-        if (n > 0) reemplaza = `Ya tenía ${plural(n, "zona", "zonas")} acá: ${n === 1 ? "se reemplaza" : "se reemplazan"}.`;
+        if (n > 0) reemplaza = `Ya tenía ${plural(n, "pieza", "piezas")} acá: ${n === 1 ? "se reemplaza" : "se reemplazan"}.`;
         const juntos = porDestino.get(g.destino) ?? [];
         if (juntos.length > 1) {
-          const ns = juntos.map((x) => x.numeroOrigen).sort((a, b) => a - b);
-          junta = `Junta las zonas de las participaciones ${ns.slice(0, -1).join(", ")} y ${ns[ns.length - 1]} del origen: lo que se pisa cuenta una vez.`;
+          const ns = juntos.slice().sort((a, b) => a.numeroOrigen - b.numeroOrigen).map((x) => quienEs(x.proveedor, x.marca));
+          junta = `Junta las piezas de ${ns.slice(0, -1).join(", ")} y ${ns[ns.length - 1]} del origen: lo que se pisa cuenta una vez.`;
         }
       }
     }
     return {
-      origen: g.origen, titulo: `Participación ${g.numeroOrigen} · ${quien} · ${pct(g.pb)} · ${plural(g.zonas, "zona", "zonas")}`,
+      origen: g.origen, titulo: `${quien} · ${pct(g.pb)} · ${plural(g.zonas, "forma", "formas")}`,
       nota, tono, comoQueda, sobra, reemplaza, junta,
     };
   });
@@ -390,19 +390,19 @@ export function frasesDeLaCopia(c: CopiaCompatible, origen: Pick<LadoDeCopia, "p
   const noSeCopia: string[] = [];
   for (const { origen: s, motivo, n } of tandas.values()) {
     const p = delOrigen.get(s);
-    const zonas = plural(n, "zona", "zonas");
+    const zonas = plural(n, "forma", "formas");
     const uno = n === 1;
     const de = p ? quienEs(proveedorDe(p)?.nombre ?? null, marcaDe(p)) : null;
     switch (motivo) {
       case "no_rige":
-        noSeCopia.push(p ? `${zonas} de la participación ${p.numero}: ya no rige en el origen.`
-          : `${zonas} de una participación que el origen ya no tiene.`);
+        noSeCopia.push(p ? `${zonas} de ${de}: ya no está vigente en el origen.`
+          : `${zonas} de una marca que el origen ya no tiene.`);
         break;
       case "ambiguo":
-        noSeCopia.push(`${zonas} de ${de}: no elegiste a qué participación ${uno ? "va" : "van"}.`);
+        noSeCopia.push(`${zonas} de ${de}: no elegiste a qué marca ${uno ? "va" : "van"}.`);
         break;
       case "sin_destino":
-        noSeCopia.push(`${zonas} de ${de}: esta cara no tiene una participación de ese proveedor y marca.`);
+        noSeCopia.push(`${zonas} de ${de}: esa marca no está en esta cara.`);
         break;
       case "no_copiar":
         noSeCopia.push(`${zonas} de ${de}: elegiste no ${uno ? "copiarla" : "copiarlas"}.`);
@@ -421,22 +421,22 @@ export function frasesDeLaCopia(c: CopiaCompatible, origen: Pick<LadoDeCopia, "p
 
   const avisos: FrasesDeLaCopia["avisos"] = [];
   if (c.estiramiento > 1.25) {
-    avisos.push({ texto: `Esta cara es ${decimal(c.estiramiento)} veces más ancha en proporción: las zonas se estiran a lo ancho.`, bloquea: false });
+    avisos.push({ texto: `Esta cara es ${decimal(c.estiramiento)} veces más ancha en proporción: las piezas se estiran a lo ancho.`, bloquea: false });
   } else if (c.estiramiento < 0.8 && c.estiramiento > 0) {
-    avisos.push({ texto: `Esta cara es ${decimal(1 / c.estiramiento)} veces más alta en proporción: las zonas se estiran a lo alto.`, bloquea: false });
+    avisos.push({ texto: `Esta cara es ${decimal(1 / c.estiramiento)} veces más alta en proporción: las piezas se estiran a lo alto.`, bloquea: false });
   }
   if (c.solapesNuevos > 0) {
     const n = c.solapesNuevos;
     avisos.push({
-      texto: `Con la copia ${n === 1 ? "queda 1 solape" : `quedan ${n} solapes`} entre participaciones con fechas que se cruzan: `
-        + `${n === 1 ? "se ve marcado y hay que resolverlo" : "se ven marcados y hay que resolverlos"} antes de confirmar.`,
+      texto: `Con la copia ${n === 1 ? "una marca pisa a otra" : `quedan ${n} marcas pisando a otras`} en fechas que se cruzan: `
+        + `${n === 1 ? "se ve en rojo y hay que moverla" : "se ven en rojo y hay que moverlas"} antes de guardar la cara.`,
       bloquea: false,
     });
   }
   if (filas.some((f) => f.sobra)) {
     avisos.push({
-      texto: "Alguna participación queda con más dibujado que contratado: no se va a poder confirmar hasta achicarla "
-        + "(«Ajustar al contratado», en el menú de su fila de la leyenda).",
+      texto: "Alguna marca queda más grande que su %: no se va a poder guardar la cara hasta achicarla "
+        + "(«Achicar», en su pieza de la lista).",
       bloquea: false,
     });
   }
@@ -445,22 +445,22 @@ export function frasesDeLaCopia(c: CopiaCompatible, origen: Pick<LadoDeCopia, "p
     const total = c.quedan.length + c.nuevas.length;
     avisos.push({
       texto: (total > MAX_ZONAS_POR_CARA
-        ? `Con la copia la cara tendría ${total} zonas: el tope es ${MAX_ZONAS_POR_CARA}.`
-        : "Con la copia la cara pasaría de 240 puntos (o tendría una zona de más de 24).")
-        + " Quitá zonas o marcá «Quitar las zonas de las participaciones que no reciben nada».",
+        ? `Con la copia la cara tendría ${total} formas: el tope es ${MAX_ZONAS_POR_CARA}.`
+        : "Con la copia la cara pasaría de 240 puntos (o tendría una forma de más de 24).")
+        + " Sacá algunas o marcá «Sacar las piezas de las marcas que no reciben nada».",
       bloquea: true,
     });
   }
-  if (c.nuevas.length === 0) avisos.push({ texto: "No queda ninguna zona para copiar.", bloquea: true });
+  if (c.nuevas.length === 0) avisos.push({ texto: "No queda ninguna pieza para copiar.", bloquea: true });
   return { filas, noSeCopia, avisos };
 }
 
 /** Por qué «Copiar como borrador» espera, o null si se puede copiar. */
 export function bloqueoDeLaCopia(c: Copia): string | null {
   if (!c.compatible) return c.motivo;
-  if (c.grupos.some((g) => g.como === "ambiguo")) return "Elegí a qué participación va cada fila marcada antes de copiar.";
-  if (!c.enLosTopes) return `Con la copia la cara pasaría los topes (${MAX_ZONAS_POR_CARA} zonas, 240 puntos).`;
-  if (c.nuevas.length === 0) return "No queda ninguna zona para copiar.";
+  if (c.grupos.some((g) => g.como === "ambiguo")) return "Elegí a qué marca va cada fila marcada antes de copiar.";
+  if (!c.enLosTopes) return `Con la copia la cara pasaría los topes (${MAX_ZONAS_POR_CARA} formas, 240 puntos).`;
+  if (c.nuevas.length === 0) return "No queda ninguna pieza para copiar.";
   return null;
 }
 
@@ -469,12 +469,12 @@ export function bloqueoDeLaCopia(c: Copia): string | null {
 export function motivoParaNoCopiar(e: {
   conSuperficie: boolean; alDia: boolean; enMirar: boolean; guardando: boolean; versionVieja: boolean; vivas: number;
 }): string | null {
-  if (!e.conSuperficie) return "Esta cara no tiene superficie para dibujar zonas.";
+  if (!e.conSuperficie) return "Esta cara no tiene una cara para ubicar piezas.";
   if (!e.alDia) return "El plano tiene cambios sin guardar: esperá un momento.";
-  if (e.enMirar) return "Pasá a «Editar» para copiar zonas.";
+  if (e.enMirar) return "Esperá a que el plano termine de guardarse para copiar.";
   if (e.versionVieja) return "Traé lo nuevo antes de copiar.";
   if (e.guardando) return "Esperá a que termine de guardar.";
-  if (e.vivas === 0) return "Esta cara no tiene participaciones vivas: cargalas con «Nueva participación» y después copiá las zonas.";
+  if (e.vivas === 0) return "Esta cara no tiene marcas vendidas: vendelas en Vender y después copiá.";
   return null;
 }
 
@@ -485,16 +485,16 @@ export function rotuloDeCara(sede: string, codigo: string, cara: "A" | "B"): str
 
 /** Lo primero que dice el diálogo. */
 export function encabezadoDeLaCopia(destino: { sede: string; codigo: string; cara: "A" | "B" }): string {
-  return `Las zonas se copian como borrador a ${rotuloDeCara(destino.sede, destino.codigo, destino.cara)}. `
-    + "No se copia ningún contrato ni reserva: cada zona va a una participación que esta cara ya tiene, "
-    + "y para que valga tenés que confirmar la distribución.";
+  return `Las piezas se copian como borrador a ${rotuloDeCara(destino.sede, destino.codigo, destino.cara)}. `
+    + "No se copia ningún contrato ni reserva: cada pieza va a una marca que esta cara ya tiene, "
+    + "y para que valga tenés que tocar «Listo, guardar la cara».";
 }
 
 /** La franja del panel después de copiar (mientras lo copiado siga a la vista). */
 export function franjaDeLaCopia(rotulo: string, guardada: boolean): string {
   return guardada
-    ? `Copiaste zonas de ${rotulo}: quedaron como borrador. Revisalas y confirmá cuando estén bien. Ctrl+Z deshace la copia.`
-    : `Pegaste zonas de ${rotulo}, pero todavía no se guardaron: probá de nuevo (o traé lo nuevo). Ctrl+Z deshace la copia.`;
+    ? `Copiaste las piezas de ${rotulo}: quedaron como borrador. Revisalas y tocá «Listo» cuando estén bien. Ctrl+Z deshace la copia.`
+    : `Pegaste las piezas de ${rotulo}, pero todavía no se guardaron: probá de nuevo (o traé lo nuevo). Ctrl+Z deshace la copia.`;
 }
 
 /* ── De qué cara ───────────────────────────────────────────────────────────── */
@@ -510,12 +510,21 @@ export interface OpcionDeOrigen {
   codigo: string;
   cara: "A" | "B";
   texto: string;
-  /** La otra cara del mueble de destino (va primera y elegida de entrada). */
+  /** La otra cara del mueble de destino (va primera). */
   otraCara: boolean;
+  /** Tiene algo para copiar (confirmado o borrador). El diálogo abre en la
+   *  primera que tiene: abrir en una vacía mostraba un error de entrada. */
+  conZonas: boolean;
+}
+
+/** La opción con que abre el diálogo: la primera que tiene algo para copiar
+ *  (en una doble, la otra cara si tiene), o la primera de la lista. */
+export function opcionDeEntrada(opciones: readonly OpcionDeOrigen[]): OpcionDeOrigen | null {
+  return opciones.find((o) => o.conZonas) ?? opciones[0] ?? null;
 }
 
 const ESTADO_DE_ORIGEN: Partial<Record<EstadoDeDistribucion, string>> = {
-  confirmada: "Confirmada", borrador: "Borrador", para_revisar: "Para revisar",
+  confirmada: "Guardada", borrador: "Borrador", para_revisar: "Para revisar",
 };
 
 /**
@@ -536,15 +545,16 @@ export function opcionesDeOrigen(destino: { sede: string; codigo: string; cara: 
   const detalle = (c: ResumenOut["caras"][number] | undefined) => {
     if (!c) return "";
     const estado = ESTADO_DE_ORIGEN[c.estado_distribucion];
-    if (!estado) return " — sin zonas";
-    return ` — ${estado} · ${plural(new Set(c.participaciones.map((p) => p.numero)).size, "participación", "participaciones")}`;
+    if (!estado) return " — sin piezas";
+    return ` — ${estado} · ${plural(new Set(c.participaciones.map((p) => p.numero)).size, "marca", "marcas")}`;
   };
   if (normal(sede) === normal(destino.sede) && destino.caras === 2) {
     const otra: "A" | "B" = destino.cara === "A" ? "B" : "A";
     const espacio = espacioDe(destino.codigo, otra);
     vistas.add(clave(sede, espacio));
+    const r = resumenDe(destino.codigo, otra);
     fuera.push({ clave: clave(sede, espacio), sede, espacio, codigo: destino.codigo, cara: otra, otraCara: true,
-      texto: `La otra cara de este mueble (cara ${otra})${detalle(resumenDe(destino.codigo, otra))}` });
+      texto: `La otra cara de este mueble (cara ${otra})${detalle(r)}`, conZonas: !!(r && ESTADO_DE_ORIGEN[r.estado_distribucion]) });
   }
   for (const c of caras) {
     if (!ESTADO_DE_ORIGEN[c.estado_distribucion]) continue;   // sin distribuir o sin mueble: no hay qué copiar
@@ -553,7 +563,7 @@ export function opcionesDeOrigen(destino: { sede: string; codigo: string; cara: 
     if (vistas.has(k)) continue;
     vistas.add(k);
     fuera.push({ clave: k, sede, espacio, codigo: c.fixture_code, cara: c.cara, otraCara: false,
-      texto: `${c.fixture_code} · cara ${c.cara}${detalle(c)}` });
+      texto: `${c.fixture_code} · cara ${c.cara}${detalle(c)}`, conZonas: true });
   }
   return fuera;
 }

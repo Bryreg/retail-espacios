@@ -6452,11 +6452,14 @@ prueba("una sola condición para el modo, corrida con cada modo que lo excluye",
   const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
   const escena = enEditor.match(/<Scene\b[^]*?\/>/)[0];
   assert.match(escena, /distribucion=\{distribucionVisible \? propsDeDistribucion : undefined\}/, "la escena recibe la capa sin la condición única");
-  assert.match(enEditor, /\{distribucionVisible && distribucionActiva && \(\s*<div data-distribucion[^>]*>\s*<React\.Suspense fallback=\{<div [^>]*\/>\}>\s*<LienzoDeZonas /, "el lienzo se monta sin la condición");
-  assert.match(enEditor, /\{distribucionVisible && distribucionActiva \? \(\s*<React\.Suspense fallback=\{<div [^>]*\/>\}>\s*<PanelDeDistribucion fixtureId=\{distribucionActiva\.fixtureId\} sede=\{distribucionActiva\.sede\} onEncuadrarCara=\{encuadrarCara\} \/>/,
-    "el panel se monta sin la condición (o no reemplaza al comercial)");
-  assert.match(editorCodigo, /const PanelDeDistribucion = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/PanelDeDistribucion"\)\);/, "el panel no es perezoso");
-  assert.match(editorCodigo, /const LienzoDeZonas = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/LienzoDeZonas"\)\);/, "el lienzo no es perezoso");
+  // Distribuir con piezas (2026-10-24): UNA pantalla (`DistribuirCara`) reemplaza al lienzo y al
+  // panel; se monta sólo con la condición, perezosa, y en Distribución no queda el panel comercial.
+  assert.match(enEditor, /\{distribucionVisible && distribucionActiva && \(\s*<div data-distribucion[^>]*>\s*<React\.Suspense fallback=\{<div [^>]*\/>\}>\s*<DistribuirCara fixtureId=\{distribucionActiva\.fixtureId\} sede=\{distribucionActiva\.sede\} onEncuadrarCara=\{encuadrarCara\} lienzo3D=\{anfitrionDelLienzo\} \/>/,
+    "la pantalla de Distribuir se monta sin la condición");
+  assert.match(enEditor, /\{distribucionVisible \? null : selectedFix && !presentationMode && \(\s*<CommercialPanel/, "en Distribución queda el panel comercial");
+  assert.equal((enEditor.match(/<DistribuirCara\b/g) || []).length, 1, "la pantalla de Distribuir se monta dos veces");
+  assert.match(editorCodigo, /const DistribuirCara = React\.lazy\(\(\) => import\("\.\.\/Distribucion\/DistribuirCara"\)\);/, "la pantalla de Distribuir no es perezosa");
+  assert.ok(!/PanelDeDistribucion|LienzoDeZonas/.test(editorCodigo), "quedó el panel o el lienzo de antes");
   // Si deja de cumplirse con una cara activa, el store sale forzado; también al desmontar.
   assert.match(enEditor, /if \(distribucionActiva && !distribucionVisible\) void useDistribucionStore\.getState\(\)\.salir\(\{ forzado: true \}\);/);
   // Al desmontar (cambiar de pestaña) sale forzado; con `StrictMode` (que
@@ -6621,8 +6624,10 @@ prueba("lo que se dibuja en el 3D sale de la cara leída: la reserva discontinua
   assert.equal(vistos.get(11).cuenta, true);
   assert.equal(vistos.get(13).cuenta, false, "una participación que empieza en diciembre se pinta llena hoy");
   assert.equal(comoSeVenLasParticipaciones(A, "2026-12-15").get(13).cuenta, true, "«Ver al día» no mueve lo que cuenta");
-  assert.equal(vistos.get(11).rotulo, `1 · ${DB.pct(3000)}`);
+  // Distribuir con piezas: el rótulo es el %, sin el número interno de la participación.
+  assert.equal(vistos.get(11).rotulo, DB.pct(3000));
   assert.ok(!/P7|\$/.test([...vistos.values()].map((v) => v.rotulo).join(" ")), "el rótulo del 3D nombra al proveedor o un monto");
+  for (const v of vistos.values()) assert.match(v.rotulo, /^\d+(,\d+)? %$/, `el rótulo del 3D dice algo más que el %: «${v.rotulo}»`);
   assert.deepEqual(comoSeVenLasParticipaciones(B, hoy).get(21).estampa, vistos.get(11).estampa,
     "el mismo proveedor sale con otra estampa en la otra cara (y en la leyenda)");
   // Las caras: la que se edita, con lo de la edición y la historia en gris; la otra, sólo lectura.
@@ -7183,9 +7188,11 @@ prueba("al entrar en Distribución, «De frente» abarca la cara entera en el pa
     "el encuadre no usa el aspecto del lienzo de ahora");
   assert.ok(toma.indexOf("encuadreDeLaCara(") < toma.indexOf("const fov = toma ==="), "el encuadre de Distribución llega tarde");
   assert.match(cuerpoEscena, /const distribucionDeLaToma = useRef\(enModoDistribucion\);\s*distribucionDeLaToma\.current = enModoDistribucion;/);
-  // El panel pide la toma después del redimensionado del lienzo partido, y la escena re-encuadra si el tamaño cambia con la cámara quieta.
-  assert.match(sinComentarios(leer(join("src", "components", "Distribucion", "PanelDeDistribucion.tsx"))),
-    /const r1 = requestAnimationFrame\(\(\) => \{ r2 = requestAnimationFrame\(\(\) => encuadrar\.current\(cara\)\); \}\);/);
+  // La pantalla de Distribuir pide la toma después del redimensionado (al entrar, al cambiar de cara y al
+  // pasar de la miniatura a «Ver en 3D»), y la escena re-encuadra si el tamaño cambia con la cámara quieta.
+  const dist = sinComentarios(leer(join("src", "components", "Distribucion", "DistribuirCara.tsx")));
+  assert.match(dist, /const r1 = requestAnimationFrame\(\(\) => \{ r2 = requestAnimationFrame\(\(\) => encuadrar\.current\(caraActiva\)\); \}\);/);
+  assert.match(dist, /\}, \[activa\?\.fixtureId, activa\?\.cara, ver3D\]\);/, "agrandar el 3D no vuelve a encuadrar la cara");
   assert.match(cuerpoEscena, /\? `\$\{pedidoDeToma\.n\}\|\$\{tamanoDelLienzo\}\|\$\{filasDeLaToma\(pedidoDeToma\)\}` : "";/);
 });
 

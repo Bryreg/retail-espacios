@@ -1146,10 +1146,12 @@ export function textoDeParticipacion(d: Pick<DispoDeParticipacion, "dispo" | "qu
   return `Por participación · queda ${pct(d.quedaPb)}`;
 }
 
-/** Dónde se vende una cara por participación (no en Sede → Vender, que no
- *  la vende): lo dicen Vender, el globo de Supervisar y la ficha del plano 2D
- *  con las mismas palabras. */
-export const DONDE_SE_CARGAN = "Las participaciones se cargan en el Editor 3D → Distribución.";
+/** Dónde se vende una cara por participación y dónde se ubica cada marca:
+ *  la parte de cada marca se VENDE en Vender (rediseño de Vender, PR 1) y se
+ *  UBICA en «Distribuir» (Distribuir con piezas, 2026-10-24: ahí no se crea
+ *  nada). Lo dicen el globo de Supervisar y la ficha del plano 2D con las
+ *  mismas palabras. */
+export const DONDE_SE_CARGAN = "La parte de cada marca se vende en Vender; dónde va cada una se ubica con «Distribuir».";
 
 /** Lo que dice la línea de PORCENTAJE que suma tocar una cara por
  *  participación en Vender (rediseño de Vender, PR 1: la cara ya no manda al
@@ -1197,7 +1199,8 @@ export function quedaEnLaCara(
  *
  * · Para quien administra: «Por participación · comprometido 55 % · queda
  *   45 %», y «disponible para vender» SÓLO si queda algo, con el lugar donde
- *   se vende (el Editor 3D → Distribución, no Vender).
+ *   se vende (Vender: desde su PR 1 el porcentaje se vende ahí; Distribuir
+ *   sólo lo ubica).
  * · Para el trabajador, la palabra sola (D7): «Por participación» o «Por
  *   participación · tomada». Nunca el % ni «disponible».
  * · Sin la ocupación todavía, que se vende así y nada más: nunca «disponible»
@@ -1208,7 +1211,7 @@ export function quedaEnLaCara(
  *   o la venta entera mandan sobre la ocupación (la regla de
  *   `disponibilidadDeCara` y `estadoParaPintar`): nunca «disponible para
  *   vender»; se dice por qué no se ofrece.
- * · `conLugar = false`: sin «en el Editor 3D → Distribución» (la ficha del
+ * · `conLugar = false`: sin «en Vender» (la ficha del
  *   plano 2D lo dice en el renglón de abajo, `DONDE_SE_CARGAN`: salía dos
  *   veces seguidas).
  */
@@ -1223,7 +1226,7 @@ export function textoDeLoComprometido(
   const queda = Math.max(0, Math.min(CARA_ENTERA_PB, d.quedaPb));
   const cuenta = `Por participación · comprometido ${pct(CARA_ENTERA_PB - queda)} · queda ${pct(queda)}`;
   if (aMano || queda <= 0) return `${cuenta}${cola}`;
-  return conLugar ? `${cuenta} — disponible para vender en el Editor 3D → Distribución.` : `${cuenta} — disponible para vender.`;
+  return conLugar ? `${cuenta} — disponible para vender en Vender.` : `${cuenta} — disponible para vender.`;
 }
 
 /** Por qué no se ofrece una cara por participación que tiene un estado propio
