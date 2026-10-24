@@ -1467,6 +1467,13 @@ export default function Dashboard() {
     if (pedidoVender && isAdmin) setViewMode("kpis");
   }, [pedidoVender, isAdmin]);
 
+  // Distribuir, al guardar una cara a la que se entró desde Supervisar: vuelve
+  // a la pantalla de sede, que abre Supervisar con el aviso.
+  const pedidoSupervisar = useFixtureStore((s) => s.pedidoSupervisar);
+  useEffect(() => {
+    if (pedidoSupervisar && isAdmin) setViewMode("kpis");
+  }, [pedidoSupervisar, isAdmin]);
+
   const effectiveMode: ViewMode =
     isAdmin || viewMode === "montaje" ? viewMode : "kpis";
 

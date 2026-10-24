@@ -479,6 +479,10 @@
   --marca-1: #1A67C2;   /* azul    · OKLCH L 0,52 */
   --marca-2: #A4338F;   /* magenta · OKLCH L 0,52 */
   --marca-3: #B165FD;   /* violeta · OKLCH L 0,66 · 2,88:1 sobre el metal claro del 3D: rótulo siempre */
+  /* Cuánto se ve el relleno de una pieza en «Distribuir» (encima de lo libre,
+     verde suave). En claro alcanza con el velo; en oscuro el verde de lo
+     libre es casi tan oscuro como el velo de la marca y se perdía: más alto. */
+  --pieza-alfa: 0.24;
 
   /* ── Elevación ──────────────────────────────────────────────────────────
      Se respeta el principio escrito («separar con una línea de 1px es más
@@ -599,6 +603,7 @@ html[data-tema="oscuro"] {
   --marca-1: #1A67C2;
   --marca-2: #A4338F;
   --marca-3: #B165FD;
+  --pieza-alfa: 0.5;
 
   --sh-1: 0 1px 2px rgba(0, 0, 0, .5);
   --sh-2: 0 12px 34px -14px rgba(0, 0, 0, .8), 0 2px 8px rgba(0, 0, 0, .4);
@@ -627,6 +632,7 @@ html[data-tema="oscuro"] {
    ========================================================================== */
 [data-cajon-oscuro] {
   color-scheme: dark;
+  --pieza-alfa: 0.5;
 
   --surface-rgb:   11 17 22;    /* #0B1116 */
   --surface-2-rgb: 22 33 42;    /* #16212A */

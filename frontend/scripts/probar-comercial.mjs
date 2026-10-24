@@ -428,7 +428,7 @@ prueba("lo comprometido de una cara por participación: «comprometido X % · qu
   const iv = (pb, desde = "2026-10-01", hasta = "2026-12-31") => ({ desde, hasta, pb });
   // GON-01·A del recorrido: 55 % comprometido.
   assert.equal(PC.textoDeLoComprometido(de([iv(3000), iv(2500)]), true),
-    "Por participación · comprometido 55 % · queda 45 % — disponible para vender en el Editor 3D → Distribución.");
+    "Por participación · comprometido 55 % · queda 45 % — disponible para vender en Vender.");
   // ROB-01: cuatro del 25 %. Nunca «disponible» sobre algo tomado.
   const tomada = PC.textoDeLoComprometido(de([iv(2500), iv(2500), iv(2500), iv(2500)]), true);
   assert.equal(tomada, "Por participación · comprometido 100 % · queda 0 %.");
@@ -439,7 +439,7 @@ prueba("lo comprometido de una cara por participación: «comprometido X % · qu
   assert.match(PC.textoDeLoComprometido(de([iv(3333)]), true), /^Por participación · comprometido 33,33 % · queda 66,67 % — disponible/);
   // Nada comprometido hoy (lo de mañana no cuenta): queda todo.
   assert.equal(PC.textoDeLoComprometido(de([iv(4000, "2026-10-18")]), true),
-    "Por participación · comprometido 0 % · queda 100 % — disponible para vender en el Editor 3D → Distribución.");
+    "Por participación · comprometido 0 % · queda 100 % — disponible para vender en Vender.");
   // El trabajador: la palabra sola, sin % ni «disponible» (D7).
   for (const [d, esperado] of [[de([iv(5500)]), "Por participación."], [de([iv(10000)]), "Por participación · tomada."], [de([]), "Por participación."]]) {
     const t = PC.textoDeLoComprometido(d, false);
@@ -529,7 +529,7 @@ prueba("la ficha del plano 2D: «Estado del espacio» también por ocupación, y
   // El tope: lo comprometido nunca pasa de la cara ni baja de cero.
   assert.equal(PC.textoDeLoComprometido({ dispo: "tomado", quedaPb: -500 }, true), "Por participación · comprometido 100 % · queda 0 %.");
   assert.equal(PC.textoDeLoComprometido({ dispo: "libre", quedaPb: 12000 }, true),
-    "Por participación · comprometido 0 % · queda 100 % — disponible para vender en el Editor 3D → Distribución.");
+    "Por participación · comprometido 0 % · queda 100 % — disponible para vender en Vender.");
   const plano = sinComent(fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx"));
   // «Es por participación» lo dice el mueble del store, no cualquier mueble.
   assert.match(plano, /const esPorParticipacion = useCallback\(\(itemId: string\): boolean => \{\s*const f = muebleDelStore\.get\(itemId\);\s*return !!f && porParticipacion\(f\);\s*\}, \[muebleDelStore\]\);/,
@@ -1149,7 +1149,7 @@ prueba("fase 2 · lo puesto a mano y la venta entera mandan sobre la ocupación 
   assert.equal(PC.textoDeLoComprometido(null, true, { propio: "maintenance" }), "Se vende por participación · En mantenimiento: no se ofrece.");
   // Disponible: lo de antes, con la opción o sin ella.
   assert.equal(PC.textoDeLoComprometido(d, true, { propio: "free" }), PC.textoDeLoComprometido(d, true));
-  assert.equal(PC.textoDeLoComprometido(d, true), "Por participación · comprometido 25 % · queda 75 % — disponible para vender en el Editor 3D → Distribución.");
+  assert.equal(PC.textoDeLoComprometido(d, true), "Por participación · comprometido 25 % · queda 75 % — disponible para vender en Vender.");
   // Vender y Supervisar: lo puesto a mano pasa antes que la ocupación en «Cuándo se libera».
   const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(t, /\? \(tomadaPorLoSuyo\(f, face\.face, estadoComercial, sede, mapRange\.from, mapRange\.to\)\s*\? comoSeLiberaLaCara\(f, face\.face, estadoComercial, indicePartes, sede, mapRange\.from, mapRange\.to\)\s*: comoSeLiberaPorParticipacion\(/,

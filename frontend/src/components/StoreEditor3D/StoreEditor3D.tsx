@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -19,18 +20,20 @@ import { ProductoEnPunta, ventaDePunta } from "./muebles/ProductoEnPunta";
 // el editor (las zonas le llegan a la escena armadas: `Scene` no lee stores).
 import { DesnudoDelMueble } from "./muebles/desnudo";
 import { ZonasDelMueble, olvidarTexturasDeZonas, type CaraParaDibujar, type ComoSeVe, type TrazoParaDibujar } from "./muebles/ZonasDelMueble";
-import { useDistribucionStore, capaQueSeMuestra, planoAlDia, zonasEditables, type DistribucionActiva } from "../../store/distribucionStore";
+import { useDistribucionStore, capaQueSeMuestra, zonasEditables, type DistribucionActiva } from "../../store/distribucionStore";
 import { useOcupacionStore, claveDeSede } from "../../store/ocupacionStore";
 import { espacioDeLaCara, leerCara, superficieDeOut, terminoDeOut, type CaraOut, type OcupacionOut } from "../../api/participaciones";
 import { UMBRAL_CLIC_PX, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
 import { corteConLaCara, rayoTapado } from "../../utils/zonas3d";
 // fase 2 · I2: el trazo en curso en el 3D y el interruptor «Editar en el 3D».
 import { trazoParaDibujar } from "../../utils/edicionEnElMueble";
-import { useEditarEnEl3D } from "../Distribucion/punteroEnElMueble";
-import { encuadreDeLaCara } from "../../utils/encuadreDeDistribucion";
+import RanuraDelLienzo from "../RanuraDelLienzo";
+import { AIRE_DE_LA_LETRA_M, encuadreDeLaCara } from "../../utils/encuadreDeDistribucion";
 import { superficieDeCara, tieneSuperficie, type Superficie } from "../../utils/superficie";
 import { estampasDeLaCara } from "../../utils/coloresDeMarca";
 import { CARA_ENTERA_PB, cuentaElDia, cuentaEseDia, dispoPorParticipacion, pct, vivo } from "../../utils/participaciones";
+import { rotuloDeLoQueHay } from "../../utils/piezas";
+import { medir } from "../../utils/zonasGeometria";
 import { carasInaccesibles, textoDeCaraInaccesible } from "../../utils/revision";
 import { carasDe } from "../../types/espacio";
 import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
@@ -5949,7 +5952,7 @@ export function Scene({
     // pasillo no cuenta como que entra (lo tapado no se puede dibujar acá).
     if (!enVenta && toma === "frente" && distribucionDeLaToma.current?.fixtureId === fix.id) {
       ponerCampoVisual(FOV_DEL_EDITOR);
-      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures.filter((f) => f.id !== fix.id)).vista);
+      aplicarVista(encuadreDeLaCara(mueble, cara, obstaculos, limites, FOV_DEL_EDITOR, aspecto, placedFixtures.filter((f) => f.id !== fix.id), AIRE_DE_LA_LETRA_M).vista);
       return;
     }
     const fov = toma === "cerca" ? FOV_DE_CERCA
@@ -7173,7 +7176,7 @@ function CommercialPanel({
           )}
           {isAdmin && (porParticipacion(fix) ? (
             <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
-              Las participaciones se cargan en <b className="text-dark-ink-2">Distribución</b> («Distribuir esta cara», abajo).
+              La parte de la cara de cada marca se vende en <b className="text-dark-ink-2">Vender</b>; dónde va cada una se ubica con «Distribuir esta cara», abajo.
             </p>
           ) : (
             <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
@@ -7287,13 +7290,11 @@ export class CanvasErrorBoundary extends React.Component<
 
 // ─── Distribución: la condición única, lo que se dibuja y la ocupación ──────
 
-/** El panel y el lienzo de Distribución, perezosos: bajan con el modo, no
- *  con el editor. */
-const PanelDeDistribucion = React.lazy(() => import("../Distribucion/PanelDeDistribucion"));
-const LienzoDeZonas = React.lazy(() => import("../Distribucion/LienzoDeZonas"));
-/** «Editar en el 3D» (fase 2 · I2): el control del puntero sobre el mueble,
- *  perezoso y montado sólo con el interruptor prendido. */
-const EdicionEnElMueble = React.lazy(() => import("../Distribucion/EdicionEnElMueble"));
+/** La pantalla de Distribuir (las piezas: rediseño del 2026-10-24),
+ *  perezosa: baja con el modo, no con el editor. Ocupa el editor entero, en el
+ *  tema de la app, y se lleva el lienzo 3D como miniatura viva o en grande
+ *  (`RanuraDelLienzo`). En el 3D ya no se dibuja: «Editar en el 3D» se fue. */
+const DistribuirCara = React.lazy(() => import("../Distribucion/DistribuirCara"));
 
 /** Las teclas que el atajo global del editor usaría sobre el mueble elegido
  *  (borrar, girar, ancho por fondo, soltar). En Distribución no le llegan. */
@@ -7359,8 +7360,24 @@ function comoSeVenLasParticipaciones(d: CaraOut, verAlDia: string): Map<number, 
       estampa: estampas.get(p.space_id) ?? null,
       reserva: rige?.estado === "reserva",
       cuenta: cuentaEseDia(ts, dia, hoy),
-      rotulo: `${p.numero} · ${pct(p.contratado_pb)}`,
+      // Sin el número interno: el % (la marca se dice en la lista y la leyenda).
+      rotulo: pct(p.contratado_pb),
     });
+  }
+  return fuera;
+}
+
+/** El rótulo de cada participación VIVA de la cara que se edita, con lo que
+ *  mide la edición (la misma `medir` que el servidor): justa, su %; si no, lo
+ *  que hay y cuánto sobra o falta (`rotuloDeLoQueHay`). Sin zonas, su %. */
+function rotulosMedidos(d: CaraOut, zonas: readonly ZonaEnEdicion[]): Map<number, string> {
+  const fuera = new Map<number, string>();
+  if (!d.superficie) return fuera;
+  const { dibujadoPb } = medir(zonas, { exclusiones: d.superficie.exclusiones, ancho: d.superficie.ancho, alto: d.superficie.alto });
+  for (const p of d.participaciones) {
+    if (!p.viva) continue;
+    const hay = dibujadoPb.get(p.space_id) ?? 0;
+    fuera.set(p.space_id, hay === 0 ? pct(p.contratado_pb) : rotuloDeLoQueHay(p.contratado_pb, hay).texto);
   }
   return fuera;
 }
@@ -7397,17 +7414,10 @@ function carasParaDibujar(d: CaraOut | null, zonas: readonly ZonaEnEdicion[], ot
  * lienzo vuelve a dibujar sólo esto, no la escena ni los muebles. En una
  * doble lee también la otra cara (sólo lectura), para dibujarla a la mitad.
  *
- * Fase 2 · I2: también el trazo en curso (punteado en el 3D mientras se
- * dibuja, en el lienzo o en el 3D) y, con «Editar en el 3D» prendido, el
- * control del puntero (`EdicionEnElMueble`, perezoso): entra por acá, dentro
- * del grupo del mueble, y no por `Scene`. `orbitRef` y `muebles` son refs: el
- * nodo se arma una vez (`useMemo` sin dependencias) y no rearma las props de
- * la escena.
+ * El trazo «A mano» en curso también se ve en el 3D (punteado), en el tono
+ * de la marca. En el 3D no se edita: se mira (Distribuir con piezas).
  */
-function ZonasDeLaDistribucion({ orbitRef, muebles }: {
-  orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
-  muebles: React.MutableRefObject<PlacedFixture[]>;
-}) {
+function ZonasDeLaDistribucion() {
   const activa = useDistribucionStore((s) => s.activa);
   const datos = useDistribucionStore((s) => s.datos);
   const zonas = useDistribucionStore((s) => s.edicion.zonas);
@@ -7430,78 +7440,24 @@ function ZonasDeLaDistribucion({ orbitRef, muebles }: {
   const participaciones = useMemo(() => {
     const m = new Map<number, ComoSeVe>();
     for (const d of [otra, datos]) if (d) comoSeVenLasParticipaciones(d, verAlDia).forEach((v, k) => m.set(k, v));
+    // La cara que se edita: el rótulo dice lo MEDIDO en la edición (lo que
+    // hay), como la cara de piezas: «42,42 % · sobra 12,42 %», no el contratado.
+    if (datos?.superficie) {
+      const medido = rotulosMedidos(datos, zonas);
+      medido.forEach((rotulo, k) => { const v = m.get(k); if (v) m.set(k, { ...v, rotulo }); });
+    }
     return m;
-  }, [datos, otra, verAlDia]);
-  // fase 2 · I2: el trazo en curso, en el tono de la participación activa, y
-  // las superficies de las caras para el control del puntero.
+  }, [datos, otra, verAlDia, zonas]);
+  // El trazo «A mano» en curso, en el tono de la marca que se dibuja.
   const trazoEnCurso = useDistribucionStore((s) => s.edicion.trazo);
   const herramienta = useDistribucionStore((s) => s.edicion.herramienta);
-  const cursorDelPoligono = useEditarEnEl3D((s) => s.cursor);
-  const editarEnEl3D = useEditarEnEl3D((s) => s.prendido);
   const trazo = useMemo<TrazoParaDibujar | null>(() => {
-    const vertices = trazoParaDibujar({ trazo: trazoEnCurso, herramienta }, cursorDelPoligono);
+    const vertices = trazoParaDibujar({ trazo: trazoEnCurso, herramienta }, null);
     if (!vertices) return null;
     return { vertices, tono: (resaltada !== null ? participaciones.get(resaltada)?.estampa?.tono : null) ?? null };
-  }, [trazoEnCurso, herramienta, cursorDelPoligono, resaltada, participaciones]);
-  const superficies = useMemo(() => {
-    const s: Partial<Record<"A" | "B", Superficie>> = {};
-    for (const c of caras) s[c.cara] = c.superficie;
-    return s;
-  }, [caras]);
+  }, [trazoEnCurso, herramienta, resaltada, participaciones]);
   if (caras.length === 0) return null;
-  return (
-    <>
-      <ZonasDelMueble caras={caras} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} trazo={trazo} />
-      {editarEnEl3D && (
-        <React.Suspense fallback={null}>
-          <EdicionEnElMueble orbitRef={orbitRef} muebles={muebles} superficies={superficies} />
-        </React.Suspense>
-      )}
-    </>
-  );
-}
-
-/**
- * El interruptor «Editar en el 3D» de la barra (fase 2 · I2): apagado al
- * entrar a la cara. Prendido, sobre la cara que se edita el botón izquierdo
- * dibuja o mueve con la herramienta del lienzo, y el derecho gira. Se
- * deshabilita en «Mirar» y con el plano sin guardar (la misma cuenta que el
- * lienzo), con el motivo en el `title`; prendido, siempre se puede apagar.
- */
-function BotonDeEditarEnEl3D({ fixtureId, sede }: { fixtureId: string; sede: string }) {
-  const prendido = useEditarEnEl3D((s) => s.prendido);
-  const modo = useDistribucionStore((s) => s.edicion.modo);
-  const datos = useDistribucionStore((s) => s.datos);
-  const mueble = useFixtureStore((s) => (s.fixturesBySede[sede] ?? selectFixtures(s)).find((f) => f.id === fixtureId) ?? null);
-  const motivo = modo !== "editar" ? "Pasá a «Editar» para dibujar en el 3D."
-    : !planoAlDia(datos, mueble) ? "El plano tiene cambios sin guardar: esperá un momento."
-    : null;
-  return (
-    <button onClick={() => useEditarEnEl3D.getState().alternar()} disabled={motivo !== null && !prendido}
-      aria-pressed={prendido} data-editar-en-3d
-      title={motivo ?? (prendido
-        ? "Dejar de editar en el 3D: el botón izquierdo vuelve a girar."
-        : "Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho.")}
-      className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-        prendido
-          ? 'border-accent/50 bg-accent/15 text-accent-200'
-          : 'border-dark-line-2 bg-dark-surface text-dark-ink-2 hover:bg-dark-surface-2'
-      }`}>
-      Editar en el 3D
-    </button>
-  );
-}
-
-/** La pista sobre el 3D con «Editar en el 3D» prendido (fase 2 · I2). */
-function PistaDeEditarEnEl3D() {
-  const prendido = useEditarEnEl3D((s) => s.prendido);
-  if (!prendido) return null;
-  return (
-    <div data-pista-editar-en-3d
-      className="pointer-events-none absolute inset-x-2 bottom-2 z-10 rounded-md border border-dark-line-2 bg-dark-bg/85 px-3 py-1.5 text-[11px] text-dark-ink-2 backdrop-blur-sm">
-      Editar en el 3D: con el botón izquierdo dibujás o movés sobre la cara; girá con el botón derecho.
-    </div>
-  );
+  return <ZonasDelMueble caras={caras} participaciones={participaciones} resaltada={resaltada} seleccionada={seleccionada} trazo={trazo} />;
 }
 
 /** Lo que dice la ocupación anónima de las caras por participación de un
@@ -8087,9 +8043,11 @@ export default function StoreEditor3D() {
     if (enReunion || presentationMode) { setWarning("Terminá la reunión (o Presentar) para distribuir."); return; }
     setPlacingDef(null);
     const { cara } = enfoquePedido;
-    const renovar = enfoquePedido.distribucion.renovar;
+    const { renovar, volver } = enfoquePedido.distribucion;
     void (async () => {
-      await useDistribucionStore.getState().entrar({ sede, fixtureId: fix.id, codigo: fix.code, cara: carasDe(fix) === 2 ? cara : "A" });
+      await useDistribucionStore.getState().entrar({
+        sede, fixtureId: fix.id, codigo: fix.code, cara: carasDe(fix) === 2 ? cara : "A", ...(volver ? { volverA: volver } : {}),
+      });
       const st = useDistribucionStore.getState();
       if (renovar != null && st.activa?.fixtureId === fix.id) st.abrirFormulario({ modo: "renovar", terminoId: renovar });
     })();
@@ -8135,12 +8093,8 @@ export default function StoreEditor3D() {
   const superficieLeida = useDistribucionStore((s) => s.datos?.superficie ?? null);
   const caraLeida = useDistribucionStore((s) => s.datos?.cara ?? null);
   const tocarEnElMueble = useDistribucionStore((s) => s.tocarEnElMueble);
-  // fase 2 · I2: «Editar en el 3D» necesita la órbita (el botón derecho gira)
-  // y los muebles (lo que tapa el rayo); van por refs, así el nodo sigue
-  // armándose una sola vez.
-  const placedFixturesRef = useRef(placedFixtures);
-  placedFixturesRef.current = placedFixtures;
-  const zonasDeLaDistribucion = useMemo(() => <ZonasDeLaDistribucion orbitRef={orbitRef} muebles={placedFixturesRef} />, []);
+  // El nodo de las zonas se arma una sola vez: no rearma las props de la escena.
+  const zonasDeLaDistribucion = useMemo(() => <ZonasDeLaDistribucion />, []);
   const muebleDistribuido = muebleEnDistribucion ? placedFixtures.find((f) => f.id === muebleEnDistribucion) ?? null : null;
   const propsDeDistribucion = useMemo<PropsDeDistribucion | undefined>(() => {
     if (!muebleDistribuido || !caraEnDistribucion) return undefined;
@@ -8156,17 +8110,17 @@ export default function StoreEditor3D() {
     };
   }, [muebleDistribuido, caraEnDistribucion, superficieLeida, caraLeida, tocarEnElMueble, zonasDeLaDistribucion]);
 
-  // «Ocultar 3D» por debajo de 1440 px: el lienzo toma todo el ancho.
-  const [angosta, setAngosta] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(max-width: 1439px)").matches);
-  useEffect(() => {
-    const mq = typeof window !== "undefined" ? window.matchMedia?.("(max-width: 1439px)") : undefined;
-    if (!mq) return;
-    const alCambiar = () => setAngosta(mq.matches);
-    mq.addEventListener?.("change", alCambiar);
-    return () => mq.removeEventListener?.("change", alCambiar);
-  }, []);
-  const [ocultar3D, setOcultar3D] = useState(false);
-  useEffect(() => { if (!distribucionVisible || !angosta) setOcultar3D(false); }, [distribucionVisible, angosta]);
+  // El anfitrión del lienzo 3D: el `<Canvas>` se dibuja adentro (un portal) y
+  // este nodo se muda de ranura en ranura (`RanuraDelLienzo`): en su lugar de
+  // siempre, o en Distribuir como miniatura viva o en grande. React nunca lo
+  // mueve, así que mudarlo no vuelve a montar la escena ni pierde el WebGL.
+  const [anfitrionDelLienzo] = useState<HTMLDivElement | null>(() => {
+    if (typeof document === "undefined") return null;
+    const d = document.createElement("div");
+    d.style.cssText = "position:absolute;inset:0;";
+    d.setAttribute("data-lienzo-3d", "");
+    return d;
+  });
 
   // CHANGE 3 — u: undoable mutation helper
   // Updates local state AND records an undoable snapshot in the store.
@@ -8762,12 +8716,14 @@ export default function StoreEditor3D() {
        bloque del mismo nombre en `tema.css`). Adentro de esta marca la tinta
        se invierte, así que `bg-accent` es una pestaña CLARA sobre el panel
        oscuro y no un rectángulo negro invisible. */
-    <div data-cajon-oscuro ref={contenedorRef} data-presentar={presentationMode || undefined}
+    /* En Distribuir, en cambio, la pantalla va en el tema de la app (claro u
+       oscuro): sin la marca, los tokens son los de siempre. */
+    <div data-cajon-oscuro={distribucionVisible ? undefined : ""} ref={contenedorRef} data-presentar={presentationMode || undefined}
       className={presentationMode
         /* Presentar: la pantalla entera, sin marco ni barra (ver
            `pedirPantallaCompleta`). */
         ? "fixed inset-0 z-[60] flex overflow-hidden bg-dark-bg"
-        : "flex flex-1 overflow-hidden rounded-xl border border-dark-line bg-dark-bg"}
+        : "relative flex flex-1 overflow-hidden rounded-xl border border-dark-line bg-dark-bg"}
       style={{minHeight:0}}>
 
       {/* ── Left sidebar — hidden in presentation mode ── */}
@@ -8898,13 +8854,11 @@ export default function StoreEditor3D() {
       </div>
 
       {/* ── Canvas ── */}
-      <div className={`relative flex-1 overflow-hidden ${distribucionVisible ? "flex flex-col" : ""}`}>
+      <div className="relative flex-1 overflow-hidden">
 
         {/* MEJORA 4: Status bar — hidden in presentation mode */}
-        {/* En Distribución la barra va en la franja de arriba del área, no
-            encima de la mitad del lienzo 2D. */}
         {!presentationMode && (
-          <div className={`${distribucionVisible ? "relative flex-shrink-0" : "absolute inset-x-0 top-0"} z-10 flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
+          <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
             warning
               ? "bg-warning/10 border-warning/30"
               : placingDef
@@ -9023,18 +8977,6 @@ export default function StoreEditor3D() {
               {presentationMode ? 'Salir' : 'Presentar'}
             </button>
 
-            {/* fase 2 · I2: «Editar en el 3D», sólo con el 3D a la vista. */}
-            {distribucionVisible && distribucionActiva && !ocultar3D && (
-              <BotonDeEditarEnEl3D fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} />
-            )}
-
-            {distribucionVisible && angosta && (
-              <button onClick={() => setOcultar3D((o) => !o)} data-ocultar-3d
-                className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
-                {ocultar3D ? "Ver 3D" : "Ocultar 3D"}
-              </button>
-            )}
-
             {placingDef && (
               <button onClick={()=>setPlacingDef(null)}
                 className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface-2 hover:bg-dark-line px-2 py-0.5 text-[10px] text-dark-ink-2 active:scale-95 transition-all">
@@ -9062,21 +9004,14 @@ export default function StoreEditor3D() {
           </div>
         )}
 
-        {/* El área del 3D. En Distribución va partida: a la izquierda el
-            lienzo 2D de la cara (perezoso, sólo con el modo a la vista), a la
-            derecha el 3D. Los dos contenedores están siempre (cambian sus
-            clases): el lienzo 3D no se remonta al entrar ni al salir. */}
-        <div className={distribucionVisible ? "relative flex min-h-0 flex-1" : "absolute inset-0"}>
-          {distribucionVisible && distribucionActiva && (
-            <div data-distribucion className={`relative z-10 min-w-0 ${ocultar3D ? "flex-1" : "w-1/2 border-r border-dark-line"}`}>
-              <React.Suspense fallback={<div className="h-full w-full bg-dark-surface" />}>
-                <LienzoDeZonas fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} />
-              </React.Suspense>
-            </div>
-          )}
-          <div className={!distribucionVisible ? "absolute inset-0"
-            : ocultar3D ? "pointer-events-none invisible absolute inset-0" : "relative min-w-0 flex-1"}>
-        <CanvasErrorBoundary>
+        {/* El área del 3D. El lienzo vive en su anfitrión (un portal, más
+            abajo) y se enchufa acá con `RanuraDelLienzo`; en Distribuir, la
+            pantalla de las piezas se lo lleva (miniatura viva o en grande) y
+            esta ranura no está. */}
+        <div className="absolute inset-0">
+          {!distribucionVisible && <RanuraDelLienzo anfitrion={anfitrionDelLienzo} className="absolute inset-0" />}
+        {anfitrionDelLienzo && createPortal(
+                <CanvasErrorBoundary>
           <Canvas
             camera={{ position:CAM_POS, fov:FOV_DEL_EDITOR, near:0.1, far:500 }}
             onCreated={({ camera, gl, scene })=>{
@@ -9129,10 +9064,8 @@ export default function StoreEditor3D() {
               coloresDeEstado={coloresDeEstado}
             />
           </Canvas>
-        </CanvasErrorBoundary>
-
-        {/* fase 2 · I2: la pista de «Editar en el 3D», sobre el 3D. */}
-        {distribucionVisible && !ocultar3D && <PistaDeEditarEnEl3D />}
+        </CanvasErrorBoundary>,
+        anfitrionDelLienzo)}
 
         {/* MEJORA 9: Tooltip on hover */}
         {/* En Presentar no hay tooltip: la pantalla la está mirando el
@@ -9262,18 +9195,13 @@ export default function StoreEditor3D() {
             </p>
           </div>
         )}
-          </div>
         </div>
       </div>
 
       {/* ── Right panel — hidden in presentation mode ── */}
-      {/* En Distribución, el panel de Distribución reemplaza al comercial
-          (perezoso, sólo con el modo a la vista). */}
-      {distribucionVisible && distribucionActiva ? (
-        <React.Suspense fallback={<div className="w-80 flex-shrink-0 border-l border-dark-line bg-dark-surface" />}>
-          <PanelDeDistribucion fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} onEncuadrarCara={encuadrarCara} />
-        </React.Suspense>
-      ) : selectedFix && !presentationMode && (
+      {/* En Distribución no hay panel comercial: la pantalla de Distribuir
+          (abajo) ocupa el editor entero. */}
+      {distribucionVisible ? null : selectedFix && !presentationMode && (
         <CommercialPanel
           fix={selectedFix}
           enCaminata={firstPerson}
@@ -9304,6 +9232,19 @@ export default function StoreEditor3D() {
           onDistribuir={() => entrarADistribuir(selectedFix.id)}
           motivoSinDistribuir={motivoParaNoDistribuir({ enReunion, presentationMode, privadoPara, firstPerson })}
         />
+      )}
+
+      {/* Distribuir (las piezas: rediseño del 2026-10-24): una sola vista que
+          tapa el editor entero, en el tema de la app (claro u oscuro, no el
+          cajón oscuro), con la cara de frente, la lista de marcas y el 3D
+          enchufado como miniatura viva. Perezosa, y sólo con la condición
+          única (`distribucionVisible`). */}
+      {distribucionVisible && distribucionActiva && (
+        <div data-distribucion className="absolute inset-0 z-30 bg-bg">
+          <React.Suspense fallback={<div className="h-full w-full bg-bg" />}>
+            <DistribuirCara fixtureId={distribucionActiva.fixtureId} sede={distribucionActiva.sede} onEncuadrarCara={encuadrarCara} lienzo3D={anfitrionDelLienzo} />
+          </React.Suspense>
+        </div>
       )}
     </div>
   );

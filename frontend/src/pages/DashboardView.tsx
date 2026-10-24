@@ -24,7 +24,7 @@ import {
   // ficha, el orden de «Quién paga», Renovar y las acciones de la ficha.
   Pin, ArrowLeft, ArrowDownWideNarrow, Repeat, FilePenLine,
   // «Reservar de verdad» (rediseño, PR 3): la reserva que se acaba sola.
-  Hourglass,
+  Hourglass, CircleCheck,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { useFichasPropias } from "../store/fichasPropias";
@@ -4710,7 +4710,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   /** «Para revisar» de las participaciones: sólo para quien administra, y sólo
    *  si la sede vende alguna cara así (si no, no se pide nada). */
   const revisionPc = useRevisionDeParticipaciones({ sede, activo: isAdmin && hayParticipaciones, muebles: fixtures });
-  const abrirEnDistribucion = useAbrirEnDistribucion();
+  const abrirEnDistribucion = useAbrirEnDistribucion("supervisar");
 
   /** La OTRA mitad del desfase: contratos que viven sólo en el JSON del layout.
    *
@@ -5150,6 +5150,20 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     if (f) negociar(f, pedidoVender.cara);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoVender, isAdmin]);
+
+  /** Distribuir, al guardar una cara a la que se entró desde Supervisar
+   *  («Falta distribuir» → «Distribuir»): vuelve acá, a Supervisar, con el
+   *  aviso de lo que pasó («Listo: GON-01 · cara A quedó distribuida…»). Se
+   *  suelta enseguida, como `pedidoVender`. */
+  const pedidoSupervisar = useFixtureStore((s) => s.pedidoSupervisar);
+  const [avisoDeDistribucion, setAvisoDeDistribucion] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pedidoSupervisar || !isAdmin) return;
+    useFixtureStore.getState().soltarPedidoSupervisar();
+    setModo("supervisar");
+    setAvisoDeDistribucion(pedidoSupervisar.aviso);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoSupervisar, isAdmin]);
 
   /** «Marcado reservado a mano» → «Liberar»: Disponible en la base, como el
    *  selector del Plano. «Reservar de verdad» libera la marca y abre Vender
@@ -7089,6 +7103,19 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 {/* «Editar contrato» que no se pudo abrir (el contrato ya no
                     está vigente, o no se pudo leer): se dice acá, donde se
                     tocó el botón. */}
+                {/* Lo que dejó Distribuir al guardar una cara (y volver acá). */}
+                {isAdmin && avisoDeDistribucion && (
+                  <div role="status" data-aviso-de-distribucion
+                    style={{ margin: "0 12px 8px", display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
+                      padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
+                      fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
+                    <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
+                    <span>{avisoDeDistribucion}</span>
+                    <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setAvisoDeDistribucion(null)}>
+                      <X size={16} strokeWidth={1.75} aria-hidden />
+                    </button>
+                  </div>
+                )}
                 {isAdmin && avisoDeEdicion && !(selected && detailFull) && (
                   <p role="alert" data-aviso-edicion style={{ margin: "0 12px 8px", fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
                     {avisoDeEdicion}

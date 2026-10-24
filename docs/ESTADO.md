@@ -1,7 +1,20 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-22, **editar un contrato y reenviarlo** (y su corrección tras la
+Última actualización: 2026-10-24, **«Distribuir esta cara» como un juego de piezas**: cada
+marca de la cara es una PIEZA que nace con el % EXACTO que se le vendió (la cuenta del
+servidor, al punto básico), se arrastra a la cara, se pega a los bordes y a las otras piezas y
+nunca pisa a otra; la forma es Franja (por defecto), Estantes o A mano (con contador «Llevás X
+% de Y %»); «Acomodar solas» y, al entrar a una cara sin nada dibujado, las acomoda solas;
+«Listo, guardar la cara» es el único amarillo. El 3D ya no se dibuja: es una miniatura viva
+debajo de la cara (el mismo lienzo del editor, mudado) y «Ver en 3D». Las participaciones se
+crean SÓLO en Vender. Ver *Distribuir con piezas (2026-10-24)* —y su *corrección tras la ronda de
+prueba*: una pieza de más de la mitad ya se ubica soltada en el medio, el rótulo dice lo que HAY,
+las piezas van lisas y adentro de lo que se vende, dos marcas que se turnan el lugar se leen,
+«Listo» se apaga con la cara guardada y sin cambios, y se ubica sin arrastrar (teclado y menú)— y,
+en *Dónde retomar*, *Próximas fases de la distribución*.
+
+Antes, 2026-10-22, **editar un contrato y reenviarlo** (y su corrección tras la
 ronda de prueba: la huella entera en `esperado`, el próximo contrato editable, la forma de
 venderse escrita al guardar, el correo del proveedor que queda y ningún 409 de Vender que compare
 con la tarifa): «Editar contrato» (sólo
@@ -337,6 +350,31 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
+### Próximas fases de la distribución (2026-10-24, NO implementadas)
+
+Lo que sigue a *Distribuir con piezas*. Nada de esto está hecho; queda escrito para no
+perderlo.
+
+- **Fase 2 · Planogramas para los muebles internos, con «destinos».** Hoy una pieza es una
+  marca con contrato. El supermercado también reparte sus propios muebles (los que no vende)
+  entre categorías o secciones. La idea: la misma pantalla de piezas, pero las piezas son
+  **destinos** —una entidad nueva con **nombre**, **color** y un campo de **código externo**
+  (texto libre, opcional) pensado para cruzarlo más adelante con el ERP del supermercado
+  (categoría, subcategoría o código de góndola del ERP)—. Un destino no tiene precio, fechas
+  ni %: se reparte la cara por área, con las mismas formas (Franja, Estantes, A mano) y la
+  misma geometría. Necesita tablas nuevas (no columnas: *Sin migraciones*) y decidir si una
+  cara puede tener a la vez marcas vendidas y destinos.
+- **Fase 3 · Guía de montaje imprimible «para dummies».** Por cara y por VERSIÓN confirmada
+  de la distribución: una hoja (PDF o página para imprimir) con la cara de frente, cada pieza
+  con su marca y su color, medidas en centímetros desde el piso y desde el costado («de 0 a 90
+  cm desde la izquierda, del 2.º al 4.º estante»), y la lista de qué va dónde. Es lo que hoy
+  sale en el aviso de montaje, pero para pegar en la góndola. La versión impresa dice qué
+  versión es, para que una guía vieja se reconozca.
+- **Fase 4 · Supervisión de planogramas.** Comparar lo montado con lo confirmado: una foto del
+  montaje (la que ya sube la mercaderista) al lado de la cara confirmada, y en Supervisar →
+  «Para revisar» las caras cuyo montaje no se cargó o no coincide. Necesita decidir quién lo
+  marca (una persona mirando, al principio; nada automático).
+
 ### Lo que sigue de las participaciones de cara (2026-10-19)
 
 Lo hecho está en *Participaciones de cara y zonas (2026-10-17)* y *Participaciones de cara,
@@ -379,8 +417,8 @@ No hace falta configurar nada: la fase 2 no tiene tablas, columnas ni variables 
   isla fría. La lista escrita, con su razón, es `FUERA_DE_LA_PARTICIPACION` (`probar-catalogo.mjs` y
   `test_catalogo_muebles.py`). Cada uno necesita su receta en `superficie.ts`/`superficie.py`,
   sus casos en `casos/superficies.json` y la cota medida contra el 3D.
-- **Editar en el 3D**: rectángulo, polígono y mover. Mover vértices uno por uno y la paridad
-  total con el lienzo (B1-b/c del diseño) quedaron afuera: se hacen en el lienzo.
+- ~~**Editar en el 3D**~~: ya no existe (2026-10-24). En el 3D no se dibuja; se ubica en la
+  cara de frente (*Distribuir con piezas*).
 - **Unir dos filas duplicadas con contratos** (el mismo código con otras mayúsculas, las dos
   con algo colgado): la renumeración y el renombre se frenan y lo dicen; unirlas es un arreglo
   de datos a mano.
@@ -1214,6 +1252,192 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### Distribuir con piezas (2026-10-24)
+
+«Distribuir esta cara» (Editor 3D, o Supervisar → «Para revisar» → *Falta distribuir* →
+«Distribuir») se rehízo como **un juego de piezas**, con el dibujo aprobado. Reemplaza el
+lienzo, el panel y la edición en el 3D de *El modo Distribución del Editor 3D* (más abajo):
+lo de esa sección sobre el guardado (borrador, autoguardado, `version_vieja`, fusión,
+recuperar), el teclado aislado y lo que se excluye **sigue valiendo**; el lienzo, las
+herramientas, «Mirar | Editar», la leyenda y «Editar en el 3D», no.
+
+**La pantalla** (`components/Distribucion/DistribuirCara.tsx`), en el tema de la app (claro u
+oscuro; el editor deja de ser «cajón oscuro» mientras se distribuye). Arriba: «Distribuir la
+cara», el título `SEDE · CÓDIGO · cara A · Góndola de 1,80 m` (`tituloDelPanel` +
+`nombreDescriptivo`: el nombre propio si tiene uno distinto del código, si no el tipo y el
+ancho, como lo nombra Vender), Cara A | B, «Ver en 3D», «Más» y «Salir». A la izquierda la
+cara de frente (`CaraDePiezas.tsx`, un SVG en metros): lo que no se vende rayado, lo libre en
+verde, los estantes y las piezas LISAS, adentro de lo que se vende (ver *La corrección tras la
+ronda de prueba*, al final de esta sección). A la derecha (debajo en angosto) **una pieza por marca** —«proveedor ·
+marca», nunca el número de participación—, su %, su estado («Arrastrala a la cara»,
+«Ubicada», «Le falta…», «Sobra…», «Pisa a…») y su menú «Más de {marca}» (sacarla de la
+cara; Renovar, Pasarla a contrato, Cambiar o Cancelar la reserva, Cancelar el contrato:
+`FormularioDeParticipacion` con los modos `renovar | confirmar | editar`); «N de M marcas
+ubicadas» con su barra; «Libre · X % sin vender»; la forma de la pieza elegida; «Acomodar
+solas»; **«Listo, guardar la cara»**, el único amarillo; y debajo de la cara la miniatura «Así
+queda en 3D». En 390 px no hay desborde horizontal.
+
+**La pieza EXACTA** (`utils/piezas.ts`, puro). Una pieza nace con el % contratado exacto
+según la cuenta del servidor: `pbDeRect(r) = dibujadoPb([poligonoDeRect(r)], E)` —la misma
+`dibujadoPb` de `zonasGeometria.ts`, idéntica bit a bit a `zonas_geometria.py`—. Franja fija
+un lado (u0 o u1) y Estantes fija el ancho y el piso (un estante), y el lado libre se
+**resuelve** (hasta el borde de lo que se vende) (`resolverLado`): bisección sobre el área cruda (64 pasos) y después una búsqueda
+cuantizada a 1e-6 alrededor (±400 pasos) hasta que `pbDeRect` da exactamente el contratado y
+la zona es válida para `validarZona`. Como el redondeo es al punto básico y el paso es 1e-6,
+siempre hay un valor exacto; cruzar un parante la hace más ancha, no más grande. **Estirar**
+(manijas e/o/n/s) conserva el %: más ancha → más baja, más alta → más angosta. **Soltar**
+(`encajar`) encaja la pieza en el hueco libre más cercano y la pega a los bordes, a los
+estantes y al costado de las otras piezas; si cae encima de otra marca que rige en fechas que
+se cruzan (`primeraQuePisa`, más de 1 cm²), se ve en rojo («Ahí ya está X») y NO se ubica:
+«Ahí ya está X: soltala en lo verde». Dos marcas cuyas fechas no se cruzan comparten el lugar.
+
+**A mano**: un punto por esquina, cada uno pegado a estantes, bordes, parantes y lados de las
+otras piezas (`imantarAMano`); el contador grande dice «Llevás X % de Y %» / «Faltan Z %»,
+«Justo» (verde) o «Te pasaste · sobra W %» (rojo, con «Achicar a Y %»). Se cierra tocando el
+primer punto (el círculo grande). Al cerrar, si quedó a ±3 % (`AJUSTE_SOLO_PB`), se deja
+**justa sola** corriendo un lado suelto —el que se puso a ojo, no los pegados a estantes,
+bordes u otra pieza— (`dejarJustaAMano`/`ajustarUnLado`) y lo dice («le corrimos un lado…»);
+deshacer la deja como se dibujó. «Achicar a Y %» y «Llevar a Y %» prueban lo mismo primero y,
+si no se puede, el «Ajustar al contratado» de siempre (`ajustarAlContratado`).
+
+**«Acomodar solas»** (`acomodarSolas`): las que no están en la cara van en franjas, una al
+lado de la otra, en el orden de la lista, en los huecos libres, sin tocar lo ya ubicado. Al
+entrar a una cara **sin nada dibujado**, se acomodan solas y la pista lo dice («Las acomodé
+solas… Revisalas y tocá «Listo, guardar la cara»»): la persona revisa y confirma. Si algo ya
+está dibujado, no se toca.
+
+**El reductor** (`utils/edicionDeZonas.ts`) suma dos acciones: `ponerPiezas` (las zonas de
+cada marca nombrada pasan a ser EXACTAMENTE ésas, en un paso de deshacer; `[]` la saca) y
+`cerrarTrazo` con `reemplazar` (la forma a mano pasa a ser LA pieza de esa marca). Todo lo
+demás —borrador, autoguardado a los 20 s, confirmar, `version_vieja`, `rompe_distribucion`,
+historial, tolerancia 0 de `EXCESO`, `SOLAPE`— es lo de siempre: el servidor y el modelo de
+datos **no cambiaron** (zonas = polígonos normalizados `vertices_json`, 3 a 24 vértices).
+
+**Guardar.** «Listo, guardar la cara» confirma; si la cara ya estaba guardada y cambia, antes
+pregunta con un resumen llano por marca (`ResumenDeCambios.tsx`: «Café A: cambia de lugar (30
+%)», «Aseo: sale de la cara»). Al terminar: «Listo: GON-01 · cara A quedó distribuida. A
+{marcas} le(s) llega el aviso de montaje con su lugar…» (`avisoDeMontaje`), y si se vino de
+Supervisar, **vuelve a Supervisar** con ese aviso arriba de «Para revisar»
+(`fixtureStore.pedirSupervisar` → `Dashboard` pasa a la sede → `DashboardView` abre
+Supervisar). El correo de montaje sigue esperando la zona CONFIRMADA y la mercaderista sigue
+viendo sólo la suya. «Descartar mis cambios», «Descartar el borrador guardado», «Sacar todas
+las piezas», «Copiar de la otra cara», «Qué pasó con esta cara» (el historial), Deshacer y
+Rehacer viven en «Más»; «Salir» con cambios pregunta en llano.
+
+**El 3D.** No se dibuja en el 3D: «Editar en el 3D» y su pista se fueron, con
+`EdicionEnElMueble.tsx` y `punteroEnElMueble.ts`. La miniatura «Así queda en 3D» es **el mismo
+lienzo del editor**, vivo: el `<Canvas>` se dibuja por un portal dentro de un nodo propio
+(`anfitrionDelLienzo`) que `RanuraDelLienzo.tsx` muda con `appendChild` entre su lugar en el
+editor, la miniatura y «Ver en 3D» (en grande, con «De frente», «Volver a ubicar» y la leyenda;
+«Desde acá no se edita»). React nunca mueve el anfitrión, así que mudarlo no remonta el lienzo
+ni pierde el contexto WebGL; las zonas se ven con `ZonasDeLaDistribucion` de siempre, y se
+actualizan al soltar cada pieza.
+
+**Las participaciones se crean sólo en Vender.** «Nueva participación» salió de Distribuir;
+`FormularioDeParticipacion` queda para renovar, confirmar y editar una reserva. Los textos que
+mandaban a crearla en Distribución (`StoreEditor3D.tsx`, `PartesDelMueble.tsx`,
+`utils/partes.ts`) dicen ahora que la parte de cada marca se vende en **Vender** y se ubica
+con «Distribuir esta cara».
+
+**Las palabras.** En la pantalla: marca, pieza, libre, ya vendido, ubicada, sin vender. Fuera:
+«participación N», «zona N», «capacidad», «pico», «comprometido», «capa», «término», «Mirar |
+Editar», «dibujado». «Copiar zonas de otra cara» es «Copiar de la otra cara», en «Más», y
+abre sin error (`opcionDeEntrada`: elige una cara con algo para copiar y, si no hay, lo dice en
+neutro). Nunca «sombra».
+
+**Lo que se fue**: `PanelDeDistribucion.tsx`, `LienzoDeZonas.tsx`, `EdicionEnElMueble.tsx`,
+`punteroEnElMueble.ts`, la leyenda como componente (sus ayudantes siguen en
+`LeyendaDeParticipaciones.tsx`), el lienzo partido 2D | 3D y «Ocultar 3D», «Ajustar al
+contratado» como botón suelto y «sobra 0,86 %» como estado normal (una pieza nace justa).
+
+**Privacidad**: igual que antes. El proveedor nunca ve piezas ni zonas; nada de esto entra en
+Vender (`probar-vender` sigue la clausura de imports, también los dinámicos: por eso el aviso
+de montaje de Distribuir se arma con las piezas y no con la API de montajes).
+
+**Las guardas.** Nueva: `probar-piezas.mjs` (`npm run probar:piezas`): Franja exacta en 12
+muebles del catálogo (con parantes, zócalo y remate) × 1, 17, 17,5, 30, 50 y 100 % × 3
+anclas; 100 %; parante; Estantes; estirar; «Acomodar solas» (y que `juzgar` no dé errores);
+fechas; soltar y chocar; A mano (la L a 30 % justo, el contador, «Achicar», y la L cerca que
+queda justa sola sin mover los lados pegados); la forma de lo dibujado; pureza; el reductor; y
+`casos/piezas.json`, que `backend/tests/test_piezas_exactas.py` le pasa al SERVIDOR (su
+superficie, `validar_zona`, `medir` y `juzgar`): cada pieza da su pb justo, sin `EXCESO` ni
+`SOLAPE`. Si la cuenta del navegador cambia, el JSON cambia y la prueba falla hasta
+regenerarlo con `--escribir`. Reescritas (más estrictas, nunca más laxas) las de
+`probar-distribucion` (el teclado, el contrato del panel, los colores sin `dark-*`, la lista de
+piezas, la pantalla, sin «Editar en el 3D», el 3D es el del editor, sin alta, sin números
+internos en los textos visibles, «Acomodar solas» al entrar, desde Supervisar y de vuelta),
+`probar-zonas` (las frases de copiar, la cara de las piezas: el primer punto con `TOQUE_PX`, el
+imán, soltar y estirar sólo con cuentas exactas, el ajuste solo con tope y después de cerrar),
+`probar-superficies`, `probar-muebles` (montaje de `DistribuirCara`, sin panel comercial al
+distribuir), `probar-comercial` y `probar-vender`.
+
+#### La corrección tras la ronda de prueba (2026-10-24)
+
+La ÚNICA corrección después de la ronda de prueba de *Distribuir con piezas*. El servidor y los
+datos no cambiaron (ni tablas, ni columnas, ni rutas); la cuenta del % (`zonasGeometria` ↔
+`zonas_geometria.py`), la tolerancia 0, `SOLAPE`, `rompe_distribucion`, borrador/confirmar y
+`version_vieja` siguen igual.
+
+1. **Soltar una pieza grande cerca del medio.** El ancho se medía desde el puntero hacia un solo
+   lado: 60 % en u = 0,5 (70 % en 0,4–0,6, 90 % en 0,2–0,8) no se ubicaba. Ahora `encajar` mide el
+   ancho desde el BORDE del hueco (o de lo que se vende), la centra en el puntero, la pega a un
+   borde cercano y la recorta al hueco; «Cambiar la forma» usa lo mismo. Medido en el navegador:
+   0 de 10 sueltas ubicadas antes, 10 de 10 después (GON-02·B 60 %, GON-03·B 70 %, GON-01·B 90 %,
+   GON-05·A 100 %). Además el lado que se resuelve llega hasta el borde de lo que se VENDE, no el
+   de la cara: con la cara entera vendida (40 + 35 + 25) la última quedaba sin ubicar.
+2. **El rótulo dice lo que hay.** En la cara (`rotuloDePieza`) y en el 3D (`rotulosMedidos`, con
+   `medir` de la edición): justa, «30 % ✓»; si no, «42,42 % · sobra 12,42 %» / «25 % · faltan 5 %»
+   / «30 % · pisa a Aseo», en rojo (`rotuloDeLoQueHay`, `utils/piezas.ts`).
+3. **La letra de la cara en el 3D.** Nace oculta y pide un cuadro al montarse o cambiar de cara
+   (`invalidate`, el lienzo es a pedido): la «B» ya no aparece sobre la cara A. Y la toma de
+   Distribuir deja aire arriba para la letra (`AIRE_DE_LA_LETRA_M`, un punto al medio de la cara
+   en `encuadreDeLaCara`): en la miniatura y en grande ya no se corta.
+4. **Piezas lisas y adentro de lo que se vende.** Rayado quiere decir «no se vende»: las piezas van
+   lisas (color y nombre); si dos marcas de la cara comparten el tono, puntos (`patronDe`), y el
+   bloque de la lista los repite. Una Franja va de borde a borde de lo que se vende (arriba del
+   zócalo, abajo del remate, adentro de los parantes de los costados) y los huecos también: lo que
+   se ve es lo que se guarda, con el mismo % (lo que no se vende no cuenta). Lo guardado antes
+   (franjas de 0 a 1) se sigue viendo como está guardado. El relleno se ve más en oscuro
+   (`--pieza-alfa`, 0,24 claro / 0,5 oscuro).
+5. **Dos marcas que se turnan el lugar** (fechas que no se cruzan): los rótulos se apilan con la
+   vigencia corta («hasta 15 nov» / «desde 16 nov», `lugaresCompartidos`, `vigenciaCorta`), la que
+   todavía no rige va sólo con el contorno punteado, y el «Libre» de la cara es la cuenta de la
+   lista (`capacidadDe(datos, hoy).queda`): «Libre 40 %», no la suma de las dos.
+6. **Elegir una «A mano» ya hecha no entra a dibujar**: se rehace con «Rehacer a mano» (y «Dejarla
+   como estaba»). Cerrada la forma, se deja de dibujar. La pista y el contador dicen lo que se
+   puede hacer en cada estado (`pistaDeAMano`, `pistaDelTrazo`, `contadorAMano(…, cerrada)`):
+   nunca «Tocá un punto…» ni «mové un punto» con la forma cerrada.
+7. **«Listo» con la cara guardada y sin cambios**: apagado y «Guardada, sin cambios» (antes cada
+   toque creaba una versión y otro «Confirmada» en el historial). El servidor no cambió.
+8. **El ajuste solo (±3 %)**: «Deshacer el ajuste» junto al aviso; Enter cierra con el MISMO
+   ajuste que tocar el primer punto (`cerrarAMano`, registrado en `alCerrarAMano`); la pista
+   vale mientras la cara siga como estaba cuando se dijo (deshacer o rehacer la vuelven vieja y
+   habla el estado).
+9. **Sin arrastrar**: en el menú de cada pieza, «Ponerla en el primer hueco libre», «A la
+   izquierda» y «A la derecha»; en la cara, cada pieza es un botón con su nombre accesible
+   («Café A, 30 %, ubicada»), Tab la enfoca (anillo punteado sólo con teclado) y las flechas la
+   llevan al lugar siguiente donde entra entera (`lugaresPosibles`, `ubicarSinArrastrar`), con
+   el % exacto; la pista (`aria-live`) dice dónde quedó («de 1,25 a 1,77 m desde la
+   izquierda»). «Más» es un menú de verdad: el foco entra, flechas/Inicio/Fin, Esc lo cierra y
+   vuelve a «Más». La pista dice que alcanza con tocar la pieza y después lo verde.
+10. **Menores**: el historial en palabras simples, armado en el cliente desde la acción y los
+    datos (`textoDelHistorial`; lo desconocido pasa por `sinJerga`): «Se vendió el 60 % de la cara
+    a Snacks Norte · Papitas, del 1 oct 2026 al 15 nov 2026.»; el texto del servidor no cambia
+    (lo usan la bitácora y los correos). «Copiar de la otra cara» se titula así y no abre en rojo
+    antes de elegir (`faltaElegir`). El rojo del choque no se puede agarrar. Los hooks de
+    `DistribuirCara` van antes del return temprano. Íconos de 16. Con 0 % libre, «Sin lugar
+    libre». «De frente» se llama «Centrar la cara B»: en un pasillo angosto la toma es de tres
+    cuartos (es la cuenta de siempre, no un error). El título no parte «cara A» (`sinCortarLaCara`).
+
+**Guardas.** `probar-piezas` (soltar 60/70/90/100 % en el medio de todos los muebles y en huecos
+parciales; acomodar con la cara entera vendida; ubicar sin arrastrar; el rótulo; las franjas de
+borde a borde de lo que se vende; el contador cerrado; los casos nuevos en `casos/piezas.json`,
+que corre `test_piezas_exactas.py`), `probar-distribucion` (rótulo, lugar compartido, patrón,
+nombre accesible, «A mano» ya hecha, Enter con el ajuste, «Deshacer el ajuste», «Listo»
+guardada, «Más» por teclado ejecutado, historial ejecutado, «Sin lugar libre», íconos, hooks,
+«Centrar la cara»), `probar-zonas` (el cierre por `cerrarAMano`, copiar sin rojo antes de elegir)
+y `probar-muebles` (la letra nace oculta y pide cuadro; el aire de la toma).
 
 ### Editar un contrato y reenviarlo (2026-10-22)
 
@@ -11348,6 +11572,10 @@ nunca repinta a las anteriores.
 
 ### El modo Distribución del Editor 3D
 
+> **2026-10-24:** el lienzo, el panel, las herramientas, «Mirar | Editar», la leyenda y
+> «Editar en el 3D» de esta sección se reemplazaron por *Distribuir con piezas (2026-10-24)*.
+> El guardado, el teclado aislado, la cámara y lo que se excluye siguen valiendo.
+
 **Entrar.** En el panel comercial del 3D, «Distribuir esta cara» (`data-distribuir`); desde
 Supervisar, «Abrir en Distribución» o «Renovar» (`pedirEnfoque3D(…, { distribucion })`; lo
 atendido vive en una variable de módulo, así un pedido no vuelve a entrar solo al remontar el
@@ -11958,6 +12186,9 @@ las zonas llegan como **borrador** y hay que confirmar, con el candado de siempr
   participación.».
 
 ### Dibujar en el 3D y ajustar el borde (I2)
+
+> **2026-10-24:** «Editar en el 3D» ya no existe (*Distribuir con piezas*); el trazo en curso
+> sigue viéndose en el 3D y «ajustar el borde» sigue en el reductor.
 
 - **El trazo en curso** (rectángulo o polígono a medio dibujar) se ve en el 3D: una cinta
   discontinua en el tono de la participación activa (`trazoParaDibujar`, `ZonasDelMueble` con

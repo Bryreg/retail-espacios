@@ -89,7 +89,9 @@ export type Accion =
   | { tipo: "estirarTrazo"; punto: Punto }
   | { tipo: "agregarPunto"; punto: Punto }
   | { tipo: "quitarPunto" }
-  | { tipo: "cerrarTrazo" }
+  /** Con `reemplazar` (la forma «A mano» de Distribuir), la zona cerrada pasa a
+   *  ser LA pieza de la participación activa: reemplaza a las que tenía. */
+  | { tipo: "cerrarTrazo"; reemplazar?: boolean }
   | { tipo: "cancelarTrazo" }
   | { tipo: "empezarArrastre" }
   | { tipo: "moverZona"; clave: string; du: number; dv: number }
@@ -107,6 +109,10 @@ export type Accion =
   | { tipo: "usarZonas"; spaceId: number; zonas: readonly ZonaEnEdicion[] }
   // fase 2 · I1 · «Copiar zonas de otra cara» (`pegarZonas`, al final del archivo).
   | { tipo: "pegarZonas"; quedan: readonly ZonaEnEdicion[]; nuevas: readonly ZonaPegada[] }
+  /** Distribuir con piezas: ubica (o quita, con `vertices: []`) la pieza de
+   *  cada participación nombrada —sus zonas pasan a ser exactamente éstas—
+   *  en UN paso de deshacer («Acomodar solas» pone varias de una vez). */
+  | { tipo: "ponerPiezas"; piezas: readonly { spaceId: number; vertices: readonly Poligono[] }[] }
   | { tipo: "deshacer" }
   | { tipo: "rehacer" }
   | { tipo: "elegirHerramienta"; herramienta: Herramienta }
@@ -402,6 +408,8 @@ const EDITAN = new Set<Accion["tipo"]>([
   "deshacer", "rehacer", "descartarCambios",
   // fase 2 · I1
   "pegarZonas",
+  // Distribuir con piezas (2026-10-24)
+  "ponerPiezas",
 ]);
 
 /** El reductor del editor. Devuelve el MISMO objeto si la acción no cambia
@@ -475,7 +483,8 @@ export function reducir(e: EstadoDeEdicion, a: Accion): EstadoDeEdicion {
       }
       const clave = `n${e.proxima}`;
       const zona: ZonaEnEdicion = { clave, participacionSpaceId: e.activa, vertices };
-      return conZonas({ ...e, arrastre: null }, [...e.zonas, zona], { trazo: null, proxima: e.proxima + 1, seleccion: { zona: clave, vertice: null } });
+      const quedan = a.reemplazar ? e.zonas.filter((z) => z.participacionSpaceId !== e.activa) : e.zonas;
+      return conZonas({ ...e, arrastre: null }, [...quedan, zona], { trazo: null, proxima: e.proxima + 1, seleccion: { zona: clave, vertice: null } });
     }
     case "empezarArrastre":
       return e.arrastre ? e : { ...e, arrastre: { antes: e.zonas } };
@@ -570,6 +579,13 @@ export function reducir(e: EstadoDeEdicion, a: Accion): EstadoDeEdicion {
     // fase 2 · I1
     case "pegarZonas":
       return pegarZonas(e, a.quedan, a.nuevas);
+    case "ponerPiezas": {
+      const nombradas = new Set(a.piezas.map((p) => p.spaceId));
+      const quedan = e.zonas.filter((z) => !nombradas.has(z.participacionSpaceId));
+      const nuevas: ZonaPegada[] = [];
+      for (const p of a.piezas) for (const v of p.vertices) nuevas.push({ participacionSpaceId: p.spaceId, vertices: v.map(([u, w]) => [u, w] as Punto) });
+      return pegarZonas(e, quedan, nuevas);
+    }
     case "deshacer": {
       if (e.atras.length === 0) return e;
       const zonas = e.atras[e.atras.length - 1];

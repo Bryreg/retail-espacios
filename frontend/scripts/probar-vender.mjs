@@ -1374,7 +1374,8 @@ console.log("\nvender · las participaciones de cara");
     assert.match(contratoTs, /participacion: \{ cara: l\.codigoCara, puntos_basicos: l\.pb, renueva: l\.renueva \},/,
       "el guardado no manda el término que se renueva");
     const comp = sinComentarios(leer("src/components/Distribucion/ParticipacionesDeLaCara.tsx"));
-    assert.match(comp, /pedir\(fixtureId, cara, \{ distribucion: renovar \? \{ renovar \} : \{\} \}\)/,
+    // (Distribuir con piezas, 2026-10-24: el pedido lleva además `volver`, para que «Listo» vuelva a Supervisar.)
+    assert.match(comp, /pedir\(fixtureId, cara, \{ distribucion: \{ \.\.\.\(renovar \? \{ renovar \} : \{\}\), \.\.\.\(volver \? \{ volver \} : \{\}\) \} \}\)/,
       "«Abrir en Distribución» de Supervisar no pide entrar a Distribución (`pedirEnfoque3D` con `distribucion`)");
   });
 

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { create } from "zustand";
-import { ChevronDown, ChevronRight, MoreHorizontal, RotateCcw } from "lucide-react";
 import {
   cancelarReserva, espacioDeLaCara, leerCara, rechazoDe, terminoDeOut,
   type CaraOut, type ParticipacionOut, type TerminoOut, type ZonaOut,
@@ -12,13 +11,13 @@ import { useDistribucionStore } from "../../store/distribucionStore";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { useModalAbierto } from "../../tema";
 import { TONOS_DE_MARCA, estampasDeLaCara, type Estampa } from "../../utils/coloresDeMarca";
-import { ajustarAlContratado, revisarZonas, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
+import { revisarZonas, type ZonaEnEdicion } from "../../utils/edicionDeZonas";
 import {
-  cuentaElDia, cuentaEseDia, disponible, intervalosQueCuentan, pct, pico, seCruzanEnFechas, vivo,
+  cuentaElDia, cuentaEseDia, disponible, intervalosQueCuentan, pct, pico, vivo,
   type Cuenta, type Fisico, type Juicio, type Termino,
 } from "../../utils/participaciones";
 import {
-  areaCubierta, areaUtil, dentroDeLosTopes, dibujadoPb, validarZona, type Exclusion, type Medidas, type Poligono,
+  dentroDeLosTopes, type Medidas,
 } from "../../utils/zonasGeometria";
 
 /**
@@ -80,6 +79,14 @@ export function estadoComercialDe(t: Pick<TerminoOut, "estado_visible" | "desde"
     case "reserva_caducada": return "Reserva caducada";
     case "reserva_cancelada": return "Reserva cancelada";
   }
+}
+
+/** «Postobón · Hit»: el proveedor y la marca, sin el número interno. Es como
+ *  se nombra una marca en Distribuir y en sus diálogos. */
+export function marcaDe(p: ParticipacionOut): string {
+  const t = p.terminos[0];
+  const quien = t?.proveedor?.nombre ?? "Sin proveedor";
+  return t?.marca ? `${quien} · ${t.marca}` : quien;
 }
 
 /** El nombre con que se dice una participación: «3 · Postobón · Hit». */
@@ -321,31 +328,6 @@ export function filaDeLaLeyenda(p: ParticipacionOut, cuenta: Cuenta, dia: string
   };
 }
 
-/**
- * Lo que se dice de la zona ELEGIDA, igual en «Mirar» que en «Editar» (pedido
- * §12: «al seleccionar una sombra, muestra sus datos y permite modificarla»):
- * cuál es, de qué participación (número, proveedor y marca), cuánto tiene
- * contratado, cuánto de lo que se vende cubre ESTA zona (m² y % de la cara) y
- * el estado comercial del término que se muestra ese día. `k` es el índice en
- * `edicion.zonas` (no el de la capa del servidor).
- */
-export function datosDeLaZona(
-  k: number, vertices: unknown, p: ParticipacionOut,
-  sup: { ancho: number; alto: number; exclusiones: readonly Exclusion[] }, dia: string, hoy: string,
-): string {
-  const f = filaDeLaLeyenda(p, cuentaDe(p, null), dia, hoy);
-  const r = validarZona(vertices, sup.ancho, sup.alto);
-  let cubre = "zona sin terminar de dibujar";
-  if (r.codigo === null) {
-    const m2 = areaCubierta([r.vertices], sup.exclusiones) * sup.ancho * sup.alto;
-    const m2Texto = m2 > 0 && m2 < 0.005 ? "menos de 0,01" : m2.toFixed(2).replace(".", ",");
-    cubre = `esta zona cubre ${m2Texto} m² (${pct(dibujadoPb([r.vertices], sup.exclusiones))} de la cara)`;
-  }
-  const partes = [`Zona ${k + 1}`, `participación ${f.nombre}`, `${pct(f.contratado)} contratado`, cubre, f.estado];
-  if (!f.cuentaElDia && f.rotuloDelDia) partes.push(f.rotuloDelDia);
-  return partes.join(" · ");
-}
-
 /** «25 % contratado · 24,1 % dibujado · falta 0,9 %» (o «sobra 1 %»). */
 export function textoDeMagnitudes(f: Pick<FilaDeLaLeyenda, "contratado" | "dibujado" | "pendiente" | "exceso">): string {
   const cola = f.exceso > 0 ? `sobra ${pct(f.exceso)}` : f.pendiente > 0 ? `falta ${pct(f.pendiente)}` : "completa";
@@ -417,10 +399,10 @@ export function Dialogo({ titulo, onCerrar, children, ancho = "max-w-sm", cerrar
         if (e.key === "Escape") { e.preventDefault(); (alEscape ?? onCerrar)(); }
       }}
       onMouseDown={(e) => { if (cerrarAfuera && e.target === e.currentTarget) onCerrar(); }}
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-5 outline-none"
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4 outline-none"
     >
-      <div className={`flex max-h-[90vh] w-full ${ancho} flex-col overflow-hidden rounded-xl border border-dark-line bg-dark-surface text-dark-ink-1 shadow-2xl`}>
-        <p className="border-b border-dark-line px-4 py-3 text-sm font-bold">{titulo}</p>
+      <div className={`flex max-h-[90vh] w-full ${ancho} flex-col overflow-hidden rounded-xl border border-line bg-surface text-ink-1 shadow-2xl`}>
+        <p className="border-b border-line px-4 py-3 text-sm font-bold">{titulo}</p>
         <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
       </div>
     </div>
@@ -428,251 +410,22 @@ export function Dialogo({ titulo, onCerrar, children, ancho = "max-w-sm", cerrar
 }
 
 /** Un botón de los secundarios del modo (el principal es UNO por pantalla). */
-export const BOTON = "rounded-md border border-dark-line-2 bg-dark-surface-2 px-2.5 py-1.5 text-[11px] font-semibold text-dark-ink-1 hover:bg-dark-line disabled:cursor-not-allowed disabled:opacity-40";
+export const BOTON = "inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-1 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40";
 /** Un botón que deshace algo (cancelar, descartar). */
-export const BOTON_PELIGRO = "rounded-md border px-2.5 py-1.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40";
+export const BOTON_PELIGRO = "inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40";
 export const ESTILO_PELIGRO: CSSProperties = {
   borderColor: "rgb(var(--ocupado-txt-rgb) / 0.5)", color: "rgb(var(--ocupado-txt-rgb))", background: "rgb(var(--ocupado-txt-rgb) / 0.1)",
 };
 
-/* ── La leyenda ────────────────────────────────────────────────────────────── */
+/* ── Cancelar una reserva o un contrato ─────────────────────────────────── */
 
-type Pregunta =
+export type PreguntaDeCancelarTipo =
   | { tipo: "reserva"; p: ParticipacionOut; t: TerminoOut }
   | { tipo: "contrato"; p: ParticipacionOut; t: TerminoOut };
+type Pregunta = PreguntaDeCancelarTipo;
 
-/** Con más de estas, la lista ofrece filtrar por proveedor (pedido §6). */
-const FILTRO_DESDE = 6;
-
-export default function LeyendaDeParticipaciones() {
-  const datos = useDistribucionStore((s) => s.datos);
-  const activa = useDistribucionStore((s) => s.edicion.activa);
-  const modo = useDistribucionStore((s) => s.edicion.modo);
-  const zonas = useDistribucionStore((s) => s.edicion.zonas);
-  const verAlDia = useDistribucionStore((s) => s.verAlDia);
-  const periodo = useVistaDeDistribucion((s) => s.periodo);
-  const rev = useRevisionEnVivo();
-  const [filtro, setFiltro] = useState("");
-  const [menu, setMenu] = useState<number | null>(null);
-  const [verHistoria, setVerHistoria] = useState(false);
-  const [pregunta, setPregunta] = useState<Pregunta | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
-
-  if (!datos) return null;
-  const d = datosDeLaCara(datos);
-  const hoy = datos.hoy;
-  const dia = verAlDia || hoy;
-  const cap = capacidadDe(datos, dia, periodo);
-  const st = useDistribucionStore.getState;
-
-  const elegir = (spaceId: number) => {
-    setMenu(null);
-    st().despachar({ tipo: "elegirActiva", spaceId: activa === spaceId ? null : spaceId });
-  };
-
-  /** «Ajustar al contratado»: achica sus zonas hasta lo contratado (sin pisar
-   *  a las que rigen en las mismas fechas, si se puede). */
-  const ajustar = (p: ParticipacionOut, contratado: number) => {
-    const sup = datos.superficie;
-    if (!sup) return;
-    const propias = zonas.filter((z) => z.participacionSpaceId === p.space_id).map((z) => z.vertices);
-    const mias = d.terminosPorS.get(p.space_id) ?? [];
-    const otras = new Map<number, Poligono[]>();
-    for (const z of zonas) {
-      if (z.participacionSpaceId === p.space_id) continue;
-      const suyas = d.terminosPorS.get(z.participacionSpaceId);
-      if (!suyas || !seCruzanEnFechas(mias, suyas, hoy)) continue;
-      const l = otras.get(z.participacionSpaceId);
-      if (l) l.push(z.vertices); else otras.set(z.participacionSpaceId, [z.vertices]);
-    }
-    const nuevas = ajustarAlContratado(propias, sup.exclusiones, contratado, areaUtil(sup.exclusiones), [...otras.values()],
-      { ancho: sup.ancho, alto: sup.alto });
-    st().despachar({ tipo: "ajustarZonas", spaceId: p.space_id, vertices: nuevas });
-    setMenu(null);
-  };
-
-  const filas = d.vivas
-    .map((p) => ({ p, f: filaDeLaLeyenda(p, cuentaDe(p, rev), dia, hoy) }))
-    .filter(({ p }) => {
-      if (!filtro.trim()) return true;
-      const quien = (p.terminos[0]?.proveedor?.nombre ?? "").toLowerCase();
-      return quien.includes(filtro.trim().toLowerCase());
-    });
-
-  return (
-    <section aria-label="Participaciones de la cara" className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[10px] font-medium uppercase tracking-widest text-dark-ink-3">Participaciones</p>
-        <p className="text-right text-[11px] text-dark-ink-2" data-disponible>
-          Para vender: <b className="text-dark-ink-1">queda {pct(cap.queda)}</b> el {fechaLegible(dia, hoy)}
-          {" · "}{pct(cap.periodo.queda)} hasta el {fechaLegible(cap.periodo.hasta, hoy)}
-        </p>
-      </div>
-
-      {d.vivas.length > FILTRO_DESDE && (
-        <input
-          type="search" value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Filtrar por proveedor"
-          className="w-full rounded-md border border-dark-line-2 bg-transparent px-2 py-1 text-xs text-dark-ink-1 placeholder:text-dark-ink-3 focus:border-accent focus:outline-none"
-        />
-      )}
-
-      {d.vivas.length === 0 && (
-        <p className="rounded-md border border-dashed border-dark-line-2 px-3 py-2 text-[11px] leading-snug text-dark-ink-2">
-          Todavía no hay participaciones en esta cara. Cargá la primera con «Nueva participación».
-        </p>
-      )}
-
-      <ul className="flex max-h-[44vh] flex-col gap-1.5 overflow-y-auto pr-0.5">
-        {filas.map(({ p, f }) => {
-          const estampa = d.estampas.get(p.space_id) ?? null;
-          const esActiva = activa === p.space_id;
-          const ts = p.terminos;
-          const reservaViva = ts.find((t) => t.estado === "reserva" && t.estado_visible === "reserva") ?? null;
-          const contratosVivos = ts.filter((t) => t.estado === "contrato" && t.lease_id != null && (t.estado_visible === "vigente" || t.estado_visible === "firmado"));
-          // Renovar: sólo el término vivo más nuevo, y si es un contrato (§4.7).
-          const vivos = ts.filter((t) => vivo(terminoDeOut(t), hoy));
-          const masNuevo = [...vivos].sort((a, b) => (a.desde < b.desde ? 1 : a.desde > b.desde ? -1 : b.id - a.id))[0] ?? null;
-          const renovable = masNuevo && masNuevo.estado === "contrato" ? masNuevo : null;
-          return (
-            <li key={p.space_id} data-participacion={p.numero}>
-              {/* La fila son DOS botones hermanos —elegir la participación y sus
-                  acciones—, no un botón adentro de otro (un `role="button"`
-                  con un `<button>` adentro no se lee bien con un lector de
-                  pantalla ni se recorre bien con Tab). Adentro de un botón sólo
-                  va texto en línea: `span` con `block`, no `div` ni `p`. */}
-              <div
-                className={`flex items-start gap-2 rounded-md border px-2 py-1.5 transition-colors ${esActiva ? "border-dark-ink-2 bg-dark-surface-2" : "border-dark-line hover:border-dark-line-2"}`}
-                style={{ opacity: f.cuentaElDia ? 1 : 0.7 }}
-              >
-                <button
-                  type="button"
-                  aria-pressed={esActiva}
-                  data-elegir-participacion
-                  onClick={() => elegir(p.space_id)}
-                  className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left"
-                >
-                  <span className="mt-0.5"><MuestraDeEstampa estampa={estampa} apagada={!f.cuentaElDia} /></span>
-                  <span className="block min-w-0 flex-1">
-                    <span className="block truncate text-xs font-semibold text-dark-ink-1">
-                      {f.nombre}
-                      {esActiva && <span className="ml-1 text-[10px] font-normal text-dark-ink-2">· dibujás con ésta</span>}
-                    </span>
-                    <span className="block text-[11px] leading-snug" data-magnitudes
-                      style={{ color: f.exceso > 0 ? "rgb(var(--ocupado-txt-rgb))" : "rgb(var(--ink-2-rgb))" }}>
-                      {f.exceso > 0 && "⚠ "}{textoDeMagnitudes(f)}
-                    </span>
-                    <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-snug text-dark-ink-2">
-                      <span className={`rounded px-1 py-px font-semibold text-dark-ink-1 ${f.esReserva ? "border border-dashed border-dark-ink-3" : "border border-dark-line-2 bg-dark-surface-2"}`}>
-                        {f.estado}
-                      </span>
-                      <span>{f.vigencia}</span>
-                      {f.rotuloDelDia && <span className="font-semibold text-dark-ink-1">· {f.rotuloDelDia}</span>}
-                    </span>
-                    {f.despues && (
-                      <span className="block text-[10px] text-dark-ink-3">
-                        Después: {f.despues.estado === "reserva" ? "reserva provisional" : "contrato"} {vigenciaDe(f.despues)}
-                      </span>
-                    )}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Acciones de la participación ${p.numero}`}
-                  aria-expanded={menu === p.space_id}
-                  onClick={() => setMenu(menu === p.space_id ? null : p.space_id)}
-                  className="rounded p-1 text-dark-ink-2 hover:bg-dark-line hover:text-dark-ink-1"
-                >
-                  <MoreHorizontal size={14} />
-                </button>
-              </div>
-              {menu === p.space_id && (
-                <div className="mt-1 flex flex-wrap gap-1 pl-6">
-                  {renovable && (
-                    <button type="button" className={BOTON} onClick={() => { setMenu(null); st().abrirFormulario({ modo: "renovar", terminoId: renovable.id }); }}>
-                      Renovar
-                    </button>
-                  )}
-                  {reservaViva && (
-                    <>
-                      <button type="button" className={BOTON} onClick={() => { setMenu(null); st().abrirFormulario({ modo: "confirmar", terminoId: reservaViva.id }); }}>
-                        Confirmar reserva
-                      </button>
-                      <button type="button" className={BOTON} onClick={() => { setMenu(null); st().abrirFormulario({ modo: "editar", terminoId: reservaViva.id }); }}>
-                        Cambiar reserva
-                      </button>
-                      <button type="button" className={BOTON_PELIGRO} style={ESTILO_PELIGRO} onClick={() => { setMenu(null); setAviso(null); setPregunta({ tipo: "reserva", p, t: reservaViva }); }}>
-                        Cancelar reserva
-                      </button>
-                    </>
-                  )}
-                  {contratosVivos.map((t) => (
-                    <button key={t.id} type="button" className={BOTON_PELIGRO} style={ESTILO_PELIGRO}
-                      onClick={() => { setMenu(null); setAviso(null); setPregunta({ tipo: "contrato", p, t }); }}>
-                      {contratosVivos.length > 1 ? `Cancelar contrato ${vigenciaDe(t)}` : "Cancelar contrato"}
-                    </button>
-                  ))}
-                  <button
-                    type="button" className={BOTON}
-                    disabled={modo !== "editar" || f.exceso <= 0 || !zonas.some((z) => z.participacionSpaceId === p.space_id)}
-                    title={modo !== "editar" ? "Pasá a «Editar» para cambiar las zonas." : f.exceso <= 0 ? "Lo dibujado no pasa lo contratado." : undefined}
-                    onClick={() => ajustar(p, f.contratado)}
-                  >
-                    Ajustar al contratado
-                  </button>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-
-      {d.historia.length > 0 && (
-        <div>
-          <button type="button" onClick={() => setVerHistoria(!verHistoria)} aria-expanded={verHistoria}
-            className="flex items-center gap-1 text-[11px] font-semibold text-dark-ink-3 hover:text-dark-ink-1">
-            {verHistoria ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            Historia ({d.historia.length}): participaciones que ya no rigen
-          </button>
-          {verHistoria && (
-            <ul className="mt-1 flex flex-col gap-1">
-              {d.historia.map((p) => {
-                const t = p.terminos[0];
-                return (
-                  <li key={p.space_id} className="flex items-start gap-2 rounded-md border border-dashed border-dark-line-2 px-2 py-1.5 text-dark-ink-3">
-                    <span className="mt-0.5"><MuestraDeEstampa estampa={null} /></span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-semibold">{nombreDeParticipacion(p)} · {pct(p.contratado_pb)}</p>
-                      {t && <p className="text-[10px]">{estadoComercialDe(t, hoy)} · {vigenciaDe(t)}</p>}
-                    </div>
-                    {t && (
-                      <button type="button" className={BOTON} title="Una participación nueva con el mismo proveedor, marca y porcentaje"
-                        onClick={() => st().abrirFormulario({ modo: "cargarDeNuevo", terminoId: t.id })}>
-                        <RotateCcw size={11} className="mr-1 inline" />Cargar de nuevo
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {pregunta && (
-        <PreguntaDeCancelar
-          pregunta={pregunta}
-          aviso={aviso}
-          onAviso={setAviso}
-          onCerrar={() => { setPregunta(null); setAviso(null); }}
-          datos={datos}
-        />
-      )}
-    </section>
-  );
-}
-
-/** «Cancelar reserva» y «Cancelar contrato», con la pregunta de siempre. */
-function PreguntaDeCancelar({ pregunta, aviso, onAviso, onCerrar, datos }: {
+/** «Cancelar la reserva» y «Cancelar el contrato» de una marca, con la pregunta de siempre. */
+export function PreguntaDeCancelar({ pregunta, aviso, onAviso, onCerrar, datos }: {
   pregunta: Pregunta; aviso: string | null; onAviso: (s: string | null) => void; onCerrar: () => void; datos: CaraOut;
 }) {
   const [haciendo, setHaciendo] = useState(false);
@@ -711,18 +464,18 @@ function PreguntaDeCancelar({ pregunta, aviso, onAviso, onCerrar, datos }: {
   }
 
   return (
-    <Dialogo titulo={esContrato ? `Cancelar el contrato de la participación ${p.numero}` : `Cancelar la reserva de la participación ${p.numero}`} onCerrar={onCerrar}>
-      <p className="text-xs leading-relaxed text-dark-ink-2">
-        <b className="text-dark-ink-1">{nombreDeParticipacion(p)} · {pct(t.puntos_basicos)}</b>, {vigenciaDe(t)}.
+    <Dialogo titulo={esContrato ? `Cancelar el contrato de ${marcaDe(p)}` : `Cancelar la reserva de ${marcaDe(p)}`} onCerrar={onCerrar}>
+      <p className="text-xs leading-relaxed text-ink-2">
+        <b className="text-ink-1">{marcaDe(p)} · {pct(t.puntos_basicos)} de la cara</b>, {vigenciaDe(t)}.
       </p>
-      <p className="mt-2 text-xs leading-relaxed text-dark-ink-2">
+      <p className="mt-2 text-xs leading-relaxed text-ink-2">
         {esContrato
-          ? "El lugar en la cara queda libre y el contrato deja de contar en ocupación e ingresos. La planometría y el reporte de montaje se quedan: son la prueba de lo que se acordó y de lo que se armó."
-          : "La reserva deja de sostener ese porcentaje: queda libre para vender."}
-        {" "}Si la participación no tiene otro término vivo, sus zonas pasan a la historia (en gris) y salen de la distribución al confirmarla.
+          ? "Su lugar en la cara queda libre y el contrato deja de contar en ocupación e ingresos. La planometría y el reporte de montaje se quedan: son la prueba de lo que se acordó y de lo que se armó."
+          : "La reserva deja de guardarle ese porcentaje: queda libre para vender."}
+        {" "}Si la marca no tiene otro contrato que siga, su pieza sale de la cara (queda en gris hasta que guardes la cara).
       </p>
       {datos.distribucion?.estado === "confirmada" && (
-        <p className="mt-2 text-[11px] text-dark-ink-3">La distribución confirmada no se toca: lo que cambia se ve al volver a revisarla.</p>
+        <p className="mt-2 text-[11px] text-ink-3">Lo que ya estaba guardado no se toca: el cambio se ve cuando vuelvas a guardar la cara.</p>
       )}
       {aviso && <p role="alert" className="mt-2 text-xs" style={{ color: "rgb(var(--ocupado-txt-rgb))" }}>{aviso}</p>}
       <div className="mt-3 flex justify-end gap-2">

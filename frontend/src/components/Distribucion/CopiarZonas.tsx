@@ -5,7 +5,7 @@ import { useDistribucionStore } from "../../store/distribucionStore";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { useOcupacionStore } from "../../store/ocupacionStore";
 import {
-  bloqueoDeLaCopia, copiarZonas, destinosEnOrden, encabezadoDeLaCopia, frasesDeLaCopia, nombreDeDestino, opcionesDeOrigen,
+  bloqueoDeLaCopia, copiarZonas, destinosEnOrden, encabezadoDeLaCopia, frasesDeLaCopia, nombreDeDestino, opcionDeEntrada, opcionesDeOrigen,
   origenDeLaCopia, rotuloDeCara, type Copia,
 } from "../../utils/copiaDeZonas";
 import { BOTON, Dialogo, MuestraDeEstampa, datosDeLaCara } from "./LeyendaDeParticipaciones";
@@ -30,8 +30,8 @@ import { BOTON, Dialogo, MuestraDeEstampa, datosDeLaCara } from "./LeyendaDePart
  * editor 3D es un cajón oscuro que redefine los canales.
  */
 
-const ETIQUETA = "mb-0.5 block text-[10px] font-medium uppercase tracking-widest text-dark-ink-3";
-const CAMPO = "w-full border-0 border-b border-dark-line-2 bg-dark-surface px-0 py-1 text-xs text-dark-ink-1 focus:outline-none disabled:opacity-60";
+const ETIQUETA = "mb-0.5 block text-[10px] font-medium uppercase tracking-widest text-ink-3";
+const CAMPO = "w-full border-0 border-b border-line-strong bg-surface px-0 py-1 text-xs text-ink-1 focus:outline-none disabled:opacity-60";
 const ROJO = "rgb(var(--ocupado-txt-rgb))";
 const AMBAR = "rgb(var(--entra-txt-rgb))";
 
@@ -72,9 +72,10 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
     : []), [activa, caras, sede, resumen]);
   const opcion = opciones.find((o) => o.clave === elegida) ?? null;
 
-  // La primera de la lista viene elegida (en una doble, la otra cara del mueble).
+  // Abre en la primera cara que tiene algo para copiar (en una doble, la otra
+  // cara del mueble si tiene): abrir en una vacía mostraba un error de entrada.
   useEffect(() => {
-    if (!opciones.some((o) => o.clave === elegida)) setElegida(opciones[0]?.clave ?? "");
+    if (!opciones.some((o) => o.clave === elegida)) setElegida(opcionDeEntrada(opciones)?.clave ?? "");
   }, [opciones, elegida]);
 
   /* ── Leer la cara de origen (una foto: si después cambia, la copia es de ese momento) ── */
@@ -98,6 +99,8 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
 
   const conConfirmada = (origen?.distribucion?.confirmada.length ?? 0) > 0;
   const conBorrador = (origen?.distribucion?.borrador?.length ?? 0) > 0;
+  /** La cara elegida no tiene nada que copiar: se dice tranquilo, sin rojo. */
+  const sinNada = !!origen && !conConfirmada && !conBorrador;
   const zonasOrigen = useMemo(() => (origen?.distribucion
     ? (capa === "confirmada" ? origen.distribucion.confirmada : origen.distribucion.borrador ?? [])
     : []), [origen, capa]);
@@ -136,8 +139,8 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
   }
 
   return (
-    <Dialogo titulo="Copiar zonas a esta cara" onCerrar={onCerrar} ancho="max-w-2xl">
-      <div className="flex flex-col gap-3 text-xs text-dark-ink-2" data-copiar-zonas>
+    <Dialogo titulo={caras === 2 ? "Copiar de la otra cara" : "Copiar de otra cara"} onCerrar={onCerrar} ancho="max-w-2xl">
+      <div className="flex flex-col gap-3 text-xs text-ink-2" data-copiar-zonas>
         <p className="leading-relaxed">{encabezadoDeLaCopia({ sede: activa.sede, codigo: activa.codigo, cara: activa.cara })}</p>
 
         {/* De qué cara */}
@@ -151,7 +154,7 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
           <label>
             <span className={ETIQUETA}>Cara</span>
             <select className={CAMPO} value={elegida} onChange={(e) => setElegida(e.target.value)} disabled={pegando || opciones.length === 0}>
-              {opciones.length === 0 && <option value="">{resumen ? "No hay otra cara con zonas" : "Leyendo las caras…"}</option>}
+              {opciones.length === 0 && <option value="">{resumen ? "No hay otra cara con piezas" : "Leyendo las caras…"}</option>}
               {opciones.map((o) => <option key={o.clave} value={o.clave}>{o.texto}</option>)}
             </select>
           </label>
@@ -159,7 +162,7 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
         {errorResumen && <p role="alert" style={{ color: ROJO }}>{errorResumen}</p>}
         {leyendo && <p>Leyendo la cara…</p>}
         {errorOrigen && <p role="alert" style={{ color: ROJO }}>{errorOrigen}</p>}
-        {origen && !conConfirmada && !conBorrador && <p>Esa cara no tiene zonas para copiar.</p>}
+        {sinNada && <p data-sin-nada-para-copiar>Esa cara no tiene piezas ubicadas para copiar. Elegí otra.</p>}
 
         {/* Qué copiar (sólo si el origen tiene las dos capas) */}
         {origen && conConfirmada && conBorrador && (
@@ -169,8 +172,8 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
               <label key={k} className="flex items-center gap-2">
                 <input type="radio" name="capa-de-origen" checked={capa === k} onChange={() => { setCapa(k); setElegidas(new Map()); }} disabled={pegando} />
                 {k === "confirmada"
-                  ? `La distribución confirmada (${origen.distribucion!.confirmada.length} ${origen.distribucion!.confirmada.length === 1 ? "zona" : "zonas"})`
-                  : `El borrador (${origen.distribucion!.borrador!.length} ${origen.distribucion!.borrador!.length === 1 ? "zona" : "zonas"})`}
+                  ? `Lo guardado como listo (${origen.distribucion!.confirmada.length} ${origen.distribucion!.confirmada.length === 1 ? "forma" : "formas"})`
+                  : `El borrador (${origen.distribucion!.borrador!.length} ${origen.distribucion!.borrador!.length === 1 ? "forma" : "formas"})`}
               </label>
             ))}
           </div>
@@ -179,38 +182,40 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
           <p style={{ color: AMBAR }}>El mueble de origen cambió desde que se confirmó: revisá cómo queda.</p>
         )}
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={espejo} onChange={(e) => setEspejo(e.target.checked)} disabled={pegando} />
-          En espejo (lo de la izquierda pasa a la derecha)
-        </label>
+        {!sinNada && (
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={espejo} onChange={(e) => setEspejo(e.target.checked)} disabled={pegando} />
+            En espejo (lo de la izquierda pasa a la derecha)
+          </label>
+        )}
 
-        {copia && !copia.compatible && <p role="alert" style={{ color: ROJO }}>{copia.motivo}</p>}
+        {copia && !copia.compatible && !sinNada && <p role="alert" style={{ color: ROJO }}>{copia.motivo}</p>}
 
-        {/* A qué participación va cada una */}
+        {/* A qué marca de esta cara va cada una */}
         {copia?.compatible && frases && copia.grupos.length > 0 && (
-          <section aria-label="A qué participación va cada una" className="flex flex-col gap-1.5">
-            <span className={ETIQUETA}>A qué participación va cada una</span>
+          <section aria-label="A qué marca va cada una" className="flex flex-col gap-1.5">
+            <span className={ETIQUETA}>A qué marca de esta cara va cada una</span>
             <ul className="flex flex-col gap-1.5" data-filas-de-copia>
               {copia.grupos.map((g, i) => {
                 const f = frases.filas[i];
                 const valor = g.destino !== null ? String(g.destino) : g.como === "no_copiar" ? "no" : "";
                 return (
-                  <li key={g.origen} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)] items-start gap-2 rounded-md border border-dark-line px-2.5 py-1.5">
+                  <li key={g.origen} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)] items-start gap-2 rounded-md border border-line px-2.5 py-1.5">
                     <div className="flex items-start gap-1.5">
                       <MuestraDeEstampa estampa={estampasOrigen?.get(g.origen) ?? null} />
-                      <span className="text-dark-ink-1">{f.titulo}</span>
+                      <span className="text-ink-1">{f.titulo}</span>
                     </div>
                     <div>
                       <select className={CAMPO} value={valor} onChange={(e) => elegir(g.origen, e.target.value)} disabled={pegando}
-                        aria-label={`A qué participación de esta cara van las zonas de la participación ${g.numeroOrigen}`}>
-                        {valor === "" && <option value="" disabled>Elegí a qué participación va…</option>}
+                        aria-label={`A qué marca de esta cara va ${f.titulo}`}>
+                        {valor === "" && <option value="" disabled>Elegí a qué marca va…</option>}
                         {destinosEnOrden(g, datos).map((d) => <option key={d.space_id} value={String(d.space_id)}>{nombreDeDestino(d)}</option>)}
                         <option value="no">No copiar</option>
                       </select>
                       {f.nota && <p className="mt-0.5 text-[11px]" style={f.tono === "ambar" ? { color: AMBAR } : undefined}>{f.nota}</p>}
                     </div>
                     <div className="text-[11px]">
-                      {f.comoQueda && <p className={f.sobra ? "" : "text-dark-ink-1"} style={f.sobra ? { color: ROJO } : undefined}>{f.comoQueda}</p>}
+                      {f.comoQueda && <p className={f.sobra ? "" : "text-ink-1"} style={f.sobra ? { color: ROJO } : undefined}>{f.comoQueda}</p>}
                       {f.reemplaza && <p>{f.reemplaza}</p>}
                       {f.junta && <p>{f.junta}</p>}
                     </div>
@@ -232,7 +237,9 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
         )}
 
         {/* Avisos */}
-        {frases && frases.avisos.length > 0 && (
+        {/* Sin nada para copiar, lo dice una sola frase neutra (arriba): ni
+            rojo ni las opciones de una copia que no hay. */}
+        {frases && frases.avisos.length > 0 && !sinNada && (
           <ul className="flex flex-col gap-0.5" data-avisos-de-copia>
             {frases.avisos.map((a, i) => (
               <li key={i} role={a.bloquea ? "alert" : undefined} style={{ color: a.bloquea ? ROJO : AMBAR }}>⚠ {a.texto}</li>
@@ -240,13 +247,15 @@ export default function CopiarZonas({ caras, onCerrar }: { caras: number; onCerr
           </ul>
         )}
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={quitarLasDemas} onChange={(e) => setQuitarLasDemas(e.target.checked)} disabled={pegando} />
-          Quitar las zonas de las participaciones que no reciben nada
-        </label>
+        {!sinNada && (
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={quitarLasDemas} onChange={(e) => setQuitarLasDemas(e.target.checked)} disabled={pegando} />
+            Sacar las piezas de las marcas que no reciben nada
+          </label>
+        )}
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-dark-line pt-3">
-          {bloqueo && copia && <p className="mr-auto text-[11px]" style={{ color: AMBAR }}>{bloqueo}</p>}
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
+          {bloqueo && copia && !sinNada && <p className="mr-auto text-[11px]" style={{ color: AMBAR }}>{bloqueo}</p>}
           <button type="button" className={BOTON} onClick={onCerrar} disabled={pegando}>Cancelar</button>
           <button type="button" className="btn-principal rounded-md px-3 py-1.5 text-xs" disabled={!!bloqueo || pegando}
             title={bloqueo ?? undefined} onClick={() => void copiarComoBorrador()}>
