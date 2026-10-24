@@ -5,6 +5,7 @@ import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
 const StoreEditor3D = lazy(() => import("../components/StoreEditor3D/StoreEditor3D"));
+const PlanificarCara = lazy(() => import("../components/Planograma/PlanificarCara"));
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView from "./DashboardView";
 import MountView from "./MountView";
@@ -33,6 +34,7 @@ import { describeError } from "../api/client";
 import { descargarMiExport, solicitarSupresion } from "../api/derechos";
 import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
+import { usePlanograma } from "../store/planogramaStore";
 import { TemaToggle, useModalAbierto } from "../tema";
 import {
   LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
@@ -1409,6 +1411,7 @@ export default function Dashboard() {
   const mountCode = MOUNT_DEEP_LINK;
   const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "kpis");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const planificando = usePlanograma((s) => s.abierta !== null);
   /** El alto del área de las pantallas, medido: Vender y Supervisar cuentan
    *  el alto de su plano contra él (`--alto-area` → `--alto-plano`,
    *  `vender.css`). Ya descuenta la barra de la aplicación y el aviso de la
@@ -1535,6 +1538,13 @@ export default function Dashboard() {
 
       {settingsOpen && isAdmin && (
         <SettingsModal enfocar={seccionConfig} onClose={() => setSettingsOpen(false)} />
+      )}
+      {/* «Planificar la cara» (planogramas con destinos): encima de todo,
+          desde el panel del mueble del plano. */}
+      {planificando && (
+        <Suspense fallback={null}>
+          <PlanificarCara />
+        </Suspense>
       )}
     </div>
   );

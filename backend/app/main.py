@@ -20,6 +20,7 @@ from app.routers import copia as copia_routes
 from app.routers import suscripcion as suscripcion_routes
 from app.routers import plataforma as plataforma_routes
 from app.routers import participaciones as participaciones_routes
+from app.routers import planogramas as planogramas_routes
 from app.routers import vender as vender_routes
 from app.routers import cobros as cobros_routes
 from app.routers import reservas as reservas_routes
@@ -40,6 +41,9 @@ from app.models import participaciones as participaciones_models  # noqa: F401
 # montaje que espera zona y la reserva de una cara entera o de una parte).
 # Mismo propósito.
 from app.models import vender as vender_models  # noqa: F401
+# Planogramas con destinos (cinco tablas nuevas: destinos, planogramas, sus
+# versiones, sus piezas y quién publica). Mismo propósito.
+from app.models import planogramas as planogramas_models  # noqa: F401
 
 logger = logging.getLogger("retail.main")
 
@@ -470,6 +474,10 @@ app.include_router(muebles.router,       prefix="/api")
 # sus zonas (`routers/participaciones.py`). Todo de administrador salvo la
 # ocupación anónima, que leen Vender, Supervisar y el plano.
 app.include_router(participaciones_routes.router, prefix="/api")
+# Planogramas con destinos: repartir una cara entre categorías, marca propia o
+# promociones y publicarlo por versiones (`routers/planogramas.py`). No es la
+# planometría de un contrato (`routers/planograms.py`).
+app.include_router(planogramas_routes.router, prefix="/api")
 # Guardar un contrato de Vender de una vez, todo o nada
 # (`routers/vender.py`, `docs/rediseno/vender-api.md`).
 app.include_router(vender_routes.router, prefix="/api")

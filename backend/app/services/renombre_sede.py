@@ -16,6 +16,8 @@ Acá el renombre cambia sólo lo que lleva el nombre escrito, en UNA transacció
   todas las filas de la sede —también las de código corto— pasa a ``NUEVO``;
 · los reportes de montaje (``mount_confirmations.space_code`` y ``sede``);
 · el registro de nombres de la renumeración (``renumeracion_nombres.sede``);
+· los planogramas y los destinos de la sede (``planogramas.sede``,
+  ``destinos.sede``: el mueble va por su id);
 · el plano: su fila (``layout_snapshots.sede``), el campo ``sede`` de los
   muebles que decían ``VIEJO`` y el prefijo de los códigos que llevan la sede
   adentro (si no, ``_full_code`` armaría ``NUEVO-VIEJO-GON-01``); y el campo
@@ -50,6 +52,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.models import ArchivedSpace, LayoutSnapshot, RenumeracionNombre, Space
+from app.models.planogramas import Destino, Planograma
 from app.services.candado import tomar_candados
 from app.services.layout_lookup import _y, normalizar
 from app.services.renumeracion import (
@@ -310,6 +313,12 @@ def renombrar(db: Session, viejo: str, nuevo: str, leido=None, snap_id: int | No
     for fila in db.query(RenumeracionNombre).filter(
             func.upper(func.trim(RenumeracionNombre.sede)) == v).all():
         fila.sede = n
+
+    # Los planogramas y los destinos se buscan por la sede del plano (el
+    # mueble va por su id, que no cambia).
+    for modelo in (Planograma, Destino):
+        for fila in db.query(modelo).filter(modelo.sede == v).all():
+            fila.sede = n
 
     ahora = datetime.now(timezone.utc)
     avisos: list[str] = []

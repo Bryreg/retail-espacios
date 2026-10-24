@@ -1,7 +1,18 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-24, **«Distribuir esta cara» como un juego de piezas**: cada
+Última actualización: 2026-10-24 (tarde), **planogramas con destinos** (fase 2 de la
+distribución): cualquier cara —la de un mueble que no se vende y lo LIBRE de uno que sí— se
+reparte entre **destinos** (categoría, marca propia, producto o grupo, promoción, otro) con
+las mismas piezas exactas de Distribuir, se guarda sola como borrador y se **publica por
+versiones** (rige desde / hasta opcional). Lo vendido manda: las marcas ubicadas vienen
+bloqueadas, lo contratado sin ubicar queda guardado, una venta entera no deja lugar, y si se
+vende algo encima después, la vigente lo dice. Al vencer su «hasta», la última sigue vigente
+con el recordatorio de hace cuánto venció. Publica quien administra; la dueña puede habilitar
+al equipo (sólo muebles internos). Cinco tablas nuevas. Ver *Planogramas con destinos
+(2026-10-24)*.
+
+Antes, el mismo día, **«Distribuir esta cara» como un juego de piezas**: cada
 marca de la cara es una PIEZA que nace con el % EXACTO que se le vendió (la cuenta del
 servidor, al punto básico), se arrastra a la cara, se pega a los bordes y a las otras piezas y
 nunca pisa a otra; la forma es Franja (por defecto), Estantes o A mano (con contador «Llevás X
@@ -350,26 +361,24 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
-### Próximas fases de la distribución (2026-10-24, NO implementadas)
+### Próximas fases de la distribución (2026-10-24; la 2 ya está)
 
 Lo que sigue a *Distribuir con piezas*. Nada de esto está hecho; queda escrito para no
 perderlo.
 
-- **Fase 2 · Planogramas para los muebles internos, con «destinos».** Hoy una pieza es una
-  marca con contrato. El supermercado también reparte sus propios muebles (los que no vende)
-  entre categorías o secciones. La idea: la misma pantalla de piezas, pero las piezas son
-  **destinos** —una entidad nueva con **nombre**, **color** y un campo de **código externo**
-  (texto libre, opcional) pensado para cruzarlo más adelante con el ERP del supermercado
-  (categoría, subcategoría o código de góndola del ERP)—. Un destino no tiene precio, fechas
-  ni %: se reparte la cara por área, con las mismas formas (Franja, Estantes, A mano) y la
-  misma geometría. Necesita tablas nuevas (no columnas: *Sin migraciones*) y decidir si una
-  cara puede tener a la vez marcas vendidas y destinos.
+- **Fase 2 · Planogramas con destinos: HECHA** (ver *Planogramas con destinos (2026-10-24)*).
 - **Fase 3 · Guía de montaje imprimible «para dummies».** Por cara y por VERSIÓN confirmada
   de la distribución: una hoja (PDF o página para imprimir) con la cara de frente, cada pieza
   con su marca y su color, medidas en centímetros desde el piso y desde el costado («de 0 a 90
   cm desde la izquierda, del 2.º al 4.º estante»), y la lista de qué va dónde. Es lo que hoy
   sale en el aviso de montaje, pero para pegar en la góndola. La versión impresa dice qué
   versión es, para que una guía vieja se reconozca.
+- **Fase 3, con los destinos**: la guía sale de la VERSIÓN publicada del planograma (sus piezas
+  guardan la foto del destino: nombre, tipo, color, «cómo se monta», código), sin precios.
+- **Fase 5 · Productos por SKU** (dibujo «Del lugar al producto», 2026-10-24, sin aprobar): la
+  pieza sigue siendo el lugar; adentro, cada SKU es un bloque por estante del ancho de sus
+  frentes, traído del ERP (primero una planilla) por el `codigo_externo` del destino. Necesita
+  las medidas de cada producto. Va después de la 3 y la 4.
 - **Fase 4 · Supervisión de planogramas.** Comparar lo montado con lo confirmado: una foto del
   montaje (la que ya sube la mercaderista) al lado de la cara confirmada, y en Supervisar →
   «Para revisar» las caras cuyo montaje no se cargó o no coincide. Necesita decidir quién lo
@@ -1252,6 +1261,83 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### Planogramas con destinos (2026-10-24)
+
+Fase 2 de la distribución, con el dibujo aprobado («Planificar cualquier mueble, se venda o
+no») y las cuatro decisiones del dueño: (1) los tipos de destino son **marca propia,
+categoría, producto o grupo, promoción y otro**; (2) **lo libre de un mueble que se vende SÍ
+se planifica**; (3) **publica quien administra, con la opción de habilitar al equipo**; (4)
+**al vencer el «hasta» de una versión sigue vigente la última, con el recordatorio de hace
+cuánto venció**. Ningún contrato ficticio: un destino no tiene precio, proveedor ni fechas.
+
+**El modelo** (`models/planogramas.py`, cinco tablas NUEVAS; *Sin migraciones*):
+`destinos` (sede, nombre, tipo, color `d1`…`d6`, `como_se_monta`, `codigo_externo` para el
+ERP, `en_la_sede` = guardado para reusar), `planogramas` (UNO por cara: sede + `fixture_id`
+del plano + letra; versión optimista y borrador), `versiones_de_planograma` (cada
+publicación: número, `rige_desde`, `hasta` opcional, la firma del mueble), `piezas_de_planograma`
+(destino, puntos básicos, polígono u,v como una zona; `version_id` NULL = el borrador;
+`foto_json` = el destino como era al publicar) y `ajustes_de_planograma` (`quien_publica`).
+El planograma NO cuelga de `spaces`: un mueble interno no tiene filas comerciales y crearlas
+lo metería en la ocupación y en las métricas. Renombrar la sede muda `planogramas.sede` y
+`destinos.sede` (`services/renombre_sede.py`); renumerar cambia el código, no el id. Las
+cinco tablas viajan en el traspaso y en la copia (`TABLAS_DEL_CLIENTE`).
+
+**Las reglas** (`services/planogramas.py`; `revisar` es la revisión que frena publicar):
+cada pieza con su % EXACTO (`zonas_geometria.dibujado_pb`, tolerancia 0), sin pisarse entre
+destinos (> 1 cm²), sin pisar el lugar confirmado de una marca que rige en las fechas de la
+versión (`PISA_LO_VENDIDO`), lo vendido (su pico en el período, `reglas.pico`) más los destinos
+≤ la cara entera (`NO_ALCANZA`), y sin venta entera, por partes o reservada entera en esas
+fechas (`VENDIDA_ENTERA`: «ponele «hasta» antes de esa fecha»). En el borrador, que falte
+ubicar no es error; para publicar, sí (`SIN_UBICAR`). **Un planograma no frena una venta**:
+si después de publicar se vende algo encima, la vigente lo dice (`choca_con_lo_vendido`,
+«Lo vendido cambió…») y se corrige con la versión siguiente.
+
+**Las versiones**: «Rige desde» ≥ hoy, «hasta» opcional ≥ «rige desde». La vigente es la
+última publicada que ya rige; si su «hasta» pasó, SIGUE vigente con `vencida_hace_dias`. Las
+que rigen más adelante son «programadas»; las demás, «reemplazadas». Una publicada no se
+cambia ni se borra (sus piezas guardan la foto del destino). `para_revisar`: el mueble
+cambió desde que se publicó (otra firma).
+
+**Quién**: leer, cualquier sesión del supermercado; un mueble que se vende, sólo
+administración (trae contratos: D7). Escribir (borrador, publicar, descartar, destinos):
+administración, y el equipo sólo si `quien_publica = "equipo"` y sólo en muebles internos.
+Cambiar quién publica: administración («Más» → «Quién planifica y publica»).
+
+**La API** (`routers/planogramas.py`, `/api/planogramas/…`; no confundir con
+`routers/planograms.py`, la planometría de un contrato): `GET /cara`, `/resumen`, `/version`,
+`/destinos` (todo por query), `PUT /borrador`, `POST /publicar` (409 `planograma_invalido`
+con los problemas), `POST /descartar`, `POST /destinos`, `PATCH /destinos/{id}`, `PUT
+/ajustes`. Bitácora: `planograma.borrador` (no el automático), `planograma.publicado`,
+`planograma.descartado`, `destino.creado`, `destino.cambiado`, `planograma.quien_publica`.
+
+**La pantalla** (`components/Planograma/PlanificarCara.tsx`, perezosa, encima de todo): la
+misma cara y los mismos gestos de Distribuir (`CaraDelPlanograma.tsx` reusa `utils/piezas.ts`:
+arrastrar desde la lista, soltar con `encajar`, estirar sin cambiar el %, Franja / Estantes /
+A mano con el contador y el ajuste solo de ±3 %, flechas). Lo vendido en gris con candado,
+no se agarra; lo contratado sin ubicar, una tarjeta punteada «queda guardado». «Agregar
+destino» (`FormularioDeDestino.tsx`: los guardados de la sede arriba, nombre, qué es, cuánto
+—cualquier número—, color que sale solo, cómo se monta, código en tu sistema, «Guardarlo en
+los destinos de {sede}»). «Publicar versión N» es el único amarillo (`PublicarVersion.tsx`:
+desde, hasta opcional, qué cambia contra la vigente); «Versiones» (`Versiones.tsx`) mira una
+publicada sin poder cambiarla. El borrador se guarda solo a los 20 s; salir o cambiar de cara
+con cambios pregunta. Estado y lógica pura: `store/planogramaStore.ts`, `utils/planograma.ts`.
+Colores: `--destino-1`…`--destino-6` (claro y oscuro, en `tema.css`), que no son estados.
+
+**Dónde se entra**: Plano → panel del mueble → «Planograma» (un mueble con cara: estado por
+cara y «Planificar la cara A/B», o «Lo libre de la cara A/B» en uno que se vende, sólo
+administración), y Sede → el globo de un mueble interno → «Planograma de la cara A» (el
+equipo no ve el Plano: entra por acá). En el Editor 3D todavía no hay entrada.
+
+**Lo que no hace todavía**: la guía imprimible (fase 3), la supervisión (fase 4), el 3D del
+planograma y los productos por SKU (fase 5).
+
+**Guardas**: `probar-planogramas.mjs` (`npm run probar:planogramas`: los estados de las
+piezas, lo libre, las palabras, los gemelos de tipos, colores y rutas, la casa —nada en el
+navegador, nunca «sombra», un amarillo por archivo—, y `casos/planogramas.json`, que
+`backend/tests/test_planogramas_gemelos.py` le pasa a `revisar` del servidor: el mismo %
+dibujado y los mismos problemas). `backend/tests/test_planogramas.py`: versiones, vencida,
+lo vendido manda, quién puede, renombrar la sede.
 
 ### Distribuir con piezas (2026-10-24)
 
