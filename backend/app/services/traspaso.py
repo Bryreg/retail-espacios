@@ -93,11 +93,13 @@ TABLAS_DEL_CLIENTE = frozenset({
     # cada sede, el planograma de cada cara, sus versiones publicadas, sus
     # piezas y quién publica. Ninguna se apunta a sí misma.
     "destinos", "planogramas", "versiones_de_planograma", "piezas_de_planograma", "ajustes_de_planograma",
+    # La foto de cómo quedó una cara, desde su guía de montaje (fase 3).
+    "fotos_de_guia",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar
 # decenas de fotos en la memoria de una instancia de 512 MB.
-_TABLAS_CON_ARCHIVOS = frozenset({"space_files", "lease_files", "supplier_assets"})
+_TABLAS_CON_ARCHIVOS = frozenset({"space_files", "lease_files", "supplier_assets", "fotos_de_guia"})
 _LOTE_CON_ARCHIVOS = 10
 _LOTE = 500
 

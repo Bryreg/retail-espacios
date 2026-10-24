@@ -1,0 +1,57 @@
+/* La hoja de la guía de montaje (fase 3 de la distribución): SIEMPRE en papel
+   claro, en los dos temas, porque es lo que se imprime. Colores fijos (no los
+   tokens del tema), letra grande y bordes negros: se lee en una fotocopia. */
+.guia-hoja { --tinta: #0A1014; --tinta-2: #3D4D57; --tinta-3: #54646E; --papel: #fff;
+  background: var(--papel); color: var(--tinta); border: 1px solid #DDDEDE; border-radius: 8px; padding: 26px 28px;
+  display: grid; gap: 18px; width: 100%; max-width: 880px; font-size: 14px; line-height: 1.45; color-scheme: light; }
+.guia-h { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 3px solid var(--tinta); padding-bottom: 12px; }
+.guia-h > div { display: grid; gap: 2px; } .guia-h span { color: var(--tinta-2); font-size: 13px; }
+.guia-marca { font: 700 11px/1.2 var(--f-text, sans-serif); letter-spacing: .1em; text-transform: uppercase; color: var(--tinta-3) !important; }
+.guia-tit { font: 800 30px/1.1 var(--f-mono, monospace); letter-spacing: -.02em; }
+.guia-v { text-align: right; align-content: end; } .guia-v b { font-size: 22px; font-weight: 800; } .guia-v span { font-weight: 600; color: var(--tinta) !important; }
+.guia-aviso { margin: 0; padding: 10px 12px; border: 2px solid #B45309; border-radius: 10px; color: #7C2D12; font-weight: 600; background: #FFF7ED; }
+.guia-paso h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font-size: 17px; font-weight: 800; }
+.guia-paso h3 > span { width: 28px; height: 28px; border-radius: 50%; background: var(--tinta); color: #fff; display: grid; place-items: center; font: 800 14px var(--f-mono, monospace); flex-shrink: 0; }
+.guia-cambia, .guia-fin { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.guia-cambia svg { display: inline-block; vertical-align: -2px; margin-right: 8px; }
+.guia-nota { margin: 8px 0 0; color: var(--tinta-2); font-size: 13px; }
+.guia-dos { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.guia-cara { width: 100%; height: auto; display: block; max-height: 520px; }
+.guia-num { font-family: var(--f-mono, monospace); font-weight: 800; fill: #fff; }
+.guia-nom { font-weight: 700; fill: var(--tinta); paint-order: stroke; stroke: #fff; }
+.guia-est { font-family: var(--f-mono, monospace); font-weight: 800; fill: var(--tinta); }
+.guia-cm { font-family: var(--f-mono, monospace); font-weight: 700; fill: var(--tinta); }
+.guia-fichas { display: grid; gap: 8px; }
+.guia-ficha { display: grid; grid-template-columns: 34px minmax(0, 1fr) 26px; gap: 10px; align-items: start; padding: 10px 12px; border: 2px solid var(--c); border-radius: 12px; background: color-mix(in srgb, var(--s) 55%, #fff); break-inside: avoid; }
+.guia-ficha.vacio, .guia-ficha.asignado { --c: #9AA3A8; --s: #F2F4F5; border-style: dashed; grid-template-columns: 34px minmax(0, 1fr); }
+.guia-fn { width: 34px; height: 34px; border-radius: 50%; background: var(--tinta); color: #fff; display: grid; place-items: center; font: 800 17px var(--f-mono, monospace); }
+.guia-fc { display: grid; gap: 3px; min-width: 0; } .guia-fc > b { font-size: 15px; }
+.guia-ft { color: var(--tinta-2); font-size: 12.5px; } .guia-mono { font-family: var(--f-mono, monospace); }
+.guia-donde, .guia-como { font-size: 13.5px; } .guia-como { color: #24323A; font-size: 13px; }
+.guia-donde svg, .guia-como svg { display: inline-block; vertical-align: -2px; margin-right: 6px; }
+.guia-check { width: 24px; height: 24px; border: 2px solid var(--tinta); border-radius: 6px; display: inline-grid; place-items: center; flex-shrink: 0; background: #fff; color: #fff; padding: 0; }
+button.guia-check { cursor: pointer; width: 28px; height: 28px; }
+.guia-check.on { background: var(--tinta); }
+.guia-fin li { display: flex; gap: 10px; align-items: center; }
+.guia-firma { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 12px; font-size: 13px; }
+.guia-p { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid #DDDEDE; padding-top: 10px; font-size: 12px; color: var(--tinta-3); }
+.guia-p span { display: inline-flex; gap: 6px; align-items: center; }
+@media (max-width: 760px) {
+  .guia-hoja { padding: 18px 14px; } .guia-tit { font-size: 24px; } .guia-v { text-align: left; }
+  .guia-dos { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Imprimir: sólo la hoja, en A4 vertical. `imprimiendo-guia` lo pone quien
+   llama a `window.print()` (y lo saca al terminar). */
+@media print {
+  @page { size: A4 portrait; margin: 10mm; }
+  html.imprimiendo-guia, html.imprimiendo-guia body { background: #fff !important; height: auto !important; overflow: visible !important; }
+  html.imprimiendo-guia body * { visibility: hidden !important; }
+  html.imprimiendo-guia [data-hoja-de-guia], html.imprimiendo-guia [data-hoja-de-guia] * { visibility: visible !important; }
+  /* La capa que la muestra en pantalla es fija y con su propio scroll: al
+     imprimir, deja de serlo para que la hoja no se corte en el alto de la ventana. */
+  html.imprimiendo-guia [data-guia-capa] { position: static !important; overflow: visible !important; height: auto !important; inset: auto !important; }
+  html.imprimiendo-guia [data-hoja-de-guia] { position: absolute; left: 0; top: 0; max-width: none; border: 0; border-radius: 0; padding: 0; font-size: 12.5px; gap: 12px; }
+  html.imprimiendo-guia [data-hoja-de-guia] .guia-dos { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+  html.imprimiendo-guia [data-hoja-de-guia] .guia-cara { max-height: 125mm; }
+}

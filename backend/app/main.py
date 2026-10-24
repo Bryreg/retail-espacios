@@ -21,6 +21,7 @@ from app.routers import suscripcion as suscripcion_routes
 from app.routers import plataforma as plataforma_routes
 from app.routers import participaciones as participaciones_routes
 from app.routers import planogramas as planogramas_routes
+from app.routers import guia as guia_routes
 from app.routers import vender as vender_routes
 from app.routers import cobros as cobros_routes
 from app.routers import reservas as reservas_routes
@@ -478,6 +479,9 @@ app.include_router(participaciones_routes.router, prefix="/api")
 # promociones y publicarlo por versiones (`routers/planogramas.py`). No es la
 # planometría de un contrato (`routers/planograms.py`).
 app.include_router(planogramas_routes.router, prefix="/api")
+# La guía de montaje de una versión (fase 3): la abre una sesión o el enlace
+# firmado de ESA versión, sin contraseña y sin nada comercial.
+app.include_router(guia_routes.router, prefix="/api")
 # Guardar un contrato de Vender de una vez, todo o nada
 # (`routers/vender.py`, `docs/rediseno/vender-api.md`).
 app.include_router(vender_routes.router, prefix="/api")

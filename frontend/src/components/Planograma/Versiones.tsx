@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, FileText } from "lucide-react";
 import { describeError } from "../../api/client";
 import * as API from "../../api/planogramas";
 import type { VersionOut } from "../../api/planogramas";
@@ -11,7 +11,11 @@ const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 const ESTADO_DE_VERSION: Record<API.EstadoDeVersion, string> = { vigente: "vigente", programada: "programada", reemplazada: "reemplazada" };
 
 /** Las versiones de la cara: la vigente, las programadas y las reemplazadas. */
-export default function Versiones({ versiones, hoy, onCerrar, onVer }: { versiones: VersionOut[]; hoy: string; onCerrar: () => void; onVer: (v: VersionOut) => void }) {
+export default function Versiones({ versiones, hoy, onCerrar, onVer, onGuia }: {
+  versiones: VersionOut[]; hoy: string; onCerrar: () => void; onVer: (v: VersionOut) => void;
+  /** La guía de montaje de esa versión (fase 3). */
+  onGuia: (versionId: number) => void;
+}) {
   const [leyendo, setLeyendo] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ver = async (v: VersionOut) => {
@@ -27,7 +31,10 @@ export default function Versiones({ versiones, hoy, onCerrar, onVer }: { version
           <div key={v.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 rounded-xl border px-3 py-2"
             style={v.estado === "vigente" ? { borderColor: "rgb(var(--libre-borde-rgb))", background: "rgb(var(--libre-suave-rgb))" } : { borderColor: "rgb(var(--line-rgb))" }}>
             <b className="text-sm">Versión {v.numero} · {ESTADO_DE_VERSION[v.estado]}{v.vencida_hace_dias != null ? ` · venció ${haceCuanto(v.vencida_hace_dias)}` : ""}</b>
-            <button type="button" className={`${BOTON} row-span-2`} onClick={() => void ver(v)} disabled={leyendo !== null}><Eye {...ICONO} />{leyendo === v.id ? "Leyendo…" : "Ver"}</button>
+            <div className="row-span-2 flex flex-wrap justify-end gap-1.5">
+              <button type="button" className={BOTON} onClick={() => void ver(v)} disabled={leyendo !== null}><Eye {...ICONO} />{leyendo === v.id ? "Leyendo…" : "Ver"}</button>
+              <button type="button" className={BOTON} onClick={() => onGuia(v.id)} data-guia-de-la-version={v.numero}><FileText {...ICONO} />Guía</button>
+            </div>
             <span className="text-ink-3">
               Publicada el {fechaLegible(v.publicada_en?.slice(0, 10), hoy)}{v.publicada_por ? ` por ${v.publicada_por}` : ""} · rige desde el {fechaLegible(v.rige_desde, hoy)}
               {v.hasta ? ` hasta el ${fechaLegible(v.hasta, hoy)}` : ""}

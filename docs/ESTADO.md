@@ -1,7 +1,16 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-24 (tarde), **planogramas con destinos** (fase 2 de la
+Última actualización: 2026-10-24 (noche), **la guía de montaje** (fase 3 de la
+distribución): cada versión publicada de un planograma tiene su hoja «para dummies», UNA POR
+CARA: la cara de frente con cada destino numerado, dónde va en centímetros desde la izquierda
+y en qué estantes (contados DESDE ARRIBA), lo que cambia contra la versión anterior, lo que
+queda vacío a propósito y lo ya asignado («no tocar», sin nombres). Se imprime en una A4, se
+abre en el teléfono con un enlace firmado sin contraseña, y quien administra la manda a quien
+corresponde (no sale sola). La foto de cómo quedó NO es obligatoria. Sin precios ni
+proveedores. Una tabla nueva. Ver *Guía de montaje (2026-10-24)*.
+
+Antes, esa tarde, **planogramas con destinos** (fase 2 de la
 distribución): cualquier cara —la de un mueble que no se vende y lo LIBRE de uno que sí— se
 reparte entre **destinos** (categoría, marca propia, producto o grupo, promoción, otro) con
 las mismas piezas exactas de Distribuir, se guarda sola como borrador y se **publica por
@@ -361,20 +370,13 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
-### Próximas fases de la distribución (2026-10-24; la 2 ya está)
+### Próximas fases de la distribución (2026-10-24; la 2 y la 3 ya están)
 
 Lo que sigue a *Distribuir con piezas*. Nada de esto está hecho; queda escrito para no
 perderlo.
 
 - **Fase 2 · Planogramas con destinos: HECHA** (ver *Planogramas con destinos (2026-10-24)*).
-- **Fase 3 · Guía de montaje imprimible «para dummies».** Por cara y por VERSIÓN confirmada
-  de la distribución: una hoja (PDF o página para imprimir) con la cara de frente, cada pieza
-  con su marca y su color, medidas en centímetros desde el piso y desde el costado («de 0 a 90
-  cm desde la izquierda, del 2.º al 4.º estante»), y la lista de qué va dónde. Es lo que hoy
-  sale en el aviso de montaje, pero para pegar en la góndola. La versión impresa dice qué
-  versión es, para que una guía vieja se reconozca.
-- **Fase 3, con los destinos**: la guía sale de la VERSIÓN publicada del planograma (sus piezas
-  guardan la foto del destino: nombre, tipo, color, «cómo se monta», código), sin precios.
+- **Fase 3 · Guía de montaje: HECHA** (ver *Guía de montaje (2026-10-24)*).
 - **Fase 5 · Productos por SKU** (dibujo «Del lugar al producto», 2026-10-24, sin aprobar): la
   pieza sigue siendo el lugar; adentro, cada SKU es un bloque por estante del ancho de sus
   frentes, traído del ERP (primero una planilla) por el `codigo_externo` del destino. Necesita
@@ -1262,6 +1264,65 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 
 ## Qué está hecho
 
+### Guía de montaje (2026-10-24)
+
+Fase 3 de la distribución, con las cuatro decisiones del dueño: (1) **da la opción de
+mandarla a quien corresponde** (no sale sola al publicar); (2) los estantes se cuentan
+**desde arriba**; (3) la foto del final **no es obligatoria**; (4) **una guía por cara**.
+
+**Qué es**: la hoja de UNA versión publicada de UNA cara (`services/guia.py` arma los datos;
+`components/Guia/HojaDeGuia.tsx` la dibuja). Arriba: sede, «código · cara», el nombre del
+mueble, «Versión N» y su vigencia («Rige del 24 oct al 2 nov 2026»), y un aviso si no es la que
+hay que montar hoy (ya hay una más nueva / todavía no rige / venció pero sigue vigente). Tres
+pasos: **1. Qué cambia** contra la versión anterior (o «Primera versión»), con `queCambia` de
+la fase 2; **2. Qué va dónde**: la cara de frente en SVG con cada destino numerado de izquierda
+a derecha, los estantes numerados desde arriba (un «estante» es cada nivel donde se apoya
+mercadería, la base cuenta: 5 repisas → 6 estantes; una pieza ocupa un estante si tapa al menos
+la mitad de su alto), una regla en cm (al medio cm; el número que no entra sin pisar al de al
+lado se omite, la raya queda) y una ficha por destino: nombre, tipo · % de la cara · código,
+«De 2,5 a 72,5 cm desde la izquierda · estantes 2 a 4» y su «cómo se monta»; más «Vacío a
+propósito» (tramos libres de ≥ 5 cm) y «Ya asignado · no tocar» (lo vendido de la cara, en
+trama gris, SIN nombres de marcas); **3. Al terminar**: casillas y, en papel, la firma. Pie:
+«Generada el … · sin precios» y «Si en el mueble hay otra versión impresa, vale ésta.»
+
+**Papel**: la hoja usa su propia paleta (`guia.css`: `--tinta`, `--papel`, seis colores y seis
+tramas para que se distingan en blanco y negro), `color-scheme: light` aunque la app esté en
+oscuro. Imprimir (`imprimir.ts`) pone `html.imprimiendo-guia` y sólo sale
+`[data-hoja-de-guia]`, en una A4 vertical.
+
+**Dónde se entra**: al publicar una versión, el aviso de «Listo» ofrece «Ver e imprimir la
+guía» y «Mandarla a quien corresponde»; y en «Versiones», el botón «Guía» de cada una. Se abre
+encima de todo (`VerGuia`) con Imprimir, Mandarla y Copiar el enlace (estos dos, sólo quien
+puede publicar esa cara).
+
+**El enlace** (`?guia=<id>&t=<token>`): un JWT con rol `guia`, la versión y el cliente, que
+dura hasta el «hasta» de la versión (o su «rige desde») + 30 días. `decode_token` lo rechaza:
+sirve SÓLO en `/api/guia` (`require_guia`, sesión o enlace) y sólo para SU versión (otra →
+403; la foto de otra → 404; vencido → 401, «Este enlace ya no sirve»). `App.tsx` lo lee ANTES
+que el de montaje, lo saca de la barra (queda `?guia=1`, el token en `sessionStorage`) y abre
+`pages/GuiaDeMontaje.tsx` sin tablero ni sincronización: la hoja para ir marcando, «Tomar la
+foto de cómo quedó» (opcional) e «Imprimir la hoja».
+
+**La foto**: tabla nueva `fotos_de_guia` (la imagen en la base, los mismos tipos y tope que las
+fotos de montaje, quién la subió: «enlace» o el correo), unida a la versión; entra en el
+traspaso de un cliente. Bitácora `guia.foto`.
+
+**Mandarla** (`EnviarGuia`): arriba quien monta en la sede (Configuración → Contactos,
+marcado) y, para quien administra, la administración; abajo «Otros correos». El correo lleva
+el mueble, la versión, cada destino con su % y el enlace; sin precios. Sin correo
+configurado, 409 y el aviso de copiar el enlace. Bitácora `guia.enviada`.
+
+**Rutas**: `GET /api/guia?version=` (la hoja), `POST /api/guia/foto`, `GET /api/guia/foto?id=`;
+y en planogramas, `POST /guia/enlace`, `GET /guia/destinatarios`, `POST /guia/enviar` —las
+tres con el mismo permiso que publicar esa cara (`guia.puede_compartir`). Leer la guía de una
+cara que se vende con sesión pide administración, como el planograma.
+
+**Guardas**: `probar-guia.mjs` (`npm run probar:guia`: estantes desde arriba, numeración y
+cm, vacíos, cambios y avisos, correos, el orden de los enlaces en `App.tsx`, las rutas del
+cliente contra los routers, el papel con sus propias variables, nada comercial ni «sombra», un
+amarillo por archivo). `backend/tests/test_guia.py`: la hoja, el enlace que abre su guía y
+nada más (vencimiento, foto, SVG rechazado, otra versión), lo asignado sin nombres y el envío.
+
 ### Planogramas con destinos (2026-10-24)
 
 Fase 2 de la distribución, con el dibujo aprobado («Planificar cualquier mueble, se venda o
@@ -1329,8 +1390,8 @@ cara y «Planificar la cara A/B», o «Lo libre de la cara A/B» en uno que se v
 administración), y Sede → el globo de un mueble interno → «Planograma de la cara A» (el
 equipo no ve el Plano: entra por acá). En el Editor 3D todavía no hay entrada.
 
-**Lo que no hace todavía**: la guía imprimible (fase 3), la supervisión (fase 4), el 3D del
-planograma y los productos por SKU (fase 5).
+**Lo que no hace todavía**: la supervisión (fase 4), el 3D del planograma y los productos por
+SKU (fase 5). La guía imprimible (fase 3) ya está: *Guía de montaje (2026-10-24)*.
 
 **Guardas**: `probar-planogramas.mjs` (`npm run probar:planogramas`: los estados de las
 piezas, lo libre, las palabras, los gemelos de tipos, colores y rutas, la casa —nada en el
