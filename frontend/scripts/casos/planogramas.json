@@ -1,0 +1,345 @@
+{
+ "leeme": "Generado por `npm run probar:planogramas -- --escribir`. Piezas de destinos que arma el navegador con su % dibujado y los problemas que espera; `backend/tests/test_planogramas_gemelos.py` las pasa por `services/planogramas.revisar` del servidor.",
+ "casos": [
+  {
+   "nombre": "tres destinos, uno sin ubicar",
+   "mueble": {
+    "type": "gondola",
+    "w": 1.8,
+    "d": 0.9,
+    "h": 1.8,
+    "entrepanos": 5
+   },
+   "piezas": [
+    {
+     "destino_id": 1,
+     "pb": 4000,
+     "vertices": [
+      [
+       0.013889,
+       0.066667
+      ],
+      [
+       0.402778,
+       0.066667
+      ],
+      [
+       0.402778,
+       0.944444
+      ],
+      [
+       0.013889,
+       0.944444
+      ]
+     ]
+    },
+    {
+     "destino_id": 2,
+     "pb": 2500,
+     "vertices": [
+      [
+       0.402778,
+       0.066667
+      ],
+      [
+       0.645834,
+       0.066667
+      ],
+      [
+       0.645834,
+       0.944444
+      ],
+      [
+       0.402778,
+       0.944444
+      ]
+     ]
+    },
+    {
+     "destino_id": 3,
+     "pb": 1750,
+     "vertices": null
+    }
+   ],
+   "dibujado": {
+    "1": 4000,
+    "2": 2500,
+    "3": 0
+   },
+   "codigos": []
+  },
+  {
+   "nombre": "dos destinos que se pisan",
+   "mueble": {
+    "type": "gondola",
+    "w": 1.8,
+    "d": 0.9,
+    "h": 1.8,
+    "entrepanos": 5
+   },
+   "piezas": [
+    {
+     "destino_id": 1,
+     "pb": 4000,
+     "vertices": [
+      [
+       0.013889,
+       0.066667
+      ],
+      [
+       0.402778,
+       0.066667
+      ],
+      [
+       0.402778,
+       0.944444
+      ],
+      [
+       0.013889,
+       0.944444
+      ]
+     ]
+    },
+    {
+     "destino_id": 2,
+     "pb": 2500,
+     "vertices": [
+      [
+       0.352778,
+       0.066667
+      ],
+      [
+       0.595834,
+       0.066667
+      ],
+      [
+       0.595834,
+       0.944444
+      ],
+      [
+       0.352778,
+       0.944444
+      ]
+     ]
+    }
+   ],
+   "dibujado": {
+    "1": 4000,
+    "2": 2500
+   },
+   "codigos": [
+    "SOLAPE"
+   ]
+  },
+  {
+   "nombre": "uno corto y uno pasado",
+   "mueble": {
+    "type": "gondola",
+    "w": 1.8,
+    "d": 0.9,
+    "h": 1.8,
+    "entrepanos": 5
+   },
+   "piezas": [
+    {
+     "destino_id": 1,
+     "pb": 5000,
+     "vertices": [
+      [
+       0.013889,
+       0.066667
+      ],
+      [
+       0.402778,
+       0.066667
+      ],
+      [
+       0.402778,
+       0.944444
+      ],
+      [
+       0.013889,
+       0.944444
+      ]
+     ]
+    },
+    {
+     "destino_id": 2,
+     "pb": 2000,
+     "vertices": [
+      [
+       0.402778,
+       0.066667
+      ],
+      [
+       0.645834,
+       0.066667
+      ],
+      [
+       0.645834,
+       0.944444
+      ],
+      [
+       0.402778,
+       0.944444
+      ]
+     ]
+    }
+   ],
+   "dibujado": {
+    "1": 4000,
+    "2": 2500
+   },
+   "codigos": [
+    "PIEZA_FALTA",
+    "PIEZA_SOBRA"
+   ]
+  },
+  {
+   "nombre": "un destino encima de lo vendido",
+   "mueble": {
+    "type": "gondola",
+    "w": 1.8,
+    "d": 0.9,
+    "h": 1.8,
+    "entrepanos": 5
+   },
+   "vendido": [
+    {
+     "space_id": 62,
+     "nombre": "Café Montaña · Café A",
+     "pb": 3000,
+     "intervalos": [
+      {
+       "desde": "2026-10-24",
+       "hasta": "2027-03-31",
+       "pb": 3000
+      }
+     ],
+     "poligonos": [
+      [
+       [
+        0.013889,
+        0.066667
+       ],
+       [
+        0.305556,
+        0.066667
+       ],
+       [
+        0.305556,
+        0.944444
+       ],
+       [
+        0.013889,
+        0.944444
+       ]
+      ]
+     ]
+    }
+   ],
+   "piezas": [
+    {
+     "destino_id": 2,
+     "pb": 2000,
+     "vertices": [
+      [
+       0.2,
+       0.066667
+      ],
+      [
+       0.394444,
+       0.066667
+      ],
+      [
+       0.394444,
+       0.944444
+      ],
+      [
+       0.2,
+       0.944444
+      ]
+     ]
+    }
+   ],
+   "dibujado": {
+    "2": 2000
+   },
+   "codigos": [
+    "PISA_LO_VENDIDO"
+   ]
+  },
+  {
+   "nombre": "un destino al lado de lo vendido",
+   "mueble": {
+    "type": "gondola",
+    "w": 1.8,
+    "d": 0.9,
+    "h": 1.8,
+    "entrepanos": 5
+   },
+   "vendido": [
+    {
+     "space_id": 62,
+     "nombre": "Café Montaña · Café A",
+     "pb": 3000,
+     "intervalos": [
+      {
+       "desde": "2026-10-24",
+       "hasta": "2027-03-31",
+       "pb": 3000
+      }
+     ],
+     "poligonos": [
+      [
+       [
+        0.013889,
+        0.066667
+       ],
+       [
+        0.305556,
+        0.066667
+       ],
+       [
+        0.305556,
+        0.944444
+       ],
+       [
+        0.013889,
+        0.944444
+       ]
+      ]
+     ]
+    }
+   ],
+   "piezas": [
+    {
+     "destino_id": 2,
+     "pb": 2000,
+     "vertices": [
+      [
+       0.305556,
+       0.066667
+      ],
+      [
+       0.5,
+       0.066667
+      ],
+      [
+       0.5,
+       0.944444
+      ],
+      [
+       0.305556,
+       0.944444
+      ]
+     ]
+    }
+   ],
+   "dibujado": {
+    "2": 2000
+   },
+   "codigos": []
+  }
+ ]
+}

@@ -1,0 +1,229 @@
+"""Planogramas con destinos: la API (fase 2 de la distribución, 2026-10-24).
+
+Rutas efectivas ``/api/planogramas/…``. No confundir con
+``routers/planograms.py``: ése es la PLANOMETRÍA de un contrato (un archivo).
+
+· Leer: cualquier sesión del supermercado (``require_auth``). Un mueble que se
+  vende sólo lo lee quien administra (trae contratos); el equipo ve los
+  internos, que es lo que monta.
+· Escribir (borrador, publicar, descartar, destinos): quien administra, y el
+  equipo si la dueña lo habilitó (``quien_publica = "equipo"``) y sólo en
+  muebles internos. Cambiar quién publica: sólo administración.
+· Los GET reciben sus datos por query, nunca por ruta (el barrido del token de
+  montaje los cubre, y un código con ``#`` o ``/`` no rompe la URL).
+· La lógica vive en ``services/planogramas.py`` (sin commit). Acá se anota la
+  bitácora, se hace commit y DESPUÉS se arma la respuesta.
+"""
+from datetime import date
+from typing import Literal, Optional
+
+from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from sqlalchemy.orm import Session
+
+from app.auth import require_admin, require_auth
+from app.database import get_db
+from app.services import planogramas as servicio
+from app.services.bitacora import anotar
+from app.services.ciclo_participaciones import actor_de
+
+router = APIRouter(prefix="/planogramas", tags=["planogramas"])
+
+
+class _Estricto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CaraIn(_Estricto):
+    sede: str = Field(min_length=1, max_length=120)
+    fixture_id: str = Field(min_length=1, max_length=200)
+    cara: Literal["A", "B"]
+    version: StrictInt = Field(ge=0)
+
+
+class PiezaIn(_Estricto):
+    destino_id: StrictInt
+    pb: StrictInt = Field(ge=1, le=10000)
+    #: None: todavía sin ubicar. La estructura la mira el servicio.
+    vertices: Optional[list] = None
+
+
+class BorradorIn(CaraIn):
+    piezas: list[PiezaIn] = Field(default_factory=list)
+    #: El autoguardado del navegador: sin bitácora.
+    automatico: bool = False
+
+
+class PublicarIn(CaraIn):
+    rige_desde: date
+    hasta: Optional[date] = None
+
+
+class DestinoIn(_Estricto):
+    sede: str = Field(min_length=1, max_length=120)
+    nombre: str = Field(min_length=1, max_length=120)
+    tipo: str
+    color: str
+    como_se_monta: Optional[str] = Field(default=None, max_length=2000)
+    codigo_externo: Optional[str] = Field(default=None, max_length=120)
+    en_la_sede: bool = False
+
+
+class CambioDeDestinoIn(_Estricto):
+    nombre: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    tipo: Optional[str] = None
+    color: Optional[str] = None
+    como_se_monta: Optional[str] = Field(default=None, max_length=2000)
+    codigo_externo: Optional[str] = Field(default=None, max_length=120)
+    en_la_sede: Optional[bool] = None
+
+
+class AjustesIn(_Estricto):
+    quien_publica: Literal["admin", "equipo"]
+
+
+def _bloque(db: Session, sede: str, fixture_id: str, cara: str, rol: str) -> dict:
+    c = servicio.resolver(db, sede, fixture_id, cara)
+    servicio.exigir_lectura(rol, c)
+    return servicio.bloque(db, c, rol)
+
+
+# ─── Lecturas ─────────────────────────────────────────────────────────────────
+
+@router.get("/cara")
+def leer_cara(
+    sede: str = Query(..., min_length=1),
+    fixture_id: str = Query(..., min_length=1),
+    cara: Literal["A", "B"] = "A",
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Todo lo de una cara para planificarla."""
+    return _bloque(db, sede, fixture_id, cara, rol)
+
+
+@router.get("/resumen")
+def leer_resumen(
+    sede: str = Query(..., min_length=1),
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """El estado del planograma de cada cara de la sede que tiene uno."""
+    return {"caras": servicio.resumen(db, sede, rol), "quien_publica": servicio.quien_publica(db),
+            "puede_planificar": servicio.puede_planificar(db, rol)}
+
+
+@router.get("/version")
+def leer_version(
+    id: int = Query(..., ge=1),
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Una versión publicada con sus piezas («Ver» en Versiones)."""
+    return servicio.leer_version(db, id, rol)
+
+
+@router.get("/destinos")
+def leer_destinos(
+    sede: str = Query(..., min_length=1),
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Los destinos guardados de la sede, para reusar."""
+    return servicio.destinos_de_la_sede(db, sede)
+
+
+# ─── Escrituras ───────────────────────────────────────────────────────────────
+
+@router.put("/borrador")
+def guardar_borrador(
+    cuerpo: BorradorIn,
+    request: Request,
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Guardar el borrador de la cara (con sus problemas marcados: un borrador
+    nunca es una instrucción de montaje)."""
+    e = {**cuerpo.model_dump(exclude={"piezas"}), "piezas": [p.model_dump() for p in cuerpo.piezas]}
+    cara, _pl = servicio.guardar_borrador(db, e, actor_de(request, rol), rol)
+    if not cuerpo.automatico:
+        anotar(db, request, rol, "planograma.borrador", entidad="planograma", entidad_id=cara.codigo,
+               detalle=f"{len(cuerpo.piezas)} pieza(s)")
+    db.commit()
+    return servicio.bloque(db, cara, rol)
+
+
+@router.post("/publicar")
+def publicar(
+    cuerpo: PublicarIn,
+    request: Request,
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """El borrador pasa a ser la versión siguiente (409 ``planograma_invalido``
+    con los problemas si no se puede)."""
+    hecho = servicio.publicar(db, cuerpo.model_dump(), actor_de(request, rol), rol)
+    anotar(db, request, rol, "planograma.publicado", entidad="planograma", entidad_id=hecho.cara.codigo,
+           detalle=hecho.detalle)
+    db.commit()
+    return {**servicio.bloque(db, hecho.cara, rol), "publicada": hecho.version.numero}
+
+
+@router.post("/descartar")
+def descartar(
+    cuerpo: CaraIn,
+    request: Request,
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Borrar el borrador (las versiones publicadas quedan)."""
+    cara, _pl = servicio.descartar_borrador(db, cuerpo.model_dump(), actor_de(request, rol), rol)
+    anotar(db, request, rol, "planograma.descartado", entidad="planograma", entidad_id=cara.codigo,
+           detalle="Se descartó el borrador")
+    db.commit()
+    return servicio.bloque(db, cara, rol)
+
+
+@router.post("/destinos", status_code=201)
+def crear_destino(
+    cuerpo: DestinoIn,
+    request: Request,
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    servicio.exigir_que_puede(db, rol)
+    d = servicio.crear_destino(db, cuerpo.model_dump(), actor_de(request, rol))
+    anotar(db, request, rol, "destino.creado", entidad="destino", entidad_id=d.id,
+           detalle=f"{d.nombre} · {servicio.tipo_legible(d.tipo)}")
+    db.commit()
+    return servicio.destino_out(d)
+
+
+@router.patch("/destinos/{destino_id}")
+def cambiar_destino(
+    destino_id: int,
+    cuerpo: CambioDeDestinoIn,
+    request: Request,
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    servicio.exigir_que_puede(db, rol)
+    d = servicio.cambiar_destino(db, destino_id, cuerpo.model_dump(exclude_unset=True), actor_de(request, rol))
+    anotar(db, request, rol, "destino.cambiado", entidad="destino", entidad_id=d.id, detalle=d.nombre)
+    db.commit()
+    return servicio.destino_out(d)
+
+
+@router.put("/ajustes")
+def poner_ajustes(
+    cuerpo: AjustesIn,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Quién publica: sólo administración, o también el equipo."""
+    servicio.poner_quien_publica(db, cuerpo.quien_publica, actor_de(request, rol))
+    anotar(db, request, rol, "planograma.quien_publica", entidad="ajuste", entidad_id="quien_publica",
+           detalle="Publica también el equipo" if cuerpo.quien_publica == "equipo" else "Publica sólo administración")
+    db.commit()
+    return {"quien_publica": cuerpo.quien_publica}

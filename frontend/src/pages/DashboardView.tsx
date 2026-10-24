@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   Box,
   Layers,
+  Shapes,
   // Rediseño 2026-10 (hoja de piezas): la barra de la sede, el ícono de cada
   // tarjeta y de cada cifra, y las herramientas del plano. `MapIcon` es el
   // `Map` de lucide con su otro nombre: `Map` a secas taparía el de JS.
@@ -28,6 +29,8 @@ import {
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { useFichasPropias } from "../store/fichasPropias";
+import { usePlanograma } from "../store/planogramaStore";
+import { tieneSuperficie } from "../utils/superficie";
 import { temaActual, useTema } from "../tema";
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client, { describeError } from "../api/client";
@@ -2888,6 +2891,25 @@ function FixturePopover({
           >
             <Layers size={13} />
             Abrir en Distribución
+          </button>
+        )}
+
+        {/* Un mueble interno con cara: su planograma (lo que hay que montar).
+            Lo ve todo el equipo; lo planifica quien administra (o el equipo,
+            si la dueña lo habilitó). */}
+        {!rentable && tieneSuperficie(fixture.type) && (
+          <button
+            data-abrir-planograma
+            onClick={() => { onClose(); void usePlanograma.getState().abrir({ sede: sedeActiva, fixtureId: fixture.id, cara: entry.face }); }}
+            style={{
+              width: "100%", height: 34, borderRadius: "var(--r-md)",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink-2)",
+              fontSize: 12.5, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+            }}
+          >
+            <Shapes size={13} />
+            Planograma{faces.length > 1 ? ` de la cara ${entry.face}` : ""}
           </button>
         )}
 

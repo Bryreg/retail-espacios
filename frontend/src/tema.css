@@ -483,6 +483,16 @@
      verde suave). En claro alcanza con el velo; en oscuro el verde de lo
      libre es casi tan oscuro como el velo de la marca y se perdía: más alto. */
   --pieza-alfa: 0.24;
+  /* Los DESTINOS de un planograma (categoría, marca propia, promoción…, fase 2
+     de la distribución): seis tonos que no son estados —ni el verde de lo
+     libre, ni el ámbar de lo que entra, ni el rojo de lo ocupado— y que se
+     leen sobre el papel. Lo vendido se ve en gris. */
+  --destino-1-rgb: 26 103 194;    /* #1A67C2 azul */
+  --destino-2-rgb: 194 65 12;     /* #C2410C naranja */
+  --destino-3-rgb: 109 40 217;    /* #6D28D9 violeta */
+  --destino-4-rgb: 164 51 143;    /* #A4338F magenta */
+  --destino-5-rgb: 14 116 144;    /* #0E7490 petróleo */
+  --destino-6-rgb: 138 90 20;     /* #8A5A14 ocre */
 
   /* ── Elevación ──────────────────────────────────────────────────────────
      Se respeta el principio escrito («separar con una línea de 1px es más
@@ -604,6 +614,13 @@ html[data-tema="oscuro"] {
   --marca-2: #A4338F;
   --marca-3: #B165FD;
   --pieza-alfa: 0.5;
+  /* Los destinos de un planograma, más claros: pasan sobre `#0B1116`. */
+  --destino-1-rgb: 91 155 234;    /* #5B9BEA */
+  --destino-2-rgb: 240 138 85;    /* #F08A55 */
+  --destino-3-rgb: 167 139 250;   /* #A78BFA */
+  --destino-4-rgb: 224 123 200;   /* #E07BC8 */
+  --destino-5-rgb: 56 189 216;    /* #38BDD8 */
+  --destino-6-rgb: 217 164 65;    /* #D9A441 */
 
   --sh-1: 0 1px 2px rgba(0, 0, 0, .5);
   --sh-2: 0 12px 34px -14px rgba(0, 0, 0, .8), 0 2px 8px rgba(0, 0, 0, .4);
@@ -633,6 +650,13 @@ html[data-tema="oscuro"] {
 [data-cajon-oscuro] {
   color-scheme: dark;
   --pieza-alfa: 0.5;
+  /* Los destinos de un planograma, más claros: pasan sobre `#0B1116`. */
+  --destino-1-rgb: 91 155 234;    /* #5B9BEA */
+  --destino-2-rgb: 240 138 85;    /* #F08A55 */
+  --destino-3-rgb: 167 139 250;   /* #A78BFA */
+  --destino-4-rgb: 224 123 200;   /* #E07BC8 */
+  --destino-5-rgb: 56 189 216;    /* #38BDD8 */
+  --destino-6-rgb: 217 164 65;    /* #D9A441 */
 
   --surface-rgb:   11 17 22;    /* #0B1116 */
   --surface-2-rgb: 22 33 42;    /* #16212A */

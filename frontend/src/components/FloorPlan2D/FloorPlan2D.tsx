@@ -43,6 +43,9 @@ import {
 // «Abrir en Distribución» (el Editor 3D en esa cara): el mismo pedido que la
 // ficha de Supervisar, sólo tipos y el store de lectura.
 import { useAbrirEnDistribucion } from "../Distribucion/ParticipacionesDeLaCara";
+import EntradaDelPlanograma from "../Planograma/EntradaDelPlanograma";
+import { tieneSuperficie } from "../../utils/superficie";
+import { carasDe } from "../../types/espacio";
 // La ocupación ANÓNIMA de las caras por participación (store de LECTURA): el
 // color de esas caras sale de ahí (§10.8), no de un contrato `…-PC3`.
 import { claveDeSede, useOcupacionStore } from "../../store/ocupacionStore";
@@ -4120,6 +4123,16 @@ function AssignmentPanel({
                 : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
             </p>
           </FilaDelPanel>
+
+          {/* El planograma (fase 2 de la distribución): repartir cada cara
+              entre destinos —categorías, marca propia, promociones— y
+              publicarlo por versiones. Un mueble interno, para todos (lo que
+              hay que montar); uno que se vende, sólo administración (lo libre). */}
+          {muebleDelStore && tieneSuperficie(muebleDelStore.type) && (
+            <FilaDelPanel k="Planograma" titulo="Planograma de la cara" campo="planograma" bloque>
+              <EntradaDelPlanograma sede={sede} fixtureId={item.id} caras={carasDe(muebleDelStore)} rentable={rentable} esAdmin={isAdmin} />
+            </FilaDelPanel>
+          )}
 
           {/* Vender por partes: la nevera entera o por puertas; el mural, la
               góndola, la nevera abierta y la de vegetales, por tramos; la
