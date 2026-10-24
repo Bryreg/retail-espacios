@@ -57,6 +57,9 @@
  *   PROBAR_VENDER_PROVEEDOR_2 otro proveedor con artes (por defecto «Postobón»)
  *   PROBAR_VENDER_CARAS       las caras del contrato del visor, como las rotula el plano
  *                             (por defecto «PUN-03,GON-02·B,NEV-01»; la primera, libre en el periodo)
+ *   PROBAR_VENDER_EDITA       el renglón de Supervisar → Corregir cuyo «Editar contrato» se mide
+ *                             (por ej. «PUN-03·EN1»); sin ella, el primero que lo tenga. Tiene
+ *                             que haber uno: el pie en edición también va ≤ 200 px
  *   PROBAR_VENDER_REGIONES    imprime qué entra en la superficie de Vender y por qué
  *                             (útil cuando una falla parece venir de un archivo ajeno)
  *
@@ -116,6 +119,13 @@ const ARCHIVOS_VENDER = [
   "src/components/Contrato/LineaDelContrato.tsx",
   "src/components/Contrato/CamposDelContrato.tsx",
   "src/api/vender.ts",
+  // «Editar contrato» (2026-10-22): la confirmación antes de guardar y
+  // reenviar, que se abre ENCIMA de la ficha (la mira el proveedor), y las
+  // cuentas puras de la edición (lo que cambia, los cortes vencidos, el
+  // propio contrato que no está tomado contra sí mismo). Pasan por todas las
+  // guardas de este archivo.
+  "src/components/Contrato/ConfirmarEdicion.tsx",
+  "src/utils/edicionDeContrato.ts",
 ];
 /** Los estilos que bajan con el visor (`VisorDeVenta.tsx` los importa): la
  *  misma escala de letra y el mismo rótulo que `vender.css`. */
@@ -363,6 +373,16 @@ const COMPONENTES_VENDER = new Set([
   // punteada de «Sumar otro espacio» (`Plus`), lo que falta en el pie
   // (`CircleAlert`) y el chevron de la fila plegable del correo y la nota.
   "Bloque", "Plus", "CircleAlert", "ChevronDown",
+  // «Editar contrato» (2026-10-22): la confirmación (`ConfirmarEdicion`: a
+  // quiénes se reenvía —comercial y montaje por su rol, el proveedor con SU
+  // correo— y lo que cambia de ESTE contrato; nada de la nota ni de otros) y
+  // sus íconos: la flecha de «Qué cambia» (`ArrowRight`), el aviso del
+  // reemplazo (`FileWarning`), el de los cortes vencidos (`CalendarClock`),
+  // «Qué cambia» (`GitCompareArrows`), «Guardar cambios y reenviar» (`Send`),
+  // los tres destinatarios (`Users`, `Wrench`; `Building2` ya estaba) y
+  // «Volver a Supervisar» (`ArrowLeft`).
+  "ConfirmarEdicion", "ArrowRight", "ArrowLeft", "FileWarning", "CalendarClock", "GitCompareArrows", "Send",
+  "Users", "Wrench",
   "LimiteDelVisor", "Suspense", "AbriendoEl3D", "FallaDelVisor", "VisorDeVenta",
   // El visor (`VisorDeVenta.tsx`). Las piezas del editor que usa —la escena,
   // el panel «Cómo va», el HUD y la ficha del envase— se leen abajo
@@ -1119,7 +1139,10 @@ console.log("\nvender · las participaciones de cara");
   prueba("lo que se toca en el plano llega ENTERO a la ficha: el % (`pc`) y la cara por partes sin elegir (`porPartes`), no sólo cara y parte (ejecutado)", () => {
     const i = vista.indexOf("const espaciosDelContrato = useMemo(");
     assert.ok(i >= 0, "no está espaciosDelContrato");
-    const bloque = vista.slice(i, vista.indexOf("[enContrato, fixtures],", i));
+    // Los muebles del contrato: los del plano con la forma PENDIENTE de una
+    // edición encima (`fixturesDelContrato`, «Editar contrato»).
+    const bloque = vista.slice(i, vista.indexOf("[enContrato, fixturesDelContrato],", i));
+    assert.ok(bloque.length > 100, "espaciosDelContrato no depende de los muebles del contrato");
     assert.match(bloque, /\.map\(\(\{ id, face, parte, pc, porPartes \}\): CaraElegida \| null =>/, "espaciosDelContrato pierde `pc` o `porPartes`");
     assert.match(bloque, /\.filter\(\(x\): x is CaraElegida => x !== null\)/);
     // Ejecutado: la función del map, con dos muebles.
@@ -1127,7 +1150,7 @@ console.log("\nvender · las participaciones de cara");
     assert.ok(a > 5 && b > a, "no se pudo leer el map de espaciosDelContrato");
     const js = transformSync(`const f = ${bloque.slice(a, b)};`, { loader: "ts" }).code;
     const fixtures = [{ id: "g1" }, { id: "p2" }];
-    const map = new Function("fixtures", `${js}\nreturn f;`)(fixtures);
+    const map = new Function("fixturesDelContrato", `${js}\nreturn f;`)(fixtures);
     assert.deepEqual(map({ id: "g1", face: "B", pc: true }), { fixture: fixtures[0], face: "B", pc: true }, "un % entra como «Entera»");
     assert.deepEqual(map({ id: "p2", face: "A", porPartes: "entrepanos" }), { fixture: fixtures[1], face: "A", porPartes: "entrepanos" }, "«Por entrepaños» no llega a la ficha");
     assert.deepEqual(map({ id: "p2", face: "A", parte: "EN1" }), { fixture: fixtures[1], face: "A", parte: "EN1" });
@@ -1824,7 +1847,11 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
   prueba("los módulos de Supervisar (PR 2) no se alcanzan desde Vender", () => {
     const MODULOS = ["src/components/Supervisar/plata.ts", "src/components/Supervisar/useUnidadDePlata.ts",
       "src/components/Supervisar/paraRevisar.ts", "src/components/Supervisar/piezas.tsx",
-      "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/CobrosYReservas.tsx"];
+      "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/CobrosYReservas.tsx",
+      // «Editar contrato» (2026-10-22): lo que Supervisar lee de UN contrato
+      // para reabrirlo (con plata) no se alcanza desde Vender; Vender guarda
+      // la edición con su propio módulo (`api/vender.ts`, `edita`).
+      "src/api/edicionDeContrato.ts"];
     for (const f of MODULOS) assert.ok(hay(f), `no está ${f}`);
     const malos = [];
     for (const f of ARCHIVOS_VENDER.filter(hay)) {
@@ -1844,7 +1871,9 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     // «Aire y pines»: los puntos del plano, su botón y el renglón que señala su
     // mueble son de Supervisar: ninguno se alcanza desde Vender.
     const usados = [...nombres, "setUnidad", "plata", "avisos", "chinchetasDeRevision", "faltaPlanometria", "cuentasDeRevision",
-      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave"];
+      "pendientesEnElPlano", "setPendientesEnElPlano", "senalarEnElPlano", "senalarFila", "avisosPorClave",
+      // «Editar contrato»: el botón y lo que abre son de Supervisar.
+      "editarContrato", "editarFila", "accionEditar", "contratoParaEditar", "avisoDeEdicion"];
     const hits = [];
     for (const r of SUP.regiones.filter((x) => x.archivo === VISTA)) {
       const ids = identificadores(r.texto);
@@ -1853,6 +1882,29 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.deepEqual([...new Set(hits)], [], `Vender alcanza lo de Supervisar:\n         ${[...new Set(hits)].join("\n         ")}`);
   });
 }
+
+/* ── «Editar contrato»: Vender sólo conoce el contrato que se edita ─────────
+   Vender reabre UN contrato guardado (`semilla.edita`). El `leaseId` del mapa
+   comercial es de administración: en los archivos que dibujan Vender sólo se
+   nombra el de la edición (`edita.leaseId`), nunca el de otro espacio, y
+   nunca se pinta como texto. La exclusión del propio contrato vive en
+   `utils/edicionDeContrato.ts` (pura). */
+prueba("Vender sólo usa el `leaseId` del contrato que se edita, y nunca lo pinta", () => {
+  const hits = [];
+  for (const f of ["src/components/Contrato/ModoVender.tsx", "src/components/Contrato/Contrato.tsx",
+    "src/components/Contrato/LineaDelContrato.tsx", "src/components/Contrato/CamposDelContrato.tsx",
+    "src/components/Contrato/ConfirmarEdicion.tsx", "src/components/Contrato/VisorDeVenta.tsx"].filter(hay)) {
+    sinComentarios(leer(f)).split("\n").forEach((l, k) => {
+      if (/leaseId|lease_id/.test(l) && !/edita\??\.leaseId|lease_id: edita\.leaseId/.test(l)) hits.push(`${f}:${k + 1} — ${l.trim().slice(0, 110)}`);
+      if (/>\s*\{[^}]*leaseId[^}]*\}\s*</.test(l)) hits.push(`${f}:${k + 1} pinta el leaseId`);
+    });
+  }
+  assert.deepEqual(hits, [], `Vender nombra otros contratos:\n         ${hits.join("\n         ")}`);
+  // La nota interna no se carga ni se manda editando, ni se ofrece el campo.
+  const contrato = sinComentarios(leer("src/components/Contrato/Contrato.tsx"));
+  assert.match(contrato, /nota: edita \? undefined : nota\.trim\(\) \|\| undefined,/);
+  assert.doesNotMatch(sinComentarios(leer("src/utils/edicionDeContrato.ts")), /\bnota\b|notes|observation/);
+});
 
 /* ── la planometría no es de Vender (decisión de la dueña, 2026-10-20) ──────
    Se carga SÓLO en Supervisar, en la ficha del espacio, con el contrato ya
@@ -2655,6 +2707,80 @@ if (!URL_VENDER) {
       malas.push(...reservandoRodando);
       assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
     });
+    // «Editar contrato» (la corrección tras la ronda de prueba): el pie en
+    // edición tampoco pasa de 200 px —con cuatro cambios medía 320 a 1366×768
+    // y tapaba el % y el corte—, «Guardar cambios y reenviar» se ve sin rodar,
+    // y el % de las ventas se alcanza rodando la pantalla, arriba del pie.
+    {
+      const { ctx: ce, p: pe } = await abrir("light");
+      const EDITA = process.env.PROBAR_VENDER_EDITA ?? "";
+      let abierta = "";
+      try {
+        if (!(await pe.getByRole("button", { name: /^Supervisar/ }).count())) await pe.getByRole("button", { name: /^Sede$/ }).first().click();
+        await pe.getByRole("button", { name: /^Supervisar/ }).first().click();
+        await pe.waitForTimeout(2500);
+        await pe.locator('.sup button[data-grupo="corregir"][aria-pressed]').first().click();
+        await pe.waitForTimeout(800);
+        const filas = pe.locator("[data-fila-revisar]", EDITA ? { hasText: EDITA } : {}).filter({ has: pe.locator("[data-editar-contrato]") });
+        if (await filas.count()) {
+          await filas.first().locator("[data-editar-contrato]").first().click();
+          await pe.waitForSelector("[data-editando]", { timeout: 20000 });
+          abierta = "sí";
+        }
+      } catch (e) { abierta = ""; console.log(`       aviso · no se pudo abrir «Editar contrato»: ${String(e).split("\n")[0]}`); }
+      const medidas = [];
+      if (abierta) {
+        // Cuatro cambios: proveedor, marca, «Hasta» y el cobro (% de las ventas).
+        await pe.locator('.vender input[aria-label="Proveedor"]').fill("Proveedor de prueba del pie");
+        await pe.locator('.vender input[aria-label="Marca"]').fill("Marca del pie");
+        const hasta = pe.locator('.vender input[aria-label="Hasta"]');
+        const h = await hasta.inputValue();
+        await hasta.fill(`${Number(h.slice(0, 4)) + 1}${h.slice(4)}`);
+        await pe.getByRole("button", { name: "% de las ventas" }).click();
+        await pe.getByLabel("Porcentaje de las ventas").fill("7,5");
+        await pe.mouse.move(5, 5);
+        await pe.waitForTimeout(900);
+        for (const [ancho, alto] of [[1366, 768], [1440, 900]]) {
+          await pe.setViewportSize({ width: ancho, height: alto });
+          await pe.waitForTimeout(600);
+          await pe.evaluate(`${AREA}.scrollTop = 0`);
+          const m = await medirContrato(pe);
+          const rueda = await rodandoLaPantalla(pe);
+          const linea = await pe.evaluate(() => document.querySelector("[data-que-cambia]")?.innerText.replace(/\s+/g, " ").trim() ?? "");
+          const lineaAlto = await pe.evaluate(() => document.querySelector("[data-que-cambia]")?.getBoundingClientRect().height ?? 0);
+          // Un contrato que ya arrancó no ofrece los atajos de fecha (moverían el «Desde»).
+          const arranco = await pe.evaluate(() => !!document.querySelector("[data-desde-bloqueado]"));
+          // El % de las ventas, rodando la pantalla, entero y arriba del pie.
+          const pct = await pe.evaluate(`(async () => {
+            const panel = ${PANEL}, area = ${AREA}, pie = panel.querySelector(".pie-contrato");
+            const el = panel.querySelector('input[aria-label="Porcentaje de las ventas"]');
+            if (!el) return "no está";
+            area.scrollTop += el.getBoundingClientRect().top - 140;
+            await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+            const b = el.getBoundingClientRect(), pr = pie.getBoundingClientRect();
+            area.scrollTop = 0;
+            return b.top < 0 || b.bottom > pr.top + 0.5 ? "rodando, lo tapa el pie" : "";
+          })()`);
+          medidas.push({ ancho, alto, m, rueda: rueda.filter((x) => !(arranco && x === "atajos: no está")), linea, lineaAlto, pct });
+        }
+      }
+      await ce.close();
+      prueba("navegador · «Editar contrato» con cuatro cambios a 1366×768 y 1440×900: el pie ≤ 200 px, «Qué cambia» en una línea, «Guardar cambios y reenviar» a la vista y el % de las ventas alcanzable arriba del pie", () => {
+        assert.ok(abierta, `no se pudo abrir «Editar contrato» desde Corregir${EDITA ? ` (${EDITA})` : ""}: sembrá un contrato con el botón y pasá PROBAR_VENDER_EDITA`);
+        const malas = [];
+        for (const { ancho, alto, m, rueda, linea, lineaAlto, pct } of medidas) {
+          const t = `${ancho}×${alto}`;
+          if (m.pieAlto > 200.5) malas.push(`${t}: el pie mide ${m.pieAlto.toFixed(1)} px en edición (tope: 200)`);
+          if (m.guardar) malas.push(`${t}: «Guardar cambios y reenviar»: ${m.guardar}`);
+          if (!m.pegado) malas.push(`${t}: el pie no está pegado abajo`);
+          if (m.ancha) malas.push(`${t}: la página se sale a lo ancho`);
+          if (!/^Qué cambia: \d+ cambios/.test(linea) || lineaAlto > 24) malas.push(`${t}: «Qué cambia» no está plegado a una línea («${linea.slice(0, 80)}», ${lineaAlto.toFixed(0)} px)`);
+          if (pct) malas.push(`${t}: el % de las ventas: ${pct}`);
+          malas.push(...rueda.map((x) => `${t}: ${x}`));
+        }
+        assert.deepEqual(malas, [], `\n         ${malas.join("\n         ")}`);
+      });
+    }
     if (sePuedeReservar) await pv.locator(".vender .pie-contrato button", { hasText: "Volver" }).click();
     await pv.setViewportSize({ width: 1440, height: 900 });
     await pv.waitForTimeout(700);

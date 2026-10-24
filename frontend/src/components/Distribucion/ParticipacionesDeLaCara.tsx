@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FilePenLine, PenTool, Repeat } from "lucide-react";
 import { describeError } from "../../api/client";
-import { espacioDeLaCara, leerCara, type CaraOut } from "../../api/participaciones";
+import { espacioDeLaCara, leerCara, type CaraOut, type TerminoOut } from "../../api/participaciones";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { claveDeSede, useOcupacionStore } from "../../store/ocupacionStore";
 import { useAuthStore } from "../../store/authStore";
@@ -53,6 +53,13 @@ export function useAbrirEnDistribucion(): (fixtureId: string, cara: "A" | "B", r
   );
 }
 
+/** «Editar contrato» sólo para un contrato que corre o está firmado (no una
+ *  reserva provisional, no lo vencido ni lo cancelado), con su `lease_id`. */
+function editable(t: TerminoOut | null | undefined): t is TerminoOut {
+  return !!t && t.estado === "contrato" && typeof t.lease_id === "number"
+    && (t.estado_visible === "vigente" || t.estado_visible === "firmado");
+}
+
 /** El relleno de un segmento: el tono de su estampa con su textura (el color
  *  nunca va solo: el número va en el rótulo y en la leyenda), lo libre en el
  *  verde de «libre» tenue y lo vendido entero en el de ocupado. */
@@ -94,7 +101,7 @@ function MontajeDeLaParticipacion({ reporte, desde, hoy }: { reporte: MountConfi
 
 
 export default function ParticipacionesDeLaCara({
-  fixtureId, codigo, cara, sede, doble, onRenovar, precioDe, montajeDe, cobroDe, onVender,
+  fixtureId, codigo, cara, sede, doble, onRenovar, precioDe, montajeDe, cobroDe, onVender, onEditar,
 }: {
   fixtureId: string;
   /** El código del mueble en el plano (`GON-01`). */
@@ -120,6 +127,10 @@ export default function ParticipacionesDeLaCara({
   /** «Vender el Y %»: abre Vender con esta cara y lo que queda EN EL PERIODO
    *  (el pico): lo de hoy puede no entrar el día que arranca otra. */
   onVender?: (quedaPb: number) => void;
+  /** «Editar contrato» de una participación con contrato vigente o firmado:
+   *  abre Vender con ESE contrato (su `lease_id`) cargado. Sólo Supervisar, y
+   *  sólo quien administra; sin esto no hay botón (el plano 2D no lo pasa). */
+  onEditar?: (t: TerminoOut, codigoCompleto: string) => void;
 }) {
   const abrir = useAbrirEnDistribucion();
   const cliente = useAuthStore((s) => s.cliente) ?? "";
@@ -247,15 +258,30 @@ export default function ParticipacionesDeLaCara({
                     {t && t.estado === "contrato" && completo
                       ? <MontajeDeLaParticipacion reporte={montajeDe?.(completo, t.desde)} desde={t.desde} hoy={datos.hoy} />
                       : <span />}
-                    {renovable && onRenovar && (
-                      <button
-                        type="button"
-                        onClick={() => onRenovar(p.numero)}
-                        className="btn-s"
-                        title={`Renovar la participación ${p.numero}`}
-                      >
-                        <Repeat {...ICONO} /> Renovar
-                      </button>
+                    {((renovable && onRenovar) || (editable(t) && onEditar)) && (
+                      <span className="acc-part">
+                        {renovable && onRenovar && (
+                          <button
+                            type="button"
+                            onClick={() => onRenovar(p.numero)}
+                            className="btn-s"
+                            title={`Renovar la participación ${p.numero}`}
+                          >
+                            <Repeat {...ICONO} /> Renovar
+                          </button>
+                        )}
+                        {editable(t) && onEditar && t && (
+                          <button
+                            type="button"
+                            onClick={() => onEditar(t, completo)}
+                            className="btn-s"
+                            data-editar-contrato={t.lease_id ?? undefined}
+                            title={`Editar el contrato de la participación ${p.numero} (se reenvía a los correos)`}
+                          >
+                            <FilePenLine {...ICONO} /> Editar contrato
+                          </button>
+                        )}
+                      </span>
                     )}
                   </div>
                 );

@@ -180,11 +180,12 @@ def _fila_dict(fila) -> dict:
 def _condiciones_comerciales(db) -> dict:
     """Lo que el rediseño de Vender guarda de cada contrato, tabla por tabla."""
     from app.models.vender import (
-        CobroPorVenta, CondicionesDeContrato, CorteDeVenta, MontajePendiente, PrecioDeReserva, ReservaDeEspacio,
+        CobroPorVenta, CondicionesDeContrato, ContratoReemplazado, CorteDeVenta, MontajePendiente, PrecioDeReserva,
+        ReservaDeEspacio,
     )
 
     tablas = (CondicionesDeContrato, PrecioDeReserva, CobroPorVenta, CorteDeVenta, MontajePendiente,
-              ReservaDeEspacio)
+              ReservaDeEspacio, ContratoReemplazado)
     return {
         t.__tablename__: [_fila_dict(f) for f in db.query(t).all()]
         for t in tablas

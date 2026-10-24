@@ -49,3 +49,41 @@ export function valoresDeLista(
   }
   return nuevos;
 }
+
+/* ── Lo tecleado, con sus centavos ─────────────────────────────────────────
+   El campo del precio se escribe como acá (es-CO): el punto es de miles y la
+   coma, de los decimales. Un contrato de POBLADO guardó «$ 0,5»: al reabrirlo
+   en «Editar contrato» el campo decía «1» (`Math.round`) y «Qué cambia» salía
+   «$ 0,5 → $ 1» sin tocar nada. Ni al escribirlo ni al leerlo se redondea a
+   pesos: hasta el centavo. */
+
+const miles = (digitos: string): string => (digitos.replace(/^0+(?=\d)/, "") || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+/** Lo que dice el campo, como número: «1.000.000» → 1000000, «0,5» → 0.5,
+ *  «7,25» → 7.25. Lo que no se entiende, 0. */
+export function numeroDePrecio(texto: string): number {
+  const [ent = "", dec = ""] = (texto ?? "").replace(/[^\d,]/g, "").split(",");
+  const n = Number(`${ent || "0"}.${dec.slice(0, 2) || "0"}`);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Un número como se escribe en el campo, sin redondear a pesos: 0.5 →
+ *  «0,5», 6 → «6», 1000000 → «1.000.000», 7.25 → «7,25». Hasta el centavo. */
+export function textoDePrecioExacto(n: number): string {
+  const v = Number.isFinite(n) && n > 0 ? n : 0;
+  const centavos = Math.round(v * 100);
+  const ent = Math.floor(centavos / 100), dec = centavos % 100;
+  const base = miles(String(ent));
+  return dec === 0 ? base : `${base},${String(dec).padStart(2, "0").replace(/0$/, "")}`;
+}
+
+/** Mientras se teclea: sólo dígitos y UNA coma (con hasta dos decimales), y
+ *  los miles con punto. «1000000» → «1.000.000», «0,5» → «0,5», «7,» → «7,». */
+export function precioTecleado(txt: string): string {
+  const limpio = (txt ?? "").replace(/[^\d,]/g, "");
+  if (!limpio) return "";
+  const i = limpio.indexOf(",");
+  if (i < 0) return miles(limpio);
+  const ent = limpio.slice(0, i), dec = limpio.slice(i + 1).replace(/,/g, "").slice(0, 2);
+  return `${miles(ent || "0")},${dec}`;
+}

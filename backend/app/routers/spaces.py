@@ -141,6 +141,19 @@ class EstadoComercial(BaseModel):
     #: plata ni proveedor—: así Supervisar la pone «Reservado» y no la
     #: confunde con un «Ocupado sin contrato» que hay que corregir.
     reservado: bool = False
+    #: El contrato que dibuja esta cara o esta parte (``space_leases.id``):
+    #: con él, «Editar contrato» de Supervisar cambia ESE contrato y no «el
+    #: que manda» cuando se aprieta Guardar. Sólo para quien administra —al
+    #: trabajador le llega ``None``, como ``reservaHasta``—; una reserva no es
+    #: un contrato y tampoco lo lleva. Ni se le pega al mueble ni viaja en el
+    #: layout (``CAMPOS_DE_CONTRATO``, los dos lados).
+    leaseId: Optional[int] = None
+    #: El PRÓXIMO contrato de la misma cara o parte (``space_leases.id``),
+    #: cuando hay uno vigente y otro ya firmado que arranca después: el mapa
+    #: dibuja el vigente, y sin esto el próximo no se podía editar. Mismas
+    #: reglas que ``leaseId``: sólo para quien administra (al trabajador,
+    #: ``None``), ni se le pega al mueble ni viaja en el layout.
+    proximoLeaseId: Optional[int] = None
 
 
 @router.get("/comercial", response_model=dict[str, EstadoComercial])
@@ -233,6 +246,10 @@ def estado_comercial(
             # el número y dejar pasar la nota es dejar la puerta de al lado
             # abierta: la plata se fuga igual, escrita en castellano.
             observation=(lease.notes or "") if admin else "",
+            leaseId=lease.id if admin else None,
+            proximoLeaseId=(space.upcoming_lease.id
+                            if admin and space.active_lease is not None and space.upcoming_lease is not None
+                            else None),
         )
     return salida
 

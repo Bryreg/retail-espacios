@@ -221,6 +221,9 @@ def test_al_trabajador_una_reserva_le_llega_reservada_y_nada_mas(client, admin, 
     assert ajeno == {
         "status": "occupied", "supplierName": "", "brandCategory": "", "negotiatedValue": 0,
         "startDate": "", "endDate": "", "observation": "", "reservaHasta": None, "reservado": True,
+        # Ni un contrato que nombrar (una reserva no lo es; y al trabajador
+        # nunca le llega el `leaseId`, ni el del próximo).
+        "leaseId": None, "proximoLeaseId": None,
     }
     for dato in ("777000", "777.000", "Lácteos", "2026-10-25", "2026-11-"):
         assert dato not in crudo.text, f"al trabajador le llega {dato!r} de la reserva"

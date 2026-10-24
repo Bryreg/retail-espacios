@@ -1,6 +1,6 @@
 """Lo que el rediseño de Vender guarda de un contrato (``docs/rediseno/vender-api.md``).
 
-Seis tablas NUEVAS en la base del supermercado (la sesión normal `get_db`,
+Siete tablas NUEVAS en la base del supermercado (la sesión normal `get_db`,
 como `spaces`); `create_all()` las crea sin migración y ninguna columna nueva
 entra en una tabla que ya existía (test_t22, tests/test_tendencia_ataques.py).
 Cada una cuelga de un contrato o de un término por clave foránea, y la mayoría
@@ -22,6 +22,10 @@ lo tiene por clave primaria: lo que guardan es UNA cosa de ese contrato.
   si algo choca: `layout_lookup.contratos_que_chocan` la devuelve junto con los
   contratos. Al confirmarla nace el contrato (`lease_id`); al cancelarla queda
   en el registro con `baja_en`.
+· contratos_reemplazados: «Editar contrato» que cambia la forma de vender o el
+  espacio (la punta entera → por entrepaños, una cara → un porcentaje): el
+  contrato viejo se cierra (`is_active = False`) y esta fila dice que fue
+  REEMPLAZADO —no cancelado— y por cuáles (``services/editar_contrato.py``).
 · montajes_pendientes: el aviso de montaje de un contrato nuevo, que espera
   su planometría y, en un porcentaje, la distribución confirmada de su cara
   (sin zona, quien monta no sabe dónde va). ``services/montajes_pendientes.py``.
@@ -163,3 +167,19 @@ class MontajePendiente(Base):
     lease_id = Column(Integer, ForeignKey("space_leases.id"), primary_key=True, autoincrement=False)
     cara_space_id = Column(Integer, ForeignKey("spaces.id"), nullable=False, index=True)
     creado_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
+
+
+class ContratoReemplazado(Base):
+    """Un contrato que «Editar contrato» cerró porque cambió su forma de
+    venderse o su espacio: no se canceló, se reemplazó por los de
+    ``reemplazado_por`` (ids de ``space_leases``, en JSON), en el mismo
+    guardado. Lo que colgaba de él (planometría, montaje, cortes) queda con él:
+    los nuevos vuelven a pedir su planometría como cualquier contrato nuevo."""
+
+    __tablename__ = "contratos_reemplazados"
+
+    lease_id = Column(Integer, ForeignKey("space_leases.id"), primary_key=True, autoincrement=False)
+    #: ``[41, 42]``: los contratos que lo reemplazan.
+    reemplazado_por = Column(Text, nullable=False, default="[]")
+    en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
+    por = Column(String, nullable=True)

@@ -103,8 +103,14 @@ import {
 // Vender, Supervisar y el plano (store de LECTURA, el de edición es del 3D) y
 // los bloques de Supervisar, sólo para quien administra.
 import { claveDeSede, useOcupacionStore } from "../store/ocupacionStore";
-import type { OcupacionOut } from "../api/participaciones";
+import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
+// «Editar contrato»: lo que Supervisar lee de UN contrato para reabrirlo en
+// Vender (administración, sin la nota). Vender no llega a este módulo
+// (`probar-vender`); la edición se guarda con `api/vender.ts` (`edita`).
+import { contratoParaEditar } from "../api/edicionDeContrato";
+import type { EsperadoDelContrato, FotoDelContrato } from "../utils/edicionDeContrato";
+import { textoDePrecioExacto } from "../utils/precioDeLista";
 import type { OcupacionDeCara } from "../utils/participaciones";
 import { palabraDeLaCara } from "../utils/revisarParticipaciones";
 import { conPartes, type CambioDePartes } from "../utils/partesDelMueble";
@@ -218,11 +224,30 @@ interface FaceEntry {
   /** La toma una reserva (con o sin `reservaHasta`): al trabajador le llega
    *  sólo esto, sin fecha (`conLaReserva`). */
   reservado?: boolean;
+  /** El contrato que dibuja la fila (`leaseId` de `GET /spaces/comercial`,
+   *  sólo para quien administra; `conLaReserva` lo lee del mapa crudo, como
+   *  `reservaHasta`). «Editar contrato» abre ESE contrato. */
+  leaseId?: number | null;
+  /** El PRÓXIMO contrato de la misma cara o parte, cuando hay uno vigente
+   *  (`proximoLeaseId`, sólo para quien administra, del mapa crudo): «Editar el
+   *  próximo contrato» de la ficha abre ESE. */
+  proximoLeaseId?: number | null;
 }
 
 /** Vender, cuando el Plano no deja cambiar cómo se vende un mueble: sin el
  *  mensaje del servidor, que puede nombrar a otro proveedor (`venderAsi`). */
 const NO_SE_CAMBIO_LA_FORMA = "No se pudo cambiar cómo se vende: tiene algo vendido o tomado. Revisalo en el Plano.";
+
+/** ¿El mueble se vende igual? (`partes` sin los vacíos, y `entrepanos`): con
+ *  eso, volver a la forma de antes en una edición deja de estar pendiente. */
+function mismasPartes(
+  a: { partes?: object | null; entrepanos?: number | null },
+  b: { partes?: object | null; entrepanos?: number | null },
+): boolean {
+  const limpio = (p?: object | null) => JSON.stringify(Object.entries(p ?? {})
+    .filter(([, v]) => v !== null && v !== undefined).sort(([x], [y]) => x.localeCompare(y)));
+  return limpio(a.partes) === limpio(b.partes) && (a.entrepanos ?? null) === (b.entrepanos ?? null);
+}
 
 /** «Cargar planometría» de «Para revisar»: el contrato que la espera. */
 interface PlanometriaPedida {
@@ -249,7 +274,13 @@ function conLaReserva(e: FaceEntry, estado: EstadoPorEspacio, sede: string): Fac
   if (suyo?.reservaHasta) return { ...e, status: "reserved", reservaHasta: suyo.reservaHasta, reservado: true };
   // Al trabajador le llega sólo la marca (sin fecha, plata ni proveedor): va
   // «Reservado» a secas, y no «Ocupado sin contrato» en Corregir.
-  return suyo?.reservado ? { ...e, status: "reserved", reservado: true } : e;
+  if (suyo?.reservado) return { ...e, status: "reserved", reservado: true };
+  // El contrato que dibuja la fila (sólo le llega a quien administra): como
+  // `reservaHasta`, del mapa crudo; la fusión no se lo pega al mueble.
+  if (typeof suyo?.leaseId !== "number") return e;
+  return typeof suyo.proximoLeaseId === "number"
+    ? { ...e, leaseId: suyo.leaseId, proximoLeaseId: suyo.proximoLeaseId }
+    : { ...e, leaseId: suyo.leaseId };
 }
 
 const EMPTY_FACE: FaceData = {
@@ -2898,7 +2929,7 @@ function FixturePopover({
  * cambia nada a la nevera cuando se vende una puerta.
  */
 function PartesDeLaCara({
-  fixture, face, isAdmin, onVender, onRenovar, onCancelado,
+  fixture, face, isAdmin, onVender, onRenovar, onCancelado, onEditar, onEditarProximo,
 }: {
   fixture: UnifiedFixture;
   face: "A" | "B";
@@ -2907,6 +2938,12 @@ function PartesDeLaCara({
   onVender?: (parte: string) => void;
   onRenovar?: (e: FaceEntry) => void;
   onCancelado?: () => void;
+  /** «Editar contrato» de una parte con contrato (su `leaseId`, del mapa
+   *  crudo: sólo le llega a quien administra). */
+  onEditar?: (e: FaceEntry) => void;
+  /** «Editar el próximo»: el contrato que arranca después del vigente de la
+   *  parte (`proximoLeaseId`); su `esperado` sale de ESE contrato, no de la fila. */
+  onEditarProximo?: (e: FaceEntry, leaseId: number) => void;
 }) {
   const sede = useFixtureStore((s) => s.sede);
   const estado = useFixtureStore((s) => s.estadoComercial);
@@ -2937,6 +2974,9 @@ function PartesDeLaCara({
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {filas.map((e) => {
           const conContrato = e.supplierName.trim().length > 0;
+          const deLaBase = estado[fullSpaceCode(fixture.sede || sede, e.code)];
+          const leaseId = deLaBase?.leaseId;
+          const proximoLeaseId = deLaBase?.proximoLeaseId;
           return (
             <div key={e.code} style={{ border: "1px solid var(--line-soft)", borderRadius: "var(--r-md)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2962,6 +3002,19 @@ function PartesDeLaCara({
                   {onRenovar && renovable(e) && (
                     <button onClick={() => onRenovar(e)} style={botonDeParte(true)}>
                       <RefreshCw size={12} /> Renovar
+                    </button>
+                  )}
+                  {onEditar && conContrato && typeof leaseId === "number" && (
+                    <button onClick={() => onEditar({ ...e, leaseId })} style={botonDeParte(false)} data-editar-contrato={leaseId}
+                      title="Abre Vender con este contrato cargado; al guardar se reenvía a los correos">
+                      <FilePenLine size={16} strokeWidth={1.75} aria-hidden /> Editar contrato
+                    </button>
+                  )}
+                  {onEditarProximo && conContrato && typeof leaseId === "number" && typeof proximoLeaseId === "number" && (
+                    <button onClick={() => onEditarProximo({ ...e, leaseId, proximoLeaseId }, proximoLeaseId)} style={botonDeParte(false)}
+                      data-editar-contrato={proximoLeaseId} data-editar-proximo
+                      title="Abre Vender con el contrato que arranca después de éste; al guardar se reenvía a los correos">
+                      <FilePenLine size={16} strokeWidth={1.75} aria-hidden /> Editar el próximo
                     </button>
                   )}
                   {onVender && !conContrato && e.parte && (
@@ -3002,7 +3055,7 @@ function botonDeParte(lleno: boolean): React.CSSProperties {
 
 function FixtureDetailCard({
   fixture, isAdmin, face, onFace, onBack, onNegociar, onRenovar, onCancelado, onOpenFile,
-  onNegociarParte, onRenovarParte,
+  onNegociarParte, onRenovarParte, onEditar, onEditarParticipacion, onEditarProximo, avisoDeEdicion,
   unidad = "mes", montajeDe, montajeDelCodigo, cobroDe, reservaDe, onReservaCambio,
   planometriaPedida, onPlanometriaCargada, onVenderLoQueQueda,
 }: {
@@ -3028,6 +3081,16 @@ function FixtureDetailCard({
   onNegociarParte?: (parte: string) => void;
   /** Renovar el contrato de una parte. */
   onRenovarParte?: (e: FaceEntry) => void;
+  /** «Editar contrato»: abre Vender con ESE contrato (el de la cara o el de
+   *  una parte, por su `leaseId`) cargado. Sólo quien administra. */
+  onEditar?: (e: FaceEntry) => void;
+  /** «Editar contrato» de una participación de la cara (su término). */
+  onEditarParticipacion?: (t: TerminoOut) => void;
+  /** «Editar el próximo contrato»: el que arranca después del vigente de esta
+   *  cara (`proximoLeaseId`). Su semilla y su `esperado` salen de ESE contrato. */
+  onEditarProximo?: (e: FaceEntry, leaseId: number) => void;
+  /** Lo que salió mal al abrir «Editar contrato» (se dice acá). */
+  avisoDeEdicion?: string | null;
   fixture: UnifiedFixture;
   isAdmin: boolean;
   face: "A" | "B";
@@ -3091,7 +3154,7 @@ function FixtureDetailCard({
           <ArrowLeft {...ICONO_TARJETA} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 className="mono">{codigoVisible(entry)}</h3>
+          <h3 className="mono" data-ficha-titulo tabIndex={-1}>{codigoVisible(entry)}</h3>
           <div className="sub">
             {conNombrePropio(fixture, nombresPropios, fixture.label || fixture.code)} · {fixture.sede}
           </div>
@@ -3161,6 +3224,7 @@ function FixtureDetailCard({
               }
               : undefined}
             onVender={onVenderLoQueQueda}
+            onEditar={onEditarParticipacion ? (t) => onEditarParticipacion(t) : undefined}
           />
         )}
 
@@ -3174,6 +3238,27 @@ function FixtureDetailCard({
           <button type="button" className="btn-s" onClick={onRenovar}>
             <Repeat {...ICONO_TARJETA} />
             Renovar {entry.supplierName ? `con ${entry.supplierName}` : "este contrato"}
+          </button>
+        )}
+        {/* «Editar contrato» (2026-10-22): reabre ESTE contrato en Vender, con
+            todo lo guardado; al guardar se reenvía a los correos. Sólo quien
+            administra, y sólo con un contrato de verdad (no una reserva). */}
+        {isAdmin && rentable && onEditar && hasContract && !entry.reservaHasta && typeof entry.leaseId === "number" && (
+          <button type="button" className="btn-s" onClick={() => onEditar(entry)} data-editar-contrato={entry.leaseId}
+            title="Abre Vender con este contrato cargado; al guardar se reenvía a los correos">
+            <FilePenLine {...ICONO_TARJETA} />
+            Editar contrato
+          </button>
+        )}
+        {/* El contrato que arranca DESPUÉS del vigente (la fila dibuja el
+            vigente): sin esto no había cómo editarlo. */}
+        {isAdmin && rentable && onEditarProximo && hasContract && !entry.reservaHasta
+          && typeof entry.leaseId === "number" && typeof entry.proximoLeaseId === "number" && (
+          <button type="button" className="btn-s" onClick={() => onEditarProximo(entry, entry.proximoLeaseId!)}
+            data-editar-contrato={entry.proximoLeaseId} data-editar-proximo
+            title="Abre Vender con el contrato que arranca después del vigente; al guardar se reenvía a los correos">
+            <FilePenLine {...ICONO_TARJETA} />
+            Editar el próximo contrato
           </button>
         )}
         {rentable && onNegociar && !pc && (
@@ -3196,6 +3281,11 @@ function FixtureDetailCard({
           </button>
         )}
         </div>
+        {isAdmin && avisoDeEdicion && (
+          <p role="alert" className="aviso-edicion" style={{ margin: 0, fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
+            {avisoDeEdicion}
+          </p>
+        )}
         {!hasContract && pc ? (
           !isAdmin && <CaraPorParticipacion fixture={fixture} face={entry.face} />
         ) : !hasContract && entry.reservado ? (
@@ -3258,6 +3348,8 @@ function FixtureDetailCard({
             onVender={onNegociarParte}
             onRenovar={onRenovarParte}
             onCancelado={onCancelado}
+            onEditar={isAdmin ? onEditar : undefined}
+            onEditarProximo={isAdmin ? onEditarProximo : undefined}
           />
         )}
 
@@ -3752,7 +3844,9 @@ function AtencionRow({
   accion?: { texto: string; icono: React.ReactNode; onClick: () => void };
   /** Más de una («Liberar» y «Reservar de verdad» de «Marcado reservado a
    *  mano»), después de `accion`. */
-  acciones?: { texto: string; icono: React.ReactNode; onClick: () => void; titulo?: string; ocupado?: boolean }[];
+  acciones?: { texto: string; icono: React.ReactNode; onClick: () => void; titulo?: string; ocupado?: boolean;
+    /** «Editar contrato»: el `leaseId` que abre (para volver con el foco acá). */
+    leaseId?: number }[];
 }) {
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   return (
@@ -3785,7 +3879,8 @@ function AtencionRow({
             </button>
           )}
           {acciones?.map((a) => (
-            <button key={a.texto} type="button" className="btn-s" onClick={a.onClick} title={a.titulo} disabled={a.ocupado}>
+            <button key={a.texto} type="button" className="btn-s" onClick={a.onClick} title={a.titulo} disabled={a.ocupado}
+              data-editar-contrato={a.leaseId}>
               {a.icono} {a.texto}
             </button>
           ))}
@@ -4670,6 +4765,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  tres puntas de góndola es un solo acuerdo —un proveedor, un periodo, una
    *  firma— y tecleado de a uno eran tres veces el mismo formulario. */
   const [enContrato, setEnContrato] = useState<EnContrato[]>([]);
+  /** «Editar contrato» que cambia cómo se vende el mueble («Por entrepaños →
+   *  Cambiar»): el cambio queda PENDIENTE, no se escribe en el plano al tocar
+   *  «Cambiar». Vender lo ve encima del mueble (`fixturesDelContrato`) y se
+   *  escribe al guardar (`planoPendiente`); «Salir sin cambios» o un guardado
+   *  que falla dejan el plano como estaba. Fuera de una edición, «Cambiar»
+   *  escribe el plano al tocarlo, como siempre. */
+  const [formaPendiente, setFormaPendiente] = useState<{ id: string; cambio: CambioDePartes } | null>(null);
+  /** ¿Vender está editando un contrato? (la semilla se declara más abajo). */
+  const editandoRef = useRef(false);
   // Where on the map the click landed (anchors the quick-look popover).
   const [anchor, setAnchor] = useState<MapAnchor | null>(null);
   // false = quick popover, true = full detail in the rail ("Ver todo").
@@ -4798,6 +4902,19 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       setEnContrato((lista) => conLaForma(lista, id, face, forma));
       return null;
     }
+    if (editandoRef.current) {
+      // Editando: NADA se escribe en el plano todavía. Queda pendiente (junto
+      // con lo que ya estaba pendiente de ese mueble) y se escribe al guardar.
+      const base = selectFixtures(useFixtureStore.getState()).find((f) => f.id === id);
+      setFormaPendiente((p) => {
+        const junto = p && p.id === id ? { ...p.cambio, ...cambio } : cambio;
+        if (!base) return p;
+        const [vuelto] = conPartes([base], id, junto);
+        return mismasPartes(base, vuelto) ? null : { id, cambio: junto };
+      });
+      setEnContrato((lista) => aLaFormaNueva(lista, id, face, forma));
+      return null;
+    }
     try {
       const fs = useFixtureStore.getState();
       await fs.flushPending();
@@ -4815,6 +4932,47 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     setEnContrato((lista) => aLaFormaNueva(lista, id, face, forma));
     return null;
   }, [sede]);
+
+  /** El cambio pendiente de «Editar contrato», para el guardado: `escribir` lo
+   *  manda al plano por el camino de siempre (`commit` + `PUT /layout`) justo
+   *  antes del pedido —el servidor lee las partes del plano—, y `deshacer`
+   *  vuelve el mueble a como estaba si el guardado falla. */
+  const planoPendiente = useMemo(() => {
+    if (!formaPendiente) return null;
+    const { id, cambio } = formaPendiente;
+    let antes: { partes: UnifiedFixture["partes"]; entrepanos: UnifiedFixture["entrepanos"] } | null = null;
+    const deshacer = async () => {
+      if (!antes) return;
+      const vuelta = antes;
+      antes = null;
+      const st = useFixtureStore.getState();
+      // `null` y no `undefined`: la ficha viaja como está, y un campo que no
+      // viaja el servidor lo conserva (quedaba la punta partida).
+      st.commit(selectFixtures(st).map((f) => (f.id === id
+        ? { ...f, partes: vuelta.partes ?? null, entrepanos: vuelta.entrepanos ?? null } : f)));
+      await useFixtureStore.getState().flushPending();
+    };
+    const escribir = async (): Promise<string | null> => {
+      try {
+        await useFixtureStore.getState().flushPending();
+        const st = useFixtureStore.getState();
+        const f = selectFixtures(st).find((x) => x.id === id);
+        if (!f) return "El mueble ya no está en el plano: recargá y volvé a intentar.";
+        antes = { partes: f.partes, entrepanos: f.entrepanos };
+        st.commit(conPartes(selectFixtures(st), id, cambio));
+        await useFixtureStore.getState().flushPending();
+        if (useFixtureStore.getState().rechazos[sede]) {
+          await deshacer();
+          return NO_SE_CAMBIO_LA_FORMA;
+        }
+        return null;
+      } catch {
+        await deshacer().catch(() => undefined);
+        return "No se pudo guardar el plano: probá de nuevo en un momento.";
+      }
+    };
+    return { escribir, deshacer };
+  }, [formaPendiente, sede]);
 
   /** Sumar o sacar una cara de una góndola doble.
    *
@@ -4835,12 +4993,18 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     });
   }, [fixtures]);
 
+  /** Los muebles como los ve el contrato: los del plano y, editando, con la
+   *  forma de venderse que quedó pendiente encima (`formaPendiente`). */
+  const fixturesDelContrato = useMemo(
+    () => (formaPendiente ? conPartes(fixtures, formaPendiente.id, formaPendiente.cambio) : fixtures),
+    [fixtures, formaPendiente],
+  );
   /** Los espacios del contrato resueltos contra el layout de ahora. */
   const espaciosDelContrato = useMemo(
     () =>
       enContrato
         .map(({ id, face, parte, pc, porPartes }): CaraElegida | null => {
-          const fixture = fixtures.find((f) => f.id === id);
+          const fixture = fixturesDelContrato.find((f) => f.id === id);
           // El % (`pc`) y la cara por partes sin ninguna marcada (`porPartes`)
           // tienen que llegar a la ficha: sin ellos una cara por participación
           // entraba como «Entera» y «Por entrepaños» no hacía nada.
@@ -4852,7 +5016,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           } : null;
         })
         .filter((x): x is CaraElegida => x !== null),
-    [enContrato, fixtures],
+    [enContrato, fixturesDelContrato],
   );
 
   /** Las llaves `${fixtureId}-${cara}` de las CARAS que toca el contrato. Es
@@ -4915,6 +5079,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // espacio que alguien elija abriría el formulario con el proveedor y el
     // periodo de una renovación que se canceló.
     setSemilla(null);
+    // Lo pendiente de una edición se va con ella: el plano nunca se tocó.
+    setFormaPendiente(null);
   };
   /** Desde «Para revisar»: abrir la FICHA del espacio, no sólo señalarlo.
    *
@@ -4967,6 +5133,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
 
   /** Con qué abre el formulario cuando se llega por «Renovar». */
   const [semilla, setSemilla] = useState<SemillaContrato | null>(null);
+  useEffect(() => {
+    editandoRef.current = !!semilla?.edita;
+    if (!semilla?.edita) setFormaPendiente(null);
+  }, [semilla]);
 
   /** «Vender» del panel del Plano (rediseño, PR 3): llega por el store
    *  (`pedirVender`, `Dashboard.tsx` ya cambió de pestaña) y se arma con
@@ -5116,6 +5286,152 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       : { id: entry.fixture.id, face: entry.face }]);
     setModo("vender");
   }, [sede, renovarParticipacion]);
+  /** «Editar contrato» (2026-10-22): Vender con un contrato YA guardado,
+   *  cargado entero —cómo se vende, proveedor, correo, marca, fechas, precio
+   *  con su «Total | Al mes», precio fijo o % de las ventas con su corte, el %
+   *  de una participación—. Nunca la nota interna (Vender lo mira el
+   *  proveedor).
+   *
+   *  Es EL contrato del renglón: su `leaseId` (del mapa comercial, sólo para
+   *  quien administra) y lo que el renglón mostró (`mostrado`, que va como
+   *  `esperado`). Lo demás se lee de `GET /contratos/{id}/edicion`; nunca se
+   *  vuelve a buscar el contrato por código («el que manda» puede ser otro si
+   *  el de la fila se canceló entretanto). */
+  const [abriendoEdicion, setAbriendoEdicion] = useState<number | null>(null);
+  const [avisoDeEdicion, setAvisoDeEdicion] = useState<string | null>(null);
+  /** De dónde se abrió la edición: al salir sin cambios o al volver a
+   *  Supervisar, el foco vuelve a ESE botón «Editar contrato» (o, si ya no
+   *  está —un contrato reemplazado—, al título de su sección). */
+  const origenDeEdicion = useRef<{ leaseId: number; fixtureId: string; face: "A" | "B"; enFicha: boolean;
+    seccion: string | null } | null>(null);
+  const editarContrato = useCallback(async (
+    f: UnifiedFixture, face: "A" | "B", leaseId: number,
+    mostrado: Pick<EsperadoDelContrato, "valor" | "desde" | "hasta"> & Partial<Pick<EsperadoDelContrato, "proveedor" | "marca">> | null,
+    origen: { enFicha: boolean; seccion?: string | null },
+  ) => {
+    setAbriendoEdicion(leaseId);
+    setAvisoDeEdicion(null);
+    try {
+      const d = await contratoParaEditar(leaseId);
+      if (!d.activo) {
+        setAvisoDeEdicion("Ese contrato ya no está vigente: recargá y volvé a intentar.");
+        return;
+      }
+      const forma = d.forma;
+      const visibleCara = codigoVisibleDe(f.code, face, forma === "pieza" ? false : isDoubleGondola(f), null);
+      // La clave del precio de la línea, como la arma Vender (`claveDePrecio`).
+      const clave = claveDePrecio(forma === "participacion" ? `${d.cara}-PC1` : d.espacio);
+      const tecleado = d.modo_precio === "mensual" && d.valor_tecleado ? d.valor_tecleado : d.valor;
+      const antes: FotoDelContrato = {
+        forma, visibleCara, partes: d.parte ? [d.parte] : [], proveedor: d.proveedor, marca: d.marca ?? "",
+        desde: d.desde, hasta: d.hasta, valor: d.valor, modoPrecio: d.modo_precio, valorTecleado: d.valor_tecleado,
+        cobro: d.cobro, pb: d.puntos_basicos,
+      };
+      /** La huella que se espera encontrar al guardar: lo que la FILA mostró
+       *  (valor, fechas, proveedor, marca) y, de lo que la fila no dice, lo que
+       *  se leyó al abrir (cómo se cobra, el %). El próximo contrato no tiene
+       *  fila: sale entero de lo leído. */
+      const esperado: EsperadoDelContrato = {
+        valor: mostrado?.valor ?? d.valor,
+        desde: mostrado?.desde ?? d.desde,
+        hasta: mostrado?.hasta ?? d.hasta,
+        proveedor: mostrado?.proveedor ?? d.proveedor,
+        marca: mostrado?.marca !== undefined ? mostrado.marca : d.marca,
+        cobro: d.cobro ? { modo: "ventas", porcentaje: d.cobro.porcentaje, corte: d.cobro.corte } : { modo: "fijo" },
+        puntos_basicos: d.puntos_basicos,
+      };
+      origenDeEdicion.current = { leaseId, fixtureId: f.id, face, enFicha: origen.enFicha, seccion: origen.seccion ?? null };
+      setSemilla({
+        id: `editar|${leaseId}|${Date.now()}`,
+        proveedor: d.proveedor,
+        correo: d.correo ?? "",
+        marca: d.marca ?? "",
+        desde: d.desde,
+        hasta: d.hasta,
+        // El valor EXACTO, con su coma («0,5»): redondearlo a pesos cambiaba
+        // el contrato sin que nadie lo tocara («$ 0,5 → $ 1»).
+        valores: d.cobro ? {} : { [clave]: textoDePrecioExacto(tecleado) },
+        modos: d.modo_precio ? { [clave]: d.modo_precio } : {},
+        porcentajes: forma === "participacion" && d.puntos_basicos ? { [d.cara]: d.puntos_basicos } : undefined,
+        cobro: d.cobro
+          ? { modo: "ventas", texto: String(d.cobro.porcentaje).replace(".", ","), corte: d.cobro.corte }
+          : { modo: "fijo" },
+        edita: {
+          leaseId, esperado, codigo: d.espacio, cara: d.cara, sede: d.sede, antes,
+          arranco: d.arranco, ultimoCorte: d.ultimo_corte, cortes: d.cortes, planometria: d.planometria,
+          correo: d.correo, montajePendiente: d.montaje_pendiente, hoy: d.hoy,
+        },
+      });
+      setSelected(f);
+      setDetailFace(face);
+      setDetailFull(false);
+      setAnchor(null);
+      setCerrado(null);
+      setEnContrato([forma === "participacion" ? { id: f.id, face, pc: true }
+        : d.parte ? { id: f.id, face, parte: d.parte } : { id: f.id, face }]);
+      setModo("vender");
+    } catch (e) {
+      setAvisoDeEdicion(describeError(e, "No se pudo abrir el contrato para editarlo. Probá de nuevo."));
+    } finally {
+      setAbriendoEdicion(null);
+    }
+  }, []);
+  /** «Editar contrato» de una fila (de «Para revisar», de la ficha o de una
+   *  parte): lo que la fila MUESTRA es lo que se espera encontrar. */
+  const editarFila = useCallback((entry: FaceEntry, origen: { enFicha: boolean; seccion?: string | null }) => {
+    if (typeof entry.leaseId !== "number") return;
+    void editarContrato(entry.fixture, entry.face, entry.leaseId, {
+      valor: entry.negotiatedValue, desde: entry.startDate, hasta: entry.endDate,
+      proveedor: entry.supplierName, marca: entry.brandCategory || null,
+    }, origen);
+  }, [editarContrato]);
+  /** El botón de una fila de «Corregir» que tiene un contrato detrás. */
+  const accionEditar = (entry: FaceEntry, seccion: string) => (isAdmin && typeof entry.leaseId === "number" ? [{
+    texto: "Editar contrato", icono: <FilePenLine {...ICONO_TARJETA} />,
+    titulo: "Abre Vender con este contrato cargado; al guardar se reenvía a los correos",
+    ocupado: abriendoEdicion === entry.leaseId,
+    leaseId: entry.leaseId,
+    onClick: () => editarFila(entry, { enFicha: false, seccion }),
+  }] : undefined);
+  /** Salir de una edición (sin cambios, ya guardada o tras un 409): a
+   *  Supervisar, con la base releída, y el foco al botón que la abrió. */
+  const [enfocarAlVolver, setEnfocarAlVolver] = useState(0);
+  const volverDeLaEdicion = () => {
+    const o = origenDeEdicion.current;
+    setCerrado(null);
+    closeDetail();
+    setModo("supervisar");
+    void refrescarComercial();
+    if (o?.enFicha) {
+      const f = fixtures.find((x) => x.id === o.fixtureId);
+      if (f) revisar(f, o.face);
+    }
+    if (o) setEnfocarAlVolver((n) => n + 1);
+  };
+  useEffect(() => {
+    const o = origenDeEdicion.current;
+    if (!enfocarAlVolver || !o) return;
+    let cuadros = 0;
+    let raf = 0;
+    const buscar = () => {
+      const boton = document.querySelector<HTMLElement>(`[data-editar-contrato="${o.leaseId}"]`);
+      if (boton) { boton.focus(); origenDeEdicion.current = null; return; }
+      // El contrato ya no tiene su botón (se reemplazó): al título de su
+      // sección, después de darle a la lista un momento para dibujarse.
+      if (++cuadros < 90) { raf = requestAnimationFrame(buscar); return; }
+      const titulo = o.enFicha
+        ? document.querySelector<HTMLElement>("[data-ficha-titulo]")
+        : [...document.querySelectorAll<HTMLElement>(".sec-r .rotulo")].find((x) => !!o.seccion && x.textContent?.startsWith(o.seccion))
+          ?? [...document.querySelectorAll<HTMLElement>("h2")].find((x) => x.textContent === "Para revisar") ?? null;
+      if (titulo) {
+        if (!titulo.hasAttribute("tabindex")) titulo.setAttribute("tabindex", "-1");
+        titulo.focus();
+      }
+      origenDeEdicion.current = null;
+    };
+    raf = requestAnimationFrame(buscar);
+    return () => cancelAnimationFrame(raf);
+  }, [enfocarAlVolver]);
   const [viewerFile, setViewerFile] = useState<SpaceFileMeta | null>(null);
 
   // ── Estado de montaje ────────────────────────────────────────────────────
@@ -6568,6 +6884,11 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
             semilla={semilla}
             onCancelar={closeDetail}
             onSeguir={() => setCerrado(null)}
+            /* «Editar contrato»: salir sin cambios, o ya guardado, vuelve a
+               Supervisar (con la base ya releída al guardar). */
+            onSalirDeEdicion={volverDeLaEdicion}
+            onVolverASupervisar={volverDeLaEdicion}
+            planoPendiente={planoPendiente}
           />
           {panelTarifas}
           </div>
@@ -6702,6 +7023,20 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
                   onNegociarParte={isAdmin ? (parte) => negociar(selected, detailFace, null, parte) : undefined}
                   onRenovarParte={isAdmin ? renovar : undefined}
+                  onEditar={isAdmin ? (e) => editarFila(e, { enFicha: true }) : undefined}
+                  onEditarParticipacion={isAdmin
+                    ? (t) => {
+                      if (typeof t.lease_id !== "number") return;
+                      void editarContrato(selected, detailFace, t.lease_id,
+                        { valor: t.valor_mensual ?? 0, desde: t.desde, hasta: t.hasta,
+                          proveedor: t.proveedor?.nombre ?? undefined, marca: t.marca },
+                        { enFicha: true });
+                    }
+                    : undefined}
+                  onEditarProximo={isAdmin
+                    ? (e, id) => void editarContrato(e.fixture, e.face, id, null, { enFicha: true })
+                    : undefined}
+                  avisoDeEdicion={avisoDeEdicion}
                   /* Sólo cuando hay algo que renovar: un contrato con proveedor
                      que se cae dentro de 60 días o que ya se cayó. Con más
                      margen el botón crearía un contrato solapado con uno vivo. */
@@ -6751,6 +7086,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                 <div style={{ padding: "0 12px 8px" }}>
                   <PestanasDeRevision cuentas={cuentasDeRevision} grupo={grupoDeRevision} onGrupo={setGrupoElegido} />
                 </div>
+                {/* «Editar contrato» que no se pudo abrir (el contrato ya no
+                    está vigente, o no se pudo leer): se dice acá, donde se
+                    tocó el botón. */}
+                {isAdmin && avisoDeEdicion && !(selected && detailFull) && (
+                  <p role="alert" data-aviso-edicion style={{ margin: "0 12px 8px", fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
+                    {avisoDeEdicion}
+                  </p>
+                )}
                 <div
                   className="lista-r"
                   data-senala-en-el-plano
@@ -7051,7 +7394,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                           <AtencionSection label="Bajo tarifa de referencia" monto={kpis.belowReference.length} />
                           {kpis.belowReference.map((entry) => (
                             <AtencionRow
-                              key={`bt-${entry.fixture.id}-${entry.face}`}
+                              /* La clave de la FILA: dos partes de la misma
+                                 cara (PUN-03·EN1 y ·EN2) son dos renglones. */
+                              key={`bt-${claveDeFila(entry)}`}
                               aviso={`bt-${claveDeFila(entry)}`}
                               entry={entry}
                               chip={`−${entry.gapPct} %`}
@@ -7062,6 +7407,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                               dates={`${formatCOP(entry.alMes)} al mes · ref ${formatCOP(entry.ref)}`}
                               selected={selected?.id === entry.fixture.id}
                               onSelect={() => revisar(entry.fixture, entry.face)}
+                              /* «Editar contrato» (2026-10-22): los que se
+                                 cargaron fijos cuando eran por % de las
+                                 ventas se corrigen acá, uno por uno. */
+                              acciones={accionEditar(entry, "Bajo tarifa de referencia")}
                             />
                           ))}
                         </div>
@@ -7082,6 +7431,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                               dates={`arrancó hace más de ${VENTANA_MONTAJE_DIAS} días y nadie reportó el montaje`}
                               selected={selected?.id === entry.fixture.id}
                               onSelect={() => revisar(entry.fixture, entry.face)}
+                              acciones={accionEditar(entry, tituloDeSeccion("montajes_viejos", "corregir"))}
                             />
                           ))}
                         </div>

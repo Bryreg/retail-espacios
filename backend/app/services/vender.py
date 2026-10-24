@@ -175,9 +175,14 @@ def _errores_de_valor(p: dict, linea: dict) -> Optional[str]:
     return None
 
 
-def revisar(db: Session, p: dict) -> Revision:
+def revisar(db: Session, p: dict, excluir_lease: Optional[int] = None,
+            excluir_termino: Optional[int] = None) -> Revision:
     """Revisa TODO el pedido sin escribir nada. Devuelve las líneas revisadas
-    y las filas con error (vacías: entra todo)."""
+    y las filas con error (vacías: entra todo).
+
+    ``excluir_lease`` / ``excluir_termino``: SÓLO «Editar contrato»
+    (``services/editar_contrato.py``): el contrato que se edita no choca ni
+    ocupa capacidad contra sí mismo. El guardado de Vender nunca los pasa."""
     _validar_pedido(p)
     dia = hoy()
     sede = normalizar(p["sede"])
@@ -194,7 +199,8 @@ def revisar(db: Session, p: dict) -> Revision:
         ])
         # El valor lo mira `_errores_de_valor` (un contrato por ventas va en 0).
         # Delante del proveedor: un choque se dice «tomado», sea contrato o reserva.
-        por_fila = {f.fila: f for f in _revisar(db, lote, exigir_valor=False, delante_del_proveedor=True)}
+        por_fila = {f.fila: f for f in _revisar(db, lote, exigir_valor=False, delante_del_proveedor=True,
+                                                excluir_lease=excluir_lease, excluir_termino=excluir_termino)}
         for i, x in enteras:
             f = por_fila[i]
             linea = Linea(indice=i, entrada=x, fila=f)
@@ -238,13 +244,14 @@ def revisar(db: Session, p: dict) -> Revision:
                 _revisar_renovacion(db, p, linea, supplier_clave, renovados)
             else:
                 part.revisar_alta(db, cara, datos, {"tipo": "alta", "pb": pb, "desde": p["desde"],
-                                                    "hasta": p["hasta"]})
+                                                    "hasta": p["hasta"]},
+                                  excluir_lease=excluir_lease, excluir_termino=excluir_termino)
             antes = pedidos.setdefault(cara.codigo, [])
             if antes:
                 # Las líneas anteriores de ESTA cara en este pedido todavía no
                 # están en la base: se suman a lo que cuenta.
-                fisicos = part.fisicos_de(db, cara, p["desde"], p["hasta"])
-                I = reglas.intervalos_que_cuentan(datos.todos, fisicos, dia) + antes
+                fisicos = part.fisicos_de(db, cara, p["desde"], p["hasta"], excluir_lease=excluir_lease)
+                I = reglas.intervalos_que_cuentan(datos.todos, fisicos, dia, excluir_id=excluir_termino) + antes
                 part._rechazo(reglas.revisar_capacidad(I, fisicos, pb, p["desde"], p["hasta"], cara.letra, dia))
             antes.append({"desde": p["desde"], "hasta": p["hasta"], "pb": pb})
         except HTTPException as e:
@@ -350,13 +357,18 @@ def guardar(db: Session, p: dict, actor: str, validar: bool = False) -> Optional
     return _escribir(db, p, rev, actor)
 
 
-def _escribir(db: Session, p: dict, rev: Revision, actor: str) -> Hecho:
+def _escribir(db: Session, p: dict, rev: Revision, actor: str, nota_de: Optional[str] = None) -> Hecho:
+    """``nota_de``: «Editar contrato» cuando reemplaza un contrato por otra
+    forma de venderlo: los nuevos se quedan con la nota interna del viejo (que
+    Vender no muestra ni manda, porque lo mira el proveedor)."""
     hecho = Hecho()
     tipo = p["tipo"]
     cobro = p.get("cobro") or {"modo": "fijo"}
     ventas = cobro.get("modo") == "ventas"
     marca = (p.get("marca") or "").strip() or None
     nota = (p.get("nota") or "").strip() or None
+    if nota_de is not None:
+        nota = nota_de.strip() or None
     correo = part._correo(p.get("correo"))
     supplier = proveedor_por_nombre(db, p["proveedor"], correo, cache_de_proveedores(db))
     plano = PlanoIndexado(db)

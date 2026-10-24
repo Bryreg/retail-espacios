@@ -58,6 +58,9 @@ CAMPOS_DE_CONTRATO = (
     # La caducidad de una reserva de espacio (`GET /spaces/comercial`): tampoco
     # se guarda en el plano. Ni la marca de que es una reserva.
     "reservaHasta", "reservado",
+    # El contrato que dibuja la cara (sólo para quien administra): es de la
+    # base, nunca del plano.
+    "leaseId", "proximoLeaseId",
 )
 
 #: La ficha del mueble: de qué modelo nació y la geometría que guardó (de esa
@@ -1555,7 +1558,8 @@ class ReservaComoContrato:
 
 
 def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int | None = None,
-                         sede: str | None = None, excluir_reserva: int | None = None) -> list[tuple]:
+                         sede: str | None = None, excluir_reserva: int | None = None,
+                         excluir_lease: int | None = None) -> list[tuple]:
     """Los contratos vivos (no cancelados) que no dejan vender ``codigo`` entre
     ``desde`` y ``hasta``, ambos inclusive: el del mismo espacio, el de la cara
     entera si es una puerta, y los de sus puertas si es la cara entera.
@@ -1579,6 +1583,11 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
     importación del plano y la capacidad de una cara por participación
     (``fisicos_de``) las cuentan sin saber que existen. ``excluir_reserva``:
     la que se está confirmando, que no choca consigo misma.
+
+    ``excluir_lease``: el contrato que se está EDITANDO (``services/
+    editar_contrato.py``, sólo esa ruta), que no choca consigo mismo. Cualquier
+    otro contrato —también otro del mismo proveedor en la misma cara— choca
+    igual.
     """
     from sqlalchemy import func, or_
     from app.fechas import hoy as hoy_en_colombia
@@ -1604,6 +1613,7 @@ def contratos_que_chocan(db: Session, codigo: str, desde, hasta, space_id: int |
             SpaceLease.is_active.is_(True),
             SpaceLease.start_date <= hasta,
             SpaceLease.end_date >= desde,
+            SpaceLease.id != (excluir_lease if excluir_lease is not None else -1),
             or_(guardado.in_(sorted(codigos | caras)),
                 *[guardado.like(f"{_escapar_like(c)}-%", escape="\\") for c in sorted(caras)],
                 Space.id == (space_id if space_id is not None else -1)),

@@ -6,7 +6,7 @@ import { describirUbicacion } from "../MiniMapa/MiniMapa";
 import type { DateRange } from "../SeasonPicker/SeasonPicker";
 import { parseISODate, upcomingSeasons } from "../../types/seasons";
 import {
-  filasRechazadas, guardarContrato, validarContrato,
+  codigoDelRechazo, completarProveedor, filasRechazadas, guardarContrato, validarContrato,
   type Cobro, type FilaRechazada, type LineaDeVenta, type ModoPrecio, type PedidoDeVenta,
 } from "../../api/vender";
 import { describeError } from "../../api/client";
@@ -15,10 +15,16 @@ import {
   isDoubleGondola, type RangeAvailability, type UnifiedFixture,
 } from "../../types/fixtures";
 import { fullSpaceCode } from "../../types/espacio";
+import { fusionarEstadoComercial } from "../../utils/estadoComercial";
 import { nombreDeMueble } from "../../utils/nomenclatura";
-import { textoDePrecio, valoresDeLista } from "../../utils/precioDeLista";
+import { numeroDePrecio, precioTecleado, textoDePrecio, textoDePrecioExacto, valoresDeLista } from "../../utils/precioDeLista";
 import { meses, sumarDias, sumarMeses, textoDeMeses } from "../../utils/meses";
 import { pbDeTexto, pct } from "../../utils/participaciones";
+import {
+  avisoDeCortes, claveDeProveedor, correoAlCambiarDeProveedor, correoDelProveedorQueQueda, estadoSinElPropio,
+  faltaDeLaEdicion, ocupacionSinElPropio, queCambia,
+  type EdicionDeContrato, type FotoDelContrato,
+} from "../../utils/edicionDeContrato";
 import {
   cantidadDe, claseDe, codigoDeParte, codigoVisibleDe, comercialDelEspacio, esDivision, esParticipacion, parteDeSufijo,
   partirCodigo, quedaEnLaCara, redondear, tarifaDeEspacio, textoAlTocarEnVender, textoDeParte, tomadaPorLoSuyo,
@@ -64,6 +70,9 @@ export interface ResumenContrato {
   cobro: Cobro;
   /** A quién avisó el servidor. Ausente = no se pudo saber. */
   avisos?: AvisosContrato;
+  /** «Editar contrato»: se corrigió en su lugar o se reemplazó (y por
+   *  cuántos contratos nuevos), y si el contrato ya tenía su planometría. */
+  editado?: { reemplazo: boolean; nuevos: number; conPlanometria: boolean };
 }
 
 /** Un espacio adentro del contrato que se está armando: una cara entera, una
@@ -97,6 +106,15 @@ export interface SemillaContrato {
    *  renueva, por el código completo de la cara. */
   porcentajes?: Record<string, number>;
   renueva?: Record<string, number>;
+  /** «Total | Al mes» de cada línea, por su clave de precio («Editar contrato»). */
+  modos?: Record<string, ModoPrecio>;
+  /** Cómo se cobra, como se guardó («Editar contrato»): el % va como texto,
+   *  con la coma de acá («8», «0,5»). */
+  cobro?: { modo: "fijo" } | { modo: "ventas"; texto: string; corte: "mensual" | "al_final" };
+  /** «Editar contrato»: EL contrato que se reabre (su `leaseId` y lo que el
+   *  renglón mostró, `esperado`) y lo que decía, para «Qué cambia». Nunca la
+   *  nota interna: Vender lo mira el proveedor. */
+  edita?: EdicionDeContrato;
 }
 
 export interface ArgsContrato {
@@ -131,6 +149,12 @@ export interface ArgsContrato {
   /** El contrato YA está en la base cuando esto se llama. No hay nada que
    *  escribirle al plano: quien dibuja vuelve a leer. */
   onGuardado: (resumen: ResumenContrato) => void;
+  /** «Editar contrato» que cambia cómo se vende el mueble («Por entrepaños →
+   *  Cambiar»): el cambio queda PENDIENTE —no se escribe en el plano al tocar
+   *  «Cambiar»— y se escribe recién al guardar, justo antes del pedido (el
+   *  servidor lee las partes del plano). Si el guardado falla, `deshacer` deja
+   *  el plano como estaba. `null`: nada pendiente. */
+  planoPendiente?: { escribir: () => Promise<string | null>; deshacer: () => Promise<void> } | null;
 }
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
@@ -263,7 +287,8 @@ export type TipoDeLinea = "entera" | "partes" | "pieza" | "pc";
 // ─── El hook ─────────────────────────────────────────────────────────────────
 
 export function useContrato({
-  espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado,
+  espacios, sede, rango, semilla, ocupacionDe: ocupacionCruda, onQuitar, onCambiarCara, onCambiarParte, onGuardado,
+  planoPendiente,
 }: ArgsContrato) {
   const fixtures = useFixtureStore(selectFixtures);
   const referenceRates = useFixtureStore((s) => s.referenceRates);
@@ -272,10 +297,29 @@ export function useContrato({
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
   // primer dibujo, así que van en las dependencias de lo que la pregunta.
   const fichasPropias = useFichasPropias();
+  /** «Editar contrato»: el contrato que se reabre. */
+  const edita = semilla?.edita ?? null;
   // Lo que dice la BASE de cada espacio, por código completo. Con la venta
   // por partes no alcanza el mueble fusionado: vender la puerta 2 no le cambia
-  // nada a la nevera, y la entera choca con esa puerta.
-  const estadoComercial = useFixtureStore((s) => s.estadoComercial);
+  // nada a la nevera, y la entera choca con esa puerta. Editando, SIN el propio
+  // contrato: no está tomado contra sí mismo (el servidor tampoco lo cuenta,
+  // `excluir_lease`).
+  const estadoCrudo = useFixtureStore((s) => s.estadoComercial);
+  const estadoComercial = useMemo(() => estadoSinElPropio(estadoCrudo, edita?.leaseId), [estadoCrudo, edita]);
+  /** La ocupación anónima de una cara, sin el propio contrato si se edita uno
+   *  de esa cara (su % o lo físico que ocupaba). */
+  const ocupacionDe = useMemo(() => {
+    if (!edita || !ocupacionCruda) return ocupacionCruda;
+    return (f: UnifiedFixture, cara: "A" | "B") => {
+      const par = ocupacionCruda(f, cara);
+      const caraCompleta = fullSpaceCode(sede, codigoDeParte(f.code, cara, null)).toUpperCase();
+      if (caraCompleta !== edita.cara.toUpperCase()) return par;
+      return ocupacionSinElPropio(par, {
+        desde: edita.esperado.desde, hasta: edita.esperado.hasta,
+        pb: edita.antes.forma === "participacion" ? edita.antes.pb : null,
+      });
+    };
+  }, [ocupacionCruda, edita, sede]);
 
   // El periodo con el que abre. Se congela al montar a propósito: cambiar la
   // temporada de arriba no debe reescribirle las fechas a alguien que ya está
@@ -286,8 +330,16 @@ export function useContrato({
   // el contrato vigente, por el mismo largo— y no el periodo de la barra.
   const [desde, setDesde] = useState(semilla?.desde || iso(inicial.from));
   const [hasta, setHasta] = useState(semilla?.hasta || iso(inicial.to));
-  const [proveedor, setProveedor] = useState(semilla?.proveedor ?? "");
+  const [proveedor, setProveedorCrudo] = useState(semilla?.proveedor ?? "");
   const [correo, setCorreo] = useState(semilla?.correo ?? "");
+  /** Editando, cambiar de proveedor no arrastra el correo del anterior: el
+   *  campo (sembrado con el correo del proveedor cargado) se vacía, y vuelve
+   *  si se vuelve al de antes (`correoAlCambiarDeProveedor`). */
+  const setProveedor = useCallback((v: string) => {
+    setProveedorCrudo(v);
+    const e = semilla?.edita;
+    if (e) setCorreo((c) => correoAlCambiarDeProveedor(e, v, c));
+  }, [semilla]);
   const [marca, setMarca] = useState(semilla?.marca ?? "");
   const [nota, setNota] = useState("");
   /** El precio de cada línea, tecleado, por su clave de precio. Vive en un mapa
@@ -298,14 +350,15 @@ export function useContrato({
     () => semilla?.valores ?? {},
   );
   /** Cómo se escribió cada precio: el total del plazo o «al mes». */
-  const [modos, setModos] = useState<Record<string, ModoPrecio>>({});
+  const [modos, setModos] = useState<Record<string, ModoPrecio>>(() => semilla?.modos ?? {});
   /** El porcentaje de cada línea de porcentaje (puntos básicos), por el
    *  código completo de la cara. */
   const [porcentajes, setPorcentajes] = useState<Record<string, number>>(() => semilla?.porcentajes ?? {});
   /** Cómo se cobra: precio fijo, o un % de las ventas con su corte. */
-  const [cobroModo, setCobroModo] = useState<"fijo" | "ventas">("fijo");
-  const [ventasTexto, setVentasTexto] = useState("");
-  const [corte, setCorte] = useState<"mensual" | "al_final">("mensual");
+  const [cobroModo, setCobroModo] = useState<"fijo" | "ventas">(semilla?.cobro?.modo ?? "fijo");
+  const [ventasTexto, setVentasTexto] = useState(semilla?.cobro?.modo === "ventas" ? semilla.cobro.texto : "");
+  const [corte, setCorte] = useState<"mensual" | "al_final">(
+    semilla?.cobro?.modo === "ventas" ? semilla.cobro.corte : "mensual");
   /** «Reservar hasta…»: la fecha la elige quien opera. Arranca VACÍA y no
    *  guarda sin ella (decisión de la dueña, 2026-10-18). */
   const [reservando, setReservando] = useState(false);
@@ -338,12 +391,18 @@ export function useContrato({
    *  periodo con el que abrió: si alguien corre el «hasta» hasta pisar un
    *  contrato que ya existe, el aviso aparece en esa línea — y se va cuando
    *  lo corre de vuelta. */
+  /** Editando, cada mueble vuelto a fusionar con el mapa SIN el propio
+   *  contrato: la cara entera se lee de lo que la fusión le pega al mueble
+   *  (`estadoDeEspacio`), y ahí también tiene que quedar libre contra sí misma. */
+  const espaciosVistos = useMemo(() => (edita
+    ? espacios.map((e) => ({ ...e, fixture: fusionarEstadoComercial(sede, [e.fixture], estadoComercial)[0] }))
+    : espacios), [espacios, edita, sede, estadoComercial]);
   const items = useMemo((): Item[] => {
     const f0 = fechasEnOrden ? parseISODate(desde) : null;
     const t0 = fechasEnOrden ? parseISODate(hasta) : null;
     const d = f0 && t0 ? f0 : inicial.from;
     const h = f0 && t0 ? t0 : inicial.to;
-    return espacios.map(({ fixture, face, parte: sufijo, pc, porPartes }) => {
+    return espaciosVistos.map(({ fixture, face, parte: sufijo, pc, porPartes }) => {
       const sedeDe = fixture.sede || sede;
       if (pc || porPartes) {
         // El porcentaje y la cara por partes sin elegir no son un espacio:
@@ -375,7 +434,7 @@ export function useContrato({
         disponibilidad: disponibilidad as RangeAvailability, porQue,
       };
     });
-  }, [espacios, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
+  }, [espaciosVistos, fixtures, referenceRates, sede, desde, hasta, fechasEnOrden, inicial, fichasPropias,
     estadoComercial]);
 
   /** Las LÍNEAS del contrato, como se leen y se cobran: la cara entera, las
@@ -417,7 +476,8 @@ export function useContrato({
         ? deLaLinea.reduce((t, i) => t + (i.ref ?? 0), 0)
         : null;
       const texto = valores[clave] ?? "";
-      const numero = Number(texto.replace(/[^\d]/g, "")) || 0;
+      // Con sus centavos («0,5»): ni lo tecleado ni lo sembrado se redondea.
+      const numero = numeroDePrecio(texto);
       const modo: ModoPrecio = modos[clave] ?? "total";
       const monto = deLaLinea.length === 0 && tipo !== "pc" ? 0
         : modo === "mensual" ? redondear(numero * nMeses) : numero;
@@ -490,11 +550,8 @@ export function useContrato({
 
   const escribirValor = useCallback((codigo: string, txt: string) => {
     tocados.current.add(codigo);
-    const soloDigitos = txt.replace(/[^\d]/g, "");
-    setValores((v) => ({
-      ...v,
-      [codigo]: soloDigitos ? Number(soloDigitos).toLocaleString("es-CO") : "",
-    }));
+    // Dígitos y una coma (los centavos), con punto de miles.
+    setValores((v) => ({ ...v, [codigo]: precioTecleado(txt) }));
   }, []);
 
   /** «Volver a la tarifa»: escribe la de lista y deja de contarla como
@@ -514,7 +571,7 @@ export function useContrato({
     if (!tocados.current.has(clave) || nMeses <= 0) return;
     const l = lineas.find((x) => x.clave === clave);
     if (!l || l.modo === modo || l.numero <= 0) return;
-    escribirValor(clave, String(modo === "mensual" ? redondear(l.numero / nMeses) : redondear(l.numero * nMeses)));
+    escribirValor(clave, textoDePrecioExacto(modo === "mensual" ? redondear(l.numero / nMeses) : redondear(l.numero * nMeses)));
   }, [lineas, nMeses, escribirValor]);
 
   const escribirPorcentaje = useCallback((codigoCara: string, pb: number) => {
@@ -618,12 +675,17 @@ export function useContrato({
       proveedor: relleno ? proveedor.trim() || "—" : proveedor.trim(),
       correo: correo.trim() || undefined,
       marca: marca.trim() || undefined,
-      nota: nota.trim() || undefined,
+      // Editando, la nota interna no viaja: no se cargó (Vender lo mira el
+      // proveedor) y el servidor la rechaza (422 `edita_nota`).
+      nota: edita ? undefined : nota.trim() || undefined,
       desde, hasta,
       tipo,
       caduca: tipo === "reserva" ? caduca || null : null,
       cobro: conVentas && !relleno ? cobro : conVentas ? { modo: "ventas", porcentaje: (ventasPb ?? 100) / 100, corte } : { modo: "fijo" },
       lineas: filas,
+      // «Editar contrato»: EL contrato del renglón y lo que se mostró. Nunca
+      // se busca el contrato por su código.
+      ...(edita ? { edita: { lease_id: edita.leaseId, esperado: edita.esperado } } : {}),
     };
     return { pedido, deDonde };
   };
@@ -644,7 +706,10 @@ export function useContrato({
   ]);
 
   useEffect(() => {
-    if (lineas.length === 0 || !fechasEnOrden) { setVeredicto({}); return; }
+    // Con una forma de venderse PENDIENTE («Editar contrato»), las partes
+    // todavía no están en el plano del servidor: su vista previa las daría
+    // por inexistentes. Se revisa al guardar, con el plano ya escrito.
+    if (lineas.length === 0 || !fechasEnOrden || planoPendiente) { setVeredicto({}); return; }
     const mio = ++pedido.current;
     // Se espera a que dejen de teclear las fechas: el campo de fecha dispara
     // un cambio por dígito y cada uno sería un viaje.
@@ -673,7 +738,7 @@ export function useContrato({
     // `proveedor` y los precios a propósito NO disparan: cambian mientras se
     // teclea y no cambian el veredicto sobre las fechas y la capacidad.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firmaValidacion, fechasEnOrden]);
+  }, [firmaValidacion, fechasEnOrden, planoPendiente]);
 
   /** Lo que el servidor rechazó al GUARDAR (409, no se escribió nada), por
    *  espacio. Vale para las líneas y las fechas con que se pidió: si cambian,
@@ -719,10 +784,66 @@ export function useContrato({
   );
   const ventasMal = cobroModo === "ventas" && ventasPb === null;
   const lineasReales = lineas.filter((l) => !l.sinElegir);
+  /** «Editar contrato»: el contrato como queda, para «Qué cambia». */
+  const fotoAhora = useMemo((): FotoDelContrato | null => {
+    if (!edita) return null;
+    const l = lineasReales[0];
+    if (!l) return null;
+    const conVentas = cobroModo === "ventas";
+    return {
+      forma: l.tipo === "pc" ? "participacion" : l.tipo === "partes" ? "parte" : l.tipo === "pieza" ? "pieza" : "entera",
+      visibleCara: codigoVisibleDe(l.fixture.code, l.face, l.tipo === "pieza" ? false : l.doble, null),
+      partes: lineasReales.flatMap((x) => x.partes),
+      proveedor, marca, desde, hasta,
+      valor: conVentas ? 0 : total,
+      modoPrecio: conVentas ? null : l.modo,
+      valorTecleado: !conVentas && l.modo === "mensual" ? l.numero : null,
+      cobro: conVentas && ventasPb !== null ? { porcentaje: ventasPb / 100, corte } : null,
+      pb: l.tipo === "pc" ? l.pb : null,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edita, lineas, cobroModo, proveedor, marca, desde, hasta, total, ventasPb, corte]);
+  /** Lo de antes → lo nuevo, y si el viejo se cierra como «reemplazado». */
+  const edicion = edita && fotoAhora ? queCambia(edita.antes, fotoAhora) : null;
+  const sinCambios = !!edicion && edicion.cambios.length === 0 && !edicion.reemplazo;
+  /** Un 409 `contrato_cambio`: el contrato cambió (o se canceló) mientras se
+   *  editaba. Reintentar daría siempre lo mismo: el botón queda apagado y se
+   *  ofrece volver a Supervisar, que relee la base. */
+  const [cambioAjeno, setCambioAjeno] = useState(false);
+  const faltaEdicion = edita
+    ? (cambioAjeno ? "Ese contrato cambió mientras lo editabas: volvé a Supervisar y abrilo de nuevo" : null)
+      ?? (fotoAhora ? faltaDeLaEdicion(edita, fotoAhora, lineasReales.length) : null) ?? (sinCambios ? "No cambiaste nada" : null)
+    : null;
+  /** Cuántos contratos nacen si se reemplaza: uno por parte, o uno. */
+  const nuevos = fotoAhora?.forma === "parte" ? Math.max(1, fotoAhora.partes.length) : 1;
+  /** ¿El proveedor nuevo ya existe? (`/suppliers/completar` devuelve UN
+   *  nombre, sin correo: sólo para decir bien a qué correo le llega). */
+  const [proveedorExiste, setProveedorExiste] = useState<boolean | null>(null);
+  const otroProveedor = !!edita && claveDeProveedor(proveedor) !== claveDeProveedor(edita.antes.proveedor);
+  useEffect(() => {
+    setProveedorExiste(null);
+    const nombre = proveedor.trim();
+    if (!otroProveedor || nombre.length < 3) return;
+    let vivo = true;
+    const t = setTimeout(() => {
+      completarProveedor(nombre)
+        .then((n) => { if (vivo) setProveedorExiste(claveDeProveedor(n) === claveDeProveedor(nombre)); })
+        .catch(() => { if (vivo) setProveedorExiste(null); });
+    }, 300);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [otroProveedor, proveedor]);
+  /** A qué correo le llega «Tu contrato cambió»: el del proveedor QUE QUEDA
+   *  (lo dicen el aviso del pie y el diálogo). */
+  const correoDestino = edita ? correoDelProveedorQueQueda(edita, proveedor, correo, proveedorExiste) : null;
+  /** Los cortes de ventas que ya vencieron, antes de guardar (la regla de
+   *  `cobros.periodos` del servidor, `utils/edicionDeContrato.ts`). */
+  const avisoCortes = edita && cobroModo === "ventas" && fechasEnOrden
+    ? avisoDeCortes(desde, hasta, corte, edita.hoy, edita.ultimoCorte) : null;
+
   const puedeGuardar =
     lineasReales.length > 0 && proveedor.trim().length > 0 && fechasEnOrden
     && sinValor.length === 0 && sinElegir.length === 0 && sinPorcentaje.length === 0 && !ventasMal
-    && chocan.length === 0;
+    && chocan.length === 0 && !faltaEdicion;
 
   /** Qué falta para poder guardar, dicho antes de que alguien busque el botón.
    *  Nombra la línea: con tres, «falta el valor» obliga a buscar cuál. */
@@ -749,7 +870,7 @@ export function useContrato({
         ? `Ya no entra el ${pct(chocan[0].pb)} de ${chocan[0].visible}`
         : `${chocan[0].visible} ya está vendido en esas fechas`
       : `${chocan.length} espacios ya están vendidos en esas fechas`
-    : null;
+    : faltaEdicion;
 
   /** El día de hoy del negocio (el del servidor, si la ocupación llegó). */
   const hoy = lineas.find((l) => l.hoy)?.hoy ?? iso(new Date());
@@ -775,6 +896,7 @@ export function useContrato({
     setRechazo(null);
     const firma = firmaValidacion;
     const { pedido: lo, deDonde } = armarPedido(tipo, false);
+    let planoEscrito = false;
     try {
       // TODO junto o nada (`POST /contratos/vender`): un candado para todas
       // las caras, una revisión con la base de ahora y un commit. Antes era la
@@ -782,6 +904,18 @@ export function useContrato({
       // una cara entera y un porcentaje en el mismo contrato quedaba medio
       // contrato firmado—. Y un solo envío de avisos: un acuerdo es un correo
       // por rol, no uno por espacio.
+      // «Editar contrato» con la forma de venderse cambiada: el plano se
+      // escribe RECIÉN ahora (el servidor lee las partes de ahí), y si el
+      // guardado falla se deshace abajo.
+      if (planoPendiente) {
+        const problema = await planoPendiente.escribir();
+        if (problema) {
+          setError(problema);
+          setEstado("error");
+          return;
+        }
+        planoEscrito = true;
+      }
       const resp = await guardarContrato(lo);
 
       // La planometría no va acá: se carga en Supervisar, en la ficha del
@@ -800,8 +934,22 @@ export function useContrato({
         caduca: tipo === "reserva" ? caduca : null,
         cobro,
         avisos: resp.avisos ?? undefined,
+        ...(edita ? { editado: {
+          reemplazo: resp.edicion?.modo === "reemplazo",
+          nuevos: Math.max(1, resp.edicion?.reemplazado_por?.length ?? 1),
+          conPlanometria: !!edita.planometria,
+        } } : {}),
       });
     } catch (e) {
+      // El plano vuelve a como estaba: no queda la nevera partida con el
+      // contrato entero vivo.
+      if (planoEscrito && planoPendiente) await planoPendiente.deshacer().catch(() => undefined);
+      if (edita && codigoDelRechazo(e) === "contrato_cambio") {
+        setCambioAjeno(true);
+        setError("Ese contrato cambió mientras lo editabas (lo guardó otra pestaña o alguien más). No se guardó nada: volvé a Supervisar y abrilo de nuevo.");
+        setEstado("error");
+        return;
+      }
       const filas = filasRechazadas(e);
       if (filas) {
         const porLlave: Record<string, FilaRechazada> = {};
@@ -841,6 +989,10 @@ export function useContrato({
     dias, nMeses, textoDeMeses, fechasEnOrden, puedeGuardar, falta,
     vienenDelPeriodo: !!rango && desde === iso(rango.from) && hasta === iso(rango.to),
     estado, error, guardar,
+    // «Editar contrato»: el contrato que se reabre, lo que cambia, el aviso de
+    // los cortes vencidos, y el mapa y la ocupación SIN el propio contrato
+    // (los usa la línea para lo que choca y para cambiar cómo se vende).
+    edita, edicion, avisoCortes, estadoComercial, ocupacionDe, nuevos, correoDestino, cambioAjeno,
   };
 }
 

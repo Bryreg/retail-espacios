@@ -62,6 +62,19 @@ export interface PedidoDeVenta {
   caduca: string | null;
   cobro: Cobro;
   lineas: LineaDeVenta[];
+  /** «Editar contrato» (§9): EL contrato del renglón (`leaseId` de
+   *  `GET /spaces/comercial`) y lo que el renglón mostró. Nunca se busca el
+   *  contrato por su código. */
+  edita?: {
+    lease_id: number;
+    /** La huella ENTERA que el renglón mostró: valor, fechas, proveedor, marca,
+     *  cómo se cobra y, de un porcentaje, sus puntos básicos. */
+    esperado: {
+      valor: number; desde: string; hasta: string; proveedor: string; marca: string | null;
+      cobro: { modo: "fijo" } | { modo: "ventas"; porcentaje: number; corte: "mensual" | "al_final" };
+      puntos_basicos: number | null;
+    };
+  };
 }
 
 export interface VentaGuardada {
@@ -75,6 +88,8 @@ export interface VentaGuardada {
   /** Las reservas de una cara entera o de una parte (§8); vacío en un contrato. */
   reservas?: { espacio: string; reserva_id: number }[];
   avisos?: AvisosContrato | null;
+  /** «Editar contrato»: corregido en su lugar o reemplazado (§9). */
+  edicion?: { modo: "en_el_lugar" | "reemplazo"; lease_id: number; reemplazado_por: number[] };
 }
 
 /** Una línea que el servidor rechazó. `indice` es su lugar en `lineas` (desde 0).
@@ -99,6 +114,13 @@ export function filasRechazadas(e: unknown): FilaRechazada[] | null {
   if (!d || d.code !== "contrato_invalido" || !Array.isArray(d.filas)) return null;
   return d.filas.filter((f): f is FilaRechazada =>
     !!f && typeof f === "object" && typeof (f as FilaRechazada).indice === "number");
+}
+
+/** El `code` de un rechazo del servidor (`detail.code`), o `null`. Lo usa
+ *  «Editar contrato» para el 409 `contrato_cambio`: reintentar daría lo mismo. */
+export function codigoDelRechazo(e: unknown): string | null {
+  const d = (e as { response?: { data?: { detail?: { code?: unknown } } } })?.response?.data?.detail;
+  return d && typeof d === "object" && typeof d.code === "string" ? d.code : null;
 }
 
 /** Guarda TODO el contrato o nada. Un 409 `contrato_invalido` se lee con
