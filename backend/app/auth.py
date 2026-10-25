@@ -376,6 +376,43 @@ def create_mount_token(
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+def dias_del_enlace_de_guia(rige_desde, hasta) -> int:
+    """Cuánto vive el enlace de la guía de montaje de una versión: hasta un mes
+    después de que termina (o de que arranca, si no tiene fin), nunca menos de
+    un mes desde hoy ni más que el tope del enlace de montaje."""
+    from app.fechas import hoy
+
+    fin = hasta or rige_desde
+    dias = (fin - hoy()).days + MONTAJE_TTL_DAYS if fin else MONTAJE_TTL_DAYS
+    return max(MONTAJE_TTL_DAYS, min(dias, MONTAJE_TTL_MAXIMO_DIAS))
+
+
+def create_guia_token(version_id: int, cliente: str | None = None, days: int = MONTAJE_TTL_DAYS) -> str:
+    """Un token que sólo abre la guía de montaje de ESA versión de un
+    planograma (fase 3 de la distribución), sin contraseña y por un tiempo.
+    Como el de montaje, ``decode_token`` no lo reconoce: no entra por la
+    puerta general, sólo por ``require_guia``."""
+    payload = {
+        "role": "guia",
+        "version": int(version_id),
+        "cliente": cliente,
+        "exp": datetime.now(timezone.utc) + timedelta(days=days),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def decode_guia(token: str) -> int | None:
+    """La versión que abre un token de guía, o None si no lo es (o venció)."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("role") != "guia":
+        return None
+    v = payload.get("version")
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
+
+
 # ─── Revocación por request (membresías individuales) ─────────────────────────
 #
 # Las épocas invalidan TODO un rol de golpe — sirven para el logout masivo del
@@ -702,6 +739,41 @@ def require_montaje(
     if montaje is not None:
         code, vence = montaje
         return Quien("montaje", code, vence, contrato_del_montaje(raw))
+    raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+
+class QuienGuia:
+    """Quién pide una guía: una sesión (``role`` admin o worker) o el enlace
+    de UNA versión (``role`` "guia" y ``version``)."""
+
+    __slots__ = ("role", "version")
+
+    def __init__(self, role: str, version: int | None = None):
+        self.role = role
+        self.version = version
+
+    @property
+    def es_enlace(self) -> bool:
+        return self.role == "guia"
+
+
+def require_guia(
+    authorization: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> QuienGuia:
+    """Acepta una sesión (admin, worker) **o** el enlace firmado de una guía.
+    El enlace sólo vale para SU versión: cada endpoint lo compara. Por query
+    también, porque la foto se abre en un ``<img>``."""
+    raw = _leer_credencial(authorization, token)
+    if not raw:
+        raise HTTPException(status_code=401, detail="No autenticado")
+    role = decode_token(raw, db)
+    if role is not None:
+        return QuienGuia(role)
+    version = decode_guia(raw)
+    if version is not None:
+        return QuienGuia("guia", version)
     raise HTTPException(status_code=401, detail="Token inválido o expirado")
 
 

@@ -5,6 +5,7 @@ import BloqueoCuenta from "./components/BloqueoCuenta";
 import IngresoPortada from "./components/IngresoPortada";
 import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
+import { usarTokenDeGuia } from "./api/guia";
 import { useAuthStore } from "./store/authStore";
 import { startAutoSync, stopAutoSync, useFixtureStore } from "./store/fixtureStore";
 
@@ -25,6 +26,7 @@ import { startAutoSync, stopAutoSync, useFixtureStore } from "./store/fixtureSto
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Login = lazy(() => import("./pages/Login"));
 const Montaje = lazy(() => import("./pages/Montaje"));
+const GuiaDeMontaje = lazy(() => import("./pages/GuiaDeMontaje"));
 const PoliticaDatos = lazy(() => import("./pages/PoliticaDatos"));
 const Plataforma = lazy(() => import("./pages/Plataforma"));
 const ReportePlataforma = lazy(() => import("./pages/ReportePlataforma"));
@@ -51,6 +53,37 @@ function Pantalla({ children }: { children: ReactNode }) {
 
 /** Dónde queda el enlace de montaje entre una recarga y la siguiente. */
 const LLAVE_MONTAJE = "recabra-montaje";
+
+/** Dónde queda el enlace de la guía entre una recarga y la siguiente. */
+const LLAVE_GUIA = "recabra-guia";
+
+/**
+ * El enlace de la GUÍA de montaje de una versión (`?guia=<id>&t=…`, fase 3 de
+ * la distribución), leído UNA vez al arrancar y ANTES que el de montaje (los
+ * dos traen `t`): con `guia` en la URL, el token es de la guía. Mismo trato
+ * que el de montaje: sale de la barra de direcciones apenas se lee, pasa a
+ * `sessionStorage` (muere al cerrar la pestaña) y la URL queda en `?guia=1`.
+ */
+const TOKEN_GUIA = (() => {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("guia")) return null;
+  const t = (params.get("t") ?? "").trim();
+  if (t) {
+    try { window.sessionStorage.setItem(LLAVE_GUIA, t); } catch { /* sin guardarlo igual funciona */ }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("t");
+    url.searchParams.set("guia", "1");
+    window.history.replaceState(null, "", url.toString());
+    usarTokenDeGuia(t);
+    return t;
+  }
+  let guardado = "";
+  try { guardado = (window.sessionStorage.getItem(LLAVE_GUIA) ?? "").trim(); } catch { guardado = ""; }
+  if (!guardado) return null;
+  usarTokenDeGuia(guardado);
+  return guardado;
+})();
 
 /**
  * El enlace firmado del correo de montaje (`?t=…`), leído UNA vez al arrancar.
@@ -141,7 +174,7 @@ export default function App() {
     //
     // La sesión de plataforma tampoco tiene layout: es un operador sin
     // membresías, mirando sólo `/api/plataforma/*`.
-    if (!token || TOKEN_MONTAJE || plataforma) {
+    if (!token || TOKEN_MONTAJE || TOKEN_GUIA || plataforma) {
       stopAutoSync();
       return;
     }
@@ -164,6 +197,7 @@ export default function App() {
 
   // El enlace del correo manda sobre todo lo demás, incluso sobre una sesión
   // abierta: quien lo toca quiere ver ESE espacio, no el tablero.
+  if (TOKEN_GUIA) return <Pantalla><GuiaDeMontaje /></Pantalla>;
   if (TOKEN_MONTAJE) return <Pantalla><Montaje /></Pantalla>;
 
   // Route guard: no session. A 401 anywhere clears the token (see

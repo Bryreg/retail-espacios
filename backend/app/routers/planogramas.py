@@ -15,15 +15,21 @@ Rutas efectivas ``/api/planogramas/…``. No confundir con
   bitácora, se hace commit y DESPUÉS se arma la respuesta.
 """
 from datetime import date
+from html import escape
 from typing import Literal, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin, require_auth
+from app.auth import create_guia_token, dias_del_enlace_de_guia, require_admin, require_auth
+from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
+from app.services import guia as guia_servicio
 from app.services import planogramas as servicio
+from app.services.contacts import recipients_for
+from app.services.mailer import app_base_url, clean_recipients, correo_configurado, html_shell, send_mail_to_bg
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de
 
@@ -227,3 +233,90 @@ def poner_ajustes(
            detalle="Publica también el equipo" if cuerpo.quien_publica == "equipo" else "Publica sólo administración")
     db.commit()
     return {"quien_publica": cuerpo.quien_publica}
+
+
+# ─── La guía de montaje (fase 3) ──────────────────────────────────────────────
+
+class GuiaIn(_Estricto):
+    version_id: StrictInt = Field(ge=1)
+
+
+class EnviarGuiaIn(GuiaIn):
+    #: A quién: los contactos de la sede que se eligieron y los que se escribieron.
+    correos: list[str] = Field(min_length=1, max_length=20)
+
+
+def _enlace(db: Session, version_id: int, cliente: Cliente) -> tuple[str, int]:
+    _nombre, _sede, v, _pl = guia_servicio.titulo(db, version_id)
+    dias = dias_del_enlace_de_guia(v.rige_desde, v.hasta)
+    token = create_guia_token(v.id, cliente.slug, days=dias)
+    return f"{app_base_url()}/?guia={v.id}&t={quote(token)}", dias
+
+
+@router.post("/guia/enlace")
+def enlace_de_la_guia(
+    cuerpo: GuiaIn,
+    rol: str = Depends(require_auth),
+    cliente: Cliente = Depends(cliente_del_pedido),
+    db: Session = Depends(get_db),
+):
+    """El enlace sin contraseña de la guía de esa versión («Copiar el
+    enlace»). Lo saca quien planifica esa cara."""
+    guia_servicio.puede_compartir(db, rol, cuerpo.version_id)
+    url, dias = _enlace(db, cuerpo.version_id, cliente)
+    return {"url": url, "dias": dias}
+
+
+@router.get("/guia/destinatarios")
+def destinatarios_de_la_guia(
+    version: int = Query(..., ge=1),
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """A quién corresponde mandarla: quien monta en la sede (el mercaderista
+    de la libreta de contactos) y, para quien administra, la administración de
+    la sede. Más los que se escriban a mano."""
+    guia_servicio.puede_compartir(db, rol, version)
+    _nombre, sede, _v, _pl = guia_servicio.titulo(db, version)
+    quienes = recipients_for(db, sede)
+    return {"sede": sede, "montaje": quienes["montaje"], "comercial": quienes["comercial"] if rol == "admin" else [],
+            "correo_listo": correo_configurado()}
+
+
+@router.post("/guia/enviar")
+def enviar_la_guia(
+    cuerpo: EnviarGuiaIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    rol: str = Depends(require_auth),
+    cliente: Cliente = Depends(cliente_del_pedido),
+    db: Session = Depends(get_db),
+):
+    """Manda la guía (su enlace sin contraseña y lo que va dónde, sin precios)
+    a quien corresponde. No sale sola al publicar: se elige a quién."""
+    guia_servicio.puede_compartir(db, rol, cuerpo.version_id)
+    correos = clean_recipients(cuerpo.correos)
+    if not correos:
+        raise servicio._error(422, "sin_correos", "Escribí al menos un correo válido.")
+    if not correo_configurado():
+        raise servicio._error(409, "sin_correo", "El correo de RECABRA no está configurado: copiá el enlace y mandalo vos.")
+    nombre, sede, v, pl = guia_servicio.titulo(db, cuerpo.version_id)
+    url, _dias = _enlace(db, cuerpo.version_id, cliente)
+    datos = guia_servicio.guia(db, cuerpo.version_id)
+    asunto = f"Guía de montaje · {nombre} · versión {v.numero} — {sede}"
+    vigencia = f"desde el {guia_servicio.fecha_corta(v.rige_desde)}" + (
+        f" hasta el {guia_servicio.fecha_corta(v.hasta)}" if v.hasta else "")
+    from app.services.reglas_participacion import pct
+    rows = [("Mueble", escape(nombre)), ("Versión", f"{v.numero} · rige {escape(vigencia)}")] + [
+        (f"{i}", f"{escape(p['nombre'])} · {pct(p['pb'])}") for i, p in enumerate(datos["piezas"], start=1)
+    ]
+    pie = (f'<a href="{url}" style="color:#0369A1;font-weight:600;">Abrir la guía</a> — se abre sin contraseña, '
+           "para imprimir o para seguirla en el teléfono. Al terminar se puede subir una foto de cómo quedó.<br><br>"
+           '<span style="color:#94A3B8;font-size:12px;">Si en el mueble hay otra versión impresa, vale ésta. '
+           "El enlace es para quien monta: no lo reenvíes.</span>")
+    background_tasks.add_task(send_mail_to_bg, correos, asunto, html_shell(asunto, rows, pie))
+    anotar(db, request, rol, "guia.enviada", entidad="planograma", entidad_id=nombre,
+           detalle=f"Versión {v.numero} a {len(correos)} correo(s)")
+    db.commit()
+    return {"enviados": correos}
+

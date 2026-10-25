@@ -19,6 +19,9 @@ migración; ninguna columna nueva en tablas existentes, test_t22):
   en u,v normalizados, como una zona—; con ``version_id`` NULL es el borrador.
 · ajustes_de_planograma: quién publica (sólo administración, o también el
   equipo). Una fila por clave.
+· fotos_de_guia (fase 3, la guía de montaje): la foto de cómo quedó la cara,
+  unida a la versión que se montó. No es obligatoria (decisión del dueño).
+  Los bytes van en la base, como las planometrías: el disco de Render se borra.
 
 Mismas reglas de forma que `models/participaciones.py`: sólo Integer, String,
 Text, Date, DateTime(timezone=True) y ForeignKey; los estados y los tipos son
@@ -28,7 +31,7 @@ sí misma.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint
 
 from app.database import Base
 
@@ -144,3 +147,21 @@ class AjusteDePlanograma(Base):
     valor = Column(String, nullable=False)
     actualizado_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
     actualizado_por = Column(String, nullable=True)
+
+
+class FotoDeGuia(Base):
+    """La foto de cómo quedó la cara, subida desde la guía de una versión."""
+
+    __tablename__ = "fotos_de_guia"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True)
+    version_id = Column(Integer, ForeignKey("versiones_de_planograma.id"), nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size = Column(Integer, nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    # El correo de la sesión, o «enlace» si se subió desde el enlace sin contraseña.
+    subida_por = Column(String, nullable=True)
+    subida_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
+

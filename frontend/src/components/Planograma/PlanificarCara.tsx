@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeftToLine, ArrowRightToLine, BellRing, BoxSelect, CircleAlert, CircleCheck, Eraser, GripVertical, History, Lock, Maximize2,
+  ArrowLeftToLine, ArrowRightToLine, BellRing, BoxSelect, CircleAlert, CircleCheck, Eraser, FileText, GripVertical, History, Lock, Maximize2,
   Minimize2, MoreHorizontal, PenLine, Plus, Redo2, RotateCcw, Send, Trash2, Undo2, Users, Wand2, X,
 } from "lucide-react";
 import { describeError } from "../../api/client";
@@ -25,6 +25,7 @@ import CaraDelPlanograma, { dondeCaeEnElPlano, dondeQuedoEnElPlano, uvEnElPlano 
 import FormularioDeDestino, { IconoDelTipo } from "./FormularioDeDestino";
 import PublicarVersion from "./PublicarVersion";
 import Versiones from "./Versiones";
+import VerGuia from "../Guia/VerGuia";
 
 /**
  * «Planificar la cara» (fase 2 de la distribución, 2026-10-24; dibujo aprobado
@@ -109,7 +110,9 @@ function Pantalla() {
   const [publicando, setPublicando] = useState(false);
   const [verVersiones, setVerVersiones] = useState(false);
   const [pregunta, setPregunta] = useState<Pregunta>(null);
-  const [exito, setExito] = useState<string | null>(null);
+  const [exito, setExito] = useState<{ texto: string; versionId: number | null } | null>(null);
+  /** La guía de montaje de una versión, abierta (fase 3). */
+  const [guiaDe, setGuiaDe] = useState<{ id: number; mandar: boolean } | null>(null);
   const [arrastre, setArrastre] = useState<{ id: number; x: number; y: number; rect: Rect | null; pisa: number | null; movida: boolean } | null>(null);
   const arrastrada = useRef(false);
 
@@ -474,7 +477,21 @@ function Pantalla() {
             <div role="status" data-exito className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm"
               style={{ background: "rgb(var(--libre-suave-rgb))", borderColor: "rgb(var(--libre-borde-rgb))" }}>
               <CircleCheck {...ICONO} className="mt-0.5" style={{ color: "rgb(var(--libre-txt-rgb))" }} />
-              <p>{exito}</p>
+              <div>
+                <p>{exito.texto}</p>
+                {exito.versionId !== null && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" className={BOTON} onClick={() => setGuiaDe({ id: exito.versionId!, mandar: false })} data-ver-la-guia>
+                      <FileText {...ICONO} />Ver e imprimir la guía
+                    </button>
+                    {datos?.permisos.planificar && (
+                      <button type="button" className={BOTON} onClick={() => setGuiaDe({ id: exito.versionId!, mandar: true })} data-mandar-la-guia>
+                        <Send {...ICONO} />Mandarla a quien corresponde
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               <button type="button" className="rounded p-1 text-ink-3 hover:text-ink-1" aria-label="Cerrar el aviso" onClick={() => setExito(null)}><X {...ICONO} /></button>
             </div>
           )}
@@ -775,11 +792,19 @@ function Pantalla() {
         <PublicarVersion numero={proxima} vigente={vigente} antes={piezasDeLaVigente} despues={edicion} nombre={(id) => destinos.get(id)?.nombre ?? "Un destino"}
           hoy={datos.hoy} desdeSugerido={enteraHoy ? sumarDias(enteraHoy.hasta, 1) : datos.hoy} hastaSugerido={enteraDespues ? sumarDias(enteraDespues.desde, -1) : null}
           onCerrar={() => setPublicando(false)}
-          onPublicada={(n, desde) => { setPublicando(false); setExito(`Listo: la versión ${n} quedó publicada. Rige desde el ${fechaLegible(desde, datos.hoy)}.`); }} />
+          onPublicada={(n, desde) => {
+            setPublicando(false);
+            const v = usePlanograma.getState().datos?.planograma.versiones.find((x) => x.numero === n) ?? null;
+            setExito({ texto: `Listo: la versión ${n} quedó publicada. Rige desde el ${fechaLegible(desde, datos.hoy)}. Para que la monten:`, versionId: v?.id ?? null });
+          }} />
       )}
       {verVersiones && datos && (
         <Versiones versiones={datos.planograma.versiones} hoy={datos.hoy} onCerrar={() => setVerVersiones(false)}
+          onGuia={(id) => { setVerVersiones(false); setGuiaDe({ id, mandar: false }); }}
           onVer={(v) => { setVerVersiones(false); st().mirar(v); }} />
+      )}
+      {guiaDe !== null && datos && (
+        <VerGuia versionId={guiaDe.id} mandar={guiaDe.mandar} puedeCompartir={datos.permisos.planificar} onCerrar={() => setGuiaDe(null)} />
       )}
       {pregunta && pregunta.tipo !== "descartar" && (
         <Dialogo titulo={pregunta.tipo === "salir" ? "¿Salir de esta cara?" : `¿Pasar a la cara ${pregunta.cara}?`} onCerrar={() => { setPregunta(null); setMensajeDePregunta(null); }}>
