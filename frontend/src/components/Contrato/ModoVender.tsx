@@ -432,7 +432,9 @@ function Fila({
       )}
       {(abierta || l.sinElegir) && l.tipo === "partes" && <ElegirPartes l={l} c={c} />}
       {(abierta || l.pb <= 0) && l.tipo === "pc" && <Porcentaje l={l} c={c} />}
-      {conPrecio && (abierta || l.modo === "mensual") && (
+      {/* Editando, «Total | Al mes» siempre a la vista: los contratos de antes
+          eran al mes y se leían como el total (2026-10-25). */}
+      {conPrecio && (abierta || l.modo === "mensual" || !!c.edita) && (
         <div className="opcion-linea" data-opcion="el-precio-es">
           <span className="rotulo-l">El precio es</span>
           <PrecioDeLinea l={l} c={c} />
@@ -605,7 +607,9 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
           </div>
         </div>
         <div className="avisos-guardado">
-          <Avisos avisos={datos.avisos} />
+          {editado?.sinReenvio
+            ? <p className="nota-guardado" data-sin-reenvio>Sólo cambió cómo se lee el precio: no se envió de nuevo a los correos.</p>
+            : <Avisos avisos={datos.avisos} />}
         </div>
         {/* La planometría no se carga en Vender (decisión de la dueña,
             2026-10-20): se dice dónde, una vez, sin alarma. */}
@@ -909,7 +913,13 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           )}
         </div>
       )}
-      {edita && (
+      {edita && c.soloForma && (
+        <p className="aviso-correos" data-aviso-correos data-sin-reenvio>
+          <Mail {...ICONO} />
+          <span><b>Sólo cambia cómo se lee el precio:</b> no se envía de nuevo a los correos.</span>
+        </p>
+      )}
+      {edita && !c.soloForma && (
         <p className="aviso-correos" data-aviso-correos
           title={`Comercial (gerente y administrador de ${edita.sede}) · el proveedor (${c.correoDestino}) · montaje (mercaderista de ${edita.sede}${c.edicion?.reemplazo || edita.montajePendiente ? ", cuando se cargue la planometría" : ""})`}>
           <Mail {...ICONO} />
@@ -942,13 +952,16 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           className="btn-principal"
           type="button"
           // Editando, primero se confirma a quiénes se reenvía (el diálogo).
-          onClick={edita ? () => setConfirmando(true) : c.guardar}
+          // Si sólo cambia cómo se lee el precio, no se reenvía: se guarda.
+          onClick={edita && !c.soloForma ? () => setConfirmando(true) : c.guardar}
           disabled={guardando || (c.reservando ? !c.puedeReservar || !!c.faltaReserva : !c.puedeGuardar)}
           title={(c.reservando ? c.falta ?? c.faltaReserva : c.falta) ?? undefined}
           data-guardar-edicion={edita ? "" : undefined}
         >
           {guardando
             ? <><Loader2 {...ICONO} style={{ animation: "spin .9s linear infinite" }} /> Guardando…</>
+            : edita && c.soloForma
+            ? <><Check {...ICONO} /> Guardar cambios</>
             : edita
             ? <><Send {...ICONO} /> Guardar cambios y reenviar</>
             : c.reservando

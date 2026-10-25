@@ -111,7 +111,7 @@ def test_en_su_lugar_precio_proveedor_marca_y_fechas_con_lo_que_cuelga_intacto(c
 
     out = _editar(client, admin, lease_id, nuevo, desde=D(2026, 11, 1), hasta=D(2026, 12, 31),
                   proveedor="Lácteos del Valle S.A.", marca="Kumis Valle")
-    assert out["edicion"] == {"modo": "en_el_lugar", "lease_id": lease_id, "reemplazado_por": []}
+    assert out["edicion"] == {"modo": "en_el_lugar", "lease_id": lease_id, "reemplazado_por": [], "sin_reenvio": False}
     assert out["contratos"] == [{"espacio": "NAVE-GON-02", "lease_id": lease_id}]
     L = _lease(lease_id)
     assert (L["activo"], L["valor"], L["desde"], L["hasta"], L["proveedor"], L["marca"]) == (
@@ -392,6 +392,53 @@ def test_los_tres_reciben_montaje_sin_precios_y_el_proveedor_solo_lo_suyo(client
     assert asunto == "Contrato modificado — GON-02·A · NAVE"
     assert "$" not in html and "% de las ventas" not in html, "el de montaje no lleva plata"
     assert "?montar=" in html and "Lácteos del Valle" in html
+
+
+def _sin_forma(lease_id):
+    """Un contrato como los de antes de Vender: sin forma de precio guardada."""
+    from app.models.vender import CondicionesDeContrato
+
+    db = tp._bd()
+    try:
+        db.query(CondicionesDeContrato).filter(CondicionesDeContrato.lease_id == lease_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+@RELOJ
+def test_pasar_a_al_mes_con_el_mismo_numero_no_reenvia(client, admin, monkeypatch):
+    """Un contrato cargado antes de Vender guardó el valor del MES como si
+    fuera el total. Editarlo a «Al mes» con el mismo número corrige cómo se
+    lee: el total pasa a ser el mes × los meses y no sale ningún correo
+    (decisión del dueño, 2026-10-25). Si además cambia el número, sí."""
+    from app.models.vender import CondicionesDeContrato
+
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    lease_id = _vendido(client, admin, _entera("GON-02", 800_000), desde=D(2026, 8, 1), hasta=D(2027, 1, 31))["contratos"][0]["lease_id"]
+    _planometria(client, admin, lease_id)
+    _sin_forma(lease_id)
+    enviados.clear()
+
+    out = _editar(client, admin, lease_id, _entera("GON-02", 4_800_000, modo_precio="mensual", valor_tecleado=800_000),
+                  desde=D(2026, 8, 1), hasta=D(2027, 1, 31))
+    assert out["edicion"]["sin_reenvio"] is True and out["edicion"]["modo"] == "en_el_lugar"
+    assert enviados == [], "sólo cambió cómo se lee el precio: no sale ningún correo"
+    assert (out["avisos"]["comercial"], out["avisos"]["proveedor"], out["avisos"]["montaje"]) == ([], [], [])
+    assert _lease(lease_id)["valor"] == 4_800_000
+    c = _fila(CondicionesDeContrato, lease_id)
+    assert (c["modo_precio"], c["valor_tecleado"]) == ("mensual", 800_000)
+    ((_id, detalle),) = [x for x in _bitacora("contrato.editado") if x[0] == str(lease_id)]
+    assert "sin reenvío" in detalle and "$ 800.000 al mes" in detalle
+
+    # Y de vuelta a «Total» con el mismo número escrito: tampoco.
+    out = _editar(client, admin, lease_id, _entera("GON-02", 800_000), desde=D(2026, 8, 1), hasta=D(2027, 1, 31))
+    assert out["edicion"]["sin_reenvio"] is True and enviados == []
+    # Cambiar el número (o algo más) es una edición de verdad: sale a todos.
+    out = _editar(client, admin, lease_id, _entera("GON-02", 5_400_000, modo_precio="mensual", valor_tecleado=900_000),
+                  desde=D(2026, 8, 1), hasta=D(2027, 1, 31))
+    assert out["edicion"]["sin_reenvio"] is False and len(enviados) == 3
 
 
 @RELOJ

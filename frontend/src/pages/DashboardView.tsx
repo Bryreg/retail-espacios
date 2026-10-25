@@ -137,6 +137,7 @@ import { FaltaPlanometria, useFaltaPlanometria } from "../components/Supervisar/
 import {
   claveDeSupervision, PlanogramasPorRevisar, SECCION_DE_SUPERVISION, usePlanogramasPorRevisar,
 } from "../components/Supervisar/PlanogramasPorRevisar";
+import { PrecioSinForma, usePrecioSinForma } from "../components/Supervisar/PrecioSinForma";
 // La supervisión de los planogramas (fase 4): la ficha y la guía, a pedido.
 const RevisarMontaje = lazy(() => import("../components/Supervision/RevisarMontaje"));
 const VerGuia = lazy(() => import("../components/Guia/VerGuia"));
@@ -4829,6 +4830,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   /** Los planogramas en «Hoy» (fase 4): el servidor sólo trae las caras que
    *  este rol puede revisar (las mismas que puede publicar). Sin plata. */
   const planogramasPorRevisar = usePlanogramasPorRevisar({ sede, activo: modoEfectivo === "supervisar" });
+  /** Los contratos de antes de Vender que no dicen si su valor es al mes
+   *  (2026-10-25). Plata y proveedores: sólo quien administra, sólo acá. */
+  const precioSinForma = usePrecioSinForma({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
   const [revisarMontajeDe, setRevisarMontajeDe] = useState<number | null>(null);
   const [guiaParaMandar, setGuiaParaMandar] = useState<number | null>(null);
   const [avisoDeSupervision, setAvisoDeSupervision] = useState<string | null>(null);
@@ -6238,6 +6242,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
       a.push({ seccion: "reservas", clave: `res:${r.id}`, dias: daysUntil(r.caduca), fixtureId: m?.fixture.id, cara: m?.cara });
     }
     for (const e of kpis.belowReference) a.push({ seccion: "bajo_tarifa", clave: `bt-${claveDeFila(e)}`, ...de(e) });
+    // Los contratos de antes sin forma de precio: UNA tarea, aunque sean muchos.
+    for (const _c of precioSinForma.unoSiHay) a.push({ seccion: "precio_sin_forma", clave: "precio-sin-forma" });
     // Lo que sólo vive en el plano: cada contrato que falta pasar (o completar).
     if (importacion) {
       for (const x of [...importacion.importables, ...importacion.incompletos]) {
@@ -6246,7 +6252,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     }
     return a;
   }, [kpis, fantasmas, isAdmin, cortesSinCargar.pendientes, cortesSinCargar.cargados, revisionPc.secciones,
-    faltaPlanometria.filas, montaje, reservasSinConfirmar.vivas, importacion, muebleDelEspacio, planogramasPorRevisar.filas]);
+    faltaPlanometria.filas, montaje, reservasSinConfirmar.vivas, importacion, muebleDelEspacio, planogramasPorRevisar.filas,
+    precioSinForma.unoSiHay]);
 
   /** Cuántos avisos tiene cada grupo, y la pastilla roja: la suma de los tres. */
   const cuentasDeRevision = useMemo(() => contarPorGrupo(avisos), [avisos]);
@@ -7385,6 +7392,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                   {/* ── CORREGIR: datos que no cuadran ── */}
                   {grupoDeRevision === "corregir" && (
                     <>
+                      {/* Cómo se lee el valor de los contratos de antes de
+                          Vender (al mes o total): sólo quien administra. */}
+                      {isAdmin && (
+                        <PrecioSinForma
+                          filas={precioSinForma.filas}
+                          titulo={tituloDeSeccion("precio_sin_forma", "corregir")}
+                          onCambio={precioSinForma.recargar}
+                        />
+                      )}
                       {/* Las dos mitades del desfase van primero, juntas: son lo
                           único acá que la pantalla no puede mostrar de ninguna
                           otra forma. */}

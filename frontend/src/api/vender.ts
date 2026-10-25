@@ -89,7 +89,11 @@ export interface VentaGuardada {
   reservas?: { espacio: string; reserva_id: number }[];
   avisos?: AvisosContrato | null;
   /** «Editar contrato»: corregido en su lugar o reemplazado (§9). */
-  edicion?: { modo: "en_el_lugar" | "reemplazo"; lease_id: number; reemplazado_por: number[] };
+  edicion?: {
+    modo: "en_el_lugar" | "reemplazo"; lease_id: number; reemplazado_por: number[];
+    /** Sólo cambió cómo se lee el precio, con el mismo número: no salió ningún correo. */
+    sin_reenvio?: boolean;
+  };
 }
 
 /** Una línea que el servidor rechazó. `indice` es su lugar en `lineas` (desde 0).

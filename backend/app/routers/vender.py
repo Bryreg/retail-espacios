@@ -174,11 +174,103 @@ def _editar(pedido: dict, request: Request, background_tasks: BackgroundTasks, v
     except Exception:
         db.rollback()
         raise
-    avisos = avisar_edicion(db, background_tasks, cliente, hecho, actor).model_dump()
+    if hecho.sin_reenvio:
+        # Sólo cambió cómo se lee el precio, con el mismo número: no sale
+        # ningún correo (decisión del dueño, 2026-10-25).
+        from app.routers import bulk_leases as bl
+        from app.schemas.spaces import AvisosContrato
+
+        avisos = AvisosContrato(smtp_listo=bl.correo_configurado(), comercial=[], montaje=[], proveedor=[]).model_dump()
+    else:
+        avisos = avisar_edicion(db, background_tasks, cliente, hecho, actor).model_dump()
     return {
         "contratos": hecho.contratos,
         "participaciones": hecho.participaciones,
         "reservas": [],
         "avisos": avisos,
-        "edicion": {"modo": hecho.modo, "lease_id": hecho.lease_id, "reemplazado_por": hecho.reemplazado_por},
+        "edicion": {"modo": hecho.modo, "lease_id": hecho.lease_id, "reemplazado_por": hecho.reemplazado_por,
+                    "sin_reenvio": hecho.sin_reenvio},
     }
+
+
+# ─── Contratos de antes de Vender: ¿al mes o total? (2026-10-25) ─────────────
+# ``services/precio_sin_forma.py``. Sólo administración; no manda correos.
+
+
+class _ContratoMostrado(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lease_id: StrictInt = Field(ge=1)
+    #: El valor que la pantalla mostró: si cambió entretanto, 409.
+    valor: float = Field(ge=0)
+
+
+class CorregirPrecioIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    modo: Literal["mensual", "total"]
+    contratos: list[_ContratoMostrado] = Field(min_length=1, max_length=1000)
+
+
+class DeshacerPrecioIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lease_ids: list[StrictInt] = Field(min_length=1, max_length=1000)
+
+
+@router.get("/precio-sin-forma")
+def contratos_sin_forma(
+    sede: str,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Los contratos de la sede cargados antes de Vender: sin decir si su
+    valor es del mes o del total (se leen como total)."""
+    from app.services import precio_sin_forma
+
+    return {"contratos": precio_sin_forma.pendientes(db, sede)}
+
+
+@router.post("/precio-sin-forma/corregir")
+def corregir_precio(
+    cuerpo: CorregirPrecioIn,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """«Son al mes» (el total pasa a ser el valor × los meses) o «es el
+    total» (no cambia). Todo o nada; sin correos."""
+    from app.services import precio_sin_forma
+
+    actor = actor_de(request, rol)
+    try:
+        hechos = precio_sin_forma.corregir(db, cuerpo.modo, [c.model_dump() for c in cuerpo.contratos], actor)
+        for h in hechos:
+            detalle = (f"Valor de antes {h.valor_antes:,.0f} leído al mes × {h.meses:.2f} meses = total {h.total_despues:,.0f}"
+                       if h.modo_precio == "mensual" else f"Valor {h.valor_antes:,.0f} confirmado como total").replace(",", ".")
+            anotar(db, request, rol, "contrato.precio_corregido", entidad="contrato", entidad_id=h.lease_id, detalle=detalle)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"corregidos": [h.lease_id for h in hechos], "modo": cuerpo.modo}
+
+
+@router.post("/precio-sin-forma/deshacer")
+def deshacer_precio(
+    cuerpo: DeshacerPrecioIn,
+    request: Request,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Vuelve esos contratos al valor de antes, sin forma (sólo si nadie los
+    editó después)."""
+    from app.services import precio_sin_forma
+
+    try:
+        hechos = precio_sin_forma.deshacer(db, list(dict.fromkeys(cuerpo.lease_ids)))
+        for h in hechos:
+            anotar(db, request, rol, "contrato.precio_corregido", entidad="contrato", entidad_id=h.lease_id,
+                   detalle=f"Deshecho: vuelve a {h.valor_antes:,.0f}, sin forma".replace(",", "."))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"deshechos": [h.lease_id for h in hechos]}
