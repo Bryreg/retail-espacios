@@ -30,6 +30,13 @@ from app.services.participaciones import _error, _iso
 from app.services.layout_lookup import sin_prefijo_de_sede
 
 
+def codigo_del_mueble(cara) -> str:
+    """«GON-12» para las dos caras: la hoja dice «GON-12 · cara B», no
+    «GON-12-B · cara B» (el código de la cara B lleva la letra)."""
+    corto = sin_prefijo_de_sede(cara.codigo, cara.sede)
+    return corto[:-2] if cara.letra == "B" and corto.endswith("-B") else corto
+
+
 def version_o_404(db: Session, version_id: int) -> tuple[VersionDePlanograma, Planograma]:
     v = db.get(VersionDePlanograma, version_id)
     pl = db.get(Planograma, v.planograma_id) if v is not None else None
@@ -90,7 +97,7 @@ def guia(db: Session, version_id: int) -> dict:
     f = cara.fixture or {}
     return {
         "sede": cara.sede, "hoy": dia, "cara": cara.letra,
-        "codigo": sin_prefijo_de_sede(cara.codigo, cara.sede),
+        "codigo": codigo_del_mueble(cara),
         "fixture": {**_solo_geometria(f), "id": cara.fixture_id, "code": f.get("code"), "label": f.get("label")},
         "superficie": {k: cara.superficie[k] for k in ("orientacion", "ancho", "alto", "exclusiones")},
         "version": {"id": v.id, "numero": v.numero, "rige_desde": v.rige_desde, "hasta": v.hasta,

@@ -114,6 +114,19 @@ def test_los_numeros_van_de_izquierda_a_derecha(client, admin):
     assert [p["nombre"] for p in g["piezas"]] == ["Lácteos", "Halloween"]
 
 
+def test_la_cara_b_dice_el_codigo_del_mueble():
+    """«GON-12 · cara B», no «GON-12-B · cara B»: la hoja, el correo y
+    «Para revisar» nombran el mueble, y la cara aparte."""
+    from types import SimpleNamespace
+
+    from app.services.guia import codigo_del_mueble
+
+    assert codigo_del_mueble(SimpleNamespace(codigo="CENTRO-GON-12-B", sede="CENTRO", letra="B")) == "GON-12"
+    assert codigo_del_mueble(SimpleNamespace(codigo="CENTRO-GON-12", sede="CENTRO", letra="A")) == "GON-12"
+    # Un mueble cuyo código termina en «-B» de verdad, en su cara A, no se toca.
+    assert codigo_del_mueble(SimpleNamespace(codigo="CENTRO-ISLA-B", sede="CENTRO", letra="A")) == "ISLA-B"
+
+
 @RELOJ
 def test_el_enlace_abre_su_guia_y_nada_mas(client, admin, worker):
     _ids, v1, v2 = _preparar(client, admin)
