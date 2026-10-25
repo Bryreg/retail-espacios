@@ -99,6 +99,7 @@ def test_la_hoja_de_una_version(client, admin):
     assert client.get("/api/guia", headers=admin, params={"version": 999}).status_code == 404
 
 
+@RELOJ
 def test_los_numeros_van_de_izquierda_a_derecha(client, admin):
     """El número de cada destino es el de la hoja (de izquierda a derecha),
     no el orden en que se dibujaron: el correo y la revisión usan el mismo."""
