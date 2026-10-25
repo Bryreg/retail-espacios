@@ -99,6 +99,21 @@ def test_la_hoja_de_una_version(client, admin):
     assert client.get("/api/guia", headers=admin, params={"version": 999}).status_code == 404
 
 
+def test_los_numeros_van_de_izquierda_a_derecha(client, admin):
+    """El número de cada destino es el de la hoja (de izquierda a derecha),
+    no el orden en que se dibujaron: el correo y la revisión usan el mismo."""
+    ids, _v1, _v2 = _preparar(client, admin)
+    base = {"sede": "NAVE", "fixture_id": "f-INT-01", "cara": "A"}
+    client.put("/api/planogramas/borrador", headers=admin, json={**base, "version": 4, "piezas": [
+        {"destino_id": ids[1], "pb": 2000, "vertices": _rect(0.6, 0.8)},
+        {"destino_id": ids[0], "pb": 3000, "vertices": _rect(0, 0.3)}]})
+    r = client.post("/api/planogramas/publicar", headers=admin, json={**base, "version": 5, "rige_desde": D(2026, 10, 24)})
+    assert r.status_code == 200, r.text
+    v3 = r.json()["planograma"]["vigente"]["id"]
+    g = client.get("/api/guia", headers=admin, params={"version": v3}).json()
+    assert [p["nombre"] for p in g["piezas"]] == ["Lácteos", "Halloween"]
+
+
 @RELOJ
 def test_el_enlace_abre_su_guia_y_nada_mas(client, admin, worker):
     _ids, v1, v2 = _preparar(client, admin)

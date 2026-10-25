@@ -38,6 +38,17 @@ def version_o_404(db: Session, version_id: int) -> tuple[VersionDePlanograma, Pl
     return v, pl
 
 
+def _orden_de_la_hoja(p: dict) -> tuple:
+    """El orden de los números de la hoja: de izquierda a derecha y, en la
+    misma franja, de arriba abajo; lo que no tiene lugar, al final. El mismo
+    orden que ``destinosDeLaGuia`` del navegador (que conserva éste en los
+    empates): el número del correo y el de la revisión son los de la hoja."""
+    vs = p["vertices"]
+    if not vs:
+        return (1, 0.0, 0.0)
+    return (0, min(u for u, _v in vs), -max(v for _u, v in vs))
+
+
 def _piezas(db: Session, pl: Planograma, v: VersionDePlanograma) -> list[dict]:
     fuera = []
     for p in pg._piezas_de(db, pl, v.id):
@@ -50,6 +61,7 @@ def _piezas(db: Session, pl: Planograma, v: VersionDePlanograma) -> list[dict]:
             "color": foto.get("color") or "d1", "como_se_monta": foto.get("como_se_monta"),
             "codigo_externo": foto.get("codigo_externo"),
         })
+    fuera.sort(key=_orden_de_la_hoja)
     return fuera
 
 
