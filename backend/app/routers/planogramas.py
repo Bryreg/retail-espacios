@@ -14,6 +14,7 @@ Rutas efectivas ``/api/planogramas/…``. No confundir con
 · La lógica vive en ``services/planogramas.py`` (sin commit). Acá se anota la
   bitácora, se hace commit y DESPUÉS se arma la respuesta.
 """
+import json
 from datetime import date
 from html import escape
 from typing import Literal, Optional
@@ -28,6 +29,7 @@ from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.services import guia as guia_servicio
 from app.services import planogramas as servicio
+from app.services import supervision_planogramas as supervision
 from app.services.contacts import recipients_for
 from app.services.mailer import app_base_url, clean_recipients, correo_configurado, html_shell, send_mail_to_bg
 from app.services.bitacora import anotar
@@ -300,23 +302,115 @@ def enviar_la_guia(
         raise servicio._error(422, "sin_correos", "Escribí al menos un correo válido.")
     if not correo_configurado():
         raise servicio._error(409, "sin_correo", "El correo de RECABRA no está configurado: copiá el enlace y mandalo vos.")
-    nombre, sede, v, pl = guia_servicio.titulo(db, cuerpo.version_id)
-    url, _dias = _enlace(db, cuerpo.version_id, cliente)
-    datos = guia_servicio.guia(db, cuerpo.version_id)
-    asunto = f"Guía de montaje · {nombre} · versión {v.numero} — {sede}"
-    vigencia = f"desde el {guia_servicio.fecha_corta(v.rige_desde)}" + (
-        f" hasta el {guia_servicio.fecha_corta(v.hasta)}" if v.hasta else "")
-    from app.services.reglas_participacion import pct
-    rows = [("Mueble", escape(nombre)), ("Versión", f"{v.numero} · rige {escape(vigencia)}")] + [
-        (f"{i}", f"{escape(p['nombre'])} · {pct(p['pb'])}") for i, p in enumerate(datos["piezas"], start=1)
-    ]
-    pie = (f'<a href="{url}" style="color:#0369A1;font-weight:600;">Abrir la guía</a> — se abre sin contraseña, '
-           "para imprimir o para seguirla en el teléfono. Al terminar se puede subir una foto de cómo quedó.<br><br>"
-           '<span style="color:#94A3B8;font-size:12px;">Si en el mueble hay otra versión impresa, vale ésta. '
-           "El enlace es para quien monta: no lo reenvíes.</span>")
-    background_tasks.add_task(send_mail_to_bg, correos, asunto, html_shell(asunto, rows, pie))
+    nombre, _sede, v, _pl = guia_servicio.titulo(db, cuerpo.version_id)
+    asunto, html = _correo_de_la_guia(db, cuerpo.version_id, cliente)
+    background_tasks.add_task(send_mail_to_bg, correos, asunto, html)
     anotar(db, request, rol, "guia.enviada", entidad="planograma", entidad_id=nombre,
            detalle=f"Versión {v.numero} a {len(correos)} correo(s)")
     db.commit()
     return {"enviados": correos}
+
+
+def _correo_de_la_guia(db: Session, version_id: int, cliente: Cliente, corregir: Optional[str] = None) -> tuple[str, str]:
+    """El asunto y el cuerpo del correo de la guía: el enlace sin contraseña y
+    lo que va dónde (con los números de la hoja), sin precios. Con
+    ``corregir`` (fase 4), arriba va lo que quien revisó pidió corregir."""
+    nombre, sede, v, _pl = guia_servicio.titulo(db, version_id)
+    url, _dias = _enlace(db, version_id, cliente)
+    datos = guia_servicio.guia(db, version_id)
+    asunto = (f"Corregir el montaje · {nombre} · versión {v.numero} — {sede}" if corregir
+              else f"Guía de montaje · {nombre} · versión {v.numero} — {sede}")
+    vigencia = f"desde el {guia_servicio.fecha_corta(v.rige_desde)}" + (
+        f" hasta el {guia_servicio.fecha_corta(v.hasta)}" if v.hasta else "")
+    from app.services.reglas_participacion import pct
+    rows = ([("Hay que corregir", escape(corregir))] if corregir else []) + [
+        ("Mueble", escape(nombre)), ("Versión", f"{v.numero} · rige {escape(vigencia)}")] + [
+        (f"{i}", f"{escape(p['nombre'])} · {pct(p['pb'])}") for i, p in enumerate(datos["piezas"], start=1)
+    ]
+    pie = (f'<a href="{url}" style="color:#0369A1;font-weight:600;">Abrir la guía</a> — se abre sin contraseña, '
+           "para imprimir o para seguirla en el teléfono. Al terminar, avisá cómo quedó (la foto no es obligatoria).<br><br>"
+           '<span style="color:#94A3B8;font-size:12px;">Si en el mueble hay otra versión impresa, vale ésta. '
+           "El enlace es para quien monta: no lo reenvíes.</span>")
+    return asunto, html_shell(asunto, rows, pie)
+
+
+# ─── La supervisión (fase 4, 2026-10-25) ──────────────────────────────────────
+# Revisa quien puede publicar esa cara (decisión del dueño): la lista sólo trae
+# esas caras y la ficha y la revisión piden el mismo permiso que publicar.
+
+
+class RevisarIn(GuiaIn):
+    resultado: Literal["coincide", "no_coincide"]
+    #: Los números de la guía que quedaron mal.
+    numeros: list[StrictInt] = Field(default_factory=list, max_length=60)
+    otra_cosa: bool = False
+    nota: Optional[str] = Field(default=None, max_length=1000)
+    #: «Lo vi en la tienda»: sin foto nueva, la dio por buena mirándola.
+    en_la_tienda: bool = False
+    #: Mandarle la guía de nuevo a quien monta, con la nota (sólo «no coincide»).
+    reenviar: bool = False
+
+
+@router.get("/supervision")
+def leer_supervision(
+    sede: str = Query(..., min_length=1),
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Las caras de la sede para «Para revisar»: sin montar, montadas que falta
+    revisar, las que no se pudieron montar y las que no coinciden."""
+    from app.fechas import hoy
+
+    return {"caras": supervision.para_revisar(db, sede, rol), "hoy": hoy()}
+
+
+@router.get("/supervision/version")
+def leer_ficha(
+    id: int = Query(..., ge=1),
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """La ficha de la revisión: lo planificado, los avisos, las fotos y la historia."""
+    guia_servicio.puede_compartir(db, rol, id)
+    return supervision.ficha(db, id)
+
+
+@router.post("/supervision/revisar")
+def revisar_montaje(
+    cuerpo: RevisarIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    rol: str = Depends(require_auth),
+    cliente: Cliente = Depends(cliente_del_pedido),
+    db: Session = Depends(get_db),
+):
+    """«Coincide» o «no coincide» (con los números que quedaron mal). Con
+    ``reenviar``, a quien monta en la sede le llega la guía de nuevo con la
+    nota; si no hay a quién o el correo no está configurado, la revisión se
+    guarda igual y la respuesta lo dice."""
+    guia_servicio.puede_compartir(db, rol, cuerpo.version_id)
+    actor = actor_de(request, rol)
+    rev = supervision.revisar(db, cuerpo.version_id, cuerpo.model_dump(), actor)
+    nombre, sede, v, _pl = guia_servicio.titulo(db, cuerpo.version_id)
+    reenvio = None
+    if cuerpo.reenviar and rev.resultado == "no_coincide":
+        correos = clean_recipients(recipients_for(db, sede)["montaje"])
+        if not correos:
+            reenvio = "sin_contactos"
+        elif not correo_configurado():
+            reenvio = "sin_correo"
+        else:
+            numeros = json.loads(rev.numeros_json or "[]")
+            asunto, html = _correo_de_la_guia(
+                db, cuerpo.version_id, cliente, supervision.texto_de_la_correccion(numeros, bool(rev.otra_cosa), rev.nota))
+            background_tasks.add_task(send_mail_to_bg, correos, asunto, html)
+            rev.guia_reenviada = 1
+            reenvio = "enviada"
+    detalle = (f"Versión {v.numero}: coincide" + (" (la vio en la tienda)" if rev.en_la_tienda else "")
+               if rev.resultado == "coincide" else
+               f"Versión {v.numero}: no coincide" + (" · guía reenviada" if rev.guia_reenviada else ""))
+    anotar(db, request, rol, "planograma.revision", entidad="planograma", entidad_id=nombre, detalle=detalle)
+    db.commit()
+    return {"revision": supervision.revision_out(rev), "reenvio": reenvio,
+            "reenviada_a": correos if reenvio == "enviada" else []}
 

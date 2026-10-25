@@ -36,6 +36,13 @@ button.guia-check { cursor: pointer; width: 28px; height: 28px; }
 .guia-firma { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 12px; font-size: 13px; }
 .guia-p { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid #DDDEDE; padding-top: 10px; font-size: 12px; color: var(--tinta-3); }
 .guia-p span { display: inline-flex; gap: 6px; align-items: center; }
+/* La cara sola, en papel, fuera de la hoja (la ficha de la revisión, fase 4). */
+.guia-papel { --tinta: #0A1014; --tinta-2: #3D4D57; --tinta-3: #54646E; --papel: #fff;
+  background: var(--papel); color: var(--tinta); color-scheme: light; border-radius: 12px; padding: 8px; }
+/* Más baja que en la hoja: en la ficha, la pregunta y los botones tienen que
+   verse sin bajar (la ronda de prueba de la fase 4). */
+.guia-papel .guia-cara { max-height: 320px; }
+
 @media (max-width: 760px) {
   .guia-hoja { padding: 18px 14px; } .guia-tit { font-size: 24px; } .guia-v { text-align: left; }
   .guia-dos { grid-template-columns: minmax(0, 1fr); }

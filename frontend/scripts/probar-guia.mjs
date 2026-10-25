@@ -185,7 +185,7 @@ await prueba("la hoja va en papel claro, sin precios ni proveedores, y al imprim
   const hoja = sinComentarios(leer("src/components/Guia/HojaDeGuia.tsx"));
   assert.ok(hoja.includes("desde arriba") && hoja.includes("sin precios"), "la hoja dice cómo se cuentan los estantes y que no lleva precios");
   assert.ok(hoja.includes("Ya asignado · no tocar"), "lo vendido se dice «no tocar», sin nombres");
-  // Un amarillo por pantalla: el de la foto en el enlace; el de «Mandar» en su diálogo.
+  // Un amarillo por pantalla: el de avisar cómo quedó en el enlace (fase 4); el de «Mandar» en su diálogo.
   assert.equal((sinComentarios(leer("src/pages/GuiaDeMontaje.tsx")).match(/btn-principal/g) ?? []).length, 1);
   assert.equal((sinComentarios(leer("src/components/Guia/EnviarGuia.tsx")).match(/btn-principal/g) ?? []).length, 1);
   assert.equal((sinComentarios(leer("src/components/Guia/VerGuia.tsx")).match(/btn-principal/g) ?? []).length, 0);

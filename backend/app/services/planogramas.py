@@ -602,6 +602,9 @@ def bloque(db: Session, cara: Cara, rol: str) -> dict:
     if borrador is not None:
         revision = revisar(cara, [{k: p[k] for k in ("destino_id", "pb", "vertices")} for p in borrador["piezas"]],
                            destinos, vendido, dia, None, para_publicar=False)
+    from app.services import supervision_planogramas as sup  # importa este módulo
+
+    montaje = sup.montaje_de_versiones(db, versiones, estados)
     f = cara.fixture or {}
     admin = rol == "admin"
     return {
@@ -623,7 +626,8 @@ def bloque(db: Session, cara: Cara, rol: str) -> dict:
             "borrador": borrador,
             "vigente": vig_out,
             "programadas": programadas,
-            "versiones": [version_out(v, estados[v.id], dia, cara) for v in versiones],
+            # Cómo está el montaje de cada una (fase 4: la supervisión).
+            "versiones": [{**version_out(v, estados[v.id], dia, cara), "montaje": montaje[v.id]} for v in versiones],
         },
         "destinos": destinos,
         "biblioteca": destinos_de_la_sede(db, cara.sede),

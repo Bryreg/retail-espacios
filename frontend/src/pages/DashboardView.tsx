@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   AlertTriangle,
@@ -134,6 +134,12 @@ import {
 // (`Al mes | Total`), los tres grupos de «Para revisar» y sus piezas. SÓLO
 // Supervisar: Vender no llega a ninguno de estos módulos (`probar-vender`).
 import { FaltaPlanometria, useFaltaPlanometria } from "../components/Supervisar/FaltaPlanometria";
+import {
+  claveDeSupervision, PlanogramasPorRevisar, SECCION_DE_SUPERVISION, usePlanogramasPorRevisar,
+} from "../components/Supervisar/PlanogramasPorRevisar";
+// La supervisión de los planogramas (fase 4): la ficha y la guía, a pedido.
+const RevisarMontaje = lazy(() => import("../components/Supervision/RevisarMontaje"));
+const VerGuia = lazy(() => import("../components/Guia/VerGuia"));
 import type { MontajePendiente } from "../api/montajesPendientes";
 import type { CobroPorVentas } from "../api/cobros";
 import type { ReservaDeEspacio } from "../api/reservas";
@@ -4820,6 +4826,12 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   /** Los contratos a los que les falta la planometría para que salga el aviso
    *  de montaje («Falta planometría»). Igual: sólo quien administra, sólo acá. */
   const faltaPlanometria = useFaltaPlanometria({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  /** Los planogramas en «Hoy» (fase 4): el servidor sólo trae las caras que
+   *  este rol puede revisar (las mismas que puede publicar). Sin plata. */
+  const planogramasPorRevisar = usePlanogramasPorRevisar({ sede, activo: modoEfectivo === "supervisar" });
+  const [revisarMontajeDe, setRevisarMontajeDe] = useState<number | null>(null);
+  const [guiaParaMandar, setGuiaParaMandar] = useState<number | null>(null);
+  const [avisoDeSupervision, setAvisoDeSupervision] = useState<string | null>(null);
   /** «Plata: Al mes | Total», recordado por quien mira (rediseño, PR 2). */
   const [unidad, setUnidad] = useUnidadDePlata();
   /** El orden de «Quién paga el canon». */
@@ -6194,6 +6206,10 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     // contrato sin mueble no se ve en ningún plano, así que si sólo contara en
     // la suya no se vería nunca. Es lo único de esta lista que cruza tiendas.
     for (const f of fantasmas) a.push({ seccion: "contrato_sin_mueble", clave: `fa-${f.espacio}` });
+    // Los planogramas (fase 4): también para el equipo, si puede publicar esa cara.
+    for (const c of planogramasPorRevisar.filas) {
+      a.push({ seccion: SECCION_DE_SUPERVISION[c.estado], clave: claveDeSupervision(c), fixtureId: c.fixture_id, cara: c.cara });
+    }
     if (!isAdmin) return a;
     // Sólo quien administra: llevan proveedores, plata o participaciones.
     for (const c of cortesSinCargar.pendientes) {
@@ -6230,7 +6246,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
     }
     return a;
   }, [kpis, fantasmas, isAdmin, cortesSinCargar.pendientes, cortesSinCargar.cargados, revisionPc.secciones,
-    faltaPlanometria.filas, montaje, reservasSinConfirmar.vivas, importacion, muebleDelEspacio]);
+    faltaPlanometria.filas, montaje, reservasSinConfirmar.vivas, importacion, muebleDelEspacio, planogramasPorRevisar.filas]);
 
   /** Cuántos avisos tiene cada grupo, y la pastilla roja: la suma de los tres. */
   const cuentasDeRevision = useMemo(() => contarPorGrupo(avisos), [avisos]);
@@ -7138,6 +7154,30 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                     </button>
                   </div>
                 )}
+                {/* Lo que dejó la revisión de un planograma (fase 4). */}
+                {avisoDeSupervision && (
+                  <div role="status" data-aviso-de-supervision
+                    style={{ margin: "0 12px 8px", display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
+                      padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
+                      fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
+                    <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
+                    <span>{avisoDeSupervision}</span>
+                    <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setAvisoDeSupervision(null)}>
+                      <X size={16} strokeWidth={1.75} aria-hidden />
+                    </button>
+                  </div>
+                )}
+                {(revisarMontajeDe !== null || guiaParaMandar !== null) && (
+                  <Suspense fallback={null}>
+                    {revisarMontajeDe !== null && (
+                      <RevisarMontaje versionId={revisarMontajeDe} onCerrar={() => setRevisarMontajeDe(null)}
+                        onRevisada={(texto) => { setRevisarMontajeDe(null); setAvisoDeSupervision(texto); planogramasPorRevisar.recargar(); }} />
+                    )}
+                    {guiaParaMandar !== null && (
+                      <VerGuia versionId={guiaParaMandar} puedeCompartir mandar onCerrar={() => setGuiaParaMandar(null)} />
+                    )}
+                  </Suspense>
+                )}
                 {isAdmin && avisoDeEdicion && !(selected && detailFull) && (
                   <p role="alert" data-aviso-edicion style={{ margin: "0 12px 8px", fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
                     {avisoDeEdicion}
@@ -7188,6 +7228,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
                           onCargar={cargarPlanometria}
                         />
                       )}
+                      {/* Los planogramas: montados por revisar, no coinciden,
+                          no se pudieron montar, rigen sin aviso (fase 4). */}
+                      <PlanogramasPorRevisar
+                        filas={planogramasPorRevisar.filas}
+                        hoy={planogramasPorRevisar.hoy}
+                        onAbrir={(c) => { setAvisoDeSupervision(null); setRevisarMontajeDe(c.version_id); }}
+                        onMandar={(c) => { setAvisoDeSupervision(null); setGuiaParaMandar(c.version_id); }}
+                      />
                       {kpis.expired.length > 0 && (
                         <div>
                           <AtencionSection

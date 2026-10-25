@@ -1,20 +1,40 @@
 import { useState } from "react";
-import { Eye, FileText } from "lucide-react";
+import { Eye, FileText, ScanEye } from "lucide-react";
 import { describeError } from "../../api/client";
 import * as API from "../../api/planogramas";
 import type { VersionOut } from "../../api/planogramas";
 import { haceCuanto } from "../../utils/planograma";
+import { cuandoPaso, ESTADO_DE_MONTAJE } from "../../utils/supervision";
 import { BOTON, Dialogo, fechaLegible } from "../Distribucion/LeyendaDeParticipaciones";
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 const ESTADO_DE_VERSION: Record<API.EstadoDeVersion, string> = { vigente: "vigente", programada: "programada", reemplazada: "reemplazada" };
+const TONO = {
+  libre: { background: "rgb(var(--libre-suave-rgb))", color: "rgb(var(--libre-txt-rgb))" },
+  entra: { background: "rgb(var(--entra-suave-rgb))", color: "rgb(var(--entra-txt-rgb))" },
+  ocupado: { background: "rgb(var(--ocupado-suave-rgb))", color: "rgb(var(--ocupado-txt-rgb))" },
+  neutro: { background: "rgb(var(--surface-3-rgb))", color: "rgb(var(--ink-2-rgb))" },
+} as const;
+
+/** «Coincide · revisó ana@super.co, 3 oct»: el estado del montaje con quién y cuándo. */
+function textoDelMontaje(m: API.MontajeDeVersion, hoy: string): string {
+  const base = ESTADO_DE_MONTAJE[m.estado].texto;
+  const r = m.revision;
+  if ((m.estado === "coincide" || m.estado === "no_coincide") && r) {
+    return `${base} · revisó ${r.por ?? "alguien"}, ${cuandoPaso(r.en, hoy)}${r.en_la_tienda ? " (en la tienda)" : ""}`;
+  }
+  if ((m.estado === "por_revisar" || m.estado === "no_se_pudo") && m.aviso) return `${base} · ${cuandoPaso(m.aviso.en, hoy)}`;
+  return base;
+}
 
 /** Las versiones de la cara: la vigente, las programadas y las reemplazadas. */
-export default function Versiones({ versiones, hoy, onCerrar, onVer, onGuia }: {
+export default function Versiones({ versiones, hoy, onCerrar, onVer, onGuia, onMontaje }: {
   versiones: VersionOut[]; hoy: string; onCerrar: () => void; onVer: (v: VersionOut) => void;
   /** La guía de montaje de esa versión (fase 3). */
   onGuia: (versionId: number) => void;
+  /** La ficha del montaje (fase 4): sólo quien puede revisar esa cara. */
+  onMontaje?: (versionId: number) => void;
 }) {
   const [leyendo, setLeyendo] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +59,18 @@ export default function Versiones({ versiones, hoy, onCerrar, onVer, onGuia }: {
               Publicada el {fechaLegible(v.publicada_en?.slice(0, 10), hoy)}{v.publicada_por ? ` por ${v.publicada_por}` : ""} · rige desde el {fechaLegible(v.rige_desde, hoy)}
               {v.hasta ? ` hasta el ${fechaLegible(v.hasta, hoy)}` : ""}
             </span>
+            {v.montaje && v.montaje.estado !== "sin_registro" && (() => {
+              const m = v.montaje;
+              const estilo = TONO[ESTADO_DE_MONTAJE[m.estado].tono];
+              const clase = "col-span-2 mt-1 inline-flex w-fit max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold";
+              return onMontaje && m.estado !== "no_rige" ? (
+                <button type="button" className={clase} style={estilo} onClick={() => onMontaje(v.id)} data-montaje-de-la-version={v.numero}>
+                  <ScanEye size={13} strokeWidth={1.75} aria-hidden /><span className="truncate">{textoDelMontaje(m, hoy)}</span>
+                </button>
+              ) : (
+                <span className={clase} style={estilo} data-montaje-de-la-version={v.numero}><span className="truncate">{textoDelMontaje(m, hoy)}</span></span>
+              );
+            })()}
           </div>
         ))}
         {error && <p role="alert" style={{ color: "rgb(var(--ocupado-txt-rgb))" }}>{error}</p>}

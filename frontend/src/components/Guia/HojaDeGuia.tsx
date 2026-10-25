@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { ArrowRight, Check, Info, Minus, Plus, Printer, Ruler } from "lucide-react";
 import type { Guia } from "../../api/guia";
 import type { ColorDeDestino } from "../../api/planogramas";
@@ -127,17 +127,27 @@ export function CaraDeLaGuia({ guia, destinos, repisas }: { guia: Guia; destinos
   );
 }
 
-export default function HojaDeGuia({ guia, marcable = false, generada }: { guia: Guia; marcable?: boolean; generada: string }) {
-  const repisas = useMemo(() => {
-    const f = guia.fixture as Parameters<typeof guiasDeCara>[0];
-    try { return guiasDeCara(f, guia.cara).entrepanos; } catch { return []; }
-  }, [guia]);
+/** Las repisas de la cara (en v), del mueble de la guía. */
+export function repisasDeLaGuia(guia: Pick<Guia, "fixture" | "cara">): number[] {
+  const f = guia.fixture as Parameters<typeof guiasDeCara>[0];
+  try { return guiasDeCara(f, guia.cara).entrepanos; } catch { return []; }
+}
+
+export default function HojaDeGuia({ guia, marcable = false, generada, onMarcados }: {
+  guia: Guia; marcable?: boolean; generada: string;
+  /** En el teléfono: cuántos números lleva marcados quien monta (fase 4, «Marcaste 2 de 3»). */
+  onMarcados?: (marcados: number, total: number) => void;
+}) {
+  const repisas = useMemo(() => repisasDeLaGuia(guia), [guia]);
   const destinos = useMemo(() => destinosDeLaGuia(guia, repisas), [guia, repisas]);
   const vacios = useMemo(() => vaciosDeLaGuia(guia), [guia]);
   const cambios = useMemo(() => cambiosDeLaGuia(guia), [guia]);
   const aviso = avisoDeLaGuia(guia.version);
   const [hechos, setHechos] = useState<Set<string>>(new Set());
   const marcar = (k: string) => setHechos((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  useEffect(() => {
+    onMarcados?.(destinos.filter((d) => hechos.has(`d${d.destino_id}`)).length, destinos.length);
+  }, [hechos, destinos, onMarcados]);
   const Caja = ({ k }: { k: string }) => marcable ? (
     <button type="button" className={`guia-check${hechos.has(k) ? " on" : ""}`} role="checkbox" aria-checked={hechos.has(k)} aria-label="Listo" onClick={() => marcar(k)}>
       {hechos.has(k) && <Check size={14} strokeWidth={2.5} aria-hidden />}

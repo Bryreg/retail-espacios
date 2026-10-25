@@ -58,6 +58,18 @@ export interface VersionOut {
   piezas?: PiezaOut[];
   /** Sólo la vigente: lo vendido después de publicar que la pisa. */
   choca_con_lo_vendido?: string[];
+  /** Fase 4: cómo está el montaje (en la lista de versiones de la cara). */
+  montaje?: MontajeDeVersion;
+}
+
+/** Cómo está el montaje de una versión (fase 4, `services/supervision_planogramas.py`). */
+export type EstadoDeMontaje =
+  | "no_rige" | "sin_montar" | "por_revisar" | "no_se_pudo" | "coincide" | "no_coincide" | "sin_registro";
+
+export interface MontajeDeVersion {
+  estado: EstadoDeMontaje;
+  aviso: import("./guia").AvisoDeMontaje | null;
+  revision: import("./supervision").RevisionDeMontaje | null;
 }
 
 export interface ProblemaDePlanograma {
