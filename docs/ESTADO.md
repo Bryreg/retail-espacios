@@ -1,7 +1,16 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-24 (noche), **la guía de montaje** (fase 3 de la
+Última actualización: 2026-10-25, **la supervisión de los planogramas** (fase 4 de la
+distribución): quien monta avisa desde el enlace de la guía «quedó montada» (con foto si
+quiere) o «no se pudo» (con el motivo), y en Supervisar → «Para revisar» → Hoy una persona pone
+lo planificado al lado de la foto y marca si coincide. Si no, toca los números de la guía que
+quedaron mal, escribe qué corregir y —casilla marcada, se puede desmarcar— le vuelve a llegar
+la guía a quien monta con la nota. Una vigente sin aviso entra en «Hoy» el MISMO DÍA que empieza
+a regir. Sin foto se da por buena con «Lo vi en la tienda». Revisa quien puede publicar esa
+cara. Nada se decide solo. Dos tablas nuevas. Ver *Supervisión de planogramas (2026-10-25)*.
+
+Antes, el 2026-10-24 (noche), **la guía de montaje** (fase 3 de la
 distribución): cada versión publicada de un planograma tiene su hoja «para dummies», UNA POR
 CARA: la cara de frente con cada destino numerado, dónde va en centímetros desde la izquierda
 y en qué estantes (contados DESDE ARRIBA), lo que cambia contra la versión anterior, lo que
@@ -370,7 +379,7 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
-### Próximas fases de la distribución (2026-10-24; la 2 y la 3 ya están)
+### Próximas fases de la distribución (2026-10-25; la 2, la 3 y la 4 ya están)
 
 Lo que sigue a *Distribuir con piezas*. Nada de esto está hecho; queda escrito para no
 perderlo.
@@ -381,10 +390,7 @@ perderlo.
   pieza sigue siendo el lugar; adentro, cada SKU es un bloque por estante del ancho de sus
   frentes, traído del ERP (primero una planilla) por el `codigo_externo` del destino. Necesita
   las medidas de cada producto. Va después de la 3 y la 4.
-- **Fase 4 · Supervisión de planogramas.** Comparar lo montado con lo confirmado: una foto del
-  montaje (la que ya sube la mercaderista) al lado de la cara confirmada, y en Supervisar →
-  «Para revisar» las caras cuyo montaje no se cargó o no coincide. Necesita decidir quién lo
-  marca (una persona mirando, al principio; nada automático).
+- **Fase 4 · Supervisión de planogramas: HECHA** (ver *Supervisión de planogramas (2026-10-25)*).
 
 ### Lo que sigue de las participaciones de cara (2026-10-19)
 
@@ -1264,6 +1270,74 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 
 ## Qué está hecho
 
+### Supervisión de planogramas (2026-10-25)
+
+Fase 4 de la distribución, con el dibujo aprobado («Supervisar planogramas») y las cuatro
+decisiones del dueño: (1) **revisa quien puede publicar esa cara** (quien administra siempre;
+el equipo en los muebles internos si la dueña lo habilitó); (2) una versión vigente de la que
+nadie avisó entra en «Para revisar» → Hoy **el mismo día** que empieza a regir; (3) **sin foto
+se puede dar por buena** con «Lo vi en la tienda: coincide», y queda quién y cuándo; (4) **si
+no coincide, se ofrece mandar la guía de nuevo** con la nota (la casilla viene marcada y se
+puede desmarcar).
+
+**Quien monta avisa** (`pages/GuiaDeMontaje.tsx`, al final del enlace de la guía): «¿Cómo
+quedó?» → «Quedó montada» (con «Sumar una foto», opcional) o «No se pudo» con el motivo (los
+del montaje de los contratos, con el producto en lugar del material del proveedor: no llegó el
+producto, el lugar está ocupado, falta material, otro) y una nota. «Marcaste 2 de 3 números»
+cuenta lo tildado en la hoja. Si quien revisó dijo que no coincide, arriba se lee «Hay que
+corregir: el 2 y el 3 quedaron mal» con la nota, hasta que vuelvan a avisar. `POST
+/api/guia/aviso` (el enlace sólo para su versión; con sesión, con la guarda de leer la guía).
+Una versión reemplazada no se monta (409 «pedí la guía nueva»); una programada sí se puede
+avisar antes de que rija.
+
+**El estado de una versión** (`services/supervision_planogramas.estado_de`): no rige · sin
+montar · montada y falta revisar · no se pudo · coincide · no coincide · sin registro (una
+reemplazada de la que nunca se supo). Sale del ÚLTIMO aviso y la ÚLTIMA revisión; la revisión
+guarda el aviso que revisó (`montaje_id`), así que un aviso con id mayor es posterior a la
+revisión, sin comparar relojes.
+
+**«Para revisar» → Hoy** (`components/Supervisar/PlanogramasPorRevisar.tsx`, `GET
+/api/planogramas/supervision?sede=`): cuatro secciones en el orden del dibujo —«Planograma
+montado por revisar» (con cuántas fotos nuevas), «Planograma que no coincide» (qué quedó mal y
+si la guía se reenvió), «No se pudo montar el planograma» (el motivo) y «Planograma sin montar»
+(con «Mandar la guía», que abre la guía en «Mandarla a quien corresponde»)—. Sólo la versión
+VIGENTE de cada cara. Cuentan en la pastilla roja y llevan su chincheta en el plano. Son de
+las pocas que ve también el equipo (`casos/avisos-de-revision.mjs`, `PARA_TODOS`): no llevan
+plata ni proveedor, y el SERVIDOR sólo le manda a cada rol las caras que puede publicar.
+
+**La ficha** (`components/Supervision/RevisarMontaje.tsx`, `GET
+/api/planogramas/supervision/version?id=`): lo planificado —la cara de la guía con sus
+números— al lado de las fotos (las nuevas desde la última revisión; si no hay, las de antes),
+«¿Quedó como la guía?» y dos respuestas; el único amarillo es «Sí, coincide» (sin foto nueva,
+«Lo vi en la tienda: coincide»). «No coincide» → se tocan los números que quedaron mal (u
+«Otra cosa», que pide la nota), «Qué hay que corregir» y la casilla de mandar la guía; el
+amarillo pasa a «Guardar y mandar la guía». Abajo, la historia de la versión (avisos y
+revisiones). `POST /api/planogramas/supervision/revisar` valida lo mismo que la pantalla
+(`faltaParaRevisar`, gemelo): los números van del 1 al total de la hoja; «coincide» sin foto
+nueva pide `en_la_tienda`. Con `reenviar`, a los contactos de montaje de la sede les llega la
+guía con «Hay que corregir» arriba; sin contactos o sin correo configurado, la revisión se
+guarda igual y la respuesta lo dice (`reenvio`). Bitácora `guia.aviso` y `planograma.revision`.
+
+**Los números son los de la hoja**: el servidor manda las piezas de la guía ordenadas como la
+hoja (de izquierda a derecha y, en la misma franja, de arriba abajo), así el «2» del correo,
+de la revisión y de la hoja es el mismo destino.
+
+**En «Versiones»** cada versión lleva su estado («Montada · falta revisar», «Coincide ·
+revisó ana@…, 3 oct»…); quien puede revisar la toca y se abre la ficha (con la historia).
+
+**Tablas nuevas**: `montajes_de_planograma` (el aviso: estado, motivo, nota, quién —«enlace» o
+el correo— y cuándo) y `revisiones_de_planograma` (resultado, números, otra cosa, nota, en la
+tienda, guía reenviada, quién y cuándo). Viajan en el traspaso de un cliente. Las versiones
+publicadas antes de esta fase aparecen «sin montar» el día del despliegue: se dan por buenas
+con «Lo vi en la tienda».
+
+**Guardas**: `probar-supervision.mjs` (`npm run probar:supervision`: los gemelos de motivos,
+estados y secciones, las palabras, lo que falta para guardar, las cuatro en «Hoy», las rutas,
+un amarillo por archivo, nada comercial). `backend/tests/test_supervision_planogramas.py`: el
+ciclo de una versión, la programada, quién revisa y el reenvío con la nota.
+`probar-comercial` y `probar-vender` fijan la lista de lo que ve el equipo y las secciones del
+dibujo.
+
 ### Guía de montaje (2026-10-24)
 
 Fase 3 de la distribución, con las cuatro decisiones del dueño: (1) **da la opción de
@@ -1301,7 +1375,8 @@ sirve SÓLO en `/api/guia` (`require_guia`, sesión o enlace) y sólo para SU ve
 403; la foto de otra → 404; vencido → 401, «Este enlace ya no sirve»). `App.tsx` lo lee ANTES
 que el de montaje, lo saca de la barra (queda `?guia=1`, el token en `sessionStorage`) y abre
 `pages/GuiaDeMontaje.tsx` sin tablero ni sincronización: la hoja para ir marcando, «Tomar la
-foto de cómo quedó» (opcional) e «Imprimir la hoja».
+foto de cómo quedó» (opcional) e «Imprimir la hoja». Desde la fase 4 la foto va dentro de
+«¿Cómo quedó?» (ver *Supervisión de planogramas (2026-10-25)*).
 
 **La foto**: tabla nueva `fotos_de_guia` (la imagen en la base, los mismos tipos y tope que las
 fotos de montaje, quién la subió: «enlace» o el correo), unida a la versión; entra en el
@@ -1390,8 +1465,9 @@ cara y «Planificar la cara A/B», o «Lo libre de la cara A/B» en uno que se v
 administración), y Sede → el globo de un mueble interno → «Planograma de la cara A» (el
 equipo no ve el Plano: entra por acá). En el Editor 3D todavía no hay entrada.
 
-**Lo que no hace todavía**: la supervisión (fase 4), el 3D del planograma y los productos por
-SKU (fase 5). La guía imprimible (fase 3) ya está: *Guía de montaje (2026-10-24)*.
+**Lo que no hace todavía**: el 3D del planograma y los productos por SKU (fase 5). La guía
+imprimible (fase 3) y la supervisión (fase 4) ya están: *Guía de montaje (2026-10-24)* y
+*Supervisión de planogramas (2026-10-25)*.
 
 **Guardas**: `probar-planogramas.mjs` (`npm run probar:planogramas`: los estados de las
 piezas, lo libre, las palabras, los gemelos de tipos, colores y rutas, la casa —nada en el

@@ -20,6 +20,10 @@
  *    ocupado sin contrato, marcado reservado a mano (PR 3), participación sin mueble, sin término, distribución
  *    con problemas o para revisar, bajo tarifa y los montajes viejos sin
  *    reporte (antes una nota que no contaba).
+ *
+ * Fase 4 de la distribución (2026-10-25): los planogramas montados por revisar,
+ * los que no coinciden, los que no se pudieron montar y los que rigen sin que
+ * nadie avise van en «Hoy» (`components/Supervisar/PlanogramasPorRevisar.tsx`).
  */
 
 export type GrupoDeRevision = "hoy" | "dias30" | "corregir";
@@ -34,7 +38,9 @@ export type SeccionDeRevisar =
   | "ventas_por_cargar" | "falta_distribuir" | "falta_planometria" | "vencidos" | "no_se_pudo_montar"
   | "reservas" | "por_vencer" | "sin_montar" | "borradores"
   | "contrato_sin_mueble" | "solo_en_el_plano" | "ocupado_sin_contrato" | "reservado_a_mano" | "participacion_sin_mueble"
-  | "sin_termino" | "distribucion_con_problemas" | "distribucion_para_revisar" | "bajo_tarifa" | "montajes_viejos";
+  | "sin_termino" | "distribucion_con_problemas" | "distribucion_para_revisar" | "bajo_tarifa" | "montajes_viejos"
+  // Fase 4 de la distribución (2026-10-25): la supervisión de los planogramas.
+  | "planograma_por_revisar" | "planograma_no_coincide" | "planograma_no_se_pudo" | "planograma_sin_montar";
 
 /** Con cuántos días o menos para empezar algo que falta preparar (la
  *  distribución, la planometría) pasa a «Hoy»: es el montaje de alguien que ya
@@ -72,6 +78,12 @@ export const DONDE_VA: Record<SeccionDeRevisar, { grupo: GrupoDeRevision } | { h
   distribucion_para_revisar: { grupo: "corregir" },
   bajo_tarifa: { grupo: "corregir" },
   montajes_viejos: { grupo: "corregir" },
+  // Los planogramas van todos en «Hoy»: la vigente sin aviso entra el mismo
+  // día que empieza a regir (decisión del dueño).
+  planograma_por_revisar: { grupo: "hoy" },
+  planograma_no_coincide: { grupo: "hoy" },
+  planograma_no_se_pudo: { grupo: "hoy" },
+  planograma_sin_montar: { grupo: "hoy" },
 };
 
 /** El título de cada sección, en el grupo donde se dice. */
@@ -96,6 +108,10 @@ export function tituloDeSeccion(s: SeccionDeRevisar, grupo: GrupoDeRevision): st
     case "distribucion_para_revisar": return "Distribución para revisar";
     case "bajo_tarifa": return "Bajo tarifa de referencia";
     case "montajes_viejos": return "Montaje sin reporte";
+    case "planograma_por_revisar": return "Planograma montado por revisar";
+    case "planograma_no_coincide": return "Planograma que no coincide";
+    case "planograma_no_se_pudo": return "No se pudo montar el planograma";
+    case "planograma_sin_montar": return "Planograma sin montar";
   }
 }
 

@@ -22,6 +22,13 @@ migración; ninguna columna nueva en tablas existentes, test_t22):
 · fotos_de_guia (fase 3, la guía de montaje): la foto de cómo quedó la cara,
   unida a la versión que se montó. No es obligatoria (decisión del dueño).
   Los bytes van en la base, como las planometrías: el disco de Render se borra.
+· montajes_de_planograma (fase 4, la supervisión): el aviso de quien monta
+  desde el enlace de la guía —«quedó montada» o «no se pudo», con el motivo—.
+  Uno por aviso: la historia queda.
+· revisiones_de_planograma (fase 4): lo que dijo quien revisa al poner lo
+  planificado al lado de la foto —coincide o no, qué números quedaron mal, la
+  nota, si la vio en la tienda y si se le volvió a mandar la guía—. Nada se
+  decide solo: una persona mira.
 
 Mismas reglas de forma que `models/participaciones.py`: sólo Integer, String,
 Text, Date, DateTime(timezone=True) y ForeignKey; los estados y los tipos son
@@ -41,6 +48,13 @@ TIPOS_DE_DESTINO = ("marca_propia", "categoria", "producto", "promocion", "otro"
 COLORES_DE_DESTINO = ("d1", "d2", "d3", "d4", "d5", "d6")
 #: Quién publica: sólo administración (por defecto) o también el equipo.
 QUIEN_PUBLICA = ("admin", "equipo")
+#: El aviso de quien monta (fase 4).
+ESTADOS_DE_MONTAJE = ("montada", "no_se_pudo")
+#: Por qué no se pudo: los del montaje de los contratos, con el producto en
+#: lugar del material del proveedor.
+MOTIVOS_DE_NO_MONTAJE = ("sin_producto", "ocupado", "falta_material", "otro")
+#: Lo que dice quien revisa.
+RESULTADOS_DE_REVISION = ("coincide", "no_coincide")
 
 
 def _ahora() -> datetime:
@@ -165,3 +179,41 @@ class FotoDeGuia(Base):
     subida_por = Column(String, nullable=True)
     subida_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
 
+
+class MontajeDePlanograma(Base):
+    """El aviso de quien monta una versión: quedó montada o no se pudo."""
+
+    __tablename__ = "montajes_de_planograma"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True)
+    version_id = Column(Integer, ForeignKey("versiones_de_planograma.id"), nullable=False, index=True)
+    estado = Column(String, nullable=False)               # ESTADOS_DE_MONTAJE
+    motivo = Column(String, nullable=True)                # MOTIVOS_DE_NO_MONTAJE, sólo con «no_se_pudo»
+    nota = Column(Text, nullable=True)
+    # El correo de la sesión, o «enlace» si avisó desde el enlace sin contraseña.
+    avisado_por = Column(String, nullable=True)
+    avisado_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
+
+
+class RevisionDePlanograma(Base):
+    """Lo que dijo quien revisó el montaje de una versión."""
+
+    __tablename__ = "revisiones_de_planograma"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True)
+    version_id = Column(Integer, ForeignKey("versiones_de_planograma.id"), nullable=False, index=True)
+    # El aviso que se revisó; NULL si se revisó sin aviso (la vio en la tienda).
+    montaje_id = Column(Integer, ForeignKey("montajes_de_planograma.id"), nullable=True)
+    resultado = Column(String, nullable=False)            # RESULTADOS_DE_REVISION
+    # Los números de la guía que quedaron mal ([2, 3]) y si hubo «otra cosa».
+    numeros_json = Column(Text, nullable=False, default="[]")
+    otra_cosa = Column(Integer, nullable=False, default=0)
+    nota = Column(Text, nullable=True)
+    # 1: la dio por buena mirándola en la tienda, sin foto.
+    en_la_tienda = Column(Integer, nullable=False, default=0)
+    # 1: se le volvió a mandar la guía a quien monta, con la nota.
+    guia_reenviada = Column(Integer, nullable=False, default=0)
+    revisada_por = Column(String, nullable=True)
+    revisada_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)

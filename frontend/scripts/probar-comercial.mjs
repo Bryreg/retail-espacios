@@ -357,7 +357,11 @@ prueba("BLOQUES DE SUPERVISAR DENTRO DE isAdmin: tarjetas, ficha y tabla de part
   // su mapa, como «Ocupado sin contrato». Lo que la guarda exige además: que
   // salga SÓLO de las caras «reserved» sin la marca de una reserva de Vender,
   // y que liberar o reservar de verdad sea de administración.)
-  assert.deepEqual(PARA_TODOS, ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas"]);
+  // (Fase 4 de la distribución, 2026-10-25: suma los planogramas por revisar,
+  // que no llevan plata ni proveedor; el SERVIDOR sólo le manda a cada rol las
+  // caras que puede publicar —`test_revisa_quien_puede_publicar_esa_cara`—.)
+  assert.deepEqual(PARA_TODOS, ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas",
+    "planogramasPorRevisar.filas"]);
   assert.match(t, /else if \(ds\[i\] === "reserved" && !x\.reservado\) reservadoAMano\.push\(x\);/,
     "«Marcado reservado a mano» junta algo más que lo marcado a mano (una reserva de Vender lleva proveedor y fechas)");
   assert.equal((t.match(/reservadoAMano\.push\(/g) ?? []).length, 1, "«Marcado reservado a mano» se llena por otro lado");
@@ -1271,6 +1275,12 @@ const DEL_DIBUJO = [
   ["Distribución para revisar", "distribucion_para_revisar", ["corregir"]],
   ["Bajo tarifa", "bajo_tarifa", ["corregir"]],
   ["Montajes viejos sin reporte", "montajes_viejos", ["corregir"]],
+  // Fase 4 de la distribución (dibujo «Supervisar planogramas», 2026-10-25):
+  // las cuatro en «Hoy»; la vigente sin aviso, desde el día que empieza a regir.
+  ["Planograma montado por revisar", "planograma_por_revisar", ["hoy"]],
+  ["Planograma que no coincide", "planograma_no_coincide", ["hoy"]],
+  ["No se pudo montar el planograma", "planograma_no_se_pudo", ["hoy"]],
+  ["Planograma sin montar", "planograma_sin_montar", ["hoy"]],
 ];
 
 prueba("cada sección del dibujo está en «Para revisar», en su grupo, y cada aviso en uno solo (ejecutado)", () => {

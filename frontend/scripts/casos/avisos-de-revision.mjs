@@ -19,8 +19,13 @@
  *  marcado «Reservado» a mano (rediseño, PR 3: no lleva plata ni proveedor
  *  —no tiene ninguno— y el estado ya le llega pintado en su mapa; liberarlo o
  *  reservarlo de verdad es de administración) y los contratos sin mueble. Sin
- *  plata ni proveedor (el servidor ya se los tacha). */
-export const PARA_TODOS = ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas"];
+ *  plata ni proveedor (el servidor ya se los tacha).
+ *  Y los planogramas por revisar (fase 4 de la distribución): no llevan plata
+ *  ni proveedor, y el SERVIDOR sólo le manda a cada rol las caras que puede
+ *  publicar —al equipo, las internas y sólo si la dueña lo habilitó; nunca un
+ *  mueble que se vende— (`supervision_planogramas.para_revisar`). */
+export const PARA_TODOS = ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas",
+  "planogramasPorRevisar.filas"];
 
 /** Llevan proveedores, plata, fechas de otro o participaciones. */
 export const SOLO_ADMINISTRACION = [

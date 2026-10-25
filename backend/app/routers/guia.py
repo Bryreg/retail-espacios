@@ -4,10 +4,15 @@ Rutas ``/api/guia/…``. Las abre una sesión (admin o worker) **o** el enlace
 firmado de UNA versión (``auth.require_guia``): ese enlace no abre nada más,
 y cada ruta compara la versión pedida con la del enlace. Sin precios ni
 nombres de proveedores (``services/guia.py``). Los GET por query.
+
+Fase 4 (la supervisión, 2026-10-25): ``POST /guia/aviso``, «quedó montada» o
+«no se pudo», desde el mismo enlace (``services/supervision_planogramas.py``).
 """
 from pathlib import Path
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy.orm import Session
 
 from app.auth import QuienGuia, require_guia
@@ -15,6 +20,7 @@ from app.database import get_db
 from app.models.planogramas import FotoDeGuia
 from app.routers.mounts import MAX_PHOTO, PHOTO_TYPES
 from app.services import guia as servicio
+from app.services import supervision_planogramas as supervision
 from app.services.bitacora import anotar
 from app.services.subidas import leer_con_tope
 
@@ -43,7 +49,39 @@ def leer_guia(
 ):
     """La hoja de una versión: la cara, los destinos, lo que cambia, lo ya
     asignado (sin nombres) y las fotos que se subieron."""
-    return servicio.guia(db, _version_pedida(db, quien, version))
+    vid = _version_pedida(db, quien, version)
+    # Fase 4: el último aviso (para decir «ya avisaste») y, si quien revisó
+    # dijo que no coincide, qué hay que corregir.
+    return {**servicio.guia(db, vid), "aviso": supervision.ultimo_aviso(db, vid),
+            "correccion": supervision.correccion_pendiente(db, vid)}
+
+
+class AvisoIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: Optional[StrictInt] = Field(default=None, ge=1)
+    estado: Literal["montada", "no_se_pudo"]
+    motivo: Optional[Literal["sin_producto", "ocupado", "falta_material", "otro"]] = None
+    nota: Optional[str] = Field(default=None, max_length=1000)
+
+
+@router.post("/aviso", status_code=201)
+def avisar(
+    cuerpo: AvisoIn,
+    request: Request,
+    quien: QuienGuia = Depends(require_guia),
+    db: Session = Depends(get_db),
+):
+    """«Quedó montada» o «No se pudo» (con el motivo), desde el enlace de la
+    guía o con sesión (fase 4). Le llega a quien revisa en «Para revisar»."""
+    vid = _version_pedida(db, quien, cuerpo.version)
+    correo = getattr(getattr(request, "state", None), "actor_email", None)
+    a = supervision.avisar(db, vid, cuerpo.model_dump(), "enlace" if quien.es_enlace else (correo or quien.role))
+    nombre, _sede, v, _pl = servicio.titulo(db, vid)
+    detalle = (f"Versión {v.numero}: quedó montada" if a.estado == "montada"
+               else f"Versión {v.numero}: no se pudo ({supervision.MOTIVO_LEGIBLE.get(a.motivo, a.motivo)})")
+    anotar(db, request, quien.role, "guia.aviso", entidad="planograma", entidad_id=nombre, detalle=detalle)
+    db.commit()
+    return {"aviso": supervision.aviso_out(a)}
 
 
 @router.post("/foto", status_code=201)

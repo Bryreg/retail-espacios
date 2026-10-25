@@ -62,6 +62,32 @@ export interface Guia {
   asignado: Poligono[];
   vendida_entera: boolean;
   fotos: { id: number; subida_en: string | null; por_enlace: boolean }[];
+  /** Fase 4: el último aviso de quien monta (sólo en `/guia`). */
+  aviso?: AvisoDeMontaje | null;
+  /** Fase 4: si quien revisó dijo que no coincide, qué hay que corregir. */
+  correccion?: CorreccionPendiente | null;
+}
+
+export type EstadoDelAviso = "montada" | "no_se_pudo";
+export type MotivoDeNoMontaje = "sin_producto" | "ocupado" | "falta_material" | "otro";
+
+export interface AvisoDeMontaje {
+  id: number;
+  estado: EstadoDelAviso;
+  motivo: MotivoDeNoMontaje | null;
+  motivo_legible: string | null;
+  nota: string | null;
+  por_enlace: boolean;
+  /** El correo de quien avisó con sesión (null desde el enlace). */
+  por: string | null;
+  en: string | null;
+}
+
+export interface CorreccionPendiente {
+  numeros: number[];
+  otra_cosa: boolean;
+  nota: string | null;
+  en: string | null;
 }
 
 export interface Destinatarios {
@@ -101,3 +127,11 @@ export const destinatariosDeLaGuia = (version: number): Promise<Destinatarios> =
 
 export const enviarLaGuia = (versionId: number, correos: string[]): Promise<{ enviados: string[] }> =>
   client.post<{ enviados: string[] }>("/planogramas/guia/enviar", { version_id: versionId, correos }).then((r) => r.data);
+
+/** «Quedó montada» o «No se pudo» (fase 4). Con el enlace o con sesión. */
+export const avisarMontaje = (
+  e: { estado: EstadoDelAviso; motivo?: MotivoDeNoMontaje | null; nota?: string | null }, version?: number,
+): Promise<{ aviso: AvisoDeMontaje }> =>
+  (hayTokenDeGuia() ? guiaClient : client)
+    .post<{ aviso: AvisoDeMontaje }>("/guia/aviso", { ...e, ...(version !== undefined && !hayTokenDeGuia() ? { version } : {}) })
+    .then((r) => r.data);

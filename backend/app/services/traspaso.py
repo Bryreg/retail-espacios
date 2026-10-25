@@ -93,8 +93,10 @@ TABLAS_DEL_CLIENTE = frozenset({
     # cada sede, el planograma de cada cara, sus versiones publicadas, sus
     # piezas y quién publica. Ninguna se apunta a sí misma.
     "destinos", "planogramas", "versiones_de_planograma", "piezas_de_planograma", "ajustes_de_planograma",
-    # La foto de cómo quedó una cara, desde su guía de montaje (fase 3).
-    "fotos_de_guia",
+    # La foto de cómo quedó una cara, desde su guía de montaje (fase 3), y la
+    # supervisión (fase 4): el aviso de quien monta y la revisión, que apunta
+    # al aviso.
+    "fotos_de_guia", "montajes_de_planograma", "revisiones_de_planograma",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar

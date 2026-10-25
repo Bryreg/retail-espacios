@@ -26,6 +26,7 @@ import FormularioDeDestino, { IconoDelTipo } from "./FormularioDeDestino";
 import PublicarVersion from "./PublicarVersion";
 import Versiones from "./Versiones";
 import VerGuia from "../Guia/VerGuia";
+import RevisarMontaje from "../Supervision/RevisarMontaje";
 
 /**
  * «Planificar la cara» (fase 2 de la distribución, 2026-10-24; dibujo aprobado
@@ -113,6 +114,8 @@ function Pantalla() {
   const [exito, setExito] = useState<{ texto: string; versionId: number | null } | null>(null);
   /** La guía de montaje de una versión, abierta (fase 3). */
   const [guiaDe, setGuiaDe] = useState<{ id: number; mandar: boolean } | null>(null);
+  /** La ficha del montaje de una versión (fase 4, desde «Versiones»). */
+  const [montajeDe, setMontajeDe] = useState<number | null>(null);
   const [arrastre, setArrastre] = useState<{ id: number; x: number; y: number; rect: Rect | null; pisa: number | null; movida: boolean } | null>(null);
   const arrastrada = useRef(false);
 
@@ -801,7 +804,12 @@ function Pantalla() {
       {verVersiones && datos && (
         <Versiones versiones={datos.planograma.versiones} hoy={datos.hoy} onCerrar={() => setVerVersiones(false)}
           onGuia={(id) => { setVerVersiones(false); setGuiaDe({ id, mandar: false }); }}
+          onMontaje={datos.permisos.planificar ? (id) => { setVerVersiones(false); setMontajeDe(id); } : undefined}
           onVer={(v) => { setVerVersiones(false); st().mirar(v); }} />
+      )}
+      {montajeDe !== null && (
+        <RevisarMontaje versionId={montajeDe} onCerrar={() => setMontajeDe(null)}
+          onRevisada={(texto) => { setMontajeDe(null); setExito({ texto, versionId: null }); void st().recargar(); }} />
       )}
       {guiaDe !== null && datos && (
         <VerGuia versionId={guiaDe.id} mandar={guiaDe.mandar} puedeCompartir={datos.permisos.planificar} onCerrar={() => setGuiaDe(null)} />
