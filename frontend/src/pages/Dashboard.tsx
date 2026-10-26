@@ -36,6 +36,7 @@ import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { usePlanograma } from "../store/planogramaStore";
 import { TemaToggle, useModalAbierto } from "../tema";
+import { altoDeLaVentana, useEscalaDeLaApp } from "../escala";
 import {
   LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
   type FamiliaConNombre,
@@ -1409,6 +1410,8 @@ export default function Dashboard() {
   // Arriving from the mount email opens that screen straight away, on the
   // space the email was about.
   const mountCode = MOUNT_DEEP_LINK;
+  // Un solo diseño que se escala con la pantalla (`escala.ts`).
+  useEscalaDeLaApp();
   const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "kpis");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const planificando = usePlanograma((s) => s.abierta !== null);
@@ -1484,7 +1487,7 @@ export default function Dashboard() {
     <div
       style={{
         display: "flex", flexDirection: "column",
-        height: "100dvh", overflow: "hidden",
+        height: altoDeLaVentana, overflow: "hidden",
         background: "var(--bg)",
       }}
     >

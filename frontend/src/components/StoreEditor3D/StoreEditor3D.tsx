@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { SIN_ESCALA } from "../../escala";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -8127,7 +8128,9 @@ export default function StoreEditor3D() {
   const [anfitrionDelLienzo] = useState<HTMLDivElement | null>(() => {
     if (typeof document === "undefined") return null;
     const d = document.createElement("div");
-    d.style.cssText = "position:absolute;inset:0;";
+    // A 1:1 adentro de la app escalada (`escala.ts`): sin esto el lienzo se
+    // medía ya agrandado, se ponía ese tamaño y volvía a agrandarse.
+    d.style.cssText = `position:absolute;inset:0;zoom:${SIN_ESCALA};`;
     d.setAttribute("data-lienzo-3d", "");
     return d;
   });

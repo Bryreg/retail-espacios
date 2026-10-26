@@ -203,7 +203,7 @@
   --marco-sede: 80px;
   --fila1: 448px;
   --fila2: 248px;
-  --alto-plano: max(var(--fila1), min((var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede)) * 550 / 804, var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede) - var(--fila2)));
+  --alto-plano: max(var(--fila1), min((var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--marco-sede)) * 550 / 804, var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--marco-sede) - var(--fila2)));
 }
 /* En ventana baja la hoja de Vender se aprieta: 8 + 8, 36 + 6 y 8. */
 @media (max-height: 880px) {
@@ -242,7 +242,7 @@
      hueco entre filas que el marco ya contaba), con el piso de las dos filas.
      Es el alto de la pila de la izquierda (el plano y «Cuándo se libera») y lo
      menos que mide la de la derecha (el contrato y la tarifa). */
-  --alto-hoja: max(calc(var(--fila1) + var(--aire-v) + var(--fila2)), calc(var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede) + var(--aire-v)));
+  --alto-hoja: max(calc(var(--fila1) + var(--aire-v) + var(--fila2)), calc(var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--marco-sede) + var(--aire-v)));
 
   display: flex;
   flex-direction: column;
@@ -301,7 +301,7 @@ html[data-tema="oscuro"] .vender {
   grid-template-rows: var(--alto-plano) minmax(var(--fila2), 1fr);
   height: var(--alto-hoja);
   position: sticky;
-  top: min(var(--aire-v), calc(var(--alto-area, calc(100dvh - 52px)) - var(--alto-hoja) - var(--aire-v)));
+  top: min(var(--aire-v), calc(var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--alto-hoja) - var(--aire-v)));
 }
 /* LA DERECHA: el contrato con su alto natural —nunca menos que la fila del
    plano— y la tarifa debajo, con lo que quede (y su piso). Cuando el contrato
@@ -1624,7 +1624,7 @@ html[data-tema="oscuro"] .vender {
   background: color-mix(in srgb, var(--ink-1) 38%, transparent);
 }
 .dialogo-edicion {
-  width: min(100%, 460px); max-height: calc(100vh - 32px); overflow: auto;
+  width: min(100%, 460px); max-height: calc(100vh / var(--escala, 1) - 32px); overflow: auto;
   background: var(--surface); color: var(--ink-1); border: var(--hair) solid var(--line);
   border-radius: var(--r-lg); box-shadow: var(--sh-2);
 }
