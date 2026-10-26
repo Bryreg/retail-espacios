@@ -1,6 +1,6 @@
 # Versión final del rediseño · relacional y verificable
 
-Dibujo para aprobar (26/10/2026). **No es código de la app.** Junta lo mejor de cada
+Dibujo **aprobado por el dueño el 26/10/2026**. **No es código de la app.** Junta lo mejor de cada
 versión que se dibujó ese día y, a diferencia de las anteriores, no tiene ni un dato
 inventado: todo sale de una base de la app y se comprueba contra esa base.
 

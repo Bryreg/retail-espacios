@@ -412,7 +412,7 @@ fechas. Antes de implementar faltan las decisiones de su README (Indicadores com
 nombres del menú, por dónde empezar). La implementación va en ramas nuevas desde `main`, con
 el flujo de siempre.
 
-**La versión final** está en `docs/maquetas/ux-2026-10/final/`. Junta lo mejor de cada
+**La versión final** (aprobada por el dueño el 26/10/2026) está en `docs/maquetas/ux-2026-10/final/`. Junta lo mejor de cada
 versión: las capas y los 4 módulos, la disponibilidad por fechas, Indicadores combinado, el
 estilo «como la foto» con el plano aireado, y el responsive de un solo diseño que escala
 (`generadores/recabra.css`). Es un prototipo de 96 páginas enlazadas sin un dato inventado:
