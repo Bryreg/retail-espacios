@@ -20,6 +20,7 @@ Mismo andamiaje que ``test_plataforma_metricas.py`` (verificador falso por
 ``import app.*`` ADENTRO de las funciones): cada archivo de pruebas se sostiene
 solo.
 """
+from tests.sembrado import total_del_plazo
 import hashlib
 import json
 from datetime import date
@@ -258,7 +259,7 @@ def _sembrar(slug, sedes: dict, contratos: list, espacios_extra: dict | None = N
                 marca=marca,
                 start_date=date.fromisoformat(ini),
                 end_date=date.fromisoformat(fin),
-                monthly_rent=canon,
+                monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
                 notes=NOTA_SEMBRADA,
             ))

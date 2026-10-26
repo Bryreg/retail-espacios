@@ -138,6 +138,16 @@ import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
 import { componerPropuesta, descargar, nombreDeArchivo, prepararToma } from "../../utils/propuesta";
 import { siguienteCodigo } from "../../utils/nomenclatura";
+import { alMesDe } from "../../utils/meses";
+
+/** El valor de un mueble vendido es el TOTAL de su contrato (`negotiatedValue`,
+ *  de `/spaces/comercial`): decía «/ mes» al lado del total, y la lámina lo
+ *  imprimía como «Valor mensual» (2026-10-26). Repartido en sus meses, como el
+ *  «Al mes» de Supervisar; sin fechas, el total. */
+function valorAlMes(f: { negotiatedValue?: number; startDate?: string; endDate?: string }): number {
+  const total = f.negotiatedValue || 0;
+  return f.startDate && f.endDate ? alMesDe(total, f.startDate, f.endDate) : total;
+}
 
 // ─── Scene constants ──────────────────────────────────────────────────────────
 
@@ -7033,7 +7043,7 @@ function CommercialPanel({
             </div>
             {porParticipacion(fix) ? (
               <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slots-por-participacion>
-                Este mueble se vende por participación: lo vendido va con contrato en Distribución, no como espacio interno.
+                Este mueble se vende por participación: lo vendido va con contrato desde Vender, no como espacio interno.
               </p>
             ) : (
               <p className="mt-1 text-[9px] text-dark-ink-3 italic">Hacé clic en un slot del panel frontal para editarlo</p>
@@ -7167,7 +7177,7 @@ function CommercialPanel({
               )}
               {isAdmin && fix.negotiatedValue > 0 && (
                 <p className="mt-2 font-mono text-sm font-bold text-success">
-                  ${fix.negotiatedValue.toLocaleString()} / mes
+                  ${valorAlMes(fix).toLocaleString("es-CO")} al mes
                 </p>
               )}
             </>
@@ -8667,7 +8677,7 @@ export default function StoreEditor3D() {
         hasta: proponiendo ? "" : (uf.endDate ?? ""),
         // La plata se tacha para el trabajador, igual que en todas las demás
         // pantallas. Una lámina es un archivo que se reenvía.
-        valorMensual: proponiendo ? null : (isAdmin ? (uf.negotiatedValue || null) : null),
+        valorMensual: proponiendo ? null : (isAdmin ? (valorAlMes(uf) || null) : null),
       };
       // Sin arte cargada las dos tomas salen idénticas: mostrar el mismo
       // dibujo dos veces con los rótulos «Hoy» y «Con la marca» es mentirle
@@ -9088,7 +9098,7 @@ export default function StoreEditor3D() {
               <p className="font-mono font-bold text-accent-200">{nombreDeMueble(fix)}</p>
               <p className="text-dark-ink-1">{conNombrePropio(fix, nombresPropios, fix.label)}</p>
               {!discreto && fix.supplierName && <p className="text-dark-ink-2 mt-0.5">🏢 {fix.supplierName}</p>}
-              {!discreto && fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${fix.negotiatedValue}/mes</p>}
+              {!discreto && fix.negotiatedValue > 0 && <p className="text-success mt-0.5">💵 ${valorAlMes(fix).toLocaleString("es-CO")} al mes</p>}
               <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${sm.bg} ${sm.text}`}>
                 {sm.label}
               </span>

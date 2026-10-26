@@ -460,8 +460,8 @@ def slots_en_participacion(previas: list, nuevas: list) -> list[str]:
                     or any(k in x and a.get(k) != x.get(k) for k in _VENTA_DEL_SLOT)
                     or ("negotiatedValue" in x and a.get("negotiatedValue") != x.get("negotiatedValue"))):
                 frases.append(
-                    f"«{normalizar(f.get('code'))}» se vende por participación: lo vendido va con contrato en "
-                    "Distribución, no como espacio interno."
+                    f"«{normalizar(f.get('code'))}» se vende por participación: lo vendido va con contrato desde "
+                    "Vender, no como espacio interno."
                 )
                 break
     return sorted(frases)

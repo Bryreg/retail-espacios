@@ -457,9 +457,10 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
     """
     from app.models.models import Space, SpaceLease, Supplier
     from app.models.vender import CobroPorVenta
+    from app.services.meses import al_mes_de
 
     filas = (
-        db.query(Space.code, Supplier.name, SpaceLease.monthly_rent)
+        db.query(Space.code, Supplier.name, SpaceLease.monthly_rent, SpaceLease.start_date, SpaceLease.end_date)
         .join(Space, Space.id == SpaceLease.space_id)
         .join(Supplier, Supplier.id == SpaceLease.supplier_id)
         .filter(
@@ -470,9 +471,13 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
         )
         .all()
     )
+    # El canon es lo de UN MES: `monthly_rent` guarda el total de todo el plazo
+    # (fase 17), y sumarlo tal cual como «ingreso del mes» contaba un contrato
+    # de seis meses seis veces (2026-10-26). Repartido en sus meses, con la
+    # cuenta del «Al mes» de Supervisar.
     return [
-        ((codigo or "").strip().upper(), (nombre or "").strip(), float(canon or 0.0))
-        for codigo, nombre, canon in filas
+        ((codigo or "").strip().upper(), (nombre or "").strip(), al_mes_de(canon or 0.0, inicio, fin))
+        for codigo, nombre, canon, inicio, fin in filas
     ]
 
 
@@ -548,8 +553,12 @@ def _contratos_del_cliente(db) -> list[tuple]:
     Sin filtro de fechas a propósito: el detalle necesita los históricos para
     los movimientos de los últimos 12 meses y para el primer contrato de cada
     proveedor. Filtrar el período es cosa de ``_del_periodo``.
+
+    El canon es lo de UN MES (2026-10-26): el total del contrato repartido en
+    sus meses, como en ``_contratos_activos``.
     """
     from app.models.models import Space, SpaceLease, Supplier
+    from app.services.meses import al_mes_de
 
     filas = (
         db.query(
@@ -570,7 +579,7 @@ def _contratos_del_cliente(db) -> list[tuple]:
             (codigo or "").strip().upper(),
             (nombre or "").strip(),
             marca,
-            float(canon or 0.0),
+            al_mes_de(canon or 0.0, inicio, fin),
             inicio,
             fin,
             bool(activo),
@@ -1236,3 +1245,53 @@ def limpiar_cache_metricas() -> None:
     with _cache_candado:
         _cache.clear()
         _cache_contratos.clear()
+
+
+def sumas_al_mes_y_total(periodos_por_slug: dict[str, list[str]]) -> dict[tuple[str, str], tuple[float, float]]:
+    """``{(slug, "YYYY-MM"): (Σ al mes, Σ total)}`` de los contratos de precio
+    fijo de cada mes pedido, leídos HOY y en sólo lectura.
+
+    Sólo para el recálculo único de los meses ya guardados
+    (``plataforma_tendencia.recalcular_canon_al_mes``, 2026-10-26): el
+    ``canon_total`` guardado de un mes sumaba el total de cada contrato, y lo
+    que se le aplica es la proporción «al mes / total» de los contratos de ese
+    mes. Se miden TODOS los que tocan el mes, también los cancelados después:
+    la base de hoy ya no sabe cuáles estaban vivos entonces, y la proporción
+    depende de cuánto duran los contratos, no de cuántos quedan. Este módulo es
+    el único que abre bases de cliente; una base que no se puede leer no da
+    sumas (y sus filas quedan como están).
+    """
+    from app.clientes import Cliente, sesion_de, sesion_registro
+    from app.models.models import ClienteRow, SpaceLease
+    from app.models.vender import CobroPorVenta
+    from app.services.meses import al_mes_de
+
+    reg = sesion_registro()
+    try:
+        filas = {f.slug: f for f in reg.query(ClienteRow).all()}
+    finally:
+        reg.close()
+    sumas: dict[tuple[str, str], tuple[float, float]] = {}
+    for slug, periodos in periodos_por_slug.items():
+        f = filas.get(slug)
+        if f is None or not periodos:
+            continue
+        try:
+            db = sesion_de(Cliente(slug=f.slug, nombre=f.nombre, db_name=f.db_name, activo=f.activo))
+            try:
+                for periodo in sorted(set(periodos)):
+                    desde, hasta = rango_del_periodo(periodo)
+                    leases = (
+                        db.query(SpaceLease.monthly_rent, SpaceLease.start_date, SpaceLease.end_date)
+                        .filter(SpaceLease.start_date <= hasta, SpaceLease.end_date >= desde,
+                                ~SpaceLease.id.in_(db.query(CobroPorVenta.lease_id)))
+                        .all()
+                    )
+                    total = sum(float(v or 0) for v, _i, _f in leases)
+                    al_mes = sum(al_mes_de(v or 0, i, fin) for v, i, fin in leases)
+                    sumas[(slug, periodo)] = (al_mes, total)
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001
+            log.exception("No se pudieron medir los contratos del cliente %s para el recálculo", slug)
+    return sumas

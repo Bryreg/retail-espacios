@@ -568,6 +568,93 @@ def purgar_registro() -> dict[str, int]:
     return borrados
 
 
+#: El ajuste de 2026-10-26: el canon de cada mes, de «total de cada contrato» a
+#: «lo de un mes» (``AjusteDeSnapshot``).
+AJUSTE_CANON_AL_MES = "canon_al_mes"
+#: La fila de ``ajustes_de_snapshot`` que marca CUÁNDO empezó el arreglo.
+MARCA_DEL_AJUSTE = "__marca__"
+
+
+def recalcular_canon_al_mes() -> dict:
+    """Recalcula UNA vez el ``canon_total`` de los meses ya guardados (decisión
+    del dueño, 2026-10-26).
+
+    Hasta esa fecha cada fila sumaba el TOTAL de cada contrato —todo su plazo—
+    como si fuera lo de un mes. Un mes pasado no se puede volver a calcular (la
+    base de hoy no es la de entonces: ver el docstring del módulo), así que a
+    cada fila se le aplica la proporción «Σ al mes / Σ total» de los contratos
+    de ese mes medida hoy (``plataforma_metricas.sumas_al_mes_y_total``). Los
+    conteos (contratos, caras, ocupadas) no cambian. La consolidada de cada
+    mes, con la proporción de todos los clientes juntos.
+
+    Una sola vez por fila: cada una deja su ``AjusteDeSnapshot`` (lo de antes,
+    lo de después, el factor), y sólo se tocan las capturadas ANTES de la
+    marca —la primera corrida—: lo capturado después ya viene al mes. Sin
+    contratos con qué medir (factor ``None``) la fila queda como estaba. No
+    propaga: lo llama el ciclo de mantenimiento.
+    """
+    from app.clientes import sesion_registro
+    from app.models.plataforma import AjusteDeSnapshot, SnapshotMetricas
+    from app.plataforma_metricas import sumas_al_mes_y_total
+
+    reg = sesion_registro()
+    try:
+        marca = (reg.query(AjusteDeSnapshot)
+                 .filter_by(cliente_slug=MARCA_DEL_AJUSTE, periodo="", ajuste=AJUSTE_CANON_AL_MES).first())
+        if marca is None:
+            marca = AjusteDeSnapshot(cliente_slug=MARCA_DEL_AJUSTE, periodo="", ajuste=AJUSTE_CANON_AL_MES,
+                                     en=_ahora_utc())
+            reg.add(marca)
+            reg.commit()
+        corte = marca.en if marca.en.tzinfo else marca.en.replace(tzinfo=timezone.utc)
+        hechos = {(a.cliente_slug, a.periodo) for a in reg.query(AjusteDeSnapshot)
+                  .filter(AjusteDeSnapshot.ajuste == AJUSTE_CANON_AL_MES).all()}
+        pendientes = []
+        for f in reg.query(SnapshotMetricas).all():
+            capturado = f.capturado_en if f.capturado_en.tzinfo else f.capturado_en.replace(tzinfo=timezone.utc)
+            if capturado < corte and (f.cliente_slug, f.periodo) not in hechos:
+                pendientes.append(f)
+        if not pendientes:
+            return {"ajustadas": 0}
+
+        periodos_consolidado = {f.periodo for f in pendientes if f.cliente_slug == CONSOLIDADO_SLUG}
+        por_slug: dict[str, set[str]] = {}
+        for f in pendientes:
+            if f.cliente_slug != CONSOLIDADO_SLUG:
+                por_slug.setdefault(f.cliente_slug, set()).add(f.periodo)
+        if periodos_consolidado:
+            # La consolidada se mide con TODOS los clientes del registro.
+            from app.models.models import ClienteRow
+            for (slug,) in reg.query(ClienteRow.slug).all():
+                por_slug.setdefault(slug, set()).update(periodos_consolidado)
+        sumas = sumas_al_mes_y_total({s: sorted(p) for s, p in por_slug.items()})
+
+        ajustadas = 0
+        for f in pendientes:
+            if f.cliente_slug == CONSOLIDADO_SLUG:
+                partes = [v for (s, p), v in sumas.items() if p == f.periodo]
+                al_mes, total = sum(a for a, _t in partes), sum(t for _a, t in partes)
+            elif (f.cliente_slug, f.periodo) not in sumas:
+                continue  # su base no se pudo leer: se reintenta en el próximo ciclo
+            else:
+                al_mes, total = sumas[(f.cliente_slug, f.periodo)]
+            factor = (al_mes / total) if total > 0 else None
+            antes = float(f.canon_total or 0.0)
+            despues = round(antes * factor, 2) if factor is not None else antes
+            f.canon_total = despues
+            reg.add(AjusteDeSnapshot(cliente_slug=f.cliente_slug, periodo=f.periodo, ajuste=AJUSTE_CANON_AL_MES,
+                                     canon_antes=antes, canon_despues=despues, factor=factor))
+            ajustadas += 1
+        reg.commit()
+        log.info("Canon de la serie histórica pasado a «al mes»: %s filas", ajustadas)
+        return {"ajustadas": ajustadas}
+    except Exception:
+        reg.rollback()
+        raise
+    finally:
+        reg.close()
+
+
 def cerrar_mes_anterior() -> None:
     """Las DOS tareas de plataforma del ciclo de mantenimiento: cierre y purga.
 
@@ -595,6 +682,13 @@ def cerrar_mes_anterior() -> None:
     from app.clientes import sesion_registro
     from app.models.models import ClienteRow
     from app.models.plataforma import SnapshotMetricas
+
+    # 0. El recálculo único del canon guardado (2026-10-26): antes del cierre,
+    # para que la serie no mezcle meses «total» con meses «al mes».
+    try:
+        recalcular_canon_al_mes()
+    except Exception:  # noqa: BLE001
+        log.exception("No se pudo recalcular el canon guardado de la serie de métricas")
 
     try:
         mes = periodo_anterior(periodo_actual())

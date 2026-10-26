@@ -243,9 +243,9 @@ def test_la_capacidad_suma_lo_que_cuenta_cada_dia_y_nada_mas(client, admin):
         ({**base, "tipo": "reserva", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "caduca": D(2026, 12, 1)},
          "La reserva tiene que caducar entre hoy y el último día que reserva."),
         ({**base, "tipo": "contrato", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30)},
-         "Escribí el valor mensual del contrato."),
+         "Escribí el valor del contrato."),
         ({**base, "tipo": "contrato", "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30), "valor_mensual": -1},
-         "Escribí el valor mensual del contrato."),
+         "Escribí el valor del contrato."),
         ({**base, "espacio": "GON-09", "tipo": "contrato", "desde": D(2026, 11, 2), "hasta": D(2026, 11, 1),
           "valor_mensual": 1}, "La fecha de inicio no puede ser posterior a la de fin"),
     ):
@@ -1214,7 +1214,7 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
                   [{**_slot("s1", fin=D(2026, 10, 1)), "supplierName": "Alpina"}]):
         d = _rechazo(client, admin, _con("GON-02", plano, slots=slots))
         assert d["code"] == "slots_en_participacion", (slots, d)
-        assert d["choques"] == ["«GON-02» se vende por participación: lo vendido va con contrato en Distribución, "
+        assert d["choques"] == ["«GON-02» se vende por participación: lo vendido va con contrato desde Vender, "
                                 "no como espacio interno."]
     sin_valor = {k: v for k, v in _slot("s1", fin=D(2026, 10, 1)).items() if k != "negotiatedValue"}
     _guardar(client, admin, _con("GON-02", plano, slots=[sin_valor], cx=4.5))  # un valor ausente no es un cambio

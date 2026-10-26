@@ -27,6 +27,7 @@ Las tres preguntas de frontera que este archivo tiene que poder contestar:
 **Todos los ``import app.*`` van adentro de las funciones**: el fixture
 ``client`` de ``conftest.py`` purga ``sys.modules['app.*']`` entre pruebas.
 """
+from tests.sembrado import total_del_plazo
 import json
 import re
 import subprocess
@@ -236,7 +237,7 @@ def _sembrar(slug, sedes: dict, contratos: list, tarifas: dict | None = None):
                 marca=MARCA_CONTRATO,
                 start_date=date.fromisoformat(ini),
                 end_date=date.fromisoformat(fin),
-                monthly_rent=canon,
+                monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
                 notes=NOTA_CONTRATO,
             ))

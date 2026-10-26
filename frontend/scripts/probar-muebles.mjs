@@ -6875,7 +6875,12 @@ prueba("los slots de la cara B: el contorno no roba el rayo, la malla corta el a
   assert.match(cuerpoGondolaMesh, /renderSlotFace\(-1\)/);
   // Un mueble por participación no ofrece espacios internos: no se abre su ficha.
   assert.match(editorCodigo, /const selectedSlot = selectedFix && !porParticipacion\(selectedFix\)/, "un mueble por participación abre la ficha de un slot");
-  assert.match(editorCodigo, /data-slots-por-participacion>\s*Este mueble se vende por participación: lo vendido va con contrato en Distribución/);
+  assert.match(editorCodigo, /data-slots-por-participacion>\s*Este mueble se vende por participación: lo vendido va con contrato desde Vender/);
+  // El valor de un mueble vendido es el TOTAL de su contrato: se muestra al mes,
+  // repartido en sus meses (2026-10-26). Decía «$ X / mes» al lado del total.
+  assert.ok(!/negotiatedValue[^\n]{0,80}\/ ?mes/.test(editorCodigo), "el 3D volvió a poner «/ mes» al lado del total");
+  assert.match(editorCodigo, /valorMensual: proponiendo \? null : \(isAdmin \? \(valorAlMes\(uf\) \|\| null\) : null\)/,
+    "la lámina volvió a imprimir el total como «Valor mensual»");
   // Y no ofrece «N disponible» al lado de esa nota (verificación del paso 6a).
   assert.match(editorCodigo, /if \(!cnt\) return null;[\s\S]{0,260}if \(s === "free" && porParticipacion\(fix\)\) return null;/,
     "el resumen de slots de un mueble por participación dice «N disponible»");

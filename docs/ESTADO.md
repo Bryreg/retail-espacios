@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-26, **la planilla de contratos, al día**: el valor es lo de
+Última actualización: 2026-10-26, **«al mes» en todos lados**: la consola de plataforma, el
+detalle y el informe del cliente sumaban el TOTAL de cada contrato como el ingreso de un mes (un
+contrato de seis meses contaba seis veces); ahora suman lo de un mes, y los meses ya guardados de la
+serie se recalcularon una vez. También el formulario de participación de Distribución (pedía
+«Valor mensual» y lo guardaba como total), el «/ mes» del Editor 3D y el «Valor mensual» de la
+lámina. Ver *«Al mes» en todos lados (2026-10-26)*.
+
+Antes, ese mismo día, **la planilla de contratos, al día**: el valor es lo de
 CADA MES (el total sale × los meses y se guarda como «Al mes» en Vender), sólo entran muebles que
 se venden ENTEROS (las partes y los porcentajes, en Vender), la tarifa se compara mes contra mes,
 un CSV en UTF-8 conserva los acentos y la pantalla final dice lo que de verdad salió. Ver *La
@@ -1286,6 +1293,41 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 
 ## Qué está hecho
 
+### «Al mes» en todos lados (2026-10-26)
+
+La revisión que pidió el dueño («deben haber varios errores similares») buscó todo lo que leía
+`SpaceLease.monthly_rent` —que desde la «fase 17» es el TOTAL del plazo— como si fuera lo de un
+mes. Decisión del dueño: **recalcular los meses ya guardados**.
+
+- **La consola de plataforma** (`plataforma_metricas._contratos_activos` y
+  `_contratos_del_cliente`): el canon de cada contrato es lo de UN mes, `al_mes_de(total, desde,
+  hasta)` (`services/meses.py`, gemela de `alMesDe` de `utils/meses.ts`: la cuenta del «Al mes» de
+  Supervisar). Con eso quedan bien el ingreso del mes, el canon promedio, el spread contra la tarifa
+  (que es mensual), el detalle del cliente (canon por tipo, benchmark, precio sugerido, «en
+  juego», brecha con la tarifa), el informe del cliente y la serie. Las pantallas ya decían «al
+  mes»: ahora es verdad.
+- **Los meses ya guardados** (`plataforma_tendencia.recalcular_canon_al_mes`, al empezar
+  `cerrar_mes_anterior`): un mes pasado no se puede volver a calcular (la base de hoy no es la de
+  entonces), así que a cada fila de `snapshot_metricas` capturada ANTES del arreglo se le aplica la
+  proporción «Σ al mes / Σ total» de los contratos de ese mes medida hoy
+  (`plataforma_metricas.sumas_al_mes_y_total`: todos los que tocan el mes, también los cancelados
+  después; la proporción depende de cuánto duran, no de cuántos quedan). La consolidada, con todos
+  los clientes. Los conteos no cambian. **Una sola vez**: tabla nueva del registro
+  `ajustes_de_snapshot` (lo de antes, lo de después y el factor por fila, y la marca de cuándo
+  empezó); una base que no se puede leer se reintenta en el próximo ciclo; sin contratos con qué
+  medir, la fila queda como estaba (factor vacío).
+- **El formulario de participación** (Distribución: renovar, confirmar, cargar de nuevo) pide
+  «Valor al mes» y manda `al_mes: true`: el servidor guarda el total × los meses y anota
+  `condiciones_de_contrato` «mensual» (`participaciones._total_y_al_mes`). Al renovar, el valor
+  sugerido es el del mes. Sin `al_mes` (la API, Vender) el valor sigue siendo el total.
+- **El Editor 3D** decía «$ X / mes» al lado del total y la **lámina** lo imprimía como «Valor
+  mensual»: ahora es el total repartido en sus meses (`valorAlMes`).
+- **El último «Distribución»**: los espacios internos de una cara por participación («lo vendido
+  va con contrato desde Vender»).
+- **Pruebas**: `test_al_mes_en_todos_lados.py` (la participación con `al_mes`, la consola suma lo
+  de un mes, el recálculo una sola vez). Las pruebas de la consola sembraban el canon de cada
+  contrato como lo de un mes sobre plazos de años: siembran el total (`tests/sembrado.py`), y sus
+  cuentas a mano no cambian.
 ### La planilla: al mes y sólo enteros (2026-10-26)
 
 La revisión que pidió el dueño («la planilla para subir varios contratos no la hemos tocado:

@@ -10,6 +10,7 @@ import { useDistribucionStore, type DistribucionActiva } from "../../store/distr
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import type { AvisosContrato, Supplier } from "../../types";
 import { tarifaDeEspacio } from "../../utils/partes";
+import { alMesDe } from "../../utils/meses";
 import {
   disponible, intervalosQueCuentan, pbDeTexto, pct, revisarCapacidad, revisarTerminos, vivo, type CambioDeTermino, type Rechazo,
 } from "../../utils/participaciones";
@@ -115,7 +116,10 @@ export function camposIniciales(modo: Modo, t: TerminoOut | null, p: Participaci
     case "renovar": {
       const desde = despuesDeLosVivos();
       return { ...base, proveedor: t.proveedor?.nombre ?? "", marca: t.marca ?? "", porcentaje: textoDePb(t.puntos_basicos),
-        desde, hasta: sumarDias(desde, duracion), valor: t.valor_mensual != null ? String(t.valor_mensual) : "", notas: "" };
+        // `valor_mensual` del término es el TOTAL de su contrato: el campo pide
+        // lo de cada mes (2026-10-26).
+        desde, hasta: sumarDias(desde, duracion),
+        valor: t.valor_mensual != null && t.desde && t.hasta ? String(alMesDe(t.valor_mensual, t.desde, t.hasta)) : "", notas: "" };
     }
     case "confirmar":
       return { ...base, proveedor: t.proveedor?.nombre ?? "", marca: t.marca ?? "", porcentaje: textoDePb(t.puntos_basicos),
@@ -144,7 +148,7 @@ export function problemaDeLosCampos(modo: Modo, c: Campos, hoy: string): string 
       return "La reserva tiene que caducar entre hoy y el último día que reserva.";
     }
   } else if (modo !== "editar" && valorDeTexto(c.valor) === null) {
-    return "Escribí el valor mensual del contrato (en pesos; 0 si no se cobra).";
+    return "Escribí el valor de cada mes del contrato (en pesos; 0 si no se cobra).";
   }
   return null;
 }
@@ -300,16 +304,17 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
           sede: activa.sede, espacio, tipo, proveedor: c.proveedor.trim(),
           correo: proveedorNuevo && c.correo.trim() ? c.correo.trim() : null, marca: c.marca.trim() || null,
           puntos_basicos: pb, desde: c.desde, hasta: c.hasta, caduca: tipo === "reserva" ? c.caduca : null,
-          valor_mensual: tipo === "contrato" ? valor : null, notas,
+          valor_mensual: tipo === "contrato" ? valor : null, al_mes: tipo === "contrato", notas,
         });
       } else if (modo === "renovar") {
         r = await renovar(termino!.id, {
           version: termino!.version, tipo, desde: c.desde, hasta: c.hasta,
-          caduca: tipo === "reserva" ? c.caduca : null, valor_mensual: tipo === "contrato" ? valor : null, notas,
+          caduca: tipo === "reserva" ? c.caduca : null, valor_mensual: tipo === "contrato" ? valor : null,
+          al_mes: tipo === "contrato", notas,
         });
       } else if (modo === "confirmar") {
         r = await confirmarReserva(termino!.id, {
-          version: termino!.version, valor_mensual: valor ?? 0, notas,
+          version: termino!.version, valor_mensual: valor ?? 0, al_mes: true, notas,
           ...(pb !== termino!.puntos_basicos ? { puntos_basicos: pb } : {}),
           ...(c.desde !== termino!.desde ? { desde: c.desde } : {}),
           ...(c.hasta !== termino!.hasta ? { hasta: c.hasta } : {}),
@@ -491,7 +496,10 @@ function Formulario({ modo, terminoId, datos, activa }: { modo: Modo; terminoId:
           </div>
         ) : modo !== "editar" && (
           <div>
-            <label className={ETIQUETA} htmlFor="part-valor">Valor mensual (pesos)</label>
+            {/* Lo de CADA MES: el servidor guarda el total × los meses y anota que
+                se escribió al mes, como «Al mes» en Vender. Antes se guardaba
+                tal cual como el total (2026-10-26). */}
+            <label className={ETIQUETA} htmlFor="part-valor">Valor al mes (pesos)</label>
             <input id="part-valor" className={CAMPO} inputMode="numeric" value={c.valor} onChange={(e) => cambiar("valor", e.target.value)}
               placeholder="900.000" />
             <p className="mt-1 text-[10px] text-ink-3">

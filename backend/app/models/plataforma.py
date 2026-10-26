@@ -208,3 +208,37 @@ class SnapshotMetricas(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class AjusteDeSnapshot(Base):
+    """Un ajuste hecho UNA vez a una fila ya guardada de ``snapshot_metricas``.
+
+    El primero (2026-10-26, ``ajuste = "canon_al_mes"``): hasta esa fecha el
+    ``canon_total`` de cada mes sumaba el TOTAL de cada contrato (todo su
+    plazo) como si fuera lo de un mes, y un contrato de seis meses inflaba el
+    «ingreso del mes» seis veces. El dueño pidió recalcular los meses ya
+    guardados (``plataforma_tendencia.recalcular_canon_al_mes``). Cada fila
+    ajustada deja acá lo de antes, lo de después y el factor: así se ve qué se
+    tocó y nunca se ajusta dos veces. La fila ``cliente_slug = "__marca__"``
+    guarda CUÁNDO empezó el arreglo: lo capturado después ya viene al mes.
+    """
+
+    __tablename__ = "ajustes_de_snapshot"
+    __table_args__ = (
+        UniqueConstraint("cliente_slug", "periodo", "ajuste", name="uq_ajuste_snapshot"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    cliente_slug = Column(String, nullable=False, index=True)
+    periodo = Column(String, nullable=False)
+    ajuste = Column(String, nullable=False)
+    canon_antes = Column(Float, nullable=True)
+    canon_despues = Column(Float, nullable=True)
+    # Σ al mes / Σ total de los contratos de ese mes, leídos HOY. `None`: no
+    # había contratos con qué medirlo y la fila quedó como estaba.
+    factor = Column(Float, nullable=True)
+    en = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

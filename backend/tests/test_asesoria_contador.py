@@ -27,6 +27,7 @@ ancho (2020..2099) para que estén activos en CUALQUIER mes en que corra la
 suite; el período pedido es siempre el mes en curso (UTC), que es el único que
 ``/adopcion`` sabe mirar.
 """
+from tests.sembrado import total_del_plazo
 import json
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -209,7 +210,7 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 supplier_id=proveedores[proveedor].id,
                 start_date=date.fromisoformat(ini),
                 end_date=date.fromisoformat(fin),
-                monthly_rent=canon,
+                monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
             ))
         db.commit()
