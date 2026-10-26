@@ -262,7 +262,8 @@ PARTE_INEXISTENTE = "parte_inexistente"
 #: con sus bahías de impulso, la columna con su forro. La frase dice cuáles.
 SOLO_SUS_PIEZAS = "solo_sus_piezas"
 #: Una cara que se vende por participación no se vende entera ni por partes
-#: físicas: se carga el porcentaje en el Editor 3D → Distribución.
+#: físicas: el porcentaje se vende en Vender (desde el rediseño; antes, en el
+#: Editor 3D → Distribución).
 POR_PARTICIPACION = "por_participacion"
 
 #: fase 2 · I5: la frase para una participación de un tipo de mueble sin receta
@@ -340,8 +341,8 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
     if por_participacion(fixture):
         if parte is None:
             return POR_PARTICIPACION, (
-                f"«{corto}» se vende por participación: cargá el porcentaje en el Editor 3D → "
-                "Distribución (podés darle el 100 %)."
+                f"«{corto}» se vende por participación: el porcentaje se vende en Vender "
+                "(podés darle el 100 %)."
             )
         if not es_participacion(parte):
             return PARTE_INEXISTENTE, f"«{corto}» se vende por participación: no hay {parte.sufijo}."

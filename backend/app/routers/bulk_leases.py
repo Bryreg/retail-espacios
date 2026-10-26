@@ -26,6 +26,7 @@ nadie va a montar.
 
 from collections import defaultdict
 from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from html import escape
 from typing import Optional
 from urllib.parse import quote
@@ -38,6 +39,7 @@ from app.auth import create_mount_token, dias_del_enlace_de_montaje, require_adm
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.models.models import SpaceLease, Supplier
+from app.models.vender import CondicionesDeContrato
 from app.routers.layout import reference_rates_raw
 from app.services.layout_lookup import (
     Ambiguedad, Colision, PlanoIndexado, contratos_que_chocan, describe_location, frase_de_choque, frase_tomada,
@@ -49,6 +51,7 @@ from app.services.alta_de_contrato import (
 from app.services.catalogo_muebles import tipo_de_tarifa
 from app.services.candado import tomar_candados
 from app.services.fichas_propias import tarifas_propias
+from app.services.meses import meses_entre
 from app.services.partes import (
     cantidad_de, chocan, es_division, es_participacion, partir_codigo, referencia_de_espacio, texto_de_parte,
     texto_para_montar,
@@ -85,6 +88,9 @@ class FilaIn(BaseModel):
     proveedor: str = ""
     correo: Optional[str] = None
     marca: Optional[str] = None
+    #: En la PLANILLA, lo de cada MES (decisión del dueño, 2026-10-26): el total
+    #: es ese valor × los meses. En los demás caminos que reusan `_revisar`
+    #: (Vender, reservas, editar), el total del contrato, como siempre.
     valor: Optional[float] = None
     #: ISO. El navegador ya resolvió el formato de la celda —fecha de Excel,
     #: dd/mm/aaaa, aaaa-mm-dd— porque es donde está el archivo.
@@ -120,7 +126,12 @@ class FilaOut(BaseModel):
     proveedor: Optional[str] = None
     marca: Optional[str] = None
     correo: Optional[str] = None
+    #: El TOTAL del contrato, lo que se guarda (`monthly_rent`).
     valor: Optional[float] = None
+    #: Sólo la planilla: lo de cada mes, tal como vino, y los meses del
+    #: contrato (``meses_entre``). ``valor`` = ``al_peso(valor_mes × meses)``.
+    valor_mes: Optional[float] = None
+    meses: Optional[float] = None
     desde: Optional[str] = None
     hasta: Optional[str] = None
     nota: Optional[str] = None
@@ -169,6 +180,12 @@ def _fecha(valor: Optional[str]) -> Optional[date]:
         return datetime.strptime(str(valor).strip()[:10], "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def al_peso(v: float) -> float:
+    """Redondeado al peso, con los medios hacia arriba: el ``Math.round`` con
+    que Vender saca el total de «Al mes» para un valor positivo."""
+    return float(Decimal(repr(float(v))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _codigo_completo(espacio: str, sede: str) -> str:
@@ -271,11 +288,22 @@ def _avisos_de_colision(c: Colision) -> list[str]:
 
 # ─── El corazón: revisar una tanda sin escribir nada ──────────────────────────
 
+#: La planilla es sólo para muebles que se venden ENTEROS (decisión del dueño,
+#: 2026-10-26): las partes y los porcentajes se venden en Vender, que los
+#: dibuja y sabe cuánto queda de cada cara.
+SOLO_ENTEROS = "La planilla es sólo para muebles que se venden enteros"
+
+
 def _frase_participacion(codigo: str) -> str:
     """La frase de una fila con el código de una participación de cara
     (``GON-01-PC1``): existe, pero no se vende por acá."""
-    return (f"«{codigo}» es una participación: se carga y se renueva en el Editor 3D → Distribución, "
-            "no en la planilla.")
+    return (f"«{codigo}» es una participación (un % de la cara). {SOLO_ENTEROS}: los porcentajes se "
+            "venden en Vender.")
+
+
+def _frase_parte(codigo: str) -> str:
+    """Una parte física (``NEV-03-PU2``, ``GON-05-TR3``, ``CAJ-04-BI1``)."""
+    return f"«{codigo}» es una parte. {SOLO_ENTEROS}: las partes se venden en Vender."
 
 
 def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: date, hasta: date,
@@ -296,8 +324,13 @@ def _bloqueo(db: Session, caras_pc: set[str], sede: str, codigo: str, desde: dat
 def _revisar(
     db: Session, lote: LoteIn, exigir_valor: bool = True, delante_del_proveedor: bool = False,
     excluir_lease: Optional[int] = None, excluir_termino: Optional[int] = None,
+    planilla: bool = False,
 ) -> list[FilaOut]:
-    """``exigir_valor=False``: el guardado de Vender de un contrato que se cobra
+    """``planilla=True``: SÓLO los dos pasos de la planilla. El valor de cada
+    fila es lo de cada MES (el total sale × los meses, la cuenta de Vender) y
+    sólo entran muebles que se venden enteros: ni partes ni porcentajes.
+
+    ``exigir_valor=False``: el guardado de Vender de un contrato que se cobra
     por un % de las ventas (``services/vender.py``), cuyo valor va en 0.
 
     ``delante_del_proveedor=True``: también Vender. Un choque se dice con UNA
@@ -444,7 +477,12 @@ def _revisar(
                 # suelto (`motivo_para_no_vender_parte`).
                 parte = resuelto.parte
                 motivo = motivo_para_no_vender_parte(fixture, resuelto.partido)
-                if motivo:
+                if planilla and parte is not None:
+                    # Antes que la compuerta: «la nevera se vende entera» o
+                    # «no hay PU4» manda a corregir un código que igual no
+                    # entraría por acá.
+                    errores.append(_frase_participacion(codigo) if es_participacion(parte) else _frase_parte(codigo))
+                elif motivo:
                     # También la cara entera de una cara que se vende por
                     # participación, y una participación de una que no
                     # (`NEV-03-PC1`: «no se vende por participación»).
@@ -514,21 +552,14 @@ def _revisar(
 
         # ── El valor ──────────────────────────────────────────────────────────
         valor = float(fila.valor or 0)
-        out.valor = valor or None
+        # En la planilla el total sale recién con las fechas (abajo).
+        out.valor = None if planilla else (valor or None)
+        if planilla:
+            out.valor_mes = valor or None
         if valor <= 0 and not exigir_valor:
             pass
         elif valor <= 0:
             errores.append("Falta el valor, o quedó en cero.")
-        elif out.referencia and not delante_del_proveedor:
-            # Delante del proveedor (Vender) nunca se compara con la tarifa: ni
-            # en la frase, ni en el monto de referencia, ni en un 409 que no se
-            # pinte (viaja igual al navegador de la pantalla que él mira).
-            desvio = round((1 - valor / out.referencia) * 100)
-            if desvio >= 15:
-                avisos.append(
-                    f"{desvio}% por debajo de la tarifa de referencia "
-                    f"({format_cop(out.referencia)})."
-                )
 
         # ── Las fechas ────────────────────────────────────────────────────────
         desde, hasta = _fecha(fila.desde), _fecha(fila.hasta)
@@ -541,6 +572,26 @@ def _revisar(
         else:
             # Los dos extremos cuentan: un contrato de un día dura un día.
             out.dias = (hasta - desde).days + 1
+            out.meses = round(meses_entre(desde, hasta), 4)
+            if planilla and valor > 0:
+                # Lo que se guarda es el TOTAL: lo de cada mes × los meses,
+                # redondeado al peso (la cuenta de «Al mes» en Vender).
+                out.valor = al_peso(valor * meses_entre(desde, hasta))
+
+        # ── La tarifa, mes contra mes ─────────────────────────────────────────
+        # La tarifa de referencia es MENSUAL y el valor guardado es el total del
+        # plazo: compararlos tal cual dejaba pasar callado un contrato de seis
+        # meses cobrado a la sexta parte. Delante del proveedor (Vender) nunca
+        # se compara: ni en la frase, ni en el monto de referencia, ni en un 409
+        # que no se pinte (viaja igual al navegador de la pantalla que él mira).
+        if valor > 0 and out.referencia and not delante_del_proveedor and desde and hasta and desde <= hasta:
+            al_mes = valor if planilla else valor / max(meses_entre(desde, hasta), 1e-9)
+            desvio = round((1 - al_mes / out.referencia) * 100)
+            if desvio >= 15:
+                avisos.append(
+                    f"{desvio}% por debajo de la tarifa de referencia "
+                    f"({format_cop(out.referencia)} al mes)."
+                )
 
         # ── Choques ───────────────────────────────────────────────────────────
         # Con la regla de la dueña: el mismo espacio, o la nevera entera y una
@@ -600,12 +651,16 @@ def _resumen(filas: list[FilaOut]) -> tuple[int, int, int]:
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
+def validar_lote(db: Session, lote: LoteIn, planilla: bool = True) -> LoteOut:
+    filas = _revisar(db, lote, planilla=planilla)
+    ok, avisos, errores = _resumen(filas)
+    return LoteOut(filas=filas, ok=ok, avisos=avisos, errores=errores)
+
+
 @router.post("/validar", response_model=LoteOut, dependencies=[Depends(require_admin)])
 def validar(lote: LoteIn, db: Session = Depends(get_db)):
     """Revisa la tanda y no escribe nada. Es el paso que hace revisable la carga."""
-    filas = _revisar(db, lote)
-    ok, avisos, errores = _resumen(filas)
-    return LoteOut(filas=filas, ok=ok, avisos=avisos, errores=errores)
+    return validar_lote(db, lote)
 
 
 @router.post("/confirmar", response_model=ConfirmadoOut, dependencies=[Depends(require_admin)])
@@ -615,7 +670,17 @@ def confirmar(
     db: Session = Depends(get_db),
     cliente: Cliente = Depends(cliente_del_pedido),
 ):
+    """Crea los contratos de las filas que pasan. Vuelve a validar antes."""
+    return confirmar_lote(db, lote, background_tasks, cliente)
+
+
+def confirmar_lote(db: Session, lote: LoteIn, background_tasks: BackgroundTasks, cliente: Cliente,
+                   planilla: bool = True) -> ConfirmadoOut:
     """Crea los contratos de las filas que pasan. Vuelve a validar antes.
+
+    ``planilla=False`` sólo lo usan las pruebas de la venta por partes
+    (``tests/sin_planilla.py``): la revisión común —la de Vender— sin las dos
+    reglas de la planilla (valor al mes, sólo enteros).
 
     Revalidar no es paranoia: entre la revisión y el botón alguien pudo vender
     uno de esos espacios desde el mapa, y crear el contrato igual dejaría dos
@@ -629,7 +694,7 @@ def confirmar(
     (``services/candado.py``) y se vuelve a revisar YA con el candado puesto: lo
     que se escribe es lo que pasó esa segunda revisión.
     """
-    filas = _revisar(db, lote)
+    filas = _revisar(db, lote, planilla=planilla)
     codigos = {f.codigo for f in filas if f.codigo}
     for fila in lote.filas:
         sede = (fila.sede or lote.sede or "").strip().upper()
@@ -639,7 +704,7 @@ def confirmar(
     # Lectura fresca (regla dura de participaciones): lo que la primera
     # revisión cargó en la sesión no se refresca solo al volver a consultarlo.
     db.expire_all()
-    filas = _revisar(db, lote)
+    filas = _revisar(db, lote, planilla=planilla)
     por_fila = {f.fila: f for f in filas}
     plano = PlanoIndexado(db)
     #: El proveedor se busca igual que en la revisión: sin espacios y sin
@@ -666,6 +731,10 @@ def confirmar(
         lease = escribir_contrato(
             db, space, supplier, v.marca, _fecha(v.desde), _fecha(v.hasta), v.valor, v.nota,
         )
+        # Cómo se escribió el precio: al mes, como en Vender. Sin esto el
+        # contrato quedaba «sin forma» y caía en «Contratos cargados antes».
+        if v.valor_mes:
+            db.add(CondicionesDeContrato(lease_id=lease.id, modo_precio="mensual", valor_tecleado=v.valor_mes))
         v.lease_id = lease.id   # para que la pantalla le cuelgue la planometría
         creados.append(v)
 
@@ -821,6 +890,8 @@ def _avisar(
         # fila: «Bic» se guardó con el proveedor «BIC» que ya existía.
         lease = db.get(SpaceLease, c.lease_id) if c.lease_id else None
         supplier = lease.supplier if lease else None
+        if supplier and not supplier.email and supplier.name not in encolados.proveedor_sin_correo:
+            encolados.proveedor_sin_correo.append(supplier.name)
         if not supplier or not supplier.email:
             continue
         por_proveedor.setdefault(supplier.id, (supplier, []))[1].append(c)

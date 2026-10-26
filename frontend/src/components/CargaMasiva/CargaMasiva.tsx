@@ -1,8 +1,9 @@
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, Check, Download, FileSpreadsheet, Loader2, Upload, X,
+  AlertTriangle, CalendarClock, Check, Download, FileSpreadsheet, Info, Loader2, Upload, X,
 } from "lucide-react";
 import { confirmarLote, validarLote, type FilaRevisada, type Revision } from "../../api/bulkLeases";
+import type { AvisosContrato } from "../../types";
 import { describeError } from "../../api/client";
 import { descargarPlantilla, leerPlanilla, type FilaPlanilla, type LecturaPlanilla } from "../../utils/planilla";
 import { useModalAbierto } from "../../tema";
@@ -18,12 +19,24 @@ import { useModalAbierto } from "../../tema";
  *
  * Las filas con error no se pueden marcar. Las demás vienen marcadas y se pueden
  * desmarcar: la revisión es de la persona, no del validador.
+ *
+ * Desde el 2026-10-26 (decisión del dueño): el valor es lo de CADA MES —cada
+ * fila muestra «$ 650.000 al mes × 6 meses = $ 3.900.000» y se guarda el
+ * total, como «Al mes» en Vender— y sólo entran muebles que se venden ENTEROS
+ * (las partes y los porcentajes, en Vender: lo frena el servidor). Al guardar se
+ * dice lo que de verdad salió (`avisos`), no una frase fija.
  */
 
 type Paso = "archivo" | "revision" | "listo";
 
 const money = (n?: number | null) =>
-  n == null ? "—" : "$" + Math.round(n).toLocaleString("es-CO");
+  n == null ? "—" : "$ " + Math.round(n).toLocaleString("es-CO");
+
+/** «6 meses», «6,5 meses», «1 mes». */
+const textoDeMeses = (m: number): string => {
+  const r = Math.round(m * 100) / 100;
+  return `${String(r).replace(".", ",")} ${r === 1 ? "mes" : "meses"}`;
+};
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 function fechaCorta(iso?: string | null): string {
@@ -38,6 +51,20 @@ const PINTA: Record<FilaRevisada["estado"], { fondo: string; borde: string; colo
   aviso:  { fondo: "var(--warning-50)", borde: "var(--line)",        color: "var(--warning)", texto: "Revisar" },
   error:  { fondo: "var(--danger-50)",  borde: "var(--line)",        color: "var(--danger)",  texto: "No entra" },
 };
+
+/** En el teléfono la tabla de ocho columnas no entra: el valor —lo que más
+ *  hay que mirar— quedaba fuera de la pantalla (ronda del 2026-10-26). */
+function useAngosto(px = 640): boolean {
+  const consulta = `(max-width: ${px}px)`;
+  const [angosto, setAngosto] = useState(() => typeof window !== "undefined" && window.matchMedia(consulta).matches);
+  useEffect(() => {
+    const m = window.matchMedia(consulta);
+    const cambio = () => setAngosto(m.matches);
+    m.addEventListener("change", cambio);
+    return () => m.removeEventListener("change", cambio);
+  }, [consulta]);
+  return angosto;
+}
 
 export interface ResultadoCarga {
   creados: FilaRevisada[];
@@ -61,7 +88,10 @@ export default function CargaMasiva({
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const [creados, setCreados] = useState(0);
+  const [guardadas, setGuardadas] = useState<FilaRevisada[]>([]);
+  const [avisos, setAvisos] = useState<AvisosContrato | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const angosto = useAngosto();
 
   // Mientras la carga masiva está abierta, ELLA es la pantalla: se lleva el
   // amarillo y el «Guardar contrato y avisar» de Vender pasa a tinta.
@@ -123,7 +153,10 @@ export default function CargaMasiva({
       // Sólo lo que el servidor confirmó, y con lo que él resolvió: si entre la
       // revisión y el botón alguien vendió uno de esos espacios, esa fila no
       // vuelve y el plano no debe pintarla.
-      onGuardado({ creados: res.filas.filter((f) => f.estado !== "error" && elegidas.has(f.fila)) });
+      const hechas = res.filas.filter((f) => f.estado !== "error" && elegidas.has(f.fila));
+      setGuardadas(hechas);
+      setAvisos(res.avisos ?? null);
+      onGuardado({ creados: hechas });
       setPaso("listo");
     } catch (e) {
       setError(describeError(e, "No se pudieron guardar los contratos."));
@@ -134,6 +167,9 @@ export default function CargaMasiva({
 
   const marcadas = revision?.filas.filter((r) => elegidas.has(r.fila)) ?? [];
   const total = marcadas.reduce((a, r) => a + (r.valor || 0), 0);
+  const alMes = marcadas.reduce((a, r) => a + (r.valor_mes || 0), 0);
+  const totalGuardado = guardadas.reduce((a, r) => a + (r.valor || 0), 0);
+  const alMesGuardado = guardadas.reduce((a, r) => a + (r.valor_mes || 0), 0);
 
   return (
     <div
@@ -197,8 +233,8 @@ export default function CargaMasiva({
               </div>
               <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, maxWidth: 460 }}>
                 Se aceptan <b>.xlsx</b>, <b>.xls</b> y <b>.csv</b>. Los encabezados se reconocen
-                solos —«Código» o «Espacio», «Valor» o «Renta»— y la fila de títulos no tiene
-                que ser la primera.
+                solos —«Código» o «Espacio», «Valor al mes» o «Renta»— y la fila de títulos no
+                tiene que ser la primera.
               </div>
               <input
                 ref={inputRef}
@@ -218,19 +254,17 @@ export default function CargaMasiva({
               }}
             >
               <div style={{ flex: 1, minWidth: 240, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                {/* Decía «Valor mensual», y desde la fase 17 el valor NO es
-                    mensual: es lo acordado por el periodo, tal como se teclea,
-                    sin prorratear. Llamarlo mensual acá invitaba a escribir una
-                    tarifa de mes para un contrato de diez días. El lector de
-                    encabezados acepta igual «valor mensual», «precio», «canon»,
-                    «monto» y «tarifa», así que ninguna planilla ya hecha se
-                    rompe por esto. */}
+                {/* El valor es lo de CADA MES (decisión del dueño, 2026-10-26):
+                    así se negocia en las tiendas, y el total sale × los meses
+                    del contrato. Una columna «Valor total» no se lee
+                    (`ENCABEZADO_TOTAL`, en `utils/planilla.ts`). */}
                 Columnas: <b>Espacio</b>, Sede, <b>Proveedor</b>, Correo, Marca,
-                {" "}<b>Valor</b>, <b>Desde</b>, <b>Hasta</b> y Nota.
+                {" "}<b>Valor al mes</b>, <b>Desde</b>, <b>Hasta</b> y Nota.
                 Las fechas se leen <b>día primero</b>: 15/09/2026 es el 15 de
                 septiembre. Sirve con <b>/</b>, <b>-</b> o <b>.</b>, y también
-                2026-09-15 (año-mes-día). El valor es{" "}
-                <b>lo acordado por el periodo</b>, no una tarifa mensual.
+                2026-09-15 (año-mes-día). El valor es <b>lo de cada mes</b>: el total
+                del contrato es ese valor × sus meses. Sólo muebles que se venden{" "}
+                <b>enteros</b>: las partes y los porcentajes se venden en Vender.
                 La plantilla trae las instrucciones completas en su segunda pestaña.
               </div>
               <button
@@ -277,6 +311,21 @@ export default function CargaMasiva({
               ) : null}
             </div>
 
+            <div
+              data-planilla-al-mes
+              style={{
+                display: "flex", gap: 9, alignItems: "flex-start",
+                padding: "10px 18px", borderBottom: "1px solid var(--line-soft)",
+                fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5,
+              }}
+            >
+              <CalendarClock size={16} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden />
+              <span>
+                El valor de la planilla es <b>por mes</b>. El total de cada contrato es ese valor ×
+                sus meses, y así se guarda: igual que «Al mes» en Vender.
+              </span>
+            </div>
+
             {/* «Entra, pero se mira» es una categoría propia y hasta acá se
                 dependía de que alguien notara un fondo ámbar entre veinte
                 renglones. Una fila con aviso se guarda igual —tiene que poder
@@ -309,11 +358,11 @@ export default function CargaMasiva({
                     {/* «Nombre dibujado» va pegado al código a propósito: son los
                         dos nombres del mismo mueble, y verlos separados es lo que
                         dejó firmar dos veces el mismo espacio. */}
-                    {["", "Fila", "Espacio", "Nombre dibujado", "Proveedor", "Periodo", "Valor", "Estado"].map((h, i) => (
+                    {(angosto ? ["", "Espacio", "Valor"] : ["", "Fila", "Espacio", "Nombre dibujado", "Proveedor", "Periodo", "Valor", "Estado"]).map((h, i) => (
                       <th
                         key={i}
                         style={{
-                          textAlign: i === 6 ? "right" : "left",
+                          textAlign: h === "Valor" ? "right" : "left",
                           padding: "8px 10px", fontSize: 10, fontWeight: 700,
                           letterSpacing: "0.06em", textTransform: "uppercase",
                           color: "var(--ink-3)", position: "sticky", top: 0,
@@ -348,6 +397,17 @@ export default function CargaMasiva({
                     // en su propio renglón.
                     const puedeSinMirar = r.estado === "ok";
                     const barra = puedeSinMirar ? undefined : `inset 3px 0 0 ${pinta.color}`;
+                    const chip = (
+                      <span
+                        style={{
+                          display: "inline-block", padding: "2px 8px", borderRadius: 999,
+                          fontSize: 10.5, fontWeight: 700, color: pinta.color,
+                          border: `1px solid ${pinta.borde}`, background: "var(--surface)",
+                        }}
+                      >
+                        {pinta.texto}
+                      </span>
+                    );
                     return (
                       <Fragment key={r.fila}>
                       <tr
@@ -368,20 +428,29 @@ export default function CargaMasiva({
                             }}
                           />
                         </td>
+                        {!angosto && (
                         <td style={{ padding: "8px 10px", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-3)" }}>
                           {r.fila}
                         </td>
+                        )}
                         <td style={{ padding: "8px 10px" }}>
                           <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, whiteSpace: "nowrap" }}>
                             {r.codigo || "—"}
                           </div>
                           {r.nombre && <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{r.nombre}</div>}
+                          {angosto && (
+                            <div style={{ fontSize: 11.5, color: "var(--ink-2)", marginTop: 2 }}>
+                              <b>{r.proveedor || "—"}</b> · fila {r.fila}<br />
+                              {fechaCorta(r.desde)} → {fechaCorta(r.hasta)}
+                            </div>
+                          )}
                         </td>
                         {/* Cómo se llama ese mueble EN EL PLANO. Cuando alguien le
                             puso un nombre a mano, es el único campo de la fila que
                             la persona reconoce: el código se lo devuelve el
                             servidor tal como ella lo tecleó, y el nombre de arriba
                             es el del tipo de mueble, igual en los cuarenta. */}
+                        {!angosto && (
                         <td style={{ padding: "8px 10px" }}>
                           {r.nombre_dibujado ? (
                             <>
@@ -406,33 +475,42 @@ export default function CargaMasiva({
                             </div>
                           )}
                         </td>
+                        )}
+                        {!angosto && (
                         <td style={{ padding: "8px 10px" }}>
                           <div style={{ fontWeight: 600 }}>{r.proveedor || "—"}</div>
                           {r.marca && <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{r.marca}</div>}
                         </td>
+                        )}
+                        {!angosto && (
                         <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
                           {fechaCorta(r.desde)} → {fechaCorta(r.hasta)}
-                          {r.dias ? <span style={{ color: "var(--ink-3)" }}> · {r.dias}d</span> : null}
+                          {r.meses ? (
+                            <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{textoDeMeses(r.meses)}</div>
+                          ) : null}
                         </td>
-                        <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>
-                          {money(r.valor)}
+                        )}
+                        <td style={{ padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap" }} data-valor-fila={r.fila}>
+                          <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                            {r.valor_mes != null ? `${money(r.valor_mes)} al mes` : money(r.valor)}
+                          </div>
+                          {r.valor_mes != null && r.meses && r.valor != null ? (
+                            <div style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                              × {textoDeMeses(r.meses)} = <b style={{ color: "var(--ink-1)" }}>{money(r.valor)}</b>
+                            </div>
+                          ) : null}
+                          {angosto && <div style={{ marginTop: 4 }}>{chip}</div>}
                         </td>
+                        {!angosto && (
                         <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
-                          <span
-                            style={{
-                              display: "inline-block", padding: "2px 8px", borderRadius: 999,
-                              fontSize: 10.5, fontWeight: 700, color: pinta.color,
-                              border: `1px solid ${pinta.borde}`, background: "var(--surface)",
-                            }}
-                          >
-                            {pinta.texto}
-                          </span>
+                          {chip}
                         </td>
+                        )}
                       </tr>
                       {r.mensajes.length > 0 && (
                         <tr style={{ ...cuerpoFila, borderBottom: "1px solid var(--line-soft)" }}>
                           <td style={{ boxShadow: barra }} />
-                          <td colSpan={7} style={{ padding: "0 10px 9px" }}>
+                          <td colSpan={angosto ? 2 : 7} style={{ padding: "0 10px 9px" }}>
                             {/* Una fila limpia también dice cosas —«proveedor
                                 nuevo»— y ésas NO llevan el triángulo ni el color
                                 del estado: si el aviso de una fila que hay que
@@ -467,10 +545,12 @@ export default function CargaMasiva({
             >
               <div style={{ fontSize: 13 }}>
                 <b>{marcadas.length}</b> contrato{marcadas.length === 1 ? "" : "s"} por guardar
+                {/* Decía «$ X al mes» sumando TOTALES (2026-10-26). */}
                 {total > 0 && (
-                  <span style={{ color: "var(--ink-3)" }}>
+                  <span data-total-planilla>
                     {" · "}
-                    <b style={{ fontFamily: "var(--font-mono)", color: "var(--success)" }}>{money(total)}</b> al mes
+                    <b style={{ fontFamily: "var(--font-mono)" }}>{money(total)}</b> en total
+                    {alMes > 0 && <span style={{ color: "var(--ink-3)" }}> ({money(alMes)} al mes)</span>}
                   </span>
                 )}
               </div>
@@ -514,25 +594,74 @@ export default function CargaMasiva({
         )}
 
         {/* ── Paso 3: listo ────────────────────────────────────────────── */}
+        {/* Lo que de verdad salió, con `avisos` (2026-10-26). Antes decía con
+            una frase fija que al mercaderista ya le había llegado la lista de
+            montaje —que espera la planometría— aunque el correo no estuviera
+            configurado. */}
         {paso === "listo" && (
-          <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 14 }} data-planilla-listo>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
               <Check size={19} style={{ color: "var(--success)" }} />
               <b style={{ fontSize: 16 }}>
                 {creados} contrato{creados === 1 ? "" : "s"} guardado{creados === 1 ? "" : "s"}
               </b>
+              {totalGuardado > 0 && (
+                <span style={{ fontSize: 13, color: "var(--ink-3)" }}>
+                  {money(totalGuardado)} en total{alMesGuardado > 0 ? ` (${money(alMesGuardado)} al mes)` : ""}
+                </span>
+              )}
             </div>
-            <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
-              Los espacios ya están pintados como vendidos en el mapa. Los avisos salieron
-              <b> agrupados</b>: un correo al comercial con la tanda completa, uno al
-              mercaderista con la lista de lo que hay que montar —sin valores— y una
-              constancia por proveedor con todos sus espacios.
-              <br /><br />
-              <span style={{ color: "var(--ink-3)" }}>
-                Cuarenta contratos por el camino de a uno habrían sido ciento veinte correos
-                en un minuto: nadie los lee y el proveedor de correo los trata como spam.
-              </span>
-            </div>
+            {avisos && !avisos.smtp_listo ? (
+              <div style={{
+                display: "flex", gap: 9, alignItems: "flex-start", padding: "10px 14px", borderRadius: "var(--r-lg)",
+                background: "var(--warning-50)", border: "1px solid var(--line)", fontSize: 13, color: "var(--ink-1)", lineHeight: 1.5,
+              }} data-sin-correo>
+                <Info size={16} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden />
+                <span><b>El correo no está configurado:</b> no salió ningún aviso.</span>
+              </div>
+            ) : avisos ? (
+              <div style={{ border: "1px solid var(--line-soft)", borderRadius: "var(--r-lg)", overflow: "hidden", fontSize: 13, lineHeight: 1.5 }}>
+                {[
+                  {
+                    quien: "Comercial",
+                    que: avisos.comercial.length
+                      ? <>Le llegó la tanda completa a <b>{[...new Set(avisos.comercial)].join(", ")}</b>.</>
+                      : <span style={{ color: "var(--warning)" }}>No hay contacto comercial en la sede: no le llegó a nadie.</span>,
+                  },
+                  {
+                    quien: "Proveedores",
+                    que: <>
+                      {avisos.proveedor.length
+                        ? <>Constancia a <b>{[...new Set(avisos.proveedor)].join(", ")}</b>.</>
+                        : "Ningún proveedor recibió constancia."}
+                      {(avisos.proveedor_sin_correo ?? []).length > 0 && (
+                        <span style={{ color: "var(--warning)" }}>
+                          {" "}{(avisos.proveedor_sin_correo ?? []).join(", ")}{" "}
+                          {(avisos.proveedor_sin_correo ?? []).length === 1 ? "no tiene" : "no tienen"} correo: no le llegó nada.
+                        </span>
+                      )}
+                    </>,
+                  },
+                  {
+                    quien: "Montaje",
+                    que: (avisos.montaje_pendiente ?? []).length
+                      ? "Todavía no sale: el aviso de cada espacio espera su planometría. Se carga en Supervisar, en la ficha del espacio; al cargarla, le llega a quien monta."
+                      : avisos.montaje.length
+                        ? <>Le llegó la lista a <b>{[...new Set(avisos.montaje)].join(", ")}</b>.</>
+                        : "No hay contacto de montaje en la sede: no le llegó a nadie.",
+                  },
+                ].map((x, i) => (
+                  <div key={x.quien} style={{
+                    display: "grid", gridTemplateColumns: angosto ? "minmax(0, 1fr)" : "minmax(96px, 140px) minmax(0, 1fr)",
+                    gap: angosto ? 2 : 12, padding: "11px 14px", overflowWrap: "anywhere",
+                    borderTop: i ? "1px solid var(--line-soft)" : undefined,
+                  }}>
+                    <b>{x.quien}</b>
+                    <span>{x.que}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <button
               onClick={onCerrar}
               style={{

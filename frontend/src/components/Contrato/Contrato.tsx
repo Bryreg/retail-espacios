@@ -22,7 +22,7 @@ import { meses, sumarDias, sumarMeses, textoDeMeses } from "../../utils/meses";
 import { pbDeTexto, pct } from "../../utils/participaciones";
 import {
   avisoDeCortes, claveDeProveedor, correoAlCambiarDeProveedor, correoDelProveedorQueQueda, estadoSinElPropio,
-  faltaDeLaEdicion, ocupacionSinElPropio, queCambia,
+  faltaDeLaEdicion, ocupacionSinElPropio, queCambia, soloLaFormaDelPrecio,
   type EdicionDeContrato, type FotoDelContrato,
 } from "../../utils/edicionDeContrato";
 import {
@@ -72,7 +72,7 @@ export interface ResumenContrato {
   avisos?: AvisosContrato;
   /** «Editar contrato»: se corrigió en su lugar o se reemplazó (y por
    *  cuántos contratos nuevos), y si el contrato ya tenía su planometría. */
-  editado?: { reemplazo: boolean; nuevos: number; conPlanometria: boolean };
+  editado?: { reemplazo: boolean; nuevos: number; conPlanometria: boolean; sinReenvio?: boolean };
 }
 
 /** Un espacio adentro del contrato que se está armando: una cara entera, una
@@ -565,14 +565,21 @@ export function useContrato({
 
   /** «Total | Al mes». Lo tecleado se convierte para que el total no salte;
    *  lo que nadie tocó sigue siendo la tarifa (que es al mes), y pasa a
-   *  leerse como tal. */
+   *  leerse como tal.
+   *
+   *  Editando, NO se convierte: el número escrito queda y cambia cómo se lee
+   *  (decisión del dueño, 2026-10-25). Es lo que hace falta para corregir un
+   *  contrato de antes de Vender que guardó el valor del mes como si fuera el
+   *  total: «$ 800.000» → «$ 800.000 al mes». «Qué cambia» dice el total de
+   *  antes y el de ahora. */
   const cambiarModo = useCallback((clave: string, modo: ModoPrecio) => {
     setModos((m) => ({ ...m, [clave]: modo }));
+    if (semilla?.edita) return;
     if (!tocados.current.has(clave) || nMeses <= 0) return;
     const l = lineas.find((x) => x.clave === clave);
     if (!l || l.modo === modo || l.numero <= 0) return;
     escribirValor(clave, textoDePrecioExacto(modo === "mensual" ? redondear(l.numero / nMeses) : redondear(l.numero * nMeses)));
-  }, [lineas, nMeses, escribirValor]);
+  }, [lineas, nMeses, escribirValor, semilla]);
 
   const escribirPorcentaje = useCallback((codigoCara: string, pb: number) => {
     setPorcentajes((p) => ({ ...p, [codigoCara]: Math.max(0, Math.min(10_000, Math.round(pb))) }));
@@ -806,6 +813,8 @@ export function useContrato({
   /** Lo de antes → lo nuevo, y si el viejo se cierra como «reemplazado». */
   const edicion = edita && fotoAhora ? queCambia(edita.antes, fotoAhora) : null;
   const sinCambios = !!edicion && edicion.cambios.length === 0 && !edicion.reemplazo;
+  /** Sólo cambia cómo se lee el precio, con el mismo número: no se reenvía. */
+  const soloForma = !!edita && !!fotoAhora && soloLaFormaDelPrecio(edita.antes, fotoAhora);
   /** Un 409 `contrato_cambio`: el contrato cambió (o se canceló) mientras se
    *  editaba. Reintentar daría siempre lo mismo: el botón queda apagado y se
    *  ofrece volver a Supervisar, que relee la base. */
@@ -938,6 +947,7 @@ export function useContrato({
           reemplazo: resp.edicion?.modo === "reemplazo",
           nuevos: Math.max(1, resp.edicion?.reemplazado_por?.length ?? 1),
           conPlanometria: !!edita.planometria,
+          sinReenvio: !!resp.edicion?.sin_reenvio,
         } } : {}),
       });
     } catch (e) {
@@ -992,7 +1002,7 @@ export function useContrato({
     // «Editar contrato»: el contrato que se reabre, lo que cambia, el aviso de
     // los cortes vencidos, y el mapa y la ocupación SIN el propio contrato
     // (los usa la línea para lo que choca y para cambiar cómo se vende).
-    edita, edicion, avisoCortes, estadoComercial, ocupacionDe, nuevos, correoDestino, cambioAjeno,
+    edita, edicion, soloForma, avisoCortes, estadoComercial, ocupacionDe, nuevos, correoDestino, cambioAjeno,
   };
 }
 

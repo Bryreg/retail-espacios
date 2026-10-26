@@ -1,6 +1,6 @@
 """Lo que el rediseño de Vender guarda de un contrato (``docs/rediseno/vender-api.md``).
 
-Siete tablas NUEVAS en la base del supermercado (la sesión normal `get_db`,
+Ocho tablas NUEVAS en la base del supermercado (la sesión normal `get_db`,
 como `spaces`); `create_all()` las crea sin migración y ninguna columna nueva
 entra en una tabla que ya existía (test_t22, tests/test_tendencia_ataques.py).
 Cada una cuelga de un contrato o de un término por clave foránea, y la mayoría
@@ -26,6 +26,11 @@ lo tiene por clave primaria: lo que guardan es UNA cosa de ese contrato.
   espacio (la punta entera → por entrepaños, una cara → un porcentaje): el
   contrato viejo se cierra (`is_active = False`) y esta fila dice que fue
   REEMPLAZADO —no cancelado— y por cuáles (``services/editar_contrato.py``).
+· precios_corregidos (2026-10-25): un contrato cargado ANTES de Vender no
+  dice si su valor era del mes o del total (se leía como total). Quien
+  administra lo corrige en Supervisar → «Para revisar» → Corregir
+  (``services/precio_sin_forma.py``): esta fila guarda el valor de antes para
+  poder deshacerlo. Corregirlo no manda correos.
 · montajes_pendientes: el aviso de montaje de un contrato nuevo, que espera
   su planometría y, en un porcentaje, la distribución confirmada de su cara
   (sin zona, quien monta no sabe dónde va). ``services/montajes_pendientes.py``.
@@ -65,6 +70,22 @@ class CondicionesDeContrato(Base):
     modo_precio = Column(String, nullable=False)          # MODOS_DE_PRECIO
     valor_tecleado = Column(Float, nullable=True)
     creado_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
+
+
+class PrecioCorregido(Base):
+    """Un contrato de antes de Vender al que quien administra le dijo cómo se
+    lee su valor («era al mes» o «era el total»). Guarda lo de antes para
+    deshacerlo."""
+
+    __tablename__ = "precios_corregidos"
+
+    lease_id = Column(Integer, ForeignKey("space_leases.id"), primary_key=True, autoincrement=False)
+    modo_precio = Column(String, nullable=False)          # MODOS_DE_PRECIO: cómo se dijo que se lee
+    valor_antes = Column(Float, nullable=False)           # el `monthly_rent` que tenía
+    meses = Column(Float, nullable=False)                 # la duración usada (``meses_entre``)
+    total_despues = Column(Float, nullable=False)         # el `monthly_rent` que quedó
+    por = Column(String, nullable=True)
+    en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
 
 
 class PrecioDeReserva(Base):

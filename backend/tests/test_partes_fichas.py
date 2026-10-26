@@ -22,6 +22,7 @@ colocar se ESTAMPA en el mueble. Lo que se vigila acá, del lado del servidor:
 Nada de ``from app…`` a nivel de módulo salvo la fecha del negocio (ver el
 encabezado de ``test_espacio_vendible.py``).
 """
+from tests import sin_planilla  # las partes: la revisión común, sin las reglas de la planilla
 import json
 from datetime import timedelta
 from pathlib import Path
@@ -68,13 +69,13 @@ def _fila(espacio, desde=1, hasta=30, proveedor="Postobón", valor=350_000, fila
 
 
 def _validar(client, admin, *filas):
-    r = client.post("/api/leases/bulk/validar", headers=admin, json={"sede": "NAVE", "filas": list(filas)})
+    r = sin_planilla.post("/api/leases/bulk/validar", json={"sede": "NAVE", "filas": list(filas)})
     assert r.status_code == 200, r.text
     return r.json()["filas"]
 
 
 def _vender(client, admin, espacio, **kw):
-    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": [_fila(espacio, **kw)]})
+    r = sin_planilla.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": [_fila(espacio, **kw)]})
     assert r.status_code == 200, r.text
     f = r.json()["filas"][0]
     assert f["lease_id"] is not None, f

@@ -44,12 +44,12 @@ const pruebaAsync = async (n, fn) => {
 };
 
 /** Un `File` de mentira: `leerPlanilla` sólo le pide `arrayBuffer()`. */
-const archivo = (buf) => ({ arrayBuffer: async () => buf });
+const archivo = (buf, name = "planilla.xlsx") => ({ name, type: "", arrayBuffer: async () => buf });
 
 const ENCABEZADOS = ["Espacio", "Sede", "Proveedor", "Valor mensual", "Desde", "Hasta"];
 
 const csv = (filas) =>
-  archivo(Buffer.from([ENCABEZADOS, ...filas].map((f) => f.join(",")).join("\n"), "utf8"));
+  archivo(Buffer.from([ENCABEZADOS, ...filas].map((f) => f.join(",")).join("\n"), "utf8"), "planilla.csv");
 
 /** Un .xlsx de verdad, con las celdas que se le pasen —incluidas las `Date`,
  *  que es lo único que un CSV no puede tener. */
@@ -116,6 +116,30 @@ await pruebaAsync("el resto del CSV no se rompió: sede, valor y proveedor", asy
   assert.equal(filas[0].valor, 1800000);
   assert.equal(filas[1].valor, 2100000);
   assert.equal(filas[0].fila, 2);      // la 2 de Excel, con encabezado en la 1
+});
+
+console.log("\nplanilla · el valor es al mes y los acentos de un CSV no se rompen");
+
+await pruebaAsync("UNA COLUMNA «VALOR TOTAL» NO SE LEE: LA PLANILLA VA CON EL VALOR POR MES", async () => {
+  const conTotal = archivo(Buffer.from(
+    "Espacio,Sede,Proveedor,Valor total,Desde,Hasta\nPUN-04,NAVE,ACME,1800000,01/03/2026,30/06/2026", "utf8"),
+  "planilla.csv");
+  await assert.rejects(() => P.leerPlanilla(conTotal), /valor por mes/);
+  // «Valor mensual», «Renta», «Canon»: se leen, y son lo de cada mes.
+  for (const col of ["Valor mensual", "Renta", "Canon", "Valor al mes", "Valor"]) {
+    const { mapeo } = await P.leerPlanilla(archivo(Buffer.from(
+      `Espacio,Proveedor,${col}\nPUN-04,ACME,650000`, "utf8"), "planilla.csv"));
+    assert.equal(mapeo.valor, col);
+  }
+});
+
+await pruebaAsync("UN CSV EN UTF-8 SIN BOM CONSERVA LOS ACENTOS (era «LÃ¡cteos»: un proveedor duplicado)", async () => {
+  const utf8 = archivo(Buffer.from("Espacio,Proveedor,Valor\nPUN-04,Lácteos del Valle,650000", "utf8"), "x.csv");
+  assert.equal((await P.leerPlanilla(utf8)).filas[0].proveedor, "Lácteos del Valle");
+  // Y el CSV de Excel en español (Windows-1252, con punto y coma) también.
+  const latin = archivo(Buffer.from("Espacio;Proveedor;Valor\nPUN-04;Lácteos del Valle;650000", "latin1"), "x.csv");
+  assert.equal((await P.leerPlanilla(latin)).filas[0].proveedor, "Lácteos del Valle");
+  assert.equal(P.textoDeCsv(Buffer.from("\uFEFFEspacio", "utf8")), "Espacio", "la BOM no queda pegada al título");
 });
 
 console.log("\nplanilla · el camino de Excel no cambió");
@@ -216,7 +240,7 @@ await pruebaAsync("los títulos se encuentran y las columnas se reconocen", asyn
   const { filas, faltan, mapeo } = await P.leerPlanilla(await plantilla());
   assert.deepEqual(faltan, [], "no reconoció alguna columna obligatoria");
   assert.equal(mapeo.espacio, "Espacio");
-  assert.equal(mapeo.valor, "Valor", "la columna dejó de llamarse «Valor»");
+  assert.equal(mapeo.valor, "Valor al mes", "la columna dejó de llamarse «Valor al mes»");
   assert.equal(filas.length, 2, "tiene que leer las dos filas de ejemplo y nada más");
 });
 
@@ -226,7 +250,15 @@ await pruebaAsync("NINGÚN RENGLÓN DE ARRIBA SE CONFUNDE CON LOS TÍTULOS", asy
   const { filas } = await P.leerPlanilla(await plantilla());
   assert.equal(filas[0].espacio, "EJEMPLO-01");
   assert.equal(filas[0].proveedor, "Nutresa");
-  assert.equal(filas[0].valor, 2100000);
+  assert.equal(filas[0].valor, 650000);
+});
+
+await pruebaAsync("LA PLANTILLA DICE «POR MES» Y «ENTEROS» (decisión del dueño, 2026-10-26)", async () => {
+  const filas = P.filasDeContratosDePlantilla("NAVE");
+  const arriba = filas.slice(0, filas.findIndex((f) => f[0] === "Espacio")).flat().join(" ");
+  assert.match(arriba, /POR MES/);
+  assert.match(arriba, /ENTEROS/);
+  assert.ok(filas.some((f) => f.includes("Valor al mes")));
 });
 
 await pruebaAsync("LA FECHA DEL EJEMPLO SE ESCRIBE COMO DICE LA INSTRUCCIÓN", async () => {
@@ -277,6 +309,28 @@ await pruebaAsync("cada renglón de orientación va en UNA sola celda", async ()
       "un renglón de arriba ocupa más de una celda: puede calzar dos campos y " +
       "hacerse pasar por la fila de títulos");
   }
+});
+
+// ─── La pantalla (decisión del dueño, 2026-10-26) ────────────────────────────
+
+console.log("\nplanilla · la pantalla dice al mes, el total de verdad y lo que salió");
+
+await pruebaAsync("CADA FILA DICE «AL MES × MESES = TOTAL» Y EL PIE SUMA TOTALES COMO TOTAL", async () => {
+  const { readFileSync } = await import("node:fs");
+  const c = readFileSync(join(aqui, "../src/components/CargaMasiva/CargaMasiva.tsx"), "utf8");
+  assert.ok(c.includes("`${money(r.valor_mes)} al mes`"), "la fila perdió «$ X al mes»");
+  assert.ok(/× \{textoDeMeses\(r\.meses\)\} = <b[^>]*>\{money\(r\.valor\)\}/.test(c), "la fila perdió la cuenta × meses = total");
+  assert.ok(/\{money\(total\)\}<\/b> en total/.test(c), "el pie volvió a llamar «al mes» a la suma de totales");
+  assert.ok(!/\{money\(total\)\}<\/b> al mes/.test(c), "el pie suma totales y los llama «al mes»");
+});
+
+await pruebaAsync("AL GUARDAR DICE LO QUE DE VERDAD SALIÓ, NO UNA FRASE FIJA", async () => {
+  const { readFileSync } = await import("node:fs");
+  const c = readFileSync(join(aqui, "../src/components/CargaMasiva/CargaMasiva.tsx"), "utf8");
+  assert.ok(c.includes("setAvisos(res.avisos ?? null)"), "la pantalla final no lee los avisos del servidor");
+  assert.ok(c.includes("El correo no está configurado:"), "falta el caso sin correo");
+  assert.ok(c.includes("espera su planometría"), "falta que el montaje espera la planometría");
+  assert.ok(!c.includes("uno al\n              mercaderista con la lista"), "volvió la frase fija de los avisos agrupados");
 });
 
 // El bundle es un intermedio, no un artefacto: se borra al terminar.

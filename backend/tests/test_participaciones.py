@@ -18,6 +18,7 @@ recibe ``version_vieja``).
 Todo ``import app.*`` va ADENTRO de las funciones (el fixture ``client`` purga
 ``sys.modules``).
 """
+from tests import sin_planilla  # un tramo: la revisión común, sin las reglas de la planilla
 from datetime import date
 
 import pytest
@@ -453,9 +454,8 @@ def test_la_compuerta_frena_la_cara_entera_y_la_participacion_en_los_caminos_de_
 
     # Contrato suelto: la cara entera de una cara por participación, la participación misma (existe, pero se
     # carga en Distribución), el código corto de la cara y una participación de una cara que no se vende así.
-    for code, frase in (("NAVE-GON-01", "se vende por participación: cargá el porcentaje en el Editor 3D"),
-                        ("NAVE-GON-01-PC1", "es una participación: se carga y se renueva en el Editor 3D → "
-                                            "Distribución"),
+    for code, frase in (("NAVE-GON-01", "se vende por participación: el porcentaje se vende en Vender"),
+                        ("NAVE-GON-01-PC1", "es una participación: se vende y se renueva en Vender"),
                         ("GON-01", "se vende por participación"),
                         ("NAVE-NEV-03-PC1", "no se vende por participación")):
         r = _suelto(client, admin, code)
@@ -463,9 +463,9 @@ def test_la_compuerta_frena_la_cara_entera_y_la_participacion_en_los_caminos_de_
     assert _leases() == antes, "ningún contrato suelto se escribió"
 
     # La planilla (y Vender, que confirma por el mismo camino) dice lo mismo, fila por fila.
-    for espacio, frase in (("GON-01-PC1", "es una participación: se carga y se renueva en el Editor 3D → "
-                                          "Distribución, no en la planilla."),
-                           ("NEV-03-PC1", "no se vende por participación: elegí «por participación»"),
+    for espacio, frase in (("GON-01-PC1", "es una participación (un % de la cara). La planilla es sólo para "
+                                          "muebles que se venden enteros: los porcentajes se venden en Vender."),
+                           ("NEV-03-PC1", "los porcentajes se venden en Vender"),
                            ("GON-01", "se vende por participación"),
                            ("GON-01-B", "se vende por participación")):
         fila = _planilla(client, admin, espacio)["filas"][0]
@@ -475,7 +475,7 @@ def test_la_compuerta_frena_la_cara_entera_y_la_participacion_en_los_caminos_de_
 
     # Una participación no se marca «Reservado» a mano.
     r = client.patch(f"/api/spaces/{pc['space_id']}/status", headers=admin, json={"status": "reserved"})
-    assert r.status_code == 409 and "Distribución" in r.text, r.text
+    assert r.status_code == 409 and "Vender" in r.text, r.text
 
     # Importar del plano: un contrato del JSON sobre la cara entera de PUN-01 (por participación, todavía sin
     # participaciones) y sobre un mueble viejo llamado como una participación quedan «Incompletos».
@@ -1235,7 +1235,8 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
               "partes": {"division": "tramos", "tramos": 3}}
     plano = _con("MET-02", viejo, cx=10.5) + [tramos]
     _guardar(client, admin, plano)
-    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": [{
+    # Un tramo se vende en Vender: la revisión común, sin las reglas de la planilla.
+    r = sin_planilla.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": [{
         "fila": 2, "espacio": "GON-03-TR1", "sede": "NAVE", "proveedor": "Colombina", "valor": 1,
         "desde": D(2026, 10, 1), "hasta": D(2026, 12, 31)}]})
     assert r.json()["creados"] == 1, r.text

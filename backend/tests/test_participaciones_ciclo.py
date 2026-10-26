@@ -298,7 +298,7 @@ def test_una_participacion_no_se_marca_a_mano_ni_se_borra_su_proveedor(client, a
     r = client.patch(f"/api/spaces/{ids.pc}/status", json={"status": "reserved"}, headers=admin)
     assert r.status_code == 409, r.text
     assert r.json()["detail"] == (
-        "Una participación no se marca a mano: su reserva provisional se carga en Distribución.")
+        "Una participación no se marca a mano: su reserva provisional se hace en Vender («Reservar hasta…»).")
     assert client.get(f"/api/spaces/{ids.pc}", headers=admin).json()["status"] == "free"
     # La cara sí, como siempre.
     r = client.patch(f"/api/spaces/{ids.cara}/status", json={"status": "maintenance"}, headers=admin)

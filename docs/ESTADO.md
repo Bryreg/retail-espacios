@@ -8,7 +8,23 @@ serie se recalcularon una vez. También el formulario de participación de Distr
 «Valor mensual» y lo guardaba como total), el «/ mes» del Editor 3D y el «Valor mensual» de la
 lámina. Ver *«Al mes» en todos lados (2026-10-26)*.
 
-Antes, el 2026-10-25, **la supervisión de los planogramas** (fase 4 de la
+Antes, ese mismo día, **la planilla de contratos, al día**: el valor es lo de
+CADA MES (el total sale × los meses y se guarda como «Al mes» en Vender), sólo entran muebles que
+se venden ENTEROS (las partes y los porcentajes, en Vender), la tarifa se compara mes contra mes,
+un CSV en UTF-8 conserva los acentos y la pantalla final dice lo que de verdad salió. Ver *La
+planilla: al mes y sólo enteros (2026-10-26)*.
+
+Antes, el 2026-10-25 (tarde), **los contratos de antes: ¿el valor es al mes o
+el total?**. En GALERÍAS los contratos cargados antes de Vender tenían el valor del MES, y el
+sistema lo leía como el total (el «al mes» de Supervisar salía dividido por la duración). En
+Supervisar → «Para revisar» → Corregir, «Contratos cargados antes: ¿el valor es al mes?» lista
+todos los que no dicen cómo se lee su precio (vigentes, próximos, vencidos y cerrados), con «Es
+al mes» / «Es el total» por contrato y «Todos son al mes»; se puede deshacer y no manda correos.
+Y en «Editar contrato», «Total | Al mes» está siempre a la vista y conserva el número escrito: si
+eso es lo único que cambia, se guarda sin reenviar. Una tabla nueva. Ver *Contratos de antes:
+¿al mes o total? (2026-10-25)*.
+
+Antes, ese mismo día, **la supervisión de los planogramas** (fase 4 de la
 distribución): quien monta avisa desde el enlace de la guía «quedó montada» (con foto si
 quiere) o «no se pudo» (con el motivo), y en Supervisar → «Para revisar» → Hoy una persona pone
 lo planificado al lado de la foto y marca si coincide. Si no, toca los números de la guía que
@@ -1312,6 +1328,93 @@ mes. Decisión del dueño: **recalcular los meses ya guardados**.
   de un mes, el recálculo una sola vez). Las pruebas de la consola sembraban el canon de cada
   contrato como lo de un mes sobre plazos de años: siembran el total (`tests/sembrado.py`), y sus
   cuentas a mano no cambian.
+### La planilla: al mes y sólo enteros (2026-10-26)
+
+La revisión que pidió el dueño («la planilla para subir varios contratos no la hemos tocado:
+deben haber varios errores similares») encontró la planilla de antes del rediseño de Vender: leía
+una columna «Valor mensual», «Renta» o «Canon» como el TOTAL del contrato (el mismo error de los
+contratos de GALERÍAS), comparaba ese total con la tarifa MENSUAL (un contrato de seis meses a la
+sexta parte de la tarifa pasaba sin aviso), sumaba totales y los llamaba «al mes», rompía los
+acentos de un CSV en UTF-8 («LÃ¡cteos»: un proveedor duplicado), mandaba las participaciones al
+«Editor 3D → Distribución» y al guardar afirmaba con una frase fija que al mercaderista le había
+llegado la lista de montaje. Decisiones del dueño: **la planilla es sólo para muebles que se
+venden enteros** y **viene con el valor por mes**. Aprobado sobre el dibujo «Planilla de contratos
+al mes».
+
+- **El valor es lo de cada mes** (`bulk_leases._revisar(..., planilla=True)`): el total es
+  `al_peso(valor × meses_entre)`, se guarda en `monthly_rent` y el contrato lleva
+  `condiciones_de_contrato` «mensual» con lo tecleado: igual que «Al mes» en Vender, y no cae en
+  «Contratos cargados antes». `FilaOut` trae `valor_mes` y `meses`. En el navegador
+  (`utils/planilla.ts`) cualquier columna de valor se lee al mes; una que dice «total» no se lee
+  («La planilla va con el valor por mes…», `ENCABEZADO_TOTAL`). La plantilla trae «Valor al mes».
+- **Sólo enteros**: una parte (`NEV-03-PU2`, `GON-05-TR3`, `CAJ-04-BI1`) o un porcentaje
+  (`GON-01-PC1`) no entra: «… La planilla es sólo para muebles que se venden enteros: las partes
+  (los porcentajes) se venden en Vender.» (`SOLO_ENTEROS`).
+- **La tarifa, mes contra mes**: la planilla compara lo de cada mes; la revisión común (Vender,
+  reservas, editar) compara el total repartido en sus meses. Delante del proveedor sigue sin
+  compararse.
+- **El CSV** se decodifica a mano (`textoDeCsv`): UTF-8 estricto y, si no lo es, Windows-1252 (el
+  de Excel en español, con punto y coma).
+- **La pantalla** (`CargaMasiva.tsx`): «El valor de la planilla es por mes…» arriba; cada fila,
+  «$ 650.000 al mes × 6 meses = $ 3.900.000»; el pie, «$ 6.300.000 en total ($ 1.050.000 al
+  mes)»; al guardar, lo que dicen los `avisos` del servidor —a quién le llegó el comercial, las
+  constancias y qué proveedores no tienen correo (`AvisosContrato.proveedor_sin_correo`, nuevo),
+  que el montaje espera la planometría— o «El correo no está configurado: no salió ningún
+  aviso.». En el teléfono la tabla pasa a tres columnas (espacio, valor) para que el valor se vea.
+- **Los mensajes viejos de participación** («se carga y se renueva en el Editor 3D →
+  Distribución») ahora dicen Vender: la compuerta (`layout_lookup`), el contrato suelto, marcar
+  «Reservado» a mano e importar del plano.
+- **Pruebas**: `test_bulk_leases.py` (al mes y su condición, la tarifa mes contra mes, sólo
+  enteros), `probar-planilla.mjs` (la columna «total», los acentos, la plantilla, la pantalla). Las
+  pruebas de la venta por partes vendían por la planilla: ahora usan la revisión común sin las
+  reglas de la planilla (`tests/sin_planilla.py` → `confirmar_lote(..., planilla=False)`), que es
+  la misma de Vender.
+### Contratos de antes: ¿al mes o total? (2026-10-25)
+
+Lo que reportó el dueño: «Los actuales contratos de GALERÍAS son mensuales. El sistema los está
+tomando como total. Además, en editar contrato no se deja cambiar de total a mensual.» Desde la
+«fase 17» `SpaceLease.monthly_rent` guarda el TOTAL del plazo, y desde #84/#85 Supervisar lo
+reparte en meses; pero los contratos cargados antes (por planilla o a mano) tenían ahí el valor
+del mes. Aprobado con tres decisiones: (1) en edición, «Total | Al mes» **no convierte el
+número**, lo reinterpreta, y si es lo único que cambia **no se reenvía**; (2) en GALERÍAS
+**todos** son al mes, así que hace falta corregirlos de una vez; (3) la corrección va en «Para
+revisar».
+
+- **Cómo se reconoce uno de antes** (`services/precio_sin_forma.py`): no tiene fila en
+  `condiciones_de_contrato` (cómo se tecleó el precio), no cobra por ventas
+  (`cobros_por_venta`) y vale más de cero. Todo lo vendido desde Vender ya tiene su forma.
+- **«Para revisar» → Corregir → «Contratos cargados antes: ¿el valor es al mes?»**
+  (`components/Supervisar/PrecioSinForma.tsx`, `GET /api/contratos/precio-sin-forma?sede=`):
+  todos los de la sede —vigentes y próximos primero, después vencidos y cerrados (hacen los
+  históricos)—, cada uno con «Hoy: $ 850.000 de total · si es al mes: $ 850.000 × 6 meses =
+  $ 5.100.000» y dos botones, «Es al mes» y «Es el total». Arriba, «Todos son al mes (N)» con
+  una confirmación en el lugar que muestra la cuenta de uno de ejemplo. Después, el aviso
+  «Listo… No se mandó ningún correo.» con «Deshacer». Cuenta UN aviso en la pastilla (es una
+  sola tarea). **Sólo administración** (lleva plata y proveedores: `SOLO_ADMINISTRACION` en
+  `casos/avisos-de-revision.mjs`); el hook no pide nada fuera de Supervisar.
+- **Qué hace** (`POST …/corregir`, todo o nada): «al mes» → `monthly_rent` = valor × `meses_entre`
+  (redondeado al peso, la cuenta de Vender) y `condiciones_de_contrato` queda «mensual» con el
+  valor de antes como lo tecleado; «el total» → el valor no cambia y queda «total». Cada contrato
+  viaja con el valor que la pantalla mostró: si cambió entretanto, 409 `contrato_cambio` y no se
+  toca ninguno. Bitácora `contrato.precio_corregido` («Valor de antes 800.000 leído al mes × 6
+  meses = total 4.800.000»). **Sin correos**: corrige cómo se lee un dato, no el contrato.
+- **Deshacer** (`POST …/deshacer`): vuelve el valor de antes y borra la forma, sólo si nadie lo
+  editó después (409 si el valor o la forma ya no son los que dejó la corrección).
+- **«Editar contrato»**: el renglón muestra «El precio es Total | Al mes» siempre (antes había que
+  abrir la línea para verlo, y por eso parecía que no se podía). En edición, tocar «Al mes» deja
+  el número escrito y lo lee como el de cada mes (en un contrato nuevo sigue convirtiendo para
+  que el total no salte). Si lo único que cambia es la forma con el mismo número
+  (`soloLaFormaDelPrecio`, gemela de `editar_contrato.solo_la_forma_del_precio`), el aviso dice
+  «Sólo cambia cómo se lee el precio: no se envía de nuevo a los correos», el botón es «Guardar
+  cambios» sin el diálogo de reenvío, y el servidor no llama a `avisar_edicion`
+  (`edicion.sin_reenvio`). Cualquier otro cambio reenvía como siempre.
+- **Tabla nueva** `precios_corregidos` (lo de antes, para deshacer: valor, meses, total, quién y
+  cuándo), en `TABLAS_DEL_CLIENTE`. Ninguna columna nueva.
+- **Guardas**: `probar-precio.mjs` (`npm run probar:precio`): la regla de «sólo la forma» y su
+  gemela, el atajo del router, «Al mes» que no convierte en edición y está a la vista, la sección
+  que cuenta uno y sólo para administración, las rutas sin correos. `backend/tests/
+  test_precio_sin_forma.py` (lista, 403, todo o nada, al mes, total, deshacer, bitácora) y
+  `test_editar_contrato.py::test_pasar_a_al_mes_con_el_mismo_numero_no_reenvia`.
 
 ### Supervisión de planogramas (2026-10-25)
 
@@ -2089,7 +2192,8 @@ archivo; esto es el resumen).
   en `precios_de_reserva` (que `confirmar_reserva` usa si no le mandan valor), lo entero y las
   partes van a `reservas_de_espacio` (`/api/reservas`: listar, confirmar, cancelar).
 - **Seis tablas nuevas** (`models/vender.py`): `condiciones_de_contrato` (cómo se tecleó el
-  precio: «al mes» o el total), `precios_de_reserva`, `cobros_por_venta` + `cortes_de_venta`
+  precio: «al mes» o el total; los contratos de antes no la tienen, ver *Contratos de antes: ¿al
+  mes o total?*, que suma `precios_corregidos`), `precios_de_reserva`, `cobros_por_venta` + `cortes_de_venta`
   (`/api/cobros`), `montajes_pendientes` y `reservas_de_espacio`. Una reserva
   —de porcentaje o de espacio— también puede cobrar por ventas: guarda el cobro y su contrato
   nace con `cobros_por_venta`. Todas en
@@ -4862,7 +4966,8 @@ paso un CSV entra por el mismo camino sin escribir nada.
   Crea sólo lo que pasa; una fila mala no tira abajo las treinta y nueve buenas.
 
 **La planilla es la que trae la gente, no un formato.** Los encabezados se reconocen por
-sinónimos (`Código`/`Espacio`, `Renta`/`Valor mensual`, `Fecha inicio`/`Desde`), la fila de
+sinónimos (`Código`/`Espacio`, `Renta`/`Valor mensual` —todos al mes desde el 2026-10-26—,
+`Fecha inicio`/`Desde`), la fila de
 títulos no tiene que ser la primera —las planillas suelen arrancar con un título—, y hay
 plantilla descargable para quien la quiera.
 

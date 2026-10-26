@@ -111,7 +111,7 @@ def test_la_compuerta_de_una_cara_por_participacion(client):
 
     entera = motivo_para_no_vender_parte(doble, partir_codigo("NAVE-GON-01"))
     assert entera[0] == POR_PARTICIPACION
-    assert "se vende por participación" in entera[1] and "Distribución" in entera[1], entera
+    assert "se vende por participación" in entera[1] and "Vender" in entera[1], entera
     assert motivo(doble, "NAVE-GON-01-B") == POR_PARTICIPACION
     assert motivo(doble, "NAVE-GON-01-PC1") is None
     assert motivo(doble, "NAVE-GON-01-B-PC7") is None
