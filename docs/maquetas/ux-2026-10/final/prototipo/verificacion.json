@@ -1403,6 +1403,27 @@
    "metodo": "SQL (fila de la base)"
   },
   {
+   "que": "plano2d-libre · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano2d-completa · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano2d-catalogo · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
    "que": "mueble-GON-12 · sede::nombre",
    "esperado": "CENTRO",
    "visto": "CENTRO",
@@ -3817,7 +3838,7 @@
    "esperado": "0",
    "visto": "0",
    "ok": true,
-   "metodo": "2427 enlaces revisados"
+   "metodo": "2562 enlaces revisados"
   }
  ],
  "fichas": [
@@ -4257,8 +4278,8 @@
    43
   ],
   "campos": [
-   501,
-   501
+   504,
+   504
   ],
   "enlaces": [
    1,

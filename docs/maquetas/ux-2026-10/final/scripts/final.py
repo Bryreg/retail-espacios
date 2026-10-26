@@ -70,11 +70,11 @@ ESTADO = {"libre": ("ok", "Disponible"), "parcial": ("warn", "Disponible una par
 # ── El armazón (el aprobado en el responsive) ─────────────────────────────────
 NAVR = [("Inicio", "casa", "inicio"), ("Contratos", "contratos", "contratos"), ("Indicadores", "indicadores", "indicadores"),
         ("Montajes", "montajes", "montajes"), ("Plano de la sede", "plano", "plano2d")]
-def pagina(nombre, activo, titulo, cuerpo, main_cls="", extra="", sec=""):
+def pagina(nombre, activo, titulo, cuerpo, main_cls="", extra="", sec="", app_cls=""):
     nav = "".join(f'<a href="{h}.html" {"aria-current=page" if t == activo else ""}>{I(i)}<span>{t}</span></a>' for t, i, h in NAVR)
     abajo = "".join(f'<a href="{h}.html" {"aria-current=page" if t == activo else ""}>{I(i, 20)}<span>{"Plano" if t == "Plano de la sede" else t}</span></a>' for t, i, h in NAVR)
     html = f'''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RECABRA · {escape(titulo)}</title><link rel="stylesheet" href="recabra.css"><link rel="stylesheet" href="final.css"></head><body>
-<div class="app" data-sec="barra-superior">
+<div class="app {app_cls}" data-sec="barra-superior">
 <aside class="lateral" aria-label="Navegación principal"><div class="marca">{I("lista", 20, "#0F172A", 2.2)}<b>RECABRA</b></div><nav class="nav">{nav}</nav>
 <nav class="nav ajustes-nav"><a href="ajustes.html" {"aria-current=page" if activo == "Ajustes" else ""}>{I("ajustes")}<span>Ajustes</span></a></nav>
 <div class="pie"><b>Supermercado La Esquina</b>Sede: <span data-campo="sede::nombre">CENTRO</span></div></aside>
@@ -406,12 +406,37 @@ def props_mueble(code, cerrar=True):
             f'<div class="acciones" style="margin-top:.75rem;flex-direction:column"><a class="btn" href="plano3d.html">Ver en 3D</a></div></section>')
 herr = '<div class="herr">' + "".join(f'<span class="{c}">{I(i, 15)}{t}</span>' for t, i, c in [("Catálogo", "cuadros", "cat-btn"), ("Seleccionar", "mano", "on"), ("Rotar", "rotar", ""), ("Duplicar", "copiar", ""), ("Deshacer", "deshacer", ""), ("Rehacer", "rehacer", ""), ("Eliminar", "papelera", "rojo"), ("Propiedades", "info", "props-btn")]) + "</div>"
 zoom = '<div class="ctl-mapa"><span class="esp"></span><span class="c">+</span><span class="c">−</span><span class="c">' + I("pin", 17) + "</span></div>"
-def editor2d(sel, estado=""):
-    return (f'{cab("Plano de la sede — CENTRO", f"{len(M["muebles"])} muebles · {len(M["unidades"])} espacios contratables · lo dibujado es GET /api/layout/CENTRO.", "<a class=\"btn\" href=\"contorno.html\">Contorno de la sede</a><span class=\"seg\"><span aria-pressed=\"true\">2D</span><a href=\"plano3d.html\">3D</a></span>")}'
-            f'<div class="editor2d {estado}">{catalogo}<div class="lienzo">{herr}<div class="plano-env">{plano(sel=sel)}{zoom}<span class="pill ok validacion">Validación: sin choques nuevos</span></div>{leyenda(["libre", "parcial", "ocupado", "por_vencer", "proximo", "casa"])}</div>{props_mueble(sel)}</div>')
-P("plano2d", "Plano de la sede", "Plano 2D", editor2d("GON-03"), "editor", sec="plano-2d-muebles")
+# ── El editor del plano como mesa de trabajo: el plano se queda con casi toda la pantalla ──
+# El menú pasa a riel, la cabecera a una línea, el catálogo a una tira de muebles para
+# arrastrar; herramientas, zoom, validación y leyenda flotan SOBRE el plano; las propiedades
+# aparecen al elegir un mueble y se pliegan. Hay pantalla completa.
+FAMILIAS = []
 for f in M["muebles"]:
-    P(f'mueble-{f["code"]}', "Plano de la sede", f'Mueble {f["code"]}', editor2d(f["code"], "ver-props"), "editor", sec="ficha-del-mueble")
+    clave = (f["label"], f["type"])
+    if clave not in [x[:2] for x in FAMILIAS]:
+        FAMILIAS.append((f["label"], f["type"], sum(1 for g in M["muebles"] if g["label"] == f["label"])))
+MINI = {"gondola": "gondola", "punta": "punta", "nevera_puertas": "nevera"}
+tira = ('<nav class="tira" aria-label="Muebles para arrastrar al plano">' + "".join(
+    f'<span class="pieza" draggable="true" title="Arrastrá al plano · {n} en la sede">{mini(MINI[t], 30)}<span>{escape(l.replace("Góndola de la casa", "De la casa").replace("Góndola doble", "Góndola").replace("Punta de góndola", "Punta").replace("Nevera de puertas", "Nevera"))}</span><small>{n}</small></span>' for l, t, n in FAMILIAS)
+    + f'<a class="pieza" href="plano2d-catalogo.html">{I("cuadros", 22)}<span>Más</span></a></nav>')
+herr = '<div class="herr">' + "".join(f'<span class="{c}" title="{t}">{I(i, 16)}<span class="t">{t}</span></span>' for t, i, c in [("Seleccionar", "mano", "on"), ("Rotar", "rotar", ""), ("Duplicar", "copiar", ""), ("Deshacer", "deshacer", ""), ("Rehacer", "rehacer", ""), ("Eliminar", "papelera", "rojo"), ("Propiedades", "info", "props-btn")]) + "</div>"
+zoom = '<div class="ctl-mapa"><span class="esp"></span><span class="c">+</span><span class="c">−</span><span class="c" title="Ver todo">' + I("pin", 17) + "</span></div>"
+def editor2d(sel=None, estado="", completa=False):
+    acciones = ('<a class="btn" href="plano2d.html">Salir de pantalla completa</a>' if completa else
+                '<a class="btn" href="contorno.html">Contorno</a><span class="seg"><span aria-pressed="true">2D</span><a href="plano3d.html">3D</a></span><a class="btn" href="plano2d-completa.html">Pantalla completa</a>')
+    pie = (f'<div class="pie-lienzo"><span class="pill ok validacion">Validación: sin choques nuevos</span>'
+           f'{leyenda(["libre", "parcial", "ocupado", "por_vencer", "proximo", "casa"])}</div>')
+    props = props_mueble(sel) if sel and not completa else ""   # en pantalla completa se abren con «Propiedades»
+    return (f'<div class="cab-taller"><h1>Plano de la sede — CENTRO</h1><span class="sub">{len(M["muebles"])} muebles · {len(M["unidades"])} espacios contratables · 40 × 20 m</span>'
+            f'<span class="esp"></span><span class="acciones">{acciones}</span></div>'
+            f'<div class="mesa {estado} {"" if props else "sin-props"}">{tira}<div class="lienzo">{herr}<div class="plano-env">{plano(sel=sel)}</div>{zoom}{pie}</div>{props}</div>')
+P("plano2d", "Plano de la sede", "Plano 2D", editor2d("GON-03"), "taller", sec="plano-2d-muebles", app_cls="taller")
+P("plano2d-libre", "Plano de la sede", "Plano 2D", editor2d(None), "taller", sec="plano-2d-muebles", app_cls="taller")
+P("plano2d-completa", "Plano de la sede", "Plano 2D · pantalla completa", editor2d("GON-03", completa=True), "taller", sec="plano-2d-muebles", app_cls="taller completa")
+P("plano2d-catalogo", "Plano de la sede", "Plano 2D · catálogo", editor2d(None, "ver-cat"), "taller", sec="plano-2d-muebles", app_cls="taller",
+  extra=f'<aside class="cajon-cat tarjeta">{catalogo}<a class="btn" href="plano2d-libre.html">Cerrar</a></aside>')
+for f in M["muebles"]:
+    P(f'mueble-{f["code"]}', "Plano de la sede", f'Mueble {f["code"]}', editor2d(f["code"], "ver-props"), "taller", sec="ficha-del-mueble", app_cls="taller")
 
 def iso_svg(sel=None):
     """Isométrico simple desde el plano: cada mueble es una caja de su alto real."""

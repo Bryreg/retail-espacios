@@ -56,3 +56,64 @@ table code, .dato code { font-size: 1em; }
 @media (max-width: 47.99em) { .barras .b:not(:last-child) .v { visibility: hidden; } }
 small a.ref, .sub a.ref { font-size: 1em; }
 .foto small { font-size: var(--fs-xs); font-weight: 500; }
+
+/* ===== Plano 2D como mesa de trabajo: el plano se queda con casi toda la pantalla ===== */
+.app.taller { --nav-w: 4.75rem; }
+.app.taller .lateral { padding: var(--s3) var(--s1); }
+.app.taller .marca { justify-content: center; padding: 0; } .app.taller .marca b { display: none; }
+.app.taller .nav a { flex-direction: column; justify-content: center; gap: 2px; min-height: 3.5rem; padding: var(--s1); font-size: var(--fs-xs); text-align: center; line-height: 1.15; }
+.app.taller .lateral .pie { display: none; }
+.app.completa { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.app.completa .lateral, .app.completa .superior, .app.completa .abajo { display: none !important; }
+main.taller { padding: var(--s3) var(--s4); gap: var(--s3); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.cab-taller { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
+.cab-taller h1 { margin: 0; font-size: var(--fs-h2); line-height: 1.2; }
+.cab-taller .esp { flex: 1; }
+.cab-taller .acciones { gap: var(--s2); }
+.mesa { flex: 1; min-height: 0; display: grid; grid-template-columns: 4.75rem minmax(0, 1fr) 17rem; gap: var(--s3); }
+.mesa.sin-props { grid-template-columns: 4.75rem minmax(0, 1fr); }
+.tira { display: flex; flex-direction: column; gap: var(--s1); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s2) var(--s1); overflow-y: auto; min-height: 0; }
+.tira .pieza { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--s2) 0; border-radius: var(--r-md); font-size: var(--fs-xs); font-weight: 600; text-align: center; line-height: 1.15; cursor: grab; text-decoration: none; color: var(--ink-2); min-height: var(--ctl); }
+.tira .pieza small { color: var(--ink-3); font-weight: 500; font-size: var(--fs-xs); }
+.tira .pieza:hover { background: var(--blue-50); color: var(--blue-ink); }
+.mesa .lienzo { position: relative; min-height: 0; display: block; }
+.mesa .plano-env { position: absolute; inset: 0; height: auto; min-height: 0; border: 1px solid var(--line); border-radius: var(--r-lg); background: #fff; }
+.mesa .plano-env > svg { width: 100%; height: 100%; }
+.mesa .herr { position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%); z-index: 3; background: var(--surface); box-shadow: var(--shadow); max-width: calc(100% - 1.5rem); }
+.mesa .ctl-mapa { z-index: 3; }
+.mesa .pie-lienzo { position: absolute; left: var(--s3); bottom: var(--s3); right: 4.5rem; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); pointer-events: none; }
+.mesa .pie-lienzo > * { pointer-events: auto; }
+.mesa .pie-lienzo .validacion { position: static; }
+.mesa .pie-lienzo .leyenda { background: rgba(255,255,255,.94); padding: var(--s1) var(--s3); border-radius: var(--r-md); box-shadow: var(--shadow); gap: var(--s1) var(--s3); }
+.mesa .props { overflow: auto; min-height: 0; }
+.cajon-cat { position: fixed; left: calc(var(--nav-w) + 5.5rem); top: 7.5rem; width: 17rem; max-height: calc(100dvh - 9rem); overflow: auto; z-index: 12; box-shadow: var(--shadow-float); display: flex; flex-direction: column; gap: var(--s3); }
+.cajon-cat .tarjeta { box-shadow: none; border: 0; padding: 0; }
+@media (max-width: 79.99em) { .mesa { grid-template-columns: 4.75rem minmax(0, 1fr) 15rem; } .herr .t { display: none; } }
+@media (max-width: 63.99em) {
+  .mesa, .mesa.sin-props { grid-template-columns: 4.75rem minmax(0, 1fr); }
+  .mesa .props { display: none; }
+  .mesa .props-btn { display: inline-flex !important; }
+  .mesa.ver-props .props { display: block; position: fixed; right: var(--s4); top: 7.5rem; width: min(20rem, 90vw); max-height: calc(100dvh - 9rem); z-index: 12; box-shadow: var(--shadow-float); }
+}
+@media (max-width: 39.99em) {
+  main.taller { padding: var(--s2); }
+  .cab-taller .sub { display: none; }
+  .mesa, .mesa.sin-props { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .tira { order: 2; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: var(--s1); }
+  .tira .pieza { flex: 0 0 4.25rem; }
+  .mesa .pie-lienzo .leyenda { display: none; }
+  .mesa.ver-props .props { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 60dvh; border-radius: 1.125rem 1.125rem 0 0; }
+  .cajon-cat { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 60dvh; border-radius: 1.125rem 1.125rem 0 0; }
+}
+@media (max-width: 39.99em) {
+  .mesa .plano-env { overflow: auto; }
+  .mesa .plano-env > svg { width: 260%; height: 100%; min-height: 0; }
+  .mesa .ctl-mapa { flex-direction: column; top: auto; bottom: var(--s3); }
+  .mesa .pie-lienzo { right: 4rem; }
+}
+.mesa.sin-props .props-btn { display: inline-flex !important; }
+@media (max-width: 39.99em) {
+  .app.taller .superior .buscar { display: none; }
+  .cab-taller .acciones > :not(:last-child) { display: none; }
+  .cab-taller h1 { font-size: var(--fs-label); }
+}

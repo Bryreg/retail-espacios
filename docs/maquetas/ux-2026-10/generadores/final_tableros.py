@@ -37,7 +37,7 @@ PARES = [
      ("montajes", "Montajes", "21 por resolver, con su acción."), ("verificar-montaje", "Verificar · Resolver", "Planometría al lado de la foto; no realizado con motivo.")),
     ("FV6", "Plano 2D y 3D", "El plano es el de la base: GET /api/layout/CENTRO.",
      ["Pasillos anchos y muebles finos (lo aprobado).", "Cada mueble pintado por su estado de hoy.", "El 3D usa el alto real de cada mueble."],
-     ("plano2d", "Plano 2D", "Catálogo, plano y propiedades del mueble elegido."), ("plano3d", "Plano 3D", "Los mismos 16 muebles, en volumen.")),
+     ("plano2d", "Plano 2D · mesa de trabajo", "El plano se queda con casi toda la pantalla; herramientas y leyenda flotan encima."), ("plano3d", "Plano 3D", "Los mismos 16 muebles, en volumen.")),
     ("FV7", "Planograma y distribución de cara", "Las piezas guardadas, dibujadas tal como están en la base.",
      ["Vértices (u, v) de cada pieza sobre la cara real con sus parantes.", "Revisión «no coincide» con su nota.", "Distribuir: arrastrar, franja, estantes, a mano."],
      ("planograma-GON-13-B", "Planograma · GON-13 cara B", "No coincide: «Granos va a la derecha de Arroz»."), ("distribucion-GON-03", "Distribuir GON-03 cara A", "Tres participaciones sin ubicar todavía.")),
@@ -83,7 +83,7 @@ def tablero_verificacion():
         ("Fichas con su espacio", r["fichas"]), ("Filas de la bandeja contra SQL", r["otros"])]], ["Comprobación", "Resultado", ""])
     fn = ver["funciones"]
     secs = tabla([[s["seccion"], s["funciones"], "✓" if s["en_la_version_final"] else "—"] for s in ver["secciones"]], ["Sección del inventario", "Funciones", "Con pantalla"])
-    t = tabla([[f'{tam["combinaciones"]} combinaciones (93 páginas × 12 tamaños)', f'scroll horizontal {tam["desborde"]} · errores {tam["errores"]} · textos que se pisan {tam["solapes"]} · controles < 40 px {tam["controles_bajos"]} · ventanas que no caben {tam["modal"]}'],
+    t = tabla([[f'{tam["combinaciones"]} combinaciones ({len(json.load(open(FIN / "salida/paginas.json")))} páginas × 12 tamaños)', f'scroll horizontal {tam["desborde"]} · errores {tam["errores"]} · textos que se pisan {tam["solapes"]} · controles < 40 px {tam["controles_bajos"]} · ventanas que no caben {tam["modal"]}'],
                ["Letra mínima fuera de dibujos", f'{tam["letra_min"]} px'],
                ["Rótulos de dibujos (plano, 3D, caras) bajo 10 px", f'{len(tam["rotulos_chicos"])} combinaciones: el dibujo entero se achica; en la app los rótulos tienen que contra-escalar']], ["Prueba de tamaños", "Resultado"])
     cuerpo = (cabecera("Qué se verificó", "Todo con scripts que quedan en el repo (docs/maquetas/ux-2026-10/final/).",

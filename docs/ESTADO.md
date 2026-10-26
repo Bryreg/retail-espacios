@@ -415,15 +415,16 @@ el flujo de siempre.
 **La versión final** está en `docs/maquetas/ux-2026-10/final/`. Junta lo mejor de cada
 versión: las capas y los 4 módulos, la disponibilidad por fechas, Indicadores combinado, el
 estilo «como la foto» con el plano aireado, y el responsive de un solo diseño que escala
-(`generadores/recabra.css`). Es un prototipo de 93 páginas enlazadas sin un dato inventado:
+(`generadores/recabra.css`). Es un prototipo de 96 páginas enlazadas sin un dato inventado:
 sale de una base cargada SÓLO por la API real (`final/scripts/sembrar.py`), y
 `final/scripts/verificar.py` comprueba cada cifra contra la base por SQL (43 de 43 cifras,
-501 de 501 campos, 0 enlaces rotos, las 47 secciones de `pantallas.md`, 1116 combinaciones
+504 de 504 campos, 0 enlaces rotos, las 47 secciones de `pantallas.md`, 1152 combinaciones
 de tamaño). La verificación encontró cinco cosas para corregir al implementar, en su README:
 `dashboard/kpis` suma el total como si fuera el mes, `valor_mensual` de
 `participaciones/cara` es el total, faltan títulos de planogramas en `bitacora/acciones`, no
 hay endpoint de historial de contratos, y la verificación del montaje de un contrato no se
-guarda.
+guarda. El editor del plano 2D es una mesa de trabajo: el plano ocupa del 57 % al 86 % de la
+pantalla (antes, alrededor del 30 %).
 
 ### Próximas fases de la distribución (2026-10-25; la 2, la 3 y la 4 ya están)
 
