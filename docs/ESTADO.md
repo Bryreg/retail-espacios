@@ -402,6 +402,16 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ## Dónde retomar
 
+### Rediseño de la experiencia (UX): dibujos para aprobar (2026-10-26)
+
+Nada implementado. Están en `docs/maquetas/ux-2026-10/`, y el documento principal es
+`pantallas.md`: cada pantalla con su imagen, su estado (nueva · cambia · existe) y sus
+funciones con casillas. Propone cuatro módulos (Contratos · Indicadores · Montajes · Plano de
+la sede) bajo una barra común con buscador, Pendientes y Ajustes, y la venta empieza por las
+fechas. Antes de implementar faltan las decisiones de su README (Indicadores combinado, metas,
+nombres del menú, por dónde empezar). La implementación va en ramas nuevas desde `main`, con
+el flujo de siempre.
+
 ### Próximas fases de la distribución (2026-10-25; la 2, la 3 y la 4 ya están)
 
 Lo que sigue a *Distribuir con piezas*. Nada de esto está hecho; queda escrito para no
