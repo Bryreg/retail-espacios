@@ -591,9 +591,10 @@ def test_el_409_de_vender_no_compara_con_la_tarifa_en_ninguna_parte(client, admi
         todo = json.dumps(r, ensure_ascii=False).lower()
         for prohibido in ("tarifa", "referencia", "por debajo", "2.000.000", "2000000"):
             assert prohibido not in todo, (prohibido, todo)
-    # La planilla de administración sigue comparando (no es Vender).
+    # La planilla de administración sigue comparando (no es Vender). Sólo
+    # enteros y al mes desde el 2026-10-26: la nevera entera, a $ 1 al mes.
     r = client.post("/api/leases/bulk/validar", headers=admin, json={"sede": "NAVE", "filas": [{
-        "fila": 2, "espacio": "NEV-03-PU2", "sede": "NAVE", "proveedor": "Colombina", "valor": 1,
+        "fila": 2, "espacio": "NEV-03", "sede": "NAVE", "proveedor": "Colombina", "valor": 1,
         "desde": D(2026, 11, 1), "hasta": D(2026, 11, 30)}]})
     fila = r.json()["filas"][0]
     assert any("por debajo de la tarifa" in m for m in fila["mensajes"]), fila

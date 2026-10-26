@@ -14,6 +14,7 @@ sin ``partes.bahias`` —todas las de los planos de antes— no ofrece nada, com
 siempre. Es la maquinaria de los pasos 1 y 2 (``test_partes_venta.py`` y
 ``test_partes_tramos.py``): acá se prueba lo que cambia con las piezas.
 """
+from tests import sin_planilla  # las partes: la revisión común, sin las reglas de la planilla
 from datetime import timedelta
 
 import pytest
@@ -62,13 +63,13 @@ def _fila(espacio, desde=1, hasta=30, proveedor="Colombina", valor=180_000, fila
 
 
 def _validar(client, admin, *filas):
-    r = client.post("/api/leases/bulk/validar", headers=admin, json={"sede": "NAVE", "filas": list(filas)})
+    r = sin_planilla.post("/api/leases/bulk/validar", json={"sede": "NAVE", "filas": list(filas)})
     assert r.status_code == 200, r.text
     return r.json()["filas"]
 
 
 def _confirmar(client, admin, *filas):
-    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": list(filas)})
+    r = sin_planilla.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": list(filas)})
     assert r.status_code == 200, r.text
     return r.json()["filas"]
 

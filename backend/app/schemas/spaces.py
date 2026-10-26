@@ -73,6 +73,9 @@ class AvisosContrato(BaseModel):
     #: tengan su planometría (y, en un porcentaje, su zona confirmada), una vez
     #: (``services/montajes_pendientes.py``). Al guardar, son todos.
     montaje_pendiente: list[int] = []
+    #: Los proveedores de lo guardado que no tienen correo: a ellos no les llega
+    #: la constancia, y la pantalla lo dice (planilla, 2026-10-26).
+    proveedor_sin_correo: list[str] = []
 
 
 class LeaseOut(LeaseBase):

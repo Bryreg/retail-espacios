@@ -58,6 +58,8 @@ export interface AvisosContrato {
    *  planometría (que se carga en Supervisar) o, en un porcentaje de cara, la
    *  distribución confirmada (`docs/rediseno/vender-api.md` §4). */
   montaje_pendiente?: number[];
+  /** Los proveedores de lo guardado sin correo: no les llega la constancia. */
+  proveedor_sin_correo?: string[];
 }
 
 export interface Space {
