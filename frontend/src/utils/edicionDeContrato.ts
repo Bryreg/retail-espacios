@@ -228,6 +228,26 @@ export function queCambia(antes: FotoDelContrato, ahora: FotoDelContrato): {
   return { cambios, reemplazo };
 }
 
+/** El número que se escribió: el de «al mes» si se escribió por mes; si no,
+ *  el total (un contrato sin forma guardada, de antes de Vender, se lee como
+ *  total, que es como se guardó). */
+function escrito(f: Pick<FotoDelContrato, "valor" | "modoPrecio" | "valorTecleado">): number {
+  return f.modoPrecio === "mensual" && f.valorTecleado ? f.valorTecleado : f.valor;
+}
+
+/** ¿Lo ÚNICO que cambia es cómo se lee el precio, con el mismo número
+ *  escrito? («$ 800.000» de un contrato de antes → «$ 800.000 al mes × 6»).
+ *  Entonces no se reenvía a los correos (decisión del dueño, 2026-10-25): para
+ *  el proveedor no cambió nada. La gemela del servidor es
+ *  `solo_la_forma_del_precio` (`services/editar_contrato.py`). */
+export function soloLaFormaDelPrecio(antes: FotoDelContrato, ahora: FotoDelContrato): boolean {
+  const { cambios, reemplazo } = queCambia(antes, ahora);
+  if (reemplazo || cambios.some((c) => c.campo !== "Cobro")) return false;
+  if (antes.cobro || ahora.cobro || antes.pb !== ahora.pb) return false;
+  if ((antes.modoPrecio ?? "total") === (ahora.modoPrecio ?? "total")) return false;
+  return centavosDe(escrito(antes)) === centavosDe(escrito(ahora));
+}
+
 /** «Qué cambia» en UNA línea del pie: «Cobro» (un cambio, se nombra) o «4
  *  cambios»; la lista entera va en el diálogo y en el desplegable. */
 export function resumenDeCambios(cambios: CambioDelContrato[]): string {

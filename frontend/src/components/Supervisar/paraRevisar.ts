@@ -40,7 +40,9 @@ export type SeccionDeRevisar =
   | "contrato_sin_mueble" | "solo_en_el_plano" | "ocupado_sin_contrato" | "reservado_a_mano" | "participacion_sin_mueble"
   | "sin_termino" | "distribucion_con_problemas" | "distribucion_para_revisar" | "bajo_tarifa" | "montajes_viejos"
   // Fase 4 de la distribución (2026-10-25): la supervisión de los planogramas.
-  | "planograma_por_revisar" | "planograma_no_coincide" | "planograma_no_se_pudo" | "planograma_sin_montar";
+  | "planograma_por_revisar" | "planograma_no_coincide" | "planograma_no_se_pudo" | "planograma_sin_montar"
+  // 2026-10-25: los contratos de antes de Vender que no dicen si su valor es al mes.
+  | "precio_sin_forma";
 
 /** Con cuántos días o menos para empezar algo que falta preparar (la
  *  distribución, la planometría) pasa a «Hoy»: es el montaje de alguien que ya
@@ -84,6 +86,9 @@ export const DONDE_VA: Record<SeccionDeRevisar, { grupo: GrupoDeRevision } | { h
   planograma_no_coincide: { grupo: "hoy" },
   planograma_no_se_pudo: { grupo: "hoy" },
   planograma_sin_montar: { grupo: "hoy" },
+  // Un dato que no cuadra: cómo se lee el valor de un contrato viejo. UNA tarea
+  // aunque sean cien contratos (cuenta uno en la pastilla).
+  precio_sin_forma: { grupo: "corregir" },
 };
 
 /** El título de cada sección, en el grupo donde se dice. */
@@ -112,6 +117,7 @@ export function tituloDeSeccion(s: SeccionDeRevisar, grupo: GrupoDeRevision): st
     case "planograma_no_coincide": return "Planograma que no coincide";
     case "planograma_no_se_pudo": return "No se pudo montar el planograma";
     case "planograma_sin_montar": return "Planograma sin montar";
+    case "precio_sin_forma": return "Contratos cargados antes: ¿el valor es al mes?";
   }
 }
 
