@@ -1281,6 +1281,8 @@ const DEL_DIBUJO = [
   ["Planograma que no coincide", "planograma_no_coincide", ["hoy"]],
   ["No se pudo montar el planograma", "planograma_no_se_pudo", ["hoy"]],
   ["Planograma sin montar", "planograma_sin_montar", ["hoy"]],
+  // 2026-10-25: los contratos de antes de Vender, ¿el valor es al mes? Corregir.
+  ["Contratos cargados antes: ¿el valor es al mes?", "precio_sin_forma", ["corregir"]],
 ];
 
 prueba("cada sección del dibujo está en «Para revisar», en su grupo, y cada aviso en uno solo (ejecutado)", () => {
@@ -1888,7 +1890,13 @@ prueba("Vender en edición: manda `edita` con el leaseId y `esperado`, sin la no
   assert.match(m, /\{edita \? \(c\.cambioAjeno \? \(\s*<button className="btn-texto" type="button" onClick=\{onSalirDeEdicion \?\? onCancelar\} data-volver-tras-cambio>\s*<ArrowLeft \{\.\.\.ICONO\} \/> Volver a Supervisar/,
     "tras un 409 `contrato_cambio` no se ofrece volver a Supervisar");
   assert.match(m, /<Send \{\.\.\.ICONO\} \/> Guardar cambios y reenviar/);
-  assert.match(m, /onClick=\{edita \? \(\) => setConfirmando\(true\) : c\.guardar\}/, "se guarda sin confirmar a quiénes se reenvía");
+  // 2026-10-25: si lo ÚNICO que cambia es cómo se lee el precio (el mismo
+  // número, «Total → Al mes»), no se reenvía y se guarda sin el diálogo
+  // (decisión del dueño). `soloForma` sale de la gemela del servidor
+  // (`soloLaFormaDelPrecio`, `probar-precio`); cualquier otra edición confirma.
+  assert.match(m, /onClick=\{edita && !c\.soloForma \? \(\) => setConfirmando\(true\) : c\.guardar\}/, "se guarda sin confirmar a quiénes se reenvía");
+  assert.match(fuenteDe("components/Contrato/Contrato.tsx"),
+    /const soloForma = !!edita && !!fotoAhora && soloLaFormaDelPrecio\(edita\.antes, fotoAhora\);/, "«sólo la forma» sale de la gemela");
   assert.match(m, /<span>\{notaDelReemplazo\(edita, c\.nuevos\)\}<\/span>/);
   // La nota interna no se ofrece editando.
   assert.match(m, /\{!edita && \(\s*<div className="campo">\s*<span className="rotulo">Nota<\/span>/);

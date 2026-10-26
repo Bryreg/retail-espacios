@@ -34,6 +34,9 @@ export const SOLO_ADMINISTRACION = [
   "reservasSinConfirmar.vivas", "kpis.belowReference",
   // `pendientesDelPlano`: lo que sólo vive en el plano (importables e incompletos).
   "importacion",
+  // Los contratos de antes de Vender sin forma de precio (2026-10-25): plata y
+  // proveedores. Cuenta UNO (`unoSiHay`), aunque sean muchos.
+  "precioSinForma.unoSiHay",
 ];
 
 /** Las fuentes que lee un trozo de código: `for (const x of FUENTE)` y

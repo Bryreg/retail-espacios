@@ -89,6 +89,9 @@ TABLAS_DEL_CLIENTE = frozenset({
     # «Editar contrato» (2026-10-22): el contrato que se cerró porque otro lo
     # reemplazó. Cuelga de `space_leases`, que viaja con ella.
     "contratos_reemplazados",
+    # Un contrato de antes de Vender al que se le dijo cómo se lee su valor
+    # (al mes o total), con lo de antes para deshacerlo. Cuelga de `space_leases`.
+    "precios_corregidos",
     # Los planogramas con destinos (`models/planogramas.py`): los destinos de
     # cada sede, el planograma de cada cara, sus versiones publicadas, sus
     # piezas y quién publica. Ninguna se apunta a sí misma.

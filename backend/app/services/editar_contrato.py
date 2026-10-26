@@ -476,6 +476,41 @@ class Editado:
     contratos: list[dict] = field(default_factory=list)
     participaciones: list[dict] = field(default_factory=list)
     reemplazado_por: list[int] = field(default_factory=list)
+    #: Sólo cambió CÓMO SE LEE el precio («Total» → «Al mes», o al revés) con
+    #: el mismo número escrito: no se reenvía a los correos (decisión del
+    #: dueño, 2026-10-25), porque para el proveedor no cambió nada.
+    sin_reenvio: bool = False
+
+
+def _escrito(f: Foto) -> float:
+    """El número que se escribió: el de «al mes» si se escribió por mes; si
+    no, el total. Un contrato sin forma guardada (cargado antes de Vender) se
+    lee como total, que es como se guardó."""
+    c = f.condicion
+    if c is not None and c.modo_precio == "mensual" and c.valor_tecleado:
+        return float(c.valor_tecleado)
+    return float(f.valor or 0)
+
+
+def _modo(f: Foto) -> str:
+    return f.condicion.modo_precio if f.condicion is not None and f.condicion.modo_precio else "total"
+
+
+def solo_la_forma_del_precio(antes: Foto, despues: list[Foto]) -> bool:
+    """¿Lo ÚNICO que cambió es cómo se lee el precio, con el mismo número
+    escrito? (el contrato de antes de Vender que era «al mes»: $ 800.000 →
+    «$ 800.000 al mes × 12»). La gemela del navegador es
+    ``soloLaFormaDelPrecio`` (``utils/edicionDeContrato.ts``)."""
+    if len(despues) != 1:
+        return False
+    d = despues[0]
+    if any(cambio for campo, _a, _b, cambio in cambios(antes, despues) if campo != "Cobro"):
+        return False
+    if antes.cobro is not None or d.cobro is not None or antes.pb != d.pb:
+        return False
+    if _modo(antes) == _modo(d):
+        return False
+    return al_centavo(_escrito(antes)) == al_centavo(_escrito(d))
 
 
 def _revisar(db: Session, p: dict, lease: SpaceLease, termino: Optional[Participacion]):
@@ -599,8 +634,10 @@ def _corregir(db: Session, p: dict, lease: SpaceLease, termino: Optional[Partici
                      f"{despues.proveedor} · {despues.desde.isoformat()}→{despues.hasta.isoformat()}"),
             antes=_historial_sin_plata(antes), despues=_historial_sin_plata(despues),
         )
-    hecho = Editado(modo="en_el_lugar", lease_id=lease.id, antes=antes, despues=[despues])
-    hecho.bitacora.append(("contrato.editado", "contrato", lease.id, _detalle(antes, [despues])))
+    hecho = Editado(modo="en_el_lugar", lease_id=lease.id, antes=antes, despues=[despues],
+                    sin_reenvio=solo_la_forma_del_precio(antes, [despues]))
+    detalle = _detalle(antes, [despues]) + (" · sólo cómo se lee el precio: sin reenvío" if hecho.sin_reenvio else "")
+    hecho.bitacora.append(("contrato.editado", "contrato", lease.id, detalle))
     if termino is not None:
         hecho.participaciones.append({"cara": despues.cara, "espacio": despues.espacio, "termino_id": termino.id,
                                       "tipo": "contrato", "lease_id": lease.id, "reserva_id": None})
