@@ -511,6 +511,26 @@ def _valor_valido(valor) -> bool:
     return isinstance(valor, (int, float)) and math.isfinite(valor) and valor >= 0
 
 
+def _total_y_al_mes(e: dict, desde, hasta) -> tuple[float, Optional[float]]:
+    """``(total, lo_de_cada_mes)`` del valor del cuerpo. Con ``al_mes`` (el
+    formulario de Distribución, que pide «Valor al mes»: 2026-10-26), el total
+    es ese valor × los meses del contrato, al peso, como «Al mes» en Vender; si
+    no, el valor ya es el total y no hay nada que anotar."""
+    from app.services.meses import al_peso, meses_entre
+
+    valor = e.get("valor_mensual")
+    if e.get("al_mes") and valor:
+        return al_peso(float(valor) * meses_entre(desde, hasta)), float(valor)
+    return valor, None
+
+
+def _anotar_al_mes(db: Session, lease, al_mes: Optional[float]) -> None:
+    """Cómo se escribió el precio: «al mes». Sin esto el contrato quedaba sin
+    forma y se leía como el total (los contratos de antes de Vender)."""
+    if lease is not None and al_mes:
+        db.add(CondicionesDeContrato(lease_id=lease.id, modo_precio="mensual", valor_tecleado=al_mes))
+
+
 def validar_tipo(tipo: str, caduca, valor, *, admite_precio: bool = False) -> None:
     """Lo que cada tipo lleva y lo que no (§5.3): la reserva caduca y no tiene
     valor; el contrato tiene valor (≥ 0) y no caduca.
@@ -523,13 +543,13 @@ def validar_tipo(tipo: str, caduca, valor, *, admite_precio: bool = False) -> No
         if caduca is not None:
             raise _error(422, "caduca", "Un contrato no caduca: la caducidad es de la reserva provisional.")
         if valor is None or not _valor_valido(valor):
-            raise _error(422, "valor_mensual", "Escribí el valor mensual del contrato.")
+            raise _error(422, "valor_mensual", "Escribí el valor del contrato.")
     elif admite_precio:
         if valor is not None and not _valor_valido(valor):
             raise _error(422, "valor_mensual", "El precio acordado de la reserva tiene que ser un número de 0 o más.")
     elif valor is not None:
         raise _error(422, "valor_mensual",
-                     "Una reserva provisional no lleva valor mensual: se escribe al confirmarla como contrato.")
+                     "Una reserva provisional no lleva valor: se escribe al confirmarla como contrato.")
 
 
 def _terminos_despues(por_s: dict, tipo: str, t: Optional[dict], nuevo: dict) -> dict:
@@ -800,8 +820,10 @@ def escribir_alta(db: Session, fresca: Cara, datos: Datos, e: dict, actor: str,
     lease = None
     ahora = _ahora()
     if tipo == "contrato":
-        lease = escribir_contrato(db, pc, supplier, marca, e["desde"], e["hasta"], e["valor_mensual"],
+        total, al_mes = _total_y_al_mes(e, e["desde"], e["hasta"])
+        lease = escribir_contrato(db, pc, supplier, marca, e["desde"], e["hasta"], total,
                                   e.get("notas"), cara_space_id=cara_space.id)
+        _anotar_al_mes(db, lease, al_mes)
         termino = Participacion(space_id=pc.id, cara_space_id=cara_space.id, numero=n, estado="contrato",
                                 puntos_basicos=e["puntos_basicos"], lease_id=lease.id, version=1,
                                 creada_en=ahora, creada_por=actor, actualizada_en=ahora, actualizada_por=actor)
@@ -943,8 +965,12 @@ def confirmar_reserva(db: Session, participacion_id: int, e: dict, presentes: se
         supplier.email = correo  # completa el que falta, nunca pisa (como la planilla)
     pc = datos.pcs[t.space_id]
     notas = e.get("notas") if "notas" in presentes else t.notas
+    al_mes = None
+    if e.get("valor_mensual") is not None:
+        valor, al_mes = _total_y_al_mes(e, desde, hasta)
     lease = escribir_contrato(db, pc, supplier, antes["marca"], desde, hasta, valor, notas,
                               cara_space_id=t.cara_space_id)
+    _anotar_al_mes(db, lease, al_mes)
     if precio is not None:
         if por_ventas:
             db.add(CobroPorVenta(lease_id=lease.id, porcentaje=precio.cobro_porcentaje, corte=precio.cobro_corte,
@@ -1026,8 +1052,10 @@ def escribir_renovacion(db: Session, cara: Cara, datos: Datos, t: Participacion,
     ahora = _ahora()
     lease = None
     if tipo == "contrato":
-        lease = escribir_contrato(db, pc, supplier, marca, e["desde"], e["hasta"], e["valor_mensual"],
+        total, al_mes = _total_y_al_mes(e, e["desde"], e["hasta"])
+        lease = escribir_contrato(db, pc, supplier, marca, e["desde"], e["hasta"], total,
                                   e.get("notas"), cara_space_id=t.cara_space_id)
+        _anotar_al_mes(db, lease, al_mes)
         nuevo = Participacion(space_id=t.space_id, cara_space_id=t.cara_space_id, numero=t.numero,
                               estado="contrato", puntos_basicos=renovado["pb"], lease_id=lease.id, renueva_a=t.id,
                               version=1, creada_en=ahora, creada_por=actor, actualizada_en=ahora,

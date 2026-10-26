@@ -239,8 +239,10 @@ export interface AltaIn {
   hasta: string;
   /** Obligatorio en reserva; prohibido en contrato. */
   caduca: string | null;
-  /** Obligatorio (≥ 0) en contrato; prohibido en reserva. */
+  /** Obligatorio (≥ 0) en contrato; prohibido en reserva. Con `al_mes`, lo
+   *  de CADA MES (el servidor saca el total × los meses); sin él, el total. */
   valor_mensual: number | null;
+  al_mes?: boolean;
   notas: string | null;
 }
 /** 6 · `PATCH /participaciones/{id}` (sólo una reserva viva). */
@@ -257,6 +259,7 @@ export interface CambioDeReservaIn {
 export interface ConfirmarReservaIn {
   version: number;
   valor_mensual: number;
+  al_mes?: boolean;
   correo?: string | null;
   notas?: string | null;
   puntos_basicos?: number;
@@ -271,6 +274,7 @@ export interface RenovarIn {
   hasta: string;
   caduca?: string | null;
   valor_mensual?: number | null;
+  al_mes?: boolean;
   correo?: string | null;
   notas?: string | null;
 }

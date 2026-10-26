@@ -47,3 +47,20 @@ def meses_entre(desde: date, hasta: date) -> float:
         completos -= 1
     sobran = (fin - _sumar_meses(desde, completos)).days
     return completos + sobran / DIAS_DEL_MES
+
+
+def al_mes_de(total: float, desde: date, hasta: date) -> float:
+    """El total de un contrato repartido en SUS meses. Sin plazo que contar se
+    queda con el total: no se inventa uno. Es la cuenta de ``alMesDe``
+    (``utils/meses.ts``, el «Al mes» de Supervisar) SIN redondear al peso: la
+    usa la consola de plataforma (2026-10-26), que suma y concilia al centavo y
+    sumaba el total de cada contrato como si fuera lo de un mes."""
+    total = float(total or 0)
+    m = meses_entre(desde, hasta)
+    return total / m if m > 0 and total > 0 else total
+
+
+def al_peso(v: float) -> float:
+    """Al peso, con los medios hacia arriba: el ``Math.round`` de Vender para
+    un valor positivo (``redondear`` en ``utils/meses.ts``)."""
+    return float(int(float(v) + 0.5)) if v and v > 0 else float(v or 0)

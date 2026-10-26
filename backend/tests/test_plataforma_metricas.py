@@ -16,6 +16,7 @@ Los números sembrados están elegidos para que el promedio PONDERADO del
 consolidado (Σ canones / Σ contratos) y el promedio de promedios den distinto:
 si alguien cambiara la cuenta por la equivocada, el test lo dice.
 """
+from tests.sembrado import total_del_plazo
 import json
 from datetime import date
 from types import SimpleNamespace
@@ -208,7 +209,7 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 supplier_id=proveedores[proveedor].id,
                 start_date=date.fromisoformat(ini),
                 end_date=date.fromisoformat(fin),
-                monthly_rent=canon,
+                monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
             ))
         db.commit()

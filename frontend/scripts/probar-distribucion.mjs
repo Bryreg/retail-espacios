@@ -1386,7 +1386,7 @@ await prueba("el formulario frena antes de mandar lo que el servidor rechazaría
   assert.equal(F.problemaDeLosCampos("alta", { ...base, porcentaje: "120" }, hoy), "Escribí un porcentaje entre 0,01 y 100.");
   assert.equal(F.problemaDeLosCampos("alta", { ...base, proveedor: "  " }, hoy), "Escribí el proveedor.");
   assert.equal(F.problemaDeLosCampos("alta", { ...base, desde: "2027-01-01" }, hoy), "La fecha de inicio no puede ser posterior a la de fin.");
-  assert.match(F.problemaDeLosCampos("alta", { ...base, valor: "" }, hoy), /^Escribí el valor mensual del contrato/);
+  assert.match(F.problemaDeLosCampos("alta", { ...base, valor: "" }, hoy), /^Escribí el valor de cada mes del contrato/);
   assert.equal(F.problemaDeLosCampos("alta", { ...base, valor: "0" }, hoy), null, "un contrato de $ 0 es válido");
   const reserva = { ...base, tipo: "reserva", valor: "" };
   assert.equal(F.problemaDeLosCampos("alta", reserva, hoy), null);
@@ -1396,7 +1396,7 @@ await prueba("el formulario frena antes de mandar lo que el servidor rechazaría
     "Una reserva provisional tiene que terminar hoy o después.");
   // Renovar no pide proveedor (es el de la participación); confirmar pide el valor.
   assert.equal(F.problemaDeLosCampos("renovar", { ...base, proveedor: "" }, hoy), null);
-  assert.match(F.problemaDeLosCampos("confirmar", { ...reserva, valor: "" }, hoy), /^Escribí el valor mensual/);
+  assert.match(F.problemaDeLosCampos("confirmar", { ...reserva, valor: "" }, hoy), /^Escribí el valor de cada mes/);
   assert.equal(F.valorDeTexto("900.000"), 900000);
   assert.equal(F.valorDeTexto("$ 1.250.000"), 1250000);
   assert.equal(F.valorDeTexto("900000,5"), 900000.5);

@@ -52,7 +52,7 @@ log = logging.getLogger("recabra.traspaso")
 TABLAS_DEL_REGISTRO = frozenset({
     "clientes", "usuarios", "membresias", "oauth_attempts", "invitaciones",
     "consentimientos", "estados_cliente", "alta_attempts", "fundaciones",
-    "bitacora_plataforma", "snapshot_metricas", "solicitudes_supresion",
+    "bitacora_plataforma", "snapshot_metricas", "ajustes_de_snapshot", "solicitudes_supresion",
     "export_attempts",
     # El cobro de la suscripción (C1): lo que RECABRA le cobra a cada cliente.
     # Es de la plataforma, no del supermercado: ni se copia ni se vacía. Y los

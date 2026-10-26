@@ -29,7 +29,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin, require_auth
@@ -73,6 +73,9 @@ class AltaIn(_Estricto):
     hasta: date
     caduca: Optional[date] = None
     valor_mensual: Optional[float] = None
+    #: `valor_mensual` es lo de CADA MES y el total sale × los meses (el
+    #: formulario de Distribución, 2026-10-26). Sin esto, es el total.
+    al_mes: StrictBool = False
     notas: Optional[str] = Field(default=None, max_length=2000)
 
     _proveedor = field_validator("proveedor")(_texto_lleno)
@@ -91,6 +94,9 @@ class EditarIn(_Estricto):
 class ConfirmarIn(_Estricto):
     version: StrictInt
     valor_mensual: Optional[float] = None
+    #: `valor_mensual` es lo de CADA MES y el total sale × los meses (el
+    #: formulario de Distribución, 2026-10-26). Sin esto, es el total.
+    al_mes: StrictBool = False
     correo: Optional[str] = Field(default=None, max_length=254)
     notas: Optional[str] = Field(default=None, max_length=2000)
     puntos_basicos: Optional[StrictInt] = Field(default=None, ge=1, le=10000)
@@ -109,6 +115,9 @@ class RenovarIn(_Estricto):
     hasta: date
     caduca: Optional[date] = None
     valor_mensual: Optional[float] = None
+    #: `valor_mensual` es lo de CADA MES y el total sale × los meses (el
+    #: formulario de Distribución, 2026-10-26). Sin esto, es el total.
+    al_mes: StrictBool = False
     correo: Optional[str] = Field(default=None, max_length=254)
     notas: Optional[str] = Field(default=None, max_length=2000)
 
