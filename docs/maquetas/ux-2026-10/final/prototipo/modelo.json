@@ -1,0 +1,5613 @@
+{
+ "hoy": "2026-10-26",
+ "sede": "CENTRO",
+ "muebles": [
+  {
+   "id": "f-GON-12",
+   "code": "GON-12",
+   "sede": "CENTRO",
+   "type": "gondola",
+   "label": "Góndola de la casa",
+   "cx": 11.8,
+   "cz": 2.7,
+   "rotY": 0.0,
+   "w": 11.6,
+   "d": 1.2,
+   "h": 1.8,
+   "gondolaType": "double",
+   "rentable": false,
+   "entrepanos": 5
+  },
+  {
+   "id": "f-GON-13",
+   "code": "GON-13",
+   "sede": "CENTRO",
+   "type": "gondola",
+   "label": "Góndola de la casa",
+   "cx": 28.2,
+   "cz": 2.7,
+   "rotY": 0.0,
+   "w": 11.6,
+   "d": 1.2,
+   "h": 1.8,
+   "gondolaType": "double",
+   "rentable": false,
+   "entrepanos": 4
+  },
+  {
+   "id": "f-GON-01",
+   "code": "GON-01",
+   "sede": "CENTRO",
+   "type": "gondola",
+   "label": "Góndola doble",
+   "cx": 9.2,
+   "cz": 10.32,
+   "rotY": 1.5707963267948966,
+   "w": 7.2,
+   "d": 1.6,
+   "h": 1.8,
+   "gondolaType": "double",
+   "partes": {
+    "division": "participacion"
+   },
+   "color": "#818cf8"
+  },
+  {
+   "id": "f-GON-02",
+   "code": "GON-02",
+   "sede": "CENTRO",
+   "type": "gondola",
+   "label": "Góndola doble",
+   "cx": 15.6,
+   "cz": 10.32,
+   "rotY": 1.5707963267948966,
+   "w": 7.2,
+   "d": 1.6,
+   "h": 1.8,
+   "gondolaType": "double",
+   "partes": {
+    "division": "participacion"
+   },
+   "color": "#818cf8"
+  },
+  {
+   "id": "f-GON-03",
+   "code": "GON-03",
+   "sede": "CENTRO",
+   "type": "gondola",
+   "label": "Góndola doble",
+   "cx": 22.0,
+   "cz": 10.32,
+   "rotY": 1.5707963267948966,
+   "w": 7.2,
+   "d": 1.6,
+   "h": 1.8,
+   "gondolaType": "double",
+   "partes": {
+    "division": "participacion"
+   },
+   "color": "#818cf8"
+  },
+  {
+   "id": "f-GON-04",
+   "code": "GON-04",
+   "sede": "CENTRO",
+   "type": "gondola",
+   "label": "Góndola doble",
+   "cx": 28.4,
+   "cz": 10.32,
+   "rotY": 1.5707963267948966,
+   "w": 7.2,
+   "d": 1.6,
+   "h": 1.8,
+   "gondolaType": "double",
+   "partes": {
+    "division": "participacion"
+   },
+   "color": "#818cf8"
+  },
+  {
+   "id": "f-PUN-01",
+   "code": "PUN-01",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 9.2,
+   "cz": 5.96,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8
+  },
+  {
+   "id": "f-PUN-02",
+   "code": "PUN-02",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 9.2,
+   "cz": 14.68,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8,
+   "entrepanos": 4,
+   "partes": {
+    "division": "entrepanos"
+   }
+  },
+  {
+   "id": "f-PUN-03",
+   "code": "PUN-03",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 15.6,
+   "cz": 5.96,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8,
+   "entrepanos": 5,
+   "partes": {
+    "division": "entrepanos"
+   }
+  },
+  {
+   "id": "f-PUN-04",
+   "code": "PUN-04",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 15.6,
+   "cz": 14.68,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8
+  },
+  {
+   "id": "f-PUN-05",
+   "code": "PUN-05",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 22.0,
+   "cz": 5.96,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8
+  },
+  {
+   "id": "f-PUN-06",
+   "code": "PUN-06",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 22.0,
+   "cz": 14.68,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8
+  },
+  {
+   "id": "f-PUN-07",
+   "code": "PUN-07",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 28.4,
+   "cz": 5.96,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8
+  },
+  {
+   "id": "f-PUN-08",
+   "code": "PUN-08",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 28.4,
+   "cz": 14.68,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8
+  },
+  {
+   "id": "f-PUN-09",
+   "code": "PUN-09",
+   "sede": "CENTRO",
+   "type": "punta",
+   "label": "Punta de góndola",
+   "cx": 33.3,
+   "cz": 18.1,
+   "rotY": 0.0,
+   "w": 1.6,
+   "d": 1.0,
+   "h": 1.8
+  },
+  {
+   "id": "f-NEV-01",
+   "code": "NEV-01",
+   "sede": "CENTRO",
+   "type": "nevera_puertas",
+   "label": "Nevera de puertas",
+   "cx": 37.5,
+   "cz": 10.8,
+   "rotY": 1.5707963267948966,
+   "w": 10.4,
+   "d": 1.3,
+   "h": 2.1,
+   "partes": {
+    "division": "participacion"
+   }
+  }
+ ],
+ "unidades": [
+  {
+   "codigo": "GON-01",
+   "mueble": "GON-01",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 0.6,
+   "disponible_pb": 4000,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-01-PC1",
+     "numero": 1,
+     "proveedor_id": 6,
+     "proveedor": "Lácteos Andinos",
+     "marca": "Yogur Andino",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 6000,
+     "desde": "2026-08-01",
+     "hasta": "2027-01-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 6.541185103208062
+    }
+   ],
+   "estado": "parcial",
+   "hasta": "2027-01-31"
+  },
+  {
+   "codigo": "GON-01-B",
+   "mueble": "GON-01",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 0.4,
+   "disponible_pb": 6000,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-01-B-PC1",
+     "numero": 1,
+     "proveedor_id": 2,
+     "proveedor": "Galletas Sol",
+     "marca": "Galletas Sol Clásicas",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 4000,
+     "desde": "2026-09-01",
+     "hasta": "2027-02-28",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 4.3607900688053745
+    }
+   ],
+   "estado": "parcial",
+   "hasta": "2027-02-28"
+  },
+  {
+   "codigo": "GON-02",
+   "mueble": "GON-02",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 0.5,
+   "disponible_pb": 5000,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-02-PC1",
+     "numero": 1,
+     "proveedor_id": 7,
+     "proveedor": "Aseo Total",
+     "marca": "Aseo Total Hogar",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 5000,
+     "desde": "2026-10-01",
+     "hasta": "2027-03-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 5.450987586006718
+    }
+   ],
+   "estado": "parcial",
+   "hasta": "2027-03-31"
+  },
+  {
+   "codigo": "GON-02-B",
+   "mueble": "GON-02",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 0.0,
+   "disponible_pb": 7000,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-02-B-PC1",
+     "numero": 1,
+     "proveedor_id": 4,
+     "proveedor": "Snacks Norte",
+     "marca": "Papitas Norte",
+     "cuenta_el_dia": false,
+     "estado_visible": "reserva",
+     "puntos_basicos": 3000,
+     "desde": "2026-11-01",
+     "hasta": "2027-04-30",
+     "caduca": "2026-11-05",
+     "dibujado_pb": 0,
+     "m2_contratados": 3.270592551604031
+    }
+   ],
+   "estado": "reservado",
+   "hasta": null
+  },
+  {
+   "codigo": "GON-03",
+   "mueble": "GON-03",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 0.8,
+   "disponible_pb": 2000,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-03-PC1",
+     "numero": 1,
+     "proveedor_id": 6,
+     "proveedor": "Lácteos Andinos",
+     "marca": "Yogur Andino",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 2500,
+     "desde": "2026-10-01",
+     "hasta": "2027-03-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 2.725493793003359
+    },
+    {
+     "codigo": "CENTRO-GON-03-PC2",
+     "numero": 2,
+     "proveedor_id": 4,
+     "proveedor": "Snacks Norte",
+     "marca": "Papitas Norte",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 3000,
+     "desde": "2026-09-01",
+     "hasta": "2027-02-28",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 3.270592551604031
+    },
+    {
+     "codigo": "CENTRO-GON-03-PC3",
+     "numero": 3,
+     "proveedor_id": 7,
+     "proveedor": "Aseo Total",
+     "marca": "Aseo Total Hogar",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 2500,
+     "desde": "2026-07-01",
+     "hasta": "2026-12-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 2.725493793003359
+    }
+   ],
+   "estado": "parcial",
+   "hasta": "2026-12-31"
+  },
+  {
+   "codigo": "GON-03-B",
+   "mueble": "GON-03",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 1.0,
+   "disponible_pb": 0,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-03-B-PC1",
+     "numero": 1,
+     "proveedor_id": 1,
+     "proveedor": "Café Montaña",
+     "marca": "Café Montaña Tostado",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 10000,
+     "desde": "2026-06-01",
+     "hasta": "2027-05-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 10.901975172013437
+    }
+   ],
+   "estado": "ocupado",
+   "hasta": "2027-05-31"
+  },
+  {
+   "codigo": "GON-04",
+   "mueble": "GON-04",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 1.0,
+   "disponible_pb": 0,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-04-PC1",
+     "numero": 1,
+     "proveedor_id": 7,
+     "proveedor": "Aseo Total",
+     "marca": "Aseo Total Hogar",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 10000,
+     "desde": "2026-05-01",
+     "hasta": "2026-11-30",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 10.901975172013437
+    }
+   ],
+   "estado": "ocupado",
+   "hasta": "2026-11-30"
+  },
+  {
+   "codigo": "GON-04-B",
+   "mueble": "GON-04",
+   "forma": "cara",
+   "tipo": "gondola",
+   "peso": 1.0,
+   "tarifa": 450000.0,
+   "ocupado": 0.0,
+   "disponible_pb": 10000,
+   "participaciones": [],
+   "estado": "libre",
+   "hasta": null
+  },
+  {
+   "codigo": "PUN-01",
+   "mueble": "PUN-01",
+   "forma": "entera",
+   "tipo": "punta",
+   "peso": 1.0,
+   "tarifa": 600000.0,
+   "contrato": 3,
+   "ocupado": 1.0,
+   "estado": "ocupado",
+   "hasta": "2026-11-30"
+  },
+  {
+   "codigo": "PUN-02-EN1",
+   "mueble": "PUN-02",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.25,
+   "tarifa": 150000.0,
+   "contrato": 7,
+   "ocupado": 1.0,
+   "estado": "ocupado",
+   "hasta": "2026-12-31"
+  },
+  {
+   "codigo": "PUN-02-EN2",
+   "mueble": "PUN-02",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.25,
+   "tarifa": 150000.0,
+   "contrato": 8,
+   "ocupado": 1.0,
+   "estado": "ocupado",
+   "hasta": "2026-12-31"
+  },
+  {
+   "codigo": "PUN-02-EN3",
+   "mueble": "PUN-02",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.25,
+   "tarifa": 150000.0,
+   "contrato": null,
+   "ocupado": 0.0,
+   "estado": "libre",
+   "hasta": null
+  },
+  {
+   "codigo": "PUN-02-EN4",
+   "mueble": "PUN-02",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.25,
+   "tarifa": 150000.0,
+   "contrato": null,
+   "ocupado": 0.0,
+   "estado": "libre",
+   "hasta": null
+  },
+  {
+   "codigo": "PUN-03-EN1",
+   "mueble": "PUN-03",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.2,
+   "tarifa": 120000.0,
+   "contrato": 9,
+   "ocupado": 0.0,
+   "estado": "proximo",
+   "hasta": "2027-01-31"
+  },
+  {
+   "codigo": "PUN-03-EN2",
+   "mueble": "PUN-03",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.2,
+   "tarifa": 120000.0,
+   "contrato": 10,
+   "ocupado": 1.0,
+   "estado": "ocupado",
+   "hasta": "2027-02-28"
+  },
+  {
+   "codigo": "PUN-03-EN3",
+   "mueble": "PUN-03",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.2,
+   "tarifa": 120000.0,
+   "contrato": null,
+   "ocupado": 0.0,
+   "estado": "libre",
+   "hasta": null
+  },
+  {
+   "codigo": "PUN-03-EN4",
+   "mueble": "PUN-03",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.2,
+   "tarifa": 120000.0,
+   "contrato": null,
+   "ocupado": 0.0,
+   "estado": "libre",
+   "hasta": null
+  },
+  {
+   "codigo": "PUN-03-EN5",
+   "mueble": "PUN-03",
+   "forma": "entrepaño",
+   "tipo": "punta",
+   "peso": 0.2,
+   "tarifa": 120000.0,
+   "contrato": null,
+   "ocupado": 0.0,
+   "estado": "libre",
+   "hasta": null
+  },
+  {
+   "codigo": "PUN-04",
+   "mueble": "PUN-04",
+   "forma": "entera",
+   "tipo": "punta",
+   "peso": 1.0,
+   "tarifa": 600000.0,
+   "contrato": 5,
+   "ocupado": 1.0,
+   "estado": "ocupado",
+   "hasta": "2027-02-28"
+  },
+  {
+   "codigo": "PUN-05",
+   "mueble": "PUN-05",
+   "forma": "entera",
+   "tipo": "punta",
+   "peso": 1.0,
+   "tarifa": 600000.0,
+   "contrato": 4,
+   "ocupado": 1.0,
+   "estado": "ocupado",
+   "hasta": "2027-03-31"
+  },
+  {
+   "codigo": "PUN-06",
+   "mueble": "PUN-06",
+   "forma": "entera",
+   "tipo": "punta",
+   "peso": 1.0,
+   "tarifa": 600000.0,
+   "contrato": 6,
+   "ocupado": 1.0,
+   "estado": "ocupado",
+   "hasta": "2027-01-31"
+  },
+  {
+   "codigo": "PUN-07",
+   "mueble": "PUN-07",
+   "forma": "entera",
+   "tipo": "punta",
+   "peso": 1.0,
+   "tarifa": 600000.0,
+   "contrato": 2,
+   "ocupado": 1.0,
+   "estado": "por_vencer",
+   "hasta": "2026-10-31"
+  },
+  {
+   "codigo": "PUN-08",
+   "mueble": "PUN-08",
+   "forma": "entera",
+   "tipo": "punta",
+   "peso": 1.0,
+   "tarifa": 600000.0,
+   "contrato": null,
+   "ocupado": 0.0,
+   "estado": "libre",
+   "hasta": null
+  },
+  {
+   "codigo": "PUN-09",
+   "mueble": "PUN-09",
+   "forma": "entera",
+   "tipo": "punta",
+   "peso": 1.0,
+   "tarifa": 600000.0,
+   "contrato": null,
+   "ocupado": 0.0,
+   "estado": "reservado",
+   "hasta": null
+  },
+  {
+   "codigo": "NEV-01",
+   "mueble": "NEV-01",
+   "forma": "cara",
+   "tipo": "nevera_puertas",
+   "peso": 1.0,
+   "tarifa": 1400000.0,
+   "ocupado": 0.8,
+   "disponible_pb": 2000,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-NEV-01-PC1",
+     "numero": 1,
+     "proveedor_id": 6,
+     "proveedor": "Lácteos Andinos",
+     "marca": "Yogur Andino",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 5000,
+     "desde": "2026-07-01",
+     "hasta": "2027-06-30",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 7.769018148003841
+    },
+    {
+     "codigo": "CENTRO-NEV-01-PC2",
+     "numero": 2,
+     "proveedor_id": 5,
+     "proveedor": "Bebidas del Valle",
+     "marca": "Agua del Valle",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 3000,
+     "desde": "2026-09-01",
+     "hasta": "2027-02-28",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 4.661410888802305
+    }
+   ],
+   "estado": "parcial",
+   "hasta": "2027-02-28"
+  }
+ ],
+ "contratos": [
+  {
+   "lease_id": 2,
+   "codigo": "PUN-07",
+   "cara": "PUN-07",
+   "forma": "entera",
+   "pb": null,
+   "proveedor": "Galletas Sol",
+   "marca": "Galletas Sol Clásicas",
+   "desde": "2026-05-01",
+   "hasta": "2026-10-31",
+   "total": 3600000.0,
+   "meses": 6.0,
+   "al_mes": 600000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -178,
+   "vence_en": 5
+  },
+  {
+   "lease_id": 3,
+   "codigo": "PUN-01",
+   "cara": "PUN-01",
+   "forma": "entera",
+   "pb": null,
+   "proveedor": "Limpio Hogar",
+   "marca": "Limpio Hogar",
+   "desde": "2026-06-01",
+   "hasta": "2026-11-30",
+   "total": 3600000.0,
+   "meses": 6.0,
+   "al_mes": 600000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -147,
+   "vence_en": 35
+  },
+  {
+   "lease_id": 4,
+   "codigo": "PUN-05",
+   "cara": "PUN-05",
+   "forma": "entera",
+   "pb": null,
+   "proveedor": "Galletas Sol",
+   "marca": "Galletas Sol Clásicas",
+   "desde": "2026-10-01",
+   "hasta": "2027-03-31",
+   "total": 3900000.0,
+   "meses": 6.0,
+   "al_mes": 650000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -25,
+   "vence_en": 156
+  },
+  {
+   "lease_id": 5,
+   "codigo": "PUN-04",
+   "cara": "PUN-04",
+   "forma": "entera",
+   "pb": null,
+   "proveedor": "Snacks Norte",
+   "marca": "Papitas Norte",
+   "desde": "2026-09-01",
+   "hasta": "2027-02-28",
+   "total": 3600000.0,
+   "meses": 6.0,
+   "al_mes": 600000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -55,
+   "vence_en": 125
+  },
+  {
+   "lease_id": 6,
+   "codigo": "PUN-06",
+   "cara": "PUN-06",
+   "forma": "entera",
+   "pb": null,
+   "proveedor": "Bebidas del Valle",
+   "marca": "Agua del Valle",
+   "desde": "2026-08-01",
+   "hasta": "2027-01-31",
+   "total": 3300000.0,
+   "meses": 6.0,
+   "al_mes": 550000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -86,
+   "vence_en": 97
+  },
+  {
+   "lease_id": 7,
+   "codigo": "PUN-02-EN1",
+   "cara": "PUN-02",
+   "forma": "parte",
+   "pb": null,
+   "proveedor": "Snacks Norte",
+   "marca": "Papitas Norte",
+   "desde": "2026-10-01",
+   "hasta": "2026-12-31",
+   "total": 450000.0,
+   "meses": 3.0,
+   "al_mes": 150000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -25,
+   "vence_en": 66
+  },
+  {
+   "lease_id": 8,
+   "codigo": "PUN-02-EN2",
+   "cara": "PUN-02",
+   "forma": "parte",
+   "pb": null,
+   "proveedor": "Café Montaña",
+   "marca": "Café Montaña Tostado",
+   "desde": "2026-10-01",
+   "hasta": "2026-12-31",
+   "total": 450000.0,
+   "meses": 3.0,
+   "al_mes": 150000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -25,
+   "vence_en": 66
+  },
+  {
+   "lease_id": 9,
+   "codigo": "PUN-03-EN1",
+   "cara": "PUN-03",
+   "forma": "parte",
+   "pb": null,
+   "proveedor": "Café Montaña",
+   "marca": "Café Montaña Tostado",
+   "desde": "2026-11-01",
+   "hasta": "2027-01-31",
+   "total": 390000.0,
+   "meses": 3.0,
+   "al_mes": 130000.0,
+   "ventas": null,
+   "planometria": null,
+   "activo": false,
+   "arranca_en": 6,
+   "vence_en": 97
+  },
+  {
+   "lease_id": 10,
+   "codigo": "PUN-03-EN2",
+   "cara": "PUN-03",
+   "forma": "parte",
+   "pb": null,
+   "proveedor": "Bebidas del Valle",
+   "marca": "Agua del Valle",
+   "desde": "2026-09-01",
+   "hasta": "2027-02-28",
+   "total": 0.0,
+   "meses": 6.0,
+   "al_mes": 0,
+   "ventas": {
+    "porcentaje": 5.0,
+    "corte": "mensual"
+   },
+   "planometria": null,
+   "activo": true,
+   "arranca_en": -55,
+   "vence_en": 125
+  },
+  {
+   "lease_id": 11,
+   "codigo": "GON-03-B-PC1",
+   "cara": "GON-03-B",
+   "forma": "participacion",
+   "pb": 10000,
+   "proveedor": "Café Montaña",
+   "marca": "Café Montaña Tostado",
+   "desde": "2026-06-01",
+   "hasta": "2027-05-31",
+   "total": 5400000.0,
+   "meses": 12.0,
+   "al_mes": 450000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -147,
+   "vence_en": 217
+  },
+  {
+   "lease_id": 12,
+   "codigo": "GON-03-PC1",
+   "cara": "GON-03",
+   "forma": "participacion",
+   "pb": 2500,
+   "proveedor": "Lácteos Andinos",
+   "marca": "Yogur Andino",
+   "desde": "2026-10-01",
+   "hasta": "2027-03-31",
+   "total": 720000.0,
+   "meses": 6.0,
+   "al_mes": 120000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -25,
+   "vence_en": 156
+  },
+  {
+   "lease_id": 13,
+   "codigo": "GON-03-PC2",
+   "cara": "GON-03",
+   "forma": "participacion",
+   "pb": 3000,
+   "proveedor": "Snacks Norte",
+   "marca": "Papitas Norte",
+   "desde": "2026-09-01",
+   "hasta": "2027-02-28",
+   "total": 840000.0,
+   "meses": 6.0,
+   "al_mes": 140000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -55,
+   "vence_en": 125
+  },
+  {
+   "lease_id": 14,
+   "codigo": "GON-03-PC3",
+   "cara": "GON-03",
+   "forma": "participacion",
+   "pb": 2500,
+   "proveedor": "Aseo Total",
+   "marca": "Aseo Total Hogar",
+   "desde": "2026-07-01",
+   "hasta": "2026-12-31",
+   "total": 690000.0,
+   "meses": 6.0,
+   "al_mes": 115000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -117,
+   "vence_en": 66
+  },
+  {
+   "lease_id": 15,
+   "codigo": "GON-04-PC1",
+   "cara": "GON-04",
+   "forma": "participacion",
+   "pb": 10000,
+   "proveedor": "Aseo Total",
+   "marca": "Aseo Total Hogar",
+   "desde": "2026-05-01",
+   "hasta": "2026-11-30",
+   "total": 3150000.0,
+   "meses": 7.0,
+   "al_mes": 450000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -178,
+   "vence_en": 35
+  },
+  {
+   "lease_id": 16,
+   "codigo": "GON-02-PC1",
+   "cara": "GON-02",
+   "forma": "participacion",
+   "pb": 5000,
+   "proveedor": "Aseo Total",
+   "marca": "Aseo Total Hogar",
+   "desde": "2026-10-01",
+   "hasta": "2027-03-31",
+   "total": 1350000.0,
+   "meses": 6.0,
+   "al_mes": 225000.0,
+   "ventas": null,
+   "planometria": null,
+   "activo": true,
+   "arranca_en": -25,
+   "vence_en": 156
+  },
+  {
+   "lease_id": 17,
+   "codigo": "GON-01-PC1",
+   "cara": "GON-01",
+   "forma": "participacion",
+   "pb": 6000,
+   "proveedor": "Lácteos Andinos",
+   "marca": "Yogur Andino",
+   "desde": "2026-08-01",
+   "hasta": "2027-01-31",
+   "total": 1620000.0,
+   "meses": 6.0,
+   "al_mes": 270000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -86,
+   "vence_en": 97
+  },
+  {
+   "lease_id": 18,
+   "codigo": "GON-01-B-PC1",
+   "cara": "GON-01-B",
+   "forma": "participacion",
+   "pb": 4000,
+   "proveedor": "Galletas Sol",
+   "marca": "Galletas Sol Clásicas",
+   "desde": "2026-09-01",
+   "hasta": "2027-02-28",
+   "total": 1080000.0,
+   "meses": 6.0,
+   "al_mes": 180000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -55,
+   "vence_en": 125
+  },
+  {
+   "lease_id": 19,
+   "codigo": "NEV-01-PC1",
+   "cara": "NEV-01",
+   "forma": "participacion",
+   "pb": 5000,
+   "proveedor": "Lácteos Andinos",
+   "marca": "Yogur Andino",
+   "desde": "2026-07-01",
+   "hasta": "2027-06-30",
+   "total": 8400000.0,
+   "meses": 12.0,
+   "al_mes": 700000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -117,
+   "vence_en": 247
+  },
+  {
+   "lease_id": 20,
+   "codigo": "NEV-01-PC2",
+   "cara": "NEV-01",
+   "forma": "participacion",
+   "pb": 3000,
+   "proveedor": "Bebidas del Valle",
+   "marca": "Agua del Valle",
+   "desde": "2026-09-01",
+   "hasta": "2027-02-28",
+   "total": 2520000.0,
+   "meses": 6.0,
+   "al_mes": 420000.0,
+   "ventas": null,
+   "planometria": "planometria.jpg",
+   "activo": true,
+   "arranca_en": -55,
+   "vence_en": 125
+  }
+ ],
+ "reservas": [
+  {
+   "id": 1,
+   "espacio": "CENTRO-PUN-09",
+   "sede": "CENTRO",
+   "proveedor": "Lácteos Andinos",
+   "marca": "Yogur Andino",
+   "desde": "2026-11-01",
+   "hasta": "2027-01-31",
+   "caduca": "2026-10-26",
+   "caduca_pronto": true,
+   "valor": 1800000.0,
+   "modo_precio": "mensual",
+   "valor_tecleado": 600000.0,
+   "cobro": {
+    "modo": "fijo"
+   },
+   "notas": null,
+   "creado_en": "2026-10-26T21:35:18.480673",
+   "creado_por": "admin"
+  }
+ ],
+ "pendientes": [
+  {
+   "tipo": "Contrato por vencer",
+   "codigo": "PUN-07",
+   "det": "Galletas Sol · vence el 31/10/2026",
+   "estado": "Vence en 5 días",
+   "tono": "crit",
+   "accion": "Renovar",
+   "fuente": "GET /api/spaces/comercial",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Reserva por confirmar",
+   "codigo": "PUN-09",
+   "det": "Lácteos Andinos · caduca el 26/10/2026",
+   "estado": "Caduca hoy",
+   "tono": "crit",
+   "accion": "Confirmar",
+   "fuente": "GET /api/reservas",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Reserva de participación",
+   "codigo": "GON-02-B",
+   "det": "Snacks Norte · 30 % · caduca el 05/11/2026",
+   "estado": "Caduca en 10 días",
+   "tono": "warn",
+   "accion": "Confirmar",
+   "fuente": "GET /api/participaciones/resumen",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-04-PC1",
+   "det": "Aseo Total · GON-04",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-03-B-PC1",
+   "det": "Café Montaña · GON-03-B",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-03-PC3",
+   "det": "Aseo Total · GON-03",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "NEV-01-PC1",
+   "det": "Lácteos Andinos · NEV-01",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-01-PC1",
+   "det": "Lácteos Andinos · GON-01",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Falta planometría",
+   "codigo": "PUN-03-EN2",
+   "det": "Bebidas del Valle",
+   "estado": "Sin archivo",
+   "tono": "warn",
+   "accion": "Adjuntar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-03-PC2",
+   "det": "Snacks Norte · GON-03",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-01-B-PC1",
+   "det": "Galletas Sol · GON-01-B",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "NEV-01-PC2",
+   "det": "Bebidas del Valle · NEV-01",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-03-PC1",
+   "det": "Lácteos Andinos · GON-03",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Falta planometría",
+   "codigo": "GON-02-PC1",
+   "det": "Aseo Total",
+   "estado": "Sin archivo",
+   "tono": "warn",
+   "accion": "Adjuntar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Participación sin ubicar",
+   "codigo": "GON-02-PC1",
+   "det": "Aseo Total · GON-02",
+   "estado": "Falta ubicar la zona",
+   "tono": "warn",
+   "accion": "Ubicar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Falta planometría",
+   "codigo": "PUN-03-EN1",
+   "det": "Café Montaña",
+   "estado": "Sin archivo",
+   "tono": "warn",
+   "accion": "Adjuntar",
+   "fuente": "GET /api/montajes/pendientes",
+   "grupo": "30"
+  },
+  {
+   "tipo": "Montaje no realizado",
+   "codigo": "PUN-02-EN2",
+   "det": "El exhibidor del proveedor no llegó",
+   "estado": "Faltó el material",
+   "tono": "crit",
+   "accion": "Resolver",
+   "fuente": "GET /api/mounts/",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Montado, sin verificar",
+   "codigo": "PUN-07",
+   "det": "Reportó Luis Pérez · con foto",
+   "estado": "Por verificar",
+   "tono": "warn",
+   "accion": "Verificar",
+   "fuente": "GET /api/mounts/ (la verificación del contrato es nueva)",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Montado, sin verificar",
+   "codigo": "PUN-04",
+   "det": "Reportó Luis Pérez · con foto",
+   "estado": "Por verificar",
+   "tono": "warn",
+   "accion": "Verificar",
+   "fuente": "GET /api/mounts/ (la verificación del contrato es nueva)",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Montado, sin verificar",
+   "codigo": "PUN-05",
+   "det": "Reportó Luis Pérez · con foto",
+   "estado": "Por verificar",
+   "tono": "warn",
+   "accion": "Verificar",
+   "fuente": "GET /api/mounts/ (la verificación del contrato es nueva)",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Planograma montado, falta revisar",
+   "codigo": "GON-12-A",
+   "det": "Rige desde el 26/10/2026",
+   "estado": "por revisar",
+   "tono": "warn",
+   "accion": "Revisar",
+   "fuente": "GET /api/planogramas/supervision",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Planograma sin montar",
+   "codigo": "GON-12-B",
+   "det": "Rige desde el 26/10/2026",
+   "estado": "sin montar",
+   "tono": "neu",
+   "accion": "Enviar guía",
+   "fuente": "GET /api/planogramas/supervision",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Planograma no montado",
+   "codigo": "GON-13-A",
+   "det": "No llegó el producto",
+   "estado": "no se pudo",
+   "tono": "crit",
+   "accion": "Resolver",
+   "fuente": "GET /api/planogramas/supervision",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Planograma que no coincide",
+   "codigo": "GON-13-B",
+   "det": "Granos va a la derecha de Arroz",
+   "estado": "no coincide",
+   "tono": "crit",
+   "accion": "Ver revisión",
+   "fuente": "GET /api/planogramas/supervision",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Ventas por cargar",
+   "codigo": "PUN-03-EN2",
+   "det": "Bebidas del Valle · 5 % · 01/09/2026 a 30/09/2026",
+   "estado": "Período cerrado",
+   "tono": "warn",
+   "accion": "Cargar ventas",
+   "fuente": "GET /api/cobros/pendientes",
+   "grupo": "hoy"
+  },
+  {
+   "tipo": "Canon bajo la tarifa",
+   "codigo": "PUN-06",
+   "lease_id": 6,
+   "det": "Bebidas del Valle paga $ 550.000 al mes; la tarifa es $ 600.000",
+   "accion": "Editar contrato",
+   "fuente": "GET /api/spaces/comercial + /api/layout/rates",
+   "estado": "Inconsistencia",
+   "tono": "crit",
+   "grupo": "inc"
+  }
+ ],
+ "serie": [
+  [
+   "May",
+   1050000
+  ],
+  [
+   "Jun",
+   2100000
+  ],
+  [
+   "Jul",
+   2915000
+  ],
+  [
+   "Ago",
+   3735000
+  ],
+  [
+   "Sep",
+   5075000
+  ],
+  [
+   "Oct",
+   6370000
+  ]
+ ],
+ "ranking": [
+  [
+   "Galletas Sol",
+   1430000,
+   3
+  ],
+  [
+   "Lácteos Andinos",
+   1090000,
+   3
+  ],
+  [
+   "Bebidas del Valle",
+   970000,
+   2
+  ],
+  [
+   "Snacks Norte",
+   890000,
+   3
+  ],
+  [
+   "Aseo Total",
+   790000,
+   3
+  ],
+  [
+   "Limpio Hogar",
+   600000,
+   1
+  ],
+  [
+   "Café Montaña",
+   600000,
+   2
+  ]
+ ],
+ "planogramas": [
+  {
+   "version_id": 1,
+   "numero": 1,
+   "fixture_id": "f-GON-12",
+   "cara": "A",
+   "codigo": "GON-12",
+   "nombre": "GON-12 · cara A",
+   "estado": "por_revisar",
+   "rige_desde": "2026-10-26",
+   "dias_que_rige": 0,
+   "aviso": {
+    "id": 1,
+    "estado": "montada",
+    "motivo": null,
+    "motivo_legible": null,
+    "nota": null,
+    "por_enlace": true,
+    "por": null,
+    "en": "2026-10-26T21:35:18.777677+00:00"
+   },
+   "revision": null,
+   "fotos_nuevas": 0
+  },
+  {
+   "version_id": 2,
+   "numero": 1,
+   "fixture_id": "f-GON-12",
+   "cara": "B",
+   "codigo": "GON-12",
+   "nombre": "GON-12 · cara B",
+   "estado": "sin_montar",
+   "rige_desde": "2026-10-26",
+   "dias_que_rige": 0,
+   "aviso": null,
+   "revision": null,
+   "fotos_nuevas": 0
+  },
+  {
+   "version_id": 3,
+   "numero": 1,
+   "fixture_id": "f-GON-13",
+   "cara": "A",
+   "codigo": "GON-13",
+   "nombre": "GON-13 · cara A",
+   "estado": "no_se_pudo",
+   "rige_desde": "2026-10-26",
+   "dias_que_rige": 0,
+   "aviso": {
+    "id": 2,
+    "estado": "no_se_pudo",
+    "motivo": "sin_producto",
+    "motivo_legible": "No llegó el producto",
+    "nota": "La marca propia llega el lunes",
+    "por_enlace": true,
+    "por": null,
+    "en": "2026-10-26T21:35:18.801451+00:00"
+   },
+   "revision": null,
+   "fotos_nuevas": 0
+  },
+  {
+   "version_id": 4,
+   "numero": 1,
+   "fixture_id": "f-GON-13",
+   "cara": "B",
+   "codigo": "GON-13",
+   "nombre": "GON-13 · cara B",
+   "estado": "no_coincide",
+   "rige_desde": "2026-10-26",
+   "dias_que_rige": 0,
+   "aviso": null,
+   "revision": {
+    "id": 1,
+    "montaje_id": 3,
+    "resultado": "no_coincide",
+    "numeros": [
+     1
+    ],
+    "otra_cosa": false,
+    "nota": "Granos va a la derecha de Arroz",
+    "en_la_tienda": false,
+    "guia_reenviada": false,
+    "por": "admin",
+    "en": "2026-10-26T21:35:18.838807+00:00"
+   },
+   "fotos_nuevas": 0
+  }
+ ],
+ "planogramas_resumen": {
+  "caras": [
+   {
+    "fixture_id": "f-GON-12",
+    "cara": "A",
+    "codigo": "GON-12",
+    "borrador": false,
+    "vigente": {
+     "id": 1,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.610764+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false
+    },
+    "programada": null
+   },
+   {
+    "fixture_id": "f-GON-12",
+    "cara": "B",
+    "codigo": "GON-12-B",
+    "borrador": false,
+    "vigente": {
+     "id": 2,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.658361+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false
+    },
+    "programada": null
+   },
+   {
+    "fixture_id": "f-GON-13",
+    "cara": "A",
+    "codigo": "GON-13",
+    "borrador": false,
+    "vigente": {
+     "id": 3,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.706737+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false
+    },
+    "programada": null
+   },
+   {
+    "fixture_id": "f-GON-13",
+    "cara": "B",
+    "codigo": "GON-13-B",
+    "borrador": false,
+    "vigente": {
+     "id": 4,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.751422+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false
+    },
+    "programada": null
+   }
+  ],
+  "quien_publica": "admin",
+  "puede_planificar": true
+ },
+ "reportes": [
+  {
+   "id": 4,
+   "space_code": "CENTRO-PUN-02-EN2",
+   "sede": "CENTRO",
+   "estado": "no_montado",
+   "motivo": "sin_material",
+   "nota": "El exhibidor del proveedor no llegó",
+   "file_id": null,
+   "foto_nombre": null,
+   "foto_tipo": null,
+   "reportado_por": "Luis Pérez",
+   "rol": "admin",
+   "confirmado_en": "2026-10-26T21:35:19.208366"
+  },
+  {
+   "id": 3,
+   "space_code": "CENTRO-PUN-07",
+   "sede": "CENTRO",
+   "estado": "montado",
+   "motivo": null,
+   "nota": null,
+   "file_id": 3,
+   "foto_nombre": "montaje--CENTRO-PUN-07--montaje.jpg",
+   "foto_tipo": "image/jpeg",
+   "reportado_por": "Luis Pérez",
+   "rol": "admin",
+   "confirmado_en": "2026-10-26T21:35:19.197841"
+  },
+  {
+   "id": 2,
+   "space_code": "CENTRO-PUN-04",
+   "sede": "CENTRO",
+   "estado": "montado",
+   "motivo": null,
+   "nota": null,
+   "file_id": 2,
+   "foto_nombre": "montaje--CENTRO-PUN-04--montaje.jpg",
+   "foto_tipo": "image/jpeg",
+   "reportado_por": "Luis Pérez",
+   "rol": "admin",
+   "confirmado_en": "2026-10-26T21:35:19.184833"
+  },
+  {
+   "id": 1,
+   "space_code": "CENTRO-PUN-05",
+   "sede": "CENTRO",
+   "estado": "montado",
+   "motivo": null,
+   "nota": null,
+   "file_id": 1,
+   "foto_nombre": "montaje--CENTRO-PUN-05--montaje.jpg",
+   "foto_tipo": "image/jpeg",
+   "reportado_por": "Luis Pérez",
+   "rol": "admin",
+   "confirmado_en": "2026-10-26T21:35:19.168688"
+  }
+ ],
+ "cobros": [
+  {
+   "lease_id": 10,
+   "espacio": "CENTRO-PUN-03-EN2",
+   "proveedor": "Bebidas del Valle",
+   "porcentaje": 5.0,
+   "periodo_desde": "2026-09-01",
+   "periodo_hasta": "2026-09-30"
+  }
+ ],
+ "tarifas": {
+  "default": {
+   "gondola": 450000.0,
+   "punta": 600000.0,
+   "nevera_puertas": 1400000.0
+  },
+  "by_sede": {},
+  "updated_at": "2026-10-26T21:35:17.637468Z"
+ },
+ "proveedores": [
+  {
+   "name": "Aseo Total",
+   "contact_name": null,
+   "phone": null,
+   "email": "trade@aseototal.co",
+   "notes": null,
+   "id": 7
+  },
+  {
+   "name": "Bebidas del Valle",
+   "contact_name": null,
+   "phone": null,
+   "email": "trade@bebidasvalle.co",
+   "notes": null,
+   "id": 5
+  },
+  {
+   "name": "Café Montaña",
+   "contact_name": null,
+   "phone": null,
+   "email": "ventas@cafemontana.co",
+   "notes": null,
+   "id": 1
+  },
+  {
+   "name": "Galletas Sol",
+   "contact_name": null,
+   "phone": null,
+   "email": "compras@galletassol.co",
+   "notes": null,
+   "id": 2
+  },
+  {
+   "name": "Limpio Hogar",
+   "contact_name": null,
+   "phone": null,
+   "email": "compras@limpiohogar.co",
+   "notes": null,
+   "id": 3
+  },
+  {
+   "name": "Lácteos Andinos",
+   "contact_name": null,
+   "phone": null,
+   "email": "comercial@lacteosandinos.co",
+   "notes": null,
+   "id": 6
+  },
+  {
+   "name": "Snacks Norte",
+   "contact_name": null,
+   "phone": null,
+   "email": "mercadeo@snacksnorte.co",
+   "notes": null,
+   "id": 4
+  }
+ ],
+ "bitacora": [
+  {
+   "id": 45,
+   "at": "2026-10-26T21:39:40.726738Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "login.ok",
+   "titulo": "Ingreso",
+   "entidad": null,
+   "entidad_id": null,
+   "detalle": null
+  },
+  {
+   "id": 44,
+   "at": "2026-10-26T21:39:28.072676Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "login.ok",
+   "titulo": "Ingreso",
+   "entidad": null,
+   "entidad_id": null,
+   "detalle": null
+  },
+  {
+   "id": 43,
+   "at": "2026-10-26T21:38:12.395946Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "login.ok",
+   "titulo": "Ingreso",
+   "entidad": null,
+   "entidad_id": null,
+   "detalle": null
+  },
+  {
+   "id": 42,
+   "at": "2026-10-26T21:36:17.850570Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "login.ok",
+   "titulo": "Ingreso",
+   "entidad": null,
+   "entidad_id": null,
+   "detalle": null
+  },
+  {
+   "id": 41,
+   "at": "2026-10-26T21:35:30.987261Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "login.ok",
+   "titulo": "Ingreso",
+   "entidad": null,
+   "entidad_id": null,
+   "detalle": null
+  },
+  {
+   "id": 40,
+   "at": "2026-10-26T21:35:18.840784Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.revision",
+   "titulo": "planograma.revision",
+   "entidad": "planograma",
+   "entidad_id": "GON-13 · cara B",
+   "detalle": "Versión 1: no coincide"
+  },
+  {
+   "id": 39,
+   "at": "2026-10-26T21:35:18.824310Z",
+   "rol": "guia",
+   "ip": "127.0.0.1",
+   "accion": "guia.aviso",
+   "titulo": "guia.aviso",
+   "entidad": "planograma",
+   "entidad_id": "GON-13 · cara B",
+   "detalle": "Versión 1: quedó montada"
+  },
+  {
+   "id": 38,
+   "at": "2026-10-26T21:35:18.803125Z",
+   "rol": "guia",
+   "ip": "127.0.0.1",
+   "accion": "guia.aviso",
+   "titulo": "guia.aviso",
+   "entidad": "planograma",
+   "entidad_id": "GON-13 · cara A",
+   "detalle": "Versión 1: no se pudo (No llegó el producto)"
+  },
+  {
+   "id": 37,
+   "at": "2026-10-26T21:35:18.779602Z",
+   "rol": "guia",
+   "ip": "127.0.0.1",
+   "accion": "guia.aviso",
+   "titulo": "guia.aviso",
+   "entidad": "planograma",
+   "entidad_id": "GON-12 · cara A",
+   "detalle": "Versión 1: quedó montada"
+  },
+  {
+   "id": 36,
+   "at": "2026-10-26T21:35:18.752094Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.publicado",
+   "titulo": "planograma.publicado",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-13-B",
+   "detalle": "GON-13 · cara B · versión 1 · desde el 26 oct 2026 · Granos 2×1 30 %, Arroz La Esquina 40 %"
+  },
+  {
+   "id": 35,
+   "at": "2026-10-26T21:35:18.731381Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.borrador",
+   "titulo": "planograma.borrador",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-13-B",
+   "detalle": "2 pieza(s)"
+  },
+  {
+   "id": 34,
+   "at": "2026-10-26T21:35:18.707734Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.publicado",
+   "titulo": "planograma.publicado",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-13",
+   "detalle": "GON-13 · cara A · versión 1 · desde el 26 oct 2026 · Pastas 60 %"
+  },
+  {
+   "id": 33,
+   "at": "2026-10-26T21:35:18.688110Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.borrador",
+   "titulo": "planograma.borrador",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-13",
+   "detalle": "1 pieza(s)"
+  },
+  {
+   "id": 32,
+   "at": "2026-10-26T21:35:18.659134Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.publicado",
+   "titulo": "planograma.publicado",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-12-B",
+   "detalle": "GON-12 · cara B · versión 1 · desde el 26 oct 2026 · Arroz La Esquina 50 %, Granos 2×1 30 %"
+  },
+  {
+   "id": 31,
+   "at": "2026-10-26T21:35:18.640940Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.borrador",
+   "titulo": "planograma.borrador",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-12-B",
+   "detalle": "2 pieza(s)"
+  },
+  {
+   "id": 30,
+   "at": "2026-10-26T21:35:18.612149Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.publicado",
+   "titulo": "planograma.publicado",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-12",
+   "detalle": "GON-12 · cara A · versión 1 · desde el 26 oct 2026 · Arroz La Esquina 30 %, Aceites 25 %, Pastas 25 %, Granos 2×1 20 %"
+  },
+  {
+   "id": 29,
+   "at": "2026-10-26T21:35:18.584532Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "planograma.borrador",
+   "titulo": "planograma.borrador",
+   "entidad": "planograma",
+   "entidad_id": "CENTRO-GON-12",
+   "detalle": "4 pieza(s)"
+  },
+  {
+   "id": 28,
+   "at": "2026-10-26T21:35:18.545897Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "destino.creado",
+   "titulo": "destino.creado",
+   "entidad": "destino",
+   "entidad_id": "4",
+   "detalle": "Granos 2×1 · Promoción"
+  },
+  {
+   "id": 27,
+   "at": "2026-10-26T21:35:18.533894Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "destino.creado",
+   "titulo": "destino.creado",
+   "entidad": "destino",
+   "entidad_id": "3",
+   "detalle": "Pastas · Categoría"
+  },
+  {
+   "id": 26,
+   "at": "2026-10-26T21:35:18.524875Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "destino.creado",
+   "titulo": "destino.creado",
+   "entidad": "destino",
+   "entidad_id": "2",
+   "detalle": "Aceites · Categoría"
+  },
+  {
+   "id": 25,
+   "at": "2026-10-26T21:35:18.514128Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "destino.creado",
+   "titulo": "destino.creado",
+   "entidad": "destino",
+   "entidad_id": "1",
+   "detalle": "Arroz La Esquina · Marca propia"
+  },
+  {
+   "id": 24,
+   "at": "2026-10-26T21:35:18.503048Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.reserva",
+   "titulo": "Reserva provisional de participación creada",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-02-B-PC1",
+   "detalle": "CENTRO-GON-02-B-PC1 · 30 % · Snacks Norte · 2026-11-01→2027-04-30"
+  },
+  {
+   "id": 23,
+   "at": "2026-10-26T21:35:18.481122Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "reserva_espacio.alta",
+   "titulo": "Reserva de espacio creada",
+   "entidad": "reserva",
+   "entidad_id": "1",
+   "detalle": "CENTRO-PUN-09 · Lácteos Andinos · 2026-11-01→2027-01-31 · caduca 2026-10-26"
+  },
+  {
+   "id": 22,
+   "at": "2026-10-26T21:35:18.453913Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-NEV-01-PC2",
+   "detalle": "CENTRO-NEV-01-PC2 · 30 % · Bebidas del Valle · 2026-09-01→2027-02-28"
+  },
+  {
+   "id": 21,
+   "at": "2026-10-26T21:35:18.425335Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-NEV-01-PC1",
+   "detalle": "CENTRO-NEV-01-PC1 · 50 % · Lácteos Andinos · 2026-07-01→2027-06-30"
+  },
+  {
+   "id": 20,
+   "at": "2026-10-26T21:35:18.398303Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-01-B-PC1",
+   "detalle": "CENTRO-GON-01-B-PC1 · 40 % · Galletas Sol · 2026-09-01→2027-02-28"
+  },
+  {
+   "id": 19,
+   "at": "2026-10-26T21:35:18.372691Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-01-PC1",
+   "detalle": "CENTRO-GON-01-PC1 · 60 % · Lácteos Andinos · 2026-08-01→2027-01-31"
+  },
+  {
+   "id": 18,
+   "at": "2026-10-26T21:35:18.345451Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-02-PC1",
+   "detalle": "CENTRO-GON-02-PC1 · 50 % · Aseo Total · 2026-10-01→2027-03-31"
+  },
+  {
+   "id": 17,
+   "at": "2026-10-26T21:35:18.318840Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-04-PC1",
+   "detalle": "CENTRO-GON-04-PC1 · 100 % · Aseo Total · 2026-05-01→2026-11-30"
+  },
+  {
+   "id": 16,
+   "at": "2026-10-26T21:35:18.291667Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-03-PC3",
+   "detalle": "CENTRO-GON-03-PC3 · 25 % · Aseo Total · 2026-07-01→2026-12-31"
+  },
+  {
+   "id": 15,
+   "at": "2026-10-26T21:35:18.258553Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-03-PC2",
+   "detalle": "CENTRO-GON-03-PC2 · 30 % · Snacks Norte · 2026-09-01→2027-02-28"
+  },
+  {
+   "id": 14,
+   "at": "2026-10-26T21:35:18.223751Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-03-PC1",
+   "detalle": "CENTRO-GON-03-PC1 · 25 % · Lácteos Andinos · 2026-10-01→2027-03-31"
+  },
+  {
+   "id": 13,
+   "at": "2026-10-26T21:35:18.189169Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "participacion.contrato",
+   "titulo": "Contrato de participación creado",
+   "entidad": "participacion",
+   "entidad_id": "CENTRO-GON-03-B-PC1",
+   "detalle": "CENTRO-GON-03-B-PC1 · 100 % · Café Montaña · 2026-06-01→2027-05-31"
+  },
+  {
+   "id": 12,
+   "at": "2026-10-26T21:35:18.158603Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "contrato.alta",
+   "titulo": "Contrato creado",
+   "entidad": "contrato",
+   "entidad_id": "10",
+   "detalle": "CENTRO-PUN-03-EN2 · Bebidas del Valle · 2026-09-01→2027-02-28"
+  },
+  {
+   "id": 11,
+   "at": "2026-10-26T21:35:18.122355Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "contrato.alta",
+   "titulo": "Contrato creado",
+   "entidad": "contrato",
+   "entidad_id": "9",
+   "detalle": "CENTRO-PUN-03-EN1 · Café Montaña · 2026-11-01→2027-01-31"
+  },
+  {
+   "id": 10,
+   "at": "2026-10-26T21:35:18.098331Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "contrato.alta",
+   "titulo": "Contrato creado",
+   "entidad": "contrato",
+   "entidad_id": "8",
+   "detalle": "CENTRO-PUN-02-EN2 · Café Montaña · 2026-10-01→2026-12-31"
+  },
+  {
+   "id": 9,
+   "at": "2026-10-26T21:35:18.070277Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "contrato.alta",
+   "titulo": "Contrato creado",
+   "entidad": "contrato",
+   "entidad_id": "7",
+   "detalle": "CENTRO-PUN-02-EN1 · Snacks Norte · 2026-10-01→2026-12-31"
+  },
+  {
+   "id": 8,
+   "at": "2026-10-26T21:35:18.044742Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "contrato.alta",
+   "titulo": "Contrato creado",
+   "entidad": "contrato",
+   "entidad_id": "6",
+   "detalle": "CENTRO-PUN-06 · Bebidas del Valle · 2026-08-01→2027-01-31"
+  },
+  {
+   "id": 7,
+   "at": "2026-10-26T21:35:18.022331Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "contrato.alta",
+   "titulo": "Contrato creado",
+   "entidad": "contrato",
+   "entidad_id": "5",
+   "detalle": "CENTRO-PUN-04 · Snacks Norte · 2026-09-01→2027-02-28"
+  },
+  {
+   "id": 6,
+   "at": "2026-10-26T21:35:17.999660Z",
+   "rol": "admin",
+   "ip": "127.0.0.1",
+   "accion": "contrato.alta",
+   "titulo": "Contrato creado",
+   "entidad": "contrato",
+   "entidad_id": "4",
+   "detalle": "CENTRO-PUN-05 · Galletas Sol · 2026-10-01→2027-03-31"
+  }
+ ],
+ "impacto": {
+  "spaces": 30,
+  "active_leases": 19,
+  "reservas_vivas": 2
+ },
+ "participaciones": [
+  {
+   "codigo_cara": "CENTRO-GON-01",
+   "cara": "A",
+   "fixture_code": "GON-01",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 6000,
+   "pico_pb": 6000,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 4000,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 6000,
+   "errores": 0,
+   "avisos": 1,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-01-PC1",
+     "numero": 1,
+     "proveedor_id": 6,
+     "proveedor": "Lácteos Andinos",
+     "marca": "Yogur Andino",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 6000,
+     "desde": "2026-08-01",
+     "hasta": "2027-01-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 6.541185103208062
+    }
+   ]
+  },
+  {
+   "codigo_cara": "CENTRO-GON-01-B",
+   "cara": "B",
+   "fixture_code": "GON-01",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 4000,
+   "pico_pb": 4000,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 6000,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 4000,
+   "errores": 0,
+   "avisos": 1,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-01-B-PC1",
+     "numero": 1,
+     "proveedor_id": 2,
+     "proveedor": "Galletas Sol",
+     "marca": "Galletas Sol Clásicas",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 4000,
+     "desde": "2026-09-01",
+     "hasta": "2027-02-28",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 4.3607900688053745
+    }
+   ]
+  },
+  {
+   "codigo_cara": "CENTRO-GON-02",
+   "cara": "A",
+   "fixture_code": "GON-02",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 5000,
+   "pico_pb": 5000,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 5000,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 5000,
+   "errores": 0,
+   "avisos": 1,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-02-PC1",
+     "numero": 1,
+     "proveedor_id": 7,
+     "proveedor": "Aseo Total",
+     "marca": "Aseo Total Hogar",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 5000,
+     "desde": "2026-10-01",
+     "hasta": "2027-03-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 5.450987586006718
+    }
+   ]
+  },
+  {
+   "codigo_cara": "CENTRO-GON-02-B",
+   "cara": "B",
+   "fixture_code": "GON-02",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 0,
+   "pico_pb": 3000,
+   "dia_pico": "2026-11-01",
+   "disponible_pb": 7000,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 0,
+   "errores": 0,
+   "avisos": 1,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-02-B-PC1",
+     "numero": 1,
+     "proveedor_id": 4,
+     "proveedor": "Snacks Norte",
+     "marca": "Papitas Norte",
+     "cuenta_el_dia": false,
+     "estado_visible": "reserva",
+     "puntos_basicos": 3000,
+     "desde": "2026-11-01",
+     "hasta": "2027-04-30",
+     "caduca": "2026-11-05",
+     "dibujado_pb": 0,
+     "m2_contratados": 3.270592551604031
+    }
+   ]
+  },
+  {
+   "codigo_cara": "CENTRO-GON-03",
+   "cara": "A",
+   "fixture_code": "GON-03",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 8000,
+   "pico_pb": 8000,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 2000,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 8000,
+   "errores": 0,
+   "avisos": 3,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-03-PC1",
+     "numero": 1,
+     "proveedor_id": 6,
+     "proveedor": "Lácteos Andinos",
+     "marca": "Yogur Andino",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 2500,
+     "desde": "2026-10-01",
+     "hasta": "2027-03-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 2.725493793003359
+    },
+    {
+     "codigo": "CENTRO-GON-03-PC2",
+     "numero": 2,
+     "proveedor_id": 4,
+     "proveedor": "Snacks Norte",
+     "marca": "Papitas Norte",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 3000,
+     "desde": "2026-09-01",
+     "hasta": "2027-02-28",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 3.270592551604031
+    },
+    {
+     "codigo": "CENTRO-GON-03-PC3",
+     "numero": 3,
+     "proveedor_id": 7,
+     "proveedor": "Aseo Total",
+     "marca": "Aseo Total Hogar",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 2500,
+     "desde": "2026-07-01",
+     "hasta": "2026-12-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 2.725493793003359
+    }
+   ]
+  },
+  {
+   "codigo_cara": "CENTRO-GON-03-B",
+   "cara": "B",
+   "fixture_code": "GON-03",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 10000,
+   "pico_pb": 10000,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 0,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 10000,
+   "errores": 0,
+   "avisos": 1,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-03-B-PC1",
+     "numero": 1,
+     "proveedor_id": 1,
+     "proveedor": "Café Montaña",
+     "marca": "Café Montaña Tostado",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 10000,
+     "desde": "2026-06-01",
+     "hasta": "2027-05-31",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 10.901975172013437
+    }
+   ]
+  },
+  {
+   "codigo_cara": "CENTRO-GON-04",
+   "cara": "A",
+   "fixture_code": "GON-04",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 10000,
+   "pico_pb": 10000,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 0,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 10000,
+   "errores": 0,
+   "avisos": 1,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-GON-04-PC1",
+     "numero": 1,
+     "proveedor_id": 7,
+     "proveedor": "Aseo Total",
+     "marca": "Aseo Total Hogar",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 10000,
+     "desde": "2026-05-01",
+     "hasta": "2026-11-30",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 10.901975172013437
+    }
+   ]
+  },
+  {
+   "codigo_cara": "CENTRO-GON-04-B",
+   "cara": "B",
+   "fixture_code": "GON-04",
+   "rotulo": "Góndola doble",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 10.901975172013437,
+   "comprometido_dia_pb": 0,
+   "pico_pb": 0,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 10000,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 0,
+   "errores": 0,
+   "avisos": 0,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": []
+  },
+  {
+   "codigo_cara": "CENTRO-NEV-01",
+   "cara": "A",
+   "fixture_code": "NEV-01",
+   "rotulo": "Nevera de puertas",
+   "estado_distribucion": "sin_distribuir",
+   "area_util_m2": 15.538036296007682,
+   "comprometido_dia_pb": 8000,
+   "pico_pb": 8000,
+   "dia_pico": "2026-10-26",
+   "disponible_pb": 2000,
+   "dibujado_dia_pb": 0,
+   "pendiente_dia_pb": 8000,
+   "errores": 0,
+   "avisos": 2,
+   "borrador_en": null,
+   "borrador_dia": null,
+   "participaciones": [
+    {
+     "codigo": "CENTRO-NEV-01-PC1",
+     "numero": 1,
+     "proveedor_id": 6,
+     "proveedor": "Lácteos Andinos",
+     "marca": "Yogur Andino",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 5000,
+     "desde": "2026-07-01",
+     "hasta": "2027-06-30",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 7.769018148003841
+    },
+    {
+     "codigo": "CENTRO-NEV-01-PC2",
+     "numero": 2,
+     "proveedor_id": 5,
+     "proveedor": "Bebidas del Valle",
+     "marca": "Agua del Valle",
+     "cuenta_el_dia": true,
+     "estado_visible": "vigente",
+     "puntos_basicos": 3000,
+     "desde": "2026-09-01",
+     "hasta": "2027-02-28",
+     "caduca": null,
+     "dibujado_pb": 0,
+     "m2_contratados": 4.661410888802305
+    }
+   ]
+  }
+ ],
+ "inconsistencias": [
+  {
+   "tipo": "Canon bajo la tarifa",
+   "codigo": "PUN-06",
+   "lease_id": 6,
+   "det": "Bebidas del Valle paga $ 550.000 al mes; la tarifa es $ 600.000",
+   "accion": "Editar contrato",
+   "fuente": "GET /api/spaces/comercial + /api/layout/rates"
+  }
+ ],
+ "caras_plan": {
+  "GON-12-A": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "cara": "A",
+   "codigo_cara": "CENTRO-GON-12",
+   "fixture": {
+    "id": "f-GON-12",
+    "code": "GON-12",
+    "label": "Góndola de la casa",
+    "type": "gondola",
+    "caras": 2
+   },
+   "comercializable": false,
+   "por_participacion": false,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 11.6,
+    "alto": 1.8,
+    "plano": 0.612,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.002155,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.108956,
+      "u1": 0.113266,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.220067,
+      "u1": 0.224377,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.331178,
+      "u1": 0.335489,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.442289,
+      "u1": 0.4466,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.5534,
+      "u1": 0.557711,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.664511,
+      "u1": 0.668822,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.775623,
+      "u1": 0.779933,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.886734,
+      "u1": 0.891044,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.997845,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 17.61696795801456
+   },
+   "firma": "v1|gondola|doble|11600|1800|e5|zocalo:0,10000,0,667;parante:0,22,667,9444;parante:1090,1133,667,9444;parante:2201,2244,667,9444;parante:3312,3355,667,9444;parante:4423,4466,667,9444;parante:5534,5577,667,9444;parante:6645,6688,667,9444;parante:7756,7799,667,9444;parante:8867,8910,667,9444;parante:9978,10000,667,9444;remate:0,10000,9444,10000",
+   "permisos": {
+    "planificar": true,
+    "quien_publica": "admin"
+   },
+   "vendido": {
+    "entera": [],
+    "participaciones": []
+   },
+   "planograma": {
+    "version": 2,
+    "borrador": null,
+    "vigente": {
+     "id": 1,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.610764+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false,
+     "piezas": [
+      {
+       "destino_id": 1,
+       "pb": 3000,
+       "vertices": [
+        [
+         0.0,
+         0.066667
+        ],
+        [
+         0.299137,
+         0.066667
+        ],
+        [
+         0.299137,
+         0.944444
+        ],
+        [
+         0.0,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 1,
+        "nombre": "Arroz La Esquina",
+        "tipo": "marca_propia",
+        "color": "d2",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      },
+      {
+       "destino_id": 2,
+       "pb": 2500,
+       "vertices": [
+        [
+         0.299137,
+         0.066667
+        ],
+        [
+         0.54806,
+         0.066667
+        ],
+        [
+         0.54806,
+         0.944444
+        ],
+        [
+         0.299137,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 2,
+        "nombre": "Aceites",
+        "tipo": "categoria",
+        "color": "d1",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      },
+      {
+       "destino_id": 3,
+       "pb": 2500,
+       "vertices": [
+        [
+         0.54806,
+         0.066667
+        ],
+        [
+         0.801294,
+         0.066667
+        ],
+        [
+         0.801294,
+         0.944444
+        ],
+        [
+         0.54806,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 3,
+        "nombre": "Pastas",
+        "tipo": "categoria",
+        "color": "d4",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      },
+      {
+       "destino_id": 4,
+       "pb": 2000,
+       "vertices": [
+        [
+         0.801294,
+         0.066667
+        ],
+        [
+         0.997845,
+         0.066667
+        ],
+        [
+         0.997845,
+         0.944444
+        ],
+        [
+         0.801294,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 4,
+        "nombre": "Granos 2×1",
+        "tipo": "promocion",
+        "color": "d3",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      }
+     ],
+     "choca_con_lo_vendido": []
+    },
+    "programadas": [],
+    "versiones": [
+     {
+      "id": 1,
+      "numero": 1,
+      "rige_desde": "2026-10-26",
+      "hasta": null,
+      "estado": "vigente",
+      "publicada_en": "2026-10-26T21:35:18.610764+00:00",
+      "publicada_por": "admin",
+      "vencida_hace_dias": null,
+      "para_revisar": false,
+      "montaje": {
+       "estado": "por_revisar",
+       "aviso": {
+        "id": 1,
+        "estado": "montada",
+        "motivo": null,
+        "motivo_legible": null,
+        "nota": null,
+        "por_enlace": true,
+        "por": null,
+        "en": "2026-10-26T21:35:18.777677+00:00"
+       },
+       "revision": null
+      }
+     }
+    ]
+   },
+   "destinos": {
+    "1": {
+     "id": 1,
+     "sede": "CENTRO",
+     "nombre": "Arroz La Esquina",
+     "tipo": "marca_propia",
+     "color": "d2",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    },
+    "2": {
+     "id": 2,
+     "sede": "CENTRO",
+     "nombre": "Aceites",
+     "tipo": "categoria",
+     "color": "d1",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    },
+    "3": {
+     "id": 3,
+     "sede": "CENTRO",
+     "nombre": "Pastas",
+     "tipo": "categoria",
+     "color": "d4",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    },
+    "4": {
+     "id": 4,
+     "sede": "CENTRO",
+     "nombre": "Granos 2×1",
+     "tipo": "promocion",
+     "color": "d3",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    }
+   },
+   "biblioteca": [],
+   "revision": null
+  },
+  "GON-12-B": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "cara": "B",
+   "codigo_cara": "CENTRO-GON-12-B",
+   "fixture": {
+    "id": "f-GON-12",
+    "code": "GON-12",
+    "label": "Góndola de la casa",
+    "type": "gondola",
+    "caras": 2
+   },
+   "comercializable": false,
+   "por_participacion": false,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 11.6,
+    "alto": 1.8,
+    "plano": 0.612,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.002155,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.108956,
+      "u1": 0.113266,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.220067,
+      "u1": 0.224377,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.331178,
+      "u1": 0.335489,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.442289,
+      "u1": 0.4466,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.5534,
+      "u1": 0.557711,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.664511,
+      "u1": 0.668822,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.775623,
+      "u1": 0.779933,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.886734,
+      "u1": 0.891044,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.997845,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 17.61696795801456
+   },
+   "firma": "v1|gondola|doble|11600|1800|e5|zocalo:0,10000,0,667;parante:0,22,667,9444;parante:1090,1133,667,9444;parante:2201,2244,667,9444;parante:3312,3355,667,9444;parante:4423,4466,667,9444;parante:5534,5577,667,9444;parante:6645,6688,667,9444;parante:7756,7799,667,9444;parante:8867,8910,667,9444;parante:9978,10000,667,9444;remate:0,10000,9444,10000",
+   "permisos": {
+    "planificar": true,
+    "quien_publica": "admin"
+   },
+   "vendido": {
+    "entera": [],
+    "participaciones": []
+   },
+   "planograma": {
+    "version": 2,
+    "borrador": null,
+    "vigente": {
+     "id": 2,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.658361+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false,
+     "piezas": [
+      {
+       "destino_id": 1,
+       "pb": 5000,
+       "vertices": [
+        [
+         0.0,
+         0.066667
+        ],
+        [
+         0.5,
+         0.066667
+        ],
+        [
+         0.5,
+         0.944444
+        ],
+        [
+         0.0,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 1,
+        "nombre": "Arroz La Esquina",
+        "tipo": "marca_propia",
+        "color": "d2",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      },
+      {
+       "destino_id": 4,
+       "pb": 3000,
+       "vertices": [
+        [
+         0.5,
+         0.066667
+        ],
+        [
+         0.801294,
+         0.066667
+        ],
+        [
+         0.801294,
+         0.944444
+        ],
+        [
+         0.5,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 4,
+        "nombre": "Granos 2×1",
+        "tipo": "promocion",
+        "color": "d3",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      }
+     ],
+     "choca_con_lo_vendido": []
+    },
+    "programadas": [],
+    "versiones": [
+     {
+      "id": 2,
+      "numero": 1,
+      "rige_desde": "2026-10-26",
+      "hasta": null,
+      "estado": "vigente",
+      "publicada_en": "2026-10-26T21:35:18.658361+00:00",
+      "publicada_por": "admin",
+      "vencida_hace_dias": null,
+      "para_revisar": false,
+      "montaje": {
+       "estado": "sin_montar",
+       "aviso": null,
+       "revision": null
+      }
+     }
+    ]
+   },
+   "destinos": {
+    "1": {
+     "id": 1,
+     "sede": "CENTRO",
+     "nombre": "Arroz La Esquina",
+     "tipo": "marca_propia",
+     "color": "d2",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    },
+    "4": {
+     "id": 4,
+     "sede": "CENTRO",
+     "nombre": "Granos 2×1",
+     "tipo": "promocion",
+     "color": "d3",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    }
+   },
+   "biblioteca": [],
+   "revision": null
+  },
+  "GON-13-A": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "cara": "A",
+   "codigo_cara": "CENTRO-GON-13",
+   "fixture": {
+    "id": "f-GON-13",
+    "code": "GON-13",
+    "label": "Góndola de la casa",
+    "type": "gondola",
+    "caras": 2
+   },
+   "comercializable": false,
+   "por_participacion": false,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 11.6,
+    "alto": 1.8,
+    "plano": 0.612,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.002155,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.108956,
+      "u1": 0.113266,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.220067,
+      "u1": 0.224377,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.331178,
+      "u1": 0.335489,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.442289,
+      "u1": 0.4466,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.5534,
+      "u1": 0.557711,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.664511,
+      "u1": 0.668822,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.775623,
+      "u1": 0.779933,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.886734,
+      "u1": 0.891044,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.997845,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 17.61696795801456
+   },
+   "firma": "v1|gondola|doble|11600|1800|e4|zocalo:0,10000,0,667;parante:0,22,667,9444;parante:1090,1133,667,9444;parante:2201,2244,667,9444;parante:3312,3355,667,9444;parante:4423,4466,667,9444;parante:5534,5577,667,9444;parante:6645,6688,667,9444;parante:7756,7799,667,9444;parante:8867,8910,667,9444;parante:9978,10000,667,9444;remate:0,10000,9444,10000",
+   "permisos": {
+    "planificar": true,
+    "quien_publica": "admin"
+   },
+   "vendido": {
+    "entera": [],
+    "participaciones": []
+   },
+   "planograma": {
+    "version": 2,
+    "borrador": null,
+    "vigente": {
+     "id": 3,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.706737+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false,
+     "piezas": [
+      {
+       "destino_id": 3,
+       "pb": 6000,
+       "vertices": [
+        [
+         0.0,
+         0.066667
+        ],
+        [
+         0.600432,
+         0.066667
+        ],
+        [
+         0.600432,
+         0.944444
+        ],
+        [
+         0.0,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 3,
+        "nombre": "Pastas",
+        "tipo": "categoria",
+        "color": "d4",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      }
+     ],
+     "choca_con_lo_vendido": []
+    },
+    "programadas": [],
+    "versiones": [
+     {
+      "id": 3,
+      "numero": 1,
+      "rige_desde": "2026-10-26",
+      "hasta": null,
+      "estado": "vigente",
+      "publicada_en": "2026-10-26T21:35:18.706737+00:00",
+      "publicada_por": "admin",
+      "vencida_hace_dias": null,
+      "para_revisar": false,
+      "montaje": {
+       "estado": "no_se_pudo",
+       "aviso": {
+        "id": 2,
+        "estado": "no_se_pudo",
+        "motivo": "sin_producto",
+        "motivo_legible": "No llegó el producto",
+        "nota": "La marca propia llega el lunes",
+        "por_enlace": true,
+        "por": null,
+        "en": "2026-10-26T21:35:18.801451+00:00"
+       },
+       "revision": null
+      }
+     }
+    ]
+   },
+   "destinos": {
+    "3": {
+     "id": 3,
+     "sede": "CENTRO",
+     "nombre": "Pastas",
+     "tipo": "categoria",
+     "color": "d4",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    }
+   },
+   "biblioteca": [],
+   "revision": null
+  },
+  "GON-13-B": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "cara": "B",
+   "codigo_cara": "CENTRO-GON-13-B",
+   "fixture": {
+    "id": "f-GON-13",
+    "code": "GON-13",
+    "label": "Góndola de la casa",
+    "type": "gondola",
+    "caras": 2
+   },
+   "comercializable": false,
+   "por_participacion": false,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 11.6,
+    "alto": 1.8,
+    "plano": 0.612,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.002155,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.108956,
+      "u1": 0.113266,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.220067,
+      "u1": 0.224377,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.331178,
+      "u1": 0.335489,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.442289,
+      "u1": 0.4466,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.5534,
+      "u1": 0.557711,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.664511,
+      "u1": 0.668822,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.775623,
+      "u1": 0.779933,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.886734,
+      "u1": 0.891044,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.997845,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 17.61696795801456
+   },
+   "firma": "v1|gondola|doble|11600|1800|e4|zocalo:0,10000,0,667;parante:0,22,667,9444;parante:1090,1133,667,9444;parante:2201,2244,667,9444;parante:3312,3355,667,9444;parante:4423,4466,667,9444;parante:5534,5577,667,9444;parante:6645,6688,667,9444;parante:7756,7799,667,9444;parante:8867,8910,667,9444;parante:9978,10000,667,9444;remate:0,10000,9444,10000",
+   "permisos": {
+    "planificar": true,
+    "quien_publica": "admin"
+   },
+   "vendido": {
+    "entera": [],
+    "participaciones": []
+   },
+   "planograma": {
+    "version": 2,
+    "borrador": null,
+    "vigente": {
+     "id": 4,
+     "numero": 1,
+     "rige_desde": "2026-10-26",
+     "hasta": null,
+     "estado": "vigente",
+     "publicada_en": "2026-10-26T21:35:18.751422+00:00",
+     "publicada_por": "admin",
+     "vencida_hace_dias": null,
+     "para_revisar": false,
+     "piezas": [
+      {
+       "destino_id": 4,
+       "pb": 3000,
+       "vertices": [
+        [
+         0.0,
+         0.066667
+        ],
+        [
+         0.299137,
+         0.066667
+        ],
+        [
+         0.299137,
+         0.944444
+        ],
+        [
+         0.0,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 4,
+        "nombre": "Granos 2×1",
+        "tipo": "promocion",
+        "color": "d3",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      },
+      {
+       "destino_id": 1,
+       "pb": 4000,
+       "vertices": [
+        [
+         0.299137,
+         0.066667
+        ],
+        [
+         0.700863,
+         0.066667
+        ],
+        [
+         0.700863,
+         0.944444
+        ],
+        [
+         0.299137,
+         0.944444
+        ]
+       ],
+       "destino": {
+        "id": 1,
+        "nombre": "Arroz La Esquina",
+        "tipo": "marca_propia",
+        "color": "d2",
+        "como_se_monta": null,
+        "codigo_externo": null
+       }
+      }
+     ],
+     "choca_con_lo_vendido": []
+    },
+    "programadas": [],
+    "versiones": [
+     {
+      "id": 4,
+      "numero": 1,
+      "rige_desde": "2026-10-26",
+      "hasta": null,
+      "estado": "vigente",
+      "publicada_en": "2026-10-26T21:35:18.751422+00:00",
+      "publicada_por": "admin",
+      "vencida_hace_dias": null,
+      "para_revisar": false,
+      "montaje": {
+       "estado": "no_coincide",
+       "aviso": {
+        "id": 3,
+        "estado": "montada",
+        "motivo": null,
+        "motivo_legible": null,
+        "nota": null,
+        "por_enlace": true,
+        "por": null,
+        "en": "2026-10-26T21:35:18.822518+00:00"
+       },
+       "revision": {
+        "id": 1,
+        "montaje_id": 3,
+        "resultado": "no_coincide",
+        "numeros": [
+         1
+        ],
+        "otra_cosa": false,
+        "nota": "Granos va a la derecha de Arroz",
+        "en_la_tienda": false,
+        "guia_reenviada": false,
+        "por": "admin",
+        "en": "2026-10-26T21:35:18.838807+00:00"
+       }
+      }
+     }
+    ]
+   },
+   "destinos": {
+    "1": {
+     "id": 1,
+     "sede": "CENTRO",
+     "nombre": "Arroz La Esquina",
+     "tipo": "marca_propia",
+     "color": "d2",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    },
+    "4": {
+     "id": 4,
+     "sede": "CENTRO",
+     "nombre": "Granos 2×1",
+     "tipo": "promocion",
+     "color": "d3",
+     "como_se_monta": null,
+     "codigo_externo": null,
+     "en_la_sede": false
+    }
+   },
+   "biblioteca": [],
+   "revision": null
+  }
+ },
+ "caras_part": {
+  "GON-01": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-01",
+   "cara": "A",
+   "fixture": {
+    "id": "f-GON-01",
+    "code": "GON-01",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 63,
+     "codigo": "CENTRO-GON-01-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 6000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 6000,
+     "terminos": [
+      {
+       "id": 7,
+       "space_id": 63,
+       "codigo": "CENTRO-GON-01-PC1",
+       "numero": 1,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 6000,
+       "porcentaje": "60 %",
+       "proveedor": {
+        "id": 6,
+        "nombre": "Lácteos Andinos"
+       },
+       "marca": "Yogur Andino",
+       "desde": "2026-08-01",
+       "hasta": "2027-01-31",
+       "caduca": null,
+       "lease_id": 17,
+       "valor_mensual": 1620000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.371026+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 6000,
+    "disponible_hoy_pb": 4000,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 6000,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 4000
+    },
+    "intervalos": [
+     {
+      "desde": "2026-08-01",
+      "hasta": "2027-01-31",
+      "pb": 6000,
+      "tipo": "contrato",
+      "numero": 1
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 60 % de 60 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     }
+    ]
+   }
+  },
+  "GON-01-B": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-01-B",
+   "cara": "B",
+   "fixture": {
+    "id": "f-GON-01",
+    "code": "GON-01",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 65,
+     "codigo": "CENTRO-GON-01-B-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 4000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 4000,
+     "terminos": [
+      {
+       "id": 8,
+       "space_id": 65,
+       "codigo": "CENTRO-GON-01-B-PC1",
+       "numero": 1,
+       "cara": "B",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 4000,
+       "porcentaje": "40 %",
+       "proveedor": {
+        "id": 2,
+        "nombre": "Galletas Sol"
+       },
+       "marca": "Galletas Sol Clásicas",
+       "desde": "2026-09-01",
+       "hasta": "2027-02-28",
+       "caduca": null,
+       "lease_id": 18,
+       "valor_mensual": 1080000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.396264+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 4000,
+    "disponible_hoy_pb": 6000,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 4000,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 6000
+    },
+    "intervalos": [
+     {
+      "desde": "2026-09-01",
+      "hasta": "2027-02-28",
+      "pb": 4000,
+      "tipo": "contrato",
+      "numero": 1
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 40 % de 40 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     }
+    ]
+   }
+  },
+  "GON-02": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-02",
+   "cara": "A",
+   "fixture": {
+    "id": "f-GON-02",
+    "code": "GON-02",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 61,
+     "codigo": "CENTRO-GON-02-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 5000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 5000,
+     "terminos": [
+      {
+       "id": 6,
+       "space_id": 61,
+       "codigo": "CENTRO-GON-02-PC1",
+       "numero": 1,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 5000,
+       "porcentaje": "50 %",
+       "proveedor": {
+        "id": 7,
+        "nombre": "Aseo Total"
+       },
+       "marca": "Aseo Total Hogar",
+       "desde": "2026-10-01",
+       "hasta": "2027-03-31",
+       "caduca": null,
+       "lease_id": 16,
+       "valor_mensual": 1350000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.343673+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 5000,
+    "disponible_hoy_pb": 5000,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 5000,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 5000
+    },
+    "intervalos": [
+     {
+      "desde": "2026-10-01",
+      "hasta": "2027-03-31",
+      "pb": 5000,
+      "tipo": "contrato",
+      "numero": 1
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 50 % de 50 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     }
+    ]
+   }
+  },
+  "GON-02-B": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-02-B",
+   "cara": "B",
+   "fixture": {
+    "id": "f-GON-02",
+    "code": "GON-02",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 71,
+     "codigo": "CENTRO-GON-02-B-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 3000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 3000,
+     "terminos": [
+      {
+       "id": 11,
+       "space_id": 71,
+       "codigo": "CENTRO-GON-02-B-PC1",
+       "numero": 1,
+       "cara": "B",
+       "estado": "reserva",
+       "estado_visible": "reserva",
+       "puntos_basicos": 3000,
+       "porcentaje": "30 %",
+       "proveedor": {
+        "id": 4,
+        "nombre": "Snacks Norte"
+       },
+       "marca": "Papitas Norte",
+       "desde": "2026-11-01",
+       "hasta": "2027-04-30",
+       "caduca": "2026-11-05",
+       "lease_id": null,
+       "valor_mensual": null,
+       "valor_acordado": 810000.0,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.500733+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 0,
+    "disponible_hoy_pb": 10000,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 3000,
+     "dia_pico": "2026-11-01",
+     "disponible_pb": 7000
+    },
+    "intervalos": [
+     {
+      "desde": "2026-11-01",
+      "hasta": "2027-04-30",
+      "pb": 3000,
+      "tipo": "reserva",
+      "numero": 1
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 30 % de 30 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     }
+    ]
+   }
+  },
+  "GON-03": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-03",
+   "cara": "A",
+   "fixture": {
+    "id": "f-GON-03",
+    "code": "GON-03",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 55,
+     "codigo": "CENTRO-GON-03-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 2500,
+     "dibujado_pb": 0,
+     "pendiente_pb": 2500,
+     "terminos": [
+      {
+       "id": 2,
+       "space_id": 55,
+       "codigo": "CENTRO-GON-03-PC1",
+       "numero": 1,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 2500,
+       "porcentaje": "25 %",
+       "proveedor": {
+        "id": 6,
+        "nombre": "Lácteos Andinos"
+       },
+       "marca": "Yogur Andino",
+       "desde": "2026-10-01",
+       "hasta": "2027-03-31",
+       "caduca": null,
+       "lease_id": 12,
+       "valor_mensual": 720000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.221721+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    },
+    {
+     "space_id": 56,
+     "codigo": "CENTRO-GON-03-PC2",
+     "numero": 2,
+     "viva": true,
+     "contratado_pb": 3000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 3000,
+     "terminos": [
+      {
+       "id": 3,
+       "space_id": 56,
+       "codigo": "CENTRO-GON-03-PC2",
+       "numero": 2,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 3000,
+       "porcentaje": "30 %",
+       "proveedor": {
+        "id": 4,
+        "nombre": "Snacks Norte"
+       },
+       "marca": "Papitas Norte",
+       "desde": "2026-09-01",
+       "hasta": "2027-02-28",
+       "caduca": null,
+       "lease_id": 13,
+       "valor_mensual": 840000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.256664+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    },
+    {
+     "space_id": 57,
+     "codigo": "CENTRO-GON-03-PC3",
+     "numero": 3,
+     "viva": true,
+     "contratado_pb": 2500,
+     "dibujado_pb": 0,
+     "pendiente_pb": 2500,
+     "terminos": [
+      {
+       "id": 4,
+       "space_id": 57,
+       "codigo": "CENTRO-GON-03-PC3",
+       "numero": 3,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 2500,
+       "porcentaje": "25 %",
+       "proveedor": {
+        "id": 7,
+        "nombre": "Aseo Total"
+       },
+       "marca": "Aseo Total Hogar",
+       "desde": "2026-07-01",
+       "hasta": "2026-12-31",
+       "caduca": null,
+       "lease_id": 14,
+       "valor_mensual": 690000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.289745+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 8000,
+    "disponible_hoy_pb": 2000,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 8000,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 2000
+    },
+    "intervalos": [
+     {
+      "desde": "2026-07-01",
+      "hasta": "2026-12-31",
+      "pb": 2500,
+      "tipo": "contrato",
+      "numero": 3
+     },
+     {
+      "desde": "2026-09-01",
+      "hasta": "2027-02-28",
+      "pb": 3000,
+      "tipo": "contrato",
+      "numero": 2
+     },
+     {
+      "desde": "2026-10-01",
+      "hasta": "2027-03-31",
+      "pb": 2500,
+      "tipo": "contrato",
+      "numero": 1
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 25 % de 25 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     },
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 2 le falta dibujar 30 % de 30 %.",
+      "zona": null,
+      "participaciones": [
+       2
+      ]
+     },
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 3 le falta dibujar 25 % de 25 %.",
+      "zona": null,
+      "participaciones": [
+       3
+      ]
+     }
+    ]
+   }
+  },
+  "GON-03-B": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-03-B",
+   "cara": "B",
+   "fixture": {
+    "id": "f-GON-03",
+    "code": "GON-03",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 53,
+     "codigo": "CENTRO-GON-03-B-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 10000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 10000,
+     "terminos": [
+      {
+       "id": 1,
+       "space_id": 53,
+       "codigo": "CENTRO-GON-03-B-PC1",
+       "numero": 1,
+       "cara": "B",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 10000,
+       "porcentaje": "100 %",
+       "proveedor": {
+        "id": 1,
+        "nombre": "Café Montaña"
+       },
+       "marca": "Café Montaña Tostado",
+       "desde": "2026-06-01",
+       "hasta": "2027-05-31",
+       "caduca": null,
+       "lease_id": 11,
+       "valor_mensual": 5400000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.183810+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 10000,
+    "disponible_hoy_pb": 0,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 10000,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 0
+    },
+    "intervalos": [
+     {
+      "desde": "2026-06-01",
+      "hasta": "2027-05-31",
+      "pb": 10000,
+      "tipo": "contrato",
+      "numero": 1
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 100 % de 100 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     }
+    ]
+   }
+  },
+  "GON-04": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-04",
+   "cara": "A",
+   "fixture": {
+    "id": "f-GON-04",
+    "code": "GON-04",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 59,
+     "codigo": "CENTRO-GON-04-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 10000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 10000,
+     "terminos": [
+      {
+       "id": 5,
+       "space_id": 59,
+       "codigo": "CENTRO-GON-04-PC1",
+       "numero": 1,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 10000,
+       "porcentaje": "100 %",
+       "proveedor": {
+        "id": 7,
+        "nombre": "Aseo Total"
+       },
+       "marca": "Aseo Total Hogar",
+       "desde": "2026-05-01",
+       "hasta": "2026-11-30",
+       "caduca": null,
+       "lease_id": 15,
+       "valor_mensual": 3150000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.316440+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 10000,
+    "disponible_hoy_pb": 0,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 10000,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 0
+    },
+    "intervalos": [
+     {
+      "desde": "2026-05-01",
+      "hasta": "2026-11-30",
+      "pb": 10000,
+      "tipo": "contrato",
+      "numero": 1
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 100 % de 100 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     }
+    ]
+   }
+  },
+  "GON-04-B": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-GON-04-B",
+   "cara": "B",
+   "fixture": {
+    "id": "f-GON-04",
+    "code": "GON-04",
+    "label": "Góndola doble",
+    "type": "gondola",
+    "caras": 2
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 7.2,
+    "alto": 1.8,
+    "plano": 0.812,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.066667
+     },
+     {
+      "por": "parante",
+      "u0": 0.0,
+      "u1": 0.003472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.163194,
+      "u1": 0.170139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.329861,
+      "u1": 0.336806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.496528,
+      "u1": 0.503472,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.663194,
+      "u1": 0.670139,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.829861,
+      "u1": 0.836806,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "parante",
+      "u0": 0.996528,
+      "u1": 1.0,
+      "v0": 0.066667,
+      "v1": 0.944444
+     },
+     {
+      "por": "remate",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.944444,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 10.901975172013437
+   },
+   "firma": "v1|gondola|doble|7200|1800|e-|zocalo:0,10000,0,667;parante:0,35,667,9444;parante:1632,1701,667,9444;parante:3299,3368,667,9444;parante:4965,5035,667,9444;parante:6632,6701,667,9444;parante:8299,8368,667,9444;parante:9965,10000,667,9444;remate:0,10000,9444,10000",
+   "distribucion": null,
+   "participaciones": [],
+   "capacidad": {
+    "hoy_pb": 0,
+    "disponible_hoy_pb": 10000,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 0,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 10000
+    },
+    "intervalos": [],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": []
+   }
+  },
+  "NEV-01": {
+   "sede": "CENTRO",
+   "hoy": "2026-10-26",
+   "codigo_cara": "CENTRO-NEV-01",
+   "cara": "A",
+   "fixture": {
+    "id": "f-NEV-01",
+    "code": "NEV-01",
+    "label": "Nevera de puertas",
+    "type": "nevera_puertas",
+    "caras": 1
+   },
+   "por_participacion": true,
+   "comercializable": true,
+   "superficie": {
+    "orientacion": "frente",
+    "ancho": 10.4,
+    "alto": 2.1,
+    "plano": 0.68,
+    "giro_x": 0,
+    "exclusiones": [
+     {
+      "por": "zocalo",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.0,
+      "v1": 0.080952
+     },
+     {
+      "por": "marco",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.080952,
+      "v1": 0.102381
+     },
+     {
+      "por": "marco",
+      "u0": 0.0,
+      "u1": 0.004327,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.067102,
+      "u1": 0.075755,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.13853,
+      "u1": 0.147184,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.209959,
+      "u1": 0.218613,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.281387,
+      "u1": 0.290041,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.352816,
+      "u1": 0.36147,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.424245,
+      "u1": 0.432898,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.495673,
+      "u1": 0.504327,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.567102,
+      "u1": 0.575755,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.63853,
+      "u1": 0.647184,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.709959,
+      "u1": 0.718613,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.781387,
+      "u1": 0.790041,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.852816,
+      "u1": 0.86147,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.924245,
+      "u1": 0.932898,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.995673,
+      "u1": 1.0,
+      "v0": 0.102381,
+      "v1": 0.911905
+     },
+     {
+      "por": "marco",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.911905,
+      "v1": 0.933333
+     },
+     {
+      "por": "copete",
+      "u0": 0.0,
+      "u1": 1.0,
+      "v0": 0.933333,
+      "v1": 1.0
+     }
+    ],
+    "area_util_m2": 15.538036296007682
+   },
+   "firma": "v1|nevera_puertas||10400|2100|e-|zocalo:0,10000,0,810;marco:0,10000,810,1024;marco:0,43,1024,9119;marco:671,758,1024,9119;marco:1385,1472,1024,9119;marco:2100,2186,1024,9119;marco:2814,2900,1024,9119;marco:3528,3615,1024,9119;marco:4242,4329,1024,9119;marco:4957,5043,1024,9119;marco:5671,5758,1024,9119;marco:6385,6472,1024,9119;marco:7100,7186,1024,9119;marco:7814,7900,1024,9119;marco:8528,8615,1024,9119;marco:9242,9329,1024,9119;marco:9957,10000,1024,9119;marco:0,10000,9119,9333;copete:0,10000,9333,10000",
+   "distribucion": null,
+   "participaciones": [
+    {
+     "space_id": 67,
+     "codigo": "CENTRO-NEV-01-PC1",
+     "numero": 1,
+     "viva": true,
+     "contratado_pb": 5000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 5000,
+     "terminos": [
+      {
+       "id": 9,
+       "space_id": 67,
+       "codigo": "CENTRO-NEV-01-PC1",
+       "numero": 1,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 5000,
+       "porcentaje": "50 %",
+       "proveedor": {
+        "id": 6,
+        "nombre": "Lácteos Andinos"
+       },
+       "marca": "Yogur Andino",
+       "desde": "2026-07-01",
+       "hasta": "2027-06-30",
+       "caduca": null,
+       "lease_id": 19,
+       "valor_mensual": 8400000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.423588+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    },
+    {
+     "space_id": 68,
+     "codigo": "CENTRO-NEV-01-PC2",
+     "numero": 2,
+     "viva": true,
+     "contratado_pb": 3000,
+     "dibujado_pb": 0,
+     "pendiente_pb": 3000,
+     "terminos": [
+      {
+       "id": 10,
+       "space_id": 68,
+       "codigo": "CENTRO-NEV-01-PC2",
+       "numero": 2,
+       "cara": "A",
+       "estado": "contrato",
+       "estado_visible": "vigente",
+       "puntos_basicos": 3000,
+       "porcentaje": "30 %",
+       "proveedor": {
+        "id": 5,
+        "nombre": "Bebidas del Valle"
+       },
+       "marca": "Agua del Valle",
+       "desde": "2026-09-01",
+       "hasta": "2027-02-28",
+       "caduca": null,
+       "lease_id": 20,
+       "valor_mensual": 2520000.0,
+       "valor_acordado": null,
+       "cobro_acordado": null,
+       "renueva_a": null,
+       "notas": null,
+       "baja_en": null,
+       "baja_fecha": null,
+       "version": 1,
+       "creada_en": "2026-10-26T21:35:18.452146+00:00",
+       "creada_por": "admin"
+      }
+     ]
+    }
+   ],
+   "capacidad": {
+    "hoy_pb": 8000,
+    "disponible_hoy_pb": 2000,
+    "periodo": {
+     "desde": "2026-10-26",
+     "hasta": "2027-10-25",
+     "pico_pb": 8000,
+     "dia_pico": "2026-10-26",
+     "disponible_pb": 2000
+    },
+    "intervalos": [
+     {
+      "desde": "2026-07-01",
+      "hasta": "2027-06-30",
+      "pb": 5000,
+      "tipo": "contrato",
+      "numero": 1
+     },
+     {
+      "desde": "2026-09-01",
+      "hasta": "2027-02-28",
+      "pb": 3000,
+      "tipo": "contrato",
+      "numero": 2
+     }
+    ],
+    "fisicos": []
+   },
+   "revision": {
+    "capa": "confirmada",
+    "errores": [],
+    "avisos": [
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 1 le falta dibujar 50 % de 50 %.",
+      "zona": null,
+      "participaciones": [
+       1
+      ]
+     },
+     {
+      "codigo": "PENDIENTE",
+      "frase": "A la participación 2 le falta dibujar 30 % de 30 %.",
+      "zona": null,
+      "participaciones": [
+       2
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "avisos": {
+  "notify_emails": "",
+  "reminder_days": "30,15,6"
+ },
+ "equipo": {
+  "miembros": [],
+  "invitaciones": []
+ },
+ "datos": {
+  "kpi.contratos_activos": {
+   "valor": 18,
+   "texto": "18",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos con leaseId y startDate ≤ hoy ≤ endDate"
+  },
+  "kpi.canon_mes": {
+   "valor": 6370000,
+   "texto": "$ 6.370.000",
+   "fuente": "GET /api/spaces/comercial + services/meses.py",
+   "formula": "Σ negotiatedValue ÷ meses_entre(startDate, endDate) de los contratos activos con precio fijo"
+  },
+  "kpi.por_vencer_30": {
+   "valor": 1,
+   "texto": "1",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con endDate − hoy ≤ 30 días"
+  },
+  "kpi.ocupacion": {
+   "valor": 0.6,
+   "texto": "60 %",
+   "fuente": "GET /api/layout/CENTRO + /api/spaces/comercial + /api/participaciones/resumen",
+   "formula": "Σ (peso × ocupado) ÷ Σ peso; peso: punta entera 1, entrepaño 1/n, cara 1; ocupado de una cara = comprometido_dia_pb ÷ 10000"
+  },
+  "kpi.canon_tarifa": {
+   "valor": 1.0024,
+   "texto": "100 %",
+   "fuente": "GET /api/layout/rates + /api/spaces/comercial",
+   "formula": "canon del mes ÷ Σ tarifa de referencia de lo contratado (cara: tarifa × pb ÷ 10000; entrepaño: tarifa ÷ n)"
+  },
+  "ocup.gondola": {
+   "valor": 0.5375,
+   "texto": "54 %",
+   "fuente": "GET /api/layout/CENTRO + /api/participaciones/resumen",
+   "formula": "ocupación de caras de góndola"
+  },
+  "ocup.gondola.de": {
+   "valor": [
+    4.3,
+    8.0
+   ],
+   "texto": "4,3 de 8",
+   "fuente": "ídem",
+   "formula": "caras ocupadas de caras"
+  },
+  "ocup.punta": {
+   "valor": 0.6333,
+   "texto": "63 %",
+   "fuente": "GET /api/layout/CENTRO + /api/participaciones/resumen",
+   "formula": "ocupación de puntas de góndola"
+  },
+  "ocup.punta.de": {
+   "valor": [
+    5.7,
+    9.0
+   ],
+   "texto": "5,7 de 9",
+   "fuente": "ídem",
+   "formula": "caras ocupadas de caras"
+  },
+  "ocup.nevera_puertas": {
+   "valor": 0.8,
+   "texto": "80 %",
+   "fuente": "GET /api/layout/CENTRO + /api/participaciones/resumen",
+   "formula": "ocupación de neveras"
+  },
+  "ocup.nevera_puertas.de": {
+   "valor": [
+    0.8,
+    1.0
+   ],
+   "texto": "0,8 de 1",
+   "fuente": "ídem",
+   "formula": "caras ocupadas de caras"
+  },
+  "serie.May": {
+   "valor": 1050000,
+   "texto": "$ 1.050.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos vivos el 15/05/2026 (sólo los que siguen vivos o arrancaron: el histórico terminado no tiene endpoint)"
+  },
+  "serie.Jun": {
+   "valor": 2100000,
+   "texto": "$ 2.100.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos vivos el 15/06/2026 (sólo los que siguen vivos o arrancaron: el histórico terminado no tiene endpoint)"
+  },
+  "serie.Jul": {
+   "valor": 2915000,
+   "texto": "$ 2.915.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos vivos el 15/07/2026 (sólo los que siguen vivos o arrancaron: el histórico terminado no tiene endpoint)"
+  },
+  "serie.Ago": {
+   "valor": 3735000,
+   "texto": "$ 3.735.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos vivos el 15/08/2026 (sólo los que siguen vivos o arrancaron: el histórico terminado no tiene endpoint)"
+  },
+  "serie.Sep": {
+   "valor": 5075000,
+   "texto": "$ 5.075.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos vivos el 15/09/2026 (sólo los que siguen vivos o arrancaron: el histórico terminado no tiene endpoint)"
+  },
+  "serie.Oct": {
+   "valor": 6370000,
+   "texto": "$ 6.370.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos vivos el 15/10/2026 (sólo los que siguen vivos o arrancaron: el histórico terminado no tiene endpoint)"
+  },
+  "prov.Galletas Sol.canon": {
+   "valor": 1430000,
+   "texto": "$ 1.430.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos activos de Galletas Sol"
+  },
+  "prov.Galletas Sol.espacios": {
+   "valor": 3,
+   "texto": "3",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con precio fijo"
+  },
+  "prov.Galletas Sol.pct": {
+   "valor": 0.2245,
+   "texto": "22 %",
+   "fuente": "ídem",
+   "formula": "canon del proveedor ÷ canon del mes"
+  },
+  "prov.Lácteos Andinos.canon": {
+   "valor": 1090000,
+   "texto": "$ 1.090.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos activos de Lácteos Andinos"
+  },
+  "prov.Lácteos Andinos.espacios": {
+   "valor": 3,
+   "texto": "3",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con precio fijo"
+  },
+  "prov.Lácteos Andinos.pct": {
+   "valor": 0.1711,
+   "texto": "17 %",
+   "fuente": "ídem",
+   "formula": "canon del proveedor ÷ canon del mes"
+  },
+  "prov.Bebidas del Valle.canon": {
+   "valor": 970000,
+   "texto": "$ 970.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos activos de Bebidas del Valle"
+  },
+  "prov.Bebidas del Valle.espacios": {
+   "valor": 2,
+   "texto": "2",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con precio fijo"
+  },
+  "prov.Bebidas del Valle.pct": {
+   "valor": 0.1523,
+   "texto": "15 %",
+   "fuente": "ídem",
+   "formula": "canon del proveedor ÷ canon del mes"
+  },
+  "prov.Snacks Norte.canon": {
+   "valor": 890000,
+   "texto": "$ 890.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos activos de Snacks Norte"
+  },
+  "prov.Snacks Norte.espacios": {
+   "valor": 3,
+   "texto": "3",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con precio fijo"
+  },
+  "prov.Snacks Norte.pct": {
+   "valor": 0.1397,
+   "texto": "14 %",
+   "fuente": "ídem",
+   "formula": "canon del proveedor ÷ canon del mes"
+  },
+  "prov.Aseo Total.canon": {
+   "valor": 790000,
+   "texto": "$ 790.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos activos de Aseo Total"
+  },
+  "prov.Aseo Total.espacios": {
+   "valor": 3,
+   "texto": "3",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con precio fijo"
+  },
+  "prov.Aseo Total.pct": {
+   "valor": 0.124,
+   "texto": "12 %",
+   "fuente": "ídem",
+   "formula": "canon del proveedor ÷ canon del mes"
+  },
+  "prov.Limpio Hogar.canon": {
+   "valor": 600000,
+   "texto": "$ 600.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos activos de Limpio Hogar"
+  },
+  "prov.Limpio Hogar.espacios": {
+   "valor": 1,
+   "texto": "1",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con precio fijo"
+  },
+  "prov.Limpio Hogar.pct": {
+   "valor": 0.0942,
+   "texto": "9 %",
+   "fuente": "ídem",
+   "formula": "canon del proveedor ÷ canon del mes"
+  },
+  "prov.Café Montaña.canon": {
+   "valor": 600000,
+   "texto": "$ 600.000",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "Σ al mes de los contratos activos de Café Montaña"
+  },
+  "prov.Café Montaña.espacios": {
+   "valor": 2,
+   "texto": "2",
+   "fuente": "GET /api/spaces/comercial",
+   "formula": "contratos activos con precio fijo"
+  },
+  "prov.Café Montaña.pct": {
+   "valor": 0.0942,
+   "texto": "9 %",
+   "fuente": "ídem",
+   "formula": "canon del proveedor ÷ canon del mes"
+  },
+  "pend.inc": {
+   "valor": 1,
+   "texto": "1",
+   "fuente": "ver cada una",
+   "formula": "canon bajo la tarifa + precio sin forma + contratos sólo en el plano"
+  },
+  "pend.30": {
+   "valor": 12,
+   "texto": "12",
+   "fuente": "ídem",
+   "formula": "pendientes de los próximos 30 días"
+  },
+  "pend.total": {
+   "valor": 26,
+   "texto": "26",
+   "fuente": "suma de las listas de abajo",
+   "formula": "contratos por vencer + reservas + montajes pendientes + reportes + planogramas + cobros"
+  },
+  "pend.hoy": {
+   "valor": 13,
+   "texto": "13",
+   "fuente": "ídem",
+   "formula": "pendientes con fecha límite hoy o ya vencida"
+  },
+  "kpi.montajes": {
+   "valor": 21,
+   "texto": "21",
+   "fuente": "GET /api/montajes/pendientes + /api/mounts/ + /api/planogramas/supervision",
+   "formula": "montajes y planogramas que piden una acción"
+  }
+ },
+ "fuentes": [
+  "/api/bitacora/",
+  "/api/cobros/pendientes",
+  "/api/contratos/10/edicion",
+  "/api/contratos/11/edicion",
+  "/api/contratos/12/edicion",
+  "/api/contratos/13/edicion",
+  "/api/contratos/14/edicion",
+  "/api/contratos/15/edicion",
+  "/api/contratos/16/edicion",
+  "/api/contratos/17/edicion",
+  "/api/contratos/18/edicion",
+  "/api/contratos/19/edicion",
+  "/api/contratos/2/edicion",
+  "/api/contratos/20/edicion",
+  "/api/contratos/3/edicion",
+  "/api/contratos/4/edicion",
+  "/api/contratos/5/edicion",
+  "/api/contratos/6/edicion",
+  "/api/contratos/7/edicion",
+  "/api/contratos/8/edicion",
+  "/api/contratos/9/edicion",
+  "/api/contratos/precio-sin-forma?sede=CENTRO",
+  "/api/layout/CENTRO",
+  "/api/layout/CENTRO/impact",
+  "/api/layout/importacion/previo",
+  "/api/layout/rates",
+  "/api/montajes/pendientes",
+  "/api/mounts/",
+  "/api/notifications/config",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-01",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-01-B",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-02",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-02-B",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-03",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-03-B",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-04",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-GON-04-B",
+  "/api/participaciones/cara?sede=CENTRO&espacio=CENTRO-NEV-01",
+  "/api/participaciones/resumen?sede=CENTRO",
+  "/api/planogramas/cara?sede=CENTRO&fixture_id=f-GON-12&cara=A",
+  "/api/planogramas/cara?sede=CENTRO&fixture_id=f-GON-12&cara=B",
+  "/api/planogramas/cara?sede=CENTRO&fixture_id=f-GON-13&cara=A",
+  "/api/planogramas/cara?sede=CENTRO&fixture_id=f-GON-13&cara=B",
+  "/api/planogramas/resumen?sede=CENTRO",
+  "/api/planogramas/supervision?sede=CENTRO",
+  "/api/reservas",
+  "/api/spaces/comercial",
+  "/api/suppliers/",
+  "/api/usuarios"
+ ]
+}

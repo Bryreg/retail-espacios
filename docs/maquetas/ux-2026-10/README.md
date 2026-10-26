@@ -1,6 +1,6 @@
 # Rediseño de la experiencia (UX) · octubre 2026
 
-Dibujos para aprobar. **Nada de esto está implementado.** No es código de la
+Dibujos para aprobar. **Nada de esto está implementado.** La versión final está en [`final/`](final/README.md). No es código de la
 aplicación: son dibujos estáticos con datos de ejemplo (sede CENTRO,
 Supermercado La Esquina, PUN-08) hechos en el lienzo de diseño «RECABRA · UX»
 entre el 25 y el 26 de octubre de 2026.
@@ -9,6 +9,7 @@ entre el 25 y el 26 de octubre de 2026.
 
 | Archivo | Qué es |
 |---|---|
+| [`final/`](final/README.md) | **La versión final para aprobar.** Lo mejor de cada versión en un prototipo de 93 páginas enlazadas (`final/prototipo/inicio.html`). Los datos vienen de una base real cargada por la API de la app, y cada cifra se verifica contra esa base. |
 | [`pantallas.md`](pantallas.md) | **El documento principal.** Todas las pantallas del sistema nuevo, cada una con su imagen, su propósito en una línea, su estado (nueva · cambia · existe) y la lista completa de funciones con casillas para marcar a medida que se implementan. Cubre las 187 funciones de hoy más las nuevas. |
 | [`PROMPT.md`](PROMPT.md) | El prompt maestro para implementar el rediseño fase por fase: objetivo, capas, flujos, reglas duras, forma de trabajo y criterios de terminado. |
 | [`tableros/`](tableros/README.md) | Los 64 tableros del lienzo, página por página: capas, disponibilidad, recorrido completo, flujos, tablero e Indicadores combinado. |
