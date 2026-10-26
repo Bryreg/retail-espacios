@@ -10,6 +10,7 @@ entre el 25 y el 26 de octubre de 2026.
 | Archivo | Qué es |
 |---|---|
 | [`pantallas.md`](pantallas.md) | **El documento principal.** Todas las pantallas del sistema nuevo, cada una con su imagen, su propósito en una línea, su estado (nueva · cambia · existe) y la lista completa de funciones con casillas para marcar a medida que se implementan. Cubre las 187 funciones de hoy más las nuevas. |
+| [`PROMPT.md`](PROMPT.md) | El prompt maestro para implementar el rediseño fase por fase: objetivo, capas, flujos, reglas duras, forma de trabajo y criterios de terminado. |
 | [`tableros/`](tableros/README.md) | Los 64 tableros del lienzo, página por página: capas, disponibilidad, recorrido completo, flujos, tablero e Indicadores combinado. |
 | [`generadores/`](generadores/) | Los scripts que generan los tableros (HTML estático) y el que los convierte en imagen. |
 
