@@ -393,3 +393,80 @@ def test_una_planilla_enorme_se_rechaza_entera(client, admin):
     r = _validar(client, admin, [_fila(n) for n in range(2, 400)])
     assert r.status_code == 400
     assert "tope" in r.json()["detail"]
+
+
+# ─── Al mes y sólo enteros (decisión del dueño, 2026-10-26) ───────────────────
+
+def _meses_desde_hoy(n):
+    """Del día 10 desde hoy a n meses justos después (``meses_entre`` = n)."""
+    from app.services.meses import _sumar_meses
+
+    desde = HOY + timedelta(days=10)
+    return desde, _sumar_meses(desde, n) - timedelta(days=1)
+
+
+def test_el_valor_de_la_planilla_es_al_mes_y_se_guarda_como_en_vender(client, admin):
+    """GALERÍAS negocia por mes: la planilla trae lo de CADA MES, el total es
+    ese valor × los meses (redondeado al peso) y el contrato dice que se
+    escribió «al mes», así no cae en «Contratos cargados antes»."""
+    from app.database import SessionLocal
+    from app.models.models import SpaceLease
+    from app.models.vender import CondicionesDeContrato
+    from app.services.meses import meses_entre
+
+    _plano(client, admin)
+    desde, hasta = _meses_desde_hoy(6)
+    assert meses_entre(desde, hasta) == 6
+    fila = _validar(client, admin, [_fila(valor=650_000, desde=desde.isoformat(), hasta=hasta.isoformat())]).json()["filas"][0]
+    assert (fila["valor_mes"], fila["meses"], fila["valor"]) == (650_000, 6, 3_900_000), fila
+
+    r = _confirmar(client, admin, [_fila(valor=650_000, desde=desde.isoformat(), hasta=hasta.isoformat())])
+    assert r.status_code == 200 and r.json()["creados"] == 1, r.text
+    lease_id = r.json()["filas"][0]["lease_id"]
+    db = SessionLocal()
+    try:
+        assert db.get(SpaceLease, lease_id).monthly_rent == 3_900_000
+        c = db.get(CondicionesDeContrato, lease_id)
+        assert (c.modo_precio, c.valor_tecleado) == ("mensual", 650_000)
+    finally:
+        db.close()
+
+
+def test_la_tarifa_se_compara_mes_contra_mes(client, admin):
+    """La tarifa de referencia es mensual. La planilla compara lo de cada mes;
+    la revisión común (Vender, reservas) compara el total repartido en sus
+    meses: antes comparaba el total tal cual, y un contrato de seis meses a la
+    sexta parte de la tarifa pasaba callado."""
+    from tests import sin_planilla
+
+    _plano(client, admin)
+    client.put("/api/layout/rates", json={"default": {"punta": 650_000}, "by_sede": {}}, headers=admin)
+    desde, hasta = _meses_desde_hoy(6)
+    periodo = {"desde": desde.isoformat(), "hasta": hasta.isoformat()}
+    al_mes = _validar(client, admin, [_fila(valor=400_000, **periodo)]).json()["filas"][0]
+    assert al_mes["estado"] == "aviso" and any("38% por debajo" in m for m in al_mes["mensajes"]), al_mes
+    total = sin_planilla.post("/api/leases/bulk/validar", json={"sede": "NAVE", "filas": [
+        _fila(valor=2_400_000, **periodo)]}).json()["filas"][0]
+    assert total["estado"] == "aviso" and any("38% por debajo" in m for m in total["mensajes"]), total
+    justo = _validar(client, admin, [_fila(valor=650_000, **periodo)]).json()["filas"][0]
+    assert justo["estado"] == "ok", justo
+
+
+def test_la_planilla_es_solo_para_muebles_que_se_venden_enteros(client, admin):
+    """Las partes (una puerta, un tramo) y los porcentajes se venden en Vender,
+    que los dibuja y sabe cuánto queda de cada cara."""
+    from tests import test_participaciones as tp
+
+    tp._plano(client, admin)
+    desde, hasta = _meses_desde_hoy(1)
+    periodo = {"sede": "NAVE", "desde": desde.isoformat(), "hasta": hasta.isoformat()}
+    filas = [_fila(2, espacio="NEV-03-PU2", **periodo), _fila(3, espacio="GON-01-PC1", **periodo),
+             _fila(4, espacio="GON-02", **periodo)]
+    v = {f["fila"]: f for f in _validar(client, admin, filas).json()["filas"]}
+    assert v[2]["estado"] == "error" and v[2]["mensajes"][0] == (
+        "«NAVE-NEV-03-PU2» es una parte. La planilla es sólo para muebles que se venden enteros: "
+        "las partes se venden en Vender."), v[2]
+    assert v[3]["estado"] == "error" and "los porcentajes se venden en Vender" in v[3]["mensajes"][0], v[3]
+    assert v[4]["estado"] == "ok", v[4]["mensajes"]
+    r = _confirmar(client, admin, filas).json()
+    assert (r["creados"], r["omitidos"]) == (1, 2), r

@@ -23,6 +23,8 @@ export interface FilaPlanilla {
   proveedor: string;
   correo?: string;
   marca?: string;
+  /** Lo de CADA MES (decisión del dueño, 2026-10-26): el servidor saca el
+   *  total del contrato multiplicándolo por sus meses, como «Al mes» en Vender. */
   valor?: number;
   /** ISO `aaaa-mm-dd`. La ambigüedad de formatos se resuelve acá. */
   desde?: string;
@@ -56,8 +58,10 @@ const SINONIMOS: Record<Campo, string[]> = {
   correo: ["correo", "email", "e mail", "mail", "correo proveedor",
            "correo del proveedor", "correo electronico"],
   marca: ["marca", "categoria", "rubro", "marca categoria", "producto", "linea"],
-  valor: ["valor", "valor mensual", "valor mes", "precio", "renta", "canon",
-          "monto", "tarifa", "valor cop", "valor mensual cop"],
+  // Todos son lo de CADA MES: la planilla va con el valor por mes. Una columna
+  // que dice «total» no se lee (`ENCABEZADO_TOTAL`).
+  valor: ["valor", "valor al mes", "valor por mes", "valor mensual", "valor mes", "precio", "renta",
+          "canon", "monto", "tarifa", "valor cop", "valor mensual cop", "valor al mes cop"],
   desde: ["desde", "inicio", "fecha inicio", "fecha de inicio", "inicia",
           "fecha desde", "start", "from"],
   hasta: ["hasta", "fin", "fecha fin", "fecha de fin", "termina", "finaliza",
@@ -205,10 +209,34 @@ function texto(valor: unknown): string {
  */
 const OPCIONES_DE_LECTURA = { cellDates: true, raw: true } as const;
 
+/** La planilla va con el valor POR MES (decisión del dueño, 2026-10-26). Una
+ *  columna de valor que dice «total» no se lee: tomarla como lo de cada mes
+ *  multiplicaría el contrato por sus meses sin que nadie lo note. */
+export const ENCABEZADO_TOTAL =
+  "La planilla va con el valor por mes: cambiá la columna «{col}» por lo que se paga cada mes " +
+  "(el total lo calcula el sistema con los meses del contrato).";
+
+/** El texto de un CSV. Sin la marca BOM, la librería lo lee como Windows-1252,
+ *  y un CSV en UTF-8 —el de Google Sheets, el «CSV UTF-8» de Excel sin BOM—
+ *  llegaba con «LÃ¡cteos» en vez de «Lácteos»: un proveedor nuevo, duplicado,
+ *  por un acento (medido, 2026-10-25). Se prueba UTF-8 estricto y, si no lo es,
+ *  es el CSV de Excel en español: Windows-1252. */
+export function textoDeCsv(bytes: ArrayBuffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^\uFEFF/, "");
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
+const esCsv = (archivo: File) => /\.csv$/i.test(archivo.name) || archivo.type === "text/csv";
+
 /** Abre el archivo y devuelve las filas ya normalizadas. */
 export async function leerPlanilla(archivo: File): Promise<LecturaPlanilla> {
   const buffer = await archivo.arrayBuffer();
-  const libro = XLSX.read(buffer, OPCIONES_DE_LECTURA);
+  const libro = esCsv(archivo)
+    ? XLSX.read(textoDeCsv(buffer), { ...OPCIONES_DE_LECTURA, type: "string" })
+    : XLSX.read(buffer, OPCIONES_DE_LECTURA);
   const hoja = libro.Sheets[libro.SheetNames[0]];
   if (!hoja) throw new Error("El archivo no tiene ninguna hoja.");
 
@@ -242,6 +270,9 @@ export async function leerPlanilla(archivo: File): Promise<LecturaPlanilla> {
   mapeoColumnas.forEach((campo, col) => { mapeo[campo] = encabezados[col] || `columna ${col + 1}`; });
   const ignoradas = encabezados.filter((h, col) => h && !mapeoColumnas.has(col));
   const faltan = OBLIGATORIOS.filter((c) => !(c in mapeo));
+  if (mapeo.valor && /\btotal\b/.test(normalizar(mapeo.valor))) {
+    throw new Error(ENCABEZADO_TOTAL.replace("{col}", mapeo.valor));
+  }
 
   const filas: FilaPlanilla[] = [];
   for (let i = indiceEncabezado + 1; i < matriz.length; i++) {
@@ -322,24 +353,23 @@ export function filasDeContratosDePlantilla(sede: string): unknown[][] {
     ["CONTRATOS — escribí uno por fila, debajo de los títulos. " +
      "Las instrucciones completas están en la pestaña «Cómo llenarla»."],
     ["Las fechas van DÍA PRIMERO (15/09/2026 es el 15 de septiembre) · " +
-     "El valor es por TODO el periodo · Borrá las dos filas de EJEMPLO."],
+     "El valor es POR MES · Sólo muebles que se venden ENTEROS (partes y porcentajes, en Vender) · " +
+     "Borrá las dos filas de EJEMPLO."],
     [],
-    // «Valor» y no «Valor mensual»: desde la fase 17 el valor NO es mensual —
-    // es lo acordado por el periodo, tal como se teclea, sin prorratear.
-    // Encabezarlo «mensual» invitaba a escribir una tarifa de mes para un
-    // contrato de diez días. El lector sigue aceptando la grafía vieja, así que
-    // las plantillas ya descargadas siguen entrando.
+    // «Valor al mes» (decisión del dueño, 2026-10-26): así se negocia en las
+    // tiendas, y el sistema saca el total con los meses del contrato, como
+    // «Al mes» en Vender. Las plantillas viejas («Valor») se leen igual, al mes.
     ["Espacio", "Sede", "Proveedor", "Correo", "Marca o categoría",
-     "Valor", "Desde", "Hasta", "Nota"],
+     "Valor al mes", "Desde", "Hasta", "Nota"],
     // Las fechas del ejemplo se escriben DÍA PRIMERO, igual que la instrucción.
     // Antes salían en ISO —`2026-09-15`— y eso contradecía el renglón de arriba
     // justo en el campo donde la ambigüedad no avisa: leer 3/4 al revés no
     // falla ruidoso, crea el contrato tres meses corrido y nadie se entera.
     ["EJEMPLO-01", tienda, "Nutresa", "comercial@nutresa.com.co", "Chocolatinas",
-     2100000, diaPrimero(hoy), diaPrimero(luego),
+     650000, diaPrimero(hoy), diaPrimero(luego),
      "Borrá esta fila: es un ejemplo del formato"],
     ["EJEMPLO-02", tienda, "Alpina", "", "Lácteos",
-     1800000, diaPrimero(hoy), diaPrimero(luego), "Borrá esta fila también"],
+     400000, diaPrimero(hoy), diaPrimero(luego), "Borrá esta fila también"],
   ];
 }
 
@@ -361,21 +391,19 @@ function filasDeInstrucciones(sede: string): unknown[][] {
     ["COLUMNA", "QUÉ VA AHÍ"],
     ["Espacio", "El código tal como está en el plano: PUN-04, IMP-17."],
     ["", "La cara de atrás de una góndola doble lleva «-B»: GON-60-B."],
-    // Vender por partes: la parte va al final, después de la cara.
-    ["", "Una parte va al final: la puerta 2, NEV-03-PU2; el tramo 3, GON-05-TR3;"],
-    ["", "la base de una punta, PUN-02-EN1 (los entrepaños se cuentan desde abajo)."],
-    ["", "De la cara B, la B va antes que la parte: GON-05-B-TR3."],
-    // Las piezas de lo que no se vende entero (paso 3).
-    ["", "Una caja no se vende entera: su bahía de impulso 1, CAJ-04-BI1 (desde la fila,"],
-    ["", "de izquierda a derecha). El forro de una columna, sin número: COL-07-FO."],
+    // Sólo enteros (decisión del dueño, 2026-10-26): lo que se vende por
+    // partes o por porcentaje se dibuja y se vende en Vender.
+    ["", "Sólo muebles que se venden ENTEROS. Las partes (la puerta 2, NEV-03-PU2;"],
+    ["", "el tramo 3, GON-05-TR3) y los porcentajes (GON-01-PC1) se venden en Vender."],
     ["Sede", `Escrita igual que en el sistema: ${tienda}.`],
     ["", "Una misma planilla puede tener filas de tiendas distintas:"],
     ["", "cada fila va a la suya, no a la que tengas abierta."],
     ["Proveedor", "Si todavía no existe, se crea solo."],
     ["Correo", "Opcional. Con él se le manda la constancia del contrato."],
     ["Marca", "Opcional. La marca o el rubro que se va a exhibir."],
-    ["Valor", "Lo acordado por TODO el periodo, no una tarifa mensual."],
-    ["", "Sólo el número: 2100000. Sin puntos y sin signo de pesos."],
+    ["Valor al mes", "Lo que se paga CADA MES. El total del contrato es este valor"],
+    ["", "× los meses entre Desde y Hasta (lo calcula el sistema)."],
+    ["", "Sólo el número: 650000. Sin puntos y sin signo de pesos."],
     // Las dos fechas van bajo UNA etiqueta: partirlas dejaba «Hasta»
     // encabezando la línea de los separadores, como si eso fuera lo que
     // significa Hasta.

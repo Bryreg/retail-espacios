@@ -212,8 +212,8 @@ def _por_participacion(corto: str, mueble: dict) -> str | None:
       de otro mueble: se mira a mano.
     """
     if es_participacion(partir_codigo(corto).parte):
-        return (f"«{corto}» se lee como una participación: se carga y se renueva en el Editor 3D → "
-                "Distribución, no se importa del plano. Si es un mueble que se llama así, renombralo.")
+        return (f"«{corto}» se lee como una participación: se vende y se renueva en Vender, no se "
+                "importa del plano. Si es un mueble que se llama así, renombralo.")
     # La cara entera del mueble, con su código tal cual (`caras_vendidas`
     # arma `CODE` y `CODE-B`): nada de partirlo otra vez.
     code = (mueble.get("code") or "").strip().upper()

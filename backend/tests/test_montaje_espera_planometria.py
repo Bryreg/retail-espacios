@@ -93,7 +93,7 @@ def test_la_planilla_sigue_la_misma_regla(client, admin, monkeypatch):
     enviados = _correos(monkeypatch, client, admin)
     filas = [{"fila": 1, "espacio": "GON-02", "sede": "NAVE", "proveedor": "Alpina", "correo": "ventas@alpina.co",
               "valor": 500_000, **tv.NOV},
-             {"fila": 2, "espacio": "NEV-03-PU2", "sede": "NAVE", "proveedor": "Alpina", "correo": "ventas@alpina.co",
+             {"fila": 2, "espacio": "NEV-03", "sede": "NAVE", "proveedor": "Alpina", "correo": "ventas@alpina.co",
               "valor": 300_000, **tv.NOV}]
     r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": filas})
     assert r.status_code == 200, r.text
@@ -104,10 +104,11 @@ def test_la_planilla_sigue_la_misma_regla(client, admin, monkeypatch):
     assert cuerpo["avisos"]["montaje"] == [] and cuerpo["avisos"]["montaje_pendiente"] == sorted(ids)
     assert [1 for to, _a, _h in enviados if to == ["ventas@alpina.co"]]
 
-    # La planometría de la puerta: sale el de la puerta, con cuál es, y nada más.
+    # La planometría de la nevera: sale el de la nevera, y nada más (la
+    # planilla es sólo para muebles enteros desde el 2026-10-26).
     _planometria(client, admin, ids[1])
     (montaje,) = _por_montar(enviados)
-    assert "NAVE-NEV-03-PU2" in montaje[1] and "Puerta 2 de 3" in montaje[1]
+    assert "NAVE-NEV-03" in montaje[1] and "Puerta" not in montaje[1]
     assert "NAVE-GON-02" not in montaje[1]
     assert _cuantos_pendientes() == 1
 

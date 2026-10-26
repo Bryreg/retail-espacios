@@ -429,7 +429,7 @@ def update_status(
     if es_participacion(partir_codigo(space.code).parte):
         raise HTTPException(
             status_code=409,
-            detail="Una participación no se marca a mano: su reserva provisional se carga en Distribución.",
+            detail="Una participación no se marca a mano: su reserva provisional se hace en Vender («Reservar hasta…»).",
         )
     # «Reservado» a mano tampoco, sobre ningún espacio (rediseño, PR 3,
     # decisión 1): era un apartado sin proveedor ni fecha que no se vencía
@@ -607,8 +607,7 @@ def create_lease(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"«{space.code}» es una participación: se carga y se renueva en el Editor 3D → "
-                "Distribución."
+                f"«{space.code}» es una participación: se vende y se renueva en Vender."
             ),
         )
     # Un mueble que se vende por partes se reconoce por su código COMPLETO: la

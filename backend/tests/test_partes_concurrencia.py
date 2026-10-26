@@ -21,6 +21,7 @@ Dos pruebas:
 
       DATABASE_URL_PG_PRUEBA=postgresql://…/prueba python -m pytest tests/test_partes_concurrencia.py
 """
+from tests import sin_planilla  # las partes: la revisión común, sin las reglas de la planilla
 import os
 import sys
 import threading
@@ -58,9 +59,9 @@ def test_confirmar_toma_los_candados_ordenados_antes_de_la_revision_que_escribe(
     pasos = []
     tomar, revisar = bl.tomar_candados, bl._revisar
     monkeypatch.setattr(bl, "tomar_candados", lambda db, c: pasos.append(("candado", tomar(db, c))))
-    monkeypatch.setattr(bl, "_revisar", lambda db, lote: (pasos.append(("revisar", None)), revisar(db, lote))[1])
+    monkeypatch.setattr(bl, "_revisar", lambda db, lote, **kw: (pasos.append(("revisar", None)), revisar(db, lote, **kw))[1])
 
-    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": [
+    r = sin_planilla.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": [
         _fila("NEV-03-PU2"), _fila("nev-01", fila=2)]})
     assert r.status_code == 200, r.text
     assert [p for p, _ in pasos] == ["revisar", "candado", "revisar"], pasos

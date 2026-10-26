@@ -11,6 +11,7 @@ Y una pestaña abierta con el código de antes, que arme ``partes`` sólo con lo
 que conoce, no borra la manera de venderla: el servidor le rellena adentro de
 ``partes`` la clave que llega AUSENTE, y sólo un ``null`` la borra.
 """
+from tests import sin_planilla  # las partes: la revisión común, sin las reglas de la planilla
 import json
 from datetime import timedelta
 
@@ -39,7 +40,7 @@ def _guardar(client, admin, fixtures):
 
 
 def _vender(client, admin, espacio, desde=1, hasta=30):
-    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": [
+    r = sin_planilla.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": [
         {"fila": 1, "espacio": espacio, "sede": "NAVE", "proveedor": "Postobón", "valor": 1,
          "desde": _d(desde), "hasta": _d(hasta)}]})
     assert r.status_code == 200 and r.json()["filas"][0]["lease_id"], r.text

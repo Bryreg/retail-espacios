@@ -13,6 +13,7 @@ otro.
 Y los mensajes nunca nombran al dueño de la otra puerta: Vender los lee en
 vivo, delante del proveedor que está comprando.
 """
+from tests import sin_planilla  # las partes: la revisión común, sin las reglas de la planilla
 from datetime import timedelta
 
 import pytest
@@ -56,13 +57,13 @@ def _fila(espacio, desde=1, hasta=30, proveedor="Postobón", valor=350_000, fila
 
 
 def _validar(client, admin, *filas):
-    r = client.post("/api/leases/bulk/validar", headers=admin, json={"sede": "NAVE", "filas": list(filas)})
+    r = sin_planilla.post("/api/leases/bulk/validar", json={"sede": "NAVE", "filas": list(filas)})
     assert r.status_code == 200, r.text
     return r.json()["filas"]
 
 
 def _confirmar(client, admin, *filas):
-    r = client.post("/api/leases/bulk/confirmar", headers=admin, json={"sede": "NAVE", "filas": list(filas)})
+    r = sin_planilla.post("/api/leases/bulk/confirmar", json={"sede": "NAVE", "filas": list(filas)})
     assert r.status_code == 200, r.text
     return r.json()["filas"]
 
