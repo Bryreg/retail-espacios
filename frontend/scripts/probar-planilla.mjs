@@ -311,5 +311,27 @@ await pruebaAsync("cada renglón de orientación va en UNA sola celda", async ()
   }
 });
 
+// ─── La pantalla (decisión del dueño, 2026-10-26) ────────────────────────────
+
+console.log("\nplanilla · la pantalla dice al mes, el total de verdad y lo que salió");
+
+await pruebaAsync("CADA FILA DICE «AL MES × MESES = TOTAL» Y EL PIE SUMA TOTALES COMO TOTAL", async () => {
+  const { readFileSync } = await import("node:fs");
+  const c = readFileSync(join(aqui, "../src/components/CargaMasiva/CargaMasiva.tsx"), "utf8");
+  assert.ok(c.includes("`${money(r.valor_mes)} al mes`"), "la fila perdió «$ X al mes»");
+  assert.ok(/× \{textoDeMeses\(r\.meses\)\} = <b[^>]*>\{money\(r\.valor\)\}/.test(c), "la fila perdió la cuenta × meses = total");
+  assert.ok(/\{money\(total\)\}<\/b> en total/.test(c), "el pie volvió a llamar «al mes» a la suma de totales");
+  assert.ok(!/\{money\(total\)\}<\/b> al mes/.test(c), "el pie suma totales y los llama «al mes»");
+});
+
+await pruebaAsync("AL GUARDAR DICE LO QUE DE VERDAD SALIÓ, NO UNA FRASE FIJA", async () => {
+  const { readFileSync } = await import("node:fs");
+  const c = readFileSync(join(aqui, "../src/components/CargaMasiva/CargaMasiva.tsx"), "utf8");
+  assert.ok(c.includes("setAvisos(res.avisos ?? null)"), "la pantalla final no lee los avisos del servidor");
+  assert.ok(c.includes("El correo no está configurado:"), "falta el caso sin correo");
+  assert.ok(c.includes("espera su planometría"), "falta que el montaje espera la planometría");
+  assert.ok(!c.includes("uno al\n              mercaderista con la lista"), "volvió la frase fija de los avisos agrupados");
+});
+
 // El bundle es un intermedio, no un artefacto: se borra al terminar.
 rmSync(salida, { force: true });

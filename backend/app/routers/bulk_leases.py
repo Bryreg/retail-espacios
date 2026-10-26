@@ -890,6 +890,8 @@ def _avisar(
         # fila: «Bic» se guardó con el proveedor «BIC» que ya existía.
         lease = db.get(SpaceLease, c.lease_id) if c.lease_id else None
         supplier = lease.supplier if lease else None
+        if supplier and not supplier.email and supplier.name not in encolados.proveedor_sin_correo:
+            encolados.proveedor_sin_correo.append(supplier.name)
         if not supplier or not supplier.email:
             continue
         por_proveedor.setdefault(supplier.id, (supplier, []))[1].append(c)

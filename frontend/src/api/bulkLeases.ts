@@ -7,11 +7,10 @@ import type { AvisosContrato } from "../types";
  *  Validar no escribe nada. Es el paso que hace revisable la carga: cuarenta
  *  contratos creados a ciegas no se deshacen con un botón.
  *
- *  Lo usan las DOS puertas por las que entran varios contratos de una vez: la
- *  planilla de la reunión comercial y el contrato multiespacio de la pantalla
- *  de Vender. Es el mismo problema —N espacios, un proveedor, un periodo— y
- *  sobre todo el mismo problema de correos: por el camino de a uno, tres
- *  espacios son nueve correos para un solo acuerdo. Acá sale uno por rol. */
+ *  Es la planilla de la reunión comercial: muebles que se venden ENTEROS, con
+ *  el valor de CADA MES (decisión del dueño, 2026-10-26); las partes y los
+ *  porcentajes se venden en Vender. Un correo por rol para toda la tanda: por
+ *  el camino de a uno, cuarenta espacios serían ciento veinte correos. */
 
 export type EstadoFila = "ok" | "aviso" | "error";
 
@@ -35,7 +34,13 @@ export interface FilaRevisada {
   proveedor?: string | null;
   marca?: string | null;
   correo?: string | null;
+  /** El TOTAL del contrato, lo que se guarda. En la planilla es
+   *  `valor_mes × meses`, redondeado al peso. */
   valor?: number | null;
+  /** Sólo la planilla: lo de cada mes, tal como vino (decisión del dueño,
+   *  2026-10-26), y los meses del contrato. */
+  valor_mes?: number | null;
+  meses?: number | null;
   desde?: string | null;
   hasta?: string | null;
   nota?: string | null;

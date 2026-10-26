@@ -1,7 +1,13 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-25, **la supervisión de los planogramas** (fase 4 de la
+Última actualización: 2026-10-26, **la planilla de contratos, al día**: el valor es lo de
+CADA MES (el total sale × los meses y se guarda como «Al mes» en Vender), sólo entran muebles que
+se venden ENTEROS (las partes y los porcentajes, en Vender), la tarifa se compara mes contra mes,
+un CSV en UTF-8 conserva los acentos y la pantalla final dice lo que de verdad salió. Ver *La
+planilla: al mes y sólo enteros (2026-10-26)*.
+
+Antes, el 2026-10-25, **la supervisión de los planogramas** (fase 4 de la
 distribución): quien monta avisa desde el enlace de la guía «quedó montada» (con foto si
 quiere) o «no se pudo» (con el motivo), y en Supervisar → «Para revisar» → Hoy una persona pone
 lo planificado al lado de la foto y marca si coincide. Si no, toca los números de la guía que
@@ -1269,6 +1275,48 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### La planilla: al mes y sólo enteros (2026-10-26)
+
+La revisión que pidió el dueño («la planilla para subir varios contratos no la hemos tocado:
+deben haber varios errores similares») encontró la planilla de antes del rediseño de Vender: leía
+una columna «Valor mensual», «Renta» o «Canon» como el TOTAL del contrato (el mismo error de los
+contratos de GALERÍAS), comparaba ese total con la tarifa MENSUAL (un contrato de seis meses a la
+sexta parte de la tarifa pasaba sin aviso), sumaba totales y los llamaba «al mes», rompía los
+acentos de un CSV en UTF-8 («LÃ¡cteos»: un proveedor duplicado), mandaba las participaciones al
+«Editor 3D → Distribución» y al guardar afirmaba con una frase fija que al mercaderista le había
+llegado la lista de montaje. Decisiones del dueño: **la planilla es sólo para muebles que se
+venden enteros** y **viene con el valor por mes**. Aprobado sobre el dibujo «Planilla de contratos
+al mes».
+
+- **El valor es lo de cada mes** (`bulk_leases._revisar(..., planilla=True)`): el total es
+  `al_peso(valor × meses_entre)`, se guarda en `monthly_rent` y el contrato lleva
+  `condiciones_de_contrato` «mensual» con lo tecleado: igual que «Al mes» en Vender, y no cae en
+  «Contratos cargados antes». `FilaOut` trae `valor_mes` y `meses`. En el navegador
+  (`utils/planilla.ts`) cualquier columna de valor se lee al mes; una que dice «total» no se lee
+  («La planilla va con el valor por mes…», `ENCABEZADO_TOTAL`). La plantilla trae «Valor al mes».
+- **Sólo enteros**: una parte (`NEV-03-PU2`, `GON-05-TR3`, `CAJ-04-BI1`) o un porcentaje
+  (`GON-01-PC1`) no entra: «… La planilla es sólo para muebles que se venden enteros: las partes
+  (los porcentajes) se venden en Vender.» (`SOLO_ENTEROS`).
+- **La tarifa, mes contra mes**: la planilla compara lo de cada mes; la revisión común (Vender,
+  reservas, editar) compara el total repartido en sus meses. Delante del proveedor sigue sin
+  compararse.
+- **El CSV** se decodifica a mano (`textoDeCsv`): UTF-8 estricto y, si no lo es, Windows-1252 (el
+  de Excel en español, con punto y coma).
+- **La pantalla** (`CargaMasiva.tsx`): «El valor de la planilla es por mes…» arriba; cada fila,
+  «$ 650.000 al mes × 6 meses = $ 3.900.000»; el pie, «$ 6.300.000 en total ($ 1.050.000 al
+  mes)»; al guardar, lo que dicen los `avisos` del servidor —a quién le llegó el comercial, las
+  constancias y qué proveedores no tienen correo (`AvisosContrato.proveedor_sin_correo`, nuevo),
+  que el montaje espera la planometría— o «El correo no está configurado: no salió ningún
+  aviso.». En el teléfono la tabla pasa a tres columnas (espacio, valor) para que el valor se vea.
+- **Los mensajes viejos de participación** («se carga y se renueva en el Editor 3D →
+  Distribución») ahora dicen Vender: la compuerta (`layout_lookup`), el contrato suelto, marcar
+  «Reservado» a mano e importar del plano.
+- **Pruebas**: `test_bulk_leases.py` (al mes y su condición, la tarifa mes contra mes, sólo
+  enteros), `probar-planilla.mjs` (la columna «total», los acentos, la plantilla, la pantalla). Las
+  pruebas de la venta por partes vendían por la planilla: ahora usan la revisión común sin las
+  reglas de la planilla (`tests/sin_planilla.py` → `confirmar_lote(..., planilla=False)`), que es
+  la misma de Vender.
 
 ### Supervisión de planogramas (2026-10-25)
 
@@ -4819,7 +4867,8 @@ paso un CSV entra por el mismo camino sin escribir nada.
   Crea sólo lo que pasa; una fila mala no tira abajo las treinta y nueve buenas.
 
 **La planilla es la que trae la gente, no un formato.** Los encabezados se reconocen por
-sinónimos (`Código`/`Espacio`, `Renta`/`Valor mensual`, `Fecha inicio`/`Desde`), la fila de
+sinónimos (`Código`/`Espacio`, `Renta`/`Valor mensual` —todos al mes desde el 2026-10-26—,
+`Fecha inicio`/`Desde`), la fila de
 títulos no tiene que ser la primera —las planillas suelen arrancar con un título—, y hay
 plantilla descargable para quien la quiera.
 
