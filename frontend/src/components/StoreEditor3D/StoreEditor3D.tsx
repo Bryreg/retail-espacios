@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { SIN_ESCALA } from "../../escala";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -7695,8 +7696,13 @@ export default function StoreEditor3D() {
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [warning, setWarning]               = useState<string|null>(null);
   const [sede, setSede]                     = useState(()=>useFixtureStore.getState().sede);
-  // fase 2 · I5 (V16): las sedes que existen, para el selector «Sede».
-  const sedesDelStore = useFixtureStore((s) => s.sedes);
+  // La sede la elige la barra de arriba del armazón (rediseño UX 2026-10):
+  // el espejo va del store a lo local, como en el plano 2D. El cambio de la
+  // local hace el resto (el efecto de `[sede]` de abajo recarga el lienzo).
+  const sedeDelArmazon = useFixtureStore((s) => s.sede);
+  useEffect(() => {
+    setSede((actual) => (sedeDelArmazon !== actual ? sedeDelArmazon : actual));
+  }, [sedeDelArmazon]);
 
   // MEJORA 4: Presentation mode
   const [presentationMode, setPresentationMode] = useState(false);
@@ -7910,6 +7916,10 @@ export default function StoreEditor3D() {
 
   // MEJORA 8: First-person mode
   const [firstPerson, setFirstPerson] = useState(false);
+  /** El catálogo de muebles en el teléfono: guardado hasta que se lo pide, y
+   *  se guarda solo al elegir qué colocar (el plano queda libre para tocar). */
+  const [catalogoMovil, setCatalogoMovil] = useState(false);
+  useEffect(() => { if (placingDef) setCatalogoMovil(false); }, [placingDef]);
   // Dónde está y hacia dónde mira quien camina — lo dibuja el minimapa.
   const [camaraFP, setCamaraFP] = useState<CamaraEnPlanta | null>(null);
   // Pedido de teletransporte. El contador hace que tocar dos veces el mismo
@@ -8127,7 +8137,9 @@ export default function StoreEditor3D() {
   const [anfitrionDelLienzo] = useState<HTMLDivElement | null>(() => {
     if (typeof document === "undefined") return null;
     const d = document.createElement("div");
-    d.style.cssText = "position:absolute;inset:0;";
+    // A 1:1 adentro de la app escalada (`escala.ts`): sin esto el lienzo se
+    // medía ya agrandado, se ponía ese tamaño y volvía a agrandarse.
+    d.style.cssText = `position:absolute;inset:0;zoom:${SIN_ESCALA};`;
     d.setAttribute("data-lienzo-3d", "");
     return d;
   });
@@ -8737,27 +8749,25 @@ export default function StoreEditor3D() {
       style={{minHeight:0}}>
 
       {/* ── Left sidebar — hidden in presentation mode ── */}
-      <div className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode || distribucionVisible ? 'hidden' : ''}`}>
+      {/* En el teléfono el catálogo arranca guardado y se abre con «Muebles»
+          (corrección de la etapa 9): abierto se comía media pantalla. */}
+      <div data-catalogo-3d className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode || distribucionVisible ? 'hidden' : ''} ${catalogoMovil ? 'max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-30 max-sm:shadow-2xl' : 'max-sm:hidden'}`}>
 
+        <button type="button" onClick={() => setCatalogoMovil(false)}
+          className="self-end rounded border border-dark-line-2 px-2 py-0.5 text-[10px] text-dark-ink-2 sm:hidden">Cerrar</button>
         <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</label>
-          {/* fase 2 · I5 (V16): un selector con las sedes que existen, como el
-              de Supervisar —navegar, nunca escribir—. Era un texto libre que
-              cambiaba de sede en cada tecla: «N», «NA», «NAV»… y cada letra
-              dejaba un plano fantasma en el servidor. Crear o renombrar una
-              sede es del plano 2D. */}
-          <select data-sede-3d aria-label="Sede" value={sede} onChange={e=>setSede(e.target.value)}
-            className="w-full border-0 border-b-2 border-dark-line-2 bg-transparent rounded-none px-0 font-mono text-sm text-accent-200 focus:border-accent focus:outline-none">
-            {(sedesDelStore.includes(sede) ? sedesDelStore : [sede, ...sedesDelStore]).map((s) => (
-              <option key={s} value={s} className="bg-dark-surface text-dark-ink-1">{s}</option>
-            ))}
-          </select>
+          <p className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</p>
+          {/* La sede se elige UNA vez, en la barra de arriba del armazón
+              (rediseño UX 2026-10): era un selector más (fase 2 · I5, V16 —
+              antes un texto libre que dejaba un plano fantasma por letra).
+              Acá sólo se dice cuál es; crear o renombrar una sede es del 2D. */}
+          <p data-sede-3d className="font-mono text-sm text-accent-200">{sede}</p>
         </div>
 
         <div className="border-t border-dark-line" />
 
         <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Fixtures</p>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Muebles</p>
           {/* Por familia: el modelo base —se coloca como siempre— y, plegados
               debajo, los modelos de muebles de verdad del catálogo y después
               las fichas propias del supermercado (las vigentes), con las
@@ -8868,7 +8878,7 @@ export default function StoreEditor3D() {
 
         {/* MEJORA 4: Status bar — hidden in presentation mode */}
         {!presentationMode && (
-          <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
+          <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b px-4 py-1.5 text-[10px] backdrop-blur-sm max-sm:gap-2 max-sm:px-2 [&>*]:flex-shrink-0 ${
             warning
               ? "bg-warning/10 border-warning/30"
               : placingDef
@@ -8909,13 +8919,19 @@ export default function StoreEditor3D() {
                 )}
               </span>
             )}
-            <span className="ml-auto hidden text-dark-ink-3 lg:block">drag → orbitar · scroll → zoom</span>
+            <span className="ml-auto hidden text-dark-ink-3 lg:block">arrastrá para girar · rueda para acercar</span>
+
+            {/* El catálogo, en el teléfono (arranca guardado). */}
+            <button onClick={() => setCatalogoMovil((v) => !v)} aria-expanded={catalogoMovil} data-catalogo-3d-movil
+              className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 sm:hidden">
+              Muebles
+            </button>
 
             {/* Vista superior — alinea cámara cenital para mover fixtures fácil */}
             <button onClick={handleTopView}
               title="Vista superior (cenital) — ideal para mover los muebles"
               className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
-              ⊞ Top
+              ⊞ Cenital
             </button>
 
             {/* MEJORA 8: First-person button */}
@@ -8926,7 +8942,7 @@ export default function StoreEditor3D() {
                   ? 'border-success/50 bg-success/15 text-success'
                   : 'border-dark-line-2 bg-dark-surface text-dark-ink-2 hover:bg-dark-surface-2'
               }`}>
-              <User size={10}/> {firstPerson ? 'Orbital' : '1ª Persona'}
+              <User size={10}/> {firstPerson ? 'Orbital' : 'Primera persona'}
             </button>
 
             {/* Antes y después: el mismo encuadre con la marca puesta y sin

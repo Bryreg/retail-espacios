@@ -522,8 +522,16 @@ prueba("la sede: de sólo lectura en el panel (con su candado), y una sola vez e
   assert.equal((panelB.match(/data-sede-del-plano/g) ?? []).length, 1);
   assert.match(panelB, /<span className="mono" data-sede-del-plano[^>]*>\{sede\}<\/span>\s*<Lock /);
   assert.doesNotMatch(panelB, /<select|setSede/, "el panel cambia la sede");
-  // Arriba: la pieza de la sede (la de Vender y Supervisar) con su menú «⋯».
-  assert.equal((fp2d.match(/<select className="sede-sel"/g) ?? []).length, 1, "la sede se elige en más de un lugar");
+  // Arriba: la pieza de la sede con su menú «⋯». Con el armazón (rediseño UX
+  // 2026-10) la sede se ELIGE en un solo lugar de toda la aplicación —la barra
+  // de arriba, `SelectorDeSede` en `Dashboard.tsx`— y acá se dice cuál es.
+  assert.equal((fp2d.match(/<select className="sede-sel"/g) ?? []).length, 0, "el plano vuelve a elegir la sede por su cuenta");
+  assert.match(fp2d, /<span className="sede-nombre" data-sede-del-armazon>\{sede\}<\/span>/, "el plano no dice en qué sede está");
+  const todos = ["pages/Dashboard.tsx", "pages/DashboardView.tsx", "components/FloorPlan2D/FloorPlan2D.tsx", "components/StoreEditor3D/StoreEditor3D.tsx"]
+    .map((f) => sinComentPR3(fuenteDe(f)));
+  assert.equal(todos.map((t) => (t.match(/className="sede-sel"/g) ?? []).length).reduce((a, b) => a + b, 0), 1, "la sede se elige en más de un lugar");
+  assert.match(todos[0], /function SelectorDeSede\(\)[\s\S]{0,900}<select className="sede-sel" value=\{sede\} onChange=\{\(e\) => setSede\(e\.target\.value\)\} aria-label="Sede">/,
+    "el selector de la barra de arriba no mueve la sede del store");
   const pieza = tramo(fp2d, '<div className="pieza p2-sede" data-sede-pieza>', '<div className="p2-grupo">');
   assert.match(pieza, /<MapPin /);
   for (const que of ["Renombrar sede", "Agregar sede", "Eliminar sede"]) assert.ok(pieza.includes(que), `el menú de la sede no tiene «${que}»`);
@@ -615,9 +623,14 @@ prueba("el lienzo: los filtros con su cuenta (con «Vendido en parte» y «Reser
   for (const t of ["Alejar", "Volver al 100 %", "Acercar", "Centrar en todo", "Mostrar los códigos", "Pantalla completa"]) {
     assert.ok(pie.includes(`aria-label="${t}"`), `el pie del lienzo no tiene «${t}»`);
   }
-  // Las herramientas, arriba, sólo íconos con su atajo en el globo; Eliminar en rojo.
-  const herr = tramo(fp2d, 'role="toolbar" aria-label="Herramientas"', '<div className="der">');
-  for (const t of ["Seleccionar (Esc)", "Deshacer (Ctrl+Z)", "Rehacer (Ctrl+Y)", "Rotar (R)"]) assert.ok(herr.includes(`title="${t}"`), `falta «${t}»`);
+  // Las herramientas flotan sobre el plano (la mesa de trabajo, etapa 6), con
+  // su nombre y su atajo en el globo; Eliminar en rojo.
+  const herr = tramo(fp2d, 'role="toolbar" aria-label="Herramientas"', '<div className="p2-abajo">');
+  for (const t of ["Seleccionar (Esc)", "Deshacer (Ctrl+Z)", "Rehacer (Ctrl+Y)", "Rotar (R)", "Duplicar (Ctrl+D)"]) assert.ok(herr.includes(`title="${t}"`), `falta «${t}»`);
+  // El catálogo: la tira de tipos (tocar o arrastrar) y «Más» con el completo.
+  assert.match(fp2d, /<nav className="p2-tira" aria-label="Muebles para colocar en el plano"/);
+  assert.match(fp2d, /onDrop=\{\(e\) => \{[\s\S]{0,400}placeItem\(a\.type, pt\.x, pt\.y, undefined, undefined, a\.modelo\)/, "soltar en el plano no coloca");
+  assert.match(fp2d, /data-catalogo-completo/);
   assert.match(herr, /className="p2-icobtn peligro" aria-label="Eliminar"/);
   // A la derecha: el guardado (punto y palabra), Revisar, Renumerar y Atajos.
   const der = tramo(fp2d, '<div className="der">', '<div className="p2-cuerpo');
@@ -630,7 +643,8 @@ prueba("«Vender» desde el Plano: sólo quien administra, sólo lo que se vende
   // Las tres puertas: el botón, el cambio de pestaña y el armado en Vender.
   assert.match(panelB, /const botonVender = isAdmin && rentable && \(/, "el botón «Vender» se le muestra a quien no administra o a lo que no se vende");
   const dash = sinComentPR3(fuenteDe("pages/Dashboard.tsx"));
-  assert.match(dash, /if \(pedidoVender && isAdmin\) setViewMode\("kpis"\);/, "el pedido cambia de pestaña sin ser admin");
+  // Con el armazón de módulos (rediseño UX 2026-10) «cambiar de pestaña» es ir a Contratos.
+  assert.match(dash, /if \(pedidoVender && isAdmin\) ir\("contratos"\);/, "el pedido cambia de pestaña sin ser admin");
   const dv = sinComentPR3(fuenteDe("pages/DashboardView.tsx"));
   const armado = tramo(dv, "const pedidoVender = useFixtureStore((s) => s.pedidoVender);", "}, [pedidoVender, isAdmin]);");
   assert.match(armado, /useEffect\(\(\) => \{\s*if \(!pedidoVender \|\| !isAdmin\) return;\s*useFixtureStore\.getState\(\)\.soltarPedidoVender\(\);/, "Vender arma el pedido sin ser admin (o no lo suelta)");

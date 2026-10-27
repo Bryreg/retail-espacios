@@ -406,7 +406,9 @@ prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", ()
   // a la ventana donde la hoja entra daba lo mismo, y si la barra se partía
   // daba otra cosa): más estricto. Ninguna otra regla cambia esas filas —el
   // bloque de 790 px de alto que las cambiaba se fue—, y la pila mide el alto
-  // de la hoja, que se cuenta con los mismos números que `--alto-plano`.
+  // de la hoja, que se cuenta con los mismos números que `--alto-plano`. (El
+  // respaldo divide `100dvh` por `--escala`: con el zoom de la app, `dvh` viene
+  // agrandado — `escala.ts`.)
   const izq = regla(".hoja-izq");
   assert.match(izq, /grid-template-rows: var\(--alto-plano\) minmax\(var\(--fila2\), 1fr\);/, "la fila del plano de Vender no mide `--alto-plano`");
   assert.match(izq, /height: var\(--alto-hoja\);/, "la pila del plano no mide el alto de la hoja");
@@ -414,7 +416,7 @@ prueba("Supervisar es una hoja con las columnas y el alto de fila de Vender", ()
     .filter(([sel]) => /vender-hoja|hoja-izq|hoja-der|hoja-col/.test(sel));
   assert.deepEqual(filasDe, [[".hoja-izq", "var(--alto-plano) minmax(var(--fila2), 1fr)"], [".vender-hoja", "none"]], "otra regla cambia las filas de la hoja de Vender");
   assert.doesNotMatch(css, /@media \(max-height: 790px\)/, "volvió el bloque de 790 px de alto, que cambiaba la fila del plano");
-  assert.match(regla(".vender"), /--alto-hoja: max\(calc\(var\(--fila1\) \+ var\(--aire-v\) \+ var\(--fila2\)\), calc\(var\(--alto-area, calc\(100dvh - 52px\)\) - var\(--marco-sede\) \+ var\(--aire-v\)\)\);/,
+  assert.match(regla(".vender"), /--alto-hoja: max\(calc\(var\(--fila1\) \+ var\(--aire-v\) \+ var\(--fila2\)\), calc\(var\(--alto-area, calc\(100dvh \/ var\(--escala, 1\) - 52px\)\) - var\(--marco-sede\) \+ var\(--aire-v\)\)\);/,
     "el alto de la hoja no se cuenta con los números de `--alto-plano`");
   assert.match(css, /@media \(max-width: 1100px\) \{[\s\S]*?\.vender-hoja \.vp-plano \{ height: var\(--alto-plano\); \}/, "a lo angosto el plano de Vender no mide `--alto-plano`");
   assert.doesNotMatch(css, /62vw/, "volvió el plano de Vender de `62vw`, que no mide lo de Supervisar");

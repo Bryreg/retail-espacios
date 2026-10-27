@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 // rediseño, tabla «Plano»); los de cada tipo de mueble, en `iconos.ts`.
 import {
   MousePointer2, RotateCw, Trash2, Eye, Search, X, Undo2, Redo2, Pencil, Plus, Minus, Ellipsis, MapPin, Shapes,
-  ChevronDown, ChevronRight, PanelLeftClose, Mouse, Focus, Captions, Maximize2, Minimize2, TriangleAlert,
+  ChevronDown, ChevronRight, Mouse, Focus, Captions, Maximize2, Minimize2, TriangleAlert,
   ClipboardCheck, Keyboard, ListOrdered, Lock, Handshake, Ruler, FileText, FilePenLine, Percent, Copy, ImageUp,
   Image as ImageIcon, Store, Ban,
 } from "lucide-react";
@@ -1441,9 +1441,17 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     void el.requestFullscreen().catch(() => setAviso("Este navegador no deja pasar a pantalla completa"));
   }
 
-  /** El catálogo se pliega a una franja con su ícono: a lo angosto arranca
-   *  plegado, para que el lienzo no quede en cero. */
-  const [catalogoAbierto, setCatalogoAbierto] = useState(() => typeof window === "undefined" || window.innerWidth > 760);
+  /** El catálogo completo flota sobre el lienzo y arranca cerrado: a la vista
+   *  queda la tira de tipos (rediseño UX 2026-10, etapa 6). */
+  const [catalogoAbierto, setCatalogoAbierto] = useState(false);
+  /** Cuántos muebles de cada tipo tiene la sede: la cuenta de la tira. */
+  const cuantosPorTipo = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of items) m.set(i.type, (m.get(i.type) ?? 0) + 1);
+    return m;
+  }, [items]);
+  /** Lo que se está arrastrando desde la tira o el catálogo hacia el plano. */
+  const arrastreRef = useRef<{ type: FixType2D; modelo: ModeloDelPlano | null } | null>(null);
   /** Las familias del catálogo, en el orden del catálogo de muebles, con su ícono. */
   const familias = useMemo(() => Array.from(
     CATALOG.reduce((map, def) => {
@@ -1505,6 +1513,20 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setPanOffset({ x: pad - minX * PX_PER_M * newZoom, y: pad - minY * PX_PER_M * newZoom });
   }
 
+  // En el teléfono el plano arranca encuadrado (corrección de la etapa 9):
+  // con el zoom de la pantalla grande se veía una esquina vacía. Una vez por
+  // sede, cuando ya llegaron los muebles.
+  const encuadrada = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined" || window.innerWidth >= 640) return;
+    if (items.length === 0 || encuadrada.current === sede) return;
+    // Se marca al encuadrar, no antes: si los muebles terminan de llegar
+    // dentro de la espera, el efecto vuelve a correr y encuadra con todos.
+    const t = window.setTimeout(() => { encuadrada.current = sede; centrarEnTodo(); }, 120);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length, sede]);
+
   /** La línea de ayuda del pie: lo que se puede hacer ahora. */
   const pista = activeTool === "place"
     ? "Hacé clic en el lienzo para colocar · Esc para cancelar"
@@ -1514,7 +1536,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     ? "Arrastrá para mover · rueda para acercar · espacio + arrastre para desplazar"
     : "Clic en un mueble para ver su ficha · rueda para acercar · espacio + arrastre para desplazar";
 
-  const posicionDeLaSede = storeSedeList.indexOf(sede);
 
   // ── Grid pattern defs ────────────────────────────────────────────────────────
 
@@ -1548,9 +1569,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               autoFocus
             />
           ) : (
-            <select className="sede-sel" value={sede} onChange={(e) => setSede(e.target.value)} aria-label="Sede">
-              {storeSedeList.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            /* La sede se elige UNA vez, en la barra de arriba del armazón
+               (rediseño UX 2026-10): acá se dice cuál es, y su menú ⋯ la
+               renombra, agrega otra o la elimina. */
+            <span className="sede-nombre" data-sede-del-armazon>{sede}</span>
           )}
           {addingNewSede && (
             <input
@@ -1571,10 +1593,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               autoFocus
             />
           )}
-          <span className="cuantos">
-            {posicionDeLaSede >= 0 && <>{posicionDeLaSede + 1} de {storeSedeList.length}{" · "}</>}
-            {items.length} mueble{items.length === 1 ? "" : "s"}
-          </span>
+          {/* «1 de 2 · 16 muebles» va en la barra de arriba, al lado del
+              selector de la sede (rediseño UX 2026-10): acá se repetía. */}
           <div className="p2-menu-w" ref={menuSedeRef}>
             <button type="button" className="p2-icobtn" title="Renombrar, agregar o eliminar sede"
               aria-label="Renombrar, agregar o eliminar sede" aria-haspopup="menu" aria-expanded={menuSede}
@@ -1616,38 +1636,30 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           </div>
         )}
 
-        {editMode && (
-          <div className="p2-grupo" role="toolbar" aria-label="Herramientas">
-            <button type="button" className="p2-icobtn" title="Seleccionar (Esc)" aria-label="Seleccionar"
-              aria-pressed={activeTool === "select"}
-              onClick={() => { setActiveTool("select"); setPendingType(null); }}>
-              <MousePointer2 {...ICONO} />
+        {/* El buscador sube a la cabecera, que queda en una sola línea
+            (rediseño UX 2026-10, etapa 6): el lienzo se queda con el resto. */}
+        <label className="p2-buscar">
+          <Search {...ICONO} />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearchQuery("");
+                e.currentTarget.blur();
+                e.stopPropagation();
+              }
+            }}
+            placeholder="Buscar espacio, categoría o proveedor…"
+            aria-label="Buscar espacio, categoría o proveedor"
+          />
+          {filterActive && <span className="cuenta">{matchedIds?.size ?? 0} de {items.length}</span>}
+          {searchQuery.length > 0 && (
+            <button type="button" className="p2-icobtn chico" onClick={() => setSearchQuery("")} title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+              <X {...ICONO} />
             </button>
-            <span className="p2-sepv" />
-            <button type="button" className="p2-icobtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" onClick={() => undo()}>
-              <Undo2 {...ICONO} />
-            </button>
-            <button type="button" className="p2-icobtn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" onClick={() => redo()}>
-              <Redo2 {...ICONO} />
-            </button>
-            <span className="p2-sepv" />
-            <button type="button" className="p2-icobtn" title="Rotar (R)" aria-label="Rotar"
-              onClick={() => rotateItem(selectedId)} disabled={!selectedId}>
-              <RotateCw {...ICONO} />
-            </button>
-            <button type="button" className="p2-icobtn peligro" aria-label="Eliminar"
-              title={selectedIds.size > 1 ? `Eliminar ${selectedIds.size} seleccionados (Supr)` : "Eliminar (Supr)"}
-              disabled={selectedIds.size === 0}
-              onClick={() => {
-                if (selectedIds.size > 0) {
-                  setItems((prev) => prev.filter((i) => !selectedIds.has(i.id)));
-                  setSelectedIds(new Set());
-                }
-              }}>
-              <Trash2 {...ICONO} />
-            </button>
-          </div>
-        )}
+          )}
+        </label>
 
         <div className="der">
           {/* El guardado es automático: el punto y la palabra dicen cómo va. */}
@@ -1677,30 +1689,51 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       {/* Main area */}
       <div className="p2-cuerpo flex flex-1 overflow-hidden">
 
-        {/* El catálogo (sólo editando): familias plegables con su ícono, y
-            cada tipo con su ícono, sus medidas y cuántos modelos tiene. */}
+        {/* El catálogo (sólo editando), como en la mesa de trabajo (etapa 6):
+            una tira con cada tipo —ícono, nombre y cuántos hay en la sede—
+            para tocar o arrastrar al plano, y «Más» abre el catálogo completo
+            encima del lienzo: familias plegables, medidas, modelos de fábrica
+            y el lápiz del nombre propio. */}
         {editMode && (
-          <aside className="p2-catalogo" data-catalogo-2d data-plegado={!catalogoAbierto || undefined}>
-            <div className="p2-cat-h">
-              {catalogoAbierto ? (
-                <>
-                  <Shapes {...ICONO} />
-                  <h3>Catálogo</h3>
-                  <span className="sub">clic para colocar</span>
-                  <button type="button" className="p2-icobtn chico" title="Plegar el catálogo" aria-label="Plegar el catálogo"
-                    onClick={() => setCatalogoAbierto(false)}>
-                    <PanelLeftClose {...ICONO} />
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="p2-icobtn" title="Abrir el catálogo" aria-label="Abrir el catálogo"
-                  onClick={() => setCatalogoAbierto(true)}>
-                  <Shapes {...ICONO} />
+          <nav className="p2-tira" aria-label="Muebles para colocar en el plano" data-tira-2d>
+            {CATALOG.map((def, n) => {
+              const IconoTipo = iconoDelTipo(def.type);
+              const enLaSede = cuantosPorTipo.get(def.type) ?? 0;
+              const activo = pendingType === def.type && activeTool === "place" && !pendingModelo;
+              const nuevaFamilia = n > 0 && CATALOG[n - 1].category !== def.category;
+              return (
+                <button key={def.type} type="button" className={"p2-pieza" + (nuevaFamilia ? " corte" : "")}
+                  data-pieza-2d={def.type} data-activo={activo || undefined} draggable
+                  title={`${nombrePropio(def.type, catalogLabels) ?? def.label} · ${enLaSede} en la sede · clic y después en el plano, o arrastrá`}
+                  onDragStart={(e) => { arrastreRef.current = { type: def.type, modelo: null }; e.dataTransfer.setData("text/plain", def.type); e.dataTransfer.effectAllowed = "copy"; }}
+                  onDragEnd={() => { arrastreRef.current = null; }}
+                  onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(null); }}>
+                  <IconoTipo {...ICONO} />
+                  <span className="nom">{nombrePropio(def.type, catalogLabels) ?? def.label}</span>
+                  <small>{enLaSede}</small>
                 </button>
-              )}
+              );
+            })}
+            <button type="button" className="p2-pieza mas" aria-expanded={catalogoAbierto} data-catalogo-completo
+              title="El catálogo completo: familias, modelos de fábrica y el nombre de cada tipo en esta tienda"
+              onClick={() => setCatalogoAbierto((v) => !v)}>
+              <Ellipsis {...ICONO} />
+              <span className="nom">Más</span>
+            </button>
+          </nav>
+        )}
+        {editMode && catalogoAbierto && (
+          <aside className="p2-catalogo" data-catalogo-2d>
+            <div className="p2-cat-h">
+              <Shapes {...ICONO} />
+              <h3>Catálogo</h3>
+              <span className="sub">clic o arrastrá al plano</span>
+              <button type="button" className="p2-icobtn chico" title="Cerrar el catálogo completo" aria-label="Cerrar el catálogo completo"
+                onClick={() => setCatalogoAbierto(false)}>
+                <X {...ICONO} />
+              </button>
             </div>
-            {catalogoAbierto && (
-              <div className="p2-cat-b">
+            <div className="p2-cat-b">
                 {familias.map(([cat, defs]) => {
                   const IconoFamilia = iconoDeFamilia(cat, defs[0]?.type);
                   const abierta = familiasAbiertas.has(cat);
@@ -1731,7 +1764,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         const IconoTipo = iconoDelTipo(def.type);
                         return (
                           <div key={cat + def.type} className="p2-tipo" data-tipo-2d={def.type} data-activo={isActive || undefined}>
-                            <button type="button" className="p2-tipo-b"
+                            <button type="button" className="p2-tipo-b" draggable
+                              onDragStart={(e) => { arrastreRef.current = { type: def.type, modelo: null }; e.dataTransfer.setData("text/plain", def.type); e.dataTransfer.effectAllowed = "copy"; }}
+                              onDragEnd={() => { arrastreRef.current = null; }}
                               onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(null); }}>
                               <IconoTipo {...ICONO} />
                               <div style={{ minWidth: 0 }}>
@@ -1789,7 +1824,9 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 {modelos.map((m) => {
                                   const activo = pendingModelo?.id === m.id && activeTool === "place";
                                   return (
-                                    <button key={m.id} data-modelo={m.id} type="button" className="p2-modelo" data-activo={activo || undefined}
+                                    <button key={m.id} data-modelo={m.id} type="button" className="p2-modelo" data-activo={activo || undefined} draggable
+                                      onDragStart={(e) => { arrastreRef.current = { type: def.type, modelo: m }; e.dataTransfer.setData("text/plain", def.type); e.dataTransfer.effectAllowed = "copy"; }}
+                                      onDragEnd={() => { arrastreRef.current = null; }}
                                       onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(m); }}>
                                       <span className="nom">{m.estimado ? "≈ " : ""}{m.nombre}</span>
                                       <span className="med">{metros(m.w)} × {metros(m.h)} × {metros(m.nace.h)} m</span>
@@ -1811,46 +1848,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 })}
                 <p className="p2-nota">El nombre de cada tipo se cambia con el lápiz: es cómo le dicen en esta tienda.</p>
               </div>
-            )}
           </aside>
         )}
 
         {/* El lienzo: arriba el buscador y los filtros con su cuenta, abajo el
             zoom, el centrado, los códigos y la pantalla completa. */}
         <div className="p2-lienzo">
-          <div className="p2-sobre">
-            <label className="p2-buscar">
-              <Search {...ICONO} />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setSearchQuery("");
-                    e.currentTarget.blur();
-                    e.stopPropagation();
-                  }
-                }}
-                placeholder="Buscar espacio, categoría o proveedor…"
-                aria-label="Buscar espacio, categoría o proveedor"
-              />
-              {filterActive && <span className="cuenta">{matchedIds?.size ?? 0} de {items.length}</span>}
-              {searchQuery.length > 0 && (
-                <button type="button" className="p2-icobtn chico" onClick={() => setSearchQuery("")} title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
-                  <X {...ICONO} />
-                </button>
-              )}
-            </label>
-            <div className="p2-chips" role="group" aria-label="Filtrar por estado" data-filtros-2d>
-              {STATUS_FILTER_CHIPS.map((chip) => (
-                <button key={chip.value} type="button" className="p2-chip" data-filtro={chip.value}
-                  aria-pressed={statusFilter === chip.value} onClick={() => setStatusFilter(chip.value)}>
-                  {chip.label} <span className="mono">{cuentaDeFiltro[chip.value]}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="p2-svg" style={{ background: "var(--surface-2)" }}>
           <svg
             ref={svgRef}
@@ -1870,6 +1873,18 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             onMouseUp={handleSvgMouseUp}
             onMouseLeave={handleSvgMouseUp}
             onWheel={handleSvgWheel}
+            onDragOver={(e) => { if (arrastreRef.current) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+            onDrop={(e) => {
+              // Soltar un tipo o un modelo arrastrado desde la tira o el
+              // catálogo: se coloca donde se soltó, igual que con el clic.
+              const a = arrastreRef.current;
+              arrastreRef.current = null;
+              if (!a || !editMode) return;
+              e.preventDefault();
+              const pt = svgPoint(e);
+              placeItem(a.type, pt.x, pt.y, undefined, undefined, a.modelo);
+              setPendingModelo(null);
+            }}
           >
             <defs>
               {/* Sub-grid (0.25m) — warm tones */}
@@ -1932,7 +1947,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 // sus pruebas.
                 const rotulos = rotulosDelPlano(
                   item,
-                  pw * zoom > 46 && ph * zoom > 12,
+                  pw * zoom > 46 && ph * zoom > 13,
                   chocados,
                 );
 
@@ -2196,7 +2211,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       // que dos espacios se leen igual, no.
                       const choque = rotulos.choque;
                       const text = [rotulos.pastilla, choque?.marca].filter(Boolean).join(" ");
-                      const fs = 10.5 / zoom;
+                      const fs = 11 / zoom;
                       const padX = 7 / zoom;
                       const bh = 16 / zoom;
                       const bw = text.length * fs * 0.62 + padX * 2;
@@ -2266,8 +2281,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                       const showIcono = rotulos.adentro === null && screenW > 22 && screenH > 16;
                       const lado = Math.min(12 / zoom, pw * 0.6, ph * 0.7);
                       const IconoDelMueble = iconoDelTipo(item.type);
-                      // Font size: stays ~11 px on screen but capped to 45 % of fixture width
-                      const fs = Math.min(11 / zoom, pw * 0.45, ph * 0.7);
+                      // La letra contra-escala con el zoom: ~11 px en pantalla,
+                      // achicada al 45 % del ancho y al 70 % del alto del mueble,
+                      // pero nunca por debajo de 9 px (etapa 6): el umbral de
+                      // arriba (46 × 13 px en pantalla) ya dice que entra.
+                      const fs = Math.max(9 / zoom, Math.min(11 / zoom, pw * 0.45, ph * 0.7));
                       return (
                         <>
                           {showIcono && (
@@ -2548,38 +2566,89 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               </p>
             </div>
           )}
+          {/* La mesa de trabajo (rediseño UX 2026-10, etapa 6): lo que antes
+              eran dos franjas arriba y una abajo flota sobre el plano. Arriba,
+              al centro, las herramientas con su nombre (editando); abajo a la
+              izquierda los filtros con su cuenta —son también la leyenda— y la
+              pista; abajo a la derecha el zoom, centrar, los códigos y la
+              pantalla completa. */}
+          {editMode && (
+            <div className="p2-herramientas p2-flota" role="toolbar" aria-label="Herramientas">
+              <button type="button" className="p2-icobtn" title="Seleccionar (Esc)" aria-label="Seleccionar"
+                aria-pressed={activeTool === "select"}
+                onClick={() => { setActiveTool("select"); setPendingType(null); }}>
+                <MousePointer2 {...ICONO} /><span className="t">Seleccionar</span>
+              </button>
+              <span className="p2-sepv" />
+              <button type="button" className="p2-icobtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" onClick={() => undo()}>
+                <Undo2 {...ICONO} /><span className="t">Deshacer</span>
+              </button>
+              <button type="button" className="p2-icobtn" title="Rehacer (Ctrl+Y)" aria-label="Rehacer" onClick={() => redo()}>
+                <Redo2 {...ICONO} /><span className="t">Rehacer</span>
+              </button>
+              <span className="p2-sepv" />
+              <button type="button" className="p2-icobtn" title="Rotar (R)" aria-label="Rotar"
+                onClick={() => rotateItem(selectedId)} disabled={!selectedId}>
+                <RotateCw {...ICONO} /><span className="t">Rotar</span>
+              </button>
+              <button type="button" className="p2-icobtn" title="Duplicar (Ctrl+D)" aria-label="Duplicar"
+                onClick={() => duplicateSelected(selectedIds)} disabled={selectedIds.size === 0}>
+                <Copy {...ICONO} /><span className="t">Duplicar</span>
+              </button>
+              <button type="button" className="p2-icobtn peligro" aria-label="Eliminar"
+                title={selectedIds.size > 1 ? `Eliminar ${selectedIds.size} seleccionados (Supr)` : "Eliminar (Supr)"}
+                disabled={selectedIds.size === 0}
+                onClick={() => {
+                  if (selectedIds.size > 0) {
+                    setItems((prev) => prev.filter((i) => !selectedIds.has(i.id)));
+                    setSelectedIds(new Set());
+                  }
+                }}>
+                <Trash2 {...ICONO} /><span className="t">Eliminar</span>
+              </button>
+            </div>
+          )}
+
+          <div className="p2-abajo">
+            <div className="p2-chips p2-flota" role="group" aria-label="Filtrar por estado" data-filtros-2d>
+              {STATUS_FILTER_CHIPS.map((chip) => (
+                <button key={chip.value} type="button" className="p2-chip" data-filtro={chip.value}
+                  aria-pressed={statusFilter === chip.value} onClick={() => setStatusFilter(chip.value)}>
+                  {chip.label} <span className="mono">{cuentaDeFiltro[chip.value]}</span>
+                </button>
+              ))}
+            </div>
+            <span className="p2-pista p2-flota" title={pista}><Mouse {...ICONO} /><span>{pista}</span></span>
           </div>
 
-          <div className="p2-pie">
-            <span className="p2-pista" title={pista}><Mouse {...ICONO} /><span>{pista}</span></span>
-            <span className="p2-herr" data-pie-del-lienzo>
-              <button type="button" className="p2-icobtn" title="Alejar" aria-label="Alejar"
-                onClick={() => setZoom((z) => Math.max(0.25, z / 1.2))}>
-                <Minus {...ICONO} />
-              </button>
-              <button type="button" className="p2-zoom" title="Volver al 100 %" aria-label="Volver al 100 %"
-                onClick={() => { setZoom(1); setPanOffset({ x: 60, y: 60 }); }}>
-                {Math.round(zoom * 100)} %
-              </button>
-              <button type="button" className="p2-icobtn" title="Acercar" aria-label="Acercar"
-                onClick={() => setZoom((z) => Math.min(4, z * 1.2))}>
-                <Plus {...ICONO} />
-              </button>
-              <button type="button" className="p2-icobtn" title="Centrar en todo" aria-label="Centrar en todo" onClick={centrarEnTodo}>
-                <Focus {...ICONO} />
-              </button>
-              <button type="button" className="p2-icobtn" aria-pressed={showLabels}
-                onClick={() => setShowLabels((v) => !v)}
-                title={showLabels ? "Ocultar los códigos" : "Mostrar los códigos"}
-                aria-label="Mostrar los códigos">
-                <Captions {...ICONO} />
-              </button>
-              <button type="button" className="p2-icobtn" aria-pressed={pantallaCompleta}
-                title={pantallaCompleta ? "Salir de pantalla completa" : "Pantalla completa"}
-                aria-label="Pantalla completa" onClick={alternarPantallaCompleta}>
-                {pantallaCompleta ? <Minimize2 {...ICONO} /> : <Maximize2 {...ICONO} />}
-              </button>
-            </span>
+          <span className="p2-herr p2-flota" data-pie-del-lienzo>
+            <button type="button" className="p2-icobtn" title="Alejar" aria-label="Alejar"
+              onClick={() => setZoom((z) => Math.max(0.25, z / 1.2))}>
+              <Minus {...ICONO} />
+            </button>
+            <button type="button" className="p2-zoom" title="Volver al 100 %" aria-label="Volver al 100 %"
+              onClick={() => { setZoom(1); setPanOffset({ x: 60, y: 60 }); }}>
+              {Math.round(zoom * 100)} %
+            </button>
+            <button type="button" className="p2-icobtn" title="Acercar" aria-label="Acercar"
+              onClick={() => setZoom((z) => Math.min(4, z * 1.2))}>
+              <Plus {...ICONO} />
+            </button>
+            <button type="button" className="p2-icobtn" title="Centrar en todo" aria-label="Centrar en todo" onClick={centrarEnTodo}>
+              <Focus {...ICONO} />
+            </button>
+            <button type="button" className="p2-icobtn" aria-pressed={showLabels}
+              onClick={() => setShowLabels((v) => !v)}
+              title={showLabels ? "Ocultar los códigos" : "Mostrar los códigos"}
+              aria-label="Mostrar los códigos">
+              <Captions {...ICONO} />
+            </button>
+            <button type="button" className="p2-icobtn" aria-pressed={pantallaCompleta}
+              title={pantallaCompleta ? "Salir de pantalla completa" : "Pantalla completa"}
+              aria-label="Pantalla completa" onClick={alternarPantallaCompleta}>
+              {pantallaCompleta ? <Minimize2 {...ICONO} /> : <Maximize2 {...ICONO} />}
+            </button>
+          </span>
           </div>
         </div>
 
@@ -2703,7 +2772,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
  * servidor y no pierde nada). Este diálogo lo dice antes, con el texto de
  * `avisoDelRenombre`, y deja seguir o no.
  */
-function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
+export function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
   de: string; a: string; aviso: string; onCancel: () => void; onConfirm: () => void;
 }) {
   useEffect(() => {
@@ -2761,7 +2830,7 @@ function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
  * nombre, otro equipo guardó el plano en el medio, un código destino está
  * tomado… Se dice por qué, con sus motivos, y la sede queda como estaba.
  */
-function RenombreRechazadoDialog({ de, a, error, motivos, onCerrar }: {
+export function RenombreRechazadoDialog({ de, a, error, motivos, onCerrar }: {
   de: string; a: string; error: string; motivos: string[]; onCerrar: () => void;
 }) {
   useEffect(() => {
@@ -2818,7 +2887,7 @@ function RenombreRechazadoDialog({ de, a, error, motivos, onCerrar }: {
  * already lost a sede's real data to an accidental wipe, and a one-click bin
  * next to the rename pencil is exactly how that happens again.
  */
-function DeleteSedeDialog({
+export function DeleteSedeDialog({
   sede, fixtures, onCancel, onConfirm,
 }: {
   sede: string;
@@ -3906,7 +3975,7 @@ function AssignmentPanel({
 
   const botonVender = isAdmin && rentable && (
     <button type="button" className="p2-btn" data-vender onClick={() => onVender(activeFace)}
-      title="Abre Vender (en la pantalla de la sede) con este espacio">
+      title="Abre Contratos con este espacio">
       <FilePenLine {...ICONO} /> Vender
     </button>
   );
@@ -4258,7 +4327,7 @@ function AssignmentPanel({
                       type="button"
                       className="p2-btn"
                       onClick={() => abrirEnDistribucion(item.id, activeFace)}
-                      title="Abre el Editor 3D en esta cara, en Distribución"
+                      title="Abre el 3D del plano en esta cara, en Distribución"
                     >
                       <Percent {...ICONO} /> Distribuir
                     </button>

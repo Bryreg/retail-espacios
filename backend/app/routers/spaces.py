@@ -315,6 +315,55 @@ def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
     return space
 
 
+@router.get("/linea")
+def linea_de_la_sede(
+    sede: str,
+    meses: int = 12,
+    role: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """La línea de tiempo de la sede (rediseño UX, etapa 4): por espacio, cada
+    contrato y cada reserva viva que pisa los próximos ``meses`` meses.
+
+    Hasta acá el navegador sólo sabía el contrato que manda en cada espacio (el
+    vigente o, si no hay, el próximo: `/comercial`), y una fila por espacio no
+    alcanza para dibujar 12 meses: un espacio vendido hasta enero y otra vez
+    desde marzo tenía el segundo contrato invisible.
+
+    **Sin proveedores ni plata.** La línea vive en Contratos, la pantalla que
+    mira el proveedor: dice ocupado y hasta cuándo, no quién ni por cuánto
+    (eso está en la ficha del espacio, para quien administra). Sólo
+    administración, como el resto de Contratos. Lee, no crea.
+    """
+    from datetime import timedelta
+
+    expire_leases(db)
+    meses = max(1, min(int(meses or 12), 24))
+    dia = hoy()
+    fin = dia + timedelta(days=round(meses * 30.44))
+    codigo_sede = (sede or "").strip().upper()
+    espacios = {sp.id: (sp.code or "").strip().upper()
+                for sp in db.query(Space).filter(Space.sede == codigo_sede).all()}
+    fuera = []
+    if espacios:
+        for l in (db.query(SpaceLease)
+                  .filter(SpaceLease.space_id.in_(espacios.keys()), SpaceLease.is_active.is_(True),
+                          SpaceLease.end_date >= dia, SpaceLease.start_date <= fin)
+                  .order_by(SpaceLease.start_date, SpaceLease.id).all()):
+            fuera.append({"espacio": espacios[l.space_id], "tipo": "contrato", "id": l.id,
+                          "desde": l.start_date.isoformat(), "hasta": l.end_date.isoformat()})
+        for r in (db.query(ReservaDeEspacio)
+                  .filter(ReservaDeEspacio.space_id.in_(espacios.keys()), ReservaDeEspacio.estado == "viva",
+                          ReservaDeEspacio.caduca >= dia, ReservaDeEspacio.hasta >= dia,
+                          ReservaDeEspacio.desde <= fin)
+                  .order_by(ReservaDeEspacio.desde, ReservaDeEspacio.id).all()):
+            fuera.append({"espacio": espacios[r.space_id], "tipo": "reserva", "id": r.id,
+                          "desde": r.desde.isoformat(), "hasta": r.hasta.isoformat(),
+                          "caduca": r.caduca.isoformat()})
+    fuera.sort(key=lambda x: (x["espacio"], x["desde"]))
+    return {"desde": dia.isoformat(), "hasta": fin.isoformat(), "filas": fuera}
+
+
 @router.get("/", response_model=list[SpaceOut])
 def list_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     spaces = db.query(Space).options(
@@ -406,6 +455,54 @@ def get_space_by_code(
             return None
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
     return _space_out_for_role(space, role)
+
+
+@router.get("/by-code/{code}/historial")
+def historial_por_codigo(
+    code: str,
+    partes: bool = True,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Todos los contratos de un espacio —vivos, futuros, terminados y
+    cancelados—, del más nuevo al más viejo (rediseño UX, 2026-10-26).
+
+    Hasta acá sólo se leían el vigente y el próximo (`active_lease`,
+    `upcoming_lease`): «libre desde» y la línea de tiempo de la ficha no tenían
+    de dónde sacar lo terminado. Con ``partes`` (por defecto) suma los de sus
+    partes y participaciones (``CENTRO-GON-03`` trae ``…-PC1`` y ``…-B-PC1``).
+    Lee, no crea; un código sin filas devuelve una lista vacía.
+
+    La plata (total y al mes) sólo para administración, como en el resto de
+    `spaces`: al trabajador le llegan las fechas y el proveedor, sin montos."""
+    from app.services.meses import al_mes_de
+
+    codigo = (code or "").strip().upper()
+    q = db.query(SpaceLease, Space.code).join(Space, Space.id == SpaceLease.space_id).options(
+        joinedload(SpaceLease.supplier))
+    q = q.filter((Space.code == codigo) | (Space.code.like(codigo + "-%"))) if partes else q.filter(Space.code == codigo)
+    from app.services.historial import cerrados_a_mano, estado_del_contrato
+
+    hoy_ = hoy()
+    es_admin = role == "admin"
+    fuera = []
+    filas = q.order_by(SpaceLease.start_date.desc(), SpaceLease.id.desc()).all()
+    # `is_active` en falso no distingue lo vencido de lo cancelado: lo dice
+    # la bitácora (`services/historial.py`).
+    cerrados = cerrados_a_mano(db, [l.id for l, _ in filas])
+    for lease, cod in filas:
+        estado = estado_del_contrato(lease, cerrados, hoy_)
+        fila = {"lease_id": lease.id, "espacio": cod, "estado": estado,
+                "proveedor": lease.supplier.name if lease.supplier else None, "marca": lease.marca,
+                "desde": lease.start_date.isoformat() if lease.start_date else None,
+                "hasta": lease.end_date.isoformat() if lease.end_date else None}
+        if es_admin:
+            total = float(lease.monthly_rent or 0)
+            fila["valor_total"] = total
+            fila["valor_al_mes"] = (al_mes_de(total, lease.start_date, lease.end_date)
+                                    if lease.start_date and lease.end_date else None)
+        fuera.append(fila)
+    return fuera
 
 
 #: Lo que contesta `PATCH /spaces/{id}/status` a un «Reservado» a mano.

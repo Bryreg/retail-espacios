@@ -435,6 +435,10 @@ def mi_espacio(
     ultimo_out = None
     if ultimo is not None:
         ultimo_out = MountOut.model_validate(ultimo)
+        # Si administración vio que no coincide, quien monta lee qué corregir
+        # (rediseño UX, etapa 7). Sin plata: la nota la escribió administración.
+        from app.routers.mounts import _ultimas_verificaciones
+        ultimo_out.verificacion = _ultimas_verificaciones(db, [ultimo.id]).get(ultimo.id)
         if ultimo.file_id:
             datos = (
                 db.query(SpaceFile.filename, SpaceFile.content_type)

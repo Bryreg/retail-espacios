@@ -100,6 +100,9 @@ TABLAS_DEL_CLIENTE = frozenset({
     # supervisión (fase 4): el aviso de quien monta y la revisión, que apunta
     # al aviso.
     "fotos_de_guia", "montajes_de_planograma", "revisiones_de_planograma",
+    # La verificación del montaje de un contrato (rediseño UX, 2026-10-26).
+    # Cuelga de `mount_confirmations`, que viaja con ella.
+    "verificaciones_de_montaje",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar

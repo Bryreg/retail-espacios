@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { SIN_ESCALA } from "../../escala";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import type { OrbitControls as ControlesDeOrbita } from "three/examples/jsm/controls/OrbitControls.js";
@@ -807,7 +808,7 @@ export default function VisorDeVenta({
 
       {/* El doble clic vuelve a «De frente»: si un giro dejó la cámara en un
           lugar raro, es lo primero que se hace sin buscar el HUD. */}
-      <div className="visor-escena" onDoubleClick={() => { if (!armando) pedirToma(activa.fixtureId, activa.face, "frente"); }}>
+      <div className="visor-escena" style={{ zoom: SIN_ESCALA } as React.CSSProperties} onDoubleClick={() => { if (!armando) pedirToma(activa.fixtureId, activa.face, "frente"); }}>
         <Lienzo
           muebles={muebles}
           privadoPara={privadoPara}

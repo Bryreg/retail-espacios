@@ -2699,7 +2699,8 @@ await prueba("desde Supervisar y de vuelta: «Distribuir» pide volver; «Listo�
   assert.deepEqual([pedido.aviso, typeof pedido.n], ["Listo: GON-01 · cara A quedó distribuida.", "number"]);
   S.useFixtureStore.getState().soltarPedidoSupervisar();
   assert.equal(S.useFixtureStore.getState().pedidoSupervisar, null);
-  assert.match(sinComentTs2(fuente("pages/Dashboard.tsx")), /if \(pedidoSupervisar && isAdmin\) setViewMode\("kpis"\);/);
+  // Con el armazón de módulos (rediseño UX 2026-10) «cambiar de pestaña» es ir a Indicadores.
+  assert.match(sinComentTs2(fuente("pages/Dashboard.tsx")), /if \(pedidoSupervisar && isAdmin\) ir\("indicadores"\);/);
   const dv = sinComentTs2(fuente("pages/DashboardView.tsx"));
   assert.match(dv, /useFixtureStore\.getState\(\)\.soltarPedidoSupervisar\(\);\s*setModo\("supervisar"\);\s*setAvisoDeDistribucion\(pedidoSupervisar\.aviso\);/);
   assert.match(dv, /\{isAdmin && avisoDeDistribucion && \(/, "el aviso de lo que dejó Distribuir no se muestra (o se le muestra a un trabajador)");

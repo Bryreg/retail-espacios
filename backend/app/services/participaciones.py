@@ -61,6 +61,7 @@ from app.fechas import ZONA_DEL_NEGOCIO, hoy
 from app.models.models import Space, SpaceLease, Supplier
 from app.models.participaciones import Distribucion, HistorialParticipacion, Participacion, Zona
 from app.models.vender import CobroPorVenta, CondicionesDeContrato, PrecioDeReserva
+from app.services.meses import al_mes_de
 from app.services import reglas_participacion as reglas
 from app.services import zonas_geometria as geo
 from app.services.alta_de_contrato import escribir_contrato, espacio_para, proveedor_por_nombre
@@ -1464,7 +1465,15 @@ def termino_out(t: Participacion, regla: dict, pc: Optional[Space], lease: Optio
         "proveedor": {"id": prov.id, "nombre": prov.name} if prov else None,
         "marca": regla.get("marca"), "desde": regla.get("desde"), "hasta": regla.get("hasta"),
         "caduca": regla.get("caduca"),
+        # `valor_mensual` es, a pesar del nombre, el TOTAL del contrato (lo que
+        # guarda `monthly_rent`); lo leen así el formulario y la ficha de la
+        # cara. Se queda por compatibilidad y al lado van los dos con su nombre
+        # (rediseño UX, 2026-10-26): `valor_total` y `valor_al_mes` (el total
+        # repartido en sus meses, `services/meses.py`).
         "lease_id": t.lease_id, "valor_mensual": float(lease.monthly_rent) if lease is not None else None,
+        "valor_total": float(lease.monthly_rent) if lease is not None else None,
+        "valor_al_mes": (al_mes_de(float(lease.monthly_rent), lease.start_date, lease.end_date)
+                         if lease is not None and lease.start_date and lease.end_date else None),
         "valor_acordado": float(precio.valor) if precio is not None and precio.valor is not None else None,
         # Una reserva que se cobra por ventas: el porcentaje y el corte acordados.
         "cobro_acordado": ({"modo": "ventas", "porcentaje": precio.cobro_porcentaje, "corte": precio.cobro_corte}

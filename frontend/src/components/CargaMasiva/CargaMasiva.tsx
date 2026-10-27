@@ -96,6 +96,15 @@ export default function CargaMasiva({
   // Mientras la carga masiva está abierta, ELLA es la pantalla: se lleva el
   // amarillo y el «Guardar contrato y avisar» de Vender pasa a tinta.
   useModalAbierto();
+  // Esc cierra, como tocar afuera, salvo mientras guarda (corrección de la
+  // etapa 9: era el único diálogo que no lo hacía).
+  const cerrarRef = useRef(onCerrar);
+  cerrarRef.current = onCerrar;
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !ocupado) cerrarRef.current(); };
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [ocupado]);
 
   const porFila = useMemo(() => {
     const m = new Map<number, FilaPlanilla>();
@@ -645,7 +654,7 @@ export default function CargaMasiva({
                   {
                     quien: "Montaje",
                     que: (avisos.montaje_pendiente ?? []).length
-                      ? "Todavía no sale: el aviso de cada espacio espera su planometría. Se carga en Supervisar, en la ficha del espacio; al cargarla, le llega a quien monta."
+                      ? "Todavía no sale: el aviso de cada espacio espera su planometría. Se carga en Indicadores, en la ficha del espacio; al cargarla, le llega a quien monta."
                       : avisos.montaje.length
                         ? <>Le llegó la lista a <b>{[...new Set(avisos.montaje)].join(", ")}</b>.</>
                         : "No hay contacto de montaje en la sede: no le llegó a nadie.",

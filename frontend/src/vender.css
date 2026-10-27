@@ -44,7 +44,7 @@
   color: var(--ink-1);
 }
 .barra-pantalla .pieza > .ico { color: var(--ink-3); flex: none; }
-.barra-pantalla .sede-sel {
+.barra-pantalla .sede-sel, .barra-pantalla .sede-nombre {
   min-width: 0;
   max-width: 220px;
   padding: 0;
@@ -59,6 +59,7 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
+.barra-pantalla .sede-nombre { overflow: hidden; white-space: nowrap; cursor: default; }
 .barra-pantalla .sede-sel:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--r-sm); }
 .barra-pantalla .cuantos { font-size: var(--t-xs); color: var(--ink-3); white-space: nowrap; }
 .barra-pantalla .pieza.modos { padding: 0 4px; align-items: stretch; }
@@ -90,6 +91,23 @@
   color: var(--surface);
   font: 700 var(--t-3xs)/1 var(--f-mono);
 }
+/* «¿Para qué fechas?» (rediseño UX 2026-10, etapa 4): la primera línea de
+   Contratos, con los días que suman y los atajos. */
+.barra-pantalla .pieza.fechas { gap: 8px; flex-wrap: wrap; row-gap: 4px; height: auto; min-height: 46px; padding-top: 6px; padding-bottom: 6px; font-size: var(--t-sm); }
+.barra-pantalla .pieza.fechas .preg { font-weight: 700; color: var(--ink-1); white-space: nowrap; }
+.barra-pantalla .pieza.fechas .campo { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); white-space: nowrap; }
+.barra-pantalla .pieza.fechas input[type="date"] {
+  height: 30px; padding: 0 6px; border: 1px solid var(--brd-control); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--ink-1); font: 500 var(--t-xs) var(--f-mono);
+}
+.barra-pantalla .pieza.fechas .dias { font: 600 var(--t-xs) var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+.barra-pantalla .pieza.fechas .atajos { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.barra-pantalla .pieza.fechas .atajos button {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px;
+  border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.barra-pantalla .pieza.fechas .atajos button[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); background: var(--surface-3); }
 .barra-pantalla .pieza.periodo {
   font-family: inherit;
   font-size: var(--t-sm);
@@ -137,22 +155,16 @@
   .barra-pantalla .pieza { padding: 0 10px; gap: 8px; }
   .barra-pantalla .pieza.modos { padding: 0 2px; }
   .barra-pantalla .modos button { padding: 0 8px; }
-  .barra-pantalla .sede-sel { max-width: 130px; }
+  .barra-pantalla .sede-sel, .barra-pantalla .sede-nombre { max-width: 130px; }
   .btn-barra { width: 32px; padding: 0; justify-content: center; }
   /* La barra de la aplicación (`Dashboard.tsx`, estilos en línea): menos aire
-     para que las cuatro pestañas entren en un renglón a 390 px. */
+     a lo angosto. Las pestañas se fueron al menú de módulos (`armazon.css`). */
   .barra-app { gap: 10px !important; padding: 0 12px !important; }
-  .barra-app .pestana-app { padding: 0 7px !important; }
 }
-/* A 480 px o menos las cuatro pestañas y los controles no entran en un
-   renglón: la marca y los controles arriba, las pestañas en el renglón de
-   abajo, y la sincronización es el punto solo (la palabra queda en su `title`
-   y su `aria-label`). Nada se corta. */
+/* A 480 px o menos la sincronización es el punto solo (la palabra queda en su
+   `title` y su `aria-label`): la marca, la sede y la cuenta entran en un
+   renglón. Nada se corta. */
 @media (max-width: 480px) {
-  .barra-app { flex-wrap: wrap; height: auto !important; row-gap: 0; padding-top: 6px !important; }
-  .barra-app .sep-app { display: none; }
-  .barra-app .pestanas-app { order: 3; flex: 1 0 100%; height: 40px; }
-  .barra-app .der-app { gap: 4px !important; }
   .sync-palabra { display: none; }
 }
 
@@ -203,7 +215,7 @@
   --marco-sede: 80px;
   --fila1: 448px;
   --fila2: 248px;
-  --alto-plano: max(var(--fila1), min((var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede)) * 550 / 804, var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede) - var(--fila2)));
+  --alto-plano: max(var(--fila1), min((var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--marco-sede)) * 550 / 804, var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--marco-sede) - var(--fila2)));
 }
 /* En ventana baja la hoja de Vender se aprieta: 8 + 8, 36 + 6 y 8. */
 @media (max-height: 880px) {
@@ -242,7 +254,7 @@
      hueco entre filas que el marco ya contaba), con el piso de las dos filas.
      Es el alto de la pila de la izquierda (el plano y «Cuándo se libera») y lo
      menos que mide la de la derecha (el contrato y la tarifa). */
-  --alto-hoja: max(calc(var(--fila1) + var(--aire-v) + var(--fila2)), calc(var(--alto-area, calc(100dvh - 52px)) - var(--marco-sede) + var(--aire-v)));
+  --alto-hoja: max(calc(var(--fila1) + var(--aire-v) + var(--fila2)), calc(var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--marco-sede) + var(--aire-v)));
 
   display: flex;
   flex-direction: column;
@@ -301,7 +313,7 @@ html[data-tema="oscuro"] .vender {
   grid-template-rows: var(--alto-plano) minmax(var(--fila2), 1fr);
   height: var(--alto-hoja);
   position: sticky;
-  top: min(var(--aire-v), calc(var(--alto-area, calc(100dvh - 52px)) - var(--alto-hoja) - var(--aire-v)));
+  top: min(var(--aire-v), calc(var(--alto-area, calc(100dvh / var(--escala, 1) - 52px)) - var(--alto-hoja) - var(--aire-v)));
 }
 /* LA DERECHA: el contrato con su alto natural —nunca menos que la fila del
    plano— y la tarifa debajo, con lo que quede (y su piso). Cuando el contrato
@@ -1455,6 +1467,19 @@ html[data-tema="oscuro"] .vender {
 .avisos-guardado { margin-top: 10px; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.5; }
 /* Dónde se carga la planometría: una línea quieta, sin alarma. */
 .nota-guardado { margin: 8px 0 0; font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
+/* El contrato en una frase, sobre «Guardar contrato» (etapa 4). */
+.frase-contrato { margin: 4px 0 8px; font-size: var(--t-xs); line-height: 1.5; color: var(--ink-2); }
+.frase-contrato b { color: var(--ink-1); }
+.frase-contrato .mono { font-family: var(--f-mono); color: var(--ink-1); font-weight: 600; }
+/* «Qué pasa ahora» del contrato guardado (rediseño UX 2026-10, etapa 4). */
+.que-pasa { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line); }
+.que-pasa .tit { font-size: var(--t-xs); font-weight: 700; color: var(--ink-1); margin-bottom: 6px; }
+.que-pasa ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.que-pasa li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; font-size: var(--t-2xs); color: var(--ink-2); line-height: 1.45; }
+.que-pasa li b { color: var(--ink-1); font-weight: 600; }
+.que-pasa .punto { width: 16px; height: 16px; margin-top: 1px; border-radius: 999px; border: 1.5px solid var(--line-strong); display: grid; place-items: center; }
+.que-pasa li.hecho .punto { border-color: var(--libre); color: var(--libre-txt); }
+.que-pasa li.hecho .punto svg { width: 12px; height: 12px; }
 
 /* --- 03 · EL CONTRATO, CON AIRE («aire y pines», después del PR 3) --------
    El dibujo aprobado (`hoja2/build.cjs`, `contratoNuevo`): el contrato al 40 %
@@ -1624,7 +1649,7 @@ html[data-tema="oscuro"] .vender {
   background: color-mix(in srgb, var(--ink-1) 38%, transparent);
 }
 .dialogo-edicion {
-  width: min(100%, 460px); max-height: calc(100vh - 32px); overflow: auto;
+  width: min(100%, 460px); max-height: calc(100vh / var(--escala, 1) - 32px); overflow: auto;
   background: var(--surface); color: var(--ink-1); border: var(--hair) solid var(--line);
   border-radius: var(--r-lg); box-shadow: var(--sh-2);
 }
@@ -1640,3 +1665,15 @@ html[data-tema="oscuro"] .vender {
 .que-cambia-lista { font-size: var(--t-xs); padding-top: 4px !important; border-top: var(--hair) solid var(--line-soft); }
 .dialogo-acciones { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 16px 18px; }
 .dialogo-acciones .btn-principal { display: inline-flex; align-items: center; gap: 8px; width: auto; padding: 9px 14px; border-radius: var(--r-md); font-size: var(--t-sm); }
+
+/* Plano | Línea de tiempo en el piso de Contratos (rediseño UX 2026-10, etapa
+   4): la pieza segmentada de Supervisar, acá. */
+.vender .vista-contratos {
+  display: inline-flex; gap: 2px; padding: 2px; margin-left: 6px;
+  border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line);
+}
+.vender .vista-contratos button {
+  height: 26px; padding: 0 10px; border: none; border-radius: calc(var(--r-md) - 2px);
+  background: transparent; color: var(--ink-3); font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.vender .vista-contratos button[aria-pressed="true"] { background: var(--ink-1); color: var(--surface); }

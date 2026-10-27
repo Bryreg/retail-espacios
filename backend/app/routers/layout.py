@@ -731,6 +731,56 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
 # paths stay above "/{sede}".
 
 
+# ─── Metas de Indicadores (rediseño UX, etapa 5) ──────────────────────────────
+# Cuánta ocupación y cuánto canon contra la tarifa se espera: una meta general
+# y, si hace falta, una por sede. Son porcentajes, no plata: las lee cualquiera
+# con sesión (el trabajador ve la ocupación contra su meta) y las cambia
+# administración. Viven en `app_config` como un JSON (sin tabla ni migración).
+# Sin nada guardado valen las propuestas del dibujo aprobado (90 % y 95 %,
+# `docs/maquetas/ux-2026-10/pantallas.md`), y la pantalla dice que son ésas.
+
+METAS_KEY = "metas_de_indicadores"
+METAS_POR_DEFECTO = {"ocupacion": 90, "canon_tarifa": 95}
+
+
+class Meta(BaseModel):
+    ocupacion: int = Field(ge=0, le=100)
+    canon_tarifa: int = Field(ge=0, le=200)
+
+
+class MetasIn(BaseModel):
+    general: Meta
+    sedes: dict[str, Meta] = Field(default={}, max_length=100)
+
+
+def _metas_guardadas(db: Session) -> dict | None:
+    try:
+        crudo = json.loads(get_config(db, METAS_KEY) or "null")
+    except ValueError:
+        return None
+    return crudo if isinstance(crudo, dict) else None
+
+
+@router.get("/metas")
+def get_metas(response: Response, db: Session = Depends(get_db)):
+    _no_store(response)
+    guardadas = _metas_guardadas(db)
+    if not guardadas:
+        return {"general": dict(METAS_POR_DEFECTO), "sedes": {}, "por_defecto": True}
+    return {"general": guardadas.get("general", dict(METAS_POR_DEFECTO)),
+            "sedes": guardadas.get("sedes", {}), "por_defecto": False}
+
+
+@router.put("/metas")
+def put_metas(payload: MetasIn, request: Request, rol: str = Depends(require_admin), db: Session = Depends(get_db)):
+    datos = {"general": payload.general.model_dump(),
+             "sedes": {k.strip().upper(): v.model_dump() for k, v in payload.sedes.items() if k.strip()}}
+    set_config(db, METAS_KEY, json.dumps(datos))
+    anotar(db, request, rol, "ajustes.metas", detalle=f"Ocupación {datos['general']['ocupacion']} % · canon ÷ tarifa {datos['general']['canon_tarifa']} %")
+    db.commit()
+    return {**datos, "por_defecto": False}
+
+
 @router.get("/seasons", response_model=SeasonWindowsOut)
 def get_season_windows(response: Response, db: Session = Depends(get_db)):
     """Días de venta antes y después del ancla, por temporada."""

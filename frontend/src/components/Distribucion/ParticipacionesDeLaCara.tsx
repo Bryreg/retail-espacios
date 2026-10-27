@@ -296,7 +296,7 @@ export default function ParticipacionesDeLaCara({
           )}
 
           <div className="acc">
-            <button type="button" className="btn-s" onClick={() => abrir(fixtureId, cara)} title="Abrir en Distribución: el Editor 3D en esta cara">
+            <button type="button" className="btn-s" onClick={() => abrir(fixtureId, cara)} title="Abrir en Distribución: el 3D del plano en esta cara">
               <PenTool {...ICONO} /> Distribuir
             </button>
             {unaSola && onRenovar && (

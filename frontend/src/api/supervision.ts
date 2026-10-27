@@ -77,6 +77,16 @@ export interface Revisada {
 export const leerSupervision = (sede: string): Promise<{ caras: CaraPorSupervisar[]; hoy: string }> =>
   client.get<{ caras: CaraPorSupervisar[]; hoy: string }>("/planogramas/supervision", { params: { sede } }).then((r) => r.data);
 
+/** Una cara en la lista de Montajes: lo mismo, y también las que coinciden. */
+export type CaraDelMontaje = Omit<CaraPorSupervisar, "estado"> & {
+  estado: CaraPorSupervisar["estado"] | "coincide";
+};
+
+/** Los montajes de planograma de la sede para la lista de Montajes (rediseño
+ *  UX, etapa 7): `todas=1` suma los que ya coinciden (el filtro «Verificado»). */
+export const leerMontajesDePlanogramas = (sede: string): Promise<CaraDelMontaje[]> =>
+  client.get<{ caras: CaraDelMontaje[] }>("/planogramas/supervision", { params: { sede, todas: 1 } }).then((r) => r.data.caras);
+
 export const leerFichaDeMontaje = (id: number): Promise<FichaDeMontaje> =>
   client.get<FichaDeMontaje>("/planogramas/supervision/version", { params: { id } }).then((r) => r.data);
 

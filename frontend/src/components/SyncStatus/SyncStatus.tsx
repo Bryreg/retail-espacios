@@ -147,6 +147,7 @@ export default function SyncStatus() {
   return (
     <div ref={anclaRef} style={{ position: "relative" }}>
       <button
+        className="sync-status"
         onClick={handleSync}
         disabled={busy}
         title={

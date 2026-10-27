@@ -85,7 +85,9 @@ console.log("\nprecio · los contratos de antes, en «Para revisar»");
 await prueba("una sección de Corregir que cuenta UNO, sólo para administración", () => {
   assert.equal(PR.grupoDelAviso("precio_sin_forma"), "corregir");
   const t = leer("src/pages/DashboardView.tsx");
-  assert.ok(/usePrecioSinForma\(\{ sede, activo: isAdmin && modoEfectivo === "supervisar" \}\)/.test(t), "el hook no pide nada si no es administración en Supervisar");
+  // (Rediseño UX 2026-10, etapa 3: Supervisar o la bandeja de Pendientes abierta.)
+  assert.ok(/const pideRevision = modoEfectivo === "supervisar" \|\| bandejaAbierta;/.test(t), "lo de «Para revisar» se pide fuera de Supervisar y de la bandeja");
+  assert.ok(/usePrecioSinForma\(\{ sede, activo: isAdmin && pideRevision \}\)/.test(t), "el hook no pide nada si no es administración en Supervisar");
   assert.ok(/for \(const _c of precioSinForma\.unoSiHay\)/.test(t), "cuenta un aviso, no uno por contrato");
   assert.ok(/\{isAdmin && \(\s*<PrecioSinForma\b/.test(t), "la sección se monta sin isAdmin");
   const h = sinComentarios(leer("src/components/Supervisar/PrecioSinForma.tsx"));

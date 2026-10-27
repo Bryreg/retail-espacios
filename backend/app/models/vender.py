@@ -34,6 +34,8 @@ lo tiene por clave primaria: lo que guardan es UNA cosa de ese contrato.
 · montajes_pendientes: el aviso de montaje de un contrato nuevo, que espera
   su planometría y, en un porcentaje, la distribución confirmada de su cara
   (sin zona, quien monta no sabe dónde va). ``services/montajes_pendientes.py``.
+· verificaciones_de_montaje (2026-10-26): quién miró el reporte de montaje de
+  un contrato al lado de su planometría y si coincide. No lleva plata.
 
 Todo esto es plata o la lleva cerca: sólo lo leen rutas de administración, y
 nada de acá entra al historial de participaciones (que no lleva montos) ni al
@@ -204,3 +206,28 @@ class ContratoReemplazado(Base):
     reemplazado_por = Column(Text, nullable=False, default="[]")
     en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
     por = Column(String, nullable=True)
+
+
+#: Lo que dice quien verifica el montaje de un contrato.
+RESULTADOS_DE_VERIFICACION = ("coincide", "no_coincide")
+
+
+class VerificacionDeMontaje(Base):
+    """«Verificar el montaje de un contrato» (rediseño UX, 2026-10-26): quien
+    administra pone la planometría al lado de la foto del reporte y dice si
+    coincide. Hasta acá sólo los planogramas guardaban su revisión
+    (`revisiones_de_planograma`); de un contrato quedaba el reporte y nada más.
+
+    Tabla NUEVA que cuelga del reporte (`mount_confirmations`): una fila por
+    verificación, nunca se pisa —si se verifica dos veces, vale la última y la
+    anterior queda como historia—. No lleva plata: la ve también quien monta."""
+
+    __tablename__ = "verificaciones_de_montaje"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    id = Column(Integer, primary_key=True)
+    montaje_id = Column(Integer, ForeignKey("mount_confirmations.id"), nullable=False, index=True)
+    resultado = Column(String, nullable=False)            # RESULTADOS_DE_VERIFICACION
+    nota = Column(Text, nullable=True)
+    verificada_por = Column(String, nullable=True)
+    verificada_en = Column(DateTime(timezone=True), nullable=False, default=_ahora)

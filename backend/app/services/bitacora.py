@@ -94,6 +94,27 @@ ACCIONES = {
     "contrato.reemplazado": "Contrato reemplazado por otra forma de venderlo",
 }
 
+# Las acciones que se anotaban sin título y la pantalla mostraba con la clave
+# cruda («planograma.revision»): planogramas, sus destinos y sus guías, y la
+# corrección de un precio sin forma. Y la verificación del montaje de un
+# contrato (rediseño UX, 2026-10-26). `test_bitacora_titulos` revisa que toda
+# acción que se anota tenga el suyo.
+ACCIONES.update({
+    "contrato.precio_corregido": "Precio de contrato corregido (al mes o total)",
+    "destino.creado": "Destino de planograma creado",
+    "destino.cambiado": "Destino de planograma cambiado",
+    "planograma.borrador": "Borrador de planograma guardado",
+    "planograma.descartado": "Borrador de planograma descartado",
+    "planograma.publicado": "Planograma publicado",
+    "planograma.quien_publica": "Permiso para publicar planogramas cambiado",
+    "planograma.revision": "Montaje de planograma revisado",
+    "guia.enviada": "Guía de montaje enviada",
+    "guia.aviso": "Aviso de montaje de un planograma",
+    "guia.foto": "Foto de la guía de montaje",
+    "montaje.verificado": "Montaje de contrato verificado",
+    "ajustes.metas": "Metas de Indicadores cambiadas",
+})
+
 # fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,
 # `services/renombre_sede.py`): sus códigos pasan al nombre nuevo y lo vendido
 # sigue vivo. No termina en «.baja» a propósito: no se pierde nada, y la

@@ -119,7 +119,10 @@ console.log("Las dos pantallas usan la regla, y el servidor dice lo mismo");
 
 prueba("Montajes: un espacio sale de pendientes sólo con el «montado» de SU contrato", () => {
   const vista = fuente("src", "pages", "MountView.tsx");
-  assert.match(vista, /if \(reporteDelContrato\(porCodigo, code, cara\.startDate\)\?\.estado === "montado"\) continue;/);
+  // La lista unificada (rediseño UX, etapa 7) guarda el reporte de SU contrato
+  // en cada fila; los pendientes son los que no tienen «montado» de ése.
+  assert.match(vista, /const reporte = reporteDelContrato\(porCodigo, code, cara\.startDate\);/);
+  assert.match(vista, /\.filter\(\(e\) => e\.reporte\?\.estado !== "montado"\)/);
   assert.doesNotMatch(vista, /ultimo\[code\]\?\.estado === "montado"/);
 });
 

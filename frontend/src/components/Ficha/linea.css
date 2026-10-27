@@ -1,0 +1,72 @@
+/* La línea de tiempo de la ficha del espacio (rediseño UX 2026-10, etapa 3). */
+.linea-ficha { display: flex; flex-direction: column; gap: 8px; }
+.linea-tit {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--t-xs); font-weight: 700; color: var(--ink-2);
+}
+.linea-tit svg { color: var(--ink-3); }
+.linea-libre { margin: 0; font-size: var(--t-sm); font-weight: 600; color: var(--ink-1); }
+.linea-nota { margin: 0; font-size: var(--t-xs); color: var(--ink-3); }
+.linea-escala {
+  position: relative;
+  height: 16px;
+  margin-left: 64px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.linea-escala span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.linea-escala span.hoy { transform: none; font-weight: 700; color: var(--ink-1); }
+.linea-carril { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: center; }
+.linea-carril .quien {
+  font: 600 10.5px var(--f-mono);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.linea-carril .pista {
+  position: relative;
+  height: 26px;
+  border-radius: var(--r-sm);
+  background: var(--libre-suave);
+  border: 1px solid var(--libre-borde);
+  overflow: hidden;
+}
+.linea-carril .raya { position: absolute; top: 0; bottom: 0; width: 1px; background: rgb(var(--line-rgb) / 0.9); }
+.linea-carril .barra {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  min-width: 3px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--ocupado-suave);
+  border: 1px solid var(--ocupado-borde);
+  color: var(--ocupado-txt);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.linea-carril .barra.proximo {
+  background: var(--resto-suave);
+  border: 1px dashed var(--resto-borde);
+  color: var(--ink-2);
+}
+.linea-carril .barra .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.linea-antes { margin-top: 4px; }
+.linea-sub { font-size: var(--t-xs); font-weight: 700; color: var(--ink-2); margin-bottom: 4px; }
+.linea-antes ul { list-style: none; margin: 0; padding: 0; }
+.linea-antes li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--t-xs);
+}
+.linea-antes li:first-child { border-top: none; }
+.linea-antes .quien { font-weight: 600; color: var(--ink-1); }
+.linea-antes .cuando { color: var(--ink-3); grid-column: 1; }
+.linea-antes .plata { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-family: var(--f-mono); color: var(--ink-2); }

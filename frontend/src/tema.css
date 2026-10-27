@@ -227,10 +227,12 @@
      funcionando, ahora contra el token del tema puesto. Un solo lugar donde
      está el color, y el `/20` intacto. El hex va al lado, en el comentario,
      para que el archivo se siga leyendo como una paleta. */
-  --bg-rgb:        239 241 237;   /* #EFF1ED — el papel */
+  /* Rediseño UX (2026-10-26, «como la foto»): fondo gris muy claro y frío,
+     tarjetas blancas. Antes: papel verdoso #EFF1ED / #F7F8F5 / #E4E7E1. */
+  --bg-rgb:        246 247 249;   /* #F6F7F9 — el fondo */
   --surface-rgb:   255 255 255;   /* #FFFFFF — la tarjeta */
-  --surface-2-rgb: 247 248 245;   /* #F7F8F5 — fila alterna, hover */
-  --surface-3-rgb: 228 231 225;   /* #E4E7E1 — hueco, deshabilitado, pista de barra */
+  --surface-2-rgb: 249 250 251;   /* #F9FAFB — fila alterna, hover */
+  --surface-3-rgb: 242 244 247;   /* #F2F4F7 — hueco, deshabilitado, pista de barra */
 
   --bg:        rgb(var(--bg-rgb));
   --surface:   rgb(var(--surface-rgb));
@@ -254,9 +256,9 @@
      90% de las líneas. Sobre el papel `#EFF1ED` la misma tinta da
      `#E1E4E0 / #CFD2CF / #AFB2B1`: si una separación sobre el fondo se ve
      lavada, la respuesta es usar el alfa, no un cuarto token. */
-  --line-soft-rgb:   240 241 241;   /* #F0F1F1 */
-  --line-rgb:        221 222 222;   /* #DDDEDE */
-  --line-strong-rgb: 187 188 190;   /* #BBBCBE */
+  --line-soft-rgb:   241 243 246;   /* #F1F3F6 */
+  --line-rgb:        228 231 236;   /* #E4E7EC */
+  --line-strong-rgb: 208 213 221;   /* #D0D5DD */
   --brd-control: rgb(var(--ink-4-rgb));
 
   --line-soft:   rgb(var(--line-soft-rgb));
@@ -286,10 +288,12 @@
      bug de contraste PREEXISTENTE que este PR hereda, no que introduce.
      `--ink-vacio` deja de tener valor propio (era #BEC5C8): decía lo mismo
      que `--ink-4` con otro hex. */
-  --ink-1-rgb: 10 16 20;      /* #0A1014 */
-  --ink-2-rgb: 74 91 101;     /* #4A5B65 */
-  --ink-3-rgb: 84 100 110;    /* #54646E — ver la nota de abajo */
-  --ink-4-rgb: 104 120 138;   /* #68788A — 4,52:1 sobre blanco: es TEXTO (rótulos chicos, placeholders), no solo relleno */
+  /* Rediseño UX: tinta pizarra (#0F172A). Los cuatro pasan 4,5:1 sobre las
+     cuatro superficies nuevas (lo mide `probar-tema`). */
+  --ink-1-rgb: 15 23 42;      /* #0F172A */
+  --ink-2-rgb: 52 64 84;      /* #344054 */
+  --ink-3-rgb: 84 96 114;     /* #546072 */
+  --ink-4-rgb: 96 106 126;    /* #606A7E — TEXTO chico y placeholders: 5,2:1 sobre blanco */
 
   --ink-1:     rgb(var(--ink-1-rgb));
   --ink-2:     rgb(var(--ink-2-rgb));
@@ -339,9 +343,14 @@
      `--signal-ink` es la señal ESCRITA. Nunca se escribe con `--signal`:
      #8A6100 sobre #F2B300 da 2,96:1, o sea que ni la propia señal se puede
      escribir encima de sí misma. */
-  --signal-rgb:     242 179 0;   /* #F2B300 */
-  --on-signal-rgb:  18 14 0;     /* #120E00 — 10,31:1 sobre el relleno */
-  --signal-ink-rgb: 138 97 0;    /* #8A6100 = --y-700 — 5,54:1 tarjeta · 4,87:1 papel */
+  /* Rediseño UX (2026-10-26, aprobado): la acción principal pasa del
+     amarillo al AZUL. La regla no cambia —UN botón principal por pantalla, la
+     clase `.btn-principal`, y el de atrás se apaga con un modal arriba—; cambia
+     el color. Blanco sobre #1570EF da 4,6:1; el azul escrito (#1366D6) da
+     5,1:1 sobre la tarjeta y 4,8:1 sobre el fondo. */
+  --signal-rgb:     21 112 239;  /* #1570EF */
+  --on-signal-rgb:  255 255 255; /* #FFFFFF */
+  --signal-ink-rgb: 19 102 214;  /* #1366D6 */
 
   --signal:       rgb(var(--signal-rgb));
   /* CORRECCIÓN MEDIDA al `#B88800` de `outputs/tema.md` §1.5. Ese valor está
@@ -353,7 +362,7 @@
      que no llega a 3:1 sobre la superficie donde está el botón es un botón sin
      forma. Se oscurece a `#A87C00`: 3,33:1 sobre el papel, 3,79:1 sobre la
      tarjeta, 3,55:1 sobre la fila alterna. */
-  --signal-borde: #A87C00;
+  --signal-borde: #125FCC;
   --on-signal:    rgb(var(--on-signal-rgb));
   --signal-ink:   rgb(var(--signal-ink-rgb));
   --ring:         var(--signal-ink);
@@ -579,9 +588,14 @@ html[data-tema="oscuro"] {
      No necesita borde —el contorno se lo da el propio contraste—, así que
      `--signal-borde` va transparente en vez de desaparecer, para que la regla
      del botón no tenga que cambiar de forma entre modos. */
-  --signal-rgb:     255 208 40;   /* #FFD028 = --y-500 — 12,93:1 sobre el panel */
-  --on-signal-rgb:  10 12 6;      /* #0A0C06 — 13,39:1 sobre el relleno */
-  --signal-ink-rgb: var(--signal-rgb);
+  /* El azul del rediseño en oscuro: blanco sobre #2563EB da 5,2:1; escrito,
+     #7FAEFF sobre el panel. */
+  --signal-rgb:     37 99 235;    /* #2563EB */
+  --on-signal-rgb:  255 255 255;  /* #FFFFFF */
+  /* Blanco sobre el azul en los dos modos, a propósito: el relleno es el mismo
+     azul, así que el texto también. Se declara acá para que se vea pensado. */
+  --on-signal:      rgb(var(--on-signal-rgb));
+  --signal-ink-rgb: 127 174 255;  /* #7FAEFF */
   --signal-borde:   transparent;
   --ring:           var(--y-400); /* #FFE067 — 14,57:1 */
 

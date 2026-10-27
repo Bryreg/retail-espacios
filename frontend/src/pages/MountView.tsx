@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, MapPin, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
-import { useAuthStore } from "../store/authStore";
-import { confirmMount, fetchMounts, latestByCode, type MountConfirmation } from "../api/mounts";
+import { confirmMount, fetchMounts, latestByCode, MOTIVO_LABEL, type MountConfirmation, type MountMotivo } from "../api/mounts";
+import { montajesPendientes, type MontajePendiente } from "../api/montajesPendientes";
+import { leerMontajesDePlanogramas, type CaraDelMontaje } from "../api/supervision";
+import { useAuthStore, selectIsAdmin } from "../store/authStore";
+import VerificarMontaje from "../components/Montaje/VerificarMontaje";
+import RevisarMontaje from "../components/Supervision/RevisarMontaje";
+import {
+  FILTROS_DE_MONTAJES, TEXTO_DEL_ESTADO, cuentaPorFiltro, estadoDelContrato, estadoDelPlanograma, filtroDe,
+  type EstadoDeMontaje, type FiltroDeMontajes,
+} from "../utils/montajes";
+import type { EstadoPorEspacio } from "../utils/estadoComercial";
+import "./montajes.css";
 import { reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
 import { contractPhase, fullSpaceCode, isRentable, isDoubleGondola } from "../types/fixtures";
 import { planometriaDelEspacio, planometriaUrl } from "../api/planograms";
@@ -61,26 +71,57 @@ function fecha(iso: string): string {
   return y && m && d ? `${d} ${MESES[m - 1]}` : iso;
 }
 
+/** Una fila de la lista: un contrato o un planograma. */
+interface Fila {
+  clave: string;
+  clase: "contrato" | "planograma";
+  sede: string;
+  /** Lo que se lee primero: `PUN-01-B`, «GON-12 · cara A». */
+  codigo: string;
+  parte?: string;
+  /** Contrato: proveedor · marca; planograma: «Versión N». */
+  quien: string;
+  tipo: string;
+  desde: string;
+  estado: EstadoDeMontaje;
+  /** El contrato, para registrarlo. */
+  pendiente?: Pendiente;
+  /** Su último reporte (contrato). */
+  reporte?: MountConfirmation;
+  /** La versión (planograma), para revisarla. */
+  versionId?: number;
+  /** Planograma «no se pudo»: el motivo en palabras. */
+  motivo?: string | null;
+}
+
 /**
- * Lo que ve el mercaderista en el celular.
+ * Montajes (rediseño UX 2026-10, etapa 7): todos los montajes de la sede en
+ * una sola lista —los de contratos y los de planogramas—, con su estado
+ * preciso y lo que se hace con cada uno: registrar, verificar, resolver un «no
+ * se pudo», adjuntar la planometría que falta o revisar el de un planograma.
  *
- * No es el escritorio reducido: es una lista de tarjetas grandes y, al tocar
- * una, una sola pregunta — ¿lo montaste? — con la cámara a un toque. No hay
- * valores en ninguna parte, igual que en su correo.
+ * Quien trabaja en la tienda ve la misma lista, sin verificar y sin la lista
+ * de avisos que esperan (es de administración). En ningún lado hay valores,
+ * igual que en su correo. En el teléfono, cada fila es una tarjeta grande.
  */
 export default function MountView({
   initialCode,
   onDone,
+  onAbrirPendientes,
 }: {
   /** Código que venía en el enlace del correo, si vino por ahí. */
   initialCode?: string | null;
+  /** «Resumen de montajes»: lleva a Indicadores. */
   onDone?: () => void;
+  /** «Adjuntar planometría»: abre Pendientes, donde se adjunta. */
+  onAbrirPendientes?: () => void;
 }) {
   const fixturesBySede = useFixtureStore((s) => s.fixturesBySede);
   const sedes = useFixtureStore((s) => s.sedes);
   const activeSede = useFixtureStore((s) => s.sede);
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
   const fixtures = useFixtureStore(selectFixtures);
+  const isAdmin = useAuthStore(selectIsAdmin);
   /** Vender por partes: las puertas vendidas no están en el mueble fusionado,
    *  están en el mapa crudo de la base, por su código. */
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
@@ -94,6 +135,22 @@ export default function MountView({
   const [mounts, setMounts] = useState<MountConfirmation[]>([]);
   const [cargando, setCargando] = useState(true);
   const [abierto, setAbierto] = useState<Pendiente | null>(null);
+  const [filtro, setFiltro] = useState<FiltroDeMontajes>("todos");
+  /** El mercaderista puede cubrir varias sedes: con esto las ve juntas. */
+  const [todasLasSedes, setTodasLasSedes] = useState(false);
+  const [mirando, setMirando] = useState<Fila | null>(null);
+  const [revisandoVersion, setRevisandoVersion] = useState<number | null>(null);
+  /** Los avisos que esperan (sólo administración), por código de espacio. */
+  const [avisos, setAvisos] = useState<Map<string, MontajePendiente> | null>(null);
+  const [planogramas, setPlanogramas] = useState<(CaraDelMontaje & { sede: string })[]>([]);
+  const [recargar, setRecargar] = useState(0);
+  /** Lo que dijo la última revisión de un planograma. */
+  const [hecho, setHecho] = useState<string | null>(null);
+
+  const sedesALaVista = useMemo(
+    () => (todasLasSedes && sedes.length ? sedes : [activeSede]).filter(Boolean),
+    [todasLasSedes, sedes, activeSede],
+  );
 
   useEffect(() => {
     fetchMounts()
@@ -102,13 +159,25 @@ export default function MountView({
       .finally(() => setCargando(false));
   }, []);
 
+  useEffect(() => {
+    let vivo = true;
+    if (isAdmin) {
+      Promise.all(sedesALaVista.map((s) => montajesPendientes(s).catch(() => [] as MontajePendiente[])))
+        .then((ls) => { if (vivo) setAvisos(new Map(ls.flat().map((m) => [m.espacio.toUpperCase(), m]))); });
+    }
+    Promise.all(sedesALaVista.map((s) => leerMontajesDePlanogramas(s).then((cs) => cs.map((c) => ({ ...c, sede: s }))).catch(() => [])))
+      .then((ls) => { if (vivo) setPlanogramas(ls.flat()); });
+    return () => { vivo = false; };
+  }, [isAdmin, sedesALaVista, recargar]);
+
   const ultimo = useMemo(() => latestByCode(mounts), [mounts]);
   const porCodigo = useMemo(() => reportesPorCodigo(mounts), [mounts]);
 
-  // Todas las sedes, no solo la activa: el mercaderista puede cubrir varias y
-  // el enlace del correo puede apuntar a cualquiera.
-  const pendientes = useMemo<Pendiente[]>(() => {
-    const out: Pendiente[] = [];
+  // Todos los espacios con contrato corriendo o por empezar, de todas las
+  // sedes: el enlace del correo puede apuntar a cualquiera. La lista muestra
+  // las de la sede (o todas, si se pide).
+  const espacios = useMemo<{ p: Pendiente; reporte?: MountConfirmation }[]>(() => {
+    const out: { p: Pendiente; reporte?: MountConfirmation }[] = [];
     const universo = sedes.length
       ? sedes.flatMap((s) => (fixturesBySede[s] ?? []).map((f) => [s, f] as const))
       : fixtures.map((f) => [activeSede, f] as const);
@@ -157,34 +226,76 @@ export default function MountView({
         // Solo lo que tiene contrato por delante o corriendo. Lo vencido ya no
         // se monta, y lo libre no tiene qué montar.
         if (fase !== "vigente" && fase !== "pendiente") continue;
-        // Ya reportado como montado PARA ESTE CONTRATO: sale de la lista. El
-        // «montado» del contrato anterior sobre el mismo espacio no cuenta
-        // (2026-10-05, `utils/montajeDelContrato.ts`): antes sacaba de acá al
-        // contrato nuevo, que nadie había ido a montar.
-        if (reporteDelContrato(porCodigo, code, cara.startDate)?.estado === "montado") continue;
+        // El reporte de ESTE contrato: el «montado» del contrato anterior sobre
+        // el mismo espacio no cuenta (2026-10-05, `utils/montajeDelContrato.ts`).
+        const reporte = reporteDelContrato(porCodigo, code, cara.startDate);
         out.push({
-          code,
-          corto,
-          fixtureCode: f.code,
-          sede: (data.sede as string) || sede,
-          label: conNombrePropio(f, nombresPropios, f.label || f.code),
-          marca: (data.brandCategory as string) || "",
-          proveedor: (data.supplierName as string) || "",
-          desde: data.startDate ?? "",
-          hasta: data.endDate ?? "",
-          urgente: fase === "vigente" && diasDesde(data.startDate ?? "") <= VENTANA_DIAS,
-          viejo: fase === "vigente" && diasDesde(data.startDate ?? "") > VENTANA_DIAS,
-          ...(parte ? { parte } : {}),
+          p: {
+            code,
+            corto,
+            fixtureCode: f.code,
+            sede: (data.sede as string) || sede,
+            label: conNombrePropio(f, nombresPropios, f.label || f.code),
+            marca: (data.brandCategory as string) || "",
+            proveedor: (data.supplierName as string) || "",
+            desde: data.startDate ?? "",
+            hasta: data.endDate ?? "",
+            urgente: fase === "vigente" && diasDesde(data.startDate ?? "") <= VENTANA_DIAS,
+            viejo: fase === "vigente" && diasDesde(data.startDate ?? "") > VENTANA_DIAS,
+            ...(parte ? { parte } : {}),
+          },
+          ...(reporte ? { reporte } : {}),
         });
       }
     }
-    // Tres tramos: lo que arrancó y hay que montar ya, lo que viene, y al final
-    // lo viejo sin reportar. Ordenar solo por fecha ponía arriba contratos de
-    // enero y enterraba el trabajo de esta semana.
-    const tramo = (p: Pendiente) => (p.urgente ? 0 : p.viejo ? 2 : 1);
-    out.sort((a, b) => tramo(a) - tramo(b) || a.desde.localeCompare(b.desde));
     return out;
   }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios, indicePartes]);
+
+  /** Lo que falta montar (sin reporte de «montado» de su contrato). Tres
+   *  tramos: lo que arrancó y hay que montar ya, lo que viene, y al final lo
+   *  viejo sin reportar. Ordenar solo por fecha ponía arriba contratos de
+   *  enero y enterraba el trabajo de esta semana. */
+  const pendientes = useMemo<Pendiente[]>(() => {
+    const tramo = (p: Pendiente) => (p.urgente ? 0 : p.viejo ? 2 : 1);
+    return espacios
+      .filter((e) => e.reporte?.estado !== "montado")
+      .map((e) => e.p)
+      .sort((a, b) => tramo(a) - tramo(b) || a.desde.localeCompare(b.desde));
+  }, [espacios]);
+
+  const mismaSede = (s: string) => sedesALaVista.some((x) => x.trim().toUpperCase() === (s ?? "").trim().toUpperCase());
+
+  /** La lista: contratos y planogramas de la sede, por fecha de inicio (lo que
+   *  ya empezó y falta montar, arriba). */
+  const filas = useMemo<Fila[]>(() => {
+    const out: Fila[] = [];
+    for (const { p, reporte } of espacios) {
+      if (!mismaSede(p.sede)) continue;
+      const aviso = isAdmin ? (avisos === null ? undefined : (avisos.get(p.code.toUpperCase()) ?? null)) : undefined;
+      out.push({
+        clave: `c-${p.sede}-${p.code}`, clase: "contrato", sede: p.sede, codigo: nombreDeMueble({ code: p.corto }),
+        ...(p.parte ? { parte: p.parte } : {}),
+        quien: [p.proveedor || "Sin proveedor", p.marca].filter(Boolean).join(" · "),
+        tipo: p.label, desde: p.desde, estado: estadoDelContrato(reporte, aviso), pendiente: p,
+        ...(reporte ? { reporte } : {}),
+      });
+    }
+    for (const c of planogramas) {
+      out.push({
+        clave: `p-${c.version_id}`, clase: "planograma", sede: c.sede, codigo: c.nombre,
+        quien: `Planograma · versión ${c.numero}`, tipo: "Planograma", desde: c.rige_desde,
+        estado: estadoDelPlanograma(c.estado), versionId: c.version_id,
+        motivo: c.estado === "no_se_pudo" ? (c.aviso?.motivo_legible ?? null) : null,
+      });
+    }
+    const urgencia = (f: Fila) => (filtroDe(f.estado) === "sin_montar" || f.estado === "no_realizado" ? 0 : 1);
+    out.sort((a, b) => urgencia(a) - urgencia(b) || a.desde.localeCompare(b.desde) || a.codigo.localeCompare(b.codigo));
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [espacios, planogramas, avisos, isAdmin, sedesALaVista]);
+
+  const cuenta = useMemo(() => cuentaPorFiltro(filas.map((f) => f.estado)), [filas]);
+  const visibles = filtro === "todos" ? filas : filas.filter((f) => filtroDe(f.estado) === filtro);
 
   // Enlace del correo: abrir directamente ese espacio.
   const [yaConfirmado, setYaConfirmado] = useState<MountConfirmation | null>(null);
@@ -197,35 +308,7 @@ export default function MountView({
    *  dice "ya se reportó". */
   const reportarDeNuevo = useMemo<Pendiente | null>(() => {
     if (!yaConfirmado) return null;
-    const code = yaConfirmado.space_code.toUpperCase();
-    // `NAVE-NEV-03-B-PU2` → el mueble `NAVE-NEV-03`, la cara B y la puerta 2.
-    const partido = partirCodigo(code);
-    const base = partido.base;
-    for (const [sede, lista] of Object.entries(fixturesBySede)) {
-      for (const f of lista) {
-        const completo = fullSpaceCode((f.sede as string) || sede, f.code);
-        if (completo !== base) continue;
-        const caraB = partido.cara === "B";
-        const data = (partido.parte
-          ? { ...(estadoComercial[code] ?? {}) }
-          : (caraB ? f.faceB : f)) as Partial<UnifiedFixture>;
-        return {
-          code,
-          corto: codigoDeParte(f.code, partido.cara, partido.parte),
-          ...(partido.parte ? { parte: parteParaMontar(partido.parte, partido.cara, f) } : {}),
-          fixtureCode: f.code,
-          sede: (data?.sede as string) || (f.sede as string) || sede,
-          label: conNombrePropio(f, nombresPropios, f.label || f.code),
-          marca: (data?.brandCategory as string) || "",
-          proveedor: (data?.supplierName as string) || "",
-          desde: data?.startDate ?? "",
-          hasta: data?.endDate ?? "",
-          urgente: false,
-          viejo: false,
-        };
-      }
-    }
-    return null;
+    return pendienteDelReporte(yaConfirmado, fixturesBySede, nombresPropios, estadoComercial);
   }, [yaConfirmado, fixturesBySede, nombresPropios, estadoComercial]);
   const abiertoPorEnlace = useRef(false);
   useEffect(() => {
@@ -263,54 +346,65 @@ export default function MountView({
     );
   }
 
+  /** Lo que se hace con la fila: un botón, con el verbo del estado. */
+  const accion = (f: Fila): { texto: string; hacer: () => void } | null => {
+    if (f.clase === "planograma") {
+      return f.versionId !== undefined
+        ? { texto: f.estado === "sin_verificar" ? "Verificar montaje" : f.estado === "no_realizado" ? "Resolver" : f.estado === "sin_montar" ? "Ver la guía y revisar" : "Ver revisión", hacer: () => setRevisandoVersion(f.versionId!) }
+        : null;
+    }
+    if ((f.estado === "falta_planometria" || f.estado === "falta_zona") && onAbrirPendientes) {
+      return { texto: f.estado === "falta_planometria" ? "Adjuntar planometría" : "Ubicar la zona", hacer: onAbrirPendientes };
+    }
+    if (filtroDe(f.estado) === "sin_montar" && f.pendiente) return { texto: "Registrar montaje", hacer: () => setAbierto(f.pendiente!) };
+    if (f.estado === "sin_verificar") return { texto: isAdmin ? "Verificar montaje" : "Ver registro y foto", hacer: () => setMirando(f) };
+    if (f.estado === "no_realizado") return { texto: isAdmin ? "Resolver" : "Ver registro", hacer: () => setMirando(f) };
+    return { texto: "Ver registro y foto", hacer: () => setMirando(f) };
+  };
+
   return (
-    <div style={{ flex: 1, overflowY: "auto", background: "var(--bg)", padding: "16px 14px 40px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em" }}>
-          Montajes
-        </h2>
-        {onDone && (
-          <button
-            onClick={onDone}
-            style={{
-              marginLeft: "auto", background: "none", border: "none",
-              color: "var(--ink-3)", fontSize: 12.5, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            Ver el resumen
-          </button>
-        )}
-      </div>
-      {/* Tres estados, no dos. `cargando` era solo el fetch de confirmaciones:
-          mientras el layout todavía venía en camino —o si la sincronización
-          falló por falta de señal— la pantalla decía "no hay espacios
-          pendientes", y con eso el mercaderista guarda el celular y se va. */}
-      <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--ink-3)" }}>
-        {cargando || !layoutListo
-          ? "Cargando espacios…"
-          : pendientes.length === 0
-          ? "No hay espacios pendientes de montaje."
-          : `${pendientes.length} espacio${pendientes.length === 1 ? "" : "s"} por montar`}
-      </p>
-      {!cargando && layoutListo && pendientes.length === 0 && sinConexion && (
-        <p style={{ margin: "-8px 0 16px", fontSize: 13, color: "var(--warning)" }}>
+    <div className="montajes" data-montajes>
+      <header className="mj-cab">
+        <div>
+          <h2>Montajes</h2>
+          {/* Tres estados, no dos: mientras el layout todavía venía en camino
+              —o si la sincronización falló por falta de señal— la pantalla
+              decía "no hay espacios pendientes", y con eso el mercaderista
+              guarda el celular y se va. */}
+          <p className="mj-sub">
+            {cargando || !layoutListo
+              ? "Cargando espacios…"
+              : cuenta.sin_montar === 0
+              ? "No hay espacios pendientes de montaje."
+              : `${cuenta.sin_montar} por montar`}
+            {" · "}contratos y planogramas de {todasLasSedes ? "todas las sedes" : activeSede}, por fecha de inicio
+          </p>
+        </div>
+        <span className="mj-der">
+          {sedes.length > 1 && (
+            <label className="mj-todas">
+              <input type="checkbox" checked={todasLasSedes} onChange={(e) => setTodasLasSedes(e.target.checked)} /> Todas las sedes
+            </label>
+          )}
+          {onDone && (
+            <button type="button" className="mj-enlace" onClick={onDone} data-resumen-de-montajes>
+              Resumen de montajes
+            </button>
+          )}
+        </span>
+      </header>
+      {!cargando && layoutListo && cuenta.sin_montar === 0 && sinConexion && (
+        <p className="mj-aviso">
           La lista no se pudo actualizar. Buscá señal y volvé a entrar antes de dar por
           hecho que no hay nada.
         </p>
       )}
 
       {yaConfirmado && (
-        <div
-          style={{
-            display: "flex", gap: 8, alignItems: "flex-start",
-            padding: "11px 12px", marginBottom: 14,
-            borderRadius: "var(--r-md)",
-            background: "var(--success-50)", border: "1px solid var(--success-100)",
-          }}
-        >
+        <div className="mj-ya">
           <Check size={15} style={{ color: "var(--success)", flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 13, color: "var(--ink-1)", lineHeight: 1.45 }}>
-            <b style={{ fontFamily: "var(--font-mono)" }}>{yaConfirmado.space_code}</b> ya se
+          <div>
+            <b className="mono">{yaConfirmado.space_code}</b> ya se
             reportó como {yaConfirmado.estado === "montado" ? "montado" : "no montado"}
             {yaConfirmado.reportado_por ? ` por ${yaConfirmado.reportado_por}` : ""}.
             {/* Una foto movida, con guantes y una mano, es lo más normal del
@@ -320,88 +414,123 @@ export default function MountView({
             {reportarDeNuevo && (
               <>
                 {" "}
-                <button
-                  onClick={() => { setAbierto(reportarDeNuevo); setYaConfirmado(null); }}
-                  style={{
-                    background: "none", border: "none", padding: 0,
-                    color: "var(--accent-700)", fontWeight: 600, fontSize: 13,
-                    fontFamily: "inherit", cursor: "pointer", textDecoration: "underline",
-                  }}
-                >
+                <button type="button" className="mj-enlace subrayado" onClick={() => { setAbierto(reportarDeNuevo); setYaConfirmado(null); }}>
                   Corregir el reporte
                 </button>
               </>
             )}
           </div>
-          <button
-            onClick={() => setYaConfirmado(null)}
-            aria-label="Cerrar aviso"
-            style={{
-              marginLeft: "auto", background: "none", border: "none",
-              color: "var(--ink-3)", cursor: "pointer", padding: 0, flexShrink: 0,
-            }}
-          >
+          <button type="button" onClick={() => setYaConfirmado(null)} aria-label="Cerrar aviso" className="mj-cerrar">
             <X size={14} />
           </button>
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {pendientes.map((p) => (
-          <button
-            key={`${p.sede}-${p.code}`}
-            onClick={() => setAbierto(p)}
-            style={{
-              display: "block", width: "100%", textAlign: "left",
-              padding: "14px 14px", borderRadius: "var(--r-lg)",
-              background: "var(--surface)",
-              border: `1px solid ${p.urgente ? "var(--warning)" : "var(--line)"}`,
-              boxShadow: "var(--shadow-xs)", cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600,
-                  color: "var(--ink-1)",
-                }}
-              >
-                {nombreDeMueble({ code: p.corto })}
-              </span>
-              {p.parte && (
-                <span style={{ fontSize: 11, color: "var(--accent-700)", fontWeight: 600 }}>{p.parte}</span>
-              )}
-              {p.urgente && (
-                <span
-                  style={{
-                    fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 999,
-                    background: "var(--warning-50)", color: "var(--warning)",
-                  }}
-                >
-                  ya empezó
-                </span>
-              )}
-              <span
-                style={{
-                  marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 3,
-                  fontSize: 11, color: "var(--ink-3)",
-                }}
-              >
-                <MapPin size={11} /> {p.sede}
-              </span>
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink-1)" }}>
-              {p.proveedor || "Sin proveedor"}
-              {p.marca && <span style={{ color: "var(--ink-2)", fontWeight: 500 }}> · {p.marca}</span>}
-            </div>
-            <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 2 }}>
-              {p.label} · desde el {fecha(p.desde)}
-            </div>
+      <div className="mj-filtros" role="group" aria-label="Filtrar montajes" data-filtros-montajes>
+        {FILTROS_DE_MONTAJES.map((x) => (
+          <button key={x.id} type="button" aria-pressed={filtro === x.id} onClick={() => setFiltro(x.id)} data-filtro={x.id}>
+            {x.texto} <span className="mono">{cuenta[x.id]}</span>
           </button>
         ))}
       </div>
+
+      {visibles.length === 0 ? (
+        <p className="mj-vacio">{filas.length === 0 ? "No hay montajes en esta sede." : "Ninguno en este filtro."}</p>
+      ) : (
+        <ul className="mj-lista" data-lista-montajes>
+          <li className="mj-fila mj-titulos" aria-hidden>
+            <span>Espacio</span><span>Clase</span><span>Proveedor o versión</span><span>Inicio</span><span>Estado</span><span />
+          </li>
+          {visibles.map((f) => {
+            const a = accion(f);
+            return (
+              <li key={f.clave} className="mj-fila" data-montaje={f.clase} data-estado={f.estado} data-urgente={f.pendiente?.urgente && filtroDe(f.estado) === "sin_montar" || undefined}>
+                <span className="mj-cod">
+                  <b className="mono">{f.codigo}</b>
+                  {f.parte && <small className="mj-parte">{f.parte}</small>}
+                  {todasLasSedes && <small className="mj-sede"><MapPin size={11} /> {f.sede}</small>}
+                </span>
+                <span className="mj-clase">{f.clase === "contrato" ? "Contrato" : "Planograma"}</span>
+                <span className="mj-quien">
+                  {f.quien}
+                  {f.clase === "contrato" && <small>{f.tipo}</small>}
+                </span>
+                <span className="mj-desde">{f.desde ? `desde el ${fecha(f.desde)}` : "—"}</span>
+                <span className="mj-estado">
+                  <i className={`mj-punto ${filtroDe(f.estado)}${f.estado === "no_coincide" ? " mal" : ""}`} />
+                  {TEXTO_DEL_ESTADO[f.estado]}
+                  {f.reporte?.estado === "no_montado" && f.reporte.motivo && <small>{MOTIVO_LABEL[f.reporte.motivo as MountMotivo]}</small>}
+                  {f.motivo && <small>{f.motivo}</small>}
+                </span>
+                <span className="mj-accion">
+                  {a && <button type="button" className="mj-btn" onClick={a.hacer}>{a.texto}</button>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {mirando?.reporte && (
+        <VerificarMontaje
+          reporte={mirando.reporte}
+          titulo={mirando.codigo}
+          puedeVerificar={isAdmin}
+          onCerrar={() => setMirando(null)}
+          onVerificado={(m) => setMounts((prev) => prev.map((x) => (x.id === m.id ? { ...x, verificacion: m.verificacion } : x)))}
+          onRegistrarDeNuevo={mirando.pendiente ? () => { const p = mirando.pendiente!; setMirando(null); setAbierto(p); } : undefined}
+        />
+      )}
+      {revisandoVersion !== null && (
+        <RevisarMontaje versionId={revisandoVersion} onCerrar={() => setRevisandoVersion(null)}
+          onRevisada={(texto) => { setRevisandoVersion(null); setHecho(texto); setRecargar((n) => n + 1); }} />
+      )}
+      {hecho && (
+        <p className="mj-hecho" role="status">
+          {hecho}
+          <button type="button" aria-label="Cerrar el aviso" className="mj-cerrar" onClick={() => setHecho(null)}><X size={14} /></button>
+        </p>
+      )}
     </div>
   );
+}
+
+/** El espacio de un reporte, armado desde el layout (para corregirlo). */
+function pendienteDelReporte(
+  reporte: MountConfirmation,
+  fixturesBySede: Record<string, UnifiedFixture[]>,
+  nombresPropios: Record<string, string>,
+  estadoComercial: EstadoPorEspacio,
+): Pendiente | null {
+  const code = reporte.space_code.toUpperCase();
+  // `NAVE-NEV-03-B-PU2` → el mueble `NAVE-NEV-03`, la cara B y la puerta 2.
+  const partido = partirCodigo(code);
+  const base = partido.base;
+  for (const [sede, lista] of Object.entries(fixturesBySede)) {
+    for (const f of lista) {
+      const completo = fullSpaceCode((f.sede as string) || sede, f.code);
+      if (completo !== base) continue;
+      const caraB = partido.cara === "B";
+      const data = (partido.parte
+        ? { ...(estadoComercial[code] ?? {}) }
+        : (caraB ? f.faceB : f)) as Partial<UnifiedFixture>;
+      return {
+        code,
+        corto: codigoDeParte(f.code, partido.cara, partido.parte),
+        ...(partido.parte ? { parte: parteParaMontar(partido.parte, partido.cara, f) } : {}),
+        fixtureCode: f.code,
+        sede: (data?.sede as string) || (f.sede as string) || sede,
+        label: conNombrePropio(f, nombresPropios, f.label || f.code),
+        marca: (data?.brandCategory as string) || "",
+        proveedor: (data?.supplierName as string) || "",
+        desde: data?.startDate ?? "",
+        hasta: data?.endDate ?? "",
+        urgente: false,
+        viejo: false,
+      };
+    }
+  }
+  return null;
 }
 
 // ─── El formulario, tal como lo abre el tablero ──────────────────────────────

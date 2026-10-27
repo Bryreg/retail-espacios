@@ -153,7 +153,8 @@ await prueba("cada ruta del cliente existe en su router", () => {
     ...sinComentarios(leer("src/api/supervision.ts")).matchAll(/client\.(get|post)<[^>]*>\("([^"]+)"/g),
     ...sinComentarios(leer("src/api/guia.ts")).matchAll(/\.(get|post)<\{ aviso[^>]*>\("([^"]+)"/g),
   ].map((m) => `${m[1]} ${m[2]}`);
-  assert.equal(llamadas.length, 4, `faltan llamadas: ${llamadas.join(" | ")}`);
+  // 5: la lista de Montajes (etapa 7) lee la misma supervisión con `todas`.
+  assert.equal(llamadas.length, 5, `faltan llamadas: ${llamadas.join(" | ")}`);
   for (const l of llamadas) assert.ok(rutas.has(l), `el cliente llama ${l} y no existe`);
 });
 

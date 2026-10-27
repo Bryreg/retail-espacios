@@ -1,0 +1,4305 @@
+{
+ "cifras": [
+  {
+   "que": "kpi.canon_mes",
+   "esperado": "$ 6.370.000",
+   "visto": "$ 6.370.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "kpi.canon_tarifa",
+   "esperado": "100 %",
+   "visto": "100 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "kpi.contratos_activos",
+   "esperado": "18",
+   "visto": "18",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "kpi.montajes",
+   "esperado": "21",
+   "visto": "21",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "kpi.ocupacion",
+   "esperado": "60 %",
+   "visto": "60 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "kpi.por_vencer_30",
+   "esperado": "1",
+   "visto": "1",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "ocup.gondola",
+   "esperado": "54 %",
+   "visto": "54 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "ocup.gondola.de",
+   "esperado": "4,3 de 8",
+   "visto": "4,3 de 8",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "ocup.nevera_puertas",
+   "esperado": "80 %",
+   "visto": "80 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "ocup.nevera_puertas.de",
+   "esperado": "0,8 de 1",
+   "visto": "0,8 de 1",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "ocup.punta",
+   "esperado": "63 %",
+   "visto": "63 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "ocup.punta.de",
+   "esperado": "5,7 de 9",
+   "visto": "5,7 de 9",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "pend.30",
+   "esperado": "12",
+   "visto": "12",
+   "ok": true,
+   "metodo": "modelo (API) — sin cuenta SQL propia"
+  },
+  {
+   "que": "pend.hoy",
+   "esperado": "13",
+   "visto": "13",
+   "ok": true,
+   "metodo": "modelo (API) — sin cuenta SQL propia"
+  },
+  {
+   "que": "pend.inc",
+   "esperado": "1",
+   "visto": "1",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "pend.total",
+   "esperado": "26",
+   "visto": "26",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Aseo Total.canon",
+   "esperado": "$ 790.000",
+   "visto": "$ 790.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Aseo Total.espacios",
+   "esperado": "3",
+   "visto": "3",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Aseo Total.pct",
+   "esperado": "12 %",
+   "visto": "12 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Bebidas del Valle.canon",
+   "esperado": "$ 970.000",
+   "visto": "$ 970.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Bebidas del Valle.espacios",
+   "esperado": "2",
+   "visto": "2",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Bebidas del Valle.pct",
+   "esperado": "15 %",
+   "visto": "15 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Café Montaña.canon",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Café Montaña.espacios",
+   "esperado": "2",
+   "visto": "2",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Café Montaña.pct",
+   "esperado": "9 %",
+   "visto": "9 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Galletas Sol.canon",
+   "esperado": "$ 1.430.000",
+   "visto": "$ 1.430.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Galletas Sol.espacios",
+   "esperado": "3",
+   "visto": "3",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Galletas Sol.pct",
+   "esperado": "22 %",
+   "visto": "22 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Limpio Hogar.canon",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Limpio Hogar.espacios",
+   "esperado": "1",
+   "visto": "1",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Limpio Hogar.pct",
+   "esperado": "9 %",
+   "visto": "9 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Lácteos Andinos.canon",
+   "esperado": "$ 1.090.000",
+   "visto": "$ 1.090.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Lácteos Andinos.espacios",
+   "esperado": "3",
+   "visto": "3",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Lácteos Andinos.pct",
+   "esperado": "17 %",
+   "visto": "17 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Snacks Norte.canon",
+   "esperado": "$ 890.000",
+   "visto": "$ 890.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Snacks Norte.espacios",
+   "esperado": "3",
+   "visto": "3",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "prov.Snacks Norte.pct",
+   "esperado": "14 %",
+   "visto": "14 %",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "serie.Ago",
+   "esperado": "$ 3.735.000",
+   "visto": "$ 3.735.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "serie.Jul",
+   "esperado": "$ 2.915.000",
+   "visto": "$ 2.915.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "serie.Jun",
+   "esperado": "$ 2.100.000",
+   "visto": "$ 2.100.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "serie.May",
+   "esperado": "$ 1.050.000",
+   "visto": "$ 1.050.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "serie.Oct",
+   "esperado": "$ 6.370.000",
+   "visto": "$ 6.370.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  },
+  {
+   "que": "serie.Sep",
+   "esperado": "$ 5.075.000",
+   "visto": "$ 5.075.000",
+   "ok": true,
+   "metodo": "SQL sobre la base"
+  }
+ ],
+ "campos": [
+  {
+   "que": "inicio · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "inicio · audit_log:40:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "inicio · audit_log:39:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "inicio · audit_log:38:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "inicio · audit_log:37:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "inicio · audit_log:36:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "inicio · audit_log:35:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "inicio · audit_log:34:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "pendientes · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta/4:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta/4:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta/5:al_mes",
+   "esperado": "$ 120.000",
+   "visto": "$ 120.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta/5:al_mes",
+   "esperado": "$ 120.000",
+   "visto": "$ 120.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta/5:al_mes",
+   "esperado": "$ 120.000",
+   "visto": "$ 120.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta/4:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:punta/4:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos · tarifa:nevera_puertas:al_mes",
+   "esperado": "$ 1.400.000",
+   "visto": "$ 1.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "nuevo-contrato · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "nuevo-contrato · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:2:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:2:desde",
+   "esperado": "01/05/2026",
+   "visto": "01/05/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:2:hasta",
+   "esperado": "31/10/2026",
+   "visto": "31/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:2:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:2:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:3:proveedor",
+   "esperado": "Limpio Hogar",
+   "visto": "Limpio Hogar",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:3:desde",
+   "esperado": "01/06/2026",
+   "visto": "01/06/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:3:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:3:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:3:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:4:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:4:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:4:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:4:al_mes",
+   "esperado": "$ 650.000",
+   "visto": "$ 650.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:4:total",
+   "esperado": "$ 3.900.000",
+   "visto": "$ 3.900.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:5:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:5:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:5:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:5:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:5:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:6:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:6:desde",
+   "esperado": "01/08/2026",
+   "visto": "01/08/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:6:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:6:al_mes",
+   "esperado": "$ 550.000",
+   "visto": "$ 550.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:6:total",
+   "esperado": "$ 3.300.000",
+   "visto": "$ 3.300.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:7:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:7:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:7:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:7:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:7:total",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:8:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:8:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:8:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:8:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:8:total",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:9:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:9:desde",
+   "esperado": "01/11/2026",
+   "visto": "01/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:9:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:9:al_mes",
+   "esperado": "$ 130.000",
+   "visto": "$ 130.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:9:total",
+   "esperado": "$ 390.000",
+   "visto": "$ 390.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:10:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:10:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:10:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:10:al_mes",
+   "esperado": "5 % de las ventas",
+   "visto": "5 % de las ventas",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:10:total",
+   "esperado": "$ 0",
+   "visto": "$ 0",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:11:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:11:desde",
+   "esperado": "01/06/2026",
+   "visto": "01/06/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:11:hasta",
+   "esperado": "31/05/2027",
+   "visto": "31/05/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:11:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:11:total",
+   "esperado": "$ 5.400.000",
+   "visto": "$ 5.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:12:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:12:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:12:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:12:al_mes",
+   "esperado": "$ 120.000",
+   "visto": "$ 120.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:12:total",
+   "esperado": "$ 720.000",
+   "visto": "$ 720.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:13:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:13:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:13:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:13:al_mes",
+   "esperado": "$ 140.000",
+   "visto": "$ 140.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:13:total",
+   "esperado": "$ 840.000",
+   "visto": "$ 840.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:14:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:14:desde",
+   "esperado": "01/07/2026",
+   "visto": "01/07/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:14:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:14:al_mes",
+   "esperado": "$ 115.000",
+   "visto": "$ 115.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:14:total",
+   "esperado": "$ 690.000",
+   "visto": "$ 690.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:15:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:15:desde",
+   "esperado": "01/05/2026",
+   "visto": "01/05/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:15:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:15:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:15:total",
+   "esperado": "$ 3.150.000",
+   "visto": "$ 3.150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:16:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:16:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:16:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:16:al_mes",
+   "esperado": "$ 225.000",
+   "visto": "$ 225.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:16:total",
+   "esperado": "$ 1.350.000",
+   "visto": "$ 1.350.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:17:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:17:desde",
+   "esperado": "01/08/2026",
+   "visto": "01/08/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:17:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:17:al_mes",
+   "esperado": "$ 270.000",
+   "visto": "$ 270.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:17:total",
+   "esperado": "$ 1.620.000",
+   "visto": "$ 1.620.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:18:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:18:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:18:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:18:al_mes",
+   "esperado": "$ 180.000",
+   "visto": "$ 180.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:18:total",
+   "esperado": "$ 1.080.000",
+   "visto": "$ 1.080.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:19:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:19:desde",
+   "esperado": "01/07/2026",
+   "visto": "01/07/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:19:hasta",
+   "esperado": "30/06/2027",
+   "visto": "30/06/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:19:al_mes",
+   "esperado": "$ 700.000",
+   "visto": "$ 700.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:19:total",
+   "esperado": "$ 8.400.000",
+   "visto": "$ 8.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:20:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:20:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:20:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:20:al_mes",
+   "esperado": "$ 420.000",
+   "visto": "$ 420.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contratos-tabla · lease:20:total",
+   "esperado": "$ 2.520.000",
+   "visto": "$ 2.520.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "linea · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "indicadores · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "indicadores · lease:2:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "indicadores · lease:2:hasta",
+   "esperado": "31/10/2026",
+   "visto": "31/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "indicadores · lease:3:proveedor",
+   "esperado": "Limpio Hogar",
+   "visto": "Limpio Hogar",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "indicadores · lease:3:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "indicadores · lease:15:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "indicadores · lease:15:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · lease:2:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · lease:2:hasta",
+   "esperado": "31/10/2026",
+   "visto": "31/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · lease:3:proveedor",
+   "esperado": "Limpio Hogar",
+   "visto": "Limpio Hogar",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · lease:3:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · lease:15:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · lease:15:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "tarifas · tarifa:nevera_puertas:al_mes",
+   "esperado": "$ 1.400.000",
+   "visto": "$ 1.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "diccionario · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "participaciones · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:4:reportado_por",
+   "esperado": "Luis Pérez",
+   "visto": "Luis Pérez",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:4:estado",
+   "esperado": "No montado",
+   "visto": "No montado",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:3:reportado_por",
+   "esperado": "Luis Pérez",
+   "visto": "Luis Pérez",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:3:estado",
+   "esperado": "Montado",
+   "visto": "Montado",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:2:reportado_por",
+   "esperado": "Luis Pérez",
+   "visto": "Luis Pérez",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:2:estado",
+   "esperado": "Montado",
+   "visto": "Montado",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:1:reportado_por",
+   "esperado": "Luis Pérez",
+   "visto": "Luis Pérez",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montajes · mount_confirmations:1:estado",
+   "esperado": "Montado",
+   "visto": "Montado",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano2d · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano2d · fixture:GON-03:medidas",
+   "esperado": "7.2 × 1.6 × 1.8 m",
+   "visto": "7.2 × 1.6 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano2d-libre · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano2d-completa · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano2d-catalogo · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-12 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-12 · fixture:GON-12:medidas",
+   "esperado": "11.6 × 1.2 × 1.8 m",
+   "visto": "11.6 × 1.2 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-13 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-13 · fixture:GON-13:medidas",
+   "esperado": "11.6 × 1.2 × 1.8 m",
+   "visto": "11.6 × 1.2 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-01 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-01 · fixture:GON-01:medidas",
+   "esperado": "7.2 × 1.6 × 1.8 m",
+   "visto": "7.2 × 1.6 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-02 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-02 · fixture:GON-02:medidas",
+   "esperado": "7.2 × 1.6 × 1.8 m",
+   "visto": "7.2 × 1.6 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-03 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-03 · fixture:GON-03:medidas",
+   "esperado": "7.2 × 1.6 × 1.8 m",
+   "visto": "7.2 × 1.6 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-04 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-GON-04 · fixture:GON-04:medidas",
+   "esperado": "7.2 × 1.6 × 1.8 m",
+   "visto": "7.2 × 1.6 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-01 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-01 · fixture:PUN-01:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-02 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-02 · fixture:PUN-02:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-03 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-03 · fixture:PUN-03:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-04 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-04 · fixture:PUN-04:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-05 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-05 · fixture:PUN-05:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-06 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-06 · fixture:PUN-06:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-07 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-07 · fixture:PUN-07:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-08 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-08 · fixture:PUN-08:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-09 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-PUN-09 · fixture:PUN-09:medidas",
+   "esperado": "1.6 × 1 × 1.8 m",
+   "visto": "1.6 × 1 × 1.8 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-NEV-01 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "mueble-NEV-01 · fixture:NEV-01:medidas",
+   "esperado": "10.4 × 1.3 × 2.1 m",
+   "visto": "10.4 × 1.3 × 2.1 m",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano3d · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "plano3d · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contorno · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01 · lease:17:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01 · lease:17:desde",
+   "esperado": "01/08/2026",
+   "visto": "01/08/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01 · lease:17:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01 · lease:17:al_mes",
+   "esperado": "$ 270.000",
+   "visto": "$ 270.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01 · lease:17:total",
+   "esperado": "$ 1.620.000",
+   "visto": "$ 1.620.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01-B · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01-B · lease:18:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01-B · lease:18:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01-B · lease:18:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01-B · lease:18:al_mes",
+   "esperado": "$ 180.000",
+   "visto": "$ 180.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-01-B · lease:18:total",
+   "esperado": "$ 1.080.000",
+   "visto": "$ 1.080.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-02 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-02 · lease:16:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-02 · lease:16:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-02 · lease:16:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-02 · lease:16:al_mes",
+   "esperado": "$ 225.000",
+   "visto": "$ 225.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-02 · lease:16:total",
+   "esperado": "$ 1.350.000",
+   "visto": "$ 1.350.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-02-B · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:14:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:14:desde",
+   "esperado": "01/07/2026",
+   "visto": "01/07/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:14:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:14:al_mes",
+   "esperado": "$ 115.000",
+   "visto": "$ 115.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:14:total",
+   "esperado": "$ 690.000",
+   "visto": "$ 690.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:13:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:13:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:13:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:13:al_mes",
+   "esperado": "$ 140.000",
+   "visto": "$ 140.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:13:total",
+   "esperado": "$ 840.000",
+   "visto": "$ 840.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:12:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:12:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:12:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:12:al_mes",
+   "esperado": "$ 120.000",
+   "visto": "$ 120.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03 · lease:12:total",
+   "esperado": "$ 720.000",
+   "visto": "$ 720.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03-B · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03-B · lease:11:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03-B · lease:11:desde",
+   "esperado": "01/06/2026",
+   "visto": "01/06/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03-B · lease:11:hasta",
+   "esperado": "31/05/2027",
+   "visto": "31/05/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03-B · lease:11:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-03-B · lease:11:total",
+   "esperado": "$ 5.400.000",
+   "visto": "$ 5.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-04 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-04 · lease:15:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-04 · lease:15:desde",
+   "esperado": "01/05/2026",
+   "visto": "01/05/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-04 · lease:15:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-04 · lease:15:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-04 · lease:15:total",
+   "esperado": "$ 3.150.000",
+   "visto": "$ 3.150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-GON-04-B · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-01 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-01 · lease:3:proveedor",
+   "esperado": "Limpio Hogar",
+   "visto": "Limpio Hogar",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-01 · lease:3:desde",
+   "esperado": "01/06/2026",
+   "visto": "01/06/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-01 · lease:3:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-01 · lease:3:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-01 · lease:3:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN1 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN1 · lease:7:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN1 · lease:7:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN1 · lease:7:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN1 · lease:7:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN1 · lease:7:total",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN2 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN2 · lease:8:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN2 · lease:8:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN2 · lease:8:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN2 · lease:8:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN2 · lease:8:total",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN3 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-02-EN4 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN1 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN1 · lease:9:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN1 · lease:9:desde",
+   "esperado": "01/11/2026",
+   "visto": "01/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN1 · lease:9:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN1 · lease:9:al_mes",
+   "esperado": "$ 130.000",
+   "visto": "$ 130.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN1 · lease:9:total",
+   "esperado": "$ 390.000",
+   "visto": "$ 390.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN2 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN2 · lease:10:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN2 · lease:10:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN2 · lease:10:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN2 · lease:10:al_mes",
+   "esperado": "5 % de las ventas",
+   "visto": "5 % de las ventas",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN2 · lease:10:total",
+   "esperado": "$ 0",
+   "visto": "$ 0",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN3 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN4 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-03-EN5 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-04 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-04 · lease:5:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-04 · lease:5:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-04 · lease:5:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-04 · lease:5:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-04 · lease:5:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-05 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-05 · lease:4:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-05 · lease:4:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-05 · lease:4:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-05 · lease:4:al_mes",
+   "esperado": "$ 650.000",
+   "visto": "$ 650.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-05 · lease:4:total",
+   "esperado": "$ 3.900.000",
+   "visto": "$ 3.900.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-06 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-06 · lease:6:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-06 · lease:6:desde",
+   "esperado": "01/08/2026",
+   "visto": "01/08/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-06 · lease:6:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-06 · lease:6:al_mes",
+   "esperado": "$ 550.000",
+   "visto": "$ 550.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-06 · lease:6:total",
+   "esperado": "$ 3.300.000",
+   "visto": "$ 3.300.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-07 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-07 · lease:2:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-07 · lease:2:desde",
+   "esperado": "01/05/2026",
+   "visto": "01/05/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-07 · lease:2:hasta",
+   "esperado": "31/10/2026",
+   "visto": "31/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-07 · lease:2:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-07 · lease:2:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-08 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-09 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-09 · reservas_de_espacio:1:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-PUN-09 · reservas_de_espacio:1:caduca",
+   "esperado": "26/10/2026",
+   "visto": "26/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:19:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:19:desde",
+   "esperado": "01/07/2026",
+   "visto": "01/07/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:19:hasta",
+   "esperado": "30/06/2027",
+   "visto": "30/06/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:19:al_mes",
+   "esperado": "$ 700.000",
+   "visto": "$ 700.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:19:total",
+   "esperado": "$ 8.400.000",
+   "visto": "$ 8.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:20:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:20:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:20:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:20:al_mes",
+   "esperado": "$ 420.000",
+   "visto": "$ 420.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ficha-NEV-01 · lease:20:total",
+   "esperado": "$ 2.520.000",
+   "visto": "$ 2.520.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-2 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-2 · lease:2:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-2 · lease:2:desde",
+   "esperado": "01/05/2026",
+   "visto": "01/05/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-2 · lease:2:hasta",
+   "esperado": "31/10/2026",
+   "visto": "31/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-2 · lease:2:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-2 · lease:2:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-3 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-3 · lease:3:proveedor",
+   "esperado": "Limpio Hogar",
+   "visto": "Limpio Hogar",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-3 · lease:3:desde",
+   "esperado": "01/06/2026",
+   "visto": "01/06/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-3 · lease:3:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-3 · lease:3:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-3 · lease:3:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-4 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-4 · lease:4:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-4 · lease:4:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-4 · lease:4:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-4 · lease:4:al_mes",
+   "esperado": "$ 650.000",
+   "visto": "$ 650.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-4 · lease:4:total",
+   "esperado": "$ 3.900.000",
+   "visto": "$ 3.900.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-5 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-5 · lease:5:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-5 · lease:5:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-5 · lease:5:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-5 · lease:5:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-5 · lease:5:total",
+   "esperado": "$ 3.600.000",
+   "visto": "$ 3.600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-6 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-6 · lease:6:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-6 · lease:6:desde",
+   "esperado": "01/08/2026",
+   "visto": "01/08/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-6 · lease:6:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-6 · lease:6:al_mes",
+   "esperado": "$ 550.000",
+   "visto": "$ 550.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-6 · lease:6:total",
+   "esperado": "$ 3.300.000",
+   "visto": "$ 3.300.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-7 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-7 · lease:7:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-7 · lease:7:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-7 · lease:7:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-7 · lease:7:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-7 · lease:7:total",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-8 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-8 · lease:8:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-8 · lease:8:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-8 · lease:8:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-8 · lease:8:al_mes",
+   "esperado": "$ 150.000",
+   "visto": "$ 150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-8 · lease:8:total",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-9 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-9 · lease:9:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-9 · lease:9:desde",
+   "esperado": "01/11/2026",
+   "visto": "01/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-9 · lease:9:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-9 · lease:9:al_mes",
+   "esperado": "$ 130.000",
+   "visto": "$ 130.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-9 · lease:9:total",
+   "esperado": "$ 390.000",
+   "visto": "$ 390.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-10 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-10 · lease:10:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-10 · lease:10:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-10 · lease:10:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-10 · lease:10:al_mes",
+   "esperado": "5 % de las ventas",
+   "visto": "5 % de las ventas",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-10 · lease:10:total",
+   "esperado": "$ 0",
+   "visto": "$ 0",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-11 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-11 · lease:11:proveedor",
+   "esperado": "Café Montaña",
+   "visto": "Café Montaña",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-11 · lease:11:desde",
+   "esperado": "01/06/2026",
+   "visto": "01/06/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-11 · lease:11:hasta",
+   "esperado": "31/05/2027",
+   "visto": "31/05/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-11 · lease:11:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-11 · lease:11:total",
+   "esperado": "$ 5.400.000",
+   "visto": "$ 5.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-12 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-12 · lease:12:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-12 · lease:12:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-12 · lease:12:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-12 · lease:12:al_mes",
+   "esperado": "$ 120.000",
+   "visto": "$ 120.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-12 · lease:12:total",
+   "esperado": "$ 720.000",
+   "visto": "$ 720.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-13 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-13 · lease:13:proveedor",
+   "esperado": "Snacks Norte",
+   "visto": "Snacks Norte",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-13 · lease:13:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-13 · lease:13:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-13 · lease:13:al_mes",
+   "esperado": "$ 140.000",
+   "visto": "$ 140.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-13 · lease:13:total",
+   "esperado": "$ 840.000",
+   "visto": "$ 840.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-14 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-14 · lease:14:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-14 · lease:14:desde",
+   "esperado": "01/07/2026",
+   "visto": "01/07/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-14 · lease:14:hasta",
+   "esperado": "31/12/2026",
+   "visto": "31/12/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-14 · lease:14:al_mes",
+   "esperado": "$ 115.000",
+   "visto": "$ 115.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-14 · lease:14:total",
+   "esperado": "$ 690.000",
+   "visto": "$ 690.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-15 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-15 · lease:15:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-15 · lease:15:desde",
+   "esperado": "01/05/2026",
+   "visto": "01/05/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-15 · lease:15:hasta",
+   "esperado": "30/11/2026",
+   "visto": "30/11/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-15 · lease:15:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-15 · lease:15:total",
+   "esperado": "$ 3.150.000",
+   "visto": "$ 3.150.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-16 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-16 · lease:16:proveedor",
+   "esperado": "Aseo Total",
+   "visto": "Aseo Total",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-16 · lease:16:desde",
+   "esperado": "01/10/2026",
+   "visto": "01/10/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-16 · lease:16:hasta",
+   "esperado": "31/03/2027",
+   "visto": "31/03/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-16 · lease:16:al_mes",
+   "esperado": "$ 225.000",
+   "visto": "$ 225.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-16 · lease:16:total",
+   "esperado": "$ 1.350.000",
+   "visto": "$ 1.350.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-17 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-17 · lease:17:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-17 · lease:17:desde",
+   "esperado": "01/08/2026",
+   "visto": "01/08/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-17 · lease:17:hasta",
+   "esperado": "31/01/2027",
+   "visto": "31/01/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-17 · lease:17:al_mes",
+   "esperado": "$ 270.000",
+   "visto": "$ 270.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-17 · lease:17:total",
+   "esperado": "$ 1.620.000",
+   "visto": "$ 1.620.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-18 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-18 · lease:18:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-18 · lease:18:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-18 · lease:18:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-18 · lease:18:al_mes",
+   "esperado": "$ 180.000",
+   "visto": "$ 180.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-18 · lease:18:total",
+   "esperado": "$ 1.080.000",
+   "visto": "$ 1.080.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-19 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-19 · lease:19:proveedor",
+   "esperado": "Lácteos Andinos",
+   "visto": "Lácteos Andinos",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-19 · lease:19:desde",
+   "esperado": "01/07/2026",
+   "visto": "01/07/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-19 · lease:19:hasta",
+   "esperado": "30/06/2027",
+   "visto": "30/06/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-19 · lease:19:al_mes",
+   "esperado": "$ 700.000",
+   "visto": "$ 700.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-19 · lease:19:total",
+   "esperado": "$ 8.400.000",
+   "visto": "$ 8.400.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-20 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-20 · lease:20:proveedor",
+   "esperado": "Bebidas del Valle",
+   "visto": "Bebidas del Valle",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-20 · lease:20:desde",
+   "esperado": "01/09/2026",
+   "visto": "01/09/2026",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-20 · lease:20:hasta",
+   "esperado": "28/02/2027",
+   "visto": "28/02/2027",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-20 · lease:20:al_mes",
+   "esperado": "$ 420.000",
+   "visto": "$ 420.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-20 · lease:20:total",
+   "esperado": "$ 2.520.000",
+   "visto": "$ 2.520.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-12-A · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-12-A · versiones_de_planograma:1:numero",
+   "esperado": "Versión 1",
+   "visto": "Versión 1",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-12-B · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-12-B · versiones_de_planograma:2:numero",
+   "esperado": "Versión 1",
+   "visto": "Versión 1",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-13-A · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-13-A · versiones_de_planograma:3:numero",
+   "esperado": "Versión 1",
+   "visto": "Versión 1",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-13-B · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planograma-GON-13-B · versiones_de_planograma:4:numero",
+   "esperado": "Versión 1",
+   "visto": "Versión 1",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · audit_log:40:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · audit_log:39:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · audit_log:38:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · audit_log:37:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · audit_log:36:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · audit_log:35:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "buscador · audit_log:34:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:40:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:39:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:38:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:37:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:36:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:35:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:34:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:33:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:32:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:31:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:30:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:29:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:28:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:27:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:26:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:25:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:24:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:23:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:22:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:21:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:20:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:19:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:18:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:17:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:16:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:15:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:14:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:13:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:12:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:11:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:10:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:9:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:8:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:7:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "bitacora · audit_log:6:at",
+   "esperado": "21:35",
+   "visto": "21:35",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "planilla · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "configuracion-inicial · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "sedes · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "detalle · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-guardado · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-guardado · lease:4:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-guardado · lease:4:al_mes",
+   "esperado": "$ 650.000",
+   "visto": "$ 650.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "contrato-guardado · lease:4:total",
+   "esperado": "$ 3.900.000",
+   "visto": "$ 3.900.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ver3d-proveedor · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "distribucion-GON-03 · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "publicar-GON-12-A · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "montaje-telefono · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "guia-enlace · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "verificar-montaje · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "verificar-montaje · lease:4:proveedor",
+   "esperado": "Galletas Sol",
+   "visto": "Galletas Sol",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "verificar-montaje · mount_confirmations:1:reportado_por",
+   "esperado": "Luis Pérez",
+   "visto": "Luis Pérez",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "verificar-montaje · mount_confirmations:4:estado",
+   "esperado": "No montado",
+   "visto": "No montado",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ajustes · sede::nombre",
+   "esperado": "CENTRO",
+   "visto": "CENTRO",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ajustes · tarifa:punta:al_mes",
+   "esperado": "$ 600.000",
+   "visto": "$ 600.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ajustes · tarifa:gondola:al_mes",
+   "esperado": "$ 450.000",
+   "visto": "$ 450.000",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  },
+  {
+   "que": "ajustes · notifications:config:reminder_days",
+   "esperado": "30,15,6",
+   "visto": "30,15,6",
+   "ok": true,
+   "metodo": "SQL (fila de la base)"
+  }
+ ],
+ "enlaces": [
+  {
+   "que": "enlaces a páginas que no existen",
+   "esperado": "0",
+   "visto": "0",
+   "ok": true,
+   "metodo": "2562 enlaces revisados"
+  }
+ ],
+ "fichas": [
+  {
+   "que": "ficha-GON-01: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-GON-01-B: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-GON-02: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-GON-02-B: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-GON-03: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-GON-03-B: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-GON-04: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-GON-04-B: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-01: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-02-EN1: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-02-EN2: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-02-EN3: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-02-EN4: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-03-EN1: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-03-EN2: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-03-EN3: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-03-EN4: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-03-EN5: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-04: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-05: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-06: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-07: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-08: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-PUN-09: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "ficha-NEV-01: el título nombra su espacio",
+   "esperado": true,
+   "visto": true,
+   "ok": true,
+   "metodo": "h1 de la página"
+  },
+  {
+   "que": "cada espacio de la base tiene su ficha (o es parte de una cara)",
+   "esperado": "sí",
+   "visto": "sí",
+   "ok": true,
+   "metodo": "30 espacios en spaces (sede CENTRO), 25 fichas"
+  }
+ ],
+ "secciones": [
+  {
+   "seccion": "Barra superior",
+   "funciones": 10,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Buscador de funciones (Ctrl K)",
+   "funciones": 6,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Bandeja de Pendientes",
+   "funciones": 24,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Ficha del espacio",
+   "funciones": 10,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Ayuda y fijar en la barra",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Crear cuenta e ingresar",
+   "funciones": 6,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Registrar un supermercado",
+   "funciones": 2,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Aceptar una invitación",
+   "funciones": 3,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Configuración inicial",
+   "funciones": 9,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Resumen (panel de información rápida)",
+   "funciones": 13,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Tabla de contratos",
+   "funciones": 6,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Quién paga el canon",
+   "funciones": 5,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Participaciones de cara",
+   "funciones": 6,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Todas las sedes",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Detalle del tablero",
+   "funciones": 6,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Diccionario de métricas",
+   "funciones": 2,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Contratos: ¿para qué fechas?",
+   "funciones": 12,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Línea de tiempo de la sede",
+   "funciones": 5,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Nuevo contrato · paso 1: qué se contrata",
+   "funciones": 7,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Nuevo contrato · paso 2: proveedor y vigencia",
+   "funciones": 3,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Nuevo contrato · paso 3: canon",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Nuevo contrato · paso 4: confirmación",
+   "funciones": 6,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Contrato guardado",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Editar, renovar y cancelar",
+   "funciones": 6,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Cargar contratos desde planilla",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Ver en 3D con el proveedor",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Contorno de la sede",
+   "funciones": 5,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Plano 2D: muebles",
+   "funciones": 12,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Ficha del mueble",
+   "funciones": 7,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Plano 3D",
+   "funciones": 11,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Distribución de una cara por participación",
+   "funciones": 9,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Planificar la cara",
+   "funciones": 9,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Publicar versión",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Versiones",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Guía de montaje",
+   "funciones": 7,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Lista de montajes",
+   "funciones": 7,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Aviso de montaje en el teléfono",
+   "funciones": 5,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Registrar montaje",
+   "funciones": 5,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Guía de montaje por enlace",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Verificar el montaje de un contrato",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Verificar el montaje de un planograma",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Resolver un montaje no realizado",
+   "funciones": 3,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Comercial",
+   "funciones": 3,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Sede y plano",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Avisos",
+   "funciones": 3,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Equipo",
+   "funciones": 4,
+   "en_la_version_final": true
+  },
+  {
+   "seccion": "Cuenta",
+   "funciones": 11,
+   "en_la_version_final": true
+  }
+ ],
+ "otros": [
+  {
+   "que": "filas de la bandeja = pend.total",
+   "esperado": "26",
+   "visto": "26",
+   "ok": true,
+   "metodo": "SQL: por vencer (30 días) (1) + reservas de espacio vivas (1) + reservas de participación (1) + contratos sin planometría (3) + participaciones sin ubicar (sin zona dibujada) (10) + reportes de montaje (4) + planogramas con aviso o sin montar (4) + cortes de venta por cargar (1) + canon bajo la tarifa (1)"
+  }
+ ],
+ "enlaces_rotos": [],
+ "resumen": {
+  "cifras": [
+   43,
+   43
+  ],
+  "campos": [
+   504,
+   504
+  ],
+  "enlaces": [
+   1,
+   1
+  ],
+  "fichas": [
+   26,
+   26
+  ],
+  "otros": [
+   1,
+   1
+  ]
+ },
+ "errores_de_consola": [],
+ "titulos_nuevos": 30,
+ "funciones": {
+  "secciones": 47,
+  "secciones_dibujadas": 47,
+  "funciones_total": 296,
+  "funciones_en_secciones_dibujadas": 296
+ }
+}

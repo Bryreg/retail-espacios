@@ -181,6 +181,12 @@ export function diaCorto(iso: string): string {
 export function rangoCorto(desde: string, hasta: string): string {
   const a = parseISODate(desde), b = parseISODate(hasta);
   if (!a || !b) return `${desde} – ${hasta}`;
+  // Un plazo de un año o más lleva los años: «26 oct – 26 oct» se leía como
+  // un día (lo mostró la línea de tiempo de la sede, que contrata el hueco
+  // entero).
+  if (b.getTime() - a.getTime() >= 330 * 86_400_000) {
+    return `${diaCorto(desde)} ${a.getFullYear()} – ${diaCorto(hasta)} ${b.getFullYear()}`;
+  }
   return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
     ? `${a.getDate()} – ${b.getDate()} ${MESES[b.getMonth()]}`
     : `${diaCorto(desde)} – ${diaCorto(hasta)}`;
@@ -321,15 +327,26 @@ export function useContrato({
     };
   }, [ocupacionCruda, edita, sede]);
 
-  // El periodo con el que abre. Se congela al montar a propósito: cambiar la
-  // temporada de arriba no debe reescribirle las fechas a alguien que ya está
-  // tecleando el acuerdo.
+  // El periodo con el que abre. Cambiar las fechas de arriba no le reescribe
+  // las fechas a alguien que ya las tocó acá (o que llegó con las suyas, al
+  // renovar o desde un hueco de la línea de tiempo).
   const [inicial] = useState<DateRange>(() => rango ?? rangoPorDefecto());
 
   // Al renovar mandan las fechas de la semilla —el día después de que termina
   // el contrato vigente, por el mismo largo— y no el periodo de la barra.
-  const [desde, setDesde] = useState(semilla?.desde || iso(inicial.from));
-  const [hasta, setHasta] = useState(semilla?.hasta || iso(inicial.to));
+  const [desde, setDesdeCrudo] = useState(semilla?.desde || iso(inicial.from));
+  const [hasta, setHastaCrudo] = useState(semilla?.hasta || iso(inicial.to));
+  /** «¿Para qué fechas?» (rediseño UX 2026-10, etapa 4) es la primera línea de
+   *  Contratos: mientras nadie toque las fechas del contrato, siguen a las de
+   *  arriba. Tocadas una vez, son del contrato. */
+  const fechasTocadas = useRef(!!semilla?.desde);
+  const setDesde = useCallback((v: string) => { fechasTocadas.current = true; setDesdeCrudo(v); }, []);
+  const setHasta = useCallback((v: string) => { fechasTocadas.current = true; setHastaCrudo(v); }, []);
+  useEffect(() => {
+    if (fechasTocadas.current || !rango) return;
+    setDesdeCrudo(iso(rango.from));
+    setHastaCrudo(iso(rango.to));
+  }, [rango]);
   const [proveedor, setProveedorCrudo] = useState(semilla?.proveedor ?? "");
   const [correo, setCorreo] = useState(semilla?.correo ?? "");
   /** Editando, cambiar de proveedor no arrastra el correo del anterior: el
@@ -602,9 +619,11 @@ export function useContrato({
     const d = parseISODate(desde);
     const h = parseISODate(hasta);
     if (!d || !h || h < d) return [] as string[];
-    return upcomingSeasons(d, seasonWindows)
+    // Una temporada que cae dos veces en el plazo (un contrato de un año
+    // cubre dos Halloween) se dice una vez.
+    return [...new Set(upcomingSeasons(d, seasonWindows)
       .filter((t) => t.from <= h && t.to >= d)
-      .map((t) => t.label);
+      .map((t) => t.label))];
   }, [desde, hasta, seasonWindows]);
 
   /** Los atajos de fecha: «1 mes · 3 meses · <la temporada que viene>». */
@@ -820,7 +839,7 @@ export function useContrato({
    *  ofrece volver a Supervisar, que relee la base. */
   const [cambioAjeno, setCambioAjeno] = useState(false);
   const faltaEdicion = edita
-    ? (cambioAjeno ? "Ese contrato cambió mientras lo editabas: volvé a Supervisar y abrilo de nuevo" : null)
+    ? (cambioAjeno ? "Ese contrato cambió mientras lo editabas: volvé a Indicadores y abrilo de nuevo" : null)
       ?? (fotoAhora ? faltaDeLaEdicion(edita, fotoAhora, lineasReales.length) : null) ?? (sinCambios ? "No cambiaste nada" : null)
     : null;
   /** Cuántos contratos nacen si se reemplaza: uno por parte, o uno. */
@@ -956,7 +975,7 @@ export function useContrato({
       if (planoEscrito && planoPendiente) await planoPendiente.deshacer().catch(() => undefined);
       if (edita && codigoDelRechazo(e) === "contrato_cambio") {
         setCambioAjeno(true);
-        setError("Ese contrato cambió mientras lo editabas (lo guardó otra pestaña o alguien más). No se guardó nada: volvé a Supervisar y abrilo de nuevo.");
+        setError("Ese contrato cambió mientras lo editabas (lo guardó otra pestaña o alguien más). No se guardó nada: volvé a Indicadores y abrilo de nuevo.");
         setEstado("error");
         return;
       }
