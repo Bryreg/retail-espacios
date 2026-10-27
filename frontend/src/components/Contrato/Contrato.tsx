@@ -619,9 +619,11 @@ export function useContrato({
     const d = parseISODate(desde);
     const h = parseISODate(hasta);
     if (!d || !h || h < d) return [] as string[];
-    return upcomingSeasons(d, seasonWindows)
+    // Una temporada que cae dos veces en el plazo (un contrato de un año
+    // cubre dos Halloween) se dice una vez.
+    return [...new Set(upcomingSeasons(d, seasonWindows)
       .filter((t) => t.from <= h && t.to >= d)
-      .map((t) => t.label);
+      .map((t) => t.label))];
   }, [desde, hasta, seasonWindows]);
 
   /** Los atajos de fecha: «1 mes · 3 meses · <la temporada que viene>». */

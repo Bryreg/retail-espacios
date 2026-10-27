@@ -988,6 +988,22 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
           <AlertTriangle {...ICONO} /> {c.error}
         </p>
       )}
+      {/* El contrato leído como una frase antes de guardarlo (rediseño UX
+          2026-10, etapa 4, paso 4 del dibujo): quién, qué, cuándo y cuánto.
+          Sólo cuando ya se puede guardar —antes, lo que falta lo dice arriba—
+          y no editando (ahí lo dice «Qué cambia»). */}
+      {!edita && c.puedeGuardar && c.lineas.length > 0 && (
+        <p className="frase-contrato" data-frase-del-contrato>
+          <b>{c.proveedor.trim()}</b>
+          {c.reservando ? " reserva " : " contrata "}
+          <span className="mono">{c.lineas.map((l) => l.visible).join(", ")}</span>
+          {" "}del {diaConAnio(c.desde)} al {diaConAnio(c.hasta)}
+          {c.cobroModo === "ventas"
+            ? ` por el ${c.ventasTexto} % de las ventas`
+            : c.total > 0 ? ` por ${pesosExactos(c.total)} en total` : ""}
+          {c.reservando && c.caduca ? `, apartado hasta el ${diaConAnio(c.caduca)}` : ""}.
+        </p>
+      )}
       <div className="acciones acciones2">
         {/* EL botón principal de Vender: el único amarillo de la pantalla. Con
             «Reservar hasta…» abierto, el mismo botón reserva: nunca dos

@@ -1467,6 +1467,10 @@ html[data-tema="oscuro"] .vender {
 .avisos-guardado { margin-top: 10px; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.5; }
 /* Dónde se carga la planometría: una línea quieta, sin alarma. */
 .nota-guardado { margin: 8px 0 0; font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
+/* El contrato en una frase, sobre «Guardar contrato» (etapa 4). */
+.frase-contrato { margin: 4px 0 8px; font-size: var(--t-xs); line-height: 1.5; color: var(--ink-2); }
+.frase-contrato b { color: var(--ink-1); }
+.frase-contrato .mono { font-family: var(--f-mono); color: var(--ink-1); font-weight: 600; }
 /* «Qué pasa ahora» del contrato guardado (rediseño UX 2026-10, etapa 4). */
 .que-pasa { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line); }
 .que-pasa .tit { font-size: var(--t-xs); font-weight: 700; color: var(--ink-1); margin-bottom: 6px; }
