@@ -14,11 +14,13 @@ import { EncabezadoDeSeccion } from "./piezas";
  * duración.
  *
  * Por contrato, «Es al mes» (el total pasa a ser el valor × los meses) o «Es el
- * total» (no cambia); y «Todos son al mes», que pregunta antes. Los de valor
- * simbólico ($ 1) no son ni una cosa ni la otra: eran contratos que se cobran
- * por un % de las ventas (2026-10-27), y «Por % de ventas» los deja como los de
- * Vender (valor 0, su porcentaje y su corte), de a uno o todos los simbólicos
- * juntos; «Todos son al mes» pasa a ser «Los demás». Se puede
+ * total» (no cambia); y «Todos son al mes», que pregunta antes. Los cargados
+ * con $ 1 no son ni una cosa ni la otra: se cobran por un % de las ventas, y se
+ * cargaron así porque esa forma de cobro todavía no existía (2026-10-27). El
+ * $ 1 NO es un tipo de valor del sistema: es un dato de antes que se corrige
+ * («Por % de ventas» los deja como los de Vender: valor 0, su porcentaje y su
+ * corte), de a uno o todos juntos, y una vez corregidos no queda ninguno;
+ * «Todos son al mes» pasa a ser «Los demás». Se puede
  * deshacer desde el aviso. No manda correos: corrige cómo se lee un dato
  * (decisión del dueño). SÓLO ADMINISTRACIÓN: lleva plata y proveedores; quien
  * lo monta lo pone adentro de `isAdmin &&`, y el hook no pide nada si no está
@@ -36,10 +38,17 @@ const ESTADO: Record<ContratoSinForma["estado"], { texto: string; tono: string }
   cerrado: { texto: "cerrado", tono: "" },
 };
 
-/** Hasta acá un valor no es un precio sino un marcador: el contrato se cobra
- *  por ventas (en GALERÍAS se cargaron con $ 1). */
-export const VALOR_SIMBOLICO = 1_000;
-export const esSimbolico = (c: Pick<ContratoSinForma, "valor">): boolean => c.valor <= VALOR_SIMBOLICO;
+/** Hasta acá el valor de un contrato de antes no es un precio sino lo que se
+ *  escribió porque el cobro por % de ventas todavía no existía (en GALERÍAS,
+ *  $ 1). Sólo sirve para esta corrección: fuera de acá nadie lo usa. */
+export const MARCADOR_DE_ANTES = 1_000;
+export const esMarcadorDeAntes = (c: Pick<ContratoSinForma, "valor">): boolean => c.valor <= MARCADOR_DE_ANTES;
+
+/** «con $ 1» si todos se cargaron con lo mismo; si no, «con $ 500 o menos». */
+export function cargadosCon(cs: readonly Pick<ContratoSinForma, "valor">[]): string {
+  const max = Math.max(...cs.map((c) => c.valor));
+  return cs.every((c) => c.valor === max) ? `con ${pesosExactos(max)}` : `con ${pesosExactos(max)} o menos`;
+}
 
 const CORTE: Record<CobroPorVentasDe["corte"], string> = { mensual: "cada mes", al_final: "al final" };
 
@@ -129,8 +138,8 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
 }) {
   const [verTodos, setVerTodos] = useState(false);
   const [preguntando, setPreguntando] = useState(false);
-  /** El contrato (o «los simbólicos») al que se le está escribiendo el %. */
-  const [porVentas, setPorVentas] = useState<number | "simbolicos" | null>(null);
+  /** El contrato (o «los marcados» de antes) al que se le está escribiendo el %. */
+  const [porVentas, setPorVentas] = useState<number | "marcados" | null>(null);
   const [haciendo, setHaciendo] = useState(false);
   const [aviso, setAviso] = useState<{ texto: string; deshacer: number[] | null; error?: boolean } | null>(null);
   const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
@@ -187,8 +196,8 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
 
   if (filas.length === 0 && !aviso) return null;
   const visibles = verTodos ? filas : filas.slice(0, MOSTRAR);
-  const simbolicos = filas.filter(esSimbolico);
-  const demas = filas.filter((c) => !esSimbolico(c));
+  const marcados = filas.filter(esMarcadorDeAntes);
+  const demas = filas.filter((c) => !esMarcadorDeAntes(c));
   return (
     <div data-precio-sin-forma>
       <EncabezadoDeSeccion titulo={titulo} valor={filas.length || undefined} />
@@ -211,32 +220,33 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
         <>
           <p style={{ margin: "2px 18px 8px", fontSize: "var(--t-2xs)", color: "var(--ink-3)", lineHeight: 1.45 }}>
             Se cargaron antes de Vender y hoy se leen como el total del contrato. Si el valor es el de cada mes, el total pasa a
-            ser el valor × los meses. Si es simbólico (como {pesosExactos(1)}), el contrato se cobra por un % de las ventas.
-            No se manda ningún correo.
+            ser el valor × los meses. Los cargados con {pesosExactos(1)} se cobran por un % de las ventas: se cargaron así porque
+            ese cobro todavía no existía. Una vez corregidos, no queda ninguno. No se manda ningún correo.
           </p>
-          {(simbolicos.length > 0 || demas.length > 0) && porVentas !== "simbolicos" && !preguntando && (
+          {(marcados.length > 0 || demas.length > 0) && porVentas !== "marcados" && !preguntando && (
             <div style={{ margin: "0 10px 6px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              {simbolicos.length > 0 && (
-                <button type="button" className="btn-s" onClick={() => { setPorVentas("simbolicos"); setPreguntando(false); }} disabled={haciendo}
-                  data-simbolicos-por-ventas>
-                  <Percent {...ICONO} /> Los de valor simbólico son por % de ventas ({simbolicos.length})
+              {marcados.length > 0 && (
+                <button type="button" className="btn-s" onClick={() => { setPorVentas("marcados"); setPreguntando(false); }} disabled={haciendo}
+                  data-marcados-por-ventas>
+                  <Percent {...ICONO} /> Los cargados {cargadosCon(marcados)} son por % de ventas ({marcados.length})
                 </button>
               )}
               {demas.length > 0 && (
                 <button type="button" className="btn-s" onClick={() => { setPreguntando(true); setPorVentas(null); }} disabled={haciendo} data-todos-al-mes>
-                  <CalendarClock {...ICONO} /> {simbolicos.length > 0 ? `Los demás son al mes (${demas.length})` : `Todos son al mes (${demas.length})`}
+                  <CalendarClock {...ICONO} /> {marcados.length > 0 ? `Los demás son al mes (${demas.length})` : `Todos son al mes (${demas.length})`}
                 </button>
               )}
             </div>
           )}
-          {porVentas === "simbolicos" && (
+          {porVentas === "marcados" && (
             <CobroPorVentas
-              etiqueta={`los ${simbolicos.length} de valor simbólico`}
-              pregunta={`¿Los ${simbolicos.length} contratos con valor de ${pesosExactos(VALOR_SIMBOLICO)} o menos se cobran por un % de las ventas? `
-                + `Quedan en $ 0 con su porcentaje y su corte, como los de Vender, y lo vendido se carga en «Ventas por cargar». `
+              etiqueta={`los ${marcados.length} cargados ${cargadosCon(marcados)}`}
+              pregunta={`¿Los ${marcados.length} contratos cargados ${cargadosCon(marcados)} se cobran por un % de las ventas? `
+                + `Se cargaron así porque ese cobro todavía no existía. Quedan en $ 0 con su porcentaje y su corte, como los de Vender, `
+                + `y lo vendido se carga en «Ventas por cargar». `
                 + `Si no todos tienen el mismo porcentaje, hacelo contrato por contrato. Se puede deshacer.`}
               haciendo={haciendo}
-              onGuardar={(cobro) => void corregir("ventas", simbolicos, cobro)}
+              onGuardar={(cobro) => void corregir("ventas", marcados, cobro)}
               onCancelar={() => setPorVentas(null)}
             />
           )}
@@ -245,7 +255,7 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
               style={{ display: "grid", gap: 8, margin: "0 10px 6px", padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)",
                 border: "1px solid var(--line)", fontSize: "var(--t-xs)", color: "var(--ink-1)" }}>
               <span>
-                ¿Pasar {simbolicos.length > 0 ? `los ${demas.length} contratos que no tienen valor simbólico` : `los ${demas.length} contratos`} a «al mes»?
+                ¿Pasar {marcados.length > 0 ? `los otros ${demas.length} contratos` : `los ${demas.length} contratos`} a «al mes»?
                 El total de cada uno pasa a ser su valor × sus meses
                 (por ejemplo {demas[0].espacio}: {pesosExactos(demas[0].valor)} × {textoDeMeses(demas[0].meses)} = {pesosExactos(demas[0].total_si_es_al_mes)}).
                 Se puede deshacer.
@@ -260,13 +270,13 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
           )}
           {visibles.map((c) => (
             <Fragment key={c.lease_id}>
-            <div className="fila-r" data-aviso={`psf:${c.lease_id}`} data-contrato-sin-forma={c.lease_id} data-simbolico={esSimbolico(c) || undefined}>
+            <div className="fila-r" data-aviso={`psf:${c.lease_id}`} data-contrato-sin-forma={c.lease_id} data-marcador={esMarcadorDeAntes(c) || undefined}>
               <span className={`pill ${ESTADO[c.estado].tono}`}>{ESTADO[c.estado].texto}</span>
               <div className="dat">
                 <b className="mono">{c.espacio}</b>
                 <span>{c.proveedor || "—"} · {diaConAnio(c.desde)} → {diaConAnio(c.hasta)}</span>
-                {esSimbolico(c) ? (
-                  <span>Hoy: {pesosExactos(c.valor)} · un valor simbólico: lo que se cobra seguramente sale de un % de las ventas</span>
+                {esMarcadorDeAntes(c) ? (
+                  <span>Cargado con {pesosExactos(c.valor)} porque el cobro por % de ventas todavía no existía: pasalo a «Por % de ventas»</span>
                 ) : (
                   <span>
                     Hoy: {pesosExactos(c.valor)} de total · si es al mes: {pesosExactos(c.valor)} × {textoDeMeses(c.meses)} ={" "}
@@ -277,14 +287,14 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
               {/* `acc-r`: debajo de la cuenta, no en una columna aparte (en el
                   teléfono la columna caía debajo de la pastilla). */}
               <span className="acc-r">
-                {esSimbolico(c) && ventasBoton(c)}
+                {esMarcadorDeAntes(c) && ventasBoton(c)}
                 <button type="button" className="btn-s" onClick={() => void corregir("mensual", [c])} disabled={haciendo} data-es-al-mes={c.lease_id}>
                   Es al mes
                 </button>
                 <button type="button" className="btn-s" onClick={() => void corregir("total", [c])} disabled={haciendo} data-es-total={c.lease_id}>
                   Es el total
                 </button>
-                {!esSimbolico(c) && ventasBoton(c)}
+                {!esMarcadorDeAntes(c) && ventasBoton(c)}
               </span>
             </div>
             {porVentas === c.lease_id && (
