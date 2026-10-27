@@ -1368,6 +1368,17 @@ planogramas en una lista con filtros y estado preciso, verificar el de un contra
 (`components/Montaje/VerificarMontaje.tsx`) y resolver un no realizado. Ajustes por tema
 (Comercial · Sede y plano · Avisos · Equipo · Cuenta), con Metas por sede, Sedes y Permisos.
 
+**Indicadores › Detalle se cuenta como una historia (2026-10-27).** Un titular y cuatro
+preguntas, cada una con su gráfico, su lectura y su tabla (`components/Indicadores/Detalle.tsx`,
+cuentas puras en `utils/historiaDelDetalle.ts`, `probar-detalle`): «¿Dónde está la plata que no
+entra?» parte el potencial a tarifa en lo cobrado, lo que se cobra bajo la tarifa y lo vacío, con
+UNA base (la tarifa de cada espacio; lo cobrado es el canon de todos los contratos), así las partes
+suman el potencial y el titular usa esos mismos números; «¿Qué tipo de mueble pesa más?» repite
+la barra por tipo; «¿Qué pasa en las próximas semanas?» es el canon que sigue entrando si nadie
+renueva, con los vencimientos listados, y los disponibles por día; «¿Se monta lo que se vende?»
+señala el paso donde más contratos se quedan. Colores validados con el validador de la guía de
+visualización en claro y oscuro (azul cobrado, naranja bajo la tarifa, verde agua vacío).
+
 **Toda función nueva va a `src/acciones.ts`.** Es el registro del buscador, de «Más» y de lo
 fijado: con su nombre, sus sinónimos (cómo le dice la gente), si es de administración y en qué
 módulos va en «Más». `probar-ajustes` vigila los sinónimos, el rol y el tope de 3 fijadas.

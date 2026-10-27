@@ -7540,14 +7540,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         return n;
       });
     }
-    const tipos = new Map<string, DatosDelDetalle["porTipo"][number] & { _canon: number; _tarifa: number; _dias: number[] }>();
+    const tipos = new Map<string, DatosDelDetalle["porTipo"][number] & { _canon: number; _tarifa: number; _dias: number[]; _potencial: number; _cobrado: number }>();
     const fila = (tipo: string) => {
-      if (!tipos.has(tipo)) tipos.set(tipo, { tipo, espacios: 0, contratados: 0, ocupacionPct: 0, diasEntre: null, canonTarifa: null, sinFacturar: isAdmin ? 0 : null, _canon: 0, _tarifa: 0, _dias: [] });
+      if (!tipos.has(tipo)) tipos.set(tipo, { tipo, espacios: 0, contratados: 0, ocupacionPct: 0, diasEntre: null, canonTarifa: null, sinFacturar: isAdmin ? 0 : null, canon: null, potencial: null, _canon: 0, _tarifa: 0, _dias: [], _potencial: 0, _cobrado: 0 });
       return tipos.get(tipo)!;
     };
     for (const u of kpis.unidades) {
       const t = fila(tipoDelMueble(u.cara.fixture, nombresPropios));
       t.espacios++;
+      if (isAdmin) t._potencial += tarifaDeLaFila(referenceRates, sede, u.cara).valor ?? 0;
       if (u.estado === "active" || u.estado === "expiring") t.contratados++;
       if (u.estado === "free") {
         if (isAdmin) t.sinFacturar = (t.sinFacturar ?? 0) + (tarifaDeLaFila(referenceRates, sede, u.cara).valor ?? 0);
@@ -7558,25 +7559,34 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     if (isAdmin) for (const x of kpis.vigentes) {
       const t = fila(tipoDelMueble(x.fixture, nombresPropios));
       const tar = tarifaDeLaFila(referenceRates, sede, x).valor ?? 0;
+      t._cobrado += alMesDe(x);
       if (tar > 0) { t._canon += alMesDe(x); t._tarifa += tar; }
     }
-    const porTipo = [...tipos.values()].map(({ _canon, _tarifa, _dias, ...t }) => ({
+    const porTipo = [...tipos.values()].map(({ _canon, _tarifa, _dias, _potencial, _cobrado, ...t }) => ({
       ...t,
+      canon: isAdmin ? _cobrado : null,
+      potencial: isAdmin ? _potencial : null,
       ocupacionPct: t.espacios ? Math.round((t.contratados / t.espacios) * 100) : 0,
       diasEntre: _dias.length ? Math.round(_dias.reduce((a, b) => a + b, 0) / _dias.length) : null,
       canonTarifa: isAdmin && _tarifa > 0 ? Math.round((_canon / _tarifa) * 100) : null,
     })).sort((a, b) => b.espacios - a.espacios || a.tipo.localeCompare(b.tipo, "es"));
     const faltaIds = new Set(faltaPlanometria.filas.map((f) => f.lease_id));
     const conReporte = delMes.filter((t) => !!montajeDe(t.entry));
+    // Lo que sigue corriendo (Detalle › «¿Qué pasa en las próximas
+    // semanas?»): los mismos contratos vigentes de los que sale `vence90`.
+    const vigentesHoy = kpis.todas.filter((t) => t.fase === "vigente");
     return {
-      esAdmin: isAdmin, sede,
+      esAdmin: isAdmin, sede, hoy: hoyIso,
       resultado: {
         canon: isAdmin ? canonDelMes : null, potencial: isAdmin ? potencial : null,
         ocupacionPct: kpis.occPct, metaOcupacion: meta.ocupacion,
         canonTarifa: ct?.pct ?? null, metaCanonTarifa: meta.canon_tarifa,
         sinFacturar: isAdmin ? sinAlquilar.plata : null,
+        contratosSinTarifa: isAdmin && ct ? ct.sinTarifa : 0,
       },
       semanas, disponiblesPorDia, porTipo,
+      vencen: vence90.puntos.map((p) => ({ codigo: p.codigo, dias: p.dias, alMes: isAdmin ? p.alMes : 1, renovado: p.renovado })),
+      baseQueSigue: isAdmin ? vigentesHoy.reduce((t, x) => t + alMesDe(x.entry), 0) : vigentesHoy.length,
       embudo: {
         empiezan: delMes.length,
         avisoEnviado: isAdmin ? delMes.filter((t) => !(t.entry.leaseId && faltaIds.has(t.entry.leaseId))).length : delMes.length,
