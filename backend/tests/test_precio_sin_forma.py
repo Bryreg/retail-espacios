@@ -102,3 +102,70 @@ def test_la_bitacora_dice_lo_de_antes_y_lo_de_ahora(client, admin):
         assert a.entidad_id == str(lease_id) and "800.000" in a.detalle and "4.800.000" in a.detalle
     finally:
         db.close()
+
+
+def _cobro(lease_id):
+    from app.models.vender import CobroPorVenta
+
+    db = tp._bd()
+    try:
+        c = db.get(CobroPorVenta, lease_id)
+        return None if c is None else (c.porcentaje, c.corte)
+    finally:
+        db.close()
+
+
+@RELOJ
+def test_los_de_valor_simbolico_se_cobran_por_ventas(client, admin, worker, monkeypatch):
+    """El valor de antes era un marcador ($ 1): lo que se cobra sale de las
+    ventas. Queda como un contrato por ventas de Vender (valor 0 + su cobro)."""
+    from app.models.models import AuditEntry
+
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    uno = _vendido(client, admin, _entera("GON-02", 1), desde=D(2026, 9, 19), hasta=D(2026, 11, 10))["contratos"][0]["lease_id"]
+    otro = _vendido(client, admin, _entera("NEV-03", 1), desde=D(2026, 8, 1), hasta=D(2026, 12, 31))["contratos"][0]["lease_id"]
+    _sin_forma(uno)
+    _sin_forma(otro)
+    enviados.clear()
+    assert set(_lista(client, admin)) == {uno, otro}
+
+    mostrados = [{"lease_id": uno, "valor": 1}, {"lease_id": otro, "valor": 1}]
+    # Sin porcentaje o sin corte válido, nada.
+    for cobro in (None, {"porcentaje": 0, "corte": "mensual"}, {"porcentaje": 101, "corte": "mensual"},
+                  {"porcentaje": 8, "corte": "semanal"}):
+        r = client.post(URL + "/corregir", headers=admin, json={"modo": "ventas", "contratos": mostrados, "cobro": cobro})
+        assert r.status_code == 422, (cobro, r.text)
+    assert _cobro(uno) is None and _lease(uno)["valor"] == 1
+    assert client.post(URL + "/corregir", headers=worker, json={
+        "modo": "ventas", "contratos": mostrados, "cobro": {"porcentaje": 8, "corte": "mensual"}}).status_code == 403
+
+    r = client.post(URL + "/corregir", headers=admin, json={
+        "modo": "ventas", "contratos": mostrados, "cobro": {"porcentaje": 7.5, "corte": "mensual"}})
+    assert r.status_code == 200, r.text
+    assert (_lease(uno)["valor"], _lease(otro)["valor"]) == (0, 0)
+    assert (_cobro(uno), _cobro(otro)) == ((7.5, "mensual"), (7.5, "mensual"))
+    assert _condicion(uno) is None
+    assert _lista(client, admin) == {}
+    assert enviados == []
+    db = tp._bd()
+    try:
+        detalles = [a.detalle for a in db.query(AuditEntry).filter(AuditEntry.accion == "contrato.precio_corregido").all()]
+        assert detalles and all("7,5 % de las ventas, corte cada mes" in d for d in detalles)
+    finally:
+        db.close()
+    # Ya son por ventas: sus cortes vencidos piden cargarse, como los de Vender.
+    pendientes = client.get("/api/cobros/pendientes", params={"sede": "NAVE"}, headers=admin).json()
+    assert {p["lease_id"] for p in pendientes} == {uno, otro}
+
+    # Deshacer vuelve el valor de antes y saca el cobro.
+    r = client.post(URL + "/deshacer", headers=admin, json={"lease_ids": [otro]})
+    assert r.status_code == 200, r.text
+    assert _lease(otro)["valor"] == 1 and _cobro(otro) is None
+    assert set(_lista(client, admin)) == {otro}
+
+    # Con una venta ya cargada, no se deshace (lo cobrado no se pierde).
+    corte = {"periodo_desde": "2026-09-19", "periodo_hasta": "2026-09-30", "ventas": 1_000_000}
+    assert client.post(f"/api/cobros/{uno}/cortes", json=corte, headers=admin).status_code == 201
+    r = client.post(URL + "/deshacer", headers=admin, json={"lease_ids": [uno]})
+    assert r.status_code == 409 and _cobro(uno) == (7.5, "mensual")

@@ -204,10 +204,18 @@ class _ContratoMostrado(BaseModel):
     valor: float = Field(ge=0)
 
 
+class _CobroPorVentas(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    porcentaje: float
+    corte: str
+
+
 class CorregirPrecioIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    modo: Literal["mensual", "total"]
+    modo: Literal["mensual", "total", "ventas"]
     contratos: list[_ContratoMostrado] = Field(min_length=1, max_length=1000)
+    #: Con «ventas»: el porcentaje y el corte (los mismos para todos).
+    cobro: Optional[_CobroPorVentas] = None
 
 
 class DeshacerPrecioIn(BaseModel):
@@ -235,16 +243,24 @@ def corregir_precio(
     rol: str = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """«Son al mes» (el total pasa a ser el valor × los meses) o «es el
-    total» (no cambia). Todo o nada; sin correos."""
+    """«Son al mes» (el total pasa a ser el valor × los meses), «es el
+    total» (no cambia) o «se cobra por % de las ventas» (el valor era un
+    marcador: pasa a 0 con su cobro por venta). Todo o nada; sin correos."""
     from app.services import precio_sin_forma
 
     actor = actor_de(request, rol)
     try:
-        hechos = precio_sin_forma.corregir(db, cuerpo.modo, [c.model_dump() for c in cuerpo.contratos], actor)
+        cobro = cuerpo.cobro.model_dump() if cuerpo.cobro else None
+        hechos = precio_sin_forma.corregir(db, cuerpo.modo, [c.model_dump() for c in cuerpo.contratos], actor, cobro)
         for h in hechos:
-            detalle = (f"Valor de antes {h.valor_antes:,.0f} leído al mes × {h.meses:.2f} meses = total {h.total_despues:,.0f}"
-                       if h.modo_precio == "mensual" else f"Valor {h.valor_antes:,.0f} confirmado como total").replace(",", ".")
+            if h.modo_precio == "ventas":
+                corte = "cada mes" if cobro["corte"] == "mensual" else "al final"
+                pct = f"{cobro['porcentaje']:g}".replace(".", ",")
+                detalle = (f"Valor de antes {h.valor_antes:,.0f}".replace(",", ".")
+                           + f" era un marcador: se cobra el {pct} % de las ventas, corte {corte}")
+            else:
+                detalle = (f"Valor de antes {h.valor_antes:,.0f} leído al mes × {h.meses:.2f} meses = total {h.total_despues:,.0f}"
+                           if h.modo_precio == "mensual" else f"Valor {h.valor_antes:,.0f} confirmado como total").replace(",", ".")
             anotar(db, request, rol, "contrato.precio_corregido", entidad="contrato", entidad_id=h.lease_id, detalle=detalle)
         db.commit()
     except Exception:

@@ -15,7 +15,8 @@
  *     convirtiendo, para que el total no salte.
  *   · «Para revisar» → Corregir: los contratos de antes sin forma, con «Es al
  *     mes», «Es el total» y «Todos son al mes»; sólo administración, sin
- *     correos, UN aviso en la pastilla.
+ *     correos, UN aviso en la pastilla. Los de valor simbólico ($ 1) se
+ *     cobran por % de las ventas (2026-10-27): «Por % de ventas».
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -107,6 +108,20 @@ await prueba("las rutas del cliente existen y son de administración; corregir n
   assert.ok(!/avisar|send_mail|_avisar\(/.test(bloque), "corregir cómo se lee un valor no manda correos");
   const servicio = leerPy("services/precio_sin_forma.py");
   assert.ok(servicio.includes("meses_entre(") && !/send_mail|correo/.test(servicio.replace(/"""[\s\S]*?"""/g, "")));
+});
+
+await prueba("los de valor simbólico se cobran por % de ventas, y «al mes» en bloque no los toca", () => {
+  const h = sinComentarios(leer("src/components/Supervisar/PrecioSinForma.tsx"));
+  assert.ok(h.includes("export const VALOR_SIMBOLICO = 1_000;"));
+  assert.ok(h.includes('corregir("mensual", demas)') && !h.includes('corregir("mensual", filas)'), "«Todos son al mes» pasa los simbólicos a «al mes»");
+  assert.ok(h.includes('corregir("ventas", simbolicos, cobro)') && h.includes('corregir("ventas", [c], cobro)'));
+  assert.ok(h.includes("«Ventas por cargar»"), "el aviso dice dónde se carga lo vendido");
+  const api = sinComentarios(leer("src/api/precioSinForma.ts"));
+  assert.ok(api.includes('modo === "ventas" ? { modo, contratos, cobro } : { modo, contratos }'), "el cobro va sólo con «ventas»");
+  const router = leerPy("routers/vender.py");
+  assert.ok(/modo: Literal\["mensual", "total", "ventas"\]/.test(router));
+  const t = leer("src/pages/DashboardView.tsx");
+  assert.ok(t.includes("onCambio={() => { precioSinForma.recargar(); cortesSinCargar.recargar(); }}"), "al pasar a ventas, «Ventas por cargar» no se entera");
 });
 
 await prueba("Vender no alcanza la corrección de Supervisar", () => {

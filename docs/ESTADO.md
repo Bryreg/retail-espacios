@@ -28,6 +28,7 @@ sistema lo leía como el total (el «al mes» de Supervisar salía dividido por 
 Supervisar → «Para revisar» → Corregir, «Contratos cargados antes: ¿el valor es al mes?» lista
 todos los que no dicen cómo se lee su precio (vigentes, próximos, vencidos y cerrados), con «Es
 al mes» / «Es el total» por contrato y «Todos son al mes»; se puede deshacer y no manda correos.
+Desde el 2026-10-27 hay una tercera opción, «Por % de ventas», para los de valor simbólico ($ 1).
 Y en «Editar contrato», «Total | Al mes» está siempre a la vista y conserva el número escrito: si
 eso es lo único que cambia, se guarda sin reenviar. Una tabla nueva. Ver *Contratos de antes:
 ¿al mes o total? (2026-10-25)*.
@@ -1368,6 +1369,17 @@ planogramas en una lista con filtros y estado preciso, verificar el de un contra
 (`components/Montaje/VerificarMontaje.tsx`) y resolver un no realizado. Ajustes por tema
 (Comercial · Sede y plano · Avisos · Equipo · Cuenta), con Metas por sede, Sedes y Permisos.
 
+**Indicadores › Detalle se cuenta como una historia (2026-10-27).** Un titular y cuatro
+preguntas, cada una con su gráfico, su lectura y su tabla (`components/Indicadores/Detalle.tsx`,
+cuentas puras en `utils/historiaDelDetalle.ts`, `probar-detalle`): «¿Dónde está la plata que no
+entra?» parte el potencial a tarifa en lo cobrado, lo que se cobra bajo la tarifa y lo vacío, con
+UNA base (la tarifa de cada espacio; lo cobrado es el canon de todos los contratos), así las partes
+suman el potencial y el titular usa esos mismos números; «¿Qué tipo de mueble pesa más?» repite
+la barra por tipo; «¿Qué pasa en las próximas semanas?» es el canon que sigue entrando si nadie
+renueva, con los vencimientos listados, y los disponibles por día; «¿Se monta lo que se vende?»
+señala el paso donde más contratos se quedan. Colores validados con el validador de la guía de
+visualización en claro y oscuro (azul cobrado, naranja bajo la tarifa, verde agua vacío).
+
 **Toda función nueva va a `src/acciones.ts`.** Es el registro del buscador, de «Más» y de lo
 fijado: con su nombre, sus sinónimos (cómo le dice la gente), si es de administración y en qué
 módulos va en «Más». `probar-ajustes` vigila los sinónimos, el rol y el tope de 3 fijadas.
@@ -1506,6 +1518,17 @@ revisar».
   meses = total 4.800.000»). **Sin correos**: corrige cómo se lee un dato, no el contrato.
 - **Deshacer** (`POST …/deshacer`): vuelve el valor de antes y borra la forma, sólo si nadie lo
   editó después (409 si el valor o la forma ya no son los que dejó la corrección).
+- **Tercera opción: «Por % de ventas» (2026-10-27).** Los de valor simbólico (hasta
+  $ 1.000, `VALOR_SIMBOLICO`; en GALERÍAS se cargaron con $ 1) no eran ni al mes ni el total: se
+  cobran por un % de las ventas. Cada fila tiene «Por % de ventas» (primero en las simbólicas,
+  que dicen «un valor simbólico: lo que se cobra seguramente sale de un % de las ventas») con el
+  porcentaje y el corte (cada mes / al final); arriba, «Los de valor simbólico son por % de
+  ventas (N)» con un porcentaje y un corte para todos, y «Todos son al mes» pasa a «Los demás son
+  al mes» (nunca toca las simbólicas). `modo: "ventas"` + `cobro {porcentaje, corte}` deja el
+  contrato como uno por ventas de Vender: `monthly_rent` 0 y su fila en `cobros_por_venta` (sin
+  `condiciones_de_contrato`); `precios_corregidos` guarda el valor de antes. Desde ahí sus cortes
+  vencidos aparecen en «Ventas por cargar» (la tarjeta la recarga). Deshacer borra el cobro y
+  vuelve el valor, salvo que ya se haya cargado alguna venta (409: lo cobrado no se pierde).
 - **«Editar contrato»**: el renglón muestra «El precio es Total | Al mes» siempre (antes había que
   abrir la línea para verlo, y por eso parecía que no se podía). En edición, tocar «Al mes» deja
   el número escrito y lo lee como el de cada mes (en un contrato nuevo sigue convirtiendo para
