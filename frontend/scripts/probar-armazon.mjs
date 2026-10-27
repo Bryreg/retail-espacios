@@ -246,4 +246,9 @@ prueba("Indicadores: cada tarjeta tiene su definición, y quien no administra no
   assert.match(v, /if \(!isAdmin \|\| !enIndicadores\) return;\s*let vivo = true;\s*getSerieDeCanon/);
 });
 
+prueba("lo que trae un contrato a Vender cierra la bandeja de Pendientes (Editar desde Contratos la dejaba encima)", () => {
+  const v = sinComentarios(leer("pages", "DashboardView.tsx"));
+  assert.match(v, /const setModo = useCallback\(\(m: ModoComercial\) => \{\s*if \(m === "vender"\) useArmazon\.getState\(\)\.cerrarBandeja\(\);/);
+});
+
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? " — HAY FALLAS" : ""}\n`);

@@ -4868,6 +4868,11 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** Cambiar de modo: con el armazón navega (y la dirección vuelve como
    *  `modo`); sin él, como siempre. */
   const setModo = useCallback((m: ModoComercial) => {
+    // Lo que trae un contrato a Vender (Editar, Renovar, Contratar, confirmar
+    // una reserva) cierra la bandeja de Pendientes: si ya se estaba en
+    // Contratos no hay cambio de módulo que la cierre, y quedaba encima del
+    // contrato que se acababa de abrir.
+    if (m === "vender") useArmazon.getState().cerrarBandeja();
     if (onModo) onModo(m);
     else setModoPropio(m);
   }, [onModo]);
