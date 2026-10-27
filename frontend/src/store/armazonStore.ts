@@ -10,6 +10,13 @@ import type { GrupoDeRevision } from "../components/Supervisar/paraRevisar";
  * Pendientes; el armazón dibuja el botón y la abre. No se persiste: es el
  * estado de esta pestaña, no una preferencia ni un dato.
  */
+/** Los temas de Ajustes (rediseño UX 2026-10, etapa 8). */
+export type TemaDeAjustes = "comercial" | "sede" | "avisos" | "equipo" | "cuenta";
+
+/** Lo que el armazón le pide a la pantalla comercial (`DashboardView`), que
+ *  es la que lo sabe hacer: abrir la planilla, ir al Diccionario. */
+export type PedidoALaPantalla = "planilla" | "diccionario";
+
 interface EstadoDelArmazon {
   /** Cuánto hay para revisar (la pastilla roja). */
   cuentaPendientes: number;
@@ -20,6 +27,19 @@ interface EstadoDelArmazon {
   grupoPedido: GrupoDeRevision | null;
   abrirBandeja: (grupo?: GrupoDeRevision | null) => void;
   cerrarBandeja: () => void;
+  /** Ajustes, abierto en un tema (`null`: cerrado). */
+  ajustes: TemaDeAjustes | null;
+  abrirAjustes: (tema?: TemaDeAjustes) => void;
+  cerrarAjustes: () => void;
+  /** Lo pedido a la pantalla comercial; ella lo atiende y lo borra. */
+  pedido: PedidoALaPantalla | null;
+  pedir: (p: PedidoALaPantalla) => void;
+  atender: () => void;
+  /** El buscador de funciones (Ctrl K) y la ayuda «?» de la pantalla. */
+  buscador: boolean;
+  setBuscador: (v: boolean) => void;
+  ayuda: boolean;
+  setAyuda: (v: boolean) => void;
 }
 
 export const useArmazon = create<EstadoDelArmazon>()((set) => ({
@@ -29,4 +49,14 @@ export const useArmazon = create<EstadoDelArmazon>()((set) => ({
   grupoPedido: null,
   abrirBandeja: (grupo = null) => set({ bandejaAbierta: true, grupoPedido: grupo }),
   cerrarBandeja: () => set({ bandejaAbierta: false, grupoPedido: null }),
+  ajustes: null,
+  abrirAjustes: (tema = "comercial") => set({ ajustes: tema }),
+  cerrarAjustes: () => set({ ajustes: null }),
+  pedido: null,
+  pedir: (p) => set({ pedido: p }),
+  atender: () => set({ pedido: null }),
+  buscador: false,
+  setBuscador: (v) => set({ buscador: v }),
+  ayuda: false,
+  setAyuda: (v) => set({ ayuda: v }),
 }));

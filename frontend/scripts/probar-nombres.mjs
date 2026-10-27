@@ -433,7 +433,8 @@ await prueba("Configuración tiene una fila por familia, sólo para administraci
   const t = src("pages/Dashboard.tsx");
   const modal = t.slice(t.indexOf("function SettingsModal("), t.indexOf("// ─── Topbar"));
   assert.match(modal, /<NombresDeMueblesSection \/>/, "Configuración no tiene la sección de los nombres");
-  assert.match(t, /\{settingsOpen && isAdmin && \(/, "Configuración se abre sin ser administración");
+  // Ajustes (rediseño UX, etapa 8) se abre en un tema; sigue siendo sólo de administración.
+  assert.match(t, /\{temaAjustes && isAdmin && \(/, "Configuración se abre sin ser administración");
   const seccion = t.slice(t.indexOf("function NombresDeMueblesSection("), t.indexOf("function rolLabelUsuario("));
   assert.match(seccion, /const familias = familiasConNombre\(\);/);
   assert.match(seccion, /\{familia\.rotulo\}/, "la fila no dice el nombre de RECABRA");

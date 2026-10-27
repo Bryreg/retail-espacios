@@ -4946,6 +4946,19 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   };
   const [periodoResumen, setPeriodoResumen] = useState<PeriodoDelResumen>("hoy");
   const enIndicadores = modoEfectivo === "supervisar" && !inicio;
+  // Lo que pide el armazón (Ctrl K, «Más», lo fijado): esta pantalla lo sabe
+  // hacer y lo atiende cuando ya es la que está a la vista.
+  const pedidoDelArmazon = useArmazon((s) => s.pedido);
+  useEffect(() => {
+    if (pedidoDelArmazon === "planilla" && modoEfectivo === "vender" && !inicio) {
+      useArmazon.getState().atender();
+      if (isAdmin) setCargaAbierta(true);
+    } else if (pedidoDelArmazon === "diccionario" && enIndicadores) {
+      useArmazon.getState().atender();
+      setPestanaInd("diccionario");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoDelArmazon, modoEfectivo, inicio, enIndicadores, isAdmin]);
 
   const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor, cara: "A" | "B" = "A") => {
     setSelected(f);
@@ -7768,6 +7781,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           onVerMontajes={() => onIrAMontajes?.()}
           onVerIndicadores={() => setModo("supervisar")}
           onVerPendientes={() => useArmazon.getState().abrirBandeja()}
+          onTarifas={isAdmin ? () => setRatesOpen(true) : undefined}
         />
       ) : modoEfectivo === "vender" ? (
         /* Vender: la hoja de D. Cuatro paneles, el plano y la escalera a la

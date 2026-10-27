@@ -1,0 +1,64 @@
+/* Ajustes (rediseño UX 2026-10, etapa 8): una pantalla con menú lateral por
+   tema, encima de la que estaba abierta. A lo angosto el menú pasa arriba,
+   de costado. */
+.ajustes-capa { position: fixed; inset: 0; z-index: 150; background: rgba(4, 7, 10, 0.42); display: flex; justify-content: flex-end; }
+.ajustes {
+  width: min(1040px, 100%); height: 100%; display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border-left: 1px solid var(--line-strong); box-shadow: var(--shadow-lg);
+}
+.ajustes-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.ajustes-cab h2 { margin: 0; font-size: var(--t-lg, 18px); font-weight: 700; color: var(--ink-1); }
+.ajustes-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+.ajustes-menu { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-right: 1px solid var(--line); background: var(--surface-2); overflow-y: auto; }
+.ajustes-menu button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 0; border-radius: var(--r-md);
+  background: transparent; color: var(--ink-2); font: inherit; text-align: left; cursor: pointer;
+}
+.ajustes-menu button b { font-size: var(--t-sm); font-weight: 600; }
+.ajustes-menu button small { font-size: var(--t-2xs); color: var(--ink-3); }
+.ajustes-menu button:hover { background: var(--surface-3); color: var(--ink-1); }
+.ajustes-menu button[aria-current="page"] { background: rgb(var(--signal-rgb) / .1); color: var(--signal-ink); }
+.ajustes-menu button[aria-current="page"] b { font-weight: 700; }
+.ajustes-tema { overflow-y: auto; min-width: 0; padding-bottom: 40px; }
+.aj-bloque { padding: 16px 18px; border-top: 1px solid var(--line-soft); }
+.ajustes-tema > :first-child { border-top: 0; }
+.aj-nota { margin: 0 0 10px; font-size: var(--t-xs); color: var(--ink-3); line-height: 1.5; }
+.aj-ok { margin: 8px 0 0; font-size: var(--t-xs); color: var(--libre-txt); }
+.aj-error { margin: 8px 0 0; font-size: var(--t-xs); color: var(--ocupado-txt); }
+.aj-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: var(--r-md);
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-1);
+  font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer;
+}
+.aj-btn:disabled { color: var(--ink-4); cursor: not-allowed; }
+.aj-btn.principal { border-color: var(--ink-1); background: var(--ink-1); color: var(--surface); }
+.aj-btn.principal:disabled { background: var(--surface-3); border-color: var(--line); color: var(--ink-4); }
+.aj-acciones { display: flex; gap: 8px; margin-top: 8px; }
+.aj-icono { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--ink-2); cursor: pointer; }
+.aj-icono:hover { background: var(--surface-3); color: var(--ink-1); }
+.aj-icono.peligro { color: var(--ocupado-txt); }
+.aj-campo { height: 34px; padding: 0 10px; border: 1px solid var(--brd-control); border-radius: var(--r-md); background: var(--surface); color: var(--ink-1); font: inherit; font-size: var(--t-sm); min-width: 0; }
+.aj-tabla { width: 100%; max-width: 520px; border-collapse: collapse; font-size: var(--t-sm); margin-bottom: 6px; }
+.aj-tabla th { text-align: left; font-size: var(--t-xs); font-weight: 600; color: var(--ink-3); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.aj-tabla td { padding: 4px 8px; border-bottom: 1px solid var(--line-soft); }
+.aj-tabla .n { text-align: right; }
+.aj-tabla input { width: 72px; height: 30px; padding: 0 8px; text-align: right; border: 1px solid var(--brd-control); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-1); font: inherit; font-variant-numeric: tabular-nums; }
+.aj-lista { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; }
+.aj-lista li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.aj-sede { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.aj-sede b { font-size: var(--t-sm); }
+.aj-sede small { font-size: var(--t-2xs); color: var(--ink-3); }
+.aj-fila-acc { display: inline-flex; gap: 2px; }
+.aj-agregar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.aj-opciones { display: flex; flex-direction: column; gap: 8px; }
+.aj-opciones label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); cursor: pointer; }
+.aj-opciones label span { display: flex; flex-direction: column; gap: 2px; }
+.aj-opciones b { font-size: var(--t-sm); color: var(--ink-1); }
+.aj-opciones small { font-size: var(--t-xs); color: var(--ink-3); }
+
+@media (max-width: 760px) {
+  .ajustes-cuerpo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .ajustes-menu { flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; scrollbar-width: none; }
+  .ajustes-menu button { flex: none; padding: 8px 12px; }
+  .ajustes-menu button small { display: none; }
+}

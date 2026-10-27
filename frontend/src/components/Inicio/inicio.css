@@ -165,3 +165,34 @@
   .ini-tarjeta { padding: 12px 14px; }
   .ini-tarjeta .valor { font-size: 22px; }
 }
+
+/* «Nuevo contrato» mientras se muestra la configuración inicial: cede el
+   amarillo al siguiente paso (un solo botón principal por pantalla). */
+.ini-nuevo-sec {
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px;
+  border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink-1); font: inherit; font-size: var(--t-sm); font-weight: 600; cursor: pointer;
+}
+
+/* La configuración inicial (etapa 8): seis pasos con su avance. */
+.ini-config { margin: 0 0 16px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xl); }
+.ini-config > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ini-config h2 { margin: 0; font-size: var(--t-md); font-weight: 700; color: var(--ink-1); }
+.ini-config > header p { margin: 2px 0 0; font-size: var(--t-xs); color: var(--ink-3); }
+.ini-config-ocultar { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; color: var(--ink-3); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.ini-config-avance { height: 6px; margin: 12px 0; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+.ini-config-avance i { display: block; height: 100%; background: var(--signal-ink); border-radius: 99px; }
+.ini-config ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ini-config li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.ini-config li:first-child { border-top: 0; }
+.ini-config .num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 99px; background: var(--surface-3); color: var(--ink-2); font-size: var(--t-xs); font-weight: 700; }
+.ini-config li[data-hecho] .num { background: var(--libre-suave); color: var(--libre-txt); }
+.ini-config .t b { display: block; font-size: var(--t-sm); color: var(--ink-1); }
+.ini-config li[data-hecho] .t b { color: var(--ink-2); }
+.ini-config .t small { display: block; font-size: var(--t-xs); color: var(--ink-3); line-height: 1.45; overflow-wrap: anywhere; }
+.ini-config .btn-principal { height: 36px; padding: 0 14px; font-size: var(--t-xs); white-space: nowrap; }
+.ini-config-btn { height: 36px; padding: 0 12px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-1); font: inherit; font-size: var(--t-xs); font-weight: 600; white-space: nowrap; cursor: pointer; }
+@media (max-width: 639px) {
+  .ini-config li { grid-template-columns: 28px minmax(0, 1fr); }
+  .ini-config li > button { grid-column: 2; justify-self: start; }
+}

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { AlarmClock, Banknote, CircleDashed, FilePlus2, FileText, Hammer, History } from "lucide-react";
 import { getBitacora, type LineaBitacora } from "../../api/auth";
+import { useNavigate } from "react-router-dom";
+import ConfiguracionInicial, { useConfiguracionInicial } from "./ConfiguracionInicial";
+import { useArmazon } from "../../store/armazonStore";
 import "./inicio.css";
 
 /**
@@ -80,7 +83,7 @@ function Tarjeta({ icono, rotulo, definicion, valor, nota, alarma = false, accio
 
 export default function Inicio({
   esAdmin, sede, nombre, cifras, filasDeHoy, cuentaHoy, totalPendientes,
-  onNuevoContrato, onVerTabla, onVerPorVencer, onVerMontajes, onVerIndicadores, onVerPendientes,
+  onNuevoContrato, onVerTabla, onVerPorVencer, onVerMontajes, onVerIndicadores, onVerPendientes, onTarifas,
 }: {
   esAdmin: boolean;
   sede: string;
@@ -95,7 +98,22 @@ export default function Inicio({
   onVerMontajes: () => void;
   onVerIndicadores: () => void;
   onVerPendientes: () => void;
+  /** Configuración inicial › Definir las tarifas. */
+  onTarifas?: () => void;
 }) {
+  // La configuración inicial (etapa 8): mientras se muestra, su siguiente paso
+  // es la única acción amarilla de la pantalla y «Nuevo contrato» cede el amarillo.
+  const config = useConfiguracionInicial(esAdmin);
+  const navigate = useNavigate();
+  const irPaso = (d: string) => {
+    const a = useArmazon.getState();
+    if (d === "ajustes-sede") a.abrirAjustes("sede");
+    else if (d === "ajustes-avisos") a.abrirAjustes("avisos");
+    else if (d === "ajustes-equipo") a.abrirAjustes("equipo");
+    else if (d === "plano") navigate("/plano");
+    else if (d === "tarifas") onTarifas?.();
+    else onNuevoContrato?.();
+  };
   // Lo último que pasó: la bitácora, sólo para quien administra (el servidor
   // también lo exige). Se pide al entrar; sin ella el Inicio igual sirve.
   const [actividad, setActividad] = useState<LineaBitacora[] | null>(null);
@@ -121,12 +139,16 @@ export default function Inicio({
         <div className="der">
           <span className="hoy">Hoy, {fechaCorta(hoy)}</span>
           {onNuevoContrato && (
-            <button type="button" className="btn-principal ini-nuevo" onClick={onNuevoContrato}>
+            <button type="button" className={config.visible ? "ini-nuevo-sec ini-nuevo" : "btn-principal ini-nuevo"} onClick={onNuevoContrato}>
               <FilePlus2 {...ICONO} /> Nuevo contrato
             </button>
           )}
         </div>
       </header>
+
+      {config.visible && (
+        <ConfiguracionInicial pasos={config.pasos} hechos={config.hechos} onIr={irPaso} onOcultar={config.ocultar} />
+      )}
 
       <div className="ini-tarjetas">
         <Tarjeta

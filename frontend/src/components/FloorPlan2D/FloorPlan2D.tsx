@@ -2758,7 +2758,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
  * servidor y no pierde nada). Este diálogo lo dice antes, con el texto de
  * `avisoDelRenombre`, y deja seguir o no.
  */
-function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
+export function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
   de: string; a: string; aviso: string; onCancel: () => void; onConfirm: () => void;
 }) {
   useEffect(() => {
@@ -2816,7 +2816,7 @@ function RenombrarSedeDialog({ de, a, aviso, onCancel, onConfirm }: {
  * nombre, otro equipo guardó el plano en el medio, un código destino está
  * tomado… Se dice por qué, con sus motivos, y la sede queda como estaba.
  */
-function RenombreRechazadoDialog({ de, a, error, motivos, onCerrar }: {
+export function RenombreRechazadoDialog({ de, a, error, motivos, onCerrar }: {
   de: string; a: string; error: string; motivos: string[]; onCerrar: () => void;
 }) {
   useEffect(() => {
@@ -2873,7 +2873,7 @@ function RenombreRechazadoDialog({ de, a, error, motivos, onCerrar }: {
  * already lost a sede's real data to an accidental wipe, and a one-click bin
  * next to the rename pencil is exactly how that happens again.
  */
-function DeleteSedeDialog({
+export function DeleteSedeDialog({
   sede, fixtures, onCancel, onConfirm,
 }: {
   sede: string;

@@ -116,7 +116,9 @@
 }
 .selector-sede .ico { flex: none; color: var(--ink-3); }
 .selector-sede .sede-sel {
-  min-width: 0;
+  /* No se achica hasta quedar en blanco cuando la barra se llena. */
+  flex: none;
+  min-width: 96px;
   max-width: 240px;
   height: 34px;
   padding: 0 28px 0 10px;
@@ -133,6 +135,9 @@
   font-size: var(--t-xs);
   color: var(--ink-3);
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 2D | 3D en el Plano de la sede: dos palabras, la elegida con fondo. */
@@ -412,3 +417,71 @@
   }
   .btn-pendientes .txt { display: none; }
 }
+
+/* ── Buscar (Ctrl K), «?», «Más» y lo fijado (etapa 8) ────────────────── */
+.btn-buscar, .btn-mas, .btn-fijada, .btn-ayuda {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; flex: none;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: var(--t-sm); font-weight: 500; cursor: pointer; white-space: nowrap;
+}
+.btn-buscar:hover, .btn-mas:hover, .btn-fijada:hover, .btn-ayuda:hover { background: var(--surface-3); color: var(--ink-1); }
+.btn-buscar kbd { font: 600 10.5px / 1 var(--f-mono); color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+.btn-buscar { min-width: 180px; }
+.btn-buscar .txt { flex: 1; text-align: left; }
+.btn-ayuda { width: 36px; justify-content: center; padding: 0; }
+.btn-fijada { color: var(--ink-1); }
+.btn-fijada svg { color: var(--ink-3); }
+.mas-w { position: relative; flex: none; }
+.btn-mas[aria-expanded="true"] { background: var(--surface-3); color: var(--ink-1); }
+.mas-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; width: 320px;
+  display: flex; flex-direction: column; padding: 6px; background: var(--surface);
+  border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+}
+.mas-fila { display: flex; align-items: center; gap: 4px; }
+.mas-accion { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--ink-1); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.mas-accion:hover { background: var(--surface-2); }
+.mas-accion b { font-size: var(--t-sm); font-weight: 600; }
+.mas-accion small { font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.4; }
+.mas-pin { display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; border: 0; border-radius: var(--r-md); background: transparent; color: var(--ink-3); cursor: pointer; }
+.mas-pin:hover:not(:disabled), .mas-pin[aria-pressed="true"] { background: var(--surface-3); color: var(--ink-1); }
+.mas-pin:disabled { opacity: .4; cursor: not-allowed; }
+.mas-nota { margin: 4px 10px 4px; font-size: var(--t-2xs); color: var(--ink-3); }
+@media (max-width: 1279px) {
+  .btn-buscar { min-width: 0; }
+  .btn-buscar .txt, .btn-buscar kbd, .btn-fijada .txt, .btn-mas .txt { display: none; }
+}
+@media (max-width: 639px) {
+  .btn-fijada, .btn-ayuda, .mas-w { display: none; }
+  .btn-buscar, .btn-mas { width: 36px; padding: 0; justify-content: center; border-color: transparent; }
+}
+
+/* El buscador: arriba al centro, encima de todo. */
+.buscador-capa { position: fixed; inset: 0; z-index: 400; background: rgba(4, 7, 10, 0.32); display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
+.buscador { width: min(640px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-xl); box-shadow: var(--shadow-lg); overflow: hidden; }
+.buscador-campo { display: flex; align-items: center; gap: 10px; padding: 0 14px; height: 54px; border-bottom: 1px solid var(--line); color: var(--ink-3); }
+.buscador-campo input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink-1); font: inherit; font-size: 16px; }
+.buscador-campo kbd { font: 600 10.5px / 1 var(--f-mono); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; }
+.buscador-lista { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; min-height: 0; }
+.buscador-grupo { padding: 8px 10px 4px; font-size: var(--t-2xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.buscador-fila { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-md); cursor: pointer; color: var(--ink-2); }
+.buscador-fila[aria-selected="true"] { background: rgb(var(--signal-rgb) / .1); color: var(--signal-ink); }
+.buscador-fila .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.buscador-fila b { font-size: var(--t-sm); color: var(--ink-1); font-weight: 600; }
+.buscador-fila small { font-size: var(--t-xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buscador-fila small.def { white-space: normal; color: var(--ink-2); }
+.buscador-fila .enter { color: var(--ink-3); flex: none; }
+.buscador-nada { padding: 16px 10px; font-size: var(--t-sm); color: var(--ink-3); }
+.buscador-pie { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: var(--t-2xs); color: var(--ink-3); flex-wrap: wrap; }
+.buscador-mapa { background: none; border: 0; padding: 0; color: var(--signal-ink); font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer; }
+
+/* La ayuda «?» de la pantalla. */
+.ayuda { padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 10px; font-size: var(--t-sm); color: var(--ink-1); }
+.ayuda-que { margin: 0; line-height: 1.5; }
+.ayuda-pasos { margin: 0; padding-left: 20px; color: var(--ink-2); line-height: 1.6; }
+.ayuda h3 { margin: 8px 0 0; font-size: var(--t-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.ayuda-terminos { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.ayuda-terminos dt { font-weight: 600; }
+.ayuda-terminos dd { margin: 2px 0 0; color: var(--ink-2); line-height: 1.5; font-size: var(--t-xs); }
+.ayuda-pie { margin: 6px 0 0; font-size: var(--t-xs); color: var(--ink-3); }
+.ayuda-enlace { background: none; border: 0; padding: 0; color: var(--signal-ink); font: inherit; font-weight: 600; cursor: pointer; }

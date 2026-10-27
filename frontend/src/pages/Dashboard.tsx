@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -10,7 +10,18 @@ import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView, { type ModoComercial } from "./DashboardView";
 import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
 import { RUTA_DE, moduloDeRuta, puedeAbrir, type Modulo } from "../modulos";
-import { useArmazon } from "../store/armazonStore";
+import { useArmazon, type TemaDeAjustes } from "../store/armazonStore";
+import type { ContextoDeAccion } from "../acciones";
+import Buscador from "../components/Armazon/Buscador";
+import Ayuda from "../components/Armazon/Ayuda";
+import Mas from "../components/Armazon/Mas";
+import MetasPorSede from "../components/Ajustes/Metas";
+import SedesDeAjustes from "../components/Ajustes/Sedes";
+import PermisosDePlanogramas from "../components/Ajustes/Permisos";
+import RatesModal from "../components/RatesModal/RatesModal";
+import SeasonsModal from "../components/SeasonPicker/SeasonsModal";
+import { mostrarConfiguracionInicial } from "../components/Inicio/ConfiguracionInicial";
+import "../components/Ajustes/ajustes.css";
 import "../armazon.css";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
@@ -967,15 +978,45 @@ function TusDatosSection() {
   );
 }
 
+/** Los temas de Ajustes, en el orden del menú lateral. */
+const TEMAS_DE_AJUSTES: readonly { id: TemaDeAjustes; texto: string; sub: string }[] = [
+  { id: "comercial", texto: "Comercial", sub: "Tarifas · Temporadas · Metas" },
+  { id: "sede", texto: "Sede y plano", sub: "Sedes · Nombres · Códigos · Catálogo" },
+  { id: "avisos", texto: "Avisos", sub: "Correos · Responsables" },
+  { id: "equipo", texto: "Equipo", sub: "Usuarios · Permisos" },
+  { id: "cuenta", texto: "Cuenta", sub: "Suscripción · Copia · Datos · Bitácora" },
+];
+
+/**
+ * Ajustes (rediseño UX 2026-10, etapa 8): una pantalla con menú lateral por
+ * tema. Junta lo que estaba en el engranaje, en botones de la barra de la sede
+ * (Tarifas), en el Plano (las sedes) y en direcciones sin enlace (/taller,
+ * /renumerar). Las piezas son las de siempre; cambia dónde viven.
+ */
 function SettingsModal({
   onClose,
   enfocar = null,
+  tema,
+  onTema,
+  onTarifas,
+  onTemporadas,
+  onConfiguracionInicial,
+  bloqueado = false,
 }: {
   onClose: () => void;
   /** Abrir directo en una sección: la franja de «pago pendiente» abre acá la
    *  suscripción. */
   enfocar?: "suscripcion" | null;
+  tema: TemaDeAjustes;
+  onTema: (t: TemaDeAjustes) => void;
+  onTarifas: () => void;
+  onTemporadas: () => void;
+  onConfiguracionInicial: () => void;
+  /** Hay un diálogo encima (Tarifas, Temporadas): Esc es de él. */
+  bloqueado?: boolean;
 }) {
+  const navigate = useNavigate();
+  const sedeActiva = useFixtureStore((s) => s.sede);
   // «Claves de acceso» vivía acá arriba y se fue (2026-10-01): desde la Fase 15
   // se entra sólo con Google o correo, y las claves compartidas por rol ya no
   // abrían nada desde la app — sólo una puerta del backend, que se apagó (ver
@@ -1009,11 +1050,12 @@ function SettingsModal({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Un diálogo encima (Tarifas, renombrar o borrar una sede) se cierra él.
+      if (e.key === "Escape" && !bloqueado && !document.querySelector('[aria-modal="true"]')) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, bloqueado]);
 
   const saveConfig = async () => {
     setBusy("cfg");
@@ -1047,111 +1089,116 @@ function SettingsModal({
   // que guardan solos— así que sólo apaga, no enciende.
   useModalAbierto();
 
+  const bloque = (titulo: string, texto: string, boton: string, hacer: () => void, dato?: string) => (
+    <div className="aj-bloque" data-bloque-ajustes={dato}>
+      <div style={sectionLabelStyle}>{titulo}</div>
+      <p className="aj-nota">{texto}</p>
+      <button type="button" className="aj-btn" onClick={hacer}>{boton}</button>
+    </div>
+  );
+
   return (
-    <div
-      data-capa-modal
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 150,
-        background: "rgba(4,7,10,0.42)",
-        display: "flex", alignItems: "stretch", justifyContent: "flex-end",
-      }}
-    >
-      {/* Panel lateral, no diálogo centrado. El centrado con overlay negro y la
-          X arriba a la derecha es, palabra por palabra, el «modal default» del
-          catálogo. Y acá el lateral además es mejor: configurar no es una
-          interrupción de un paso, es una mesa de trabajo que se abre al lado
-          de lo que estabas mirando. */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%", maxWidth: 420, height: "100%", overflowY: "auto",
-          background: "var(--surface)",
-          borderLeft: "1px solid var(--line-strong)",
-          boxShadow: "var(--shadow-lg)",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "13px 18px",
-            borderBottom: "1px solid var(--line-strong)",
-            position: "sticky", top: 0, background: "var(--surface)", zIndex: 1,
-          }}
-        >
-          <span style={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: "var(--ink-1)" }}>
-            Configuración
-          </span>
-          <button
-            onClick={onClose}
-            title="Cerrar"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: 28, height: 28, borderRadius: "var(--r-md)",
-              background: "transparent", border: "none",
-              color: "var(--ink-2)", cursor: "pointer",
-            }}
-          >
-            <X size={15} />
-          </button>
+    <div className="ajustes-capa" data-capa-modal onClick={onClose}>
+      <div className="ajustes" role="dialog" aria-label="Ajustes" onClick={(e) => e.stopPropagation()} data-ajustes={tema}>
+        <header className="ajustes-cab">
+          <h2>Ajustes</h2>
+          <button type="button" onClick={onClose} title="Cerrar" aria-label="Cerrar Ajustes" className="aj-icono"><X size={16} /></button>
+        </header>
+        <div className="ajustes-cuerpo">
+          <nav className="ajustes-menu" aria-label="Temas de Ajustes">
+            {TEMAS_DE_AJUSTES.map((t) => (
+              <button key={t.id} type="button" aria-current={tema === t.id ? "page" : undefined} onClick={() => onTema(t.id)} data-tema={t.id}>
+                <b>{t.texto}</b><small>{t.sub}</small>
+              </button>
+            ))}
+          </nav>
+          <div className="ajustes-tema">
+            {tema === "comercial" && (
+              <>
+                {bloque("Tarifas", "El canon mensual de referencia por tipo de mueble, general y por sede. Se guarda solo.", "Abrir las tarifas", onTarifas, "tarifas")}
+                {bloque("Temporadas", "Las fechas de cada temporada, los días antes y después, si se vende, y volver al valor sugerido.", "Editar las temporadas", onTemporadas, "temporadas")}
+                <div className="aj-bloque" data-bloque-ajustes="metas">
+                  <div style={sectionLabelStyle}>Metas por sede</div>
+                  <MetasPorSede sedes={sedes} />
+                </div>
+              </>
+            )}
+            {tema === "sede" && (
+              <>
+                <div className="aj-bloque" data-bloque-ajustes="sedes">
+                  <div style={sectionLabelStyle}>Sedes</div>
+                  <SedesDeAjustes />
+                </div>
+                <NombresDeMueblesSection />
+                {bloque("Ordenar códigos", "Renumerar el plano siguiendo el recorrido de la tienda, todas las sedes o una, con el informe antes → después para imprimir.", "Ordenar los códigos", () => { onClose(); navigate("/renumerar"); }, "renumerar")}
+                {bloque("Catálogo de muebles propios", "Las fichas de los muebles del supermercado: crear, editar, retirar o reactivar, y cómo se vende cada una.", "Abrir el catálogo", () => { onClose(); navigate("/taller"); }, "taller")}
+              </>
+            )}
+            {tema === "avisos" && (
+              <>
+                <div className="aj-bloque">
+                  <div style={sectionLabelStyle}>Notificaciones por correo</div>
+                  {cfgLoading ? (
+                    <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Cargando configuración…</div>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={fieldLabelStyle}>Correos destinatarios (separados por coma)</label>
+                        <input
+                          type="text"
+                          value={emails}
+                          onChange={(e) => setEmails(e.target.value)}
+                          placeholder="correo1@dominio.com, correo2@dominio.com"
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <label style={fieldLabelStyle}>Días de recordatorio antes del vencimiento</label>
+                        <input
+                          type="text"
+                          value={days}
+                          onChange={(e) => setDays(e.target.value)}
+                          placeholder="30,15,6"
+                          style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <ActionButton onClick={saveConfig} disabled={busy !== null} primary>
+                          {busy === "cfg" ? "Guardando…" : "Guardar notificaciones"}
+                        </ActionButton>
+                        <ActionButton onClick={sendTest} disabled={busy !== null}>
+                          <Send size={12} />
+                          {busy === "test" ? "Enviando…" : "Enviar correo de prueba"}
+                        </ActionButton>
+                      </div>
+                      <FeedbackNote msg={cfgMsg} />
+                      <FeedbackNote msg={testMsg} />
+                    </>
+                  )}
+                </div>
+                <ContactsSection sedes={sedes} />
+              </>
+            )}
+            {tema === "equipo" && (
+              <>
+                <UsuariosSection />
+                <div className="aj-bloque" data-bloque-ajustes="permisos">
+                  <div style={sectionLabelStyle}>Quién planifica y publica planogramas</div>
+                  <PermisosDePlanogramas sede={sedeActiva} />
+                </div>
+              </>
+            )}
+            {tema === "cuenta" && (
+              <>
+                <SuscripcionSection enfocar={enfocar === "suscripcion"} />
+                <CopiaSection />
+                <TusDatosSection />
+                <BitacoraSection />
+                {bloque("Configuración inicial", "Los seis pasos para dejar el supermercado listo, en el Inicio.", "Volver a mostrarla", onConfiguracionInicial, "config-inicial")}
+              </>
+            )}
+          </div>
         </div>
-
-        <UsuariosSection />
-
-        {/* Notifications */}
-        <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
-          <div style={sectionLabelStyle}>Notificaciones por correo</div>
-          {cfgLoading ? (
-            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Cargando configuración…</div>
-          ) : (
-            <>
-              <div style={{ marginBottom: 10 }}>
-                <label style={fieldLabelStyle}>Correos destinatarios (separados por coma)</label>
-                <input
-                  type="text"
-                  value={emails}
-                  onChange={(e) => setEmails(e.target.value)}
-                  placeholder="correo1@dominio.com, correo2@dominio.com"
-                  style={inputStyle}
-                />
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={fieldLabelStyle}>Días de recordatorio antes del vencimiento</label>
-                <input
-                  type="text"
-                  value={days}
-                  onChange={(e) => setDays(e.target.value)}
-                  placeholder="30,15,6"
-                  style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <ActionButton onClick={saveConfig} disabled={busy !== null} primary>
-                  {busy === "cfg" ? "Guardando…" : "Guardar notificaciones"}
-                </ActionButton>
-                <ActionButton onClick={sendTest} disabled={busy !== null}>
-                  <Send size={12} />
-                  {busy === "test" ? "Enviando…" : "Enviar correo de prueba"}
-                </ActionButton>
-              </div>
-              <FeedbackNote msg={cfgMsg} />
-              <FeedbackNote msg={testMsg} />
-            </>
-          )}
-        </div>
-
-        <ContactsSection sedes={sedes} />
-
-        <NombresDeMueblesSection />
-
-        <SuscripcionSection enfocar={enfocar === "suscripcion"} />
-
-        <CopiaSection />
-
-        <TusDatosSection />
-
-        <BitacoraSection />
       </div>
     </div>
   );
@@ -1339,11 +1386,14 @@ interface TopbarProps {
   onIrPlataforma: () => void;
   onAjustes: () => void;
   onLogout: () => void;
+  /** Lo que hacen las funciones de «Más», lo fijado y el buscador. */
+  ctx: ContextoDeAccion;
+  quien: string;
 }
 
 /** La barra de arriba del armazón: la sede, el guardado y la cuenta. Los
  *  módulos se fueron al menú (`MenuDeModulos.tsx`). */
-function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLogout }: TopbarProps) {
+function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLogout, ctx, quien }: TopbarProps) {
   /* Los botones de ícono de la barra: 32 px, el ícono a 16 con trazo 1,75 y
      en gris (`--ink-2`), como en la hoja de piezas del rediseño. Sin palabra
      al lado: el `title` y el `aria-label` la dicen. */
@@ -1376,6 +1426,18 @@ function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLo
       <VistaDelPlano modulo={modulo} ir={ir} />
 
       <span className="esp" />
+
+      {/* El buscador de funciones (Ctrl K), la ayuda de la pantalla, «Más» del
+          módulo y lo fijado (etapa 8): ninguna función queda escondida. */}
+      <button type="button" className="btn-buscar" onClick={() => useArmazon.getState().setBuscador(true)}
+        title="Buscar una función, un espacio o un término (Ctrl K)" aria-label="Buscar (Ctrl K)" data-abrir-buscador>
+        <Search {...ICONO_BARRA} /><span className="txt">Buscar</span><kbd>Ctrl K</kbd>
+      </button>
+      <Mas modulo={modulo} esAdmin={isAdmin} quien={quien} ctx={ctx} />
+      <button type="button" className="btn-ayuda" onClick={() => useArmazon.getState().setAyuda(true)}
+        title="Qué hace esta pantalla y qué quiere decir cada término" aria-label="Ayuda de esta pantalla" data-abrir-ayuda>
+        <CircleHelp {...ICONO_BARRA} />
+      </button>
 
       {/* El estado del guardado (punto y palabra). Un clic sincroniza: es lo
           que hacía el botón «Actualizar» de la barra de la sede, que se fue. */}
@@ -1437,7 +1499,13 @@ export default function Dashboard() {
   }, [permitido, navigate]);
   const efectivo: Modulo = permitido ? modulo! : "inicio";
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const temaAjustes = useArmazon((s) => s.ajustes);
+  const buscadorAbierto = useArmazon((s) => s.buscador);
+  const ayudaAbierta = useArmazon((s) => s.ayuda);
+  /** Tarifas y Temporadas, abiertas desde Ajustes, Ctrl K o «Más». */
+  const [modalDeAjuste, setModalDeAjuste] = useState<"tarifas" | "temporadas" | null>(null);
+  const cliente = useAuthStore((s) => s.cliente);
+  const quien = useAuthStore((s) => s.email) ?? useAuthStore.getState().role ?? "anonimo";
   const planificando = usePlanograma((s) => s.abierta !== null);
   /** El alto del área de las pantallas, medido: Vender y Supervisar cuentan
    *  el alto de su plano contra él (`--alto-area` → `--alto-plano`,
@@ -1510,7 +1578,31 @@ export default function Dashboard() {
     if (eraComercial) useArmazon.getState().cerrarBandeja();
   }, [efectivo]);
   const modoComercial: ModoComercial = efectivo === "contratos" ? "vender" : "supervisar";
-  const abrirAjustes = () => { setSeccionConfig(null); setSettingsOpen(true); };
+  const abrirAjustes = () => { setSeccionConfig(null); useArmazon.getState().abrirAjustes("comercial"); };
+  /** Lo que hace cada función del registro (`acciones.ts`). */
+  const ctx: ContextoDeAccion = {
+    ir,
+    navegar: (r) => navigate(r),
+    abrirAjustes: (t) => { setSeccionConfig(null); useArmazon.getState().abrirAjustes(t); },
+    abrirPendientes: (g) => { if (!comercial) ir("inicio"); useArmazon.getState().abrirBandeja(g ?? null); },
+    pedir: (p) => useArmazon.getState().pedir(p),
+    abrirTarifas: () => setModalDeAjuste("tarifas"),
+    abrirTemporadas: () => setModalDeAjuste("temporadas"),
+    abrirAyuda: () => useArmazon.getState().setAyuda(true),
+    mostrarConfiguracionInicial: () => { mostrarConfiguracionInicial(cliente); useArmazon.getState().cerrarAjustes(); ir("inicio"); },
+  };
+  // Ctrl K (⌘ K en Mac) abre el buscador desde cualquier pantalla.
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        const a = useArmazon.getState();
+        a.setBuscador(!a.buscador);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
 
   return (
     <div
@@ -1523,7 +1615,7 @@ export default function Dashboard() {
       <AvisoCuentaBanner
         onVerSuscripcion={() => {
           setSeccionConfig("suscripcion");
-          setSettingsOpen(true);
+          useArmazon.getState().abrirAjustes("cuenta");
         }}
       />
 
@@ -1540,6 +1632,8 @@ export default function Dashboard() {
             onIrPlataforma={() => navigate("/plataforma")}
             onAjustes={abrirAjustes}
             onLogout={logout}
+            ctx={ctx}
+            quien={quien}
           />
 
           {/* El área de las pantallas: Vender y Supervisar miden el alto de su
@@ -1581,8 +1675,18 @@ export default function Dashboard() {
 
       <BarraDeAbajo actual={efectivo} esAdmin={isAdmin} />
 
-      {settingsOpen && isAdmin && (
-        <SettingsModal enfocar={seccionConfig} onClose={() => setSettingsOpen(false)} />
+      {temaAjustes && isAdmin && (
+        <SettingsModal enfocar={seccionConfig} tema={temaAjustes} onTema={(t) => useArmazon.getState().abrirAjustes(t)}
+          onClose={() => useArmazon.getState().cerrarAjustes()}
+          onTarifas={() => setModalDeAjuste("tarifas")} onTemporadas={() => setModalDeAjuste("temporadas")}
+          onConfiguracionInicial={ctx.mostrarConfiguracionInicial} bloqueado={modalDeAjuste !== null} />
+      )}
+      {modalDeAjuste === "tarifas" && isAdmin && <RatesModal onClose={() => setModalDeAjuste(null)} />}
+      {modalDeAjuste === "temporadas" && isAdmin && <SeasonsModal onClose={() => setModalDeAjuste(null)} />}
+      {buscadorAbierto && <Buscador esAdmin={isAdmin} ctx={ctx} onCerrar={() => useArmazon.getState().setBuscador(false)} />}
+      {ayudaAbierta && (
+        <Ayuda modulo={efectivo} onCerrar={() => useArmazon.getState().setAyuda(false)}
+          onDiccionario={() => { useArmazon.getState().setAyuda(false); ctx.ir("indicadores"); ctx.pedir("diccionario"); }} />
       )}
       {/* «Planificar la cara» (planogramas con destinos): encima de todo,
           desde el panel del mueble del plano. */}
