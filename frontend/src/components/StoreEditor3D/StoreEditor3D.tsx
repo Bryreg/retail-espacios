@@ -8759,7 +8759,7 @@ export default function StoreEditor3D() {
         <div className="border-t border-dark-line" />
 
         <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Fixtures</p>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Muebles</p>
           {/* Por familia: el modelo base —se coloca como siempre— y, plegados
               debajo, los modelos de muebles de verdad del catálogo y después
               las fichas propias del supermercado (las vigentes), con las
@@ -8911,13 +8911,13 @@ export default function StoreEditor3D() {
                 )}
               </span>
             )}
-            <span className="ml-auto hidden text-dark-ink-3 lg:block">drag → orbitar · scroll → zoom</span>
+            <span className="ml-auto hidden text-dark-ink-3 lg:block">arrastrá para girar · rueda para acercar</span>
 
             {/* Vista superior — alinea cámara cenital para mover fixtures fácil */}
             <button onClick={handleTopView}
               title="Vista superior (cenital) — ideal para mover los muebles"
               className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
-              ⊞ Top
+              ⊞ Cenital
             </button>
 
             {/* MEJORA 8: First-person button */}
@@ -8928,7 +8928,7 @@ export default function StoreEditor3D() {
                   ? 'border-success/50 bg-success/15 text-success'
                   : 'border-dark-line-2 bg-dark-surface text-dark-ink-2 hover:bg-dark-surface-2'
               }`}>
-              <User size={10}/> {firstPerson ? 'Orbital' : '1ª Persona'}
+              <User size={10}/> {firstPerson ? 'Orbital' : 'Primera persona'}
             </button>
 
             {/* Antes y después: el mismo encuadre con la marca puesta y sin

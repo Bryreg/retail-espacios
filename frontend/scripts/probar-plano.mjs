@@ -623,9 +623,14 @@ prueba("el lienzo: los filtros con su cuenta (con «Vendido en parte» y «Reser
   for (const t of ["Alejar", "Volver al 100 %", "Acercar", "Centrar en todo", "Mostrar los códigos", "Pantalla completa"]) {
     assert.ok(pie.includes(`aria-label="${t}"`), `el pie del lienzo no tiene «${t}»`);
   }
-  // Las herramientas, arriba, sólo íconos con su atajo en el globo; Eliminar en rojo.
-  const herr = tramo(fp2d, 'role="toolbar" aria-label="Herramientas"', '<div className="der">');
-  for (const t of ["Seleccionar (Esc)", "Deshacer (Ctrl+Z)", "Rehacer (Ctrl+Y)", "Rotar (R)"]) assert.ok(herr.includes(`title="${t}"`), `falta «${t}»`);
+  // Las herramientas flotan sobre el plano (la mesa de trabajo, etapa 6), con
+  // su nombre y su atajo en el globo; Eliminar en rojo.
+  const herr = tramo(fp2d, 'role="toolbar" aria-label="Herramientas"', '<div className="p2-abajo">');
+  for (const t of ["Seleccionar (Esc)", "Deshacer (Ctrl+Z)", "Rehacer (Ctrl+Y)", "Rotar (R)", "Duplicar (Ctrl+D)"]) assert.ok(herr.includes(`title="${t}"`), `falta «${t}»`);
+  // El catálogo: la tira de tipos (tocar o arrastrar) y «Más» con el completo.
+  assert.match(fp2d, /<nav className="p2-tira" aria-label="Muebles para colocar en el plano"/);
+  assert.match(fp2d, /onDrop=\{\(e\) => \{[\s\S]{0,400}placeItem\(a\.type, pt\.x, pt\.y, undefined, undefined, a\.modelo\)/, "soltar en el plano no coloca");
+  assert.match(fp2d, /data-catalogo-completo/);
   assert.match(herr, /className="p2-icobtn peligro" aria-label="Eliminar"/);
   // A la derecha: el guardado (punto y palabra), Revisar, Renumerar y Atajos.
   const der = tramo(fp2d, '<div className="der">', '<div className="p2-cuerpo');

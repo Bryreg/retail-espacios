@@ -260,6 +260,28 @@
   .cuenta-app .quien-corto { display: none; }
 }
 
+/* El Plano de la sede es una mesa de trabajo (etapa 6): a cualquier ancho
+   el menú es el riel angosto, para que el plano se quede con la pantalla. */
+.armazon[data-modulo="plano"], .armazon[data-modulo="plano3d"] { --menu-w: 88px; }
+.armazon[data-modulo="plano"] .menu-lateral, .armazon[data-modulo="plano3d"] .menu-lateral { padding: 10px 6px; }
+.armazon[data-modulo="plano"] .menu-lateral .marca, .armazon[data-modulo="plano3d"] .menu-lateral .marca {
+  justify-content: center; padding: 0; font-size: 12px; letter-spacing: 0.04em;
+}
+.armazon[data-modulo="plano"] .item-menu, .armazon[data-modulo="plano3d"] .item-menu {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-height: 56px;
+  padding: 4px;
+  font-size: 11.5px;
+  line-height: 1.15;
+  text-align: center;
+}
+.armazon[data-modulo="plano"] .item-menu .largo, .armazon[data-modulo="plano3d"] .item-menu .largo { display: none; }
+.armazon[data-modulo="plano"] .item-menu .corto, .armazon[data-modulo="plano3d"] .item-menu .corto { display: inline; }
+.armazon[data-modulo="plano"] .item-menu .cuenta, .armazon[data-modulo="plano3d"] .item-menu .cuenta { position: absolute; top: 4px; right: 8px; margin: 0; }
+.armazon[data-modulo="plano"] .menu-lateral .pie, .armazon[data-modulo="plano3d"] .menu-lateral .pie { display: none; }
+
 /* < 640: sin menú lateral; la barra de abajo lleva los módulos. */
 @media (max-width: 639px) {
   .armazon { grid-template-columns: minmax(0, 1fr); }
