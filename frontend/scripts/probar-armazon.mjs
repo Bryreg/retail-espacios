@@ -1,0 +1,148 @@
+/**
+ * Pruebas del armazón del rediseño UX 2026-10 (etapas 2 y 3).
+ *   npm run probar:armazon
+ *
+ * Lo que, si se rompe, rompe la aplicación entera en silencio:
+ *
+ *  · Cada módulo tiene su dirección y cada dirección su módulo (`modulos.ts`):
+ *    un enlace guardado, el «atrás» del navegador y el enlace del correo de
+ *    montaje llevan al mismo lugar. Lo que no es de ningún módulo va al Inicio.
+ *  · Quien trabaja en la tienda abre lo mismo que abría con las pestañas: el
+ *    Inicio, Indicadores (lo que era Supervisar) y Montajes. Ni Contratos, ni
+ *    el Plano, ni Ajustes.
+ *  · La sede se elige en UN lugar.
+ *  · La bandeja de Pendientes: lo de «Para revisar» se pide en Supervisar o con
+ *    la bandeja abierta, nunca con Vender abierto y la bandeja cerrada (Vender
+ *    lo mira el proveedor); la pastilla roja no se dibuja en Contratos.
+ *  · El Inicio no muestra plata a quien no administra.
+ *  · La línea de tiempo de la ficha: de qué cara es cada contrato del
+ *    historial (la A no se lleva los de la B) y desde qué día queda disponible.
+ */
+import assert from "node:assert/strict";
+import { build } from "esbuild";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+
+const aqui = dirname(fileURLToPath(import.meta.url));
+const raiz = join(aqui, "..");
+const leer = (...p) => readFileSync(join(raiz, "src", ...p), "utf8");
+const sinComentarios = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
+
+async function cargar(entrada) {
+  const salida = join(mkdtempSync(join(tmpdir(), "arm-")), "m.mjs");
+  const { outputFiles } = await build({
+    entryPoints: [join(raiz, "src", entrada)], bundle: true, format: "esm", write: false, platform: "neutral",
+  });
+  writeFileSync(salida, outputFiles[0].text);
+  return import(pathToFileURL(salida).href);
+}
+const M = await cargar("modulos.ts");
+const L = await cargar("utils/lineaDeTiempo.ts");
+
+let hechas = 0;
+const prueba = (n, fn) => {
+  try { fn(); hechas++; console.log("  ok   " + n); }
+  catch (e) { console.error("  FALLA " + n + "\n         " + e.message); process.exitCode = 1; }
+};
+
+console.log("\narmazón · módulos y direcciones");
+
+prueba("cada módulo tiene su dirección y cada dirección vuelve a su módulo", () => {
+  for (const [m, ruta] of Object.entries(M.RUTA_DE)) assert.equal(M.moduloDeRuta(ruta), m, `${ruta} no vuelve a ${m}`);
+  assert.equal(new Set(Object.values(M.RUTA_DE)).size, Object.keys(M.RUTA_DE).length, "dos módulos con la misma dirección");
+  // La barra final y el index.html no cambian de módulo.
+  assert.equal(M.moduloDeRuta("/contratos/"), "contratos");
+  assert.equal(M.moduloDeRuta("/plano/3d/"), "plano3d");
+  assert.equal(M.moduloDeRuta("/index.html"), "inicio");
+  // Lo que no es de ningún módulo: null (el Dashboard lo manda al Inicio).
+  for (const x of ["/no-existe", "/plano/4d", "/contratosx", "/ajustes/raro"]) assert.equal(M.moduloDeRuta(x), null, x);
+});
+
+prueba("quien trabaja en la tienda abre lo de antes: el Inicio, Indicadores y Montajes", () => {
+  const todos = Object.keys(M.RUTA_DE);
+  assert.deepEqual(todos.filter((m) => M.puedeAbrir(m, false)).sort(), ["indicadores", "inicio", "montajes"]);
+  assert.deepEqual(todos.filter((m) => M.puedeAbrir(m, true)).sort(), [...todos].sort());
+});
+
+prueba("el Dashboard monta los módulos sin volver a montarse y manda lo desconocido o prohibido al Inicio", () => {
+  // Sin quitar comentarios: `path="/*"` se leería como el comienzo de uno.
+  const app = leer("App.tsx");
+  assert.match(app, /<Route path="\/\*" element=\{plataforma \? <Navigate to="\/plataforma" replace \/> : <Dashboard \/>\} \/>/);
+  for (const r of ["/plataforma", "/renumerar", "/taller", "/reporte-plataforma"]) assert.ok(app.includes(`path="${r}"`), `se perdió la ruta ${r}`);
+  const dash = sinComentarios(leer("pages", "Dashboard.tsx"));
+  assert.match(dash, /const permitido = modulo !== null && puedeAbrir\(modulo, isAdmin\);\s*useEffect\(\(\) => \{\s*if \(!permitido\) navigate\(RUTA_DE\.inicio, \{ replace: true \}\);/);
+  assert.match(dash, /if \(mountCode\) navigate\(RUTA_DE\.montajes, \{ replace: true \}\);/, "el enlace del correo de montaje no abre Montajes");
+  // Contratos, Indicadores e Inicio son la MISMA pantalla comercial (un solo elemento).
+  assert.equal((dash.match(/<DashboardView\b/g) ?? []).length, 1, "la pantalla comercial se monta en más de un lugar");
+  // El 2D y el 3D siguen alcanzándose: el selector 2D | 3D de la barra.
+  assert.match(dash, /\["plano", "2D",[\s\S]{0,200}\["plano3d", "3D",/);
+});
+
+prueba("la sede se elige en un solo lugar de la aplicación", () => {
+  const archivos = [["pages", "Dashboard.tsx"], ["pages", "DashboardView.tsx"], ["components", "FloorPlan2D", "FloorPlan2D.tsx"], ["components", "StoreEditor3D", "StoreEditor3D.tsx"]];
+  const selects = archivos.map((a) => (sinComentarios(leer(...a)).match(/aria-label="Sede"/g) ?? []).length);
+  assert.deepEqual(selects, [1, 0, 0, 0], "hay más de un selector de sede");
+});
+
+console.log("\narmazón · Pendientes, Inicio y la ficha");
+
+prueba("lo de «Para revisar» se pide en Supervisar o con la bandeja abierta; la pastilla no va en Contratos", () => {
+  const v = sinComentarios(leer("pages", "DashboardView.tsx"));
+  assert.match(v, /const pideRevision = modoEfectivo === "supervisar" \|\| bandejaAbierta;/);
+  for (const h of ["useCobrosPorVentas", "useReservasDeEspacio", "useFaltaPlanometria", "usePrecioSinForma"])
+    assert.match(v, new RegExp(`${h}\\(\\{ sede, activo: isAdmin && pideRevision \\}\\)`), `${h} se pide sin la regla`);
+  assert.match(v, /usePlanogramasPorRevisar\(\{ sede, activo: pideRevision \}\)/);
+  // La bandeja y la tarjeta de Indicadores dibujan el MISMO cuerpo, nunca las dos a la vez.
+  assert.equal((v.match(/\{cuerpoDeRevision\}/g) ?? []).length, 1);
+  assert.match(v, /\{bandejaAbierta\s*\?\s*<div className="vacio-r">Abierto en Pendientes\.<\/div>\s*:\s*cuerpoDeRevision\}/);
+  const dash = sinComentarios(leer("pages", "Dashboard.tsx"));
+  assert.match(dash, /const n = modulo === "contratos" \? 0 : cuenta;/);
+});
+
+prueba("el Inicio no le muestra plata a quien no administra, ni la bitácora", () => {
+  const v = sinComentarios(leer("pages", "DashboardView.tsx"));
+  assert.match(v, /const canonDelMes = useMemo\(\(\) => \{\s*if \(!isAdmin\) return null;/);
+  const ini = sinComentarios(leer("components", "Inicio", "Inicio.tsx"));
+  assert.match(ini, /\{esAdmin && cifras\.canonDelMes !== null \? \(/, "el canon se dibuja sin mirar el rol");
+  const efecto = ini.slice(ini.indexOf("useEffect(() => {"), ini.indexOf("}, [esAdmin]);"));
+  assert.ok(efecto.indexOf("if (!esAdmin) return;") >= 0 && efecto.indexOf("if (!esAdmin) return;") < efecto.indexOf("getBitacora("),
+    "la bitácora se pide sin ser administración");
+  assert.match(ini, /\{esAdmin && \(\s*<section className="ini-panel" data-actividad>/);
+  // Un solo botón principal en el Inicio.
+  assert.equal((ini.match(/btn-principal/g) ?? []).length, 1);
+});
+
+prueba("la ficha: la cara A no se lleva los contratos de la B, y sí los de sus partes", () => {
+  const A = "CENTRO-GON-01";
+  assert.ok(L.esDeLaCara("CENTRO-GON-01", A));
+  assert.ok(L.esDeLaCara("CENTRO-GON-01-PC1", A));
+  assert.ok(L.esDeLaCara("CENTRO-GON-01-EN2", A));
+  assert.ok(!L.esDeLaCara("CENTRO-GON-01-B", A));
+  assert.ok(!L.esDeLaCara("CENTRO-GON-01-B-PC1", A));
+  assert.ok(!L.esDeLaCara("CENTRO-GON-012", A), "otro mueble con el mismo comienzo");
+  assert.ok(!L.esDeLaCara("CENTRO-GON-10", A));
+  // Una parte que empieza con B (una bahía) sigue siendo de la A.
+  assert.ok(L.esDeLaCara("CENTRO-CAJ-01-BA1", "CENTRO-CAJ-01"));
+  assert.ok(L.esDeLaCara("CENTRO-GON-01-B-PC1", "CENTRO-GON-01-B"));
+});
+
+prueba("la ficha: desde qué día queda disponible la cara entera", () => {
+  const hoy = new Date(2026, 9, 26);
+  const c = "CENTRO-PUN-07";
+  const f = (desde, hasta, estado = "vigente", espacio = c) => ({ espacio, estado, desde, hasta });
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  assert.equal(iso(L.libreDesde([], c, hoy)), "2026-10-26", "sin contratos no está libre hoy");
+  assert.equal(iso(L.libreDesde([f("2026-05-01", "2026-10-31")], c, hoy)), "2026-11-01");
+  // Uno pegado al otro: se sigue de largo.
+  assert.equal(iso(L.libreDesde([f("2026-05-01", "2026-10-31"), f("2026-11-01", "2027-01-31", "proximo")], c, hoy)), "2027-02-01");
+  // Con un hueco, el hueco.
+  assert.equal(iso(L.libreDesde([f("2026-05-01", "2026-10-31"), f("2026-11-15", "2027-01-31", "proximo")], c, hoy)), "2026-11-01");
+  // Lo terminado, lo cancelado y las partes no ocupan la cara entera.
+  assert.equal(iso(L.libreDesde([f("2026-01-01", "2026-12-31", "cancelado"), f("2026-01-01", "2026-12-31", "vigente", c + "-EN1")], c, hoy)), "2026-10-26");
+  // Termina hoy: libre mañana.
+  assert.equal(iso(L.libreDesde([f("2026-10-01", "2026-10-26")], c, hoy)), "2026-10-27");
+});
+
+console.log(`\n${hechas} pruebas pasaron${process.exitCode ? " — HAY FALLAS" : ""}\n`);

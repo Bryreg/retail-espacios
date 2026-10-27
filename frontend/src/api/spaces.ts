@@ -61,3 +61,26 @@ export const cancelLease = (spaceId: number, leaseId: number) =>
 
 export const getSuppliers = () =>
   client.get<Supplier[]>("/suppliers/").then((r) => r.data);
+
+/** Un contrato del historial de un espacio (`GET /spaces/by-code/{code}/historial`). */
+export interface ContratoDelHistorial {
+  lease_id: number;
+  /** El código del espacio o de la parte (`CENTRO-GON-03-PC1`). */
+  espacio: string;
+  estado: "vigente" | "proximo" | "terminado" | "cancelado";
+  proveedor: string | null;
+  marca: string | null;
+  desde: string | null;
+  hasta: string | null;
+  /** Sólo para administración. */
+  valor_total?: number;
+  valor_al_mes?: number | null;
+}
+
+/** Todos los contratos de un espacio y de sus partes —vivos, futuros,
+ *  terminados y cancelados—, del más nuevo al más viejo (rediseño UX, etapa 0:
+ *  la línea de tiempo de la ficha y «libre desde»). Lee, no crea. */
+export const getHistorialDelEspacio = (code: string): Promise<ContratoDelHistorial[]> =>
+  client
+    .get<ContratoDelHistorial[]>(`/spaces/by-code/${encodeURIComponent(code)}/historial`, { params: { partes: true } })
+    .then((r) => r.data);

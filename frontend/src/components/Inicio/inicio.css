@@ -1,0 +1,167 @@
+/* Inicio (rediseño UX 2026-10, etapa 3). Un solo diseño que se escala
+   (`escala.ts`); a lo angosto las cifras van de a dos y los paneles se apilan. */
+.inicio {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 24px 28px;
+  background: var(--bg);
+}
+.ini-cab {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ini-cab h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+}
+.ini-cab p { margin: 4px 0 0; font-size: var(--t-sm); color: var(--ink-3); }
+.ini-cab .der { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ini-cab .hoy { font-size: var(--t-sm); color: var(--ink-2); white-space: nowrap; }
+.ini-nuevo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  font-size: var(--t-sm);
+}
+
+.ini-tarjetas {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.ini-tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+}
+.ini-tarjeta h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: help;
+}
+.ini-tarjeta h3 svg { color: var(--ink-3); flex: none; }
+.ini-tarjeta .valor {
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ini-tarjeta .valor.alarma { color: var(--ocupado-txt); }
+.ini-tarjeta .nota { margin: 0; font-size: var(--t-xs); color: var(--ink-3); }
+.ini-link {
+  align-self: flex-start;
+  margin-top: auto;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: var(--signal-ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.ini-link:hover { text-decoration: underline; }
+
+.ini-dos {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 14px;
+  align-items: start;
+}
+.ini-dos.solo { grid-template-columns: minmax(0, 1fr); }
+.ini-panel {
+  min-width: 0;
+  padding: 14px 18px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+}
+.ini-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ini-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: 700;
+  color: var(--ink-1);
+}
+.ini-panel h2 svg { color: var(--ink-3); }
+.ini-panel .vacio { margin: 8px 0; font-size: var(--t-sm); color: var(--ink-3); }
+.ini-panel .ini-link.mas { margin-top: 6px; }
+.ini-lista, .ini-actividad { list-style: none; margin: 0; padding: 0; }
+.ini-lista li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.ini-lista li:first-child { border-top: none; }
+.ini-lista .que { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ini-lista .tit { font-size: var(--t-sm); font-weight: 600; color: var(--ink-1); }
+.ini-lista .det { font-size: var(--t-xs); color: var(--ink-3); }
+.ini-lista .codigo {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: 600 var(--t-xs) var(--f-mono);
+  color: var(--ink-1);
+}
+.ini-lista button.codigo { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ini-actividad li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.ini-actividad li:first-child { border-top: none; }
+.ini-actividad .tit { font-size: var(--t-sm); font-weight: 600; color: var(--ink-1); }
+.ini-actividad .det { grid-column: 1; font-size: var(--t-xs); color: var(--ink-3); overflow-wrap: anywhere; }
+.ini-actividad time { grid-column: 2; grid-row: 1; font-size: var(--t-xs); color: var(--ink-3); white-space: nowrap; }
+
+@media (max-width: 1023px) {
+  .ini-tarjetas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ini-dos { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 639px) {
+  .inicio { padding: 16px 14px 20px; gap: 14px; }
+  .ini-cab h1 { font-size: 22px; }
+  .ini-cab .der { width: 100%; justify-content: space-between; }
+  .ini-tarjetas { gap: 10px; }
+  .ini-tarjeta { padding: 12px 14px; }
+  .ini-tarjeta .valor { font-size: 22px; }
+}

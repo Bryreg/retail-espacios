@@ -107,6 +107,9 @@ import {
 // los bloques de Supervisar, sólo para quien administra.
 import { claveDeSede, useOcupacionStore } from "../store/ocupacionStore";
 import { useArmazon } from "../store/armazonStore";
+import Cajon from "../components/Armazon/Cajon";
+import Inicio, { type FilaDeHoy } from "../components/Inicio/Inicio";
+import LineaDeTiempo from "../components/Ficha/LineaDeTiempo";
 import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
 // «Editar contrato»: lo que Supervisar lee de UN contrato para reabrirlo en
@@ -2437,9 +2440,13 @@ function useSpaceFiles(code: string, enabled: boolean) {
     let cancelled = false;
     setState("loading");
     setFiles([]);
+    // `si_existe=1`: un espacio que nunca se vendió no tiene fila, y eso es lo
+    // normal —el servidor contesta `null` en vez del 404 que ensuciaba la
+    // consola en cada ficha—.
     client
-      .get<Space>(`/spaces/by-code/${encodeURIComponent(code)}`)
+      .get<Space | null>(`/spaces/by-code/${encodeURIComponent(code)}`, { params: { si_existe: 1 } })
       .then(async (r) => {
+        if (!r.data) { if (!cancelled) setState("none"); return; }
         const fl = await listSpaceFiles(r.data.id);
         if (cancelled) return;
         setFiles(fl);
@@ -3365,6 +3372,12 @@ function FixtureDetailCard({
               </div>
             )}
           </>
+        )}
+
+        {/* La línea de tiempo (etapa 3): los próximos 12 meses, desde cuándo
+            queda disponible y lo que ya terminó, del historial de la base. */}
+        {rentable && (
+          <LineaDeTiempo codigo={fullSpaceCode(fixture.sede, entry.code)} esAdmin={isAdmin} />
         )}
 
         {/* Vender por partes: las puertas de esta cara, cada una con su
@@ -4671,8 +4684,13 @@ function EmptyDashboard({
  *  de una edición…) navegan con `onModo`. */
 export type ModoComercial = "vender" | "supervisar";
 
-export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo }: {
+export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo, inicio = false, onIrAMontajes }: {
   onDisenarPlano: () => void;
+  /** «Ver montajes» del Inicio: el módulo Montajes. */
+  onIrAMontajes?: () => void;
+  /** El Inicio del armazón (etapa 3): la misma pantalla en Supervisar, que
+   *  dibuja lo de hoy en vez del tablero entero. */
+  inicio?: boolean;
   /** El modo que manda el armazón. Sin él, la pantalla lleva el suyo. */
   modo?: ModoComercial;
   onModo?: (m: ModoComercial) => void;
@@ -4842,17 +4860,26 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  ventas (para la nota del canon), y las reservas de espacio vivas. Sólo
    *  quien administra (es plata y son proveedores) y sólo en Supervisar, que es
    *  donde se dibujan: en Vender ni se piden. */
-  const cortesSinCargar = useCobrosPorVentas({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
-  const reservasSinConfirmar = useReservasDeEspacio({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  /** La bandeja de Pendientes (rediseño UX 2026-10, etapa 3): «Para revisar»
+   *  en un cajón encima de la pantalla, abierto desde la barra de arriba. */
+  const bandejaAbierta = useArmazon((s) => s.bandejaAbierta);
+  const grupoPedido = useArmazon((s) => s.grupoPedido);
+  const cerrarBandeja = useArmazon((s) => s.cerrarBandeja);
+  /** Lo de «Para revisar» se pide en Supervisar (Indicadores y el Inicio) y
+   *  con la bandeja abierta. Con Vender abierto no: la pantalla la mira el
+   *  proveedor; sólo si quien administra abre la bandeja a propósito. */
+  const pideRevision = modoEfectivo === "supervisar" || bandejaAbierta;
+  const cortesSinCargar = useCobrosPorVentas({ sede, activo: isAdmin && pideRevision });
+  const reservasSinConfirmar = useReservasDeEspacio({ sede, activo: isAdmin && pideRevision });
   /** Los contratos a los que les falta la planometría para que salga el aviso
    *  de montaje («Falta planometría»). Igual: sólo quien administra, sólo acá. */
-  const faltaPlanometria = useFaltaPlanometria({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  const faltaPlanometria = useFaltaPlanometria({ sede, activo: isAdmin && pideRevision });
   /** Los planogramas en «Hoy» (fase 4): el servidor sólo trae las caras que
    *  este rol puede revisar (las mismas que puede publicar). Sin plata. */
-  const planogramasPorRevisar = usePlanogramasPorRevisar({ sede, activo: modoEfectivo === "supervisar" });
+  const planogramasPorRevisar = usePlanogramasPorRevisar({ sede, activo: pideRevision });
   /** Los contratos de antes de Vender que no dicen si su valor es al mes
    *  (2026-10-25). Plata y proveedores: sólo quien administra, sólo acá. */
-  const precioSinForma = usePrecioSinForma({ sede, activo: isAdmin && modoEfectivo === "supervisar" });
+  const precioSinForma = usePrecioSinForma({ sede, activo: isAdmin && pideRevision });
   const [revisarMontajeDe, setRevisarMontajeDe] = useState<number | null>(null);
   const [guiaParaMandar, setGuiaParaMandar] = useState<number | null>(null);
   const [avisoDeSupervision, setAvisoDeSupervision] = useState<string | null>(null);
@@ -4863,6 +4890,11 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** El grupo de «Para revisar» que se eligió; sin elegir, abre en «Hoy» si
    *  tiene algo y si no en «30 días» (`grupoParaAbrir`). */
   const [grupoElegido, setGrupoElegido] = useState<GrupoDeRevision | null>(null);
+  /** La bandeja que se abrió pidiendo un grupo («Ver cuáles» de «Por vencer»
+   *  en el Inicio) abre en ése. */
+  useEffect(() => {
+    if (bandejaAbierta && grupoPedido) setGrupoElegido(grupoPedido);
+  }, [bandejaAbierta, grupoPedido]);
   /** El aviso al que llevó una chincheta del plano: se trae a la vista y se
    *  marca un momento. */
   const [avisoMarcado, setAvisoMarcado] = useState<string | null>(null);
@@ -6285,15 +6317,44 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** Cuántos avisos tiene cada grupo, y la pastilla roja: la suma de los tres. */
   const cuentasDeRevision = useMemo(() => contarPorGrupo(avisos), [avisos]);
   const attentionCount = cuentaDelBadge(cuentasDeRevision);
-  /** La cuenta viaja al menú de módulos: la pastilla roja de «Indicadores»
-   *  (era la de la pestaña «Supervisar»). En Vender no se cuenta: mezcla
-   *  vencimientos, bajo tarifa, reservas y cortes de ventas, y la pantalla la
-   *  mira el proveedor. */
+  /** La cuenta viaja al armazón: la pastilla roja del botón «Pendientes» de
+   *  la barra de arriba (era la de la pestaña «Supervisar»). En Vender no se
+   *  cuenta: mezcla vencimientos, bajo tarifa, reservas y cortes de ventas, y
+   *  la pantalla la mira el proveedor. */
   const cuentaParaElMenu = modoEfectivo === "supervisar" ? attentionCount : 0;
   useEffect(() => {
     useArmazon.getState().setCuentaPendientes(cuentaParaElMenu);
   }, [cuentaParaElMenu]);
   const grupoDeRevision: GrupoDeRevision = grupoElegido ?? grupoParaAbrir(cuentasDeRevision);
+
+  /** Al primer ingreso del día, si hay algo con fecha límite hoy, la bandeja
+   *  se abre sola (rediseño UX 2026-10). Se recuerda por quien mira, en este
+   *  navegador: es una comodidad, no un dato. */
+  useEffect(() => {
+    if (!inicio || cuentasDeRevision.hoy === 0) return;
+    const hoyIso = toISODate(new Date());
+    const LLAVE = "recabra-pendientes-del-dia";
+    try {
+      if (window.localStorage.getItem(LLAVE) === hoyIso) return;
+      window.localStorage.setItem(LLAVE, hoyIso);
+    } catch { return; /* sin almacenamiento no se abre sola: mejor eso que abrirla siempre */ }
+    useArmazon.getState().abrirBandeja("hoy");
+  }, [inicio, cuentasDeRevision.hoy]);
+
+  /** El canon del mes del Inicio: los contratos vigentes, cada uno en sus
+   *  meses, y lo cargado de los que se cobran por % de las ventas. Es la cuenta
+   *  de «Canon vigente» con la plata «Al mes», sin importar qué unidad eligió
+   *  quien mira la franja. */
+  const canonDelMes = useMemo(() => {
+    if (!isAdmin) return null;
+    const hoyIso = toISODate(new Date());
+    let total = 0;
+    for (const x of kpis.vigentes) total += enLaUnidad(x.negotiatedValue, x.startDate, x.endDate, "mes");
+    for (const c of cortesSinCargar.cobros) {
+      if (c.desde <= hoyIso && hoyIso <= c.hasta) total += enLaUnidad(c.cobrado, c.desde, c.hasta, "mes");
+    }
+    return total;
+  }, [isAdmin, kpis.vigentes, cortesSinCargar.cobros]);
 
   /** Los puntos del plano («aire y pines»): uno por mueble con algo en «Para
    *  revisar», del color de su grupo más urgente (`puntosDelPlano`, que sale
@@ -6766,6 +6827,525 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     </section>
   );
 
+  /** El cuerpo de «Para revisar»: las tres pestañas, los avisos de quien
+   *  supervisa y sus filas. Se dibuja en la tarjeta de Indicadores y en la
+   *  bandeja de Pendientes (etapa 3), nunca en las dos a la vez. */
+  const cuerpoDeRevision = (
+    <>
+      {/* Tres grupos por cuándo hay que actuar, con su cuenta siempre
+          a la vista (`components/Supervisar/paraRevisar.ts`). */}
+      <div style={{ padding: "0 12px 8px" }}>
+        <PestanasDeRevision cuentas={cuentasDeRevision} grupo={grupoDeRevision} onGrupo={setGrupoElegido} />
+      </div>
+      {/* «Editar contrato» que no se pudo abrir (el contrato ya no
+          está vigente, o no se pudo leer): se dice acá, donde se
+          tocó el botón. */}
+      {/* Lo que dejó Distribuir al guardar una cara (y volver acá). */}
+      {isAdmin && avisoDeDistribucion && (
+        <div role="status" data-aviso-de-distribucion
+          style={{ margin: "0 12px 8px", display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
+            padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
+            fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
+          <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
+          <span>{avisoDeDistribucion}</span>
+          <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setAvisoDeDistribucion(null)}>
+            <X size={16} strokeWidth={1.75} aria-hidden />
+          </button>
+        </div>
+      )}
+      {/* Lo que dejó la revisión de un planograma (fase 4). */}
+      {avisoDeSupervision && (
+        <div role="status" data-aviso-de-supervision
+          style={{ margin: "0 12px 8px", display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
+            padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
+            fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
+          <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
+          <span>{avisoDeSupervision}</span>
+          <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setAvisoDeSupervision(null)}>
+            <X size={16} strokeWidth={1.75} aria-hidden />
+          </button>
+        </div>
+      )}
+      {(revisarMontajeDe !== null || guiaParaMandar !== null) && (
+        <Suspense fallback={null}>
+          {revisarMontajeDe !== null && (
+            <RevisarMontaje versionId={revisarMontajeDe} onCerrar={() => setRevisarMontajeDe(null)}
+              onRevisada={(texto) => { setRevisarMontajeDe(null); setAvisoDeSupervision(texto); planogramasPorRevisar.recargar(); }} />
+          )}
+          {guiaParaMandar !== null && (
+            <VerGuia versionId={guiaParaMandar} puedeCompartir mandar onCerrar={() => setGuiaParaMandar(null)} />
+          )}
+        </Suspense>
+      )}
+      {isAdmin && avisoDeEdicion && !(selected && detailFull) && (
+        <p role="alert" data-aviso-edicion style={{ margin: "0 12px 8px", fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
+          {avisoDeEdicion}
+        </p>
+      )}
+      <div
+        className="lista-r"
+        data-senala-en-el-plano
+        onPointerOver={(e) => { if (e.pointerType !== "touch") senalarFila(e.target); }}
+        onPointerLeave={(e) => { if (e.pointerType !== "touch") senalarFila(null); }}
+        onFocus={(e) => senalarFila(e.target)}
+        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) senalarFila(null); }}
+      >
+        {cuentasDeRevision[grupoDeRevision] === 0 && (
+          <div className="vacio-r">
+            {grupoDeRevision === "hoy" ? "Nada para hoy."
+              : grupoDeRevision === "dias30" ? "Nada que venza ni que haya que preparar en los próximos 30 días."
+              : "Nada que corregir: todo lo que la base tiene vendido se ve en el plano."}
+          </div>
+        )}
+
+        {/* ── HOY: lo que no espera ── */}
+        {grupoDeRevision === "hoy" && (
+          <>
+            {/* Lo que se vende por % de las ventas: cada período que
+                terminó, lo vendido, y el servidor dice cuánto se cobra. */}
+            {isAdmin && cortesSinCargar.pendientes.length > 0 && (
+              <VentasPorCargar
+                sede={sede}
+                pendientes={cortesSinCargar.pendientes}
+                cargados={cortesSinCargar.cargados}
+                onCargado={cortesSinCargar.marcarCargado}
+              />
+            )}
+            {/* Falta distribuir (7 días o menos) y las reservas de
+                participación que caducan hoy. */}
+            {isAdmin && participacionesPorGrupo.hoy.length > 0 && (
+              <RevisarParticipaciones
+                secciones={participacionesPorGrupo.hoy}
+                tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "hoy")}
+              />
+            )}
+            {isAdmin && planometriaPorGrupo.hoy.length > 0 && (
+              <FaltaPlanometria
+                sede={sede}
+                filas={planometriaPorGrupo.hoy}
+                titulo={tituloDeSeccion("falta_planometria", "hoy")}
+                onCargar={cargarPlanometria}
+              />
+            )}
+            {/* Los planogramas: montados por revisar, no coinciden,
+                no se pudieron montar, rigen sin aviso (fase 4). */}
+            <PlanogramasPorRevisar
+              filas={planogramasPorRevisar.filas}
+              hoy={planogramasPorRevisar.hoy}
+              onAbrir={(c) => { setAvisoDeSupervision(null); setRevisarMontajeDe(c.version_id); }}
+              onMandar={(c) => { setAvisoDeSupervision(null); setGuiaParaMandar(c.version_id); }}
+            />
+            {kpis.expired.length > 0 && (
+              <div>
+                <AtencionSection
+                  label="Vencidos"
+                  monto={isAdmin
+                    ? formatCOP(kpis.expired.reduce((t, e) => t + enLaUnidad(e.negotiatedValue, e.startDate, e.endDate, unidad), 0))
+                    : kpis.expired.length}
+                />
+                {kpis.expired.map((entry) => (
+                  <AtencionRow
+                    key={`v-${entry.fixture.id}-${entry.face}`}
+                    aviso={`v-${claveDeFila(entry)}`}
+                    entry={entry}
+                    chip={`${Math.abs(entry.days)}d`}
+                    dates={entry.endDate ? `venció el ${fechaEnCurso(entry.endDate)}` : "—"}
+                    selected={selected?.id === entry.fixture.id}
+                    onSelect={() => revisar(entry.fixture, entry.face)}
+                  />
+                ))}
+              </div>
+            )}
+            {isAdmin && montaje.noMontado.length > 0 && (
+              <div>
+                <AtencionSection label="No se pudo montar" monto={montaje.noMontado.length} />
+                {montaje.noMontado.map((entry) => (
+                  <AtencionRow
+                    key={`nm-${entry.fixture.id}-${entry.face}`}
+                    aviso={`nm-${claveDeFila(entry)}`}
+                    entry={entry}
+                    chip="!"
+                    dates={entry.reporte.motivo
+                      ? `«${MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]}»`
+                      : "sin motivo"}
+                    selected={selected?.id === entry.fixture.id}
+                    onSelect={() => revisar(entry.fixture, entry.face)}
+                    onFoto={
+                      entry.reporte.file_id
+                        ? () => setViewerFile({
+                            id: entry.reporte.file_id as number,
+                            filename: entry.reporte.foto_nombre ?? "montaje.jpg",
+                            content_type: entry.reporte.foto_tipo ?? "image/jpeg",
+                            size: 0,
+                            uploaded_at: entry.reporte.confirmado_en ?? "",
+                          })
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
+            {/* Las reservas de una cara entera o de una parte que
+                caducan hoy. Confirmar usa el precio que se guardó al
+                reservar. */}
+            {isAdmin && reservasPorGrupo.hoy.length > 0 && (
+              <ReservasSinConfirmar
+                sede={sede}
+                titulo={tituloDeSeccion("reservas", "hoy")}
+                vivas={reservasPorGrupo.hoy}
+                onCambio={() => {
+                  reservasSinConfirmar.recargar();
+                  void refrescarComercial();
+                  if (hayParticipaciones) void recargarOcupacion(sede);
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {/* ── 30 DÍAS: lo que viene ── */}
+        {grupoDeRevision === "dias30" && (
+          <>
+            {kpis.expiring.length > 0 && (
+              <div>
+                <AtencionSection
+                  label="Por vencer en 30 días"
+                  monto={isAdmin && plata ? formatCOP(plata.vence) : kpis.expiring.length}
+                />
+                {kpis.expiring.map((entry) => (
+                  <AtencionRow
+                    key={`pv-${claveDeFila(entry)}`}
+                    aviso={`pv-${claveDeFila(entry)}`}
+                    entry={entry}
+                    chip={`${entry.days}d`}
+                    dates={entry.endDate ? `vence el ${fechaEnCurso(entry.endDate)}` : "—"}
+                    selected={selected?.id === entry.fixture.id}
+                    onSelect={() => revisar(entry.fixture, entry.face)}
+                    /* «Renovar» abre Vender con el contrato armado. */
+                    accion={isAdmin && renovable(entry)
+                      ? { texto: "Renovar", icono: <Repeat {...ICONO_TARJETA} />, onClick: () => renovar(entry) }
+                      : undefined}
+                  />
+                ))}
+              </div>
+            )}
+            {/* Falta distribuir con más margen, reservas de
+                participación por caducar y borradores sin confirmar. */}
+            {isAdmin && participacionesPorGrupo.dias30.length > 0 && (
+              <RevisarParticipaciones
+                secciones={participacionesPorGrupo.dias30}
+                tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "dias30")}
+              />
+            )}
+            {isAdmin && planometriaPorGrupo.dias30.length > 0 && (
+              <FaltaPlanometria
+                sede={sede}
+                filas={planometriaPorGrupo.dias30}
+                titulo={tituloDeSeccion("falta_planometria", "dias30")}
+                onCargar={cargarPlanometria}
+              />
+            )}
+            {isAdmin && montaje.sinMontar.length > 0 && (
+              <div>
+                <AtencionSection label="Contratado sin montar" monto={montaje.sinMontar.length} />
+                {montaje.sinMontar.map((entry) => (
+                  <AtencionRow
+                    key={`sm-${claveDeFila(entry)}`}
+                    aviso={`sm-${claveDeFila(entry)}`}
+                    entry={entry}
+                    chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
+                    /* Dos semanas cobrando algo que nadie reportó
+                       armado deja de ser un pendiente y pasa a ser
+                       un problema (la lista corta a los 30 días: el
+                       «más de 60» de antes no podía pasar). */
+                    tono={entry.dias > DIAS_SIN_MONTAR_EN_ROJO ? "alarma" : "espera"}
+                    dates={entry.dias === 0 ? "empieza hoy" : `empezó el ${fechaEnCurso(entry.startDate)}`}
+                    selected={selected?.id === entry.fixture.id}
+                    onSelect={() => revisar(entry.fixture, entry.face)}
+                  />
+                ))}
+              </div>
+            )}
+            {isAdmin && reservasPorGrupo.dias30.length > 0 && (
+              <ReservasSinConfirmar
+                sede={sede}
+                titulo={tituloDeSeccion("reservas", "dias30")}
+                vivas={reservasPorGrupo.dias30}
+                onCambio={() => {
+                  reservasSinConfirmar.recargar();
+                  void refrescarComercial();
+                  if (hayParticipaciones) void recargarOcupacion(sede);
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {/* ── CORREGIR: datos que no cuadran ── */}
+        {grupoDeRevision === "corregir" && (
+          <>
+            {/* Cómo se lee el valor de los contratos de antes de
+                Vender (al mes o total): sólo quien administra. */}
+            {isAdmin && (
+              <PrecioSinForma
+                filas={precioSinForma.filas}
+                titulo={tituloDeSeccion("precio_sin_forma", "corregir")}
+                onCambio={precioSinForma.recargar}
+              />
+            )}
+            {/* Las dos mitades del desfase van primero, juntas: son lo
+                único acá que la pantalla no puede mostrar de ninguna
+                otra forma. */}
+            {fantasmas.length > 0 && (
+              <div>
+                <AtencionSection label="Contrato sin mueble en el plano" monto={fantasmas.length} />
+                {fantasmas.map((f) => (
+                  <FantasmaRow
+                    key={f.espacio}
+                    fila={f}
+                    isAdmin={isAdmin}
+                    abierto={fantasmaAbierto === f.espacio}
+                    onAbrir={() => setFantasmaAbierto(
+                      fantasmaAbierto === f.espacio ? null : f.espacio,
+                    )}
+                    onCancelado={() => {
+                      setFantasmaAbierto(null);
+                      void refrescarComercial();
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {isAdmin && importacion && (pendientesDelPlano > 0 || importados > 0) && (
+              <ImportarDelPlano
+                datos={importacion}
+                importados={importados}
+                onAplicado={(r) => {
+                  setImportados(r.importables.length);
+                  // Lo importado ya es de la base: el mapa se repinta de
+                  // ahí, y los fantasmas se recalculan solos.
+                  void refrescarComercial();
+                  // Y se vuelve a preguntar. La respuesta de aplicar dice
+                  // qué se ESCRIBIÓ, no qué queda.
+                  revisarImportacion().then(setImportacion).catch(() => {});
+                }}
+              />
+            )}
+            {kpis.noContract.length > 0 && (
+              <div>
+                <AtencionSection label="Ocupado sin contrato" monto={kpis.noContract.length} />
+                {kpis.noContract.map((entry) => (
+                  <AtencionRow
+                    key={`nc-${entry.fixture.id}-${entry.face}`}
+                    aviso={`nc-${claveDeFila(entry)}`}
+                    entry={entry}
+                    chip="—"
+                    tono="sordo"
+                    dates="sin papeles"
+                    selected={selected?.id === entry.fixture.id}
+                    onSelect={() => revisar(entry.fixture, entry.face)}
+                  />
+                ))}
+              </div>
+            )}
+            {/* «Reservado» a mano, del selector de antes: sin
+                proveedor ni fecha. Se libera, o se reserva de verdad
+                en Vender (rediseño, PR 3, decisión 1). */}
+            {kpis.reservadoAMano.length > 0 && (
+              <div data-reservado-a-mano>
+                <AtencionSection label={tituloDeSeccion("reservado_a_mano", "corregir")} monto={kpis.reservadoAMano.length} />
+                {kpis.reservadoAMano.map((entry) => {
+                  const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
+                  return (
+                    <AtencionRow
+                      key={`ra-${claveDeFila(entry)}`}
+                      aviso={`ra-${claveDeFila(entry)}`}
+                      entry={entry}
+                      chip="—"
+                      tono="sordo"
+                      dates="sin proveedor ni fecha"
+                      selected={selected?.id === entry.fixture.id}
+                      onSelect={() => revisar(entry.fixture, entry.face)}
+                      acciones={isAdmin ? [
+                        {
+                          texto: "Liberar", icono: <CircleDashed {...ICONO_TARJETA} />,
+                          titulo: "Pasa el espacio a Disponible",
+                          ocupado: liberando === codigo,
+                          onClick: () => void liberarReservadoAMano(entry),
+                        },
+                        {
+                          texto: "Reservar de verdad", icono: <Hourglass {...ICONO_TARJETA} />,
+                          titulo: "Saca la marca a mano y abre Vender con este espacio, para reservarlo con proveedor y fecha",
+                          ocupado: liberando === codigo,
+                          onClick: () => void liberarReservadoAMano(entry, () => negociar(entry.fixture, entry.face)),
+                        },
+                      ] : undefined}
+                    />
+                  );
+                })}
+              </div>
+            )}
+            {/* Participación sin mueble, sin término, distribución
+                con problemas o para revisar. Sólo para quien
+                administra: lleva proveedores y marcas. */}
+            {isAdmin && participacionesPorGrupo.corregir.length > 0 && (
+              <RevisarParticipaciones
+                secciones={participacionesPorGrupo.corregir}
+                tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "corregir")}
+              />
+            )}
+            {isAdmin && kpis.belowReference.length > 0 && (
+              <div>
+                <AtencionSection label="Bajo tarifa de referencia" monto={kpis.belowReference.length} />
+                {kpis.belowReference.map((entry) => (
+                  <AtencionRow
+                    /* La clave de la FILA: dos partes de la misma
+                       cara (PUN-03·EN1 y ·EN2) son dos renglones. */
+                    key={`bt-${claveDeFila(entry)}`}
+                    aviso={`bt-${claveDeFila(entry)}`}
+                    entry={entry}
+                    chip={`−${entry.gapPct} %`}
+                    tono="espera"
+                    /* La tarifa de referencia es AL MES: el contrato
+                       se compara en sus meses, sea cual sea la
+                       unidad de la franja. */
+                    dates={`${formatCOP(entry.alMes)} al mes · ref ${formatCOP(entry.ref)}`}
+                    selected={selected?.id === entry.fixture.id}
+                    onSelect={() => revisar(entry.fixture, entry.face)}
+                    /* «Editar contrato» (2026-10-22): los que se
+                       cargaron fijos cuando eran por % de las
+                       ventas se corrigen acá, uno por uno. */
+                    acciones={accionEditar(entry, "Bajo tarifa de referencia")}
+                  />
+                ))}
+              </div>
+            )}
+            {/* Lo que arrancó hace más de 30 días y nunca se reportó:
+                a esa altura el espacio ya está armado; lo que falta es
+                el reporte. Antes una nota que no contaba. */}
+            {isAdmin && montaje.viejos.length > 0 && (
+              <div>
+                <AtencionSection label={tituloDeSeccion("montajes_viejos", "corregir")} monto={montaje.viejos.length} />
+                {montaje.viejos.map((entry) => (
+                  <AtencionRow
+                    key={`mv-${claveDeFila(entry)}`}
+                    aviso={`mv-${claveDeFila(entry)}`}
+                    entry={entry}
+                    chip={`${entry.dias}d`}
+                    tono="sordo"
+                    dates={`arrancó hace más de ${VENTANA_MONTAJE_DIAS} días y nadie reportó el montaje`}
+                    selected={selected?.id === entry.fixture.id}
+                    onSelect={() => revisar(entry.fixture, entry.face)}
+                    acciones={accionEditar(entry, tituloDeSeccion("montajes_viejos", "corregir"))}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+
+  /** La ficha del espacio (la misma en el Inicio, en Indicadores y desde
+   *  Pendientes): se abre en un cajón encima de la pantalla. */
+  const fichaDelEspacio = selected && detailFull ? (
+    <FixtureDetailCard
+      fixture={selected}
+      isAdmin={isAdmin}
+      face={detailFace}
+      onFace={setDetailFace}
+      onBack={closeDetail}
+      onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
+      onNegociarParte={isAdmin ? (parte) => negociar(selected, detailFace, null, parte) : undefined}
+      onRenovarParte={isAdmin ? renovar : undefined}
+      onEditar={isAdmin ? (e) => editarFila(e, { enFicha: true }) : undefined}
+      onEditarParticipacion={isAdmin
+        ? (t) => {
+          if (typeof t.lease_id !== "number") return;
+          void editarContrato(selected, detailFace, t.lease_id,
+            { valor: t.valor_mensual ?? 0, desde: t.desde, hasta: t.hasta,
+              proveedor: t.proveedor?.nombre ?? undefined, marca: t.marca },
+            { enFicha: true });
+        }
+        : undefined}
+      onEditarProximo={isAdmin
+        ? (e, id) => void editarContrato(e.fixture, e.face, id, null, { enFicha: true })
+        : undefined}
+      avisoDeEdicion={avisoDeEdicion}
+      /* Sólo cuando hay algo que renovar: un contrato con proveedor
+         que se cae dentro de 60 días o que ya se cayó. Con más
+         margen el botón crearía un contrato solapado con uno vivo. */
+      onRenovar={isAdmin && entradaDetalle && renovable(entradaDetalle)
+        ? () => renovar(entradaDetalle)
+        : undefined}
+      onCancelado={() => {
+        // Igual que al guardar: la fila ya no está en la base y el
+        // mapa se vuelve a leer de ahí. No hay copia que limpiar.
+        void refrescarComercial();
+        closeDetail();
+      }}
+      onOpenFile={setViewerFile}
+      unidad={unidad}
+      montajeDe={montajeDe}
+      montajeDelCodigo={montajeDelCodigo}
+      cobroDe={isAdmin ? cobroDeCodigo : undefined}
+      reservaDe={isAdmin ? reservaDeCodigo : undefined}
+      onReservaCambio={() => {
+        reservasSinConfirmar.recargar();
+        void refrescarComercial();
+        if (hayParticipaciones) void recargarOcupacion(sede);
+      }}
+      planometriaPedida={planometriaPedida}
+      onPlanometriaCargada={faltaPlanometria.recargar}
+      /* «Vender el Y %»: Vender con esta cara y lo que queda en el
+         periodo (el pico, `capacidad.periodo.disponible_pb`). */
+      onVenderLoQueQueda={isAdmin && porParticipacion(selected)
+        ? (queda) => {
+          const cara = fullSpaceCode(sede, codigoDeParte(selected.code, detailFace, null));
+          negociar(selected, detailFace, {
+            id: `${cara}|queda`, proveedor: "", correo: "", marca: "", desde: "", hasta: "",
+            valores: {}, porcentajes: { [cara]: queda },
+          });
+        }
+        : undefined}
+    />
+  ) : null;
+
+  /** Lo de HOY para el Inicio, fila por fila: qué es, el espacio y cuándo, y
+   *  la acción que lo resuelve. Lo que se resuelve en su fila de «Para
+   *  revisar» (cargar ventas, confirmar una reserva, la planometría, los
+   *  planogramas…) abre la bandeja; lo demás, la ficha del espacio. */
+  const filasDeHoy: FilaDeHoy[] = inicio ? avisos
+    .filter((a) => grupoDelAviso(a.seccion, a.dias) === "hoy")
+    .map((a) => {
+      const f = a.fixtureId ? fixtures.find((x) => x.id === a.fixtureId) ?? null : null;
+      const cara = a.cara ?? "A";
+      const codigo = f ? (isDoubleGondola(f) ? `${f.code}·${cara}` : f.code) : null;
+      const d = a.dias;
+      const cuando = d === undefined || d === null ? null
+        : d < 0 ? `hace ${-d} día${d === -1 ? "" : "s"}`
+        : d === 0 ? "hoy" : `en ${d} día${d === 1 ? "" : "s"}`;
+      const abrirBandeja = () => useArmazon.getState().abrirBandeja("hoy");
+      const enLaBandeja: Partial<Record<Aviso["seccion"], string>> = {
+        ventas_por_cargar: "Cargar", reservas: "Confirmar", falta_planometria: "Adjuntar",
+        falta_distribuir: "Distribuir", planograma_por_revisar: "Verificar", planograma_no_coincide: "Resolver",
+        planograma_no_se_pudo: "Resolver", planograma_sin_montar: "Resolver",
+      };
+      const texto = enLaBandeja[a.seccion];
+      return {
+        clave: a.clave,
+        titulo: tituloDeSeccion(a.seccion, "hoy"),
+        codigo,
+        cuando,
+        accion: texto || !f
+          ? { texto: texto ?? "Resolver", onClick: abrirBandeja }
+          : { texto: a.seccion === "vencidos" ? "Ver ficha" : "Resolver", onClick: () => revisar(f, cara) },
+        onFicha: f ? () => revisar(f, cara) : undefined,
+      };
+    }) : [];
+  const nombreDeQuienEntra = useAuthStore.getState().nombre?.trim().split(/\s+/)[0] ?? null;
+
   return (
     <div
       /* En Vender la pantalla es una HOJA: toma el alto que le deja la barra de
@@ -6778,6 +7358,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       style={
         modoEfectivo === "vender" && fixtures.length > 0
           ? { padding: "10px 12px 12px", background: "var(--bg)" }
+          : inicio && fixtures.length > 0
+          /* El Inicio rueda por dentro y trae su propia cabecera. */
+          ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--bg)" }
           : { flex: 1, overflowY: "auto", padding: "10px 12px 16px", background: "var(--bg)" }
       }
     >
@@ -6792,6 +7375,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           canon total de la sede, y encima repetía datos que están en la tabla.
           El nombre de la sede tampoco es un hecho, es el estado de un control:
           se dice UNA vez, acá, y no vuelve a aparecer. */}
+      {!(inicio && fixtures.length > 0) && (<>
       <div className="barra-pantalla">
         {/* La sede y el modo se fueron al armazón (rediseño UX 2026-10, etapa
             2): la sede se elige UNA vez, en la barra de arriba, y Vender y
@@ -6864,8 +7448,32 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         </div>
       )}
 
+      </>)}
+
       {fixtures.length === 0 ? (
         <EmptyDashboard sede={sede} isAdmin={isAdmin} onDisenarPlano={onDisenarPlano} />
+      ) : inicio ? (
+        <Inicio
+          esAdmin={isAdmin}
+          sede={sede}
+          nombre={nombreDeQuienEntra}
+          cifras={{
+            contratos: kpis.contratos,
+            porVencer: kpis.expiring.length,
+            montajesPorResolver: montaje.sinMontar.length + montaje.noMontado.length,
+            canonDelMes,
+            disponibles: libresSet.size,
+          }}
+          filasDeHoy={filasDeHoy}
+          cuentaHoy={cuentasDeRevision.hoy}
+          totalPendientes={attentionCount}
+          onNuevoContrato={isAdmin ? () => setModo("vender") : undefined}
+          onVerTabla={() => setModo("supervisar")}
+          onVerPorVencer={() => useArmazon.getState().abrirBandeja("dias30")}
+          onVerMontajes={() => onIrAMontajes?.()}
+          onVerIndicadores={() => setModo("supervisar")}
+          onVerPendientes={() => useArmazon.getState().abrirBandeja()}
+        />
       ) : modoEfectivo === "vender" ? (
         /* Vender: la hoja de D. Cuatro paneles, el plano y la escalera a la
            izquierda, el contrato y la tarifa a la derecha. Sin KPIs — para poner un precio no sirve la ocupación
@@ -7045,488 +7653,18 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             {/* Lo que hay que revisar —o la ficha del espacio elegido, que
                 ocupa su lugar—, al lado del plano donde se lo busca. */}
             <div className="col-revisar">
-              {selected && detailFull ? (
-                <FixtureDetailCard
-                  fixture={selected}
-                  isAdmin={isAdmin}
-                  face={detailFace}
-                  onFace={setDetailFace}
-                  onBack={closeDetail}
-                  onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
-                  onNegociarParte={isAdmin ? (parte) => negociar(selected, detailFace, null, parte) : undefined}
-                  onRenovarParte={isAdmin ? renovar : undefined}
-                  onEditar={isAdmin ? (e) => editarFila(e, { enFicha: true }) : undefined}
-                  onEditarParticipacion={isAdmin
-                    ? (t) => {
-                      if (typeof t.lease_id !== "number") return;
-                      void editarContrato(selected, detailFace, t.lease_id,
-                        { valor: t.valor_mensual ?? 0, desde: t.desde, hasta: t.hasta,
-                          proveedor: t.proveedor?.nombre ?? undefined, marca: t.marca },
-                        { enFicha: true });
-                    }
-                    : undefined}
-                  onEditarProximo={isAdmin
-                    ? (e, id) => void editarContrato(e.fixture, e.face, id, null, { enFicha: true })
-                    : undefined}
-                  avisoDeEdicion={avisoDeEdicion}
-                  /* Sólo cuando hay algo que renovar: un contrato con proveedor
-                     que se cae dentro de 60 días o que ya se cayó. Con más
-                     margen el botón crearía un contrato solapado con uno vivo. */
-                  onRenovar={isAdmin && entradaDetalle && renovable(entradaDetalle)
-                    ? () => renovar(entradaDetalle)
-                    : undefined}
-                  onCancelado={() => {
-                    // Igual que al guardar: la fila ya no está en la base y el
-                    // mapa se vuelve a leer de ahí. No hay copia que limpiar.
-                    void refrescarComercial();
-                    closeDetail();
-                  }}
-                  onOpenFile={setViewerFile}
-                  unidad={unidad}
-                  montajeDe={montajeDe}
-                  montajeDelCodigo={montajeDelCodigo}
-                  cobroDe={isAdmin ? cobroDeCodigo : undefined}
-                  reservaDe={isAdmin ? reservaDeCodigo : undefined}
-                  onReservaCambio={() => {
-                    reservasSinConfirmar.recargar();
-                    void refrescarComercial();
-                    if (hayParticipaciones) void recargarOcupacion(sede);
-                  }}
-                  planometriaPedida={planometriaPedida}
-                  onPlanometriaCargada={faltaPlanometria.recargar}
-                  /* «Vender el Y %»: Vender con esta cara y lo que queda en el
-                     periodo (el pico, `capacidad.periodo.disponible_pb`). */
-                  onVenderLoQueQueda={isAdmin && porParticipacion(selected)
-                    ? (queda) => {
-                      const cara = fullSpaceCode(sede, codigoDeParte(selected.code, detailFace, null));
-                      negociar(selected, detailFace, {
-                        id: `${cara}|queda`, proveedor: "", correo: "", marca: "", desde: "", hasta: "",
-                        valores: {}, porcentajes: { [cara]: queda },
-                      });
-                    }
-                    : undefined}
-                />
-              ) : (
+              {/* La ficha del espacio ya no ocupa este lugar: se abre en su
+                  cajón, la misma en el Inicio y en Indicadores (etapa 3). */}
               <Card style={{ flex: 1, minHeight: 0 }}>
                 <CardHeader
                   icon={<ClipboardCheck {...ICONO_TARJETA} />}
                   title="Para revisar"
                   right={attentionCount > 0 ? <span className="cuenta" aria-label={`${attentionCount} para revisar`}>{attentionCount}</span> : undefined}
                 />
-                {/* Tres grupos por cuándo hay que actuar, con su cuenta siempre
-                    a la vista (`components/Supervisar/paraRevisar.ts`). */}
-                <div style={{ padding: "0 12px 8px" }}>
-                  <PestanasDeRevision cuentas={cuentasDeRevision} grupo={grupoDeRevision} onGrupo={setGrupoElegido} />
-                </div>
-                {/* «Editar contrato» que no se pudo abrir (el contrato ya no
-                    está vigente, o no se pudo leer): se dice acá, donde se
-                    tocó el botón. */}
-                {/* Lo que dejó Distribuir al guardar una cara (y volver acá). */}
-                {isAdmin && avisoDeDistribucion && (
-                  <div role="status" data-aviso-de-distribucion
-                    style={{ margin: "0 12px 8px", display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
-                      padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
-                      fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
-                    <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
-                    <span>{avisoDeDistribucion}</span>
-                    <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setAvisoDeDistribucion(null)}>
-                      <X size={16} strokeWidth={1.75} aria-hidden />
-                    </button>
-                  </div>
-                )}
-                {/* Lo que dejó la revisión de un planograma (fase 4). */}
-                {avisoDeSupervision && (
-                  <div role="status" data-aviso-de-supervision
-                    style={{ margin: "0 12px 8px", display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
-                      padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
-                      fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
-                    <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
-                    <span>{avisoDeSupervision}</span>
-                    <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setAvisoDeSupervision(null)}>
-                      <X size={16} strokeWidth={1.75} aria-hidden />
-                    </button>
-                  </div>
-                )}
-                {(revisarMontajeDe !== null || guiaParaMandar !== null) && (
-                  <Suspense fallback={null}>
-                    {revisarMontajeDe !== null && (
-                      <RevisarMontaje versionId={revisarMontajeDe} onCerrar={() => setRevisarMontajeDe(null)}
-                        onRevisada={(texto) => { setRevisarMontajeDe(null); setAvisoDeSupervision(texto); planogramasPorRevisar.recargar(); }} />
-                    )}
-                    {guiaParaMandar !== null && (
-                      <VerGuia versionId={guiaParaMandar} puedeCompartir mandar onCerrar={() => setGuiaParaMandar(null)} />
-                    )}
-                  </Suspense>
-                )}
-                {isAdmin && avisoDeEdicion && !(selected && detailFull) && (
-                  <p role="alert" data-aviso-edicion style={{ margin: "0 12px 8px", fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
-                    {avisoDeEdicion}
-                  </p>
-                )}
-                <div
-                  className="lista-r"
-                  data-senala-en-el-plano
-                  onPointerOver={(e) => { if (e.pointerType !== "touch") senalarFila(e.target); }}
-                  onPointerLeave={(e) => { if (e.pointerType !== "touch") senalarFila(null); }}
-                  onFocus={(e) => senalarFila(e.target)}
-                  onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) senalarFila(null); }}
-                >
-                  {cuentasDeRevision[grupoDeRevision] === 0 && (
-                    <div className="vacio-r">
-                      {grupoDeRevision === "hoy" ? "Nada para hoy."
-                        : grupoDeRevision === "dias30" ? "Nada que venza ni que haya que preparar en los próximos 30 días."
-                        : "Nada que corregir: todo lo que la base tiene vendido se ve en el plano."}
-                    </div>
-                  )}
-
-                  {/* ── HOY: lo que no espera ── */}
-                  {grupoDeRevision === "hoy" && (
-                    <>
-                      {/* Lo que se vende por % de las ventas: cada período que
-                          terminó, lo vendido, y el servidor dice cuánto se cobra. */}
-                      {isAdmin && cortesSinCargar.pendientes.length > 0 && (
-                        <VentasPorCargar
-                          sede={sede}
-                          pendientes={cortesSinCargar.pendientes}
-                          cargados={cortesSinCargar.cargados}
-                          onCargado={cortesSinCargar.marcarCargado}
-                        />
-                      )}
-                      {/* Falta distribuir (7 días o menos) y las reservas de
-                          participación que caducan hoy. */}
-                      {isAdmin && participacionesPorGrupo.hoy.length > 0 && (
-                        <RevisarParticipaciones
-                          secciones={participacionesPorGrupo.hoy}
-                          tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "hoy")}
-                        />
-                      )}
-                      {isAdmin && planometriaPorGrupo.hoy.length > 0 && (
-                        <FaltaPlanometria
-                          sede={sede}
-                          filas={planometriaPorGrupo.hoy}
-                          titulo={tituloDeSeccion("falta_planometria", "hoy")}
-                          onCargar={cargarPlanometria}
-                        />
-                      )}
-                      {/* Los planogramas: montados por revisar, no coinciden,
-                          no se pudieron montar, rigen sin aviso (fase 4). */}
-                      <PlanogramasPorRevisar
-                        filas={planogramasPorRevisar.filas}
-                        hoy={planogramasPorRevisar.hoy}
-                        onAbrir={(c) => { setAvisoDeSupervision(null); setRevisarMontajeDe(c.version_id); }}
-                        onMandar={(c) => { setAvisoDeSupervision(null); setGuiaParaMandar(c.version_id); }}
-                      />
-                      {kpis.expired.length > 0 && (
-                        <div>
-                          <AtencionSection
-                            label="Vencidos"
-                            monto={isAdmin
-                              ? formatCOP(kpis.expired.reduce((t, e) => t + enLaUnidad(e.negotiatedValue, e.startDate, e.endDate, unidad), 0))
-                              : kpis.expired.length}
-                          />
-                          {kpis.expired.map((entry) => (
-                            <AtencionRow
-                              key={`v-${entry.fixture.id}-${entry.face}`}
-                              aviso={`v-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip={`${Math.abs(entry.days)}d`}
-                              dates={entry.endDate ? `venció el ${fechaEnCurso(entry.endDate)}` : "—"}
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {isAdmin && montaje.noMontado.length > 0 && (
-                        <div>
-                          <AtencionSection label="No se pudo montar" monto={montaje.noMontado.length} />
-                          {montaje.noMontado.map((entry) => (
-                            <AtencionRow
-                              key={`nm-${entry.fixture.id}-${entry.face}`}
-                              aviso={`nm-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip="!"
-                              dates={entry.reporte.motivo
-                                ? `«${MOTIVO_LABEL[entry.reporte.motivo as MountMotivo]}»`
-                                : "sin motivo"}
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                              onFoto={
-                                entry.reporte.file_id
-                                  ? () => setViewerFile({
-                                      id: entry.reporte.file_id as number,
-                                      filename: entry.reporte.foto_nombre ?? "montaje.jpg",
-                                      content_type: entry.reporte.foto_tipo ?? "image/jpeg",
-                                      size: 0,
-                                      uploaded_at: entry.reporte.confirmado_en ?? "",
-                                    })
-                                  : undefined
-                              }
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {/* Las reservas de una cara entera o de una parte que
-                          caducan hoy. Confirmar usa el precio que se guardó al
-                          reservar. */}
-                      {isAdmin && reservasPorGrupo.hoy.length > 0 && (
-                        <ReservasSinConfirmar
-                          sede={sede}
-                          titulo={tituloDeSeccion("reservas", "hoy")}
-                          vivas={reservasPorGrupo.hoy}
-                          onCambio={() => {
-                            reservasSinConfirmar.recargar();
-                            void refrescarComercial();
-                            if (hayParticipaciones) void recargarOcupacion(sede);
-                          }}
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {/* ── 30 DÍAS: lo que viene ── */}
-                  {grupoDeRevision === "dias30" && (
-                    <>
-                      {kpis.expiring.length > 0 && (
-                        <div>
-                          <AtencionSection
-                            label="Por vencer en 30 días"
-                            monto={isAdmin && plata ? formatCOP(plata.vence) : kpis.expiring.length}
-                          />
-                          {kpis.expiring.map((entry) => (
-                            <AtencionRow
-                              key={`pv-${claveDeFila(entry)}`}
-                              aviso={`pv-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip={`${entry.days}d`}
-                              dates={entry.endDate ? `vence el ${fechaEnCurso(entry.endDate)}` : "—"}
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                              /* «Renovar» abre Vender con el contrato armado. */
-                              accion={isAdmin && renovable(entry)
-                                ? { texto: "Renovar", icono: <Repeat {...ICONO_TARJETA} />, onClick: () => renovar(entry) }
-                                : undefined}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {/* Falta distribuir con más margen, reservas de
-                          participación por caducar y borradores sin confirmar. */}
-                      {isAdmin && participacionesPorGrupo.dias30.length > 0 && (
-                        <RevisarParticipaciones
-                          secciones={participacionesPorGrupo.dias30}
-                          tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "dias30")}
-                        />
-                      )}
-                      {isAdmin && planometriaPorGrupo.dias30.length > 0 && (
-                        <FaltaPlanometria
-                          sede={sede}
-                          filas={planometriaPorGrupo.dias30}
-                          titulo={tituloDeSeccion("falta_planometria", "dias30")}
-                          onCargar={cargarPlanometria}
-                        />
-                      )}
-                      {isAdmin && montaje.sinMontar.length > 0 && (
-                        <div>
-                          <AtencionSection label="Contratado sin montar" monto={montaje.sinMontar.length} />
-                          {montaje.sinMontar.map((entry) => (
-                            <AtencionRow
-                              key={`sm-${claveDeFila(entry)}`}
-                              aviso={`sm-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip={entry.dias === 0 ? "hoy" : `${entry.dias}d`}
-                              /* Dos semanas cobrando algo que nadie reportó
-                                 armado deja de ser un pendiente y pasa a ser
-                                 un problema (la lista corta a los 30 días: el
-                                 «más de 60» de antes no podía pasar). */
-                              tono={entry.dias > DIAS_SIN_MONTAR_EN_ROJO ? "alarma" : "espera"}
-                              dates={entry.dias === 0 ? "empieza hoy" : `empezó el ${fechaEnCurso(entry.startDate)}`}
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {isAdmin && reservasPorGrupo.dias30.length > 0 && (
-                        <ReservasSinConfirmar
-                          sede={sede}
-                          titulo={tituloDeSeccion("reservas", "dias30")}
-                          vivas={reservasPorGrupo.dias30}
-                          onCambio={() => {
-                            reservasSinConfirmar.recargar();
-                            void refrescarComercial();
-                            if (hayParticipaciones) void recargarOcupacion(sede);
-                          }}
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {/* ── CORREGIR: datos que no cuadran ── */}
-                  {grupoDeRevision === "corregir" && (
-                    <>
-                      {/* Cómo se lee el valor de los contratos de antes de
-                          Vender (al mes o total): sólo quien administra. */}
-                      {isAdmin && (
-                        <PrecioSinForma
-                          filas={precioSinForma.filas}
-                          titulo={tituloDeSeccion("precio_sin_forma", "corregir")}
-                          onCambio={precioSinForma.recargar}
-                        />
-                      )}
-                      {/* Las dos mitades del desfase van primero, juntas: son lo
-                          único acá que la pantalla no puede mostrar de ninguna
-                          otra forma. */}
-                      {fantasmas.length > 0 && (
-                        <div>
-                          <AtencionSection label="Contrato sin mueble en el plano" monto={fantasmas.length} />
-                          {fantasmas.map((f) => (
-                            <FantasmaRow
-                              key={f.espacio}
-                              fila={f}
-                              isAdmin={isAdmin}
-                              abierto={fantasmaAbierto === f.espacio}
-                              onAbrir={() => setFantasmaAbierto(
-                                fantasmaAbierto === f.espacio ? null : f.espacio,
-                              )}
-                              onCancelado={() => {
-                                setFantasmaAbierto(null);
-                                void refrescarComercial();
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {isAdmin && importacion && (pendientesDelPlano > 0 || importados > 0) && (
-                        <ImportarDelPlano
-                          datos={importacion}
-                          importados={importados}
-                          onAplicado={(r) => {
-                            setImportados(r.importables.length);
-                            // Lo importado ya es de la base: el mapa se repinta de
-                            // ahí, y los fantasmas se recalculan solos.
-                            void refrescarComercial();
-                            // Y se vuelve a preguntar. La respuesta de aplicar dice
-                            // qué se ESCRIBIÓ, no qué queda.
-                            revisarImportacion().then(setImportacion).catch(() => {});
-                          }}
-                        />
-                      )}
-                      {kpis.noContract.length > 0 && (
-                        <div>
-                          <AtencionSection label="Ocupado sin contrato" monto={kpis.noContract.length} />
-                          {kpis.noContract.map((entry) => (
-                            <AtencionRow
-                              key={`nc-${entry.fixture.id}-${entry.face}`}
-                              aviso={`nc-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip="—"
-                              tono="sordo"
-                              dates="sin papeles"
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {/* «Reservado» a mano, del selector de antes: sin
-                          proveedor ni fecha. Se libera, o se reserva de verdad
-                          en Vender (rediseño, PR 3, decisión 1). */}
-                      {kpis.reservadoAMano.length > 0 && (
-                        <div data-reservado-a-mano>
-                          <AtencionSection label={tituloDeSeccion("reservado_a_mano", "corregir")} monto={kpis.reservadoAMano.length} />
-                          {kpis.reservadoAMano.map((entry) => {
-                            const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
-                            return (
-                              <AtencionRow
-                                key={`ra-${claveDeFila(entry)}`}
-                                aviso={`ra-${claveDeFila(entry)}`}
-                                entry={entry}
-                                chip="—"
-                                tono="sordo"
-                                dates="sin proveedor ni fecha"
-                                selected={selected?.id === entry.fixture.id}
-                                onSelect={() => revisar(entry.fixture, entry.face)}
-                                acciones={isAdmin ? [
-                                  {
-                                    texto: "Liberar", icono: <CircleDashed {...ICONO_TARJETA} />,
-                                    titulo: "Pasa el espacio a Disponible",
-                                    ocupado: liberando === codigo,
-                                    onClick: () => void liberarReservadoAMano(entry),
-                                  },
-                                  {
-                                    texto: "Reservar de verdad", icono: <Hourglass {...ICONO_TARJETA} />,
-                                    titulo: "Saca la marca a mano y abre Vender con este espacio, para reservarlo con proveedor y fecha",
-                                    ocupado: liberando === codigo,
-                                    onClick: () => void liberarReservadoAMano(entry, () => negociar(entry.fixture, entry.face)),
-                                  },
-                                ] : undefined}
-                              />
-                            );
-                          })}
-                        </div>
-                      )}
-                      {/* Participación sin mueble, sin término, distribución
-                          con problemas o para revisar. Sólo para quien
-                          administra: lleva proveedores y marcas. */}
-                      {isAdmin && participacionesPorGrupo.corregir.length > 0 && (
-                        <RevisarParticipaciones
-                          secciones={participacionesPorGrupo.corregir}
-                          tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "corregir")}
-                        />
-                      )}
-                      {isAdmin && kpis.belowReference.length > 0 && (
-                        <div>
-                          <AtencionSection label="Bajo tarifa de referencia" monto={kpis.belowReference.length} />
-                          {kpis.belowReference.map((entry) => (
-                            <AtencionRow
-                              /* La clave de la FILA: dos partes de la misma
-                                 cara (PUN-03·EN1 y ·EN2) son dos renglones. */
-                              key={`bt-${claveDeFila(entry)}`}
-                              aviso={`bt-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip={`−${entry.gapPct} %`}
-                              tono="espera"
-                              /* La tarifa de referencia es AL MES: el contrato
-                                 se compara en sus meses, sea cual sea la
-                                 unidad de la franja. */
-                              dates={`${formatCOP(entry.alMes)} al mes · ref ${formatCOP(entry.ref)}`}
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                              /* «Editar contrato» (2026-10-22): los que se
-                                 cargaron fijos cuando eran por % de las
-                                 ventas se corrigen acá, uno por uno. */
-                              acciones={accionEditar(entry, "Bajo tarifa de referencia")}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {/* Lo que arrancó hace más de 30 días y nunca se reportó:
-                          a esa altura el espacio ya está armado; lo que falta es
-                          el reporte. Antes una nota que no contaba. */}
-                      {isAdmin && montaje.viejos.length > 0 && (
-                        <div>
-                          <AtencionSection label={tituloDeSeccion("montajes_viejos", "corregir")} monto={montaje.viejos.length} />
-                          {montaje.viejos.map((entry) => (
-                            <AtencionRow
-                              key={`mv-${claveDeFila(entry)}`}
-                              aviso={`mv-${claveDeFila(entry)}`}
-                              entry={entry}
-                              chip={`${entry.dias}d`}
-                              tono="sordo"
-                              dates={`arrancó hace más de ${VENTANA_MONTAJE_DIAS} días y nadie reportó el montaje`}
-                              selected={selected?.id === entry.fixture.id}
-                              onSelect={() => revisar(entry.fixture, entry.face)}
-                              acciones={accionEditar(entry, tituloDeSeccion("montajes_viejos", "corregir"))}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                {bandejaAbierta
+                  ? <div className="vacio-r">Abierto en Pendientes.</div>
+                  : cuerpoDeRevision}
               </Card>
-              )}
             </div>
 
           {/* ── Estado por espacio: abajo del plano, y del mismo ancho. Para
@@ -7627,6 +7765,25 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       )}
 
       {/* ── Overlays ──────────────────────────────────────────────────────── */}
+      {/* La bandeja de Pendientes (etapa 3): «Para revisar» encima de la
+          pantalla en uso. Con su clase `sup`: las filas son las de Supervisar. */}
+      {bandejaAbierta && (
+        <Cajon
+          etiqueta="Pendientes"
+          titulo="Pendientes"
+          sub={`${attentionCount} para revisar en ${sede} · pasá el mouse por una fila y se señala en el plano de Indicadores`}
+          onCerrar={cerrarBandeja}
+        >
+          <div className="sup bandeja">{cuerpoDeRevision}</div>
+        </Cajon>
+      )}
+      {/* La ficha del espacio: la misma desde el Inicio, Indicadores y
+          Pendientes, en su cajón (encima de la bandeja si se abrió desde ahí). */}
+      {fichaDelEspacio && modoEfectivo !== "vender" && (
+        <Cajon etiqueta={`Ficha de ${selected?.code ?? "espacio"}`} sinCabecera capa={1} ancho={520} onCerrar={closeDetail}>
+          <div className="sup ficha-en-cajon">{fichaDelEspacio}</div>
+        </Cajon>
+      )}
       {viewerFile && (
         <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
       )}

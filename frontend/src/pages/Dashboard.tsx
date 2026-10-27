@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -10,6 +10,7 @@ import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView, { type ModoComercial } from "./DashboardView";
 import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
 import { RUTA_DE, moduloDeRuta, puedeAbrir, type Modulo } from "../modulos";
+import { useArmazon } from "../store/armazonStore";
 import "../armazon.css";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
@@ -1215,7 +1216,7 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
         onClick={() => setAbierto((v) => !v)}
       >
         <span className="avatar-app" aria-hidden>{iniciales(persona ?? clienteNombre)}</span>
-        <span className="quien-corto" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.2, minWidth: 0, maxWidth: 180 }}>
+        <span className="quien-corto">
           <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
             {persona ?? clienteNombre ?? rol}
           </span>
@@ -1298,6 +1299,38 @@ function VistaDelPlano({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void
   );
 }
 
+/** Pendientes (etapa 3): la bandeja de lo que hay para revisar, encima de la
+ *  pantalla en uso. La cuenta roja no se dibuja con Contratos abierto —mezcla
+ *  vencimientos, bajo tarifa, reservas y cortes de ventas, y esa pantalla la
+ *  mira el proveedor— y la bandeja sólo se abre si se la pide. Fuera de las
+ *  pantallas comerciales (Plano, Montajes) lleva al Inicio y la abre ahí:
+ *  sus filas resuelven con la ficha y el plano de la sede. */
+function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void }) {
+  const cuenta = useArmazon((s) => s.cuentaPendientes);
+  const abierta = useArmazon((s) => s.bandejaAbierta);
+  const abrir = useArmazon((s) => s.abrirBandeja);
+  const cerrar = useArmazon((s) => s.cerrarBandeja);
+  const comercial = modulo === "inicio" || modulo === "contratos" || modulo === "indicadores";
+  const n = modulo === "contratos" ? 0 : cuenta;
+  return (
+    <button
+      type="button"
+      className="btn-pendientes"
+      aria-expanded={abierta}
+      title="Lo que hay que resolver: hoy, los próximos 30 días y lo que no cuadra"
+      onClick={() => {
+        if (abierta) { cerrar(); return; }
+        if (!comercial) ir("inicio");
+        abrir();
+      }}
+    >
+      <Inbox {...ICONO_BARRA} />
+      <span className="txt">Pendientes</span>
+      {n > 0 && <span className="cuenta" aria-label={`${n} para revisar`}>{n}</span>}
+    </button>
+  );
+}
+
 interface TopbarProps {
   modulo: Modulo;
   ir: (m: Modulo) => void;
@@ -1347,6 +1380,8 @@ function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLo
       {/* El estado del guardado (punto y palabra). Un clic sincroniza: es lo
           que hacía el botón «Actualizar» de la barra de la sede, que se fue. */}
       <SyncStatus />
+
+      <BotonPendientes modulo={modulo} ir={ir} />
 
       {/* Fase 2 clientes: sólo existe en el DOM si el backend confirmó
           `operador === true` — no es un botón deshabilitado para el resto de
@@ -1462,6 +1497,18 @@ export default function Dashboard() {
    *  (`DashboardView`) en otro modo: pasar de uno a otro no la vuelve a montar
    *  —el contrato a medio armar, el periodo y lo elegido siguen ahí—. */
   const comercial = efectivo === "inicio" || efectivo === "contratos" || efectivo === "indicadores";
+  /** La bandeja de Pendientes se cierra cuando una de sus filas lleva a otro
+   *  módulo (Renovar → Contratos, Distribuir → el 3D): lo que se pidió es esa
+   *  pantalla. Llegar al Inicio DESDE el Plano o Montajes para abrirla
+   *  (`BotonPendientes`) no la cierra. */
+  const moduloAnterior = useRef(efectivo);
+  useEffect(() => {
+    const antes = moduloAnterior.current;
+    moduloAnterior.current = efectivo;
+    if (antes === efectivo) return;
+    const eraComercial = antes === "inicio" || antes === "contratos" || antes === "indicadores";
+    if (eraComercial) useArmazon.getState().cerrarBandeja();
+  }, [efectivo]);
   const modoComercial: ModoComercial = efectivo === "contratos" ? "vender" : "supervisar";
   const abrirAjustes = () => { setSeccionConfig(null); setSettingsOpen(true); };
 
@@ -1508,6 +1555,8 @@ export default function Dashboard() {
           >
             {comercial ? (
               <DashboardView
+                inicio={efectivo === "inicio"}
+                onIrAMontajes={() => ir("montajes")}
                 modo={modoComercial}
                 onModo={(m) => ir(m === "vender" ? "contratos" : "indicadores")}
                 onDisenarPlano={() => ir("plano")}

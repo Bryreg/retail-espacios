@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import { BarChart3, FileText, Hammer, House, Map as IconoPlano, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { RUTA_DE, puedeAbrir, type Modulo } from "../../modulos";
-import { useArmazon } from "../../store/armazonStore";
 
 /** El ícono del menú: el mismo tamaño y trazo que la barra (hoja de piezas). */
 const ICONO_MENU = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
@@ -38,17 +37,8 @@ function marcado(actual: Modulo | null): Modulo | null {
   return actual === "plano3d" ? "plano" : actual;
 }
 
-/** La pastilla roja de lo que hay para revisar, en «Indicadores» (era la de
- *  la pestaña «Supervisar»). Con Contratos abierto no se dibuja: la pantalla
- *  la mira el proveedor. */
-function useCuentaDe(modulo: Modulo, actual: Modulo | null): number {
-  const cuenta = useArmazon((s) => s.cuentaPendientes);
-  return modulo === "indicadores" && actual !== "contratos" ? cuenta : 0;
-}
-
 function Item({ item, actual }: { item: ItemDelMenu; actual: Modulo | null }) {
   const { modulo, largo, corto, para, Icono } = item;
-  const badge = useCuentaDe(modulo, actual);
   return (
     <Link
       to={RUTA_DE[modulo]}
@@ -60,9 +50,6 @@ function Item({ item, actual }: { item: ItemDelMenu; actual: Modulo | null }) {
       <Icono {...ICONO_MENU} />
       <span className="largo">{largo}</span>
       <span className="corto" aria-hidden>{corto}</span>
-      {badge > 0 && (
-        <span className="cuenta" aria-label={`${badge} para revisar`}>{badge}</span>
-      )}
     </Link>
   );
 }
