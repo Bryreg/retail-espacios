@@ -9,6 +9,7 @@ from app.fechas import hoy
 from app.models.models import Space, SpaceLease, Supplier
 from app.routers.spaces import expire_leases
 from app.services.cobros import cobrado_por_contrato
+from app.services.meses import al_mes_de
 
 # Read-only router: any authenticated role may consult the dashboard.
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_auth)])
@@ -37,12 +38,15 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
         SpaceLease.start_date <= today,
         SpaceLease.end_date >= today,
     )
-    monthly_revenue = float(
-        db.query(func.coalesce(func.sum(SpaceLease.monthly_rent), 0.0))
-        .filter(*running)
-        .scalar()
-        or 0.0
-    )
+    # `monthly_rent` guarda el TOTAL del contrato (vender-api.md §1): sumarlo
+    # como si fuera el mes inflaba el canon por la duración de cada contrato
+    # (la verificación del rediseño UX, 2026-10-26, encontró $ 44.670.000
+    # contra $ 6.370.000 reales). Lo del mes es cada total repartido en SUS
+    # meses (`services/meses.py`, la misma cuenta del «Al mes» de Supervisar).
+    corriendo = db.query(SpaceLease.id, SpaceLease.monthly_rent, SpaceLease.start_date, SpaceLease.end_date
+                         ).filter(*running).all()
+    al_mes = {lid: al_mes_de(float(rent or 0), d, h) for lid, rent, d, h in corriendo}
+    monthly_revenue = float(sum(al_mes.values()))
     # Los contratos que se cobran por un % de las ventas tienen el valor en 0:
     # lo suyo es lo cobrado en los cortes de este mes (vender-api.md §3),
     # repartido por días si el corte cruza meses.
@@ -75,7 +79,7 @@ def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     ):
         fila = por_proveedor.setdefault(sid, {"name": name, "leases": 0, "revenue": 0.0})
         fila["leases"] += 1
-        fila["revenue"] += float(rent or 0) + cobrado.get(lease_id, 0.0)
+        fila["revenue"] += al_mes.get(lease_id, float(rent or 0)) + cobrado.get(lease_id, 0.0)
     # Workers never receive negotiated amounts — zero out every revenue field.
     is_admin = role == "admin"
     # Al trabajador, ni el orden por plata: los cinco primeros por plata son un

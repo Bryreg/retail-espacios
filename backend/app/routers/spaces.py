@@ -408,6 +408,55 @@ def get_space_by_code(
     return _space_out_for_role(space, role)
 
 
+@router.get("/by-code/{code}/historial")
+def historial_por_codigo(
+    code: str,
+    partes: bool = True,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Todos los contratos de un espacio —vivos, futuros, terminados y
+    cancelados—, del más nuevo al más viejo (rediseño UX, 2026-10-26).
+
+    Hasta acá sólo se leían el vigente y el próximo (`active_lease`,
+    `upcoming_lease`): «libre desde» y la línea de tiempo de la ficha no tenían
+    de dónde sacar lo terminado. Con ``partes`` (por defecto) suma los de sus
+    partes y participaciones (``CENTRO-GON-03`` trae ``…-PC1`` y ``…-B-PC1``).
+    Lee, no crea; un código sin filas devuelve una lista vacía.
+
+    La plata (total y al mes) sólo para administración, como en el resto de
+    `spaces`: al trabajador le llegan las fechas y el proveedor, sin montos."""
+    from app.services.meses import al_mes_de
+
+    codigo = (code or "").strip().upper()
+    q = db.query(SpaceLease, Space.code).join(Space, Space.id == SpaceLease.space_id).options(
+        joinedload(SpaceLease.supplier))
+    q = q.filter((Space.code == codigo) | (Space.code.like(codigo + "-%"))) if partes else q.filter(Space.code == codigo)
+    hoy_ = hoy()
+    es_admin = role == "admin"
+    fuera = []
+    for lease, cod in q.order_by(SpaceLease.start_date.desc(), SpaceLease.id.desc()).all():
+        if not lease.is_active:
+            estado = "cancelado"
+        elif lease.end_date and lease.end_date < hoy_:
+            estado = "terminado"
+        elif lease.start_date and lease.start_date > hoy_:
+            estado = "proximo"
+        else:
+            estado = "vigente"
+        fila = {"lease_id": lease.id, "espacio": cod, "estado": estado,
+                "proveedor": lease.supplier.name if lease.supplier else None, "marca": lease.marca,
+                "desde": lease.start_date.isoformat() if lease.start_date else None,
+                "hasta": lease.end_date.isoformat() if lease.end_date else None}
+        if es_admin:
+            total = float(lease.monthly_rent or 0)
+            fila["valor_total"] = total
+            fila["valor_al_mes"] = (al_mes_de(total, lease.start_date, lease.end_date)
+                                    if lease.start_date and lease.end_date else None)
+        fuera.append(fila)
+    return fuera
+
+
 #: Lo que contesta `PATCH /spaces/{id}/status` a un «Reservado» a mano.
 RESERVA_SOLO_DESDE_VENDER = "Las reservas se hacen desde Vender, con proveedor y fecha."
 

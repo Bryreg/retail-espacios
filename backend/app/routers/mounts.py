@@ -8,13 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import require_auth, sub_y_email_de_la_sesion
+from app.auth import require_admin, require_auth, sub_y_email_de_la_sesion
 from app.database import get_db
 from app.models.models import MountConfirmation, Space, SpaceFile
+from app.models.vender import RESULTADOS_DE_VERIFICACION, VerificacionDeMontaje
+from app.services.bitacora import anotar
 from app.services.subidas import leer_con_tope
 
 router = APIRouter(prefix="/mounts", tags=["mounts"], dependencies=[Depends(require_auth)])
@@ -57,6 +59,10 @@ class MountOut(BaseModel):
     reportado_por: Optional[str] = None
     rol: Optional[str] = None
     confirmado_en: Optional[datetime] = None
+    # La última verificación del reporte (rediseño UX, 2026-10-26): quien
+    # administra miró la foto al lado de la planometría y dijo si coincide.
+    # `None` mientras nadie lo verificó. No lleva plata.
+    verificacion: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 
@@ -97,7 +103,75 @@ def list_mounts(sede: Optional[str] = None, db: Session = Depends(get_db)):
                 SpaceFile.id, SpaceFile.filename, SpaceFile.content_type
             ).filter(SpaceFile.id.in_(ids)).all()
         }
-    return [_con_foto(f, archivos.get(f.file_id)) for f in filas]
+    salida = [_con_foto(f, archivos.get(f.file_id)) for f in filas]
+    ultimas = _ultimas_verificaciones(db, [f.id for f in filas])
+    for m in salida:
+        m.verificacion = ultimas.get(m.id)
+    return salida
+
+
+def _verificacion_out(v: VerificacionDeMontaje) -> dict:
+    return {"id": v.id, "resultado": v.resultado, "nota": v.nota, "por": v.verificada_por,
+            "en": v.verificada_en.isoformat() if v.verificada_en else None}
+
+
+def _ultimas_verificaciones(db: Session, ids: list[int]) -> dict[int, dict]:
+    """La última verificación de cada reporte, en UNA consulta."""
+    if not ids:
+        return {}
+    fuera: dict[int, dict] = {}
+    for v in (db.query(VerificacionDeMontaje).filter(VerificacionDeMontaje.montaje_id.in_(ids))
+              .order_by(VerificacionDeMontaje.id.asc()).all()):
+        fuera[v.montaje_id] = _verificacion_out(v)
+    return fuera
+
+
+class VerificacionIn(BaseModel):
+    model_config = {"extra": "forbid"}
+    resultado: str
+    nota: Optional[str] = Field(default=None, max_length=2000)
+
+
+@router.post("/{montaje_id}/verificar", response_model=MountOut, dependencies=[Depends(require_admin)])
+def verificar_montaje(
+    montaje_id: int,
+    cuerpo: VerificacionIn,
+    request: Request,
+    role: str = Depends(require_auth),
+    identidad: tuple = Depends(sub_y_email_de_la_sesion),
+    db: Session = Depends(get_db),
+):
+    """«Verificar el montaje de un contrato» (rediseño UX): coincide o no
+    coincide con la planometría. Sólo administración. «No coincide» pide la
+    nota de qué corregir: sin ella, quien monta no sabe qué arreglar. Sólo se
+    verifica un reporte de «montado»: el «no se pudo» se resuelve, no se
+    verifica."""
+    conf = (db.query(MountConfirmation)
+            .filter(MountConfirmation.id == montaje_id, MountConfirmation.archivado_en.is_(None)).first())
+    if conf is None:
+        raise HTTPException(status_code=404, detail="Ese reporte de montaje no existe")
+    if conf.estado != "montado":
+        raise HTTPException(status_code=409, detail="Sólo se verifica un montaje que se reportó como montado")
+    if cuerpo.resultado not in RESULTADOS_DE_VERIFICACION:
+        raise HTTPException(status_code=422, detail=f"resultado debe ser uno de {RESULTADOS_DE_VERIFICACION}")
+    nota = (cuerpo.nota or "").strip() or None
+    if cuerpo.resultado == "no_coincide" and not nota:
+        raise HTTPException(status_code=422, detail="Escribí qué hay que corregir: quien monta lo necesita")
+    v = VerificacionDeMontaje(montaje_id=conf.id, resultado=cuerpo.resultado, nota=nota,
+                              verificada_por=_quien_es(identidad) or role)
+    db.add(v)
+    anotar(db, request, role, "montaje.verificado", entidad="espacio", entidad_id=conf.space_code,
+           detalle=f"{conf.space_code} · {'coincide' if cuerpo.resultado == 'coincide' else 'no coincide'}")
+    db.commit()
+    db.refresh(v)
+    archivo = None
+    if conf.file_id:
+        fila = db.query(SpaceFile.id, SpaceFile.filename, SpaceFile.content_type).filter(SpaceFile.id == conf.file_id).first()
+        if fila:
+            archivo = SpaceFile(id=fila[0], filename=fila[1], content_type=fila[2])
+    salida = _con_foto(conf, archivo)
+    salida.verificacion = _verificacion_out(v)
+    return salida
 
 
 async def registrar_montaje(
