@@ -244,8 +244,8 @@ def corregir_precio(
     db: Session = Depends(get_db),
 ):
     """«Son al mes» (el total pasa a ser el valor × los meses), «es el
-    total» (no cambia) o «se cobra por % de las ventas» (el valor era un
-    marcador: pasa a 0 con su cobro por venta). Todo o nada; sin correos."""
+    total» (no cambia) o «se cobra por % de las ventas» (pasa a 0 con su
+    cobro por venta). Todo o nada; sin correos."""
     from app.services import precio_sin_forma
 
     actor = actor_de(request, rol)
@@ -257,7 +257,7 @@ def corregir_precio(
                 corte = "cada mes" if cobro["corte"] == "mensual" else "al final"
                 pct = f"{cobro['porcentaje']:g}".replace(".", ",")
                 detalle = (f"Valor de antes {h.valor_antes:,.0f}".replace(",", ".")
-                           + f" era un marcador: se cobra el {pct} % de las ventas, corte {corte}")
+                           + f": se cobra el {pct} % de las ventas, corte {corte}")
             else:
                 detalle = (f"Valor de antes {h.valor_antes:,.0f} leído al mes × {h.meses:.2f} meses = total {h.total_despues:,.0f}"
                            if h.modo_precio == "mensual" else f"Valor {h.valor_antes:,.0f} confirmado como total").replace(",", ".")

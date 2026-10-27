@@ -14,13 +14,9 @@ import { EncabezadoDeSeccion } from "./piezas";
  * duración.
  *
  * Por contrato, «Es al mes» (el total pasa a ser el valor × los meses) o «Es el
- * total» (no cambia); y «Todos son al mes», que pregunta antes. Los cargados
- * con $ 1 no son ni una cosa ni la otra: se cobran por un % de las ventas, y se
- * cargaron así porque esa forma de cobro todavía no existía (2026-10-27). El
- * $ 1 NO es un tipo de valor del sistema: es un dato de antes que se corrige
- * («Por % de ventas» los deja como los de Vender: valor 0, su porcentaje y su
- * corte), de a uno o todos juntos, y una vez corregidos no queda ninguno;
- * «Todos son al mes» pasa a ser «Los demás». Se puede
+ * total» (no cambia), o «Por % de ventas» (2026-10-27: queda como un contrato
+ * por ventas de Vender, con valor 0, su porcentaje y su corte); y «Todos son al
+ * mes», que pregunta antes. Se puede
  * deshacer desde el aviso. No manda correos: corrige cómo se lee un dato
  * (decisión del dueño). SÓLO ADMINISTRACIÓN: lleva plata y proveedores; quien
  * lo monta lo pone adentro de `isAdmin &&`, y el hook no pide nada si no está
@@ -38,18 +34,6 @@ const ESTADO: Record<ContratoSinForma["estado"], { texto: string; tono: string }
   cerrado: { texto: "cerrado", tono: "" },
 };
 
-/** Hasta acá el valor de un contrato de antes no es un precio sino lo que se
- *  escribió porque el cobro por % de ventas todavía no existía (en GALERÍAS,
- *  $ 1). Sólo sirve para esta corrección: fuera de acá nadie lo usa. */
-export const MARCADOR_DE_ANTES = 1_000;
-export const esMarcadorDeAntes = (c: Pick<ContratoSinForma, "valor">): boolean => c.valor <= MARCADOR_DE_ANTES;
-
-/** «con $ 1» si todos se cargaron con lo mismo; si no, «con $ 500 o menos». */
-export function cargadosCon(cs: readonly Pick<ContratoSinForma, "valor">[]): string {
-  const max = Math.max(...cs.map((c) => c.valor));
-  return cs.every((c) => c.valor === max) ? `con ${pesosExactos(max)}` : `con ${pesosExactos(max)} o menos`;
-}
-
 const CORTE: Record<CobroPorVentasDe["corte"], string> = { mensual: "cada mes", al_final: "al final" };
 
 /** «7,5» → 7.5; vacío, 0 o más de 100 → null. */
@@ -61,8 +45,7 @@ export function leerPorcentaje(t: string): number | null {
 const textoDePorcentaje = (n: number): string => String(n).replace(".", ",");
 
 /** El porcentaje y el corte, con «Guardar» y «Cancelar». */
-function CobroPorVentas({ pregunta, etiqueta, haciendo, onGuardar, onCancelar }: {
-  pregunta?: string;
+function CobroPorVentas({ etiqueta, haciendo, onGuardar, onCancelar }: {
   etiqueta: string;
   haciendo: boolean;
   onGuardar: (cobro: CobroPorVentasDe) => void;
@@ -80,7 +63,6 @@ function CobroPorVentas({ pregunta, etiqueta, haciendo, onGuardar, onCancelar }:
       onSubmit={(e) => { e.preventDefault(); if (porcentaje !== null) onGuardar({ porcentaje, corte }); }}
       style={{ display: "grid", gap: 8, margin: "0 10px 8px", padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)",
         border: "1px solid var(--line)", fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
-      {pregunta && <span>{pregunta}</span>}
       <span style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <label style={{ ...control, display: "inline-flex", alignItems: "center", gap: 4, padding: "0 8px", width: 84 }}>
           <input inputMode="decimal" placeholder="8" aria-label={`Porcentaje de las ventas: ${etiqueta}`} value={texto}
@@ -138,8 +120,8 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
 }) {
   const [verTodos, setVerTodos] = useState(false);
   const [preguntando, setPreguntando] = useState(false);
-  /** El contrato (o «los marcados» de antes) al que se le está escribiendo el %. */
-  const [porVentas, setPorVentas] = useState<number | "marcados" | null>(null);
+  /** El contrato al que se le está escribiendo el porcentaje de las ventas. */
+  const [porVentas, setPorVentas] = useState<number | null>(null);
   const [haciendo, setHaciendo] = useState(false);
   const [aviso, setAviso] = useState<{ texto: string; deshacer: number[] | null; error?: boolean } | null>(null);
   const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
@@ -196,8 +178,6 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
 
   if (filas.length === 0 && !aviso) return null;
   const visibles = verTodos ? filas : filas.slice(0, MOSTRAR);
-  const marcados = filas.filter(esMarcadorDeAntes);
-  const demas = filas.filter((c) => !esMarcadorDeAntes(c));
   return (
     <div data-precio-sin-forma>
       <EncabezadoDeSeccion titulo={titulo} valor={filas.length || undefined} />
@@ -220,81 +200,53 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
         <>
           <p style={{ margin: "2px 18px 8px", fontSize: "var(--t-2xs)", color: "var(--ink-3)", lineHeight: 1.45 }}>
             Se cargaron antes de Vender y hoy se leen como el total del contrato. Si el valor es el de cada mes, el total pasa a
-            ser el valor × los meses. Los cargados con {pesosExactos(1)} se cobran por un % de las ventas: se cargaron así porque
-            ese cobro todavía no existía. Una vez corregidos, no queda ninguno. No se manda ningún correo.
+            ser el valor × los meses. Si se cobra por un % de las ventas, elegí «Por % de ventas». No se manda ningún correo.
           </p>
-          {(marcados.length > 0 || demas.length > 0) && porVentas !== "marcados" && !preguntando && (
-            <div style={{ margin: "0 10px 6px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              {marcados.length > 0 && (
-                <button type="button" className="btn-s" onClick={() => { setPorVentas("marcados"); setPreguntando(false); }} disabled={haciendo}
-                  data-marcados-por-ventas>
-                  <Percent {...ICONO} /> Los cargados {cargadosCon(marcados)} son por % de ventas ({marcados.length})
-                </button>
-              )}
-              {demas.length > 0 && (
-                <button type="button" className="btn-s" onClick={() => { setPreguntando(true); setPorVentas(null); }} disabled={haciendo} data-todos-al-mes>
-                  <CalendarClock {...ICONO} /> {marcados.length > 0 ? `Los demás son al mes (${demas.length})` : `Todos son al mes (${demas.length})`}
-                </button>
-              )}
-            </div>
-          )}
-          {porVentas === "marcados" && (
-            <CobroPorVentas
-              etiqueta={`los ${marcados.length} cargados ${cargadosCon(marcados)}`}
-              pregunta={`¿Los ${marcados.length} contratos cargados ${cargadosCon(marcados)} se cobran por un % de las ventas? `
-                + `Se cargaron así porque ese cobro todavía no existía. Quedan en $ 0 con su porcentaje y su corte, como los de Vender, `
-                + `y lo vendido se carga en «Ventas por cargar». `
-                + `Si no todos tienen el mismo porcentaje, hacelo contrato por contrato. Se puede deshacer.`}
-              haciendo={haciendo}
-              onGuardar={(cobro) => void corregir("ventas", marcados, cobro)}
-              onCancelar={() => setPorVentas(null)}
-            />
-          )}
-          {preguntando && demas.length > 0 && (
-            <div role="group" aria-label="Confirmar" data-confirmar-todos
-              style={{ display: "grid", gap: 8, margin: "0 10px 6px", padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)",
-                border: "1px solid var(--line)", fontSize: "var(--t-xs)", color: "var(--ink-1)" }}>
-              <span>
-                ¿Pasar {marcados.length > 0 ? `los otros ${demas.length} contratos` : `los ${demas.length} contratos`} a «al mes»?
-                El total de cada uno pasa a ser su valor × sus meses
-                (por ejemplo {demas[0].espacio}: {pesosExactos(demas[0].valor)} × {textoDeMeses(demas[0].meses)} = {pesosExactos(demas[0].total_si_es_al_mes)}).
-                Se puede deshacer.
-              </span>
-              <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="btn-s" onClick={() => void corregir("mensual", demas)} disabled={haciendo} data-si-todos>
-                  {haciendo ? "Guardando…" : "Sí, son al mes"}
-                </button>
-                <button type="button" className="btn-s" onClick={() => setPreguntando(false)} disabled={haciendo}>Cancelar</button>
-              </span>
-            </div>
-          )}
+          <div style={{ margin: "0 10px 6px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            {!preguntando ? (
+              <button type="button" className="btn-s" onClick={() => { setPreguntando(true); setPorVentas(null); }} disabled={haciendo} data-todos-al-mes>
+                <CalendarClock {...ICONO} /> Todos son al mes ({filas.length})
+              </button>
+            ) : (
+              <div role="group" aria-label="Confirmar" data-confirmar-todos
+                style={{ display: "grid", gap: 8, width: "100%", padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)",
+                  border: "1px solid var(--line)", fontSize: "var(--t-xs)", color: "var(--ink-1)" }}>
+                <span>
+                  ¿Pasar los {filas.length} contratos a «al mes»? El total de cada uno pasa a ser su valor × sus meses
+                  (por ejemplo {filas[0].espacio}: {pesosExactos(filas[0].valor)} × {textoDeMeses(filas[0].meses)} = {pesosExactos(filas[0].total_si_es_al_mes)}).
+                  Se puede deshacer.
+                </span>
+                <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="btn-s" onClick={() => void corregir("mensual", filas)} disabled={haciendo} data-si-todos>
+                    {haciendo ? "Guardando…" : "Sí, son al mes"}
+                  </button>
+                  <button type="button" className="btn-s" onClick={() => setPreguntando(false)} disabled={haciendo}>Cancelar</button>
+                </span>
+              </div>
+            )}
+          </div>
           {visibles.map((c) => (
             <Fragment key={c.lease_id}>
-            <div className="fila-r" data-aviso={`psf:${c.lease_id}`} data-contrato-sin-forma={c.lease_id} data-marcador={esMarcadorDeAntes(c) || undefined}>
+            <div className="fila-r" data-aviso={`psf:${c.lease_id}`} data-contrato-sin-forma={c.lease_id}>
               <span className={`pill ${ESTADO[c.estado].tono}`}>{ESTADO[c.estado].texto}</span>
               <div className="dat">
                 <b className="mono">{c.espacio}</b>
                 <span>{c.proveedor || "—"} · {diaConAnio(c.desde)} → {diaConAnio(c.hasta)}</span>
-                {esMarcadorDeAntes(c) ? (
-                  <span>Cargado con {pesosExactos(c.valor)} porque el cobro por % de ventas todavía no existía: pasalo a «Por % de ventas»</span>
-                ) : (
-                  <span>
-                    Hoy: {pesosExactos(c.valor)} de total · si es al mes: {pesosExactos(c.valor)} × {textoDeMeses(c.meses)} ={" "}
-                    <b>{pesosExactos(c.total_si_es_al_mes)}</b>
-                  </span>
-                )}
+                <span>
+                  Hoy: {pesosExactos(c.valor)} de total · si es al mes: {pesosExactos(c.valor)} × {textoDeMeses(c.meses)} ={" "}
+                  <b>{pesosExactos(c.total_si_es_al_mes)}</b>
+                </span>
               </div>
               {/* `acc-r`: debajo de la cuenta, no en una columna aparte (en el
                   teléfono la columna caía debajo de la pastilla). */}
               <span className="acc-r">
-                {esMarcadorDeAntes(c) && ventasBoton(c)}
                 <button type="button" className="btn-s" onClick={() => void corregir("mensual", [c])} disabled={haciendo} data-es-al-mes={c.lease_id}>
                   Es al mes
                 </button>
                 <button type="button" className="btn-s" onClick={() => void corregir("total", [c])} disabled={haciendo} data-es-total={c.lease_id}>
                   Es el total
                 </button>
-                {!esMarcadorDeAntes(c) && ventasBoton(c)}
+                {ventasBoton(c)}
               </span>
             </div>
             {porVentas === c.lease_id && (

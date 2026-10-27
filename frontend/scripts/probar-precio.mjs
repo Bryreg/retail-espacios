@@ -15,8 +15,8 @@
  *     convirtiendo, para que el total no salte.
  *   · «Para revisar» → Corregir: los contratos de antes sin forma, con «Es al
  *     mes», «Es el total» y «Todos son al mes»; sólo administración, sin
- *     correos, UN aviso en la pastilla. Los cargados con $ 1 (antes de que
- *     existiera el cobro por % de ventas) pasan a «Por % de ventas» (2026-10-27).
+ *     correos, UN aviso en la pastilla. Y «Por % de ventas» por contrato
+ *     (2026-10-27).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -110,17 +110,17 @@ await prueba("las rutas del cliente existen y son de administración; corregir n
   assert.ok(servicio.includes("meses_entre(") && !/send_mail|correo/.test(servicio.replace(/"""[\s\S]*?"""/g, "")));
 });
 
-await prueba("los cargados con $ 1 se cobran por % de ventas, y «al mes» en bloque no los toca", () => {
+await prueba("cada contrato puede pasar a «Por % de ventas», y la tarjeta no distingue ningún valor", () => {
   const h = sinComentarios(leer("src/components/Supervisar/PrecioSinForma.tsx"));
-  assert.ok(h.includes("export const MARCADOR_DE_ANTES = 1_000;"));
-  assert.ok(!/simb[oó]lic/i.test(h), "el $ 1 es un dato de antes que se corrige, no un «valor simbólico» del sistema");
-  assert.ok(h.includes('corregir("mensual", demas)') && !h.includes('corregir("mensual", filas)'), "«Todos son al mes» pasa los cargados con $ 1 a «al mes»");
-  assert.ok(h.includes('corregir("ventas", marcados, cobro)') && h.includes('corregir("ventas", [c], cobro)'));
+  assert.ok(h.includes('corregir("ventas", [c], cobro)'), "falta «Por % de ventas» por contrato");
+  assert.ok(h.includes('corregir("mensual", filas)'), "«Todos son al mes» es para todos");
+  assert.ok(!/simb[oó]lic|marcad|MARCADOR|todav[ií]a no exist/i.test(h), "la tarjeta no trata ningún valor como especial");
   assert.ok(h.includes("«Ventas por cargar»"), "el aviso dice dónde se carga lo vendido");
   const api = sinComentarios(leer("src/api/precioSinForma.ts"));
   assert.ok(api.includes('modo === "ventas" ? { modo, contratos, cobro } : { modo, contratos }'), "el cobro va sólo con «ventas»");
   const router = leerPy("routers/vender.py");
   assert.ok(/modo: Literal\["mensual", "total", "ventas"\]/.test(router));
+  assert.ok(!/marcador/.test(router), "la bitácora no anota el valor de antes como «marcador»");
   const t = leer("src/pages/DashboardView.tsx");
   assert.ok(t.includes("onCambio={() => { precioSinForma.recargar(); cortesSinCargar.recargar(); }}"), "al pasar a ventas, «Ventas por cargar» no se entera");
 });

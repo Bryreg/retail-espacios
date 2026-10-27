@@ -15,9 +15,8 @@ administra le dice cómo se lee, en Supervisar → «Para revisar» → Corregir
   Vender). Queda escrito como «al mes».
 · «Es el total»: el valor no cambia; queda escrito como total y sale de la
   lista.
-· «Se cobra por % de las ventas» (2026-10-27): el valor que se cargó era un
-  marcador (en GALERÍAS, $ 1) porque lo que se cobra sale de las ventas. Queda
-  como cualquier contrato por ventas de Vender: valor 0 y su cobro
+· «Se cobra por % de las ventas» (2026-10-27): queda como cualquier contrato
+  por ventas de Vender: valor 0 y su cobro
   (``cobros_por_venta``) con el porcentaje y el corte; los cortes se cargan
   como siempre, desde «Ventas por cargar».
 
