@@ -1,0 +1,121 @@
+/* Montajes (rediseño UX 2026-10, etapa 7): contratos y planogramas en una
+   sola lista. En la pantalla grande, una tabla de seis columnas; en el
+   teléfono, cada fila es una tarjeta grande (el mercaderista la toca con
+   guantes). Todo cuelga de `.montajes` o de `.vm` (el cajón de verificar). */
+
+.montajes { flex: 1; overflow-y: auto; background: var(--bg); padding: 20px 24px 40px; min-width: 0; }
+.mj-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.mj-cab h2 { margin: 0; font-size: var(--t-xl, 22px); font-weight: 700; letter-spacing: -0.02em; color: var(--ink-1); }
+.mj-sub { margin: 4px 0 0; font-size: var(--t-sm); color: var(--ink-3); }
+.mj-der { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.mj-todas { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-sm); color: var(--ink-2); cursor: pointer; }
+.mj-enlace { background: none; border: 0; padding: 0; color: var(--signal-ink); font: inherit; font-size: var(--t-sm); font-weight: 600; cursor: pointer; }
+.mj-enlace:hover, .mj-enlace.subrayado { text-decoration: underline; }
+.mj-aviso { margin: 0 0 12px; font-size: var(--t-sm); color: var(--warning); }
+.mj-ya, .mj-hecho {
+  display: flex; gap: 8px; align-items: flex-start; padding: 11px 12px; margin: 0 0 12px;
+  border-radius: var(--r-md); background: var(--success-50); border: 1px solid var(--success-100);
+  font-size: var(--t-sm); color: var(--ink-1); line-height: 1.45;
+}
+.mj-ya > div { flex: 1; min-width: 0; }
+.mj-cerrar { margin-left: auto; background: none; border: 0; color: var(--ink-3); cursor: pointer; padding: 0; flex: none; }
+
+.mj-filtros { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.mj-filtros button {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+  border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: var(--t-sm); font-weight: 500; white-space: nowrap; cursor: pointer;
+}
+.mj-filtros button .mono { font: var(--t-xs) / 1 var(--f-mono); color: var(--ink-3); }
+.mj-filtros button[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); font-weight: 650; }
+.mj-vacio { margin: 24px 0; font-size: var(--t-sm); color: var(--ink-3); }
+
+.mj-lista { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; }
+.mj-fila {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.1fr) 96px minmax(160px, 1.6fr) 120px minmax(170px, 1.3fr) 170px;
+  gap: 12px; align-items: center; padding: 10px 16px;
+  border-top: 1px solid var(--line-soft); font-size: var(--t-sm); color: var(--ink-1);
+}
+.mj-fila:first-child { border-top: 0; }
+.mj-titulos { font-size: var(--t-xs); font-weight: 600; color: var(--ink-3); background: var(--surface-2); padding-top: 8px; padding-bottom: 8px; }
+.mj-fila > span { min-width: 0; }
+.mj-fila small { display: block; font-size: var(--t-xs); color: var(--ink-3); overflow-wrap: anywhere; }
+.mj-cod b { font-size: var(--t-sm); }
+.mj-parte { color: var(--signal-ink) !important; font-weight: 600; }
+.mj-sede { display: inline-flex !important; align-items: center; gap: 3px; }
+.mj-clase { color: var(--ink-2); }
+.mj-desde { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.mj-fila[data-urgente] .mj-desde { color: var(--warning); font-weight: 600; }
+.mj-estado { display: block; }
+.mj-punto { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin-right: 6px; vertical-align: 1px; }
+.mj-punto.sin_montar { background: var(--warning); }
+.mj-punto.sin_verificar { background: var(--signal-ink); }
+.mj-punto.no_realizado { background: var(--ocupado); }
+.mj-punto.verificado { background: var(--libre); }
+.mj-punto.verificado.mal { background: var(--ocupado); }
+.mj-accion { text-align: right; }
+.mj-btn {
+  display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 12px;
+  border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink-1); font: inherit; font-size: var(--t-xs); font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.mj-btn:hover { background: var(--surface-2); }
+
+@media (max-width: 1100px) {
+  .mj-fila { grid-template-columns: minmax(110px, 1fr) minmax(150px, 1.5fr) minmax(160px, 1.3fr) auto; }
+  .mj-titulos { display: none; }
+  .mj-clase, .mj-desde { display: none !important; }
+}
+/* El teléfono: tarjetas grandes, los filtros corren de costado. */
+@media (max-width: 639px) {
+  .montajes { padding: 14px 12px 32px; }
+  .mj-filtros { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 12px; padding: 0 12px; }
+  .mj-lista { background: transparent; border: 0; border-radius: 0; display: flex; flex-direction: column; gap: 10px; overflow: visible; }
+  .mj-fila {
+    grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "cod estado" "quien quien" "accion accion";
+    gap: 6px 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface);
+  }
+  .mj-fila:first-child { border-top: 1px solid var(--line); }
+  .mj-fila[data-urgente] { border-color: var(--warning); }
+  .mj-cod { grid-area: cod; }
+  .mj-estado { grid-area: estado; text-align: right; font-size: var(--t-xs); }
+  .mj-quien { grid-area: quien; font-size: 15px; font-weight: 600; }
+  .mj-quien small { font-weight: 400; }
+  .mj-accion { grid-area: accion; text-align: left; }
+  .mj-btn { width: 100%; height: 44px; font-size: var(--t-sm); }
+}
+
+/* ── Verificar el montaje de un contrato (el cajón) ──────────────────── */
+.vm { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 24px; }
+.vm-laminas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.vm-lamina { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.vm-lamina figcaption { font-size: var(--t-xs); font-weight: 600; color: var(--ink-3); }
+.vm-lamina img, .vm-lamina iframe, .vm-vacio {
+  width: 100%; height: 300px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface-2); object-fit: contain; display: block;
+}
+.vm-vacio { display: grid; place-items: center; padding: 16px; text-align: center; font-size: var(--t-sm); color: var(--ink-3); }
+.vm-datos { margin: 0; display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 4px 12px; font-size: var(--t-sm); }
+.vm-datos dt { color: var(--ink-3); }
+.vm-datos dd { margin: 0; color: var(--ink-1); overflow-wrap: anywhere; }
+.vm-resolver { padding: 12px; border-radius: var(--r-md); background: var(--warning-50); border: 1px solid var(--line); font-size: var(--t-sm); }
+.vm-resolver p { margin: 0 0 8px; }
+.vm-decidir { display: flex; flex-direction: column; gap: 10px; }
+.vm-opciones { display: flex; gap: 8px; }
+.vm-opciones button {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px;
+  border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-1);
+  font: inherit; font-size: var(--t-sm); font-weight: 600; cursor: pointer;
+}
+.vm-opciones button[aria-checked="true"] { border-color: var(--ink-1); box-shadow: inset 0 0 0 1px var(--ink-1); }
+.vm-nota { display: flex; flex-direction: column; gap: 4px; font-size: var(--t-xs); font-weight: 600; color: var(--ink-2); }
+.vm-nota textarea { font: inherit; font-size: var(--t-sm); padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--brd-control); background: var(--surface); color: var(--ink-1); resize: vertical; }
+.vm-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--t-sm); color: var(--ink-1); }
+.vm-error { margin: 0; color: var(--ocupado-txt); font-size: var(--t-sm); }
+.vm-hecho { margin: 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--success-50); border: 1px solid var(--success-100); font-size: var(--t-sm); }
+.vm-pie { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.vm-btn { height: 40px; padding: 0 14px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-1); font: inherit; font-size: var(--t-sm); font-weight: 600; cursor: pointer; }
+@media (max-width: 639px) {
+  .vm-laminas { grid-template-columns: minmax(0, 1fr); }
+  .vm-lamina img, .vm-lamina iframe, .vm-vacio { height: 220px; }
+}

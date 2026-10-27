@@ -184,9 +184,21 @@ export default function Montaje() {
   // movida, con guantes y una mano, es lo más normal del mundo, y es la prueba
   // que el proveedor va a discutir en tres meses.
   const reportado = recien ?? espacio.ultimo ?? null;
+  // Administración miró la foto al lado de la planometría y no coincide
+  // (rediseño UX, etapa 7): quien monta lee qué corregir y lo registra de nuevo.
+  const aCorregir = !recien && reportado?.verificacion?.resultado === "no_coincide" ? reportado.verificacion : null;
   if (reportado && !corrigiendo) {
     return (
       <Marco espacio={espacio}>
+        {aCorregir && (
+          <div data-hay-que-corregir style={{ ...TARJETA, marginBottom: 12, borderColor: "var(--warning)", background: "var(--warning-50)" }}>
+            <b style={{ fontSize: 15, color: "var(--ink-1)" }}>Hay que corregir el montaje</b>
+            <div style={{ fontSize: 13.5, color: "var(--ink-1)", lineHeight: 1.5, marginTop: 4 }}>{aCorregir.nota}</div>
+            <button onClick={() => { setCorrigiendo(true); setRecien(null); }} style={BOTON}>
+              Corregir y registrar de nuevo
+            </button>
+          </div>
+        )}
         <div style={{ ...TARJETA, borderColor: "var(--success-100)", background: "var(--success-50)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <Check size={18} style={{ color: "var(--success)" }} />

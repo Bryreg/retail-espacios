@@ -354,14 +354,16 @@ class RevisarIn(GuiaIn):
 @router.get("/supervision")
 def leer_supervision(
     sede: str = Query(..., min_length=1),
+    todas: bool = False,
     rol: str = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
     """Las caras de la sede para «Para revisar»: sin montar, montadas que falta
-    revisar, las que no se pudieron montar y las que no coinciden."""
+    revisar, las que no se pudieron montar y las que no coinciden. Con
+    ``todas=1`` (la lista de Montajes), también las que coinciden."""
     from app.fechas import hoy
 
-    return {"caras": supervision.para_revisar(db, sede, rol), "hoy": hoy()}
+    return {"caras": supervision.para_revisar(db, sede, rol, con_las_que_coinciden=todas), "hoy": hoy()}
 
 
 @router.get("/supervision/version")

@@ -8,11 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin, require_auth, sub_y_email_de_la_sesion
+from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.models.models import MountConfirmation, Space, SpaceFile
 from app.models.vender import RESULTADOS_DE_VERIFICACION, VerificacionDeMontaje
@@ -130,6 +131,9 @@ class VerificacionIn(BaseModel):
     model_config = {"extra": "forbid"}
     resultado: str
     nota: Optional[str] = Field(default=None, max_length=2000)
+    #: Con «no coincide»: mandarle el aviso de montaje de nuevo a quien monta
+    #: (rediseño UX, etapa 7). Su enlace muestra la nota de qué corregir.
+    reenviar: bool = False
 
 
 @router.post("/{montaje_id}/verificar", response_model=MountOut, dependencies=[Depends(require_admin)])
@@ -137,8 +141,10 @@ def verificar_montaje(
     montaje_id: int,
     cuerpo: VerificacionIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     role: str = Depends(require_auth),
     identidad: tuple = Depends(sub_y_email_de_la_sesion),
+    cliente: Cliente = Depends(cliente_del_pedido),
     db: Session = Depends(get_db),
 ):
     """«Verificar el montaje de un contrato» (rediseño UX): coincide o no
@@ -171,7 +177,31 @@ def verificar_montaje(
             archivo = SpaceFile(id=fila[0], filename=fila[1], content_type=fila[2])
     salida = _con_foto(conf, archivo)
     salida.verificacion = _verificacion_out(v)
+    if cuerpo.reenviar and cuerpo.resultado == "no_coincide":
+        salida.verificacion["aviso_reenviado"] = _reenviar_aviso(db, background_tasks, conf, cliente)
     return salida
+
+
+def _reenviar_aviso(db: Session, background_tasks: BackgroundTasks, conf: MountConfirmation,
+                    cliente: Cliente) -> bool:
+    """El correo de montaje del contrato que manda hoy (o el próximo) sobre ese
+    espacio, sólo a quien monta. False si no hay contrato o no hay correo."""
+    from app.fechas import hoy
+    from app.models.models import SpaceLease
+    from app.routers.bulk_leases import _avisar
+    from app.routers.montajes import fila_para_montar
+
+    space = db.query(Space).filter(Space.code == conf.space_code).first()
+    if space is None:
+        return False
+    lease = (db.query(SpaceLease)
+             .filter(SpaceLease.space_id == space.id, SpaceLease.is_active.is_(True),
+                     SpaceLease.end_date >= hoy())
+             .order_by(SpaceLease.start_date.asc()).first())
+    if lease is None:
+        return False
+    avisos = _avisar(db, background_tasks, space.sede, [fila_para_montar(db, lease)], cliente, roles=("montaje",))
+    return bool(avisos and avisos.smtp_listo and avisos.montaje)
 
 
 async def registrar_montaje(

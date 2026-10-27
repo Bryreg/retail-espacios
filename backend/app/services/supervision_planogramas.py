@@ -143,7 +143,7 @@ def ultimo_aviso(db: Session, version_id: int) -> Optional[dict]:
 # ─── «Para revisar» ───────────────────────────────────────────────────────────
 
 
-def para_revisar(db: Session, sede: str, rol: str) -> list[dict]:
+def para_revisar(db: Session, sede: str, rol: str, con_las_que_coinciden: bool = False) -> list[dict]:
     """Las caras de la sede cuya versión vigente está sin montar, montada y
     falta revisar, no se pudo montar o no coincide. Sólo las que ese rol
     puede revisar (las mismas que puede publicar)."""
@@ -168,7 +168,9 @@ def para_revisar(db: Session, sede: str, rol: str) -> list[dict]:
     for pl, cara, v in candidatos:
         a, r = avisos.get(v.id), revisiones.get(v.id)
         estado = estado_de(a, r, "vigente")
-        if estado not in PARA_REVISAR:
+        # La lista de Montajes (rediseño UX, etapa 7) pide también las que
+        # coinciden: el filtro «Verificado»; «Para revisar» no las quiere.
+        if estado not in PARA_REVISAR and not (con_las_que_coinciden and estado == "coincide"):
             continue
         fotos = 0
         if estado == "por_revisar":
@@ -181,7 +183,7 @@ def para_revisar(db: Session, sede: str, rol: str) -> list[dict]:
             "codigo": guia_servicio.codigo_del_mueble(cara), "nombre": pg._nombre_de_cara(cara),
             "estado": estado, "rige_desde": v.rige_desde, "dias_que_rige": (dia - v.rige_desde).days,
             "aviso": aviso_out(a) if _aviso_es_posterior(a, r) else None,
-            "revision": revision_out(r) if estado == "no_coincide" else None,
+            "revision": revision_out(r) if estado in ("no_coincide", "coincide") else None,
             "fotos_nuevas": fotos,
         })
     return fuera

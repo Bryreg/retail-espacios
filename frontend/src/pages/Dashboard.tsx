@@ -1570,7 +1570,8 @@ export default function Dashboard() {
                 <StoreEditor3D />
               </Suspense>
             ) : efectivo === "montajes" ? (
-              <MountView initialCode={mountCode} onDone={() => ir("inicio")} />
+              <MountView initialCode={mountCode} onDone={() => ir("indicadores")}
+                onAbrirPendientes={isAdmin ? () => { ir("inicio"); useArmazon.getState().abrirBandeja(); } : undefined} />
             ) : (
               <FloorPlan2D />
             )}

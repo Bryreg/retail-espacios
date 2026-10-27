@@ -34,12 +34,14 @@ export interface VerificacionDeMontaje {
   por?: string | null;
   /** Cuándo, hora del servidor. */
   en?: string | null;
+  /** Sólo en la respuesta de verificar con `reenviar`: si salió el aviso. */
+  aviso_reenviado?: boolean;
 }
 
 /** «Verificar el montaje de un contrato» (administración): coincide, o no
  *  coincide con lo que hay que corregir. Queda quién y cuándo. */
-export const verificarMontaje = (id: number, resultado: "coincide" | "no_coincide", nota?: string): Promise<MountConfirmation> =>
-  client.post<MountConfirmation>(`/mounts/${id}/verificar`, { resultado, ...(nota ? { nota } : {}) }).then((r) => r.data);
+export const verificarMontaje = (id: number, resultado: "coincide" | "no_coincide", nota?: string, reenviar = false): Promise<MountConfirmation> =>
+  client.post<MountConfirmation>(`/mounts/${id}/verificar`, { resultado, ...(nota ? { nota } : {}), ...(reenviar ? { reenviar } : {}) }).then((r) => r.data);
 
 export const fetchMounts = (sede?: string): Promise<MountConfirmation[]> =>
   client
