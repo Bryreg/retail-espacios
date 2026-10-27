@@ -481,18 +481,17 @@ def historial_por_codigo(
     q = db.query(SpaceLease, Space.code).join(Space, Space.id == SpaceLease.space_id).options(
         joinedload(SpaceLease.supplier))
     q = q.filter((Space.code == codigo) | (Space.code.like(codigo + "-%"))) if partes else q.filter(Space.code == codigo)
+    from app.services.historial import cerrados_a_mano, estado_del_contrato
+
     hoy_ = hoy()
     es_admin = role == "admin"
     fuera = []
-    for lease, cod in q.order_by(SpaceLease.start_date.desc(), SpaceLease.id.desc()).all():
-        if not lease.is_active:
-            estado = "cancelado"
-        elif lease.end_date and lease.end_date < hoy_:
-            estado = "terminado"
-        elif lease.start_date and lease.start_date > hoy_:
-            estado = "proximo"
-        else:
-            estado = "vigente"
+    filas = q.order_by(SpaceLease.start_date.desc(), SpaceLease.id.desc()).all()
+    # `is_active` en falso no distingue lo vencido de lo cancelado: lo dice
+    # la bitácora (`services/historial.py`).
+    cerrados = cerrados_a_mano(db, [l.id for l, _ in filas])
+    for lease, cod in filas:
+        estado = estado_del_contrato(lease, cerrados, hoy_)
         fila = {"lease_id": lease.id, "espacio": cod, "estado": estado,
                 "proveedor": lease.supplier.name if lease.supplier else None, "marca": lease.marca,
                 "desde": lease.start_date.isoformat() if lease.start_date else None,

@@ -67,7 +67,8 @@ export interface ContratoDelHistorial {
   lease_id: number;
   /** El código del espacio o de la parte (`CENTRO-GON-03-PC1`). */
   espacio: string;
-  estado: "vigente" | "proximo" | "terminado" | "cancelado";
+  /** «reemplazado»: «Editar contrato» lo cerró y lo reemplazó por otro. */
+  estado: "vigente" | "proximo" | "terminado" | "cancelado" | "reemplazado";
   proveedor: string | null;
   marca: string | null;
   desde: string | null;

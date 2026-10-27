@@ -79,7 +79,7 @@ export default function LineaDeTiempo({ codigo, esAdmin }: {
   const desde = libreDesde(filas, codigo, hoy);
   const libreHoy = desde.getTime() === hoy.getTime();
   const partesVivas = vivas.filter((f) => f.espacio.toUpperCase() !== codigo.toUpperCase()).length;
-  const anteriores = filas.filter((f) => f.estado === "terminado" || f.estado === "cancelado").slice(0, 5);
+  const anteriores = filas.filter((f) => f.estado === "terminado" || f.estado === "cancelado" || f.estado === "reemplazado").slice(0, 5);
 
   return (
     <section className="linea-ficha" data-linea-de-tiempo>
@@ -131,7 +131,7 @@ export default function LineaDeTiempo({ codigo, esAdmin }: {
             {anteriores.map((f) => (
               <li key={f.lease_id}>
                 <span className="quien">{f.proveedor ?? "Sin proveedor"}{f.espacio.toUpperCase() !== codigo.toUpperCase() ? ` · ${f.espacio.slice(codigo.length + 1)}` : ""}</span>
-                <span className="cuando">{corta(f.desde)} – {corta(f.hasta)}{f.estado === "cancelado" ? " · cancelado" : ""}</span>
+                <span className="cuando">{corta(f.desde)} – {corta(f.hasta)}{f.estado === "cancelado" ? " · cancelado" : f.estado === "reemplazado" ? " · reemplazado al editarlo" : ""}</span>
                 {esAdmin && typeof f.valor_al_mes === "number" && (
                   <span className="plata">{pesos(f.valor_al_mes)} al mes</span>
                 )}

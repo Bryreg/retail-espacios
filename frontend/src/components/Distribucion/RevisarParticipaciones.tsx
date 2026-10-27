@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Layers, PenTool } from "lucide-react";
+import { Layers, PenTool, Download } from "lucide-react";
 import { describeError } from "../../api/client";
 import type { ParametrosDeResumen, ResumenOut } from "../../api/participaciones";
 import { useAuthStore } from "../../store/authStore";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { claveDeResumen, useOcupacionStore } from "../../store/ocupacionStore";
 import { pct } from "../../utils/participaciones";
+import { aCsv, bajarCsv } from "../../utils/indicadores";
 import {
   DIAS_DE_APURO, PALABRA_DE_LA_DISTRIBUCION, cuantasParaRevisar, fechaCorta, huerfanosDelEstado, paraRevisarDeResumen,
   rotuloDeCara, type MuebleDelPlano, type SeccionDeRevision,
@@ -218,6 +219,18 @@ export function TablaDeParticipaciones({ sede, muebles }: { sede: string; mueble
           <span style={{ marginLeft: "auto", fontSize: "var(--t-3xs)", color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>
             el día {fechaCorta(r.dia, r.hoy)} · período {fechaCorta(r.desde, r.hoy)} → {fechaCorta(r.hasta, r.hoy)}
           </span>
+        )}
+        {/* Exportar CSV (rediseño UX 2026-10, etapa 5): la misma tabla, con
+            los filtros que tenga puestos. */}
+        {r && r.caras.length > 0 && (
+          <button type="button" className="ind-csv" data-csv-participaciones
+            onClick={() => bajarCsv(`participaciones-${r.sede}.csv`, aCsv(
+              ["Sede", "Mueble", "Cara", "Comprometido el día %", "Pico del período %", "Disponible %", "Dibujado el día %", "Estado"],
+              r.caras.map((c) => [r.sede, c.fixture_code, c.cara, c.comprometido_dia_pb / 100, c.pico_pb / 100,
+                c.disponible_pb / 100, c.dibujado_dia_pb / 100, PALABRA_DE_LA_DISTRIBUCION[c.estado_distribucion]]),
+            ))}>
+            <Download size={16} strokeWidth={1.75} aria-hidden /> CSV
+          </button>
         )}
       </div>
       {error && <div style={{ padding: "0 15px 8px", fontSize: "var(--t-2xs)", color: "var(--danger)" }}>{error}</div>}

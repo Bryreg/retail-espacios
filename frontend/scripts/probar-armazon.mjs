@@ -41,6 +41,7 @@ async function cargar(entrada) {
 const M = await cargar("modulos.ts");
 const L = await cargar("utils/lineaDeTiempo.ts");
 const LS = await cargar("utils/lineaDeLaSede.ts");
+const I = await cargar("utils/indicadores.ts");
 
 let hechas = 0;
 const prueba = (n, fn) => {
@@ -191,6 +192,58 @@ prueba("Contratos: la línea no pide proveedores ni plata, y cada pantalla tiene
   // El contrato sigue a «¿Para qué fechas?» mientras nadie toque sus fechas.
   const c = sinComentarios(leer("components", "Contrato", "Contrato.tsx"));
   assert.match(c, /useEffect\(\(\) => \{\s*if \(fechasTocadas\.current \|\| !rango\) return;/);
+});
+
+console.log("\narmazón · Indicadores (etapa 5)");
+
+prueba("las cuentas: contra la meta, canon ÷ tarifa, lo que vence, los montajes, los días sin contrato", () => {
+  assert.deepEqual([I.contraLaMeta(90, 90), I.contraLaMeta(85, 90), I.contraLaMeta(80, 90), I.contraLaMeta(79, 90)], ["ok", "bajo", "bajo", "muy_bajo"]);
+  assert.equal(I.textoContraLaMeta(78, 90), "Bajo la meta de 90 %");
+  const ct = I.canonContraTarifa([{ alMes: 500, tarifa: 600 }, { alMes: 700, tarifa: 600 }, { alMes: 900, tarifa: 0 }]);
+  assert.deepEqual(ct, { pct: 100, canon: 1200, tarifa: 1200, contadas: 2, sinTarifa: 1 }, "un contrato sin tarifa entra en la cuenta");
+  assert.equal(I.canonContraTarifa([]).pct, null);
+  const v = I.venceEn([
+    { codigo: "A", hasta: "2026-11-10", alMes: 100, renovado: false },
+    { codigo: "B", hasta: "2026-12-01", alMes: 200, renovado: true },
+    { codigo: "C", hasta: "2027-03-01", alMes: 400, renovado: false },
+    { codigo: "D", hasta: "2026-10-20", alMes: 800, renovado: false },
+  ], "2026-10-26", 90);
+  assert.deepEqual(v.puntos.map((p) => [p.codigo, p.dias]), [["A", 15], ["B", 36]], "lo vencido o lo que pasa de 90 días cuenta");
+  assert.deepEqual([v.sinRenovar, v.total], [100, 300]);
+  const m = I.montajesDelMes([
+    { desde: "2026-10-01", estado: "verificado" }, { desde: "2026-10-15", estado: "sin_verificar" },
+    { desde: "2026-10-20", estado: "sin_montar" }, { desde: "2026-09-30", estado: "no_realizado" },
+  ], "2026-10-26");
+  assert.deepEqual([m.total, m.enLaTienda, m.porEstado.no_realizado], [3, 2, 0], "un contrato de otro mes cuenta en los del mes");
+  assert.deepEqual(I.diasSinContrato(["PUN-08", "GON-02·B"], { "PUN-08": "2026-09-30" }, "2026-10-26"),
+    [{ codigo: "PUN-08", dias: 26 }, { codigo: "GON-02·B", dias: null }]);
+  assert.deepEqual(I.variacion([100, 110]), { actual: 110, anterior: 100, pct: 10 });
+  assert.equal(I.variacion([0, 50]).pct, null, "contra cero no hay porcentaje");
+  assert.equal(I.pesos(9939500), "$ 9.939.500");
+});
+
+prueba("el CSV: separado por punto y coma, con BOM, y las comillas donde hacen falta", () => {
+  const t = I.aCsv(["A", "B"], [["x;y", 'di "hola"'], [1, null]]);
+  assert.ok(t.startsWith("\uFEFFA;B\r\n"));
+  assert.ok(t.includes('"x;y";"di ""hola"""'));
+  assert.ok(t.endsWith("1;\r\n"));
+});
+
+prueba("Indicadores: cada tarjeta tiene su definición, y quien no administra no ve plata", () => {
+  const res = sinComentarios(leer("components", "Indicadores", "Resumen.tsx"));
+  const ids = [...res.matchAll(/<Tarjeta id="([a-z_0-9]+)"/g)].map((m) => m[1]);
+  assert.ok(ids.length >= 7, `el Resumen tiene ${ids.length} tarjetas`);
+  for (const id of ids) assert.ok(I.metrica(id), `la tarjeta «${id}» no tiene definición en el diccionario`);
+  // Las de plata, sólo para administración.
+  assert.match(res, /\{esAdmin && c && canonDelPeriodo && \(\s*<Tarjeta id="canon"/);
+  assert.match(res, /\{esAdmin && datos\.canonTarifa && \(\s*<Tarjeta id="canon_tarifa"/);
+  assert.match(res, /\{esAdmin && datos\.disponibles\.sinFacturar !== null && \(/);
+  for (const m of I.METRICAS) assert.ok(m.formula && m.periodo && m.origen, `«${m.nombre}» sin fórmula, periodo u origen`);
+  const dic = sinComentarios(leer("components", "Indicadores", "Diccionario.tsx"));
+  assert.match(dic, /METRICAS\.filter\(\(m\) => esAdmin \|\| !m\.plata\)/, "el diccionario le muestra las de plata a quien no administra");
+  // La serie y las tarifas, sólo para quien administra.
+  const v = sinComentarios(leer("pages", "DashboardView.tsx"));
+  assert.match(v, /if \(!isAdmin \|\| !enIndicadores\) return;\s*let vivo = true;\s*getSerieDeCanon/);
 });
 
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? " — HAY FALLAS" : ""}\n`);

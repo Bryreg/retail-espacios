@@ -112,6 +112,7 @@ ACCIONES.update({
     "guia.aviso": "Aviso de montaje de un planograma",
     "guia.foto": "Foto de la guía de montaje",
     "montaje.verificado": "Montaje de contrato verificado",
+    "ajustes.metas": "Metas de Indicadores cambiadas",
 })
 
 # fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,

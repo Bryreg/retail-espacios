@@ -21,7 +21,25 @@ export interface MountConfirmation {
   rol?: string | null;
   /** Hora del servidor, no del dispositivo. */
   confirmado_en?: string | null;
+  /** La última verificación de administración (rediseño UX, etapa 0): si lo
+   *  montado coincide con lo pedido. `null`: nadie lo verificó todavía. */
+  verificacion?: VerificacionDeMontaje | null;
 }
+
+export interface VerificacionDeMontaje {
+  id?: number;
+  resultado: "coincide" | "no_coincide";
+  nota?: string | null;
+  /** Quién verificó (el correo de la sesión, o el rol en las de antes). */
+  por?: string | null;
+  /** Cuándo, hora del servidor. */
+  en?: string | null;
+}
+
+/** «Verificar el montaje de un contrato» (administración): coincide, o no
+ *  coincide con lo que hay que corregir. Queda quién y cuándo. */
+export const verificarMontaje = (id: number, resultado: "coincide" | "no_coincide", nota?: string): Promise<MountConfirmation> =>
+  client.post<MountConfirmation>(`/mounts/${id}/verificar`, { resultado, ...(nota ? { nota } : {}) }).then((r) => r.data);
 
 export const fetchMounts = (sede?: string): Promise<MountConfirmation[]> =>
   client

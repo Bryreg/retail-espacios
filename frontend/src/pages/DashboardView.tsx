@@ -26,6 +26,8 @@ import {
   Pin, ArrowLeft, ArrowDownWideNarrow, Repeat, FilePenLine,
   // «Reservar de verdad» (rediseño, PR 3): la reserva que se acaba sola.
   Hourglass, CircleCheck,
+  // Indicadores (rediseño UX 2026-10, etapa 5): bajar la tabla (CSV).
+  Download,
 } from "lucide-react";
 import { useFixtureStore, selectFixtures, normalizeSede } from "../store/fixtureStore";
 import { useFichasPropias } from "../store/fichasPropias";
@@ -112,7 +114,18 @@ import Inicio, { type FilaDeHoy } from "../components/Inicio/Inicio";
 import LineaDeTiempo from "../components/Ficha/LineaDeTiempo";
 import ParaQueFechas from "../components/Contrato/ParaQueFechas";
 import LineaDeLaSede from "../components/Contrato/LineaDeLaSede";
-import type { Carril } from "../utils/lineaDeLaSede";
+import { armarCarriles, type Carril } from "../utils/lineaDeLaSede";
+import Resumen, { type DatosDelResumen, type PeriodoDelResumen } from "../components/Indicadores/Resumen";
+import Detalle, { type DatosDelDetalle } from "../components/Indicadores/Detalle";
+import TodasLasSedes, { type FilaDeSede } from "../components/Indicadores/TodasLasSedes";
+import Diccionario from "../components/Indicadores/Diccionario";
+import {
+  aCsv, bajarCsv, canonContraTarifa, diasHasta, diasSinContrato, montajesDelMes, venceEn, variacion,
+  type EstadoDeMontaje,
+} from "../utils/indicadores";
+import { getMetas, getSerieDeCanon, metaDeLaSede, type Metas, type SerieDeCanon } from "../api/indicadores";
+import { getLineaDeLaSede, type FilaDeLaLinea } from "../api/spaces";
+import { sumarDias as sumarDiasIso } from "../utils/meses";
 import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
 // «Editar contrato»: lo que Supervisar lee de UN contrato para reabrirlo en
@@ -4710,7 +4723,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   useTema();
 
   const fixtures = useFixtureStore(selectFixtures);
-  const { sede, fixturesBySede, seasonWindows } = useFixtureStore();
+  const { sedes, sede, fixturesBySede, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
   const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
@@ -4917,6 +4930,22 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const [periodoAbierto, setPeriodoAbierto] = useState(false);
   /** Contratos: el plano de la sede o la línea de tiempo (etapa 4). */
   const [vistaContratos, setVistaContratos] = useState<"plano" | "linea">("plano");
+  /** Indicadores (etapa 5): la pestaña, recordada por quien mira, y el
+   *  periodo del Resumen. */
+  type PestanaInd = "resumen" | "plano" | "contratos" | "quien" | "participaciones" | "sedes" | "detalle" | "diccionario";
+  const [pestanaInd, setPestanaIndCruda] = useState<PestanaInd>(() => {
+    try {
+      const v = window.localStorage.getItem("recabra-indicadores-pestana");
+      return (["resumen", "plano", "contratos", "quien", "participaciones", "sedes", "detalle", "diccionario"] as const)
+        .find((x) => x === v) ?? "resumen";
+    } catch { return "resumen"; }
+  });
+  const setPestanaInd = (p: PestanaInd) => {
+    setPestanaIndCruda(p);
+    try { window.localStorage.setItem("recabra-indicadores-pestana", p); } catch { /* sin almacenamiento, igual cambia */ }
+  };
+  const [periodoResumen, setPeriodoResumen] = useState<PeriodoDelResumen>("hoy");
+  const enIndicadores = modoEfectivo === "supervisar" && !inicio;
 
   const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor, cara: "A" | "B" = "A") => {
     setSelected(f);
@@ -5994,6 +6023,13 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
        *  «Quién paga» sale de acá, en la unidad que se elija. */
       vigentes: faces.filter((x, i) => phases[i] === "vigente" && x.negotiatedValue > 0),
       partesOfrecidas, partesVendidas, rotuloPartes, piezasVendidas, contratos,
+      /** Cada cara con su estado de hoy (`estadoDeUnidad`): la misma cuenta
+       *  de la ocupación, para el Resumen y el «Por qué» de Indicadores. */
+      unidades: caras.map((c, i) => ({ cara: c, estado: porUnidad[i] })),
+      /** Todas las filas (caras y partes) con su fase: vigente, pendiente
+       *  (firmado y por empezar)… Las usan los vencimientos a 90 días y los
+       *  montajes del mes de Indicadores, también para quien no ve plata. */
+      todas: faces.map((x, i) => ({ entry: x, fase: phases[i] })),
       /** Las filas de la tabla: las caras y las partes vendidas. */
       filas: faces.length,
     };
@@ -7356,7 +7392,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  la acción que lo resuelve. Lo que se resuelve en su fila de «Para
    *  revisar» (cargar ventas, confirmar una reserva, la planometría, los
    *  planogramas…) abre la bandeja; lo demás, la ficha del espacio. */
-  const filasDeHoy: FilaDeHoy[] = inicio ? avisos
+  const filasDeHoy: FilaDeHoy[] = (inicio || enIndicadores) ? avisos
     .filter((a) => grupoDelAviso(a.seccion, a.dias) === "hoy")
     .map((a) => {
       const f = a.fixtureId ? fixtures.find((x) => x.id === a.fixtureId) ?? null : null;
@@ -7385,6 +7421,216 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       };
     }) : [];
   const nombreDeQuienEntra = useAuthStore.getState().nombre?.trim().split(/\s+/)[0] ?? null;
+
+  // ─── Indicadores (rediseño UX 2026-10, etapa 5) ─────────────────────────
+  //
+  // Resumen · Plano · Contratos · Quién paga · Participaciones · Todas las
+  // sedes · Detalle · Diccionario. Cada cifra sale de las MISMAS cuentas que
+  // ya usa esta pantalla (`kpis`, `plata`, `montaje`, `cuentasDeRevision`); lo
+  // único nuevo que se pide es la serie de 12 meses (`GET /dashboard/serie`),
+  // las metas (`GET /layout/metas`) y, para «Detalle», la línea de la sede.
+  const [serie, setSerie] = useState<SerieDeCanon | null>(null);
+  useEffect(() => {
+    if (!isAdmin || !enIndicadores) return;
+    let vivo = true;
+    getSerieDeCanon(24).then((r) => { if (vivo) setSerie(r); }).catch(() => { if (vivo) setSerie(null); });
+    return () => { vivo = false; };
+  }, [isAdmin, enIndicadores]);
+  const [metas, setMetas] = useState<Metas | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    getMetas().then((m) => { if (vivo) setMetas(m); }).catch(() => { /* sin metas: las propuestas */ });
+    return () => { vivo = false; };
+  }, []);
+  const meta = metaDeLaSede(metas, sede);
+  const [lineaInd, setLineaInd] = useState<FilaDeLaLinea[] | null>(null);
+  useEffect(() => {
+    if (!isAdmin || !enIndicadores || pestanaInd !== "detalle") return;
+    let vivo = true;
+    setLineaInd(null);
+    getLineaDeLaSede(sede).then((r) => { if (vivo) setLineaInd(r.filas); }).catch(() => { if (vivo) setLineaInd(null); });
+    return () => { vivo = false; };
+  }, [isAdmin, enIndicadores, pestanaInd, sede]);
+
+  const hoyIso = toISODate(new Date());
+  const ultimoFin = serie?.sedes[sede.toUpperCase()]?.ultimo_fin ?? {};
+  /** Cómo está el montaje de una fila con contrato (los cuatro estados del
+   *  Resumen). */
+  const estadoDeMontajeDe = (e: FaceEntry): EstadoDeMontaje => {
+    const r = montajeDe(e);
+    if (!r) return "sin_montar";
+    if (r.estado !== "montado") return "no_realizado";
+    return r.verificacion?.resultado === "coincide" ? "verificado" : "sin_verificar";
+  };
+  const conContrato = kpis.todas.filter((t) => t.fase === "vigente" || t.fase === "pendiente");
+  const delMes = conContrato.filter((t) => (t.entry.startDate ?? "").slice(0, 7) === hoyIso.slice(0, 7));
+  const montajesMes = montajesDelMes(delMes.map((t) => ({ desde: t.entry.startDate, estado: estadoDeMontajeDe(t.entry) })), hoyIso);
+  const alMesDe = (x: FaceEntry) => (isAdmin ? enLaUnidad(x.negotiatedValue, x.startDate, x.endDate, "mes") : 0);
+  const vence90 = venceEn(kpis.todas.filter((t) => t.fase === "vigente").map((t) => ({
+    codigo: codigoVisible(t.entry), hasta: t.entry.endDate, alMes: alMesDe(t.entry), renovado: !!t.entry.proximoLeaseId,
+  })), hoyIso, 90);
+  const libresHoy = kpis.unidades.filter((u) => u.estado === "free");
+  const ct = isAdmin ? canonContraTarifa(kpis.vigentes.map((x) => ({
+    alMes: alMesDe(x), tarifa: tarifaDeLaFila(referenceRates, sede, x).valor ?? 0,
+  }))) : null;
+  const potencial = isAdmin
+    ? kpis.unidades.reduce((t, u) => t + (tarifaDeLaFila(referenceRates, sede, u.cara).valor ?? 0), 0) : 0;
+  const serieDeLaSede = serie?.sedes[sede.toUpperCase()]?.canon ?? (serie ? serie.meses.map(() => 0) : []);
+  const datosResumen: DatosDelResumen = {
+    esAdmin: isAdmin,
+    sede,
+    meta,
+    metaPropuesta: !metas || metas.por_defecto,
+    canon: isAdmin && canonDelMes !== null ? { hoy: canonDelMes, serie: serieDeLaSede, meses: serie?.meses ?? [], potencial } : null,
+    ocupacion: {
+      pct: kpis.occPct, ocupadas: kpis.occupied, total: kpis.total,
+      cuadros: kpis.unidades.map((u) => ({ clave: claveDeFila(u.cara), codigo: codigoVisible(u.cara), ocupada: u.estado === "active" || u.estado === "expiring" })),
+    },
+    canonTarifa: ct ? { pct: ct.pct, contadas: ct.contadas, sinTarifa: ct.sinTarifa } : null,
+    hoy: { cuenta: cuentasDeRevision.hoy, filas: filasDeHoy },
+    vence: vence90,
+    montajes: montajesMes,
+    disponibles: {
+      codigos: diasSinContrato(libresHoy.map((u) => codigoVisible(u.cara)), Object.fromEntries(
+        libresHoy.map((u) => [codigoVisible(u.cara).toUpperCase(), ultimoFin[fullSpaceCode(sede, u.cara.code)]]).filter(([, v]) => v),
+      ), hoyIso),
+      sinFacturar: isAdmin ? sinAlquilar.plata : null,
+      conHistorial: isAdmin && !!serie,
+    },
+  };
+
+  /** «Detalle»: los cuatro bloques. */
+  const datosDetalle: DatosDelDetalle = (() => {
+    const semanas = Array.from({ length: 13 }, (_, i) => ({ desde: sumarDiasIso(hoyIso, i * 7), renovado: 0, sinRenovar: 0 }));
+    for (const p of vence90.puntos) {
+      const k = Math.min(12, Math.floor(p.dias / 7));
+      const v = isAdmin ? p.alMes : 1;
+      if (p.renovado) semanas[k].renovado += v; else semanas[k].sinRenovar += v;
+    }
+    let disponiblesPorDia: number[] | null = null;
+    if (lineaInd) {
+      const carriles = armarCarriles(mueblesDeLaLinea, lineaInd, sede);
+      const porCara = new Map<string, { desde: string; hasta: string }[]>();
+      for (const c of carriles) {
+        const k = `${c.fixtureId}|${c.cara}`;
+        porCara.set(k, [...(porCara.get(k) ?? []), ...c.barras.map((b) => ({ desde: b.desde, hasta: b.hasta }))]);
+      }
+      disponiblesPorDia = Array.from({ length: 90 }, (_, d) => {
+        const dia = sumarDiasIso(hoyIso, d);
+        let n = 0;
+        for (const barras of porCara.values()) if (!barras.some((b) => b.desde <= dia && dia <= b.hasta)) n++;
+        return n;
+      });
+    }
+    const tipos = new Map<string, DatosDelDetalle["porTipo"][number] & { _canon: number; _tarifa: number; _dias: number[] }>();
+    const fila = (tipo: string) => {
+      if (!tipos.has(tipo)) tipos.set(tipo, { tipo, espacios: 0, contratados: 0, ocupacionPct: 0, diasEntre: null, canonTarifa: null, sinFacturar: isAdmin ? 0 : null, _canon: 0, _tarifa: 0, _dias: [] });
+      return tipos.get(tipo)!;
+    };
+    for (const u of kpis.unidades) {
+      const t = fila(tipoDelMueble(u.cara.fixture, nombresPropios));
+      t.espacios++;
+      if (u.estado === "active" || u.estado === "expiring") t.contratados++;
+      if (u.estado === "free") {
+        if (isAdmin) t.sinFacturar = (t.sinFacturar ?? 0) + (tarifaDeLaFila(referenceRates, sede, u.cara).valor ?? 0);
+        const fin = ultimoFin[fullSpaceCode(sede, u.cara.code)];
+        if (fin) t._dias.push(Math.max(0, diasHasta(fin, hoyIso)));
+      }
+    }
+    if (isAdmin) for (const x of kpis.vigentes) {
+      const t = fila(tipoDelMueble(x.fixture, nombresPropios));
+      const tar = tarifaDeLaFila(referenceRates, sede, x).valor ?? 0;
+      if (tar > 0) { t._canon += alMesDe(x); t._tarifa += tar; }
+    }
+    const porTipo = [...tipos.values()].map(({ _canon, _tarifa, _dias, ...t }) => ({
+      ...t,
+      ocupacionPct: t.espacios ? Math.round((t.contratados / t.espacios) * 100) : 0,
+      diasEntre: _dias.length ? Math.round(_dias.reduce((a, b) => a + b, 0) / _dias.length) : null,
+      canonTarifa: isAdmin && _tarifa > 0 ? Math.round((_canon / _tarifa) * 100) : null,
+    })).sort((a, b) => b.espacios - a.espacios || a.tipo.localeCompare(b.tipo, "es"));
+    const faltaIds = new Set(faltaPlanometria.filas.map((f) => f.lease_id));
+    const conReporte = delMes.filter((t) => !!montajeDe(t.entry));
+    return {
+      esAdmin: isAdmin, sede,
+      resultado: {
+        canon: isAdmin ? canonDelMes : null, potencial: isAdmin ? potencial : null,
+        ocupacionPct: kpis.occPct, metaOcupacion: meta.ocupacion,
+        canonTarifa: ct?.pct ?? null, metaCanonTarifa: meta.canon_tarifa,
+        sinFacturar: isAdmin ? sinAlquilar.plata : null,
+      },
+      semanas, disponiblesPorDia, porTipo,
+      embudo: {
+        empiezan: delMes.length,
+        avisoEnviado: isAdmin ? delMes.filter((t) => !(t.entry.leaseId && faltaIds.has(t.entry.leaseId))).length : delMes.length,
+        registrado: conReporte.length,
+        montado: conReporte.filter((t) => montajeDe(t.entry)?.estado === "montado").length,
+        verificado: delMes.filter((t) => estadoDeMontajeDe(t.entry) === "verificado").length,
+      },
+      pendientes: cuentasDeRevision,
+    };
+  })();
+
+  /** «Todas las sedes»: la sede abierta con sus cuentas exactas; las demás
+   *  con la misma regla (`estadoDeUnidad`), sin las participaciones que sólo
+   *  se cargan para la abierta. */
+  const filasDeSedes: FilaDeSede[] = pestanaInd !== "sedes" ? [] : sedes.map((s) => {
+    const m = metaDeLaSede(metas, s);
+    const ser = serie?.sedes[s.toUpperCase()]?.canon ?? null;
+    const v = ser ? variacion(ser) : null;
+    if (s === sede) {
+      return {
+        sede: s, canonHoy: isAdmin ? (ser ? ser[ser.length - 1] : canonDelMes) : null,
+        serie: isAdmin && ser ? ser.slice(-12) : null, variacion: isAdmin ? v?.pct ?? null : null,
+        ocupacion: { pct: kpis.occPct, ocupadas: kpis.occupied, total: kpis.total },
+        canonTarifa: ct?.pct ?? null,
+        sinRenovar90: isAdmin ? vence90.sinRenovar : null, meta: m,
+      };
+    }
+    const fx = fixturesBySede[s] ?? [];
+    const caras = fx.flatMap(commercialFacesOf).map((e) => conLaReserva(e, estadoComercial, s));
+    const partes = fx.flatMap((f) => partesConContrato(f, estadoComercial, indicePartes, s));
+    const estados = caras.map((c) => estadoDeUnidad(c, partes.filter((p) => p.fixture.id === c.fixture.id && p.face === c.face)));
+    const ocupadas = estados.filter((e) => e === "active" || e === "expiring").length;
+    const filas = [...caras, ...partes].filter((x) => contractPhase(x) === "vigente");
+    const ctS = isAdmin ? canonContraTarifa(filas.filter((x) => x.negotiatedValue > 0).map((x) => ({
+      alMes: alMesDe(x), tarifa: tarifaDeLaFila(referenceRates, s, x).valor ?? 0,
+    }))) : null;
+    const vS = venceEn(filas.map((x) => ({ codigo: x.code, hasta: x.endDate, alMes: alMesDe(x), renovado: !!x.proximoLeaseId })), hoyIso, 90);
+    return {
+      sede: s, canonHoy: isAdmin && ser ? ser[ser.length - 1] : null,
+      serie: isAdmin && ser ? ser.slice(-12) : null, variacion: isAdmin ? v?.pct ?? null : null,
+      ocupacion: { pct: caras.length ? Math.round((ocupadas / caras.length) * 100) : 0, ocupadas, total: caras.length },
+      canonTarifa: ctS?.pct ?? null, sinRenovar90: isAdmin ? vS.sinRenovar : null, meta: m,
+    };
+  });
+  const totalDeSedes: FilaDeSede | null = filasDeSedes.length < 2 ? null : (() => {
+    const n = serie ? serie.meses.length : 0;
+    const suma = serie ? Array.from({ length: n }, (_, i) => Object.values(serie.sedes).reduce((t, x) => t + (x.canon[i] ?? 0), 0)) : null;
+    const ocup = filasDeSedes.reduce((t, f) => t + f.ocupacion.ocupadas, 0);
+    const tot = filasDeSedes.reduce((t, f) => t + f.ocupacion.total, 0);
+    return {
+      sede: "Todas", canonHoy: isAdmin && suma ? suma[suma.length - 1] : null,
+      serie: isAdmin && suma ? suma.slice(-12) : null, variacion: isAdmin && suma ? variacion(suma).pct : null,
+      ocupacion: { pct: tot ? Math.round((ocup / tot) * 100) : 0, ocupadas: ocup, total: tot },
+      canonTarifa: null,
+      sinRenovar90: isAdmin ? filasDeSedes.reduce((t, f) => t + (f.sinRenovar90 ?? 0), 0) : null,
+      meta: metas?.general ?? meta,
+    };
+  })();
+
+  /** Las filas de la tabla de contratos, para bajar (CSV): todas, con su
+   *  estado y, para quien administra, la plata al mes. */
+  const bajarTabla = () => bajarCsv(`contratos-${sede}.csv`, aCsv(
+    ["Espacio", "Proveedor", "Marca", "Estado", "Desde", "Hasta", ...(isAdmin ? ["Canon al mes", "Tarifa al mes"] : [])],
+    kpis.todas.filter((t) => t.fase !== "sin_contrato").map(({ entry: e, fase }) => [
+      codigoVisible(e), e.supplierName, e.brandCategory, fase, e.startDate, e.endDate,
+      ...(isAdmin ? [Math.round(alMesDe(e)), tarifaDeLaFila(referenceRates, sede, e).valor ?? ""] : []),
+    ]),
+  ));
+  const bajarQuienPaga = () => plata && bajarCsv(`quien-paga-${sede}.csv`, aCsv(
+    ["Proveedor", unidad === "mes" ? "Canon al mes" : "Total", "% del total", "Vence en 30 días"],
+    plata.quienes.map((q) => [q.name, Math.round(q.revenue), q.pct, q.vence ? "sí" : "no"]),
+  ));
 
   return (
     <div
@@ -7594,6 +7840,201 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         </div>
       ) : (
         <>
+          {/* ── Indicadores (rediseño UX 2026-10, etapa 5): pestañas ──────── */}
+          <nav className="ind-pestanas" role="tablist" aria-label="Indicadores">
+            {([
+              ["resumen", "Resumen"], ["plano", "Plano"], ["contratos", "Contratos"],
+              ...(isAdmin && plata ? [["quien", "Quién paga"]] as const : []),
+              ...(isAdmin && hayParticipaciones ? [["participaciones", "Participaciones"]] as const : []),
+              ...(sedes.length > 1 ? [["sedes", "Todas las sedes"]] as const : []),
+              ["detalle", "Detalle"], ["diccionario", "Diccionario"],
+            ] as const).map(([id, texto]) => (
+              <button key={id} type="button" role="tab" aria-selected={pestanaInd === id} onClick={() => setPestanaInd(id)}>
+                {texto}
+              </button>
+            ))}
+          </nav>
+
+          {pestanaInd === "resumen" && (
+            <Resumen
+              datos={datosResumen}
+              periodo={periodoResumen}
+              onPeriodo={setPeriodoResumen}
+              onTabla={() => setPestanaInd("contratos")}
+              onPendientes={() => useArmazon.getState().abrirBandeja()}
+              onMontajes={() => onIrAMontajes?.()}
+              onDisponibles={() => {
+                // «Contratar estos espacios»: Contratos con los disponibles de
+                // hoy ya elegidos (la cara entera de cada uno).
+                const lista = libresHoy.map((u) => ({ id: u.cara.fixture.id, face: u.cara.face }));
+                setSelected(null); setDetailFull(false); setAnchor(null); setCerrado(null); setSemilla(null);
+                setEnContrato(lista);
+                setModo("vender");
+              }}
+              onPlano={() => setPestanaInd("plano")}
+            />
+          )}
+
+          {pestanaInd === "plano" && (
+            <>
+          {/* ── LA HOJA DE SUPERVISAR: la misma rejilla que la de Vender ──────
+                  Dos columnas en la misma proporción (3 : 2) y filas del
+                  mismo alto que el panel del plano de Vender (`--alto-plano`):
+
+                      el plano             │ para revisar (o la ficha)
+                      estado por espacio   │ quién paga el canon
+                      participaciones de cara, a todo el ancho
+
+                  Cada tarjeta desplaza lo suyo. Por debajo de 1000 px, una sola
+                  columna con «Para revisar» primero (dibujo aprobado). */}
+              <div className="supervisar-hoja">
+                {tarjetaMapa}
+
+                {/* Lo que hay que revisar —o la ficha del espacio elegido, que
+                    ocupa su lugar—, al lado del plano donde se lo busca. */}
+                <div className="col-revisar">
+                  {/* La ficha del espacio ya no ocupa este lugar: se abre en su
+                      cajón, la misma en el Inicio y en Indicadores (etapa 3). */}
+                  <Card style={{ flex: 1, minHeight: 0 }}>
+                    <CardHeader
+                      icon={<ClipboardCheck {...ICONO_TARJETA} />}
+                      title="Para revisar"
+                      right={attentionCount > 0 ? <span className="cuenta" aria-label={`${attentionCount} para revisar`}>{attentionCount}</span> : undefined}
+                    />
+                    {bandejaAbierta
+                      ? <div className="vacio-r">Abierto en Pendientes.</div>
+                      : cuerpoDeRevision}
+                  </Card>
+                </div>
+
+              </div>
+            </>
+          )}
+
+          {pestanaInd === "contratos" && (
+            <>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+                {isAdmin && <SelectorDePlata unidad={unidad} onCambio={setUnidad} />}
+                <button type="button" className="ind-csv" onClick={bajarTabla} data-csv-contratos>
+                  <Download {...ICONO_TARJETA} /> Bajar todos (CSV)
+                </button>
+              </div>
+          {/* ── Estado por espacio: abajo del plano, y del mismo ancho. Para
+              quien no ve plata no hay «quién paga el canon», así que la tabla
+              se queda con la fila entera. */}
+          <Card style={{ minWidth: 0, minHeight: "min(70vh, 720px)" }}>
+            <SpacesTable
+              titulo="Estado por espacio"
+              espaciosDe={espaciosDelMueble}
+              sub={visiblesEnTabla === kpis.filas
+                ? `${kpis.filas} espacio${kpis.filas !== 1 ? "s" : ""}`
+                : `${visiblesEnTabla} de ${kpis.filas} espacios`}
+              derecha={<FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar la tabla" ancho={160} />}
+              pestanas={
+                <div className="seg" role="group" aria-label="Qué espacios">
+                  {chipsTabla.map((c) => (
+                    <button key={c.id} type="button" aria-pressed={mapFilter === c.id} onClick={() => setMapFilter(c.id)}>
+                      {c.label} <span className="n">{c.n}</span>
+                    </button>
+                  ))}
+                </div>
+              }
+              fixtures={fixtures}
+              isAdmin={isAdmin}
+              query={mapQuery}
+              filter={mapFilter}
+              montajeDe={montajeDe}
+              tarifaDe={tarifaDe}
+              sinMontar={sinMontarSet}
+              enParte={enParteSet}
+              libres={libresSet}
+              unidad={unidad}
+              cobroDe={isAdmin ? cobroDeFila : undefined}
+              periodo={periodoIso ?? undefined}
+              selectedId={selected?.id ?? null}
+              onSelect={revisar}
+            />
+          </Card>
+            </>
+          )}
+
+          {pestanaInd === "quien" && (
+            <>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
+                <SelectorDePlata unidad={unidad} onCambio={setUnidad} />
+                <button type="button" className="ind-csv" onClick={() => bajarQuienPaga()} data-csv-quien-paga>
+                  <Download {...ICONO_TARJETA} /> Bajar (CSV)
+                </button>
+              </div>
+          {isAdmin && plata && (
+            <Card style={{ minWidth: 0, minHeight: 0 }}>
+              <CardHeader
+                icon={<Building2 {...ICONO_TARJETA} />}
+                title="Quién paga el canon"
+                right={
+                  <label className="orden-sel">
+                    <ArrowDownWideNarrow {...ICONO_TARJETA} />
+                    <select
+                      value={ordenQuienPaga}
+                      onChange={(e) => setOrdenQuienPaga(e.target.value === "nombre" ? "nombre" : "monto")}
+                      aria-label="Ordenar quién paga el canon"
+                    >
+                      <option value="monto">Por monto</option>
+                      <option value="nombre">Por nombre</option>
+                    </select>
+                  </label>
+                }
+              />
+              <div className="quien-l">
+                {plata.quienes.length === 0 ? (
+                  <div className="nota">Sin contratos vigentes con valor registrado.</div>
+                ) : (
+                  plata.quienes.map((x) => (
+                    <SupplierRow
+                      key={x.name}
+                      name={x.name}
+                      revenue={x.revenue}
+                      pct={x.pct}
+                      vence={x.vence}
+                      barra={x.barra}
+                    />
+                  ))
+                )}
+                <span className="nota">
+                  {unidad === "mes" ? "al mes" : "en total"} · «Al mes | Total», arriba
+                  {plata.quienes.some((x) => x.porVentas) ? " · lo cobrado por % de venta, ya cargado" : ""}
+                </span>
+              </div>
+            </Card>
+          )}
+            </>
+          )}
+
+          {pestanaInd === "participaciones" && (
+            <>
+          {/* «Participaciones de cara»: por cara, lo comprometido y lo dibujado
+              el día, el pico y lo disponible del período, con filtro por
+              proveedor, día y período (D18). Una tabla a todo el ancho, sólo
+              para quien administra y sólo si la sede vende alguna cara así.
+              FUERA de la hoja: las filas de la hoja miden `--alto-plano`, y en
+              una de ellas esta tarjeta dejaba un blanco de 250 px abajo. Mide
+              lo que mide su contenido. */}
+          {isAdmin && hayParticipaciones && (
+            <Card style={{ minWidth: 0, marginTop: 10 }}>
+              <CardHeader icon={<Percent {...ICONO_TARJETA} />} title="Participaciones de cara" right={<span>por cara</span>} />
+              <TablaDeParticipaciones sede={sede} muebles={fixtures} />
+            </Card>
+          )}
+            </>
+          )}
+
+          {pestanaInd === "sedes" && (
+            <TodasLasSedes esAdmin={isAdmin} filas={filasDeSedes} total={totalDeSedes}
+              onAbrir={(s) => { useFixtureStore.getState().setSede(s); setPestanaInd("resumen"); }} />
+          )}
+
+          {pestanaInd === "detalle" && (
+            <Detalle datos={datosDetalle}>
           {/* ── La franja ──────────────────────────────────────────────────
               Cinco cifras y ninguna oración, cada una en su caja (rediseño,
               PR 2). El orden no es decorativo: lo que entra, lo que no entra,
@@ -7695,131 +8136,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
               />
             </div>
           </Card>
-
-          {/* ── LA HOJA DE SUPERVISAR: la misma rejilla que la de Vender ──────
-              Dos columnas en la misma proporción (3 : 2) y filas del
-              mismo alto que el panel del plano de Vender (`--alto-plano`):
-
-                  el plano             │ para revisar (o la ficha)
-                  estado por espacio   │ quién paga el canon
-                  participaciones de cara, a todo el ancho
-
-              Cada tarjeta desplaza lo suyo. Por debajo de 1000 px, una sola
-              columna con «Para revisar» primero (dibujo aprobado). */}
-          <div className="supervisar-hoja">
-            {tarjetaMapa}
-
-            {/* Lo que hay que revisar —o la ficha del espacio elegido, que
-                ocupa su lugar—, al lado del plano donde se lo busca. */}
-            <div className="col-revisar">
-              {/* La ficha del espacio ya no ocupa este lugar: se abre en su
-                  cajón, la misma en el Inicio y en Indicadores (etapa 3). */}
-              <Card style={{ flex: 1, minHeight: 0 }}>
-                <CardHeader
-                  icon={<ClipboardCheck {...ICONO_TARJETA} />}
-                  title="Para revisar"
-                  right={attentionCount > 0 ? <span className="cuenta" aria-label={`${attentionCount} para revisar`}>{attentionCount}</span> : undefined}
-                />
-                {bandejaAbierta
-                  ? <div className="vacio-r">Abierto en Pendientes.</div>
-                  : cuerpoDeRevision}
-              </Card>
-            </div>
-
-          {/* ── Estado por espacio: abajo del plano, y del mismo ancho. Para
-              quien no ve plata no hay «quién paga el canon», así que la tabla
-              se queda con la fila entera. */}
-          <Card style={{ minWidth: 0, minHeight: 0, gridColumn: isAdmin ? undefined : "1 / -1" }}>
-            <SpacesTable
-              titulo="Estado por espacio"
-              espaciosDe={espaciosDelMueble}
-              sub={visiblesEnTabla === kpis.filas
-                ? `${kpis.filas} espacio${kpis.filas !== 1 ? "s" : ""}`
-                : `${visiblesEnTabla} de ${kpis.filas} espacios`}
-              derecha={<FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar la tabla" ancho={160} />}
-              pestanas={
-                <div className="seg" role="group" aria-label="Qué espacios">
-                  {chipsTabla.map((c) => (
-                    <button key={c.id} type="button" aria-pressed={mapFilter === c.id} onClick={() => setMapFilter(c.id)}>
-                      {c.label} <span className="n">{c.n}</span>
-                    </button>
-                  ))}
-                </div>
-              }
-              fixtures={fixtures}
-              isAdmin={isAdmin}
-              query={mapQuery}
-              filter={mapFilter}
-              montajeDe={montajeDe}
-              tarifaDe={tarifaDe}
-              sinMontar={sinMontarSet}
-              enParte={enParteSet}
-              libres={libresSet}
-              unidad={unidad}
-              cobroDe={isAdmin ? cobroDeFila : undefined}
-              periodo={periodoIso ?? undefined}
-              selectedId={selected?.id ?? null}
-              onSelect={revisar}
-            />
-          </Card>
-
-          {isAdmin && plata && (
-            <Card style={{ minWidth: 0, minHeight: 0 }}>
-              <CardHeader
-                icon={<Building2 {...ICONO_TARJETA} />}
-                title="Quién paga el canon"
-                right={
-                  <label className="orden-sel">
-                    <ArrowDownWideNarrow {...ICONO_TARJETA} />
-                    <select
-                      value={ordenQuienPaga}
-                      onChange={(e) => setOrdenQuienPaga(e.target.value === "nombre" ? "nombre" : "monto")}
-                      aria-label="Ordenar quién paga el canon"
-                    >
-                      <option value="monto">Por monto</option>
-                      <option value="nombre">Por nombre</option>
-                    </select>
-                  </label>
-                }
-              />
-              <div className="quien-l">
-                {plata.quienes.length === 0 ? (
-                  <div className="nota">Sin contratos vigentes con valor registrado.</div>
-                ) : (
-                  plata.quienes.map((x) => (
-                    <SupplierRow
-                      key={x.name}
-                      name={x.name}
-                      revenue={x.revenue}
-                      pct={x.pct}
-                      vence={x.vence}
-                      barra={x.barra}
-                    />
-                  ))
-                )}
-                <span className="nota">
-                  {unidad === "mes" ? "al mes" : "en total"} · sigue al selector de la franja
-                  {plata.quienes.some((x) => x.porVentas) ? " · lo cobrado por % de venta, ya cargado" : ""}
-                </span>
-              </div>
-            </Card>
+            </Detalle>
           )}
 
-          </div>
-
-          {/* «Participaciones de cara»: por cara, lo comprometido y lo dibujado
-              el día, el pico y lo disponible del período, con filtro por
-              proveedor, día y período (D18). Una tabla a todo el ancho, sólo
-              para quien administra y sólo si la sede vende alguna cara así.
-              FUERA de la hoja: las filas de la hoja miden `--alto-plano`, y en
-              una de ellas esta tarjeta dejaba un blanco de 250 px abajo. Mide
-              lo que mide su contenido. */}
-          {isAdmin && hayParticipaciones && (
-            <Card style={{ minWidth: 0, marginTop: 10 }}>
-              <CardHeader icon={<Percent {...ICONO_TARJETA} />} title="Participaciones de cara" right={<span>por cara</span>} />
-              <TablaDeParticipaciones sede={sede} muebles={fixtures} />
-            </Card>
-          )}
+          {pestanaInd === "diccionario" && <Diccionario esAdmin={isAdmin} />}
         </>
       )}
 
