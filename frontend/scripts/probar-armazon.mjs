@@ -40,6 +40,7 @@ async function cargar(entrada) {
 }
 const M = await cargar("modulos.ts");
 const L = await cargar("utils/lineaDeTiempo.ts");
+const LS = await cargar("utils/lineaDeLaSede.ts");
 
 let hechas = 0;
 const prueba = (n, fn) => {
@@ -143,6 +144,53 @@ prueba("la ficha: desde qué día queda disponible la cara entera", () => {
   assert.equal(iso(L.libreDesde([f("2026-01-01", "2026-12-31", "cancelado"), f("2026-01-01", "2026-12-31", "vigente", c + "-EN1")], c, hoy)), "2026-10-26");
   // Termina hoy: libre mañana.
   assert.equal(iso(L.libreDesde([f("2026-10-01", "2026-10-26")], c, hoy)), "2026-10-27");
+});
+
+console.log("\narmazón · Contratos (etapa 4)");
+
+prueba("la línea de la sede: un carril por cara, las partes debajo, y nada de otra sede", () => {
+  const muebles = [{ id: "a", code: "GON-01", doble: true }, { id: "b", code: "PUN-03", doble: false }];
+  const filas = [
+    { espacio: "CENTRO-GON-01-B-PC1", tipo: "contrato", desde: "2026-09-01", hasta: "2027-02-28" },
+    { espacio: "CENTRO-PUN-03-EN2", tipo: "contrato", desde: "2026-09-01", hasta: "2027-02-28" },
+    { espacio: "CENTRO-PUN-03", tipo: "reserva", desde: "2026-11-01", hasta: "2026-11-30", caduca: "2026-10-30" },
+    { espacio: "CENTRO-PUN-03", tipo: "contrato", desde: "2027-03-01", hasta: "2027-04-30" },
+    { espacio: "CENTRO-PUN-030", tipo: "contrato", desde: "2027-03-01", hasta: "2027-04-30" },
+  ];
+  const c = LS.armarCarriles(muebles, filas, "centro");
+  assert.deepEqual(c.map((x) => x.etiqueta), ["GON-01·A", "GON-01·B", "GON-01·B·PC1", "PUN-03", "PUN-03·EN2"]);
+  const pun = c.find((x) => x.etiqueta === "PUN-03");
+  assert.deepEqual(pun.barras.map((b) => [b.tipo, b.desde]), [["reserva", "2026-11-01"], ["contrato", "2027-03-01"]], "las barras no van en orden");
+  assert.equal(pun.barras[0].caduca, "2026-10-30");
+  const pc = c.find((x) => x.etiqueta === "GON-01·B·PC1");
+  assert.deepEqual([pc.cara, pc.sufijo, pc.codigo], ["B", "PC1", "CENTRO-GON-01-B-PC1"]);
+});
+
+prueba("la línea de la sede: el hueco de un día y si está disponible en las fechas", () => {
+  const b = [{ tipo: "contrato", desde: "2026-11-01", hasta: "2026-11-30" }, { tipo: "reserva", desde: "2027-01-15", hasta: "2027-02-14" }];
+  assert.deepEqual(LS.huecoEn(b, "2026-12-20", "2026-10-26", "2027-10-26"), { desde: "2026-12-01", hasta: "2027-01-14", dias: 45 });
+  assert.deepEqual(LS.huecoEn(b, "2026-10-28", "2026-10-26", "2027-10-26"), { desde: "2026-10-26", hasta: "2026-10-31", dias: 6 });
+  assert.deepEqual(LS.huecoEn(b, "2027-05-01", "2026-10-26", "2027-10-26"), { desde: "2027-02-15", hasta: "2027-10-26", dias: 254 });
+  assert.equal(LS.huecoEn(b, "2026-11-15", "2026-10-26", "2027-10-26"), null, "adentro de un contrato no hay hueco");
+  assert.equal(LS.huecoEn(b, "2028-01-01", "2026-10-26", "2027-10-26"), null, "fuera de la línea no hay hueco");
+  assert.ok(LS.libreEnLasFechas(b, "2026-12-01", "2027-01-14"));
+  assert.ok(!LS.libreEnLasFechas(b, "2026-12-01", "2027-01-15"), "el día que arranca la reserva no está libre");
+  assert.ok(!LS.libreEnLasFechas(b, "2026-10-01", "2026-11-01"));
+  assert.equal(LS.diasEntre("2026-10-26", "2026-10-26"), 1);
+  assert.equal(LS.diasEntre("2026-02-01", "2026-03-01"), 29);
+});
+
+prueba("Contratos: la línea no pide proveedores ni plata, y cada pantalla tiene su periodo", () => {
+  const api = sinComentarios(leer("api", "spaces.ts"));
+  const fila = api.slice(api.indexOf("export interface FilaDeLaLinea"), api.indexOf("export const getLineaDeLaSede"));
+  assert.doesNotMatch(fila, /proveedor|supplier|valor|monto|precio/i, "la fila de la línea trae proveedor o plata");
+  const linea = sinComentarios(leer("components", "Contrato", "LineaDeLaSede.tsx"));
+  assert.doesNotMatch(linea, /proveedor|supplierName|negotiatedValue|valor_/i, "la línea de la sede dibuja proveedor o plata");
+  const v = sinComentarios(leer("pages", "DashboardView.tsx"));
+  assert.match(v, /const mapRange: DateRange \| null = modoEfectivo === "vender" \? rangoVender : rangoSupervisar;/, "Contratos e Indicadores comparten el periodo");
+  // El contrato sigue a «¿Para qué fechas?» mientras nadie toque sus fechas.
+  const c = sinComentarios(leer("components", "Contrato", "Contrato.tsx"));
+  assert.match(c, /useEffect\(\(\) => \{\s*if \(fechasTocadas\.current \|\| !rango\) return;/);
 });
 
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? " — HAY FALLAS" : ""}\n`);

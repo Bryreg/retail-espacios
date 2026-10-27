@@ -91,6 +91,23 @@
   color: var(--surface);
   font: 700 var(--t-3xs)/1 var(--f-mono);
 }
+/* «¿Para qué fechas?» (rediseño UX 2026-10, etapa 4): la primera línea de
+   Contratos, con los días que suman y los atajos. */
+.barra-pantalla .pieza.fechas { gap: 8px; flex-wrap: wrap; row-gap: 4px; height: auto; min-height: 46px; padding-top: 6px; padding-bottom: 6px; font-size: var(--t-sm); }
+.barra-pantalla .pieza.fechas .preg { font-weight: 700; color: var(--ink-1); white-space: nowrap; }
+.barra-pantalla .pieza.fechas .campo { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); white-space: nowrap; }
+.barra-pantalla .pieza.fechas input[type="date"] {
+  height: 30px; padding: 0 6px; border: 1px solid var(--brd-control); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--ink-1); font: 500 var(--t-xs) var(--f-mono);
+}
+.barra-pantalla .pieza.fechas .dias { font: 600 var(--t-xs) var(--f-mono); color: var(--ink-2); white-space: nowrap; }
+.barra-pantalla .pieza.fechas .atajos { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.barra-pantalla .pieza.fechas .atajos button {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px;
+  border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.barra-pantalla .pieza.fechas .atajos button[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); background: var(--surface-3); }
 .barra-pantalla .pieza.periodo {
   font-family: inherit;
   font-size: var(--t-sm);
@@ -1450,6 +1467,15 @@ html[data-tema="oscuro"] .vender {
 .avisos-guardado { margin-top: 10px; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.5; }
 /* Dónde se carga la planometría: una línea quieta, sin alarma. */
 .nota-guardado { margin: 8px 0 0; font-size: var(--t-2xs); color: var(--ink-3); line-height: 1.45; }
+/* «Qué pasa ahora» del contrato guardado (rediseño UX 2026-10, etapa 4). */
+.que-pasa { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line); }
+.que-pasa .tit { font-size: var(--t-xs); font-weight: 700; color: var(--ink-1); margin-bottom: 6px; }
+.que-pasa ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.que-pasa li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; font-size: var(--t-2xs); color: var(--ink-2); line-height: 1.45; }
+.que-pasa li b { color: var(--ink-1); font-weight: 600; }
+.que-pasa .punto { width: 16px; height: 16px; margin-top: 1px; border-radius: 999px; border: 1.5px solid var(--line-strong); display: grid; place-items: center; }
+.que-pasa li.hecho .punto { border-color: var(--libre); color: var(--libre-txt); }
+.que-pasa li.hecho .punto svg { width: 12px; height: 12px; }
 
 /* --- 03 · EL CONTRATO, CON AIRE («aire y pines», después del PR 3) --------
    El dibujo aprobado (`hoja2/build.cjs`, `contratoNuevo`): el contrato al 40 %
@@ -1635,3 +1661,15 @@ html[data-tema="oscuro"] .vender {
 .que-cambia-lista { font-size: var(--t-xs); padding-top: 4px !important; border-top: var(--hair) solid var(--line-soft); }
 .dialogo-acciones { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 16px 18px; }
 .dialogo-acciones .btn-principal { display: inline-flex; align-items: center; gap: 8px; width: auto; padding: 9px 14px; border-radius: var(--r-md); font-size: var(--t-sm); }
+
+/* Plano | Línea de tiempo en el piso de Contratos (rediseño UX 2026-10, etapa
+   4): la pieza segmentada de Supervisar, acá. */
+.vender .vista-contratos {
+  display: inline-flex; gap: 2px; padding: 2px; margin-left: 6px;
+  border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--line);
+}
+.vender .vista-contratos button {
+  height: 26px; padding: 0 10px; border: none; border-radius: calc(var(--r-md) - 2px);
+  background: transparent; color: var(--ink-3); font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.vender .vista-contratos button[aria-pressed="true"] { background: var(--ink-1); color: var(--surface); }

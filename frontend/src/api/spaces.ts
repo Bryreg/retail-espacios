@@ -84,3 +84,19 @@ export const getHistorialDelEspacio = (code: string): Promise<ContratoDelHistori
   client
     .get<ContratoDelHistorial[]>(`/spaces/by-code/${encodeURIComponent(code)}/historial`, { params: { partes: true } })
     .then((r) => r.data);
+
+/** Un contrato o una reserva viva en la línea de la sede (`GET /spaces/linea`):
+ *  sólo fechas, nunca proveedor ni plata (la línea vive en Contratos, que la
+ *  mira el proveedor). */
+export interface FilaDeLaLinea {
+  espacio: string;
+  tipo: "contrato" | "reserva";
+  id: number;
+  desde: string;
+  hasta: string;
+  /** Sólo en las reservas: hasta cuándo se sostiene. */
+  caduca?: string;
+}
+
+export const getLineaDeLaSede = (sede: string): Promise<{ desde: string; hasta: string; filas: FilaDeLaLinea[] }> =>
+  client.get(`/spaces/linea`, { params: { sede } }).then((r) => r.data);

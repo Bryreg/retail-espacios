@@ -119,6 +119,8 @@ interface ModoVenderProps {
   onSalirDeEdicion?: () => void;
   /** «Editar contrato» guardado: «Volver a Supervisar». */
   onVolverASupervisar?: () => void;
+  /** Contrato guardado → «Ver la ficha» del primer espacio (etapa 4). */
+  onVerFicha?: () => void;
   /** «Editar contrato» con la forma de venderse cambiada: se escribe en el
    *  plano al guardar, y se deshace si el guardado falla (`useContrato`). */
   planoPendiente?: ArgsContrato["planoPendiente"];
@@ -560,8 +562,42 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
   );
 }
 
-function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
-  datos: ResumenContrato; onSeguir: () => void; onVolverASupervisar?: () => void;
+/** «Qué pasa ahora» (rediseño UX 2026-10, etapa 4): el camino de un contrato
+ *  recién guardado hasta quedar armado en la tienda, en cuatro pasos, con lo
+ *  que ya pasó marcado. Sin plata ni nombres ajenos: lo mira el proveedor. */
+function QuePasaAhora({ datos }: { datos: ResumenContrato }) {
+  const alProveedor = !!datos.avisos?.smtp_listo && datos.avisos.proveedor.length > 0;
+  const pasos: { hecho: boolean; titulo: string; texto: string }[] = [
+    {
+      hecho: alProveedor,
+      titulo: "Confirmación al proveedor",
+      texto: alProveedor ? "Enviada, sin tarifas." : "No salió: el proveedor no tiene correo o el correo no está configurado.",
+    },
+    {
+      hecho: false,
+      titulo: "Aviso de montaje",
+      texto: "Sale a quien monta cuando el espacio tenga su planometría (se carga en la ficha del espacio).",
+    },
+    { hecho: false, titulo: "Registro del montaje", texto: "Quien monta lo registra con una foto, desde el enlace del correo." },
+    { hecho: false, titulo: "Verificación", texto: "Administración compara la foto con lo pedido, en Montajes." },
+  ];
+  return (
+    <div className="que-pasa" data-que-pasa-ahora>
+      <div className="tit">Qué pasa ahora</div>
+      <ol>
+        {pasos.map((p) => (
+          <li key={p.titulo} className={p.hecho ? "hecho" : undefined}>
+            <span className="punto" aria-hidden>{p.hecho ? <Check {...ICONO} /> : null}</span>
+            <span><b>{p.titulo}</b> {p.texto}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function Cerrado({ datos, onSeguir, onVolverASupervisar, onVerFicha }: {
+  datos: ResumenContrato; onSeguir: () => void; onVolverASupervisar?: () => void; onVerFicha?: () => void;
 }) {
   const reserva = datos.tipo === "reserva";
   /** «Editar contrato»: se corrigió en su lugar o se reemplazó. */
@@ -618,6 +654,7 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
         {(!editado || (!editado.reemplazo && !editado.conPlanometria)) && (
           <p className="nota-guardado" data-planometria-en-supervisar>La planometría se carga en Indicadores, en la ficha del espacio.</p>
         )}
+        {!reserva && !editado && <QuePasaAhora datos={datos} />}
         {/* En tinta y no en amarillo, y no es un descuido: el amarillo dice
             «acá está el trabajo», y con el contrato guardado el trabajo está
             hecho. Además dos usos de `.btn-principal` en el mismo archivo
@@ -629,9 +666,16 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar }: {
               <ArrowLeft {...ICONO} /> Volver a Supervisar
             </button>
           ) : (
-            <button type="button" className="btn-tinta" onClick={onSeguir}>
-              Armar otro contrato
-            </button>
+            <>
+              <button type="button" className="btn-tinta" onClick={onSeguir}>
+                Armar otro contrato
+              </button>
+              {onVerFicha && (
+                <button type="button" className="btn-texto" onClick={onVerFicha} data-ver-la-ficha>
+                  Ver la ficha
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1325,7 +1369,7 @@ class LimiteDelVisor extends Component<{ onCerrar: () => void; children: React.R
 
 export default function ModoVender(props: ModoVenderProps) {
   const { cerrado, onSeguir } = props;
-  if (cerrado) return <Cerrado datos={cerrado} onSeguir={onSeguir} onVolverASupervisar={props.onVolverASupervisar} />;
+  if (cerrado) return <Cerrado datos={cerrado} onSeguir={onSeguir} onVolverASupervisar={props.onVolverASupervisar} onVerFicha={props.onVerFicha} />;
   // La clave remonta el formulario cuando cambia la sede, no cuando cambia la
   // lista: agregar un segundo espacio no puede borrar el proveedor que alguien
   // ya tecleó. Por eso NO entra la lista en la clave.

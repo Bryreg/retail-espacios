@@ -126,6 +126,12 @@ const ARCHIVOS_VENDER = [
   // guardas de este archivo.
   "src/components/Contrato/ConfirmarEdicion.tsx",
   "src/utils/edicionDeContrato.ts",
+  // Rediseño UX 2026-10, etapa 4: «¿Para qué fechas?» y la línea de tiempo de
+  // la sede (sus cuentas y el pedido al servidor, que no trae proveedores ni
+  // plata). Las mira el proveedor: pasan por todas las guardas.
+  "src/components/Contrato/ParaQueFechas.tsx",
+  "src/components/Contrato/LineaDeLaSede.tsx",
+  "src/utils/lineaDeLaSede.ts",
 ];
 /** Los estilos que bajan con el visor (`VisorDeVenta.tsx` los importa): la
  *  misma escala de letra y el mismo rótulo que `vender.css`. */
@@ -367,6 +373,11 @@ const COMPONENTES_VENDER = new Set([
   "Pencil", "Hourglass", "Mail", "StickyNote", "Receipt", "RotateCcw", "TriangleAlert",
   "IconoDeLinea", "FormasDeLaLinea", "ElegirPartes", "Porcentaje", "PrecioDeLinea",
   "RechazoDeLinea", "CampoProveedor", "AtajosDeFecha", "ComoSeCobra", "Avisos",
+  // Rediseño UX 2026-10, etapa 4: «Qué pasa ahora» del contrato guardado (los
+  // cuatro pasos, sin plata ni nombres ajenos), «¿Para qué fechas?» con sus
+  // íconos y la línea de tiempo de la sede (sólo fechas: «Contratado» o
+  // «Reserva», nunca quién).
+  "QuePasaAhora", "ParaQueFechas", "CalendarRange", "ChevronDown", "LineaDeLaSede",
   // Lo que rodea al visor 3D: el límite de errores, la espera y el aviso.
   // «Aire y pines» (después del PR 3): el contrato en tres bloques numerados
   // (`Bloque`: un número, un título y lo suyo, sin datos propios), la pista
@@ -1685,7 +1696,9 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     }
     assert.equal(tags.length, ESPERADO.length, `hay ${tags.length} encabezados de tarjeta y se esperaban ${ESPERADO.length}: una tarjeta nueva tiene que decir su ícono acá`);
     // Vender: el ícono donde iba el número del panel.
-    assert.equal((vista.match(/<MapIcon \{\.\.\.ICONO_TARJETA\} className="ico-tarjeta" \/>\s*<h2>Piso de \{sede\}<\/h2>/g) ?? []).length, 2,
+    // (Etapa 4 del rediseño UX: en Contratos el mismo panel dice «Línea de
+    // tiempo de …» cuando se ve como línea.)
+    assert.equal((vista.match(/<MapIcon \{\.\.\.ICONO_TARJETA\} className="ico-tarjeta" \/>\s*<h2>(?:Piso de \{sede\}|\{vistaContratos === "linea" \? `Línea de tiempo de \$\{sede\}` : `Piso de \$\{sede\}`\})<\/h2>/g) ?? []).length, 2,
       "el piso no lleva su ícono (MapIcon) antes del título en las DOS pantallas");
     for (const [icono, titulo] of [["MapIcon", "Piso de {sede}"], ["Clock", "Cuándo se libera cada espacio"], ["Tag", "Tarifa de referencia"]]) {
       assert.match(vista, new RegExp(`<${icono} \\{\\.\\.\\.ICONO_TARJETA\\} className="ico-tarjeta" />\\s*<h2>${titulo.replace(/[{}]/g, "\\$&")}</h2>`),

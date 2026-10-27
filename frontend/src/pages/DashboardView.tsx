@@ -110,6 +110,9 @@ import { useArmazon } from "../store/armazonStore";
 import Cajon from "../components/Armazon/Cajon";
 import Inicio, { type FilaDeHoy } from "../components/Inicio/Inicio";
 import LineaDeTiempo from "../components/Ficha/LineaDeTiempo";
+import ParaQueFechas from "../components/Contrato/ParaQueFechas";
+import LineaDeLaSede from "../components/Contrato/LineaDeLaSede";
+import type { Carril } from "../utils/lineaDeLaSede";
 import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
 // «Editar contrato»: lo que Supervisar lee de UN contrato para reabrirlo en
@@ -4912,6 +4915,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** La fila de temporadas, desplegada. Arranca cerrada: el periodo se lee en
    *  la barra y se cambia de a ratos. */
   const [periodoAbierto, setPeriodoAbierto] = useState(false);
+  /** Contratos: el plano de la sede o la línea de tiempo (etapa 4). */
+  const [vistaContratos, setVistaContratos] = useState<"plano" | "linea">("plano");
 
   const selectFixture = (f: UnifiedFixture | null, point?: MapAnchor, cara: "A" | "B" = "A") => {
     setSelected(f);
@@ -5576,8 +5581,24 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
      encendidos los muebles de ese tipo, que es la misma pregunta contestada
      sin dejar la pantalla en un estado que después hay que acordarse de
      deshacer. El filtro de texto del plano sigue vivo, en Supervisar. */
-  /** Period the map answers for; null = today. */
-  const [mapRange, setMapRange] = useState<DateRange | null>(null);
+  /** El periodo que contesta el plano, UNO POR PANTALLA (rediseño UX 2026-10,
+   *  etapa 4): Contratos pregunta «¿para qué fechas?» y arranca en treinta
+   *  días; Indicadores (Supervisar) e Inicio hablan de hoy. Eran uno solo para
+   *  las dos pestañas y se lo ponía la primera que se abría; con el armazón la
+   *  aplicación abre en el Inicio, y el contrato —que congela sus fechas al
+   *  montarse— arrancaba en «hoy → hoy». Cada pantalla guarda el suyo. */
+  const [rangoVender, setRangoVender] = useState<DateRange>(() => {
+    const from = new Date();
+    const to = new Date(from);
+    to.setDate(to.getDate() + 30);
+    return { from, to };
+  });
+  const [rangoSupervisar, setRangoSupervisar] = useState<DateRange>(() => hoyComoRango());
+  const mapRange: DateRange | null = modoEfectivo === "vender" ? rangoVender : rangoSupervisar;
+  const setMapRange = useCallback((r: DateRange | null) => {
+    if (modoEfectivo === "vender") { if (r) setRangoVender(r); }
+    else setRangoSupervisar(r ?? hoyComoRango());
+  }, [modoEfectivo]);
 
   /** Vender por partes: las partes con algo dicho en la base, por su cara. Se
    *  arma con el mapa CRUDO (`estadoComercial`): la fusión no le cambia nada
@@ -5701,33 +5722,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     setGrupoElegido(null);
   }, [sede]);
 
-  /** Las dos pantallas tienen SIEMPRE un periodo puesto.
-   *
-   *  Sin periodo el plano contestaba con la otra escala —«qué pasa hoy», siete
-   *  clases— donde `free` contra `maintenance` da ΔE 3.6 en deuteranopía: el
-   *  mismo color para dos estados opuestos. Con periodo pinta la escala de
-   *  tres, que es la única que la separación aguanta. «Hoy» sigue existiendo:
-   *  es un periodo de un día, que es lo que de verdad es.
-   *
-   *  En Vender arranca en treinta días porque «hoy» no es una pregunta
-   *  comercial —lo que se vende es una temporada— y sin eso entrar a Vender
-   *  mostraba el contador de libres en cero. En Supervisar arranca en hoy, que
-   *  es de lo que ese tablero habla. */
-  /* Con el armazón de módulos (rediseño UX 2026-10) la aplicación abre en el
-     Inicio —que habla de hoy— y se llega a Contratos después: el «hoy» que se
-     puso solo no es una elección, y Vender lo cambia por sus treinta días. Lo
-     que eligió la persona no se toca. */
-  const periodoElegido = useRef(false);
-  useEffect(() => {
-    const hoyPuestoSolo = mapRange !== null && !periodoElegido.current
-      && mapRange.from.toDateString() === mapRange.to.toDateString();
-    if (mapRange && !(modoEfectivo === "vender" && hoyPuestoSolo)) return;
-    if (modoEfectivo !== "vender") { setMapRange(hoyComoRango()); return; }
-    const from = new Date();
-    const to = new Date(from);
-    to.setDate(to.getDate() + 30);
-    setMapRange({ from, to });
-  }, [modoEfectivo, mapRange]);
+  /* Las dos pantallas tienen SIEMPRE un periodo puesto (`rangoVender`,
+     `rangoSupervisar`, arriba). Sin periodo el plano contestaba con la otra
+     escala —«qué pasa hoy», siete clases— donde `free` contra `maintenance`
+     da ΔE 3.6 en deuteranopía: el mismo color para dos estados opuestos. Con
+     periodo pinta la escala de tres, que es la única que la separación
+     aguanta. «Hoy» sigue existiendo: es un periodo de un día, que es lo que
+     de verdad es. En Vender arranca en treinta días porque «hoy» no es una
+     pregunta comercial —lo que se vende es una temporada—. */
 
 
   // La lista de precios de la sede: qué familias hay, cuántas caras de cada una
@@ -6608,17 +6610,54 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  con sus conteos. Lienzo: el plano, con las herramientas de acercamiento
    *  —que son lo que hace verificable la promesa del rótulo («mide 10,5 px a
    *  todo acercamiento»)—. */
+  /** Los muebles que se venden, para la línea de tiempo de la sede. */
+  const mueblesDeLaLinea = useMemo(
+    () => fixtures.filter(isRentable).map((f) => ({ id: f.id, code: f.code, doble: isDoubleGondola(f) })),
+    [fixtures],
+  );
+  /** «Contratar estas fechas» de un hueco de la línea: el periodo pasa a ser
+   *  el del hueco y el contrato arranca con ese espacio y esas fechas. */
+  const contratarDesdeLaLinea = (c: Carril, desde: string, hasta: string) => {
+    const f = fixtures.find((x) => x.id === c.fixtureId);
+    if (!f) return;
+    const a = parseISODate(desde), b = parseISODate(hasta);
+    if (a && b) setMapRange({ from: a, to: b });
+    negociar(f, c.cara, {
+      id: `linea|${c.codigo}|${desde}`, proveedor: "", correo: "", marca: "", desde, hasta,
+      valores: {}, porcentajes: {},
+    }, c.sufijo ?? undefined);
+  };
+
+  /** El primer espacio del último contrato guardado («Ver la ficha»). */
+  const ultimoGuardado = useRef<EnContrato | null>(null);
+
   const panelPlano = mapRange && (
     <section className="vp vp-plano">
       <header>
         <MapIcon {...ICONO_TARJETA} className="ico-tarjeta" />
-        <h2>Piso de {sede}</h2>
+        <h2>{vistaContratos === "linea" ? `Línea de tiempo de ${sede}` : `Piso de ${sede}`}</h2>
         <span className="sub">{fixtures.length} muebles</span>
+        {/* Plano | Línea de tiempo (etapa 4): la misma pregunta —qué está
+            disponible en esas fechas— vista en el piso o en 12 meses. */}
+        <div className="seg vista-contratos" role="group" aria-label="Ver como">
+          <button type="button" aria-pressed={vistaContratos === "plano"} onClick={() => setVistaContratos("plano")}>Plano</button>
+          <button type="button" aria-pressed={vistaContratos === "linea"} onClick={() => setVistaContratos("linea")}>Línea de tiempo</button>
+        </div>
         <div className="der">
           <MapLegend tally={tallyVender} modo="vender" enContrato={espaciosDelContrato.length} />
         </div>
       </header>
       <div className="lienzo">
+        {vistaContratos === "linea" ? (
+          <LineaDeLaSede
+            sede={sede}
+            muebles={mueblesDeLaLinea}
+            desde={toISODate(mapRange.from)}
+            hasta={toISODate(mapRange.to)}
+            version={estadoComercial}
+            onContratar={contratarDesdeLaLinea}
+          />
+        ) : (
         <IsoMap
           fixtures={fixtures}
           selectedKeys={carasDelContrato}
@@ -6631,6 +6670,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           cortoDe={cortoDeCara}
           libreDesde={libreDesdeDeCara}
         />
+        )}
       </div>
     </section>
   );
@@ -7390,6 +7430,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             botones caídos abajo. El periodo hay que verlo siempre —todo lo
             que se lee está medido contra él— pero elegirlo es algo que se
             hace de a ratos, así que se ve siempre y se despliega al tocarlo. */}
+        {modoEfectivo === "vender" && mapRange ? (
+          <ParaQueFechas
+            rango={mapRange}
+            onCambio={setMapRange}
+            temporadasAbiertas={periodoAbierto}
+            onTemporadas={() => setPeriodoAbierto((x) => !x)}
+          />
+        ) : (
         <button
           type="button"
           className="pieza periodo"
@@ -7401,6 +7449,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           {mapRange ? describeRange(mapRange) : "Hoy"}
           <ChevronDown {...ICONO_TARJETA} className="chev" />
         </button>
+        )}
 
         {/* A la derecha: qué día es hoy y lo que se le hace A LA SEDE. Ninguno
             cambia lo que se está leyendo; sólo lo actualizan. «Tarifas» lleva
@@ -7444,7 +7493,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           background: "var(--surface)", border: "1px solid var(--line)",
           borderRadius: "var(--r-xl)",
         }}>
-          <SeasonPicker range={mapRange} onChange={(r) => { periodoElegido.current = true; setMapRange(r); }} />
+          <SeasonPicker range={mapRange} onChange={setMapRange} />
         </div>
       )}
 
@@ -7504,7 +7553,17 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             sede={sede}
             rango={mapRange}
             cerrado={cerrado}
+            onVerFicha={() => {
+              const e = ultimoGuardado.current;
+              const f = e ? fixtures.find((x) => x.id === e.id) : null;
+              if (!f || !e) return;
+              setCerrado(null);
+              setModo("supervisar");
+              revisar(f, e.face);
+            }}
             onGuardado={(resumen) => {
+              // El primer espacio del contrato, para «Ver la ficha».
+              ultimoGuardado.current = enContrato[0] ?? null;
               // El contrato ya está en la base, que es la única verdad de lo
               // comercial. Acá se parcheaba el JSON del layout a mano, mueble
               // por mueble: era la copia que pintaba el mapa, y si esta pestaña

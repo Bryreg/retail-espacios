@@ -315,6 +315,55 @@ def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
     return space
 
 
+@router.get("/linea")
+def linea_de_la_sede(
+    sede: str,
+    meses: int = 12,
+    role: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """La línea de tiempo de la sede (rediseño UX, etapa 4): por espacio, cada
+    contrato y cada reserva viva que pisa los próximos ``meses`` meses.
+
+    Hasta acá el navegador sólo sabía el contrato que manda en cada espacio (el
+    vigente o, si no hay, el próximo: `/comercial`), y una fila por espacio no
+    alcanza para dibujar 12 meses: un espacio vendido hasta enero y otra vez
+    desde marzo tenía el segundo contrato invisible.
+
+    **Sin proveedores ni plata.** La línea vive en Contratos, la pantalla que
+    mira el proveedor: dice ocupado y hasta cuándo, no quién ni por cuánto
+    (eso está en la ficha del espacio, para quien administra). Sólo
+    administración, como el resto de Contratos. Lee, no crea.
+    """
+    from datetime import timedelta
+
+    expire_leases(db)
+    meses = max(1, min(int(meses or 12), 24))
+    dia = hoy()
+    fin = dia + timedelta(days=round(meses * 30.44))
+    codigo_sede = (sede or "").strip().upper()
+    espacios = {sp.id: (sp.code or "").strip().upper()
+                for sp in db.query(Space).filter(Space.sede == codigo_sede).all()}
+    fuera = []
+    if espacios:
+        for l in (db.query(SpaceLease)
+                  .filter(SpaceLease.space_id.in_(espacios.keys()), SpaceLease.is_active.is_(True),
+                          SpaceLease.end_date >= dia, SpaceLease.start_date <= fin)
+                  .order_by(SpaceLease.start_date, SpaceLease.id).all()):
+            fuera.append({"espacio": espacios[l.space_id], "tipo": "contrato", "id": l.id,
+                          "desde": l.start_date.isoformat(), "hasta": l.end_date.isoformat()})
+        for r in (db.query(ReservaDeEspacio)
+                  .filter(ReservaDeEspacio.space_id.in_(espacios.keys()), ReservaDeEspacio.estado == "viva",
+                          ReservaDeEspacio.caduca >= dia, ReservaDeEspacio.hasta >= dia,
+                          ReservaDeEspacio.desde <= fin)
+                  .order_by(ReservaDeEspacio.desde, ReservaDeEspacio.id).all()):
+            fuera.append({"espacio": espacios[r.space_id], "tipo": "reserva", "id": r.id,
+                          "desde": r.desde.isoformat(), "hasta": r.hasta.isoformat(),
+                          "caduca": r.caduca.isoformat()})
+    fuera.sort(key=lambda x: (x["espacio"], x["desde"]))
+    return {"desde": dia.isoformat(), "hasta": fin.isoformat(), "filas": fuera}
+
+
 @router.get("/", response_model=list[SpaceOut])
 def list_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     spaces = db.query(Space).options(

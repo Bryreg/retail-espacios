@@ -345,7 +345,7 @@ export default function Libera({
           const b = Math.min(dias, Math.round((t.to.getTime() - fecha(0).getTime()) / 86400000));
           if (b <= a) return null;
           return (
-            <g key={t.label}>
+            <g key={`${t.label}-${t.from.getTime()}`}>
               <rect x={f(x(a))} y="26" width={f(x(b) - x(a))} height={f(YE - 26)}
                     fill="var(--entra)" opacity={0.09} />
               <text x={f((x(a) + x(b)) / 2)} y="38" style={temp}>{t.label.toUpperCase()}</text>
