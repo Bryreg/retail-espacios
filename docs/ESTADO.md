@@ -28,6 +28,7 @@ sistema lo leía como el total (el «al mes» de Supervisar salía dividido por 
 Supervisar → «Para revisar» → Corregir, «Contratos cargados antes: ¿el valor es al mes?» lista
 todos los que no dicen cómo se lee su precio (vigentes, próximos, vencidos y cerrados), con «Es
 al mes» / «Es el total» por contrato y «Todos son al mes»; se puede deshacer y no manda correos.
+Desde el 2026-10-27 hay una tercera opción, «Por % de ventas», para los de valor simbólico ($ 1).
 Y en «Editar contrato», «Total | Al mes» está siempre a la vista y conserva el número escrito: si
 eso es lo único que cambia, se guarda sin reenviar. Una tabla nueva. Ver *Contratos de antes:
 ¿al mes o total? (2026-10-25)*.
@@ -1517,6 +1518,17 @@ revisar».
   meses = total 4.800.000»). **Sin correos**: corrige cómo se lee un dato, no el contrato.
 - **Deshacer** (`POST …/deshacer`): vuelve el valor de antes y borra la forma, sólo si nadie lo
   editó después (409 si el valor o la forma ya no son los que dejó la corrección).
+- **Tercera opción: «Por % de ventas» (2026-10-27).** Los de valor simbólico (hasta
+  $ 1.000, `VALOR_SIMBOLICO`; en GALERÍAS se cargaron con $ 1) no eran ni al mes ni el total: se
+  cobran por un % de las ventas. Cada fila tiene «Por % de ventas» (primero en las simbólicas,
+  que dicen «un valor simbólico: lo que se cobra seguramente sale de un % de las ventas») con el
+  porcentaje y el corte (cada mes / al final); arriba, «Los de valor simbólico son por % de
+  ventas (N)» con un porcentaje y un corte para todos, y «Todos son al mes» pasa a «Los demás son
+  al mes» (nunca toca las simbólicas). `modo: "ventas"` + `cobro {porcentaje, corte}` deja el
+  contrato como uno por ventas de Vender: `monthly_rent` 0 y su fila en `cobros_por_venta` (sin
+  `condiciones_de_contrato`); `precios_corregidos` guarda el valor de antes. Desde ahí sus cortes
+  vencidos aparecen en «Ventas por cargar» (la tarjeta la recarga). Deshacer borra el cobro y
+  vuelve el valor, salvo que ya se haya cargado alguna venta (409: lo cobrado no se pierde).
 - **«Editar contrato»**: el renglón muestra «El precio es Total | Al mes» siempre (antes había que
   abrir la línea para verlo, y por eso parecía que no se podía). En edición, tocar «Al mes» deja
   el número escrito y lo lee como el de cada mes (en un contrato nuevo sigue convirtiendo para

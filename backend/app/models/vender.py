@@ -76,8 +76,9 @@ class CondicionesDeContrato(Base):
 
 class PrecioCorregido(Base):
     """Un contrato de antes de Vender al que quien administra le dijo cómo se
-    lee su valor («era al mes» o «era el total»). Guarda lo de antes para
-    deshacerlo."""
+    lee su valor («era al mes», «era el total» o, desde 2026-10-27, «se cobra
+    por % de las ventas»: ``modo_precio`` «ventas» y ``total_despues`` 0).
+    Guarda lo de antes para deshacerlo."""
 
     __tablename__ = "precios_corregidos"
 

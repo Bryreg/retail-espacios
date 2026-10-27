@@ -7184,7 +7184,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
               <PrecioSinForma
                 filas={precioSinForma.filas}
                 titulo={tituloDeSeccion("precio_sin_forma", "corregir")}
-                onCambio={precioSinForma.recargar}
+                onCambio={() => { precioSinForma.recargar(); cortesSinCargar.recargar(); }}
               />
             )}
             {/* Las dos mitades del desfase van primero, juntas: son lo

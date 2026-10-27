@@ -15,8 +15,13 @@ administra le dice cómo se lee, en Supervisar → «Para revisar» → Corregir
   Vender). Queda escrito como «al mes».
 · «Es el total»: el valor no cambia; queda escrito como total y sale de la
   lista.
+· «Se cobra por % de las ventas» (2026-10-27): el valor que se cargó era un
+  marcador (en GALERÍAS, $ 1) porque lo que se cobra sale de las ventas. Queda
+  como cualquier contrato por ventas de Vender: valor 0 y su cobro
+  (``cobros_por_venta``) con el porcentaje y el corte; los cortes se cargan
+  como siempre, desde «Ventas por cargar».
 
-Las dos guardan lo de antes (``precios_corregidos``) para deshacerlo, y
+Las tres guardan lo de antes (``precios_corregidos``) para deshacerlo, y
 ninguna manda correos: es corregir cómo se lee un dato, no cambiar un contrato
 (decisión del dueño, 2026-10-25). Todo o nada, y cada contrato con el valor
 que la pantalla mostró (409 ``contrato_cambio`` si cambió entretanto).
@@ -35,7 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.fechas import hoy
 from app.models.models import Space, SpaceLease
-from app.models.vender import CobroPorVenta, CondicionesDeContrato, PrecioCorregido
+from app.models.vender import CORTES, CobroPorVenta, CondicionesDeContrato, CorteDeVenta, PrecioCorregido
 from app.services.layout_lookup import normalizar
 from app.services.meses import meses_entre
 
@@ -122,11 +127,19 @@ def pendientes(db: Session, sede: str) -> list[dict]:
     return [f.out() for f in filas]
 
 
-def corregir(db: Session, modo: str, contratos: list[dict], actor: str) -> list[PrecioCorregido]:
+def corregir(db: Session, modo: str, contratos: list[dict], actor: str,
+             cobro: Optional[dict] = None) -> list[PrecioCorregido]:
     """Les dice a esos contratos cómo se lee su valor. Todo o nada: cada uno
-    tiene que seguir sin forma y con el valor que se mostró."""
-    if modo not in ("mensual", "total"):
-        raise _error(422, "modo_invalido", "Un valor se lee «al mes» o como el total.")
+    tiene que seguir sin forma y con el valor que se mostró. Con ``ventas``,
+    ``cobro`` trae el porcentaje y el corte (los mismos para todos)."""
+    if modo not in ("mensual", "total", "ventas"):
+        raise _error(422, "modo_invalido", "Un valor se lee «al mes», como el total o se cobra por % de las ventas.")
+    if modo == "ventas":
+        pct = (cobro or {}).get("porcentaje")
+        if not isinstance(pct, (int, float)) or not (0 < float(pct) <= 100):
+            raise _error(422, "cobro", "Escribí el porcentaje de las ventas (más de 0 y hasta 100).")
+        if (cobro or {}).get("corte") not in CORTES:
+            raise _error(422, "cobro", "Elegí si el corte es cada mes o al final.")
     if not contratos:
         raise _error(422, "sin_contratos", "Elegí al menos un contrato.")
     if len(contratos) > MAX_POR_VEZ:
@@ -143,9 +156,16 @@ def corregir(db: Session, modo: str, contratos: list[dict], actor: str) -> list[
         x = leases[lease_id]
         antes = float(x.monthly_rent)
         meses = meses_entre(x.start_date, x.end_date)
-        despues = al_peso(antes * meses) if modo == "mensual" else antes
+        if modo == "ventas":
+            # Como un contrato por ventas de Vender: el valor va en 0 y lo que
+            # se cobra sale de los cortes.
+            despues = 0.0
+            db.add(CobroPorVenta(lease_id=x.id, porcentaje=float(cobro["porcentaje"]), corte=cobro["corte"],
+                                 creado_por=actor))
+        else:
+            despues = al_peso(antes * meses) if modo == "mensual" else antes
+            db.add(CondicionesDeContrato(lease_id=x.id, modo_precio=modo, valor_tecleado=antes))
         x.monthly_rent = despues
-        db.add(CondicionesDeContrato(lease_id=x.id, modo_precio=modo, valor_tecleado=antes))
         fila = PrecioCorregido(lease_id=x.id, modo_precio=modo, valor_antes=antes, meses=meses,
                                total_despues=despues, por=actor)
         db.add(fila)
@@ -163,6 +183,15 @@ def deshacer(db: Session, lease_ids: list[int]) -> list[PrecioCorregido]:
     leases = {x.id: x for x in db.query(SpaceLease).filter(SpaceLease.id.in_(lease_ids)).with_for_update().all()}
     for lease_id in lease_ids:
         f, x = filas.get(lease_id), leases.get(lease_id)
+        if f is not None and f.modo_precio == "ventas":
+            # Por ventas: sólo si sigue así y todavía no se cargó ninguna venta
+            # (lo cobrado no se pierde deshaciendo).
+            sigue = db.get(CobroPorVenta, lease_id) is not None and x is not None and al_centavo(x.monthly_rent) == al_centavo(0)
+            cortes = db.query(CorteDeVenta.id).filter(CorteDeVenta.lease_id == lease_id).first() is not None
+            if not sigue or cortes:
+                raise _error(409, "contrato_cambio",
+                             "Ese contrato se editó o ya tiene ventas cargadas: ya no se puede deshacer desde acá.")
+            continue
         c = db.get(CondicionesDeContrato, lease_id)
         if f is None or x is None or c is None or al_centavo(x.monthly_rent) != al_centavo(f.total_despues) \
                 or c.modo_precio != f.modo_precio:
@@ -172,7 +201,10 @@ def deshacer(db: Session, lease_ids: list[int]) -> list[PrecioCorregido]:
     for lease_id in lease_ids:
         f, x = filas[lease_id], leases[lease_id]
         x.monthly_rent = f.valor_antes
-        db.delete(db.get(CondicionesDeContrato, lease_id))
+        if f.modo_precio == "ventas":
+            db.delete(db.get(CobroPorVenta, lease_id))
+        else:
+            db.delete(db.get(CondicionesDeContrato, lease_id))
         db.delete(f)
         hechos.append(f)
     db.flush()
