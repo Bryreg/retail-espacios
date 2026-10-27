@@ -249,7 +249,13 @@ export default function App() {
             antes de `setAuth`), así que esta ruta es la red de seguridad
             para cualquier otra forma de volver a "/": atrás del navegador,
             un enlace guardado, escribir la barra a mano. */}
-        <Route path="/" element={plataforma ? <Navigate to="/plataforma" replace /> : <Dashboard />} />
+        {/* Rediseño UX 2026-10 (etapa 2): la pantalla de adentro tiene un
+            módulo por dirección (`/contratos`, `/indicadores`, `/montajes`,
+            `/plano`, `/plano/3d`; `modulos.ts`) y todas montan el MISMO
+            `Dashboard` —`/*`—, que no se vuelve a montar al pasar de un módulo
+            a otro. Una dirección desconocida la manda al Inicio el propio
+            Dashboard (era el «*» de abajo, que con `/*` ya no se alcanza). */}
+        <Route path="/*" element={plataforma ? <Navigate to="/plataforma" replace /> : <Dashboard />} />
         <Route path="/plataforma" element={<Plataforma />} />
         {/* Fase 7 (transparencia): la contrapartida de haber quitado la
             supresión de celda chica en /plataforma -- vista imprimible del
@@ -293,7 +299,6 @@ export default function App() {
             porque es la misma consulta al mismo cliente, vista de otro lado;
             va ANTES del "*" catch-all, como sus hermanas. */}
         <Route path="/plataforma/clientes/:slug/informe" element={<InformeCliente />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
     </Pantalla>

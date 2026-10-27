@@ -44,7 +44,7 @@
   color: var(--ink-1);
 }
 .barra-pantalla .pieza > .ico { color: var(--ink-3); flex: none; }
-.barra-pantalla .sede-sel {
+.barra-pantalla .sede-sel, .barra-pantalla .sede-nombre {
   min-width: 0;
   max-width: 220px;
   padding: 0;
@@ -59,6 +59,7 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
+.barra-pantalla .sede-nombre { overflow: hidden; white-space: nowrap; cursor: default; }
 .barra-pantalla .sede-sel:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--r-sm); }
 .barra-pantalla .cuantos { font-size: var(--t-xs); color: var(--ink-3); white-space: nowrap; }
 .barra-pantalla .pieza.modos { padding: 0 4px; align-items: stretch; }
@@ -137,22 +138,16 @@
   .barra-pantalla .pieza { padding: 0 10px; gap: 8px; }
   .barra-pantalla .pieza.modos { padding: 0 2px; }
   .barra-pantalla .modos button { padding: 0 8px; }
-  .barra-pantalla .sede-sel { max-width: 130px; }
+  .barra-pantalla .sede-sel, .barra-pantalla .sede-nombre { max-width: 130px; }
   .btn-barra { width: 32px; padding: 0; justify-content: center; }
   /* La barra de la aplicación (`Dashboard.tsx`, estilos en línea): menos aire
-     para que las cuatro pestañas entren en un renglón a 390 px. */
+     a lo angosto. Las pestañas se fueron al menú de módulos (`armazon.css`). */
   .barra-app { gap: 10px !important; padding: 0 12px !important; }
-  .barra-app .pestana-app { padding: 0 7px !important; }
 }
-/* A 480 px o menos las cuatro pestañas y los controles no entran en un
-   renglón: la marca y los controles arriba, las pestañas en el renglón de
-   abajo, y la sincronización es el punto solo (la palabra queda en su `title`
-   y su `aria-label`). Nada se corta. */
+/* A 480 px o menos la sincronización es el punto solo (la palabra queda en su
+   `title` y su `aria-label`): la marca, la sede y la cuenta entran en un
+   renglón. Nada se corta. */
 @media (max-width: 480px) {
-  .barra-app { flex-wrap: wrap; height: auto !important; row-gap: 0; padding-top: 6px !important; }
-  .barra-app .sep-app { display: none; }
-  .barra-app .pestanas-app { order: 3; flex: 1 0 100%; height: 40px; }
-  .barra-app .der-app { gap: 4px !important; }
   .sync-palabra { display: none; }
 }
 

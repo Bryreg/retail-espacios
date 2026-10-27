@@ -129,7 +129,7 @@ export default function RevisarParticipaciones({ secciones, tituloDe }: {
                     type="button"
                     className="btn-s"
                     onClick={() => abrir(it.abrir!.fixtureId, it.abrir!.cara)}
-                    title="Abrir en Distribución: el Editor 3D en esta cara"
+                    title="Abrir en Distribución: el 3D del plano en esta cara"
                   >
                     <PenTool size={16} strokeWidth={1.75} aria-hidden /> {textoDelBoton(s.tipo)}
                   </button>

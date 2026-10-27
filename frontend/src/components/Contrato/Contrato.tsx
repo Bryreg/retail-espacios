@@ -820,7 +820,7 @@ export function useContrato({
    *  ofrece volver a Supervisar, que relee la base. */
   const [cambioAjeno, setCambioAjeno] = useState(false);
   const faltaEdicion = edita
-    ? (cambioAjeno ? "Ese contrato cambió mientras lo editabas: volvé a Supervisar y abrilo de nuevo" : null)
+    ? (cambioAjeno ? "Ese contrato cambió mientras lo editabas: volvé a Indicadores y abrilo de nuevo" : null)
       ?? (fotoAhora ? faltaDeLaEdicion(edita, fotoAhora, lineasReales.length) : null) ?? (sinCambios ? "No cambiaste nada" : null)
     : null;
   /** Cuántos contratos nacen si se reemplaza: uno por parte, o uno. */
@@ -956,7 +956,7 @@ export function useContrato({
       if (planoEscrito && planoPendiente) await planoPendiente.deshacer().catch(() => undefined);
       if (edita && codigoDelRechazo(e) === "contrato_cambio") {
         setCambioAjeno(true);
-        setError("Ese contrato cambió mientras lo editabas (lo guardó otra pestaña o alguien más). No se guardó nada: volvé a Supervisar y abrilo de nuevo.");
+        setError("Ese contrato cambió mientras lo editabas (lo guardó otra pestaña o alguien más). No se guardó nada: volvé a Indicadores y abrilo de nuevo.");
         setEstado("error");
         return;
       }

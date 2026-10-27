@@ -1535,7 +1535,7 @@ console.log("\nvender · el contrato del rediseño (todo o nada)");
     assert.match(contratoTs, /tipo,\s*caduca: tipo === "reserva" \? caduca \|\| null : null,\s*cobro: conVentas && !relleno \? cobro :/,
       "la reserva no manda su cobro (el % de las ventas y el corte)");
     // Lo guardado dice, una vez y sin alarma, dónde se carga la planometría.
-    assert.match(modoCodigo, /data-planometria-en-supervisar>La planometría se carga en Supervisar, en la ficha del espacio\.<\/p>/,
+    assert.match(modoCodigo, /data-planometria-en-supervisar>La planometría se carga en Indicadores, en la ficha del espacio\.<\/p>/,
       "lo guardado no dice dónde se carga la planometría");
     assert.doesNotMatch(contratoTs, /avisoPlanometria|subirPlanometria/, "el guardado de Vender sigue subiendo la planometría");
     assert.equal((modoCodigo.match(/className="btn-principal"/g) || []).length, 1, "ModoVender pinta más de un botón principal");
@@ -1629,23 +1629,31 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.doesNotMatch(vista, /SlidersHorizontal/, "«Tarifas» volvió a `SlidersHorizontal`");
   });
 
-  prueba("sin ícono en las pestañas ni en las pastillas: la de la app, Vender | Supervisar y la cuenta roja dicen sólo la palabra o el número", () => {
-    const topbar = entre(dashCodigo, "function Topbar(", "export default function Dashboard(");
-    const tab = entre(topbar, "onClick={() => setViewMode(id)}", "</button>");
-    assert.ok(tab.length > 50, "no se encontró el botón de la pestaña");
-    assert.match(tab, />\s*\{label\}\s*$/, "la pestaña de la app dibuja algo más que su palabra");
+  prueba("el menú de módulos: un ícono de la medida y la palabra; la barra de la pantalla: el periodo, hoy y lo de la sede, en su orden", () => {
+    // Con el armazón de módulos (rediseño UX 2026-10, dibujo aprobado el 26/10)
+    // las cuatro pestañas de palabras se volvieron un menú lateral, y el
+    // dibujo aprobado lleva un ícono por módulo: el ícono de la medida de
+    // todos y la palabra, nada más. (Antes: «ni en las pestañas»; el dueño
+    // aprobó el menú con íconos.)
+    const menu = codigo("src/components/Armazon/MenuDeModulos.tsx");
+    assert.match(menu, /const ICONO_MENU = \{ size: 16, strokeWidth: 1\.75, "aria-hidden": true \} as const;/, "los íconos del menú no son 16 × 1,75");
+    const item = entre(menu, "function Item(", "\n}\n");
+    assert.match(item, /<Icono \{\.\.\.ICONO_MENU\} \/>\s*<span className="largo">\{largo\}<\/span>\s*<span className="corto" aria-hidden>\{corto\}<\/span>\s*\{badge > 0 && \(\s*<span className="cuenta" aria-label=\{`\$\{badge\} para revisar`\}>\{badge\}<\/span>\s*\)\}\s*<\/Link>/,
+      "un módulo del menú dibuja algo más que su ícono, su palabra y la cuenta (o la cuenta lleva algo más que el número)");
+    assert.match(item, /aria-current=\{marcado\(actual\) === modulo \? "page" : undefined\}/, "el menú no dice en qué módulo se está");
     const barra = entre(vista, '<div className="barra-pantalla">', "{periodoAbierto && (");
-    const modo = entre(barra, "onClick={() => setModo(id)}", "</button>");
-    assert.ok(modo.length > 30, "no se encontró el botón de Vender | Supervisar");
-    assert.match(modo, /\{label\}\s*\{badge > 0 && \(\s*<span className="cuenta" aria-label=\{`\$\{badge\} para revisar`\}>\{badge\}<\/span>\s*\)\}/,
-      "Vender | Supervisar lleva algo más que la palabra y la cuenta, o la cuenta lleva algo más que el número");
+    // Vender | Supervisar, la sede y «Actualizar» se fueron de la barra de la
+    // pantalla: son los módulos, el selector de la barra de arriba y el guardado.
+    assert.doesNotMatch(barra, /className="pieza modos"|className="sede-sel"|<RefreshCw|aria-label="Actualizar"/,
+      "la barra de la pantalla vuelve a tener la sede, el modo o «Actualizar»");
+    const dashBarra = entre(dashCodigo, "function Topbar(", "export default function Dashboard(");
+    assert.match(dashBarra, /<SelectorDeSede \/>[\s\S]*<SyncStatus \/>/, "la barra de arriba no tiene la sede y el guardado");
     // La pastilla roja de la cuenta: fondo rojo, número en mono, sin ícono.
     const css = sinComentarios(leer("src/vender.css"));
     const cuenta = (css.match(/\.barra-pantalla \.cuenta \{([^}]*)\}/) || [, ""])[1];
     assert.match(cuenta, /background: var\(--ocupado\);/, "la cuenta de Supervisar no es la pastilla roja");
-    // Las tres piezas, en su orden: dónde, qué y de qué fechas; a la derecha, hoy y lo de la sede.
-    const orden = ["<MapPin", 'className="sede-sel"', 'className="cuantos"', 'className="pieza modos"', 'className="pieza periodo"', "<CalendarRange",
-      'className="hoy"', "<FileSpreadsheet", "<Tag", "<RefreshCw"].map((t) => [t, barra.indexOf(t)]);
+    // Lo que queda, en su orden: de qué fechas; a la derecha, hoy y lo de la sede.
+    const orden = ['className="pieza periodo"', "<CalendarRange", 'className="hoy"', "<FileSpreadsheet", "<Tag"].map((t) => [t, barra.indexOf(t)]);
     for (const [t, k] of orden) assert.ok(k >= 0, `a la barra de la sede le falta ${t}`);
     assert.deepEqual(orden.map(([, k]) => k), [...orden.map(([, k]) => k)].sort((a, b) => a - b),
       `la barra de la sede no va en el orden de la hoja de piezas: ${orden.map(([t]) => t).join(" → ")}`);
@@ -1653,7 +1661,7 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     assert.match((css.match(/\.barra-pantalla \{([^}]*)\}/) || [, ""])[1], /flex-wrap: wrap;/, "la barra de la sede no envuelve");
     assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.barra-pantalla \.hoy, \.barra-pantalla \.cuantos, \.btn-barra \.txt \{ display: none; \}/,
       "a lo angosto la barra de la sede no se aprieta");
-    for (const etiqueta of ["Planilla", "Tarifas", "Actualizar"]) {
+    for (const etiqueta of ["Planilla", "Tarifas"]) {
       assert.match(barra, new RegExp(`aria-label="${etiqueta}"`), `«${etiqueta}» pierde su nombre cuando a lo angosto queda sólo el ícono`);
     }
   });
@@ -1829,9 +1837,13 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
       "«Falta planometría» se pide también en Vender");
     // La cuenta roja de «Supervisar» mezcla vencimientos, bajo tarifa, reservas
     // y cortes de ventas: con Vender abierto no se dibuja.
-    assert.match(vista, /\{ id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" \? attentionCount : 0 \}/,
+    // (Rediseño UX 2026-10: la pastilla es la de «Indicadores» en el menú de
+    // módulos. Ni se cuenta en Vender ni se dibuja con Contratos abierto.)
+    assert.match(vista, /const cuentaParaElMenu = modoEfectivo === "supervisar" \? attentionCount : 0;/,
       "la pastilla roja de «Supervisar» se dibuja en Vender");
-    assert.match(vista, /\{badge > 0 && \(\s*<span className="cuenta"/, "la pastilla roja se dibuja aunque la cuenta sea cero");
+    const menu = codigo("src/components/Armazon/MenuDeModulos.tsx");
+    assert.match(menu, /return modulo === "indicadores" && actual !== "contratos" \? cuenta : 0;/, "la pastilla roja se dibuja con Contratos abierto");
+    assert.match(menu, /\{badge > 0 && \(\s*<span className="cuenta"/, "la pastilla roja se dibuja aunque la cuenta sea cero");
     // Las rutas de cada módulo, y nada más.
     const rutas = (f) => [...codigo(f).matchAll(/client\s*\.(get|post|delete|put|patch)(?:<[^>]*>)?\(\s*[`"']([^`"']+)[`"']/g)].map((m) => `${m[1]} ${m[2]}`).sort();
     assert.deepEqual(rutas("src/api/cobros.ts"), ["get /cobros", "get /cobros/pendientes", "post /cobros/${leaseId}/cortes"]);

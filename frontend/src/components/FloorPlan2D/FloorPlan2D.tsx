@@ -1514,7 +1514,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     ? "Arrastrá para mover · rueda para acercar · espacio + arrastre para desplazar"
     : "Clic en un mueble para ver su ficha · rueda para acercar · espacio + arrastre para desplazar";
 
-  const posicionDeLaSede = storeSedeList.indexOf(sede);
 
   // ── Grid pattern defs ────────────────────────────────────────────────────────
 
@@ -1548,9 +1547,10 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               autoFocus
             />
           ) : (
-            <select className="sede-sel" value={sede} onChange={(e) => setSede(e.target.value)} aria-label="Sede">
-              {storeSedeList.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            /* La sede se elige UNA vez, en la barra de arriba del armazón
+               (rediseño UX 2026-10): acá se dice cuál es, y su menú ⋯ la
+               renombra, agrega otra o la elimina. */
+            <span className="sede-nombre" data-sede-del-armazon>{sede}</span>
           )}
           {addingNewSede && (
             <input
@@ -1571,10 +1571,8 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               autoFocus
             />
           )}
-          <span className="cuantos">
-            {posicionDeLaSede >= 0 && <>{posicionDeLaSede + 1} de {storeSedeList.length}{" · "}</>}
-            {items.length} mueble{items.length === 1 ? "" : "s"}
-          </span>
+          {/* «1 de 2 · 16 muebles» va en la barra de arriba, al lado del
+              selector de la sede (rediseño UX 2026-10): acá se repetía. */}
           <div className="p2-menu-w" ref={menuSedeRef}>
             <button type="button" className="p2-icobtn" title="Renombrar, agregar o eliminar sede"
               aria-label="Renombrar, agregar o eliminar sede" aria-haspopup="menu" aria-expanded={menuSede}
@@ -3906,7 +3904,7 @@ function AssignmentPanel({
 
   const botonVender = isAdmin && rentable && (
     <button type="button" className="p2-btn" data-vender onClick={() => onVender(activeFace)}
-      title="Abre Vender (en la pantalla de la sede) con este espacio">
+      title="Abre Contratos con este espacio">
       <FilePenLine {...ICONO} /> Vender
     </button>
   );
@@ -4258,7 +4256,7 @@ function AssignmentPanel({
                       type="button"
                       className="p2-btn"
                       onClick={() => abrirEnDistribucion(item.id, activeFace)}
-                      title="Abre el Editor 3D en esta cara, en Distribución"
+                      title="Abre el 3D del plano en esta cara, en Distribución"
                     >
                       <Percent {...ICONO} /> Distribuir
                     </button>

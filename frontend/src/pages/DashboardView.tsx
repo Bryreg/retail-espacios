@@ -19,7 +19,7 @@ import {
   // Rediseño 2026-10 (hoja de piezas): la barra de la sede, el ícono de cada
   // tarjeta y de cada cifra, y las herramientas del plano. `MapIcon` es el
   // `Map` de lucide con su otro nombre: `Map` a secas taparía el de JS.
-  MapPin, Tag, MapIcon, Clock, Gauge, ClipboardCheck, Table2, Percent,
+  Tag, MapIcon, Clock, Gauge, ClipboardCheck, Table2, Percent,
   Banknote, CircleDashed, AlarmClock, PieChart, Hammer, Minus, Focus, Mouse,
   // Rediseño de Supervisar (PR 2): la chincheta del plano, la flecha de la
   // ficha, el orden de «Quién paga», Renovar y las acciones de la ficha.
@@ -106,6 +106,7 @@ import {
 // Vender, Supervisar y el plano (store de LECTURA, el de edición es del 3D) y
 // los bloques de Supervisar, sólo para quien administra.
 import { claveDeSede, useOcupacionStore } from "../store/ocupacionStore";
+import { useArmazon } from "../store/armazonStore";
 import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
 // «Editar contrato»: lo que Supervisar lee de UN contrato para reabrirlo en
@@ -2888,7 +2889,7 @@ function FixturePopover({
         {esPc && isAdmin && onAbrirEnDistribucion && (
           <button
             onClick={onAbrirEnDistribucion}
-            title="Abre el Editor 3D en esta cara, en Distribución"
+            title="Abre el 3D del plano en esta cara, en Distribución"
             style={{
               width: "100%", height: 34, borderRadius: "var(--r-md)",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -4638,7 +4639,7 @@ function EmptyDashboard({
       </p>
       <p style={{ fontSize: 12.5, color: "var(--ink-3)", maxWidth: 360, marginBottom: 18 }}>
         {isAdmin
-          ? "Dibujá la tienda desde la pestaña Plano. Con el plano cargado aparece el mapa de la sede, qué está libre y cuánto entra por cada espacio."
+          ? "Dibujá la tienda en «Plano de la sede». Con el plano cargado aparece el mapa de la sede, qué está libre y cuánto entra por cada espacio."
           : "Todavía no hay un plano cargado para esta sede. Pedile a un administrador que lo diseñe."}
       </p>
       {isAdmin && (
@@ -4663,7 +4664,19 @@ function EmptyDashboard({
 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
-export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () => void }) {
+/** Qué muestra la pantalla comercial. Con el armazón de módulos (rediseño UX
+ *  2026-10, etapa 2) el modo lo decide la dirección —`/contratos` es Vender,
+ *  `/indicadores` es Supervisar— y no las pestañas de la barra de la sede, que
+ *  se fueron; los cambios de modo de adentro (Renovar desde Supervisar, volver
+ *  de una edición…) navegan con `onModo`. */
+export type ModoComercial = "vender" | "supervisar";
+
+export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo }: {
+  onDisenarPlano: () => void;
+  /** El modo que manda el armazón. Sin él, la pantalla lleva el suyo. */
+  modo?: ModoComercial;
+  onModo?: (m: ModoComercial) => void;
+}) {
   // Las fichas propias del supermercado: con ellas `rateTypeOf` resuelve la
   // tarifa de un mueble colocado desde una (`cli:…`). Llegan después del
   // primer dibujo, así que van en las dependencias de lo que la pregunta.
@@ -4676,7 +4689,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   useTema();
 
   const fixtures = useFixtureStore(selectFixtures);
-  const { sedes, sede, setSede, fixturesBySede, syncFromServer, seasonWindows } = useFixtureStore();
+  const { sede, fixturesBySede, seasonWindows } = useFixtureStore();
   const referenceRates = useFixtureStore((s) => s.referenceRates);
   const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
   const estadoComercial = useFixtureStore((s) => s.estadoComercial);
@@ -4816,8 +4829,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  el mapa manda y el contrato va al lado; en Supervisar mandan los números y
    *  lo que está pendiente. El mercaderista no vende, así que sólo ve el
    *  segundo. */
-  const [modo, setModo] = useState<"vender" | "supervisar">("vender");
-  const modoEfectivo: "vender" | "supervisar" = isAdmin ? modo : "supervisar";
+  const [modoPropio, setModoPropio] = useState<ModoComercial>("vender");
+  const modo = modoPedido ?? modoPropio;
+  /** Cambiar de modo: con el armazón navega (y la dirección vuelve como
+   *  `modo`); sin él, como siempre. */
+  const setModo = useCallback((m: ModoComercial) => {
+    if (onModo) onModo(m);
+    else setModoPropio(m);
+  }, [onModo]);
+  const modoEfectivo: ModoComercial = isAdmin ? modo : "supervisar";
   /** Los cortes de ventas sin cargar y cuántos contratos de hoy se cobran por
    *  ventas (para la nota del canon), y las reservas de espacio vivas. Sólo
    *  quien administra (es plata y son proveedores) y sólo en Supervisar, que es
@@ -5661,8 +5681,15 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
    *  comercial —lo que se vende es una temporada— y sin eso entrar a Vender
    *  mostraba el contador de libres en cero. En Supervisar arranca en hoy, que
    *  es de lo que ese tablero habla. */
+  /* Con el armazón de módulos (rediseño UX 2026-10) la aplicación abre en el
+     Inicio —que habla de hoy— y se llega a Contratos después: el «hoy» que se
+     puso solo no es una elección, y Vender lo cambia por sus treinta días. Lo
+     que eligió la persona no se toca. */
+  const periodoElegido = useRef(false);
   useEffect(() => {
-    if (mapRange) return;
+    const hoyPuestoSolo = mapRange !== null && !periodoElegido.current
+      && mapRange.from.toDateString() === mapRange.to.toDateString();
+    if (mapRange && !(modoEfectivo === "vender" && hoyPuestoSolo)) return;
     if (modoEfectivo !== "vender") { setMapRange(hoyComoRango()); return; }
     const from = new Date();
     const to = new Date(from);
@@ -6258,6 +6285,14 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
   /** Cuántos avisos tiene cada grupo, y la pastilla roja: la suma de los tres. */
   const cuentasDeRevision = useMemo(() => contarPorGrupo(avisos), [avisos]);
   const attentionCount = cuentaDelBadge(cuentasDeRevision);
+  /** La cuenta viaja al menú de módulos: la pastilla roja de «Indicadores»
+   *  (era la de la pestaña «Supervisar»). En Vender no se cuenta: mezcla
+   *  vencimientos, bajo tarifa, reservas y cortes de ventas, y la pantalla la
+   *  mira el proveedor. */
+  const cuentaParaElMenu = modoEfectivo === "supervisar" ? attentionCount : 0;
+  useEffect(() => {
+    useArmazon.getState().setCuentaPendientes(cuentaParaElMenu);
+  }, [cuentaParaElMenu]);
   const grupoDeRevision: GrupoDeRevision = grupoElegido ?? grupoParaAbrir(cuentasDeRevision);
 
   /** Los puntos del plano («aire y pines»): uno por mueble con algo en «Para
@@ -6758,63 +6793,9 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           El nombre de la sede tampoco es un hecho, es el estado de un control:
           se dice UNA vez, acá, y no vuelve a aparecer. */}
       <div className="barra-pantalla">
-        {/* 1 · DÓNDE: la sede. El pin es la sede (en el Plano también); el
-            plano de la sede lleva el mapa, que es otra cosa. */}
-        <div className="pieza">
-          <MapPin {...ICONO_TARJETA} className="ico" />
-          <select
-            className="sede-sel"
-            value={sede}
-            onChange={(e) => setSede(e.target.value)}
-            aria-label="Sede"
-          >
-            {/* Sólo el nombre. El conteo iba adentro de la opción y un
-                `select` muestra el texto de la elegida: en pantalla se leía
-                «TERRON · 0» en cuerpo 17, con un número pegado al nombre que
-                parecía parte del nombre. El dato no se pierde —va al lado, en
-                cuerpo chico— y ahí se lee como lo que es. */}
-            {sedes.map((x) => (
-              <option key={x} value={x}>{x}</option>
-            ))}
-          </select>
-          {/* Cuál de cuántas y cuántos muebles tiene: el selector lista TODAS
-              las sedes, tengan plano o no, así que acá se ve de una cuál está
-              cargada y cuál está en cero. */}
-          <span className="cuantos">
-            {sedes.includes(sede) && <>{sedes.indexOf(sede) + 1} de {sedes.length}{" · "}</>}
-            {(fixturesBySede[sede] ?? []).length} mueble
-            {(fixturesBySede[sede] ?? []).length === 1 ? "" : "s"}
-          </span>
-        </div>
-
-        {/* 2 · QUÉ estás haciendo. Palabras con subrayado, sin ícono; la
-            cuenta de Supervisar es la pastilla roja (sin ícono adentro). */}
-        {isAdmin && (
-          <nav className="pieza modos" aria-label="Modo de la pantalla">
-            {([
-              { id: "vender", label: "Vender", badge: 0 },
-              // En Vender la cuenta roja no se dibuja: mezcla vencimientos,
-              // bajo tarifa, reservas y cortes de ventas, y la pantalla la
-              // mira el proveedor.
-              { id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" ? attentionCount : 0 },
-            ] as const).map(({ id, label, badge }) => {
-              const activo = modoEfectivo === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={activo}
-                  onClick={() => setModo(id)}
-                >
-                  {label}
-                  {badge > 0 && (
-                    <span className="cuenta" aria-label={`${badge} para revisar`}>{badge}</span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        )}
+        {/* La sede y el modo se fueron al armazón (rediseño UX 2026-10, etapa
+            2): la sede se elige UNA vez, en la barra de arriba, y Vender y
+            Supervisar son los módulos Contratos e Indicadores del menú. */}
 
         {/* 3 · DE QUÉ FECHAS hablás: el periodo, en los dos modos. El
             mercaderista está SIEMPRE en Supervisar, así que sacarlo de ahí lo
@@ -6867,16 +6848,8 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
               <span className="txt">Tarifas</span>
             </button>
           )}
-          <button
-            type="button"
-            className="btn-barra"
-            onClick={() => syncFromServer()}
-            title="Traer los cambios del servidor"
-            aria-label="Actualizar"
-          >
-            <RefreshCw {...ICONO_TARJETA} className="ico" />
-            <span className="txt">Actualizar</span>
-          </button>
+          {/* «Actualizar» se fue: lo hace el guardado de la barra de arriba,
+              que trae los cambios del servidor con un clic. */}
         </div>
       </div>
 
@@ -6887,7 +6860,7 @@ export default function DashboardView({ onDisenarPlano }: { onDisenarPlano: () =
           background: "var(--surface)", border: "1px solid var(--line)",
           borderRadius: "var(--r-xl)",
         }}>
-          <SeasonPicker range={mapRange} onChange={setMapRange} />
+          <SeasonPicker range={mapRange} onChange={(r) => { periodoElegido.current = true; setMapRange(r); }} />
         </div>
       )}
 

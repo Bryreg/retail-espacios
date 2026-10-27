@@ -7696,8 +7696,13 @@ export default function StoreEditor3D() {
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [warning, setWarning]               = useState<string|null>(null);
   const [sede, setSede]                     = useState(()=>useFixtureStore.getState().sede);
-  // fase 2 · I5 (V16): las sedes que existen, para el selector «Sede».
-  const sedesDelStore = useFixtureStore((s) => s.sedes);
+  // La sede la elige la barra de arriba del armazón (rediseño UX 2026-10):
+  // el espejo va del store a lo local, como en el plano 2D. El cambio de la
+  // local hace el resto (el efecto de `[sede]` de abajo recarga el lienzo).
+  const sedeDelArmazon = useFixtureStore((s) => s.sede);
+  useEffect(() => {
+    setSede((actual) => (sedeDelArmazon !== actual ? sedeDelArmazon : actual));
+  }, [sedeDelArmazon]);
 
   // MEJORA 4: Presentation mode
   const [presentationMode, setPresentationMode] = useState(false);
@@ -8743,18 +8748,12 @@ export default function StoreEditor3D() {
       <div className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode || distribucionVisible ? 'hidden' : ''}`}>
 
         <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</label>
-          {/* fase 2 · I5 (V16): un selector con las sedes que existen, como el
-              de Supervisar —navegar, nunca escribir—. Era un texto libre que
-              cambiaba de sede en cada tecla: «N», «NA», «NAV»… y cada letra
-              dejaba un plano fantasma en el servidor. Crear o renombrar una
-              sede es del plano 2D. */}
-          <select data-sede-3d aria-label="Sede" value={sede} onChange={e=>setSede(e.target.value)}
-            className="w-full border-0 border-b-2 border-dark-line-2 bg-transparent rounded-none px-0 font-mono text-sm text-accent-200 focus:border-accent focus:outline-none">
-            {(sedesDelStore.includes(sede) ? sedesDelStore : [sede, ...sedesDelStore]).map((s) => (
-              <option key={s} value={s} className="bg-dark-surface text-dark-ink-1">{s}</option>
-            ))}
-          </select>
+          <p className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</p>
+          {/* La sede se elige UNA vez, en la barra de arriba del armazón
+              (rediseño UX 2026-10): era un selector más (fase 2 · I5, V16 —
+              antes un texto libre que dejaba un plano fantasma por letra).
+              Acá sólo se dice cuál es; crear o renombrar una sede es del 2D. */}
+          <p data-sede-3d className="font-mono text-sm text-accent-200">{sede}</p>
         </div>
 
         <div className="border-t border-dark-line" />

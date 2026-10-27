@@ -1,13 +1,16 @@
-import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText } from "lucide-react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
 const StoreEditor3D = lazy(() => import("../components/StoreEditor3D/StoreEditor3D"));
 const PlanificarCara = lazy(() => import("../components/Planograma/PlanificarCara"));
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
-import DashboardView from "./DashboardView";
+import DashboardView, { type ModoComercial } from "./DashboardView";
+import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
+import { RUTA_DE, moduloDeRuta, puedeAbrir, type Modulo } from "../modulos";
+import "../armazon.css";
 import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import AvisoCuentaBanner from "../components/AvisoCuentaBanner";
@@ -41,10 +44,6 @@ import {
   LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
   type FamiliaConNombre,
 } from "../catalogo/nombresPropios";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type ViewMode = "map" | "store" | "kpis" | "montaje";
 
 /** Código que venía en el enlace del correo de montaje (`?montar=NAVE-PUN-01`).
  *
@@ -1157,71 +1156,124 @@ function SettingsModal({
   );
 }
 
-// ─── Topbar ───────────────────────────────────────────────────────────────────
+// ─── La barra de arriba ───────────────────────────────────────────────────────
 
-/** Las pestañas, con una frase que dice para qué sirve cada una.
- *
- *  Los nombres solos no alcanzaban: "Plano" y "Editor 3D" suenan a lo mismo, y
- *  desde ninguno de los dos se adivina que el contrato se llena ahí adentro.
- *  Quedan tres del trabajo diario —la sede, los montajes— separadas del diseño
- *  de la tienda, que es donde se entra una vez cada tanto y no todos los días.
- *
- *  Eran cuatro. Negociar y Resumen abrían las dos con el plano de la misma
- *  sede y se diferenciaban en poco más que el orden de las tarjetas, así que
- *  la pregunta "¿en cuál de las dos hago el contrato?" no tenía buena
- *  respuesta. Ahora hay una sola, y el contrato vive al lado del mapa. */
-const TABS: {
-  id: ViewMode; label: string; para: string; grupo: "operar" | "diseñar";
-}[] = [
-  // Negociar y Resumen eran dos pestañas que mostraban casi lo mismo: las dos
-  // abrían con el plano de la sede. Ahora son una sola — el mapa es el mismo y
-  // el contrato se llena en el riel de la derecha, sin cambiar de pantalla.
-  { id: "kpis",     label: "Sede", grupo: "operar",
-    para: "Cómo va la sede y dónde se vende: tocás un espacio en el mapa y llenás el contrato ahí mismo" },
-  { id: "montaje",  label: "Montajes",    grupo: "operar",
-    para: "Confirmar con foto que la exhibición quedó armada" },
-  { id: "map",      label: "Plano",   grupo: "diseñar",
-    para: "Dibujar la tienda vista desde arriba y editar los muebles" },
-  { id: "store",    label: "Editor 3D",       grupo: "diseñar",
-    para: "Ver la tienda en 3D y aplicar las artes del proveedor" },
-];
-
-interface TopbarProps {
-  viewMode: ViewMode;
-  setViewMode: (m: ViewMode) => void;
-  isAdmin: boolean;
-  operador: boolean;
-  onOpenSettings: () => void;
-  onIrPlataforma: () => void;
-  onLogout: () => void;
+/** Las iniciales de quien entró, para el círculo del menú de la cuenta. */
+function iniciales(texto: string | null): string {
+  const partes = (texto ?? "").replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
+  const dos = partes.length >= 2 ? partes[0][0] + partes[1][0] : (partes[0] ?? "?").slice(0, 2);
+  return dos.toUpperCase();
 }
 
-/** Supermercado, persona y rol, a la derecha de la barra. El rol dicta la mitad
- *  de lo que se ve en pantalla —la plata va tachada para el trabajador—, así que
- *  va con la palabra. Una sesión de antes del 2026-10-02 no trae el rol en el
+/** Supermercado, persona y rol. El rol dicta la mitad de lo que se ve en
+ *  pantalla —la plata va tachada para el trabajador—, así que va con la
+ *  palabra. Una sesión de antes del 2026-10-02 no trae el rol en el
  *  supermercado y cae a la palabra del token. */
-function QuienSoy({ isAdmin }: { isAdmin: boolean }) {
+function useQuienSoy(isAdmin: boolean) {
   const clienteNombre = useAuthStore((s) => s.clienteNombre);
   const nombre = useAuthStore((s) => s.nombre);
   const email = useAuthStore((s) => s.email);
   const rolCliente = useAuthStore((s) => s.rolCliente);
   const rol = rolCliente ? rolLabelUsuario(rolCliente) : isAdmin ? "Administrador" : "Trabajador";
   const persona = nombre?.trim() || email || null;
-  const linea: React.CSSProperties = {
-    maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-  };
+  return { clienteNombre, persona, rol };
+}
+
+/** El menú de la cuenta (rediseño UX 2026-10): quién sos y con qué rol, el
+ *  tema claro u oscuro y cerrar la sesión. Antes eran tres cosas sueltas en la
+ *  barra —el texto de la persona, el sol/luna y la puerta—; ahora la barra
+ *  deja lugar a lo que se usa todo el día y esto queda a un toque. En el
+ *  teléfono, donde no hay menú lateral, también lleva Ajustes. */
+function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
+  isAdmin: boolean;
+  onLogout: () => void;
+  onAjustes: () => void;
+}) {
+  const { clienteNombre, persona, rol } = useQuienSoy(isAdmin);
+  const [abierto, setAbierto] = useState(false);
+  const caja = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = (e: MouseEvent) => {
+      if (caja.current && !caja.current.contains(e.target as Node)) setAbierto(false);
+    };
+    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") setAbierto(false); };
+    document.addEventListener("mousedown", fuera);
+    window.addEventListener("keydown", tecla);
+    return () => {
+      document.removeEventListener("mousedown", fuera);
+      window.removeEventListener("keydown", tecla);
+    };
+  }, [abierto]);
   return (
-    <span
-      title={[clienteNombre, persona, rol].filter(Boolean).join(" · ")}
-      style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.25, minWidth: 0, maxWidth: 220 }}
-    >
-      {clienteNombre && (
-        <span style={{ ...linea, fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>{clienteNombre}</span>
+    <div className="cuenta-app" ref={caja}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+        title={[clienteNombre, persona, rol].filter(Boolean).join(" · ")}
+        onClick={() => setAbierto((v) => !v)}
+      >
+        <span className="avatar-app" aria-hidden>{iniciales(persona ?? clienteNombre)}</span>
+        <span className="quien-corto" style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.2, minWidth: 0, maxWidth: 180 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+            {persona ?? clienteNombre ?? rol}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{rol}</span>
+        </span>
+      </button>
+      {abierto && (
+        <div className="menu-cuenta" role="menu">
+          <div className="quien">
+            {clienteNombre && <b>{clienteNombre}</b>}
+            <span>{persona ? `${persona} · ${rol}` : rol}</span>
+          </div>
+          {/* Claro / oscuro: la misma pieza de siempre (el ícono es el del
+              tema AL QUE SE VA), con su palabra al lado. */}
+          <div className="fila">
+            Tema claro u oscuro
+            <span className="der"><TemaToggle /></span>
+          </div>
+          {isAdmin && (
+            <button type="button" role="menuitem" className="fila solo-telefono"
+              onClick={() => { setAbierto(false); onAjustes(); }}>
+              <Settings {...ICONO_BARRA} /> Ajustes
+            </button>
+          )}
+          <button type="button" role="menuitem" className="fila"
+            onClick={() => { setAbierto(false); onLogout(); }}>
+            <LogOut {...ICONO_BARRA} /> Cerrar sesión
+          </button>
+        </div>
       )}
-      <span style={{ ...linea, fontSize: 11, color: "var(--ink-4)" }}>
-        {persona ? `${persona} · ${rol}` : rol}
+    </div>
+  );
+}
+
+/** La sede, elegida en UN solo lugar para toda la aplicación (rediseño UX
+ *  2026-10). Antes había un selector en la barra de la sede, otro en el plano
+ *  y otro en el 3D, y los tres movían la misma sede del store. Crear,
+ *  renombrar o eliminar una sede sigue en el plano (su menú ⋯). */
+function SelectorDeSede() {
+  const sedes = useFixtureStore((s) => s.sedes);
+  const sede = useFixtureStore((s) => s.sede);
+  const setSede = useFixtureStore((s) => s.setSede);
+  const muebles = useFixtureStore((s) => (s.fixturesBySede[s.sede] ?? []).length);
+  return (
+    <div className="selector-sede">
+      <MapPin {...ICONO_BARRA} className="ico" />
+      <select className="sede-sel" value={sede} onChange={(e) => setSede(e.target.value)} aria-label="Sede">
+        {(sedes.includes(sede) ? sedes : [sede, ...sedes]).map((x) => (
+          <option key={x} value={x}>{x}</option>
+        ))}
+      </select>
+      {/* Cuál de cuántas y cuántos muebles tiene: el selector lista TODAS las
+          sedes, tengan plano o no. */}
+      <span className="cuantos">
+        {sedes.includes(sede) && <>{sedes.indexOf(sede) + 1} de {sedes.length}{" · "}</>}
+        {muebles} mueble{muebles === 1 ? "" : "s"}
       </span>
-    </span>
+    </div>
   );
 }
 
@@ -1229,15 +1281,36 @@ function QuienSoy({ isAdmin }: { isAdmin: boolean }) {
  *  rediseño, 2026-10). `probar-vender` lo asevera. */
 const ICONO_BARRA = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
-function Topbar({
-  viewMode, setViewMode, isAdmin, operador, onOpenSettings, onIrPlataforma, onLogout,
-}: TopbarProps) {
-  // A worker gets the dashboard and the mount screen: confirming a mount is
-  // literally their job, and it is the one thing they are allowed to write.
-  const visibleTabs = isAdmin
-    ? TABS
-    : TABS.filter((t) => t.id === "kpis" || t.id === "montaje");
+/** 2D | 3D: el Plano de la sede junta lo que eran dos pestañas (Plano y
+ *  Editor 3D). Va en la barra mientras se está en el Plano; cada vista es su
+ *  dirección (`/plano`, `/plano/3d`). */
+function VistaDelPlano({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void }) {
+  if (modulo !== "plano" && modulo !== "plano3d") return null;
+  return (
+    <div className="vista-plano" role="group" aria-label="Vista del plano">
+      {([["plano", "2D", "Dibujar la tienda vista desde arriba y editar los muebles"],
+         ["plano3d", "3D", "Ver la tienda en 3D y aplicar las artes del proveedor"]] as const).map(([m, palabra, para]) => (
+        <button key={m} type="button" aria-pressed={modulo === m} title={para} onClick={() => ir(m)}>
+          {palabra}
+        </button>
+      ))}
+    </div>
+  );
+}
 
+interface TopbarProps {
+  modulo: Modulo;
+  ir: (m: Modulo) => void;
+  isAdmin: boolean;
+  operador: boolean;
+  onIrPlataforma: () => void;
+  onAjustes: () => void;
+  onLogout: () => void;
+}
+
+/** La barra de arriba del armazón: la sede, el guardado y la cuenta. Los
+ *  módulos se fueron al menú (`MenuDeModulos.tsx`). */
+function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLogout }: TopbarProps) {
   /* Los botones de ícono de la barra: 32 px, el ícono a 16 con trazo 1,75 y
      en gris (`--ink-2`), como en la hoja de piezas del rediseño. Sin palabra
      al lado: el `title` y el `aria-label` la dicen. */
@@ -1254,152 +1327,45 @@ function Topbar({
     <header
       className="barra-app"
       style={{
-        display: "flex", alignItems: "center", gap: 18,
-        height: 52, padding: "0 18px",
+        display: "flex", alignItems: "center", gap: 14,
+        height: 56, padding: "0 18px",
         background: "var(--surface)",
         borderBottom: "1px solid var(--line)",
         flexShrink: 0,
-        overflow: "hidden",
         minWidth: 0,
       }}
     >
-      {/* Marca. El cuadrado con cuatro puntos y la pastilla BETA se fueron: el
-          ícono no significaba nada y la pastilla es de las cosas que se ponen
-          cuando hay que llenar un espacio. El nombre alcanza. */}
-      <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-        <span
-          style={{
-            fontSize: 14, fontWeight: 700, letterSpacing: "0.055em",
-            color: "var(--ink-1)",
-          }}
-        >
-          RECABRA
-        </span>
-      </div>
+      {/* En el teléfono no hay menú lateral: la marca va acá. */}
+      <span className="marca-movil">RECABRA</span>
 
-      {/* Divider */}
-      <div className="sep-app" style={{ width: 1, height: 18, background: "var(--line)", flexShrink: 0 }} />
+      <SelectorDeSede />
 
-      {/* Tabs: palabras con subrayado, sin ícono (hoja de piezas: «ni en las
-          pestañas ni dentro de las pastillas: ahí manda la palabra»). El
-          subrayado va al pie de la barra, como en la maqueta. */}
-      <div className="pestanas-app" style={{ display: "flex", gap: 2, alignSelf: "stretch" }}>
-        {visibleTabs.map(({ id, label, para, grupo }, i) => {
-          const active = viewMode === id;
-          // Una línea fina separa "operar" de "diseñar la tienda": son dos
-          // trabajos distintos y mezclarlos era parte de la confusión.
-          const abreGrupo = i > 0 && visibleTabs[i - 1].grupo !== grupo;
-          return (
-            <span key={id} style={{ display: "flex", alignItems: "stretch" }}>
-            {abreGrupo && (
-              <span
-                aria-hidden
-                style={{
-                  width: 1, height: 18, margin: "0 7px", alignSelf: "center",
-                  background: "var(--line)", flexShrink: 0,
-                }}
-              />
-            )}
-            {/* Pastilla con ícono → palabra con subrayado. La gente comercial
-                lee palabras, y un ícono por pestaña es de los patrones más
-                generados que hay. El subrayado dice cuál está activa sin
-                pintar un fondo de color. */}
-            <button
-              className="pestana-app"
-              onClick={() => setViewMode(id)}
-              title={para}
-              aria-current={active ? "page" : undefined}
-              style={{
-                display: "flex", alignItems: "center",
-                // «Editor 3D» en un renglón, también a 390 px.
-                whiteSpace: "nowrap",
-                padding: "0 11px",
-                borderRadius: 0,
-                fontSize: "var(--t-xs)", fontWeight: active ? 600 : 450,
-                border: "none",
-                borderBottom: `2px solid ${active ? "var(--ink-1)" : "transparent"}`,
-                background: "transparent",
-                color: active ? "var(--ink-1)" : "var(--ink-3)",
-                cursor: "pointer",
-                transition: "color .12s, border-color .12s",
-                fontFamily: "inherit",
-              }}
-            >
-              {label}
-            </button>
-            </span>
-          );
-        })}
-      </div>
+      <VistaDelPlano modulo={modulo} ir={ir} />
 
-      {/* Right side: el estado de la sincronización (punto y palabra), el
-          sol/luna, quién sos y los tres botones de ícono. */}
-      <div className="der-app" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        {/* Server sync state — click to sync now */}
-        <SyncStatus />
+      <span className="esp" />
 
-        {/* Claro / oscuro. Misma pieza que la de la landing (sol / luna) y
-            misma convención: el ícono es el del tema AL QUE SE VA. La
-            preferencia queda en `localStorage` bajo `recabra-tema` y la
-            comparte con la consola de plataforma, que antes tenía la suya. */}
-        <TemaToggle />
+      {/* El estado del guardado (punto y palabra). Un clic sincroniza: es lo
+          que hacía el botón «Actualizar» de la barra de la sede, que se fue. */}
+      <SyncStatus />
 
-        {/* Acá había una lupa. **No tenía `onClick`.** Era un botón que no
-            hacía nada: se dibujó porque una barra superior "tiene" que llevar
-            lupa, engranaje y avatar. Un control que no responde es la cosa más
-            delatora que puede tener una pantalla — nadie que use el sistema
-            todos los días deja un botón muerto ahí arriba. Se va.
-
-            Y el avatar: un círculo con "AD" adentro, que sólo decoraba. Lo
-            reemplazó la palabra del rol, cuando el acceso era con dos claves
-            compartidas y no había personas. Hoy sí las hay, con su cuenta, en
-            más de un supermercado: se dice en cuál se está, quién es y con qué
-            rol —el dueño no es «Administrador»— (2026-10-02). */}
-        <QuienSoy isAdmin={isAdmin} />
-
-        {/* Fase 2 clientes: sólo existe en el DOM si el backend confirmó
-            `operador === true` — no es un botón deshabilitado para el resto
-            de las cuentas, directamente no está.
-            Fase 4 plataforma: ya no abre un modal — NAVEGA a la ruta propia
-            `/plataforma` (Dashboard vive adentro del `<BrowserRouter>` de
-            App.tsx, así que `useNavigate` está disponible). */}
-        {operador && (
-          <button
-            title="Plataforma"
-            aria-label="Plataforma"
-            onClick={onIrPlataforma}
-            style={iconButtonStyle}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-          >
-            <ShieldCheck {...ICONO_BARRA} />
-          </button>
-        )}
-
-        {isAdmin && (
-          <button
-            title="Configuración"
-            aria-label="Configuración"
-            onClick={onOpenSettings}
-            style={iconButtonStyle}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-          >
-            <Settings {...ICONO_BARRA} />
-          </button>
-        )}
-
+      {/* Fase 2 clientes: sólo existe en el DOM si el backend confirmó
+          `operador === true` — no es un botón deshabilitado para el resto de
+          las cuentas, directamente no está. Fase 4 plataforma: NAVEGA a la
+          ruta propia `/plataforma`. */}
+      {operador && (
         <button
-          title="Cerrar sesión"
-          aria-label="Cerrar sesión"
-          onClick={onLogout}
+          title="Plataforma"
+          aria-label="Plataforma"
+          onClick={onIrPlataforma}
           style={iconButtonStyle}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-3)"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
         >
-          <LogOut {...ICONO_BARRA} />
+          <ShieldCheck {...ICONO_BARRA} />
         </button>
-      </div>
+      )}
+
+      <MenuDeLaCuenta isAdmin={isAdmin} onLogout={onLogout} onAjustes={onAjustes} />
     </header>
   );
 }
@@ -1412,7 +1378,30 @@ export default function Dashboard() {
   const mountCode = MOUNT_DEEP_LINK;
   // Un solo diseño que se escala con la pantalla (`escala.ts`).
   useEscalaDeLaApp();
-  const [viewMode, setViewMode] = useState<ViewMode>(mountCode ? "montaje" : "kpis");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isAdmin = useAuthStore(selectIsAdmin);
+  const logout = useAuthStore((s) => s.logout);
+  const clienteNombre = useAuthStore((s) => s.clienteNombre);
+  const sede = useFixtureStore((s) => s.sede);
+
+  /** El módulo lo dice la dirección (`modulos.ts`). */
+  const modulo = moduloDeRuta(location.pathname);
+  const ir = useCallback((m: Modulo) => navigate(RUTA_DE[m]), [navigate]);
+  // El enlace del correo de montaje abre Montajes, sobre ese espacio.
+  useEffect(() => {
+    if (mountCode) navigate(RUTA_DE.montajes, { replace: true });
+  }, [mountCode, navigate]);
+  // Una dirección que no es de ningún módulo, o un módulo que este rol no
+  // abre (quien trabaja en la tienda: Inicio, Indicadores y Montajes), va al
+  // Inicio. Es lo mismo que hacía la pestaña: un trabajador sólo podía estar
+  // en la sede o en los montajes.
+  const permitido = modulo !== null && puedeAbrir(modulo, isAdmin);
+  useEffect(() => {
+    if (!permitido) navigate(RUTA_DE.inicio, { replace: true });
+  }, [permitido, navigate]);
+  const efectivo: Modulo = permitido ? modulo! : "inicio";
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const planificando = usePlanograma((s) => s.abierta !== null);
   /** El alto del área de las pantallas, medido: Vender y Supervisar cuentan
@@ -1432,10 +1421,6 @@ export default function Dashboard() {
     return () => ro.disconnect();
   }, []);
   const [seccionConfig, setSeccionConfig] = useState<"suscripcion" | null>(null);
-  const isAdmin = useAuthStore(selectIsAdmin);
-  const role = useAuthStore((s) => s.role);
-  const logout = useAuthStore((s) => s.logout);
-  const navigate = useNavigate();
 
   // Fase 2 clientes: quién es operador de plataforma se pregunta de nuevo en
   // cada sesión — nunca se persiste (a diferencia de `avisoCuenta`, que es
@@ -1451,37 +1436,34 @@ export default function Dashboard() {
     return () => { vivo = false; };
   }, []);
 
-  // A worker may only be on the dashboard or the mount screen.
-  useEffect(() => {
-    if (role === "worker" && viewMode !== "kpis" && viewMode !== "montaje") {
-      setViewMode("kpis");
-    }
-  }, [role, viewMode]);
-
-  // «Ver la exhibición en 3D» se pide desde la pantalla de sede, que es una
-  // pestaña hermana del editor: el pedido viaja por el store y acá se cambia
-  // de pestaña. El encuadre lo resuelve el propio editor.
+  // «Ver la exhibición en 3D» se pide desde la pantalla comercial: el pedido
+  // viaja por el store y acá se cambia de módulo. El encuadre lo resuelve el
+  // propio editor.
   const enfoque3D = useFixtureStore((s) => s.enfoque3D);
   useEffect(() => {
-    if (enfoque3D && isAdmin) setViewMode("store");
-  }, [enfoque3D, isAdmin]);
+    if (enfoque3D && isAdmin) ir("plano3d");
+  }, [enfoque3D, isAdmin, ir]);
 
   // «Vender» del panel del Plano (rediseño, PR 3): el pedido viaja por el
-  // store y acá se pasa a la pantalla de sede, que lo arma en Vender.
+  // store y acá se pasa a Contratos, que lo arma en Vender.
   const pedidoVender = useFixtureStore((s) => s.pedidoVender);
   useEffect(() => {
-    if (pedidoVender && isAdmin) setViewMode("kpis");
-  }, [pedidoVender, isAdmin]);
+    if (pedidoVender && isAdmin) ir("contratos");
+  }, [pedidoVender, isAdmin, ir]);
 
   // Distribuir, al guardar una cara a la que se entró desde Supervisar: vuelve
-  // a la pantalla de sede, que abre Supervisar con el aviso.
+  // a Indicadores, que abre Supervisar con el aviso.
   const pedidoSupervisar = useFixtureStore((s) => s.pedidoSupervisar);
   useEffect(() => {
-    if (pedidoSupervisar && isAdmin) setViewMode("kpis");
-  }, [pedidoSupervisar, isAdmin]);
+    if (pedidoSupervisar && isAdmin) ir("indicadores");
+  }, [pedidoSupervisar, isAdmin, ir]);
 
-  const effectiveMode: ViewMode =
-    isAdmin || viewMode === "montaje" ? viewMode : "kpis";
+  /** Contratos, Indicadores e Inicio son la misma pantalla comercial
+   *  (`DashboardView`) en otro modo: pasar de uno a otro no la vuelve a montar
+   *  —el contrato a medio armar, el periodo y lo elegido siguen ahí—. */
+  const comercial = efectivo === "inicio" || efectivo === "contratos" || efectivo === "indicadores";
+  const modoComercial: ModoComercial = efectivo === "contratos" ? "vender" : "supervisar";
+  const abrirAjustes = () => { setSeccionConfig(null); setSettingsOpen(true); };
 
   return (
     <div
@@ -1498,46 +1480,56 @@ export default function Dashboard() {
         }}
       />
 
-      <Topbar
-        viewMode={effectiveMode}
-        setViewMode={setViewMode}
-        isAdmin={isAdmin}
-        operador={operador}
-        onOpenSettings={() => {
-          setSeccionConfig(null);
-          setSettingsOpen(true);
-        }}
-        onIrPlataforma={() => navigate("/plataforma")}
-        onLogout={logout}
-      />
+      <div className="armazon" data-modulo={efectivo}>
+        <MenuLateral actual={efectivo} esAdmin={isAdmin} clienteNombre={clienteNombre}
+          sede={sede} onAjustes={abrirAjustes} />
 
-      {/* El área de las pantallas: Vender y Supervisar miden el alto de su
-          plano contra ESTE alto (`--alto-area`, medido), así el plano mide lo
-          mismo en las dos sin adivinar cuánto mide el marco. */}
-      <div
-        ref={areaRef}
-        className="area-pantallas"
-        style={{
-          flex: 1, overflow: "hidden", display: "flex", flexDirection: "column",
-          ...(altoArea ? { ["--alto-area" as string]: `${altoArea}px` } : {}),
-        }}
-      >
-        {effectiveMode === "store" ? (
-          <Suspense fallback={
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)", fontSize: 13 }}>
-              Abriendo el editor 3D…
-            </div>
-          }>
-            <StoreEditor3D />
-          </Suspense>
-        ) : effectiveMode === "montaje" ? (
-          <MountView initialCode={mountCode} onDone={() => setViewMode("kpis")} />
-        ) : effectiveMode === "kpis" ? (
-          <DashboardView onDisenarPlano={() => setViewMode("map")} />
-        ) : (
-          <FloorPlan2D />
-        )}
+        <div className="armazon-der">
+          <Topbar
+            modulo={efectivo}
+            ir={ir}
+            isAdmin={isAdmin}
+            operador={operador}
+            onIrPlataforma={() => navigate("/plataforma")}
+            onAjustes={abrirAjustes}
+            onLogout={logout}
+          />
+
+          {/* El área de las pantallas: Vender y Supervisar miden el alto de su
+              plano contra ESTE alto (`--alto-area`, medido), así el plano mide
+              lo mismo en las dos sin adivinar cuánto mide el marco. */}
+          <div
+            ref={areaRef}
+            className="area-pantallas"
+            style={{
+              flex: 1, overflow: "hidden", display: "flex", flexDirection: "column",
+              ...(altoArea ? { ["--alto-area" as string]: `${altoArea}px` } : {}),
+            }}
+          >
+            {comercial ? (
+              <DashboardView
+                modo={modoComercial}
+                onModo={(m) => ir(m === "vender" ? "contratos" : "indicadores")}
+                onDisenarPlano={() => ir("plano")}
+              />
+            ) : efectivo === "plano3d" ? (
+              <Suspense fallback={
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)", fontSize: 13 }}>
+                  Abriendo el editor 3D…
+                </div>
+              }>
+                <StoreEditor3D />
+              </Suspense>
+            ) : efectivo === "montajes" ? (
+              <MountView initialCode={mountCode} onDone={() => ir("inicio")} />
+            ) : (
+              <FloorPlan2D />
+            )}
+          </div>
+        </div>
       </div>
+
+      <BarraDeAbajo actual={efectivo} esAdmin={isAdmin} />
 
       {settingsOpen && isAdmin && (
         <SettingsModal enfocar={seccionConfig} onClose={() => setSettingsOpen(false)} />

@@ -645,7 +645,7 @@ export default function CargaMasiva({
                   {
                     quien: "Montaje",
                     que: (avisos.montaje_pendiente ?? []).length
-                      ? "Todavía no sale: el aviso de cada espacio espera su planometría. Se carga en Supervisar, en la ficha del espacio; al cargarla, le llega a quien monta."
+                      ? "Todavía no sale: el aviso de cada espacio espera su planometría. Se carga en Indicadores, en la ficha del espacio; al cargarla, le llega a quien monta."
                       : avisos.montaje.length
                         ? <>Le llegó la lista a <b>{[...new Set(avisos.montaje)].join(", ")}</b>.</>
                         : "No hay contacto de montaje en la sede: no le llegó a nadie.",

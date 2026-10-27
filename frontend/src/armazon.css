@@ -1,0 +1,293 @@
+/* El armazón de la aplicación (rediseño UX 2026-10, etapa 2).
+ *
+ * Reemplaza la barra de pestañas (Sede · Montajes · Plano · Editor 3D) por un
+ * menú de módulos que se reacomoda con la pantalla, con UN solo diseño
+ * (`escala.ts` agranda o achica todo junto desde 1024 px):
+ *
+ *   ≥ 1024 px   menú lateral con el nombre de cada módulo
+ *   640–1023    riel angosto: el ícono y el nombre corto debajo
+ *   < 640       barra abajo, al alcance del pulgar
+ *
+ * El azul de la página activa NO es `--signal` (ése tiene un solo dueño, el
+ * botón principal: `probar-tema`): es la señal escrita (`--signal-ink`) sobre
+ * un velo del mismo azul.
+ */
+
+.armazon {
+  --menu-w: 232px;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--menu-w) minmax(0, 1fr);
+}
+.armazon-der {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── El menú lateral ─────────────────────────────────────────────────── */
+.menu-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 14px 12px 12px;
+  overflow-y: auto;
+  background: var(--surface-2);
+  border-right: 1px solid var(--line);
+}
+.menu-lateral .marca {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 10px;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  color: var(--ink-1);
+}
+.menu-lateral .grupo { display: flex; flex-direction: column; gap: 2px; }
+.menu-lateral .grupo + .grupo {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.item-menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.item-menu:hover { background: var(--surface-3); color: var(--ink-1); }
+.item-menu[aria-current="page"] {
+  background: rgb(var(--signal-rgb) / 0.1);
+  color: var(--signal-ink);
+  font-weight: 650;
+}
+.item-menu svg { flex: none; }
+/* La pastilla roja de la cuenta: fondo rojo, número en mono, sin ícono (la
+   misma de la barra de la pantalla). */
+.item-menu { position: relative; }
+.item-menu .cuenta {
+  display: inline-grid;
+  place-items: center;
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--ocupado);
+  color: var(--surface);
+  font: 700 var(--t-3xs)/1 var(--f-mono);
+}
+.item-menu .corto { display: none; }
+.menu-lateral .pie {
+  margin-top: auto;
+  padding: 10px;
+  font-size: var(--t-xs);
+  line-height: 1.35;
+  color: var(--ink-3);
+}
+.menu-lateral .pie b { display: block; color: var(--ink-1); font-weight: 600; }
+
+/* ── La barra de arriba ──────────────────────────────────────────────── */
+.barra-app .marca-movil { display: none; }
+.barra-app .esp { flex: 1; min-width: 0; }
+.selector-sede {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.selector-sede .ico { flex: none; color: var(--ink-3); }
+.selector-sede .sede-sel {
+  min-width: 0;
+  max-width: 240px;
+  height: 34px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background-color: var(--surface);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.selector-sede .cuantos {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* 2D | 3D en el Plano de la sede: dos palabras, la elegida con fondo. */
+.vista-plano {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.vista-plano button {
+  min-width: 44px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: calc(var(--r-md) - 2px);
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.vista-plano button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink-1);
+  box-shadow: var(--shadow-xs);
+}
+
+/* El menú de la cuenta: quién sos, el tema y salir. */
+.cuenta-app { position: relative; flex: none; }
+.cuenta-app > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-1);
+  font: inherit;
+  cursor: pointer;
+}
+.cuenta-app > button:hover { background: var(--surface-3); }
+.avatar-app {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 999px;
+  background: rgb(var(--signal-rgb) / 0.14);
+  color: var(--signal-ink);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.menu-cuenta {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 140;
+  width: 260px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+}
+.menu-cuenta .quien { padding: 8px 10px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.menu-cuenta .quien b { display: block; font-size: var(--t-sm); color: var(--ink-1); }
+.menu-cuenta .quien span { display: block; font-size: var(--t-xs); color: var(--ink-3); overflow-wrap: anywhere; }
+.menu-cuenta .fila {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.menu-cuenta button.fila:hover { background: var(--surface-3); color: var(--ink-1); }
+.menu-cuenta .fila .der { margin-left: auto; }
+.menu-cuenta .solo-telefono { display: none; }
+
+/* ── La barra de abajo (teléfono) ────────────────────────────────────── */
+.barra-abajo { display: none; }
+
+/* 640–1023: riel angosto con el nombre corto debajo del ícono. */
+@media (max-width: 1023px) {
+  .armazon { --menu-w: 88px; }
+  .menu-lateral { padding: 10px 6px; }
+  .menu-lateral .marca { justify-content: center; padding: 0; font-size: 12px; letter-spacing: 0.04em; }
+  .item-menu {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-height: 56px;
+    padding: 4px;
+    font-size: 11.5px;
+    line-height: 1.15;
+    text-align: center;
+  }
+  .item-menu .largo { display: none; }
+  .item-menu .corto { display: inline; }
+  .item-menu .cuenta { position: absolute; top: 4px; right: 8px; margin: 0; }
+  .menu-lateral .pie { display: none; }
+  .cuenta-app .quien-corto { display: none; }
+}
+
+/* < 640: sin menú lateral; la barra de abajo lleva los módulos. */
+@media (max-width: 639px) {
+  .armazon { grid-template-columns: minmax(0, 1fr); }
+  .menu-lateral { display: none; }
+  .barra-app .marca-movil {
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.055em;
+    color: var(--ink-1);
+  }
+  .selector-sede .cuantos, .cuenta-app .quien-corto { display: none; }
+  .selector-sede .sede-sel { max-width: 150px; }
+  .menu-cuenta .solo-telefono { display: flex; }
+  .barra-abajo {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    flex: none;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+  }
+  .barra-abajo .item-menu {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: 52px;
+    padding: 2px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.1;
+    text-align: center;
+    color: var(--ink-3);
+  }
+  .barra-abajo .item-menu[aria-current="page"] { background: transparent; color: var(--signal-ink); }
+  .barra-abajo .item-menu .largo { display: none; }
+  .barra-abajo .item-menu .corto { display: inline; }
+}

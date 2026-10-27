@@ -2173,15 +2173,18 @@ prueba("fase 2 · I5: un ancho, un módulo, un alto o unos entrepaños imposible
     "`medidas_imposibles` no está entre los rechazos conocidos");
 });
 
-prueba("fase 2 · I5 (V16): la «Sede» del 3D es un selector de las sedes que existen, y cambiar de sede no escribe nada", () => {
+prueba("fase 2 · I5 (V16): la «Sede» del 3D la elige la barra de arriba (una sola en la app), y cambiar de sede no escribe nada", () => {
+  // Era un texto libre (una sede fantasma por letra) y después un selector
+  // propio. Con el armazón de módulos (rediseño UX 2026-10) la sede se elige
+  // en UN lugar —la barra de arriba— y el 3D sólo dice cuál es.
   const i = editorCodigo.indexOf("data-sede-3d");
-  assert.ok(i >= 0, "no está el selector «Sede» del 3D");
+  assert.ok(i >= 0, "el 3D no dice en qué sede está");
   assert.ok(!/<input[^>]*value=\{sede\}/.test(editorCodigo), "la «Sede» del 3D vuelve a ser un texto libre");
-  const sel = editorCodigo.slice(editorCodigo.lastIndexOf("<select", i), editorCodigo.indexOf("</select>", i));
-  assert.match(sel, /value=\{sede\} onChange=\{e=>setSede\(e\.target\.value\)\}/);
-  assert.match(sel, /\(sedesDelStore\.includes\(sede\) \? sedesDelStore : \[sede, \.\.\.sedesDelStore\]\)\.map\(/,
-    "el selector no ofrece las sedes del store");
-  assert.match(editorCodigo, /const sedesDelStore = useFixtureStore\(\(s\) => s\.sedes\);/);
+  assert.match(editorCodigo, /<p data-sede-3d className="[^"]*">\{sede\}<\/p>/, "la «Sede» del 3D no es el nombre de la sede");
+  assert.ok(!/onChange=\{e=>setSede\(/.test(editorCodigo), "el 3D vuelve a elegir la sede por su cuenta");
+  // Lo que elige la barra llega al 3D: el espejo va del store a lo local.
+  assert.match(editorCodigo, /const sedeDelArmazon = useFixtureStore\(\(s\) => s\.sede\);\s*useEffect\(\(\) => \{\s*setSede\(\(actual\) => \(sedeDelArmazon !== actual \? sedeDelArmazon : actual\)\);\s*\}, \[sedeDelArmazon\]\);/,
+    "el 3D no sigue la sede de la barra de arriba");
   // El espejo: mientras se cambia de sede no escribe, y estampa la sede del
   // store (la del plano que se escribe), nunca la local.
   const desde = editorCodigo.indexOf("const prevSede3DRef = useRef(sede);");

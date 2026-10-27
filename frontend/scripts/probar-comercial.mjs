@@ -1329,7 +1329,9 @@ prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sec
   const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(t, /const cuentasDeRevision = useMemo\(\(\) => contarPorGrupo\(avisos\), \[avisos\]\);\s*const attentionCount = cuentaDelBadge\(cuentasDeRevision\);/,
     "la pastilla roja no es la suma de los tres grupos");
-  assert.match(t, /\{ id: "supervisar", label: "Supervisar", badge: modoEfectivo === "supervisar" \? attentionCount : 0 \}/);
+  // La cuenta va al menú de módulos (rediseño UX 2026-10): era la pastilla de
+  // la pestaña «Supervisar», ahora es la de «Indicadores», y en Vender no cuenta.
+  assert.match(t, /const cuentaParaElMenu = modoEfectivo === "supervisar" \? attentionCount : 0;\s*useEffect\(\(\) => \{\s*useArmazon\.getState\(\)\.setCuentaPendientes\(cuentaParaElMenu\);/);
   assert.match(t, /const grupoDeRevision: GrupoDeRevision = grupoElegido \?\? grupoParaAbrir\(cuentasDeRevision\);/, "no abre en «Hoy» o en «30 días»");
   assert.match(t, /<PestanasDeRevision cuentas=\{cuentasDeRevision\} grupo=\{grupoDeRevision\}/, "las pestañas no dicen las cuentas de los grupos");
   // Cada lista que se cuenta se dibuja, y en UN solo grupo.
@@ -1703,7 +1705,9 @@ prueba("el aspecto: la chincheta no tapa el código, la pastilla y la fecha entr
   assert.match(sync, /<span className="sync-palabra">\{label\}<\/span>/);
   assert.match(sync, /aria-label=\{`\$\{label\}\. Sincronizar con el servidor`\}/);
   const vcss = readFileSync(join(raiz, "src", "vender.css"), "utf8");
-  assert.match(vcss, /@media \(max-width: 480px\) \{[^}]*\.barra-app \{ flex-wrap: wrap;[\s\S]*?\.sync-palabra \{ display: none; \}/);
+  // (Las pestañas de la barra se fueron al menú de módulos —rediseño UX 2026-10—:
+  // a 480 px ya no hay renglón que partir, sólo la palabra que se esconde.)
+  assert.match(vcss, /@media \(max-width: 480px\) \{\s*\.sync-palabra \{ display: none; \}\s*\}/);
 });
 
 
@@ -1874,7 +1878,7 @@ prueba("Vender en edición: manda `edita` con el leaseId y `esperado`, sin la no
   assert.doesNotMatch(c.slice(c.lastIndexOf("return {")), /\bsinCambios\b/, "`sinCambios` vuelve al hook y nadie lo lee");
   // Un 409 `contrato_cambio`: el principal queda apagado y se ofrece volver.
   assert.match(c, /if \(edita && codigoDelRechazo\(e\) === "contrato_cambio"\) \{\s*setCambioAjeno\(true\);/);
-  assert.match(c, /\(cambioAjeno \? "Ese contrato cambió mientras lo editabas: volvé a Supervisar y abrilo de nuevo" : null\)/);
+  assert.match(c, /\(cambioAjeno \? "Ese contrato cambió mientras lo editabas: volvé a Indicadores y abrilo de nuevo" : null\)/);
   const m = sinComent(fuenteDe("components/Contrato/ModoVender.tsx"));
   assert.match(m, /const estadoComercial = c\.estadoComercial;/, "la línea mira el mapa con el propio contrato");
   assert.doesNotMatch(m, /useFixtureStore\(\(s\) => s\.estadoComercial\)/, "ModoVender lee el mapa crudo");
