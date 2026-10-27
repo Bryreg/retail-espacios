@@ -1513,6 +1513,20 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     setPanOffset({ x: pad - minX * PX_PER_M * newZoom, y: pad - minY * PX_PER_M * newZoom });
   }
 
+  // En el teléfono el plano arranca encuadrado (corrección de la etapa 9):
+  // con el zoom de la pantalla grande se veía una esquina vacía. Una vez por
+  // sede, cuando ya llegaron los muebles.
+  const encuadrada = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined" || window.innerWidth >= 640) return;
+    if (items.length === 0 || encuadrada.current === sede) return;
+    // Se marca al encuadrar, no antes: si los muebles terminan de llegar
+    // dentro de la espera, el efecto vuelve a correr y encuadra con todos.
+    const t = window.setTimeout(() => { encuadrada.current = sede; centrarEnTodo(); }, 120);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length, sede]);
+
   /** La línea de ayuda del pie: lo que se puede hacer ahora. */
   const pista = activeTool === "place"
     ? "Hacé clic en el lienzo para colocar · Esc para cancelar"

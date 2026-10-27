@@ -96,6 +96,15 @@ export default function CargaMasiva({
   // Mientras la carga masiva está abierta, ELLA es la pantalla: se lleva el
   // amarillo y el «Guardar contrato y avisar» de Vender pasa a tinta.
   useModalAbierto();
+  // Esc cierra, como tocar afuera, salvo mientras guarda (corrección de la
+  // etapa 9: era el único diálogo que no lo hacía).
+  const cerrarRef = useRef(onCerrar);
+  cerrarRef.current = onCerrar;
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !ocupado) cerrarRef.current(); };
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [ocupado]);
 
   const porFila = useMemo(() => {
     const m = new Map<number, FilaPlanilla>();

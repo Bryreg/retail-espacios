@@ -9,8 +9,8 @@ Gestión de espacios comerciales en supermercados. Deploy: retail-espacios.onren
 `docs/engram/` es la **cola de entrada al store de Engram**: lo aprendido después de ese snapshot y todavía sin cargar (el rediseño de la pantalla principal, los gotchas de las sesiones de diseño). Se carga desde la máquina local, que es la que tiene Engram conectado.
 
 Si algo «está libre y el sistema dice que está ocupado»: hay un contrato vivo
-sobre un espacio que ningún plano dibuja. **Se ve en la pantalla**, en
-Supervisar → «Para revisar» → *Contrato sin mueble en el plano*: sale el
+sobre un espacio que ningún plano dibuja. **Se ve en la pantalla**, en la bandeja de
+Pendientes (antes Supervisar → «Para revisar») → *Contrato sin mueble en el plano*: sale el
 espacio, el proveedor y hasta cuándo va, y se resuelve ahí. La cuenta la hace
 `utils/auditoriaDesfase.ts` con los datos que el navegador ya bajó.
 La dirección contraria —un contrato que vive sólo en el JSON del layout— está en
@@ -22,11 +22,10 @@ plan pago; la lógica es la misma, en `app/services/importar_del_plano.py`.
 
 Si una cara que se vende por participación dice «tomada» (o «queda 0 %») y no
 se ve nada dibujado: lo ocupado lo deciden los términos vivos —contratos y
-reservas provisionales sin caducar—, nunca el dibujo. Se ve en Editor 3D →
-«Distribuir esta cara» (la leyenda dice contratado, dibujado y lo que falta) o
-en la ficha de la cara en Supervisar. Sin participaciones vivas, la ocupa una
+reservas provisionales sin caducar—, nunca el dibujo. Se ve en Plano de la sede › 3D
+(antes Editor 3D) → «Distribuir esta cara» (la leyenda dice contratado, dibujado y lo que falta) o
+en la ficha de la cara en Indicadores (antes Supervisar). Sin participaciones vivas, la ocupa una
 venta entera o por partes, o un contrato `…-PC<n>` sin término, que cuenta como
-la cara entera (Supervisar → «Para revisar» → *Contrato de participación sin
-término*). La cuenta: `fisicos_de` y `revisar_capacidad`, en `app/services/`.
+la cara entera (Pendientes → *Contrato de participación sin término*). La cuenta: `fisicos_de` y `revisar_capacidad`, en `app/services/`.
 
 Verificación mínima: `cd frontend && npx tsc --noEmit` · `cd backend && python -c "import app.main"` · `npm install` requiere `--legacy-peer-deps`.

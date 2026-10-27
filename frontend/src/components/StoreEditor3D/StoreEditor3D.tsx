@@ -7916,6 +7916,10 @@ export default function StoreEditor3D() {
 
   // MEJORA 8: First-person mode
   const [firstPerson, setFirstPerson] = useState(false);
+  /** El catálogo de muebles en el teléfono: guardado hasta que se lo pide, y
+   *  se guarda solo al elegir qué colocar (el plano queda libre para tocar). */
+  const [catalogoMovil, setCatalogoMovil] = useState(false);
+  useEffect(() => { if (placingDef) setCatalogoMovil(false); }, [placingDef]);
   // Dónde está y hacia dónde mira quien camina — lo dibuja el minimapa.
   const [camaraFP, setCamaraFP] = useState<CamaraEnPlanta | null>(null);
   // Pedido de teletransporte. El contador hace que tocar dos veces el mismo
@@ -8745,8 +8749,12 @@ export default function StoreEditor3D() {
       style={{minHeight:0}}>
 
       {/* ── Left sidebar — hidden in presentation mode ── */}
-      <div className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode || distribucionVisible ? 'hidden' : ''}`}>
+      {/* En el teléfono el catálogo arranca guardado y se abre con «Muebles»
+          (corrección de la etapa 9): abierto se comía media pantalla. */}
+      <div data-catalogo-3d className={`flex w-52 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-dark-line bg-dark-surface p-3 ${presentationMode || distribucionVisible ? 'hidden' : ''} ${catalogoMovil ? 'max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-30 max-sm:shadow-2xl' : 'max-sm:hidden'}`}>
 
+        <button type="button" onClick={() => setCatalogoMovil(false)}
+          className="self-end rounded border border-dark-line-2 px-2 py-0.5 text-[10px] text-dark-ink-2 sm:hidden">Cerrar</button>
         <div>
           <p className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Sede</p>
           {/* La sede se elige UNA vez, en la barra de arriba del armazón
@@ -8870,7 +8878,7 @@ export default function StoreEditor3D() {
 
         {/* MEJORA 4: Status bar — hidden in presentation mode */}
         {!presentationMode && (
-          <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 border-b px-4 py-1.5 text-[10px] backdrop-blur-sm ${
+          <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b px-4 py-1.5 text-[10px] backdrop-blur-sm max-sm:gap-2 max-sm:px-2 [&>*]:flex-shrink-0 ${
             warning
               ? "bg-warning/10 border-warning/30"
               : placingDef
@@ -8912,6 +8920,12 @@ export default function StoreEditor3D() {
               </span>
             )}
             <span className="ml-auto hidden text-dark-ink-3 lg:block">arrastrá para girar · rueda para acercar</span>
+
+            {/* El catálogo, en el teléfono (arranca guardado). */}
+            <button onClick={() => setCatalogoMovil((v) => !v)} aria-expanded={catalogoMovil} data-catalogo-3d-movil
+              className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 sm:hidden">
+              Muebles
+            </button>
 
             {/* Vista superior — alinea cámara cenital para mover fixtures fácil */}
             <button onClick={handleTopView}

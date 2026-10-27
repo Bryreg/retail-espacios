@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-26, **«al mes» en todos lados**: la consola de plataforma, el
+Última actualización: 2026-10-27, **el rediseño UX 2026-10 implementado** (etapas 0–9, rama
+`claude/vibrant-wozniak-1ny6q4`, PR #97, sin mergear): el menú de módulos (Inicio · Contratos ·
+Indicadores · Montajes · Plano de la sede · Ajustes) reemplaza las pestañas, la venta empieza por
+las fechas, Indicadores tiene Resumen y pestañas con metas por sede, el Plano 2D es una mesa de
+trabajo, Montajes es una sola lista con la verificación del montaje de un contrato, Ajustes va por
+tema y hay buscador de funciones (Ctrl K). Ver *Rediseño UX 2026-10 implementado (2026-10-27)* y
+`docs/maquetas/ux-2026-10/implementacion.md` (cada función del inventario con su estado).
+
+Antes, el 2026-10-26, **«al mes» en todos lados**: la consola de plataforma, el
 detalle y el informe del cliente sumaban el TOTAL de cada contrato como el ingreso de un mes (un
 contrato de seis meses contaba seis veces); ahora suman lo de un mes, y los meses ya guardados de la
 serie se recalcularon una vez. También el formulario de participación de Distribución (pedía
@@ -404,7 +412,17 @@ marca qué muebles se pueden alquilar y se les asignan contratos de proveedores.
 
 ### Rediseño de la experiencia (UX): dibujos para aprobar (2026-10-26)
 
-Nada implementado. Están en `docs/maquetas/ux-2026-10/`, y el documento principal es
+**Implementado el 2026-10-27** (ver *Rediseño UX 2026-10 implementado* en «Qué está hecho» y
+`docs/maquetas/ux-2026-10/implementacion.md`). Lo que quedó parcial o sin hacer, para la próxima
+vuelta: «Todas las sedes» como opción del selector (hoy es pestaña de Indicadores y casilla de
+Montajes); marcar el espacio en el plano al pasar el mouse por Pendientes fuera de Indicadores;
+«Deshacer» general en Pendientes; «Ver el plano por Disponibilidad · Fecha · Tarifa» y la lista
+«Espacios para esas fechas» en Contratos; el Contorno de la sede (pantalla nueva); barras del
+100 % por cara en Participaciones; «Ver en el plano», «Ver aviso» y «Ver historial» en Montajes;
+reclamar o cerrar un montaje no realizado sin registrarlo de nuevo; «Volver a llamar a un
+proveedor»; «Cambiar de supermercado» en el menú de la cuenta; y que una persona nueva lo pruebe.
+
+Los dibujos siguen en `docs/maquetas/ux-2026-10/`, y el documento principal es
 `pantallas.md`: cada pantalla con su imagen, su estado (nueva · cambia · existe) y sus
 funciones con casillas. Propone cuatro módulos (Contratos · Indicadores · Montajes · Plano de
 la sede) bajo una barra común con buscador, Pendientes y Ajustes, y la venta empieza por las
@@ -1316,6 +1334,70 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### Rediseño UX 2026-10 implementado (2026-10-27)
+
+La versión final aprobada (`docs/maquetas/ux-2026-10/final/`) llevada a la app en diez etapas,
+cada una con su verificación (tsc, las suites `probar-*`, las pruebas del servidor de la etapa y
+un recorrido del navegador a 1920/1440/1366/1024/768/390, administración y trabajador). Nada se
+perdió: lo que cambió de lugar está en `implementacion.md` con su nota.
+
+**El armazón** (`src/modulos.ts`, `pages/Dashboard.tsx`, `components/Armazon/`,
+`store/armazonStore.ts`, `armazon.css`). El módulo es la dirección: `/inicio`, `/contratos`,
+`/indicadores`, `/montajes`, `/plano`, `/plano/3d` (`RUTA_DE`, `moduloDeRuta`); lo que no es de
+ninguno va al Inicio, y quien trabaja en la tienda abre Inicio, Indicadores y Montajes
+(`puedeAbrir`). Menú lateral (≥ 1024), riel (640–1023 y siempre en el Plano) y barra de abajo
+(teléfono). La barra de arriba: la sede (se elige UNA vez, acá), 2D | 3D en el Plano, el
+buscador (Ctrl K), «Más» del módulo y lo fijado, «?», el guardado, Pendientes y la cuenta.
+Inicio, Contratos e Indicadores son la misma `DashboardView` en otro modo (no se vuelve a
+montar). Lo que se piden el armazón y las pantallas viaja por `armazonStore`: la bandeja de
+Pendientes, Ajustes en un tema, el buscador, la ayuda y los pedidos a la pantalla comercial
+(`pedido`: «planilla», «diccionario»). Un solo diseño que escala (`escala.ts`, etapa 1).
+
+**Las pantallas.** Inicio (`components/Inicio/`): cuatro cifras, lo de hoy, la actividad y la
+configuración inicial (6 pasos con datos de verdad, `utils/configuracionInicial.ts`). Pendientes
+es la bandeja de «Para revisar» encima de cualquier pantalla. La ficha del espacio, en un cajón,
+con la línea de tiempo de 12 meses. Contratos: «¿Para qué fechas?», el plano o la línea de
+tiempo de la sede (`/spaces/linea`, sin proveedor por privacidad), el contrato leído como una
+frase y «Qué pasa ahora». Indicadores: Resumen con metas, y pestañas (plano, tabla, quién paga,
+participaciones, todas las sedes, detalle, diccionario), cada tabla con su CSV
+(`utils/indicadores.ts`). Plano 2D como mesa de trabajo: tira de tipos para tocar o arrastrar,
+herramientas, filtros y zoom flotando, rótulos que nunca bajan de 9 px; el plano pasa de ~30 % a
+55–82 % de la pantalla. Montajes (`pages/MountView.tsx`, `utils/montajes.ts`): contratos y
+planogramas en una lista con filtros y estado preciso, verificar el de un contrato
+(`components/Montaje/VerificarMontaje.tsx`) y resolver un no realizado. Ajustes por tema
+(Comercial · Sede y plano · Avisos · Equipo · Cuenta), con Metas por sede, Sedes y Permisos.
+
+**Toda función nueva va a `src/acciones.ts`.** Es el registro del buscador, de «Más» y de lo
+fijado: con su nombre, sus sinónimos (cómo le dice la gente), si es de administración y en qué
+módulos va en «Más». `probar-ajustes` vigila los sinónimos, el rol y el tope de 3 fijadas.
+
+**El servidor** (sin migraciones: una tabla nueva, `verificaciones_de_montaje`, y JSON en
+`app_config`). Etapa 0: el canon del mes de `dashboard/kpis` reparte el total en sus meses;
+`participaciones/cara` trae `valor_total` y `valor_al_mes`; títulos de bitácora de planogramas;
+`GET /spaces/by-code/{code}/historial` (vencido, cancelado o reemplazado, `services/historial.py`);
+`POST /mounts/{id}/verificar`. Etapa 4: `GET /spaces/linea`. Etapa 5: `GET /dashboard/serie` y
+`GET|PUT /layout/metas` (`app_config` `metas_de_indicadores`, bitácora `ajustes.metas`). Etapa 7:
+`reenviar` al verificar «no coincide», la verificación en `/montaje/mi-espacio` (quien monta lee
+qué corregir) y `?todas=1` en `/planogramas/supervision`. Pruebas:
+`tests/test_rediseno_ux_etapa{0,4,5,7}.py`.
+
+**Pruebas del navegador nuevas:** `probar-armazon`, `probar-lista-montajes`, `probar-ajustes`
+(las otras se ajustaron a la forma nueva sin cambiar lo que vigilan).
+
+**La corrección única (etapa 9)**, después de la comprobación total: el selector de sede ya no
+queda en blanco ni tapado cuando la barra se llena (y en el teléfono, en el Plano, la marca y el
+guardado de arriba le ceden el lugar); el catálogo del 3D arranca guardado en el teléfono
+(«Muebles» lo abre); la barra del 3D se desliza en vez de cortarse; la planilla cierra con Esc;
+el plano 2D arranca encuadrado en el teléfono.
+
+**Safari y Firefox.** Se probó en Chromium (el del contenedor); Safari y Firefox no se pudieron
+abrir acá. Lo que hay que saber: la escala usa `zoom` en `<body>` — Safari lo soporta desde
+siempre y Firefox desde la 126 (2024); en un Firefox más viejo la app queda a 1:1, sin escalar,
+y sigue funcionando. Pantalla completa del plano: el iPhone no la deja sobre un elemento (sale
+el aviso «Este navegador no deja pasar a pantalla completa»); el iPad y el escritorio, sí. El
+arrastre desde la tira del plano es de mouse: en una pantalla táctil se toca el tipo y después el
+plano. Ctrl K en Mac es ⌘ K. Las unidades `dvh` piden Safari 15.4 / Firefox 101.
 
 ### «Al mes» en todos lados (2026-10-26)
 

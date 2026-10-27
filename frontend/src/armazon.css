@@ -453,6 +453,17 @@
 }
 @media (max-width: 639px) {
   .btn-fijada, .btn-ayuda, .mas-w { display: none; }
+  /* En el Plano entra además 2D | 3D: la marca cede su lugar para que el
+     selector de sede no quede tapado (corrección de la etapa 9). */
+  .armazon[data-modulo="plano"] .barra-app .marca-movil,
+  .armazon[data-modulo="plano3d"] .barra-app .marca-movil { display: none; }
+  .selector-sede .sede-sel { min-width: 84px; max-width: 130px; }
+  /* En el Plano el guardado ya se lee en su propia barra; el selector no se
+     encoge debajo de 2D | 3D. */
+  .armazon[data-modulo="plano"] .selector-sede, .armazon[data-modulo="plano3d"] .selector-sede { flex: none; }
+  .armazon[data-modulo="plano"] .selector-sede .sede-sel, .armazon[data-modulo="plano3d"] .selector-sede .sede-sel { width: 116px; min-width: 0; text-overflow: ellipsis; }
+  /* El botón trae su display en línea; el aviso de conflicto sigue (vive al lado). */
+  .armazon[data-modulo="plano"] .barra-app .sync-status, .armazon[data-modulo="plano3d"] .barra-app .sync-status { display: none !important; }
   .btn-buscar, .btn-mas { width: 36px; padding: 0; justify-content: center; border-color: transparent; }
 }
 
