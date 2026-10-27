@@ -1,8 +1,12 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-27, **el rediseño UX 2026-10 implementado** (etapas 0–9, rama
-`claude/vibrant-wozniak-1ny6q4`, PR #97, sin mergear): el menú de módulos (Inicio · Contratos ·
+Última actualización: 2026-10-27. En `main`: **Indicadores › Detalle contado como una historia** y
+la tercera opción **«Por % de ventas»** en «Contratos cargados antes» (PR #99, ver *Indicadores ›
+Detalle se cuenta como una historia (2026-10-27)* y *Contratos de antes: ¿al mes o total?*); la
+bandeja de Pendientes se cierra al abrir un contrato en Vender (PR #98).
+
+Antes, ese mismo día, **el rediseño UX 2026-10 implementado** (etapas 0–9, PR #97, mergeado): el menú de módulos (Inicio · Contratos ·
 Indicadores · Montajes · Plano de la sede · Ajustes) reemplaza las pestañas, la venta empieza por
 las fechas, Indicadores tiene Resumen y pestañas con metas por sede, el Plano 2D es una mesa de
 trabajo, Montajes es una sola lista con la verificación del montaje de un contrato, Ajustes va por
