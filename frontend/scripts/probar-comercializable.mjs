@@ -179,8 +179,11 @@ prueba("el panel no ofrece un botón que la regla ignora", () => {
   // el texto, y una mutación que desarmaba la condición del botón pasaba en
   // verde: el nombre seguía estando más abajo, en el párrafo que explica por
   // qué el mueble no se alquila.
+  // Desde 2026-10-28 el 3D es para mirar: el destino se cambia sólo en el
+  // plano 2D, y el 3D no ofrece ningún botón que lo escriba.
+  const ed3D = leer(join(raiz, "src/components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.ok(!/rentable:\s*(value|!rentable|true|false)/.test(ed3D), "el editor 3D volvió a escribir el destino del mueble");
   for (const [nombre, ruta, boton] of [
-    ["el editor 3D", join(raiz, "src/components/StoreEditor3D/StoreEditor3D.tsx"), "u({ rentable: value })"],
     // Rediseño, PR 3: «Se vende» es un interruptor (el destino del mueble).
     ["el plano 2D", join(raiz, "src/components/FloorPlan2D/FloorPlan2D.tsx"), "onUpdate({ rentable: !rentable })"],
   ]) {

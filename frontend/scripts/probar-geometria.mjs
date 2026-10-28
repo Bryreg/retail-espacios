@@ -389,8 +389,9 @@ prueba("el plano 2D y el Editor 3D muestran «Alto», «Entrepaños» y «Módul
   assert.match(recorte(plano2D, "function AssignmentPanel(", "function FilaDelPanel("),
     /item\.type === "gondola_doble" \|\| item\.type === "gondola_mural" \|\| item\.type === "punta"/,
     "el panel del 2D no los muestra para la góndola y la punta");
+  // Desde 2026-10-28 el 3D es para mirar: los campos están sólo en el 2D.
   const panel3D = recorte(editor, "const modeloDelMueble = modeloPorId(fix.modelo);", "// ─── Canvas error boundary");
-  assert.match(panel3D, /<GeometriaDelMueble id=\{fix\.id\} puedeEditar=\{isAdmin\} \/>/, "el panel del Editor 3D no tiene los campos");
+  assert.ok(!/<GeometriaDelMueble /.test(panel3D), "el panel del Editor 3D volvió a editar la geometría");
   for (const etiqueta of ["Alto (m)", "Entrepaños", "Módulo (m)"]) {
     assert.ok(componente.includes(`>${etiqueta}<`), `falta el campo «${etiqueta}»`);
   }

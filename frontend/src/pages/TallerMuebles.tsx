@@ -1,4 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -29,8 +31,9 @@ import type { ShelfSlot } from "../types/fixtures";
 import { useFichasPropias } from "../store/fichasPropias";
 import { PanelDeFichas } from "../components/taller/PanelDeFichas";
 import {
-  FAMILIAS_DEL_FORMULARIO, fichaParaDibujar, formularioVacio, type FormularioDeFicha,
+  FAMILIAS_DEL_FORMULARIO, familiaDe, fichaParaDibujar, formularioVacio, type FormularioDeFicha,
 } from "../utils/formularioDeFicha";
+import { resolverTipo } from "../catalogo/catalogo";
 
 /**
  * El taller: un mueble solo, girable, para mirarle la forma.
@@ -48,8 +51,8 @@ import {
  * `components/taller/PanelDeFichas.tsx`): el mueble que su supermercado tiene
  * y el catálogo no, con sus medidas y de dónde salieron. Mientras escribe, al
  * lado se dibuja ESE mueble con esa ficha estampada —con la misma entrada de
- * paleta con que se colocará (`defDeModelo`)—, y al guardarla aparece en la
- * paleta del plano y del Editor 3D.
+ * paleta con que se colocará (`defDeModelo`)—, y al guardarla aparece en
+ * «Mis muebles», el catálogo del plano 2D.
  */
 
 /** Iluminación de entorno hecha con three directo y NO con drei.
@@ -272,11 +275,31 @@ const mmDeCm = (s: string) => {
   return s.trim() && n > 0 ? Math.round(n * 10) : null;
 };
 
+/** La familia del formulario para un tipo del plano 2D (`gondola_doble` →
+ *  `gondola:double`), si admite ficha. */
+function entradaDelPlano(tipo: string | null): string | undefined {
+  const r = tipo ? resolverTipo(tipo) : null;
+  if (!r) return undefined;
+  const entrada = r.variante !== undefined ? `${r.clave}:${r.variante}` : r.clave;
+  return familiaDe(entrada) ? entrada : undefined;
+}
+
 export default function TallerMuebles() {
+  // Desde el plano (2026-10-28): «Crear un mueble con otras medidas» trae acá
+  // con la sede y el tipo que se estaba por colocar. Se abre en «Fichas», en
+  // esa familia, con un aviso que dice de dónde se vino y la vuelta al plano,
+  // que abre el catálogo con «Mis muebles» a la vista.
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const desdePlano = params.get("desde") === "plano";
+  const sedeDelPlano = params.get("sede") ?? "";
+  const [guardadaDesdePlano, setGuardadaDesdePlano] = useState<string | null>(null);
+  const volverAlPlano = () => navigate("/plano", { state: { delTaller: true } });
   /** «Mirar» es el banco de siempre; «Fichas», donde la dueña arma las de sus
    *  muebles y las ve dibujadas mientras escribe. */
-  const [pestana, setPestana] = useState<"mirar" | "fichas">("mirar");
-  const [formFicha, setFormFicha] = useState<FormularioDeFicha>(() => formularioVacio(FAMILIAS_DEL_FORMULARIO[0]?.entrada ?? "gondola:double"));
+  const [pestana, setPestana] = useState<"mirar" | "fichas">(desdePlano ? "fichas" : "mirar");
+  const [formFicha, setFormFicha] = useState<FormularioDeFicha>(() => formularioVacio(
+    (desdePlano ? entradaDelPlano(params.get("tipo")) : undefined) ?? FAMILIAS_DEL_FORMULARIO[0]?.entrada ?? "gondola:double"));
   /** La clave de la ficha que se edita; `null`, una nueva. */
   const [editandoFicha, setEditandoFicha] = useState<string | null>(null);
   const [girar, setGirar] = useState(true);
@@ -736,10 +759,33 @@ export default function TallerMuebles() {
         </div>
       )}
 
+      {desdePlano && (
+        <div role="status" data-taller-desde-plano
+          style={{
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+            padding: "10px 16px", borderBottom: "1px solid var(--line)",
+            background: "var(--surface-2)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45,
+          }}>
+          <span style={{ flex: "1 1 280px", minWidth: 0 }}>
+            {guardadaDesdePlano ? (
+              <>Listo: <b style={{ color: "var(--ink-1)" }}>«{guardadaDesdePlano}»</b> ya está en «Mis muebles», en el catálogo del plano.</>
+            ) : (
+              <>Desde el plano{sedeDelPlano ? <> de <b style={{ color: "var(--ink-1)" }}>{sedeDelPlano}</b></> : null}: armá el mueble con sus medidas.
+                Al guardarlo aparece en «Mis muebles», en el catálogo del plano.</>
+            )}
+          </span>
+          <button type="button" onClick={volverAlPlano} data-volver-al-plano
+            style={{ ...campo, width: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600, color: "var(--ink-1)", cursor: "pointer" }}>
+            <ArrowLeft size={14} strokeWidth={1.75} aria-hidden /> {guardadaDesdePlano ? "Volver al plano a colocarlo" : "Volver al plano"}
+          </button>
+        </div>
+      )}
+
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         {enFichas && (
           <PanelDeFichas form={formFicha} onForm={setFormFicha}
-                         editando={editandoFicha} onEditando={setEditandoFicha} />
+                         editando={editandoFicha} onEditando={setEditandoFicha}
+                         onGuardada={desdePlano ? setGuardadaDesdePlano : undefined} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
         <Canvas

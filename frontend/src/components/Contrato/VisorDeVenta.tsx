@@ -113,7 +113,6 @@ interface VisorDeVentaProps {
  *  insignias de «sin contrato» ni nada que salga de un contrato). */
 const SIN_UNIFICADOS: [] = [];
 const NADA = () => {};
-const NADA_CON_MUEBLES: React.Dispatch<React.SetStateAction<PlacedFixture[]>> = () => {};
 const NADA_CON_VISTA = (_fn: () => void) => {};
 
 /** Las tres tomas del vendedor, en el orden del HUD. */
@@ -162,7 +161,6 @@ const Lienzo = memo(function Lienzo({
   /** Recibe la función que saca una captura del lienzo (la lámina). Estable. */
   onCaptura: (fn: () => string) => void;
 }) {
-  const draggingId = useRef<string | null>(null);
   return (
     <CanvasErrorBoundary>
       {/* El mismo lienzo que el editor: la misma cámara de partida, las
@@ -194,18 +192,10 @@ const Lienzo = memo(function Lienzo({
           selectedSlotId={null}
           hoveredSlotId={null}
           setHoveredSlotId={NADA}
-          placingDef={null}
-          ghostX={0}
-          ghostZ={0}
-          ghostRotY={0}
-          ghostCollides={false}
-          draggingId={draggingId}
           orbitRef={orbitRef}
-          onFloorMove={NADA}
           onFloorClick={NADA}
           onSelectFixture={NADA}
           onSelectSlot={NADA}
-          setPlacedFixtures={NADA_CON_MUEBLES}
           screenshotReady={onCaptura}
           topViewReady={NADA_CON_VISTA}
           firstPerson={false}

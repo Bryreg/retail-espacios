@@ -155,3 +155,24 @@ export function modelosDelPlanoConPropias(propias: readonly ModeloPropio[]): Rec
     return [t, suyas.length === 0 ? base : [...base, ...suyas.map((m) => modeloDelPlano(t, m))]];
   }));
 }
+
+/** Un mueble propio del supermercado en la biblioteca del plano: la ficha que
+ *  armó en el taller y el tipo del plano con que se coloca. */
+export interface MiMueble {
+  tipo: FixType2D;
+  modelo: ModeloDelPlano;
+}
+
+/**
+ * «Mis muebles» (2026-10-28, decisión del dueño): la biblioteca del plano
+ * ofrece UNO de cada tipo —el modelo base, en su medida estándar— y, aparte,
+ * sólo los muebles que el supermercado armó en el taller (sin los retirados),
+ * cada uno con el tipo del plano con que se coloca. Así cada cliente tiene
+ * los muebles que usa y no el repertorio entero. Los modelos de RECABRA no se
+ * listan: siguen en el catálogo (lo colocado con ellos se dibuja y se vende
+ * igual, y el taller los muestra para mirarlos).
+ */
+export function misMueblesDelPlano(propias: readonly ModeloPropio[]): MiMueble[] {
+  return CATALOGO_DE_MUEBLES.orden.plano2D.flatMap((t) =>
+    modelosPropiosDe(t, propias).map((m) => ({ tipo: t as FixType2D, modelo: modeloDelPlano(t, m) })));
+}

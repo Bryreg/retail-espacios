@@ -948,11 +948,8 @@ await prueba("colocar un modelo estampa su ficha, y cambiar la ficha no mueve lo
     assert.ok(j > i, `no se encontró \`${hasta}\` después de \`${desde}\``);
     return t.slice(i, j + hasta.length);
   };
-  const clic3D = entre(ed3D, "function onFloorClick(", "u(prev=>[...prev,newFix]);");
-  assert.match(entre(clic3D, "const newFix: PlacedFixture = {", "};"), /\.\.\.fichaDe\(placingDef\),\s*\};$/,
-    "el Editor 3D coloca sin estampar la ficha del modelo (`...fichaDe(placingDef)` en `newFix`)");
-  assert.match(entre(ed3D, "const ghostFixture: PlacedFixture | null = placingDef ? {", "} : null;"), /\.\.\.fichaDe\(placingDef\),/,
-    "el fantasma del 3D no se ve con la ficha del modelo");
+  // Desde 2026-10-28 el 3D no coloca: se coloca sólo en el plano 2D.
+  assert.ok(!/\bplacingDef\b|\bnewFix\b/.test(ed3D), "el Editor 3D volvió a colocar muebles");
   const coloca2D = entre(ed2D, "const placeItem = useCallback(", "[nextCode, sede]");
   assert.match(entre(coloca2D, "const newItem: PlacedItem2D = {", "};"), /\.\.\.\(modelo \? \{ nace: modelo\.nace \} : \{\}\),\s*\};$/,
     "el plano 2D coloca sin `nace` (la ficha del modelo no llega al store)");
@@ -960,9 +957,8 @@ await prueba("colocar un modelo estampa su ficha, y cambiar la ficha no mueve lo
     "el plano 2D no coloca el modelo con las medidas de su ficha");
   assert.match(ed2D, /placeItem\(pendingType, pt\.x, pt\.y, undefined, undefined, pendingModelo\);/,
     "el clic del plano 2D no le pasa el modelo elegido a `placeItem`");
-  assert.match(ed2D, /onClick=\{\(\) => \{ setActiveTool\("place"\); setPendingType\(def\.type\); setPendingModelo\(m\); \}\}/,
-    "la biblioteca del 2D no elige el modelo");
-  assert.match(ed3D, /onClick=\{\(\)=>\{ setPlacingDef\(activo\?null:m\);/, "la paleta del 3D no coloca el modelo elegido");
+  assert.match(ed2D, /onClick=\{\(\) => \{ setActiveTool\("place"\); setPendingType\(tipo\); setPendingModelo\(m\); \}\}/,
+    "«Mis muebles» del 2D no elige el modelo");
 
   // La ficha cambia en el catálogo: lo colocado va y vuelve por los dos
   // editores tal como se guardó.
@@ -1215,7 +1211,7 @@ await prueba("colocar una ficha propia estampa su ficha con modelo «cli:<clave>
   assert.equal(J.C.modeloPorId("cli:gondola-pared-170"), undefined, "olvidar las fichas no las olvida");
 });
 
-await prueba("los editores ofrecen las fichas propias, y el panel del mueble las nombra (el código de verdad)", () => {
+await prueba("los editores ofrecen las fichas propias, y el panel del mueble las nombra (el código de verdad)", async () => {
   // Lo de arriba es lo que arman `paletaConPropias` y `modelosDelPlanoConPropias`;
   // esto, que los editores las USEN, con las fichas que trae la sesión, y que el
   // panel del mueble vuelva a dibujarse cuando llegan (si no, una nevera propia
@@ -1223,26 +1219,25 @@ await prueba("los editores ofrecen las fichas propias, y el panel del mueble las
   const sinComent = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, p1) => p1);
   const ed3D = sinComent(leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx")));
   const ed2D = sinComent(leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx")));
-  assert.match(ed3D, /const fichasPropias = useFichasPropias\(\);\s*const paleta = useMemo\(\(\) => paletaConPropias\(fichasPropias\), \[fichasPropias\]\);/,
-    "el Editor 3D no arma su paleta con las fichas propias");
-  assert.match(ed3D, /\{paleta\.map\(\(familia\) => \{/, "la paleta del Editor 3D no es la que tiene las fichas propias");
-  assert.ok(!/PALETA_3D\.map\(/.test(ed3D), "el Editor 3D dibuja la paleta sin las fichas propias");
-  assert.match(ed2D, /const fichasPropias = useFichasPropias\(\);\s*const modelosDelPlano = useMemo\(\(\) => modelosDelPlanoConPropias\(fichasPropias\), \[fichasPropias\]\);/,
-    "el plano 2D no arma su biblioteca con las fichas propias");
-  assert.match(ed2D, /const modelos = modelosDelPlano\[def\.type\] \?\? \[\];/, "la biblioteca del 2D no es la que tiene las fichas propias");
-  assert.ok(!/MODELOS_2D\[/.test(ed2D), "el plano 2D lista los modelos sin las fichas propias");
-  // Y dibujan la familia ENTERA: un filtro en el JSX que escondiera las `cli:`
-  // pasaba todo lo de arriba, y la dueña guardaba la nevera, el taller le decía
-  // «Ya está en la paleta» y no estaba en ninguna de las dos.
-  for (const [n, t, lista, id] of [["3D", ed3D, "familia\\.modelos", "m\\.modelo"], ["2D", ed2D, "\\bmodelos", "m\\.id"]]) {
-    const usos = [...t.matchAll(new RegExp(`${lista}\\.(\\w+)`, "g"))].map((m) => m[1]);
-    assert.ok(usos.length > 0 && usos.every((u) => u === "length" || u === "map" || u === "some"),
-      `la paleta del ${n} hace algo más que contar y recorrer los modelos de la familia: ${usos.join(", ")}`);
-    // (`some` sólo pregunta si el elegido está adentro, para abrir el desplegable.)
-    const mapa = t.match(new RegExp(`\\{${lista}\\.map\\(\\(m\\) => \\{([^]*?)return \\(\\s*<button key=\\{${id}\\} data-modelo=\\{${id}\\}`));
-    assert.ok(mapa, `la paleta del ${n} no dibuja un botón por cada modelo de la familia`);
-    assert.ok(!/\breturn\b|startsWith|retirad|prefijoPropio|cli:/.test(mapa[1]), `la paleta del ${n} se saltea algunos modelos de la familia`);
-  }
+  // Desde 2026-10-28 el 3D no coloca, y la biblioteca del 2D lista UNO de
+  // cada tipo y, aparte, «Mis muebles»: SÓLO las fichas propias (los modelos
+  // de RECABRA no se listan). La lista es la de `misMueblesDelPlano`, con las
+  // fichas que trae la sesión, y se dibuja ENTERA: un filtro en el JSX que
+  // escondiera las `cli:` hacía que el taller dijera «Ya está en Mis muebles»
+  // y no estuviera.
+  assert.ok(!/paletaConPropias|paleta\.map\(|PALETA_3D\.map\(/.test(ed3D), "el Editor 3D volvió a tener paleta de muebles");
+  assert.match(ed2D, /const fichasPropias = useFichasPropias\(\);\s*const misMuebles = useMemo\(\(\) => misMueblesDelPlano\(fichasPropias\), \[fichasPropias\]\);/,
+    "el plano 2D no arma «Mis muebles» con las fichas propias");
+  assert.ok(!/MODELOS_2D|modelosDelPlanoConPropias/.test(ed2D), "el plano 2D volvió a listar los modelos de RECABRA");
+  const mapa = ed2D.match(/\{misMuebles\.map\(\(\{ tipo, modelo: m \}\) => \{([^]*?)return \(\s*<button key=\{m\.id\} data-modelo=\{m\.id\}/);
+  assert.ok(mapa, "«Mis muebles» no dibuja un botón por cada ficha");
+  assert.ok(!/\breturn\b|startsWith|retirad|prefijoPropio|cli:/.test(mapa[1]), "«Mis muebles» se saltea algunas fichas");
+  const C2 = await cargar("src/catalogo/plano2D.ts");
+  const mios = C2.misMueblesDelPlano(PROPIAS);
+  assert.deepEqual(mios.map(({ tipo, modelo }) => `${tipo}|${modelo.id}`).sort(),
+    ["gondola_mural|cli:gondola-pared-170", "isla|cli:media-bodega", "nevera_puertas|cli:nevera-inducol-2p"],
+    "«Mis muebles» no lista exactamente las fichas propias vigentes, cada una con su tipo del plano");
+  assert.deepEqual(C2.misMueblesDelPlano([]), [], "sin fichas propias «Mis muebles» no está vacío");
   const panel3D = ed3D.slice(ed3D.indexOf("function CommercialPanel("), ed3D.indexOf("const modeloDelMueble = modeloPorId(fix.modelo);") + 60);
   assert.match(panel3D, /useFichasPropias\(\);/, "el panel del Editor 3D no escucha las fichas propias");
   const panel2D = ed2D.slice(ed2D.indexOf("function AssignmentPanel("), ed2D.indexOf("const modeloDelMueble = modeloPorId(item.nace?.modelo);") + 60);

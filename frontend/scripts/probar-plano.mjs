@@ -507,11 +507,9 @@ prueba("sin «Reservado» a mano (decisión 1): el panel ofrece Disponible y Man
   const estado = tramo(panelB, '<FilaDelPanel k="Estado" titulo="Estado del espacio"', "</FilaDelPanel>");
   assert.match(estado, /\{ESTADOS_A_MANO\.map\(\(s\) => \(/, "el estado no sale de la lista de lo que se marca a mano");
   assert.match(estado, /data-reservado-a-mano/, "uno marcado a mano de antes no dice qué hacer con él");
-  // El Editor 3D: uno de antes se ve (deshabilitado) y no se vuelve a marcar.
+  // El Editor 3D (desde 2026-10-28, para mirar): no marca ningún estado a mano.
   const ed = sinComentPR3(fuenteDe("components/StoreEditor3D/StoreEditor3D.tsx"));
-  const sel = tramo(ed, "Estado fixture</label>", "</select>");
-  assert.match(sel, /\{fix\.status === "reserved" && <option value="reserved" disabled>Reservado a mano<\/option>\}/);
-  assert.equal((sel.match(/value="reserved"/g) ?? []).length, 1, "el 3D sigue ofreciendo «Reservado» a mano");
+  assert.ok(!/<option value="maintenance">|<select value=\{fix\.status\}/.test(ed), "el panel del 3D volvió a ofrecer un estado a mano");
   // Y el servidor lo rechaza con la frase que lleva a Vender (`tests/test_panel_del_plano.py`).
   const srv = readFileSync(join(raizFe, "..", "backend", "app", "routers", "spaces.py"), "utf8");
   assert.match(srv, /RESERVA_SOLO_DESDE_VENDER = "Las reservas se hacen desde Vender, con proveedor y fecha\."/);

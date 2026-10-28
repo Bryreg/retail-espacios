@@ -53,7 +53,7 @@ const cargar = async (catalogo) => {
         'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, textoDeAplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila, loDeLaFicha, aplicarLoDeLaFicha, colocadosConLaFicha } from "./src/utils/partesDelMueble.ts";',
         'export { fijarFichasPropias, olvidarFichasPropias } from "./src/catalogo/propias.ts";',
         'export { PALETA_3D, paletaConPropias } from "./src/catalogo/editor3D.ts";',
-        'export { MODELOS_2D, modelosDelPlanoConPropias } from "./src/catalogo/plano2D.ts";',
+        'export { MODELOS_2D, modelosDelPlanoConPropias, misMueblesDelPlano } from "./src/catalogo/plano2D.ts";',
         'export { nombreDeTarifa } from "./src/catalogo/nombresPropios.ts";',
         'export { slotsDeLaParte, internosVendidosEnLaParte, partesQuePisa } from "./src/utils/slotsDeLasPartes.ts";',
         'export { revisarCambioDeGeometria, loVendidoDe, geometriaALaVista, confirmadasDelResumen } from "./src/utils/geometriaDelMueble.ts";',
@@ -833,9 +833,9 @@ await prueba("las paletas del plano y del 3D dicen cómo se vende cada modelo, d
   const nev = paleta.find((f) => f.entrada === "nevera_puertas").modelos.find((m) => m.modelo === "cli:nevera-inducol-2p");
   assert.deepEqual([nev.comoSeVende, nev.partes], ["por puertas", { puertas: 2, division: "puertas" }]);
   assert.equal(P.modelosDelPlanoConPropias(PROPIAS).columna.at(-1).comoSeVende, "con forro");
-  // Y las dos paletas lo muestran al lado de las medidas.
-  const ed = leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
-  assert.match(ed, /\{m\.w\}×\{m\.d\}×\{m\.h\} m\{m\.comoSeVende \? ` · \$\{m\.comoSeVende\}` : ""\}/, "la paleta del 3D no dice cómo se vende");
+  // Y la biblioteca del 2D lo muestra al lado de las medidas («Mis muebles»;
+  // desde 2026-10-28 el 3D no tiene paleta: no coloca).
+  assert.equal(P.misMueblesDelPlano(PROPIAS).find((x) => x.modelo.id === "cli:nevera-inducol-2p").modelo.comoSeVende, "por puertas");
   const p2 = leer(join(raiz, "src", "components", "FloorPlan2D", "FloorPlan2D.tsx"));
   assert.match(p2, /\{m\.comoSeVende && \(/, "la biblioteca del 2D no dice cómo se vende");
 });

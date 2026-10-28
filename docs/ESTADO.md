@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28, en `main`: **tres mejoras de flujo** (PR #100): cada cifra del Inicio y del Resumen lleva a la lista que la suma («Vigentes hoy», con
+Última actualización: 2026-10-28, en la rama `claude/vibrant-wozniak-1ny6q4` (sin PR todavía):
+**el plano se edita en el 2D y el 3D es para mirar**. La biblioteca del plano ofrece uno de cada
+tipo y aparte «Mis muebles» (sólo las fichas del taller), con «Crear un mueble con otras medidas»
+que va al taller y vuelve; el 3D ya no coloca, mueve, gira ni borra; la ficha del 2D muestra el
+mueble en 3D; y nada se monta sobre otra cosa (el catálogo abierto corre el lienzo). Ver *El plano
+se edita en el 2D; el 3D es para mirar (2026-10-28)*.
+
+Antes, el 2026-10-28, en `main`: **tres mejoras de flujo** (PR #100): cada cifra del Inicio y del Resumen lleva a la lista que la suma («Vigentes hoy», con
 la suma al pie y «Volver»), el reporte del enlace de montaje no se pierde sin señal, «Ubicar la
 zona» abre esa fila en Pendientes con la vuelta a Montajes, después de verificar sigue el siguiente,
 y un pulido (foco, reducir movimiento, 375 px, aviso al cambiar de sede, etiquetas «Cubre …»). Ver
@@ -1346,6 +1353,49 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### El plano se edita en el 2D; el 3D es para mirar (2026-10-28)
+
+Lo pidió el dueño y lo aprobó sobre el lienzo «RECABRA · Plano 2D, taller y 3D», con una condición:
+**que todo quede bien distribuido, que nada se tape**. Lo prueban `scripts/probar-mis-muebles.mjs`
+y, en el navegador, la revisión de solapes a 1440, 1280, 1100, 1024, 820 y 390 px.
+
+- **Uno de cada tipo y «Mis muebles».** La biblioteca del plano 2D (la tira y «Más») ofrece cada
+  tipo en su medida estándar (el modelo base) y arriba del catálogo **«Mis muebles · N»**: SÓLO las
+  fichas propias del supermercado, sin las retiradas (`misMueblesDelPlano`, `catalogo/plano2D.ts`),
+  cada una con su tipo del plano. **Los modelos de RECABRA ya no se listan** (sin «Elegir el
+  modelo»): siguen en `muebles.json`, lo colocado con ellos se dibuja y se vende igual y el taller
+  los muestra. `MODELOS_2D`, `modelosDelPlanoConPropias` y `paletaConPropias` quedan para el taller
+  y las pruebas.
+- **Crear un mueble con otras medidas.** El botón de «Mis muebles» y «Crear mueble» del pie de la
+  tira (admin) llevan a `/taller?desde=plano&sede=…&tipo=…`: el taller abre en «Fichas», en la
+  familia que se estaba por colocar, con un aviso («Desde el plano de CENTRO…» y, al guardar,
+  «Listo: «…» ya está en «Mis muebles»») y **«← Volver al plano»**, que vuelve en modo Editar con
+  el catálogo abierto (`state.delTaller`). El nombre NO se rellena solo: una clave repetida la
+  rechaza el servidor, y la ficha sigue pidiendo de dónde salieron las medidas.
+- **El 3D es para mirar.** Sin paleta, fantasma, arrastre, gizmo (`TransformControls`), R/F/Supr ni
+  Ctrl+Z, sin «Guardar» ni «Limpiar todo»; el panel del mueble ya no renombra, no cambia el
+  destino ni el estado, no edita medidas (`GeometriaDelMueble`) ni cómo se vende
+  (`PartesDelMueble`), y no gira ni borra: dice «El nombre, las medidas y cómo se vende se cambian
+  en el plano 2D» con **«Editar en el 2D»**. La barra lateral es **«Mirar»**: recorrer la tienda,
+  primera persona, con el arte del proveedor y «Productos y distribuciones», más el mismo aviso.
+  Quedan: probar un producto (`VistaProveedor`), «Distribuir esta cara», Presentar, la lámina/PNG,
+  cenital, el minimapa y **los espacios internos** (el estado por repisa, que no tiene otro lugar
+  donde marcarse: es lo único que el 3D todavía escribe en el plano). Esc suelta el mueble y la
+  caminata. Una sede vacía dice «Esta sede todavía no tiene muebles» con «Ir al plano 2D».
+- **La vista 3D en la ficha del 2D.** `FloorPlan2D/Miniatura3D.tsx`, perezosa: el mueble elegido
+  con el MISMO dibujo del 3D (`FixtureMesh`), de frente a la cara que se mira, se actualiza con
+  cada cambio del plano; «Toda la sede» lo marca en la planta; «Abrir en 3D ↗»
+  (`pedirEnfoque3D`). Va DENTRO de la ficha, entre el resumen y las pestañas (el dibujo la ponía
+  flotando y tapaba los filtros).
+- **Nada se monta.** El catálogo abierto pasó de flotar sobre el lienzo a ser una **columna** que
+  lo corre (tapaba los filtros, la pista y la barra de herramientas); el pie de la tira («Crear
+  mueble» y «Más») es un solo bloque pegado; en tableta la hoja de la ficha empieza al lado de la
+  tira (`--ancho-tira`) y en el teléfono la ficha y el catálogo terminan encima de ella
+  (`--alto-tira`, medidas con `ResizeObserver`); por debajo de 860 px elegir un mueble pliega el
+  catálogo (las dos hojas ocupaban el mismo lugar). Los filtros que no entran se desvanecen al
+  borde en vez de cortarse a mitad de palabra. En el teléfono la hoja de la ficha sigue tapando
+  los filtros y el zoom del lienzo mientras está abierta (es la hoja; se cierra con ×).
 
 ### Tres mejoras de flujo (2026-10-28)
 

@@ -252,10 +252,8 @@ const SITIOS = [
     /const carasDelVisor = useMemo<CaraDelVisor\[\]>\(\(\) => \{[\s\S]*?tipo: tipoDelMueble\(l\.fixture, nombresPropios\),[\s\S]*?\}, \[c\.lineas, fichasPropias, nombresPropios\]\);/],
   ["components/Contrato/ModoVender.tsx", "el aviso de lo que no se alquila",
     /<b>\{conNombrePropio\(fixture, nombresPropios, fixture\.label \|\| fixture\.code\)\}<\/b>/],
-  ["components/StoreEditor3D/StoreEditor3D.tsx", "la paleta del Editor 3D", /\{conNombrePropio\(def, nombresPropios, def\.label\)\}/],
   ["components/StoreEditor3D/StoreEditor3D.tsx", "el panel del Editor 3D", /font-bold text-dark-ink-1">\{conNombrePropio\(fix, nombresPropios, fix\.label\)\}/],
   ["components/StoreEditor3D/StoreEditor3D.tsx", "el cartel del mouse del Editor 3D", /text-dark-ink-1">\{conNombrePropio\(fix, nombresPropios, fix\.label\)\}<\/p>/],
-  ["components/StoreEditor3D/StoreEditor3D.tsx", "«Colocando …»", /conNombrePropio\(placingDef, nombresPropios, placingDef\.label\)/],
   ["components/StoreEditor3D/StoreEditor3D.tsx", "la lámina del proveedor", /mueble: conNombrePropio\(uf, nombresPropios, uf\.label \|\| uf\.code\),/],
   ["components/FloorPlan2D/FloorPlan2D.tsx", "la biblioteca del plano 2D", /const displayLabel = nombrePropio\(def\.type, catalogLabels\) \?\? def\.label;/],
   // Rediseño, PR 3: el emoji se fue (ícono del tipo, `FloorPlan2D/iconos.ts`) y
@@ -266,8 +264,6 @@ const SITIOS = [
   ["components/RatesModal/RatesModal.tsx", "Tarifas (con el de RECABRA debajo)", /const dicho = nombreDeTarifa\(type, nombresPropios\);[\s\S]*\{dicho\}[\s\S]*\{label\} en RECABRA/],
   ["components/FloorPlan2D/FloorPlan2D.tsx", "«ese nombre ya lo tiene otro mueble» del plano 2D (la caja y el panel)",
     /textoDelChoque\(val, rechazo, \(m\) => conNombrePropio\(m, catalogLabels, ""\)\)[\s\S]*textoDelChoque\(nombreBorrador, rechazo, \(m\) => conNombrePropio\(m, nombresPropios, ""\)\)[\s\S]*textoDelChoque\(nombreBorrador, choqueEscrito, \(m\) => conNombrePropio\(m, nombresPropios, ""\)\)/],
-  ["components/StoreEditor3D/StoreEditor3D.tsx", "«ese nombre ya lo tiene otro mueble» del Editor 3D",
-    /textoDelChoque\(nombreBorrador, rechazo, \(m\) => conNombrePropio\(m, nombresPropios, ""\)\)[\s\S]*textoDelChoque\(nombreBorrador, choqueEscrito, \(m\) => conNombrePropio\(m, nombresPropios, ""\)\)/],
   ["components/taller/PanelDeFichas.tsx", "la familia de una ficha nueva en el taller",
     /const propio = conNombrePropio\(\{ type: f\.tipo, gondolaType: f\.variante \}, nombresPropios, ""\);/],
 ];
