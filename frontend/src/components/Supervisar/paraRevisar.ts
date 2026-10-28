@@ -248,3 +248,28 @@ export function deParticipacionesEn<
   }
   return fuera;
 }
+
+/** Los vecinos de un aviso para «‹ ›» de la ficha que se abrió desde él
+ *  (2026-10-28, «Por vencer en el plano»): los de SU sección que tienen
+ *  mueble, en el orden de la lista y sin repetir mueble y cara (una cara con
+ *  dos partes por vencer es un solo lugar del plano). `indice` es -1 si el
+ *  aviso no está o no tiene mueble. */
+export function vecinosDelAviso(avisos: readonly Aviso[], clave: string | null): { lista: Aviso[]; indice: number } {
+  const propio = clave ? avisos.find((a) => a.clave === clave) : undefined;
+  if (!propio?.fixtureId) return { lista: [], indice: -1 };
+  const vistos = new Set<string>();
+  const lista: Aviso[] = [];
+  let indice = -1;
+  for (const a of avisos) {
+    if (a.seccion !== propio.seccion || !a.fixtureId) continue;
+    const lugar = `${a.fixtureId}-${a.cara ?? "A"}`;
+    if (vistos.has(lugar)) {
+      if (a.clave === clave) indice = lista.findIndex((x) => `${x.fixtureId}-${x.cara ?? "A"}` === lugar);
+      continue;
+    }
+    vistos.add(lugar);
+    if (a.clave === clave) indice = lista.length;
+    lista.push(a);
+  }
+  return { lista, indice };
+}

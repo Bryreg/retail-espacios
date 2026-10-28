@@ -1,7 +1,12 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28, en `main` (PR #103): **los muebles propios se arman en Plano › Mis muebles**, con
+Última actualización: 2026-10-28: **lo que vence se ve en el plano**. «Por vencer · Ver cuáles» del
+Inicio y tocar una fila de Pendientes llevan a Indicadores › Plano, con lo que vence resaltado; la
+ficha se abre AL LADO del plano, sin velo, con el plano en ese mueble y «← Por vencer · 1 de 4 ‹ ›»;
+donde la ficha se abre sin plano, suma «Dónde está». Ver *Por vencer en el plano (2026-10-28)*.
+
+Antes, el 2026-10-28, en `main` (PR #103): **los muebles propios se arman en Plano › Mis muebles**, con
 un asistente de tres pasos (qué mueble es, cuánto mide, nombre y cómo se vende) y el mueble en 3D
 al lado mientras se escribe; al guardarlo, «Colocar en el plano» vuelve al 2D con el mueble ya
 elegido para soltar. Era la pestaña «Fichas» del taller; el taller quedó como banco de prueba, en
@@ -1359,6 +1364,38 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ---
 
 ## Qué está hecho
+
+### Por vencer en el plano (2026-10-28)
+
+El dueño: «cuando voy a revisar los "Por vencer" sólo me sale en la barra lateral, pero no me
+muestra en el mapa cuál mueble es». Desde el Inicio, «Ver cuáles» abría la bandeja encima del
+Inicio, que no tiene plano; y en Indicadores › Plano la ficha se abría en un cajón con velo gris
+sobre el plano. Aprobado sobre el lienzo «RECABRA · Por vencer en el plano»: **un solo lugar, se
+entre por donde se entre**. Lo prueba `scripts/probar-por-vencer.mjs`.
+
+- **Llegar.** «Por vencer · Ver cuáles» del Inicio (`abrirPlanoDesde`) lleva a Indicadores ›
+  Plano con el filtro del plano en «Por vencer» (`mapFilter = "expiring"`, el mismo de la tabla:
+  lo demás se atenúa con `match`), «Para revisar» en «30 días» y el aviso de llegada con «Volver al
+  Inicio» y «Ver todo el plano». El filtro se dice en el borde del plano (`.chip-filtro`, con ×).
+  Tocar una fila en la BANDEJA de Pendientes (encima de cualquier pantalla) también lleva ahí
+  (`revisar`, si la bandeja está abierta). Las filas de «Pendientes de hoy» del Inicio siguen
+  abriendo la ficha en su cajón, ahora con «Dónde está». El «Ver cuáles» del Resumen no cambió
+  (lleva a Detalle › Lo que viene: 90 días, contrato por contrato).
+- **La ficha al lado** (`fichaAlLado`: Indicadores › Plano sin la bandeja abierta). Ocupa el
+  lugar de «Para revisar», sin cajón ni velo. El plano va al mueble: `IsoMap` recibe `irAlMueble`
+  (acerca a `ZOOM_AL_ENFOCAR` y lo centra, en 320 ms salvo con «reducir movimiento», y al cerrar
+  vuelve a la cámara de antes) y lo señala con el piso punteado y el punto de `senalar`. Arriba,
+  `ficha-nav`: «← <sección>» vuelve a la lista y, si la fila tiene vecinos, «1 de 4» con ‹ ›
+  (`vecinosDelAviso` en `paraRevisar.ts`: los de su sección con mueble, en el orden de la lista y
+  sin repetir lugar). Qué fila abrió la ficha lo anota el `onClickCapture` de la lista
+  (`avisoTocado`) y lo lee `revisar`.
+- **«Dónde está»** (`components/Supervisar/DondeEsta.tsx`): en la ficha que se abre en su cajón
+  (Inicio, Indicadores › Contratos u otras pestañas), el plano de la sede visto desde arriba,
+  chiquito, con el mueble marcado, y «Ver en el plano ↗» (`verEnElPlano`: Indicadores › Plano con
+  la misma ficha al lado).
+- **Tableta y teléfono.** En una columna, con la ficha abierta o al llegar con un filtro, el plano
+  va primero (`data-ficha`, `data-plano-primero`). En el teléfono la ficha es una hoja en la mitad
+  de abajo, encima de la barra de módulos (61 px).
 
 ### Plano › Mis muebles: el taller en tres pasos (2026-10-28)
 
