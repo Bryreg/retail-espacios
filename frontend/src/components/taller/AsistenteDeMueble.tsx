@@ -252,7 +252,7 @@ export function AsistenteDeMueble({ editando, entradaInicial, desdePlano, onGuar
         <span className="mm-abajo-der">
           {!nueva && <button type="button" className="mm-bt" onClick={onSalir}>Cancelar</button>}
           {!nueva && paso < 3 && (
-            <button type="button" className="mm-bt" onClick={() => irA((paso + 1) as PasoDelAsistente)}>
+            <button type="button" className="mm-bt mm-siguiente-edicion" onClick={() => irA((paso + 1) as PasoDelAsistente)}>
               Siguiente →
             </button>
           )}

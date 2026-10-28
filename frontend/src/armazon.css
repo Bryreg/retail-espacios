@@ -162,6 +162,11 @@
   font-weight: 600;
   cursor: pointer;
 }
+.vista-plano .ico-movil { display: none; }
+@media (max-width: 639px) {
+  .vista-plano .ico-movil { display: block; margin: 0 auto; }
+  .vista-plano .txt-ancho { display: none; }
+}
 .vista-plano button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink-1);

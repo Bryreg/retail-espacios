@@ -52,6 +52,14 @@ export default function MisMuebles() {
   const [listo, setListo] = useState<ModeloPropio | null>(null);
   const [vuelta, setVuelta] = useState(0);
   useEffect(() => { setListo(null); }, [resto]);
+  /** Editar un mueble que todavía no llegó: se espera un rato a la lista (un
+   *  supermercado sin muebles propios la tiene vacía para siempre). */
+  const [esperando, setEsperando] = useState(true);
+  useEffect(() => {
+    setEsperando(true);
+    const t = window.setTimeout(() => setEsperando(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [resto]);
 
   const alPlano = (colocar?: string) => navigate("/plano", { state: { delTaller: true, ...(colocar ? { colocar } : {}) } });
   const aLaLista = (texto?: string) => navigate(BASE, texto ? { state: { aviso: texto } } : undefined);
@@ -76,7 +84,7 @@ export default function MisMuebles() {
         onSalir={() => aLaLista()} onVolverAlPlano={() => alPlano()} onRetirado={aLaLista} />
     ) : (
       <div className="mm"><div className="mm-vacio" role="status" data-mueble-no-esta>
-        <p>{propias.length ? "Ese mueble no está en Mis muebles." : "Buscando el mueble…"}</p>
+        <p>{propias.length || !esperando ? "Ese mueble no está en Mis muebles." : "Buscando el mueble…"}</p>
         <button type="button" className="mm-bt" onClick={() => aLaLista()}>Ver Mis muebles</button>
       </div></div>
     );

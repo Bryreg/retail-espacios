@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -1372,8 +1372,11 @@ function VistaDelPlano({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void
       {([["plano", "2D", "Dibujar la tienda vista desde arriba y editar los muebles"],
          ["plano3d", "3D", "Mirar la tienda en 3D: recorrerla, probar productos y distribuir caras"],
          ["muebles", "Muebles", "Mis muebles: los de tu supermercado, con sus medidas. Crearlos, editarlos y retirarlos"]] as const).map(([m, palabra, para]) => (
-        <button key={m} type="button" aria-pressed={modulo === m} title={para} onClick={() => ir(m)}>
-          {palabra}
+        <button key={m} type="button" aria-pressed={modulo === m} title={para} onClick={() => ir(m)}
+          aria-label={m === "muebles" ? "Mis muebles" : undefined}>
+          {/* En el teléfono «Muebles» no entra al lado de la sede y la
+              cuenta: va el ícono (`armazon.css`). */}
+          {m === "muebles" ? <><Armchair className="ico-movil" {...ICONO_BARRA} /><span className="txt-ancho">{palabra}</span></> : palabra}
         </button>
       ))}
     </div>

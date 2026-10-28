@@ -270,8 +270,9 @@ textarea.mm-campo { padding: 9px 12px; resize: vertical; }
   .mm-lista { padding: 18px 16px 22px; }
 }
 @media (max-width: 639px) {
-  .mm-medida { grid-template-columns: minmax(0, 1fr) 150px; }
-  .mm-medida-der { grid-column: 1 / -1; }
+  .mm-medida { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .mm-num { max-width: 240px; }
+  .mm-abajo-der .mm-siguiente-edicion { display: none; }
   .mm-familias { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mm-familia .foto { height: 80px; }
   .mm-h-der { width: 100%; margin-left: 0; justify-content: space-between; }
