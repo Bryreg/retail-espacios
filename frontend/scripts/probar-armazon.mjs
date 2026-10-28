@@ -229,15 +229,17 @@ prueba("el CSV: separado por punto y coma, con BOM, y las comillas donde hacen f
   assert.ok(t.endsWith("1;\r\n"));
 });
 
-prueba("Indicadores: cada tarjeta tiene su definición, y quien no administra no ve plata", () => {
-  const res = sinComentarios(leer("components", "Indicadores", "Resumen.tsx"));
-  const ids = [...res.matchAll(/<Tarjeta id="([a-z_0-9]+)"/g)].map((m) => m[1]);
-  assert.ok(ids.length >= 7, `el Resumen tiene ${ids.length} tarjetas`);
-  for (const id of ids) assert.ok(I.metrica(id), `la tarjeta «${id}» no tiene definición en el diccionario`);
+prueba("Indicadores: cada indicador tiene su definición, y quien no administra no ve plata", () => {
+  // El Mapa de oportunidades (versión B, 2026-10-28) reemplazó al Resumen:
+  // cada indicador apunta a su definición del Diccionario.
+  const mapa = sinComentarios(leer("components", "Indicadores", "MapaDeOportunidades.tsx"));
+  const bloque = mapa.slice(mapa.indexOf("METRICA_DEL_INDICADOR"), mapa.indexOf("};", mapa.indexOf("METRICA_DEL_INDICADOR")));
+  const ids = [...bloque.matchAll(/\w+: "([a-z_0-9]+)"/g)].map((m) => m[1]);
+  assert.equal(ids.length, 6, `el mapa tiene ${ids.length} indicadores con definición`);
+  for (const id of ids) assert.ok(I.metrica(id), `el indicador «${id}» no tiene definición en el diccionario`);
+  assert.ok(mapa.includes("data-metrica={METRICA_DEL_INDICADOR[ind.capa]}"));
   // Las de plata, sólo para administración.
-  assert.match(res, /\{esAdmin && c && canonDelPeriodo && \(\s*<Tarjeta id="canon"/);
-  assert.match(res, /\{esAdmin && datos\.canonTarifa && \(\s*<Tarjeta id="canon_tarifa"/);
-  assert.match(res, /\{esAdmin && datos\.disponibles\.sinFacturar !== null && \(/);
+  assert.match(mapa, /valor: plata \? pesos\(datos\.canon \?\? 0\) : String\(datos\.ocupacion\.ocupadas\)/);
   for (const m of I.METRICAS) assert.ok(m.formula && m.periodo && m.origen, `«${m.nombre}» sin fórmula, periodo u origen`);
   const dic = sinComentarios(leer("components", "Indicadores", "Diccionario.tsx"));
   assert.match(dic, /METRICAS\.filter\(\(m\) => esAdmin \|\| !m\.plata\)/, "el diccionario le muestra las de plata a quien no administra");

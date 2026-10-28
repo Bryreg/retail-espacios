@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28: **lo que vence se ve en el plano**. «Por vencer · Ver cuáles» del
+Última actualización: 2026-10-28: **Indicadores se rediseñó alrededor del mapa** (versión B,
+aprobada por el dueño). La pestaña que abre es **Mapa de oportunidades**: cuatro cifras contra su
+meta, seis indicadores a los lados y al centro un *mapa de decisión* —la planta de la sede en una
+base neutra— que enciende una capa animada por indicador; debajo, la lista de lo que el mapa muestra
+con una acción por espacio, y «Preparar propuesta» abre la **ficha de negociación**. El Resumen y el
+Detalle se fueron: su lugar lo toma **Análisis** (la versión A, tablero ejecutivo en cinco
+capítulos). Ver *Indicadores, versión B: Mapa de oportunidades y Análisis (2026-10-28)*.
+
+Antes, el 2026-10-28: **lo que vence se ve en el plano**. «Por vencer · Ver cuáles» del
 Inicio y tocar una fila de Pendientes llevan a Indicadores › Plano, con lo que vence resaltado; la
 ficha se abre AL LADO del plano, sin velo, con el plano en ese mueble y «← Por vencer · 1 de 4 ‹ ›»;
 donde la ficha se abre sin plano, suma «Dónde está». Ver *Por vencer en el plano (2026-10-28)*. Y la vista
@@ -1366,6 +1374,66 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 
 ## Qué está hecho
 
+### Indicadores, versión B: Mapa de oportunidades y Análisis (2026-10-28)
+
+El dueño pidió una pestaña «fácil de leer, que diga qué hacer y en qué orden», con un tono de
+sistema que se vende. Se dibujaron dos versiones (lienzo del rediseño): la **A**, un tablero
+ejecutivo, y la **B**, con el plano como atracción principal. Eligió la B como pantalla principal
+y la A como «Análisis», con las animaciones del mapa «según el dato, para decidir y no para
+contratar». Sin migraciones ni endpoints nuevos: todo sale de las cuentas que la pantalla ya hace.
+
+- **Pestañas.** Mapa de oportunidades · Análisis · Plano · Contratos · Quién paga ·
+  Participaciones · Todas las sedes · Diccionario. Lo recordado como `resumen` abre el mapa y
+  `detalle` el Análisis (`recabra-indicadores-pestana`). «Volver a …» de la tabla vuelve a la
+  pestaña de donde se vino (`DesdeDondeSeLlega`).
+- **Mapa de oportunidades** (`components/Indicadores/MapaDeOportunidades.tsx`). Arriba: ocupación
+  contra la meta, realización del potencial, precio frente a tarifa y Pendientes («17 para hoy ›»).
+  A los lados, seis indicadores con su ancla (Vigentes, Por vencer, Sin montar, Libres, En parte,
+  Cliente): señalar uno —mouse, foco o toque— enciende su capa; un clic la deja fija. Debajo, la
+  lista de la capa (8 y «Ver los N»), un botón por espacio y un solo principal.
+- **El mapa de decisión** (`MapaDeDecision.tsx`, SVG; reglas puras en `utils/mapaDeDecision.ts`).
+  La misma proyección isométrica del plano (`utils/camaraPlano.ts`) y las caras partidas como en el
+  plano (`mitadesDeLaGondola` sigue a `anchoManda`). Capas: **acciones** (por defecto, numeradas en
+  el orden de la lista, rojo alta / ámbar media), **ingreso** (columnas que suben, alto y tono por lo
+  que paga), **vence** (ondas: rojas y rápidas ≤ 30 días, naranjas ≤ 60, ámbar ≤ 90), **montaje**
+  (contorno que corre con el color del estado; el más urgente de la cara manda), **caras sin
+  contrato** (volumen fantasma con halo que respira), **venta parcial** (lo vendido sólido, lo libre
+  punteado: por participación la cara se parte a lo largo, por partes un bloque por entrepaño, lo
+  reservado más claro) y **cliente** (arcos desde el cliente principal a sus espacios). Las
+  etiquetas van en filas arriba del mapa con línea guía (`empacarEtiquetas` / `filasDeEtiquetas`:
+  nunca se pisan); en el teléfono, sólo el código. `prefers-reduced-motion` las deja quietas.
+- **Los datos** (`tableroB` en `DashboardView`): un `EspacioDelMapa` por cara (también las de
+  muebles que no se venden si tienen un planograma por montar), con estado (vendida, parcial,
+  libre, otro), lo vendido (partes o la ocupación anónima de la participación), ingreso al mes
+  (contratos vigentes + cortes de ventas), lo libre a tarifa, clientes, el vencimiento sin renovar
+  más próximo, el montaje, días sin contrato. Las **acciones** (`ordenarAcciones`): vencidos,
+  renovaciones, ventas sin cargar, montajes no realizados, planogramas y contratos sin montar;
+  alta = vencido, ventas, no realizado o renovación en 7 días; después la plata y el plazo.
+- **La brecha del potencial** (`brechaDelPotencial`): potencial a tarifa − canon, partido en caras
+  sin contrato, capacidad libre en caras parciales y «precio y cobro» (el resto). Reemplaza los
+  rótulos viejos que no decían lo que contaban («Sin alquilar · 4 caras» sumaba partes libres;
+  «bajo la tarifa» era lo no vendido de las participaciones). En CENTRO: $ 2.100.000 + $ 1.805.000
+  + $ 125.000 = $ 4.030.000.
+- **Análisis** (`Analisis.tsx`): cinco cifras con su salida, acciones prioritarias en tabla, y 01
+  Resultado (el puente del potencial y el ingreso por mes), 02 Riesgo (lo que vence por mes y la
+  tabla con «Renovar»), 03 Ejecución (los montajes del mes, etapa por etapa, y la preparación),
+  04 Capacidad por vender (cada espacio con su oportunidad —quién renueva al lado, quién comparte la
+  cara— y «Preparar propuesta», caras por tipo y la proyección de caras sin contrato) y 05 Cartera
+  (ingreso por cliente y precio frente a tarifa). Cada gráfico con «Ver como tabla».
+- **Ficha de negociación** (`FichaDeNegociacion.tsx`, en el cajón): disponibilidad, precio de
+  referencia a 3, 6 y 12 meses, con quién negociar y una recomendación (negociar en conjunto con
+  la renovación de un cliente presente, ofrecer al vecino de cara…). «Armar la propuesta en
+  Contratos» entra a Vender como «Vender» desde la ficha (`negociar`): la participación con su
+  línea de porcentaje, las partes abiertas; ahí se genera la lámina, se reserva o se registra.
+- **El trabajador no ve plata:** cuentas en vez de montos, sin el capítulo de Resultado ni el
+  precio frente a tarifa, sin ficha de negociación. Lo vigila `probar:mapa-de-decision` (reglas
+  puras, plata, un botón principal por archivo, movimiento reducido, clases que no chocan con
+  `.sup`) y se comprobó en el navegador en las siete capas.
+- **Se fue:** `Resumen.tsx`, `Detalle.tsx`, `utils/historiaDelDetalle.ts`, `probar-detalle` y la
+  franja de cifras de Supervisar (estaba en el Detalle). La revisión del planograma y su guía
+  (`RevisarMontaje`, `VerGuia`) se abren desde el armazón de la pantalla, no desde la bandeja: así
+  las abre también el mapa.
+
 ### Por vencer en el plano (2026-10-28)
 
 El dueño: «cuando voy a revisar los "Por vencer" sólo me sale en la barra lateral, pero no me
@@ -1588,8 +1656,9 @@ configuración inicial (6 pasos con datos de verdad, `utils/configuracionInicial
 es la bandeja de «Para revisar» encima de cualquier pantalla. La ficha del espacio, en un cajón,
 con la línea de tiempo de 12 meses. Contratos: «¿Para qué fechas?», el plano o la línea de
 tiempo de la sede (`/spaces/linea`, sin proveedor por privacidad), el contrato leído como una
-frase y «Qué pasa ahora». Indicadores: Resumen con metas, y pestañas (plano, tabla, quién paga,
-participaciones, todas las sedes, detalle, diccionario), cada tabla con su CSV
+frase y «Qué pasa ahora». Indicadores: Mapa de oportunidades (abre ahí) y Análisis, con metas,
+y pestañas (plano, tabla, quién paga, participaciones, todas las sedes, diccionario), cada tabla
+con su CSV
 (`utils/indicadores.ts`). Plano 2D como mesa de trabajo: tira de tipos para tocar o arrastrar,
 herramientas, filtros y zoom flotando, rótulos que nunca bajan de 9 px; el plano pasa de ~30 % a
 55–82 % de la pantalla. Montajes (`pages/MountView.tsx`, `utils/montajes.ts`): contratos y
@@ -1597,7 +1666,8 @@ planogramas en una lista con filtros y estado preciso, verificar el de un contra
 (`components/Montaje/VerificarMontaje.tsx`) y resolver un no realizado. Ajustes por tema
 (Comercial · Sede y plano · Avisos · Equipo · Cuenta), con Metas por sede, Sedes y Permisos.
 
-**Indicadores › Detalle se cuenta como una historia (2026-10-27).** Un titular y cuatro
+**Indicadores › Detalle se cuenta como una historia (2026-10-27).** *(Reemplazado el
+2026-10-28 por el Análisis de la versión B; queda como historia.)* Un titular y cuatro
 preguntas, cada una con su gráfico, su lectura y su tabla (`components/Indicadores/Detalle.tsx`,
 cuentas puras en `utils/historiaDelDetalle.ts`, `probar-detalle`): «¿Dónde está la plata que no
 entra?» parte el potencial a tarifa en lo cobrado, lo que se cobra bajo la tarifa y lo vacío, con

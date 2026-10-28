@@ -1340,7 +1340,10 @@ prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sec
     const i = t.indexOf(`{grupoDeRevision === "${g}" && (`);
     assert.ok(i > 0, `no está el grupo ${g}`);
     const fin = ["hoy", "dias30", "corregir"].map((x) => t.indexOf(`{grupoDeRevision === "${x}" && (`)).filter((k) => k > i);
-    return t.slice(i, fin.length ? Math.min(...fin) : t.indexOf("<SpacesTable", i));
+    // El último grupo termina donde termina la lista: antes de la tabla o de
+    // las cuentas del Mapa de oportunidades (versión B), lo que venga primero.
+    const cierre = ["<SpacesTable", "const tableroB ="].map((x) => t.indexOf(x, i)).filter((k) => k > 0);
+    return t.slice(i, fin.length ? Math.min(...fin) : Math.min(...cierre));
   };
   const DIBUJO = {
     hoy: ["cortesSinCargar.pendientes", "participacionesPorGrupo.hoy", "planometriaPorGrupo.hoy", "kpis.expired.map", "montaje.noMontado.map", "reservasPorGrupo.hoy"],
@@ -1448,13 +1451,15 @@ prueba("«Al mes» reparte cada contrato en SUS meses (`utils/meses.ts`), «Tota
 prueba("el selector «Al mes | Total» manda en las cifras, la columna de la tabla y «Quién paga»; el trabajador no ve plata", () => {
   const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(t, /const \[unidad, setUnidad\] = useUnidadDePlata\(\);/);
-  assert.match(t, /right=\{isAdmin \? <SelectorDePlata unidad=\{unidad\} onCambio=\{setUnidad\} \/> : undefined\}/, "el selector se le ofrece al trabajador");
+  // (La franja de cifras con su selector se fue con el Detalle, versión B
+  // de Indicadores 2026-10-28; quedan el de la tabla y el de «Quién paga».)
+  assert.match(t, /\{isAdmin && <SelectorDePlata unidad=\{unidad\} onCambio=\{setUnidad\} \/>\}/, "el selector se le ofrece al trabajador");
   // 1 · las cifras: las de plata salen de `plata`, que no existe para el trabajador.
   assert.match(t, /const plata = useMemo\(\(\) => \{\s*if \(!isAdmin\) return null;/, "la plata se calcula para el trabajador");
-  assert.match(t, /\{isAdmin && plata \? \(\s*<>\s*<Cifra\s+icono=\{<Banknote/, "las cifras de plata no van sólo para quien administra");
-  assert.match(t, /valor=\{formatCOP\(plata\.canon\)\}/);
-  assert.match(t, /valor=\{formatCOP\(plata\.vence\)\}/);
-  assert.match(t, /valor=\{formatCOP\(plata\.sinAlquilar\)\}/);
+  // (Las cifras de la franja se fueron con el Detalle, versión B de
+  // Indicadores 2026-10-28: el canon del Mapa de oportunidades y del Análisis
+  // llega en null para quien no administra; `probar:mapa-de-decision`.)
+  assert.match(t, /canon: isAdmin \? canonDelMes : null, potencial: isAdmin \? potencial : null,/, "las cifras de plata no van sólo para quien administra");
   // 2 · la tabla: el encabezado y cada fila.
   assert.match(t, /if \(isAdmin\) pedidas\.push\(\{ etiqueta: ROTULO_DEL_VALOR\[unidad\],/, "la columna de valor no sigue al selector, o se le muestra al trabajador");
   assert.match(t, /formatCOP\(enLaUnidad\(entry\.negotiatedValue, entry\.startDate, entry\.endDate, unidad\)\)/);
@@ -1551,7 +1556,10 @@ prueba("Supervisar cuenta «Vendido en parte» UNA vez: sólo por partes o por p
   // La clave, la nota de «Ocupación» y la pestaña: de `filasSupervisar`.
   assert.match(t, /const rangeTally = useMemo\(\(\) => contarElPeriodo\(filasSupervisar\.values\(\)\), \[filasSupervisar\]\);/);
   assert.match(t, /<MapLegend tally=\{rangeTally\} modo="supervisar"/);
-  assert.match(t, /`\$\{kpis\.occupied\} de \$\{kpis\.total\} caras\$\{enParte\(rangeTally\) > 0 \? ` · \$\{enParte\(rangeTally\)\} vendida/, "la nota de «Ocupación» cuenta con otra cosa");
+  // (La nota de «Ocupación» de la franja se fue con el Detalle, versión B de
+  // Indicadores 2026-10-28: la ocupación del Mapa de oportunidades cuenta
+  // caras, `kpis.occupied`, y lo vendido en parte es su propia capa.)
+  assert.match(t, /ocupacion: \{ pct: kpis\.occPct, ocupadas: kpis\.occupied, total: kpis\.total, meta: meta\.ocupacion \}/, "la ocupación del mapa cuenta con otra cosa");
   assert.match(t, /const enParteSet = useMemo\(\s*\(\) => new Set\(\[\.\.\.filasSupervisar\]\.filter\(\(\[, f\]\) => f\.dispo === "parcial"\)\.map\(\(\[k\]\) => k\)\),/,
     "la pestaña «Vendido en parte» no sale de la misma cuenta que la clave");
   // El color del plano de Supervisar, de la misma cuenta; Vender sigue con la suya.
@@ -1603,7 +1611,8 @@ prueba("las pestañas «Libres» y «Vendido en parte» cuentan EXACTAMENTE las 
   assert.match(v, /faceMatchesFilter\(e, filter, sinMontar, enParte, libres\)/);
   assert.match(v, /const libresSet = useMemo\(\s*\(\) => new Set\(\[\.\.\.filasSupervisar\]\.filter\(\(\[, f\]\) => f\.dispo === "libre"\)/,
     "«Libres» no es la cuenta de la clave del plano");
-  assert.match(v, /valor=\{String\(libresSet\.size\)\}/, "la cifra «Libres» del trabajador cuenta otra cosa que la pestaña");
+  // (La cifra «Libres» del trabajador vivía en la franja del Detalle; la
+  // versión B de Indicadores la pasó a «Caras sin contrato», que es la capa.)
 });
 
 prueba("la ficha de un % dice lo comprometido y lo que queda EN EL PERIODO (el pico), y «Vender el Y %» vende eso", () => {

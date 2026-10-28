@@ -58,13 +58,14 @@ await prueba("cada cifra del Inicio dice qué abre y lleva a su lista filtrada",
 
 await prueba("la tabla dice de dónde se vino, suma al pie y deja volver", () => {
   const d = sinComentarios(leer("src/pages/DashboardView.tsx"));
-  assert.ok(d.includes("data-llegada") && d.includes("onIrAlInicio?.()") && d.includes('setPestanaInd("resumen")'));
+  assert.ok(d.includes("data-llegada") && d.includes("onIrAlInicio?.()") && d.includes('setPestanaInd(llegada.desde === "Análisis" ? "analisis" : "mapa")'));
   assert.ok(/suma=\{mapFilter === "occupied"/.test(d), "la suma sale sólo con los vigentes");
   assert.ok(d.includes("{isAdmin && sumaDeFilas !== null"), "la suma es plata: sólo administración");
   // Tocar otra pestaña u otro filtro olvida de dónde se vino.
   assert.equal((d.match(/setLlegada\(null\)/g) ?? []).length >= 4, true);
-  const res = sinComentarios(leer("src/components/Indicadores/Resumen.tsx"));
-  assert.ok(res.includes('onClick: () => onTabla("canon")') && res.includes("onClick: onVencen"));
+  // Desde el Mapa de oportunidades y el Análisis, cada lista lleva a su tabla.
+  assert.ok(d.includes('abrirTablaDesde(filtro[capa], "Mapa de oportunidades", cifra[capa])'));
+  assert.ok(d.includes('abrirTablaDesde(filtro, "Análisis", filtro === "expiring" ? "Por vencer" : "Ingreso contratado")'));
 });
 
 await prueba("la configuración inicial oculta con pasos pendientes se retoma desde el Inicio", () => {

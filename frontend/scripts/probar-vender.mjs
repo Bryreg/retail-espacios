@@ -1677,15 +1677,18 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     }
   });
 
-  prueba("cada tarjeta lleva su ícono antes del título: el piso, cuándo se libera y la tarifa en Vender; la franja, «Para revisar», la tabla, el canon y las participaciones en Supervisar", () => {
+  prueba("cada tarjeta lleva su ícono antes del título: el piso, cuándo se libera y la tarifa en Vender; «Para revisar», la tabla, el canon y las participaciones en Supervisar", () => {
     // CardHeader dibuja el ícono ANTES del título.
     const cab = DEF_TOP.get("CardHeader")?.texto ?? "";
     assert.ok(cab.indexOf("{icon}") > 0 && cab.indexOf("{icon}") < cab.indexOf("{title}"), "CardHeader no dibuja el ícono antes del título");
     // (Rediseño de Supervisar, PR 2: el piso de Supervisar es el MISMO panel
     // que el de Vender —`vp vp-plano`, con su `MapIcon`—, para que el plano
     // mida lo mismo; ya no es un `CardHeader`. Se exige abajo, en las dos.)
+    // (Versión B de Indicadores, 2026-10-28: la franja de cifras —`title={sede}`
+    // con `Gauge`— vivía en el Detalle, que pasó a ser el Análisis con sus
+    // propias tarjetas; ya no es un `CardHeader`.)
     const ESPERADO = [
-      ["title={sede}", "Gauge"], ['title="Para revisar"', "ClipboardCheck"],
+      ['title="Para revisar"', "ClipboardCheck"],
       ["title={titulo}", "Table2"], ['title="Quién paga el canon"', "Building2"], ['title="Participaciones de cara"', "Percent"],
     ];
     const tags = [...vista.matchAll(/<CardHeader\b[\s\S]{0,260}/g)].map((m) => m[0]);
@@ -1705,16 +1708,10 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
         `la tarjeta «${titulo}» de Vender no lleva su ícono (${icono}) antes del título`);
     }
     assert.doesNotMatch(vista, /className="ojo"/, "volvió el número de panel");
-    // Las cifras de Supervisar: su ícono al lado del rótulo; rojo sólo en la alarma.
-    const CIFRAS = [["Canon vigente", "Banknote"], ["Sin alquilar", "CircleDashed"], ["Vence en 30 días", "AlarmClock"],
-      ["Libres", "CircleDashed"], ["Ocupación", "PieChart"], ["Sin montar", "Hammer"]];
-    for (const [rotulo, icono] of CIFRAS) {
-      assert.match(vista, new RegExp(`<Cifra\\s+icono=\\{<${icono} \\{\\.\\.\\.ICONO_TARJETA\\} />\\}\\s+rotulo="${rotulo}"`), `la cifra «${rotulo}» no lleva ${icono}`);
-    }
-    assert.equal((vista.match(/<Cifra\b/g) || []).length, 7, "una cifra nueva tiene que decir su ícono acá");
-    const cifra = DEF_TOP.get("Cifra")?.texto ?? "";
-    assert.match(cifra, /color: alarma \? "var\(--ocupado-txt\)" : "var\(--ink-3\)",/, "el ícono de la cifra no es gris en reposo y rojo en la alarma");
-    for (const m of vista.matchAll(/<Cifra\s+icono=\{<AlarmClock[\s\S]*?\/>\s*\n/g)) assert.match(m[0], /\balarma\b/, "«Vence en 30 días» dejó de ser una alarma");
+    // (Las cifras de la franja —`<Cifra>` con su ícono— vivían en el Detalle;
+    // la versión B de Indicadores, 2026-10-28, las pasó a las tarjetas del
+    // Mapa de oportunidades y del Análisis.)
+    assert.equal((vista.match(/<Cifra\b/g) || []).length, 0, "volvió una cifra de la franja: tiene que decir su ícono acá");
     // La pista del plano lleva el mouse, y el ícono no va en la ayuda del dedo.
     assert.match(vista, /<span className="con-mouse"><Mouse \{\.\.\.ICONO_TARJETA\} \/>Arrastrá para girar/, "la pista del plano no lleva el ícono `Mouse`");
   });
@@ -1723,7 +1720,10 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     const ARCHIVOS_PLATA = [VISTA, ...ARCHIVOS_VENDER, RUTA_COBROS_RESERVAS, "src/components/Distribucion/RevisarParticipaciones.tsx",
       "src/components/Distribucion/ParticipacionesDeLaCara.tsx",
       // Rediseño de Supervisar (PR 2): la plata en una unidad y sus piezas.
-      "src/components/Supervisar/plata.ts", "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/piezas.tsx"].filter(hay);
+      "src/components/Supervisar/plata.ts", "src/components/Supervisar/FaltaPlanometria.tsx", "src/components/Supervisar/piezas.tsx",
+      // Versión B de Indicadores (2026-10-28): el mapa, el análisis y la ficha de negociación.
+      "src/components/Indicadores/MapaDeOportunidades.tsx", "src/components/Indicadores/MapaDeDecision.tsx",
+      "src/components/Indicadores/Analisis.tsx", "src/components/Indicadores/FichaDeNegociacion.tsx"].filter(hay);
     const ABREVIA = /compactCOP|notation\s*:\s*["']compact|\/\s*1e[36]\b|\/\s*1_?000(?:_?000)?\b|["'`]\s*(?:M|k|mil|millones|mill\.?)\s*["'`]/;
     const hits = [];
     for (const f of ARCHIVOS_PLATA) codigo(f).split("\n").forEach((l, k) => { if (ABREVIA.test(l)) hits.push(`${f}:${k + 1} ${l.trim().slice(0, 100)}`); });
