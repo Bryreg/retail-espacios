@@ -496,3 +496,19 @@
 .ayuda-terminos dd { margin: 2px 0 0; color: var(--ink-2); line-height: 1.5; font-size: var(--t-xs); }
 .ayuda-pie { margin: 6px 0 0; font-size: var(--t-xs); color: var(--ink-3); }
 .ayuda-enlace { background: none; border: 0; padding: 0; color: var(--signal-ink); font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Se vino de Montajes a resolver algo («Ubicar la zona», «Adjuntar
+   planometría»): la barra que lleva de vuelta a ese montaje. */
+.volver-montaje {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin: 8px 16px 0; padding: 8px 8px 8px 14px; border-radius: 12px;
+  background: var(--accent-50); border: 1px solid var(--accent-200);
+  font-size: var(--t-xs); color: var(--ink-1); line-height: 1.4;
+}
+.volver-montaje > span { flex: 1 1 260px; min-width: 0; }
+.volver-montaje button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  border-radius: 10px; border: 1px solid var(--accent-200); background: var(--surface);
+  color: var(--ink-1); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.volver-montaje button.cerrar { padding: 0; width: 36px; justify-content: center; border-color: transparent; background: transparent; color: var(--ink-3); }

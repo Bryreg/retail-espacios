@@ -288,3 +288,13 @@
   .sup .vp-plano > header { flex-wrap: wrap; }
   .sup .vp-plano > header .der { flex-wrap: wrap; margin-left: 0; }
 }
+
+/* Se vino de Montajes: de dónde, y su fila marcada mientras se resuelve. */
+.sup .bandeja-desde-montaje {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  margin: 8px 10px 4px; padding: 10px 12px; border-radius: 12px;
+  background: var(--accent-50); border: 1px solid var(--accent-200);
+  font-size: var(--t-xs); color: var(--ink-1); line-height: 1.45;
+}
+.sup .bandeja-desde-montaje > span { flex: 1 1 220px; min-width: 0; }
+.sup [data-aviso][data-desde-montaje] { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-50); border-radius: 12px; }

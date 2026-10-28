@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -1500,6 +1500,20 @@ export default function Dashboard() {
   const efectivo: Modulo = permitido ? modulo! : "inicio";
 
   const temaAjustes = useArmazon((s) => s.ajustes);
+  /** Se vino de Montajes a resolver algo: la barra para volver. */
+  const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  /** Al volver, la fila de ese contrato marcada en Montajes. */
+  const [montajeResaltado, setMontajeResaltado] = useState<string | null>(null);
+  useEffect(() => {
+    if (efectivo !== "montajes") { setMontajeResaltado(null); return; }
+    // Se volvió a Montajes (por la barra o por el menú): esa fila, marcada.
+    const d = useArmazon.getState().desdeMontaje;
+    if (d) {
+      setMontajeResaltado(d.codigo);
+      useArmazon.getState().olvidarMontaje();
+      useArmazon.getState().cerrarBandeja();
+    }
+  }, [efectivo]);
   const buscadorAbierto = useArmazon((s) => s.buscador);
   const ayudaAbierta = useArmazon((s) => s.ayuda);
   /** Tarifas y Temporadas, abiertas desde Ajustes, Ctrl K o «Más». */
@@ -1636,6 +1650,24 @@ export default function Dashboard() {
             quien={quien}
           />
 
+          {/* Se vino de Montajes a resolver algo («Ubicar la zona»): mientras
+              tanto, esta barra lleva de vuelta a ese montaje, esté donde esté
+              (Pendientes, la ficha, el plano). */}
+          {desdeMontaje && efectivo !== "montajes" && (
+            <div className="volver-montaje" role="status" data-volver-montaje>
+              <span>
+                Resolviendo <b className="mono">{desdeMontaje.corto}</b> para Montajes:{" "}
+                {desdeMontaje.estado === "falta_zona" ? "falta ubicar su zona en la cara." : "falta su planometría."}
+              </span>
+              <button type="button" onClick={() => ir("montajes")}>
+                <ArrowLeft size={16} strokeWidth={1.75} aria-hidden /> Volver a Montajes
+              </button>
+              <button type="button" className="cerrar" aria-label="Quitar este aviso" onClick={() => useArmazon.getState().olvidarMontaje()}>
+                <X size={16} strokeWidth={1.75} aria-hidden />
+              </button>
+            </div>
+          )}
+
           {/* El área de las pantallas: Vender y Supervisar miden el alto de su
               plano contra ESTE alto (`--alto-area`, medido), así el plano mide
               lo mismo en las dos sin adivinar cuánto mide el marco. */}
@@ -1665,8 +1697,8 @@ export default function Dashboard() {
                 <StoreEditor3D />
               </Suspense>
             ) : efectivo === "montajes" ? (
-              <MountView initialCode={mountCode} onDone={() => ir("indicadores")}
-                onAbrirPendientes={isAdmin ? () => { ir("inicio"); useArmazon.getState().abrirBandeja(); } : undefined} />
+              <MountView initialCode={mountCode} onDone={() => ir("indicadores")} resaltar={montajeResaltado}
+                onAbrirPendientes={isAdmin ? (d) => { ir("inicio"); useArmazon.getState().abrirDesdeMontaje(d); } : undefined} />
             ) : (
               <FloorPlan2D />
             )}

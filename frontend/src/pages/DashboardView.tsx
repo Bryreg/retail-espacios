@@ -6508,6 +6508,32 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     return () => window.clearTimeout(t);
   }, [avisoMarcado]);
 
+  /** Se vino de Montajes («Ubicar la zona», «Adjuntar planometría»): la fila
+   *  de ese contrato en Pendientes —su grupo abierto, a la vista y marcada—.
+   *  La participación (`-PC1`) se busca por su cara: «Falta distribuir» es de
+   *  la cara entera. */
+  const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  const avisoDelMontaje = useMemo(() => {
+    if (!desdeMontaje) return null;
+    const m = muebleDelEspacio(desdeMontaje.codigo.replace(/-PC\d+$/i, ""));
+    if (!m) return null;
+    const deLaCara = avisos.filter((a) => a.fixtureId === m.fixture.id && (a.cara ?? "A") === m.cara);
+    return (desdeMontaje.estado === "falta_planometria"
+      ? deLaCara.find((a) => a.seccion === "falta_planometria")
+      : deLaCara.find((a) => a.clave.startsWith("pc:"))) ?? null;
+  }, [desdeMontaje, avisos, muebleDelEspacio]);
+  useEffect(() => {
+    if (!bandejaAbierta || !avisoDelMontaje) return;
+    setGrupoElegido(grupoDelAviso(avisoDelMontaje.seccion, avisoDelMontaje.dias));
+    const t = window.setTimeout(() => {
+      document.querySelectorAll("[data-desde-montaje]").forEach((e) => e.removeAttribute("data-desde-montaje"));
+      const el = document.querySelector<HTMLElement>(`[data-aviso="${CSS.escape(avisoDelMontaje.clave)}"]`);
+      el?.setAttribute("data-desde-montaje", "1");
+      el?.scrollIntoView({ block: "center" });
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [bandejaAbierta, avisoDelMontaje]);
+
   /** «Cargar planometría»: la ficha del espacio, con la planometría de ese
    *  contrato arriba. */
   const cargarPlanometria = (f: MontajePendiente, rotulo: string) => {
@@ -8262,7 +8288,22 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           sub={`${attentionCount} para revisar en ${sede} · pasá el mouse por una fila y se señala en el plano de Indicadores`}
           onCerrar={cerrarBandeja}
         >
-          <div className="sup bandeja">{cuerpoDeRevision}</div>
+          <div className="sup bandeja">
+            {desdeMontaje && (
+              <div className="bandeja-desde-montaje" role="status" data-tira-montaje>
+                <span>
+                  Desde <b>Montajes › <span className="mono">{desdeMontaje.corto}</span></b>:{" "}
+                  {desdeMontaje.estado === "falta_zona" ? "falta ubicar su zona en la cara" : "falta su planometría"}
+                  {desdeMontaje.quien ? ` (${desdeMontaje.quien})` : ""}.
+                  {avisoDelMontaje ? " Está marcado abajo." : ""}
+                </span>
+                <button type="button" className="btn-s" onClick={() => { onIrAMontajes?.(); }}>
+                  <ArrowLeft {...ICONO_TARJETA} /> Volver a Montajes
+                </button>
+              </div>
+            )}
+            {cuerpoDeRevision}
+          </div>
         </Cajon>
       )}
       {/* La ficha del espacio: la misma desde el Inicio, Indicadores y

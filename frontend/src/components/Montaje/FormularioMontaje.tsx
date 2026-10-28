@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Check, ChevronLeft, FileText, Image as ImageIcon, MapPin, X } from "lucide-react";
+import { Camera, Check, ChevronLeft, CloudOff, FileText, Image as ImageIcon, MapPin, X } from "lucide-react";
 import { describeError } from "../../api/client";
 import type { MountConfirmation, MountMotivo } from "../../api/mounts";
 import MiniMapa, { describirUbicacion } from "../MiniMapa/MiniMapa";
@@ -7,6 +7,9 @@ import { prepararFoto, MAX_SUBIDA } from "../../utils/foto";
 import type { UnifiedFixture } from "../../types/fixtures";
 import type { DibujoDeMontaje } from "../../api/montaje";
 import MiZonaEnLaCara from "./MiZonaEnLaCara";
+import {
+  borrarBorrador, cuandoSeGuardo, esErrorDeRed, guardarBorrador, leerBorrador, type BorradorDeMontaje,
+} from "../../utils/borradorDeMontaje";
 
 /**
  * La única pregunta del montaje: ¿lo montaste?
@@ -19,6 +22,12 @@ import MiZonaEnLaCara from "./MiZonaEnLaCara";
  *
  * Lo que cambia entre las dos puertas entra por props: a dónde se manda el
  * reporte, de dónde sale la planometría y si hay una lista a la que volver.
+ *
+ * Sin señal (2026-10-28): si el envío falla por la red, el reporte —con la
+ * foto— queda guardado en el teléfono (`utils/borradorDeMontaje`) y se manda
+ * solo cuando vuelve la señal; si la página se cierra, al volver a abrir el
+ * enlace se ofrece «Mandar ahora» o «Descartar». Un «no» del servidor (el
+ * enlace venció, el contrato cambió) no se guarda: guardarlo no lo arregla.
  */
 
 /** El espacio que hay que montar, tal como lo muestra el formulario. */
@@ -140,6 +149,18 @@ export default function FormularioMontaje({
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  /** El reporte de este montaje, guardado en el teléfono: el de una visita
+   *  anterior (`pendiente`, todavía no está en el formulario) o el que no
+   *  pudo salir recién (`sinSenal`: cuándo se guardó). */
+  const clave = `${item.code}|${item.desde}`;
+  const [pendiente, setPendiente] = useState<BorradorDeMontaje | null>(null);
+  const [sinSenal, setSinSenal] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    void leerBorrador(clave).then((b) => { if (vivo) setPendiente(b); });
+    return () => { vivo = false; };
+  }, [clave]);
+
   useEffect(() => () => { if (vista) URL.revokeObjectURL(vista); }, [vista]);
 
   async function elegirFoto(f: File | null) {
@@ -197,19 +218,39 @@ export default function FormularioMontaje({
       setError("Falta la foto. Es la prueba de que la exhibición quedó armada.");
       return;
     }
+    await mandar({
+      estado: modo,
+      motivo: modo === "no_montado" ? motivo! : undefined,
+      nota: nota.trim() || undefined,
+      reportadoPor: quienReporta ? undefined : quien.trim() || undefined,
+      foto,
+    });
+  }
+
+  /** Manda el reporte. Si no hay señal, lo guarda en el teléfono. */
+  async function mandar(datos: DatosReporte) {
+    if (enviandoRef.current) return;
     enviandoRef.current = true;
     setEnviando(true);
     setError("");
     try {
-      const saved = await onEnviar({
-        estado: modo,
-        motivo: modo === "no_montado" ? motivo! : undefined,
-        nota: nota.trim() || undefined,
-        reportadoPor: quienReporta ? undefined : quien.trim() || undefined,
-        foto,
-      });
+      const saved = await onEnviar(datos);
+      void borrarBorrador(clave);
+      setSinSenal(null);
       onSaved(saved);
     } catch (e: any) {
+      if (esErrorDeRed(e)) {
+        const guardado = new Date().toISOString();
+        const ok = await guardarBorrador(clave, {
+          estado: datos.estado, motivo: datos.motivo, nota: datos.nota, quien: datos.reportadoPor,
+          foto: datos.foto, fotoNombre: datos.foto?.name, guardado,
+        });
+        if (ok) setSinSenal(guardado);
+        else setError("Sin señal. Este teléfono no deja guardar el reporte: no cierres esta página y volvé a intentar.");
+        enviandoRef.current = false;
+        setEnviando(false);
+        return;
+      }
       // Un tiempo agotado no trae `detail`, y "No se pudo completar la
       // operación" no le dice a nadie qué hacer. Acá sí: reintentar sirve,
       // y el formulario quedó lleno.
@@ -222,6 +263,37 @@ export default function FormularioMontaje({
       enviandoRef.current = false;
       setEnviando(false);
     }
+  }
+
+  // Volvió la señal: el reporte guardado se manda solo.
+  const reintentar = useRef<() => void>(() => {});
+  reintentar.current = () => { void enviar(); };
+  useEffect(() => {
+    if (!sinSenal) return;
+    const alVolver = () => reintentar.current();
+    window.addEventListener("online", alVolver);
+    return () => window.removeEventListener("online", alVolver);
+  }, [sinSenal]);
+
+  /** «Mandar ahora» del reporte de una visita anterior: vuelve al formulario
+   *  tal como quedó y sale. */
+  function mandarPendiente(b: BorradorDeMontaje) {
+    const archivo = b.foto
+      ? new File([b.foto], b.fotoNombre || "foto.jpg", { type: b.foto.type || "image/jpeg" })
+      : null;
+    if (vista) URL.revokeObjectURL(vista);
+    setVista(archivo ? URL.createObjectURL(archivo) : null);
+    setFoto(archivo);
+    setModo(b.estado);
+    setMotivo(b.motivo ?? null);
+    setNota(b.nota ?? "");
+    setQuien(b.quien ?? "");
+    setPendiente(null);
+    setSinSenal(b.guardado);
+    void mandar({
+      estado: b.estado, motivo: b.motivo, nota: b.nota,
+      reportadoPor: quienReporta ? undefined : b.quien, foto: archivo,
+    });
   }
 
   const campo: React.CSSProperties = {
@@ -355,6 +427,37 @@ export default function FormularioMontaje({
               {ubicacion}
             </div>
           )}
+        </div>
+      )}
+
+      {pendiente && (
+        <div role="status" data-reporte-guardado
+          style={{
+            display: "grid", gap: 10, marginBottom: 16, padding: 14, borderRadius: "var(--r-lg)",
+            background: "var(--entra-suave)", border: "1px solid var(--entra-borde)", color: "var(--ink-1)",
+          }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}>
+            <CloudOff size={17} aria-hidden style={{ color: "var(--entra-txt)" }} /> Tenés un reporte sin mandar
+          </div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.45, color: "var(--ink-2)" }}>
+            «{pendiente.estado === "montado" ? "Lo monté" : "No pude"}»
+            {pendiente.foto ? " · con foto" : ""}
+            {pendiente.quien ? ` · ${pendiente.quien}` : ""} · guardado {cuandoSeGuardo(pendiente.guardado)}.
+            Todavía no llegó al sistema.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn-principal" onClick={() => mandarPendiente(pendiente)} disabled={enviando}
+              style={{ flex: 1, minHeight: 46, borderRadius: "var(--r-lg)", fontSize: 15, fontFamily: "inherit" }}>
+              {enviando ? "Enviando…" : "Mandar ahora"}
+            </button>
+            <button type="button" onClick={() => { void borrarBorrador(clave); setPendiente(null); }} disabled={enviando}
+              style={{
+                minHeight: 46, padding: "0 16px", borderRadius: "var(--r-lg)", fontSize: 15, fontWeight: 600,
+                fontFamily: "inherit", cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)",
+              }}>
+              Descartar
+            </button>
+          </div>
         </div>
       )}
 
@@ -523,6 +626,20 @@ export default function FormularioMontaje({
           {error && (
             <div style={{ marginBottom: 10, fontSize: 13, color: "var(--danger)" }}>{error}</div>
           )}
+          {sinSenal && !error && (
+            <div role="status" data-sin-senal
+              style={{
+                display: "grid", gap: 4, marginBottom: 10, padding: "12px 14px", borderRadius: "var(--r-lg)",
+                background: "var(--entra-suave)", border: "1px solid var(--entra-borde)", fontSize: 14, lineHeight: 1.45, color: "var(--ink-1)",
+              }}>
+              <b style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <CloudOff size={16} aria-hidden style={{ color: "var(--entra-txt)" }} /> Sin señal: tu reporte quedó guardado en este teléfono.
+              </b>
+              <span style={{ color: "var(--ink-2)" }}>
+                La foto, tu nombre y la nota no se pierden aunque cierres la página. Se manda solo apenas vuelva la señal.
+              </span>
+            </div>
+          )}
 
           {/* EL botón principal de la pantalla de montaje. «Lo monté» / «No
               pude» de más arriba NO son la acción: son una elección, y siguen
@@ -537,10 +654,12 @@ export default function FormularioMontaje({
               fontSize: 16, fontFamily: "inherit",
             }}
           >
-            {enviando ? "Enviando…" : "Confirmar"}
+            {enviando ? "Enviando…" : sinSenal ? "Reintentar ahora" : "Confirmar"}
           </button>
           <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--ink-3)", textAlign: "center" }}>
-            La fecha y la hora las pone el sistema al recibir el reporte.
+            {sinSenal
+              ? `Guardado en el teléfono ${cuandoSeGuardo(sinSenal)} · todavía no llegó al sistema.`
+              : "La fecha y la hora las pone el sistema al recibir el reporte."}
           </p>
         </>
       )}

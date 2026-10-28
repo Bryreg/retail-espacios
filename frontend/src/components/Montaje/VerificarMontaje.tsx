@@ -39,7 +39,7 @@ function Lamina({ titulo, url, tipo, vacio }: { titulo: string; url: string | nu
  * quiere, el aviso de montaje otra vez—; queda quién y cuándo. Un «no se
  * pudo» no se verifica: se lee el motivo y qué hacer.
  */
-export default function VerificarMontaje({ reporte, titulo, puedeVerificar, onCerrar, onVerificado, onRegistrarDeNuevo }: {
+export default function VerificarMontaje({ reporte, titulo, puedeVerificar, onCerrar, onVerificado, onRegistrarDeNuevo, siguiente }: {
   reporte: MountConfirmation;
   titulo: string;
   puedeVerificar: boolean;
@@ -47,6 +47,9 @@ export default function VerificarMontaje({ reporte, titulo, puedeVerificar, onCe
   onVerificado: (m: MountConfirmation) => void;
   /** Registrar el montaje de nuevo (quien monta lo corrige). */
   onRegistrarDeNuevo?: () => void;
+  /** Después de verificar: el siguiente montaje sin verificar de la sede y
+   *  cuántos quedan (2026-10-28), para seguir sin volver a la lista. */
+  siguiente?: { codigo: string; detalle: string; quedan: number; sede: string; onAbrir: () => void } | null;
 }) {
   const [plano, setPlano] = useState<{ url: string; tipo: string } | null | undefined>(undefined);
   const [resultado, setResultado] = useState<"coincide" | "no_coincide" | null>(null);
@@ -113,7 +116,25 @@ export default function VerificarMontaje({ reporte, titulo, puedeVerificar, onCe
         )}
 
         {hecho ? (
-          <p className="vm-hecho" role="status">{hecho}</p>
+          <>
+            <p className="vm-hecho" role="status">{hecho}</p>
+            {siguiente !== undefined && (
+              <div className="vm-siguiente" data-siguiente-montaje>
+                {siguiente ? (
+                  <>
+                    <span className="vm-sig-titulo">Siguiente · quedan {siguiente.quedan} sin verificar en {siguiente.sede}</span>
+                    <div className="vm-sig-fila">
+                      <span><b className="mono">{siguiente.codigo}</b><small>{siguiente.detalle}</small></span>
+                      <button type="button" className="btn-principal" onClick={siguiente.onAbrir}>Verificar el siguiente</button>
+                    </div>
+                  </>
+                ) : (
+                  <span className="vm-sig-titulo">No quedan montajes sin verificar en la sede.</span>
+                )}
+                <button type="button" className="vm-btn" onClick={onCerrar}>Volver a la lista</button>
+              </div>
+            )}
+          </>
         ) : puede ? (
           <div className="vm-decidir">
             <div className="vm-opciones" role="radiogroup" aria-label="¿Coincide con lo pedido?">

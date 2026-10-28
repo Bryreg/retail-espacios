@@ -24,6 +24,7 @@ import { nombreDeMueble } from "../utils/nomenclatura";
 // El tipo de cada espacio, como le dicen acá («tope de góndola»): la lista y el
 // formulario del montaje.
 import { conNombrePropio } from "../catalogo/nombresPropios";
+import type { DesdeMontaje } from "../store/armazonStore";
 import {
   cantidadDe, codigoDeParte, esParticipacion, esPieza, indiceDePartes, partirCodigo, piezasDeLaFamilia, sufijoDeParte,
   textoDeParticipacionParaMontar, textoParaMontar, type ParteRef,
@@ -108,13 +109,16 @@ export default function MountView({
   initialCode,
   onDone,
   onAbrirPendientes,
+  resaltar,
 }: {
   /** Código que venía en el enlace del correo, si vino por ahí. */
   initialCode?: string | null;
   /** «Resumen de montajes»: lleva a Indicadores. */
   onDone?: () => void;
-  /** «Adjuntar planometría»: abre Pendientes, donde se adjunta. */
-  onAbrirPendientes?: () => void;
+  /** «Adjuntar planometría» / «Ubicar la zona»: abre Pendientes en esa fila. */
+  onAbrirPendientes?: (d: DesdeMontaje) => void;
+  /** Se volvió de Pendientes: la fila de ese contrato (`SEDE-CODIGO`) a la vista. */
+  resaltar?: string | null;
 }) {
   const fixturesBySede = useFixtureStore((s) => s.fixturesBySede);
   const sedes = useFixtureStore((s) => s.sedes);
@@ -346,6 +350,31 @@ export default function MountView({
     );
   }
 
+  // Se volvió de Pendientes: esa fila, a la vista.
+  useEffect(() => {
+    if (!resaltar) return;
+    const t = window.setTimeout(() => document.querySelector(".mj-fila[data-resaltada]")?.scrollIntoView({ block: "center" }), 200);
+    return () => window.clearTimeout(t);
+  }, [resaltar]);
+
+  /** Después de verificar uno: el siguiente sin verificar, en el orden de la
+   *  lista, y cuántos quedan (sin contar el que se acaba de verificar). */
+  const siguienteSinVerificar = (actual: string) => {
+    const quedan = filas.filter((f) => f.estado === "sin_verificar" && f.clave !== actual);
+    const f = quedan[0];
+    if (!f) return null;
+    return {
+      codigo: f.codigo,
+      detalle: `${f.quien} · ${f.tipo} · montado, sin verificar`,
+      quedan: quedan.length,
+      sede: f.sede,
+      onAbrir: () => {
+        if (f.clase === "planograma" && f.versionId !== undefined) { setMirando(null); setRevisandoVersion(f.versionId); }
+        else setMirando(f);
+      },
+    };
+  };
+
   /** Lo que se hace con la fila: un botón, con el verbo del estado. */
   const accion = (f: Fila): { texto: string; hacer: () => void } | null => {
     if (f.clase === "planograma") {
@@ -354,7 +383,11 @@ export default function MountView({
         : null;
     }
     if ((f.estado === "falta_planometria" || f.estado === "falta_zona") && onAbrirPendientes) {
-      return { texto: f.estado === "falta_planometria" ? "Adjuntar planometría" : "Ubicar la zona", hacer: onAbrirPendientes };
+      const estado = f.estado;
+      return {
+        texto: estado === "falta_planometria" ? "Adjuntar planometría" : "Ubicar la zona",
+        hacer: () => onAbrirPendientes({ codigo: f.pendiente?.code ?? f.codigo, corto: f.codigo, estado, quien: f.quien }),
+      };
     }
     if (filtroDe(f.estado) === "sin_montar" && f.pendiente) return { texto: "Registrar montaje", hacer: () => setAbierto(f.pendiente!) };
     if (f.estado === "sin_verificar") return { texto: isAdmin ? "Verificar montaje" : "Ver registro y foto", hacer: () => setMirando(f) };
@@ -444,7 +477,8 @@ export default function MountView({
           {visibles.map((f) => {
             const a = accion(f);
             return (
-              <li key={f.clave} className="mj-fila" data-montaje={f.clase} data-estado={f.estado} data-urgente={f.pendiente?.urgente && filtroDe(f.estado) === "sin_montar" || undefined}>
+              <li key={f.clave} className="mj-fila" data-montaje={f.clase} data-estado={f.estado} data-urgente={f.pendiente?.urgente && filtroDe(f.estado) === "sin_montar" || undefined}
+                data-resaltada={(!!resaltar && (f.pendiente?.code ?? f.codigo) === resaltar) || undefined}>
                 <span className="mj-cod">
                   <b className="mono">{f.codigo}</b>
                   {f.parte && <small className="mj-parte">{f.parte}</small>}
@@ -473,12 +507,14 @@ export default function MountView({
 
       {mirando?.reporte && (
         <VerificarMontaje
+          key={mirando.clave}
           reporte={mirando.reporte}
           titulo={mirando.codigo}
           puedeVerificar={isAdmin}
           onCerrar={() => setMirando(null)}
           onVerificado={(m) => setMounts((prev) => prev.map((x) => (x.id === m.id ? { ...x, verificacion: m.verificacion } : x)))}
           onRegistrarDeNuevo={mirando.pendiente ? () => { const p = mirando.pendiente!; setMirando(null); setAbierto(p); } : undefined}
+          siguiente={isAdmin ? siguienteSinVerificar(mirando.clave) : undefined}
         />
       )}
       {revisandoVersion !== null && (
