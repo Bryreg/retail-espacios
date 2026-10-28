@@ -1368,7 +1368,7 @@ function VistaDelPlano({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void
   return (
     <div className="vista-plano" role="group" aria-label="Vista del plano">
       {([["plano", "2D", "Dibujar la tienda vista desde arriba y editar los muebles"],
-         ["plano3d", "3D", "Ver la tienda en 3D y aplicar las artes del proveedor"]] as const).map(([m, palabra, para]) => (
+         ["plano3d", "3D", "Mirar la tienda en 3D: recorrerla, probar productos y distribuir caras"]] as const).map(([m, palabra, para]) => (
         <button key={m} type="button" aria-pressed={modulo === m} title={para} onClick={() => ir(m)}>
           {palabra}
         </button>

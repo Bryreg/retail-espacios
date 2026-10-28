@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useCallback, useMemo } from "react";
 // Un solo juego de íconos, 16 px y trazo 1,75 (la hoja de íconos del
 // rediseño, tabla «Plano»); los de cada tipo de mueble, en `iconos.ts`.
 import {
@@ -8,10 +8,13 @@ import {
   Image as ImageIcon, Store, Ban,
 } from "lucide-react";
 import { ICONO, iconoDeFamilia, iconoDelTipo } from "./iconos";
+/** La vista 3D del mueble elegido, en su ficha (2026-10-28). Perezosa: trae el
+ *  3D recién cuando se elige un mueble. */
+const Miniatura3D = lazy(() => import("./Miniatura3D"));
 import { TIPOS_CON_GEOMETRIA, geometriaALaVista, metros } from "../../utils/geometriaDelMueble";
 import { fechaEnCurso } from "../../utils/propuesta";
 import type { Space } from "../../types";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useFixtureStore, selectFixtures, selectHasPendingWork, normalizeSede, DEFAULT_SEDES } from "../../store/fixtureStore";
 import type { UnifiedFixture, FaceData } from "../../types/fixtures";
 import { fullSpaceCode, isRentable, isRotated90, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
@@ -23,7 +26,7 @@ import {
 import type { RechazoDeNombre } from "../../utils/nomenclatura";
 import { revisarPlano, contratosConNombreAjeno, type ContratoDelPlano } from "../../utils/revision";
 import { storeToItems, itemsToStore, type FixType2D, type PlacedItem2D } from "../../utils/convertirPlano";
-import { CATALOG, CATALOGO_2D, H_DEFAULTS, modelosDelPlanoConPropias, type ModeloDelPlano } from "../../catalogo/plano2D";
+import { CATALOG, CATALOGO_2D, H_DEFAULTS, misMueblesDelPlano, type ModeloDelPlano } from "../../catalogo/plano2D";
 import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
 import { useFichasPropias } from "../../store/fichasPropias";
 // Cómo le dice este supermercado a cada familia: la biblioteca, el panel y la
@@ -388,10 +391,11 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
    *  siempre. Se suelta junto con el tipo. */
   const [pendingModelo, setPendingModelo] = useState<ModeloDelPlano | null>(null);
   useEffect(() => { if (pendingType === null) setPendingModelo(null); }, [pendingType]);
-  /** La biblioteca de modelos: los de RECABRA y, después, las fichas propias
-   *  del supermercado que no están retiradas, debajo de su familia. */
+  /** «Mis muebles» (2026-10-28): la biblioteca ofrece uno de cada tipo, en
+   *  su medida estándar, y aparte sólo los muebles que el supermercado armó
+   *  en el taller (sin los retirados). Los modelos de RECABRA no se listan. */
   const fichasPropias = useFichasPropias();
-  const modelosDelPlano = useMemo(() => modelosDelPlanoConPropias(fichasPropias), [fichasPropias]);
+  const misMuebles = useMemo(() => misMueblesDelPlano(fichasPropias), [fichasPropias]);
   const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
   const [editingCodeVal, setEditingCodeVal] = useState("");
   /** Por qué no se pudo poner ese nombre, y qué se puede hacer al respecto.
@@ -1442,8 +1446,65 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   }
 
   /** El catálogo completo flota sobre el lienzo y arranca cerrado: a la vista
-   *  queda la tira de tipos (rediseño UX 2026-10, etapa 6). */
-  const [catalogoAbierto, setCatalogoAbierto] = useState(false);
+   *  queda la tira de tipos (rediseño UX 2026-10, etapa 6). Al volver del
+   *  taller («Volver al plano») arranca abierto, con «Mis muebles» a la vista:
+   *  el mueble recién armado está ahí para colocarlo. */
+  const location = useLocation();
+  /** Por debajo de 860 px la ficha sube como una hoja, y en el teléfono la
+   *  tira va abajo y el catálogo también sube: la tira se mide (`--ancho-tira`,
+   *  `--alto-tira`) y las hojas empiezan a su lado o terminan encima, así
+   *  ninguna la tapa (el dueño, 2026-10-28: que nada se monte sobre otra cosa). */
+  const cuerpoRef = useRef<HTMLDivElement>(null);
+  /** Los filtros de abajo: si no entran, el último se desvanece (marca
+   *  `data-desborda`) en vez de cortarse a mitad de palabra. */
+  const chipsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = chipsRef.current;
+    if (!el) return;
+    const medir = () => el.toggleAttribute("data-desborda", el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    el.addEventListener("scroll", medir, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener("scroll", medir); };
+  }, []);
+  const tiraRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const cuerpo = cuerpoRef.current, tira = tiraRef.current;
+    if (!cuerpo) return;
+    if (!tira) { cuerpo.style.removeProperty("--alto-tira"); cuerpo.style.removeProperty("--ancho-tira"); return; }
+    const medir = () => {
+      cuerpo.style.setProperty("--alto-tira", `${tira.offsetHeight}px`);
+      cuerpo.style.setProperty("--ancho-tira", `${tira.offsetWidth}px`);
+    };
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(tira);
+    return () => ro.disconnect();
+  }, [editMode]);
+  const vieneDelTaller = !!(location.state as { delTaller?: boolean } | null)?.delTaller;
+  const [catalogoAbierto, setCatalogoAbierto] = useState(vieneDelTaller);
+  // Se usa una vez: recargar la página más tarde no vuelve a abrir el catálogo.
+  useEffect(() => {
+    if (!vieneDelTaller) return;
+    setEditMode(true);
+    navigate(location.pathname, { replace: true, state: null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vieneDelTaller]);
+  /** Por debajo de 860 px la ficha sube como hoja en el mismo lugar que el
+   *  catálogo (o encima de él): al elegir un mueble el catálogo se pliega, así
+   *  las dos no se montan. Más ancho, cada una tiene su columna. */
+  useEffect(() => {
+    if (selectedId && typeof window !== "undefined" && window.matchMedia("(max-width: 860px)").matches) setCatalogoAbierto(false);
+  }, [selectedId]);
+  /** «Crear un mueble con otras medidas»: al taller, a armar la ficha, con la
+   *  vuelta a este plano. Lleva la sede (el aviso del taller la dice) y el
+   *  tipo que se estaba por colocar, si había uno (la ficha nace de esa familia). */
+  const crearEnElTaller = useCallback(() => {
+    const q = new URLSearchParams({ desde: "plano", sede });
+    if (pendingType) q.set("tipo", pendingType);
+    navigate(`/taller?${q.toString()}`);
+  }, [navigate, sede, pendingType]);
   /** Cuántos muebles de cada tipo tiene la sede: la cuenta de la tira. */
   const cuantosPorTipo = useMemo(() => {
     const m = new Map<string, number>();
@@ -1687,7 +1748,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
       </div>
 
       {/* Main area */}
-      <div className="p2-cuerpo flex flex-1 overflow-hidden">
+      <div className="p2-cuerpo flex flex-1 overflow-hidden" ref={cuerpoRef}>
 
         {/* El catálogo (sólo editando), como en la mesa de trabajo (etapa 6):
             una tira con cada tipo —ícono, nombre y cuántos hay en la sede—
@@ -1695,7 +1756,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
             encima del lienzo: familias plegables, medidas, modelos de fábrica
             y el lápiz del nombre propio. */}
         {editMode && (
-          <nav className="p2-tira" aria-label="Muebles para colocar en el plano" data-tira-2d>
+          <nav className="p2-tira" aria-label="Muebles para colocar en el plano" data-tira-2d ref={tiraRef}>
             {CATALOG.map((def, n) => {
               const IconoTipo = iconoDelTipo(def.type);
               const enLaSede = cuantosPorTipo.get(def.type) ?? 0;
@@ -1714,12 +1775,24 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                 </button>
               );
             })}
-            <button type="button" className="p2-pieza mas" aria-expanded={catalogoAbierto} data-catalogo-completo
-              title="El catálogo completo: familias, modelos de fábrica y el nombre de cada tipo en esta tienda"
-              onClick={() => setCatalogoAbierto((v) => !v)}>
-              <Ellipsis {...ICONO} />
-              <span className="nom">Más</span>
-            </button>
+            {/* El pie de la tira, pegado abajo y en UN bloque (los dos
+                botones juntos: dos pegajosos se montaban uno sobre otro). */}
+            <div className="p2-tira-pie">
+              {isAdmin && (
+                <button type="button" className="p2-pieza crear" data-crear-mueble
+                  title="Crear un mueble con otras medidas, en el taller: queda en «Mis muebles»"
+                  onClick={crearEnElTaller}>
+                  <Plus {...ICONO} />
+                  <span className="nom">Crear mueble</span>
+                </button>
+              )}
+              <button type="button" className="p2-pieza mas" aria-expanded={catalogoAbierto} data-catalogo-completo
+                title="El catálogo: uno de cada tipo, «Mis muebles» y el nombre de cada tipo en esta tienda"
+                onClick={() => setCatalogoAbierto((v) => !v)}>
+                <Ellipsis {...ICONO} />
+                <span className="nom">Más</span>
+              </button>
+            </div>
           </nav>
         )}
         {editMode && catalogoAbierto && (
@@ -1734,10 +1807,49 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
               </button>
             </div>
             <div className="p2-cat-b">
+                {/* «Mis muebles» (2026-10-28): lo que el supermercado armó en el
+                    taller. Arriba de todo, para que lo propio se encuentre sin
+                    buscar; vacío al empezar, con la explicación y la salida al
+                    taller para lo que mide otra cosa. */}
+                <section className="p2-mios" data-mis-muebles aria-label="Mis muebles">
+                  <h4>Mis muebles · {misMuebles.length}</h4>
+                  {misMuebles.length === 0 ? (
+                    <p>Uno de cada tipo, con las medidas más comunes. Si el tuyo mide otra cosa, armalo una vez y queda acá.</p>
+                  ) : (
+                    <div className="p2-mios-l">
+                      {misMuebles.map(({ tipo, modelo: m }) => {
+                        const IconoTipo = iconoDelTipo(tipo);
+                        const activo = pendingModelo?.id === m.id && activeTool === "place";
+                        return (
+                          <button key={m.id} data-modelo={m.id} data-mi-mueble={tipo} type="button" className="p2-modelo" data-activo={activo || undefined} draggable
+                            title={`${m.nombre} · clic y después en el plano, o arrastrá`}
+                            onDragStart={(e) => { arrastreRef.current = { type: tipo, modelo: m }; e.dataTransfer.setData("text/plain", tipo); e.dataTransfer.effectAllowed = "copy"; }}
+                            onDragEnd={() => { arrastreRef.current = null; }}
+                            onClick={() => { setActiveTool("place"); setPendingType(tipo); setPendingModelo(m); }}>
+                            <IconoTipo {...ICONO} />
+                            <span className="txt">
+                              <span className="nom">{m.estimado ? "≈ " : ""}{m.nombre}</span>
+                              <span className="med">{metros(m.w)} × {metros(m.h)} × {metros(m.nace.h)} m</span>
+                              {/* Cómo se vende lo que se coloca desde esta ficha
+                                  («por puertas»): lo dice la ficha. */}
+                              {m.comoSeVende && (
+                                <span className="como" data-como-se-vende={m.comoSeVende}>{m.comoSeVende}</span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <button type="button" className="p2-btn" data-crear-en-taller onClick={crearEnElTaller}>
+                      <Plus {...ICONO} /> Crear un mueble con otras medidas
+                    </button>
+                  )}
+                </section>
                 {familias.map(([cat, defs]) => {
                   const IconoFamilia = iconoDeFamilia(cat, defs[0]?.type);
                   const abierta = familiasAbiertas.has(cat);
-                  const modelosDeLaFamilia = defs.reduce((n, d) => n + (modelosDelPlano[d.type]?.length ?? 0), 0);
                   return (
                     <div key={cat} className="p2-fam" data-familia={cat}>
                       <button type="button" className="p2-fam-h" aria-expanded={abierta}
@@ -1749,10 +1861,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         <IconoFamilia {...ICONO} />
                         <div>
                           <b>{cat}</b>
-                          <span>
-                            {defs.length} {defs.length === 1 ? "tipo" : "tipos"}
-                            {modelosDeLaFamilia > 0 && <> · {modelosDeLaFamilia} {modelosDeLaFamilia === 1 ? "modelo" : "modelos"}</>}
-                          </span>
+                          <span>{defs.length} {defs.length === 1 ? "tipo" : "tipos"}</span>
                         </div>
                         {abierta ? <ChevronDown {...ICONO} /> : <ChevronRight {...ICONO} />}
                       </button>
@@ -1760,7 +1869,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                         const displayLabel = nombrePropio(def.type, catalogLabels) ?? def.label;
                         const isEditingThis = editingCatalogType === def.type;
                         const isActive = pendingType === def.type && activeTool === "place" && !pendingModelo;
-                        const modelos = modelosDelPlano[def.type] ?? [];
                         const IconoTipo = iconoDelTipo(def.type);
                         return (
                           <div key={cat + def.type} className="p2-tipo" data-tipo-2d={def.type} data-activo={isActive || undefined}>
@@ -1795,7 +1903,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 )}
                                 <span className="med">
                                   {metros(def.w)} × {metros(def.h)} × {metros(H_DEFAULTS[def.type] ?? 0)} m
-                                  {modelos.length > 0 && ` · ${modelos.length} ${modelos.length === 1 ? "modelo" : "modelos"}`}
                                 </span>
                               </div>
                             </button>
@@ -1811,34 +1918,6 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
                                 aria-label="Cómo le dicen en esta tienda">
                                 <Pencil {...ICONO} />
                               </button>
-                            )}
-                            {/* Los modelos de la familia: muebles de verdad, con las
-                                medidas de su ficha —los de RECABRA y después las
-                                fichas propias del supermercado—. Lo de arriba es el
-                                modelo base, que se coloca como siempre. «≈»: medidas
-                                deducidas. */}
-                            {modelos.length > 0 && (
-                              <details className="p2-modelos" data-modelos-2d={def.type}
-                                open={(pendingType === def.type && !!pendingModelo) || undefined}>
-                                <summary>Elegir el modelo</summary>
-                                {modelos.map((m) => {
-                                  const activo = pendingModelo?.id === m.id && activeTool === "place";
-                                  return (
-                                    <button key={m.id} data-modelo={m.id} type="button" className="p2-modelo" data-activo={activo || undefined} draggable
-                                      onDragStart={(e) => { arrastreRef.current = { type: def.type, modelo: m }; e.dataTransfer.setData("text/plain", def.type); e.dataTransfer.effectAllowed = "copy"; }}
-                                      onDragEnd={() => { arrastreRef.current = null; }}
-                                      onClick={() => { setActiveTool("place"); setPendingType(def.type); setPendingModelo(m); }}>
-                                      <span className="nom">{m.estimado ? "≈ " : ""}{m.nombre}</span>
-                                      <span className="med">{metros(m.w)} × {metros(m.h)} × {metros(m.nace.h)} m</span>
-                                      {/* Cómo se vende lo que se coloca desde este
-                                          modelo («por puertas»): lo dice su ficha. */}
-                                      {m.comoSeVende && (
-                                        <span className="como" data-como-se-vende={m.comoSeVende}>{m.comoSeVende}</span>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </details>
                             )}
                           </div>
                         );
@@ -2610,7 +2689,7 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
           )}
 
           <div className="p2-abajo">
-            <div className="p2-chips p2-flota" role="group" aria-label="Filtrar por estado" data-filtros-2d>
+            <div className="p2-chips p2-flota" role="group" aria-label="Filtrar por estado" data-filtros-2d ref={chipsRef}>
               {STATUS_FILTER_CHIPS.map((chip) => (
                 <button key={chip.value} type="button" className="p2-chip" data-filtro={chip.value}
                   aria-pressed={statusFilter === chip.value} onClick={() => setStatusFilter(chip.value)}>
@@ -4145,6 +4224,13 @@ function AssignmentPanel({
           <span>{dispoPc.dispo === "parcial" ? "Vendido en parte · " : ""}<b>{textoCortoDeParticipacion(dispoPc, isAdmin)}</b></span>
         ) : null}
       </div>
+
+      {/* Cómo queda en 3D: el 2D no dibuja la cara (entrepaños, puertas,
+          módulo). Dentro de la ficha, nunca encima del lienzo. */}
+      <Suspense fallback={<div className="p2-mini3d" aria-hidden />}>
+        <Miniatura3D id={item.id} cara={isDouble ? activeFace : "A"}
+          onAbrir3D={() => useFixtureStore.getState().pedirEnfoque3D(item.id, isDouble ? activeFace : "A")} />
+      </Suspense>
 
       {/* Las tres pestañas. */}
       <div className="p2-seg ancho" role="tablist" aria-label="Qué mirar del mueble" data-pestanas>

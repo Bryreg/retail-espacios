@@ -20,7 +20,8 @@ import { comoSeVendeCorto } from "../../utils/partes";
  * La pestaña «Fichas» del taller: la dueña arma la ficha de un mueble suyo
  * que el catálogo no tiene —la nevera de dos puertas de su proveedor, la
  * góndola de pared de 1,70 que hay en su tienda— y desde ese momento aparece
- * en la paleta del plano y del Editor 3D, debajo de su familia. Sin pedirnos
+ * en «Mis muebles», el catálogo del plano 2D (desde 2026-10-28 el 3D no coloca
+ * muebles). Sin pedirnos
  * un cambio y sin foto: familia, nombre, medidas, la geometría de su familia,
  * la tarifa y de dónde salieron los datos.
  *
@@ -60,13 +61,16 @@ const estilo = {
 };
 
 export function PanelDeFichas({
-  form, onForm, editando, onEditando,
+  form, onForm, editando, onEditando, onGuardada,
 }: {
   form: FormularioDeFicha;
   onForm: (f: FormularioDeFicha) => void;
   /** La clave de la ficha que se está editando, o `null` si es una nueva. */
   editando: string | null;
   onEditando: (clave: string | null) => void;
+  /** Una ficha NUEVA quedó guardada (el taller abierto desde el plano lo dice
+   *  en su aviso, con la vuelta al plano). */
+  onGuardada?: (nombre: string) => void;
 }) {
   const propias = useFichasPropias();
   // La familia como le dicen acá, delante de la de RECABRA («mamut — Estiba»).
@@ -125,9 +129,9 @@ export function PanelDeFichas({
       }
       await recargarFichasPropias();
       setAviso(nueva
-        ? `Guardada: «${r.ficha.nombre}». Ya está en la paleta del plano y del Editor 3D, debajo de su familia.`
+        ? `Guardada: «${r.ficha.nombre}». Ya está en «Mis muebles», en el catálogo del plano.`
         : `Cambios guardados en «${r.ficha.nombre}». Los muebles ya colocados con esta ficha no cambian.`);
-      if (nueva) empezarDeNuevo(form.entrada);
+      if (nueva) { onGuardada?.(r.ficha.nombre); empezarDeNuevo(form.entrada); }
       else { setIntento(false); setTocados(new Set()); setDelServidor([]); }
     } finally {
       setGuardando(false);
@@ -185,8 +189,8 @@ export function PanelDeFichas({
       <div style={estilo.seccion}>
         <p style={estilo.titulo}>Fichas de tus muebles</p>
         <p style={{ fontSize: 11.5, color: "var(--ink-3)", margin: 0, lineHeight: 1.45 }}>
-          Armá la ficha de un mueble que el catálogo no tiene. Queda en la paleta del plano y del Editor 3D,
-          debajo de su familia. Sin foto: sólo las medidas y de dónde salieron.
+          Armá la ficha de un mueble con tus medidas. Queda en «Mis muebles», en el catálogo del plano,
+          para colocarla. Sin foto: sólo las medidas y de dónde salieron.
         </p>
       </div>
 

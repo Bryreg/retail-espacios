@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { SIN_ESCALA } from "../../escala";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import {
-  Trash2, RotateCw, FlipHorizontal2, Save, X,
-  Building2, DollarSign, Calendar, Tag, Info, AlertTriangle, Boxes,
+  X,
+  Building2, DollarSign, Calendar, Tag, AlertTriangle, Boxes,
   Eye, EyeOff, Camera, User, Package, Plus, Search, Upload, Loader2,
 } from "lucide-react";
 import { Html } from "@react-three/drei";
@@ -89,20 +89,17 @@ import {
 } from "./muebles/medidas";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import {
-  fichaDe, fixturesToStore, storeToFixtures as delStoreAl3D, type Catalogo3D, type PlacedFixture,
+  fixturesToStore, storeToFixtures as delStoreAl3D, type Catalogo3D, type PlacedFixture,
 } from "../../utils/convertirPlano";
 import { useModalAbierto } from "../../tema";
-import { FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO, paletaConPropias } from "../../catalogo/editor3D";
+import { FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO } from "../../catalogo/editor3D";
 import { modeloPorId, nombreDeModelo, textoDeFuente } from "../../catalogo/catalogo";
 // Cómo le dice este supermercado a cada familia: la paleta, el panel, el cartel
 // del mouse y la lámina del proveedor (`catalogo/nombresPropios.ts`).
 import { conNombrePropio } from "../../catalogo/nombresPropios";
 import { useFichasPropias } from "../../store/fichasPropias";
-import { GeometriaDelMueble } from "../GeometriaDelMueble";
-import { PartesDelMueble } from "../PartesDelMueble";
 import { textoDeLoQueNuncaSeAlquila } from "../../utils/partesDelMueble";
-import type { FixtureDef } from "../../catalogo/editor3D";
-import { isDoubleGondola, isRentable, fullSpaceCode, NON_RENTABLE_BY_DEFAULT, NUNCA_ALQUILABLE } from "../../types/fixtures";
+import { isDoubleGondola, isRentable, fullSpaceCode, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import {
   PALABRA_POR_OCUPACION, claseDe, codigoDeParte, codigoVisibleDe, divisionDe, notaDeEstadoPorOcupacion, porParticipacion,
 } from "../../utils/partes";
@@ -110,23 +107,17 @@ import {
 import { loDelProveedor, POR_QUE_NO_SE_OFRECE } from "../../utils/partes";
 import { partesQuePisa } from "../../utils/slotsDeLasPartes";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
-import {
-  nombreDeMueble, renombrar, intercambiarNombres, choqueDeNombre,
-  textoDelChoque, textoDelIntercambio, normalizar as normalizarNombre,
-} from "../../utils/nomenclatura";
-import type { RechazoDeNombre } from "../../utils/nomenclatura";
+import { nombreDeMueble } from "../../utils/nomenclatura";
 import { fileUrl, getFaceImages } from "../../api/files";
 import { arteUrl, guardarFicha, listarCatalogo, subirArte, type Arte } from "../../api/catalogo";
 import EditorDeFicha, { FICHA_VACIA, enCm, pareceEnPerspectiva } from "./EditorDeFicha";
 import type { FichaDeArte } from "./muebles/producto";
 import { getSuppliers } from "../../api/suppliers";
-import { findOrCreateSpace, updateSpaceStatus } from "../../api/spaces";
 import { describeError } from "../../api/client";
 // Extensión real del local y física de la caminata — geometría pura, probada
 // aparte. STORE_W/STORE_D describen una tienda ficticia que ninguna sede ocupa.
 import {
-  huella, limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
-  TOLERANCIA_CONTACTO,
+  limitesDePlanta, lugarDeLaFigura, murosDeCaminata, puntoDeEntrada, puntoLibreCerca, resolverPaso,
   vistaGeneral, miradaSensata, vistaDeCara, vistaDeVenta, FOV_DE_CERCA,
   personaYTomaDeVenta, FIGURA_DE_ESCALA, SEPARACIONES_DE_LA_FIGURA, fovParaLaCara, dentroDelCuadro,
   ALTO_CIELO_RASO, LUMINARIA, luminariasDeTienda, sombraDeHuellas,
@@ -138,7 +129,6 @@ import {
 import { useAuthStore, selectIsAdmin } from "../../store/authStore";
 import MiniMapa, { type CamaraEnPlanta } from "../MiniMapa/MiniMapa";
 import { componerPropuesta, descargar, nombreDeArchivo, prepararToma } from "../../utils/propuesta";
-import { siguienteCodigo } from "../../utils/nomenclatura";
 import { alMesDe } from "../../utils/meses";
 
 /** El valor de un mueble vendido es el TOTAL de su contrato (`negotiatedValue`,
@@ -154,7 +144,6 @@ function valorAlMes(f: { negotiatedValue?: number; startDate?: string; endDate?:
 
 const STORE_W = 30;
 const STORE_D = 42;
-const SNAP    = 0.05;   // matches FloorPlan2D's snapTo grid (5 cm)
 // Camera is placed on the far (north) side so that the Z axis matches the 2D view:
 // small Z (2D-top) → far from camera → appears at top of 3D scene.
 // Previously the camera was at Z=-8 (south side), which flipped the 2D/3D relationship.
@@ -172,8 +161,6 @@ export const FONDO_DE_SALA = "#e8e4dc";
 export const HOLGURA_DE_LAMINA = 1.35;
 export const CAM_TARGET: [number, number, number] = [STORE_W / 2, 0, STORE_D / 2];
 
-function snap(v: number) { return Math.round(v / SNAP) * SNAP; }
-
 // ─── Visual helpers ───────────────────────────────────────────────────────────
 
 
@@ -188,10 +175,6 @@ const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "s
 function mesYAnio(fecha: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(fecha);
   return m ? `${MESES_CORTOS[Number(m[2]) - 1] ?? ""} ${m[1]}`.trim() : fecha;
-}
-
-function euclidean(ax: number, az: number, bx: number, bz: number) {
-  return Math.sqrt((ax-bx)**2+(az-bz)**2);
 }
 
 // ─── Face paint (per-face material arrays) ───────────────────────────────────
@@ -583,25 +566,10 @@ const STATUS_META: Record<SpaceStatus, { bg: string; text: string; label: string
   maintenance: { bg:"bg-dark-surface-2", text:"text-dark-ink-2", label:"Mantenimiento" },
 };
 
-// ─── Code & slot generation ───────────────────────────────────────────────────
+// ─── Slots ────────────────────────────────────────────────────────────────────
 
-/**
- * El código de un mueble nuevo.
- *
- * Antes acá se CONTABA cuántos había del mismo prefijo y se sumaba uno, y
- * además se anteponía la sede: dos problemas. Borrar `GON-02` hacía que el
- * siguiente volviera a ser `GON-02` —dos muebles con el mismo código, y con
- * eso dos espacios compartiendo contratos y correos— y el plano 2D generaba
- * `GON-01` donde éste generaba `NAVE-GON-001`, así que el mismo plano quedaba
- * con dos maneras de nombrar según por dónde se hubiera dibujado.
- *
- * La sede no va en el código: se antepone al guardar el espacio
- * (`fullSpaceCode`), que es donde hace falta que sea único entre sedes.
- */
-function generateCode(_sede: string, def: FixtureDef, existing: PlacedFixture[]): string {
-  return siguienteCodigo(def.gondolaType ? "gondola" : def.type, existing);
-}
-
+/** Los espacios internos con que nace una góndola o una punta (los usa la
+ *  conversión del plano, `CATALOGO_3D`). */
 function defaultSlots(fix: { type: FixType; w: number; h: number; code: string }): ShelfSlot[] {
   if (fix.type !== "gondola" && fix.type !== "punta") return [];
   const cols = fix.type === "gondola" ? Math.max(2, Math.round(fix.w / 2.5)) : 2;
@@ -623,72 +591,6 @@ function defaultSlots(fix: { type: FixType; w: number; h: number; code: string }
       status:          "free" as SpaceStatus,
     };
   });
-}
-
-// ─── Business rule validation ─────────────────────────────────────────────────
-
-function validatePlacement(
-  def: FixtureDef,
-  pos: {x:number; z:number},
-  existing: PlacedFixture[],
-): string | null {
-  if (def.type === "ristra") {
-    const gondolas = existing.filter(f => f.type === "gondola" || f.type === "punta");
-    if (!gondolas.some(g => euclidean(pos.x, pos.z, g.x, g.z) < 4))
-      return "⚠️ Una Ristra debe estar cerca de una Góndola";
-  }
-  if (def.type === "cross") {
-    const gondolas = existing.filter(f => f.type === "gondola");
-    if (!gondolas.some(g => euclidean(pos.x, pos.z, g.x, g.z) < 4))
-      return "⚠️ Un Cross debe estar cerca de una Góndola";
-  }
-  if (def.type === "gondola" && def.gondolaType === "wall") {
-    // Contra la caja nominal, en una sede real esta advertencia salía siempre:
-    // las paredes están donde terminan los muebles, no en x = 30 / z = 42.
-    const margin = 3;
-    const lim = limitesDePlanta(existing, 0, PLANTA_NOMINAL);
-    const nearWall = pos.x < lim.minX + margin || pos.x > lim.maxX - margin ||
-                     pos.z < lim.minZ + margin || pos.z > lim.maxZ - margin;
-    if (!nearWall)
-      return "⚠️ Góndola Mural recomendada cerca de una pared";
-  }
-  if (def.type === "columna") {
-    // Columns are fine anywhere — no validation needed
-  }
-  return null;
-}
-
-// ─── MEJORA 2: AABB collision helpers ────────────────────────────────────────
-
-/**
- * ¿Este mueble se monta encima de otro?
- *
- * Mide la huella YA ROTADA. Antes comparaba `w` y `d` crudos, y la mayoría de
- * las góndolas de una sede real están giradas 90°: una góndola de 3,6 × 0,9 se
- * leía como 0,9 de ancho, así que se podía soltar atravesada sobre otra y el
- * editor no decía nada. (El plano 2D nunca tuvo el problema porque intercambia
- * ancho y alto al rotar, así que ahí las medidas ya venían giradas.)
- */
-function hasAABBCollision(
-  pos: {x:number; z:number},
-  def: { w:number; d:number; rotY?: number },
-  existing: PlacedFixture[],
-  excludeId?: string
-): boolean {
-  // Pegados sí, encimados no: hasta TOLERANCIA_CONTACTO es contacto. Era 1 mm,
-  // que no alcanza para absorber el ruido de las rotaciones ni el redondeo de
-  // la grilla, así que armar una corrida al ras podía rebotar sin motivo.
-  const TOL = TOLERANCIA_CONTACTO;
-  const a = huella({ x: pos.x, z: pos.z, w: def.w, d: def.d, rotY: def.rotY ?? 0 });
-  return existing
-    .filter(f => f.id !== excludeId)
-    .some(f => {
-      const b = huella({ x: f.x, z: f.z, w: f.w, d: f.d, rotY: f.rotY });
-      return (
-        a.minX < b.maxX - TOL && a.maxX > b.minX + TOL &&
-        a.minZ < b.maxZ - TOL && a.maxZ > b.minZ + TOL
-      );
-    });
 }
 
 // ─── Mesh: Góndola (Double + Wall + Slots) ───────────────────────────────────
@@ -4454,163 +4356,6 @@ function VistaProveedor({
   );
 }
 
-// ─── MEJORA 6: Transform Controls (Gizmo) ────────────────────────────────────
-
-function FixtureTransformControls({
-  fixture, orbitRef, onMove, limites
-}: {
-  fixture: PlacedFixture;
-  orbitRef: React.MutableRefObject<ThreeOrbitControls|null>;
-  onMove: (id: string, x: number, z: number) => void;
-  limites: LimitesPlanta;
-}) {
-  const { camera, gl, scene } = useThree();
-  const groupRef = useRef<THREE.Group>(null);
-  const ctrlRef  = useRef<TransformControls|null>(null);
-
-  // `useLayoutEffect` y no `useEffect`: el desarme tiene que pasar en el mismo
-  // commit que saca el grupo de la escena. Con un efecto pasivo, «Mostrar al
-  // proveedor» (que esconde el gizmo sin soltar la selección) dejaba un cuadro
-  // con el ayudante dibujándose sobre un objeto ya fuera de la escena, y three
-  // lo grita por consola.
-  React.useLayoutEffect(() => {
-    if (!groupRef.current) return;
-    const ctrl = new TransformControls(camera, gl.domElement);
-    ctrl.setMode('translate');
-    ctrl.setSpace('world');
-    ctrl.showY = false;
-    ctrl.attach(groupRef.current);
-    // TransformControls dejó de ser un Object3D: en three 0.184 extiende
-    // Controls, y lo que va a la escena es su ayudante. El `as unknown as`
-    // que había acá silenciaba el error de tipos pero no el de runtime — la
-    // escena rechazaba el objeto y **el gizmo nunca se dibujó**. Sólo se veía
-    // al seleccionar un mueble, que hasta ahora era raro.
-    const ayudante = ctrl.getHelper();
-    ayudante.userData.chrome = true;   // fuera de las capturas
-    scene.add(ayudante);
-    ctrlRef.current = ctrl;
-
-    const onDragging = (e: THREE.Event) => {
-      if (orbitRef.current) orbitRef.current.enabled = !(e as any).value;
-    };
-    const onObjectChange = () => {
-      if (!groupRef.current) return;
-      const p = groupRef.current.position;
-      onMove(fixture.id, snap(p.x), snap(p.z));
-      // Contra STORE_W/STORE_D esto encerraba el gizmo en x ≥ 0, y la mitad
-      // izquierda de una sede real quedaba fuera de alcance al arrastrar.
-      p.x = Math.max(limites.minX, Math.min(limites.maxX, p.x));
-      p.z = Math.max(limites.minZ, Math.min(limites.maxZ, p.z));
-      p.y = 0;
-    };
-
-    ctrl.addEventListener('dragging-changed', onDragging);
-    ctrl.addEventListener('objectChange', onObjectChange);
-
-    return () => {
-      ctrl.removeEventListener('dragging-changed', onDragging);
-      ctrl.removeEventListener('objectChange', onObjectChange);
-      ctrl.detach();
-      scene.remove(ayudante);
-      ctrl.dispose();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fixture.id, camera, gl, scene]);
-
-  return (
-    <group ref={groupRef} position={[fixture.x, 0, fixture.z]} />
-  );
-}
-
-// ─── Snap crosshair ───────────────────────────────────────────────────────────
-
-/**
- * Small amber crosshair drawn exactly at the snap-target position.
- * Gives a clear visual "magnetic" feel — the object will land here.
- */
-function SnapCrosshair({ x, z }: { x: number; z: number }) {
-  const SIZE = 1.2;
-  const pts1 = useMemo(() => [new THREE.Vector3(x-SIZE, 0.07, z), new THREE.Vector3(x+SIZE, 0.07, z)], [x, z]);
-  const pts2 = useMemo(() => [new THREE.Vector3(x, 0.07, z-SIZE), new THREE.Vector3(x, 0.07, z+SIZE)], [x, z]);
-  const geo1 = useMemo(() => new THREE.BufferGeometry().setFromPoints(pts1), [pts1]);
-  const geo2 = useMemo(() => new THREE.BufferGeometry().setFromPoints(pts2), [pts2]);
-  const mat  = useMemo(() => new THREE.LineBasicMaterial({ color: '#f59e0b', depthTest: false }), []);
-  // B4: dispose geometries and material when they change or component unmounts
-  useEffect(() => () => { geo1.dispose(); geo2.dispose(); }, [geo1, geo2]);
-  useEffect(() => () => { mat.dispose(); }, [mat]);
-  return (
-    <>
-      <primitive object={new THREE.Line(geo1, mat)} />
-      <primitive object={new THREE.Line(geo2, mat)} />
-    </>
-  );
-}
-
-// ─── MEJORA 7: Alignment guides ──────────────────────────────────────────────
-
-function AlignmentGuides({
-  ghostX, ghostZ,
-  fixtures, active
-}: {
-  ghostX: number; ghostZ: number; ghostW?: number; ghostD?: number;
-  fixtures: PlacedFixture[]; active: boolean;
-}) {
-  const lines = useMemo(() => {
-    if (!active || !fixtures.length) return [];
-    const result: { points: [THREE.Vector3, THREE.Vector3]; color: string }[] = [];
-    const TOL = 0.35;
-
-    fixtures.forEach(f => {
-      if (Math.abs(ghostX - f.x) < TOL) {
-        result.push({
-          points: [
-            new THREE.Vector3(f.x, 0.05, Math.min(ghostZ, f.z) - 2),
-            new THREE.Vector3(f.x, 0.05, Math.max(ghostZ, f.z) + 2),
-          ],
-          color: '#38bdf8',
-        });
-      }
-      if (Math.abs(ghostZ - f.z) < TOL) {
-        result.push({
-          points: [
-            new THREE.Vector3(Math.min(ghostX, f.x) - 2, 0.05, f.z),
-            new THREE.Vector3(Math.max(ghostX, f.x) + 2, 0.05, f.z),
-          ],
-          color: '#38bdf8',
-        });
-      }
-    });
-    return result;
-  }, [ghostX, ghostZ, fixtures, active]);
-
-  // B4: pre-build Line objects in useMemo so they aren't recreated every render,
-  // then dispose them when lines change or the component unmounts.
-  const lineObjects = useMemo(
-    () => lines.map(l => {
-      const geo = new THREE.BufferGeometry().setFromPoints(l.points);
-      const mat = new THREE.LineBasicMaterial({ color: l.color, depthTest: false });
-      return new THREE.Line(geo, mat);
-    }),
-    [lines]
-  );
-  useEffect(() => {
-    return () => {
-      lineObjects.forEach(o => {
-        (o.geometry as THREE.BufferGeometry).dispose();
-        (o.material as THREE.LineBasicMaterial).dispose();
-      });
-    };
-  }, [lineObjects]);
-
-  if (!lineObjects.length) return null;
-
-  return (
-    <>
-      {lineObjects.map((line, i) => <primitive key={i} object={line} />)}
-    </>
-  );
-}
-
 // ─── MEJORA 8: First-person controls ─────────────────────────────────────────
 // La caminata se apoya en tres cosas que antes no existían: los límites salen
 // de la planta real (no de STORE_W/STORE_D), los muebles frenan, y el paso se
@@ -5476,18 +5221,11 @@ interface SceneProps {
   selectedSlotId:    string | null;
   hoveredSlotId:     string | null;
   setHoveredSlotId:  (id: string|null) => void;
-  placingDef:        FixtureDef | null;
-  ghostX:            number;
-  ghostZ:            number;
-  ghostRotY:         number;
-  ghostCollides:     boolean;
-  draggingId:        React.MutableRefObject<string|null>;
   orbitRef:          React.MutableRefObject<ThreeOrbitControls|null>;
-  onFloorMove:       (x:number, z:number) => void;
-  onFloorClick:      (x:number, z:number) => void;
+  /** Un clic en el piso: suelta el mueble elegido. */
+  onFloorClick:      () => void;
   onSelectFixture:   (id:string) => void;
   onSelectSlot:      (fixtureId:string, slotId:string) => void;
-  setPlacedFixtures: React.Dispatch<React.SetStateAction<PlacedFixture[]>>;
   screenshotReady:   (fn: () => string) => void;
   topViewReady:      (fn: () => void) => void;
   firstPerson:       boolean;
@@ -5555,9 +5293,7 @@ interface SceneProps {
 export function Scene({
   placedFixtures, selectedId, selectedSlotId,
   hoveredSlotId, setHoveredSlotId, onSelectSlot,
-  placingDef, ghostX, ghostZ, ghostRotY, ghostCollides,
-  draggingId, orbitRef, onFloorMove, onFloorClick,
-  onSelectFixture, setPlacedFixtures,
+  orbitRef, onFloorClick, onSelectFixture,
   screenshotReady, topViewReady, firstPerson, sinArte, prueba, onCamaraFP, saltarA,
   onHoverFixture, fixtures, comoSePrueba, catalogo, presentationMode, pedidoDeToma, privadoPara,
   distribucion, coloresDeEstado,
@@ -6152,21 +5888,6 @@ export function Scene({
     });
   }, [gridMajor, gridMinor]);
 
-  const ghostFixture: PlacedFixture | null = placingDef ? {
-    id:"ghost", code:"", type:placingDef.type,
-    gondolaType: placingDef.gondolaType,
-    x:ghostX, z:ghostZ, rotY:ghostRotY,
-    w:placingDef.w, d:placingDef.d, h:placingDef.h,
-    label:placingDef.label, color:placingDef.color,
-    supplierName:"", brandCategory:"",
-    status:"free", negotiatedValue:0,
-    startDate:"", endDate:"", observation:"",
-    ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
-    // El fantasma se ve como va a quedar: con las puertas, los entrepaños y
-    // el módulo de la ficha.
-    ...fichaDe(placingDef),
-  } : null;
-
   return (
     <>
       {/* MEJORA 1: Rebalanced lights */}
@@ -6229,66 +5950,16 @@ export function Scene({
       {privadoPara === undefined && <primitive object={gridMinor} />}
       {privadoPara === undefined && <primitive object={gridMajor} />}
 
-      {/* Alignment guides + snap crosshair: during placement AND during drag */}
-      {(() => {
-        const draggedFix = draggingId.current
-          ? placedFixtures.find(f => f.id === draggingId.current)
-          : null;
-        const guideX = draggedFix ? draggedFix.x : ghostX;
-        const guideZ = draggedFix ? draggedFix.z : ghostZ;
-        const guideActive = !!placingDef || !!draggedFix;
-        const compareFixtures = draggedFix
-          ? placedFixtures.filter(f => f.id !== draggingId.current)
-          : placedFixtures;
-        return guideActive ? (
-          <>
-            <AlignmentGuides
-              ghostX={guideX}
-              ghostZ={guideZ}
-              fixtures={compareFixtures}
-              active
-            />
-            <SnapCrosshair x={guideX} z={guideZ} />
-          </>
-        ) : null;
-      })()}
-
       {/* Invisible raycast floor */}
       <mesh
         rotation={[-Math.PI/2,0,0]}
         position={[limites.cx,0.005,limites.cz]}
         onDoubleClick={handleSceneDoubleClick}
-        onPointerMove={e=>{
-          e.stopPropagation();
-          const cx=Math.max(limites.minX,Math.min(limites.maxX,snap(e.point.x)));
-          const cz=Math.max(limites.minZ,Math.min(limites.maxZ,snap(e.point.z)));
-          if(draggingId.current) {
-            const id = draggingId.current;
-            setPlacedFixtures(prev => {
-              const dragged = prev.find(f => f.id === id);
-              if (!dragged) return prev;
-              // Block the move if it would overlap another fixture
-              if (hasAABBCollision({x:cx, z:cz}, dragged, prev, id)) return prev;
-              return prev.map(f => f.id === id ? {...f, x:cx, z:cz} : f);
-            });
-          } else {
-            onFloorMove(cx,cz);
-          }
-        }}
-        onPointerUp={e=>{
-          if(draggingId.current){
-            e.stopPropagation();
-            draggingId.current=null;
-            if(orbitRef.current) orbitRef.current.enabled=true;
-          }
-        }}
+        // El 3D es para mirar (2026-10-28): un clic en el piso suelta el
+        // mueble elegido y nada más. Colocar y mover es del plano 2D.
         onClick={e=>{
           e.stopPropagation();
-          if(!draggingId.current){
-            const cx=Math.max(limites.minX,Math.min(limites.maxX,snap(e.point.x)));
-            const cz=Math.max(limites.minZ,Math.min(limites.maxZ,snap(e.point.z)));
-            onFloorClick(cx,cz);
-          }
+          onFloorClick();
         }}
       >
         <planeGeometry args={[limites.w+40,limites.d+40]} />
@@ -6313,7 +5984,7 @@ export function Scene({
         const hasSlots = fix.type === "gondola" || fix.type === "punta";
         // En Presentar no van: los colores de estado dicen qué está vendido y
         // qué no, y eso no es asunto del proveedor que mira.
-        const conEspacios = hasSlots && fix.id === selectedId && !placingDef && !firstPerson && !presentationMode;
+        const conEspacios = hasSlots && fix.id === selectedId && !firstPerson && !presentationMode;
         // Distribución: ESTE es el mueble que se distribuye (desnudo, con sus
         // zonas, sin arrastre ni caja), o es un vecino mientras se distribuye
         // otro (su volumen de toque no se come el clic).
@@ -6368,13 +6039,10 @@ export function Scene({
                 // del lienzo), y un temblor no corre la góndola.
                 if (enModoDistribucion) { e.stopPropagation(); return; }
                 e.stopPropagation();
+                // Se elige el mueble y nada más: el 3D no arrastra (2026-10-28,
+                // colocar y mover es del plano 2D). El arrastre que empieza
+                // sobre él gira la cámara, como en Presentar.
                 onSelectFixture(fix.id);
-                // En Presentar se elige el mueble (las tomas del HUD son de
-                // ése) pero no se arrastra: un clic de más en plena reunión
-                // movería el plano de verdad.
-                if (presentationMode) return;
-                draggingId.current=fix.id;
-                if(orbitRef.current) orbitRef.current.enabled=false;
               }}
               // El mueble se selecciona en `pointerdown`, pero el `click` que
               // viene después seguía bajando hasta el piso —que está detrás y
@@ -6383,12 +6051,8 @@ export function Scene({
               // deseleccionaba en el mismo gesto, y el panel comercial del 3D
               // no se abría nunca por ese camino. Cortar la propagación acá lo
               // arregla sin tocar ninguna de las dos puntas.
-              //
-              // Mientras se está COLOCANDO un mueble no se corta: ahí el clic
-              // tiene que llegar al piso, que es quien detecta que se está
-              // montando sobre otro y lo avisa.
               onClick={e=>{
-                if (placingDef || firstPerson) return;
+                if (firstPerson) return;
                 e.stopPropagation();
                 // Distribución (§10.3): qué cara y qué punto tocó el clic, con
                 // un rayo contra el plano de cada cara (nunca contra las mallas
@@ -6418,7 +6082,7 @@ export function Scene({
               }}
               onPointerOver={e=>{
                 e.stopPropagation();
-                if (!draggingId.current && !placingDef && !firstPerson) {
+                if (!firstPerson) {
                   const rect = gl.domElement.getBoundingClientRect();
                   onHoverFixture(fix.id, e.clientX - rect.left, e.clientY - rect.top - 16);
                 }
@@ -6428,7 +6092,7 @@ export function Scene({
                 onHoverFixture(null, 0, 0);
               }}
               onPointerMove={e=>{
-                if (!draggingId.current && !placingDef && !firstPerson) {
+                if (!firstPerson) {
                   const rect = gl.domElement.getBoundingClientRect();
                   onHoverFixture(fix.id, e.clientX - rect.left, e.clientY - rect.top - 16);
                 }
@@ -6448,43 +6112,6 @@ export function Scene({
         );
       })}
       </LuzDeVenta.Provider>
-
-      {/* MEJORA 2: Ghost with collision overlay — only when not in first-person */}
-      {ghostFixture && !firstPerson && (
-        <group position={[ghostFixture.x,0,ghostFixture.z]} rotation={[0,ghostFixture.rotY,0]}>
-          {ghostCollides && (
-            <mesh position={[0, 0.02, 0]} rotation={[-Math.PI/2, 0, 0]}>
-              <planeGeometry args={[ghostFixture.w + 0.2, ghostFixture.d + 0.2]} />
-              <meshBasicMaterial color="#ef4444" transparent opacity={0.25} depthWrite={false} />
-            </mesh>
-          )}
-          {!ghostCollides && (
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI/2, 0, 0]}>
-              <planeGeometry args={[ghostFixture.w + 0.1, ghostFixture.d + 0.1]} />
-              <meshBasicMaterial color="#22c55e" transparent opacity={0.15} depthWrite={false} />
-            </mesh>
-          )}
-          <FixtureMesh fixture={ghostFixture} ghost />
-        </group>
-      )}
-
-      {/* MEJORA 6: Transform gizmo — only when not first-person and not placing */}
-      {!enDistribucionDelMueble(selectedId) && selectedId && !placingDef && !firstPerson && !presentationMode && (() => {
-        const fix = placedFixtures.find(f => f.id === selectedId);
-        return fix ? (
-          <FixtureTransformControls
-            fixture={fix}
-            orbitRef={orbitRef}
-            limites={limites}
-            onMove={(id, x, z) => setPlacedFixtures(prev => {
-              const dragged = prev.find(f => f.id === id);
-              if (!dragged) return prev;
-              if (hasAABBCollision({x, z}, dragged, prev, id)) return prev;
-              return prev.map(f => f.id === id ? {...f, x, z} : f);
-            })}
-          />
-        ) : null;
-      })()}
 
       {/* MEJORA 8: First-person controls */}
       <FirstPersonControls
@@ -6617,20 +6244,13 @@ interface CommercialPanelProps {
   /** La cara abierta en «Vista para el proveedor» (ver `VistaProveedor`). */
   onCara?:           (fixtureId: string, cara: "A" | "B") => void;
   selectedSlot:  ShelfSlot | null;
-  onUpdate:      (id:string, u:Partial<PlacedFixture>) => void;
   /** Todo el plano de la sede: sin los demás muebles no se puede decir si el
    *  nombre que se está escribiendo ya es de otro. */
   muebles:       PlacedFixture[];
-  /** El nombre NO se escribe con `onUpdate`. Va por acá, que es el mismo camino
-   *  que el doble clic del plano 2D y el campo de su panel: `renombrar`
-   *  comprueba y escribe en la misma llamada. Null = se pudo. */
-  onRenombrar:   (id:string, nombre:string) => RechazoDeNombre<PlacedFixture> | null;
-  /** Los dos nombres a la vez, que es cómo se renumera una corrida a mano. */
-  onIntercambiar:(esteId:string, otroId:string) => void;
   onUpdateSlot:  (fixtureId:string, slotId:string, u:Partial<ShelfSlot>) => void;
-  onRotate:      () => void;
-  onFlip:        () => void;
-  onDelete:      () => void;
+  /** «Editar en el 2D»: el nombre, las medidas, cómo se vende, girarlo o
+   *  borrarlo se hace en el plano 2D (el 3D es para mirar, 2026-10-28). */
+  onEditarEn2D:  () => void;
   onClose:       () => void;
   onSlotClose:   () => void;
   /** «Distribuir esta cara» (participaciones de cara, §9.2): entra al modo
@@ -6646,8 +6266,7 @@ function CommercialPanel({
   fix, enCaminata, catalogo, cargandoCatalogo, prueba, onProbar, onRecargarCatalogo,
   comoSePrueba, onAjustarPrueba, proveedorDeReunion, onProveedorDeReunion, onMostrar,
   eligiendo, setEligiendo, onCara,
-  selectedSlot, onUpdate, muebles, onRenombrar, onIntercambiar, onUpdateSlot,
-  onRotate, onFlip, onDelete, onClose, onSlotClose, onDistribuir, motivoSinDistribuir,
+  selectedSlot, muebles, onUpdateSlot, onEditarEn2D, onClose, onSlotClose, onDistribuir, motivoSinDistribuir,
 }: CommercialPanelProps) {
   const isAdmin = useAuthStore(selectIsAdmin);
   // Vender por partes: el mapa CRUDO de la base (vender un tramo no cambia el
@@ -6659,7 +6278,6 @@ function CommercialPanel({
   // del supermercado: escucharlas vuelve a dibujar el panel.
   useFichasPropias();
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
-  const u  = useCallback((up: Partial<PlacedFixture>) => onUpdate(fix.id, up), [fix.id, onUpdate]);
   const us = useCallback((up: Partial<ShelfSlot>) => selectedSlot && onUpdateSlot(fix.id, selectedSlot.id, up), [fix.id, selectedSlot, onUpdateSlot]);
 
   // ── Lo contratado, discreto mientras hay reunión ──────────────────────────
@@ -6716,58 +6334,6 @@ function CommercialPanel({
 
   const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors";
   const labelCls = ETIQUETA_CLS;
-
-  // ── El nombre del mueble ──────────────────────────────────────────────────
-  // El editor 3D no tenía cómo renombrar: mostraba el nombre y punto, así que
-  // para cambiarlo había que ir al plano 2D. Ahora se puede desde acá y pasa por
-  // la MISMA regla —`renombrar`—, que es el punto: que no haya un tercer camino
-  // que escriba sin comprobar, como pasó con el campo del panel del 2D.
-  const [nombreBorrador, setNombreBorrador] = useState(fix.code);
-  const [rechazo, setRechazo] = useState<RechazoDeNombre<PlacedFixture> | null>(null);
-  useEffect(() => { setNombreBorrador(fix.code); setRechazo(null); }, [fix.id, fix.code]);
-  const choqueEscrito = useMemo(
-    () => (normalizarNombre(nombreBorrador) === normalizarNombre(fix.code)
-      ? null
-      : choqueDeNombre(nombreBorrador, muebles, fix.id)),
-    [nombreBorrador, muebles, fix.id, fix.code],
-  );
-  function guardarNombre() {
-    const r = onRenombrar(fix.id, nombreBorrador);
-    setRechazo(r);
-    if (!r) setNombreBorrador(normalizarNombre(nombreBorrador));
-  }
-
-  // ── Retirar el mueble de circulación, o devolverlo ────────────────────────
-  // Va a la BASE y no al plano. Acá se escribía `status` en el JSON del layout:
-  // era una segunda copia del mismo hecho, sin nada que la obligara a coincidir
-  // con `spaces`, y desde que el servidor la descarta al guardar el select se
-  // veía cambiar sin cambiar nada. Un control que miente es peor que no tenerlo.
-  const [guardandoEstado, setGuardandoEstado] = useState(false);
-  const [estadoError, setEstadoError] = useState("");
-
-  async function cambiarEstado(nuevo: SpaceStatus) {
-    // La sede del MUEBLE, no la abierta: un plano copiado de otra tienda dibuja
-    // muebles que no son de ésta, y el código del espacio lleva la suya.
-    const st = useFixtureStore.getState();
-    const propio = st.fixturesBySede[st.sede]?.find((f) => f.id === fix.id);
-    const sedeDelMueble = propio?.sede || st.sede;
-    setEstadoError("");
-    setGuardandoEstado(true);
-    try {
-      const espacio = await findOrCreateSpace({
-        code: fullSpaceCode(sedeDelMueble, fix.code),
-        name: fix.code,
-        sede: sedeDelMueble,
-      });
-      await updateSpaceStatus(espacio.id, nuevo);
-      // El mapa se pinta de la base: se vuelve a leer y aparece solo.
-      await useFixtureStore.getState().refrescarComercial();
-    } catch {
-      setEstadoError("No se pudo guardar el estado. Probá de nuevo.");
-    } finally {
-      setGuardandoEstado(false);
-    }
-  }
 
   function handleSlotStatusChange(newStatus: SpaceStatus) {
     if (!selectedSlot) return;
@@ -6950,20 +6516,6 @@ function CommercialPanel({
             No comercializable
           </span>
         )}
-        <div className="ml-auto flex gap-1">
-          <button onClick={onRotate} title="Rotar 90° (R)"
-            className="rounded border border-dark-line-2 bg-dark-surface-2 p-1 text-dark-ink-2 hover:bg-dark-line hover:text-dark-ink-1 active:scale-90 transition-transform duration-100">
-            <RotateCw size={11}/>
-          </button>
-          <button onClick={onFlip} title="Flip (F)"
-            className="rounded border border-dark-line-2 bg-dark-surface-2 p-1 text-dark-ink-2 hover:bg-dark-line hover:text-dark-ink-1 active:scale-90 transition-transform duration-100">
-            <FlipHorizontal2 size={11}/>
-          </button>
-          <button onClick={onDelete} title="Eliminar (Del)"
-            className="rounded border border-danger/40 bg-danger/10 p-1 text-danger hover:bg-danger/25 active:scale-90 transition-all duration-100">
-            <Trash2 size={11}/>
-          </button>
-        </div>
       </div>
 
       <div className="flex flex-col gap-3 p-3">
@@ -6974,54 +6526,6 @@ function CommercialPanel({
             {textoDeCaraInaccesible(nombreDeMueble(fix), carasTapadas[0].libre, carasTapadas[0].vecino)}
           </p>
         )}
-
-        {/* Nombre — el del mueble, que es su código. Uno solo, y el mismo que
-            dibuja el plano 2D, la pantalla de montaje y la lámina. */}
-        <div>
-          <p className={labelCls}>Nombre</p>
-          <input
-            className={inputCls}
-            value={nombreBorrador}
-            style={choqueEscrito ? { color: "var(--danger)", borderBottomColor: "var(--danger)" } : undefined}
-            onChange={e => { setNombreBorrador(e.target.value); setRechazo(null); }}
-            onBlur={guardarNombre}
-            onKeyDown={e => {
-              if (e.key === "Enter") { e.preventDefault(); guardarNombre(); }
-              if (e.key === "Escape") { setNombreBorrador(fix.code); setRechazo(null); }
-            }}
-          />
-          {rechazo ? (
-            <>
-              <p className="mt-1 text-[11px] leading-snug text-danger">
-                No se guardó: {textoDelChoque(nombreBorrador, rechazo, (m) => conNombrePropio(m, nombresPropios, ""))} Sigue
-                llamándose «{fix.code}».
-              </p>
-              {rechazo.razon === "ocupado" && (
-                <>
-                  <button
-                    onClick={() => { onIntercambiar(fix.id, rechazo.ocupa.id); setRechazo(null); }}
-                    className="mt-1.5 rounded border border-danger/50 bg-danger/10 px-2 py-1 text-[11px] font-bold text-danger hover:bg-danger/20"
-                  >
-                    Intercambiar con ese mueble
-                  </button>
-                  <p className="mt-1 text-[11px] leading-snug text-dark-ink-3">
-                    {textoDelIntercambio(fix, rechazo.ocupa)}
-                  </p>
-                </>
-              )}
-            </>
-          ) : choqueEscrito ? (
-            <p className="mt-1 text-[11px] leading-snug text-danger">
-              {textoDelChoque(nombreBorrador, choqueEscrito, (m) => conNombrePropio(m, nombresPropios, ""))}
-            </p>
-          ) : (
-            <p className="mt-1 text-[11px] leading-snug text-dark-ink-3">
-              Es el nombre y es la llave: con él se arma{" "}
-              {fullSpaceCode(useFixtureStore.getState().sede, fix.code)} y con eso viaja
-              al contrato y al correo de montaje.
-            </p>
-          )}
-        </div>
 
         {fix.slots && fix.slots.length > 0 && (
           <div className="rounded border border-dark-line bg-dark-bg/40 p-2">
@@ -7052,76 +6556,23 @@ function CommercialPanel({
           </div>
         )}
 
-        {/* Destino del mueble. Cuando el TIPO ya lo decide —columna, caja
-            registradora, servicio al cliente: puestos de trabajo de la tienda—
-            el par de botones sería un control muerto: se pintaría el elegido y
-            `isRentable` lo seguiría negando. En su lugar va la razón. */}
-        <div>
-          <label className={labelCls}>Destino del mueble</label>
-          {NUNCA_ALQUILABLE.has(fix.type) ? (
-            <p className="text-[11px] font-semibold text-dark-ink-2">No comercializable</p>
-          ) : (
-            <div className="flex gap-1.5">
-              {([true, false] as const).map((value) => (
-                <button
-                  key={String(value)}
-                  onClick={() => u({ rentable: value })}
-                  className={`flex-1 rounded px-1 py-1.5 text-[10.5px] font-semibold transition-colors ${
-                    rentable === value
-                      ? "bg-accent text-accent-ink"
-                      : "border border-dark-line-2 text-dark-ink-3 hover:text-dark-ink-1"
-                  }`}
-                >
-                  {value ? "Comercializable" : "No comercial."}
-                </button>
-              ))}
-            </div>
-          )}
-          <p className="mt-1.5 text-[9.5px] leading-relaxed text-dark-ink-3">
+        {/* Si se vende y su estado, de sólo lectura (el 3D es para mirar,
+            2026-10-28): se cambian en el panel del plano 2D. Cuando el TIPO
+            ya lo decide —columna, caja, servicio al cliente— va la razón. */}
+        <div data-destino-3d>
+          <p className="text-[9.5px] leading-relaxed text-dark-ink-3">
             {NUNCA_ALQUILABLE.has(fix.type)
               ? textoDeLoQueNuncaSeAlquila(fix.type)
               : rentable
               ? "Se puede alquilar y cuenta en la disponibilidad de la sede."
               : "Mobiliario propio del local: no admite contrato y queda fuera de la ocupación."}
           </p>
-        </div>
-
-        {rentable && (
-        <div>
-          <label className={labelCls}><Info size={9} className="inline mr-1"/>Estado fixture</label>
-          {/* «Ocupado» no está entre las opciones y es a propósito: un espacio
-              se ocupa vendiéndolo, en Sede → Vender. Ponerlo a mano crearía un
-              ocupado sin contrato, sin proveedor y sin fechas — el fantasma
-              exacto que todo esto vino a eliminar. */}
-          {fix.status === "occupied" ? (
-            <p className="text-xs text-dark-ink-1">
-              Ocupado
-              <span className="mt-0.5 block text-[10px] text-dark-ink-3">
-                Lo pone el contrato. Para liberarlo hay que cancelarlo.
-              </span>
-            </p>
-          ) : (
-            <select value={fix.status} disabled={guardandoEstado}
-              onChange={e=>void cambiarEstado(e.target.value as SpaceStatus)}
-              className="w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:border-accent focus:outline-none">
-              <option value="free">Disponible</option>
-              {/* «Reservado» a mano ya no se marca (rediseño, PR 3: el
-                  servidor contesta 409; la reserva de verdad sale de Vender,
-                  con proveedor y fecha). Uno de antes se ve y se libera. */}
-              {fix.status === "reserved" && <option value="reserved" disabled>Reservado a mano</option>}
-              <option value="maintenance">Mantenimiento</option>
-            </select>
-          )}
-          {estadoPorOcupacion && (
+          {rentable && estadoPorOcupacion && (
             <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-estado-por-ocupacion>
               {notaDeEstadoPorOcupacion(sm.label)}
             </p>
           )}
-          {estadoError && (
-            <p className="mt-1 text-[10px] text-danger">{estadoError}</p>
-          )}
         </div>
-        )}
 
         {rentable && (<>
 
@@ -7214,19 +6665,14 @@ function CommercialPanel({
           onCara={onCara}
         />
 
-        <div>
-          <label className={labelCls}>Observaciones</label>
-          <textarea rows={2} value={fix.observation} placeholder="Notas…"
-            onChange={e=>u({observation:e.target.value})} className={`${inputCls} resize-none`} />
-        </div>
+        {fix.observation?.trim() && (
+          <div data-observaciones-3d>
+            <p className={labelCls}>Observaciones</p>
+            <p className="whitespace-pre-wrap text-xs text-dark-ink-2">{fix.observation}</p>
+          </div>
+        )}
         </>)}
 
-        {/* Alto, entrepaños y módulo (góndola y punta). El mismo componente
-            que el plano 2D: escribe en el store después de revisar lo vendido
-            —con espacios internos vendidos no cambia la cantidad de
-            entrepaños; con una cara vendida, pregunta diciendo qué se mueve—.
-            Ver `components/GeometriaDelMueble.tsx`. */}
-        <GeometriaDelMueble id={fix.id} puedeEditar={isAdmin} />
         {/* Distribución (participaciones de cara): repartir la cara entre
             proveedores por porcentaje, dibujando la zona de cada uno. Sólo
             para un tipo con superficie, sólo admin, y nunca con un
@@ -7241,11 +6687,19 @@ function CommercialPanel({
             {motivoSinDistribuir && <p className="text-[10px] leading-snug text-dark-ink-3">{motivoSinDistribuir}</p>}
           </div>
         )}
-        {/* Cómo se vende: la nevera entera o por puertas, el mural por
-            tramos, la góndola por entrepaños, las bahías de la caja y el
-            forro de la columna. El mismo componente que el plano 2D, fuera de
-            lo comercial del panel (la caja no es comercializable). */}
-        <PartesDelMueble id={fix.id} puedeEditar={isAdmin} />
+        {/* El nombre, las medidas, cómo se vende, girarlo o borrarlo: en el
+            plano 2D (2026-10-28). El 3D muestra cómo queda. */}
+        {isAdmin && (
+          <div className="rounded-lg border border-dark-line-2 bg-dark-bg/60 p-2.5" data-editar-en-2d-panel>
+            <p className="text-[11px] leading-snug text-dark-ink-2">
+              El nombre, las medidas y cómo se vende se cambian en el plano 2D.
+            </p>
+            <button type="button" onClick={onEditarEn2D}
+              className="mt-2 rounded-md border border-dark-line-2 bg-dark-surface-2 px-2.5 py-1.5 text-[11px] font-semibold text-dark-ink-1 hover:bg-dark-line">
+              Editar en el 2D
+            </button>
+          </div>
+        )}
 
         <div className="rounded-lg border border-dark-line/50 bg-dark-bg/60 p-2 font-mono text-[10px] text-dark-ink-3">
           {/* Las medidas al milímetro, como la paleta y el panel del plano: con
@@ -7336,10 +6790,10 @@ let ultimaDistribucionPedida = -1;
 function distribucionALaVista(c: {
   activa: DistribucionActiva | null; cliente: string; sede: string; muebleEnElPlano: boolean;
   presentationMode: boolean; privadoPara: PrivadoPara; soloVenta: boolean; firstPerson: boolean;
-  enReunion: boolean; colocando: boolean;
+  enReunion: boolean;
 }): boolean {
   return c.activa !== null && c.activa.cliente === c.cliente && c.activa.sede === c.sede && c.muebleEnElPlano
-    && !c.presentationMode && c.privadoPara === undefined && !c.soloVenta && !c.firstPerson && !c.enReunion && !c.colocando;
+    && !c.presentationMode && c.privadoPara === undefined && !c.soloVenta && !c.firstPerson && !c.enReunion;
 }
 
 /** Por qué el botón «Distribuir esta cara» no deja entrar ahora (o null). */
@@ -7665,11 +7119,8 @@ export default function StoreEditor3D() {
   // renderizar entero —panel, escena y cada mueble— veinte veces por giro.
   // Cada vuelta le pedía a la escena un cuadro más (`invalidate` acumula), y
   // en una máquina lenta un giro a mano encolaba medio minuto de cuadros.
-  const pushToStore = useFixtureStore((s) => s.setFixtures);
   const pushSedeToStore = useFixtureStore((s) => s.setSede);
   const commit = useFixtureStore((s) => s.commit);
-  const undo = useFixtureStore((s) => s.undo);
-  const redo = useFixtureStore((s) => s.redo);
   // Reactive subscription — re-renders when fixtures change (replaces getState() calls in JSX)
   const fixtures = useFixtureStore(selectFixtures);
 
@@ -7679,21 +7130,9 @@ export default function StoreEditor3D() {
   const [selectedId, setSelectedId]         = useState<string|null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string|null>(null);
   const [hoveredSlotId, setHoveredSlotId]   = useState<string|null>(null);
-  const [placingDef, setPlacingDef]         = useState<FixtureDef|null>(null);
-  // La paleta: los modelos de RECABRA y, después, las fichas propias del
-  // supermercado que no están retiradas. Una vez por cambio de las fichas: la
-  // entrada elegida se compara por identidad.
-  const fichasPropias = useFichasPropias();
-  const paleta = useMemo(() => paletaConPropias(fichasPropias), [fichasPropias]);
-  // El nombre propio de cada familia: la paleta lo dice en vez del de RECABRA,
-  // y también el cartel del mouse, el aviso de «Colocando» y la lámina.
+  // El nombre propio de cada familia: el cartel del mouse, el panel y la
+  // lámina lo dicen en vez del de RECABRA.
   const nombresPropios = useFixtureStore((s) => s.catalogLabels);
-  const [ghostX, setGhostX]                 = useState(STORE_W/2);
-  const [ghostZ, setGhostZ]                 = useState(STORE_D/2);
-  const [ghostRotY, setGhostRotY]           = useState(0);
-  const [ghostCollides, setGhostCollides]   = useState(false);
-  const [savedAt, setSavedAt]               = useState<Date|null>(null);
-  const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [warning, setWarning]               = useState<string|null>(null);
   const [sede, setSede]                     = useState(()=>useFixtureStore.getState().sede);
   // La sede la elige la barra de arriba del armazón (rediseño UX 2026-10):
@@ -7878,17 +7317,6 @@ export default function StoreEditor3D() {
     setComoSePrueba(new Map());
     setEligiendo(false);
   }, []);
-  /** Al borrar un mueble se sueltan sus pruebas (no hay panel desde donde
-   *  quitarlas). */
-  const soltarPruebasDe = useCallback((fixtureId: string) => {
-    const fuera = <T,>(prev: Map<string, T>) => {
-      if (!prev.has(`${fixtureId}|A`) && !prev.has(`${fixtureId}|B`)) return prev;
-      const siguiente = new Map(prev);
-      siguiente.delete(`${fixtureId}|A`); siguiente.delete(`${fixtureId}|B`);
-      return siguiente;
-    };
-    setPrueba(fuera); setComoSePrueba(fuera);
-  }, []);
   // La cara abierta en «Vista para el proveedor»: la lámina sale de ésa.
   const caraDelPanel = useRef<{ fixtureId: string; cara: "A" | "B" } | null>(null);
   const alCambiarCara = useCallback((fixtureId: string, cara: "A" | "B") => {
@@ -7916,10 +7344,9 @@ export default function StoreEditor3D() {
 
   // MEJORA 8: First-person mode
   const [firstPerson, setFirstPerson] = useState(false);
-  /** El catálogo de muebles en el teléfono: guardado hasta que se lo pide, y
-   *  se guarda solo al elegir qué colocar (el plano queda libre para tocar). */
+  /** El panel «Mirar» en el teléfono: guardado hasta que se lo pide (abierto
+   *  se comía media pantalla). */
   const [catalogoMovil, setCatalogoMovil] = useState(false);
-  useEffect(() => { if (placingDef) setCatalogoMovil(false); }, [placingDef]);
   // Dónde está y hacia dónde mira quien camina — lo dibuja el minimapa.
   const [camaraFP, setCamaraFP] = useState<CamaraEnPlanta | null>(null);
   // Pedido de teletransporte. El contador hace que tocar dos veces el mismo
@@ -7965,7 +7392,8 @@ export default function StoreEditor3D() {
   const setTopViewFn   = useCallback((fn: () => void) => { topViewFnRef.current = fn; }, []);
 
   const orbitRef   = useRef<ThreeOrbitControls|null>(null);
-  const draggingId = useRef<string|null>(null);
+  // «Editar en el 2D»: colocar, mover y borrar muebles es del plano 2D.
+  const navigate = useNavigate();
 
   // ── Distribución (participaciones de cara, §9.2, §9.5, §9.6 y §10.9) ──────
   // La cara que se distribuye vive en el store de edición; acá se decide, con
@@ -7978,7 +7406,7 @@ export default function StoreEditor3D() {
   const distribucionVisible = distribucionALaVista({
     activa: distribucionActiva, cliente: clienteActual, sede,
     muebleEnElPlano: !!distribucionActiva && placedFixtures.some((f) => f.id === distribucionActiva.fixtureId),
-    presentationMode, privadoPara, soloVenta: false, firstPerson, enReunion, colocando: placingDef !== null,
+    presentationMode, privadoPara, soloVenta: false, firstPerson, enReunion,
   });
   const distribucionVisibleRef = useRef(distribucionVisible);
   distribucionVisibleRef.current = distribucionVisible;
@@ -8004,12 +7432,11 @@ export default function StoreEditor3D() {
   // el editor entero).
   useEffect(() => { if (distribucionVisible) setHoveredFixtureId(null); }, [distribucionVisible]);
 
-  // El teclado, acotado (§9.5). El atajo global del editor (más abajo) borra
-  // el mueble elegido con Supr/Retroceso, lo gira con R, le cambia ancho por
-  // fondo con F, suelta todo con Esc y deshace el PLANO con Ctrl+Z; mientras
-  // se distribuye, el elegido es justamente el mueble que se distribuye. No
-  // se toca ese efecto (sus dependencias las fija `probar-muebles.mjs`): este
-  // oyente, en CAPTURA de `window`, le corta SÓLO esas teclas
+  // El teclado, acotado (§9.5). El atajo global del editor (más abajo) suelta
+  // todo con Esc —desde 2026-10-28 el 3D es para mirar y R, F, Supr y Ctrl+Z
+  // ya no giran, borran ni deshacen nada, pero la lista se mantiene por si
+  // vuelven—; mientras se distribuye, el elegido es justamente el mueble que
+  // se distribuye. Este oyente, en CAPTURA de `window`, le corta SÓLO esas teclas
   // (`stopPropagation`: el oyente global, en burbuja, no las ve). Los de
   // Distribución que también escuchan en captura de `window` las siguen
   // recibiendo. Esc nunca saca del modo (se sale con «Salir»); escribiendo en
@@ -8061,7 +7488,6 @@ export default function StoreEditor3D() {
     if (!fix) return;
     ultimaDistribucionPedida = enfoquePedido.n;
     if (enReunion || presentationMode) { setWarning("Terminá la reunión (o Presentar) para distribuir."); return; }
-    setPlacingDef(null);
     const { cara } = enfoquePedido;
     const { renovar, volver } = enfoquePedido.distribucion;
     void (async () => {
@@ -8180,21 +7606,14 @@ export default function StoreEditor3D() {
     const existingStore = selectFixtures(useFixtureStore.getState());
     const converted = fixturesToStore(placedFixtures, useFixtureStore.getState().sede, existingStore);
     lastCommittedRef.current = converted;
-    if (draggingId.current) {
-      // During drag: update display without creating an undo entry or triggering server sync
-      pushToStore(converted);
-    } else {
-      // Drag ended or fixtures changed outside drag: commit properly (undoable, server sync)
-      commit(converted);
-    }
-  }, [placedFixtures, sede, pushToStore, commit]);
+    commit(converted);
+  }, [placedFixtures, sede, commit]);
 
   // ── Sync unified store → fixtures (server pulls, undo/redo) ─────────────────
   // Without this the 3D canvas kept rendering whatever it loaded on mount, so a
   // layout saved on another workstation never appeared here.
   useEffect(() => {
     if (lastCommittedRef.current === fixtures) return; // our own echo
-    if (draggingId.current) return;                    // never yank geometry mid-drag
     suppressCommitRef.current = true;
     setPlacedFixtures(storeToFixtures(fixtures));
   }, [fixtures]);
@@ -8218,14 +7637,6 @@ export default function StoreEditor3D() {
   }, [warning]);
 
   useEffect(()=>{
-    const up=()=>{
-      if(draggingId.current){ draggingId.current=null; if(orbitRef.current) orbitRef.current.enabled=true; }
-    };
-    window.addEventListener("pointerup",up);
-    return ()=>window.removeEventListener("pointerup",up);
-  },[]);
-
-  useEffect(()=>{
     function onKey(e: KeyboardEvent){
       const tag=(e.target as HTMLElement).tagName.toLowerCase();
       if(tag==="input"||tag==="textarea"||tag==="select") return;
@@ -8238,21 +7649,9 @@ export default function StoreEditor3D() {
         if (e.key === "Escape" && !firstPerson && !document.pointerLockElement) setPresentationMode(false);
         return;
       }
-      // CHANGE 3 — Undo / Redo
-      if(e.ctrlKey && e.key==="z" && !e.shiftKey){
-        e.preventDefault();
-        undo();
-        // Sync store state back to local after undo
-        setPlacedFixtures(storeToFixtures(selectFixtures(useFixtureStore.getState())));
-        return;
-      }
-      if(e.ctrlKey && (e.key==="y" || (e.key==="z" && e.shiftKey))){
-        e.preventDefault();
-        redo();
-        // Sync store state back to local after redo
-        setPlacedFixtures(storeToFixtures(selectFixtures(useFixtureStore.getState())));
-        return;
-      }
+      // El 3D es para mirar (2026-10-28): R, F, Supr y Ctrl+Z ya no giran,
+      // borran ni deshacen nada —colocar, mover y deshacer es del plano 2D—.
+      // Queda Esc, que suelta el mueble elegido y la caminata.
       if(e.key==="Escape"){
         // (En Presentar, arriba: sin pantalla completa Esc sale de Presentar;
         // con ella el primer Esc lo atiende el navegador y suelta sólo la
@@ -8264,100 +7663,25 @@ export default function StoreEditor3D() {
         // No corta nada en captura: los modales que escuchan en `window`
         // siguen recibiendo su Esc.
         if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-        setPlacingDef(null); setSelectedId(null); setSelectedSlotId(null);
-        setFirstPerson(false);
-      }
-      if((e.key==="r"||e.key==="R")&&!e.ctrlKey){
-        e.preventDefault();
-        if(placingDef) setGhostRotY(r=>r+Math.PI/2);
-        else if(selectedId) u(p=>p.map(f=>f.id===selectedId?{...f,rotY:f.rotY+Math.PI/2}:f));
-      }
-      if((e.key==="f"||e.key==="F")&&!e.ctrlKey&&selectedId){
-        e.preventDefault();
-        u(p=>p.map(f=>f.id===selectedId?{...f,w:f.d,d:f.w}:f));
-      }
-      if((e.key==="Delete"||e.key==="Backspace")&&selectedId&&!placingDef){
-        e.preventDefault();
-        u(p=>p.filter(f=>f.id!==selectedId));
-        soltarPruebasDe(selectedId);
         setSelectedId(null); setSelectedSlotId(null);
+        setFirstPerson(false);
       }
     }
     window.addEventListener("keydown",onKey);
     return ()=>window.removeEventListener("keydown",onKey);
-  },[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson,soltarPruebasDe]);
+  },[presentationMode,firstPerson]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const onFloorMove = useCallback((x:number, z:number) => {
-    // En Distribución no hay fantasma: cada movimiento re-dibujaba el editor.
-    if (distribucionVisibleRef.current) return;
-    setGhostX(x);
-    setGhostZ(z);
-    if (placingDef) {
-      // Con el giro del fantasma: se puede rotar ANTES de soltar, y sin esto la
-      // vista previa se pintaba en verde mientras el mueble ya pisaba a otro.
-      const collides = hasAABBCollision(
-        {x, z}, { ...placingDef, rotY: ghostRotY }, placedFixtures,
-      );
-      setGhostCollides(collides);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placingDef, placedFixtures, ghostRotY]);
-
-  function onFloorClick(x:number, z:number){
+  function onFloorClick(){
     // En Distribución el clic en el piso no hace nada (no suelta el mueble).
     if (distribucionVisible) return;
-    if(placingDef){
-      // El fantasma se pintaba rojo al pisar a otro mueble y el clic lo soltaba
-      // igual: el aviso era decorativo. El plano 2D siempre lo bloqueó; acá no.
-      // Un mueble encima de otro rompe el plano para todo lo que viene después
-      // —la caminata, el encuadre del proveedor, el metraje que se cobra.
-      if (hasAABBCollision({x, z}, { ...placingDef, rotY: ghostRotY }, placedFixtures)) {
-        setWarning("⚠️ Ahí se monta sobre otro mueble — movelo o giralo (R)");
-        return;
-      }
-      const warn = validatePlacement(placingDef, {x,z}, placedFixtures);
-      if(warn) setWarning(warn);
-      const newCode = generateCode(sede, placingDef, placedFixtures);
-      const newFix: PlacedFixture = {
-        id:              `${placingDef.type}-${Date.now()}`,
-        code:            newCode,
-        type:            placingDef.type,
-        gondolaType:     placingDef.gondolaType,
-        x, z, rotY:     ghostRotY,
-        w:               placingDef.w,
-        d:               placingDef.d,
-        h:               placingDef.h,
-        label:           placingDef.label,
-        color:           placingDef.color,
-        supplierName:    "",
-        brandCategory:   "",
-        status:          "free",
-        negotiatedValue: 0,
-        startDate:       "",
-        endDate:         "",
-        observation:     "",
-        // Columns, checkouts and free zones are part of the store, not stock to
-        // sell. Everything else stays rentable (flag left absent).
-        ...(NON_RENTABLE_BY_DEFAULT.has(placingDef.type) ? { rentable: false } : {}),
-        // Desde un modelo de la paleta (`paleta`, del catálogo o una ficha
-        // propia del supermercado, `cli:…`): su id y su geometría
-        // quedan ESTAMPADOS en el mueble (las medidas y el color ya vienen en
-        // `placingDef`). El modelo base no trae nada: el mueble nace como
-        // siempre.
-        ...fichaDe(placingDef),
-      };
-      newFix.slots = defaultSlots({ type:newFix.type, w:newFix.w, h:newFix.h, code:newCode });
-      u(prev=>[...prev,newFix]);
-    } else {
-      setSelectedId(null);
-      setSelectedSlotId(null);
-    }
+    setSelectedId(null);
+    setSelectedSlotId(null);
   }
 
   function onSelectFixture(id:string){
-    if(!placingDef && !firstPerson){ setSelectedId(id); setSelectedSlotId(null); }
+    if(!firstPerson){ setSelectedId(id); setSelectedSlotId(null); }
   }
 
   function onSelectSlot(fixtureId:string, slotId:string){
@@ -8365,53 +7689,14 @@ export default function StoreEditor3D() {
     setSelectedSlotId(slotId);
   }
 
-  // B2: route through u() so commercial panel edits (supplier, dates, status) are undoable
-  const updateFixture = useCallback((id:string, updates:Partial<PlacedFixture>)=>{
-    u(prev=>prev.map(f=>f.id===id?{...f,...updates}:f));
-  },[u]);
-
+  // Lo único que el 3D todavía escribe en el plano: el estado de un espacio
+  // interno (una repisa), que no tiene otro lugar donde marcarse.
   const updateSlot = useCallback((fixtureId:string, slotId:string, updates:Partial<ShelfSlot>)=>{
     u(prev=>prev.map(f=>{
       if(f.id!==fixtureId||!f.slots) return f;
       return {...f, slots:f.slots.map(s=>s.id===slotId?{...s,...updates}:s)};
     }));
   },[u]);
-
-  // ── Renombrar, por el mismo camino que el plano 2D ──────────────────────────
-  // La regla vive en `utils/nomenclatura.ts` y comprueba y escribe en la misma
-  // llamada: acá no se decide nada, sólo se guarda el resultado por `u` para que
-  // el renombre entre en el historial de deshacer como cualquier otro cambio.
-  const renombrarFixture = useCallback((id:string, nombre:string) => {
-    const r = renombrar(placedFixtures, id, nombre);
-    if (!r.ok) return r.rechazo;
-    u(() => r.muebles);
-    return null;
-  }, [placedFixtures, u]);
-
-  /** Los dos nombres a la vez: en ningún momento intermedio hay dos iguales. */
-  const intercambiarFixtures = useCallback((esteId:string, otroId:string) => {
-    u(prev => intercambiarNombres(prev, esteId, otroId));
-  }, [u]);
-
-  function rotateSelected(){ if(!selectedId) return; u(p=>p.map(f=>f.id===selectedId?{...f,rotY:f.rotY+Math.PI/2}:f)); }
-  function flipSelected(){   if(!selectedId) return; u(p=>p.map(f=>f.id===selectedId?{...f,w:f.d,d:f.w}:f)); }
-  function deleteSelected(){
-    if(!selectedId) return;
-    u(p=>p.filter(f=>f.id!==selectedId));
-    soltarPruebasDe(selectedId);
-    setSelectedId(null); setSelectedSlotId(null);
-  }
-  function handleSave(){
-    // Fixtures are auto-saved to the store on every change via useEffect.
-    // This button gives explicit visual feedback.
-    setSavedAt(new Date());
-    setShowSavedFeedback(true);
-    setTimeout(() => setShowSavedFeedback(false), 3000);
-  }
-  function handleClear(){
-    if(confirm("¿Limpiar todo el espacio?")){ setPlacedFixtures([]); setSelectedId(null); setSelectedSlotId(null); setSavedAt(null); }
-  }
-
 
   // MEJORA 9: hover callback
   const onHoverFixture = useCallback((id: string|null, x: number, y: number) => {
@@ -8766,64 +8051,42 @@ export default function StoreEditor3D() {
 
         <div className="border-t border-dark-line" />
 
-        <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Muebles</p>
-          {/* Por familia: el modelo base —se coloca como siempre— y, plegados
-              debajo, los modelos de muebles de verdad del catálogo y después
-              las fichas propias del supermercado (las vigentes), con las
-              medidas de su ficha. «≈»: medidas deducidas, no de una ficha. */}
-          <div className="flex flex-col gap-1.5" data-paleta-3d>
-            {paleta.map((familia) => {
-              const def = familia.base;
-              const active = placingDef === def;
-              const activoAdentro = familia.modelos.some((m) => m === placingDef);
-              return (
-                <div key={familia.entrada} className="flex flex-col gap-1">
-                  <button data-modelo={familia.idBase}
-                    onClick={()=>{ setPlacingDef(active?null:def); setSelectedId(null); setSelectedSlotId(null); if(!active) setGhostRotY(0); }}
-                    className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-all duration-150 ${
-                      active
-                        ? "ring-2 ring-accent ring-offset-1 ring-offset-dark-surface bg-accent/20 border-accent text-accent-200"
-                        : "border-dark-line-2 bg-dark-surface-2 text-dark-ink-2 hover:bg-dark-line hover:border-dark-line-2"}`}>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center text-lg bg-dark-line/50 flex-shrink-0">{def.emoji}</span>
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-dark-ink-1">{conNombrePropio(def, nombresPropios, def.label)}</p>
-                      <p className="text-[10px] text-dark-ink-3">{def.w}×{def.d}×{def.h} m</p>
-                    </div>
-                    {active&&<span className="ml-auto h-2.5 w-2.5 flex-shrink-0 animate-pulse rounded-full bg-accent"/>}
-                  </button>
-                  {familia.modelos.length > 0 && (
-                    <details className="ml-3" open={activoAdentro || undefined}>
-                      <summary className="cursor-pointer select-none text-[10px] text-dark-ink-3 hover:text-dark-ink-1">
-                        {familia.modelos.length} {familia.modelos.length === 1 ? "modelo" : "modelos"}
-                      </summary>
-                      <div className="mt-1 flex flex-col gap-1">
-                        {familia.modelos.map((m) => {
-                          const activo = placingDef === m;
-                          return (
-                            <button key={m.modelo} data-modelo={m.modelo} title={m.desc}
-                              onClick={()=>{ setPlacingDef(activo?null:m); setSelectedId(null); setSelectedSlotId(null); if(!activo) setGhostRotY(0); }}
-                              className={`rounded-md border px-2 py-1 text-left transition-all duration-150 ${
-                                activo
-                                  ? "ring-2 ring-accent ring-offset-1 ring-offset-dark-surface bg-accent/20 border-accent text-accent-200"
-                                  : "border-dark-line-2 bg-dark-surface-2 text-dark-ink-2 hover:bg-dark-line"}`}>
-                              <p className="truncate text-[11px] font-medium text-dark-ink-1">
-                                {m.estimado ? "≈ " : ""}{m.nombreModelo}
-                              </p>
-                              {/* Cómo se vende lo que se coloca desde este modelo
-                                  («por puertas»): lo dice su ficha y se estampa. */}
-                              <p className="text-[10px] text-dark-ink-3" data-como-se-vende={m.comoSeVende}>
-                                {m.w}×{m.d}×{m.h} m{m.comoSeVende ? ` · ${m.comoSeVende}` : ""}
-                              </p>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              );
-            })}
+        <div data-mirar-3d>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-dark-ink-3">Mirar</p>
+          {/* El 3D es para mirar (2026-10-28): recorrer la tienda, caminarla,
+              verla con el arte de cada proveedor, y en el mueble elegido
+              probar un producto o distribuir la cara. Colocar, mover, girar y
+              borrar muebles es del plano 2D (el aviso de abajo lleva ahí). */}
+          <div className="flex flex-col gap-1.5">
+            {([
+              ["orbital", "Recorrer la tienda", "girar, acercar, cenital", !firstPerson, () => setFirstPerson(false)],
+              ["primera", "Primera persona", "caminar por los pasillos", firstPerson, () => setFirstPerson(true)],
+              ["arte", "Con el arte del proveedor", "las caras como se ven vendidas", !sinArte, () => setSinArte((v) => !v)],
+            ] as const).map(([clave, titulo, sub, activo, hacer]) => (
+              <button key={clave} type="button" data-mirar={clave} aria-pressed={activo}
+                disabled={clave === "primera" && distribucionVisible}
+                onClick={() => { hacer(); setCatalogoMovil(false); }}
+                className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                  activo
+                    ? "border-accent/60 bg-accent/15"
+                    : "border-dark-line-2 bg-dark-surface-2 hover:bg-dark-line"}`}>
+                <p className="text-xs font-semibold leading-snug text-dark-ink-1">{titulo}</p>
+                <p className="mt-0.5 text-[10px] leading-snug text-dark-ink-3">{sub}</p>
+              </button>
+            ))}
+            <div className="rounded-lg border border-dark-line-2 px-2.5 py-2" data-mirar="productos">
+              <p className="text-xs font-semibold leading-snug text-dark-ink-1">Productos y distribuciones</p>
+              <p className="mt-0.5 text-[10px] leading-snug text-dark-ink-3">elegí un mueble: probar un producto, «Distribuir esta cara»</p>
+            </div>
+          </div>
+          <div className="mt-3 rounded-lg border border-dark-line-2 bg-dark-bg/60 p-2.5" data-editar-en-2d>
+            <p className="text-[11px] leading-snug text-dark-ink-2">
+              Para <b className="text-dark-ink-1">colocar, mover o borrar</b> muebles, usá el plano 2D: acá sólo se mira.
+            </p>
+            <button type="button" onClick={() => navigate("/plano")}
+              className="mt-2 rounded-md border border-dark-line-2 bg-dark-surface-2 px-2.5 py-1.5 text-[11px] font-semibold text-dark-ink-1 hover:bg-dark-line">
+              Editar en el 2D
+            </button>
           </div>
         </div>
 
@@ -8851,26 +8114,6 @@ export default function StoreEditor3D() {
           </div>
         </div>
 
-        <div className="border-t border-dark-line" />
-
-        <div className="text-[10px] text-dark-ink-3 space-y-0.5">
-          <p><kbd className="rounded-md border border-dark-line-2 bg-dark-surface-2 px-1.5 py-0.5 text-[10px] font-mono text-dark-ink-2 shadow-sm">R</kbd> Rotar 90°</p>
-          <p><kbd className="rounded-md border border-dark-line-2 bg-dark-surface-2 px-1.5 py-0.5 text-[10px] font-mono text-dark-ink-2 shadow-sm">F</kbd> Flip ancho/fondo</p>
-          <p><kbd className="rounded-md border border-dark-line-2 bg-dark-surface-2 px-1.5 py-0.5 text-[10px] font-mono text-dark-ink-2 shadow-sm">Del</kbd> Eliminar</p>
-          <p><kbd className="rounded-md border border-dark-line-2 bg-dark-surface-2 px-1.5 py-0.5 text-[10px] font-mono text-dark-ink-2 shadow-sm">Esc</kbd> Cancelar</p>
-        </div>
-
-        <div className="mt-auto flex flex-col gap-1.5">
-          <button onClick={handleSave}
-            className="flex items-center justify-center gap-1.5 rounded-lg bg-accent hover:bg-accent-600 shadow-lg active:scale-[0.98] transition-all py-2 text-xs font-semibold text-accent-ink">
-            {showSavedFeedback
-              ? <><span className="text-success-100">✓</span> <span className="text-success-100">Guardado</span></>
-              : <><Save size={12}/> Guardar</>
-            }
-          </button>
-          {savedAt && !showSavedFeedback && <p className="text-center text-[9px] text-dark-ink-3">Guardado {savedAt.toLocaleTimeString()}</p>}
-          <button onClick={handleClear} className="text-center text-[10px] text-dark-ink-3 transition-colors hover:text-danger">Limpiar todo</button>
-        </div>
       </div>
 
       {/* ── Canvas ── */}
@@ -8881,24 +8124,11 @@ export default function StoreEditor3D() {
           <div className={`absolute inset-x-0 top-0 z-10 flex items-center gap-3 overflow-x-auto whitespace-nowrap border-b px-4 py-1.5 text-[10px] backdrop-blur-sm max-sm:gap-2 max-sm:px-2 [&>*]:flex-shrink-0 ${
             warning
               ? "bg-warning/10 border-warning/30"
-              : placingDef
-                ? "bg-accent/10 border-accent/30"
-                : "bg-dark-bg/85 border-dark-line/60"
+              : "bg-dark-bg/85 border-dark-line/60"
           }`}>
             {warning ? (
               <span className="flex items-center gap-1.5 text-warning">
                 <AlertTriangle size={12} className="text-warning"/> {warning}
-              </span>
-            ) : placingDef ? (
-              <span className="flex items-center gap-2 text-accent-200">
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent flex-shrink-0"/>
-                Colocando <strong className="text-dark-ink-1">
-                  {placingDef.nombreModelo ? `${placingDef.estimado ? "≈ " : ""}${placingDef.nombreModelo}` : conNombrePropio(placingDef, nombresPropios, placingDef.label)}
-                </strong>
-                <span className="text-accent/40">·</span>
-                <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">clic</kbd> ubicar ·
-                <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">R</kbd> rotar ·
-                <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1 text-dark-ink-2">Esc</kbd> cancelar
               </span>
             ) : (
               <span className="flex items-center gap-2 text-dark-ink-2">
@@ -8921,15 +8151,15 @@ export default function StoreEditor3D() {
             )}
             <span className="ml-auto hidden text-dark-ink-3 lg:block">arrastrá para girar · rueda para acercar</span>
 
-            {/* El catálogo, en el teléfono (arranca guardado). */}
+            {/* El panel «Mirar», en el teléfono (arranca guardado). */}
             <button onClick={() => setCatalogoMovil((v) => !v)} aria-expanded={catalogoMovil} data-catalogo-3d-movil
               className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 sm:hidden">
-              Muebles
+              Mirar
             </button>
 
-            {/* Vista superior — alinea cámara cenital para mover fixtures fácil */}
+            {/* Vista superior: la planta de la sede vista desde arriba. */}
             <button onClick={handleTopView}
-              title="Vista superior (cenital) — ideal para mover los muebles"
+              title="Vista superior (cenital): la sede vista desde arriba"
               className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface px-2 py-0.5 text-[10px] text-dark-ink-2 hover:bg-dark-surface-2 transition-colors">
               ⊞ Cenital
             </button>
@@ -9003,29 +8233,23 @@ export default function StoreEditor3D() {
               {presentationMode ? 'Salir' : 'Presentar'}
             </button>
 
-            {placingDef && (
-              <button onClick={()=>setPlacingDef(null)}
-                className="flex items-center gap-1 rounded border border-dark-line-2 bg-dark-surface-2 hover:bg-dark-line px-2 py-0.5 text-[10px] text-dark-ink-2 active:scale-95 transition-all">
-                <X size={10}/> Cancelar
-              </button>
-            )}
           </div>
         )}
 
-        {placedFixtures.length === 0 && !placingDef && !presentationMode && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+        {placedFixtures.length === 0 && !presentationMode && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10" data-sede-vacia-3d>
             <div className="flex flex-col items-center gap-4 text-center max-w-xs">
               <div className="w-20 h-20 rounded-2xl bg-dark-surface border border-dark-line flex items-center justify-center">
                 <Boxes size={36} className="text-dark-ink-3" />
               </div>
               <div>
-                <p className="text-dark-ink-2 font-medium text-sm">Tu tienda está vacía</p>
-                <p className="text-dark-ink-3 text-xs mt-1">Seleccioná un fixture del panel izquierdo y hacé clic en el piso para colocarlo</p>
+                <p className="text-dark-ink-2 font-medium text-sm">Esta sede todavía no tiene muebles</p>
+                <p className="text-dark-ink-3 text-xs mt-1">Los muebles se colocan en el plano 2D; acá se ven en cuanto están.</p>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-dark-ink-3">
-                <kbd className="rounded border border-dark-line-2 bg-dark-surface px-1.5 py-0.5 font-mono">R</kbd>
-                <span>rotar antes de colocar</span>
-              </div>
+              <button type="button" onClick={() => navigate("/plano")}
+                className="pointer-events-auto rounded-md border border-dark-line-2 bg-dark-surface-2 px-3 py-1.5 text-xs font-semibold text-dark-ink-1 hover:bg-dark-line">
+                Ir al plano 2D
+              </button>
             </div>
           </div>
         )}
@@ -9059,18 +8283,10 @@ export default function StoreEditor3D() {
               selectedSlotId={selectedSlotId}
               hoveredSlotId={hoveredSlotId}
               setHoveredSlotId={setHoveredSlotId}
-              placingDef={placingDef}
-              ghostX={ghostX}
-              ghostZ={ghostZ}
-              ghostRotY={ghostRotY}
-              ghostCollides={ghostCollides}
-              draggingId={draggingId}
               orbitRef={orbitRef}
-              onFloorMove={onFloorMove}
               onFloorClick={onFloorClick}
               onSelectFixture={onSelectFixture}
               onSelectSlot={onSelectSlot}
-              setPlacedFixtures={setPlacedFixtures}
               screenshotReady={setScreenshotFn}
               topViewReady={setTopViewFn}
               firstPerson={firstPerson}
@@ -9245,14 +8461,9 @@ export default function StoreEditor3D() {
           setEligiendo={setEligiendo}
           onCara={alCambiarCara}
           selectedSlot={selectedSlot}
-          onUpdate={updateFixture}
           muebles={placedFixtures}
-          onRenombrar={renombrarFixture}
-          onIntercambiar={intercambiarFixtures}
           onUpdateSlot={updateSlot}
-          onRotate={rotateSelected}
-          onFlip={flipSelected}
-          onDelete={deleteSelected}
+          onEditarEn2D={() => navigate("/plano")}
           onClose={()=>{ setSelectedId(null); setSelectedSlotId(null); }}
           onSlotClose={()=>setSelectedSlotId(null)}
           onDistribuir={() => entrarADistribuir(selectedFix.id)}

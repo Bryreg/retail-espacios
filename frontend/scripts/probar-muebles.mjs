@@ -179,7 +179,7 @@ prueba("los espacios se dibujan sólo sobre el mueble seleccionado", () => {
   // Encendidos en toda la planta, un local de cincuenta muebles queda cubierto
   // de rectángulos de colores y no se ve la tienda.
   assert.match(
-    cuerpoEscena, /const conEspacios = hasSlots && fix\.id === selectedId && !placingDef && !firstPerson && !presentationMode;/,
+    cuerpoEscena, /const conEspacios = hasSlots && fix\.id === selectedId && !firstPerson && !presentationMode;/,
     "cambió la condición que decide sobre qué mueble se ven los espacios (o volvieron a Presentar)",
   );
 });
@@ -1594,7 +1594,7 @@ prueba("cada editor crea muebles con las tablas de `src/catalogo/`, sin copias p
   assert.equal((editorCodigo.match(/\bdelStoreAl3D\([^)]*,\s*CATALOGO_3D\)/g) ?? []).length, conversiones3D.length,
     "alguna conversión del 3D no recibe `CATALOGO_3D`");
   // Y `defaultSlots` sigue dando repisas a la góndola y a la punta.
-  const slots = cuerpoDe("function defaultSlots(", "function validatePlacement(");
+  const slots = cuerpoDe("function defaultSlots(", "interface GondolaMeshProps");
   assert.match(slots, /if \(fix\.type !== "gondola" && fix\.type !== "punta"\) return \[\];/,
     "`defaultSlots` cambió a qué muebles les da repisas");
   assert.match(slots, /Array\.from\(\{ length: cols \* rows \}/, "`defaultSlots` ya no arma la grilla de repisas");
@@ -4286,13 +4286,11 @@ prueba("Presentar: sin cromo, sin estado y sin nada de otros proveedores", () =>
   assert.match(cuerpoEscena, /!selectedSlotId && !presentationMode && <SelectionBox/, "la caja de selección sale en Presentar");
   assert.match(cuerpoEscena, /\{!presentationMode && \(\(\) => \{\s*const unifiedFix = unifiedById\.get\(fix\.id\);/,
     "la insignia «sin contrato» sale en Presentar");
-  assert.match(cuerpoEscena,
-    /selectedId && !placingDef && !firstPerson && !presentationMode && \(\(\) => \{\s*const fix = placedFixtures\.find\(f => f\.id === selectedId\);\s*return fix \? \(\s*<FixtureTransformControls/,
-    "el gizmo sale en Presentar");
+  // Desde 2026-10-28 el 3D es para mirar: no hay gizmo ni arrastre en ningún modo.
+  assert.ok(!/FixtureTransformControls|TransformControls/.test(editorCodigo), "volvió el gizmo de mover al 3D");
   assert.match(cuerpoEscena, /neutro=\{privadoPara !== undefined\}/, "las tiras de estado salen en Presentar o en la lámina");
   assert.match(editorCodigo, /const sc = neutro\s*\? COLOR_NEUTRO/, "`neutro` no apaga el color de estado");
-  assert.match(cuerpoEscena, /onSelectFixture\(fix\.id\);\s*if \(presentationMode\) return;\s*draggingId\.current=fix\.id;/,
-    "en Presentar un clic arrastra el mueble");
+  assert.ok(!/draggingId/.test(editorCodigo), "el 3D volvió a arrastrar muebles");
   // La persona de 1,70 m es la escala: sigue en Presentar, como silueta
   // plana parada EN EL PLANO de la cara que se muestra (adelantada, la
   // perspectiva la agrandaba), y no en «De cerca».
@@ -4370,7 +4368,7 @@ prueba("«Mostrar al proveedor» abre Presentar con la toma de frente", () => {
   assert.match(mostrar, /setFirstPerson\(false\)/);
   assert.match(mostrar, /pedirToma\(fixtureId, cara, "frente"\)/);
   assert.ok(!/setPlacedFixtures/.test(mostrar), "mostrar escribe el plano");
-  const vista = cuerpoDe("function VistaProveedor(", "function FixtureTransformControls(");
+  const vista = cuerpoDe("function VistaProveedor(", "function FirstPersonControls(");
   assert.match(vista, /onClick=\{\(\) => onMostrar\(fix\.id, caraUsada\)\}/);
   assert.match(editorCodigo,
     /\(\[\["frente", "De frente"\], \["tres_cuartos", "Tres cuartos"\], \["cerca", "De cerca"\]\] as const\)/,
@@ -5638,13 +5636,13 @@ prueba("en Presentar el teclado sólo atiende Esc: ni R, ni F, ni Retroceso, ni 
   assert.deepEqual(correr({ presentationMode: true }, { key: "Escape" }), ["setPresentationMode"], "Esc no sale de Presentar (o suelta el mueble)");
   assert.deepEqual(correr({ presentationMode: true, firstPerson: true }, { key: "Escape" }), [], "Esc sale de Presentar en plena caminata");
   assert.deepEqual(correr({ presentationMode: true, lockEl: {} }, { key: "Escape" }), [], "Esc sale de Presentar con el mouse capturado");
-  // Fuera de Presentar el editor sigue igual: R gira, Retroceso borra (y
-  // suelta las pruebas del mueble borrado), Ctrl+Z deshace.
-  assert.ok(correr({ presentationMode: false }, { key: "r" }).includes("u"), "fuera de Presentar R ya no gira");
-  const borra = correr({ presentationMode: false }, { key: "Backspace" });
-  assert.ok(borra.includes("u") && borra.includes("soltar"), "borrar un mueble deja sus pruebas huérfanas");
-  assert.ok(correr({ presentationMode: false }, { key: "z", ctrlKey: true }).includes("undo"));
-  assert.match(editorCodigo, /\},\[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson,soltarPruebasDe\]\);/, "el manejador de teclas lee un presentationMode viejo");
+  // Fuera de Presentar tampoco (2026-10-28): el 3D es para mirar, y R, F,
+  // Retroceso y Ctrl+Z no giran, borran ni deshacen el plano.
+  for (const ev of [{ key: "r" }, { key: "F" }, { key: "Delete" }, { key: "Backspace" }, { key: "z", ctrlKey: true }, { key: "y", ctrlKey: true }]) {
+    const hecho = correr({ presentationMode: false }, ev);
+    assert.ok(!hecho.some((n) => escriben.includes(n)), `fuera de Presentar «${ev.ctrlKey ? "Ctrl+" : ""}${ev.key}» llama ${hecho.join(", ")}: el 3D toca el plano`);
+  }
+  assert.match(editorCodigo, /\},\[presentationMode,firstPerson\]\);/, "el manejador de teclas lee un presentationMode viejo");
 });
 
 prueba("el HUD de Presentar se esconde a los 2 s y vuelve con el mouse, sin redibujar la escena", () => {
@@ -5742,15 +5740,16 @@ prueba("la reunión se termina, y las pruebas de un mueble borrado no la sostien
   // El editor usa las vivas para la reunión, el aviso y «Presentar», y tiene
   // con qué terminarla (suelta al proveedor y quita las pruebas).
   assert.match(editorCodigo, /const pruebaViva = useMemo\(\(\) => pruebasDelPlano\(prueba, idsDelPlano\), \[prueba, idsDelPlano\]\);/);
-  const terminar = cuerpoDe("const terminarReunion = useCallback(", "const soltarPruebasDe = useCallback(");
+  const terminar = cuerpoDe("const terminarReunion = useCallback(", "const caraDelPanel = useRef<");
   for (const paso of [/setProveedorDeReunion\(null\);/, /setPrueba\(new Map\(\)\);/, /setComoSePrueba\(new Map\(\)\);/]) {
     assert.match(terminar, paso, "«Terminar la reunión» deja algo de la reunión puesto");
   }
   assert.ok(!/setPlacedFixtures|commit\(|\bu\(/.test(terminar), "terminar la reunión escribe el plano");
   assert.match(editorCodigo, /\{enReunion && !presentationMode && \(\s*<button\s*onClick=\{\(\) => \{\s*if \(pruebaViva\.size === 0 \|\| confirm\(/,
     "no hay botón para terminar la reunión");
-  const borrar = cuerpoDe("function deleteSelected(){", "function handleSave(){");
-  assert.match(borrar, /soltarPruebasDe\(selectedId\);/, "borrar el mueble deja sus pruebas");
+  // El 3D ya no borra muebles (2026-10-28): uno borrado en el 2D sale de las
+  // pruebas vivas por `pruebasDelPlano`, como arriba.
+  assert.ok(!/function deleteSelected\(/.test(editorCodigo), "el 3D volvió a borrar muebles");
 });
 
 prueba("la lámina de un mueble elegido en plena reunión es para la reunión, sin el contrato ajeno", () => {
@@ -6175,7 +6174,7 @@ prueba("la escena del visor (`soloVenta`): ni fotos de caras, ni cámara del edi
   // Los `TIPOS_CON_*` viven en `catalogo/editor3D.ts`: el editor los toma de
   // ahí —no de una copia propia— y los reexporta para el visor.
   assert.match(editorCodigo,
-    /import \{ FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO, paletaConPropias \} from "\.\.\/\.\.\/catalogo\/editor3D";/,
+    /import \{ FIXTURE_DEFS, TIPOS_CON_PRODUCTO, TIPOS_CON_PRUEBA_3D, TIPOS_CON_SURTIDO \} from "\.\.\/\.\.\/catalogo\/editor3D";/,
     "el editor no toma sus tablas por tipo de `catalogo/editor3D.ts`");
   assert.match(editorCodigo, /export \{[^}]*\bTIPOS_CON_PRODUCTO\b[^}]*\bTIPOS_CON_PRUEBA_3D\b[^}]*\};/,
     "el editor no reexporta lo que el visor necesita");
@@ -6447,15 +6446,15 @@ prueba("una sola condición para el modo, corrida con cada modo que lo excluye",
   const f = new Function(`${esbuildTransform(editorCodigo.slice(i, j + 2))}\nreturn distribucionALaVista;`)();
   const activa = { cliente: "super", sede: "NAVE", fixtureId: "g1", codigo: "GON-01", cara: "A" };
   const base = { activa, cliente: "super", sede: "NAVE", muebleEnElPlano: true, presentationMode: false, privadoPara: undefined,
-    soloVenta: false, firstPerson: false, enReunion: false, colocando: false };
+    soloVenta: false, firstPerson: false, enReunion: false };
   assert.equal(f(base), true);
   for (const [k, v] of [["activa", null], ["cliente", "otro"], ["sede", "CENTRO"], ["muebleEnElPlano", false], ["presentationMode", true],
-    ["privadoPara", null], ["privadoPara", 12], ["soloVenta", true], ["firstPerson", true], ["enReunion", true], ["colocando", true]]) {
+    ["privadoPara", null], ["privadoPara", 12], ["soloVenta", true], ["firstPerson", true], ["enReunion", true]]) {
     assert.equal(f({ ...base, [k]: v }), false, `con ${k} = ${JSON.stringify(v)} se sigue viendo la distribución`);
   }
   // Calculada UNA vez y de ella dependen el panel, el lienzo y la capa de la escena.
   assert.equal((editorCodigo.match(/const distribucionVisible = /g) || []).length, 1, "la condición se calcula más de una vez");
-  assert.match(editorCodigo, /const distribucionVisible = distribucionALaVista\(\{[^}]*presentationMode, privadoPara, soloVenta: false, firstPerson, enReunion, colocando: placingDef !== null,\s*\}\);/);
+  assert.match(editorCodigo, /const distribucionVisible = distribucionALaVista\(\{[^}]*presentationMode, privadoPara, soloVenta: false, firstPerson, enReunion,\s*\}\);/);
   const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
   const escena = enEditor.match(/<Scene\b[^]*?\/>/)[0];
   assert.match(escena, /distribucion=\{distribucionVisible \? propsDeDistribucion : undefined\}/, "la escena recibe la capa sin la condición única");
@@ -6507,8 +6506,7 @@ prueba("una sola condición para el modo, corrida con cada modo que lo excluye",
 prueba("el puntero en Distribución: sin arrastre ni gizmo ni caja, clic contra arrastre, y los vecinos no se comen el clic", () => {
   // Prefijos: las secuencias fijadas de arriba siguen pasando.
   assert.match(cuerpoEscena, /\{!enDistribucion && fix\.id===selectedId && !selectedSlotId && !presentationMode && <SelectionBox/, "la caja de selección sale en Distribución");
-  assert.match(cuerpoEscena, /\{!enDistribucionDelMueble\(selectedId\) && selectedId && !placingDef && !firstPerson && !presentationMode && \(\(\) => \{/,
-    "el gizmo de mover sale en Distribución (un giro de cámara que empezaba en la flecha corría la góndola)");
+  assert.ok(!/TransformControls/.test(editorCodigo), "el gizmo de mover volvió (en Distribución un giro de cámara que empezaba en la flecha corría la góndola)");
   assert.match(cuerpoEscena, /if \(firstPerson\) return;\s*if \(enModoDistribucion\) \{ e\.stopPropagation\(\); return; \}\s*e\.stopPropagation\(\);\s*onSelectFixture\(fix\.id\);/,
     "en Distribución un arrastre sobre el mueble lo corre");
   assert.match(cuerpoEscena, /const vecinoEnDistribucion = enModoDistribucion !== undefined && !enDistribucion;/);
@@ -6525,8 +6523,7 @@ prueba("el puntero en Distribución: sin arrastre ni gizmo ni caja, clic contra 
   assert.ok(i > 0 && j > i && j < k, "las zonas no van adentro del grupo del mueble, después del volumen de toque");
   // El piso, el cartel y el fantasma no hacen nada mientras dura el modo.
   const enEditor = editorCodigo.slice(editorCodigo.indexOf("export default function StoreEditor3D("));
-  assert.match(enEditor, /function onFloorClick\(x:number, z:number\)\{\s*if \(distribucionVisible\) return;/, "el clic en el piso suelta el mueble en Distribución");
-  assert.match(enEditor, /const onFloorMove = useCallback\(\(x:number, z:number\) => \{\s*if \(distribucionVisibleRef\.current\) return;/);
+  assert.match(enEditor, /function onFloorClick\(\)\{[^}]*?if \(distribucionVisible\) return;/, "el clic en el piso suelta el mueble en Distribución");
   assert.match(enEditor, /const onHoverFixture = useCallback\(\(id: string\|null, x: number, y: number\) => \{\s*if \(distribucionVisibleRef\.current\) return;/);
 });
 
@@ -6565,7 +6562,7 @@ prueba("el teclado en Distribución: el atajo global no borra ni gira el mueble,
   // El efecto: en captura, sólo con el modo a la vista; el atajo global, intacto.
   assert.match(editorCodigo, /const TECLAS_DEL_EDITOR = \["Delete", "Backspace", "r", "R", "f", "F", "Escape"\] as const;/);
   assert.match(editorCodigo, /window\.removeEventListener\("keydown", enCaptura, \{ capture: true \}\);\s*\}, \[distribucionVisible\]\);/);
-  assert.match(editorCodigo, /\},\[placingDef,selectedId,u,undo,redo,presentationMode,firstPerson,soltarPruebasDe\]\);/, "se tocó el atajo global");
+  assert.match(editorCodigo, /\},\[presentationMode,firstPerson\]\);/, "se tocó el atajo global");
 });
 
 const compiladoDibujo = await build({
@@ -6819,12 +6816,13 @@ prueba("el Editor 3D dice de una cara por participación la MISMA palabra que el
   assert.match(nota, /lo dice la ocupación de hoy de sus participaciones/i);
   const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
   assert.match(panel, /const estadoPorOcupacion = sm !== STATUS_META\[fix\.status\];/, "la nota no mira si lo que se ve lo puso la ocupación");
-  const k = panel.indexOf("Estado fixture</label>");
-  assert.ok(k > 0, "no está «Estado fixture»");
-  const bloque = panel.slice(k, panel.indexOf("{estadoError && (", k));
-  assert.match(bloque, /<option value="free">Disponible<\/option>/, "«Estado fixture» dejó de ser el selector de siempre");
-  assert.match(bloque, /\{estadoPorOcupacion && \(\s*<p [^>]*data-estado-por-ocupacion>\s*\{notaDeEstadoPorOcupacion\(sm\.label\)\}\s*<\/p>\s*\)\}/,
-    "«Estado fixture» dice «Disponible» sin la nota de la ocupación");
+  // Desde 2026-10-28 el estado se cambia sólo en el plano 2D: el 3D lo dice
+  // (el cartel del panel) con la misma nota de la ocupación, sin selector.
+  const k = panel.indexOf("data-destino-3d");
+  assert.ok(k > 0, "no está el bloque de sólo lectura del destino y el estado");
+  assert.ok(!/<select value=\{fix\.status\}/.test(panel), "el 3D volvió a cambiar el estado del mueble");
+  assert.match(panel.slice(k), /\{rentable && estadoPorOcupacion && \(\s*<p [^>]*data-estado-por-ocupacion>\s*\{notaDeEstadoPorOcupacion\(sm\.label\)\}\s*<\/p>\s*\)\}/,
+    "el 3D dice «Disponible» sin la nota de la ocupación");
   // Y el plano usa la misma nota en su selector (no una copia escrita aparte).
   const plano = sinComentarios(leer("src/components/FloorPlan2D/FloorPlan2D.tsx"));
   assert.match(plano, /\{estadoVisto !== face\.status && \(\s*<p data-estado-por-ocupacion[^>]*>\s*\{notaDeEstadoPorOcupacion\(rotuloVisto\)\}\s*<\/p>/,
@@ -7349,7 +7347,7 @@ prueba("el trazo en curso se dibuja en el 3D: una cinta discontinua en el tono d
     assert.deepEqual(con.llamadas, [], `con un modal abierto Esc llamó ${con.llamadas.join(", ")}: soltó el mueble`);
     assert.deepEqual(con.preguntas, ['[role="dialog"][aria-modal="true"]'], "Esc no pregunta si hay un diálogo modal abierto");
     const sin = correr(false, { key: "Escape" });
-    assert.ok(sin.llamadas.includes("setSelectedId") && sin.llamadas.includes("setPlacingDef") && sin.llamadas.includes("setSelectedSlotId"),
+    assert.ok(sin.llamadas.includes("setSelectedId") && sin.llamadas.includes("setSelectedSlotId"),
       "sin modal Esc ya no suelta el mueble");
     // Las demás teclas no preguntan, y Presentar sigue igual: Esc sale de Presentar.
     assert.deepEqual(correr(true, { key: "r" }).preguntas, []);

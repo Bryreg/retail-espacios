@@ -176,5 +176,5 @@ export const AYUDA_DE_LA_PANTALLA: Record<Modulo, { titulo: string; que: string;
   plano: { titulo: "Plano de la sede", que: "Donde se arma el supermercado: los muebles a escala. Editar para colocar y mover; Mirar para recorrerlo.",
     pasos: ["Tocá o arrastrá un tipo de la tira de la izquierda al plano.", "Tocá un mueble para ver su ficha.", "«Revisar» lista códigos repetidos, muebles encimados y pasillos angostos."] },
   plano3d: { titulo: "Plano 3D", que: "La sede en 3D, para mostrarla y para la reunión con el proveedor.",
-    pasos: ["Cenital para mover muebles; Primera persona para caminar (WASD).", "«Presentar» deja la vista lista para el proveedor."] },
+    pasos: ["Es para mirar: los muebles se colocan, mueven y borran en el 2D.", "Cenital para ver la planta; Primera persona para caminar (WASD).", "Elegí un mueble para probar un producto o distribuir su cara; «Presentar» deja la vista lista para el proveedor."] },
 };
