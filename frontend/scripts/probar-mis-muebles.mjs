@@ -16,7 +16,7 @@
  *     sobre otra cosa.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -250,6 +250,24 @@ await prueba("retirar se confirma en la app y dice cuántos hay colocados; un am
   assert.equal((pagina.match(/<Canvas/g) || []).length, 0);
   assert.match(pagina, /<FotografoDeMuebles \/>/);
   assert.match(vista, /cola\.shift\(\);/);
+});
+
+await prueba("todo lienzo 3D va a 1:1 adentro de la app escalada (la vista de la ficha no crece sin fin)", () => {
+  // `escala.ts` pone `zoom` en el <body> (1,2 a 1920 × 1080): un <Canvas> sin
+  // anfitrión a 1:1 se medía agrandado, se ponía ese tamaño y volvía a
+  // agrandarse. En la ficha del plano crecía hasta millones de px y el mueble
+  // «se iba» (el dueño, 2026-10-28).
+  const tsx = readdirSync(join(raiz, "src"), { recursive: true }).filter((f) => String(f).endsWith(".tsx"));
+  const conLienzo = tsx.filter((f) => /<Canvas\b/.test(sinComentarios(leer(join("src", String(f))))));
+  assert.ok(conLienzo.length >= 4, "no encuentro los lienzos 3D");
+  for (const f of conLienzo) {
+    assert.match(sinComentarios(leer(join("src", String(f)))), /SIN_ESCALA/, `${f}: un <Canvas> sin anfitrión a 1:1`);
+  }
+  for (const [n, t] of [["la miniatura", mini], ["la vista de la ficha", vista]]) {
+    const i = t.indexOf("<div style={ANFITRION_SIN_ESCALA}>"), j = t.indexOf("<Canvas");
+    assert.ok(i >= 0 && i < j, `${n}: el <Canvas> no va adentro de su anfitrión`);
+  }
+  assert.match(leer("src/plano.css"), /\.p2-mini3d \{[^}]*grid-template-columns: minmax\(0, 1fr\)/, "la columna de la miniatura crece con el lienzo");
 });
 
 console.log(`\n${hechas} pruebas · el plano se edita en el 2D y los muebles se arman en Mis muebles`);

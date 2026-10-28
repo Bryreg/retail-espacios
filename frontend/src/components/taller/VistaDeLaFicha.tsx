@@ -6,6 +6,7 @@ import type { PlacedFixture } from "../StoreEditor3D/StoreEditor3D";
 import { partesNumeradas, type ParteNumerada } from "../StoreEditor3D/muebles/contornos";
 import { defDeModelo, paletaConPropias, type FixtureDef } from "../../catalogo/editor3D";
 import { useFichasPropias } from "../../store/fichasPropias";
+import { ANFITRION_SIN_ESCALA, SIN_ESCALA } from "../../escala";
 import { fichaParaDibujar, type FormularioDeFicha } from "../../utils/formularioDeFicha";
 import { Controles, EntornoNeutro, ParteNumeradaDelTaller, Piso, delCatalogo, tomaTresCuartos } from "./escena";
 
@@ -76,6 +77,7 @@ export function VistaDeLaFicha({ dibujo, conNumeros }: { dibujo: DibujoDeLaFicha
   const [w, d, h] = f ? [r(f.w), r(f.d), r(f.h)] : [1, 1, 1];
   const camara = useMemo(() => ({ position: tomaTresCuartos(1, 1, 1).pos, fov: 42, near: 0.05, far: 100 }), []);
   return (
+    <div style={ANFITRION_SIN_ESCALA}>
     <Canvas camera={camara} shadows={{ type: THREE.PCFSoftShadowMap }} dpr={[1, 1.75]}
       gl={{ antialias: true }} style={{ background: "#e4e1db" }} data-vista-ficha>
       <Suspense fallback={null}>
@@ -86,6 +88,7 @@ export function VistaDeLaFicha({ dibujo, conNumeros }: { dibujo: DibujoDeLaFicha
         {dibujo && conNumeros && dibujo.numeradas.map((p, i) => <ParteNumeradaDelTaller key={`${p.etiqueta}-${i}`} p={p} />)}
       </Suspense>
     </Canvas>
+    </div>
   );
 }
 
@@ -154,7 +157,7 @@ export function FotografoDeMuebles() {
   const pedido = cola[0];
   if (!pedido) return null;
   return (
-    <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, width: 360, height: 240, pointerEvents: "none" }}>
+    <div aria-hidden style={{ position: "fixed", left: -10000, top: 0, width: 360, height: 240, pointerEvents: "none", zoom: SIN_ESCALA }}>
       <Canvas dpr={1.5} gl={{ antialias: true, preserveDrawingBuffer: true }}
         camera={{ position: [2, 1.5, -2], fov: 42, near: 0.05, far: 100 }}>
         <color attach="background" args={["#e4e1db"]} />

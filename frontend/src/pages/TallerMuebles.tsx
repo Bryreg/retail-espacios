@@ -19,6 +19,7 @@ import type { ModoDeFondo } from "../components/StoreEditor3D/muebles/recorte";
 import { arteUrl, listarCatalogo, type Arte } from "../api/catalogo";
 import { paletaConPropias } from "../catalogo/editor3D";
 import { useFichasPropias } from "../store/fichasPropias";
+import { ANFITRION_SIN_ESCALA } from "../escala";
 import { Controles, EntornoNeutro, Piso, SLOTS_DE_MUESTRA, delCatalogo, type Toma } from "../components/taller/escena";
 
 /**
@@ -498,7 +499,8 @@ export default function TallerMuebles() {
       )}
 
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+        <div style={ANFITRION_SIN_ESCALA}>
         <Canvas
           camera={camara}
           shadows={{ type: THREE.PCFSoftShadowMap }}
@@ -579,6 +581,7 @@ export default function TallerMuebles() {
             )}
           </Suspense>
         </Canvas>
+        </div>
         </div>
       </div>
     </div>

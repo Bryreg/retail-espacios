@@ -1506,6 +1506,11 @@ y, en el navegador, la revisión de solapes a 1440, 1280, 1100, 1024, 820 y 390 
   Encuadra **lo dibujado** (la caja de `FixtureMesh`), no la medida: una estiba libre mide 1,40 m
   —hasta dónde se carga— y se dibuja la tarima sola; por la medida quedaba abajo, chiquita, y la
   vista parecía vacía (EXP-01 en TERRON).
+  **Se iba sola (la causa de verdad, 2026-10-28):** a 1920 × 1080 la app se escala ×1,2 (`zoom`
+  en `<body>`) y el lienzo no tenía anfitrión a 1:1. Se medía agrandado, tomaba ese tamaño, la
+  columna de la ficha crecía con él y se volvía a medir: ×1,2 por vuelta, hasta 33 millones de
+  px, con el mueble corriéndose fuera de la vista. A 1440 × 900 (escala 1) no pasaba, por eso no
+  se veía en las pruebas.
 - **Nada se monta.** El catálogo abierto pasó de flotar sobre el lienzo a ser una **columna** que
   lo corre (tapaba los filtros, la pista y la barra de herramientas); el pie de la tira («Crear
   mueble» y «Más») es un solo bloque pegado; en tableta la hoja de la ficha empieza al lado de la
@@ -1629,7 +1634,10 @@ el plano 2D arranca encuadrado en el teléfono.
 **Safari y Firefox.** Se probó en Chromium (el del contenedor); Safari y Firefox no se pudieron
 abrir acá. Lo que hay que saber: la escala usa `zoom` en `<body>` — Safari lo soporta desde
 siempre y Firefox desde la 126 (2024); en un Firefox más viejo la app queda a 1:1, sin escalar,
-y sigue funcionando. Pantalla completa del plano: el iPhone no la deja sobre un elemento (sale
+y sigue funcionando. **Todo `<Canvas>` del tablero va adentro de un anfitrión a 1:1**
+(`ANFITRION_SIN_ESCALA` o `zoom: SIN_ESCALA`, de `escala.ts`): sin él se mide agrandado y, si
+su caja depende de su contenido, crece sin fin. `probar:mis-muebles` lo exige en cada archivo con
+un lienzo; probar en 1920 × 1080, no sólo en 1440 × 900. Pantalla completa del plano: el iPhone no la deja sobre un elemento (sale
 el aviso «Este navegador no deja pasar a pantalla completa»); el iPad y el escritorio, sí. El
 arrastre desde la tira del plano es de mouse: en una pantalla táctil se toca el tipo y después el
 plano. Ctrl K en Mac es ⌘ K. Las unidades `dvh` piden Safari 15.4 / Firefox 101.
