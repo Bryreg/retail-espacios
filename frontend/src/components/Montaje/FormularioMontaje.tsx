@@ -442,12 +442,17 @@ export default function FormularioMontaje({
           <div style={{ fontSize: 13.5, lineHeight: 1.45, color: "var(--ink-2)" }}>
             «{pendiente.estado === "montado" ? "Lo monté" : "No pude"}»
             {pendiente.foto ? " · con foto" : ""}
-            {pendiente.quien ? ` · ${pendiente.quien}` : ""} · guardado {cuandoSeGuardo(pendiente.guardado)}.
-            Todavía no llegó al sistema.
+            {pendiente.quien ? ` · ${pendiente.quien}` : ""} · guardado {cuandoSeGuardo(pendiente.guardado)} ·
+            todavía no llegó al sistema.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn-principal" onClick={() => mandarPendiente(pendiente)} disabled={enviando}
-              style={{ flex: 1, minHeight: 46, borderRadius: "var(--r-lg)", fontSize: 15, fontFamily: "inherit" }}>
+            {/* En tinta y no amarillo: el amarillo de esta pantalla es
+                «Confirmar» (uno por pantalla, `probar-tema`). */}
+            <button type="button" onClick={() => mandarPendiente(pendiente)} disabled={enviando}
+              style={{
+                flex: 1, minHeight: 46, borderRadius: "var(--r-lg)", fontSize: 15, fontWeight: 700, fontFamily: "inherit",
+                cursor: "pointer", border: "none", background: "var(--ink-1)", color: "var(--surface)",
+              }}>
               {enviando ? "Enviando…" : "Mandar ahora"}
             </button>
             <button type="button" onClick={() => { void borrarBorrador(clave); setPendiente(null); }} disabled={enviando}

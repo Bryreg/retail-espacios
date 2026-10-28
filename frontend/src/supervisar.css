@@ -293,7 +293,9 @@
 .sup .bandeja-desde-montaje {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
   margin: 8px 10px 4px; padding: 10px 12px; border-radius: 12px;
-  background: var(--accent-50); border: 1px solid var(--accent-200);
+  /* Queda arriba aunque la bandeja baje hasta la fila marcada. */
+  position: sticky; top: 0; z-index: 2; box-shadow: var(--shadow-sm, 0 2px 6px rgba(0,0,0,.08));
+  background: var(--surface); border: 1px solid var(--accent-200);
   font-size: var(--t-xs); color: var(--ink-1); line-height: 1.45;
 }
 .sup .bandeja-desde-montaje > span { flex: 1 1 220px; min-width: 0; }

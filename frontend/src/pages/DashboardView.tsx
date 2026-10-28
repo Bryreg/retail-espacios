@@ -7895,6 +7895,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           <div className="hoja-col hoja-der">
           <ModoVender
             espacios={espaciosDelContrato}
+            onBorrador={(t) => useArmazon.getState().setBorradorDeVenta(t)}
             ultimo={selected}
             ocupacionDe={participacionDe}
             onVenderAsi={venderAsi}

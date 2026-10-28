@@ -22,7 +22,6 @@ import ConfirmarEdicion from "./ConfirmarEdicion";
 import { useSesionDeVenta } from "./sesionDeVenta";
 import { useFichasPropias } from "../../store/fichasPropias";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
-import { useArmazon } from "../../store/armazonStore";
 // Cómo le dice este supermercado a cada familia: la lista, el visor y la lámina.
 import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 import { pbDeTexto, pct } from "../../utils/participaciones";
@@ -107,6 +106,10 @@ interface ModoVenderProps {
   onSumarEnTodas?: (tipo: string, parte: string) => void;
   sede: string;
   rango: DateRange | null;
+  /** Lo cargado y sin guardar («Snacks Norte, 2 espacios»), o `null`: quien
+   *  monta Vender lo usa para preguntar antes de cambiar de sede. Va por
+   *  acá y no por el store del armazón: Vender no alcanza Supervisar. */
+  onBorrador?: (resumen: string | null) => void;
   /** El contrato que se acaba de guardar, si hay uno. */
   cerrado: ResumenContrato | null;
   onGuardado: (resumen: ResumenContrato) => void;
@@ -689,7 +692,7 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar, onVerFicha }: {
 function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const {
     espacios, ultimo, sede, rango, semilla, onQuitar, onCambiarCara, onCambiarParte,
-    onGuardado, onCancelar, onResaltar, ocupacionDe, onVenderAsi, onSalirDeEdicion, planoPendiente,
+    onGuardado, onCancelar, onResaltar, ocupacionDe, onVenderAsi, onSalirDeEdicion, planoPendiente, onBorrador,
   } = props;
   const c = useContrato({
     espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado, planoPendiente,
@@ -700,8 +703,10 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const borrador = nLineas > 0 || c.proveedor.trim() !== ""
     ? [c.proveedor.trim() || null, nLineas ? `${nLineas} espacio${nLineas === 1 ? "" : "s"}` : null].filter(Boolean).join(", ")
     : null;
-  useEffect(() => { useArmazon.getState().setBorradorDeVenta(borrador); }, [borrador]);
-  useEffect(() => () => useArmazon.getState().setBorradorDeVenta(null), []);
+  const avisarBorrador = useRef(onBorrador);
+  avisarBorrador.current = onBorrador;
+  useEffect(() => { avisarBorrador.current?.(borrador); }, [borrador]);
+  useEffect(() => () => avisarBorrador.current?.(null), []);
   /** «Qué cambia» desplegado en el pie (plegado, es UNA línea). */
   const [verCambios, setVerCambios] = useState(false);
   const idCambios = useId();

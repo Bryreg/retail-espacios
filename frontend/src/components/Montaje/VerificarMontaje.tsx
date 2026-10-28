@@ -125,7 +125,7 @@ export default function VerificarMontaje({ reporte, titulo, puedeVerificar, onCe
                     <span className="vm-sig-titulo">Siguiente · quedan {siguiente.quedan} sin verificar en {siguiente.sede}</span>
                     <div className="vm-sig-fila">
                       <span><b className="mono">{siguiente.codigo}</b><small>{siguiente.detalle}</small></span>
-                      <button type="button" className="btn-principal" onClick={siguiente.onAbrir}>Verificar el siguiente</button>
+                      <button type="button" className="vm-btn vm-sig-btn" onClick={siguiente.onAbrir}>Verificar el siguiente</button>
                     </div>
                   </>
                 ) : (
