@@ -531,7 +531,8 @@
 .plano2d .p2-mini3d-h b { font-size: var(--t-xs); font-weight: 700; }
 .plano2d .p2-mini3d-h .p2-seg button { height: 26px; padding: 0 9px; font-size: var(--t-2xs); }
 .plano2d .p2-mini3d-lienzo { position: relative; height: 180px; background: #e8e4dc; }
-.plano2d .p2-mini3d-lienzo canvas { display: block; touch-action: none; }
+/* Un dedo desplaza la ficha; dos giran el mueble (`Miniatura3D`). */
+.plano2d .p2-mini3d-lienzo canvas { display: block; touch-action: pan-y; }
 .plano2d .p2-mini3d-vacio { margin: 0; padding: 16px; font-size: var(--t-2xs); color: var(--ink-3); }
 .plano2d .p2-mini3d-pie {
   display: flex;
@@ -545,6 +546,7 @@
   color: var(--ink-3);
   line-height: 1.35;
 }
+.plano2d .p2-mini3d-pie > span { flex: 1 1 auto; min-width: 0; }
 .plano2d .p2-mini3d-pie .p2-enlace { margin-top: 0; font-size: var(--t-2xs); font-weight: 600; white-space: nowrap; }
 /* El código, el estado y cerrar en la primera fila; «tipo · sede · pasillo»
    y el modelo debajo, a todo el ancho (pasan por debajo de la pastilla): así

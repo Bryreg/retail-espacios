@@ -4,7 +4,8 @@ Documento de referencia para retomar el trabajo sin tener que reconstruir el con
 Última actualización: 2026-10-28: **lo que vence se ve en el plano**. «Por vencer · Ver cuáles» del
 Inicio y tocar una fila de Pendientes llevan a Indicadores › Plano, con lo que vence resaltado; la
 ficha se abre AL LADO del plano, sin velo, con el plano en ese mueble y «← Por vencer · 1 de 4 ‹ ›»;
-donde la ficha se abre sin plano, suma «Dónde está». Ver *Por vencer en el plano (2026-10-28)*.
+donde la ficha se abre sin plano, suma «Dónde está». Ver *Por vencer en el plano (2026-10-28)*. Y la vista
+3D de la ficha del 2D ya no se pierde con la rueda: sólo gira, con «Centrar».
 
 Antes, el 2026-10-28, en `main` (PR #103): **los muebles propios se arman en Plano › Mis muebles**, con
 un asistente de tres pasos (qué mueble es, cuánto mide, nombre y cómo se vende) y el mueble en 3D
@@ -1496,6 +1497,12 @@ y, en el navegador, la revisión de solapes a 1440, 1280, 1100, 1024, 820 y 390 
   cada cambio del plano; «Toda la sede» lo marca en la planta; «Abrir en 3D ↗»
   (`pedirEnfoque3D`). Va DENTRO de la ficha, entre el resumen y las pestañas (el dibujo la ponía
   flotando y tapaba los filtros).
+  **No se pierde** (2026-10-28, el dueño: «hace un movimiento de cámara y se pierde»): la rueda
+  sobre ella acercaba o alejaba la cámara en vez de bajar la ficha, sin límite, hasta meterla
+  adentro del mueble o llevarla lejos. Ahora sólo se GIRA (`enableZoom = false`; ni por debajo
+  del piso ni cenital), la rueda baja la ficha, en el teléfono un dedo desplaza y dos giran,
+  «Centrar» vuelve a la toma de frente, y la cámara del lienzo es una sola (opciones estables) y
+  sólo se vuelve a poner cuando cambia lo que se mira. Para mirar de cerca, «Abrir en 3D».
 - **Nada se monta.** El catálogo abierto pasó de flotar sobre el lienzo a ser una **columna** que
   lo corre (tapaba los filtros, la pista y la barra de herramientas); el pie de la tira («Crear
   mueble» y «Más») es un solo bloque pegado; en tableta la hoja de la ficha empieza al lado de la

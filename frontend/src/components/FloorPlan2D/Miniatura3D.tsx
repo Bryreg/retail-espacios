@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { BoxGeometry } from "three";
+import { BoxGeometry, TOUCH } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FixtureMesh, storeToFixtures, type PlacedFixture } from "../StoreEditor3D/StoreEditor3D";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
@@ -67,21 +67,37 @@ function cajaDeLaSede(muebles: PlacedFixture[]): Objetivo {
   return { que: "sede", minX, maxX, minZ, maxZ };
 }
 
-/** La órbita a mano, como el taller: girar y acercar. Cada cambio de encuadre
- *  (otro mueble, otra cara, «Toda la sede») vuelve a poner la cámara. */
-function Orbita({ objetivo }: { objetivo: Objetivo }) {
+/** La órbita a mano: GIRAR, nada más. La cámara se vuelve a
+ *  poner SÓLO cuando cambia lo que se mira (`vista`: otro mueble, otra cara,
+ *  «Toda la sede», otras medidas): con cada redibujo del panel —el plano que
+ *  se sincroniza, el mueble que se arrastra— saltaba y se perdía lo girado. */
+function Orbita({ objetivo, vista }: { objetivo: Objetivo; vista: string }) {
   const { camera, gl, invalidate, size } = useThree();
   const encuadre = encuadrar(objetivo, size.width / Math.max(1, size.height));
   const ctrl = useRef<OrbitControls | null>(null);
   useEffect(() => {
     const c = new OrbitControls(camera, gl.domElement);
     c.enablePan = false;
+    // La miniatura vive en la ficha, que se desplaza con la rueda: con el
+    // acercamiento prendido, pasar la rueda sobre ella acercaba o alejaba la
+    // cámara en vez de bajar la ficha, y unas vueltas la metían adentro del
+    // mueble o la llevaban lejos — «se pierde» (el dueño, 2026-10-28). Para
+    // mirarlo de cerca está «Abrir en 3D».
+    c.enableZoom = false;
+    // Ni por debajo del piso ni cenital: siempre se ve el mueble parado.
+    c.minPolarAngle = 0.2;
+    c.maxPolarAngle = Math.PI / 2 - 0.06;
+    // En el teléfono un dedo desplaza la ficha (como en el resto de la
+    // pantalla) y dos dedos giran el mueble.
+    c.touches = { ONE: -1 as unknown as TOUCH, TWO: TOUCH.DOLLY_ROTATE };
+    gl.domElement.style.touchAction = "pan-y";
     const redibujar = () => invalidate();
     c.addEventListener("change", redibujar);
     ctrl.current = c;
     return () => { c.removeEventListener("change", redibujar); c.dispose(); ctrl.current = null; };
   }, [camera, gl, invalidate]);
-  const clave = [...encuadre.mira, ...encuadre.desde].map((n) => n.toFixed(2)).join("|");
+  // El aspecto, a la décima: un píxel de más en el lienzo no mueve la cámara.
+  const clave = `${vista}|${(size.width / Math.max(1, size.height)).toFixed(1)}`;
   useEffect(() => {
     const c = ctrl.current;
     camera.position.set(...encuadre.desde);
@@ -99,6 +115,8 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
   onAbrir3D: () => void;
 }) {
   const [alcance, setAlcance] = useState<Alcance>("mueble");
+  /** «Centrar»: vuelve a la toma de frente (o a la sede entera). */
+  const [vuelta, setVuelta] = useState(0);
   // Diferido: mientras se arrastra en el 2D el plano cambia en cada paso, y
   // «Toda la sede» se volvía a dibujar entera con cada uno.
   const fixtures = useDeferredValue(useFixtureStore(selectFixtures));
@@ -111,6 +129,16 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
   // Dónde arranca la cámara: el encuadre con el aspecto de la caja (la órbita
   // lo vuelve a poner con el de verdad apenas se mide el lienzo).
   const inicio = objetivo ? encuadrar(objetivo, 1.8) : null;
+  /** Lo que se mira: cuando cambia, la cámara vuelve a su toma. */
+  const vista = `${vuelta}|` + (objetivo?.que === "mueble"
+    ? `mueble|${id}|${cara}|${objetivo.w.toFixed(2)}|${objetivo.h.toFixed(2)}|${objetivo.d.toFixed(2)}`
+    : objetivo ? `sede|${id}|${[objetivo.minX, objetivo.maxX, objetivo.minZ, objetivo.maxZ].map((n) => n.toFixed(1)).join("|")}` : "");
+  /** La cámara del lienzo, UNA: `<Canvas camera>` con un objeto nuevo en cada
+   *  render hacía que react-three-fiber (8.x compara esas opciones) creara una
+   *  cámara nueva con cada redibujo del panel —sin el giro de quien miraba y
+   *  sin su proporción hasta el próximo cambio de tamaño—, y el mueble saltaba
+   *  o desaparecía. Dónde se para la pone `Orbita`. */
+  const [camara] = useState(() => ({ position: [2.5, 1.6, -3] as [number, number, number], fov: FOV, near: 0.05, far: 600 }));
   // La caja del elegido en «Toda la sede»: una por medida, y se suelta.
   const [cw, ch, cd] = fix ? [fix.w, fix.h, fix.d] : [0, 0, 0];
   const cajaElegida = useMemo(() => new BoxGeometry(cw + 0.12, ch + 0.06, cd + 0.12), [cw, ch, cd]);
@@ -128,12 +156,12 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
       <div className="p2-mini3d-lienzo">
         {fix && objetivo && inicio ? (
           <Canvas frameloop="demand" dpr={[1, 1.5]} gl={{ antialias: true }}
-            camera={{ position: inicio.desde, fov: FOV, near: 0.05, far: 600 }}
+            camera={camara}
             style={{ background: FONDO }}>
             <ambientLight intensity={0.6} color="#fff8f0" />
             <directionalLight position={[4, 30, 6]} intensity={1.5} />
             <directionalLight position={[-6, 20, -6]} intensity={0.35} color="#fffaee" />
-            <Orbita objetivo={objetivo} />
+            <Orbita objetivo={objetivo} vista={vista} />
             {alcance === "mueble" ? (
               <>
                 <mesh rotation={[-Math.PI / 2, 0, 0]}>
@@ -174,7 +202,9 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
         )}
       </div>
       <div className="p2-mini3d-pie">
-        <span>{alcance === "mueble" ? `Cara ${cara} · se actualiza al cambiarlo` : "La sede entera · el elegido, marcado"}</span>
+        <span>{alcance === "mueble" ? `Cara ${cara} · arrastrá para girarlo` : "La sede entera · el elegido, marcado"}</span>
+        <button type="button" className="p2-enlace" onClick={() => setVuelta((v) => v + 1)} data-centrar-miniatura
+          title="Volver a la vista de frente">Centrar</button>
         <button type="button" className="p2-enlace" onClick={onAbrir3D} data-abrir-en-3d>Abrir en 3D ↗</button>
       </div>
     </div>
