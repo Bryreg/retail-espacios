@@ -63,6 +63,8 @@ export interface ManejoDelAnalisis {
   onTarifas?: () => void;
 }
 
+/** Cuántas filas muestran las listas largas antes de «Ver los N». */
+const LIMITE_VENCEN = 6, LIMITE_CAPACIDAD = 10;
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const fechaLarga = (iso: string) => `${Number(iso.slice(8, 10))} ${MESES[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
@@ -83,6 +85,26 @@ function useAncho<T extends HTMLElement>(): [React.RefObject<T>, number] {
     return () => ro.disconnect();
   }, []);
   return [ref, w];
+}
+
+/** El ancho y el alto del lugar del gráfico. Los gráficos de las tarjetas de
+ *  a dos crecen hasta el alto de la fila (la otra tarjeta puede ser una tabla
+ *  larga): el lienzo va encima, sin empujar, así el alto lo pone la tarjeta y
+ *  no el dibujo. `minimo` es el alto de siempre. */
+function useLugar<T extends HTMLElement>(minimo: number): [React.RefObject<T>, number, number] {
+  const ref = useRef<T>(null);
+  const [t, setT] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const medir = () => setT({ w: Math.floor(el.clientWidth), h: Math.floor(el.clientHeight) });
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, t.w, Math.max(minimo, Math.min(t.h, minimo * 1.8))];
 }
 
 /** Una columna con el extremo de datos redondeado (4 px) y la base recta. */
@@ -125,8 +147,8 @@ function ConTabla({ tabla, children, pie }: { tabla: ReactNode; children: ReactN
 }
 
 function Puente({ b }: { b: BrechaDelPotencial }) {
-  const [ref, W] = useAncho<HTMLDivElement>();
-  const H = 270, L = W < 420 ? 6 : 96, B = 52, T = 22;
+  const [ref, W, H] = useLugar<HTMLDivElement>(270);
+  const L = W < 420 ? 6 : 96, B = 52, T = 22;
   const max = Math.max(b.potencial, b.cobrado, 1);
   const y = (v: number) => T + (1 - v / max) * (H - T - B);
   const pasos: { a: number; b: number; total: boolean; e: [string, string]; v: string }[] = [
@@ -139,7 +161,7 @@ function Puente({ b }: { b: BrechaDelPotencial }) {
   if (b.sobreTarifa > 0) pasos[3] = { a: b.potencial - b.vacias - b.enParciales, b: b.cobrado, total: false, e: ["Sobre", "la tarifa"], v: `+${pesos(b.sobreTarifa)}` };
   const ancho = (W - L - 8) / pasos.length, bw = 24, chico = W < 420;
   return (
-    <div ref={ref} className="an-grafico">
+    <div ref={ref} className="an-grafico crece" style={{ minHeight: 270 }}>
       {W > 0 && (
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Del potencial a tarifa al ingreso contratado">
           {!chico && marcas(max).map((v) => (
@@ -167,13 +189,13 @@ function Puente({ b }: { b: BrechaDelPotencial }) {
 }
 
 function ColumnasDelMes({ meses, canon }: { meses: string[]; canon: number[] }) {
-  const [ref, W] = useAncho<HTMLDivElement>();
-  const H = 220, chico = W < 420, L = chico ? 6 : 92, B = 26, T = 22;
+  const [ref, W, H] = useLugar<HTMLDivElement>(220);
+  const chico = W < 420, L = chico ? 6 : 92, B = 26, T = 22;
   const max = Math.max(1, ...canon) * 1.08;
   const y = (v: number) => T + (1 - v / max) * (H - T - B);
   const n = canon.length, paso = (W - L - 6) / Math.max(1, n), bw = Math.max(6, Math.min(24, paso - 8));
   return (
-    <div ref={ref} className="an-grafico">
+    <div ref={ref} className="an-grafico crece" style={{ minHeight: 220 }}>
       {W > 0 && (
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Ingreso contratado por mes">
           {!chico && marcas(max).map((v) => (
@@ -198,14 +220,14 @@ function ColumnasDelMes({ meses, canon }: { meses: string[]; canon: number[] }) 
 }
 
 function VencenPorMes({ grupos, plata }: { grupos: { etiqueta: string; sinRenovar: number; renovado: number; contratos: number }[]; plata: boolean }) {
-  const [ref, W] = useAncho<HTMLDivElement>();
-  const H = 200, chico = W < 420, L = chico ? 6 : 92, B = 40, T = 30;
+  const [ref, W, H] = useLugar<HTMLDivElement>(200);
+  const chico = W < 420, L = chico ? 6 : 92, B = 40, T = 30;
   const max = Math.max(1, ...grupos.map((g) => g.sinRenovar + g.renovado)) * 1.1;
   const y = (v: number) => T + (1 - v / max) * (H - T - B);
   const paso = (W - L - 6) / Math.max(1, grupos.length), bw = 24;
   const f = (v: number) => (plata ? pesos(v) : String(v));
   return (
-    <div ref={ref} className="an-grafico">
+    <div ref={ref} className="an-grafico crece" style={{ minHeight: 200 }}>
       {W > 0 && (
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={plata ? "Ingreso que vence por mes" : "Contratos que vencen por mes"}>
           {!chico && marcas(max).map((v) => (
@@ -299,13 +321,13 @@ function CarasPorTipo({ filas }: { filas: { tipo: string; vendidas: number; parc
 }
 
 function Proyeccion({ puntos }: { puntos: { etiqueta: string; caras: number }[] }) {
-  const [ref, W] = useAncho<HTMLDivElement>();
-  const H = 190, chico = W < 420, L = chico ? 6 : 40, B = 26, T = 22;
+  const [ref, W, H] = useLugar<HTMLDivElement>(190);
+  const chico = W < 420, L = chico ? 6 : 40, B = 26, T = 22;
   const max = Math.max(4, ...puntos.map((p) => p.caras)) * 1.15;
   const y = (v: number) => T + (1 - v / max) * (H - T - B);
   const paso = (W - L - 6) / Math.max(1, puntos.length), bw = 24;
   return (
-    <div ref={ref} className="an-grafico">
+    <div ref={ref} className="an-grafico crece" style={{ minHeight: 190 }}>
       {W > 0 && (
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Caras completas sin contrato en los próximos meses">
           {!chico && marcas(max).map((v) => (
@@ -411,6 +433,13 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
     if (e.diasSinContrato !== null) return `Sin contrato desde hace ${e.diasSinContrato} días.`;
     return "Sin contrato hoy.";
   };
+  // Las listas largas muestran lo primero y se abren: en TERRON eran 42
+  // contratos por vencer y 34 caras vacías, y la tarjeta de al lado quedaba
+  // con un hueco del alto de la lista (el dueño, 2026-10-28).
+  const [todosVencen, setTodosVencen] = useState(false);
+  const [todaLaCapacidad, setTodaLaCapacidad] = useState(false);
+  const vencenEnOrden = [...datos.vencen].sort((a, b) =>
+    Number(a.renovado) - Number(b.renovado) || a.hasta.localeCompare(b.hasta) || (b.alMes ?? 0) - (a.alMes ?? 0) || a.codigo.localeCompare(b.codigo));
   const capacidad = [...datos.capacidad].sort((a, b) => (b.libreAlMes ?? 0) - (a.libreAlMes ?? 0) || a.codigo.localeCompare(b.codigo));
   const capacidadAlMes = capacidad.reduce((t, e) => t + (e.libreAlMes ?? 0), 0);
   const vacias = capacidad.filter((e) => e.estado === "libre");
@@ -568,10 +597,11 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
           <h3>Contratos por vencer</h3>
           <p className="sub">{datos.vencen.length} contrato{datos.vencen.length === 1 ? "" : "s"}{plata ? ` · ${pesos(datos.vencen.reduce((t, v) => t + (v.alMes ?? 0), 0))} al mes` : ""}.</p>
           {datos.vencen.length === 0 ? <p className="an-vacio">Nada vence en los próximos 90 días.</p> : (
+            <div className={todosVencen ? "an-scroll" : undefined}>
             <table className="an-tabla">
               <thead><tr><th>Espacio</th><th>Vence</th>{plata && <th className="n">Al mes</th>}<th>Estado</th><th /></tr></thead>
               <tbody>
-                {datos.vencen.map((v) => (
+                {(todosVencen ? vencenEnOrden : vencenEnOrden.slice(0, LIMITE_VENCEN)).map((v) => (
                   <tr key={`${v.codigo}-${v.hasta}`}>
                     <td><code>{v.codigo}</code><div className="dim">{v.proveedor}</div></td>
                     <td>{fechaLarga(v.hasta)}</td>
@@ -582,8 +612,16 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
                 ))}
               </tbody>
             </table>
+            </div>
           )}
-          <div className="an-cta"><button type="button" className="mo-accion sec" onClick={() => manejo.onContratos("expiring")}>Gestionar renovaciones</button></div>
+          <div className="an-cta">
+            <button type="button" className="mo-accion sec" onClick={() => manejo.onContratos("expiring")}>Gestionar renovaciones</button>
+            {datos.vencen.length > LIMITE_VENCEN && (
+              <button type="button" className="mo-link der" aria-expanded={todosVencen} onClick={() => setTodosVencen((t) => !t)}>
+                {todosVencen ? "Ver los más urgentes" : `Ver los ${datos.vencen.length} contratos`}
+              </button>
+            )}
+          </div>
         </section>
       </div>
 
@@ -649,7 +687,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
           <table className="an-tabla an-cap">
             <thead><tr><th>Espacio</th><th>Ocupación</th>{plata && <th className="n">Disponible al mes</th>}<th className="c-cli">Clientes en el espacio</th><th>Oportunidad</th><th /></tr></thead>
             <tbody>
-              {capacidad.map((e) => {
+              {(todaLaCapacidad ? capacidad : capacidad.slice(0, LIMITE_CAPACIDAD)).map((e) => {
                 const v = e.estado === "libre" ? 0 : e.vendido;
                 return (
                   <tr key={e.clave}>
@@ -674,6 +712,11 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
           </table>
         )}
         <div className="an-cta">
+          {capacidad.length > LIMITE_CAPACIDAD && (
+            <button type="button" className="mo-accion sec" aria-expanded={todaLaCapacidad} onClick={() => setTodaLaCapacidad((t) => !t)}>
+              {todaLaCapacidad ? `Ver los ${LIMITE_CAPACIDAD} de más valor` : `Ver los ${capacidad.length} espacios`}
+            </button>
+          )}
           {vacias.length > 0 && <button type="button" className="mo-accion sec" onClick={() => manejo.onMapa("vacias")}>Ver {vacias.length === 1 ? "el espacio vacío" : `los ${vacias.length} espacios vacíos`} en el mapa</button>}
           <button type="button" className="mo-link der" onClick={() => bajarCsv(`capacidad-${datos.sede}.csv`, aCsv(
             ["Espacio", "Tipo", "Estado", ...(plata ? ["Disponible al mes"] : []), "Clientes", "Oportunidad"],

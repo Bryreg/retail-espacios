@@ -1421,7 +1421,11 @@ contratar». Sin migraciones ni endpoints nuevos: todo sale de las cuentas que l
   tabla con «Renovar»), 03 Ejecución (los montajes del mes, etapa por etapa, y la preparación),
   04 Capacidad por vender (cada espacio con su oportunidad —quién renueva al lado, quién comparte la
   cara— y «Preparar propuesta», caras por tipo y la proyección de caras sin contrato) y 05 Cartera
-  (ingreso por cliente y precio frente a tarifa). Cada gráfico con «Ver como tabla».
+  (ingreso por cliente y precio frente a tarifa). Cada gráfico con «Ver como tabla». Las listas
+  largas muestran lo primero (6 contratos por vencer, 10 espacios con capacidad) y «Ver los N»
+  las abre con scroll dentro de su tarjeta; en las tarjetas de a dos el gráfico crece hasta el
+  alto de la fila (`useLugar`, hasta 1,8 veces su alto), así no queda un hueco al lado de una
+  tabla larga (en TERRON eran 42 contratos, el dueño 2026-10-28).
 - **Ficha de negociación** (`FichaDeNegociacion.tsx`, en el cajón): disponibilidad, precio de
   referencia a 3, 6 y 12 meses, con quién negociar y una recomendación (negociar en conjunto con
   la renovación de un cliente presente, ofrecer al vecino de cara…). «Armar la propuesta en
