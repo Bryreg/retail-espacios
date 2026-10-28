@@ -1402,6 +1402,8 @@ contratar». Sin migraciones ni endpoints nuevos: todo sale de las cuentas que l
   reservado más claro) y **cliente** (arcos desde el cliente principal a sus espacios). Las
   etiquetas van en filas arriba del mapa con línea guía (`empacarEtiquetas` / `filasDeEtiquetas`:
   nunca se pisan); en el teléfono, sólo el código. `prefers-reduced-motion` las deja quietas.
+  El piso NO lleva el código de cada mueble (en TERRON, 159 nombres tapaban el mapa): lo nombra
+  la etiqueta de lo que se enciende, y cualquier mueble lo dice al pasar el mouse (`<title>`).
 - **Los datos** (`tableroB` en `DashboardView`): un `EspacioDelMapa` por cara (también las de
   muebles que no se venden si tienen un planograma por montar), con estado (vendida, parcial,
   libre, otro), lo vendido (partes o la ocupación anónima de la participación), ingreso al mes

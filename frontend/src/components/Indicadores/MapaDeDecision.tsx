@@ -216,7 +216,7 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
 
     const maxIngreso = Math.max(1, ...[...espacios.values()].map((e) => e.ingresoAlMes ?? 0));
     const orden = ordenDePintado(planta.muebles.map((m): Huella => ({ ...m.caja, h: capa === "parcial" ? HV : HB })), E);
-    const suelo: ReactNode[] = [], cuerpos: ReactNode[] = [], encima: ReactNode[] = [], rotulos: ReactNode[] = [];
+    const suelo: ReactNode[] = [], cuerpos: ReactNode[] = [], encima: ReactNode[] = [];
     const anclas = new Map<string, [number, number]>();
     let i = 0;
     for (const k of orden) {
@@ -231,7 +231,7 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
         const cx = (c.caja.x0 + c.caja.x1) / 2, cz = (c.caja.z0 + c.caja.z1) / 2;
         const ex = c.caja.x1 - c.caja.x0, ez = c.caja.z1 - c.caja.z0;
         const d = (n: number) => ({ "--d": `${n}ms` }) as CSSProperties;
-        if (!on || !e) { cuerpos.push(prisma(c.clave, c.caja, 0, HB, base)); continue; }
+        if (!on || !e) { cuerpos.push(<g key={c.clave}><title>{e?.codigo ?? m.f.code}</title>{prisma("b", c.caja, 0, HB, base)}</g>); continue; }
         const grupo = (hijos: ReactNode) => <g key={c.clave} data-espacio={c.clave} {...tocar}>{titulo}{hijos}</g>;
         switch (capa) {
           case "acciones": {
@@ -322,9 +322,9 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
           }
         }
       }
-      // El código del mueble, discreto, sobre el piso.
-      const [rx, ry] = P((m.caja.x0 + m.caja.x1) / 2, 0, (m.caja.z0 + m.caja.z1) / 2);
-      if (!chico) rotulos.push(<text key={`r${m.f.id}`} className="rot" x={rx} y={ry + 14}>{m.f.code}</text>);
+      // Sin el código de cada mueble sobre el piso: en una sede de 159 muebles
+      // tapaba el mapa (el dueño, 2026-10-28). El nombre lo dice la etiqueta
+      // de lo que la capa enciende, y el de cualquier mueble, su `<title>`.
     }
 
     // ── El piso y su retícula de 2 m.
@@ -412,7 +412,7 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
       );
     }
 
-    return { pisoPts, reticula, suelo, cuerpos, encima, rotulos, etiquetas };
+    return { pisoPts, reticula, suelo, cuerpos, encima, etiquetas };
   }, [planta, W, H, espacios, capa, cliente, acciones, verPlata, onElegir, chico]);
 
   return (
@@ -431,7 +431,6 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
           <g key={capa}>
             <g>{dibujo.suelo}</g>
             <g filter="url(#md-sombra)">{dibujo.cuerpos}</g>
-            <g>{dibujo.rotulos}</g>
             <g filter="url(#md-sombra)">{dibujo.encima}</g>
             <g>{dibujo.etiquetas}</g>
           </g>

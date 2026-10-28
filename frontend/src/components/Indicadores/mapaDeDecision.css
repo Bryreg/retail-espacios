@@ -29,7 +29,6 @@ html[data-tema="oscuro"] .md-lienzo {
 .md-svg { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
 .md-svg .piso { fill: var(--md-piso); stroke: var(--md-piso-borde); }
 .md-svg .reticula line { stroke: var(--md-reticula); stroke-width: 0.7; }
-.md-svg .rot { font: 9px var(--f-mono); fill: var(--md-rot); text-anchor: middle; pointer-events: none; }
 
 /* Las piezas. */
 .md-svg .p > polygon { stroke: var(--ps); stroke-width: var(--sw, 0.8); stroke-linejoin: round; fill-opacity: var(--op, 1); }
