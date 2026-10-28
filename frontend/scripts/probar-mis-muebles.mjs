@@ -146,6 +146,23 @@ await prueba("nada se monta: la miniatura no flota, y las hojas no tapan la tira
   assert.match(plano, /navigate\(location\.pathname, \{ replace: true, state: null \}\);/, "la vuelta del taller queda en el historial");
 });
 
+await prueba("la miniatura 3D no se pierde: la rueda baja la ficha, la cámara es una y «Centrar» vuelve", () => {
+  // El dueño: «hace un movimiento de cámara y se pierde». Con el acercamiento
+  // prendido, la rueda sobre la miniatura acercaba o alejaba la cámara en vez
+  // de bajar la ficha, sin límite: adentro del mueble o lejos.
+  assert.match(mini, /c\.enableZoom = false;/, "la rueda vuelve a mover la cámara");
+  assert.match(mini, /c\.maxPolarAngle = Math\.PI \/ 2 - 0\.06;/, "la cámara puede ir por debajo del piso");
+  // En el teléfono un dedo desplaza la ficha; dos giran.
+  assert.match(mini, /c\.touches = \{ ONE: -1 as unknown as TOUCH, TWO: TOUCH\.DOLLY_ROTATE \};/);
+  assert.match(css, /\.plano2d \.p2-mini3d-lienzo canvas \{ display: block; touch-action: pan-y; \}/);
+  // UNA cámara: las opciones del lienzo no cambian con cada render.
+  assert.match(mini, /const \[camara\] = useState\(\(\) => \(\{/);
+  assert.match(mini, /camera=\{camara\}/);
+  // La toma se vuelve a poner sólo cuando cambia lo que se mira, o con «Centrar».
+  assert.match(mini, /const clave = `\$\{vista\}\|\$\{\(size\.width \/ Math\.max\(1, size\.height\)\)\.toFixed\(1\)\}`;/);
+  assert.match(mini, /onClick=\{\(\) => setVuelta\(\(v\) => v \+ 1\)\} data-centrar-miniatura/);
+});
+
 console.log("\nPlano › Mis muebles: el taller en tres pasos (2026-10-28)");
 
 await prueba("Mis muebles es parte del Plano: su dirección, su lugar en 2D | 3D | Muebles y sólo para administración", () => {

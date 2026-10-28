@@ -473,7 +473,9 @@ prueba("pasar por un renglón de «Para revisar» señala su mueble en el plano 
   const i = vista.indexOf("data-senala-en-el-plano");
   assert.ok(i > 0, "la lista de «Para revisar» no señala en el plano");
   const lista = vista.slice(i, vista.indexOf("{cuentasDeRevision[grupoDeRevision] === 0", i));
-  assert.ok(lista.length > 100 && lista.length < 700, "no se encontró la apertura de la lista de «Para revisar»");
+  // (2026-10-28: la apertura suma `onClickCapture`, que anota la fila tocada
+  // para «‹ ›» de la ficha al lado del plano.)
+  assert.ok(lista.length > 100 && lista.length < 1400, "no se encontró la apertura de la lista de «Para revisar»");
   assert.match(lista, /onPointerOver=\{\(e\) => \{ if \(e\.pointerType !== "touch"\) senalarFila\(e\.target\); \}\}/);
   assert.match(lista, /onPointerLeave=\{\(e\) => \{ if \(e\.pointerType !== "touch"\) senalarFila\(null\); \}\}/);
   assert.match(lista, /onFocus=\{\(e\) => senalarFila\(e\.target\)\}/);

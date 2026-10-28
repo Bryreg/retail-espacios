@@ -7,7 +7,7 @@ import {
   Plus,
   X,
   FileText,
-  ChevronRight,
+  ChevronRight, ChevronLeft,
   Search,
   CalendarRange,
   ChevronDown,
@@ -176,8 +176,9 @@ import { bajoLaTarifa } from "../utils/meses";
 import {
   DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, avisoPorClave, contarPorGrupo, cuentaDelBadge,
   deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, puntosDelPlano, tituloDeSeccion,
-  type Aviso, type Chincheta, type GrupoDeRevision,
+  vecinosDelAviso, type Aviso, type Chincheta, type GrupoDeRevision,
 } from "../components/Supervisar/paraRevisar";
+import { DondeEsta } from "../components/Supervisar/DondeEsta";
 import { EncabezadoDeSeccion, Mira, PestanasDeRevision, SelectorDePlata } from "../components/Supervisar/piezas";
 import {
   ALTURA, UNIDAD_ISO, VISTA_INICIAL, ZOOM_MAX, ZOOM_MIN, encuadreInicial, enElMundo, ejes,
@@ -1026,6 +1027,11 @@ interface IsoMapProps {
    *  apaga y el plano queda como estaba. Imperativa, como `resaltar`: pasar por
    *  la lista no vuelve a pintar la sala. Vender no la pasa nunca. */
   senalar?: React.MutableRefObject<((foco: FocoDelPlano | null) => void) | null>;
+  /** SÓLO Supervisar (2026-10-28, «Por vencer en el plano»): dónde deja el
+   *  plano su función para LLEVAR LA CÁMARA a un mueble —acercarse y dejarlo
+   *  al centro— cuando su ficha se abre al lado; `null` vuelve a la cámara de
+   *  antes. Imperativa, como `senalar`. */
+  irAlMueble?: React.MutableRefObject<((fixtureId: string | null) => boolean) | null>;
 }
 
 /** Lo que el plano señala al pasar por un renglón de «Para revisar»: el mueble,
@@ -1036,6 +1042,10 @@ interface FocoDelPlano {
   cara: "A" | "B";
   grupo: GrupoDeRevision;
 }
+
+/** Cuánto se acerca el plano al ir a un mueble (su ficha al lado): lo
+ *  bastante para leerlo y ver lo que tiene alrededor. */
+const ZOOM_AL_ENFOCAR = 2.2;
 
 /** Cuánto se abre el piso punteado alrededor del mueble señalado, en metros. */
 const MARGEN_DEL_FOCO = 0.5;
@@ -1160,7 +1170,7 @@ type Gesto = "girar" | "mover" | "acercar" | "pellizco";
  *    tiembla y —peor— la medición del deschoque se hace contra la geometría
  *    del paso anterior.
  */
-function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde, chinchetas, onChincheta, senalar }: IsoMapProps) {
+function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, dispo, porPartes, cortoDe, libreDesde, chinchetas, onChincheta, senalar, irAlMueble }: IsoMapProps) {
   /** La disponibilidad de una cara en el periodo: la combinada con sus
    *  partes si quien dibuja la sabe, y si no la de la cara sola. */
   const dispoDe = useCallback(
@@ -1900,6 +1910,50 @@ function IsoMap({ fixtures, selectedKeys, onSelect, match, range, resaltar, disp
     };
     return () => { if (resaltar) resaltar.current = null; };
   }, [resaltar]);
+
+  /** IR AL MUEBLE (2026-10-28): la cámara se acerca y lo deja al centro, y
+   *  al soltarlo vuelve a donde estaba. Se anima un tercio de segundo (nada,
+   *  con «reducir movimiento»): un salto seco no dice adónde se fue. */
+  const camAntes = useRef<{ zoom: number; T: [number, number, number] } | null>(null);
+  const viaje = useRef(0);
+  useEffect(() => {
+    if (!irAlMueble) return;
+    irAlMueble.current = (id) => {
+      const sc = escenaActual.current;
+      let destino: { zoom: number; T: [number, number, number] };
+      if (id) {
+        const p = sc?.prisms.find((x) => x.f.id === id);
+        if (!sc || !p || !encuadre()) return false;
+        if (!camAntes.current) camAntes.current = { zoom: cam.current.zoom, T: [...cam.current.T] };
+        const [ox, , oz] = sc.base.mira;
+        destino = {
+          zoom: Math.min(ZOOM_MAX, Math.max(cam.current.zoom, ZOOM_AL_ENFOCAR)),
+          T: [(p.caja.x0 + p.caja.x1) / 2 - ox, cam.current.T[1], (p.caja.z0 + p.caja.z1) / 2 - oz],
+        };
+      } else {
+        if (!camAntes.current) return true;
+        destino = camAntes.current;
+        camAntes.current = null;
+      }
+      cancelAnimationFrame(viaje.current);
+      const desde = { zoom: cam.current.zoom, T: [...cam.current.T] as [number, number, number] };
+      const quieto = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const t0 = performance.now();
+      const paso = (ahora: number) => {
+        const t = quieto ? 1 : Math.min(1, (ahora - t0) / 320);
+        const e = 1 - Math.pow(1 - t, 3);
+        cam.current = {
+          zoom: desde.zoom + (destino.zoom - desde.zoom) * e,
+          T: [0, 1, 2].map((i) => desde.T[i] + (destino.T[i] - desde.T[i]) * e) as [number, number, number],
+        };
+        aplicar();
+        if (t < 1) viaje.current = requestAnimationFrame(paso);
+      };
+      viaje.current = requestAnimationFrame(paso);
+      return true;
+    };
+    return () => { if (irAlMueble) irAlMueble.current = null; cancelAnimationFrame(viaje.current); };
+  }, [irAlMueble, aplicar, encuadre]);
 
   // ── Los gestos ───────────────────────────────────────────────────────────
 
@@ -3110,8 +3164,14 @@ function FixtureDetailCard({
   fixture, isAdmin, face, onFace, onBack, onNegociar, onRenovar, onCancelado, onOpenFile,
   onNegociarParte, onRenovarParte, onEditar, onEditarParticipacion, onEditarProximo, avisoDeEdicion,
   unidad = "mes", montajeDe, montajeDelCodigo, cobroDe, reservaDe, onReservaCambio,
-  planometriaPedida, onPlanometriaCargada, onVenderLoQueQueda,
+  planometriaPedida, onPlanometriaCargada, onVenderLoQueQueda, dondeEsta, navegacion,
 }: {
+  /** «Dónde está» (2026-10-28): el plano chiquito con el mueble marcado,
+   *  cuando la ficha se abre donde no hay plano. Lo arma quien la abre. */
+  dondeEsta?: React.ReactNode;
+  /** «← Por vencer · 1 de 4 ‹ ›», arriba de todo, cuando la ficha se abrió al
+   *  lado del plano desde una lista. */
+  navegacion?: React.ReactNode;
   /** La unidad de la plata de la franja (rediseño, PR 2). */
   unidad?: UnidadDePlata;
   /** El montaje del contrato de la cara, como en la tabla. */
@@ -3199,6 +3259,7 @@ function FixtureDetailCard({
 
   return (
     <Card style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {navegacion}
       {/* El encabezado de la ficha (dibujo aprobado, paso 3): la flecha que
           vuelve a «Para revisar», el código como se lee, el nombre y la sede,
           y el estado en pastilla. */}
@@ -3334,6 +3395,7 @@ function FixtureDetailCard({
           </button>
         )}
         </div>
+        {dondeEsta}
         {isAdmin && avisoDeEdicion && (
           <p role="alert" className="aviso-edicion" style={{ margin: 0, fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
             {avisoDeEdicion}
@@ -4986,6 +5048,18 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  ofrece volver. Tocar otra pestaña u otro filtro lo olvida. */
   const [llegada, setLlegada] = useState<{ desde: "Inicio" | "Resumen"; cifra: string } | null>(null);
   const enIndicadores = modoEfectivo === "supervisar" && !inicio;
+  /** «Por vencer en el plano» (2026-10-28): en Indicadores › Plano la ficha
+   *  de un espacio se abre AL LADO del plano, en el lugar de «Para revisar» y
+   *  sin velo, y el plano va a ese mueble. En cualquier otro lado sigue en su
+   *  cajón, con «Dónde está». */
+  const fichaEnPlano = enIndicadores && pestanaInd === "plano" && !bandejaAbierta;
+  /** La fila de «Para revisar» desde la que se abrió la ficha (su aviso): da
+   *  «← Por vencer · 1 de 4» y ‹ ›. Se anota al tocar la fila
+   *  (`onClickCapture` de la lista) y la lee `revisar`. */
+  const [avisoAbierto, setAvisoAbierto] = useState<string | null>(null);
+  const avisoTocado = useRef<string | null>(null);
+  /** Lo que el plano deja para llevar la cámara a un mueble. */
+  const irAlMuebleEnElPlano = useRef<((fixtureId: string | null) => boolean) | null>(null);
   // Lo que pide el armazón (Ctrl K, «Más», lo fijado): esta pantalla lo sabe
   // hacer y lo atiende cuando ya es la que está a la vista.
   const pedidoDelArmazon = useArmazon((s) => s.pedido);
@@ -5248,6 +5322,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
 
   const closeDetail = () => {
+    setAvisoAbierto(null);
     setSelected(null);
     setAnchor(null);
     setDetailFull(false);
@@ -5275,6 +5350,19 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  Se abre en la cara del renglón: en una góndola doble, la que vence es una
    *  de las dos y no da lo mismo cuál. */
   const revisar = (f: UnifiedFixture, face: "A" | "B" = "A") => {
+    // La fila que se tocó (si se llegó por una), para «‹ ›».
+    setAvisoAbierto(avisoTocado.current);
+    avisoTocado.current = null;
+    // Desde Pendientes —la bandeja, encima de cualquier pantalla—: al plano de
+    // Indicadores, con la ficha al lado del mueble (2026-10-28). Antes la
+    // ficha se abría encima de la pantalla en uso, y en el Inicio no hay plano
+    // donde ver dónde está lo que vence.
+    if (useArmazon.getState().bandejaAbierta) {
+      useArmazon.getState().cerrarBandeja();
+      if (inicio) setLlegada({ desde: "Inicio", cifra: "Pendientes" });
+      setPestanaInd("plano");
+      setModo("supervisar");
+    }
     setSelected(f);
     setPlanometriaPedida(null);
     setAnchor(null);
@@ -6620,6 +6708,22 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** Los contratos que corren HOY (la pestaña «Vigentes hoy»): es la cifra
    *  «Contratos activos» del Inicio, y sus filas suman el «Canon del mes». */
   const vigentesHoy = chipsTabla.find((c) => c.id === "occupied")?.n ?? 0;
+  /** El filtro puesto en el plano de Indicadores (el mismo de la tabla), con
+   *  su nombre y su cuenta: el chip del borde del plano. */
+  const filtroDelPlano = mapFilter !== "todos" ? chipsTabla.find((c) => c.id === mapFilter) ?? null : null;
+
+  /** «Por vencer · Ver cuáles» del Inicio (2026-10-28): al plano de
+   *  Indicadores con eso resaltado (el filtro del plano) y «30 días» al lado,
+   *  en vez de una lista encima del Inicio, que no tiene plano. */
+  const abrirPlanoDesde = (filtro: MapFilter, cifra: string) => {
+    closeDetail();
+    setModo("supervisar");
+    setPestanaInd("plano");
+    setMapFilter(filtro);
+    setMapQuery("");
+    setGrupoElegido("dias30");
+    setLlegada({ desde: "Inicio", cifra });
+  };
 
   /** Una cifra lleva a la tabla de contratos filtrada en lo que cuenta. */
   const abrirTablaDesde = (filtro: MapFilter, desde: "Inicio" | "Resumen", cifra: string) => {
@@ -6669,6 +6773,16 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 pendientes={pendientesEnElPlano}
                 onPendientes={() => setPendientesEnElPlano(!pendientesEnElPlano)}
               />
+              {/* El filtro del plano puesto («Por vencer», al llegar desde el
+                  Inicio): se dice y se quita acá, en el borde del plano. */}
+              {filtroDelPlano && (
+                <button type="button" className="chip-filtro" data-filtro-del-plano={mapFilter}
+                  title="Quitar el filtro: ver todo el plano"
+                  onClick={() => { setMapFilter("todos"); setLlegada(null); }}>
+                  {filtroDelPlano.label} · {filtroDelPlano.n}
+                  <X size={14} strokeWidth={1.75} aria-label="Quitar" />
+                </button>
+              )}
               <FiltroTexto valor={mapQuery} onCambio={setMapQuery} etiqueta="Filtrar el plano" />
             </div>
           </header>
@@ -6693,6 +6807,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 chinchetas={pendientesEnElPlano ? chinchetasDeRevision : undefined}
                 onChincheta={irAlAviso}
                 senalar={senalarEnElPlano}
+                irAlMueble={irAlMuebleEnElPlano}
               />
             )}
           </div>
@@ -7054,6 +7169,13 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       <div
         className="lista-r"
         data-senala-en-el-plano
+        onClickCapture={(e) => {
+          // Qué fila se tocó, para «‹ ›» de la ficha (lo lee `revisar`). Un
+          // toque que no abre la ficha (Renovar, Resolver) no la deja anotada.
+          const fila = (e.target as Element).closest<HTMLElement>("[data-aviso]");
+          avisoTocado.current = fila?.dataset.aviso ?? null;
+          window.setTimeout(() => { avisoTocado.current = null; }, 0);
+        }}
         onPointerOver={(e) => { if (e.pointerType !== "touch") senalarFila(e.target); }}
         onPointerLeave={(e) => { if (e.pointerType !== "touch") senalarFila(null); }}
         onFocus={(e) => senalarFila(e.target)}
@@ -7416,10 +7538,84 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     </>
   );
 
+  /** La ficha al lado del plano (Indicadores › Plano), con el plano en ese
+   *  mueble. */
+  const fichaAlLado = fichaEnPlano && !!selected && detailFull;
+  /** Llevar el plano al mueble cuando su ficha se abre al lado, y volver a
+   *  como estaba al cerrarla. Al llegar desde el Inicio el plano todavía se
+   *  está armando: se reintenta unas veces. */
+  const idAlLado = fichaAlLado ? selected?.id ?? null : null;
+  useEffect(() => {
+    if (!idAlLado) {
+      irAlMuebleEnElPlano.current?.(null);
+      return;
+    }
+    let intentos = 0;
+    let t = 0;
+    const ir = () => {
+      const ok = irAlMuebleEnElPlano.current?.(idAlLado) ?? false;
+      if (ok) {
+        senalarEnElPlano.current?.({ fixtureId: idAlLado, cara: detailFace, grupo: grupoDeRevision });
+        // En una columna (tableta, teléfono) el plano queda arriba, a la vista.
+        if (window.matchMedia("(max-width: 1000px)").matches) {
+          document.querySelector(".supervisar-hoja .vp-plano")?.scrollIntoView({ block: "start" });
+        }
+      } else if (intentos++ < 20) t = window.setTimeout(ir, 100);
+    };
+    t = window.setTimeout(ir, 30);
+    return () => window.clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idAlLado, detailFace]);
+  useEffect(() => { if (!idAlLado) senalarEnElPlano.current?.(null); }, [idAlLado]);
+  /** «← Por vencer · 1 de 4 ‹ ›»: los de la misma sección de la fila que la
+   *  abrió, en el orden de la lista. */
+  const vecinos = useMemo(() => vecinosDelAviso(avisos, avisoAbierto), [avisos, avisoAbierto]);
+  const avisoActual = vecinos.indice >= 0 ? vecinos.lista[vecinos.indice] : null;
+  const irAlVecino = (paso: 1 | -1) => {
+    const a = vecinos.lista[vecinos.indice + paso];
+    const f = a?.fixtureId ? fixtures.find((x) => x.id === a.fixtureId) : undefined;
+    if (!a || !f) return;
+    avisoTocado.current = a.clave;
+    revisar(f, a.cara ?? "A");
+  };
+  const navegacionDeFicha = fichaAlLado ? (
+    <div className="ficha-nav" data-ficha-nav>
+      <button type="button" className="volver" onClick={closeDetail} data-volver-a-la-lista>
+        <ArrowLeft {...ICONO_TARJETA} />
+        {avisoActual ? tituloDeSeccion(avisoActual.seccion, grupoDelAviso(avisoActual.seccion, avisoActual.dias)) : "Para revisar"}
+      </button>
+      {vecinos.lista.length > 1 && (
+        <>
+          <span className="cuenta" data-ficha-nav-cuenta>{vecinos.indice + 1} de {vecinos.lista.length}</span>
+          <span className="flechas">
+            <button type="button" className="icobtn" aria-label="El anterior" disabled={vecinos.indice <= 0}
+              onClick={() => irAlVecino(-1)}><ChevronLeft {...ICONO_TARJETA} /></button>
+            <button type="button" className="icobtn" aria-label="El siguiente" disabled={vecinos.indice >= vecinos.lista.length - 1}
+              onClick={() => irAlVecino(1)} data-ficha-siguiente><ChevronRight {...ICONO_TARJETA} /></button>
+          </span>
+        </>
+      )}
+    </div>
+  ) : undefined;
+  /** «Ver en el plano» de «Dónde está»: Indicadores › Plano, con esta misma
+   *  ficha al lado. */
+  const verEnElPlano = () => {
+    useArmazon.getState().cerrarBandeja();
+    if (inicio && selected) setLlegada({ desde: "Inicio", cifra: (entradaDetalle ? codigoVisible(entradaDetalle) : selected.code) });
+    setPestanaInd("plano");
+    setModo("supervisar");
+  };
+
   /** La ficha del espacio (la misma en el Inicio, en Indicadores y desde
-   *  Pendientes): se abre en un cajón encima de la pantalla. */
+   *  Pendientes): en Indicadores › Plano, al lado del plano; en los demás,
+   *  en un cajón encima de la pantalla, con «Dónde está». */
   const fichaDelEspacio = selected && detailFull ? (
     <FixtureDetailCard
+      navegacion={navegacionDeFicha}
+      dondeEsta={fichaAlLado ? undefined : (
+        <DondeEsta fixtures={fixtures} fixtureId={selected.id}
+          codigo={(entradaDetalle ? codigoVisible(entradaDetalle) : selected.code)} onVerEnPlano={verEnElPlano} />
+      )}
       fixture={selected}
       isAdmin={isAdmin}
       face={detailFace}
@@ -7868,7 +8064,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           totalPendientes={attentionCount}
           onNuevoContrato={isAdmin ? () => setModo("vender") : undefined}
           onVerTabla={() => abrirTablaDesde("occupied", "Inicio", "Contratos activos")}
-          onVerPorVencer={() => useArmazon.getState().abrirBandeja("dias30")}
+          onVerPorVencer={() => abrirPlanoDesde("expiring", "Por vencer (30 días)")}
           onVerMontajes={() => onIrAMontajes?.()}
           onVerIndicadores={() => isAdmin
             ? abrirTablaDesde("occupied", "Inicio", "Canon del mes")
@@ -7991,6 +8187,31 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
           {pestanaInd === "plano" && (
             <>
+              {llegada && (
+                <div className="ind-llegada" role="status" data-llegada>
+                  <span>
+                    Desde <b>{llegada.desde} › {llegada.cifra}</b>:{" "}
+                    {mapFilter === "expiring"
+                      ? kpis.expiring.length === 1
+                        ? `el que vence en 30 días en ${sede}, resaltado en el plano. Tocalo para ver su ficha al lado.`
+                        : `los ${kpis.expiring.length} que vencen en 30 días en ${sede}, resaltados en el plano. Tocá uno para ver su ficha al lado.`
+                      : `el plano de ${sede}, con lo que hay para revisar al lado.`}
+                  </span>
+                  <button type="button" className="ind-csv" onClick={() => {
+                    setLlegada(null);
+                    closeDetail();
+                    if (mapFilter === "expiring") setMapFilter("todos");
+                    if (llegada.desde === "Inicio") onIrAlInicio?.(); else setPestanaInd("resumen");
+                  }}>
+                    <ArrowLeft {...ICONO_TARJETA} /> Volver {llegada.desde === "Inicio" ? "al Inicio" : "al Resumen"}
+                  </button>
+                  {mapFilter !== "todos" && (
+                    <button type="button" className="ind-csv" onClick={() => { setMapFilter("todos"); setLlegada(null); }}>
+                      Ver todo el plano
+                    </button>
+                  )}
+                </div>
+              )}
           {/* ── LA HOJA DE SUPERVISAR: la misma rejilla que la de Vender ──────
                   Dos columnas en la misma proporción (3 : 2) y filas del
                   mismo alto que el panel del plano de Vender (`--alto-plano`):
@@ -8001,14 +8222,19 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
                   Cada tarjeta desplaza lo suyo. Por debajo de 1000 px, una sola
                   columna con «Para revisar» primero (dibujo aprobado). */}
-              <div className="supervisar-hoja">
+              <div className="supervisar-hoja" data-ficha={fichaAlLado || undefined}
+                data-plano-primero={(!!llegada && mapFilter !== "todos") || undefined}>
                 {tarjetaMapa}
 
                 {/* Lo que hay que revisar —o la ficha del espacio elegido, que
                     ocupa su lugar—, al lado del plano donde se lo busca. */}
                 <div className="col-revisar">
-                  {/* La ficha del espacio ya no ocupa este lugar: se abre en su
-                      cajón, la misma en el Inicio y en Indicadores (etapa 3). */}
+                  {/* La ficha del espacio, al lado del plano y en el lugar de
+                      la lista, sin velo (2026-10-28, «Por vencer en el
+                      plano»): se ven el contrato y el mueble a la vez. */}
+                  {fichaAlLado ? (
+                    <div className="ficha-al-lado" data-ficha-al-lado>{fichaDelEspacio}</div>
+                  ) : (
                   <Card style={{ flex: 1, minHeight: 0 }}>
                     <CardHeader
                       icon={<ClipboardCheck {...ICONO_TARJETA} />}
@@ -8019,6 +8245,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                       ? <div className="vacio-r">Abierto en Pendientes.</div>
                       : cuerpoDeRevision}
                   </Card>
+                  )}
                 </div>
 
               </div>
@@ -8309,7 +8536,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       )}
       {/* La ficha del espacio: la misma desde el Inicio, Indicadores y
           Pendientes, en su cajón (encima de la bandeja si se abrió desde ahí). */}
-      {fichaDelEspacio && modoEfectivo !== "vender" && (
+      {fichaDelEspacio && modoEfectivo !== "vender" && !fichaAlLado && (
         <Cajon etiqueta={`Ficha de ${selected?.code ?? "espacio"}`} sinCabecera capa={1} ancho={520} onCerrar={closeDetail}>
           <div className="sup ficha-en-cajon">{fichaDelEspacio}</div>
         </Cajon>

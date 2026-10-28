@@ -300,3 +300,69 @@
 }
 .sup .bandeja-desde-montaje > span { flex: 1 1 220px; min-width: 0; }
 .sup [data-aviso][data-desde-montaje] { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-50); border-radius: 12px; }
+
+/* --- Por vencer en el plano (2026-10-28) -------------------------------------
+   En Indicadores › Plano la ficha se abre AL LADO del plano, en el lugar de
+   «Para revisar», sin velo; arriba, «← Por vencer · 1 de 4 ‹ ›». Donde no hay
+   plano, la ficha suma «Dónde está». */
+.sup .ficha-al-lado { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sup .ficha-nav {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 4px;
+  border-bottom: 1px solid var(--line-soft); background: var(--surface-2);
+}
+.sup .ficha-nav .volver {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 6px 8px;
+  border: 0; border-radius: var(--r-md); background: none; cursor: pointer;
+  font: inherit; font-size: var(--t-sm); font-weight: 600; color: var(--ink-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sup .ficha-nav .volver:hover { background: var(--surface-3); }
+.sup .ficha-nav .cuenta { font-size: var(--t-xs); color: var(--ink-3); white-space: nowrap; }
+.sup .ficha-nav .flechas { margin-left: auto; display: inline-flex; gap: 4px; flex: none; }
+.sup .ficha-nav .flechas .icobtn:disabled { opacity: .4; cursor: default; }
+/* La flecha de la ficha hacía lo mismo que «← Por vencer»: queda una. */
+.sup .ficha-al-lado .ficha-cab > .icobtn:first-child { display: none; }
+
+/* El filtro puesto en el plano, en su borde, con la × para quitarlo. */
+.chip-filtro {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 10px; flex: none;
+  border: 1px solid var(--entra-borde); border-radius: var(--r-pill); background: var(--entra-suave);
+  color: var(--entra-txt); font: inherit; font-size: var(--t-xs); font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.chip-filtro:hover { filter: brightness(0.97); }
+
+/* «Dónde está»: el plano de la sede desde arriba, chiquito, con el mueble. */
+.donde-esta { display: flex; flex-direction: column; gap: 8px; }
+.donde-esta-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.donde-esta-cab .rotulo {
+  font: 700 var(--t-2xs) / 1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3);
+}
+.donde-esta-cab .link {
+  display: inline-flex; align-items: center; gap: 4px; padding: 6px 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--t-xs); font-weight: 600; color: var(--accent);
+}
+.donde-esta > svg {
+  display: block; width: 100%; height: 150px; box-sizing: border-box; padding: 6px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2);
+}
+.donde-esta .otro { fill: var(--surface-3); stroke: var(--line-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.donde-esta .propio { fill: var(--entra); stroke: var(--entra-txt); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.donde-esta .anillo { fill: none; stroke: var(--entra-txt); stroke-width: 2; vector-effect: non-scaling-stroke; opacity: .55; }
+
+/* En una columna (tableta): con la ficha abierta, el plano va primero. */
+/* Lo mismo al llegar con un filtro puesto («Por vencer» desde el Inicio): lo
+   que se vino a ver es el plano resaltado. */
+@media (max-width: 1000px) {
+  .supervisar-hoja[data-ficha] > .col-revisar,
+  .supervisar-hoja[data-plano-primero] > .col-revisar { order: 1; }
+}
+/* En el teléfono: el plano arriba, con el mueble, y la ficha como hoja en la
+   mitad de abajo, encima de la barra de módulos. */
+@media (max-width: 639px) {
+  .sup .supervisar-hoja[data-ficha] .ficha-al-lado {
+    position: fixed; left: 0; right: 0; top: 50%; bottom: var(--alto-barra-abajo, 61px); z-index: 40;
+    background: var(--surface); border-top: 1px solid var(--line-strong); border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 24px rgb(0 0 0 / .12); overflow: hidden;
+  }
+  .sup .supervisar-hoja[data-ficha] .ficha-al-lado > div { border: 0; border-radius: 0; }
+}
