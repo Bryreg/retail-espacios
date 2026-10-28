@@ -1,8 +1,7 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28, **tres mejoras de flujo** (rama `claude/vibrant-wozniak-1ny6q4`,
-sin mergear): cada cifra del Inicio y del Resumen lleva a la lista que la suma («Vigentes hoy», con
+Última actualización: 2026-10-28, en `main`: **tres mejoras de flujo** (PR #100): cada cifra del Inicio y del Resumen lleva a la lista que la suma («Vigentes hoy», con
 la suma al pie y «Volver»), el reporte del enlace de montaje no se pierde sin señal, «Ubicar la
 zona» abre esa fila en Pendientes con la vuelta a Montajes, después de verificar sigue el siguiente,
 y un pulido (foco, reducir movimiento, 375 px, aviso al cambiar de sede, etiquetas «Cubre …»). Ver
