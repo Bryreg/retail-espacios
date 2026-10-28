@@ -1,7 +1,7 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28, en la rama `claude/vibrant-wozniak-1ny6q4` (sin PR todavía):
+Última actualización: 2026-10-28, en `main` (PR #102):
 **el plano se edita en el 2D y el 3D es para mirar**. La biblioteca del plano ofrece uno de cada
 tipo y aparte «Mis muebles» (sólo las fichas del taller), con «Crear un mueble con otras medidas»
 que va al taller y vuelve; el 3D ya no coloca, mueve, gira ni borra; la ficha del 2D muestra el
