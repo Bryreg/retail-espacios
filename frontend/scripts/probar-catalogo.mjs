@@ -1650,10 +1650,10 @@ await prueba("retirar y reactivar una ficha: el pedido que corresponde, y DESPU�
   };
   const recargar = async () => { orden.push(["releer"]); };
   const vigente = { clave: "nevera-inducol-2p", nombre: "Nevera Inducol 2 puertas", retirado: false };
-  assert.equal(await FF.retirarOReactivarFicha(vigente, api, recargar), "«Nevera Inducol 2 puertas» quedó retirada.");
+  assert.equal(await FF.retirarOReactivarFicha(vigente, api, recargar), "«Nevera Inducol 2 puertas» quedó retirado: ya no se ofrece en el plano. Lo ya colocado sigue igual.");
   assert.deepEqual(orden, [["retirar", "nevera-inducol-2p"], ["releer"]], "retirar no pide retirar y después relee");
   orden.length = 0;
-  assert.equal(await FF.retirarOReactivarFicha({ ...vigente, retirado: true }, api, recargar), "«Nevera Inducol 2 puertas» vuelve a la paleta.");
+  assert.equal(await FF.retirarOReactivarFicha({ ...vigente, retirado: true }, api, recargar), "«Nevera Inducol 2 puertas» vuelve al catálogo del plano.");
   assert.deepEqual(orden, [["reactivar", "nevera-inducol-2p"], ["releer"]], "reactivar no pide reactivar y después relee");
   // Si el servidor dice que no, el error llega al taller y no se relee.
   orden.length = 0;

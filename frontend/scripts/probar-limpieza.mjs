@@ -79,10 +79,19 @@ prueba("«Empezar de cero» no está en ninguna pantalla", () => {
 });
 
 prueba("el taller de muebles es sólo para administradores", () => {
+  // Desde el 2026-10-28 `/taller` lleva a Plano › Mis muebles (que el armazón
+  // sólo abre para administración, `puedeAbrir`) y el banco de prueba vive en
+  // `/taller/banco`: los dos, sólo para administradores.
   assert.match(
     fuente("App.tsx"),
-    /<Route path="\/taller" element=\{esAdmin \? <TallerMuebles \/> : <Navigate to="\/" replace \/>\} \/>/,
+    /<Route path="\/taller" element=\{esAdmin \? <AlTallerNuevo \/> : <Navigate to="\/" replace \/>\} \/>/,
   );
+  assert.match(
+    fuente("App.tsx"),
+    /<Route path="\/taller\/banco" element=\{esAdmin \? <TallerMuebles \/> : <Navigate to="\/" replace \/>\} \/>/,
+  );
+  assert.match(fuente("modulos.ts"), /return modulo === "inicio" \|\| modulo === "indicadores" \|\| modulo === "montajes";/,
+    "Mis muebles se abre para quien trabaja en la tienda");
 });
 
 prueba("el ingreso no pide la lista de supermercados", () => {

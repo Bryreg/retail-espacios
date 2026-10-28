@@ -32,9 +32,9 @@ export const ITEMS_DEL_MENU: ItemDelMenu[] = [
     para: "Dibujar la tienda en 2D y verla en 3D" },
 ];
 
-/** El módulo del menú que se marca: el 3D es parte del Plano. */
+/** El módulo del menú que se marca: el 3D y «Mis muebles» son parte del Plano. */
 function marcado(actual: Modulo | null): Modulo | null {
-  return actual === "plano3d" ? "plano" : actual;
+  return actual === "plano3d" || actual === "muebles" ? "plano" : actual;
 }
 
 function Item({ item, actual }: { item: ItemDelMenu; actual: Modulo | null }) {

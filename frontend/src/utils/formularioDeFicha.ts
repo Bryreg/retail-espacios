@@ -366,7 +366,9 @@ export async function retirarOReactivarFicha(
   if (m.retirado) await api.reactivar(m.clave);
   else await api.retirar(m.clave);
   await recargar();
-  return m.retirado ? `«${m.nombre}» vuelve a la paleta.` : `«${m.nombre}» quedó retirada.`;
+  return m.retirado
+    ? `«${m.nombre}» vuelve al catálogo del plano.`
+    : `«${m.nombre}» quedó retirado: ya no se ofrece en el plano. Lo ya colocado sigue igual.`;
 }
 
 /**
@@ -427,4 +429,97 @@ export function fichaParaDibujar(f: FormularioDeFicha): ModeloPropio | null {
     fuente: { confiabilidad: f.confiabilidad || "estimado" },
     retirado: false,
   };
+}
+
+// ─── El asistente de «Mis muebles» (2026-10-28) ──────────────────────────────
+//
+// El taller pasó de un formulario largo a tres pasos: qué mueble es, cuánto
+// mide, y nombre y cómo se vende. Las reglas son las de siempre
+// (`problemasDelFormulario`): cada paso muestra y frena sólo con lo suyo, y
+// guardar las vuelve a correr todas.
+
+/** Los tres pasos del asistente. */
+export type PasoDelAsistente = 1 | 2 | 3;
+
+/** Los campos que escribe cada paso. */
+export const CAMPOS_DEL_PASO: Record<PasoDelAsistente, readonly (keyof FormularioDeFicha)[]> = {
+  1: ["entrada"],
+  2: ["anchoCm", "fondoCm", "altoCm", "entrepanos", "moduloCm", "puertas", "tramos"],
+  3: ["nombre", "clave", "division", "bahias", "forro", "tarifa", "url", "nota", "confiabilidad"],
+};
+
+/** El paso donde se corrige un problema de la ficha (por su campo). */
+export function pasoDelProblema(p: ProblemaDeFicha): PasoDelAsistente {
+  const campo = CAMPO_DEL_FORMULARIO[p.campo];
+  if (campo && CAMPOS_DEL_PASO[1].includes(campo)) return 1;
+  if (campo && CAMPOS_DEL_PASO[2].includes(campo)) return 2;
+  return 3;
+}
+
+/** Los problemas que frenan un paso: los de sus campos. */
+export function problemasDelPaso(f: FormularioDeFicha, paso: PasoDelAsistente, { nueva = true }: { nueva?: boolean } = {}): ProblemaDeFicha[] {
+  return problemasDelFormulario(conOrigenCompleto(f), { nueva }).filter((p) => pasoDelProblema(p) === paso);
+}
+
+/** De dónde salieron las medidas, en una elección de tres: cada una es una
+ *  `confiabilidad` y pide lo suyo. «Las medí en la tienda» no pide nada más
+ *  (la nota la pone `conOrigenCompleto`; en el plano lleva «≈», como siempre
+ *  lo estimado); la ficha del fabricante pide el enlace; un catálogo, el
+ *  enlace o una nota. */
+export const ORIGENES: readonly { valor: Confiabilidad; titulo: string; detalle: string; pide: "nada" | "url" | "url_o_nota" }[] = [
+  { valor: "estimado", titulo: "Las medí en la tienda", detalle: "Con metro. En el plano lleva «≈».", pide: "nada" },
+  { valor: "ficha", titulo: "Ficha del fabricante", detalle: "Pide el enlace de la página.", pide: "url" },
+  { valor: "catalogo", titulo: "Un catálogo o listado", detalle: "Pide el enlace o una nota.", pide: "url_o_nota" },
+];
+
+/** La nota con que se guarda «Las medí en la tienda» si no se escribió otra. */
+export const NOTA_DE_LA_TIENDA = "Medida en la tienda con metro.";
+
+/** El formulario como se manda: «Las medí en la tienda» sin enlace ni nota
+ *  lleva su nota, que la ficha exige (el servidor pide enlace o nota). */
+export function conOrigenCompleto(f: FormularioDeFicha): FormularioDeFicha {
+  return f.confiabilidad === "estimado" && !f.url.trim() && !f.nota.trim() ? { ...f, nota: NOTA_DE_LA_TIENDA } : f;
+}
+
+/** «Empezar desde»: un modelo de RECABRA de la familia como punto de partida.
+ *  Copia sus medidas, su geometría, cómo se vende y su tarifa propia. NO copia
+ *  de dónde salió: el enlace del modelo respalda SUS medidas, y las de este
+ *  mueble se van a cambiar; eso lo dice quien lo arma, en el paso 3. El nombre
+ *  y la clave también quedan para escribir. */
+export function formularioDesdeModelo(
+  entrada: string, m: Pick<ModeloPropio, "w" | "d" | "h" | "entrepanos" | "modulo" | "partes" | "tarifa">,
+): FormularioDeFicha {
+  const familia = familiaDe(entrada);
+  const tarifa = m.tarifa && familia?.tarifasPropias.includes(m.tarifa) ? m.tarifa : "";
+  return {
+    ...formularioVacio(entrada),
+    anchoCm: cm(m.w), fondoCm: cm(m.d), altoCm: cm(m.h),
+    entrepanos: m.entrepanos !== undefined ? String(m.entrepanos) : "",
+    moduloCm: cm(m.modulo),
+    puertas: m.partes?.puertas != null ? String(m.partes.puertas) : "",
+    tramos: m.partes?.tramos != null ? String(m.partes.tramos) : "",
+    division: typeof m.partes?.division === "string" ? m.partes.division : "",
+    bahias: typeof m.partes?.bahias === "number" ? String(m.partes.bahias) : "",
+    forro: m.partes?.forro === true ? "si" : "",
+    tarifa,
+  };
+}
+
+/** La familia del asistente para un tipo del plano 2D (`gondola_doble`,
+ *  `nevera_puertas`…): «Crear un mueble con otras medidas» trae el que se
+ *  estaba por colocar. `undefined` si no es un tipo, o no admite fichas. */
+export function entradaDelTipoDelPlano(tipo: string | null | undefined): string | undefined {
+  const r = tipo ? resolverTipo(tipo) : null;
+  if (!r) return undefined;
+  const entrada = r.variante !== undefined ? `${r.clave}:${r.variante}` : r.clave;
+  return familiaDe(entrada) ? entrada : undefined;
+}
+
+/** Un número del formulario más o menos `paso` (los «−» y «+» del asistente),
+ *  dentro de `[min, max]`. Vacío arranca en `desde` (el valor automático). */
+export function pasoDeNumero(texto: string, paso: number, min: number, max: number, desde: number): string {
+  const n = numero(texto);
+  const base = n === undefined || Number.isNaN(n) ? desde : n;
+  const v = Math.min(max, Math.max(min, Math.round((base + paso) * 10) / 10));
+  return String(v).replace(".", ",");
 }

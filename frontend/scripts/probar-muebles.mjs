@@ -2567,17 +2567,19 @@ prueba("surtido: el copete, el cabezote, la toma y /taller siguen con el princip
   assert.ok(!/setPlacedFixtures|pushToStore/.test(ajustar));
 });
 
-prueba("/taller mira cada modelo con su ficha estampada, como lo coloca la paleta", () => {
+prueba("/taller/banco mira cada modelo con su ficha estampada, como lo coloca la paleta", () => {
   // Sin la ficha, el taller dibujaba la cuenta de siempre: una nevera de 4
   // puertas se miraba con las que salen del ancho y una góndola de 4
   // entrepaños con los de su alto. El cotejo contra la ficha no se puede
-  // hacer mirando otro mueble.
+  // hacer mirando otro mueble. Desde el 2026-10-28 es el banco de prueba
+  // (`/taller/banco`); la escena es compartida con «Mis muebles».
   const taller = sinComentarios(leer(join("src", "pages", "TallerMuebles.tsx")));
+  const escena = sinComentarios(leer(join("src", "components", "taller", "escena.tsx")));
   // La paleta es la de los editores, con las fichas propias del supermercado.
   assert.match(taller, /const paleta = useMemo\(\(\) => paletaConPropias\(propias\), \[propias\]\);/,
     "/taller no mira la paleta de los editores (con las fichas del supermercado)");
   assert.match(taller, /paleta\[catalogo\]\?\.modelos/, "/taller no lista los modelos de la familia");
-  assert.match(taller, /\.\.\.\(modelo \? fichaDe\(modelo\) : \{\}\)/, "/taller no estampa la ficha del modelo");
+  assert.match(escena, /\.\.\.\(modelo \? fichaDe\(modelo\) : \{\}\)/, "/taller no estampa la ficha del modelo");
   assert.match(taller, /ventaDeTipo\(def\.type, anchoV, fondoV, altoV, def\.gondolaType, geometria\)/,
     "/taller vende con la cuenta de siempre y no con los entrepaños dibujados");
   // El de al lado va SIN ficha: es contra lo que se compara.
@@ -2587,6 +2589,11 @@ prueba("/taller mira cada modelo con su ficha estampada, como lo coloca la palet
   // nevera de 4 puertas salía cortada por los costados.
   assert.match(taller, /let dist = Math\.max\(1\.6, \(altoEscena \* 1\.15\) \/ \(2 \* tan\), \(anchoEscena \* 1\.1\) \/ \(2 \* tan \* 1\.3\)\);/,
     "la toma fija del taller volvió a encuadrar sólo por el alto");
+  // La toma de «Mis muebles» encuadra lo que se ve de tres cuartos (frente y
+  // costado) contra la forma del lienzo, que es más alto que ancho: con el
+  // 1,3 del banco, una nevera de 3,2 m salía cortada.
+  assert.match(escena, /const anchoVisto = w \* Math\.cos\(ang\) \+ d \* Math\.sin\(ang\);/, "la toma de tres cuartos encuadra sólo el frente");
+  assert.match(escena, /\(anchoVisto \* 1\.15\) \/ \(2 \* tan \* Math\.max\(0\.4, aspecto\)\)/, "la toma de tres cuartos no mira la forma del lienzo");
 });
 
 /** El texto entre dos marcadores, que tienen que existir los dos. */
@@ -2598,45 +2605,54 @@ function cuerpoEntre(t, desde, hasta) {
   return t.slice(i, j);
 }
 
-prueba("/taller «Fichas» dibuja la ficha que se escribe, con la misma entrada de paleta con que se colocará", () => {
-  // Lo que la dueña ve girar mientras escribe tiene que ser lo que después
-  // coloca: la entrada de la paleta sale de `defDeModelo` —la MISMA función que
-  // arma la paleta de los editores con sus fichas— sobre la familia elegida,
-  // y el mueble se dibuja con esa ficha estampada (`delCatalogo` con `modelo`).
-  const taller = sinComentarios(leer(join("src", "pages", "TallerMuebles.tsx")));
-  assert.match(taller, /fichaParaDibujar\(formFicha\)/, "/taller no dibuja la ficha del formulario");
-  assert.match(taller, /defDeModelo\(paleta\[indiceFicha\]\.base, fichaVista\)/,
-    "/taller arma la ficha que dibuja con otra cuenta que la paleta");
-  assert.match(taller, /const modelo = enFichas \? defFicha : modelos\[modeloI\] \?\? null;/,
-    "en «Fichas» el mueble no lleva la ficha que se escribe");
-  assert.match(taller, /delCatalogo\(indiceVisto, anchoV, fondoV, altoV, conProducto \? rubro : "", modelo\)/,
-    "/taller no dibuja el mueble con las medidas y la ficha que se ven");
-  assert.match(taller, /<PanelDeFichas form=\{formFicha\} onForm=\{setFormFicha\}/, "falta el formulario de la pestaña «Fichas»");
+prueba("Mis muebles dibuja el mueble que se arma con la misma entrada de paleta con que se colocará, y guarda validando", () => {
+  // Lo que la dueña ve en 3D mientras arma el mueble tiene que ser lo que
+  // después coloca: la entrada de la paleta sale de `defDeModelo` —la MISMA
+  // función que arma la paleta de los editores con sus fichas— sobre la
+  // familia elegida, y el mueble se dibuja con esa ficha estampada
+  // (`delCatalogo` con el modelo). Era la pestaña «Fichas» del taller; desde
+  // el 2026-10-28 es el asistente de Plano › Mis muebles.
+  const vista = sinComentarios(leer(join("src", "components", "taller", "VistaDeLaFicha.tsx")));
+  assert.match(vista, /const ficha = fichaParaDibujar\(form\);/, "Mis muebles no dibuja la ficha del formulario");
+  assert.match(vista, /const def = defDeModelo\(paleta\[indice\]\.base, ficha\);/,
+    "Mis muebles arma la ficha que dibuja con otra cuenta que la paleta");
+  assert.match(vista, /fixture: delCatalogo\(indice, def\.w, def\.d, def\.h, "", def\)/,
+    "Mis muebles no dibuja el mueble con las medidas y la ficha que se ven");
+  assert.match(vista, /const paleta = useMemo\(\(\) => paletaConPropias\(propias\), \[propias\]\);/,
+    "Mis muebles no mira la paleta de los editores");
   const editor3D = sinComentarios(leer(join("src", "catalogo", "editor3D.ts")));
   assert.match(editor3D, /modelos: modelosDe\(entrada\)\.map\(\(m\) => defDeModelo\(base, m\)\)/,
     "la paleta del catálogo no arma sus entradas con `defDeModelo`");
   assert.match(editor3D, /suyas\.map\(\(m\) => defDeModelo\(familia\.base, m\)\)/,
     "las fichas propias entran a la paleta con otra cuenta que los modelos del catálogo");
-  // Y el panel guarda por `guardarFicha`, que valida antes de llamar a la API.
-  const panel = sinComentarios(leer(join("src", "components", "taller", "PanelDeFichas.tsx")));
-  assert.match(panel, /await guardarFicha\(form, editando, \{ crear: crearModeloPropio, cambiar: cambiarModeloPropio \}\)/,
-    "el taller guarda la ficha sin pasar por la validación del formulario");
-  assert.ok(!/(crearModeloPropio|cambiarModeloPropio)\(/.test(panel), "el taller llama a la API sin validar");
-  const guardar = cuerpoEntre(panel, "const guardar = async", "const retirarOReactivar = async");
+  // Y el asistente guarda por `guardarFicha`, que valida antes de llamar a la
+  // API, con «Las medí en la tienda» completo (su nota).
+  const asistente = sinComentarios(leer(join("src", "components", "taller", "AsistenteDeMueble.tsx")));
+  assert.match(asistente, /await guardarFicha\(conOrigenCompleto\(form\), editando\?\.clave \?\? null,\s*\{ crear: crearModeloPropio, cambiar: cambiarModeloPropio \}\)/,
+    "Mis muebles guarda la ficha sin pasar por la validación del formulario");
+  assert.ok(!/(crearModeloPropio|cambiarModeloPropio)\(/.test(asistente), "Mis muebles llama a la API sin validar");
+  const guardar = cuerpoEntre(asistente, "const guardar = async", "const principal = ");
   assert.match(guardar, /if \(!r\.ok\) \{[^]*?\}\s*await recargarFichasPropias\(\);/, "guardar una ficha no la lleva a las paletas");
   // Retirar y reactivar pasan por `retirarOReactivarFicha` (puro: lo prueba
   // `probar-catalogo` con una API que anota el orden), con la API de verdad y
   // la relectura de las fichas de la sesión. Llamar a la API acá saltaba el
-  // orden: releer antes del pedido dejaba la retirada en las paletas.
-  assert.match(cuerpoEntre(panel, "const retirarOReactivar = async", "const Problemas = "),
+  // orden: releer antes del pedido dejaba el retirado en las paletas.
+  const retirar = sinComentarios(leer(join("src", "components", "taller", "RetirarMueble.tsx")));
+  assert.match(retirar,
     /await retirarOReactivarFicha\(\s*m, \{ retirar: retirarModeloPropio, reactivar: reactivarModeloPropio \}, recargarFichasPropias\)/,
-    "retirar o reactivar una ficha no la saca o la vuelve a las paletas");
-  assert.ok(!/(retirarModeloPropio|reactivarModeloPropio)\(/.test(panel), "el taller retira o reactiva sin `retirarOReactivarFicha`");
-  assert.ok(!/type="file"|FormData|[{,]\s*foto\s*:|["']foto["']|setFoto/.test(panel), "la ficha del taller pide una foto");
-  // Con todas retiradas, la dueña sí armó alguna: la lista no puede decirle
+    "retirar o reactivar un mueble no lo saca o lo vuelve a las paletas");
+  const pagina = sinComentarios(leer(join("src", "pages", "MisMuebles.tsx")));
+  for (const [n, t] of [["el asistente", asistente], ["Mis muebles", pagina], ["retirar", retirar]]) {
+    assert.ok(!/(retirarModeloPropio|reactivarModeloPropio)\(/.test(t), `${n} retira o reactiva sin \`retirarOReactivarFicha\``);
+    // (La «foto» de las tarjetas es el 3D del mueble, no una que se sube.)
+    assert.ok(!/type="file"|FormData|[{,]\s*foto\s*:|(?<!className=)["']foto["']|setFoto/.test(t), `${n} pide una foto del mueble`);
+  }
+  // Retirar se confirma en la app, no con el aviso del navegador.
+  assert.ok(!/window\.confirm\(/.test(pagina + asistente + retirar), "retirar pregunta con el aviso del navegador");
+  // Con todos retirados, la dueña sí armó alguno: la lista no puede decirle
   // que no (se vio en el recorrido del 2026-10-14).
-  assert.match(panel, /retiradas\.length > 0 \? "Ninguna vigente[^"]*" : "Todavía no armaste ninguna\."/,
-    "con todas sus fichas retiradas, el taller le dice que no armó ninguna");
+  assert.match(pagina, /retirados\.length > 0\s*\? "Ninguno vigente[^"]*"\s*: "Todavía no armaste ninguno\. "/,
+    "con todos sus muebles retirados, Mis muebles le dice que no armó ninguno");
 });
 
 prueba("el panel del Editor 3D dice las medidas de la ficha al milímetro, como la paleta y el plano", () => {

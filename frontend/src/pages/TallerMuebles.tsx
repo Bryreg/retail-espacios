@@ -1,10 +1,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { GondolaReal } from "../components/StoreEditor3D/muebles/GondolaReal";
 import { ProductoEnGondola } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
 import { PuntaReal } from "../components/StoreEditor3D/muebles/PuntaReal";
@@ -12,11 +8,8 @@ import { ProductoEnPunta } from "../components/StoreEditor3D/muebles/ProductoEnP
 import { NeveraReal } from "../components/StoreEditor3D/muebles/NeveraReal";
 import { geometriaDe, puertasDe } from "../components/StoreEditor3D/muebles/medidas";
 import { FixtureMesh, FIXTURE_DEFS } from "../components/StoreEditor3D/StoreEditor3D";
-import type { FacePaint, PlacedFixture } from "../components/StoreEditor3D/StoreEditor3D";
-import type { SlotDeProducto } from "../components/StoreEditor3D/muebles/ProductoEnGondola";
+import type { FacePaint } from "../components/StoreEditor3D/StoreEditor3D";
 import { ventaDeTipo } from "../components/StoreEditor3D/muebles/venta";
-import { partesNumeradas, type ParteNumerada } from "../components/StoreEditor3D/muebles/contornos";
-import { Html } from "@react-three/drei";
 import { unidadesDePrueba } from "../components/StoreEditor3D/muebles/frentes";
 import { empaqueDeArte } from "../components/StoreEditor3D/muebles/producto";
 import type { FichaDeArte, FormaDeFicha } from "../components/StoreEditor3D/muebles/producto";
@@ -24,16 +17,9 @@ import { claveDeArte, etiquetaDeArte, marcarEnUso } from "../components/StoreEdi
 import type { Etiqueta } from "../components/StoreEditor3D/muebles/etiqueta";
 import type { ModoDeFondo } from "../components/StoreEditor3D/muebles/recorte";
 import { arteUrl, listarCatalogo, type Arte } from "../api/catalogo";
-import { defDeModelo, paletaConPropias } from "../catalogo/editor3D";
-import type { FixtureDef } from "../catalogo/editor3D";
-import { fichaDe } from "../utils/convertirPlano";
-import type { ShelfSlot } from "../types/fixtures";
+import { paletaConPropias } from "../catalogo/editor3D";
 import { useFichasPropias } from "../store/fichasPropias";
-import { PanelDeFichas } from "../components/taller/PanelDeFichas";
-import {
-  FAMILIAS_DEL_FORMULARIO, familiaDe, fichaParaDibujar, formularioVacio, type FormularioDeFicha,
-} from "../utils/formularioDeFicha";
-import { resolverTipo } from "../catalogo/catalogo";
+import { Controles, EntornoNeutro, Piso, SLOTS_DE_MUESTRA, delCatalogo, type Toma } from "../components/taller/escena";
 
 /**
  * El taller: un mueble solo, girable, para mirarle la forma.
@@ -47,81 +33,10 @@ import { resolverTipo } from "../catalogo/catalogo";
  * También sirve después: es donde se mira si un mueble nuevo quedó parecido al
  * de la tienda antes de ponerlo en un plano de un cliente.
  *
- * Y es donde la dueña arma las FICHAS de sus muebles (pestaña «Fichas»,
- * `components/taller/PanelDeFichas.tsx`): el mueble que su supermercado tiene
- * y el catálogo no, con sus medidas y de dónde salieron. Mientras escribe, al
- * lado se dibuja ESE mueble con esa ficha estampada —con la misma entrada de
- * paleta con que se colocará (`defDeModelo`)—, y al guardarla aparece en
- * «Mis muebles», el catálogo del plano 2D.
+ * Las FICHAS de los muebles del supermercado ya no se arman acá: viven en
+ * Plano › Mis muebles (`pages/MisMuebles.tsx`, un asistente de tres pasos).
+ * Esto queda como el banco de prueba, en `/taller/banco`.
  */
-
-/** Iluminación de entorno hecha con three directo y NO con drei.
- *
- *  `@react-three/drei` está en 10.x y sus peers piden fiber 9 y React 19,
- *  mientras el proyecto tiene fiber 8 y React 18 — por eso `npm install` pide
- *  `--legacy-peer-deps`. Hoy sólo se usa `<Html>` y funciona de casualidad;
- *  meter `<Environment>` sería justo el componente que rompe. `RoomEnvironment`
- *  viene con three y no arrastra nada.
- *
- *  Sin esto, cualquier material con `metalness` renderiza lo que refleja, que
- *  es nada: gris plano. Con esto, el acero pintado tiene de dónde tomar luz. */
-function EntornoNeutro() {
-  const { gl, scene } = useThree();
-  useEffect(() => {
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const entorno = pmrem.fromScene(new RoomEnvironment(), 0.04);
-    scene.environment = entorno.texture;
-    return () => {
-      entorno.texture.dispose();
-      pmrem.dispose();
-      scene.environment = null;
-    };
-  }, [gl, scene]);
-  return null;
-}
-
-/** Una toma fija de la cámara: dónde se para y adónde mira. */
-type Toma = { pos: [number, number, number]; mira: [number, number, number] } | null;
-
-function Controles({ toma, girar = false }: { toma: Toma; girar?: boolean }) {
-  const { camera, gl, invalidate } = useThree();
-  const ctrl = useRef<OrbitControls | null>(null);
-  // «Girar»: el mueble da vueltas solo, para mirarlo de todos lados mientras
-  // se escribe su ficha. La órbita a mano sigue andando.
-  useEffect(() => {
-    const c = ctrl.current;
-    if (!c) return;
-    c.autoRotate = girar;
-    c.autoRotateSpeed = 1.4;
-  }, [girar]);
-  useFrame(() => { if (girar) ctrl.current?.update(); });
-  useEffect(() => {
-    const c = new OrbitControls(camera, gl.domElement);
-    c.target.set(0, 0.9, 0);
-    c.enableDamping = true;
-    c.autoRotate = girar;
-    c.autoRotateSpeed = 1.4;
-    c.update();
-    ctrl.current = c;
-    const animar = () => { c.update(); };
-    gl.domElement.addEventListener("pointermove", animar);
-    return () => { gl.domElement.removeEventListener("pointermove", animar); c.dispose(); ctrl.current = null; };
-    // `girar` lo sigue el efecto de arriba: acá sólo el valor con que nace.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera, gl]);
-  // Las tomas fijas son para medir y para comparar fotos: de frente a la
-  // altura del ojo, a tres cuartos, de cerca. Con la órbita a mano dos fotos
-  // nunca salen iguales.
-  useEffect(() => {
-    const c = ctrl.current;
-    if (!toma || !c) return;
-    camera.position.set(...toma.pos);
-    c.target.set(...toma.mira);
-    c.update();
-    invalidate();
-  }, [toma, camera, invalidate]);
-  return null;
-}
 
 /** La luz del EDITOR (la de `Scene`), para ver y calibrar el producto con la
  *  misma luz con que se lo muestra al proveedor. Sin `EntornoNeutro`: el
@@ -165,101 +80,11 @@ function cartaDeColor(): Promise<Blob> {
   }));
 }
 
-function Piso() {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-      <planeGeometry args={[24, 24]} />
-      <meshStandardMaterial color="#a8a49d" roughness={0.94} metalness={0} />
-    </mesh>
-  );
-}
-
 const campo: React.CSSProperties = {
   width: 84, height: 28, padding: "0 8px", borderRadius: 6,
   border: "1px solid var(--line)", background: "var(--surface-2)",
   color: "var(--ink-1)", fontSize: 12.5, fontFamily: "inherit",
 };
-
-/** Una cara vendida entera, partida en rubros. No es dato de negocio: es lo
- *  mínimo para poder mirar cómo queda un lineal lleno antes de que haya un
- *  contrato de verdad cargado. Los rubros son los que más cambian de empaque,
- *  a propósito — si se ven bien éstos, se ven bien todos. */
-const SLOTS_DE_MUESTRA: SlotDeProducto[] = [
-  { id: "a", x: 0.00, w: 0.34, y: 0.00, h: 0.5, status: "occupied", brandCategory: "Gaseosas" },
-  { id: "b", x: 0.34, w: 0.33, y: 0.00, h: 0.5, status: "occupied", brandCategory: "Galletas" },
-  { id: "c", x: 0.67, w: 0.33, y: 0.00, h: 0.5, status: "occupied", brandCategory: "Aceites" },
-  { id: "d", x: 0.00, w: 0.50, y: 0.50, h: 0.5, status: "occupied", brandCategory: "Snacks" },
-  { id: "e", x: 0.50, w: 0.50, y: 0.50, h: 0.5, status: "occupied", brandCategory: "Atún" },
-];
-
-/** Un mueble del catálogo, armado con lo mínimo que pide `FixtureMesh`. No es
- *  un mueble de una sede: no tiene contrato, ni código de espacio, ni posición.
- *  Es el mismo dibujo que usa el editor, traído acá para poder mirarlo.
- *
- *  Con `modelo` (uno de `PALETA_3D`), el mueble lleva estampada la ficha de
- *  ese modelo —entrepaños, módulo, puertas— igual que el que el editor coloca
- *  desde la paleta (`fichaDe`): sin eso, el taller dibujaba la cuenta de
- *  siempre y una nevera de 4 puertas se miraba con las que salen del ancho.
- *
- *  La góndola y la punta sólo dibujan producto sobre espacios vendidos: con
- *  rubro, cada espacio de muestra lleva ESE rubro, así el rubro sigue siendo
- *  lo que decide qué se para en los entrepaños. */
-function delCatalogo(
-  indice: number, w: number, d: number, h: number, rubro: string, modelo?: FixtureDef | null,
-): PlacedFixture {
-  const def = FIXTURE_DEFS[indice] ?? FIXTURE_DEFS[0];
-  const conEspacios = rubro && (def.type === "gondola" || def.type === "punta");
-  return {
-    id: "taller", code: def.code, type: def.type, gondolaType: def.gondolaType,
-    x: 0, z: 0, rotY: 0, w, d, h,
-    label: def.label, color: modelo?.color ?? def.color,
-    supplierName: rubro ? "Proveedor de prueba" : "", brandCategory: rubro,
-    status: rubro ? "occupied" : "free",
-    negotiatedValue: 0, startDate: "", endDate: "", observation: "",
-    ...(modelo ? fichaDe(modelo) : {}),
-    ...(conEspacios ? { slots: espaciosDeMuestra(rubro) } : {}),
-  };
-}
-
-/** Los espacios de muestra como espacios de un mueble, todos con el rubro. */
-function espaciosDeMuestra(rubro: string): ShelfSlot[] {
-  return SLOTS_DE_MUESTRA.map((s) => ({
-    id: s.id, x: s.x, y: s.y, w: s.w, h: s.h, status: "occupied",
-    supplierName: "Proveedor de prueba", brandCategory: rubro,
-    negotiatedValue: 0, startDate: "", endDate: "",
-  }));
-}
-
-/** Una parte que vende la ficha, en el taller: su contorno sobre el frente y
- *  su número («PU1», «EN1 · base»), con las cuentas del visor de Vender
- *  (`partesNumeradas`). Fuera de la escena de venta: es para la dueña. */
-function ParteNumeradaDelTaller({ p }: { p: ParteNumerada }) {
-  const { contorno: c } = p;
-  const geometria = useMemo(() => {
-    const plano = new THREE.PlaneGeometry(Math.max(0.01, c.ancho), Math.max(0.01, c.alto));
-    const g = new THREE.EdgesGeometry(plano);
-    plano.dispose();
-    return g;
-  }, [c.ancho, c.alto]);
-  useEffect(() => () => geometria.dispose(), [geometria]);
-  return (
-    <group position={[c.cx, c.cy, c.z]}>
-      <lineSegments geometry={geometria}>
-        <lineBasicMaterial color="#f2b705" />
-      </lineSegments>
-      {/* Sólo la cara A lleva el número: la B se numera igual mirando su
-          frente, y dos rótulos en el mismo lugar no se leen. */}
-      {p.cara === "A" && (
-        <Html center style={{ pointerEvents: "none" }}>
-          <span data-parte-numerada={p.etiqueta} style={{
-            fontSize: 11, fontWeight: 700, padding: "1px 5px", borderRadius: 4, whiteSpace: "nowrap",
-            background: "rgba(242,183,5,0.92)", color: "#1c1917",
-          }}>{p.etiqueta}</span>
-        </Html>
-      )}
-    </group>
-  );
-}
 
 /** Cuánto aire queda entre el mueble y el de hoy, cuando se miran juntos. */
 const SEPARACION_DEL_DE_HOY = 0.6;
@@ -275,34 +100,7 @@ const mmDeCm = (s: string) => {
   return s.trim() && n > 0 ? Math.round(n * 10) : null;
 };
 
-/** La familia del formulario para un tipo del plano 2D (`gondola_doble` →
- *  `gondola:double`), si admite ficha. */
-function entradaDelPlano(tipo: string | null): string | undefined {
-  const r = tipo ? resolverTipo(tipo) : null;
-  if (!r) return undefined;
-  const entrada = r.variante !== undefined ? `${r.clave}:${r.variante}` : r.clave;
-  return familiaDe(entrada) ? entrada : undefined;
-}
-
 export default function TallerMuebles() {
-  // Desde el plano (2026-10-28): «Crear un mueble con otras medidas» trae acá
-  // con la sede y el tipo que se estaba por colocar. Se abre en «Fichas», en
-  // esa familia, con un aviso que dice de dónde se vino y la vuelta al plano,
-  // que abre el catálogo con «Mis muebles» a la vista.
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const desdePlano = params.get("desde") === "plano";
-  const sedeDelPlano = params.get("sede") ?? "";
-  const [guardadaDesdePlano, setGuardadaDesdePlano] = useState<string | null>(null);
-  const volverAlPlano = () => navigate("/plano", { state: { delTaller: true } });
-  /** «Mirar» es el banco de siempre; «Fichas», donde la dueña arma las de sus
-   *  muebles y las ve dibujadas mientras escribe. */
-  const [pestana, setPestana] = useState<"mirar" | "fichas">(desdePlano ? "fichas" : "mirar");
-  const [formFicha, setFormFicha] = useState<FormularioDeFicha>(() => formularioVacio(
-    (desdePlano ? entradaDelPlano(params.get("tipo")) : undefined) ?? FAMILIAS_DEL_FORMULARIO[0]?.entrada ?? "gondola:double"));
-  /** La clave de la ficha que se edita; `null`, una nueva. */
-  const [editandoFicha, setEditandoFicha] = useState<string | null>(null);
-  const [girar, setGirar] = useState(true);
   /** La paleta con las fichas propias del supermercado, como la ven los
    *  editores: el taller mira también las suyas. */
   const propias = useFichasPropias();
@@ -350,34 +148,15 @@ export default function TallerMuebles() {
   const [, setVersion] = useState(0);
   const [avisar] = useState(() => () => setVersion((v) => v + 1));
 
-  const enFichas = pestana === "fichas";
-  // En «Fichas» se mira la ficha que se está escribiendo, con la MISMA entrada
-  // de paleta con que se colocará (`defDeModelo`, la de los editores): sus
-  // medidas, su color y su geometría estampadas.
-  const fichaVista = useMemo(() => (enFichas ? fichaParaDibujar(formFicha) : null), [enFichas, formFicha]);
-  const indiceFicha = fichaVista ? paleta.findIndex((f) => f.entrada === formFicha.entrada) : -1;
-  const defFicha = useMemo(
-    () => (fichaVista && indiceFicha >= 0 ? defDeModelo(paleta[indiceFicha].base, fichaVista) : null),
-    [fichaVista, indiceFicha, paleta],
-  );
   /** El mueble del catálogo que se dibuja, y con qué medidas. */
-  const indiceVisto = enFichas ? indiceFicha : catalogo;
-  const [anchoV, fondoV, altoV] = enFichas && defFicha ? [defFicha.w, defFicha.d, defFicha.h] : [ancho, fondo, alto];
+  const indiceVisto = catalogo;
+  const [anchoV, fondoV, altoV] = [ancho, fondo, alto];
   const def = indiceVisto >= 0 ? FIXTURE_DEFS[indiceVisto] : null;
   const modelos = catalogo >= 0 ? paleta[catalogo]?.modelos ?? [] : [];
-  const modelo = enFichas ? defFicha : modelos[modeloI] ?? null;
+  const modelo = modelos[modeloI] ?? null;
   // La venta con la ficha del modelo: si no, las filas de «dónde» y la toma de
   // cerca saldrían de la cuenta de siempre y no de los entrepaños dibujados.
   const geometria = useMemo(() => (modelo ? geometriaDe(modelo) : undefined), [modelo]);
-  // En «Fichas», las partes que va a vender lo que se coloque desde esta
-  // ficha, numeradas sobre el mueble que gira (vender por partes).
-  const numeradas = useMemo(
-    () => (enFichas && def && defFicha
-      ? partesNumeradas({ type: def.type, gondolaType: def.gondolaType, w: anchoV, d: fondoV, h: altoV,
-        partes: defFicha.partes, entrepanos: defFicha.entrepanos, modulo: defFicha.modulo })
-      : []),
-    [enFichas, def, defFicha, anchoV, fondoV, altoV],
-  );
   const venta = useMemo(
     () => (def ? ventaDeTipo(def.type, anchoV, fondoV, altoV, def.gondolaType, geometria) : null),
     [def, anchoV, fondoV, altoV, geometria],
@@ -385,10 +164,10 @@ export default function TallerMuebles() {
   // Memorizado: la toma depende de esto, y un objeto nuevo en cada dibujo
   // devolvería la cámara a la toma fija a cada rato.
   const deHoy = useMemo(
-    () => (!def || !modelo || enFichas || alLado === "nada" ? null
+    () => (!def || !modelo || alLado === "nada" ? null
       : alLado === "de_hoy" ? { w: def.w, d: def.d, h: def.h }
       : { w: ancho, d: fondo, h: alto }),
-    [def, modelo, enFichas, alLado, ancho, fondo, alto],
+    [def, modelo, alLado, ancho, fondo, alto],
   );
   const arte = artes.find((a) => a.id === arteId) ?? null;
   const fuente: { clave: string; blob: Blob | string } | null = conCarta
@@ -433,7 +212,7 @@ export default function TallerMuebles() {
   // Las tomas fijas, contra la cara A del mueble (mira a −Z). En «Fichas» la
   // cámara arranca a tres cuartos y encuadra el mueble entero, que gira: con la
   // órbita libre una nevera de 1,45 llenaba el cuadro y se miraba por detrás.
-  const vistaEfectiva = enFichas && vista === "libre" ? "tres_cuartos" : vista;
+  const vistaEfectiva = vista;
   const toma: Toma = useMemo(() => {
     const vista = vistaEfectiva;
     if (vista === "libre") return null;
@@ -497,46 +276,7 @@ export default function TallerMuebles() {
         }}
       >
         <strong style={{ fontSize: 13 }}>Taller de muebles</strong>
-        <span role="tablist" style={{ display: "inline-flex", gap: 4 }}>
-          {([["mirar", "Mirar"], ["fichas", "Fichas"]] as const).map(([valor, rotulo]) => (
-            <button key={valor} type="button" role="tab" aria-selected={pestana === valor} data-pestana={valor}
-                    style={{ ...campo, width: "auto", fontWeight: pestana === valor ? 700 : 400,
-                             background: pestana === valor ? "var(--surface-3)" : "var(--surface-2)" }}
-                    onClick={() => setPestana(valor)}>
-              {rotulo}
-            </button>
-          ))}
-        </span>
-        {enFichas ? (
-          <>
-            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
-              <input type="checkbox" checked={girar} onChange={(e) => setGirar(e.target.checked)} /> girar
-            </label>
-            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
-              rubro{" "}
-              <input type="text" value={rubro} placeholder="sin contrato" style={{ ...campo, width: 120 }}
-                     onChange={(e) => setRubro(e.target.value)} />
-            </label>
-            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
-              <input type="checkbox" checked={conProducto}
-                     onChange={(e) => setConProducto(e.target.checked)} />{" "}
-              producto
-            </label>
-            <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
-              cámara{" "}
-              <select value={vistaEfectiva} style={{ ...campo, width: 110 }}
-                      onChange={(e) => setVista(e.target.value as typeof vista)}>
-                <option value="frente">de frente</option>
-                <option value="tres_cuartos">tres cuartos</option>
-                <option value="cerca">de cerca</option>
-              </select>
-            </label>
-            <span style={{ fontSize: 11, color: "var(--ink-4)" }}>
-              Se dibuja con la ficha que estás escribiendo, como se va a colocar.
-            </span>
-          </>
-        ) : (
-        <>
+        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Banco de prueba: la forma, el producto y la luz. Los muebles del supermercado se arman en <a href="/plano/muebles">Plano › Mis muebles</a>.</span>
         <label style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
           ancho{" "}
           <input type="number" step="0.05" value={ancho} style={campo}
@@ -710,12 +450,10 @@ export default function TallerMuebles() {
             <option value="cerca">de cerca</option>
           </select>
         </label>
-        </>
-        )}
       </header>
 
       {/* La tira de diagnóstico: qué se hizo con la foto y qué medidas salieron. */}
-      {fuente && !enFichas && (
+      {fuente && (
         <div
           data-diagnostico
           style={{
@@ -759,34 +497,7 @@ export default function TallerMuebles() {
         </div>
       )}
 
-      {desdePlano && (
-        <div role="status" data-taller-desde-plano
-          style={{
-            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-            padding: "10px 16px", borderBottom: "1px solid var(--line)",
-            background: "var(--surface-2)", fontSize: 13, color: "var(--ink-2)", lineHeight: 1.45,
-          }}>
-          <span style={{ flex: "1 1 280px", minWidth: 0 }}>
-            {guardadaDesdePlano ? (
-              <>Listo: <b style={{ color: "var(--ink-1)" }}>«{guardadaDesdePlano}»</b> ya está en «Mis muebles», en el catálogo del plano.</>
-            ) : (
-              <>Desde el plano{sedeDelPlano ? <> de <b style={{ color: "var(--ink-1)" }}>{sedeDelPlano}</b></> : null}: armá el mueble con sus medidas.
-                Al guardarlo aparece en «Mis muebles», en el catálogo del plano.</>
-            )}
-          </span>
-          <button type="button" onClick={volverAlPlano} data-volver-al-plano
-            style={{ ...campo, width: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600, color: "var(--ink-1)", cursor: "pointer" }}>
-            <ArrowLeft size={14} strokeWidth={1.75} aria-hidden /> {guardadaDesdePlano ? "Volver al plano a colocarlo" : "Volver al plano"}
-          </button>
-        </div>
-      )}
-
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        {enFichas && (
-          <PanelDeFichas form={formFicha} onForm={setFormFicha}
-                         editando={editandoFicha} onEditando={setEditandoFicha}
-                         onGuardada={desdePlano ? setGuardadaDesdePlano : undefined} />
-        )}
         <div style={{ flex: 1, minWidth: 0 }}>
         <Canvas
           camera={camara}
@@ -796,7 +507,7 @@ export default function TallerMuebles() {
           style={{ background: "#c8c5bf" }}
         >
           <Suspense fallback={null}>
-            <Controles toma={toma} girar={enFichas && girar} />
+            <Controles toma={toma} />
             {luz === "editor" ? (
               <LuzDelEditor />
             ) : (
@@ -829,9 +540,8 @@ export default function TallerMuebles() {
                     tramos={def.type === "nevera_refrescos" ? geometria?.tramos : undefined} />
                 ) : (
                   <FixtureMesh fixture={delCatalogo(indiceVisto, anchoV, fondoV, altoV, conProducto ? rubro : "", modelo)}
-                    facePaint={enFichas ? null : facePaint} />
+                    facePaint={facePaint} />
                 )}
-                {numeradas.map((p, i) => <ParteNumeradaDelTaller key={`${p.etiqueta}-${i}`} p={p} />)}
                 {deHoy && (
                   <group position={[-(anchoV / 2 + SEPARACION_DEL_DE_HOY + deHoy.w / 2), 0, 0]}>
                     {!conProducto && (def.type === "nevera_puertas" || def.type === "nevera_refrescos") ? (

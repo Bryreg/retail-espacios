@@ -1,0 +1,284 @@
+/* Plano › Mis muebles (2026-10-28): la lista, el asistente de tres pasos y
+   «Listo». Aprobado sobre el lienzo «RECABRA · Taller de muebles». A la
+   derecha, siempre, el mueble en 3D; en el teléfono va arriba, más bajo. */
+
+.mm {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  background: var(--bg); color: var(--ink-1); position: relative;
+}
+
+/* ─── La cabeza ─────────────────────────────────────────────────────────── */
+.mm-h {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.mm-h h1 { margin: 0; font-size: var(--t-lg); font-weight: 700; }
+.mm-miga { display: flex; gap: 6px; align-items: center; font-size: var(--t-sm); color: var(--ink-3); min-width: 0; }
+.mm-miga b { color: var(--ink-1); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-h-der { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+.mm-link {
+  border: 0; background: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+
+.mm-pasos { display: flex; gap: 6px; margin: 0 0 0 auto; padding: 0; list-style: none; }
+.mm-paso {
+  display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 5px;
+  border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface);
+  font: inherit; font-size: var(--t-sm); color: var(--ink-3); cursor: pointer; white-space: nowrap;
+}
+.mm-paso .n {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--ink-2);
+}
+.mm-paso[data-ahora] { color: var(--ink-1); border-color: var(--ink-1); font-weight: 600; }
+.mm-paso[data-ahora] .n { background: var(--ink-1); color: var(--surface); }
+.mm-paso[data-hecho] .n { background: var(--success-100); color: var(--success); }
+
+.mm-aviso-plano {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 9px 24px; background: var(--surface-2); border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm); color: var(--ink-2);
+}
+.mm-aviso-plano b { color: var(--ink-1); }
+.mm-aviso-plano .mm-bt { margin-left: auto; }
+
+/* ─── El cuerpo: el paso a la izquierda, el 3D a la derecha ─────────────── */
+.mm-cuerpo { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 36vw, 500px); }
+.mm-form {
+  overflow-y: auto; padding: 22px 28px 28px; display: flex; flex-direction: column; gap: 18px; min-width: 0;
+}
+.mm-form h2, .mm-listo h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.mm-sub { margin: -8px 0 0; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.45; }
+.mm-vista {
+  background: #e4e1db; border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+}
+.mm-lienzo { flex: 1; min-height: 0; position: relative; }
+.mm-lienzo > div { position: absolute !important; inset: 0; }
+.mm-vista-pie {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; padding: 10px 16px;
+  background: var(--surface); border-top: 1px solid var(--line); font-size: var(--t-sm); color: var(--ink-2);
+}
+.mm-vista-pie > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-vista-pie b { color: var(--ink-1); font-family: var(--f-mono); font-weight: 600; white-space: nowrap; margin-left: auto; }
+
+.mm-abajo {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 12px 24px; border-top: 1px solid var(--line); background: var(--surface);
+}
+.mm-abajo-izq, .mm-abajo-der { display: flex; gap: 10px; align-items: center; }
+.mm-nota { font-size: var(--t-sm); color: var(--ink-3); }
+
+/* ─── Botones ───────────────────────────────────────────────────────────── */
+.mm-bt {
+  height: 40px; padding: 0 16px; border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink-1); font: inherit; font-size: var(--t-sm); font-weight: 600;
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; cursor: pointer;
+}
+.mm-bt:hover:not(:disabled) { background: var(--surface-3); }
+.mm-bt:disabled { opacity: .55; cursor: default; }
+.mm-bt.chico { height: 32px; padding: 0 12px; font-size: var(--t-xs); }
+.mm-bt.peligro { color: var(--danger); border-color: var(--danger); }
+.mm-bt.peligro-suave { color: var(--danger); border-color: transparent; background: transparent; padding: 0 8px; }
+.mm-bt.peligro-suave:hover { background: var(--danger-50); }
+.mm-principal {
+  height: 40px; padding: 0 18px; border-radius: var(--r-md); font-size: var(--t-sm);
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+}
+
+/* ─── Paso 1: las familias ──────────────────────────────────────────────── */
+.mm-familias { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.mm-familia {
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden;
+  display: flex; flex-direction: column; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.mm-familia:hover:not(:disabled) { border-color: var(--line-strong); }
+.mm-familia:disabled { opacity: .45; cursor: default; }
+.mm-familia .foto, .mm-mio .foto { display: block; background: #e4e1db; }
+.mm-familia .foto { height: 96px; }
+.mm-familia img, .mm-mio img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.mm-familia .nom { padding: 7px 10px 0; font-size: var(--t-sm); font-weight: 600; line-height: 1.25; }
+.mm-familia .rec { padding: 1px 10px 0; font-size: var(--t-2xs); color: var(--ink-3); }
+.mm-familia > :last-child { padding-bottom: 9px; }
+.mm-familia[aria-checked="true"] { border: 2px solid var(--ink-1); box-shadow: 0 0 0 3px rgb(var(--ink-1-rgb) / .08); }
+.cargando {
+  display: block; width: 100%; height: 100%;
+  background: linear-gradient(90deg, #e4e1db 0, #ece9e4 50%, #e4e1db 100%); background-size: 200% 100%;
+  animation: mm-carga 1.4s linear infinite;
+}
+@keyframes mm-carga { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .cargando { animation: none; } }
+
+.mm-bloque { display: flex; flex-direction: column; gap: 10px; }
+.mm-t { font-size: var(--t-sm); font-weight: 700; color: var(--ink-1); display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.mm-t small { font-weight: 500; color: var(--ink-3); font-size: var(--t-xs); }
+.mm-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.mm-chip {
+  height: 34px; padding: 0 13px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface);
+  font: inherit; font-size: var(--t-sm); color: var(--ink-2); cursor: pointer;
+}
+.mm-chip[aria-checked="true"] { background: var(--ink-1); color: var(--surface); border-color: var(--ink-1); font-weight: 600; }
+
+/* ─── Paso 2: las medidas ───────────────────────────────────────────────── */
+.mm-medida {
+  display: grid; grid-template-columns: minmax(120px, 160px) 190px minmax(0, 1fr); align-items: center; gap: 14px;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface);
+}
+.mm-medida[data-mal] { border-color: var(--danger); }
+.mm-medida .k { font-size: var(--t-base); font-weight: 600; }
+.mm-medida .k small { display: block; font-weight: 500; color: var(--ink-3); font-size: var(--t-xs); margin-top: 2px; }
+.mm-num {
+  display: flex; align-items: center; border: 1px solid var(--line); border-radius: var(--r-md);
+  overflow: hidden; height: 40px; background: var(--surface);
+}
+.mm-num button {
+  width: 40px; height: 100%; border: 0; background: var(--surface-2); font: inherit; font-size: 18px;
+  color: var(--ink-2); cursor: pointer; flex: none;
+}
+.mm-num button:hover { background: var(--surface-3); color: var(--ink-1); }
+.mm-num input {
+  flex: 1; min-width: 0; height: 100%; border: 0; text-align: center; background: transparent;
+  font: 600 16px var(--f-mono); color: var(--ink-1);
+}
+.mm-num input::placeholder { color: var(--ink-4); font-weight: 500; }
+.mm-num em { font-style: normal; font-size: var(--t-xs); color: var(--ink-3); padding-right: 8px; }
+.mm-medida-der { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mm-regla { display: block; position: relative; height: 6px; border-radius: 3px; background: var(--surface-3); }
+.mm-regla i {
+  position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--ink-1); border: 2px solid var(--surface);
+}
+.mm-regla i[data-fuera] { background: var(--danger); }
+.mm-regla-l { display: flex; justify-content: space-between; font-size: var(--t-2xs); color: var(--ink-3); font-family: var(--f-mono); }
+.mm-ayuda { font-size: var(--t-xs); color: var(--ink-3); line-height: 1.45; margin: 0; }
+.mm-mal { font-size: var(--t-xs); color: var(--danger); margin: 0; line-height: 1.4; }
+
+/* ─── Paso 3: nombre, venta y de dónde salió ────────────────────────────── */
+.mm-campo-c { display: flex; flex-direction: column; gap: 6px; }
+.mm-campo-c > label { font-size: var(--t-sm); font-weight: 600; }
+.mm-campo-c > label small, .mm-campo-c > small { font-weight: 500; color: var(--ink-3); font-size: var(--t-xs); }
+.mm-campo {
+  min-height: 42px; border: 1px solid var(--line); border-radius: var(--r-md); padding: 0 12px;
+  font: inherit; font-size: var(--t-base); color: var(--ink-1); background: var(--surface); width: 100%;
+}
+textarea.mm-campo { padding: 9px 12px; resize: vertical; }
+.mm-campo:disabled { background: var(--surface-2); color: var(--ink-3); }
+.mm-campo[aria-invalid="true"] { border-color: var(--danger); }
+.mm-seg {
+  align-self: flex-start; display: inline-flex; flex-wrap: wrap; padding: 3px; gap: 3px;
+  border-radius: var(--r-lg); border: 1px solid var(--line); background: var(--surface-2); max-width: 100%;
+}
+.mm-seg button {
+  min-height: 36px; padding: 0 14px; border-radius: 9px; border: 0; background: transparent;
+  font: inherit; font-size: var(--t-sm); color: var(--ink-2); cursor: pointer;
+}
+.mm-seg button[aria-checked="true"] { background: var(--ink-1); color: var(--surface); font-weight: 600; }
+.mm-opciones { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mm-opcion {
+  border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px 14px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 4px; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.mm-opcion b { font-size: var(--t-sm); }
+.mm-opcion span { font-size: var(--t-xs); color: var(--ink-3); line-height: 1.4; }
+.mm-opcion[aria-checked="true"] { border: 2px solid var(--ink-1); padding: 11px 13px; }
+.mm-mas { border: 1px dashed var(--line-strong); border-radius: var(--r-lg); background: var(--surface); }
+.mm-mas > summary {
+  padding: 10px 14px; font-size: var(--t-sm); color: var(--ink-2); cursor: pointer; line-height: 1.45;
+}
+.mm-mas > summary b { font-weight: 600; color: var(--ink-1); }
+.mm-mas-b { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 14px; }
+.mm-candado {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-md);
+  background: var(--surface-2); font-size: var(--t-xs); color: var(--ink-2); line-height: 1.45;
+}
+.mm-candado svg { flex: none; margin-top: 1px; color: var(--ink-3); }
+
+/* ─── La lista ──────────────────────────────────────────────────────────── */
+.mm-lista { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 28px 28px; display: flex; flex-direction: column; gap: 18px; }
+.mm-lista .mm-sub { margin: 0; }
+.mm-aviso {
+  margin: 0; padding: 10px 14px; border-radius: var(--r-md); background: var(--success-50);
+  border: 1px solid var(--success-100); font-size: var(--t-sm); color: var(--ink-1);
+}
+.mm-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.mm-mio {
+  border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--surface); overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.mm-mio .foto { height: 170px; }
+.mm-mio .d { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.mm-mio .d b { font-size: var(--t-base); overflow-wrap: anywhere; }
+.mm-med { font-size: var(--t-xs); color: var(--ink-3); font-family: var(--f-mono); }
+.mm-mio .como { font-size: var(--t-xs); color: var(--ink-2); }
+.mm-mio .acc { display: flex; gap: 8px; padding: 0 14px 14px; }
+.mm-nuevo {
+  border: 2px dashed var(--line); border-radius: var(--r-xl); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; padding: 20px; text-align: center;
+  color: var(--ink-2); font-size: var(--t-sm); line-height: 1.45; min-height: 290px;
+}
+.mm-nuevo b { font-size: var(--t-base); color: var(--ink-1); }
+.mm-retirados { list-style: none; margin: 0; padding: 0 14px 10px; }
+.mm-retirados li {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 8px 0; border-top: 1px solid var(--line-soft); font-size: var(--t-sm);
+}
+.mm-vacio { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--ink-2); }
+
+/* ─── Listo ─────────────────────────────────────────────────────────────── */
+.mm-listo { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 40vw, 560px); }
+.mm-listo-izq { padding: 40px 48px; display: flex; flex-direction: column; gap: 16px; justify-content: center; min-width: 0; }
+.mm-listo h2 { font-size: 26px; overflow-wrap: anywhere; }
+.mm-listo .mm-sub { margin: 0; }
+.mm-listo-acc { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.mm-ok {
+  width: 52px; height: 52px; border-radius: 50%; background: var(--success-100); color: var(--success);
+  display: grid; place-items: center;
+}
+
+/* ─── Retirar ───────────────────────────────────────────────────────────── */
+.mm-dialogo {
+  position: fixed; inset: 0; z-index: 300; background: rgb(15 15 15 / .38);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.mm-dialogo-caja {
+  width: min(520px, 100%); background: var(--surface); border-radius: var(--r-xl); border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px;
+}
+.mm-dialogo-caja h3 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.mm-dialogo-caja p { margin: 0; font-size: var(--t-sm); color: var(--ink-2); line-height: 1.5; }
+.mm-dialogo-acc { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* ─── Más angosto ───────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .mm-medida { grid-template-columns: minmax(110px, 140px) 170px minmax(0, 1fr); gap: 10px; }
+  .mm-opciones { grid-template-columns: 1fr; }
+}
+/* La tableta y el teléfono: el 3D arriba, más bajo, y el paso abajo con su
+   propio desplazamiento: lo que se escribe se sigue viendo dibujado. */
+@media (max-width: 899px) {
+  .mm-cuerpo, .mm-listo { display: flex; flex-direction: column; }
+  .mm-vista { order: -1; flex: none; height: clamp(190px, 30vh, 260px); border-left: 0; border-bottom: 1px solid var(--line); }
+  .mm-form { flex: 1; padding: 18px 16px 22px; }
+  .mm-listo-izq { padding: 22px 16px; order: 1; justify-content: flex-start; }
+  .mm-h { padding: 10px 16px; gap: 10px; }
+  .mm-pasos { margin-left: 0; width: 100%; }
+  .mm-paso:not([data-ahora]) .t { display: none; }
+  .mm-paso:not([data-ahora]) { padding: 0 5px; }
+  .mm-aviso-plano { padding: 8px 16px; }
+  .mm-abajo { padding: 10px 16px; }
+  .mm-lista { padding: 18px 16px 22px; }
+}
+@media (max-width: 639px) {
+  .mm-medida { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .mm-num { max-width: 240px; }
+  .mm-abajo-der .mm-siguiente-edicion { display: none; }
+  .mm-familias { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mm-familia .foto { height: 80px; }
+  .mm-h-der { width: 100%; margin-left: 0; justify-content: space-between; }
+  .mm-abajo { flex-wrap: wrap; }
+  .mm-abajo-der { margin-left: auto; }
+  .mm-grilla { grid-template-columns: 1fr; }
+  .mm-nuevo { min-height: 0; }
+  .mm-vista-pie { font-size: var(--t-xs); }
+}

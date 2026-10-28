@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Landing from "./pages/Landing/Landing";
 import BloqueoCuenta from "./components/BloqueoCuenta";
 import IngresoPortada from "./components/IngresoPortada";
@@ -49,6 +49,15 @@ function Pantalla({ children }: { children: ReactNode }) {
       {children}
     </Suspense>
   );
+}
+
+/** `/taller` de antes (un enlace guardado, el «Crear un mueble» de un plano
+ *  abierto antes del cambio): a Plano › Mis muebles. Con `desde=plano` iba a
+ *  armar una ficha, así que va directo al asistente, con lo que traía. */
+function AlTallerNuevo() {
+  const { search } = useLocation();
+  const desdePlano = new URLSearchParams(search).get("desde") === "plano";
+  return <Navigate to={`/plano/muebles${desdePlano ? "/nuevo" : ""}${search}`} replace />;
 }
 
 /** Dónde queda el enlace de montaje entre una recarga y la siguiente. */
@@ -291,7 +300,13 @@ export default function App() {
             editor, que son cinco mil líneas donde cambiar geometría es
             cambiar a ciegas. Sólo admin (2026-10-02): abría para cualquiera con
             sesión, el mercaderista incluido, escribiendo la dirección a mano. */}
-        <Route path="/taller" element={esAdmin ? <TallerMuebles /> : <Navigate to="/" replace />} />
+        {/* El taller (2026-10-28): los muebles propios se arman en Plano ›
+            Mis muebles (`/plano/muebles`, dentro del Dashboard). `/taller` —un
+            enlace guardado, el de un correo— lleva ahí, con lo que pedía; el
+            banco de prueba de la forma, la luz y el producto queda en
+            `/taller/banco`. */}
+        <Route path="/taller" element={esAdmin ? <AlTallerNuevo /> : <Navigate to="/" replace />} />
+        <Route path="/taller/banco" element={esAdmin ? <TallerMuebles /> : <Navigate to="/" replace />} />
         {/* Fase 11: el informe que se le deja al cliente -- la misma historia
             de la sesión (capítulos 1 a 3), sin la cartera y sin "los datos
             detrás", escrita para que un gerente de supermercado la lea solo y
