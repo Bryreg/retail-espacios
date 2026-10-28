@@ -1073,7 +1073,9 @@ await prueba("Supervisar: una fila por puerta que se distingue, claves únicas y
   assert.match(dash, /\{ etiqueta: "Código", ancho: anchos\.codigo, minimo: anchos\.codigo \}/, "la columna del código no usa lo que se midió");
   // «N contratos»: uno por espacio que corre, la cara o cada parte.
   assert.match(dash, /const contratos = faces\.filter\(corre\)\.length;/, "los contratos se cuentan por cara otra vez");
-  assert.match(dash, /\{kpis\.contratos\} contrato\s*\{kpis\.contratos === 1 \? "" : "s"\}/, "el encabezado no dice los contratos");
+  // (El encabezado de la franja se fue con el Detalle; los contratos los dice
+  // la capa de ingreso del Mapa de oportunidades, versión B 2026-10-28.)
+  assert.match(dash, /contratos: kpis\.contratos,/, "el Mapa de oportunidades no dice los contratos");
 });
 
 await prueba("el visor cuenta las unidades de la puerta que se vende, no las de la nevera entera", () => {

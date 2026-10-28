@@ -42,7 +42,7 @@ export function fraseDeLasSedes(filas: readonly FilaDeSede[]): string {
 
 /** Indicadores › Todas las sedes (rediseño UX 2026-10, etapa 5): la misma
  *  lectura para un supermercado con varias sedes, una tarjeta por sede y una
- *  para el total; «Abrir» lleva al Resumen de esa sede. */
+ *  para el total; «Abrir» lleva al Mapa de oportunidades de esa sede. */
 export default function TodasLasSedes({ esAdmin, filas, total, onAbrir }: {
   esAdmin: boolean;
   filas: FilaDeSede[];

@@ -19,8 +19,8 @@ import {
   // Rediseño 2026-10 (hoja de piezas): la barra de la sede, el ícono de cada
   // tarjeta y de cada cifra, y las herramientas del plano. `MapIcon` es el
   // `Map` de lucide con su otro nombre: `Map` a secas taparía el de JS.
-  Tag, MapIcon, Clock, Gauge, ClipboardCheck, Table2, Percent,
-  Banknote, CircleDashed, AlarmClock, PieChart, Hammer, Minus, Focus, Mouse,
+  Tag, MapIcon, Clock, ClipboardCheck, Table2, Percent,
+  CircleDashed, Minus, Focus, Mouse,
   // Rediseño de Supervisar (PR 2): la chincheta del plano, la flecha de la
   // ficha, el orden de «Quién paga», Renovar y las acciones de la ficha.
   Pin, ArrowLeft, ArrowDownWideNarrow, Repeat, FilePenLine,
@@ -114,18 +114,21 @@ import Inicio, { type FilaDeHoy } from "../components/Inicio/Inicio";
 import LineaDeTiempo from "../components/Ficha/LineaDeTiempo";
 import ParaQueFechas from "../components/Contrato/ParaQueFechas";
 import LineaDeLaSede from "../components/Contrato/LineaDeLaSede";
-import { armarCarriles, type Carril } from "../utils/lineaDeLaSede";
-import Resumen, { type DatosDelResumen, type PeriodoDelResumen } from "../components/Indicadores/Resumen";
-import Detalle, { type DatosDelDetalle } from "../components/Indicadores/Detalle";
+import type { Carril } from "../utils/lineaDeLaSede";
+import "../components/Indicadores/indicadores.css";
+import MapaDeOportunidades, { type AccionDelTablero } from "../components/Indicadores/MapaDeOportunidades";
+import Analisis from "../components/Indicadores/Analisis";
+import FichaDeNegociacion from "../components/Indicadores/FichaDeNegociacion";
+import {
+  brechaDelPotencial, montajeQueManda, ordenarAcciones, type CapaDelMapa, type EspacioDelMapa, type EstadoDeMontajeEnElMapa,
+} from "../utils/mapaDeDecision";
 import TodasLasSedes, { type FilaDeSede } from "../components/Indicadores/TodasLasSedes";
 import Diccionario from "../components/Indicadores/Diccionario";
 import {
-  aCsv, bajarCsv, canonContraTarifa, diasHasta, diasSinContrato, montajesDelMes, venceEn, variacion,
+  aCsv, bajarCsv, canonContraTarifa, diasHasta, montajesDelMes, venceEn, variacion,
   type EstadoDeMontaje,
 } from "../utils/indicadores";
 import { getMetas, getSerieDeCanon, metaDeLaSede, type Metas, type SerieDeCanon } from "../api/indicadores";
-import { getLineaDeLaSede, type FilaDeLaLinea } from "../api/spaces";
-import { sumarDias as sumarDiasIso } from "../utils/meses";
 import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
 // «Editar contrato»: lo que Supervisar lee de UN contrato para reabrirlo en
@@ -623,6 +626,10 @@ const STATUS_META: Record<
 type MapFilter =
   | "todos" | "free" | "occupied" | "committed" | "expiring" | "expired"
   | "sin_montar" | "en_parte";
+
+/** De qué pantalla se llegó a una lista tocando una cifra: la lista lo dice
+ *  y ofrece volver. */
+type DesdeDondeSeLlega = "Inicio" | "Mapa de oportunidades" | "Análisis";
 
 
 /** Accent- and case-insensitive comparison base. */
@@ -4645,60 +4652,6 @@ function SpacesTable({
    las columnas su ancho. */
 
 
-// ─── La franja de cifras ─────────────────────────────────────────────────────
-
-/** Una cifra de la franja: cómo se llama, cuánto es, y qué quiere decir.
- *
- *  El rótulo va arriba y en versalita, el número abajo y grande. Al revés
- *  —número primero— la fila se lee como una hilera de importes sin nombre y
- *  hay que volver a subir para saber de qué es cada uno.
- *
- *  `tasa` es el segundo renglón de «Sin alquilar»: lo que se evapora mientras
- *  la cara sigue vacía. No dice «perdido» a propósito — con el periodo por
- *  delante todavía no se perdió nada, y llamarle pérdida a lo que aún se puede
- *  vender es la clase de exageración que hace que después nadie crea el resto
- *  de los números. */
-function Cifra({
-  icono, rotulo, valor, notas, tasa, alarma, barra,
-}: {
-  /** El ícono de la cifra (`<X {...ICONO_TARJETA} />`), chico y en gris al
-   *  lado del rótulo; rojo sólo si la cifra es una alarma (hoja de piezas). */
-  icono: React.ReactNode;
-  rotulo: string;
-  valor: string;
-  notas: string[];
-  tasa?: string;
-  /** Rojo: es plata que se puede caer. */
-  alarma?: boolean;
-  /** 0-100. Dibuja la barrita bajo el número. */
-  barra?: number;
-}) {
-  const cero = valor === "0" || valor === "—" || valor === "0 %";
-  // Una caja por cifra (rediseño, PR 2): el ícono y el rótulo arriba, la cifra
-  // en mono, las notas abajo. Las cajas se acomodan en `.cifras`.
-  return (
-    <div className={"cifra" + (alarma ? " alarma" : "")}>
-      <span className="cab">
-        <span aria-hidden style={{
-          display: "inline-flex", flexShrink: 0,
-          color: alarma ? "var(--ocupado-txt)" : "var(--ink-3)",
-        }}>
-          {icono}
-        </span>
-        <span className="rotulo">{rotulo}</span>
-      </span>
-      <b className={"v" + (cero ? " cero" : "")}>{valor}</b>
-      {notas.map((n) => <i key={n}>{n}</i>)}
-      {tasa && <i className="tasa">{tasa}</i>}
-      {barra !== undefined && (
-        <div className="barrita">
-          <span style={{ width: `${Math.max(0, Math.min(100, barra))}%` }} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** La lectura del cursor de la escalera, en el encabezado del panel 02.
  *
  *  Es un componente con su propio estado y una función registrada por `ref`:
@@ -5030,23 +4983,29 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const [vistaContratos, setVistaContratos] = useState<"plano" | "linea">("plano");
   /** Indicadores (etapa 5): la pestaña, recordada por quien mira, y el
    *  periodo del Resumen. */
-  type PestanaInd = "resumen" | "plano" | "contratos" | "quien" | "participaciones" | "sedes" | "detalle" | "diccionario";
+  type PestanaInd = "mapa" | "analisis" | "plano" | "contratos" | "quien" | "participaciones" | "sedes" | "diccionario";
   const [pestanaInd, setPestanaIndCruda] = useState<PestanaInd>(() => {
     try {
       const v = window.localStorage.getItem("recabra-indicadores-pestana");
-      return (["resumen", "plano", "contratos", "quien", "participaciones", "sedes", "detalle", "diccionario"] as const)
-        .find((x) => x === v) ?? "resumen";
-    } catch { return "resumen"; }
+      // Versión B (2026-10-28): el Resumen pasó a ser el Mapa de
+      // oportunidades y el Detalle, el Análisis. Lo recordado se traduce.
+      const viejo = v === "resumen" ? "mapa" : v === "detalle" ? "analisis" : v;
+      return (["mapa", "analisis", "plano", "contratos", "quien", "participaciones", "sedes", "diccionario"] as const)
+        .find((x) => x === viejo) ?? "mapa";
+    } catch { return "mapa"; }
   });
   const setPestanaInd = (p: PestanaInd) => {
     setPestanaIndCruda(p);
     try { window.localStorage.setItem("recabra-indicadores-pestana", p); } catch { /* sin almacenamiento, igual cambia */ }
   };
-  const [periodoResumen, setPeriodoResumen] = useState<PeriodoDelResumen>("hoy");
+  /** La ficha de negociación abierta («Preparar propuesta»), por la llave de
+   *  la cara; y la capa con la que abre el mapa al venir de Análisis. */
+  const [negociarDe, setNegociarDe] = useState<string | null>(null);
+  const [capaPedida, setCapaPedida] = useState<{ capa: CapaDelMapa; vez: number } | null>(null);
   /** De qué cifra se llegó a la tabla de contratos (Inicio o el Resumen): la
    *  tabla abre filtrada en lo que esa cifra cuenta, dice de dónde se vino y
    *  ofrece volver. Tocar otra pestaña u otro filtro lo olvida. */
-  const [llegada, setLlegada] = useState<{ desde: "Inicio" | "Resumen"; cifra: string } | null>(null);
+  const [llegada, setLlegada] = useState<{ desde: DesdeDondeSeLlega; cifra: string } | null>(null);
   const enIndicadores = modoEfectivo === "supervisar" && !inicio;
   /** «Por vencer en el plano» (2026-10-28): en Indicadores › Plano la ficha
    *  de un espacio se abre AL LADO del plano, en el lugar de «Para revisar» y
@@ -6726,7 +6685,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   };
 
   /** Una cifra lleva a la tabla de contratos filtrada en lo que cuenta. */
-  const abrirTablaDesde = (filtro: MapFilter, desde: "Inicio" | "Resumen", cifra: string) => {
+  const abrirTablaDesde = (filtro: MapFilter, desde: DesdeDondeSeLlega, cifra: string) => {
     setModo("supervisar");
     setPestanaInd("contratos");
     setMapFilter(filtro);
@@ -7149,17 +7108,6 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             <X size={16} strokeWidth={1.75} aria-hidden />
           </button>
         </div>
-      )}
-      {(revisarMontajeDe !== null || guiaParaMandar !== null) && (
-        <Suspense fallback={null}>
-          {revisarMontajeDe !== null && (
-            <RevisarMontaje versionId={revisarMontajeDe} onCerrar={() => setRevisarMontajeDe(null)}
-              onRevisada={(texto) => { setRevisarMontajeDe(null); setAvisoDeSupervision(texto); planogramasPorRevisar.recargar(); }} />
-          )}
-          {guiaParaMandar !== null && (
-            <VerGuia versionId={guiaParaMandar} puedeCompartir mandar onCerrar={() => setGuiaParaMandar(null)} />
-          )}
-        </Suspense>
       )}
       {isAdmin && avisoDeEdicion && !(selected && detailFull) && (
         <p role="alert" data-aviso-edicion style={{ margin: "0 12px 8px", fontSize: "var(--t-xs)", color: "var(--ocupado-txt)", lineHeight: 1.45 }}>
@@ -7713,11 +7661,11 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
   // ─── Indicadores (rediseño UX 2026-10, etapa 5) ─────────────────────────
   //
-  // Resumen · Plano · Contratos · Quién paga · Participaciones · Todas las
-  // sedes · Detalle · Diccionario. Cada cifra sale de las MISMAS cuentas que
-  // ya usa esta pantalla (`kpis`, `plata`, `montaje`, `cuentasDeRevision`); lo
-  // único nuevo que se pide es la serie de 12 meses (`GET /dashboard/serie`),
-  // las metas (`GET /layout/metas`) y, para «Detalle», la línea de la sede.
+  // Mapa de oportunidades · Análisis · Plano · Contratos · Quién paga ·
+  // Participaciones · Todas las sedes · Diccionario (versión B, 2026-10-28).
+  // Cada cifra sale de las MISMAS cuentas que ya usa esta pantalla (`kpis`,
+  // `plata`, `montaje`, `cuentasDeRevision`); lo único nuevo que se pide es la
+  // serie de 12 meses (`GET /dashboard/serie`) y las metas (`GET /layout/metas`).
   const [serie, setSerie] = useState<SerieDeCanon | null>(null);
   useEffect(() => {
     if (!isAdmin || !enIndicadores) return;
@@ -7732,15 +7680,6 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     return () => { vivo = false; };
   }, []);
   const meta = metaDeLaSede(metas, sede);
-  const [lineaInd, setLineaInd] = useState<FilaDeLaLinea[] | null>(null);
-  useEffect(() => {
-    if (!isAdmin || !enIndicadores || pestanaInd !== "detalle") return;
-    let vivo = true;
-    setLineaInd(null);
-    getLineaDeLaSede(sede).then((r) => { if (vivo) setLineaInd(r.filas); }).catch(() => { if (vivo) setLineaInd(null); });
-    return () => { vivo = false; };
-  }, [isAdmin, enIndicadores, pestanaInd, sede]);
-
   const hoyIso = toISODate(new Date());
   const ultimoFin = serie?.sedes[sede.toUpperCase()]?.ultimo_fin ?? {};
   /** Cómo está el montaje de una fila con contrato (los cuatro estados del
@@ -7758,116 +7697,286 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const vence90 = venceEn(kpis.todas.filter((t) => t.fase === "vigente").map((t) => ({
     codigo: codigoVisible(t.entry), hasta: t.entry.endDate, alMes: alMesDe(t.entry), renovado: !!t.entry.proximoLeaseId,
   })), hoyIso, 90);
-  const libresHoy = kpis.unidades.filter((u) => u.estado === "free");
   const ct = isAdmin ? canonContraTarifa(kpis.vigentes.map((x) => ({
     alMes: alMesDe(x), tarifa: tarifaDeLaFila(referenceRates, sede, x).valor ?? 0,
   }))) : null;
   const potencial = isAdmin
     ? kpis.unidades.reduce((t, u) => t + (tarifaDeLaFila(referenceRates, sede, u.cara).valor ?? 0), 0) : 0;
   const serieDeLaSede = serie?.sedes[sede.toUpperCase()]?.canon ?? (serie ? serie.meses.map(() => 0) : []);
-  const datosResumen: DatosDelResumen = {
-    esAdmin: isAdmin,
-    sede,
-    meta,
-    metaPropuesta: !metas || metas.por_defecto,
-    canon: isAdmin && canonDelMes !== null ? { hoy: canonDelMes, serie: serieDeLaSede, meses: serie?.meses ?? [], potencial } : null,
-    ocupacion: {
-      pct: kpis.occPct, ocupadas: kpis.occupied, total: kpis.total,
-      cuadros: kpis.unidades.map((u) => ({ clave: claveDeFila(u.cara), codigo: codigoVisible(u.cara), ocupada: u.estado === "active" || u.estado === "expiring" })),
-    },
-    canonTarifa: ct ? { pct: ct.pct, contadas: ct.contadas, sinTarifa: ct.sinTarifa } : null,
-    hoy: { cuenta: cuentasDeRevision.hoy, filas: filasDeHoy },
-    vence: vence90,
-    montajes: montajesMes,
-    disponibles: {
-      codigos: diasSinContrato(libresHoy.map((u) => codigoVisible(u.cara)), Object.fromEntries(
-        libresHoy.map((u) => [codigoVisible(u.cara).toUpperCase(), ultimoFin[fullSpaceCode(sede, u.cara.code)]]).filter(([, v]) => v),
-      ), hoyIso),
-      sinFacturar: isAdmin ? sinAlquilar.plata : null,
-      conHistorial: isAdmin && !!serie,
-    },
-  };
-
-  /** «Detalle»: los cuatro bloques. */
-  const datosDetalle: DatosDelDetalle = (() => {
-    const semanas = Array.from({ length: 13 }, (_, i) => ({ desde: sumarDiasIso(hoyIso, i * 7), renovado: 0, sinRenovar: 0 }));
-    for (const p of vence90.puntos) {
-      const k = Math.min(12, Math.floor(p.dias / 7));
-      const v = isAdmin ? p.alMes : 1;
-      if (p.renovado) semanas[k].renovado += v; else semanas[k].sinRenovar += v;
-    }
-    let disponiblesPorDia: number[] | null = null;
-    if (lineaInd) {
-      const carriles = armarCarriles(mueblesDeLaLinea, lineaInd, sede);
-      const porCara = new Map<string, { desde: string; hasta: string }[]>();
-      for (const c of carriles) {
-        const k = `${c.fixtureId}|${c.cara}`;
-        porCara.set(k, [...(porCara.get(k) ?? []), ...c.barras.map((b) => ({ desde: b.desde, hasta: b.hasta }))]);
-      }
-      disponiblesPorDia = Array.from({ length: 90 }, (_, d) => {
-        const dia = sumarDiasIso(hoyIso, d);
-        let n = 0;
-        for (const barras of porCara.values()) if (!barras.some((b) => b.desde <= dia && dia <= b.hasta)) n++;
-        return n;
-      });
-    }
-    const tipos = new Map<string, DatosDelDetalle["porTipo"][number] & { _canon: number; _tarifa: number; _dias: number[]; _potencial: number; _cobrado: number }>();
-    const fila = (tipo: string) => {
-      if (!tipos.has(tipo)) tipos.set(tipo, { tipo, espacios: 0, contratados: 0, ocupacionPct: 0, diasEntre: null, canonTarifa: null, sinFacturar: isAdmin ? 0 : null, canon: null, potencial: null, _canon: 0, _tarifa: 0, _dias: [], _potencial: 0, _cobrado: 0 });
-      return tipos.get(tipo)!;
-    };
-    for (const u of kpis.unidades) {
-      const t = fila(tipoDelMueble(u.cara.fixture, nombresPropios));
-      t.espacios++;
-      if (isAdmin) t._potencial += tarifaDeLaFila(referenceRates, sede, u.cara).valor ?? 0;
-      if (u.estado === "active" || u.estado === "expiring") t.contratados++;
-      if (u.estado === "free") {
-        if (isAdmin) t.sinFacturar = (t.sinFacturar ?? 0) + (tarifaDeLaFila(referenceRates, sede, u.cara).valor ?? 0);
-        const fin = ultimoFin[fullSpaceCode(sede, u.cara.code)];
-        if (fin) t._dias.push(Math.max(0, diasHasta(fin, hoyIso)));
-      }
-    }
-    if (isAdmin) for (const x of kpis.vigentes) {
-      const t = fila(tipoDelMueble(x.fixture, nombresPropios));
-      const tar = tarifaDeLaFila(referenceRates, sede, x).valor ?? 0;
-      t._cobrado += alMesDe(x);
-      if (tar > 0) { t._canon += alMesDe(x); t._tarifa += tar; }
-    }
-    const porTipo = [...tipos.values()].map(({ _canon, _tarifa, _dias, _potencial, _cobrado, ...t }) => ({
-      ...t,
-      canon: isAdmin ? _cobrado : null,
-      potencial: isAdmin ? _potencial : null,
-      ocupacionPct: t.espacios ? Math.round((t.contratados / t.espacios) * 100) : 0,
-      diasEntre: _dias.length ? Math.round(_dias.reduce((a, b) => a + b, 0) / _dias.length) : null,
-      canonTarifa: isAdmin && _tarifa > 0 ? Math.round((_canon / _tarifa) * 100) : null,
-    })).sort((a, b) => b.espacios - a.espacios || a.tipo.localeCompare(b.tipo, "es"));
+  /** Del contrato a la exhibición verificada (Análisis › Ejecución): los
+   *  contratos que empiezan este mes, etapa por etapa. */
+  const embudo = (() => {
     const faltaIds = new Set(faltaPlanometria.filas.map((f) => f.lease_id));
     const conReporte = delMes.filter((t) => !!montajeDe(t.entry));
-    // Lo que sigue corriendo (Detalle › «¿Qué pasa en las próximas
-    // semanas?»): los mismos contratos vigentes de los que sale `vence90`.
-    const vigentesHoy = kpis.todas.filter((t) => t.fase === "vigente");
     return {
-      esAdmin: isAdmin, sede, hoy: hoyIso,
-      resultado: {
-        canon: isAdmin ? canonDelMes : null, potencial: isAdmin ? potencial : null,
-        ocupacionPct: kpis.occPct, metaOcupacion: meta.ocupacion,
-        canonTarifa: ct?.pct ?? null, metaCanonTarifa: meta.canon_tarifa,
-        sinFacturar: isAdmin ? sinAlquilar.plata : null,
-        contratosSinTarifa: isAdmin && ct ? ct.sinTarifa : 0,
-      },
-      semanas, disponiblesPorDia, porTipo,
-      vencen: vence90.puntos.map((p) => ({ codigo: p.codigo, dias: p.dias, alMes: isAdmin ? p.alMes : 1, renovado: p.renovado })),
-      baseQueSigue: isAdmin ? vigentesHoy.reduce((t, x) => t + alMesDe(x.entry), 0) : vigentesHoy.length,
-      embudo: {
-        empiezan: delMes.length,
-        avisoEnviado: isAdmin ? delMes.filter((t) => !(t.entry.leaseId && faltaIds.has(t.entry.leaseId))).length : delMes.length,
-        registrado: conReporte.length,
-        montado: conReporte.filter((t) => montajeDe(t.entry)?.estado === "montado").length,
-        verificado: delMes.filter((t) => estadoDeMontajeDe(t.entry) === "verificado").length,
-      },
-      pendientes: cuentasDeRevision,
+      empiezan: delMes.length,
+      avisoEnviado: isAdmin ? delMes.filter((t) => !(t.entry.leaseId && faltaIds.has(t.entry.leaseId))).length : delMes.length,
+      registrado: conReporte.length,
+      montado: conReporte.filter((t) => montajeDe(t.entry)?.estado === "montado").length,
+      verificado: delMes.filter((t) => estadoDeMontajeDe(t.entry) === "verificado").length,
     };
   })();
+
+  // ─── Mapa de oportunidades y Análisis (versión B, aprobada el 2026-10-28) ──
+  //
+  // Lo que el mapa de decisión sabe de cada cara, armado con las MISMAS
+  // cuentas de arriba (`kpis`, `montaje`, la tarifa, las participaciones):
+  // nada nuevo se le pide al servidor. Sólo se arma en esas dos pestañas (o
+  // con la ficha de negociación abierta).
+  const tableroB = enIndicadores && (pestanaInd === "mapa" || pestanaInd === "analisis" || negociarDe !== null) ? (() => {
+    const claveDe = (e: FaceEntry) => `${e.fixture.id}-${e.face}`;
+    const enDias = (iso: string) => daysUntil(iso);
+    // Los contratos de cada cara (la entera, sus partes, sus participaciones).
+    const contratosDe = new Map<string, { entry: FaceEntry; fase: string }[]>();
+    for (const t of kpis.todas) {
+      if (t.fase !== "vigente" && t.fase !== "pendiente") continue;
+      const k = claveDe(t.entry);
+      contratosDe.set(k, [...(contratosDe.get(k) ?? []), t]);
+    }
+    // Lo que se cobra por % de las ventas y corre hoy: suma al ingreso de su cara.
+    const porVentasDe = new Map<string, { alMes: number; proveedor: string }[]>();
+    for (const c of cortesSinCargar.cobros) {
+      if (!(c.desde <= hoyIso && hoyIso <= c.hasta)) continue;
+      const m = muebleDelEspacio(c.espacio);
+      if (!m) continue;
+      const k = `${m.fixture.id}-${m.cara}`;
+      porVentasDe.set(k, [...(porVentasDe.get(k) ?? []), { alMes: enLaUnidad(c.cobrado, c.desde, c.hasta, "mes"), proveedor: c.proveedor ?? "" }]);
+    }
+    // Los montajes de cada cara: los de los contratos y los de los planogramas.
+    const montajesDe = new Map<string, { estado: EstadoDeMontajeEnElMapa; detalle: string; abrir: () => void }[]>();
+    const anotar = (k: string, m: { estado: EstadoDeMontajeEnElMapa; detalle: string; abrir: () => void }) => montajesDe.set(k, [...(montajesDe.get(k) ?? []), m]);
+    for (const e of montaje.noMontado) {
+      anotar(claveDe(e), {
+        estado: "no_realizado",
+        detalle: [codigoVisible(e), e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : e.reporte.nota ?? ""].filter(Boolean).join(" · "),
+        abrir: () => revisar(e.fixture, e.face),
+      });
+    }
+    for (const e of montaje.sinMontar) {
+      anotar(claveDe(e), {
+        estado: "sin_montar",
+        detalle: `${codigoVisible(e)} · arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`,
+        abrir: () => revisar(e.fixture, e.face),
+      });
+    }
+    for (const c of planogramasPorRevisar.filas) {
+      const estado: EstadoDeMontajeEnElMapa = c.estado === "no_se_pudo" ? "no_realizado" : c.estado === "no_coincide" ? "no_coincide"
+        : c.estado === "por_revisar" ? "por_verificar" : c.aviso ? "sin_montar" : "guia";
+      anotar(`${c.fixture_id}-${c.cara}`, {
+        estado,
+        detalle: `Planograma · rige desde el ${diaCorto(c.rige_desde)}`,
+        abrir: () => (c.estado === "sin_montar" ? setGuiaParaMandar(c.version_id) : setRevisarMontajeDe(c.version_id)),
+      });
+    }
+    const unidadDe = new Map(kpis.unidades.map((u) => [claveDe(u.cara), u]));
+    const espacios: EspacioDelMapa[] = [];
+    const abrirMontaje = new Map<string, () => void>();
+    for (const f of fixtures) {
+      for (const face of facesOf(f)) {
+        const clave = claveDe(face);
+        const u = unidadDe.get(clave);
+        const mont = montajesDe.get(clave) ?? [];
+        if (!u && mont.length === 0) continue;
+        const manda = montajeQueManda(mont.map((m) => m.estado));
+        const delMontaje = mont.find((m) => m.estado === manda);
+        if (delMontaje) abrirMontaje.set(clave, delMontaje.abrir);
+        const suyos = contratosDe.get(clave) ?? [];
+        const ventas = porVentasDe.get(clave) ?? [];
+        const tarifa = isAdmin && u ? tarifaDe(face) : null;
+        // Vendida por partes: cuántas corren, cuántas están apartadas o firmadas.
+        const divisiones = u ? partesDe(f).filter((p) => p.cara === face.face && esDivision(p.parte)) : [];
+        let partes: EspacioDelMapa["partes"];
+        let vendido: number | null = null, libreAlMes: number | null = null, detalleParcial: string | null = null;
+        let parcial = false;
+        if (divisiones.length) {
+          const vendidas = partesVendidasDe(f).filter((p) => p.face === face.face && esDivision(p.parte));
+          const estadoDe = (parte: ParteRef) => {
+            const x = vendidas.find((p) => p.parte && sufijoDeParte(p.parte) === sufijoDeParte(parte));
+            const d = x ? displayStatus(x) : "free";
+            return d === "active" || d === "expiring" ? "vendida" : d === "free" || d === "expired" ? "libre" : "apartada";
+          };
+          const estados = divisiones.map((p) => estadoDe(p.parte));
+          const n = { vendidas: estados.filter((x) => x === "vendida").length, reservadas: estados.filter((x) => x === "apartada").length };
+          const libres = divisiones.length - n.vendidas - n.reservadas;
+          const clase = claseDe(divisiones[0].parte.clase);
+          partes = { total: divisiones.length, ...n, nombre: clase?.plural ?? "partes" };
+          vendido = n.vendidas / divisiones.length;
+          parcial = libres > 0 && n.vendidas + n.reservadas > 0;
+          detalleParcial = `${libres} de ${divisiones.length} ${partes.nombre} libre${libres === 1 ? "" : "s"}`;
+          if (isAdmin) libreAlMes = divisiones.filter((_, i) => estados[i] === "libre").reduce((t, p) => t + (tarifaDe({ ...face, parte: p.parte }) ?? 0), 0);
+        }
+        // Por participación: lo comprometido hoy de la ocupación anónima.
+        const par = u ? participacionDe(f, face.face) : undefined;
+        const dp = par ? dispoDeParticipacion(f, par, par.hoy, par.hoy) : null;
+        if (dp && !divisiones.length) {
+          parcial = dp.quedaPb > 0 && dp.quedaPb < 10000;
+          vendido = isAdmin ? 1 - dp.quedaPb / 10000 : null;
+          detalleParcial = isAdmin ? `${Math.round(dp.quedaPb / 100)} % libre` : "con lugar para vender";
+          if (isAdmin && tarifa !== null) libreAlMes = Math.round((tarifa * dp.quedaPb) / 10000);
+        }
+        const estado: EspacioDelMapa["estado"] = !u ? "otro"
+          : u.estado === "free" ? "libre"
+          : parcial ? "parcial"
+          : u.estado === "active" || u.estado === "expiring" ? "vendida" : "otro";
+        if (estado === "libre") { vendido = 0; libreAlMes = tarifa; detalleParcial = null; }
+        if (estado !== "parcial" && estado !== "libre") libreAlMes = isAdmin ? 0 : null;
+        // Lo que vence en 90 días sin renovar, lo más próximo.
+        const venceProximo = suyos
+          .filter((t) => t.fase === "vigente" && !t.entry.proximoLeaseId && t.entry.endDate)
+          .map((t) => ({ t, dias: enDias(t.entry.endDate) }))
+          .filter((x) => x.dias >= 0 && x.dias <= 90)
+          .sort((a, b) => a.dias - b.dias)[0];
+        const fin = estado === "libre" ? ultimoFin[fullSpaceCode(sede, face.code)] : undefined;
+        espacios.push({
+          clave, fixtureId: f.id, cara: face.face, codigo: codigoVisible(face), comercial: !!u, estado, vendido,
+          ...(partes ? { partes } : {}),
+          ingresoAlMes: isAdmin ? suyos.filter((t) => t.fase === "vigente").reduce((s, t) => s + alMesDe(t.entry), 0) + ventas.reduce((s, v) => s + v.alMes, 0) : null,
+          libreAlMes, tarifa,
+          clientes: [...new Set([...suyos.map((t) => t.entry.supplierName.trim()), ...ventas.map((v) => v.proveedor.trim())].filter(Boolean))],
+          vence: venceProximo ? {
+            dias: venceProximo.dias, fecha: venceProximo.t.entry.endDate, alMes: isAdmin ? alMesDe(venceProximo.t.entry) : null,
+            codigo: codigoVisible(venceProximo.t.entry), proveedor: venceProximo.t.entry.supplierName.trim() || null,
+          } : null,
+          montaje: manda, montajeDetalle: delMontaje?.detalle ?? null,
+          diasSinContrato: fin ? Math.max(0, diasHasta(fin, hoyIso)) : null,
+          nuncaContratada: estado === "libre" && !!serie && !fin,
+          tipo: tipoDelMueble(f, nombresPropios), detalleParcial,
+          contratos: suyos.map((t) => ({
+            codigo: codigoVisible(t.entry), proveedor: t.entry.supplierName.trim(), alMes: isAdmin ? alMesDe(t.entry) : null,
+            desde: t.entry.startDate, hasta: t.entry.endDate, vigente: t.fase === "vigente",
+          })),
+        });
+      }
+    }
+    const porClave = new Map(espacios.map((e) => [e.clave, e]));
+    const muebleDe = (clave: string) => {
+      const e = porClave.get(clave);
+      const f = e ? fixtures.find((x) => x.id === e.fixtureId) : undefined;
+      return e && f ? { f, cara: e.cara } : null;
+    };
+    const abrirFicha = (clave: string) => { const m = muebleDe(clave); if (m) revisar(m.f, m.cara); };
+
+    // Las acciones prioritarias: lo que pierde plata primero.
+    const acciones: AccionDelTablero[] = [];
+    const accion = (a: Omit<AccionDelTablero, "impacto" | "dias"> & { impacto?: number | null; dias?: number | null }) =>
+      acciones.push({ impacto: null, dias: null, ...a });
+    for (const e of kpis.expired) {
+      accion({ tipo: "vencido", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Contrato vencido sin cerrar", corto: "Contrato vencido",
+        detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days, plazo: `venció el ${diaCorto(e.endDate)}`,
+        boton: "Ver ficha", onClick: () => revisar(e.fixture, e.face) });
+    }
+    for (const e of kpis.expiring) {
+      if (e.proximoLeaseId) continue;
+      accion({ tipo: "renovar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Renovación pendiente", corto: "Renovación pendiente",
+        detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days,
+        plazo: `${diaCorto(e.endDate)} · ${e.days} día${e.days === 1 ? "" : "s"}`, boton: "Gestionar renovación", onClick: () => revisar(e.fixture, e.face) });
+    }
+    if (isAdmin) for (const c of cortesSinCargar.pendientes) {
+      if (`${c.lease_id}|${c.periodo_desde}` in cortesSinCargar.cargados) continue;
+      const m = muebleDelEspacio(c.espacio);
+      const pre = `${sede.toUpperCase()}-`;
+      const corto = c.espacio.toUpperCase().startsWith(pre) ? c.espacio.slice(pre.length) : c.espacio;
+      const partido = partirCodigo(corto);
+      accion({ tipo: "ventas", clave: m ? `${m.fixture.id}-${m.cara}` : `corte-${c.lease_id}`,
+        codigo: m ? codigoVisibleDe(m.fixture.code, m.cara, isDoubleGondola(m.fixture), partido.parte) : corto,
+        asunto: `Ventas sin registrar (contrato al ${c.porcentaje} %)`, corto: "Ventas sin registrar",
+        detalle: `${c.proveedor ?? ""} · ${diaCorto(c.periodo_desde)} – ${diaCorto(c.periodo_hasta)}`.replace(/^ · /, ""),
+        plazo: "Período terminado", boton: "Registrar ventas", onClick: () => useArmazon.getState().abrirBandeja("hoy") });
+    }
+    for (const e of montaje.noMontado) {
+      accion({ tipo: "no_montado", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Montaje no realizado", corto: "Montaje no realizado",
+        detalle: [e.supplierName, e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : ""].filter(Boolean).join(" · "),
+        plazo: `vigente desde el ${diaCorto(e.startDate)}`, boton: "Ver detalle", onClick: () => revisar(e.fixture, e.face) });
+    }
+    for (const c of planogramasPorRevisar.filas) {
+      const f = fixtures.find((x) => x.id === c.fixture_id);
+      const codigo = f && isDoubleGondola(f) ? `${c.codigo}·${c.cara}` : c.codigo;
+      const abrir = () => setRevisarMontajeDe(c.version_id);
+      const base = { clave: `${c.fixture_id}-${c.cara}`, codigo, detalle: "Planograma", plazo: `rige desde el ${diaCorto(c.rige_desde)}`, dias: -c.dias_que_rige };
+      if (c.estado === "no_se_pudo") accion({ ...base, tipo: "planograma_no_se_pudo", asunto: "Montaje de planograma no realizado", corto: "Montaje no realizado", boton: "Ver detalle", onClick: abrir });
+      else if (c.estado === "sin_montar") accion({ ...base, tipo: "planograma_sin_montar", asunto: c.aviso ? "Planograma sin montar" : "Guía de montaje sin enviar", corto: c.aviso ? "Sin montar" : "Guía sin enviar", boton: c.aviso ? "Mandar la guía" : "Enviar guía", onClick: () => setGuiaParaMandar(c.version_id) });
+      else if (c.estado === "no_coincide") accion({ ...base, tipo: "planograma_no_coincide", asunto: "Planograma que no coincide", corto: "No coincide", boton: "Ver detalle", onClick: abrir });
+      else accion({ ...base, tipo: "planograma_por_revisar", asunto: "Montaje sin verificar", corto: "Por verificar", detalle: "Planograma reportado montado", boton: "Verificar", onClick: abrir });
+    }
+    for (const e of montaje.sinMontar) {
+      accion({ tipo: "sin_montar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Contrato sin montar", corto: "Sin montar",
+        detalle: e.supplierName, dias: -e.dias, plazo: `arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`, boton: "Ver ficha", onClick: () => revisar(e.fixture, e.face) });
+    }
+
+    // La cartera: lo que paga cada cliente al mes (o sus espacios).
+    const cartera = new Map<string, { nombre: string; alMes: number; espacios: Set<string> }>();
+    for (const e of espacios) for (const k of e.contratos) {
+      if (!k.vigente || !k.proveedor) continue;
+      const c = cartera.get(k.proveedor) ?? { nombre: k.proveedor, alMes: 0, espacios: new Set<string>() };
+      c.alMes += k.alMes ?? 0;
+      c.espacios.add(e.clave);
+      cartera.set(k.proveedor, c);
+    }
+    for (const [clave, vs] of porVentasDe) for (const v of vs) {
+      if (!v.proveedor) continue;
+      const c = cartera.get(v.proveedor) ?? { nombre: v.proveedor, alMes: 0, espacios: new Set<string>() };
+      c.alMes += v.alMes;
+      c.espacios.add(clave);
+      cartera.set(v.proveedor, c);
+    }
+    const carteraOrdenada = [...cartera.values()]
+      .map((c) => ({ nombre: c.nombre, alMes: isAdmin ? c.alMes : null, espacios: c.espacios.size }))
+      .sort((a, b) => (isAdmin ? (b.alMes ?? 0) - (a.alMes ?? 0) : b.espacios - a.espacios) || a.nombre.localeCompare(b.nombre, "es"));
+    const principal = carteraOrdenada[0];
+
+    // Lo que vence en 30 y en 90 días sin renovar.
+    const vigentesQueVencen = kpis.todas
+      .filter((t) => t.fase === "vigente" && t.entry.endDate)
+      .map((t) => ({ t, dias: enDias(t.entry.endDate) }))
+      .filter((x) => x.dias >= 0 && x.dias <= 90)
+      .sort((a, b) => a.dias - b.dias);
+    const sinRenovar = (max: number) => vigentesQueVencen.filter((x) => x.dias <= max && !x.t.entry.proximoLeaseId);
+    const cuentaVence = (max: number) => ({ contratos: sinRenovar(max).length, alMes: isAdmin ? sinRenovar(max).reduce((s, x) => s + alMesDe(x.t.entry), 0) : null });
+
+    // Las caras enteras sin contrato hoy y el primer día de los próximos tres meses.
+    const proyeccion = (() => {
+      const hoy = new Date(`${hoyIso}T12:00:00`);
+      const fechas = [hoyIso, ...[1, 2, 3].map((k) => toISODate(new Date(hoy.getFullYear(), hoy.getMonth() + k, 1)))];
+      const comerciales = espacios.filter((e) => e.comercial);
+      return fechas.map((d, k) => ({
+        etiqueta: k === 0 ? "hoy" : diaCorto(d),
+        caras: k === 0 ? comerciales.filter((e) => e.estado === "libre").length : comerciales.filter((e) => {
+          if (e.estado === "otro" && e.contratos.length === 0) return false;
+          const f = fixtures.find((x) => x.id === e.fixtureId)!;
+          const cubren = [...e.contratos.map((c) => ({ desde: c.desde, hasta: c.hasta })),
+            ...partesVendidasDe(f).filter((p) => p.face === e.cara && p.startDate && p.endDate).map((p) => ({ desde: p.startDate, hasta: p.endDate }))];
+          return !cubren.some((c) => c.desde <= d && d <= c.hasta);
+        }).length,
+      }));
+    })();
+
+    // Las caras por tipo de mueble y estado.
+    const porTipo = new Map<string, { tipo: string; vendidas: number; parciales: number; libres: number; otras: number }>();
+    for (const e of espacios) {
+      if (!e.comercial) continue;
+      const t = porTipo.get(e.tipo) ?? { tipo: e.tipo, vendidas: 0, parciales: 0, libres: 0, otras: 0 };
+      t[e.estado === "vendida" ? "vendidas" : e.estado === "parcial" ? "parciales" : e.estado === "libre" ? "libres" : "otras"] += 1;
+      porTipo.set(e.tipo, t);
+    }
+    const tarifas = isAdmin ? [...new Map(kpis.unidades.map((u) => [tipoDelMueble(u.cara.fixture, nombresPropios), tarifaDe(u.cara)] as const))]
+      .filter(([, v]) => v !== null).map(([tipo, valor]) => ({ tipo, valor: valor! })) : [];
+    const brecha = isAdmin && canonDelMes !== null ? brechaDelPotencial({
+      potencial, cobrado: canonDelMes,
+      vacias: espacios.filter((e) => e.estado === "libre").reduce((s, e) => s + (e.tarifa ?? 0), 0),
+      enParciales: espacios.filter((e) => e.estado === "parcial").reduce((s, e) => s + (e.libreAlMes ?? 0), 0),
+    }) : null;
+    const serie12 = isAdmin && serie ? { meses: serie.meses.slice(-12), canon: serieDeLaSede.slice(-12) } : null;
+    const varCanon = serie12 && serie12.canon.length >= 2 && serie12.canon[serie12.canon.length - 2] > 0 ? {
+      pct: ((serie12.canon[serie12.canon.length - 1] - serie12.canon[serie12.canon.length - 2]) / serie12.canon[serie12.canon.length - 2]) * 100,
+      mes: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][Number(serie12.meses[serie12.meses.length - 2].slice(5, 7)) - 1],
+    } : null;
+
+    return {
+      espacios, porClave, abrirFicha, abrirMontaje, acciones: ordenarAcciones(acciones), cartera: carteraOrdenada, principal, cuentaVence,
+      vigentesQueVencen, proyeccion, porTipo: [...porTipo.values()].sort((a, b) => (b.vendidas + b.parciales + b.libres + b.otras) - (a.vendidas + a.parciales + a.libres + a.otras) || a.tipo.localeCompare(b.tipo, "es")),
+      tarifas, brecha, serie12, varCanon,
+    };
+  })() : null;
 
   /** «Todas las sedes»: la sede abierta con sus cuentas exactas; las demás
    *  con la misma regla (`estadoDeUnidad`), sin las participaciones que sólo
@@ -8147,41 +8256,89 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           {/* ── Indicadores (rediseño UX 2026-10, etapa 5): pestañas ──────── */}
           <nav className="ind-pestanas" role="tablist" aria-label="Indicadores">
             {([
-              ["resumen", "Resumen"], ["plano", "Plano"], ["contratos", "Contratos"],
+              ["mapa", "Mapa de oportunidades"], ["analisis", "Análisis"], ["plano", "Plano"], ["contratos", "Contratos"],
               ...(isAdmin && plata ? [["quien", "Quién paga"]] as const : []),
               ...(isAdmin && hayParticipaciones ? [["participaciones", "Participaciones"]] as const : []),
               ...(sedes.length > 1 ? [["sedes", "Todas las sedes"]] as const : []),
-              ["detalle", "Detalle"], ["diccionario", "Diccionario"],
+              ["diccionario", "Diccionario"],
             ] as const).map(([id, texto]) => (
-              <button key={id} type="button" role="tab" aria-selected={pestanaInd === id} onClick={() => { setPestanaInd(id); setLlegada(null); }}>
+              <button key={id} type="button" role="tab" aria-selected={pestanaInd === id} onClick={() => { setPestanaInd(id); setLlegada(null); setCapaPedida(null); }}>
                 {texto}
               </button>
             ))}
           </nav>
 
-          {pestanaInd === "resumen" && (
-            <Resumen
-              datos={datosResumen}
-              periodo={periodoResumen}
-              onPeriodo={setPeriodoResumen}
-              onTabla={(que) => abrirTablaDesde("occupied", "Resumen", que === "canon" ? "Canon mensual contratado" : "Canon ÷ tarifa")}
-              onVencen={() => {
-                // Lo que vence en 90 días, contrato por contrato, está en
-                // Detalle › Lo que viene: se abre ahí, en ese capítulo.
-                setPestanaInd("detalle"); setLlegada(null);
-                window.setTimeout(() => document.querySelector('[data-bloque="lo-que-viene"]')?.scrollIntoView({ block: "start" }), 120);
+          {pestanaInd === "mapa" && tableroB && (
+            <MapaDeOportunidades
+              key={capaPedida?.vez ?? 0}
+              capaInicial={capaPedida?.capa ?? null}
+              datos={{
+                esAdmin: isAdmin, sede, fixtures, espacios: tableroB.espacios, acciones: tableroB.acciones,
+                pendientes: { total: attentionCount, hoy: cuentasDeRevision.hoy }, contratos: kpis.contratos,
+                ocupacion: { pct: kpis.occPct, ocupadas: kpis.occupied, total: kpis.total, meta: meta.ocupacion },
+                canon: isAdmin ? canonDelMes : null, potencial: isAdmin ? potencial : null,
+                precio: ct && ct.pct !== null ? { pct: ct.pct, meta: meta.canon_tarifa, contadas: ct.contadas } : null,
+                variacion: tableroB.varCanon,
+                vence30: tableroB.cuentaVence(30), vence90: tableroB.cuentaVence(90),
+                montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda },
+                cliente: tableroB.principal ? {
+                  nombre: tableroB.principal.nombre, espacios: tableroB.principal.espacios, alMes: tableroB.principal.alMes,
+                  pct: isAdmin && canonDelMes ? Math.round(((tableroB.principal.alMes ?? 0) / canonDelMes) * 100) : null,
+                } : null,
               }}
-              onPendientes={() => useArmazon.getState().abrirBandeja()}
-              onMontajes={() => onIrAMontajes?.()}
-              onDisponibles={() => {
-                // «Contratar estos espacios»: Contratos con los disponibles de
-                // hoy ya elegidos (la cara entera de cada uno).
-                const lista = libresHoy.map((u) => ({ id: u.cara.fixture.id, face: u.cara.face }));
-                setSelected(null); setDetailFull(false); setAnchor(null); setCerrado(null); setSemilla(null);
-                setEnContrato(lista);
-                setModo("vender");
+              manejo={{
+                onFicha: tableroB.abrirFicha,
+                onPropuesta: (clave) => setNegociarDe(clave),
+                onMontaje: (clave) => (tableroB.abrirMontaje.get(clave) ?? (() => tableroB.abrirFicha(clave)))(),
+                onPendientes: (grupo) => useArmazon.getState().abrirBandeja(grupo),
+                onPlanoParaContratar: () => { setPestanaInd("plano"); setLlegada(null); },
+                onTabla: (capa) => {
+                  const filtro: Record<CapaDelMapa, MapFilter> = {
+                    acciones: "todos", ingreso: "occupied", vence: "expiring", montaje: "sin_montar", vacias: "free", parcial: "en_parte", cliente: "todos",
+                  };
+                  const cifra: Record<CapaDelMapa, string> = {
+                    acciones: "Acciones", ingreso: "Ingreso contratado", vence: "Por vencer", montaje: "Montajes pendientes",
+                    vacias: "Caras sin contrato", parcial: "Venta parcial", cliente: "Cliente",
+                  };
+                  abrirTablaDesde(filtro[capa], "Mapa de oportunidades", cifra[capa]);
+                },
               }}
-              onPlano={() => setPestanaInd("plano")}
+            />
+          )}
+
+          {pestanaInd === "analisis" && tableroB && (
+            <Analisis
+              datos={{
+                esAdmin: isAdmin, sede, hoy: hoyIso,
+                canon: isAdmin ? canonDelMes : null, serie: tableroB.serie12, potencial: isAdmin ? potencial : null,
+                ocupacion: { pct: kpis.occPct, ocupadas: kpis.occupied, total: kpis.total, meta: meta.ocupacion },
+                vencen: tableroB.vigentesQueVencen.map(({ t }) => ({
+                  clave: `${t.entry.fixture.id}-${t.entry.face}`, codigo: codigoVisible(t.entry), proveedor: t.entry.supplierName,
+                  hasta: t.entry.endDate, alMes: isAdmin ? alMesDe(t.entry) : null, renovado: !!t.entry.proximoLeaseId,
+                })),
+                montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda, verificados: montajesMes.porEstado.verificado },
+                acciones: tableroB.acciones, pendientes: attentionCount, brecha: tableroB.brecha, tarifas: tableroB.tarifas, embudo,
+                preparacion: {
+                  sinDistribuir: isAdmin && hayParticipaciones
+                    ? revisionPc.secciones.filter((x) => x.tipo === "sin_dibujar").reduce((t, x) => t + x.items.length, 0) : null,
+                  sinPlanometria: isAdmin ? faltaPlanometria.filas.length : null,
+                  noCoinciden: planogramasPorRevisar.filas.filter((c) => c.estado === "no_coincide").length,
+                  noRealizados: montaje.noMontado.length + planogramasPorRevisar.filas.filter((c) => c.estado === "no_se_pudo").length,
+                },
+                capacidad: tableroB.espacios.filter((e) => e.estado === "libre" || e.estado === "parcial"),
+                espacios: tableroB.espacios, porTipo: tableroB.porTipo, proyeccion: tableroB.proyeccion, cartera: tableroB.cartera,
+                precio: ct && ct.pct !== null ? { pct: ct.pct, meta: meta.canon_tarifa, contadas: ct.contadas, sinTarifa: ct.sinTarifa } : null,
+              }}
+              manejo={{
+                onContratos: (filtro) => abrirTablaDesde(filtro, "Análisis", filtro === "expiring" ? "Por vencer" : "Ingreso contratado"),
+                onMontajes: () => onIrAMontajes?.(),
+                onPendientes: () => useArmazon.getState().abrirBandeja(),
+                onFicha: tableroB.abrirFicha,
+                onPropuesta: (clave) => setNegociarDe(clave),
+                onMapa: (capa) => { setCapaPedida((c) => ({ capa, vez: (c?.vez ?? 0) + 1 })); setPestanaInd("mapa"); window.scrollTo({ top: 0 }); },
+                ...(isAdmin && plata ? { onQuienPaga: () => setPestanaInd("quien") } : {}),
+                ...(isAdmin ? { onTarifas: () => setRatesOpen(true) } : {}),
+              }}
             />
           )}
 
@@ -8201,9 +8358,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                     setLlegada(null);
                     closeDetail();
                     if (mapFilter === "expiring") setMapFilter("todos");
-                    if (llegada.desde === "Inicio") onIrAlInicio?.(); else setPestanaInd("resumen");
+                    if (llegada.desde === "Inicio") onIrAlInicio?.(); else setPestanaInd(llegada.desde === "Análisis" ? "analisis" : "mapa");
                   }}>
-                    <ArrowLeft {...ICONO_TARJETA} /> Volver {llegada.desde === "Inicio" ? "al Inicio" : "al Resumen"}
+                    <ArrowLeft {...ICONO_TARJETA} /> Volver {llegada.desde === "Inicio" ? "al Inicio" : `a ${llegada.desde}`}
                   </button>
                   {mapFilter !== "todos" && (
                     <button type="button" className="ind-csv" onClick={() => { setMapFilter("todos"); setLlegada(null); }}>
@@ -8270,9 +8427,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
               </span>
               <button type="button" className="ind-csv" onClick={() => {
                 setLlegada(null);
-                if (llegada.desde === "Inicio") onIrAlInicio?.(); else setPestanaInd("resumen");
+                if (llegada.desde === "Inicio") onIrAlInicio?.(); else setPestanaInd(llegada.desde === "Análisis" ? "analisis" : "mapa");
               }}>
-                <ArrowLeft {...ICONO_TARJETA} /> Volver {llegada.desde === "Inicio" ? "al Inicio" : "al Resumen"}
+                <ArrowLeft {...ICONO_TARJETA} /> Volver {llegada.desde === "Inicio" ? "al Inicio" : `a ${llegada.desde}`}
               </button>
               <button type="button" className="ind-csv" onClick={() => { setMapFilter("todos"); setLlegada(null); }}>
                 Ver todos los espacios
@@ -8393,113 +8550,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
           {pestanaInd === "sedes" && (
             <TodasLasSedes esAdmin={isAdmin} filas={filasDeSedes} total={totalDeSedes}
-              onAbrir={(s) => { useFixtureStore.getState().setSede(s); setPestanaInd("resumen"); }} />
-          )}
-
-          {pestanaInd === "detalle" && (
-            <Detalle datos={datosDetalle}>
-          {/* ── La franja ──────────────────────────────────────────────────
-              Cinco cifras y ninguna oración, cada una en su caja (rediseño,
-              PR 2). El orden no es decorativo: lo que entra, lo que no entra,
-              lo que se puede caer, cuánto de la sala está trabajando, y qué se
-              está cobrando sin haberlo armado. A la derecha, UN selector para
-              la plata —«Al mes | Total»— que siguen las cifras, la columna de
-              valor de la tabla y «Quién paga el canon». Sólo quien administra
-              lo ve: el trabajador no ve plata. */}
-          <Card style={{ flexShrink: 0, marginBottom: 10 }}>
-            <CardHeader
-              icon={<Gauge {...ICONO_TARJETA} />}
-              title={sede}
-              sub={
-                <>
-                  {mapRange ? describeRange(mapRange) : "Hoy"} · {kpis.contratos} contrato
-                  {kpis.contratos === 1 ? "" : "s"} · {kpis.total} caras
-                </>
-              }
-              right={isAdmin ? <SelectorDePlata unidad={unidad} onCambio={setUnidad} /> : undefined}
-            />
-            {/* La plata sólo para quien la maneja. El servidor ya le borra el
-                `negotiatedValue` a un mercaderista y nunca le manda las
-                tarifas, así que estas tres cifras le llegarían en cero — y
-                «CANON VIGENTE $0» no es discreción, es una sede que parece
-                quebrada. Lo que él necesita saber es qué hay que montar y qué
-                se está por caer, y eso sí lo ve, contado en espacios. */}
-            <div className="cifras">
-              {isAdmin && plata ? (
-                <>
-                  <Cifra
-                    icono={<Banknote {...ICONO_TARJETA} />}
-                    rotulo="Canon vigente"
-                    valor={formatCOP(plata.canon)}
-                    notas={[
-                      unidad === "mes" ? "al mes · cada contrato en sus meses" : "lo firmado en los contratos vigentes",
-                      // Los contratos que se cobran por % de las ventas suman
-                      // lo cargado en sus cortes, y se dice cuántos son.
-                      ...(plata.porVentas > 0
-                        ? [`+ ${plata.porVentas} por % de venta${plata.cargado > 0 ? ` · ${money(plata.cargado)} cargado` : ""}`] : []),
-                    ]}
-                  />
-                  <Cifra
-                    icono={<CircleDashed {...ICONO_TARJETA} />}
-                    rotulo="Sin alquilar"
-                    valor={formatCOP(plata.sinAlquilar)}
-                    notas={[
-                      `${unidad === "mes" ? "al mes a tarifa" : "en el periodo, a tarifa"} · ${sinAlquilar.caras} cara${sinAlquilar.caras === 1 ? "" : "s"}`,
-                      ...(sinAlquilar.sinTarifa > 0
-                        ? [`${sinAlquilar.sinTarifa} sin tarifa, fuera de la cuenta`] : []),
-                    ]}
-                    tasa={`${formatCOP(sinAlquilar.porDia)} por día vacío`}
-                  />
-                  <Cifra
-                    icono={<AlarmClock {...ICONO_TARJETA} />}
-                    rotulo="Vence en 30 días"
-                    valor={formatCOP(plata.vence)}
-                    notas={[`${plata.vencePct} % del canon · ${kpis.expiring.length} espacio${kpis.expiring.length === 1 ? "" : "s"}`]}
-                    alarma
-                  />
-                </>
-              ) : (
-                <>
-                  <Cifra
-                    icono={<AlarmClock {...ICONO_TARJETA} />}
-                    rotulo="Vence en 30 días"
-                    valor={String(kpis.expiring.length)}
-                    notas={["contratos que se caen"]}
-                    alarma
-                  />
-                  <Cifra
-                    icono={<CircleDashed {...ICONO_TARJETA} />}
-                    rotulo="Libres"
-                    /* La misma cuenta que la pestaña «Libres» y la clave del plano. */
-                    valor={String(libresSet.size)}
-                    notas={[`de ${kpis.total} caras`]}
-                  />
-                </>
-              )}
-              <Cifra
-                icono={<PieChart {...ICONO_TARJETA} />}
-                rotulo="Ocupación"
-                valor={`${kpis.occPct} %`}
-                notas={[
-                  `${kpis.occupied} de ${kpis.total} caras${enParte(rangeTally) > 0 ? ` · ${enParte(rangeTally)} vendida${enParte(rangeTally) === 1 ? "" : "s"} en parte` : ""}`,
-                  // Vender por partes: cuántas partes corren o están firmadas,
-                  // de las que se ofrecen. Sólo si alguien vende por partes.
-                  ...(kpis.partesOfrecidas > 0
-                    ? [`${kpis.rotuloPartes}: ${kpis.partesVendidas} de ${kpis.partesOfrecidas}`] : []),
-                  // Las piezas de lo que no se vende entero, aparte: no son caras.
-                  ...kpis.piezasVendidas,
-                ]}
-                barra={kpis.occPct}
-              />
-              <Cifra
-                icono={<Hammer {...ICONO_TARJETA} />}
-                rotulo="Sin montar"
-                valor={String(montaje.sinMontar.length)}
-                notas={["contratados y sin armar"]}
-              />
-            </div>
-          </Card>
-            </Detalle>
+              onAbrir={(s) => { useFixtureStore.getState().setSede(s); setPestanaInd("mapa"); }} />
           )}
 
           {pestanaInd === "diccionario" && <Diccionario esAdmin={isAdmin} />}
@@ -8534,6 +8585,44 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           </div>
         </Cajon>
       )}
+      {/* La revisión de un planograma y su guía (fase 4): desde Pendientes y
+          desde el Mapa de oportunidades. Viven acá, y no adentro de la lista,
+          para abrirse desde cualquiera de los dos. */}
+      {(revisarMontajeDe !== null || guiaParaMandar !== null) && (
+        <Suspense fallback={null}>
+          {revisarMontajeDe !== null && (
+            <RevisarMontaje versionId={revisarMontajeDe} onCerrar={() => setRevisarMontajeDe(null)}
+              onRevisada={(texto) => { setRevisarMontajeDe(null); setAvisoDeSupervision(texto); planogramasPorRevisar.recargar(); }} />
+          )}
+          {guiaParaMandar !== null && (
+            <VerGuia versionId={guiaParaMandar} puedeCompartir mandar onCerrar={() => setGuiaParaMandar(null)} />
+          )}
+        </Suspense>
+      )}
+      {/* «Preparar propuesta» (Mapa de oportunidades y Análisis): la ficha de
+          negociación. La propuesta se arma en Contratos con el espacio elegido. */}
+      {negociarDe && isAdmin && tableroB?.porClave.get(negociarDe) && (() => {
+        const e = tableroB.porClave.get(negociarDe)!;
+        return (
+          <Cajon etiqueta={`Propuesta para ${e.codigo}`} sinCabecera ancho={520} onCerrar={() => setNegociarDe(null)}>
+            <FichaDeNegociacion
+              espacio={e}
+              espacios={tableroB.espacios}
+              cartera={tableroB.cartera}
+              canon={canonDelMes}
+              onFicha={() => { setNegociarDe(null); tableroB.abrirFicha(e.clave); }}
+              onContratar={() => {
+                // Como «Vender» desde la ficha: la cara por participación entra
+                // con su línea de porcentaje, la que se vende por partes con
+                // sus partes abiertas (`negociar`).
+                const f = fixtures.find((x) => x.id === e.fixtureId);
+                setNegociarDe(null);
+                if (f) negociar(f, e.cara);
+              }}
+            />
+          </Cajon>
+        );
+      })()}
       {/* La ficha del espacio: la misma desde el Inicio, Indicadores y
           Pendientes, en su cajón (encima de la bandeja si se abrió desde ahí). */}
       {fichaDelEspacio && modoEfectivo !== "vender" && !fichaAlLado && (
