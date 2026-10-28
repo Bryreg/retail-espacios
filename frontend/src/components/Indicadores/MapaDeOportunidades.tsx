@@ -117,6 +117,9 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
   const [senalada, setSenalada] = useState<CapaDelMapa | null>(null);
   const [fija, setFija] = useState<CapaDelMapa | null>(capaInicial);
   const [todos, setTodos] = useState(false);
+  /** La fila de la lista bajo el mouse (o con el foco): su espacio se señala
+   *  en el mapa con su globo, aunque no entre entre los de arriba. */
+  const [enLaLista, setEnLaLista] = useState<string | null>(null);
   const capa: CapaDelMapa = senalada ?? fija ?? "acciones";
 
   const porClave = useMemo(() => new Map(datos.espacios.map((e) => [e.clave, e])), [datos.espacios]);
@@ -379,6 +382,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
               const item = panel.items.find((x) => x.clave === clave);
               if (item) item.onClick(); else manejo.onFicha(clave);
             }}
+            resaltada={enLaLista}
             descripcion={`Mapa de ${datos.sede}: ${NOMBRE_DE_LA_CAPA[capa]}. La misma información está en la lista de abajo.`}
           />
         </section>
@@ -398,7 +402,10 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
         {visibles.length > 0 && (
           <ul className="mo-esps">
             {visibles.map((it, k) => (
-              <li key={`${it.clave ?? it.codigo}-${k}`} className="mo-esp" data-espacio={it.clave ?? undefined}>
+              <li key={`${it.clave ?? it.codigo}-${k}`} className="mo-esp" data-espacio={it.clave ?? undefined}
+                onPointerEnter={(e) => { if (e.pointerType !== "touch") setEnLaLista(it.clave); }}
+                onPointerLeave={() => setEnLaLista(null)}
+                onFocus={() => setEnLaLista(it.clave)} onBlur={() => setEnLaLista(null)}>
                 <code>{it.codigo}</code>
                 {it.valor && <span className="m">{it.valor}</span>}
                 <span className="s">{it.sub}</span>

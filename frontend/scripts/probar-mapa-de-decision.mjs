@@ -93,6 +93,24 @@ await prueba("las etiquetas no se pisan y no se salen del lienzo (siete en el mi
   }
 });
 
+await prueba("con muchos espacios, sólo los más importantes llevan globo y queda lugar para «+N más» (TERRON: 42 por vencer)", () => {
+  const pedidas = Array.from({ length: 42 }, (_, i) => ({ ancho: 150, peso: -i }));
+  const e = M.elegirEtiquetas(pedidas, 1000, { tope: 10 });
+  assert.ok(e.length > 0 && e.length <= 10, `eligió ${e.length}`);
+  assert.deepEqual(e, Array.from({ length: e.length }, (_, i) => i), "no eligió los de más peso");
+  // Lo elegido más «+N más» entra en tres filas.
+  assert.ok(M.filasDeEtiquetas([...e.map(() => ({ x: 0, ancho: 150 })), { x: 0, ancho: 120 }], 1000, 8, 4) <= 3);
+  // Si entran todas, van todas y no hace falta «+N».
+  assert.equal(M.elegirEtiquetas(pedidas.slice(0, 4), 1000).length, 4);
+  // En un lienzo angosto, menos.
+  assert.ok(M.elegirEtiquetas(pedidas, 360, { tope: 10 }).length < e.length);
+  const d = sinComentarios(leer("components", "Indicadores", "MapaDeDecision.tsx"));
+  assert.ok(d.includes("en la lista de abajo"), "no dice cuántos quedaron afuera");
+  assert.ok(d.includes("data-globo-flotante"), "el espacio señalado no muestra su globo");
+  assert.ok(d.includes("conGlobo.has(c.clave) ? (v.dias <= 30 ? 3 : 2) : 0"), "las ondas vuelven a latir en todos");
+  assert.ok(d.includes('if (conGlobo.has(c.clave)) suelo.push(<ellipse key={`h${c.clave}`} className="halo"'), "los halos vuelven a respirar en todas las caras vacías");
+});
+
 const espacio = (o = {}) => ({
   clave: "f1-A", fixtureId: "f1", cara: "A", codigo: "GON-01·A", comercial: true, estado: "vendida", vendido: 1,
   ingresoAlMes: 450_000, libreAlMes: 0, tarifa: 450_000, clientes: ["Galletas Sol"], vence: null, montaje: null,

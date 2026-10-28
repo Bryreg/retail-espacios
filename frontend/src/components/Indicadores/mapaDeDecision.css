@@ -375,3 +375,11 @@ html[data-tema="oscuro"] .an { --an-o4: #4a5c68; }
 .an-dos > .an-card > .an-lectura + .an-cta, .an-dos > .an-card > .an-fuente + .an-cta { margin-top: 12px; }
 .an-scroll { max-height: 440px; overflow-y: auto; border-bottom: 1px solid var(--line-soft); }
 .an-scroll thead th { position: sticky; top: 0; z-index: 1; }
+
+/* Cuando no entran todas las etiquetas: «+N más» (sin línea guía) y el globo
+   del espacio bajo el mouse o señalado en la lista, que flota sin mover a los
+   demás. */
+.md-svg .chip.resto rect { fill: var(--md-piso); stroke: var(--md-chip); stroke-width: 1; stroke-dasharray: 3 2; }
+.md-svg .chip.resto .l1, .md-svg .chip.resto .l2 { fill: var(--md-chip); }
+.md-svg .md-foco { fill: none; stroke: var(--md-info); stroke-width: 2; }
+.md-svg .chip.flota { animation: md-chip 180ms ease-out both; pointer-events: none; }

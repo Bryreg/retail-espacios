@@ -1402,6 +1402,11 @@ contratar». Sin migraciones ni endpoints nuevos: todo sale de las cuentas que l
   reservado más claro) y **cliente** (arcos desde el cliente principal a sus espacios). Las
   etiquetas van en filas arriba del mapa con línea guía (`empacarEtiquetas` / `filasDeEtiquetas`:
   nunca se pisan); en el teléfono, sólo el código. `prefers-reduced-motion` las deja quietas.
+  Cuando no entran todas (TERRON: 42 por vencer, 34 caras vacías), sólo llevan globo las de más
+  peso que entran en tres filas, hasta 10 (8 en el teléfono; `elegirEtiquetas`: lo más cercano a
+  vencer, lo de más tarifa, lo que más paga…), y un globo «+N más · en la lista de abajo»; las
+  demás se ven por su color (las ondas y los halos, sólo en las que llevan globo). Pasar el mouse por un
+  espacio del mapa, o por su fila en la lista, hace flotar su globo sin mover a los demás.
   El piso NO lleva el código de cada mueble (en TERRON, 159 nombres tapaban el mapa): lo nombra
   la etiqueta de lo que se enciende, y cualquier mueble lo dice al pasar el mouse (`<title>`).
 - **Los datos** (`tableroB` en `DashboardView`): un `EspacioDelMapa` por cara (también las de
