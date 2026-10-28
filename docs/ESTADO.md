@@ -1,7 +1,13 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28, en `main` (PR #102):
+Última actualización: 2026-10-28: **los muebles propios se arman en Plano › Mis muebles**, con
+un asistente de tres pasos (qué mueble es, cuánto mide, nombre y cómo se vende) y el mueble en 3D
+al lado mientras se escribe; al guardarlo, «Colocar en el plano» vuelve al 2D con el mueble ya
+elegido para soltar. Era la pestaña «Fichas» del taller; el taller quedó como banco de prueba, en
+`/taller/banco`. Ver *Plano › Mis muebles: el taller en tres pasos (2026-10-28)*.
+
+Antes, el 2026-10-28, en `main` (PR #102):
 **el plano se edita en el 2D y el 3D es para mirar**. La biblioteca del plano ofrece uno de cada
 tipo y aparte «Mis muebles» (sólo las fichas del taller), con «Crear un mueble con otras medidas»
 que va al taller y vuelve; el 3D ya no coloca, mueve, gira ni borra; la ficha del 2D muestra el
@@ -1354,6 +1360,68 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 
 ## Qué está hecho
 
+### Plano › Mis muebles: el taller en tres pasos (2026-10-28)
+
+Con el plano editándose sólo en el 2D, armar un mueble propio pasó a ser parte de levantar el plano.
+El dueño pidió rediseñar el taller «para que sea lo más sencillo de utilizar, así como hicimos con el
+planograma», y aprobó el lienzo «RECABRA · Taller de muebles» con sus tres decisiones: el taller va
+al menú como Plano › Mis muebles; «Empezar desde» ofrece los modelos de RECABRA; y «Las medí en la
+tienda» no pide nada más. Lo prueban `scripts/probar-mis-muebles.mjs` (sección «Plano › Mis
+muebles») y las que fijaban la pestaña «Fichas», ahora sobre los archivos nuevos
+(`probar-muebles`, `probar-partes`, `probar-nombres`, `probar-catalogo`, `probar-limpieza`,
+`probar-ajustes`).
+
+- **Dónde vive.** Módulo `muebles` del armazón (`modulos.ts`): `/plano/muebles` (la lista),
+  `/plano/muebles/nuevo` (el asistente) y `/plano/muebles/<clave>` (editar). Sólo administración
+  (`puedeAbrir`). En la barra, el Plano dice **2D | 3D | Muebles**, y el menú marca «Plano» (el
+  riel angosto, como en el 2D y el 3D). `pages/MisMuebles.tsx` (perezosa, dentro del Dashboard).
+  `/taller` de antes redirige ahí (`AlTallerNuevo` en `App.tsx`; con `desde=plano`, al asistente
+  con lo que traía); el **banco de prueba** de la forma, la luz y el producto quedó en
+  **`/taller/banco`** (`pages/TallerMuebles.tsx`, sin la pestaña «Fichas»; botón «Banco de
+  prueba» en la lista y en «Más»). La escena compartida (luz, órbita, piso, `delCatalogo`, las
+  partes numeradas) se mudó a `components/taller/escena.tsx`.
+- **La lista.** Tarjetas con la **foto 3D** del mueble, sus medidas en centímetros, lo de adentro
+  («2 puertas») y cómo se vende; Editar y Retirar. Una tarjeta punteada «Crear un mueble» (con el
+  «Todavía no armaste ninguno» / «Ninguno vigente: los retirados están acá abajo»), y
+  «Retirados (N)» plegado, con Reactivar. Las fotos (y las de las familias del paso 1) las saca
+  **un solo lienzo escondido**, una por vez (`FotografoDeMuebles` + `useFoto`,
+  `components/taller/VistaDeLaFicha.tsx`): un lienzo por tarjeta eran una docena de contextos de
+  WebGL.
+- **El asistente** (`components/taller/AsistenteDeMueble.tsx`), con el mueble en 3D a la derecha
+  (en tableta y teléfono, arriba) dibujado con la misma entrada de paleta con que se colocará
+  (`dibujoDe`: `fichaParaDibujar` → `defDeModelo` → `delCatalogo`), en una toma de tres cuartos
+  que encuadra frente y costado contra la forma del lienzo (`tomaTresCuartos(w, d, h, aspecto)`).
+  1. **Qué mueble es**: las 11 familias con su foto y su nombre propio; «Empezar desde» la medida
+     estándar o un modelo de RECABRA de la familia (chips; una lista si son más de 5, como las
+     góndolas). Copia las medidas, la geometría y cómo se vende, **no** de dónde salió
+     (`formularioDesdeModelo`): el enlace del modelo respalda SUS medidas.
+  2. **Cuánto mide**: ancho, fondo y alto con − / + y el rango de la familia dibujado; «Por dentro»
+     sólo lo de su familia (puertas, tramos, entrepaños, módulo), vacío es «Automático: …» con el
+     valor que sale (las puertas del ancho, los entrepaños de la cuenta de siempre y cuántos caben
+     con ese alto).
+  3. **Nombre y cómo se vende**: el nombre (la clave sale sola); cómo se vende en botones con lo
+     que diría Vender («Entera o por puertas (2)»), las bahías de la caja y el forro de la columna,
+     con las partes numeradas sobre el 3D; **¿de dónde salieron las medidas?** en tres opciones
+     (`ORIGENES`): «Las medí en la tienda» no pide nada (`conOrigenCompleto` le pone
+     `NOTA_DE_LA_TIENDA`, y en el plano lleva «≈» como todo lo estimado), «Ficha del fabricante»
+     pide el enlace, «Un catálogo o listado» el enlace o una nota. La clave, la tarifa propia y la
+     nota quedan en «Más opciones», plegado (se abre solo si ahí hay un problema).
+  Las reglas son las de siempre (`problemasDelFormulario`): cada paso frena con lo suyo
+  (`problemasDelPaso`, `CAMPOS_DEL_PASO`), las píldoras sólo dejan saltar hacia adelante si lo de
+  antes está bien, y guardar (`guardarFicha`) vuelve al primer paso con un problema
+  (`pasoDelProblema`).
+- **Listo** (`components/taller/MuebleListo.tsx`): no vuelve al formulario vacío; dice con qué nace
+  al colocarlo y ofrece **«Colocar en el plano de SEDE»** (va a `/plano` con
+  `state.colocar = cli:<clave>`: `FloorPlan2D` lo busca en «Mis muebles» y lo deja elegido para
+  soltar), «Crear otro mueble» y «Ver Mis muebles».
+- **Editar** abre los mismos pasos, desde las medidas; lo que no cambia (la familia, la clave y la
+  tarifa) va explicado en una línea con candado. **Retirar** se confirma en la app
+  (`RetirarMueble.tsx`, `data-capa-modal`), no con el aviso del navegador, y dice cuántos hay
+  colocados con esa ficha en las sedes cargadas (`f.modelo === id`) y que siguen igual.
+- En el 2D, «Crear un mueble con otras medidas» y «Crear mueble» llevan a
+  `/plano/muebles/nuevo?desde=plano&sede=…&tipo=…` (el asistente arranca en esa familia, con
+  «Desde el plano de CENTRO…» y «← Volver al plano»).
+
 ### El plano se edita en el 2D; el 3D es para mirar (2026-10-28)
 
 Lo pidió el dueño y lo aprobó sobre el lienzo «RECABRA · Plano 2D, taller y 3D», con una condición:
@@ -1367,7 +1435,8 @@ y, en el navegador, la revisión de solapes a 1440, 1280, 1100, 1024, 820 y 390 
   modelo»): siguen en `muebles.json`, lo colocado con ellos se dibuja y se vende igual y el taller
   los muestra. `MODELOS_2D`, `modelosDelPlanoConPropias` y `paletaConPropias` quedan para el taller
   y las pruebas.
-- **Crear un mueble con otras medidas.** El botón de «Mis muebles» y «Crear mueble» del pie de la
+- **Crear un mueble con otras medidas.** (Desde el rediseño del taller, más arriba, van a
+  `/plano/muebles/nuevo`; lo que sigue es cómo quedó en el PR #102.) El botón de «Mis muebles» y «Crear mueble» del pie de la
   tira (admin) llevan a `/taller?desde=plano&sede=…&tipo=…`: el taller abre en «Fichas», en la
   familia que se estaba por colocar, con un aviso («Desde el plano de CENTRO…» y, al guardar,
   «Listo: «…» ya está en «Mis muebles»») y **«← Volver al plano»**, que vuelve en modo Editar con

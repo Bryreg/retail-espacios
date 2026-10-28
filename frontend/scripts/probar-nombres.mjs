@@ -264,8 +264,10 @@ const SITIOS = [
   ["components/RatesModal/RatesModal.tsx", "Tarifas (con el de RECABRA debajo)", /const dicho = nombreDeTarifa\(type, nombresPropios\);[\s\S]*\{dicho\}[\s\S]*\{label\} en RECABRA/],
   ["components/FloorPlan2D/FloorPlan2D.tsx", "«ese nombre ya lo tiene otro mueble» del plano 2D (la caja y el panel)",
     /textoDelChoque\(val, rechazo, \(m\) => conNombrePropio\(m, catalogLabels, ""\)\)[\s\S]*textoDelChoque\(nombreBorrador, rechazo, \(m\) => conNombrePropio\(m, nombresPropios, ""\)\)[\s\S]*textoDelChoque\(nombreBorrador, choqueEscrito, \(m\) => conNombrePropio\(m, nombresPropios, ""\)\)/],
-  ["components/taller/PanelDeFichas.tsx", "la familia de una ficha nueva en el taller",
-    /const propio = conNombrePropio\(\{ type: f\.tipo, gondolaType: f\.variante \}, nombresPropios, ""\);/],
+  ["components/taller/AsistenteDeMueble.tsx", "la familia de un mueble nuevo en Mis muebles",
+    /propio=\{conNombrePropio\(\{ type: f\.tipo, gondolaType: f\.variante \}, nombresPropios, ""\)\}/],
+  ["pages/MisMuebles.tsx", "la familia de cada tarjeta de Mis muebles",
+    /conNombrePropio\(\{ type: familia\.tipo, gondolaType: familia\.variante \}, nombresPropios, nombreCortoDe\(familia\)\)/],
 ];
 
 await prueba("«ese nombre ya lo tiene otro mueble» nombra al otro como le dicen acá", async () => {

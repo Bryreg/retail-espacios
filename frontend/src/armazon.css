@@ -267,12 +267,12 @@
 
 /* El Plano de la sede es una mesa de trabajo (etapa 6): a cualquier ancho
    el menú es el riel angosto, para que el plano se quede con la pantalla. */
-.armazon[data-modulo="plano"], .armazon[data-modulo="plano3d"] { --menu-w: 88px; }
-.armazon[data-modulo="plano"] .menu-lateral, .armazon[data-modulo="plano3d"] .menu-lateral { padding: 10px 6px; }
-.armazon[data-modulo="plano"] .menu-lateral .marca, .armazon[data-modulo="plano3d"] .menu-lateral .marca {
+.armazon[data-modulo="plano"], .armazon[data-modulo="plano3d"], .armazon[data-modulo="muebles"] { --menu-w: 88px; }
+.armazon[data-modulo="plano"] .menu-lateral, .armazon[data-modulo="plano3d"] .menu-lateral, .armazon[data-modulo="muebles"] .menu-lateral { padding: 10px 6px; }
+.armazon[data-modulo="plano"] .menu-lateral .marca, .armazon[data-modulo="plano3d"] .menu-lateral .marca, .armazon[data-modulo="muebles"] .menu-lateral .marca {
   justify-content: center; padding: 0; font-size: 12px; letter-spacing: 0.04em;
 }
-.armazon[data-modulo="plano"] .item-menu, .armazon[data-modulo="plano3d"] .item-menu {
+.armazon[data-modulo="plano"] .item-menu, .armazon[data-modulo="plano3d"] .item-menu, .armazon[data-modulo="muebles"] .item-menu {
   flex-direction: column;
   justify-content: center;
   gap: 3px;
@@ -282,10 +282,10 @@
   line-height: 1.15;
   text-align: center;
 }
-.armazon[data-modulo="plano"] .item-menu .largo, .armazon[data-modulo="plano3d"] .item-menu .largo { display: none; }
-.armazon[data-modulo="plano"] .item-menu .corto, .armazon[data-modulo="plano3d"] .item-menu .corto { display: inline; }
-.armazon[data-modulo="plano"] .item-menu .cuenta, .armazon[data-modulo="plano3d"] .item-menu .cuenta { position: absolute; top: 4px; right: 8px; margin: 0; }
-.armazon[data-modulo="plano"] .menu-lateral .pie, .armazon[data-modulo="plano3d"] .menu-lateral .pie { display: none; }
+.armazon[data-modulo="plano"] .item-menu .largo, .armazon[data-modulo="plano3d"] .item-menu .largo, .armazon[data-modulo="muebles"] .item-menu .largo { display: none; }
+.armazon[data-modulo="plano"] .item-menu .corto, .armazon[data-modulo="plano3d"] .item-menu .corto, .armazon[data-modulo="muebles"] .item-menu .corto { display: inline; }
+.armazon[data-modulo="plano"] .item-menu .cuenta, .armazon[data-modulo="plano3d"] .item-menu .cuenta, .armazon[data-modulo="muebles"] .item-menu .cuenta { position: absolute; top: 4px; right: 8px; margin: 0; }
+.armazon[data-modulo="plano"] .menu-lateral .pie, .armazon[data-modulo="plano3d"] .menu-lateral .pie, .armazon[data-modulo="muebles"] .menu-lateral .pie { display: none; }
 
 /* < 640: sin menú lateral; la barra de abajo lleva los módulos. */
 @media (max-width: 639px) {
@@ -456,22 +456,22 @@
   /* En el Plano entra además 2D | 3D: la marca cede su lugar para que el
      selector de sede no quede tapado (corrección de la etapa 9). */
   .armazon[data-modulo="plano"] .barra-app .marca-movil,
-  .armazon[data-modulo="plano3d"] .barra-app .marca-movil { display: none; }
+  .armazon[data-modulo="plano3d"] .barra-app .marca-movil, .armazon[data-modulo="muebles"] .barra-app .marca-movil { display: none; }
   .selector-sede .sede-sel { min-width: 84px; max-width: 130px; }
   /* En el Plano el guardado ya se lee en su propia barra; el selector no se
      encoge debajo de 2D | 3D. */
-  .armazon[data-modulo="plano"] .selector-sede, .armazon[data-modulo="plano3d"] .selector-sede { flex: none; }
-  .armazon[data-modulo="plano"] .selector-sede .sede-sel, .armazon[data-modulo="plano3d"] .selector-sede .sede-sel { width: 116px; min-width: 0; text-overflow: ellipsis; }
+  .armazon[data-modulo="plano"] .selector-sede, .armazon[data-modulo="plano3d"] .selector-sede, .armazon[data-modulo="muebles"] .selector-sede { flex: none; }
+  .armazon[data-modulo="plano"] .selector-sede .sede-sel, .armazon[data-modulo="plano3d"] .selector-sede .sede-sel, .armazon[data-modulo="muebles"] .selector-sede .sede-sel { width: 116px; min-width: 0; text-overflow: ellipsis; }
   /* El botón trae su display en línea; el aviso de conflicto sigue (vive al lado). */
-  .armazon[data-modulo="plano"] .barra-app .sync-status, .armazon[data-modulo="plano3d"] .barra-app .sync-status { display: none !important; }
+  .armazon[data-modulo="plano"] .barra-app .sync-status, .armazon[data-modulo="plano3d"] .barra-app .sync-status, .armazon[data-modulo="muebles"] .barra-app .sync-status { display: none !important; }
   .btn-buscar, .btn-mas { width: 36px; padding: 0; justify-content: center; border-color: transparent; }
 }
 
 /* 375 px (los teléfonos más angostos, 2026-10-28): en el Plano la barra se
    pasaba 13 px y el avatar de la cuenta quedaba cortado. */
 @media (max-width: 389px) {
-  .armazon[data-modulo="plano"] .barra-app, .armazon[data-modulo="plano3d"] .barra-app { gap: 6px !important; }
-  .armazon[data-modulo="plano"] .selector-sede .sede-sel, .armazon[data-modulo="plano3d"] .selector-sede .sede-sel { width: 100px; }
+  .armazon[data-modulo="plano"] .barra-app, .armazon[data-modulo="plano3d"] .barra-app, .armazon[data-modulo="muebles"] .barra-app { gap: 6px !important; }
+  .armazon[data-modulo="plano"] .selector-sede .sede-sel, .armazon[data-modulo="plano3d"] .selector-sede .sede-sel, .armazon[data-modulo="muebles"] .selector-sede .sede-sel { width: 100px; }
 }
 
 /* El buscador: arriba al centro, encima de todo. */

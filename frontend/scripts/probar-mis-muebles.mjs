@@ -33,15 +33,22 @@ const prueba = async (n, fn) => {
 };
 
 const r = await build({
-  stdin: { contents: 'export * as P from "./src/catalogo/plano2D.ts"; export { CATALOGO_DE_MUEBLES } from "./src/catalogo/catalogo.ts";', resolveDir: raiz, loader: "ts" },
+  stdin: { contents: 'export * as P from "./src/catalogo/plano2D.ts"; export { CATALOGO_DE_MUEBLES } from "./src/catalogo/catalogo.ts"; export * as F from "./src/utils/formularioDeFicha.ts"; export * as M from "./src/modulos.ts";', resolveDir: raiz, loader: "ts" },
   bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent",
 });
-const { P, CATALOGO_DE_MUEBLES } = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+const { P, CATALOGO_DE_MUEBLES, F, M } = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
 
 const plano = sinComentarios(leer("src/components/FloorPlan2D/FloorPlan2D.tsx"));
 const ed3D = sinComentarios(leer("src/components/StoreEditor3D/StoreEditor3D.tsx"));
 const mini = sinComentarios(leer("src/components/FloorPlan2D/Miniatura3D.tsx"));
 const taller = sinComentarios(leer("src/pages/TallerMuebles.tsx"));
+const pagina = sinComentarios(leer("src/pages/MisMuebles.tsx"));
+const asistente = sinComentarios(leer("src/components/taller/AsistenteDeMueble.tsx"));
+const listo = sinComentarios(leer("src/components/taller/MuebleListo.tsx"));
+const retirar = sinComentarios(leer("src/components/taller/RetirarMueble.tsx"));
+const vista = sinComentarios(leer("src/components/taller/VistaDeLaFicha.tsx"));
+const app = sinComentarios(leer("src/App.tsx"));
+const dashboard = sinComentarios(leer("src/pages/Dashboard.tsx"));
 const css = leer("src/plano.css");
 
 console.log("plano · uno de cada tipo y «Mis muebles»");
@@ -71,14 +78,16 @@ await prueba("la biblioteca no lista los modelos de RECABRA: uno de cada tipo y 
   assert.ok(plano.includes("Uno de cada tipo, con las medidas más comunes."), "vacío no explica qué hacer");
 });
 
-await prueba("crear un mueble lleva al taller con la sede y vuelve con el catálogo abierto", () => {
-  assert.match(plano, /const q = new URLSearchParams\(\{ desde: "plano", sede \}\);\s*if \(pendingType\) q\.set\("tipo", pendingType\);\s*navigate\(`\/taller\?\$\{q\.toString\(\)\}`\);/);
+await prueba("crear un mueble lleva a Mis muebles con la sede y vuelve con el catálogo abierto", () => {
+  assert.match(plano, /const q = new URLSearchParams\(\{ desde: "plano", sede \}\);\s*if \(pendingType\) q\.set\("tipo", pendingType\);\s*navigate\(`\/plano\/muebles\/nuevo\?\$\{q\.toString\(\)\}`\);/);
   assert.ok(plano.includes("data-crear-en-taller") && plano.includes("data-crear-mueble"), "falta una de las dos entradas al taller");
   assert.match(plano, /useState\(vieneDelTaller\)/, "al volver del taller el catálogo no se abre");
-  assert.match(taller, /useState<"mirar" \| "fichas">\(desdePlano \? "fichas" : "mirar"\)/, "el taller no abre en «Fichas»");
-  assert.match(taller, /navigate\("\/plano", \{ state: \{ delTaller: true \} \}\)/, "la vuelta no abre «Mis muebles»");
-  assert.ok(taller.includes("data-taller-desde-plano") && taller.includes("data-volver-al-plano"));
-  assert.match(taller, /onGuardada=\{desdePlano \? setGuardadaDesdePlano : undefined\}/, "guardar no lo dice en el aviso");
+  // El asistente arranca en la familia que se estaba por colocar, con el
+  // aviso de dónde se vino y la vuelta.
+  assert.match(pagina, /entradaInicial=\{desdePlano \? entradaDelTipoDelPlano\(params\.get\("tipo"\)\) : undefined\}/, "no arranca en la familia del plano");
+  assert.match(pagina, /navigate\("\/plano", \{ state: \{ delTaller: true, \.\.\.\(colocar \? \{ colocar \} : \{\}\) \} \}\)/, "la vuelta no abre «Mis muebles»");
+  assert.ok(asistente.includes("data-taller-desde-plano") && asistente.includes("data-volver-al-plano"));
+  assert.ok(!taller.includes("desdePlano"), "el banco de prueba sigue recibiendo lo del plano");
 });
 
 await prueba("el pie de la tira es UN bloque pegado: «Crear mueble» y «Más» no se montan", () => {
@@ -137,4 +146,93 @@ await prueba("nada se monta: la miniatura no flota, y las hojas no tapan la tira
   assert.match(plano, /navigate\(location\.pathname, \{ replace: true, state: null \}\);/, "la vuelta del taller queda en el historial");
 });
 
-console.log(`\n${hechas} pruebas · el plano se edita en el 2D`);
+console.log("\nPlano › Mis muebles: el taller en tres pasos (2026-10-28)");
+
+await prueba("Mis muebles es parte del Plano: su dirección, su lugar en 2D | 3D | Muebles y sólo para administración", () => {
+  assert.equal(M.RUTA_DE.muebles, "/plano/muebles");
+  for (const r of ["/plano/muebles", "/plano/muebles/", "/plano/muebles/nuevo", "/plano/muebles/nevera-de-la-entrada"]) {
+    assert.equal(M.moduloDeRuta(r), "muebles", r);
+  }
+  assert.equal(M.moduloDeRuta("/plano/mueblesx"), null);
+  assert.equal(M.moduloDeRuta("/plano"), "plano");
+  assert.equal(M.puedeAbrir("muebles", true), true);
+  assert.equal(M.puedeAbrir("muebles", false), false, "quien trabaja en la tienda arma muebles");
+  assert.match(dashboard, /\["muebles", "Muebles", /, "falta «Muebles» al lado de 2D y 3D");
+  assert.match(dashboard, /efectivo === "muebles" \? \(/, "el Dashboard no muestra Mis muebles");
+  // Los enlaces viejos llevan ahí; el banco de prueba queda aparte.
+  assert.match(app, /<Navigate to=\{`\/plano\/muebles\$\{desdePlano \? "\/nuevo" : ""\}\$\{search\}`\} replace \/>/);
+  assert.match(leer("src/acciones.ts"), /id: "taller", texto: "Mis muebles"[^]*?hacer: \(c\) => c\.ir\("muebles"\)/);
+});
+
+await prueba("el asistente: cada paso frena con lo suyo, y guardar vuelve al paso que hay que corregir", () => {
+  const f = { ...F.formularioVacio("nevera_puertas"), anchoCm: "400" };
+  assert.deepEqual(F.problemasDelPaso(f, 1).map((p) => p.campo), [], "el paso 1 frena por las medidas");
+  assert.deepEqual(F.problemasDelPaso(f, 2).map((p) => p.campo), ["w"]);
+  const p3 = F.problemasDelPaso(f, 3).map((p) => p.campo);
+  assert.ok(p3.includes("nombre") && p3.includes("fuente.confiabilidad"), p3.join(","));
+  // Cada campo del formulario es de un solo paso, y todos los problemas caen en uno.
+  const todos = [...F.CAMPOS_DEL_PASO[1], ...F.CAMPOS_DEL_PASO[2], ...F.CAMPOS_DEL_PASO[3]];
+  assert.equal(new Set(todos).size, todos.length, "un campo en dos pasos");
+  for (const campo of new Set(Object.values(F.CAMPO_DEL_FORMULARIO))) assert.ok(todos.includes(campo), `${campo} no es de ningún paso`);
+  assert.equal(F.pasoDelProblema({ campo: "ficha", problema: "x" }), 3, "lo general va al último paso");
+  assert.equal(F.pasoDelProblema({ campo: "partes.puertas", problema: "x" }), 2);
+  assert.match(asistente, /if \(todos\.length\) setPaso\(Math\.min\(\.\.\.todos\.map\(pasoDelProblema\)\) as PasoDelAsistente\);/,
+    "guardar con un problema no vuelve a su paso");
+  // Para adelante sólo con los pasos de antes bien.
+  assert.match(asistente, /if \(delPaso\(p\)\.length\) \{\s*setIntentados/, "se salta un paso con problemas");
+});
+
+await prueba("«Las medí en la tienda» no pide nada más: la nota sale sola y el plano lleva «≈»", () => {
+  const f = { ...F.formularioVacio("nevera_puertas"), nombre: "Nevera de la entrada", clave: "nevera-de-la-entrada", confiabilidad: "estimado" };
+  assert.deepEqual(F.problemasDelFormulario(F.conOrigenCompleto(f)), [], "medida en la tienda pide más");
+  assert.equal(F.conOrigenCompleto(f).nota, F.NOTA_DE_LA_TIENDA);
+  // Lo que se escribió manda; y las otras dos opciones siguen pidiendo lo suyo.
+  assert.equal(F.conOrigenCompleto({ ...f, nota: "Con cinta" }).nota, "Con cinta");
+  assert.ok(F.problemasDelFormulario(F.conOrigenCompleto({ ...f, confiabilidad: "ficha" })).some((p) => p.campo.startsWith("fuente")), "la ficha del fabricante no pide el enlace");
+  assert.deepEqual(F.ORIGENES.map((o) => [o.valor, o.pide]), [["estimado", "nada"], ["ficha", "url"], ["catalogo", "url_o_nota"]]);
+  const ficha = F.fichaDelFormulario(F.conOrigenCompleto(f));
+  assert.deepEqual(ficha.fuente, { confiabilidad: "estimado", nota: F.NOTA_DE_LA_TIENDA });
+  assert.match(asistente, /await guardarFicha\(conOrigenCompleto\(form\)/, "se guarda sin la nota de la tienda");
+});
+
+await prueba("«Empezar desde» un modelo de RECABRA copia la forma, no de dónde salió", () => {
+  const [dos] = CATALOGO_DE_MUEBLES.modelos.filter((m) => m.tipo === "nevera_puertas" && m.partes?.puertas === 2);
+  assert.ok(dos, "no hay nevera de 2 puertas en el catálogo");
+  const f = F.formularioDesdeModelo("nevera_puertas", dos);
+  assert.equal(f.anchoCm, String(Math.round(dos.w * 1000) / 10).replace(".", ","));
+  assert.equal(f.puertas, "2");
+  assert.deepEqual([f.nombre, f.clave, f.url, f.nota, f.confiabilidad], ["", "", "", "", ""],
+    "copia el nombre o la fuente del modelo de RECABRA");
+  // El tipo del plano trae su familia; lo que no admite fichas, ninguna.
+  assert.equal(F.entradaDelTipoDelPlano("gondola_mural"), "gondola:wall");
+  assert.equal(F.entradaDelTipoDelPlano("nevera_puertas"), "nevera_puertas");
+  assert.equal(F.entradaDelTipoDelPlano("no-existe"), undefined);
+  assert.equal(F.entradaDelTipoDelPlano(null), undefined);
+  // − y + dentro del rango, desde el valor automático si está vacío.
+  assert.equal(F.pasoDeNumero("", 1, 1, 6, 2), "3");
+  assert.equal(F.pasoDeNumero("6", 1, 1, 6, 2), "6");
+  assert.equal(F.pasoDeNumero("144,5", -1, 60, 320, 100), "143,5");
+});
+
+await prueba("al guardar: «Listo» lleva al plano con el mueble elegido para soltar", () => {
+  assert.match(pagina, /onColocar=\{\(\) => alPlano\(listo\.id\)\}/, "«Colocar» no lleva el mueble");
+  assert.ok(listo.includes("data-colocar-en-plano") && listo.includes("data-crear-otro"));
+  // El plano lo busca en «Mis muebles» y lo deja elegido.
+  assert.match(plano, /const mio = misMuebles\.find\(\(x\) => x\.modelo\.id === porColocar\);[^]*?setActiveTool\("place"\); setPendingType\(mio\.tipo\); setPendingModelo\(mio\.modelo\);/,
+    "el plano no deja elegido el mueble recién armado");
+});
+
+await prueba("retirar se confirma en la app y dice cuántos hay colocados; un amarillo por pantalla", () => {
+  assert.match(retirar, /f\.modelo === id/, "no cuenta lo colocado con esa ficha");
+  assert.ok(retirar.includes("data-capa-modal") && retirar.includes('role="alertdialog"'));
+  assert.match(retirar, /Se puede reactivar cuando quieras desde «Retirados»\./);
+  for (const [n, t] of [["la lista", pagina], ["el asistente", asistente], ["listo", listo]]) {
+    assert.equal((t.match(/"btn-principal /g) || []).length, 1, `${n}: más de un botón principal`);
+  }
+  // Las fotos: un solo lienzo escondido, no uno por tarjeta.
+  assert.equal((pagina.match(/<Canvas/g) || []).length, 0);
+  assert.match(pagina, /<FotografoDeMuebles \/>/);
+  assert.match(vista, /cola\.shift\(\);/);
+});
+
+console.log(`\n${hechas} pruebas · el plano se edita en el 2D y los muebles se arman en Mis muebles`);

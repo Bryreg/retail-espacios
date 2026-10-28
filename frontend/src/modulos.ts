@@ -13,12 +13,16 @@
  *   `/montajes`     Montajes
  *   `/plano`        Plano de la sede, en 2D
  *   `/plano/3d`     Plano de la sede, en 3D (lo que era «Editor 3D»)
+ *   `/plano/muebles` Plano › Mis muebles: los muebles propios del supermercado
+ *                   (lo que era la pestaña «Fichas» del taller, 2026-10-28).
+ *                   Adentro, `/plano/muebles/nuevo` arma uno y
+ *                   `/plano/muebles/<clave>` lo edita.
  *
  * Todas montan el MISMO `Dashboard` (`App.tsx`, `path="/*"`): pasar de un
  * módulo a otro no lo vuelve a montar, así que un contrato a medio armar no se
  * pierde por ir a mirar el plano.
  */
-export type Modulo = "inicio" | "contratos" | "indicadores" | "montajes" | "plano" | "plano3d";
+export type Modulo = "inicio" | "contratos" | "indicadores" | "montajes" | "plano" | "plano3d" | "muebles";
 
 export const RUTA_DE: Record<Modulo, string> = {
   inicio: "/",
@@ -27,6 +31,7 @@ export const RUTA_DE: Record<Modulo, string> = {
   montajes: "/montajes",
   plano: "/plano",
   plano3d: "/plano/3d",
+  muebles: "/plano/muebles",
 };
 
 /** El módulo de una dirección. Lo que no es de ningún módulo da `null`: quien
@@ -39,6 +44,7 @@ export function moduloDeRuta(pathname: string): Modulo | null {
   if (p === "/montajes") return "montajes";
   if (p === "/plano") return "plano";
   if (p === "/plano/3d") return "plano3d";
+  if (p === "/plano/muebles" || p.startsWith("/plano/muebles/")) return "muebles";
   return null;
 }
 

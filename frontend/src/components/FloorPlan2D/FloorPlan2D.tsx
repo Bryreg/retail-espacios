@@ -1482,7 +1482,12 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     ro.observe(tira);
     return () => ro.disconnect();
   }, [editMode]);
-  const vieneDelTaller = !!(location.state as { delTaller?: boolean } | null)?.delTaller;
+  const estadoDelTaller = location.state as { delTaller?: boolean; colocar?: string } | null;
+  const vieneDelTaller = !!estadoDelTaller?.delTaller;
+  /** «Colocarlo en el plano» (Mis muebles, al guardar): el mueble recién
+   *  armado, ya elegido para soltar. Se busca en «Mis muebles» cuando llegan
+   *  las fichas (recién guardada, la lista puede venir un instante después). */
+  const [porColocar, setPorColocar] = useState<string | null>(estadoDelTaller?.colocar ?? null);
   const [catalogoAbierto, setCatalogoAbierto] = useState(vieneDelTaller);
   // Se usa una vez: recargar la página más tarde no vuelve a abrir el catálogo.
   useEffect(() => {
@@ -1491,19 +1496,26 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
     navigate(location.pathname, { replace: true, state: null });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vieneDelTaller]);
+  useEffect(() => {
+    if (!porColocar) return;
+    const mio = misMuebles.find((x) => x.modelo.id === porColocar);
+    if (!mio) return;
+    setActiveTool("place"); setPendingType(mio.tipo); setPendingModelo(mio.modelo);
+    setPorColocar(null);
+  }, [porColocar, misMuebles]);
   /** Por debajo de 860 px la ficha sube como hoja en el mismo lugar que el
    *  catálogo (o encima de él): al elegir un mueble el catálogo se pliega, así
    *  las dos no se montan. Más ancho, cada una tiene su columna. */
   useEffect(() => {
     if (selectedId && typeof window !== "undefined" && window.matchMedia("(max-width: 860px)").matches) setCatalogoAbierto(false);
   }, [selectedId]);
-  /** «Crear un mueble con otras medidas»: al taller, a armar la ficha, con la
-   *  vuelta a este plano. Lleva la sede (el aviso del taller la dice) y el
-   *  tipo que se estaba por colocar, si había uno (la ficha nace de esa familia). */
+  /** «Crear un mueble con otras medidas»: a Plano › Mis muebles, al asistente,
+   *  con la vuelta a este plano. Lleva la sede (el aviso la dice) y el tipo que
+   *  se estaba por colocar, si había uno (el mueble nace de esa familia). */
   const crearEnElTaller = useCallback(() => {
     const q = new URLSearchParams({ desde: "plano", sede });
     if (pendingType) q.set("tipo", pendingType);
-    navigate(`/taller?${q.toString()}`);
+    navigate(`/plano/muebles/nuevo?${q.toString()}`);
   }, [navigate, sede, pendingType]);
   /** Cuántos muebles de cada tipo tiene la sede: la cuenta de la tira. */
   const cuantosPorTipo = useMemo(() => {

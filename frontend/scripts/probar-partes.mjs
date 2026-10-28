@@ -986,11 +986,14 @@ await prueba("el taller numera las partes sobre el mueble que gira, con las cuen
   assert.deepEqual(numeradas({ type: "columna", w: 0.4, d: 0.4, h: 3, partes: { forro: true } }).map((p) => p.etiqueta), ["FO"]);
   // Sin partes, nada: una ficha entera no muestra números.
   assert.deepEqual(numeradas({ type: "nevera_puertas", w: 2.07, d: 0.7, h: 2.1, partes: { puertas: 3 } }), []);
-  // El taller las dibuja, y a la nevera abierta le pasa sus tramos.
+  // Mis muebles las dibuja sobre el mueble que se arma (2026-10-28: era la
+  // pestaña «Fichas» del taller), y el banco le pasa sus tramos a la nevera
+  // abierta.
+  const vista = leer(join(raiz, "src", "components", "taller", "VistaDeLaFicha.tsx"));
+  assert.match(vista, /partesNumeradas\(\{\s*type: base\.type, gondolaType: base\.gondolaType, w: def\.w, d: def\.d, h: def\.h,\s*partes: def\.partes/,
+    "Mis muebles no numera las partes de la ficha que se arma");
+  assert.match(vista, /dibujo\.numeradas\.map\(\(p, i\) => <ParteNumeradaDelTaller/, "Mis muebles no dibuja las partes numeradas");
   const taller = leer(join(raiz, "src", "pages", "TallerMuebles.tsx"));
-  assert.match(taller, /partesNumeradas\(\{ type: def\.type, gondolaType: def\.gondolaType, w: anchoV, d: fondoV, h: altoV,\s*partes: defFicha\.partes/,
-    "el taller no numera las partes de la ficha que se arma");
-  assert.match(taller, /\{numeradas\.map\(\(p, i\) => <ParteNumeradaDelTaller/, "el taller no dibuja las partes numeradas");
   assert.match(taller, /tramos=\{def\.type === "nevera_refrescos" \? geometria\?\.tramos : undefined\}/,
     "la nevera abierta del taller no dibuja sus tramos");
 });

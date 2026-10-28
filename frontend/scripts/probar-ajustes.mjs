@@ -119,7 +119,7 @@ await prueba("Ajustes no pierde ninguna sección y suma las nuevas", () => {
   for (const pieza of ["<UsuariosSection />", "<ContactsSection sedes={sedes} />", "<NombresDeMueblesSection />",
     "<SuscripcionSection enfocar={enfocar === \"suscripcion\"} />", "<CopiaSection />", "<TusDatosSection />", "<BitacoraSection />",
     "Guardar notificaciones", "Enviar correo de prueba", "<MetasPorSede", "<SedesDeAjustes />", "<PermisosDePlanogramas",
-    "Abrir las tarifas", "Editar las temporadas", 'navigate("/renumerar")', 'navigate("/taller")', "Volver a mostrarla"]) {
+    "Abrir las tarifas", "Editar las temporadas", 'navigate("/renumerar")', 'navigate("/plano/muebles")', "Volver a mostrarla"]) {
     assert.ok(modal.includes(pieza), `Ajustes no tiene ${pieza}`);
   }
   for (const t of ["comercial", "sede", "avisos", "equipo", "cuenta"]) assert.ok(modal.includes(`tema === "${t}"`), t);
