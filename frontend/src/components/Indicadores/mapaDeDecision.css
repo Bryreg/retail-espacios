@@ -29,7 +29,6 @@ html[data-tema="oscuro"] .md-lienzo {
 .md-svg { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
 .md-svg .piso { fill: var(--md-piso); stroke: var(--md-piso-borde); }
 .md-svg .reticula line { stroke: var(--md-reticula); stroke-width: 0.7; }
-.md-svg .rot { font: 9px var(--f-mono); fill: var(--md-rot); text-anchor: middle; pointer-events: none; }
 
 /* Las piezas. */
 .md-svg .p > polygon { stroke: var(--ps); stroke-width: var(--sw, 0.8); stroke-linejoin: round; fill-opacity: var(--op, 1); }
@@ -366,3 +365,13 @@ html[data-tema="oscuro"] .an { --an-o4: #4a5c68; }
 .an-grafico .an-seg.o4 { fill: var(--ink-1); }
 .cajon .fn { padding: 18px 22px 0; }
 .cajon .fn-pie { margin: 0 -22px; padding: 12px 22px 16px; }
+
+/* Las tarjetas de a dos: el gráfico crece hasta el alto de la fila (la otra
+   puede ser una tabla), sin pasarse de 1,8 veces su alto; la salida queda
+   abajo. Las listas largas se abren dentro de su tarjeta, con scroll. */
+.an-dos > .an-card { display: flex; flex-direction: column; }
+.an-grafico.crece { flex: 1 1 auto; display: flex; align-items: center; }
+.an-dos > .an-card > .an-cta { margin-top: auto; }
+.an-dos > .an-card > .an-lectura + .an-cta, .an-dos > .an-card > .an-fuente + .an-cta { margin-top: 12px; }
+.an-scroll { max-height: 440px; overflow-y: auto; border-bottom: 1px solid var(--line-soft); }
+.an-scroll thead th { position: sticky; top: 0; z-index: 1; }

@@ -191,6 +191,12 @@ await prueba("las capas se mueven, pero no con «reducir movimiento»; nada de r
   assert.ok(css.includes('html[data-tema="oscuro"] .md-lienzo'));
 });
 
+await prueba("el mapa no escribe el código de cada mueble sobre el piso (en TERRON, 159 nombres tapaban el mapa)", () => {
+  const d = sinComentarios(leer("components", "Indicadores", "MapaDeDecision.tsx"));
+  assert.ok(!/\{m\.f\.code\}<\/text>/.test(d) && !d.includes('className="rot"'), "volvieron los rótulos del piso");
+  assert.ok(d.includes("<title>{e?.codigo ?? m.f.code}</title>"), "el mueble apagado perdió su nombre al pasar el mouse");
+});
+
 await prueba("las clases no chocan con la hoja de Supervisar (la pantalla vive adentro de `.sup`)", () => {
   const sup = readFileSync(join(raiz, "src", "supervisar.css"), "utf8");
   const deSup = new Set([...sup.matchAll(/\.sup [^{,]*/g)].flatMap((m) => [...m[0].matchAll(/\.([a-zA-Z][\w-]*)/g)].map((x) => x[1])));
