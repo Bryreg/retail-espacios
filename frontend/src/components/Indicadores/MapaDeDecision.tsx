@@ -299,7 +299,9 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
           case "vacias": {
             const [hx, hy] = P(cx, 0, cz);
             const r = Math.min(Math.max(ex, ez), 3) * esc;
-            suelo.push(<ellipse key={`h${c.clave}`} className="halo" cx={hx} cy={hy} rx={r * 0.75} ry={r * 0.42} style={d(i * 200)} />);
+            // El halo, sólo en las que llevan globo (con 34 caras vacías
+            // respirando a la vez el mapa se volvía una mancha azul).
+            if (conGlobo.has(c.clave)) suelo.push(<ellipse key={`h${c.clave}`} className="halo" cx={hx} cy={hy} rx={r * 0.75} ry={r * 0.42} style={d(i * 200)} />);
             cuerpos.push(grupo(prisma("f", c.caja, 0, HF, "fantasma", { clase: "hormigas lento" })));
             anclas.set(c.clave, P(cx, HF, cz));
             i++;

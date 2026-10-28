@@ -108,6 +108,7 @@ await prueba("con muchos espacios, sólo los más importantes llevan globo y que
   assert.ok(d.includes("en la lista de abajo"), "no dice cuántos quedaron afuera");
   assert.ok(d.includes("data-globo-flotante"), "el espacio señalado no muestra su globo");
   assert.ok(d.includes("conGlobo.has(c.clave) ? (v.dias <= 30 ? 3 : 2) : 0"), "las ondas vuelven a latir en todos");
+  assert.ok(d.includes('if (conGlobo.has(c.clave)) suelo.push(<ellipse key={`h${c.clave}`} className="halo"'), "los halos vuelven a respirar en todas las caras vacías");
 });
 
 const espacio = (o = {}) => ({
