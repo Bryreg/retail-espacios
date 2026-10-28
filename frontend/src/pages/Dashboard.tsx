@@ -1651,6 +1651,7 @@ export default function Dashboard() {
               <DashboardView
                 inicio={efectivo === "inicio"}
                 onIrAMontajes={() => ir("montajes")}
+                onIrAlInicio={() => ir("inicio")}
                 modo={modoComercial}
                 onModo={(m) => ir(m === "vender" ? "contratos" : "indicadores")}
                 onDisenarPlano={() => ir("plano")}
