@@ -1,7 +1,7 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28: **los muebles propios se arman en Plano › Mis muebles**, con
+Última actualización: 2026-10-28, en `main` (PR #103): **los muebles propios se arman en Plano › Mis muebles**, con
 un asistente de tres pasos (qué mueble es, cuánto mide, nombre y cómo se vende) y el mueble en 3D
 al lado mientras se escribe; al guardarlo, «Colocar en el plano» vuelve al 2D con el mueble ya
 elegido para soltar. Era la pestaña «Fichas» del taller; el taller quedó como banco de prueba, en
@@ -1361,6 +1361,8 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 ## Qué está hecho
 
 ### Plano › Mis muebles: el taller en tres pasos (2026-10-28)
+
+En `main` desde el PR #103.
 
 Con el plano editándose sólo en el 2D, armar un mueble propio pasó a ser parte de levantar el plano.
 El dueño pidió rediseñar el taller «para que sea lo más sencillo de utilizar, así como hicimos con el
