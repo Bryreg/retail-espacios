@@ -116,9 +116,9 @@ def _cobro(lease_id):
 
 
 @RELOJ
-def test_los_de_valor_simbolico_se_cobran_por_ventas(client, admin, worker, monkeypatch):
-    """El valor de antes era un marcador ($ 1): lo que se cobra sale de las
-    ventas. Queda como un contrato por ventas de Vender (valor 0 + su cobro)."""
+def test_se_cobran_por_ventas(client, admin, worker, monkeypatch):
+    """«Por % de ventas»: queda como un contrato por ventas de Vender (valor 0
+    + su cobro), con los cortes en «Ventas por cargar»."""
     from app.models.models import AuditEntry
 
     tp._plano(client, admin)

@@ -1,6 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -1307,10 +1307,14 @@ function SelectorDeSede() {
   const sede = useFixtureStore((s) => s.sede);
   const setSede = useFixtureStore((s) => s.setSede);
   const muebles = useFixtureStore((s) => (s.fixturesBySede[s.sede] ?? []).length);
+  /** Con un contrato a medio cargar, cambiar de sede lo vacía: se pregunta. */
+  const borrador = useArmazon((s) => s.borradorDeVenta);
+  const [pedida, setPedida] = useState<string | null>(null);
   return (
     <div className="selector-sede">
       <MapPin {...ICONO_BARRA} className="ico" />
-      <select className="sede-sel" value={sede} onChange={(e) => setSede(e.target.value)} aria-label="Sede">
+      <select className="sede-sel" value={sede} aria-label="Sede"
+        onChange={(e) => { const v = e.target.value; if (borrador && v !== sede) setPedida(v); else setSede(v); }}>
         {(sedes.includes(sede) ? sedes : [sede, ...sedes]).map((x) => (
           <option key={x} value={x}>{x}</option>
         ))}
@@ -1321,6 +1325,33 @@ function SelectorDeSede() {
         {sedes.includes(sede) && <>{sedes.indexOf(sede) + 1} de {sedes.length}{" · "}</>}
         {muebles} mueble{muebles === 1 ? "" : "s"}
       </span>
+      {pedida && borrador && (
+        <AvisoCambioDeSede actual={sede} nueva={pedida} borrador={borrador}
+          onSeguir={() => setPedida(null)}
+          onCambiar={() => { setSede(pedida); setPedida(null); }} />
+      )}
+    </div>
+  );
+}
+
+/** «¿Cambiar de sede?» con un contrato a medio cargar (2026-10-28). Seguir
+ *  en la sede es lo que se hace por defecto (Enter, Esc). */
+function AvisoCambioDeSede({ actual, nueva, borrador, onSeguir, onCambiar }: {
+  actual: string; nueva: string; borrador: string; onSeguir: () => void; onCambiar: () => void;
+}) {
+  useModalAbierto();
+  const titulo = useId();
+  return (
+    <div className="aviso-sede-capa" data-capa-modal onMouseDown={onSeguir}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onSeguir(); } }}>
+      <div className="aviso-sede" role="dialog" aria-modal="true" aria-labelledby={titulo} onMouseDown={(e) => e.stopPropagation()} data-aviso-sede>
+        <h2 id={titulo}>¿Cambiar a {nueva}?</h2>
+        <p>Tenés un contrato sin guardar en <b>{actual}</b> ({borrador}). Si cambiás de sede, se pierde.</p>
+        <div className="botones">
+          <button type="button" className="sec" onClick={onCambiar}>Cambiar y descartarlo</button>
+          <button type="button" className="btn-principal" onClick={onSeguir} autoFocus>Seguir en {actual}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1500,6 +1531,20 @@ export default function Dashboard() {
   const efectivo: Modulo = permitido ? modulo! : "inicio";
 
   const temaAjustes = useArmazon((s) => s.ajustes);
+  /** Se vino de Montajes a resolver algo: la barra para volver. */
+  const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  /** Al volver, la fila de ese contrato marcada en Montajes. */
+  const [montajeResaltado, setMontajeResaltado] = useState<string | null>(null);
+  useEffect(() => {
+    if (efectivo !== "montajes") { setMontajeResaltado(null); return; }
+    // Se volvió a Montajes (por la barra o por el menú): esa fila, marcada.
+    const d = useArmazon.getState().desdeMontaje;
+    if (d) {
+      setMontajeResaltado(d.codigo);
+      useArmazon.getState().olvidarMontaje();
+      useArmazon.getState().cerrarBandeja();
+    }
+  }, [efectivo]);
   const buscadorAbierto = useArmazon((s) => s.buscador);
   const ayudaAbierta = useArmazon((s) => s.ayuda);
   /** Tarifas y Temporadas, abiertas desde Ajustes, Ctrl K o «Más». */
@@ -1636,6 +1681,24 @@ export default function Dashboard() {
             quien={quien}
           />
 
+          {/* Se vino de Montajes a resolver algo («Ubicar la zona»): mientras
+              tanto, esta barra lleva de vuelta a ese montaje, esté donde esté
+              (Pendientes, la ficha, el plano). */}
+          {desdeMontaje && efectivo !== "montajes" && (
+            <div className="volver-montaje" role="status" data-volver-montaje>
+              <span>
+                Resolviendo <b className="mono">{desdeMontaje.corto}</b> para Montajes:{" "}
+                {desdeMontaje.estado === "falta_zona" ? "falta ubicar su zona en la cara." : "falta su planometría."}
+              </span>
+              <button type="button" onClick={() => ir("montajes")}>
+                <ArrowLeft size={16} strokeWidth={1.75} aria-hidden /> Volver a Montajes
+              </button>
+              <button type="button" className="cerrar" aria-label="Quitar este aviso" onClick={() => useArmazon.getState().olvidarMontaje()}>
+                <X size={16} strokeWidth={1.75} aria-hidden />
+              </button>
+            </div>
+          )}
+
           {/* El área de las pantallas: Vender y Supervisar miden el alto de su
               plano contra ESTE alto (`--alto-area`, medido), así el plano mide
               lo mismo en las dos sin adivinar cuánto mide el marco. */}
@@ -1651,6 +1714,7 @@ export default function Dashboard() {
               <DashboardView
                 inicio={efectivo === "inicio"}
                 onIrAMontajes={() => ir("montajes")}
+                onIrAlInicio={() => ir("inicio")}
                 modo={modoComercial}
                 onModo={(m) => ir(m === "vender" ? "contratos" : "indicadores")}
                 onDisenarPlano={() => ir("plano")}
@@ -1664,8 +1728,8 @@ export default function Dashboard() {
                 <StoreEditor3D />
               </Suspense>
             ) : efectivo === "montajes" ? (
-              <MountView initialCode={mountCode} onDone={() => ir("indicadores")}
-                onAbrirPendientes={isAdmin ? () => { ir("inicio"); useArmazon.getState().abrirBandeja(); } : undefined} />
+              <MountView initialCode={mountCode} onDone={() => ir("indicadores")} resaltar={montajeResaltado}
+                onAbrirPendientes={isAdmin ? (d) => { ir("inicio"); useArmazon.getState().abrirDesdeMontaje(d); } : undefined} />
             ) : (
               <FloorPlan2D />
             )}

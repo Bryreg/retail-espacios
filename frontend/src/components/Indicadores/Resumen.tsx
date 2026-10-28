@@ -120,11 +120,14 @@ function nombreDelMes(iso: string): string {
   return new Date(y, m - 1, 1).toLocaleDateString("es-CO", { month: "long", year: "numeric" });
 }
 
-export default function Resumen({ datos, periodo, onPeriodo, onTabla, onPendientes, onMontajes, onDisponibles, onPlano }: {
+export default function Resumen({ datos, periodo, onPeriodo, onTabla, onVencen, onPendientes, onMontajes, onDisponibles, onPlano }: {
   datos: DatosDelResumen;
   periodo: PeriodoDelResumen;
   onPeriodo: (p: PeriodoDelResumen) => void;
-  onTabla: () => void;
+  /** La tabla de contratos filtrada en lo que cuenta esa tarjeta. */
+  onTabla: (que: "canon" | "tarifa") => void;
+  /** Lo que vence en 90 días, contrato por contrato (Detalle › Lo que viene). */
+  onVencen: () => void;
   onPendientes: () => void;
   onMontajes: () => void;
   onDisponibles: () => void;
@@ -158,7 +161,7 @@ export default function Resumen({ datos, periodo, onPeriodo, onTabla, onPendient
       <div className="ind-grilla">
         {esAdmin && c && canonDelPeriodo && (
           <Tarjeta id="canon" icono={<Banknote {...ICONO} />} titulo="Canon mensual contratado" ancha
-            accion={{ texto: "Ver la tabla de contratos", onClick: onTabla }}>
+            accion={{ texto: "Ver los contratos que lo suman", onClick: () => onTabla("canon") }}>
             <div className="valor" data-valor-canon>{pesos(canonDelPeriodo.valor)}</div>
             <p className="nota">
               {canonDelPeriodo.nota}
@@ -185,7 +188,7 @@ export default function Resumen({ datos, periodo, onPeriodo, onTabla, onPendient
         </Tarjeta>
         {esAdmin && datos.canonTarifa && (
           <Tarjeta id="canon_tarifa" icono={<Gauge {...ICONO} />} titulo="Canon ÷ tarifa"
-            accion={{ texto: "Ver la tabla de contratos", onClick: onTabla }}>
+            accion={{ texto: "Ver la tabla de contratos", onClick: () => onTabla("tarifa") }}>
             <div className="valor">{datos.canonTarifa.pct === null ? "—" : `${datos.canonTarifa.pct} %`}</div>
             <p className="nota">{datos.canonTarifa.contadas} contrato{datos.canonTarifa.contadas === 1 ? "" : "s"} con tarifa{datos.canonTarifa.sinTarifa > 0 ? ` · ${datos.canonTarifa.sinTarifa} sin tarifa, afuera` : ""}</p>
             {datos.canonTarifa.pct !== null && (
@@ -214,7 +217,7 @@ export default function Resumen({ datos, periodo, onPeriodo, onTabla, onPendient
           )}
         </Tarjeta>
         <Tarjeta id="vence_90" icono={<AlarmClock {...ICONO} />} titulo="Vence en 90 días"
-          accion={{ texto: "Ver cuáles", onClick: onTabla }}>
+          accion={{ texto: "Ver cuáles", onClick: onVencen }}>
           {/* Quien no administra no sabe qué se renovó (el próximo contrato
               es de administración): ve cuántos vencen, sin «sin renovar». */}
           <div className="valor">{esAdmin ? pesos(datos.vence.sinRenovar) : String(datos.vence.puntos.length)}</div>

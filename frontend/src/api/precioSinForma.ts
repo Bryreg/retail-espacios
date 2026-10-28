@@ -2,8 +2,8 @@ import client from "./client";
 
 /**
  * Contratos cargados antes de Vender: ¿su valor era del mes o del total?
- * (2026-10-25, `services/precio_sin_forma.py`). O, si el valor era un marcador
- * ($ 1), se cobra por un % de las ventas (2026-10-27). Sólo administración y sólo
+ * (2026-10-25, `services/precio_sin_forma.py`). O se cobra por un % de las
+ * ventas (2026-10-27). Sólo administración y sólo
  * Supervisar: Vender no alcanza este módulo. No manda correos.
  */
 

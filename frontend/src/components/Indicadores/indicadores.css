@@ -261,3 +261,13 @@ html[data-tema="oscuro"] [data-detalle] {
   .det-tipo-b { grid-column: 1 / -1; grid-row: 2; }
   .det-embudo li { grid-template-columns: 110px minmax(0, 1fr) 26px 40px; }
 }
+
+/* De qué cifra se llegó a la tabla de contratos (Inicio o el Resumen). */
+.ind-llegada {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin: 0 0 10px; padding: 10px 14px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: var(--t-xs); color: var(--ink-1); line-height: 1.45;
+}
+.ind-llegada > span { flex: 1 1 320px; min-width: 0; }
+.ind-llegada .ind-csv { white-space: nowrap; }

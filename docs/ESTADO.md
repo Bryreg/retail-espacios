@@ -1,8 +1,20 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-27, **el rediseño UX 2026-10 implementado** (etapas 0–9, rama
-`claude/vibrant-wozniak-1ny6q4`, PR #97, sin mergear): el menú de módulos (Inicio · Contratos ·
+Última actualización: 2026-10-28, **tres mejoras de flujo** (rama `claude/vibrant-wozniak-1ny6q4`,
+sin mergear): cada cifra del Inicio y del Resumen lleva a la lista que la suma («Vigentes hoy», con
+la suma al pie y «Volver»), el reporte del enlace de montaje no se pierde sin señal, «Ubicar la
+zona» abre esa fila en Pendientes con la vuelta a Montajes, después de verificar sigue el siguiente,
+y un pulido (foco, reducir movimiento, 375 px, aviso al cambiar de sede, etiquetas «Cubre …»). Ver
+*Tres mejoras de flujo (2026-10-28)*. En «Contratos cargados antes» cada contrato tiene «Por % de
+ventas» y la tarjeta no distingue ningún valor (decisión del dueño).
+
+Antes, el 2026-10-27, en `main`: **Indicadores › Detalle contado como una historia** y
+la tercera opción **«Por % de ventas»** en «Contratos cargados antes» (PR #99, ver *Indicadores ›
+Detalle se cuenta como una historia (2026-10-27)* y *Contratos de antes: ¿al mes o total?*); la
+bandeja de Pendientes se cierra al abrir un contrato en Vender (PR #98).
+
+Antes, ese mismo día, **el rediseño UX 2026-10 implementado** (etapas 0–9, PR #97, mergeado): el menú de módulos (Inicio · Contratos ·
 Indicadores · Montajes · Plano de la sede · Ajustes) reemplaza las pestañas, la venta empieza por
 las fechas, Indicadores tiene Resumen y pestañas con metas por sede, el Plano 2D es una mesa de
 trabajo, Montajes es una sola lista con la verificación del montaje de un contrato, Ajustes va por
@@ -28,7 +40,7 @@ sistema lo leía como el total (el «al mes» de Supervisar salía dividido por 
 Supervisar → «Para revisar» → Corregir, «Contratos cargados antes: ¿el valor es al mes?» lista
 todos los que no dicen cómo se lee su precio (vigentes, próximos, vencidos y cerrados), con «Es
 al mes» / «Es el total» por contrato y «Todos son al mes»; se puede deshacer y no manda correos.
-Desde el 2026-10-27 hay una tercera opción, «Por % de ventas», para los de valor simbólico ($ 1).
+Desde el 2026-10-27 cada contrato tiene también «Por % de ventas».
 Y en «Editar contrato», «Total | Al mes» está siempre a la vista y conserva el número escrito: si
 eso es lo único que cambia, se guarda sin reenviar. Una tabla nueva. Ver *Contratos de antes:
 ¿al mes o total? (2026-10-25)*.
@@ -1336,6 +1348,50 @@ se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
 
 ## Qué está hecho
 
+### Tres mejoras de flujo (2026-10-28)
+
+Aprobadas por el dueño sobre el lienzo «RECABRA · Tres mejoras de flujo» (cada tablero: la app de
+hoy al lado de la propuesta). La regla: **conectar las tareas, no sumar pantallas**. Las prueba
+`scripts/probar-flujos.mjs`.
+
+- **Cada cifra lleva a la lista que la suma.** «Contratos activos» del Inicio cuenta los que
+  corren HOY (antes sumaba también los firmados que todavía no empiezan y no coincidía con la
+  tabla: ahora éstos van en la nota, «y 1 firmado que todavía no empieza»). «Ver cuáles son» y
+  «Canon del mes › Ver de dónde sale» abren Indicadores › Contratos en la pestaña nueva **«Vigentes
+  hoy»** (`MapFilter` `occupied`), con la **suma al pie** (`SpacesTable` `suma`: la plata de las
+  filas, sin libres ni reservas; con cobro por ventas, lo cargado) — es el «Canon del mes» fila
+  por fila. Quien no ve plata llega desde «Disponibles hoy» a los libres, sin suma. La tabla dice
+  de qué cifra se llegó («Desde Inicio › Canon del mes: los 18 contratos vigentes hoy…») con
+  «Volver al Inicio» (o al Resumen) y «Ver todos los espacios»; tocar otra pestaña o filtro lo
+  olvida. En el Resumen, «Canon mensual» y «Canon ÷ tarifa» abren lo mismo, y «Vence en 90 días ›
+  Ver cuáles» abre Detalle › Lo que viene.
+- **Configuración inicial recuperable.** Oculta con pasos pendientes, el Inicio ofrece
+  «Configuración 4 de 6 · Continuar» junto a «Nuevo contrato» (secundario: el amarillo sigue
+  siendo «Nuevo contrato»). Los contactos y usuarios se piden aunque esté oculta.
+- **El reporte de montaje no se pierde sin señal** (`utils/borradorDeMontaje.ts`, IndexedDB: la
+  foto es un archivo). Si el envío falla por la red (`esErrorDeRed`: sin respuesta), el reporte con
+  su foto queda en el teléfono —«Sin señal: tu reporte quedó guardado en este teléfono»— y se manda
+  solo con el evento `online`; al volver a abrir el enlace, «Tenés un reporte sin mandar» con
+  «Mandar ahora» (en tinta: el amarillo es «Confirmar») o «Descartar». Un «no» del servidor no se
+  guarda. Al llegar al servidor se borra. Vale para las dos puertas (enlace y tablero).
+- **«Ubicar la zona» / «Adjuntar planometría» vuelven al montaje.** `armazonStore.desdeMontaje`:
+  Pendientes se abre en el grupo de esa fila, la marca (`data-desde-montaje`; una participación
+  `-PC1` se busca por su cara, «Falta distribuir» es de la cara entera) y una tira fija arriba dice
+  de dónde se vino. Mientras tanto, una barra en el armazón («Resolviendo GON-04-PC1 para Montajes»)
+  lleva de vuelta desde cualquier pantalla; al volver, la fila de ese contrato queda marcada.
+- **Después de verificar, el siguiente.** El panel de verificación muestra el siguiente sin verificar
+  (en el orden de la lista) y cuántos quedan en la sede, con «Verificar el siguiente».
+- **Pulido.** El mismo anillo de foco (`--ring`) en todo botón, enlace y campo
+  (`:where(...):focus-visible`, sin especificidad). «Reducir movimiento» del sistema apaga
+  animaciones, transiciones y el desplazamiento suave; las cámaras 3D ya no se movían solas. A
+  375 px la barra del Plano se pasaba 13 px (el avatar cortado). Cambiar de sede con un contrato a
+  medio cargar lo vaciaba sin avisar: ahora pregunta «¿Cambiar a NORTE?» (`AvisoCambioDeSede`,
+  «Seguir en CENTRO» por defecto); Vender lo avisa por la prop `onBorrador`, no por el store del
+  armazón (Vender no alcanza Supervisar, `probar-vender`). Las etiquetas «Cubre …» del total del
+  contrato bajan de renglón en vez de salirse por la izquierda y partir el rótulo.
+- Revisado y descartado: la planometría «GON-12» que se ve en el montaje de PUN-01 es de la base
+  de prueba (las seis planometrías sembradas son el mismo archivo), no un error.
+
 ### Rediseño UX 2026-10 implementado (2026-10-27)
 
 La versión final aprobada (`docs/maquetas/ux-2026-10/final/`) llevada a la app en diez etapas,
@@ -1518,17 +1574,15 @@ revisar».
   meses = total 4.800.000»). **Sin correos**: corrige cómo se lee un dato, no el contrato.
 - **Deshacer** (`POST …/deshacer`): vuelve el valor de antes y borra la forma, sólo si nadie lo
   editó después (409 si el valor o la forma ya no son los que dejó la corrección).
-- **Tercera opción: «Por % de ventas» (2026-10-27).** Los de valor simbólico (hasta
-  $ 1.000, `VALOR_SIMBOLICO`; en GALERÍAS se cargaron con $ 1) no eran ni al mes ni el total: se
-  cobran por un % de las ventas. Cada fila tiene «Por % de ventas» (primero en las simbólicas,
-  que dicen «un valor simbólico: lo que se cobra seguramente sale de un % de las ventas») con el
-  porcentaje y el corte (cada mes / al final); arriba, «Los de valor simbólico son por % de
-  ventas (N)» con un porcentaje y un corte para todos, y «Todos son al mes» pasa a «Los demás son
-  al mes» (nunca toca las simbólicas). `modo: "ventas"` + `cobro {porcentaje, corte}` deja el
-  contrato como uno por ventas de Vender: `monthly_rent` 0 y su fila en `cobros_por_venta` (sin
-  `condiciones_de_contrato`); `precios_corregidos` guarda el valor de antes. Desde ahí sus cortes
-  vencidos aparecen en «Ventas por cargar» (la tarjeta la recarga). Deshacer borra el cobro y
-  vuelve el valor, salvo que ya se haya cargado alguna venta (409: lo cobrado no se pierde).
+- **Tercera opción: «Por % de ventas» (2026-10-27).** Cada contrato de la lista tiene «Por % de
+  ventas», con el porcentaje y el corte (cada mes / al final). La tarjeta no distingue ningún
+  valor: todos los contratos se muestran igual (decisión del dueño: lo cargado se trata como
+  cargado con un propósito, sin notas sobre cómo se cargó). `modo: "ventas"` + `cobro
+  {porcentaje, corte}` deja el contrato como uno por ventas de Vender: `monthly_rent` 0 y su fila
+  en `cobros_por_venta` (sin `condiciones_de_contrato`); `precios_corregidos` guarda el valor de
+  antes. Bitácora «Valor de antes X: se cobra el P % de las ventas, corte cada mes». Desde ahí sus
+  cortes vencidos aparecen en «Ventas por cargar» (la tarjeta la recarga). Deshacer borra el cobro
+  y vuelve el valor, salvo que ya se haya cargado alguna venta (409: lo cobrado no se pierde).
 - **«Editar contrato»**: el renglón muestra «El precio es Total | Al mes» siempre (antes había que
   abrir la línea para verlo, y por eso parecía que no se podía). En edición, tocar «Al mes» deja
   el número escrito y lo lee como el de cada mes (en un contrato nuevo sigue convirtiendo para

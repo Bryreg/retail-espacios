@@ -4168,8 +4168,12 @@ function anchoDeTexto(textos: string[], fuente: string): number {
 function SpacesTable({
   fixtures, isAdmin, query, filter, montajeDe, tarifaDe,
   selectedId, onSelect, sinMontar, titulo, sub, derecha, espaciosDe = commercialFacesOf,
-  unidad = "mes", cobroDe, periodo, enParte, libres, pestanas,
+  unidad = "mes", cobroDe, periodo, enParte, libres, pestanas, suma,
 }: {
+  /** Con esto, una fila al pie con la suma de la plata de las filas que se
+   *  ven (sin las libres ni las reservas, que no se cobran): el rótulo dice
+   *  qué se suma. Es la cuenta del «Canon del mes» del Inicio, fila por fila. */
+  suma?: string;
   /** La unidad de la plata de la franja: la columna de valor dice «Valor al
    *  mes» o «Valor total» y cada fila la sigue (rediseño, PR 2). */
   unidad?: UnidadDePlata;
@@ -4243,6 +4247,18 @@ function SpacesTable({
       (e) => (!q || faceMatchesQuery(e, q, nombresPropios)) && faceMatchesFilter(e, filter, sinMontar, enParte, libres),
     );
   }, [rows, filter, query, sinMontar, enParte, libres, fichasPropias, nombresPropios]);
+
+  /** La suma al pie (`suma`): lo mismo que muestra la columna de plata. */
+  const sumaDeFilas = useMemo(() => {
+    if (!suma) return null;
+    let total = 0;
+    for (const e of filtered) {
+      if (displayStatus(e) === "free" || e.reservaHasta) continue;
+      const c = cobroDe?.(e);
+      total += c ? enLaUnidad(c.cobrado, c.desde, c.hasta, unidad) : enLaUnidad(e.negotiatedValue, e.startDate, e.endDate, unidad);
+    }
+    return total;
+  }, [suma, filtered, cobroDe, unidad]);
 
   /* LOS ANCHOS, MEDIDOS.
      Proveedor no llevaba ancho y se quedaba con todo lo que sobraba: en una
@@ -4529,6 +4545,19 @@ function SpacesTable({
             );
           })}
         </tbody>
+        {isAdmin && sumaDeFilas !== null && filtered.length > 0 && (
+          <tfoot data-suma-tabla>
+            <tr>
+              <td colSpan={columnas.length - 2} style={{ padding: "10px 8px", fontSize: 13, fontWeight: 700, color: "var(--ink-1)", borderTop: "2px solid var(--ink-1)" }}>
+                {suma}
+              </td>
+              <td style={{ padding: "10px 8px", textAlign: "right", fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13, color: "var(--ink-1)", borderTop: "2px solid var(--ink-1)" }}>
+                {formatCOP(sumaDeFilas)}
+              </td>
+              <td style={{ borderTop: "2px solid var(--ink-1)" }} />
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
     </>
@@ -4700,10 +4729,12 @@ function EmptyDashboard({
  *  de una edición…) navegan con `onModo`. */
 export type ModoComercial = "vender" | "supervisar";
 
-export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo, inicio = false, onIrAMontajes }: {
+export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo, inicio = false, onIrAMontajes, onIrAlInicio }: {
   onDisenarPlano: () => void;
   /** «Ver montajes» del Inicio: el módulo Montajes. */
   onIrAMontajes?: () => void;
+  /** «Volver al Inicio» desde una lista a la que se llegó tocando una cifra. */
+  onIrAlInicio?: () => void;
   /** El Inicio del armazón (etapa 3): la misma pantalla en Supervisar, que
    *  dibuja lo de hoy en vez del tablero entero. */
   inicio?: boolean;
@@ -4950,6 +4981,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     try { window.localStorage.setItem("recabra-indicadores-pestana", p); } catch { /* sin almacenamiento, igual cambia */ }
   };
   const [periodoResumen, setPeriodoResumen] = useState<PeriodoDelResumen>("hoy");
+  /** De qué cifra se llegó a la tabla de contratos (Inicio o el Resumen): la
+   *  tabla abre filtrada en lo que esa cifra cuenta, dice de dónde se vino y
+   *  ofrece volver. Tocar otra pestaña u otro filtro lo olvida. */
+  const [llegada, setLlegada] = useState<{ desde: "Inicio" | "Resumen"; cifra: string } | null>(null);
   const enIndicadores = modoEfectivo === "supervisar" && !inicio;
   // Lo que pide el armazón (Ctrl K, «Más», lo fijado): esta pantalla lo sabe
   // hacer y lo atiende cuando ya es la que está a la vista.
@@ -6467,11 +6502,37 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   useEffect(() => {
     if (!avisoMarcado) return;
     const el = document.querySelector<HTMLElement>(`[data-aviso="${CSS.escape(avisoMarcado)}"]`);
-    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    el?.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     el?.setAttribute("data-marcada", "1");
     const t = window.setTimeout(() => { el?.removeAttribute("data-marcada"); setAvisoMarcado(null); }, 2400);
     return () => window.clearTimeout(t);
   }, [avisoMarcado]);
+
+  /** Se vino de Montajes («Ubicar la zona», «Adjuntar planometría»): la fila
+   *  de ese contrato en Pendientes —su grupo abierto, a la vista y marcada—.
+   *  La participación (`-PC1`) se busca por su cara: «Falta distribuir» es de
+   *  la cara entera. */
+  const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  const avisoDelMontaje = useMemo(() => {
+    if (!desdeMontaje) return null;
+    const m = muebleDelEspacio(desdeMontaje.codigo.replace(/-PC\d+$/i, ""));
+    if (!m) return null;
+    const deLaCara = avisos.filter((a) => a.fixtureId === m.fixture.id && (a.cara ?? "A") === m.cara);
+    return (desdeMontaje.estado === "falta_planometria"
+      ? deLaCara.find((a) => a.seccion === "falta_planometria")
+      : deLaCara.find((a) => a.clave.startsWith("pc:"))) ?? null;
+  }, [desdeMontaje, avisos, muebleDelEspacio]);
+  useEffect(() => {
+    if (!bandejaAbierta || !avisoDelMontaje) return;
+    setGrupoElegido(grupoDelAviso(avisoDelMontaje.seccion, avisoDelMontaje.dias));
+    const t = window.setTimeout(() => {
+      document.querySelectorAll("[data-desde-montaje]").forEach((e) => e.removeAttribute("data-desde-montaje"));
+      const el = document.querySelector<HTMLElement>(`[data-aviso="${CSS.escape(avisoDelMontaje.clave)}"]`);
+      el?.setAttribute("data-desde-montaje", "1");
+      el?.scrollIntoView({ block: "center" });
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [bandejaAbierta, avisoDelMontaje]);
 
   /** «Cargar planometría»: la ficha del espacio, con la planometría de ese
    *  contrato arriba. */
@@ -6547,6 +6608,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     const cuantas = (id: MapFilter) => filas.filter((e) => faceMatchesFilter(e, id, sinMontarSet, enParteSet, libresSet)).length;
     const todos: { id: MapFilter; label: string; n: number }[] = [
       { id: "todos", label: "Todas", n: kpis.filas },
+      { id: "occupied", label: "Vigentes hoy", n: cuantas("occupied") },
       { id: "expiring", label: "Por vencer", n: kpis.expiring.length },
       { id: "sin_montar", label: "Sin montar", n: montaje.sinMontar.length },
       { id: "free", label: "Libres", n: cuantas("free") },
@@ -6554,6 +6616,19 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     ];
     return todos;
   }, [kpis, montaje.sinMontar.length, fixtures, espaciosDelMueble, sinMontarSet, enParteSet, libresSet]);
+
+  /** Los contratos que corren HOY (la pestaña «Vigentes hoy»): es la cifra
+   *  «Contratos activos» del Inicio, y sus filas suman el «Canon del mes». */
+  const vigentesHoy = chipsTabla.find((c) => c.id === "occupied")?.n ?? 0;
+
+  /** Una cifra lleva a la tabla de contratos filtrada en lo que cuenta. */
+  const abrirTablaDesde = (filtro: MapFilter, desde: "Inicio" | "Resumen", cifra: string) => {
+    setModo("supervisar");
+    setPestanaInd("contratos");
+    setMapFilter(filtro);
+    setMapQuery("");
+    setLlegada({ desde, cifra });
+  };
 
   /** «lunes 31 de agosto de 2026». Es el único lugar de la pantalla donde se
    *  dice qué día es, y hace falta: todo lo demás —los días que faltan, lo que
@@ -7781,7 +7856,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           sede={sede}
           nombre={nombreDeQuienEntra}
           cifras={{
-            contratos: kpis.contratos,
+            contratos: vigentesHoy,
+            firmados: kpis.contratos - vigentesHoy,
             porVencer: kpis.expiring.length,
             montajesPorResolver: montaje.sinMontar.length + montaje.noMontado.length,
             canonDelMes,
@@ -7791,10 +7867,12 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           cuentaHoy={cuentasDeRevision.hoy}
           totalPendientes={attentionCount}
           onNuevoContrato={isAdmin ? () => setModo("vender") : undefined}
-          onVerTabla={() => setModo("supervisar")}
+          onVerTabla={() => abrirTablaDesde("occupied", "Inicio", "Contratos activos")}
           onVerPorVencer={() => useArmazon.getState().abrirBandeja("dias30")}
           onVerMontajes={() => onIrAMontajes?.()}
-          onVerIndicadores={() => setModo("supervisar")}
+          onVerIndicadores={() => isAdmin
+            ? abrirTablaDesde("occupied", "Inicio", "Canon del mes")
+            : abrirTablaDesde("free", "Inicio", "Disponibles hoy")}
           onVerPendientes={() => useArmazon.getState().abrirBandeja()}
           onTarifas={isAdmin ? () => setRatesOpen(true) : undefined}
         />
@@ -7817,6 +7895,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           <div className="hoja-col hoja-der">
           <ModoVender
             espacios={espaciosDelContrato}
+            onBorrador={(t) => useArmazon.getState().setBorradorDeVenta(t)}
             ultimo={selected}
             ocupacionDe={participacionDe}
             onVenderAsi={venderAsi}
@@ -7878,7 +7957,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
               ...(sedes.length > 1 ? [["sedes", "Todas las sedes"]] as const : []),
               ["detalle", "Detalle"], ["diccionario", "Diccionario"],
             ] as const).map(([id, texto]) => (
-              <button key={id} type="button" role="tab" aria-selected={pestanaInd === id} onClick={() => setPestanaInd(id)}>
+              <button key={id} type="button" role="tab" aria-selected={pestanaInd === id} onClick={() => { setPestanaInd(id); setLlegada(null); }}>
                 {texto}
               </button>
             ))}
@@ -7889,7 +7968,13 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
               datos={datosResumen}
               periodo={periodoResumen}
               onPeriodo={setPeriodoResumen}
-              onTabla={() => setPestanaInd("contratos")}
+              onTabla={(que) => abrirTablaDesde("occupied", "Resumen", que === "canon" ? "Canon mensual contratado" : "Canon ÷ tarifa")}
+              onVencen={() => {
+                // Lo que vence en 90 días, contrato por contrato, está en
+                // Detalle › Lo que viene: se abre ahí, en ese capítulo.
+                setPestanaInd("detalle"); setLlegada(null);
+                window.setTimeout(() => document.querySelector('[data-bloque="lo-que-viene"]')?.scrollIntoView({ block: "start" }), 120);
+              }}
               onPendientes={() => useArmazon.getState().abrirBandeja()}
               onMontajes={() => onIrAMontajes?.()}
               onDisponibles={() => {
@@ -7948,6 +8033,25 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                   <Download {...ICONO_TARJETA} /> Bajar todos (CSV)
                 </button>
               </div>
+          {llegada && (
+            <div className="ind-llegada" role="status" data-llegada>
+              <span>
+                Desde <b>{llegada.desde} › {llegada.cifra}</b>:{" "}
+                {mapFilter === "free"
+                  ? `los ${visiblesEnTabla} espacios libres en ${sede}.`
+                  : `los ${visiblesEnTabla} contratos vigentes hoy en ${sede}${isAdmin ? ", con lo que paga cada uno" : ""}.`}
+              </span>
+              <button type="button" className="ind-csv" onClick={() => {
+                setLlegada(null);
+                if (llegada.desde === "Inicio") onIrAlInicio?.(); else setPestanaInd("resumen");
+              }}>
+                <ArrowLeft {...ICONO_TARJETA} /> Volver {llegada.desde === "Inicio" ? "al Inicio" : "al Resumen"}
+              </button>
+              <button type="button" className="ind-csv" onClick={() => { setMapFilter("todos"); setLlegada(null); }}>
+                Ver todos los espacios
+              </button>
+            </div>
+          )}
           {/* ── Estado por espacio: abajo del plano, y del mismo ancho. Para
               quien no ve plata no hay «quién paga el canon», así que la tabla
               se queda con la fila entera. */}
@@ -7962,7 +8066,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
               pestanas={
                 <div className="seg" role="group" aria-label="Qué espacios">
                   {chipsTabla.map((c) => (
-                    <button key={c.id} type="button" aria-pressed={mapFilter === c.id} onClick={() => setMapFilter(c.id)}>
+                    <button key={c.id} type="button" aria-pressed={mapFilter === c.id} onClick={() => { setMapFilter(c.id); setLlegada(null); }}>
                       {c.label} <span className="n">{c.n}</span>
                     </button>
                   ))}
@@ -7982,6 +8086,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
               periodo={periodoIso ?? undefined}
               selectedId={selected?.id ?? null}
               onSelect={revisar}
+              suma={mapFilter === "occupied" && !mapQuery.trim()
+                ? `Suma ${unidad === "mes" ? "al mes" : "total"} de los ${visiblesEnTabla} contratos vigentes hoy`
+                : undefined}
             />
           </Card>
             </>
@@ -8182,7 +8289,22 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           sub={`${attentionCount} para revisar en ${sede} · pasá el mouse por una fila y se señala en el plano de Indicadores`}
           onCerrar={cerrarBandeja}
         >
-          <div className="sup bandeja">{cuerpoDeRevision}</div>
+          <div className="sup bandeja">
+            {desdeMontaje && (
+              <div className="bandeja-desde-montaje" role="status" data-tira-montaje>
+                <span>
+                  Desde <b>Montajes › <span className="mono">{desdeMontaje.corto}</span></b>:{" "}
+                  {desdeMontaje.estado === "falta_zona" ? "falta ubicar su zona en la cara" : "falta su planometría"}
+                  {desdeMontaje.quien ? ` (${desdeMontaje.quien})` : ""}.
+                  {avisoDelMontaje ? " Está marcado abajo." : ""}
+                </span>
+                <button type="button" className="btn-s" onClick={() => { onIrAMontajes?.(); }}>
+                  <ArrowLeft {...ICONO_TARJETA} /> Volver a Montajes
+                </button>
+              </div>
+            )}
+            {cuerpoDeRevision}
+          </div>
         </Cajon>
       )}
       {/* La ficha del espacio: la misma desde el Inicio, Indicadores y

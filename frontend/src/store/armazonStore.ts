@@ -17,6 +17,19 @@ export type TemaDeAjustes = "comercial" | "sede" | "avisos" | "equipo" | "cuenta
  *  es la que lo sabe hacer: abrir la planilla, ir al Diccionario. */
 export type PedidoALaPantalla = "planilla" | "diccionario";
 
+/** De qué montaje se vino a Pendientes («Ubicar la zona», «Adjuntar
+ *  planometría»): la bandeja marca su fila y una barra ofrece volver a
+ *  Montajes mientras se resuelve (2026-10-28). */
+export interface DesdeMontaje {
+  /** `SEDE-CODIGO` del contrato. */
+  codigo: string;
+  /** Lo que se lee: `GON-04-PC1`. */
+  corto: string;
+  estado: "falta_zona" | "falta_planometria";
+  /** Proveedor · marca. */
+  quien: string;
+}
+
 interface EstadoDelArmazon {
   /** Cuánto hay para revisar (la pastilla roja). */
   cuentaPendientes: number;
@@ -35,6 +48,13 @@ interface EstadoDelArmazon {
   pedido: PedidoALaPantalla | null;
   pedir: (p: PedidoALaPantalla) => void;
   atender: () => void;
+  /** Un contrato a medio cargar en Contratos («Snacks Norte, 2 espacios»):
+   *  cambiar de sede lo vacía, así que el selector de sede pregunta antes. */
+  borradorDeVenta: string | null;
+  setBorradorDeVenta: (t: string | null) => void;
+  desdeMontaje: DesdeMontaje | null;
+  abrirDesdeMontaje: (d: DesdeMontaje) => void;
+  olvidarMontaje: () => void;
   /** El buscador de funciones (Ctrl K) y la ayuda «?» de la pantalla. */
   buscador: boolean;
   setBuscador: (v: boolean) => void;
@@ -55,6 +75,11 @@ export const useArmazon = create<EstadoDelArmazon>()((set) => ({
   pedido: null,
   pedir: (p) => set({ pedido: p }),
   atender: () => set({ pedido: null }),
+  borradorDeVenta: null,
+  setBorradorDeVenta: (t) => set((s) => (s.borradorDeVenta === t ? s : { borradorDeVenta: t })),
+  desdeMontaje: null,
+  abrirDesdeMontaje: (d) => set({ desdeMontaje: d, bandejaAbierta: true, grupoPedido: null }),
+  olvidarMontaje: () => set({ desdeMontaje: null }),
   buscador: false,
   setBuscador: (v) => set({ buscador: v }),
   ayuda: false,

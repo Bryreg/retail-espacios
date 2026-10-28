@@ -119,3 +119,17 @@
   .vm-laminas { grid-template-columns: minmax(0, 1fr); }
   .vm-lamina img, .vm-lamina iframe, .vm-vacio { height: 220px; }
 }
+
+/* Se volvió de Pendientes («Ubicar la zona», «Adjuntar planometría»): la fila
+   de ese contrato, marcada. */
+.mj-fila[data-resaltada] { background: var(--accent-50); box-shadow: inset 3px 0 0 var(--accent); }
+
+/* Después de verificar: el siguiente sin verificar (2026-10-28). */
+.vm-siguiente { display: grid; gap: 10px; margin-top: 12px; padding: 14px 16px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); }
+.vm-sig-titulo { font-size: var(--t-2xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.vm-sig-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.vm-sig-fila > span { flex: 1 1 220px; min-width: 0; display: grid; gap: 2px; font-size: var(--t-sm); color: var(--ink-1); }
+.vm-sig-fila small { font-size: var(--t-xs); color: var(--ink-3); }
+.vm-siguiente > .vm-btn { justify-self: start; }
+/* En tinta: el amarillo del panel es «Guardar la verificación» (uno por pantalla). */
+.vm-sig-btn { background: var(--ink-1); color: var(--surface); border-color: var(--ink-1); font-weight: 700; }

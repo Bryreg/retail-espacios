@@ -14,11 +14,9 @@ import { EncabezadoDeSeccion } from "./piezas";
  * duración.
  *
  * Por contrato, «Es al mes» (el total pasa a ser el valor × los meses) o «Es el
- * total» (no cambia); y «Todos son al mes», que pregunta antes. Los de valor
- * simbólico ($ 1) no son ni una cosa ni la otra: eran contratos que se cobran
- * por un % de las ventas (2026-10-27), y «Por % de ventas» los deja como los de
- * Vender (valor 0, su porcentaje y su corte), de a uno o todos los simbólicos
- * juntos; «Todos son al mes» pasa a ser «Los demás». Se puede
+ * total» (no cambia), o «Por % de ventas» (2026-10-27: queda como un contrato
+ * por ventas de Vender, con valor 0, su porcentaje y su corte); y «Todos son al
+ * mes», que pregunta antes. Se puede
  * deshacer desde el aviso. No manda correos: corrige cómo se lee un dato
  * (decisión del dueño). SÓLO ADMINISTRACIÓN: lleva plata y proveedores; quien
  * lo monta lo pone adentro de `isAdmin &&`, y el hook no pide nada si no está
@@ -36,11 +34,6 @@ const ESTADO: Record<ContratoSinForma["estado"], { texto: string; tono: string }
   cerrado: { texto: "cerrado", tono: "" },
 };
 
-/** Hasta acá un valor no es un precio sino un marcador: el contrato se cobra
- *  por ventas (en GALERÍAS se cargaron con $ 1). */
-export const VALOR_SIMBOLICO = 1_000;
-export const esSimbolico = (c: Pick<ContratoSinForma, "valor">): boolean => c.valor <= VALOR_SIMBOLICO;
-
 const CORTE: Record<CobroPorVentasDe["corte"], string> = { mensual: "cada mes", al_final: "al final" };
 
 /** «7,5» → 7.5; vacío, 0 o más de 100 → null. */
@@ -52,8 +45,7 @@ export function leerPorcentaje(t: string): number | null {
 const textoDePorcentaje = (n: number): string => String(n).replace(".", ",");
 
 /** El porcentaje y el corte, con «Guardar» y «Cancelar». */
-function CobroPorVentas({ pregunta, etiqueta, haciendo, onGuardar, onCancelar }: {
-  pregunta?: string;
+function CobroPorVentas({ etiqueta, haciendo, onGuardar, onCancelar }: {
   etiqueta: string;
   haciendo: boolean;
   onGuardar: (cobro: CobroPorVentasDe) => void;
@@ -71,7 +63,6 @@ function CobroPorVentas({ pregunta, etiqueta, haciendo, onGuardar, onCancelar }:
       onSubmit={(e) => { e.preventDefault(); if (porcentaje !== null) onGuardar({ porcentaje, corte }); }}
       style={{ display: "grid", gap: 8, margin: "0 10px 8px", padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)",
         border: "1px solid var(--line)", fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
-      {pregunta && <span>{pregunta}</span>}
       <span style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <label style={{ ...control, display: "inline-flex", alignItems: "center", gap: 4, padding: "0 8px", width: 84 }}>
           <input inputMode="decimal" placeholder="8" aria-label={`Porcentaje de las ventas: ${etiqueta}`} value={texto}
@@ -129,8 +120,8 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
 }) {
   const [verTodos, setVerTodos] = useState(false);
   const [preguntando, setPreguntando] = useState(false);
-  /** El contrato (o «los simbólicos») al que se le está escribiendo el %. */
-  const [porVentas, setPorVentas] = useState<number | "simbolicos" | null>(null);
+  /** El contrato al que se le está escribiendo el porcentaje de las ventas. */
+  const [porVentas, setPorVentas] = useState<number | null>(null);
   const [haciendo, setHaciendo] = useState(false);
   const [aviso, setAviso] = useState<{ texto: string; deshacer: number[] | null; error?: boolean } | null>(null);
   const refrescarComercial = useFixtureStore((s) => s.refrescarComercial);
@@ -187,8 +178,6 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
 
   if (filas.length === 0 && !aviso) return null;
   const visibles = verTodos ? filas : filas.slice(0, MOSTRAR);
-  const simbolicos = filas.filter(esSimbolico);
-  const demas = filas.filter((c) => !esSimbolico(c));
   return (
     <div data-precio-sin-forma>
       <EncabezadoDeSeccion titulo={titulo} valor={filas.length || undefined} />
@@ -211,80 +200,53 @@ export function PrecioSinForma({ filas, titulo, onCambio }: {
         <>
           <p style={{ margin: "2px 18px 8px", fontSize: "var(--t-2xs)", color: "var(--ink-3)", lineHeight: 1.45 }}>
             Se cargaron antes de Vender y hoy se leen como el total del contrato. Si el valor es el de cada mes, el total pasa a
-            ser el valor × los meses. Si es simbólico (como {pesosExactos(1)}), el contrato se cobra por un % de las ventas.
-            No se manda ningún correo.
+            ser el valor × los meses. Si se cobra por un % de las ventas, elegí «Por % de ventas». No se manda ningún correo.
           </p>
-          {(simbolicos.length > 0 || demas.length > 0) && porVentas !== "simbolicos" && !preguntando && (
-            <div style={{ margin: "0 10px 6px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              {simbolicos.length > 0 && (
-                <button type="button" className="btn-s" onClick={() => { setPorVentas("simbolicos"); setPreguntando(false); }} disabled={haciendo}
-                  data-simbolicos-por-ventas>
-                  <Percent {...ICONO} /> Los de valor simbólico son por % de ventas ({simbolicos.length})
-                </button>
-              )}
-              {demas.length > 0 && (
-                <button type="button" className="btn-s" onClick={() => { setPreguntando(true); setPorVentas(null); }} disabled={haciendo} data-todos-al-mes>
-                  <CalendarClock {...ICONO} /> {simbolicos.length > 0 ? `Los demás son al mes (${demas.length})` : `Todos son al mes (${demas.length})`}
-                </button>
-              )}
-            </div>
-          )}
-          {porVentas === "simbolicos" && (
-            <CobroPorVentas
-              etiqueta={`los ${simbolicos.length} de valor simbólico`}
-              pregunta={`¿Los ${simbolicos.length} contratos con valor de ${pesosExactos(VALOR_SIMBOLICO)} o menos se cobran por un % de las ventas? `
-                + `Quedan en $ 0 con su porcentaje y su corte, como los de Vender, y lo vendido se carga en «Ventas por cargar». `
-                + `Si no todos tienen el mismo porcentaje, hacelo contrato por contrato. Se puede deshacer.`}
-              haciendo={haciendo}
-              onGuardar={(cobro) => void corregir("ventas", simbolicos, cobro)}
-              onCancelar={() => setPorVentas(null)}
-            />
-          )}
-          {preguntando && demas.length > 0 && (
-            <div role="group" aria-label="Confirmar" data-confirmar-todos
-              style={{ display: "grid", gap: 8, margin: "0 10px 6px", padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)",
-                border: "1px solid var(--line)", fontSize: "var(--t-xs)", color: "var(--ink-1)" }}>
-              <span>
-                ¿Pasar {simbolicos.length > 0 ? `los ${demas.length} contratos que no tienen valor simbólico` : `los ${demas.length} contratos`} a «al mes»?
-                El total de cada uno pasa a ser su valor × sus meses
-                (por ejemplo {demas[0].espacio}: {pesosExactos(demas[0].valor)} × {textoDeMeses(demas[0].meses)} = {pesosExactos(demas[0].total_si_es_al_mes)}).
-                Se puede deshacer.
-              </span>
-              <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="btn-s" onClick={() => void corregir("mensual", demas)} disabled={haciendo} data-si-todos>
-                  {haciendo ? "Guardando…" : "Sí, son al mes"}
-                </button>
-                <button type="button" className="btn-s" onClick={() => setPreguntando(false)} disabled={haciendo}>Cancelar</button>
-              </span>
-            </div>
-          )}
+          <div style={{ margin: "0 10px 6px", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            {!preguntando ? (
+              <button type="button" className="btn-s" onClick={() => { setPreguntando(true); setPorVentas(null); }} disabled={haciendo} data-todos-al-mes>
+                <CalendarClock {...ICONO} /> Todos son al mes ({filas.length})
+              </button>
+            ) : (
+              <div role="group" aria-label="Confirmar" data-confirmar-todos
+                style={{ display: "grid", gap: 8, width: "100%", padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)",
+                  border: "1px solid var(--line)", fontSize: "var(--t-xs)", color: "var(--ink-1)" }}>
+                <span>
+                  ¿Pasar los {filas.length} contratos a «al mes»? El total de cada uno pasa a ser su valor × sus meses
+                  (por ejemplo {filas[0].espacio}: {pesosExactos(filas[0].valor)} × {textoDeMeses(filas[0].meses)} = {pesosExactos(filas[0].total_si_es_al_mes)}).
+                  Se puede deshacer.
+                </span>
+                <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="btn-s" onClick={() => void corregir("mensual", filas)} disabled={haciendo} data-si-todos>
+                    {haciendo ? "Guardando…" : "Sí, son al mes"}
+                  </button>
+                  <button type="button" className="btn-s" onClick={() => setPreguntando(false)} disabled={haciendo}>Cancelar</button>
+                </span>
+              </div>
+            )}
+          </div>
           {visibles.map((c) => (
             <Fragment key={c.lease_id}>
-            <div className="fila-r" data-aviso={`psf:${c.lease_id}`} data-contrato-sin-forma={c.lease_id} data-simbolico={esSimbolico(c) || undefined}>
+            <div className="fila-r" data-aviso={`psf:${c.lease_id}`} data-contrato-sin-forma={c.lease_id}>
               <span className={`pill ${ESTADO[c.estado].tono}`}>{ESTADO[c.estado].texto}</span>
               <div className="dat">
                 <b className="mono">{c.espacio}</b>
                 <span>{c.proveedor || "—"} · {diaConAnio(c.desde)} → {diaConAnio(c.hasta)}</span>
-                {esSimbolico(c) ? (
-                  <span>Hoy: {pesosExactos(c.valor)} · un valor simbólico: lo que se cobra seguramente sale de un % de las ventas</span>
-                ) : (
-                  <span>
-                    Hoy: {pesosExactos(c.valor)} de total · si es al mes: {pesosExactos(c.valor)} × {textoDeMeses(c.meses)} ={" "}
-                    <b>{pesosExactos(c.total_si_es_al_mes)}</b>
-                  </span>
-                )}
+                <span>
+                  Hoy: {pesosExactos(c.valor)} de total · si es al mes: {pesosExactos(c.valor)} × {textoDeMeses(c.meses)} ={" "}
+                  <b>{pesosExactos(c.total_si_es_al_mes)}</b>
+                </span>
               </div>
               {/* `acc-r`: debajo de la cuenta, no en una columna aparte (en el
                   teléfono la columna caía debajo de la pastilla). */}
               <span className="acc-r">
-                {esSimbolico(c) && ventasBoton(c)}
                 <button type="button" className="btn-s" onClick={() => void corregir("mensual", [c])} disabled={haciendo} data-es-al-mes={c.lease_id}>
                   Es al mes
                 </button>
                 <button type="button" className="btn-s" onClick={() => void corregir("total", [c])} disabled={haciendo} data-es-total={c.lease_id}>
                   Es el total
                 </button>
-                {!esSimbolico(c) && ventasBoton(c)}
+                {ventasBoton(c)}
               </span>
             </div>
             {porVentas === c.lease_id && (

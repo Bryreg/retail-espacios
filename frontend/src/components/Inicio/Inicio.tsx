@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlarmClock, Banknote, CircleDashed, FilePlus2, FileText, Hammer, History } from "lucide-react";
+import { AlarmClock, Banknote, CircleDashed, FilePlus2, FileText, Hammer, History, ListChecks } from "lucide-react";
 import { getBitacora, type LineaBitacora } from "../../api/auth";
 import { useNavigate } from "react-router-dom";
 import ConfiguracionInicial, { useConfiguracionInicial } from "./ConfiguracionInicial";
@@ -34,7 +34,10 @@ export interface FilaDeHoy {
 }
 
 export interface CifrasDelInicio {
+  /** Los que corren hoy (las filas de «Vigentes hoy»). */
   contratos: number;
+  /** Firmados que todavía no empezaron. */
+  firmados: number;
   porVencer: number;
   montajesPorResolver: number;
   /** Sólo quien administra. */
@@ -138,6 +141,11 @@ export default function Inicio({
         </div>
         <div className="der">
           <span className="hoy">Hoy, {fechaCorta(hoy)}</span>
+          {config.pendiente && !config.visible && (
+            <button type="button" className="ini-nuevo-sec ini-nuevo" onClick={config.mostrar} data-continuar-configuracion>
+              <ListChecks {...ICONO} /> Configuración {config.hechos} de {config.pasos.length} · Continuar
+            </button>
+          )}
           {onNuevoContrato && (
             <button type="button" className={config.visible ? "ini-nuevo-sec ini-nuevo" : "btn-principal ini-nuevo"} onClick={onNuevoContrato}>
               <FilePlus2 {...ICONO} /> Nuevo contrato
@@ -156,7 +164,8 @@ export default function Inicio({
           rotulo="Contratos activos"
           definicion="Contratos que corren hoy en la sede, incluidas las partes vendidas por separado."
           valor={String(cifras.contratos)}
-          accion={{ texto: "Ver la tabla", onClick: onVerTabla }}
+          nota={cifras.firmados > 0 ? `y ${cifras.firmados} firmado${cifras.firmados === 1 ? "" : "s"} que todavía no empieza${cifras.firmados === 1 ? "" : "n"}` : undefined}
+          accion={{ texto: "Ver cuáles son", onClick: onVerTabla }}
         />
         <Tarjeta
           icono={<AlarmClock {...ICONO} />}
@@ -180,7 +189,7 @@ export default function Inicio({
             rotulo="Canon del mes"
             definicion="Lo que pagan al mes los contratos vigentes: cada contrato repartido en sus meses, más lo cargado de los que cobran por % de las ventas."
             valor={pesos(cifras.canonDelMes)}
-            accion={{ texto: "Ver indicadores", onClick: onVerIndicadores }}
+            accion={{ texto: "Ver de dónde sale", onClick: onVerIndicadores }}
           />
         ) : (
           <Tarjeta
@@ -188,7 +197,7 @@ export default function Inicio({
             rotulo="Disponibles hoy"
             definicion="Caras que se pueden contratar hoy: sin contrato ni reserva."
             valor={String(cifras.disponibles)}
-            accion={{ texto: "Ver indicadores", onClick: onVerIndicadores }}
+            accion={{ texto: "Ver cuáles son", onClick: onVerIndicadores }}
           />
         )}
       </div>

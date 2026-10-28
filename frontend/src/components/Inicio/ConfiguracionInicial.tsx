@@ -33,16 +33,24 @@ export function useConfiguracionInicial(esAdmin: boolean) {
     window.addEventListener(EVENTO_CONFIGURACION, re);
     return () => window.removeEventListener(EVENTO_CONFIGURACION, re);
   }, [cliente]);
+  // Se pide aunque esté oculta: con los pasos que faltan, el Inicio ofrece
+  // «Configuración N de 6 · Continuar» junto a «Nuevo contrato».
   useEffect(() => {
-    if (!esAdmin || oculta) return;
+    if (!esAdmin) return;
     getContacts().then(setContactos).catch(() => setContactos({ gerente: [], by_sede: {} }));
     getUsuarios().then(setUsuarios).catch(() => setUsuarios(null));
-  }, [esAdmin, oculta]);
+  }, [esAdmin]);
   const tarifas = Object.values(rates?.default ?? {}).filter((v) => v > 0).length;
   const pasos = useMemo(() => pasosIniciales({ sedes, porSede, tarifas, contactos, usuarios }), [sedes, porSede, tarifas, contactos, usuarios]);
   const hechos = pasos.filter((p) => p.hecho).length;
   const ocultar = () => { try { localStorage.setItem(claveOculta(cliente), "1"); } catch { /* queda en esta pestaña */ } setOculta(true); };
-  return { pasos, hechos, visible: esAdmin && !oculta && hechos < pasos.length, ocultar };
+  return {
+    pasos, hechos, ocultar,
+    visible: esAdmin && !oculta && hechos < pasos.length,
+    /** Falta algún paso (se muestre la lista o no). */
+    pendiente: esAdmin && hechos < pasos.length,
+    mostrar: () => mostrarConfiguracionInicial(cliente),
+  };
 }
 
 /**

@@ -530,8 +530,11 @@ prueba("la sede: de sólo lectura en el panel (con su candado), y una sola vez e
   const todos = ["pages/Dashboard.tsx", "pages/DashboardView.tsx", "components/FloorPlan2D/FloorPlan2D.tsx", "components/StoreEditor3D/StoreEditor3D.tsx"]
     .map((f) => sinComentPR3(fuenteDe(f)));
   assert.equal(todos.map((t) => (t.match(/className="sede-sel"/g) ?? []).length).reduce((a, b) => a + b, 0), 1, "la sede se elige en más de un lugar");
-  assert.match(todos[0], /function SelectorDeSede\(\)[\s\S]{0,900}<select className="sede-sel" value=\{sede\} onChange=\{\(e\) => setSede\(e\.target\.value\)\} aria-label="Sede">/,
+  // Con un contrato a medio cargar pregunta antes (2026-10-28): elegir otra
+  // sede la mueve, o la mueve «Cambiar y descartarlo».
+  assert.match(todos[0], /function SelectorDeSede\(\)[\s\S]{0,1400}<select className="sede-sel" value=\{sede\} aria-label="Sede"\s+onChange=\{\(e\) => \{ const v = e\.target\.value; if \(borrador && v !== sede\) setPedida\(v\); else setSede\(v\); \}\}>/,
     "el selector de la barra de arriba no mueve la sede del store");
+  assert.match(todos[0], /onCambiar=\{\(\) => \{ setSede\(pedida\); setPedida\(null\); \}\}/, "«Cambiar y descartarlo» no mueve la sede");
   const pieza = tramo(fp2d, '<div className="pieza p2-sede" data-sede-pieza>', '<div className="p2-grupo">');
   assert.match(pieza, /<MapPin /);
   for (const que of ["Renombrar sede", "Agregar sede", "Eliminar sede"]) assert.ok(pieza.includes(que), `el menú de la sede no tiene «${que}»`);
