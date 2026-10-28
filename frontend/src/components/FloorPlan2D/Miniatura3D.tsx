@@ -4,6 +4,7 @@ import { Box3, BoxGeometry, TOUCH, Vector3, type Group } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FixtureMesh, storeToFixtures, type PlacedFixture } from "../StoreEditor3D/StoreEditor3D";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
+import { ANFITRION_SIN_ESCALA } from "../../escala";
 
 /**
  * La vista 3D del mueble elegido, dentro de su ficha del plano 2D
@@ -177,6 +178,7 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
       </div>
       <div className="p2-mini3d-lienzo">
         {fix && objetivo && inicio ? (
+          <div style={ANFITRION_SIN_ESCALA}>
           <Canvas frameloop="demand" dpr={[1, 1.5]} gl={{ antialias: true }}
             camera={camara}
             style={{ background: FONDO }}>
@@ -219,6 +221,7 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
               </>
             )}
           </Canvas>
+          </div>
         ) : (
           <p className="p2-mini3d-vacio">Este mueble no tiene vista 3D.</p>
         )}

@@ -514,6 +514,8 @@
    el pie, igual. */
 .plano2d .p2-mini3d {
   display: grid;
+  /* Una columna que no crece con el lienzo: el ancho lo da la ficha. */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   border: var(--hair) solid var(--line);
   border-radius: var(--r-md);

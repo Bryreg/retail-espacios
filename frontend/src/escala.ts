@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, type CSSProperties } from "react";
 
 /**
  * UN SOLO DISEÑO QUE SE ESCALA (rediseño UX, aprobado el 2026-10-26).
@@ -50,6 +50,13 @@ export const altoDeLaVentana = "calc(100dvh / var(--escala, 1))";
 
 /** El estilo que deja un lienzo WebGL a 1:1 adentro de la app escalada. */
 export const SIN_ESCALA = "calc(1 / var(--escala, 1))";
+
+/** El anfitrión de un `<Canvas>` adentro de una caja con `position:
+ *  relative`: la llena y la deja a 1:1. Todo lienzo WebGL del tablero va
+ *  adentro de uno (o de un nodo con el mismo `zoom`). Sin él, a 1920 × 1080
+ *  (escala 1,2) la vista 3D de la ficha del plano crecía de a 1,2 por vuelta
+ *  hasta millones de px, y el mueble «se iba» (el dueño, 2026-10-28). */
+export const ANFITRION_SIN_ESCALA: CSSProperties = { position: "absolute", inset: 0, zoom: SIN_ESCALA };
 
 export function useEscalaDeLaApp(): void {
   useLayoutEffect(() => {
