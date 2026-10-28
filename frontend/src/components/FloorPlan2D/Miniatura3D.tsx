@@ -1,6 +1,6 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { BoxGeometry, TOUCH } from "three";
+import { Box3, BoxGeometry, TOUCH, Vector3, type Group } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FixtureMesh, storeToFixtures, type PlacedFixture } from "../StoreEditor3D/StoreEditor3D";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
@@ -31,7 +31,9 @@ const TAN_V = Math.tan((FOV / 2) * Math.PI / 180);
 /** Qué se encuadra: un mueble (de frente a la cara que se mira) o la planta
  *  entera (su caja). */
 type Objetivo =
-  | { que: "mueble"; w: number; h: number; d: number; cara: "A" | "B" }
+  | { que: "mueble"; w: number; h: number; d: number; cara: "A" | "B";
+      /** Dónde queda lo dibujado, si no está parado en el origen. */
+      centro?: [number, number]; piso?: number }
   | { que: "sede"; minX: number; maxX: number; minZ: number; maxZ: number };
 
 /** El encuadre: adónde mira la cámara y desde dónde. Con el aspecto del
@@ -46,7 +48,8 @@ function encuadrar(o: Objetivo, aspecto: number): Encuadre {
     const dist = Math.max((o.w * 0.58) / tanH, (o.h * 0.62) / TAN_V, 1.2) + o.d / 2;
     // La cara A mira hacia −z (como la toma del taller y la de venta del 3D).
     const z = o.cara === "B" ? 1 : -1;
-    return { mira: [0, o.h * 0.46, 0], desde: [o.w * 0.12, o.h * 0.62 + dist * 0.12, z * dist] };
+    const [cx, cz] = o.centro ?? [0, 0], y0 = o.piso ?? 0;
+    return { mira: [cx, y0 + o.h * 0.46, cz], desde: [cx + o.w * 0.12, y0 + o.h * 0.62 + dist * 0.12, cz + z * dist] };
   }
   const cx = (o.minX + o.maxX) / 2, cz = (o.minZ + o.maxZ) / 2;
   const ancho = Math.max(o.maxX - o.minX, 3), fondo = Math.max(o.maxZ - o.minZ, 3);
@@ -71,9 +74,12 @@ function cajaDeLaSede(muebles: PlacedFixture[]): Objetivo {
  *  poner SÓLO cuando cambia lo que se mira (`vista`: otro mueble, otra cara,
  *  «Toda la sede», otras medidas): con cada redibujo del panel —el plano que
  *  se sincroniza, el mueble que se arrastra— saltaba y se perdía lo girado. */
-function Orbita({ objetivo, vista }: { objetivo: Objetivo; vista: string }) {
+function Orbita({ objetivo, vista, dibujo }: {
+  objetivo: Objetivo; vista: string;
+  /** Lo dibujado del mueble: se encuadra lo que se ve, no la medida. */
+  dibujo?: RefObject<Group>;
+}) {
   const { camera, gl, invalidate, size } = useThree();
-  const encuadre = encuadrar(objetivo, size.width / Math.max(1, size.height));
   const ctrl = useRef<OrbitControls | null>(null);
   useEffect(() => {
     const c = new OrbitControls(camera, gl.domElement);
@@ -100,12 +106,27 @@ function Orbita({ objetivo, vista }: { objetivo: Objetivo; vista: string }) {
   const clave = `${vista}|${(size.width / Math.max(1, size.height)).toFixed(1)}`;
   useEffect(() => {
     const c = ctrl.current;
+    const encuadre = encuadrar(lodibujado(objetivo, dibujo?.current ?? null), size.width / Math.max(1, size.height));
     camera.position.set(...encuadre.desde);
     if (c) { c.target.set(...encuadre.mira); c.update(); } else camera.lookAt(...encuadre.mira);
     invalidate();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clave, camera, invalidate]);
   return null;
+}
+
+/** El mueble según lo que de verdad se dibujó. La medida es la del espacio
+ *  que ocupa, no la de lo que se ve: una estiba libre mide 1,40 m de alto
+ *  —hasta dónde se carga— y se dibuja la tarima sola, de 15 cm. Encuadrada
+ *  por la medida, la tarima quedaba abajo, chiquita, y de 1,00 × 1,00 ni
+ *  entraba: la vista salía vacía (el dueño, 2026-10-28). */
+function lodibujado(o: Objetivo, g: Group | null): Objetivo {
+  if (o.que !== "mueble" || !g) return o;
+  const caja = new Box3().setFromObject(g);
+  if (caja.isEmpty()) return o;
+  const t = caja.getSize(new Vector3()), m = caja.getCenter(new Vector3());
+  if (t.x < 0.01 || t.y < 0.01 || t.z < 0.01) return o;
+  return { ...o, w: t.x, h: t.y, d: t.z, centro: [m.x, m.z], piso: caja.min.y };
 }
 
 export default function Miniatura3D({ id, cara, onAbrir3D }: {
@@ -140,6 +161,7 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
    *  o desaparecía. Dónde se para la pone `Orbita`. */
   const [camara] = useState(() => ({ position: [2.5, 1.6, -3] as [number, number, number], fov: FOV, near: 0.05, far: 600 }));
   // La caja del elegido en «Toda la sede»: una por medida, y se suelta.
+  const dibujo = useRef<Group>(null);
   const [cw, ch, cd] = fix ? [fix.w, fix.h, fix.d] : [0, 0, 0];
   const cajaElegida = useMemo(() => new BoxGeometry(cw + 0.12, ch + 0.06, cd + 0.12), [cw, ch, cd]);
   useEffect(() => () => cajaElegida.dispose(), [cajaElegida]);
@@ -161,14 +183,14 @@ export default function Miniatura3D({ id, cara, onAbrir3D }: {
             <ambientLight intensity={0.6} color="#fff8f0" />
             <directionalLight position={[4, 30, 6]} intensity={1.5} />
             <directionalLight position={[-6, 20, -6]} intensity={0.35} color="#fffaee" />
-            <Orbita objetivo={objetivo} vista={vista} />
+            <Orbita objetivo={objetivo} vista={vista} dibujo={dibujo} />
             {alcance === "mueble" ? (
               <>
                 <mesh rotation={[-Math.PI / 2, 0, 0]}>
                   <planeGeometry args={[30, 30]} />
                   <meshStandardMaterial color="#d8d4cc" roughness={0.95} />
                 </mesh>
-                <FixtureMesh fixture={fix} />
+                <group ref={dibujo}><FixtureMesh fixture={fix} /></group>
               </>
             ) : (
               <>

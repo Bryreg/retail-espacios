@@ -1503,6 +1503,9 @@ y, en el navegador, la revisión de solapes a 1440, 1280, 1100, 1024, 820 y 390 
   del piso ni cenital), la rueda baja la ficha, en el teléfono un dedo desplaza y dos giran,
   «Centrar» vuelve a la toma de frente, y la cámara del lienzo es una sola (opciones estables) y
   sólo se vuelve a poner cuando cambia lo que se mira. Para mirar de cerca, «Abrir en 3D».
+  Encuadra **lo dibujado** (la caja de `FixtureMesh`), no la medida: una estiba libre mide 1,40 m
+  —hasta dónde se carga— y se dibuja la tarima sola; por la medida quedaba abajo, chiquita, y la
+  vista parecía vacía (EXP-01 en TERRON).
 - **Nada se monta.** El catálogo abierto pasó de flotar sobre el lienzo a ser una **columna** que
   lo corre (tapaba los filtros, la pista y la barra de herramientas); el pie de la tira («Crear
   mueble» y «Más») es un solo bloque pegado; en tableta la hoja de la ficha empieza al lado de la
