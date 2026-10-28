@@ -3,7 +3,8 @@ import { footprint2D, type UnifiedFixture } from "../../types/fixtures";
 import { isDoubleGondola } from "../../types/espacio";
 import { ejes, ladosVisibles, ordenDePintado, proyectar, VISTA_INICIAL, type Huella, type Lado } from "../../utils/camaraPlano";
 import {
-  anchoDeEtiqueta, colorDelVencimiento, empacarEtiquetas, enLaCapa, filasDeEtiquetas, mitadesDeLaGondola, tramoDeCaja, TEXTO_DEL_MONTAJE,
+  anchoDeEtiqueta, colorDelVencimiento, elegirEtiquetas, empacarEtiquetas, enLaCapa, filasDeEtiquetas, mitadesDeLaGondola, ORDEN_DEL_MONTAJE,
+  tramoDeCaja, TEXTO_DEL_MONTAJE,
   type Caja, type CapaDelMapa, type EspacioDelMapa,
 } from "../../utils/mapaDeDecision";
 import { pesos } from "../../utils/indicadores";
@@ -49,12 +50,17 @@ export interface MapaDeDecisionProps {
   onElegir?: (clave: string) => void;
   /** Lo que dice el mapa para un lector de pantalla. */
   descripcion: string;
+  /** El espacio señalado en la lista de abajo: su globo aparece en el mapa
+   *  aunque no esté entre los que entran arriba. */
+  resaltada?: string | null;
 }
 
 interface CaraGeo { clave: string; caja: Caja; fixture: UnifiedFixture; cara: "A" | "B" }
 interface Chip {
   x: number; y: number; l1: string; l2?: string | null; tono: "oscuro" | "alta" | "media" | "azul";
   d: number; pct?: number; res?: number;
+  /** La llave del espacio («+N más» no tiene). */
+  clave: string | null;
 }
 
 function useTamano<T extends HTMLElement>(): [React.RefObject<T>, { w: number; h: number }] {
@@ -75,8 +81,11 @@ function useTamano<T extends HTMLElement>(): [React.RefObject<T>, { w: number; h
 
 const pts = (a: [number, number][]) => a.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
 
-export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acciones, verPlata, onElegir, descripcion }: MapaDeDecisionProps) {
+export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acciones, verPlata, onElegir, descripcion, resaltada = null }: MapaDeDecisionProps) {
   const [ref, { w: W, h: H }] = useTamano<HTMLDivElement>();
+  /** El espacio bajo el mouse: su globo flota encima, sin mover los demás. */
+  const [bajoElMouse, setBajoElMouse] = useState<string | null>(null);
+  const foco = bajoElMouse ?? resaltada;
   const chico = W > 0 && W < 500;
 
   /** La planta: la caja de cada cara, relativa al centro de la sala. */
@@ -114,7 +123,7 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
 
     // ── Las etiquetas que va a haber: con eso se sabe cuántas filas ocupan
     //    arriba (o abajo, en la de cliente) y cuánto lugar le queda al mapa.
-    const pedidas: { clave: string; l1: string; l2: string | null; tono: Chip["tono"]; pct?: number; res?: number }[] = [];
+    const pedidas: { clave: string; l1: string; l2: string | null; tono: Chip["tono"]; pct?: number; res?: number; peso: number }[] = [];
     const conPlata = (n: number | null | undefined) => (verPlata && n !== null && n !== undefined ? pesos(n) : null);
     for (const m of planta.muebles) for (const c of m.caras) {
       if (!lit(c.clave)) continue;
@@ -122,7 +131,7 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
       switch (capa) {
         case "acciones": {
           const a = acciones.find((x) => x.clave === c.clave)!;
-          pedidas.push({ clave: c.clave, l1: `${a.n} · ${e.codigo}`, l2: a.texto, tono: a.prioridad });
+          pedidas.push({ clave: c.clave, l1: `${a.n} · ${e.codigo}`, l2: a.texto, tono: a.prioridad, peso: -a.n });
           break;
         }
         case "parcial": {
@@ -130,7 +139,7 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
           const libre = conPlata(e.libreAlMes);
           pedidas.push({
             clave: c.clave, l1: pct !== null ? `${e.codigo} · ${pct} %` : e.codigo,
-            l2: libre ? `${libre} libre` : e.detalleParcial, tono: "oscuro",
+            l2: libre ? `${libre} libre` : e.detalleParcial, tono: "oscuro", peso: e.libreAlMes ?? 1 - (e.vendido ?? 0),
             ...(e.vendido !== null ? { pct: e.vendido, res: e.partes && e.partes.total ? e.partes.reservadas / e.partes.total : 0 } : {}),
           });
           break;
@@ -138,12 +147,12 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
         case "vacias": {
           const dias = e.nuncaContratada ? "nunca vendida" : e.diasSinContrato !== null ? `${e.diasSinContrato} días sin contrato` : "sin contrato";
           const t = conPlata(e.tarifa);
-          pedidas.push({ clave: c.clave, l1: e.codigo, l2: t ? `${t} · ${dias}` : dias, tono: "oscuro" });
+          pedidas.push({ clave: c.clave, l1: e.codigo, l2: t ? `${t} · ${dias}` : dias, tono: "oscuro", peso: (e.tarifa ?? 0) * 1000 + (e.nuncaContratada ? 999 : e.diasSinContrato ?? 0) });
           break;
         }
         case "ingreso":
-          if (verPlata && (e.ingresoAlMes ?? 0) >= umbralDeRotulo(espacios)) pedidas.push({ clave: c.clave, l1: e.codigo, l2: pesos(e.ingresoAlMes!), tono: "oscuro" });
-          else if (!verPlata) pedidas.push({ clave: c.clave, l1: e.codigo, l2: null, tono: "oscuro" });
+          if (verPlata && (e.ingresoAlMes ?? 0) >= umbralDeRotulo(espacios)) pedidas.push({ clave: c.clave, l1: e.codigo, l2: pesos(e.ingresoAlMes!), tono: "oscuro", peso: e.ingresoAlMes! });
+          else if (!verPlata) pedidas.push({ clave: c.clave, l1: e.codigo, l2: null, tono: "oscuro", peso: 0 });
           break;
         case "vence": {
           const v = e.vence!;
@@ -151,28 +160,43 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
           pedidas.push({
             clave: c.clave, l1: v.codigo, l2: `vence en ${v.dias} día${v.dias === 1 ? "" : "s"}${p && v.dias <= 30 ? ` · ${p}` : ""}`,
             tono: v.dias <= 30 ? "alta" : "oscuro",
+            // Lo más cercano primero; entre los del mismo día, lo que más paga.
+            peso: -v.dias * 1e12 + (v.alMes ?? 0),
           });
           break;
         }
         case "montaje": {
           const est = e.montaje!;
-          pedidas.push({ clave: c.clave, l1: e.codigo, l2: TEXTO_DEL_MONTAJE[est], tono: est === "no_realizado" ? "alta" : est === "sin_montar" || est === "no_coincide" ? "media" : "azul" });
+          pedidas.push({ clave: c.clave, l1: e.codigo, l2: TEXTO_DEL_MONTAJE[est], tono: est === "no_realizado" ? "alta" : est === "sin_montar" || est === "no_coincide" ? "media" : "azul", peso: -ORDEN_DEL_MONTAJE.indexOf(est) });
           break;
         }
         case "cliente": {
           const k = e.contratos.filter((x) => x.proveedor === cliente?.nombre);
           const total = k.reduce((t, x) => t + (x.alMes ?? 0), 0);
           const vence = e.vence && e.vence.proveedor === cliente?.nombre ? ` · vence en ${e.vence.dias} días` : "";
-          pedidas.push({ clave: c.clave, l1: e.codigo, l2: (verPlata && total > 0 ? pesos(total) : `${k.length} contrato${k.length === 1 ? "" : "s"}`) + vence, tono: vence ? "alta" : "oscuro" });
+          pedidas.push({ clave: c.clave, l1: e.codigo, l2: (verPlata && total > 0 ? pesos(total) : `${k.length} contrato${k.length === 1 ? "" : "s"}`) + vence, tono: vence ? "alta" : "oscuro", peso: total + (vence ? 1e12 : 0) });
           break;
         }
       }
     }
+    const todasLasPedidas = [...pedidas];
+    // Cuando no entran todas, las de más peso (`elegirEtiquetas`) y «+N más».
+    const anchoChico = (l1: string) => l1.length * 5.8 + 10;
+    const todas = pedidas.length;
+    const elegidas = elegirEtiquetas(
+      pedidas.map((p) => ({ ancho: chico ? anchoChico(p.l1) : anchoDeEtiqueta(p.l1, p.l2), peso: p.peso })), W,
+      chico ? { separacion: 4, tope: 8, anchoDelResto: 70 } : { tope: 10 },
+    ).map((i) => pedidas[i]);
+    const conGlobo = new Set(elegidas.map((p) => p.clave));
+    const resto = todas - elegidas.length;
+    pedidas.length = 0;
+    pedidas.push(...elegidas);
+    if (resto > 0) pedidas.push({ clave: "", l1: `+${resto} más`, l2: chico ? null : "en la lista de abajo", tono: "oscuro", peso: -Infinity });
     const altoChip = (p: { l2: string | null; pct?: number }) => (p.l2 ? 34 : 20) + (p.pct !== undefined ? 8 : 0);
     // Las filas, con la misma cuenta que el empaque (`filasDeEtiquetas`); la x
     // todavía no se sabe, pero el reparto sólo mira el orden.
     const filas = filasDeEtiquetas(pedidas.map((p, k) => ({ x: k, ancho: anchoDeEtiqueta(p.l1, p.l2) })), W, 8, 3);
-    const filasChicas = chico ? filasDeEtiquetas(pedidas.map((p, k) => ({ x: k, ancho: p.l1.length * 5.8 + 10 })), W, 4, 3) : 0;
+    const filasChicas = chico ? filasDeEtiquetas(pedidas.map((p, k) => ({ x: k, ancho: anchoChico(p.l1) })), W, 4, 3) : 0;
     const paso = Math.max(0, ...pedidas.map(altoChip)) + 8;
     const NODO = capa === "cliente" && cliente ? 52 : 0;
     const arriba = capa === "cliente" ? NODO + 8 : chico ? 12 + filasChicas * 18 : filas ? 8 + filas * paso : 16;
@@ -300,7 +324,9 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
             const tono = colorDelVencimiento(v.dias);
             const [hx, hy] = P(cx, 0, cz);
             const r = Math.min(Math.max(ex, ez), 2.2) * esc * 0.7;
-            for (let o = 0; o < (v.dias <= 30 ? 3 : 2); o++) {
+            // Las ondas, sólo en los que llevan globo: con 42 latiendo a la vez
+            // el mapa no se leía. Los demás dicen su urgencia con el color.
+            for (let o = 0; o < (conGlobo.has(c.clave) ? (v.dias <= 30 ? 3 : 2) : 0); o++) {
               suelo.push(<ellipse key={`o${c.clave}${o}`} className={`onda ${tono}`} cx={hx} cy={hy} rx={r} ry={r * 0.55}
                 style={{ "--d": `${o * 700}ms`, "--dur": `${v.dias <= 30 ? 2100 : 3200}ms` } as CSSProperties} />);
             }
@@ -340,24 +366,26 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
     }
 
     // ── Las etiquetas.
-    const chips: Chip[] = pedidas.flatMap((p, k) => {
+    const chips: Chip[] = pedidas.flatMap((p, k): Chip[] => {
+      // «+N más» no apunta a ningún espacio: va al final, a la derecha.
+      if (!p.clave) return [{ x: W, y: 0, l1: p.l1, l2: p.l2, tono: p.tono, d: 300 + k * 90, clave: null }];
       const a = anclas.get(p.clave);
-      return a ? [{ x: a[0], y: a[1], l1: p.l1, l2: p.l2, tono: p.tono, d: 300 + k * 90, pct: p.pct, res: p.res }] : [];
+      return a ? [{ x: a[0], y: a[1], l1: p.l1, l2: p.l2, tono: p.tono, d: 300 + k * 90, pct: p.pct, res: p.res, clave: p.clave }] : [];
     });
     const etiquetas: ReactNode[] = [];
     if (chico && chips.length) {
       // En el teléfono, sólo el código (la lista de abajo dice el valor), en
       // filas arriba del mapa como en la pantalla grande: nunca encimados.
-      const ancho = (c: Chip) => c.l1.length * 5.8 + 10;
+      const ancho = (c: Chip) => anchoChico(c.l1);
       const ub = empacarEtiquetas(chips.map((c) => ({ x: c.x, ancho: ancho(c) })), W, 4, 3);
       chips.forEach((c, k) => {
         const w = ancho(c), { izq, fila } = ub[k], cxx = izq + w / 2;
         const yy = capa === "cliente" ? H - abajo + 6 + fila * 18 : 6 + fila * 18;
         const borde = capa === "cliente" ? yy : yy + 14, medio = (borde + c.y) / 2;
         etiquetas.push(
-          <g key={k} className={`chip ${c.tono}`} style={{ "--d": `${k * 80}ms` } as CSSProperties}>
-            <path className="guia" d={`M${cxx},${borde} C${cxx},${medio} ${c.x},${medio} ${c.x},${c.y}`} />
-            <circle className="md-punto" cx={c.x} cy={c.y} r={2.5} />
+          <g key={c.clave ?? "resto"} className={`chip ${c.tono}${c.clave ? "" : " resto"}`} data-globo={c.clave ?? undefined} style={{ "--d": `${k * 80}ms` } as CSSProperties}>
+            {c.clave && <path className="guia" d={`M${cxx},${borde} C${cxx},${medio} ${c.x},${medio} ${c.x},${c.y}`} />}
+            {c.clave && <circle className="md-punto" cx={c.x} cy={c.y} r={2.5} />}
             <rect x={izq} y={yy} width={w} height={14} rx={4} />
             <text className="l1 chica" x={cxx} y={yy + 10}>{c.l1}</text>
           </g>,
@@ -373,9 +401,9 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
         const borde = capa === "cliente" ? y0 : y0 + h;
         const medio = (borde + c.y) / 2;
         etiquetas.push(
-          <g key={k} className={`chip ${c.tono}`} style={{ "--d": `${c.d}ms` } as CSSProperties}>
-            <path className="guia" d={`M${cxx},${borde} C${cxx},${medio} ${c.x},${medio} ${c.x},${c.y}`} />
-            <circle className="md-punto" cx={c.x} cy={c.y} r={3} />
+          <g key={c.clave ?? "resto"} className={`chip ${c.tono}${c.clave ? "" : " resto"}`} data-globo={c.clave ?? undefined} style={{ "--d": `${c.d}ms` } as CSSProperties}>
+            {c.clave && <path className="guia" d={`M${cxx},${borde} C${cxx},${medio} ${c.x},${medio} ${c.x},${c.y}`} />}
+            {c.clave && <circle className="md-punto" cx={c.x} cy={c.y} r={3} />}
             <rect x={izq} y={y0} width={w} height={h} rx={6} />
             <text className="l1" x={cxx} y={y0 + 13.5}>{c.l1}</text>
             {c.l2 && <text className="l2" x={cxx} y={y0 + 27}>{c.l2}</text>}
@@ -412,13 +440,39 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
       );
     }
 
-    return { pisoPts, reticula, suelo, cuerpos, encima, etiquetas };
+    // Lo que hace falta para el globo del espacio bajo el mouse (sin volver a
+    // armar el mapa): dónde está y qué dice.
+    const textos = new Map(todasLasPedidas.map((p) => [p.clave, p]));
+    return { pisoPts, reticula, suelo, cuerpos, encima, etiquetas, anclas, textos, conGlobo };
   }, [planta, W, H, espacios, capa, cliente, acciones, verPlata, onElegir, chico]);
+
+  // El globo del espacio bajo el mouse (o señalado en la lista): si ya tiene
+  // el suyo arriba, se marca; si no, flota sobre el espacio.
+  const flotante = (() => {
+    if (!dibujo || !foco) return null;
+    const a = dibujo.anclas.get(foco), t = dibujo.textos.get(foco);
+    if (!a || !t) return null;
+    if (dibujo.conGlobo.has(foco)) return <circle className="md-foco" cx={a[0]} cy={a[1]} r={7} />;
+    const w = chico ? t.l1.length * 5.8 + 10 : anchoDeEtiqueta(t.l1, t.l2), h = chico || !t.l2 ? (chico ? 14 : 20) : 34;
+    const izq = Math.min(Math.max(4, a[0] - w / 2), W - w - 4);
+    const y0 = Math.max(4, a[1] - h - 14);
+    return (
+      <g className={`chip flota ${t.tono}`} data-globo-flotante={foco}>
+        <circle className="md-foco" cx={a[0]} cy={a[1]} r={7} />
+        <line className="guia" x1={a[0]} y1={a[1]} x2={a[0]} y2={y0 + h} />
+        <rect x={izq} y={y0} width={w} height={h} rx={chico ? 4 : 6} />
+        <text className={chico ? "l1 chica" : "l1"} x={izq + w / 2} y={y0 + (chico ? 10 : 13.5)}>{t.l1}</text>
+        {!chico && t.l2 && <text className="l2" x={izq + w / 2} y={y0 + 27}>{t.l2}</text>}
+      </g>
+    );
+  })();
 
   return (
     <div ref={ref} className="md-lienzo" data-capa={capa}>
       {dibujo && (
-        <svg className={`md-svg capa-${capa}`} viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={descripcion}>
+        <svg className={`md-svg capa-${capa}`} viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={descripcion}
+          onMouseOver={(ev) => setBajoElMouse((ev.target as Element).closest("[data-espacio]")?.getAttribute("data-espacio") ?? null)}
+          onMouseLeave={() => setBajoElMouse(null)}>
           <defs>
             <filter id="md-sombra" x="-20%" y="-20%" width="140%" height="160%">
               <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.12" />
@@ -434,6 +488,7 @@ export default function MapaDeDecision({ fixtures, espacios, capa, cliente, acci
             <g filter="url(#md-sombra)">{dibujo.encima}</g>
             <g>{dibujo.etiquetas}</g>
           </g>
+          {flotante}
         </svg>
       )}
     </div>

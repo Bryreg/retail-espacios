@@ -239,6 +239,32 @@ export function filasDeEtiquetas(pedidas: readonly EtiquetaPedida[], ancho: numb
   return maxFilas;
 }
 
+/** Qué etiquetas se ponen cuando no entran todas (en TERRON vencían 42 en 90
+ *  días y los globos tapaban el mapa, el dueño 2026-10-28): las de más peso,
+ *  mientras entren en `maxFilas` filas y no pasen de `tope`, dejando lugar
+ *  para la etiqueta «+N más» si quedan afuera. Las otras siguen en el mapa
+ *  por su color, en la lista de abajo y al pasar el mouse. Devuelve los
+ *  índices elegidos, en el orden de entrada. */
+export function elegirEtiquetas(
+  pedidas: readonly { ancho: number; peso: number }[], ancho: number,
+  { separacion = 8, maxFilas = 3, tope = 10, anchoDelResto = 120 }: { separacion?: number; maxFilas?: number; tope?: number; anchoDelResto?: number } = {},
+): number[] {
+  const orden = pedidas.map((p, i) => ({ ...p, i })).sort((a, b) => b.peso - a.peso || a.i - b.i);
+  const entra = (anchos: number[]) => {
+    const f = filasDeEtiquetas(anchos.map((a, k) => ({ x: k, ancho: a })), ancho, separacion, maxFilas + 1);
+    return f <= maxFilas;
+  };
+  const elegidas: typeof orden = [];
+  for (const p of orden) {
+    if (elegidas.length >= tope) break;
+    const quedan = orden.length - elegidas.length - 1;
+    const anchos = [...elegidas.map((x) => x.ancho), p.ancho, ...(quedan > 0 ? [anchoDelResto] : [])];
+    if (!entra(anchos)) break;
+    elegidas.push(p);
+  }
+  return elegidas.map((x) => x.i).sort((a, b) => a - b);
+}
+
 /** Cuánto mide un texto de etiqueta (aproximado, para empacar): el código va
  *  en monoespaciada de 11 px y el detalle en la letra del texto de 10,5 px. */
 export function anchoDeEtiqueta(l1: string, l2?: string | null): number {
