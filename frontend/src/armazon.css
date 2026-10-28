@@ -467,6 +467,13 @@
   .btn-buscar, .btn-mas { width: 36px; padding: 0; justify-content: center; border-color: transparent; }
 }
 
+/* 375 px (los teléfonos más angostos, 2026-10-28): en el Plano la barra se
+   pasaba 13 px y el avatar de la cuenta quedaba cortado. */
+@media (max-width: 389px) {
+  .armazon[data-modulo="plano"] .barra-app, .armazon[data-modulo="plano3d"] .barra-app { gap: 6px !important; }
+  .armazon[data-modulo="plano"] .selector-sede .sede-sel, .armazon[data-modulo="plano3d"] .selector-sede .sede-sel { width: 100px; }
+}
+
 /* El buscador: arriba al centro, encima de todo. */
 .buscador-capa { position: fixed; inset: 0; z-index: 400; background: rgba(4, 7, 10, 0.32); display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px; }
 .buscador { width: min(640px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-xl); box-shadow: var(--shadow-lg); overflow: hidden; }
@@ -512,3 +519,12 @@
   color: var(--ink-1); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .volver-montaje button.cerrar { padding: 0; width: 36px; justify-content: center; border-color: transparent; background: transparent; color: var(--ink-3); }
+
+/* «¿Cambiar de sede?» con un contrato a medio cargar (2026-10-28). */
+.aviso-sede-capa { position: fixed; inset: 0; z-index: 420; display: grid; place-items: center; padding: 16px; background: rgba(4, 7, 10, 0.4); }
+.aviso-sede { width: min(460px, 100%); display: grid; gap: 14px; padding: 22px 24px; border-radius: var(--r-xl); background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow-lg); color: var(--ink-1); }
+.aviso-sede h2 { margin: 0; font-size: var(--t-lg); }
+.aviso-sede p { margin: 0; font-size: var(--t-sm); line-height: 1.5; color: var(--ink-2); }
+.aviso-sede .botones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.aviso-sede .botones button { min-height: 40px; padding: 0 16px; border-radius: 10px; font: inherit; font-weight: 600; cursor: pointer; }
+.aviso-sede .botones .sec { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink-2); }

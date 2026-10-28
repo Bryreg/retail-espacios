@@ -1193,7 +1193,10 @@ html[data-tema="oscuro"] .vender {
 }
 .pie-contrato .total {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* El rótulo no se parte («Total / del / contrato»); lo que cubre se acomoda
+     en lo que queda y, si son muchas temporadas, baja de renglón adentro de su
+     columna en vez de salirse por la izquierda (2026-10-28). */
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto);
   align-items: end;
   gap: 4px 12px;
   border-top: 0;
@@ -1208,7 +1211,7 @@ html[data-tema="oscuro"] .vender {
 .pie-contrato .total .rotulo svg { color: var(--ink-3); flex: none; }
 .vender .total .n.n-ventas { font-size: var(--t-md); letter-spacing: 0; }
 .total-sub { margin: 0; font-size: var(--t-2xs); color: var(--ink-3); font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
-.pie-contrato .cubre { margin-top: 0; flex: none; justify-content: flex-end; }
+.pie-contrato .cubre { margin-top: 0; flex: 0 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
 /* Lo que falta, justo sobre el botón que todavía no se puede tocar. */
 .pie-contrato .falta {
   margin: 0; display: flex; align-items: flex-start; gap: 6px;

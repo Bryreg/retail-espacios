@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
@@ -1307,10 +1307,14 @@ function SelectorDeSede() {
   const sede = useFixtureStore((s) => s.sede);
   const setSede = useFixtureStore((s) => s.setSede);
   const muebles = useFixtureStore((s) => (s.fixturesBySede[s.sede] ?? []).length);
+  /** Con un contrato a medio cargar, cambiar de sede lo vacía: se pregunta. */
+  const borrador = useArmazon((s) => s.borradorDeVenta);
+  const [pedida, setPedida] = useState<string | null>(null);
   return (
     <div className="selector-sede">
       <MapPin {...ICONO_BARRA} className="ico" />
-      <select className="sede-sel" value={sede} onChange={(e) => setSede(e.target.value)} aria-label="Sede">
+      <select className="sede-sel" value={sede} aria-label="Sede"
+        onChange={(e) => { const v = e.target.value; if (borrador && v !== sede) setPedida(v); else setSede(v); }}>
         {(sedes.includes(sede) ? sedes : [sede, ...sedes]).map((x) => (
           <option key={x} value={x}>{x}</option>
         ))}
@@ -1321,6 +1325,33 @@ function SelectorDeSede() {
         {sedes.includes(sede) && <>{sedes.indexOf(sede) + 1} de {sedes.length}{" · "}</>}
         {muebles} mueble{muebles === 1 ? "" : "s"}
       </span>
+      {pedida && borrador && (
+        <AvisoCambioDeSede actual={sede} nueva={pedida} borrador={borrador}
+          onSeguir={() => setPedida(null)}
+          onCambiar={() => { setSede(pedida); setPedida(null); }} />
+      )}
+    </div>
+  );
+}
+
+/** «¿Cambiar de sede?» con un contrato a medio cargar (2026-10-28). Seguir
+ *  en la sede es lo que se hace por defecto (Enter, Esc). */
+function AvisoCambioDeSede({ actual, nueva, borrador, onSeguir, onCambiar }: {
+  actual: string; nueva: string; borrador: string; onSeguir: () => void; onCambiar: () => void;
+}) {
+  useModalAbierto();
+  const titulo = useId();
+  return (
+    <div className="aviso-sede-capa" data-capa-modal onMouseDown={onSeguir}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onSeguir(); } }}>
+      <div className="aviso-sede" role="dialog" aria-modal="true" aria-labelledby={titulo} onMouseDown={(e) => e.stopPropagation()} data-aviso-sede>
+        <h2 id={titulo}>¿Cambiar a {nueva}?</h2>
+        <p>Tenés un contrato sin guardar en <b>{actual}</b> ({borrador}). Si cambiás de sede, se pierde.</p>
+        <div className="botones">
+          <button type="button" className="sec" onClick={onCambiar}>Cambiar y descartarlo</button>
+          <button type="button" className="btn-principal" onClick={onSeguir} autoFocus>Seguir en {actual}</button>
+        </div>
+      </div>
     </div>
   );
 }

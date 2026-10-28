@@ -22,6 +22,7 @@ import ConfirmarEdicion from "./ConfirmarEdicion";
 import { useSesionDeVenta } from "./sesionDeVenta";
 import { useFichasPropias } from "../../store/fichasPropias";
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
+import { useArmazon } from "../../store/armazonStore";
 // Cómo le dice este supermercado a cada familia: la lista, el visor y la lámina.
 import { conNombrePropio, tipoDelMueble } from "../../catalogo/nombresPropios";
 import { pbDeTexto, pct } from "../../utils/participaciones";
@@ -693,6 +694,14 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
   const c = useContrato({
     espacios, sede, rango, semilla, ocupacionDe, onQuitar, onCambiarCara, onCambiarParte, onGuardado, planoPendiente,
   });
+  // Lo que se perdería al cambiar de sede (2026-10-28): el selector de sede
+  // pregunta antes si hay algo cargado.
+  const nLineas = c.lineas.length;
+  const borrador = nLineas > 0 || c.proveedor.trim() !== ""
+    ? [c.proveedor.trim() || null, nLineas ? `${nLineas} espacio${nLineas === 1 ? "" : "s"}` : null].filter(Boolean).join(", ")
+    : null;
+  useEffect(() => { useArmazon.getState().setBorradorDeVenta(borrador); }, [borrador]);
+  useEffect(() => () => useArmazon.getState().setBorradorDeVenta(null), []);
   /** «Qué cambia» desplegado en el pie (plegado, es UNA línea). */
   const [verCambios, setVerCambios] = useState(false);
   const idCambios = useId();

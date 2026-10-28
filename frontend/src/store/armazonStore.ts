@@ -48,6 +48,10 @@ interface EstadoDelArmazon {
   pedido: PedidoALaPantalla | null;
   pedir: (p: PedidoALaPantalla) => void;
   atender: () => void;
+  /** Un contrato a medio cargar en Contratos («Snacks Norte, 2 espacios»):
+   *  cambiar de sede lo vacía, así que el selector de sede pregunta antes. */
+  borradorDeVenta: string | null;
+  setBorradorDeVenta: (t: string | null) => void;
   desdeMontaje: DesdeMontaje | null;
   abrirDesdeMontaje: (d: DesdeMontaje) => void;
   olvidarMontaje: () => void;
@@ -71,6 +75,8 @@ export const useArmazon = create<EstadoDelArmazon>()((set) => ({
   pedido: null,
   pedir: (p) => set({ pedido: p }),
   atender: () => set({ pedido: null }),
+  borradorDeVenta: null,
+  setBorradorDeVenta: (t) => set((s) => (s.borradorDeVenta === t ? s : { borradorDeVenta: t })),
   desdeMontaje: null,
   abrirDesdeMontaje: (d) => set({ desdeMontaje: d, bandejaAbierta: true, grupoPedido: null }),
   olvidarMontaje: () => set({ desdeMontaje: null }),

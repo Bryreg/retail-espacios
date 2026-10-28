@@ -6502,7 +6502,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   useEffect(() => {
     if (!avisoMarcado) return;
     const el = document.querySelector<HTMLElement>(`[data-aviso="${CSS.escape(avisoMarcado)}"]`);
-    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    el?.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     el?.setAttribute("data-marcada", "1");
     const t = window.setTimeout(() => { el?.removeAttribute("data-marcada"); setAvisoMarcado(null); }, 2400);
     return () => window.clearTimeout(t);

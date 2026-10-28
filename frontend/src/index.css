@@ -178,6 +178,14 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+/* El mismo anillo en TODO lo que se toca con el teclado (2026-10-28): sin
+   esto cada botón quedaba con el borde fino del navegador, distinto en cada
+   uno y fácil de perder. `:where` no suma especificidad: lo que ya tiene su
+   foco propio (el plano, la portada) sigue mandando. */
+:where(button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 .foco-tema:hover { background: var(--surface-3); }
 
 /* Mientras hay un modal abierto, ÉL es la pantalla y se lleva el amarillo: el
@@ -241,6 +249,18 @@ html[data-modal-abierto] [data-capa-modal] .btn-principal:not(:disabled) {
 }
 @media (prefers-reduced-motion: reduce) {
   [style*="pulso-sync"] { animation: none !important; }
+}
+/* «Reducir movimiento» del sistema (2026-10-28): nada se anima ni se desliza
+   solo. Las cámaras 3D ya no se mueven por su cuenta (sólo con la mano o con
+   un salto instantáneo); esto cubre transiciones, animaciones y el
+   desplazamiento suave de la página. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ─── Consola de plataforma (back-office / BI) ──────────────────────────────
