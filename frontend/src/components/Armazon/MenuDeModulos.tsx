@@ -34,7 +34,7 @@ export const ITEMS_DEL_MENU: ItemDelMenu[] = [
 
 /** El módulo del menú que se marca: el 3D y «Mis muebles» son parte del Plano. */
 function marcado(actual: Modulo | null): Modulo | null {
-  return actual === "plano3d" || actual === "muebles" ? "plano" : actual;
+  return actual === "plano3d" || actual === "muebles" || actual === "caras" ? "plano" : actual;
 }
 
 function Item({ item, actual }: { item: ItemDelMenu; actual: Modulo | null }) {

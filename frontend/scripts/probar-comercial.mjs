@@ -517,7 +517,7 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   const sin = panel.indexOf("Sin contrato activo.");
   assert.ok(k > 0 && sin > k, "«Sin contrato activo.» se alcanza antes que la rama de participación");
   assert.match(panel, /\{isAdmin && esPc \? \(\s*<>\s*<p[^>]*>\s*\{DONDE_SE_CARGAN\}/, "a quien administra no le dice dónde se cargan las participaciones");
-  assert.match(panel, /onClick=\{\(\) => abrirEnDistribucion\(item\.id, activeFace\)\}/);
+  assert.match(panel, /onPorcentaje=\{isAdmin && esPc \? \(c\) => abrirEnDistribucion\(item\.id, c\) : undefined\}/);
   const vender = panel.indexOf("Sede → Vender");
   assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Sede → Vender» se dice también de una cara por participación");
 });

@@ -4,7 +4,7 @@ import { lazy, Suspense, useEffect, useRef, useState, useCallback, useMemo } fro
 import {
   MousePointer2, RotateCw, Trash2, Eye, Search, X, Undo2, Redo2, Pencil, Plus, Minus, Ellipsis, MapPin, Shapes,
   ChevronDown, ChevronRight, Mouse, Focus, Captions, Maximize2, Minimize2, TriangleAlert,
-  ClipboardCheck, Keyboard, ListOrdered, Lock, Handshake, Ruler, FileText, FilePenLine, Percent, Copy, ImageUp,
+  ClipboardCheck, Keyboard, ListOrdered, Lock, Handshake, Ruler, FileText, FilePenLine, Copy, ImageUp,
   Image as ImageIcon, Store, Ban,
 } from "lucide-react";
 import { ICONO, iconoDeFamilia, iconoDelTipo } from "./iconos";
@@ -46,7 +46,7 @@ import {
 // «Abrir en Distribución» (el Editor 3D en esa cara): el mismo pedido que la
 // ficha de Supervisar, sólo tipos y el store de lectura.
 import { useAbrirEnDistribucion } from "../Distribucion/ParticipacionesDeLaCara";
-import EntradaDelPlanograma from "../Planograma/EntradaDelPlanograma";
+import BloqueDeLaCara from "../Planograma/BloqueDeLaCara";
 import { tieneSuperficie } from "../../utils/superficie";
 import { carasDe } from "../../types/espacio";
 // La ocupación ANÓNIMA de las caras por participación (store de LECTURA): el
@@ -4263,6 +4263,16 @@ function AssignmentPanel({
       {/* ── VENTA: se vende, cómo, estado y lo contratado ─────────────────── */}
       {pestana === "venta" && (
         <div className="p2-pestana" role="tabpanel" data-pestana-venta>
+          {/* «La cara» (2026-10-29): arriba de todo, cómo está el reparto de
+              cada cara y UN botón, «Distribuir la cara», que abre lo que le
+              toca al mueble (por porcentaje, Distribuir; si no, el planograma). */}
+          {muebleDelStore && tieneSuperficie(muebleDelStore.type) && (
+            <FilaDelPanel k="La cara" titulo="Qué va en cada parte de la cara" campo="la-cara" bloque>
+              <BloqueDeLaCara sede={sede} fixtureId={item.id} caras={carasDe(muebleDelStore)} comercializable={rentable}
+                porParticipacion={esPc} esAdmin={isAdmin} caraMirada={activeFace}
+                onPorcentaje={isAdmin && esPc ? (c) => abrirEnDistribucion(item.id, c) : undefined} />
+            </FilaDelPanel>
+          )}
           {/* Se vende = el destino del mueble. Salvo cuando el TIPO ya lo
               decide: una columna, una caja registradora y el mostrador de
               servicio al cliente son operación de la tienda y no se venden
@@ -4291,15 +4301,6 @@ function AssignmentPanel({
             </p>
           </FilaDelPanel>
 
-          {/* El planograma (fase 2 de la distribución): repartir cada cara
-              entre destinos —categorías, marca propia, promociones— y
-              publicarlo por versiones. Un mueble interno, para todos (lo que
-              hay que montar); uno que se vende, sólo administración (lo libre). */}
-          {muebleDelStore && tieneSuperficie(muebleDelStore.type) && (
-            <FilaDelPanel k="Planograma" titulo="Planograma de la cara" campo="planograma" bloque>
-              <EntradaDelPlanograma sede={sede} fixtureId={item.id} caras={carasDe(muebleDelStore)} rentable={rentable} esAdmin={isAdmin} />
-            </FilaDelPanel>
-          )}
 
           {/* Vender por partes: la nevera entera o por puertas; el mural, la
               góndola, la nevera abierta y la de vegetales, por tramos; la
@@ -4420,17 +4421,7 @@ function AssignmentPanel({
                   <p className="p2-msj">
                     {DONDE_SE_CARGAN}
                   </p>
-                  <div className="p2-vend-f">
-                    <button
-                      type="button"
-                      className="p2-btn"
-                      onClick={() => abrirEnDistribucion(item.id, activeFace)}
-                      title="Abre el 3D del plano en esta cara, en Distribución"
-                    >
-                      <Percent {...ICONO} /> Distribuir
-                    </button>
-                    {botonVender}
-                  </div>
+                  <div className="p2-vend-f">{botonVender}</div>
                 </>
               ) : isAdmin && (
                 <>

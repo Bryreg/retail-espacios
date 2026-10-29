@@ -1,12 +1,13 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
 const StoreEditor3D = lazy(() => import("../components/StoreEditor3D/StoreEditor3D"));
 const PlanificarCara = lazy(() => import("../components/Planograma/PlanificarCara"));
 const MisMuebles = lazy(() => import("./MisMuebles"));
+const CarasDeLaSede = lazy(() => import("./CarasDeLaSede"));
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView, { type ModoComercial } from "./DashboardView";
 import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
@@ -1361,22 +1362,24 @@ function AvisoCambioDeSede({ actual, nueva, borrador, onSeguir, onCambiar }: {
  *  rediseño, 2026-10). `probar-vender` lo asevera. */
 const ICONO_BARRA = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
-/** 2D | 3D | Muebles: el Plano de la sede junta lo que eran dos pestañas
+/** 2D | 3D | Muebles | Caras: el Plano de la sede junta lo que eran dos pestañas
  *  (Plano y Editor 3D) y, desde el 2026-10-28, los muebles propios del
  *  supermercado (lo que era el taller). Va en la barra mientras se está en el
  *  Plano; cada vista es su dirección (`/plano`, `/plano/3d`, `/plano/muebles`). */
 function VistaDelPlano({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void }) {
-  if (modulo !== "plano" && modulo !== "plano3d" && modulo !== "muebles") return null;
+  if (modulo !== "plano" && modulo !== "plano3d" && modulo !== "muebles" && modulo !== "caras") return null;
   return (
     <div className="vista-plano" role="group" aria-label="Vista del plano">
       {([["plano", "2D", "Dibujar la tienda vista desde arriba y editar los muebles"],
          ["plano3d", "3D", "Mirar la tienda en 3D: recorrerla, probar productos y distribuir caras"],
-         ["muebles", "Muebles", "Mis muebles: los de tu supermercado, con sus medidas. Crearlos, editarlos y retirarlos"]] as const).map(([m, palabra, para]) => (
+         ["muebles", "Muebles", "Mis muebles: los de tu supermercado, con sus medidas. Crearlos, editarlos y retirarlos"],
+         ["caras", "Caras", "Todas las caras: qué falta repartir, qué está listo y cómo va su montaje"]] as const).map(([m, palabra, para]) => (
         <button key={m} type="button" aria-pressed={modulo === m} title={para} onClick={() => ir(m)}
-          aria-label={m === "muebles" ? "Mis muebles" : undefined}>
-          {/* En el teléfono «Muebles» no entra al lado de la sede y la
-              cuenta: va el ícono (`armazon.css`). */}
-          {m === "muebles" ? <><Armchair className="ico-movil" {...ICONO_BARRA} /><span className="txt-ancho">{palabra}</span></> : palabra}
+          aria-label={m === "muebles" ? "Mis muebles" : m === "caras" ? "Caras" : undefined}>
+          {/* En el teléfono «Muebles» y «Caras» no entran al lado de la sede
+              y la cuenta: va el ícono (`armazon.css`). */}
+          {m === "muebles" ? <><Armchair className="ico-movil" {...ICONO_BARRA} /><span className="txt-ancho">{palabra}</span></>
+            : m === "caras" ? <><LayoutGrid className="ico-movil" {...ICONO_BARRA} /><span className="txt-ancho">{palabra}</span></> : palabra}
         </button>
       ))}
     </div>
@@ -1763,6 +1766,14 @@ export default function Dashboard() {
                 </div>
               }>
                 <MisMuebles />
+              </Suspense>
+            ) : efectivo === "caras" ? (
+              <Suspense fallback={
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)", fontSize: 13 }}>
+                  Abriendo las caras…
+                </div>
+              }>
+                <CarasDeLaSede />
               </Suspense>
             ) : efectivo === "montajes" ? (
               <MountView initialCode={mountCode} onDone={() => ir("indicadores")} resaltar={montajeResaltado}

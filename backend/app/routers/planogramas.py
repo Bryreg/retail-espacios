@@ -123,6 +123,17 @@ def leer_resumen(
             "puede_planificar": servicio.puede_planificar(db, rol)}
 
 
+@router.get("/caras")
+def leer_caras(
+    sede: str = Query(..., min_length=1),
+    rol: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Plano › Caras: todas las caras de la sede con el estado de su planograma
+    y de su montaje, primero las que piden algo."""
+    return {"caras": servicio.caras_de_la_sede(db, sede, rol), "puede_planificar": servicio.puede_planificar(db, rol)}
+
+
 @router.get("/version")
 def leer_version(
     id: int = Query(..., ge=1),

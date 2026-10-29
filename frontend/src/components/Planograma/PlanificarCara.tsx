@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeftToLine, ArrowRightToLine, BellRing, BoxSelect, CircleAlert, CircleCheck, Eraser, FileText, GripVertical, History, Lock, Maximize2,
+  ArrowLeftToLine, ArrowRightToLine, BellRing, BoxSelect, Check, CircleAlert, CircleCheck, Eraser, FileText, GripVertical, History, Lock, Maximize2,
   Minimize2, MoreHorizontal, PenLine, Plus, Redo2, RotateCcw, Send, Trash2, Undo2, Users, Wand2, X,
 } from "lucide-react";
 import { describeError } from "../../api/client";
@@ -15,7 +15,7 @@ import {
   lineasDeOcupados, llevaAMano, poligonoDeRect, primeraQuePisa, ubicarSinArrastrar, type CaraDePiezas, type FormaDePieza, type Rect,
 } from "../../utils/piezas";
 import {
-  colorLibre, destinosConocidos, guardadoSinUbicar, haceCuanto, libreParaPlanificar, ocupadosDelPlano, piezasDelPlano,
+  colorLibre, destinosConocidos, guardadoSinUbicar, haceCuanto, libreParaPlanificar, ocupadosDelPlano, pasosDelPlanograma, piezasDelPlano,
   textoDelEstadoDelPlano, textoDelTipo, vendidaEnteraDespues, vendidaEnteraHoy, type PiezaDelPlano, type PiezaEnEdicion,
 } from "../../utils/planograma";
 import { guiasDeCara } from "../../utils/superficie";
@@ -393,18 +393,25 @@ function Pantalla() {
     ?? (propias.length === 0 ? "Agregá un destino: una categoría, la marca propia, una promoción…" : null)
     ?? "Arrastrá una pieza para moverla; las manijas la estiran sin cambiar su %.";
 
+  /** Los 3 pasos de arriba (el dueño, 2026-10-29: «no se entiende por dónde
+   *  comenzar»): elegir qué va, dibujarlo, publicar. El que toca es el primero
+   *  sin hacer. */
+  const pasos = pasosDelPlanograma({
+    destinos: propias.length, sinUbicar: sinUbicar.length, conProblema: conProblema.length, publicada: publicadaSinCambios,
+  });
+
   const piezaQueVuela = arrastre && arrastre.movida && !arrastre.rect ? porId.get(arrastre.id) ?? null : null;
   const piezasDeLaVigente = useMemo(() => (vigente?.piezas ?? []).map((p) => ({ destinoId: p.destino_id, pb: p.pb, vertices: p.vertices })), [vigente]);
 
   return (
-    <div data-planificar-cara role="region" aria-label="Planificar la cara" className="fixed inset-0 z-[80] flex flex-col overflow-y-auto bg-bg text-ink-1">
+    <div data-planificar-cara role="region" aria-label="Distribuir la cara" className="fixed inset-0 z-[80] flex flex-col overflow-y-auto bg-bg text-ink-1">
       <div className="mx-auto w-full max-w-[1240px] p-3 sm:p-5">
         <section className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4 sm:p-5">
 
           {/* 1 · El encabezado */}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs text-ink-3">{datos && !datos.permisos.planificar ? "Planograma de la cara" : "Planificar la cara"}{datos ? ` · ${queEsLaCara(datos)}` : ""}</p>
+              <p className="text-xs text-ink-3">{datos && !datos.permisos.planificar ? "Planograma de la cara" : "Distribuir la cara"}{datos ? ` · ${queEsLaCara(datos)}` : ""}</p>
               <h2 className="text-balance break-words text-base font-bold leading-snug" data-titulo-del-planograma>
                 {datos ? <span className="codigo">{tituloDeLaCara(datos)}</span> : "Leyendo la cara…"}
               </h2>
@@ -474,6 +481,26 @@ function Pantalla() {
               <button type="button" className={BOTON} onClick={pedirSalir} data-salir><X {...ICONO} />Salir</button>
             </div>
           </div>
+
+          {/* Los 3 pasos: dónde se está y qué falta. Quien sólo mira, no. */}
+          {datos?.permisos.planificar && !mirando && (
+            <ol data-pasos-del-planograma aria-label="Pasos" className="grid gap-2 sm:grid-cols-3">
+              {pasos.map((p) => (
+                <li key={p.numero} data-paso={p.numero} data-estado-del-paso={p.estado} aria-current={p.estado === "ahora" ? "step" : undefined}
+                  className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 ${p.estado === "ahora" ? "border-ink-1 bg-surface" : "border-line bg-surface-2"}`}>
+                  <span className={`flex h-7 w-7 flex-none items-center justify-center rounded-full text-xs font-bold ${
+                    p.estado === "hecho" ? "text-white" : p.estado === "ahora" ? "bg-ink-1 text-white" : "border-2 border-line-strong text-ink-3"}`}
+                    style={p.estado === "hecho" ? { background: "rgb(var(--libre-txt-rgb))" } : undefined}>
+                    {p.estado === "hecho" ? <Check size={14} strokeWidth={2.5} aria-hidden /> : p.numero}
+                  </span>
+                  <span className="min-w-0">
+                    <b className={`block text-sm ${p.estado === "despues" ? "text-ink-2" : ""}`}>{p.titulo}</b>
+                    <span className="block text-xs text-ink-3">{p.detalle}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
 
           {/* 2 · Lo que hay que saber */}
           {exito && (

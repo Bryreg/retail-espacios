@@ -17,12 +17,14 @@
  *                   (lo que era la pestaña «Fichas» del taller, 2026-10-28).
  *                   Adentro, `/plano/muebles/nuevo` arma uno y
  *                   `/plano/muebles/<clave>` lo edita.
+ *   `/plano/caras`  Plano › Caras: todas las caras de la sede con el estado de
+ *                   su reparto y su montaje (2026-10-29).
  *
  * Todas montan el MISMO `Dashboard` (`App.tsx`, `path="/*"`): pasar de un
  * módulo a otro no lo vuelve a montar, así que un contrato a medio armar no se
  * pierde por ir a mirar el plano.
  */
-export type Modulo = "inicio" | "contratos" | "indicadores" | "montajes" | "plano" | "plano3d" | "muebles";
+export type Modulo = "inicio" | "contratos" | "indicadores" | "montajes" | "plano" | "plano3d" | "muebles" | "caras";
 
 export const RUTA_DE: Record<Modulo, string> = {
   inicio: "/",
@@ -32,6 +34,7 @@ export const RUTA_DE: Record<Modulo, string> = {
   plano: "/plano",
   plano3d: "/plano/3d",
   muebles: "/plano/muebles",
+  caras: "/plano/caras",
 };
 
 /** El módulo de una dirección. Lo que no es de ningún módulo da `null`: quien
@@ -45,6 +48,7 @@ export function moduloDeRuta(pathname: string): Modulo | null {
   if (p === "/plano") return "plano";
   if (p === "/plano/3d") return "plano3d";
   if (p === "/plano/muebles" || p.startsWith("/plano/muebles/")) return "muebles";
+  if (p === "/plano/caras") return "caras";
   return null;
 }
 
@@ -57,10 +61,11 @@ export const NOMBRE_DE: Record<Modulo, string> = {
   plano: "Plano de la sede",
   plano3d: "Plano de la sede · 3D",
   muebles: "Mis muebles",
+  caras: "Plano de la sede · Caras",
 };
 
 /** Las tres vistas del Plano (2D, 3D, Mis muebles). */
-const DEL_PLANO: ReadonlySet<Modulo> = new Set<Modulo>(["plano", "plano3d", "muebles"]);
+const DEL_PLANO: ReadonlySet<Modulo> = new Set<Modulo>(["plano", "plano3d", "muebles", "caras"]);
 
 /** Adónde vuelve «Volver a …» del 3D: el módulo y la dirección exacta. */
 export interface VueltaDelPlano { modulo: Modulo; ruta: string }
