@@ -156,7 +156,7 @@ export function pistaDelTrazo(puntos: number, rehaciendo: boolean): string {
   if (puntos === 0) {
     return rehaciendo
       ? "Rehacela: tocá un punto por cada esquina. Lo de antes queda hasta que cierres la forma nueva."
-      : "Tocá un punto por cada esquina: se pegan a los estantes y a los bordes. El círculo grande es el primero: tocalo para cerrar.";
+      : "Tocá un punto por cada esquina: se pegan a los estantes, a los bordes y a la otra forma, y un lado casi recto queda recto (la guía azul lo marca). El círculo grande es el primero: tocalo para cerrar.";
   }
   if (puntos < 3) return "Seguí tocando esquinas: hacen falta al menos tres.";
   return "Seguí tocando esquinas, o tocá el círculo grande (el primer punto) o Enter para cerrar la forma.";

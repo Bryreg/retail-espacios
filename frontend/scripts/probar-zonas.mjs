@@ -1318,7 +1318,8 @@ await prueba("la cara de las piezas: el primer punto con el TOQUE_PX de edicionD
   assert.match(panelZ, /if \(a\.tipo === "cerrarTrazo" && alCerrarAMano\.actual\) alCerrarAMano\.actual\(\);\s*else st\.despachar\(a\);/,
     "el oyente del teclado cierra con Enter sin el ajuste solo");
   assert.match(cara, /despachar\(\{ tipo: "agregarPunto", punto: imantado\(p\) \}\);/, "los puntos «A mano» no pasan por el imán");
-  assert.match(cara, /return imantarAMano\(p, lineasAMano, \{ u: r \/ W, v: r \/ H \}\);/, "el imán «A mano» no es el de utils/piezas");
+  assert.match(cara, /const i = imantarConGuias\(p, lineasAMano, \{ u: r \/ W, v: r \/ H \}, useDistribucionStore\.getState\(\)\.edicion\.trazo \?\? \[\]\);/, "el imán «A mano» no es el de utils/piezas (con el trazo en curso)");
+  assert.match(cara, /\{aMano && cursor && guias && \(guias\.u !== null \|\| guias\.v !== null\) && \(\s*<g pointerEvents="none" data-guias-del-iman/, "no se dibujan las guías del imán");
   assert.ok(!/for \(const q of z\.vertices\)/.test(cara), "quedó un imán en línea en la cara");
   for (const tipo of ["moverZona", "escalar", "empujar", "moverVertice", "estirarTrazo", "empezarArrastre"]) {
     assert.ok(!new RegExp(`tipo: "${tipo}"`).test(cara), `la cara despacha «${tipo}», que no conserva el %`);

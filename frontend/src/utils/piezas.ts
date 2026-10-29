@@ -482,18 +482,51 @@ export function contadorAMano(lleva: number | null, de: number, cerrada = false)
     estado: "lleva", titulo: "Llevás",
     texto: lleva === null ? "Así la forma se cruza: sacá el último punto (Retroceso)."
       : cerrada ? `Faltan ${pct(de - l)}: tocá «Llevar a ${pct(de)}» o «Rehacer a mano».`
-        : `Faltan ${pct(de - l)}. Seguí tocando puntos; se pegan a los estantes y a los bordes.`,
+        : `Faltan ${pct(de - l)}. Seguí tocando puntos; se pegan a los estantes, a los bordes y a la otra forma, y la línea punteada azul avisa cuando el lado va recto.`,
     falta: de - l, sobra: 0,
   };
 }
 
-/** El imán de «A mano», por eje: cada coordenada se pega a la línea más
- *  cercana (estante, borde de lo que se vende, parante o lado de otra pieza)
- *  si cae a menos de `radio` (u,v). Así una L sale con ángulos rectos. */
-export function imantarAMano(p: Punto, lineas: { us: readonly number[]; vs: readonly number[] }, radio: { u: number; v: number }): Punto {
-  const u = pegar(p[0], lineas.us, radio.u) ?? p[0];
-  const v = pegar(p[1], lineas.vs, radio.v) ?? p[1];
-  return [q(Math.min(1, Math.max(0, u))), q(Math.min(1, Math.max(0, v)))];
+/** Cuánto puede ir torcido el lado que se dibuja para que el imán lo deje
+ *  recto: 7° (la tangente). */
+const TORCIDO_MAX = Math.tan((7 * Math.PI) / 180);
+
+/** Por dónde pasa cada pegada del imán: la línea vertical (u) y la
+ *  horizontal (v) que se dibujan como guía, o null en el eje que quedó suelto. */
+export interface GuiasDelIman { u: number | null; v: number | null }
+
+/**
+ * El imán de «A mano», por eje, con sus guías: cada coordenada se pega a la
+ * línea más cercana (estante, borde de lo que se vende, parante, lado o
+ * esquina de otra pieza) si cae a menos de `radio` (u,v). Así una L sale con
+ * ángulos rectos y una forma empalma con la de al lado.
+ *
+ * Con el `trazo` en curso (el dueño, 2026-10-29: «intenté dejar el punto lo
+ * más recto posible pero siempre queda diferente») también se pega a los
+ * puntos ya puestos —el lado que cierra sale recto— y el lado que se está
+ * dibujando, si va casi vertical u horizontal (menos de 7°), se endereza
+ * aunque el punto quede lejos. `guias` dice por dónde pasó cada pegada, para
+ * dibujarla mientras se apunta.
+ */
+export function imantarConGuias(p: Punto, lineas: { us: readonly number[]; vs: readonly number[] },
+  radio: { u: number; v: number }, trazo: readonly Punto[] = []): { punto: Punto; guias: GuiasDelIman } {
+  let u = pegar(p[0], [...lineas.us, ...trazo.map((t) => t[0])], radio.u);
+  let v = pegar(p[1], [...lineas.vs, ...trazo.map((t) => t[1])], radio.v);
+  const ultimo = trazo[trazo.length - 1];
+  if (ultimo) {
+    // En radios de cada eje: la misma escala que en la pantalla.
+    const du = Math.abs(p[0] - ultimo[0]) / radio.u, dv = Math.abs(p[1] - ultimo[1]) / radio.v;
+    if (u === null && dv > 0 && du <= TORCIDO_MAX * dv) u = ultimo[0];
+    if (v === null && du > 0 && dv <= TORCIDO_MAX * du) v = ultimo[1];
+  }
+  const punto: Punto = [q(Math.min(1, Math.max(0, u ?? p[0]))), q(Math.min(1, Math.max(0, v ?? p[1])))];
+  return { punto, guias: { u: u === null ? null : punto[0], v: v === null ? null : punto[1] } };
+}
+
+/** El punto de `imantarConGuias`, sin las guías. */
+export function imantarAMano(p: Punto, lineas: { us: readonly number[]; vs: readonly number[] }, radio: { u: number; v: number },
+  trazo: readonly Punto[] = []): Punto {
+  return imantarConGuias(p, lineas, radio, trazo).punto;
 }
 
 /**

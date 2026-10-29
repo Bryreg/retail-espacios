@@ -4,7 +4,8 @@ Documento de referencia para retomar el trabajo sin tener que reconstruir el con
 Última actualización: 2026-10-29: **el aviso de montaje ya no pide un archivo que no hace falta**.
 Un porcentaje sale con su zona confirmada; una venta entera o por partes, con la planometría o con
 un planograma publicado de la cara. Las filas que ya cumplían salen solas al abrir Pendientes. Y el
-3D tiene «← Volver a …» cuando se llega desde otra pantalla. Ver *El correo de montaje espera al
+3D tiene «← Volver a …» cuando se llega desde otra pantalla, y el dibujo a mano endereza los lados
+casi rectos y muestra guías para que empalme con la forma de al lado. Ver *El correo de montaje espera al
 plano de la cara*.
 
 Antes, el 2026-10-28: **Indicadores se rediseñó alrededor del mapa** (versión B,
@@ -2124,7 +2125,11 @@ se cruzan (`primeraQuePisa`, más de 1 cm²), se ve en rojo («Ahí ya está X»
 «Ahí ya está X: soltala en lo verde». Dos marcas cuyas fechas no se cruzan comparten el lugar.
 
 **A mano**: un punto por esquina, cada uno pegado a estantes, bordes, parantes y lados de las
-otras piezas (`imantarAMano`); el contador grande dice «Llevás X % de Y %» / «Faltan Z %»,
+otras piezas (`imantarAMano`); desde el 2026-10-29 (`imantarConGuias`, el mismo en Distribuir y
+en el planograma) también a los puntos ya puestos —el que cierra sale en ángulo recto— y un lado
+torcido menos de 7° se endereza aunque el punto quede lejos; mientras se apunta, una línea
+punteada azul (`data-guias-del-iman`) muestra por dónde se pegó: recto con el anterior, alineado
+con otro punto, con un estante o con el lado o la esquina de otra forma (así empalman). El contador grande dice «Llevás X % de Y %» / «Faltan Z %»,
 «Justo» (verde) o «Te pasaste · sobra W %» (rojo, con «Achicar a Y %»). Se cierra tocando el
 primer punto (el círculo grande). Al cerrar, si quedó a ±3 % (`AJUSTE_SOLO_PB`), se deja
 **justa sola** corriendo un lado suelto —el que se puso a ojo, no los pegados a estantes,
