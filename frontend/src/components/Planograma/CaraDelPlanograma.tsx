@@ -412,7 +412,7 @@ export default function CaraDelPlanograma({ cara, piezas, puedeEditar, libre, fa
             (recto con el anterior, alineado con otro punto, con un estante o
             con el lado de otra forma). Se ven mientras se apunta. */}
         {aMano && cursor && guias && (guias.u !== null || guias.v !== null) && (
-          <g pointerEvents="none" data-guias-del-iman style={{ stroke: "var(--signal)" }}>
+          <g pointerEvents="none" data-guias-del-iman style={{ stroke: "var(--signal-ink)" }}>
             {guias.u !== null && (
               <line x1={guias.u * W} y1={0} x2={guias.u * W} y2={H} strokeWidth={px(1.5)} strokeDasharray={`${px(6)} ${px(4)}`} />
             )}
