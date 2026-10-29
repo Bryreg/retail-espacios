@@ -248,6 +248,23 @@ prueba("Indicadores: cada indicador tiene su definición, y quien no administra 
   assert.match(v, /if \(!isAdmin \|\| !enIndicadores\) return;\s*let vivo = true;\s*getSerieDeCanon/);
 });
 
+prueba("el 3D tiene camino de vuelta a la pantalla de la que se llegó (el dueño, 2026-10-29)", () => {
+  const V = M.vueltaAlCambiar;
+  const ida = V(null, "indicadores", "plano3d", "/indicadores?x=1");
+  assert.deepEqual(ida, { modulo: "indicadores", ruta: "/indicadores?x=1" });
+  // Moverse dentro del Plano la conserva; salir del Plano la olvida.
+  assert.deepEqual(V(ida, "plano3d", "plano", "/plano/3d"), ida);
+  assert.deepEqual(V(ida, "plano", "muebles", "/plano"), ida);
+  assert.equal(V(ida, "plano3d", "inicio", "/plano/3d"), null);
+  // Al 2D se llega por el menú: no hace falta barra.
+  assert.equal(V(null, "inicio", "plano", "/"), null);
+  for (const m of Object.keys(M.RUTA_DE)) assert.ok(M.NOMBRE_DE[m], `sin nombre para ${m}`);
+  const dash = sinComentarios(leer("pages", "Dashboard.tsx"));
+  assert.match(dash, /setVueltaDelPlano\(\(v\) => vueltaAlCambiar\(v, antes, efectivo, rutaDeAntes\)\)/);
+  assert.match(dash, /\{vueltaDelPlano && !desdeMontaje && \(\s*<div className="volver-montaje" role="status" data-volver-plano>/);
+  assert.match(dash, /onClick=\{\(\) => navigate\(vueltaDelPlano\.ruta\)\}/);
+});
+
 prueba("lo que trae un contrato a Vender cierra la bandeja de Pendientes (Editar desde Contratos la dejaba encima)", () => {
   const v = sinComentarios(leer("pages", "DashboardView.tsx"));
   assert.match(v, /const setModo = useCallback\(\(m: ModoComercial\) => \{\s*if \(m === "vender"\) useArmazon\.getState\(\)\.cerrarBandeja\(\);/);

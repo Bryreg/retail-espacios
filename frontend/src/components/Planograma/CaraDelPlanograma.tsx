@@ -3,8 +3,8 @@ import { usePlanograma } from "../../store/planogramaStore";
 import { TOQUE_PX, esClic, puntoInterior } from "../../utils/edicionDeZonas";
 import { pct } from "../../utils/participaciones";
 import {
-  bordesUtiles, encajar, estirar, huecosLibres, imantarAMano, lineasDeLaCara, lineasDeOcupados, poligonoDeRect, primeraQuePisa,
-  rotuloDeLoQueHay, ubicarSinArrastrar, type CaraDePiezas as Cara, type Rect,
+  bordesUtiles, encajar, estirar, huecosLibres, imantarConGuias, lineasDeLaCara, lineasDeOcupados, poligonoDeRect, primeraQuePisa,
+  rotuloDeLoQueHay, ubicarSinArrastrar, type CaraDePiezas as Cara, type GuiasDelIman, type Rect,
 } from "../../utils/piezas";
 import { ocupadosDelPlano, type PiezaDelPlano } from "../../utils/planograma";
 import { trapecios, type Poligono, type Punto } from "../../utils/zonasGeometria";
@@ -132,6 +132,8 @@ export default function CaraDelPlanograma({ cara, piezas, puedeEditar, libre, fa
   const px = (n: number) => n / escala;
 
   const [cursor, setCursor] = useState<Punto | null>(null);
+  /** Por dónde se pegó el punto que se apunta (las guías punteadas). */
+  const [guias, setGuias] = useState<GuiasDelIman | null>(null);
   const [vista, setVista] = useState<Vista | null>(null);
   const [choque, setChoque] = useState<Vista | null>(null);
   const [enfocada, setEnfocada] = useState<number | null>(null);
@@ -152,7 +154,9 @@ export default function CaraDelPlanograma({ cara, piezas, puedeEditar, libre, fa
   const imantado = (p: Punto): Punto => {
     if (!lineasAMano) return p;
     const r = 10 / escala;
-    return imantarAMano(p, lineasAMano, { u: r / W, v: r / H });
+    const i = imantarConGuias(p, lineasAMano, { u: r / W, v: r / H }, usePlanograma.getState().trazo ?? []);
+    setGuias(i.guias);
+    return i.punto;
   };
   const aUV = (x: number, y: number): Punto | null => {
     const m = svgRef.current?.getScreenCTM();
@@ -404,6 +408,19 @@ export default function CaraDelPlanograma({ cara, piezas, puedeEditar, libre, fa
           </rect>
         ))}
 
+        {/* Las guías del imán «A mano»: la línea por la que se pegó el punto
+            (recto con el anterior, alineado con otro punto, con un estante o
+            con el lado de otra forma). Se ven mientras se apunta. */}
+        {aMano && cursor && guias && (guias.u !== null || guias.v !== null) && (
+          <g pointerEvents="none" data-guias-del-iman style={{ stroke: "var(--signal-ink)" }}>
+            {guias.u !== null && (
+              <line x1={guias.u * W} y1={0} x2={guias.u * W} y2={H} strokeWidth={px(1.5)} strokeDasharray={`${px(6)} ${px(4)}`} />
+            )}
+            {guias.v !== null && (
+              <line x1={0} y1={(1 - guias.v) * H} x2={W} y2={(1 - guias.v) * H} strokeWidth={px(1.5)} strokeDasharray={`${px(6)} ${px(4)}`} />
+            )}
+          </g>
+        )}
         {trazo && trazo.length > 0 && piezaElegida && (
           <g pointerEvents="none">
             <polyline points={trazo.map(([u, v]) => `${u * W},${(1 - v) * H}`).join(" ")} fill="none" stroke={piezaElegida.tono}

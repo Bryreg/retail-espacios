@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-28: **Indicadores se rediseñó alrededor del mapa** (versión B,
+Última actualización: 2026-10-29: **el aviso de montaje ya no pide un archivo que no hace falta**.
+Un porcentaje sale con su zona confirmada; una venta entera o por partes, con la planometría o con
+un planograma publicado de la cara. Las filas que ya cumplían salen solas al abrir Pendientes. Y el
+3D tiene «← Volver a …» cuando se llega desde otra pantalla, y el dibujo a mano endereza los lados
+casi rectos y muestra guías para que empalme con la forma de al lado. Ver *El correo de montaje espera al
+plano de la cara*.
+
+Antes, el 2026-10-28: **Indicadores se rediseñó alrededor del mapa** (versión B,
 aprobada por el dueño). La pestaña que abre es **Mapa de oportunidades**: cuatro cifras contra su
 meta, seis indicadores a los lados y al centro un *mapa de decisión* —la planta de la sede en una
 base neutra— que enciende una capa animada por indicador; debajo, la lista de lo que el mapa muestra
@@ -1363,12 +1370,29 @@ proveedor que queda. **La forma de venderse se escribe en el plano al GUARDAR**:
 su monto viajan en ninguna parte de la respuesta de Vender (tampoco en `filas[].mensajes`, que no se
 pintan pero llegan al navegador). La planilla de administración sigue avisándolo.
 
-**El correo de montaje espera a la planometría.** Todo contrato nuevo nace con su fila en
+**El correo de montaje espera al plano de la cara.** Todo contrato nuevo nace con su fila en
 `montajes_pendientes` (`escribir_contrato` / `create_lease`) y `_avisar` no le manda el montaje
 mientras la tenga. Sale una vez, por `routers/montajes.avisar_los_listos`, cuando el contrato
-tiene planometría y, si es un porcentaje, zona confirmada. Un camino nuevo que cree contratos
-pasa por `escribir_contrato` (o deja la fila él mismo); uno que mande el montaje por su cuenta
-se salta la regla. Ver *Rediseño, PR 2 (Supervisar)*.
+tiene su plano (decisión del dueño, 2026-10-29 — antes pedía el archivo siempre, y un porcentaje
+ya distribuido seguía en «Falta planometría»):
+
+- **Un porcentaje**: la zona confirmada («Distribuir esta cara») ES su plano. No pide archivo.
+- **Una venta entera o por partes**: el archivo (`POST /leases/{id}/planometria`) **o** un
+  planograma publicado de esa cara (`Planograma.codigo` = el código de la cara, con su sede).
+
+La cuenta es `services/montajes_pendientes.que_falta`. Lo disparan la carga del archivo
+(`routers/planograms.py`), la confirmación de la zona (`routers/participaciones.py`), la
+publicación del planograma (`routers/planogramas.publicar` → `listos_de_la_cara`) y, por las
+filas que ya cumplían antes de la regla, **leer la lista** (`GET /api/montajes/pendientes` manda
+y saca los `listos_de_la_sede` antes de responder). Un camino nuevo que cree contratos pasa por
+`escribir_contrato` (o deja la fila él mismo); uno que mande el montaje por su cuenta se salta la
+regla. Ver *Rediseño, PR 2 (Supervisar)*.
+
+**El 3D tiene camino de vuelta.** Al 3D no se llega por el menú (el menú abre el 2D): se llega
+desde «Distribuir» de la ficha, Pendientes o Indicadores (`pedirEnfoque3D`). `modulos.vueltaAlCambiar`
+anota de dónde y el armazón pinta «Viniste desde Indicadores · ← Volver a Indicadores» (la misma
+barra que la de Montajes, `data-volver-plano`) mientras se siga en el Plano; salir del Plano la
+olvida. Prueba: `probar-armazon`.
 
 ---
 
@@ -2101,7 +2125,11 @@ se cruzan (`primeraQuePisa`, más de 1 cm²), se ve en rojo («Ahí ya está X»
 «Ahí ya está X: soltala en lo verde». Dos marcas cuyas fechas no se cruzan comparten el lugar.
 
 **A mano**: un punto por esquina, cada uno pegado a estantes, bordes, parantes y lados de las
-otras piezas (`imantarAMano`); el contador grande dice «Llevás X % de Y %» / «Faltan Z %»,
+otras piezas (`imantarAMano`); desde el 2026-10-29 (`imantarConGuias`, el mismo en Distribuir y
+en el planograma) también a los puntos ya puestos —el que cierra sale en ángulo recto— y un lado
+torcido menos de 7° se endereza aunque el punto quede lejos; mientras se apunta, una línea
+punteada azul (`data-guias-del-iman`) muestra por dónde se pegó: recto con el anterior, alineado
+con otro punto, con un estante o con el lado o la esquina de otra forma (así empalman). El contador grande dice «Llevás X % de Y %» / «Faltan Z %»,
 «Justo» (verde) o «Te pasaste · sobra W %» (rojo, con «Achicar a Y %»). Se cierra tocando el
 primer punto (el círculo grande). Al cerrar, si quedó a ±3 % (`AJUSTE_SOLO_PB`), se deja
 **justa sola** corriendo un lado suelto —el que se puso a ojo, no los pegados a estantes,
@@ -2541,7 +2569,9 @@ Decisión del dueño. Manda `docs/rediseno/vender-api.md` §4.
   confirmada. Lo que pase último lo dispara (la carga de la planometría o la confirmación de la
   distribución), sale **una vez** y su fila de `montajes_pendientes` se borra. Reemplazar la
   planometría no lo reenvía. Comercial y el proveedor reciben su correo al guardar, como
-  siempre.
+  siempre. **Cambió el 2026-10-29**: un porcentaje ya no pide el archivo (su zona confirmada
+  basta) y a una venta entera o por partes le sirve también un planograma publicado — ver *El
+  correo de montaje espera al plano de la cara*.
 - Cómo: `alta_de_contrato.escribir_contrato` (y `create_lease`) dejan la fila;
   `bulk_leases._avisar` no manda el montaje de un contrato con fila; `routers/montajes.py`
   (`avisar_los_listos`) lo manda cuando a la fila no le falta nada

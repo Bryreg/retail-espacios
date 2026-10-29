@@ -550,11 +550,13 @@ function Avisos({ avisos }: { avisos?: ResumenContrato["avisos"] }) {
       {linea("Comercial", avisos.comercial, "· con el valor")}
       {linea("Montaje", avisos.montaje, "· sin valores")}
       {linea("Proveedor", avisos.proveedor)}
-      {/* El aviso de montaje espera la planometría (rediseño, PR 2): no salió
+      {/* El aviso de montaje espera el plano de la cara (planometría, planograma
+          publicado o, en un porcentaje, la distribución confirmada): no salió
           todavía, y decir «nadie va a montar» sería falso. */}
       {avisos.montaje.length === 0 && (avisos.montaje_pendiente?.length ?? 0) > 0 && (
         <div style={{ marginTop: 3, color: "var(--ink-3)" }}>
-          El aviso de montaje sale cuando se cargue la planometría en Supervisar.
+          El aviso de montaje sale cuando la cara tenga su plano: la planometría o el
+          planograma publicado, o —si es un porcentaje— la distribución confirmada.
         </div>
       )}
       {avisos.montaje.length === 0 && !(avisos.montaje_pendiente?.length) && (
@@ -979,11 +981,11 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
       )}
       {edita && !c.soloForma && (
         <p className="aviso-correos" data-aviso-correos
-          title={`Comercial (gerente y administrador de ${edita.sede}) · el proveedor (${c.correoDestino}) · montaje (mercaderista de ${edita.sede}${c.edicion?.reemplazo || edita.montajePendiente ? ", cuando se cargue la planometría" : ""})`}>
+          title={`Comercial (gerente y administrador de ${edita.sede}) · el proveedor (${c.correoDestino}) · montaje (mercaderista de ${edita.sede}${c.edicion?.reemplazo || edita.montajePendiente ? ", cuando la cara tenga su plano" : ""})`}>
           <Mail {...ICONO} />
           <span>
             <b>Al guardar, se envía de nuevo a los correos:</b> comercial · el proveedor ({c.correoDestino}) · montaje
-            {c.edicion?.reemplazo || edita.montajePendiente ? " (al cargar la planometría)" : ""}.
+            {c.edicion?.reemplazo || edita.montajePendiente ? " (cuando la cara tenga su plano)" : ""}.
           </span>
         </p>
       )}

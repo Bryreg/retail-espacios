@@ -93,7 +93,7 @@ export default function ConfirmarEdicion({ c, onVolver, onGuardar }: {
               <Wrench {...ICONO} />
               <span>
                 <b>Montaje</b> · mercaderista de {edita.sede} (sin precios
-                {pendiente ? "; sale cuando se cargue la planometría" : ""})
+                {pendiente ? "; sale cuando la cara tenga su plano" : ""})
               </span>
             </li>
           </ul>

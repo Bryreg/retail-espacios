@@ -394,6 +394,34 @@ await prueba("Estantes al soltar: toma el ancho del hueco y se apoya en el estan
 
 console.log("piezas · «A mano»");
 
+await prueba("«A mano»: un lado casi recto queda recto, se alinea con los puntos puestos y dice por dónde (guías) — el dueño, 2026-10-29", () => {
+  const sin = { us: [0, 1], vs: [0, 1] };
+  const radio = { u: 0.02, v: 0.02 };
+  // Lejos del anterior y torcido 3°: se endereza en vertical.
+  const r1 = PZ.imantarConGuias([0.3 + 0.4 * Math.tan(3 * Math.PI / 180), 0.8], sin, radio, [[0.3, 0.4]]);
+  assert.equal(r1.punto[0], 0.3, "el lado casi vertical no quedó recto");
+  assert.equal(r1.guias.u, 0.3);
+  assert.equal(r1.guias.v, null);
+  // Torcido 3° en horizontal: se endereza en horizontal.
+  const r2 = PZ.imantarConGuias([0.8, 0.4 + 0.4 * Math.tan(3 * Math.PI / 180)], sin, radio, [[0.3, 0.8], [0.4, 0.4]]);
+  assert.equal(r2.punto[1], 0.4);
+  assert.equal(r2.guias.v, 0.4);
+  // Torcido 20°: es una diagonal a propósito, no se toca.
+  const d = [0.3 + 0.4 * Math.tan(20 * Math.PI / 180), 0.8];
+  const r3 = PZ.imantarConGuias(d, sin, radio, [[0.3, 0.4]]);
+  assert.deepEqual(r3.guias, { u: null, v: null });
+  // El que cierra: se alinea con el PRIMER punto (no sólo con el anterior).
+  const r4 = PZ.imantarConGuias([0.305, 0.795], sin, radio, [[0.3, 0.4], [0.7, 0.4], [0.7, 0.8]]);
+  assert.deepEqual(r4.punto, [0.3, 0.8], "el último punto no cerró en ángulo recto");
+  // Empalma con otra forma: su lado y su esquina son líneas del imán.
+  const otra = PZ.lineasDeOcupados([{ spaceId: 9, poligonos: [[[0.5, 0], [0.62, 0], [0.62, 0.55], [0.5, 0.55]]] }]);
+  const r5 = PZ.imantarConGuias([0.627, 0.546], { us: [0, 1, ...otra.us], vs: [0, 1, ...otra.vs] }, radio, []);
+  assert.deepEqual(r5.punto, [0.62, 0.55], "no empalmó con la esquina de la otra forma");
+  assert.deepEqual(r5.guias, { u: 0.62, v: 0.55 });
+  // Sin trazo, lo de siempre.
+  assert.deepEqual(PZ.imantarAMano([0.5, 0.5], sin, radio), [0.5, 0.5]);
+});
+
 await prueba("«A mano»: la L del dibujo aprobado (dos estantes de abajo y una franja a la derecha) llega a 30 % justo con el imán", () => {
   const m = MUEBLES[0].mueble;
   const cara = caraDe(m);
@@ -483,8 +511,8 @@ await prueba("«A mano» cerca del contratado (±3 %) queda JUSTA corriendo el l
 });
 
 await prueba("el contador: llevando, justo y pasado, con las palabras del dibujo; una forma que se cruza no cuenta", () => {
-  assert.deepEqual(PZ.contadorAMano(0, 3000), { estado: "lleva", titulo: "Llevás", texto: "Faltan 30 %. Seguí tocando puntos; se pegan a los estantes y a los bordes.", falta: 3000, sobra: 0 });
-  assert.equal(PZ.contadorAMano(2000, 3000).texto, "Faltan 10 %. Seguí tocando puntos; se pegan a los estantes y a los bordes.");
+  assert.deepEqual(PZ.contadorAMano(0, 3000), { estado: "lleva", titulo: "Llevás", texto: "Faltan 30 %. Seguí tocando puntos; se pegan a los estantes, a los bordes y a la otra forma, y la línea punteada azul avisa cuando el lado va recto.", falta: 3000, sobra: 0 });
+  assert.equal(PZ.contadorAMano(2000, 3000).texto, "Faltan 10 %. Seguí tocando puntos; se pegan a los estantes, a los bordes y a la otra forma, y la línea punteada azul avisa cuando el lado va recto.");
   assert.equal(PZ.contadorAMano(3400, 3000).texto, "Sobra 4 %: sacá el último punto (Retroceso) o cerrala y tocá «Achicar a 30 %».");
   assert.equal(PZ.contadorAMano(1750, 1750).estado, "justo");
   const cara = caraDe(MUEBLES[0].mueble);
