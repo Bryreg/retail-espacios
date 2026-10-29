@@ -1,4 +1,7 @@
-import type { CaraDelPlanograma, ColorDeDestino, DestinoOut, PiezaOut, TipoDeDestino } from "../api/planogramas";
+import type {
+  CaraDelPlanograma, ColorDeDestino, DestinoOut, EstadoDeLaCara, EstadoDeMontaje, PiezaOut, TipoDeDestino, VersionOut,
+} from "../api/planogramas";
+import { fechaEnCurso } from "./propuesta";
 import { pct, pico } from "./participaciones";
 import { formaDeLoDibujado, rectDePoligono, type FormaDePieza, type Ocupado, type Rect } from "./piezas";
 import { AREA_MINIMA_M2, areaCubierta, dibujadoPb, validarZona, type Exclusion, type Poligono } from "./zonasGeometria";
@@ -233,4 +236,117 @@ export function haceCuanto(dias: number): string {
   if (dias < 60) return `hace ${dias} días`;
   const meses = Math.round(dias / 30);
   return `hace ${meses} meses`;
+}
+
+/** Un paso de la tira de arriba de «Distribuir la cara» (planograma). */
+export interface PasoDelPlanograma {
+  numero: 1 | 2 | 3;
+  titulo: string;
+  detalle: string;
+  estado: "hecho" | "ahora" | "despues";
+}
+
+/**
+ * Los 3 pasos de un planograma (el dueño, 2026-10-29: «para distribuir un
+ * mueble no comercializable no se entiende por dónde comenzar ni cómo
+ * hacerlo»): 1 elegir qué va, 2 dibujarlo en la cara, 3 publicar con una
+ * fecha. El que toca («ahora») es el primero sin hacer; con la versión
+ * publicada y sin cambios, los tres están hechos.
+ */
+export function pasosDelPlanograma(c: { destinos: number; sinUbicar: number; conProblema: number; publicada: boolean }): PasoDelPlanograma[] {
+  const hecho = [
+    c.publicada || c.destinos > 0,
+    c.publicada || (c.destinos > 0 && c.sinUbicar === 0 && c.conProblema === 0),
+    c.publicada,
+  ];
+  const ahora = hecho.indexOf(false);
+  const estado = (i: number): PasoDelPlanograma["estado"] => (hecho[i] ? "hecho" : i === ahora ? "ahora" : "despues");
+  const n = c.destinos;
+  return [
+    { numero: 1, titulo: "Elegí qué va", estado: estado(0),
+      detalle: n === 0 ? "Categorías, marca propia o promociones" : `${n} ${n === 1 ? "elegido" : "elegidos"}` },
+    { numero: 2, titulo: "Dibujalo en la cara", estado: estado(1),
+      detalle: c.sinUbicar > 0 ? `Falta ubicar ${c.sinUbicar}` : c.conProblema > 0 ? `Revisá ${c.conProblema}` : n > 0 ? "Todo ubicado" : "Arrastrá cada uno a su lugar" },
+    { numero: 3, titulo: "Publicá con una fecha", estado: estado(2),
+      detalle: c.publicada ? "Publicada" : "El equipo recibe la guía de montaje" },
+  ];
+}
+
+/* ── «La cara»: el estado de su reparto (2026-10-29) ───────────────────────── */
+
+/** Por qué una cara pide revisión. */
+export type MotivoDeRevision = "vencida" | "mueble_cambio" | "no_coincide" | "no_se_pudo";
+
+/** Lo que dice el bloque «La cara» y la lista de Plano › Caras. `tono`:
+ *  «falta» (ámbar: hay algo por hacer), «en_curso» (azul: guardado, falta
+ *  publicar o todavía no rige) y «lista» (verde). */
+export interface ComoEstaLaCara {
+  estado: EstadoDeLaCara;
+  motivo: MotivoDeRevision | null;
+  tono: "falta" | "en_curso" | "lista";
+  /** «Sin repartir», «Borrador guardado», «Lista · versión 2 desde el 12 oct»… */
+  titulo: string;
+  /** Una línea de qué significa y qué hacer. */
+  texto: string;
+  /** El botón: «Distribuir la cara», «Seguir y publicar», «Ver o cambiar el reparto»… */
+  boton: string;
+}
+
+/**
+ * El estado del reparto de una cara, desde lo que manda el servidor (el
+ * `resumen` del plano o una fila de Plano › Caras). La misma regla que
+ * `services/planogramas.caras_de_la_sede`: con versión vigente, «lista» salvo
+ * que venció, que el mueble cambió o que su montaje no coincide o no se pudo
+ * («para revisar»); sin vigente, «programada», «borrador» o «sin repartir».
+ */
+export function comoEstaLaCara(c: {
+  borrador: boolean; vigente: VersionOut | null; programada: VersionOut | null; montaje?: EstadoDeMontaje | null;
+}, hoy: Date = new Date()): ComoEstaLaCara {
+  const f = (iso: string) => fechaEnCurso(iso, hoy);
+  const v = c.vigente;
+  if (v) {
+    const motivo: MotivoDeRevision | null = v.para_revisar ? "mueble_cambio"
+      : v.vencida_hace_dias != null ? "vencida"
+      : c.montaje === "no_coincide" || c.montaje === "no_se_pudo" ? c.montaje
+      : null;
+    if (motivo) {
+      const titulo = motivo === "mueble_cambio" ? "El mueble cambió" : motivo === "vencida" ? `Venció ${haceCuanto(v.vencida_hace_dias!)}`
+        : motivo === "no_coincide" ? "El montaje no coincide" : "No se pudo montar";
+      const texto = motivo === "mueble_cambio" ? `La versión ${v.numero} se hizo con otras medidas: revisala y publicá la siguiente.`
+        : motivo === "vencida" ? `La versión ${v.numero} sigue rigiendo hasta que publiques otra.`
+        : motivo === "no_coincide" ? "Lo montado no es lo planificado: revisalo con la foto."
+        : "Quien monta avisó que no se pudo: mirá el motivo.";
+      const boton = motivo === "no_coincide" || motivo === "no_se_pudo" ? "Revisar el montaje" : "Nueva versión";
+      return { estado: "para_revisar", motivo, tono: "falta", titulo, texto, boton };
+    }
+    return {
+      estado: "lista", motivo: null, tono: "lista", titulo: `Lista · versión ${v.numero} desde el ${f(v.rige_desde)}`,
+      texto: c.borrador ? "Hay un borrador con cambios sin publicar." : "Cada parte tiene lo que va; el equipo tiene su guía.",
+      boton: c.borrador ? "Seguir y publicar" : "Ver o cambiar el reparto",
+    };
+  }
+  if (c.programada) {
+    return { estado: "programada", motivo: null, tono: "en_curso", titulo: `Rige desde el ${f(c.programada.rige_desde)}`,
+      texto: `La versión ${c.programada.numero} ya está publicada y empieza a regir ese día.`, boton: "Ver o cambiar el reparto" };
+  }
+  if (c.borrador) {
+    return { estado: "borrador", motivo: null, tono: "en_curso", titulo: "Borrador guardado",
+      texto: "Falta publicarlo: hasta entonces el equipo no tiene guía.", boton: "Seguir y publicar" };
+  }
+  return { estado: "sin_repartir", motivo: null, tono: "falta", titulo: "Sin repartir",
+    texto: "Todavía no dice qué va en cada parte: el equipo no tiene guía para armarla.", boton: "Distribuir la cara" };
+}
+
+/** Las cuentas de arriba de Plano › Caras: cuántas en cada grupo. */
+export function contarCaras(caras: readonly { estado: EstadoDeLaCara }[]): { sinRepartir: number; enCurso: number; paraRevisar: number; listas: number } {
+  const n = (e: EstadoDeLaCara[]) => caras.filter((c) => e.includes(c.estado)).length;
+  return { sinRepartir: n(["sin_repartir"]), enCurso: n(["borrador", "programada"]), paraRevisar: n(["para_revisar"]), listas: n(["lista"]) };
+}
+
+/** El filtro de Plano › Caras: lo que no se vende (el de entrada), lo libre
+ *  de lo que se vende, o todas. */
+export type FiltroDeCaras = "internas" | "lo_libre" | "todas";
+
+export function filtrarCaras<T extends { comercializable: boolean }>(caras: readonly T[], f: FiltroDeCaras): T[] {
+  return f === "todas" ? [...caras] : caras.filter((c) => c.comercializable === (f === "lo_libre"));
 }

@@ -677,3 +677,89 @@ def resumen(db: Session, sede: str, rol: str) -> list[dict]:
 
 def tipo_legible(tipo: str) -> str:
     return _TIPO_LEGIBLE.get(tipo, "Otro")
+
+
+# ─── Plano › Caras (2026-10-29) ───────────────────────────────────────────────
+
+#: El orden de la lista: primero lo que pide algo, después lo que está listo.
+_ORDEN_DE_ESTADO = {"para_revisar": 0, "sin_repartir": 1, "borrador": 2, "programada": 3, "lista": 4}
+
+
+def _nombres_de_destinos(db: Session, piezas: list[PiezaDePlanograma]) -> list[str]:
+    """«Lácteos», «Marca propia»… de unas piezas, sin repetir, en su orden. Las
+    publicadas traen el nombre como era al publicar; las del borrador, el de
+    hoy."""
+    sin_foto = {p.destino_id for p in piezas if not p.foto_json}
+    hoy_ = {d.id: d.nombre for d in db.query(Destino).filter(Destino.id.in_(sin_foto or [-1])).all()}
+    fuera: list[str] = []
+    for p in piezas:
+        n = (json.loads(p.foto_json).get("nombre") if p.foto_json else hoy_.get(p.destino_id)) or "Un destino"
+        if n not in fuera:
+            fuera.append(n)
+    return fuera
+
+
+def caras_de_la_sede(db: Session, sede: str, rol: str) -> list[dict]:
+    """Plano › Caras (el dueño, 2026-10-29: «¿desde dónde llevo control de la
+    distribución de los muebles que no se venden?»): TODAS las caras con
+    superficie de la sede —también las que nunca se planificaron, que
+    ``resumen`` no ve— con el estado de su planograma y de su montaje.
+
+    ``estado``: ``sin_repartir`` (ni borrador ni versión), ``borrador`` (sin
+    versión que rija), ``programada`` (la primera rige más adelante),
+    ``lista`` y ``para_revisar`` (la vigente venció, el mueble cambió, o su
+    montaje no coincide o no se pudo; ``motivo`` dice cuál). Quien no
+    administra ve sólo los muebles que no se venden, como en ``resumen``."""
+    from app.services import supervision_planogramas as sup  # importa este módulo
+
+    s = normalizar(sede)
+    dia = hoy()
+    plano = PlanoIndexado(db)
+    pls = {(pl.fixture_id, pl.cara): pl for pl in db.query(Planograma).filter(Planograma.sede == s).all()}
+    por_planograma: dict = {}
+    for v in (db.query(VersionDePlanograma)
+              .filter(VersionDePlanograma.planograma_id.in_([p.id for p in pls.values()] or [-1])).all()):
+        por_planograma.setdefault(v.planograma_id, []).append(v)
+    filas = []
+    for f in plano.de_sede(s):
+        for letra in (("A", "B") if caras_de(f) == 2 else ("A",)):
+            cara = _armar_cara(s, f, letra)
+            if cara.superficie is None or (rol != "admin" and cara.comercializable):
+                continue
+            pl = pls.get((str(f.get("id")), letra))
+            versiones = por_planograma.get(pl.id, []) if pl is not None else []
+            vigente, estados = _estados(versiones, dia)
+            programada = min((v for v in versiones if estados[v.id] == "programada"), key=lambda v: v.rige_desde,
+                             default=None)
+            filas.append((cara, f, pl, vigente, programada))
+    montajes = sup.montaje_de_versiones(db, [v for *_x, v, _p in filas if v is not None],
+                                        {v.id: "vigente" for *_x, v, _p in filas if v is not None})
+    fuera = []
+    for cara, f, pl, vigente, programada in filas:
+        borrador = pl is not None and pl.borrador_en is not None
+        vig = version_out(vigente, "vigente", dia, cara) if vigente is not None else None
+        montaje = montajes[vigente.id]["estado"] if vigente is not None else None
+        motivo = None
+        if vig is not None:
+            if vig["para_revisar"]:
+                motivo = "mueble_cambio"
+            elif vig["vencida_hace_dias"] is not None:
+                motivo = "vencida"
+            elif montaje in ("no_coincide", "no_se_pudo"):
+                motivo = montaje
+            estado = "para_revisar" if motivo else "lista"
+            piezas = _piezas_de(db, pl, vigente.id)
+        else:
+            estado = "programada" if programada is not None else "borrador" if borrador else "sin_repartir"
+            piezas = _piezas_de(db, pl, programada.id if programada is not None else None) if pl is not None else []
+        fuera.append({
+            "fixture_id": str(f.get("id")), "cara": cara.letra, "caras": caras_de(f),
+            "codigo": cara.corto, "nombre": f.get("label") or None, "tipo": f.get("type"),
+            "comercializable": cara.comercializable, "por_participacion": cara.por_participacion,
+            "estado": estado, "motivo": motivo, "borrador": borrador,
+            "destinos": _nombres_de_destinos(db, piezas),
+            "vigente": vig, "montaje": montaje,
+            "programada": version_out(programada, "programada", dia, cara) if programada is not None else None,
+        })
+    fuera.sort(key=lambda x: (_ORDEN_DE_ESTADO[x["estado"]], _para_ordenar(x["codigo"]), x["cara"]))
+    return fuera

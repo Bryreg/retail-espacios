@@ -564,7 +564,7 @@ prueba("las tres pestañas tienen cada sección del panel de antes (una por secc
     ["Estado del espacio", venta, /<FilaDelPanel k="Estado" titulo="Estado del espacio"/],
     ["Contratado (sin plata)", venta, /data-contratado>[\s\S]*Sin contrato activo\./],
     ["«Vender» con este espacio", panelB, /onClick=\{\(\) => onVender\(activeFace\)\}/],
-    ["Abrir en Distribución", venta, /onClick=\{\(\) => abrirEnDistribucion\(item\.id, activeFace\)\}/],
+    ["Abrir en Distribución («La cara», 2026-10-29)", venta, /onPorcentaje=\{isAdmin && esPc \? \(c\) => abrirEnDistribucion\(item\.id, c\) : undefined\}/],
     ["Dimensiones", medidas, /onUpdate\(\{ w: [\s\S]*onUpdate\(\{ h: /],
     ["Alto, entrepaños y módulo", medidas, /<GeometriaDelMueble id=\{item\.id\}/],
     ["Archivos y cara designada", documentos, /<FilesSection key=\{activeCode\} docs=\{docs\}/],

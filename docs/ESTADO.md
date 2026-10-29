@@ -1,7 +1,17 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-29: **el aviso de montaje ya no pide un archivo que no hace falta**.
+Última actualización: 2026-10-29 (tarde): **«Distribuir» es un solo camino, y hay dónde llevar el
+control**. En el panel del mueble, 2D y 3D, arriba de todo va el bloque **«La cara»**: cómo está el
+reparto de cada cara (sin repartir, borrador, lista, para revisar) y UN botón, «Distribuir la
+cara», que abre lo que le toca al mueble —por porcentaje, Distribuir (con «Lo libre» al lado); si
+no se vende, o para lo libre de lo que se vende, el planograma—. La pantalla del planograma se
+llama «Distribuir la cara» y arriba tiene 3 pasos (Elegí qué va · Dibujalo en la cara · Publicá con
+una fecha). Y el Plano tiene una cuarta vista, **Plano › Caras** (`/plano/caras`): todas las caras
+de la sede con su estado, qué va, cómo va su montaje y su botón. Ver *Distribuir: un solo camino y
+Plano › Caras*.
+
+Antes, el 2026-10-29: **el aviso de montaje ya no pide un archivo que no hace falta**.
 Un porcentaje sale con su zona confirmada; una venta entera o por partes, con la planometría o con
 un planograma publicado de la cara. Las filas que ya cumplían salen solas al abrir Pendientes. Y el
 3D tiene «← Volver a …» cuando se llega desde otra pantalla, y el dibujo a mano endereza los lados
@@ -1387,6 +1397,35 @@ filas que ya cumplían antes de la regla, **leer la lista** (`GET /api/montajes/
 y saca los `listos_de_la_sede` antes de responder). Un camino nuevo que cree contratos pasa por
 `escribir_contrato` (o deja la fila él mismo); uno que mande el montaje por su cuenta se salta la
 regla. Ver *Rediseño, PR 2 (Supervisar)*.
+
+### Distribuir: un solo camino y Plano › Caras (2026-10-29)
+
+El dueño: «para "Distribuir" un mueble no comercializable no se entiende por dónde comenzar» y
+«¿desde dónde llevo control de la distribución de esos muebles?». Dibujo aprobado en el lienzo
+«Distribuir un mueble · un solo camino» (láminas 1–5); la lista quedó en el Plano (no en
+Indicadores), decisión del dueño.
+
+- **«La cara»** (`components/Planograma/BloqueDeLaCara.tsx`), arriba de la pestaña Venta del panel
+  del 2D y en el panel del 3D (variante oscura). Reemplaza a `EntradaDelPlanograma` (fila
+  «Planograma», más abajo), al botón «Distribuir» de lo contratado por porcentaje del 2D y a
+  «Distribuir esta cara» del 3D, que abría el reparto por porcentaje también en muebles que no se
+  venden. Por porcentaje: «Distribuir la cara» → `useAbrirEnDistribucion` (3D, Distribución; con
+  un proveedor mirando sigue apagado) y «Lo libre» → el planograma. Si no: una tarjeta por cara
+  con su estado (`utils/planograma.comoEstaLaCara`) y su botón al planograma. Un mueble que se
+  vende no se le muestra a quien no administra.
+- **Los 3 pasos** del planograma (`pasosDelPlanograma`): el que toca es el primero sin hacer; con
+  la versión publicada y sin cambios, los tres hechos. Sólo para quien puede planificar.
+- **Plano › Caras** (`pages/CarasDeLaSede.tsx`, `GET /api/planogramas/caras?sede=` →
+  `services/planogramas.caras_de_la_sede`): TODAS las caras con superficie, también las que nunca
+  se planificaron (`resumen` sólo ve las que tienen fila en `planogramas`). Estados:
+  `sin_repartir`, `borrador`, `programada`, `lista`, `para_revisar` (venció, el mueble cambió, o el
+  montaje no coincide o no se pudo; `motivo`). Primero lo que pide algo. Filtros: «No se venden»
+  (el de entrada), «Lo libre de las que se venden», «Todas» (sólo administración). Al salir de una
+  cara la lista se vuelve a leer. **«Sin repartir» vive acá, no en Pendientes** (el primer día
+  serían todas las caras de la sede).
+- En el teléfono, 2D | 3D | Muebles | Caras baja a su propio renglón: en una sola línea la barra se
+  pasaba 40–90 px y Pendientes y la cuenta quedaban afuera (ya pasaba antes de Caras).
+- Pruebas: `tests/test_caras_de_la_sede.py`, `probar-planogramas` («La cara» y Plano › Caras).
 
 **El 3D tiene camino de vuelta.** Al 3D no se llega por el menú (el menú abre el 2D): se llega
 desde «Distribuir» de la ficha, Pendientes o Indicadores (`pedirEnfoque3D`). `modulos.vueltaAlCambiar`

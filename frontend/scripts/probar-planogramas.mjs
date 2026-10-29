@@ -166,16 +166,57 @@ await prueba("las palabras: qué cambia, hace cuánto venció, el color que sale
   assert.deepEqual(PL.TIPOS_DE_DESTINO.map((t) => t.texto), ["Categoría", "Marca propia", "Producto o grupo", "Promoción", "Otro"]);
 });
 
-await prueba("la entrada del plano: «Planificar la cara A», «Lo libre de la cara B», «Ver la cara A»", () => {
-  const src = sinComentarios(leer("src/components/Planograma/EntradaDelPlanograma.tsx"));
-  const cuerpo = src.slice(src.indexOf("export function rotuloDelBoton"), src.indexOf("export default"));
-  const fn = new Function(`${cuerpo.replace("export function rotuloDelBoton(puede: boolean, rentable: boolean, cara: \"A\" | \"B\" | null): string", "return function (puede, rentable, cara)")}`)();
-  assert.equal(fn(true, false, "A"), "Planificar la cara A");
-  assert.equal(fn(true, false, null), "Planificar la cara");
-  assert.equal(fn(true, true, "B"), "Lo libre de la cara B");
-  assert.equal(fn(true, true, null), "Planificar lo libre");
-  assert.equal(fn(false, false, "A"), "Ver la cara A");
-  assert.equal(fn(false, false, null), "Ver el planograma");
+await prueba("«La cara» y Plano › Caras: el estado de cada cara, los pasos y los filtros (el dueño, 2026-10-29)", () => {
+  const hoy = new Date(2026, 9, 29);
+  const v = (o = {}) => ({ id: 7, numero: 2, rige_desde: "2026-10-12", hasta: null, estado: "vigente", publicada_en: null, publicada_por: null,
+    vencida_hace_dias: null, para_revisar: false, ...o });
+  const como = (c) => PL.comoEstaLaCara({ borrador: false, vigente: null, programada: null, ...c }, hoy);
+  let e = como({});
+  assert.deepEqual([e.estado, e.tono, e.titulo, e.boton], ["sin_repartir", "falta", "Sin repartir", "Distribuir la cara"]);
+  e = como({ borrador: true });
+  assert.deepEqual([e.estado, e.tono, e.boton], ["borrador", "en_curso", "Seguir y publicar"]);
+  e = como({ programada: v({ estado: "programada", rige_desde: "2026-11-02" }) });
+  assert.deepEqual([e.estado, e.titulo], ["programada", "Rige desde el 2 nov"]);
+  e = como({ vigente: v() });
+  assert.deepEqual([e.estado, e.tono, e.titulo, e.boton], ["lista", "lista", "Lista · versión 2 desde el 12 oct", "Ver o cambiar el reparto"]);
+  assert.equal(como({ vigente: v(), borrador: true }).boton, "Seguir y publicar", "un borrador encima de la vigente no se esconde");
+  // Lo que pide revisión: el mueble cambió, venció, o el montaje.
+  assert.deepEqual([como({ vigente: v({ para_revisar: true }) }).motivo, como({ vigente: v({ para_revisar: true }) }).boton], ["mueble_cambio", "Nueva versión"]);
+  assert.deepEqual([como({ vigente: v({ vencida_hace_dias: 4 }) }).titulo], ["Venció hace 4 días"]);
+  for (const m of ["no_coincide", "no_se_pudo"]) {
+    const r = como({ vigente: v(), montaje: m });
+    assert.deepEqual([r.estado, r.motivo, r.boton], ["para_revisar", m, "Revisar el montaje"]);
+  }
+  assert.equal(como({ vigente: v(), montaje: "coincide" }).estado, "lista");
+  // Las cuentas y los filtros de Plano › Caras.
+  const caras = [{ estado: "sin_repartir", comercializable: false }, { estado: "borrador", comercializable: false },
+    { estado: "programada", comercializable: true }, { estado: "para_revisar", comercializable: false }, { estado: "lista", comercializable: true }];
+  assert.deepEqual(PL.contarCaras(caras), { sinRepartir: 1, enCurso: 2, paraRevisar: 1, listas: 1 });
+  assert.equal(PL.filtrarCaras(caras, "internas").length, 3);
+  assert.equal(PL.filtrarCaras(caras, "lo_libre").length, 2);
+  assert.equal(PL.filtrarCaras(caras, "todas").length, 5);
+  // Los 3 pasos de arriba del planograma: el que toca es el primero sin hacer.
+  const estados = (c) => PL.pasosDelPlanograma(c).map((p) => p.estado);
+  assert.deepEqual(estados({ destinos: 0, sinUbicar: 0, conProblema: 0, publicada: false }), ["ahora", "despues", "despues"]);
+  assert.deepEqual(estados({ destinos: 2, sinUbicar: 1, conProblema: 0, publicada: false }), ["hecho", "ahora", "despues"]);
+  assert.deepEqual(estados({ destinos: 2, sinUbicar: 0, conProblema: 1, publicada: false }), ["hecho", "ahora", "despues"]);
+  assert.deepEqual(estados({ destinos: 2, sinUbicar: 0, conProblema: 0, publicada: false }), ["hecho", "hecho", "ahora"]);
+  assert.deepEqual(estados({ destinos: 2, sinUbicar: 0, conProblema: 0, publicada: true }), ["hecho", "hecho", "hecho"]);
+  assert.equal(PL.pasosDelPlanograma({ destinos: 1, sinUbicar: 1, conProblema: 0, publicada: false })[1].detalle, "Falta ubicar 1");
+  // El botón abre lo que le toca al mueble: por porcentaje, Distribuir; si no, el planograma.
+  const bloque = sinComentarios(leer("src/components/Planograma/BloqueDeLaCara.tsx"));
+  assert.match(bloque, /if \(porParticipacion\) \{[\s\S]*onClick=\{\(\) => onPorcentaje\?\.\(caraMirada\)\}/);
+  assert.match(bloque, /const abrir = \(c: "A" \| "B"\) => void usePlanograma\.getState\(\)\.abrir\(\{ sede, fixtureId, cara: c \}\);/);
+  assert.match(bloque, /if \(comercializable && !esAdmin\) return null;/, "a quien no administra se le muestra un mueble que se vende");
+  const plano = sinComentarios(leer("src/components/FloorPlan2D/FloorPlan2D.tsx"));
+  assert.match(plano, /<BloqueDeLaCara sede=\{sede\}[\s\S]*?onPorcentaje=\{isAdmin && esPc \? \(c\) => abrirEnDistribucion\(item\.id, c\) : undefined\}/);
+  const tres = sinComentarios(leer("src/components/StoreEditor3D/StoreEditor3D.tsx"));
+  assert.match(tres, /<BloqueDeLaCara variante="oscuro"[\s\S]*?motivo=\{motivoSinDistribuir\}/);
+  assert.ok(!tres.includes(">\n              Distribuir esta cara\n"), "quedó el botón viejo del 3D");
+  // La pantalla del planograma tiene la tira de pasos y se llama «Distribuir la cara».
+  const pantalla = sinComentarios(leer("src/components/Planograma/PlanificarCara.tsx"));
+  assert.match(pantalla, /<ol data-pasos-del-planograma/);
+  assert.ok(pantalla.includes('aria-label="Distribuir la cara"'));
 });
 
 console.log("planogramas · los gemelos y la casa");
@@ -208,7 +249,7 @@ await prueba("cada ruta del cliente existe en el router, con su método", () => 
 await prueba("la casa: nada en el navegador, nunca «sombra», un solo amarillo por pantalla, íconos de 16", () => {
   const archivos = ["src/store/planogramaStore.ts", "src/utils/planograma.ts", "src/api/planogramas.ts",
     "src/components/Planograma/PlanificarCara.tsx", "src/components/Planograma/CaraDelPlanograma.tsx",
-    "src/components/Planograma/FormularioDeDestino.tsx", "src/components/Planograma/EntradaDelPlanograma.tsx"];
+    "src/components/Planograma/FormularioDeDestino.tsx", "src/pages/CarasDeLaSede.tsx"];
   for (const a of archivos) {
     const s = sinComentarios(leer(a));
     assert.ok(!/localStorage|sessionStorage|indexedDB/.test(s), `${a} guarda algo en el navegador`);

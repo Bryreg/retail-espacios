@@ -131,6 +131,36 @@ export interface ResumenDePlanogramas {
   puede_planificar: boolean;
 }
 
+/** Plano › Caras (2026-10-29): el estado de cada cara de la sede. */
+export type EstadoDeLaCara = "sin_repartir" | "borrador" | "programada" | "lista" | "para_revisar";
+
+export interface CaraDeLaSede {
+  fixture_id: string;
+  cara: "A" | "B";
+  /** 1 o 2: si el mueble tiene cara B. */
+  caras: number;
+  /** Sin la sede: «GON-02», «GON-02-B». */
+  codigo: string;
+  nombre: string | null;
+  tipo: string | null;
+  comercializable: boolean;
+  por_participacion: boolean;
+  estado: EstadoDeLaCara;
+  /** Por qué pide revisión: venció, el mueble cambió, o el montaje. */
+  motivo: "vencida" | "mueble_cambio" | "no_coincide" | "no_se_pudo" | null;
+  borrador: boolean;
+  /** Los destinos de la vigente (o de la programada, o del borrador). */
+  destinos: string[];
+  vigente: VersionOut | null;
+  montaje: EstadoDeMontaje | null;
+  programada: VersionOut | null;
+}
+
+export interface CarasDeLaSede {
+  caras: CaraDeLaSede[];
+  puede_planificar: boolean;
+}
+
 export interface CaraIn {
   sede: string;
   fixture_id: string;
@@ -161,6 +191,9 @@ export const leerCara = (sede: string, fixtureId: string, cara: "A" | "B"): Prom
 
 export const leerResumen = (sede: string): Promise<ResumenDePlanogramas> =>
   client.get<ResumenDePlanogramas>(`${P}/resumen`, { params: { sede } }).then((r) => r.data);
+
+export const leerCaras = (sede: string): Promise<CarasDeLaSede> =>
+  client.get<CarasDeLaSede>(`${P}/caras`, { params: { sede } }).then((r) => r.data);
 
 export const leerVersion = (id: number): Promise<VersionOut> =>
   client.get<VersionOut>(`${P}/version`, { params: { id } }).then((r) => r.data);

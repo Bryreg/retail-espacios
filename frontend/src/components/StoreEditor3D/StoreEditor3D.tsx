@@ -37,6 +37,7 @@ import { rotuloDeLoQueHay } from "../../utils/piezas";
 import { medir } from "../../utils/zonasGeometria";
 import { carasInaccesibles, textoDeCaraInaccesible } from "../../utils/revision";
 import { carasDe } from "../../types/espacio";
+import BloqueDeLaCara from "../Planograma/BloqueDeLaCara";
 import { ProductoDePrueba } from "./muebles/ProductoDePrueba";
 import { useHabladoresDeRelleno } from "./muebles/ProductoEnMueble";
 import type { PruebaDeCara } from "./muebles/ProductoDePrueba";
@@ -6288,6 +6289,9 @@ function CommercialPanel({
   // el bloque dice sólo «Ocupado hasta jun 2027»; el detalle, con un clic.
   const [verContrato, setVerContrato] = useState(false);
   useEffect(() => { setVerContrato(false); }, [fix.id]);
+  /** La cara que se mira (la elige `VistaProveedor`): la de «Distribuir la cara». */
+  const [caraMirada, setCaraMirada] = useState<"A" | "B">("A");
+  const alCambiarCara = useCallback((id: string, c: "A" | "B") => { setCaraMirada(c); onCara?.(id, c); }, [onCara]);
   const enReunion = hayReunion({ pruebas: prueba.size, proveedorDeReunion, eligiendo });
   useEffect(() => { if (eligiendo) setVerContrato(false); }, [eligiendo]);
   const contratoDiscreto = enReunion && !verContrato;
@@ -6662,7 +6666,7 @@ function CommercialPanel({
           onMostrar={onMostrar}
           eligiendo={eligiendo}
           setEligiendo={setEligiendo}
-          onCara={onCara}
+          onCara={alCambiarCara}
         />
 
         {fix.observation?.trim() && (
@@ -6673,18 +6677,17 @@ function CommercialPanel({
         )}
         </>)}
 
-        {/* Distribución (participaciones de cara): repartir la cara entre
-            proveedores por porcentaje, dibujando la zona de cada uno. Sólo
-            para un tipo con superficie, sólo admin, y nunca con un
-            proveedor mirando (reunión, Presentar). */}
+        {/* «La cara» (2026-10-29): el mismo bloque que el 2D. Por porcentaje,
+            «Distribuir la cara» entra a Distribución (nunca con un proveedor
+            mirando: reunión, Presentar); en un mueble que no se vende, o en lo
+            libre de uno que se vende, abre el planograma. Antes «Distribuir
+            esta cara» abría el reparto por porcentaje también donde no hay
+            nada que vender. */}
         {isAdmin && onDistribuir && tieneSuperficie(fix.type) && (
-          <div className="flex flex-col gap-1" data-distribuir>
-            <button type="button" onClick={onDistribuir} disabled={!!motivoSinDistribuir}
-              title={motivoSinDistribuir ?? "Repartir esta cara por participación, dibujando la zona de cada proveedor"}
-              className="rounded border border-accent/60 bg-accent/10 px-2 py-1.5 text-[11px] font-semibold text-dark-ink-1 hover:bg-accent/20 disabled:opacity-50">
-              Distribuir esta cara
-            </button>
-            {motivoSinDistribuir && <p className="text-[10px] leading-snug text-dark-ink-3">{motivoSinDistribuir}</p>}
+          <div data-distribuir>
+            <BloqueDeLaCara variante="oscuro" sede={sedeDelPanel} fixtureId={fix.id} caras={carasDe(fix)}
+              comercializable={isRentable(fix)} porParticipacion={porParticipacion(fix)} esAdmin={isAdmin}
+              caraMirada={caraMirada} onPorcentaje={() => onDistribuir()} motivo={motivoSinDistribuir} />
           </div>
         )}
         {/* El nombre, las medidas, cómo se vende, girarlo o borrarlo: en el

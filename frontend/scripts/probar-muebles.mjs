@@ -7000,7 +7000,7 @@ prueba("los rechazos del guardado de las participaciones y la entrada a Distribu
   // El botón del panel, con el mismo bloqueo.
   const panel = cuerpoDe("function CommercialPanel(", "export class CanvasErrorBoundary");
   assert.match(panel, /\{isAdmin && onDistribuir && tieneSuperficie\(fix\.type\) && \(/);
-  assert.match(panel, /disabled=\{!!motivoSinDistribuir\}/);
+  assert.match(panel, /motivo=\{motivoSinDistribuir\} \/>/);
   assert.match(editorCodigo, /return c\.enReunion \|\| c\.presentationMode \|\| c\.privadoPara !== undefined \|\| c\.firstPerson\s*\? "Terminá la reunión \(o Presentar\) para distribuir\."/);
 });
 
