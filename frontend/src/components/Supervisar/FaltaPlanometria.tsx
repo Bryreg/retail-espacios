@@ -9,7 +9,10 @@ import { DIAS_PARA_HOY } from "./paraRevisar";
 /**
  * «Falta planometría» (decisión del dueño, Supervisar PR 2): los contratos con
  * montaje por delante cuyo correo de montaje espera la planometría —se carga
- * sólo en Supervisar, en la ficha del espacio, nunca en Vender—. Sale de
+ * sólo en Supervisar, en la ficha del espacio, nunca en Vender—. Desde el
+ * 2026-10-29 sólo la esperan las ventas enteras o por partes, y les sirve
+ * también un planograma publicado de la cara; un porcentaje ya no sale acá:
+ * su plano es la zona confirmada («Distribuir esta cara»). Sale de
  * `GET /api/montajes/pendientes?sede=` (las filas con `falta_planometria`).
  * Con 7 días o menos para empezar va en «Hoy»; con más margen, en «30 días».
  * «Cargar planometría» abre la ficha del espacio en su planometría.
@@ -72,7 +75,8 @@ export function FaltaPlanometria({ sede, filas, titulo, onCargar }: {
               {f.falta_distribucion ? " · y falta distribuir" : ""}
             </span>
           </div>
-          <button type="button" className="btn-s" onClick={() => onCargar(f, visible(f.espacio))}>
+          <button type="button" className="btn-s" onClick={() => onCargar(f, visible(f.espacio))}
+            title="Subí el archivo en la ficha, o publicá el planograma de la cara: con cualquiera de los dos sale el aviso de montaje.">
             <FileUp {...ICONO} /> Cargar planometría
           </button>
           <ChevronRight {...ICONO} className="ir" />

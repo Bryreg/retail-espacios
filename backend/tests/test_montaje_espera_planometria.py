@@ -1,9 +1,9 @@
 """El correo de montaje espera a la planometría (decisión del dueño, 2026-10-20).
 
 ``docs/rediseno/vender-api.md`` §4 y ``services/montajes_pendientes.py``: el
-aviso a quien monta sale cuando el contrato tiene su planometría cargada y, en
-un porcentaje de cara, además su zona confirmada —lo que pase último—, una sola
-vez. Comercial y el proveedor reciben el suyo al guardar, como siempre. Un
+aviso a quien monta sale cuando el contrato tiene su planometría —el archivo o
+un planograma publicado de la cara; en un porcentaje, su zona confirmada
+(2026-10-29)—, una sola vez. Comercial y el proveedor reciben el suyo al guardar, como siempre. Un
 contrato de antes de la regla (sin fila pendiente) no cambia.
 
 Y la lista de Supervisar («Falta planometría»): ``GET /api/montajes/pendientes``,
@@ -173,18 +173,83 @@ def test_un_porcentaje_con_planometria_espera_la_zona(client, admin, monkeypatch
 
 
 @RELOJ
-def test_un_porcentaje_con_zona_espera_la_planometria(client, admin, monkeypatch):
+def test_en_un_porcentaje_la_zona_confirmada_basta(client, admin, monkeypatch):
+    """Decisión del dueño (2026-10-29): «con la distribución se supone que ya
+    debería estar». En un porcentaje, la zona confirmada ES su planometría: el
+    aviso sale al confirmarla, sin archivo."""
     tp._plano(client, admin)
     enviados = _correos(monkeypatch, client, admin)
     t = tp._alta(client, admin, pb=2500)["termino"]
-    _zona_confirmada(client, admin, t)
-    assert not _por_montar(enviados), "salió el montaje sin planometría"
     (fila,) = _pendientes(client, admin).json()
-    assert (fila["falta_planometria"], fila["falta_distribucion"]) == (True, False)
+    assert (fila["falta_planometria"], fila["falta_distribucion"]) == (False, True), "pide un archivo además de la zona"
 
-    assert _planometria(client, admin, t["lease_id"])["aviso_de_montaje"]["estado"] == "salio"
+    _zona_confirmada(client, admin, t)
     (montaje,) = _por_montar(enviados)
     assert "NAVE-GON-01-PC1" in montaje[1]
+    assert _cuantos_pendientes() == 0
+    assert _pendientes(client, admin).json() == []
+
+
+# ─── Un planograma publicado cuenta como planometría ─────────────────────────
+
+def _planograma_publicado(client, admin, fixture_id, cara="A", hasta=D(2026, 10, 31)):
+    d = client.post("/api/planogramas/destinos", headers=admin, json={
+        "sede": "NAVE", "nombre": "Lácteos", "tipo": "categoria", "color": "d1", "como_se_monta": "Al frente"})
+    assert d.status_code == 201, d.text
+    base = {"sede": "NAVE", "fixture_id": fixture_id, "cara": cara}
+    bloque = client.get("/api/planogramas/cara", headers=admin, params=base)
+    assert bloque.status_code == 200, bloque.text
+    r = client.put("/api/planogramas/borrador", headers=admin, json={**base, "version": 0, "piezas": [
+        # 30 % del ancho son 28,82 % de lo útil de la cara de GON-02 (el zócalo y
+        # los parantes no cuentan): lo que el servidor mide.
+        {"destino_id": d.json()["id"], "pb": 2882, "vertices": [[0, 0], [0.3, 0], [0.3, 1], [0, 1]]}]})
+    assert r.status_code == 200, r.text
+    r = client.post("/api/planogramas/publicar", headers=admin,
+                    json={**base, "version": 1, "rige_desde": D(2026, 10, 17), "hasta": hasta})
+    assert r.status_code == 200, r.text
+
+
+@RELOJ
+def test_un_planograma_publicado_cuenta_como_la_planometria_de_la_cara(client, admin, monkeypatch):
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    r = tv._vender(client, admin, tv._pedido(tv._entera("GON-02", 130_000)))
+    (lease_id,) = [c["lease_id"] for c in r["contratos"]]
+    (fila,) = _pendientes(client, admin).json()
+    assert fila["falta_planometria"] is True
+
+    _planograma_publicado(client, admin, "f-GON-02")
+    (montaje,) = _por_montar(enviados)
+    assert "NAVE-GON-02" in montaje[1] and "130.000" not in montaje[1]
+    assert _cuantos_pendientes() == 0
+    # Cargar el archivo después no lo repite.
+    assert _planometria(client, admin, lease_id)["aviso_de_montaje"] is None
+    assert len(_por_montar(enviados)) == 1
+
+
+@RELOJ
+def test_los_que_ya_tenian_todo_salen_al_leer_la_lista(client, admin, monkeypatch):
+    """Lo que quedó listo con la regla nueva sin que nadie volviera a confirmar
+    ni a cargar (en producción: una distribución confirmada antes del cambio)
+    no queda esperando: sale cuando Supervisar lee la lista."""
+    from app.models.models import LeaseFile
+
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    r = tv._vender(client, admin, tv._pedido(tv._entera("GON-02", 130_000)))
+    (lease_id,) = [c["lease_id"] for c in r["contratos"]]
+    db = tp._bd()
+    try:  # la planometría sin pasar por el endpoint (no avisa)
+        db.add(LeaseFile(lease_id=lease_id, kind="planometria", filename="p.jpg", content_type="image/jpeg",
+                         size=len(JPG), data=JPG))
+        db.commit()
+    finally:
+        db.close()
+    assert not _por_montar(enviados)
+
+    assert _pendientes(client, admin).json() == []
+    (montaje,) = _por_montar(enviados)
+    assert "NAVE-GON-02" in montaje[1]
     assert _cuantos_pendientes() == 0
 
 
@@ -238,7 +303,8 @@ def test_la_lista_de_pendientes_dice_que_falta_y_no_lleva_plata(client, admin, w
     assert (por_contrato[puerta]["espacio"], por_contrato[puerta]["cara"]) == ("NAVE-NEV-03-PU1", "NAVE-NEV-03")
     pct = por_contrato[p["lease_id"]]
     assert (pct["espacio"], pct["cara"]) == ("NAVE-GON-01-B-PC1", "NAVE-GON-01-B")
-    assert (pct["falta_planometria"], pct["falta_distribucion"]) == (True, True)
+    # Un porcentaje sólo espera su zona: la distribución es su planometría.
+    assert (pct["falta_planometria"], pct["falta_distribucion"]) == (False, True)
 
     # Sin plata: ni un campo de valor ni un monto en el texto.
     texto = json.dumps(filas)

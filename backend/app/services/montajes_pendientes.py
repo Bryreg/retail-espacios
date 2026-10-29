@@ -7,6 +7,12 @@ porcentaje—, cuando tiene su planometría cargada (``POST
 su cara tiene la distribución confirmada con la zona de esa participación (sin
 zona no se sabe dónde va).
 
+Lo que cuenta como planometría (decisión del dueño, 2026-10-29: «con la
+distribución se supone que ya debería estar»): en un porcentaje, la zona
+confirmada de la participación —la distribución dice dónde va, y el archivo
+queda opcional—; en una cara entera o una parte, el archivo cargado o un
+planograma publicado de esa cara (``Planificar la cara``).
+
 Cómo se lleva: cada contrato nuevo deja una fila en ``montajes_pendientes`` al
 escribirse (``alta_de_contrato.escribir_contrato`` y el contrato suelto de
 ``routers/spaces.py``). Mientras la fila existe, el aviso de montaje no sale
@@ -34,6 +40,7 @@ from sqlalchemy.orm import Session
 from app.fechas import hoy
 from app.models.models import LeaseFile, Space, SpaceLease
 from app.models.participaciones import Distribucion, Participacion, Zona
+from app.models.planogramas import Planograma, VersionDePlanograma
 from app.models.vender import MontajePendiente
 from app.services.partes import codigo_de_parte, partir_codigo
 
@@ -67,6 +74,27 @@ def tiene_planometria(db: Session, lease_id: int) -> bool:
             .filter(LeaseFile.lease_id == lease_id, LeaseFile.kind == PLANOMETRIA).first()) is not None
 
 
+def codigo_de_la_cara(space: Optional[Space]) -> Optional[str]:
+    """La cara de un espacio por su código completo: ``NAVE-GON-01-B-EN2`` →
+    ``NAVE-GON-01-B``."""
+    if space is None or not space.code:
+        return None
+    p = partir_codigo(space.code)
+    return codigo_de_parte(p.base, p.cara, None)
+
+
+def con_planograma_publicado(db: Session, sede: Optional[str], codigo_cara: Optional[str]) -> bool:
+    """¿La cara tiene una versión publicada de su planograma? Se busca por el
+    código de la cara con el que se guardó (``planogramas.codigo``)."""
+    if not codigo_cara:
+        return False
+    q = (db.query(VersionDePlanograma.id).join(Planograma, Planograma.id == VersionDePlanograma.planograma_id)
+         .filter(Planograma.codigo == codigo_cara.strip().upper()))
+    if sede:
+        q = q.filter(Planograma.sede == sede.strip().upper())
+    return q.first() is not None
+
+
 def termino_del_contrato(db: Session, lease_id: int) -> Optional[Participacion]:
     """El término de participación de ese contrato, o None (cara entera o parte)."""
     return db.query(Participacion).filter(Participacion.lease_id == lease_id).first()
@@ -74,10 +102,19 @@ def termino_del_contrato(db: Session, lease_id: int) -> Optional[Participacion]:
 
 def que_falta(db: Session, pendiente: MontajePendiente,
               termino: Optional[Participacion] = None) -> tuple[bool, bool]:
-    """``(falta_planometria, falta_distribucion)`` de un aviso pendiente."""
+    """``(falta_planometria, falta_distribucion)`` de un aviso pendiente.
+
+    En un porcentaje la distribución confirmada ES su planometría: sólo puede
+    faltar la zona. En una cara entera o una parte, falta si no hay archivo ni
+    planograma publicado de la cara."""
     t = termino if termino is not None else termino_del_contrato(db, pendiente.lease_id)
-    falta_distribucion = t is not None and not con_zona_confirmada(db, pendiente.cara_space_id, t.space_id)
-    return not tiene_planometria(db, pendiente.lease_id), falta_distribucion
+    if t is not None:
+        return False, not con_zona_confirmada(db, pendiente.cara_space_id, t.space_id)
+    if tiene_planometria(db, pendiente.lease_id):
+        return False, False
+    lease = db.get(SpaceLease, pendiente.lease_id)
+    space = lease.space if lease is not None else None
+    return not con_planograma_publicado(db, space.sede if space else None, codigo_de_la_cara(space)), False
 
 
 def listos(db: Session, lease_id: Optional[int] = None,
@@ -90,6 +127,34 @@ def listos(db: Session, lease_id: Optional[int] = None,
         q = q.filter(MontajePendiente.lease_id == lease_id)
     if cara_space_id is not None:
         q = q.filter(MontajePendiente.cara_space_id == cara_space_id)
+    return [p for p in q.order_by(MontajePendiente.lease_id).all() if que_falta(db, p) == (False, False)]
+
+
+def listos_de_la_cara(db: Session, sede: str, codigo_cara: str) -> list[MontajePendiente]:
+    """Los avisos pendientes de los contratos de una cara (la entera y sus
+    partes) que ya tienen todo: al publicar el planograma de esa cara."""
+    cara = (codigo_cara or "").strip().upper()
+    fuera = []
+    for pendiente, space in (db.query(MontajePendiente, Space)
+                             .join(SpaceLease, SpaceLease.id == MontajePendiente.lease_id)
+                             .join(Space, Space.id == SpaceLease.space_id)
+                             .filter(Space.sede == (sede or "").strip().upper())
+                             .order_by(MontajePendiente.lease_id).all()):
+        if codigo_de_la_cara(space) == cara and que_falta(db, pendiente) == (False, False):
+            fuera.append(pendiente)
+    return fuera
+
+
+def listos_de_la_sede(db: Session, sede: Optional[str] = None) -> list[MontajePendiente]:
+    """Los que ya tienen todo y siguen esperando: los que quedaron listos por
+    la regla de 2026-10-29 (una distribución confirmada antes de que alcanzara,
+    un planograma publicado antes de que contara). Los despacha la lista de
+    Supervisar al leerse, para que ninguno quede esperando algo que ya tiene."""
+    q = (db.query(MontajePendiente)
+         .join(SpaceLease, SpaceLease.id == MontajePendiente.lease_id)
+         .join(Space, Space.id == SpaceLease.space_id))
+    if sede:
+        q = q.filter(Space.sede == sede.strip().upper())
     return [p for p in q.order_by(MontajePendiente.lease_id).all() if que_falta(db, p) == (False, False)]
 
 

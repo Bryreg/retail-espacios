@@ -17,7 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin
-from app.clientes import Cliente
+from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.models.models import SpaceLease
 from app.routers.bulk_leases import FilaOut, _avisar
@@ -31,8 +31,23 @@ router = APIRouter(prefix="/montajes", tags=["montajes"])
 
 
 @router.get("/pendientes")
-def leer_pendientes(sede: Optional[str] = None, rol: str = Depends(require_admin), db: Session = Depends(get_db)):
-    """Los contratos cuyo aviso de montaje espera la planometría o la zona."""
+def leer_pendientes(
+    background_tasks: BackgroundTasks,
+    sede: Optional[str] = None,
+    rol: str = Depends(require_admin),
+    db: Session = Depends(get_db),
+    cliente: Cliente = Depends(cliente_del_pedido),
+):
+    """Los contratos cuyo aviso de montaje espera la planometría o la zona.
+    Los que ya tienen todo (la regla de 2026-10-29 los dejó listos sin que
+    nadie volviera a confirmar ni a cargar) salen ahora y no se listan."""
+    # Un correo por sede: sin `sede` la lista junta todas.
+    por_sede: dict[str, list] = {}
+    for pendiente in servicio.listos_de_la_sede(db, sede):
+        lease = db.get(SpaceLease, pendiente.lease_id)
+        por_sede.setdefault(lease.space.sede if lease is not None and lease.space else "", []).append(pendiente)
+    for de_la_sede, listos in por_sede.items():
+        avisar_los_listos(db, background_tasks, listos, cliente, sede=de_la_sede or None)
     return servicio.pendientes_de_la_sede(db, sede)
 
 

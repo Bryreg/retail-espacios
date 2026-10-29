@@ -385,20 +385,17 @@ export function textoDeDescartarBorrador(c: { cara: "A" | "B"; hayConfirmada: bo
 }
 
 /**
- * El aviso de montaje que dispara «Listo» (decisión del dueño: el correo de
- * montaje de un contrato por porcentaje espera su planometría y su zona
- * confirmada; sale lo que pase último, una vez). Se nombran las marcas con
- * CONTRATO que entran o cambian de lugar al guardar (una reserva no manda
- * correos; a la que no cambió, su aviso ya salió). Sin consultar «Falta
- * planometría» —eso es de Supervisar, y esta pantalla también la alcanza el
- * visor de Vender (`probar-vender`)—: lo que es cierto siempre, con la
- * salvedad de la planometría.
+ * El aviso de montaje que dispara «Listo» (decisión del dueño, 2026-10-29: en
+ * un contrato por porcentaje la zona confirmada ES su plano —ya no espera un
+ * archivo—, así que el correo sale al guardar, una vez). Se nombran las marcas
+ * con CONTRATO que entran o cambian de lugar al guardar (una reserva no manda
+ * correos; a la que no cambió, su aviso ya salió).
  */
 export function avisoDeMontaje(marcas: readonly string[]): string {
   const unicas = [...new Set(marcas.filter(Boolean))];
   if (unicas.length === 0) return "";
   const una = unicas.length === 1;
-  return `A ${enLista(unicas)} ${una ? "le" : "les"} llega el aviso de montaje con su lugar (si ${una ? "le" : "les"} falta la planometría, sale cuando la cargues en Supervisar).`;
+  return `A ${enLista(unicas)} ${una ? "le" : "les"} llega el aviso de montaje con su lugar.`;
 }
 
 /** El resumen de lo que cambia al guardar, en palabras, por marca. */
@@ -889,7 +886,7 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
     if (!a || !d) return;
     setGuardando(true);
     // Las marcas con contrato que entran o cambian de lugar: a ésas les llega
-    // ahora (o con su planometría) el aviso de montaje.
+    // ahora el aviso de montaje.
     const habia = (d.distribucion?.confirmada.length ?? 0) > 0;
     const cambian = new Set((cambiosAlGuardar?.participaciones ?? []).filter((c) => c.dibujadoDespues > 0).map((c) => c.spaceId));
     const conAviso = piezas.filter((p) => !p.esReserva && p.poligonos.length > 0 && (!habia || cambian.has(p.spaceId))).map((p) => p.corto);

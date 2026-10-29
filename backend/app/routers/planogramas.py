@@ -30,6 +30,8 @@ from app.database import get_db
 from app.services import guia as guia_servicio
 from app.services import planogramas as servicio
 from app.services import supervision_planogramas as supervision
+from app.routers.montajes import avisar_los_listos
+from app.services import montajes_pendientes
 from app.services.contacts import recipients_for
 from app.services.mailer import app_base_url, clean_recipients, correo_configurado, html_shell, send_mail_to_bg
 from app.services.bitacora import anotar
@@ -165,15 +167,21 @@ def guardar_borrador(
 def publicar(
     cuerpo: PublicarIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     rol: str = Depends(require_auth),
     db: Session = Depends(get_db),
+    cliente: Cliente = Depends(cliente_del_pedido),
 ):
     """El borrador pasa a ser la versión siguiente (409 ``planograma_invalido``
-    con los problemas si no se puede)."""
+    con los problemas si no se puede). Un planograma publicado cuenta como la
+    planometría de los contratos enteros o por partes de esa cara (2026-10-29):
+    los que sólo esperaban eso reciben su aviso de montaje."""
     hecho = servicio.publicar(db, cuerpo.model_dump(), actor_de(request, rol), rol)
     anotar(db, request, rol, "planograma.publicado", entidad="planograma", entidad_id=hecho.cara.codigo,
            detalle=hecho.detalle)
     db.commit()
+    avisar_los_listos(db, background_tasks, montajes_pendientes.listos_de_la_cara(db, hecho.cara.sede, hecho.cara.codigo),
+                      cliente, sede=hecho.cara.sede)
     return {**servicio.bloque(db, hecho.cara, rol), "publicada": hecho.version.numero}
 
 

@@ -2687,8 +2687,8 @@ await prueba("desde Supervisar y de vuelta: «Distribuir» pide volver; «Listo�
   assert.match(panel, /const titulo = `Listo: \$\{a\.codigo\} · cara \$\{a\.cara\} quedó distribuida\.`;/);
   // El aviso de montaje, en palabras (ejecutado): las marcas con contrato, una vez cada una.
   const A = P6.PANEL.avisoDeMontaje;
-  assert.equal(A(["Café A"]), "A Café A le llega el aviso de montaje con su lugar (si le falta la planometría, sale cuando la cargues en Supervisar).");
-  assert.equal(A(["Café A", "Marca 2", "Café A"]), "A Café A y Marca 2 les llega el aviso de montaje con su lugar (si les falta la planometría, sale cuando la cargues en Supervisar).");
+  assert.equal(A(["Café A"]), "A Café A le llega el aviso de montaje con su lugar.");
+  assert.equal(A(["Café A", "Marca 2", "Café A"]), "A Café A y Marca 2 les llega el aviso de montaje con su lugar.");
   assert.equal(A([]), "");
   // Distribuir no lee lo de Supervisar (el visor de Vender alcanza esta pantalla por el editor).
   assert.ok(!/montajesPendientes|api\/cobros|api\/reservas/.test(panel), "Distribuir lee una API de Supervisar");

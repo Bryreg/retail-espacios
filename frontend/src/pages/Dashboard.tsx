@@ -10,7 +10,7 @@ const MisMuebles = lazy(() => import("./MisMuebles"));
 import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
 import DashboardView, { type ModoComercial } from "./DashboardView";
 import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
-import { RUTA_DE, moduloDeRuta, puedeAbrir, type Modulo } from "../modulos";
+import { NOMBRE_DE, RUTA_DE, moduloDeRuta, puedeAbrir, vueltaAlCambiar, type Modulo, type VueltaDelPlano } from "../modulos";
 import { useArmazon, type TemaDeAjustes } from "../store/armazonStore";
 import type { ContextoDeAccion } from "../acciones";
 import Buscador from "../components/Armazon/Buscador";
@@ -1621,13 +1621,21 @@ export default function Dashboard() {
    *  pantalla. Llegar al Inicio DESDE el Plano o Montajes para abrirla
    *  (`BotonPendientes`) no la cierra. */
   const moduloAnterior = useRef(efectivo);
+  /** La dirección de la pantalla anterior, con su búsqueda: adónde vuelve el 3D. */
+  const rutaActual = location.pathname + location.search;
+  const rutaAnterior = useRef(rutaActual);
+  /** Se llegó al 3D desde otra pantalla: la barra para volver (`vueltaAlCambiar`). */
+  const [vueltaDelPlano, setVueltaDelPlano] = useState<VueltaDelPlano | null>(null);
   useEffect(() => {
     const antes = moduloAnterior.current;
+    const rutaDeAntes = rutaAnterior.current;
     moduloAnterior.current = efectivo;
+    rutaAnterior.current = rutaActual;
     if (antes === efectivo) return;
+    setVueltaDelPlano((v) => vueltaAlCambiar(v, antes, efectivo, rutaDeAntes));
     const eraComercial = antes === "inicio" || antes === "contratos" || antes === "indicadores";
     if (eraComercial) useArmazon.getState().cerrarBandeja();
-  }, [efectivo]);
+  }, [efectivo, rutaActual]);
   const modoComercial: ModoComercial = efectivo === "contratos" ? "vender" : "supervisar";
   const abrirAjustes = () => { setSeccionConfig(null); useArmazon.getState().abrirAjustes("comercial"); };
   /** Lo que hace cada función del registro (`acciones.ts`). */
@@ -1700,6 +1708,21 @@ export default function Dashboard() {
                 <ArrowLeft size={16} strokeWidth={1.75} aria-hidden /> Volver a Montajes
               </button>
               <button type="button" className="cerrar" aria-label="Quitar este aviso" onClick={() => useArmazon.getState().olvidarMontaje()}>
+                <X size={16} strokeWidth={1.75} aria-hidden />
+              </button>
+            </div>
+          )}
+
+          {/* Se llegó al 3D desde otra pantalla («Distribuir» de la ficha,
+              Pendientes, Indicadores): el camino de vuelta, mientras se siga en
+              el Plano. Con la barra de Montajes encima, ésa ya lleva de vuelta. */}
+          {vueltaDelPlano && !desdeMontaje && (
+            <div className="volver-montaje" role="status" data-volver-plano>
+              <span>Viniste desde <b>{NOMBRE_DE[vueltaDelPlano.modulo]}</b>.</span>
+              <button type="button" onClick={() => navigate(vueltaDelPlano.ruta)}>
+                <ArrowLeft size={16} strokeWidth={1.75} aria-hidden /> Volver a {NOMBRE_DE[vueltaDelPlano.modulo]}
+              </button>
+              <button type="button" className="cerrar" aria-label="Quitar este aviso" onClick={() => setVueltaDelPlano(null)}>
                 <X size={16} strokeWidth={1.75} aria-hidden />
               </button>
             </div>

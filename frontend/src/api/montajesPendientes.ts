@@ -3,8 +3,10 @@ import client from "./client";
 /**
  * Los avisos de montaje que esperan (`docs/rediseno/vender-api.md` §4 y
  * `docs/rediseno/decisiones.md`, Supervisar PR 2): un contrato firmado cuyo
- * correo de montaje todavía no salió porque le falta la planometría (o, en un
- * porcentaje de cara, la distribución confirmada).
+ * correo de montaje todavía no salió porque le falta el plano de la cara: la
+ * planometría o un planograma publicado (venta entera o por partes) o, en un
+ * porcentaje de cara, la distribución confirmada. Leer la lista ya despacha
+ * los que tenían todo (el servidor los manda y los saca).
  *
  * De ADMINISTRACIÓN y sin montos: lleva el proveedor. Lo lee Supervisar —«Falta
  * planometría» en «Para revisar»— y NADA de Vender (`probar-vender` falla si un
