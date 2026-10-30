@@ -18,6 +18,9 @@ from pydantic import BaseModel
 
 from app.auth import invalidar_cache_membresia, require_admin, sub_y_email_de_la_sesion
 from app.clientes import Cliente, buscar, cliente_del_pedido
+from app.database import get_db
+from app.services.bitacora import anotar
+from sqlalchemy.orm import Session
 from app.models.identidad import ROLES_MEMBRESIA, Invitacion, Membresia, Usuario
 from app.services.mailer import app_base_url, html_shell, send_mail_to_bg
 
@@ -100,6 +103,7 @@ def invitar_usuario(
     rol: str = Depends(require_admin),
     cliente: Cliente = Depends(cliente_del_pedido),
     identidad: tuple = Depends(sub_y_email_de_la_sesion),
+    db: Session = Depends(get_db),
 ):
     email = (payload.email or "").strip().lower()
     if not email or "@" not in email or " " in email:
@@ -178,6 +182,12 @@ def invitar_usuario(
         )
         send_mail_to_bg([email], f"Invitación a {cliente.nombre} — RECABRA", html)
 
+        # La bitácora del supermercado (auditoría P2-14): quién invitó y con qué
+        # rol. El correo del invitado no va (es dato de un tercero); el de quien
+        # invita lo agrega `anotar`. La invitación ya está en el registro: esta
+        # línea va en la base del cliente, en su propio commit.
+        anotar(db, request, rol, "usuario.invitado", entidad="usuario", detalle=f"rol {rol_nuevo}")
+        db.commit()
         return InvitarOut(ok=True, expira_en=expira)
     finally:
         reg.close()
@@ -232,9 +242,11 @@ def listar_usuarios(
 def patch_usuario(
     usuario_id: int,
     payload: PatchUsuarioIn,
+    request: Request,
     rol: str = Depends(require_admin),
     cliente: Cliente = Depends(cliente_del_pedido),
     identidad: tuple = Depends(sub_y_email_de_la_sesion),
+    db: Session = Depends(get_db),
 ):
     from app.clientes import sesion_registro
 
@@ -272,6 +284,10 @@ def patch_usuario(
         membresia.activo = bool(payload.activo)
         reg.commit()
         invalidar_cache_membresia(usuario_id, cliente.slug)
+        # La bitácora del supermercado (auditoría P2-14).
+        anotar(db, request, rol, "usuario.cambio", entidad="usuario", entidad_id=usuario_id,
+               detalle="activado" if membresia.activo else "desactivado")
+        db.commit()
         return {"ok": True}
     finally:
         reg.close()

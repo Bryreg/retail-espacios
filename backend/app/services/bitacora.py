@@ -37,6 +37,7 @@ ACCIONES = {
     "login.fallo": "Intento fallido",
     "clave.cambio": "Cambio de contraseña",
     "contrato.alta": "Contrato creado",
+    "enlace.revocado": "Enlace de montaje o guía cortado",
     "contrato.baja": "Contrato cancelado",
     "espacio.estado": "Estado de espacio cambiado",
     # El panel del Plano (rediseño, PR 3): la nota del contrato, de la reserva o
@@ -113,6 +114,30 @@ ACCIONES.update({
     "guia.foto": "Foto de la guía de montaje",
     "montaje.verificado": "Montaje de contrato verificado",
     "ajustes.metas": "Metas de Indicadores cambiadas",
+})
+
+# Auditoría P2-14 (2026-10-30): las escrituras de administración que no
+# dejaban rastro. Una prueba recorre las rutas y exige `anotar` en cada una
+# que modifica (`tests/test_bitacora_en_toda_escritura.py`).
+ACCIONES.update({
+    "usuario.invitado": "Persona invitada",
+    "usuario.cambio": "Persona activada o desactivada",
+    "ajustes.tarifas": "Tarifas de referencia cambiadas",
+    "ajustes.sedes": "Lista de sedes o nombres del catálogo cambiados",
+    "ajustes.temporadas": "Temporadas cambiadas",
+    "ajustes.avisos": "Configuración de avisos cambiada",
+    "ajustes.contactos": "Contactos de los avisos cambiados",
+    "proveedor.alta": "Proveedor creado",
+    "proveedor.baja": "Proveedor borrado",
+    "planometria.alta": "Planometría subida",
+    "planometria.baja": "Planometría borrada",
+    "plano.guardado": "Plano guardado",
+    "arte.alta": "Arte del catálogo subido",
+    "arte.ficha": "Ficha de un arte del catálogo cambiada",
+    "arte.baja": "Arte del catálogo borrado",
+    # La papelera de sedes (P2-18) y las repisas del 3D (P1-15).
+    "sede.restaurada": "Sede restaurada de la papelera",
+    "repisa.liberada": "Repisa del 3D liberada",
 })
 
 # fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,

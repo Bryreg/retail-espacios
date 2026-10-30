@@ -19,6 +19,7 @@ from app.services import cobros as servicio
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de
 from app.services.mailer import format_cop
+from app.schemas.pesos import Pesos
 
 router = APIRouter(prefix="/cobros", tags=["cobros por ventas"])
 
@@ -28,7 +29,8 @@ class CorteIn(BaseModel):
 
     periodo_desde: date
     periodo_hasta: date
-    ventas: float = Field(ge=0, allow_inf_nan=False)
+    #: Lo vendido, en pesos enteros (P2-11).
+    ventas: Pesos = Field(ge=0, allow_inf_nan=False)
 
 
 @router.get("/pendientes")

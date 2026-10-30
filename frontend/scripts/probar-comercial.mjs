@@ -1506,7 +1506,8 @@ prueba("«Cargar planometría» llega al contrato de la fila aunque todavía no 
   assert.doesNotMatch(t, /Planometría de \{pedidaAparte\}/);
   // El servidor deja leer y cargar la de cualquier contrato por su id (cargar: sólo administración).
   const back = readFileSync(join(raiz, "..", "backend", "app", "routers", "planograms.py"), "utf8");
-  assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*status_code=201,\s*dependencies=\[Depends\(require_admin\)\],/);
+  // Sólo administración (desde el 2026-10-30 el rol viaja como parámetro, para la bitácora).
+  assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*status_code=201,\s*\)\s*async def subir_planometria\([\s\S]{0,300}?rol: str = Depends\(require_admin\)/);
   assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*dependencies=\[Depends\(require_auth\)\],/);
 });
 
@@ -2025,8 +2026,13 @@ prueba("«Salir sin cambios» no deja el plano cambiado: editando, «Cambiar» l
   const g = c.slice(c.indexOf("async function guardar()"), c.indexOf("return {", c.indexOf("async function guardar()")));
   assert.ok(g.indexOf("await planoPendiente.escribir()") > 0 && g.indexOf("await planoPendiente.escribir()") < g.indexOf("await guardarContrato(lo)"),
     "el plano no se escribe justo antes del pedido");
-  assert.match(g, /\} catch \(e\) \{\s*if \(planoEscrito && planoPendiente\) await planoPendiente\.deshacer\(\)/,
+  assert.match(g, /\} catch \(e\) \{\s*const planoQuedoCambiado = planoEscrito && !!planoPendiente\s*&& !\(await planoPendiente\.deshacer\(\)/,
     "si el guardado falla, el plano queda cambiado");
+  // Auditoría P2-16: si la vuelta del plano no entra, no se dice «No se guardó nada».
+  assert.match(pp, /return !tras\.dirty\[sede\] && !tras\.rechazos\[sede\] && !tras\.conflicts\[sede\];/,
+    "deshacer no dice si el plano volvió");
+  assert.match(g, /el plano quedó con la forma nueva y no se pudo volver atrás/,
+    "si el plano no vuelve, la pantalla dice «No se guardó nada» igual");
   const l = sinComent(fuenteDe("components/Contrato/LineaDelContrato.tsx"));
   assert.match(l, /\{alGuardar && " Se escribe en el plano al guardar los cambios\."\}/);
 });

@@ -26,6 +26,7 @@ from app.services.bitacora import anotar
 from app.services import editar_contrato
 from app.services.aviso_de_edicion import avisar_edicion
 from app.services.ciclo_participaciones import actor_de
+from app.schemas.pesos import PesosOpcional
 
 router = APIRouter(prefix="/contratos", tags=["vender"])
 
@@ -53,10 +54,10 @@ class ParticipacionIn(_Estricto):
 class LineaIn(_Estricto):
     espacio: Optional[str] = Field(default=None, max_length=200)
     participacion: Optional[ParticipacionIn] = None
-    #: SIEMPRE el total de la línea por todo el plazo.
-    valor: Optional[float] = Field(default=None, allow_inf_nan=False)
+    #: SIEMPRE el total de la línea por todo el plazo, en pesos enteros (P2-11).
+    valor: PesosOpcional = Field(default=None, allow_inf_nan=False)
     modo_precio: Optional[Literal["mensual", "total"]] = None
-    valor_tecleado: Optional[float] = Field(default=None, allow_inf_nan=False)
+    valor_tecleado: PesosOpcional = Field(default=None, allow_inf_nan=False)
 
 
 class EsperadoCobroIn(_Estricto):

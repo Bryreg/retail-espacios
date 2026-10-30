@@ -1,8 +1,9 @@
 """Etapa 0 del rediseño UX (2026-10-26): lo que encontró la verificación de la
 versión final del dibujo (`docs/maquetas/ux-2026-10/final/README.md`).
 
-· El canon del mes del tablero (`GET /dashboard/kpis`) sumaba el TOTAL de cada
-  contrato como si fuera el mes.
+· El canon del mes del tablero sumaba el TOTAL de cada contrato como si fuera
+  el mes (era `GET /dashboard/kpis`, que se fue el 2026-10-30: hoy lo dice
+  `GET /dashboard/serie`).
 · `GET /participaciones/cara` llama `valor_mensual` al total: ahora trae al
   lado `valor_total` y `valor_al_mes` (y no cambia lo de antes).
 · Las acciones de planogramas se anotaban sin título y la bitácora mostraba la
@@ -31,12 +32,10 @@ def test_el_canon_del_mes_reparte_el_total_en_sus_meses(client, admin, worker):
     # Octubre–diciembre: tres meses por $ 3.000.000 → $ 1.000.000 al mes.
     _vender(client, admin, _pedido(_entera("GON-02", 3_000_000), proveedor="Tres Meses SA",
                                    desde=D(2026, 10, 1), hasta=D(2026, 12, 31)))
-    k = client.get("/api/dashboard/kpis", headers=admin).json()
-    assert k["monthly_revenue"] == 1_000_000
-    assert {s["name"]: s["revenue"] for s in k["top_suppliers"]} == {"Tres Meses SA": 1_000_000}
+    s = client.get("/api/dashboard/serie", headers=admin).json()
+    assert dict(zip(s["meses"], s["sedes"]["NAVE"]["canon"]))["2026-10"] == 1_000_000
     # Al trabajador, sin plata, como siempre.
-    w = client.get("/api/dashboard/kpis", headers=worker).json()
-    assert w["monthly_revenue"] == 0 and all(s["revenue"] == 0 for s in w["top_suppliers"])
+    assert client.get("/api/dashboard/serie", headers=worker).status_code == 403
 
 
 @RELOJ

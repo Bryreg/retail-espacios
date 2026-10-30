@@ -1,6 +1,6 @@
 import unicodedata
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,6 +8,7 @@ from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.models.models import Supplier, SpaceLease, SupplierAsset
 from app.schemas.spaces import SupplierCreate, SupplierOut, SupplierPublicOut
+from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import reservas_del_proveedor
 
 # Every route requires a valid token; mutations additionally require admin.
@@ -84,8 +85,9 @@ def completar_proveedor(
     return {"nombre": mejor[1] if mejor else None}
 
 
-@router.post("/find-or-create", response_model=SupplierOut, status_code=200, dependencies=[Depends(require_admin)])
-def find_or_create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
+@router.post("/find-or-create", response_model=SupplierOut, status_code=200)
+def find_or_create_supplier(payload: SupplierCreate, request: Request, rol: str = Depends(require_admin),
+                            db: Session = Depends(get_db)):
     """Return existing Supplier by name, or create one.  Idempotent."""
     supplier = db.query(Supplier).filter(Supplier.name == payload.name).first()
     if supplier:
@@ -103,6 +105,11 @@ def find_or_create_supplier(payload: SupplierCreate, db: Session = Depends(get_d
     try:
         supplier = Supplier(**payload.model_dump())
         db.add(supplier)
+        db.flush()
+        # La bitácora (auditoría P2-14), en la misma transacción. Sólo el
+        # nombre: el contacto es dato de un tercero.
+        anotar(db, request, rol, "proveedor.alta", entidad="proveedor", entidad_id=supplier.id,
+               detalle=supplier.name)
         db.commit()
         db.refresh(supplier)
     except IntegrityError:
@@ -111,10 +118,13 @@ def find_or_create_supplier(payload: SupplierCreate, db: Session = Depends(get_d
     return supplier
 
 
-@router.post("/", response_model=SupplierOut, status_code=201, dependencies=[Depends(require_admin)])
-def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
+@router.post("/", response_model=SupplierOut, status_code=201)
+def create_supplier(payload: SupplierCreate, request: Request, rol: str = Depends(require_admin),
+                    db: Session = Depends(get_db)):
     supplier = Supplier(**payload.model_dump())
     db.add(supplier)
+    db.flush()
+    anotar(db, request, rol, "proveedor.alta", entidad="proveedor", entidad_id=supplier.id, detalle=supplier.name)
     db.commit()
     db.refresh(supplier)
     return supplier
@@ -130,20 +140,13 @@ def get_supplier(
     return _para_el_rol(supplier, role)
 
 
-@router.put("/{supplier_id}", response_model=SupplierOut, dependencies=[Depends(require_admin)])
-def update_supplier(supplier_id: int, payload: SupplierCreate, db: Session = Depends(get_db)):
-    supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-    if not supplier:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    for key, value in payload.model_dump(exclude_unset=True).items():
-        setattr(supplier, key, value)
-    db.commit()
-    db.refresh(supplier)
-    return supplier
+# `PUT /suppliers/{id}` se fue el 2026-10-30 (auditoría P2-12): ninguna pantalla
+# edita un proveedor por acá (el correo se completa en el alta del contrato).
 
 
-@router.delete("/{supplier_id}", status_code=204, dependencies=[Depends(require_admin)])
-def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
+@router.delete("/{supplier_id}", status_code=204)
+def delete_supplier(supplier_id: int, request: Request, rol: str = Depends(require_admin),
+                    db: Session = Depends(get_db)):
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
@@ -192,5 +195,6 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
                 "historial: no se puede eliminar sin perder ese historial."
             ),
         )
+    anotar(db, request, rol, "proveedor.baja", entidad="proveedor", entidad_id=supplier.id, detalle=supplier.name)
     db.delete(supplier)
     db.commit()

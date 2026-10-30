@@ -12,6 +12,7 @@ bajo la Ley 1581.
 Todos los `import app.*` van adentro de las funciones -- el fixture `client` de `conftest.py`
 purga `sys.modules['app.*']` entre pruebas.
 """
+from tests.sembrado import marcar_cancelados
 import json
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -113,6 +114,7 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 monthly_rent=canon,
                 is_active=activo,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

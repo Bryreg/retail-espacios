@@ -245,7 +245,8 @@ prueba("Indicadores: cada indicador tiene su definición, y quien no administra 
   assert.match(dic, /METRICAS\.filter\(\(m\) => esAdmin \|\| !m\.plata\)/, "el diccionario le muestra las de plata a quien no administra");
   // La serie y las tarifas, sólo para quien administra.
   const v = sinComentarios(leer("pages", "DashboardView.tsx"));
-  assert.match(v, /if \(!isAdmin \|\| !enIndicadores\) return;\s*let vivo = true;\s*getSerieDeCanon/);
+  // (Desde el 2026-10-30 también en Inicio: el canon del mes sale de la serie, auditoría P1-16.)
+  assert.match(v, /if \(!isAdmin \|\| !\(enIndicadores \|\| inicio\)\) return;\s*let vivo = true;\s*getSerieDeCanon/);
 });
 
 prueba("el 3D tiene camino de vuelta a la pantalla de la que se llegó (el dueño, 2026-10-29)", () => {

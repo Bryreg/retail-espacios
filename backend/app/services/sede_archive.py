@@ -45,6 +45,7 @@ from app.models.models import (
 from app.fechas import hoy
 from app.models.vender import ReservaDeEspacio
 from app.services.candado import tomar_candados
+from app.services.historial import anotar_baja
 from app.services.ciclo_participaciones import (
     al_archivar_sede, codigos_de_caras_con_terminos, reservas_vivas,
 )
@@ -148,8 +149,9 @@ def _mount_confirmations_of_sede(db: Session, sede: str) -> list[MountConfirmati
     return [r for r in filas if normalizar(r.sede) or not _de_una_sede_mas_larga(r.space_code, mas_largas)]
 
 
-def _archive_mount_confirmations(db: Session, sede: str) -> int:
-    """Stamp the sede's mount reports as archived. Returns how many were stamped.
+def _archive_mount_confirmations(db: Session, sede: str) -> list[int]:
+    """Stamp the sede's mount reports as archived. Returns the ids it stamped
+    (the recycle bin needs them to restore the sede, P2-18).
 
     They are not deleted: a mount confirmation is the evidence that what was
     charged was actually built, and it is what answers a supplier months later.
@@ -165,7 +167,7 @@ def _archive_mount_confirmations(db: Session, sede: str) -> int:
     now = datetime.now(timezone.utc)
     for row in rows:
         row.archivado_en = now
-    return len(rows)
+    return [row.id for row in rows]
 
 
 def codigos_del_plano(db: Session, sede: str) -> set[str]:
@@ -255,13 +257,14 @@ def archive_sede_spaces(db: Session, sede: str, actor: str | None = None) -> dic
 
     # Before the early return below: a "no pude montar" report never creates a
     # Space row, so a sede can have confirmations to archive and no spaces.
-    mounts_archived = _archive_mount_confirmations(db, sede)
+    mount_ids = _archive_mount_confirmations(db, sede)
+    mounts_archived = len(mount_ids)
 
     spaces = _spaces_of_sede(db, sede)
     if not spaces:
         db.flush()
         return {"spaces": 0, "leases_closed": 0, "mounts_archived": mounts_archived,
-                "reservas_canceladas": 0}
+                "reservas_canceladas": 0, "space_ids": [], "lease_ids": [], "mount_ids": mount_ids}
 
     already = {
         row.space_id
@@ -295,6 +298,8 @@ def archive_sede_spaces(db: Session, sede: str, actor: str | None = None) -> dic
             if not lease.is_active:
                 continue
             lease.is_active = False
+            # Corrió hasta hoy (auditoría P2-13): la serie lo devenga hasta acá.
+            anotar_baja(db, lease, hoy(), "sede", actor)
             # The dates and the amount are the contract; they are not rewritten.
             # Only the "this is current" flag changes, and that is now true.
             closed_count += 1
@@ -327,6 +332,10 @@ def archive_sede_spaces(db: Session, sede: str, actor: str | None = None) -> dic
         "leases_closed": closed_count,
         "mounts_archived": mounts_archived,
         "reservas_canceladas": participaciones["reservas_canceladas"] + reservas_de_espacio,
+        # Lo que la papelera necesita para restaurar la sede (P2-18).
+        "space_ids": archivados,
+        "lease_ids": [lease.id for lease in cerrados],
+        "mount_ids": mount_ids,
     }
 
 

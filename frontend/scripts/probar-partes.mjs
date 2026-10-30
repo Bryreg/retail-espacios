@@ -563,20 +563,27 @@ await prueba("el taller: la ficha propia dice cómo se vende, y la de la góndol
 });
 
 /** El panel del espacio interno (Editor 3D) es JSX dentro de un componente de
- *  miles de líneas: no se monta acá. Se lee el código: en un mueble que se
- *  vende por tramos o entrepaños, un espacio interno libre no se marca
- *  vendido (ni con el menú ni escribiendo un proveedor); el ya marcado sí se
- *  libera. */
-await prueba("el Editor 3D no marca vendido un espacio interno nuevo en un mueble que se vende por partes", () => {
+ *  miles de líneas: no se monta acá. Se lee el código. Desde el 2026-10-30
+ *  (auditoría P1-15, decisión del dueño) lo comercial de una repisa es de
+ *  SÓLO LECTURA en cualquier mueble: ningún campo la vende, y la que ya tenía
+ *  proveedor se pasa a contrato por el servidor (o se libera). Lo que pisa una
+ *  parte con contrato se sigue avisando con el mapa crudo. */
+await prueba("el Editor 3D no vende repisas: lo comercial se lee, se pasa a contrato o se libera", () => {
   const ed = leer(join(raiz, "src", "components", "StoreEditor3D", "StoreEditor3D.tsx"));
   assert.match(ed, /const porPartes = !!divisionDelMueble && \(divisionDelMueble\.clase === "tramos" \|\| divisionDelMueble\.clase === "entrepanos"\);/,
     "el panel ya no sabe si el mueble se vende por tramos o entrepaños");
-  assert.match(ed, /const noSeMarcaVendido = porPartes && selectedSlot\.status === "free";/,
-    "un espacio interno libre se puede marcar vendido en un mueble que se vende por partes");
-  for (const estado of ["occupied", "reserved"]) {
-    assert.match(ed, new RegExp(`<option value="${estado}" disabled=\\{noSeMarcaVendido\\}>`), `«${estado}» se puede elegir igual`);
-  }
-  assert.match(ed, /selectedSlot\.status==="free" && !noSeMarcaVendido/, "escribir un proveedor lo marca vendido igual");
+  const ini = ed.indexOf("if (selectedSlot) {");
+  const panel = ed.slice(ini, ed.indexOf("const days = computeDays(fix.startDate", ini));
+  assert.ok(ini > 0 && panel.length > 500, "no se encontró el panel de la repisa");
+  assert.doesNotMatch(panel, /<input\b/, "el panel de la repisa vuelve a tener campos para escribir");
+  assert.doesNotMatch(panel, /<select value=\{selectedSlot\.status\}/, "el estado de la repisa se vuelve a elegir a mano");
+  assert.match(panel, /pasarAContrato\(\)/, "la repisa con proveedor no se puede pasar a contrato");
+  assert.match(ed, /pasarRepisaAContrato\(sedeDelPanel, fix\.id, selectedSlot\.id, destinoDeRepisa\)/,
+    "«Pasar a contrato» no va por el servidor");
+  // Sólo se escribe en la repisa para dejarla libre.
+  const escrituras = [...ed.matchAll(/\bus\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.deepEqual([...new Set(escrituras)], ["REPISA_LIBRE"],
+    `el panel escribe en la repisa algo más que liberarla: ${escrituras.join(" · ")}`);
   // Y lo que ya pisa una parte con contrato se avisa con el mapa crudo.
   assert.match(ed, /partesQuePisa\(fix, selectedSlot, [^\n]*\n\s*\.filter\(\(\{ cara, parte \}\) => estadoCrudo\[/,
     "el aviso de la parte con contrato no sale del mapa crudo de la base");

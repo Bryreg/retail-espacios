@@ -159,6 +159,7 @@ def _run_lease_maintenance():
     from app.routers.spaces import expire_leases
     from app.services import fotos_vencidas
     from app.services.bitacora import purgar
+    from app.services.papelera import purgar as purgar_papelera
     from app.services.reminders import check_expiring_leases
 
     for cliente in listar():
@@ -174,6 +175,8 @@ def _run_lease_maintenance():
                 # La bitácora no puede crecer para siempre en una base de plan
                 # gratuito, y guardar más de lo necesario es su propio riesgo.
                 purgar(db)
+                # La papelera de sedes: pasados 30 días, lo borrado queda borrado.
+                purgar_papelera(db)
             except Exception:
                 logger.exception("Mantenimiento falló para el cliente %s", cliente.slug)
                 _deshacer(db)
