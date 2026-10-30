@@ -199,6 +199,8 @@ def migrar_todas() -> dict[str, str]:
         hechos[_nombre(SQLALCHEMY_DATABASE_URL)] = preparar_base(SQLALCHEMY_DATABASE_URL)
         registrar_el_de_siempre()
         for cliente in listar(solo_activos=False):
+            if cliente.db_name in hechos:
+                continue  # el de siempre vive en la base del registro: ya está
             try:
                 hechos[cliente.db_name] = preparar_base(url_de_motor(motor_de(cliente)))
             except Exception:  # noqa: BLE001
