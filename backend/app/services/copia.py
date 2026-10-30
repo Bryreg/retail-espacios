@@ -68,6 +68,8 @@ FORMATO = 1
 # Lo que no sale, con el porqué que queda escrito en el manifiesto.
 TABLAS_QUE_NO_SALEN = {
     "login_attempts": "intentos de ingreso con su IP: frenan ataques, no hacen falta para volver",
+    # Restaurada, una cola vieja volvería a mandar avisos de hace semanas.
+    "correos_pendientes": "correos en cola: restaurados, se volverían a mandar avisos viejos",
 }
 # Salen de `CLAVES` y no de una lista aparte: si mañana se agrega un rol con
 # clave, su hash tampoco sale.

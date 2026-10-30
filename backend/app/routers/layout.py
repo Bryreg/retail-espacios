@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.services.contacts import get_contacts, save_contacts
@@ -628,14 +629,37 @@ def get_revisions(response: Response, db: Session = Depends(get_db)):
     re-download the sedes whose revision actually moved.
     """
     _no_store(response)
+    # Sin bajar ni parsear el plano de cada sede en cada sondeo (P2-5): cada
+    # pestaña pregunta cada 20 s, y el JSON de una nave son cientos de KB. Se
+    # lee la fecha y el largo del texto —la base los da sin mandar el texto—, y
+    # el plano entero sólo se parsea cuando alguno de los dos cambió desde la
+    # última vez que este proceso lo contó.
+    base = str(db.get_bind().url)
     revisions = []
-    for snap in db.query(LayoutSnapshot).all():
-        try:
-            count = len(json.loads(snap.fixtures_json or "[]"))
-        except (ValueError, TypeError):
-            count = 0
-        revisions.append(LayoutRevision(sede=snap.sede, updated_at=snap.updated_at, count=count))
+    filas = db.query(
+        LayoutSnapshot.id, LayoutSnapshot.sede, LayoutSnapshot.updated_at,
+        func.length(LayoutSnapshot.fixtures_json),
+    ).all()
+    for snap_id, sede, updated_at, largo in filas:
+        firma = (updated_at, largo)
+        guardado = _cuentas_de_revision.get((base, snap_id))
+        if guardado is not None and guardado[0] == firma:
+            count = guardado[1]
+        else:
+            texto = db.query(LayoutSnapshot.fixtures_json).filter(LayoutSnapshot.id == snap_id).scalar()
+            try:
+                count = len(json.loads(texto or "[]"))
+            except (ValueError, TypeError):
+                count = 0
+            _cuentas_de_revision[(base, snap_id)] = (firma, count)
+        revisions.append(LayoutRevision(sede=sede, updated_at=updated_at, count=count))
     return revisions
+
+
+# (url de la base, id del snapshot) → ((updated_at, largo del JSON), cuántos
+# muebles). Es de este proceso y se rehace sola: si la fecha o el largo
+# cambiaron, se vuelve a contar.
+_cuentas_de_revision: dict = {}
 
 
 @router.get("/settings", response_model=LayoutSettingsOut)

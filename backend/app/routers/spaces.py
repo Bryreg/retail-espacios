@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from app.auth import require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
@@ -30,6 +30,7 @@ from app.services.participaciones import bloqueo_por_participaciones
 from app.services.mailer import (
     html_shell, send_mail_to_bg, correo_configurado,
 )
+from app.services.cola_de_correos import encolar_correo
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=[Depends(require_auth)])
@@ -187,24 +188,41 @@ def estado_comercial(
     # algo que la base ya considera libre.
     expire_leases(db)
 
-    q = db.query(Space).options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
+    q = db.query(Space)
     if sede:
         q = q.filter(Space.sede == sede.strip().upper())
 
     admin = role == "admin"
     # Las reservas vivas de una cara entera o de una parte (§8 de
     # docs/rediseno/vender-api.md): la cara sale TOMADA en sus fechas, como con
-    # un contrato. Por espacio, la que corre hoy o, si no, la próxima.
+    # un contrato. Por espacio, la que corre hoy o, si no, la próxima. Con su
+    # proveedor en UNA consulta (P2-5: era una por reserva).
     dia = hoy()
     reservas: dict[int, ReservaDeEspacio] = {}
     for r in (db.query(ReservaDeEspacio)
+              .options(selectinload(ReservaDeEspacio.supplier))
               .filter(ReservaDeEspacio.estado == "viva", ReservaDeEspacio.caduca >= dia,
                       ReservaDeEspacio.hasta >= dia)
               .order_by(ReservaDeEspacio.desde, ReservaDeEspacio.id).all()):
         reservas.setdefault(r.space_id, r)
+    # Sólo los contratos que pueden mandar —vivos y que no terminaron—, no el
+    # historial entero de cada espacio con `joinedload` (P2-5). Es exactamente
+    # lo que miran `Space.active_lease` y `Space.upcoming_lease`: un contrato
+    # que terminó antes de hoy no es ni el vigente ni el próximo.
+    vivos: dict[int, list[SpaceLease]] = {}
+    consulta_vivos = (db.query(SpaceLease)
+                      .options(selectinload(SpaceLease.supplier))
+                      .filter(SpaceLease.is_active == True, SpaceLease.end_date >= dia)  # noqa: E712
+                      .order_by(SpaceLease.id))
+    if sede:
+        consulta_vivos = consulta_vivos.join(Space, Space.id == SpaceLease.space_id).filter(
+            Space.sede == sede.strip().upper())
+    for lease in consulta_vivos.all():
+        vivos.setdefault(lease.space_id, []).append(lease)
     salida: dict[str, EstadoComercial] = {}
     for space in q.all():
-        lease = space.active_lease or space.upcoming_lease
+        vigente, proximo = _vigente_y_proximo(vivos.get(space.id, ()), dia)
+        lease = vigente or proximo
         reserva = reservas.get(space.id)
         if lease is None and reserva is not None:
             # Tomada. Quién, hasta cuándo y por cuánto, sólo para quien
@@ -247,11 +265,20 @@ def estado_comercial(
             # abierta: la plata se fuga igual, escrita en castellano.
             observation=(lease.notes or "") if admin else "",
             leaseId=lease.id if admin else None,
-            proximoLeaseId=(space.upcoming_lease.id
-                            if admin and space.active_lease is not None and space.upcoming_lease is not None
+            proximoLeaseId=(proximo.id
+                            if admin and vigente is not None and proximo is not None
                             else None),
         )
     return salida
+
+
+def _vigente_y_proximo(leases, dia):
+    """Lo mismo que `Space.active_lease` y `Space.upcoming_lease`, sobre una
+    lista ya filtrada (en el mismo orden): el que corre hoy —el primero— y el
+    próximo firmado que todavía no arrancó —el de inicio más temprano—."""
+    vigente = next((l for l in leases if l.is_active and l.start_date <= dia <= l.end_date), None)
+    futuros = [l for l in leases if l.is_active and l.start_date > dia]
+    return vigente, (min(futuros, key=lambda x: x.start_date) if futuros else None)
 
 
 @router.post("/find-or-create", response_model=SpaceOut, status_code=200, dependencies=[Depends(require_admin)])
@@ -823,8 +850,8 @@ def create_lease(
         ]
         if fila_parte:
             rows.insert(2, fila_parte)
-        background_tasks.add_task(
-            send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
+        encolar_correo(
+            background_tasks, db, send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
         )
 
     # Montaje: la orden de trabajo para el mercaderista (SIN valores) ya no sale
@@ -846,8 +873,8 @@ def create_lease(
         if fila_parte:
             rows.insert(1, fila_parte)
         footer = "Cualquier ajuste sobre lo acordado, respondé este correo."
-        background_tasks.add_task(
-            send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)
+        encolar_correo(
+            background_tasks, db, send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)
         )
 
     # `avisos` no es una columna: se cuelga del objeto para que Pydantic lo

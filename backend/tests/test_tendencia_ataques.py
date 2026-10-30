@@ -42,6 +42,7 @@ import hashlib
 import json
 import os
 import re
+from pathlib import Path
 from datetime import date
 from types import SimpleNamespace
 
@@ -714,23 +715,69 @@ def test_t22_ninguna_tabla_existente_gano_columnas(client):
     columnas_en_tablas_viejas = []
     viejas: set = set()
     en_clase_nueva = False
+    archivo = None
+    numero = 0  # la línea del archivo de HOY que trae el `+` que se está leyendo
     for linea in resultado.stdout.splitlines():
         if linea.startswith("diff --git"):
-            viejas = clases_en_main(linea.split(" b/", 1)[1])
+            archivo = linea.split(" b/", 1)[1]
+            viejas = clases_en_main(archivo)
             en_clase_nueva = False
             continue
         if linea.startswith("@@"):
             en_clase_nueva = False
+            m = re.search(r"\+(\d+)", linea)
+            numero = int(m.group(1)) if m else 0
             continue
         if linea.startswith(("+++", "---")):
             continue
+        if not linea.startswith("+"):
+            continue  # una línea borrada no ocupa lugar en el archivo de hoy
         clase = re.match(r"\+class (\w+)", linea)
         if clase:
             en_clase_nueva = clase.group(1) not in viejas
-        elif (linea.startswith("+") and not en_clase_nueva
-              and re.search(r"\b(Column|mapped_column)\(", linea)):
-            columnas_en_tablas_viejas.append(linea[1:].strip())
-    assert columnas_en_tablas_viejas == [], columnas_en_tablas_viejas
+        elif not en_clase_nueva and re.search(r"\b(Column|mapped_column)\(", linea):
+            columnas_en_tablas_viejas.append((archivo, numero, linea[1:].strip()))
+        numero += 1
+
+    # Desde Alembic (auditoría P1-8) la regla es «sólo aditivo, con Alembic»:
+    # una columna nueva en una tabla que ya existe VALE si una migración de
+    # `migraciones/versions/` la agrega a ESA tabla (`op.add_column` o
+    # `agregar_columna_si_falta`, con su nombre). Sin migración, sigue siendo lo
+    # de siempre: una columna que en la base desplegada no existiría. Que la
+    # migración sea aditiva lo vigila `tests/test_migraciones.py`.
+    migraciones = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in (Path(raiz) / "migraciones" / "versions").glob("*.py")
+    )
+
+    def la_agrega_una_migracion(archivo, numero, linea):
+        nombre = re.match(r"(\w+)\s*(?::[^=]*)?=\s*(?:sa\.)?(?:Column|mapped_column)\(", linea)
+        # El diff nombra los archivos desde la raíz del repositorio.
+        tabla = _tabla_en(Path(raiz).parent / archivo, numero) if archivo else None
+        if not nombre or not tabla:
+            return False
+        patron = (rf"(?:add_column|agregar_columna_si_falta)\(\s*['\"]{re.escape(tabla)}['\"]\s*,\s*"
+                  rf"sa\.Column\(\s*['\"]{re.escape(nombre.group(1))}['\"]")
+        return re.search(patron, migraciones) is not None
+
+    sin_migracion = [l for a, n, l in columnas_en_tablas_viejas if not la_agrega_una_migracion(a, n, l)]
+    assert sin_migracion == [], sin_migracion
+
+
+def _tabla_en(ruta: Path, numero: int):
+    """El `__tablename__` de la clase que contiene la línea `numero` (desde 1)
+    del archivo de hoy."""
+    if not ruta.exists() or numero < 1:
+        return None
+    texto = ruta.read_text(encoding="utf-8").splitlines()
+    for j in range(min(numero, len(texto)) - 1, -1, -1):
+        if texto[j].startswith("class "):
+            for k in range(j, min(numero, len(texto))):
+                m = re.search(r"__tablename__\s*=\s*['\"](\w+)['\"]", texto[k])
+                if m:
+                    return m.group(1)
+            return None
+    return None
 
 
 def test_t23_import_app_main_crea_la_tabla_con_create_all_sin_alembic(client):

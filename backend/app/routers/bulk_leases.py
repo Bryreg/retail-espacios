@@ -66,6 +66,7 @@ from app.services.contacts import recipients_for
 from app.services.mailer import (
     app_base_url, correo_configurado, format_cop, html_shell, send_mail_to_bg,
 )
+from app.services.cola_de_correos import encolar_correo
 
 router = APIRouter(prefix="/leases/bulk", tags=["carga masiva"])
 
@@ -840,8 +841,8 @@ def _avisar(
                 rows.append((ETIQUETA_DEL_VALOR, total))
             # Antes decía «Cargados desde una planilla.» también para lo vendido
             # en el mapa, que pasa por el mismo camino (2026-10-02).
-            background_tasks.add_task(
-                send_mail_to_bg, who["comercial"], asunto,
+            encolar_correo(
+                background_tasks, db, send_mail_to_bg, who["comercial"], asunto,
                 html_shell(asunto, rows, f"Contratos de {escape(cliente.nombre)}, recién guardados en RECABRA."),
             )
 
@@ -877,8 +878,8 @@ def _avisar(
                 "Los enlaces son personales: no los reenvíes. Vencen un mes después de "
                 "que arranca cada contrato.</span>"
             )
-            background_tasks.add_task(
-                send_mail_to_bg, who["montaje"], asunto,
+            encolar_correo(
+                background_tasks, db, send_mail_to_bg, who["montaje"], asunto,
                 html_shell(asunto, rows, pie),
             )
 
@@ -911,8 +912,8 @@ def _avisar(
              + f"{f.desde} → {f.hasta} · {valor_de(f)}")
             for f in filas
         ]
-        background_tasks.add_task(
-            send_mail_to_bg, [supplier.email], asunto,
+        encolar_correo(
+            background_tasks, db, send_mail_to_bg, [supplier.email], asunto,
             html_shell(
                 asunto, rows,
                 f"Cualquier ajuste sobre lo acordado, comunicate con {escape(cliente.nombre)}.",
