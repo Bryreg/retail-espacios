@@ -455,12 +455,13 @@ def _texto_politica():
     return fuente, copia, fuente.read_text(encoding="utf-8")
 
 
-def test_la_constante_es_la_version_de_fase_7():
+def test_la_constante_es_la_version_de_la_revision_de_privacidad():
     """El literal se afirma acá y en NINGÚN otro test: el resto compara contra
-    la constante importada."""
+    la constante importada. (Fase 7 la subió a "2026-09-v2"; la revisión de
+    privacidad de la auditoría pre-lanzamiento, a "2026-10-v3".)"""
     from app.models.consentimiento import VERSION_POLITICA
 
-    assert VERSION_POLITICA == "2026-09-v2"
+    assert VERSION_POLITICA == "2026-10-v3"
 
 
 def test_el_encabezado_y_el_versionado_de_la_politica_traen_la_version_vigente():
@@ -474,7 +475,7 @@ def test_el_encabezado_y_el_versionado_de_la_politica_traen_la_version_vigente()
 
     cabecera = texto.splitlines()[4]
     assert VERSION_POLITICA in cabecera, cabecera
-    assert "Vigencia: septiembre 2026" in cabecera, cabecera
+    assert "Vigencia: octubre 2026" in cabecera, cabecera
 
     versionado = texto[texto.index("## 11. Vigencia y versionado"):]
     assert f"**Versión de esta política: {VERSION_POLITICA}.**" in versionado
@@ -484,8 +485,14 @@ def test_el_encabezado_y_el_versionado_de_la_politica_traen_la_version_vigente()
     )
     assert linea is not None, "falta la fila de esta versión en el historial"
     bajo = linea.lower()
-    assert "agregados exactos" in bajo and "sin umbral" in bajo
-    assert "reporte de transparencia" in bajo
+    # La v3 dice qué sumó y que vuelve a pedir la aceptación.
+    assert "re-consentimiento" in bajo
+    assert "plazos de conservación" in bajo and "navegador" in bajo
+    # Y la fila de la v2 sigue diciendo lo suyo: es lo que aceptaron sus filas.
+    v2 = next((l for l in versionado.splitlines() if l.startswith("| **2026-09-v2**")), None)
+    assert v2 is not None, "se borró la fila de la 2026-09-v2 del historial"
+    assert "agregados exactos" in v2.lower() and "sin umbral" in v2.lower()
+    assert "reporte de transparencia" in v2.lower()
 
     # La versión anterior no se borra del historial: es lo que aceptaron las
     # filas viejas de `consentimientos`.

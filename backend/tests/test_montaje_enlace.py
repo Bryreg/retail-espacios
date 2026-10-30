@@ -152,7 +152,8 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
     # en el freno de `/oauth` (`test_invitacion_enlace.py`).
     # `/api/health/ready` (auditoría P1-3) es el health check de Render: público
     # como `/api/health`, y no dice nada más que «la base contesta».
-    publicas = {"/api/health", "/api/health/ready", "/api/auth/invitacion/{token}"}
+    # `/api/auth/terminos` (auditoría P0-2): los términos vigentes, públicos.
+    publicas = {"/api/health", "/api/health/ready", "/api/auth/invitacion/{token}", "/api/auth/terminos"}
 
     # Se enumera por el esquema OpenAPI y no por `app.routes`: desde FastAPI
     # 0.141 / Starlette 1.x `include_router` deja en `app.routes` un

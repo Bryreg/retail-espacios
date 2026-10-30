@@ -38,7 +38,15 @@ from app.database import Base
 # bloquea, la invitación da 428, el login de una cuenta existente avisa una vez
 # con ``pedir_consentimiento``) vuelve a pedirle el consentimiento sin
 # necesitar ningún backfill ni ninguna migración.
-VERSION_POLITICA = "2026-09-v2"
+#
+# 2026-10-30 (auditoría pre-lanzamiento, tanda de privacidad) — sube a
+# "2026-10-v3": la revisión contra el producto sumó encargados que la v2 no
+# nombraba (el proveedor de correo, los respaldos en GitHub y en un depósito,
+# Sentry), lo que guarda el navegador, los plazos de conservación, el cobro de
+# la suscripción y los derechos persona por persona. Sumar encargados y
+# finalidades es un cambio material: se vuelve a pedir la aceptación (aviso
+# post-login, que no bloquea).
+VERSION_POLITICA = "2026-10-v3"
 
 # Dónde se originó la aceptación: al fundar el cliente, al canjear una
 # invitación, o al aceptarla desde el aviso post-login de una cuenta existente.

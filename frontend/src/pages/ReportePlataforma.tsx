@@ -107,6 +107,9 @@ const ACCION_LABEL: Record<string, string> = {
   pago_manual: "Registro de un pago",
   anulacion: "Anulación de una cuenta de cobro",
   disputa: "Disputa de una cuenta de cobro",
+  titular_export: "Consulta de los datos de una persona",
+  titular_supresion: "Supresión de los datos de una persona",
+  titulares: "Lista de solicitudes de personas atendidas",
 };
 const etiquetaAccion = (a: string): string => ACCION_LABEL[a] ?? a;
 

@@ -9,6 +9,7 @@ import {
   tokenDeInvitacion, clientePreseleccionado, etiquetaDeMembresia, CLAVE_ULTIMO_CLIENTE,
 } from "../utils/ingreso";
 import { altaCliente, sugerirSlug, SLUG_VALIDO } from "../api/clientes";
+import { leerTerminos } from "../api/legal";
 import { describeError } from "../api/client";
 import {
   firebaseDisponible, loginConGoogle, loginConCorreo, registrarConCorreo,
@@ -179,6 +180,7 @@ export default function Login({ enHoja = false, modoInicial }: {
   modoInicial?: "login" | "registro";
 } = {}) {
   const setAuth = useAuthStore((s) => s.setAuth);
+  const setPedirTerminos = useAuthStore((s) => s.setPedirTerminos);
 
   // ─── El enlace de la invitación ─────────────────────────────────────────
   // Se lee UNA vez, al montar. `vistaInvitacion` es lo que dice el backend
@@ -246,6 +248,18 @@ export default function Login({ enHoja = false, modoInicial }: {
   // Fase 3 compliance: sin marcar, el botón de fundar ni se habilita — el
   // backend igual lo exige (422), pero pedirlo acá evita el viaje de más.
   const [altaAceptaPolitica, setAltaAceptaPolitica] = useState(false);
+  // Auditoría P0-2: los Términos del servicio, SÓLO si el servidor dice que
+  // rigen (el dueño los publicó y ya no son borrador). Si no, `null` y el alta
+  // es la de siempre. Se leen al abrir el formulario de fundar.
+  const [versionTerminos, setVersionTerminos] = useState<string | null>(null);
+  const [altaAceptaTerminos, setAltaAceptaTerminos] = useState(false);
+  useEffect(() => {
+    if (!fundando) return;
+    let vivo = true;
+    void leerTerminos().then((t) => { if (vivo) setVersionTerminos(t.vigente ? t.version : null); });
+    return () => { vivo = false; };
+  }, [fundando]);
+  const faltanTerminos = !!versionTerminos && !altaAceptaTerminos;
 
   // ─── Fase 3 compliance: 428 de /oauth al canjear una invitación ────────
   // Guarda el `id_token` (y el `cliente`, si ya se había elegido) con el que
@@ -330,6 +344,10 @@ export default function Login({ enHoja = false, modoInicial }: {
       setAltaError("Para fundar el cliente hay que aceptar la Política de Tratamiento de Datos Personales.");
       return;
     }
+    if (faltanTerminos) {
+      setAltaError("Para fundar el cliente hay que aceptar los Términos del servicio.");
+      return;
+    }
     setAltaBusy(true);
     setAltaError(null);
     try {
@@ -339,6 +357,7 @@ export default function Login({ enHoja = false, modoInicial }: {
       const r = await altaCliente({
         id_token: idToken, slug: altaSlug, nombre: altaNombre.trim(),
         acepta_politica: altaAceptaPolitica,
+        ...(versionTerminos ? { acepta_terminos: altaAceptaTerminos, version_terminos: versionTerminos } : {}),
       });
       // Éxito == un oauth exitoso: se guarda la sesión y entra como admin.
       // Acá `cliente_nombre` viene directo del backend — no hace falta
@@ -410,6 +429,7 @@ export default function Login({ enHoja = false, modoInicial }: {
         r.token, r.role, r.cliente, r.cliente_nombre ?? membresia?.nombre, r.email, r.nombre,
         r.aviso_cuenta, r.pedir_consentimiento, undefined, r.rol_cliente ?? membresia?.rol
       );
+      setPedirTerminos(r.pedir_terminos ?? null);
     } catch (err) {
       manejarErrorOauth(err, idToken, clienteElegido);
     }
@@ -744,6 +764,36 @@ export default function Login({ enHoja = false, modoInicial }: {
                     </span>
                   </label>
 
+                  {/* Auditoría P0-2: sólo cuando los términos rigen. */}
+                  {versionTerminos && (
+                    <label
+                      style={{
+                        display: "flex", alignItems: "flex-start", gap: 8,
+                        marginBottom: 12, cursor: "pointer",
+                        fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={altaAceptaTerminos}
+                        onChange={(e) => setAltaAceptaTerminos(e.target.checked)}
+                        style={{ marginTop: 2, flexShrink: 0 }}
+                      />
+                      <span>
+                        Leí y acepto, en nombre del supermercado, los{" "}
+                        <a
+                          href="/terminos"
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: "var(--accent)", fontWeight: 600 }}
+                        >
+                          Términos del servicio
+                        </a>{" "}
+                        (versión {versionTerminos}).
+                      </span>
+                    </label>
+                  )}
+
                   {altaError && (
                     <div style={{ marginBottom: 10, fontSize: 12, fontWeight: 500, color: "var(--danger)" }}>
                       {altaError}
@@ -753,12 +803,12 @@ export default function Login({ enHoja = false, modoInicial }: {
                   <button
                     className="btn-principal"
                     type="submit"
-                    disabled={altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica}
+                    disabled={altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica || faltanTerminos}
                     style={{
                       width: "100%", height: 38,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       borderRadius: "var(--r-md)",
-                      cursor: altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica ? "default" : "pointer",
+                      cursor: altaBusy || !altaNombre.trim() || !altaSlug || !altaAceptaPolitica || faltanTerminos ? "default" : "pointer",
                       fontSize: 13, fontWeight: 600, fontFamily: "inherit",
                     }}
                   >

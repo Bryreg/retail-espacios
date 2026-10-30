@@ -121,7 +121,9 @@ class BitacoraPlataforma(Base):
     # desde la consola (2026-09-23): "renombre" | "archivo" | "reactivacion" |
     # "borrado" | "traspaso". La cobranza a mano (C1): "cobros" (la cartera,
     # barre a todos) | "suscripcion" | "factura" | "pago_manual" | "anulacion" |
-    # "disputa". La escalera desde la consola (C2): "cobranza". Toda acción
+    # "disputa". La escalera desde la consola (C2): "cobranza". Los derechos
+    # de una persona (auditoría P1-14): "titular_export" | "titular_supresion"
+    # | "titulares" (la lista de constancias). Toda acción
     # nueva necesita su rama en `plataforma_reporte._accesos_del_cliente`.
     accion = Column(String, nullable=False, default="metricas")
     # El período consultado, "YYYY-MM". Es el QUÉ de la línea: sin él, saber
