@@ -287,6 +287,8 @@ const RECHAZOS_CONOCIDOS = new Set([
   // fase 2 · I5: un ancho, fondo, alto, módulo o entrepaños que no se pueden
   // dibujar (`medidas_imposibles` de `services/layout_lookup.py`).
   "medidas_imposibles",
+  // Auditoría P1-15: lo comercial de una repisa del 3D es de sólo lectura.
+  "repisas_vendidas",
 ]);
 
 /** Entrar a Distribución desde otra pantalla (`pedirEnfoque3D`): sólo tipos
@@ -474,6 +476,10 @@ interface FixtureStore {
   // ── Sync actions ────────────────────────────────────────────────────────────
   /** Pull every sede from the server and adopt whatever changed. */
   syncFromServer: () => Promise<void>;
+  /** El servidor escribió el plano de `sede` por su cuenta («Pasar a
+   *  contrato» de una repisa, auditoría P1-15): su revisión pasa a ser la base
+   *  del próximo guardado, así no choca con lo que este mismo navegador pidió. */
+  adoptarRevisionDelPlano: (sede: string, revision: string | null | undefined) => void;
   /** Volver a leer de la base qué está vendido y repintarlo en TODAS las sedes.
    *  Lo comercial ya no viaja en el layout, así que cambia sin que cambie una
    *  sola revisión de plano: vender, cancelar o subir una planilla lo mueve. */
@@ -1239,6 +1245,11 @@ export const useFixtureStore = create<FixtureStore>()(
             syncMessage: "No se pudo guardar la lista de sedes en el servidor.",
           });
         }
+      },
+
+      adoptarRevisionDelPlano: (sede, revision) => {
+        if (!revision) return;
+        set((s) => ({ serverRev: { ...s.serverRev, [sede]: revision } }));
       },
 
       pushRates: async () => {

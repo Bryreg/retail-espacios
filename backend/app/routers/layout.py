@@ -4,7 +4,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -86,7 +86,9 @@ SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
 # La generación de los datos (ver `services/traspaso.py`). Se lee acá y se
 # escribe sólo allá.
 from app.services.traspaso import CLAVE_GENERACION  # noqa: E402
-from app.services.meses import al_peso
+from app.services.meses import al_peso, meses_entre
+from app.clientes import Cliente, cliente_del_pedido
+from app.models.vender import CondicionesDeContrato
 RATES_KEY = "layout_reference_rates"
 RATES_UPDATED_KEY = "layout_reference_rates_updated_at"
 SEASONS_KEY = "layout_season_windows"
@@ -464,6 +466,59 @@ def slots_en_participacion(previas: list, nuevas: list) -> list[str]:
                 frases.append(
                     f"«{normalizar(f.get('code'))}» se vende por participación: lo vendido va con contrato desde "
                     "Vender, no como espacio interno."
+                )
+                break
+    return sorted(frases)
+
+
+#: Lo comercial de una repisa (``slots``): lo que la vende.
+_COMERCIAL_DEL_SLOT = ("status", "supplierName", "brandCategory", "negotiatedValue", "startDate", "endDate")
+
+
+def _slot_con_venta(x: dict) -> bool:
+    """¿La repisa dice que está vendida? Ocupada o reservada, o con proveedor o
+    con valor."""
+    try:
+        valor = float(x.get("negotiatedValue") or 0)
+    except (TypeError, ValueError):
+        valor = 0.0
+    return x.get("status") in _SLOT_VENDIDO or bool(str(x.get("supplierName") or "").strip()) or valor > 0
+
+
+def slots_vendidos_en_el_plano(previas: list, nuevas: list) -> list[str]:
+    """Los muebles en los que este guardado VENDE una repisa del 3D (auditoría
+    P1-15, decisión del dueño 2026-10-30: «Sólo lectura + pasar a contrato»).
+
+    Las repisas (``slots``) guardaban proveedor, «Valor (COP/mes)» y fechas
+    sólo en el JSON del plano: una venta paralela sin contrato, sin candado,
+    sin ``contratos_que_chocan``, sin bitácora y fuera del canon y de la
+    ocupación. Ahora lo comercial de una repisa es de sólo lectura: se frena
+    una repisa NUEVA que trae algo comercial y una que cambia cualquiera de sus
+    campos comerciales. Lo que sí pasa: liberarla (pasarla a «Disponible»,
+    aunque le quede el proveedor de antes, o todo lo comercial en vacío),
+    dejarla como estaba, y un campo AUSENTE (no es un cambio: lo rellena
+    ``_restore_missing_slot_prices``). Lo vendido de antes no se pierde: se
+    pasa a contrato con «Pasar a contrato» (``POST /layout/{sede}/repisas/…``).
+    """
+    previos = _por_id(previas)
+    frases = []
+    for f in nuevas:
+        if not isinstance(f, dict):
+            continue
+        previo = previos.get(f.get("id")) if f.get("id") else None
+        antes = {x.get("id"): x for x in ((previo or {}).get("slots") or [])
+                 if isinstance(x, dict) and x.get("id")}
+        for x in f.get("slots") or []:
+            if not isinstance(x, dict) or not _slot_con_venta(x):
+                continue
+            a = antes.get(x.get("id")) if x.get("id") else None
+            # Una libre que conserva lo de antes no vende nada: el estado no cuenta.
+            claves = _COMERCIAL_DEL_SLOT if x.get("status") in _SLOT_VENDIDO else _COMERCIAL_DEL_SLOT[1:]
+            if a is None or any(k in x and (a.get(k) or None) != (x.get(k) or None) for k in claves):
+                frases.append(
+                    f"«{normalizar(f.get('code'))}»: lo comercial de una repisa es de sólo lectura. Lo que se "
+                    "vende va con contrato, en Vender; una repisa que ya estaba vendida se pasa a contrato "
+                    "desde su panel."
                 )
                 break
     return sorted(frases)
@@ -1304,6 +1359,131 @@ def renombrar_sede(
     )
 
 
+# ─── Las repisas del 3D: pasar a contrato (auditoría P1-15) ───────────────────
+# Tres segmentos y más: no las traga "/{sede}".
+
+
+class RepisaAContratoIn(BaseModel):
+    #: La cara o la parte del mueble donde queda el contrato («GON-03»,
+    #: «GON-03-B», «GON-03-TR2»), con o sin la sede.
+    espacio: str = Field(min_length=1, max_length=200)
+
+
+def _repisa(db: Session, sede: str, fixture_id: str, slot_id: str):
+    snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+    if snap is None:
+        raise HTTPException(status_code=404, detail=f"«{sede}» no tiene plano guardado.")
+    try:
+        fixtures = json.loads(snap.fixtures_json or "[]")
+    except (ValueError, TypeError):
+        fixtures = []
+    mueble = next((f for f in fixtures if isinstance(f, dict) and f.get("id") == fixture_id), None)
+    if mueble is None:
+        raise HTTPException(status_code=404, detail="Ese mueble no está en el plano guardado: guardá el plano y volvé a intentar.")
+    repisa = next((x for x in mueble.get("slots") or [] if isinstance(x, dict) and x.get("id") == slot_id), None)
+    if repisa is None:
+        raise HTTPException(status_code=404, detail="Esa repisa no está en el plano guardado.")
+    return snap, fixtures, mueble, repisa
+
+
+def _repisa_limpia(repisa: dict) -> None:
+    """Lo comercial de la repisa, en vacío (la geometría queda)."""
+    repisa.update({"status": "free", "supplierName": "", "brandCategory": "", "negotiatedValue": 0,
+                   "startDate": "", "endDate": ""})
+
+
+@router.post("/{sede}/repisas/{fixture_id}/{slot_id}/contrato")
+def repisa_a_contrato(
+    sede: str, fixture_id: str, slot_id: str, cuerpo: RepisaAContratoIn, request: Request,
+    background_tasks: BackgroundTasks, rol: str = Depends(require_admin),
+    cliente: Cliente = Depends(cliente_del_pedido), db: Session = Depends(get_db),
+):
+    """«Pasar a contrato»: lo vendido en una repisa del 3D (proveedor, «Valor
+    (COP/mes)» y fechas, que vivían sólo en el JSON) pasa a ser un contrato de
+    verdad de la cara o la parte ``espacio`` de ese mueble, y la repisa queda
+    libre. Todo en una transacción.
+
+    Es la revisión y el alta de Vender (``bulk_leases.confirmar_lote`` sin las
+    reglas de la planilla): los candados del mueble, ``contratos_que_chocan``,
+    las participaciones, la regla «entera o por partes» y la bitácora
+    (``contrato.alta`` · «repisa del 3D»). El valor de la repisa era AL MES:
+    el total es ese valor × los meses del plazo, al peso, y se guarda la forma
+    «mensual». Si el plano cambió entre que se leyó y se escribe, 409 y no queda
+    nada. Sólo administración.
+    """
+    snap, _fixtures, mueble, repisa = _repisa(db, sede, fixture_id, slot_id)
+    leido = snap.updated_at
+    proveedor = str(repisa.get("supplierName") or "").strip()
+    if not proveedor:
+        raise HTTPException(status_code=409, detail="La repisa no tiene proveedor: no hay qué pasar a contrato. Liberala.")
+    desde = _fecha_iso(repisa.get("startDate"))
+    hasta = _fecha_iso(repisa.get("endDate"))
+    if desde is None or hasta is None or hasta < desde:
+        raise HTTPException(status_code=409, detail=(
+            "A la repisa le faltan las fechas (o están al revés): así no es un contrato. Liberala y vendé "
+            "lo suyo en Vender."))
+    try:
+        al_mes = al_peso(float(repisa.get("negotiatedValue") or 0))
+    except (TypeError, ValueError):
+        al_mes = 0.0
+    total = al_peso(al_mes * meses_entre(desde, hasta)) if al_mes > 0 else 0.0
+
+    from app.routers.bulk_leases import FilaIn, LoteIn, confirmar_lote, validar_lote
+    from app.services.layout_lookup import PlanoIndexado
+
+    resuelto = PlanoIndexado(db).resolver(sede, cuerpo.espacio)
+    if resuelto is None or (resuelto.fixture or {}).get("id") != fixture_id:
+        raise HTTPException(status_code=409, detail=f"«{cuerpo.espacio}» no es una cara ni una parte de este mueble.")
+    lote = LoteIn(sede=sede, filas=[FilaIn(
+        fila=1, espacio=cuerpo.espacio, sede=sede, proveedor=proveedor,
+        marca=str(repisa.get("brandCategory") or "").strip() or None, valor=total,
+        desde=desde.isoformat(), hasta=hasta.isoformat(),
+    )])
+    previa = validar_lote(db, lote, planilla=False).filas[0]
+    if previa.estado == "error":
+        raise HTTPException(status_code=409, detail={
+            "code": "repisa_no_pasa", "message": "La repisa no se puede pasar a contrato así.",
+            "choques": previa.mensajes})
+
+    def limpiar_la_repisa(creados):
+        if not creados:
+            raise HTTPException(status_code=409, detail={
+                "code": "repisa_no_pasa", "message": "Otra persona vendió ese espacio mientras tanto.",
+                "choques": []})
+        if al_mes > 0:
+            db.add(CondicionesDeContrato(lease_id=creados[0].lease_id, modo_precio="mensual", valor_tecleado=al_mes))
+        # Se relee el plano DESPUÉS de los candados (`confirmar_lote` venció la
+        # sesión) y se escribe sólo si sigue en la revisión que se leyó.
+        fresco, fixtures, _m, la_repisa = _repisa(db, sede, fixture_id, slot_id)
+        _repisa_limpia(la_repisa)
+        escritas = (db.query(LayoutSnapshot)
+                    .filter(LayoutSnapshot.id == fresco.id, LayoutSnapshot.updated_at == leido)
+                    .update({LayoutSnapshot.fixtures_json: json.dumps(fixtures),
+                             LayoutSnapshot.updated_at: datetime.now(timezone.utc)}, synchronize_session=False))
+        if escritas == 0:
+            raise HTTPException(status_code=409, detail=(
+                f"El plano de «{sede}» cambió mientras se pasaba la repisa: recargá y volvé a intentar."))
+
+    try:
+        hecho = confirmar_lote(db, lote, background_tasks, cliente, planilla=False, request=request, rol=rol,
+                               origen="repisa del 3D", antes_del_commit=limpiar_la_repisa)
+    except Exception:
+        db.rollback()
+        raise
+    fila = next((f for f in hecho.filas if f.lease_id), None)
+    db.refresh(snap)
+    return {"lease_id": fila.lease_id if fila else None, "espacio": fila.codigo if fila else None,
+            "valor_total": total, "valor_al_mes": al_mes, "layout": _to_out(snap).model_dump(mode="json"),
+            "avisos": hecho.avisos.model_dump() if hecho.avisos else None}
+
+
+def _fecha_iso(valor):
+    try:
+        return date.fromisoformat(str(valor or "").strip()[:10])
+    except ValueError:
+        return None
+
+
 # ─── La papelera de sedes (auditoría P2-18) ───────────────────────────────────
 # Literal antes de "/{sede}", como manda la regla de este router.
 
@@ -1618,6 +1798,9 @@ def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = De
             ("slots_en_participacion", slots_en_participacion(previas, nuevas),
              "Este guardado vendería espacios internos en {n} mueble(s) de «{sede}» que se venden por "
              "participación."),
+            # Auditoría P1-15: la venta paralela por repisa, en cualquier mueble.
+            ("repisas_vendidas", slots_vendidos_en_el_plano(previas, nuevas),
+             "Este guardado vendería repisas del 3D en {n} mueble(s) de «{sede}»: lo vendido va con contrato."),
         ):
             if frases:
                 logger.info("layout %s: guardado rechazado (%s) — %s", sede, code, " · ".join(frases))

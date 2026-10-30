@@ -102,11 +102,13 @@ import { useFichasPropias } from "../../store/fichasPropias";
 import { textoDeLoQueNuncaSeAlquila } from "../../utils/partesDelMueble";
 import { isDoubleGondola, isRentable, fullSpaceCode, NUNCA_ALQUILABLE } from "../../types/fixtures";
 import {
-  PALABRA_POR_OCUPACION, claseDe, codigoDeParte, codigoVisibleDe, divisionDe, notaDeEstadoPorOcupacion, porParticipacion,
+  PALABRA_POR_OCUPACION, codigoDeParte, codigoVisibleDe, divisionDe, notaDeEstadoPorOcupacion, porParticipacion,
 } from "../../utils/partes";
 // fase 2 · I4 (G2b): lo suyo del proveedor de la reunión, y nada de otros.
 import { loDelProveedor, POR_QUE_NO_SE_OFRECE } from "../../utils/partes";
 import { partesQuePisa } from "../../utils/slotsDeLasPartes";
+import { pesos } from "../../utils/indicadores";
+import { pasarRepisaAContrato } from "../../api/layout";
 import type { UnifiedFixture, FixType, GondolaType, SpaceStatus } from "../../types/fixtures";
 import { nombreDeMueble } from "../../utils/nomenclatura";
 import { fileUrl, getFaceImages } from "../../api/files";
@@ -6336,36 +6338,77 @@ function CommercialPanel({
   // Infrastructure holds no contract: the commercial half of the panel hides.
   const rentable = isRentable(fix);
 
-  const inputCls = "w-full border-0 border-b border-dark-line-2 bg-transparent rounded-none px-0 py-1 text-sm text-dark-ink-1 focus:border-accent focus:outline-none placeholder:text-dark-ink-3 transition-colors";
   const labelCls = ETIQUETA_CLS;
 
-  function handleSlotStatusChange(newStatus: SpaceStatus) {
-    if (!selectedSlot) return;
-    if (selectedSlot.status==="occupied" && newStatus==="free") {
-      if (!confirm("¿Estás seguro de liberar este espacio ocupado?")) return;
+  /** La repisa dice que está vendida (ocupada o reservada, con proveedor o
+   *  con valor): lo que se puede pasar a contrato o liberar. */
+  const repisaConVenta = !!selectedSlot && (selectedSlot.status !== "free" || !!selectedSlot.supplierName?.trim()
+    || (selectedSlot.negotiatedValue ?? 0) > 0);
+  /** Dónde puede quedar el contrato: las partes que pisa la repisa (un mueble
+   *  por tramos o entrepaños) o, si no se vende por partes, sus caras. */
+  const destinosDeRepisa = useMemo(() => {
+    if (!selectedSlot) return [] as { codigo: string; rotulo: string }[];
+    const doble = isDoubleGondola(fix);
+    const caras: ("A" | "B")[] = doble ? ["A", "B"] : ["A"];
+    const div = divisionDe(fix);
+    const porPartesDelMueble = !!div && (div.clase === "tramos" || div.clase === "entrepanos");
+    if (porPartesDelMueble) {
+      return partesQuePisa(fix, selectedSlot, caras).map(({ cara, parte }) => ({
+        codigo: codigoDeParte(fix.code, cara, parte),
+        rotulo: `${fix.code} ${codigoVisibleDe("", cara, doble, parte)}`.trim(),
+      }));
     }
-    us({ status: newStatus });
+    return caras.map((cara) => ({ codigo: codigoDeParte(fix.code, cara, null), rotulo: doble ? `${fix.code} · cara ${cara}` : fix.code }));
+  }, [fix, selectedSlot]);
+  const [destinoDeRepisa, setDestinoDeRepisa] = useState("");
+  const [pasando, setPasando] = useState(false);
+  const [avisoDeRepisa, setAvisoDeRepisa] = useState<string | null>(null);
+  useEffect(() => {
+    setDestinoDeRepisa(destinosDeRepisa[0]?.codigo ?? "");
+    setAvisoDeRepisa(null);
+  }, [selectedSlot?.id, destinosDeRepisa]);
+  const REPISA_LIBRE: Partial<ShelfSlot> = { status: "free", supplierName: "", brandCategory: "", negotiatedValue: 0, startDate: "", endDate: "" };
+  async function pasarAContrato() {
+    if (!selectedSlot || !destinoDeRepisa) return;
+    setPasando(true);
+    setAvisoDeRepisa(null);
+    try {
+      const hecho = await pasarRepisaAContrato(sedeDelPanel, fix.id, selectedSlot.id, destinoDeRepisa);
+      // El servidor ya escribió el plano con la repisa libre: su revisión es
+      // la base del próximo guardado, y la copia de acá queda igual.
+      useFixtureStore.getState().adoptarRevisionDelPlano(sedeDelPanel, hecho.layout?.updated_at);
+      us(REPISA_LIBRE);
+      void useFixtureStore.getState().syncFromServer();
+      setAvisoDeRepisa(`Listo: el contrato quedó en ${hecho.espacio ?? destinoDeRepisa}. Se ve en Contratos y en Indicadores.`);
+    } catch (err: any) {
+      const d = err?.response?.data?.detail;
+      const texto = typeof d === "string" ? d : d?.message ?? "No se pudo pasar a contrato.";
+      const choques: string[] = Array.isArray(d?.choques) ? d.choques.map(String) : [];
+      setAvisoDeRepisa([texto, ...choques].join(" "));
+    } finally {
+      setPasando(false);
+    }
+  }
+  function liberarRepisa() {
+    if (!selectedSlot) return;
+    if (!confirm("¿Liberar esta repisa? Se borra lo que dice de proveedor, valor y fechas; no crea ningún contrato.")) return;
+    us(REPISA_LIBRE);
   }
 
   if (selectedSlot) {
     // Vender por partes: un mueble que se vende por tramos o por entrepaños
-    // vende lo suyo con contrato, en Vender. Un espacio interno marcado
-    // vendido acá no tiene contrato, y la misma repisa se podría vender dos
-    // veces sin que el servidor lo vea: en ese mueble no se marca uno NUEVO
-    // como vendido (el que ya estaba marcado se puede liberar, y se avisa).
+    // vende lo suyo con contrato, en Vender; si la repisa cae en una parte
+    // con contrato, se avisa.
     const divisionDelMueble = divisionDe(fix);
     const porPartes = !!divisionDelMueble && (divisionDelMueble.clase === "tramos" || divisionDelMueble.clase === "entrepanos");
-    const claseDelMueble = divisionDelMueble ? claseDe(divisionDelMueble.clase) : undefined;
     const pisaConContrato = porPartes
       ? partesQuePisa(fix, selectedSlot, isDoubleGondola(fix) ? ["A", "B"] : ["A"])
         .filter(({ cara, parte }) => estadoCrudo[fullSpaceCode(sedeDelPanel, codigoDeParte(fix.code, cara, parte))]?.status === "occupied")
         .map(({ cara, parte }) => codigoVisibleDe("", cara, isDoubleGondola(fix), parte).replace(/^·/, ""))
       : [];
-    const noSeMarcaVendido = porPartes && selectedSlot.status === "free";
     const slotSm   = STATUS_META[selectedSlot.status];
     const slotDays = computeDays(selectedSlot.startDate, selectedSlot.endDate);
     const slotStatusBorder = selectedSlot.status === "occupied" ? "border-l-4 border-danger" : selectedSlot.status === "reserved" ? "border-l-4 border-warning" : "border-l-4 border-accent";
-    const slotSelectBorder = selectedSlot.status === "occupied" ? "border-danger/50" : selectedSlot.status === "reserved" ? "border-warning/50" : "border-success/50";
     return (
       <div className={`flex w-64 flex-shrink-0 flex-col overflow-y-auto border-l border-dark-line bg-dark-surface ${slotStatusBorder}`}>
         <div className="flex items-center gap-2 border-b border-dark-line p-3">
@@ -6386,28 +6429,24 @@ function CommercialPanel({
         </div>
 
         <div className="flex flex-col gap-3 p-3">
+          {/* Lo comercial de una repisa es de SÓLO LECTURA (auditoría P1-15,
+              decisión del dueño 2026-10-30). Proveedor, valor y fechas vivían
+              sólo en el JSON del plano: una venta sin contrato, sin choque de
+              fechas ni bitácora, fuera del canon. Lo que se vende va con
+              contrato, en Vender; lo que ya estaba vendido acá se pasa a
+              contrato (abajo) o se libera. El servidor frena una repisa nueva
+              o cambiada (`repisas_vendidas`). */}
           <div>
-            <label className={labelCls}>Estado del slot</label>
-            <select value={selectedSlot.status} onChange={e=>handleSlotStatusChange(e.target.value as SpaceStatus)}
-              className={`w-full rounded border ${slotSelectBorder} bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:outline-none`}>
-              <option value="free">Disponible</option>
-              <option value="occupied" disabled={noSeMarcaVendido}>Ocupado</option>
-              <option value="reserved" disabled={noSeMarcaVendido}>Reservado</option>
-            </select>
-            {/* Los espacios internos son del MUEBLE, de las dos caras: el mismo
-                slot se dibuja en la A y en la B (`renderSlotFace`), y elegirlo
-                desde la B elige ése. Se dice, para que no parezca un error. */}
+            <label className={labelCls}>Estado de la repisa</label>
+            <p className="text-xs text-dark-ink-1" data-slot-estado>{slotSm.label}</p>
             {carasDe(fix) === 2 && (
               <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slot-dos-caras>
                 Este espacio vale para las dos caras de la góndola.
               </p>
             )}
-            {porPartes && claseDelMueble && (
-              <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slot-por-partes>
-                Este mueble se vende por {claseDelMueble.plural}: lo que se vende de él va con contrato, en Vender.
-                {noSeMarcaVendido ? " Un espacio interno nuevo no se marca vendido acá." : " Éste ya estaba marcado: se puede liberar."}
-              </p>
-            )}
+            <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slot-solo-lectura>
+              Lo que se vende de este mueble va con contrato, en Vender. Acá se ve lo que quedó de antes.
+            </p>
             {pisaConContrato.length > 0 && (
               <p className="mt-1 text-[10px] leading-snug text-warning" data-slot-pisa-parte>
                 Cae en {pisaConContrato.join(", ")}, que {pisaConContrato.length === 1 ? "tiene" : "tienen"} contrato.
@@ -6415,43 +6454,51 @@ function CommercialPanel({
             )}
           </div>
 
-          <div>
-            <label className={labelCls}><Building2 size={9} className="inline mr-1"/>Proveedor</label>
-            <input type="text" value={selectedSlot.supplierName} placeholder="Nombre del proveedor"
-              onChange={e => {
-                us({ supplierName: e.target.value });
-                // Escribir un proveedor lo marcaba ocupado; en un mueble que
-                // se vende por partes, no (se vende en Vender).
-                if (e.target.value && selectedSlot.status==="free" && !noSeMarcaVendido)
-                  us({ status:"occupied", supplierName: e.target.value });
-              }} className={inputCls} />
-          </div>
-
-          <div>
-            <label className={labelCls}><Tag size={9} className="inline mr-1"/>Categoría</label>
-            <input type="text" value={selectedSlot.brandCategory||""} placeholder="Marca / rubro"
-              onChange={e=>us({brandCategory:e.target.value})} className={inputCls} />
-          </div>
-
-          <div>
-            <label className={labelCls}><DollarSign size={9} className="inline mr-1"/>Valor (COP/mes)</label>
-            <input type="number" min={0} value={selectedSlot.negotiatedValue||""}
-              onChange={e=>us({negotiatedValue:parseFloat(e.target.value)||0})}
-              className={`${inputCls} ${selectedSlot.negotiatedValue > 0 ? "text-success text-base font-bold" : ""}`} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className={labelCls}><Calendar size={9} className="inline mr-1"/>Inicio</label>
-              <input type="date" value={selectedSlot.startDate||""}
-                onChange={e=>us({startDate:e.target.value})} className={inputCls} />
+          <dl className="flex flex-col gap-2 text-xs" data-slot-datos>
+            <div><dt className={labelCls}><Building2 size={9} className="inline mr-1"/>Proveedor</dt>
+              <dd className="text-dark-ink-1">{selectedSlot.supplierName || "—"}</dd></div>
+            <div><dt className={labelCls}><Tag size={9} className="inline mr-1"/>Categoría</dt>
+              <dd className="text-dark-ink-1">{selectedSlot.brandCategory || "—"}</dd></div>
+            {isAdmin && (
+              <div><dt className={labelCls}><DollarSign size={9} className="inline mr-1"/>Valor al mes</dt>
+                <dd className={selectedSlot.negotiatedValue > 0 ? "text-success font-bold" : "text-dark-ink-1"}>
+                  {selectedSlot.negotiatedValue > 0 ? pesos(selectedSlot.negotiatedValue) : "—"}</dd></div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div><dt className={labelCls}><Calendar size={9} className="inline mr-1"/>Inicio</dt>
+                <dd className="text-dark-ink-1">{selectedSlot.startDate || "—"}</dd></div>
+              <div><dt className={labelCls}>Fin</dt>
+                <dd className="text-dark-ink-1">{selectedSlot.endDate || "—"}</dd></div>
             </div>
-            <div>
-              <label className={labelCls}>Fin</label>
-              <input type="date" value={selectedSlot.endDate||""}
-                onChange={e=>us({endDate:e.target.value})} className={inputCls} />
+          </dl>
+
+          {isAdmin && repisaConVenta && (
+            <div className="flex flex-col gap-2 rounded-lg border border-dark-line/60 p-2" data-slot-pasar>
+              {selectedSlot.supplierName ? (
+                <>
+                  <label className={labelCls} htmlFor="repisa-destino">Pasar a contrato de</label>
+                  <select id="repisa-destino" value={destinoDeRepisa} onChange={(e) => setDestinoDeRepisa(e.target.value)}
+                    className="w-full rounded border border-dark-line-2 bg-dark-bg px-2 py-1 text-xs text-dark-ink-1 focus:outline-none">
+                    {destinosDeRepisa.map((d) => <option key={d.codigo} value={d.codigo}>{d.rotulo}</option>)}
+                  </select>
+                  <button type="button" disabled={pasando || !destinoDeRepisa} onClick={() => void pasarAContrato()}
+                    className="rounded-md border border-accent px-2 py-1.5 text-xs font-semibold text-accent-200 hover:bg-accent/10 disabled:opacity-50">
+                    {pasando ? "Pasando…" : "Pasar a contrato"}
+                  </button>
+                  <p className="text-[10px] leading-snug text-dark-ink-3">
+                    Crea el contrato con este proveedor, estas fechas y este valor al mes —con las mismas revisiones que Vender— y deja la repisa libre.
+                  </p>
+                </>
+              ) : (
+                <p className="text-[10px] leading-snug text-dark-ink-3">Sin proveedor no hay contrato que crear: liberala.</p>
+              )}
+              <button type="button" disabled={pasando} onClick={liberarRepisa}
+                className="rounded-md border border-dark-line-2 px-2 py-1.5 text-xs text-dark-ink-2 hover:text-dark-ink-1 disabled:opacity-50">
+                Liberar la repisa
+              </button>
+              {avisoDeRepisa && <p className="text-[10px] leading-snug text-warning" role="status" data-slot-aviso>{avisoDeRepisa}</p>}
             </div>
-          </div>
+          )}
 
           {slotDays > 0 && (
             <p className="text-center text-[10px] text-dark-ink-2">

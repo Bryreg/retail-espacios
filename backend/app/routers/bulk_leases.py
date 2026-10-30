@@ -28,7 +28,7 @@ from collections import defaultdict
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from html import escape
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -681,12 +681,16 @@ def confirmar(
 
 def confirmar_lote(db: Session, lote: LoteIn, background_tasks: BackgroundTasks, cliente: Cliente,
                    planilla: bool = True, request: Optional[Request] = None,
-                   rol: str = "admin") -> ConfirmadoOut:
+                   rol: str = "admin", origen: str = "planilla",
+                   antes_del_commit: Optional[Callable[[list[FilaOut]], None]] = None) -> ConfirmadoOut:
     """Crea los contratos de las filas que pasan. Vuelve a validar antes.
 
     ``planilla=False`` sólo lo usan las pruebas de la venta por partes
     (``tests/sin_planilla.py``): la revisión común —la de Vender— sin las dos
-    reglas de la planilla (valor al mes, sólo enteros).
+    reglas de la planilla (valor al mes, sólo enteros). También «Pasar a
+    contrato» de una repisa del 3D (``routers/layout.py``, auditoría P1-15),
+    con ``origen`` para la bitácora y ``antes_del_commit``: lo que tiene que
+    caer en la MISMA transacción que los contratos (la repisa que se limpia).
 
     Revalidar no es paranoia: entre la revisión y el botón alguien pudo vender
     uno de esos espacios desde el mapa, y crear el contrato igual dejaría dos
@@ -745,9 +749,11 @@ def confirmar_lote(db: Session, lote: LoteIn, background_tasks: BackgroundTasks,
         # La bitácora, en la MISMA transacción (auditoría P1-18): la línea y el
         # contrato caen juntos o no cae ninguno. Mismo detalle que Vender.
         anotar(db, request, rol, "contrato.alta", entidad="contrato", entidad_id=lease.id,
-               detalle=f"{space.code} · {supplier.name} · {_fecha(v.desde)}→{_fecha(v.hasta)} · planilla")
+               detalle=f"{space.code} · {supplier.name} · {_fecha(v.desde)}→{_fecha(v.hasta)} · {origen}")
         creados.append(v)
 
+    if antes_del_commit is not None:
+        antes_del_commit(creados)
     db.commit()
 
     avisos: Optional[AvisosContrato] = None

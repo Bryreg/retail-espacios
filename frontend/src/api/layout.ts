@@ -52,6 +52,18 @@ export const saveLayout = (
     })
     .then((r) => r.data);
 
+/** «Pasar a contrato» una repisa del 3D (auditoría P1-15): lo vendido en la
+ *  repisa (proveedor, valor al mes y fechas, que vivían sólo en el plano) pasa
+ *  a un contrato de verdad de `espacio` —una cara o una parte de ese mueble—
+ *  con las mismas revisiones que Vender, y la repisa queda libre. Devuelve el
+ *  plano como quedó (con su revisión). Sólo administración. */
+export const pasarRepisaAContrato = (
+  sede: string, fixtureId: string, slotId: string, espacio: string,
+): Promise<{ lease_id: number | null; espacio: string | null; valor_total: number; valor_al_mes: number; layout: LayoutEntry }> =>
+  client
+    .post(`/layout/${encodeURIComponent(sede)}/repisas/${encodeURIComponent(fixtureId)}/${encodeURIComponent(slotId)}/contrato`, { espacio })
+    .then((r) => r.data);
+
 /** Una sede borrada que todavía se puede restaurar (auditoría P2-18). */
 export interface SedeEnPapelera {
   id: number;
