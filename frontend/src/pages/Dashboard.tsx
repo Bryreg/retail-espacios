@@ -20,6 +20,7 @@ import Mas from "../components/Armazon/Mas";
 import MetasPorSede from "../components/Ajustes/Metas";
 import SedesDeAjustes from "../components/Ajustes/Sedes";
 import PermisosDePlanogramas from "../components/Ajustes/Permisos";
+import CortarEnlace from "../components/Ajustes/CortarEnlace";
 import RatesModal from "../components/RatesModal/RatesModal";
 import SeasonsModal from "../components/SeasonPicker/SeasonsModal";
 import { mostrarConfiguracionInicial } from "../components/Inicio/ConfiguracionInicial";
@@ -985,7 +986,7 @@ const TEMAS_DE_AJUSTES: readonly { id: TemaDeAjustes; texto: string; sub: string
   { id: "comercial", texto: "Comercial", sub: "Tarifas · Temporadas · Metas" },
   { id: "sede", texto: "Sede y plano", sub: "Sedes · Nombres · Códigos · Catálogo" },
   { id: "avisos", texto: "Avisos", sub: "Correos · Responsables" },
-  { id: "equipo", texto: "Equipo", sub: "Usuarios · Permisos" },
+  { id: "equipo", texto: "Equipo", sub: "Usuarios · Permisos · Enlaces" },
   { id: "cuenta", texto: "Cuenta", sub: "Suscripción · Copia · Datos · Bitácora" },
 ];
 
@@ -1187,6 +1188,10 @@ function SettingsModal({
                 <div className="aj-bloque" data-bloque-ajustes="permisos">
                   <div style={sectionLabelStyle}>Quién planifica y publica planogramas</div>
                   <PermisosDePlanogramas sede={sedeActiva} />
+                </div>
+                <div className="aj-bloque" data-bloque-ajustes="cortar-enlace">
+                  <div style={sectionLabelStyle}>Cortar un enlace</div>
+                  <CortarEnlace />
                 </div>
               </>
             )}

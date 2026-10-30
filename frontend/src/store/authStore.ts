@@ -104,7 +104,7 @@ interface AuthState {
  *  The backend validates the token on every request; a 401 clears it. */
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       token: null,
       role: null,
       cliente: null,
@@ -163,6 +163,15 @@ export const useAuthStore = create<AuthState>()(
             : { avisoCuenta: { estado: aviso.estado, motivo: aviso.motivo } };
         }),
       logout: () => {
+        // «Salir» de verdad (P2-2): el servidor deja sin efecto este token
+        // aunque alguien lo haya copiado. Sin esperar: salir no se cuelga de
+        // la red, y si el token ya no valía (el 401 que trae acá) da igual.
+        const saliente = get().token;
+        if (saliente) {
+          void fetch("/api/auth/logout", {
+            method: "POST", headers: { Authorization: `Bearer ${saliente}` }, keepalive: true,
+          }).catch(() => undefined);
+        }
         set({
           token: null, role: null, cliente: null, clienteNombre: null, rolCliente: null,
           email: null, nombre: null, avisoCuenta: null, pedirConsentimiento: false,

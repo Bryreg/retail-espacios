@@ -12,12 +12,15 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import (
+    MEDIOS_TTL_MINUTOS,
+    cerrar_sesion,
     create_token,
+    crear_token_de_medios,
     epoca_de,
     guardar_clave,
     invalidar_sesiones,
@@ -28,7 +31,7 @@ from app.auth import (
     verificar_clave,
 )
 from app.clientes import (
-    CABECERA_ESTADO_CUENTA, Cliente, buscar, cliente_del_pedido, sesion_de, unico,
+    CABECERA_ESTADO_CUENTA, Cliente, buscar, cliente_del_pedido, es_el_de_siempre, sesion_de, unico,
 )
 from app.database import get_db
 from app.models.models import LoginAttempt
@@ -53,6 +56,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_ATTEMPTS = 10
+#: Fallos del login legado en la ventana, sumando TODAS las IPs, antes de
+#: frenar la clave compartida de ese supermercado (auditoría pre-lanzamiento,
+#: P3-4): el freno por IP solo no para a quien prueba desde muchas. Ese login
+#: es una clave por rol, así que «por cuenta» es «por supermercado».
+LOGIN_MAX_TOTAL = 50
 LARGO_MINIMO = 8
 
 
@@ -78,6 +86,14 @@ def frenar_si_hay_muchos_fallos(db: Session, ip: str, modelo=LoginAttempt) -> No
         .count()
     )
     if fallos >= LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
+        )
+    # `/oauth` no: ahí la identidad la verifica Firebase, que tiene su propio
+    # freno por cuenta, y un tope global sería una puerta para dejar a todos
+    # afuera.
+    if modelo is LoginAttempt and db.query(modelo).filter(modelo.at >= corte).count() >= LOGIN_MAX_TOTAL:
         raise HTTPException(
             status_code=429,
             detail="Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
@@ -249,6 +265,15 @@ def login(payload: LoginIn, request: Request):
     try:
         ip = ip_del_cliente(request)
         frenar_si_hay_muchos_fallos(db, ip)
+
+        # La clave compartida abre SÓLO el supermercado de siempre (auditoría
+        # pre-lanzamiento, P1-11). Los clientes que se dieron de alta con el
+        # legado prendido pueden tener guardada la misma `ADMIN_PASSWORD`: con
+        # ella, cualquiera que la supiera entraba de admin a todos. Contesta
+        # igual que una clave equivocada, para no delatar qué slugs existen.
+        if not es_el_de_siempre(cliente) and (os.getenv("LOGIN_LEGADO_TODOS") or "").strip() != "1":
+            anotar_fallo(db, ip)
+            raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
         if verificar_clave(db, "admin", payload.password):
             role = "admin"
@@ -439,7 +464,7 @@ def _rol_de_token(rol_membresia: str) -> str:
 
 # ─── La consola del operador (Fase 4) ────────────────────────────────────────
 
-def _entrar_a_la_consola(reg: Session, ip: str, usuario, email: str) -> dict:
+def _entrar_a_la_consola(reg: Session, ip: str, usuario, email: str, mfa: bool = False) -> dict:
     """El operador SIN membresías entra a `/plataforma`, no al 403 de siempre.
 
     Hasta la Fase 3 este camino terminaba en «tu cuenta no tiene acceso a
@@ -476,7 +501,7 @@ def _entrar_a_la_consola(reg: Session, ip: str, usuario, email: str) -> dict:
     epoca = epoca_de(reg, "worker")
     return {
         "token": create_token(
-            "worker", epoca, SLUG_PLATAFORMA, sub=usuario.id, email=email,
+            "worker", epoca, SLUG_PLATAFORMA, sub=usuario.id, email=email, mfa=mfa,
         ),
         "role": "worker",
         "cliente": SLUG_PLATAFORMA,
@@ -717,7 +742,7 @@ def oauth_login(
         membresias = [m for m in membresias if buscar(m.cliente_slug) is not None]
         if not membresias:
             if es_op:
-                return _entrar_a_la_consola(reg, ip, usuario, email)
+                return _entrar_a_la_consola(reg, ip, usuario, email, mfa=getattr(claims, "segundo_factor", None) is not None)
             if del_enlace is not None:
                 # Vino por el enlace, la cuenta es la invitada y aun así no
                 # tiene acceso: la invitación ya se había usado y a esa
@@ -837,6 +862,73 @@ def oauth_login(
         return cuerpo
     finally:
         reg.close()
+
+
+@router.post("/token-medios")
+def token_de_medios(
+    role: str = Depends(require_auth),
+    authorization: Optional[str] = Header(default=None),
+):
+    """El token para VER archivos en un ``<img>``/``<iframe>``/textura del 3D,
+    que no mandan cabeceras (auditoría pre-lanzamiento, P2-1). Vive 15 minutos
+    y no abre ninguna otra ruta: el navegador lo pide al entrar y lo renueva
+    solo, y el JWT de sesión deja de salir en las URLs (logs de acceso,
+    historial, cabecera Referer)."""
+    raw = (authorization or "")[7:].strip()
+    medios = crear_token_de_medios(raw)
+    if medios is None:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    return {"token": medios, "vence_en": MEDIOS_TTL_MINUTOS * 60}
+
+
+@router.post("/logout", status_code=204)
+def salir(
+    role: str = Depends(require_auth),
+    authorization: Optional[str] = Header(default=None),
+):
+    """«Salir» de verdad (auditoría pre-lanzamiento, P2-2): el token de esta
+    sesión —y su token de medios— deja de valer en el servidor, aunque alguien
+    lo haya copiado. Las demás sesiones de la persona siguen abiertas."""
+    cerrar_sesion((authorization or "")[7:].strip())
+
+
+class RevocarEnlaceIn(BaseModel):
+    #: El enlace entero que se mandó (``…?montar=…&t=…`` o ``…?guia=…&t=…``) o
+    #: sólo su token.
+    enlace: str
+
+
+@router.post("/revocar-enlace")
+def revocar_enlace(
+    body: RevocarEnlaceIn,
+    role: str = Depends(require_admin),
+    cliente: Cliente = Depends(cliente_del_pedido),
+):
+    """Deja sin efecto UN enlace de montaje o de guía antes de que venza
+    (auditoría pre-lanzamiento, P3-2): viven hasta 400 días y antes la única
+    forma de cortarlos era cambiar la llave del servicio, que corta todos.
+    Sólo los de este supermercado."""
+    import jwt as _jwt
+    from urllib.parse import parse_qs, urlparse
+
+    from app.auth import JWT_ALGORITHM, JWT_SECRET
+
+    texto = body.enlace.strip()
+    token = (parse_qs(urlparse(texto).query).get("t") or [texto])[0].strip()
+    try:
+        payload = _jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except _jwt.PyJWTError:
+        raise HTTPException(status_code=422, detail="Ese enlace no es válido o ya venció.")
+    tipo = payload.get("role")
+    if tipo not in ("montaje", "guia") or payload.get("cliente") not in (cliente.slug, None):
+        raise HTTPException(status_code=422, detail="Ese enlace no es un enlace de montaje ni de guía de este supermercado.")
+    if not payload.get("jti"):
+        raise HTTPException(
+            status_code=409,
+            detail="Ese enlace es de antes de que se pudieran revocar uno por uno: vence solo, o se cortan todos cambiando JWT_SECRET.",
+        )
+    cerrar_sesion(token)
+    return {"revocado": True, "tipo": tipo}
 
 
 @router.post("/aceptar-politica", status_code=204)

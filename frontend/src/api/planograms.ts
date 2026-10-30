@@ -1,5 +1,5 @@
 import client from "./client";
-import { useAuthStore } from "../store/authStore";
+import { tokenDeMedios } from "./medios";
 
 /** La planometría de un contrato: cómo debe quedar armada esa exhibición.
  *
@@ -74,10 +74,8 @@ export const planometriaDelContrato = (leaseId: number): Promise<Planometria | n
  *
  *  El token va como query param porque ni un <img> ni un <iframe> mandan el
  *  header Authorization; el backend lo acepta sólo para servir archivos. */
-export const planometriaUrl = (id: number): string => {
-  const token = useAuthStore.getState().token ?? "";
-  return `/api/planometrias/${id}?token=${encodeURIComponent(token)}`;
-};
+export const planometriaUrl = (id: number): string =>
+  `/api/planometrias/${id}?token=${encodeURIComponent(tokenDeMedios())}`;
 
 export const borrarPlanometria = (leaseId: number): Promise<void> =>
   client.delete(`/leases/${leaseId}/planometria`).then(() => undefined);

@@ -49,10 +49,12 @@ class RecipientPreview(BaseModel):
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
-@router.get("/config", response_model=NotificationConfigOut, dependencies=[Depends(require_auth)])
-def get_notification_config(db: Session = Depends(get_db)):
+@router.get("/config", response_model=NotificationConfigOut)
+def get_notification_config(db: Session = Depends(get_db), role: str = Depends(require_auth)):
+    # Los correos de aviso son de la administración (P3-15): al worker le
+    # llegan los días de recordatorio, no a quién se escribe.
     return NotificationConfigOut(
-        notify_emails=get_config(db, "notify_emails", "") or "",
+        notify_emails=(get_config(db, "notify_emails", "") or "") if role == "admin" else "",
         reminder_days=get_config(db, "reminder_days", "30,15,6") or "",
     )
 

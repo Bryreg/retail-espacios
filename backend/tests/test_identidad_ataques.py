@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import pytest
 
-from conftest import CLAVE_ADMIN
+from conftest import CLAVE_ADMIN, medios
 
 
 # ─── Utilidades ────────────────────────────────────────────────────────────────
@@ -377,18 +377,19 @@ def test_la_revocacion_alcanza_el_token_por_query_y_la_puerta_de_montaje(client,
     """Desactivada la membresía, ningún camino lateral queda abierto."""
     sesion = _entrar(client, admin, "lateral@x.co", "uid-lat")
     tok = sesion["token"]
+    med = medios(tok)  # lo que viaja por query (P2-1)
 
     # Vivo: la dependencia pasa (el 404 es del recurso, no de la autenticación).
-    assert client.get(f"/api/catalogo/1/imagen?token={tok}").status_code == 404
-    assert client.get(f"/api/montaje/mi-espacio?token={tok}").status_code != 401
+    assert client.get(f"/api/catalogo/1/imagen?token={med}").status_code == 404
+    assert client.get(f"/api/montaje/mi-espacio?token={med}").status_code != 401
 
     uid = _id_de(client, admin, "lateral@x.co")
     assert client.patch(f"/api/usuarios/{uid}", json={"activo": False}, headers=admin).status_code == 200
 
-    assert client.get(f"/api/catalogo/1/imagen?token={tok}").status_code == 401
-    assert client.get(f"/api/montaje/mi-espacio?token={tok}").status_code == 401
+    assert client.get(f"/api/catalogo/1/imagen?token={med}").status_code == 401
+    assert client.get(f"/api/montaje/mi-espacio?token={med}").status_code == 401
     assert client.get("/api/spaces/", headers=_cab(tok)).status_code == 401
-    assert client.get(f"/api/files/1?token={tok}").status_code == 401
+    assert client.get(f"/api/files/1?token={med}").status_code == 401
 
 
 def test_el_body_cliente_de_oauth_no_alcanza_una_membresia_inactiva(client, admin):

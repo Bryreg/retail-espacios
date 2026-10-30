@@ -767,6 +767,13 @@ JSON del layout. `test_t22` (`tests/test_tendencia_ataques.py`) lo vigila contra
 `origin/main`: ninguna clase que ya existía gana una línea `Column(` o
 `mapped_column(`; las tablas nuevas, sí.
 
+**Un solo proceso.** El servicio corre con UN worker de uvicorn, y hay estado de seguridad en
+memoria que depende de eso: la caché de membresías (`auth._membresia_cache`, 60 s), la de estado
+de cuenta, la de la copia (`copia.py`) y las sesiones cerradas con «Salir» (`auth._cerradas`,
+cargadas de `sesiones_cerradas`). Con `--workers 2` un «Salir» o una desactivación valdría sólo en
+el proceso que la atendió. Antes de subir workers: mover esas cachés a la base (o a Redis) o
+releerlas en cada pedido (auditoría pre-lanzamiento, P3-3).
+
 **Una sola verdad: el plano guarda lo que ES el mueble, la base lo que se le VENDIÓ.**
 Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto — ver
 *Una sola verdad para lo comercial*, más abajo, para el porqué y la migración.
@@ -1432,6 +1439,60 @@ desde «Distribuir» de la ficha, Pendientes o Indicadores (`pedirEnfoque3D`). `
 anota de dónde y el armazón pinta «Viniste desde Indicadores · ← Volver a Indicadores» (la misma
 barra que la de Montajes, `data-volver-plano`) mientras se siga en el Plano; salir del Plano la
 olvida. Prueba: `probar-armazon`.
+
+### Seguridad antes de vender (2026-10-30, auditoría pre-lanzamiento, tanda 1)
+
+Informe: `docs/auditoria-pre-lanzamiento-recabra.md`. Lo que cambió y no se puede deshacer sin
+volver a abrir el hallazgo:
+
+- **P0-1 · La SPA no sirve archivos fuera de `dist/`.** `main.archivo_de_la_spa` sólo devuelve un
+  archivo que esté directamente en la raíz de `dist/` (sin `/`, `\`, `..`, ni enlaces que salgan);
+  todo lo demás es `index.html`. Antes `GET /..%2Fbackend%2Fapp%2Fauth.py` bajaba el código y la
+  base SQLite sin sesión. `tests/test_spa_sin_traversal.py`.
+- **P1-10 · `JWT_SECRET` obligatorio.** Fuera de `ENV`/`APP_ENV` = `dev`/`test`/`desarrollo`, el
+  arranque falla sin él; con menos de 32 bytes, avisa en el log. `test_jwt_secret_obligatorio.py`.
+- **P1-11 · La clave compartida (login legado) abre sólo el supermercado de siempre.** Se siembra
+  y se acepta sólo en la base por defecto; en los demás, 401 (y cuenta como fallo). Para volver al
+  comportamiento viejo: `LOGIN_LEGADO_TODOS=1` (lo usan las pruebas).
+- **P1-12 · Tope de altas por día.** `ALTAS_POR_DIA` (10 por defecto) fundaciones en 24 h; la que
+  pasa el tope queda en `altas_en_espera`, le contesta 429 «en espera» a quien la pidió y le
+  escribe a `OPERADOR_EMAILS`. Cada alta que sí entra también le avisa al operador.
+- **P1-13 · Consola con segundo factor.** El token de la consola lleva `mfa` cuando Firebase dice
+  `sign_in_second_factor`; con `OPERADOR_EXIGE_MFA=1`, `require_operador` contesta 403 sin él.
+  Prenderlo **después** de activar MFA en Firebase.
+- **P2-1 · El JWT de sesión ya no viaja en la URL.** Lo que va en `?token=` (`<img>`, `<iframe>`,
+  texturas del 3D, la foto de la guía) es un **token de medios**: `POST /api/auth/token-medios`,
+  15 minutos, `uso: "medios"`. `decode_token(…, uso=)` rechaza el de medios en toda ruta que no lo
+  pida y la sesión en las que lo piden (`require_auth_or_query_token`, `require_montaje` y
+  `require_guia` por query). El navegador lo pide al entrar y lo renueva solo
+  (`frontend/src/api/medios.ts`; la app espera ese primer pedido para pintar). Un URL nuevo con
+  `?token=` usa `tokenDeMedios()`, nunca `useAuthStore…token`. En las pruebas: `medios(token)`
+  del conftest.
+- **P2-2 · «Salir» cierra el token en el servidor.** Cada token lleva `jti`; `POST /api/auth/logout`
+  lo anota en `sesiones_cerradas` (registro) y en memoria, y `decode_token` lo rechaza — también su
+  token de medios, que copia el `jti`. Las otras sesiones de la persona siguen.
+- **P2-3 · Al salir, los planos con montos se borran del navegador** (`olvidarPlanosAlSalir`),
+  salvo que haya cambios sin subir.
+- **P2-23 · Los logs del correo no llevan direcciones:** «3 destinatarios (dominio.co)»
+  (`mailer.destino_para_log`).
+- **P3-1 · `/docs`, `/redoc` y `/openapi.json` sólo en desarrollo.**
+- **P3-2 · Un enlace de montaje o de guía se corta solo:** Ajustes › Equipo › *Cortar un enlace*
+  (`POST /api/auth/revocar-enlace`, admin, sólo enlaces de su supermercado). Los enlaces llevan
+  `jti` desde hoy; los de antes vencen solos (409 con la explicación).
+- **P3-3 · Un solo proceso**: ver *Reglas duras*.
+- **P3-4 · El login legado frena también por supermercado:** 50 fallos en 15 minutos sumando todas
+  las IPs (`LOGIN_MAX_TOTAL`). `/oauth` no (lo frena Firebase por cuenta; activar en la consola
+  la protección contra enumeración y App Check).
+- **P3-15 · El worker no ve `notify_emails`** en `GET /notifications/config`.
+- **P3-16 · El plano del worker sale sin `negotiatedValue` a cualquier profundidad**
+  (`layout._sin_plata`), no sólo en el mueble, la cara B y las repisas.
+- Pruebas: `test_token_medios.py`, `test_seguridad_menores.py`, `test_alta_tope_diario.py`,
+  `test_operador_mfa.py`, y las de siempre adaptadas a `medios()`.
+
+**Lo que queda a mano (dueño):** `JWT_SECRET` de 64 caracteres al azar en Render (rotarlo cierra
+todas las sesiones y enlaces); `OPERADOR_EMAILS` y `ALTAS_POR_DIA`; MFA en Firebase y después
+`OPERADOR_EXIGE_MFA=1`; protección contra enumeración y App Check en Firebase. El correo del
+operador sigue en el historial de git (sacarlo exige reescribir la historia).
 
 ---
 

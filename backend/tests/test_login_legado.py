@@ -143,3 +143,19 @@ def test_nunca_se_inventa_una_clave_al_azar_para_el_registro(client, monkeypatch
     assert _claves_guardadas("wuu") == {"admin": None, "worker": None}
     assert "queda sin clave" in caplog.text
     assert "al azar" not in caplog.text
+
+
+def test_prendido_la_clave_compartida_abre_solo_el_supermercado_de_siempre(client, monkeypatch):
+    """Auditoría pre-lanzamiento, P1-11: aun con la emergencia prendida, la
+    clave compartida no abre los supermercados del alta. Tampoco los que ya la
+    tenían guardada de cuando el alta la sembraba en todos (eso simula
+    `LOGIN_LEGADO_TODOS`, que la suite prende para armar sus sesiones)."""
+    _fundar(client, "uid-v", "duenia@viejo.co", "viejo", "Viejo")   # nace con la clave (TODOS=1)
+    monkeypatch.delenv("LOGIN_LEGADO_TODOS", raising=False)
+    _fundar(client, "uid-n2", "duenia@nuevo2.co", "nuevo2", "Nuevo 2")  # nace sin clave
+
+    for slug in ("viejo", "nuevo2"):
+        r = client.post("/api/auth/login", json={"password": CLAVE_ADMIN, "cliente": slug})
+        assert r.status_code == 401, (slug, r.status_code, r.text)
+    # El de siempre, sí.
+    assert client.post("/api/auth/login", json={"password": CLAVE_ADMIN, "cliente": "galerias"}).status_code == 200

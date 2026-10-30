@@ -213,7 +213,7 @@ cd backend && SP=/tmp/sp PYTHONPATH=$PWD python3 ../frontend/scripts/sembrar-pla
 # 2 · backend propio, en su puerto y sobre esa base
 cd backend && DATABASE_URL="sqlite:///./frontera.db" JWT_SECRET=dev-frontera \
   ADMIN_PASSWORD=admin123 WORKER_PASSWORD=galerias \
-  OPERADOR_EMAILS=brayanmoreno098@gmail.com PYTHONPATH=$PWD \
+  OPERADOR_EMAILS=operador@ejemplo.com PYTHONPATH=$PWD \
   python3 -m uvicorn app.main:app --port 8043
 
 # 3 · servidor de dev apuntado a ese backend

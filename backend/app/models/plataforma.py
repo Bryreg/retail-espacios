@@ -71,6 +71,21 @@ class Fundacion(Base):
     creado_en = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
+class AltaEnEspera(Base):
+    """Un alta self-service que llegó con el tope diario de la plataforma ya
+    alcanzado (auditoría pre-lanzamiento, P1-12). No se crea la base: queda
+    anotado quién era y qué quería fundar, y el operador lo da de alta a mano o
+    le avisa. Vive en el registro, como las fundaciones."""
+
+    __tablename__ = "altas_en_espera"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, index=True)
+    nombre = Column(String, nullable=False)
+    slug = Column(String, nullable=False)
+    creado_en = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class BitacoraPlataforma(Base):
     """Cada vez que un operador MIRÓ datos de negocio agregados de los clientes.
 
@@ -242,3 +257,15 @@ class AjusteDeSnapshot(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class SesionCerrada(Base):
+    """Un token de sesión que su dueño cerró con «Salir» (auditoría
+    pre-lanzamiento, P2-2). Hasta que vence, ``decode_token`` lo rechaza aunque
+    alguien lo haya copiado. Vive en el registro: el ``jti`` es único en toda
+    la plataforma. Las filas vencidas no sirven para nada y se pueden borrar."""
+
+    __tablename__ = "sesiones_cerradas"
+
+    jti = Column(String, primary_key=True)
+    vence = Column(DateTime(timezone=True), nullable=False, index=True)

@@ -1,5 +1,5 @@
 import client from "./client";
-import { useAuthStore } from "../store/authStore";
+import { tokenDeMedios } from "./medios";
 // Sólo el TIPO: `producto.ts` sigue siendo puro y no arrastra la API.
 import type { FichaDeArte } from "../components/StoreEditor3D/muebles/producto";
 
@@ -126,7 +126,5 @@ export const borrarArte = (id: number): Promise<void> =>
  *  El token va como query param porque quien la pide es el cargador de
  *  texturas de Three.js: hace un fetch del navegador y no manda la cabecera
  *  Authorization, igual que un `<img>`. */
-export const arteUrl = (id: number): string => {
-  const token = useAuthStore.getState().token ?? "";
-  return `/api/catalogo/${id}/imagen?token=${encodeURIComponent(token)}`;
-};
+export const arteUrl = (id: number): string =>
+  `/api/catalogo/${id}/imagen?token=${encodeURIComponent(tokenDeMedios())}`;

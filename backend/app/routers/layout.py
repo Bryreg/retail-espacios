@@ -128,21 +128,31 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
+#: Las claves de plata que puede llevar el JSON de un plano. Se quitan a
+#: CUALQUIER profundidad (auditoría pre-lanzamiento, P3-16): antes se miraban
+#: tres lugares fijos —el mueble, su cara B y sus repisas—, y un monto que
+#: apareciera en un nivel nuevo le llegaba al worker sin que nadie lo notara.
+_CLAVES_DE_PLATA = frozenset({"negotiatedValue"})
+
+
+def _sin_plata(nodo) -> None:
+    if isinstance(nodo, dict):
+        for clave in _CLAVES_DE_PLATA & nodo.keys():
+            del nodo[clave]
+        for valor in nodo.values():
+            _sin_plata(valor)
+    elif isinstance(nodo, list):
+        for valor in nodo:
+            _sin_plata(valor)
+
+
 def _redact_fixtures_for_worker(fixtures: list) -> None:
     """Drop negotiated amounts so non-admin roles never receive them.
 
     The dicts come fresh from ``json.loads`` in ``_to_out`` — mutating them
     cannot dirty the ORM session (``fixtures_json`` stays untouched).
     """
-    for fixture in fixtures:
-        if isinstance(fixture, dict):
-            fixture.pop("negotiatedValue", None)
-            face_b = fixture.get("faceB")
-            if isinstance(face_b, dict):
-                face_b.pop("negotiatedValue", None)
-            for slot in fixture.get("slots") or []:
-                if isinstance(slot, dict):
-                    slot.pop("negotiatedValue", None)
+    _sin_plata(fixtures)
 
 
 def _price_map(fixtures: list) -> dict:

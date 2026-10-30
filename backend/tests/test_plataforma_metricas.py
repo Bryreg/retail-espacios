@@ -966,7 +966,7 @@ def test_la_forma_del_jwt_no_cambia(client, monkeypatch):
     cuerpo = _operador_sin_membresias(ids, monkeypatch)
     payload = pyjwt.decode(cuerpo["token"], "test-secret", algorithms=["HS256"])
 
-    assert set(payload.keys()) == {"role", "epoca", "cliente", "exp", "sub", "email"}
+    assert set(payload.keys()) == {"role", "epoca", "cliente", "exp", "sub", "email", "jti"}
     assert payload["role"] == "worker"
     assert payload["cliente"] == "plataforma"
     assert payload["email"] == "op@recabra.co"

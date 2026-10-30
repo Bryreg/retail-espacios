@@ -78,7 +78,7 @@ def brevo(monkeypatch, servidor):
 def test_el_correo_sale_por_https(brevo):
     from app.services import mailer
     ok, motivo, seg = mailer.enviar_con_diagnostico(
-        ["brayanmoreno098@gmail.com"], "Nuevo contrato — NAVE-PUN-01", "<p>hola</p>"
+        ["operador@ejemplo.com"], "Nuevo contrato — NAVE-PUN-01", "<p>hola</p>"
     )
     assert ok, motivo
     assert seg >= 0
@@ -86,11 +86,11 @@ def test_el_correo_sale_por_https(brevo):
 
 def test_viaja_la_clave_y_el_remitente(brevo):
     from app.services import mailer
-    mailer.enviar_con_diagnostico(["brayanmoreno098@gmail.com"], "Asunto", "<p>x</p>")
+    mailer.enviar_con_diagnostico(["operador@ejemplo.com"], "Asunto", "<p>x</p>")
     r = Recibidor.recibido
     assert r["cabeceras"]["api-key"] == "clave-de-prueba"
     assert r["cuerpo"]["sender"]["email"] == "bmgpersonal99@gmail.com"
-    assert r["cuerpo"]["to"] == [{"email": "brayanmoreno098@gmail.com"}]
+    assert r["cuerpo"]["to"] == [{"email": "operador@ejemplo.com"}]
     assert r["cuerpo"]["subject"] == "Asunto"
     assert r["cuerpo"]["htmlContent"] == "<p>x</p>"
 

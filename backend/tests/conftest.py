@@ -104,6 +104,9 @@ def app_de_prueba():
     # sesiones con él sin montar Firebase. `test_login_legado.py` prueba el
     # apagado sacando esta variable.
     os.environ["LOGIN_LEGADO"] = "1"
+    # Y que la clave compartida se siembre también en los supermercados que la
+    # suite funda (en producción sólo va en la base de siempre: P1-11).
+    os.environ["LOGIN_LEGADO_TODOS"] = "1"
 
     # Imported here, and purged afterwards, so each test builds a fresh engine
     # bound to its own file instead of sharing the first test's database.
@@ -270,3 +273,14 @@ def rutas_planas(app) -> list:
 
     _caminar(app.routes, "")
     return salida
+
+
+def medios(token: str) -> str:
+    """El token de medios de una sesión: lo único que viaja por ``?token=``
+    desde la auditoría pre-lanzamiento (P2-1). El JWT de sesión por query ya
+    no entra."""
+    from app.auth import crear_token_de_medios
+
+    t = crear_token_de_medios(token)
+    assert t is not None, "la sesión no es válida para pedir un token de medios"
+    return t

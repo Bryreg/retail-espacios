@@ -43,7 +43,7 @@ SP = os.environ.get("SP", ".")
 
 os.environ.update(DATABASE_URL="sqlite:///./frontera.db", JWT_SECRET="dev-frontera",
                   ADMIN_PASSWORD="admin123", WORKER_PASSWORD="galerias",
-                  OPERADOR_EMAILS="brayanmoreno098@gmail.com")
+                  OPERADOR_EMAILS="operador@ejemplo.com")
 for f in ["frontera.db"] + glob.glob("recabra_*.db"):
     if os.path.exists(f):
         os.remove(f)
@@ -181,7 +181,7 @@ finally:
 
 db = SessionLocal()
 tok = create_token("worker", epoca_de(db, "worker"), "plataforma", sub=1,
-                   email="brayanmoreno098@gmail.com")
+                   email="operador@ejemplo.com")
 db.close()
 with open(os.path.join(SP, "token-frontera.txt"), "w") as fh:
     fh.write(tok)

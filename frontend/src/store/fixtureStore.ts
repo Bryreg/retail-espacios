@@ -1702,6 +1702,19 @@ export function stopAutoSync(): void {
   }
 }
 
+/** Al salir (auditoría pre-lanzamiento, P2-3): los planos guardados en el
+ *  navegador llevan los montos negociados del admin, y en un computador
+ *  compartido quedaban en localStorage para quien abriera la consola. Se
+ *  borran —el servidor los vuelve a dar al entrar—, salvo que haya cambios
+ *  sin subir: perder el trabajo es peor, y quien entra después con otro
+ *  supermercado igual los descarta (`scopeToCliente`). */
+export function olvidarPlanosAlSalir(): void {
+  const s = useFixtureStore.getState();
+  if (Object.values(s.dirty).some(Boolean)) return;
+  useFixtureStore.setState({ ...planosVacios(), clienteCache: null, generacionCache: null, referenceRates: null, dataRole: null });
+  try { localStorage.removeItem("retail-fixtures-v1"); } catch { /* sin almacenamiento: no hay nada que borrar */ }
+}
+
 // ─── Legacy migration ─────────────────────────────────────────────────────────
 
 /**

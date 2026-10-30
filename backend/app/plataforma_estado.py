@@ -77,6 +77,12 @@ def limpiar_cache_estado() -> None:
         _estado_cache.clear()
 
 
+def correos_de_operador() -> list[str]:
+    """Los correos de ``OPERADOR_EMAILS``, en minúsculas y sin repetir."""
+    crudos = os.getenv("OPERADOR_EMAILS", "")
+    return sorted({e.strip().lower() for e in crudos.split(",") if e.strip()})
+
+
 def es_operador(email: str | None) -> bool:
     """¿Este correo es operador de plataforma?
 

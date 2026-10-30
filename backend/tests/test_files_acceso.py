@@ -12,6 +12,8 @@ corte va por tipo de archivo y no por rol a secas.
 
 import io
 
+from conftest import medios
+
 
 def _crear_espacio(client, admin) -> int:
     """Un espacio al que colgarle archivos, por el camino del layout."""
@@ -140,19 +142,19 @@ def test_contrato_jpg_no_designado_no_es_la_cara_vigente(client, admin, worker):
     # ?token= (el mismo camino que usa el <img>/<iframe> del admin).
     tok_worker = _token_de(worker)
     assert client.get(f"/api/files/{contrato_jpg}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{contrato_jpg}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{contrato_jpg}?token={medios(tok_worker)}").status_code == 404
 
     # La cara designada sí baja para el worker, por las dos vías.
     assert client.get(f"/api/files/{cara}", headers=worker).status_code == 200
-    assert client.get(f"/api/files/{cara}?token={tok_worker}").status_code == 200
+    assert client.get(f"/api/files/{cara}?token={medios(tok_worker)}").status_code == 200
 
     # El admin sigue bajando TODO, por header y por ?token= — no se le rompió
     # el <img>/<iframe> que usa la pantalla de administración.
     tok_admin = _token_de(admin)
     assert client.get(f"/api/files/{contrato_jpg}", headers=admin).status_code == 200
-    assert client.get(f"/api/files/{contrato_jpg}?token={tok_admin}").status_code == 200
+    assert client.get(f"/api/files/{contrato_jpg}?token={medios(tok_admin)}").status_code == 200
     assert client.get(f"/api/files/{cara}", headers=admin).status_code == 200
-    assert client.get(f"/api/files/{cara}?token={tok_admin}").status_code == 200
+    assert client.get(f"/api/files/{cara}?token={medios(tok_admin)}").status_code == 200
     listado_admin = client.get(f"/api/spaces/{sid}/files", headers=admin).json()
     assert {f["id"] for f in listado_admin} == {contrato_jpg, cara}
 
@@ -176,7 +178,7 @@ def test_x18_contrato_jpg_subido_despues_de_la_cara_no_la_reemplaza(client, admi
     listado_worker = client.get(f"/api/spaces/{sid}/files", headers=worker).json()
     assert {f["id"] for f in listado_worker} == {cara}, "el worker lista el contrato"
     assert client.get(f"/api/files/{contrato_jpg}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{contrato_jpg}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{contrato_jpg}?token={medios(tok_worker)}").status_code == 404
     assert client.get(f"/api/files/{cara}", headers=worker).status_code == 200
 
 
@@ -194,7 +196,7 @@ def test_x18b_espacio_cuyo_unico_adjunto_es_el_contrato_jpg_no_designado(client,
     tok_worker = _token_de(worker)
     assert client.get(f"/api/spaces/{sid}/files", headers=worker).json() == []
     assert client.get(f"/api/files/{contrato}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{contrato}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{contrato}?token={medios(tok_worker)}").status_code == 404
 
     # Y queda anotada su bajada (por el admin, que sí puede).
     assert client.get(f"/api/files/{contrato}", headers=admin).status_code == 200
@@ -238,7 +240,7 @@ def test_x19_montaje_contrato_pdf_no_cuela_por_el_nombre(client, admin, worker):
     listado_worker = client.get(f"/api/spaces/{sid}/files", headers=worker).json()
     assert fid not in {f["id"] for f in listado_worker}, "el worker lista el PDF disfrazado"
     assert client.get(f"/api/files/{fid}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{fid}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{fid}?token={medios(tok_worker)}").status_code == 404
 
     # Y su bajada por el admin SÍ queda en bitácora (el bypass del nombre no
     # esquiva tampoco el registro, M-1).

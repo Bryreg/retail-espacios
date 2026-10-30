@@ -1,5 +1,6 @@
 import axios from "axios";
 import client from "./client";
+import { tokenDeMedios } from "./medios";
 import type { SuperficieOut } from "./participaciones";
 import type { ColorDeDestino, TipoDeDestino } from "./planogramas";
 import type { UnifiedFixture } from "../types/fixtures";
@@ -115,9 +116,10 @@ export const subirFoto = (foto: File, version?: number): Promise<{ fotos: Guia["
   return (hayTokenDeGuia() ? guiaClient : client).post<{ fotos: Guia["fotos"] }>("/guia/foto", f).then((r) => r.data);
 };
 
-/** La foto va en un `<img>`: el token por query (sólo el del enlace). */
-export const urlDeFoto = (id: number, tokenDeSesion?: string | null): string =>
-  `/api/guia/foto?id=${id}&token=${encodeURIComponent(TOKEN || tokenDeSesion || "")}`;
+/** La foto va en un `<img>`: el token por query — el del enlace, o con sesión
+ *  el token de medios (nunca el JWT de sesión). */
+export const urlDeFoto = (id: number): string =>
+  `/api/guia/foto?id=${id}&token=${encodeURIComponent(TOKEN || tokenDeMedios())}`;
 
 export const enlaceDeLaGuia = (versionId: number): Promise<{ url: string; dias: number }> =>
   client.post<{ url: string; dias: number }>("/planogramas/guia/enlace", { version_id: versionId }).then((r) => r.data);

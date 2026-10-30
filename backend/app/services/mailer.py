@@ -137,6 +137,15 @@ def html_shell(title: str, rows: list[tuple[str, str]], footer: str = "") -> str
 
 # ─── Sending ──────────────────────────────────────────────────────────────────
 
+def destino_para_log(recipients: list[str]) -> str:
+    """A quién fue, sin los correos (auditoría pre-lanzamiento, P2-23): los
+    logs del hosting no son lugar para datos personales de terceros. Queda la
+    cantidad y los dominios, que alcanza para diagnosticar una entrega."""
+    dominios = sorted({r.rsplit("@", 1)[-1].lower() for r in recipients if "@" in r})
+    n = len(recipients)
+    return f"{n} destinatario{'s' if n != 1 else ''} ({', '.join(dominios) or 'sin dominio'})"
+
+
 def clean_recipients(values) -> list[str]:
     """Keep plausible addresses, de-duplicated, order preserved.
 
@@ -256,7 +265,7 @@ def enviar_con_diagnostico(
             ok, motivo = False, f"{type(e).__name__}: {e}"
         tardanza = time.monotonic() - inicio
         if ok:
-            logger.info("Correo enviado (%s) a %s", subject, ", ".join(recipients))
+            logger.info("Correo enviado (%s) a %s", subject, destino_para_log(recipients))
         return ok, motivo, tardanza
 
     if not settings["user"] or not settings["password"]:
@@ -284,7 +293,7 @@ def enviar_con_diagnostico(
             smtp.send_message(msg)
 
         tardanza = time.monotonic() - inicio
-        logger.info("Correo enviado (%s) a %s", subject, ", ".join(recipients))
+        logger.info("Correo enviado (%s) a %s", subject, destino_para_log(recipients))
         return True, "Enviado.", tardanza
     # El ORDEN importa: smtplib.SMTPException hereda de OSError, así que un
     # `except OSError` puesto antes se tragaría también los errores de
@@ -365,7 +374,7 @@ def send_mail(db: Session, subject: str, html_body: str) -> bool:
             smtp.login(settings["user"], settings["password"])
             smtp.send_message(msg)
 
-        logger.info("Correo enviado (%s) a %s", subject, ", ".join(recipients))
+        logger.info("Correo enviado (%s) a %s", subject, destino_para_log(recipients))
         return True
     except Exception:
         logger.exception("Error enviando correo (%s)", subject)

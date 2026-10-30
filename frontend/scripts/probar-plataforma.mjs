@@ -108,7 +108,7 @@
  *   # 2 · backend propio, en su propio puerto y sobre esa base
  *   cd backend && DATABASE_URL="sqlite:///./frontera.db" JWT_SECRET=dev-frontera \
  *     ADMIN_PASSWORD=admin123 WORKER_PASSWORD=galerias \
- *     OPERADOR_EMAILS=brayanmoreno098@gmail.com PYTHONPATH=$PWD \
+ *     OPERADOR_EMAILS=operador@ejemplo.com PYTHONPATH=$PWD \
  *     python3 -m uvicorn app.main:app --port 8043
  *   # 3 · servidor de dev apuntado a ese backend
  *   cd frontend && VITE_API_TARGET=http://127.0.0.1:8043 npx vite --port 5213

@@ -4,7 +4,7 @@ import { describeError } from "../../api/client";
 import { urlDeFoto } from "../../api/guia";
 import { rechazoDe } from "../../api/participaciones";
 import { leerFichaDeMontaje, revisarMontaje, type FichaDeMontaje, type Revisada } from "../../api/supervision";
-import { useAuthStore } from "../../store/authStore";
+import { useMedios } from "../../api/medios";
 import { destinosDeLaGuia } from "../../utils/guia";
 import {
   cuandoPaso, ESTADO_DE_MONTAJE, faltaParaRevisar, queQuedoMal, textoDelAviso,
@@ -60,7 +60,7 @@ export default function RevisarMontaje({ versionId, onCerrar, onRevisada }: {
   const [intento, setIntento] = useState(false);
   const [haciendo, setHaciendo] = useState(false);
   const [historia, setHistoria] = useState(false);
-  const token = useAuthStore((s) => s.token);
+  useMedios((s) => s.token); // la foto se vuelve a pedir con el token de medios al día
 
   useEffect(() => {
     let vale = true;
@@ -143,14 +143,14 @@ export default function RevisarMontaje({ versionId, onCerrar, onRevisada }: {
                 <figcaption className={ROTULO}>Lo que se montó{fotos.length > 1 ? ` · foto ${foto + 1} de ${fotos.length}` : ""}{fotosNuevas.length === 0 && fotos.length ? " · de antes" : ""}</figcaption>
                 {fotos.length ? (
                   <>
-                    <img src={urlDeFoto(fotos[Math.min(foto, fotos.length - 1)].id, token)} alt="Cómo quedó"
+                    <img src={urlDeFoto(fotos[Math.min(foto, fotos.length - 1)].id)} alt="Cómo quedó"
                       className="max-h-[336px] w-full rounded-xl border border-line bg-surface-2 object-contain" data-foto-del-montaje />
                     {fotos.length > 1 && (
                       <div className="flex flex-wrap gap-1.5">
                         {fotos.map((x, i) => (
                           <button key={x.id} type="button" onClick={() => setFoto(i)} aria-label={`Foto ${i + 1}`} aria-pressed={i === foto}
                             className={`h-11 w-14 overflow-hidden rounded-md border-2 ${i === foto ? "border-ink-1" : "border-transparent"}`}>
-                            <img src={urlDeFoto(x.id, token)} alt="" className="h-full w-full object-cover" />
+                            <img src={urlDeFoto(x.id)} alt="" className="h-full w-full object-cover" />
                           </button>
                         ))}
                       </div>

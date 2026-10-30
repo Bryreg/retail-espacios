@@ -36,3 +36,6 @@ Thumbs.db
 # Copias de datos que deja scripts/respaldo.py. Nunca al repositorio: llevan
 # contratos, proveedores y adjuntos de clientes.
 respaldos/
+
+# Copias de trabajo aisladas de los agentes (git worktree)
+.claude/worktrees/

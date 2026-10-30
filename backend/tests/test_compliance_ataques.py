@@ -48,7 +48,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from conftest import CLAVE_ADMIN, CLAVE_WORKER
+from conftest import CLAVE_ADMIN, CLAVE_WORKER, medios
 
 MENSAJE_NO_OWNER = "Solo el owner del cliente puede hacer esto."
 NO_OPERADOR = "Solo para operadores de la plataforma."
@@ -748,11 +748,11 @@ def test_x17_el_contrato_jpg_pisado_por_una_cara_mas_nueva_no_baja_para_worker(c
     listado = client.get(f"/api/spaces/{sid}/files", headers=worker).json()
     assert {f["id"] for f in listado} == {id_cara}
     assert client.get(f"/api/files/{id_contrato}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{id_contrato}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{id_contrato}?token={medios(tok_worker)}").status_code == 404
     assert client.get(f"/api/files/{id_cara}", headers=worker).status_code == 200
-    assert client.get(f"/api/files/{id_cara}?token={tok_worker}").status_code == 200
+    assert client.get(f"/api/files/{id_cara}?token={medios(tok_worker)}").status_code == 200
     assert client.get(f"/api/files/{id_contrato}", headers=admin).status_code == 200
-    assert client.get(f"/api/files/{id_contrato}?token={tok_admin}").status_code == 200
+    assert client.get(f"/api/files/{id_contrato}?token={medios(tok_admin)}").status_code == 200
 
 
 def test_x18_el_contrato_jpg_mas_reciente_tampoco_baja_para_worker(client, admin, worker):
@@ -774,7 +774,7 @@ def test_x18_el_contrato_jpg_mas_reciente_tampoco_baja_para_worker(client, admin
     listado = client.get(f"/api/spaces/{sid}/files", headers=worker).json()
     assert id_contrato not in {f["id"] for f in listado}, "el worker lista el contrato"
     assert client.get(f"/api/files/{id_contrato}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{id_contrato}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{id_contrato}?token={medios(tok_worker)}").status_code == 404
     # ...y la designación NO se movió sola: la cara vieja sigue siendo la cara.
     assert client.get(f"/api/files/{id_cara}", headers=worker).status_code == 200
 
@@ -792,7 +792,7 @@ def test_x18b_un_espacio_cuyo_unico_adjunto_es_el_contrato_jpg(client, admin, wo
     tok_worker = client.post("/api/auth/login", json={"password": CLAVE_WORKER}).json()["token"]
     assert client.get(f"/api/spaces/{sid}/files", headers=worker).json() == []
     assert client.get(f"/api/files/{id_contrato}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{id_contrato}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{id_contrato}?token={medios(tok_worker)}").status_code == 404
     # El admin lo sigue viendo: el fix filtra por rol, no rompe el archivo.
     assert client.get(f"/api/files/{id_contrato}", headers=admin).status_code == 200
 
@@ -816,7 +816,7 @@ def test_x19_un_documento_disfrazado_con_el_prefijo_de_montaje_no_baja(client, a
     listado = client.get(f"/api/spaces/{sid}/files", headers=worker).json()
     assert fid not in {f["id"] for f in listado}, "el worker lista el PDF disfrazado"
     assert client.get(f"/api/files/{fid}", headers=worker).status_code == 404
-    assert client.get(f"/api/files/{fid}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{fid}?token={medios(tok_worker)}").status_code == 404
     # El admin sí lo baja, y ESA bajada sí queda anotada (es un documento).
     assert client.get(f"/api/files/{fid}", headers=admin).status_code == 200
     bit = client.get("/api/bitacora/", headers=admin)
@@ -937,7 +937,7 @@ def test_x27_borrar_la_cara_designada_no_deja_la_designacion_apuntando_al_proxim
         f"el contrato heredó el id de la cara borrada (cara={cara}, contrato={id_contrato}) "
         "y quedó designado cara sin que nadie lo designara"
     )
-    assert client.get(f"/api/files/{id_contrato}?token={tok_worker}").status_code == 404
+    assert client.get(f"/api/files/{id_contrato}?token={medios(tok_worker)}").status_code == 404
     assert id_contrato not in {f["id"] for f in client.get(f"/api/spaces/{sid}/files", headers=worker).json()}
 
 
@@ -964,7 +964,7 @@ def test_x28_el_prefijo_de_montaje_inyectado_desde_el_nombre_sigue_siendo_una_ll
 
     tok_worker = client.post("/api/auth/login", json={"password": CLAVE_WORKER}).json()["token"]
     r = client.get(f"/api/files/{fid}", headers=worker)
-    r_tok = client.get(f"/api/files/{fid}?token={tok_worker}")
+    r_tok = client.get(f"/api/files/{fid}?token={medios(tok_worker)}")
     listado = {f["id"] for f in client.get(f"/api/spaces/{sid}/files", headers=worker).json()}
     bit = client.get("/api/bitacora/", headers=admin)
 

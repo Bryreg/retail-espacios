@@ -513,7 +513,7 @@ def test_login_legado_intacto_clave_buena(client):
     payload = jwt.decode(body["token"], options={"verify_signature": False})
     assert "sub" not in payload
     assert "email" not in payload
-    assert set(payload) == {"role", "epoca", "cliente", "exp"}
+    assert set(payload) == {"role", "epoca", "cliente", "exp", "jti"}
 
 
 def test_login_legado_intacto_clave_mala(client):
