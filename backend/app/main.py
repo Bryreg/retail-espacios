@@ -742,6 +742,14 @@ def mantenimiento_por_cron(request: Request):
     Corre en un hilo del pool (endpoint `def`), con el mismo candado de líder
     que el hilo de fondo: si ya hay una vuelta corriendo, contesta
     `corrio: false` y no hace nada."""
+    _exigir_token_interno(request)
+    return correr_mantenimiento("cron")
+
+
+def _exigir_token_interno(request: Request) -> None:
+    """La puerta de las rutas `/api/interno/*`: la cabecera
+    `X-Mantenimiento-Token` igual a `MANTENIMIENTO_TOKEN`, en tiempo constante.
+    Sin la variable, 404: no hay token por defecto que adivinar."""
     import hmac
 
     esperado = os.getenv("MANTENIMIENTO_TOKEN", "").strip()
@@ -750,7 +758,42 @@ def mantenimiento_por_cron(request: Request):
     dado = (request.headers.get("x-mantenimiento-token") or "").strip()
     if not hmac.compare_digest(dado.encode("utf-8"), esperado.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Token de mantenimiento inválido")
-    return correr_mantenimiento("cron")
+
+
+@app.post("/api/interno/respaldo", include_in_schema=False)
+def respaldo_por_cron(request: Request):
+    """El respaldo nocturno de toda la plataforma, tomado desde adentro de
+    Render (P0-3): la base no acepta conexiones de afuera, así que el cron de
+    GitHub (`.github/workflows/respaldo.yml`) le pide al servicio el archivo
+    ya cifrado (`services/respaldo_interno.py`) y lo guarda 30 días.
+
+    Misma puerta que el mantenimiento. Con el candado de líder «respaldo»: si
+    ya hay uno tomándose, 409. La carpeta temporal se borra al terminar de
+    mandar el archivo. `X-Respaldo-Fallas` dice cuántas bases no se pudieron
+    volcar (el workflow guarda lo que llegó y falla igual)."""
+    from starlette.background import BackgroundTask
+    from starlette.responses import FileResponse
+
+    from app.services import respaldo_interno
+    from app.services.lider import ser_lider
+
+    _exigir_token_interno(request)
+    with ser_lider("respaldo") as soy_lider:
+        if not soy_lider:
+            raise HTTPException(status_code=409, detail="Ya hay un respaldo tomándose.")
+        try:
+            hecho = respaldo_interno.tomar()
+        except respaldo_interno.SinRespaldo as e:
+            raise HTTPException(status_code=409, detail=str(e))
+    logger.warning("Respaldo interno: %s · %d bases · %d fallas · %d KiB",
+                   hecho.nombre, hecho.bases, len(hecho.fallas), hecho.archivo.stat().st_size // 1024)
+    return FileResponse(
+        hecho.archivo,
+        media_type="application/octet-stream",
+        filename=hecho.nombre,
+        headers={"X-Respaldo-Bases": str(hecho.bases), "X-Respaldo-Fallas": str(len(hecho.fallas))},
+        background=BackgroundTask(hecho.limpiar),
+    )
 
 
 # ─── Static frontend (production only) ───────────────────────────────────────

@@ -1765,13 +1765,19 @@ nada de esto necesita algo pago para andar; lo pago queda comentado o documentad
 
 * **Respaldo nocturno de toda la plataforma (P0-3).** `.github/workflows/respaldo.yml`, 01:41
   de Colombia: `scripts/respaldar_plataforma.py` hace `pg_dump -Fc` del registro y de cada
-  base de cliente (las de `clientes.db_name` y las `recabra_*` huérfanas) contra la URL
-  EXTERNA de Render, `gpg --symmetric` AES256 y artefacto de 30 días (+ S3/R2 si está
-  configurado). Sin sus secrets se saltea, no falla. Volver: `scripts/restaurar_plataforma.py`
+  base de cliente (las de `clientes.db_name` y las `recabra_*` huérfanas), `gpg --symmetric`
+  AES256 y artefacto de 30 días (+ S3/R2 si está configurado). **Se toma desde adentro del
+  servicio** (2026-10-30): la base de producción no acepta conexiones de afuera, así que el
+  workflow le pide el archivo ya cifrado a `POST /api/interno/respaldo` (mismo token que el
+  mantenimiento; `services/respaldo_interno.py`; la frase `RESPALDO_PASSPHRASE` vive en Render,
+  no en GitHub; la imagen trae `pg_dump` del repositorio oficial de PostgreSQL y `gnupg`).
+  **No abrir la base a internet para el respaldo.** Sin `MANTENIMIENTO_TOKEN` se saltea, no
+  falla. Render (plan pago de la base) suma su propia recuperación de 3 días (PITR). Volver: `scripts/restaurar_plataforma.py`
   (la plataforma entera en una instancia nueva, o un cliente suelto con `--solo`/`--como`;
   verifica el sha256 y no pisa una base con tablas sin `--reemplazar`). RPO ≤ 24 h. **El
   simulacro con el RTO medido falta hacerlo** contra la base real (§5 del manual); de ida y
-  vuelta está probado contra Postgres 16 (`tests/test_respaldo_plataforma.py`).
+  vuelta está probado contra Postgres 16 (`tests/test_respaldo_plataforma.py` y
+  `tests/test_respaldo_interno.py`, que descifra lo que entrega la ruta).
 * **El deploy espera al CI (P1-1).** `autoDeployTrigger: checksPass` en `render.yaml` (la
   clave del Blueprint de Render; el valor `checksPass` = «After CI Checks Pass»). Como el
   servicio se creó a mano, hay que ponerlo también en el panel, y proteger `main` en GitHub.

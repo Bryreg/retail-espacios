@@ -88,7 +88,8 @@ No hizo falta reconstruir ningún módulo (§8).
   - `backend/scripts/respaldar_plataforma.py` y `restaurar_plataforma.py`: la plataforma entera o un cliente (`--solo`/`--como`), sha256, `--ensayo`, no pisa sin `--reemplazar`.
   - Runbook en `docs/operacion.md` (restaurar todo, un cliente, RPO/RTO, lista del simulacro).
 - **Evidencia:** `tests/test_respaldo_plataforma.py` hace una ida y vuelta real en CI.
-- **Lo que falta:** cargar los secrets (`RESPALDO_DATABASE_URL`, `RESPALDO_PASSPHRASE`), correr el simulacro contra la base real y anotar el RTO en `docs/ESTADO.md`.
+- **Actualización:** la base de producción no acepta conexiones de afuera (y así queda), así que el respaldo se toma **desde adentro del servicio** (`POST /api/interno/respaldo`, `services/respaldo_interno.py`) y GitHub sólo guarda el archivo cifrado. La base está en plan pago y Render suma su propia recuperación de 3 días (PITR).
+- **Lo que falta:** `MANTENIMIENTO_TOKEN` (GitHub y Render) y `RESPALDO_PASSPHRASE` (Render), correr el simulacro contra la base real y anotar el RTO en `docs/ESTADO.md`.
 - **Criterio de aceptación:** existe un respaldo automático cifrado y una restauración ensayada con tiempo medido. ⏳ Lo primero sí; el ensayo real, no.
 
 ### P0-4 · El plan de Render — **PENDIENTE (decisión del dueño)**
@@ -198,7 +199,7 @@ Leyenda: ✅ resuelto · 🟡 parcial · ⏳ pendiente · 🤝 aceptado por el d
 **Bloquea (hay que hacerlo antes del primer cliente pago):**
 1. **Abogado (P0-2):** completar los `[COMPLETAR]` de la política y los términos con `docs/legal/revision-2026-10-30.md`; copiar el texto final sobre `backend/app/legal/terminos-servicio.md`; desplegar y poner `TERMINOS_VIGENTES` en Render.
 2. **Plan pago de Render (P0-4)** y, con él, descomentar `preDeployCommand` en `render.yaml`.
-3. **Respaldos (P0-3):** secrets `RESPALDO_DATABASE_URL` y `RESPALDO_PASSPHRASE` (guardada también fuera de GitHub) y el simulacro de `docs/operacion.md` §5 con el RTO anotado.
+3. **Respaldos (P0-3):** `MANTENIMIENTO_TOKEN` en GitHub y en Render, `RESPALDO_PASSPHRASE` en Render (guardada también en un gestor de contraseñas) y el simulacro de `docs/operacion.md` §5 con el RTO anotado.
 4. **Configuración que el código ya espera:**
    - Render: `JWT_SECRET` de 64 caracteres al azar, `MANTENIMIENTO_TOKEN` (igual que en GitHub), `OPERADOR_EMAILS`, `ALTAS_POR_DIA`, `CUOTA_BASE_MB=1024`; Auto-Deploy «After CI Checks Pass»; Health Check Path `/api/health/ready`.
    - GitHub: protección de `main` con los checks obligatorios.

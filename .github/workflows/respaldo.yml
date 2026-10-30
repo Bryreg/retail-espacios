@@ -2,29 +2,30 @@ name: Respaldo nocturno
 
 # El respaldo de TODA la plataforma (auditoría P0-3): el registro —clientes,
 # cuentas, membresías, facturación de la plataforma— y la base de cada
-# supermercado, cada noche. Funciona con el plan GRATUITO de Render: se conecta
-# a la URL externa de la base desde el runner de GitHub, sin consola ni shell.
+# supermercado, cada noche.
 #
-#   1. `pg_dump -Fc` de cada base (backend/scripts/respaldar_plataforma.py, que
-#      las lista del registro y de pg_database).
-#   2. Un .tar con todo, cifrado con `gpg --symmetric` (AES256) y la frase de
-#      RESPALDO_PASSPHRASE. Sin la frase el archivo no sirve: guardala FUERA de
-#      GitHub (un gestor de contraseñas), o el respaldo no se puede abrir.
-#   3. Se sube como artefacto del workflow (30 días) y, si están los secrets
-#      del bucket, también a S3/R2 (la retención allá la pone la regla de
-#      ciclo de vida del bucket: docs/operacion.md).
+# **Desde adentro de Render.** La base no acepta conexiones de afuera (y así
+# tiene que quedar), así que este job no se conecta a ella: le pide el archivo
+# al servicio (`POST /api/interno/respaldo`, con el mismo token que el
+# mantenimiento), que sí ve la base por la red interna, y guarda lo que vuelve.
 #
-# Secrets (Settings → Secrets and variables → Actions → Secrets):
-#   RESPALDO_DATABASE_URL   la «External Database URL» de Render (obligatorio)
-#   RESPALDO_PASSPHRASE     la frase de cifrado (obligatorio)
+#   1. El servicio corre `backend/scripts/respaldar_plataforma.py` (`pg_dump -Fc`
+#      de cada base + MANIFIESTO.json), lo empaqueta en un .tar y lo cifra con
+#      `gpg --symmetric` (AES256) y la frase de RESPALDO_PASSPHRASE, que vive en
+#      RENDER. Sin la frase el archivo no sirve: guardala también FUERA de
+#      Render y de GitHub (un gestor de contraseñas).
+#   2. Acá se sube como artefacto (30 días) y, si están los secrets del bucket,
+#      también a S3/R2.
+#
+# Secrets de GitHub (Settings → Secrets and variables → Actions → Secrets):
+#   MANTENIMIENTO_TOKEN     el mismo que la variable del servicio en Render (obligatorio)
 #   RESPALDO_S3_BUCKET      opcional: s3://bucket/carpeta
 #   RESPALDO_S3_ENDPOINT    opcional: el endpoint S3 de R2 (https://<cuenta>.r2.cloudflarestorage.com)
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_DEFAULT_REGION   con el bucket ("auto" en R2)
+# En Render (el servicio → Environment): MANTENIMIENTO_TOKEN y RESPALDO_PASSPHRASE.
 #
-# Sin RESPALDO_DATABASE_URL o sin RESPALDO_PASSPHRASE se SALTEA con un aviso,
-# no falla: un repo recién clonado (o un fork) no tiene que verse rojo. Con
-# ellos puestos, cualquier falla del respaldo pone el workflow en rojo, y
-# GitHub le manda un correo a quien lo programó.
+# Sin MANTENIMIENTO_TOKEN se SALTEA con un aviso, no falla. Con él puesto,
+# cualquier falla pone el workflow en rojo y GitHub avisa por correo.
 
 on:
   schedule:
@@ -42,12 +43,16 @@ concurrency:
 
 jobs:
   respaldo:
-    name: pg_dump de todas las bases
+    name: Pedirle el respaldo cifrado al servicio
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      RESPALDO_DATABASE_URL: ${{ secrets.RESPALDO_DATABASE_URL }}
-      RESPALDO_PASSPHRASE: ${{ secrets.RESPALDO_PASSPHRASE }}
+      # Desde adentro de Render (la base no acepta conexiones de afuera): el
+      # servicio vuelca y cifra (`POST /api/interno/respaldo`, con el token del
+      # mantenimiento) y acá sólo se guarda lo que devuelve. La frase de
+      # cifrado vive en Render (`RESPALDO_PASSPHRASE`), no en GitHub.
+      MANTENIMIENTO_TOKEN: ${{ secrets.MANTENIMIENTO_TOKEN }}
+      MANTENIMIENTO_URL: ${{ vars.MANTENIMIENTO_URL || 'https://retail-espacios.onrender.com' }}
       RESPALDO_S3_BUCKET: ${{ secrets.RESPALDO_S3_BUCKET }}
       RESPALDO_S3_ENDPOINT: ${{ secrets.RESPALDO_S3_ENDPOINT }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -57,67 +62,51 @@ jobs:
       - name: ¿Está configurado?
         id: listo
         run: |
-          if [ -z "$RESPALDO_DATABASE_URL" ] || [ -z "$RESPALDO_PASSPHRASE" ]; then
-            echo "::notice title=Respaldo salteado::Faltan los secrets RESPALDO_DATABASE_URL y/o RESPALDO_PASSPHRASE (ver docs/operacion.md)."
+          if [ -z "$MANTENIMIENTO_TOKEN" ]; then
+            echo "::notice title=Respaldo salteado::Falta el secret MANTENIMIENTO_TOKEN (ver docs/operacion.md)."
             echo "si=no" >> "$GITHUB_OUTPUT"
           else
             echo "si=si" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
-        if: steps.listo.outputs.si == 'si'
-
-      - uses: actions/setup-python@v5
-        if: steps.listo.outputs.si == 'si'
-        with:
-          python-version: "3.11"
-
-      - name: Dependencias (SQLAlchemy y psycopg2, las del backend)
-        if: steps.listo.outputs.si == 'si'
-        run: |
-          pip install "$(grep -E '^sqlalchemy==' backend/requirements.txt)" \
-                      "$(grep -E '^psycopg2-binary==' backend/requirements.txt)"
-
-      # pg_dump tiene que ser de la misma versión mayor que el servidor, o más
-      # nueva. El runner trae el cliente 16; si Render corre otra, se instala
-      # la del servidor desde el repositorio oficial de PostgreSQL.
-      - name: pg_dump de la versión del servidor
-        if: steps.listo.outputs.si == 'si'
-        run: |
-          MAYOR=$(psql "$RESPALDO_DATABASE_URL" -Atc "SHOW server_version_num" | cut -c1-2)
-          echo "Servidor PostgreSQL $MAYOR"
-          if [ ! -x "/usr/lib/postgresql/$MAYOR/bin/pg_dump" ]; then
-            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-            sudo apt-get install -y "postgresql-client-$MAYOR"
-          fi
-          echo "PG_DUMP=/usr/lib/postgresql/$MAYOR/bin/pg_dump" >> "$GITHUB_ENV"
-
-      - name: Volcar
-        if: steps.listo.outputs.si == 'si'
-        run: |
-          python backend/scripts/respaldar_plataforma.py --salida "respaldo"
-          cat respaldo/MANIFIESTO.json
-
-      - name: Empaquetar y cifrar
+      - name: Pedir el respaldo
         if: steps.listo.outputs.si == 'si'
         id: cifrado
         run: |
-          NOMBRE="recabra-respaldo-$(date -u +%Y-%m-%d-%H%M)"
-          tar -cf "$NOMBRE.tar" respaldo
-          # La frase entra por un descriptor, no por la línea de comandos.
-          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
-              --symmetric --cipher-algo AES256 --output "$NOMBRE.tar.gpg" "$NOMBRE.tar" \
-              3<<<"$RESPALDO_PASSPHRASE"
-          rm -rf "$NOMBRE.tar" respaldo
-          ls -l "$NOMBRE.tar.gpg"
+          # Despertarlo primero (liveness, no toca la base).
+          curl -sS --retry 6 --retry-delay 10 --retry-all-errors --max-time 90 \
+               -o /dev/null "$MANTENIMIENTO_URL/api/health" || true
+          CODIGO=$(curl -sS --max-time 1500 -D cabeceras.txt -o respaldo.bin -w '%{http_code}' -X POST \
+               -H "X-Mantenimiento-Token: $MANTENIMIENTO_TOKEN" \
+               "$MANTENIMIENTO_URL/api/interno/respaldo")
+          echo "HTTP $CODIGO"
+          if [ "$CODIGO" != "200" ]; then
+            cat respaldo.bin; echo
+            if [ "$CODIGO" = "404" ]; then
+              echo "::error::El servicio no tiene MANTENIMIENTO_TOKEN configurado (404)."
+            fi
+            exit 1
+          fi
+          NOMBRE=$(grep -i '^content-disposition' cabeceras.txt | sed -E 's/.*filename="?([^";]+)"?.*/\1/' | tr -d '\r')
+          FALLAS=$(grep -i '^x-respaldo-fallas' cabeceras.txt | awk '{print $2}' | tr -d '\r')
+          BASES=$(grep -i '^x-respaldo-bases' cabeceras.txt | awk '{print $2}' | tr -d '\r')
+          case "$NOMBRE" in recabra-respaldo-*.tar.gpg) ;; *) echo "::error::Nombre inesperado: $NOMBRE"; exit 1;; esac
+          # Que sea de verdad un archivo cifrado con gpg (no un error en texto).
+          if ! file respaldo.bin | grep -qi 'PGP\|GPG'; then
+            echo "::error::Lo que devolvió el servicio no es un archivo gpg."; exit 1
+          fi
+          mv respaldo.bin "$NOMBRE"
+          ls -l "$NOMBRE"
+          echo "$BASES bases, $FALLAS fallas"
           echo "nombre=$NOMBRE" >> "$GITHUB_OUTPUT"
+          echo "fallas=$FALLAS" >> "$GITHUB_OUTPUT"
 
       - name: Subir como artefacto (30 días)
         if: steps.listo.outputs.si == 'si'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.cifrado.outputs.nombre }}
-          path: ${{ steps.cifrado.outputs.nombre }}.tar.gpg
+          path: ${{ steps.cifrado.outputs.nombre }}
           retention-days: 30
           if-no-files-found: error
           compression-level: 0   # ya está comprimido y cifrado
@@ -127,5 +116,13 @@ jobs:
         run: |
           EXTRA=""
           if [ -n "$RESPALDO_S3_ENDPOINT" ]; then EXTRA="--endpoint-url $RESPALDO_S3_ENDPOINT"; fi
-          aws s3 cp $EXTRA "${{ steps.cifrado.outputs.nombre }}.tar.gpg" \
-              "${RESPALDO_S3_BUCKET%/}/${{ steps.cifrado.outputs.nombre }}.tar.gpg"
+          aws s3 cp $EXTRA "${{ steps.cifrado.outputs.nombre }}" \
+              "${RESPALDO_S3_BUCKET%/}/${{ steps.cifrado.outputs.nombre }}"
+
+      # Una base que no se pudo volcar no deja sin respaldo a las demás (ya se
+      # guardó lo que llegó), pero el job tiene que quedar rojo para que se vea.
+      - name: ¿Faltó alguna base?
+        if: steps.listo.outputs.si == 'si' && steps.cifrado.outputs.fallas != '0'
+        run: |
+          echo "::error::${{ steps.cifrado.outputs.fallas }} base(s) no se pudieron respaldar: ver el log del servicio en Render."
+          exit 1

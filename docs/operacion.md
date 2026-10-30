@@ -16,23 +16,27 @@ Cada paso dice dónde se hace. Sin ellos el código está, pero no corre.
 
 | Nombre | Tipo | Para qué |
 |---|---|---|
-| `RESPALDO_DATABASE_URL` | Secret | La **External Database URL** de la base de Render (Render → la base → *Connect* → *External*). El respaldo nocturno. |
-| `RESPALDO_PASSPHRASE` | Secret | La frase con la que se cifra el respaldo. **Guardala también fuera de GitHub** (un gestor de contraseñas): sin ella el respaldo no se abre. |
 | `RESPALDO_S3_BUCKET` | Secret, opcional | `s3://bucket/carpeta` en S3 o R2, para una segunda copia fuera de GitHub. |
 | `RESPALDO_S3_ENDPOINT` | Secret, opcional | Sólo R2: `https://<cuenta>.r2.cloudflarestorage.com`. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` | Secrets, con el bucket | Las credenciales del bucket (en R2 la región es `auto`). Dale permiso sólo de escritura en esa carpeta. |
-| `MANTENIMIENTO_TOKEN` | Secret | El mismo valor que la variable del servicio en Render (abajo). Lo usa el cron de mantenimiento. |
+| `MANTENIMIENTO_TOKEN` | Secret | El mismo valor que la variable del servicio en Render (abajo). Lo usan el cron de mantenimiento **y el respaldo nocturno**. |
 | `MANTENIMIENTO_URL` | Variable, opcional | Si el servicio no está en `https://retail-espacios.onrender.com`. |
 
-Sin los secrets, los workflows `Respaldo nocturno` y `Mantenimiento programado` se
-**saltean con un aviso**, no fallan.
+Sin `MANTENIMIENTO_TOKEN`, los workflows `Respaldo nocturno` y `Mantenimiento
+programado` se **saltean con un aviso**, no fallan.
+
+**La base NO se abre a internet** (Render → la base → *Networking*: sin IPs
+permitidas, «External traffic not allowed»). El respaldo no la necesita: lo toma
+el servicio desde adentro (§2). GitHub no guarda ni la URL de la base ni la frase
+de cifrado.
 
 ### En Render (el servicio → Environment)
 
 | Variable | Valor |
 |---|---|
 | `JWT_SECRET` | A mano, aleatoria, 32 bytes o más: `openssl rand -base64 48`. **No viene del Blueprint.** Cambiarla cierra todas las sesiones. |
-| `MANTENIMIENTO_TOKEN` | Aleatoria (`openssl rand -hex 32`), la misma que el secret de GitHub. Sin ella `POST /api/interno/mantenimiento` da 404. |
+| `MANTENIMIENTO_TOKEN` | Aleatoria (`openssl rand -hex 32`), la misma que el secret de GitHub. Sin ella `POST /api/interno/mantenimiento` y `POST /api/interno/respaldo` dan 404. |
+| `RESPALDO_PASSPHRASE` | Aleatoria (`openssl rand -base64 48`). La frase con la que el servicio cifra el respaldo. **Guardala también fuera de Render** (un gestor de contraseñas): sin ella el respaldo no se abre. Sin la variable, el respaldo contesta 409 y no entrega nada. |
 | `CUOTA_BASE_MB` | `1024` en la base gratuita; la del plan contratado al cambiar. |
 | `SENTRY_DSN` | Opcional: el DSN del proyecto de Sentry. Sin ella, nada. |
 | `STATEMENT_TIMEOUT_S` | Opcional, `30` por defecto; `0` lo apaga. |
@@ -67,11 +71,21 @@ Para que nada llegue a `main` sin pasar el CI —y, con eso, a producción—:
 `.github/workflows/respaldo.yml`, todas las noches a las 01:41 de Colombia (y a
 mano: Actions → *Respaldo nocturno* → *Run workflow*).
 
+**Desde adentro de Render.** La base no acepta conexiones de afuera, así que el
+workflow no se conecta a ella: le pide el archivo al servicio
+(`POST /api/interno/respaldo`, con `MANTENIMIENTO_TOKEN`), que la ve por la red
+interna (`DATABASE_URL`), arma el respaldo en una carpeta temporal
+(`services/respaldo_interno.py`), lo cifra con `RESPALDO_PASSPHRASE` y lo
+devuelve. GitHub sólo recibe y guarda bytes cifrados. Lo que consume: unos
+segundos de CPU y algo de disco temporal del servicio (se borra al terminar),
+una lectura de la base y la transferencia del archivo comprimido; a las 01:41 no
+hay nadie usando la app.
+
 1. `backend/scripts/respaldar_plataforma.py` lista las bases —la del registro
    (que es también la de GALERIAS), cada `clientes.db_name` y toda `recabra_*`
    que exista aunque el registro no la nombre— y hace un `pg_dump -Fc` de cada una.
 2. Empaqueta todo en un `.tar` y lo cifra con `gpg --symmetric` (AES256).
-3. Lo sube como **artefacto del workflow** (30 días) y, si está configurado, al
+3. El workflow lo sube como **artefacto** (30 días) y, si está configurado, al
    **bucket**. La retención del bucket la pone su regla de ciclo de vida: en R2,
    *Bucket → Settings → Object lifecycle rules → Delete objects after 30 days*; en
    S3, *Management → Lifecycle rules → Expire current versions after 30 days*.
@@ -110,8 +124,9 @@ Necesitás `pg_restore` de la **misma versión mayor que el servidor, o más nue
 
 ## 3. Restaurar la plataforma entera (la base de Render se perdió)
 
-1. **Creá una base nueva en Render** (New → PostgreSQL). Anotá su *External
-   Database URL*. Todavía **no** le cambies `DATABASE_URL` al servicio: si la app
+1. **Creá una base nueva en Render** (New → PostgreSQL). En su *Networking*,
+   agregá **sólo tu IP** (la de la máquina desde donde restaurás) y anotá su
+   *External Database URL*. Todavía **no** le cambies `DATABASE_URL` al servicio: si la app
    arranca contra una base vacía, le crea las tablas y le siembra pasillos de
    ejemplo, y la restauración se va a negar (o hay que usar `--reemplazar`).
 2. **Suspendé el servicio** (Settings → *Suspend Web Service*) para que nadie
@@ -136,7 +151,9 @@ Necesitás `pg_restore` de la **misma versión mayor que el servidor, o más nue
    **Esa hora menos la del paso 5 es el RTO.**
 8. Comprobá: entrá como operador a la consola (los clientes están), entrá a un
    supermercado (sus contratos están), abrí un plano 3D con fotos.
-9. Actualizá `RESPALDO_DATABASE_URL` en GitHub con la *External* URL nueva.
+9. Si para restaurar abriste la base nueva a tu IP (*Networking*), **sacá esa IP**:
+   la base vuelve a quedar cerrada y el respaldo nocturno sigue andando desde
+   adentro.
 
 Al arrancar, la app reconoce la base de `DATABASE_URL` como la del cliente de
 siempre aunque se llame distinto que la vieja (`registrar_el_de_siempre`), y
