@@ -49,8 +49,24 @@ UN_MICRO = timedelta(microseconds=1)
 
 @pytest.fixture()
 def fv(client):
-    """El servicio de ESTA prueba (conftest purga los módulos entre pruebas)."""
+    """El servicio de ESTA prueba (conftest purga los módulos entre pruebas).
+
+    Antes espera a que termine la vuelta de mantenimiento que la app corre al
+    arrancar (en un hilo): esa vuelta también limpia fotos vencidas, y si lee
+    el interruptor después de que la prueba lo prende, borra lo sembrado antes
+    que la prueba (pasaba en CI, con la máquina cargada).
+    """
+    import time
+
+    import app.main as principal
     from app.services import fotos_vencidas
+
+    tope = time.monotonic() + 30
+    while time.monotonic() < tope:
+        en_vuelo = principal._mantenimiento_en_vuelo
+        if en_vuelo is not None and en_vuelo.done():
+            break
+        time.sleep(0.02)
     return fotos_vencidas
 
 

@@ -37,6 +37,7 @@ ACCIONES = {
     "login.fallo": "Intento fallido",
     "clave.cambio": "Cambio de contraseña",
     "contrato.alta": "Contrato creado",
+    "enlace.revocado": "Enlace de montaje o guía cortado",
     "contrato.baja": "Contrato cancelado",
     "espacio.estado": "Estado de espacio cambiado",
     # El panel del Plano (rediseño, PR 3): la nota del contrato, de la reserva o
