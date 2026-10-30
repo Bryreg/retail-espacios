@@ -44,7 +44,7 @@ instrucción específica de esta ronda y la que este informe necesita para poder
   comparten origen y no hizo falta ni vite ni proxy. Ningún puerto del otro equipo
   (`/tmp/re-nom`) se tocó.
 * **La MISMA siembra de la 1ª pasada**, byte a byte: `/tmp/verif-p/seed_verif.py`.
-  * operador `brayanmoreno098@gmail.com` (token JWT en `localStorage`);
+  * operador `operador@ejemplo.com` (token JWT en `localStorage`);
   * **5 clientes**: `mercafresco` (2 sedes NAVE/SUR, 8 proveedores, 33 espacios
     comercializables en los tres estados, 11 contratos —10 sobre el plano + 1 fuera—,
     2 por vencer dentro de 60 días); `donpepe` (nuevo); `zafironoct` (**ilegible**: su
@@ -245,8 +245,8 @@ Las 18 pasadas (3 pantallas × 2 temas × 1440/1366/390) dan lo mismo o mejor qu
 | Frontera · tarifa | **987654** (y `987.654`, `987 654`) = **0 ocurrencias** en las tres pantallas, en los dos temas, sobre `innerText` + textos SVG + `title/aria-label/alt` + **el `outerHTML` entero**, con todos los `<details>` abiertos |
 | Frontera · informe | 0 ocurrencias de «cartera», «señal», «fantasma», «adopción», «benchmark», «spread», «estado de cuenta», «prioridad»; 0 nombres de otros clientes (`Zafiro`, `zafironoct`, `Don Pepe`, `donpepe`, `La Esquina`, `laesquina`, `galerias`, `Galerías`). Verificado también en el informe de **julio** |
 | Frontera · PII de proveedor | 0 ocurrencias de la nota interna, el contacto, el teléfono y el correo sembrados; el nombre sale saneado: «Nutresa [correo oculto] [teléfono oculto]» |
-| Estado de cuenta | «Cambiar» → sin motivo el formulario responde «**El motivo es obligatorio.**»; con `gracia` + motivo aparece el `confirm()` del navegador y la fila queda «Don Pepe · donpepe · **en gracia** · VERIFICACION-PORT2-11 factura 0002 · 2026-09-08 · brayanmoreno098@gmail.com». **Idéntica tras recargar desde cero** |
-| Supresiones | la pendiente se atendió (nota obligatoria + `confirm()`); la fila pasó a «**atendida** · brayanmoreno098@gmail.com · 2026-09-08» y el cajón a «0 pendientes de 1». **Sobrevive a la recarga** |
+| Estado de cuenta | «Cambiar» → sin motivo el formulario responde «**El motivo es obligatorio.**»; con `gracia` + motivo aparece el `confirm()` del navegador y la fila queda «Don Pepe · donpepe · **en gracia** · VERIFICACION-PORT2-11 factura 0002 · 2026-09-08 · operador@ejemplo.com». **Idéntica tras recargar desde cero** |
+| Supresiones | la pendiente se atendió (nota obligatoria + `confirm()`); la fila pasó a «**atendida** · operador@ejemplo.com · 2026-09-08» y el cajón a «0 pendientes de 1». **Sobrevive a la recarga** |
 | Bitácora | abrir la sesión: `detalle +1`, `metricas +1`, `tendencia +1`. Abrir el informe: `detalle +1`, `tendencia +1`, `metricas +0`. Abrir la cartera: `detalle +0`. **Una línea `accion=detalle` por consulta, ni una de más** |
 | Informe imprimible | mes en curso: **3 páginas A4**; en pantalla 3 controles («Volver a la sesión», «Imprimir o guardar en PDF», el toggle); con `emulateMedia({media:'print'})` **0 controles visibles** y el índice oculto |
 | Consola | **0 `pageerror` y 0 `console.error`** en las 18 pasadas de medición, en las 18 de captura, en la corrida de flujo, en la interactiva y en la de impresión |

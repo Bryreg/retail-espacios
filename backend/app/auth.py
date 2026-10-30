@@ -25,6 +25,7 @@ import os
 import secrets
 import threading
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -41,12 +42,27 @@ from app.models.models import AppConfig
 from app.plataforma_estado import SLUG_PLATAFORMA, es_operador
 
 JWT_SECRET = os.getenv("JWT_SECRET")
+# Sin secreto la app arranca SÓLO si alguien declaró que es desarrollo o
+# pruebas (`ENV=dev|test`; la suite pone `ENV=test`). Antes alcanzaba con que no
+# hubiera `RENDER` ni una URL de Postgres: el despliegue VPS
+# (`docker-compose.prod.yml`, SQLite) arrancaba con el secreto de abajo, público
+# en el repo, y cualquiera podía firmarse un token de admin de cualquier
+# supermercado (auditoría pre-lanzamiento, P1-10).
+_MODO_DESARROLLO = (os.getenv("ENV") or os.getenv("APP_ENV") or "").strip().lower() in ("dev", "test", "desarrollo")
 if not JWT_SECRET:
-    # Production is detected via Render's env marker or a Postgres DATABASE_URL.
-    _is_production = bool(os.getenv("RENDER")) or (os.getenv("DATABASE_URL") or "").startswith("postgres")
-    if _is_production:
-        raise RuntimeError("JWT_SECRET must be set in production")
+    if not _MODO_DESARROLLO:
+        raise RuntimeError(
+            "Falta JWT_SECRET. En producción es obligatorio (32 bytes o más al azar); "
+            "para desarrollo local declará ENV=dev."
+        )
     JWT_SECRET = "dev-secret-change-me"
+elif len(JWT_SECRET.encode()) < 32 and not _MODO_DESARROLLO:
+    # No se tumba el arranque: el secreto de producción ya cargado puede ser
+    # corto, y cambiarlo cierra todas las sesiones —eso lo decide quien opera—.
+    logging.getLogger(__name__).error(
+        "JWT_SECRET tiene %d bytes: con menos de 32 se puede adivinar por fuerza bruta. "
+        "Rotalo por uno de 64 caracteres al azar.", len(JWT_SECRET.encode()),
+    )
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL_HOURS = 12
 # El enlace del montaje vive lo que dura el trabajo, no lo que dura una sesión:
@@ -219,6 +235,16 @@ def login_legado_prendido() -> bool:
     return (os.getenv("LOGIN_LEGADO") or "").strip().lower() in ("1", "true", "si", "sí", "on")
 
 
+def _es_la_base_de_siempre(db: Session) -> bool:
+    """¿La sesión apunta a la base por defecto (la del cliente de siempre)?"""
+    from app.database import engine
+
+    try:
+        return str(db.get_bind().url) == str(engine.url)
+    except Exception:
+        return False
+
+
 def bootstrap_claves(db: Session) -> None:
     """Le pone la clave compartida a un rol que no la tiene, y sólo entonces.
 
@@ -235,6 +261,13 @@ def bootstrap_claves(db: Session) -> None:
     diga otra cosa.
     """
     if not login_legado_prendido():
+        return
+    # Sólo en la base de siempre (auditoría pre-lanzamiento, P1-11): con la
+    # emergencia prendida, la MISMA `ADMIN_PASSWORD` les quedaba a todos los
+    # supermercados del alta, y quien la supiera entraba de admin a cualquiera.
+    # `LOGIN_LEGADO_TODOS=1` vuelve a sembrarla en todos: lo usa la suite, que
+    # arma así sus sesiones en los clientes que funda; en producción no va.
+    if not _es_la_base_de_siempre(db) and (os.getenv("LOGIN_LEGADO_TODOS") or "").strip() != "1":
         return
     for rol in CLAVES:
         if _hay_clave(db, rol):
@@ -288,6 +321,7 @@ def create_token(
     *,
     sub: int | None = None,
     email: str | None = None,
+    mfa: bool = False,
 ) -> str:
     """El mismo token de siempre — ``sub``/``email`` son opcionales y NUEVOS.
 
@@ -311,6 +345,8 @@ def create_token(
         "cliente": cliente,
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS),
     }
+    # Identidad de ESTE token, para poder cerrarlo solo (P2-2, «Salir»).
+    payload["jti"] = uuid.uuid4().hex
     if sub is not None:
         # Como TEXTO: RFC 7519 define `sub` como StringOrURI y PyJWT ≥ 2.10 lo
         # exige al decodificar (un `sub` numérico tira InvalidSubjectError y
@@ -319,6 +355,10 @@ def create_token(
         payload["sub"] = str(sub)
     if email is not None:
         payload["email"] = email
+    if mfa:
+        # Entró con segundo factor (P1-13). Sólo lo lleva el token de la
+        # consola del operador; ningún otro lo pide.
+        payload["mfa"] = True
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -370,6 +410,8 @@ def create_mount_token(
         "code": (space_code or "").strip().upper(),
         "cliente": cliente,
         "exp": datetime.now(timezone.utc) + timedelta(days=days),
+        # Para poder revocar ESTE enlace solo (P3-2).
+        "jti": uuid.uuid4().hex,
     }
     if contrato is not None:
         payload["contrato"] = int(contrato)
@@ -397,6 +439,7 @@ def create_guia_token(version_id: int, cliente: str | None = None, days: int = M
         "version": int(version_id),
         "cliente": cliente,
         "exp": datetime.now(timezone.utc) + timedelta(days=days),
+        "jti": uuid.uuid4().hex,  # revocable solo (P3-2)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -408,6 +451,8 @@ def decode_guia(token: str) -> int | None:
     except jwt.PyJWTError:
         return None
     if payload.get("role") != "guia":
+        return None
+    if sesion_cerrada(payload.get("jti")):
         return None
     v = payload.get("version")
     return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
@@ -504,6 +549,42 @@ def _email_del_token(token: str) -> str | None:
     return _claims_del_token(token)[1]
 
 
+USO_MEDIOS = "medios"
+#: Lo que vive un token de medios. El navegador lo renueva antes de que venza.
+MEDIOS_TTL_MINUTOS = 15
+
+
+def crear_token_de_medios(sesion: str) -> str | None:
+    """Un token para VER archivos por ``?token=`` a partir de un token de
+    sesión válido (auditoría pre-lanzamiento, P2-1).
+
+    Lleva lo mismo que la sesión —rol, época, cliente, ``sub``, correo— para que
+    pase los mismos chequeos (época, membresía, estado de la cuenta), más
+    ``uso="medios"`` y 15 minutos de vida. ``decode_token`` lo rechaza en
+    cualquier ruta que no lo pida, así que si se filtra por un log o el
+    historial sólo sirve para ver archivos un rato, no para usar la API.
+    """
+    try:
+        payload = jwt.decode(sesion, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("uso") is not None or payload.get("role") not in ("admin", "worker"):
+        return None
+    # El ``jti`` de la sesión: al cerrarla se cierra también su token de medios.
+    nuevo = {k: payload[k] for k in ("role", "epoca", "cliente", "sub", "email", "jti") if k in payload}
+    nuevo["uso"] = USO_MEDIOS
+    nuevo["exp"] = datetime.now(timezone.utc) + timedelta(minutes=MEDIOS_TTL_MINUTOS)
+    return jwt.encode(nuevo, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _mfa_del_token(token: str) -> bool:
+    """¿El token dice que se entró con segundo factor? (sólo la consola)."""
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("mfa") is True
+    except jwt.PyJWTError:
+        return False
+
+
 def sub_y_email_de_la_sesion(
     authorization: str | None = Header(default=None),
 ) -> tuple[int | None, str | None]:
@@ -524,7 +605,80 @@ def sub_y_email_de_la_sesion(
     return _claims_del_token(authorization[7:].strip())
 
 
-def decode_token(token: str, db: Session | None = None) -> str | None:
+# ─── Sesiones cerradas con «Salir» (P2-2) ─────────────────────────────────────
+#
+# El ``jti`` de cada token cerrado vive en ``sesiones_cerradas`` (registro) y,
+# para no pagar una consulta por pedido, en este diccionario del proceso. Es
+# seguro porque el servicio corre en UN proceso (ver ESTADO.md, «Un solo
+# proceso»): con varios, cada uno tendría que releer la tabla.
+
+_cerradas: dict[str, float] = {}
+_cerradas_cargadas = False
+_candado_cerradas = threading.Lock()
+
+
+def _cargar_cerradas() -> None:
+    global _cerradas_cargadas
+    from app.clientes import sesion_registro
+    from app.models.plataforma import SesionCerrada
+
+    reg = sesion_registro()
+    try:
+        ahora = datetime.now(timezone.utc)
+        for jti, vence in reg.query(SesionCerrada.jti, SesionCerrada.vence).all():
+            v = vence if vence.tzinfo else vence.replace(tzinfo=timezone.utc)
+            if v > ahora:
+                _cerradas[jti] = v.timestamp()
+    except Exception:  # la tabla todavía no existe (primer arranque): nada cerrado
+        log.warning("No se pudieron leer las sesiones cerradas; se sigue sin ellas.")
+    finally:
+        reg.close()
+    _cerradas_cargadas = True
+
+
+def sesion_cerrada(jti: object) -> bool:
+    if not isinstance(jti, str) or not jti:
+        return False
+    with _candado_cerradas:
+        if not _cerradas_cargadas:
+            _cargar_cerradas()
+        vence = _cerradas.get(jti)
+        if vence is None:
+            return False
+        if vence < time.time():
+            _cerradas.pop(jti, None)
+            return False
+        return True
+
+
+def cerrar_sesion(token: str) -> bool:
+    """Deja este token (y su token de medios) sin efecto hasta que venza."""
+    from app.clientes import sesion_registro
+    from app.models.plataforma import SesionCerrada
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return False
+    jti, exp = payload.get("jti"), payload.get("exp")
+    if not isinstance(jti, str) or not isinstance(exp, (int, float)):
+        return False
+    vence = datetime.fromtimestamp(exp, tz=timezone.utc)
+    reg = sesion_registro()
+    try:
+        if reg.get(SesionCerrada, jti) is None:
+            reg.add(SesionCerrada(jti=jti, vence=vence))
+        # De paso, se barren las vencidas: no frenan a nadie.
+        reg.query(SesionCerrada).filter(SesionCerrada.vence < datetime.now(timezone.utc)).delete()
+        reg.commit()
+    finally:
+        reg.close()
+    with _candado_cerradas:
+        _cerradas[jti] = float(exp)
+    return True
+
+
+def decode_token(token: str, db: Session | None = None, uso: str | None = None) -> str | None:
     """Return the role encoded in the token, or None if invalid/expired.
 
     Sólo reconoce ``admin`` y ``worker``: un token de montaje NO pasa por acá,
@@ -545,6 +699,12 @@ def decode_token(token: str, db: Session | None = None) -> str | None:
         return None
     role = payload.get("role")
     if role not in ("admin", "worker"):
+        return None
+    # El token de medios (P2-1) sólo vale donde se lo pide explícitamente —ver
+    # un archivo por `?token=`— y un token de sesión no vale ahí.
+    if payload.get("uso") != uso:
+        return None
+    if sesion_cerrada(payload.get("jti")):
         return None
     if db is not None:
         nacio = payload.get("epoca")
@@ -584,6 +744,8 @@ def _payload_de_montaje(token: str) -> dict | None:
     if payload.get("role") != "montaje":
         return None
     if not (payload.get("code") or "").strip():
+        return None
+    if sesion_cerrada(payload.get("jti")):
         return None
     return payload
 
@@ -671,6 +833,7 @@ def require_auth(
     email = _email_del_token(raw)
     if email:
         request.state.actor_email = email
+        request.state.actor_mfa = _mfa_del_token(raw)
     return role
 
 
@@ -732,7 +895,9 @@ def require_montaje(
     raw = _leer_credencial(authorization, token)
     if not raw:
         raise HTTPException(status_code=401, detail="No autenticado")
-    role = decode_token(raw, db)
+    # Por query, la sesión va como token de medios (P2-1), nunca el JWT de sesión.
+    por_query = not (authorization and authorization.lower().startswith("bearer "))
+    role = decode_token(raw, db, uso=USO_MEDIOS if por_query else None)
     if role is not None:
         return Quien(role)
     montaje = decode_montaje(raw)
@@ -764,11 +929,13 @@ def require_guia(
 ) -> QuienGuia:
     """Acepta una sesión (admin, worker) **o** el enlace firmado de una guía.
     El enlace sólo vale para SU versión: cada endpoint lo compara. Por query
-    también, porque la foto se abre en un ``<img>``."""
+    también, porque la foto se abre en un ``<img>``: ahí la sesión va como
+    token de medios (P2-1), nunca el JWT de sesión."""
     raw = _leer_credencial(authorization, token)
     if not raw:
         raise HTTPException(status_code=401, detail="No autenticado")
-    role = decode_token(raw, db)
+    por_query = not (authorization and authorization.lower().startswith("bearer "))
+    role = decode_token(raw, db, uso=USO_MEDIOS if por_query else None)
     if role is not None:
         return QuienGuia(role)
     version = decode_guia(raw)
@@ -783,22 +950,29 @@ def require_auth_or_query_token(
     token: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> str:
-    """Like ``require_auth`` but also accepts ``?token=<jwt>``.
+    """Like ``require_auth`` but also accepts ``?token=<token de medios>``.
 
-    Needed for file downloads rendered in <iframe>/<embed>, which cannot send
-    an Authorization header.
+    Needed for file downloads rendered in <iframe>/<embed>/<img> and for the
+    Three.js texture loader, which cannot send an Authorization header.
+
+    Por query va SÓLO el token de medios (`crear_token_de_medios`, 15 min, no
+    abre ninguna otra ruta): antes iba el JWT de sesión de 12 h, que quedaba en
+    los logs de acceso y en el historial del navegador (auditoría
+    pre-lanzamiento, P2-1). Por cabecera, la sesión de siempre.
     """
     raw: str | None = None
+    uso: str | None = None
     if authorization and authorization.lower().startswith("bearer "):
         raw = authorization[7:].strip()
     elif token:
-        raw = token
+        raw, uso = token, USO_MEDIOS
     if not raw:
         raise HTTPException(status_code=401, detail="No autenticado")
-    role = decode_token(raw, db)
+    role = decode_token(raw, db, uso=uso)
     if role is None:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
     email = _email_del_token(raw)
     if email:
         request.state.actor_email = email
+        request.state.actor_mfa = _mfa_del_token(raw)
     return role

@@ -59,6 +59,9 @@ TABLAS_DEL_REGISTRO = frozenset({
     # correos de la escalera que ya salieron (C2).
     "suscripciones", "facturas_cobro", "pagos_cobro", "cambios_estado_cuenta",
     "avisos_cobro",
+    # Auditoría pre-lanzamiento: las altas que pasaron el tope del día (P1-12)
+    # y los tokens cerrados con «Salir» o enlaces revocados (P2-2, P3-2).
+    "altas_en_espera", "sesiones_cerradas",
 })
 
 # Las de NEGOCIO de un supermercado: lo que se copia. Incluye la configuración

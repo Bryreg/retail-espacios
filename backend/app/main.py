@@ -308,7 +308,16 @@ async def lifespan(_app: FastAPI):
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="RECABRA API", lifespan=lifespan)
+# /docs, /redoc y /openapi.json sólo en desarrollo (auditoría pre-lanzamiento,
+# P3-1): en producción el mapa entero de la API no tiene por qué ser público.
+_DOCS = os.getenv("ENV", os.getenv("APP_ENV", "")).strip().lower() in ("dev", "test", "desarrollo")
+app = FastAPI(
+    title="RECABRA API",
+    lifespan=lifespan,
+    docs_url="/docs" if _DOCS else None,
+    redoc_url="/redoc" if _DOCS else None,
+    openapi_url="/openapi.json" if _DOCS else None,
+)
 
 # CORS: set ALLOWED_ORIGINS env var in production (comma-separated).
 # Falls back to localhost dev ports so the app works out of the box.
@@ -508,17 +517,49 @@ def health():
 # Path from /app/backend/app/main.py → /app/frontend/dist
 _DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
-if _DIST.exists():
-    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
 
-    @app.get("/{full_path:path}")
+def archivo_de_la_spa(dist: Path, full_path: str) -> Path:
+    """Qué archivo sirve el catch-all del SPA para ``full_path``.
+
+    Sólo un archivo que está DIRECTAMENTE en la raíz de ``dist`` (``robots.txt``,
+    ``_redirects``, el favicon…) y se pide por su nombre exacto; todo lo demás es
+    ``index.html``. Lo de ``assets/`` lo sirve su propio ``StaticFiles``.
+
+    Antes era ``dist / full_path`` sin más (auditoría pre-lanzamiento, P0-1):
+    uvicorn decodifica ``%2e``/``%2F`` antes de rutear y ``Path / "/etc/x"``
+    descarta la base, así que ``GET /../../backend/app/main.py`` o
+    ``/%2e%2e/…`` devolvían cualquier archivo legible del contenedor —el código,
+    y en un despliegue con SQLite la base entera—. Por eso no se arma ninguna
+    ruta con lo que llega: se compara el nombre contra la lista de la raíz.
+    """
+    indice = dist / "index.html"
+    if not full_path or "/" in full_path or "\\" in full_path or full_path in (".", ".."):
+        return indice
+    candidato = dist / full_path
+    try:
+        raiz = dist.resolve()
+        real = candidato.resolve()
+    except (OSError, RuntimeError):
+        return indice
+    if real.parent != raiz or not real.is_file():
+        return indice
+    return real
+
+def montar_spa(destino: FastAPI, dist: Path) -> None:
+    """Sirve el frontend compilado: ``/assets`` y el catch-all del SPA. Aparte
+    para que las pruebas lo monten sobre un ``dist`` de mentira sin depender del
+    build (antes los casos de ataque se saltaban en el job de backend de CI)."""
+    destino.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+
+    @destino.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Catch-all: serve SPA index.html for any path not matched by an API route."""
         # Don't serve the SPA for unknown /api/* paths — return a proper 404 instead
         # so clients get JSON errors rather than the HTML shell.
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not found")
-        file = _DIST / full_path
-        if file.is_file():
-            return FileResponse(file)
-        return FileResponse(_DIST / "index.html")
+        return FileResponse(archivo_de_la_spa(dist, full_path))
+
+
+if _DIST.exists():
+    montar_spa(app, _DIST)

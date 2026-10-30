@@ -4965,7 +4965,7 @@ function getPhotoFaceMaterial(
     const fresh: PhotoTexEntry = { status: "loading", aspect: 1, waiters: new Set() };
     photoTexCache.set(fuente.clave, fresh);
     entry = fresh;
-    // Same-origin URL; the JWT rides in the ?token= query.
+    // Same-origin URL; the media token (not the session JWT) rides in ?token=.
     new THREE.TextureLoader().load(
       fuente.url,
       tex => {

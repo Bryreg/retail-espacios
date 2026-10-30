@@ -7,6 +7,8 @@ pasillo— se convertía en el producto del mueble. Con tabla propia las dos cos
 dejan de pisarse, y lo comprueba el test de abajo.
 """
 
+from conftest import medios
+
 # Un JPEG y un PNG mínimos de verdad.
 JPG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 PNG = (
@@ -68,7 +70,9 @@ def test_el_cargador_de_texturas_entra_con_el_token_en_la_query(client, admin):
     prov = _proveedor(client, admin)
     arte = _subir(client, admin, prov).json()["id"]
     token = admin["Authorization"].split(" ", 1)[1]
-    assert client.get(f"/api/catalogo/{arte}/imagen?token={token}").status_code == 200
+    # Por query va el token de medios; el JWT de sesión ya no (P2-1).
+    assert client.get(f"/api/catalogo/{arte}/imagen?token={medios(token)}").status_code == 200
+    assert client.get(f"/api/catalogo/{arte}/imagen?token={token}").status_code == 401
     assert client.get(f"/api/catalogo/{arte}/imagen").status_code == 401
     assert client.get(f"/api/catalogo/{arte}/imagen?token=basura").status_code == 401
 

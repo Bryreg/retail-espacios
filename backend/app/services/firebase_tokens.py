@@ -63,6 +63,9 @@ class ClaimsVerificadas:
     email_verificado: bool
     proveedor: Optional[str]  # "password", "google.com", ...
     nombre: Optional[str]
+    # El segundo factor con que entró («phone», «totp»), si entró con uno. Lo
+    # exige la consola del operador con `OPERADOR_EXIGE_MFA=1` (P1-13).
+    segundo_factor: Optional[str] = None
 
 
 class VerificadorDeIdToken:
@@ -201,6 +204,7 @@ class VerificadorFirebase(VerificadorDeIdToken):
 
         firebase_claims = payload.get("firebase")
         proveedor = firebase_claims.get("sign_in_provider") if isinstance(firebase_claims, dict) else None
+        segundo = firebase_claims.get("sign_in_second_factor") if isinstance(firebase_claims, dict) else None
         email = payload.get("email")
 
         return ClaimsVerificadas(
@@ -209,6 +213,7 @@ class VerificadorFirebase(VerificadorDeIdToken):
             email_verificado=bool(payload.get("email_verified", False)),
             proveedor=proveedor if isinstance(proveedor, str) else None,
             nombre=payload.get("name") if isinstance(payload.get("name"), str) else None,
+            segundo_factor=segundo if isinstance(segundo, str) and segundo else None,
         )
 
 

@@ -8,6 +8,7 @@ import { usarToken } from "./api/montaje";
 import { usarTokenDeGuia } from "./api/guia";
 import { useAuthStore } from "./store/authStore";
 import { startAutoSync, stopAutoSync, useFixtureStore } from "./store/fixtureStore";
+import { iniciarMedios, pararMedios, useMedios } from "./api/medios";
 
 /**
  * Fase 9 (landing): TODAS las pantallas de adentro entran por `import()`.
@@ -195,6 +196,17 @@ export default function App() {
     return () => stopAutoSync();
   }, [token, cliente, plataforma]);
 
+  // El token para ver archivos (`?token=` de <img>, <iframe> y texturas):
+  // sólo con una sesión de supermercado. La consola de plataforma no ve
+  // archivos, y su token no es admin ni worker (P2-1).
+  const conMedios = !!token && !TOKEN_MONTAJE && !TOKEN_GUIA && !plataforma;
+  const mediosListo = useMedios((s) => s.listo);
+  useEffect(() => {
+    if (!conMedios) { pararMedios(); return; }
+    iniciarMedios();
+    return () => pararMedios();
+  }, [conMedios, token]);
+
   // Fase 3 compliance: la Política de Tratamiento de Datos es pública — se
   // resuelve ACÁ, antes que cualquier otra cosa (el enlace de montaje
   // incluido), leyendo la URL igual que `TOKEN_MONTAJE` arriba, y no como una
@@ -241,6 +253,12 @@ export default function App() {
   // estado en vivo), sin que nadie vuelva a entrar.
   if (avisoCuenta?.estado === "suspendido") {
     return <BloqueoCuenta />;
+  }
+
+  // Hasta que llega el primer token de medios (un pedido): sin él, las fotos
+  // y texturas que se pintan al entrar saldrían rotas.
+  if (conMedios && !mediosListo) {
+    return <Pantalla><p role="status" style={{ padding: 24 }}>Abriendo…</p></Pantalla>;
   }
 
   return (

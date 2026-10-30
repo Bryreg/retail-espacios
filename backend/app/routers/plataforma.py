@@ -50,6 +50,7 @@ el login legado nunca trae ``request.state.actor_email`` (lo deja
 ningún chequeo especial para el legado.
 """
 import logging
+import os
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -115,6 +116,15 @@ def require_operador(request: Request, rol: str = Depends(require_auth)) -> str:
     email = getattr(request.state, "actor_email", None)
     if not email or not es_operador(email):
         raise HTTPException(status_code=403, detail="Solo para operadores de la plataforma.")
+    # Segundo factor (auditoría pre-lanzamiento, P1-13): esta consola ve todos
+    # los clientes y puede borrarlos. Se prende con `OPERADOR_EXIGE_MFA=1`
+    # DESPUÉS de activar la verificación en dos pasos en Firebase y entrar una
+    # vez con ella; prendido antes, deja afuera al operador.
+    if (os.getenv("OPERADOR_EXIGE_MFA") or "").strip() == "1" and not getattr(request.state, "actor_mfa", False):
+        raise HTTPException(
+            status_code=403,
+            detail="La consola pide verificación en dos pasos: activala en tu cuenta y volvé a entrar.",
+        )
     return email
 
 

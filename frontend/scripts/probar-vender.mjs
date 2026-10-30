@@ -2477,6 +2477,9 @@ if (!URL_VENDER) {
     const CARAS = (process.env.PROBAR_VENDER_CARAS ?? "PUN-03,GON-02·B,NEV-01").split(",").map((s) => s.trim()).filter(Boolean);
     const TOKEN = process.env.PROBAR_VENDER_TOKEN ?? "";
     const ORIGEN = new URL(URL_VENDER).origin;
+    // Por `?token=` va el token de medios, no la sesión (auditoría P2-1).
+    const MEDIOS = await fetch(ORIGEN + "/api/auth/token-medios", { method: "POST", headers: { Authorization: "Bearer " + TOKEN } })
+      .then((r) => (r.ok ? r.json() : { token: "" })).then((j) => j.token).catch(() => "");
     const mismo = (a, b) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
     // El catálogo ENTERO, pedido acá afuera con la sesión (no desde la
     // página): de ahí sale de quién es cada arte.
@@ -3409,7 +3412,7 @@ if (!URL_VENDER) {
         .then((r) => r.json()).then((l) => (Array.isArray(l) ? l.length : -1)).catch(() => -1);
       // Una foto de verdad, del catálogo del primero (la ficha del envase la mide).
       const unArte = [...idsDe(PROVEEDOR)][0];
-      const foto = Buffer.from(await fetch(`${ORIGEN}/api/catalogo/${unArte}/imagen?token=${encodeURIComponent(TOKEN)}`).then((r) => r.arrayBuffer()));
+      const foto = Buffer.from(await fetch(`${ORIGEN}/api/catalogo/${unArte}/imagen?token=${encodeURIComponent(MEDIOS)}`).then((r) => r.arrayBuffer()));
       const antesN = await contar();
       await pv.locator('.vender input[aria-label="Proveedor"]').fill(sinTilde);
       await pv.waitForTimeout(600);
@@ -3546,7 +3549,7 @@ if (!URL_VENDER) {
     await seccion("navegador · visor: un producto que termina de subir después de cambiar de proveedor no entra al contrato del nuevo", async () => {
       const NUEVO = "Kumis de la carrera (prueba)";
       const unArte = [...idsDe(PROVEEDOR)][0];
-      const foto = Buffer.from(await fetch(`${ORIGEN}/api/catalogo/${unArte}/imagen?token=${encodeURIComponent(TOKEN)}`).then((r) => r.arrayBuffer()));
+      const foto = Buffer.from(await fetch(`${ORIGEN}/api/catalogo/${unArte}/imagen?token=${encodeURIComponent(MEDIOS)}`).then((r) => r.arrayBuffer()));
       await abrirVisor(pv);
       await conCajon(pv);
       await pv.waitForSelector(".visor-producto", { timeout: 60000 });

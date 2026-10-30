@@ -1,5 +1,5 @@
 import client from "./client";
-import { useAuthStore } from "../store/authStore";
+import { tokenDeMedios } from "./medios";
 
 export interface SpaceFileMeta {
   id: number;
@@ -48,12 +48,10 @@ export const getFaceImages = (): Promise<SpaceFaceImage[]> =>
   client.get<SpaceFaceImage[]>("/spaces/face-images").then((r) => r.data);
 
 /** Direct URL for viewing/embedding a stored file (PDF iframe, download link).
- *  Iframes can't send Authorization headers, so the token rides as a query param —
- *  the backend accepts it for this endpoint only. */
-export const fileUrl = (fileId: number): string => {
-  const token = useAuthStore.getState().token ?? "";
-  return `/api/files/${fileId}?token=${encodeURIComponent(token)}`;
-};
+ *  Iframes can't send Authorization headers, so a token rides as a query param:
+ *  the media token (15 min, only opens file routes), never the session JWT. */
+export const fileUrl = (fileId: number): string =>
+  `/api/files/${fileId}?token=${encodeURIComponent(tokenDeMedios())}`;
 
 /** Fetch a file as a Blob (used for Excel parsing with SheetJS). */
 export const fetchFileBlob = (fileId: number): Promise<Blob> =>

@@ -16,10 +16,13 @@ El freno de fuerza bruta reutiliza las mismas tres funciones de
 `borrar_fallos`), parametrizadas por `IntentoAlta` -- tabla propia, no
 contamina ni `login_attempts` ni `oauth_attempts`.
 """
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
+from html import escape
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
@@ -60,6 +63,36 @@ MENSAJE_NOMBRE_TOMADO = (
 )
 MAX_FUNDACIONES_POR_USUARIO = 2
 
+# Tope de altas self-service de TODA la plataforma en 24 horas (auditoría
+# pre-lanzamiento, P1-12). Cada alta crea una base de Postgres y abre su pool
+# de conexiones: con cuentas de Google descartables, el tope por usuario de
+# arriba no frena a nadie. Pasado el tope, el alta queda en espera
+# (`AltaEnEspera`) y al operador le llega un correo; ninguna base se crea.
+ALTAS_POR_DIA_DEFECTO = 10
+MENSAJE_EN_ESPERA = (
+    "Hoy ya se dieron de alta muchos supermercados y el suyo quedó en lista de espera. "
+    "Le escribimos a su correo para habilitarlo en cuanto podamos."
+)
+
+
+def altas_por_dia() -> int:
+    try:
+        return max(0, int(os.getenv("ALTAS_POR_DIA", str(ALTAS_POR_DIA_DEFECTO))))
+    except ValueError:
+        return ALTAS_POR_DIA_DEFECTO
+
+
+def _avisar_al_operador(background_tasks: BackgroundTasks, asunto: str, nombre: str, slug: str,
+                        email: str, pie: str) -> None:
+    """Un correo a quienes operan la plataforma. Sin operadores, nada."""
+    from app.plataforma_estado import correos_de_operador
+    from app.services.mailer import html_shell, send_mail_to_bg
+
+    destino = correos_de_operador()
+    if destino:
+        filas = [("Supermercado", escape(nombre)), ("Código", escape(slug)), ("Correo", escape(email))]
+        background_tasks.add_task(send_mail_to_bg, destino, asunto, html_shell(asunto, filas, pie))
+
 
 class AltaIn(BaseModel):
     id_token: str
@@ -74,6 +107,7 @@ class AltaIn(BaseModel):
 def alta_self_service(
     payload: AltaIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     verificador: Optional[VerificadorDeIdToken] = Depends(get_verificador),
 ):
     # Imports perezosos, mismo motivo que `routers/auth.py::oauth_login`: sin
@@ -81,7 +115,7 @@ def alta_self_service(
     from app.models.consentimiento import VERSION_POLITICA, Consentimiento
     from app.models.identidad import Membresia, Usuario
     from app.models.models import ClienteRow
-    from app.models.plataforma import Fundacion, IntentoAlta
+    from app.models.plataforma import AltaEnEspera, Fundacion, IntentoAlta
 
     reg = sesion_registro()
     try:
@@ -181,6 +215,22 @@ def alta_self_service(
                 detail=f"Ya fundaste el máximo de clientes permitidos ({MAX_FUNDACIONES_POR_USUARIO}).",
             )
 
+        # 10.5) Tope diario de la plataforma (P1-12): pasado, el alta queda en
+        # espera y no se crea ninguna base.
+        desde = datetime.now(timezone.utc) - timedelta(hours=24)
+        if reg.query(Fundacion).filter(Fundacion.creado_en >= desde).count() >= altas_por_dia():
+            reg.add(AltaEnEspera(email=email, nombre=nombre, slug=slug))
+            reg.commit()
+            _avisar_al_operador(
+                background_tasks, "RECABRA · alta en espera", nombre, slug, email,
+                f"Llegó con el tope diario ({altas_por_dia()}) ya alcanzado: no se creó ninguna base. "
+                "Si corresponde, dalo de alta desde la consola y avisale a la persona.",
+            )
+            # Una respuesta y no una excepción: con `raise` las tareas de fondo
+            # (el correo al operador) no corren.
+            return JSONResponse(status_code=429, content={"detail": MENSAJE_EN_ESPERA},
+                                background=background_tasks)
+
         # `crear_cliente` abre SU PROPIA sesión contra la base por defecto (la
         # misma que `reg`) y hace un COMMIT ahí adentro. En SQLite eso choca
         # con la transacción que `reg` viene arrastrando desde el flush/las
@@ -210,6 +260,11 @@ def alta_self_service(
             reg.add(Consentimiento(usuario_id=usuario.id, version=VERSION_POLITICA, ip=ip, origen="alta"))
         usuario.ultimo_login = datetime.now(timezone.utc)
         reg.commit()
+
+        _avisar_al_operador(
+            background_tasks, "RECABRA · supermercado nuevo", cliente.nombre, cliente.slug, email,
+            "Se dio de alta por el autoservicio.",
+        )
 
         # 13) Éxito: se limpia el contador de esta IP y se emite el token,
         # igual que /oauth -- la época sale de la base NUEVA del cliente.
