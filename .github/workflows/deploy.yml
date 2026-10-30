@@ -56,10 +56,30 @@ jobs:
   backend:
     name: Backend · pytest
     runs-on: ubuntu-latest
-    # La suite tarda ~25 min. Sin tope, un job trabado esperaba las 6 h que da
-    # GitHub sin decir nada (el PR #80 estuvo 100 min «corriendo» con todo verde
-    # adentro): pasado este tiempo falla y muestra su log.
+    # La suite tardaba ~25 min en serie; en paralelo (`-n auto`, abajo), bastante
+    # menos. Sin tope, un job trabado esperaba las 6 h que da GitHub sin decir
+    # nada (el PR #80 estuvo 100 min «corriendo» con todo verde adentro): pasado
+    # este tiempo falla y muestra su log.
     timeout-minutes: 60
+    # Postgres de verdad (auditoría P1-9): los candados contra la doble venta
+    # (`services/candado.py`) en SQLite no hacen nada, y las carreras de dos
+    # hilos, el candado de líder del mantenimiento, el `statement_timeout` y el
+    # respaldo de la plataforma se saltaban sin `DATABASE_URL_PG_PRUEBA`. Es
+    # una base descartable: las pruebas la vacían y la vuelven a armar.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: prueba
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,14 +93,31 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
         working-directory: backend
-      - run: python -m pytest
+      # En paralelo (auditoría P3-12): cada prueba arma sus bases en una carpeta
+      # temporal propia (`tests/conftest.py`), así que los procesos de
+      # `pytest-xdist` ya no se pisan `recabra_<slug>.db`. Las pruebas contra
+      # Postgres comparten la base `prueba` y van todas al mismo proceso
+      # (`xdist_group("postgres")` + `--dist loadgroup`).
+      #
+      # Y ninguna prueba de Postgres puede saltarse acá: si
+      # `DATABASE_URL_PG_PRUEBA` dejara de llegar, se saltarían en verde. `-rs`
+      # lista los motivos de cada salto; el de ésas dice «Postgres descartable».
+      - name: pytest
         working-directory: backend
+        shell: bash
         env:
           JWT_SECRET: ci-secret
           # Cada prueba crea su base SQLite en el directorio temporal, y cada
           # CREATE TABLE del arranque hace fsync: en memoria (tmpfs) la suite
           # tarda ~25 % menos (local: 31 → 24 min, las mismas 1613 pasan).
           TMPDIR: /dev/shm
+          DATABASE_URL_PG_PRUEBA: postgresql://postgres:postgres@127.0.0.1:5432/prueba
+        run: |
+          python -m pytest -n auto --dist loadgroup -rs 2>&1 | tee salida-pytest.txt
+          if grep -q "Postgres descartable" salida-pytest.txt; then
+            echo "::error::Se saltaron pruebas de Postgres: el servicio no llegó a la suite."
+            exit 1
+          fi
 
   deploy-vps:
     name: Deploy al VPS vía SSH
@@ -120,7 +157,7 @@ jobs:
             echo "── Health check (espera hasta 60s) ──"
             for i in $(seq 1 12); do
               sleep 5
-              if docker exec retail_prod curl -sf http://localhost:8000/ > /dev/null 2>&1; then
+              if docker exec retail_prod curl -sf http://localhost:8000/api/health/ready > /dev/null 2>&1; then
                 echo "✅ Contenedor healthy"
                 break
               fi

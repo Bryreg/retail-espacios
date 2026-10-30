@@ -16,6 +16,11 @@ services:
     environment:
       DATABASE_URL: sqlite:////app/backend/data/retail.db
       ALLOWED_ORIGINS: https://retail.tudominio.com
+      # Obligatoria (auditoría P1-10/P2-9): sin ella el compose no levanta, en
+      # vez de arrancar con la clave de desarrollo y dejar que cualquiera firme
+      # tokens de admin. Va en el `.env` del VPS (32 bytes o más:
+      # `openssl rand -base64 48`), nunca en el repo.
+      JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET en el .env del VPS (openssl rand -base64 48)}
     volumes:
       # SQLite persistente (sobrevive a rebuilds y reinicios)
       - retail_db:/app/backend/data

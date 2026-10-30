@@ -2039,8 +2039,11 @@ prueba("«Salir sin cambios» no deja el plano cambiado: editando, «Cambiar» l
 
 prueba("el PRÓXIMO contrato de una cara con vigente se edita: `proximoLeaseId` sólo para quien administra, nunca pegado al mueble", () => {
   const sp = readFileSync(join(raiz, "..", "backend", "app", "routers", "spaces.py"), "utf8");
-  assert.match(sp, /proximoLeaseId=\(space\.upcoming_lease\.id\s*if admin and space\.active_lease is not None and space\.upcoming_lease is not None\s*else None\),/,
+  // Desde la auditoría P2-5 el vigente y el próximo salen de `_vigente_y_proximo`
+  // (los contratos vivos, sin bajar el historial), no de las propiedades del modelo.
+  assert.match(sp, /proximoLeaseId=\(proximo\.id\s*if admin and vigente is not None and proximo is not None\s*else None\),/,
     "el servidor le manda el id del próximo al trabajador");
+  assert.match(sp, /vigente, proximo = _vigente_y_proximo\(vivos\.get\(space\.id, \(\)\), dia\)/);
   assert.equal((sp.match(/proximoLeaseId=/g) || []).length, 1);
   const [f] = fusionarEstadoComercial("CENTRO", [{ id: "f", code: "GON-02", type: "cross", sede: "CENTRO" }],
     { "CENTRO-GON-02": { ...vendido(), leaseId: 17, proximoLeaseId: 18 } });

@@ -3,12 +3,36 @@ databases:
     databaseName: retail_espacios
     user: retail_user
 
+# Plan: el gratuito, hasta justo antes del lanzamiento comercial (decisión del
+# dueño, 2026-10-30). No se declara `plan:` a propósito: el servicio se creó a
+# mano en el panel y un `plan:` acá, al sincronizar el Blueprint, lo cambiaría.
+# Lo que se prepara para el plan pago está comentado más abajo, con su porqué.
+# Staging: `render.staging.yaml` (otro Blueprint, plan gratuito; ver
+# docs/operacion.md). Operación diaria —respaldo, mantenimiento, restaurar—:
+# docs/operacion.md.
+
 services:
   - type: web
     name: retail-espacios
     runtime: docker
     branch: main
-    healthCheckPath: /api/health
+    # Producción espera al CI (auditoría P1-1): Render despliega un commit de
+    # `main` sólo cuando TODOS sus checks de GitHub pasaron (deploy.yml:
+    # frontend y backend; el job del VPS se saltea). Con `commit` —el valor por
+    # defecto— desplegaba antes de que terminara pytest (~25 min), y un commit
+    # en rojo llegaba igual a producción. Ojo: en un servicio creado a mano el
+    # Blueprint puede no estar sincronizado; el mismo ajuste está en el panel,
+    # Settings → Build & Deploy → Auto-Deploy → «After CI Checks Pass».
+    autoDeployTrigger: checksPass
+    # Readiness (auditoría P1-3): `SELECT 1` contra el registro. Una instancia
+    # nueva que no llega a la base no recibe tráfico y la anterior sigue
+    # atendiendo. `/api/health` queda como liveness (no toca la base).
+    healthCheckPath: /api/health/ready
+    # Migraciones (auditoría P1-8). El pre-deploy es de los planes PAGOS: en el
+    # gratuito las corre el arranque, antes de atender, con un advisory lock
+    # (`app/migraciones.py`). Al pasar a un plan pago, descomentar: el arranque
+    # encuentra todo al día y no hace nada.
+    # preDeployCommand: python -m app.migraciones
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -16,8 +40,34 @@ services:
           property: connectionString
       - key: ALLOWED_ORIGINS
         sync: false
+      # La firma de las sesiones. UNA verdad (auditoría P3-13): se pone A MANO
+      # en el panel de Render (Environment), con un valor aleatorio de 32 bytes
+      # o más (`openssl rand -base64 48`), y no viene del Blueprint. Antes decía
+      # `generateValue: true`, que sólo genera al CREAR el servicio desde el
+      # Blueprint —este se creó a mano— y contradecía a docs/ESTADO.md.
+      # Cambiarla cierra todas las sesiones abiertas.
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
+      # El cron de mantenimiento (auditoría P1-5): el mismo valor que el secret
+      # MANTENIMIENTO_TOKEN del repo en GitHub. Sin ella, el endpoint
+      # `POST /api/interno/mantenimiento` no existe (404) y el mantenimiento
+      # corre sólo en el hilo de la app, mientras esté despierta.
+      - key: MANTENIMIENTO_TOKEN
+        sync: false
+      # Observabilidad (auditoría P1-3), las dos opcionales: SENTRY_DSN manda
+      # los errores a Sentry (sin la variable, nada); LOG_LEVEL (INFO por
+      # defecto) y LOG_FORMAT=texto si se quiere el log sin JSON.
+      - key: SENTRY_DSN
+        sync: false
+      # La cuota de la base en MB (auditoría P2-6): el mantenimiento avisa con
+      # un WARNING desde el 70 %. 1024 es la base gratuita de Render; poné la
+      # del plan contratado al cambiarlo.
+      - key: CUOTA_BASE_MB
+        value: "1024"
+      # El tope de cada consulta en Postgres, en segundos (auditoría P2-10).
+      # 30 por defecto; 0 lo apaga.
+      - key: STATEMENT_TIMEOUT_S
+        value: "30"
       # Identidad (Fase 1): login con Google/correo vía Firebase Auth.
       # Es la ÚNICA puerta: sin FIREBASE_PROJECT_ID el endpoint /api/auth/oauth
       # responde 503 y nadie entra (la clave compartida está apagada, ver

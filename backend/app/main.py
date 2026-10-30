@@ -4,8 +4,9 @@ import logging
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.auth import ensure_default_config
@@ -45,6 +46,10 @@ from app.models import vender as vender_models  # noqa: F401
 # Planogramas con destinos (cinco tablas nuevas: destinos, planogramas, sus
 # versiones, sus piezas y quién publica). Mismo propósito.
 from app.models import planogramas as planogramas_models  # noqa: F401
+# La cola de correos (una tabla nueva por cliente, P1-4) y los índices que
+# llegaron con Alembic (`models/indices.py`, P1-8). Mismo propósito.
+from app.models import correos as correos_models  # noqa: F401
+from app.models import indices as indices_models  # noqa: F401
 
 logger = logging.getLogger("retail.main")
 
@@ -155,16 +160,31 @@ def _run_lease_maintenance():
     cada una con su try: el cierre del mes de la serie de tendencia y la
     escalera de cobranza (`COBRANZA_AUTOMATICA`, que apagado también ensaya).
     """
-    from app.clientes import listar, sesion_de
+    from app.clientes import esta_degradado, listar, reintentar_degradados, sesion_de
     from app.routers.spaces import expire_leases
-    from app.services import fotos_vencidas
+    from app.services import chequeos_de_despliegue, cola_de_correos, fotos_vencidas, tamano_de_base
     from app.services.bitacora import purgar
     from app.services.papelera import purgar as purgar_papelera
     from app.services.reminders import check_expiring_leases
 
+    resumen = {"clientes": 0, "con_falla": 0, "correos_enviados": 0, "correos_fallidos": 0,
+               "correos_pendientes": 0, "recuperados": [], "codigos_pc": 0}
+
+    # Los que no arrancaron (P1-6): se prueba otra vez antes del recorrido.
+    try:
+        resumen["recuperados"] = reintentar_degradados()
+        for slug in resumen["recuperados"]:
+            logger.warning("La base del cliente %s volvió: deja de estar degradado", slug)
+    except Exception:
+        logger.exception("El reintento de los clientes degradados falló")
+
     for cliente in listar():
         if _stop_mantenimiento.is_set():
-            return
+            return resumen
+        if esta_degradado(cliente.slug):
+            resumen["con_falla"] += 1
+            continue
+        resumen["clientes"] += 1
         db = None
         try:
             # Adentro del try: un cliente cuya base ni abre no corta el recorrido.
@@ -179,25 +199,54 @@ def _run_lease_maintenance():
                 purgar_papelera(db)
             except Exception:
                 logger.exception("Mantenimiento falló para el cliente %s", cliente.slug)
+                resumen["con_falla"] += 1
                 _deshacer(db)
             if _stop_mantenimiento.is_set():
-                return
+                return resumen
+            # Los correos que no salieron (P1-4): reintento con espera creciente
+            # y purga de lo viejo. En su try: un proveedor de correo caído no
+            # frena la limpieza de abajo.
+            try:
+                hecho = cola_de_correos.despachar_pendientes(db)
+                resumen["correos_enviados"] += hecho["enviados"]
+                resumen["correos_fallidos"] += hecho["fallidos"]
+                resumen["correos_pendientes"] += cola_de_correos.pendientes(db)
+                cola_de_correos.purgar_viejos(db)
+            except Exception:
+                logger.exception("La cola de correos falló para el cliente %s", cliente.slug)
+                _deshacer(db)
+            # Lo que antes se corría a mano antes de desplegar (P2-8). Sólo lee.
+            try:
+                resumen["codigos_pc"] += chequeos_de_despliegue.codigos_pc(db, cliente.slug)
+            except Exception:
+                logger.exception("El chequeo de códigos …-PC falló para el cliente %s", cliente.slug)
+                _deshacer(db)
             try:
                 plan = fotos_vencidas.limpiar_fotos_vencidas(db)
-                # WARNING y no INFO, y SIEMPRE —también «0 fotos»—. La app no
-                # configura el logging y uvicorn deja el logger raíz en WARNING:
-                # un INFO no sale nunca en el log de Render. Y si la línea sólo
-                # saliera cuando hay algo, que falte se leería como «no hay nada
-                # que borrar» justo antes de prender el interruptor.
+                # WARNING y no INFO, y SIEMPRE —también «0 fotos»—. Hasta la
+                # auditoría P1-3 la app no configuraba el logging y un INFO no
+                # salía nunca en el log de Render; ahora sí sale, pero ésta es la
+                # línea que se lee antes de prender el interruptor y tiene que
+                # verse aunque se suba `LOG_LEVEL`. Y si sólo saliera cuando hay
+                # algo, que falte se leería como «no hay nada que borrar».
                 logger.warning("Fotos vencidas, cliente %s: %s", cliente.slug, plan.resumen())
             except Exception:
                 logger.exception("La limpieza de fotos vencidas falló para el cliente %s", cliente.slug)
                 _deshacer(db)
         except Exception:
             logger.exception("Mantenimiento falló para el cliente %s", cliente.slug)
+            resumen["con_falla"] += 1
         finally:
             if db is not None:
                 db.close()
+
+    # El tamaño de la instancia contra su cuota (P2-6): una vez por corrida,
+    # porque la cuota es de TODAS las bases juntas.
+    if _stop_mantenimiento.is_set():
+        return resumen
+    medida = tamano_de_base.revisar()
+    if medida:
+        resumen["base_uso"] = medida.get("uso")
 
     # Cierre automático del mes (Fase 5): snapshotea el MES YA CERRADO si le
     # falta la fila a algún cliente, para que la serie de tendencia no dependa de
@@ -210,7 +259,7 @@ def _run_lease_maintenance():
     # del histórico no puede dejar sin nada al resto del ciclo. Sólo LEE las
     # bases de cliente; lo que escribe va al registro.
     if _stop_mantenimiento.is_set():
-        return
+        return resumen
     from app.plataforma_tendencia import cerrar_mes_anterior
     try:
         cerrar_mes_anterior()
@@ -228,13 +277,51 @@ def _run_lease_maintenance():
     # línea que faltara se leería como «nada que hacer». Ver
     # `services/cobranza_automatica.py`.
     if _stop_mantenimiento.is_set():
-        return
+        return resumen
     from app.services import cobranza_automatica
     try:
         plan = cobranza_automatica.correr(parar=_stop_mantenimiento.is_set)
         logger.warning("%s", plan.resumen())
     except Exception:
         logger.exception("La cobranza automática falló")
+    return resumen
+
+
+#: Cómo terminó la última vuelta que corrió de verdad (la consola la muestra).
+ultimo_mantenimiento: dict | None = None
+
+
+def correr_mantenimiento(origen: str) -> dict:
+    """Una vuelta de mantenimiento con el candado de líder (P1-5).
+
+    La piden el hilo de fondo (al arrancar y cada 12 h) y el cron de GitHub
+    (`POST /api/interno/mantenimiento`). Si otra vuelta está corriendo —en esta
+    instancia o en otra—, ésta no hace nada y lo dice: dos vueltas a la vez
+    mandarían dos veces el mismo recordatorio.
+    """
+    global ultimo_mantenimiento
+    import time
+    from datetime import datetime, timezone
+
+    from app.services.lider import ser_lider
+
+    with ser_lider("mantenimiento") as soy_lider:
+        if not soy_lider:
+            logger.warning("Mantenimiento (%s): ya hay otra vuelta corriendo; ésta no hace nada", origen)
+            return {"corrio": False, "motivo": "ya_corriendo"}
+        inicio = time.monotonic()
+        resumen = _run_lease_maintenance() or {}
+        segundos = round(time.monotonic() - inicio, 1)
+        ultimo_mantenimiento = {
+            "origen": origen,
+            "terminado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "segundos": segundos,
+            **resumen,
+        }
+        # WARNING y no INFO: es la línea que dice que el cron anduvo, y tiene
+        # que verse aunque alguien suba el nivel del log.
+        logger.warning("Mantenimiento (%s) terminado en %.1f s: %s", origen, segundos, resumen)
+        return {"corrio": True, **ultimo_mantenimiento}
 
 
 # La vuelta de mantenimiento que está corriendo AHORA en el hilo de fondo, para
@@ -251,7 +338,9 @@ async def _lease_maintenance_loop():
     loop = asyncio.get_running_loop()
     while True:
         try:
-            _mantenimiento_en_vuelo = loop.run_in_executor(None, _run_lease_maintenance)
+            # Con el candado de líder (P1-5): si el cron de GitHub está corriendo
+            # una vuelta en este momento, ésta no hace nada.
+            _mantenimiento_en_vuelo = loop.run_in_executor(None, correr_mantenimiento, "hilo")
             # `shield`: la cancelación de esta tarea no toca al hilo (no se puede
             # matar un hilo); quien lo espera hasta el final es el lifespan.
             await asyncio.shield(_mantenimiento_en_vuelo)
@@ -262,40 +351,113 @@ async def _lease_maintenance_loop():
         await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
 
 
+# Los correos que no salieron no esperan las 12 horas de la vuelta grande: cada
+# tanto, mientras el servicio está despierto, se reintenta lo vencido (P1-4).
+INTERVALO_CORREOS_S = 5 * 60
+
+
+def _despachar_correos() -> None:
+    from app.clientes import esta_degradado, listar, sesion_de
+    from app.services import cola_de_correos
+    from app.services.lider import ser_lider
+
+    with ser_lider("correos") as soy_lider:
+        if not soy_lider:
+            return
+        for cliente in listar():
+            if _stop_mantenimiento.is_set():
+                return
+            if esta_degradado(cliente.slug):
+                continue
+            db = None
+            try:
+                db = sesion_de(cliente)
+                cola_de_correos.despachar_pendientes(db)
+            except Exception:
+                logger.exception("La cola de correos falló para el cliente %s", cliente.slug)
+            finally:
+                if db is not None:
+                    db.close()
+
+
+async def _bucle_de_correos():
+    loop = asyncio.get_running_loop()
+    while True:
+        await asyncio.sleep(INTERVALO_CORREOS_S)
+        try:
+            await asyncio.shield(loop.run_in_executor(None, _despachar_correos))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Error en el ciclo de la cola de correos")
+
+
 # ─── Lifespan ─────────────────────────────────────────────────────────────────
+
+def _preparar_bases() -> None:
+    """El registro y cada cliente activo, con sus tablas y su esquema al día.
+
+    · **El registro primero, y sin red**: es donde vive la lista de clientes; si
+      su base no responde, no hay nada que servir y el arranque falla (Render
+      deja la versión anterior atendiendo).
+    · **Cada cliente en su propio try** (P1-6): uno con la base caída queda
+      DEGRADADO —sus pedidos reciben 503 y el mantenimiento lo reintenta— y los
+      demás arrancan. Antes, uno solo dejaba afuera a todos.
+    · Todo bajo el candado de migración (P1-8): con dos instancias arrancando a
+      la vez, una migra y la otra espera.
+    """
+    from app.clientes import (
+        listar, marcar_degradado, preparar_esquema, registrar_el_de_siempre, sesion_de,
+    )
+    from app.database import SQLALCHEMY_DATABASE_URL
+    from app.migraciones import candado_de_migracion, preparar_base
+
+    with candado_de_migracion():
+        # La base por defecto primero: es donde vive la lista de clientes, así
+        # que tiene que tener sus tablas antes de poder preguntarle quiénes son.
+        preparar_base(SQLALCHEMY_DATABASE_URL)
+        por_defecto = registrar_el_de_siempre()
+
+        for cliente in listar():
+            try:
+                preparar_esquema(cliente)
+                db = sesion_de(cliente)
+                try:
+                    # Los pasillos de ejemplo se siembran SÓLO en la base de
+                    # siempre. Darle "Licores 24H" y "Arroz" a un supermercado
+                    # nuevo sería peor que dejarlo vacío: parece que el sistema
+                    # ya sabe algo de su tienda cuando no sabe nada.
+                    if cliente.slug == por_defecto.slug and db.query(Space).count() == 0:
+                        seed_spaces(db)
+                finally:
+                    db.close()
+            except Exception as e:
+                # El texto del driver va al log (trae servidor y usuario), no a
+                # la respuesta: el pedido ve `CLIENTE_DEGRADADO`.
+                logger.exception("La base del cliente %s no se pudo preparar: queda degradado", cliente.slug)
+                marcar_degradado(cliente.slug, f"{type(e).__name__}: {e}")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from app.clientes import listar, motor_de, registrar_el_de_siempre, sesion_de
+    from app.observabilidad import configurar_logging, configurar_sentry
 
-    # La base por defecto primero: es donde vive la lista de clientes, así que
-    # tiene que tener sus tablas antes de poder preguntarle quiénes son.
-    Base.metadata.create_all(bind=engine)
-    por_defecto = registrar_el_de_siempre()
-
-    for cliente in listar():
-        Base.metadata.create_all(bind=motor_de(cliente))
-        db = sesion_de(cliente)
-        try:
-            ensure_default_config(db)
-            # Los pasillos de ejemplo se siembran SÓLO en la base de siempre.
-            # Darle "Licores 24H" y "Arroz" a un supermercado nuevo sería peor
-            # que dejarlo vacío: parece que el sistema ya sabe algo de su tienda
-            # cuando no sabe nada.
-            if cliente.slug == por_defecto.slug and db.query(Space).count() == 0:
-                seed_spaces(db)
-        finally:
-            db.close()
+    configurar_logging()
+    configurar_sentry()
+    _preparar_bases()
     # Background task: lease expiry + email reminders (runs immediately, then every 12 h)
     _stop_mantenimiento.clear()  # los tests abren y cierran la app muchas veces
     maintenance_task = asyncio.create_task(_lease_maintenance_loop())
+    correos_task = asyncio.create_task(_bucle_de_correos())
     yield
     _stop_mantenimiento.set()  # el hilo en vuelo se retira en el próximo cliente
     maintenance_task.cancel()  # y esto corta el sleep de 12 horas
-    try:
-        await maintenance_task
-    except asyncio.CancelledError:
-        pass
+    correos_task.cancel()
+    for tarea in (maintenance_task, correos_task):
+        try:
+            await tarea
+        except asyncio.CancelledError:
+            pass
     # Y se espera al hilo hasta que de verdad termine: la app no está apagada
     # mientras un hilo suyo siga leyendo bases. Con tope, para que un cliente
     # con la base colgada no deje al proceso sin poder salir.
@@ -350,6 +512,14 @@ app.add_middleware(
 # de `cabeceras_de_seguridad` (registrado más abajo) y su 413 sale con CSP y
 # el resto de las cabeceras, como cualquier otra respuesta.
 app.add_middleware(LimiteDeCuerpo)
+
+# Compresión (P2-5): el sondeo de cada pestaña y los planos son JSON que se
+# achican diez veces. Desde 1 KB: lo más chico no vale la cuenta. Va por DENTRO
+# de las cabeceras de seguridad (registradas más abajo), que siguen saliendo en
+# toda respuesta. Una respuesta que ya viene comprimida (`Content-Encoding`) no
+# se toca, ni las fotos ni el ZIP de la copia (la lista de Starlette). Nivel 6:
+# casi lo mismo que el 9 por mucha menos CPU, con un solo worker.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 # ─── Cabeceras de seguridad ──────────────────────────────────────────────────
 #
@@ -512,7 +682,55 @@ app.include_router(bitacora_routes.router, prefix="/api")
 
 @app.get("/api/health")
 def health():
+    """Liveness: el proceso está vivo y atiende. No toca ninguna base, a
+    propósito: si la base se cae, reiniciar el proceso no la arregla."""
     return {"status": "ok", "app": "RECABRA API"}
+
+
+@app.get("/api/health/ready")
+def health_ready():
+    """Readiness (P1-3): ¿puede atender de verdad? `SELECT 1` contra el
+    registro —sin él no se resuelve ningún pedido—. 503 si no contesta. Es el
+    `healthCheckPath` de Render: un deploy cuya instancia nueva no llega a la
+    base no recibe tráfico, y la anterior sigue atendiendo.
+
+    No dice qué falló ni qué clientes están degradados: es público. Eso está en
+    el log y en `GET /api/plataforma/salud` (operadores)."""
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+
+    from app.clientes import degradados
+
+    try:
+        with engine.connect() as cx:
+            cx.execute(text("SELECT 1"))
+    except Exception:
+        logger.warning("Health ready: el registro no responde", exc_info=True)
+        return JSONResponse(status_code=503, content={"status": "error", "app": "RECABRA API"})
+    return {"status": "ok", "app": "RECABRA API", "clientes_degradados": len(degradados())}
+
+
+@app.post("/api/interno/mantenimiento", include_in_schema=False)
+def mantenimiento_por_cron(request: Request):
+    """La vuelta de mantenimiento, pedida desde afuera (P1-5): el cron de
+    GitHub (`.github/workflows/mantenimiento.yml`) la llama a hora fija, y de
+    paso despierta al servicio si el plan gratuito lo durmió.
+
+    **La puerta:** la cabecera `X-Mantenimiento-Token` tiene que ser igual a
+    `MANTENIMIENTO_TOKEN`, comparada en tiempo constante. Sin la variable
+    puesta el endpoint no existe (404): no hay token por defecto que adivinar.
+    Corre en un hilo del pool (endpoint `def`), con el mismo candado de líder
+    que el hilo de fondo: si ya hay una vuelta corriendo, contesta
+    `corrio: false` y no hace nada."""
+    import hmac
+
+    esperado = os.getenv("MANTENIMIENTO_TOKEN", "").strip()
+    if not esperado:
+        raise HTTPException(status_code=404, detail="Not Found")
+    dado = (request.headers.get("x-mantenimiento-token") or "").strip()
+    if not hmac.compare_digest(dado.encode("utf-8"), esperado.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Token de mantenimiento inválido")
+    return correr_mantenimiento("cron")
 
 
 # ─── Static frontend (production only) ───────────────────────────────────────
