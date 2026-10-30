@@ -52,7 +52,28 @@ export const saveLayout = (
     })
     .then((r) => r.data);
 
-/** Drop a sede's snapshot so it stops coming back on every pull. */
+/** Una sede borrada que todavía se puede restaurar (auditoría P2-18). */
+export interface SedeEnPapelera {
+  id: number;
+  sede: string;
+  borrada_en: string;
+  vence_en: string;
+  borrada_por: string | null;
+  muebles: number;
+  contratos: number;
+  reservas_canceladas: number;
+}
+
+/** La papelera de sedes (30 días). Sólo administración. */
+export const fetchPapelera = (): Promise<{ dias: number; sedes: SedeEnPapelera[] }> =>
+  client.get("/layout/papelera").then((r) => r.data);
+
+/** Devuelve la sede: el plano, sus códigos y los contratos que siguen en fecha. */
+export const restaurarSede = (id: number): Promise<{ sede: string; espacios: number; contratos: number; reservas_canceladas: number }> =>
+  client.post(`/layout/papelera/${id}/restaurar`).then((r) => r.data);
+
+/** Drop a sede's snapshot so it stops coming back on every pull. The server
+ *  keeps it 30 days in the recycle bin (`fetchPapelera`). */
 export const deleteLayout = (sede: string): Promise<void> =>
   client.delete(`/layout/${encodeURIComponent(sede)}`).then(() => {});
 

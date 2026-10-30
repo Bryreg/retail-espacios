@@ -3058,7 +3058,8 @@ export function DeleteSedeDialog({
         <div style={{ padding: "14px 18px 4px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
           <p style={{ margin: 0 }}>
             Se borra el plano completo de esta sede{" "}
-            <strong style={{ color: "var(--ink-1)" }}>en todos los computadores</strong>. No se puede deshacer.
+            <strong style={{ color: "var(--ink-1)" }}>en todos los computadores</strong>. Queda 30 días en la
+            papelera de Ajustes › Sedes, desde donde se restaura.
           </p>
 
           <div

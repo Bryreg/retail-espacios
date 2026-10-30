@@ -19,6 +19,7 @@ from app.services import reglas_participacion as reglas
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de, anotar_historial
 from app.services.catalogo_muebles import tipo_base
+from app.services import papelera
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.services.renombre_sede import (
     RenombreRechazado,
@@ -1303,6 +1304,35 @@ def renombrar_sede(
     )
 
 
+# ─── La papelera de sedes (auditoría P2-18) ───────────────────────────────────
+# Literal antes de "/{sede}", como manda la regla de este router.
+
+
+@router.get("/papelera")
+def papelera_de_sedes(response: Response, rol: str = Depends(require_admin), db: Session = Depends(get_db)):
+    """Las sedes borradas que todavía se pueden restaurar (30 días). Sólo
+    administración: dice cuántos contratos cerró cada borrado."""
+    _no_store(response)
+    return {"dias": papelera.DIAS_EN_LA_PAPELERA, "sedes": papelera.listar(db)}
+
+
+@router.post("/papelera/{papelera_id}/restaurar")
+def restaurar_sede(papelera_id: int, request: Request, rol: str = Depends(require_admin),
+                   db: Session = Depends(get_db)):
+    """Devuelve una sede borrada: el plano, sus espacios con sus códigos y los
+    contratos que el borrado cerró y siguen en fecha (``services/papelera.py``).
+    Todo o nada, con la bitácora adentro."""
+    try:
+        hecho = papelera.restaurar(db, papelera_id, actor_de(request, rol))
+        anotar(db, request, rol, "sede.restaurada", entidad="sede", entidad_id=hecho["sede"],
+               detalle=f"{hecho['espacios']} espacios · {hecho['contratos']} contratos vuelven a correr")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return hecho
+
+
 @router.get("/{sede}", response_model=LayoutOut)
 def get_layout(sede: str, response: Response, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     """Return the fixture layout for a single sede (empty list if none saved yet)."""
@@ -1693,6 +1723,8 @@ def delete_layout(
     of a sede that no longer exists.
     """
     snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+    # Antes de borrar: el plano como estaba va a la papelera (P2-18, abajo).
+    plano_de_antes = LayoutSnapshot(sede=snap.sede, fixtures_json=snap.fixtures_json) if snap else None
     if snap:
         db.delete(snap)
 
@@ -1718,6 +1750,11 @@ def delete_layout(
     if remaining != sedes:
         set_config(db, SEDES_KEY, json.dumps(remaining))
         set_config(db, SETTINGS_UPDATED_KEY, datetime.now(timezone.utc).isoformat())
+
+    # La papelera (auditoría P2-18): el plano y lo que se cerró, por 30 días,
+    # para restaurarlo desde Ajustes › Sedes. En la misma transacción.
+    if plano_de_antes is not None or archived["space_ids"] or remaining != sedes:
+        papelera.guardar(db, sede, plano_de_antes, archived, remaining != sedes, actor_de(request, rol))
 
     # Es el borrado más grande que ofrece el sistema —se lleva el plano, y con
     # él la sede de la lista— así que va a la bitácora con el estropicio contado.
