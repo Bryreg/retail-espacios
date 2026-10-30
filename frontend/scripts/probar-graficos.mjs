@@ -383,14 +383,20 @@ try {
        cuando el último mes ES el peor lo dice la anotación y nada más; el 18,
        que cuando no lo es se rotula con su SALDO y con su signo. */
     const div = await pag.evaluate(() => {
-      /* Sin la escala del eje, que vive en x=56 y sí lleva su «+$» a propósito
-         («+$ 2,0 M» arriba del cero, «−$ 2,0 M» abajo): acá se juzga lo que se
-         dibuja SOBRE los meses. */
-      const leer = (id) =>
-        [...document.querySelectorAll(`[data-caso="${id}"] svg text`)]
+      /* Sin la escala del eje, que vive a la izquierda de la grilla y sí lleva
+         su «+$» a propósito («+$ 2.000.000» arriba del cero, «−$ 2.000.000»
+         abajo): acá se juzga lo que se dibuja SOBRE los meses. El borde es el
+         x1 de la grilla, que crece con el rótulo más ancho (plata completa,
+         nunca «M»). */
+      const leer = (id) => {
+        const caso = document.querySelector(`[data-caso="${id}"] svg`);
+        if (!caso) return [];
+        const borde = Math.min(...[...caso.querySelectorAll("line")].map((l) => parseFloat(l.getAttribute("x1") || "0")));
+        return [...caso.querySelectorAll("text")]
           .map((t) => ({ t: (t.textContent || "").trim(), x: parseFloat(t.getAttribute("x") || "0") }))
-          .filter((o) => o.x > 60)
+          .filter((o) => o.x > borde)
           .map((o) => o.t);
+      };
       return { peor: leer("17"), noPeor: leer("18") };
     });
     const sueltos = div.peor.filter((t) => /\$/.test(t) && !/peor saldo/.test(t));

@@ -1701,7 +1701,8 @@ await prueba("«Borrar sede» nombra las reservas provisionales que se cancelan;
     "Los contratos y las reservas provisionales de participación de «NAVE», si tiene, pasan a «X». Los enlaces de montaje enviados desde el 2 de octubre siguen andando; los anteriores hay que volver a mandarlos.");
   // El tipo del cliente lleva el dato del servidor, y el diálogo lo muestra.
   assert.match(fuente("api/layout.ts"), /export interface DeleteImpact \{[^}]*reservas_vivas: number;/);
-  const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
+  // Los diálogos de la sede viven en `DialogosDeSede.tsx` (P2-20: Ajustes los abre sin bajar el 2D).
+  const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx") + "\n" + fuente("components/FloorPlan2D/DialogosDeSede.tsx"));
   assert.match(plano, /\{lineasDelImpacto\(impact\)\.map\(\(linea\) => \(/, "«Borrar sede» no muestra lo que cuenta el servidor");
   assert.ok(!/impact\.active_leases\} contrato/.test(plano), "quedó la línea vieja que sólo contaba contratos");
   // El renombre pregunta ANTES de borrar: lee el impacto y sólo sin aviso renombra directo.
@@ -1763,7 +1764,8 @@ await prueba("fase 2 · I5: el renombre no borra la sede: sin `deleteLayout` en 
   assert.deepEqual(IMP.lineasDelImpacto({ spaces: 4, active_leases: 2, reservas_vivas: 3 }), [
     "2 contratos activos se cerrarán", "3 reservas provisionales de participación se cancelan"]);
   // El diálogo del 2D: sin «borra», «se cancelan», «Renombrar igual» ni el botón rojo de peligro.
-  const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx"));
+  // Los diálogos de la sede viven en `DialogosDeSede.tsx` (P2-20: Ajustes los abre sin bajar el 2D).
+  const plano = sinComentTs2(fuente("components/FloorPlan2D/FloorPlan2D.tsx") + "\n" + fuente("components/FloorPlan2D/DialogosDeSede.tsx"));
   const a = plano.indexOf("function RenombrarSedeDialog("), b = plano.indexOf("function RenombreRechazadoDialog(");
   assert.ok(a >= 0 && b > a, "no están los dos diálogos del renombre");
   assert.ok(!/borra|se cancelan|Renombrar igual|deshacer|var\(--danger\)/.test(plano.slice(a, b)),
@@ -2556,7 +2558,7 @@ await prueba("el 3D de Distribuir es el del editor: el Canvas vive en un anfitri
   const panel = codigo6b("DistribuirCara");
   const ranura = sinComentTs2(fuente("components/RanuraDelLienzo.tsx"));
   // El Canvas se dibuja por un portal adentro del anfitrión, y el anfitrión se enchufa en una ranura.
-  assert.match(editor, /\{anfitrionDelLienzo && createPortal\(\s*<CanvasErrorBoundary>\s*<Canvas\b/, "el Canvas no va por el portal del anfitrión");
+  assert.match(editor, /\{anfitrionDelLienzo && estadoDelLienzo !== "sin_webgl" && createPortal\(\s*<CanvasErrorBoundary key=\{vueltaDelLienzo\} irAl2D=\{irAl2D\}>\s*<Canvas\b/, "el Canvas no va por el portal del anfitrión");
   assert.match(editor, /<\/CanvasErrorBoundary>,\s*anfitrionDelLienzo\)\}/);
   assert.equal((editor.match(/<Canvas\b/g) || []).length, 1, "hay más de un Canvas en el editor (un 3D nuevo)");
   assert.match(editor, /\{!distribucionVisible && <RanuraDelLienzo anfitrion=\{anfitrionDelLienzo\} className="absolute inset-0" \/>\}/);

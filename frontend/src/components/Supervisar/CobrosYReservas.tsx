@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { esFallaDeLectura } from "../../utils/sinLeer";
 import { Check, X } from "lucide-react";
 import { describeError } from "../../api/client";
 import { cargarCorte, cobrosPorVentas, cortesPendientes, type CobroPorVentas, type CortePendiente } from "../../api/cobros";
@@ -128,17 +129,20 @@ export function useCobrosPorVentas({ sede, activo }: { sede: string; activo: boo
    *  leer —el canon vigente, «Quién paga» y la tabla lo suman— sin volver a
    *  leer los pendientes, así la fila queda con su «→ $ monto». */
   const [vueltaDeCobros, setVueltaDeCobros] = useState(0);
+  /** Qué lectura falló (auditoría P2-15): los cortes pendientes o los cobros. */
+  const [sinLeerCortes, setSinLeerCortes] = useState(false);
+  const [sinLeerCobros, setSinLeerCobros] = useState(false);
   useEffect(() => {
     setCargados({});
-    if (!activo || !sede) { setPendientes([]); return; }
+    if (!activo || !sede) { setPendientes([]); setSinLeerCortes(false); return; }
     let vivo = true;
     cortesPendientes(sede)
-      .then((r) => { if (vivo) setPendientes(Array.isArray(r) ? r : []); })
-      .catch(() => { if (vivo) setPendientes([]); });
+      .then((r) => { if (vivo) { setPendientes(Array.isArray(r) ? r : []); setSinLeerCortes(false); } })
+      .catch((e) => { if (vivo) { setPendientes([]); setSinLeerCortes(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
   }, [sede, activo, vuelta]);
   useEffect(() => {
-    if (!activo || !sede) { setVigentes(0); setCobros([]); return; }
+    if (!activo || !sede) { setVigentes(0); setCobros([]); setSinLeerCobros(false); return; }
     let vivo = true;
     cobrosPorVentas(sede)
       .then((r) => {
@@ -147,8 +151,9 @@ export function useCobrosPorVentas({ sede, activo }: { sede: string; activo: boo
         const todos = Array.isArray(r) ? r : [];
         setCobros(todos);
         setVigentes(todos.filter((c) => c.desde <= hoy && hoy <= c.hasta).length);
+        setSinLeerCobros(false);
       })
-      .catch(() => { if (vivo) { setVigentes(0); setCobros([]); } });
+      .catch((e) => { if (vivo) { setVigentes(0); setCobros([]); setSinLeerCobros(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
   }, [sede, activo, vuelta, vueltaDeCobros]);
   const marcarCargado = useCallback((c: CortePendiente, monto: number) => {
@@ -158,7 +163,10 @@ export function useCobrosPorVentas({ sede, activo }: { sede: string; activo: boo
   }, []);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
   const porCargar = useMemo(() => pendientes.filter((c) => !(claveDeCorte(c) in cargados)).length, [pendientes, cargados]);
-  return { pendientes, cargados, marcarCargado, porCargar, vigentes, cobros, recargar };
+  // Los cortes y los cobros se leen juntos (`recargar` relee los dos): con
+  // que falle uno, la lista de «Ventas por cargar» o el canon pueden mentir.
+  const sinLeer = sinLeerCortes || sinLeerCobros;
+  return { pendientes, cargados, marcarCargado, porCargar, vigentes, cobros, recargar, sinLeer };
 }
 
 /** «Ventas por cargar»: cada corte con su campo «vendido» y «Guardar». */
@@ -278,17 +286,18 @@ function CorteParaCargar({ corte, sede, monto, onCargado }: {
 /** Las reservas vivas de la sede (de la que caduca primero a la última). */
 export function useReservasDeEspacio({ sede, activo }: { sede: string; activo: boolean }) {
   const [vivas, setVivas] = useState<ReservaDeEspacio[]>([]);
+  const [sinLeer, setSinLeer] = useState(false);
   const [vuelta, setVuelta] = useState(0);
   useEffect(() => {
-    if (!activo || !sede) { setVivas([]); return; }
+    if (!activo || !sede) { setVivas([]); setSinLeer(false); return; }
     let vivo = true;
     reservasDeEspacio(sede)
-      .then((r) => { if (vivo) setVivas(Array.isArray(r) ? r : []); })
-      .catch(() => { if (vivo) setVivas([]); });
+      .then((r) => { if (vivo) { setVivas(Array.isArray(r) ? r : []); setSinLeer(false); } })
+      .catch((e) => { if (vivo) { setVivas([]); setSinLeer(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
   }, [sede, activo, vuelta]);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
-  return { vivas, recargar };
+  return { vivas, recargar, sinLeer };
 }
 
 /** «Reservas»: cada una con Confirmar (con el precio que se guardó al

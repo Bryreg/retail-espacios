@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AvisoSinLeer } from "../components/AvisoSinLeer";
+import { esFallaDeLectura } from "../utils/sinLeer";
 import { Check, MapPin, X } from "lucide-react";
 import { useFixtureStore, selectFixtures } from "../store/fixtureStore";
 import { confirmMount, fetchMounts, latestByCode, MOTIVO_LABEL, type MountConfirmation, type MountMotivo } from "../api/mounts";
@@ -156,23 +158,55 @@ export default function MountView({
     [todasLasSedes, sedes, activeSede],
   );
 
+  /** Qué lecturas fallaron (auditoría P2-15): sin los reportes, todo se ve
+   *  «sin montar»; sin los planogramas, faltan filas. No es «no hay nada». */
+  const [sinLeer, setSinLeer] = useState<{ reportes: boolean; avisos: boolean; planogramas: boolean }>(
+    { reportes: false, avisos: false, planogramas: false });
+  const [vueltaDeReportes, setVueltaDeReportes] = useState(0);
   useEffect(() => {
+    let vivo = true;
     fetchMounts()
-      .then(setMounts)
-      .catch(() => setMounts([]))
-      .finally(() => setCargando(false));
-  }, []);
+      .then((m) => { if (vivo) { setMounts(m); setSinLeer((x) => ({ ...x, reportes: false })); } })
+      .catch((e) => { if (vivo) { setMounts([]); setSinLeer((x) => ({ ...x, reportes: esFallaDeLectura(e) })); } })
+      .finally(() => { if (vivo) setCargando(false); });
+    return () => { vivo = false; };
+  }, [vueltaDeReportes]);
 
   useEffect(() => {
     let vivo = true;
+    /** Una sede que falla no tumba a las otras, pero se anota. */
+    let fallo = { avisos: false, planogramas: false };
     if (isAdmin) {
-      Promise.all(sedesALaVista.map((s) => montajesPendientes(s).catch(() => [] as MontajePendiente[])))
-        .then((ls) => { if (vivo) setAvisos(new Map(ls.flat().map((m) => [m.espacio.toUpperCase(), m]))); });
+      Promise.all(sedesALaVista.map((s) => montajesPendientes(s).catch((e) => {
+        if (esFallaDeLectura(e)) fallo = { ...fallo, avisos: true };
+        return [] as MontajePendiente[];
+      })))
+        .then((ls) => {
+          if (!vivo) return;
+          setAvisos(new Map(ls.flat().map((m) => [m.espacio.toUpperCase(), m])));
+          setSinLeer((x) => ({ ...x, avisos: fallo.avisos }));
+        });
     }
-    Promise.all(sedesALaVista.map((s) => leerMontajesDePlanogramas(s).then((cs) => cs.map((c) => ({ ...c, sede: s }))).catch(() => [])))
-      .then((ls) => { if (vivo) setPlanogramas(ls.flat()); });
+    Promise.all(sedesALaVista.map((s) => leerMontajesDePlanogramas(s).then((cs) => cs.map((c) => ({ ...c, sede: s }))).catch((e) => {
+      if (esFallaDeLectura(e)) fallo = { ...fallo, planogramas: true };
+      return [];
+    })))
+      .then((ls) => {
+        if (!vivo) return;
+        setPlanogramas(ls.flat());
+        setSinLeer((x) => ({ ...x, planogramas: fallo.planogramas }));
+      });
     return () => { vivo = false; };
   }, [isAdmin, sedesALaVista, recargar]);
+  const queNoSeLeyo = [
+    ...(sinLeer.reportes ? ["los reportes de montaje"] : []),
+    ...(sinLeer.avisos ? ["los avisos que esperan"] : []),
+    ...(sinLeer.planogramas ? ["los montajes de planogramas"] : []),
+  ];
+  const reintentar = () => {
+    if (sinLeer.reportes) setVueltaDeReportes((n) => n + 1);
+    if (sinLeer.avisos || sinLeer.planogramas) setRecargar((n) => n + 1);
+  };
 
   const ultimo = useMemo(() => latestByCode(mounts), [mounts]);
   const porCodigo = useMemo(() => reportesPorCodigo(mounts), [mounts]);
@@ -407,6 +441,8 @@ export default function MountView({
           <p className="mj-sub">
             {cargando || !layoutListo
               ? "Cargando espacios…"
+              : queNoSeLeyo.length > 0
+              ? `${cuenta.sin_montar} sin reporte a la vista`
               : cuenta.sin_montar === 0
               ? "No hay espacios pendientes de montaje."
               : `${cuenta.sin_montar} por montar`}
@@ -466,6 +502,8 @@ export default function MountView({
           </button>
         ))}
       </div>
+
+      <AvisoSinLeer que={queNoSeLeyo} onReintentar={reintentar} />
 
       {visibles.length === 0 ? (
         <p className="mj-vacio">{filas.length === 0 ? "No hay montajes en esta sede." : "Ninguno en este filtro."}</p>

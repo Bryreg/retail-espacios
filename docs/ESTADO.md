@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-30: **auditoría, tanda «Datos e indicadores»** — un solo canon del mes
+Última actualización: 2026-10-30: **auditoría, tanda «Pantalla, accesibilidad y E2E»** — la app ya no
+queda en blanco (límite de error con «Recargar» y recarga sola UNA vez ante una versión nueva),
+recorridos E2E con Playwright y axe en cada PR (job «E2E» del CI), cada módulo en su propio pedazo
+(el Inicio baja 312 kB gzip en vez de 550), «no se pudo leer» con «Reintentar», el 3D sin WebGL lo
+dice, react-router 7 y la imagen para compartir. Ver *Auditoría: pantalla, accesibilidad y E2E
+(2026-10-30)*.
+
+Antes, ese mismo día: **auditoría, tanda «Datos e indicadores»** — un solo canon del mes
 (servidor y navegador, con casos compartidos), las repisas del 3D de sólo lectura con «Pasar a
 contrato», bajas con fecha, papelera de sedes de 30 días, pesos enteros y bitácora en toda escritura
 de administración. Ver *Auditoría: datos e indicadores (2026-10-30)*.
@@ -756,6 +763,12 @@ cd backend && DATABASE_URL="sqlite:///./dev.db" JWT_SECRET=dev uvicorn app.main:
 cd frontend && npm install --legacy-peer-deps && npm run dev
 ```
 
+Los recorridos E2E (Playwright + axe; ver *Auditoría: pantalla, accesibilidad y E2E*):
+
+```bash
+cd frontend && npm run build && E2E_PYTHON=$(which python3) npm run e2e
+```
+
 Para que dos máquinas compartan datos en desarrollo, creá `frontend/.env.local`:
 
 ```
@@ -791,6 +804,14 @@ de cuenta, la de la copia (`copia.py`) y las sesiones cerradas con «Salir» (`a
 cargadas de `sesiones_cerradas`). Con `--workers 2` un «Salir» o una desactivación valdría sólo en
 el proceso que la atendió. Antes de subir workers: mover esas cachés a la base (o a Redis) o
 releerlas en cada pedido (auditoría pre-lanzamiento, P3-3).
+
+**La pantalla no queda en blanco ni miente vacía, y CI lo recorre** (desde el 2026-10-30,
+auditoría P1-19/P2-15/P2-21). Todo módulo nuevo va adentro del `LimiteDeError` y del `<main>` de
+`Dashboard.tsx`, y entra por `lazy()` (un import estático de una pantalla desde el armazón o desde
+Ajustes la vuelve a meter en el pedazo de entrada). Una lista que lee del servidor distingue
+«vacía» de «no se pudo leer» (`sinLeer` + `AvisoSinLeer`). El job «E2E» corre los recorridos y axe
+en cada PR: 0 violaciones serias o críticas, y un flujo principal que cambia actualiza su
+recorrido en el mismo PR. Ver *Auditoría: pantalla, accesibilidad y E2E (2026-10-30)*.
 
 **Una sola verdad: el plano guarda lo que ES el mueble, la base lo que se le VENDIÓ.**
 Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto — ver
@@ -1573,6 +1594,92 @@ paréntesis). Lo que cambia para quien toque estas áreas:
   ejemplo» (P3-7); `planogramas.resumen` sin N+1 (P3-11).
 
 ---
+
+### Auditoría: pantalla, accesibilidad y E2E (2026-10-30)
+
+La tanda 4 de `docs/auditoria-pre-lanzamiento-recabra.md` (IDs entre paréntesis). Lo que cambia
+para quien toque la pantalla:
+
+- **Red de seguridad (P1-19).** `components/ErrorDeApp.tsx`: `LimiteDeError nivel="app"` envuelve
+  la app entera en `main.tsx` (pantalla con `<main>`, `<h1>`, «Recargar» e «Ir al comienzo») y
+  `nivel="modulo"` envuelve la pantalla de cada módulo en `Dashboard.tsx` (el menú sigue andando;
+  se rearma al cambiar de módulo). **Una versión nueva con la pestaña abierta**:
+  `vite:preloadError` (instalado en `main.tsx`) y un `import()` de un `lazy()` que falla recargan
+  UNA vez (marca `recabra-recarga-por-version` en `sessionStorage`, vale 5 minutos: sin bucle); la
+  segunda vez, la pantalla de recuperación. Sin `sessionStorage` no recarga sola.
+- **Recorridos E2E en CI (P1-19).** `frontend/e2e/`, con `@playwright/test` 1.56.1 (la versión del
+  Chromium que trae el entorno) y `@axe-core/playwright`. `npm run build && npm run e2e` levanta el
+  backend DE VERDAD sirviendo el `dist` (`e2e/servidor.mjs`: SQLite nueva en una carpeta temporal,
+  `ENV=test`, `JWT_SECRET` de la prueba, `LOGIN_LEGADO=1` con claves propias, sin correo). Cada
+  recorrido siembra su propia sede por la API (`e2e/sembrar.ts`); nada toca la base del repo.
+  Recorridos: entrar y salir · vender · editar · cancelar · distribuir · montar por enlace (el
+  enlace se firma como el del correo, con el secreto de la prueba) · el trabajador sin plata
+  (pantalla y respuestas de `/api`) · la recuperación (pedazo que falta → recarga una vez →
+  «Recargar»; error de la app; lista que no se lee; tarifas; 3D sin WebGL) · axe. Job **«E2E ·
+  recorridos y accesibilidad»** en `.github/workflows/deploy.yml`, en cada PR y en `main`
+  (`deploy-vps` lo espera). Localmente: `E2E_PYTHON=<python con el backend> npm run e2e`;
+  `PW_CHROMIUM` si el Chromium no es el de esa versión. **Regla nueva:** un flujo principal que
+  cambia de botones o de textos actualiza su recorrido en el mismo PR.
+- **Accesibilidad (P2-21).** Regla: **0 violaciones serias o críticas de axe** en la portada, la
+  política, el ingreso, Inicio, Contratos, Indicadores, Plano, Caras, Montajes y Pendientes abierta,
+  en claro y en oscuro (`e2e/accesibilidad.e2e.ts`; las moderadas quedan anotadas en el informe).
+  El área de los módulos es el `<main>` del tablero (`.area-pantallas`); el módulo que no tiene su
+  `<h1>` a la vista recibe uno `sr-only` (`CON_TITULO_PROPIO` en `Dashboard.tsx`: Inicio, Caras y
+  Mis muebles ponen el suyo). Login a página entera y la política, con `<main>`. Arreglos: avatar en
+  tinta sobre el tinte (`.avatar-app`), nombre del `progressbar` de la configuración inicial, el
+  plano de la landing es `role="group"` (tiene muebles que se enfocan adentro), `--fg-3` oscuro de
+  la landing `#74868F` y los pasos inactivos a `.8` de opacidad, «Mapa de decisión» es `<h2>`, y la
+  aclaración de las cuentas de Caras en `--ink-2`.
+- **Chunks por ruta (P2-20).** `Dashboard` es el armazón; `DashboardView`, `FloorPlan2D` y
+  `MountView` son `lazy()`, y dentro de la pantalla comercial también Vender (`ModoVender`), las
+  pestañas de Indicadores, la propuesta, la planilla y el visor de archivos; en el armazón, Ctrl K,
+  la ayuda, Tarifas, Temporadas y las secciones de Ajustes. **`xlsx` va sólo por `import()`** (al
+  abrir una planilla o un Excel): `leerFecha` usa `deSerialDeExcel` (igual a
+  `XLSX.SSF.parse_date_code`, lo compara `probar-planilla`). Los diálogos de la sede viven en
+  `FloorPlan2D/DialogosDeSede.tsx` (Ajustes › Sedes los abre sin bajar el 2D). Medido con
+  `npm run medir:chunks` (gzip 9, el pedazo y todo lo que importa estático):
+
+  | Recorrido | Antes | Después |
+  |---|---|---|
+  | Portada sin sesión | 118,4 kB | 120,0 kB (react-router 7 y el límite de error) |
+  | Inicio con sesión | 550,5 kB | 312,3 kB |
+  | Contratos (Vender) | 550,5 kB | 337,2 kB |
+  | Indicadores (mapa) | 550,5 kB | 322,7 kB |
+  | Plano 2D | 550,5 kB | 257,8 kB |
+  | Montajes | 550,5 kB | 243,3 kB |
+
+  El pedazo más grande que se baja al entrar es el de entrada (120 kB; antes `Dashboard`, 326,5 kB).
+  **Lo que falta para < 250 kB en total en el Inicio:** partir `DashboardView.tsx` (84 kB gzip, 8 700
+  líneas) por modo en archivos propios, y sacar la landing (≈ 40 kB) del pedazo de entrada para quien
+  ya tiene sesión, lo que choca con la decisión de la Fase 9 (la landing es lo único estático, por su
+  LCP): se decide con el dueño.
+- **«Vacío» no es «no se pudo leer» (P2-15).** Cada lectura de Pendientes (`useCobrosPorVentas`,
+  `useReservasDeEspacio`, `useFaltaPlanometria`, `usePlanogramasPorRevisar`, `usePrecioSinForma`,
+  la importación del plano y los reportes de montaje) devuelve `sinLeer`; la lista muestra
+  `AvisoSinLeer` («No se pudo leer … · Reintentar») y no dice «Nada para hoy» mientras falte algo.
+  Montajes igual (reportes, avisos y planogramas). Las tarifas: `tarifasSinLeer` en el store y el
+  editor dice «No se pudieron leer las tarifas» con «Reintentar» (antes «Cargando…» para siempre).
+  Un 404 (servidor sin la ruta) o un 401/403 siguen siendo «vacío» (`utils/sinLeer.ts`).
+- **El 3D sin WebGL (P2-19).** `StoreEditor3D/SinLienzo.tsx`: sin WebGL el lienzo ni se monta y se
+  dice la causa (cómo prender la aceleración) con «Abrir el plano 2D»; `webglcontextlost` muestra «El
+  3D se detuvo» con «Volver a abrir el 3D»; el límite del lienzo dice la causa. El visor de Vender
+  no ofrece el 2D (lo mira el proveedor).
+- **Guardado al cerrar la pestaña (P3-9).** `utils/guardadoAlCerrar.ts`: se manda con `keepalive`
+  lo que entra en los 64 KiB que el navegador permite en vuelo (de la sede más chica a la más
+  grande, sin lo comercial); lo que no entra queda `dirty`; con `beforeunload` se pide confirmar la
+  salida y se larga el guardado normal, y si no, sube solo al volver a abrir la app
+  (`startAutoSync`). `sendBeacon` no sirve: no lleva `Authorization` ni hace `PUT`.
+- **Dependencias (P2-22).** `react-router-dom` 7.18.5 (el open redirect); `uuid` 11.1.1 por
+  `overrides` (lo arrastraba `exceljs`). `npm audit --omit=dev`: 0. `npm install` sigue pidiendo
+  `--legacy-peer-deps` y el lockfile está al día con `npm ci`.
+- **`og:image` (P3-14).** `public/og-recabra.png` (1200 × 630): la portada de este repo con el plano
+  de ejemplo y la leyenda, sin datos de nadie. Se rehace con `node scripts/generar-og.mjs` sobre un
+  `vite preview`. `probar-limpieza` la tiene en la lista de lo público.
+- **Pruebas de comportamiento (P2-24).** `probar-pantalla` (nueva, en `npm run probar`) importa los
+  módulos y dibuja los componentes con `react-dom/server` en vez de buscar texto en el código; lo
+  que pide navegador va en los recorridos.
+- `probar-graficos` falla en este entorno con 4 «textos desbordados» también en `integ-tanda3`, sin
+  estos cambios: es de las fuentes del Chromium de la máquina, no de la pantalla.
 
 ## Qué está hecho
 

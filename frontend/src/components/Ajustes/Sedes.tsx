@@ -5,7 +5,7 @@ import { fetchDeleteImpact, fetchPapelera, restaurarSede, type DeleteImpact, typ
 import { diaCorto } from "../../utils/supervision";
 import { hoyEnColombia } from "../../utils/canon";
 import { avisoDelRenombre } from "../../utils/impactoDeSede";
-import { DeleteSedeDialog, RenombrarSedeDialog, RenombreRechazadoDialog } from "../FloorPlan2D/FloorPlan2D";
+import { DeleteSedeDialog, RenombrarSedeDialog, RenombreRechazadoDialog } from "../FloorPlan2D/DialogosDeSede";
 import { isRentable } from "../../types/fixtures";
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;

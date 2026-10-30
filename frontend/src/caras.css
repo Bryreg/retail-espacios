@@ -34,6 +34,9 @@
 .cs-cuenta b { font-size: var(--t-xl, 26px); line-height: 1.1; }
 .cs-cuenta-t { font-size: var(--t-sm); font-weight: 700; }
 .cs-cuenta-x { font-size: var(--t-xs); color: var(--ink-3); }
+/* Sobre el tinte de «falta» y de «lista», `--ink-3` no llegaba a 4,5:1 en el
+   oscuro (axe, auditoría P2-21): la aclaración va en `--ink-2`. */
+.cs-cuenta.falta .cs-cuenta-x, .cs-cuenta.lista .cs-cuenta-x { color: var(--ink-2); }
 .cs-cuenta.falta { background: rgb(var(--entra-suave-rgb)); border-color: rgb(var(--entra-borde-rgb)); }
 .cs-cuenta.falta .cs-cuenta-t { color: rgb(var(--entra-txt-rgb)); }
 .cs-cuenta.en_curso .cs-cuenta-t { color: var(--signal-ink); }

@@ -11,6 +11,9 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+# Lo que dejan los recorridos E2E (Playwright): capturas, trazas, informe.
+frontend/e2e-resultados/
+frontend/e2e-informe/
 docs/maquetas/generadores/node_modules
 docs/maquetas/generadores/libera.svg
 

@@ -31,7 +31,10 @@ console.log("Lo público");
 
 prueba("public/ sólo tiene lo que el sitio necesita servir sin sesión", () => {
   // Agregar algo acá es publicarlo: que sea una decisión, no un descuido.
-  const permitidos = new Set(["_redirects", "robots.txt"]);
+  // `og-recabra.png`: la imagen de la tarjeta compartida (auditoría P3-14),
+  // una captura de la landing con el plano de EJEMPLO (sin datos de nadie);
+  // se rehace con `node scripts/generar-og.mjs`.
+  const permitidos = new Set(["_redirects", "robots.txt", "og-recabra.png"]);
   const hay = readdirSync(join(raiz, "public"));
   const sobran = hay.filter((f) => !permitidos.has(f));
   assert.deepEqual(sobran, [], `queda público sin login: ${sobran.join(", ")}`);

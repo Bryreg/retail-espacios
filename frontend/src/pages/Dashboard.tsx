@@ -8,25 +8,33 @@ const StoreEditor3D = lazy(() => import("../components/StoreEditor3D/StoreEditor
 const PlanificarCara = lazy(() => import("../components/Planograma/PlanificarCara"));
 const MisMuebles = lazy(() => import("./MisMuebles"));
 const CarasDeLaSede = lazy(() => import("./CarasDeLaSede"));
-import FloorPlan2D from "../components/FloorPlan2D/FloorPlan2D";
-import DashboardView, { type ModoComercial } from "./DashboardView";
+// Cada módulo es su propio pedazo (auditoría P2-20): el armazón (menú, barra,
+// Ajustes) llega primero y la pantalla del módulo después. Antes el pedazo del
+// tablero traía la pantalla comercial, el plano 2D y Montajes juntos (336 kB
+// gzip) aunque se entrara a uno solo.
+const FloorPlan2D = lazy(() => import("../components/FloorPlan2D/FloorPlan2D"));
+const DashboardView = lazy(() => import("./DashboardView"));
+const MountView = lazy(() => import("./MountView"));
+import type { ModoComercial } from "./DashboardView";
+import { LimiteDeError } from "../components/ErrorDeApp";
 import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
 import { NOMBRE_DE, RUTA_DE, moduloDeRuta, puedeAbrir, vueltaAlCambiar, type Modulo, type VueltaDelPlano } from "../modulos";
 import { useArmazon, type TemaDeAjustes } from "../store/armazonStore";
 import type { ContextoDeAccion } from "../acciones";
-import Buscador from "../components/Armazon/Buscador";
-import Ayuda from "../components/Armazon/Ayuda";
 import Mas from "../components/Armazon/Mas";
-import MetasPorSede from "../components/Ajustes/Metas";
-import SedesDeAjustes from "../components/Ajustes/Sedes";
-import PermisosDePlanogramas from "../components/Ajustes/Permisos";
-import CortarEnlace from "../components/Ajustes/CortarEnlace";
-import RatesModal from "../components/RatesModal/RatesModal";
-import SeasonsModal from "../components/SeasonPicker/SeasonsModal";
+// Lo que se abre a pedido (Ctrl K, la ayuda, Tarifas, Temporadas y las
+// secciones de Ajustes) baja cuando se abre (auditoría P2-20).
+const Buscador = lazy(() => import("../components/Armazon/Buscador"));
+const Ayuda = lazy(() => import("../components/Armazon/Ayuda"));
+const MetasPorSede = lazy(() => import("../components/Ajustes/Metas"));
+const SedesDeAjustes = lazy(() => import("../components/Ajustes/Sedes"));
+const PermisosDePlanogramas = lazy(() => import("../components/Ajustes/Permisos"));
+const CortarEnlace = lazy(() => import("../components/Ajustes/CortarEnlace"));
+const RatesModal = lazy(() => import("../components/RatesModal/RatesModal"));
+const SeasonsModal = lazy(() => import("../components/SeasonPicker/SeasonsModal"));
 import { mostrarConfiguracionInicial } from "../components/Inicio/ConfiguracionInicial";
 import "../components/Ajustes/ajustes.css";
 import "../armazon.css";
-import MountView from "./MountView";
 import SyncStatus from "../components/SyncStatus/SyncStatus";
 import AvisoCuentaBanner from "../components/AvisoCuentaBanner";
 import MiSuscripcion from "../components/suscripcion/MiSuscripcion";
@@ -1122,7 +1130,7 @@ function SettingsModal({
                 {bloque("Temporadas", "Las fechas de cada temporada, los días antes y después, si se vende, y volver al valor sugerido.", "Editar las temporadas", onTemporadas, "temporadas")}
                 <div className="aj-bloque" data-bloque-ajustes="metas">
                   <div style={sectionLabelStyle}>Metas por sede</div>
-                  <MetasPorSede sedes={sedes} />
+                  <Suspense fallback={null}><MetasPorSede sedes={sedes} /></Suspense>
                 </div>
               </>
             )}
@@ -1130,7 +1138,7 @@ function SettingsModal({
               <>
                 <div className="aj-bloque" data-bloque-ajustes="sedes">
                   <div style={sectionLabelStyle}>Sedes</div>
-                  <SedesDeAjustes />
+                  <Suspense fallback={null}><SedesDeAjustes /></Suspense>
                 </div>
                 <NombresDeMueblesSection />
                 {bloque("Ordenar códigos", "Renumerar el plano siguiendo el recorrido de la tienda, todas las sedes o una, con el informe antes → después para imprimir.", "Ordenar los códigos", () => { onClose(); navigate("/renumerar"); }, "renumerar")}
@@ -1187,11 +1195,11 @@ function SettingsModal({
                 <UsuariosSection />
                 <div className="aj-bloque" data-bloque-ajustes="permisos">
                   <div style={sectionLabelStyle}>Quién planifica y publica planogramas</div>
-                  <PermisosDePlanogramas sede={sedeActiva} />
+                  <Suspense fallback={null}><PermisosDePlanogramas sede={sedeActiva} /></Suspense>
                 </div>
                 <div className="aj-bloque" data-bloque-ajustes="cortar-enlace">
                   <div style={sectionLabelStyle}>Cortar un enlace</div>
-                  <CortarEnlace />
+                  <Suspense fallback={null}><CortarEnlace /></Suspense>
                 </div>
               </>
             )}
@@ -1514,6 +1522,20 @@ function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLo
 
 // ─── Dashboard shell ──────────────────────────────────────────────────────────
 
+/** Los módulos cuya pantalla ya tiene su `<h1>` a la vista (el Inicio dice
+ *  «Hola», Caras y Mis muebles su nombre). Los demás reciben uno para el lector
+ *  de pantalla (auditoría P2-21: axe pedía un `<h1>` por página). */
+const CON_TITULO_PROPIO = new Set<Modulo>(["inicio", "caras", "muebles"]);
+
+/** Mientras baja el pedazo de la pantalla del módulo (P2-20). */
+function AbriendoModulo({ nombre }: { nombre: string }) {
+  return (
+    <div role="status" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-3)", fontSize: 13 }}>
+      Abriendo {nombre}…
+    </div>
+  );
+}
+
 export default function Dashboard() {
   // Arriving from the mount email opens that screen straight away, on the
   // space the email was about.
@@ -1570,7 +1592,7 @@ export default function Dashboard() {
    *  el alto de su plano contra él (`--alto-area` → `--alto-plano`,
    *  `vender.css`). Ya descuenta la barra de la aplicación y el aviso de la
    *  cuenta, que la cuenta con `100dvh` tenía que adivinar. */
-  const areaRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLElement>(null);
   const [altoArea, setAltoArea] = useState<number | null>(null);
   useLayoutEffect(() => {
     const el = areaRef.current;
@@ -1739,7 +1761,7 @@ export default function Dashboard() {
           {/* El área de las pantallas: Vender y Supervisar miden el alto de su
               plano contra ESTE alto (`--alto-area`, medido), así el plano mide
               lo mismo en las dos sin adivinar cuánto mide el marco. */}
-          <div
+          <main
             ref={areaRef}
             className="area-pantallas"
             style={{
@@ -1747,6 +1769,13 @@ export default function Dashboard() {
               ...(altoArea ? { ["--alto-area" as string]: `${altoArea}px` } : {}),
             }}
           >
+            {/* El título de la pantalla para quien navega con lector (P2-21):
+                las que no dicen el suyo en un <h1> visible. */}
+            {!CON_TITULO_PROPIO.has(efectivo) && <h1 className="sr-only">{NOMBRE_DE[efectivo]}</h1>}
+            {/* Un error en la pantalla del módulo no tumba el armazón (P1-19):
+                el menú sigue andando y al cambiar de módulo se vuelve a armar. */}
+            <LimiteDeError nivel="modulo" donde={NOMBRE_DE[efectivo]} reinicio={efectivo}>
+            <Suspense fallback={<AbriendoModulo nombre={NOMBRE_DE[efectivo]} />}>
             {comercial ? (
               <DashboardView
                 inicio={efectivo === "inicio"}
@@ -1786,7 +1815,9 @@ export default function Dashboard() {
             ) : (
               <FloorPlan2D />
             )}
-          </div>
+            </Suspense>
+            </LimiteDeError>
+          </main>
         </div>
       </div>
 
@@ -1798,6 +1829,7 @@ export default function Dashboard() {
           onTarifas={() => setModalDeAjuste("tarifas")} onTemporadas={() => setModalDeAjuste("temporadas")}
           onConfiguracionInicial={ctx.mostrarConfiguracionInicial} bloqueado={modalDeAjuste !== null} />
       )}
+      <Suspense fallback={null}>
       {modalDeAjuste === "tarifas" && isAdmin && <RatesModal onClose={() => setModalDeAjuste(null)} />}
       {modalDeAjuste === "temporadas" && isAdmin && <SeasonsModal onClose={() => setModalDeAjuste(null)} />}
       {buscadorAbierto && <Buscador esAdmin={isAdmin} ctx={ctx} onCerrar={() => useArmazon.getState().setBuscador(false)} />}
@@ -1805,6 +1837,7 @@ export default function Dashboard() {
         <Ayuda modulo={efectivo} onCerrar={() => useArmazon.getState().setAyuda(false)}
           onDiccionario={() => { useArmazon.getState().setAyuda(false); ctx.ir("indicadores"); ctx.pedir("diccionario"); }} />
       )}
+      </Suspense>
       {/* «Planificar la cara» (planogramas con destinos): encima de todo,
           desde el panel del mueble del plano. */}
       {planificando && (
