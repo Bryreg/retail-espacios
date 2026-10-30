@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { X, Download, FileText } from "lucide-react";
-import * as XLSX from "xlsx";
 import { fileUrl, fetchFileBlob, type SpaceFileMeta } from "../api/files";
 
 // ─── File kind detection ─────────────────────────────────────────────────────
@@ -190,6 +189,8 @@ export default function FileViewerModal({ file, onClose }: FileViewerModalProps)
       let all: unknown[][];
       if (kind === "excel") {
         const buf = await blob.arrayBuffer();
+        // Perezoso: `xlsx` pesa ≈750 kB y sólo hace falta para mirar un Excel.
+        const XLSX = await import("xlsx");
         const wb = XLSX.read(buf);
         const ws = wb.Sheets[wb.SheetNames[0]];
         all = ws

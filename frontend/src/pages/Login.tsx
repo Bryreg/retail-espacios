@@ -555,8 +555,11 @@ export default function Login({ enHoja = false, modoInicial }: {
     }
   };
 
+  // A página entera es la pantalla: su <main> (axe, auditoría P2-21). Adentro
+  // de la hoja de la portada, la portada ya tiene el suyo.
+  const Raiz = enHoja ? "div" : "main";
   return (
-    <div
+    <Raiz
       style={enHoja ? { padding: 0 } : {
         height: "100dvh",
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -1042,6 +1045,6 @@ export default function Login({ enHoja = false, modoInicial }: {
           </div>
         </div>
       )}
-    </div>
+    </Raiz>
   );
 }

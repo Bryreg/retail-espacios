@@ -783,9 +783,12 @@ function Escenario() {
           if (i !== null) abrir(i, true);
         }}
       >
+        {/* `group` y no `img`: adentro hay muebles que se tocan y se enfocan
+            (role="button"), y una imagen no puede tener hijos interactivos
+            (axe, nested-interactive · auditoría P2-21). La etiqueta es la misma. */}
         <svg
           className="stage__svg"
-          role="img"
+          role="group"
           aria-label="Plano isométrico de un supermercado de ejemplo, visto desde arriba en perspectiva. Dieciséis muebles alquilables pintados según su estado —verde libre, naranja se libera, rojo tomado— entre pasillos, cajas y neveras en gris que no se alquilan."
         >
           <g ref={escenaRef}>

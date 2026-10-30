@@ -359,6 +359,9 @@ const COMPONENTES_VENDER = new Set([
   "ModoVender", "Libera", "Card", "CardHeader", "IsoMap", "MapLegend",
   "ChipEspacio", "SeasonPicker", "Fragment", "Search", "X", "EmptyDashboard",
   "CancelarContrato",
+  // La espera mientras baja la parte de Vender (P2-20: `ModoVender` es
+  // perezoso): una línea, «Abriendo el contrato…», sin datos.
+  "Bajando", "Suspense",
   // La ficha (`ModoVender.tsx`): sus piezas, los íconos y el aviso de a quién
   // se le escribe (el personal de la sede, no otro proveedor).
   "Panel", "Fila", "NoComercializable", "Cerrado", "Ficha", "NotifyPreview",

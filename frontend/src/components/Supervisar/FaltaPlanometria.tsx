@@ -5,6 +5,7 @@ import { fechaEnCurso } from "../../utils/propuesta";
 import { useCodigoVisible } from "./CobrosYReservas";
 import { EncabezadoDeSeccion, Mira } from "./piezas";
 import { DIAS_PARA_HOY } from "./paraRevisar";
+import { esFallaDeLectura } from "../../utils/sinLeer";
 
 /**
  * «Falta planometría» (decisión del dueño, Supervisar PR 2): los contratos con
@@ -20,8 +21,9 @@ import { DIAS_PARA_HOY } from "./paraRevisar";
  * SÓLO ADMINISTRACIÓN y SÓLO SUPERVISAR: lleva el proveedor. Quien lo monta lo
  * pone adentro de `isAdmin &&`, el hook no pide nada si no está `activo`, y
  * Vender no llega a este módulo ni a `api/montajesPendientes` (`probar-vender`).
- * Si el servidor todavía no tiene la ruta, la lista queda vacía y no se dice
- * nada: es un aviso de más, no algo de lo que dependa la pantalla.
+ * Si el servidor todavía no tiene la ruta (404), la lista queda vacía y no se
+ * dice nada: es un aviso de más. Cualquier otra falla se dice (`sinLeer`,
+ * auditoría P2-15): una lista vacía por la red caída no es «nada pendiente».
  */
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
@@ -29,17 +31,18 @@ const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 /** Los contratos de la sede a los que les falta la planometría. */
 export function useFaltaPlanometria({ sede, activo }: { sede: string; activo: boolean }) {
   const [filas, setFilas] = useState<MontajePendiente[]>([]);
+  const [sinLeer, setSinLeer] = useState(false);
   const [vuelta, setVuelta] = useState(0);
   useEffect(() => {
-    if (!activo || !sede) { setFilas([]); return; }
+    if (!activo || !sede) { setFilas([]); setSinLeer(false); return; }
     let vivo = true;
     montajesPendientes(sede)
-      .then((r) => { if (vivo) setFilas((Array.isArray(r) ? r : []).filter((x) => x.falta_planometria)); })
-      .catch(() => { if (vivo) setFilas([]); });
+      .then((r) => { if (vivo) { setFilas((Array.isArray(r) ? r : []).filter((x) => x.falta_planometria)); setSinLeer(false); } })
+      .catch((e) => { if (vivo) { setFilas([]); setSinLeer(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
   }, [sede, activo, vuelta]);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
-  return { filas, recargar };
+  return { filas, recargar, sinLeer };
 }
 
 /** «hoy», «6d», «corre»: cuánto falta para que empiece. */

@@ -78,7 +78,7 @@ export default function ConfiguracionInicial({ pasos, hechos, onIr, onOcultar }:
           <X {...ICONO} /> Ocultar
         </button>
       </header>
-      <div className="ini-config-avance" role="progressbar" aria-valuemin={0} aria-valuemax={pasos.length} aria-valuenow={hechos}>
+      <div className="ini-config-avance" role="progressbar" aria-label="Avance de la configuración inicial" aria-valuetext={`${hechos} de ${pasos.length} pasos`} aria-valuemin={0} aria-valuemax={pasos.length} aria-valuenow={hechos}>
         <i style={{ width: `${(hechos / pasos.length) * 100}%` }} />
       </div>
       <ol>

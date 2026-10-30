@@ -804,15 +804,17 @@ export function LineaIngreso({
   const W = 940;
   const bandaAnot = 10 + anotaciones.length * 16;
   const H = bandaAnot + 134 + 30;
-  const L = 64;
+  const max = serie.reduce((m, p) => Math.max(m, p.ingreso_contratado_mes ?? 0), 0);
+  const tope = max > 0 ? Math.ceil(max / 50e6) * 50e6 : 50e6;
+  // El eje lleva la plata completa (nunca «M»): el margen crece con el rótulo
+  // más ancho, que es el del tope.
+  const L = Math.max(64, Math.ceil(anchoAprox(plata(tope), VOZ.lbl.px, true)) + 14);
   const R = 152;
   const y0 = bandaAnot + 6;
   const y1 = bandaAnot + 118;
   const paso = (W - R - L) / (serie.length - 1);
   const X = (i: number) => L + i * paso;
 
-  const max = serie.reduce((m, p) => Math.max(m, p.ingreso_contratado_mes ?? 0), 0);
-  const tope = max > 0 ? Math.ceil(max / 50e6) * 50e6 : 50e6;
   const Y = (v: number) => y1 - (v / tope) * (y1 - y0);
 
   let d = "";
@@ -1904,13 +1906,15 @@ export function BarrasDivergentes({
 
   const W = 940;
   const H = 244;
-  const L = 64;
+  const max = movimientos.reduce((m, x) => Math.max(m, ent(x), sal(x)), 0);
+  const tope = max > 0 ? Math.ceil(max / 2e6) * 2e6 : 2e6;
+  // Plata completa en el eje (nunca «M»): el margen crece con el rótulo más
+  // ancho, «−$ <tope>».
+  const L = Math.max(64, Math.ceil(anchoAprox(sig(-tope, plata), VOZ.lbl.px, true)) + 14);
   const R = 160;
   const y0 = 52;
   const y1 = 188;
   const cero = (y0 + y1) / 2;
-  const max = movimientos.reduce((m, x) => Math.max(m, ent(x), sal(x)), 0);
-  const tope = max > 0 ? Math.ceil(max / 2e6) * 2e6 : 2e6;
   const esc = (v: number) => (v / tope) * (cero - y0);
   const paso = (W - R - L) / movimientos.length;
   const X = (i: number) => L + paso * i + paso / 2;

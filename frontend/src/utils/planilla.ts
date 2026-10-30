@@ -1,4 +1,6 @@
-import * as XLSX from "xlsx";
+// `xlsx` (≈750 kB sin comprimir) entra por `import()` sólo al abrir una
+// planilla: importado de una iba en el pedazo de entrada del tablero y lo bajaba
+// todo el que entraba, aunque nunca cargara una (auditoría P2-20).
 // Sólo los TIPOS: `import type` se borra al compilar, así que exceljs sigue
 // entrando únicamente por el `import()` perezoso de más abajo.
 import type { Cell, Row } from "exceljs";
@@ -137,10 +139,23 @@ export function leerFecha(valor: unknown): string | undefined {
   // Un número suelto puede ser el serial de Excel (días desde 1900).
   const n = Number(txt);
   if (Number.isFinite(n) && n > 20000 && n < 80000) {
-    const parsed = XLSX.SSF.parse_date_code(n);
-    if (parsed) return iso(new Date(parsed.y, parsed.m - 1, parsed.d));
+    const d = deSerialDeExcel(n);
+    return iso(new Date(d.y, d.m - 1, d.d));
   }
   return undefined;
+}
+
+/** El serial de Excel (días desde el 30-12-1899, con el 29-02-1900 que no
+ *  existió ya contado) a año, mes y día. Lo mismo que `XLSX.SSF.parse_date_code`
+ *  para seriales de este siglo (20000–80000), sin bajar `xlsx` para leer una
+ *  fecha: la hora que redondea a las 24:00 pasa al día siguiente, como allá
+ *  (`probar-planilla` las compara serial por serial). */
+export function deSerialDeExcel(serial: number): { y: number; m: number; d: number } {
+  let dias = Math.floor(serial);
+  const segundos = 86400 * (serial - dias);
+  if (Math.floor(segundos) === 86399 && segundos - 86399 > 0.9999) dias += 1;
+  const f = new Date(Date.UTC(1899, 11, 30) + dias * 86_400_000);
+  return { y: f.getUTCFullYear(), m: f.getUTCMonth() + 1, d: f.getUTCDate() };
 }
 
 /** Un monto escrito como se escribe en Colombia: `$ 1.800.000`, `1800000`, `1,800,000`.
@@ -234,6 +249,7 @@ const esCsv = (archivo: File) => /\.csv$/i.test(archivo.name) || archivo.type ==
 /** Abre el archivo y devuelve las filas ya normalizadas. */
 export async function leerPlanilla(archivo: File): Promise<LecturaPlanilla> {
   const buffer = await archivo.arrayBuffer();
+  const XLSX = await import("xlsx");
   const libro = esCsv(archivo)
     ? XLSX.read(textoDeCsv(buffer), { ...OPCIONES_DE_LECTURA, type: "string" })
     : XLSX.read(buffer, OPCIONES_DE_LECTURA);

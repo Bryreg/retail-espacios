@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { esFallaDeLectura } from "../../utils/sinLeer";
 import { CalendarClock, ChevronDown, ChevronUp, CircleCheck, Percent, Undo2 } from "lucide-react";
 import { describeError } from "../../api/client";
 import { contratosSinForma, corregirPrecio, deshacerPrecio, type CobroPorVentasDe, type ContratoSinForma, type ModoDeCorreccion } from "../../api/precioSinForma";
@@ -97,19 +98,21 @@ export const textoDeMeses = (m: number): string => {
 
 export function usePrecioSinForma({ sede, activo }: { sede: string; activo: boolean }) {
   const [filas, setFilas] = useState<ContratoSinForma[]>([]);
+  /** La lectura falló (auditoría P2-15): no es lo mismo que «no hay ninguno». */
+  const [sinLeer, setSinLeer] = useState(false);
   const [vuelta, setVuelta] = useState(0);
   useEffect(() => {
-    if (!activo || !sede) { setFilas([]); return; }
+    if (!activo || !sede) { setFilas([]); setSinLeer(false); return; }
     let vivo = true;
     contratosSinForma(sede)
-      .then((r) => { if (vivo) setFilas(Array.isArray(r) ? r : []); })
-      .catch(() => { if (vivo) setFilas([]); });
+      .then((r) => { if (vivo) { setFilas(Array.isArray(r) ? r : []); setSinLeer(false); } })
+      .catch((e) => { if (vivo) { setFilas([]); setSinLeer(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
   }, [sede, activo, vuelta]);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
   /** Para la cuenta de «Para revisar»: UN aviso si hay alguno. */
   const unoSiHay = filas.slice(0, 1);
-  return { filas, unoSiHay, recargar };
+  return { filas, unoSiHay, recargar, sinLeer };
 }
 
 export function PrecioSinForma({ filas, titulo, onCambio }: {

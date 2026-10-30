@@ -30,6 +30,7 @@ const PIEZA_POR_TARIFA: ReadonlyMap<string, string> = new Map(
  *  there is no explicit save button, matching how sedes and labels behave. */
 export default function RatesModal({ onClose }: { onClose: () => void }) {
   const rates = useFixtureStore((s) => s.referenceRates);
+  const tarifasSinLeer = useFixtureStore((s) => s.tarifasSinLeer);
   const { sedes, sede, setReferenceRate, loadRates } = useFixtureStore();
   // Cómo le dicen acá a cada familia (Configuración). La fila lo dice primero
   // y, debajo, el nombre de RECABRA: es por el que pregunta quien la ayuda
@@ -172,8 +173,18 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Rate table */}
-        {rates === null ? (
-          <div style={{ padding: "18px", fontSize: 12, color: "var(--ink-3)" }}>
+        {rates === null && tarifasSinLeer ? (
+          // P2-15: «no se pudo leer» no es «cargando». Sin las tarifas no hay
+          // tabla que editar (escribir sobre nada pisaría las guardadas).
+          <div role="alert" data-tarifas-sin-leer style={{ padding: "18px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+            No se pudieron leer las tarifas. Revisá la conexión y probá de nuevo.{" "}
+            <button type="button" onClick={() => void loadRates()} data-reintentar
+              style={{ marginLeft: 6, height: 28, padding: "0 12px", borderRadius: "var(--r-md)", border: "1px solid var(--line-strong)", background: "var(--surface)", color: "var(--ink-1)", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>
+              Reintentar
+            </button>
+          </div>
+        ) : rates === null ? (
+          <div role="status" style={{ padding: "18px", fontSize: 12, color: "var(--ink-3)" }}>
             Cargando tarifas…
           </div>
         ) : (

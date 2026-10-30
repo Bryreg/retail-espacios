@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { SinLienzo, esFaltaDeWebGL, hayWebGL } from "./SinLienzo";
 import { SIN_ESCALA } from "../../escala";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
@@ -6767,36 +6768,34 @@ function CommercialPanel({
 
 // ─── Canvas error boundary ────────────────────────────────────────────────────
 
+/** El límite del lienzo: un error al dibujar la escena dice su causa (P2-19,
+ *  `SinLienzo.tsx`) —WebGL que falta o un error de la escena— y, con
+ *  `irAl2D`, ofrece el plano 2D. El visor de Vender no lo pasa: lo mira el
+ *  proveedor y no tiene adónde ir. */
 export class CanvasErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  { children: React.ReactNode; irAl2D?: () => void },
   { hasError: boolean; error: Error | null }
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; irAl2D?: () => void }) {
     super(props);
     this.state = { hasError: false, error: null };
   }
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
   }
+  componentDidCatch(error: Error) {
+    console.error("[RECABRA] Error en el lienzo 3D", error);
+  }
   render() {
     if (this.state.hasError) {
+      const sinWebGL = esFaltaDeWebGL(this.state.error);
       return (
-        <div style={{
-          display: "flex", flexDirection: "column", alignItems: "center",
-          justifyContent: "center", height: "100%", gap: 12, color: "var(--ink-2)",
-        }}>
-          <span style={{ fontSize: 32 }}>⚠️</span>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Error en el editor 3D</span>
-          <button
-            onClick={() => this.setState({ hasError: false, error: null })}
-            style={{
-              padding: "6px 16px", borderRadius: 6, border: "1px solid var(--line)",
-              background: "var(--surface-2)", cursor: "pointer", fontSize: 13,
-            }}
-          >
-            Reintentar
-          </button>
-        </div>
+        <SinLienzo
+          causa={sinWebGL ? "sin_webgl" : "error"}
+          detalle={this.state.error?.message}
+          onReintentar={() => this.setState({ hasError: false, error: null })}
+          irAl2D={this.props.irAl2D}
+        />
       );
     }
     return this.props.children;
@@ -7610,6 +7609,13 @@ export default function StoreEditor3D() {
   // este nodo se muda de ranura en ranura (`RanuraDelLienzo`): en su lugar de
   // siempre, o en Distribuir como miniatura viva o en grande. React nunca lo
   // mueve, así que mudarlo no vuelve a montar la escena ni pierde el WebGL.
+  /** La salida al plano 2D cuando el 3D no se puede dibujar (P2-19). */
+  const irAl2D = useCallback(() => navigate("/plano"), [navigate]);
+  /** Si el lienzo se puede dibujar (P2-19): sin WebGL, ni se monta. */
+  const [estadoDelLienzo, setEstadoDelLienzo] = useState<"bien" | "sin_webgl" | "perdido">(
+    () => (hayWebGL() ? "bien" : "sin_webgl"));
+  /** «Volver a abrir el 3D»: un lienzo nuevo (la `key` del límite). */
+  const [vueltaDelLienzo, setVueltaDelLienzo] = useState(0);
   const [anfitrionDelLienzo] = useState<HTMLDivElement | null>(() => {
     if (typeof document === "undefined") return null;
     const d = document.createElement("div");
@@ -8310,12 +8316,23 @@ export default function StoreEditor3D() {
             esta ranura no está. */}
         <div className="absolute inset-0">
           {!distribucionVisible && <RanuraDelLienzo anfitrion={anfitrionDelLienzo} className="absolute inset-0" />}
-        {anfitrionDelLienzo && createPortal(
-                <CanvasErrorBoundary>
+        {/* Sin WebGL o con el contexto perdido, el 3D lo dice con su causa y
+            la salida al 2D (P2-19), en vez de un rectángulo negro. */}
+        {estadoDelLienzo !== "bien" && (
+          <SinLienzo causa={estadoDelLienzo} irAl2D={irAl2D}
+            onReintentar={() => { setVueltaDelLienzo((n) => n + 1); setEstadoDelLienzo(hayWebGL() ? "bien" : "sin_webgl"); }} />
+        )}
+        {anfitrionDelLienzo && estadoDelLienzo !== "sin_webgl" && createPortal(
+                <CanvasErrorBoundary key={vueltaDelLienzo} irAl2D={irAl2D}>
           <Canvas
             camera={{ position:CAM_POS, fov:FOV_DEL_EDITOR, near:0.1, far:500 }}
             onCreated={({ camera, gl, scene })=>{
               camera.lookAt(...CAM_TARGET);
+              // El contexto se puede perder con el 3D abierto (P2-19): se dice,
+              // y si el navegador lo devuelve, el lienzo sigue solo.
+              const lienzo = gl.domElement;
+              lienzo.addEventListener("webglcontextlost", (e) => { e.preventDefault(); setEstadoDelLienzo("perdido"); });
+              lienzo.addEventListener("webglcontextrestored", () => setEstadoDelLienzo("bien"));
               // El lienzo, para adelantar en los ratos libres lo que costaba en
               // el cuadro del clic: subir las texturas del envase y compilar su
               // programa (`etiqueta.ts`, «El precalentado»).
