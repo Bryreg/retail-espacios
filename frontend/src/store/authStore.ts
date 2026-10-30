@@ -51,6 +51,10 @@ interface AuthState {
    *  PRÓXIMO login (que vuelve a poner lo que diga el servidor en ese
    *  momento) — no hasta la próxima recarga de la pestaña. */
   pedirConsentimiento: boolean;
+  /** Auditoría P0-2: la versión de los Términos del servicio que la dueña
+   *  todavía no aceptó para este supermercado (`pedir_terminos` del login), o
+   *  `null`. Mismo trato que `pedirConsentimiento`: un aviso, no un muro. */
+  pedirTerminos: string | null;
   /** Fase 4 plataforma: `true` sólo en la sesión de un operador SIN
    *  membresías — la que `/auth/oauth` devuelve con `plataforma: true` y
    *  `cliente: "plataforma"` en vez del 403 que antes ofrecía "fundá tu
@@ -97,6 +101,8 @@ interface AuthState {
   /** Cierra el aviso de consentimiento sin más — el botón "Ahora no" y el
    *  que sigue a un `aceptar-politica` exitoso. No es un muro. */
   descartarConsentimiento: () => void;
+  /** Lo que trajo el login (o `null` para cerrar el aviso de los términos). */
+  setPedirTerminos: (version: string | null) => void;
   logout: () => void;
 }
 
@@ -114,6 +120,7 @@ export const useAuthStore = create<AuthState>()(
       nombre: null,
       avisoCuenta: null,
       pedirConsentimiento: false,
+      pedirTerminos: null,
       plataforma: false,
       setAuth: (
         token, role, cliente, clienteNombre, email, nombre, avisoCuenta, pedirConsentimiento, plataforma,
@@ -129,6 +136,9 @@ export const useAuthStore = create<AuthState>()(
           nombre: nombre ?? null,
           avisoCuenta: avisoCuenta ?? null,
           pedirConsentimiento: pedirConsentimiento ?? false,
+          // Cada login vuelve a decir lo suyo: quien llama pone la versión
+          // después con `setPedirTerminos`.
+          pedirTerminos: null,
           plataforma: plataforma ?? false,
         }),
       marcarEstadoCuenta: (estado, motivo) =>
@@ -153,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
             : { avisoCuenta: { estado, motivo } },
         ),
       descartarConsentimiento: () => set({ pedirConsentimiento: false }),
+      setPedirTerminos: (version) => set({ pedirTerminos: version || null }),
       actualizarAvisoCuenta: (aviso) =>
         set((s) => {
           if (!s.token) return s;
@@ -175,7 +186,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           token: null, role: null, cliente: null, clienteNombre: null, rolCliente: null,
           email: null, nombre: null, avisoCuenta: null, pedirConsentimiento: false,
-          plataforma: false,
+          pedirTerminos: null, plataforma: false,
         });
         // Cierra también la sesión de Firebase, si el SDK llegó a
         // inicializarse — si nunca se usó la vía nueva esto es un no-op

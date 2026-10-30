@@ -36,6 +36,10 @@ export interface OauthOk {
    *  membresía pero nunca aceptó la versión vigente de la Política de
    *  Tratamiento de Datos. No bloquea el login — el frontend avisa una vez. */
   pedir_consentimiento?: boolean;
+  /** Auditoría P0-2: la versión de los Términos del servicio que esta dueña
+   *  tiene que aceptar para este supermercado. Sólo viaja cuando hay términos
+   *  vigentes y no los aceptó. */
+  pedir_terminos?: string;
   /** Fase 4 plataforma: presente y en `true` cuando la cuenta es operadora
    *  de la plataforma (email en `OPERADOR_EMAILS`) y NO tiene ninguna
    *  membresía. Reemplaza, sólo para operadores, la rama que antes ofrecía

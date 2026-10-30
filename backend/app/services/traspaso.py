@@ -62,6 +62,10 @@ TABLAS_DEL_REGISTRO = frozenset({
     # Auditoría pre-lanzamiento: las altas que pasaron el tope del día (P1-12)
     # y los tokens cerrados con «Salir» o enlaces revocados (P2-2, P3-2).
     "altas_en_espera", "sesiones_cerradas",
+    # Auditoría pre-lanzamiento, privacidad: la aceptación versionada de los
+    # términos del servicio (P0-2) y la constancia de los derechos de una
+    # persona atendidos por el operador (P1-14).
+    "aceptaciones_de_terminos", "derechos_de_titulares",
 })
 
 # Las de NEGOCIO de un supermercado: lo que se copia. Incluye la configuración
@@ -221,9 +225,13 @@ def _mover_registro(cx, origen: str, principal: str) -> None:
         cx.execute(tabla.update().where(col == origen).values({columna: principal}))
 
     # Las solicitudes de supresión son constancia legal: las del principal se
-    # quedan, y las del origen lo siguen a donde van sus datos.
-    s = SolicitudSupresion.__table__
-    cx.execute(s.update().where(s.c.cliente_slug == origen).values(cliente_slug=principal))
+    # quedan, y las del origen lo siguen a donde van sus datos. Lo mismo la
+    # aceptación de los términos y las constancias de derechos de personas.
+    from app.models.terminos import AceptacionDeTerminos, DerechoDeTitular
+
+    for modelo in (SolicitudSupresion, AceptacionDeTerminos, DerechoDeTitular):
+        s = modelo.__table__
+        cx.execute(s.update().where(s.c.cliente_slug == origen).values(cliente_slug=principal))
 
     # La bitácora del operador: lo que se consultó del origen se consultó de
     # estos datos, que ahora son del principal — y su reporte lo tiene que ver.

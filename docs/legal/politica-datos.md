@@ -2,7 +2,7 @@
 
 # Política de Tratamiento de Datos Personales — RECABRA
 
-**Versión: 2026-09-v2 · Vigencia: septiembre 2026**
+**Versión: 2026-10-v3 · Vigencia: octubre 2026**
 
 Esta política explica qué datos de personas maneja RECABRA, para qué los usa, con qué
 permiso, quién responde por ellos y cómo puede cualquier persona pedir que se los
@@ -30,6 +30,7 @@ un abogado.** Mientras tenga corchetes sin llenar, no está lista para publicar.
 | **Correo de contacto para protección de datos** | [COMPLETAR: correo, p. ej. datos@…] |
 | **Teléfono** | [COMPLETAR: teléfono de atención] |
 | **Nombre comercial de la plataforma** | RECABRA (gestión de espacios comerciales en supermercados) |
+| **Dirección web donde se publica esta política** | [COMPLETAR: dirección web definitiva de `/politica-datos`] |
 
 El área encargada de atender consultas, reclamos y solicitudes de los titulares es
 [COMPLETAR: nombre del área o del responsable designado, p. ej. "Atención al Cliente" o
@@ -64,27 +65,55 @@ administradores y mercaderistas):
 - **A qué supermercados pertenece y con qué rol** (dueño, administrador o mercaderista),
   y si esa pertenencia sigue activa.
 - **Invitaciones**: cuando alguien invita a un colega, se guarda el correo del invitado,
-  el rol que se le reservó, quién lo invitó y cuándo caduca la invitación.
+  el rol que se le reservó, quién lo invitó y cuándo caduca la invitación. El correo de la
+  invitación lleva un enlace de un solo uso que vence a los 7 días.
 - **Constancia de aceptación de esta política**: la versión aceptada, la fecha, la
   dirección IP desde la que se aceptó y en qué momento se aceptó (al fundar el
   supermercado, al aceptar una invitación o al ingresar).
+- **Constancia de aceptación de los Términos del servicio** (sólo la dueña de cada
+  supermercado, y sólo cuando haya términos vigentes): la versión de los términos, la
+  versión de esta política que regía en ese momento, el supermercado, la fecha, la
+  dirección IP y si fue al fundar el supermercado o al ingresar.
+- **Al fundar un supermercado**: el nombre y el código del supermercado, quién lo fundó y
+  cuándo. Si llega cuando la plataforma ya recibió el máximo de altas del día, queda **en
+  espera** con el correo de quien lo pidió, el nombre y el código, hasta que el operador lo
+  atiende. En los dos casos el operador de la plataforma recibe un aviso por correo con el
+  nombre, el código y el correo de quien funda.
+- **Lo que hace cada persona dentro del sistema**: además de la bitácora (punto 2.5),
+  varios registros del supermercado guardan **el correo (o el nombre) de quien los hizo**:
+  quién creó o canceló una reserva, quién publicó o revisó un planograma, quién cargó un
+  corte de ventas, quién verificó un montaje.
+- **Sesiones cerradas**: cuando alguien toca «Salir», se guarda el identificador interno de
+  esa sesión (no el correo ni la clave) hasta que vence, para que no se pueda volver a usar.
 
 **Nota importante:** RECABRA **no almacena contraseñas de las cuentas individuales**. Esas
 las guarda el servicio de autenticación de Google (Firebase Authentication); RECABRA solo
-recibe y verifica un comprobante de identidad firmado. Las claves compartidas por rol del
-método de ingreso antiguo sí se guardan en el sistema, pero **cifradas de forma
-irreversible** (hash Argon2id): no se pueden leer ni recuperar, solo comparar.
+recibe y verifica un comprobante de identidad firmado. El método de ingreso antiguo, con
+claves compartidas por rol, **está apagado**; sólo se prende en una emergencia, y si se
+prende sus claves se guardan **cifradas de forma irreversible** (hash Argon2id): no se
+pueden leer ni recuperar, solo comparar.
 
 ### 2.2 Personal de los supermercados clientes
 
 Personas que trabajan en el supermercado y quedan registradas aunque no tengan cuenta:
 
 - **Correos de aviso**: las direcciones del administrador de cada sede, del gerente
-  operacional y del mercaderista, que reciben los avisos automáticos cuando se firma un
-  contrato o cuando algo vence. Se cargan a mano en la configuración del supermercado.
+  operacional, del mercaderista y de quien recibe los avisos generales, que reciben los
+  avisos automáticos cuando se firma o se edita un contrato, cuando algo vence y qué hay que
+  montar. Se cargan a mano en la configuración del supermercado.
+- **Responsables de montaje**: los correos a los que alguien del supermercado le manda la
+  **guía de montaje** de un planograma. Se escriben al mandarla y no se guardan en una
+  libreta: quedan sólo en la cola de correos (punto 2.5) hasta que se borran.
 - **Reportes de montaje**: cuando alguien confirma que armó (o que no pudo armar) una
-  exhibición, se guarda el **nombre que esa persona escribe**, su rol, la fecha y hora que
-  pone el servidor, el motivo si no se pudo, y una nota libre.
+  exhibición, se guarda **quién lo reportó** —el nombre o el correo de su cuenta, o el
+  **nombre que escribe** quien entra por el enlace del correo, que no tiene cuenta—, su rol,
+  la fecha y hora que pone el servidor, el motivo si no se pudo, una nota libre y la foto si
+  la sube. Lo mismo cuando avisa por el enlace de la guía que un planograma quedó montado, y
+  cuando alguien del supermercado revisa ese montaje (quién revisó, la nota).
+- **Enlaces sin contraseña**: el aviso de montaje y la guía llevan un enlace que abre sólo
+  lo que hay que montar —sin precios ni proveedores— sin pedir contraseña. Vale lo que dura
+  el trabajo (como mucho 400 días) y el supermercado lo puede cortar antes. Quien tenga el
+  enlace ve el espacio, su sede y lo que hay que montar.
 
 ### 2.3 Contactos de proveedores
 
@@ -92,6 +121,12 @@ De las marcas y distribuidores que alquilan espacio:
 
 - **Nombre de la empresa proveedora**, **nombre de la persona de contacto**, **teléfono**,
   **correo electrónico** y **notas** que escriba el comercial del supermercado.
+- **El correo de la reserva**: cuando se le reserva un espacio a un proveedor, el correo al
+  que se le avisa y las notas de la reserva.
+- **Los avisos que se le mandan**: el correo de confirmación de un contrato (el espacio, las
+  fechas, la marca y el valor pactado) va a la dirección del proveedor.
+- **Las artes de sus productos** (imagen, nombre, medidas y precio de venta al público, si se
+  carga) que el supermercado sube para probar la exhibición en 3D.
 
 Cuando el proveedor es una persona natural (un comerciante independiente), esos datos son
 todos datos personales suyos, incluido el valor del contrato.
@@ -99,7 +134,8 @@ todos datos personales suyos, incluido el valor del contrato.
 ### 2.4 Imágenes y archivos
 
 - **Fotos de montaje** que sube el mercaderista desde el celular para probar que la
-  exhibición quedó armada. Se toman en la sala de ventas de un supermercado en horario de
+  exhibición quedó armada, y **fotos de cómo quedó una cara** que sube quien monta desde el
+  enlace de la guía. Se toman en la sala de ventas de un supermercado en horario de
   operación: **pueden captar personas de forma incidental** — clientes que pasan,
   empleados de la tienda. No se toman para identificar a nadie y no se les aplica ningún
   tipo de reconocimiento facial ni análisis biométrico.
@@ -108,33 +144,99 @@ todos datos personales suyos, incluido el valor del contrato.
 - **Contratos escaneados** y otros documentos que se adjuntan al espacio. Pueden contener
   nombres, firmas y números de identificación de quienes los suscribieron.
 
-### 2.5 Datos técnicos de seguridad
+Los archivos se guardan dentro de la base de datos del supermercado, no en un servicio de
+almacenamiento aparte.
 
-- **Direcciones IP en la bitácora**: cada acción que cambia algo o abre una puerta
-  (guardar o cancelar un contrato, subir un documento, ingresar al sistema, cambiar una
-  clave) queda anotada con la fecha, el rol, el correo de quien la hizo y la dirección IP
-  desde la que se hizo.
+### 2.5 Datos técnicos de seguridad y de operación
+
+- **Bitácora del supermercado**: cada acción que cambia algo o abre una puerta (guardar o
+  cancelar un contrato, subir un documento, ingresar al sistema, invitar a alguien, cambiar
+  una tarifa, guardar el plano) queda anotada con la fecha, el rol, **el correo de quien la
+  hizo**, la dirección IP desde la que se hizo y una descripción corta («Alpina ·
+  NAVE-PUN-01»). La lee la administración del supermercado.
+- **Bitácora de la plataforma**: cada consulta o acción del **operador de la plataforma**
+  queda anotada con su correo, qué hizo, sobre qué supermercado y período, y cuándo (ver el
+  punto 5.3 d).
 - **Direcciones IP de los frenos de seguridad**: los intentos fallidos de ingreso, de
   autenticación con cuenta y de creación de un supermercado nuevo se cuentan por dirección
   IP para frenar ataques de fuerza bruta. De esos intentos solo se guarda la IP y la hora
-  —nunca el correo ni la clave que se probó—, y se borran solos con el tiempo.
+  —nunca el correo ni la clave que se probó—, y se borran solos (punto 6). Las descargas de
+  datos se cuentan por cuenta, no por IP.
+- **Registros técnicos del servidor**: el servicio de alojamiento (Render) guarda, por cada
+  pedido, la dirección IP de conexión, la hora, la ruta pedida y si salió bien o mal, y los
+  mensajes técnicos del sistema. RECABRA **no escribe en esos registros direcciones de correo
+  ni los códigos de los enlaces sin contraseña**: un aviso dice «3 destinatarios
+  (gmail.com)», no a quién, y la ruta de un enlace sale con su código tachado.
+- **Errores**: si está activado el servicio de seguimiento de errores (Sentry), cuando algo
+  falla se le manda el error técnico —qué parte del sistema, qué pasó—, **sin la dirección IP
+  ni las cabeceras de quien pidió y sin ninguna dirección de correo**.
+- **Cola de correos**: cada aviso que el sistema manda se anota antes de salir —los
+  destinatarios, el asunto y el contenido— para volver a intentarlo si el proveedor de
+  correo falla. Se borra solo (punto 6).
 - **Motivo del estado de cuenta**: si un supermercado queda en mora o suspendido, el
   operador de la plataforma escribe un motivo en texto libre. Ese texto puede mencionar a
   personas (a quién se le facturó, con quién se habló).
 
-### 2.6 Resumen
+### 2.6 Datos de facturación y cobro del supermercado
+
+Para cobrarle la suscripción a cada supermercado cliente, RECABRA guarda:
+
+- **Datos de facturación**: razón social, NIT, municipio y **correo de facturación**. Los
+  carga RECABRA al registrar la suscripción, y la dueña del supermercado los puede
+  corregir desde Configuración → Suscripción.
+- **Lo pactado**: el valor de la suscripción, por supermercado o por sede, el plazo de
+  pago y la referencia del contrato firmado o de los términos aceptados.
+- **Cuentas de cobro y facturas**: período, número, CUFE si la hay, fechas de emisión y de
+  vencimiento, valores, retenciones estimadas, y una copia del nombre y el NIT del
+  supermercado al momento de emitirla.
+- **Pagos**: fecha, valor recibido, retenciones practicadas por el supermercado, si llegó
+  el certificado de retención, la **referencia bancaria** de la transferencia y quién de
+  RECABRA lo registró.
+- **Historial del estado de cuenta**: cada cambio (al día, pago pendiente, sólo lectura,
+  suspendido), con el motivo, la fecha y quién lo hizo (una persona de RECABRA o el
+  proceso automático).
+- **Constancia de los avisos de cobro**: qué aviso se mandó, por qué cuenta de cobro,
+  cuándo y a cuántos destinatarios. **No se guardan las direcciones** en esa constancia:
+  salen, al momento de mandar, de las dueñas activas del supermercado y del correo de
+  facturación.
+
+Son, en su mayoría, datos de una empresa (persona jurídica), no de una persona. Son datos
+personales el **correo de facturación** cuando identifica a una persona (por ejemplo, el
+de un contador o una tesorera) y el **correo de la dueña** al que llegan los avisos.
+**No hay pasarela de pagos ni se piden datos de tarjeta**: el pago es por transferencia y
+RECABRA anota lo que vio entrar en su cuenta. RECABRA no emite facturas ante la DIAN:
+registra el número (y el CUFE) de lo que se emitió por fuera.
+
+> **[VALIDAR CON ABOGADO]** Si el NIT y la razón social de un supermercado que es persona
+> natural (no una sociedad) deben tratarse como dato personal en esta sección.
+
+### 2.7 Lo que queda guardado en el navegador
+
+RECABRA no usa cookies de publicidad ni de análisis, ni herramientas de medición de
+terceros. Para funcionar, el navegador de quien lo usa guarda algunas cosas **en ese
+equipo** (almacenamiento local del navegador). Qué guarda, por qué y hasta cuándo está en
+el punto 10.1; lo más importante: **el plano de las sedes, con el valor de las repisas
+vendidas, queda guardado en el equipo aun después de «Salir»**.
+
+### 2.8 Resumen
 
 | Categoría | Ejemplos | De quién |
 |---|---|---|
 | Identificadores de cuenta | `firebase_uid`, correo, nombre, último ingreso | Usuarios de la plataforma |
 | Pertenencia y permisos | Rol en cada supermercado, invitaciones, quién invitó | Usuarios de la plataforma |
-| Constancia de consentimiento | Versión aceptada, fecha, IP, momento | Usuarios de la plataforma |
-| Contactos de aviso | Correos por sede y por rol | Personal del supermercado |
-| Reportes de montaje | Nombre escrito, rol, fecha, motivo, nota, foto | Personal del supermercado |
-| Contactos comerciales | Empresa, persona, teléfono, correo, notas | Contactos de proveedores |
-| Imágenes | Fotos de montaje, planometrías, artes, contratos escaneados | Personas captadas incidentalmente; firmantes |
-| Bitácora | Fecha, rol, correo del actor, IP, acción | Usuarios de la plataforma |
+| Constancias de consentimiento | Versión de la política aceptada, fecha, IP, momento; versión de los términos aceptada por la dueña | Usuarios de la plataforma |
+| Altas de supermercados | Nombre y código del supermercado, quién lo fundó, correo de un alta en espera | Quien funda |
+| Contactos de aviso | Correos por sede y por rol, responsables de montaje | Personal del supermercado |
+| Reportes de montaje | Quién reportó (nombre escrito o de la cuenta), rol, fecha, motivo, nota, foto | Personal del supermercado y quien monta |
+| Autoría de registros | Correo o nombre de quien creó, publicó, revisó o canceló algo | Usuarios de la plataforma |
+| Contactos comerciales | Empresa, persona, teléfono, correo, notas, correo de la reserva | Contactos de proveedores |
+| Imágenes | Fotos de montaje y de la guía, planometrías, artes, contratos escaneados | Personas captadas incidentalmente; firmantes |
+| Bitácoras | Fecha, rol, correo del actor, IP, acción (del supermercado); correo del operador, acción, período (de la plataforma) | Usuarios de la plataforma y operador |
 | Frenos de seguridad | IP y hora de intentos fallidos | Cualquiera que intente ingresar |
+| Registros técnicos y errores | IP de conexión, hora, ruta (sin correos ni códigos de enlaces), errores sin IP ni correos | Cualquiera que use el servicio |
+| Cola de correos | Destinatarios, asunto y contenido de cada aviso, hasta que se borra | Destinatarios de los avisos |
+| Facturación y cobro | Razón social, NIT, municipio, correo de facturación, cuentas de cobro, pagos, referencias bancarias, retenciones | Supermercado cliente (y la persona dueña del correo de facturación) |
+| En el navegador | Sesión, planos de las sedes con valores, preferencias, reporte de montaje sin enviar | Quien usa ese equipo |
 
 **Datos sensibles.** RECABRA **no pide ni necesita** datos sensibles en el sentido del
 artículo 5 de la Ley 1581 (salud, origen étnico, orientación política, religión,
@@ -157,7 +259,10 @@ el artículo 7 de la Ley 1581 y el artículo 12 del Decreto 1377, ajustar esta s
 - Crear y sostener la cuenta, y verificar quién es quien entra.
 - Decidir a qué supermercado y con qué permisos entra cada persona.
 - Enviar invitaciones y avisos operativos del servicio.
-- Dejar constancia de que se aceptó esta política, con qué versión y cuándo.
+- Dejar constancia de que se aceptó esta política, con qué versión y cuándo, y de que la
+  dueña aceptó los Términos del servicio.
+- Avisarle al operador de la plataforma cada supermercado que se funda, para detectar altas
+  abusivas, y atender las que llegan con el tope del día.
 - Facturar y administrar el estado de cuenta del supermercado.
 - Atender consultas, reclamos y solicitudes de derechos.
 
@@ -167,12 +272,15 @@ el artículo 7 de la Ley 1581 y el artículo 12 del Decreto 1377, ajustar esta s
   montar.
 - Dejar constancia de quién confirmó un montaje y cuándo, que es lo que responde un
   reclamo de un proveedor meses después.
+- Mandarle a quien monta la guía de montaje o el aviso con su enlace sin contraseña, sin
+  precios ni proveedores.
 
 ### 3.3 Contactos de proveedores
 
 - Administrar el contrato de alquiler del espacio: quién es la contraparte, a quién
   llamar, a dónde mandar la confirmación.
-- Enviar al proveedor la constancia de lo que contrató.
+- Enviar al proveedor la constancia de lo que contrató, y avisarle de una reserva.
+- Probar en 3D cómo se vería su producto en el espacio (las artes que carga el supermercado).
 
 ### 3.4 Imágenes y archivos
 
@@ -184,6 +292,9 @@ el artículo 7 de la Ley 1581 y el artículo 12 del Decreto 1377, ajustar esta s
 - Saber quién hizo qué cuando falta un contrato o cambia un valor.
 - Frenar intentos de acceso no autorizado (fuerza bruta) y detectar abuso.
 - Investigar y reportar incidentes de seguridad.
+- Diagnosticar fallas del servicio (registros técnicos y errores) y volver a mandar un aviso
+  que no salió (cola de correos).
+- Recuperar el servicio si se pierde la base de datos (respaldos cifrados, punto 6).
 
 ### 3.6 Operación del servicio y asesoría comercial al supermercado
 
@@ -200,6 +311,31 @@ punto 5.3 describe en detalle y que el reporte de transparencia declara dato por
   facturación.
 - **Mejora del servicio y de la plataforma**: entender cómo se usa el producto y qué le
   falta para funcionar mejor, sin identificar a ninguna persona.
+
+### 3.7 Cobro del servicio
+
+- Registrar lo que se pactó con cada supermercado y las cuentas de cobro o facturas que se
+  le emiten.
+- Registrar los pagos por transferencia y las retenciones, y conciliarlos con lo cobrado.
+- **Avisar por correo** a la dueña del supermercado y al correo de facturación: que una
+  cuenta de cobro está por vencer, que venció, que lleva días vencida, el **aviso formal**
+  de que la cuenta va a pasar a sólo lectura (con la fecha), que pasó a sólo lectura, y la
+  constancia de que se recibió un pago.
+- **Restringir la cuenta a sólo lectura** cuando una cuenta de cobro lleva 30 días
+  vencida, como dicen los términos del servicio, y levantar la restricción cuando se
+  registra el pago. La restricción no borra ningún dato.
+- Mostrarle a la dueña del supermercado, dentro de RECABRA, lo que debe y cómo pagarlo.
+
+**Quién ve qué.** Los montos y las cuentas de cobro los ven sólo RECABRA (la operadora de
+la plataforma) y la dueña del supermercado. El resto de su gente ve el estado de la cuenta
+—al día, pago pendiente, sólo lectura, suspendida— y nada más: ni montos ni el motivo.
+
+> **[VALIDAR CON ABOGADO]** Base de legalidad de esta finalidad: ¿alcanza con la ejecución
+> del contrato con el supermercado (y el interés legítimo de cobrar lo debido), o hace
+> falta una autorización expresa de la persona cuyo correo es el de facturación, que puede
+> no ser usuaria de RECABRA y no haber aceptado esta política?
+
+### 3.8 Lo que no hacemos
 
 **Lo que NO hacemos con estos datos:** no se venden, no se alquilan y no se entregan a
 terceros con fines publicitarios. No se usan para elaborar perfiles comerciales de
@@ -226,14 +362,21 @@ registrada** en tres momentos:
 
 **Cada versión se acepta por separado.** La constancia guarda la versión concreta que se
 aceptó, así que cuando se publica una versión nueva —como la 2026-09-v2, que cambió lo que
-ve el operador de la plataforma (punto 5.3)— la aceptación anterior deja de estar vigente y
-el sistema **vuelve a pedir la aceptación** en el siguiente ingreso, sin borrar ni reescribir
-la constancia vieja. Las aceptaciones anteriores se conservan tal como quedaron: son la
+ve el operador de la plataforma (punto 5.3), o esta 2026-10-v3, que suma los proveedores de
+tecnología, los plazos de conservación, el cobro y los derechos persona por persona— la
+aceptación anterior deja de estar vigente y el sistema **vuelve a pedir la aceptación** en
+el siguiente ingreso, sin borrar ni reescribir la constancia vieja. Las aceptaciones anteriores se conservan tal como quedaron: son la
 prueba de qué texto aceptó cada persona y cuándo.
 
 De cada aceptación se guarda **la versión de la política aceptada, la fecha y hora, la
 dirección IP y en cuál de los tres momentos ocurrió**. Esa constancia es la prueba de la
 autorización, tal como pide el artículo 7 del Decreto 1377 de 2013.
+
+**Los Términos del servicio** son el contrato con el supermercado y los acepta su dueña:
+cuando estén vigentes, al fundar el supermercado (junto con esta política) y, para un
+supermercado que ya existía, en el siguiente ingreso de la dueña. Se guardan **la versión de
+los términos, la versión de esta política que regía, el supermercado, la fecha, la IP y el
+momento**. Mientras los términos no estén publicados, no se pide nada más que esta política.
 
 ### 4.2 Datos de terceros que carga el supermercado
 
@@ -441,7 +584,10 @@ ver**:
 - las **fotos** de montaje ni ningún otro archivo o documento adjunto a un espacio o a un
   contrato;
 - **ningún correo, nombre ni identificador de un usuario** del supermercado ni de sus
-  proveedores, ni la **fecha de acceso de una persona en particular**;
+  proveedores, ni la **fecha de acceso de una persona en particular** —salvo lo que necesita
+  para administrar la cuenta del cliente, que no es un dato de negocio: el correo de quien
+  funda un supermercado (el aviso del alta y las altas en espera), el de la dueña que pide la
+  supresión de su cliente y el correo de facturación—;
 - el **nombre de un proveedor sin sanear** (los correos y teléfonos incrustados se
   enmascaran antes de cualquier lectura del operador, en el detalle igual que en los
   agregados);
@@ -452,6 +598,16 @@ ver**:
   sin desglose, sin sedes y sin el nombre de ningún otro supermercado;
 - **nada en modo escritura**: el acceso del operador a los datos de negocio de un cliente
   es de **sólo lectura**, en el detalle igual que en los agregados.
+
+**La única excepción: atender el derecho de una persona.** Cuando una persona concreta pide
+conocer o suprimir sus datos (sección 7) —o el supermercado, como responsable, instruye que
+se atienda al contacto de uno de sus proveedores—, el operador puede **buscar a esa persona**
+por su correo, su teléfono o el proveedor del que es contacto, **en todas las bases**, y
+exportar lo que hay de ella o **anonimizarla**. Es lo único que el operador puede escribir en
+la base de un supermercado, y sólo para eso: queda una **constancia** (sin el correo de la
+persona: una huella que no se puede leer), una línea en la **bitácora de la plataforma** con
+el supermercado tocado —que el supermercado ve en su reporte de transparencia— y otra en la
+**bitácora del supermercado**.
 
 **c) El reporte de transparencia, como derecho del cliente.** Cualquier supermercado
 cliente puede generar, cuando quiera, un **reporte de transparencia** de su propia cuenta.
@@ -486,8 +642,9 @@ eso están los derechos de la sección 7.
 **d) La bitácora.** Cada consulta del operador queda anotada —con el **correo del
 operador**, el momento y el período consultado— en la **bitácora** de la plataforma: las
 métricas, la tendencia histórica, la lectura de adopción, el listado de clientes, el panel
-de solicitudes de supresión, el **detalle de espacios y contratos** de un cliente y el
-propio reporte de transparencia. Esa bitácora es lo que
+de solicitudes de supresión, el **detalle de espacios y contratos** de un cliente, el
+propio reporte de transparencia y la atención de los **derechos de una persona** (exportar
+o anonimizar, con el supermercado tocado). Esa bitácora es lo que
 alimenta la lista de accesos del reporte: por eso el cliente puede comprobar, y no
 solamente creer, quién miró sus cifras y cuándo.
 
@@ -570,29 +727,50 @@ La ley exige que los datos se conserven solo mientras sean necesarios para la fi
 que los justifica (artículo 4, literales c y d, de la Ley 1581; artículo 11 del
 Decreto 1377).
 
-Criterios que aplica RECABRA hoy:
+**Dos reglas que no cambian con los plazos de abajo:**
 
-- **Datos de negocio (contratos, espacios, proveedores, montajes, planometrías):** se
-  conservan mientras dure la relación con el supermercado y después por el tiempo que
-  exijan las obligaciones comerciales, contables y tributarias.
-  **Los datos de negocio NO se borran por el estado de cuenta del supermercado.** Si un
+- **Los datos de negocio NO se borran por el estado de cuenta del supermercado.** Si un
   cliente entra en mora, queda en solo lectura o queda suspendido, se le corta el acceso,
   nunca la información: apagar el servicio no puede significar destruir la prueba de lo
   que se contrató.
-- **Fotos de montaje y planometrías:** no se borran al vencer el contrato. Son la prueba
-  de lo que se acordó armar y de lo que efectivamente se armó, y sirven cuando un
-  proveedor reclama meses después.
-- **Bitácora:** se conserva mientras siga siendo útil para auditoría y para investigar
-  incidentes. [COMPLETAR: plazo concreto que fije el negocio, p. ej. 2 años.]
-- **Frenos de fuerza bruta (IP y hora de intentos fallidos):** se descartan solos pasada
-  la ventana de tiempo del freno; son de vida muy corta.
-- **Cuentas de usuario:** mientras la persona conserve al menos una membresía activa.
-  Desactivar la membresía corta el acceso de inmediato.
-- **Invitaciones:** hasta que se usan o caducan.
+- **Lo que se borra por plazo lo borra el sistema solo**, en su mantenimiento (varias veces
+  al día). Cada plazo marcado «se borra solo» está programado así; los que dicen
+  [COMPLETAR: confirmar plazo] son una propuesta que el abogado tiene que confirmar, y se
+  cambian sin tocar el sistema.
 
-> **[COMPLETAR]** Fijar y escribir aquí los plazos concretos de conservación por
-> categoría, con el sustento (obligación contable, tributaria o probatoria) de cada uno. Un
-> plazo indefinido no cumple la ley.
+| Qué | Cuánto se guarda | Cómo se borra |
+|---|---|---|
+| Contratos, espacios, proveedores y planos | Mientras dure la relación con el supermercado y después lo que exijan las obligaciones comerciales, contables y tributarias. [COMPLETAR: confirmar plazo después de terminada la relación] | Al terminar el servicio, cuando el supermercado lo pide (sección 7.1 b) |
+| Fotos de montaje y planometrías | Mientras dure el contrato y sus renovaciones, y **5 días** después de que termina sin renovarse | Se borran solas cuando el supermercado tiene activada la limpieza de fotos vencidas; si no, se conservan hasta que el supermercado las borra. Una foto que no está atada a ningún contrato que haya terminado se conserva. [COMPLETAR: confirmar plazo] |
+| Fotos de la guía de montaje, contratos escaneados y demás documentos | Mientras dure la relación con el supermercado | A mano, o al terminar el servicio |
+| Reportes de montaje (quién, cuándo, montado o no) | Mientras dure la relación con el supermercado: son la prueba ante un reclamo del proveedor. [COMPLETAR: confirmar plazo] | Al terminar el servicio |
+| Bitácora del supermercado | **365 días** [COMPLETAR: confirmar plazo] | Se borra sola |
+| Bitácora de la plataforma (accesos del operador) | **25 meses**: uno más que la ventana de 24 meses del reporte de transparencia, para que el reporte esté siempre completo [COMPLETAR: confirmar plazo] | Se borra sola |
+| Intentos fallidos de ingreso, de cuenta y de alta (IP y hora) | **1 día** (el freno mira los últimos 15 minutos) | Se borran solos |
+| Sesiones cerradas con «Salir» y enlaces cortados | Hasta que vence la sesión o el enlace: después ya no abren nada | Se borran solas |
+| Altas de supermercado en espera | **90 días** si nadie las atendió [COMPLETAR: confirmar plazo] | Se borran solas |
+| Cola de correos | Lo enviado, **30 días**; lo que no se pudo enviar, **90 días** [COMPLETAR: confirmar plazo] | Se borran solos |
+| Invitaciones | Hasta que se usan o caducan (7 días); una usada queda como constancia de quién invitó a quién | — |
+| Cuentas de usuario | Mientras la persona conserve al menos una membresía activa. Desactivar la membresía corta el acceso de inmediato. Sin ninguna membresía activa, se propone conservarla hasta dos años después del último ingreso [COMPLETAR: confirmar plazo] | Hoy no se borra sola: se anonimiza cuando la persona lo pide (sección 7) |
+| Constancias de aceptación de la política y de los términos | Mientras se traten los datos de la persona y después el tiempo de prescripción de las acciones que la constancia sirve para defender [COMPLETAR: confirmar plazo] | No se borran con la supresión: quedan sin el correo de la persona |
+| Cuentas de cobro, facturas, pagos y el historial del estado de cuenta | **[VALIDAR CON ABOGADO: diez (10) años]** desde [VALIDAR CON ABOGADO: la fecha del último asiento, documento o comprobante], como soporte contable y tributario, también después de que el supermercado deja de ser cliente | — |
+| Datos de facturación de la suscripción | Mientras dure la suscripción | Al borrar el supermercado |
+| Métricas mensuales del operador (sin datos de personas; el nombre del proveedor, saneado) | La ventana del reporte más un año (36 meses); el total de la plataforma, que no lleva ningún dato de un cliente ni de una persona, sin plazo | Se borran solas |
+| Respaldos cifrados de toda la plataforma | **30 días** cada copia | Se borran solos (GitHub y el depósito de respaldos) |
+| Registros técnicos del servidor | Lo que guarde el plan de Render. [COMPLETAR: plazo del plan contratado] | Los borra Render |
+| Errores enviados a Sentry (si está activado) | Lo que guarde el plan de Sentry. [COMPLETAR: plazo del plan contratado] | Los borra Sentry |
+| Lo que guarda el navegador | Hasta que quien usa el equipo lo borra (punto 10.1) | En el equipo |
+
+> **[COMPLETAR]** Escribir junto a cada plazo su sustento (obligación contable, tributaria o
+> probatoria). **[VALIDAR CON ABOGADO]** La referencia habitual para la facturación es el artículo 28 de la Ley 962
+> de 2005, que modificó el artículo 60 del Código de Comercio (diez años), y para los
+> soportes tributarios el artículo 632 del Estatuto Tributario y el artículo 46 de la Ley
+> 962 de 2005. Un plazo indefinido no cumple la ley.
+
+**Una supresión y los respaldos.** Cuando se anonimiza a una persona (sección 7), sus datos
+siguen en los respaldos cifrados hasta que esos respaldos vencen (30 días). Si en ese plazo
+hubiera que restaurar un respaldo, la supresión se vuelve a aplicar antes de volver a
+atender.
 
 ---
 
@@ -613,7 +791,7 @@ a:
 
 ### 7.1 Cómo se ejercen dentro del sistema
 
-RECABRA tiene dos vías construidas en el producto, además del canal de correo:
+RECABRA tiene estas vías construidas en el producto, además del canal de correo:
 
 **a) Descargar los datos del supermercado — `GET /api/clientes/mi-export`**
 
@@ -661,8 +839,45 @@ real y no contra el rol de la sesión; sólo su propio supermercado; y un límit
 por hora. El reporte **no borra ni modifica nada** —es informativo—, y también se lo puede
 pedir al operador, que lo entrega con idéntico contenido.
 
-Ni el export, ni la solicitud de supresión, ni este reporte se cortan por el estado
-comercial de la cuenta: el cobro no puede bloquear el ejercicio de los derechos.
+**d) Descargar mis datos — `GET /api/auth/mis-datos`**
+
+**Cualquier persona con cuenta propia** —dueña, administración o mercaderista— puede bajar,
+desde el menú de su cuenta, un archivo con **sus** datos: su cuenta (correo, nombre, fechas,
+membresías), las constancias de lo que aceptó, y lo que la menciona en los supermercados
+donde tiene acceso hoy (dónde aparece su correo o su nombre y las acciones suyas que anotó la
+bitácora: cuándo, qué y desde qué IP). Lo que es de otras personas —el contenido de un aviso
+que también le llegó a otros, el detalle de la bitácora— se cuenta, no se copia; y a quien es
+mercaderista no se le muestra ningún texto que lleve montos. Tiene el mismo límite de
+descargas por hora que el export del supermercado, y deja una línea en la bitácora.
+
+**e) Una persona concreta, atendida por RECABRA**
+
+Quien no tiene cuenta —el contacto de un proveedor, alguien a quien le llegan los avisos,
+quien dejó de trabajar en el supermercado— o quien prefiere escribir, lo pide por el canal
+de la sección 8. El operador de la plataforma la busca por su correo, su teléfono o el
+proveedor del que es contacto, en **todas** las bases de RECABRA, y:
+
+- para una **consulta**, le entrega un archivo con todo lo que hay de ella;
+- para una **supresión**, la **anonimiza**: donde estaba su correo, su teléfono o su nombre
+  queda «titular-suprimido-…», su cuenta deja de poder entrar, el contacto del proveedor
+  pierde nombre, teléfono y correo, y se borra lo que no es constancia de nada (invitaciones
+  sin usar, altas en espera, su dirección en los avisos todavía sin mandar). **Lo que la ley
+  obliga a conservar no se borra, se anonimiza**: los contratos (el nombre de la empresa
+  proveedora queda, porque es la contraparte), la bitácora, la facturación y las
+  constancias de autorización.
+
+Cada atención deja una constancia —sin el correo de la persona—, una línea en la bitácora de
+la plataforma y otra en la de cada supermercado tocado (punto 5.3). Se responde en los
+plazos de la sección 8: diez días hábiles una consulta y quince un reclamo.
+
+Fuera del sistema quedan, y así se le informa a la persona: su cuenta en Google/Firebase
+(RECABRA la borra en la consola de Firebase cuando pide la supresión), los respaldos
+cifrados (vencen solos a los 30 días), los registros técnicos del servidor y los correos que
+ya se le entregaron a otros.
+
+Ni el export, ni la solicitud de supresión, ni este reporte, ni la descarga de los datos de
+cada persona se cortan por el estado comercial de la cuenta: el cobro no puede bloquear el
+ejercicio de los derechos.
 
 ### 7.2 Quién puede pedir qué
 
@@ -671,6 +886,9 @@ comercial de la cuenta: el cobro no puede bloquear el ejercicio de los derechos.
 - **Personal del supermercado y contactos de proveedores**: el responsable es el
   supermercado (ver sección 5). Pueden dirigirse al supermercado o a RECABRA; si escriben a
   RECABRA, se traslada la solicitud al supermercado y se les informa a quién se trasladó.
+  Cuando el supermercado lo instruye —o no contesta dentro del plazo—, RECABRA la ejecuta
+  con la vía e) del punto 7.1. [VALIDAR CON ABOGADO: si RECABRA, como encargada, puede
+  ejecutar la supresión sin la instrucción del supermercado cuando éste no contesta.]
 - **Personas que aparecen incidentalmente en una foto de montaje**: pueden pedir por el
   canal de la sección 8 que la imagen se retire, indicando el supermercado, la sede y la
   fecha aproximada.
@@ -755,14 +973,21 @@ responsable.
 
 | Proveedor | Para qué | Qué datos ve | Dónde |
 |---|---|---|---|
-| **Google — Firebase Authentication** | Verificar la identidad de quien entra (ingreso con Google o con correo y contraseña) | Correo, nombre, identificador de cuenta, contraseña de la cuenta (que RECABRA nunca ve) | Infraestructura de Google [VALIDAR CON ABOGADO: región concreta según la configuración del proyecto de Firebase] |
-| **Render** | Alojar la aplicación y la base de datos | Todo lo que la aplicación almacena | Estados Unidos |
-| **[COMPLETAR: proveedor de correo saliente]** | Enviar los avisos automáticos | Correos de destinatarios y contenido del aviso | [COMPLETAR] |
+| **Google — Firebase Authentication** | Verificar la identidad de quien entra (ingreso con Google o con correo y contraseña) | Correo, nombre, identificador de cuenta, contraseña de la cuenta (que RECABRA nunca ve), y la dirección IP y el navegador de quien inicia sesión | Infraestructura de Google [VALIDAR CON ABOGADO: región concreta según la configuración del proyecto de Firebase] |
+| **Render** | Alojar la aplicación, las bases de datos (con los archivos y las fotos) y los registros técnicos | Todo lo que la aplicación almacena, y la IP y la ruta de cada pedido | Estados Unidos [COMPLETAR: región del servicio en Render] |
+| **Proveedor de correo saliente: Brevo o SendGrid**, según cuál se configure [COMPLETAR: cuál se usa] | Enviar los avisos automáticos, las invitaciones y las guías de montaje | Las direcciones de los destinatarios y el **contenido entero** de cada aviso: datos del contrato, la constancia de un pago o una cuenta de cobro, y los **enlaces sin contraseña** (invitación, aviso de montaje, guía), que abren lo que el correo describe | [COMPLETAR: país del proveedor elegido] |
+| **GitHub (Microsoft) — GitHub Actions** | Hacer el respaldo nocturno de todas las bases y guardarlo 30 días | Una copia **cifrada** de todas las bases; GitHub no tiene la clave para abrirla | Estados Unidos |
+| **Depósito de respaldos (Cloudflare R2 o Amazon S3)**, si se configura | Guardar una segunda copia del respaldo cifrado, 30 días | La misma copia cifrada, sin la clave | [COMPLETAR: proveedor y región, si se usa] |
+| **Sentry**, si se activa | Avisar de errores del sistema | El error técnico, sin la IP ni las cabeceras de quien pidió y sin direcciones de correo | [COMPLETAR: región del proyecto en Sentry, si se usa] |
+
+RECABRA no usa servicios de publicidad, de análisis de uso ni fuentes tipográficas de
+terceros: el navegador sólo se conecta con RECABRA y, para iniciar sesión, con Google.
 
 ### 9.2 Transmisión internacional
 
-La aplicación y la base de datos están alojadas en **Estados Unidos**, y la autenticación
-la presta **Google**. Esto implica que los datos salen de Colombia.
+La aplicación, la base de datos y los respaldos están alojados en **Estados Unidos**, la
+autenticación la presta **Google**, y los avisos salen por el proveedor de correo de la
+tabla de arriba. Esto implica que los datos salen de Colombia.
 
 El artículo 26 de la Ley 1581 prohíbe la transferencia a países que no ofrezcan un nivel
 adecuado de protección, con excepciones; y el artículo 25 del Decreto 1377 aclara que
@@ -775,9 +1000,10 @@ de seguridad del encargado.
 > 1. Si Estados Unidos figura o no en el listado de países con nivel adecuado de
 >    protección que mantiene la SIC, y qué versión de ese listado está vigente. Este dato
 >    ha cambiado con el tiempo y no debe darse por sabido.
-> 2. Si los términos contractuales estándar de Google Cloud/Firebase y de Render
+> 2. Si los términos contractuales estándar de Google Cloud/Firebase, de Render, de
+>    GitHub, del proveedor de correo y, si se usan, del depósito de respaldos y de Sentry
 >    satisfacen el requisito de "contrato de transmisión" del artículo 25 del Decreto 1377,
->    o si hay que suscribir un anexo de tratamiento de datos.
+>    o si hay que suscribir un anexo de tratamiento de datos con cada uno.
 >
 > Si ninguna de las dos vías aplica, la alternativa es incluir la autorización expresa del
 > titular para la transmisión internacional en el texto que se acepta al alta.
@@ -795,13 +1021,21 @@ Medidas que hoy están implementadas:
 
 - **Cada supermercado tiene su propia base de datos**, separada de la de los demás.
 - **Las contraseñas nunca se guardan en texto legible.** Las de las cuentas individuales
-  las custodia Google; las claves compartidas del método antiguo se guardan con hash
-  Argon2id, que es irreversible.
+  las custodia Google; las claves compartidas del método antiguo —apagado— se guardarían
+  con hash Argon2id, que es irreversible.
 - **Los precios y valores de contrato no llegan al rol de mercaderista**: el servidor los
   borra de la respuesta antes de enviarla, no la pantalla.
 - **Frenos de fuerza bruta** por dirección IP en el ingreso, en la autenticación por cuenta
-  y en la creación de supermercados nuevos.
-- **Bitácora** de todo lo que cambia algo o abre una puerta.
+  y en la creación de supermercados nuevos, y un tope diario de altas.
+- **«Salir» cierra la sesión en el servidor**: aunque alguien haya copiado esa sesión, deja
+  de servir. Un enlace de montaje o de guía se puede cortar antes de que venza.
+- **La sesión no viaja en las direcciones**: las imágenes y documentos se abren con un
+  permiso aparte que dura 15 minutos.
+- **La consola del operador** puede exigir verificación en dos pasos.
+- **Bitácora** de todo lo que cambia algo o abre una puerta, y de cada consulta del
+  operador.
+- **Los registros técnicos no llevan direcciones de correo ni los códigos de los enlaces.**
+- **Respaldo nocturno cifrado** de todas las bases, guardado 30 días.
 - **Desactivar una membresía corta el acceso de esa persona en el pedido siguiente.**
 - Cabeceras de seguridad del navegador y política de contenido en todas las respuestas.
 - Revisión automática de vulnerabilidades en las dependencias del proyecto.
@@ -813,12 +1047,34 @@ presenten violaciones a los códigos de seguridad y existan riesgos en la admini
 la información de los titulares— y a los titulares y clientes afectados.
 [COMPLETAR: plazo interno de reporte y responsable de hacerlo.]
 
+### 10.1 Lo que guarda el navegador
+
+RECABRA no pone cookies. Lo que sigue lo guarda el navegador de quien lo usa, **en ese
+equipo**, y no sale de ahí salvo para hablar con RECABRA:
+
+| Qué | Para qué | Hasta cuándo |
+|---|---|---|
+| **La sesión** (el permiso firmado de la sesión, el correo, el nombre, el supermercado y el rol) | No tener que volver a entrar al recargar la página | Hasta «Salir» (la sesión deja de servir a las 12 horas) |
+| **Los planos de las sedes**, con los nombres que el supermercado les puso, las cámaras del 2D y del 3D y **el valor de las repisas vendidas desde el 3D** | Que el plano abra al instante y siga mostrándose sin conexión | **Queda después de «Salir»**; se reemplaza al entrar a otro supermercado en el mismo equipo |
+| La sesión de Google/Firebase | Renovar el inicio de sesión sin pedir la contraseña | Hasta «Salir» |
+| El enlace de montaje o de la guía con el que se entró | Seguir en el mismo trabajo al recargar | Hasta cerrar la pestaña |
+| Un **reporte de montaje que no se pudo enviar** (con su foto, la nota y el nombre escrito) | Mandarlo solo cuando vuelve la señal | Hasta que llega al servidor |
+| Preferencias: tema claro u oscuro, la última pestaña y el último supermercado elegido, avisos que alguien cerró | Que la pantalla quede como la persona la dejó | Hasta que se borran los datos del navegador |
+
+**Decisión tomada y riesgo aceptado:** los planos con el valor de las repisas quedan en el
+equipo después de «Salir» para que el plano abra al instante. Quien usa RECABRA en un
+**equipo compartido** debe borrar los datos de navegación al terminar; la responsabilidad
+sobre ese equipo es de quien lo usa, y así lo dicen los Términos del servicio.
+
+> **[VALIDAR CON ABOGADO]** Si este aviso alcanza como información al titular sobre el
+> almacenamiento en su equipo, o si hace falta mostrarlo en la pantalla de ingreso.
+
 ---
 
 ## 11. Vigencia y versionado
 
-- **Versión de esta política: 2026-09-v2.**
-- **Vigencia: desde septiembre de 2026** y hasta que se publique una versión nueva.
+- **Versión de esta política: 2026-10-v3.**
+- **Vigencia: desde octubre de 2026** y hasta que se publique una versión nueva.
 - El tratamiento de los datos se mantiene mientras dure la relación con cada titular y
   durante los plazos de conservación de la sección 6.
 
@@ -834,8 +1090,9 @@ la ley lo exija, se pedirá una nueva aceptación.
 | **2026-09-v1** | Primera versión: rol dual, consentimiento registrado por versión, derechos del titular dentro del producto, y las métricas agregadas del operador sujetas a un umbral de 3 contratos. |
 | **2026-09-v2** | El operador ve agregados exactos sin umbral; reporte de transparencia como derecho del cliente. Cambio material: dispara el re-consentimiento del punto 4.1. Antes de su despliegue, esta misma versión se amplió con el detalle de espacios y contratos (ver la fila siguiente). |
 | ↳ 2026-09-v2, ampliación previa al despliegue (2026-09-05) | El operador pasa a ver, además de los agregados, el **detalle de espacios y contratos** de cada cliente para la asesoría comercial (punto 5.3 (a)), con la finalidad nueva de **mejora del servicio y de la plataforma** (punto 3.6), anotado en la bitácora y declarado en el reporte de transparencia. **No se creó una versión nueva**: la 2026-09-v2 todavía no se había publicado ni desplegado, y el titular consiente el trato completo en un solo acto de aceptación. |
+| **2026-10-v3** | Revisión contra el producto (2026-10-30): todos los proveedores de tecnología (correo, respaldos en GitHub y en un depósito, Sentry) y lo que ve cada uno (9.1); lo que guarda el navegador, incluido el plano con valores después de «Salir» (2.7 y 10.1); las bitácoras, los registros técnicos, los errores y la cola de correos (2.5); la autoría de los registros, las altas en espera y la aceptación de los Términos del servicio (2.1 y 4.1); el cobro de la suscripción (2.6 y 3.7); los plazos de conservación por categoría, con lo que se borra solo (6); los derechos persona por persona: «Descargar mis datos» y la atención del operador que exporta o anonimiza (5.3 y 7.1 d y e). Cambio material: dispara el re-consentimiento del punto 4.1. |
 
-> Nota técnica para quien mantiene el sistema: el identificador `2026-09-v2` es el mismo
+> Nota técnica para quien mantiene el sistema: el identificador `2026-10-v3` es el mismo
 > valor de la constante `VERSION_POLITICA` del backend (`app/models/consentimiento.py`). Si
 > se publica una versión nueva de este documento hay que cambiar los dos a la vez, o las
 > constancias de consentimiento apuntarán a un texto que ya no existe. Subir la constante no

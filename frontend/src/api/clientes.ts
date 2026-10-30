@@ -16,6 +16,10 @@ export interface AltaClientePayload {
   /** Fase 3 compliance: sin `true` el backend contesta 422 antes de fundar
    *  nada — "sin aceptación no hay alta" (spec). */
   acepta_politica: boolean;
+  /** Auditoría P0-2: sólo con términos vigentes (`leerTerminos`): la versión
+   *  que la persona leyó y aceptó. Sin términos vigentes no se mandan. */
+  acepta_terminos?: boolean;
+  version_terminos?: string;
 }
 
 /** Superset de `OauthOk` (api/auth.ts) con `cliente_nombre` puesto: acá SÍ

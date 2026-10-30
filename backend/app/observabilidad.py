@@ -49,18 +49,60 @@ def resumen_de_destinatarios(destinatarios) -> str:
     return f"{n} destinatario{'s' if n != 1 else ''} ({', '.join(dominios) or 'sin dominio'})"
 
 
+# Lo que va en la query de una URL y abre algo: el token del enlace de montaje o
+# de la guía (`?montar=…&t=…`, `?guia=…&t=…`) y el de medios (`?token=…`). El
+# registro de accesos de uvicorn escribe la ruta entera, y un enlace sin
+# contraseña copiado del log del hosting sirve igual que el del correo
+# (auditoría pre-lanzamiento, P2-23: los logs no guardan lo que identifica ni
+# lo que abre).
+_TOKEN_EN_LA_RUTA = re.compile(r"([?&](?:t|token|id_token)=)[^&#\s]+", re.IGNORECASE)
+
+
+def sin_tokens(ruta: str) -> str:
+    """``/?montar=X&t=eyJ…`` → ``/?montar=X&t=***``; y sin correos."""
+    return sin_correos(_TOKEN_EN_LA_RUTA.sub(r"\1***", ruta or ""))
+
+
+class SinTokensEnLaRuta(logging.Filter):
+    """Filtro del logger ``uvicorn.access``: sus ``args`` son
+    ``(cliente, método, ruta, versión, estado)``; la ruta sale sin tokens."""
+
+    def filter(self, registro: logging.LogRecord) -> bool:
+        args = registro.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            registro.args = args[:2] + (sin_tokens(args[2]),) + args[3:]
+        return True
+
+
+def filtrar_el_registro_de_accesos() -> bool:
+    """Le pone el filtro a ``uvicorn.access`` una sola vez. Va aparte de
+    ``configurar_logging`` porque uvicorn configura su logger él mismo y eso
+    no depende de quién configuró el raíz."""
+    acceso = logging.getLogger("uvicorn.access")
+    if any(isinstance(f, SinTokensEnLaRuta) for f in acceso.filters):
+        return False
+    acceso.addFilter(SinTokensEnLaRuta())
+    return True
+
+
 class FormatoJSON(logging.Formatter):
-    """Una línea JSON por registro."""
+    """Una línea JSON por registro.
+
+    **Red de seguridad (auditoría P2-23):** el mensaje y la traza pasan por
+    ``sin_correos`` acá, al escribirse. Quien loguea ya resume los destinatarios
+    (``resumen_de_destinatarios``), pero una excepción del proveedor de correo o
+    de la base puede traer una dirección adentro, y la traza no la escribe nadie
+    a mano."""
 
     def format(self, registro: logging.LogRecord) -> str:
         datos = {
             "time": datetime.fromtimestamp(registro.created, tz=timezone.utc).isoformat(timespec="milliseconds"),
             "level": registro.levelname,
             "logger": registro.name,
-            "message": registro.getMessage(),
+            "message": sin_correos(registro.getMessage()),
         }
         if registro.exc_info:
-            datos["exc"] = self.formatException(registro.exc_info)
+            datos["exc"] = sin_correos(self.formatException(registro.exc_info))
         return json.dumps(datos, ensure_ascii=False)
 
 

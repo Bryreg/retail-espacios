@@ -685,6 +685,10 @@ _EXENTOS_POR_HABEAS_DATA = (
     # como el export -- un cliente suspendido tiene que poder seguir auditando
     # qué le tomó la plataforma.
     "/api/clientes/mi-reporte-plataforma",
+    # Auditoría pre-lanzamiento (P1-14, P0-2): «Descargar mis datos» de cada
+    # persona y la aceptación de los términos.
+    "/api/auth/mis-datos",
+    "/api/auth/aceptar-terminos",
 )
 
 # Ponerse al día (C2, cobranza). Una cuenta en sólo lectura o suspendida tiene

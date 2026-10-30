@@ -29,6 +29,7 @@ const Login = lazy(() => import("./pages/Login"));
 const Montaje = lazy(() => import("./pages/Montaje"));
 const GuiaDeMontaje = lazy(() => import("./pages/GuiaDeMontaje"));
 const PoliticaDatos = lazy(() => import("./pages/PoliticaDatos"));
+const Terminos = lazy(() => import("./pages/Terminos"));
 const Plataforma = lazy(() => import("./pages/Plataforma"));
 const ReportePlataforma = lazy(() => import("./pages/ReportePlataforma"));
 const DetalleCliente = lazy(() => import("./pages/DetalleCliente"));
@@ -164,6 +165,7 @@ export default function App() {
   const cliente = useAuthStore((s) => s.cliente);
   const avisoCuenta = useAuthStore((s) => s.avisoCuenta);
   const pedirConsentimiento = useAuthStore((s) => s.pedirConsentimiento);
+  const pedirTerminos = useAuthStore((s) => s.pedirTerminos);
   // Fase 4 plataforma: sesión de un operador SIN membresías. No tiene
   // cliente de negocio detrás -- CUALQUIER fetch de layout/spaces con este
   // token daría 401, y el interceptor de `api/client.ts` borraría la sesión
@@ -214,6 +216,11 @@ export default function App() {
   // se monta con sesión abierta, y esta página tiene que andar sin login.
   if (typeof window !== "undefined" && window.location.pathname === "/politica-datos") {
     return <Pantalla><PoliticaDatos /></Pantalla>;
+  }
+  // Los Términos del servicio, por lo mismo (auditoría P0-2). El texto lo da
+  // el servidor sólo cuando están vigentes.
+  if (typeof window !== "undefined" && window.location.pathname === "/terminos") {
+    return <Pantalla><Terminos /></Pantalla>;
   }
 
   // El enlace del correo manda sobre todo lo demás, incluso sobre una sesión
@@ -267,7 +274,7 @@ export default function App() {
       {/* Fase 3 compliance: superposición, no reemplazo — a diferencia de
           `BloqueoCuenta`, acá no hay nada que cortar; el tablero de abajo
           sigue funcionando mientras el aviso está puesto. */}
-      {pedirConsentimiento && <ModalConsentimiento />}
+      {(pedirConsentimiento || !!pedirTerminos) && <ModalConsentimiento />}
       <Routes>
         {/* Fase 4 plataforma: la sesión de un operador sin membresías nunca
             monta Dashboard -- "/" la manda derecho a "/plataforma". El

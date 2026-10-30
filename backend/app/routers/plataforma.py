@@ -104,7 +104,9 @@ def _anotar_consulta(email: str, accion: str, periodo: str) -> None:
         finally:
             reg.close()
     except Exception:  # noqa: BLE001
-        log.exception("No se pudo anotar la consulta %s de %s en la bitácora", accion, email)
+        from app.observabilidad import sin_correos
+
+        log.exception("No se pudo anotar la consulta %s de %s en la bitácora", accion, sin_correos(email))
 
 
 def require_operador(request: Request, rol: str = Depends(require_auth)) -> str:
