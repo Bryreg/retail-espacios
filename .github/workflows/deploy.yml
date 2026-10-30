@@ -133,7 +133,10 @@ jobs:
 
   e2e:
     name: E2E · recorridos y accesibilidad
-    runs-on: ubuntu-latest
+    # Fijo en 24.04, no `ubuntu-latest`: ese ya es 26.04 y Playwright 1.56
+    # (fijado para coincidir con el Chromium del entorno de desarrollo) no
+    # instala Chromium ahí. Al subir Playwright se puede volver a `latest`.
+    runs-on: ubuntu-24.04
     # Auditoría P1-19 y P2-21: los recorridos de punta a punta (entrar, vender,
     # editar, cancelar, distribuir, montar por enlace, el trabajador sin plata,
     # la pantalla de recuperación) y axe con 0 violaciones serias o críticas,
