@@ -53,11 +53,32 @@ def _dependencias(dependant):
         yield from _dependencias(d)
 
 
+def _arbol(funcion):
+    try:
+        return ast.parse(textwrap.dedent(inspect.getsource(funcion)))
+    except (OSError, TypeError, SyntaxError):
+        return None
+
+
+def _importados_adentro(funcion) -> dict:
+    """``from app.x import f`` escrito ADENTRO de la función (para esquivar un
+    import circular): el nombre no está en sus globales."""
+    import importlib
+
+    arbol = _arbol(funcion)
+    fuera = {}
+    for nodo in ast.walk(arbol) if arbol is not None else ():
+        if isinstance(nodo, ast.ImportFrom) and (nodo.module or "").startswith("app."):
+            modulo = importlib.import_module(nodo.module)
+            for alias in nodo.names:
+                fuera[alias.asname or alias.name] = getattr(modulo, alias.name, None)
+    return fuera
+
+
 def _llamadas(funcion) -> set[str]:
     """Los nombres a los que llama ``funcion`` (``f(...)`` y ``x.f(...)``)."""
-    try:
-        arbol = ast.parse(textwrap.dedent(inspect.getsource(funcion)))
-    except (OSError, TypeError, SyntaxError):
+    arbol = _arbol(funcion)
+    if arbol is None:
         return set()
     nombres = set()
     for nodo in ast.walk(arbol):
@@ -76,7 +97,7 @@ def _anota(funcion, profundidad: int = 2) -> bool:
         return True
     if profundidad <= 0:
         return False
-    globales = getattr(funcion, "__globals__", {})
+    globales = {**getattr(funcion, "__globals__", {}), **_importados_adentro(funcion)}
     for nombre in nombres:
         otra = globales.get(nombre)
         if inspect.isfunction(otra) and (otra.__module__ or "").startswith("app.") and otra is not funcion:
