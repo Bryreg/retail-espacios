@@ -31,7 +31,7 @@ from html import escape
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -49,6 +49,7 @@ from app.services.alta_de_contrato import (
     cache_de_proveedores, escribir_contrato, espacio_para, proveedor_por_nombre,
 )
 from app.services.catalogo_muebles import tipo_de_tarifa
+from app.services.bitacora import anotar
 from app.services.candado import tomar_candados
 from app.services.fichas_propias import tarifas_propias
 from app.services.meses import meses_entre
@@ -663,19 +664,22 @@ def validar(lote: LoteIn, db: Session = Depends(get_db)):
     return validar_lote(db, lote)
 
 
-@router.post("/confirmar", response_model=ConfirmadoOut, dependencies=[Depends(require_admin)])
+@router.post("/confirmar", response_model=ConfirmadoOut)
 def confirmar(
     lote: LoteIn,
+    request: Request,
     background_tasks: BackgroundTasks,
+    rol: str = Depends(require_admin),
     db: Session = Depends(get_db),
     cliente: Cliente = Depends(cliente_del_pedido),
 ):
     """Crea los contratos de las filas que pasan. Vuelve a validar antes."""
-    return confirmar_lote(db, lote, background_tasks, cliente)
+    return confirmar_lote(db, lote, background_tasks, cliente, request=request, rol=rol)
 
 
 def confirmar_lote(db: Session, lote: LoteIn, background_tasks: BackgroundTasks, cliente: Cliente,
-                   planilla: bool = True) -> ConfirmadoOut:
+                   planilla: bool = True, request: Optional[Request] = None,
+                   rol: str = "admin") -> ConfirmadoOut:
     """Crea los contratos de las filas que pasan. Vuelve a validar antes.
 
     ``planilla=False`` sólo lo usan las pruebas de la venta por partes
@@ -736,6 +740,10 @@ def confirmar_lote(db: Session, lote: LoteIn, background_tasks: BackgroundTasks,
         if v.valor_mes:
             db.add(CondicionesDeContrato(lease_id=lease.id, modo_precio="mensual", valor_tecleado=v.valor_mes))
         v.lease_id = lease.id   # para que la pantalla le cuelgue la planometría
+        # La bitácora, en la MISMA transacción (auditoría P1-18): la línea y el
+        # contrato caen juntos o no cae ninguno. Mismo detalle que Vender.
+        anotar(db, request, rol, "contrato.alta", entidad="contrato", entidad_id=lease.id,
+               detalle=f"{space.code} · {supplier.name} · {_fecha(v.desde)}→{_fecha(v.hasta)} · planilla")
         creados.append(v)
 
     db.commit()
