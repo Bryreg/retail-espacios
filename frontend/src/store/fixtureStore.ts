@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
 import { fusionarEstadoComercial } from "../utils/estadoComercial";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
@@ -1585,6 +1585,16 @@ export const useFixtureStore = create<FixtureStore>()(
     }),
     {
       name: "retail-fixtures-v1",
+      // La caché del navegador nunca guarda plata (auditoría pre-lanzamiento,
+      // P2-3): en un computador compartido, quien abriera la consola leía los
+      // montos negociados del admin aun después de «Salir». Se guarda el
+      // plano sin `negotiatedValue` y la plata vuelve del servidor en la
+      // primera sincronización (ver `dataRole` abajo). Si una sede con
+      // cambios sin subir se sube así, el servidor rellena el monto que falta
+      // del que ya tenía (`_restore_missing_slot_prices`): ausente no es cero.
+      storage: createJSONStorage(() => localStorage, {
+        replacer: (clave, valor) => (clave === "negotiatedValue" ? undefined : valor),
+      }),
       // Exclude undo/redo stacks from localStorage — they're session-only
       partialize: (state) => ({
         fixturesBySede: state.fixturesBySede,
@@ -1600,7 +1610,10 @@ export const useFixtureStore = create<FixtureStore>()(
         serverRev: state.serverRev,
         settingsRev: state.settingsRev,
         dirty: state.dirty,
-        dataRole: state.dataRole,
+        // Siempre null en el disco: la copia guardada no tiene la plata, así
+        // que la primera sincronización tras recargar adopta del servidor
+        // todas las sedes sin cambios pendientes, como al cambiar de rol.
+        dataRole: null,
         clienteCache: state.clienteCache,
         generacionCache: state.generacionCache,
         // Una preferencia de vista, como las cámaras: sin datos ni plata.
@@ -1700,19 +1713,6 @@ export function stopAutoSync(): void {
     window.removeEventListener("online", onOnline);
     _listenersBound = false;
   }
-}
-
-/** Al salir (auditoría pre-lanzamiento, P2-3): los planos guardados en el
- *  navegador llevan los montos negociados del admin, y en un computador
- *  compartido quedaban en localStorage para quien abriera la consola. Se
- *  borran —el servidor los vuelve a dar al entrar—, salvo que haya cambios
- *  sin subir: perder el trabajo es peor, y quien entra después con otro
- *  supermercado igual los descarta (`scopeToCliente`). */
-export function olvidarPlanosAlSalir(): void {
-  const s = useFixtureStore.getState();
-  if (Object.values(s.dirty).some(Boolean)) return;
-  useFixtureStore.setState({ ...planosVacios(), clienteCache: null, generacionCache: null, referenceRates: null, dataRole: null });
-  try { localStorage.removeItem("retail-fixtures-v1"); } catch { /* sin almacenamiento: no hay nada que borrar */ }
 }
 
 // ─── Legacy migration ─────────────────────────────────────────────────────────

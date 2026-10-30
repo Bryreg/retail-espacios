@@ -7,7 +7,7 @@ import ModalConsentimiento from "./components/ModalConsentimiento";
 import { usarToken } from "./api/montaje";
 import { usarTokenDeGuia } from "./api/guia";
 import { useAuthStore } from "./store/authStore";
-import { olvidarPlanosAlSalir, startAutoSync, stopAutoSync, useFixtureStore } from "./store/fixtureStore";
+import { startAutoSync, stopAutoSync, useFixtureStore } from "./store/fixtureStore";
 import { iniciarMedios, pararMedios, useMedios } from "./api/medios";
 
 /**
@@ -186,8 +186,6 @@ export default function App() {
     // membresías, mirando sólo `/api/plataforma/*`.
     if (!token || TOKEN_MONTAJE || TOKEN_GUIA || plataforma) {
       stopAutoSync();
-      // Sin sesión, los planos con montos no se quedan en el navegador (P2-3).
-      if (!token) olvidarPlanosAlSalir();
       return;
     }
     // Antes de sincronizar: si esta sesión es de otro cliente que el que dejó
