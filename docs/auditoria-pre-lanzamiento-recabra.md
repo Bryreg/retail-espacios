@@ -46,7 +46,7 @@ También hay **cuatro inconsistencias de datos** que un cliente puede notar:
   - typecheck;
   - las 49 suites `npm run probar`;
   - build de producción;
-  - la suite completa de `pytest` en serie;
+  - la suite completa de `pytest`, en 4 tandas aisladas;
   - `npm audit`, prod y completo;
   - `pip-audit`;
   - axe-core sobre 8 pantallas, con servidor local y datos de prueba;
@@ -108,8 +108,8 @@ La línea de base es la versión más vieja disponible en este clon superficial:
 | `npx tsc --noEmit` | ✅ 0 errores (1 min 22 s) | — |
 | `npm run probar` (49 suites) | ✅ 0 fallos; ≈1 475 comprobaciones | Se saltó 1 verificación con navegador (`vender · navegador`) porque necesita `PROBAR_VENDER_URL` y un token. |
 | `npm run build` | ✅ (50 s), con advertencia de chunks > 500 kB | `Dashboard` 1 068 kB (336 kB gzip); `exceljs` 939 kB (271 kB); `three` 732 kB (190 kB); `StoreEditor3D` 481 kB (157 kB). `dist` pesa 4,9 MB. |
-| `pytest` completo, en serie | **PENDIENTE: se completa al terminar la corrida** | 110 archivos, 1 672 funciones de prueba. |
-| `pytest` en 6 tandas paralelas | ❌ muchos fallos, **por las pruebas y no por el producto** | En pruebas, la base de cada cliente es `/tmp/recabra_<slug>.db` (`app/clientes.py:87-92`). Dos procesos se pisan el archivo y aparece `attempt to write a readonly database`. Ver P3-12. |
+| `pytest` completo (110 archivos), en 4 tandas con un `TMPDIR` propio en `/dev/shm` | ✅ **1 762 pasaron, 0 fallaron, 0 errores**; 9 saltadas, 7 xfail (12 min) | Las 9 saltadas: 6 carreras de concurrencia que piden Postgres (`test_partes_concurrencia.py:169`, `test_participaciones_concurrencia.py:562-672`, ver P1-9) y 3 guardas de procedencia (`test_tendencia_ataques.py:886,934`, `test_landing_ataques.py:463`). Con `JWT_SECRET=ci-secret`, igual que en CI. |
+| `pytest` en 6 tandas con el `/tmp` compartido | ❌ muchos fallos, **por las pruebas y no por el producto** | En pruebas, la base de cada cliente es `/tmp/recabra_<slug>.db` (`app/clientes.py:87-92`). Dos procesos se pisan el archivo y aparece `attempt to write a readonly database`. Con un `TMPDIR` por proceso no pasa (fila anterior). Ver P3-12. |
 | `npm audit --omit=dev` | ⚠️ 4 moderadas, 0 altas | `react-router(-dom)`: open redirect; `uuid` vía `exceljs`. Los arreglos son cambios de versión mayor. |
 | `npm audit` completo | ⚠️ 6 moderadas, 2 altas (sólo dev) | `vite` y `source-map-js`: herramientas de build y del servidor de desarrollo, no se publican. |
 | `pip-audit -r requirements.txt` | ✅ sin vulnerabilidades conocidas | — |
@@ -271,7 +271,7 @@ La línea de base es la versión más vieja disponible en este clon superficial:
 | P3-9 | El guardado al cerrar la pestaña con `fetch keepalive` falla por encima de 64 kB | `main.tsx:36`. Lo mitiga que `dirty` se guarda. |
 | P3-10 | La auditoría de dependencias corre sólo en los PR | `.github/workflows/deps-audit.yml`: agregar `schedule:` semanal. |
 | P3-11 | Hay N+1 menores | `services/planogramas.py:665` (`resumen`). |
-| P3-12 | La suite de pytest no se puede paralelizar | Las bases de cliente en pruebas son `/tmp/recabra_<slug>.db` (`clientes.py:87-92`), y seis procesos se pisan. Ponerlas bajo el `mkstemp` de cada prueba y habilitar `pytest -n`; hoy la suite tarda unos 25 min en serie. |
+| P3-12 | La suite de pytest no se puede paralelizar tal como está | Las bases de cliente en pruebas son `/tmp/recabra_<slug>.db` (`clientes.py:87-92`), y varios procesos que comparten `/tmp` se pisan. Con un `TMPDIR` por proceso funciona: en esta auditoría, 4 tandas tardaron 12 min contra unos 25 en serie en CI. Crear las bases bajo el `mkstemp` de cada prueba y habilitar `pytest -n`, o partir el job de CI en tandas con su propio `TMPDIR`. |
 | P3-13 | La documentación de `JWT_SECRET` se contradice | `render.yaml` dice `generateValue: true`; ESTADO dice que es manual. |
 | P3-14 | Falta `og:image` | `index.html` (pendiente anotado ahí mismo). |
 | P3-15 | `GET /notifications/config` le muestra `notify_emails` al worker | Son correos internos, no montos. |
