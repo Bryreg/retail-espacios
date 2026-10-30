@@ -27,7 +27,7 @@ Las tres preguntas de frontera que este archivo tiene que poder contestar:
 **Todos los ``import app.*`` van adentro de las funciones**: el fixture
 ``client`` de ``conftest.py`` purga ``sys.modules['app.*']`` entre pruebas.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import json
 import re
 import subprocess
@@ -243,6 +243,7 @@ def _sembrar(slug, sedes: dict, contratos: list, tarifas: dict | None = None):
             ))
         if tarifas is not None:
             set_config(db, RATES_KEY, json.dumps(tarifas))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()
@@ -1160,7 +1161,7 @@ def test_t37_el_cliente_suspendido_conserva_el_reporte(client, monkeypatch):
     _estado(SLUG_A, "suspendido")
 
     # El resto de la app sí está cortada: si no, la prueba no probó nada.
-    assert client.get("/api/spaces/map", headers=cab_a).status_code == 402
+    assert client.get("/api/spaces/comercial", headers=cab_a).status_code == 402
 
     cuerpo = _ok(_reporte_dueno(client, cab_a))
     assert cuerpo["cliente"]["slug"] == SLUG_A

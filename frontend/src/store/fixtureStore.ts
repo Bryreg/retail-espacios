@@ -206,6 +206,11 @@ function scheduleSeasonsSave() {
 // ─── Reference rates (admin-only money) ───────────────────────────────────────
 
 let _ratesTimer: ReturnType<typeof setTimeout> | null = null;
+/** La revisión de las tarifas que este navegador leyó (`updated_at` de
+ *  `GET /layout/rates`): viaja al guardar, y si otra persona guardó después
+ *  el servidor contesta 409 en vez de pisarla (auditoría P2-17). `undefined`:
+ *  todavía no se leyó. */
+let _revisionDeTarifas: string | null | undefined = undefined;
 
 function scheduleRatesSave() {
   if (_ratesTimer) clearTimeout(_ratesTimer);
@@ -282,6 +287,8 @@ const RECHAZOS_CONOCIDOS = new Set([
   // fase 2 · I5: un ancho, fondo, alto, módulo o entrepaños que no se pueden
   // dibujar (`medidas_imposibles` de `services/layout_lookup.py`).
   "medidas_imposibles",
+  // Auditoría P1-15: lo comercial de una repisa del 3D es de sólo lectura.
+  "repisas_vendidas",
 ]);
 
 /** Entrar a Distribución desde otra pantalla (`pedirEnfoque3D`): sólo tipos
@@ -469,6 +476,10 @@ interface FixtureStore {
   // ── Sync actions ────────────────────────────────────────────────────────────
   /** Pull every sede from the server and adopt whatever changed. */
   syncFromServer: () => Promise<void>;
+  /** El servidor escribió el plano de `sede` por su cuenta («Pasar a
+   *  contrato» de una repisa, auditoría P1-15): su revisión pasa a ser la base
+   *  del próximo guardado, así no choca con lo que este mismo navegador pidió. */
+  adoptarRevisionDelPlano: (sede: string, revision: string | null | undefined) => void;
   /** Volver a leer de la base qué está vendido y repintarlo en TODAS las sedes.
    *  Lo comercial ya no viaja en el layout, así que cambia sin que cambie una
    *  sola revisión de plano: vender, cancelar o subir una planilla lo mueve. */
@@ -1236,6 +1247,11 @@ export const useFixtureStore = create<FixtureStore>()(
         }
       },
 
+      adoptarRevisionDelPlano: (sede, revision) => {
+        if (!revision) return;
+        set((s) => ({ serverRev: { ...s.serverRev, [sede]: revision } }));
+      },
+
       pushRates: async () => {
         if (!canWrite()) return;
         const rates = get().referenceRates;
@@ -1243,11 +1259,27 @@ export const useFixtureStore = create<FixtureStore>()(
         try {
           // Adopt the server's normalised copy (sede keys uppercased, zeros
           // dropped) so what this tab shows is exactly what everyone else pulls.
-          const saved = await saveReferenceRates(rates);
-          set((s) => (s.referenceRates === rates ? { referenceRates: saved } : s));
+          const saved = await saveReferenceRates(rates, _revisionDeTarifas);
+          _revisionDeTarifas = saved.updated_at ?? null;
+          set((s) => (s.referenceRates === rates ? { referenceRates: { default: saved.default, by_sede: saved.by_sede } } : s));
         } catch (err: any) {
           const status = err?.response?.status;
           if (status === 401 || status === 403) return;
+          if (status === 409 && err?.response?.data?.detail?.code === "rates_conflict") {
+            // Otra persona guardó las tarifas después de que este navegador las
+            // leyó: no se pisan. Se trae lo suyo y se dice; lo tecleado acá se
+            // vuelve a escribir encima de lo de ella, sabiéndolo.
+            try {
+              const deAhora = await fetchReferenceRates();
+              _revisionDeTarifas = deAhora.updated_at ?? null;
+              set({ referenceRates: { default: deAhora.default, by_sede: deAhora.by_sede } });
+            } catch { /* se queda con lo que tenía; el próximo pull trae lo de ella */ }
+            set({
+              syncState: "error",
+              syncMessage: "Otra persona cambió las tarifas mientras editabas: se cargaron las suyas. Revisalas y volvé a escribir lo tuyo.",
+            });
+            return;
+          }
           console.warn("[layout sync] no se pudieron guardar las tarifas:", err);
           set({
             syncState: "error",
@@ -1279,6 +1311,7 @@ export const useFixtureStore = create<FixtureStore>()(
           // Re-check after the await: an edit made while the request was in
           // flight owns the truth until its push resolves.
           if (!_ratesTimer) {
+            _revisionDeTarifas = rates.updated_at ?? null;
             set({ referenceRates: { default: rates.default, by_sede: rates.by_sede } });
           }
         } catch {
@@ -1465,6 +1498,7 @@ export const useFixtureStore = create<FixtureStore>()(
             if (role !== "admin") {
               next.referenceRates = null;
             } else if (rates && !_ratesTimer) {
+              _revisionDeTarifas = rates.updated_at ?? null;
               next.referenceRates = { default: rates.default, by_sede: rates.by_sede };
             }
 
@@ -1679,6 +1713,10 @@ export function startAutoSync(): void {
   if (_pollTimer) return;
   void useFixtureStore.getState().syncFromServer();
   _pollTimer = setInterval(() => {
+    // Con la pestaña oculta no se pregunta (auditoría P2-5): diez pestañas
+    // olvidadas en segundo plano eran diez sondeos cada 20 s contra un solo
+    // worker. Al volver a la pestaña, `onVisibility` pregunta en el acto.
+    if (typeof document !== "undefined" && document.hidden) return;
     void useFixtureStore.getState().pollForChanges();
   }, POLL_INTERVAL_MS);
   if (!_listenersBound) {

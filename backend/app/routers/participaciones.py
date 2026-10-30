@@ -42,6 +42,7 @@ from app.services import participaciones as servicio
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de
 from app.services.reglas_participacion import pct
+from app.schemas.pesos import PesosOpcional
 
 router = APIRouter(prefix="/participaciones", tags=["participaciones"])
 
@@ -72,7 +73,7 @@ class AltaIn(_Estricto):
     desde: date
     hasta: date
     caduca: Optional[date] = None
-    valor_mensual: Optional[float] = None
+    valor_mensual: PesosOpcional = None
     #: `valor_mensual` es lo de CADA MES y el total sale × los meses (el
     #: formulario de Distribución, 2026-10-26). Sin esto, es el total.
     al_mes: StrictBool = False
@@ -93,7 +94,7 @@ class EditarIn(_Estricto):
 
 class ConfirmarIn(_Estricto):
     version: StrictInt
-    valor_mensual: Optional[float] = None
+    valor_mensual: PesosOpcional = None
     #: `valor_mensual` es lo de CADA MES y el total sale × los meses (el
     #: formulario de Distribución, 2026-10-26). Sin esto, es el total.
     al_mes: StrictBool = False
@@ -114,7 +115,7 @@ class RenovarIn(_Estricto):
     desde: date
     hasta: date
     caduca: Optional[date] = None
-    valor_mensual: Optional[float] = None
+    valor_mensual: PesosOpcional = None
     #: `valor_mensual` es lo de CADA MES y el total sale × los meses (el
     #: formulario de Distribución, 2026-10-26). Sin esto, es el total.
     al_mes: StrictBool = False

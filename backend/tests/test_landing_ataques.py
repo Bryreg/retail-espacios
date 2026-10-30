@@ -929,7 +929,9 @@ def test_l13_la_landing_no_agrego_superficie_publica_en_la_api(client):
     from tests.conftest import rutas_planas
     from app.main import app as fastapi_app
 
-    PUBLICAS = {"/api/health", "/api/auth/invitacion/{token}"}
+    # `/api/health/ready` (auditoría P1-3): el health check de Render, público
+    # como `/api/health`; sólo dice si la base contesta.
+    PUBLICAS = {"/api/health", "/api/health/ready", "/api/auth/invitacion/{token}"}
     filtradas: list[str] = []
     for ruta in rutas_planas(fastapi_app):
         if not ruta.path.startswith("/api/") or "GET" not in ruta.methods:

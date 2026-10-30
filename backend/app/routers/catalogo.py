@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, defer
@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session, defer
 from app.auth import require_admin, require_auth, require_auth_or_query_token
 from app.database import get_db
 from app.models.models import Supplier, SupplierAsset, SupplierAssetSpec
+from app.services.bitacora import anotar
 from app.services.subidas import leer_con_tope
 
 router = APIRouter(prefix="/catalogo", tags=["catalogo"])
@@ -199,8 +200,10 @@ def listar(
     return [_salida(arte, nombre, ficha) for arte, nombre, ficha in filas]
 
 
-@router.post("/", response_model=ArteOut, status_code=201, dependencies=[Depends(require_admin)])
+@router.post("/", response_model=ArteOut, status_code=201)
 async def subir(
+    request: Request,
+    rol: str = Depends(require_admin),
     # Uno de los dos. `supplier_id` es el camino del Editor 3D, que elige el
     # proveedor de una lista. `proveedor` es el del visor de Vender, que sólo
     # conoce el NOMBRE tecleado en el contrato y no puede listar proveedores
@@ -332,6 +335,10 @@ async def subir(
         # segundo paso falló es un arte que se mide mal en la reunión.
         db.flush()
         spec = _guardar_ficha(db, fila.id, ficha)
+    # La bitácora (auditoría P2-14), en el mismo commit que el arte.
+    db.flush()
+    anotar(db, request, rol, "arte.alta", entidad="arte", entidad_id=fila.id,
+           detalle=f"{duenio.name} · {fila.nombre}")
     db.commit()
     db.refresh(fila)
     if spec is not None:
@@ -339,8 +346,9 @@ async def subir(
     return _salida(fila, duenio.name, spec)
 
 
-@router.put("/{arte_id}/ficha", response_model=ArteOut, dependencies=[Depends(require_admin)])
-def guardar_ficha(arte_id: int, ficha: FichaIn, db: Session = Depends(get_db)):
+@router.put("/{arte_id}/ficha", response_model=ArteOut)
+def guardar_ficha(arte_id: int, ficha: FichaIn, request: Request, rol: str = Depends(require_admin),
+                  db: Session = Depends(get_db)):
     """Crea o reemplaza la ficha de un arte ya cargado.
 
     Es el camino de las artes que se subieron antes de que existiera la ficha:
@@ -353,6 +361,7 @@ def guardar_ficha(arte_id: int, ficha: FichaIn, db: Session = Depends(get_db)):
     if not fila:
         raise HTTPException(status_code=404, detail="Arte no encontrada")
     spec = _guardar_ficha(db, arte_id, ficha)
+    anotar(db, request, rol, "arte.ficha", entidad="arte", entidad_id=arte_id, detalle=fila.nombre)
     db.commit()
     db.refresh(spec)
     proveedor = db.query(Supplier).filter(Supplier.id == fila.supplier_id).first()
@@ -386,8 +395,8 @@ def imagen(
     )
 
 
-@router.delete("/{arte_id}", status_code=204, dependencies=[Depends(require_admin)])
-def borrar(arte_id: int, db: Session = Depends(get_db)):
+@router.delete("/{arte_id}", status_code=204)
+def borrar(arte_id: int, request: Request, rol: str = Depends(require_admin), db: Session = Depends(get_db)):
     fila = db.query(SupplierAsset).filter(SupplierAsset.id == arte_id).first()
     if not fila:
         raise HTTPException(status_code=404, detail="Arte no encontrada")
@@ -395,6 +404,7 @@ def borrar(arte_id: int, db: Session = Depends(get_db)):
     # un arte que tiene ficha. SQLite no la hace cumplir, y por eso la prueba
     # lo comprueba contando filas.
     db.query(SupplierAssetSpec).filter(SupplierAssetSpec.asset_id == arte_id).delete()
+    anotar(db, request, rol, "arte.baja", entidad="arte", entidad_id=arte_id, detalle=fila.nombre)
     db.delete(fila)
     db.commit()
     return Response(status_code=204)

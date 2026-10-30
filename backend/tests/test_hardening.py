@@ -45,9 +45,10 @@ def test_cabeceras_en_404_de_api(client):
 
 
 def test_cabeceras_en_422(client, admin):
-    # SpaceCreate exige svg_id/code/name/zone/area_m2 — un payload vacío es
-    # un 422 de validación de Pydantic, no un HTTPException a mano.
-    r = client.post("/api/spaces/", json={}, headers=admin)
+    # SpaceFindOrCreate exige el código — un payload vacío es un 422 de
+    # validación de Pydantic, no un HTTPException a mano. (Era `POST /spaces/`,
+    # que se fue el 2026-10-30: nada lo llamaba.)
+    r = client.post("/api/spaces/find-or-create", json={}, headers=admin)
     assert r.status_code == 422
     _assert_cabeceras_de_seguridad(r)
 

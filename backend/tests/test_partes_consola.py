@@ -38,7 +38,7 @@ def _mapas(*fixtures):
 
 def _contrato(codigo, proveedor, canon, inicio, fin):
     from app import plataforma_detalle as pd
-    return pd._Contrato(codigo, proveedor, None, canon, inicio, fin, True)
+    return pd._Contrato(codigo, proveedor, None, canon, inicio, fin, True, fin)  # corre_hasta (P1-17)
 
 
 # ─── Las funciones, una por una ───────────────────────────────────────────────

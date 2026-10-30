@@ -23,6 +23,7 @@ no puede intervenir el `receive` del pedido — vería el cuerpo ya leído por l
 capa de abajo, que es justo lo que hay que evitar.
 """
 import json
+import logging
 
 from fastapi import HTTPException
 from starlette.datastructures import Headers
@@ -83,6 +84,35 @@ class _CuerpoExcedido(Exception):
     """Señal interna: el cuerpo se pasó del tope y ya no se lee más."""
 
 
+#: A partir de qué parte del tope un plano guardado deja una línea en el log.
+UMBRAL_DE_AVISO_DEL_PLANO = 0.5
+
+_log = logging.getLogger("recabra.subidas")
+
+
+def _avisar_si_el_plano_pesa(scope, estado: dict, tope: int) -> None:
+    """Auditoría P2-7: un plano que pasa de 2 MiB recibe 413 y no se guarda.
+    Antes de que le pase a una sede grande, que quede escrito cuánto pesa:
+    WARNING —llega al log de Render— cuando un `PUT /api/layout/<sede>` que se
+    GUARDÓ (2xx) pasa de la mitad del tope. Sólo la sede y el tamaño."""
+    if scope.get("method") != "PUT":
+        return
+    path = scope.get("path") or ""
+    if not path.startswith("/api/layout/"):
+        return
+    sede = path[len("/api/layout/"):].strip("/")
+    if not sede or "/" in sede or sede in ("settings", "metas", "seasons", "rates"):
+        return
+    status = estado.get("status") or 0
+    contado = estado.get("contado") or 0
+    if 200 <= status < 300 and contado > tope * UMBRAL_DE_AVISO_DEL_PLANO:
+        _log.warning(
+            "El plano de la sede %s pesa %d KiB: %d %% del tope de %d KiB. "
+            "Pasado el tope, guardarlo da 413.",
+            sede, contado // 1024, round(100 * contado / tope), tope // 1024,
+        )
+
+
 class LimiteDeCuerpo:
     """Corta el pedido cuyo cuerpo supera el tope, contando bytes de verdad.
 
@@ -134,10 +164,12 @@ class LimiteDeCuerpo:
         async def send_vigilado(mensaje):
             if mensaje.get("type") == "http.response.start":
                 estado["respuesta_iniciada"] = True
+                estado["status"] = mensaje.get("status")
             await send(mensaje)
 
         try:
             await self.app(scope, receive_limitado, send_vigilado)
+            _avisar_si_el_plano_pesa(scope, estado, self.tope_json)
         except _CuerpoExcedido:
             if not estado["respuesta_iniciada"]:
                 await self._rechazar(send)

@@ -4,8 +4,9 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.services.contacts import get_contacts, save_contacts
@@ -19,6 +20,7 @@ from app.services import reglas_participacion as reglas
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de, anotar_historial
 from app.services.catalogo_muebles import tipo_base
+from app.services import papelera
 from app.services.sede_archive import archive_sede_spaces, count_commercial_rows
 from app.services.renombre_sede import (
     RenombreRechazado,
@@ -85,6 +87,9 @@ SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
 # La generación de los datos (ver `services/traspaso.py`). Se lee acá y se
 # escribe sólo allá.
 from app.services.traspaso import CLAVE_GENERACION  # noqa: E402
+from app.services.meses import al_peso, meses_entre
+from app.clientes import Cliente, cliente_del_pedido
+from app.models.vender import CondicionesDeContrato
 RATES_KEY = "layout_reference_rates"
 RATES_UPDATED_KEY = "layout_reference_rates_updated_at"
 SEASONS_KEY = "layout_season_windows"
@@ -477,6 +482,59 @@ def slots_en_participacion(previas: list, nuevas: list) -> list[str]:
     return sorted(frases)
 
 
+#: Lo comercial de una repisa (``slots``): lo que la vende.
+_COMERCIAL_DEL_SLOT = ("status", "supplierName", "brandCategory", "negotiatedValue", "startDate", "endDate")
+
+
+def _slot_con_venta(x: dict) -> bool:
+    """¿La repisa dice que está vendida? Ocupada o reservada, o con proveedor o
+    con valor."""
+    try:
+        valor = float(x.get("negotiatedValue") or 0)
+    except (TypeError, ValueError):
+        valor = 0.0
+    return x.get("status") in _SLOT_VENDIDO or bool(str(x.get("supplierName") or "").strip()) or valor > 0
+
+
+def slots_vendidos_en_el_plano(previas: list, nuevas: list) -> list[str]:
+    """Los muebles en los que este guardado VENDE una repisa del 3D (auditoría
+    P1-15, decisión del dueño 2026-10-30: «Sólo lectura + pasar a contrato»).
+
+    Las repisas (``slots``) guardaban proveedor, «Valor (COP/mes)» y fechas
+    sólo en el JSON del plano: una venta paralela sin contrato, sin candado,
+    sin ``contratos_que_chocan``, sin bitácora y fuera del canon y de la
+    ocupación. Ahora lo comercial de una repisa es de sólo lectura: se frena
+    una repisa NUEVA que trae algo comercial y una que cambia cualquiera de sus
+    campos comerciales. Lo que sí pasa: liberarla (pasarla a «Disponible»,
+    aunque le quede el proveedor de antes, o todo lo comercial en vacío),
+    dejarla como estaba, y un campo AUSENTE (no es un cambio: lo rellena
+    ``_restore_missing_slot_prices``). Lo vendido de antes no se pierde: se
+    pasa a contrato con «Pasar a contrato» (``POST /layout/{sede}/repisas/…``).
+    """
+    previos = _por_id(previas)
+    frases = []
+    for f in nuevas:
+        if not isinstance(f, dict):
+            continue
+        previo = previos.get(f.get("id")) if f.get("id") else None
+        antes = {x.get("id"): x for x in ((previo or {}).get("slots") or [])
+                 if isinstance(x, dict) and x.get("id")}
+        for x in f.get("slots") or []:
+            if not isinstance(x, dict) or not _slot_con_venta(x):
+                continue
+            a = antes.get(x.get("id")) if x.get("id") else None
+            # Una libre que conserva lo de antes no vende nada: el estado no cuenta.
+            claves = _COMERCIAL_DEL_SLOT if x.get("status") in _SLOT_VENDIDO else _COMERCIAL_DEL_SLOT[1:]
+            if a is None or any(k in x and (a.get(k) or None) != (x.get(k) or None) for k in claves):
+                frases.append(
+                    f"«{normalizar(f.get('code'))}»: lo comercial de una repisa es de sólo lectura. Lo que se "
+                    "vende va con contrato, en Vender; una repisa que ya estaba vendida se pasa a contrato "
+                    "desde su panel."
+                )
+                break
+    return sorted(frases)
+
+
 def _caras_pc_con_mueble(fixtures: list, sede: str) -> dict[str, tuple[dict, str]]:
     """``{código completo de la cara: (mueble, letra)}`` de las caras por
     participación, como ``caras_por_participacion`` (con la sede del plano)."""
@@ -638,14 +696,37 @@ def get_revisions(response: Response, db: Session = Depends(get_db)):
     re-download the sedes whose revision actually moved.
     """
     _no_store(response)
+    # Sin bajar ni parsear el plano de cada sede en cada sondeo (P2-5): cada
+    # pestaña pregunta cada 20 s, y el JSON de una nave son cientos de KB. Se
+    # lee la fecha y el largo del texto —la base los da sin mandar el texto—, y
+    # el plano entero sólo se parsea cuando alguno de los dos cambió desde la
+    # última vez que este proceso lo contó.
+    base = str(db.get_bind().url)
     revisions = []
-    for snap in db.query(LayoutSnapshot).all():
-        try:
-            count = len(json.loads(snap.fixtures_json or "[]"))
-        except (ValueError, TypeError):
-            count = 0
-        revisions.append(LayoutRevision(sede=snap.sede, updated_at=snap.updated_at, count=count))
+    filas = db.query(
+        LayoutSnapshot.id, LayoutSnapshot.sede, LayoutSnapshot.updated_at,
+        func.length(LayoutSnapshot.fixtures_json),
+    ).all()
+    for snap_id, sede, updated_at, largo in filas:
+        firma = (updated_at, largo)
+        guardado = _cuentas_de_revision.get((base, snap_id))
+        if guardado is not None and guardado[0] == firma:
+            count = guardado[1]
+        else:
+            texto = db.query(LayoutSnapshot.fixtures_json).filter(LayoutSnapshot.id == snap_id).scalar()
+            try:
+                count = len(json.loads(texto or "[]"))
+            except (ValueError, TypeError):
+                count = 0
+            _cuentas_de_revision[(base, snap_id)] = (firma, count)
+        revisions.append(LayoutRevision(sede=sede, updated_at=updated_at, count=count))
     return revisions
+
+
+# (url de la base, id del snapshot) → ((updated_at, largo del JSON), cuántos
+# muebles). Es de este proceso y se rehace sola: si la fecha o el largo
+# cambiaron, se vuelve a contar.
+_cuentas_de_revision: dict = {}
 
 
 @router.get("/settings", response_model=LayoutSettingsOut)
@@ -673,8 +754,9 @@ def get_settings(response: Response, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/settings", response_model=LayoutSettingsOut, dependencies=[Depends(require_admin)])
-def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
+@router.put("/settings", response_model=LayoutSettingsOut)
+def save_settings(payload: LayoutSettingsIn, request: Request, rol: str = Depends(require_admin),
+                  db: Session = Depends(get_db)):
     """Replace the shared sede list and catalog labels.
 
     The sede list is a single value replaced whole, so two admins touching
@@ -709,6 +791,8 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
     set_config(db, SEDES_KEY, json.dumps(payload.sedes))
     set_config(db, CATALOG_LABELS_KEY, json.dumps(payload.catalog_labels))
     set_config(db, SETTINGS_UPDATED_KEY, now.isoformat())
+    # La bitácora (auditoría P2-14): cuántas sedes quedaron.
+    anotar(db, request, rol, "ajustes.sedes", detalle=f"{len(payload.sedes)} sede(s)")
     try:
         db.commit()
     except IntegrityError:
@@ -821,8 +905,9 @@ def get_season_windows(response: Response, db: Session = Depends(get_db)):
     return SeasonWindowsOut(windows=windows, updated_at=updated_at)
 
 
-@router.put("/seasons", response_model=SeasonWindowsOut, dependencies=[Depends(require_admin)])
-def save_season_windows(payload: SeasonWindowsIn, db: Session = Depends(get_db)):
+@router.put("/seasons", response_model=SeasonWindowsOut)
+def save_season_windows(payload: SeasonWindowsIn, request: Request, rol: str = Depends(require_admin),
+                        db: Session = Depends(get_db)):
     """Replace the season windows. Same for every sede — they are not per-store."""
     now = datetime.now(timezone.utc)
     clean = {
@@ -832,6 +917,7 @@ def save_season_windows(payload: SeasonWindowsIn, db: Session = Depends(get_db))
     }
     set_config(db, SEASONS_KEY, json.dumps(clean))
     set_config(db, SEASONS_UPDATED_KEY, now.isoformat())
+    anotar(db, request, rol, "ajustes.temporadas", detalle=f"{len(clean)} temporada(s)")
     db.commit()
     return SeasonWindowsOut(
         windows={k: SeasonWindow(**v) for k, v in clean.items()},
@@ -857,8 +943,11 @@ def _clean_rates(raw: dict) -> dict[str, float]:
             number = float(value)
         except (TypeError, ValueError):
             continue
+        if number != number or number in (float("inf"), float("-inf")):
+            continue
         if number > 0:
-            clean[key.strip()] = number
+            # En pesos enteros (auditoría P2-11): `1234.5` queda `1235`.
+            clean[key.strip()] = al_peso(number)
     return clean
 
 
@@ -906,9 +995,42 @@ def get_reference_rates(response: Response, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/rates", response_model=ReferenceRatesOut, dependencies=[Depends(require_admin)])
-def save_reference_rates(payload: ReferenceRatesIn, db: Session = Depends(get_db)):
-    """Replace the reference rates. Sede keys are normalised like sede names."""
+def _revision_de_las_tarifas(db: Session) -> datetime | None:
+    raw = get_config(db, RATES_UPDATED_KEY)
+    if not raw:
+        return None
+    try:
+        return _as_utc(datetime.fromisoformat(raw))
+    except ValueError:
+        return None
+
+
+@router.put("/rates", response_model=ReferenceRatesOut)
+def save_reference_rates(payload: ReferenceRatesIn, request: Request, rol: str = Depends(require_admin),
+                         db: Session = Depends(get_db)):
+    """Replace the reference rates. Sede keys are normalised like sede names.
+
+    **Gana la primera, no la última** (auditoría P2-17). Las tarifas son un
+    solo valor que se reemplaza entero: dos personas con Ajustes abierto se
+    pisaban sin enterarse. Como en el layout y en los settings, quien manda
+    ``base_updated_at`` (la pantalla, siempre) escribe sólo si nadie guardó
+    después de lo que leyó; si no, 409 ``rates_conflict`` con la revisión del
+    servidor, y la pantalla relee.
+    """
+    if "base_updated_at" in payload.model_fields_set:
+        guardada = _revision_de_las_tarifas(db)
+        base = _as_utc(payload.base_updated_at)
+        distinta = (guardada is None) != (base is None) or (
+            guardada is not None and base is not None and _truncate_ms(guardada) != _truncate_ms(base))
+        if distinta:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "rates_conflict",
+                    "message": "Otra persona cambió las tarifas mientras editabas.",
+                    "server_updated_at": guardada.isoformat() if guardada else None,
+                },
+            )
     now = datetime.now(timezone.utc)
     default = _clean_rates(payload.default)
     by_sede: dict[str, dict[str, float]] = {}
@@ -921,6 +1043,9 @@ def save_reference_rates(payload: ReferenceRatesIn, db: Session = Depends(get_db
             by_sede[name] = clean
     set_config(db, RATES_KEY, json.dumps({"default": default, "by_sede": by_sede}))
     set_config(db, RATES_UPDATED_KEY, now.isoformat())
+    # La bitácora (auditoría P2-14): cuántas tarifas quedaron, sin los montos.
+    anotar(db, request, rol, "ajustes.tarifas",
+           detalle=f"{len(default)} general(es) · {sum(len(v) for v in by_sede.values())} por sede")
     db.commit()
     return ReferenceRatesOut(default=default, by_sede=by_sede, updated_at=now)
 
@@ -1268,6 +1393,160 @@ def renombrar_sede(
     )
 
 
+# ─── Las repisas del 3D: pasar a contrato (auditoría P1-15) ───────────────────
+# Tres segmentos y más: no las traga "/{sede}".
+
+
+class RepisaAContratoIn(BaseModel):
+    #: La cara o la parte del mueble donde queda el contrato («GON-03»,
+    #: «GON-03-B», «GON-03-TR2»), con o sin la sede.
+    espacio: str = Field(min_length=1, max_length=200)
+
+
+def _repisa(db: Session, sede: str, fixture_id: str, slot_id: str):
+    snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+    if snap is None:
+        raise HTTPException(status_code=404, detail=f"«{sede}» no tiene plano guardado.")
+    try:
+        fixtures = json.loads(snap.fixtures_json or "[]")
+    except (ValueError, TypeError):
+        fixtures = []
+    mueble = next((f for f in fixtures if isinstance(f, dict) and f.get("id") == fixture_id), None)
+    if mueble is None:
+        raise HTTPException(status_code=404, detail="Ese mueble no está en el plano guardado: guardá el plano y volvé a intentar.")
+    repisa = next((x for x in mueble.get("slots") or [] if isinstance(x, dict) and x.get("id") == slot_id), None)
+    if repisa is None:
+        raise HTTPException(status_code=404, detail="Esa repisa no está en el plano guardado.")
+    return snap, fixtures, mueble, repisa
+
+
+def _repisa_limpia(repisa: dict) -> None:
+    """Lo comercial de la repisa, en vacío (la geometría queda)."""
+    repisa.update({"status": "free", "supplierName": "", "brandCategory": "", "negotiatedValue": 0,
+                   "startDate": "", "endDate": ""})
+
+
+@router.post("/{sede}/repisas/{fixture_id}/{slot_id}/contrato")
+def repisa_a_contrato(
+    sede: str, fixture_id: str, slot_id: str, cuerpo: RepisaAContratoIn, request: Request,
+    background_tasks: BackgroundTasks, rol: str = Depends(require_admin),
+    cliente: Cliente = Depends(cliente_del_pedido), db: Session = Depends(get_db),
+):
+    """«Pasar a contrato»: lo vendido en una repisa del 3D (proveedor, «Valor
+    (COP/mes)» y fechas, que vivían sólo en el JSON) pasa a ser un contrato de
+    verdad de la cara o la parte ``espacio`` de ese mueble, y la repisa queda
+    libre. Todo en una transacción.
+
+    Es la revisión y el alta de Vender (``bulk_leases.confirmar_lote`` sin las
+    reglas de la planilla): los candados del mueble, ``contratos_que_chocan``,
+    las participaciones, la regla «entera o por partes» y la bitácora
+    (``contrato.alta`` · «repisa del 3D»). El valor de la repisa era AL MES:
+    el total es ese valor × los meses del plazo, al peso, y se guarda la forma
+    «mensual». Si el plano cambió entre que se leyó y se escribe, 409 y no queda
+    nada. Sólo administración.
+    """
+    snap, _fixtures, mueble, repisa = _repisa(db, sede, fixture_id, slot_id)
+    leido = snap.updated_at
+    proveedor = str(repisa.get("supplierName") or "").strip()
+    if not proveedor:
+        raise HTTPException(status_code=409, detail="La repisa no tiene proveedor: no hay qué pasar a contrato. Liberala.")
+    desde = _fecha_iso(repisa.get("startDate"))
+    hasta = _fecha_iso(repisa.get("endDate"))
+    if desde is None or hasta is None or hasta < desde:
+        raise HTTPException(status_code=409, detail=(
+            "A la repisa le faltan las fechas (o están al revés): así no es un contrato. Liberala y vendé "
+            "lo suyo en Vender."))
+    try:
+        al_mes = al_peso(float(repisa.get("negotiatedValue") or 0))
+    except (TypeError, ValueError):
+        al_mes = 0.0
+    total = al_peso(al_mes * meses_entre(desde, hasta)) if al_mes > 0 else 0.0
+
+    from app.routers.bulk_leases import FilaIn, LoteIn, confirmar_lote, validar_lote
+    from app.services.layout_lookup import PlanoIndexado
+
+    resuelto = PlanoIndexado(db).resolver(sede, cuerpo.espacio)
+    if resuelto is None or (resuelto.fixture or {}).get("id") != fixture_id:
+        raise HTTPException(status_code=409, detail=f"«{cuerpo.espacio}» no es una cara ni una parte de este mueble.")
+    lote = LoteIn(sede=sede, filas=[FilaIn(
+        fila=1, espacio=cuerpo.espacio, sede=sede, proveedor=proveedor,
+        marca=str(repisa.get("brandCategory") or "").strip() or None, valor=total,
+        desde=desde.isoformat(), hasta=hasta.isoformat(),
+    )])
+    previa = validar_lote(db, lote, planilla=False).filas[0]
+    if previa.estado == "error":
+        raise HTTPException(status_code=409, detail={
+            "code": "repisa_no_pasa", "message": "La repisa no se puede pasar a contrato así.",
+            "choques": previa.mensajes})
+
+    def limpiar_la_repisa(creados):
+        if not creados:
+            raise HTTPException(status_code=409, detail={
+                "code": "repisa_no_pasa", "message": "Otra persona vendió ese espacio mientras tanto.",
+                "choques": []})
+        if al_mes > 0:
+            db.add(CondicionesDeContrato(lease_id=creados[0].lease_id, modo_precio="mensual", valor_tecleado=al_mes))
+        # Se relee el plano DESPUÉS de los candados (`confirmar_lote` venció la
+        # sesión) y se escribe sólo si sigue en la revisión que se leyó.
+        fresco, fixtures, _m, la_repisa = _repisa(db, sede, fixture_id, slot_id)
+        _repisa_limpia(la_repisa)
+        escritas = (db.query(LayoutSnapshot)
+                    .filter(LayoutSnapshot.id == fresco.id, LayoutSnapshot.updated_at == leido)
+                    .update({LayoutSnapshot.fixtures_json: json.dumps(fixtures),
+                             LayoutSnapshot.updated_at: datetime.now(timezone.utc)}, synchronize_session=False))
+        if escritas == 0:
+            raise HTTPException(status_code=409, detail=(
+                f"El plano de «{sede}» cambió mientras se pasaba la repisa: recargá y volvé a intentar."))
+
+    try:
+        hecho = confirmar_lote(db, lote, background_tasks, cliente, planilla=False, request=request, rol=rol,
+                               origen="repisa del 3D", antes_del_commit=limpiar_la_repisa)
+    except Exception:
+        db.rollback()
+        raise
+    fila = next((f for f in hecho.filas if f.lease_id), None)
+    db.refresh(snap)
+    return {"lease_id": fila.lease_id if fila else None, "espacio": fila.codigo if fila else None,
+            "valor_total": total, "valor_al_mes": al_mes, "layout": _to_out(snap).model_dump(mode="json"),
+            "avisos": hecho.avisos.model_dump() if hecho.avisos else None}
+
+
+def _fecha_iso(valor):
+    try:
+        return date.fromisoformat(str(valor or "").strip()[:10])
+    except ValueError:
+        return None
+
+
+# ─── La papelera de sedes (auditoría P2-18) ───────────────────────────────────
+# Literal antes de "/{sede}", como manda la regla de este router.
+
+
+@router.get("/papelera")
+def papelera_de_sedes(response: Response, rol: str = Depends(require_admin), db: Session = Depends(get_db)):
+    """Las sedes borradas que todavía se pueden restaurar (30 días). Sólo
+    administración: dice cuántos contratos cerró cada borrado."""
+    _no_store(response)
+    return {"dias": papelera.DIAS_EN_LA_PAPELERA, "sedes": papelera.listar(db)}
+
+
+@router.post("/papelera/{papelera_id}/restaurar")
+def restaurar_sede(papelera_id: int, request: Request, rol: str = Depends(require_admin),
+                   db: Session = Depends(get_db)):
+    """Devuelve una sede borrada: el plano, sus espacios con sus códigos y los
+    contratos que el borrado cerró y siguen en fecha (``services/papelera.py``).
+    Todo o nada, con la bitácora adentro."""
+    try:
+        hecho = papelera.restaurar(db, papelera_id, actor_de(request, rol))
+        anotar(db, request, rol, "sede.restaurada", entidad="sede", entidad_id=hecho["sede"],
+               detalle=f"{hecho['espacios']} espacios · {hecho['contratos']} contratos vuelven a correr")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return hecho
+
+
 @router.get("/{sede}", response_model=LayoutOut)
 def get_layout(sede: str, response: Response, role: str = Depends(require_auth), db: Session = Depends(get_db)):
     """Return the fixture layout for a single sede (empty list if none saved yet)."""
@@ -1553,6 +1832,9 @@ def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = De
             ("slots_en_participacion", slots_en_participacion(previas, nuevas),
              "Este guardado vendería espacios internos en {n} mueble(s) de «{sede}» que se venden por "
              "participación."),
+            # Auditoría P1-15: la venta paralela por repisa, en cualquier mueble.
+            ("repisas_vendidas", slots_vendidos_en_el_plano(previas, nuevas),
+             "Este guardado vendería repisas del 3D en {n} mueble(s) de «{sede}»: lo vendido va con contrato."),
         ):
             if frases:
                 logger.info("layout %s: guardado rechazado (%s) — %s", sede, code, " · ".join(frases))
@@ -1604,6 +1886,10 @@ def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = De
         _con_la_ficha_de_antes(fixtures, [])
         snap = LayoutSnapshot(sede=sede, fixtures_json=json.dumps(fixtures))
         db.add(snap)
+    # Una línea de resumen por guardado (auditoría P2-14): la sede y cuántos
+    # muebles quedaron; el detalle del plano está en sus revisiones.
+    anotar(db, request, "admin", "plano.guardado", entidad="sede", entidad_id=sede,
+           detalle=f"{len([f for f in fixtures if isinstance(f, dict)])} mueble(s)")
     try:
         db.commit()
     except IntegrityError:
@@ -1654,6 +1940,8 @@ def delete_layout(
     of a sede that no longer exists.
     """
     snap = db.query(LayoutSnapshot).filter(LayoutSnapshot.sede == sede).first()
+    # Antes de borrar: el plano como estaba va a la papelera (P2-18, abajo).
+    plano_de_antes = LayoutSnapshot(sede=snap.sede, fixtures_json=snap.fixtures_json) if snap else None
     if snap:
         db.delete(snap)
 
@@ -1679,6 +1967,11 @@ def delete_layout(
     if remaining != sedes:
         set_config(db, SEDES_KEY, json.dumps(remaining))
         set_config(db, SETTINGS_UPDATED_KEY, datetime.now(timezone.utc).isoformat())
+
+    # La papelera (auditoría P2-18): el plano y lo que se cerró, por 30 días,
+    # para restaurarlo desde Ajustes › Sedes. En la misma transacción.
+    if plano_de_antes is not None or archived["space_ids"] or remaining != sedes:
+        papelera.guardar(db, sede, plano_de_antes, archived, remaining != sedes, actor_de(request, rol))
 
     # Es el borrado más grande que ofrece el sistema —se lleva el plano, y con
     # él la sede de la lista— así que va a la bitácora con el estropicio contado.

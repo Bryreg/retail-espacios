@@ -39,6 +39,7 @@ from app.services.contacts import recipients_for
 from app.services.editar_contrato import Editado, cambios
 from app.services.layout_lookup import describe_location
 from app.services.mailer import app_base_url, html_shell
+from app.services.cola_de_correos import encolar_correo
 from app.services.montajes_pendientes import ids_pendientes
 
 
@@ -131,8 +132,8 @@ def avisar_edicion(db: Session, background_tasks: BackgroundTasks, cliente: Clie
                       else "los de los contratos nuevos se piden")
             pie = (f"El contrato anterior se cerró como <strong>reemplazado</strong> (no cancelado): su "
                    f"planometría y su montaje quedan con él, y {nuevos} en Supervisar → «Para revisar». " + pie)
-        background_tasks.add_task(
-            bl.send_mail_to_bg, who["comercial"], asunto,
+        encolar_correo(
+            background_tasks, db, bl.send_mail_to_bg, who["comercial"], asunto,
             _correo(asunto, f"Se modificó un contrato de {escape(sede or 'la sede')}:", cuerpo, pie))
 
     # ── El proveedor: sólo lo suyo ──────────────────────────────────────────
@@ -148,8 +149,8 @@ def avisar_edicion(db: Session, background_tasks: BackgroundTasks, cliente: Clie
         asunto = f"Tu contrato cambió: {codigo} — {cliente.nombre}"
         # Lo de antes era de otro proveedor: al nuevo, sólo lo de ahora.
         cuerpo = _tabla_antes_ahora(filas, con_antes=mismo)
-        background_tasks.add_task(
-            bl.send_mail_to_bg, [supplier.email], asunto,
+        encolar_correo(
+            background_tasks, db, bl.send_mail_to_bg, [supplier.email], asunto,
             _correo(asunto, f"Hola, {escape(supplier.name or despues[0].proveedor)}. Actualizamos tu contrato con "
                             f"{escape(cliente.nombre)}:", cuerpo,
                     f"Cualquier ajuste sobre lo acordado, comunicate con {escape(cliente.nombre)}."),
@@ -178,7 +179,7 @@ def avisar_edicion(db: Session, background_tasks: BackgroundTasks, cliente: Clie
         cuerpo = html_shell(asunto, rows)
         # La tabla de `html_shell` (sin su carcasa: va en la de `_correo`).
         tabla = cuerpo[cuerpo.index("<table"):cuerpo.index("</table>") + len("</table>")]
-        background_tasks.add_task(
-            bl.send_mail_to_bg, who["montaje"], asunto,
+        encolar_correo(
+            background_tasks, db, bl.send_mail_to_bg, who["montaje"], asunto,
             _correo(asunto, "Cambió el contrato de un espacio que montás. Sin precios.", tabla, pie))
     return encolados

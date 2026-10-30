@@ -1506,7 +1506,8 @@ prueba("«Cargar planometría» llega al contrato de la fila aunque todavía no 
   assert.doesNotMatch(t, /Planometría de \{pedidaAparte\}/);
   // El servidor deja leer y cargar la de cualquier contrato por su id (cargar: sólo administración).
   const back = readFileSync(join(raiz, "..", "backend", "app", "routers", "planograms.py"), "utf8");
-  assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*status_code=201,\s*dependencies=\[Depends\(require_admin\)\],/);
+  // Sólo administración (desde el 2026-10-30 el rol viaja como parámetro, para la bitácora).
+  assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*status_code=201,\s*\)\s*async def subir_planometria\([\s\S]{0,300}?rol: str = Depends\(require_admin\)/);
   assert.match(back, /"\/leases\/\{lease_id\}\/planometria",\s*response_model=PlanometriaOut,\s*dependencies=\[Depends\(require_auth\)\],/);
 });
 
@@ -2025,16 +2026,24 @@ prueba("«Salir sin cambios» no deja el plano cambiado: editando, «Cambiar» l
   const g = c.slice(c.indexOf("async function guardar()"), c.indexOf("return {", c.indexOf("async function guardar()")));
   assert.ok(g.indexOf("await planoPendiente.escribir()") > 0 && g.indexOf("await planoPendiente.escribir()") < g.indexOf("await guardarContrato(lo)"),
     "el plano no se escribe justo antes del pedido");
-  assert.match(g, /\} catch \(e\) \{\s*if \(planoEscrito && planoPendiente\) await planoPendiente\.deshacer\(\)/,
+  assert.match(g, /\} catch \(e\) \{\s*const planoQuedoCambiado = planoEscrito && !!planoPendiente\s*&& !\(await planoPendiente\.deshacer\(\)/,
     "si el guardado falla, el plano queda cambiado");
+  // Auditoría P2-16: si la vuelta del plano no entra, no se dice «No se guardó nada».
+  assert.match(pp, /return !tras\.dirty\[sede\] && !tras\.rechazos\[sede\] && !tras\.conflicts\[sede\];/,
+    "deshacer no dice si el plano volvió");
+  assert.match(g, /el plano quedó con la forma nueva y no se pudo volver atrás/,
+    "si el plano no vuelve, la pantalla dice «No se guardó nada» igual");
   const l = sinComent(fuenteDe("components/Contrato/LineaDelContrato.tsx"));
   assert.match(l, /\{alGuardar && " Se escribe en el plano al guardar los cambios\."\}/);
 });
 
 prueba("el PRÓXIMO contrato de una cara con vigente se edita: `proximoLeaseId` sólo para quien administra, nunca pegado al mueble", () => {
   const sp = readFileSync(join(raiz, "..", "backend", "app", "routers", "spaces.py"), "utf8");
-  assert.match(sp, /proximoLeaseId=\(space\.upcoming_lease\.id\s*if admin and space\.active_lease is not None and space\.upcoming_lease is not None\s*else None\),/,
+  // Desde la auditoría P2-5 el vigente y el próximo salen de `_vigente_y_proximo`
+  // (los contratos vivos, sin bajar el historial), no de las propiedades del modelo.
+  assert.match(sp, /proximoLeaseId=\(proximo\.id\s*if admin and vigente is not None and proximo is not None\s*else None\),/,
     "el servidor le manda el id del próximo al trabajador");
+  assert.match(sp, /vigente, proximo = _vigente_y_proximo\(vivos\.get\(space\.id, \(\)\), dia\)/);
   assert.equal((sp.match(/proximoLeaseId=/g) || []).length, 1);
   const [f] = fusionarEstadoComercial("CENTRO", [{ id: "f", code: "GON-02", type: "cross", sede: "CENTRO" }],
     { "CENTRO-GON-02": { ...vendido(), leaseId: 17, proximoLeaseId: 18 } });

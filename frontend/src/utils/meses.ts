@@ -64,6 +64,14 @@ export function meses(desde: string, hasta: string): number {
   return completos + sobran / 30;
 }
 
+/** Lo tecleado en un campo de plata, en pesos enteros (auditoría P2-11): al
+ *  peso con los medios hacia arriba, como el servidor (`schemas/pesos.py`).
+ *  Vacío, negativo o ilegible: 0. */
+export function pesosEnteros(texto: string): number {
+  const n = Number(String(texto).trim());
+  return Number.isFinite(n) && n > 0 ? redondear(n) : 0;
+}
+
 /** El total de un precio «al mes» por todo el plazo, al peso. */
 export function totalDeMensual(mensual: number, desde: string, hasta: string): number {
   return redondear(mensual * meses(desde, hasta));

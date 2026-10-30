@@ -591,3 +591,32 @@ class ClienteRow(Base):
     db_name = Column(String, nullable=False)
     activo = Column(Boolean, default=True, nullable=False)
     creado = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SedeEnPapelera(Base):
+    """Una sede borrada, por 30 días (auditoría P2-18).
+
+    Borrar una sede se llevaba el plano (``db.delete(snap)``) y cerraba sus
+    contratos vivos sin vuelta atrás: un clic equivocado en Ajustes › Sedes era
+    rehacer el plano entero y volver a cargar lo vendido. Ahora el borrado deja
+    acá el plano tal como estaba y QUÉ cerró (los espacios archivados, los
+    contratos cerrados y los montajes archivados, por id), y quien administra
+    la restaura desde Ajustes › Sedes dentro de los 30 días
+    (``services/papelera.py``). Pasado el plazo la purga el mantenimiento.
+
+    Tabla nueva a propósito: ``create_all`` no agrega columnas a una existente.
+    """
+    __tablename__ = "sedes_en_papelera"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sede = Column(String, nullable=False, index=True)
+    #: El plano como estaba (``layout_snapshots.fixtures_json``); ``[]`` si la
+    #: sede no tenía plano guardado.
+    fixtures_json = Column(Text, nullable=False, default="[]")
+    #: ``{"espacios": [ids], "contratos": [ids], "montajes": [ids], "en_la_lista": bool}``.
+    cerrado_json = Column(Text, nullable=False, default="{}")
+    borrada_en = Column(DateTime(timezone=True), nullable=False,
+                        default=lambda: datetime.now(timezone.utc), index=True)
+    borrada_por = Column(String, nullable=True)
+    restaurada_en = Column(DateTime(timezone=True), nullable=True)
+    restaurada_por = Column(String, nullable=True)

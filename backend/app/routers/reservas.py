@@ -20,6 +20,7 @@ from app.routers.bulk_leases import _avisar
 from app.services import reservas as servicio
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de
+from app.schemas.pesos import PesosOpcional
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
 
@@ -36,9 +37,9 @@ class ConfirmarIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     #: Otro valor que el acordado al reservar (el total por todo el plazo).
-    valor: Optional[float] = Field(default=None, allow_inf_nan=False)
+    valor: PesosOpcional = Field(default=None, allow_inf_nan=False)
     modo_precio: Optional[Literal["mensual", "total"]] = None
-    valor_tecleado: Optional[float] = Field(default=None, allow_inf_nan=False)
+    valor_tecleado: PesosOpcional = Field(default=None, allow_inf_nan=False)
     correo: Optional[str] = Field(default=None, max_length=254)
     notas: Optional[str] = Field(default=None, max_length=2000)
     #: Otro cobro que el acordado al reservar (fijo o por un % de las ventas).

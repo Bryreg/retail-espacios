@@ -198,15 +198,15 @@ def test_los_intentos_viejos_no_cuentan(client):
 
 def test_cambiar_la_clave_del_worker_cierra_sus_sesiones(client, admin, worker):
     """Se cambia la contraseña justo para sacar a alguien."""
-    assert client.get("/api/dashboard/kpis", headers=worker).status_code == 200
+    assert client.get("/api/spaces/comercial", headers=worker).status_code == 200
 
     r = client.put("/api/auth/passwords", json={"worker_password": "otra-clave-larga"}, headers=admin)
     assert r.status_code == 200, r.text
 
     # El token que tenía en la mano deja de valer, sin esperar las 12 horas.
-    assert client.get("/api/dashboard/kpis", headers=worker).status_code == 401
+    assert client.get("/api/spaces/comercial", headers=worker).status_code == 401
     # Y el admin, que no cambió la suya, sigue adentro.
-    assert client.get("/api/dashboard/kpis", headers=admin).status_code == 200
+    assert client.get("/api/spaces/comercial", headers=admin).status_code == 200
 
     r = client.post("/api/auth/login", json={"password": "otra-clave-larga"})
     assert r.status_code == 200
@@ -224,10 +224,10 @@ def test_el_admin_no_se_echa_a_si_mismo(client, admin):
     assert nuevo
 
     # El viejo murió.
-    assert client.get("/api/dashboard/kpis", headers=admin).status_code == 401
+    assert client.get("/api/spaces/comercial", headers=admin).status_code == 401
     # El nuevo sirve.
     assert client.get(
-        "/api/dashboard/kpis", headers={"Authorization": f"Bearer {nuevo}"}
+        "/api/spaces/comercial", headers={"Authorization": f"Bearer {nuevo}"}
     ).status_code == 200
 
 

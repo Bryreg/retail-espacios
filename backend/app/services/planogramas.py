@@ -655,14 +655,23 @@ def resumen(db: Session, sede: str, rol: str) -> list[dict]:
     plano = PlanoIndexado(db)
     muebles = {str(f.get("id")): f for f in plano.de_sede(s)}
     fuera = []
-    for pl in db.query(Planograma).filter(Planograma.sede == s).order_by(Planograma.id).all():
+    planogramas = db.query(Planograma).filter(Planograma.sede == s).order_by(Planograma.id).all()
+    # Las versiones de toda la sede en UNA consulta (auditoría P3-11): antes era
+    # una por planograma.
+    por_planograma: dict[int, list[VersionDePlanograma]] = {}
+    if planogramas:
+        for v in (db.query(VersionDePlanograma)
+                  .filter(VersionDePlanograma.planograma_id.in_([pl.id for pl in planogramas]))
+                  .order_by(VersionDePlanograma.id).all()):
+            por_planograma.setdefault(v.planograma_id, []).append(v)
+    for pl in planogramas:
         f = muebles.get(pl.fixture_id)
         if f is None:
             continue
         cara = _armar_cara(s, f, pl.cara)
         if rol != "admin" and cara.comercializable:
             continue
-        versiones = db.query(VersionDePlanograma).filter(VersionDePlanograma.planograma_id == pl.id).all()
+        versiones = por_planograma.get(pl.id, [])
         vigente, estados = _estados(versiones, dia)
         programada = min((v for v in versiones if estados[v.id] == "programada"), key=lambda v: v.rige_desde,
                          default=None)

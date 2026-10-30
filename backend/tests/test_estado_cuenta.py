@@ -11,7 +11,7 @@ archivo:
   y ``limpiar_cache_estado()``, y NO por el PATCH del panel del operador. El
   interruptor tiene que quedar probado aunque ese router todavía no exista, y
   además una prueba que dependiera de él estaría probando dos cosas a la vez.
-* **``solo_lectura`` se prueba contra ``GET /api/spaces/map``**, que es el
+* **``solo_lectura`` se prueba contra ``GET /api/spaces/comercial``**, que es el
   endpoint donde ``expire_leases()`` ESCRIBE adentro de un GET. Es el caso que
   decide si el corte quedó al pedido HTTP (bien) o a la sesión de base (mal): un
   bloqueo a la sesión dejaría ese GET permitido cayéndose al vencer un contrato.
@@ -166,7 +166,7 @@ def test_solo_lectura_deja_leer(client, admin):
 def test_solo_lectura_no_rompe_el_get_que_escribe_por_dentro(client, admin):
     """El caso que decide si el corte es al PEDIDO o a la SESIÓN.
 
-    ``GET /api/spaces/map`` llama a ``expire_leases()``, que da de baja los
+    ``GET /api/spaces/comercial`` llama a ``expire_leases()``, que da de baja los
     contratos vencidos y libera el espacio — o sea, ESCRIBE adentro de un GET.
     Con el cliente en ``solo_lectura`` ese GET tiene que seguir contestando 200
     **y seguir escribiendo**: se siembra un contrato vencido antes y se
@@ -199,7 +199,7 @@ def test_solo_lectura_no_rompe_el_get_que_escribe_por_dentro(client, admin):
 
     _sembrar("solo_lectura")
 
-    assert client.get("/api/spaces/map", headers=admin).status_code == 200
+    assert client.get("/api/spaces/comercial", headers=admin).status_code == 200
 
     db = sesion_de(buscar("galerias"))
     try:
@@ -271,7 +271,7 @@ def test_suspendido_corta_hasta_los_get(client, admin):
     assert r.json()["detail"] == SUSPENDIDA
 
     # Ni siquiera el GET que escribe por dentro: en suspendido no hay excepción.
-    assert client.get("/api/spaces/map", headers=admin).status_code == 402
+    assert client.get("/api/spaces/comercial", headers=admin).status_code == 402
 
 
 def test_suspendido_no_deja_entrar_por_el_login_legado(client):
@@ -448,7 +448,7 @@ def test_el_owner_que_entra_suspendido_recibe_la_cabecera_en_cada_pedido(client,
         "/api/auth/oauth", json={"id_token": "t", "acepta_politica": True}
     ).json()["token"]
 
-    for ruta in ("/api/spaces/", "/api/spaces/map", "/api/suppliers/"):
+    for ruta in ("/api/spaces/", "/api/spaces/comercial", "/api/suppliers/"):
         r = client.get(ruta, headers=_cab(token))
         assert r.status_code == 402, ruta
         assert r.headers["X-Estado-Cuenta"] == "suspendido", ruta

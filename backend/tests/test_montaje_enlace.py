@@ -150,7 +150,9 @@ def test_el_token_no_abre_ningun_otro_endpoint(client, admin):
     # el rol, el estado y el correo invitado ENMASCARADO. Pide el token de la
     # invitación (256 bits) en vez de sesión, y cada token inexistente cuenta
     # en el freno de `/oauth` (`test_invitacion_enlace.py`).
-    publicas = {"/api/health", "/api/auth/invitacion/{token}"}
+    # `/api/health/ready` (auditoría P1-3) es el health check de Render: público
+    # como `/api/health`, y no dice nada más que «la base contesta».
+    publicas = {"/api/health", "/api/health/ready", "/api/auth/invitacion/{token}"}
 
     # Se enumera por el esquema OpenAPI y no por `app.routes`: desde FastAPI
     # 0.141 / Starlette 1.x `include_router` deja en `app.routes` un
