@@ -365,10 +365,12 @@ export function filasDeContratosDePlantilla(sede: string): unknown[][] {
     // Antes salían en ISO —`2026-09-15`— y eso contradecía el renglón de arriba
     // justo en el campo donde la ambigüedad no avisa: leer 3/4 al revés no
     // falla ruidoso, crea el contrato tres meses corrido y nadie se entera.
-    ["EJEMPLO-01", tienda, "Nutresa", "comercial@nutresa.com.co", "Chocolatinas",
+    // Proveedores y correo de EJEMPLO a la vista (auditoría P3-7): una marca y
+    // un correo reales en la plantilla parecen datos y se pueden subir.
+    ["EJEMPLO-01", tienda, "Proveedor de ejemplo", "compras@ejemplo.com", "Chocolatinas",
      650000, diaPrimero(hoy), diaPrimero(luego),
      "Borrá esta fila: es un ejemplo del formato"],
-    ["EJEMPLO-02", tienda, "Alpina", "", "Lácteos",
+    ["EJEMPLO-02", tienda, "Otro proveedor de ejemplo", "", "Lácteos",
      400000, diaPrimero(hoy), diaPrimero(luego), "Borrá esta fila también"],
   ];
 }

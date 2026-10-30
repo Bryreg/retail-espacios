@@ -5147,13 +5147,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** El cambio pendiente de «Editar contrato», para el guardado: `escribir` lo
    *  manda al plano por el camino de siempre (`commit` + `PUT /layout`) justo
    *  antes del pedido —el servidor lee las partes del plano—, y `deshacer`
-   *  vuelve el mueble a como estaba si el guardado falla. */
+   *  vuelve el mueble a como estaba si el guardado falla. `deshacer` dice si
+   *  el servidor aceptó la vuelta (auditoría P2-16): si no, la pantalla no
+   *  puede decir «No se guardó nada», porque el plano quedó cambiado. */
   const planoPendiente = useMemo(() => {
     if (!formaPendiente) return null;
     const { id, cambio } = formaPendiente;
     let antes: { partes: UnifiedFixture["partes"]; entrepanos: UnifiedFixture["entrepanos"] } | null = null;
-    const deshacer = async () => {
-      if (!antes) return;
+    const deshacer = async (): Promise<boolean> => {
+      if (!antes) return true;
       const vuelta = antes;
       antes = null;
       const st = useFixtureStore.getState();
@@ -5162,6 +5164,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       st.commit(selectFixtures(st).map((f) => (f.id === id
         ? { ...f, partes: vuelta.partes ?? null, entrepanos: vuelta.entrepanos ?? null } : f)));
       await useFixtureStore.getState().flushPending();
+      // `flushPending` no tira: un guardado que no entró queda pendiente,
+      // rechazado o en conflicto. Cualquiera de los tres es «no volvió».
+      const tras = useFixtureStore.getState();
+      return !tras.dirty[sede] && !tras.rechazos[sede] && !tras.conflicts[sede];
     };
     const escribir = async (): Promise<string | null> => {
       try {
@@ -6052,14 +6058,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     // remainder so Libres + Ocupados + Contratados never overstate the total.
     const held = total - occupied - committed - free;
     const occPct = total ? Math.round((occupied / total) * 100) : 0;
-    // Money actually being earned this month — a signed contract that has not
-    // started yet is not revenue, and counting it overstated the monthly income.
-    const revenue = faces
-      .filter((_, i) => phases[i] === "vigente")
-      .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
-    const committedRevenue = faces
-      .filter((_, i) => phases[i] === "pendiente")
-      .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
+    // El canon del mes es UNO (`utils/canon.ts`, auditoría P1-16): los totales
+    // «revenue» / «committedRevenue» que sumaban el valor TOTAL de cada contrato
+    // como si fuera el mes se fueron con el código muerto (P3-6).
 
     const expired: ContractEntry[] = [];
     const expiring: ContractEntry[] = [];
@@ -6078,23 +6079,6 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     });
     expired.sort((a, b) => a.days - b.days);
     expiring.sort((a, b) => a.days - b.days);
-
-    // Top suppliers — by what they are paying NOW, so the ranking matches the
-    // monthly revenue figure above instead of mixing in future commitments.
-    const supplierMap: Record<string, { revenue: number; count: number }> = {};
-    faces.forEach((x, i) => {
-      if (!x.supplierName || !x.negotiatedValue || phases[i] !== "vigente") return;
-      if (!supplierMap[x.supplierName]) supplierMap[x.supplierName] = { revenue: 0, count: 0 };
-      supplierMap[x.supplierName].revenue += x.negotiatedValue;
-      supplierMap[x.supplierName].count++;
-    });
-    const topSuppliers = Object.entries(supplierMap)
-      .map(([name, { revenue: r, count }]) => ({ name, revenue: r, count }))
-      .sort((a, b) => b.revenue - a.revenue)
-      // Diez y no seis: el panel contesta «de quién depende la sede», y con
-      // un corte en seis un proveedor que pone el 8% quedaba afuera sin que
-      // nada dijera que había más. Lo que no entra en el alto, scrollea.
-      .slice(0, 10);
 
     // Contracts paying below the reference rate for their type + sede.
     // Only meaningful gaps (≥1%) — a peso of rounding is not an anomaly.
@@ -6116,10 +6100,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     belowReference.sort((a, b) => b.gapPct - a.gapPct);
 
     return {
-      total, occupied, committed, free, held, occPct, revenue, committedRevenue,
+      total, occupied, committed, free, held, occPct,
       rentableFixtures, nonRentable,
       expired, expiring, noContract, reservadoAMano,
-      topSuppliers, belowReference,
+      belowReference,
       /** Los contratos que corren hoy con valor: la plata de la franja y de
        *  «Quién paga» sale de acá, en la unidad que se elija. */
       vigentes: faces.filter((x, i) => phases[i] === "vigente" && x.negotiatedValue > 0),

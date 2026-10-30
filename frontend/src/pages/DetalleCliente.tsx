@@ -40,7 +40,6 @@ import {
   pctSig,
   periodosOfrecidos,
   plata,
-  platM,
   plural,
   puntos,
   sig,
@@ -196,7 +195,7 @@ function anotacionCaidaIngreso(
     const top = [...porProveedor.entries()].sort((a, b) => b[1] - a[1])[0];
     quien = ` · sale ${top[0]}`;
   }
-  return [{ i: peor.i, t: `${mesCorto(mes)}${quien}: ${sig(peor.delta, platM)} al mes`, lado: "izq" }];
+  return [{ i: peor.i, t: `${mesCorto(mes)}${quien}: ${sig(peor.delta, plata)} al mes`, lado: "izq" }];
 }
 
 /** La frase-conclusión del panel de plata del cliente. La rejilla de arriba

@@ -56,7 +56,6 @@ import {
   pct,
   pctSig,
   plata,
-  platM,
   plural,
   puntos,
   sig,
@@ -862,7 +861,7 @@ export function LineaIngreso({
           <g key={i}>
             <line x1={L} y1={Y(t)} x2={W - R} y2={Y(t)} stroke="var(--line)" strokeWidth={1} />
             <T x={L - 8} y={Y(t) + 4} voz="lbl" ancla="end" fill="var(--ink-3)" mono>
-              {t === 0 ? "0" : platM(t)}
+              {t === 0 ? "0" : plata(t)}
             </T>
           </g>
         ))}
@@ -891,7 +890,7 @@ export function LineaIngreso({
           <g>
             <circle cx={X(serie.length - 1)} cy={Y(uv)} r={4.5} fill="var(--dato)" stroke="var(--surface)" strokeWidth={2} />
             <T x={W - R + 10} y={Y(uv) + 4} voz="peq" peso={700} fill="var(--ink-1)" mono>
-              {platM(uv)}
+              {plata(uv)}
             </T>
             {ult.parcial ? (
               <T x={W - R + 10} y={Y(uv) + 18} voz="min" peso={600} fill="var(--entra-txt)">
@@ -1360,7 +1359,7 @@ export function Dumbbell({
           <g key={i}>
             <line x1={X0 + esc(t)} y1={26} x2={X0 + esc(t)} y2={26 + arr.length * fila} stroke="var(--line)" strokeWidth={1} />
             <T x={X0 + esc(t)} y={18} voz="lbl" ancla="middle" fill="var(--ink-3)" mono>
-              {t === 0 ? "0" : platM(t)}
+              {t === 0 ? "0" : plata(t)}
             </T>
           </g>
         ))}
@@ -1929,7 +1928,7 @@ export function BarrasDivergentes({
   });
   const mp = movimientos[ipeor];
   const netoPeor = ent(mp) - peor;
-  const anT = `${mesCorto(mp.mes)} · el peor saldo de la ventana: ${sig(netoPeor, platM)} (${plural(
+  const anT = `${mesCorto(mp.mes)} · el peor saldo de la ventana: ${sig(netoPeor, plata)} (${plural(
     mp.salidas.length,
     "salida",
     "salidas"
@@ -1946,7 +1945,7 @@ export function BarrasDivergentes({
      arriba de una barra de entradas se lee como la barra. */
   const netoUlt = ent(ultimo) - sal(ultimo);
   const ultRotula = ipeor !== movimientos.length - 1 && (ent(ultimo) > 0 || sal(ultimo) > 0);
-  const ultT = "saldo " + sig(netoUlt, platM);
+  const ultT = "saldo " + sig(netoUlt, plata);
   const ultW = anchoAprox(ultT, VOZ.lbl.px, true);
   const ultX = Math.min(X(movimientos.length - 1), W - R - ultW / 2);
   const ultY = Math.max(34, cero - esc(ent(ultimo)) - 9);
@@ -1989,7 +1988,7 @@ export function BarrasDivergentes({
           <g key={i}>
             <line x1={L} y1={cero - esc(t)} x2={W - R} y2={cero - esc(t)} stroke="var(--line)" strokeWidth={1} />
             <T x={L - 8} y={cero - esc(t) + 4} voz="lbl" ancla="end" fill="var(--ink-3)" mono>
-              {sig(t, platM)}
+              {sig(t, plata)}
             </T>
           </g>
         ))}
