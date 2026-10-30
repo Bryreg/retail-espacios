@@ -20,7 +20,9 @@ test("distribuir: la cara por participación queda confirmada con su %", async (
   await expect(bandeja).toBeVisible();
   await bandeja.getByRole("button", { name: "Distribuir" }).click();
 
-  const distribuir = page.locator("[data-distribucion]");
+  // El panel de Distribuir, no el contenedor del 3D que también lleva
+  // `data-distribucion` (según cargue el 3D, aparecen los dos).
+  const distribuir = page.locator('[data-distribucion][aria-label="Distribuir la cara"]');
   await expect(distribuir).toBeVisible();
   await expect(distribuir.getByText("30 % de la cara")).toBeVisible();
   await page.locator("[data-listo]").click();
