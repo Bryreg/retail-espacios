@@ -92,8 +92,23 @@ def app_de_prueba():
     """Levanta la app contra una base SQLite propia y, al salir, la baja y la
     olvida: motores, módulos ``app.*``, cachés de librerías y archivos. Es el
     cuerpo del fixture ``client``; ``test_suite_sin_fuga.py`` la usa a mano."""
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
+    # Una CARPETA propia por prueba, no un archivo suelto en el temporal común:
+    # las bases de los clientes que la prueba dé de alta son archivos HERMANOS
+    # de ésta (`<carpeta>/recabra_<slug>.db`, ver `clientes.url_para`), y con
+    # todas las pruebas en el mismo `/tmp` dos procesos en paralelo (`pytest -n`)
+    # se pisaban `recabra_acme.db` —«attempt to write a readonly database»—.
+    # Auditoría P3-12.
+    carpeta = tempfile.mkdtemp(prefix="recabra-prueba-")
+    # Y antes de armar nada, fuera los `app.*` que haya dejado una prueba SIN
+    # este fixture (una que importa `app.services.guia` suelto): se crearon con
+    # el `DATABASE_URL` de la prueba anterior, cuya carpeta ya no existe, y su
+    # motor apuntaría ahí. Con el `/tmp` común esa base vieja se recreaba sola
+    # y la prueba corría, sin saberlo, contra otra base.
+    import sys
+
+    for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
+        del sys.modules[name]
+    path = os.path.join(carpeta, "retail.db")
     os.environ["DATABASE_URL"] = f"sqlite:///{path}"
     os.environ["JWT_SECRET"] = "test-secret"
     os.environ["ENV"] = "test"
@@ -132,15 +147,10 @@ def app_de_prueba():
         for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
             del sys.modules[name]
         soltar_la_app_vieja()
-        os.unlink(path)
-        # Las bases de los clientes que haya creado la prueba son archivos hermanos.
-        import glob
-        carpeta = os.path.dirname(path)
-        for extra in glob.glob(os.path.join(carpeta, "recabra_*.db")):
-            try:
-                os.unlink(extra)
-            except OSError:
-                pass
+        # La base de la prueba y las de los clientes que haya creado viven en
+        # su carpeta: se va entera.
+        import shutil
+        shutil.rmtree(carpeta, ignore_errors=True)
 
 
 def soltar_la_app_vieja() -> None:
