@@ -38,6 +38,9 @@ from app.routers.auth import (
     frenar_si_hay_muchos_fallos,
 )
 from app.services.firebase_tokens import VerificadorDeIdToken, get_verificador
+from app.services import terminos as terminos_srv
+# Registra `aceptaciones_de_terminos` en `Base.metadata` antes de `create_all()`.
+from app.models import terminos as _tablas_de_terminos  # noqa: F401
 
 router = APIRouter(prefix="/clientes", tags=["clientes"])
 
@@ -101,6 +104,11 @@ class AltaIn(BaseModel):
     # Fase 3: sin esto no hay fundación. Falso/ausente es el default -- la
     # persona tiene que marcarlo, no viene marcado por omisión.
     acepta_politica: bool = False
+    # P0-2: con términos del servicio vigentes (`TERMINOS_VIGENTES`, ver
+    # `services/terminos.py`), la dueña los acepta al fundar, con la versión
+    # que leyó. Sin términos vigentes se ignoran y el alta es la de siempre.
+    acepta_terminos: bool = False
+    version_terminos: Optional[str] = None
 
 
 @router.post("/alta")
@@ -192,6 +200,22 @@ def alta_self_service(
                 detail="Para fundar el cliente hay que aceptar la Política de Tratamiento de Datos Personales",
             )
 
+        # 8.6) Los términos del servicio, si rigen (P0-2). También antes de
+        # cualquier escritura. La versión tiene que ser la que rige AHORA: si
+        # cambió mientras la persona leía, aceptó otro texto.
+        terminos_vigentes = terminos_srv.version_vigente()
+        if terminos_vigentes is not None:
+            if not payload.acepta_terminos:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Para fundar el cliente hay que aceptar los Términos del servicio",
+                )
+            if (payload.version_terminos or "").strip() != terminos_vigentes:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Los términos del servicio cambiaron mientras leías: volvé a abrirlos y aceptá la versión nueva.",
+                )
+
         # 9) Resolver/crear Usuario -- MISMAS reglas de vinculación que
         # /oauth: por firebase_uid, si no por email (ya confiable a esta
         # altura), y nunca se crea uno nuevo si el email ya tiene fila.
@@ -258,6 +282,10 @@ def alta_self_service(
         reg.add(Fundacion(usuario_id=usuario.id, cliente_slug=cliente.slug))
         if not _tiene_consentimiento_vigente(reg, usuario.id):
             reg.add(Consentimiento(usuario_id=usuario.id, version=VERSION_POLITICA, ip=ip, origen="alta"))
+        if terminos_vigentes is not None:
+            # La constancia del alta dice las dos versiones: la de los términos
+            # y la de la política que regía.
+            terminos_srv.registrar(reg, usuario.id, cliente.slug, terminos_vigentes, ip, origen="alta")
         usuario.ultimo_login = datetime.now(timezone.utc)
         reg.commit()
 

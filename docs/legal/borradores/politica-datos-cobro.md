@@ -1,8 +1,16 @@
+> **INCORPORADO A LA VERSIÓN 2026-10-v3 (2026-10-30).** Los textos de este borrador entraron
+> en `docs/legal/politica-datos.md` en la revisión de privacidad de la auditoría
+> pre-lanzamiento: el punto 1 como §2.6, el 2 como §3.7, el 3 en la tabla del §6 y el 4 en
+> la fila del proveedor de correo del §9.1, con sus marcas de **[VALIDAR CON ABOGADO]**. La
+> v3 sigue siendo un borrador para el abogado, así que la condición de abajo sigue en pie:
+> **la cobranza automática no se prende hasta que el abogado revise la v3**. Este archivo
+> queda como registro del razonamiento; lo que manda es la política.
+>
 > **BORRADOR PARA REVISIÓN DE ABOGADO — NO PUBLICADO.** Este documento no constituye
 > asesoría legal y no reemplaza a la política vigente. Es la propuesta de lo que habría que
-> agregar a `docs/legal/politica-datos.md` (versión publicada **2026-09-v2**) por el cobro
-> de la suscripción. La política publicada, la página `/politica-datos` y la constante
-> `VERSION_POLITICA` del backend **no se tocaron**.
+> agregar a `docs/legal/politica-datos.md` (versión publicada entonces, **2026-09-v2**) por el
+> cobro de la suscripción. Cuando se escribió, la política publicada, la página
+> `/politica-datos` y la constante `VERSION_POLITICA` del backend **no se tocaron**.
 
 # Política de datos — qué cambia por el cobro de la suscripción
 

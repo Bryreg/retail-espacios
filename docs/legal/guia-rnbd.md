@@ -2,8 +2,9 @@
 
 # Guía operativa: Registro Nacional de Bases de Datos (RNBD)
 
-**Redactada en septiembre de 2026.** Acompaña a la Política de Tratamiento de Datos
-Personales (`docs/legal/politica-datos.md`, versión `2026-09-v1`), pero es un documento
+**Redactada en septiembre de 2026; revisada el 2026-10-30** contra el producto (ver
+`docs/legal/revision-2026-10-30.md`). Acompaña a la Política de Tratamiento de Datos
+Personales (`docs/legal/politica-datos.md`, versión `2026-10-v3`), pero es un documento
 aparte: esta guía es interna y operativa, la política es pública.
 
 Esta guía es para el dueño del negocio, no para un abogado. Contesta cuatro preguntas:
@@ -126,16 +127,16 @@ es **responsable del tratamiento**.
 |---|---|
 | **Nombre de la base** | Usuarios y cuentas de la plataforma RECABRA |
 | **Responsable** | [COMPLETAR: razón social y NIT] |
-| **Encargado** | Google LLC (autenticación) y Render (alojamiento) — ver punto 3.4 |
+| **Encargado** | Google LLC (autenticación), Render (alojamiento), el proveedor de correo saliente, GitHub (respaldos cifrados) y, si se usan, el depósito de respaldos y Sentry — ver punto 3.4 |
 | **Canal de atención al titular** | [COMPLETAR: correo y dirección] |
 | **Forma de tratamiento** | Automatizada |
 | **Categorías de titulares** | Clientes / usuarios de un servicio |
-| **Datos que contiene** | Identificador de cuenta (`firebase_uid`), correo electrónico, nombre, fecha de creación, fecha del último ingreso, rol y pertenencia a cada supermercado, invitaciones enviadas y recibidas, constancia de aceptación de la política (versión, fecha, IP), dirección IP y hora de intentos de ingreso fallidos, bitácora de acciones (fecha, rol, correo, IP, acción) |
+| **Datos que contiene** | Identificador de cuenta (`firebase_uid`), correo electrónico, nombre, fecha de creación, fecha del último ingreso, rol y pertenencia a cada supermercado, invitaciones enviadas y recibidas, constancia de aceptación de la política (versión, fecha, IP) y de los términos del servicio (dueñas: versión de términos y de política, fecha, IP), quién fundó cada supermercado y las altas en espera (correo, nombre y código pedidos), dirección IP y hora de intentos de ingreso fallidos, sesiones cerradas (identificador interno), bitácora de la plataforma (correo del operador, acción, supermercado y período), constancias de los derechos de titulares atendidos (sin el correo: una huella), y los datos de facturación y cobro de cada supermercado (razón social, NIT, municipio, correo de facturación, cuentas de cobro, pagos y referencias bancarias) |
 | **Datos sensibles** | Ninguno |
 | **Datos de menores** | No |
 | **Finalidades** | Autenticación y control de acceso, gestión de permisos por supermercado, envío de avisos operativos, constancia de consentimiento, facturación y estado de cuenta, seguridad de la información y atención de derechos |
 | **Política de tratamiento** | [COMPLETAR: URL pública de `/politica-datos`] |
-| **Medidas de seguridad** | Autenticación delegada en Firebase, claves con hash Argon2id, separación de bases por cliente, frenos de fuerza bruta por IP, bitácora, cabeceras de seguridad, revisión automática de dependencias |
+| **Medidas de seguridad** | Autenticación delegada en Firebase, claves con hash Argon2id, separación de bases por cliente, frenos de fuerza bruta por IP, cierre de sesión en el servidor, verificación en dos pasos para la consola (opcional), bitácora, registros técnicos sin correos ni tokens, respaldo nocturno cifrado (30 días), cabeceras de seguridad, revisión automática de dependencias |
 
 ### 3.2 Base 2 (y siguientes) — "Datos de negocio del cliente [nombre del supermercado]"
 
@@ -150,7 +151,7 @@ responsable es el supermercado y RECABRA es el encargado**.
 | **Encargado** | [COMPLETAR: razón social y NIT de la empresa que opera RECABRA] |
 | **Forma de tratamiento** | Automatizada |
 | **Categorías de titulares** | Proveedores y contratistas; empleados del responsable |
-| **Datos que contiene** | Nombre de la empresa proveedora, nombre de la persona de contacto, teléfono, correo, notas comerciales; valor, marca y fechas de cada contrato; correos de aviso del administrador de sede, del gerente operacional y del mercaderista; reportes de montaje (nombre escrito por quien reporta, rol, fecha y hora, motivo, nota); fotografías de montaje tomadas en sala de ventas, que pueden captar personas de forma incidental; planometrías y artes enviados por el proveedor; contratos escaneados, que pueden contener nombres, firmas y números de identificación; bitácora de acciones (fecha, rol, correo, IP, acción); dirección IP y hora de intentos de ingreso fallidos |
+| **Datos que contiene** | Nombre de la empresa proveedora, nombre de la persona de contacto, teléfono, correo, notas comerciales; correo y notas de las reservas; valor, marca y fechas de cada contrato; correos de aviso del administrador de sede, del gerente operacional y del mercaderista; correos de los responsables de montaje a los que se manda la guía (sólo en la cola de correos, hasta que se borra); reportes de montaje y avisos de la guía (nombre escrito por quien reporta o de su cuenta, rol, fecha y hora, motivo, nota) y su revisión; fotografías de montaje y de la guía tomadas en sala de ventas, que pueden captar personas de forma incidental; planometrías y artes enviados por el proveedor; contratos escaneados, que pueden contener nombres, firmas y números de identificación; el correo de quien creó, publicó, revisó o canceló cada registro; bitácora de acciones (fecha, rol, correo, IP, acción); cola de correos (destinatarios y contenido de cada aviso, 30 a 90 días); dirección IP y hora de intentos de ingreso fallidos |
 | **Datos sensibles** | No se recolectan a propósito. Declarar la posibilidad de captación incidental de imagen en las fotos de sala de ventas. [VALIDAR CON ABOGADO: si la SIC exige declarar la imagen como dato sensible en este supuesto] |
 | **Datos de menores** | No a propósito; posible captación incidental en fotografías de sala de ventas |
 | **Finalidades** | Administrar los contratos de alquiler de espacios comerciales; enviar avisos de contratación, vencimiento y montaje; conservar la prueba documental de lo acordado y de lo efectivamente montado; auditoría y seguridad |
@@ -174,8 +175,11 @@ responsable es el supermercado y RECABRA es el encargado**.
 | Proveedor | Papel | Dónde procesa |
 |---|---|---|
 | Google LLC (Firebase Authentication) | Verifica la identidad de quien ingresa | [VALIDAR CON ABOGADO: región del proyecto de Firebase] |
-| Render | Aloja la aplicación y la base de datos | Estados Unidos |
-| [COMPLETAR: proveedor de correo saliente] | Envía los avisos automáticos | [COMPLETAR] |
+| Render | Aloja la aplicación, las bases de datos (con los archivos) y los registros técnicos | Estados Unidos |
+| Brevo o SendGrid [COMPLETAR: cuál se usa] | Envía los avisos automáticos, las invitaciones y las guías (ve el contenido entero y los enlaces sin contraseña) | [COMPLETAR] |
+| GitHub (Microsoft), GitHub Actions | Hace y guarda 30 días el respaldo nocturno, cifrado | Estados Unidos |
+| [COMPLETAR: Cloudflare R2 o Amazon S3, si se usa] | Guarda una segunda copia del respaldo cifrado, 30 días | [COMPLETAR] |
+| Sentry, si se activa | Recibe los errores del sistema, sin IP ni correos | [COMPLETAR] |
 
 ---
 
@@ -250,7 +254,10 @@ Aunque RECABRA no esté obligada a inscribirse, sigue obligada a:
    prórrogas que permiten los artículos 14 y 15 de la Ley 1581. → Procedimiento en la
    sección 8 de la política.
 5. **Permitir ejercer los derechos**: conocer, actualizar, rectificar, suprimir y revocar.
-   → El sistema tiene el export del dueño y la solicitud de supresión atendida a mano.
+   → El sistema tiene el export del dueño, la solicitud de supresión del supermercado,
+   «Descargar mis datos» para cada persona con cuenta, y la atención del operador que
+   exporta o anonimiza a una persona concreta en todas las bases (procedimiento con los
+   plazos en `docs/operacion.md` §11).
 6. **Adoptar medidas de seguridad** que impidan adulteración, pérdida, consulta o acceso no
    autorizado (artículo 17, literal d).
 7. **Informar a la SIC los incidentes de seguridad** que pongan en riesgo la información de
@@ -284,8 +291,9 @@ Y en los dos escenarios, sin excepción:
 |---|---|---|
 | Política publicada | Sí | Borrador listo, falta completar campos y revisión de abogado |
 | Consentimiento registrado | Sí | Implementado (versión, fecha, IP, origen) |
-| Atención de derechos en 10/15 días hábiles | Sí | Procedimiento escrito; falta asignar responsable |
-| Export y solicitud de supresión | Sí | Implementado (dueño del supermercado) |
+| Atención de derechos en 10/15 días hábiles | Sí | Procedimiento escrito (`docs/operacion.md` §11); falta asignar responsable |
+| Export y solicitud de supresión | Sí | Implementado: el supermercado (dueño), cada persona con cuenta («Descargar mis datos») y el operador por persona (exportar o anonimizar) |
+| Plazos de conservación | Sí | Propuestos en la política §6; los que no son prueba de nada se borran solos; falta que el abogado los confirme |
 | Medidas de seguridad | Sí | Implementadas y documentadas |
 | Reporte de incidentes a la SIC | Sí | Falta definir plazo interno y responsable |
 | Contrato de transmisión con clientes y proveedores | Sí | **No existe — brecha abierta** |
@@ -300,7 +308,7 @@ Y en los dos escenarios, sin excepción:
 3. Los **datos de identificación** para la política: razón social, NIT, domicilio, correo,
    teléfono.
 4. Quién va a ser el **responsable interno** de atender consultas y reclamos.
-5. Los **plazos de conservación** por categoría de dato, con su sustento.
+5. Confirmar los **plazos de conservación** propuestos en la política §6, con su sustento.
 6. Si los **términos de Google/Firebase y de Render** sirven como contrato de transmisión o
    si hay que firmar un anexo.
 7. El **modelo de contrato de transmisión** con los supermercados clientes.

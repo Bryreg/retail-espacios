@@ -140,6 +140,18 @@ ACCIONES.update({
     "repisa.liberada": "Repisa del 3D liberada",
 })
 
+# Auditoría pre-lanzamiento, privacidad (P0-2, P1-14): los términos del servicio
+# aceptados por la dueña, y los derechos de una persona concreta. Las dos de
+# `titular.exportado`/`.suprimido` las escribe la plataforma (rol «plataforma»)
+# cuando el operador atiende una solicitud; la línea dice el número de la
+# constancia, nunca a quién. No terminan en «.baja»: suprimir es anonimizar.
+ACCIONES.update({
+    "terminos.aceptados": "Términos del servicio aceptados",
+    "titular.descarga": "Una persona bajó sus datos personales",
+    "titular.exportado": "La plataforma exportó los datos de una persona (derecho de acceso)",
+    "titular.suprimido": "La plataforma anonimizó a una persona (derecho de supresión)",
+})
+
 # fase 2 · I5 · El renombre de una sede (`POST /layout/{sede}/renombrar`,
 # `services/renombre_sede.py`): sus códigos pasan al nombre nuevo y lo vendido
 # sigue vivo. No termina en «.baja» a propósito: no se pierde nada, y la

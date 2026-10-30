@@ -505,10 +505,12 @@ def purgar_registro() -> dict[str, int]:
 
     Qué se borra, y con qué plazo:
 
-    · ``BitacoraPlataforma`` más vieja que ``services.bitacora.DIAS_QUE_SE_GUARDA``
-      (365 días). Se IMPORTA esa constante, no se duplica: el plazo de la
-      constancia del operador y el de la del cliente son el mismo plazo, y el día
-      que uno cambie tiene que cambiar el otro.
+    · ``BitacoraPlataforma`` más vieja que
+      ``services.retencion.dias("RETENCION_BITACORA_PLATAFORMA_DIAS")`` (760 días
+      por defecto, auditoría pre-lanzamiento P2-23). Hasta el 2026-10-30 era el
+      mismo año de la bitácora de cada cliente, y el reporte de transparencia
+      —que muestra los accesos del operador de hasta 24 meses— perdía la mitad
+      de su ventana: ahora se guardan 25 meses, uno más que esa ventana.
     · ``IntentoAlta`` de más de ``HORAS_QUE_SE_GUARDA_EL_INTENTO`` (24 h). El
       rate limit del alta sólo mira los últimos 15 minutos
       (``routers/auth.LOGIN_WINDOW_SECONDS``), así que lo que se borra ya no
@@ -524,10 +526,10 @@ def purgar_registro() -> dict[str, int]:
     """
     from app.clientes import sesion_registro
     from app.models.plataforma import BitacoraPlataforma, IntentoAlta, SnapshotMetricas
-    from app.services.bitacora import DIAS_QUE_SE_GUARDA
+    from app.services.retencion import dias
 
     ahora = _ahora_utc()
-    corte_bitacora = ahora - timedelta(days=DIAS_QUE_SE_GUARDA)
+    corte_bitacora = ahora - timedelta(days=dias("RETENCION_BITACORA_PLATAFORMA_DIAS"))
     corte_intentos = ahora - timedelta(hours=HORAS_QUE_SE_GUARDA_EL_INTENTO)
     corte_snapshot = _corrido(periodo_actual(), -MESES_QUE_SE_GUARDA_EL_SNAPSHOT)
 
