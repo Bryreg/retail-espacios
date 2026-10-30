@@ -859,6 +859,13 @@ def oauth_login(
             # Top-level, hermano del token — igual que `aviso_cuenta` en Fase
             # 2: el JWT no cambia de forma, ni un claim.
             cuerpo["pedir_consentimiento"] = True
+        # P0-2: la dueña que todavía no aceptó los términos vigentes de ESTE
+        # supermercado. Sin `TERMINOS_VIGENTES`, nunca viaja.
+        from app.services.terminos import pendiente_para
+
+        pedir_terminos = pendiente_para(reg, usuario.id, cliente_obj.slug, elegida.rol)
+        if pedir_terminos:
+            cuerpo["pedir_terminos"] = pedir_terminos
         return cuerpo
     finally:
         reg.close()

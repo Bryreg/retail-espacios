@@ -36,6 +36,8 @@ Sin los secrets, los workflows `Respaldo nocturno` y `Mantenimiento programado` 
 | `CUOTA_BASE_MB` | `1024` en la base gratuita; la del plan contratado al cambiar. |
 | `SENTRY_DSN` | Opcional: el DSN del proyecto de Sentry. Sin ella, nada. |
 | `STATEMENT_TIMEOUT_S` | Opcional, `30` por defecto; `0` lo apaga. |
+| `TERMINOS_VIGENTES` | Vacía hasta que el abogado entregue los términos. Con la versión (`2026-10-v1`) **y** el texto sin marcas de borrador, el alta y la dueña los aceptan. Ver `docs/legal/revision-2026-10-30.md` §4. |
+| `RETENCION_*` | Opcionales: los plazos de conservación (§12). Sin ellas, los propuestos. |
 
 ### En Render (el servicio → Settings)
 
@@ -187,8 +189,8 @@ Un respaldo que nunca se restauró no es un respaldo. Lista:
 ## 6. El mantenimiento
 
 Lo que corre solo: vencer contratos, recordatorios, reintentar correos, purgar
-la bitácora, fotos vencidas, cierre del mes, la escalera de cobranza, el tamaño de
-la base y el chequeo de códigos `…-PC<n>`.
+la bitácora y lo demás que tiene plazo (§12), fotos vencidas, cierre del mes, la
+escalera de cobranza, el tamaño de la base y el chequeo de códigos `…-PC<n>`.
 
 - **El hilo de la app**: al arrancar y cada 12 h, mientras esté despierta.
 - **El cron de GitHub** (`.github/workflows/mantenimiento.yml`): cada 3 horas
@@ -281,3 +283,104 @@ El flujo:
    teléfonos (`UPDATE suppliers SET email = NULL, phone = NULL, contact_name = 'Contacto ' || id`),
    y cargalo en staging. Nunca la base de producción tal cual.
 4. Un PR `staging → main`, que vuelve a pasar el CI, y a producción.
+
+## 11. Los derechos de una persona (Ley 1581): consultas y supresiones
+
+Una persona —con o sin cuenta: una administradora que se fue, el contacto de una
+marca, alguien a quien le llegan los avisos— escribe al canal de atención de la
+política (§8.1) pidiendo saber qué datos suyos hay o que se borren. **Los plazos
+corren desde el día hábil siguiente a que llega el pedido:**
+
+| Pedido | Plazo | Prórroga (avisando antes del vencimiento, con el motivo) |
+|---|---|---|
+| **Consulta** (qué datos hay) | **10 días hábiles** (art. 14) | 5 días hábiles más |
+| **Reclamo** (corregir, suprimir, revocar) | **15 días hábiles** (art. 15) | 8 días hábiles más |
+
+Si el reclamo llega incompleto, se le pide lo que falta dentro de los 5 días
+siguientes; si en 2 meses no contesta, se entiende que desistió. Mientras el
+reclamo está en trámite, anotá en la referencia «reclamo en trámite».
+
+### El paso a paso
+
+1. **Anotar el pedido**: fecha de llegada, quién pide, qué pide, el correo con el que
+   aparece en RECABRA. Calcular la fecha límite (días hábiles de Colombia).
+2. **Verificar que es la persona**: que escribe desde ese correo, o que acredita la
+   representación. Si no, pedirlo (el plazo de «incompleto» corre).
+3. **¿Quién responde?** Si es una persona con cuenta (dueña, administración,
+   mercaderista), responde RECABRA. Si es personal del supermercado o el contacto de
+   un proveedor, el responsable es **el supermercado**: avisarle a la persona que se
+   le trasladó y escribirle a la dueña; cuando la dueña lo instruya (o lo pida la
+   persona y la dueña no conteste en el plazo, ver la política §7.2), se ejecuta acá.
+4. **Consulta → exportar.** En la consola, con la sesión de operador:
+
+   ```
+   POST /api/plataforma/titulares/exportar
+   {"correo": "persona@dominio.co", "referencia": "Radicado 2026-11-03 #4"}
+   ```
+
+   o, para el contacto de un proveedor de un supermercado (el número del proveedor lo
+   da la dueña):
+
+   ```
+   {"cliente": "acme", "proveedor_id": 12, "referencia": "…"}
+   ```
+
+   (también se puede buscar por `"telefono"`, y limitar a un supermercado con
+   `"cliente"`). Devuelve un JSON con la cuenta, cada lugar donde aparece la persona
+   en el registro y en cada supermercado, y `no_revisados` (bases que no se pudieron
+   abrir: reintentar). Se le manda a la persona, con la lista de
+   `fuera_de_esta_descarga`.
+5. **Supresión → anonimizar.** Mismo cuerpo, con la referencia obligatoria:
+
+   ```
+   POST /api/plataforma/titulares/suprimir
+   {"correo": "persona@dominio.co", "referencia": "Radicado 2026-11-03 #4"}
+   ```
+
+   Si la persona es la **única dueña** de un supermercado activo contesta 409
+   `unica_duena`: primero que la dueña pase el supermercado a otra persona, o se
+   tramita la supresión del supermercado; si igual corresponde, repetir con
+   `"aunque_sea_la_unica_duena": true`. Lo que se conserva por ley (contratos,
+   bitácora, facturación, constancias de autorización) queda anonimizado, no
+   borrado: el detalle está en `backend/app/services/titulares.py` y en la política
+   §7.1 e).
+6. **Lo que el sistema no alcanza, a mano:**
+   - borrar la cuenta en **Firebase** (consola de Firebase → Authentication → Users →
+     buscar el correo → *Delete account*);
+   - si se restaura un respaldo de antes de la supresión dentro de los 30 días que
+     viven, **volver a aplicar** cada supresión atendida después de la fecha del
+     respaldo (las constancias están en `GET /api/plataforma/titulares`; el correo
+     de cada una, en el canal de atención);
+   - los respaldos vencen solos a los 30 días: no hay que tocarlos.
+7. **Responder** a la persona dentro del plazo: qué se hizo, el número de constancia,
+   lo que quedó por obligación legal y por qué.
+
+Cada paso deja rastro: una **constancia** en `derechos_de_titulares` (con la huella
+de la persona, nunca su correo), una línea `titular_export`/`titular_supresion` en la
+bitácora de la plataforma por cada supermercado tocado —que ese supermercado ve en su
+reporte de transparencia— y una `titular.exportado`/`titular.suprimido` en la
+bitácora del supermercado. `GET /api/plataforma/titulares` lista las constancias.
+
+Las personas con cuenta pueden, además, bajar lo suyo solas: menú de la cuenta →
+**Descargar mis datos** (`GET /api/auth/mis-datos`, 3 por hora).
+
+## 12. Cuánto se guarda (retención)
+
+El mantenimiento borra solo lo que no es prueba de nada, con plazos que se cambian
+por variable en Render (los valores son los propuestos en la política §6; los que
+el abogado tiene que confirmar están marcados ahí):
+
+| Variable | Por defecto | Qué |
+|---|---|---|
+| `RETENCION_BITACORA_DIAS` | 365 | Bitácora de cada supermercado |
+| `RETENCION_BITACORA_PLATAFORMA_DIAS` | 760 | Bitácora del operador (25 meses: el reporte de transparencia muestra 24) |
+| `RETENCION_INTENTOS_DIAS` | 1 | Intentos fallidos (login, cuenta) y de export; los del alta, 24 h fijas |
+| `RETENCION_ALTAS_EN_ESPERA_DIAS` | 90 | Altas que llegaron con el tope del día |
+| `RETENCION_CORREOS_ENVIADOS_DIAS` | 30 | Cola de correos: lo enviado |
+| `RETENCION_CORREOS_ABANDONADOS_DIAS` | 90 | Cola de correos: lo que no salió |
+
+Las sesiones cerradas y los enlaces cortados se borran al vencer; las fotos de
+montaje y planometrías, con `LIMPIAR_FOTOS_VENCIDAS` (§8); los respaldos, a los 30
+días (regla del bucket, §2). Un valor menor que 1 o que no es un número se ignora
+(con un WARNING) y vale el de por defecto: un «0» no vacía la bitácora.
+

@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-30: **auditoría, tanda «Pantalla, accesibilidad y E2E»** — la app ya no
+Última actualización: 2026-10-30: **auditoría, tanda «Privacidad y políticas»** — la política de
+datos sube a **2026-10-v3** (revisada contra el producto: encargados, navegador, plazos, cobro, derechos
+persona por persona; se vuelve a pedir la aceptación), los **Términos del servicio** tienen aceptación
+versionada **apagada** hasta que el dueño ponga `TERMINOS_VIGENTES` con un texto sin marcas de
+borrador, el operador **exporta o anonimiza a una persona** en todas las bases (con constancia y las
+dos bitácoras), cada persona **«Descargar mis datos»**, y el mantenimiento **purga por plazo**
+(configurable) lo que no es prueba de nada. Ver *Auditoría: privacidad y políticas (2026-10-30)*.
+
+Antes, ese mismo día: **auditoría, tanda «Pantalla, accesibilidad y E2E»** — la app ya no
 queda en blanco (límite de error con «Recargar» y recarga sola UNA vez ante una versión nueva),
 recorridos E2E con Playwright y axe en cada PR (job «E2E» del CI), cada módulo en su propio pedazo
 (el Inicio baja 312 kB gzip en vez de 550), «no se pudo leer» con «Reintentar», el 3D sin WebGL lo
@@ -1539,6 +1547,71 @@ volver a abrir el hallazgo:
 todas las sesiones y enlaces); `OPERADOR_EMAILS` y `ALTAS_POR_DIA`; MFA en Firebase y después
 `OPERADOR_EXIGE_MFA=1`; protección contra enumeración y App Check en Firebase. El correo del
 operador sigue en el historial de git (sacarlo exige reescribir la historia).
+
+### Auditoría: privacidad y políticas (2026-10-30)
+
+La tanda «Privacidad y políticas» de `docs/auditoria-pre-lanzamiento-recabra.md` (P0-2 la parte de
+producto, P1-14, P2-23). El anexo para el abogado —qué cambió en cada documento y por qué, el
+inventario de datos y de encargados, los plazos y las contradicciones encontradas— es
+**`docs/legal/revision-2026-10-30.md`**. Ningún `[COMPLETAR]` se llenó (decisión del dueño: quedan
+para el abogado). Lo que cambia para quien toque estas áreas:
+
+- **Política 2026-10-v3** (`docs/legal/politica-datos.md` = `frontend/src/legal/politica-datos.md`,
+  byte a byte; `VERSION_POLITICA` igual). Subirla vuelve a pedir la aceptación en el próximo ingreso
+  (el aviso de siempre, que no bloquea). Toda cosa nueva que el sistema guarde de una persona, o un
+  tercero nuevo que la reciba, va a la política en el mismo PR —y es otra versión—.
+- **Términos versionados, apagados** (P0-2). `services/terminos.py`: rigen sólo con
+  `TERMINOS_VIGENTES=<versión>` **y** `backend/app/legal/terminos-servicio.md` (copia byte a byte de
+  `docs/legal/borradores/terminos-servicio.md`, `tests/test_terminos.py`) que diga esa versión y no
+  tenga `[COMPLETAR`, `[VALIDAR CON ABOGADO` ni «BORRADOR»; si no, un WARNING y todo como antes.
+  Con términos vigentes: el alta exige `acepta_terminos` + `version_terminos` (422/409, antes de
+  escribir nada); el login de una **dueña** que no los aceptó trae `pedir_terminos: "<versión>"`
+  (el aviso de la política muestra las dos cosas); `POST /api/auth/aceptar-terminos` (sólo la
+  dueña, 204 idempotente); `GET /api/auth/terminos` y la página pública `/terminos`. Tabla nueva
+  del registro **`aceptaciones_de_terminos`** (usuario, supermercado, versión de términos **y** de
+  política, fecha, IP, origen): no se reusó `consentimientos` porque ésa es por persona y la leen
+  el login y el reporte comparando con `VERSION_POLITICA`.
+- **Derechos de una persona** (P1-14). `services/titulares.py` busca a una persona por correo,
+  teléfono o «contacto del proveedor N del supermercado X» en **cada columna de texto** de cada
+  tabla clasificada (registro y cada cliente; una tabla nueva queda cubierta sola) y exporta o
+  **anonimiza** (`titular-suprimido-<huella>`, sin `@`: ninguna libreta lo vuelve a tomar). Cuenta
+  con correo/uid `suprimido-<id>` y membresías apagadas (caché invalidada); contacto del proveedor
+  vacío (el nombre del proveedor queda); se borran invitaciones sin usar, altas en espera,
+  intentos de export y la dirección dentro de los correos en cola. Contratos, bitácora,
+  facturación y constancias de autorización quedan, anonimizados. Rutas: `POST
+  /api/plataforma/titulares/exportar` y `…/suprimir` (operador, **POST para que el correo no vaya en
+  la URL**; suprimir exige `referencia`, y a la única dueña de un supermercado activo la frena con
+  409 `unica_duena` salvo `aunque_sea_la_unica_duena`), `GET /api/plataforma/titulares` (constancias,
+  a pedido en la consola: leerlas anota) y `GET /api/auth/mis-datos` («Descargar mis datos» en el
+  menú de la cuenta: cualquier persona con cuenta, 3 por hora con el freno del export, sólo los
+  supermercados donde tiene acceso hoy; el cuerpo de los correos y el detalle de la bitácora se
+  cuentan, y a un mercaderista no se le muestra texto de tablas con plata). Exentas del 402 las dos
+  de `/api/auth`. Tabla nueva del registro **`derechos_de_titulares`**: la constancia con la
+  **huella** (SHA-256 del correo, 16 hex), nunca el correo. Bitácora de la plataforma
+  `titular_export` / `titular_supresion` / `titulares` (con `<slug>:<mes>` por supermercado tocado
+  y `_registro_:<mes>` para la cuenta: llegan al reporte de transparencia, con nombre en
+  `ReportePlataforma.tsx`) y del supermercado `titular.exportado` / `titular.suprimido` (rol
+  «plataforma», el número de constancia) / `titular.descarga` / `terminos.aceptados`. El cajón
+  «Derechos de una persona» de la consola vive en `components/titulares/` **fuera** del área de
+  análisis que vigila `probar-plataforma` (ahí el correo es el pedido, no un dato leído de un
+  cliente). Procedimiento con los 10/15 días hábiles: **`docs/operacion.md` §11**; la cuenta de
+  Firebase se borra a mano.
+- **Retención** (P2-23). `services/retencion.py`, plazos por variable con piso de 1 día:
+  `RETENCION_BITACORA_DIAS` 365, `RETENCION_BITACORA_PLATAFORMA_DIAS` **760** (antes 365: el reporte
+  de transparencia muestra 24 meses), `RETENCION_INTENTOS_DIAS` 1, `RETENCION_ALTAS_EN_ESPERA_DIAS`
+  90, `RETENCION_CORREOS_ENVIADOS_DIAS` 30 y `…_ABANDONADOS_DIAS` 90; las sesiones cerradas, al
+  vencer. El mantenimiento las corre (`retencion_registro` en su resumen). Ver `docs/operacion.md` §12.
+- **Logs** (P2-23). El registro de accesos de uvicorn sale con `t=***`/`token=***`
+  (`observabilidad.SinTokensEnLaRuta`): el enlace de montaje o de guía estaba entero en el log de
+  Render. Y `FormatoJSON` pasa mensaje y traza por `sin_correos`: red de seguridad sobre los
+  resúmenes de destinatarios que ya hacían la cola y el mailer.
+- Pruebas: `test_terminos.py`, `test_titulares.py`, `test_retencion.py`; las de la versión de la
+  política, al día con la v3.
+
+**Lo que queda a mano (dueño):** la reunión con el abogado (`docs/legal/revision-2026-10-30.md` §7);
+después, el texto final de los términos y `TERMINOS_VIGENTES` (§4 de ese anexo) y la política v4;
+borrar en Firebase la cuenta de cada persona suprimida; confirmar los plazos y, si cambian, ponerlos
+en las variables `RETENCION_*`.
 
 ### Auditoría: datos e indicadores (2026-10-30)
 
@@ -3882,8 +3955,8 @@ suites de cobranza contra un Postgres 16 descartable (ver *Cobro de la suscripci
 `space_faces` (designación explícita de la cara del mueble).
 
 **Reglas duras nuevas:**
-- `VERSION_POLITICA = "2026-09-v2"` (`models/consentimiento.py`, subida en Fase
-  7 Parte C) — debe coincidir con el encabezado de `docs/legal/politica-datos.md`,
+- `VERSION_POLITICA = "2026-10-v3"` (`models/consentimiento.py`; `2026-09-v2` en Fase
+  7 Parte C, `2026-10-v3` en la auditoría de privacidad del 2026-10-30) — debe coincidir con el encabezado de `docs/legal/politica-datos.md`,
   y `frontend/src/legal/politica-datos.md` es copia byte a byte (test lo fija).
   El historial de versiones vive en §11 de la política ("Vigencia y
   versionado"), no en §10.

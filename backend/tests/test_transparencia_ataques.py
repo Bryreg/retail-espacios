@@ -1356,7 +1356,9 @@ def test_t48_la_copia_del_frontend_es_byte_identica(client):
 def test_t49_la_version_subio_y_la_cabecera_la_dice(client):
     from app.models.consentimiento import VERSION_POLITICA
 
-    assert VERSION_POLITICA == "2026-09-v2", VERSION_POLITICA
+    # Subió otra vez en la revisión de privacidad (2026-10-30): lo que se fija
+    # es que la cabecera la diga, sea cual sea.
+    assert VERSION_POLITICA == "2026-10-v3", VERSION_POLITICA
     texto = (REPO / "docs" / "legal" / "politica-datos.md").read_text(encoding="utf-8")
     cabecera = "\n".join(texto.splitlines()[:12])
     assert VERSION_POLITICA in cabecera, cabecera
@@ -1369,7 +1371,7 @@ def test_t50_un_consentimiento_viejo_dispara_el_re_consentimiento(client, monkey
     _ids, cab_a, _cab_b, _cab_op, alta_a, _b = _campo(client, monkeypatch)
 
     from app.clientes import sesion_registro
-    from app.models.consentimiento import Consentimiento
+    from app.models.consentimiento import VERSION_POLITICA, Consentimiento
 
     reg = sesion_registro()
     try:
@@ -1388,7 +1390,7 @@ def test_t50_un_consentimiento_viejo_dispara_el_re_consentimiento(client, monkey
     cuerpo = _ok(_reporte_dueno(client, _cab(r.json()["token"])))
     assert cuerpo["politica"]["version_aceptada"] is None
     assert cuerpo["politica"]["aceptada_en"] is None
-    assert cuerpo["politica"]["version_vigente"] == "2026-09-v2"
+    assert cuerpo["politica"]["version_vigente"] == VERSION_POLITICA
 
 
 def test_t51_el_login_legado_sigue_funcionando_tras_subir_la_version(client):

@@ -58,6 +58,9 @@ import {
   TablaSupresiones,
   useSupresiones,
 } from "../components/plataforma/cartera-operativo";
+// El cajón de los derechos de una persona: fuera del área de análisis a
+// propósito (ver la cabecera de ese archivo).
+import { PanelTitulares } from "../components/titulares/PanelTitulares";
 import { TablaCobros, mapaDeModos, useCartera } from "../components/plataforma/cartera-cobros";
 
 /* ============================================================================
@@ -956,7 +959,18 @@ export default function Plataforma() {
                     setFilas={supresiones.setFilas}
                   />
                   <p className="plat-nota">
-                    Nada se borra desde acá: la supresión real, si corresponde, se ejecuta a mano y fuera del sistema.
+                    Nada se borra desde acá: la supresión de un supermercado entero, si corresponde, se ejecuta a mano y fuera del sistema.
+                  </p>
+                </div>
+              </details>
+              <details className="plat-cajon">
+                <summary>Derechos de una persona</summary>
+                <div>
+                  <PanelTitulares />
+                  <p className="plat-nota">
+                    Una consulta se contesta en 10 días hábiles y un reclamo en 15 (Ley 1581). Cada atención deja
+                    constancia —sin el correo de la persona— y una línea en la bitácora de la plataforma y en la del
+                    supermercado tocado. El paso a paso: <span className="cod">docs/operacion.md</span> §11.
                   </p>
                 </div>
               </details>

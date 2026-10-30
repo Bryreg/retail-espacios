@@ -57,6 +57,7 @@ RESERVA_DEL_ENVIO_INMEDIATO = timedelta(minutes=10)
 #: Cuántos correos manda una vuelta del mantenimiento, por supermercado.
 LOTE = 50
 
+#: Los valores por defecto de `services/retencion.py` (se cambian por variable).
 DIAS_ENVIADOS = 30
 DIAS_ABANDONADOS = 90
 
@@ -207,17 +208,24 @@ def despachar_pendientes(db: Session, ahora: Optional[datetime] = None) -> dict:
 
 
 def purgar_viejos(db: Session, ahora: Optional[datetime] = None) -> int:
+    """Lo enviado se va a los ``RETENCION_CORREOS_ENVIADOS_DIAS`` (30) y lo
+    abandonado a los ``RETENCION_CORREOS_ABANDONADOS_DIAS`` (90): llevan
+    direcciones y el aviso entero (``services/retencion.py``)."""
+    from app.services.retencion import dias
+
     ahora = ahora or _ahora()
+    enviados = dias("RETENCION_CORREOS_ENVIADOS_DIAS")
+    abandonados = dias("RETENCION_CORREOS_ABANDONADOS_DIAS")
     borrados = (
         db.query(CorreoPendiente)
         .filter(CorreoPendiente.estado == "enviado",
-                CorreoPendiente.creado_en < ahora - timedelta(days=DIAS_ENVIADOS))
+                CorreoPendiente.creado_en < ahora - timedelta(days=enviados))
         .delete(synchronize_session=False)
     )
     borrados += (
         db.query(CorreoPendiente)
         .filter(CorreoPendiente.estado == "abandonado",
-                CorreoPendiente.creado_en < ahora - timedelta(days=DIAS_ABANDONADOS))
+                CorreoPendiente.creado_en < ahora - timedelta(days=abandonados))
         .delete(synchronize_session=False)
     )
     if borrados:

@@ -27,6 +27,7 @@ from app.routers import vender as vender_routes
 from app.routers import cobros as cobros_routes
 from app.routers import reservas as reservas_routes
 from app.routers import montajes as montajes_routes
+from app.routers import titulares as titulares_routes
 from app.models.models import Space, SpaceStatus
 from app.services.subidas import LimiteDeCuerpo
 # Tablas de identidad (Fase 1): archivo nuevo, sin columnas agregadas a nada
@@ -162,7 +163,7 @@ def _run_lease_maintenance():
     """
     from app.clientes import esta_degradado, listar, reintentar_degradados, sesion_de
     from app.routers.spaces import expire_leases
-    from app.services import chequeos_de_despliegue, cola_de_correos, fotos_vencidas, tamano_de_base
+    from app.services import chequeos_de_despliegue, cola_de_correos, fotos_vencidas, retencion, tamano_de_base
     from app.services.bitacora import purgar
     from app.services.papelera import purgar as purgar_papelera
     from app.services.reminders import check_expiring_leases
@@ -194,7 +195,9 @@ def _run_lease_maintenance():
                 check_expiring_leases(db)
                 # La bitácora no puede crecer para siempre en una base de plan
                 # gratuito, y guardar más de lo necesario es su propio riesgo.
-                purgar(db)
+                # Plazos de `services/retencion.py` (P2-23), por variable.
+                purgar(db, retencion.dias("RETENCION_BITACORA_DIAS"))
+                retencion.purgar_cliente(db)
                 # La papelera de sedes: pasados 30 días, lo borrado queda borrado.
                 purgar_papelera(db)
             except Exception:
@@ -239,6 +242,16 @@ def _run_lease_maintenance():
         finally:
             if db is not None:
                 db.close()
+
+    # Lo que el registro guarda sin ser prueba de nada (P2-23): intentos
+    # fallidos, altas en espera que nadie atendió, sesiones cerradas ya
+    # vencidas. Una vez por corrida, en su try.
+    if _stop_mantenimiento.is_set():
+        return resumen
+    try:
+        resumen["retencion_registro"] = retencion.purgar_registro()
+    except Exception:
+        logger.exception("La purga de retención del registro falló")
 
     # El tamaño de la instancia contra su cuota (P2-6): una vez por corrida,
     # porque la cuota es de TODAS las bases juntas.
@@ -440,9 +453,10 @@ def _preparar_bases() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from app.observabilidad import configurar_logging, configurar_sentry
+    from app.observabilidad import configurar_logging, configurar_sentry, filtrar_el_registro_de_accesos
 
     configurar_logging()
+    filtrar_el_registro_de_accesos()
     configurar_sentry()
     _preparar_bases()
     # Background task: lease expiry + email reminders (runs immediately, then every 12 h)
@@ -635,6 +649,12 @@ app.include_router(suscripcion_routes.router, prefix="/api")
 # quedan registradas en Base.metadata porque `app/plataforma_estado.py` las
 # importa a nivel de módulo, y estos dos routers importan ese módulo.
 app.include_router(alta_routes.router,       prefix="/api")
+# Términos versionados (`/auth/terminos`, `/auth/aceptar-terminos`) y los
+# derechos de cada persona (`/auth/mis-datos`, `/plataforma/titulares/…`).
+# Auditoría pre-lanzamiento, P0-2 y P1-14. Rutas literales, sin prefijo propio,
+# y ANTES de plataforma: la ruta del detalle (`/clientes/{slug}/detalle`) va
+# después de todas las literales (`test_d42`).
+app.include_router(titulares_routes.router,  prefix="/api")
 app.include_router(plataforma_routes.router, prefix="/api")
 app.include_router(spaces.router,        prefix="/api")
 app.include_router(suppliers.router,     prefix="/api")

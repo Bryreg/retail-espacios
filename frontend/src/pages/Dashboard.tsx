@@ -58,6 +58,7 @@ import {
 } from "../api/auth";
 import { describeError } from "../api/client";
 import { descargarMiExport, solicitarSupresion } from "../api/derechos";
+import { descargarMisDatos } from "../api/legal";
 import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { usePlanograma } from "../store/planogramaStore";
@@ -948,14 +949,15 @@ function TusDatosSection() {
     <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
       <div style={sectionLabelStyle}>Tus datos</div>
       <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12, lineHeight: 1.5 }}>
-        Política de Tratamiento de Datos Personales (Ley 1581/2012). Estas dos acciones sólo
-        las puede hacer el dueño del supermercado.
+        Política de Tratamiento de Datos Personales (Ley 1581/2012). Los datos del supermercado
+        y la supresión sólo los puede pedir el dueño. Tus datos personales los baja cada persona
+        desde el menú de su cuenta, arriba a la derecha: «Descargar mis datos».
       </div>
 
       <div style={{ marginBottom: 14 }}>
         <ActionButton onClick={bajarExport} disabled={descargando}>
           <Download size={12} />
-          {descargando ? "Generando…" : "Descargar mis datos"}
+          {descargando ? "Generando…" : "Descargar los datos del supermercado"}
         </ActionButton>
         <FeedbackNote msg={exportMsg} />
       </div>
@@ -1253,6 +1255,21 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
   onAjustes: () => void;
 }) {
   const { clienteNombre, persona, rol } = useQuienSoy(isAdmin);
+  // «Descargar mis datos» (auditoría P1-14): sólo con cuenta personal, que es
+  // la que tiene correo; una sesión sin cuenta no tiene «mis» datos.
+  const conCuenta = !!useAuthStore((s) => s.email);
+  const [bajando, setBajando] = useState(false);
+  const bajarMisDatos = async () => {
+    if (bajando) return;
+    setBajando(true);
+    try {
+      await descargarMisDatos();
+    } catch (err) {
+      alert(describeError(err, "No se pudieron bajar tus datos. Probá de nuevo en un rato."));
+    } finally {
+      setBajando(false);
+    }
+  };
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1301,6 +1318,13 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
             <button type="button" role="menuitem" className="fila solo-telefono"
               onClick={() => { setAbierto(false); onAjustes(); }}>
               <Settings {...ICONO_BARRA} /> Ajustes
+            </button>
+          )}
+          {conCuenta && (
+            <button type="button" role="menuitem" className="fila" disabled={bajando}
+              title="Un archivo con tu cuenta y lo que te menciona en los supermercados donde tenés acceso"
+              onClick={() => { void bajarMisDatos(); }}>
+              <Download {...ICONO_BARRA} /> {bajando ? "Preparando…" : "Descargar mis datos"}
             </button>
           )}
           <button type="button" role="menuitem" className="fila"

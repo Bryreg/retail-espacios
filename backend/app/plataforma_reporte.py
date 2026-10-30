@@ -661,6 +661,15 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
             alcanza = periodo.startswith(f"{slug}:") and not (
                 creado is not None and _como_utc(f.en) < creado
             )
+        elif f.accion in ("titular_export", "titular_supresion"):
+            # Auditoría pre-lanzamiento (P1-14): el operador atendió la
+            # solicitud de una persona y para eso leyó o anonimizó datos en la
+            # base de ESTE cliente (`periodo="<slug>:<YYYY-MM>"`). La línea no
+            # dice a quién: eso queda en la constancia, con la huella.
+            alcanza = periodo.startswith(f"{slug}:")
+        elif f.accion == "titulares":
+            # La lista de constancias: barre las de todos, como `clientes`.
+            alcanza = True
         elif f.accion == "detalle":
             # Fase 8: `GET /api/plataforma/clientes/{slug}/detalle` anota
             # `periodo="<slug>:<YYYY-MM>"` -- alcanza SÓLO al cliente cuyo slug
