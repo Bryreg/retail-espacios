@@ -119,13 +119,25 @@ def test_UN_GUARDADO_SIN_PRECIO_NO_BORRA_LA_PLATA_DEL_SLOT(client, admin):
 
 
 def test_un_cero_escrito_a_proposito_manda(client, admin):
-    """Una llave presente es una edición de verdad, el 0 incluido."""
+    """Una llave presente es una edición de verdad, el 0 incluido: liberar la
+    repisa (todo lo comercial en vacío) la deja en 0.
+
+    Cambio a propósito (auditoría P1-15, 2026-10-30): lo comercial de una
+    repisa vendida es de sólo lectura, así que bajarle el valor y dejarla
+    ocupada ya no se guarda (409 `repisas_vendidas`); se pasa a contrato o se
+    libera."""
     _guardar(client, admin, [_con_slots()])
     bajado = {**MUEBLE, "slots": [
         {"id": "s1", "x": 0, "w": 0.5, "negotiatedValue": 0,
          "status": "occupied", "supplierName": "Fabuloso"},
     ]}
-    _guardar(client, admin, [bajado])
+    r = client.put("/api/layout/NAVE", headers=admin, json={"fixtures": [bajado], "base_updated_at": None})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "repisas_vendidas", r.text
+    liberado = {**MUEBLE, "slots": [
+        {"id": "s1", "x": 0, "w": 0.5, "negotiatedValue": 0, "status": "free", "supplierName": "",
+         "brandCategory": "", "startDate": "", "endDate": ""},
+    ]}
+    _guardar(client, admin, [liberado])
     assert _leer(client, admin)[0]["slots"][0]["negotiatedValue"] == 0
 
 

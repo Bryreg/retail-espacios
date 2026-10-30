@@ -322,7 +322,7 @@ def test_ingresos_5_un_token_viejo_sin_cliente_no_se_cae_a_uno_arbitrario(client
     viejo = create_token("admin", 0, None)
     assert _payload(viejo)["cliente"] is None
 
-    for ruta in ("/api/spaces/", "/api/spaces/map", "/api/layout/", "/api/suppliers/"):
+    for ruta in ("/api/spaces/", "/api/spaces/comercial", "/api/layout/", "/api/suppliers/"):
         r = client.get(ruta, headers=_cab(viejo))
         assert r.status_code == 401, f"{ruta} abrió una base con un token sin cliente: {r.status_code}"
 
@@ -380,8 +380,8 @@ def test_ingresos_7_ningun_router_cruza_de_cliente(client, admin):
 
     # A = galerías, con su admin legado.
     lecturas = [
-        "/api/spaces/", "/api/spaces/map", "/api/suppliers/", "/api/layout/",
-        "/api/dashboard/kpis", "/api/dashboard/spaces", "/api/mounts/",
+        "/api/spaces/", "/api/spaces/comercial", "/api/suppliers/", "/api/layout/",
+        "/api/dashboard/serie", "/api/dashboard/serie", "/api/mounts/",
         "/api/catalogo/", "/api/bitacora/", "/api/files/1", "/api/notifications/config",
     ]
     for ruta in lecturas:
@@ -421,8 +421,8 @@ def test_ingresos_8_el_token_de_consola_no_abre_ninguna_base_de_negocio(client, 
     tok = r.json()["token"]
     assert _payload(tok)["cliente"] == "plataforma"
 
-    for ruta in ("/api/spaces/", "/api/spaces/map", "/api/layout/", "/api/suppliers/",
-                 "/api/dashboard/kpis", "/api/files/1", "/api/bitacora/", "/api/usuarios"):
+    for ruta in ("/api/spaces/", "/api/spaces/comercial", "/api/layout/", "/api/suppliers/",
+                 "/api/dashboard/serie", "/api/files/1", "/api/bitacora/", "/api/usuarios"):
         r = client.get(ruta, headers=_cab(tok))
         assert r.status_code == 401, f"el token de consola abrió {ruta}: {r.status_code}"
         r = client.get(ruta, params={"token": tok})

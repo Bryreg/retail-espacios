@@ -1,7 +1,12 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-29 (tarde): **«Distribuir» es un solo camino, y hay dónde llevar el
+Última actualización: 2026-10-30: **auditoría, tanda «Datos e indicadores»** — un solo canon del mes
+(servidor y navegador, con casos compartidos), las repisas del 3D de sólo lectura con «Pasar a
+contrato», bajas con fecha, papelera de sedes de 30 días, pesos enteros y bitácora en toda escritura
+de administración. Ver *Auditoría: datos e indicadores (2026-10-30)*.
+
+Antes, el 2026-10-29 (tarde): **«Distribuir» es un solo camino, y hay dónde llevar el
 control**. En el panel del mueble, 2D y 3D, arriba de todo va el bloque **«La cara»**: cómo está el
 reparto de cada cara (sin repartir, borrador, lista, para revisar) y UN botón, «Distribuir la
 cara», que abre lo que le toca al mueble —por porcentaje, Distribuir (con «Lo libre» al lado); si
@@ -792,7 +797,11 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
 - **La única excepción son los `slots`** (el estado por repisa del editor 3D): no tienen
   contraparte en ninguna tabla, así que tienen UNA fuente —el JSON— y no pueden
   discrepar con nada. Su precio SÍ sigue viajando en el layout y sigue redactándose para
-  un mercaderista, así que `_restore_missing_slot_prices` lo rellena al guardar. Lo que
+  un mercaderista, así que `_restore_missing_slot_prices` lo rellena al guardar.
+  **Desde el 2026-10-30 son de SÓLO LECTURA** (auditoría P1-15): `PUT /layout/{sede}` frena
+  con 409 `repisas_vendidas` una repisa nueva con algo comercial o una que lo cambia; lo
+  vendido de antes se conserva, se libera o se pasa a contrato
+  (`POST /layout/{sede}/repisas/{fixture}/{slot}/contrato`). Lo que
   sí puede pasar es que el plano de Vender (contratos) dé libre una cara con repisas
   vendidas aparte: la fila del contrato lo avisa («3 repisas vendidas») y el visor 3D no
   se lo dice al proveedor (ver *Ver el diseño desde Vender*, la crítica).
@@ -1496,6 +1505,59 @@ volver a abrir el hallazgo:
 todas las sesiones y enlaces); `OPERADOR_EMAILS` y `ALTAS_POR_DIA`; MFA en Firebase y después
 `OPERADOR_EXIGE_MFA=1`; protección contra enumeración y App Check en Firebase. El correo del
 operador sigue en el historial de git (sacarlo exige reescribir la historia).
+
+### Auditoría: datos e indicadores (2026-10-30)
+
+La tanda «Datos e indicadores» de `docs/auditoria-pre-lanzamiento-recabra.md` (IDs entre
+paréntesis). Lo que cambia para quien toque estas áreas:
+
+- **Un solo canon del mes (P1-16, P3-8).** Lo devengado en el mes: cada contrato, su canon al
+  mes (el total en los meses de su plazo firmado) × los días del mes que corrió ÷ los días del
+  mes; los cortes de ventas, por días; la suma al peso. `services/canon.py` y su gemela
+  `utils/canon.ts` corren `frontend/scripts/casos/canon.json` (`tests/test_canon.py`,
+  `probar-canon`). `/dashboard/serie` devuelve pesos enteros, `del_mes` (las filas del mes en
+  curso) y `hoy` (Colombia); Inicio pasa `del_mes` por la gemela y dice lo mismo que «Todas las
+  sedes» (mientras la serie no llega, la cuenta con lo que el navegador tiene). Se borraron
+  `/dashboard/kpis` y `/dashboard/spaces`.
+- **Bajas con fecha (P2-13).** Tabla nueva `bajas_de_contrato` (`lease_id`, `efectiva`,
+  `motivo` cancelado|sede): «Cancelar el contrato» y el borrado de una sede la escriben. Lo
+  cancelado devenga hasta el día ANTERIOR a la baja (`historial.tramo_devengado`); antes salía de
+  todos los meses (cambio a propósito: un contrato de 6 meses cancelado el 1.º del cuarto aporta
+  3). Las bajas de antes de la tabla toman el día de su `contrato.baja` en la bitácora.
+- **Métricas de la plataforma (P1-17).** Ya no filtran `is_active` (lo apaga `expire_leases` a
+  todo lo vencido): usan la regla de la serie. En las pruebas, `is_active=False` sembrado es una
+  baja (`tests/sembrado.marcar_cancelados`); lo vencido se siembra y se apaga con `expire_leases`.
+- **Repisas del 3D (P1-15, decisión del dueño «sólo lectura + pasar a contrato»).** El panel de
+  la repisa muestra proveedor, categoría, valor al mes (sólo administración) y fechas para leer,
+  con «Pasar a contrato» (elige la cara o la parte que pisa; la revisión y el alta de Vender, con
+  candado, choques, participaciones y bitácora «repisa del 3D»; el valor al mes × meses, forma
+  «mensual»; la repisa queda libre en la misma transacción) y «Liberar la repisa». El primer
+  guardado de una sede (sin plano anterior) sigue entrando sin comparar, como siempre.
+- **Pesos enteros (P2-11).** `schemas/pesos.py` (`Pesos`/`PesosOpcional`): Vender, reservas,
+  participaciones, cortes de ventas, planilla, `POST /spaces/{id}/leases` y las tarifas
+  redondean al peso (`1234.5` → `1235`). El editor de tarifas teclea enteros (`pesosEnteros`).
+- **Rutas viejas (P2-12).** Se fueron `GET /spaces/map`, `/spaces/by-svg/{id}`, `POST /spaces/`,
+  `PUT /suppliers/{id}` y `/mounts/files/{id}/exists`. `POST /spaces/{id}/leases` queda (lo usan
+  las pruebas para armar contratos) con forma «total» y pesos enteros.
+- **Bitácora (P1-18, P2-14).** `contrato.alta` por cada contrato de la planilla; y usuarios,
+  tarifas, temporadas, sedes, proveedores, planometría, avisos, catálogo y un `plano.guardado` por
+  guardado. `tests/test_bitacora_en_toda_escritura.py` recorre las rutas de administración que
+  escriben y exige `anotar` (con su lista `SIN_BITACORA` justificada).
+- **Tarifas con revisión (P2-17).** `PUT /layout/rates` con `base_updated_at` → 409
+  `rates_conflict`; la pantalla relee y dice «Otra persona cambió las tarifas…». Sin el campo
+  (guiones), escribe como antes.
+- **Papelera de sedes (P2-18).** Tabla nueva `sedes_en_papelera` (plano + ids de lo cerrado).
+  `GET /layout/papelera` y `POST /layout/papelera/{id}/restaurar` (admin, `sede.restaurada`):
+  vuelven el plano, el nombre, los códigos, los contratos en fecha (sin su baja «sede») y los
+  montajes; NO las reservas provisionales canceladas. 409 si ya existe la sede o un código, o
+  pasados 30 días; el mantenimiento purga (`papelera.purgar`, una línea en `main.py`). Ajustes ›
+  Sedes muestra la papelera.
+- **Editar contrato con cambio de partes (P2-16).** Sigue en dos pasos (plano, después contrato),
+  pero si la vuelta del plano no entra la pantalla dice que el plano quedó cambiado, no «No se
+  guardó nada».
+- **Menores.** Sin «M» en la consola de plataforma (P3-5, `probar-graficos`); fuera el código
+  muerto de totales de `DashboardView` (P3-6); la plantilla de la planilla usa «Proveedor de
+  ejemplo» (P3-7); `planogramas.resumen` sin N+1 (P3-11).
 
 ---
 

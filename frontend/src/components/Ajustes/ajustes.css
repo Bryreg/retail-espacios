@@ -62,3 +62,7 @@
   .ajustes-menu button { flex: none; padding: 8px 12px; }
   .ajustes-menu button small { display: none; }
 }
+
+/* La papelera de sedes (auditoría P2-18). */
+.aj-papelera { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.aj-sub { margin: 0 0 6px; font-size: var(--t-sm); font-weight: 600; color: var(--ink-1); }

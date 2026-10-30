@@ -154,7 +154,7 @@ export interface ArgsContrato {
    *  «Cambiar»— y se escribe recién al guardar, justo antes del pedido (el
    *  servidor lee las partes del plano). Si el guardado falla, `deshacer` deja
    *  el plano como estaba. `null`: nada pendiente. */
-  planoPendiente?: { escribir: () => Promise<string | null>; deshacer: () => Promise<void> } | null;
+  planoPendiente?: { escribir: () => Promise<string | null>; deshacer: () => Promise<boolean> } | null;
 }
 
 // ─── Utilidades ──────────────────────────────────────────────────────────────
@@ -971,11 +971,16 @@ export function useContrato({
       });
     } catch (e) {
       // El plano vuelve a como estaba: no queda la nevera partida con el
-      // contrato entero vivo.
-      if (planoEscrito && planoPendiente) await planoPendiente.deshacer().catch(() => undefined);
+      // contrato entero vivo. Si la vuelta no entra (auditoría P2-16), se dice
+      // la verdad: el contrato no se guardó, pero el plano SÍ quedó cambiado.
+      const planoQuedoCambiado = planoEscrito && !!planoPendiente
+        && !(await planoPendiente.deshacer().catch(() => false));
+      const nada = planoQuedoCambiado
+        ? "El contrato no se guardó, pero el plano quedó con la forma nueva y no se pudo volver atrás: revisalo en Plano de la sede antes de seguir."
+        : "No se guardó nada.";
       if (edita && codigoDelRechazo(e) === "contrato_cambio") {
         setCambioAjeno(true);
-        setError("Ese contrato cambió mientras lo editabas (lo guardó otra pestaña o alguien más). No se guardó nada: volvé a Indicadores y abrilo de nuevo.");
+        setError(`Ese contrato cambió mientras lo editabas (lo guardó otra pestaña o alguien más). ${nada} Volvé a Indicadores y abrilo de nuevo.`);
         setEstado("error");
         return;
       }
@@ -994,10 +999,10 @@ export function useContrato({
           void recargarOcupacion(sede);
         }
         setError(Object.keys(porLlave).length === filas.length
-          ? "No se guardó nada: revisá las líneas marcadas."
-          : `No se guardó nada. ${filas.map((f) => f.mensaje).filter(Boolean).join(" ")}`);
+          ? `${nada} Revisá las líneas marcadas.`
+          : `${nada} ${filas.map((f) => f.mensaje).filter(Boolean).join(" ")}`);
       } else {
-        setError(describeError(e, "No se pudo guardar el contrato. No se guardó nada."));
+        setError(planoQuedoCambiado ? `No se pudo guardar el contrato. ${nada}` : describeError(e, "No se pudo guardar el contrato. No se guardó nada."));
       }
       setEstado("error");
     }

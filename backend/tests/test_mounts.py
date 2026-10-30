@@ -185,7 +185,9 @@ def test_the_photo_is_stored_and_linked(client, worker):
     r = _confirm(client, worker, "NAVE-GON-01")
     file_id = r.json()["file_id"]
     assert file_id
-    assert client.get(f"/api/mounts/files/{file_id}/exists", headers=worker).json() == {"exists": True}
+    # (Era `GET /mounts/files/{id}/exists`, que se fue el 2026-10-30: nada lo
+    # llamaba.) La foto viaja con el montaje.
+    assert any(m.get("file_id") == file_id for m in client.get("/api/mounts/", headers=worker).json())
 
 
 def test_an_svg_is_not_a_photo(client, worker):

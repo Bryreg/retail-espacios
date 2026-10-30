@@ -138,7 +138,7 @@ class BaseIlegible(RuntimeError):
 #: Un contrato tal como lo devuelve ``_contratos_del_cliente``, con nombre. El
 #: ``proveedor`` es el nombre CRUDO: se sanea al armar el JSON, nunca al
 #: agrupar (ver ``sanear_nombre_proveedor``).
-_Contrato = namedtuple("_Contrato", "codigo proveedor marca canon inicio fin activo")
+_Contrato = namedtuple("_Contrato", "codigo proveedor marca canon inicio fin activo corre_hasta")
 
 
 def _clave_de_contrato(c) -> tuple:
@@ -772,9 +772,11 @@ def _armar_movimientos(historicos: list, mapa_tipos: dict, anio_mes: str) -> lis
     Entradas = contratos que EMPEZARON ese mes; salidas = contratos que
     TERMINARON ese mes. Los dos miran también los cancelados: una cancelación
     es la salida más importante de todas, y el modelo no tiene tabla de
-    cancelaciones —``is_active == False`` con la fecha de fin intacta es lo que
-    la representa (ver ``routers/spaces.py::cancel_lease``)—. Por eso una
-    entrada lleva ``cancelado`` y una salida lleva ``motivo``.
+    cancelaciones propia: lo cancelado es lo que ``historial.cerrados_a_mano``
+    dice cancelado o reemplazado (``activo`` en falso; ``is_active`` en falso
+    también es lo vencido por fecha, auditoría P1-17), y sale el día que dejó
+    de correr (``bajas_de_contrato``, P2-13). Por eso una entrada lleva
+    ``cancelado`` y una salida lleva ``motivo``.
     """
     meses = [_corrido(anio_mes, -i) for i in range(MESES_MOVIMIENTOS - 1, -1, -1)]
     salida = []
@@ -793,13 +795,16 @@ def _armar_movimientos(historicos: list, mapa_tipos: dict, anio_mes: str) -> lis
                     "fecha": c.inicio.isoformat(),
                     "cancelado": not c.activo,
                 })
-            if m_desde <= c.fin <= m_hasta:
+            # Lo cancelado sale el día que dejó de correr (`corre_hasta`,
+            # auditoría P2-13), no en el fin que tenía firmado.
+            sale = c.corre_hasta if (not c.activo and c.corre_hasta) else c.fin
+            if m_desde <= sale <= m_hasta:
                 salidas.append({
                     "proveedor": sanear_nombre_proveedor(c.proveedor),
                     "codigo": c.codigo,
                     "tipo": tipo,
                     "canon_mensual": _plata(c.canon),
-                    "fecha": c.fin.isoformat(),
+                    "fecha": sale.isoformat(),
                     "motivo": "cancelacion" if not c.activo else "vencimiento",
                 })
         clave = lambda m: (m["fecha"], m["codigo"], m["proveedor"])  # noqa: E731
@@ -1224,7 +1229,7 @@ def armar_detalle(slug: str, anio_mes: str) -> dict:
     historicos = [c._replace(canon=ventas[_clave_de_contrato(c)]) if _clave_de_contrato(c) in ventas else c
                   for c in historicos]
     del_periodo = [
-        c for c in historicos if _del_periodo(c.inicio, c.fin, c.activo, desde, hasta)
+        c for c in historicos if _del_periodo(c.inicio, c.corre_hasta, desde, hasta)
     ]
 
     por_codigo: dict[str, list] = {}

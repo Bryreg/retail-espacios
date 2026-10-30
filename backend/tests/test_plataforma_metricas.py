@@ -16,7 +16,7 @@ Los números sembrados están elegidos para que el promedio PONDERADO del
 consolidado (Σ canones / Σ contratos) y el promedio de promedios den distinto:
 si alguien cambiara la cuenta por la equivocada, el test lo dice.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import json
 from datetime import date
 from types import SimpleNamespace
@@ -212,7 +212,14 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
+        # Lo vencido por fecha queda apagado, como en producción: `expire_leases`
+        # corre en cada lectura y en el mantenimiento. Antes la siembra lo dejaba
+        # con `is_active=True`, y por eso nadie veía que las métricas descartaban
+        # todo lo vencido (auditoría P1-17).
+        from app.routers.spaces import expire_leases
+        expire_leases(db)
     finally:
         db.close()
 
@@ -326,6 +333,57 @@ def test_metricas_de_un_cliente_contra_datos_sembrados(client, monkeypatch):
     }
     # La fecha del último acceso: sólo la fecha, sin hora y sin quién.
     assert m["metricas"]["ultimo_acceso"] == date.today().isoformat()
+
+
+def test_un_mes_pasado_cuenta_lo_que_vencio_por_fecha(client, monkeypatch):
+    """Auditoría P1-17: `expire_leases` apaga `is_active` de todo lo vencido, y
+    las métricas lo descartaban: el cierre de un mes perdía casi todo lo del
+    mes cerrado. Con la siembra ya vencida (arriba), agosto concilia contra la
+    suma a mano: GON-01-B (2.000.000 al mes, del 15 de agosto al 5 de
+    septiembre) y BAT-01 (8.888.888, julio y agosto). El cancelado no suma."""
+    from app.clientes import buscar, sesion_de
+    from app.models.models import SpaceLease
+
+    _ids, cab = _escenario(client, monkeypatch)
+    db = sesion_de(buscar("acme"))
+    try:
+        apagados = db.query(SpaceLease).filter(SpaceLease.is_active.is_(False)).count()
+    finally:
+        db.close()
+    assert apagados == 3, "la siembra no corrió `expire_leases` (2 vencidos + 1 cancelado)"
+    m = _fila(_pedir(client, cab, "2026-08"), "acme")["metricas"]
+    assert m["ingreso_contratado_mes"] == 2_000_000.0 + 8_888_888.0
+    assert sum(p["contratos_activos"] for p in m["top_proveedores"]) == 2
+    # Y el mes en curso no pierde lo que terminó en él (GON-01-B, el 5).
+    s = _fila(_pedir(client, cab), "acme")["metricas"]
+    assert s["ingreso_contratado_mes"] == ACME_INGRESO
+
+
+def test_un_contrato_cancelado_a_mitad_corre_hasta_su_baja_en_las_metricas(client, monkeypatch):
+    """Auditoría P2-13 en la consola: un contrato cancelado con fecha de baja
+    cuenta en los meses que corrió y no en los siguientes."""
+    from app.clientes import buscar, sesion_de
+    from app.models.models import Space, SpaceLease
+    from app.models.vender import BajaDeContrato
+
+    _ids, cab = _escenario(client, monkeypatch)
+    db = sesion_de(buscar("beta"))
+    try:
+        e3 = db.query(Space).filter(Space.code == "BETA-E-03").first()
+        lease = db.query(SpaceLease).filter(SpaceLease.space_id == e3.id).first()
+        lease.start_date, lease.end_date = date(2026, 7, 1), date(2026, 12, 31)
+        lease.monthly_rent = 750_000.0 * 6
+        lease.is_active = False
+        db.add(BajaDeContrato(lease_id=lease.id, efectiva=date(2026, 9, 1), motivo="cancelado"))
+        db.commit()
+    finally:
+        db.close()
+    from app.plataforma_metricas import limpiar_cache_metricas
+    limpiar_cache_metricas()
+    agosto = _fila(_pedir(client, cab, "2026-08"), "beta")["metricas"]
+    assert agosto["ingreso_contratado_mes"] == 750_000.0
+    septiembre = _fila(_pedir(client, cab), "beta")["metricas"]
+    assert septiembre["ingreso_contratado_mes"] == BETA_INGRESO - 750_000.0
 
 
 def test_gondola_doble_suma_dos_caras_y_el_no_comercializable_ninguna(client, monkeypatch):
@@ -1010,10 +1068,10 @@ def test_el_token_de_la_consola_no_abre_ninguna_base_de_negocio(client, monkeypa
     for ruta in (
         "/api/spaces/",
         "/api/layout/",
-        "/api/dashboard/kpis",
+        "/api/dashboard/serie",
         "/api/suppliers/",
         "/api/clientes/mi-export",
-        "/api/spaces/map",
+        "/api/spaces/comercial",
         "/api/bitacora/",
     ):
         r = client.get(ruta, headers=cab)

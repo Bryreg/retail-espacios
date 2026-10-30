@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useFixtureStore, normalizeSede } from "../../store/fixtureStore";
-import { fetchDeleteImpact, type DeleteImpact } from "../../api/layout";
+import { fetchDeleteImpact, fetchPapelera, restaurarSede, type DeleteImpact, type SedeEnPapelera } from "../../api/layout";
+import { diaCorto } from "../../utils/supervision";
+import { hoyEnColombia } from "../../utils/canon";
 import { avisoDelRenombre } from "../../utils/impactoDeSede";
 import { DeleteSedeDialog, RenombrarSedeDialog, RenombreRechazadoDialog } from "../FloorPlan2D/FloorPlan2D";
 import { isRentable } from "../../types/fixtures";
@@ -26,6 +28,31 @@ export default function SedesDeAjustes() {
   const [enEspera, setEnEspera] = useState<{ de: string; a: string; aviso: string } | null>(null);
   const [fallido, setFallido] = useState<{ de: string; a: string; error: string; motivos: string[] } | null>(null);
   const [borrando, setBorrando] = useState<string | null>(null);
+  /** La papelera (auditoría P2-18): las sedes borradas hace menos de 30 días. */
+  const [papelera, setPapelera] = useState<SedeEnPapelera[]>([]);
+  const [restaurando, setRestaurando] = useState<number | null>(null);
+  const [avisoPapelera, setAvisoPapelera] = useState<string | null>(null);
+  const leerPapelera = useCallback(() => {
+    fetchPapelera().then((r) => setPapelera(r.sedes)).catch(() => setPapelera([]));
+  }, []);
+  useEffect(() => { leerPapelera(); }, [leerPapelera, sedes.length]);
+  async function restaurar(p: SedeEnPapelera) {
+    setRestaurando(p.id);
+    setAvisoPapelera(null);
+    try {
+      const r = await restaurarSede(p.id);
+      await useFixtureStore.getState().syncFromServer();
+      setAvisoPapelera(`«${r.sede}» volvió: ${r.espacios} ${r.espacios === 1 ? "espacio" : "espacios"} y ${r.contratos} `
+        + `${r.contratos === 1 ? "contrato" : "contratos"} que siguen en fecha.`
+        + (r.reservas_canceladas ? " Las reservas provisionales que se cancelaron al borrarla no vuelven." : ""));
+    } catch (err: any) {
+      const d = err?.response?.data?.detail;
+      setAvisoPapelera(typeof d === "string" ? d : d?.message ?? `No se pudo restaurar «${p.sede}».`);
+    } finally {
+      setRestaurando(null);
+      leerPapelera();
+    }
+  }
 
   const tras = (de: string, a: string, h: { ok: boolean; error?: string; motivos?: string[] }) => {
     if (h.ok) { if (activa === de) setSede(a); return; }
@@ -75,6 +102,28 @@ export default function SedesDeAjustes() {
         <button type="submit" className="aj-btn" disabled={!normalizeSede(nueva)}><Plus {...ICONO} /> Agregar sede</button>
       </form>
       <p className="aj-nota">El plano de una sede nueva se dibuja en Plano de la sede.</p>
+
+      {(papelera.length > 0 || avisoPapelera) && (
+        <section className="aj-papelera" data-papelera-de-sedes aria-label="Papelera de sedes">
+          <h4 className="aj-sub">Papelera</h4>
+          <p className="aj-nota">Una sede borrada queda acá 30 días. Restaurarla devuelve su plano, sus códigos y los contratos que siguen en fecha.</p>
+          {avisoPapelera && <p className="aj-nota" role="status">{avisoPapelera}</p>}
+          <ul className="aj-lista">
+            {papelera.map((p) => (
+              <li key={p.id} data-papelera={p.sede}>
+                <span className="aj-sede"><b className="mono">{p.sede}</b>
+                  <small>Borrada el {diaCorto(hoyEnColombia(Date.parse(p.borrada_en)))} · se puede restaurar hasta el {diaCorto(hoyEnColombia(Date.parse(p.vence_en)))}</small>
+                  <small>{p.muebles} {p.muebles === 1 ? "mueble" : "muebles"} · {p.contratos} {p.contratos === 1 ? "contrato cerrado" : "contratos cerrados"}</small></span>
+                <span className="aj-fila-acc">
+                  <button type="button" className="aj-btn" disabled={restaurando !== null} onClick={() => void restaurar(p)}>
+                    <RotateCcw {...ICONO} /> {restaurando === p.id ? "Restaurando…" : "Restaurar"}
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {enEspera && (
         <RenombrarSedeDialog {...enEspera} onCancel={() => setEnEspera(null)}
