@@ -28,10 +28,10 @@ from collections import defaultdict
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from html import escape
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -49,6 +49,7 @@ from app.services.alta_de_contrato import (
     cache_de_proveedores, escribir_contrato, espacio_para, proveedor_por_nombre,
 )
 from app.services.catalogo_muebles import tipo_de_tarifa
+from app.services.bitacora import anotar
 from app.services.candado import tomar_candados
 from app.services.fichas_propias import tarifas_propias
 from app.services.meses import meses_entre
@@ -63,9 +64,11 @@ from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.condiciones import ETIQUETA_DEL_VALOR, condiciones_de, texto_del_total, texto_del_valor
 from app.services.contacts import recipients_for
+from app.schemas.pesos import PesosOpcional
 from app.services.mailer import (
     app_base_url, correo_configurado, format_cop, html_shell, send_mail_to_bg,
 )
+from app.services.cola_de_correos import encolar_correo
 
 router = APIRouter(prefix="/leases/bulk", tags=["carga masiva"])
 
@@ -90,8 +93,9 @@ class FilaIn(BaseModel):
     marca: Optional[str] = None
     #: En la PLANILLA, lo de cada MES (decisión del dueño, 2026-10-26): el total
     #: es ese valor × los meses. En los demás caminos que reusan `_revisar`
-    #: (Vender, reservas, editar), el total del contrato, como siempre.
-    valor: Optional[float] = None
+    #: (Vender, reservas, editar), el total del contrato, como siempre. En pesos
+    #: enteros (auditoría P2-11): `1234.5` entra como `1235`.
+    valor: PesosOpcional = None
     #: ISO. El navegador ya resolvió el formato de la celda —fecha de Excel,
     #: dd/mm/aaaa, aaaa-mm-dd— porque es donde está el archivo.
     desde: Optional[str] = None
@@ -663,24 +667,31 @@ def validar(lote: LoteIn, db: Session = Depends(get_db)):
     return validar_lote(db, lote)
 
 
-@router.post("/confirmar", response_model=ConfirmadoOut, dependencies=[Depends(require_admin)])
+@router.post("/confirmar", response_model=ConfirmadoOut)
 def confirmar(
     lote: LoteIn,
+    request: Request,
     background_tasks: BackgroundTasks,
+    rol: str = Depends(require_admin),
     db: Session = Depends(get_db),
     cliente: Cliente = Depends(cliente_del_pedido),
 ):
     """Crea los contratos de las filas que pasan. Vuelve a validar antes."""
-    return confirmar_lote(db, lote, background_tasks, cliente)
+    return confirmar_lote(db, lote, background_tasks, cliente, request=request, rol=rol)
 
 
 def confirmar_lote(db: Session, lote: LoteIn, background_tasks: BackgroundTasks, cliente: Cliente,
-                   planilla: bool = True) -> ConfirmadoOut:
+                   planilla: bool = True, request: Optional[Request] = None,
+                   rol: str = "admin", origen: str = "planilla",
+                   antes_del_commit: Optional[Callable[[list[FilaOut]], None]] = None) -> ConfirmadoOut:
     """Crea los contratos de las filas que pasan. Vuelve a validar antes.
 
     ``planilla=False`` sólo lo usan las pruebas de la venta por partes
     (``tests/sin_planilla.py``): la revisión común —la de Vender— sin las dos
-    reglas de la planilla (valor al mes, sólo enteros).
+    reglas de la planilla (valor al mes, sólo enteros). También «Pasar a
+    contrato» de una repisa del 3D (``routers/layout.py``, auditoría P1-15),
+    con ``origen`` para la bitácora y ``antes_del_commit``: lo que tiene que
+    caer en la MISMA transacción que los contratos (la repisa que se limpia).
 
     Revalidar no es paranoia: entre la revisión y el botón alguien pudo vender
     uno de esos espacios desde el mapa, y crear el contrato igual dejaría dos
@@ -736,8 +747,14 @@ def confirmar_lote(db: Session, lote: LoteIn, background_tasks: BackgroundTasks,
         if v.valor_mes:
             db.add(CondicionesDeContrato(lease_id=lease.id, modo_precio="mensual", valor_tecleado=v.valor_mes))
         v.lease_id = lease.id   # para que la pantalla le cuelgue la planometría
+        # La bitácora, en la MISMA transacción (auditoría P1-18): la línea y el
+        # contrato caen juntos o no cae ninguno. Mismo detalle que Vender.
+        anotar(db, request, rol, "contrato.alta", entidad="contrato", entidad_id=lease.id,
+               detalle=f"{space.code} · {supplier.name} · {_fecha(v.desde)}→{_fecha(v.hasta)} · {origen}")
         creados.append(v)
 
+    if antes_del_commit is not None:
+        antes_del_commit(creados)
     db.commit()
 
     avisos: Optional[AvisosContrato] = None
@@ -840,8 +857,8 @@ def _avisar(
                 rows.append((ETIQUETA_DEL_VALOR, total))
             # Antes decía «Cargados desde una planilla.» también para lo vendido
             # en el mapa, que pasa por el mismo camino (2026-10-02).
-            background_tasks.add_task(
-                send_mail_to_bg, who["comercial"], asunto,
+            encolar_correo(
+                background_tasks, db, send_mail_to_bg, who["comercial"], asunto,
                 html_shell(asunto, rows, f"Contratos de {escape(cliente.nombre)}, recién guardados en RECABRA."),
             )
 
@@ -877,8 +894,8 @@ def _avisar(
                 "Los enlaces son personales: no los reenvíes. Vencen un mes después de "
                 "que arranca cada contrato.</span>"
             )
-            background_tasks.add_task(
-                send_mail_to_bg, who["montaje"], asunto,
+            encolar_correo(
+                background_tasks, db, send_mail_to_bg, who["montaje"], asunto,
                 html_shell(asunto, rows, pie),
             )
 
@@ -911,8 +928,8 @@ def _avisar(
              + f"{f.desde} → {f.hasta} · {valor_de(f)}")
             for f in filas
         ]
-        background_tasks.add_task(
-            send_mail_to_bg, [supplier.email], asunto,
+        encolar_correo(
+            background_tasks, db, send_mail_to_bg, [supplier.email], asunto,
             html_shell(
                 asunto, rows,
                 f"Cualquier ajuste sobre lo acordado, comunicate con {escape(cliente.nombre)}.",

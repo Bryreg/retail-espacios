@@ -4,17 +4,17 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from app.auth import require_admin, require_auth
 from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.fechas import hoy
 from app.models.models import Space, SpaceFace, SpaceLease, Supplier, SpaceStatus
-from app.models.vender import ReservaDeEspacio
+from app.models.vender import CondicionesDeContrato, ReservaDeEspacio
 from app.services.bitacora import anotar
 from app.services.condiciones import ETIQUETA_DEL_VALOR, valor_de_lease
 from app.schemas.spaces import (
-    SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem,
+    SpaceOut, SpaceStatusUpdate, LeaseCreate, LeaseOut,
     SpaceFindOrCreate, AvisosContrato,
 )
 from app.services.contacts import recipients_for
@@ -30,6 +30,7 @@ from app.services.participaciones import bloqueo_por_participaciones
 from app.services.mailer import (
     html_shell, send_mail_to_bg, correo_configurado,
 )
+from app.services.cola_de_correos import encolar_correo
 
 # Every route requires a valid token; mutations additionally require admin.
 router = APIRouter(prefix="/spaces", tags=["spaces"], dependencies=[Depends(require_auth)])
@@ -98,25 +99,8 @@ def expire_leases(db: Session) -> int:
     return count
 
 
-@router.get("/map", response_model=list[SpaceMapItem])
-def get_map_status(db: Session = Depends(get_db)):
-    # Expire stale leases on every map refresh so the UI always reflects reality
-    expire_leases(db)
-    spaces = db.query(Space).options(
-        joinedload(Space.leases).joinedload(SpaceLease.supplier)
-    ).all()
-    result = []
-    for space in spaces:
-        # Space.active_lease is date-aware: a lease signed for a future period
-        # is deliberately not reported here.
-        active_lease = space.active_lease
-        result.append(SpaceMapItem(
-            svg_id=space.svg_id,
-            status=space.status,
-            name=space.name,
-            supplier_name=active_lease.supplier.name if active_lease else None,
-        ))
-    return result
+# `GET /spaces/map` (el estado por `svg_id`) se fue el 2026-10-30 (auditoría
+# P2-12): nada lo llamaba. Lo comercial se lee de `GET /spaces/comercial`.
 
 
 # ─── El estado comercial, que es de la BASE ───────────────────────────────────
@@ -187,24 +171,41 @@ def estado_comercial(
     # algo que la base ya considera libre.
     expire_leases(db)
 
-    q = db.query(Space).options(joinedload(Space.leases).joinedload(SpaceLease.supplier))
+    q = db.query(Space)
     if sede:
         q = q.filter(Space.sede == sede.strip().upper())
 
     admin = role == "admin"
     # Las reservas vivas de una cara entera o de una parte (§8 de
     # docs/rediseno/vender-api.md): la cara sale TOMADA en sus fechas, como con
-    # un contrato. Por espacio, la que corre hoy o, si no, la próxima.
+    # un contrato. Por espacio, la que corre hoy o, si no, la próxima. Con su
+    # proveedor en UNA consulta (P2-5: era una por reserva).
     dia = hoy()
     reservas: dict[int, ReservaDeEspacio] = {}
     for r in (db.query(ReservaDeEspacio)
+              .options(selectinload(ReservaDeEspacio.supplier))
               .filter(ReservaDeEspacio.estado == "viva", ReservaDeEspacio.caduca >= dia,
                       ReservaDeEspacio.hasta >= dia)
               .order_by(ReservaDeEspacio.desde, ReservaDeEspacio.id).all()):
         reservas.setdefault(r.space_id, r)
+    # Sólo los contratos que pueden mandar —vivos y que no terminaron—, no el
+    # historial entero de cada espacio con `joinedload` (P2-5). Es exactamente
+    # lo que miran `Space.active_lease` y `Space.upcoming_lease`: un contrato
+    # que terminó antes de hoy no es ni el vigente ni el próximo.
+    vivos: dict[int, list[SpaceLease]] = {}
+    consulta_vivos = (db.query(SpaceLease)
+                      .options(selectinload(SpaceLease.supplier))
+                      .filter(SpaceLease.is_active == True, SpaceLease.end_date >= dia)  # noqa: E712
+                      .order_by(SpaceLease.id))
+    if sede:
+        consulta_vivos = consulta_vivos.join(Space, Space.id == SpaceLease.space_id).filter(
+            Space.sede == sede.strip().upper())
+    for lease in consulta_vivos.all():
+        vivos.setdefault(lease.space_id, []).append(lease)
     salida: dict[str, EstadoComercial] = {}
     for space in q.all():
-        lease = space.active_lease or space.upcoming_lease
+        vigente, proximo = _vigente_y_proximo(vivos.get(space.id, ()), dia)
+        lease = vigente or proximo
         reserva = reservas.get(space.id)
         if lease is None and reserva is not None:
             # Tomada. Quién, hasta cuándo y por cuánto, sólo para quien
@@ -247,11 +248,20 @@ def estado_comercial(
             # abierta: la plata se fuga igual, escrita en castellano.
             observation=(lease.notes or "") if admin else "",
             leaseId=lease.id if admin else None,
-            proximoLeaseId=(space.upcoming_lease.id
-                            if admin and space.active_lease is not None and space.upcoming_lease is not None
+            proximoLeaseId=(proximo.id
+                            if admin and vigente is not None and proximo is not None
                             else None),
         )
     return salida
+
+
+def _vigente_y_proximo(leases, dia):
+    """Lo mismo que `Space.active_lease` y `Space.upcoming_lease`, sobre una
+    lista ya filtrada (en el mismo orden): el que corre hoy —el primero— y el
+    próximo firmado que todavía no arrancó —el de inicio más temprano—."""
+    vigente = next((l for l in leases if l.is_active and l.start_date <= dia <= l.end_date), None)
+    futuros = [l for l in leases if l.is_active and l.start_date > dia]
+    return vigente, (min(futuros, key=lambda x: x.start_date) if futuros else None)
 
 
 @router.post("/find-or-create", response_model=SpaceOut, status_code=200, dependencies=[Depends(require_admin)])
@@ -303,16 +313,9 @@ def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_d
     return buscar(Space.code == codigo)
 
 
-@router.post("/", response_model=SpaceOut, status_code=201, dependencies=[Depends(require_admin)])
-def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
-    existing = db.query(Space).filter(Space.svg_id == payload.svg_id).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Ya existe un espacio con ese svg_id")
-    space = Space(**payload.model_dump(), status=SpaceStatus.free)
-    db.add(space)
-    db.commit()
-    db.refresh(space)
-    return space
+# `POST /spaces/` (crear un espacio suelto, por `svg_id`) se fue el 2026-10-30
+# (auditoría P2-12): nadie lo llamaba; los espacios nacen con `find-or-create`
+# o con el alta del contrato (`services/alta_de_contrato.espacio_para`).
 
 
 @router.get("/linea")
@@ -417,16 +420,6 @@ def get_space(space_id: int, role: str = Depends(require_auth), db: Session = De
     space = db.query(Space).options(
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).filter(Space.id == space_id).first()
-    if not space:
-        raise HTTPException(status_code=404, detail="Espacio no encontrado")
-    return _space_out_for_role(space, role)
-
-
-@router.get("/by-svg/{svg_id}", response_model=SpaceOut)
-def get_space_by_svg(svg_id: str, role: str = Depends(require_auth), db: Session = Depends(get_db)):
-    space = db.query(Space).options(
-        joinedload(Space.leases).joinedload(SpaceLease.supplier)
-    ).filter(Space.svg_id == svg_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
     return _space_out_for_role(space, role)
@@ -767,6 +760,11 @@ def create_lease(
     # `flush` asigna el id sin cerrar la transacción, así que la bitácora puede
     # nombrar el contrato y seguir viajando con el mismo commit.
     db.flush()
+    # Ruta vieja, que hoy sólo usan las pruebas para armar un contrato
+    # (auditoría P2-12): escribe con la semántica de Vender —el valor es el
+    # TOTAL, en pesos enteros (`LeaseCreate`), y se dice así—, para que no nazca
+    # un contrato «sin forma» que después caiga en «Contratos cargados antes».
+    db.add(CondicionesDeContrato(lease_id=lease.id, modo_precio="total", valor_tecleado=lease.monthly_rent))
     # El aviso de montaje espera la planometría (decisión del dueño,
     # 2026-10-20): sale al cargarla, una vez (`services/montajes_pendientes.py`).
     dejar_pendiente(db, lease)
@@ -823,8 +821,8 @@ def create_lease(
         ]
         if fila_parte:
             rows.insert(2, fila_parte)
-        background_tasks.add_task(
-            send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
+        encolar_correo(
+            background_tasks, db, send_mail_to_bg, who["comercial"], subject, html_shell(subject, rows)
         )
 
     # Montaje: la orden de trabajo para el mercaderista (SIN valores) ya no sale
@@ -846,8 +844,8 @@ def create_lease(
         if fila_parte:
             rows.insert(1, fila_parte)
         footer = "Cualquier ajuste sobre lo acordado, respondé este correo."
-        background_tasks.add_task(
-            send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)
+        encolar_correo(
+            background_tasks, db, send_mail_to_bg, [supplier.email], subject, html_shell(subject, rows, footer)
         )
 
     # `avisos` no es una columna: se cuelga del objeto para que Pydantic lo
@@ -874,6 +872,10 @@ def cancel_lease(
         raise HTTPException(status_code=409, detail="El contrato ya estaba cancelado")
 
     lease.is_active = False
+    # El día de la baja (auditoría P2-13): la serie lo devenga hasta el día
+    # anterior, en vez de sacarlo de todos los meses.
+    from app.services.historial import anotar_baja
+    anotar_baja(db, lease, hoy(), "cancelado", actor_de(request, rol))
 
     # Only mark the space free when no other active lease remains
     remaining = (

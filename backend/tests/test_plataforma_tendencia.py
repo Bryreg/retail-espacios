@@ -20,7 +20,7 @@ propósito: cada archivo de pruebas se sostiene solo.
 serie termina siempre en el mes en curso, así que un ``"2026-09"`` escrito a mano
 haría que este archivo empezara a fallar solo el mes que viene.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import json
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
@@ -202,6 +202,7 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

@@ -15,6 +15,12 @@ name: CI · Auditoría de dependencias
 
 on:
   pull_request:
+  # Y una vez por semana sobre `main` (auditoría P3-10): una vulnerabilidad se
+  # publica el día que se publica, no el día que alguien abre un PR. Sin PRs
+  # durante un mes, nadie se enteraba. Lunes 13:17 UTC (08:17 en Colombia).
+  schedule:
+    - cron: "17 13 * * 1"
+  workflow_dispatch:
 
 jobs:
   python:

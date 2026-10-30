@@ -721,8 +721,8 @@ def test_a11_el_token_de_consola_no_lee_la_tarifa_por_la_otra_puerta(client, adm
         ("GET", "/api/layout/rates", None),
         ("PUT", "/api/layout/rates", {"default": {}, "by_sede": {}}),
         ("GET", "/api/layout/NAVE", None),
-        ("GET", "/api/dashboard/kpis", None),
-        ("GET", "/api/dashboard/spaces", None),
+        ("GET", "/api/dashboard/serie", None),
+        ("GET", "/api/dashboard/serie", None),
         ("GET", "/api/suppliers/", None),
     ):
         r = client.request(metodo, ruta, json=cuerpo, headers=cab)

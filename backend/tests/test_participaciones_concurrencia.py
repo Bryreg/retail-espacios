@@ -49,6 +49,10 @@ from datetime import date
 
 import pytest
 
+# Las carreras contra Postgres comparten la base descartable: todas al mismo
+# proceso cuando la suite corre en paralelo (`pytest -n auto --dist loadgroup`).
+pytestmark = pytest.mark.xdist_group("postgres")
+
 RELOJ = pytest.mark.reloj("2026-10-17T15:00:00+00:00")
 
 GON_01 = {"id": "f-GON-01", "code": "GON-01", "sede": "NAVE", "type": "gondola", "gondolaType": "double",

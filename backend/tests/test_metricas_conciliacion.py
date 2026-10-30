@@ -59,7 +59,7 @@ Todo ``import app.*`` va ADENTRO de las funciones — el fixture ``client`` de
 ``conftest.py`` arma el motor recién cuando corre, y un import de módulo lo
 clavaría contra la base equivocada.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import json
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
@@ -459,6 +459,7 @@ def _sembrar(slug, sedes, contratos):
                 monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

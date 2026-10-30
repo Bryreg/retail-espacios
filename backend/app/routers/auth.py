@@ -901,8 +901,10 @@ class RevocarEnlaceIn(BaseModel):
 @router.post("/revocar-enlace")
 def revocar_enlace(
     body: RevocarEnlaceIn,
+    request: Request,
     role: str = Depends(require_admin),
     cliente: Cliente = Depends(cliente_del_pedido),
+    db: Session = Depends(get_db),
 ):
     """Deja sin efecto UN enlace de montaje o de guía antes de que venza
     (auditoría pre-lanzamiento, P3-2): viven hasta 400 días y antes la única
@@ -928,6 +930,8 @@ def revocar_enlace(
             detail="Ese enlace es de antes de que se pudieran revocar uno por uno: vence solo, o se cortan todos cambiando JWT_SECRET.",
         )
     cerrar_sesion(token)
+    detalle = f"espacio {payload.get('code')}" if tipo == "montaje" else f"versión {payload.get('version')}"
+    anotar(db, request, role, "enlace.revocado", detalle=f"{tipo} · {detalle}")
     return {"revocado": True, "tipo": tipo}
 
 

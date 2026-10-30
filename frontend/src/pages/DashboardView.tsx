@@ -176,6 +176,7 @@ import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
 // corre también con Vender abierto, así que vive en `utils/meses`, no en la
 // plata de Supervisar.
 import { bajoLaTarifa } from "../utils/meses";
+import { canonDelMes as calcularCanonDelMes, hoyEnColombia } from "../utils/canon";
 import {
   DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, avisoPorClave, contarPorGrupo, cuentaDelBadge,
   deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, puntosDelPlano, tituloDeSeccion,
@@ -5146,13 +5147,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** El cambio pendiente de «Editar contrato», para el guardado: `escribir` lo
    *  manda al plano por el camino de siempre (`commit` + `PUT /layout`) justo
    *  antes del pedido —el servidor lee las partes del plano—, y `deshacer`
-   *  vuelve el mueble a como estaba si el guardado falla. */
+   *  vuelve el mueble a como estaba si el guardado falla. `deshacer` dice si
+   *  el servidor aceptó la vuelta (auditoría P2-16): si no, la pantalla no
+   *  puede decir «No se guardó nada», porque el plano quedó cambiado. */
   const planoPendiente = useMemo(() => {
     if (!formaPendiente) return null;
     const { id, cambio } = formaPendiente;
     let antes: { partes: UnifiedFixture["partes"]; entrepanos: UnifiedFixture["entrepanos"] } | null = null;
-    const deshacer = async () => {
-      if (!antes) return;
+    const deshacer = async (): Promise<boolean> => {
+      if (!antes) return true;
       const vuelta = antes;
       antes = null;
       const st = useFixtureStore.getState();
@@ -5161,6 +5164,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       st.commit(selectFixtures(st).map((f) => (f.id === id
         ? { ...f, partes: vuelta.partes ?? null, entrepanos: vuelta.entrepanos ?? null } : f)));
       await useFixtureStore.getState().flushPending();
+      // `flushPending` no tira: un guardado que no entró queda pendiente,
+      // rechazado o en conflicto. Cualquiera de los tres es «no volvió».
+      const tras = useFixtureStore.getState();
+      return !tras.dirty[sede] && !tras.rechazos[sede] && !tras.conflicts[sede];
     };
     const escribir = async (): Promise<string | null> => {
       try {
@@ -6051,14 +6058,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     // remainder so Libres + Ocupados + Contratados never overstate the total.
     const held = total - occupied - committed - free;
     const occPct = total ? Math.round((occupied / total) * 100) : 0;
-    // Money actually being earned this month — a signed contract that has not
-    // started yet is not revenue, and counting it overstated the monthly income.
-    const revenue = faces
-      .filter((_, i) => phases[i] === "vigente")
-      .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
-    const committedRevenue = faces
-      .filter((_, i) => phases[i] === "pendiente")
-      .reduce((s, x) => s + (x.negotiatedValue ?? 0), 0);
+    // El canon del mes es UNO (`utils/canon.ts`, auditoría P1-16): los totales
+    // «revenue» / «committedRevenue» que sumaban el valor TOTAL de cada contrato
+    // como si fuera el mes se fueron con el código muerto (P3-6).
 
     const expired: ContractEntry[] = [];
     const expiring: ContractEntry[] = [];
@@ -6077,23 +6079,6 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     });
     expired.sort((a, b) => a.days - b.days);
     expiring.sort((a, b) => a.days - b.days);
-
-    // Top suppliers — by what they are paying NOW, so the ranking matches the
-    // monthly revenue figure above instead of mixing in future commitments.
-    const supplierMap: Record<string, { revenue: number; count: number }> = {};
-    faces.forEach((x, i) => {
-      if (!x.supplierName || !x.negotiatedValue || phases[i] !== "vigente") return;
-      if (!supplierMap[x.supplierName]) supplierMap[x.supplierName] = { revenue: 0, count: 0 };
-      supplierMap[x.supplierName].revenue += x.negotiatedValue;
-      supplierMap[x.supplierName].count++;
-    });
-    const topSuppliers = Object.entries(supplierMap)
-      .map(([name, { revenue: r, count }]) => ({ name, revenue: r, count }))
-      .sort((a, b) => b.revenue - a.revenue)
-      // Diez y no seis: el panel contesta «de quién depende la sede», y con
-      // un corte en seis un proveedor que pone el 8% quedaba afuera sin que
-      // nada dijera que había más. Lo que no entra en el alto, scrollea.
-      .slice(0, 10);
 
     // Contracts paying below the reference rate for their type + sede.
     // Only meaningful gaps (≥1%) — a peso of rounding is not an anomaly.
@@ -6115,10 +6100,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     belowReference.sort((a, b) => b.gapPct - a.gapPct);
 
     return {
-      total, occupied, committed, free, held, occPct, revenue, committedRevenue,
+      total, occupied, committed, free, held, occPct,
       rentableFixtures, nonRentable,
       expired, expiring, noContract, reservadoAMano,
-      topSuppliers, belowReference,
+      belowReference,
       /** Los contratos que corren hoy con valor: la plata de la franja y de
        *  «Quién paga» sale de acá, en la unidad que se elija. */
       vigentes: faces.filter((x, i) => phases[i] === "vigente" && x.negotiatedValue > 0),
@@ -6479,20 +6464,39 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     useArmazon.getState().abrirBandeja("hoy");
   }, [inicio, cuentasDeRevision.hoy]);
 
-  /** El canon del mes del Inicio: los contratos vigentes, cada uno en sus
-   *  meses, y lo cargado de los que se cobran por % de las ventas. Es la cuenta
-   *  de «Canon vigente» con la plata «Al mes», sin importar qué unidad eligió
-   *  quien mira la franja. */
+  /** La serie de canon por mes (`GET /dashboard/serie`, sólo administración):
+   *  la curva de 12 meses y «Todas las sedes» de Indicadores, y el canon del
+   *  mes de Inicio. */
+  const [serie, setSerie] = useState<SerieDeCanon | null>(null);
+  useEffect(() => {
+    if (!isAdmin || !(enIndicadores || inicio)) return;
+    let vivo = true;
+    getSerieDeCanon(24).then((r) => { if (vivo) setSerie(r); }).catch(() => { if (vivo) setSerie(null); });
+    return () => { vivo = false; };
+  }, [isAdmin, enIndicadores, inicio]);
+
+  /** El canon del mes de Inicio, del Mapa y de Análisis: UNA definición, la
+   *  del servidor (auditoría P1-16): lo devengado en el mes, cada contrato por
+   *  los días del mes que corre, al peso (`utils/canon.ts`, gemela de
+   *  `services/canon.py`). Con la serie a mano, sobre los contratos y cortes con
+   *  que el servidor sacó la de «Todas las sedes» (`del_mes`): las dos cifras
+   *  son la misma. Mientras llega, con lo que el navegador ya tiene (lo vigente
+   *  y lo firmado que arranca este mes, y los cortes cargados). El mes es el
+   *  de Colombia —el `hoy` del servidor—, nunca el del navegador (P3-8). */
   const canonDelMes = useMemo(() => {
     if (!isAdmin) return null;
-    const hoyIso = toISODate(new Date());
-    let total = 0;
-    for (const x of kpis.vigentes) total += enLaUnidad(x.negotiatedValue, x.startDate, x.endDate, "mes");
-    for (const c of cortesSinCargar.cobros) {
-      if (c.desde <= hoyIso && hoyIso <= c.hasta) total += enLaUnidad(c.cobrado, c.desde, c.hasta, "mes");
+    const mes = (serie?.hoy ?? hoyEnColombia()).slice(0, 7);
+    if (serie?.del_mes) {
+      const suyo = serie.del_mes[sede.trim().toUpperCase()];
+      return suyo ? calcularCanonDelMes(suyo.contratos, suyo.cortes, mes) : 0;
     }
-    return total;
-  }, [isAdmin, kpis.vigentes, cortesSinCargar.cobros]);
+    const contratos = kpis.todas
+      .filter((t) => (t.fase === "vigente" || t.fase === "pendiente") && t.entry.negotiatedValue > 0
+        && t.entry.startDate.slice(0, 7) <= mes && mes <= t.entry.endDate.slice(0, 7))
+      .map((t) => ({ valor: t.entry.negotiatedValue, desde: t.entry.startDate, hasta: t.entry.endDate }));
+    const cortes = cortesSinCargar.cobros.flatMap((c) => c.cortes.map((k) => ({ monto: k.monto, desde: k.periodo_desde, hasta: k.periodo_hasta })));
+    return calcularCanonDelMes(contratos, cortes, mes);
+  }, [isAdmin, serie, sede, kpis.todas, cortesSinCargar.cobros]);
 
   /** Los puntos del plano («aire y pines»): uno por mueble con algo en «Para
    *  revisar», del color de su grupo más urgente (`puntosDelPlano`, que sale
@@ -7666,13 +7670,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   // Cada cifra sale de las MISMAS cuentas que ya usa esta pantalla (`kpis`,
   // `plata`, `montaje`, `cuentasDeRevision`); lo único nuevo que se pide es la
   // serie de 12 meses (`GET /dashboard/serie`) y las metas (`GET /layout/metas`).
-  const [serie, setSerie] = useState<SerieDeCanon | null>(null);
-  useEffect(() => {
-    if (!isAdmin || !enIndicadores) return;
-    let vivo = true;
-    getSerieDeCanon(24).then((r) => { if (vivo) setSerie(r); }).catch(() => { if (vivo) setSerie(null); });
-    return () => { vivo = false; };
-  }, [isAdmin, enIndicadores]);
+  // (`serie` se pide más arriba: Inicio también la usa para el canon del mes.)
   const [metas, setMetas] = useState<Metas | null>(null);
   useEffect(() => {
     let vivo = true;

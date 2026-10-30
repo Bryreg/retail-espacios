@@ -15,7 +15,10 @@ Se eligió así por tres razones, y la tercera es la que decidió:
 3. **No necesita migraciones.** La regla de este repositorio es que
    `create_all` crea tablas que faltan pero nunca agrega columnas a una que ya
    existe. Meter `tenant_id` en diez tablas con datos vivos adentro pedía
-   adoptar Alembic; armar una base nueva y vacía no pide nada.
+   adoptar Alembic; armar una base nueva y vacía no pide nada. (Desde el
+   2026-10-30 hay Alembic, sólo aditivo, para lo que `create_all` no hace: ver
+   `app/migraciones.py`. La razón sigue en pie: separar por base no pidió
+   tocar una sola tabla con datos.)
 
 **Dónde vive la lista de clientes.** En la base por defecto —la que apunta
 `DATABASE_URL`, que además es la de GALERIAS—, en la tabla `clientes`.
@@ -36,7 +39,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.database import SQLALCHEMY_DATABASE_URL, Base, engine as motor_por_defecto
+from app.database import (
+    SQLALCHEMY_DATABASE_URL,
+    Base,
+    argumentos_de_conexion,
+    argumentos_de_pool,
+    engine as motor_por_defecto,
+)
 
 # El interruptor de estado de cuenta (Fase 2). El import va ARRIBA, a nivel de
 # módulo, por dos motivos: acá se aplica el corte en cada pedido, y de paso
@@ -105,6 +114,44 @@ def _es_sqlite() -> bool:
     return SQLALCHEMY_DATABASE_URL.startswith("sqlite")
 
 
+# ─── Clientes degradados (auditoría P1-6) ─────────────────────────────────────
+#
+# El arranque prepara la base de cada cliente activo. Hasta acá lo hacía sin
+# `try`: UNA base caída —borrada, sin permisos, corrupta— abortaba el arranque
+# del servicio entero, y todos los supermercados quedaban afuera por uno. Ahora
+# el que falla queda anotado acá con su motivo (que va al log, nunca a la
+# respuesta), sus pedidos reciben un 503 claro, y los demás arrancan. El ciclo de
+# mantenimiento lo vuelve a intentar en cada pasada (`reintentar_degradados`).
+
+_degradados: dict[str, str] = {}
+
+CLIENTE_DEGRADADO = (
+    "La base de este supermercado no está disponible en este momento. "
+    "Probá de nuevo en unos minutos; si sigue, avisale a RECABRA."
+)
+
+
+def marcar_degradado(slug: str, motivo: str) -> None:
+    with _candado:
+        _degradados[slug] = motivo
+
+
+def quitar_degradado(slug: str) -> None:
+    with _candado:
+        _degradados.pop(slug, None)
+
+
+def degradados() -> dict[str, str]:
+    """Una copia: slug → motivo (texto del log, no para mostrar)."""
+    with _candado:
+        return dict(_degradados)
+
+
+def esta_degradado(slug: str) -> bool:
+    with _candado:
+        return slug in _degradados
+
+
 def motor_de(cliente: Cliente) -> Engine:
     """El motor de ese cliente, creado la primera vez que hace falta."""
     with _candado:
@@ -118,17 +165,20 @@ def motor_de(cliente: Cliente) -> Engine:
             motor = motor_por_defecto
         elif _es_sqlite():
             motor = create_engine(
-                url_para(cliente.db_name), connect_args={"check_same_thread": False}
+                url_para(cliente.db_name), connect_args=argumentos_de_conexion("sqlite")
             )
         else:
+            url = url_para(cliente.db_name)
             motor = create_engine(
-                url_para(cliente.db_name),
+                url,
                 pool_size=POOL_POR_CLIENTE,
                 max_overflow=DESBORDE_POR_CLIENTE,
                 # Render corta las conexiones quietas; sin esto la primera
-                # consulta de la mañana falla con "server closed the connection".
-                pool_pre_ping=True,
-                pool_recycle=1800,
+                # consulta de la mañana falla con "server closed the connection"
+                # (`pool_pre_ping`, `pool_recycle`). Y el tope de cada consulta,
+                # el mismo que el de la base por defecto: `app/database.py`.
+                connect_args=argumentos_de_conexion(url),
+                **argumentos_de_pool(url),
             )
         _motores[cliente.slug] = motor
         _fabricas[cliente.slug] = sessionmaker(autocommit=False, autoflush=False, bind=motor)
@@ -157,6 +207,8 @@ def olvidar_motores() -> None:
                 motor.dispose()
         _motores.clear()
         _fabricas.clear()
+        _degradados.clear()
+    olvidar_cache_de_clientes()
 
 
 def _db_por_defecto() -> str:
@@ -196,12 +248,105 @@ def listar(solo_activos: bool = True) -> list[Cliente]:
         db.close()
 
 
-def buscar(slug: str) -> Cliente | None:
+# ─── Caché de `buscar` (auditoría P1-7) ───────────────────────────────────────
+#
+# `cliente_del_pedido` llama a `buscar(slug)` en CADA pedido, y eso era una
+# consulta al registro por pedido —el sondeo de cada pestaña, cada 20 s, más
+# cada foto—. Se guarda la respuesta unos segundos (`CACHE_CLIENTES_S`, 10 por
+# defecto; 0 lo apaga). Lo que la vuelve segura es la invalidación: cualquier
+# alta, renombre, archivo, reactivación o mudanza de un `ClienteRow` —todos
+# pasan por el ORM— la vacía al confirmarse (`_vigilar_registro`). El TTL sólo
+# cubre lo que el ORM no ve: otra instancia del servicio, o una fila tocada a
+# mano en la consola de Postgres.
+
+_cache_buscar: dict[str, tuple[float, "Cliente | None"]] = {}
+_cache_candado = threading.Lock()
+
+
+def _segundos_de_cache() -> float:
+    try:
+        return max(0.0, float(os.getenv("CACHE_CLIENTES_S", "10")))
+    except ValueError:
+        return 10.0
+
+
+def olvidar_cache_de_clientes() -> None:
+    """Vacía la caché de `buscar`. Lo llama el ORM al confirmar un cambio en
+    `clientes`; también sirve a mano (scripts, pruebas)."""
+    global _generacion_cache
+    with _cache_candado:
+        _cache_buscar.clear()
+        _generacion_cache += 1
+
+
+# Sube con cada vaciado. Una lectura que empezó ANTES de un vaciado no guarda lo
+# que leyó: pudo leer la fila de antes del commit que la cambió.
+_generacion_cache = 0
+
+
+def _al_tocar_un_cliente(_mapper, _conexion, fila) -> None:
+    """Un `ClienteRow` se insertó, cambió o se borró en un flush: se vacía la
+    caché YA y otra vez cuando esa sesión confirme (o deshaga). La segunda es
+    la que importa: entre el flush y el commit otro hilo puede volver a llenar
+    la caché leyendo la fila VIEJA, que es la única confirmada."""
+    from sqlalchemy import event
+    from sqlalchemy.orm import object_session
+
+    olvidar_cache_de_clientes()
+    sesion = object_session(fila)
+    if sesion is not None and not sesion.info.get("_vigila_clientes"):
+        sesion.info["_vigila_clientes"] = True
+
+        def _despues(s, *_a):
+            s.info.pop("_vigila_clientes", None)
+            olvidar_cache_de_clientes()
+
+        event.listen(sesion, "after_commit", _despues, once=True)
+        event.listen(sesion, "after_rollback", _despues, once=True)
+
+
+_registro_vigilado = False
+
+
+def _vigilar_registro() -> None:
+    """Engancha la invalidación a la clase `ClienteRow` (una sola vez por
+    import del módulo: las pruebas reimportan todo `app.*`, clase incluida)."""
+    global _registro_vigilado
+    if _registro_vigilado:
+        return
+    from sqlalchemy import event
     from app.models.models import ClienteRow
+
+    for evento in ("after_insert", "after_update", "after_delete"):
+        event.listen(ClienteRow, evento, _al_tocar_un_cliente)
+    _registro_vigilado = True
+
+
+def buscar(slug: str) -> Cliente | None:
+    import time
 
     slug = (slug or "").strip().lower()
     if not slug:
         return None
+    _vigilar_registro()
+    ttl = _segundos_de_cache()
+    if ttl <= 0:
+        return _buscar_en_el_registro(slug)
+    with _cache_candado:
+        guardado = _cache_buscar.get(slug)
+        generacion = _generacion_cache
+    if guardado is not None and time.monotonic() - guardado[0] < ttl:
+        return guardado[1]
+    cliente = _buscar_en_el_registro(slug)
+    with _cache_candado:
+        if generacion == _generacion_cache:
+            _cache_buscar[slug] = (time.monotonic(), cliente)
+    return cliente
+
+
+def _buscar_en_el_registro(slug: str) -> Cliente | None:
+    from app.models.models import ClienteRow
+
     db = sesion_registro()
     try:
         fila = db.query(ClienteRow).filter(ClienteRow.slug == slug).first()
@@ -340,16 +485,23 @@ def preparar_esquema(cliente: Cliente) -> None:
     activos): reactivado, cada pantalla que la tocaba —el catálogo con
     `supplier_asset_specs`— daba 500 hasta el próximo reinicio. `create_all`
     no toca lo que ya existe.
+
+    Desde Alembic (auditoría P1-8) las tablas las pone `migraciones.preparar_base`:
+    el mismo `create_all` de siempre, más el sello de la versión —una base nueva
+    nace en la última— y las migraciones que le falten a una que ya existía.
+    Si sale bien, el cliente deja de estar degradado (`marcar_degradado`).
     """
     from app.auth import ensure_default_config
+    from app.migraciones import preparar_base, url_de_motor
 
-    Base.metadata.create_all(bind=motor_de(cliente))
+    preparar_base(url_de_motor(motor_de(cliente)))
     sesion = sesion_de(cliente)
     try:
         # `ensure_default_config` ya llama al arranque de las contraseñas.
         ensure_default_config(sesion)
     finally:
         sesion.close()
+    quitar_degradado(cliente.slug)
 
 
 def crear_cliente(slug: str, nombre: str) -> Cliente:
@@ -725,4 +877,28 @@ def cliente_del_pedido(request: Request) -> Cliente:
 
 
 def sesion_para_pedido(request: Request) -> Session:
-    return sesion_de(cliente_del_pedido(request))
+    cliente = cliente_del_pedido(request)
+    if esta_degradado(cliente.slug):
+        # Ver `marcar_degradado`: su base no se pudo preparar al arrancar. Un
+        # 503 y no un 500: no es un error del pedido, y se puede reintentar.
+        raise HTTPException(status_code=503, detail=CLIENTE_DEGRADADO,
+                            headers={"Retry-After": "120"})
+    return sesion_de(cliente)
+
+
+def reintentar_degradados() -> list[str]:
+    """Vuelve a preparar la base de cada cliente degradado. Devuelve los que se
+    recuperaron. Lo llama el ciclo de mantenimiento."""
+    recuperados = []
+    for slug in list(degradados()):
+        cliente = buscar(slug)
+        if cliente is None:
+            quitar_degradado(slug)  # archivado o borrado mientras tanto
+            continue
+        try:
+            preparar_esquema(cliente)
+        except Exception:  # noqa: BLE001
+            log.warning("La base del cliente %s sigue sin poder prepararse", slug, exc_info=True)
+            continue
+        recuperados.append(slug)
+    return recuperados

@@ -1,3 +1,4 @@
+import { pesosEnteros } from "../../utils/meses";
 import { useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 import { useFixtureStore } from "../../store/fixtureStore";
@@ -223,23 +224,23 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
                       </td>
                       <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-soft)" }}>
                         <input
-                          type="number" min={0} placeholder="—"
+                          type="number" min={0} step={1} placeholder="—"
                           value={general || ""}
                           onChange={(e) =>
-                            setReferenceRate(null, type, parseFloat(e.target.value) || 0)
+                            setReferenceRate(null, type, pesosEnteros(e.target.value))
                           }
                           style={inputStyle}
                         />
                       </td>
                       <td style={{ padding: "5px 18px 5px 8px", borderTop: "1px solid var(--line-soft)" }}>
                         <input
-                          type="number" min={0}
+                          type="number" min={0} step={1}
                           // The placeholder shows what the sede inherits — an
                           // empty override means "use the general rate".
                           placeholder={general ? String(general) : "—"}
                           value={override || ""}
                           onChange={(e) =>
-                            setReferenceRate(editSede, type, parseFloat(e.target.value) || 0)
+                            setReferenceRate(editSede, type, pesosEnteros(e.target.value))
                           }
                           style={inputStyle}
                         />

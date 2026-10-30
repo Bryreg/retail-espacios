@@ -1,7 +1,12 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-29 (tarde): **«Distribuir» es un solo camino, y hay dónde llevar el
+Última actualización: 2026-10-30: **auditoría, tanda «Datos e indicadores»** — un solo canon del mes
+(servidor y navegador, con casos compartidos), las repisas del 3D de sólo lectura con «Pasar a
+contrato», bajas con fecha, papelera de sedes de 30 días, pesos enteros y bitácora en toda escritura
+de administración. Ver *Auditoría: datos e indicadores (2026-10-30)*.
+
+Antes, el 2026-10-29 (tarde): **«Distribuir» es un solo camino, y hay dónde llevar el
 control**. En el panel del mueble, 2D y 3D, arriba de todo va el bloque **«La cara»**: cómo está el
 reparto de cada cara (sin repartir, borrador, lista, para revisar) y UN botón, «Distribuir la
 cara», que abre lo que le toca al mueble —por porcentaje, Distribuir (con «Lo libre» al lado); si
@@ -10,6 +15,13 @@ llama «Distribuir la cara» y arriba tiene 3 pasos (Elegí qué va · Dibujalo 
 una fecha). Y el Plano tiene una cuarta vista, **Plano › Caras** (`/plano/caras`): todas las caras
 de la sede con su estado, qué va, cómo va su montaje y su botón. Ver *Distribuir: un solo camino y
 Plano › Caras*.
+
+Además, el 2026-10-30: **operación y despliegue** (auditoría pre-lanzamiento): respaldo nocturno
+cifrado de TODAS las bases por GitHub Actions, restauración de la plataforma entera, deploy que
+espera al CI, Alembic «sólo aditivo», cola de correos con reintento, mantenimiento por cron con
+candado de líder, `/api/health/ready`, logging JSON y Sentry opcional, un cliente roto ya no tumba
+el arranque, Postgres y `pytest -n auto` en CI. Ver *Operación y despliegue (2026-10-30)* y el
+manual `docs/operacion.md`.
 
 Antes, el 2026-10-29: **el aviso de montaje ya no pide un archivo que no hace falta**.
 Un porcentaje sale con su zona confirmada; una venta entera o por partes, con la planometría o con
@@ -725,7 +737,7 @@ Sigue pendiente y es lo más urgente en términos de negocio: ver
 
 | | |
 |---|---|
-| **Producción** | [retail-espacios.onrender.com](https://retail-espacios.onrender.com) — Render, auto-deploy desde `main` |
+| **Producción** | [retail-espacios.onrender.com](https://retail-espacios.onrender.com) — Render, auto-deploy desde `main` cuando pasa el CI (`autoDeployTrigger: checksPass`) |
 | **Backend** | FastAPI + SQLAlchemy 2 + Postgres (`backend/`) |
 | **Frontend** | React 18 + TS + Vite + Three.js (`@react-three/fiber@8`) + Tailwind + CSS vars (`frontend/`) |
 | **Tipografía** | Geist / Geist Mono desde Google Fonts |
@@ -759,13 +771,19 @@ sincronización puede funcionar entre ellas.
 
 Estas no son preferencias. Romperlas rompe producción.
 
-**Sin migraciones.** El esquema se crea con `Base.metadata.create_all()`. Eso crea
-*tablas* nuevas pero **no agrega columnas a tablas existentes**: una columna nueva en
-`spaces` o `layout_snapshots` simplemente no existiría en la base ya desplegada. Cuando
-hizo falta guardar algo nuevo, se usó la tabla `app_config` (clave/valor) o el propio
-JSON del layout. `test_t22` (`tests/test_tendencia_ataques.py`) lo vigila contra
-`origin/main`: ninguna clase que ya existía gana una línea `Column(` o
-`mapped_column(`; las tablas nuevas, sí.
+**Sólo aditivo, con Alembic** (desde el 2026-10-30; hasta ahí, «sin migraciones»). El
+esquema se sigue escribiendo en los modelos y `Base.metadata.create_all()` sigue creando
+las *tablas* nuevas, que es el camino preferido. Lo que `create_all` **no** hace —una
+columna o un índice en una tabla que ya existe— va en una migración de
+`backend/migraciones/versions/`, que **sólo puede agregar**: tablas, columnas que aceptan
+NULL o traen `server_default`, índices. Nada se borra, se renombra ni cambia de tipo
+(`tests/test_migraciones.py` lo rechaza leyendo cada `upgrade()`), porque durante un
+despliegue el código viejo corre contra la base ya migrada. `test_t22`
+(`tests/test_tendencia_ataques.py`) sigue mirando el diff contra `origin/main`: una clase
+que ya existía que gana una línea `Column(`/`mapped_column(` sólo pasa si una migración la
+agrega a ESA tabla (`agregar_columna_si_falta`). Corre sola al arrancar, en el registro y
+en cada base de cliente (`app/migraciones.py`). Ver *Operación y despliegue (2026-10-30)*.
+Para guardar algo chico, `app_config` (clave/valor) o el JSON del layout siguen valiendo.
 
 **Un solo proceso.** El servicio corre con UN worker de uvicorn, y hay estado de seguridad en
 memoria que depende de eso: la caché de membresías (`auth._membresia_cache`, 60 s), la de estado
@@ -792,7 +810,11 @@ Esto REEMPLAZA al modelo dual, que fue el mayor generador de bugs del proyecto �
 - **La única excepción son los `slots`** (el estado por repisa del editor 3D): no tienen
   contraparte en ninguna tabla, así que tienen UNA fuente —el JSON— y no pueden
   discrepar con nada. Su precio SÍ sigue viajando en el layout y sigue redactándose para
-  un mercaderista, así que `_restore_missing_slot_prices` lo rellena al guardar. Lo que
+  un mercaderista, así que `_restore_missing_slot_prices` lo rellena al guardar.
+  **Desde el 2026-10-30 son de SÓLO LECTURA** (auditoría P1-15): `PUT /layout/{sede}` frena
+  con 409 `repisas_vendidas` una repisa nueva con algo comercial o una que lo cambia; lo
+  vendido de antes se conserva, se libera o se pasa a contrato
+  (`POST /layout/{sede}/repisas/{fixture}/{slot}/contrato`). Lo que
   sí puede pasar es que el plano de Vender (contratos) dé libre una cara con repisas
   vendidas aparte: la fila del contrato lo avisa («3 repisas vendidas») y el visor 3D no
   se lo dice al proveedor (ver *Ver el diseño desde Vender*, la crítica).
@@ -1497,9 +1519,142 @@ todas las sesiones y enlaces); `OPERADOR_EMAILS` y `ALTAS_POR_DIA`; MFA en Fireb
 `OPERADOR_EXIGE_MFA=1`; protección contra enumeración y App Check en Firebase. El correo del
 operador sigue en el historial de git (sacarlo exige reescribir la historia).
 
+### Auditoría: datos e indicadores (2026-10-30)
+
+La tanda «Datos e indicadores» de `docs/auditoria-pre-lanzamiento-recabra.md` (IDs entre
+paréntesis). Lo que cambia para quien toque estas áreas:
+
+- **Un solo canon del mes (P1-16, P3-8).** Lo devengado en el mes: cada contrato, su canon al
+  mes (el total en los meses de su plazo firmado) × los días del mes que corrió ÷ los días del
+  mes; los cortes de ventas, por días; la suma al peso. `services/canon.py` y su gemela
+  `utils/canon.ts` corren `frontend/scripts/casos/canon.json` (`tests/test_canon.py`,
+  `probar-canon`). `/dashboard/serie` devuelve pesos enteros, `del_mes` (las filas del mes en
+  curso) y `hoy` (Colombia); Inicio pasa `del_mes` por la gemela y dice lo mismo que «Todas las
+  sedes» (mientras la serie no llega, la cuenta con lo que el navegador tiene). Se borraron
+  `/dashboard/kpis` y `/dashboard/spaces`.
+- **Bajas con fecha (P2-13).** Tabla nueva `bajas_de_contrato` (`lease_id`, `efectiva`,
+  `motivo` cancelado|sede): «Cancelar el contrato» y el borrado de una sede la escriben. Lo
+  cancelado devenga hasta el día ANTERIOR a la baja (`historial.tramo_devengado`); antes salía de
+  todos los meses (cambio a propósito: un contrato de 6 meses cancelado el 1.º del cuarto aporta
+  3). Las bajas de antes de la tabla toman el día de su `contrato.baja` en la bitácora.
+- **Métricas de la plataforma (P1-17).** Ya no filtran `is_active` (lo apaga `expire_leases` a
+  todo lo vencido): usan la regla de la serie. En las pruebas, `is_active=False` sembrado es una
+  baja (`tests/sembrado.marcar_cancelados`); lo vencido se siembra y se apaga con `expire_leases`.
+- **Repisas del 3D (P1-15, decisión del dueño «sólo lectura + pasar a contrato»).** El panel de
+  la repisa muestra proveedor, categoría, valor al mes (sólo administración) y fechas para leer,
+  con «Pasar a contrato» (elige la cara o la parte que pisa; la revisión y el alta de Vender, con
+  candado, choques, participaciones y bitácora «repisa del 3D»; el valor al mes × meses, forma
+  «mensual»; la repisa queda libre en la misma transacción) y «Liberar la repisa». El primer
+  guardado de una sede (sin plano anterior) sigue entrando sin comparar, como siempre.
+- **Pesos enteros (P2-11).** `schemas/pesos.py` (`Pesos`/`PesosOpcional`): Vender, reservas,
+  participaciones, cortes de ventas, planilla, `POST /spaces/{id}/leases` y las tarifas
+  redondean al peso (`1234.5` → `1235`). El editor de tarifas teclea enteros (`pesosEnteros`).
+- **Rutas viejas (P2-12).** Se fueron `GET /spaces/map`, `/spaces/by-svg/{id}`, `POST /spaces/`,
+  `PUT /suppliers/{id}` y `/mounts/files/{id}/exists`. `POST /spaces/{id}/leases` queda (lo usan
+  las pruebas para armar contratos) con forma «total» y pesos enteros.
+- **Bitácora (P1-18, P2-14).** `contrato.alta` por cada contrato de la planilla; y usuarios,
+  tarifas, temporadas, sedes, proveedores, planometría, avisos, catálogo y un `plano.guardado` por
+  guardado. `tests/test_bitacora_en_toda_escritura.py` recorre las rutas de administración que
+  escriben y exige `anotar` (con su lista `SIN_BITACORA` justificada).
+- **Tarifas con revisión (P2-17).** `PUT /layout/rates` con `base_updated_at` → 409
+  `rates_conflict`; la pantalla relee y dice «Otra persona cambió las tarifas…». Sin el campo
+  (guiones), escribe como antes.
+- **Papelera de sedes (P2-18).** Tabla nueva `sedes_en_papelera` (plano + ids de lo cerrado).
+  `GET /layout/papelera` y `POST /layout/papelera/{id}/restaurar` (admin, `sede.restaurada`):
+  vuelven el plano, el nombre, los códigos, los contratos en fecha (sin su baja «sede») y los
+  montajes; NO las reservas provisionales canceladas. 409 si ya existe la sede o un código, o
+  pasados 30 días; el mantenimiento purga (`papelera.purgar`, una línea en `main.py`). Ajustes ›
+  Sedes muestra la papelera.
+- **Editar contrato con cambio de partes (P2-16).** Sigue en dos pasos (plano, después contrato),
+  pero si la vuelta del plano no entra la pantalla dice que el plano quedó cambiado, no «No se
+  guardó nada».
+- **Menores.** Sin «M» en la consola de plataforma (P3-5, `probar-graficos`); fuera el código
+  muerto de totales de `DashboardView` (P3-6); la plantilla de la planilla usa «Proveedor de
+  ejemplo» (P3-7); `planogramas.resumen` sin N+1 (P3-11).
+
 ---
 
 ## Qué está hecho
+
+### Operación y despliegue (2026-10-30)
+
+La tanda «Operación y despliegue» de `docs/auditoria-pre-lanzamiento-recabra.md`. El plan de
+Render sigue siendo el **gratuito** hasta justo antes del lanzamiento (decisión del dueño):
+nada de esto necesita algo pago para andar; lo pago queda comentado o documentado. El cómo
+—configurar, restaurar, el simulacro— está en **`docs/operacion.md`**.
+
+* **Respaldo nocturno de toda la plataforma (P0-3).** `.github/workflows/respaldo.yml`, 01:41
+  de Colombia: `scripts/respaldar_plataforma.py` hace `pg_dump -Fc` del registro y de cada
+  base de cliente (las de `clientes.db_name` y las `recabra_*` huérfanas) contra la URL
+  EXTERNA de Render, `gpg --symmetric` AES256 y artefacto de 30 días (+ S3/R2 si está
+  configurado). Sin sus secrets se saltea, no falla. Volver: `scripts/restaurar_plataforma.py`
+  (la plataforma entera en una instancia nueva, o un cliente suelto con `--solo`/`--como`;
+  verifica el sha256 y no pisa una base con tablas sin `--reemplazar`). RPO ≤ 24 h. **El
+  simulacro con el RTO medido falta hacerlo** contra la base real (§5 del manual); de ida y
+  vuelta está probado contra Postgres 16 (`tests/test_respaldo_plataforma.py`).
+* **El deploy espera al CI (P1-1).** `autoDeployTrigger: checksPass` en `render.yaml` (la
+  clave del Blueprint de Render; el valor `checksPass` = «After CI Checks Pass»). Como el
+  servicio se creó a mano, hay que ponerlo también en el panel, y proteger `main` en GitHub.
+* **Staging (P1-2)**: `render.staging.yaml`, otro Blueprint, inactivo, plan gratuito, rama
+  `staging`. Render admite una sola base gratuita por workspace: ver el manual §10.
+* **Observabilidad (P1-3).** `app/observabilidad.py`: el arranque configura el logging —INFO,
+  una línea JSON por evento a la salida estándar, que Render junta— si nadie lo configuró
+  antes (pytest, `--log-config`). Sentry sólo con `SENTRY_DSN` (`sentry-sdk` en
+  requirements; sin la variable no se inicializa), sin PII y sin direcciones de correo.
+  `GET /api/health/ready` hace `SELECT 1` en el registro y da 503 si no contesta: es el
+  `healthCheckPath` de Render; `/api/health` queda como liveness (el `HEALTHCHECK` del
+  Dockerfile). **Los logs nunca llevan direcciones**: «3 destinatarios (gmail.com)», y los
+  motivos pasan por `sin_correos`.
+* **La cola de correos (P1-4).** Tabla NUEVA `correos_pendientes` en cada base de cliente
+  (`models/correos.py`; en `TABLAS_DEL_CLIENTE`, fuera de la copia ZIP). Los routers ya no
+  ponen `send_mail_to_bg` solo en un `BackgroundTask`: `encolar_correo(tareas, db,
+  send_mail_to_bg, …)` anota y manda enseguida, con los mismos destinatarios y el mismo
+  contenido; si falla, WARNING y reintento a los 5 min, 30 min, 2 h, 6 h, 12 h y 24 h (cada 5
+  min con la app despierta y en cada mantenimiento), y `abandonado` al séptimo. Lo enviado se
+  purga a los 30 días. Un no-2xx del proveedor ya deja su WARNING (`mailer.py`). El router
+  pasa SU `send_mail_to_bg`, así las pruebas que lo reemplazan siguen viendo lo que sale. La
+  invitación de usuarios (`routers/usuarios.py`, de la tanda de seguridad) sigue como estaba.
+* **Mantenimiento por cron, una vez (P1-5).** `POST /api/interno/mantenimiento` (cabecera
+  `X-Mantenimiento-Token` = `MANTENIMIENTO_TOKEN`, en tiempo constante; sin la variable,
+  404) y `.github/workflows/mantenimiento.yml` cada 3 horas, que de paso despierta al
+  servicio. El hilo de 12 h sigue de respaldo. Las dos entradas pasan por
+  `services/lider.py`: `pg_try_advisory_lock` en el registro (más un candado del proceso; en
+  SQLite, sólo ése) — la que no lo consigue no hace nada y lo dice.
+* **Un cliente roto no tumba el arranque (P1-6).** `main._preparar_bases`: el registro
+  primero (si falla, no hay nada que servir); cada cliente en su try. El que falla queda
+  **degradado** (`clientes.marcar_degradado`): sus pedidos reciben 503 «La base de este
+  supermercado no está disponible…», el detalle va al log, y el mantenimiento lo reintenta
+  en cada vuelta (`reintentar_degradados`).
+* **Motores (P1-7, P2-10).** El motor por defecto ganó `pool_pre_ping` y `pool_recycle`
+  (como los de cliente), y los dos el `statement_timeout` (`STATEMENT_TIMEOUT_S`, 30 por
+  defecto; 0 lo apaga; SQLite no). `clientes.buscar(slug)` se cachea `CACHE_CLIENTES_S`
+  (10 s) y se vacía al confirmarse cualquier cambio de un `ClienteRow` (eventos del ORM).
+* **Alembic, sólo aditivo (P1-8).** Ver la regla dura. `0001_linea_base` no hace nada (es «lo
+  que `create_all` deja hoy», sin enumerar tablas); `0002_indices_de_contratos` crea
+  `ix_space_leases_space_id` y `…_supplier_id` (también colgados del modelo en
+  `models/indices.py`, para las bases nuevas). El pre-deploy es pago: corre al arrancar,
+  antes de atender, con advisory lock.
+* **CI (P1-9, P3-12, P3-10).** `deploy.yml`: servicio `postgres:16` con
+  `DATABASE_URL_PG_PRUEBA` (corren las carreras de la doble venta, el candado, el tope y el
+  respaldo; el job falla si alguna se saltea por falta de Postgres) y `pytest -n auto --dist
+  loadgroup` (`pytest-xdist`; las de Postgres van al mismo proceso con
+  `xdist_group("postgres")`). Cada prueba arma sus bases en una carpeta temporal PROPIA
+  (`conftest.app_de_prueba`). `deps-audit.yml` corre también los lunes.
+* **Carga del sondeo (P2-5).** La pestaña oculta no sondea (`fixtureStore.ts`);
+  `/layout/revisions` lee fecha y largo del plano y sólo lo parsea si cambiaron;
+  `/spaces/comercial` baja sólo los contratos que pueden mandar (vivos, sin terminar) y las
+  reservas con su proveedor por `selectinload`, sin la consulta por reserva; `GZipMiddleware`
+  desde 1 KB (las fotos y el ZIP, no). Mismas respuestas.
+* **Tamaños (P2-6, P2-7).** El mantenimiento mide la instancia entera contra `CUOTA_BASE_MB`
+  (1024) y avisa desde el 70 % (`services/tamano_de_base.py`); un `PUT /api/layout/<sede>`
+  guardado que pasa la mitad del tope de 2 MiB deja su WARNING con la sede y el tamaño.
+  `GET /api/plataforma/salud` (operadores) junta base, degradados, último mantenimiento y
+  correos en cola (los de la última vuelta: no abre ninguna base de supermercado, `test_f01`).
+  Sin pantalla todavía: es JSON para la consola. Prender `LIMPIAR_FOTOS_VENCIDAS` después de leer el ensayo: manual §8.
+* **Pasos manuales (P2-8)**: ver *Lo que hay que hacer a mano después de desplegar* — no
+  queda ninguno por despliegue.
+* **Build (P2-9)**: `npm ci --legacy-peer-deps` en el Dockerfile; `docker-compose.prod.yml`
+  exige `JWT_SECRET`. **`JWT_SECRET` (P3-13)**: a mano en Render, `sync: false`.
 
 ### Indicadores, versión B: Mapa de oportunidades y Análisis (2026-10-28)
 
@@ -13977,9 +14132,23 @@ bitácora— está cerrado.
 
 ### Lo que hay que hacer a mano después de desplegar
 
-**Cambiar la contraseña de administrador desde la pantalla de configuración.**
-`admin123` está en el historial de git. La migración la mantiene funcionando
-—por eso nadie queda afuera— pero mantenerla es dejar la puerta abierta.
+*Revisado el 2026-10-30 (auditoría P2-8).* **Hoy no queda ningún paso manual por
+despliegue.** Lo que había:
+
+* **Cambiar la contraseña de administrador** (`admin123` está en el historial de git).
+  Desde el 2026-10-01 el ingreso por clave compartida está apagado (`LOGIN_LEGADO`): esa
+  clave no abre nada. Sólo vuelve a importar si alguien prende `LOGIN_LEGADO=1` como
+  emergencia — y entonces es lo primero que hay que cambiar.
+* **`scripts/buscar_codigos_pc.py` «antes de desplegar»**: lo corre ahora el
+  mantenimiento, en cada vuelta y por cada supermercado, con la misma función; si
+  encuentra algo, una línea WARNING por cliente (`app/services/chequeos_de_despliegue.py`).
+* **Las neveras con `partes.division = "participacion"`** (fase 2 de participaciones): era
+  un chequeo de una sola vez, de antes del despliegue del 2026-10-19; ya no aplica.
+* **Las migraciones**: las corre el arranque (`app/migraciones.py`). Con un plan pago,
+  `preDeployCommand` (comentado en `render.yaml`).
+
+Lo que se configura **una vez** (secrets, variables, protección de `main`) está en
+`docs/operacion.md`, §1.
 
 ---
 
@@ -14101,8 +14270,11 @@ seguridad».** Antes la bajaba `scripts/respaldo.py` por HTTPS, entrando con la 
 compartida de admin de cada supermercado; cuando esa clave se apagó (2026-10-01) el
 script se quedó sin puerta, se caía y dejaba una carpeta vacía con la fecha. Se borró.
 
-Render, en plan gratuito, no hace respaldos, así que esta copia es la única. Conviene
-bajarla cada semana y guardarla fuera de RECABRA.
+Render, en plan gratuito, no hace respaldos. Desde el 2026-10-30 hay además un
+**respaldo nocturno de la plataforma entera** —el registro y todas las bases, cifrado,
+por GitHub Actions— (ver *Operación y despliegue (2026-10-30)* y `docs/operacion.md`);
+esta copia sigue siendo la que tiene el supermercado en su mano. Conviene bajarla cada
+semana y guardarla fuera de RECABRA.
 
 **Qué es** (`GET /api/clientes/mi-copia`, lógica en `app/services/copia.py`): un ZIP
 con todo lo del supermercado.
@@ -14308,7 +14480,17 @@ arranque lo pagaría todo el mundo.
 
 - `npm install` requiere `--legacy-peer-deps`.
 - Las rutas de lista llevan barra final: `/api/spaces/`, `/api/layout/`.
-- `JWT_SECRET` es una variable de entorno manual en Render, no viene del Blueprint.
+- `JWT_SECRET` es una variable de entorno manual en Render, no viene del Blueprint
+  (`render.yaml` la declara `sync: false` desde el 2026-10-30; antes decía
+  `generateValue: true`, que sólo genera al crear el servicio desde el Blueprint, y éste
+  se creó a mano). Aleatoria, 32 bytes o más (`openssl rand -base64 48`). Staging
+  (`render.staging.yaml`) sí la genera: se crea desde su Blueprint.
+- `/api/health` es liveness (no toca la base); `/api/health/ready` hace `SELECT 1` en el
+  registro y es el health check de Render. Las dos son públicas a propósito
+  (`test_l13`, `test_el_token_no_abre_ningun_otro_endpoint`).
+- Una prueba que importa `app.*` sin el fixture `client` deja módulos con el
+  `DATABASE_URL` de la prueba anterior: `app_de_prueba` los purga al ENTRAR también
+  (desde que cada prueba tiene su carpeta propia, esa carpeta ya no existe).
 - El login tiene rate limit: 10 intentos por IP cada 15 minutos, en memoria. Reiniciar el
   backend lo limpia (útil al automatizar pruebas).
 - `/spaces/map`, `/dashboard/kpis` y `/dashboard/spaces` **existen pero no los llama

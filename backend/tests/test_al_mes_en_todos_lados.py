@@ -48,15 +48,21 @@ def test_la_consola_suma_lo_de_un_mes():
 
     from app import plataforma_metricas as pm
 
-    filas = [("NAVE-PUN-01", "Alpina", 600_000.0, date(2026, 5, 1), date(2026, 10, 31)),
-             ("NAVE-PUN-02", "Nutresa", 250_000.0, date(2026, 10, 1), date(2026, 10, 31))]
+    # Desde el 2026-10-30 (auditoría P1-17) la consulta trae el contrato entero
+    # y la regla de «corrió en el período» es la de la serie
+    # (`_tramos_que_corrieron`); acá corren los dos su plazo entero.
+    uno = SimpleNamespace(id=1, monthly_rent=600_000.0, start_date=date(2026, 5, 1), end_date=date(2026, 10, 31))
+    dos = SimpleNamespace(id=2, monthly_rent=250_000.0, start_date=date(2026, 10, 1), end_date=date(2026, 10, 31))
+    filas = [(uno, "NAVE-PUN-01", "Alpina"), (dos, "NAVE-PUN-02", "Nutresa")]
     consulta = mock.MagicMock()
     consulta.join.return_value = consulta
     consulta.filter.return_value = consulta
     consulta.all.return_value = filas
     db = SimpleNamespace(query=lambda *a, **k: consulta)
-    assert pm._contratos_activos(db, date(2026, 10, 1), date(2026, 10, 31)) == [
-        ("NAVE-PUN-01", "Alpina", 100_000.0), ("NAVE-PUN-02", "Nutresa", 250_000.0)]
+    enteros = lambda _db, leases: {lease.id: (lease.start_date, lease.end_date) for lease in leases}  # noqa: E731
+    with mock.patch.object(pm, "_tramos_que_corrieron", enteros):
+        assert pm._contratos_activos(db, date(2026, 10, 1), date(2026, 10, 31)) == [
+            ("NAVE-PUN-01", "Alpina", 100_000.0), ("NAVE-PUN-02", "Nutresa", 250_000.0)]
 
 
 def _sembrar_contrato(valor, desde, hasta, codigo="NAVE-PUN-01"):

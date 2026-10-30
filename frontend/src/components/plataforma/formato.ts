@@ -76,15 +76,9 @@ export function plata(n: Cifra): string {
   return (n < 0 ? "−$ " : "$ ") + miles(Math.abs(n));
 }
 
-/** `$ 382,1 M` — para ejes y rótulos donde la cifra exacta ya está en la tabla.
- *  A partir de 100 millones se cae el decimal: `$ 382 M` no gana nada con un
- *  «,1» que nadie compara. */
-export function platM(n: Cifra): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return SIN_DATO;
-  const v = Math.abs(n) / 1e6;
-  const s = (v >= 100 ? v.toFixed(0) : v.toFixed(1)).replace(".", ",");
-  return (n < 0 ? "−$ " : "$ ") + s + " M";
-}
+// `platM` («$ 382,1 M») se fue el 2026-10-30 (auditoría P3-5): la regla del
+// negocio es la plata completa, nunca «M», también en los ejes y rótulos de la
+// consola de plataforma. Todo monto sale por `plata`.
 
 /** `47,4 %` con un decimal por defecto. */
 export function pct(n: Cifra, decimales = 1): string {
@@ -115,8 +109,8 @@ export function num(n: Cifra): string {
   return miles(n);
 }
 
-/** Cualquier formateador, con su signo delante: `sig(-4.5e7, platM)` →
- *  `−$ 45,3 M`. El formateador recibe siempre el valor absoluto. */
+/** Cualquier formateador, con su signo delante: `sig(-4.53e7, plata)` →
+ *  `−$ 45.300.000`. El formateador recibe siempre el valor absoluto. */
 export function sig(n: Cifra, f: (v: number) => string): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return SIN_DATO;
   return (n > 0 ? "+" : n < 0 ? "−" : "") + f(Math.abs(n));

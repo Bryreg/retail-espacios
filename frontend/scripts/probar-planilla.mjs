@@ -249,7 +249,7 @@ await pruebaAsync("NINGÚN RENGLÓN DE ARRIBA SE CONFUNDE CON LOS TÍTULOS", asy
   // la fila de títulos y todo lo de abajo quedaría en columnas equivocadas.
   const { filas } = await P.leerPlanilla(await plantilla());
   assert.equal(filas[0].espacio, "EJEMPLO-01");
-  assert.equal(filas[0].proveedor, "Nutresa");
+  assert.equal(filas[0].proveedor, "Proveedor de ejemplo");
   assert.equal(filas[0].valor, 650000);
 });
 

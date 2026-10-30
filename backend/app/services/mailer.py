@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import smtplib
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -38,6 +39,7 @@ from html import escape
 from sqlalchemy.orm import Session
 
 from app.auth import get_config
+from app.observabilidad import resumen_de_destinatarios, sin_correos
 
 logger = logging.getLogger("retail.mailer")
 
@@ -138,12 +140,9 @@ def html_shell(title: str, rows: list[tuple[str, str]], footer: str = "") -> str
 # ─── Sending ──────────────────────────────────────────────────────────────────
 
 def destino_para_log(recipients: list[str]) -> str:
-    """A quién fue, sin los correos (auditoría pre-lanzamiento, P2-23): los
-    logs del hosting no son lugar para datos personales de terceros. Queda la
-    cantidad y los dominios, que alcanza para diagnosticar una entrega."""
-    dominios = sorted({r.rsplit("@", 1)[-1].lower() for r in recipients if "@" in r})
-    n = len(recipients)
-    return f"{n} destinatario{'s' if n != 1 else ''} ({', '.join(dominios) or 'sin dominio'})"
+    """A quién fue, sin los correos (auditoría pre-lanzamiento, P2-23). El
+    mismo resumen que el resto de los logs (`observabilidad`)."""
+    return resumen_de_destinatarios(recipients)
 
 
 def clean_recipients(values) -> list[str]:
@@ -265,7 +264,12 @@ def enviar_con_diagnostico(
             ok, motivo = False, f"{type(e).__name__}: {e}"
         tardanza = time.monotonic() - inicio
         if ok:
-            logger.info("Correo enviado (%s) a %s", subject, destino_para_log(recipients))
+            logger.info("Correo enviado (%s) a %s", subject, resumen_de_destinatarios(recipients))
+        else:
+            # Un no-2xx no levanta excepción: sin esta línea, una clave revocada
+            # no dejaba rastro en el log (auditoría P1-4). Sin direcciones.
+            logger.warning("Correo no salió (%s), %s: %s",
+                           subject, resumen_de_destinatarios(recipients), sin_correos(motivo))
         return ok, motivo, tardanza
 
     if not settings["user"] or not settings["password"]:
@@ -293,7 +297,7 @@ def enviar_con_diagnostico(
             smtp.send_message(msg)
 
         tardanza = time.monotonic() - inicio
-        logger.info("Correo enviado (%s) a %s", subject, destino_para_log(recipients))
+        logger.info("Correo enviado (%s) a %s", subject, resumen_de_destinatarios(recipients))
         return True, "Enviado.", tardanza
     # El ORDEN importa: smtplib.SMTPException hereda de OSError, así que un
     # `except OSError` puesto antes se tragaría también los errores de
@@ -340,8 +344,19 @@ def send_mail_to(recipients: list[str], subject: str, html_body: str) -> bool:
     money in it — so the recipients can no longer come from one global config
     key.
     """
-    ok, _motivo, _t = enviar_con_diagnostico(recipients, subject, html_body)
+    ok, motivo, _t = enviar_con_diagnostico(recipients, subject, html_body)
+    # El motivo ya quedó en el log (WARNING o la traza), sin direcciones; y queda
+    # a mano para la cola de correos, que lo anota en su fila.
+    _ultimo.motivo = "" if ok else motivo
     return ok
+
+
+_ultimo = threading.local()
+
+
+def motivo_del_ultimo_fallo() -> str:
+    """Por qué falló el último `send_mail_to` de ESTE hilo ("" si salió)."""
+    return getattr(_ultimo, "motivo", "")
 
 
 def send_mail(db: Session, subject: str, html_body: str) -> bool:
@@ -374,20 +389,24 @@ def send_mail(db: Session, subject: str, html_body: str) -> bool:
             smtp.login(settings["user"], settings["password"])
             smtp.send_message(msg)
 
-        logger.info("Correo enviado (%s) a %s", subject, destino_para_log(recipients))
+        logger.info("Correo enviado (%s) a %s", subject, resumen_de_destinatarios(recipients))
         return True
     except Exception:
         logger.exception("Error enviando correo (%s)", subject)
         return False
 
 
-def send_mail_to_bg(recipients: list[str], subject: str, html_body: str) -> None:
+def send_mail_to_bg(recipients: list[str], subject: str, html_body: str) -> bool:
     """Entry point for FastAPI BackgroundTasks with explicit recipients.
 
     Needs no DB session: the addresses were already resolved while handling the
     request, which also means the caller could show them to the user first.
+
+    Desde la cola de correos (auditoría P1-4) los routers no la ponen sola en
+    un ``BackgroundTask``: la pasan a ``cola_de_correos.encolar_correo``, que
+    anota el correo antes de mandarlo y lo reintenta si falla. Devuelve si salió.
     """
-    send_mail_to(recipients, subject, html_body)
+    return send_mail_to(recipients, subject, html_body)
 
 
 # `send_mail_bg` vivía acá y abría su propia sesión contra `SessionLocal`, que

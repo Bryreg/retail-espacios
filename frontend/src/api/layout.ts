@@ -52,7 +52,40 @@ export const saveLayout = (
     })
     .then((r) => r.data);
 
-/** Drop a sede's snapshot so it stops coming back on every pull. */
+/** «Pasar a contrato» una repisa del 3D (auditoría P1-15): lo vendido en la
+ *  repisa (proveedor, valor al mes y fechas, que vivían sólo en el plano) pasa
+ *  a un contrato de verdad de `espacio` —una cara o una parte de ese mueble—
+ *  con las mismas revisiones que Vender, y la repisa queda libre. Devuelve el
+ *  plano como quedó (con su revisión). Sólo administración. */
+export const pasarRepisaAContrato = (
+  sede: string, fixtureId: string, slotId: string, espacio: string,
+): Promise<{ lease_id: number | null; espacio: string | null; valor_total: number; valor_al_mes: number; layout: LayoutEntry }> =>
+  client
+    .post(`/layout/${encodeURIComponent(sede)}/repisas/${encodeURIComponent(fixtureId)}/${encodeURIComponent(slotId)}/contrato`, { espacio })
+    .then((r) => r.data);
+
+/** Una sede borrada que todavía se puede restaurar (auditoría P2-18). */
+export interface SedeEnPapelera {
+  id: number;
+  sede: string;
+  borrada_en: string;
+  vence_en: string;
+  borrada_por: string | null;
+  muebles: number;
+  contratos: number;
+  reservas_canceladas: number;
+}
+
+/** La papelera de sedes (30 días). Sólo administración. */
+export const fetchPapelera = (): Promise<{ dias: number; sedes: SedeEnPapelera[] }> =>
+  client.get("/layout/papelera").then((r) => r.data);
+
+/** Devuelve la sede: el plano, sus códigos y los contratos que siguen en fecha. */
+export const restaurarSede = (id: number): Promise<{ sede: string; espacios: number; contratos: number; reservas_canceladas: number }> =>
+  client.post(`/layout/papelera/${id}/restaurar`).then((r) => r.data);
+
+/** Drop a sede's snapshot so it stops coming back on every pull. The server
+ *  keeps it 30 days in the recycle bin (`fetchPapelera`). */
 export const deleteLayout = (sede: string): Promise<void> =>
   client.delete(`/layout/${encodeURIComponent(sede)}`).then(() => {});
 
@@ -71,12 +104,21 @@ export const saveSeasonWindows = (
 
 /** Admin-only in both directions — a worker request gets 403, so only call
  *  these from an admin session. */
-export const fetchReferenceRates = (): Promise<ReferenceRates> =>
+export const fetchReferenceRates = (): Promise<ReferenceRates & { updated_at?: string | null }> =>
   client.get("/layout/rates").then((r) => r.data);
 
-export const saveReferenceRates = (rates: ReferenceRates): Promise<ReferenceRates> =>
+/** `base`: la revisión que se leyó (`updated_at`; `null` si nunca se
+ *  guardaron). Con ella el servidor contesta 409 `rates_conflict` si otra
+ *  persona guardó después (auditoría P2-17). Sin leer nada (`undefined`), no
+ *  se manda y escribe como antes. */
+export const saveReferenceRates = (
+  rates: ReferenceRates, base?: string | null,
+): Promise<ReferenceRates & { updated_at?: string | null }> =>
   client
-    .put("/layout/rates", { default: rates.default, by_sede: rates.by_sede })
+    .put("/layout/rates", {
+      default: rates.default, by_sede: rates.by_sede,
+      ...(base !== undefined ? { base_updated_at: base } : {}),
+    })
     .then((r) => r.data);
 
 export const saveLayoutSettings = (

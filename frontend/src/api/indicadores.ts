@@ -1,10 +1,15 @@
 import client from "./client";
+import type { ContratoDelMes, CorteDelMes } from "../utils/canon";
 
 /** El canon devengado de cada mes, por sede (`GET /dashboard/serie`, sólo
- *  administración), y cuándo terminó el último contrato de cada espacio. */
+ *  administración), en pesos enteros, y cuándo terminó el último contrato de
+ *  cada espacio. `del_mes`: con qué se sacó el del mes en curso (Inicio lo pasa
+ *  por la gemela `utils/canon.ts`, auditoría P1-16); `hoy`: el día de Colombia. */
 export interface SerieDeCanon {
   meses: string[];
   sedes: Record<string, { canon: number[]; contratos: number[]; ultimo_fin: Record<string, string> }>;
+  del_mes?: Record<string, { contratos: ContratoDelMes[]; cortes: CorteDelMes[] }>;
+  hoy?: string;
 }
 
 export const getSerieDeCanon = (meses = 12): Promise<SerieDeCanon> =>
