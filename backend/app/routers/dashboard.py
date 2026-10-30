@@ -1,163 +1,19 @@
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 from app.auth import require_admin, require_auth
 from app.database import get_db
 from app.fechas import hoy
-from app.models.models import Space, SpaceLease, Supplier
+from app.models.models import Space, SpaceLease
 from app.routers.spaces import expire_leases
-from app.services.cobros import cobrado_por_contrato
-from app.services.meses import al_mes_de
 
 # Read-only router: any authenticated role may consult the dashboard.
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_auth)])
 
 
-@router.get("/kpis")
-def get_kpis(role: str = Depends(require_auth), db: Session = Depends(get_db)):
-    expire_leases(db)
-    today = hoy()
-    expiry_threshold = today + timedelta(days=30)
-
-    # Space counts grouped by status
-    status_counts = (
-        db.query(Space.status, func.count(Space.id).label("cnt"))
-        .group_by(Space.status)
-        .all()
-    )
-    counts: dict = {r.status.value: r.cnt for r in status_counts}
-    total = sum(counts.values())
-
-    # Monthly revenue from leases RUNNING TODAY. Filtering on is_active alone
-    # also summed contracts signed for a future period, overstating income by
-    # whatever had been pre-sold.
-    running = (
-        SpaceLease.is_active.is_(True),
-        SpaceLease.start_date <= today,
-        SpaceLease.end_date >= today,
-    )
-    # `monthly_rent` guarda el TOTAL del contrato (vender-api.md §1): sumarlo
-    # como si fuera el mes inflaba el canon por la duración de cada contrato
-    # (la verificación del rediseño UX, 2026-10-26, encontró $ 44.670.000
-    # contra $ 6.370.000 reales). Lo del mes es cada total repartido en SUS
-    # meses (`services/meses.py`, la misma cuenta del «Al mes» de Supervisar).
-    corriendo = db.query(SpaceLease.id, SpaceLease.monthly_rent, SpaceLease.start_date, SpaceLease.end_date
-                         ).filter(*running).all()
-    al_mes = {lid: al_mes_de(float(rent or 0), d, h) for lid, rent, d, h in corriendo}
-    monthly_revenue = float(sum(al_mes.values()))
-    # Los contratos que se cobran por un % de las ventas tienen el valor en 0:
-    # lo suyo es lo cobrado en los cortes de este mes (vender-api.md §3),
-    # repartido por días si el corte cruza meses.
-    inicio_mes = today.replace(day=1)
-    fin_mes = (inicio_mes + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    cobrado = cobrado_por_contrato(db, inicio_mes, fin_mes)
-    monthly_revenue += sum(cobrado.values())
-
-    # Leases expiring within the next 30 days
-    expiring_soon = int(
-        db.query(func.count(SpaceLease.id))
-        .filter(
-            SpaceLease.is_active.is_(True),
-            SpaceLease.end_date <= expiry_threshold,
-            SpaceLease.end_date >= today,
-        )
-        .scalar()
-        or 0
-    )
-
-    # Top 5 suppliers ranked by monthly revenue
-    # Lo cobrado por ventas se suma al proveedor: por eso el orden y el tope
-    # de cinco se aplican después, acá, y no en la consulta.
-    por_proveedor: dict[int, dict] = {}
-    for sid, name, lease_id, rent in (
-        db.query(Supplier.id, Supplier.name, SpaceLease.id, SpaceLease.monthly_rent)
-        .join(SpaceLease, SpaceLease.supplier_id == Supplier.id)
-        .filter(*running)
-        .all()
-    ):
-        fila = por_proveedor.setdefault(sid, {"name": name, "leases": 0, "revenue": 0.0})
-        fila["leases"] += 1
-        fila["revenue"] += al_mes.get(lease_id, float(rent or 0)) + cobrado.get(lease_id, 0.0)
-    # Workers never receive negotiated amounts — zero out every revenue field.
-    is_admin = role == "admin"
-    # Al trabajador, ni el orden por plata: los cinco primeros por plata son un
-    # ranking aunque las cifras vayan en cero. Para él, por nombre.
-    if is_admin:
-        top_suppliers = sorted(por_proveedor.values(), key=lambda r: -r["revenue"])[:5]
-    else:
-        top_suppliers = sorted(por_proveedor.values(), key=lambda r: ((r["name"] or "").casefold(), r["name"] or ""))[:5]
-    return {
-        "total_spaces": total,
-        "occupied": counts.get("occupied", 0),
-        "free": counts.get("free", 0),
-        "reserved": counts.get("reserved", 0),
-        "maintenance": counts.get("maintenance", 0),
-        "monthly_revenue": monthly_revenue if is_admin else 0.0,
-        "expiring_soon": expiring_soon,
-        "top_suppliers": [
-            {
-                "name": r["name"],
-                "leases": r["leases"],
-                "revenue": float(r["revenue"] or 0) if is_admin else 0.0,
-            }
-            for r in top_suppliers
-        ],
-    }
-
-
-@router.get("/spaces")
-def get_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db)):
-    """
-    Per-space occupancy data for the manager dashboard.
-    Returns all spaces with their active lease info and an 'unauthorized' flag
-    (status=occupied but no active lease).
-    """
-    expire_leases(db)
-    today = hoy()
-    spaces = (
-        db.query(Space)
-        .options(
-            joinedload(Space.leases).joinedload(SpaceLease.supplier)
-        )
-        .all()
-    )
-
-    result = []
-    for space in spaces:
-        # Date-aware: a lease signed for a future period is not "active" today.
-        active_lease = space.active_lease
-        days_remaining: int | None = None
-        if active_lease:
-            days_remaining = (active_lease.end_date - today).days
-
-        # A space flagged occupied with a contract that only starts later is
-        # committed, not unauthorised — flagging it would cry wolf.
-        unauthorized = (
-            space.status.value == "occupied"
-            and active_lease is None
-            and space.upcoming_lease is None
-        )
-
-        result.append({
-            "id": space.id,
-            "code": space.code,
-            "name": space.name,
-            "zone": space.zone,
-            "status": space.status.value,
-            "unauthorized": unauthorized,
-            "lease": {
-                "supplier": active_lease.supplier.name if active_lease else None,
-                "start_date": str(active_lease.start_date) if active_lease else None,
-                "end_date": str(active_lease.end_date) if active_lease else None,
-                "days_remaining": days_remaining,
-                # Rent is admin-only — workers get null
-                "monthly_rent": float(active_lease.monthly_rent) if (active_lease and role == "admin") else None,
-            } if active_lease else None,
-        })
-
-    return result
+# `GET /dashboard/kpis` y `GET /dashboard/spaces` se fueron el 2026-10-30
+# (auditoría P1-16 y P2-12): nada los llamaba, y el primero era una tercera
+# versión del canon del mes (contaba por `Space.status`). El canon de un mes es
+# UNO: `services/canon.py`, que sirve `/dashboard/serie`.
 
 
 def _meses_hasta(hoy_, n: int) -> list[tuple[int, int]]:
@@ -178,61 +34,77 @@ def serie_mensual(meses: int = 12, role: str = Depends(require_admin), db: Sessi
     meses de Indicadores, la variación contra el mes anterior y «Todas las
     sedes»).
 
-    El canon de un mes es lo DEVENGADO en ese mes: cada contrato (no cancelado)
-    aporta su canon al mes por los días del mes que corre —uno que arranca el
-    16 aporta la mitad—, y los que se cobran por un % de las ventas, lo cobrado
-    en sus cortes de ese mes. El mes en curso cuenta entero, con lo firmado.
+    El canon de un mes es lo DEVENGADO en ese mes, al peso
+    (`services/canon.py`, la MISMA cuenta que hace el navegador para Inicio con
+    su gemela `utils/canon.ts`): cada contrato aporta su canon al mes por los
+    días del mes que corre —uno que arranca el 16 aporta la mitad; uno
+    cancelado, hasta el día anterior a su baja—, y los que se cobran por un % de
+    las ventas, lo cobrado en sus cortes de ese mes. El mes en curso cuenta
+    entero, con lo firmado.
+
+    ``del_mes``: por sede, los contratos y cortes con que se sacó el canon del
+    mes en curso. Inicio los pasa por la gemela y muestra la misma cifra que
+    «Todas las sedes» (auditoría P1-16). ``hoy``: el día de Colombia, para que
+    el navegador no use el suyo (P3-8).
 
     También dice, por espacio, cuándo terminó su último contrato (`ultimo_fin`):
     «días sin contrato» de lo que hoy está disponible. Plata: sólo
     administración.
     """
-    from calendar import monthrange
-    from datetime import date as _date
+    from app.models.vender import CorteDeVenta
+    from app.services.canon import canon_del_mes, limites_del_mes
+    from app.services.historial import bajas_efectivas, cerrados_a_mano, fue_canon, tramo_devengado
 
     expire_leases(db)
     n = max(1, min(int(meses or 12), 24))
     hoy_ = hoy()
     lista = _meses_hasta(hoy_, n)
-    primero = _date(lista[0][0], lista[0][1], 1)
-    ultimo = _date(lista[-1][0], lista[-1][1], monthrange(*lista[-1])[1])
-
-    from app.services.historial import cerrados_a_mano, fue_canon
+    primero = limites_del_mes(*lista[0])[0]
+    ultimo = limites_del_mes(*lista[-1])[1]
 
     crudas = (db.query(SpaceLease, Space.sede, Space.code)
               .join(Space, Space.id == SpaceLease.space_id)
               .filter(SpaceLease.start_date <= ultimo, SpaceLease.end_date >= primero)
               .all())
-    # Lo que terminó por fecha fue canon; lo cancelado o reemplazado, no
-    # (`is_active` en falso no los distingue: `services/historial.py`).
-    cerrados = cerrados_a_mano(db, [l.id for l, _s, _c in crudas])
-    filas = [(l.id, l.monthly_rent, l.start_date, l.end_date, sede, code)
-             for l, sede, code in crudas if fue_canon(l, cerrados, hoy_)]
-    sede_de = {}
+    # Lo que terminó por fecha fue canon; lo reemplazado, no; lo cancelado,
+    # hasta su baja (`is_active` en falso no los distingue: `services/historial.py`).
+    ids = [l.id for l, _s, _c in crudas]
+    cerrados = cerrados_a_mano(db, ids)
+    bajas = bajas_efectivas(db, [i for i in ids if cerrados.get(i) == "cancelado"])
     sedes: dict[str, dict] = {}
+    #: Por sede: las filas de contratos y de cortes que entran en la cuenta.
+    contratos: dict[str, list[dict]] = {}
+    cortes: dict[str, list[dict]] = {}
+
+    def clave_de(sede):
+        return (sede or "").strip().upper() or "SIN SEDE"
 
     def de(sede):
-        clave = (sede or "").strip().upper() or "SIN SEDE"
-        return sedes.setdefault(clave, {"canon": [0.0] * n, "contratos": [0] * n, "ultimo_fin": {}})
+        return sedes.setdefault(clave_de(sede), {"canon": [0] * n, "contratos": [0] * n, "ultimo_fin": {}})
 
-    for lid, rent, d, h, sede, _code in filas:
-        sede_de[lid] = sede
-        if not d or not h:
+    sede_de: dict[int, str] = {}
+    for l, sede, _code in crudas:
+        tramo = tramo_devengado(l, cerrados, bajas, hoy_)
+        if tramo is None:
             continue
-        al_mes = al_mes_de(float(rent or 0), d, h)
-        s = de(sede)
+        sede_de[l.id] = clave_de(sede)
+        de(sede)
+        contratos.setdefault(clave_de(sede), []).append({
+            "valor": float(l.monthly_rent or 0), "desde": l.start_date, "hasta": l.end_date,
+            "corta": tramo[1] if tramo[1] < l.end_date else None,
+        })
+    for c in (db.query(CorteDeVenta)
+              .filter(CorteDeVenta.periodo_desde <= ultimo, CorteDeVenta.periodo_hasta >= primero).all()):
+        if c.lease_id in sede_de:
+            cortes.setdefault(sede_de[c.lease_id], []).append(
+                {"monto": float(c.monto or 0), "desde": c.periodo_desde, "hasta": c.periodo_hasta})
+    for clave, s in sedes.items():
+        filas, del_corte = contratos.get(clave, []), cortes.get(clave, [])
         for i, (y, m) in enumerate(lista):
-            ini, fin = _date(y, m, 1), _date(y, m, monthrange(y, m)[1])
-            a, b = max(d, ini), min(h, fin)
-            if a > b:
-                continue
-            s["canon"][i] += al_mes * ((b - a).days + 1) / monthrange(y, m)[1]
-            s["contratos"][i] += 1
-    for i, (y, m) in enumerate(lista):
-        ini, fin = _date(y, m, 1), _date(y, m, monthrange(y, m)[1])
-        for lid, monto in cobrado_por_contrato(db, ini, fin).items():
-            if lid in sede_de:
-                de(sede_de[lid])["canon"][i] += monto
+            ini, fin = limites_del_mes(y, m)
+            s["canon"][i] = int(canon_del_mes(filas, del_corte, y, m))
+            s["contratos"][i] = sum(1 for f in filas
+                                    if f["desde"] <= fin and min(f["hasta"], f["corta"] or f["hasta"]) >= ini)
     # El último fin de cada espacio: lo que ya terminó por fecha (no lo
     # cancelado ni lo reemplazado).
     terminados = (db.query(SpaceLease, Space.sede, Space.code)
@@ -246,6 +118,22 @@ def serie_mensual(meses: int = 12, role: str = Depends(require_admin), db: Sessi
         previo = de(sede)["ultimo_fin"].get(k)
         if previo is None or l.end_date.isoformat() > previo:
             de(sede)["ultimo_fin"][k] = l.end_date.isoformat()
-    for s in sedes.values():
-        s["canon"] = [round(x, 2) for x in s["canon"]]
-    return {"meses": [f"{y:04d}-{m:02d}" for y, m in lista], "sedes": sedes}
+    # Lo del mes en curso, tal cual entró en la cuenta, para la gemela del navegador.
+    ini_hoy, fin_hoy = limites_del_mes(hoy_.year, hoy_.month)
+
+    def iso(d):
+        return d.isoformat() if d else None
+
+    del_mes = {
+        clave: {
+            "contratos": [{"valor": f["valor"], "desde": iso(f["desde"]), "hasta": iso(f["hasta"]),
+                           "corta": iso(f["corta"])}
+                          for f in contratos.get(clave, [])
+                          if f["desde"] <= fin_hoy and min(f["hasta"], f["corta"] or f["hasta"]) >= ini_hoy],
+            "cortes": [{"monto": c["monto"], "desde": iso(c["desde"]), "hasta": iso(c["hasta"])}
+                       for c in cortes.get(clave, []) if c["desde"] <= fin_hoy and c["hasta"] >= ini_hoy],
+        }
+        for clave in sedes
+    }
+    return {"meses": [f"{y:04d}-{m:02d}" for y, m in lista], "sedes": sedes, "del_mes": del_mes,
+            "hoy": hoy_.isoformat()}

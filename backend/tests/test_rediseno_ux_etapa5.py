@@ -44,13 +44,61 @@ def test_la_serie_reparte_cada_contrato_en_los_dias_de_cada_mes(client, admin, w
 
 
 @RELOJ
-def test_un_contrato_cancelado_no_suma_en_la_serie(client, admin):
+def test_un_contrato_cancelado_devenga_hasta_su_baja(client, admin):
+    """Cambio de comportamiento A PROPÓSITO (auditoría P2-13, 2026-10-30): antes
+    lo cancelado salía de TODOS los meses de la serie. Ahora la baja guarda su
+    día (`bajas_de_contrato`) y el contrato devenga hasta el día anterior: uno
+    de seis meses cancelado el 1.º del cuarto aporta tres meses."""
+    import time_machine
+
     tp._plano(client, admin)
-    v = _vender(client, admin, _pedido(_entera("GON-02", 600_000), desde=D(2026, 10, 1), hasta=D(2026, 11, 30)))
+    # Julio a diciembre, $ 1.800.000: $ 300.000 por mes.
+    v = _vender(client, admin, _pedido(_entera("GON-02", 1_800_000), desde=D(2026, 7, 1), hasta=D(2026, 12, 31)))
+    espacio = client.get("/api/spaces/by-code/NAVE-GON-02", headers=admin).json()
+    with time_machine.travel("2026-10-01T15:00:00+00:00", tick=False):
+        r = client.delete(f"/api/spaces/{espacio['id']}/leases/{v['contratos'][0]['lease_id']}", headers=admin)
+        assert r.status_code == 204, r.text
+    s = client.get("/api/dashboard/serie", headers=admin).json()
+    por_mes = dict(zip(s["meses"], s["sedes"]["NAVE"]["canon"]))
+    assert (por_mes["2026-06"], por_mes["2026-07"], por_mes["2026-08"], por_mes["2026-09"], por_mes["2026-10"]) == \
+        (0, 300_000, 300_000, 300_000, 0)
+    assert sum(s["sedes"]["NAVE"]["canon"]) == 900_000
+    # El historial de la ficha lo sigue diciendo cancelado.
+    filas = client.get("/api/spaces/by-code/NAVE-GON-02/historial", headers=admin).json()
+    assert [f["estado"] for f in filas] == ["cancelado"]
+
+
+@RELOJ
+def test_un_contrato_cancelado_antes_de_arrancar_no_suma_en_la_serie(client, admin):
+    tp._plano(client, admin)
+    v = _vender(client, admin, _pedido(_entera("GON-02", 600_000), desde=D(2026, 10, 20), hasta=D(2026, 11, 30)))
     espacio = client.get("/api/spaces/by-code/NAVE-GON-02", headers=admin).json()
     client.delete(f"/api/spaces/{espacio['id']}/leases/{v['contratos'][0]['lease_id']}", headers=admin)
     s = client.get("/api/dashboard/serie", headers=admin).json()
     assert sum(s["sedes"].get("NAVE", {"canon": [0]})["canon"]) == 0
+
+
+@RELOJ
+def test_la_serie_trae_lo_del_mes_para_la_gemela_del_navegador(client, admin):
+    """`del_mes` son las filas con que se sacó el canon del mes en curso: la
+    cuenta pura (`services/canon.py`) sobre ellas da la última cifra de la
+    serie, que es lo que Inicio muestra (auditoría P1-16)."""
+    from datetime import date
+
+    from app.services.canon import canon_del_mes
+
+    tp._plano(client, admin)
+    _vender(client, admin, _pedido(_entera("GON-02", 600_000), desde=D(2026, 10, 16), hasta=D(2026, 12, 15)))
+    _vender(client, admin, _pedido(_entera("GON-02-B", 1_000_001), proveedor="Otro SA",
+                                   desde=D(2026, 9, 3), hasta=D(2026, 11, 9)))
+    s = client.get("/api/dashboard/serie", headers=admin).json()
+    assert s["hoy"] == "2026-10-17"
+    filas = s["del_mes"]["NAVE"]
+    contratos = [{**c, "desde": date.fromisoformat(c["desde"]), "hasta": date.fromisoformat(c["hasta"]),
+                  "corta": date.fromisoformat(c["corta"]) if c["corta"] else None} for c in filas["contratos"]]
+    assert len(contratos) == 2
+    assert canon_del_mes(contratos, [], 2026, 10) == s["sedes"]["NAVE"]["canon"][-1]
+    assert s["sedes"]["NAVE"]["canon"][-1] == int(s["sedes"]["NAVE"]["canon"][-1])
 
 
 def test_las_metas_valen_las_propuestas_hasta_que_alguien_las_cambia(client, admin, worker):

@@ -49,6 +49,7 @@ El identificador (``M-n``) de cada test referencia el informe
 ``client`` de ``conftest.py`` purga ``sys.modules['app.*']`` entre pruebas: una
 referencia tomada en la colección de pytest apuntaría a un módulo muerto.
 """
+from tests.sembrado import marcar_cancelados
 import json
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
@@ -288,6 +289,7 @@ def _sembrar_negocio(slug, sedes: dict, contratos: list):
                 is_active=activo,
                 notes=NOTA_CONTRATO,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()
@@ -682,11 +684,10 @@ def test_m8_los_valores_del_json_son_solo_numeros_fechas_y_nombres(client, monke
 NEGOCIO = [
     # spaces
     ("GET", "/api/spaces/", None),
-    ("GET", "/api/spaces/map", None),
+    ("GET", "/api/spaces/comercial", None),
     ("GET", "/api/spaces/face-images", None),
     ("GET", "/api/spaces/1", None),
     ("GET", "/api/spaces/by-code/NAVE-PUN-01", None),
-    ("POST", "/api/spaces/", {"svg_id": "s1", "code": "A-1", "name": "A", "zone": "Z", "area_m2": 1.0}),
     ("POST", "/api/spaces/find-or-create", {"svg_id": "s1", "code": "A-1", "name": "A", "zone": "Z", "area_m2": 1.0}),
     ("PATCH", "/api/spaces/1/status", {"status": "occupied"}),
     ("POST", "/api/spaces/1/leases", {"supplier_id": 1}),
@@ -704,14 +705,13 @@ NEGOCIO = [
     ("PUT", "/api/layout/NAVE", {}),
     ("DELETE", "/api/layout/NAVE", None),
     # dashboard
-    ("GET", "/api/dashboard/kpis", None),
-    ("GET", "/api/dashboard/spaces", None),
+    ("GET", "/api/dashboard/serie", None),
+    ("GET", "/api/dashboard/serie", None),
     # suppliers
     ("GET", "/api/suppliers/", None),
     ("GET", "/api/suppliers/1", None),
     ("POST", "/api/suppliers/", {"name": "X"}),
     ("POST", "/api/suppliers/find-or-create", {"name": "X"}),
-    ("PUT", "/api/suppliers/1", {"name": "Y"}),
     ("DELETE", "/api/suppliers/1", None),
     # files
     ("GET", "/api/spaces/1/files", None),

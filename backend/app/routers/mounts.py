@@ -375,12 +375,5 @@ def _quien_es(identidad: tuple) -> Optional[str]:
     return nombre or email
 
 
-@router.get("/files/{file_id}/exists", response_model=dict)
-def photo_exists(file_id: int, db: Session = Depends(get_db)):
-    """Chequeo barato para la interfaz — no descarga el binario."""
-    # Se selecciona SOLO la columna id: eso ya deja el binario fuera del SELECT.
-    # El defer() que había acá además reventaba — SQLAlchemy no acepta opciones
-    # de carga de atributos sobre una consulta que no trae la entidad — así que
-    # este endpoint devolvía 500 en cada llamada.
-    found = db.query(SpaceFile.id).filter(SpaceFile.id == file_id).first()
-    return {"exists": bool(found)}
+# `GET /mounts/files/{id}/exists` se fue el 2026-10-30 (auditoría P2-12): nada lo
+# llamaba. La foto de un montaje viaja con el montaje (`MountOut`).

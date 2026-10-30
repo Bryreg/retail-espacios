@@ -15,7 +15,7 @@ Los helpers son los de ``test_plataforma_metricas.py`` (``Identidades``,
 copiados a propósito: un test de conciliación que importa del test que audita
 comparte sus errores.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import json
 from datetime import date
 from types import SimpleNamespace
@@ -111,6 +111,7 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

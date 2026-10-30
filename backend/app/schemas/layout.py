@@ -145,9 +145,17 @@ class ReferenceRatesIn(BaseModel):
     """
     default: dict[str, float] = Field(default={})
     by_sede: dict[str, dict[str, float]] = Field(default={})
+    #: La revisión que se leyó (``updated_at`` de ``GET /layout/rates``), como
+    #: en el layout y en los settings (auditoría P2-17): si otra persona guardó
+    #: las tarifas después, 409 ``rates_conflict`` en vez de pisarlas. La
+    #: pantalla la manda siempre (``null`` si nunca se guardaron); un cliente
+    #: que no la manda escribe como antes.
+    base_updated_at: datetime | None = None
 
 
-class ReferenceRatesOut(ReferenceRatesIn):
+class ReferenceRatesOut(BaseModel):
+    default: dict[str, float] = Field(default={})
+    by_sede: dict[str, dict[str, float]] = Field(default={})
     updated_at: datetime | None = None
 
 

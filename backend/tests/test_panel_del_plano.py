@@ -195,7 +195,7 @@ def test_con_una_reserva_viva_es_la_nota_de_la_reserva(client, admin, worker):
     assert r.json()["donde"] == "reserva"
     assert _comercial(client, admin)["NAVE-PUN-03"]["observation"] == "confirma el lunes"
     # El trabajador ve la cara tomada y nada de la nota: ni en el mapa
-    # comercial, ni por `by-code`, ni por `by-svg`.
+    # comercial, ni por `by-code` (`by-svg` se fue el 2026-10-30: nada lo llamaba).
     del_worker = _comercial(client, worker)["NAVE-PUN-03"]
     assert del_worker["status"] == "occupied" and del_worker["observation"] == ""
     assert del_worker["supplierName"] == "" and del_worker["negotiatedValue"] == 0
@@ -203,9 +203,7 @@ def test_con_una_reserva_viva_es_la_nota_de_la_reserva(client, admin, worker):
     assert por_codigo.status_code == 200, por_codigo.text
     assert por_codigo.json()["notes"] is None and "confirma el lunes" not in por_codigo.text
     svg_id = por_codigo.json()["svg_id"]
-    por_svg = client.get(f"/api/spaces/by-svg/{svg_id}", headers=worker)
-    assert por_svg.status_code == 200, por_svg.text
-    assert por_svg.json()["notes"] is None and "confirma el lunes" not in por_svg.text
+    assert client.get(f"/api/spaces/by-svg/{svg_id}", headers=worker).status_code in (404, 405, 422)
 
 
 def test_la_nota_es_de_administracion_y_tiene_tope(client, admin, worker):

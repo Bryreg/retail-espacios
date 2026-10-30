@@ -20,7 +20,7 @@ Mismo andamiaje que ``test_plataforma_metricas.py`` (verificador falso por
 ``import app.*`` ADENTRO de las funciones): cada archivo de pruebas se sostiene
 solo.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import hashlib
 import json
 from datetime import date
@@ -263,6 +263,7 @@ def _sembrar(slug, sedes: dict, contratos: list, espacios_extra: dict | None = N
                 is_active=activo,
                 notes=NOTA_SEMBRADA,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

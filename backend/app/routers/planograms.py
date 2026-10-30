@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session, defer
@@ -34,6 +34,7 @@ from app.models.models import LeaseFile, Space, SpaceLease
 from app.models.vender import MontajePendiente
 from app.routers.montajes import avisar_los_listos
 from app.services import montajes_pendientes
+from app.services.bitacora import anotar
 from app.services.contratos import contrato_para_montar
 from app.services.subidas import leer_con_tope
 
@@ -103,13 +104,14 @@ def _de_contrato(db: Session, lease_id: int) -> Optional[LeaseFile]:
     "/leases/{lease_id}/planometria",
     response_model=PlanometriaOut,
     status_code=201,
-    dependencies=[Depends(require_admin)],
 )
 async def subir_planometria(
     lease_id: int,
     background_tasks: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(...),
     subido_por: str = Form(""),
+    rol: str = Depends(require_admin),
     db: Session = Depends(get_db),
     cliente: Cliente = Depends(cliente_del_pedido),
 ):
@@ -161,6 +163,9 @@ async def subir_planometria(
         subido_por=(subido_por or "").strip()[:80] or None,
     )
     db.add(row)
+    # La bitácora (auditoría P2-14), en la misma transacción: el nombre del
+    # archivo, no su contenido.
+    anotar(db, request, rol, "planometria.alta", entidad="contrato", entidad_id=lease_id, detalle=row.filename)
     db.commit()
     db.refresh(row)
     salida = PlanometriaOut.model_validate(row)
@@ -269,9 +274,9 @@ def descargar_planometria(
 @router.delete(
     "/leases/{lease_id}/planometria",
     status_code=204,
-    dependencies=[Depends(require_admin)],
 )
-def borrar_planometria(lease_id: int, db: Session = Depends(get_db)):
+def borrar_planometria(lease_id: int, request: Request, rol: str = Depends(require_admin),
+                       db: Session = Depends(get_db)):
     filas = (
         db.query(LeaseFile)
         .filter(LeaseFile.lease_id == lease_id, LeaseFile.kind == KIND)
@@ -281,4 +286,6 @@ def borrar_planometria(lease_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Ese contrato no tiene planometría cargada")
     for f in filas:
         db.delete(f)
+    anotar(db, request, rol, "planometria.baja", entidad="contrato", entidad_id=lease_id,
+           detalle=", ".join(f.filename or "planometría" for f in filas))
     db.commit()

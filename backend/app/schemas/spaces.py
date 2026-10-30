@@ -2,6 +2,7 @@ from datetime import date
 from typing import Optional
 from pydantic import BaseModel, Field
 from app.models.models import SpaceStatus
+from app.schemas.pesos import Pesos
 
 
 class SupplierBase(BaseModel):
@@ -50,7 +51,8 @@ class LeaseBase(BaseModel):
 
 
 class LeaseCreate(LeaseBase):
-    pass
+    #: En pesos enteros (auditoría P2-11): `1234.5` entra como `1235`.
+    monthly_rent: Pesos = Field(ge=0)
 
 
 class AvisosContrato(BaseModel):
@@ -95,16 +97,6 @@ class LeaseOut(LeaseBase):
     model_config = {"from_attributes": True}
 
 
-class SpaceCreate(BaseModel):
-    svg_id: str
-    code: str
-    name: str
-    zone: str
-    sede: Optional[str] = None
-    area_m2: float
-    notes: Optional[str] = None
-
-
 class SpaceFindOrCreate(BaseModel):
     """Find a Space by its code or create it on the fly (for fixture-mapped spaces)."""
     code: str
@@ -136,14 +128,5 @@ class SpaceOut(BaseModel):
     #: desde la interfaz, y el mensaje de choque de fechas decía "cancelalo
     #: primero" señalando algo que no se podía hacer.
     upcoming_lease: Optional[LeaseOut] = None
-
-    model_config = {"from_attributes": True}
-
-
-class SpaceMapItem(BaseModel):
-    svg_id: str
-    status: SpaceStatus
-    name: str
-    supplier_name: Optional[str] = None
 
     model_config = {"from_attributes": True}

@@ -1188,8 +1188,11 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
         db.close()
 
     # Espacios internos: GON-02 (entera) con uno vendido y vigente no pasa a participación.
+    # Desde el 2026-10-30 (auditoría P1-15) una repisa vendida no se escribe
+    # por el guardado del plano: estos pasos la dejan en la base, como quedó
+    # lo vendido de antes, y la guarda se prueba igual sobre eso.
     plano = _con("GON-02", plano, slots=[_slot("s1")])
-    _guardar(client, admin, plano)
+    _plano_en_la_base(plano)
     d = _rechazo(client, admin, _con("GON-02", plano, partes={"division": "participacion"}))
     assert d == {"code": "slots_vendidos_en_participacion",
                  "message": "Este guardado pasaría a participación 1 mueble(s) de «NAVE» con espacios internos "
@@ -1198,12 +1201,12 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
                              "terminen."]}
     # Uno que termina hoy todavía rige (el día de Colombia).
     hoy_termina = _con("GON-02", plano, slots=[_slot("s1", fin=D(2026, 10, 17))])
-    _guardar(client, admin, hoy_termina)
+    _plano_en_la_base(hoy_termina)
     assert _rechazo(client, admin, _con("GON-02", hoy_termina, partes={"division": "participacion"}))["code"] == \
         "slots_vendidos_en_participacion"
     # Terminado, sí pasa (en dos guardados: el que lo termina y el que cambia la división).
     plano = _con("GON-02", plano, slots=[_slot("s1", fin=D(2026, 10, 1))])
-    _guardar(client, admin, plano)
+    _plano_en_la_base(plano)
     plano = _con("GON-02", plano, partes={"division": "participacion"})
     _guardar(client, admin, plano)
     # En un mueble por participación no se vende un espacio interno: ni uno nuevo, ni estirar, adelantar,
@@ -1218,7 +1221,9 @@ def test_el_guardado_del_plano_no_rompe_lo_vendido_por_participacion(client, adm
                                 "no como espacio interno."]
     sin_valor = {k: v for k, v in _slot("s1", fin=D(2026, 10, 1)).items() if k != "negotiatedValue"}
     _guardar(client, admin, _con("GON-02", plano, slots=[sin_valor], cx=4.5))  # un valor ausente no es un cambio
-    plano = _con("GON-02", plano, slots=[_slot("s1", status="free")])
+    # Liberarlo deja sus fechas como estaban: desde el 2026-10-30 (auditoría
+    # P1-15) cambiarlas en una repisa con valor es venderla otra vez.
+    plano = _con("GON-02", plano, slots=[_slot("s1", status="free", fin=D(2026, 10, 1))])
     _guardar(client, admin, plano)
     # Y el liberado no se vuelve a vender con el mismo id (una pestaña vieja que lo tenía vendido).
     assert _rechazo(client, admin, _con("GON-02", plano, slots=[_slot("s1")]))["code"] == "slots_en_participacion"

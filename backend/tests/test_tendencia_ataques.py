@@ -37,7 +37,7 @@ y el teardown de ``conftest.py`` borra ``recabra_*.db`` de la carpeta temporal
 de CADA prueba — sin aislar TMPDIR, una corrida ajena puede pisar archivos de
 ésta a mitad de camino.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import hashlib
 import json
 import os
@@ -176,6 +176,7 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 monthly_rent=total_del_plazo(canon, ini, fin),  # lo de un mes, guardado como total
                 is_active=activo,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

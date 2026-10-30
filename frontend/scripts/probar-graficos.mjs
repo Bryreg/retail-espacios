@@ -148,6 +148,20 @@ console.log("\n[estático] plataforma.css");
   else mal("un chip de señal usa un color de estado de espacio", conColorDeEstado.join(" | "));
 }
 
+// La plata completa, nunca «M» (regla del negocio; auditoría P3-5): ni en los
+// ejes ni en los rótulos de la consola. `platM` se fue; todo monto sale por `plata`.
+{
+  const { readdirSync } = await import("node:fs");
+  const dirPlat = join(raiz, "src", "components", "plataforma");
+  const archivos = [
+    ...readdirSync(dirPlat).filter((f) => /\.tsx?$/.test(f)).map((f) => join(dirPlat, f)),
+    join(raiz, "src", "pages", "DetalleCliente.tsx"),
+  ];
+  const conM = archivos.filter((f) => /\bplatM\(|["'`] M["'`]|\+ " M"/.test(readFileSync(f, "utf8")));
+  if (conM.length === 0) ok("la consola dice la plata completa: sin «M»");
+  else mal("la consola abrevia plata con «M»", conM.join(", "));
+}
+
 // ═══ 1-5 · El navegador ════════════════════════════════════════════════════
 let chromium = null;
 try {
