@@ -233,7 +233,8 @@ def test_la_consola_cuenta_las_puertas_por_cara_con_su_tarifa_y_sobre_el_plano()
 
     # El detalle: la cara está ocupada por sus puertas, que van debajo, sin tarifa.
     desde, hasta = date(2026, 9, 1), date(2026, 9, 30)
-    c = pd._Contrato("NAVE-NEV-03-PU2", "Postobón", None, 300_000.0, date(2026, 9, 1), date(2026, 12, 31), True)
+    c = pd._Contrato("NAVE-NEV-03-PU2", "Postobón", None, 300_000.0, date(2026, 9, 1), date(2026, 12, 31), True,
+                     date(2026, 12, 31))  # corre_hasta: corrió su plazo entero (P1-17)
     espacios = pd._armar_espacios(mapa_tipos, {"NAVE-NEV-03": nevera}, {}, {"NAVE-NEV-03-PU2": c},
                                   desde, hasta, partes)
     (e,) = espacios
