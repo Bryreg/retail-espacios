@@ -415,6 +415,38 @@ def atender_supresion(solicitud_id: int, payload: PatchSupresionIn, email: str =
         reg.close()
 
 
+@router.get("/salud")
+def salud_de_la_plataforma(email: str = Depends(require_operador)):
+    """Cómo está la operación (auditoría P1-6, P2-6, P1-5, P1-4), para quien
+    opera: el tamaño de la base contra su cuota, los clientes degradados (su
+    base no arrancó: sus pedidos reciben 503), cómo terminó la última vuelta de
+    mantenimiento y cuántos correos esperaban reintento al final de ella.
+
+    **No abre ninguna base de supermercado** (`test_f01` de
+    `test_auditoria_frontera.py`): lo de cada cliente —la cola de correos— sale
+    del resumen de la última vuelta de mantenimiento, que sí las recorre. El
+    tamaño es el de la última medición, o se mide ahora (lee `pg_database`, no
+    entra a ninguna base)."""
+    import app.main as principal
+    from app.clientes import degradados
+    from app.services import tamano_de_base
+
+    base = tamano_de_base.ultima
+    if base is None:
+        try:
+            base = tamano_de_base.medir()
+        except Exception:  # noqa: BLE001
+            log.warning("No se pudo medir el tamaño de la base", exc_info=True)
+            base = None
+    ultimo = principal.ultimo_mantenimiento
+    return {
+        "base": base,
+        "clientes_degradados": sorted(degradados()),
+        "ultimo_mantenimiento": ultimo,
+        "correos_pendientes": (ultimo or {}).get("correos_pendientes"),
+    }
+
+
 @router.get("/soy")
 def soy_operador(request: Request, rol: str = Depends(require_auth)):
     """¿La cuenta de este token es operadora de la plataforma?

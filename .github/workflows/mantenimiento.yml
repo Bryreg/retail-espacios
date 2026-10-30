@@ -1,0 +1,65 @@
+name: Mantenimiento programado
+
+# La vuelta de mantenimiento a hora fija (auditoría P1-5): vencer contratos,
+# recordatorios de vencimiento, reintentar los correos que no salieron, purgar
+# la bitácora, fotos vencidas, cierre del mes y la escalera de cobranza.
+#
+# Hasta acá corría sólo en un hilo de la app, al arrancar y cada 12 horas, y
+# sólo mientras el servicio estuviera despierto: en el plan gratuito, Render lo
+# duerme a los 15 minutos sin tráfico, y una noche sin nadie era una noche sin
+# recordatorios. Este cron llama a `POST /api/interno/mantenimiento` —que de
+# paso despierta al servicio— y la app corre la vuelta con un candado de líder
+# (advisory lock de Postgres): con el hilo, con N instancias o con dos crons
+# superpuestos, corre UNA vez. El hilo sigue como respaldo.
+#
+# Configuración (Settings → Secrets and variables → Actions):
+#   Secret   MANTENIMIENTO_TOKEN   el mismo valor que la variable de entorno
+#                                  MANTENIMIENTO_TOKEN del servicio en Render
+#   Variable MANTENIMIENTO_URL     opcional; por defecto
+#                                  https://retail-espacios.onrender.com
+# Sin el secret se saltea con un aviso; no falla.
+
+on:
+  schedule:
+    # Cada 3 horas, en el minuto 23 (UTC). Un arranque en frío del plan
+    # gratuito tarda hasta un minuto: el curl espera.
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mantenimiento
+  cancel-in-progress: false
+
+jobs:
+  llamar:
+    name: POST /api/interno/mantenimiento
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MANTENIMIENTO_TOKEN: ${{ secrets.MANTENIMIENTO_TOKEN }}
+      MANTENIMIENTO_URL: ${{ vars.MANTENIMIENTO_URL || 'https://retail-espacios.onrender.com' }}
+    steps:
+      - name: Llamar
+        run: |
+          if [ -z "$MANTENIMIENTO_TOKEN" ]; then
+            echo "::notice title=Mantenimiento salteado::Falta el secret MANTENIMIENTO_TOKEN (ver docs/operacion.md)."
+            exit 0
+          fi
+          # Primero despertarlo (liveness, no toca la base) y después pedir la
+          # vuelta. --retry por el arranque en frío.
+          curl -sS --retry 6 --retry-delay 10 --retry-all-errors --max-time 90 \
+               -o /dev/null "$MANTENIMIENTO_URL/api/health" || true
+          CODIGO=$(curl -sS --retry 3 --retry-delay 15 --retry-all-errors --max-time 600 \
+               -o respuesta.json -w '%{http_code}' -X POST \
+               -H "X-Mantenimiento-Token: $MANTENIMIENTO_TOKEN" \
+               "$MANTENIMIENTO_URL/api/interno/mantenimiento")
+          echo "HTTP $CODIGO"
+          cat respuesta.json; echo
+          if [ "$CODIGO" = "404" ]; then
+            echo "::error::El servicio no tiene MANTENIMIENTO_TOKEN configurado (404)."
+            exit 1
+          fi
+          [ "$CODIGO" = "200" ]

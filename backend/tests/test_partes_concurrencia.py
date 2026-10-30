@@ -30,6 +30,10 @@ from datetime import timedelta
 
 import pytest
 
+# Las carreras contra Postgres comparten la base descartable: todas al mismo
+# proceso cuando la suite corre en paralelo (`pytest -n auto --dist loadgroup`).
+pytestmark = pytest.mark.xdist_group("postgres")
+
 from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 HOY = hoy_en_colombia()
@@ -214,7 +218,7 @@ def test_dos_ventas_a_la_vez_dejan_un_solo_contrato(monkeypatch):
             s = SessionLocal()
             try:
                 lote = bl.LoteIn(sede="NAVE", filas=[bl.FilaIn(**_fila(espacio))])
-                resultados[espacio] = bl.confirmar(lote, BackgroundTasks(), db=s, cliente=cliente)
+                resultados[espacio] = bl.confirmar_lote(s, lote, BackgroundTasks(), cliente)
             finally:
                 s.close()
 

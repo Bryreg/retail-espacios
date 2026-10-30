@@ -1,0 +1,131 @@
+name: Respaldo nocturno
+
+# El respaldo de TODA la plataforma (auditoría P0-3): el registro —clientes,
+# cuentas, membresías, facturación de la plataforma— y la base de cada
+# supermercado, cada noche. Funciona con el plan GRATUITO de Render: se conecta
+# a la URL externa de la base desde el runner de GitHub, sin consola ni shell.
+#
+#   1. `pg_dump -Fc` de cada base (backend/scripts/respaldar_plataforma.py, que
+#      las lista del registro y de pg_database).
+#   2. Un .tar con todo, cifrado con `gpg --symmetric` (AES256) y la frase de
+#      RESPALDO_PASSPHRASE. Sin la frase el archivo no sirve: guardala FUERA de
+#      GitHub (un gestor de contraseñas), o el respaldo no se puede abrir.
+#   3. Se sube como artefacto del workflow (30 días) y, si están los secrets
+#      del bucket, también a S3/R2 (la retención allá la pone la regla de
+#      ciclo de vida del bucket: docs/operacion.md).
+#
+# Secrets (Settings → Secrets and variables → Actions → Secrets):
+#   RESPALDO_DATABASE_URL   la «External Database URL» de Render (obligatorio)
+#   RESPALDO_PASSPHRASE     la frase de cifrado (obligatorio)
+#   RESPALDO_S3_BUCKET      opcional: s3://bucket/carpeta
+#   RESPALDO_S3_ENDPOINT    opcional: el endpoint S3 de R2 (https://<cuenta>.r2.cloudflarestorage.com)
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_DEFAULT_REGION   con el bucket ("auto" en R2)
+#
+# Sin RESPALDO_DATABASE_URL o sin RESPALDO_PASSPHRASE se SALTEA con un aviso,
+# no falla: un repo recién clonado (o un fork) no tiene que verse rojo. Con
+# ellos puestos, cualquier falla del respaldo pone el workflow en rojo, y
+# GitHub le manda un correo a quien lo programó.
+
+on:
+  schedule:
+    # 06:41 UTC = 01:41 en Colombia: de madrugada, fuera de horario de tienda.
+    # Minuto impar a propósito: a la hora en punto GitHub encola todo junto.
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: respaldo
+  cancel-in-progress: false
+
+jobs:
+  respaldo:
+    name: pg_dump de todas las bases
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RESPALDO_DATABASE_URL: ${{ secrets.RESPALDO_DATABASE_URL }}
+      RESPALDO_PASSPHRASE: ${{ secrets.RESPALDO_PASSPHRASE }}
+      RESPALDO_S3_BUCKET: ${{ secrets.RESPALDO_S3_BUCKET }}
+      RESPALDO_S3_ENDPOINT: ${{ secrets.RESPALDO_S3_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+    steps:
+      - name: ¿Está configurado?
+        id: listo
+        run: |
+          if [ -z "$RESPALDO_DATABASE_URL" ] || [ -z "$RESPALDO_PASSPHRASE" ]; then
+            echo "::notice title=Respaldo salteado::Faltan los secrets RESPALDO_DATABASE_URL y/o RESPALDO_PASSPHRASE (ver docs/operacion.md)."
+            echo "si=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "si=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.listo.outputs.si == 'si'
+
+      - uses: actions/setup-python@v5
+        if: steps.listo.outputs.si == 'si'
+        with:
+          python-version: "3.11"
+
+      - name: Dependencias (SQLAlchemy y psycopg2, las del backend)
+        if: steps.listo.outputs.si == 'si'
+        run: |
+          pip install "$(grep -E '^sqlalchemy==' backend/requirements.txt)" \
+                      "$(grep -E '^psycopg2-binary==' backend/requirements.txt)"
+
+      # pg_dump tiene que ser de la misma versión mayor que el servidor, o más
+      # nueva. El runner trae el cliente 16; si Render corre otra, se instala
+      # la del servidor desde el repositorio oficial de PostgreSQL.
+      - name: pg_dump de la versión del servidor
+        if: steps.listo.outputs.si == 'si'
+        run: |
+          MAYOR=$(psql "$RESPALDO_DATABASE_URL" -Atc "SHOW server_version_num" | cut -c1-2)
+          echo "Servidor PostgreSQL $MAYOR"
+          if [ ! -x "/usr/lib/postgresql/$MAYOR/bin/pg_dump" ]; then
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get install -y "postgresql-client-$MAYOR"
+          fi
+          echo "PG_DUMP=/usr/lib/postgresql/$MAYOR/bin/pg_dump" >> "$GITHUB_ENV"
+
+      - name: Volcar
+        if: steps.listo.outputs.si == 'si'
+        run: |
+          python backend/scripts/respaldar_plataforma.py --salida "respaldo"
+          cat respaldo/MANIFIESTO.json
+
+      - name: Empaquetar y cifrar
+        if: steps.listo.outputs.si == 'si'
+        id: cifrado
+        run: |
+          NOMBRE="recabra-respaldo-$(date -u +%Y-%m-%d-%H%M)"
+          tar -cf "$NOMBRE.tar" respaldo
+          # La frase entra por un descriptor, no por la línea de comandos.
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
+              --symmetric --cipher-algo AES256 --output "$NOMBRE.tar.gpg" "$NOMBRE.tar" \
+              3<<<"$RESPALDO_PASSPHRASE"
+          rm -rf "$NOMBRE.tar" respaldo
+          ls -l "$NOMBRE.tar.gpg"
+          echo "nombre=$NOMBRE" >> "$GITHUB_OUTPUT"
+
+      - name: Subir como artefacto (30 días)
+        if: steps.listo.outputs.si == 'si'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cifrado.outputs.nombre }}
+          path: ${{ steps.cifrado.outputs.nombre }}.tar.gpg
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0   # ya está comprimido y cifrado
+
+      - name: Subir al bucket (S3/R2, opcional)
+        if: steps.listo.outputs.si == 'si' && env.RESPALDO_S3_BUCKET != ''
+        run: |
+          EXTRA=""
+          if [ -n "$RESPALDO_S3_ENDPOINT" ]; then EXTRA="--endpoint-url $RESPALDO_S3_ENDPOINT"; fi
+          aws s3 cp $EXTRA "${{ steps.cifrado.outputs.nombre }}.tar.gpg" \
+              "${RESPALDO_S3_BUCKET%/}/${{ steps.cifrado.outputs.nombre }}.tar.gpg"

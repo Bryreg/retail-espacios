@@ -110,6 +110,9 @@ TABLAS_DEL_CLIENTE = frozenset({
     # cuelga de `space_leases`) y la papelera de sedes borradas (P2-18; guarda
     # el plano y ids de lo cerrado, sin claves foráneas).
     "bajas_de_contrato", "sedes_en_papelera",
+    # La cola de correos (auditoría P1-4): lo que falta mandar viaja con el
+    # supermercado. No sale en la copia ZIP (`copia.TABLAS_QUE_NO_SALEN`).
+    "correos_pendientes",
 })
 
 # Las que guardan archivos enteros: se copian de a pocas filas para no cargar
