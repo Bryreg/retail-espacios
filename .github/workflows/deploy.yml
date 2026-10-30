@@ -93,6 +93,18 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
         working-directory: backend
+      # El cliente de Postgres de la MISMA versión mayor que el servicio (16).
+      # El `pg_dump`/`pg_restore` por defecto del runner es más nuevo y vuelca
+      # `SET transaction_timeout`, que un servidor 16 rechaza: la prueba de ida
+      # y vuelta del respaldo fallaba por la máquina, no por el código.
+      - name: Cliente de Postgres 16
+        run: |
+          if [ ! -x /usr/lib/postgresql/16/bin/pg_restore ]; then
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get install -y postgresql-client-16
+          fi
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_restore --version
       # En paralelo (auditoría P3-12): cada prueba arma sus bases en una carpeta
       # temporal propia (`tests/conftest.py`), así que los procesos de
       # `pytest-xdist` ya no se pisan `recabra_<slug>.db`. Las pruebas contra

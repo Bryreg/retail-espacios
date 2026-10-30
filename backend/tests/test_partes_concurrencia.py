@@ -218,7 +218,7 @@ def test_dos_ventas_a_la_vez_dejan_un_solo_contrato(monkeypatch):
             s = SessionLocal()
             try:
                 lote = bl.LoteIn(sede="NAVE", filas=[bl.FilaIn(**_fila(espacio))])
-                resultados[espacio] = bl.confirmar(lote, BackgroundTasks(), db=s, cliente=cliente)
+                resultados[espacio] = bl.confirmar_lote(s, lote, BackgroundTasks(), cliente)
             finally:
                 s.close()
 

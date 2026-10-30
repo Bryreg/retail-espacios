@@ -37,6 +37,7 @@ ACCIONES = {
     "login.fallo": "Intento fallido",
     "clave.cambio": "Cambio de contraseña",
     "contrato.alta": "Contrato creado",
+    "enlace.revocado": "Enlace de montaje o guía cortado",
     "contrato.baja": "Contrato cancelado",
     "espacio.estado": "Estado de espacio cambiado",
     # El panel del Plano (rediseño, PR 3): la nota del contrato, de la reserva o
@@ -146,9 +147,6 @@ ACCIONES.update({
 # constancia, nunca a quién. No terminan en «.baja»: suprimir es anonimizar.
 ACCIONES.update({
     "terminos.aceptados": "Términos del servicio aceptados",
-    # «Cortar un enlace» (tanda 1, P3-2; la línea la agregó la integración de
-    # las tandas y le faltaba el título).
-    "enlace.revocado": "Enlace de montaje o de guía cortado",
     "titular.descarga": "Una persona bajó sus datos personales",
     "titular.exportado": "La plataforma exportó los datos de una persona (derecho de acceso)",
     "titular.suprimido": "La plataforma anonimizó a una persona (derecho de supresión)",

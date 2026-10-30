@@ -42,6 +42,7 @@ Dice cuánto tardó cada base y el total: es el RTO del simulacro (anotarlo en
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import json
 import subprocess
@@ -140,7 +141,7 @@ def argumentos(argv=None) -> argparse.Namespace:
     p.add_argument("--reemplazar", action="store_true",
                    help="pisar una base del destino que ya tiene tablas (borra lo que haya)")
     p.add_argument("--ensayo", action="store_true", help="sólo verifica y dice qué haría")
-    p.add_argument("--pg-restore", default="pg_restore", help="el binario de pg_restore")
+    p.add_argument("--pg-restore", default=os.getenv("PG_RESTORE", "pg_restore"), help="el binario de pg_restore")
     a = p.parse_args(argv)
     a.destino = normalizar_url(a.destino)
     if not a.destino.startswith("postgresql://"):
