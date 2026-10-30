@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 import type { ReferenceRates, UnifiedFixture } from "../types/fixtures";
 import { fusionarEstadoComercial } from "../utils/estadoComercial";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
@@ -1585,16 +1585,6 @@ export const useFixtureStore = create<FixtureStore>()(
     }),
     {
       name: "retail-fixtures-v1",
-      // La caché del navegador nunca guarda plata (auditoría pre-lanzamiento,
-      // P2-3): en un computador compartido, quien abriera la consola leía los
-      // montos negociados del admin aun después de «Salir». Se guarda el
-      // plano sin `negotiatedValue` y la plata vuelve del servidor en la
-      // primera sincronización (ver `dataRole` abajo). Si una sede con
-      // cambios sin subir se sube así, el servidor rellena el monto que falta
-      // del que ya tenía (`_restore_missing_slot_prices`): ausente no es cero.
-      storage: createJSONStorage(() => localStorage, {
-        replacer: (clave, valor) => (clave === "negotiatedValue" ? undefined : valor),
-      }),
       // Exclude undo/redo stacks from localStorage — they're session-only
       partialize: (state) => ({
         fixturesBySede: state.fixturesBySede,
@@ -1610,10 +1600,7 @@ export const useFixtureStore = create<FixtureStore>()(
         serverRev: state.serverRev,
         settingsRev: state.settingsRev,
         dirty: state.dirty,
-        // Siempre null en el disco: la copia guardada no tiene la plata, así
-        // que la primera sincronización tras recargar adopta del servidor
-        // todas las sedes sin cambios pendientes, como al cambiar de rol.
-        dataRole: null,
+        dataRole: state.dataRole,
         clienteCache: state.clienteCache,
         generacionCache: state.generacionCache,
         // Una preferencia de vista, como las cámaras: sin datos ni plata.

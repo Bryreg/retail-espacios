@@ -1471,12 +1471,11 @@ volver a abrir el hallazgo:
 - **P2-2 · «Salir» cierra el token en el servidor.** Cada token lleva `jti`; `POST /api/auth/logout`
   lo anota en `sesiones_cerradas` (registro) y en memoria, y `decode_token` lo rechaza — también su
   token de medios, que copia el `jti`. Las otras sesiones de la persona siguen.
-- **P2-3 · La caché del navegador no guarda plata.** `retail-fixtures-v1` se escribe sin
-  `negotiatedValue` (el `replacer` de su `storage`) y con `dataRole: null`, así que la primera
-  sincronización tras recargar adopta del servidor toda sede sin cambios pendientes. La caché sigue
-  dando el plano al instante; los montos llegan con la sincronización de siempre. Una sede con
-  cambios sin subir se sube sin el monto de la repisa y el servidor lo rellena
-  (`_restore_missing_slot_prices`: ausente no es cero). No borrar ese relleno.
+- **P2-3 · Riesgo aceptado por el dueño (2026-10-30): la caché del navegador sigue guardando los
+  montos.** `retail-fixtures-v1` conserva `negotiatedValue` de las repisas después de «Salir»
+  para que el plano abra al instante. El dueño: «para acceder a esa información debe entrar desde
+  la computadora desde la cual accede y esto ya es responsabilidad del usuario». No cambiarlo sin
+  hablarlo con él.
 - **P2-23 · Los logs del correo no llevan direcciones:** «3 destinatarios (dominio.co)»
   (`mailer.destino_para_log`).
 - **P3-1 · `/docs`, `/redoc` y `/openapi.json` sólo en desarrollo.**
