@@ -364,7 +364,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
         <div className="mo-rail" aria-label="Indicadores de ingreso y operación">{izq.map(tarjeta)}</div>
         <section className="mo-mapa" aria-label="Mapa de decisión">
           <div className="mo-mapa-cab">
-            <h3>Mapa de decisión · {datos.sede}</h3>
+            <h2>Mapa de decisión · {datos.sede}</h2>
             <span className="mo-capa" data-capa-activa={capa}>{capa === "cliente" && datos.cliente ? `Cliente: ${datos.cliente.nombre}` : NOMBRE_DE_LA_CAPA[capa]}</span>
             <button type="button" className="mo-link der" onClick={manejo.onPlanoParaContratar}>
               Plano para contratar <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden />
@@ -392,7 +392,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
       <section className="mo-panel" data-panel-capa={capa}>
         <div className="mo-panel-cab">
           <div>
-            <h3>{panel.titulo}</h3>
+            <h2>{panel.titulo}</h2>
             <p>{panel.sub}</p>
           </div>
           {capa === "acciones"

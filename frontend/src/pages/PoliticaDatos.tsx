@@ -16,7 +16,7 @@ import { renderMarkdownLite } from "../legal/markdownLite";
 
 export default function PoliticaDatos() {
   return (
-    <div style={{ minHeight: "100dvh", background: "var(--bg)", padding: "28px 16px 60px" }}>
+    <main style={{ minHeight: "100dvh", background: "var(--bg)", padding: "28px 16px 60px" }}>
       <div style={{ maxWidth: 760, margin: "0 auto" }}>
         <a
           href="/"
@@ -39,6 +39,6 @@ export default function PoliticaDatos() {
           {renderMarkdownLite(politicaMd)}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

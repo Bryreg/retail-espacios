@@ -323,6 +323,9 @@ interface FixtureStore {
    *  Admin-only money: `null` for workers, fetched fresh each session and kept
    *  OUT of localStorage so a shared machine never leaks it to the next login. */
   referenceRates: ReferenceRates | null;
+  /** La última lectura de las tarifas falló (auditoría P2-15): sin esto el
+   *  editor decía «Cargando tarifas…» para siempre. `loadRates` reintenta. */
+  tarifasSinLeer: boolean;
   /** Sales window (days before/after the anchor) per commercial season.
    *  Shared across every sede — the seasons are the same in all three. */
   seasonWindows: SeasonWindows;
@@ -627,6 +630,7 @@ export const useFixtureStore = create<FixtureStore>()(
       sede: DEFAULT_SEDES[0],
       catalogLabels: {},
       referenceRates: null,
+      tarifasSinLeer: false,
       seasonWindows: {},
       camera2D: DEFAULT_CAMERA_2D,
       camera3D: DEFAULT_CAMERA_3D,
@@ -1306,16 +1310,20 @@ export const useFixtureStore = create<FixtureStore>()(
       loadRates: async () => {
         if (!canWrite()) return;
         if (_ratesTimer) return;
+        // «Reintentar» vuelve a «Cargando…» mientras pregunta.
+        if (get().tarifasSinLeer) set({ tarifasSinLeer: false });
         try {
           const rates = await fetchReferenceRates();
           // Re-check after the await: an edit made while the request was in
           // flight owns the truth until its push resolves.
           if (!_ratesTimer) {
             _revisionDeTarifas = rates.updated_at ?? null;
-            set({ referenceRates: { default: rates.default, by_sede: rates.by_sede } });
+            set({ referenceRates: { default: rates.default, by_sede: rates.by_sede }, tarifasSinLeer: false });
           }
         } catch {
-          /* keep whatever we hold; the next syncFromServer retries */
+          // Se queda con lo que tenía; si no tenía nada, la pantalla lo dice
+          // con «Reintentar» en vez de quedarse cargando (P2-15).
+          set({ tarifasSinLeer: true });
         }
       },
 
@@ -1497,9 +1505,13 @@ export const useFixtureStore = create<FixtureStore>()(
             // any leftover from a previous admin login in this same tab.
             if (role !== "admin") {
               next.referenceRates = null;
+              next.tarifasSinLeer = false;
             } else if (rates && !_ratesTimer) {
               _revisionDeTarifas = rates.updated_at ?? null;
               next.referenceRates = { default: rates.default, by_sede: rates.by_sede };
+              next.tarifasSinLeer = false;
+            } else if (!rates) {
+              next.tarifasSinLeer = true;
             }
 
             if (seasons && !_seasonsTimer) {
@@ -1711,7 +1723,16 @@ function onOnline() {
 
 export function startAutoSync(): void {
   if (_pollTimer) return;
-  void useFixtureStore.getState().syncFromServer();
+  void useFixtureStore.getState().syncFromServer().then(() => {
+    // Lo que quedó «sin guardar» de la sesión anterior —el guardado de salida
+    // no lo pudo mandar (auditoría P3-9, `utils/guardadoAlCerrar.ts`)— sube
+    // ahora, con su revisión: si otro equipo guardó en el medio, es un
+    // conflicto a la vista, no una pisada.
+    const st = useFixtureStore.getState();
+    for (const sede of Object.keys(st.dirty)) {
+      if (st.dirty[sede] && !st.conflicts[sede]) void st.pushSede(sede);
+    }
+  });
   _pollTimer = setInterval(() => {
     // Con la pestaña oculta no se pregunta (auditoría P2-5): diez pestañas
     // olvidadas en segundo plano eran diez sondeos cada 20 s contra un solo

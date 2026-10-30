@@ -26,11 +26,20 @@
     <meta property="og:url" content="https://retail-espacios.onrender.com/" />
     <meta property="og:locale" content="es_CO" />
     <meta name="twitter:card" content="summary_large_image" />
-    <!-- FALTA `og:image` (1200 × 630 px, el plano isométrico de ejemplo con la
-         leyenda visible, imagen LOCAL del repo). No se pone una etiqueta que
-         apunte a un archivo que no existe: sin `og:image` el enlace compartido
-         se ve como tarjeta chica; con una ruta rota, roto. Lo pendiente está
-         anotado en `features/landing/outputs/frontend.md`. -->
+<!-- La imagen de la tarjeta (auditoría P3-14): 1200 × 630, la portada con
+         el plano isométrico de EJEMPLO y la leyenda de estados (ningún dato de
+         un cliente). Es una captura de la landing de este repo; se rehace con
+         `node scripts/generar-og.mjs` (ver el comentario del script). La URL
+         es absoluta porque así la piden los que leen OG (WhatsApp, Slack). -->
+    <meta property="og:image" content="https://retail-espacios.onrender.com/og-recabra.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Plano isométrico de un supermercado de ejemplo, con los muebles pintados según estén libres, por liberarse u ocupados."
+    />
+    <meta name="twitter:image" content="https://retail-espacios.onrender.com/og-recabra.png" />
 
     <!-- CERO FUENTES WEB (Fase 10). Acá había un `preconnect` a
          fonts.googleapis.com, otro a fonts.gstatic.com y la hoja de Chivo +

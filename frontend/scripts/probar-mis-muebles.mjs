@@ -110,7 +110,8 @@ await prueba("el 3D no coloca, arrastra, gira, borra ni deshace", () => {
 
 await prueba("el 3D dice dónde se edita y deja lo de mirar", () => {
   assert.ok(ed3D.includes("data-mirar-3d") && ed3D.includes("data-editar-en-2d") && ed3D.includes("data-editar-en-2d-panel"));
-  assert.equal((ed3D.match(/navigate\("\/plano"\)/g) ?? []).length, 3, "«Editar en el 2D» / «Ir al plano 2D» no llevan al plano");
+  // Tres botones y la salida del 3D que no se puede dibujar (P2-19, `irAl2D`).
+  assert.equal((ed3D.match(/navigate\("\/plano"\)/g) ?? []).length, 4, "«Editar en el 2D» / «Ir al plano 2D» no llevan al plano");
   for (const sigue of ["<VistaProveedor", "Distribuir esta cara", "alternarPresentar", "setFirstPerson(p => !p)", "exportarPropuesta"]) {
     assert.ok(ed3D.includes(sigue), `el 3D perdió «${sigue}»`);
   }
