@@ -37,7 +37,7 @@ F. **¿La aritmética interna protege la frontera?** — lo que no cuadra suele 
 **Todos los ``import app.*`` van adentro de las funciones**: el fixture
 ``client`` de ``conftest.py`` purga ``sys.modules['app.*']`` entre pruebas.
 """
-from tests.sembrado import total_del_plazo
+from tests.sembrado import total_del_plazo, marcar_cancelados
 import json
 import re
 from datetime import date, timedelta
@@ -447,6 +447,7 @@ def _sembrar(slug, sedes: dict, contratos: list, *, correo_proveedor, telefono_p
                 content_type="application/pdf", size=len(BYTES_ARCHIVO),
                 data=BYTES_ARCHIVO, subido_por=CORREO_ADMIN_A,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

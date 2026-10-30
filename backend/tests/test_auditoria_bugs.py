@@ -31,6 +31,7 @@ Helpers copiados de `tests/test_plataforma_metricas.py` /
 archivo: un test de auditoría que importa del código que audita comparte sus
 errores).
 """
+from tests.sembrado import marcar_cancelados
 import json
 from datetime import date
 from types import SimpleNamespace
@@ -126,6 +127,7 @@ def _sembrar(slug, sedes: dict, contratos: list):
                 monthly_rent=canon,
                 is_active=activo,
             ))
+        marcar_cancelados(db)  # is_active=False es una baja (auditoría P1-17)
         db.commit()
     finally:
         db.close()

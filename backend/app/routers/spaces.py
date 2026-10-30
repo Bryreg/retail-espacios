@@ -10,11 +10,11 @@ from app.clientes import Cliente, cliente_del_pedido
 from app.database import get_db
 from app.fechas import hoy
 from app.models.models import Space, SpaceFace, SpaceLease, Supplier, SpaceStatus
-from app.models.vender import ReservaDeEspacio
+from app.models.vender import CondicionesDeContrato, ReservaDeEspacio
 from app.services.bitacora import anotar
 from app.services.condiciones import ETIQUETA_DEL_VALOR, valor_de_lease
 from app.schemas.spaces import (
-    SpaceOut, SpaceCreate, SpaceStatusUpdate, LeaseCreate, LeaseOut, SpaceMapItem,
+    SpaceOut, SpaceStatusUpdate, LeaseCreate, LeaseOut,
     SpaceFindOrCreate, AvisosContrato,
 )
 from app.services.contacts import recipients_for
@@ -98,25 +98,8 @@ def expire_leases(db: Session) -> int:
     return count
 
 
-@router.get("/map", response_model=list[SpaceMapItem])
-def get_map_status(db: Session = Depends(get_db)):
-    # Expire stale leases on every map refresh so the UI always reflects reality
-    expire_leases(db)
-    spaces = db.query(Space).options(
-        joinedload(Space.leases).joinedload(SpaceLease.supplier)
-    ).all()
-    result = []
-    for space in spaces:
-        # Space.active_lease is date-aware: a lease signed for a future period
-        # is deliberately not reported here.
-        active_lease = space.active_lease
-        result.append(SpaceMapItem(
-            svg_id=space.svg_id,
-            status=space.status,
-            name=space.name,
-            supplier_name=active_lease.supplier.name if active_lease else None,
-        ))
-    return result
+# `GET /spaces/map` (el estado por `svg_id`) se fue el 2026-10-30 (auditoría
+# P2-12): nada lo llamaba. Lo comercial se lee de `GET /spaces/comercial`.
 
 
 # ─── El estado comercial, que es de la BASE ───────────────────────────────────
@@ -303,16 +286,9 @@ def find_or_create_space(payload: SpaceFindOrCreate, db: Session = Depends(get_d
     return buscar(Space.code == codigo)
 
 
-@router.post("/", response_model=SpaceOut, status_code=201, dependencies=[Depends(require_admin)])
-def create_space(payload: SpaceCreate, db: Session = Depends(get_db)):
-    existing = db.query(Space).filter(Space.svg_id == payload.svg_id).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Ya existe un espacio con ese svg_id")
-    space = Space(**payload.model_dump(), status=SpaceStatus.free)
-    db.add(space)
-    db.commit()
-    db.refresh(space)
-    return space
+# `POST /spaces/` (crear un espacio suelto, por `svg_id`) se fue el 2026-10-30
+# (auditoría P2-12): nadie lo llamaba; los espacios nacen con `find-or-create`
+# o con el alta del contrato (`services/alta_de_contrato.espacio_para`).
 
 
 @router.get("/linea")
@@ -417,16 +393,6 @@ def get_space(space_id: int, role: str = Depends(require_auth), db: Session = De
     space = db.query(Space).options(
         joinedload(Space.leases).joinedload(SpaceLease.supplier)
     ).filter(Space.id == space_id).first()
-    if not space:
-        raise HTTPException(status_code=404, detail="Espacio no encontrado")
-    return _space_out_for_role(space, role)
-
-
-@router.get("/by-svg/{svg_id}", response_model=SpaceOut)
-def get_space_by_svg(svg_id: str, role: str = Depends(require_auth), db: Session = Depends(get_db)):
-    space = db.query(Space).options(
-        joinedload(Space.leases).joinedload(SpaceLease.supplier)
-    ).filter(Space.svg_id == svg_id).first()
     if not space:
         raise HTTPException(status_code=404, detail="Espacio no encontrado")
     return _space_out_for_role(space, role)
@@ -767,6 +733,11 @@ def create_lease(
     # `flush` asigna el id sin cerrar la transacción, así que la bitácora puede
     # nombrar el contrato y seguir viajando con el mismo commit.
     db.flush()
+    # Ruta vieja, que hoy sólo usan las pruebas para armar un contrato
+    # (auditoría P2-12): escribe con la semántica de Vender —el valor es el
+    # TOTAL, en pesos enteros (`LeaseCreate`), y se dice así—, para que no nazca
+    # un contrato «sin forma» que después caiga en «Contratos cargados antes».
+    db.add(CondicionesDeContrato(lease_id=lease.id, modo_precio="total", valor_tecleado=lease.monthly_rent))
     # El aviso de montaje espera la planometría (decisión del dueño,
     # 2026-10-20): sale al cargarla, una vez (`services/montajes_pendientes.py`).
     dejar_pendiente(db, lease)
@@ -874,6 +845,10 @@ def cancel_lease(
         raise HTTPException(status_code=409, detail="El contrato ya estaba cancelado")
 
     lease.is_active = False
+    # El día de la baja (auditoría P2-13): la serie lo devenga hasta el día
+    # anterior, en vez de sacarlo de todos los meses.
+    from app.services.historial import anotar_baja
+    anotar_baja(db, lease, hoy(), "cancelado", actor_de(request, rol))
 
     # Only mark the space free when no other active lease remains
     remaining = (

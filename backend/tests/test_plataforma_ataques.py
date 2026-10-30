@@ -181,14 +181,12 @@ def _bases_en_disco():
 # Muestra ANCHA de mutaciones de negocio: un endpoint por router que muta, no
 # sólo el que el builder probó. Cada tupla es (método, ruta, cuerpo json).
 MUTACIONES_DE_NEGOCIO = [
-    ("POST", "/api/spaces/", {"svg_id": "s1", "code": "A-1", "sede": "PUN"}),
     ("POST", "/api/spaces/find-or-create", {"svg_id": "s1", "code": "A-1", "sede": "PUN"}),
     ("PATCH", "/api/spaces/1/status", {"status": "occupied"}),
     ("POST", "/api/spaces/1/leases", {"supplier_id": 1}),
     ("DELETE", "/api/spaces/1/leases/1", None),
     ("POST", "/api/suppliers/", {"name": "Proveedor X"}),
     ("POST", "/api/suppliers/find-or-create", {"name": "Proveedor X"}),
-    ("PUT", "/api/suppliers/1", {"name": "Proveedor Y"}),
     ("DELETE", "/api/suppliers/1", None),
     ("PUT", "/api/layout/settings", {}),
     ("PUT", "/api/layout/seasons", {}),
@@ -213,10 +211,10 @@ MUTACIONES_DE_NEGOCIO = [
 # Muestra ancha de LECTURAS de negocio — las que `suspendido` también corta.
 LECTURAS_DE_NEGOCIO = [
     "/api/spaces/",
-    "/api/spaces/map",
+    "/api/spaces/comercial",
     "/api/suppliers/",
-    "/api/dashboard/kpis",
-    "/api/dashboard/spaces",
+    "/api/dashboard/serie",
+    "/api/dashboard/serie",
     "/api/layout/",
     "/api/mounts/",
     "/api/catalogo/",
@@ -547,7 +545,7 @@ def test_e_el_operador_no_ve_ni_toca_datos_de_negocio_de_nadie(client, monkeypat
 
     # 2) Su token sigue siendo el de "operadora": el negocio que ve es el suyo
     #    (vacío), no el de nadie más — ni forzando el cliente por query.
-    for ruta in ("/api/suppliers/", "/api/spaces/", "/api/dashboard/spaces"):
+    for ruta in ("/api/suppliers/", "/api/spaces/", "/api/dashboard/serie"):
         for sufijo in ("", "?cliente=ajenita", f"?token={ajena['token']}"):
             rr = client.get(ruta + sufijo, headers=cab_op)
             assert rr.status_code == 200, (ruta, sufijo, rr.text)
@@ -746,8 +744,8 @@ def test_j_ni_head_ni_options_abren_una_mutacion_en_solo_lectura(client, admin):
 
     # Y el único GET que SÍ escribe por dentro —`expire_leases()`— sigue
     # funcionando, que es la mitad que se rompe si el corte fuera a la sesión.
-    assert client.get("/api/spaces/map", headers=admin).status_code == 200
-    assert client.head("/api/spaces/map", headers=admin).status_code == 405
+    assert client.get("/api/spaces/comercial", headers=admin).status_code == 200
+    assert client.head("/api/spaces/comercial", headers=admin).status_code == 405
 
 
 def test_k_suspendido_en_oauth_deja_afuera_a_la_gente_y_adentro_al_owner(client, admin):
@@ -831,8 +829,8 @@ def test_m_sin_fila_y_con_fila_activo_la_suite_de_humo_pasa_igual(client):
         assert "aviso_cuenta" not in r.json(), r.json()
         cab = _cab(r.json()["token"])
         assert client.get("/api/spaces/", headers=cab).status_code == 200
-        assert client.get("/api/spaces/map", headers=cab).status_code == 200
-        assert client.get("/api/dashboard/kpis", headers=cab).status_code == 200
+        assert client.get("/api/spaces/comercial", headers=cab).status_code == 200
+        assert client.get("/api/dashboard/serie", headers=cab).status_code == 200
         return client.post("/api/suppliers/", json={"name": f"Prov {os.urandom(3).hex()}"},
                            headers=cab).status_code
 

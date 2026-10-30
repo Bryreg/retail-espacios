@@ -209,6 +209,31 @@ class ContratoReemplazado(Base):
     por = Column(String, nullable=True)
 
 
+#: Por qué se dio de baja un contrato antes de su fin: «Cancelar el contrato»
+#: o el borrado de su sede (que lo cierra con ella).
+MOTIVOS_DE_BAJA = ("cancelado", "sede")
+
+
+class BajaDeContrato(Base):
+    """El día en que un contrato DEJÓ de correr por una baja (auditoría P2-13).
+
+    `is_active = False` no guardaba la fecha, así que la serie de Indicadores
+    y las métricas de la plataforma sacaban al cancelado de TODOS los meses:
+    un contrato de seis meses cancelado en el cuarto dejaba de haber sido canon
+    en los tres primeros. Con esta fila se devenga hasta el día anterior a
+    ``efectiva`` (`services/historial.tramo_devengado`). Tabla nueva: ninguna
+    columna entra en `space_leases`."""
+
+    __tablename__ = "bajas_de_contrato"
+
+    lease_id = Column(Integer, ForeignKey("space_leases.id"), primary_key=True, autoincrement=False)
+    #: Desde este día (Colombia) el contrato ya no corre.
+    efectiva = Column(Date, nullable=False)
+    motivo = Column(String, nullable=False, default="cancelado")
+    en = Column(DateTime(timezone=True), nullable=False, default=_ahora)
+    por = Column(String, nullable=True)
+
+
 #: Lo que dice quien verifica el montaje de un contrato.
 RESULTADOS_DE_VERIFICACION = ("coincide", "no_coincide")
 

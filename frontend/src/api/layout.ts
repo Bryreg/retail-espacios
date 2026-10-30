@@ -71,12 +71,21 @@ export const saveSeasonWindows = (
 
 /** Admin-only in both directions — a worker request gets 403, so only call
  *  these from an admin session. */
-export const fetchReferenceRates = (): Promise<ReferenceRates> =>
+export const fetchReferenceRates = (): Promise<ReferenceRates & { updated_at?: string | null }> =>
   client.get("/layout/rates").then((r) => r.data);
 
-export const saveReferenceRates = (rates: ReferenceRates): Promise<ReferenceRates> =>
+/** `base`: la revisión que se leyó (`updated_at`; `null` si nunca se
+ *  guardaron). Con ella el servidor contesta 409 `rates_conflict` si otra
+ *  persona guardó después (auditoría P2-17). Sin leer nada (`undefined`), no
+ *  se manda y escribe como antes. */
+export const saveReferenceRates = (
+  rates: ReferenceRates, base?: string | null,
+): Promise<ReferenceRates & { updated_at?: string | null }> =>
   client
-    .put("/layout/rates", { default: rates.default, by_sede: rates.by_sede })
+    .put("/layout/rates", {
+      default: rates.default, by_sede: rates.by_sede,
+      ...(base !== undefined ? { base_updated_at: base } : {}),
+    })
     .then((r) => r.data);
 
 export const saveLayoutSettings = (

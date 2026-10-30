@@ -64,6 +64,7 @@ from app.services.renumeracion import Rastreador
 from app.schemas.spaces import AvisosContrato
 from app.services.condiciones import ETIQUETA_DEL_VALOR, condiciones_de, texto_del_total, texto_del_valor
 from app.services.contacts import recipients_for
+from app.schemas.pesos import PesosOpcional
 from app.services.mailer import (
     app_base_url, correo_configurado, format_cop, html_shell, send_mail_to_bg,
 )
@@ -91,8 +92,9 @@ class FilaIn(BaseModel):
     marca: Optional[str] = None
     #: En la PLANILLA, lo de cada MES (decisión del dueño, 2026-10-26): el total
     #: es ese valor × los meses. En los demás caminos que reusan `_revisar`
-    #: (Vender, reservas, editar), el total del contrato, como siempre.
-    valor: Optional[float] = None
+    #: (Vender, reservas, editar), el total del contrato, como siempre. En pesos
+    #: enteros (auditoría P2-11): `1234.5` entra como `1235`.
+    valor: PesosOpcional = None
     #: ISO. El navegador ya resolvió el formato de la celda —fecha de Excel,
     #: dd/mm/aaaa, aaaa-mm-dd— porque es donde está el archivo.
     desde: Optional[str] = None

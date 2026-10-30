@@ -454,8 +454,10 @@ def test_h4c_worker_no_ve_la_plata_nueva_de_vender(client, admin, worker):
 
     for url in ("/api/cobros", "/api/cobros/pendientes", "/api/reservas", "/api/suppliers/completar?prefijo=pro"):
         assert client.get(url, headers=worker).status_code == 403, url
-    for url in ("/api/spaces/comercial", "/api/participaciones/ocupacion?sede=NAVE", "/api/dashboard/spaces",
-                "/api/dashboard/kpis", "/api/spaces/"):
+    # (`/dashboard/kpis` y `/dashboard/spaces` se fueron el 2026-10-30: la serie
+    # del canon es sólo de administración, y el trabajador recibe 403.)
+    assert client.get("/api/dashboard/serie", headers=worker).status_code == 403
+    for url in ("/api/spaces/comercial", "/api/participaciones/ocupacion?sede=NAVE", "/api/spaces/"):
         r = client.get(url, headers=worker)
         assert r.status_code == 200, url
         for plata in ("4444444", "3333333", "13.7", "valor_acordado", "valor_tecleado", "porcentaje"):

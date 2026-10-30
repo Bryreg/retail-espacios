@@ -177,7 +177,7 @@ def test_borrar_una_sede_queda_anotado_con_el_estropicio(client, admin):
 def test_mirar_no_deja_rastro(client, admin):
     """Sólo se anota lo que cambia algo o abre una puerta. Si cada listado
     dejara línea, lo que importa se pierde entre el ruido."""
-    for ruta in ("/api/spaces/", "/api/suppliers/", "/api/dashboard/kpis", "/api/spaces/map"):
+    for ruta in ("/api/spaces/", "/api/suppliers/", "/api/dashboard/serie", "/api/spaces/comercial"):
         client.get(ruta, headers=admin)
 
     acciones = set(_acciones(client, admin))

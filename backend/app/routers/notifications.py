@@ -1,11 +1,12 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_config, require_admin, require_auth, set_config
 from app.database import get_db
+from app.services.bitacora import anotar
 from app.services.contacts import get_contacts, recipients_for, save_contacts
 from app.services.mailer import (
     clean_recipients, enviar_con_diagnostico, html_shell, correo_configurado, smtp_settings,
@@ -57,8 +58,9 @@ def get_notification_config(db: Session = Depends(get_db)):
     )
 
 
-@router.put("/config", response_model=NotificationConfigOut, dependencies=[Depends(require_admin)])
-def update_notification_config(payload: NotificationConfigIn, db: Session = Depends(get_db)):
+@router.put("/config", response_model=NotificationConfigOut)
+def update_notification_config(payload: NotificationConfigIn, request: Request,
+                               rol: str = Depends(require_admin), db: Session = Depends(get_db)):
     if payload.notify_emails is not None:
         set_config(db, "notify_emails", payload.notify_emails.strip())
 
@@ -73,6 +75,10 @@ def update_notification_config(payload: NotificationConfigIn, db: Session = Depe
             )
         set_config(db, "reminder_days", cleaned)
 
+    # La bitácora (auditoría P2-14): qué se cambió, sin los correos.
+    cambios = [c for c, v in (("correos", payload.notify_emails), ("días de aviso", payload.reminder_days))
+               if v is not None]
+    anotar(db, request, rol, "ajustes.avisos", detalle=", ".join(cambios) or None)
     db.commit()
     return get_notification_config(db)
 
@@ -91,13 +97,16 @@ def read_contacts(db: Session = Depends(get_db)):
     )
 
 
-@router.put("/contacts", response_model=ContactBook, dependencies=[Depends(require_admin)])
-def write_contacts(payload: ContactBook, db: Session = Depends(get_db)):
+@router.put("/contacts", response_model=ContactBook)
+def write_contacts(payload: ContactBook, request: Request, rol: str = Depends(require_admin),
+                   db: Session = Depends(get_db)):
     saved = save_contacts(
         db,
         payload.gerente,
         {s: r.model_dump() for s, r in payload.by_sede.items()},
     )
+    # Sin las direcciones: son del personal (auditoría P2-14).
+    anotar(db, request, rol, "ajustes.contactos", detalle=f"{len(payload.by_sede)} sede(s)")
     db.commit()
     return ContactBook(
         gerente=saved["gerente"],

@@ -45,6 +45,7 @@ from app.models.models import (
 from app.fechas import hoy
 from app.models.vender import ReservaDeEspacio
 from app.services.candado import tomar_candados
+from app.services.historial import anotar_baja
 from app.services.ciclo_participaciones import (
     al_archivar_sede, codigos_de_caras_con_terminos, reservas_vivas,
 )
@@ -295,6 +296,8 @@ def archive_sede_spaces(db: Session, sede: str, actor: str | None = None) -> dic
             if not lease.is_active:
                 continue
             lease.is_active = False
+            # Corrió hasta hoy (auditoría P2-13): la serie lo devenga hasta acá.
+            anotar_baja(db, lease, hoy(), "sede", actor)
             # The dates and the amount are the contract; they are not rewritten.
             # Only the "this is current" flag changes, and that is now true.
             closed_count += 1

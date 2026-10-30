@@ -85,6 +85,7 @@ SETTINGS_UPDATED_KEY = "layout_settings_updated_at"
 # La generación de los datos (ver `services/traspaso.py`). Se lee acá y se
 # escribe sólo allá.
 from app.services.traspaso import CLAVE_GENERACION  # noqa: E402
+from app.services.meses import al_peso
 RATES_KEY = "layout_reference_rates"
 RATES_UPDATED_KEY = "layout_reference_rates_updated_at"
 SEASONS_KEY = "layout_season_windows"
@@ -663,8 +664,9 @@ def get_settings(response: Response, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/settings", response_model=LayoutSettingsOut, dependencies=[Depends(require_admin)])
-def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
+@router.put("/settings", response_model=LayoutSettingsOut)
+def save_settings(payload: LayoutSettingsIn, request: Request, rol: str = Depends(require_admin),
+                  db: Session = Depends(get_db)):
     """Replace the shared sede list and catalog labels.
 
     The sede list is a single value replaced whole, so two admins touching
@@ -699,6 +701,8 @@ def save_settings(payload: LayoutSettingsIn, db: Session = Depends(get_db)):
     set_config(db, SEDES_KEY, json.dumps(payload.sedes))
     set_config(db, CATALOG_LABELS_KEY, json.dumps(payload.catalog_labels))
     set_config(db, SETTINGS_UPDATED_KEY, now.isoformat())
+    # La bitácora (auditoría P2-14): cuántas sedes quedaron.
+    anotar(db, request, rol, "ajustes.sedes", detalle=f"{len(payload.sedes)} sede(s)")
     try:
         db.commit()
     except IntegrityError:
@@ -811,8 +815,9 @@ def get_season_windows(response: Response, db: Session = Depends(get_db)):
     return SeasonWindowsOut(windows=windows, updated_at=updated_at)
 
 
-@router.put("/seasons", response_model=SeasonWindowsOut, dependencies=[Depends(require_admin)])
-def save_season_windows(payload: SeasonWindowsIn, db: Session = Depends(get_db)):
+@router.put("/seasons", response_model=SeasonWindowsOut)
+def save_season_windows(payload: SeasonWindowsIn, request: Request, rol: str = Depends(require_admin),
+                        db: Session = Depends(get_db)):
     """Replace the season windows. Same for every sede — they are not per-store."""
     now = datetime.now(timezone.utc)
     clean = {
@@ -822,6 +827,7 @@ def save_season_windows(payload: SeasonWindowsIn, db: Session = Depends(get_db))
     }
     set_config(db, SEASONS_KEY, json.dumps(clean))
     set_config(db, SEASONS_UPDATED_KEY, now.isoformat())
+    anotar(db, request, rol, "ajustes.temporadas", detalle=f"{len(clean)} temporada(s)")
     db.commit()
     return SeasonWindowsOut(
         windows={k: SeasonWindow(**v) for k, v in clean.items()},
@@ -847,8 +853,11 @@ def _clean_rates(raw: dict) -> dict[str, float]:
             number = float(value)
         except (TypeError, ValueError):
             continue
+        if number != number or number in (float("inf"), float("-inf")):
+            continue
         if number > 0:
-            clean[key.strip()] = number
+            # En pesos enteros (auditoría P2-11): `1234.5` queda `1235`.
+            clean[key.strip()] = al_peso(number)
     return clean
 
 
@@ -896,9 +905,42 @@ def get_reference_rates(response: Response, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/rates", response_model=ReferenceRatesOut, dependencies=[Depends(require_admin)])
-def save_reference_rates(payload: ReferenceRatesIn, db: Session = Depends(get_db)):
-    """Replace the reference rates. Sede keys are normalised like sede names."""
+def _revision_de_las_tarifas(db: Session) -> datetime | None:
+    raw = get_config(db, RATES_UPDATED_KEY)
+    if not raw:
+        return None
+    try:
+        return _as_utc(datetime.fromisoformat(raw))
+    except ValueError:
+        return None
+
+
+@router.put("/rates", response_model=ReferenceRatesOut)
+def save_reference_rates(payload: ReferenceRatesIn, request: Request, rol: str = Depends(require_admin),
+                         db: Session = Depends(get_db)):
+    """Replace the reference rates. Sede keys are normalised like sede names.
+
+    **Gana la primera, no la última** (auditoría P2-17). Las tarifas son un
+    solo valor que se reemplaza entero: dos personas con Ajustes abierto se
+    pisaban sin enterarse. Como en el layout y en los settings, quien manda
+    ``base_updated_at`` (la pantalla, siempre) escribe sólo si nadie guardó
+    después de lo que leyó; si no, 409 ``rates_conflict`` con la revisión del
+    servidor, y la pantalla relee.
+    """
+    if "base_updated_at" in payload.model_fields_set:
+        guardada = _revision_de_las_tarifas(db)
+        base = _as_utc(payload.base_updated_at)
+        distinta = (guardada is None) != (base is None) or (
+            guardada is not None and base is not None and _truncate_ms(guardada) != _truncate_ms(base))
+        if distinta:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "rates_conflict",
+                    "message": "Otra persona cambió las tarifas mientras editabas.",
+                    "server_updated_at": guardada.isoformat() if guardada else None,
+                },
+            )
     now = datetime.now(timezone.utc)
     default = _clean_rates(payload.default)
     by_sede: dict[str, dict[str, float]] = {}
@@ -911,6 +953,9 @@ def save_reference_rates(payload: ReferenceRatesIn, db: Session = Depends(get_db
             by_sede[name] = clean
     set_config(db, RATES_KEY, json.dumps({"default": default, "by_sede": by_sede}))
     set_config(db, RATES_UPDATED_KEY, now.isoformat())
+    # La bitácora (auditoría P2-14): cuántas tarifas quedaron, sin los montos.
+    anotar(db, request, rol, "ajustes.tarifas",
+           detalle=f"{len(default)} general(es) · {sum(len(v) for v in by_sede.values())} por sede")
     db.commit()
     return ReferenceRatesOut(default=default, by_sede=by_sede, updated_at=now)
 
@@ -1594,6 +1639,10 @@ def save_layout(sede: str, payload: LayoutIn, request: Request, db: Session = De
         _con_la_ficha_de_antes(fixtures, [])
         snap = LayoutSnapshot(sede=sede, fixtures_json=json.dumps(fixtures))
         db.add(snap)
+    # Una línea de resumen por guardado (auditoría P2-14): la sede y cuántos
+    # muebles quedaron; el detalle del plano está en sus revisiones.
+    anotar(db, request, "admin", "plano.guardado", entidad="sede", entidad_id=sede,
+           detalle=f"{len([f for f in fixtures if isinstance(f, dict)])} mueble(s)")
     try:
         db.commit()
     except IntegrityError:

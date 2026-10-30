@@ -649,7 +649,7 @@ def test_x13_las_cabeceras_estan_en_200_401_404_422_429_y_402(client, admin, mon
     assert r404.status_code == 404
     _assert_cabeceras(r404, "404 de /api")
 
-    r422 = client.post("/api/spaces/", json={}, headers=admin)
+    r422 = client.post("/api/spaces/find-or-create", json={}, headers=admin)
     assert r422.status_code == 422
     _assert_cabeceras(r422, "422")
 

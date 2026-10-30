@@ -1,0 +1,200 @@
+{
+  "que_es": "Casos compartidos del canon del mes: backend/app/services/canon.py y frontend/src/utils/canon.ts (tests/test_canon.py y scripts/probar-canon.mjs). Pesos enteros.",
+  "casos": [
+    {
+      "por": "un mes entero: el canon al mes, tal cual",
+      "mes": "2026-11",
+      "contratos": [
+        {
+          "valor": 600000,
+          "desde": "2026-11-01",
+          "hasta": "2026-11-30"
+        }
+      ],
+      "cortes": [],
+      "canon": 600000
+    },
+    {
+      "por": "tres meses: el total repartido en sus meses",
+      "mes": "2026-12",
+      "contratos": [
+        {
+          "valor": 1800000,
+          "desde": "2026-11-01",
+          "hasta": "2027-01-31"
+        }
+      ],
+      "cortes": [],
+      "canon": 600000
+    },
+    {
+      "por": "arranca el 16 de un mes de 31: 16 días de 31",
+      "mes": "2026-10",
+      "contratos": [
+        {
+          "valor": 600000,
+          "desde": "2026-10-16",
+          "hasta": "2026-12-15"
+        }
+      ],
+      "cortes": [],
+      "canon": 154839
+    },
+    {
+      "por": "termina el 9: 9 días del mes",
+      "mes": "2026-11",
+      "contratos": [
+        {
+          "valor": 1000001,
+          "desde": "2026-09-03",
+          "hasta": "2026-11-09"
+        }
+      ],
+      "cortes": [],
+      "canon": 134328
+    },
+    {
+      "por": "dos contratos que se suman y se redondean UNA vez",
+      "mes": "2026-10",
+      "contratos": [
+        {
+          "valor": 600000,
+          "desde": "2026-10-16",
+          "hasta": "2026-12-15"
+        },
+        {
+          "valor": 1000001,
+          "desde": "2026-09-03",
+          "hasta": "2026-11-09"
+        }
+      ],
+      "cortes": [],
+      "canon": 602600
+    },
+    {
+      "por": "fuera del mes: nada",
+      "mes": "2026-10",
+      "contratos": [
+        {
+          "valor": 900000,
+          "desde": "2026-06-01",
+          "hasta": "2026-08-31"
+        }
+      ],
+      "cortes": [],
+      "canon": 0
+    },
+    {
+      "por": "cancelado: corre hasta corta (seis meses, cancelado el 1.º del cuarto)",
+      "mes": "2026-10",
+      "contratos": [
+        {
+          "valor": 1800000,
+          "desde": "2026-07-01",
+          "hasta": "2026-12-31",
+          "corta": "2026-09-30"
+        }
+      ],
+      "cortes": [],
+      "canon": 0
+    },
+    {
+      "por": "cancelado a mitad de mes: los días hasta corta",
+      "mes": "2026-10",
+      "contratos": [
+        {
+          "valor": 1800000,
+          "desde": "2026-07-01",
+          "hasta": "2026-12-31",
+          "corta": "2026-10-10"
+        }
+      ],
+      "cortes": [],
+      "canon": 96774
+    },
+    {
+      "por": "febrero bisiesto: 29 días",
+      "mes": "2028-02",
+      "contratos": [
+        {
+          "valor": 500000,
+          "desde": "2028-02-15",
+          "hasta": "2028-03-14"
+        }
+      ],
+      "cortes": [],
+      "canon": 258621
+    },
+    {
+      "por": "un día suelto: el mes comercial de 30, prorrateado en uno de 31",
+      "mes": "2026-12",
+      "contratos": [
+        {
+          "valor": 30000,
+          "desde": "2026-12-24",
+          "hasta": "2026-12-24"
+        }
+      ],
+      "cortes": [],
+      "canon": 29032
+    },
+    {
+      "por": "un corte de ventas dentro del mes, entero",
+      "mes": "2026-10",
+      "contratos": [],
+      "cortes": [
+        {
+          "monto": 123456.7,
+          "desde": "2026-10-01",
+          "hasta": "2026-10-31"
+        }
+      ],
+      "canon": 123457
+    },
+    {
+      "por": "un corte «al final» de tres meses: repartido por días",
+      "mes": "2026-11",
+      "contratos": [],
+      "cortes": [
+        {
+          "monto": 900000,
+          "desde": "2026-10-01",
+          "hasta": "2026-12-31"
+        }
+      ],
+      "canon": 293478
+    },
+    {
+      "por": "contrato y corte juntos, con medio peso que sube",
+      "mes": "2026-11",
+      "contratos": [
+        {
+          "valor": 333333,
+          "desde": "2026-11-01",
+          "hasta": "2026-11-30"
+        }
+      ],
+      "cortes": [
+        {
+          "monto": 0.5,
+          "desde": "2026-11-01",
+          "hasta": "2026-11-30"
+        }
+      ],
+      "canon": 333334
+    },
+    {
+      "por": "valor en cero (cobro por ventas): no aporta",
+      "mes": "2026-11",
+      "contratos": [
+        {
+          "valor": 0,
+          "desde": "2026-11-01",
+          "hasta": "2026-11-30"
+        }
+      ],
+      "cortes": [],
+      "canon": 0
+    }
+  ]
+}

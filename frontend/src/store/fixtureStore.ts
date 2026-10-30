@@ -206,6 +206,11 @@ function scheduleSeasonsSave() {
 // ─── Reference rates (admin-only money) ───────────────────────────────────────
 
 let _ratesTimer: ReturnType<typeof setTimeout> | null = null;
+/** La revisión de las tarifas que este navegador leyó (`updated_at` de
+ *  `GET /layout/rates`): viaja al guardar, y si otra persona guardó después
+ *  el servidor contesta 409 en vez de pisarla (auditoría P2-17). `undefined`:
+ *  todavía no se leyó. */
+let _revisionDeTarifas: string | null | undefined = undefined;
 
 function scheduleRatesSave() {
   if (_ratesTimer) clearTimeout(_ratesTimer);
@@ -1243,11 +1248,27 @@ export const useFixtureStore = create<FixtureStore>()(
         try {
           // Adopt the server's normalised copy (sede keys uppercased, zeros
           // dropped) so what this tab shows is exactly what everyone else pulls.
-          const saved = await saveReferenceRates(rates);
-          set((s) => (s.referenceRates === rates ? { referenceRates: saved } : s));
+          const saved = await saveReferenceRates(rates, _revisionDeTarifas);
+          _revisionDeTarifas = saved.updated_at ?? null;
+          set((s) => (s.referenceRates === rates ? { referenceRates: { default: saved.default, by_sede: saved.by_sede } } : s));
         } catch (err: any) {
           const status = err?.response?.status;
           if (status === 401 || status === 403) return;
+          if (status === 409 && err?.response?.data?.detail?.code === "rates_conflict") {
+            // Otra persona guardó las tarifas después de que este navegador las
+            // leyó: no se pisan. Se trae lo suyo y se dice; lo tecleado acá se
+            // vuelve a escribir encima de lo de ella, sabiéndolo.
+            try {
+              const deAhora = await fetchReferenceRates();
+              _revisionDeTarifas = deAhora.updated_at ?? null;
+              set({ referenceRates: { default: deAhora.default, by_sede: deAhora.by_sede } });
+            } catch { /* se queda con lo que tenía; el próximo pull trae lo de ella */ }
+            set({
+              syncState: "error",
+              syncMessage: "Otra persona cambió las tarifas mientras editabas: se cargaron las suyas. Revisalas y volvé a escribir lo tuyo.",
+            });
+            return;
+          }
           console.warn("[layout sync] no se pudieron guardar las tarifas:", err);
           set({
             syncState: "error",
@@ -1279,6 +1300,7 @@ export const useFixtureStore = create<FixtureStore>()(
           // Re-check after the await: an edit made while the request was in
           // flight owns the truth until its push resolves.
           if (!_ratesTimer) {
+            _revisionDeTarifas = rates.updated_at ?? null;
             set({ referenceRates: { default: rates.default, by_sede: rates.by_sede } });
           }
         } catch {
@@ -1465,6 +1487,7 @@ export const useFixtureStore = create<FixtureStore>()(
             if (role !== "admin") {
               next.referenceRates = null;
             } else if (rates && !_ratesTimer) {
+              _revisionDeTarifas = rates.updated_at ?? null;
               next.referenceRates = { default: rates.default, by_sede: rates.by_sede };
             }
 

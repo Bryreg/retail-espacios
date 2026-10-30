@@ -176,6 +176,7 @@ import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
 // corre también con Vender abierto, así que vive en `utils/meses`, no en la
 // plata de Supervisar.
 import { bajoLaTarifa } from "../utils/meses";
+import { canonDelMes as calcularCanonDelMes, hoyEnColombia } from "../utils/canon";
 import {
   DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, avisoPorClave, contarPorGrupo, cuentaDelBadge,
   deParticipacionesEn, diasDelRenglon, grupoDelAviso, grupoParaAbrir, puntosDelPlano, tituloDeSeccion,
@@ -6479,20 +6480,39 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     useArmazon.getState().abrirBandeja("hoy");
   }, [inicio, cuentasDeRevision.hoy]);
 
-  /** El canon del mes del Inicio: los contratos vigentes, cada uno en sus
-   *  meses, y lo cargado de los que se cobran por % de las ventas. Es la cuenta
-   *  de «Canon vigente» con la plata «Al mes», sin importar qué unidad eligió
-   *  quien mira la franja. */
+  /** La serie de canon por mes (`GET /dashboard/serie`, sólo administración):
+   *  la curva de 12 meses y «Todas las sedes» de Indicadores, y el canon del
+   *  mes de Inicio. */
+  const [serie, setSerie] = useState<SerieDeCanon | null>(null);
+  useEffect(() => {
+    if (!isAdmin || !(enIndicadores || inicio)) return;
+    let vivo = true;
+    getSerieDeCanon(24).then((r) => { if (vivo) setSerie(r); }).catch(() => { if (vivo) setSerie(null); });
+    return () => { vivo = false; };
+  }, [isAdmin, enIndicadores, inicio]);
+
+  /** El canon del mes de Inicio, del Mapa y de Análisis: UNA definición, la
+   *  del servidor (auditoría P1-16): lo devengado en el mes, cada contrato por
+   *  los días del mes que corre, al peso (`utils/canon.ts`, gemela de
+   *  `services/canon.py`). Con la serie a mano, sobre los contratos y cortes con
+   *  que el servidor sacó la de «Todas las sedes» (`del_mes`): las dos cifras
+   *  son la misma. Mientras llega, con lo que el navegador ya tiene (lo vigente
+   *  y lo firmado que arranca este mes, y los cortes cargados). El mes es el
+   *  de Colombia —el `hoy` del servidor—, nunca el del navegador (P3-8). */
   const canonDelMes = useMemo(() => {
     if (!isAdmin) return null;
-    const hoyIso = toISODate(new Date());
-    let total = 0;
-    for (const x of kpis.vigentes) total += enLaUnidad(x.negotiatedValue, x.startDate, x.endDate, "mes");
-    for (const c of cortesSinCargar.cobros) {
-      if (c.desde <= hoyIso && hoyIso <= c.hasta) total += enLaUnidad(c.cobrado, c.desde, c.hasta, "mes");
+    const mes = (serie?.hoy ?? hoyEnColombia()).slice(0, 7);
+    if (serie?.del_mes) {
+      const suyo = serie.del_mes[sede.trim().toUpperCase()];
+      return suyo ? calcularCanonDelMes(suyo.contratos, suyo.cortes, mes) : 0;
     }
-    return total;
-  }, [isAdmin, kpis.vigentes, cortesSinCargar.cobros]);
+    const contratos = kpis.todas
+      .filter((t) => (t.fase === "vigente" || t.fase === "pendiente") && t.entry.negotiatedValue > 0
+        && t.entry.startDate.slice(0, 7) <= mes && mes <= t.entry.endDate.slice(0, 7))
+      .map((t) => ({ valor: t.entry.negotiatedValue, desde: t.entry.startDate, hasta: t.entry.endDate }));
+    const cortes = cortesSinCargar.cobros.flatMap((c) => c.cortes.map((k) => ({ monto: k.monto, desde: k.periodo_desde, hasta: k.periodo_hasta })));
+    return calcularCanonDelMes(contratos, cortes, mes);
+  }, [isAdmin, serie, sede, kpis.todas, cortesSinCargar.cobros]);
 
   /** Los puntos del plano («aire y pines»): uno por mueble con algo en «Para
    *  revisar», del color de su grupo más urgente (`puntosDelPlano`, que sale
@@ -7666,13 +7686,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   // Cada cifra sale de las MISMAS cuentas que ya usa esta pantalla (`kpis`,
   // `plata`, `montaje`, `cuentasDeRevision`); lo único nuevo que se pide es la
   // serie de 12 meses (`GET /dashboard/serie`) y las metas (`GET /layout/metas`).
-  const [serie, setSerie] = useState<SerieDeCanon | null>(null);
-  useEffect(() => {
-    if (!isAdmin || !enIndicadores) return;
-    let vivo = true;
-    getSerieDeCanon(24).then((r) => { if (vivo) setSerie(r); }).catch(() => { if (vivo) setSerie(null); });
-    return () => { vivo = false; };
-  }, [isAdmin, enIndicadores]);
+  // (`serie` se pide más arriba: Inicio también la usa para el canon del mes.)
   const [metas, setMetas] = useState<Metas | null>(null);
   useEffect(() => {
     let vivo = true;

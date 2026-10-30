@@ -437,14 +437,9 @@ def test_worker_por_membresia_no_ve_negotiatedvalue_ni_monthly_rent(client, admi
         assert comercial["NAVE-PUN-01"]["negotiatedValue"] == 0
         assert comercial["NAVE-PUN-01"]["supplierName"] == "Alpina"
 
-        kpis = client.get("/api/dashboard/kpis", headers=cab).json()
-        assert kpis["monthly_revenue"] == 0.0
-        assert all(s["revenue"] == 0.0 for s in kpis["top_suppliers"])
-
-        por_espacio = client.get("/api/dashboard/spaces", headers=cab).json()
-        for fila in por_espacio:
-            if fila.get("lease"):
-                assert fila["lease"]["monthly_rent"] is None
+        # La serie del canon (lo que quedó de `/dashboard/kpis`, que se fue el
+        # 2026-10-30) es sólo de administración: al trabajador, ni la cifra.
+        assert client.get("/api/dashboard/serie", headers=cab).status_code == 403
 
         assert client.get("/api/layout/rates", headers=cab).status_code == 403
 

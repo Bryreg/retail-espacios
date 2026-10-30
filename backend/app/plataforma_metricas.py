@@ -433,6 +433,23 @@ def _numeros_del_layout_con_partes(db) -> tuple[int, set[str], dict[str, tuple[s
     return sedes, caras, mapa_tipos, partes
 
 
+def _tramos_que_corrieron(db, leases) -> dict:
+    """``{lease_id: (desde, hasta) | None}``: los días en que cada contrato fue
+    canon, con la regla de ``/dashboard/serie`` (``historial.tramo_devengado``)."""
+    from app.fechas import hoy
+    from app.services.historial import bajas_efectivas, cerrados_a_mano, tramo_devengado
+
+    ids = [lease.id for lease in leases]
+    cerrados = cerrados_a_mano(db, ids)
+    bajas = bajas_efectivas(db, [i for i in ids if cerrados.get(i) == "cancelado"])
+    dia = hoy()
+    return {lease.id: tramo_devengado(lease, cerrados, bajas, dia) for lease in leases}
+
+
+def _corre_en(tramo, desde: date, hasta: date) -> bool:
+    return tramo is not None and tramo[0] <= hasta and tramo[1] >= desde
+
+
 def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, float]]:
     """``(codigo_espacio, nombre_proveedor, canon)`` de cada contrato activo.
 
@@ -440,11 +457,13 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
     los dos extremos inclusive: un contrato de UN día que cae adentro del mes
     cuenta como cualquier otro.
 
-    Al solapamiento de fechas se le suma ``is_active``, que es lo que dice que
-    el contrato **no fue cancelado** (ver ``Space.active_lease`` en
-    ``models/models.py``: las fechas son la verdad, la bandera sólo dice que
-    nadie lo dio de baja). Un contrato cancelado no es un contrato activo, así
-    que no puede sumar ingreso ni ocupación.
+    **No se mira ``is_active``** (auditoría P1-17, 2026-10-30). Se suponía que
+    decía «nadie lo canceló», pero ``expire_leases`` lo apaga también a todo lo
+    que venció por fecha —en cada lectura y en el mantenimiento—: el mes en
+    curso perdía lo que terminó en él y el cierre de mes perdía casi todo lo del
+    mes cerrado. La regla es la de ``/dashboard/serie``: lo que terminó por
+    fecha corrió entero; lo reemplazado, nada; lo cancelado, hasta el día
+    anterior a su baja (``services/historial.tramo_devengado``, P2-13).
 
     Devuelve una lista de TUPLAS, no filas del ORM, a propósito: lo que sale de
     esta función se agrega y se tira. Nada de esto viaja al JSON.
@@ -460,24 +479,26 @@ def _contratos_activos(db, desde: date, hasta: date) -> list[tuple[str, str, flo
     from app.services.meses import al_mes_de
 
     filas = (
-        db.query(Space.code, Supplier.name, SpaceLease.monthly_rent, SpaceLease.start_date, SpaceLease.end_date)
+        db.query(SpaceLease, Space.code, Supplier.name)
         .join(Space, Space.id == SpaceLease.space_id)
         .join(Supplier, Supplier.id == SpaceLease.supplier_id)
         .filter(
-            SpaceLease.is_active == True,  # noqa: E712
             SpaceLease.start_date <= hasta,
             SpaceLease.end_date >= desde,
             ~SpaceLease.id.in_(db.query(CobroPorVenta.lease_id)),
         )
         .all()
     )
+    tramos = _tramos_que_corrieron(db, [lease for lease, _c, _n in filas])
     # El canon es lo de UN MES: `monthly_rent` guarda el total de todo el plazo
     # (fase 17), y sumarlo tal cual como «ingreso del mes» contaba un contrato
     # de seis meses seis veces (2026-10-26). Repartido en sus meses, con la
     # cuenta del «Al mes» de Supervisar.
     return [
-        ((codigo or "").strip().upper(), (nombre or "").strip(), al_mes_de(canon or 0.0, inicio, fin))
-        for codigo, nombre, canon, inicio, fin in filas
+        ((codigo or "").strip().upper(), (nombre or "").strip(),
+         al_mes_de(lease.monthly_rent or 0.0, lease.start_date, lease.end_date))
+        for lease, codigo, nombre in filas
+        if _corre_en(tramos.get(lease.id), desde, hasta)
     ]
 
 
@@ -493,12 +514,11 @@ def _contratos_por_ventas(db, desde: date, hasta: date) -> list[tuple[str, str, 
     from app.services.cobros import cobrado_por_contrato
 
     filas = (
-        db.query(SpaceLease.id, Space.code, Supplier.name)
+        db.query(SpaceLease, Space.code, Supplier.name)
         .join(CobroPorVenta, CobroPorVenta.lease_id == SpaceLease.id)
         .join(Space, Space.id == SpaceLease.space_id)
         .join(Supplier, Supplier.id == SpaceLease.supplier_id)
         .filter(
-            SpaceLease.is_active == True,  # noqa: E712
             SpaceLease.start_date <= hasta,
             SpaceLease.end_date >= desde,
         )
@@ -506,10 +526,12 @@ def _contratos_por_ventas(db, desde: date, hasta: date) -> list[tuple[str, str, 
     )
     if not filas:
         return []
+    tramos = _tramos_que_corrieron(db, [lease for lease, _c, _n in filas])
     cobrado = cobrado_por_contrato(db, desde, hasta)
     return [
-        ((codigo or "").strip().upper(), (nombre or "").strip(), float(cobrado.get(lid, 0.0)))
-        for lid, codigo, nombre in filas
+        ((codigo or "").strip().upper(), (nombre or "").strip(), float(cobrado.get(lease.id, 0.0)))
+        for lease, codigo, nombre in filas
+        if _corre_en(tramos.get(lease.id), desde, hasta)
     ]
 
 
@@ -526,23 +548,31 @@ def _contratos_por_ventas(db, desde: date, hasta: date) -> list[tuple[str, str, 
 # enunciada UNA sola vez, en `_del_periodo`.
 
 
-def _del_periodo(inicio: date, fin: date, activo: bool, desde: date, hasta: date) -> bool:
+def _del_periodo(inicio: date, corre_hasta, desde: date, hasta: date) -> bool:
     """La MISMA regla de ``_contratos_activos``, evaluada en Python.
 
-    ``is_active`` (es decir, que nadie lo canceló) **y** solapamiento de fechas
-    con los dos extremos inclusive: ``start_date <= hasta AND end_date >= desde``.
-    Un contrato de UN día que cae adentro del mes cuenta como cualquier otro.
+    Que haya corrido (``corre_hasta`` no es None: no lo reemplazaron ni lo
+    cancelaron antes de arrancar) **y** solapamiento de su tramo con el
+    período, con los dos extremos inclusive: ``start_date <= hasta AND
+    corre_hasta >= desde``. Un contrato de UN día que cae adentro del mes
+    cuenta como cualquier otro; uno cancelado, hasta el día anterior a su baja.
 
     Existe porque el detalle trae todos los contratos de la base en una sola
     pasada y decide mes a mes en memoria; sin esto, la regla estaría escrita dos
     veces (una en SQL, otra acá) y podrían separarse.
     """
-    return bool(activo) and inicio <= hasta and fin >= desde
+    return corre_hasta is not None and inicio <= hasta and corre_hasta >= desde
 
 
 def _contratos_del_cliente(db) -> list[tuple]:
-    """``(codigo, proveedor, marca, canon, inicio, fin, is_active)`` de TODOS
-    los contratos de la base — activos, vencidos y cancelados, sin filtrar.
+    """``(codigo, proveedor, marca, canon, inicio, fin, activo, corre_hasta)``
+    de TODOS los contratos de la base — vigentes, vencidos y cancelados, sin
+    filtrar.
+
+    ``activo``: nadie lo cerró a mano (ni cancelado ni reemplazado): lo vencido
+    por fecha SÍ es activo, aunque ``expire_leases`` le haya apagado
+    ``is_active`` (auditoría P1-17). ``corre_hasta``: el último día en que fue
+    canon (``historial.tramo_devengado``), o None si nunca corrió.
 
     Mismo join y mismas normalizaciones que ``_contratos_activos`` (código en
     mayúsculas y sin espacios, nombre del proveedor CRUDO —el saneo se aplica
@@ -557,35 +587,35 @@ def _contratos_del_cliente(db) -> list[tuple]:
     El canon es lo de UN MES (2026-10-26): el total del contrato repartido en
     sus meses, como en ``_contratos_activos``.
     """
+    from app.fechas import hoy
     from app.models.models import Space, SpaceLease, Supplier
+    from app.services.historial import cerrados_a_mano, estado_del_contrato
     from app.services.meses import al_mes_de
 
     filas = (
-        db.query(
-            Space.code,
-            Supplier.name,
-            SpaceLease.marca,
-            SpaceLease.monthly_rent,
-            SpaceLease.start_date,
-            SpaceLease.end_date,
-            SpaceLease.is_active,
-        )
+        db.query(SpaceLease, Space.code, Supplier.name)
         .join(Space, Space.id == SpaceLease.space_id)
         .join(Supplier, Supplier.id == SpaceLease.supplier_id)
         .all()
     )
-    return [
-        (
+    leases = [lease for lease, _c, _n in filas]
+    tramos = _tramos_que_corrieron(db, leases)
+    cerrados = cerrados_a_mano(db, [lease.id for lease in leases])
+    dia = hoy()
+    fuera = []
+    for lease, codigo, nombre in filas:
+        tramo = tramos.get(lease.id)
+        fuera.append((
             (codigo or "").strip().upper(),
             (nombre or "").strip(),
-            marca,
-            al_mes_de(canon or 0.0, inicio, fin),
-            inicio,
-            fin,
-            bool(activo),
-        )
-        for codigo, nombre, marca, canon, inicio, fin, activo in filas
-    ]
+            lease.marca,
+            al_mes_de(lease.monthly_rent or 0.0, lease.start_date, lease.end_date),
+            lease.start_date,
+            lease.end_date,
+            estado_del_contrato(lease, cerrados, dia) in ("vigente", "proximo", "terminado"),
+            tramo[1] if tramo else None,
+        ))
+    return fuera
 
 
 def _usuarios_del_cliente(reg, slug: str) -> tuple[list[int], date | None]:
