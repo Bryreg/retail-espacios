@@ -6,7 +6,11 @@ FROM node:20-slim AS frontend-build
 WORKDIR /app/frontend
 
 COPY frontend/package*.json ./
-RUN npm install --legacy-peer-deps
+# `npm ci` y no `npm install` (auditoría P2-9): instala EXACTAMENTE el
+# package-lock.json, igual que CI, y falla si el lock no coincide con
+# package.json. Con `install`, cada build podía resolver otro árbol.
+# --legacy-peer-deps: drei@10 pide fiber@^9 y el editor 3D está en fiber@8.
+RUN npm ci --legacy-peer-deps
 
 COPY frontend/ ./
 
@@ -50,6 +54,9 @@ WORKDIR /app/backend
 
 EXPOSE 8000
 
+# Liveness: `/api/health` no toca la base (reiniciar el contenedor no arregla
+# una base caída). La readiness —`SELECT 1` en el registro— es
+# `/api/health/ready`, y es la que mira Render (`healthCheckPath` en render.yaml).
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
