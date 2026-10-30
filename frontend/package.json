@@ -24,7 +24,7 @@
     "probar:flujos": "node scripts/probar-flujos.mjs",
     "probar:mis-muebles": "node scripts/probar-mis-muebles.mjs",
     "probar:por-vencer": "node scripts/probar-por-vencer.mjs",
-    "probar": "npm run probar:planta && npm run probar:propuesta && npm run probar:nomenclatura && npm run probar:pasillos && npm run probar:revision && npm run probar:planilla && npm run probar:renumerar && npm run probar:acomodar && npm run probar:landing && npm run probar:tema && npm run probar:vender && npm run probar:graficos && npm run probar:plataforma && npm run probar:suspension && npm run probar:contrato && npm run probar:canon && npm run probar:sinmueble && npm run probar:comercial && npm run probar:auditoria && npm run probar:comercializable && npm run probar:muebles && npm run probar:arte && npm run probar:libera && npm run probar:camara && npm run probar:ingreso && npm run probar:traspaso && npm run probar:limpieza && npm run probar:montajes && npm run probar:plano && npm run probar:catalogo && npm run probar:geometria && npm run probar:fichas && npm run probar:nombres && npm run probar:partes && npm run probar:zonas && npm run probar:superficies && npm run probar:distribucion && npm run probar:piezas && npm run probar:planogramas && npm run probar:guia && npm run probar:supervision && npm run probar:precio && npm run probar:armazon && npm run probar:lista-montajes && npm run probar:ajustes && npm run probar:mapa-de-decision && npm run probar:flujos && npm run probar:mis-muebles && npm run probar:por-vencer",
+    "probar": "npm run probar:planta && npm run probar:propuesta && npm run probar:nomenclatura && npm run probar:pasillos && npm run probar:revision && npm run probar:planilla && npm run probar:renumerar && npm run probar:acomodar && npm run probar:landing && npm run probar:tema && npm run probar:vender && npm run probar:graficos && npm run probar:plataforma && npm run probar:suspension && npm run probar:contrato && npm run probar:canon && npm run probar:sinmueble && npm run probar:comercial && npm run probar:auditoria && npm run probar:comercializable && npm run probar:muebles && npm run probar:arte && npm run probar:libera && npm run probar:camara && npm run probar:ingreso && npm run probar:traspaso && npm run probar:limpieza && npm run probar:montajes && npm run probar:plano && npm run probar:catalogo && npm run probar:geometria && npm run probar:fichas && npm run probar:nombres && npm run probar:partes && npm run probar:zonas && npm run probar:superficies && npm run probar:distribucion && npm run probar:piezas && npm run probar:planogramas && npm run probar:guia && npm run probar:supervision && npm run probar:precio && npm run probar:armazon && npm run probar:lista-montajes && npm run probar:ajustes && npm run probar:mapa-de-decision && npm run probar:flujos && npm run probar:mis-muebles && npm run probar:por-vencer && npm run probar:pantalla",
     "probar:acomodar": "node scripts/probar-acomodar.mjs",
     "probar:piezas": "node scripts/probar-piezas.mjs",
     "probar:planogramas": "node scripts/probar-planogramas.mjs",
@@ -56,7 +56,10 @@
     "probar:partes": "node scripts/probar-partes.mjs",
     "probar:zonas": "node scripts/probar-zonas.mjs",
     "probar:superficies": "node scripts/probar-superficies.mjs",
-    "probar:distribucion": "node scripts/probar-distribucion.mjs"
+    "probar:distribucion": "node scripts/probar-distribucion.mjs",
+    "e2e": "playwright test -c e2e",
+    "medir:chunks": "vite build --config scripts/vite.medir.config.mjs",
+    "probar:pantalla": "node scripts/probar-pantalla.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -68,12 +71,14 @@
     "lucide-react": "^0.396.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.23.1",
+    "react-router-dom": "^7.18.5",
     "three": "^0.184.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
+    "@playwright/test": "^1.56.1",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
@@ -84,6 +89,7 @@
     "vite": "^5.2.13"
   },
   "overrides": {
-    "@grpc/grpc-js": "^1.14.5"
+    "@grpc/grpc-js": "^1.14.5",
+    "uuid": "^11.1.1"
   }
 }

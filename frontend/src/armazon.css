@@ -203,7 +203,9 @@
   flex: none;
   border-radius: 999px;
   background: rgb(var(--signal-rgb) / 0.14);
-  color: var(--signal-ink);
+  /* Tinta y no `--signal-ink`: el ámbar sobre su propio tinte daba menos de
+     4,5:1 en 12 px (axe, auditoría P2-21). El tinte del fondo lo marca igual. */
+  color: var(--ink-1);
   font-size: 12px;
   font-weight: 700;
   display: inline-flex;

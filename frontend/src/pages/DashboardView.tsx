@@ -38,13 +38,11 @@ import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import client, { describeError } from "../api/client";
 import { listSpaceFiles, type SpaceFileMeta } from "../api/files";
 import { findOrCreateSpace, updateSpaceStatus } from "../api/spaces";
-import FileViewerModal from "../components/FileViewerModal";
 import {
   fetchMounts, estadoMontaje, MOTIVO_LABEL,
   type MountConfirmation, type MountMotivo,
 } from "../api/mounts";
 import { reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
-import RatesModal from "../components/RatesModal/RatesModal";
 import type { Space } from "../types";
 import {
   contractPhase,
@@ -63,12 +61,10 @@ import type {
 } from "../types/fixtures";
 import SeasonPicker, { describeRange, hoyComoRango, type DateRange } from "../components/SeasonPicker/SeasonPicker";
 import Libera from "../components/Libera/Libera";
-import ModoVender from "../components/Contrato/ModoVender";
 import { claveDePrecio, diaCorto, fechaCorta, money } from "../components/Contrato/Contrato";
 import type { ResumenContrato } from "../components/Contrato/Contrato";
 import Planometria from "../components/Contrato/Planometria";
 import CancelarContrato from "../components/Contrato/CancelarContrato";
-import CargaMasiva from "../components/CargaMasiva/CargaMasiva";
 import { inclusiveDays, parseISODate, toISODate, upcomingSeasons } from "../types/seasons";
 /* El parte —la zona superior escrita en prosa— salió de las dos pantallas.
    En Supervisar lo reemplaza la franja de cinco cifras: quien pone el canon no
@@ -116,14 +112,11 @@ import ParaQueFechas from "../components/Contrato/ParaQueFechas";
 import LineaDeLaSede from "../components/Contrato/LineaDeLaSede";
 import type { Carril } from "../utils/lineaDeLaSede";
 import "../components/Indicadores/indicadores.css";
-import MapaDeOportunidades, { type AccionDelTablero } from "../components/Indicadores/MapaDeOportunidades";
-import Analisis from "../components/Indicadores/Analisis";
-import FichaDeNegociacion from "../components/Indicadores/FichaDeNegociacion";
+import type { AccionDelTablero } from "../components/Indicadores/MapaDeOportunidades";
 import {
   brechaDelPotencial, montajeQueManda, ordenarAcciones, type CapaDelMapa, type EspacioDelMapa, type EstadoDeMontajeEnElMapa,
 } from "../utils/mapaDeDecision";
-import TodasLasSedes, { type FilaDeSede } from "../components/Indicadores/TodasLasSedes";
-import Diccionario from "../components/Indicadores/Diccionario";
+import type { FilaDeSede } from "../components/Indicadores/TodasLasSedes";
 import {
   aCsv, bajarCsv, canonContraTarifa, diasHasta, montajesDelMes, venceEn, variacion,
   type EstadoDeMontaje,
@@ -161,8 +154,31 @@ import {
   claveDeSupervision, PlanogramasPorRevisar, SECCION_DE_SUPERVISION, usePlanogramasPorRevisar,
 } from "../components/Supervisar/PlanogramasPorRevisar";
 import { PrecioSinForma, usePrecioSinForma } from "../components/Supervisar/PrecioSinForma";
+import { AvisoSinLeer } from "../components/AvisoSinLeer";
+import { esFallaDeLectura } from "../utils/sinLeer";
 // La supervisión de los planogramas (fase 4): la ficha y la guía, a pedido.
 const RevisarMontaje = lazy(() => import("../components/Supervision/RevisarMontaje"));
+// Cada modo de la pantalla comercial baja su parte cuando se abre (auditoría
+// P2-20): el Inicio no trae Vender, ni las pestañas de Indicadores, ni la
+// planilla. Antes todo venía en el mismo pedazo, `xlsx` incluido.
+const ModoVender = lazy(() => import("../components/Contrato/ModoVender"));
+const RatesModal = lazy(() => import("../components/RatesModal/RatesModal"));
+const CargaMasiva = lazy(() => import("../components/CargaMasiva/CargaMasiva"));
+const FileViewerModal = lazy(() => import("../components/FileViewerModal"));
+const MapaDeOportunidades = lazy(() => import("../components/Indicadores/MapaDeOportunidades"));
+const Analisis = lazy(() => import("../components/Indicadores/Analisis"));
+const FichaDeNegociacion = lazy(() => import("../components/Indicadores/FichaDeNegociacion"));
+const TodasLasSedes = lazy(() => import("../components/Indicadores/TodasLasSedes"));
+const Diccionario = lazy(() => import("../components/Indicadores/Diccionario"));
+
+/** Mientras baja la parte de un modo (P2-20): una línea, sin parpadeo de más. */
+function Bajando({ que }: { que: string }) {
+  return (
+    <div role="status" style={{ padding: "24px 16px", color: "var(--ink-3)", fontSize: "var(--t-sm)" }}>
+      Abriendo {que}…
+    </div>
+  );
+}
 const VerGuia = lazy(() => import("../components/Guia/VerGuia"));
 import type { MontajePendiente } from "../api/montajesPendientes";
 import type { CobroPorVentas } from "../api/cobros";
@@ -4846,16 +4862,19 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  sola vez: desde el corte el layout no puede guardar un contrato nuevo, así
    *  que en cuanto se importe lo que había, esto contesta vacío para siempre. */
   const [importacion, setImportacion] = useState<Importacion | null>(null);
+  /** La revisión falló (P2-15): «Corregir» no puede decir «nada que corregir». */
+  const [importacionSinLeer, setImportacionSinLeer] = useState(false);
+  const [vueltaDeImportacion, setVueltaDeImportacion] = useState(0);
   useEffect(() => {
-    if (!isAdmin) { setImportacion(null); return; }
+    if (!isAdmin) { setImportacion(null); setImportacionSinLeer(false); return; }
     let vivo = true;
     revisarImportacion()
-      .then((r) => { if (vivo) setImportacion(r); })
-      // Sin ruido: es un extra de diagnóstico, no algo que la pantalla necesite
-      // para funcionar. Si el servidor no contesta, no se muestra y ya.
-      .catch(() => { if (vivo) setImportacion(null); });
+      .then((r) => { if (vivo) { setImportacion(r); setImportacionSinLeer(false); } })
+      // No frena la pantalla (es un extra de diagnóstico), pero se dice: una
+      // lista vacía por la red caída no es «todo se ve en el plano» (P2-15).
+      .catch((e) => { if (vivo) { setImportacion(null); setImportacionSinLeer(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
-  }, [isAdmin]);
+  }, [isAdmin, vueltaDeImportacion]);
 
   const pendientesDelPlano = importacion
     ? importacion.importables.length + importacion.incompletos.length
@@ -4948,6 +4967,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   /** Los contratos de antes de Vender que no dicen si su valor es al mes
    *  (2026-10-25). Plata y proveedores: sólo quien administra, sólo acá. */
   const precioSinForma = usePrecioSinForma({ sede, activo: isAdmin && pideRevision });
+
   const [revisarMontajeDe, setRevisarMontajeDe] = useState<number | null>(null);
   const [guiaParaMandar, setGuiaParaMandar] = useState<number | null>(null);
   const [avisoDeSupervision, setAvisoDeSupervision] = useState<string | null>(null);
@@ -5684,14 +5704,35 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   // ninguna pantalla mostraba. Se pide una sola vez, para todas las sedes —
   // son unas pocas filas y el enlace del correo puede apuntar a cualquiera.
   const [montajes, setMontajes] = useState<MountConfirmation[]>([]);
+  /** Los reportes no se pudieron leer (P2-15): sin ellos todo sale «sin montar». */
+  const [montajesSinLeer, setMontajesSinLeer] = useState(false);
+  const [vueltaDeMontajes, setVueltaDeMontajes] = useState(0);
   useEffect(() => {
     let vivo = true;
     fetchMounts()
-      .then((m) => { if (vivo) setMontajes(m); })
-      .catch(() => { if (vivo) setMontajes([]); });
+      .then((m) => { if (vivo) { setMontajes(m); setMontajesSinLeer(false); } })
+      .catch((e) => { if (vivo) { setMontajes([]); setMontajesSinLeer(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
-  }, []);
-  const reportesDeMontaje = useMemo(() => reportesPorCodigo(montajes), [montajes]);
+  }, [vueltaDeMontajes]);
+  /** Las lecturas de «Para revisar» que fallaron (P2-15), en palabras. */
+  const revisionSinLeer = [
+    ...(cortesSinCargar.sinLeer ? ["los cobros por ventas"] : []),
+    ...(reservasSinConfirmar.sinLeer ? ["las reservas"] : []),
+    ...(faltaPlanometria.sinLeer ? ["lo que falta de planometría"] : []),
+    ...(planogramasPorRevisar.sinLeer ? ["los planogramas por revisar"] : []),
+    ...(precioSinForma.sinLeer ? ["los contratos de antes sin forma de precio"] : []),
+    ...(importacionSinLeer ? ["los contratos que sólo viven en el plano"] : []),
+    ...(montajesSinLeer ? ["los reportes de montaje"] : []),
+  ];
+  const reintentarRevision = () => {
+    if (cortesSinCargar.sinLeer) cortesSinCargar.recargar();
+    if (reservasSinConfirmar.sinLeer) reservasSinConfirmar.recargar();
+    if (faltaPlanometria.sinLeer) faltaPlanometria.recargar();
+    if (planogramasPorRevisar.sinLeer) planogramasPorRevisar.recargar();
+    if (precioSinForma.sinLeer) precioSinForma.recargar();
+    if (importacionSinLeer) setVueltaDeImportacion((n) => n + 1);
+    if (montajesSinLeer) setVueltaDeMontajes((n) => n + 1);
+  };  const reportesDeMontaje = useMemo(() => reportesPorCodigo(montajes), [montajes]);
 
   /** El último reporte de una cara PARA SU CONTRATO, buscado por su código
    *  COMPLETO.
@@ -7133,7 +7174,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         onFocus={(e) => senalarFila(e.target)}
         onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) senalarFila(null); }}
       >
-        {cuentasDeRevision[grupoDeRevision] === 0 && (
+        {/* Lo que no se pudo leer, antes que cualquier «Nada para hoy»
+            (auditoría P2-15): con una lista caída, ese «nada» no es verdad. */}
+        <AvisoSinLeer que={revisionSinLeer} onReintentar={reintentarRevision} />
+        {cuentasDeRevision[grupoDeRevision] === 0 && revisionSinLeer.length === 0 && (
           <div className="vacio-r">
             {grupoDeRevision === "hoy" ? "Nada para hoy."
               : grupoDeRevision === "dias30" ? "Nada que venza ni que haya que preparar en los próximos 30 días."
@@ -8196,6 +8240,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             {panelEscalera}
           </div>
           <div className="hoja-col hoja-der">
+          <Suspense fallback={<Bajando que="el contrato" />}>
           <ModoVender
             espacios={espaciosDelContrato}
             onBorrador={(t) => useArmazon.getState().setBorradorDeVenta(t)}
@@ -8246,6 +8291,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             onVolverASupervisar={volverDeLaEdicion}
             planoPendiente={planoPendiente}
           />
+          </Suspense>
           {panelTarifas}
           </div>
         </div>
@@ -8267,6 +8313,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           </nav>
 
           {pestanaInd === "mapa" && tableroB && (
+            <Suspense fallback={<Bajando que="el mapa de oportunidades" />}>
             <MapaDeOportunidades
               key={capaPedida?.vez ?? 0}
               capaInicial={capaPedida?.capa ?? null}
@@ -8302,9 +8349,11 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 },
               }}
             />
+            </Suspense>
           )}
 
           {pestanaInd === "analisis" && tableroB && (
+            <Suspense fallback={<Bajando que="el análisis" />}>
             <Analisis
               datos={{
                 esAdmin: isAdmin, sede, hoy: hoyIso,
@@ -8338,6 +8387,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 ...(isAdmin ? { onTarifas: () => setRatesOpen(true) } : {}),
               }}
             />
+            </Suspense>
           )}
 
           {pestanaInd === "plano" && (
@@ -8547,11 +8597,17 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           )}
 
           {pestanaInd === "sedes" && (
+            <Suspense fallback={<Bajando que="todas las sedes" />}>
             <TodasLasSedes esAdmin={isAdmin} filas={filasDeSedes} total={totalDeSedes}
               onAbrir={(s) => { useFixtureStore.getState().setSede(s); setPestanaInd("mapa"); }} />
+            </Suspense>
           )}
 
-          {pestanaInd === "diccionario" && <Diccionario esAdmin={isAdmin} />}
+          {pestanaInd === "diccionario" && (
+            <Suspense fallback={<Bajando que="el diccionario" />}>
+              <Diccionario esAdmin={isAdmin} />
+            </Suspense>
+          )}
         </>
       )}
 
@@ -8603,6 +8659,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         const e = tableroB.porClave.get(negociarDe)!;
         return (
           <Cajon etiqueta={`Propuesta para ${e.codigo}`} sinCabecera ancho={520} onCerrar={() => setNegociarDe(null)}>
+            <Suspense fallback={<Bajando que="la propuesta" />}>
             <FichaDeNegociacion
               espacio={e}
               espacios={tableroB.espacios}
@@ -8618,6 +8675,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 if (f) negociar(f, e.cara);
               }}
             />
+            </Suspense>
           </Cajon>
         );
       })()}
@@ -8629,10 +8687,13 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         </Cajon>
       )}
       {viewerFile && (
-        <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
+        <Suspense fallback={null}>
+          <FileViewerModal file={viewerFile} onClose={() => setViewerFile(null)} />
+        </Suspense>
       )}
-      {ratesOpen && isAdmin && <RatesModal onClose={() => setRatesOpen(false)} />}
+      {ratesOpen && isAdmin && <Suspense fallback={null}><RatesModal onClose={() => setRatesOpen(false)} /></Suspense>}
       {cargaAbierta && isAdmin && (
+        <Suspense fallback={null}>
         <CargaMasiva
           sede={sede}
           onCerrar={() => setCargaAbierta(false)}
@@ -8671,6 +8732,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             if (fantasmas.length) setSinMueble(fantasmas);
           }}
         />
+        </Suspense>
       )}
       {sinMueble && (
         <AvisoSinMueble

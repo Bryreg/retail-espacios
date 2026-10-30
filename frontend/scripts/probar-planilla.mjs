@@ -333,5 +333,23 @@ await pruebaAsync("AL GUARDAR DICE LO QUE DE VERDAD SALIÓ, NO UNA FRASE FIJA", 
   assert.ok(!c.includes("uno al\n              mercaderista con la lista"), "volvió la frase fija de los avisos agrupados");
 });
 
+console.log("\nplanilla · el serial de Excel se lee sin bajar xlsx (P2-20)");
+
+prueba("deSerialDeExcel da lo mismo que XLSX.SSF.parse_date_code en todo el rango", () => {
+  // `leerFecha` ya no importa `xlsx` (va perezoso, sólo al abrir la planilla):
+  // la cuenta del serial es propia y tiene que dar lo mismo, día por día, con
+  // horas que redondean a medianoche incluidas.
+  for (let n = 20001; n < 80000; n += 1) {
+    for (const frac of [0, 0.25, 0.9999999, 0.99999999999]) {
+      const v = n + frac;
+      const a = XLSX.SSF.parse_date_code(v);
+      const b = P.deSerialDeExcel(v);
+      if (a.y !== b.y || a.m !== b.m || a.d !== b.d) {
+        throw new Error(`serial ${v}: xlsx ${a.y}-${a.m}-${a.d}, propio ${b.y}-${b.m}-${b.d}`);
+      }
+    }
+  }
+});
+
 // El bundle es un intermedio, no un artefacto: se borra al terminar.
 rmSync(salida, { force: true });

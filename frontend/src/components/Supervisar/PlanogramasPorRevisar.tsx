@@ -4,6 +4,7 @@ import { leerSupervision, type CaraPorSupervisar } from "../../api/supervision";
 import { lineaParaRevisar, ORDEN_DE_SUPERVISION, pastillaParaRevisar } from "../../utils/supervision";
 import { EncabezadoDeSeccion, Mira } from "./piezas";
 import { tituloDeSeccion, type SeccionDeRevisar } from "./paraRevisar";
+import { esFallaDeLectura } from "../../utils/sinLeer";
 
 /**
  * Los planogramas en «Para revisar» → Hoy (fase 4 de la distribución,
@@ -14,8 +15,8 @@ import { tituloDeSeccion, type SeccionDeRevisar } from "./paraRevisar";
  * proveedores ni plata: lo vendido no entra (eso es el montaje de los
  * contratos, que sigue como siempre).
  *
- * Si el servidor todavía no tiene la ruta, la lista queda vacía y no se dice
- * nada: es un aviso de más, no algo de lo que dependa la pantalla.
+ * Si el servidor todavía no tiene la ruta (404), la lista queda vacía y no se
+ * dice nada. Cualquier otra falla se dice (`sinLeer`, auditoría P2-15).
  */
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
@@ -33,17 +34,18 @@ export const claveDeSupervision = (c: Pick<CaraPorSupervisar, "version_id">): st
 export function usePlanogramasPorRevisar({ sede, activo }: { sede: string; activo: boolean }) {
   const [filas, setFilas] = useState<CaraPorSupervisar[]>([]);
   const [hoy, setHoy] = useState("");
+  const [sinLeer, setSinLeer] = useState(false);
   const [vuelta, setVuelta] = useState(0);
   useEffect(() => {
-    if (!activo || !sede) { setFilas([]); return; }
+    if (!activo || !sede) { setFilas([]); setSinLeer(false); return; }
     let vivo = true;
     leerSupervision(sede)
-      .then((r) => { if (vivo) { setFilas(Array.isArray(r?.caras) ? r.caras : []); setHoy(r?.hoy ?? ""); } })
-      .catch(() => { if (vivo) setFilas([]); });
+      .then((r) => { if (vivo) { setFilas(Array.isArray(r?.caras) ? r.caras : []); setHoy(r?.hoy ?? ""); setSinLeer(false); } })
+      .catch((e) => { if (vivo) { setFilas([]); setSinLeer(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
   }, [sede, activo, vuelta]);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
-  return { filas, hoy, recargar };
+  return { filas, hoy, recargar, sinLeer };
 }
 
 export function PlanogramasPorRevisar({ filas, hoy, onAbrir, onMandar }: {

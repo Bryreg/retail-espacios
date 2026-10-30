@@ -106,7 +106,7 @@ html.lp-activa body {
   --brd-strong: rgba(255, 255, 255, .21);
   --fg: #EDF3F2;
   --fg-2: #9DAEB6;
-  --fg-3: #6C7E88;
+  --fg-3: #74868F; /* era #6C7E88: 4,45:1 sobre el panel; ahora 4,9:1 (axe, P2-21) */
   --signal: var(--y-500);
   --signal-ink: var(--y-500);      /* la señal como texto o trazo */
   --on-signal: #0A0C06;
@@ -785,7 +785,8 @@ html.lp-activa body {
   background: var(--panel); display: grid; gap: 6px;
   transition: border-color var(--dur-4), opacity var(--dur-4), background var(--dur-4);
 }
-.lp .paso[data-on="false"] { opacity: .45; }
+/* Atenuado, pero legible: a .45 el texto del paso quedaba en 2,5:1 (axe, P2-21). */
+.lp .paso[data-on="false"] { opacity: .8; }
 .lp .paso[data-on="true"] { border-color: var(--brd-strong); background: var(--panel-2); }
 .lp .pasos .body { font-size: var(--t-sm); }
 .lp .paso__n {
