@@ -410,11 +410,16 @@ def salud_de_la_plataforma(email: str = Depends(require_operador)):
     """Cómo está la operación (auditoría P1-6, P2-6, P1-5, P1-4), para quien
     opera: el tamaño de la base contra su cuota, los clientes degradados (su
     base no arrancó: sus pedidos reciben 503), cómo terminó la última vuelta de
-    mantenimiento y cuántos correos esperan reintento. Sólo lee; el tamaño es
-    el de la última medición del mantenimiento si la hay."""
+    mantenimiento y cuántos correos esperaban reintento al final de ella.
+
+    **No abre ninguna base de supermercado** (`test_f01` de
+    `test_auditoria_frontera.py`): lo de cada cliente —la cola de correos— sale
+    del resumen de la última vuelta de mantenimiento, que sí las recorre. El
+    tamaño es el de la última medición, o se mide ahora (lee `pg_database`, no
+    entra a ninguna base)."""
     import app.main as principal
-    from app.clientes import degradados, esta_degradado, listar, sesion_de
-    from app.services import cola_de_correos, tamano_de_base
+    from app.clientes import degradados
+    from app.services import tamano_de_base
 
     base = tamano_de_base.ultima
     if base is None:
@@ -423,22 +428,12 @@ def salud_de_la_plataforma(email: str = Depends(require_operador)):
         except Exception:  # noqa: BLE001
             log.warning("No se pudo medir el tamaño de la base", exc_info=True)
             base = None
-    correos = 0
-    for cliente in listar():
-        if esta_degradado(cliente.slug):
-            continue
-        db = sesion_de(cliente)
-        try:
-            correos += cola_de_correos.pendientes(db)
-        except Exception:  # noqa: BLE001
-            log.warning("No se pudo contar la cola de correos de %s", cliente.slug, exc_info=True)
-        finally:
-            db.close()
+    ultimo = principal.ultimo_mantenimiento
     return {
         "base": base,
         "clientes_degradados": sorted(degradados()),
-        "ultimo_mantenimiento": principal.ultimo_mantenimiento,
-        "correos_pendientes": correos,
+        "ultimo_mantenimiento": ultimo,
+        "correos_pendientes": (ultimo or {}).get("correos_pendientes"),
     }
 
 

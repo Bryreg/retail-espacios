@@ -167,7 +167,7 @@ def _run_lease_maintenance():
     from app.services.reminders import check_expiring_leases
 
     resumen = {"clientes": 0, "con_falla": 0, "correos_enviados": 0, "correos_fallidos": 0,
-               "recuperados": [], "codigos_pc": 0}
+               "correos_pendientes": 0, "recuperados": [], "codigos_pc": 0}
 
     # Los que no arrancaron (P1-6): se prueba otra vez antes del recorrido.
     try:
@@ -207,6 +207,7 @@ def _run_lease_maintenance():
                 hecho = cola_de_correos.despachar_pendientes(db)
                 resumen["correos_enviados"] += hecho["enviados"]
                 resumen["correos_fallidos"] += hecho["fallidos"]
+                resumen["correos_pendientes"] += cola_de_correos.pendientes(db)
                 cola_de_correos.purgar_viejos(db)
             except Exception:
                 logger.exception("La cola de correos falló para el cliente %s", cliente.slug)

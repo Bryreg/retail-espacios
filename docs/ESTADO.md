@@ -1523,7 +1523,8 @@ nada de esto necesita algo pago para andar; lo pago queda comentado o documentad
   (1024) y avisa desde el 70 % (`services/tamano_de_base.py`); un `PUT /api/layout/<sede>`
   guardado que pasa la mitad del tope de 2 MiB deja su WARNING con la sede y el tamaño.
   `GET /api/plataforma/salud` (operadores) junta base, degradados, último mantenimiento y
-  correos en cola. Prender `LIMPIAR_FOTOS_VENCIDAS` después de leer el ensayo: manual §8.
+  correos en cola (los de la última vuelta: no abre ninguna base de supermercado, `test_f01`).
+  Sin pantalla todavía: es JSON para la consola. Prender `LIMPIAR_FOTOS_VENCIDAS` después de leer el ensayo: manual §8.
 * **Pasos manuales (P2-8)**: ver *Lo que hay que hacer a mano después de desplegar* — no
   queda ninguno por despliegue.
 * **Build (P2-9)**: `npm ci --legacy-peer-deps` en el Dockerfile; `docker-compose.prod.yml`
