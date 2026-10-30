@@ -1,0 +1,68 @@
+# Staging (auditoría P1-2): un servicio y una base APARTE, que despliegan la
+# rama `staging`. Es un Blueprint propio —no se mezcla con `render.yaml`— y NO
+# está activo: no crea nada hasta que alguien lo da de alta en Render
+# (New → Blueprint → este repo → «Blueprint file path»: render.staging.yaml).
+#
+# Todo en plan GRATUITO (`plan: free`, explícito: sin `plan:` Render crea
+# instancias pagas). Dos límites del plan gratuito que hay que saber:
+#
+#  · Render admite UNA base Postgres gratuita por workspace. Si producción ya
+#    usa la gratuita, la de acá no se puede crear gratis: o se paga (Basic), o
+#    se borra el bloque `databases:` de abajo y se pone en DATABASE_URL la URL
+#    de otra base gratuita (Neon, Supabase) a mano, con `sync: false`.
+#  · La base gratuita de Render vence a los 30 días: para staging alcanza
+#    (se recrea), para producción no (ver P0-4 de la auditoría).
+#
+# El flujo (docs/operacion.md, «Staging»): un PR de backend se mergea primero a
+# `staging`; Render lo despliega acá cuando el CI pasa; se prueba contra una
+# copia ANONIMIZADA de un supermercado (nunca la base de producción tal cual:
+# trae correos y teléfonos de proveedores reales); y recién ahí `staging` →
+# `main`.
+
+databases:
+  - name: retail-db-staging
+    databaseName: retail_staging
+    user: retail_staging
+    plan: free
+
+services:
+  - type: web
+    name: retail-espacios-staging
+    runtime: docker
+    plan: free
+    branch: staging
+    autoDeployTrigger: checksPass
+    healthCheckPath: /api/health/ready
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: retail-db-staging
+          property: connectionString
+      # Staging se crea DESDE este Blueprint, así que acá sí lo genera Render
+      # (un valor aleatorio, distinto del de producción: un token de staging no
+      # abre producción). En producción se pone a mano: ver render.yaml.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: APP_URL
+        value: https://retail-espacios-staging.onrender.com
+      # Firebase: el mismo proyecto sirve, agregando el dominio de staging en
+      # Authentication → Settings → Authorized domains.
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: OPERADOR_EMAILS
+        sync: false
+      # Staging NO manda correos a nadie de verdad: sin EMAIL_API_KEY ni SMTP la
+      # app no manda nada (y la pantalla lo dice: «correo no configurado»).
+      # La cobranza, en ensayo (el valor por defecto): no la prendas acá.
+      - key: COBRANZA_AUTOMATICA
+        value: "0"
+      - key: CUOTA_BASE_MB
+        value: "1024"

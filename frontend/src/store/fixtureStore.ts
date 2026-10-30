@@ -1713,6 +1713,10 @@ export function startAutoSync(): void {
   if (_pollTimer) return;
   void useFixtureStore.getState().syncFromServer();
   _pollTimer = setInterval(() => {
+    // Con la pestaña oculta no se pregunta (auditoría P2-5): diez pestañas
+    // olvidadas en segundo plano eran diez sondeos cada 20 s contra un solo
+    // worker. Al volver a la pestaña, `onVisibility` pregunta en el acto.
+    if (typeof document !== "undefined" && document.hidden) return;
     void useFixtureStore.getState().pollForChanges();
   }, POLL_INTERVAL_MS);
   if (!_listenersBound) {

@@ -34,6 +34,7 @@ from app.routers.montajes import avisar_los_listos
 from app.services import montajes_pendientes
 from app.services.contacts import recipients_for
 from app.services.mailer import app_base_url, clean_recipients, correo_configurado, html_shell, send_mail_to_bg
+from app.services.cola_de_correos import encolar_correo
 from app.services.bitacora import anotar
 from app.services.ciclo_participaciones import actor_de
 
@@ -323,7 +324,7 @@ def enviar_la_guia(
         raise servicio._error(409, "sin_correo", "El correo de RECABRA no está configurado: copiá el enlace y mandalo vos.")
     nombre, _sede, v, _pl = guia_servicio.titulo(db, cuerpo.version_id)
     asunto, html = _correo_de_la_guia(db, cuerpo.version_id, cliente)
-    background_tasks.add_task(send_mail_to_bg, correos, asunto, html)
+    encolar_correo(background_tasks, db, send_mail_to_bg, correos, asunto, html)
     anotar(db, request, rol, "guia.enviada", entidad="planograma", entidad_id=nombre,
            detalle=f"Versión {v.numero} a {len(correos)} correo(s)")
     db.commit()
@@ -424,7 +425,7 @@ def revisar_montaje(
             numeros = json.loads(rev.numeros_json or "[]")
             asunto, html = _correo_de_la_guia(
                 db, cuerpo.version_id, cliente, supervision.texto_de_la_correccion(numeros, bool(rev.otra_cosa), rev.nota))
-            background_tasks.add_task(send_mail_to_bg, correos, asunto, html)
+            encolar_correo(background_tasks, db, send_mail_to_bg, correos, asunto, html)
             rev.guia_reenviada = 1
             reenvio = "enviada"
     detalle = (f"Versión {v.numero}: coincide" + (" (la vio en la tienda)" if rev.en_la_tienda else "")

@@ -30,6 +30,10 @@ from datetime import timedelta
 
 import pytest
 
+# Las carreras contra Postgres comparten la base descartable: todas al mismo
+# proceso cuando la suite corre en paralelo (`pytest -n auto --dist loadgroup`).
+pytestmark = pytest.mark.xdist_group("postgres")
+
 from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
 HOY = hoy_en_colombia()
