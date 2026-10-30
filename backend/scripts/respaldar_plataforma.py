@@ -3,11 +3,11 @@
     python scripts/respaldar_plataforma.py --url "$URL_EXTERNA" --salida respaldo/
     python scripts/respaldar_plataforma.py --url "$URL_EXTERNA" --listar   # sólo dice qué bajaría
 
-Lo corre cada noche `.github/workflows/respaldo.yml` contra la URL EXTERNA de la
-base de Render (la de «Connect → External»), y funciona en el plan gratuito: no
-necesita consola, ni shell, ni nada pago. También se puede correr desde
-cualquier máquina con `pg_dump` (de la misma versión mayor que el servidor, o
-más nueva).
+Cada noche lo corre el propio servicio, desde adentro de Render
+(`app/services/respaldo_interno.py`, que pide `.github/workflows/respaldo.yml` a
+`POST /api/interno/respaldo`): la base no acepta conexiones de afuera. También se
+puede correr desde cualquier máquina con `pg_dump` (de la misma versión mayor que
+el servidor, o más nueva) que llegue a la base.
 
 **Qué baja.** Un `pg_dump` en formato custom (`-Fc`: comprimido, y
 `pg_restore` puede elegir qué restaurar) por cada base:
@@ -23,9 +23,9 @@ Y un `MANIFIESTO.json`: cuándo se tomó (UTC), de qué servidor (sin clave), y 
 base el slug, el tamaño, el sha256 del archivo y cuánto tardó. El RPO se lee de
 ahí: lo que se pierde en el peor caso es lo que pasó desde `tomado_en`.
 
-**No cifra ni sube**: eso lo hace el workflow (`gpg --symmetric` con la frase de
-`RESPALDO_PASSPHRASE`, artefacto de 30 días y, si está configurado, un bucket
-S3/R2). Este script sólo lee la base.
+**No cifra ni sube**: cifra `respaldo_interno.py` (`gpg --symmetric` con la frase
+de `RESPALDO_PASSPHRASE`) y guarda el workflow (artefacto de 30 días y, si está
+configurado, un bucket S3/R2). Este script sólo lee la base.
 
 Para volver: `scripts/restaurar_plataforma.py` y `docs/operacion.md`.
 """

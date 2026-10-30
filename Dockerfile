@@ -36,7 +36,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# `pg_dump` y `gnupg`: el respaldo nocturno se toma desde adentro del servicio,
+# porque la base no acepta conexiones de afuera (`services/respaldo_interno.py`,
+# `POST /api/interno/respaldo`). pg_dump tiene que ser de la versión mayor del
+# servidor o MÁS NUEVA, y no sabemos cuál corre Render: por eso el cliente sale
+# del repositorio oficial de PostgreSQL (`postgresql-client` = la última mayor),
+# no del de Debian, que puede quedar atrás de una base recién creada.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg postgresql-common \
+    && (/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+        || echo "Sin el repositorio de PostgreSQL: queda el cliente de Debian") \
+    && apt-get install -y --no-install-recommends postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
