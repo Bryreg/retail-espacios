@@ -36,7 +36,12 @@ test("editar: cambiar el «hasta» de un contrato desde su ficha", async ({ page
   await page.goto("/indicadores");
   await page.getByRole("button", { name: "Ver ficha" }).first().click();
   await page.locator("[data-editar-contrato]").first().click();
-  const hasta = page.locator('.vender input[aria-label="Hasta"]').last();
+  // El «Hasta» del contrato que se edita (ya arrancó: su «Desde» está
+  // bloqueado), no el de otro formulario de Vender que haya en la pantalla:
+  // `.last()` dependía del orden del DOM y en algunas máquinas tocaba el otro.
+  const hasta = page
+    .locator('input[aria-label="Desde"][disabled]')
+    .locator('xpath=ancestor::div[contains(@class,"campo")][1]/following-sibling::div[contains(@class,"campo")][1]//input[@aria-label="Hasta"]');
   await expect(hasta).toBeVisible();
   const nuevo = new Date(Date.now() + 200 * 86400_000).toISOString().slice(0, 10);
   await hasta.fill(nuevo);
