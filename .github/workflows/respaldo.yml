@@ -14,7 +14,7 @@ name: Respaldo nocturno
 #      `gpg --symmetric` (AES256) y la frase de RESPALDO_PASSPHRASE, que vive en
 #      RENDER. Sin la frase el archivo no sirve: guardala también FUERA de
 #      Render y de GitHub (un gestor de contraseñas).
-#   2. Acá se sube como artefacto (30 días) y, si están los secrets del bucket,
+#   2. Acá se sube como artefacto (14 días) y, si están los secrets del bucket,
 #      también a S3/R2.
 #
 # Secrets de GitHub (Settings → Secrets and variables → Actions → Secrets):
@@ -101,13 +101,16 @@ jobs:
           echo "nombre=$NOMBRE" >> "$GITHUB_OUTPUT"
           echo "fallas=$FALLAS" >> "$GITHUB_OUTPUT"
 
-      - name: Subir como artefacto (30 días)
+      - name: Subir como artefacto (14 días)
         if: steps.listo.outputs.si == 'si'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.cifrado.outputs.nombre }}
           path: ${{ steps.cifrado.outputs.nombre }}
-          retention-days: 30
+          # 14 y no 30: cada respaldo pesa ~24 MB y GitHub da 500 MB a un repositorio
+          # privado en el plan gratuito (30 copias no entran). Render suma 3 días de
+          # recuperación propia (PITR). Para guardar más, el bucket (S3/R2).
+          retention-days: 14
           if-no-files-found: error
           compression-level: 0   # ya está comprimido y cifrado
 

@@ -84,7 +84,7 @@ No hizo falta reconstruir ningún módulo (§8).
 
 ### P0-3 · Sin recuperación ante desastres — **PARCIAL (falta el simulacro)**
 - **Qué se hizo:**
-  - `.github/workflows/respaldo.yml`, todas las noches: `pg_dump -Fc` del registro y de cada base de cliente (y las `recabra_*` huérfanas), cifrado `gpg` AES256, artefacto de 30 días y copia opcional a S3/R2. Sin los secrets, se saltea con un aviso.
+  - `.github/workflows/respaldo.yml`, todas las noches: `pg_dump -Fc` del registro y de cada base de cliente (y las `recabra_*` huérfanas), cifrado `gpg` AES256, artefacto de 14 días y copia opcional a S3/R2. Sin los secrets, se saltea con un aviso.
   - `backend/scripts/respaldar_plataforma.py` y `restaurar_plataforma.py`: la plataforma entera o un cliente (`--solo`/`--como`), sha256, `--ensayo`, no pisa sin `--reemplazar`.
   - Runbook en `docs/operacion.md` (restaurar todo, un cliente, RPO/RTO, lista del simulacro).
 - **Evidencia:** `tests/test_respaldo_plataforma.py` hace una ida y vuelta real en CI.

@@ -85,10 +85,10 @@ hay nadie usando la app.
    (que es también la de GALERIAS), cada `clientes.db_name` y toda `recabra_*`
    que exista aunque el registro no la nombre— y hace un `pg_dump -Fc` de cada una.
 2. Empaqueta todo en un `.tar` y lo cifra con `gpg --symmetric` (AES256).
-3. El workflow lo sube como **artefacto** (30 días) y, si está configurado, al
+3. El workflow lo sube como **artefacto** (14 días) y, si está configurado, al
    **bucket**. La retención del bucket la pone su regla de ciclo de vida: en R2,
-   *Bucket → Settings → Object lifecycle rules → Delete objects after 30 days*; en
-   S3, *Management → Lifecycle rules → Expire current versions after 30 days*.
+   *Bucket → Settings → Object lifecycle rules → Delete objects after 14 days*; en
+   S3, *Management → Lifecycle rules → Expire current versions after 14 days*.
 
 Si falla, el workflow queda en rojo y GitHub le manda un correo a quien lo
 programó. El `MANIFIESTO.json` de adentro dice cuándo se tomó (UTC), cuánto pesa y
@@ -364,11 +364,11 @@ reclamo está en trámite, anotá en la referencia «reclamo en trámite».
 6. **Lo que el sistema no alcanza, a mano:**
    - borrar la cuenta en **Firebase** (consola de Firebase → Authentication → Users →
      buscar el correo → *Delete account*);
-   - si se restaura un respaldo de antes de la supresión dentro de los 30 días que
+   - si se restaura un respaldo de antes de la supresión dentro de los 14 días que
      viven, **volver a aplicar** cada supresión atendida después de la fecha del
      respaldo (las constancias están en `GET /api/plataforma/titulares`; el correo
      de cada una, en el canal de atención);
-   - los respaldos vencen solos a los 30 días: no hay que tocarlos.
+   - los respaldos vencen solos a los 14 días: no hay que tocarlos.
 7. **Responder** a la persona dentro del plazo: qué se hizo, el número de constancia,
    lo que quedó por obligación legal y por qué.
 

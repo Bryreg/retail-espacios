@@ -756,7 +756,7 @@ Decreto 1377).
 | Cuentas de cobro, facturas, pagos y el historial del estado de cuenta | **[VALIDAR CON ABOGADO: diez (10) años]** desde [VALIDAR CON ABOGADO: la fecha del último asiento, documento o comprobante], como soporte contable y tributario, también después de que el supermercado deja de ser cliente | — |
 | Datos de facturación de la suscripción | Mientras dure la suscripción | Al borrar el supermercado |
 | Métricas mensuales del operador (sin datos de personas; el nombre del proveedor, saneado) | La ventana del reporte más un año (36 meses); el total de la plataforma, que no lleva ningún dato de un cliente ni de una persona, sin plazo | Se borran solas |
-| Respaldos cifrados de toda la plataforma | **30 días** cada copia | Se borran solos (GitHub y el depósito de respaldos) |
+| Respaldos cifrados de toda la plataforma | **14 días** cada copia | Se borran solos (GitHub y el depósito de respaldos) |
 | Registros técnicos del servidor | Lo que guarde el plan de Render. [COMPLETAR: plazo del plan contratado] | Los borra Render |
 | Errores enviados a Sentry (si está activado) | Lo que guarde el plan de Sentry. [COMPLETAR: plazo del plan contratado] | Los borra Sentry |
 | Lo que guarda el navegador | Hasta que quien usa el equipo lo borra (punto 10.1) | En el equipo |
@@ -768,7 +768,7 @@ Decreto 1377).
 > 962 de 2005. Un plazo indefinido no cumple la ley.
 
 **Una supresión y los respaldos.** Cuando se anonimiza a una persona (sección 7), sus datos
-siguen en los respaldos cifrados hasta que esos respaldos vencen (30 días). Si en ese plazo
+siguen en los respaldos cifrados hasta que esos respaldos vencen (14 días). Si en ese plazo
 hubiera que restaurar un respaldo, la supresión se vuelve a aplicar antes de volver a
 atender.
 
@@ -976,8 +976,8 @@ responsable.
 | **Google — Firebase Authentication** | Verificar la identidad de quien entra (ingreso con Google o con correo y contraseña) | Correo, nombre, identificador de cuenta, contraseña de la cuenta (que RECABRA nunca ve), y la dirección IP y el navegador de quien inicia sesión | Infraestructura de Google [VALIDAR CON ABOGADO: región concreta según la configuración del proyecto de Firebase] |
 | **Render** | Alojar la aplicación, las bases de datos (con los archivos y las fotos) y los registros técnicos | Todo lo que la aplicación almacena, y la IP y la ruta de cada pedido | Estados Unidos [COMPLETAR: región del servicio en Render] |
 | **Proveedor de correo saliente: Brevo o SendGrid**, según cuál se configure [COMPLETAR: cuál se usa] | Enviar los avisos automáticos, las invitaciones y las guías de montaje | Las direcciones de los destinatarios y el **contenido entero** de cada aviso: datos del contrato, la constancia de un pago o una cuenta de cobro, y los **enlaces sin contraseña** (invitación, aviso de montaje, guía), que abren lo que el correo describe | [COMPLETAR: país del proveedor elegido] |
-| **GitHub (Microsoft) — GitHub Actions** | Hacer el respaldo nocturno de todas las bases y guardarlo 30 días | Una copia **cifrada** de todas las bases; GitHub no tiene la clave para abrirla | Estados Unidos |
-| **Depósito de respaldos (Cloudflare R2 o Amazon S3)**, si se configura | Guardar una segunda copia del respaldo cifrado, 30 días | La misma copia cifrada, sin la clave | [COMPLETAR: proveedor y región, si se usa] |
+| **GitHub (Microsoft) — GitHub Actions** | Hacer el respaldo nocturno de todas las bases y guardarlo 14 días | Una copia **cifrada** de todas las bases; GitHub no tiene la clave para abrirla | Estados Unidos |
+| **Depósito de respaldos (Cloudflare R2 o Amazon S3)**, si se configura | Guardar una segunda copia del respaldo cifrado, 14 días | La misma copia cifrada, sin la clave | [COMPLETAR: proveedor y región, si se usa] |
 | **Sentry**, si se activa | Avisar de errores del sistema | El error técnico, sin la IP ni las cabeceras de quien pidió y sin direcciones de correo | [COMPLETAR: región del proyecto en Sentry, si se usa] |
 
 RECABRA no usa servicios de publicidad, de análisis de uso ni fuentes tipográficas de
@@ -1035,7 +1035,7 @@ Medidas que hoy están implementadas:
 - **Bitácora** de todo lo que cambia algo o abre una puerta, y de cada consulta del
   operador.
 - **Los registros técnicos no llevan direcciones de correo ni los códigos de los enlaces.**
-- **Respaldo nocturno cifrado** de todas las bases, guardado 30 días.
+- **Respaldo nocturno cifrado** de todas las bases, guardado 14 días.
 - **Desactivar una membresía corta el acceso de esa persona en el pedido siguiente.**
 - Cabeceras de seguridad del navegador y política de contenido en todas las respuestas.
 - Revisión automática de vulnerabilidades en las dependencias del proyecto.
