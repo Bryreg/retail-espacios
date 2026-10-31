@@ -27,6 +27,7 @@ el login legado). `import app.*` local a cada función porque el fixture
 import io
 
 import pytest
+from conftest import fin_de_un_mes
 
 from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
 
@@ -415,7 +416,7 @@ def test_h4b_worker_no_ve_la_plata_en_el_mapa_comercial(client, admin, worker):
         "filas": [{"fila": 1, "espacio": "H4-02", "sede": "NAVE-H4B",
                    "proveedor": "ProveedorX", "marca": "Aseo", "valor": 777777,
                    "desde": hoy.isoformat(),
-                   "hasta": (hoy + timedelta(days=30)).isoformat()}],
+                   "hasta": (fin_de_un_mes(hoy)).isoformat()}],
     })
     assert r.json()["creados"] == 1, r.text
 

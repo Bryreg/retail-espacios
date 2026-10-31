@@ -765,7 +765,7 @@ def respaldo_por_cron(request: Request):
     """El respaldo nocturno de toda la plataforma, tomado desde adentro de
     Render (P0-3): la base no acepta conexiones de afuera, así que el cron de
     GitHub (`.github/workflows/respaldo.yml`) le pide al servicio el archivo
-    ya cifrado (`services/respaldo_interno.py`) y lo guarda 30 días.
+    ya cifrado (`services/respaldo_interno.py`) y lo guarda 14 días.
 
     Misma puerta que el mantenimiento. Con el candado de líder «respaldo»: si
     ya hay uno tomándose, 409. La carpeta temporal se borra al terminar de

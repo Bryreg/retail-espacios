@@ -1766,7 +1766,7 @@ nada de esto necesita algo pago para andar; lo pago queda comentado o documentad
 * **Respaldo nocturno de toda la plataforma (P0-3).** `.github/workflows/respaldo.yml`, 01:41
   de Colombia: `scripts/respaldar_plataforma.py` hace `pg_dump -Fc` del registro y de cada
   base de cliente (las de `clientes.db_name` y las `recabra_*` huérfanas), `gpg --symmetric`
-  AES256 y artefacto de 30 días (+ S3/R2 si está configurado). **Se toma desde adentro del
+  AES256 y artefacto de 14 días (+ S3/R2 si está configurado). **Se toma desde adentro del
   servicio** (2026-10-30): la base de producción no acepta conexiones de afuera, así que el
   workflow le pide el archivo ya cifrado a `POST /api/interno/respaldo` (mismo token que el
   mantenimiento; `services/respaldo_interno.py`; la frase `RESPALDO_PASSPHRASE` vive en Render,

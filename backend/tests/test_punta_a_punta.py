@@ -12,6 +12,7 @@ entre el plano y la base y no adentro de ninguno de los dos.
 from datetime import timedelta
 
 from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+from conftest import fin_de_un_mes
 
 HOY = hoy_en_colombia()
 
@@ -46,7 +47,7 @@ def _vender(client, admin, filas, sede="NAVE"):
 def _fila(n, espacio, sede, proveedor, valor):
     return {"fila": n, "espacio": espacio, "sede": sede, "proveedor": proveedor,
             "marca": "Aseo", "valor": valor, "desde": HOY.isoformat(),
-            "hasta": (HOY + timedelta(days=30)).isoformat()}
+            "hasta": (fin_de_un_mes(HOY)).isoformat()}
 
 
 def _comercial(client, headers):
@@ -168,13 +169,13 @@ def test_UN_PLANO_VIEJO_SE_IMPORTA_Y_DESPUES_EL_AUDITOR_DA_CERO(client, admin, c
         **_mueble("PUN-07", "NAVE"),
         "status": "occupied", "supplierName": "CAA", "brandCategory": "Snacks",
         "negotiatedValue": 500_000, "startDate": HOY.isoformat(),
-        "endDate": (HOY + timedelta(days=30)).isoformat(), "observation": "",
+        "endDate": (fin_de_un_mes(HOY)).isoformat(), "observation": "",
     }
     sin_proveedor = {
         **_mueble("PUN-08", "NAVE"),
         "status": "occupied", "supplierName": "", "brandCategory": "",
         "negotiatedValue": 0, "startDate": HOY.isoformat(),
-        "endDate": (HOY + timedelta(days=30)).isoformat(), "observation": "",
+        "endDate": (fin_de_un_mes(HOY)).isoformat(), "observation": "",
     }
     # Escrito directo: por la API ya no entra, el servidor lo descarta.
     db = SessionLocal()

@@ -11,6 +11,7 @@ lo que no tiene fila, y que la plata no se le escape a un mercaderista.
 from datetime import timedelta
 
 from app.fechas import hoy as hoy_en_colombia  # el «hoy» del negocio: Colombia
+from conftest import fin_de_un_mes
 
 HOY = hoy_en_colombia()
 
@@ -59,7 +60,7 @@ def test_LO_QUE_NO_TIENE_FILA_ES_LIBRE(client, admin):
 
 def test_un_espacio_vendido_sale_con_todo_lo_que_el_plano_dibujaba(client, admin):
     _plano(client, admin, [_mueble("PUN-01")])
-    _vender(client, admin, "PUN-01", HOY, HOY + timedelta(days=30))
+    _vender(client, admin, "PUN-01", HOY, fin_de_un_mes(HOY))
 
     e = _comercial(client, admin)["NAVE-PUN-01"]
     assert e["status"] == "occupied"
@@ -67,7 +68,7 @@ def test_un_espacio_vendido_sale_con_todo_lo_que_el_plano_dibujaba(client, admin
     assert e["brandCategory"] == "Maní"
     assert e["negotiatedValue"] == 200000
     assert e["startDate"] == HOY.isoformat()
-    assert e["endDate"] == (HOY + timedelta(days=30)).isoformat()
+    assert e["endDate"] == (fin_de_un_mes(HOY)).isoformat()
 
 
 # ─── Cuál contrato manda ─────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ def test_EL_MERCADERISTA_NO_VE_EL_VALOR(client, admin, worker):
     """La regla dura del proyecto. Puede ver que está ocupado y por quién —lo
     necesita para montar— pero nunca cuánto se cobra."""
     _plano(client, admin, [_mueble("PUN-01")])
-    _vender(client, admin, "PUN-01", HOY, HOY + timedelta(days=30))
+    _vender(client, admin, "PUN-01", HOY, fin_de_un_mes(HOY))
 
     e = _comercial(client, worker)["NAVE-PUN-01"]
     assert e["negotiatedValue"] == 0
@@ -124,7 +125,7 @@ def test_se_filtra_por_sede_y_el_codigo_lleva_la_sede_adentro(client, admin):
     código, siempre. Es exactamente lo que rompió la carga por planilla."""
     _plano(client, admin, [_mueble("IMP-17")], sede="NAVE")
     _plano(client, admin, [_mueble("IMP-17", sede="TERRON")], sede="TERRON")
-    _vender(client, admin, "IMP-17", HOY, HOY + timedelta(days=30), sede="NAVE")
+    _vender(client, admin, "IMP-17", HOY, fin_de_un_mes(HOY), sede="NAVE")
 
     todo = _comercial(client, admin)
     assert "NAVE-IMP-17" in todo
@@ -137,7 +138,7 @@ def test_se_filtra_por_sede_y_el_codigo_lleva_la_sede_adentro(client, admin):
 def test_la_cara_B_es_un_espacio_aparte(client, admin):
     doble = _mueble("GON-60", type="gondola", gondolaType="double", d=0.9)
     _plano(client, admin, [doble])
-    _vender(client, admin, "GON-60-B", HOY, HOY + timedelta(days=30))
+    _vender(client, admin, "GON-60-B", HOY, fin_de_un_mes(HOY))
 
     todo = _comercial(client, admin)
     assert "NAVE-GON-60-B" in todo
@@ -203,7 +204,7 @@ def test_el_contrato_le_gana_a_la_marca_de_mantenimiento(client, admin):
     _plano(client, admin, [_mueble("IMP-17")])
     a = _espacio(client, admin, "IMP-17")
     client.patch(f"/api/spaces/{a}/status", headers=admin, json={"status": "maintenance"})
-    _vender(client, admin, "IMP-17", HOY, HOY + timedelta(days=30))
+    _vender(client, admin, "IMP-17", HOY, fin_de_un_mes(HOY))
 
     e = _comercial(client, admin)["NAVE-IMP-17"]
     assert e["status"] == "occupied"
@@ -225,7 +226,7 @@ def test_LA_NOTA_DEL_CONTRATO_TAMPOCO_LE_LLEGA_AL_MERCADERISTA(client, admin, wo
         "filas": [{"fila": 1, "espacio": "IMP-17", "sede": "NAVE",
                    "proveedor": "MACA MANI", "marca": "Maní", "valor": 200000,
                    "desde": HOY.isoformat(),
-                   "hasta": (HOY + timedelta(days=30)).isoformat(),
+                   "hasta": (fin_de_un_mes(HOY)).isoformat(),
                    "nota": "descuento del 25% cerrado por telefono"}],
     })
     assert r.json()["creados"] == 1, r.text
