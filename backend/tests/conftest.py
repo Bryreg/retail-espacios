@@ -294,3 +294,16 @@ def medios(token: str) -> str:
     t = crear_token_de_medios(token)
     assert t is not None, "la sesión no es válida para pedir un token de medios"
     return t
+
+
+def fin_de_un_mes(desde):
+    """El «hasta» de un contrato de UN mes que arranca en ``desde``, con la
+    regla de ``services/meses.py`` (un mes calendario menos un día). No
+    ``desde + 30 días``: arrancando un 31, treinta días después es «un mes y un
+    día» (31 oct → 30 nov), y las pruebas que comparan el valor al mes fallaban
+    los días 31."""
+    from datetime import timedelta
+
+    from app.services.meses import _sumar_meses
+
+    return _sumar_meses(desde, 1) - timedelta(days=1)
