@@ -1,0 +1,110 @@
+/* Indicadores › Historial (2026-11-13). Las piezas del dibujo aprobado con los
+   tokens de la app: tarjetas blancas, chips de estado y una tabla que a lo
+   angosto pasa a tarjetas. */
+
+.hist { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.hist-cabeza { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.hist-cabeza p { margin: 0; max-width: 720px; color: var(--ink-3); font-size: var(--t-sm); line-height: 1.5; }
+.hist-exportar {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px;
+  border-radius: var(--r-md); font-size: var(--t-sm);
+}
+
+.hist-filtros {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 14px; display: flex; flex-direction: column; gap: 12px;
+}
+.hist-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.hist-campos label { display: flex; flex-direction: column; gap: 6px; font-size: var(--t-xs); font-weight: 600; color: var(--ink-2); }
+.hist-campos input, .hist-barra select {
+  font: inherit; font-weight: 400; font-size: var(--t-sm); min-height: 40px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink-1);
+  min-width: 0;
+}
+.hist-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hist-chips .rot { font-size: var(--t-xs); font-weight: 600; color: var(--ink-2); margin-right: 2px; }
+.hist-chips > button:not(.hist-limpiar) {
+  min-height: 36px; padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink-2); font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer;
+}
+.hist-chips > button[aria-pressed="true"] { background: var(--ink-1); border-color: var(--ink-1); color: var(--surface); }
+.hist-limpiar {
+  margin-left: auto; min-height: 36px; padding: 0 6px; border: 0; background: transparent;
+  color: var(--signal-ink); font: inherit; font-size: var(--t-xs); font-weight: 600; cursor: pointer;
+}
+.hist-cara {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0 2px 0 12px; min-height: 36px;
+  border-radius: var(--r-pill); background: var(--surface-2); border: 1px solid var(--line);
+  font-size: var(--t-xs); color: var(--ink-2);
+}
+.hist-cara b { font-family: var(--f-mono); font-weight: 600; color: var(--ink-1); }
+.hist-cara button {
+  width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: var(--r-pill);
+  background: transparent; color: var(--ink-2); cursor: pointer;
+}
+
+.hist-aviso { margin: 0; color: var(--ocupado-txt); font-size: var(--t-sm); }
+.hist-nota { margin: 0; color: var(--ink-3); font-size: var(--t-xs); }
+
+.hist-lista { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.hist-barra, .hist-pie {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 10px 14px; font-size: var(--t-sm); color: var(--ink-3);
+}
+.hist-barra { border-bottom: 1px solid var(--line); }
+.hist-barra b { color: var(--ink-1); }
+.hist-barra label { display: flex; align-items: center; gap: 8px; font-size: var(--t-xs); }
+.hist-barra select { min-height: 36px; }
+.hist-pie { border-top: 1px solid var(--line); }
+.hist-lista > .hist-nota { padding: 0 14px 12px; }
+
+.hist-tabla-caja { overflow-x: auto; }
+.hist-tabla { width: 100%; border-collapse: collapse; min-width: 860px; font-size: var(--t-sm); }
+.hist-tabla th {
+  text-align: left; padding: 9px 14px; background: var(--surface-2); color: var(--ink-3);
+  font-size: var(--t-xs); font-weight: 600; white-space: nowrap;
+}
+.hist-tabla td { padding: 11px 14px; border-top: 1px solid var(--line-soft); vertical-align: top; color: var(--ink-1); }
+.hist-tabla .num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hist-tabla th.num { font-family: inherit; }
+.hist-tabla .fecha { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hist .sub { color: var(--ink-3); font-size: var(--t-xs); margin-top: 3px; }
+
+.hist-codigo {
+  font-family: var(--f-mono); font-size: var(--t-xs); white-space: nowrap; color: var(--signal-ink);
+  background: transparent; border: 0; padding: 4px 0; min-height: 32px; cursor: pointer; text-decoration: underline;
+  text-underline-offset: 3px; text-decoration-color: transparent;
+}
+.hist-codigo:hover { text-decoration-color: currentColor; }
+.hist-codigo.quieto { color: var(--ink-2); cursor: default; text-decoration: none; display: inline-block; }
+
+.hist-estado {
+  display: inline-block; padding: 3px 10px; border-radius: var(--r-pill);
+  font-size: var(--t-xs); font-weight: 600; white-space: nowrap;
+}
+.hist-estado.terminado { background: var(--line-soft); color: var(--ink-2); }
+.hist-estado.cancelado { background: var(--ocupado-suave); color: var(--ocupado-txt); }
+.hist-estado.reemplazado { background: var(--entra-suave); color: var(--entra-txt); }
+
+.hist-tarjetas { display: none; list-style: none; margin: 0; padding: 8px; flex-direction: column; gap: 8px; }
+.hist-tarjetas li {
+  display: flex; flex-direction: column; gap: 4px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-md); font-size: var(--t-sm);
+}
+.hist-tarjetas .fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hist-tarjetas .num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: var(--t-xs); white-space: nowrap; }
+
+.hist-vacio {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 28px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; color: var(--ink-3);
+}
+.hist-vacio h3 { margin: 0; font-size: var(--t-md); color: var(--ink-1); font-weight: 650; }
+.hist-vacio p { margin: 0; max-width: 560px; color: var(--ink-2); font-size: var(--t-sm); line-height: 1.5; }
+
+@media (max-width: 639px) {
+  .hist-tabla-caja { display: none; }
+  .hist-tarjetas { display: flex; }
+  .hist-exportar { width: 100%; justify-content: center; }
+  .hist-limpiar { margin-left: 0; }
+}

@@ -130,3 +130,106 @@ def tramo_devengado(lease, cerrados: dict[int, str], bajas: dict[int, date], hoy
         h = min(h, bajas[lease.id] - timedelta(days=1))
         return (d, h) if h >= d else None
     return None
+
+
+# ─── El historial de la sede (Indicadores › Historial, 2026-11-13) ──────────
+
+#: Los estados de un contrato que ya no está vivo: lo que lista el historial.
+CERRADOS = ("terminado", "cancelado", "reemplazado")
+
+
+def _plano(texto) -> str:
+    """Mayúsculas y sin tildes, para buscar «nestle» y encontrar «Nestlé»."""
+    import unicodedata
+
+    s = unicodedata.normalize("NFKD", "" if texto is None else str(texto))
+    return "".join(c for c in s if not unicodedata.combining(c)).strip().upper()
+
+
+def es_de_la_cara(espacio: str, cara: str) -> bool:
+    """La cara y sus partes, sin la cara B cuando se pide la A: el gemelo de
+    ``esDeLaCara`` (``frontend/src/utils/lineaDeTiempo.ts``), para que «Ver
+    todos (N)» de la ficha abra exactamente esos N."""
+    e, c = (espacio or "").upper(), (cara or "").upper()
+    if e == c:
+        return True
+    if not e.startswith(c + "-"):
+        return False
+    return not (e == c + "-B" or e.startswith(c + "-B-"))
+
+
+def historial_de_la_sede(db: Session, sede: str, *, es_admin: bool, hoy_: date,
+                         proveedor: str | None = None, espacio: str | None = None,
+                         cara: str | None = None, desde: date | None = None,
+                         hasta: date | None = None, estados=None) -> dict:
+    """Los contratos de ``sede`` que ya no están vivos —terminados, cancelados
+    y reemplazados al editarlos—, del que terminó más tarde al más viejo.
+
+    Filtros: ``proveedor`` (busca en el proveedor y en la marca, sin tildes),
+    ``espacio`` (un pedazo del código), ``cara`` (esa cara y sus partes, como
+    la ficha), ``desde``/``hasta`` (los contratos que corrieron en algún día de
+    ese rango, los extremos incluidos) y ``estados``. ``cuentas`` dice cuántos
+    hay de cada estado con los demás filtros puestos (los chips de la
+    pantalla). La plata, sólo para administración."""
+    from app.models.models import Space, SpaceLease
+    from app.services.meses import al_mes_de
+    from sqlalchemy.orm import joinedload
+
+    codigo_sede = (sede or "").strip().upper()
+    pedidos = {e for e in (estados or CERRADOS) if e in CERRADOS} or set(CERRADOS)
+    filas_db = (db.query(SpaceLease, Space.code)
+                .join(Space, Space.id == SpaceLease.space_id)
+                .options(joinedload(SpaceLease.supplier))
+                .filter(Space.sede == codigo_sede)
+                .all())
+    cerrados = cerrados_a_mano(db, [l.id for l, _ in filas_db])
+    buscado = _plano(proveedor) if proveedor and proveedor.strip() else ""
+    trozo = (espacio or "").strip().upper()
+    la_cara = (cara or "").strip().upper()
+
+    candidatas = []
+    for lease, codigo in filas_db:
+        estado = estado_del_contrato(lease, cerrados, hoy_)
+        if estado not in CERRADOS:
+            continue
+        cod = (codigo or "").strip().upper()
+        nombre = lease.supplier.name if lease.supplier else None
+        if buscado and buscado not in _plano(nombre) and buscado not in _plano(lease.marca):
+            continue
+        if trozo and trozo not in cod:
+            continue
+        if la_cara and not es_de_la_cara(cod, la_cara):
+            continue
+        if desde or hasta:
+            if not (lease.start_date and lease.end_date):
+                continue
+            if desde and lease.end_date < desde:
+                continue
+            if hasta and lease.start_date > hasta:
+                continue
+        candidatas.append((lease, cod, nombre, estado))
+
+    cuentas = {e: 0 for e in CERRADOS}
+    for *_, estado in candidatas:
+        cuentas[estado] += 1
+    elegidas = [c for c in candidatas if c[3] in pedidos]
+    bajas = bajas_efectivas(db, [l.id for l, _, _, e in elegidas if e == "cancelado"])
+
+    def orden(c):
+        lease = c[0]
+        return (lease.end_date or date.min, lease.start_date or date.min, lease.id)
+
+    fuera = []
+    for lease, cod, nombre, estado in sorted(elegidas, key=orden, reverse=True):
+        fila = {"lease_id": lease.id, "espacio": cod, "estado": estado,
+                "proveedor": nombre, "marca": lease.marca,
+                "desde": lease.start_date.isoformat() if lease.start_date else None,
+                "hasta": lease.end_date.isoformat() if lease.end_date else None,
+                "cancelado_desde": bajas[lease.id].isoformat() if lease.id in bajas else None}
+        if es_admin:
+            total = float(lease.monthly_rent or 0)
+            fila["valor_total"] = total
+            fila["valor_al_mes"] = (al_mes_de(total, lease.start_date, lease.end_date)
+                                    if lease.start_date and lease.end_date else None)
+        fuera.append(fila)
+    return {"sede": codigo_sede, "total": len(fuera), "cuentas": cuentas, "filas": fuera}

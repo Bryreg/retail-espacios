@@ -86,6 +86,52 @@ export const getHistorialDelEspacio = (code: string): Promise<ContratoDelHistori
     .get<ContratoDelHistorial[]>(`/spaces/by-code/${encodeURIComponent(code)}/historial`, { params: { partes: true } })
     .then((r) => r.data);
 
+/** Los estados de un contrato que ya no está vivo (Indicadores › Historial). */
+export type EstadoCerrado = "terminado" | "cancelado" | "reemplazado";
+
+/** Un contrato del historial de la sede (`GET /spaces/historial`). */
+export interface ContratoCerrado {
+  lease_id: number;
+  espacio: string;
+  estado: EstadoCerrado;
+  proveedor: string | null;
+  marca: string | null;
+  desde: string | null;
+  hasta: string | null;
+  /** De lo cancelado: desde qué día ya no corre (la fecha efectiva de la baja). */
+  cancelado_desde: string | null;
+  /** Sólo para administración. */
+  valor_total?: number;
+  valor_al_mes?: number | null;
+}
+
+export interface HistorialDeLaSede {
+  sede: string;
+  total: number;
+  /** Cuántos hay de cada estado con los demás filtros puestos (los chips). */
+  cuentas: Record<EstadoCerrado, number>;
+  filas: ContratoCerrado[];
+}
+
+export interface FiltrosDelHistorial {
+  proveedor?: string;
+  espacio?: string;
+  /** Esa cara y sus partes, sin la B si es la A («Ver todos» de la ficha). */
+  cara?: string;
+  desde?: string;
+  hasta?: string;
+  estado?: EstadoCerrado;
+}
+
+/** Los contratos de la sede que ya no están vivos —terminados, cancelados y
+ *  reemplazados al editarlos—, del que terminó más tarde al más viejo
+ *  (Indicadores › Historial, 2026-11-13). La plata, sólo a administración. */
+export const getHistorialDeLaSede = (sede: string, filtros: FiltrosDelHistorial): Promise<HistorialDeLaSede> => {
+  const params: Record<string, string> = { sede };
+  for (const [k, v] of Object.entries(filtros)) if (typeof v === "string" && v.trim()) params[k] = v.trim();
+  return client.get<HistorialDeLaSede>("/spaces/historial", { params }).then((r) => r.data);
+};
+
 /** Un contrato o una reserva viva en la línea de la sede (`GET /spaces/linea`):
  *  sólo fechas, nunca proveedor ni plata (la línea vive en Contratos, que la
  *  mira el proveedor). */
