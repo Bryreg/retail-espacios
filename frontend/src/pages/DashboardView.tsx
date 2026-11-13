@@ -170,6 +170,8 @@ const Analisis = lazy(() => import("../components/Indicadores/Analisis"));
 const FichaDeNegociacion = lazy(() => import("../components/Indicadores/FichaDeNegociacion"));
 const TodasLasSedes = lazy(() => import("../components/Indicadores/TodasLasSedes"));
 const Diccionario = lazy(() => import("../components/Indicadores/Diccionario"));
+/** Indicadores › Historial (2026-11-13): los contratos que ya no están vivos. */
+const Historial = lazy(() => import("../components/Indicadores/Historial"));
 
 /** Mientras baja la parte de un modo (P2-20): una línea, sin parpadeo de más. */
 function Bajando({ que }: { que: string }) {
@@ -3185,7 +3187,7 @@ function botonDeParte(lleno: boolean): React.CSSProperties {
 // ─── Full detail, rendered in the right-hand rail ────────────────────────────
 
 function FixtureDetailCard({
-  fixture, isAdmin, face, onFace, onBack, onNegociar, onRenovar, onCancelado, onOpenFile,
+  fixture, isAdmin, face, onFace, onBack, onNegociar, onRenovar, onCancelado, onOpenFile, onVerHistorial,
   onNegociarParte, onRenovarParte, onEditar, onEditarParticipacion, onEditarProximo, avisoDeEdicion,
   unidad = "mes", montajeDe, montajeDelCodigo, cobroDe, reservaDe, onReservaCambio,
   planometriaPedida, onPlanometriaCargada, onVenderLoQueQueda, dondeEsta, navegacion,
@@ -3198,6 +3200,9 @@ function FixtureDetailCard({
   navegacion?: React.ReactNode;
   /** La unidad de la plata de la franja (rediseño, PR 2). */
   unidad?: UnidadDePlata;
+  /** «Ver todos» de los contratos anteriores: Indicadores › Historial con
+   *  esta cara (código completo) y sus partes. */
+  onVerHistorial?: (codigo: string) => void;
   /** El montaje del contrato de la cara, como en la tabla. */
   montajeDe?: (entry: FaceEntry) => MountConfirmation | undefined;
   /** El montaje de un contrato por su código completo (las participaciones). */
@@ -3479,7 +3484,7 @@ function FixtureDetailCard({
         {/* La línea de tiempo (etapa 3): los próximos 12 meses, desde cuándo
             queda disponible y lo que ya terminó, del historial de la base. */}
         {rentable && (
-          <LineaDeTiempo codigo={fullSpaceCode(fixture.sede, entry.code)} esAdmin={isAdmin} />
+          <LineaDeTiempo codigo={fullSpaceCode(fixture.sede, entry.code)} esAdmin={isAdmin} onVerTodos={onVerHistorial} />
         )}
 
         {/* Vender por partes: las puertas de esta cara, cada una con su
@@ -5004,14 +5009,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const [vistaContratos, setVistaContratos] = useState<"plano" | "linea">("plano");
   /** Indicadores (etapa 5): la pestaña, recordada por quien mira, y el
    *  periodo del Resumen. */
-  type PestanaInd = "mapa" | "analisis" | "plano" | "contratos" | "quien" | "participaciones" | "sedes" | "diccionario";
+  type PestanaInd = "mapa" | "analisis" | "plano" | "contratos" | "historial" | "quien" | "participaciones" | "sedes" | "diccionario";
   const [pestanaInd, setPestanaIndCruda] = useState<PestanaInd>(() => {
     try {
       const v = window.localStorage.getItem("recabra-indicadores-pestana");
       // Versión B (2026-10-28): el Resumen pasó a ser el Mapa de
       // oportunidades y el Detalle, el Análisis. Lo recordado se traduce.
       const viejo = v === "resumen" ? "mapa" : v === "detalle" ? "analisis" : v;
-      return (["mapa", "analisis", "plano", "contratos", "quien", "participaciones", "sedes", "diccionario"] as const)
+      return (["mapa", "analisis", "plano", "contratos", "historial", "quien", "participaciones", "sedes", "diccionario"] as const)
         .find((x) => x === viejo) ?? "mapa";
     } catch { return "mapa"; }
   });
@@ -5019,6 +5024,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     setPestanaIndCruda(p);
     try { window.localStorage.setItem("recabra-indicadores-pestana", p); } catch { /* sin almacenamiento, igual cambia */ }
   };
+  /** Historial: la cara que pidió «Ver todos» en su ficha (con sus partes). */
+  const [caraDelHistorial, setCaraDelHistorial] = useState<string | null>(null);
   /** La ficha de negociación abierta («Preparar propuesta»), por la llave de
    *  la cara; y la capa con la que abre el mapa al venir de Análisis. */
   const [negociarDe, setNegociarDe] = useState<string | null>(null);
@@ -5050,6 +5057,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     } else if (pedidoDelArmazon === "diccionario" && enIndicadores) {
       useArmazon.getState().atender();
       setPestanaInd("diccionario");
+    } else if (pedidoDelArmazon === "historial" && enIndicadores) {
+      useArmazon.getState().atender();
+      setCaraDelHistorial(null);
+      setPestanaInd("historial");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoDelArmazon, modoEfectivo, inicio, enIndicadores, isAdmin]);
@@ -7617,6 +7628,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       face={detailFace}
       onFace={setDetailFace}
       onBack={closeDetail}
+      onVerHistorial={(codigo) => {
+        closeDetail();
+        setCaraDelHistorial(codigo);
+        setModo("supervisar");
+        setPestanaInd("historial");
+        setLlegada(null);
+        window.scrollTo({ top: 0 });
+      }}
       onNegociar={isAdmin ? () => negociar(selected, detailFace) : undefined}
       onNegociarParte={isAdmin ? (parte) => negociar(selected, detailFace, null, parte) : undefined}
       onRenovarParte={isAdmin ? renovar : undefined}
@@ -8301,6 +8320,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           <nav className="ind-pestanas" role="tablist" aria-label="Indicadores">
             {([
               ["mapa", "Mapa de oportunidades"], ["analisis", "Análisis"], ["plano", "Plano"], ["contratos", "Contratos"],
+              ["historial", "Historial"],
               ...(isAdmin && plata ? [["quien", "Quién paga"]] as const : []),
               ...(isAdmin && hayParticipaciones ? [["participaciones", "Participaciones"]] as const : []),
               ...(sedes.length > 1 ? [["sedes", "Todas las sedes"]] as const : []),
@@ -8455,6 +8475,23 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
               </div>
             </>
+          )}
+
+          {pestanaInd === "historial" && (
+            <Suspense fallback={<Bajando que="el historial" />}>
+              <Historial
+                sede={sede}
+                esAdmin={isAdmin}
+                cara={caraDelHistorial}
+                onQuitarCara={() => setCaraDelHistorial(null)}
+                puedeAbrir={(espacio) => muebleDelEspacio(espacio) !== null}
+                onAbrirFicha={(espacio) => {
+                  const m = muebleDelEspacio(espacio);
+                  if (m) revisar(m.fixture, m.cara);
+                }}
+                version={estadoComercial}
+              />
+            </Suspense>
           )}
 
           {pestanaInd === "contratos" && (

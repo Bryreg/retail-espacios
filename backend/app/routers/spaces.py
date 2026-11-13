@@ -367,6 +367,36 @@ def linea_de_la_sede(
     return {"desde": dia.isoformat(), "hasta": fin.isoformat(), "filas": fuera}
 
 
+@router.get("/historial")
+def historial_de_la_sede(
+    sede: str,
+    proveedor: Optional[str] = None,
+    espacio: Optional[str] = None,
+    cara: Optional[str] = None,
+    desde: Optional[date] = None,
+    hasta: Optional[date] = None,
+    estado: Optional[str] = None,
+    role: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """El historial de contratos de la sede (Indicadores › Historial,
+    2026-11-13): todo contrato que ya no está vivo —terminado, cancelado o
+    reemplazado al editarlo—, con filtros y cuántos hay de cada estado.
+
+    Vive en Indicadores y no en Contratos: Contratos es sólo de administración
+    y es la pantalla que mira el proveedor (ver `linea_de_la_sede`); acá entran
+    los dos roles. La plata (total y al mes), sólo para administración.
+    ``estado``: uno o varios, separados por coma. Lee, no crea."""
+    from app.services import historial
+
+    if desde and hasta and hasta < desde:
+        raise HTTPException(status_code=422, detail="«Hasta» no puede ser anterior a «Desde».")
+    estados = [e.strip().lower() for e in (estado or "").split(",") if e.strip()] or None
+    return historial.historial_de_la_sede(
+        db, sede, es_admin=role == "admin", hoy_=hoy(), proveedor=proveedor, espacio=espacio,
+        cara=cara, desde=desde, hasta=hasta, estados=estados)
+
+
 @router.get("/", response_model=list[SpaceOut])
 def list_spaces(role: str = Depends(require_auth), db: Session = Depends(get_db)):
     spaces = db.query(Space).options(

@@ -1,7 +1,13 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-10-30: **auditoría, tanda «Privacidad y políticas»** — la política de
+Última actualización: 2026-11-13: **Indicadores › Historial** — todos los contratos de la sede que
+ya no están vivos (terminados, cancelados con hasta cuándo corrieron, reemplazados al editarlos),
+con filtros por proveedor o marca, espacio, fechas y estado, «Exportar a Excel» y la ficha a un
+toque; en la ficha, «Ver todos (N)» debajo de los cinco «Contratos anteriores». Los dos roles; la
+plata, sólo administración. Ver *Historial de contratos (2026-11-13)*.
+
+Antes, el 2026-10-30: **auditoría, tanda «Privacidad y políticas»** — la política de
 datos sube a **2026-10-v3** (revisada contra el producto: encargados, navegador, plazos, cobro, derechos
 persona por persona; se vuelve a pedir la aceptación), los **Términos del servicio** tienen aceptación
 versionada **apagada** hasta que el dueño ponga `TERMINOS_VIGENTES` con un texto sin marcas de
@@ -1756,6 +1762,41 @@ para quien toque la pantalla:
 
 ## Qué está hecho
 
+### Historial de contratos (2026-11-13)
+
+Pregunta del dueño: «¿dónde queda el registro histórico de los contratos que han finalizado?». La
+base nunca borró nada (`space_leases` con `is_active` en falso, y por qué se cerró en la bitácora,
+`bajas_de_contrato` y `contratos_reemplazados`), pero la pantalla sólo mostraba los últimos cinco
+de UN espacio en su ficha. Dibujo aprobado en el lienzo «Historial de contratos».
+
+- **Dónde.** Indicadores › **Historial** (pestaña después de Contratos), y también en Ctrl K y
+  «Más» de Indicadores (`acciones.ts`, pedido `historial`). **No en Contratos**, como decía el
+  dibujo: Contratos es sólo de administración y es la pantalla que mira el proveedor, que no ve
+  nombres ni plata de los demás (regla de `GET /spaces/linea`). En Indicadores entran los dos roles.
+- **Qué lista.** Lo terminado (llegó a su fecha), lo cancelado (con «corrió hasta el …» o «no llegó
+  a correr», de la fecha efectiva de la baja) y lo reemplazado al editarlo. Lo vigente y lo próximo,
+  no. Del que terminó más tarde al más viejo; se reordena por inicio, proveedor, espacio o valor al
+  mes (éste sólo administración). De a 25, «Ver 25 más».
+- **Filtros** (los hace el servidor): proveedor o marca (sin tildes ni mayúsculas), un pedazo del
+  código del espacio, desde/hasta (lo que corrió ALGÚN día del rango, extremos incluidos) y el
+  estado; los chips dicen cuántos hay de cada estado con los demás filtros puestos.
+- **Plata.** Al mes y total del contrato, en cifras completas, sólo para administración: el servidor
+  no los manda al trabajador (`valor_total`/`valor_al_mes` ausentes) y su Excel sale sin esas
+  columnas.
+- **Exportar a Excel** (el único botón principal de la pestaña): un `.xlsx` de verdad (`xlsx`, que ya
+  estaba, cargado sólo al tocar) con lo filtrado, fechas como fecha y montos como número.
+  `historial-contratos-<sede>-<fecha>.xlsx`. Apagado cuando la lista está vacía.
+- **La ficha.** Tocar el código abre la ficha del espacio (si sigue en el plano). En la ficha,
+  debajo de los cinco «Contratos anteriores», **«Ver todos (N)»** cuando hay más de cinco: abre el
+  Historial con esa cara y sus partes (`cara=`, sin la cara B si es la A: `es_de_la_cara`, gemelo
+  de `esDeLaCara`), con un chip «Espacio: … ×» para quitarlo.
+- **Celular.** Bajo 640 px la tabla pasa a tarjetas.
+- **Código.** `GET /api/spaces/historial?sede=&proveedor=&espacio=&cara=&desde=&hasta=&estado=`
+  (`routers/spaces.py`, `services/historial.py::historial_de_la_sede`), sin migraciones.
+  `components/Indicadores/Historial.tsx` + `historial.css`; `LineaDeTiempo` recibe `onVerTodos`.
+  Pruebas: `tests/test_historial_de_la_sede.py` y `e2e/historial.e2e.ts` (filtros, Excel, ficha,
+  «Ver todos» y el trabajador sin plata en la pantalla ni en la respuesta).
+
 ### Operación y despliegue (2026-10-30)
 
 La tanda «Operación y despliegue» de `docs/auditoria-pre-lanzamiento-recabra.md`. El plan de
@@ -1850,8 +1891,9 @@ ejecutivo, y la **B**, con el plano como atracción principal. Eligió la B como
 y la A como «Análisis», con las animaciones del mapa «según el dato, para decidir y no para
 contratar». Sin migraciones ni endpoints nuevos: todo sale de las cuentas que la pantalla ya hace.
 
-- **Pestañas.** Mapa de oportunidades · Análisis · Plano · Contratos · Quién paga ·
-  Participaciones · Todas las sedes · Diccionario. Lo recordado como `resumen` abre el mapa y
+- **Pestañas.** Mapa de oportunidades · Análisis · Plano · Contratos · Historial · Quién paga ·
+  Participaciones · Todas las sedes · Diccionario (Historial: 2026-11-13, ver *Historial de
+  contratos*). Lo recordado como `resumen` abre el mapa y
   `detalle` el Análisis (`recabra-indicadores-pestana`). «Volver a …» de la tabla vuelve a la
   pestaña de donde se vino (`DesdeDondeSeLlega`).
 - **Mapa de oportunidades** (`components/Indicadores/MapaDeOportunidades.tsx`). Arriba: ocupación

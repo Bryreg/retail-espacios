@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarRange } from "lucide-react";
+import { ArrowRight, CalendarRange } from "lucide-react";
 import { getHistorialDelEspacio, type ContratoDelHistorial } from "../../api/spaces";
 import { aFecha, esDeLaCara, libreDesde } from "../../utils/lineaDeTiempo";
 import "./linea.css";
@@ -30,10 +30,13 @@ function pesos(n: number): string {
   return "$ " + Math.round(n).toLocaleString("es-CO");
 }
 
-export default function LineaDeTiempo({ codigo, esAdmin }: {
+export default function LineaDeTiempo({ codigo, esAdmin, onVerTodos }: {
   /** El código completo de la cara (`CENTRO-GON-01`, `CENTRO-GON-01-B`). */
   codigo: string;
   esAdmin: boolean;
+  /** «Ver todos (N)»: Indicadores › Historial con esta cara y sus partes
+   *  (2026-11-13). Sólo aparece cuando hay más de los cinco que se ven. */
+  onVerTodos?: (codigo: string) => void;
 }) {
   const [filas, setFilas] = useState<ContratoDelHistorial[] | null>(null);
   const [error, setError] = useState(false);
@@ -79,7 +82,8 @@ export default function LineaDeTiempo({ codigo, esAdmin }: {
   const desde = libreDesde(filas, codigo, hoy);
   const libreHoy = desde.getTime() === hoy.getTime();
   const partesVivas = vivas.filter((f) => f.espacio.toUpperCase() !== codigo.toUpperCase()).length;
-  const anteriores = filas.filter((f) => f.estado === "terminado" || f.estado === "cancelado" || f.estado === "reemplazado").slice(0, 5);
+  const cerrados = filas.filter((f) => f.estado === "terminado" || f.estado === "cancelado" || f.estado === "reemplazado");
+  const anteriores = cerrados.slice(0, 5);
 
   return (
     <section className="linea-ficha" data-linea-de-tiempo>
@@ -126,7 +130,10 @@ export default function LineaDeTiempo({ codigo, esAdmin }: {
       })}
       {anteriores.length > 0 && (
         <div className="linea-antes">
-          <div className="linea-sub">Contratos anteriores</div>
+          <div className="linea-sub">
+            Contratos anteriores
+            {cerrados.length > anteriores.length && <span className="linea-cuantos"> · los {anteriores.length} más recientes</span>}
+          </div>
           <ul>
             {anteriores.map((f) => (
               <li key={f.lease_id}>
@@ -138,6 +145,11 @@ export default function LineaDeTiempo({ codigo, esAdmin }: {
               </li>
             ))}
           </ul>
+          {onVerTodos && cerrados.length > anteriores.length && (
+            <button type="button" className="linea-ver-todos" onClick={() => onVerTodos(codigo)} data-ver-todos>
+              Ver todos ({cerrados.length}) <ArrowRight {...ICONO} />
+            </button>
+          )}
         </div>
       )}
     </section>

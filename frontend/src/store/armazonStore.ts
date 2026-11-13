@@ -15,7 +15,7 @@ export type TemaDeAjustes = "comercial" | "sede" | "avisos" | "equipo" | "cuenta
 
 /** Lo que el armazón le pide a la pantalla comercial (`DashboardView`), que
  *  es la que lo sabe hacer: abrir la planilla, ir al Diccionario. */
-export type PedidoALaPantalla = "planilla" | "diccionario";
+export type PedidoALaPantalla = "planilla" | "diccionario" | "historial";
 
 /** De qué montaje se vino a Pendientes («Ubicar la zona», «Adjuntar
  *  planometría»): la bandeja marca su fila y una barra ofrece volver a
