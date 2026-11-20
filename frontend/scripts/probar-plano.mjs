@@ -706,4 +706,11 @@ prueba("el panel B y el lienzo: códigos ocultables, entrepaños en una cuenta, 
   assert.match(api, /\.get<Space \| null>\(`\/spaces\/by-code\/\$\{encodeURIComponent\(code\)\}`, \{ params: \{ si_existe: 1 \} \}\)/);
 });
 
+prueba("la ficha del 2D dice «Reservado» (y su color) para una reserva provisional, no «Ocupado»", () => {
+  const fuente = fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx");
+  assert.match(fuente, /const esReserva = face\.status === "occupied" && !!\(crudoDeLaCara\?\.reservado \|\| crudoDeLaCara\?\.reservaHasta\)/);
+  assert.match(fuente, /const rotuloVisto = esReserva \? STATUS_LABELS\.reserved/);
+  assert.match(fuente, /STATUS_BADGE_STYLE\[esReserva \? "reserved" : estadoVisto\]/);
+});
+
 console.log(`\n${hechas} pruebas · el plano no pierde lo que no conoce\n`);

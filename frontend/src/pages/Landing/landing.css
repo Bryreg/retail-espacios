@@ -676,7 +676,10 @@ html.lp-activa body {
   margin-left: auto; font-family: var(--f-mono); font-size: 10px; letter-spacing: .08em; padding: 2px 7px;
   border-radius: var(--r-pill); border: 1px solid var(--brd); color: var(--fg-3);
 }
-.lp .mailrow__tag--none { color: var(--st-resto); border-color: var(--brd-strong); }
+/* «sin valor»: el color de «resto» (gris del plano) no llegaba a 4,5:1 sobre el
+   panel — axe lo marcaba cuando la fila terminaba de entrar. Se distingue por el
+   borde punteado, con el mismo texto legible que las otras etiquetas. */
+.lp .mailrow__tag--none { color: var(--fg-3); border-color: var(--brd-strong); border-style: dashed; }
 .lp .fono {
   width: 174px; flex: none; border-radius: 20px; border: var(--hair) solid var(--brd-strong);
   background: var(--panel-solid); box-shadow: var(--sh-2); overflow: hidden;

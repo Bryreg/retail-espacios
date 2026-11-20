@@ -3672,7 +3672,14 @@ function AssignmentPanel({
   // comprometido y cuánto queda (`textoDeLoComprometido`).
   const dispoPc = esPc ? (dispoDeCara?.(activeFace) ?? null) : null;
   const estadoVisto: SpaceStatus = estadoParaPintar(face.status, dispoPc);
-  const rotuloVisto = rotuloPorOcupacion(face.status, dispoPc) ?? STATUS_LABELS[face.status];
+  // Una RESERVA provisional: la fusión la pinta «occupied», pero todavía no es
+  // un contrato. El mapa crudo la marca (`reservado`/`reservaHasta`), como en
+  // el panel del 3D: la ficha dice «Reservado», no «Ocupado» (recorrido de los
+  // manuales, 2026-11-20).
+  const crudoDeLaCara = estadoCrudo[activeCode];
+  const esReserva = face.status === "occupied" && !!(crudoDeLaCara?.reservado || crudoDeLaCara?.reservaHasta);
+  const rotuloVisto = esReserva ? STATUS_LABELS.reserved
+    : rotuloPorOcupacion(face.status, dispoPc) ?? STATUS_LABELS[face.status];
   const abrirEnDistribucion = useAbrirEnDistribucion();
 
   // ── Lo vendido por partes, de la cara que se mira (o las piezas) ──────────
@@ -3835,7 +3842,7 @@ function AssignmentPanel({
           )}
         </div>
         <span className="p2-pill" data-estado-del-mueble
-          style={{ ...(rentable ? STATUS_BADGE_STYLE[estadoVisto] : NON_RENTABLE_BADGE_STYLE), ...(enParte ? STATUS_BADGE_STYLE.reserved : {}) }}>
+          style={{ ...(rentable ? STATUS_BADGE_STYLE[esReserva ? "reserved" : estadoVisto] : NON_RENTABLE_BADGE_STYLE), ...(enParte ? STATUS_BADGE_STYLE.reserved : {}) }}>
           {enParte ? "Vendido en parte" : <>{rentable ? rotuloVisto : NON_RENTABLE_LABEL}</>}
         </span>
         <button type="button" className="p2-icobtn chico" onClick={onClose} title="Cerrar" aria-label="Cerrar"><X {...ICONO} /></button>

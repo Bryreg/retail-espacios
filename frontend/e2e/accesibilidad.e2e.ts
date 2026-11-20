@@ -26,7 +26,12 @@ async function revisar(page: Page, donde: string) {
 
 for (const tema of ["claro", "oscuro"] as const) {
   test(`axe · portada, política e ingreso (${tema})`, async ({ page }) => {
-    await page.emulateMedia({ colorScheme: tema === "oscuro" ? "dark" : "light" });
+    // Sin movimiento: la portada anima la entrada de sus textos y botones (y el
+    // plano de ejemplo), y axe medía el contraste a mitad de la animación, con
+    // colores intermedios — fallaba a veces en claro, a veces en oscuro, siempre
+    // en un elemento animado. Con `reducedMotion` la portada queda en su estado
+    // final (respeta `prefers-reduced-motion`) y se mide lo que hay que cumplir.
+    await page.emulateMedia({ colorScheme: tema === "oscuro" ? "dark" : "light", reducedMotion: "reduce" });
     for (const ruta of ["/", "/politica-datos", "/login"]) {
       await page.goto(ruta);
       await expect(page.locator("main").first()).toBeVisible();
