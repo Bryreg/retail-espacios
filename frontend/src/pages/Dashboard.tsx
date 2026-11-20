@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid, Moon, Sun } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -64,7 +64,7 @@ import { descargarMisDatos } from "../api/legal";
 import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { usePlanograma } from "../store/planogramaStore";
-import { TemaToggle, useModalAbierto } from "../tema";
+import { useModalAbierto, useTema } from "../tema";
 import { altoDeLaVentana, useEscalaDeLaApp } from "../escala";
 import {
   LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
@@ -1273,6 +1273,7 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
     }
   };
   const [abierto, setAbierto] = useState(false);
+  const [tema, alternarTema] = useTema();
   const caja = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!abierto) return;
@@ -1310,12 +1311,16 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
             {clienteNombre && <b>{clienteNombre}</b>}
             <span>{persona ? `${persona} · ${rol}` : rol}</span>
           </div>
-          {/* Claro / oscuro: la misma pieza de siempre (el ícono es el del
-              tema AL QUE SE VA), con su palabra al lado. */}
-          <div className="fila">
+          {/* Claro / oscuro: TODA la fila es el control (2026-11-20). Antes
+              era un texto con el botón sol/luna al costado, y tocar el texto
+              —lo que uno toca— no hacía nada. Es una casilla del menú
+              (marcada = oscuro); el ícono sigue siendo el del tema AL QUE SE
+              VA. El menú queda abierto: se ve el cambio y se puede volver. */}
+          <button type="button" role="menuitemcheckbox" aria-checked={tema === "oscuro"} className="fila"
+            data-fila-tema onClick={alternarTema}>
             Tema claro u oscuro
-            <span className="der"><TemaToggle /></span>
-          </div>
+            <span className="der">{tema === "claro" ? <Moon {...ICONO_BARRA} /> : <Sun {...ICONO_BARRA} />}</span>
+          </button>
           {isAdmin && (
             <button type="button" role="menuitem" className="fila solo-telefono"
               onClick={() => { setAbierto(false); onAjustes(); }}>

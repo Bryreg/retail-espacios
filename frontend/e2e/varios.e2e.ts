@@ -1,9 +1,10 @@
 /**
  * Arreglos sueltos encontrados al recorrer la app para los manuales
  * (2026-11-20): el buscador le encuentra los espacios también a quien trabaja
- * en la tienda —y le abre la ficha, sin plata ni acciones de venta—, y su
- * campo no pierde lo que se teclea mientras baja.
+ * en la tienda —y le abre la ficha, sin plata ni acciones de venta—, y en el
+ * menú de la cuenta toda la fila «Tema claro u oscuro» cambia el tema.
  */
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { entrar, gondola, plano, sedeUnica, sesionEnElNavegador, venderEntera } from "./sembrar";
 
@@ -60,6 +61,33 @@ test("admin: el buscador sigue llevando a vender el espacio", async ({ page, req
   await expect(fila).toContainText("Nuevo contrato");
   await fila.click();
   await expect(page).toHaveURL(/\/contratos$/);
+});
+
+test("menú de la cuenta: toda la fila «Tema claro u oscuro» cambia el tema", async ({ page, request }) => {
+  const worker = await entrar(request, "worker");
+  await sesionEnElNavegador(page, worker);
+  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10)));
+  await page.goto("/");
+  await expect(page.locator("main")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const tema = () => page.evaluate(() => document.documentElement.dataset.tema ?? "claro");
+  expect(await tema()).toBe("claro");
+
+  await page.locator(".cuenta-app > button").click();
+  const control = page.getByRole("menuitemcheckbox", { name: "Tema claro u oscuro" });
+  await expect(control).toHaveAttribute("aria-checked", "false");
+  // El TEXTO de la fila, que es lo que uno toca.
+  await page.getByText("Tema claro u oscuro").click();
+  expect(await tema()).toBe("oscuro");
+  await expect(control).toHaveAttribute("aria-checked", "true");
+  const r = await new AxeBuilder({ page }).include(".menu-cuenta").analyze();
+  expect(r.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+
+  // Con el teclado también, y vuelve a claro.
+  await control.focus();
+  await page.keyboard.press("Enter");
+  expect(await tema()).toBe("claro");
+  await expect(control).toHaveAttribute("aria-checked", "false");
 });
 
 test("buscador: lo tecleado apenas se abre con el mouse no se pierde", async ({ page, request }) => {
