@@ -175,7 +175,7 @@ def send_test_notification(db: Session = Depends(get_db)):
             ("Remitente", ajustes["mail_from"] or "—"),
             ("Destinatarios", ", ".join(destinos)),
         ],
-        "Si recibió este mensaje, las notificaciones del sistema están funcionando correctamente.",
+        "Si te llegó este mensaje, los avisos del sistema están funcionando.",
     )
     # El motivo real, no «revise las credenciales». Un botón de prueba que no
     # dice qué falló no prueba nada: una contraseña rechazada y un puerto

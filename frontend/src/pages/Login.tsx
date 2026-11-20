@@ -140,7 +140,7 @@ function AvisoInvitacion({ vista }: { vista: InvitacionVista | "invalida" }) {
   if (vista === "invalida") {
     return (
       <div style={cajaAvisoStyle} role="status">
-        Este enlace de invitación no es válido. Solicite uno nuevo a quien lo invitó.
+        Este enlace de invitación no es válido. Pedile uno nuevo a quien te invitó.
       </div>
     );
   }
@@ -151,7 +151,7 @@ function AvisoInvitacion({ vista }: { vista: InvitacionVista | "invalida" }) {
     return (
       <div style={cajaAvisoStyle} role="status">
         La invitación a <b style={{ color: "var(--ink-1)" }}>{vista.cliente_nombre}</b> venció
-        el {fecha}. Solicite una nueva a quien lo invitó.
+        el {fecha}. Pedile una nueva a quien te invitó.
       </div>
     );
   }
@@ -163,9 +163,9 @@ function AvisoInvitacion({ vista }: { vista: InvitacionVista | "invalida" }) {
       {vista.estado === "usada"
         ? "Esta invitación ya fue aceptada. "
         : `Rol: ${rolLabel(vista.rol)}. `}
-      Ingrese con la cuenta{" "}
+      Entrá con la cuenta{" "}
       <b style={{ color: "var(--ink-1)", fontFamily: "var(--font-mono)" }}>{vista.correo}</b>: con
-      Google, si es una cuenta de Google, o con correo y contraseña, si creó la cuenta con esa
+      Google, si es una cuenta de Google, o con correo y contraseña, si creaste la cuenta con esa
       dirección.
     </div>
   );
@@ -626,7 +626,7 @@ export default function Login({ enHoja = false, modoInicial }: {
                 }}
               >
                 El ingreso con Google o correo no está disponible en este
-                servidor todavía. Escríbanos para que lo revisemos.
+                servidor todavía. Escribinos para que lo revisemos.
               </div>
             ) : errorInvitacion ? (
               // ── El enlace no lleva a ninguna parte con esta cuenta ───────
@@ -664,12 +664,12 @@ export default function Login({ enHoja = false, modoInicial }: {
                       no tiene acceso a ningún supermercado.
                     </>
                   ) : (
-                    "Su cuenta no tiene acceso a ningún supermercado."
+                    "Tu cuenta no tiene acceso a ningún supermercado."
                   )}
                 </p>
                 <p style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-                  Si lo invitaron, ingrese con la misma cuenta a la que llegó la invitación.
-                  Si no la encuentra, solicite a quien lo invitó que la envíe de nuevo: la
+                  Si te invitaron, entrá con la misma cuenta a la que llegó la invitación.
+                  Si no la encontrás, pedile a quien te invitó que te la mande de nuevo: la
                   invitación vence a los 7 días.
                 </p>
                 <button
@@ -691,7 +691,7 @@ export default function Login({ enHoja = false, modoInicial }: {
                 {!invitacion && (
                   <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
                     <p style={{ margin: "0 0 6px", fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
-                      ¿Va a registrar su supermercado en RECABRA?
+                      ¿Vas a registrar tu supermercado en RECABRA?
                     </p>
                     <button type="button" onClick={() => setFundando(true)} style={linkButtonStyle}>
                       Registrar un supermercado nuevo
@@ -703,9 +703,9 @@ export default function Login({ enHoja = false, modoInicial }: {
               // ── Fase 2: fundar el supermercado, ahora a pedido ──────────
               <div style={{ width: "100%", marginBottom: 18 }}>
                 <p style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                  Esto crea un supermercado <b>nuevo y vacío</b>, con usted como dueño,
-                  separado de cualquier otro. Si trabaja para un supermercado que ya usa
-                  RECABRA, no lo cree: solicite a su dueño una invitación a su correo.
+                  Esto crea un supermercado <b>nuevo y vacío</b>, con vos como dueño,
+                  separado de cualquier otro. Si trabajás para un supermercado que ya usa
+                  RECABRA, no lo crees: pedile a su dueño una invitación a tu correo.
                 </p>
                 <form onSubmit={fundarCliente}>
                   <div style={{ marginBottom: 10 }}>
@@ -831,7 +831,7 @@ export default function Login({ enHoja = false, modoInicial }: {
               // ── Selector de cliente: varias membresías activas ──────────
               <div style={{ width: "100%", marginBottom: 18 }}>
                 <label htmlFor="login-cliente-fb" style={etiquetaStyle}>
-                  Su cuenta entra a varios supermercados — elija uno
+                  Tu cuenta entra a varios supermercados — elegí uno
                 </label>
                 <select
                   id="login-cliente-fb"
@@ -841,7 +841,7 @@ export default function Login({ enHoja = false, modoInicial }: {
                 >
                   {/* Vacío salvo que se recuerde el último: elegir el primero
                       de la lista por la persona era mandarla al que tocara. */}
-                  {!clienteElegido && <option value="">Elija un supermercado…</option>}
+                  {!clienteElegido && <option value="">Elegí un supermercado…</option>}
                   {membresias.map((m) => (
                     <option key={m.cliente} value={m.cliente}>
                       {etiquetaDeMembresia(m, membresias, rolLabel)}
@@ -993,7 +993,7 @@ export default function Login({ enHoja = false, modoInicial }: {
               fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5,
             }}
           >
-            El ingreso no está configurado en este servidor. Escríbanos para que
+            El ingreso no está configurado en este servidor. Escribinos para que
             lo revisemos.
           </div>
         )}
@@ -1040,10 +1040,10 @@ export default function Login({ enHoja = false, modoInicial }: {
             }}
           >
             <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: "var(--ink-1)" }}>
-              Acepte la Política de Tratamiento de Datos
+              Aceptá la Política de Tratamiento de Datos
             </h2>
             <p style={{ margin: "0 0 16px", fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-              Para sumarse a este supermercado hace falta aceptar la política antes
+              Para sumarte a este supermercado hace falta aceptar la política antes
               de terminar de entrar.
             </p>
             <a

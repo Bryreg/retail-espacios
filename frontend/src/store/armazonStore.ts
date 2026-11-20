@@ -58,11 +58,17 @@ interface EstadoDelArmazon {
   /** El buscador de funciones (Ctrl K) y la ayuda «?» de la pantalla. */
   buscador: boolean;
   setBuscador: (v: boolean) => void;
+  /** Lo tecleado entre abrir el buscador y que su campo exista (baja a
+   *  pedido): sin esto, abrirlo con el mouse y escribir enseguida «reno»
+   *  dejaba «no». Lo junta el armazón y el buscador lo toma al montar. */
+  tecleadoAlAbrir: string;
+  sumarTecleado: (t: string) => void;
+  tomarTecleado: () => string;
   ayuda: boolean;
   setAyuda: (v: boolean) => void;
 }
 
-export const useArmazon = create<EstadoDelArmazon>()((set) => ({
+export const useArmazon = create<EstadoDelArmazon>()((set, get) => ({
   cuentaPendientes: 0,
   setCuentaPendientes: (n) => set((s) => (s.cuentaPendientes === n ? s : { cuentaPendientes: n })),
   bandejaAbierta: false,
@@ -81,7 +87,14 @@ export const useArmazon = create<EstadoDelArmazon>()((set) => ({
   abrirDesdeMontaje: (d) => set({ desdeMontaje: d, bandejaAbierta: true, grupoPedido: null }),
   olvidarMontaje: () => set({ desdeMontaje: null }),
   buscador: false,
-  setBuscador: (v) => set({ buscador: v }),
+  setBuscador: (v) => set({ buscador: v, tecleadoAlAbrir: "" }),
+  tecleadoAlAbrir: "",
+  sumarTecleado: (t) => set((s) => ({ tecleadoAlAbrir: s.tecleadoAlAbrir + t })),
+  tomarTecleado: () => {
+    const t = get().tecleadoAlAbrir;
+    if (t) set({ tecleadoAlAbrir: "" });
+    return t;
+  },
   ayuda: false,
   setAyuda: (v) => set({ ayuda: v }),
 }));

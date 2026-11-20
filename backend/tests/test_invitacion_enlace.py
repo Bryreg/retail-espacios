@@ -364,7 +364,7 @@ def test_el_correo_dice_con_que_cuenta_entrar_y_escapa_el_nombre(client, monkeyp
 
     html = capturado["html"]
     assert "invitada@e.co" in html
-    assert "Ingrese desde" in html and "?invitacion=" in html
+    assert "Entrá desde" in html and "?invitacion=" in html
     assert "&lt;i&gt;Uno&lt;/i&gt;" in html
     assert "<i>Uno</i>" not in html
     # Escapado UNA vez: el título lo escapa `html_shell` (2026-10-02), así que
@@ -399,3 +399,24 @@ def test_sin_el_de_siempre_un_token_sin_cliente_no_cae_en_otro(client, monkeypat
     assert client.get("/api/montaje/mi-espacio", params={"token": montaje}).status_code == 401
     # Y el login legado sin `cliente` tampoco se cae a Pepito.
     assert client.post("/api/auth/login", json={"password": "admin123"}).status_code == 422
+
+
+# ─── La voz: de vos, como la app (2026-11-20) ─────────────────────────────────
+
+def test_los_textos_del_ingreso_y_la_invitacion_van_de_vos():
+    """La invitación y los avisos del ingreso estaban en usted («Ingrese con la
+    cuenta», «Solicite uno nuevo a quien lo invitó») en una app que habla de
+    vos. Sólo la landing va de usted (decisión del dueño)."""
+    import inspect
+    import re
+
+    from app.routers import alta, auth, usuarios
+
+    usted = re.compile(r"\b(Ingrese|ingrese|Solicite|solicite|usted|Su acceso|lo invitó|Cierre esta|Le escribimos|el suyo|agregue)\b")
+    for texto in (auth.INVITACION_INVALIDA, alta.MENSAJE_NOMBRE_TOMADO, alta.MENSAJE_EN_ESPERA):
+        assert not usted.search(texto), texto
+    for modulo in (auth, usuarios):
+        codigo = "\n".join(l for l in inspect.getsource(modulo).splitlines() if not l.strip().startswith("#"))
+        cadenas = re.findall(r"f?\"[^\"\n]*\"|f?'[^'\n]*'", codigo)
+        hallados = [c for c in cadenas if usted.search(c)]
+        assert hallados == [], hallados

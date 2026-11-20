@@ -5447,6 +5447,20 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoVender, isAdmin]);
 
+  /** Un espacio elegido en el buscador por quien trabaja en la tienda
+   *  (`pedirFicha`; el buscador ya pasó a Indicadores): su ficha, al lado del
+   *  plano, como la abre una fila de Pendientes. Se suelta enseguida. */
+  const pedidoFicha = useFixtureStore((s) => s.pedidoFicha);
+  useEffect(() => {
+    if (!pedidoFicha) return;
+    useFixtureStore.getState().soltarPedidoFicha();
+    const f = fixtures.find((x) => x.id === pedidoFicha.fixtureId);
+    if (!f) return;
+    setPestanaInd("plano");
+    revisar(f, pedidoFicha.cara);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoFicha]);
+
   /** Distribuir, al guardar una cara a la que se entró desde Supervisar
    *  («Falta distribuir» → «Distribuir»): vuelve acá, a Supervisar, con el
    *  aviso de lo que pasó («Listo: GON-01 · cara A quedó distribuida…»). Se

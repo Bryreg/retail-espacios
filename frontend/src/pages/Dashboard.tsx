@@ -1,6 +1,6 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid, Moon, Sun } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -25,7 +25,9 @@ import type { ContextoDeAccion } from "../acciones";
 import Mas from "../components/Armazon/Mas";
 // Lo que se abre a pedido (Ctrl K, la ayuda, Tarifas, Temporadas y las
 // secciones de Ajustes) baja cuando se abre (auditoría P2-20).
-const Buscador = lazy(() => import("../components/Armazon/Buscador"));
+const cargarBuscador = () => import("../components/Armazon/Buscador");
+const Buscador = lazy(cargarBuscador);
+const precargarBuscador = () => { void cargarBuscador(); };
 const Ayuda = lazy(() => import("../components/Armazon/Ayuda"));
 const MetasPorSede = lazy(() => import("../components/Ajustes/Metas"));
 const SedesDeAjustes = lazy(() => import("../components/Ajustes/Sedes"));
@@ -63,7 +65,7 @@ import { descargarMisDatos } from "../api/legal";
 import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { usePlanograma } from "../store/planogramaStore";
-import { TemaToggle, useModalAbierto } from "../tema";
+import { useModalAbierto, useTema } from "../tema";
 import { altoDeLaVentana, useEscalaDeLaApp } from "../escala";
 import {
   LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
@@ -1272,6 +1274,7 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
     }
   };
   const [abierto, setAbierto] = useState(false);
+  const [tema, alternarTema] = useTema();
   const caja = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!abierto) return;
@@ -1309,12 +1312,16 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
             {clienteNombre && <b>{clienteNombre}</b>}
             <span>{persona ? `${persona} · ${rol}` : rol}</span>
           </div>
-          {/* Claro / oscuro: la misma pieza de siempre (el ícono es el del
-              tema AL QUE SE VA), con su palabra al lado. */}
-          <div className="fila">
+          {/* Claro / oscuro: TODA la fila es el control (2026-11-20). Antes
+              era un texto con el botón sol/luna al costado, y tocar el texto
+              —lo que uno toca— no hacía nada. Es una casilla del menú
+              (marcada = oscuro); el ícono sigue siendo el del tema AL QUE SE
+              VA. El menú queda abierto: se ve el cambio y se puede volver. */}
+          <button type="button" role="menuitemcheckbox" aria-checked={tema === "oscuro"} className="fila"
+            data-fila-tema onClick={alternarTema}>
             Tema claro u oscuro
-            <span className="der"><TemaToggle /></span>
-          </div>
+            <span className="der">{tema === "claro" ? <Moon {...ICONO_BARRA} /> : <Sun {...ICONO_BARRA} />}</span>
+          </button>
           {isAdmin && (
             <button type="button" role="menuitem" className="fila solo-telefono"
               onClick={() => { setAbierto(false); onAjustes(); }}>
@@ -1532,6 +1539,8 @@ function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLo
       {/* El buscador de funciones (Ctrl K), la ayuda de la pantalla, «Más» del
           módulo y lo fijado (etapa 8): ninguna función queda escondida. */}
       <button type="button" className="btn-buscar" onClick={() => useArmazon.getState().setBuscador(true)}
+        // Que el buscador empiece a bajar al acercarse a la lupa: llega antes.
+        onPointerEnter={precargarBuscador} onFocus={precargarBuscador}
         title="Buscar una función, un espacio o un término (Ctrl K)" aria-label="Buscar (Ctrl K)" data-abrir-buscador>
         <Search {...ICONO_BARRA} /><span className="txt">Buscar</span><kbd>Ctrl K</kbd>
       </button>
@@ -1741,6 +1750,23 @@ export default function Dashboard() {
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, []);
+  // Lo tecleado ANTES de que el buscador exista (2026-11-20). Baja a pedido
+  // (`lazy`), y abierto con el mouse el foco se queda en la lupa mientras
+  // llega: «reno» tecleado enseguida quedaba «no». Mientras no está su campo
+  // (`[data-buscador]`), las letras se juntan acá y el buscador arranca con
+  // ellas; Esc lo cierra como lo cerraría él.
+  useEffect(() => {
+    if (!buscadorAbierto) return;
+    const k = (e: KeyboardEvent) => {
+      if (document.querySelector("[data-buscador]")) return;
+      if (e.key === "Escape") { e.preventDefault(); useArmazon.getState().setBuscador(false); return; }
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      useArmazon.getState().sumarTecleado(e.key);
+    };
+    window.addEventListener("keydown", k, true);
+    return () => window.removeEventListener("keydown", k, true);
+  }, [buscadorAbierto]);
 
   return (
     <div

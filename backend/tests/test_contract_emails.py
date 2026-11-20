@@ -340,3 +340,36 @@ def test_al_listar_contratos_no_viene_el_bloque_de_avisos(client, admin, enviado
     _contratar(client, admin)
     espacio = client.get("/api/spaces/by-code/NAVE-PUN-01", headers=admin).json()
     assert espacio["active_lease"] is None or espacio["active_lease"].get("avisos") is None
+
+
+def test_los_tres_correos_dicen_las_fechas_como_la_app(client, admin, enviados):
+    """«desde el 20/11/2026», no «desde el 2026-11-20» (2026-11-20): la app
+    dice dd/mm/aaaa, y el correo lo lee la misma persona."""
+    _contratar(client, admin)
+    hoy = hoy_en_colombia()
+    desde, hasta = hoy + timedelta(days=3), hoy + timedelta(days=33)
+    for correo in ("jefe@galerias.co", "merca@galerias.co", "ventas@nutresa.co"):
+        texto = _texto(_por_destinatario(enviados, correo)["html"])
+        assert desde.strftime("%d/%m/%Y") in texto, correo
+        assert re.search(r"\b\d{4}-\d{2}-\d{2}\b", texto) is None, (correo, texto)
+    assert hasta.strftime("%d/%m/%Y") in _texto(_por_destinatario(enviados, "jefe@galerias.co")["html"])
+    assert hasta.strftime("%d/%m/%Y") in _texto(_por_destinatario(enviados, "ventas@nutresa.co")["html"])
+
+
+@pytest.mark.parametrize("valor,sale", [
+    ("2026-11-20", "20/11/2026"),
+    ("2026-01-05T10:00:00", "05/01/2026"),
+    ("", ""),
+    (None, ""),
+    ("sin fecha", "sin fecha"),
+])
+def test_fecha_de_correo(valor, sale):
+    from app.services.mailer import fecha_de_correo
+    assert fecha_de_correo(valor) == sale
+
+
+def test_fecha_de_correo_con_date():
+    from datetime import date, datetime
+    from app.services.mailer import fecha_de_correo
+    assert fecha_de_correo(date(2027, 3, 9)) == "09/03/2027"
+    assert fecha_de_correo(datetime(2027, 3, 9, 23, 59)) == "09/03/2027"

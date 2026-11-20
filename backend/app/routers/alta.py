@@ -60,9 +60,9 @@ MENSAJE_SLUG_TOMADO = "Ese código ya está tomado. Probá con otro."
 # en vez de crearlo. Decir que el nombre existe no es contar un secreto: está
 # en la fachada de la tienda, y sólo lo ve quien ya entró con una cuenta.
 MENSAJE_NOMBRE_TOMADO = (
-    "Ya hay un supermercado con ese nombre en RECABRA. Si usted trabaja allí, no lo cree "
-    "de nuevo: solicite a su dueño una invitación a su correo. Si es otro supermercado, "
-    "agregue la ciudad o la sede al nombre."
+    "Ya hay un supermercado con ese nombre en RECABRA. Si trabajás allí, no lo crees "
+    "de nuevo: pedile a su dueño una invitación a tu correo. Si es otro supermercado, "
+    "agregá la ciudad o la sede al nombre."
 )
 MAX_FUNDACIONES_POR_USUARIO = 2
 
@@ -73,8 +73,8 @@ MAX_FUNDACIONES_POR_USUARIO = 2
 # (`AltaEnEspera`) y al operador le llega un correo; ninguna base se crea.
 ALTAS_POR_DIA_DEFECTO = 10
 MENSAJE_EN_ESPERA = (
-    "Hoy ya se dieron de alta muchos supermercados y el suyo quedó en lista de espera. "
-    "Le escribimos a su correo para habilitarlo en cuanto podamos."
+    "Hoy ya se dieron de alta muchos supermercados y el tuyo quedó en lista de espera. "
+    "Te escribimos a tu correo para habilitarlo en cuanto podamos."
 )
 
 
