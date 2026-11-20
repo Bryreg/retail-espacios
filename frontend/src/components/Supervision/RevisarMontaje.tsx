@@ -39,7 +39,7 @@ export function textoDeLaRevision(r: Revisada, nombre: string, sede: string): st
     case "enviada": return `Guardado: no coincide. La guía salió a ${r.reenviada_a.join(", ")} con la nota.`;
     case "sin_contactos": return `Guardado: no coincide. No hay a quién mandarle la guía en ${sede} (Configuración → Contactos): avisale vos.`;
     case "sin_correo": return "Guardado: no coincide. El correo de RECABRA no está configurado: avisale vos (Copiar el enlace, en la guía).";
-    default: return "Guardado: no coincide. Queda en «Para revisar» hasta que vuelvan a avisar.";
+    default: return "Guardado: no coincide. Queda en Pendientes hasta que vuelvan a avisar.";
   }
 }
 

@@ -319,8 +319,8 @@ function NombresDeMueblesSection() {
       <div style={sectionLabelStyle}>Cómo se llaman los muebles acá</div>
       <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
         Si en la tienda a la estiba le dicen «mamut» o a la punta «tope de góndola», escribilo
-        al lado: sale así en Vender, Supervisar, Estado por espacio, Montajes, Tarifas, el
-        Plano, el Editor 3D y la lámina que se lleva el proveedor. Vacío, queda el de RECABRA.
+        al lado: sale así en Contratos, Indicadores, Montajes, Tarifas, el Plano de la sede
+        (también en 3D) y la lámina que se lleva el proveedor. Vacío, queda el de RECABRA.
         Los informes de RECABRA siguen con el suyo, para poder comparar supermercados. Se
         guarda al salir del campo; ningún mueble, código ni tarifa cambia.
       </p>
@@ -1441,7 +1441,8 @@ function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => vo
   const cuenta = useArmazon((s) => s.cuentaPendientes);
   const abierta = useArmazon((s) => s.bandejaAbierta);
   const abrir = useArmazon((s) => s.abrirBandeja);
-  const cerrar = useArmazon((s) => s.cerrarBandeja);
+  const cerrar = useArmazon((s) => s.cerrarPendientes);
+  const location = useLocation();
   const comercial = modulo === "inicio" || modulo === "contratos" || modulo === "indicadores";
   const n = modulo === "contratos" ? 0 : cuenta;
   return (
@@ -1452,8 +1453,9 @@ function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => vo
       title="Lo que hay que resolver: hoy, los próximos 30 días y lo que no cuadra"
       onClick={() => {
         if (abierta) { cerrar(); return; }
+        // Desde el Plano o Montajes: se anota de dónde, para volver al cerrarla.
+        abrir(null, comercial ? undefined : { nombre: NOMBRE_DE[modulo], ruta: location.pathname + location.search });
         if (!comercial) ir("inicio");
-        abrir();
       }}
     >
       <Inbox {...ICONO_BARRA} />
@@ -1627,6 +1629,14 @@ export default function Dashboard() {
   const temaAjustes = useArmazon((s) => s.ajustes);
   /** Se vino de Montajes a resolver algo: la barra para volver. */
   const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  /** Pendientes, abierta desde el Plano o Montajes (se dibuja en el Inicio):
+   *  al cerrarla quien mira, se vuelve ahí (`cerrarPendientes`). */
+  const volverA = useArmazon((s) => s.volverA);
+  useEffect(() => {
+    if (!volverA) return;
+    useArmazon.getState().yaVolvio();
+    navigate(volverA);
+  }, [volverA, navigate]);
   /** Al volver, la fila de ese contrato marcada en Montajes. */
   const [montajeResaltado, setMontajeResaltado] = useState<string | null>(null);
   useEffect(() => {
@@ -1731,7 +1741,10 @@ export default function Dashboard() {
     ir,
     navegar: (r) => navigate(r),
     abrirAjustes: (t) => { setSeccionConfig(null); useArmazon.getState().abrirAjustes(t); },
-    abrirPendientes: (g) => { if (!comercial) ir("inicio"); useArmazon.getState().abrirBandeja(g ?? null); },
+    abrirPendientes: (g) => {
+      useArmazon.getState().abrirBandeja(g ?? null, comercial ? undefined : { nombre: NOMBRE_DE[efectivo], ruta: rutaActual });
+      if (!comercial) ir("inicio");
+    },
     pedir: (p) => useArmazon.getState().pedir(p),
     abrirTarifas: () => setModalDeAjuste("tarifas"),
     abrirTemporadas: () => setModalDeAjuste("temporadas"),
@@ -1854,7 +1867,12 @@ export default function Dashboard() {
             {comercial ? (
               <DashboardView
                 inicio={efectivo === "inicio"}
-                onIrAMontajes={() => ir("montajes")}
+                onIrAMontajes={(codigo) => {
+                  // Desde una fila de Pendientes («Ir a Montajes»): esa fila,
+                  // marcada (`resaltar`), como al volver de Pendientes.
+                  setMontajeResaltado(codigo ?? null);
+                  ir("montajes");
+                }}
                 onIrAlInicio={() => ir("inicio")}
                 modo={modoComercial}
                 onModo={(m) => ir(m === "vender" ? "contratos" : "indicadores")}

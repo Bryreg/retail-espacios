@@ -519,7 +519,7 @@ def _revisar(
                             avisos.append(
                                 f"El mueble tiene {internos} espacio{'s' if internos != 1 else ''} interno"
                                 f"{'s' if internos != 1 else ''} marcado{'s' if internos != 1 else ''} vendido"
-                                f"{'s' if internos != 1 else ''} en el plano (Editor 3D), sin contrato: "
+                                f"{'s' if internos != 1 else ''} en el 3D del plano, sin contrato: "
                                 "revisá que no caigan en lo que se vende."
                             )
                     # El texto resolvió sin dudas, pero el MUEBLE puede tener un

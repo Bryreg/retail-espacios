@@ -30,6 +30,13 @@ export interface DesdeMontaje {
   quien: string;
 }
 
+/** De qué pantalla de afuera de lo comercial se abrió Pendientes: su nombre
+ *  (`NOMBRE_DE` de `modulos.ts`) y su dirección exacta. */
+export interface VueltaDePendientes {
+  nombre: string;
+  ruta: string;
+}
+
 interface EstadoDelArmazon {
   /** Cuánto hay para revisar (la pastilla roja). */
   cuentaPendientes: number;
@@ -38,8 +45,23 @@ interface EstadoDelArmazon {
   bandejaAbierta: boolean;
   /** El grupo con el que se pidió abrir (`null`: el que corresponda). */
   grupoPedido: GrupoDeRevision | null;
-  abrirBandeja: (grupo?: GrupoDeRevision | null) => void;
+  /** `desde`: la pantalla de afuera de lo comercial (el Plano, Montajes) desde
+   *  la que se abrió; la bandeja se dibuja en el Inicio y, al cerrarla quien
+   *  mira, se vuelve ahí (`cerrarPendientes`). */
+  abrirBandeja: (grupo?: GrupoDeRevision | null, desde?: VueltaDePendientes | null) => void;
+  /** La cierra una fila que lleva a otra cosa (la ficha, Contratos, el 3D):
+   *  lo pedido es esa pantalla, no se vuelve. */
   cerrarBandeja: () => void;
+  /** De dónde se vino a Pendientes, si fue desde afuera de lo comercial. */
+  vueltaDePendientes: VueltaDePendientes | null;
+  /** La cierra quien mira (la ✕, Esc, el botón Pendientes, «Volver a …»): si
+   *  se vino del Plano o de Montajes, `volverA` pide volver ahí. Tocar
+   *  «Revisar» estando en el Plano dejaba el Inicio atrás, sin camino de vuelta
+   *  (recorrido de los manuales, 2026-11-20). */
+  cerrarPendientes: () => void;
+  /** La dirección a la que el armazón tiene que volver (la atiende y la borra). */
+  volverA: string | null;
+  yaVolvio: () => void;
   /** Ajustes, abierto en un tema (`null`: cerrado). */
   ajustes: TemaDeAjustes | null;
   abrirAjustes: (tema?: TemaDeAjustes) => void;
@@ -73,8 +95,19 @@ export const useArmazon = create<EstadoDelArmazon>()((set, get) => ({
   setCuentaPendientes: (n) => set((s) => (s.cuentaPendientes === n ? s : { cuentaPendientes: n })),
   bandejaAbierta: false,
   grupoPedido: null,
-  abrirBandeja: (grupo = null) => set({ bandejaAbierta: true, grupoPedido: grupo }),
-  cerrarBandeja: () => set({ bandejaAbierta: false, grupoPedido: null }),
+  abrirBandeja: (grupo = null, desde) => set((s) => ({
+    bandejaAbierta: true, grupoPedido: grupo,
+    // Pedirla otra vez desde el Inicio (ya abierta) no olvida de dónde se vino.
+    vueltaDePendientes: desde !== undefined ? desde : s.bandejaAbierta ? s.vueltaDePendientes : null,
+  })),
+  cerrarBandeja: () => set({ bandejaAbierta: false, grupoPedido: null, vueltaDePendientes: null }),
+  vueltaDePendientes: null,
+  cerrarPendientes: () => set((s) => ({
+    bandejaAbierta: false, grupoPedido: null, vueltaDePendientes: null,
+    volverA: s.vueltaDePendientes?.ruta ?? null,
+  })),
+  volverA: null,
+  yaVolvio: () => set({ volverA: null }),
   ajustes: null,
   abrirAjustes: (tema = "comercial") => set({ ajustes: tema }),
   cerrarAjustes: () => set({ ajustes: null }),

@@ -73,10 +73,12 @@ export function queQuedoMal(numeros: readonly number[], otraCosa: boolean): stri
   return partes.join(" ");
 }
 
-/** El aviso de quien monta, en palabras: «avisó que quedó · hoy 9:40». */
+/** El aviso de quien monta, en palabras: «avisó que quedó montada · hoy
+ *  9:40». Decía «avisó que quedó · hoy», sin el «montada» que dicen la guía
+ *  y la revisión (recorrido de los manuales, 2026-11-20). */
 export function textoDelAviso(a: AvisoDeMontaje, hoy: string): string {
   const cuando = cuandoPaso(a.en, hoy);
-  if (a.estado === "montada") return `avisó que quedó${cuando ? ` · ${cuando}` : ""}`;
+  if (a.estado === "montada") return `avisó que quedó montada${cuando ? ` · ${cuando}` : ""}`;
   return `${a.motivo_legible ?? "No se pudo"}${a.nota ? ` · ${a.nota}` : ""}${cuando ? ` · ${cuando}` : ""}`;
 }
 
@@ -84,7 +86,7 @@ export function textoDelAviso(a: AvisoDeMontaje, hoy: string): string {
 export function lineaParaRevisar(c: CaraPorSupervisar, hoy: string): string {
   switch (c.estado) {
     case "por_revisar":
-      return `${c.aviso ? textoDelAviso(c.aviso, hoy) : "avisó que quedó"} · ${
+      return `${c.aviso ? textoDelAviso(c.aviso, hoy) : "avisó que quedó montada"} · ${
         c.fotos_nuevas === 0 ? "sin foto" : c.fotos_nuevas === 1 ? "con 1 foto" : `con ${c.fotos_nuevas} fotos`}`;
     case "no_se_pudo":
       return c.aviso ? textoDelAviso(c.aviso, hoy) : "no se pudo";

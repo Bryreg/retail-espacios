@@ -382,11 +382,13 @@ export default function MountView({
   // Se volvió de Pendientes: esa fila, a la vista. Va ANTES del `return` del
   // formulario: un hook después de un `return` condicional rompe la pantalla
   // («Rendered fewer hooks than expected») al tocar «Registrar montaje».
+  // Llegando de una fila de Pendientes («Ir a Montajes») la lista todavía se
+  // está cargando: se vuelve a buscar la fila cuando termina.
   useEffect(() => {
-    if (!resaltar) return;
+    if (!resaltar || cargando || !layoutListo) return;
     const t = window.setTimeout(() => document.querySelector(".mj-fila[data-resaltada]")?.scrollIntoView({ block: "center" }), 200);
     return () => window.clearTimeout(t);
-  }, [resaltar]);
+  }, [resaltar, cargando, layoutListo]);
 
   if (abierto) {
     return (

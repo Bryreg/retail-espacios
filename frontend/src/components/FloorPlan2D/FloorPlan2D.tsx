@@ -36,7 +36,7 @@ import {
 } from "../../catalogo/nombresPropios";
 import { GeometriaDelMueble } from "../GeometriaDelMueble";
 import { PartesDelMueble } from "../PartesDelMueble";
-import { partesConEstado, textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
+import { deLaBasePorMueble, partesConEstado, textoDeLoQueNuncaSeAlquila, vendePorPartes } from "../../utils/partesDelMueble";
 import {
   codigoDeParte, concordancia, dispoDeParticipacion, divisionDe, estadoParaPintar, juntasDePartes, partirCodigo, piezasDe,
   porParticipacion, puntosDePartesVendidas, sufijoDeParte, vanoDeParte,
@@ -185,8 +185,10 @@ function matchesStatusFilter(item: PlacedItem2D, filter: StatusFilter2D, marcas?
 }
 
 /** True when the pre-normalized query matches any searchable field on either face.
- *  Con `nombres`, también por el nombre propio de la familia («mamut»). */
-function matchesQuery(item: PlacedItem2D, normalizedQuery: string, nombres: NombresPropios): boolean {
+ *  Con `nombres`, también por el nombre propio de la familia («mamut»). Con
+ *  `deLaBase`, también por lo que la base dice de sus PARTES y participaciones
+ *  (`deLaBasePorMueble`). */
+function matchesQuery(item: PlacedItem2D, normalizedQuery: string, nombres: NombresPropios, deLaBase?: readonly string[]): boolean {
   if (!normalizedQuery) return true;
   const fields = [
     item.code,
@@ -203,6 +205,7 @@ function matchesQuery(item: PlacedItem2D, normalizedQuery: string, nombres: Nomb
     item.brandCategory,
     item.faceB?.supplierName ?? "",
     item.faceB?.brandCategory ?? "",
+    ...(deLaBase ?? []),
   ];
   return fields.some((f) => normalizeText(f).includes(normalizedQuery));
 }
@@ -1387,25 +1390,31 @@ export default function FloorPlan2D({ defaultEditMode = false }: FloorPlan2DProp
   // Search + status filter matching (AND-combined); null set = no filter active
   const normalizedQuery = normalizeText(searchQuery.trim());
   const filterActive = normalizedQuery.length > 0 || statusFilter !== "all";
+  /** Los proveedores de las partes y participaciones de cada mueble. */
+  const deLaBase = useMemo(() => deLaBasePorMueble(estadoCrudo), [estadoCrudo]);
+  const textosDeLaBase = useCallback((it: PlacedItem2D) => {
+    const f = muebleDelStore.get(it.id);
+    return f ? deLaBase.get(fullSpaceCode(f.sede || sede, f.code).toUpperCase()) : undefined;
+  }, [deLaBase, muebleDelStore, sede]);
   const matchedIds = useMemo<Set<string> | null>(() => {
     if (!filterActive) return null;
     const s = new Set<string>();
     for (const it of items) {
-      if (matchesQuery(it, normalizedQuery, catalogLabels) && matchesStatusFilter(it, statusFilter, marcasDe.get(it.id))) {
+      if (matchesQuery(it, normalizedQuery, catalogLabels, textosDeLaBase(it)) && matchesStatusFilter(it, statusFilter, marcasDe.get(it.id))) {
         s.add(it.id);
       }
     }
     return s;
-  }, [items, normalizedQuery, statusFilter, filterActive, catalogLabels, marcasDe]);
+  }, [items, normalizedQuery, statusFilter, filterActive, catalogLabels, marcasDe, textosDeLaBase]);
   /** Cuántos muebles hay en cada filtro, con lo que se está buscando. */
   const cuentaDeFiltro = useMemo(() => {
     const n = Object.fromEntries(STATUS_FILTER_CHIPS.map((c) => [c.value, 0])) as Record<StatusFilter2D, number>;
     for (const it of items) {
-      if (!matchesQuery(it, normalizedQuery, catalogLabels)) continue;
+      if (!matchesQuery(it, normalizedQuery, catalogLabels, textosDeLaBase(it))) continue;
       for (const c of STATUS_FILTER_CHIPS) if (matchesStatusFilter(it, c.value, marcasDe.get(it.id))) n[c.value] += 1;
     }
     return n;
-  }, [items, normalizedQuery, catalogLabels, marcasDe]);
+  }, [items, normalizedQuery, catalogLabels, marcasDe, textosDeLaBase]);
 
   // Smart alignment guides — derived from the live drag/resize state so no
   // extra setState happens inside mousemove. Empty outside drag/resize (and
@@ -4029,8 +4038,8 @@ function AssignmentPanel({
                   {face.status === "reserved" ? (
                     <p className="p2-msj ojo" data-reservado-a-mano>
                       Está marcado «Reservado» a mano, sin proveedor ni fecha, y ya no se marca así:
-                      pasalo a Disponible o reservalo de verdad en Vender. Está también en
-                      Supervisar → Para revisar → Corregir.
+                      pasalo a Disponible o reservalo de verdad en Contratos. Está también en
+                      Pendientes › Corregir.
                     </p>
                   ) : (
                     <p className="p2-msj">Ocupado y Reservado los ponen el contrato y la reserva, no se marcan a mano.</p>
@@ -4124,7 +4133,7 @@ function AssignmentPanel({
                 <>
                   <div className="p2-vend-f">{botonVender}</div>
                   <p className="p2-msj">
-                    Los contratos se hacen en <b style={{ color: "var(--ink-2)" }}>Sede → Vender</b>, sobre el
+                    Los contratos se hacen en <b style={{ color: "var(--ink-2)" }}>Contratos</b>, sobre el
                     mapa y con la disponibilidad del periodo a la vista.
                   </p>
                 </>

@@ -431,5 +431,5 @@ def test_rompe_distribucion_no_nombra_participaciones_en_vender():
     e = HTTPException(409, detail={"code": "rompe_distribucion", "message":
                                    "Con esas fechas, las zonas de la participación 3 pisan las de la 2 desde el 1 nov."})
     fila = _fila_de_rechazo(0, "NAVE-GON-01", 2500, e)
-    assert fila["mensaje"] == "Con esas fechas no entra: revisá la distribución en Supervisar."
+    assert fila["mensaje"] == "Con esas fechas no entra: revisá la distribución en Plano de la sede › 3D."
     assert "participación" not in fila["mensaje"] and "problemas" not in fila

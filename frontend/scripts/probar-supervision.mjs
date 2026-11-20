@@ -101,8 +101,8 @@ await prueba("la línea de cada cara en «Para revisar» y su pastilla", () => {
   assert.equal(SU.lineaParaRevisar(cara("sin_montar", { rige_desde: "2026-10-21", dias_que_rige: 3 }), HOY), "rige desde el 21 oct · nadie avisó");
   assert.equal(SU.pastillaParaRevisar(cara("sin_montar", { dias_que_rige: 3 })), "3d");
   const aviso = { id: 1, estado: "montada", motivo: null, motivo_legible: null, nota: null, por_enlace: true, por: null, en: instante(2026, 10, 24, 9, 40) };
-  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 2 }), HOY), "avisó que quedó · hoy 9:40 · con 2 fotos");
-  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 0 }), HOY), "avisó que quedó · hoy 9:40 · sin foto");
+  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 2 }), HOY), "avisó que quedó montada · hoy 9:40 · con 2 fotos");
+  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 0 }), HOY), "avisó que quedó montada · hoy 9:40 · sin foto");
   const noPudo = { ...aviso, estado: "no_se_pudo", motivo: "sin_producto", motivo_legible: "No llegó el producto", nota: "Halloween", en: instante(2026, 10, 23, 18, 5) };
   assert.equal(SU.lineaParaRevisar(cara("no_se_pudo", { aviso: noPudo }), HOY), "No llegó el producto · Halloween · ayer 18:05");
   const revision = { id: 3, montaje_id: 1, resultado: "no_coincide", numeros: [2, 3], otra_cosa: false, nota: null, en_la_tienda: false,

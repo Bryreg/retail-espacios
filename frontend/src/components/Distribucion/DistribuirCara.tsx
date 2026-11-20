@@ -1162,7 +1162,7 @@ export default function DistribuirCara({ fixtureId, sede, onEncuadrarCara, lienz
 
                 {piezas.length === 0 && (
                   <p className="rounded-xl border border-dashed border-line px-3 py-3 text-sm text-ink-2">
-                    Esta cara no tiene marcas vendidas todavía. La parte de la cara que le toca a cada marca se vende en Vender.
+                    Esta cara no tiene marcas vendidas todavía. La parte de la cara que le toca a cada marca se vende en Contratos.
                   </p>
                 )}
 

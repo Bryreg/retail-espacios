@@ -202,6 +202,25 @@ export function partesConEstado(
   });
 }
 
+/** El proveedor y la marca de cada contrato del mapa crudo de la base, por la
+ *  base del código del mueble (`partirCodigo`: `CENTRO-PUN-03-EN1` y
+ *  `CENTRO-GON-03-B-PC1` son de `CENTRO-PUN-03` y `CENTRO-GON-03`). El
+ *  mueble fusionado sólo lleva el proveedor de la cara ENTERA: Café Montaña,
+ *  con dos entrepaños y una participación, daba «0 de 16» al buscarlo
+ *  (recorrido de los manuales, 2026-11-20). Una reserva viva cuenta (la base
+ *  la manda tomada, con su proveedor a quien administra). */
+export function deLaBasePorMueble(estado: EstadoPorEspacio): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const [codigo, e] of Object.entries(estado)) {
+    if (!e || e.status === "free" || (!e.supplierName && !e.brandCategory)) continue;
+    const base = partirCodigo(codigo.toUpperCase()).base;
+    const xs = m.get(base) ?? [];
+    xs.push(e.supplierName ?? "", e.brandCategory ?? "");
+    m.set(base, xs);
+  }
+  return m;
+}
+
 /** ¿Hay algo vendido de esa clase en el mueble? Mira el mapa crudo por
  *  código (también lo que hoy no se ofrece: un `TR4` vendido de antes), en
  *  las dos caras. Una pieza única (el forro) va sin número: `COL-07-FO`. */
@@ -353,7 +372,7 @@ export function revisarCambioDePartes(
     const clase = claseDe(despues.clase)!;
     return {
       bloqueo: null,
-      aviso: `Tiene ${internos === 1 ? "1 espacio interno vendido" : `${internos} espacios internos vendidos`} en el Editor 3D, ` +
+      aviso: `Tiene ${internos === 1 ? "1 espacio interno vendido" : `${internos} espacios internos vendidos`} en el 3D del plano, ` +
         `sin contrato. Los ${clase.plural} se venden igual: revisá que no caigan encima de lo que ya se vendió.`,
     };
   }

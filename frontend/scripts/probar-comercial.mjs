@@ -518,8 +518,9 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   assert.ok(k > 0 && sin > k, "«Sin contrato activo.» se alcanza antes que la rama de participación");
   assert.match(panel, /\{isAdmin && esPc \? \(\s*<>\s*<p[^>]*>\s*\{DONDE_SE_CARGAN\}/, "a quien administra no le dice dónde se cargan las participaciones");
   assert.match(panel, /onPorcentaje=\{isAdmin && esPc \? \(c\) => abrirEnDistribucion\(item\.id, c\) : undefined\}/);
-  const vender = panel.indexOf("Sede → Vender");
-  assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Sede → Vender» se dice también de una cara por participación");
+  // «Los contratos se hacen en Contratos» (era «Sede → Vender», nombre viejo: 2026-11-20).
+  const vender = panel.indexOf(">Contratos</b>, sobre el");
+  assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Los contratos se hacen en Contratos» se dice también de una cara por participación");
 });
 
 /* La verificación del arreglo (2026-10-17): cuatro mutantes vivían con las
@@ -1320,6 +1321,18 @@ prueba("cada sección del dibujo está en «Para revisar», en su grupo, y cada 
   assert.deepEqual(claves("hoy"), ["a", "c"]);
   assert.deepEqual(claves("dias30"), ["b", "d", "e"]);
   assert.deepEqual(claves("corregir"), ["f"]);
+});
+
+// Recorrido de los manuales (2026-11-20): «Falta distribuir · empieza en 7
+// días o menos» listaba participaciones que corrían desde hacía meses.
+prueba("«Falta distribuir» y «Falta planometría» de «Hoy» dicen si ya corre o si empieza en 7 días o menos (ejecutado)", () => {
+  for (const [s, palabra] of [["falta_distribuir", "Falta distribuir"], ["falta_planometria", "Falta planometría"]]) {
+    assert.equal(G.tituloDeSeccion(s, "hoy", [0, -40]), `${palabra} · ya corre`, "lo que ya corre dice que empieza");
+    assert.equal(G.tituloDeSeccion(s, "hoy", [3, 7]), `${palabra} · empieza en 7 días o menos`);
+    assert.equal(G.tituloDeSeccion(s, "hoy", [-2, 5]), `${palabra} · ya corre o empieza en 7 días o menos`);
+    assert.equal(G.tituloDeSeccion(s, "hoy"), `${palabra} · ya corre o empieza en 7 días o menos`, "sin los días, las dos");
+    assert.equal(G.tituloDeSeccion(s, "dias30", [20]), palabra);
+  }
 });
 
 prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sección cuenta (ejecutado)", () => {

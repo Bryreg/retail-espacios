@@ -330,7 +330,7 @@ export function revisarCapacidad(I: readonly Intervalo[], fisicos: readonly Fisi
         codigo: "cara_vendida_entera",
         frase: f.huerfano
           ? `La cara ${cara} tiene un contrato de participación sin término ${cuando}, que cuenta como la cara entera `
-            + "hasta que se aclare (Supervisar → «Para revisar»): en esas fechas no se vende por participación."
+            + "hasta que se aclare (Pendientes › Corregir): en esas fechas no se vende por participación."
           : `La cara ${cara} está vendida entera o por partes ${cuando}: en esas fechas no se vende por participación.`,
         extra: {},
       };

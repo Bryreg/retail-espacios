@@ -26,8 +26,15 @@
  * todas las caras, y como renovar no cambia de proveedor (I2) la estampa de
  * una participación no cambia mientras vive. Dentro de una cara, recorriendo
  * las participaciones vivas por número, si la preferida ya la tomó una de
- * número menor se prueba la siguiente (+1 mod 9); con más de nueve se repite
- * (el número las distingue). La historia va en gris: no entra acá.
+ * número menor —o su TONO ya lo lleva otra, mientras quede un tono libre— se
+ * prueba la siguiente (+1 mod 9); con más de nueve se repite (el número las
+ * distingue). La historia va en gris: no entra acá.
+ *
+ * El tono primero (recorrido de los manuales, 2026-11-20): dos proveedores con
+ * ids a 3 de distancia (1 y 4) preferían estampas distintas del MISMO tono, y en
+ * «Distribuir la cara» Yogur Andino y Papitas Norte salían con el mismo azul,
+ * distinguidas sólo por los puntos. Con tres o menos participaciones en la
+ * cara, cada una lleva su tono.
  *
  * Una participación más nueva nunca repinta a las anteriores (se recorre por
  * número, y el número sólo crece). Sacar una participación sólo puede repintar
@@ -81,18 +88,27 @@ export function estampasDeLaCara(ps: readonly { spaceId: number; numero: number;
   const orden = [...ps].sort((a, b) => (a.numero - b.numero) || (a.spaceId - b.spaceId));
   const fuera = new Map<number, Estampa>();
   const usadas = new Set<number>();
+  const tonos = new Set<string>();
   const n = ESTAMPAS.length;
+  /** La primera libre desde la preferida; con `tonoNuevo`, de un tono que
+   *  nadie de la cara lleve todavía. -1 si no hay. */
+  const libreDesde = (preferida: number, tonoNuevo: boolean): number => {
+    for (let k = 0; k < n; k++) {
+      const i = (preferida + k) % n;
+      if (!usadas.has(i) && (!tonoNuevo || !tonos.has(ESTAMPAS[i].tono))) return i;
+    }
+    return -1;
+  };
   for (const p of orden) {
     if (fuera.has(p.spaceId)) continue;
     const preferida = estampaPreferida(p.supplierId);
     let elegida = preferida;
     if (usadas.size < n) {
-      for (let k = 0; k < n; k++) {
-        const i = (preferida + k) % n;
-        if (!usadas.has(i)) { elegida = i; break; }
-      }
+      const conTonoNuevo = libreDesde(preferida, true);
+      elegida = conTonoNuevo >= 0 ? conTonoNuevo : libreDesde(preferida, false);
     }
     usadas.add(elegida);
+    tonos.add(ESTAMPAS[elegida].tono);
     fuera.set(p.spaceId, ESTAMPAS[elegida]);
   }
   return fuera;

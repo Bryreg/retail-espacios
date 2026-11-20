@@ -3434,8 +3434,10 @@ function FixtureDetailCard({
         )}
 
         {/* Ver la exhibición como la va a ver el proveedor. El 3D es la única
-            pantalla que muestra el arte puesto sobre el mueble. */}
-        {rentable && (
+            pantalla que muestra el arte puesto sobre el mueble. Sólo quien
+            administra: el trabajador no abre el Plano (`puedeAbrir`) y el
+            pedido no hacía nada (`Dashboard.tsx` lo atiende con `isAdmin`). */}
+        {isAdmin && rentable && (
           <button type="button" className="btn-s" onClick={() => pedirEnfoque3D(fixture.id, face)}>
             <Box {...ICONO_TARJETA} />
             Ver la exhibición en 3D
@@ -4800,8 +4802,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  Montajes; `Dashboard.tsx`): hace la cuenta con lo de siempre y no dibuja
    *  nada, ni atiende lo que el armazón le pide a la pantalla a la vista. */
   soloLaCuenta?: boolean;
-  /** «Ver montajes» del Inicio: el módulo Montajes. */
-  onIrAMontajes?: () => void;
+  /** «Ver montajes» del Inicio: el módulo Montajes. Con un código completo
+   *  (`CENTRO-PUN-03-EN2`), con la fila de ese espacio marcada. */
+  onIrAMontajes?: (codigo?: string) => void;
   /** «Volver al Inicio» desde una lista a la que se llegó tocando una cifra. */
   onIrAlInicio?: () => void;
   /** El Inicio del armazón (etapa 3): la misma pantalla en Supervisar, que
@@ -4988,7 +4991,6 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  en un cajón encima de la pantalla, abierto desde la barra de arriba. */
   const bandejaAbierta = useArmazon((s) => s.bandejaAbierta);
   const grupoPedido = useArmazon((s) => s.grupoPedido);
-  const cerrarBandeja = useArmazon((s) => s.cerrarBandeja);
   /** Lo de «Para revisar» se pide en Supervisar (Indicadores y el Inicio) y
    *  con la bandeja abierta. Con Vender abierto no: la pantalla la mira el
    *  proveedor; sólo si quien administra abre la bandeja a propósito. */
@@ -5717,6 +5719,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     leaseId: entry.leaseId,
     onClick: () => editarFila(entry, { enFicha: false, seccion }),
   }] : undefined);
+  /** «Ir a Montajes» de una fila que espera el reporte del montaje
+   *  («Contratado sin montar», «Montaje sin reporte»): Montajes con ESE
+   *  espacio marcado, donde se registra. «Montaje sin reporte» ofrecía sólo
+   *  «Editar contrato», que no resuelve un montaje sin reporte (recorrido de
+   *  los manuales, 2026-11-20). */
+  const accionMontajes = (entry: FaceEntry) => (onIrAMontajes ? {
+    texto: "Ir a Montajes", icono: <ClipboardCheck {...ICONO_TARJETA} />,
+    onClick: () => onIrAMontajes(fullSpaceCode(entry.fixture.sede || sede, entry.code)),
+  } : undefined);
   /** Salir de una edición (sin cambios, ya guardada o tras un 409): a
    *  Supervisar, con la base releída, y el foco al botón que la abrió. */
   const [enfocarAlVolver, setEnfocarAlVolver] = useState(0);
@@ -6686,6 +6697,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  La participación (`-PC1`) se busca por su cara: «Falta distribuir» es de
    *  la cara entera. */
   const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  /** Pendientes, abierta desde el Plano o Montajes (`armazonStore`). */
+  const vueltaDePendientes = useArmazon((s) => s.vueltaDePendientes);
   const avisoDelMontaje = useMemo(() => {
     if (!desdeMontaje) return null;
     const m = muebleDelEspacio(desdeMontaje.codigo.replace(/-PC\d+$/i, ""));
@@ -7284,14 +7297,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             {isAdmin && participacionesPorGrupo.hoy.length > 0 && (
               <RevisarParticipaciones
                 secciones={participacionesPorGrupo.hoy}
-                tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "hoy")}
+                tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "hoy", x.items.map(diasDelRenglon))}
               />
             )}
             {isAdmin && planometriaPorGrupo.hoy.length > 0 && (
               <FaltaPlanometria
                 sede={sede}
                 filas={planometriaPorGrupo.hoy}
-                titulo={tituloDeSeccion("falta_planometria", "hoy")}
+                titulo={tituloDeSeccion("falta_planometria", "hoy", planometriaPorGrupo.hoy.map((f) => f.dias_para_empezar))}
                 onCargar={cargarPlanometria}
               />
             )}
@@ -7430,6 +7443,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                     dates={entry.dias === 0 ? "empieza hoy" : `empezó el ${fechaEnCurso(entry.startDate)}`}
                     selected={selected?.id === entry.fixture.id}
                     onSelect={() => revisar(entry.fixture, entry.face)}
+                    accion={accionMontajes(entry)}
                   />
                 ))}
               </div>
@@ -7604,6 +7618,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                     dates={`arrancó hace más de ${VENTANA_MONTAJE_DIAS} días y nadie reportó el montaje`}
                     selected={selected?.id === entry.fixture.id}
                     onSelect={() => revisar(entry.fixture, entry.face)}
+                    /* Lo que falta es el reporte: Montajes, con el
+                       espacio marcado. «Editar contrato» queda por si
+                       lo que está mal son las fechas. */
+                    accion={accionMontajes(entry)}
                     acciones={accionEditar(entry, tituloDeSeccion("montajes_viejos", "corregir"))}
                   />
                 ))}
@@ -7659,7 +7677,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     <div className="ficha-nav" data-ficha-nav>
       <button type="button" className="volver" onClick={closeDetail} data-volver-a-la-lista>
         <ArrowLeft {...ICONO_TARJETA} />
-        {avisoActual ? tituloDeSeccion(avisoActual.seccion, grupoDelAviso(avisoActual.seccion, avisoActual.dias)) : "Para revisar"}
+        {avisoActual ? tituloDeSeccion(avisoActual.seccion, grupoDelAviso(avisoActual.seccion, avisoActual.dias), [avisoActual.dias]) : "Para revisar"}
       </button>
       {vecinos.lista.length > 1 && (
         <>
@@ -7785,7 +7803,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       const texto = enLaBandeja[a.seccion];
       return {
         clave: a.clave,
-        titulo: tituloDeSeccion(a.seccion, "hoy"),
+        titulo: tituloDeSeccion(a.seccion, "hoy", [a.dias]),
         codigo,
         cuando,
         accion: texto || !f
@@ -8751,9 +8769,21 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           etiqueta="Pendientes"
           titulo="Pendientes"
           sub={`${attentionCount} para revisar en ${sede} · pasá el mouse por una fila y se señala en el plano de Indicadores`}
-          onCerrar={cerrarBandeja}
+          /* La cierra quien mira: si se vino del Plano o de Montajes, vuelve ahí. */
+          onCerrar={() => useArmazon.getState().cerrarPendientes()}
         >
           <div className="sup bandeja">
+            {/* Abierta desde el Plano o Montajes: la bandeja vive en el Inicio
+                (sus filas abren la ficha y el plano de Indicadores). Dice de
+                dónde se vino y lleva de vuelta; cerrarla también vuelve. */}
+            {vueltaDePendientes && !desdeMontaje && (
+              <div className="bandeja-desde-montaje" role="status" data-volver-pendientes>
+                <span>Viniste desde <b>{vueltaDePendientes.nombre}</b>: al cerrar Pendientes volvés ahí.</span>
+                <button type="button" className="btn-s" onClick={() => useArmazon.getState().cerrarPendientes()}>
+                  <ArrowLeft {...ICONO_TARJETA} /> Volver a {vueltaDePendientes.nombre}
+                </button>
+              </div>
+            )}
             {desdeMontaje && (
               <div className="bandeja-desde-montaje" role="status" data-tira-montaje>
                 <span>

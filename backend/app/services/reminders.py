@@ -121,8 +121,8 @@ def check_expiring_leases(db: Session) -> int:
             ("Días restantes", str(days_left)),
         ]
         footer = (
-            "El contrato está próximo a vencer. Para renovarlo, entrá a Sede → "
-            "Supervisar, tocá el espacio en «Para revisar» y usá «Renovar»: el "
+            "El contrato está próximo a vencer. Para renovarlo, entrá a "
+            "Pendientes › 30 días, buscá el espacio en «Por vencer en 30 días» y usá «Renovar»: el "
             "contrato nuevo sale con el mismo proveedor y el mismo valor, "
             "arrancando el día después de que termine éste."
         )
