@@ -18,12 +18,12 @@ Galerías
 Administrador
 Montajes
 Montajes
-6 por montar · contratos y planogramas de CENTRO, por fecha de inicio
+7 por montar · contratos y planogramas de CENTRO, por fecha de inicio
 Resumen de montajes
 Todos
-23
+24
 Sin montar
-6
+7
 Montado, sin verificar
 2
 No realizado
@@ -91,6 +91,13 @@ Contrato
 Lácteos Andinos · Yogur Andino
 Punta de góndola
 desde el 1 dic
+Sin montar · falta planometría
+Adjuntar planometría
+PUN-08
+Contrato
+Café Montaña · Café Montaña Tostado
+Punta de góndola
+desde el 1 mar
 Sin montar · falta planometría
 Adjuntar planometría
 GON-04-PC1

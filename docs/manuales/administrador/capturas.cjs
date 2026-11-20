@@ -95,7 +95,6 @@ let paginaActual = null;
       { loc: page.getByRole("button", { name: /Administrador/ }).first(), n: 7 },
     ],
   }));
-  await paso("04-menu", () => foto(page, C, "04-menu", { marca: page.locator("nav.menu-lateral") }));
   await paso("05-buscar", async () => {
     await page.getByRole("button", { name: /Buscar/ }).first().click();
     await espera(600);
@@ -126,20 +125,12 @@ let paginaActual = null;
 
   // ── 2. Inicio y Pendientes ──────────────────────────────────────────────
   await ir("/");
-  await paso("10-pendientes-solo", async () => {
-    await foto(page, C, "10-pendientes-se-abre-solo", { marca: cajon().locator('button[data-grupo="hoy"]') });
-  });
   await cerrarCajon();
   await paso("11-inicio", () => foto(page, C, "11-inicio", { marca: page.getByRole("button", { name: "Nuevo contrato" }) }));
   await paso("12-tarjetas", async () => {
     const t = page.locator(".ini-tarjetas").first();
     await t.scrollIntoViewIfNeeded();
     await foto(page, C, "12-tarjetas", { recorte: t, margen: 12 });
-  });
-  await paso("13-hoy-y-actividad", async () => {
-    const p = page.locator(".ini-panel").first();
-    await p.scrollIntoViewIfNeeded();
-    await foto(page, C, "13-pendientes-de-hoy", { recorte: p, margen: 12 });
   });
   await page.getByRole("button", { name: /^Pendientes/ }).first().click();
   await espera(900);
@@ -199,7 +190,6 @@ let paginaActual = null;
   });
   await boton("3 meses").click();
   await espera(900);
-  await paso("32-plano", () => foto(page, C, "32-plano-de-la-venta", { marca: page.getByText("Libre todo el periodo").locator("..").locator("..") }));
   await tocar("PUN-07");
   await paso("33-elegir", () => foto(page, C, "33-elegir-espacio", { marca: page.locator('text[data-cod="PUN-07"]').first() }));
   await paso("34-entera-al-mes", async () => {
@@ -507,23 +497,21 @@ let paginaActual = null;
     await page.locator('[data-filtro="sin_verificar"]').click();
     await espera(700);
     const f = page.locator("li.mj-fila").filter({ hasText: "PUN-04" }).first();
-    await foto(page, C, "91-sin-verificar", { marca: boton("Verificar montaje", f) });
     await boton("Verificar montaje", f).click();
     await espera(1500);
-    await foto(page, C, "92-verificar", { marca: [{ loc: page.getByRole("radio", { name: "Coincide", exact: true }), n: 1 }, { loc: page.getByRole("radio", { name: "No coincide" }), n: 2 }] });
+    await foto(page, C, "92-verificar", { recorte: cajon(), margen: 0, marca: [{ loc: page.getByRole("radio", { name: "Coincide", exact: true }), n: 1 }, { loc: page.getByRole("radio", { name: "No coincide" }), n: 2 }] });
     await page.getByRole("radio", { name: "No coincide" }).click();
     await cajon().locator("textarea").fill("Falta el cabezote con el logo arriba de la punta.");
     await espera(400);
-    await foto(page, C, "93-no-coincide", { marca: [{ loc: cajon().locator("textarea"), n: 1 }, { loc: cajon().getByText("Mandar el aviso de montaje de nuevo"), n: 2 }, { loc: boton("Guardar la verificación"), n: 3 }] });
+    await foto(page, C, "93-no-coincide", { recorte: cajon(), margen: 0, marca: [{ loc: cajon().locator("textarea"), n: 1 }, { loc: cajon().getByText("Mandar el aviso de montaje de nuevo"), n: 2 }, { loc: boton("Guardar la verificación"), n: 3 }] });
     await boton("Guardar la verificación").click();
     await espera(1800);
     await guardarTexto(page, "94-verificado", cajon());
-    await foto(page, C, "94-verificado-no-coincide", { marca: boton("Verificar el siguiente") });
+    await foto(page, C, "94-verificado-no-coincide", { recorte: cajon(), margen: 0, marca: boton("Verificar el siguiente") });
     await boton("Verificar el siguiente").click();
     await espera(1500);
     await page.getByRole("radio", { name: "Coincide", exact: true }).click();
     await espera(300);
-    await foto(page, C, "95-coincide", { marca: boton("Guardar la verificación") });
     await boton("Guardar la verificación").click();
     await espera(1500);
     await page.keyboard.press("Escape");
@@ -536,7 +524,7 @@ let paginaActual = null;
     await boton("Resolver", f).click();
     await espera(1500);
     await guardarTexto(page, "96-no-realizado", cajon());
-    await foto(page, C, "96-no-realizado", { marca: cajon().getByRole("button", { name: /Registrar el montaje de nuevo/ }) });
+    await foto(page, C, "96-no-realizado", { recorte: cajon(), margen: 0, marca: cajon().getByRole("button", { name: /Registrar el montaje de nuevo/ }) });
     await page.keyboard.press("Escape");
     await espera(600);
   });
@@ -544,7 +532,6 @@ let paginaActual = null;
     await page.locator('[data-filtro="todos"]').click();
     await espera(700);
     const f = page.locator("li.mj-fila").filter({ hasText: "PUN-03-EN1" }).first();
-    await foto(page, C, "97-registrar-boton", { marca: boton("Registrar montaje", f) });
     await boton("Registrar montaje", f).click();
     await espera(1500);
     await guardarTexto(page, "98-registrar", page.locator("body"));
@@ -656,7 +643,7 @@ async function zonaDelCorreo(page) {
     }
     const d = document.createElement("div");
     d.id = "zona-del-correo";
-    Object.assign(d.style, { position: "absolute", left: `${x0 - 24}px`, top: `${Math.max(0, y0 - 14)}px`, width: `${x1 - x0 + 48}px`, height: `${y1 - y0 + 40}px`, pointerEvents: "none" });
+    Object.assign(d.style, { position: "absolute", left: `${x0 - 24}px`, top: `${Math.max(0, y0 - 14)}px`, width: `${x1 - x0 + 110}px`, height: `${y1 - y0 + 40}px`, pointerEvents: "none" });
     document.body.appendChild(d);
   });
   return page.locator("#zona-del-correo");
