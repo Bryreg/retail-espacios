@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
@@ -16,6 +16,7 @@ const FloorPlan2D = lazy(() => import("../components/FloorPlan2D/FloorPlan2D"));
 const DashboardView = lazy(() => import("./DashboardView"));
 const MountView = lazy(() => import("./MountView"));
 import type { ModoComercial } from "./DashboardView";
+import type { ReactNode } from "react";
 import { LimiteDeError } from "../components/ErrorDeApp";
 import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
 import { NOMBRE_DE, RUTA_DE, moduloDeRuta, puedeAbrir, vueltaAlCambiar, type Modulo, type VueltaDelPlano } from "../modulos";
@@ -1455,6 +1456,30 @@ function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => vo
   );
 }
 
+/** La pastilla roja de «Pendientes» fuera de lo comercial (Plano, Montajes).
+ *  La cuenta la hace la pantalla comercial (`DashboardView`) con lo que baja;
+ *  al entrar directo a `/montajes` (o recargar ahí) nunca se montaba y el botón
+ *  salía sin número, mientras en Inicio e Indicadores decía «Pendientes 1»
+ *  (recorrido de los manuales, 2026-11-20). Acá corre la MISMA cuenta, sin
+ *  dibujar nada (`soloLaCuenta`): una sola regla, el mismo número en todos los
+ *  módulos. Si falla o tarda, no tapa ni tumba la pantalla de al lado. */
+class SinRuido extends Component<{ children: ReactNode }, { fallo: boolean }> {
+  state = { fallo: false };
+  static getDerivedStateFromError() { return { fallo: true }; }
+  componentDidCatch(error: unknown) { console.warn("[RECABRA] La cuenta de Pendientes no se pudo hacer", error); }
+  render() { return this.state.fallo ? null : this.props.children; }
+}
+
+function CuentaDePendientes() {
+  return (
+    <SinRuido>
+      <Suspense fallback={null}>
+        <DashboardView soloLaCuenta inicio modo="supervisar" onDisenarPlano={() => {}} />
+      </Suspense>
+    </SinRuido>
+  );
+}
+
 interface TopbarProps {
   modulo: Modulo;
   ir: (m: Modulo) => void;
@@ -1841,6 +1866,7 @@ export default function Dashboard() {
             )}
             </Suspense>
             </LimiteDeError>
+            {!comercial && <CuentaDePendientes />}
           </main>
         </div>
       </div>

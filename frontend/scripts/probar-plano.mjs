@@ -648,7 +648,9 @@ prueba("«Vender» desde el Plano: sólo quien administra, sólo lo que se vende
   assert.match(dash, /if \(pedidoVender && isAdmin\) ir\("contratos"\);/, "el pedido cambia de pestaña sin ser admin");
   const dv = sinComentPR3(fuenteDe("pages/DashboardView.tsx"));
   const armado = tramo(dv, "const pedidoVender = useFixtureStore((s) => s.pedidoVender);", "}, [pedidoVender, isAdmin]);");
-  assert.match(armado, /useEffect\(\(\) => \{\s*if \(!pedidoVender \|\| !isAdmin\) return;\s*useFixtureStore\.getState\(\)\.soltarPedidoVender\(\);/, "Vender arma el pedido sin ser admin (o no lo suelta)");
+  // `soloLaCuenta` (2026-11-20): la copia que sólo cuenta los Pendientes fuera
+  // de lo comercial no se lo puede quedar; lo arma la de Contratos.
+  assert.match(armado, /useEffect\(\(\) => \{\s*if \(soloLaCuenta \|\| !pedidoVender \|\| !isAdmin\) return;\s*useFixtureStore\.getState\(\)\.soltarPedidoVender\(\);/, "Vender arma el pedido sin ser admin, no lo suelta, o lo suelta la copia de la cuenta");
   assert.match(armado, /if \(f\) negociar\(f, pedidoVender\.cara\);/);
   // Un mueble por partes (una punta por entrepaños) entra con la lista de partes
   // abierta: entero chocaría con la parte vendida (409 al validar).

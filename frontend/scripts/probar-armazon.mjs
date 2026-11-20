@@ -76,8 +76,12 @@ prueba("el Dashboard monta los módulos sin volver a montarse y manda lo descono
   const dash = sinComentarios(leer("pages", "Dashboard.tsx"));
   assert.match(dash, /const permitido = modulo !== null && puedeAbrir\(modulo, isAdmin\);\s*useEffect\(\(\) => \{\s*if \(!permitido\) navigate\(RUTA_DE\.inicio, \{ replace: true \}\);/);
   assert.match(dash, /if \(mountCode\) navigate\(RUTA_DE\.montajes, \{ replace: true \}\);/, "el enlace del correo de montaje no abre Montajes");
-  // Contratos, Indicadores e Inicio son la MISMA pantalla comercial (un solo elemento).
-  assert.equal((dash.match(/<DashboardView\b/g) ?? []).length, 1, "la pantalla comercial se monta en más de un lugar");
+  // Contratos, Indicadores e Inicio son la MISMA pantalla comercial (un solo
+  // elemento). La otra es la que sólo cuenta los Pendientes, fuera de lo
+  // comercial: nunca las dos a la vez, y ésa no dibuja nada.
+  assert.equal((dash.match(/<DashboardView\b(?! soloLaCuenta)/g) ?? []).length, 1, "la pantalla comercial se monta en más de un lugar");
+  assert.equal((dash.match(/<DashboardView soloLaCuenta\b/g) ?? []).length, 1);
+  assert.match(dash, /\{!comercial && <CuentaDePendientes \/>\}/, "la cuenta de Pendientes corre también con la pantalla comercial abierta");
   // El 2D y el 3D siguen alcanzándose: el selector 2D | 3D de la barra.
   assert.match(dash, /\["plano", "2D",[\s\S]{0,200}\["plano3d", "3D",/);
 });
@@ -89,6 +93,24 @@ prueba("la sede se elige en un solo lugar de la aplicación", () => {
 });
 
 console.log("\narmazón · Pendientes, Inicio y la ficha");
+
+prueba("«Pendientes» lleva el mismo número en todos los módulos: la copia que sólo cuenta no dibuja ni atiende pedidos", () => {
+  // Entrando directo a /montajes (o al Plano) la pantalla comercial no estaba
+  // montada y la pastilla salía sin número (recorrido de los manuales, 2026-11-20).
+  const v = sinComentarios(leer("pages", "DashboardView.tsx"));
+  // Después del último hook y justo antes de dibujar.
+  assert.match(v, /if \(soloLaCuenta\) return null;\s*return \(/);
+  assert.equal((v.match(/if \(soloLaCuenta\) return null;/g) ?? []).length, 1);
+  // Lo que es de la pantalla a la vista no lo toma la copia: lo pedido por el
+  // armazón, «Vender» y «Supervisar» desde el plano, la bandeja que se abre sola.
+  assert.match(v, /const pedidoDelArmazon = useArmazon\(\(s\) => s\.pedido\);\s*useEffect\(\(\) => \{\s*if \(soloLaCuenta\) return;/);
+  assert.match(v, /if \(soloLaCuenta \|\| !pedidoVender \|\| !isAdmin\) return;/);
+  assert.match(v, /if \(soloLaCuenta \|\| !pedidoSupervisar \|\| !isAdmin\) return;/);
+  assert.match(v, /if \(soloLaCuenta \|\| !inicio \|\| cuentasDeRevision\.hoy === 0\) return;/);
+  // La cuenta es la de siempre (Supervisar), no otra.
+  const dash = sinComentarios(leer("pages", "Dashboard.tsx"));
+  assert.match(dash, /<DashboardView soloLaCuenta inicio modo="supervisar"/);
+});
 
 prueba("lo de «Para revisar» se pide en Supervisar o con la bandeja abierta; la pastilla no va en Contratos", () => {
   const v = sinComentarios(leer("pages", "DashboardView.tsx"));

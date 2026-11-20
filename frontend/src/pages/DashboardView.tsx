@@ -4766,8 +4766,12 @@ function EmptyDashboard({
  *  de una edición…) navegan con `onModo`. */
 export type ModoComercial = "vender" | "supervisar";
 
-export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo, inicio = false, onIrAMontajes, onIrAlInicio }: {
+export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo, inicio = false, onIrAMontajes, onIrAlInicio, soloLaCuenta = false }: {
   onDisenarPlano: () => void;
+  /** Sólo para la pastilla roja de «Pendientes» fuera de lo comercial (Plano,
+   *  Montajes; `Dashboard.tsx`): hace la cuenta con lo de siempre y no dibuja
+   *  nada, ni atiende lo que el armazón le pide a la pantalla a la vista. */
+  soloLaCuenta?: boolean;
   /** «Ver montajes» del Inicio: el módulo Montajes. */
   onIrAMontajes?: () => void;
   /** «Volver al Inicio» desde una lista a la que se llegó tocando una cifra. */
@@ -5051,6 +5055,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   // hacer y lo atiende cuando ya es la que está a la vista.
   const pedidoDelArmazon = useArmazon((s) => s.pedido);
   useEffect(() => {
+    if (soloLaCuenta) return;
     if (pedidoDelArmazon === "planilla" && modoEfectivo === "vender" && !inicio) {
       useArmazon.getState().atender();
       if (isAdmin) setCargaAbierta(true);
@@ -5406,7 +5411,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  volver a esta pestaña no lo repite. */
   const pedidoVender = useFixtureStore((s) => s.pedidoVender);
   useEffect(() => {
-    if (!pedidoVender || !isAdmin) return;
+    // La de la cuenta no lo suelta: es de la pantalla de Contratos que se abre.
+    if (soloLaCuenta || !pedidoVender || !isAdmin) return;
     useFixtureStore.getState().soltarPedidoVender();
     const f = fixtures.find((x) => x.id === pedidoVender.fixtureId);
     if (f) negociar(f, pedidoVender.cara);
@@ -5420,7 +5426,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const pedidoSupervisar = useFixtureStore((s) => s.pedidoSupervisar);
   const [avisoDeDistribucion, setAvisoDeDistribucion] = useState<string | null>(null);
   useEffect(() => {
-    if (!pedidoSupervisar || !isAdmin) return;
+    if (soloLaCuenta || !pedidoSupervisar || !isAdmin) return;
     useFixtureStore.getState().soltarPedidoSupervisar();
     setModo("supervisar");
     setAvisoDeDistribucion(pedidoSupervisar.aviso);
@@ -6506,7 +6512,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  se abre sola (rediseño UX 2026-10). Se recuerda por quien mira, en este
    *  navegador: es una comodidad, no un dato. */
   useEffect(() => {
-    if (!inicio || cuentasDeRevision.hoy === 0) return;
+    if (soloLaCuenta || !inicio || cuentasDeRevision.hoy === 0) return;
     const hoyIso = toISODate(new Date());
     const LLAVE = "recabra-pendientes-del-dia";
     try {
@@ -6514,7 +6520,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       window.localStorage.setItem(LLAVE, hoyIso);
     } catch { return; /* sin almacenamiento no se abre sola: mejor eso que abrirla siempre */ }
     useArmazon.getState().abrirBandeja("hoy");
-  }, [inicio, cuentasDeRevision.hoy]);
+  }, [soloLaCuenta, inicio, cuentasDeRevision.hoy]);
 
   /** La serie de canon por mes (`GET /dashboard/serie`, sólo administración):
    *  la curva de 12 meses y «Todas las sedes» de Indicadores, y el canon del
@@ -8100,6 +8106,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     ["Proveedor", unidad === "mes" ? "Canon al mes" : "Total", "% del total", "Vence en 30 días"],
     plata.quienes.map((q) => [q.name, Math.round(q.revenue), q.pct, q.vence ? "sí" : "no"]),
   ));
+
+  // Después de TODOS los hooks (un `return` antes de uno rompe la pantalla):
+  // la cuenta ya viajó al armazón en su efecto; no hay nada que dibujar.
+  if (soloLaCuenta) return null;
 
   return (
     <div
