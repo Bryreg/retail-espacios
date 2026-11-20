@@ -101,6 +101,11 @@ pedir("POST", "/api/plataforma/clientes/norte_prueba/facturas", {
     "periodo": mes.strftime("%Y-%m"), "numero": "PRUEBA-0001",
     "emitida_el": mes.isoformat(), "vence_el": (mes + timedelta(days=30)).isoformat()}, op["token"])
 
+# El supermercado nuevo, en gracia por la cuenta de cobro: así se ve la franja
+# de «pago pendiente» (el motivo lo ve sólo la dueña).
+pedir("PATCH", "/api/plataforma/clientes/norte_prueba",
+      {"estado": "gracia", "motivo": "Cuenta de cobro PRUEBA-0001 por pagar"}, op["token"])
+
 # 4. La dueña vuelve a entrar en Galerías (ya tiene dos supermercados).
 final = entrar(*DUENIA, cliente="galerias")
 (AQUI / f".sesion-duenia-{PUERTO}.json").write_text(json.dumps(

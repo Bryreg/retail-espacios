@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>RECABRA · Manual del administrador</title>
+<link rel="stylesheet" href="../herramientas/estilo.css">
+<style>
+  /* Capturas de computador: a lo ancho de la hoja, sin pasar de media página. */
+  figure.pc img { width: 100%; max-height: 118mm; object-fit: contain; object-position: left top; }
+  figure.tira img { width: 100%; }
+  figure.recorte img { max-width: 120mm; }
+  figure.recorte-chico img { max-width: 86mm; }
+  figure.lado { display: flex; gap: 4mm; align-items: flex-start; }
+  figure.lado img { max-width: calc(50% - 2mm); }
+  ol.pasos > li > figure { margin-top: 1mm; }
+  .indice li.sub { font-size: 9.8pt; }
+</style>
+</head>
+<body>
+
+<section class="portada">
+  <div class="marca-app">RECABRA</div>
+  <div>
+    <div class="tipo">Manual paso a paso</div>
+    <h1>Administrador<br>de la sede</h1>
+    <p class="para">Para quien vende los espacios del supermercado, lleva los contratos con los proveedores, revisa que lo contratado quede armado en la tienda y mira cómo va la sede. Todo se hace en el computador.</p>
+    <img class="foto-portada" src="../img/administrador/11-inicio.jpg" alt="La pantalla de Inicio">
+  </div>
+  <dl class="ficha">
+    <dt>Versión</dt><dd>{{VERSION}} · {{FECHA}}</dd>
+    <dt>Sistema</dt><dd>{{APP}}</dd>
+    <dt>Equipo</dt><dd>Computador con internet (pantalla de 1280 × 800 o más grande)</dd>
+    <dt>Tiempo de lectura</dt><dd>2 horas (capítulos 1 a 6: 1 hora)</dd>
+    <dt>Datos de ejemplo</dt><dd>Todas las pantallas son de una sede de prueba («CENTRO»). Proveedores, marcas, correos y personas son inventados.</dd>
+  </dl>
+</section>
+
+<nav class="indice"><h2>Contenido</h2></nav>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">1</span>Antes de empezar</h1>
+  <p class="entrada">RECABRA es el sistema donde el supermercado lleva los espacios que le alquila a los proveedores: las puntas de góndola, los entrepaños, un porcentaje de una cara, una nevera. Qué se vendió, a quién, por cuánto y hasta cuándo, y si quedó armado en la tienda.</p>
+
+  <h3>Lo que hace el administrador</h3>
+  <table>
+    <tr><th style="width:30%">Todos los días</th><th>Revisás el <b>Inicio</b> y la bandeja de <b>Pendientes</b>: lo que vence, lo que caduca, lo que falta montar.</th></tr>
+    <tr><td><b>Cuando un proveedor compra</b></td><td>Vendés el espacio en <b>Contratos</b>: fechas, espacio, proveedor, precio. El sistema le avisa al proveedor, al área comercial y a quien monta.</td></tr>
+    <tr><td><b>Cuando cambia algo</b></td><td>Desde la <b>ficha del espacio</b>: editás, renovás, cancelás o cargás la planometría.</td></tr>
+    <tr><td><b>Cuando arman en la tienda</b></td><td>En <b>Montajes</b> comparás la foto con lo pedido y decís si coincide.</td></tr>
+    <tr><td><b>Para saber cómo va</b></td><td>En <b>Indicadores</b>: ocupación, ingreso, quién paga, historial, todo exportable.</td></tr>
+    <tr><td><b>Cuando cambia la tienda</b></td><td>El <b>Plano de la sede</b>, los <b>planogramas</b> de las góndolas de la casa y los <b>Ajustes</b> (capítulos 7, 8 y 9).</td></tr>
+  </table>
+
+  <h3>Lo que NO hacés vos</h3>
+  <p>Invitar personas al equipo, la suscripción y la cuenta del supermercado son del <b>dueño de la cuenta</b>: si hace falta, <b>avisale al dueño de la cuenta</b>. Si algo del sistema no anda, <b>escribile a soporte de RECABRA</b>.</p>
+
+  <h2 class="proceso">1.1 Entrar a RECABRA</h2>
+  <p class="cuando"><b>Cuándo:</b> al empezar el día. Si no cerraste sesión, entrás directo.</p>
+  <ol class="pasos">
+    <li><p>Abrí la dirección de RECABRA en el navegador y tocá <span class="boton">Ya tengo cuenta</span>.</p>
+      <figure class="pc"><img src="../img/administrador/01-portada.jpg" alt="Portada de RECABRA"></figure></li>
+    <li><p>Se abre la hoja de ingreso a la derecha. Entrá con <b>Google</b> o con tu <b>correo y contraseña</b>, los mismos con los que te invitaron. Si estás en más de un supermercado, elegí en cuál vas a trabajar.</p>
+      <figure class="pc"><img src="../img/administrador/02-ingreso.jpg" alt="Hoja de ingreso"></figure></li>
+  </ol>
+  <div class="caja truco"><span class="rotulo">En la copia de práctica</span><p>La captura es de la copia de prueba de la capacitación: ahí la hoja dice <span class="texto-pantalla">El ingreso no está configurado en este servidor. Escríbanos para que lo revisemos.</span> En la RECABRA de verdad aparecen los botones de Google y de correo. Si te pasa en la de verdad, escribile a soporte de RECABRA.</p></div>
+  <div class="caja avisale"><span class="rotulo">No podés entrar</span><ul><li>Te olvidaste la contraseña: en la hoja de ingreso, <span class="texto-pantalla">Olvidé mi contraseña</span>.</li><li>Entrás pero no ves la sede o te falta un permiso: avisale al dueño de la cuenta (es quien te invita y te da el rol).</li></ul></div>
+
+  <h2 class="proceso proceso-nuevo">1.2 La pantalla y la barra de arriba</h2>
+  <p class="cuando"><b>Cuándo:</b> la primera vez. Es igual en todos los módulos.</p>
+  <ol class="pasos">
+    <li><p>A la izquierda está el <b>menú de módulos</b>: <span class="texto-pantalla">Inicio</span>, <span class="texto-pantalla">Contratos</span>, <span class="texto-pantalla">Indicadores</span>, <span class="texto-pantalla">Montajes</span>, <span class="texto-pantalla">Plano de la sede</span> y <span class="texto-pantalla">Ajustes</span>. Abajo dice el supermercado y la sede en la que estás.</p>
+      <figure class="pc"><img src="../img/administrador/04-menu.jpg" alt="Menú de módulos"></figure></li>
+    <li><p>Arriba está la <b>barra</b>, con siete cosas:</p>
+      <figure class="tira"><img src="../img/administrador/03-barra.jpg" alt="La barra de arriba numerada"></figure>
+      <table>
+        <tr><td style="width:8mm"><b>1</b></td><td><b>Sede</b>. Elegís con qué sede trabajás. Al lado dice cuántas hay y cuántos muebles tiene el plano.</td></tr>
+        <tr><td><b>2</b></td><td><span class="boton">Buscar</span> (o <b>Ctrl K</b>): encuentra cualquier función por su nombre.</td></tr>
+        <tr><td><b>3</b></td><td><span class="boton">Más</span>: lo raro o poco usado de ese módulo. Sólo aparece en Contratos, Indicadores y el Plano.</td></tr>
+        <tr><td><b>4</b></td><td><span class="boton">?</span> Ayuda: qué hace la pantalla y qué quiere decir cada palabra.</td></tr>
+        <tr><td><b>5</b></td><td><span class="texto-pantalla">Sincronizado</span>: lo tuyo está guardado en el servidor. Si dice <span class="texto-pantalla">Sin conexión</span>, mirá el capítulo 10.</td></tr>
+        <tr><td><b>6</b></td><td><span class="boton">Pendientes</span>, con el número de cosas por resolver (capítulo 2).</td></tr>
+        <tr><td><b>7</b></td><td>Tu <b>cuenta</b>: el rol, el tema claro u oscuro y <span class="texto-pantalla">Cerrar sesión</span>.</td></tr>
+      </table></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">1.3 Buscar una función, «Más» y la ayuda</h2>
+  <p class="cuando"><b>Cuándo:</b> cuando no sabés dónde está algo.</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Buscar</span> o apretá <b>Ctrl K</b> y escribí lo que buscás, como lo dirías vos: «planilla», «reno», «excel». Elegí con las flechas y abrí con <b>Enter</b>. Abajo está <span class="texto-pantalla">Ver el mapa de todas las funciones</span>.</p>
+      <figure class="pc"><img src="../img/administrador/05-buscar.jpg" alt="Buscador de funciones"></figure></li>
+    <li><p><span class="boton">Más</span> muestra las funciones de ese módulo que no están a la vista. Con el alfiler fijás hasta 3 en tu barra: <span class="texto-pantalla">Fijá hasta 3 en tu barra. Sólo cambia lo que ves vos.</span></p>
+      <figure class="pc"><img src="../img/administrador/06-mas.jpg" alt="Menú Más"></figure></li>
+    <li><p><span class="boton">?</span> abre la ayuda de la pantalla en la que estás, con los términos que aparecen en ella.</p>
+      <figure class="pc"><img src="../img/administrador/07-ayuda.jpg" alt="Ayuda de Contratos"></figure></li>
+    <li><p>En tu cuenta (arriba a la derecha) está <span class="texto-pantalla">Tema claro u oscuro</span> y <span class="texto-pantalla">Cerrar sesión</span>. Cerrá sesión si el computador es compartido.</p>
+      <figure class="recorte-chico"><img src="../img/administrador/08-cuenta.jpg" alt="Menú de la cuenta"></figure></li>
+  </ol>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">2</span>Todos los días: Inicio y Pendientes</h1>
+  <p class="entrada">El Inicio te dice qué pide atención hoy en la sede. Pendientes es la lista de lo que hay que resolver, ordenada por urgencia, y cada fila trae el botón que lo resuelve.</p>
+
+  <h2 class="proceso">2.1 Mirar el Inicio</h2>
+  <p class="cuando"><b>Cuándo:</b> al empezar el día.</p>
+  <ol class="pasos">
+    <li><p>El primer ingreso del día, si hay algo con fecha límite hoy, <b>Pendientes se abre solo</b> a la derecha. Cerralo con la <b>X</b> cuando lo hayas leído; lo volvés a abrir desde la barra.</p>
+      <figure class="pc"><img src="../img/administrador/10-pendientes-se-abre-solo.jpg" alt="Pendientes abierto al entrar"></figure></li>
+    <li><p>En el Inicio, arriba, está <span class="texto-pantalla">Configuración inicial</span>: los seis pasos para dejar el supermercado listo. Si todos tienen el visto bueno, tocá <span class="boton">Ocultar</span>. El botón <span class="boton">Nuevo contrato</span> te lleva a vender.</p>
+      <figure class="pc"><img src="../img/administrador/11-inicio.jpg" alt="Inicio"></figure></li>
+    <li><p>Las cuatro tarjetas: <span class="texto-pantalla">Contratos activos</span>, <span class="texto-pantalla">Por vencer (30 días)</span>, <span class="texto-pantalla">Montajes por resolver</span> y <span class="texto-pantalla">Canon del mes</span>. Cada una tiene su enlace (<span class="texto-pantalla">Ver cuáles</span>, <span class="texto-pantalla">Ver de dónde sale</span>…) que te lleva al detalle.</p>
+      <figure class="tira"><img src="../img/administrador/12-tarjetas.jpg" alt="Tarjetas del Inicio"></figure></li>
+    <li><p>Más abajo, <span class="texto-pantalla">Pendientes de hoy</span> con un botón por fila (<span class="boton">Resolver</span>, <span class="boton">Verificar</span>, <span class="boton">Cargar</span>, <span class="boton">Distribuir</span>) y, al lado, la <span class="texto-pantalla">Actividad reciente</span> de la sede.</p>
+      <figure class="recorte"><img src="../img/administrador/13-pendientes-de-hoy.jpg" alt="Pendientes de hoy"></figure></li>
+  </ol>
+  <div class="caja avisale"><span class="rotulo">«Invitar al equipo»</span><p>Es un paso del dueño de la cuenta. Si falta gente en RECABRA, avisale al dueño de la cuenta.</p></div>
+
+  <h2 class="proceso proceso-nuevo">2.2 La bandeja de Pendientes</h2>
+  <p class="cuando"><b>Cuándo:</b> todos los días, y cada vez que el número rojo de <span class="boton">Pendientes</span> sube.</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Pendientes</span> en la barra. Arriba hay tres grupos, cada uno con su cantidad: <span class="texto-pantalla">Hoy</span> (fecha límite hoy o ya pasada), <span class="texto-pantalla">30 días</span> (lo que viene) y <span class="texto-pantalla">Corregir</span> (lo que no cuadra).</p>
+      <figure class="lado"><img src="../img/administrador/14-bandeja-hoy.jpg" alt="Grupo Hoy"><img src="../img/administrador/15-bandeja-30.jpg" alt="Grupo 30 días"></figure></li>
+    <li><p>Cada fila trae el espacio, el proveedor, cuántos días faltan (o <span class="texto-pantalla">hoy</span>, <span class="texto-pantalla">corre</span>) y el botón que lo resuelve. Al resolverlo, sale de la lista.</p></li>
+  </ol>
+
+  <h3>Qué es cada pendiente y cómo se resuelve</h3>
+  <table>
+    <tr><th style="width:34%">Lo que dice</th><th>Qué hacés</th></tr>
+    <tr><td><span class="texto-pantalla">Reservas que caducan hoy</span></td><td><span class="boton">Confirmar</span> si el proveedor firmó; <span class="boton">Cancelar</span> si no (2.4).</td></tr>
+    <tr><td><span class="texto-pantalla">Por vencer en 30 días</span></td><td><span class="boton">Renovar</span>: abre un contrato nuevo con los mismos datos (2.5). Si no se renueva, no hagas nada: el espacio se libera solo el día que vence.</td></tr>
+    <tr><td><span class="texto-pantalla">Ventas por cargar</span></td><td>Escribí lo que vendió el proveedor en ese período y <span class="boton">Guardar</span> (2.3).</td></tr>
+    <tr><td><span class="texto-pantalla">Falta planometría</span></td><td><span class="boton">Cargar planometría</span>: abre la ficha del espacio para subirla (4.4). Sin ella no sale el aviso de montaje.</td></tr>
+    <tr><td><span class="texto-pantalla">No se pudo montar</span></td><td>Tocá la fila: ves el motivo. Se resuelve en Montajes (6.3).</td></tr>
+    <tr><td><span class="texto-pantalla">Contratado sin montar</span></td><td>Arrancó y nadie reportó el montaje. Mirá en Montajes; si hace falta, registralo vos (6.4).</td></tr>
+    <tr><td><span class="texto-pantalla">Falta distribuir</span>, <span class="texto-pantalla">Reservas por caducar</span> de una participación</td><td><span class="boton">Distribuir</span> / <span class="boton">Abrir en Distribución</span>: dibujar dónde va cada porcentaje en la cara (capítulo 7).</td></tr>
+    <tr><td><span class="texto-pantalla">Planograma sin montar</span>, <span class="texto-pantalla">montado por revisar</span>, <span class="texto-pantalla">No se pudo montar el planograma</span></td><td><span class="boton">Mandar la guía</span>, <span class="boton">Revisar</span> o <span class="boton">Ver</span> (capítulo 8).</td></tr>
+    <tr><td><span class="texto-pantalla">Bajo tarifa de referencia</span> (en Corregir)</td><td>El contrato cobra menos que la tarifa. Si fue un error, <span class="boton">Editar contrato</span> (4.2); si fue un precio acordado, dejalo.</td></tr>
+    <tr><td><span class="texto-pantalla">Montaje sin reporte</span> (en Corregir)</td><td>Arrancó hace más de 30 días y nadie reportó. Averiguá con quien monta y registralo en Montajes (6.4).</td></tr>
+    <tr><td><span class="texto-pantalla">Contrato sin mueble en el plano</span> / <span class="texto-pantalla">Contrato que sólo vive en el plano</span> (en Corregir)</td><td>El plano y los contratos no coinciden. Se resuelve con el botón de la tarjeta; si no estás seguro, avisale a quien dibuja el plano antes de tocar.</td></tr>
+  </table>
+  <figure class="recorte-chico"><img src="../img/administrador/16-bandeja-corregir.jpg" alt="Grupo Corregir"></figure>
+
+  <h2 class="proceso proceso-nuevo">2.3 Cargar las ventas de un contrato por porcentaje</h2>
+  <p class="cuando"><b>Cuándo:</b> cuando termina el período de un contrato que se cobra por <b>% de las ventas</b> (sale en <span class="texto-pantalla">Ventas por cargar</span>).</p>
+  <ol class="pasos">
+    <li><p>En la fila del período (por ejemplo <span class="texto-pantalla">PUN-03·EN2 · Bebidas del Valle · 5 % · 1 sep – 30 sep</span>) escribí en <span class="texto-pantalla">vendido</span> lo que vendió el proveedor ese mes, en pesos. Al lado aparece lo que le toca pagar (el 5 %).</p></li>
+    <li><p>Tocá <span class="boton">Guardar</span>.</p>
+      <figure class="recorte"><img src="../img/administrador/17-ventas-por-cargar.jpg" alt="Ventas por cargar"></figure></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">Si te equivocás</span><p>Escribí el número sin puntos: RECABRA los pone solo. Revisá lo que dice al lado antes de guardar; si la cifra está mal, avisale al área comercial antes de facturar.</p></div>
+
+  <h2 class="proceso">2.4 Confirmar o cancelar una reserva</h2>
+  <p class="cuando"><b>Cuándo:</b> el día que caduca una reserva provisional (<span class="texto-pantalla">Reservas que caducan hoy</span>). Si no hacés nada, la reserva se libera sola.</p>
+  <ol class="pasos">
+    <li><p>Si el proveedor confirmó, tocá <span class="boton">Confirmar</span> (1): la reserva pasa a ser contrato y salen los avisos. Si no, tocá <span class="boton">Cancelar</span> (2) y el espacio queda libre.</p>
+      <figure class="recorte"><img src="../img/administrador/18-reserva-caduca.jpg" alt="Reserva que caduca hoy"></figure></li>
+    <li><p>La reserva sale de la lista. En el Inicio, <span class="texto-pantalla">Contratos activos</span> suma uno (<span class="texto-pantalla">y 1 firmado que todavía no empieza</span>, si arranca más adelante).</p></li>
+  </ol>
+  <div class="caja truco"><span class="rotulo">También desde la ficha</span><p>La misma reserva tiene <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span> en la ficha del espacio (capítulo 4).</p></div>
+
+  <h2 class="proceso proceso-nuevo">2.5 Renovar lo que vence</h2>
+  <p class="cuando"><b>Cuándo:</b> en los 30 días antes de que venza un contrato (grupo <span class="texto-pantalla">30 días</span>). El sistema también le avisa al área comercial por correo.</p>
+  <ol class="pasos">
+    <li><p>En <span class="texto-pantalla">30 días</span>, en <span class="texto-pantalla">Por vencer en 30 días</span>, tocá <span class="boton">Renovar</span> en el contrato.</p>
+      <figure class="recorte-chico"><img src="../img/administrador/15-bandeja-30.jpg" alt="Renovar en 30 días"></figure></li>
+    <li><p>Se abre Contratos con el contrato nuevo ya armado: mismo espacio, proveedor, marca y valor, desde el día siguiente al vencimiento. Revisá las fechas y el precio, y seguí como en 3.3 hasta <span class="boton azul">Guardar contrato</span>.</p>
+      <figure class="pc"><img src="../img/administrador/21-renovar-desde-pendientes.jpg" alt="Renovación precargada"></figure></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">Revisá el «Hasta»</span><p>La renovación copia la duración en días del contrato anterior y puede terminar un día después de lo que esperás (por ejemplo, <b>1 de junio</b> en vez de <b>31 de mayo</b>). Corregí el <span class="texto-pantalla">Hasta</span> antes de guardar.</p></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">3</span>Vender un espacio (Contratos)</h1>
+  <p class="entrada">Vender tiene un orden: primero <b>las fechas</b> que pide el proveedor, después <b>el espacio</b> en el plano, y al final el contrato en tres bloques: <b>Qué se vende</b>, <b>A quién y cuándo</b> y <b>Cómo se cobra</b>. Antes de guardar, el contrato se lee como una frase.</p>
+
+  <h2 class="proceso">3.1 Elegir las fechas</h2>
+  <p class="cuando"><b>Cuándo:</b> apenas el proveedor dice para cuándo lo quiere.</p>
+  <ol class="pasos">
+    <li><p>En <span class="texto-pantalla">¿Para qué fechas?</span> escribí <b>del</b> y <b>al</b> (1), o usá un atajo: <span class="boton">1 mes</span>, <span class="boton">3 meses</span>, <span class="boton">6 meses</span> (2). Al lado dice cuántos días suman.</p>
+      <figure class="tira"><img src="../img/administrador/30-para-que-fechas.jpg" alt="Para qué fechas"></figure></li>
+    <li><p>Con <span class="boton">Temporadas</span> (3) aparece la fila de temporadas con los días que faltan para cada una (<span class="texto-pantalla">Black Friday</span>, <span class="texto-pantalla">Navidad</span>, <span class="texto-pantalla">Escolar</span>…). Tocá una y quedan sus fechas.</p>
+      <figure class="tira"><img src="../img/administrador/31-temporadas.jpg" alt="Temporadas"></figure></li>
+  </ol>
+
+  <h2 class="proceso">3.2 Leer el plano de la venta</h2>
+  <p class="cuando"><b>Cuándo:</b> después de elegir las fechas. El plano se pinta según esas fechas.</p>
+  <ol class="pasos">
+    <li><p>Los colores: <b>verde</b> <span class="texto-pantalla">Libre todo el periodo</span>, <b>ámbar</b> <span class="texto-pantalla">Disponible en parte</span> (algunas fechas, algunos entrepaños o un porcentaje), <b>rojo</b> <span class="texto-pantalla">Tomado</span>, <b>gris</b> <span class="texto-pantalla">Resto de la sala</span> (no se vende) y <b>negro</b> <span class="texto-pantalla">En el contrato</span> (lo que ya elegiste). Debajo de cada código dice qué queda: <span class="texto-pantalla">libre 1 dic</span>, <span class="texto-pantalla">queda 40 %</span>, <span class="texto-pantalla">2 de 5 entrepaños vendidos</span>.</p>
+      <figure class="pc"><img src="../img/administrador/32-plano-de-la-venta.jpg" alt="Plano de la venta"></figure></li>
+  </ol>
+  <div class="caja truco"><span class="rotulo">Mover el plano</span><p>Arrastrá para girarlo, clic derecho para moverlo, rueda para acercar. Los botones <span class="boton">+</span> <span class="boton">−</span> y el de centrar están arriba a la derecha.</p></div>
+
+  <h2 class="proceso proceso-nuevo">3.3 Vender un espacio entero</h2>
+  <p class="cuando"><b>Cuándo:</b> el proveedor quiere un mueble completo (por ejemplo, una punta de góndola).</p>
+  <ol class="pasos">
+    <li><p>Tocá el espacio en el plano (en el ejemplo, <code>PUN-07</code>, en verde). Queda en negro y aparece en <span class="texto-pantalla">Qué se vende</span>, a la derecha.</p>
+      <figure class="pc"><img src="../img/administrador/33-elegir-espacio.jpg" alt="Elegir PUN-07"></figure></li>
+    <li><p>En <span class="texto-pantalla">Se vende</span> dejá <span class="boton">Entera</span> (1). En <span class="texto-pantalla">El precio es</span> elegí <span class="boton">Al mes</span> (2) si el número es mensual, o <span class="boton">Total</span> si es lo de todo el contrato, y escribilo. Abajo dice la cuenta: <span class="texto-pantalla">al mes × 3 meses = $ 1.800.000</span>.</p>
+      <figure class="recorte"><img src="../img/administrador/34-entera-al-mes.jpg" alt="Entera y Al mes"></figure></li>
+    <li><p>En <span class="texto-pantalla">Proveedor</span> empezá a escribir: si ya existe, aparece el nombre completo en gris; apretá <b>Tab</b> para aceptarlo.</p>
+      <figure class="recorte"><img src="../img/administrador/35-proveedor.jpg" alt="Proveedor con Tab"></figure></li>
+    <li><p>Escribí la <span class="texto-pantalla">Marca</span> (opcional) que va en el espacio. <span class="texto-pantalla">Desde</span> y <span class="texto-pantalla">Hasta</span> ya vienen con las fechas que elegiste; si cambian, corregilas acá.</p>
+      <figure class="recorte"><img src="../img/administrador/36-a-quien-y-cuando.jpg" alt="Marca"></figure></li>
+    <li><p>En <span class="texto-pantalla">Cómo se cobra</span> dejá <span class="boton">Precio fijo</span>. Abrí <span class="texto-pantalla">Correo y nota para el proveedor</span> y escribí el correo del proveedor (1) y, si hace falta, una nota (2). Abajo dice a quién se avisa al guardar.</p>
+      <figure class="recorte"><img src="../img/administrador/37-correo-y-nota.jpg" alt="Correo y nota"></figure></li>
+    <li><p>Leé la frase de abajo (<span class="texto-pantalla">Galletas Sol contrata PUN-07 del 20 nov 2026 al 19 feb 2027 por $ 1.800.000 en total.</span>). Si está bien, tocá <span class="boton azul">Guardar contrato</span>.</p>
+      <figure class="recorte"><img src="../img/administrador/38-frase-y-guardar.jpg" alt="Frase y Guardar contrato"></figure></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">Ojo con «Total» y «Al mes»</span><p>Al tocar un espacio, el precio arranca en <span class="boton">Total</span> con la tarifa de un mes. Si el contrato dura varios meses y no tocás <span class="boton">Al mes</span>, el contrato queda por el valor de un solo mes. Mirá siempre el <span class="texto-pantalla">Total del contrato</span> antes de guardar.</p></div>
+  <div class="caja truco"><span class="rotulo">Si falta algo</span><p>Mientras falte un dato, el botón está gris y dice qué falta (<span class="texto-pantalla">Falta el proveedor</span>). <span class="boton">Empezar de nuevo</span> borra todo lo que llevás.</p></div>
+
+  <h2 class="proceso proceso-nuevo">3.4 Qué pasa después de guardar</h2>
+  <ol class="pasos">
+    <li><p>Aparece <span class="texto-pantalla">Contrato guardado</span> con a quién salieron los avisos: <b>Comercial</b> (con el valor) y <b>Proveedor</b>. En <span class="texto-pantalla">Qué pasa ahora</span> están los cuatro pasos que siguen: confirmación al proveedor, aviso de montaje, registro del montaje y verificación.</p>
+      <figure class="lado"><img src="../img/administrador/39-contrato-guardado.jpg" alt="Contrato guardado"><img src="../img/administrador/40-que-pasa-ahora.jpg" alt="Qué pasa ahora"></figure></li>
+    <li><p>Al proveedor le llega la <b>Confirmación</b>: el espacio, las fechas y el valor acordado. No lleva la tarifa de referencia.</p>
+      <figure class="pc"><img src="../img/administrador/41-correo-proveedor.jpg" alt="Correo al proveedor"></figure></li>
+    <li><p>Al área comercial (gerencia y administración de la sede) le llega <span class="texto-pantalla">1 contrato nuevo — CENTRO</span>, con el valor.</p>
+      <figure class="pc"><img src="../img/administrador/42-correo-comercial.jpg" alt="Correo al área comercial"></figure></li>
+  </ol>
+  <div class="caja avisale"><span class="rotulo">El aviso de montaje espera la planometría</span><p>A quien monta no le llega nada todavía: <span class="texto-pantalla">El aviso de montaje sale cuando la cara tenga su plano: la planometría o el planograma publicado, o —si es un porcentaje— la distribución confirmada.</span> Pedile al proveedor la imagen de cómo debe quedar y cargala en la ficha (4.4).</p></div>
+
+  <h2 class="proceso proceso-nuevo">3.5 Vender un entrepaño</h2>
+  <p class="cuando"><b>Cuándo:</b> el proveedor quiere un estante de una punta que se vende por entrepaños (en el plano dice <span class="texto-pantalla">2 de 5 entrepaños vendidos</span>).</p>
+  <ol class="pasos">
+    <li><p>Tocá la punta (en el ejemplo, <code>PUN-02</code>) y elegí <span class="boton">Por entrepaños</span> (1). Aparecen los entrepaños de arriba hacia abajo, del <span class="texto-pantalla">EN5 · arriba</span> al <span class="texto-pantalla">EN1 · la base</span>, cada uno con <span class="texto-pantalla">Libre</span> o <span class="texto-pantalla">Tomado</span>.</p></li>
+    <li><p>Marcá el o los libres que vende (2). El precio sale de la tarifa por entrepaño. Seguí desde el paso 3 de 3.3.</p>
+      <figure class="recorte"><img src="../img/administrador/43-por-entrepanos.jpg" alt="Por entrepaños"></figure></li>
+  </ol>
+
+  <h2 class="proceso">3.6 Vender un porcentaje de una cara</h2>
+  <p class="cuando"><b>Cuándo:</b> la cara se vende por participación (en el plano dice <span class="texto-pantalla">queda 40 %</span> o <span class="texto-pantalla">por porcentaje</span>).</p>
+  <ol class="pasos">
+    <li><p>Tocá la cara (en el ejemplo, <code>GON-04·B</code>). Arriba se elige la cara <b>A</b> o <b>B</b>. Con <span class="boton">Por porcentaje</span> elegí <span class="boton">10 %</span>, <span class="boton">25 %</span>, <span class="boton">50 %</span>, <span class="boton">Todo lo que queda</span> u otro número (1). La barra muestra lo de este contrato y lo que <span class="texto-pantalla">sigue libre</span>.</p></li>
+    <li><p>Elegí <span class="boton">Al mes</span> (2): la tarifa es proporcional (<span class="texto-pantalla">25 % de $ 450.000 al mes</span>). Seguí como en 3.3.</p>
+      <figure class="recorte"><img src="../img/administrador/44-por-porcentaje.jpg" alt="Por porcentaje"></figure></li>
+  </ol>
+  <div class="caja avisale"><span class="rotulo">Después de vender un porcentaje</span><p>Hay que <b>distribuir la cara</b>: dibujar en qué parte va cada proveedor. Hasta que no se confirme la distribución, no sale el aviso de montaje (capítulo 7).</p></div>
+
+  <h2 class="proceso proceso-nuevo">3.7 Cobrar por porcentaje de las ventas</h2>
+  <p class="cuando"><b>Cuándo:</b> el acuerdo no es un precio fijo sino un porcentaje de lo que venda el proveedor.</p>
+  <ol class="pasos">
+    <li><p>En <span class="texto-pantalla">Cómo se cobra</span> tocá <span class="boton">% de las ventas</span> (1), escribí el porcentaje (2) y elegí el <span class="texto-pantalla">Corte</span>: <span class="boton">Cada mes</span> o <span class="boton">Al final</span> (3). Abajo dice en qué fechas se calcula.</p>
+      <figure class="recorte"><img src="../img/administrador/47-porcentaje-de-ventas.jpg" alt="Porcentaje de las ventas"></figure></li>
+    <li><p>En cada corte te aparece <span class="texto-pantalla">Ventas por cargar</span> en Pendientes (2.3).</p></li>
+  </ol>
+
+  <h2 class="proceso">3.8 Reservar hasta una fecha</h2>
+  <p class="cuando"><b>Cuándo:</b> el proveedor está interesado pero todavía no firmó, y no querés que otro tome el espacio mientras tanto.</p>
+  <ol class="pasos">
+    <li><p>Armá el contrato como siempre y, en lugar de guardar, tocá <span class="boton">Reservar hasta…</span>. Elegí hasta qué día se sostiene la reserva (1) y tocá <span class="boton azul">Reservar hasta el …</span> (2).</p>
+      <figure class="recorte"><img src="../img/administrador/45-reservar-hasta.jpg" alt="Reservar hasta"></figure></li>
+    <li><p>Queda <span class="texto-pantalla">Reservado hasta el …</span>: <span class="texto-pantalla">Hasta ese día nadie más puede tomarlo. Después se libera solo, si no se confirma.</span> El día que caduca te aparece en Pendientes para confirmarla o cancelarla (2.4).</p>
+      <figure class="recorte-chico"><img src="../img/administrador/46-reservado.jpg" alt="Reservado"></figure></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">Para tener en cuenta</span><p>La reserva no puede terminar antes de hoy ni durar más que el contrato. Una reserva no le manda la confirmación al proveedor: eso pasa al confirmarla.</p></div>
+
+  <h2 class="proceso proceso-nuevo">3.9 Cuando el espacio está tomado</h2>
+  <p class="cuando"><b>Cuándo:</b> tocás un espacio que ya tiene contrato en parte de tus fechas.</p>
+  <ol class="pasos">
+    <li><p>Aparece en rojo, por ejemplo: <span class="texto-pantalla">«PUN-06» está tomado del 1 ago al 31 ene 2027: ajustá las fechas.</span> No se puede guardar así.</p>
+      <figure class="recorte"><img src="../img/administrador/48-espacio-tomado.jpg" alt="Espacio tomado"></figure></li>
+    <li><p>Cambiá las fechas para que empiecen después (en el ejemplo, desde el 1 de febrero), elegí otro espacio o, si es una punta por entrepaños, elegí un entrepaño libre.</p></li>
+  </ol>
+
+  <h2 class="proceso">3.10 La línea de tiempo y cuándo se libera cada espacio</h2>
+  <p class="cuando"><b>Cuándo:</b> el proveedor pregunta «¿qué tenés libre?» o «¿desde cuándo?».</p>
+  <ol class="pasos">
+    <li><p>Arriba del plano tocá <span class="boton">Línea de tiempo</span>: cada espacio en una fila y los próximos 12 meses. En rojo lo contratado, punteado lo reservado y en azul tus fechas. Con <span class="texto-pantalla">Sólo los disponibles en tus fechas</span> quedan sólo los que sirven. <span class="boton">Plano</span> vuelve al plano.</p>
+      <figure class="pc"><img src="../img/administrador/49-linea-de-tiempo.jpg" alt="Línea de tiempo"></figure></li>
+    <li><p>Debajo del plano, <span class="texto-pantalla">Cuándo se libera cada espacio</span> cuenta cuántos espacios quedan libres desde cada fecha (<span class="texto-pantalla">si arrancás el 1 de dic → 4 libres</span>), con las temporadas marcadas y los códigos que se liberan.</p>
+      <figure class="recorte"><img src="../img/administrador/50-cuando-se-libera.jpg" alt="Cuándo se libera cada espacio"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">3.11 La tarifa de referencia y las tarifas</h2>
+  <p class="cuando"><b>Cuándo:</b> para saber cuánto pedir, y cuando cambian los precios del supermercado.</p>
+  <ol class="pasos">
+    <li><p>A la derecha, debajo del contrato, está <span class="texto-pantalla">Tarifa de referencia</span>: por tipo de espacio, cuántos están libres y en parte, y la tarifa al mes. Tocá un código para sumarlo al contrato.</p>
+      <figure class="recorte"><img src="../img/administrador/51-tarifa-de-referencia.jpg" alt="Tarifa de referencia"></figure></li>
+    <li><p>Para cambiar las tarifas, tocá <span class="boton">Tarifas</span> (arriba a la derecha). La columna <b>General</b> vale para todas las sedes; la de la sede la ajusta sólo ahí. Se guardan solas; un campo vacío quita la tarifa.</p>
+      <figure class="pc"><img src="../img/administrador/53-tarifas.jpg" alt="Tarifas de referencia"></figure></li>
+  </ol>
+  <div class="caja ojo"><span class="rotulo">Cambia para todos</span><p>Las tarifas se comparten con todo el equipo y cambian lo que marca <span class="texto-pantalla">Bajo tarifa de referencia</span> y los Indicadores. Cambialas sólo si te lo pidió el área comercial.</p></div>
+
+  <h2 class="proceso proceso-nuevo">3.12 Cargar contratos desde una planilla</h2>
+  <p class="cuando"><b>Cuándo:</b> tenés muchos contratos en un Excel (por ejemplo, al empezar con RECABRA). Sólo sirve para muebles que se venden <b>enteros</b>.</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Planilla</span>. Primero tocá <span class="boton">Descargar la plantilla</span>: trae las columnas y, en la segunda pestaña, las instrucciones.</p>
+      <figure class="pc"><img src="../img/administrador/52-planilla.jpg" alt="Cargar contratos desde una planilla"></figure></li>
+    <li><p>Llená una fila por contrato: <b>Espacio</b>, Sede, <b>Proveedor</b>, Correo, Marca, <b>Valor al mes</b>, <b>Desde</b>, <b>Hasta</b> y Nota. Las fechas se escriben con el <b>día primero</b> (15/09/2026). El valor es <b>el de cada mes</b>.</p></li>
+    <li><p>Arrastrá el archivo (.xlsx, .xls o .csv) al recuadro o tocalo para elegirlo. RECABRA muestra cada fila revisada: valor al mes × meses = total, y si choca con algo. Desmarcá las que no quieras.</p>
+      <figure class="pc"><img src="../img/administrador/54-planilla-revisada.jpg" alt="Planilla revisada"></figure></li>
+    <li><p>Tocá <span class="boton azul">Guardar … y avisar</span>. Al final dice qué se guardó, a quién se avisó y qué no se pudo.</p>
+      <figure class="pc"><img src="../img/administrador/55-planilla-guardada.jpg" alt="Planilla guardada"></figure></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">Lo que la planilla no hace</span><p>Entrepaños, porcentajes de cara y contratos por % de las ventas se venden uno por uno (3.5 a 3.7).</p></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">4</span>Contratos ya firmados: la ficha del espacio</h1>
+  <p class="entrada">Cada espacio tiene una ficha con todo lo suyo: el contrato vivo, los anteriores, la planometría y los archivos. Desde ahí se edita, se renueva y se cancela.</p>
+
+  <h2 class="proceso">4.1 Abrir la ficha</h2>
+  <p class="cuando"><b>Cuándo:</b> para mirar o cambiar un contrato.</p>
+  <ol class="pasos">
+    <li><p>Andá a <span class="texto-pantalla">Indicadores</span> › <span class="texto-pantalla">Contratos</span> y tocá la fila del espacio. (También se abre tocando el espacio en Indicadores › Plano, o desde una fila de Pendientes.)</p>
+      <figure class="pc"><img src="../img/administrador/60-abrir-ficha.jpg" alt="Abrir la ficha"></figure></li>
+    <li><p>La ficha se abre a la derecha. Arriba: el código, el estado (<span class="texto-pantalla">Por vencer</span>, <span class="texto-pantalla">Activo</span>, <span class="texto-pantalla">Reservado</span>, <span class="texto-pantalla">Libre</span>) y los botones. Debajo: dónde está, el proveedor, el período, el valor al mes y el montaje.</p>
+      <figure class="lado"><img src="../img/administrador/61-ficha.jpg" alt="Ficha arriba"><img src="../img/administrador/62-ficha-linea-y-planometria.jpg" alt="Ficha abajo"></figure></li>
+    <li><p>Más abajo: <span class="texto-pantalla">Los próximos 12 meses</span> (<span class="texto-pantalla">Ocupado hasta el 30/11/2026 · disponible desde el 01/12/2026</span>), la <span class="texto-pantalla">PLANOMETRÍA</span> y los <span class="texto-pantalla">ARCHIVOS DEL CONTRATO</span>. Al final, <span class="boton">Cancelar el contrato</span>.</p></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">4.2 Editar un contrato</h2>
+  <p class="cuando"><b>Cuándo:</b> cambió algo del acuerdo: las fechas, el precio, la marca, el correo.</p>
+  <ol class="pasos">
+    <li><p>En la ficha tocá <span class="boton">Editar contrato</span>. Se abre Contratos con <span class="texto-pantalla">Editando el contrato de PUN-01</span>. Si te arrepentís, <span class="boton">Salir sin cambios</span>.</p>
+      <figure class="recorte"><img src="../img/administrador/64-editando.jpg" alt="Editando"></figure></li>
+    <li><p>Cambiá lo que haga falta (en el ejemplo, el <span class="texto-pantalla">Hasta</span>, un mes más). Si ya arrancó, <span class="texto-pantalla">Ya arrancó: el «Desde» no se mueve.</span> Abajo dice <span class="texto-pantalla">Qué cambia</span>. Tocá <span class="boton azul">Guardar cambios y reenviar</span>.</p>
+      <figure class="recorte"><img src="../img/administrador/65-editar-guardar.jpg" alt="Guardar cambios y reenviar"></figure></li>
+    <li><p>Te pregunta <span class="texto-pantalla">¿Guardar los cambios y reenviar?</span>, con a quién le llega (comercial, proveedor y montaje) y lo de antes tachado. Tocá <span class="boton azul">Guardar y reenviar</span>.</p>
+      <figure class="pc"><img src="../img/administrador/66-editar-confirmar.jpg" alt="Confirmar edición"></figure></li>
+    <li><p>Listo cuando dice <span class="texto-pantalla">Cambios guardados</span> y a quién salieron los avisos.</p>
+      <figure class="recorte-chico"><img src="../img/administrador/67-editado.jpg" alt="Cambios guardados"></figure></li>
+  </ol>
+  <div class="caja ojo"><span class="rotulo">Le llega a todos otra vez</span><p>Guardar una edición reenvía el contrato al proveedor, al área comercial y a quien monta. Revisá antes de tocar <span class="boton azul">Guardar y reenviar</span>. El contrato anterior queda en el historial como <span class="texto-pantalla">Reemplazado al editarlo</span>.</p></div>
+
+  <h2 class="proceso proceso-nuevo">4.3 Renovar desde la ficha</h2>
+  <p class="cuando"><b>Cuándo:</b> el proveedor sigue. Es lo mismo que <span class="boton">Renovar</span> de Pendientes (2.5).</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Renovar con …</span> (el nombre del proveedor). Sólo aparece cuando el contrato está por vencer. Para darle el espacio a otro, <span class="boton">Contrato con otro proveedor</span>.</p>
+      <figure class="recorte-chico"><img src="../img/administrador/68-renovar-boton.jpg" alt="Renovar con"></figure></li>
+    <li><p>Se abre Contratos con el contrato nuevo armado, desde el día siguiente al vencimiento. Revisá <span class="texto-pantalla">Desde</span> (1), <span class="texto-pantalla">Hasta</span> (2) y el precio, y tocá <span class="boton azul">Guardar contrato</span>.</p>
+      <figure class="pc"><img src="../img/administrador/69-renovar-formulario.jpg" alt="Renovación"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">4.4 Cargar la planometría</h2>
+  <p class="cuando"><b>Cuándo:</b> el proveedor mandó la imagen (o el PDF) de cómo debe quedar la exhibición. Sin ella no sale el aviso de montaje.</p>
+  <ol class="pasos">
+    <li><p>En la ficha, en <span class="texto-pantalla">PLANOMETRÍA</span>, tocá <span class="boton">Adjuntar la planometría</span> y elegí el archivo.</p>
+      <figure class="recorte-chico"><img src="../img/administrador/70-adjuntar-planometria.jpg" alt="Adjuntar la planometría"></figure></li>
+    <li><p>Aparece la imagen con <span class="boton">Cambiar</span> y <span class="boton">Quitar</span>, y el aviso <span class="texto-pantalla">Salió el aviso de montaje a …</span> (el responsable de montaje de la sede).</p>
+      <figure class="recorte-chico"><img src="../img/administrador/71-planometria-cargada.jpg" alt="Planometría cargada"></figure></li>
+    <li><p>A quien monta le llega <span class="texto-pantalla">1 espacio por montar — CENTRO</span>, con el enlace <span class="texto-pantalla">Ver dónde queda y confirmar</span>. No lleva valores.</p>
+      <figure class="pc"><img src="../img/administrador/72-correo-de-montaje.jpg" alt="Correo de montaje"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">4.5 Los contratos anteriores</h2>
+  <p class="cuando"><b>Cuándo:</b> para saber quién tuvo el espacio y a cuánto.</p>
+  <ol class="pasos">
+    <li><p>En la ficha, debajo de <span class="texto-pantalla">Los próximos 12 meses</span>, está <span class="texto-pantalla">Contratos anteriores</span>: proveedor, fechas, valor al mes y si se canceló. Si hay más de los que entran, aparece <span class="boton">Ver todos (N)</span>, que abre el Historial con ese espacio (5.5).</p>
+      <figure class="recorte-chico"><img src="../img/administrador/73-contratos-anteriores.jpg" alt="Contratos anteriores"></figure></li>
+  </ol>
+
+  <h2 class="proceso">4.6 Cancelar un contrato</h2>
+  <p class="cuando"><b>Cuándo:</b> el proveedor se retira o el contrato se cargó por error.</p>
+  <ol class="pasos">
+    <li><p>Al final de la ficha tocá <span class="boton">Cancelar el contrato</span>. Leé el aviso: <span class="texto-pantalla">El espacio queda libre y el contrato deja de contar en ocupación e ingresos. La planometría y el reporte de montaje se quedan</span>.</p></li>
+    <li><p>Si estás seguro, tocá <span class="boton">Sí, cancelar</span> (2). Si no, <span class="boton">Dejarlo así</span> (1).</p>
+      <figure class="recorte-chico"><img src="../img/administrador/75-cancelar-confirmacion.jpg" alt="Confirmar cancelación"></figure></li>
+  </ol>
+  <div class="caja ojo"><span class="rotulo">No se puede deshacer</span><p>Un contrato cancelado no vuelve: queda en el Historial como <span class="texto-pantalla">Cancelado</span> y, si hace falta, hay que venderlo de nuevo. Antes de cancelar, confirmalo con el área comercial.</p></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">5</span>Indicadores</h1>
+  <p class="entrada">Cómo va la sede: cuánto está ocupado, cuánto entra, qué vence, quién paga. Arriba están las pestañas; la fecha y el período se eligen a la izquierda. La plata se ve siempre en cifras completas («$ 6.035.833»).</p>
+
+  <h2 class="proceso">5.1 Mapa de oportunidades</h2>
+  <p class="cuando"><b>Cuándo:</b> para ver de un vistazo dónde está la plata que falta.</p>
+  <ol class="pasos">
+    <li><p>Arriba, <span class="texto-pantalla">Ocupación</span>, <span class="texto-pantalla">Realización del potencial</span> y <span class="texto-pantalla">Precio frente a tarifa</span> contra su meta, y los <span class="texto-pantalla">Pendientes</span>. En el centro, el <span class="texto-pantalla">Mapa de decisión</span>: los espacios con algo urgente, numerados en el orden de la lista <span class="texto-pantalla">Acciones prioritarias</span> de abajo (rojo prioridad alta, ámbar media).</p>
+      <figure class="pc"><img src="../img/administrador/80-mapa-de-oportunidades.jpg" alt="Mapa de oportunidades"></figure></li>
+  </ol>
+
+  <h2 class="proceso">5.2 Elegir la fecha o el período</h2>
+  <ol class="pasos">
+    <li><p>Tocá la fecha (arriba a la izquierda): podés elegir <span class="texto-pantalla">Hoy</span>, una temporada o escribir <b>desde</b> y <b>hasta</b>. Todas las pestañas se recalculan para esas fechas.</p>
+      <figure class="tira"><img src="../img/administrador/81-fecha-de-indicadores.jpg" alt="Fecha de indicadores"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">5.3 Análisis y Plano</h2>
+  <ol class="pasos">
+    <li><p><span class="texto-pantalla">Análisis</span>: cinco cifras (ingreso mensual contratado, realización del potencial, ocupación, ingreso por vencer a 90 días, ejecución de montajes) con su enlace, y la tabla de <span class="texto-pantalla">Acciones prioritarias</span> con el impacto en plata y el botón de cada una (<span class="boton">Registrar ventas</span>, <span class="boton">Gestionar renovación</span>…).</p>
+      <figure class="pc"><img src="../img/administrador/82-analisis.jpg" alt="Análisis"></figure></li>
+    <li><p><span class="texto-pantalla">Plano</span>: el plano de la sede pintado por estado (libre, vendido en parte, tomado) con <span class="texto-pantalla">Para revisar</span> al lado. Tocá un espacio para abrir su ficha.</p>
+      <figure class="pc"><img src="../img/administrador/83-plano.jpg" alt="Plano de Indicadores"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">5.4 Contratos: la tabla de todos los espacios</h2>
+  <ol class="pasos">
+    <li><p>Una fila por espacio: código, tipo, proveedor, estado, montaje, fechas, días que faltan y valor. Filtrá con los botones (<span class="texto-pantalla">Vigentes hoy</span>, <span class="texto-pantalla">Por vencer</span> (1), <span class="texto-pantalla">Sin montar</span>, <span class="texto-pantalla">Libres</span>, <span class="texto-pantalla">Vendido en parte</span>) o escribí en <span class="texto-pantalla">Filtrar</span> (2). <span class="boton">Bajar todos (CSV)</span> (3) baja la tabla para Excel. <span class="texto-pantalla">PLATA: Al mes | Total</span> cambia cómo se leen los valores.</p>
+      <figure class="pc"><img src="../img/administrador/84-contratos.jpg" alt="Tabla de contratos"></figure></li>
+  </ol>
+
+  <h2 class="proceso">5.5 Historial de contratos</h2>
+  <p class="cuando"><b>Cuándo:</b> para buscar contratos que ya no están vivos: terminados, cancelados o reemplazados al editarlos.</p>
+  <ol class="pasos">
+    <li><p>En <span class="texto-pantalla">Historial</span> filtrá por <span class="texto-pantalla">Proveedor o marca</span>, <span class="texto-pantalla">Espacio</span>, <span class="texto-pantalla">Desde</span> y <span class="texto-pantalla">Hasta</span>. Con <span class="boton azul">Exportar a Excel</span> te llevás lo que está filtrado.</p>
+      <figure class="pc"><img src="../img/administrador/85-historial.jpg" alt="Historial"></figure></li>
+    <li><p>Los botones de <span class="texto-pantalla">Estado</span> dejan ver sólo <span class="texto-pantalla">Terminado</span>, <span class="texto-pantalla">Cancelado</span> o <span class="texto-pantalla">Reemplazado al editarlo</span>. Un cancelado que no empezó dice <span class="texto-pantalla">no llegó a correr</span>.</p>
+      <figure class="pc"><img src="../img/administrador/86-historial-cancelados.jpg" alt="Historial cancelados"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">5.6 Quién paga, Participaciones y Diccionario</h2>
+  <ol class="pasos">
+    <li><p><span class="texto-pantalla">Quién paga</span>: los proveedores ordenados por lo que pagan al mes y su porcentaje del total. <span class="texto-pantalla">VENCE</span> marca a los que tienen algo por vencer. <span class="boton">Bajar (CSV)</span>.</p>
+      <figure class="pc"><img src="../img/administrador/87-quien-paga.jpg" alt="Quién paga"></figure></li>
+    <li><p><span class="texto-pantalla">Participaciones</span>: cada cara que se vende por porcentaje, con lo comprometido el día, el pico del período, lo disponible y lo dibujado. <span class="texto-pantalla">Sin distribuir</span> quiere decir que falta dibujar dónde va cada uno (capítulo 7).</p>
+      <figure class="pc"><img src="../img/administrador/88-participaciones.jpg" alt="Participaciones"></figure></li>
+    <li><p><span class="texto-pantalla">Diccionario</span>: de dónde sale cada cifra (fórmula, período, comparación, umbral y datos).</p>
+      <figure class="pc"><img src="../img/administrador/89-diccionario.jpg" alt="Diccionario"></figure></li>
+  </ol>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">6</span>Montajes</h1>
+  <p class="entrada">Lo contratado tiene que quedar armado en la tienda. Quien monta reporta con una foto desde el enlace del correo; vos comparás esa foto con la planometría y decís si coincide.</p>
+
+  <h2 class="proceso">6.1 La lista de montajes</h2>
+  <ol class="pasos">
+    <li><p>En <span class="texto-pantalla">Montajes</span> está todo lo de la sede, contratos y planogramas, por fecha de inicio. Filtrá con <span class="texto-pantalla">Todos</span>, <span class="texto-pantalla">Sin montar</span>, <span class="texto-pantalla">Montado, sin verificar</span>, <span class="texto-pantalla">No realizado</span> y <span class="texto-pantalla">Verificado</span>. Cada fila trae el botón de lo que toca: <span class="boton">Adjuntar planometría</span>, <span class="boton">Ubicar la zona</span>, <span class="boton">Registrar montaje</span>, <span class="boton">Verificar montaje</span>, <span class="boton">Resolver</span>.</p>
+      <figure class="pc"><img src="../img/administrador/90-montajes.jpg" alt="Lista de montajes"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">6.2 Verificar un montaje</h2>
+  <p class="cuando"><b>Cuándo:</b> quien monta reportó <b>Lo monté</b> (filtro <span class="texto-pantalla">Montado, sin verificar</span>).</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Verificar montaje</span> en la fila.</p>
+      <figure class="pc"><img src="../img/administrador/91-sin-verificar.jpg" alt="Sin verificar"></figure></li>
+    <li><p>A la izquierda está <span class="texto-pantalla">Lo pedido · planometría</span>; a la derecha, <span class="texto-pantalla">Lo que quedó · foto del montaje</span>. Comparalas y elegí <span class="boton">Coincide</span> (1) o <span class="boton">No coincide</span> (2).</p>
+      <figure class="pc"><img src="../img/administrador/92-verificar.jpg" alt="Verificar"></figure></li>
+    <li><p>Si no coincide, escribí en <span class="texto-pantalla">Qué hay que corregir</span> lo que falta (1). Dejá marcado <span class="texto-pantalla">Mandar el aviso de montaje de nuevo a quien monta</span> (2) y tocá <span class="boton azul">Guardar la verificación</span> (3).</p>
+      <figure class="pc"><img src="../img/administrador/93-no-coincide.jpg" alt="No coincide"></figure></li>
+    <li><p>Dice <span class="texto-pantalla">Quedó verificado: no coincide. El aviso de montaje salió de nuevo con lo que hay que corregir.</span> Quien monta lo ve al abrir su enlace. Abajo aparece el siguiente sin verificar: <span class="boton">Verificar el siguiente</span>.</p>
+      <figure class="pc"><img src="../img/administrador/94-verificado-no-coincide.jpg" alt="Verificado no coincide"></figure></li>
+    <li><p>Si coincide, elegí <span class="boton">Coincide</span> y tocá <span class="boton azul">Guardar la verificación</span>. Pasa a <span class="texto-pantalla">Verificado</span>.</p>
+      <figure class="pc"><img src="../img/administrador/95-coincide.jpg" alt="Coincide"></figure></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">6.3 Resolver un montaje no realizado</h2>
+  <p class="cuando"><b>Cuándo:</b> quien monta reportó <b>No pude</b> (filtro <span class="texto-pantalla">No realizado</span>; también sale en Pendientes).</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Resolver</span>. Ves el motivo, la nota y quién lo reportó, y qué hacer según el motivo.</p>
+      <figure class="pc"><img src="../img/administrador/96-no-realizado.jpg" alt="No realizado"></figure></li>
+    <li><p>Según el motivo:</p>
+      <table>
+        <tr><th style="width:40%">Motivo</th><th>Qué hacés</th></tr>
+        <tr><td><span class="texto-pantalla">El proveedor no entregó el material</span></td><td>Reclamale el material al proveedor. Cuando llegue, <span class="boton">Registrar el montaje de nuevo</span> (o que quien monta lo reporte desde su enlace).</td></tr>
+        <tr><td><span class="texto-pantalla">No llegó el producto</span></td><td>Igual: avisale al proveedor y esperá el producto.</td></tr>
+        <tr><td><span class="texto-pantalla">El espacio está ocupado por otra cosa</span></td><td>Mirá la foto y la ficha: si hay otro contrato o una exhibición de la casa, decidí con el área comercial quién se queda. No mandes a sacar lo de otro proveedor sin revisar.</td></tr>
+        <tr><td><span class="texto-pantalla">Otro motivo</span></td><td>Leé la nota y hablá con quien monta.</td></tr>
+      </table></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">6.4 Registrar un montaje desde la app</h2>
+  <p class="cuando"><b>Cuándo:</b> quien monta no tiene el correo, o lo armaste vos.</p>
+  <ol class="pasos">
+    <li><p>En la fila del espacio tocá <span class="boton">Registrar montaje</span>.</p>
+      <figure class="pc"><img src="../img/administrador/97-registrar-boton.jpg" alt="Registrar montaje"></figure></li>
+    <li><p>Se abre el espacio como lo ve quien monta: qué parte del mueble, <span class="texto-pantalla">ASÍ DEBE QUEDAR</span> y <span class="texto-pantalla">DÓNDE QUEDA</span>. Abajo, <span class="boton">Lo monté</span> o <span class="boton">No pude</span>.</p>
+      <figure class="pc"><img src="../img/administrador/98-registrar-formulario.jpg" alt="Formulario de montaje"></figure></li>
+    <li><p>Con <span class="boton">Lo monté</span>: subí la foto (es obligatoria), tu nombre y una nota si hace falta, y tocá <span class="boton azul">Confirmar</span>. Vuelve a la lista con el montaje registrado.</p>
+      <figure class="pc"><img src="../img/administrador/99-registrar-con-foto.jpg" alt="Registrar con foto"></figure></li>
+  </ol>
+
+  <h2 class="proceso">6.5 Falta la planometría o la zona</h2>
+  <ol class="pasos">
+    <li><p><span class="texto-pantalla">Sin montar · falta planometría</span>: <span class="boton">Adjuntar planometría</span> te lleva a la ficha (4.4). <span class="texto-pantalla">Sin montar · falta la zona</span> (un porcentaje sin distribuir): <span class="boton">Ubicar la zona</span> te lleva a distribuir la cara (capítulo 7). En los dos casos el aviso de montaje sale solo cuando se resuelve.</p>
+      <figure class="tira"><img src="../img/administrador/100-falta-planometria.jpg" alt="Falta planometría"></figure></li>
+  </ol>
+  <div class="caja truco"><span class="rotulo">Reenviar el aviso de montaje</span><p>El aviso se manda otra vez al verificar <span class="boton">No coincide</span> con la casilla marcada (6.2), o al guardar una edición del contrato (4.2). Los planogramas de las góndolas de la casa tienen su propio botón <span class="boton">Ver la guía y revisar</span> (capítulo 8).</p></div>
+</section>
+
+<div data-incluir="cap-plano.html"></div>
+<div data-incluir="cap-planogramas.html"></div>
+<div data-incluir="cap-ajustes.html"></div>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">10</span>Problemas frecuentes</h1>
+  <p class="entrada">Lo que más pasa y qué hacer.</p>
+
+  <h2 class="proceso">10.1 «Sin conexión»</h2>
+  <figure class="tira"><img src="../img/administrador/110-sin-conexion.jpg" alt="Sin conexión"></figure>
+  <p>Arriba, donde dice <span class="texto-pantalla">Sincronizado</span>, aparece en rojo <span class="texto-pantalla">Sin conexión</span>: se cortó internet o el servidor no contesta. Lo que ya estaba guardado sigue guardado.</p>
+  <ul>
+    <li>Revisá el internet del computador. Cuando vuelva, tocá <span class="texto-pantalla">Sin conexión</span>: sincroniza y vuelve a <span class="texto-pantalla">Sincronizado</span>.</li>
+    <li>No vendas ni edites contratos mientras dice <span class="texto-pantalla">Sin conexión</span>: esperá a que vuelva.</li>
+    <li>Si dice <span class="texto-pantalla">Cambios sin subir</span>, todavía hay algo tuyo que no llegó al servidor: no cierres el navegador hasta que diga <span class="texto-pantalla">Sincronizado</span>.</li>
+  </ul>
+
+  <h2 class="proceso">10.2 «Cambios en conflicto»</h2>
+  <p>Pasa cuando dos personas cambian el plano de la misma sede a la vez. Al tocar el aviso aparece <span class="texto-pantalla">Cambios en conflicto</span>, con cuántos muebles tiene <span class="texto-pantalla">Esta computadora</span> y cuántos <span class="texto-pantalla">El servidor</span>.</p>
+  <ul>
+    <li><span class="boton">Usar la del servidor</span>: te quedás con lo que guardó el otro. Es lo seguro si no estabas cambiando el plano.</li>
+    <li><span class="boton">Conservar la mía</span>: <span class="texto-pantalla">sube lo de esta computadora y pisa lo del servidor</span>. Usalo sólo si hablaste con la otra persona.</li>
+  </ul>
+
+  <h2 class="proceso proceso-nuevo">10.3 Otros problemas</h2>
+  <table>
+    <tr><th style="width:38%">Lo que pasa</th><th>Qué hacer</th></tr>
+    <tr><td>Al elegir un espacio dice <span class="texto-pantalla">«PUN-06» está tomado del 1 ago al 31 ene 2027: ajustá las fechas.</span></td><td>Ya hay un contrato en esas fechas. Cambiá las fechas, elegí otro espacio o un entrepaño libre (3.9). Mirá la ficha para ver hasta cuándo va.</td></tr>
+    <tr><td>El botón <span class="boton">Guardar contrato</span> está gris.</td><td>Falta un dato: debajo dice cuál (<span class="texto-pantalla">Falta el proveedor</span>).</td></tr>
+    <tr><td>El contrato quedó con el valor de un solo mes.</td><td>Se guardó con <span class="boton">Total</span> en vez de <span class="boton">Al mes</span>. <span class="boton">Editar contrato</span> y corregí el precio (4.2).</td></tr>
+    <tr><td>El proveedor dice que no le llegó la confirmación.</td><td>Revisá en la ficha que el correo esté bien escrito. Si estaba mal, editá el contrato con el correo bueno: al guardar se reenvía. Pedile que mire el correo no deseado.</td></tr>
+    <tr><td>Quien monta dice que no le llegó el aviso.</td><td>¿Tiene planometría (o la cara está distribuida)? Sin eso no sale (4.4). Si la tiene, revisá en Ajustes › Avisos el correo del responsable de montaje de la sede (capítulo 9), o registrá el montaje vos (6.4).</td></tr>
+    <tr><td>No llega ningún correo a nadie.</td><td>Puede ser la configuración del envío. Escribile a soporte de RECABRA.</td></tr>
+    <tr><td>Un espacio figura ocupado pero en la tienda está libre.</td><td>Pendientes › Corregir › <span class="texto-pantalla">Contrato sin mueble en el plano</span>: hay un contrato vivo sobre un espacio que el plano no dibuja. Se resuelve desde esa tarjeta.</td></tr>
+    <tr><td>Una cara por porcentaje dice <span class="texto-pantalla">queda 0 %</span> y no se ve nada dibujado.</td><td>Lo ocupado lo deciden los contratos y las reservas vivas, no el dibujo. Mirá Indicadores › Participaciones o la ficha de la cara.</td></tr>
+    <tr><td>Aparece una pantalla <span class="texto-pantalla">… no se pudo mostrar</span>.</td><td>Tocá <span class="boton azul">Recargar</span>. Lo guardado sigue guardado. Si vuelve a pasar, abrí <span class="texto-pantalla">Detalle para soporte</span> y mandáselo a soporte de RECABRA.</td></tr>
+    <tr><td>No veo una sede o un módulo.</td><td>Tu rol no lo tiene. Avisale al dueño de la cuenta.</td></tr>
+    <tr><td>No encuentro una función.</td><td><span class="boton">Buscar</span> (Ctrl K) y escribí cómo le decís vos.</td></tr>
+  </table>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">11</span>Palabras que vas a ver</h1>
+  <table>
+    <tr><th style="width:28%">Palabra</th><th>Qué quiere decir</th></tr>
+    <tr><td>Canon</td><td>Lo que paga el proveedor al mes por un espacio. Un contrato de tres meses por un total se reparte en sus meses.</td></tr>
+    <tr><td>Tarifa de referencia</td><td>El canon mensual sugerido por tipo de mueble (general o de la sede). Sirve para comparar lo que se cobra.</td></tr>
+    <tr><td>Espacio</td><td>Lo que se vende: un mueble entero, una cara, un entrepaño o un porcentaje de una cara. Se nombra por su código (<code>PUN-07</code>, <code>GON-04·B</code>, <code>PUN-02-EN3</code>).</td></tr>
+    <tr><td>Punta de góndola</td><td>El extremo de una góndola, el que da al pasillo. Código <code>PUN</code>.</td></tr>
+    <tr><td>Cara (A / B)</td><td>Un lado de un mueble que se vende por separado: una góndola doble tiene cara A y cara B.</td></tr>
+    <tr><td>Entrepaño (EN1, EN2…)</td><td>Un estante de una punta que se vende solo. <code>EN1</code> es la base, el de abajo.</td></tr>
+    <tr><td>Parte</td><td>Una porción de una cara que se vende sola: un entrepaño, un tramo, una puerta de una nevera.</td></tr>
+    <tr><td>Participación (PC1, PC2…)</td><td>Un porcentaje de una cara vendido a una marca. Su lugar en la cara se dibuja al distribuirla.</td></tr>
+    <tr><td>Distribuir</td><td>Dibujar en qué parte de la cara va cada participación. Sin eso no sale el aviso de montaje.</td></tr>
+    <tr><td>Reserva provisional</td><td>Un espacio apartado para un proveedor hasta una fecha. Si no se confirma, caduca y se libera.</td></tr>
+    <tr><td>% de las ventas</td><td>Contrato que cobra un porcentaje de lo que vende el proveedor, con un <b>corte</b> cada mes o al final.</td></tr>
+    <tr><td>Planometría</td><td>La imagen o el PDF de cómo tiene que quedar armada la exhibición de un contrato.</td></tr>
+    <tr><td>Planograma</td><td>Lo que va en cada franja de una góndola de la casa (marca propia, categorías, promociones). Se arma con su <b>guía de montaje</b>.</td></tr>
+    <tr><td>Montaje</td><td>Armar en la tienda lo contratado. Se <b>registra</b> con foto y se <b>verifica</b> contra la planometría.</td></tr>
+    <tr><td>Temporada</td><td>Un período comercial con fechas (Navidad, Escolar, Black Friday) que ayuda a elegir para qué fechas se vende.</td></tr>
+    <tr><td>Ocupación</td><td>Caras que trabajan hoy ÷ caras que se venden en la sede.</td></tr>
+    <tr><td>Realización del potencial</td><td>Lo que se cobra al mes frente a lo que se cobraría con todo vendido a tarifa.</td></tr>
+    <tr><td>Precio frente a tarifa (canon ÷ tarifa)</td><td>Cuánto se cobra frente a la tarifa de referencia, en los espacios vendidos.</td></tr>
+    <tr><td>Por vencer</td><td>Un contrato que termina en los próximos 30 días.</td></tr>
+    <tr><td>Reemplazado al editarlo</td><td>La versión anterior de un contrato que se editó. Queda en el Historial.</td></tr>
+    <tr><td>Sede</td><td>Una tienda del supermercado. Cada sede tiene su plano y sus contratos.</td></tr>
+    <tr><td>Dueño de la cuenta</td><td>Quien registró el supermercado en RECABRA: invita al equipo, da los roles y lleva la suscripción.</td></tr>
+  </table>
+</section>
+
+</body>
+</html>

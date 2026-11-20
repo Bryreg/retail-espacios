@@ -174,12 +174,6 @@ let paginaActual = null;
     await foto(page, C, "18-reserva-caduca", { recorte: caja, margen: 12, marca: [{ loc: conf, n: 1 }, { loc: cajon().getByRole("button", { name: "Cancelar", exact: true }), n: 2 }] });
     await conf.click();
     await espera(900);
-    await foto(page, C, "19-reserva-confirmada", { recorte: cajon(), margen: 0 });
-  });
-  await paso("20-no-se-pudo", async () => {
-    const f = cajon().getByText("PUN-02·EN2", { exact: true }).last();
-    await f.scrollIntoViewIfNeeded();
-    await foto(page, C, "20-no-se-pudo-montar", { recorte: f.locator("xpath=ancestor::*[2]"), margen: 12 });
   });
   await paso("21-renovar-desde-pendientes", async () => {
     await cajon().locator('button[data-grupo="dias30"]').click();
@@ -246,9 +240,9 @@ let paginaActual = null;
   await paso("41-correo-proveedor", async () => {
     const correo = await abrir(nav, null);
     await correo.page.goto(correoReal("Confirmación de 1 espacio", "PUN-07"));
-    await foto(correo.page, C, "41-correo-proveedor");
+    await foto(correo.page, C, "41-correo-proveedor", { recorte: await zonaDelCorreo(correo.page), margen: 0 });
     await correo.page.goto(correoReal("contrato nuevo", "PUN-07"));
-    await foto(correo.page, C, "42-correo-comercial");
+    await foto(correo.page, C, "42-correo-comercial", { recorte: await zonaDelCorreo(correo.page), margen: 0 });
     await correo.contexto.close();
   });
 
@@ -371,12 +365,6 @@ let paginaActual = null;
     await espera(500);
     await foto(page, C, "62-ficha-linea-y-planometria", { recorte: cajon(), margen: 0 });
   });
-  await paso("63-cancelar-pregunta-pun01", async () => {
-    // Sólo para mostrar el botón; no se cancela PUN-01.
-    const b = cajon().getByRole("button", { name: "Cancelar el contrato" });
-    await b.scrollIntoViewIfNeeded();
-    await foto(page, C, "63-cancelar-boton", { recorte: cajon(), margen: 0, marca: b });
-  });
   await paso("64-editar", async () => {
     await page.getByRole("button", { name: "Editar contrato" }).first().scrollIntoViewIfNeeded();
     await page.getByRole("button", { name: "Editar contrato" }).first().click();
@@ -420,7 +408,7 @@ let paginaActual = null;
   await paso("72-correo-montaje", async () => {
     const correo = await abrir(nav, null);
     await correo.page.goto(correoReal("por montar", "PUN-07"));
-    await foto(correo.page, C, "72-correo-de-montaje");
+    await foto(correo.page, C, "72-correo-de-montaje", { recorte: await zonaDelCorreo(correo.page), margen: 0, marca: correo.page.getByRole("link", { name: "Ver dónde queda y confirmar" }) });
     await correo.contexto.close();
   });
   await paso("73-anteriores", async () => {
@@ -454,8 +442,29 @@ let paginaActual = null;
     await foto(page, C, "75-cancelar-confirmacion", { recorte: cajon(), margen: 0, marca: [{ loc: cajon().getByRole("button", { name: "Dejarlo así" }), n: 1 }, { loc: si, n: 2 }] });
     await si.click();
     await espera(2000);
-    await guardarTexto(page, "76-cancelado", page.locator("body"));
-    await foto(page, C, "76-cancelado");
+  });
+
+  // ── 3.12 (bis) La planilla con un archivo: dos filas, una entra y otra choca.
+  await paso("54-planilla-archivo", async () => {
+    const h = new Date();
+    const dia = (k, ultimo) => { const d = ultimo ? new Date(h.getFullYear(), h.getMonth() + k + 1, 0) : new Date(h.getFullYear(), h.getMonth() + k, 1);
+      return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
+    const csv = ["Espacio,Sede,Proveedor,Correo,Marca,Valor al mes,Desde,Hasta,Nota",
+      `PUN-08,CENTRO,Café Montaña,ventas@cafemontana.example,Café Montaña Tostado,580000,${dia(4)},${dia(6, true)},Temporada escolar`,
+      `PUN-05,CENTRO,Snacks Norte,mercadeo@snacksnorte.example,Papitas Norte,600000,${dia(1)},${dia(2, true)},`].join("\n");
+    const archivo = path.join(process.env.MANUAL_TMP || require("node:os").tmpdir(), "planilla-de-prueba.csv");
+    fs.writeFileSync(archivo, csv);
+    await ir("/contratos");
+    await boton("Planilla").click();
+    await espera(900);
+    await page.locator('input[type="file"]').first().setInputFiles(archivo);
+    await espera(2000);
+    const guardar = page.getByRole("button", { name: /^Guardar \d+ y avisar/ });
+    await foto(page, C, "54-planilla-revisada", { marca: guardar });
+    await guardar.click();
+    await espera(2500);
+    await foto(page, C, "55-planilla-guardada");
+    await page.keyboard.press("Escape");
   });
 
   // ── 5. Indicadores ──────────────────────────────────────────────────────
@@ -552,7 +561,6 @@ let paginaActual = null;
       await boton("Confirmar").click();
       await espera(1800);
       await guardarTexto(page, "99b-registrado", page.locator("body"));
-      await foto(page, C, "99b-registrado");
     }
   });
   await paso("100-falta-planometria", async () => {
@@ -633,6 +641,25 @@ async function foto(page, carpeta, nombre, { marca, recorte, margen = 16 } = {})
   await page.screenshot(opciones);
   await page.evaluate(() => document.querySelectorAll(".manual-marca").forEach((x) => x.remove()));
   console.log(`  📷 ${carpeta}/${nombre}.jpg`);
+}
+
+/** El recuadro que encierra todo lo escrito del correo (cabecera incluida):
+ *  el HTML de `correo.py` ocupa la ventana entera y el correo queda chico. */
+async function zonaDelCorreo(page) {
+  await page.evaluate(() => {
+    let x0 = Infinity, y0 = Infinity, x1 = 0, y1 = 0;
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (w.nextNode()) {
+      if (!w.currentNode.textContent.trim()) continue;
+      const r = document.createRange(); r.selectNodeContents(w.currentNode);
+      for (const b of r.getClientRects()) { x0 = Math.min(x0, b.left); y0 = Math.min(y0, b.top); x1 = Math.max(x1, b.right); y1 = Math.max(y1, b.bottom); }
+    }
+    const d = document.createElement("div");
+    d.id = "zona-del-correo";
+    Object.assign(d.style, { position: "absolute", left: `${x0 - 24}px`, top: `${Math.max(0, y0 - 14)}px`, width: `${x1 - x0 + 48}px`, height: `${y1 - y0 + 40}px`, pointerEvents: "none" });
+    document.body.appendChild(d);
+  });
+  return page.locator("#zona-del-correo");
 }
 
 async function paso(nombre, fn) {
