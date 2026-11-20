@@ -89,10 +89,14 @@ test("la búsqueda del plano encuentra al proveedor de una participación", asyn
   await page.waitForLoadState("networkidle");
 
   const buscar = page.getByRole("textbox", { name: "Buscar espacio, categoría o proveedor" });
+  // El contador de la búsqueda, exacto: la barra de arriba dice «N de M ·
+  // 2 muebles» (las sedes) y una expresión suelta como /0 de 2/ también calza
+  // en «10 de 20» cuando el CI ya creó muchas sedes.
+  const cuenta = page.getByText(/^\d+ de 2$/);
   await buscar.fill("Montaña");
-  await expect(page.getByText(/1 de 2/)).toBeVisible();
+  await expect(cuenta).toHaveText("1 de 2");
   await buscar.fill("Nadie Así");
-  await expect(page.getByText(/0 de 2/)).toBeVisible();
+  await expect(cuenta).toHaveText("0 de 2");
 });
 
 test("la ficha del trabajador no ofrece «Ver la exhibición en 3D» (él no abre el 3D)", async ({ page, request }) => {
