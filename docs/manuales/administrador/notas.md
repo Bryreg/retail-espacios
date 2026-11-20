@@ -136,3 +136,8 @@ Antes de cada grupo: `levantar.sh` (base nueva). Fechas: «mes 0» es el mes en 
     «montaje--CENTRO-PUN-01--montaje.jpg». Puede confundir (no es un documento del contrato).
 11. **El buscador se come las primeras letras.** Abrir *Buscar* y escribir enseguida «reno»: quedó «no». Al abrir
     con el mouse el campo tarda en tomar el foco; con Ctrl K o esperando un instante no pasa.
+12. **Confirmar una reserva no manda ningún correo.** Pendientes › Hoy › *Reservas que caducan hoy* › `PUN-09` ›
+    *Confirmar*: la reserva pasa a contrato, pero en la cola de correos no aparece ni la *Confirmación* al proveedor
+    (*Lácteos Andinos*) ni el *contrato nuevo* al área comercial (sí salen al vender, al editar y al verificar
+    «No coincide»). Reservar tampoco manda nada (eso parece buscado). El manual le pide al administrador avisarle al
+    proveedor a mano.

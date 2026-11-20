@@ -8,7 +8,7 @@
   /* Capturas de computador: a lo ancho de la hoja, sin pasar de un tercio de página. */
   figure.adm-pc img { width: 100%; max-width: 158mm; max-height: 99mm; object-fit: contain; object-position: left top; }
   figure.adm-tira img { width: 100%; }
-  figure.adm-recorte img, figure.adm-chico img { max-width: 100%; max-height: 92mm; width: auto; }
+  figure.adm-recorte img, figure.adm-chico img { max-width: 100%; max-height: 80mm; width: auto; }
   figure.adm-lado { display: flex; gap: 4mm; align-items: flex-start; }
   figure.adm-lado img { max-width: calc(50% - 2mm); max-height: 110mm; width: auto; }
   /* Un paso con un recorte: el texto a la izquierda y el recorte a la derecha. */
@@ -160,11 +160,11 @@
   <h2 class="proceso">2.4 Confirmar o cancelar una reserva</h2>
   <p class="cuando"><b>Cuándo:</b> el día que caduca una reserva provisional (<span class="texto-pantalla">Reservas que caducan hoy</span>). Si no hacés nada, la reserva se libera sola.</p>
   <ol class="pasos">
-    <li><p>Si el proveedor confirmó, tocá <span class="boton">Confirmar</span> (1): la reserva pasa a ser contrato y salen los avisos. Si no, tocá <span class="boton">Cancelar</span> (2) y el espacio queda libre.</p>
+    <li><p>Si el proveedor confirmó, tocá <span class="boton">Confirmar</span> (1): la reserva pasa a ser contrato. Si no, tocá <span class="boton">Cancelar</span> (2) y el espacio queda libre.</p>
       <figure class="adm-recorte"><img src="../img/administrador/18-reserva-caduca.jpg" alt="Reserva que caduca hoy"></figure></li>
     <li><p>La reserva sale de la lista. En el Inicio, <span class="texto-pantalla">Contratos activos</span> suma uno (<span class="texto-pantalla">y 1 firmado que todavía no empieza</span>, si arranca más adelante).</p></li>
   </ol>
-  <div class="caja truco"><span class="rotulo">También desde la ficha</span><p>La misma reserva tiene <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span> en la ficha del espacio (capítulo 4).</p></div>
+  <div class="caja avisale"><span class="rotulo">Avisale al proveedor</span><p>Al confirmar una reserva no sale ningún correo: contale vos al proveedor que quedó en firme. La misma reserva tiene <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span> en la ficha del espacio (capítulo 4).</p></div>
 
   <h2 class="proceso">2.5 Renovar lo que vence</h2>
   <p class="cuando"><b>Cuándo:</b> en los 30 días antes de que venza un contrato (grupo <span class="texto-pantalla">30 días</span>). El sistema también le avisa al área comercial por correo.</p>
@@ -262,7 +262,7 @@
     <li><p>Queda <span class="texto-pantalla">Reservado hasta el …</span>: <span class="texto-pantalla">Hasta ese día nadie más puede tomarlo. Después se libera solo, si no se confirma.</span> El día que caduca te aparece en Pendientes para confirmarla o cancelarla (2.4).</p>
       <figure class="adm-chico"><img src="../img/administrador/46-reservado.jpg" alt="Reservado"></figure></li>
   </ol>
-  <div class="caja error"><span class="rotulo">Para tener en cuenta</span><p>La reserva no puede terminar antes de hoy ni durar más que el contrato. Una reserva no le manda la confirmación al proveedor: eso pasa al confirmarla.</p></div>
+  <div class="caja error"><span class="rotulo">Para tener en cuenta</span><p>La reserva no puede terminar antes de hoy ni durar más que el contrato. Ni al reservar ni al confirmar la reserva sale el correo de confirmación al proveedor: avisale vos.</p></div>
 
   <h2 class="proceso">3.9 Cuando el espacio está tomado</h2>
   <p class="cuando"><b>Cuándo:</b> tocás un espacio que ya tiene contrato en parte de tus fechas.</p>
@@ -284,7 +284,7 @@
   <h2 class="proceso">3.11 La tarifa de referencia y las tarifas</h2>
   <p class="cuando"><b>Cuándo:</b> para saber cuánto pedir, y cuando cambian los precios del supermercado.</p>
   <ol class="pasos">
-    <li><p>A la derecha, debajo del contrato, está <span class="texto-pantalla">Tarifa de referencia</span>: por tipo de espacio, cuántos están libres y en parte, y la tarifa al mes. Tocá un código para sumarlo al contrato.</p>
+    <li><p>A la derecha, debajo del contrato, está <span class="texto-pantalla">Tarifa de referencia</span>: por tipo de espacio, cuántos están libres y en parte, la tarifa al mes y los códigos de cada tipo con lo que les queda.</p>
       <figure class="adm-recorte"><img src="../img/administrador/51-tarifa-de-referencia.jpg" alt="Tarifa de referencia"></figure></li>
     <li><p>Para cambiar las tarifas, tocá <span class="boton">Tarifas</span> (arriba a la derecha). La columna <b>General</b> vale para todas las sedes; la de la sede la ajusta sólo ahí. Se guardan solas; un campo vacío quita la tarifa.</p>
       <figure class="adm-pc"><img src="../img/administrador/53-tarifas.jpg" alt="Tarifas de referencia"></figure></li>
@@ -541,12 +541,8 @@
     <tr><td>Planograma</td><td>Lo que va en cada franja de una góndola de la casa (marca propia, categorías, promociones). Se arma con su <b>guía de montaje</b>.</td></tr>
     <tr><td>Montaje</td><td>Armar en la tienda lo contratado. Se <b>registra</b> con foto y se <b>verifica</b> contra la planometría.</td></tr>
     <tr><td>Temporada</td><td>Un período comercial con fechas (Navidad, Escolar, Black Friday) que ayuda a elegir para qué fechas se vende.</td></tr>
-    <tr><td>Ocupación</td><td>Caras que trabajan hoy ÷ caras que se venden en la sede.</td></tr>
-    <tr><td>Realización del potencial</td><td>Lo que se cobra al mes frente a lo que se cobraría con todo vendido a tarifa.</td></tr>
-    <tr><td>Precio frente a tarifa (canon ÷ tarifa)</td><td>Cuánto se cobra frente a la tarifa de referencia, en los espacios vendidos.</td></tr>
-    <tr><td>Por vencer</td><td>Un contrato que termina en los próximos 30 días.</td></tr>
+    <tr><td>Ocupación, realización del potencial, precio frente a tarifa</td><td>Las cifras de Indicadores. Qué es cada una y cómo se calcula: Indicadores › Diccionario.</td></tr>
     <tr><td>Reemplazado al editarlo</td><td>La versión anterior de un contrato que se editó. Queda en el Historial.</td></tr>
-    <tr><td>Sede</td><td>Una tienda del supermercado. Cada sede tiene su plano y sus contratos.</td></tr>
     <tr><td>Dueño de la cuenta</td><td>Quien registró el supermercado en RECABRA: invita al equipo, da los roles y lleva la suscripción.</td></tr>
   </table>
 </section>
