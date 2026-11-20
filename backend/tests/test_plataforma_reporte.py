@@ -17,7 +17,7 @@ import re
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
-MENSAJE_NO_OWNER = "Solo el owner del cliente puede hacer esto."
+MENSAJE_NO_OWNER = "Esto lo puede hacer sólo el dueño del supermercado, con su cuenta."
 
 CLAVES_NIVEL1 = {
     "cliente", "generado_en", "ventana", "politica", "catalogo", "valores",
@@ -386,6 +386,41 @@ def test_el_dueno_ve_la_consulta_de_detalle_de_su_cliente_y_no_la_de_otro(client
     assert lineas[0]["operador"] == "asesor@recabra.co"
     assert _FECHA_RE.match(lineas[0]["fecha"])
     assert set(lineas[0]) == CLAVES_LINEA_ACCESO
+
+
+def test_las_fechas_del_reporte_son_el_dia_de_colombia_y_los_derechos_dicen_donde(client):
+    """Recorrido del manual del dueño (2026-11-20): una aceptación de la noche
+    de Colombia salía con el día de la marca UTC, y «4. Tus derechos» decía
+    rutas de la API («GET /api/clientes/mi-export»)."""
+    from app.clientes import sesion_registro
+    from app.models.consentimiento import Consentimiento
+    from app.models.plataforma import BitacoraPlataforma
+    from app.plataforma_metricas import periodo_actual
+
+    ids = Identidades(client)
+    owner_cab = _fundar(ids, "uid-hora", "hora@x.co", "rephora", "Rep Hora")
+    anio, mes = (int(x) for x in periodo_actual().split("-"))
+    # Las 8:30 p. m. del día 1 en Colombia = las 01:30 UTC del día 2.
+    noche = datetime(anio, mes, 2, 1, 30, tzinfo=timezone.utc)
+    reg = sesion_registro()
+    try:
+        for c in reg.query(Consentimiento).all():
+            c.aceptado_en = noche
+        reg.add(BitacoraPlataforma(email="asesor@recabra.co", accion="detalle",
+                                   periodo=f"rephora:{periodo_actual()}", en=noche))
+        reg.commit()
+    finally:
+        reg.close()
+
+    cuerpo = _pedir_dueno(client, owner_cab).json()
+    dia_1 = f"{anio:04d}-{mes:02d}-01"
+    assert cuerpo["politica"]["aceptada_en"] == dia_1
+    assert [l["fecha"] for l in cuerpo["accesos"]["lineas"] if l["accion"] == "detalle"] == [dia_1]
+
+    for texto in cuerpo["derechos"].values():
+        assert "/api/" not in texto and "GET " not in texto and "POST " not in texto, texto
+    assert "Ajustes › Cuenta › Tus datos" in cuerpo["derechos"]["export"]
+    assert "Descargar mis datos" in cuerpo["derechos"]["export"]
 
 
 def test_el_catalogo_declara_el_detalle_de_espacios_y_contratos(client):

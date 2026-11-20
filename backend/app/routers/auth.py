@@ -27,6 +27,7 @@ from app.auth import (
     login_legado_prendido,
     require_admin,
     require_auth,
+    rol_de_token_para,
     sub_y_email_de_la_sesion,
     verificar_clave,
 )
@@ -457,9 +458,10 @@ def _rol_de_token(rol_membresia: str) -> str:
     Spec, decisión 5: el JWT propio sólo conoce dos roles. El ``owner`` de hoy
     gestiona usuarios además de lo que gestiona un admin, pero eso lo decide
     `require_admin` — sigue viendo `role == "admin"`. No hay tercer valor que
-    inventarle al middleware existente.
+    inventarle al middleware existente. La regla vive en ``app.auth``, que la
+    vuelve a aplicar en cada pedido (un rol cambiado corta el token viejo).
     """
-    return "admin" if rol_membresia in ("owner", "admin") else "worker"
+    return rol_de_token_para(rol_membresia)
 
 
 # ─── La consola del operador (Fase 4) ────────────────────────────────────────
@@ -829,7 +831,9 @@ def oauth_login(
         cdb = sesion_de(cliente_obj)
         try:
             epoca = epoca_de(cdb, role)
-            anotar(cdb, request, role, "login.ok", detalle=email)
+            # El ingreso todavía no pasó por `require_auth`: el rol de la
+            # persona va acá directo (la dueña se anota «owner», no «admin»).
+            anotar(cdb, request, "owner" if elegida.rol == "owner" else role, "login.ok", detalle=email)
             cdb.commit()
         finally:
             cdb.close()

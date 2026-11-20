@@ -14,7 +14,7 @@ import zipfile
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-NO_OWNER = "Solo el owner del cliente puede hacer esto."
+NO_OWNER = "Esto lo puede hacer sólo el dueño del supermercado, con su cuenta."
 SLUG = "superprueba"
 CORREO_DUENA = "duena@super.co"
 

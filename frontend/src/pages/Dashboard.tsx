@@ -54,6 +54,7 @@ import {
   getUsuarios,
   invitarUsuario,
   setMiembroActivo,
+  setMiembroRol,
   type ContactBook,
   type LineaBitacora,
   type Miembro,
@@ -385,6 +386,17 @@ function rolLabelUsuario(rol: Miembro["rol"]): string {
   return "Trabajador";
 }
 
+/** El rol de una línea de la bitácora, en palabras: decía «admin · 127.0.0.1».
+ *  Desde el 2026-11-20 la del dueño llega `owner` (el servidor anota el rol de
+ *  la membresía, no el del token). Lo que no es una persona sale tal cual. */
+function rolDeLaBitacora(rol: string): string {
+  if (rol === "owner" || rol === "admin" || rol === "worker") return rolLabelUsuario(rol);
+  if (rol === "sistema") return "Sistema";
+  if (rol === "plataforma") return "RECABRA";
+  if (rol === "montaje") return "Enlace de montaje";
+  return rol;
+}
+
 /** Miembros con cuenta individual (Google/correo) e invitaciones que
  *  todavía nadie aceptó, para el cliente de la sesión actual — el token
  *  manda, no hay selector de cliente acá.
@@ -404,6 +416,8 @@ function UsuariosSection() {
 
   const [invEmail, setInvEmail] = useState("");
   const [invRol, setInvRol] = useState<Miembro["rol"]>("worker");
+  // La etiqueta «Rol» no nombraba al selector (axe, `select-name`).
+  const idRolInvitar = useId();
   const [invitando, setInvitando] = useState(false);
   const [invMsg, setInvMsg] = useState<Feedback>(null);
 
@@ -445,6 +459,35 @@ function UsuariosSection() {
       setInvMsg({ ok: false, text: describeError(err, "No se pudo enviar la invitación.") });
     } finally {
       setInvitando(false);
+    }
+  };
+
+  /** Cambiar el rol (2026-11-20): reinvitar a un miembro da 409, y no había
+   *  otra forma de pasar a un trabajador a administrador. Las reglas las pone
+   *  el servidor; acá sólo se ofrece lo que el servidor va a aceptar. */
+  const cambiarRol = async (m: Miembro, rol: Miembro["rol"]) => {
+    if (rol === m.rol) return;
+    const quien = m.nombre || m.email;
+    const nuevo = rolLabelUsuario(rol).toLowerCase();
+    // Entre trabajador y administrador cambia lo que dice su sesión: la que
+    // tenga abierta deja de valer y vuelve a entrar (dueño ↔ administrador no).
+    const vuelveAEntrar = (m.rol === "worker") !== (rol === "worker");
+    const pregunta = rol === "owner"
+      ? `¿Darle el rol Dueño a ${quien}? Va a poder ver la suscripción, bajar la copia de seguridad, manejar a los otros dueños y pedir la supresión del supermercado.`
+      : `¿Pasar a ${quien} a ${nuevo}?${vuelveAEntrar ? " Si tiene la sesión abierta, va a tener que volver a entrar." : ""}`;
+    if (!confirm(pregunta)) return;
+    setCambiando(m.id);
+    setMsg(null);
+    try {
+      await setMiembroRol(m.id, rol);
+      setDatos((prev) =>
+        prev ? { ...prev, miembros: prev.miembros.map((x) => (x.id === m.id ? { ...x, rol } : x)) } : prev
+      );
+      setMsg({ ok: true, text: `Listo: ${quien} ahora es ${nuevo}.` });
+    } catch (err) {
+      setMsg({ ok: false, text: describeError(err, "No se pudo cambiar el rol.") });
+    } finally {
+      setCambiando(null);
     }
   };
 
@@ -499,12 +542,16 @@ function UsuariosSection() {
             style={inputStyle}
           />
         </div>
-        <div style={{ width: 120 }}>
-          <label style={fieldLabelStyle}>Rol</label>
+        {/* El ancho lo da la opción más larga: a 120 px fijos se leía
+            «Administrado» (recorrido del manual del dueño, 2026-11-20). */}
+        <div style={{ flex: "0 0 auto" }}>
+          <label style={fieldLabelStyle} htmlFor={idRolInvitar}>Rol</label>
           <select
+            id={idRolInvitar}
             value={invRol}
             onChange={(e) => setInvRol(e.target.value as Miembro["rol"])}
-            style={inputStyle}
+            style={{ ...inputStyle, width: "auto" }}
+            data-rol-invitar
           >
             <option value="worker">Trabajador</option>
             <option value="admin">Administrador</option>
@@ -537,9 +584,16 @@ function UsuariosSection() {
                 background: "var(--surface-2)", overflow: "hidden",
               }}
             >
-              {datos.miembros.map((m) => (
+              {datos.miembros.map((m) => {
+                // La fila propia no se toca: ni desactivarse (perdés el acceso en
+                // el acto) ni cambiarse el rol. El servidor también lo rechaza.
+                // A un dueño lo maneja sólo otro dueño.
+                const esYo = !!miCorreo && m.email === miCorreo;
+                const puedoTocar = !esYo && (m.rol !== "owner" || soyDuenio);
+                return (
                 <div
                   key={m.id}
+                  data-miembro={m.email}
                   style={{
                     display: "flex", alignItems: "center", gap: 8,
                     padding: "8px 10px",
@@ -553,19 +607,34 @@ function UsuariosSection() {
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
                       {m.nombre || m.email}
+                      {esYo && <span style={{ fontWeight: 500, color: "var(--ink-3)" }}> · vos</span>}
                     </div>
                     <div style={{
                       fontSize: 11, color: "var(--ink-3)",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      {m.email} · {rolLabelUsuario(m.rol)}
+                      {m.email}{!puedoTocar && ` · ${rolLabelUsuario(m.rol)}`}
                       {!m.activo && " · desactivado"}
                     </div>
                   </div>
+                  {puedoTocar && (
+                    <select
+                      value={m.rol}
+                      onChange={(e) => cambiarRol(m, e.target.value as Miembro["rol"])}
+                      disabled={cambiando === m.id}
+                      aria-label={`Rol de ${m.nombre || m.email}`}
+                      style={{ ...inputStyle, width: "auto", height: 26, padding: "0 6px", fontSize: 11 }}
+                    >
+                      <option value="worker">Trabajador</option>
+                      <option value="admin">Administrador</option>
+                      {/* Sólo un dueño da el rol Dueño (403 en el servidor). */}
+                      {soyDuenio && <option value="owner">Dueño</option>}
+                    </select>
+                  )}
                   <div style={{ fontSize: 10.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>
                     {m.ultimo_login ? haceCuanto(m.ultimo_login) : "nunca entró"}
                   </div>
-                  {(m.rol !== "owner" || soyDuenio) && (
+                  {puedoTocar && (
                   <button
                     onClick={() => cambiarActivo(m)}
                     disabled={cambiando === m.id}
@@ -585,7 +654,8 @@ function UsuariosSection() {
                   </button>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {datos.invitaciones.map((inv) => (
                 <div
@@ -780,7 +850,7 @@ function BitacoraSection() {
                     fontFamily: "var(--font-mono)",
                   }}
                 >
-                  {l.rol} · {l.ip}
+                  {rolDeLaBitacora(l.rol)} · {l.ip}
                 </div>
               </div>
               <div
@@ -894,10 +964,16 @@ function SuscripcionSection({ enfocar }: { enfocar: boolean }) {
  *  fase y en su propio archivo (`api/derechos.ts`) -- no comparten código con
  *  el resto de Configuración a propósito, porque su frontera es distinta: acá
  *  no importa el rol del JWT (que siempre es "admin" para un owner, Fase 1,
- *  decisión 5) sino la membresía real, y eso el backend lo resuelve solo. El
- *  frontend no intenta adivinar "sos owner": deja que el 403 lo diga y lo
- *  traduce a un mensaje que se entiende. */
+ *  decisión 5) sino la membresía real, y eso el backend lo resuelve solo.
+ *
+ *  Con el filtro de la copia y la suscripción (2026-11-20): a un administrador
+ *  que sabemos que no es el dueño se le mostraban los tres botones y los tres
+ *  fallaban. Ahora ve qué es de quién —los datos del supermercado, la supresión
+ *  y el reporte, del dueño; sus datos personales, de cada persona— y dónde
+ *  bajar los suyos. Una sesión sin rol los ve, y si no es el dueño el 403 lo
+ *  dice (como en la copia). */
 function TusDatosSection() {
+  const rolCliente = useAuthStore((s) => s.rolCliente);
   const navigate = useNavigate();
   const [descargando, setDescargando] = useState(false);
   const [exportMsg, setExportMsg] = useState<Feedback>(null);
@@ -948,8 +1024,21 @@ function TusDatosSection() {
     }
   };
 
+  if (rolCliente && rolCliente !== "owner") {
+    return (
+      <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }} data-tus-datos="persona">
+        <div style={sectionLabelStyle}>Tus datos</div>
+        <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+          Tus datos personales los bajás vos, desde el menú de tu cuenta, arriba a la derecha:
+          «Descargar mis datos». Los datos del supermercado, la solicitud de supresión y el
+          reporte de transparencia son del dueño de la cuenta: si los necesitás, pedíselos.
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }} data-tus-datos="duenio">
       <div style={sectionLabelStyle}>Tus datos</div>
       <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12, lineHeight: 1.5 }}>
         Política de Tratamiento de Datos Personales (Ley 1581/2012). Los datos del supermercado
@@ -987,7 +1076,7 @@ function TusDatosSection() {
           Reporte de transparencia
         </ActionButton>
         <div style={{ marginTop: 6, fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
-          Qué tomó la plataforma de tu cliente, cómo lo calculó y quién lo consultó.
+          Qué tomó RECABRA de tu supermercado, cómo lo calculó y quién lo consultó.
         </div>
       </div>
     </div>
