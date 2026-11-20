@@ -24,7 +24,9 @@ import type { ContextoDeAccion } from "../acciones";
 import Mas from "../components/Armazon/Mas";
 // Lo que se abre a pedido (Ctrl K, la ayuda, Tarifas, Temporadas y las
 // secciones de Ajustes) baja cuando se abre (auditoría P2-20).
-const Buscador = lazy(() => import("../components/Armazon/Buscador"));
+const cargarBuscador = () => import("../components/Armazon/Buscador");
+const Buscador = lazy(cargarBuscador);
+const precargarBuscador = () => { void cargarBuscador(); };
 const Ayuda = lazy(() => import("../components/Armazon/Ayuda"));
 const MetasPorSede = lazy(() => import("../components/Ajustes/Metas"));
 const SedesDeAjustes = lazy(() => import("../components/Ajustes/Sedes"));
@@ -1507,6 +1509,8 @@ function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLo
       {/* El buscador de funciones (Ctrl K), la ayuda de la pantalla, «Más» del
           módulo y lo fijado (etapa 8): ninguna función queda escondida. */}
       <button type="button" className="btn-buscar" onClick={() => useArmazon.getState().setBuscador(true)}
+        // Que el buscador empiece a bajar al acercarse a la lupa: llega antes.
+        onPointerEnter={precargarBuscador} onFocus={precargarBuscador}
         title="Buscar una función, un espacio o un término (Ctrl K)" aria-label="Buscar (Ctrl K)" data-abrir-buscador>
         <Search {...ICONO_BARRA} /><span className="txt">Buscar</span><kbd>Ctrl K</kbd>
       </button>
@@ -1716,6 +1720,23 @@ export default function Dashboard() {
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, []);
+  // Lo tecleado ANTES de que el buscador exista (2026-11-20). Baja a pedido
+  // (`lazy`), y abierto con el mouse el foco se queda en la lupa mientras
+  // llega: «reno» tecleado enseguida quedaba «no». Mientras no está su campo
+  // (`[data-buscador]`), las letras se juntan acá y el buscador arranca con
+  // ellas; Esc lo cierra como lo cerraría él.
+  useEffect(() => {
+    if (!buscadorAbierto) return;
+    const k = (e: KeyboardEvent) => {
+      if (document.querySelector("[data-buscador]")) return;
+      if (e.key === "Escape") { e.preventDefault(); useArmazon.getState().setBuscador(false); return; }
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      useArmazon.getState().sumarTecleado(e.key);
+    };
+    window.addEventListener("keydown", k, true);
+    return () => window.removeEventListener("keydown", k, true);
+  }, [buscadorAbierto]);
 
   return (
     <div
