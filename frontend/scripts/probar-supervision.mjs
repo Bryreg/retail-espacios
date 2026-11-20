@@ -101,8 +101,8 @@ await prueba("la línea de cada cara en «Para revisar» y su pastilla", () => {
   assert.equal(SU.lineaParaRevisar(cara("sin_montar", { rige_desde: "2026-10-21", dias_que_rige: 3 }), HOY), "rige desde el 21 oct · nadie avisó");
   assert.equal(SU.pastillaParaRevisar(cara("sin_montar", { dias_que_rige: 3 })), "3d");
   const aviso = { id: 1, estado: "montada", motivo: null, motivo_legible: null, nota: null, por_enlace: true, por: null, en: instante(2026, 10, 24, 9, 40) };
-  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 2 }), HOY), "avisó que quedó · hoy 9:40 · con 2 fotos");
-  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 0 }), HOY), "avisó que quedó · hoy 9:40 · sin foto");
+  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 2 }), HOY), "avisó que quedó montada · hoy 9:40 · con 2 fotos");
+  assert.equal(SU.lineaParaRevisar(cara("por_revisar", { aviso, fotos_nuevas: 0 }), HOY), "avisó que quedó montada · hoy 9:40 · sin foto");
   const noPudo = { ...aviso, estado: "no_se_pudo", motivo: "sin_producto", motivo_legible: "No llegó el producto", nota: "Halloween", en: instante(2026, 10, 23, 18, 5) };
   assert.equal(SU.lineaParaRevisar(cara("no_se_pudo", { aviso: noPudo }), HOY), "No llegó el producto · Halloween · ayer 18:05");
   const revision = { id: 3, montaje_id: 1, resultado: "no_coincide", numeros: [2, 3], otra_cosa: false, nota: null, en_la_tienda: false,
@@ -172,6 +172,25 @@ await prueba("la casa: un amarillo por archivo, nada comercial, nunca «sombra»
   const ficha = sinComentarios(leer("src/components/Supervision/RevisarMontaje.tsx"));
   assert.ok(ficha.includes("Sí, coincide") && ficha.includes("Lo vi en la tienda: coincide") && ficha.includes("Guardar y mandar la guía"));
   assert.ok(ficha.includes("const [reenviar, setReenviar] = useState(true)"), "mandar la guía de nuevo viene marcado (decisión del dueño)");
+});
+
+console.log("\nsupervisión · confirmar una reserva");
+
+await prueba("confirmar una reserva dice a quiénes salió el aviso (2026-11-20)", () => {
+  const av = (x = {}) => ({ smtp_listo: true, comercial: ["g@x.co"], montaje: [], proveedor: ["p@x.co"], montaje_pendiente: [24], ...x });
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", av()),
+    "PUN-09 pasó a contrato. Salió el aviso al área comercial y al proveedor. El de montaje sale cuando el espacio tenga su planometría.");
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", av({ montaje: ["m@x.co"], montaje_pendiente: [] })),
+    "PUN-09 pasó a contrato. Salió el aviso al área comercial, al proveedor y a quien monta.");
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", av({ proveedor: [], proveedor_sin_correo: ["Lácteos"], montaje_pendiente: [] })),
+    "PUN-09 pasó a contrato. Salió el aviso al área comercial. El proveedor no tiene correo: avisale vos.");
+  assert.match(SU.textoDeLaConfirmacion("PUN-09", av({ smtp_listo: false })), /No salió ningún correo: el correo no está configurado/);
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", null), "PUN-09 pasó a contrato.");
+  // Ni direcciones ni plata en el texto.
+  assert.doesNotMatch(SU.textoDeLaConfirmacion("PUN-09", av()), /@|\$/);
+  const fila = sinComentarios(leer("src/components/Supervisar/CobrosYReservas.tsx"));
+  assert.match(fila, /const hecho = await confirmarReserva\(r\.id\);\s*onCambio\(textoDeLaConfirmacion\(cod, hecho\.avisos\)\);/,
+    "confirmar descarta lo que pasó con los correos");
 });
 
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? ", hay fallas" : ""}.`);

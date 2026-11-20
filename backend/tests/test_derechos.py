@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from conftest import CLAVE_ADMIN, CLAVE_WORKER
 
-MENSAJE_NO_OWNER = "Solo el owner del cliente puede hacer esto."
+MENSAJE_NO_OWNER = "Esto lo puede hacer sólo el dueño del supermercado, con su cuenta."
 CLAVES_DEL_EXPORT = {"cliente", "generado_en", "version_politica", "spaces", "leases", "suppliers", "layouts",
                      # Las tablas del rediseño de Vender (docs/rediseno/vender-api.md §7).
                      "condiciones_comerciales"}

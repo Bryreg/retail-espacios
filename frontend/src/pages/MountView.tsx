@@ -9,8 +9,9 @@ import { leerMontajesDePlanogramas, type CaraDelMontaje } from "../api/supervisi
 import { useAuthStore, selectIsAdmin } from "../store/authStore";
 import VerificarMontaje from "../components/Montaje/VerificarMontaje";
 import RevisarMontaje from "../components/Supervision/RevisarMontaje";
+import VerGuia from "../components/Guia/VerGuia";
 import {
-  FILTROS_DE_MONTAJES, TEXTO_DEL_ESTADO, cuentaPorFiltro, estadoDelContrato, estadoDelPlanograma, filtroDe,
+  FILTROS_DE_MONTAJES, TEXTO_DEL_ESTADO, cuentaPorFiltro, estadoDelContrato, estadoDelPlanograma, filtroDe, tomadoPorReserva,
   type EstadoDeMontaje, type FiltroDeMontajes,
 } from "../utils/montajes";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
@@ -93,6 +94,10 @@ interface Fila {
   reporte?: MountConfirmation;
   /** La versión (planograma), para revisarla. */
   versionId?: number;
+  /** Planograma: quien mira lo puede revisar (lo puede publicar). Si no —el
+   *  trabajador, en un mueble interno que publica administración—, la fila
+   *  sólo abre la guía. */
+  puedeRevisar?: boolean;
   /** Planograma «no se pudo»: el motivo en palabras. */
   motivo?: string | null;
 }
@@ -104,7 +109,8 @@ interface Fila {
  * se pudo», adjuntar la planometría que falta o revisar el de un planograma.
  *
  * Quien trabaja en la tienda ve la misma lista, sin verificar y sin la lista
- * de avisos que esperan (es de administración). En ningún lado hay valores,
+ * de avisos que esperan (es de administración); de los planogramas que no
+ * publica, la guía. En ningún lado hay valores,
  * igual que en su correo. En el teléfono, cada fila es una tarjeta grande.
  */
 export default function MountView({
@@ -146,11 +152,14 @@ export default function MountView({
   const [todasLasSedes, setTodasLasSedes] = useState(false);
   const [mirando, setMirando] = useState<Fila | null>(null);
   const [revisandoVersion, setRevisandoVersion] = useState<number | null>(null);
+  /** La guía de un planograma que quien mira no revisa: sólo para mirarla. */
+  const [guiaDe, setGuiaDe] = useState<number | null>(null);
   /** Los avisos que esperan (sólo administración), por código de espacio. */
   const [avisos, setAvisos] = useState<Map<string, MontajePendiente> | null>(null);
   const [planogramas, setPlanogramas] = useState<(CaraDelMontaje & { sede: string })[]>([]);
   const [recargar, setRecargar] = useState(0);
-  /** Lo que dijo la última revisión de un planograma. */
+  /** Lo que dijo la última revisión de un planograma, o el «Listo» del
+   *  montaje que se acaba de registrar. */
   const [hecho, setHecho] = useState<string | null>(null);
 
   const sedesALaVista = useMemo(
@@ -264,6 +273,9 @@ export default function MountView({
         // Solo lo que tiene contrato por delante o corriendo. Lo vencido ya no
         // se monta, y lo libre no tiene qué montar.
         if (fase !== "vigente" && fase !== "pendiente") continue;
+        // Una reserva viva sale tomada en el mapa, pero no es un contrato: no
+        // se monta ni se avisa hasta confirmarla (`tomadoPorReserva`).
+        if (tomadoPorReserva(estadoComercial, code)) continue;
         // El reporte de ESTE contrato: el «montado» del contrato anterior sobre
         // el mismo espacio no cuenta (2026-10-05, `utils/montajeDelContrato.ts`).
         const reporte = reporteDelContrato(porCodigo, code, cara.startDate);
@@ -287,7 +299,7 @@ export default function MountView({
       }
     }
     return out;
-  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios, indicePartes]);
+  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios, indicePartes, estadoComercial]);
 
   /** Lo que falta montar (sin reporte de «montado» de su contrato). Tres
    *  tramos: lo que arrancó y hay que montar ya, lo que viene, y al final lo
@@ -322,7 +334,7 @@ export default function MountView({
       out.push({
         clave: `p-${c.version_id}`, clase: "planograma", sede: c.sede, codigo: c.nombre,
         quien: `Planograma · versión ${c.numero}`, tipo: "Planograma", desde: c.rige_desde,
-        estado: estadoDelPlanograma(c.estado), versionId: c.version_id,
+        estado: estadoDelPlanograma(c.estado), versionId: c.version_id, puedeRevisar: c.puede_revisar !== false,
         motivo: c.estado === "no_se_pudo" ? (c.aviso?.motivo_legible ?? null) : null,
       });
     }
@@ -370,6 +382,17 @@ export default function MountView({
     if (previo) setYaConfirmado(previo);
   }, [initialCode, cargando, layoutListo, pendientes, ultimo]);
 
+  // Se volvió de Pendientes: esa fila, a la vista. Va ANTES del `return` del
+  // formulario: un hook después de un `return` condicional rompe la pantalla
+  // («Rendered fewer hooks than expected») al tocar «Registrar montaje».
+  // Llegando de una fila de Pendientes («Ir a Montajes») la lista todavía se
+  // está cargando: se vuelve a buscar la fila cuando termina.
+  useEffect(() => {
+    if (!resaltar || cargando || !layoutListo) return;
+    const t = window.setTimeout(() => document.querySelector(".mj-fila[data-resaltada]")?.scrollIntoView({ block: "center" }), 200);
+    return () => window.clearTimeout(t);
+  }, [resaltar, cargando, layoutListo]);
+
   if (abierto) {
     return (
       <FormularioDelTablero
@@ -378,18 +401,18 @@ export default function MountView({
         onCancel={() => setAbierto(null)}
         onSaved={(m) => {
           setMounts((prev) => [m, ...prev]);
+          // Sin esto se volvía a la lista sin ninguna señal de que el reporte
+          // entró (por el enlace del correo sí dice «Listo, quedó reportado»):
+          // quien monta lo buscaba en la lista o lo mandaba dos veces.
+          const codigo = nombreDeMueble({ code: abierto.corto });
+          setHecho(m.estado === "montado"
+            ? `Listo: ${codigo} quedó reportado como montado.`
+            : `Listo: ${codigo} quedó reportado como no montado, con el motivo.`);
           setAbierto(null);
         }}
       />
     );
   }
-
-  // Se volvió de Pendientes: esa fila, a la vista.
-  useEffect(() => {
-    if (!resaltar) return;
-    const t = window.setTimeout(() => document.querySelector(".mj-fila[data-resaltada]")?.scrollIntoView({ block: "center" }), 200);
-    return () => window.clearTimeout(t);
-  }, [resaltar]);
 
   /** Después de verificar uno: el siguiente sin verificar, en el orden de la
    *  lista, y cuántos quedan (sin contar el que se acaba de verificar). */
@@ -412,6 +435,10 @@ export default function MountView({
   /** Lo que se hace con la fila: un botón, con el verbo del estado. */
   const accion = (f: Fila): { texto: string; hacer: () => void } | null => {
     if (f.clase === "planograma") {
+      if (f.versionId === undefined) return null;
+      // La ficha de la revisión pide poder publicar esa cara: quien no puede
+      // (el trabajador, casi siempre) mira la guía —lo que hay que montar—.
+      if (!f.puedeRevisar) return { texto: "Ver la guía", hacer: () => setGuiaDe(f.versionId!) };
       return f.versionId !== undefined
         ? { texto: f.estado === "sin_verificar" ? "Verificar montaje" : f.estado === "no_realizado" ? "Resolver" : f.estado === "sin_montar" ? "Ver la guía y revisar" : "Ver revisión", hacer: () => setRevisandoVersion(f.versionId!) }
         : null;
@@ -495,6 +522,15 @@ export default function MountView({
         </div>
       )}
 
+      {/* Arriba de la lista y no al final: con una lista larga, el «Listo» de
+          un montaje recién registrado quedaba fuera de la vista. */}
+      {hecho && (
+        <p className="mj-hecho" role="status" data-montaje-hecho>
+          {hecho}
+          <button type="button" aria-label="Cerrar el aviso" className="mj-cerrar" onClick={() => setHecho(null)}><X size={14} /></button>
+        </p>
+      )}
+
       <div className="mj-filtros" role="group" aria-label="Filtrar montajes" data-filtros-montajes>
         {FILTROS_DE_MONTAJES.map((x) => (
           <button key={x.id} type="button" aria-pressed={filtro === x.id} onClick={() => setFiltro(x.id)} data-filtro={x.id}>
@@ -559,12 +595,7 @@ export default function MountView({
         <RevisarMontaje versionId={revisandoVersion} onCerrar={() => setRevisandoVersion(null)}
           onRevisada={(texto) => { setRevisandoVersion(null); setHecho(texto); setRecargar((n) => n + 1); }} />
       )}
-      {hecho && (
-        <p className="mj-hecho" role="status">
-          {hecho}
-          <button type="button" aria-label="Cerrar el aviso" className="mj-cerrar" onClick={() => setHecho(null)}><X size={14} /></button>
-        </p>
-      )}
+      {guiaDe !== null && <VerGuia versionId={guiaDe} puedeCompartir={false} onCerrar={() => setGuiaDe(null)} />}
     </div>
   );
 }

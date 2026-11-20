@@ -147,8 +147,8 @@ export default function RatesModal({ onClose }: { onClose: () => void }) {
         <div style={{ padding: "12px 18px 10px", borderBottom: "1px solid var(--line-soft)" }}>
           <p style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
             Canon mensual esperado (COP) por tipo de mueble. La tarifa general aplica en todas
-            las sedes; la columna de sede la ajusta solo ahí. Con esto, el Dashboard marca los
-            contratos que pagan por debajo.
+            las sedes; la columna de sede la ajusta solo ahí. Con esto, Pendientes marca los
+            contratos que pagan por debajo (en Corregir).
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-3)" }}>

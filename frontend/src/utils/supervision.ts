@@ -1,6 +1,7 @@
 import type { AvisoDeMontaje, MotivoDeNoMontaje } from "../api/guia";
 import type { EstadoDeMontaje } from "../api/planogramas";
 import type { CaraPorSupervisar, ResultadoDeRevision } from "../api/supervision";
+import type { AvisosContrato } from "../types";
 
 /**
  * La supervisión de los planogramas (fase 4 de la distribución, 2026-10-25):
@@ -73,10 +74,12 @@ export function queQuedoMal(numeros: readonly number[], otraCosa: boolean): stri
   return partes.join(" ");
 }
 
-/** El aviso de quien monta, en palabras: «avisó que quedó · hoy 9:40». */
+/** El aviso de quien monta, en palabras: «avisó que quedó montada · hoy
+ *  9:40». Decía «avisó que quedó · hoy», sin el «montada» que dicen la guía
+ *  y la revisión (recorrido de los manuales, 2026-11-20). */
 export function textoDelAviso(a: AvisoDeMontaje, hoy: string): string {
   const cuando = cuandoPaso(a.en, hoy);
-  if (a.estado === "montada") return `avisó que quedó${cuando ? ` · ${cuando}` : ""}`;
+  if (a.estado === "montada") return `avisó que quedó montada${cuando ? ` · ${cuando}` : ""}`;
   return `${a.motivo_legible ?? "No se pudo"}${a.nota ? ` · ${a.nota}` : ""}${cuando ? ` · ${cuando}` : ""}`;
 }
 
@@ -84,7 +87,7 @@ export function textoDelAviso(a: AvisoDeMontaje, hoy: string): string {
 export function lineaParaRevisar(c: CaraPorSupervisar, hoy: string): string {
   switch (c.estado) {
     case "por_revisar":
-      return `${c.aviso ? textoDelAviso(c.aviso, hoy) : "avisó que quedó"} · ${
+      return `${c.aviso ? textoDelAviso(c.aviso, hoy) : "avisó que quedó montada"} · ${
         c.fotos_nuevas === 0 ? "sin foto" : c.fotos_nuevas === 1 ? "con 1 foto" : `con ${c.fotos_nuevas} fotos`}`;
     case "no_se_pudo":
       return c.aviso ? textoDelAviso(c.aviso, hoy) : "no se pudo";
@@ -119,4 +122,29 @@ export function faltaParaRevisar(e: {
   if (e.otraCosa && !e.nota.trim()) return "Con «Otra cosa», escribí qué hay que corregir.";
   if (e.nota.length > 1000) return "La nota pasa de 1000 letras.";
   return null;
+}
+
+/** Qué pasó al confirmar una reserva (2026-11-20): pasa a contrato y salen los
+ *  avisos de un contrato nuevo, los mismos que al vender (`_avisar` del
+ *  servidor). La pantalla no decía nada —la fila sólo desaparecía— y, en el
+ *  recorrido de los manuales, se leyó como que no salía ningún correo. Dice a
+ *  quiénes se encoló, sin direcciones ni plata (lo mira también quien no lo
+ *  cargó). `avisos` es el de `POST /reservas/{id}/confirmar`. */
+export function textoDeLaConfirmacion(codigo: string, avisos: AvisosContrato | null | undefined): string {
+  const hecho = `${codigo} pasó a contrato.`;
+  if (!avisos) return hecho;
+  if (!avisos.smtp_listo) return `${hecho} No salió ningún correo: el correo no está configurado en el servidor.`;
+  const a = [
+    avisos.comercial.length > 0 ? "al área comercial" : "",
+    avisos.proveedor.length > 0 ? "al proveedor" : "",
+    avisos.montaje.length > 0 ? "a quien monta" : "",
+  ].filter(Boolean);
+  const quienes = a.length > 1 ? `${a.slice(0, -1).join(", ")} y ${a[a.length - 1]}` : a[0];
+  return [
+    hecho,
+    quienes ? `Salió el aviso ${quienes}.` : "No salió ningún aviso: no hay contactos cargados para esta sede.",
+    avisos.proveedor.length === 0 && (avisos.proveedor_sin_correo?.length ?? 0) > 0 ? "El proveedor no tiene correo: avisale vos." : "",
+    avisos.montaje.length === 0 && (avisos.montaje_pendiente?.length ?? 0) > 0
+      ? "El de montaje sale cuando el espacio tenga su planometría." : "",
+  ].filter(Boolean).join(" ");
 }

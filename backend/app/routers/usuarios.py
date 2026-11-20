@@ -1,4 +1,5 @@
-"""Gestión de usuarios de un cliente: invitar, listar, activar/desactivar.
+"""Gestión de usuarios de un cliente: invitar, listar, activar/desactivar y
+cambiar el rol.
 
 Todo bajo ``require_admin`` y operando sobre el cliente **del token** —
 ``cliente_del_pedido``—, nunca sobre uno que venga en la URL o el cuerpo: un
@@ -32,6 +33,16 @@ ROL_EN_EL_CORREO = {"owner": "Dueño", "admin": "Administrador", "worker": "Trab
 
 SOLO_DUENIO_INVITA_DUENIO = "Sólo un dueño puede invitar a otro dueño."
 SOLO_DUENIO_TOCA_DUENIO = "Sólo un dueño puede activar o desactivar a otro dueño."
+# Cambiar el rol (2026-11-20): reinvitar a alguien que ya es miembro da 409, y
+# no había otra forma de pasar a un trabajador a administrador. Mismas reglas
+# que invitar: sólo un dueño da el rol Dueño o se lo quita a otro.
+SOLO_DUENIO_CAMBIA_DUENIO = "Sólo un dueño puede dar el rol Dueño o cambiarle el rol a otro dueño."
+ULTIMO_DUENIO = "No se puede dejar al supermercado sin dueño: primero dale el rol Dueño a otra persona."
+# Ni desactivarse ni cambiarse el rol uno mismo: quien se desactiva pierde el
+# acceso en el acto, y quien se baja de rol puede quedarse sin poder volver.
+# Lo hace otra persona: a un dueño, otro dueño; a un administrador, también
+# otro administrador.
+NO_A_VOS_MISMO = "No podés desactivarte ni cambiarte el rol a vos mismo: pedíselo a otra persona que maneje el equipo."
 
 
 def _actor_es_duenio(reg, sub, cliente_slug: str) -> bool:
@@ -91,7 +102,9 @@ class UsuariosOut(BaseModel):
 
 
 class PatchUsuarioIn(BaseModel):
-    activo: bool
+    # Los dos opcionales: Ajustes › Equipo manda uno por vez. Sin ninguno, 422.
+    activo: Optional[bool] = None
+    rol: Optional[str] = None
 
 
 # ─── POST /usuarios/invitar ────────────────────────────────────────────────────
@@ -131,7 +144,7 @@ def invitar_usuario(
                 .first()
             )
             if ya_miembro is not None:
-                raise HTTPException(status_code=409, detail="Esa persona ya es miembro de este cliente.")
+                raise HTTPException(status_code=409, detail="Esa persona ya es miembro de este supermercado: cambiale el rol desde la lista.")
 
         ahora = datetime.now(timezone.utc)
         expira = ahora + timedelta(days=INVITACION_TTL_DIAS)
@@ -171,12 +184,12 @@ def invitar_usuario(
             [
                 ("Supermercado", nombre),
                 ("Rol", ROL_EN_EL_CORREO.get(rol_nuevo, rol_nuevo)),
-                ("Ingrese con", escape(email)),
+                ("Entrá con", escape(email)),
             ],
             footer=(
-                f'Ingrese desde <a href="{enlace}">{enlace}</a> con la cuenta '
+                f'Entrá desde <a href="{enlace}">{enlace}</a> con la cuenta '
                 f'<b>{escape(email)}</b>: con Google, si es una cuenta de Google, o creando '
-                f'una cuenta de correo con esa misma dirección. Si ingresa con otra cuenta, la '
+                f'una cuenta de correo con esa misma dirección. Si entrás con otra cuenta, la '
                 f'invitación no la va a encontrar. El enlace vence en {INVITACION_TTL_DIAS} días.'
             ),
         )
@@ -186,7 +199,9 @@ def invitar_usuario(
         # rol. El correo del invitado no va (es dato de un tercero); el de quien
         # invita lo agrega `anotar`. La invitación ya está en el registro: esta
         # línea va en la base del cliente, en su propio commit.
-        anotar(db, request, rol, "usuario.invitado", entidad="usuario", detalle=f"rol {rol_nuevo}")
+        # El rol en palabras, como en el correo (decía «rol owner»).
+        anotar(db, request, rol, "usuario.invitado", entidad="usuario",
+               detalle=f"rol {ROL_EN_EL_CORREO[rol_nuevo]}")
         db.commit()
         return InvitarOut(ok=True, expira_en=expira)
     finally:
@@ -258,13 +273,36 @@ def patch_usuario(
             .first()
         )
         if membresia is None:
-            raise HTTPException(status_code=404, detail="Esa persona no es miembro de este cliente.")
+            raise HTTPException(status_code=404, detail="Esa persona no es miembro de este supermercado.")
+
+        if payload.activo is None and payload.rol is None:
+            raise HTTPException(status_code=422, detail="Falta qué cambiar: activo o rol.")
+        rol_nuevo = None
+        if payload.rol is not None:
+            rol_nuevo = payload.rol.strip().lower()
+            if rol_nuevo not in ROLES_MEMBRESIA:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Rol inválido: debe ser uno de {', '.join(ROLES_MEMBRESIA)}",
+                )
+            if rol_nuevo == membresia.rol:
+                rol_nuevo = None  # nada que cambiar
+        desactiva = payload.activo is False and membresia.activo
 
         sub_actor = identidad[0]
-        if membresia.rol == "owner" and sub_actor is not None and not _actor_es_duenio(reg, sub_actor, cliente.slug):
+        if sub_actor is not None and sub_actor == usuario_id and (desactiva or rol_nuevo is not None):
+            raise HTTPException(status_code=409, detail=NO_A_VOS_MISMO)
+        es_duenio = sub_actor is None or _actor_es_duenio(reg, sub_actor, cliente.slug)
+        if rol_nuevo is not None and (membresia.rol == "owner" or rol_nuevo == "owner") and not es_duenio:
+            raise HTTPException(status_code=403, detail=SOLO_DUENIO_CAMBIA_DUENIO)
+        if membresia.rol == "owner" and not es_duenio:
             raise HTTPException(status_code=403, detail=SOLO_DUENIO_TOCA_DUENIO)
 
-        if payload.activo is False and membresia.activo and membresia.rol == "owner":
+        # Ni desactivando ni quitándole el rol: el supermercado no se queda sin
+        # un dueño activo (es quien ve la suscripción, baja la copia y ejerce
+        # los derechos del titular).
+        deja_de_ser_duenio = membresia.activo and membresia.rol == "owner" and (desactiva or rol_nuevo is not None)
+        if deja_de_ser_duenio:
             otros_owners_activos = (
                 reg.query(Membresia)
                 .filter(
@@ -278,15 +316,28 @@ def patch_usuario(
             if otros_owners_activos == 0:
                 raise HTTPException(
                     status_code=409,
-                    detail="No se puede desactivar al último dueño activo de este cliente.",
+                    detail="No se puede desactivar al último dueño activo de este supermercado."
+                    if desactiva else ULTIMO_DUENIO,
                 )
 
-        membresia.activo = bool(payload.activo)
+        rol_antes = membresia.rol
+        if payload.activo is not None:
+            membresia.activo = bool(payload.activo)
+        if rol_nuevo is not None:
+            membresia.rol = rol_nuevo
         reg.commit()
+        # El caché guarda también el rol: con el rol nuevo, el token que esa
+        # persona tiene abierto deja de valer si dice otro (`auth.decode_token`)
+        # y vuelve a entrar con el que le toca. Sin esto, un administrador
+        # pasado a trabajador seguía viendo la plata hasta que el token venciera.
         invalidar_cache_membresia(usuario_id, cliente.slug)
         # La bitácora del supermercado (auditoría P2-14).
-        anotar(db, request, rol, "usuario.cambio", entidad="usuario", entidad_id=usuario_id,
-               detalle="activado" if membresia.activo else "desactivado")
+        if payload.activo is not None:
+            anotar(db, request, rol, "usuario.cambio", entidad="usuario", entidad_id=usuario_id,
+                   detalle="activado" if membresia.activo else "desactivado")
+        if rol_nuevo is not None:
+            anotar(db, request, rol, "usuario.rol", entidad="usuario", entidad_id=usuario_id,
+                   detalle=f"{ROL_EN_EL_CORREO[rol_antes]} → {ROL_EN_EL_CORREO[rol_nuevo]}")
         db.commit()
         return {"ok": True}
     finally:

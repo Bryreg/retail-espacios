@@ -495,7 +495,7 @@ export function revisarCambioDeGeometria(
       : "";
     return {
       cambios,
-      bloqueo: `${f.code} tiene ${cuantosInternos(vendido.slots)} (Editor 3D): no se puede cambiar `
+      bloqueo: `${f.code} tiene ${cuantosInternos(vendido.slots)} (en el 3D del plano): no se puede cambiar `
         + `la cantidad de entrepaños hasta liberarlos.${porElAlto} Cada uno cae sobre ciertos entrepaños, y con `
         + `otros pasaría a ser otra cosa. El alto y el módulo sí se pueden cambiar, con aviso, mientras no `
         + `cambie la cantidad.`,

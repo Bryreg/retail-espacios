@@ -365,6 +365,11 @@ interface FixtureStore {
    *  Como `pedidoVender`: viaja por acá, `Dashboard.tsx` cambia de pestaña y la
    *  pantalla de sede lo muestra y lo suelta. No se persiste. */
   pedidoSupervisar: { aviso: string | null; n: number } | null;
+  /** Pedido de abrir la FICHA de un espacio (el buscador, para quien trabaja
+   *  en la tienda: no vende ni renueva, pero sí lee la ficha). Como
+   *  `pedidoVender`: viaja por acá, el buscador cambia a Indicadores y la
+   *  pantalla comercial la abre y lo suelta. No se persiste. */
+  pedidoFicha: { fixtureId: string; cara: "A" | "B"; n: number } | null;
 
   // ── Sync bookkeeping ────────────────────────────────────────────────────────
   /** Server revision (updated_at) last seen for each sede. */
@@ -471,6 +476,9 @@ interface FixtureStore {
   /** Volver a Sede → Supervisar, con un aviso (o sin). Lo consume DashboardView. */
   pedirSupervisar: (aviso: string | null) => void;
   soltarPedidoSupervisar: () => void;
+  /** Abrir la ficha de este espacio. Lo consume DashboardView. */
+  pedirFicha: (fixtureId: string, cara: "A" | "B") => void;
+  soltarPedidoFicha: () => void;
   /** Guardar la cámara actual como la vista de este espacio. */
   guardarVista3D: (fixtureId: string, cara: "A" | "B", vista: Vista3D) => void;
   /** Olvidar la vista guardada: se vuelve al encuadre calculado. */
@@ -638,6 +646,7 @@ export const useFixtureStore = create<FixtureStore>()(
       enfoque3D: null,
       pedidoVender: null,
       pedidoSupervisar: null,
+      pedidoFicha: null,
       serverRev: {},
       settingsRev: null,
       dirty: {},
@@ -989,6 +998,9 @@ export const useFixtureStore = create<FixtureStore>()(
       pedirSupervisar: (aviso) =>
         set((state) => ({ pedidoSupervisar: { aviso, n: (state.pedidoSupervisar?.n ?? 0) + 1 } })),
       soltarPedidoSupervisar: () => set({ pedidoSupervisar: null }),
+      pedirFicha: (fixtureId, cara) =>
+        set((state) => ({ pedidoFicha: { fixtureId, cara, n: (state.pedidoFicha?.n ?? 0) + 1 } })),
+      soltarPedidoFicha: () => set({ pedidoFicha: null }),
 
       // Guardar y borrar escriben el layout y lo mandan al servidor, pero NO
       // entran al historial: que Ctrl+Z deshaga un encuadre de cámara mezcla
@@ -1590,6 +1602,11 @@ export const useFixtureStore = create<FixtureStore>()(
           if (changed) {
             await get().syncFromServer();
           } else {
+            // El servidor contestó y el plano de acá es el suyo: un «Sin
+            // conexión» que quedó de un pedido que falló antes (se cortó el
+            // wifi y volvió: `onOnline` llega acá) ya no es cierto. Sin esto
+            // la barra seguía en rojo hasta que alguien la tocaba.
+            if (get().syncState === "error") set({ syncState: "idle", syncMessage: null });
             // El plano no se movió, pero lo comercial ya no vive en el plano:
             // una venta, una cancelación o una planilla cargada en otro equipo
             // no cambian ninguna revisión. Sin esta rama, esta pestaña seguiría

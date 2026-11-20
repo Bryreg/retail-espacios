@@ -502,9 +502,9 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   assert.match(plano, /porParticipacion=\{esPorParticipacion\(selectedItem\.id\)\}/);
   assert.match(panel, /const dispoPc = esPc \? \(dispoDeCara\?\.\(activeFace\) \?\? null\) : null;/);
   assert.match(panel, /const estadoVisto: SpaceStatus = estadoParaPintar\(face\.status, dispoPc\);/);
-  assert.match(panel, /const rotuloVisto = rotuloPorOcupacion\(face\.status, dispoPc\) \?\? STATUS_LABELS\[face\.status\];/);
+  assert.match(panel, /const rotuloVisto = esReserva \? STATUS_LABELS\.reserved\s*: rotuloPorOcupacion\(face\.status, dispoPc\) \?\? STATUS_LABELS\[face\.status\];/);
   // La pastilla: el color y la palabra por ocupación.
-  assert.match(panel, /\.\.\.\(rentable \? STATUS_BADGE_STYLE\[estadoVisto\] : NON_RENTABLE_BADGE_STYLE\)/, "la pastilla no usa el color por ocupación");
+  assert.match(panel, /\.\.\.\(rentable \? STATUS_BADGE_STYLE\[esReserva \? "reserved" : estadoVisto\] : NON_RENTABLE_BADGE_STYLE\)/, "la pastilla no usa el color por ocupación");
   assert.match(panel, /\{rentable \? rotuloVisto : NON_RENTABLE_LABEL\}/, "la pastilla dice «Disponible» sobre una cara por participación");
   assert.doesNotMatch(panel, /STATUS_BADGE_STYLE\[face\.status\]|\{rentable \? STATUS_LABELS\[face\.status\]/, "queda una pastilla con el estado crudo");
   // «Contratado»: lo comprometido, y dónde se vende (no «Sede → Vender»).
@@ -518,8 +518,9 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   assert.ok(k > 0 && sin > k, "«Sin contrato activo.» se alcanza antes que la rama de participación");
   assert.match(panel, /\{isAdmin && esPc \? \(\s*<>\s*<p[^>]*>\s*\{DONDE_SE_CARGAN\}/, "a quien administra no le dice dónde se cargan las participaciones");
   assert.match(panel, /onPorcentaje=\{isAdmin && esPc \? \(c\) => abrirEnDistribucion\(item\.id, c\) : undefined\}/);
-  const vender = panel.indexOf("Sede → Vender");
-  assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Sede → Vender» se dice también de una cara por participación");
+  // «Los contratos se hacen en Contratos» (era «Sede → Vender», nombre viejo: 2026-11-20).
+  const vender = panel.indexOf(">Contratos</b>, sobre el");
+  assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Los contratos se hacen en Contratos» se dice también de una cara por participación");
 });
 
 /* La verificación del arreglo (2026-10-17): cuatro mutantes vivían con las
@@ -877,9 +878,14 @@ prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar
   assert.match(k, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\)\.map\(reserva\);/);
   assert.match(v, /const espaciosDelMueble = useCallback\(\s*\(f: UnifiedFixture\): FaceEntry\[\] => \{[^}]*?\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\);/,
     "la tabla y «Contratado sin montar» cuentan una reserva como contrato");
-  const m = v.slice(v.indexOf("const montaje = useMemo("), v.indexOf("const montaje = useMemo(") + 1500);
-  assert.match(m, /fixtures\.flatMap\(espaciosDelMueble\)/, "el montaje no sale de las filas con la reserva marcada");
-  assert.match(m, /if \(fase !== "vigente" && fase !== "pendiente"\) return;/, "el montaje cuenta lo que no es contrato");
+  // El montaje se clasifica en `clasificarMontajes`: con las filas de la
+  // pantalla (`montaje`) y, para quien no administra, con todos los contratos
+  // de la sede (`montajeDeTodo`, 2026-11-20). Las dos, con la reserva marcada.
+  const c = v.slice(v.indexOf("const clasificarMontajes = useCallback("), v.indexOf("const clasificarMontajes = useCallback(") + 1500);
+  assert.match(c, /if \(fase !== "vigente" && fase !== "pendiente"\) return;/, "el montaje cuenta lo que no es contrato");
+  const m = v.slice(v.indexOf("const montaje = useMemo("), v.indexOf("const montaje = useMemo(") + 900);
+  assert.match(m, /clasificarMontajes\(fixtures\.flatMap\(espaciosDelMueble\)\)/, "el montaje no sale de las filas con la reserva marcada");
+  assert.match(m, /partesVendidasDe\(f\)\]\)\s*\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\)/, "el montaje de toda la sede no marca la reserva");
   // «Reservado» dice hasta cuándo, en la tabla y en la ficha; y no se renueva.
   assert.match(v, /\{entry\.reservaHasta && \(\s*<span style=\{\{ color: "var\(--ink-3\)" \}\}> hasta \{diaCorto\(entry\.reservaHasta\)\}<\/span>/);
   assert.match(v, /if \(entry\.reservaHasta \|\| !entry\.supplierName\.trim\(\) \|\| !entry\.endDate\) return false;/, "una reserva se ofrece a renovar");
@@ -952,7 +958,13 @@ prueba("«Renovar» de una participación abre Vender armado, y sólo renueva un
   assert.match(v, /if \(t && t\.estado === "contrato" && \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)\) termino = t\.id;/,
     "renovar marca para renovar una reserva, un vencido o un cancelado");
   assert.match(v, /renueva: termino \? \{ \[caraCompleta\]: termino \} : \{\},/, "renueva un término que no es un contrato vivo");
-  assert.match(v, /desde: termino && desde \? toISODate\(desde\) : "",/, "sobre algo que no se renueva, arranca después de un contrato que no corre");
+  assert.match(v, /desde: termino && fechas \? fechas\.desde : "",/, "sobre algo que no se renueva, arranca después de un contrato que no corre");
+  // Los mismos MESES, no los mismos días (2026-11-20): 1 jun – 30 nov se
+  // renovaba hasta el 1 jun.
+  assert.match(v, /const fechas = t\.desde && t\.hasta \? renovacionDe\(t\.desde, t\.hasta\) : null;/, "la participación se renueva por días");
+  assert.match(v, /const fechas = entry\.startDate && entry\.endDate \? renovacionDe\(entry\.startDate, entry\.endDate\) : null;/,
+    "el contrato se renueva por días");
+  assert.doesNotMatch(v, /largo \* dia/, "queda una renovación que copia el largo en días");
   assert.match(v, /negociar\(f, entry\.face, semillaPc\);/, "renovar una participación no abre Vender");
   // El botón «Renovar» de la ficha de Supervisar (las participaciones de la
   // cara) también abre Vender: nunca el Editor 3D → Distribución.
@@ -1317,6 +1329,18 @@ prueba("cada sección del dibujo está en «Para revisar», en su grupo, y cada 
   assert.deepEqual(claves("corregir"), ["f"]);
 });
 
+// Recorrido de los manuales (2026-11-20): «Falta distribuir · empieza en 7
+// días o menos» listaba participaciones que corrían desde hacía meses.
+prueba("«Falta distribuir» y «Falta planometría» de «Hoy» dicen si ya corre o si empieza en 7 días o menos (ejecutado)", () => {
+  for (const [s, palabra] of [["falta_distribuir", "Falta distribuir"], ["falta_planometria", "Falta planometría"]]) {
+    assert.equal(G.tituloDeSeccion(s, "hoy", [0, -40]), `${palabra} · ya corre`, "lo que ya corre dice que empieza");
+    assert.equal(G.tituloDeSeccion(s, "hoy", [3, 7]), `${palabra} · empieza en 7 días o menos`);
+    assert.equal(G.tituloDeSeccion(s, "hoy", [-2, 5]), `${palabra} · ya corre o empieza en 7 días o menos`);
+    assert.equal(G.tituloDeSeccion(s, "hoy"), `${palabra} · ya corre o empieza en 7 días o menos`, "sin los días, las dos");
+    assert.equal(G.tituloDeSeccion(s, "dias30", [20]), palabra);
+  }
+});
+
 prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sección cuenta (ejecutado)", () => {
   const avisos = DEL_DIBUJO.flatMap(([, id], k) => [{ seccion: id, clave: `${id}1`, dias: k - 3 }, { seccion: id, clave: `${id}2`, dias: 40 }]);
   const n = G.contarPorGrupo(avisos);
@@ -1639,7 +1663,8 @@ prueba("la ficha sigue al mueble de la última sincronización: cancelar una res
   const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(t, /useEffect\(\(\) => \{\s*if \(!selected\) return;\s*const fresco = fixtures\.find\(\(f\) => f\.id === selected\.id\);\s*if \(fresco && fresco !== selected\) setSelected\(fresco\);\s*\}, \[fixtures, selected\]\);/,
     "la ficha se queda con el mueble de antes de cancelar o confirmar");
-  assert.match(t, /onReservaCambio=\{\(\) => \{\s*reservasSinConfirmar\.recargar\(\);\s*void refrescarComercial\(\);/);
+  // (Con lo que pasó con los correos al confirmarla, en el aviso de la lista.)
+  assert.match(t, /onReservaCambio=\{\(aviso\) => \{\s*setAvisoDeSupervision\(aviso \?\? null\);\s*reservasSinConfirmar\.recargar\(\);\s*void refrescarComercial\(\);/);
   // Y al trabajador una reserva le sale «Reservado» en la ficha, no «Disponible para vender».
   assert.match(t, /\) : !hasContract && entry\.reservado \? \(/);
 });
@@ -1901,7 +1926,7 @@ prueba("Vender en edición: manda `edita` con el leaseId y `esperado`, sin la no
   assert.match(m, /<b>Editando el contrato de \{nombreDelContrato\(edita\.antes\)\}<\/b>/);
   assert.match(m, /<X \{\.\.\.ICONO\} \/> Salir sin cambios/);
   assert.match(m, /<b>Al guardar, se envía de nuevo a los correos:<\/b> comercial · el proveedor \(\{c\.correoDestino\}\) · montaje/);
-  assert.match(m, /\{edita \? \(c\.cambioAjeno \? \(\s*<button className="btn-texto" type="button" onClick=\{onSalirDeEdicion \?\? onCancelar\} data-volver-tras-cambio>\s*<ArrowLeft \{\.\.\.ICONO\} \/> Volver a Supervisar/,
+  assert.match(m, /\{edita \? \(c\.cambioAjeno \? \(\s*<button className="btn-texto" type="button" onClick=\{onSalirDeEdicion \?\? onCancelar\} data-volver-tras-cambio>\s*<ArrowLeft \{\.\.\.ICONO\} \/> Volver a Indicadores/,
     "tras un 409 `contrato_cambio` no se ofrece volver a Supervisar");
   assert.match(m, /<Send \{\.\.\.ICONO\} \/> Guardar cambios y reenviar/);
   // 2026-10-25: si lo ÚNICO que cambia es cómo se lee el precio (el mismo
@@ -2071,15 +2096,16 @@ prueba("el foco vuelve al «Editar contrato» que abrió la edición (o al títu
   assert.match(t, /<h3 className="mono" data-ficha-titulo tabIndex=\{-1\}>/);
   // El reemplazo: los NUEVOS piden lo suyo, con el plural bien.
   const uno = ED.notaDelReemplazo({ antes: { forma: "entera", visibleCara: "PUN-04", partes: [], pb: null }, planometria: "p.pdf" }, 1);
-  assert.equal(uno, "El contrato de PUN-04 se cierra como «reemplazado», no cancelado: su planometría (p.pdf) y su montaje quedan con él. El contrato nuevo pide su planometría y su montaje en «Para revisar».");
+  assert.equal(uno, "El contrato de PUN-04 se cierra como «reemplazado», no cancelado: su planometría (p.pdf) y su montaje quedan con él. El contrato nuevo pide su planometría y su montaje en Pendientes.");
   const dos = ED.notaDelReemplazo({ antes: { forma: "entera", visibleCara: "PUN-04", partes: [], pb: null }, planometria: null }, 2);
-  assert.match(dos, /su montaje queda con él\. Los 2 contratos nuevos piden su planometría y su montaje en «Para revisar»\.$/);
+  assert.match(dos, /su montaje queda con él\. Los 2 contratos nuevos piden su planometría y su montaje en Pendientes\.$/);
   assert.deepEqual([ED.resumenDeCambios([{ campo: "Cobro" }]), ED.resumenDeCambios([{ campo: "a" }, { campo: "b" }, { campo: "c" }, { campo: "d" }])],
     ["Cobro", "4 cambios"]);
   const m = sinComent(fuenteDe("components/Contrato/ModoVender.tsx"));
   // El éxito no pide la planometría de un contrato que ya la tiene.
-  assert.match(m, /\{\(!editado \|\| \(!editado\.reemplazo && !editado\.conPlanometria\)\) && \(\s*<p className="nota-guardado" data-planometria-en-supervisar>/);
-  assert.match(m, /editado\.nuevos > 1\s*\? "Los contratos nuevos piden su planometría y su montaje en «Para revisar»\."/);
+  // Ni la de una reserva: la planometría se cuelga del contrato al confirmarla.
+  assert.match(m, /\{!reserva && \(!editado \|\| \(!editado\.reemplazo && !editado\.conPlanometria\)\) && \(\s*<p className="nota-guardado" data-planometria-en-supervisar>/);
+  assert.match(m, /editado\.nuevos > 1\s*\? "Los contratos nuevos piden su planometría y su montaje en Pendientes\."/);
   const d = sinComent(fuenteDe("components/Contrato/ConfirmarEdicion.tsx"));
   assert.match(d, /\{notaDelReemplazo\(edita, c\.nuevos\)\}/);
   assert.doesNotMatch(d, /su montaje se vuelven a pedir/, "el diálogo dice que se vuelven a pedir los del contrato viejo");

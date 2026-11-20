@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-11-13: **Indicadores › Historial** — todos los contratos de la sede que
+Última actualización: 2026-11-20: **arreglos del recorrido de los manuales** — al recorrer la app
+rol por rol para los manuales de capacitación salieron errores reales y quedaron arreglados:
+«Registrar montaje» desde la cuenta rompía Montajes; el trabajador no veía los planogramas en
+Montajes ni encontraba espacios en el buscador; las cuentas de montajes no coincidían entre
+pantallas; textos en «usted», plurales «Ver los 1», fechas ISO en los correos, la ficha de una punta
+vendida por entrepaños decía «Disponible». Ver *Arreglos del recorrido de los manuales (2026-11-20)*.
+
+Antes, el 2026-11-13: **Indicadores › Historial** — todos los contratos de la sede que
 ya no están vivos (terminados, cancelados con hasta cuándo corrieron, reemplazados al editarlos),
 con filtros por proveedor o marca, espacio, fechas y estado, «Exportar a Excel» y la ficha a un
 toque; en la ficha, «Ver todos (N)» debajo de los cinco «Contratos anteriores». Los dos roles; la
@@ -1761,6 +1768,121 @@ para quien toque la pantalla:
   estos cambios: es de las fuentes del Chromium de la máquina, no de la pantalla.
 
 ## Qué está hecho
+
+### Arreglos del recorrido de los manuales (2026-11-20)
+
+Los manuales de capacitación (`docs/manuales/`) se hicieron recorriendo la app de verdad, rol por
+rol, sobre una copia sembrada. Lo que salió mal en ese recorrido se arregló acá, cada cosa con su
+prueba.
+
+**«Registrar montaje» rompía Montajes.** En `pages/MountView.tsx` el `return` del formulario iba
+antes de un `useEffect`: al tocar «Registrar montaje» (trabajador y administración) React cortaba
+con «Rendered fewer hooks than expected» y se veía «Montajes no se pudo mostrar». El efecto pasa
+antes del `return`. Prueba: `e2e/montaje.e2e.ts` («registrar montaje desde Montajes (con cuenta)»).
+
+**Montajes con la cuenta del trabajador.** `GET /api/planogramas/supervision?todas=1` (la lista de
+Montajes) ya no filtra por `puede_planificar`: trae las caras que ese rol puede LEER
+(`planogramas.puede_leer`, la misma regla de `exigir_lectura`: el trabajador, los muebles internos),
+cada una con `puede_revisar`. La ficha (`/supervision/version`) y «revisar» siguen siendo de quien
+publica; en Montajes, la fila que no se revisa abre la guía de sólo lectura («Ver la guía», `VerGuia`
+sin compartir). «Para revisar» (sin `todas`) no cambia. Al registrar desde Montajes, la lista dice
+arriba (role=status) «Listo: <espacio> quedó reportado como montado.» o «… como no montado, con el
+motivo.»; ahí va también el aviso de la revisión de un planograma. El formulario de montaje habla de
+«este equipo» y de «conexión», no de «teléfono» y «señal»: se usa también en el computador. La barra
+de sincronización (`SyncStatus`) escucha `online`/`offline` y dice «Sin conexión» sin esperar a que
+falle un pedido; un sondeo que vuelve a contestar limpia un «Sin conexión» viejo. **La pastilla roja
+de «Pendientes» es una sola cuenta en todos los módulos:** la hace `DashboardView`; fuera de Inicio,
+Indicadores y Contratos corre una copia que no dibuja (`<DashboardView soloLaCuenta inicio
+modo="supervisar">`, `CuentaDePendientes` en `Dashboard.tsx`) y que no atiende lo que es de la
+pantalla visible (pedidos del armazón, `pedidoVender`/`pedidoSupervisar`, la bandeja que se abre
+sola). Antes, entrando directo a `/montajes` o al Plano, salía sin número. Pruebas:
+`test_supervision_planogramas.py`, `probar-armazon`, `probar-plano`, `e2e/montajes-trabajador.e2e.ts`.
+
+**Montajes por resolver: una sola cuenta.** El Inicio cuenta con `montajesPorResolver`
+(`utils/indicadores.ts`), la regla de los filtros de Montajes (`filtroDe`): «Sin montar» es lo que ya
+empezó y nadie reportó montado, sin la ventana de 30 días de Pendientes, más lo «No realizado»;
+entran todos los contratos de la sede (también las participaciones) y los planogramas. La tarjeta
+dice el desglose. El filtro «Sin montar» de Montajes también lista lo que todavía no empieza; el
+Inicio no lo cuenta (no está atrasado). La ventana de 30 días sigue sólo en Pendientes. El chip «Sin
+montar» de Indicadores › Contratos cuenta las filas cuya columna Montaje dice «Sin montar». El Mapa
+cuenta caras («Caras con montaje pendiente»); «Contratos que empiezan en <mes>» mide sólo lo del mes.
+Para el trabajador, Indicadores y el Inicio no muestran tareas de administración: sus botones dicen
+lo que hacen («Ver la ficha», «Ver los contratos por vencer», «Ver el plano»), Capacidad por vender
+le da la «Situación» sin consejos de negociación, y donde administración lee «Requieren
+acción/gestión» él lee «Avisale a quien administra»; ve el nombre de los proveedores de las
+participaciones, nunca el % ni la plata. La ficha de una cara entera sin contrato con divisiones
+tomadas dice «Vendido en parte · De N …, K con contrato: quedan L libres» (`resumenDeLasPartes`).
+Indicadores › Historial muestra el código sin la sede (tabla y Excel); «Duró»/«Meses» de lo
+cancelado cuenta hasta la víspera de la baja y lo que no llegó a correr dice «—». Plurales con 1:
+«Ver el pendiente», «Ver 1 en Pendientes ›» (`verEnPendientes`). Pruebas: `probar-mapa-de-decision`,
+`e2e/indicadores.e2e.ts`, `e2e/historial.e2e.ts`.
+
+**Buscador, voz, tema y fechas de los correos.** El buscador (Ctrl K) le encuentra los espacios
+también a quien trabaja en la tienda: estado en fechas, nunca montos, y la acción «Ver la ficha»;
+elegir uno abre la ficha en Indicadores › Plano (`fixtureStore.pedirFicha` → `DashboardView`).
+Administración sigue yendo a Contratos. Como el buscador baja a pedido (`lazy`), lo tecleado antes de
+que exista su campo lo junta el armazón (`armazonStore.tecleadoAlAbrir`) y el buscador arranca con
+eso: ya no se come las primeras letras. En el menú de la cuenta, toda la fila «Tema claro u oscuro»
+es el control (`role="menuitemcheckbox"`). El ingreso, la invitación (pantalla y correo), los errores
+de invitación y alta del servidor y el correo de prueba hablan de vos; quedan en usted la landing
+(copy.md §0), el informe comercial del operador (`InformeCliente`) y los correos de cobranza de la
+suscripción (`services/cobranza_automatica.py`: aviso formal de RECABRA al supermercado; decisión
+del dueño, 2026-11-20: «Déjalo con usted»). Las fechas que lee una persona en los correos van en
+dd/mm/aaaa (`mailer.fecha_de_correo`). Pruebas: `e2e/varios.e2e.ts`, `probar-ingreso`,
+`test_contract_emails`, `test_recordatorios`, `test_invitacion_enlace`.
+
+**Vender, contratos y reservas.** «Renovar» copia los MESES del contrato con la regla de
+`utils/meses.ts` (`renovacionDe` / `mismoPlazoDesde`): arranca el día después y termina la víspera
+del mismo día del mes (1 jun – 30 nov → 1 dic – 31 may; antes copiaba los días y terminaba un día
+tarde). En Vender, una línea que arranca con la tarifa de referencia (que es al mes) arranca en «Al
+mes» (`modoPorDefecto`, `utils/precioDeLista.ts`): el total es tarifa × meses. Antes arrancaba en
+«Total» con UN mes de tarifa y, si nadie tocaba «Al mes», se guardaba de menos. Pasarla a «Total» la
+convierte y «Volver a la tarifa» la deja «Al mes»; lo sembrado (renovar, editar) y las líneas sin
+tarifa siguen en «Total». Una reserva guardada no dice «contrato guardado» ni pide planometría;
+confirmarla manda los avisos de un contrato nuevo (ya los mandaba) y la bandeja dice a quiénes salió
+(`textoDeLaConfirmacion`). Una reserva viva no aparece en Montajes (`tomadoPorReserva`); la línea de
+tiempo de su ficha dice «Reservado hasta el …, sin confirmar» con el tramo en ámbar punteado, y la
+ficha del Plano 2D y el panel del 3D dicen «Reservado», no «Ocupado». «Archivos del contrato» no
+lista las fotos de montaje (`archivosDelContrato`). Los entrepaños de la venta cuentan la base (un
+mueble con `entrepanos: 4` se vende en 5, EN1 = la base): es la regla del catálogo, no un error.
+Pruebas: `probar-contrato`, `probar-vender`, `probar-lista-montajes`, `probar-montajes`,
+`test_reservas_de_espacio.py`, `e2e/vender-reservas.e2e.ts`.
+
+**Pendientes y Plano de la sede.** «Montaje sin reporte» y «Contratado sin montar» tienen «Ir a
+Montajes», que abre Montajes con esa fila marcada (`onIrAMontajes(codigo)` → `resaltar`). En Hoy,
+«Falta distribuir» y «Falta planometría» dicen «ya corre», «empieza en 7 días o menos» o las dos
+cosas según sus renglones (`tituloDeSeccion(s, grupo, dias)`). Abierta desde el Plano o Montajes, la
+bandeja (que vive en el Inicio) dice de dónde se vino y, al cerrarla, vuelve ahí
+(`armazonStore.cerrarPendientes`). La búsqueda del plano encuentra también por proveedor y marca de
+las partes y participaciones (`deLaBasePorMueble`). En «Distribuir la cara», cada participación lleva
+un color distinto mientras quede uno libre. La ficha del trabajador no ofrece «Ver la exhibición en
+3D». Los textos y correos nombran las pantallas de hoy: Contratos (no «Sede → Vender»), Pendientes
+(no «Supervisar → «Para revisar»»), Plano de la sede › 3D (no «Editor 3D»), Indicadores (no «el
+Dashboard»). Pruebas: `probar-comercial`, `probar-partes`, `probar-distribucion`,
+`probar-planogramas`, `e2e/plano-y-pendientes.e2e.ts`.
+
+**Equipo y Cuenta (dueño).** En Ajustes › Equipo se cambia el rol de una persona: `PATCH
+/api/usuarios/{id}` acepta `rol` además de `activo`, con las reglas de invitar (sólo un dueño da el
+rol Dueño o se lo cambia a otro dueño, 403; el supermercado no se queda sin dueño activo, 409; nadie
+se desactiva ni se cambia el rol a sí mismo, 409; bitácora `usuario.rol`). La fila propia dice «vos»
+y no tiene botones. **El rol del token sigue a la membresía:** el caché de membresías de `auth.py`
+guarda el rol y `decode_token` exige que el rol del token sea el que la membresía da hoy
+(`rol_de_token_para`): al pasar a alguien entre trabajador y administrador, su sesión abierta da 401
+y vuelve a entrar con el rol nuevo (antes, un administrador pasado a trabajador seguía viendo la
+plata hasta que vencía el token). Entre dueño y administrador el token no cambia: lo que es sólo del
+dueño se pregunta a la membresía. La bitácora anota `owner` cuando quien actúa es dueño
+(`request.state.actor_rol_membresia`; los permisos siguen leyendo el token) y la pantalla lo dice en
+palabras. El 403 de lo que es sólo del dueño dice «Esto lo puede hacer sólo el dueño del
+supermercado, con su cuenta.»; «Tus datos» se filtra como la copia y la suscripción. En el reporte
+de transparencia, `aceptada_en`, `capturado_en` y la fecha de cada acceso son el día en Colombia (salían
+un día antes) y «Tus derechos» dice dónde se hace cada cosa en la pantalla, no la ruta de la API (la
+Política, §7, todavía nombra las rutas: es un texto legal con versión, lo decide el dueño). Pruebas:
+`test_invitacion_enlace.py`, `test_plataforma_reporte.py`, `e2e/equipo.e2e.ts`.
+
+**La portada y su prueba de accesibilidad.** La prueba de axe de la portada fallaba a veces: medía
+el contraste a mitad de la animación de entrada. Corre con `reducedMotion` (mide el estado final) y
+eso destapó un contraste real: la etiqueta «sin valor» del ejemplo de correos, que pasa al gris de
+texto de las otras etiquetas con borde punteado.
 
 ### Historial de contratos (2026-11-13)
 

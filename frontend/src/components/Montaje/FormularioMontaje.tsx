@@ -24,10 +24,15 @@ import {
  * reporte, de dónde sale la planometría y si hay una lista a la que volver.
  *
  * Sin señal (2026-10-28): si el envío falla por la red, el reporte —con la
- * foto— queda guardado en el teléfono (`utils/borradorDeMontaje`) y se manda
+ * foto— queda guardado en el equipo (`utils/borradorDeMontaje`) y se manda
  * solo cuando vuelve la señal; si la página se cierra, al volver a abrir el
  * enlace se ofrece «Mandar ahora» o «Descartar». Un «no» del servidor (el
  * enlace venció, el contrato cambió) no se guarda: guardarlo no lo arregla.
+ *
+ * Los textos dicen «equipo» y «conexión», no «teléfono» y «señal»: el mismo
+ * formulario se abre en el computador (Montajes, con cuenta), y «quedó
+ * guardado en este teléfono» ahí no se entendía (recorrido de los manuales,
+ * 2026-11-20).
  */
 
 /** El espacio que hay que montar, tal como lo muestra el formulario. */
@@ -149,7 +154,7 @@ export default function FormularioMontaje({
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  /** El reporte de este montaje, guardado en el teléfono: el de una visita
+  /** El reporte de este montaje, guardado en el equipo: el de una visita
    *  anterior (`pendiente`, todavía no está en el formulario) o el que no
    *  pudo salir recién (`sinSenal`: cuándo se guardó). */
   const clave = `${item.code}|${item.desde}`;
@@ -186,8 +191,8 @@ export default function FormularioMontaje({
         setFoto(null);
         setVista(null);
         setError(
-          "El teléfono no pudo achicar esta foto y pesa más de lo que el servidor acepta. " +
-          "Tomala otra vez desde la app en vez de elegirla de la galería.",
+          "No se pudo achicar esta foto y pesa más de lo que el servidor acepta. " +
+          "Tomala otra vez con la cámara en vez de elegirla de la galería, o elegí una más liviana.",
         );
         return;
       }
@@ -227,7 +232,7 @@ export default function FormularioMontaje({
     });
   }
 
-  /** Manda el reporte. Si no hay señal, lo guarda en el teléfono. */
+  /** Manda el reporte. Si no hay señal, lo guarda en el equipo. */
   async function mandar(datos: DatosReporte) {
     if (enviandoRef.current) return;
     enviandoRef.current = true;
@@ -246,7 +251,7 @@ export default function FormularioMontaje({
           foto: datos.foto, fotoNombre: datos.foto?.name, guardado,
         });
         if (ok) setSinSenal(guardado);
-        else setError("Sin señal. Este teléfono no deja guardar el reporte: no cierres esta página y volvé a intentar.");
+        else setError("Sin conexión. Este navegador no deja guardar el reporte: no cierres esta página y volvé a intentar.");
         enviandoRef.current = false;
         setEnviando(false);
         return;
@@ -638,10 +643,10 @@ export default function FormularioMontaje({
                 background: "var(--entra-suave)", border: "1px solid var(--entra-borde)", fontSize: 14, lineHeight: 1.45, color: "var(--ink-1)",
               }}>
               <b style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <CloudOff size={16} aria-hidden style={{ color: "var(--entra-txt)" }} /> Sin señal: tu reporte quedó guardado en este teléfono.
+                <CloudOff size={16} aria-hidden style={{ color: "var(--entra-txt)" }} /> Sin conexión: tu reporte quedó guardado en este equipo.
               </b>
               <span style={{ color: "var(--ink-2)" }}>
-                La foto, tu nombre y la nota no se pierden aunque cierres la página. Se manda solo apenas vuelva la señal.
+                La foto, tu nombre y la nota no se pierden aunque cierres la página. Se manda solo apenas vuelva la conexión.
               </span>
             </div>
           )}
@@ -663,7 +668,7 @@ export default function FormularioMontaje({
           </button>
           <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--ink-3)", textAlign: "center" }}>
             {sinSenal
-              ? `Guardado en el teléfono ${cuandoSeGuardo(sinSenal)} · todavía no llegó al sistema.`
+              ? `Guardado en este equipo ${cuandoSeGuardo(sinSenal)} · todavía no llegó al sistema.`
               : "La fecha y la hora las pone el sistema al recibir el reporte."}
           </p>
         </>

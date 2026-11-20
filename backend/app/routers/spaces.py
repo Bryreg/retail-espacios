@@ -28,7 +28,7 @@ from app.services.ciclo_participaciones import actor_de, al_cancelar_contrato
 from app.services.montajes_pendientes import dejar_pendiente
 from app.services.participaciones import bloqueo_por_participaciones
 from app.services.mailer import (
-    html_shell, send_mail_to_bg, correo_configurado,
+    fecha_de_correo, html_shell, send_mail_to_bg, correo_configurado,
 )
 from app.services.cola_de_correos import encolar_correo
 
@@ -816,7 +816,8 @@ def create_lease(
     # empieza y termina el mismo día dura un día, no cero.
     duration_days = (lease.end_date - lease.start_date).days + 1
     who = recipients_for(db, space.sede)
-    periodo = f"{lease.start_date} → {lease.end_date}"
+    # dd/mm/aaaa, como la app (2026-11-20): antes, la fecha de la base.
+    periodo = f"{fecha_de_correo(lease.start_date)} → {fecha_de_correo(lease.end_date)}"
     # Si es una parte (`NEV-03-PU2`), cuál, contada desde dónde: va en los tres
     # correos. Se calcula acá, con la sesión abierta.
     parte = partir_codigo(space.code).parte

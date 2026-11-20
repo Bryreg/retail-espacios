@@ -10,7 +10,7 @@ import { useDistribucionStore, type DistribucionActiva } from "../../store/distr
 import { selectFixtures, useFixtureStore } from "../../store/fixtureStore";
 import type { AvisosContrato, Supplier } from "../../types";
 import { tarifaDeEspacio } from "../../utils/partes";
-import { alMesDe } from "../../utils/meses";
+import { alMesDe, mismoPlazoDesde } from "../../utils/meses";
 import {
   disponible, intervalosQueCuentan, pbDeTexto, pct, revisarCapacidad, revisarTerminos, vivo, type CambioDeTermino, type Rechazo,
 } from "../../utils/participaciones";
@@ -47,8 +47,6 @@ const ROJO = "rgb(var(--ocupado-txt-rgb))";
 
 /** `2500` → «25»; `3333` → «33,33» (lo que se escribe en el campo). */
 const textoDePb = (pb: number) => pct(pb).replace(/\s*%$/, "");
-const diasEntre = (a: string, b: string) =>
-  Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 86_400_000);
 /** «900.000», «$ 900000», «900000,5» → 900000.5; null si no es un número ≥ 0. */
 export function valorDeTexto(s: string): number | null {
   const limpio = s.replace(/[$\s]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
@@ -102,7 +100,9 @@ export function camposIniciales(modo: Modo, t: TerminoOut | null, p: Participaci
     caduca: "", valor: "", notas: "",
   };
   if (!t || !p) return base;
-  const duracion = Math.max(0, diasEntre(t.desde, t.hasta));
+  /** El mismo plazo que el término, en MESES (`mismoPlazoDesde`): copiado en
+   *  días, 1 jun – 30 nov se renovaba hasta el 1 jun (2026-11-20). */
+  const mismoPlazo = (desde: string) => mismoPlazoDesde(t.desde, t.hasta, desde) || desde;
   const despuesDeLosVivos = () => {
     const fin = finDeLosVivos(p, hoy);
     return fin && fin >= hoy ? sumarDias(fin, 1) : hoy;
@@ -111,14 +111,14 @@ export function camposIniciales(modo: Modo, t: TerminoOut | null, p: Participaci
     case "cargarDeNuevo": {
       const desde = despuesDeLosVivos();
       return { ...base, proveedor: t.proveedor?.nombre ?? "", marca: t.marca ?? "", porcentaje: textoDePb(t.puntos_basicos),
-        desde, hasta: sumarDias(desde, duracion), caduca: "" };
+        desde, hasta: mismoPlazo(desde), caduca: "" };
     }
     case "renovar": {
       const desde = despuesDeLosVivos();
       return { ...base, proveedor: t.proveedor?.nombre ?? "", marca: t.marca ?? "", porcentaje: textoDePb(t.puntos_basicos),
         // `valor_mensual` del término es el TOTAL de su contrato: el campo pide
         // lo de cada mes (2026-10-26).
-        desde, hasta: sumarDias(desde, duracion),
+        desde, hasta: mismoPlazo(desde),
         valor: t.valor_mensual != null && t.desde && t.hasta ? String(alMesDe(t.valor_mensual, t.desde, t.hasta)) : "", notas: "" };
     }
     case "confirmar":

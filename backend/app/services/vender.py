@@ -116,7 +116,7 @@ def _fila_de_rechazo(indice: int, espacio: str, pb: int, e: HTTPException) -> di
         # La frase de Distribución nombra participaciones («las zonas de la
         # participación 3 pisan las de la 2»): delante del proveedor, no.
         return _fila_de_error(indice, espacio, "rompe_distribucion",
-                              "Con esas fechas no entra: revisá la distribución en Supervisar.")
+                              "Con esas fechas no entra: revisá la distribución en Plano de la sede › 3D.")
     return _fila_de_error(indice, espacio, d.get("code") or "linea_invalida", d.get("message") or "No entra.")
 
 

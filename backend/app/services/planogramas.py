@@ -105,11 +105,16 @@ def exigir_que_puede(db: Session, rol: str, cara: Optional[Cara] = None) -> None
     raise _error(403, "solo_administracion", "Sólo quien administra planifica y publica.")
 
 
-def exigir_lectura(rol: str, cara: Cara) -> None:
+def puede_leer(rol: str, cara: Cara) -> bool:
     """El equipo ve los planogramas de los muebles internos (lo que hay que
     montar); los de un mueble que se vende llevan contratos: sólo
     administración."""
-    if rol != "admin" and cara.comercializable:
+    return rol == "admin" or not cara.comercializable
+
+
+def exigir_lectura(rol: str, cara: Cara) -> None:
+    """La guarda de ``puede_leer``."""
+    if not puede_leer(rol, cara):
         raise _error(403, "solo_administracion", "Un mueble que se vende lo planifica sólo quien administra.")
 
 

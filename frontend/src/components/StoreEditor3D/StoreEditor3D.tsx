@@ -6600,7 +6600,7 @@ function CommercialPanel({
             </div>
             {porParticipacion(fix) ? (
               <p className="mt-1 text-[10px] leading-snug text-dark-ink-3" data-slots-por-participacion>
-                Este mueble se vende por participación: lo vendido va con contrato desde Vender, no como espacio interno.
+                Este mueble se vende por participación: lo vendido va con contrato desde Contratos, no como espacio interno.
               </p>
             ) : (
               <p className="mt-1 text-[9px] text-dark-ink-3 italic">Hacé clic en un slot del panel frontal para editarlo</p>
@@ -6649,7 +6649,14 @@ function CommercialPanel({
           ) : fix.supplierName && contratoDiscreto ? (
             <>
               <p className="text-xs text-dark-ink-2" data-contrato-discreto>
-                {fix.endDate ? `Ocupado hasta ${mesYAnio(fix.endDate)}` : "Ocupado"}
+                {/* Una RESERVA provisional (el mapa crudo la marca, la fusión
+                    no): «Reservado», no «Ocupado» (recorrido de los manuales,
+                    2026-11-20). */}
+                {(() => {
+                  const crudo = estadoCrudo[fullSpaceCode(sedeDelPanel, fix.code)];
+                  const palabra = crudo?.reservado || crudo?.reservaHasta ? "Reservado" : "Ocupado";
+                  return fix.endDate ? `${palabra} hasta ${mesYAnio(fix.endDate)}` : palabra;
+                })()}
               </p>
               <button
                 onClick={() => setVerContrato(true)}
@@ -6690,11 +6697,11 @@ function CommercialPanel({
           )}
           {isAdmin && (porParticipacion(fix) ? (
             <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
-              La parte de la cara de cada marca se vende en <b className="text-dark-ink-2">Vender</b>; dónde va cada una se ubica con «Distribuir esta cara», abajo.
+              La parte de la cara de cada marca se vende en <b className="text-dark-ink-2">Contratos</b>; dónde va cada una se ubica con «Distribuir la cara», abajo.
             </p>
           ) : (
             <p className="mt-2 text-[10px] leading-relaxed text-dark-ink-3">
-              Los contratos se hacen en <b className="text-dark-ink-2">Sede → Vender</b>, sobre el mapa.
+              Los contratos se hacen en <b className="text-dark-ink-2">Contratos</b>, sobre el mapa.
             </p>
           ))}
         </div>

@@ -58,13 +58,26 @@ function etiquetaMes(periodo: string): string {
 
 /** Fecha sola, sin hora -- el reporte nunca lleva hora en ninguna fecha de
  *  acceso (frontera de privacidad), y `generado_en`/`aceptada_en` se
- *  muestran igual de simples: es un documento, no un log. */
+ *  muestran igual de simples: es un documento, no un log.
+ *
+ *  Un día pelado («2026-11-20», ya contado en Colombia por el servidor) se
+ *  dice tal cual: `new Date("2026-11-20")` es la medianoche UTC, y en Bogotá
+ *  eso es el 19 a las 7 p. m. —la aceptación salía un día antes (recorrido del
+ *  manual del dueño, 2026-11-20)—. Un instante (`generado_en`) se dice en la
+ *  hora de Colombia, no en la del navegador. */
+const DIA_PELADO = /^(\d{4})-(\d{2})-(\d{2})$/;
 function soloFecha(iso: string | null): string {
   if (!iso) return "—";
-  const t = new Date(iso);
+  const dia = DIA_PELADO.exec(iso);
+  const t = dia ? new Date(Date.UTC(+dia[1], +dia[2] - 1, +dia[3], 12)) : new Date(iso);
   if (Number.isNaN(t.getTime())) return "—";
-  return t.toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" });
+  return t.toLocaleDateString("es-CO", {
+    day: "2-digit", month: "short", year: "numeric", timeZone: dia ? "UTC" : "America/Bogota",
+  });
 }
+
+/** El día de hoy en Colombia (`AAAA-MM-DD`), para el nombre del archivo. */
+const hoyEnColombia = (): string => new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
 
 const FINALIDAD_LABEL: Record<CatalogoEntrada["finalidad"], string> = {
   asesoria: "Asesoría",
@@ -125,7 +138,7 @@ function textoSpread(s: SpreadActualReporte): string {
  *  el reporte ya está en memoria (es el mismo JSON que se está mostrando),
  *  así que sólo hace falta envolverlo en un Blob y disparar la descarga. */
 function descargarJSON(reporte: ReporteTransparencia): void {
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyEnColombia();
   const nombre = `recabra-reporte-transparencia-${reporte.cliente.slug}-${hoy}.json`;
   const blob = new Blob([JSON.stringify(reporte, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -320,7 +333,7 @@ function SeccionAccesos({ reporte }: { reporte: ReporteTransparencia }) {
             <tbody>
               {reporte.accesos.lineas.map((l, i) => (
                 <tr key={i}>
-                  <td style={td}>{l.fecha}</td>
+                  <td style={td}>{soloFecha(l.fecha)}</td>
                   <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{l.operador}</td>
                   <td style={td}>{etiquetaAccion(l.accion)}</td>
                   <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{l.periodo}</td>

@@ -146,7 +146,15 @@ def ultimo_aviso(db: Session, version_id: int) -> Optional[dict]:
 def para_revisar(db: Session, sede: str, rol: str, con_las_que_coinciden: bool = False) -> list[dict]:
     """Las caras de la sede cuya versión vigente está sin montar, montada y
     falta revisar, no se pudo montar o no coincide. Sólo las que ese rol
-    puede revisar (las mismas que puede publicar)."""
+    puede revisar (las mismas que puede publicar).
+
+    La lista de Montajes (``con_las_que_coinciden``) es otra cosa: es lo que
+    hay que montar, y el trabajador es quien lo monta. Ahí entran las caras
+    que ese rol puede LEER (``pg.puede_leer``: las de los muebles internos),
+    cada una con ``puede_revisar``; quien no puede publicarla la mira (la
+    guía) y no la revisa. Antes la lista del trabajador salía vacía aunque la
+    pantalla dijera «contratos y planogramas» (recorrido de los manuales,
+    2026-11-20)."""
     s = normalizar(sede)
     dia = hoy()
     plano = PlanoIndexado(db)
@@ -157,15 +165,16 @@ def para_revisar(db: Session, sede: str, rol: str, con_las_que_coinciden: bool =
         if f is None:
             continue
         cara = _armar_cara(s, f, pl.cara)
-        if not pg.puede_planificar(db, rol, cara):
+        puede_revisar = pg.puede_planificar(db, rol, cara)
+        if not (puede_revisar or (con_las_que_coinciden and pg.puede_leer(rol, cara))):
             continue
         versiones = db.query(VersionDePlanograma).filter(VersionDePlanograma.planograma_id == pl.id).all()
         vigente, _estados = pg._estados(versiones, dia)
         if vigente is not None:
-            candidatos.append((pl, cara, vigente))
-    avisos, revisiones = _ultimos(db, [v.id for _pl, _c, v in candidatos])
+            candidatos.append((pl, cara, vigente, puede_revisar))
+    avisos, revisiones = _ultimos(db, [v.id for _pl, _c, v, _p in candidatos])
     fuera = []
-    for pl, cara, v in candidatos:
+    for pl, cara, v, puede_revisar in candidatos:
         a, r = avisos.get(v.id), revisiones.get(v.id)
         estado = estado_de(a, r, "vigente")
         # La lista de Montajes (rediseño UX, etapa 7) pide también las que
@@ -185,6 +194,8 @@ def para_revisar(db: Session, sede: str, rol: str, con_las_que_coinciden: bool =
             "aviso": aviso_out(a) if _aviso_es_posterior(a, r) else None,
             "revision": revision_out(r) if estado in ("no_coincide", "coincide") else None,
             "fotos_nuevas": fotos,
+            # La ficha y «revisar» piden poder publicar esa cara (``guia.puede_compartir``).
+            "puede_revisar": puede_revisar,
         })
     return fuera
 

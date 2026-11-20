@@ -393,6 +393,21 @@ await prueba("asignación estable: el mismo proveedor, la misma estampa en dos c
   assert.equal(C.estampaPreferida(NaN), 0);
 });
 
+// Recorrido de los manuales (2026-11-20): Yogur Andino y Papitas Norte salían
+// con el mismo azul en «Distribuir la cara» (estampas 0 y 3: mismo tono).
+await prueba("en una cara, cada participación lleva un tono distinto mientras quede uno libre", () => {
+  const tonos = (ps) => [...C.estampasDeLaCara(ps).values()].map((e) => e.tono);
+  // 1 y 4 (mod 9) prefieren estampas distintas del MISMO tono.
+  const dos = tonos([{ spaceId: 1, numero: 1, supplierId: 1 }, { spaceId: 2, numero: 2, supplierId: 4 }]);
+  assert.notEqual(dos[0], dos[1], "dos marcas de la cara con el mismo tono");
+  const tres = tonos([0, 3, 6].map((s, k) => ({ spaceId: 10 + k, numero: k + 1, supplierId: s })));
+  assert.equal(new Set(tres).size, 3, "tres marcas sin los tres tonos");
+  // La primera conserva su preferida; con los tres tonos tomados, la cuarta repite tono (otra textura).
+  const m = C.estampasDeLaCara([0, 3, 6, 9].map((s, k) => ({ spaceId: 20 + k, numero: k + 1, supplierId: s })));
+  assert.equal(m.get(20).indice, 0);
+  assert.equal(new Set([...m.values()].map((e) => e.indice)).size, 4);
+});
+
 await prueba("TONOS_DE_MARCA son los --marca-1..3 de los DOS bloques de tema.css", () => {
   const css = leer(join(raiz, "src", "tema.css")).replace(/\/\*[\s\S]*?\*\//g, " ");
   const bloque = (sel) => {
@@ -2598,16 +2613,17 @@ await prueba("sin alta de participación en Distribuir: el formulario no abre «
   for (const n of ["DistribuirCara", "CaraDePiezas", "LeyendaDeParticipaciones", "ResumenDeCambios", "CopiarZonas"]) {
     assert.ok(!/Nueva participación|Cargar de nuevo/.test(codigo6b(n)), `${n} ofrece crear una participación`);
   }
-  // Los textos que mandaban a crearlas en Distribución dicen Vender.
+  // Los textos que mandaban a crearlas en Distribución dicen Contratos (donde
+  // está Vender; «Vender» a secas era el nombre viejo, 2026-11-20).
   const editor = sinComentTs2(fuente("components/StoreEditor3D/StoreEditor3D.tsx"));
   assert.ok(!/Las participaciones se cargan en/.test(editor), "el panel del 3D sigue mandando a crear participaciones en Distribución");
-  assert.match(editor, /se vende en <b className="text-dark-ink-2">Vender<\/b>/);
+  assert.match(editor, /se vende en <b className="text-dark-ink-2">Contratos<\/b>/);
   const partes = sinComentTs2(fuente("components/PartesDelMueble.tsx"));
   assert.ok(!/cargan en Distribución|se cargan en el Editor 3D/.test(partes), "PartesDelMueble sigue mandando a cargarlas en Distribución");
-  assert.match(partes, /se vende en Vender/);
+  assert.match(partes, /se vende en Contratos/);
   // Y las frases compartidas (el globo de Supervisar, la ficha del plano 2D): se vende en Vender, se ubica en Distribuir.
   const reglas = sinComentTs2(fuente("utils/partes.ts"));
-  assert.match(reglas, /export const DONDE_SE_CARGAN = "La parte de cada marca se vende en Vender; dónde va cada una se ubica con «Distribuir»\.";/);
+  assert.match(reglas, /export const DONDE_SE_CARGAN = "La parte de cada marca se vende en Contratos; dónde va cada una se ubica con «Distribuir»\.";/);
   assert.ok(!/disponible para vender en el Editor 3D|se cargan en el Editor 3D/.test(reglas), "una frase compartida manda a vender en Distribución");
 });
 

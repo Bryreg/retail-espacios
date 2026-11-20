@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarRange } from "lucide-react";
 import { getHistorialDelEspacio, type ContratoDelHistorial } from "../../api/spaces";
-import { aFecha, esDeLaCara, libreDesde } from "../../utils/lineaDeTiempo";
+import { aFecha, esDeLaCara, libreDesde, textoDeLaReserva, type ReservaDeLaLinea } from "../../utils/lineaDeTiempo";
 import "./linea.css";
 
 /**
@@ -30,13 +30,18 @@ function pesos(n: number): string {
   return "$ " + Math.round(n).toLocaleString("es-CO");
 }
 
-export default function LineaDeTiempo({ codigo, esAdmin, onVerTodos }: {
+export default function LineaDeTiempo({ codigo, esAdmin, onVerTodos, reserva }: {
   /** El código completo de la cara (`CENTRO-GON-01`, `CENTRO-GON-01-B`). */
   codigo: string;
   esAdmin: boolean;
   /** «Ver todos (N)»: Indicadores › Historial con esta cara y sus partes
    *  (2026-11-13). Sólo aparece cuando hay más de los cinco que se ven. */
   onVerTodos?: (codigo: string) => void;
+  /** La reserva viva de la cara entera, si la hay (2026-11-20): el historial
+   *  sólo trae contratos, y la ficha de una cara reservada decía «Disponible
+   *  hoy» con la barra libre. Se dice y se dibuja aparte, punteada en ámbar:
+   *  todavía no es un contrato. */
+  reserva?: ReservaDeLaLinea | null;
 }) {
   const [filas, setFilas] = useState<ContratoDelHistorial[] | null>(null);
   const [error, setError] = useState(false);
@@ -88,8 +93,10 @@ export default function LineaDeTiempo({ codigo, esAdmin, onVerTodos }: {
   return (
     <section className="linea-ficha" data-linea-de-tiempo>
       <div className="linea-tit"><CalendarRange {...ICONO} /> Los próximos 12 meses</div>
-      <p className="linea-libre" data-libre-desde={libreHoy ? "hoy" : iso(desde)}>
-        {libreHoy && partesVivas > 0
+      <p className="linea-libre" data-libre-desde={libreHoy ? "hoy" : iso(desde)} data-reservado={reserva ? "" : undefined}>
+        {reserva
+          ? textoDeLaReserva(reserva, corta)
+          : libreHoy && partesVivas > 0
           ? "La cara entera no tiene contrato"
           : libreHoy
           ? "Disponible hoy"
@@ -124,6 +131,21 @@ export default function LineaDeTiempo({ codigo, esAdmin, onVerTodos }: {
                   </span>
                 );
               })}
+              {carril === codigo.toUpperCase() && reserva?.desde && reserva.hasta && (() => {
+                const a = Math.max(0, aFecha(reserva.desde).getTime() - hoy.getTime());
+                const b = Math.min(largo, aFecha(reserva.hasta).getTime() + DIA - hoy.getTime());
+                if (b <= 0 || a >= largo) return null;
+                return (
+                  <span
+                    className="barra reserva"
+                    data-barra-reserva
+                    style={{ left: `${(a / largo) * 100}%`, width: `${((b - a) / largo) * 100}%` }}
+                    title={`${reserva.quien ? `${reserva.quien} · ` : ""}reservado del ${corta(reserva.desde)} al ${corta(reserva.hasta)}${reserva.caduca ? ` · sin confirmar, caduca el ${corta(reserva.caduca)}` : ""}`}
+                  >
+                    <span className="txt">{reserva.quien ? `${reserva.quien} · reserva` : "Reserva"}</span>
+                  </span>
+                );
+              })()}
             </div>
           </div>
         );

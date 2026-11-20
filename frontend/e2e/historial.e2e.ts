@@ -52,10 +52,12 @@ test("historial: filtros, Excel, la ficha y «Ver todos (N)»", async ({ page, r
   await page.locator('[data-historial-vacio="filtros"]').getByRole("button", { name: "Limpiar filtros" }).click();
   await expect(historial.locator("tbody tr")).toHaveCount(7);
 
-  // El código abre la ficha; «Ver todos (6)» vuelve con esa cara filtrada.
-  await historial.locator("tbody").getByRole("button", { name: `${sede}-GON-01` }).first().click();
+  // El código —corto, como en el resto de la app— abre la ficha; «Ver todos
+  // (6)» vuelve con esa cara filtrada.
+  await expect(historial.locator("tbody")).not.toContainText(`${sede}-`);
+  await historial.locator("tbody").getByRole("button", { name: "GON-01", exact: true }).first().click();
   await page.locator("[data-ver-todos]").click();
-  await expect(page.locator("[data-filtro-cara]")).toContainText(`${sede}-GON-01`);
+  await expect(page.locator("[data-filtro-cara]")).toContainText("GON-01");
   await expect(page.locator("[data-historial] tbody tr")).toHaveCount(6);
 });
 

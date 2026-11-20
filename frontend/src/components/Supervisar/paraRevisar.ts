@@ -91,12 +91,28 @@ export const DONDE_VA: Record<SeccionDeRevisar, { grupo: GrupoDeRevision } | { h
   precio_sin_forma: { grupo: "corregir" },
 };
 
-/** El título de cada sección, en el grupo donde se dice. */
-export function tituloDeSeccion(s: SeccionDeRevisar, grupo: GrupoDeRevision): string {
+/** «Falta distribuir» y «Falta planometría» en «Hoy»: lo que YA corre (0
+ *  días o menos para empezar) y lo que empieza en 7 días o menos van juntos,
+ *  y el título dice cuál de las dos cosas hay. Decía siempre «empieza en 7
+ *  días o menos», también sobre participaciones que corrían desde hacía
+ *  meses (recorrido de los manuales, 2026-11-20). Sin los días, las dos. */
+function cuandoEnHoy(dias?: readonly (number | null | undefined)[]): string {
+  const ds = (dias ?? []).filter((d): d is number => typeof d === "number");
+  const corre = ds.some((d) => d <= 0);
+  const viene = ds.some((d) => d > 0);
+  if (corre && !viene) return "ya corre";
+  if (viene && !corre) return `empieza en ${DIAS_PARA_HOY} días o menos`;
+  return `ya corre o empieza en ${DIAS_PARA_HOY} días o menos`;
+}
+
+/** El título de cada sección, en el grupo donde se dice. `dias`: los días
+ *  para empezar de los renglones que lleva (lo que falta distribuir o la
+ *  planometría, en «Hoy»). */
+export function tituloDeSeccion(s: SeccionDeRevisar, grupo: GrupoDeRevision, dias?: readonly (number | null | undefined)[]): string {
   switch (s) {
     case "ventas_por_cargar": return "Ventas por cargar";
-    case "falta_distribuir": return grupo === "hoy" ? `Falta distribuir · empieza en ${DIAS_PARA_HOY} días o menos` : "Falta distribuir";
-    case "falta_planometria": return grupo === "hoy" ? `Falta planometría · empieza en ${DIAS_PARA_HOY} días o menos` : "Falta planometría";
+    case "falta_distribuir": return grupo === "hoy" ? `Falta distribuir · ${cuandoEnHoy(dias)}` : "Falta distribuir";
+    case "falta_planometria": return grupo === "hoy" ? `Falta planometría · ${cuandoEnHoy(dias)}` : "Falta planometría";
     case "vencidos": return "Vencidos";
     case "no_se_pudo_montar": return "No se pudo montar";
     case "reservas": return grupo === "hoy" ? "Reservas que caducan hoy" : "Reservas por caducar";

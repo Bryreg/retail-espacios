@@ -648,7 +648,9 @@ prueba("«Vender» desde el Plano: sólo quien administra, sólo lo que se vende
   assert.match(dash, /if \(pedidoVender && isAdmin\) ir\("contratos"\);/, "el pedido cambia de pestaña sin ser admin");
   const dv = sinComentPR3(fuenteDe("pages/DashboardView.tsx"));
   const armado = tramo(dv, "const pedidoVender = useFixtureStore((s) => s.pedidoVender);", "}, [pedidoVender, isAdmin]);");
-  assert.match(armado, /useEffect\(\(\) => \{\s*if \(!pedidoVender \|\| !isAdmin\) return;\s*useFixtureStore\.getState\(\)\.soltarPedidoVender\(\);/, "Vender arma el pedido sin ser admin (o no lo suelta)");
+  // `soloLaCuenta` (2026-11-20): la copia que sólo cuenta los Pendientes fuera
+  // de lo comercial no se lo puede quedar; lo arma la de Contratos.
+  assert.match(armado, /useEffect\(\(\) => \{\s*if \(soloLaCuenta \|\| !pedidoVender \|\| !isAdmin\) return;\s*useFixtureStore\.getState\(\)\.soltarPedidoVender\(\);/, "Vender arma el pedido sin ser admin, no lo suelta, o lo suelta la copia de la cuenta");
   assert.match(armado, /if \(f\) negociar\(f, pedidoVender\.cara\);/);
   // Un mueble por partes (una punta por entrepaños) entra con la lista de partes
   // abierta: entero chocaría con la parte vendida (409 al validar).
@@ -702,6 +704,13 @@ prueba("el panel B y el lienzo: códigos ocultables, entrepaños en una cuenta, 
   // Abrir el panel de un espacio que nunca se vendió no da 404: `si_existe=1`.
   const api = sinComentPR3(fuenteDe("api/spaces.ts"));
   assert.match(api, /\.get<Space \| null>\(`\/spaces\/by-code\/\$\{encodeURIComponent\(code\)\}`, \{ params: \{ si_existe: 1 \} \}\)/);
+});
+
+prueba("la ficha del 2D dice «Reservado» (y su color) para una reserva provisional, no «Ocupado»", () => {
+  const fuente = fuenteDe("components/FloorPlan2D/FloorPlan2D.tsx");
+  assert.match(fuente, /const esReserva = face\.status === "occupied" && !!\(crudoDeLaCara\?\.reservado \|\| crudoDeLaCara\?\.reservaHasta\)/);
+  assert.match(fuente, /const rotuloVisto = esReserva \? STATUS_LABELS\.reserved/);
+  assert.match(fuente, /STATUS_BADGE_STYLE\[esReserva \? "reserved" : estadoVisto\]/);
 });
 
 console.log(`\n${hechas} pruebas · el plano no pierde lo que no conoce\n`);

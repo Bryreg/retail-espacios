@@ -64,6 +64,34 @@ export function meses(desde: string, hasta: string): number {
   return completos + sobran / 30;
 }
 
+/** El MISMO plazo que `desde`–`hasta`, contado en meses con esta regla, pero
+ *  arrancando el `nuevoDesde`: los meses completos se suman desde ese día y
+ *  los días que sobran van después. Devuelve el `hasta` (incluido).
+ *
+ *  Es lo que copia «Renovar» (2026-11-20). Copiaba el largo en DÍAS: un
+ *  contrato del 1 jun al 30 nov (183 días, 6 meses justos) se renovaba del
+ *  1 dic al 1 jun —183 días, «6,03 meses»—, un día de más que además pisaba
+ *  al que viniera después. Ahora: del 1 dic al 31 may, 6 meses. `""` si las
+ *  fechas no se entienden o están al revés. */
+export function mismoPlazoDesde(desde: string, hasta: string, nuevoDesde: string): string {
+  if (!ISO.test(desde) || !ISO.test(hasta) || !ISO.test(nuevoDesde) || hasta < desde) return "";
+  const fin = sumarDias(hasta, 1);
+  let completos = 0;
+  while (sumarMeses(desde, completos + 1) <= fin) completos++;
+  const sobran = numeroDeDia(fin) - numeroDeDia(sumarMeses(desde, completos));
+  return sumarDias(sumarMeses(nuevoDesde, completos), sobran - 1);
+}
+
+/** Las fechas de la renovación de un contrato `desde`–`hasta`: arranca el
+ *  día después de que termina (los dos extremos cuentan: el mismo día se
+ *  pisaría) y dura los mismos meses (`mismoPlazoDesde`). */
+export function renovacionDe(desde: string, hasta: string): { desde: string; hasta: string } | null {
+  if (!ISO.test(hasta)) return null;
+  const nuevo = sumarDias(hasta, 1);
+  const fin = mismoPlazoDesde(desde, hasta, nuevo);
+  return fin ? { desde: nuevo, hasta: fin } : null;
+}
+
 /** Lo tecleado en un campo de plata, en pesos enteros (auditoría P2-11): al
  *  peso con los medios hacia arriba, como el servidor (`schemas/pesos.py`).
  *  Vacío, negativo o ilegible: 0. */

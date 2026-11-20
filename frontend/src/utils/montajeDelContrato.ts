@@ -78,3 +78,15 @@ export function textoDelReporte(
     ? "La foto quedó guardada como prueba de que la exhibición está armada."
     : "Quedó registrado como montado. La foto ya no está guardada.";
 }
+
+/** El prefijo que el servidor le pone al nombre de la foto de un montaje
+ *  (`MOUNT_FILE_PREFIX` de `routers/mounts.py`): `montaje--<código>--<foto>`. */
+export const PREFIJO_FOTO_DE_MONTAJE = "montaje--";
+
+/** «Archivos del contrato» de la ficha, sin las fotos de montaje (2026-11-20).
+ *  La foto se cuelga del mismo espacio que los documentos y salía en la lista
+ *  como «montaje--CENTRO-PUN-01--montaje.jpg», como si fuera un papel del
+ *  contrato. No lo es: se ve en Montajes y en el registro del montaje. */
+export function archivosDelContrato<T extends { filename: string }>(archivos: readonly T[]): T[] {
+  return archivos.filter((a) => !(a.filename || "").startsWith(PREFIJO_FOTO_DE_MONTAJE));
+}

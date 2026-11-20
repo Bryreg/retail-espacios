@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Download, Table2 } from "lucide-react";
-import { aCsv, bajarCsv, contraLaMeta, diasHasta, pesos } from "../../utils/indicadores";
+import { aCsv, bajarCsv, contraLaMeta, diasHasta, pesos, verEnPendientes } from "../../utils/indicadores";
 import { porcentajesQueSuman, prioridadDe, type BrechaDelPotencial, type EspacioDelMapa } from "../../utils/mapaDeDecision";
 import type { AccionDelTablero } from "./MapaDeOportunidades";
 import "./mapaDeDecision.css";
@@ -414,8 +414,16 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
     });
   })();
 
-  // La oportunidad de cada espacio con capacidad: con quién y cuándo.
+  // La oportunidad de cada espacio con capacidad: con quién y cuándo. Quien
+  // no administra no negocia: a él se le dice cómo está el espacio, sin el
+  // consejo («… incluir la ampliación en esa negociación.»).
   const oportunidad = (e: EspacioDelMapa): string => {
+    if (!plata) {
+      if (e.estado === "parcial") return "Vendida en parte: queda lugar.";
+      if (e.nuncaContratada) return "Nunca contratada.";
+      if (e.diasSinContrato !== null) return `Sin contrato desde hace ${e.diasSinContrato} días.`;
+      return "Sin contrato hoy.";
+    }
     const renuevan = datos.espacios.filter((o) => o.vence && o.vence.proveedor && o.clave !== e.clave);
     const presente = e.clientes.find((c) => renuevan.some((o) => o.vence!.proveedor === c));
     if (presente) {
@@ -443,6 +451,9 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
   const capacidad = [...datos.capacidad].sort((a, b) => (b.libreAlMes ?? 0) - (a.libreAlMes ?? 0) || a.codigo.localeCompare(b.codigo));
   const capacidadAlMes = capacidad.reduce((t, e) => t + (e.libreAlMes ?? 0), 0);
   const vacias = capacidad.filter((e) => e.estado === "libre");
+  /** «Gestionar renovaciones» lleva a los contratos por vencer: quien no
+   *  administra no los gestiona, los mira. */
+  const gestionarRenovaciones = plata ? "Gestionar renovaciones" : "Ver los contratos por vencer";
   const tuvoAccion = { primera: false };
   const boton = (texto: string, onClick: () => void) => {
     // Un solo botón principal en la pantalla: la primera acción prioritaria.
@@ -492,7 +503,9 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
         <div className="an-kpi">
           <span className="l">Ejecución de montajes · {MESES_LARGOS[Number(datos.hoy.slice(5, 7)) - 1]}</span>
           <span className="v">{datos.montajesDelMes.enLaTienda} de {datos.montajesDelMes.total}</span>
-          <span className="d">montados · {datos.montajesDelMes.verificados} verificado{datos.montajesDelMes.verificados === 1 ? "" : "s"}</span>
+          {/* Sólo lo que empieza este mes (no los montajes por resolver del
+              Inicio, que cuentan todo lo atrasado): la frase lo dice. */}
+          <span className="d">contratos que empiezan este mes, montados · {datos.montajesDelMes.verificados} verificado{datos.montajesDelMes.verificados === 1 ? "" : "s"}</span>
           {datos.montajesDelMes.total > 0 && datos.montajesDelMes.enLaTienda < datos.montajesDelMes.total
             ? <Estado tono="aviso">Bajo lo esperado</Estado> : <Estado tono="bien">Al día</Estado>}
           <button type="button" className="mo-link" onClick={manejo.onMontajes}>Ir a Montajes ›</button>
@@ -502,7 +515,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
       <section className="an-card">
         <div className="an-cab">
           <div><h3>Acciones prioritarias</h3><p className="sub">Ordenadas por impacto en el ingreso y por plazo.</p></div>
-          <button type="button" className="mo-link der" onClick={manejo.onPendientes}>Ver las {datos.pendientes} en Pendientes ›</button>
+          <button type="button" className="mo-link der" onClick={manejo.onPendientes}>{verEnPendientes(datos.pendientes)}</button>
         </div>
         {datos.acciones.length === 0 ? <p className="an-vacio">Nada urgente: no hay renovaciones, ventas ni montajes pendientes.</p> : (
           <table className="an-tabla an-acc">
@@ -607,7 +620,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
                     <td>{fechaLarga(v.hasta)}</td>
                     {plata && <td className="n">{v.alMes !== null ? pesos(v.alMes) : "—"}</td>}
                     <td>{v.renovado ? <Estado tono="bien">Renovado</Estado> : <Estado tono={diasHasta(datos.hoy, v.hasta) <= 30 ? "critico" : "aviso"}>Sin renovar</Estado>}</td>
-                    <td className="c-acc">{v.clave && !v.renovado && <button type="button" className="mo-link" onClick={() => manejo.onFicha(v.clave!)}>Renovar</button>}</td>
+                    <td className="c-acc">{v.clave && !v.renovado && <button type="button" className="mo-link" onClick={() => manejo.onFicha(v.clave!)}>{plata ? "Renovar" : "Ver la ficha"}</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -615,7 +628,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
             </div>
           )}
           <div className="an-cta">
-            <button type="button" className="mo-accion sec" onClick={() => manejo.onContratos("expiring")}>Gestionar renovaciones</button>
+            <button type="button" className="mo-accion sec" onClick={() => manejo.onContratos("expiring")}>{gestionarRenovaciones}</button>
             {datos.vencen.length > LIMITE_VENCEN && (
               <button type="button" className="mo-link der" aria-expanded={todosVencen} onClick={() => setTodosVencen((t) => !t)}>
                 {todosVencen ? "Ver los más urgentes" : `Ver los ${datos.vencen.length} contratos`}
@@ -666,14 +679,14 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
               {datos.preparacion.sinDistribuir !== null && <tr><td>Caras con participaciones sin distribuir</td><td className="n">{datos.preparacion.sinDistribuir}</td><td>{datos.preparacion.sinDistribuir ? <Estado tono="aviso">Por distribuir</Estado> : <Estado tono="bien">Al día</Estado>}</td></tr>}
               {datos.preparacion.sinPlanometria !== null && <tr><td>Contratos sin planometría</td><td className="n">{datos.preparacion.sinPlanometria}</td><td>{datos.preparacion.sinPlanometria ? <Estado tono="aviso">Por cargar</Estado> : <Estado tono="bien">Al día</Estado>}</td></tr>}
               <tr><td>Planogramas que no coinciden</td><td className="n">{datos.preparacion.noCoinciden}</td><td>{datos.preparacion.noCoinciden ? <Estado tono="aviso">Esperando corrección</Estado> : <Estado tono="bien">Al día</Estado>}</td></tr>
-              <tr><td>Montajes no realizados</td><td className="n">{datos.preparacion.noRealizados}</td><td>{datos.preparacion.noRealizados ? <Estado tono="critico">Requieren gestión</Estado> : <Estado tono="bien">Al día</Estado>}</td></tr>
+              <tr><td>Montajes no realizados</td><td className="n">{datos.preparacion.noRealizados}</td><td>{datos.preparacion.noRealizados ? <Estado tono="critico">{plata ? "Requieren gestión" : "Avisale a quien administra"}</Estado> : <Estado tono="bien">Al día</Estado>}</td></tr>
             </tbody>
           </table>
-          <div className="an-cta"><button type="button" className="mo-accion sec" onClick={manejo.onPendientes}>Resolver en Pendientes</button></div>
+          <div className="an-cta"><button type="button" className="mo-accion sec" onClick={manejo.onPendientes}>{plata ? "Resolver en Pendientes" : "Ver en Pendientes"}</button></div>
         </section>
       </div>
 
-      <div className="an-sec" data-capitulo="capacidad"><span className="n">{plata ? "04" : "03"}</span><h2>Capacidad por vender</h2><p>Espacios sin contrato o con venta parcial, y cómo negociarlos.</p></div>
+      <div className="an-sec" data-capitulo="capacidad"><span className="n">{plata ? "04" : "03"}</span><h2>Capacidad por vender</h2><p>{plata ? "Espacios sin contrato o con venta parcial, y cómo negociarlos." : "Espacios sin contrato o con venta parcial."}</p></div>
       <section className="an-card">
         <div className="an-cab">
           <div>
@@ -685,7 +698,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
         <div className="an-ley"><span><i className="o1" />Vendido</span><span><i className="o3" />Disponible</span></div>
         {capacidad.length === 0 ? <p className="an-vacio">Todas las caras están vendidas enteras.</p> : (
           <table className="an-tabla an-cap">
-            <thead><tr><th>Espacio</th><th>Ocupación</th>{plata && <th className="n">Disponible al mes</th>}<th className="c-cli">Clientes en el espacio</th><th>Oportunidad</th><th /></tr></thead>
+            <thead><tr><th>Espacio</th><th>Ocupación</th>{plata && <th className="n">Disponible al mes</th>}<th className="c-cli">Clientes en el espacio</th><th>{plata ? "Oportunidad" : "Situación"}</th><th /></tr></thead>
             <tbody>
               {(todaLaCapacidad ? capacidad : capacidad.slice(0, LIMITE_CAPACIDAD)).map((e) => {
                 const v = e.estado === "libre" ? 0 : e.vendido;
@@ -704,7 +717,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
                     <td className="c-arg">{oportunidad(e)}</td>
                     <td className="c-acc">{plata
                       ? <button type="button" className="mo-accion sec" onClick={() => manejo.onPropuesta(e.clave)}>Preparar propuesta</button>
-                      : <button type="button" className="mo-accion sec" onClick={() => manejo.onFicha(e.clave)}>Ver ficha</button>}</td>
+                      : <button type="button" className="mo-accion sec" onClick={() => manejo.onFicha(e.clave)}>Ver la ficha</button>}</td>
                   </tr>
                 );
               })}
@@ -719,7 +732,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
           )}
           {vacias.length > 0 && <button type="button" className="mo-accion sec" onClick={() => manejo.onMapa("vacias")}>Ver {vacias.length === 1 ? "el espacio vacío" : `los ${vacias.length} espacios vacíos`} en el mapa</button>}
           <button type="button" className="mo-link der" onClick={() => bajarCsv(`capacidad-${datos.sede}.csv`, aCsv(
-            ["Espacio", "Tipo", "Estado", ...(plata ? ["Disponible al mes"] : []), "Clientes", "Oportunidad"],
+            ["Espacio", "Tipo", "Estado", ...(plata ? ["Disponible al mes"] : []), "Clientes", plata ? "Oportunidad" : "Situación"],
             capacidad.map((e) => [e.codigo, e.tipo, e.estado === "libre" ? "Sin contrato" : e.detalleParcial ?? "En parte", ...(plata ? [e.libreAlMes ?? ""] : []), e.clientes.join(", "), oportunidad(e)]),
           ))}><Download {...ICONO} /> Bajar la lista (CSV)</button>
         </div>
@@ -750,7 +763,7 @@ export default function Analisis({ datos, manejo }: { datos: DatosDelAnalisis; m
                 {datos.proyeccion.map((p) => <tr key={p.etiqueta}><td>{p.etiqueta}</td><td className="n">{p.caras}</td></tr>)}
               </tbody></table>
             )}
-            pie={<button type="button" className="mo-accion sec" onClick={() => manejo.onContratos("expiring")}>Gestionar renovaciones</button>}
+            pie={<button type="button" className="mo-accion sec" onClick={() => manejo.onContratos("expiring")}>{gestionarRenovaciones}</button>}
           >
             <Proyeccion puntos={datos.proyeccion} />
             {datos.proyeccion.length > 1 && <p className="an-lectura">Sin renovaciones, las caras completas sin contrato pasan de <b>{datos.proyeccion[0].caras}</b> hoy a <b>{datos.proyeccion[datos.proyeccion.length - 1].caras}</b> el {datos.proyeccion[datos.proyeccion.length - 1].etiqueta}.</p>}
