@@ -87,6 +87,23 @@ await prueba("qué hacer con un no realizado, según el motivo", () => {
 const vista = sinComentarios(leer("pages/MountView.tsx"));
 const verificar = sinComentarios(leer("components/Montaje/VerificarMontaje.tsx"));
 
+await prueba("una reserva no se monta ni cuenta en «Sin montar» hasta confirmarla (2026-11-20)", () => {
+  const estado = {
+    "CENTRO-PUN-09": { status: "occupied", reservado: true, reservaHasta: "2026-11-20" },
+    "CENTRO-PUN-01": { status: "occupied" },
+    // Al trabajador le llega sólo la marca.
+    "CENTRO-PUN-02-EN3": { status: "occupied", reservado: true, reservaHasta: null },
+  };
+  assert.equal(M.tomadoPorReserva(estado, "CENTRO-PUN-09"), true);
+  assert.equal(M.tomadoPorReserva(estado, "centro-pun-09 "), true);
+  assert.equal(M.tomadoPorReserva(estado, "CENTRO-PUN-02-EN3"), true);
+  assert.equal(M.tomadoPorReserva(estado, "CENTRO-PUN-01"), false);
+  assert.equal(M.tomadoPorReserva(estado, "CENTRO-PUN-05"), false);
+  // La lista de Montajes la saltea antes de armar la fila (y su estado).
+  assert.match(vista, /if \(fase !== "vigente" && fase !== "pendiente"\) continue;\s*if \(tomadoPorReserva\(estadoComercial, code\)\) continue;/,
+    "Montajes lista una reserva como algo por montar");
+});
+
 await prueba("quien no administra: sin verificar y sin la lista de avisos", () => {
   assert.match(vista, /if \(isAdmin\) \{\s*Promise\.all\(sedesALaVista\.map\(\(s\) => montajesPendientes\(s\)/, "la lista de avisos (de administración) se pide sin preguntar el rol");
   assert.match(vista, /puedeVerificar=\{isAdmin\}/);

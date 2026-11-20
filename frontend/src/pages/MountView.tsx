@@ -11,7 +11,7 @@ import VerificarMontaje from "../components/Montaje/VerificarMontaje";
 import RevisarMontaje from "../components/Supervision/RevisarMontaje";
 import VerGuia from "../components/Guia/VerGuia";
 import {
-  FILTROS_DE_MONTAJES, TEXTO_DEL_ESTADO, cuentaPorFiltro, estadoDelContrato, estadoDelPlanograma, filtroDe,
+  FILTROS_DE_MONTAJES, TEXTO_DEL_ESTADO, cuentaPorFiltro, estadoDelContrato, estadoDelPlanograma, filtroDe, tomadoPorReserva,
   type EstadoDeMontaje, type FiltroDeMontajes,
 } from "../utils/montajes";
 import type { EstadoPorEspacio } from "../utils/estadoComercial";
@@ -273,6 +273,9 @@ export default function MountView({
         // Solo lo que tiene contrato por delante o corriendo. Lo vencido ya no
         // se monta, y lo libre no tiene qué montar.
         if (fase !== "vigente" && fase !== "pendiente") continue;
+        // Una reserva viva sale tomada en el mapa, pero no es un contrato: no
+        // se monta ni se avisa hasta confirmarla (`tomadoPorReserva`).
+        if (tomadoPorReserva(estadoComercial, code)) continue;
         // El reporte de ESTE contrato: el «montado» del contrato anterior sobre
         // el mismo espacio no cuenta (2026-10-05, `utils/montajeDelContrato.ts`).
         const reporte = reporteDelContrato(porCodigo, code, cara.startDate);
@@ -296,7 +299,7 @@ export default function MountView({
       }
     }
     return out;
-  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios, indicePartes]);
+  }, [fixturesBySede, sedes, fixtures, activeSede, porCodigo, nombresPropios, indicePartes, estadoComercial]);
 
   /** Lo que falta montar (sin reporte de «montado» de su contrato). Tres
    *  tramos: lo que arrancó y hay que montar ya, lo que viene, y al final lo

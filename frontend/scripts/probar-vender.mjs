@@ -1557,6 +1557,10 @@ console.log("\nvender · el contrato del rediseño (todo o nada)");
     assert.match(modoCodigo, /<Check \{\.\.\.ICONO\} \/> Guardar contrato/, "el principal no dice «Guardar contrato»");
     assert.match(modoCodigo, /`Reservado hasta el \$\{diaCorto\(datos\.caduca\)\}\$\{porVentas \? ` · \$\{porVentas\}` : ""\}`/,
       "lo guardado no dice hasta cuándo se reservó, o calla que cobra por ventas");
+    // Una reserva guardada no dice «El contrato quedó guardado.» (no es un
+    // contrato y no manda correos: salen al confirmarla, §8).
+    assert.match(modoCodigo, /\{reserva\s*\? <p className="nota-guardado" data-reserva-sin-avisos>Todavía no es un contrato: no salió ningún correo\. Los avisos salen cuando se confirma\.<\/p>/,
+      "la reserva guardada habla de un contrato o de correos que no salieron");
   });
 }
 

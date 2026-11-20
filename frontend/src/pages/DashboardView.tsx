@@ -42,7 +42,7 @@ import {
   fetchMounts, estadoMontaje, MOTIVO_LABEL,
   type MountConfirmation, type MountMotivo,
 } from "../api/mounts";
-import { reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
+import { archivosDelContrato, reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
 import type { Space } from "../types";
 import {
   contractPhase,
@@ -194,7 +194,7 @@ import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
 // «Bajo tarifa» (el contrato al mes contra la tarifa): lo cuenta `kpis`, que
 // corre también con Vender abierto, así que vive en `utils/meses`, no en la
 // plata de Supervisar.
-import { bajoLaTarifa } from "../utils/meses";
+import { bajoLaTarifa, renovacionDe } from "../utils/meses";
 import { canonDelMes as calcularCanonDelMes, hoyEnColombia } from "../utils/canon";
 import {
   DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, avisoPorClave, contarPorGrupo, cuentaDelBadge,
@@ -2546,7 +2546,8 @@ function useSpaceFiles(code: string, enabled: boolean) {
         if (!r.data) { if (!cancelled) setState("none"); return; }
         const fl = await listSpaceFiles(r.data.id);
         if (cancelled) return;
-        setFiles(fl);
+        // Las fotos de montaje no son archivos del contrato (`archivosDelContrato`).
+        setFiles(archivosDelContrato(fl));
         setState("ok");
       })
       .catch((err) => {
@@ -3213,7 +3214,8 @@ function FixtureDetailCard({
   /** La reserva viva de ese espacio (código completo), para «Reservado hasta
    *  …» con Confirmar y Cancelar. Sólo quien administra. */
   reservaDe?: (codigo: string) => ReservaDeEspacio | undefined;
-  onReservaCambio?: () => void;
+  /** Se confirmó (con lo que pasó con los correos) o se canceló. */
+  onReservaCambio?: (aviso?: string | null) => void;
   /** Se llegó por «Cargar planometría»: el código completo del contrato al
    *  que le falta. La ficha la muestra arriba y la trae a la vista. */
   planometriaPedida?: PlanometriaPedida | null;
@@ -3311,7 +3313,7 @@ function FixtureDetailCard({
           vuelve a «Para revisar», el código como se lee, el nombre y la sede,
           y el estado en pastilla. */}
       <div className="ficha-cab">
-        <button type="button" className="icobtn" onClick={onBack} title="Volver" aria-label="Volver a «Para revisar»">
+        <button type="button" className="icobtn" onClick={onBack} title="Volver" aria-label="Volver">
           <ArrowLeft {...ICONO_TARJETA} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -3512,7 +3514,12 @@ function FixtureDetailCard({
         {/* La línea de tiempo (etapa 3): los próximos 12 meses, desde cuándo
             queda disponible y lo que ya terminó, del historial de la base. */}
         {rentable && (
-          <LineaDeTiempo codigo={fullSpaceCode(fixture.sede, entry.code)} esAdmin={isAdmin} onVerTodos={onVerHistorial} />
+          <LineaDeTiempo codigo={fullSpaceCode(fixture.sede, entry.code)} esAdmin={isAdmin} onVerTodos={onVerHistorial}
+            /* Una reserva viva no está en el historial (no es un contrato):
+               va aparte, con su tramo (2026-11-20). */
+            reserva={entry.reservado
+              ? { desde: entry.startDate || null, hasta: entry.endDate || null, caduca: entry.reservaHasta ?? null, quien: entry.supplierName || null }
+              : null} />
         )}
 
         {/* Vender por partes: las puertas de esta cara, cada una con su
@@ -5515,18 +5522,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       const t = cara.participaciones.find((p) => p.codigo.toUpperCase() === codigo)?.terminos[0];
       if (t && t.estado === "contrato" && (t.estado_visible === "vigente" || t.estado_visible === "firmado")) termino = t.id;
       if (t) {
-        const dia = 86_400_000;
-        const fin = parseISODate(t.hasta), ini = parseISODate(t.desde);
-        const largo = fin && ini ? Math.round((+fin - +ini) / dia) : null;
-        const desde = fin ? new Date(+fin + dia) : null;
-        const hasta = desde && largo !== null ? new Date(+desde + largo * dia) : null;
+        // Los mismos MESES, no los mismos días (`renovacionDe`).
+        const fechas = t.desde && t.hasta ? renovacionDe(t.desde, t.hasta) : null;
         semillaPc = {
           id: `${codigo}|${t.id}`,
           proveedor: t.proveedor?.nombre ?? entry.supplierName ?? "",
           correo: "",
           marca: t.marca ?? entry.brandCategory ?? "",
-          desde: termino && desde ? toISODate(desde) : "",
-          hasta: termino && hasta ? toISODate(hasta) : "",
+          desde: termino && fechas ? fechas.desde : "",
+          hasta: termino && fechas ? fechas.hasta : "",
           valores: t.valor_mensual && t.valor_mensual > 0
             ? { [claveDePrecio(`${caraCompleta}-PC1`)]: t.valor_mensual.toLocaleString("es-CO") } : {},
           porcentajes: { [caraCompleta]: t.puntos_basicos },
@@ -5574,15 +5578,12 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       void renovarParticipacion(entry);
       return;
     }
-    const dia = 86_400_000;
-    const fin = entry.endDate ? parseISODate(entry.endDate) : null;
-    const ini = entry.startDate ? parseISODate(entry.startDate) : null;
-    // Mismo largo que el contrato vigente, contando los dos extremos. Sin
-    // fechas confiables se cae al periodo de la barra, que es lo que hacía
-    // antes de que este botón existiera.
-    const largo = fin && ini ? Math.round((+fin - +ini) / dia) : null;
-    const desde = fin ? new Date(+fin + dia) : null;
-    const hasta = desde && largo !== null ? new Date(+desde + largo * dia) : null;
+    // Los mismos MESES que el contrato vigente, con la regla de meses
+    // (`renovacionDe`): copiar el largo en días daba un día de más (1 jun –
+    // 30 nov se renovaba hasta el 1 jun). Sin fechas confiables se cae al
+    // periodo de la barra, que es lo que hacía antes de que este botón
+    // existiera.
+    const fechas = entry.startDate && entry.endDate ? renovacionDe(entry.startDate, entry.endDate) : null;
 
     const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
     setSemilla({
@@ -5590,8 +5591,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       proveedor: entry.supplierName,
       correo: "",
       marca: entry.brandCategory,
-      desde: desde ? toISODate(desde) : "",
-      hasta: hasta ? toISODate(hasta) : "",
+      desde: fechas?.desde ?? "",
+      hasta: fechas?.hasta ?? "",
       // Por la clave de PRECIO de su línea: una parte va en la línea de las
       // partes de su cara («PUN-02 · EN1»), con un precio para todas.
       valores: entry.negotiatedValue > 0
@@ -7361,7 +7362,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 sede={sede}
                 titulo={tituloDeSeccion("reservas", "hoy")}
                 vivas={reservasPorGrupo.hoy}
-                onCambio={() => {
+                onCambio={(aviso) => {
+                  setAvisoDeSupervision(aviso ?? null);
                   reservasSinConfirmar.recargar();
                   void refrescarComercial();
                   if (hayParticipaciones) void recargarOcupacion(sede);
@@ -7439,7 +7441,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 sede={sede}
                 titulo={tituloDeSeccion("reservas", "dias30")}
                 vivas={reservasPorGrupo.dias30}
-                onCambio={() => {
+                onCambio={(aviso) => {
+                  setAvisoDeSupervision(aviso ?? null);
                   reservasSinConfirmar.recargar();
                   void refrescarComercial();
                   if (hayParticipaciones) void recargarOcupacion(sede);
@@ -7741,7 +7744,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       montajeDelCodigo={montajeDelCodigo}
       cobroDe={isAdmin ? cobroDeCodigo : undefined}
       reservaDe={isAdmin ? reservaDeCodigo : undefined}
-      onReservaCambio={() => {
+      onReservaCambio={(aviso) => {
+        // Lo que pasó con los correos al confirmarla: en el aviso de la lista.
+        setAvisoDeSupervision(aviso ?? null);
         reservasSinConfirmar.recargar();
         void refrescarComercial();
         if (hayParticipaciones) void recargarOcupacion(sede);

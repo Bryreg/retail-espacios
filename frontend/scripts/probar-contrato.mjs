@@ -308,6 +308,53 @@ prueba("una respuesta vieja no pisa a una nueva", () => {
     // Ni un `/ 30` en el contrato: los días sueltos ÷ 30 viven sólo en meses.ts.
     assert.doesNotMatch(codigoContrato, /\/\s*30\b/, "el contrato divide por 30 por su cuenta");
   });
+
+  prueba("«Renovar» copia los MESES, no los días: termina la víspera del mismo día del mes", () => {
+    // PUN-01 de la siembra de los manuales (2026-11-20): 1 jun – 30 nov se
+    // renovaba del 1 dic al 1 jun (183 días, «6,03 meses»).
+    assert.deepEqual(M.renovacionDe("2026-06-01", "2026-11-30"), { desde: "2026-12-01", hasta: "2027-05-31" });
+    // Editado hasta el 31 dic: 7 meses, no «1 ene al 2 ago».
+    assert.deepEqual(M.renovacionDe("2026-06-01", "2026-12-31"), { desde: "2027-01-01", hasta: "2027-07-31" });
+    assert.deepEqual(M.renovacionDe("2026-10-19", "2026-11-18"), { desde: "2026-11-19", hasta: "2026-12-18" });
+    // Con días sueltos: los mismos días, después de los meses.
+    assert.deepEqual(M.renovacionDe("2026-11-01", "2026-11-15"), { desde: "2026-11-16", hasta: "2026-11-30" });
+    assert.deepEqual(M.renovacionDe("2027-01-31", "2027-02-28"), { desde: "2027-03-01", hasta: "2027-04-01" });
+    // Siempre el mismo número de meses que el renovado.
+    for (const [a, b] of [["2026-06-01", "2026-11-30"], ["2026-01-31", "2026-02-27"], ["2026-03-15", "2026-09-14"], ["2026-08-31", "2027-02-27"]]) {
+      const r = M.renovacionDe(a, b);
+      assert.ok(Math.abs(M.meses(r.desde, r.hasta) - M.meses(a, b)) < 0.05, `${a}–${b} → ${r.desde}–${r.hasta}`);
+    }
+    assert.equal(M.renovacionDe("2026-11-30", "2026-06-01"), null);
+    assert.equal(M.mismoPlazoDesde("x", "2026-11-30", "2026-12-01"), "");
+  });
+}
+
+/* ── 6 · El precio arranca coherente con el plazo ──────────────────────────
+   La tarifa es un precio AL MES: una línea que arranca con ella escrita
+   arranca «Al mes» (2026-11-20). Arrancaba en «Total» con la tarifa de UN mes:
+   tres meses de PUN-06 se guardaban por $ 600.000 si nadie tocaba «Al mes». */
+{
+  const { build } = await import("esbuild");
+  const r = await build({
+    entryPoints: [join(raiz, "src", "utils", "precioDeLista.ts")], bundle: true, write: false, format: "esm",
+    platform: "neutral", logLevel: "silent",
+  });
+  const PL = await import("data:text/javascript;base64," + Buffer.from(r.outputFiles[0].text).toString("base64"));
+
+  prueba("la tarifa arranca «Al mes»; lo que trae la semilla y lo que no tiene tarifa, «Total»", () => {
+    assert.equal(PL.modoPorDefecto(600_000, false), "mensual", "la tarifa de un mes queda como el total del plazo");
+    assert.equal(PL.modoPorDefecto(600_000, true), "total", "el total del contrato renovado se lee al mes");
+    assert.equal(PL.modoPorDefecto(null, false), "total", "sin tarifa, lo tecleado se lee al mes");
+    assert.match(codigoContrato, /const modo: ModoPrecio = modos\[clave\] \?\? modoPorDefecto\(ref, clave in \(semilla\?\.valores \?\? \{\}\)\);/,
+      "la línea no arranca con `modoPorDefecto`");
+    assert.doesNotMatch(codigoContrato, /modos\[clave\] \?\? "total"/, "la línea vuelve a arrancar en «Total»");
+    // Pasar la tarifa sin tocar a «Total» la multiplica por los meses (no
+    // queda un mes como el total), y «Volver a la tarifa» la deja «Al mes».
+    assert.doesNotMatch(codigoContrato, /if \(!tocados\.current\.has\(clave\) \|\| nMeses <= 0\) return;/,
+      "«Total» deja la tarifa de un mes como el total");
+    assert.match(codigoContrato, /const volverALaTarifa = useCallback\(\(clave: string, ref: number\) => \{\s*setModos\(\(m\) => \(\{ \.\.\.m, \[clave\]: "mensual" \}\)\);/,
+      "«Volver a la tarifa» escribe la tarifa de un mes como el total");
+  });
 }
 
 console.log(`\n${hechas} pruebas del panel de contrato`);

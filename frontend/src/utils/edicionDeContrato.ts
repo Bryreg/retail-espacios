@@ -264,8 +264,8 @@ export function notaDelReemplazo(e: Pick<EdicionDeContrato, "antes" | "planometr
     ? `su planometría (${e.planometria}) y su montaje quedan con él`
     : "su montaje queda con él";
   const piden = nuevos > 1
-    ? `Los ${nuevos} contratos nuevos piden su planometría y su montaje en «Para revisar».`
-    : "El contrato nuevo pide su planometría y su montaje en «Para revisar».";
+    ? `Los ${nuevos} contratos nuevos piden su planometría y su montaje en Pendientes.`
+    : "El contrato nuevo pide su planometría y su montaje en Pendientes.";
   return `El contrato de ${nombreDelContrato(e.antes)} se cierra como «reemplazado», no cancelado: ${suyo}. ${piden}`;
 }
 

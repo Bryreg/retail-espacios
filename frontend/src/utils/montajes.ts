@@ -76,6 +76,16 @@ export function estadoDelContrato(
   return "sin_montar";
 }
 
+/** ¿Lo toma una RESERVA y no un contrato? (`reservado` del mapa comercial,
+ *  por el código completo). Una reserva no se monta ni se avisa hasta que se
+ *  confirma (vender-api.md §8): `PUN-09` reservado salía «Sin montar · aviso
+ *  enviado» en Montajes y contaba en «Sin montar» (2026-11-20). */
+export function tomadoPorReserva(
+  estado: Readonly<Record<string, { reservado?: boolean } | undefined>>, codigo: string,
+): boolean {
+  return !!estado[(codigo || "").trim().toUpperCase()]?.reservado;
+}
+
 /** El estado de un montaje de planograma (`services/supervision_planogramas.py`). */
 export function estadoDelPlanograma(
   e: "sin_montar" | "por_revisar" | "no_se_pudo" | "no_coincide" | "coincide",

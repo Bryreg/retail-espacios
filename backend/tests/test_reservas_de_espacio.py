@@ -164,6 +164,39 @@ def test_confirmar_crea_el_contrato_con_el_precio_guardado(client, admin, monkey
 
 
 @RELOJ
+def test_confirmar_manda_los_mismos_correos_que_vender(client, admin, monkeypatch):
+    """Recorrido de los manuales (2026-11-20): «Confirmar» una reserva tiene que
+    avisar como vender lo mismo —el contrato nuevo a comercial, la constancia
+    al proveedor y, cuando la cara tenga su planometría, el montaje—; reservar
+    no avisa nada (§8)."""
+    from tests.test_vender_contrato import _planometria
+
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    (r,) = _reservar(client, admin, _entera("GON-02", 400_000))
+    assert enviados == [], "reservar no avisa a nadie"
+
+    c = client.post(f"/api/reservas/{r['reserva_id']}/confirmar", headers=admin, json={})
+    assert c.status_code == 200, c.text
+    avisos, lease_id = c.json()["avisos"], c.json()["lease_id"]
+    assert avisos["smtp_listo"] and avisos["comercial"] and avisos["proveedor"] == ["compras@valle.co"]
+    # El montaje espera la planometría, como el de un contrato vendido.
+    assert (avisos["montaje"], avisos["montaje_pendiente"]) == ([], [lease_id])
+    al_confirmar = sorted(asunto for _to, asunto, _h in enviados)
+    assert any("contrato nuevo" in a for a in al_confirmar) and any("Confirmación" in a for a in al_confirmar)
+
+    # Lo mismo que sale al vender un espacio igual.
+    enviados.clear()
+    _vender(client, admin, _pedido(_entera("NEV-03-PU1", 400_000)))
+    assert sorted(asunto for _to, asunto, _h in enviados) == al_confirmar
+
+    # Con la planometría, sale el de montaje (una vez, a quien monta).
+    enviados.clear()
+    _planometria(client, admin, lease_id)
+    assert [(to, "por montar" in asunto) for to, asunto, _h in enviados] == [(["m@x.co"], True)]
+
+
+@RELOJ
 def test_confirmar_con_otro_valor_y_cancelar_libera(client, admin):
     from app.models.models import SpaceLease
     from app.models.vender import ReservaDeEspacio
