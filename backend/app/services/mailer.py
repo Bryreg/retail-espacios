@@ -33,6 +33,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import date
 from email.message import EmailMessage
 from html import escape
 
@@ -104,6 +105,24 @@ def correo_configurado() -> bool:
 def format_cop(value: float) -> str:
     """COP con separador de miles: 1500000 → ``$ 1.500.000``."""
     return "$ " + f"{value:,.0f}".replace(",", ".")
+
+
+def fecha_de_correo(valor) -> str:
+    """Una fecha como la lee una persona: ``2026-11-20`` → ``20/11/2026``.
+
+    Los correos decían la fecha como la guarda la base («desde el
+    2026-11-20») mientras la app dice «20/11/2026» (2026-11-20). Toma una
+    ``date`` (o ``datetime``) o el texto ISO que traen las filas de Vender; lo
+    que no se puede leer como fecha sale tal cual, y ``None`` o vacío, vacío.
+    """
+    if valor is None or valor == "":
+        return ""
+    if isinstance(valor, date):
+        return f"{valor.day:02d}/{valor.month:02d}/{valor.year:04d}"
+    try:
+        return fecha_de_correo(date.fromisoformat(str(valor).strip()[:10]))
+    except ValueError:
+        return str(valor)
 
 
 def html_shell(title: str, rows: list[tuple[str, str]], footer: str = "") -> str:
@@ -280,7 +299,7 @@ def enviar_con_diagnostico(
         msg["Subject"] = subject
         msg["From"] = settings["mail_from"]
         msg["To"] = ", ".join(recipients)
-        msg.set_content("Este mensaje contiene contenido HTML. Use un cliente de correo compatible.")
+        msg.set_content("Este mensaje tiene contenido HTML: abrilo con un programa de correo que lo muestre.")
         msg.add_alternative(html_body, subtype="html")
 
         # El puerto decide el modo. 465 es SSL desde el saludo y 587 es STARTTLS:
@@ -381,7 +400,7 @@ def send_mail(db: Session, subject: str, html_body: str) -> bool:
         msg["Subject"] = subject
         msg["From"] = settings["mail_from"]
         msg["To"] = ", ".join(recipients)
-        msg.set_content("Este mensaje contiene contenido HTML. Use un cliente de correo compatible.")
+        msg.set_content("Este mensaje tiene contenido HTML: abrilo con un programa de correo que lo muestre.")
         msg.add_alternative(html_body, subtype="html")
 
         with smtplib.SMTP(settings["host"], settings["port"], timeout=30) as smtp:

@@ -20,6 +20,13 @@ si está, así "quién" deja de ser sólo un rol y pasa a ser una persona en TOD
 la bitácora —incluida la de contratos, archivos y demás acciones de negocio—
 sin tener que tocar esos routers uno por uno: todos ya reciben el mismo
 ``Request`` y ya llaman a ``anotar``.
+
+**El rol de la línea es el de la persona, no el del token** (2026-11-20). El
+dueño viaja como ``admin`` en el token (spec de la Fase 1, decisión 5) y la
+bitácora lo anotaba así: «admin · 127.0.0.1». ``require_auth`` deja el rol de
+la membresía en ``request.state.actor_rol_membresia`` y, si es ``owner``, la
+línea dice ``owner``. Sólo cambia lo anotado: los permisos siguen leyendo el
+rol del token (``require_admin``) y la membresía, como siempre.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -122,6 +129,8 @@ ACCIONES.update({
 ACCIONES.update({
     "usuario.invitado": "Persona invitada",
     "usuario.cambio": "Persona activada o desactivada",
+    # Cambiar el rol desde Ajustes › Equipo (2026-11-20): «Trabajador → Administrador».
+    "usuario.rol": "Rol de una persona cambiado",
     "ajustes.tarifas": "Tarifas de referencia cambiadas",
     "ajustes.sedes": "Lista de sedes o nombres del catálogo cambiados",
     "ajustes.temporadas": "Temporadas cambiadas",
@@ -189,7 +198,10 @@ def anotar(
     # `require_auth_or_query_token`) lo haya puesto — que es exactamente
     # cuándo el token trae uno. Sin eso, `getattr` con default deja `detalle`
     # intacto: ningún llamador existente cambia de comportamiento.
-    email_actor = getattr(getattr(request, "state", None), "actor_email", None) if request is not None else None
+    estado = getattr(request, "state", None) if request is not None else None
+    email_actor = getattr(estado, "actor_email", None)
+    if rol == "admin" and getattr(estado, "actor_rol_membresia", None) == "owner":
+        rol = "owner"
     detalle_final = f"{detalle} · {email_actor}" if (detalle and email_actor) else (detalle or email_actor)
     db.add(
         AuditEntry(

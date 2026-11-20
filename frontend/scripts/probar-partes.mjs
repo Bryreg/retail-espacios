@@ -50,7 +50,7 @@ const cargar = async (catalogo) => {
         'export * from "./src/utils/partes.ts";',
         'export { vistaDeCara } from "./src/utils/planta.ts";',
         'export { vanosDePuertas, vanosDeCorrido, ventaDeNevera, montantesDeTramos, geometriaDe, cotasDeCheckout, mesaDeImpulso, nichosDeImpulso, montantesDeImpulso } from "./src/components/StoreEditor3D/muebles/medidas.ts";',
-        'export { conPartes, partesConEstado, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, textoDeAplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila, loDeLaFicha, aplicarLoDeLaFicha, colocadosConLaFicha } from "./src/utils/partesDelMueble.ts";',
+        'export { conPartes, partesConEstado, deLaBasePorMueble, revisarCambioDePartes, cambioParaDividir, divisionSinFijar, tramosQueEntran, tramosDibujados, aplicarATodos, textoDeAplicarATodos, vendePorPartes, textoDeLoQueNuncaSeAlquila, loDeLaFicha, aplicarLoDeLaFicha, colocadosConLaFicha } from "./src/utils/partesDelMueble.ts";',
         'export { fijarFichasPropias, olvidarFichasPropias } from "./src/catalogo/propias.ts";',
         'export { PALETA_3D, paletaConPropias } from "./src/catalogo/editor3D.ts";',
         'export { MODELOS_2D, modelosDelPlanoConPropias, misMueblesDelPlano } from "./src/catalogo/plano2D.ts";',
@@ -1411,6 +1411,25 @@ await prueba("fase 2 · un mueble por participación con OTRA «Sede» escrita a
   // Con la misma sede en los dos, como siempre.
   const igual = P.loVendidoDe({ ...g, sede: "NAVE" }, "NAVE", new Set(), {}, { ocupacion: { "NAVE-GON-05-B": { intervalos: iv, fisicos: [] } }, confirmadas: new Set() });
   assert.deepEqual(igual.participacion.map((x) => x.comprometida), [false, true]);
+});
+
+// La búsqueda del plano (recorrido de los manuales, 2026-11-20): el mueble
+// fusionado sólo trae el proveedor de la cara ENTERA; los de sus partes y
+// participaciones están en el mapa crudo, por su código completo. «Café» daba
+// «0 de 16» aunque Café Montaña tenía dos entrepaños y una participación.
+prueba("la búsqueda del plano encuentra a los proveedores de las partes y participaciones, por la base del mueble", () => {
+  const ocupado = (supplierName, brandCategory = "") => ({ status: "occupied", supplierName, brandCategory });
+  const m = P.deLaBasePorMueble({
+    "CENTRO-PUN-03-EN1": ocupado("Café Montaña", "Café"),
+    "CENTRO-PUN-03-EN2": ocupado("Bebidas del Valle"),
+    "CENTRO-GON-03-B-PC1": ocupado("Café Montaña", "Tostado"),
+    "CENTRO-PUN-04": ocupado("Snacks Norte"),
+    "CENTRO-PUN-05": { status: "free", supplierName: "Viejo", brandCategory: "" },
+  });
+  assert.deepEqual(m.get("CENTRO-PUN-03"), ["Café Montaña", "Café", "Bebidas del Valle", ""]);
+  assert.deepEqual(m.get("CENTRO-GON-03"), ["Café Montaña", "Tostado"], "la participación de la cara B no se cuenta en su mueble");
+  assert.deepEqual(m.get("CENTRO-PUN-04"), ["Snacks Norte", ""]);
+  assert.equal(m.has("CENTRO-PUN-05"), false, "un espacio libre no se busca por un proveedor viejo");
 });
 
 console.log(`\n${hechas} pruebas de vender por partes`);

@@ -358,7 +358,7 @@ def motivo_para_no_vender_parte(fixture: dict, partido: CodigoPartido) -> tuple[
             return PARTE_INEXISTENTE, f"«{corto}»: {TIPO_SIN_PARTICIPACION}"
         return PARTE_INEXISTENTE, (
             f"«{corto}» no se vende por participación: elegí «por participación» en «Cómo se vende» "
-            "del Editor 3D."
+            "del mueble, en el Plano de la sede."
         )
     if parte is None:
         return None

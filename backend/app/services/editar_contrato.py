@@ -458,7 +458,7 @@ def _revisar_termino(db: Session, termino: Participacion, linea: venta.Linea, p:
             # Delante del proveedor (Vender): sin nombrar participaciones.
             raise _error(409, "rompe_distribucion",
                          "Con ese porcentaje o esas fechas no entra en la distribución de la cara: "
-                         "revisala en Supervisar.")
+                         "revisala en Plano de la sede › 3D.")
 
 
 # ─── Revisar y escribir ──────────────────────────────────────────────────────

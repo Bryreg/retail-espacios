@@ -35,7 +35,7 @@ from app.fechas import hoy
 from app.models.models import NotificationLog, SpaceLease
 from app.services.contacts import recipients_for
 from app.services.condiciones import ETIQUETA_DEL_VALOR, valor_de_lease
-from app.services.mailer import html_shell, send_mail_to
+from app.services.mailer import fecha_de_correo, html_shell, send_mail_to
 
 logger = logging.getLogger("retail.reminders")
 
@@ -114,14 +114,15 @@ def check_expiring_leases(db: Session) -> int:
             ("Espacio", f"{space.code} — {space.name}"),
             ("Proveedor", lease.supplier.name if lease.supplier else "—"),
             ("Marca", lease.marca or "—"),
-            ("Inicio", str(lease.start_date)),
-            ("Fin", str(lease.end_date)),
+            # dd/mm/aaaa, como la app (2026-11-20): antes, la fecha de la base.
+            ("Inicio", fecha_de_correo(lease.start_date)),
+            ("Fin", fecha_de_correo(lease.end_date)),
             (ETIQUETA_DEL_VALOR, valor_de_lease(db, lease)),
             ("Días restantes", str(days_left)),
         ]
         footer = (
-            "El contrato está próximo a vencer. Para renovarlo, entrá a Sede → "
-            "Supervisar, tocá el espacio en «Para revisar» y usá «Renovar»: el "
+            "El contrato está próximo a vencer. Para renovarlo, entrá a "
+            "Pendientes › 30 días, buscá el espacio en «Por vencer en 30 días» y usá «Renovar»: el "
             "contrato nuevo sale con el mismo proveedor y el mismo valor, "
             "arrancando el día después de que termine éste."
         )

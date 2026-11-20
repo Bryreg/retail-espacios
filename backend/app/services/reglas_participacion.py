@@ -308,7 +308,7 @@ def revisar_capacidad(I, fisicos, pb, desde, hasta, cara, hoy):
             cuando = f"del {_fecha_corta(f_desde)} al {_fecha_corta(f_hasta)}"
             if f.get("huerfano"):
                 frase = (f"La cara {cara} tiene un contrato de participación sin término {cuando}, que cuenta como la "
-                         "cara entera hasta que se aclare (Supervisar → «Para revisar»): en esas fechas no se vende "
+                         "cara entera hasta que se aclare (Pendientes › Corregir): en esas fechas no se vende "
                          "por participación.")
             else:
                 frase = (f"La cara {cara} está vendida entera o por partes {cuando}: en esas fechas no se vende por "

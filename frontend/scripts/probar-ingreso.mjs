@@ -158,4 +158,19 @@ prueba("ni la pantalla ni la API ofrecen cambiar claves compartidas", () => {
   assert.doesNotMatch(dashboard, /Conviven con la clave compartida/);
 });
 
+console.log("La voz: el ingreso habla de vos, como el resto de la app");
+
+prueba("Login.tsx no le habla de usted a nadie (2026-11-20)", () => {
+  // La invitación decía «Ingrese con la cuenta …» y los avisos «Escríbanos
+  // para que lo revisemos», en una pantalla que en el mismo cuadro decía
+  // «Escribí tu correo». Sólo la landing va de usted (decisión del dueño,
+  // `features/landing/outputs/copy.md` §0); el ingreso es de la app.
+  const sinComentarios = login.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const usted = /\b(Ingrese|ingrese|Escríbanos|Solicite|solicite|Elija|Acepte|usted|Su cuenta|lo invitó|lo invitaron|Si no la encuentra|Va a registrar|sumarse)\b/g;
+  const hallados = [...sinComentarios.matchAll(usted)].map((m) => m[0]);
+  assert.deepEqual(hallados, [], `textos en usted: ${hallados.join(", ")}`);
+  assert.match(login, /Entrá con la cuenta/);
+  assert.match(login, /Escribinos para que/);
+});
+
 console.log(`\n${hechas} pruebas`);

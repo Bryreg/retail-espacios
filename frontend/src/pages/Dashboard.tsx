@@ -1,6 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid } from "lucide-react";
+import { Settings, LogOut, X, Send, ShieldCheck, Download, ShieldAlert, FileText, MapPin, Inbox, Search, CircleHelp, ArrowLeft, Armchair, LayoutGrid, Moon, Sun } from "lucide-react";
 // El editor 3D va en su propio pedazo y se baja al entrar al modo «store»:
 // importado de una, cada carga del tablero (KPIs, Supervisar, Vender) bajaba y
 // parseaba ~160 KB gzip del editor y de la prueba de producto que no usaba.
@@ -16,6 +16,7 @@ const FloorPlan2D = lazy(() => import("../components/FloorPlan2D/FloorPlan2D"));
 const DashboardView = lazy(() => import("./DashboardView"));
 const MountView = lazy(() => import("./MountView"));
 import type { ModoComercial } from "./DashboardView";
+import type { ReactNode } from "react";
 import { LimiteDeError } from "../components/ErrorDeApp";
 import { MenuLateral, BarraDeAbajo } from "../components/Armazon/MenuDeModulos";
 import { NOMBRE_DE, RUTA_DE, moduloDeRuta, puedeAbrir, vueltaAlCambiar, type Modulo, type VueltaDelPlano } from "../modulos";
@@ -24,7 +25,9 @@ import type { ContextoDeAccion } from "../acciones";
 import Mas from "../components/Armazon/Mas";
 // Lo que se abre a pedido (Ctrl K, la ayuda, Tarifas, Temporadas y las
 // secciones de Ajustes) baja cuando se abre (auditoría P2-20).
-const Buscador = lazy(() => import("../components/Armazon/Buscador"));
+const cargarBuscador = () => import("../components/Armazon/Buscador");
+const Buscador = lazy(cargarBuscador);
+const precargarBuscador = () => { void cargarBuscador(); };
 const Ayuda = lazy(() => import("../components/Armazon/Ayuda"));
 const MetasPorSede = lazy(() => import("../components/Ajustes/Metas"));
 const SedesDeAjustes = lazy(() => import("../components/Ajustes/Sedes"));
@@ -51,6 +54,7 @@ import {
   getUsuarios,
   invitarUsuario,
   setMiembroActivo,
+  setMiembroRol,
   type ContactBook,
   type LineaBitacora,
   type Miembro,
@@ -62,7 +66,7 @@ import { descargarMisDatos } from "../api/legal";
 import { descargarCopia } from "../api/copia";
 import { useFixtureStore } from "../store/fixtureStore";
 import { usePlanograma } from "../store/planogramaStore";
-import { TemaToggle, useModalAbierto } from "../tema";
+import { useModalAbierto, useTema } from "../tema";
 import { altoDeLaVentana, useEscalaDeLaApp } from "../escala";
 import {
   LARGO_DEL_NOMBRE_PROPIO, familiasConNombre, nombrePropio, nombreParaGuardar,
@@ -316,8 +320,8 @@ function NombresDeMueblesSection() {
       <div style={sectionLabelStyle}>Cómo se llaman los muebles acá</div>
       <p style={{ fontSize: 11.5, color: "var(--ink-2)", margin: "-4px 0 12px", lineHeight: 1.5 }}>
         Si en la tienda a la estiba le dicen «mamut» o a la punta «tope de góndola», escribilo
-        al lado: sale así en Vender, Supervisar, Estado por espacio, Montajes, Tarifas, el
-        Plano, el Editor 3D y la lámina que se lleva el proveedor. Vacío, queda el de RECABRA.
+        al lado: sale así en Contratos, Indicadores, Montajes, Tarifas, el Plano de la sede
+        (también en 3D) y la lámina que se lleva el proveedor. Vacío, queda el de RECABRA.
         Los informes de RECABRA siguen con el suyo, para poder comparar supermercados. Se
         guarda al salir del campo; ningún mueble, código ni tarifa cambia.
       </p>
@@ -382,6 +386,17 @@ function rolLabelUsuario(rol: Miembro["rol"]): string {
   return "Trabajador";
 }
 
+/** El rol de una línea de la bitácora, en palabras: decía «admin · 127.0.0.1».
+ *  Desde el 2026-11-20 la del dueño llega `owner` (el servidor anota el rol de
+ *  la membresía, no el del token). Lo que no es una persona sale tal cual. */
+function rolDeLaBitacora(rol: string): string {
+  if (rol === "owner" || rol === "admin" || rol === "worker") return rolLabelUsuario(rol);
+  if (rol === "sistema") return "Sistema";
+  if (rol === "plataforma") return "RECABRA";
+  if (rol === "montaje") return "Enlace de montaje";
+  return rol;
+}
+
 /** Miembros con cuenta individual (Google/correo) e invitaciones que
  *  todavía nadie aceptó, para el cliente de la sesión actual — el token
  *  manda, no hay selector de cliente acá.
@@ -401,6 +416,8 @@ function UsuariosSection() {
 
   const [invEmail, setInvEmail] = useState("");
   const [invRol, setInvRol] = useState<Miembro["rol"]>("worker");
+  // La etiqueta «Rol» no nombraba al selector (axe, `select-name`).
+  const idRolInvitar = useId();
   const [invitando, setInvitando] = useState(false);
   const [invMsg, setInvMsg] = useState<Feedback>(null);
 
@@ -442,6 +459,35 @@ function UsuariosSection() {
       setInvMsg({ ok: false, text: describeError(err, "No se pudo enviar la invitación.") });
     } finally {
       setInvitando(false);
+    }
+  };
+
+  /** Cambiar el rol (2026-11-20): reinvitar a un miembro da 409, y no había
+   *  otra forma de pasar a un trabajador a administrador. Las reglas las pone
+   *  el servidor; acá sólo se ofrece lo que el servidor va a aceptar. */
+  const cambiarRol = async (m: Miembro, rol: Miembro["rol"]) => {
+    if (rol === m.rol) return;
+    const quien = m.nombre || m.email;
+    const nuevo = rolLabelUsuario(rol).toLowerCase();
+    // Entre trabajador y administrador cambia lo que dice su sesión: la que
+    // tenga abierta deja de valer y vuelve a entrar (dueño ↔ administrador no).
+    const vuelveAEntrar = (m.rol === "worker") !== (rol === "worker");
+    const pregunta = rol === "owner"
+      ? `¿Darle el rol Dueño a ${quien}? Va a poder ver la suscripción, bajar la copia de seguridad, manejar a los otros dueños y pedir la supresión del supermercado.`
+      : `¿Pasar a ${quien} a ${nuevo}?${vuelveAEntrar ? " Si tiene la sesión abierta, va a tener que volver a entrar." : ""}`;
+    if (!confirm(pregunta)) return;
+    setCambiando(m.id);
+    setMsg(null);
+    try {
+      await setMiembroRol(m.id, rol);
+      setDatos((prev) =>
+        prev ? { ...prev, miembros: prev.miembros.map((x) => (x.id === m.id ? { ...x, rol } : x)) } : prev
+      );
+      setMsg({ ok: true, text: `Listo: ${quien} ahora es ${nuevo}.` });
+    } catch (err) {
+      setMsg({ ok: false, text: describeError(err, "No se pudo cambiar el rol.") });
+    } finally {
+      setCambiando(null);
     }
   };
 
@@ -496,12 +542,16 @@ function UsuariosSection() {
             style={inputStyle}
           />
         </div>
-        <div style={{ width: 120 }}>
-          <label style={fieldLabelStyle}>Rol</label>
+        {/* El ancho lo da la opción más larga: a 120 px fijos se leía
+            «Administrado» (recorrido del manual del dueño, 2026-11-20). */}
+        <div style={{ flex: "0 0 auto" }}>
+          <label style={fieldLabelStyle} htmlFor={idRolInvitar}>Rol</label>
           <select
+            id={idRolInvitar}
             value={invRol}
             onChange={(e) => setInvRol(e.target.value as Miembro["rol"])}
-            style={inputStyle}
+            style={{ ...inputStyle, width: "auto" }}
+            data-rol-invitar
           >
             <option value="worker">Trabajador</option>
             <option value="admin">Administrador</option>
@@ -534,9 +584,16 @@ function UsuariosSection() {
                 background: "var(--surface-2)", overflow: "hidden",
               }}
             >
-              {datos.miembros.map((m) => (
+              {datos.miembros.map((m) => {
+                // La fila propia no se toca: ni desactivarse (perdés el acceso en
+                // el acto) ni cambiarse el rol. El servidor también lo rechaza.
+                // A un dueño lo maneja sólo otro dueño.
+                const esYo = !!miCorreo && m.email === miCorreo;
+                const puedoTocar = !esYo && (m.rol !== "owner" || soyDuenio);
+                return (
                 <div
                   key={m.id}
+                  data-miembro={m.email}
                   style={{
                     display: "flex", alignItems: "center", gap: 8,
                     padding: "8px 10px",
@@ -550,19 +607,34 @@ function UsuariosSection() {
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
                       {m.nombre || m.email}
+                      {esYo && <span style={{ fontWeight: 500, color: "var(--ink-3)" }}> · vos</span>}
                     </div>
                     <div style={{
                       fontSize: 11, color: "var(--ink-3)",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      {m.email} · {rolLabelUsuario(m.rol)}
+                      {m.email}{!puedoTocar && ` · ${rolLabelUsuario(m.rol)}`}
                       {!m.activo && " · desactivado"}
                     </div>
                   </div>
+                  {puedoTocar && (
+                    <select
+                      value={m.rol}
+                      onChange={(e) => cambiarRol(m, e.target.value as Miembro["rol"])}
+                      disabled={cambiando === m.id}
+                      aria-label={`Rol de ${m.nombre || m.email}`}
+                      style={{ ...inputStyle, width: "auto", height: 26, padding: "0 6px", fontSize: 11 }}
+                    >
+                      <option value="worker">Trabajador</option>
+                      <option value="admin">Administrador</option>
+                      {/* Sólo un dueño da el rol Dueño (403 en el servidor). */}
+                      {soyDuenio && <option value="owner">Dueño</option>}
+                    </select>
+                  )}
                   <div style={{ fontSize: 10.5, color: "var(--ink-4)", whiteSpace: "nowrap" }}>
                     {m.ultimo_login ? haceCuanto(m.ultimo_login) : "nunca entró"}
                   </div>
-                  {(m.rol !== "owner" || soyDuenio) && (
+                  {puedoTocar && (
                   <button
                     onClick={() => cambiarActivo(m)}
                     disabled={cambiando === m.id}
@@ -582,7 +654,8 @@ function UsuariosSection() {
                   </button>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {datos.invitaciones.map((inv) => (
                 <div
@@ -777,7 +850,7 @@ function BitacoraSection() {
                     fontFamily: "var(--font-mono)",
                   }}
                 >
-                  {l.rol} · {l.ip}
+                  {rolDeLaBitacora(l.rol)} · {l.ip}
                 </div>
               </div>
               <div
@@ -891,10 +964,16 @@ function SuscripcionSection({ enfocar }: { enfocar: boolean }) {
  *  fase y en su propio archivo (`api/derechos.ts`) -- no comparten código con
  *  el resto de Configuración a propósito, porque su frontera es distinta: acá
  *  no importa el rol del JWT (que siempre es "admin" para un owner, Fase 1,
- *  decisión 5) sino la membresía real, y eso el backend lo resuelve solo. El
- *  frontend no intenta adivinar "sos owner": deja que el 403 lo diga y lo
- *  traduce a un mensaje que se entiende. */
+ *  decisión 5) sino la membresía real, y eso el backend lo resuelve solo.
+ *
+ *  Con el filtro de la copia y la suscripción (2026-11-20): a un administrador
+ *  que sabemos que no es el dueño se le mostraban los tres botones y los tres
+ *  fallaban. Ahora ve qué es de quién —los datos del supermercado, la supresión
+ *  y el reporte, del dueño; sus datos personales, de cada persona— y dónde
+ *  bajar los suyos. Una sesión sin rol los ve, y si no es el dueño el 403 lo
+ *  dice (como en la copia). */
 function TusDatosSection() {
+  const rolCliente = useAuthStore((s) => s.rolCliente);
   const navigate = useNavigate();
   const [descargando, setDescargando] = useState(false);
   const [exportMsg, setExportMsg] = useState<Feedback>(null);
@@ -945,8 +1024,21 @@ function TusDatosSection() {
     }
   };
 
+  if (rolCliente && rolCliente !== "owner") {
+    return (
+      <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }} data-tus-datos="persona">
+        <div style={sectionLabelStyle}>Tus datos</div>
+        <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5 }}>
+          Tus datos personales los bajás vos, desde el menú de tu cuenta, arriba a la derecha:
+          «Descargar mis datos». Los datos del supermercado, la solicitud de supresión y el
+          reporte de transparencia son del dueño de la cuenta: si los necesitás, pedíselos.
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }}>
+    <div style={{ padding: "16px 18px", borderTop: "1px solid var(--line-soft)" }} data-tus-datos="duenio">
       <div style={sectionLabelStyle}>Tus datos</div>
       <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12, lineHeight: 1.5 }}>
         Política de Tratamiento de Datos Personales (Ley 1581/2012). Los datos del supermercado
@@ -984,7 +1076,7 @@ function TusDatosSection() {
           Reporte de transparencia
         </ActionButton>
         <div style={{ marginTop: 6, fontSize: 11, color: "var(--ink-3)", lineHeight: 1.4 }}>
-          Qué tomó la plataforma de tu cliente, cómo lo calculó y quién lo consultó.
+          Qué tomó RECABRA de tu supermercado, cómo lo calculó y quién lo consultó.
         </div>
       </div>
     </div>
@@ -1271,6 +1363,7 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
     }
   };
   const [abierto, setAbierto] = useState(false);
+  const [tema, alternarTema] = useTema();
   const caja = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!abierto) return;
@@ -1308,12 +1401,16 @@ function MenuDeLaCuenta({ isAdmin, onLogout, onAjustes }: {
             {clienteNombre && <b>{clienteNombre}</b>}
             <span>{persona ? `${persona} · ${rol}` : rol}</span>
           </div>
-          {/* Claro / oscuro: la misma pieza de siempre (el ícono es el del
-              tema AL QUE SE VA), con su palabra al lado. */}
-          <div className="fila">
+          {/* Claro / oscuro: TODA la fila es el control (2026-11-20). Antes
+              era un texto con el botón sol/luna al costado, y tocar el texto
+              —lo que uno toca— no hacía nada. Es una casilla del menú
+              (marcada = oscuro); el ícono sigue siendo el del tema AL QUE SE
+              VA. El menú queda abierto: se ve el cambio y se puede volver. */}
+          <button type="button" role="menuitemcheckbox" aria-checked={tema === "oscuro"} className="fila"
+            data-fila-tema onClick={alternarTema}>
             Tema claro u oscuro
-            <span className="der"><TemaToggle /></span>
-          </div>
+            <span className="der">{tema === "claro" ? <Moon {...ICONO_BARRA} /> : <Sun {...ICONO_BARRA} />}</span>
+          </button>
           {isAdmin && (
             <button type="button" role="menuitem" className="fila solo-telefono"
               onClick={() => { setAbierto(false); onAjustes(); }}>
@@ -1433,7 +1530,8 @@ function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => vo
   const cuenta = useArmazon((s) => s.cuentaPendientes);
   const abierta = useArmazon((s) => s.bandejaAbierta);
   const abrir = useArmazon((s) => s.abrirBandeja);
-  const cerrar = useArmazon((s) => s.cerrarBandeja);
+  const cerrar = useArmazon((s) => s.cerrarPendientes);
+  const location = useLocation();
   const comercial = modulo === "inicio" || modulo === "contratos" || modulo === "indicadores";
   const n = modulo === "contratos" ? 0 : cuenta;
   return (
@@ -1444,14 +1542,39 @@ function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => vo
       title="Lo que hay que resolver: hoy, los próximos 30 días y lo que no cuadra"
       onClick={() => {
         if (abierta) { cerrar(); return; }
+        // Desde el Plano o Montajes: se anota de dónde, para volver al cerrarla.
+        abrir(null, comercial ? undefined : { nombre: NOMBRE_DE[modulo], ruta: location.pathname + location.search });
         if (!comercial) ir("inicio");
-        abrir();
       }}
     >
       <Inbox {...ICONO_BARRA} />
       <span className="txt">Pendientes</span>
       {n > 0 && <span className="cuenta" aria-label={`${n} para revisar`}>{n}</span>}
     </button>
+  );
+}
+
+/** La pastilla roja de «Pendientes» fuera de lo comercial (Plano, Montajes).
+ *  La cuenta la hace la pantalla comercial (`DashboardView`) con lo que baja;
+ *  al entrar directo a `/montajes` (o recargar ahí) nunca se montaba y el botón
+ *  salía sin número, mientras en Inicio e Indicadores decía «Pendientes 1»
+ *  (recorrido de los manuales, 2026-11-20). Acá corre la MISMA cuenta, sin
+ *  dibujar nada (`soloLaCuenta`): una sola regla, el mismo número en todos los
+ *  módulos. Si falla o tarda, no tapa ni tumba la pantalla de al lado. */
+class SinRuido extends Component<{ children: ReactNode }, { fallo: boolean }> {
+  state = { fallo: false };
+  static getDerivedStateFromError() { return { fallo: true }; }
+  componentDidCatch(error: unknown) { console.warn("[RECABRA] La cuenta de Pendientes no se pudo hacer", error); }
+  render() { return this.state.fallo ? null : this.props.children; }
+}
+
+function CuentaDePendientes() {
+  return (
+    <SinRuido>
+      <Suspense fallback={null}>
+        <DashboardView soloLaCuenta inicio modo="supervisar" onDisenarPlano={() => {}} />
+      </Suspense>
+    </SinRuido>
   );
 }
 
@@ -1507,6 +1630,8 @@ function Topbar({ modulo, ir, isAdmin, operador, onIrPlataforma, onAjustes, onLo
       {/* El buscador de funciones (Ctrl K), la ayuda de la pantalla, «Más» del
           módulo y lo fijado (etapa 8): ninguna función queda escondida. */}
       <button type="button" className="btn-buscar" onClick={() => useArmazon.getState().setBuscador(true)}
+        // Que el buscador empiece a bajar al acercarse a la lupa: llega antes.
+        onPointerEnter={precargarBuscador} onFocus={precargarBuscador}
         title="Buscar una función, un espacio o un término (Ctrl K)" aria-label="Buscar (Ctrl K)" data-abrir-buscador>
         <Search {...ICONO_BARRA} /><span className="txt">Buscar</span><kbd>Ctrl K</kbd>
       </button>
@@ -1593,6 +1718,14 @@ export default function Dashboard() {
   const temaAjustes = useArmazon((s) => s.ajustes);
   /** Se vino de Montajes a resolver algo: la barra para volver. */
   const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  /** Pendientes, abierta desde el Plano o Montajes (se dibuja en el Inicio):
+   *  al cerrarla quien mira, se vuelve ahí (`cerrarPendientes`). */
+  const volverA = useArmazon((s) => s.volverA);
+  useEffect(() => {
+    if (!volverA) return;
+    useArmazon.getState().yaVolvio();
+    navigate(volverA);
+  }, [volverA, navigate]);
   /** Al volver, la fila de ese contrato marcada en Montajes. */
   const [montajeResaltado, setMontajeResaltado] = useState<string | null>(null);
   useEffect(() => {
@@ -1697,7 +1830,10 @@ export default function Dashboard() {
     ir,
     navegar: (r) => navigate(r),
     abrirAjustes: (t) => { setSeccionConfig(null); useArmazon.getState().abrirAjustes(t); },
-    abrirPendientes: (g) => { if (!comercial) ir("inicio"); useArmazon.getState().abrirBandeja(g ?? null); },
+    abrirPendientes: (g) => {
+      useArmazon.getState().abrirBandeja(g ?? null, comercial ? undefined : { nombre: NOMBRE_DE[efectivo], ruta: rutaActual });
+      if (!comercial) ir("inicio");
+    },
     pedir: (p) => useArmazon.getState().pedir(p),
     abrirTarifas: () => setModalDeAjuste("tarifas"),
     abrirTemporadas: () => setModalDeAjuste("temporadas"),
@@ -1716,6 +1852,23 @@ export default function Dashboard() {
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, []);
+  // Lo tecleado ANTES de que el buscador exista (2026-11-20). Baja a pedido
+  // (`lazy`), y abierto con el mouse el foco se queda en la lupa mientras
+  // llega: «reno» tecleado enseguida quedaba «no». Mientras no está su campo
+  // (`[data-buscador]`), las letras se juntan acá y el buscador arranca con
+  // ellas; Esc lo cierra como lo cerraría él.
+  useEffect(() => {
+    if (!buscadorAbierto) return;
+    const k = (e: KeyboardEvent) => {
+      if (document.querySelector("[data-buscador]")) return;
+      if (e.key === "Escape") { e.preventDefault(); useArmazon.getState().setBuscador(false); return; }
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      useArmazon.getState().sumarTecleado(e.key);
+    };
+    window.addEventListener("keydown", k, true);
+    return () => window.removeEventListener("keydown", k, true);
+  }, [buscadorAbierto]);
 
   return (
     <div
@@ -1803,7 +1956,12 @@ export default function Dashboard() {
             {comercial ? (
               <DashboardView
                 inicio={efectivo === "inicio"}
-                onIrAMontajes={() => ir("montajes")}
+                onIrAMontajes={(codigo) => {
+                  // Desde una fila de Pendientes («Ir a Montajes»): esa fila,
+                  // marcada (`resaltar`), como al volver de Pendientes.
+                  setMontajeResaltado(codigo ?? null);
+                  ir("montajes");
+                }}
                 onIrAlInicio={() => ir("inicio")}
                 modo={modoComercial}
                 onModo={(m) => ir(m === "vender" ? "contratos" : "indicadores")}
@@ -1841,6 +1999,7 @@ export default function Dashboard() {
             )}
             </Suspense>
             </LimiteDeError>
+            {!comercial && <CuentaDePendientes />}
           </main>
         </div>
       </div>

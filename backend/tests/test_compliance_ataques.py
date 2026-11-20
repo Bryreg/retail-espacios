@@ -50,7 +50,7 @@ import pytest
 
 from conftest import CLAVE_ADMIN, CLAVE_WORKER, medios
 
-MENSAJE_NO_OWNER = "Solo el owner del cliente puede hacer esto."
+MENSAJE_NO_OWNER = "Esto lo puede hacer sólo el dueño del supermercado, con su cuenta."
 NO_OPERADOR = "Solo para operadores de la plataforma."
 
 # IPs públicas y reconocibles que se siembran a propósito en la bitácora del

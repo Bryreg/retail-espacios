@@ -320,4 +320,19 @@ prueba("«Tu zona»: el título dice la cara y el pie cómo se mira el dibujo (e
   assert.equal(Z.pieDeMiZona("arriba"), "Vista desde arriba: el borde de abajo es el frente. Armá sólo en lo pintado.");
 });
 
+prueba("«Archivos del contrato» no lista las fotos de montaje (2026-11-20)", () => {
+  const archivos = [
+    { id: 1, filename: "contrato-firmado.pdf" },
+    { id: 2, filename: "montaje--CENTRO-PUN-01--montaje.jpg" },
+    { id: 3, filename: "arte-proveedor.jpg" },
+    { id: 4, filename: "foto montaje--algo.jpg" },
+  ];
+  assert.deepEqual(M.archivosDelContrato(archivos).map((a) => a.id), [1, 3, 4]);
+  // El mismo prefijo que pone el servidor.
+  const py = readFileSync(join(raiz, "..", "backend", "app", "routers", "mounts.py"), "utf8");
+  assert.match(py, new RegExp(`MOUNT_FILE_PREFIX = "${M.PREFIJO_FOTO_DE_MONTAJE}"`), "el prefijo de la foto cambió en el servidor");
+  // La ficha (y el globo del plano, con su cuenta) filtran al leer.
+  assert.match(fuente("src", "pages", "DashboardView.tsx"), /setFiles\(archivosDelContrato\(fl\)\);/, "la ficha lista las fotos de montaje como archivos del contrato");
+});
+
 console.log(`\n${hechas} pruebas`);

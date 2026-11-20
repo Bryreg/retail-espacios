@@ -426,8 +426,8 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false, enElTema =
       })()}
       {enParticipacion && (
         <p className={cl.nota} data-partes-participacion>
-          Se vende por partes de la cara: el porcentaje de cada marca se vende en Vender (podés darle el 100 %),
-          y dónde va cada una se ubica en el Editor 3D → «Distribuir esta cara». Ni entera ni por partes, mientras se venda así.
+          Se vende por partes de la cara: el porcentaje de cada marca se vende en Contratos (podés darle el 100 %),
+          y dónde va cada una se ubica en Plano de la sede › 3D → «Distribuir la cara». Ni entera ni por partes, mientras se venda así.
         </p>
       )}
       {!enParticipacion && f.partes?.division === POR_PARTICIPACION && (

@@ -27,6 +27,7 @@ from app.auth import (
     login_legado_prendido,
     require_admin,
     require_auth,
+    rol_de_token_para,
     sub_y_email_de_la_sesion,
     verificar_clave,
 )
@@ -388,7 +389,7 @@ def _fecha_corta(momento: datetime) -> str:
 
 
 INVITACION_INVALIDA = (
-    "Este enlace de invitación no es válido. Solicite uno nuevo a quien lo invitó."
+    "Este enlace de invitación no es válido. Pedile uno nuevo a quien te invitó."
 )
 
 
@@ -401,8 +402,8 @@ def _acceso_desactivado(nombre_cliente: str) -> HTTPException:
             "codigo": "invitacion_sin_acceso",
             "cliente_nombre": nombre_cliente,
             "mensaje": (
-                f"Su acceso a {nombre_cliente} está desactivado. "
-                "Solicite a quien lo invitó que lo reactive."
+                f"Tu acceso a {nombre_cliente} está desactivado. "
+                "Pedile a quien te invitó que lo reactive."
             ),
         },
     )
@@ -457,9 +458,10 @@ def _rol_de_token(rol_membresia: str) -> str:
     Spec, decisión 5: el JWT propio sólo conoce dos roles. El ``owner`` de hoy
     gestiona usuarios además de lo que gestiona un admin, pero eso lo decide
     `require_admin` — sigue viendo `role == "admin"`. No hay tercer valor que
-    inventarle al middleware existente.
+    inventarle al middleware existente. La regla vive en ``app.auth``, que la
+    vuelve a aplicar en cada pedido (un rol cambiado corta el token viejo).
     """
-    return "admin" if rol_membresia in ("owner", "admin") else "worker"
+    return rol_de_token_para(rol_membresia)
 
 
 # ─── La consola del operador (Fase 4) ────────────────────────────────────────
@@ -613,8 +615,8 @@ def oauth_login(
                         "cliente_nombre": cliente_del_enlace.nombre,
                         "mensaje": (
                             f"La invitación a {cliente_del_enlace.nombre} es para "
-                            f"{enmascarar_correo(del_enlace.email)} y usted ingresó con {email}. "
-                            "Cierre esta sesión e ingrese con la cuenta invitada."
+                            f"{enmascarar_correo(del_enlace.email)} y entraste con {email}. "
+                            "Cerrá esta sesión y entrá con la cuenta invitada."
                         ),
                     },
                 )
@@ -627,7 +629,7 @@ def oauth_login(
                         "mensaje": (
                             f"La invitación a {cliente_del_enlace.nombre} venció el "
                             f"{_fecha_corta(_con_zona(del_enlace.expira_en))}. "
-                            "Solicite una nueva a quien lo invitó."
+                            "Pedile una nueva a quien te invitó."
                         ),
                     },
                 )
@@ -829,7 +831,9 @@ def oauth_login(
         cdb = sesion_de(cliente_obj)
         try:
             epoca = epoca_de(cdb, role)
-            anotar(cdb, request, role, "login.ok", detalle=email)
+            # El ingreso todavía no pasó por `require_auth`: el rol de la
+            # persona va acá directo (la dueña se anota «owner», no «admin»).
+            anotar(cdb, request, "owner" if elegida.rol == "owner" else role, "login.ok", detalle=email)
             cdb.commit()
         finally:
             cdb.close()

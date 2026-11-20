@@ -54,6 +54,12 @@
   border: 1px dashed var(--resto-borde);
   color: var(--ink-2);
 }
+/* Una reserva viva (todavía no es un contrato): ámbar y punteada. */
+.linea-carril .barra.reserva {
+  background: var(--entra-suave);
+  border: 1px dashed var(--entra-borde);
+  color: var(--entra-txt);
+}
 .linea-carril .barra .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .linea-antes { margin-top: 4px; }
 .linea-sub { font-size: var(--t-xs); font-weight: 700; color: var(--ink-2); margin-bottom: 4px; }

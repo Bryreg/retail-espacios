@@ -53,6 +53,8 @@ import json
 import logging
 from datetime import date, datetime, time, timezone
 
+from app.fechas import ZONA_DEL_NEGOCIO
+
 from app.plataforma_tendencia import (
     CONSOLIDADO_SLUG,
     ClienteDesconocido,
@@ -66,6 +68,22 @@ log = logging.getLogger("recabra.plataforma.reporte")
 
 BASE_LEGAL = "Política de Tratamiento de Datos Personales, §5.3 (Ley 1581/2012, Decreto 1377/2013)"
 URL_POLITICA = "/politica-datos"
+
+# «4. Tus derechos» del reporte: lo que puede hacer el titular y dónde, con los
+# nombres de la pantalla (Ajustes › Cuenta › Tus datos). Mismas claves de
+# siempre (el JSON no cambia de forma).
+DERECHOS = {
+    "export": "Bajar todos los datos del supermercado: Ajustes › Cuenta › Tus datos › «Descargar los "
+              "datos del supermercado» (sólo el dueño). Los datos personales de cada persona los baja "
+              "ella misma desde el menú de su cuenta, arriba a la derecha › «Descargar mis datos».",
+    "supresion": "Pedir la supresión del supermercado: Ajustes › Cuenta › Tus datos › «Solicitar "
+                 "supresión» (sólo el dueño). No borra nada al tocarlo: queda un pedido que RECABRA "
+                 "revisa y atiende a mano.",
+    "reporte": "Volver a ver este reporte: Ajustes › Cuenta › Tus datos › «Reporte de transparencia» "
+               "(sólo el dueño).",
+    "contacto": "Para cualquier otra consulta o reclamo: el correo de protección de datos de la "
+                "Política de Tratamiento de Datos, §8.",
+}
 
 # Texto FIJO para cuando `spread_actual` no se pudo calcular -- nunca el
 # mensaje del driver (mismo espíritu que `ERROR_BASE_ILEGIBLE`).
@@ -502,7 +520,7 @@ def _valor_de_fila(fila) -> dict:
         "periodo": fila.periodo,
         "sin_dato": False,
         "origen": fila.origen,
-        "capturado_en": fila.capturado_en.date().isoformat() if fila.capturado_en else None,
+        "capturado_en": _dia_en_colombia(fila.capturado_en),
         "sedes_con_plano": fila.sedes_con_plano,
         "espacios_comercializables": fila.espacios_comercializables,
         "ocupadas": fila.ocupadas,
@@ -548,7 +566,7 @@ def _politica_del_cliente(reg, slug: str) -> tuple[str | None, str | None]:
     )
     if fila is None:
         return None, None
-    return fila.version, fila.aceptado_en.date().isoformat()
+    return fila.version, _dia_en_colombia(fila.aceptado_en)
 
 
 def _spread_actual(reg, fila_cliente) -> dict | None:
@@ -582,6 +600,18 @@ def _como_utc(instante: datetime | None) -> datetime | None:
     if instante is None:
         return None
     return instante if instante.tzinfo else instante.replace(tzinfo=timezone.utc)
+
+
+def _dia_en_colombia(instante: datetime | None) -> str | None:
+    """El día (``AAAA-MM-DD``) de una marca UTC, contado en Colombia.
+
+    El reporte publica fechas sin hora, y sacaba el día de la marca UTC tal
+    cual (``.date()``): lo que pasaba desde las 7 p. m. de Colombia salía con
+    el día siguiente (2026-11-20, recorrido del manual del dueño). La ventana
+    de meses sigue en UTC (``periodo_actual``, decisión propia); esto es sólo
+    cómo se dice el día."""
+    utc = _como_utc(instante)
+    return utc.astimezone(ZONA_DEL_NEGOCIO).date().isoformat() if utc is not None else None
 
 
 def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime) -> dict:
@@ -682,7 +712,7 @@ def _accesos_del_cliente(reg, slug: str, desde_dt: datetime, hasta_dt: datetime)
         if not alcanza:
             continue
         lineas.append({
-            "fecha": f.en.date().isoformat(),
+            "fecha": _dia_en_colombia(f.en),
             "operador": f.email,
             "accion": f.accion,
             "periodo": f.periodo,
@@ -765,12 +795,9 @@ def armar_reporte(slug: str, meses: int = MESES_DEFAULT) -> dict:
         "valores": valores,
         "spread_actual": spread_actual,
         "accesos": accesos,
-        "derechos": {
-            "export": "GET /api/clientes/mi-export",
-            "supresion": "POST /api/clientes/solicitar-supresion",
-            "reporte": "GET /api/clientes/mi-reporte-plataforma",
-            "contacto": "Correo de protección de datos de la política, §8",
-        },
+        # Dónde se hace cada cosa EN LA PANTALLA (2026-11-20): decía la ruta de
+        # la API («GET /api/clientes/mi-export»), que a una dueña no le dice nada.
+        "derechos": DERECHOS,
     }
 
 

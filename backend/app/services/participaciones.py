@@ -1106,7 +1106,7 @@ def _exigir_distribuible(cara: Cara) -> None:
             raise _error(409, "cara_no_distribuible", TIPO_SIN_PARTICIPACION)
         raise _error(409, "cara_no_distribuible",
                      f"«{cara.corto}» no se vende por participación: elegí «por participación» en «Cómo se vende» "
-                     "del Editor 3D.")
+                     "del mueble, en el Plano de la sede.")
     if cara.superficie is None:
         raise _error(409, "cara_no_distribuible", f"«{cara.corto}» no tiene superficie para dibujar zonas.")
 

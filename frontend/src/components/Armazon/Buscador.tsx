@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, CornerDownLeft, MapPin, Search, Zap } from "lucide-react";
 import { ACCIONES, buscarAcciones, buscarEnElGlosario, coincide, type Accion, type ContextoDeAccion } from "../../acciones";
 import { useFixtureStore, selectFixtures } from "../../store/fixtureStore";
 import { contractPhase, isDoubleGondola, isRentable } from "../../types/fixtures";
 import { nombreDeMueble } from "../../utils/nomenclatura";
 import { useModalAbierto } from "../../tema";
+import { useArmazon } from "../../store/armazonStore";
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
@@ -27,21 +28,31 @@ type Resultado =
  * por su código —con su estado y la acción que corresponde— y un término del
  * glosario. ↑ ↓ para moverse, Enter para abrir, Esc para cerrar. Abajo, «Ver
  * el mapa de todas las funciones».
+ *
+ * Quien trabaja en la tienda también encuentra los espacios (2026-11-20): el
+ * cuadro se los prometía —«un espacio (PUN-07)»— y cualquier código le daba
+ * «No encontré nada». No vende ni renueva, así que elegir uno le abre su
+ * FICHA en Indicadores (la misma que abre tocando el mueble en el plano, sin
+ * plata). El estado son fechas, nunca montos.
  */
 export default function Buscador({ esAdmin, ctx, onCerrar }: { esAdmin: boolean; ctx: ContextoDeAccion; onCerrar: () => void }) {
   useModalAbierto();
-  const [q, setQ] = useState("");
+  // Arranca con lo tecleado mientras bajaba (lo junta el armazón).
+  const [q, setQ] = useState(() => useArmazon.getState().tomarTecleado());
   const [i, setI] = useState(0);
   const [mapa, setMapa] = useState(false);
   const [abierto, setAbierto] = useState<string | null>(null);
   const campo = useRef<HTMLInputElement>(null);
   const fixtures = useFixtureStore(selectFixtures);
   const pedirVender = useFixtureStore((s) => s.pedirVender);
+  const pedirFicha = useFixtureStore((s) => s.pedirFicha);
 
-  useEffect(() => { campo.current?.focus(); }, []);
+  // El foco, antes de pintar (`useLayoutEffect`, y `autoFocus` en el campo):
+  // con `useEffect` llegaba un instante después y lo tecleado en ese
+  // instante se perdía.
+  useLayoutEffect(() => { campo.current?.focus(); }, []);
 
   const espacios = useMemo<EspacioEncontrado[]>(() => {
-    if (!esAdmin) return [];
     const out: EspacioEncontrado[] = [];
     for (const f of fixtures) {
       if (!isRentable(f)) continue;
@@ -53,7 +64,8 @@ export default function Buscador({ esAdmin, ctx, onCerrar }: { esAdmin: boolean;
         out.push({
           id: f.id, cara, codigo: nombreDeMueble({ code: cod }),
           estado: ocupado ? `vence el ${fechaLarga(d.endDate ?? "")}` : fase === "pendiente" ? `contratado desde el ${fechaLarga(d.startDate ?? "")}` : d.status === "reserved" ? "reservado" : "disponible",
-          accion: ocupado ? "Renovar contrato" : fase === "pendiente" ? "Ver el contrato" : "Nuevo contrato",
+          // Renovar o vender es de administración: el trabajador, la ficha.
+          accion: !esAdmin ? "Ver la ficha" : ocupado ? "Renovar contrato" : fase === "pendiente" ? "Ver el contrato" : "Nuevo contrato",
         });
       }
     }
@@ -76,7 +88,8 @@ export default function Buscador({ esAdmin, ctx, onCerrar }: { esAdmin: boolean;
     if (r.tipo === "termino") { setAbierto((x) => (x === r.t.termino ? null : r.t.termino)); return; }
     onCerrar();
     if (r.tipo === "accion") r.a.hacer(ctx);
-    else { pedirVender(r.e.id, r.e.cara); ctx.ir("contratos"); }
+    else if (esAdmin) { pedirVender(r.e.id, r.e.cara); ctx.ir("contratos"); }
+    else { pedirFicha(r.e.id, r.e.cara); ctx.ir("indicadores"); }
   }
 
   function tecla(e: React.KeyboardEvent) {
@@ -94,7 +107,7 @@ export default function Buscador({ esAdmin, ctx, onCerrar }: { esAdmin: boolean;
       <div className="buscador" role="dialog" aria-modal="true" aria-label="Buscar funciones, espacios y términos" onMouseDown={(e) => e.stopPropagation()} data-buscador>
         <label className="buscador-campo">
           <Search {...ICONO} />
-          <input ref={campo} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={tecla}
+          <input ref={campo} autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={tecla}
             placeholder="Buscá una función, un espacio (PUN-07) o un término…" aria-label="Buscar"
             role="combobox" aria-expanded={resultados.length > 0} aria-controls="buscador-lista"
             aria-activedescendant={resultados[i] ? `buscador-${i}` : undefined} />

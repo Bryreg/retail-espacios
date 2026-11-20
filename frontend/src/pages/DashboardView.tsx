@@ -42,7 +42,7 @@ import {
   fetchMounts, estadoMontaje, MOTIVO_LABEL,
   type MountConfirmation, type MountMotivo,
 } from "../api/mounts";
-import { reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
+import { archivosDelContrato, reportesPorCodigo, reporteDelContrato } from "../utils/montajeDelContrato";
 import type { Space } from "../types";
 import {
   contractPhase,
@@ -88,7 +88,7 @@ import { repartirAnchos, type Columna as ColumnaTabla } from "../utils/anchosTab
 import {
   alTocarEnVender, alternarParte, cantidadDe, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia,
   disponibilidadDeCara, disponibilidadDeEspacio, divisionDe, esDivision, esPieza, estadoDeEspacio, indiceDePartes,
-  partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
+  partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, resumenDeLasPartes, seVendeAlgo, sufijoDeParte,
   tarifaDeLaFila, textoDeParte, comoSeLiberaLaCara, type ComoSeLibera, type EnContrato, type IndiceDePartes, type ParteRef,
   comoSeLiberaPorParticipacion, dispoDeParticipacion, esParticipacion, ocupadoPorParticipacion, parteVisible,
   porParticipacion, textoDeLoComprometido, type ParticipacionDeLaCara,
@@ -118,9 +118,10 @@ import {
 } from "../utils/mapaDeDecision";
 import type { FilaDeSede } from "../components/Indicadores/TodasLasSedes";
 import {
-  aCsv, bajarCsv, canonContraTarifa, diasHasta, montajesDelMes, venceEn, variacion,
+  aCsv, bajarCsv, canonContraTarifa, diasHasta, montajesDelMes, montajesPorResolver, venceEn, variacion,
   type EstadoDeMontaje,
 } from "../utils/indicadores";
+import { estadoDelPlanograma } from "../utils/montajes";
 import { getMetas, getSerieDeCanon, metaDeLaSede, type Metas, type SerieDeCanon } from "../api/indicadores";
 import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
@@ -193,7 +194,7 @@ import { useUnidadDePlata } from "../components/Supervisar/useUnidadDePlata";
 // «Bajo tarifa» (el contrato al mes contra la tarifa): lo cuenta `kpis`, que
 // corre también con Vender abierto, así que vive en `utils/meses`, no en la
 // plata de Supervisar.
-import { bajoLaTarifa } from "../utils/meses";
+import { bajoLaTarifa, renovacionDe } from "../utils/meses";
 import { canonDelMes as calcularCanonDelMes, hoyEnColombia } from "../utils/canon";
 import {
   DIAS_SIN_MONTAR_EN_ROJO, SECCION_DE_PARTICIPACIONES, avisoPorClave, contarPorGrupo, cuentaDelBadge,
@@ -2545,7 +2546,8 @@ function useSpaceFiles(code: string, enabled: boolean) {
         if (!r.data) { if (!cancelled) setState("none"); return; }
         const fl = await listSpaceFiles(r.data.id);
         if (cancelled) return;
-        setFiles(fl);
+        // Las fotos de montaje no son archivos del contrato (`archivosDelContrato`).
+        setFiles(archivosDelContrato(fl));
         setState("ok");
       })
       .catch((err) => {
@@ -3212,7 +3214,8 @@ function FixtureDetailCard({
   /** La reserva viva de ese espacio (código completo), para «Reservado hasta
    *  …» con Confirmar y Cancelar. Sólo quien administra. */
   reservaDe?: (codigo: string) => ReservaDeEspacio | undefined;
-  onReservaCambio?: () => void;
+  /** Se confirmó (con lo que pasó con los correos) o se canceló. */
+  onReservaCambio?: (aviso?: string | null) => void;
   /** Se llegó por «Cargar planometría»: el código completo del contrato al
    *  que le falta. La ficha la muestra arriba y la trae a la vista. */
   planometriaPedida?: PlanometriaPedida | null;
@@ -3274,6 +3277,23 @@ function FixtureDetailCard({
   const partesQueCorren = useMemo(() => partesConContrato(fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, isAdmin)
     .some((p) => p.face === entry.face && ["active", "expiring", "committed"].includes(displayStatus(p))),
   [fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, isAdmin, entry.face]);
+  /** La cara entera sin contrato con entrepaños (o puertas, tramos) tomados:
+   *  la cabecera dice cuántos y qué queda, no «Disponible para vender». Cada
+   *  división con el mismo criterio que el mapa de Indicadores. */
+  const enPartes = useMemo(() => {
+    const divisiones = partesDe(fixture).filter((p) => p.cara === entry.face && esDivision(p.parte));
+    if (!divisiones.length) return null;
+    const vendidas = partesConContrato(fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, false)
+      .filter((p) => p.face === entry.face && esDivision(p.parte));
+    const estados = divisiones.map((d) => {
+      const x = vendidas.find((p) => p.parte && sufijoDeParte(p.parte) === sufijoDeParte(d.parte));
+      const ds = x ? displayStatus(x) : "free";
+      return ds === "active" || ds === "expiring" ? "corre" as const : ds === "free" || ds === "expired" ? "libre" as const : "firmada" as const;
+    });
+    const clase = divisiones[0].parte.clase;
+    const r = resumenDeLasPartes(clase, estados);
+    return r ? { ...r, plural: claseDe(clase)?.plural ?? "partes" } : null;
+  }, [fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, entry.face]);
   const codigoDeLaCara = fullSpaceCode(fixture.sede || sedeDelMapa, entry.code);
   const reservaViva = isAdmin && entry.reservaHasta ? reservaDe?.(codigoDeLaCara) : undefined;
   const cobroDeLaCara = isAdmin && hasContract ? cobroDe?.(codigoDeLaCara) : undefined;
@@ -3293,7 +3313,7 @@ function FixtureDetailCard({
           vuelve a «Para revisar», el código como se lee, el nombre y la sede,
           y el estado en pastilla. */}
       <div className="ficha-cab">
-        <button type="button" className="icobtn" onClick={onBack} title="Volver" aria-label="Volver a «Para revisar»">
+        <button type="button" className="icobtn" onClick={onBack} title="Volver" aria-label="Volver">
           <ArrowLeft {...ICONO_TARJETA} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -3416,8 +3436,10 @@ function FixtureDetailCard({
         )}
 
         {/* Ver la exhibición como la va a ver el proveedor. El 3D es la única
-            pantalla que muestra el arte puesto sobre el mueble. */}
-        {rentable && (
+            pantalla que muestra el arte puesto sobre el mueble. Sólo quien
+            administra: el trabajador no abre el Plano (`puedeAbrir`) y el
+            pedido no hacía nada (`Dashboard.tsx` lo atiende con `isAdmin`). */}
+        {isAdmin && rentable && (
           <button type="button" className="btn-s" onClick={() => pedirEnfoque3D(fixture.id, face)}>
             <Box {...ICONO_TARJETA} />
             Ver la exhibición en 3D
@@ -3436,6 +3458,16 @@ function FixtureDetailCard({
           /* El trabajador: la base le dice sólo que la toma una reserva. */
           <div data-reservada style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.5 }}>
             Reservado: la toma una reserva, que todavía no es un contrato. No hay nada que montar.
+          </div>
+        ) : !hasContract && enPartes ? (
+          <div data-vendido-en-parte style={{ padding: "18px 4px 6px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-1)" }}>{enPartes.titulo}</div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginTop: 6 }}>{enPartes.texto}</div>
+            {isAdmin && (
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5, marginTop: 10 }}>
+                Abajo, en «Por {enPartes.plural}», está el contrato de cada parte; lo libre se vende ahí.
+              </div>
+            )}
           </div>
         ) : !hasContract ? (
           <NoContractState fixture={fixture} isAdmin={isAdmin} />
@@ -3484,7 +3516,12 @@ function FixtureDetailCard({
         {/* La línea de tiempo (etapa 3): los próximos 12 meses, desde cuándo
             queda disponible y lo que ya terminó, del historial de la base. */}
         {rentable && (
-          <LineaDeTiempo codigo={fullSpaceCode(fixture.sede, entry.code)} esAdmin={isAdmin} onVerTodos={onVerHistorial} />
+          <LineaDeTiempo codigo={fullSpaceCode(fixture.sede, entry.code)} esAdmin={isAdmin} onVerTodos={onVerHistorial}
+            /* Una reserva viva no está en el historial (no es un contrato):
+               va aparte, con su tramo (2026-11-20). */
+            reserva={entry.reservado
+              ? { desde: entry.startDate || null, hasta: entry.endDate || null, caduca: entry.reservaHasta ?? null, quien: entry.supplierName || null }
+              : null} />
         )}
 
         {/* Vender por partes: las puertas de esta cara, cada una con su
@@ -4766,10 +4803,15 @@ function EmptyDashboard({
  *  de una edición…) navegan con `onModo`. */
 export type ModoComercial = "vender" | "supervisar";
 
-export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo, inicio = false, onIrAMontajes, onIrAlInicio }: {
+export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo, inicio = false, onIrAMontajes, onIrAlInicio, soloLaCuenta = false }: {
   onDisenarPlano: () => void;
-  /** «Ver montajes» del Inicio: el módulo Montajes. */
-  onIrAMontajes?: () => void;
+  /** Sólo para la pastilla roja de «Pendientes» fuera de lo comercial (Plano,
+   *  Montajes; `Dashboard.tsx`): hace la cuenta con lo de siempre y no dibuja
+   *  nada, ni atiende lo que el armazón le pide a la pantalla a la vista. */
+  soloLaCuenta?: boolean;
+  /** «Ver montajes» del Inicio: el módulo Montajes. Con un código completo
+   *  (`CENTRO-PUN-03-EN2`), con la fila de ese espacio marcada. */
+  onIrAMontajes?: (codigo?: string) => void;
   /** «Volver al Inicio» desde una lista a la que se llegó tocando una cifra. */
   onIrAlInicio?: () => void;
   /** El Inicio del armazón (etapa 3): la misma pantalla en Supervisar, que
@@ -4956,7 +4998,6 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  en un cajón encima de la pantalla, abierto desde la barra de arriba. */
   const bandejaAbierta = useArmazon((s) => s.bandejaAbierta);
   const grupoPedido = useArmazon((s) => s.grupoPedido);
-  const cerrarBandeja = useArmazon((s) => s.cerrarBandeja);
   /** Lo de «Para revisar» se pide en Supervisar (Indicadores y el Inicio) y
    *  con la bandeja abierta. Con Vender abierto no: la pantalla la mira el
    *  proveedor; sólo si quien administra abre la bandeja a propósito. */
@@ -5051,6 +5092,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   // hacer y lo atiende cuando ya es la que está a la vista.
   const pedidoDelArmazon = useArmazon((s) => s.pedido);
   useEffect(() => {
+    if (soloLaCuenta) return;
     if (pedidoDelArmazon === "planilla" && modoEfectivo === "vender" && !inicio) {
       useArmazon.getState().atender();
       if (isAdmin) setCargaAbierta(true);
@@ -5406,12 +5448,27 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  volver a esta pestaña no lo repite. */
   const pedidoVender = useFixtureStore((s) => s.pedidoVender);
   useEffect(() => {
-    if (!pedidoVender || !isAdmin) return;
+    // La de la cuenta no lo suelta: es de la pantalla de Contratos que se abre.
+    if (soloLaCuenta || !pedidoVender || !isAdmin) return;
     useFixtureStore.getState().soltarPedidoVender();
     const f = fixtures.find((x) => x.id === pedidoVender.fixtureId);
     if (f) negociar(f, pedidoVender.cara);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoVender, isAdmin]);
+
+  /** Un espacio elegido en el buscador por quien trabaja en la tienda
+   *  (`pedirFicha`; el buscador ya pasó a Indicadores): su ficha, al lado del
+   *  plano, como la abre una fila de Pendientes. Se suelta enseguida. */
+  const pedidoFicha = useFixtureStore((s) => s.pedidoFicha);
+  useEffect(() => {
+    if (!pedidoFicha) return;
+    useFixtureStore.getState().soltarPedidoFicha();
+    const f = fixtures.find((x) => x.id === pedidoFicha.fixtureId);
+    if (!f) return;
+    setPestanaInd("plano");
+    revisar(f, pedidoFicha.cara);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedidoFicha]);
 
   /** Distribuir, al guardar una cara a la que se entró desde Supervisar
    *  («Falta distribuir» → «Distribuir»): vuelve acá, a Supervisar, con el
@@ -5420,7 +5477,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const pedidoSupervisar = useFixtureStore((s) => s.pedidoSupervisar);
   const [avisoDeDistribucion, setAvisoDeDistribucion] = useState<string | null>(null);
   useEffect(() => {
-    if (!pedidoSupervisar || !isAdmin) return;
+    if (soloLaCuenta || !pedidoSupervisar || !isAdmin) return;
     useFixtureStore.getState().soltarPedidoSupervisar();
     setModo("supervisar");
     setAvisoDeDistribucion(pedidoSupervisar.aviso);
@@ -5467,18 +5524,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       const t = cara.participaciones.find((p) => p.codigo.toUpperCase() === codigo)?.terminos[0];
       if (t && t.estado === "contrato" && (t.estado_visible === "vigente" || t.estado_visible === "firmado")) termino = t.id;
       if (t) {
-        const dia = 86_400_000;
-        const fin = parseISODate(t.hasta), ini = parseISODate(t.desde);
-        const largo = fin && ini ? Math.round((+fin - +ini) / dia) : null;
-        const desde = fin ? new Date(+fin + dia) : null;
-        const hasta = desde && largo !== null ? new Date(+desde + largo * dia) : null;
+        // Los mismos MESES, no los mismos días (`renovacionDe`).
+        const fechas = t.desde && t.hasta ? renovacionDe(t.desde, t.hasta) : null;
         semillaPc = {
           id: `${codigo}|${t.id}`,
           proveedor: t.proveedor?.nombre ?? entry.supplierName ?? "",
           correo: "",
           marca: t.marca ?? entry.brandCategory ?? "",
-          desde: termino && desde ? toISODate(desde) : "",
-          hasta: termino && hasta ? toISODate(hasta) : "",
+          desde: termino && fechas ? fechas.desde : "",
+          hasta: termino && fechas ? fechas.hasta : "",
           valores: t.valor_mensual && t.valor_mensual > 0
             ? { [claveDePrecio(`${caraCompleta}-PC1`)]: t.valor_mensual.toLocaleString("es-CO") } : {},
           porcentajes: { [caraCompleta]: t.puntos_basicos },
@@ -5526,15 +5580,12 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       void renovarParticipacion(entry);
       return;
     }
-    const dia = 86_400_000;
-    const fin = entry.endDate ? parseISODate(entry.endDate) : null;
-    const ini = entry.startDate ? parseISODate(entry.startDate) : null;
-    // Mismo largo que el contrato vigente, contando los dos extremos. Sin
-    // fechas confiables se cae al periodo de la barra, que es lo que hacía
-    // antes de que este botón existiera.
-    const largo = fin && ini ? Math.round((+fin - +ini) / dia) : null;
-    const desde = fin ? new Date(+fin + dia) : null;
-    const hasta = desde && largo !== null ? new Date(+desde + largo * dia) : null;
+    // Los mismos MESES que el contrato vigente, con la regla de meses
+    // (`renovacionDe`): copiar el largo en días daba un día de más (1 jun –
+    // 30 nov se renovaba hasta el 1 jun). Sin fechas confiables se cae al
+    // periodo de la barra, que es lo que hacía antes de que este botón
+    // existiera.
+    const fechas = entry.startDate && entry.endDate ? renovacionDe(entry.startDate, entry.endDate) : null;
 
     const codigo = fullSpaceCode(entry.fixture.sede || sede, entry.code);
     setSemilla({
@@ -5542,8 +5593,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       proveedor: entry.supplierName,
       correo: "",
       marca: entry.brandCategory,
-      desde: desde ? toISODate(desde) : "",
-      hasta: hasta ? toISODate(hasta) : "",
+      desde: fechas?.desde ?? "",
+      hasta: fechas?.hasta ?? "",
       // Por la clave de PRECIO de su línea: una parte va en la línea de las
       // partes de su cara («PUN-02 · EN1»), con un precio para todas.
       valores: entry.negotiatedValue > 0
@@ -5669,6 +5720,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     leaseId: entry.leaseId,
     onClick: () => editarFila(entry, { enFicha: false, seccion }),
   }] : undefined);
+  /** «Ir a Montajes» de una fila que espera el reporte del montaje
+   *  («Contratado sin montar», «Montaje sin reporte»): Montajes con ESE
+   *  espacio marcado, donde se registra. «Montaje sin reporte» ofrecía sólo
+   *  «Editar contrato», que no resuelve un montaje sin reporte (recorrido de
+   *  los manuales, 2026-11-20). */
+  const accionMontajes = (entry: FaceEntry) => (onIrAMontajes ? {
+    texto: "Ir a Montajes", icono: <ClipboardCheck {...ICONO_TARJETA} />,
+    onClick: () => onIrAMontajes(fullSpaceCode(entry.fixture.sede || sede, entry.code)),
+  } : undefined);
   /** Salir de una edición (sin cambios, ya guardada o tras un 409): a
    *  Supervisar, con la base releída, y el foco al botón que la abrió. */
   const [enfocarAlVolver, setEnfocarAlVolver] = useState(0);
@@ -6198,14 +6258,13 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   // problema que alguien tiene que resolver hoy —el proveedor no entregó, el
   // espacio está ocupado por otra cosa— y trae su motivo. "Sin montar" es
   // silencio: el contrato ya arrancó, se está cobrando, y nadie dijo nada.
-  const montaje = useMemo(() => {
+  const clasificarMontajes = useCallback((filas: FaceEntry[]) => {
     const noMontado: (FaceEntry & { reporte: MountConfirmation })[] = [];
     const sinMontar: (FaceEntry & { dias: number })[] = [];
     /** Los que arrancaron hace más de la ventana y nunca se reportaron: antes
      *  una nota que no contaba; ahora una sección de «Corregir». */
     const viejos: (FaceEntry & { dias: number })[] = [];
-    // Con las partes vendidas: una puerta se monta como cualquier espacio.
-    fixtures.flatMap(espaciosDelMueble).forEach((entry) => {
+    filas.forEach((entry) => {
       const fase = contractPhase(entry);
       // Lo vencido ya no se monta y lo libre no tiene qué montar.
       if (fase !== "vigente" && fase !== "pendiente") return;
@@ -6235,7 +6294,27 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     sinMontar.sort((a, b) => b.dias - a.dias);
     viejos.sort((a, b) => b.dias - a.dias);
     return { noMontado, sinMontar, viejos };
-  }, [fixtures, montajeDe, espaciosDelMueble]);
+  }, [montajeDe]);
+  // Con las partes vendidas: una puerta se monta como cualquier espacio.
+  const montaje = useMemo(() => clasificarMontajes(fixtures.flatMap(espaciosDelMueble)), [clasificarMontajes, fixtures, espaciosDelMueble]);
+  /** Lo mismo con TODOS los contratos, también las participaciones que el
+   *  trabajador no ve como filas (D7) pero sí en Montajes: las cuentas que
+   *  dicen «sin montar» fuera de Montajes (el Inicio, el mapa por cara) tienen
+   *  que contar lo que Montajes lista. Para quien administra es `montaje`. */
+  const montajeDeTodo = useMemo(
+    () => (isAdmin ? montaje : clasificarMontajes(fixtures.flatMap((f) => [...commercialFacesOf(f), ...partesVendidasDe(f)])
+      .map((e) => conLaReserva(e, estadoComercial, sede)))),
+    [isAdmin, montaje, clasificarMontajes, fixtures, partesVendidasDe, estadoComercial, sede],
+  );
+  /** «Montajes por resolver» del Inicio: la regla de los filtros de Montajes
+   *  (`montajesPorResolver`) sobre todo lo que Montajes lista de la sede —los
+   *  contratos, con las participaciones, y los planogramas— sin la ventana de
+   *  30 días de Pendientes: lo viejo sin reporte también está «Sin montar». */
+  const porResolver = useMemo(() => montajesPorResolver([
+    ...montajeDeTodo.noMontado.map(() => ({ estado: "no_realizado" as const, empezo: true })),
+    ...[...montajeDeTodo.sinMontar, ...montajeDeTodo.viejos].map(() => ({ estado: "sin_montar" as const, empezo: true })),
+    ...planogramasPorRevisar.filas.map((c) => ({ estado: estadoDelPlanograma(c.estado), empezo: c.dias_que_rige >= 0 })),
+  ]), [montajeDeTodo, planogramasPorRevisar.filas]);
 
 
   // ─── Lo que la franja de Supervisar necesita saber ──────────────────────
@@ -6379,11 +6458,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     };
   }, [isAdmin, unidad, kpis, cortesSinCargar.cobros, sinAlquilar, periodoIso, ordenQuienPaga]);
 
-  /** Las caras contratadas y sin reportar, para que el chip «Sin montar» de la
-   *  tabla filtre exactamente la misma lista que muestran los pendientes. */
+  /** Las caras y partes que ya corren sin reporte de montaje: las filas cuya
+   *  columna Montaje dice «Sin montar» (`MontajeChip`), sin la ventana de 30
+   *  días de Pendientes —ésa separa lo de esta semana de lo viejo, pero lo
+   *  viejo también está sin montar—. Con sólo los de 30 días el chip decía
+   *  «Sin montar 1» sobre una tabla con dos filas «Sin montar». */
   const sinMontarSet = useMemo(
-    () => new Set(montaje.sinMontar.map((e) => claveDeFila(e))),
-    [montaje.sinMontar],
+    () => new Set([...montaje.sinMontar, ...montaje.viejos].map((e) => claveDeFila(e))),
+    [montaje.sinMontar, montaje.viejos],
   );
 
   /** Las temporadas comerciales que pisan el periodo, para el fondo del riel. */
@@ -6506,7 +6588,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  se abre sola (rediseño UX 2026-10). Se recuerda por quien mira, en este
    *  navegador: es una comodidad, no un dato. */
   useEffect(() => {
-    if (!inicio || cuentasDeRevision.hoy === 0) return;
+    if (soloLaCuenta || !inicio || cuentasDeRevision.hoy === 0) return;
     const hoyIso = toISODate(new Date());
     const LLAVE = "recabra-pendientes-del-dia";
     try {
@@ -6514,7 +6596,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       window.localStorage.setItem(LLAVE, hoyIso);
     } catch { return; /* sin almacenamiento no se abre sola: mejor eso que abrirla siempre */ }
     useArmazon.getState().abrirBandeja("hoy");
-  }, [inicio, cuentasDeRevision.hoy]);
+  }, [soloLaCuenta, inicio, cuentasDeRevision.hoy]);
 
   /** La serie de canon por mes (`GET /dashboard/serie`, sólo administración):
    *  la curva de 12 meses y «Todas las sedes» de Indicadores, y el canon del
@@ -6616,6 +6698,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
    *  La participación (`-PC1`) se busca por su cara: «Falta distribuir» es de
    *  la cara entera. */
   const desdeMontaje = useArmazon((s) => s.desdeMontaje);
+  /** Pendientes, abierta desde el Plano o Montajes (`armazonStore`). */
+  const vueltaDePendientes = useArmazon((s) => s.vueltaDePendientes);
   const avisoDelMontaje = useMemo(() => {
     if (!desdeMontaje) return null;
     const m = muebleDelEspacio(desdeMontaje.codigo.replace(/-PC\d+$/i, ""));
@@ -6713,12 +6797,12 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       { id: "todos", label: "Todas", n: kpis.filas },
       { id: "occupied", label: "Vigentes hoy", n: cuantas("occupied") },
       { id: "expiring", label: "Por vencer", n: kpis.expiring.length },
-      { id: "sin_montar", label: "Sin montar", n: montaje.sinMontar.length },
+      { id: "sin_montar", label: "Sin montar", n: cuantas("sin_montar") },
       { id: "free", label: "Libres", n: cuantas("free") },
       { id: "en_parte", label: "Vendido en parte", n: cuantas("en_parte") },
     ];
     return todos;
-  }, [kpis, montaje.sinMontar.length, fixtures, espaciosDelMueble, sinMontarSet, enParteSet, libresSet]);
+  }, [kpis, fixtures, espaciosDelMueble, sinMontarSet, enParteSet, libresSet]);
 
   /** Los contratos que corren HOY (la pestaña «Vigentes hoy»): es la cifra
    *  «Contratos activos» del Inicio, y sus filas suman el «Canon del mes». */
@@ -7214,14 +7298,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             {isAdmin && participacionesPorGrupo.hoy.length > 0 && (
               <RevisarParticipaciones
                 secciones={participacionesPorGrupo.hoy}
-                tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "hoy")}
+                tituloDe={(x) => tituloDeSeccion(SECCION_DE_PARTICIPACIONES[x.tipo], "hoy", x.items.map(diasDelRenglon))}
               />
             )}
             {isAdmin && planometriaPorGrupo.hoy.length > 0 && (
               <FaltaPlanometria
                 sede={sede}
                 filas={planometriaPorGrupo.hoy}
-                titulo={tituloDeSeccion("falta_planometria", "hoy")}
+                titulo={tituloDeSeccion("falta_planometria", "hoy", planometriaPorGrupo.hoy.map((f) => f.dias_para_empezar))}
                 onCargar={cargarPlanometria}
               />
             )}
@@ -7291,7 +7375,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 sede={sede}
                 titulo={tituloDeSeccion("reservas", "hoy")}
                 vivas={reservasPorGrupo.hoy}
-                onCambio={() => {
+                onCambio={(aviso) => {
+                  setAvisoDeSupervision(aviso ?? null);
                   reservasSinConfirmar.recargar();
                   void refrescarComercial();
                   if (hayParticipaciones) void recargarOcupacion(sede);
@@ -7360,6 +7445,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                     dates={entry.dias === 0 ? "empieza hoy" : `empezó el ${fechaEnCurso(entry.startDate)}`}
                     selected={selected?.id === entry.fixture.id}
                     onSelect={() => revisar(entry.fixture, entry.face)}
+                    accion={accionMontajes(entry)}
                   />
                 ))}
               </div>
@@ -7369,7 +7455,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 sede={sede}
                 titulo={tituloDeSeccion("reservas", "dias30")}
                 vivas={reservasPorGrupo.dias30}
-                onCambio={() => {
+                onCambio={(aviso) => {
+                  setAvisoDeSupervision(aviso ?? null);
                   reservasSinConfirmar.recargar();
                   void refrescarComercial();
                   if (hayParticipaciones) void recargarOcupacion(sede);
@@ -7534,6 +7621,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                     dates={`arrancó hace más de ${VENTANA_MONTAJE_DIAS} días y nadie reportó el montaje`}
                     selected={selected?.id === entry.fixture.id}
                     onSelect={() => revisar(entry.fixture, entry.face)}
+                    /* Lo que falta es el reporte: Montajes, con el
+                       espacio marcado. «Editar contrato» queda por si
+                       lo que está mal son las fechas. */
+                    accion={accionMontajes(entry)}
                     acciones={accionEditar(entry, tituloDeSeccion("montajes_viejos", "corregir"))}
                   />
                 ))}
@@ -7589,7 +7680,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     <div className="ficha-nav" data-ficha-nav>
       <button type="button" className="volver" onClick={closeDetail} data-volver-a-la-lista>
         <ArrowLeft {...ICONO_TARJETA} />
-        {avisoActual ? tituloDeSeccion(avisoActual.seccion, grupoDelAviso(avisoActual.seccion, avisoActual.dias)) : "Para revisar"}
+        {avisoActual ? tituloDeSeccion(avisoActual.seccion, grupoDelAviso(avisoActual.seccion, avisoActual.dias), [avisoActual.dias]) : "Para revisar"}
       </button>
       {vecinos.lista.length > 1 && (
         <>
@@ -7671,7 +7762,9 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       montajeDelCodigo={montajeDelCodigo}
       cobroDe={isAdmin ? cobroDeCodigo : undefined}
       reservaDe={isAdmin ? reservaDeCodigo : undefined}
-      onReservaCambio={() => {
+      onReservaCambio={(aviso) => {
+        // Lo que pasó con los correos al confirmarla: en el aviso de la lista.
+        setAvisoDeSupervision(aviso ?? null);
         reservasSinConfirmar.recargar();
         void refrescarComercial();
         if (hayParticipaciones) void recargarOcupacion(sede);
@@ -7715,7 +7808,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       const texto = enLaBandeja[a.seccion];
       return {
         clave: a.clave,
-        titulo: tituloDeSeccion(a.seccion, "hoy"),
+        titulo: tituloDeSeccion(a.seccion, "hoy", [a.dias]),
         codigo,
         cuando,
         accion: texto || !f
@@ -7806,17 +7899,21 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     // Los montajes de cada cara: los de los contratos y los de los planogramas.
     const montajesDe = new Map<string, { estado: EstadoDeMontajeEnElMapa; detalle: string; abrir: () => void }[]>();
     const anotar = (k: string, m: { estado: EstadoDeMontajeEnElMapa; detalle: string; abrir: () => void }) => montajesDe.set(k, [...(montajesDe.get(k) ?? []), m]);
-    for (const e of montaje.noMontado) {
+    // Con TODOS los contratos (`montajeDeTodo`) y lo viejo sin reporte: la
+    // misma regla que Montajes y el Inicio. Al trabajador, una participación
+    // se le nombra por su cara, sin el `…-PC1` (D7: sus filas no las ve).
+    const codigoDelMontaje = (e: FaceEntry) => (!isAdmin && esParticipacion(e.parte) ? codigoVisible({ ...e, parte: null }) : codigoVisible(e));
+    for (const e of montajeDeTodo.noMontado) {
       anotar(claveDe(e), {
         estado: "no_realizado",
-        detalle: [codigoVisible(e), e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : e.reporte.nota ?? ""].filter(Boolean).join(" · "),
+        detalle: [codigoDelMontaje(e), e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : e.reporte.nota ?? ""].filter(Boolean).join(" · "),
         abrir: () => revisar(e.fixture, e.face),
       });
     }
-    for (const e of montaje.sinMontar) {
+    for (const e of [...montajeDeTodo.sinMontar, ...montajeDeTodo.viejos]) {
       anotar(claveDe(e), {
         estado: "sin_montar",
-        detalle: `${codigoVisible(e)} · arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`,
+        detalle: `${codigoDelMontaje(e)} · arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`,
         abrir: () => revisar(e.fixture, e.face),
       });
     }
@@ -7828,6 +7925,17 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         detalle: `Planograma · rige desde el ${diaCorto(c.rige_desde)}`,
         abrir: () => (c.estado === "sin_montar" ? setGuiaParaMandar(c.version_id) : setRevisarMontajeDe(c.version_id)),
       });
+    }
+    // Los proveedores de las participaciones que corren o están firmadas, para
+    // quien no administra: `kpis.todas` no las trae (no las ve como filas, D7)
+    // y una cara por participación decía «Clientes en el espacio —» y «Sin
+    // contrato hoy.». El nombre no es plata ni el %: es lo que ya le dice
+    // Montajes («GON-02-PC1 · Aseo Total»).
+    const deParticipaciones = new Map<string, string[]>();
+    if (!isAdmin) for (const f of fixtures) for (const p of partesVendidasDe(f).map((x) => conLaReserva(x, estadoComercial, sede))) {
+      const fase = contractPhase(p);
+      if (!esParticipacion(p.parte) || (fase !== "vigente" && fase !== "pendiente")) continue;
+      deParticipaciones.set(claveDe(p), [...(deParticipaciones.get(claveDe(p)) ?? []), p.supplierName.trim()]);
     }
     const unidadDe = new Map(kpis.unidades.map((u) => [claveDe(u.cara), u]));
     const espacios: EspacioDelMapa[] = [];
@@ -7893,7 +8001,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           ...(partes ? { partes } : {}),
           ingresoAlMes: isAdmin ? suyos.filter((t) => t.fase === "vigente").reduce((s, t) => s + alMesDe(t.entry), 0) + ventas.reduce((s, v) => s + v.alMes, 0) : null,
           libreAlMes, tarifa,
-          clientes: [...new Set([...suyos.map((t) => t.entry.supplierName.trim()), ...ventas.map((v) => v.proveedor.trim())].filter(Boolean))],
+          clientes: [...new Set([...suyos.map((t) => t.entry.supplierName.trim()), ...(deParticipaciones.get(clave) ?? []),
+            ...ventas.map((v) => v.proveedor.trim())].filter(Boolean))],
           vence: venceProximo ? {
             dias: venceProximo.dias, fecha: venceProximo.t.entry.endDate, alMes: isAdmin ? alMesDe(venceProximo.t.entry) : null,
             codigo: codigoVisible(venceProximo.t.entry), proveedor: venceProximo.t.entry.supplierName.trim() || null,
@@ -7919,18 +8028,21 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
     // Las acciones prioritarias: lo que pierde plata primero.
     const acciones: AccionDelTablero[] = [];
+    /** Quien no administra no renueva ni gestiona: su botón dice lo que hace
+     *  —abre la ficha— y no la tarea de otro («Gestionar renovación»). */
+    const botonDe = (deAdmin: string) => (isAdmin ? deAdmin : "Ver la ficha");
     const accion = (a: Omit<AccionDelTablero, "impacto" | "dias"> & { impacto?: number | null; dias?: number | null }) =>
       acciones.push({ impacto: null, dias: null, ...a });
     for (const e of kpis.expired) {
       accion({ tipo: "vencido", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Contrato vencido sin cerrar", corto: "Contrato vencido",
         detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days, plazo: `venció el ${diaCorto(e.endDate)}`,
-        boton: "Ver ficha", onClick: () => revisar(e.fixture, e.face) });
+        boton: botonDe("Ver ficha"), onClick: () => revisar(e.fixture, e.face) });
     }
     for (const e of kpis.expiring) {
       if (e.proximoLeaseId) continue;
       accion({ tipo: "renovar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Renovación pendiente", corto: "Renovación pendiente",
         detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days,
-        plazo: `${diaCorto(e.endDate)} · ${e.days} día${e.days === 1 ? "" : "s"}`, boton: "Gestionar renovación", onClick: () => revisar(e.fixture, e.face) });
+        plazo: `${diaCorto(e.endDate)} · ${e.days} día${e.days === 1 ? "" : "s"}`, boton: botonDe("Gestionar renovación"), onClick: () => revisar(e.fixture, e.face) });
     }
     if (isAdmin) for (const c of cortesSinCargar.pendientes) {
       if (`${c.lease_id}|${c.periodo_desde}` in cortesSinCargar.cargados) continue;
@@ -7947,7 +8059,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     for (const e of montaje.noMontado) {
       accion({ tipo: "no_montado", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Montaje no realizado", corto: "Montaje no realizado",
         detalle: [e.supplierName, e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : ""].filter(Boolean).join(" · "),
-        plazo: `vigente desde el ${diaCorto(e.startDate)}`, boton: "Ver detalle", onClick: () => revisar(e.fixture, e.face) });
+        plazo: `vigente desde el ${diaCorto(e.startDate)}`, boton: botonDe("Ver detalle"), onClick: () => revisar(e.fixture, e.face) });
     }
     for (const c of planogramasPorRevisar.filas) {
       const f = fixtures.find((x) => x.id === c.fixture_id);
@@ -7959,9 +8071,11 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       else if (c.estado === "no_coincide") accion({ ...base, tipo: "planograma_no_coincide", asunto: "Planograma que no coincide", corto: "No coincide", boton: "Ver detalle", onClick: abrir });
       else accion({ ...base, tipo: "planograma_por_revisar", asunto: "Montaje sin verificar", corto: "Por verificar", detalle: "Planograma reportado montado", boton: "Verificar", onClick: abrir });
     }
-    for (const e of montaje.sinMontar) {
+    // Con lo viejo sin reporte: el mapa lo cuenta «Sin montar» (como Montajes)
+    // y la lista tiene que decir por qué.
+    for (const e of [...montaje.sinMontar, ...montaje.viejos]) {
       accion({ tipo: "sin_montar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Contrato sin montar", corto: "Sin montar",
-        detalle: e.supplierName, dias: -e.dias, plazo: `arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`, boton: "Ver ficha", onClick: () => revisar(e.fixture, e.face) });
+        detalle: e.supplierName, dias: -e.dias, plazo: `arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`, boton: botonDe("Ver ficha"), onClick: () => revisar(e.fixture, e.face) });
     }
 
     // La cartera: lo que paga cada cliente al mes (o sus espacios).
@@ -8101,6 +8215,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     plata.quienes.map((q) => [q.name, Math.round(q.revenue), q.pct, q.vence ? "sí" : "no"]),
   ));
 
+  // Después de TODOS los hooks (un `return` antes de uno rompe la pantalla):
+  // la cuenta ya viajó al armazón en su efecto; no hay nada que dibujar.
+  if (soloLaCuenta) return null;
+
   return (
     <div
       /* En Vender la pantalla es una HOJA: toma el alto que le deja la barra de
@@ -8225,7 +8343,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             contratos: vigentesHoy,
             firmados: kpis.contratos - vigentesHoy,
             porVencer: kpis.expiring.length,
-            montajesPorResolver: montaje.sinMontar.length + montaje.noMontado.length,
+            montajesPorResolver: porResolver,
             canonDelMes,
             disponibles: libresSet.size,
           }}
@@ -8345,7 +8463,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 precio: ct && ct.pct !== null ? { pct: ct.pct, meta: meta.canon_tarifa, contadas: ct.contadas } : null,
                 variacion: tableroB.varCanon,
                 vence30: tableroB.cuentaVence(30), vence90: tableroB.cuentaVence(90),
-                montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda },
+                montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda, mes: new Date(`${hoyIso}T12:00:00`).toLocaleDateString("es-CO", { month: "long" }) },
                 cliente: tableroB.principal ? {
                   nombre: tableroB.principal.nombre, espacios: tableroB.principal.espacios, alMes: tableroB.principal.alMes,
                   pct: isAdmin && canonDelMes ? Math.round(((tableroB.principal.alMes ?? 0) / canonDelMes) * 100) : null,
@@ -8362,7 +8480,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                     acciones: "todos", ingreso: "occupied", vence: "expiring", montaje: "sin_montar", vacias: "free", parcial: "en_parte", cliente: "todos",
                   };
                   const cifra: Record<CapaDelMapa, string> = {
-                    acciones: "Acciones", ingreso: "Ingreso contratado", vence: "Por vencer", montaje: "Montajes pendientes",
+                    acciones: "Acciones", ingreso: "Ingreso contratado", vence: "Por vencer", montaje: "Caras con montaje pendiente",
                     vacias: "Caras sin contrato", parcial: "Venta parcial", cliente: "Cliente",
                   };
                   abrirTablaDesde(filtro[capa], "Mapa de oportunidades", cifra[capa]);
@@ -8656,9 +8774,21 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           etiqueta="Pendientes"
           titulo="Pendientes"
           sub={`${attentionCount} para revisar en ${sede} · pasá el mouse por una fila y se señala en el plano de Indicadores`}
-          onCerrar={cerrarBandeja}
+          /* La cierra quien mira: si se vino del Plano o de Montajes, vuelve ahí. */
+          onCerrar={() => useArmazon.getState().cerrarPendientes()}
         >
           <div className="sup bandeja">
+            {/* Abierta desde el Plano o Montajes: la bandeja vive en el Inicio
+                (sus filas abren la ficha y el plano de Indicadores). Dice de
+                dónde se vino y lleva de vuelta; cerrarla también vuelve. */}
+            {vueltaDePendientes && !desdeMontaje && (
+              <div className="bandeja-desde-montaje" role="status" data-volver-pendientes>
+                <span>Viniste desde <b>{vueltaDePendientes.nombre}</b>: al cerrar Pendientes volvés ahí.</span>
+                <button type="button" className="btn-s" onClick={() => useArmazon.getState().cerrarPendientes()}>
+                  <ArrowLeft {...ICONO_TARJETA} /> Volver a {vueltaDePendientes.nombre}
+                </button>
+              </div>
+            )}
             {desdeMontaje && (
               <div className="bandeja-desde-montaje" role="status" data-tira-montaje>
                 <span>

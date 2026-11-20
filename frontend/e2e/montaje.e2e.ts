@@ -83,6 +83,8 @@ test("registrar montaje desde Montajes (con cuenta): abre el formulario y guarda
   });
   await page.getByPlaceholder("Quién reporta").fill("Trabajador de prueba");
   await page.getByRole("button", { name: "Confirmar" }).click();
+  // De vuelta en la lista, el «Listo» con el espacio (antes, ninguna señal).
+  await expect(page.getByRole("status").filter({ hasText: "Listo:" })).toHaveText(/Listo: GON-01 quedó reportado como montado\./);
   await expect.poll(async () => {
     const r = await request.get("/api/mounts/", { headers: conSesion(admin) });
     const filas: { space_code: string; estado: string }[] = await r.json();

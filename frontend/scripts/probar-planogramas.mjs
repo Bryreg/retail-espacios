@@ -280,4 +280,15 @@ await prueba("casos/planogramas.json es lo que arma el navegador hoy (lo corre t
   assert.equal(readFileSync(RUTA_CASOS, "utf8"), contenido, "casos/planogramas.json no es lo de hoy: corré `npm run probar:planogramas -- --escribir` y la prueba del servidor");
 });
 
+// Recorrido de los manuales (2026-11-20): a 1280 px «Lista · versión 1 desde
+// el 20 nov» (con `nowrap`) se montaba sobre «Sin montar», en la columna de al lado.
+await prueba("Plano › Caras: la pastilla del estado se parte dentro de su columna, no se monta sobre la de al lado", () => {
+  const css = leer("src/caras.css");
+  const chip = /\.cs-chip \{([^}]*)\}/.exec(css)?.[1] ?? "";
+  assert.ok(chip, "no está la regla de .cs-chip");
+  assert.ok(!/white-space:\s*nowrap/.test(chip), "la pastilla no se parte: se sale de su columna");
+  assert.match(chip, /max-width:\s*100%/);
+  assert.match(css, /\.cs-estado \{[^}]*min-width:\s*0/, "la columna del estado no deja achicar lo que tiene adentro");
+});
+
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? ", hay fallas" : ""}.`);

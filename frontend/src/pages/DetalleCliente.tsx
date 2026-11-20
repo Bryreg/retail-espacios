@@ -1660,10 +1660,10 @@ function Cap3({ ctx }: { ctx: Contexto }) {
           <Recomendada key={r.id} rec={r} n={String(i + 1)} ctx={ctx} conEscalera />
         ))}
         {media.length > 0 ? (
-          <TablaEq rotulo={`Ver las ${media.length} de prioridad media`}>{tablaRecs(media)}</TablaEq>
+          <TablaEq rotulo={media.length === 1 ? "Ver la de prioridad media" : `Ver las ${media.length} de prioridad media`}>{tablaRecs(media)}</TablaEq>
         ) : null}
         {baja.length > 0 ? (
-          <TablaEq rotulo={`Ver las ${baja.length} de prioridad baja`}>{tablaRecs(baja)}</TablaEq>
+          <TablaEq rotulo={baja.length === 1 ? "Ver la de prioridad baja" : `Ver las ${baja.length} de prioridad baja`}>{tablaRecs(baja)}</TablaEq>
         ) : null}
         <Nota>
           La prioridad es palabra y es orden, nunca sólo color.

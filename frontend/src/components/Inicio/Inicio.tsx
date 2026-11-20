@@ -39,7 +39,9 @@ export interface CifrasDelInicio {
   /** Firmados que todavía no empezaron. */
   firmados: number;
   porVencer: number;
-  montajesPorResolver: number;
+  /** La misma cuenta que los filtros de Montajes (`montajesPorResolver`):
+   *  lo que ya empezó sin reporte y lo que no se pudo montar. */
+  montajesPorResolver: { sinMontar: number; noRealizado: number; total: number };
   /** Sólo quien administra. */
   canonDelMes: number | null;
   disponibles: number;
@@ -172,15 +174,20 @@ export default function Inicio({
           rotulo="Por vencer (30 días)"
           definicion="Contratos con proveedor que terminan en los próximos 30 días."
           valor={String(cifras.porVencer)}
-          nota={cifras.porVencer > 0 ? "Requieren acción" : "Nada vence este mes"}
+          // Quien no administra no renueva: le toca avisar, no «actuar».
+          nota={cifras.porVencer > 0 ? (esAdmin ? "Requieren acción" : "Avisale a quien administra") : "Nada vence este mes"}
           alarma={cifras.porVencer > 0}
           accion={cifras.porVencer > 0 ? { texto: "Ver cuáles", onClick: onVerPorVencer } : undefined}
         />
         <Tarjeta
           icono={<Hammer {...ICONO} />}
           rotulo="Montajes por resolver"
-          definicion="Contratados que empezaron y nadie reportó armados, más los que no se pudieron montar."
-          valor={String(cifras.montajesPorResolver)}
+          definicion="Contratos y planogramas que ya empezaron y nadie reportó montados (Montajes › Sin montar, sin lo que todavía no empieza), más los que no se pudieron montar (Montajes › No realizado)."
+          valor={String(cifras.montajesPorResolver.total)}
+          nota={cifras.montajesPorResolver.total > 0 ? [
+            cifras.montajesPorResolver.sinMontar > 0 && `${cifras.montajesPorResolver.sinMontar} sin montar`,
+            cifras.montajesPorResolver.noRealizado > 0 && `${cifras.montajesPorResolver.noRealizado} no realizado${cifras.montajesPorResolver.noRealizado === 1 ? "" : "s"}`,
+          ].filter(Boolean).join(" · ") : undefined}
           accion={{ texto: "Ver montajes", onClick: onVerMontajes }}
         />
         {esAdmin && cifras.canonDelMes !== null ? (
@@ -208,7 +215,7 @@ export default function Inicio({
             <h2>Pendientes de hoy · {cuentaHoy}</h2>
             {totalPendientes > 0 && (
               <button type="button" className="ini-link" onClick={onVerPendientes}>
-                Ver los {totalPendientes}
+                {totalPendientes === 1 ? "Ver el pendiente" : `Ver los ${totalPendientes}`}
               </button>
             )}
           </header>

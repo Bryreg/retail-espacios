@@ -50,7 +50,10 @@ from app.plataforma_tendencia import MESES_DEFAULT, MESES_MAXIMO
 
 router = APIRouter(prefix="/clientes", tags=["derechos"])
 
-MENSAJE_NO_OWNER = "Solo el owner del cliente puede hacer esto."
+# Lo lee la persona en Ajustes › Cuenta (2026-11-20): decía «Solo el owner del
+# cliente puede hacer esto», con la palabra técnica en inglés y «cliente» por
+# supermercado. Las pruebas lo importan de acá, no lo copian.
+MENSAJE_NO_OWNER = "Esto lo puede hacer sólo el dueño del supermercado, con su cuenta."
 
 # 3 exports por hora por usuario -- tabla propia (`export_attempts`), no
 # contamina ningún otro freno del repo.
