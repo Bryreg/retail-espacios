@@ -1,8 +1,8 @@
+<style>.cuando { break-after: avoid; }</style>
 <!-- ─────────────────────────────────────────────────────────────────────────
      Capítulo 7 · Plano de la sede (manual del Administrador).
      Capturas: administrador/capturas-plano.cjs → img/administrador-plano/
      ───────────────────────────────────────────────────────────────────────── -->
-<style>.cuando { break-after: avoid; }</style>
 <section class="capitulo">
   <h1><span class="num">7</span>Plano de la sede</h1>
   <p class="entrada">El plano es el dibujo de la tienda vista desde arriba, con cada mueble en su lugar y su código (<code>PUN-01</code>, <code>GON-03</code>…). Todo sale de acá: lo que se vende en Contratos, lo que se monta y lo que miden los Indicadores. Si un mueble no está en el plano, para RECABRA no existe.</p>
@@ -32,7 +32,7 @@
     <li><p>Abajo están los filtros: <span class="texto-pantalla">Todos</span>, <span class="texto-pantalla">Libres</span>, <span class="texto-pantalla">Ocupados</span>, <span class="texto-pantalla">Vendido en parte</span>, <span class="texto-pantalla">Reservados</span>, <span class="texto-pantalla">Por vencer</span> y <span class="texto-pantalla">Vencidos</span>, cada uno con cuántos hay. Tocá uno para resaltar sólo esos. En el ejemplo, <span class="texto-pantalla">Por vencer</span> marca la <code>PUN-01</code>.</p>
       <figure class="dos pc"><img src="../img/administrador-plano/03-buscar.jpg" alt="Buscar PUN-05"><img src="../img/administrador-plano/04-por-vencer.jpg" alt="Filtro Por vencer"></figure></li>
   </ol>
-  <div class="caja error"><span class="rotulo">Si no lo encuentra</span><p>Buscá por el <b>código</b> del mueble. Por proveedor encuentra los muebles vendidos enteros, pero no siempre los que se venden por entrepaños o por porcentaje (ver <i>Posibles errores</i> en las notas del capacitador). Volvé a <span class="texto-pantalla">Todos</span> para ver la sede entera.</p></div>
+  <div class="caja error"><span class="rotulo">Si no lo encuentra</span><p>Buscá por el <b>código</b> del mueble (<code>PUN-05</code>). Por proveedor encuentra los muebles vendidos enteros, pero no siempre los que se venden por entrepaños o por porcentaje. Volvé a <span class="texto-pantalla">Todos</span> para ver la sede entera.</p></div>
 
   <h2 class="proceso">7.3 La ficha de un mueble</h2>
   <p class="cuando"><b>Cuándo:</b> para saber qué es, cuánto mide, si está vendido y hasta cuándo.</p>
@@ -100,8 +100,7 @@
   <h2 class="proceso">7.9 Revisar el plano</h2>
   <p class="cuando"><b>Cuándo:</b> después de dibujar o cambiar varios muebles, antes de vender.</p>
   <ol class="pasos">
-    <li><p>Tocá <span class="boton">Revisar</span>, arriba a la derecha. Busca <b>códigos repetidos</b>, <b>muebles encimados</b> y <b>pasillos angostos</b>. Si todo está bien dice <span class="texto-pantalla">El plano está limpio</span>; si no, lista cada problema para ir a corregirlo.</p>
-      <figure class="mitad"><img src="../img/administrador-plano/15-revisar.jpg" alt="Revisión del plano"></figure></li>
+    <li><p>Tocá <span class="boton">Revisar</span>, arriba a la derecha. Busca <b>códigos repetidos</b>, <b>muebles encimados</b> y <b>pasillos angostos</b>. Si todo está bien dice <span class="texto-pantalla">El plano está limpio</span>; si no, lista cada problema para ir a corregirlo.</p></li>
   </ol>
 
   <h2 class="proceso">7.10 Renumerar (ordenar los códigos)</h2>
@@ -128,7 +127,7 @@
     <li><p><b>Paso 2 · Cuánto mide:</b> ancho, fondo y alto <b>en centímetros</b>, con − y +. <span class="texto-pantalla">Por dentro</span>, los entrepaños; vacío es <span class="texto-pantalla">Automático</span>. El dibujo de la derecha cambia mientras escribís. Tocá <span class="boton azul">Siguiente: nombre →</span>.</p>
       <figure class="dos pc"><img src="../img/administrador-plano/19-asistente-1.jpg" alt="Paso 1"><img src="../img/administrador-plano/20-asistente-2.jpg" alt="Paso 2"></figure></li>
     <li><p><b>Paso 3 · Nombre y cómo se vende:</b> escribí el nombre, elegí <span class="texto-pantalla">Cómo se vende</span> y de dónde salieron las medidas (<span class="texto-pantalla">Las medí en la tienda</span> no pide nada más). Tocá <span class="boton azul">Guardar mueble</span>.</p></li>
-    <li><p>Listo cuando ves <span class="texto-pantalla">«Punta corta de pasillo» ya está en Mis muebles</span>. <span class="boton azul">Colocar en el plano de CENTRO</span> vuelve al 2D con el mueble elegido: un clic en el plano y queda puesto.</p>
+    <li><p>Listo cuando ves el tilde verde y <b>«Punta corta de pasillo» ya está en Mis muebles</b>. <span class="boton azul">Colocar en el plano de CENTRO</span> vuelve al 2D con el mueble elegido: un clic en el plano y queda puesto.</p>
       <figure class="dos pc"><img src="../img/administrador-plano/21-asistente-3.jpg" alt="Paso 3"><img src="../img/administrador-plano/22-mueble-listo.jpg" alt="Mueble listo"></figure></li>
   </ol>
   <div class="caja error"><span class="rotulo">Si te equivocás</span><p>En la lista, <span class="boton">Editar</span> cambia las medidas (la familia y la clave no). <span class="boton">Retirar</span> lo saca del catálogo; lo que ya está colocado en el plano sigue igual.</p></div>
@@ -144,8 +143,7 @@
   <h2 class="proceso">7.14 Distribuir una cara vendida por porcentaje</h2>
   <p class="cuando"><b>Cuándo:</b> se vendió un % de una cara y hay que decir dónde va cada marca. Pendientes lo avisa como <span class="texto-pantalla">Falta distribuir</span>.</p>
   <ol class="pasos">
-    <li><p>Abrí la ficha del mueble (acá <code>GON-03</code>). En <span class="texto-pantalla">La cara</span> dice <span class="texto-pantalla">Se vende por porcentaje: cada marca compra su % en Contratos y acá se ubica dónde va</span>. Tocá <span class="boton">Distribuir la cara A</span>.</p>
-      <figure class="mitad"><img src="../img/administrador-plano/24-la-cara-porcentaje.jpg" alt="La cara de GON-03"></figure></li>
+    <li><p>Abrí la ficha del mueble (acá <code>GON-03</code>). En <span class="texto-pantalla">La cara</span> dice <span class="texto-pantalla">Se vende por porcentaje: cada marca compra su % en Contratos y acá se ubica dónde va</span>. Tocá <span class="boton">Distribuir la cara A</span>.</p></li>
     <li><p>Se abre <b>Distribuir la cara</b> (en el 3D). Cada marca contratada aparece como una pieza con su %; el sistema las acomoda solas en franjas y lo libre queda en verde. Arrastrá una pieza para cambiarla de lugar; <span class="texto-pantalla">Así queda en 3D</span> lo muestra. Cuando esté bien, tocá <span class="boton azul">Listo, guardar la cara</span>.</p>
       <figure class="mitad"><img src="../img/administrador-plano/25-distribuir-participaciones.jpg" alt="Distribuir la cara"></figure></li>
     <li><p>Listo cuando ves <span class="texto-pantalla">Listo: GON-03 · cara A quedó distribuida.</span> A cada marca le llega el aviso de montaje con su lugar.</p></li>

@@ -21,10 +21,11 @@ const C = "administrador-plano";
 const IMG = path.resolve(__dirname, "..", "img");
 
 /**
- * `foto` de `comun.cjs`, con las marcas fuera del `zoom` de la app: en
- * computador la app escala `<body>` (escala.ts, ~0,9 a 1280 × 800) y los
- * recuadros que `marcar()` agrega a `body` salían corridos. Acá se mudan a
- * `<html>`, que no lleva zoom, antes de sacar la foto.
+ * `foto` de `comun.cjs` con dos diferencias: el recorte se toma de lo que se ve
+ * en la ventana (los paneles del plano y de Ajustes tienen su propio scroll y
+ * la captura de página entera no los ve), y las marcas se mudan a `<html>`
+ * (fuera del `zoom` que la app pone en `<body>` en computador; comun.cjs ya lo
+ * hace, queda por si se corre con una versión vieja).
  */
 async function foto(page, carpeta, nombre, { marca, recorte, margen = 16 } = {}) {
   const dir = path.join(IMG, carpeta);
@@ -152,7 +153,6 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   const rotar = page.getByRole("button", { name: /^Rotar/ }).first();
   await rotar.click();
   await espera(800);
-  await foto(page, C, "11-rotar", { marca: rotar });
 
   // Eliminar un mueble libre (se puede deshacer)
   const eliminarFicha = page.locator(".p2-pie-ficha button", { hasText: "Eliminar" });
@@ -172,14 +172,12 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   const deshacer = page.getByRole("button", { name: /^Deshacer/ }).first();
   await deshacer.click();
   await espera(2500);
-  await foto(page, C, "14-deshacer", { marca: deshacer });
 
   // Revisar y Renumerar
   await boton("Mirar").click();
   await espera(500);
   await page.getByRole("button", { name: "Revisar", exact: true }).click();
   await espera(1200);
-  await foto(page, C, "15-revisar", { marca: page.getByText("Revisión del plano").locator("xpath=../..") });
   await page.goto("/renumerar");
   await page.waitForLoadState("networkidle");
   await espera(2000);
@@ -197,10 +195,9 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await page.goto("/plano/muebles");
   await page.waitForLoadState("networkidle");
   await espera(2500);
-  await foto(page, C, "18-mis-muebles", { marca: page.getByText("Crear un mueble").first() });
   await page.getByText("Crear un mueble").first().click();
   await espera(5000);
-  await page.getByText("Punta de góndola", { exact: true }).first().click();
+  await page.getByText("Punta de góndola", { exact: true }).first().click({ timeout: 90_000 }); // las fotos 3D de las familias ocupan el navegador un rato
   await espera(3000);
   await foto(page, C, "19-asistente-1", { marca: page.getByText("Punta de góndola", { exact: true }).first().locator("xpath=..") });
   await boton(/Siguiente: medidas/, false).click();
@@ -231,7 +228,6 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await clicEnMueble("GON-03");
   const bloqueCara = page.getByText("Se vende por porcentaje", { exact: false }).locator("xpath=..");
   await bloqueCara.scrollIntoViewIfNeeded();
-  await foto(page, C, "24-la-cara-porcentaje", { marca: page.getByRole("button", { name: /Distribuir la cara/ }).first() });
   await guardarTexto("24-la-cara-porcentaje", ficha());
   await page.getByRole("button", { name: /Distribuir la cara/ }).first().click();
   await espera(6000);
@@ -239,7 +235,6 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await guardarTexto("25-distribuir-participaciones");
   await boton("Listo, guardar la cara").click();
   await espera(2500);
-  await foto(page, C, "26-distribucion-guardada");
   await guardarTexto("26-distribucion-guardada");
 
   }
@@ -247,8 +242,6 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   // ══ 8 · PLANOGRAMAS ═══════════════════════════════════════════════════════
   await alPlano();
   await clicEnMueble("GON-12");
-  const laCara = page.locator(".p2-panel-b, [data-ficha-2d]").last();
-  await foto(page, C, "30-gon12-la-cara", { marca: page.getByText("La cara", { exact: true }).last().locator("xpath=..") });
   await guardarTexto("30-gon12-la-cara", ficha());
 
   await page.goto("/plano/caras");
@@ -290,7 +283,6 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await guardarTexto("35-publicar", dPublicar);
   await dPublicar.getByRole("button", { name: /Publicar versión/ }).click();
   await espera(2500);
-  const listo = page.getByText(/quedó publicada/).locator("xpath=../..");
   await foto(page, C, "36-publicada", { marca: [
     { loc: page.getByRole("button", { name: /Ver e imprimir la guía/ }), n: 1 },
     { loc: page.getByRole("button", { name: /Mandarla a quien corresponde/ }).first(), n: 2 },
@@ -306,7 +298,7 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   if (await mandar.count()) {
     await mandar.click();
     await espera(2000);
-    await foto(page, C, "38-guia-mandada");
+    await espera(400);
     await guardarTexto("38-guia-mandada");
   }
   await page.keyboard.press("Escape");
@@ -318,7 +310,7 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await guardarTexto("39-versiones", dVersiones);
   await dVersiones.getByRole("button", { name: "Guía" }).first().click();
   await espera(2000);
-  await foto(page, C, "40-la-guia", { marca: page.getByRole("button", { name: "Copiar el enlace" }) });
+  await espera(400);
   await guardarTexto("40-la-guia", page.getByRole("dialog").last());
 
   }
@@ -343,7 +335,6 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await espera(800);
   const dRevision = page.getByText("¿Qué no está como en la guía?").locator("xpath=..");
   await dRevision.getByRole("button", { name: /Arroz La Esquina/ }).first().click();
-  const nota = page.getByPlaceholder(/./).last();
   const campoNota = page.locator("textarea").last();
   await campoNota.fill("El arroz quedó en los estantes de abajo: va de arriba a abajo en toda su franja.");
   await espera(500);
@@ -360,10 +351,8 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await page.waitForLoadState("networkidle");
   await espera(1200);
   const engranaje = page.getByTitle(/Usuarios, avisos/).first();
-  await foto(page, C, "50-abrir-ajustes", { marca: engranaje });
   await engranaje.click();
   await espera(1000);
-  await foto(page, C, "51-comercial", { marca: page.locator("[data-tema=comercial]") });
   await boton("Abrir las tarifas").click();
   await espera(1200);
   await foto(page, C, "52-tarifas");
@@ -381,7 +370,6 @@ fs.mkdirSync(TEXTOS, { recursive: true });
 
   await page.locator("[data-tema=sede]").click();
   await espera(1500);
-  await foto(page, C, "55-sede-y-plano", { marca: page.locator("[data-bloque-ajustes=sedes]") });
   await guardarTexto("55-sede-y-plano", page.locator(".ajustes-tema"));
   // Agregar una sede y borrarla (queda 30 días en la papelera).
   const sedes = page.locator("[data-bloque-ajustes=sedes]");

@@ -72,7 +72,6 @@ async function abrirComoDuenia(nav, cual = "galerias") {
   await page.waitForLoadState("networkidle");
   await espera(page, 2000);
   if (await page.locator("[data-cajon]").count()) { await page.keyboard.press("Escape"); await espera(page, 500); }
-  await foto(page, C, "01-inicio");
   await guardarTexto("01-inicio", page.locator("body"));
 
   // El menú de la cuenta
