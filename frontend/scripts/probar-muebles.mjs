@@ -4247,7 +4247,9 @@ prueba("con reunión en curso, el contrato de otro no se lee en el panel", () =>
   assert.ok(i > 0 && j > i, "el bloque «Contratado» no tiene versión discreta");
   const discreto = panel.slice(i, j);
   assert.ok(!/supplierName\}|negotiatedValue|brandCategory/.test(discreto), "la versión discreta nombra al proveedor o su precio");
-  assert.match(discreto, /Ocupado hasta \$\{mesYAnio\(fix\.endDate\)\}/);
+  // «Ocupado» o, si lo toma una reserva provisional, «Reservado» (2026-11-20).
+  assert.match(discreto, /const palabra = crudo\?\.reservado \|\| crudo\?\.reservaHasta \? "Reservado" : "Ocupado";/);
+  assert.match(discreto, /\$\{palabra\} hasta \$\{mesYAnio\(fix\.endDate\)\}/);
   // El selector abierto también cuenta: su estado vive en el panel.
   assert.match(panel, /eligiendo=\{eligiendo\}\s*setEligiendo=\{setEligiendo\}/);
 });
@@ -6892,7 +6894,7 @@ prueba("los slots de la cara B: el contorno no roba el rayo, la malla corta el a
   assert.match(cuerpoGondolaMesh, /renderSlotFace\(-1\)/);
   // Un mueble por participación no ofrece espacios internos: no se abre su ficha.
   assert.match(editorCodigo, /const selectedSlot = selectedFix && !porParticipacion\(selectedFix\)/, "un mueble por participación abre la ficha de un slot");
-  assert.match(editorCodigo, /data-slots-por-participacion>\s*Este mueble se vende por participación: lo vendido va con contrato desde Vender/);
+  assert.match(editorCodigo, /data-slots-por-participacion>\s*Este mueble se vende por participación: lo vendido va con contrato desde Contratos/);
   // El valor de un mueble vendido es el TOTAL de su contrato: se muestra al mes,
   // repartido en sus meses (2026-10-26). Decía «$ X / mes» al lado del total.
   assert.ok(!/negotiatedValue[^\n]{0,80}\/ ?mes/.test(editorCodigo), "el 3D volvió a poner «/ mes» al lado del total");

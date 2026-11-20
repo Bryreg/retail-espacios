@@ -68,7 +68,11 @@
 .cs-cara span { font-size: var(--t-xs); color: var(--ink-3); }
 .cs-destinos { font-size: var(--t-sm); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 .cs-tenue { color: var(--ink-3); }
-.cs-chip { display: inline-block; white-space: nowrap; padding: 3px 10px; border-radius: 999px; font-size: var(--t-xs); font-weight: 700; border: 1px solid; }
+/* La pastilla cabe en su columna y, si no entra en una línea, se parte: con
+   `nowrap`, «Lista · versión 1 desde el 20 nov» se montaba sobre «Sin montar»
+   de la columna de al lado a 1280 px (recorrido de los manuales, 2026-11-20). */
+.cs-estado { min-width: 0; }
+.cs-chip { display: inline-block; max-width: 100%; white-space: normal; padding: 3px 10px; border-radius: 14px; font-size: var(--t-xs); font-weight: 700; border: 1px solid; }
 .cs-chip.falta { background: rgb(var(--entra-suave-rgb)); border-color: rgb(var(--entra-borde-rgb)); color: rgb(var(--entra-txt-rgb)); }
 .cs-chip.en_curso { background: var(--surface-2); border-color: var(--line-strong); color: var(--signal-ink); }
 .cs-chip.lista { background: rgb(var(--libre-suave-rgb)); border-color: rgb(var(--libre-borde-rgb)); color: rgb(var(--libre-txt-rgb)); }

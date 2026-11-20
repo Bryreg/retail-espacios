@@ -131,7 +131,7 @@ def avisar_edicion(db: Session, background_tasks: BackgroundTasks, cliente: Clie
             nuevos = ("los del contrato nuevo se piden" if len(despues) == 1
                       else "los de los contratos nuevos se piden")
             pie = (f"El contrato anterior se cerró como <strong>reemplazado</strong> (no cancelado): su "
-                   f"planometría y su montaje quedan con él, y {nuevos} en Supervisar → «Para revisar». " + pie)
+                   f"planometría y su montaje quedan con él, y {nuevos} en Pendientes. " + pie)
         encolar_correo(
             background_tasks, db, bl.send_mail_to_bg, who["comercial"], asunto,
             _correo(asunto, f"Se modificó un contrato de {escape(sede or 'la sede')}:", cuerpo, pie))

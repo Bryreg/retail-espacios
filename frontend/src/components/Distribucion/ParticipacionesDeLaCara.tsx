@@ -222,7 +222,7 @@ export default function ParticipacionesDeLaCara({
           </div>
 
           {vivas.length === 0 ? (
-            <div className="nota">No tiene participaciones vivas: un porcentaje se vende en Vender.</div>
+            <div className="nota">No tiene participaciones vivas: un porcentaje se vende en Contratos.</div>
           ) : (
             <div className="partes-pc">
               {vivas.map((p) => {

@@ -1177,7 +1177,7 @@ export function textoDeParticipacion(d: Pick<DispoDeParticipacion, "dispo" | "qu
  *  UBICA en «Distribuir» (Distribuir con piezas, 2026-10-24: ahí no se crea
  *  nada). Lo dicen el globo de Supervisar y la ficha del plano 2D con las
  *  mismas palabras. */
-export const DONDE_SE_CARGAN = "La parte de cada marca se vende en Vender; dónde va cada una se ubica con «Distribuir».";
+export const DONDE_SE_CARGAN = "La parte de cada marca se vende en Contratos; dónde va cada una se ubica con «Distribuir».";
 
 /** Lo que dice la línea de PORCENTAJE que suma tocar una cara por
  *  participación en Vender (rediseño de Vender, PR 1: la cara ya no manda al

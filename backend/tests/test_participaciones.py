@@ -802,7 +802,7 @@ def test_caso_f_las_dos_caras_son_independientes_y_el_robatope_dibuja_girado(cli
     # manda ahí. Uno que sí la tiene, sí.
     r = borrador("GON-02", 0, [])
     assert r.json()["detail"]["message"] == (
-        "«GON-02» no se vende por participación: elegí «por participación» en «Cómo se vende» del Editor 3D.")
+        "«GON-02» no se vende por participación: elegí «por participación» en «Cómo se vende» del mueble, en el Plano de la sede.")
     _plano(client, admin, PLANO + [_mueble("EXP-01", "isla", 1.2, 0.8, 1.4, 16, division=None, label="Estiba")])
     r = borrador("EXP-01", 0, [])
     assert (r.status_code, r.json()["detail"]) == (409, {

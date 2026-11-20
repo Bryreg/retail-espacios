@@ -259,7 +259,7 @@ const SITIOS = [
   // Rediseño, PR 3: el emoji se fue (ícono del tipo, `FloorPlan2D/iconos.ts`) y
   // el nombre va en la línea «tipo · sede · pasillo» del panel B.
   ["components/FloorPlan2D/FloorPlan2D.tsx", "el panel del plano 2D", /<span data-tipo-del-mueble>\{conNombrePropio\(item, nombresPropios, catDef\?\.label \?\? ""\)\}<\/span>/],
-  ["components/FloorPlan2D/FloorPlan2D.tsx", "la búsqueda del plano 2D", /matchesQuery\(it, normalizedQuery, catalogLabels\)/],
+  ["components/FloorPlan2D/FloorPlan2D.tsx", "la búsqueda del plano 2D", /matchesQuery\(it, normalizedQuery, catalogLabels[,)]/],
   ["pages/MountView.tsx", "Montajes", /label: conNombrePropio\(f, nombresPropios, f\.label \|\| f\.code\),[\s\S]*label: conNombrePropio\(f, nombresPropios, f\.label \|\| f\.code\),/],
   ["components/RatesModal/RatesModal.tsx", "Tarifas (con el de RECABRA debajo)", /const dicho = nombreDeTarifa\(type, nombresPropios\);[\s\S]*\{dicho\}[\s\S]*\{label\} en RECABRA/],
   ["components/FloorPlan2D/FloorPlan2D.tsx", "«ese nombre ya lo tiene otro mueble» del plano 2D (la caja y el panel)",
