@@ -1,6 +1,7 @@
 import type { AvisoDeMontaje, MotivoDeNoMontaje } from "../api/guia";
 import type { EstadoDeMontaje } from "../api/planogramas";
 import type { CaraPorSupervisar, ResultadoDeRevision } from "../api/supervision";
+import type { AvisosContrato } from "../types";
 
 /**
  * La supervisión de los planogramas (fase 4 de la distribución, 2026-10-25):
@@ -119,4 +120,29 @@ export function faltaParaRevisar(e: {
   if (e.otraCosa && !e.nota.trim()) return "Con «Otra cosa», escribí qué hay que corregir.";
   if (e.nota.length > 1000) return "La nota pasa de 1000 letras.";
   return null;
+}
+
+/** Qué pasó al confirmar una reserva (2026-11-20): pasa a contrato y salen los
+ *  avisos de un contrato nuevo, los mismos que al vender (`_avisar` del
+ *  servidor). La pantalla no decía nada —la fila sólo desaparecía— y, en el
+ *  recorrido de los manuales, se leyó como que no salía ningún correo. Dice a
+ *  quiénes se encoló, sin direcciones ni plata (lo mira también quien no lo
+ *  cargó). `avisos` es el de `POST /reservas/{id}/confirmar`. */
+export function textoDeLaConfirmacion(codigo: string, avisos: AvisosContrato | null | undefined): string {
+  const hecho = `${codigo} pasó a contrato.`;
+  if (!avisos) return hecho;
+  if (!avisos.smtp_listo) return `${hecho} No salió ningún correo: el correo no está configurado en el servidor.`;
+  const a = [
+    avisos.comercial.length > 0 ? "al área comercial" : "",
+    avisos.proveedor.length > 0 ? "al proveedor" : "",
+    avisos.montaje.length > 0 ? "a quien monta" : "",
+  ].filter(Boolean);
+  const quienes = a.length > 1 ? `${a.slice(0, -1).join(", ")} y ${a[a.length - 1]}` : a[0];
+  return [
+    hecho,
+    quienes ? `Salió el aviso ${quienes}.` : "No salió ningún aviso: no hay contactos cargados para esta sede.",
+    avisos.proveedor.length === 0 && (avisos.proveedor_sin_correo?.length ?? 0) > 0 ? "El proveedor no tiene correo: avisale vos." : "",
+    avisos.montaje.length === 0 && (avisos.montaje_pendiente?.length ?? 0) > 0
+      ? "El de montaje sale cuando el espacio tenga su planometría." : "",
+  ].filter(Boolean).join(" ");
 }

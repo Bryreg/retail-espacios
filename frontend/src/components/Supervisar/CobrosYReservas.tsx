@@ -11,6 +11,7 @@ import { isDoubleGondola } from "../../types/espacio";
 import { codigoVisibleDe, partirCodigo } from "../../utils/partes";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { EncabezadoDeSeccion, Mira } from "./piezas";
+import { textoDeLaConfirmacion } from "../../utils/supervision";
 
 /**
  * Dos bloques de «Para revisar» que nacieron con el rediseño de Vender (PR 1,
@@ -307,8 +308,9 @@ export function ReservasSinConfirmar({ sede, vivas, onCambio, titulo = "Reservas
   /** «Reservas que caducan hoy» (Hoy) o «Reservas por caducar» (30 días). */
   titulo?: string;
   vivas: readonly ReservaDeEspacio[];
-  /** Una reserva se confirmó o se canceló: hay que volver a leer la lista y el mapa. */
-  onCambio: () => void;
+  /** Una reserva se confirmó o se canceló: hay que volver a leer la lista y
+   *  el mapa. Al confirmar trae qué pasó con los correos (`aviso`). */
+  onCambio: (aviso?: string | null) => void;
 }) {
   if (vivas.length === 0) return null;
   return (
@@ -321,7 +323,11 @@ export function ReservasSinConfirmar({ sede, vivas, onCambio, titulo = "Reservas
 
 /** Una reserva con Confirmar y Cancelar. También la usa la ficha del espacio
  *  («Reservado hasta …»), con el mismo camino. */
-export function FilaDeReserva({ r, sede, onCambio }: { r: ReservaDeEspacio; sede: string; onCambio: () => void }) {
+export function FilaDeReserva({ r, sede, onCambio }: {
+  r: ReservaDeEspacio; sede: string;
+  /** Confirmada (con lo que pasó con los correos) o cancelada. */
+  onCambio: (aviso?: string | null) => void;
+}) {
   const [enCurso, setEnCurso] = useState<"confirmar" | "cancelar" | null>(null);
   const [preguntando, setPreguntando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -334,9 +340,15 @@ export function FilaDeReserva({ r, sede, onCambio }: { r: ReservaDeEspacio; sede
     setEnCurso(que);
     setError(null);
     try {
-      if (que === "confirmar") await confirmarReserva(r.id);
-      else await cancelarReserva(r.id);
-      onCambio();
+      if (que === "confirmar") {
+        // Salen los avisos de un contrato nuevo (los de vender): se dice a
+        // quiénes, porque la fila desaparece y no quedaba rastro (2026-11-20).
+        const hecho = await confirmarReserva(r.id);
+        onCambio(textoDeLaConfirmacion(cod, hecho.avisos));
+      } else {
+        await cancelarReserva(r.id);
+        onCambio(null);
+      }
     } catch (e) {
       setError(describeError(e, que === "confirmar"
         ? "No se pudo confirmar la reserva: probá de nuevo en un momento."

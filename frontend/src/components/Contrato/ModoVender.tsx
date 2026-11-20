@@ -642,22 +642,29 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar, onVerFicha }: {
               <span>
                 El contrato anterior quedó cerrado como «reemplazado».{" "}
                 {editado.nuevos > 1
-                  ? "Los contratos nuevos piden su planometría y su montaje en «Para revisar»."
-                  : "El contrato nuevo pide su planometría y su montaje en «Para revisar»."}
+                  ? "Los contratos nuevos piden su planometría y su montaje en Pendientes."
+                  : "El contrato nuevo pide su planometría y su montaje en Pendientes."}
               </span>
             )}
           </div>
         </div>
         <div className="avisos-guardado">
-          {editado?.sinReenvio
+          {/* Una reserva no manda correos (vender-api.md §8): salen al
+              confirmarla. Sin `avisos`, `Avisos` decía «El contrato quedó
+              guardado.» debajo de «Reservado hasta el …» (2026-11-20). */}
+          {reserva
+            ? <p className="nota-guardado" data-reserva-sin-avisos>Todavía no es un contrato: no salió ningún correo. Los avisos salen cuando se confirma.</p>
+            : editado?.sinReenvio
             ? <p className="nota-guardado" data-sin-reenvio>Sólo cambió cómo se lee el precio: no se envió de nuevo a los correos.</p>
             : <Avisos avisos={datos.avisos} />}
         </div>
         {/* La planometría no se carga en Vender (decisión de la dueña,
             2026-10-20): se dice dónde, una vez, sin alarma. */}
         {/* Editando, sólo si hace falta: un reemplazo ya lo dijo arriba, y un
-            contrato que ya tiene su planometría no tiene nada que cargar. */}
-        {(!editado || (!editado.reemplazo && !editado.conPlanometria)) && (
+            contrato que ya tiene su planometría no tiene nada que cargar. Una
+            reserva tampoco: la planometría se cuelga del contrato, al
+            confirmarla (§8). */}
+        {!reserva && (!editado || (!editado.reemplazo && !editado.conPlanometria)) && (
           <p className="nota-guardado" data-planometria-en-supervisar>La planometría se carga en Indicadores, en la ficha del espacio.</p>
         )}
         {!reserva && !editado && <QuePasaAhora datos={datos} />}
@@ -669,7 +676,7 @@ function Cerrado({ datos, onSeguir, onVolverASupervisar, onVerFicha }: {
         <div className="acciones">
           {editado && onVolverASupervisar ? (
             <button type="button" className="btn-tinta" onClick={onVolverASupervisar} data-volver-a-supervisar>
-              <ArrowLeft {...ICONO} /> Volver a Supervisar
+              <ArrowLeft {...ICONO} /> Volver a Indicadores
             </button>
           ) : (
             <>
@@ -1050,7 +1057,7 @@ function Ficha(props: Omit<ModoVenderProps, "cerrado" | "onSeguir">) {
             Supervisar, que relee la base. */}
         {edita ? (c.cambioAjeno ? (
           <button className="btn-texto" type="button" onClick={onSalirDeEdicion ?? onCancelar} data-volver-tras-cambio>
-            <ArrowLeft {...ICONO} /> Volver a Supervisar
+            <ArrowLeft {...ICONO} /> Volver a Indicadores
           </button>
         ) : null) : c.reservando ? (
           <button className="btn-texto" type="button" onClick={() => c.setReservando(false)} disabled={guardando}>

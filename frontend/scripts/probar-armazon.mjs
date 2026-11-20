@@ -169,6 +169,20 @@ prueba("la ficha: desde qué día queda disponible la cara entera", () => {
   assert.equal(iso(L.libreDesde([f("2026-10-01", "2026-10-26")], c, hoy)), "2026-10-27");
 });
 
+prueba("la ficha de una cara reservada dice la reserva y dibuja su tramo (2026-11-20)", () => {
+  const corta = (iso) => iso.split("-").reverse().join("/");
+  assert.equal(L.textoDeLaReserva({ desde: "2026-12-01", hasta: "2027-02-28", caduca: "2026-11-20" }, corta),
+    "Reservado hasta el 20/11/2026, sin confirmar: del 01/12/2026 al 28/02/2027");
+  // Al trabajador le llega sólo la marca, sin fechas.
+  assert.equal(L.textoDeLaReserva({}, corta), "Reservado: todavía no es un contrato");
+  const linea = sinComentarios(readFileSync(join(raiz, "src", "components", "Ficha", "LineaDeTiempo.tsx"), "utf8"));
+  assert.match(linea, /\{reserva\s*\? textoDeLaReserva\(reserva, corta\)/, "la línea dice «Disponible hoy» sobre una reserva");
+  assert.match(linea, /className="barra reserva"/, "la línea no dibuja el tramo reservado");
+  assert.match(readFileSync(join(raiz, "src", "components", "Ficha", "linea.css"), "utf8"), /\.barra\.reserva \{[^}]*dashed/,
+    "el tramo reservado se dibuja como un contrato");
+  assert.match(sinComentarios(leer("pages", "DashboardView.tsx")), /<LineaDeTiempo [^>]*reserva=\{entry\.reservado/, "la ficha no le pasa la reserva a la línea");
+});
+
 console.log("\narmazón · Contratos (etapa 4)");
 
 prueba("la línea de la sede: un carril por cara, las partes debajo, y nada de otra sede", () => {

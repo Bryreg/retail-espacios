@@ -174,4 +174,23 @@ await prueba("la casa: un amarillo por archivo, nada comercial, nunca «sombra»
   assert.ok(ficha.includes("const [reenviar, setReenviar] = useState(true)"), "mandar la guía de nuevo viene marcado (decisión del dueño)");
 });
 
+console.log("\nsupervisión · confirmar una reserva");
+
+await prueba("confirmar una reserva dice a quiénes salió el aviso (2026-11-20)", () => {
+  const av = (x = {}) => ({ smtp_listo: true, comercial: ["g@x.co"], montaje: [], proveedor: ["p@x.co"], montaje_pendiente: [24], ...x });
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", av()),
+    "PUN-09 pasó a contrato. Salió el aviso al área comercial y al proveedor. El de montaje sale cuando el espacio tenga su planometría.");
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", av({ montaje: ["m@x.co"], montaje_pendiente: [] })),
+    "PUN-09 pasó a contrato. Salió el aviso al área comercial, al proveedor y a quien monta.");
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", av({ proveedor: [], proveedor_sin_correo: ["Lácteos"], montaje_pendiente: [] })),
+    "PUN-09 pasó a contrato. Salió el aviso al área comercial. El proveedor no tiene correo: avisale vos.");
+  assert.match(SU.textoDeLaConfirmacion("PUN-09", av({ smtp_listo: false })), /No salió ningún correo: el correo no está configurado/);
+  assert.equal(SU.textoDeLaConfirmacion("PUN-09", null), "PUN-09 pasó a contrato.");
+  // Ni direcciones ni plata en el texto.
+  assert.doesNotMatch(SU.textoDeLaConfirmacion("PUN-09", av()), /@|\$/);
+  const fila = sinComentarios(leer("src/components/Supervisar/CobrosYReservas.tsx"));
+  assert.match(fila, /const hecho = await confirmarReserva\(r\.id\);\s*onCambio\(textoDeLaConfirmacion\(cod, hecho\.avisos\)\);/,
+    "confirmar descarta lo que pasó con los correos");
+});
+
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? ", hay fallas" : ""}.`);

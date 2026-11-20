@@ -17,7 +17,7 @@ import {
 import { fullSpaceCode } from "../../types/espacio";
 import { fusionarEstadoComercial } from "../../utils/estadoComercial";
 import { nombreDeMueble } from "../../utils/nomenclatura";
-import { numeroDePrecio, precioTecleado, textoDePrecio, textoDePrecioExacto, valoresDeLista } from "../../utils/precioDeLista";
+import { modoPorDefecto, numeroDePrecio, precioTecleado, textoDePrecio, textoDePrecioExacto, valoresDeLista } from "../../utils/precioDeLista";
 import { meses, sumarDias, sumarMeses, textoDeMeses } from "../../utils/meses";
 import { pbDeTexto, pct } from "../../utils/participaciones";
 import {
@@ -495,7 +495,14 @@ export function useContrato({
       const texto = valores[clave] ?? "";
       // Con sus centavos («0,5»): ni lo tecleado ni lo sembrado se redondea.
       const numero = numeroDePrecio(texto);
-      const modo: ModoPrecio = modos[clave] ?? "total";
+      // Cómo se lee el número: lo que se eligió; si nadie eligió, «Al mes»
+      // cuando el campo arranca con la TARIFA, que es un precio al mes
+      // (2026-11-20). Arrancaba en «Total» con la tarifa de UN mes escrita: un
+      // contrato de 3 meses de PUN-06 se guardaba por $ 600.000 si nadie
+      // tocaba «Al mes». Lo que trae la semilla (el total del contrato que se
+      // renueva, o lo que se edita con su modo) y una línea sin tarifa siguen
+      // en «Total», como siempre (`modoPorDefecto`).
+      const modo: ModoPrecio = modos[clave] ?? modoPorDefecto(ref, clave in (semilla?.valores ?? {}));
       const monto = deLaLinea.length === 0 && tipo !== "pc" ? 0
         : modo === "mensual" ? redondear(numero * nMeses) : numero;
       const peor: RangeAvailability = tipo === "pc"
@@ -575,14 +582,16 @@ export function useContrato({
    *  tocada, así el campo la vuelve a seguir. Por `escribirValor`: no hay otro
    *  camino que escriba el precio. */
   const volverALaTarifa = useCallback((clave: string, ref: number) => {
+    // La tarifa es al mes: vuelve leída como tal (en «Total» era un mes).
+    setModos((m) => ({ ...m, [clave]: "mensual" }));
     escribirValor(clave, textoDePrecio(ref));
     tocados.current.delete(clave);
   }, [escribirValor]);
   const tocado = (clave: string) => tocados.current.has(clave);
 
-  /** «Total | Al mes». Lo tecleado se convierte para que el total no salte;
-   *  lo que nadie tocó sigue siendo la tarifa (que es al mes), y pasa a
-   *  leerse como tal.
+  /** «Total | Al mes». Lo escrito se convierte para que el total no salte,
+   *  también la tarifa que nadie tocó (arranca «Al mes»: pasada a «Total» es
+   *  la tarifa × los meses, no un mes).
    *
    *  Editando, NO se convierte: el número escrito queda y cambia cómo se lee
    *  (decisión del dueño, 2026-10-25). Es lo que hace falta para corregir un
@@ -592,7 +601,9 @@ export function useContrato({
   const cambiarModo = useCallback((clave: string, modo: ModoPrecio) => {
     setModos((m) => ({ ...m, [clave]: modo }));
     if (semilla?.edita) return;
-    if (!tocados.current.has(clave) || nMeses <= 0) return;
+    // También lo que nadie tocó: la tarifa arranca «Al mes» y pasarla a
+    // «Total» sin convertirla volvía a dejar un mes de tarifa como el total.
+    if (nMeses <= 0) return;
     const l = lineas.find((x) => x.clave === clave);
     if (!l || l.modo === modo || l.numero <= 0) return;
     escribirValor(clave, textoDePrecioExacto(modo === "mensual" ? redondear(l.numero / nMeses) : redondear(l.numero * nMeses)));

@@ -957,7 +957,13 @@ prueba("«Renovar» de una participación abre Vender armado, y sólo renueva un
   assert.match(v, /if \(t && t\.estado === "contrato" && \(t\.estado_visible === "vigente" \|\| t\.estado_visible === "firmado"\)\) termino = t\.id;/,
     "renovar marca para renovar una reserva, un vencido o un cancelado");
   assert.match(v, /renueva: termino \? \{ \[caraCompleta\]: termino \} : \{\},/, "renueva un término que no es un contrato vivo");
-  assert.match(v, /desde: termino && desde \? toISODate\(desde\) : "",/, "sobre algo que no se renueva, arranca después de un contrato que no corre");
+  assert.match(v, /desde: termino && fechas \? fechas\.desde : "",/, "sobre algo que no se renueva, arranca después de un contrato que no corre");
+  // Los mismos MESES, no los mismos días (2026-11-20): 1 jun – 30 nov se
+  // renovaba hasta el 1 jun.
+  assert.match(v, /const fechas = t\.desde && t\.hasta \? renovacionDe\(t\.desde, t\.hasta\) : null;/, "la participación se renueva por días");
+  assert.match(v, /const fechas = entry\.startDate && entry\.endDate \? renovacionDe\(entry\.startDate, entry\.endDate\) : null;/,
+    "el contrato se renueva por días");
+  assert.doesNotMatch(v, /largo \* dia/, "queda una renovación que copia el largo en días");
   assert.match(v, /negociar\(f, entry\.face, semillaPc\);/, "renovar una participación no abre Vender");
   // El botón «Renovar» de la ficha de Supervisar (las participaciones de la
   // cara) también abre Vender: nunca el Editor 3D → Distribución.
@@ -1644,7 +1650,8 @@ prueba("la ficha sigue al mueble de la última sincronización: cancelar una res
   const t = sinComent(fuenteDe("pages/DashboardView.tsx"));
   assert.match(t, /useEffect\(\(\) => \{\s*if \(!selected\) return;\s*const fresco = fixtures\.find\(\(f\) => f\.id === selected\.id\);\s*if \(fresco && fresco !== selected\) setSelected\(fresco\);\s*\}, \[fixtures, selected\]\);/,
     "la ficha se queda con el mueble de antes de cancelar o confirmar");
-  assert.match(t, /onReservaCambio=\{\(\) => \{\s*reservasSinConfirmar\.recargar\(\);\s*void refrescarComercial\(\);/);
+  // (Con lo que pasó con los correos al confirmarla, en el aviso de la lista.)
+  assert.match(t, /onReservaCambio=\{\(aviso\) => \{\s*setAvisoDeSupervision\(aviso \?\? null\);\s*reservasSinConfirmar\.recargar\(\);\s*void refrescarComercial\(\);/);
   // Y al trabajador una reserva le sale «Reservado» en la ficha, no «Disponible para vender».
   assert.match(t, /\) : !hasContract && entry\.reservado \? \(/);
 });
@@ -1906,7 +1913,7 @@ prueba("Vender en edición: manda `edita` con el leaseId y `esperado`, sin la no
   assert.match(m, /<b>Editando el contrato de \{nombreDelContrato\(edita\.antes\)\}<\/b>/);
   assert.match(m, /<X \{\.\.\.ICONO\} \/> Salir sin cambios/);
   assert.match(m, /<b>Al guardar, se envía de nuevo a los correos:<\/b> comercial · el proveedor \(\{c\.correoDestino\}\) · montaje/);
-  assert.match(m, /\{edita \? \(c\.cambioAjeno \? \(\s*<button className="btn-texto" type="button" onClick=\{onSalirDeEdicion \?\? onCancelar\} data-volver-tras-cambio>\s*<ArrowLeft \{\.\.\.ICONO\} \/> Volver a Supervisar/,
+  assert.match(m, /\{edita \? \(c\.cambioAjeno \? \(\s*<button className="btn-texto" type="button" onClick=\{onSalirDeEdicion \?\? onCancelar\} data-volver-tras-cambio>\s*<ArrowLeft \{\.\.\.ICONO\} \/> Volver a Indicadores/,
     "tras un 409 `contrato_cambio` no se ofrece volver a Supervisar");
   assert.match(m, /<Send \{\.\.\.ICONO\} \/> Guardar cambios y reenviar/);
   // 2026-10-25: si lo ÚNICO que cambia es cómo se lee el precio (el mismo
@@ -2076,15 +2083,16 @@ prueba("el foco vuelve al «Editar contrato» que abrió la edición (o al títu
   assert.match(t, /<h3 className="mono" data-ficha-titulo tabIndex=\{-1\}>/);
   // El reemplazo: los NUEVOS piden lo suyo, con el plural bien.
   const uno = ED.notaDelReemplazo({ antes: { forma: "entera", visibleCara: "PUN-04", partes: [], pb: null }, planometria: "p.pdf" }, 1);
-  assert.equal(uno, "El contrato de PUN-04 se cierra como «reemplazado», no cancelado: su planometría (p.pdf) y su montaje quedan con él. El contrato nuevo pide su planometría y su montaje en «Para revisar».");
+  assert.equal(uno, "El contrato de PUN-04 se cierra como «reemplazado», no cancelado: su planometría (p.pdf) y su montaje quedan con él. El contrato nuevo pide su planometría y su montaje en Pendientes.");
   const dos = ED.notaDelReemplazo({ antes: { forma: "entera", visibleCara: "PUN-04", partes: [], pb: null }, planometria: null }, 2);
-  assert.match(dos, /su montaje queda con él\. Los 2 contratos nuevos piden su planometría y su montaje en «Para revisar»\.$/);
+  assert.match(dos, /su montaje queda con él\. Los 2 contratos nuevos piden su planometría y su montaje en Pendientes\.$/);
   assert.deepEqual([ED.resumenDeCambios([{ campo: "Cobro" }]), ED.resumenDeCambios([{ campo: "a" }, { campo: "b" }, { campo: "c" }, { campo: "d" }])],
     ["Cobro", "4 cambios"]);
   const m = sinComent(fuenteDe("components/Contrato/ModoVender.tsx"));
   // El éxito no pide la planometría de un contrato que ya la tiene.
-  assert.match(m, /\{\(!editado \|\| \(!editado\.reemplazo && !editado\.conPlanometria\)\) && \(\s*<p className="nota-guardado" data-planometria-en-supervisar>/);
-  assert.match(m, /editado\.nuevos > 1\s*\? "Los contratos nuevos piden su planometría y su montaje en «Para revisar»\."/);
+  // Ni la de una reserva: la planometría se cuelga del contrato al confirmarla.
+  assert.match(m, /\{!reserva && \(!editado \|\| \(!editado\.reemplazo && !editado\.conPlanometria\)\) && \(\s*<p className="nota-guardado" data-planometria-en-supervisar>/);
+  assert.match(m, /editado\.nuevos > 1\s*\? "Los contratos nuevos piden su planometría y su montaje en Pendientes\."/);
   const d = sinComent(fuenteDe("components/Contrato/ConfirmarEdicion.tsx"));
   assert.match(d, /\{notaDelReemplazo\(edita, c\.nuevos\)\}/);
   assert.doesNotMatch(d, /su montaje se vuelven a pedir/, "el diálogo dice que se vuelven a pedir los del contrato viejo");

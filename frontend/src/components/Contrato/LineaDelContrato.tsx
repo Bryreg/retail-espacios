@@ -249,7 +249,8 @@ export function Porcentaje({ l, c }: { l: LineaDelContrato; c: Contrato }) {
 export function PrecioDeLinea({ l, c }: { l: LineaDelContrato; c: Contrato }) {
   const editado = c.tocado(l.clave) && l.ref !== null && l.numero !== l.ref;
   const origen = l.modo === "mensual"
-    ? (c.nMeses > 0 ? `al mes × ${c.textoDeMeses(c.nMeses)} = ${pesosExactos(l.monto)}` : "al mes")
+    // La tarifa sin tocar lo dice: «tarifa al mes × 3 meses = $ 1.800.000».
+    ? `${!editado && l.ref !== null && l.numero === l.ref ? "tarifa " : ""}${c.nMeses > 0 ? `al mes × ${c.textoDeMeses(c.nMeses)} = ${pesosExactos(l.monto)}` : "al mes"}`
     : l.tipo === "pc"
     ? (l.tarifaCara !== null ? `${pct(l.pb)} de ${money(l.tarifaCara)} al mes` : "sin tarifa de referencia")
     : l.tipo === "partes" && l.refUnidad !== null && l.items.length > 1 && l.items.every((i) => i.ref === l.refUnidad)
@@ -270,7 +271,9 @@ export function PrecioDeLinea({ l, c }: { l: LineaDelContrato; c: Contrato }) {
         {editado ? <Pencil {...ICONO} size={12} /> : <Tag {...ICONO} size={12} />}
         {origen}
       </span>
-      {editado && l.modo === "total" && (
+      {/* «Volver a la tarifa» la deja «Al mes» (es un precio al mes): sirve
+          igual desde «Total». */}
+      {editado && (
         <button type="button" className="enlace" onClick={() => c.volverALaTarifa(l.clave, l.ref!)}>
           Volver a la tarifa
         </button>

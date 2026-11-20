@@ -50,6 +50,19 @@ export function valoresDeLista(
   return nuevos;
 }
 
+/** Cómo se lee el precio de una línea que nadie pasó a «Total» o «Al mes»
+ *  (2026-11-20). La tarifa de referencia es un precio AL MES («tarifa
+ *  $ 600.000 al mes»), así que una línea que arranca con ella escrita arranca
+ *  «Al mes»: tarifa × los meses = el total, coherente con el plazo aunque
+ *  cambien las fechas. Arrancaba en «Total» con la tarifa de UN mes: tres
+ *  meses de una punta se guardaban por $ 600.000 si nadie tocaba «Al mes».
+ *  Lo que trae la semilla (el total del contrato que se renueva, o lo que se
+ *  reabre en «Editar contrato» con su modo) y una línea sin tarifa (se
+ *  teclea el total, como siempre) van en «Total». */
+export function modoPorDefecto(ref: number | null, deLaSemilla: boolean): "mensual" | "total" {
+  return ref !== null && !deLaSemilla ? "mensual" : "total";
+}
+
 /* ── Lo tecleado, con sus centavos ─────────────────────────────────────────
    El campo del precio se escribe como acá (es-CO): el punto es de miles y la
    coma, de los decimales. Un contrato de POBLADO guardó «$ 0,5»: al reabrirlo
