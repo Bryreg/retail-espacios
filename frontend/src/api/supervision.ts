@@ -42,6 +42,10 @@ export interface CaraPorSupervisar {
   aviso: AvisoDeMontaje | null;
   revision: RevisionDeMontaje | null;
   fotos_nuevas: number;
+  /** Si quien mira puede revisarla (la que puede publicar). En «Para revisar»
+   *  siempre; en la lista de Montajes (`todas=1`) el trabajador ve también las
+   *  de los muebles internos que no publica: ésas sólo las mira (la guía). */
+  puede_revisar: boolean;
 }
 
 /** La ficha: la guía (lo planificado) con los avisos, las fotos y la historia. */

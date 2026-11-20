@@ -182,6 +182,33 @@ def test_revisa_quien_puede_publicar_esa_cara(client, admin, worker):
     assert client.post("/api/guia/aviso", headers=worker, json={"version": vm, "estado": "montada"}).status_code == 403
 
 
+def _montajes(client, quien):
+    r = client.get("/api/planogramas/supervision", headers=quien, params={"sede": "NAVE", "todas": 1})
+    assert r.status_code == 200, r.text
+    return r.json()["caras"]
+
+
+@RELOJ
+def test_la_lista_de_montajes_le_muestra_al_trabajador_lo_que_monta(client, admin, worker):
+    """Recorrido de los manuales (2026-11-20): Montajes dice «contratos y
+    planogramas», y al trabajador la lista de planogramas le llegaba vacía.
+    Con ``todas=1`` ve las caras que puede leer (las de los muebles internos),
+    sin poder revisarlas; «Para revisar» (sin ``todas``) no cambia."""
+    ids, _v1, v2 = _preparar(client, admin)
+    _publicar(client, admin, "f-MET-01", [{"destino_id": ids[0], "pb": 2000, "vertices": _rect(0, 0.2)}], 0)
+    assert {(c["codigo"], c["puede_revisar"]) for c in _montajes(client, admin)} == {("INT-01", True), ("MET-01", True)}
+    # El trabajador: el interno, para mirar; el que se vende lleva contratos, no.
+    (c,) = _montajes(client, worker)
+    assert (c["codigo"], c["version_id"], c["estado"], c["puede_revisar"]) == ("INT-01", v2, "sin_montar", False)
+    assert _lista(client, worker) == []
+    # Mirar la guía sí puede; la ficha de la revisión y revisar, no.
+    assert client.get("/api/guia", headers=worker, params={"version": v2}).status_code == 200
+    assert client.get("/api/planogramas/supervision/version", headers=worker, params={"id": v2}).status_code == 403
+    # Con el equipo habilitado para publicar los internos, también los revisa.
+    assert client.put("/api/planogramas/ajustes", headers=admin, json={"quien_publica": "equipo"}).status_code == 200
+    assert [(c["codigo"], c["puede_revisar"]) for c in _montajes(client, worker)] == [("INT-01", True)]
+
+
 @RELOJ
 def test_si_no_coincide_le_llega_la_guia_con_la_nota(client, admin, monkeypatch):
     _ids, _v1, v2 = _preparar(client, admin)
