@@ -1,0 +1,270 @@
+Ir al contenido
+RECABRA
+Funciones
+Para quién
+Implementación
+Precio
+7
+LIBRES
+3
+SE LIBERAN
+6
+TOMADOS
+Crear mi cuenta
+CENTRO
+PALMAS
+GON-04·A
+PUN-01
+GON-04·B
+EXP-01
+CRS-01
+BEB-01
+PUN-02
+PUN-05
+EXP-02
+FRU-02
+GON-11·A
+PUN-01
+ISL-01
+CAJ-02
+PUN-03
+BAT-01
+Una góndola son dos espacios
+GON-04·A tomada · GON-04·B libre. Cada cara se vende aparte.
+Una sola ficha
+proveedor
+Bebidas Zafiro
+valor acordado
+$ 3.050.000
+desde
+1 sep
+hasta
+31 oct
+61 días · 1 espacio
+$ 3.050.000
+ESCOLAR
+SEMANA SANTA
+DÍA DE LA MADRE
+DÍA DEL PADRE
+VACACIONES
+AMOR Y AMISTAD
+HALLOWEEN
+BLACK FRIDAY
+NAVIDAD
+−17 %
+vs referencia
+el comercial
+recibe el acuerdo con el valor
+1
+el mercaderista
+recibe la orden de montaje
+2
+el proveedor
+recibe la constancia
+3
+30
+DÍAS
+15
+DÍAS
+6
+DÍAS
+CRS-01
+Pasillo central · sede CENTRO
+Montado
+No pude
+Supermercado de ejemplo · Toque un mueble
+Centrar
+Ver en 3D
+ESTADO EN EL PERIODO
+Libre todo el periodo
+7
+Se libera en el periodo
+3
+Tomado
+6
+Resto de la sala
+Es la misma lectura que tendrá dentro del sistema, con su propia tienda.
+Arrastre para moverse. Ctrl + rueda para acercar. Toque un mueble para ver su ficha.
+PUN-02
+Punta de góndola
+Pasillo 2, de cara a las cajas · sede CENTRO
+Se libera en el periodo
+Confites Milagro
+$ 1.150.000 al mes
+libre desde el 26 sep
+Proveedor y valores de ejemplo
+←
+Volver a la portada
+RECABRA
+Gestión de espacios comerciales
+El ingreso no está configurado en este servidor. Escríbanos para que lo revisemos.
+Política de Tratamiento de Datos Personales
+01 / FUNCIONES
+Funciones
+Seis funciones, todas implementadas y en operación.
+Seis tarjetas. El plano contiguo acompaña cada una: acerca el mueble correspondiente, lo repinta, lo separa en dos caras y despliega los avisos.
+01 / 06
+El inventario como plano, no como lista de códigos
+Cada sede se representa tal como está distribuida: góndolas, puntas, islas, neveras, bateas y cajas. Cada mueble conserva su código y sus medidas, y el plano muestra el estado de ocupación. Cuando el proveedor necesita evaluar cómo quedará la exhibición, la misma sede puede recorrerse en 3D.
+SEDE CENTRO
+PLANO
+Plano 2D · vista 3D · una sola nomenclatura para toda la cadena
+02 / 06
+El contrato se registra sobre el mueble
+Al seleccionar el espacio se completa una sola ficha: proveedor, marca, valor acordado y vigencia. Si el acuerdo cubre tres puntas de góndola, se seleccionan las tres y se genera un único contrato, con el total sumado. El valor es el que se pactó: el sistema no lo prorratea ni lo reinterpreta.
+FICHA DEL CONTRATO
+Punta de góndola
+$ 1.500.000
+Punta de góndola
+$ 1.550.000
+Plazo
+61 días
+TOTAL DEL CONTRATO
+$ 3.050.000
+Un proveedor, un periodo, los espacios que el acuerdo requiera
+03 / 06
+Disponibilidad por temporada comercial
+Al seleccionar el periodo —Amor y Amistad, Halloween, Black Friday, Navidad, regreso a clases— el plano se recalcula para esas fechas: disponible durante todo el periodo, con liberación intermedia, u ocupado. Un panel indica cuántos espacios quedan disponibles según la fecha de inicio del contrato. Un mueble que se desocupa el 25 es inventario comercializable desde hoy.
+Amor y Amistad
+Halloween
+Black Friday
+Navidad
+Nueve temporadas del calendario comercial colombiano, con la ventana de venta que cada supermercado defina
+04 / 06
+Tarifa de referencia y desviación
+Se registra una tarifa por tipo de mueble, con ajuste por sede cuando una tienda tiene mayor valor comercial. Al registrar el valor de un contrato, el sistema muestra la referencia y la desviación: «−17 % vs referencia». El tablero lista los contratos por debajo de tarifa para revisarlos en la próxima renovación.
+VALOR DEL CONTRATO
+−17 % VS REFERENCIA
+Tarifa de referencia
+$ 1.150.000
+La tarifa la consulta el administrador. El mercaderista no accede a ningún valor.
+05 / 06
+Notificaciones automáticas
+Al guardar un contrato se envían tres correos distintos: el área comercial recibe el acuerdo con el valor, el mercaderista recibe la orden de montaje sin ningún monto y con el enlace para reportar, y el proveedor recibe la constancia de su acuerdo. Antes del vencimiento el sistema notifica tres veces: a 30, 15 y 6 días. Con una semana de margen ya no queda espacio para renegociar; con un día, el aviso solo informa un hecho consumado.
+Comercial
+acuerdo
+con valor
+Mercaderista
+montaje
+sin valor
+Proveedor
+constancia
+del acuerdo
+30
+15
+6
+Al acercarse el vencimiento, la acción Renovar llega precargada con el proveedor, la marca y el valor vigente.
+06 / 06
+Confirmación de montaje con evidencia fotográfica
+El correo del mercaderista incluye un enlace que abre directamente en el espacio asignado. Sin contraseña y sin acceso al tablero de la tienda: únicamente el mueble, su ubicación —«a unos 4 m de las cajas», señalada sobre el plano de la sala— y dos acciones. «Montado» exige fotografía. «No pude» exige motivo: sin motivo registrado no hay responsable identificable.
+PUN-01
+Punta de góndola · sede CENTRO
+a unos 4 m de las cajas
+Montado
+No pude
+«Montado» exige fotografía: sin fotografía no hay montaje reportado. Puede probarlo en el ejemplo.
+La fotografía queda archivada. Es el respaldo ante un reclamo del proveedor meses después.
+Además: la temporada completa puede cargarse desde una planilla de Excel y revisarse fila por fila antes de crear ningún contrato, todas las sedes se administran desde la misma cuenta, y cada integrante del equipo se incorpora con el nivel de permiso que le corresponde.
+02
+Tres perfiles, tres vistas distintas del mismo sistema
+Supermercado de ejemplo con dos sedes. En la sede CENTRO hay diez espacios alquilables: cuatro libres, dos que se liberan dentro del periodo y cuatro tomados. En la sede PALMAS hay seis: tres libres, uno que se libera y dos tomados. Cada espacio tiene un código, un tipo de mueble, un proveedor de ejemplo y un canon mensual. Los datos son inventados.
+Los datos del plano son inventados, para mostrar cómo se ve. Ningún supermercado real aparece acá.
+Los mismos datos del plano, en tabla
+02 / PARA QUIÉN
+Tres perfiles, tres vistas distintas del mismo sistema
+GERENTE O ADMINISTRADOR
+Decide con datos a la vista
+Dispone del plano, los valores y el calendario en una sola pantalla. Registra el contrato, fija el precio con la tarifa de referencia a la vista y conoce qué vence el mes siguiente. Puede mostrar el plano al proveedor durante la negociación: esa pantalla no expone el nombre ni el canon de ningún otro proveedor.
+TRABAJADOR DE PISO
+Ejecuta y reporta, sin acceso a valores
+PROVEEDOR
+Recibe constancia de lo contratado
+PANTALLA DEL GERENTE
+SUPERMERCADO DE EJEMPLO
+SEDE CENTRO · 1 → 30 DE SEPTIEMBRE
+PUN-01 · Punta de góndola
+Bebidas Zafiro
+Canon mensual
+$ 1.300.000
+Tarifa de referencia
+$ 1.150.000
+Hasta
+28 sep
+7 libres
+3 se liberan
+6 tomados
+Proveedor y valores de ejemplo
+LOS INDICADORES DISPONIBLES EN EL TABLERO
+OCUPACIÓN · EJEMPLO
+No son proyecciones. Son las cifras que el tablero calcula sobre los datos cargados.
+35 %
+8 de 23 caras vendidas en el periodo
+Ocupación
+35 % · 8 de 23 caras vendidas en el periodo
+Canon vigente
+ingreso mensual de los contratos vigentes
+Sin alquilar
+valor a tarifa de los espacios desocupados, y su equivalente por día
+Vence en 30 días
+espacios e ingreso mensual que se pierden si no se renuevan
+Sin montar
+contratos ya facturados cuyo montaje aún no se ha ejecutado
+Un contrato que cubre tres puntas de góndola se registra una vez, no tres.
+03
+Cómo se implementa
+03 / IMPLEMENTACIÓN
+Cómo se implementa
+Tres etapas. La primera toma un minuto; la segunda concentra el trabajo de levantamiento y se realiza una sola vez.
+SEDE CENTRO
+CUENTA CREADA · SALA VACÍA
+1
+Creación de la cuenta y del supermercado
+El registro se hace con Google o con correo corporativo. Quien crea la cuenta queda como titular y desde ahí incorpora al equipo: cada integrante con su propio correo y con el nivel de permiso que le corresponde.
+dueño de la cuenta
+administrador
+trabajador de piso
+2
+Levantamiento del plano de cada sede
+Los muebles se ubican según la distribución real de la sala y se marca cuáles son alquilables. Cajas y columnas quedan como referencia, en gris. Si los contratos de la temporada ya existen en una planilla, se cargan en un solo paso: el sistema reporta fila por fila cuáles proceden y cuáles presentan conflicto, antes de crear ningún registro.
+3
+Comercialización sobre el plano
+Se selecciona la temporada, se identifican los espacios disponibles y se registra el contrato sobre el mueble. Al guardar se envían los tres correos y el espacio cambia de estado en el plano.
+Cada supermercado inicia con el sistema vacío. RECABRA no incorpora datos de terceros.
+04
+Modelo comercial
+04 / PRECIO
+Modelo comercial
+MODELO COMERCIAL
+[COMPLETAR: precio]
+[COMPLETAR: unidad — por supermercado al mes, por sede al mes, o lo que corresponda]
+Pago por transferencia bancaria contra cuenta de cobro. No se utiliza pasarela de pagos ni se solicitan datos de tarjeta.
+Para cadenas regionales o multisede, escríbanos a[COMPLETAR: correo de contacto] y evaluamos el alcance en conjunto.
+Hablemos
+Primer aviso en pantalla; el servicio continúa sin cambios.
+Si la mora persiste, la cuenta pasa a solo lectura: se conserva el acceso y la consulta, pero no se registran contratos nuevos.
+Los datos no se eliminan en ningún caso. Regularizada la cuenta, la operación se reanuda donde quedó.
+05
+Empiece por una sede
+Empiece por una sede
+Comience por la sede con mayor volumen de espacios comercializables y evalúe la disponibilidad de esta temporada. Si el resultado es útil, incorpore las demás.
+Crear mi cuenta
+Ya tengo cuenta
+Registro con Google o con correo corporativo. El plano de esta página es un ejemplo; el de cada supermercado se levanta con sus propias sedes.
+RECABRA
+RECABRA · Gestión de espacios comerciales en supermercados
+Volver arriba
+PRODUCTO
+Funciones
+Implementación
+Precio
+CUENTA
+Crear mi cuenta
+Ya tengo cuenta
+LEGAL
+Política de Tratamiento de Datos
+Tratamiento de datos y derechos del titular
+[COMPLETAR: razón social] · NIT [COMPLETAR: NIT] · [COMPLETAR: ciudad, Colombia]
+Tratamiento de datos personales conforme a la Ley 1581 de 2012 y al Decreto 1377 de 2013.
+Para ejercer sus derechos como titular, escriba a [COMPLETAR: correo de protección de datos].
+© 2026 RECABRA. Todos los derechos reservados.
+El plano de esta página corresponde a un supermercado ficticio, definido en el código de la propia página. No representa a ningún cliente.

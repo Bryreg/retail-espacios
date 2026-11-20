@@ -1,0 +1,20 @@
+{
+ "galerias": {
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4iLCJlcG9jYSI6MCwiY2xpZW50ZSI6ImdhbGVyaWFzIiwiZXhwIjoxNzk1MjUwMzgxLCJqdGkiOiJmZjc5ZjQwMTA4MDg0M2VlYjZkM2FlNDkwZDk3M2YyNCIsInN1YiI6IjEiLCJlbWFpbCI6ImRpYW5hLmR1ZW5hQHN1cGVybWVyY2Fkby5leGFtcGxlIn0.x8T7MMtE_0H3LPiymYqWlcM1rMMpIBuMKx_Fi_NDhq4",
+  "role": "admin",
+  "cliente": "galerias",
+  "cliente_nombre": "Galerías",
+  "rol_cliente": "owner",
+  "email": "diana.duena@supermercado.example",
+  "nombre": "Diana Prueba"
+ },
+ "norte": {
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4iLCJlcG9jYSI6MCwiY2xpZW50ZSI6Im5vcnRlX3BydWViYSIsImV4cCI6MTc5NTI1MDM4MSwianRpIjoiMWEyMjZjNDI5NTIzNDgwMGJjMzVmNzczYjg0YmFiNDQiLCJzdWIiOiIxIiwiZW1haWwiOiJkaWFuYS5kdWVuYUBzdXBlcm1lcmNhZG8uZXhhbXBsZSJ9.y9VhKKuJtocYsLm2rBkFMGg19M-4I5bg7oGM7U-q7YM",
+  "role": "admin",
+  "cliente": "norte_prueba",
+  "cliente_nombre": "Supermercado Norte (prueba)",
+  "rol_cliente": "owner",
+  "email": "diana.duena@supermercado.example",
+  "nombre": "Diana Prueba"
+ }
+}

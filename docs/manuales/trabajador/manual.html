@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>RECABRA · Manual del trabajador</title>
+<link rel="stylesheet" href="../herramientas/estilo.css">
+<style>
+  /* Lo propio de este manual: capturas de computador más chicas cuando
+     alcanza con ver la forma de la pantalla, y la lista numerada de la barra. */
+  figure.media img { max-width: 72%; }
+  figure.chica img { max-width: 48%; }
+  figure.barra img { max-width: 100%; }
+  ol.referencias { margin: 2mm 0 4mm; padding-left: 7mm; font-size: 10.8pt; }
+  ol.referencias li { margin-bottom: 1.2mm; }
+  ol.referencias li::marker { color: var(--marca); font-weight: 750; }
+</style>
+</head>
+<body>
+
+<section class="portada">
+  <div class="marca-app">RECABRA</div>
+  <div>
+    <div class="tipo">Manual paso a paso</div>
+    <h1>El trabajador<br>de la tienda</h1>
+    <p class="para">Para el personal de la tienda que tiene cuenta en RECABRA: registrás los montajes de cada día con su foto, revisás qué está pendiente y consultás el estado de los espacios. Nunca ves plata.</p>
+    <img class="foto-portada" src="../img/trabajador/20-montajes.jpg" alt="La pantalla de Montajes en el computador">
+  </div>
+  <dl class="ficha">
+    <dt>Versión</dt><dd>{{VERSION}} · {{FECHA}}</dd>
+    <dt>Sistema</dt><dd>{{APP}}</dd>
+    <dt>Equipo</dt><dd>Computador con internet (las pantallas son de un computador de 1280 × 800)</dd>
+    <dt>Tiempo de lectura</dt><dd>30 minutos</dd>
+    <dt>Datos de ejemplo</dt><dd>Todas las pantallas son de una sede de prueba («CENTRO»). Proveedores, marcas y personas son inventados.</dd>
+  </dl>
+</section>
+
+<nav class="indice"><h2>Contenido</h2></nav>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">1</span>Antes de empezar</h1>
+  <p class="entrada">RECABRA es el sistema donde el supermercado lleva los espacios que le alquila a los proveedores: puntas de góndola, entrepaños, caras de góndola, neveras. Vos sos los ojos y las manos en la tienda: confirmás que lo contratado quedó armado y dejás la foto como prueba.</p>
+
+  <h3>Lo que hacés con RECABRA</h3>
+  <ul>
+    <li><b>Todos los días:</b> mirar el <b>Inicio</b> y registrar los <b>Montajes</b> (<span class="texto-pantalla">Lo monté</span> con foto, o <span class="texto-pantalla">No pude</span> con el motivo).</li>
+    <li><b>Cuando pasa:</b> corregir un montaje que administración marcó como <span class="texto-pantalla">No coincide</span>, o volver a registrar uno que no se pudo hacer.</li>
+    <li><b>De vez en cuando:</b> consultar en <b>Indicadores</b> qué espacios están libres, qué vence y qué contratos tuvo un espacio.</li>
+  </ul>
+
+  <h3>Lo que necesitás</h3>
+  <ul>
+    <li>Un computador con internet.</li>
+    <li>Tu cuenta: la invitación que te llegó al correo del trabajo (ver 1.1).</li>
+  </ul>
+
+  <h3>Lo que NO hacés vos</h3>
+  <p>No ves montos ni tarifas, no vendés espacios, no cambiás fechas de contratos, no dibujás el plano y no tocás los ajustes. Tu menú tiene sólo <b>Inicio</b>, <b>Indicadores</b> y <b>Montajes</b>. Si algo de lo otro está mal, <b>avisale a quien administra la sede</b>.</p>
+
+  <div class="trio">
+    <div class="caja truco"><span class="rotulo">Una sola cuenta</span><p>Entrá siempre con la misma cuenta a la que te llegó la invitación. Es personal: no la prestes.</p></div>
+    <div class="caja error"><span class="rotulo">La foto es obligatoria</span><p>Sin foto no se puede decir <span class="texto-pantalla">Lo monté</span>. Es la prueba de que quedó armado.</p></div>
+    <div class="caja avisale"><span class="rotulo">Siempre hay a quién avisar</span><p>Ante cualquier duda: quien administra la sede del supermercado.</p></div>
+  </div>
+
+  <h2 class="proceso proceso-nuevo">1.1 Entrar por primera vez (la invitación)</h2>
+  <p class="cuando"><b>Cuándo:</b> una sola vez, cuando te llega el correo <span class="texto-pantalla">Invitación a Galerías — RECABRA</span> (con el nombre de tu supermercado).</p>
+  <ol class="pasos">
+    <li><p>Abrí el correo y tocá el enlace. El correo dice con qué cuenta tenés que entrar y que el enlace vence en 7 días.</p></li>
+    <li><p>Se abre el ingreso con el recuadro <span class="texto-pantalla">Invitación a Galerías</span>: dice tu rol (<span class="texto-pantalla">Rol: trabajador.</span>) y la cuenta con la que tenés que entrar, con letras tapadas (<code>m•••a@supermercado.example</code>).</p>
+      <figure class="chica"><img src="../img/trabajador/03-invitacion.jpg" alt="Invitación a Galerías"></figure></li>
+    <li><p>Si esa cuenta es de Google, tocá <span class="boton">Continuar con Google</span> y elegila. Si no, escribí ese <b>Correo</b> y una <b>Contraseña</b>. Si todavía no tenés contraseña, tocá <span class="boton">Crear una cuenta</span> con esa misma dirección.</p></li>
+    <li><p>Tocá <span class="boton azul">Ingresar</span>. Entrás al <b>Inicio</b> de tu sede.</p></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">Si te equivocás de cuenta</span><p>Si entrás con otra (por ejemplo, la personal), aparece <span class="texto-pantalla">La cuenta … no tiene acceso a ningún supermercado.</span> Tocá <span class="boton">Ingresar con otra cuenta</span> y entrá con la de la invitación. <b>No</b> uses <span class="texto-pantalla">Registrar un supermercado nuevo</span>: eso crea otro supermercado vacío.</p></div>
+  <div class="caja avisale"><span class="rotulo">Avisale a quien administra la sede</span><p>Si el enlace dice que la invitación <b>venció</b> o <b>no es válida</b>: que te mande una nueva.</p></div>
+
+  <h2 class="proceso proceso-nuevo">1.2 Entrar los demás días</h2>
+  <p class="cuando"><b>Cuándo:</b> cada vez que abrís RECABRA y te pide entrar.</p>
+  <ol class="pasos">
+    <li><p>En la portada de RECABRA tocá <span class="boton">Ya tengo cuenta</span>.</p>
+      <figure class="media"><img src="../img/trabajador/01-portada.jpg" alt="Portada con Ya tengo cuenta"></figure></li>
+    <li><p>En la hoja de ingreso tocá <span class="boton">Continuar con Google</span> (1) o escribí tu correo y tu contraseña (2) y tocá <span class="boton azul">Ingresar</span>.</p>
+      <figure class="media"><img src="../img/trabajador/02-hoja-ingreso.jpg" alt="Hoja de ingreso"></figure></li>
+  </ol>
+  <div class="caja truco"><span class="rotulo">Para tener en cuenta</span><ul>
+    <li><span class="boton">Crear mi cuenta</span> de la portada <b>no es para vos</b>: es para registrar un supermercado nuevo.</li>
+    <li>¿Olvidaste la contraseña? Escribí tu correo y tocá <span class="boton">Olvidé mi contraseña</span>: te llega un enlace para cambiarla.</li>
+    <li>La portada muestra un supermercado de ejemplo con precios inventados. No son los de tu tienda.</li>
+  </ul></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">2</span>La pantalla de RECABRA</h1>
+  <p class="entrada">A la izquierda está el menú (<b>Inicio</b>, <b>Indicadores</b>, <b>Montajes</b>). Arriba, la barra que está en todas las pantallas.</p>
+  <figure class="barra"><img src="../img/trabajador/05-barra.jpg" alt="La barra de arriba"></figure>
+  <ol class="referencias">
+    <li><b>Sede:</b> la tienda que estás mirando (<span class="texto-pantalla">CENTRO</span>). Si cubrís varias, elegí la tuya acá; al lado dice cuántas hay y cuántos muebles tiene (<span class="texto-pantalla">1 de 1 · 16 muebles</span>).</li>
+    <li><span class="boton">Buscar</span> <code>Ctrl K</code>: encuentra una función o un término por su nombre (2.1).</li>
+    <li><span class="boton">?</span>: la ayuda de la pantalla en la que estás (2.2).</li>
+    <li><b>Estado:</b> <span class="texto-pantalla">Sincronizado</span> (punto verde) quiere decir que lo que ves está al día con el servidor. Si dice <span class="texto-pantalla">Sin conexión</span> (rojo), no hay internet (ver 5.3).</li>
+    <li><span class="boton">Pendientes</span>: la bandeja de lo que hay que resolver; el número rojo es cuántas cosas hay (3.2).</li>
+    <li><b>Tu cuenta:</b> el nombre del supermercado y tu rol (<span class="texto-pantalla">Trabajador</span>). Ahí cambiás el tema y cerrás sesión (2.3).</li>
+  </ol>
+
+  <h2 class="proceso">2.1 Buscar una función</h2>
+  <p class="cuando"><b>Cuándo:</b> cuando no sabés dónde está algo.</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Buscar</span> (o apretá <code>Ctrl</code> + <code>K</code>) y escribí lo que buscás, por ejemplo <code>historial</code>. Elegí el resultado con las flechas y <code>Enter</code>, o tocándolo.</p>
+      <figure class="media"><img src="../img/trabajador/06-buscar.jpg" alt="Buscar historial"></figure></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">No encuentra espacios</span><p>Aunque el cuadro dice <span class="texto-pantalla">Buscá una función, un espacio (PUN-07) o un término…</span>, con tu cuenta un código de espacio da <span class="texto-pantalla">No encontré nada con «PUN-07».</span> Para encontrar un espacio usá <b>Indicadores › Contratos › Filtrar</b> (6.3).</p></div>
+
+  <h2 class="proceso">2.2 La ayuda de cada pantalla</h2>
+  <p>El botón <span class="boton">?</span> abre <span class="texto-pantalla">Ayuda · Inicio</span> (o de la pantalla en la que estés): qué hace la pantalla y qué quiere decir cada término. Algunos términos son de administración (por ejemplo <b>Canon</b>, lo que paga el proveedor): no los vas a ver en números.</p>
+  <figure class="media"><img src="../img/trabajador/07-ayuda.jpg" alt="Ayuda de la pantalla"></figure>
+
+  <h2 class="proceso">2.3 Tema claro u oscuro y cerrar sesión</h2>
+  <ol class="pasos">
+    <li><p>Tocá tu cuenta (arriba a la derecha). Para pasar a oscuro, tocá <b>la luna</b> de <span class="texto-pantalla">Tema claro u oscuro</span> (el texto solo no hace nada). Para salir, <span class="boton">Cerrar sesión</span>.</p>
+      <figure class="chica"><img src="../img/trabajador/08-cuenta.jpg" alt="Menú de la cuenta"></figure></li>
+  </ol>
+  <div class="caja ojo"><span class="rotulo">En un computador compartido</span><p>Cerrá sesión al terminar el turno: lo que registres con tu sesión abierta queda a tu nombre.</p></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">3</span>Todos los días: el Inicio y los Pendientes</h1>
+  <p class="entrada">Lo primero que ves al entrar. Te dice qué pide atención hoy en tu sede.</p>
+
+  <h2 class="proceso">3.1 Mirar el Inicio</h2>
+  <p class="cuando"><b>Cuándo:</b> al empezar el turno.</p>
+  <ol class="pasos">
+    <li><p>Leé las cuatro tarjetas. Cada una tiene un enlace azul que te lleva a la lista.</p>
+      <figure><img src="../img/trabajador/10-inicio.jpg" alt="Inicio con sus cuatro tarjetas"></figure>
+      <ol class="referencias">
+        <li><span class="texto-pantalla">Contratos activos</span>: los contratos vigentes hoy. <span class="boton">Ver cuáles son</span> abre la lista.</li>
+        <li><span class="texto-pantalla">Por vencer (30 días)</span>: los que terminan en el próximo mes. <span class="boton">Ver cuáles</span> los señala en el plano.</li>
+        <li><span class="texto-pantalla">Montajes por resolver</span>: lo que falta montar o no se pudo. <span class="boton">Ver montajes</span> te lleva a Montajes (capítulo 4). <b>Es la tarjeta que más te importa.</b></li>
+        <li><span class="texto-pantalla">Disponibles hoy</span>: los espacios libres. <span class="boton">Ver cuáles son</span> abre la lista.</li>
+      </ol></li>
+    <li><p>Abajo, <span class="texto-pantalla">Pendientes de hoy</span> lista lo que vence hoy. Si dice <span class="texto-pantalla">Nada con fecha límite hoy.</span>, no hay nada urgente. <span class="boton">Ver los 1</span> abre la bandeja completa (3.2).</p></li>
+    <li><p>Cuando un enlace te lleva a otra pantalla, arriba dice desde dónde viniste (<span class="texto-pantalla">Desde Inicio › Contratos activos…</span>). Tocá <span class="boton">Volver al Inicio</span> para regresar.</p>
+      <figure class="media"><img src="../img/trabajador/11-desde-inicio.jpg" alt="Volver al Inicio"></figure></li>
+  </ol>
+  <div class="caja truco"><span class="rotulo">Los números no siempre coinciden</span><p>El Inicio cuenta <span class="texto-pantalla">Montajes por resolver</span> con una regla (lo de los últimos 30 días, una vez por cara) y Montajes cuenta todo lo <span class="texto-pantalla">Sin montar</span>. Para trabajar, mirá siempre la lista de <b>Montajes</b>.</p></div>
+
+  <h2 class="proceso proceso-nuevo">3.2 La bandeja de Pendientes</h2>
+  <p class="cuando"><b>Cuándo:</b> cuando el botón <span class="boton">Pendientes</span> de arriba tiene un número rojo.</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Pendientes</span>. Se abre a la derecha, con tres pestañas: <span class="texto-pantalla">Hoy</span>, <span class="texto-pantalla">30 días</span> y <span class="texto-pantalla">Corregir</span>. Cada fila dice el espacio, el proveedor, la fecha y cuántos días faltan (<span class="texto-pantalla">10d</span>).</p>
+      <figure><img src="../img/trabajador/15-pendientes.jpg" alt="Bandeja de Pendientes"></figure></li>
+    <li><p>Tocá una fila: se abre el plano de la sede con ese espacio señalado y su ficha al lado (6.4).</p>
+      <figure class="media"><img src="../img/trabajador/17-pendiente-abierto.jpg" alt="Un pendiente abierto en el plano"></figure></li>
+  </ol>
+  <table>
+    <tr><th style="width:24%">Pestaña</th><th>Qué hay</th><th style="width:32%">Qué hacés vos</th></tr>
+    <tr><td><span class="texto-pantalla">Hoy</span></td><td>Lo que tiene fecha límite hoy. Vacía dice <span class="texto-pantalla">Nada para hoy.</span></td><td>Mirar. Si toca algo de la tienda, avisale a quien administra.</td></tr>
+    <tr><td><span class="texto-pantalla">30 días</span></td><td>Contratos que vencen en el próximo mes (<span class="texto-pantalla">Limpio Hogar · vence el 30 nov</span>).</td><td>Nada: renovar lo decide administración. Te sirve para saber qué exhibición se va a desarmar.</td></tr>
+    <tr><td><span class="texto-pantalla">Corregir</span></td><td>Diferencias entre lo vendido y el plano. Vacía dice <span class="texto-pantalla">Nada que corregir: todo lo que la base tiene vendido se ve en el plano.</span></td><td>Avisale a quien administra si ves algo acá.</td></tr>
+  </table>
+  <div class="caja avisale"><span class="rotulo">Lo resuelve administración</span><p>La bandeja es para enterarte. Vencimientos, reservas y diferencias del plano los resuelve quien administra la sede; los montajes los resolvés vos en <b>Montajes</b>.</p></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">4</span>Todos los días: los montajes</h1>
+  <p class="entrada">Cada contrato que arranca trae una exhibición para armar. En <b>Montajes</b> ves qué falta, lo registrás con la foto y ves lo que ya se registró. Es lo más importante de tu trabajo en RECABRA.</p>
+
+  <h2 class="proceso">4.1 Ver la lista de montajes</h2>
+  <p class="cuando"><b>Cuándo:</b> al empezar el turno y cada vez que terminás de armar algo.</p>
+  <ol class="pasos">
+    <li><p>Tocá <b>Montajes</b> en el menú. Arriba dice cuántos hay por montar (<span class="texto-pantalla">3 por montar</span>). Con los filtros (1) ves sólo un estado; <span class="boton">Resumen de montajes</span> (2) abre las cifras en Indicadores.</p>
+      <figure><img src="../img/trabajador/20-montajes.jpg" alt="Lista de montajes"></figure></li>
+  </ol>
+  <table>
+    <tr><th style="width:30%">Estado</th><th>Qué quiere decir</th><th style="width:26%">Botón</th></tr>
+    <tr><td><span class="texto-pantalla">Sin montar</span></td><td>El contrato ya corre y nadie registró el montaje. Si la fecha sale en color (<span class="texto-pantalla">desde el 20 nov</span>), arrancó hoy.</td><td><span class="boton">Registrar montaje</span></td></tr>
+    <tr><td><span class="texto-pantalla">Montado, sin verificar</span></td><td>Alguien lo registró con foto; falta que administración la revise.</td><td><span class="boton">Ver registro y foto</span></td></tr>
+    <tr><td><span class="texto-pantalla">No realizado</span></td><td>Se reportó <span class="texto-pantalla">No pude</span>, con el motivo debajo.</td><td><span class="boton">Ver registro</span></td></tr>
+    <tr><td><span class="texto-pantalla">Verificado: coincide</span></td><td>Administración comparó la foto con lo pedido y está bien. Terminado.</td><td><span class="boton">Ver registro y foto</span></td></tr>
+    <tr><td><span class="texto-pantalla">Verificado: no coincide</span></td><td>Hay que corregir algo (5.1).</td><td><span class="boton">Ver registro y foto</span></td></tr>
+  </table>
+  <p>Debajo del código está la parte del mueble: <span class="texto-pantalla">Entrepaño 1 de 6, contando de abajo hacia arriba (el 1 es la base)</span> o <span class="texto-pantalla">Participación 1 · cara A</span>.</p>
+
+  <h2 class="proceso proceso-nuevo">4.2 Registrar «Lo monté» con foto</h2>
+  <p class="cuando"><b>Cuándo:</b> apenas terminás de armar una exhibición, con la foto ya tomada.</p>
+  <ol class="pasos">
+    <li><p>Tocá el filtro <span class="boton">Sin montar</span> y, en la fila del espacio, <span class="boton">Registrar montaje</span>.</p>
+      <figure class="media"><img src="../img/trabajador/21-sin-montar.jpg" alt="Registrar montaje"></figure></li>
+    <li><p>Se abre el espacio: qué parte del mueble es, el proveedor y la marca, las fechas (<span class="texto-pantalla">Del 20 nov al 31 ene</span>) y, en <span class="texto-pantalla">ASÍ DEBE QUEDAR</span>, la planometría. Tocala para verla en grande y compará con lo que armaste.</p>
+      <figure class="media"><img src="../img/trabajador/22-formulario.jpg" alt="El espacio a montar"></figure></li>
+    <li><p>En <span class="texto-pantalla">DÓNDE QUEDA</span> está el plano con el mueble encerrado en un círculo y su código.</p>
+      <figure class="media"><img src="../img/trabajador/23-donde-queda.jpg" alt="Dónde queda"></figure></li>
+    <li><p>Bajá y tocá <span class="boton">Lo monté</span>.</p>
+      <figure><img src="../img/trabajador/24-lo-monte.jpg" alt="Lo monté"></figure></li>
+    <li><p>En <span class="texto-pantalla">Foto del espacio armado · obligatoria</span>, tocá <span class="boton">Tomar foto</span> (o <span class="texto-pantalla">o elegir una de la galería</span>) y elegí la foto del espacio armado, de frente y entero.</p></li>
+    <li><p>Si aparece <span class="texto-pantalla">Tu nombre</span>, escribilo (1). La <span class="texto-pantalla">Nota · opcional</span> es para algo que haya que saber. Tocá <span class="boton azul">Confirmar</span> (2).</p>
+      <figure class="media"><img src="../img/trabajador/26-confirmar.jpg" alt="Foto, nombre y Confirmar"></figure></li>
+    <li><p>Listo cuando volvés a la lista y el espacio ya no está en <span class="texto-pantalla">Sin montar</span>: pasó a <span class="texto-pantalla">Montado, sin verificar</span> (el número de ese filtro sube). La fecha y la hora las pone el sistema.</p>
+      <figure class="media"><img src="../img/trabajador/27-listo.jpg" alt="Montado, sin verificar"></figure></li>
+  </ol>
+  <div class="caja error"><span class="rotulo">Si te olvidás la foto</span><p>Al tocar <span class="boton azul">Confirmar</span> aparece en rojo <span class="texto-pantalla">Falta la foto. Es la prueba de que la exhibición quedó armada.</span> Elegí la foto y volvé a confirmar: no se mandó nada todavía. ¿Elegiste la foto equivocada? Antes de confirmar, tocá la <b>×</b> sobre la foto o <span class="texto-pantalla">Cambiar por otra de la galería</span>. ¿Te arrepentís de todo? <span class="boton">Volver</span>, arriba.</p></div>
+  <div class="caja ojo"><span class="rotulo">No se puede deshacer</span><p>Lo que confirmaste le llega a quien administra la sede. Si mandaste una foto mala, abrí el registro y tocá <span class="boton">Registrar de nuevo</span> (4.4): vale el último reporte, pero el anterior no se borra.</p></div>
+
+  <h2 class="proceso proceso-nuevo">4.3 Registrar «No pude»</h2>
+  <p class="cuando"><b>Cuándo:</b> si no lo podés armar: no llegó el material o el producto, o el espacio está ocupado.</p>
+  <ol class="pasos">
+    <li><p>Abrí el espacio con <span class="boton">Registrar montaje</span> y tocá <span class="boton">No pude</span>. En <span class="texto-pantalla">¿Qué pasó?</span> elegí el motivo: <span class="texto-pantalla">El proveedor no entregó el material</span>, <span class="texto-pantalla">No llegó el producto</span>, <span class="texto-pantalla">El espacio está ocupado por otra cosa</span> u <span class="texto-pantalla">Otro motivo</span>.</p>
+      <figure class="media"><img src="../img/trabajador/30-no-pude.jpg" alt="No pude con el motivo"></figure></li>
+    <li><p>La <span class="texto-pantalla">Foto de cómo quedó · opcional</span> ayuda (por ejemplo, del espacio ocupado). Escribí tu nombre si te lo pide y contá en la nota lo que pasó (<code>El producto llega el lunes</code>).</p></li>
+    <li><p>Tocá <span class="boton azul">Confirmar</span>. En la lista, el espacio queda <span class="texto-pantalla">No realizado</span> con el motivo debajo.</p>
+      <figure class="media"><img src="../img/trabajador/31-no-pude-listo.jpg" alt="No realizado en la lista"></figure></li>
+  </ol>
+  <div class="caja avisale"><span class="rotulo">Después</span><p>Quien administra la sede ve el motivo y decide: reclamarle al proveedor o liberar el espacio. Cuando llegue lo que faltaba, registrá el montaje de nuevo (5.2). Si el espacio está ocupado por otro proveedor, no lo saques por tu cuenta.</p></div>
+
+  <h2 class="proceso proceso-nuevo">4.4 Ver el registro y la foto</h2>
+  <p class="cuando"><b>Cuándo:</b> para revisar lo que se registró, o corregir una foto mal mandada.</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Ver registro y foto</span>. Se abre <span class="texto-pantalla">Lo pedido al lado de lo que quedó</span>: la planometría a la izquierda, tu foto a la derecha, y abajo quién y cuándo lo registró.</p>
+      <figure class="media"><img src="../img/trabajador/33-ver-registro.jpg" alt="Lo pedido al lado de lo que quedó"></figure></li>
+    <li><p>Si hay que mandarlo otra vez, tocá <span class="boton">Registrar de nuevo</span> y seguí los pasos de 4.2. Para cerrar sin cambiar nada, la <b>×</b> de arriba o <code>Esc</code>.</p></li>
+  </ol>
+  <div class="caja truco"><span class="rotulo">No podés verificar</span><p>Verificar (decir si la foto coincide) lo hace administración. Vos ves el resultado: <span class="texto-pantalla">Verificado: coincide</span> o <span class="texto-pantalla">Verificado: no coincide</span>.</p></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">5</span>Cuando pasa: corregir, volver a montar, sin señal</h1>
+  <p class="entrada">Tres situaciones que no son de todos los días, pero que tenés que saber resolver.</p>
+
+  <h2 class="proceso">5.1 Administración dijo «No coincide»</h2>
+  <p class="cuando"><b>Cuándo:</b> un montaje aparece <span class="texto-pantalla">Verificado: no coincide</span>.</p>
+  <ol class="pasos">
+    <li><p>Tocá <span class="boton">Ver registro y foto</span>. En <b>Verificado</b> está lo que hay que arreglar. En el ejemplo: <span class="texto-pantalla">Falta el cabezote con el logo arriba de la punta.</span></p>
+      <figure class="media"><img src="../img/trabajador/34-no-coincide.jpg" alt="No coincide"></figure></li>
+    <li><p>Arreglá la exhibición en la tienda y sacá una foto nueva.</p></li>
+    <li><p>Tocá <span class="boton">Registrar de nuevo</span> y registrá <span class="boton">Lo monté</span> con la foto nueva (4.2). Vuelve a <span class="texto-pantalla">Montado, sin verificar</span> hasta que administración lo revise otra vez.</p></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">5.2 Volver a montar uno «No realizado»</h2>
+  <p class="cuando"><b>Cuándo:</b> llegó el material o el producto de un montaje que no se pudo hacer.</p>
+  <ol class="pasos">
+    <li><p>En la fila <span class="texto-pantalla">No realizado</span> tocá <span class="boton">Ver registro</span>. Se ve <span class="texto-pantalla">Sin foto: no se pudo montar.</span>, el motivo, la nota y la indicación <span class="texto-pantalla">Reclamale el material al proveedor y, cuando llegue, registrá el montaje de nuevo.</span></p>
+      <figure class="media"><img src="../img/trabajador/35-no-realizado.jpg" alt="Montaje no realizado"></figure></li>
+    <li><p>Armá la exhibición y tocá <span class="boton">Registrar el montaje de nuevo</span>. Seguí los pasos de 4.2.</p></li>
+  </ol>
+  <div class="caja avisale"><span class="rotulo">Avisale a quien administra la sede</span><p>Si el material no llega nunca: reclamarle al proveedor lo decide administración, no vos.</p></div>
+
+  <h2 class="proceso proceso-nuevo">5.3 Me quedé sin internet al confirmar</h2>
+  <p class="cuando"><b>Cuándo:</b> tocaste <span class="boton azul">Confirmar</span> y se cortó el internet.</p>
+  <ol class="pasos">
+    <li><p>No pasa nada: el reporte queda guardado en ese equipo y se manda solo apenas vuelva la conexión. Vas a ver <span class="texto-pantalla">Sin señal: tu reporte quedó guardado en este teléfono.</span> (lo dice así aunque estés en un computador) y, abajo, a qué hora se guardó.</p>
+      <figure><img src="../img/trabajador/37-sin-senal.jpg" alt="Sin señal"></figure></li>
+    <li><p>Si querés probar ya, tocá <span class="boton azul">Reintentar ahora</span>. Cuando sale, el espacio pasa a <span class="texto-pantalla">Montado, sin verificar</span>.</p></li>
+    <li><p>Arriba, el estado dice <span class="texto-pantalla">Sin conexión</span> en rojo. Puede tardar unos segundos en darse cuenta; tocarlo lo hace revisar en el momento.</p>
+      <figure class="barra"><img src="../img/trabajador/38-sin-conexion.jpg" alt="Sin conexión"></figure></li>
+  </ol>
+  <div class="caja ojo"><span class="rotulo">Ojo</span><p>El reporte guardado vive en <b>ese</b> computador y en <b>ese</b> navegador. No borres los datos del navegador ni cambies de equipo hasta que el espacio aparezca como <span class="texto-pantalla">Montado, sin verificar</span>. Si cerraste la página, volvé a abrir el mismo espacio: arriba dice <span class="texto-pantalla">Tenés un reporte sin mandar</span>, con <span class="boton">Mandar ahora</span> y <span class="boton">Descartar</span>.</p></div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">6</span>De vez en cuando: Indicadores</h1>
+  <p class="entrada">Indicadores es para consultar, no para cambiar nada. Con tu cuenta no aparecen montos ni tarifas. Tiene seis pestañas: <span class="texto-pantalla">Mapa de oportunidades</span>, <span class="texto-pantalla">Análisis</span>, <span class="texto-pantalla">Plano</span>, <span class="texto-pantalla">Contratos</span>, <span class="texto-pantalla">Historial</span> y <span class="texto-pantalla">Diccionario</span>. Al volver, abre la última que usaste.</p>
+
+  <h2 class="proceso">6.1 Mapa de oportunidades</h2>
+  <p>El resumen de la sede: <span class="texto-pantalla">Ocupación</span>, lo que vence en 90 días, <span class="texto-pantalla">Montajes del mes</span>, el <span class="texto-pantalla">Mapa de decisión</span> con los espacios que piden atención numerados, y abajo <span class="texto-pantalla">Acciones prioritarias</span>. Arriba a la izquierda, la fecha (<span class="texto-pantalla">20 nov 2026</span>) deja mirar otra fecha o una temporada (<span class="texto-pantalla">Black Friday</span>, <span class="texto-pantalla">Navidad</span>…).</p>
+  <figure class="media"><img src="../img/trabajador/40-mapa.jpg" alt="Mapa de oportunidades"></figure>
+  <div class="caja truco"><span class="rotulo">Botones que no son para vos</span><p>Algunos botones dicen <span class="boton">Gestionar renovación</span> o <span class="boton">Renovar</span>: con tu cuenta sólo abren la ficha del espacio. Renovar lo hace administración.</p></div>
+
+  <h2 class="proceso">6.2 Análisis y Plano</h2>
+  <p><span class="texto-pantalla">Análisis</span> explica las cifras: riesgo de vencimientos, la <span class="texto-pantalla">Ejecución operativa</span> de los montajes del mes (de <span class="texto-pantalla">Aviso de montaje enviado</span> a <span class="texto-pantalla">Verificado con evidencia</span>) y la capacidad por vender. <span class="texto-pantalla">Plano</span> muestra el piso de la sede en colores: <span class="texto-pantalla">Libre</span> (verde), <span class="texto-pantalla">Vendido en parte</span> (ámbar) y <span class="texto-pantalla">Tomado</span> (rojo). Arrastrá para girarlo y usá la rueda para acercar.</p>
+  <figure class="media"><img src="../img/trabajador/42-plano.jpg" alt="Plano de la sede"></figure>
+
+  <h2 class="proceso proceso-nuevo">6.3 Contratos: el estado de cada espacio</h2>
+  <p class="cuando"><b>Cuándo:</b> para saber de quién es un espacio, hasta cuándo va y si está montado.</p>
+  <ol class="pasos">
+    <li><p>Abrí la pestaña <span class="texto-pantalla">Contratos</span>. La tabla tiene cada espacio con su proveedor, estado, montaje, fechas y días que le quedan. Con los filtros (1) ves sólo <span class="texto-pantalla">Vigentes hoy</span>, <span class="texto-pantalla">Por vencer</span>, <span class="texto-pantalla">Sin montar</span>, <span class="texto-pantalla">Libres</span> o <span class="texto-pantalla">Vendido en parte</span>. Para encontrar un código, escribilo en <span class="texto-pantalla">Filtrar</span>.</p>
+      <figure><img src="../img/trabajador/43-contratos.jpg" alt="Estado por espacio"></figure></li>
+    <li><p><span class="boton">Bajar todos (CSV)</span> (2) baja la lista de contratos vigentes (<code>contratos-CENTRO.csv</code>, sin montos) para abrirla en Excel.</p></li>
+    <li><p>Tocá una fila para abrir la ficha del espacio (6.4).</p></li>
+  </ol>
+
+  <h2 class="proceso proceso-nuevo">6.4 La ficha del espacio</h2>
+  <p class="cuando"><b>Cuándo:</b> para ver todo de un espacio: quién lo tiene, hasta cuándo, cómo debe quedar y qué contratos tuvo.</p>
+  <ol class="pasos">
+    <li><p>La ficha se abre a la derecha: código y estado (<span class="texto-pantalla">Por vencer</span>), <span class="texto-pantalla">DÓNDE ESTÁ</span> con <span class="boton">Ver en el plano</span>, el proveedor, el <span class="texto-pantalla">PERIODO</span> (<span class="texto-pantalla">Vence en 10d</span>), el <span class="texto-pantalla">MONTAJE</span>, <span class="texto-pantalla">Los próximos 12 meses</span>, la <span class="texto-pantalla">PLANOMETRÍA</span> y los <span class="texto-pantalla">ARCHIVOS DEL CONTRATO</span>.</p>
+      <figure><img src="../img/trabajador/45-ficha.jpg" alt="Ficha del espacio"></figure></li>
+    <li><p>Bajá hasta <span class="texto-pantalla">Contratos anteriores</span>: se ven los 5 más recientes. Si tuvo más, tocá <span class="boton">Ver todos (6)</span>.</p>
+      <figure class="media"><img src="../img/trabajador/46-ficha-anteriores.jpg" alt="Contratos anteriores y Ver todos"></figure></li>
+    <li><p>Se abre el <b>Historial</b> filtrado por ese espacio (<span class="texto-pantalla">Espacio: CENTRO-PUN-07</span>). <span class="boton">Limpiar filtros</span> vuelve a mostrar todos.</p>
+      <figure class="media"><img src="../img/trabajador/47-historial-del-espacio.jpg" alt="Historial de un espacio"></figure></li>
+  </ol>
+  <p>Un espacio libre dice <span class="texto-pantalla">Disponible para vender</span> y <span class="texto-pantalla">Este espacio no tiene contrato activo.</span> Para cerrar la ficha, la flecha de arriba a la izquierda o <code>Esc</code>.</p>
+
+  <h2 class="proceso proceso-nuevo">6.5 Historial: los contratos que ya terminaron</h2>
+  <p class="cuando"><b>Cuándo:</b> te preguntan qué proveedor tuvo un espacio, o necesitás la lista de lo que terminó.</p>
+  <ol class="pasos">
+    <li><p>Abrí la pestaña <span class="texto-pantalla">Historial</span>: están los contratos que terminaron, los cancelados y los reemplazados al editarlos. Lo vigente está en <span class="texto-pantalla">Contratos</span>.</p></li>
+    <li><p>Filtrá por <span class="texto-pantalla">Proveedor o marca</span> (1), <span class="texto-pantalla">Espacio</span>, fechas <span class="texto-pantalla">Desde</span> y <span class="texto-pantalla">Hasta</span>, o por estado (2): <span class="texto-pantalla">Terminado</span>, <span class="texto-pantalla">Cancelado</span>, <span class="texto-pantalla">Reemplazado al editarlo</span>. Con <span class="texto-pantalla">Ordenar por</span> cambiás el orden.</p>
+      <figure><img src="../img/trabajador/48-historial.jpg" alt="Historial"></figure></li>
+    <li><p><span class="boton azul">Exportar a Excel</span> (3) baja lo que estás viendo, con esos filtros (<code>historial-contratos-CENTRO-2026-11-20.xlsx</code>, sin montos).</p></li>
+  </ol>
+  <p>Un cancelado que dice <span class="texto-pantalla">no llegó a correr</span> se dio de baja antes de empezar.</p>
+
+  <h2 class="proceso">6.6 Diccionario</h2>
+  <p>La pestaña <span class="texto-pantalla">Diccionario</span> explica cada cifra de Indicadores: su <b>Fórmula</b>, el <b>Periodo</b>, con qué se compara, el <b>Umbral</b> y de dónde salen los <b>Datos</b>. Si una cifra te parece rara, buscala acá antes de preguntar. En Indicadores, el botón <span class="boton">Más</span> de la barra lleva directo al diccionario y al historial, y deja fijar hasta 3 atajos en tu barra.</p>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">7</span>Problemas frecuentes</h1>
+  <p class="entrada">Lo que más pasa y qué hacer.</p>
+  <table>
+    <tr><th style="width:36%">Lo que pasa</th><th>Qué hacer</th></tr>
+    <tr><td>Arriba dice <span class="texto-pantalla">Sin conexión</span>.</td><td>No hay internet. Podés seguir mirando lo que ya estaba cargado. Si registrás un montaje, queda guardado en el equipo y sale solo (5.3). Tocá el estado para que revise otra vez.</td></tr>
+    <tr><td>Al confirmar sale <span class="texto-pantalla">Sin señal: tu reporte quedó guardado…</span></td><td>Esperá a que vuelva el internet o tocá <span class="boton azul">Reintentar ahora</span>. No cierres el navegador ni borres sus datos (5.3).</td></tr>
+    <tr><td>No veo <b>Contratos</b>, <b>Plano de la sede</b> ni <b>Ajustes</b>.</td><td>Son de administración: con tu cuenta no aparecen, y si entrás a esa dirección te devuelve al Inicio. Si necesitás algo de ahí, avisale a quien administra la sede.</td></tr>
+    <tr><td>Busco un código (<code>PUN-07</code>) en <span class="boton">Buscar</span> y dice <span class="texto-pantalla">No encontré nada</span>.</td><td>Con tu cuenta, Buscar encuentra funciones, no espacios. Usá <b>Indicadores › Contratos › Filtrar</b>.</td></tr>
+    <tr><td>La foto no carga o tarda.</td><td>Revisá que sea una foto (JPG o PNG) y que haya internet. Si dice <span class="texto-pantalla">La subida tardó demasiado</span>, buscá mejor conexión y volvé a tocar <span class="boton azul">Confirmar</span>: el formulario sigue lleno.</td></tr>
+    <tr><td>No aparece <span class="texto-pantalla">ASÍ DEBE QUEDAR</span>.</td><td>Todavía no cargaron la planometría de ese contrato. Podés registrar igual; avisale a quien administra la sede para que la cargue.</td></tr>
+    <tr><td>Me vuelve a pedir que entre.</td><td>La sesión venció o alguien la cerró. Entrá de nuevo con tu cuenta (1.2). Lo que ya confirmaste está guardado.</td></tr>
+    <tr><td>Veo los espacios de otra tienda.</td><td>Cambiaste de sede sin querer: elegí la tuya en el selector de arriba a la izquierda.</td></tr>
+    <tr><td>Una pantalla dice <span class="texto-pantalla">… no se pudo mostrar</span> y <span class="texto-pantalla">Fue un error nuestro, no algo que hiciste.</span></td><td>Tocá <span class="boton azul">Recargar</span>. Si vuelve a pasar, abrí <span class="texto-pantalla">Detalle para soporte</span>, sacale una foto a la pantalla y mandásela a quien administra la sede.</td></tr>
+    <tr><td>Registré el espacio equivocado.</td><td>No se puede borrar desde tu cuenta. Avisale a quien administra la sede, con el código del espacio, y registrá el correcto.</td></tr>
+    <tr><td>Un enlace de montaje del correo dice <span class="texto-pantalla">Este enlace ya no sirve</span>.</td><td>Venció. Como tenés cuenta, registralo desde <b>Montajes</b>.</td></tr>
+    <tr><td>El número de <span class="texto-pantalla">Montajes por resolver</span> del Inicio no es el de la lista.</td><td>Cuentan distinto (3.1). Trabajá con la lista de Montajes.</td></tr>
+  </table>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<section class="capitulo">
+  <h1><span class="num">8</span>Palabras que vas a ver</h1>
+  <table>
+    <tr><th style="width:30%">Palabra</th><th>Qué quiere decir</th></tr>
+    <tr><td>Sede</td><td>Cada tienda del supermercado, con su plano. Se elige arriba a la izquierda.</td></tr>
+    <tr><td>Espacio</td><td>Lo que se alquila: una punta, un entrepaño, una cara de góndola o una parte de ella. Tiene un código (<code>PUN-01</code>).</td></tr>
+    <tr><td>Punta de góndola</td><td>El extremo de una góndola, el que da al pasillo principal.</td></tr>
+    <tr><td>Entrepaño (EN1, EN2…)</td><td>Un estante de una punta. <code>EN1</code> es el de abajo (la base).</td></tr>
+    <tr><td>Cara A / cara B</td><td>Los dos lados de una góndola doble.</td></tr>
+    <tr><td>Participación (PC1, PC2…)</td><td>Un pedazo de una cara vendido a un proveedor. En Contratos la cara sale <span class="texto-pantalla">Por participación</span>.</td></tr>
+    <tr><td>Contrato</td><td>El acuerdo con un proveedor por un espacio, con fecha de inicio y de fin.</td></tr>
+    <tr><td>Reserva</td><td>Un espacio apartado para un proveedor hasta una fecha. Si no se confirma, caduca. Sale <span class="texto-pantalla">Reservado</span>.</td></tr>
+    <tr><td>Planometría</td><td>La foto o el dibujo de cómo debe quedar la exhibición (<span class="texto-pantalla">ASÍ DEBE QUEDAR</span>).</td></tr>
+    <tr><td>Montaje</td><td>Armar la exhibición en la tienda y registrarlo con foto.</td></tr>
+    <tr><td>Verificado</td><td>Administración comparó la foto con la planometría: <span class="texto-pantalla">coincide</span> o <span class="texto-pantalla">no coincide</span>.</td></tr>
+    <tr><td>No realizado</td><td>Se reportó <span class="texto-pantalla">No pude</span>, con el motivo.</td></tr>
+    <tr><td>Por vencer</td><td>Un contrato que termina pronto (en 30 o en 90 días, según la tarjeta).</td></tr>
+    <tr><td>Ocupación</td><td>Las caras que tienen contrato hoy sobre todas las que se venden. Tiene una meta (90 %).</td></tr>
+    <tr><td>Pendientes</td><td>La bandeja de lo que hay que resolver, arriba a la derecha.</td></tr>
+    <tr><td>Sincronizado</td><td>Lo que ves está al día con el servidor.</td></tr>
+    <tr><td>Quien administra la sede</td><td>La persona del supermercado que maneja RECABRA en tu tienda. Es a quien le avisás.</td></tr>
+  </table>
+</section>
+
+</body>
+</html>

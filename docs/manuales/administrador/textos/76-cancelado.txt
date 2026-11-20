@@ -1,0 +1,84 @@
+RECABRA
+Inicio
+Contratos
+Indicadores
+Montajes
+Plano de la sede
+Ajustes
+Galerías
+Sede: CENTRO
+CENTRO
+1 de 1 · 16 muebles
+Buscar
+Ctrl K
+Más
+Sincronizado
+Pendientes
+23
+GA
+Galerías
+Administrador
+Indicadores
+20 nov 2026
+viernes 20 de noviembre de 2026
+Planilla
+Tarifas
+Mapa de oportunidades
+Análisis
+Plano
+Contratos
+Historial
+Quién paga
+Participaciones
+Diccionario
+PLATA
+Al mes
+Total
+Bajar todos (CSV)
+Estado por espacio
+32 espacios
+Todas
+32
+Vigentes hoy
+18
+Por vencer
+2
+Sin montar
+2
+Libres
+5
+Vendido en parte
+7
+CÓDIGO	TIPO	PROVEEDOR	ESTADO	MONTAJE	DESDE	HASTA	DÍAS	VALOR AL MES	
+GON-04·A·PC1	Góndola, por cara · Participación 1	Aseo Total	Por vencer	Montado	1 may	30 nov	10d	$ 450.000	
+PUN-01	Punta de góndola	Limpio Hogar	Por vencer	Montado	1 jun	30 nov	10d	$ 600.000	
+GON-03·A·PC3	Góndola, por cara · Participación 3	Aseo Total	Activo	Montado	1 jul	31 dic	41d	$ 115.000	
+PUN-02·EN1	Punta de góndola · Entrepaño 1 de 5	Snacks Norte	Activo	Montado	1 oct	31 dic	41d	$ 150.000	
+PUN-02·EN2	Punta de góndola · Entrepaño 2 de 5	Café Montaña	Activo	No se pudo	1 oct	31 dic	41d	$ 150.000	
+GON-01·A·PC1	Góndola, por cara · Participación 1	Lácteos Andinos	Activo	Montado	1 ago	31 ene 2027	72d	$ 270.000	
+PUN-03·EN1	Punta de góndola · Entrepaño 1 de 6	Café Montaña	Activo	Sin montar	20 nov	31 ene 2027	72d	$ 125.000	
+PUN-07	Punta de góndola	Galletas Sol	Activo	Sin montar	20 nov	19 feb 2027	91d	$ 600.000	
+GON-01·B·PC1	Góndola, por cara · Participación 1	Galletas Sol	Activo	Montado	1 sep	28 feb 2027	100d	$ 180.000	
+GON-03·A·PC2	Góndola, por cara · Participación 2	Snacks Norte	Activo	Montado	1 sep	28 feb 2027	100d	$ 140.000	
+NEV-01·PC2	Nevera de puertas · Participación 2	Bebidas del Valle	Activo	Montado	1 sep	28 feb 2027	100d	$ 420.000	
+PUN-03·EN2	Punta de góndola · Entrepaño 2 de 6	Bebidas del Valle	Activo	Sin montar	1 sep	28 feb 2027	100d	5 % ventas	
+PUN-04	Punta de góndola	Snacks Norte	Activo	Montado	1 sep	28 feb 2027	100d	$ 600.000	
+PUN-09	Punta de góndola	Lácteos Andinos	Contratado	—	1 dic	28 feb 2027	100d	$ 600.000	
+GON-02·A·PC1	Góndola, por cara · Participación 1	Aseo Total	Activo	Sin montar	1 oct	31 mar 2027	131d	$ 225.000	
+GON-03·A·PC1	Góndola, por cara · Participación 1	Lácteos Andinos	Activo	Montado	1 oct	31 mar 2027	131d	$ 120.000	
+PUN-05	Punta de góndola	Galletas Sol	Activo	Montado	1 oct	31 mar 2027	131d	$ 650.000	
+GON-03·B·PC1	Góndola, por cara · Participación 1	Café Montaña	Activo	Montado	1 jun	31 may 2027	192d	$ 450.000	
+NEV-01·PC1	Nevera de puertas · Participación 1	Lácteos Andinos	Activo	Montado	1 jul	30 jun 2027	222d	$ 700.000	
+GON-01·A	Góndola, por cara	—	Por participación	—	—	—	—	$ 450.000	
+GON-01·B	Góndola, por cara	—	Por participación	—	—	—	—	$ 450.000	
+GON-02·A	Góndola, por cara	—	Por participación	—	—	—	—	$ 450.000	
+GON-02·B	Góndola, por cara	—	Libre	—	—	—	—	$ 450.000	
+GON-03·A	Góndola, por cara	—	Por participación	—	—	—	—	$ 450.000	
+GON-03·B	Góndola, por cara	—	Tomada	—	—	—	—	$ 450.000	
+GON-04·A	Góndola, por cara	—	Tomada	—	—	—	—	$ 450.000	
+GON-04·B	Góndola, por cara	—	Libre	—	—	—	—	$ 450.000	
+NEV-01	Nevera de puertas	—	Por participación	—	—	—	—	$ 1.400.000	
+PUN-02	Punta de góndola	—	Vendido en parte	—	—	—	—	$ 600.000	
+PUN-03	Punta de góndola	—	Vendido en parte	—	—	—	—	$ 600.000	
+PUN-06	Punta de góndola	—	Libre	Montado	—	—	—	$ 600.000	
+PUN-08	Punta de góndola	—	Libre	—	—	—	—	$ 600.000	

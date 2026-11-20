@@ -1,0 +1,210 @@
+RECABRA
+Inicio
+Contratos
+Indicadores
+Montajes
+Plano de la sede
+Ajustes
+Galerías
+Sede: CENTRO
+CENTRO
+1 de 1 · 16 muebles
+Buscar
+Ctrl K
+Sincronizado
+Pendientes
+GA
+Galerías
+Administrador
+Montajes
+Montajes
+6 por montar · contratos y planogramas de CENTRO, por fecha de inicio
+Resumen de montajes
+Todos
+23
+Sin montar
+6
+Montado, sin verificar
+2
+No realizado
+2
+Verificado
+13
+Espacio
+Clase
+Proveedor o versión
+Inicio
+Estado
+PUN-03-EN2
+Entrepaño 2 de 6, contando de abajo hacia arriba (el 1 es la base)
+Contrato
+Bebidas del Valle · Agua del Valle
+Punta de góndola
+desde el 1 sep
+Sin montar · falta planometría
+Adjuntar planometría
+GON-02-PC1
+Participación 1 · cara A
+Contrato
+Aseo Total · Aseo Total Hogar
+Góndola doble
+desde el 1 oct
+Sin montar · falta la zona
+Ubicar la zona
+PUN-02-EN2
+Entrepaño 2 de 5, contando de abajo hacia arriba (el 1 es la base)
+Contrato
+Café Montaña · Café Montaña Tostado
+Punta de góndola
+desde el 1 oct
+No realizado
+El proveedor no entregó el material
+Resolver
+GON-12 · cara A
+Planograma
+Planograma · versión 1
+desde el 20 nov
+Sin montar
+Ver la guía y revisar
+GON-12 · cara B
+Planograma
+Planograma · versión 1
+desde el 20 nov
+Sin montar
+Ver la guía y revisar
+GON-13 · cara A
+Planograma
+Planograma · versión 1
+desde el 20 nov
+No realizado
+No llegó el producto
+Resolver
+PUN-07
+Contrato
+Galletas Sol · Galletas Sol Integral
+Punta de góndola
+desde el 20 nov
+Sin montar · aviso enviado
+Registrar montaje
+PUN-09
+Contrato
+Lácteos Andinos · Yogur Andino
+Punta de góndola
+desde el 1 dic
+Sin montar · falta planometría
+Adjuntar planometría
+GON-04-PC1
+Participación 1 · cara A
+Contrato
+Aseo Total · Aseo Total Hogar
+Góndola doble
+desde el 1 may
+Verificado: coincide
+Ver registro y foto
+GON-03-B-PC1
+Participación 1 · cara B
+Contrato
+Café Montaña · Café Montaña Tostado
+Góndola doble
+desde el 1 jun
+Verificado: coincide
+Ver registro y foto
+PUN-01
+Contrato
+Limpio Hogar · Limpio Hogar
+Punta de góndola
+desde el 1 jun
+Verificado: coincide
+Ver registro y foto
+GON-03-PC3
+Participación 3 · cara A
+Contrato
+Aseo Total · Aseo Total Hogar
+Góndola doble
+desde el 1 jul
+Verificado: coincide
+Ver registro y foto
+NEV-01-PC1
+Participación 1 · cara A
+Contrato
+Lácteos Andinos · Yogur Andino
+Nevera de puertas
+desde el 1 jul
+Verificado: coincide
+Ver registro y foto
+GON-01-PC1
+Participación 1 · cara A
+Contrato
+Lácteos Andinos · Yogur Andino
+Góndola doble
+desde el 1 ago
+Verificado: coincide
+Ver registro y foto
+GON-01-B-PC1
+Participación 1 · cara B
+Contrato
+Galletas Sol · Galletas Sol Clásicas
+Góndola doble
+desde el 1 sep
+Verificado: coincide
+Ver registro y foto
+GON-03-PC2
+Participación 2 · cara A
+Contrato
+Snacks Norte · Papitas Norte
+Góndola doble
+desde el 1 sep
+Verificado: coincide
+Ver registro y foto
+NEV-01-PC2
+Participación 2 · cara A
+Contrato
+Bebidas del Valle · Agua del Valle
+Nevera de puertas
+desde el 1 sep
+Verificado: coincide
+Ver registro y foto
+PUN-04
+Contrato
+Snacks Norte · Papitas Norte
+Punta de góndola
+desde el 1 sep
+Verificado: no coincide
+Ver registro y foto
+GON-03-PC1
+Participación 1 · cara A
+Contrato
+Lácteos Andinos · Yogur Andino
+Góndola doble
+desde el 1 oct
+Verificado: coincide
+Ver registro y foto
+PUN-02-EN1
+Entrepaño 1 de 5, contando de abajo hacia arriba (el 1 es la base)
+Contrato
+Snacks Norte · Papitas Norte
+Punta de góndola
+desde el 1 oct
+Verificado: coincide
+Ver registro y foto
+PUN-05
+Contrato
+Galletas Sol · Galletas Sol Clásicas
+Punta de góndola
+desde el 1 oct
+Verificado: coincide
+Ver registro y foto
+GON-13 · cara B
+Planograma
+Planograma · versión 1
+desde el 20 nov
+Montado, sin verificar
+Verificar montaje
+PUN-03-EN1
+Entrepaño 1 de 6, contando de abajo hacia arriba (el 1 es la base)
+Contrato
+Café Montaña · Café Montaña Tostado
+Punta de góndola
+desde el 20 nov
+Montado, sin verificar
+Verificar montaje
