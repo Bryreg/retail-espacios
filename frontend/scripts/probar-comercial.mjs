@@ -877,9 +877,14 @@ prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar
   assert.match(k, /const visibles = isAdmin \? partes : fixtures\.flatMap\(partesVisiblesDe\)\.map\(reserva\);/);
   assert.match(v, /const espaciosDelMueble = useCallback\(\s*\(f: UnifiedFixture\): FaceEntry\[\] => \{[^}]*?\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\);/,
     "la tabla y «Contratado sin montar» cuentan una reserva como contrato");
-  const m = v.slice(v.indexOf("const montaje = useMemo("), v.indexOf("const montaje = useMemo(") + 1500);
-  assert.match(m, /fixtures\.flatMap\(espaciosDelMueble\)/, "el montaje no sale de las filas con la reserva marcada");
-  assert.match(m, /if \(fase !== "vigente" && fase !== "pendiente"\) return;/, "el montaje cuenta lo que no es contrato");
+  // El montaje se clasifica en `clasificarMontajes`: con las filas de la
+  // pantalla (`montaje`) y, para quien no administra, con todos los contratos
+  // de la sede (`montajeDeTodo`, 2026-11-20). Las dos, con la reserva marcada.
+  const c = v.slice(v.indexOf("const clasificarMontajes = useCallback("), v.indexOf("const clasificarMontajes = useCallback(") + 1500);
+  assert.match(c, /if \(fase !== "vigente" && fase !== "pendiente"\) return;/, "el montaje cuenta lo que no es contrato");
+  const m = v.slice(v.indexOf("const montaje = useMemo("), v.indexOf("const montaje = useMemo(") + 900);
+  assert.match(m, /clasificarMontajes\(fixtures\.flatMap\(espaciosDelMueble\)\)/, "el montaje no sale de las filas con la reserva marcada");
+  assert.match(m, /partesVendidasDe\(f\)\]\)\s*\.map\(\(e\) => conLaReserva\(e, estadoComercial, sede\)\)/, "el montaje de toda la sede no marca la reserva");
   // «Reservado» dice hasta cuándo, en la tabla y en la ficha; y no se renueva.
   assert.match(v, /\{entry\.reservaHasta && \(\s*<span style=\{\{ color: "var\(--ink-3\)" \}\}> hasta \{diaCorto\(entry\.reservaHasta\)\}<\/span>/);
   assert.match(v, /if \(entry\.reservaHasta \|\| !entry\.supplierName\.trim\(\) \|\| !entry\.endDate\) return false;/, "una reserva se ofrece a renovar");

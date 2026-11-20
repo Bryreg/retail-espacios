@@ -8,6 +8,7 @@
  *
  * Las fechas van como `YYYY-MM-DD` y la plata, entera.
  */
+import { filtroDe, type EstadoDeMontaje as EstadoDeLaLista } from "./montajes";
 
 export type EstadoContraMeta = "ok" | "bajo" | "muy_bajo";
 
@@ -75,6 +76,35 @@ export function montajesDelMes(contratos: readonly { desde: string; estado: Esta
   const n: Record<EstadoDeMontaje, number> = { verificado: 0, sin_verificar: 0, sin_montar: 0, no_realizado: 0 };
   for (const c of delMes) n[c.estado]++;
   return { total: delMes.length, enLaTienda: n.verificado + n.sin_verificar, porEstado: n };
+}
+
+/** Un montaje para la cuenta de «por resolver»: su estado con las palabras de
+ *  Montajes (`utils/montajes.ts`) y si ya le tocaba (el contrato corre, el
+ *  planograma rige). */
+export interface MontajeQueCuenta { estado: EstadoDeLaLista; empezo: boolean }
+
+/** Montajes por resolver (2026-11-20): UNA cuenta para el Inicio y para todo
+ *  lo que diga «sin montar» fuera de Montajes, con la regla de los filtros de
+ *  Montajes (`filtroDe`). «Sin montar» es lo que ya empezó y nadie reportó
+ *  montado —sin ventana de días: un contrato de hace dos meses sin reporte
+ *  sigue en el filtro «Sin montar» de Montajes, y antes el Inicio lo dejaba
+ *  afuera por tener más de 30—; «no realizado», lo que se reportó que no se
+ *  pudo. Lo que todavía no empieza no está por resolver: Montajes lo lista en
+ *  «Sin montar» porque hay que montarlo, pero no está atrasado. */
+export function montajesPorResolver(montajes: readonly MontajeQueCuenta[]): { sinMontar: number; noRealizado: number; total: number } {
+  let sinMontar = 0, noRealizado = 0;
+  for (const m of montajes) {
+    const f = filtroDe(m.estado);
+    if (f === "no_realizado") noRealizado++;
+    else if (f === "sin_montar" && m.empezo) sinMontar++;
+  }
+  return { sinMontar, noRealizado, total: sinMontar + noRealizado };
+}
+
+/** «Ver los 24 en Pendientes ›», y con uno «Ver 1 en Pendientes ›» (decía
+ *  «Ver los 1»). */
+export function verEnPendientes(n: number): string {
+  return n === 1 ? "Ver 1 en Pendientes ›" : `Ver los ${n} en Pendientes ›`;
 }
 
 /** Los disponibles hoy con los días que llevan sin contrato (desde el día
@@ -166,7 +196,7 @@ export const METRICAS: readonly Metrica[] = [
   { id: "dias_entre", nombre: "Días disponibles entre contratos", plata: false,
     formula: "Para los espacios disponibles hoy, los días desde que terminó su último contrato.",
     periodo: "Hasta hoy.", comparacion: "—", umbral: "—", origen: "El historial de contratos de la base." },
-  { id: "montajes", nombre: "Montajes del mes", plata: false,
+  { id: "montajes", nombre: "Montajes de los contratos del mes", plata: false,
     formula: "Contratos que empiezan este mes y cuántos están en la tienda (montados, verificados o no), por estado: verificado, sin verificar, sin montar, no realizado.",
     periodo: "El mes en curso.", comparacion: "En la tienda contra el total.",
     umbral: "—", origen: "Contratos y reportes de montaje (con su verificación)." },
@@ -174,8 +204,8 @@ export const METRICAS: readonly Metrica[] = [
     formula: "Canon al mes de los contratos vigentes que terminan en los próximos 30 días y no tienen un contrato siguiente firmado (para quien no administra, cuántos son).",
     periodo: "Los próximos 30 días (y, al lado, los 90).", comparacion: "—",
     umbral: "Todo lo sin renovar pide acción; hasta 7 días es prioridad alta.", origen: "Contratos de la base (el vigente y el próximo de cada espacio)." },
-  { id: "montajes_pendientes", nombre: "Montajes pendientes", plata: false,
-    formula: "Caras con algo por montar o revisar: contratos que ya corren sin reporte (de los últimos 30 días), montajes que no se pudieron hacer, planogramas sin montar, sin guía, que no coinciden o por verificar. Una cara cuenta una vez, con su estado más urgente.",
+  { id: "montajes_pendientes", nombre: "Caras con montajes pendientes", plata: false,
+    formula: "Caras con algo por montar o revisar: contratos que ya corren sin reporte, montajes que no se pudieron hacer, planogramas sin montar, sin guía, que no coinciden o por verificar. Una cara cuenta una vez, con su estado más urgente: por eso puede ser menos que los «Montajes por resolver» del Inicio, que cuenta cada contrato y cada planograma.",
     periodo: "Hoy.", comparacion: "—", umbral: "«No realizado» pide gestión.", origen: "Reportes de montaje y planogramas." },
   { id: "caras_sin_contrato", nombre: "Caras sin contrato", plata: false,
     formula: "Caras que se venden y hoy no tienen contrato, partes vendidas ni participaciones que las ocupen. Para administración, su valor a tarifa al mes.",

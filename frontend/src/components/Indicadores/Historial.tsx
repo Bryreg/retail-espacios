@@ -55,6 +55,30 @@ export function detalleDe(f: Pick<ContratoCerrado, "estado" | "desde" | "cancela
   return `corrió hasta el ${fechaCorta(sumarDias(f.cancelado_desde, -1))}`;
 }
 
+/** El código como se lee en el resto de la app: sin la sede adelante
+ *  («PUN-08», no «CENTRO-PUN-08»). El filtro «Espacio» busca un pedazo del
+ *  código completo, así que lo que se lee acá se puede teclear tal cual. */
+export function codigoCorto(espacio: string, sede: string): string {
+  const pre = `${(sede ?? "").trim().toUpperCase()}-`;
+  return pre.length > 1 && espacio.toUpperCase().startsWith(pre) ? espacio.slice(pre.length) : espacio;
+}
+
+/** Hasta qué día corrió de verdad: lo cancelado, hasta la víspera de la baja
+ *  (`cancelado_desde`); `null` si no llegó a correr. */
+export function hastaQueCorrio(f: Pick<ContratoCerrado, "estado" | "desde" | "hasta" | "cancelado_desde">): string | null {
+  if (f.estado !== "cancelado" || !f.cancelado_desde) return f.hasta;
+  if (f.desde && f.cancelado_desde <= f.desde) return null;
+  const vispera = sumarDias(f.cancelado_desde, -1);
+  return f.hasta && f.hasta < vispera ? f.hasta : vispera;
+}
+
+/** Los meses que duró: lo cancelado, hasta el día que dejó de correr (decía
+ *  «Duró 3 meses» de un contrato que no llegó a correr). */
+export function mesesQueDuro(f: Pick<ContratoCerrado, "estado" | "desde" | "hasta" | "cancelado_desde">): number {
+  const fin = hastaQueCorrio(f);
+  return f.desde && fin ? meses(f.desde, fin) : 0;
+}
+
 /** La marca, sólo si dice algo que el proveedor no dice. */
 function marcaAparte(f: ContratoCerrado): boolean {
   const m = (f.marca ?? "").trim().toLocaleLowerCase("es");
@@ -62,7 +86,7 @@ function marcaAparte(f: ContratoCerrado): boolean {
 }
 
 function duracion(f: ContratoCerrado): string {
-  const m = f.desde && f.hasta ? meses(f.desde, f.hasta) : 0;
+  const m = mesesQueDuro(f);
   return m > 0 ? textoDeMeses(m) : "—";
 }
 
@@ -79,7 +103,7 @@ function ordenar(filas: ContratoCerrado[], orden: Orden): ContratoCerrado[] {
 
 /** Las filas del Excel: lo mismo que la tabla, con números y fechas de verdad
  *  (Excel las ordena y las suma). La plata, sólo si llegó. */
-export function filasDelExcel(filas: ContratoCerrado[], esAdmin: boolean): (string | number | Date | null)[][] {
+export function filasDelExcel(filas: ContratoCerrado[], esAdmin: boolean, sede = ""): (string | number | Date | null)[][] {
   const fecha = (iso: string | null) => {
     if (!iso) return null;
     const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
@@ -88,9 +112,9 @@ export function filasDelExcel(filas: ContratoCerrado[], esAdmin: boolean): (stri
   const cabeza = ["Espacio", "Proveedor", "Marca", "Desde", "Hasta", "Meses", "Estado", "Detalle",
     ...(esAdmin ? ["Al mes", "Total del contrato"] : [])];
   return [cabeza, ...filas.map((f) => {
-    const m = f.desde && f.hasta ? meses(f.desde, f.hasta) : 0;
+    const m = mesesQueDuro(f);
     return [
-      f.espacio, f.proveedor ?? "", f.marca ?? "", fecha(f.desde), fecha(f.hasta),
+      codigoCorto(f.espacio, sede), f.proveedor ?? "", f.marca ?? "", fecha(f.desde), fecha(f.hasta),
       m > 0 ? Math.round(m * 100) / 100 : null, TEXTO_DEL_ESTADO[f.estado], detalleDe(f),
       ...(esAdmin ? [
         typeof f.valor_al_mes === "number" ? Math.round(f.valor_al_mes) : null,
@@ -162,7 +186,7 @@ export default function Historial({ sede, esAdmin, cara, onQuitarCara, onAbrirFi
     try {
       const hoy = new Date();
       const sello = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
-      await bajarExcel(`historial-contratos-${sede}-${sello}.xlsx`, filasDelExcel(filas, esAdmin));
+      await bajarExcel(`historial-contratos-${sede}-${sello}.xlsx`, filasDelExcel(filas, esAdmin, sede));
     } catch {
       setError("No se pudo armar el Excel. Probá de nuevo.");
     } finally {
@@ -171,8 +195,8 @@ export default function Historial({ sede, esAdmin, cara, onQuitarCara, onAbrirFi
   };
 
   const codigo = (f: ContratoCerrado) => puedeAbrir(f.espacio)
-    ? <button type="button" className="hist-codigo" onClick={() => onAbrirFicha(f.espacio)} title="Abrir la ficha del espacio">{f.espacio}</button>
-    : <span className="hist-codigo quieto" title="Ese espacio ya no está en el plano">{f.espacio}</span>;
+    ? <button type="button" className="hist-codigo" onClick={() => onAbrirFicha(f.espacio)} title="Abrir la ficha del espacio">{codigoCorto(f.espacio, sede)}</button>
+    : <span className="hist-codigo quieto" title="Ese espacio ya no está en el plano">{codigoCorto(f.espacio, sede)}</span>;
   const pastilla = (f: ContratoCerrado) => <span className={`hist-estado ${f.estado}`}>{TEXTO_DEL_ESTADO[f.estado]}</span>;
 
   return (
@@ -213,8 +237,8 @@ export default function Historial({ sede, esAdmin, cara, onQuitarCara, onAbrirFi
           ))}
           {cara && (
             <span className="hist-cara" data-filtro-cara>
-              Espacio: <b>{cara}</b>
-              <button type="button" aria-label={`Quitar el filtro de ${cara}`} onClick={onQuitarCara}><X {...ICONO} /></button>
+              Espacio: <b>{codigoCorto(cara, sede)}</b>
+              <button type="button" aria-label={`Quitar el filtro de ${codigoCorto(cara, sede)}`} onClick={onQuitarCara}><X {...ICONO} /></button>
             </span>
           )}
           {hayFiltros && <button type="button" className="hist-limpiar" onClick={limpiar}>Limpiar filtros</button>}
