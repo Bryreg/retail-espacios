@@ -370,6 +370,15 @@ export default function MountView({
     if (previo) setYaConfirmado(previo);
   }, [initialCode, cargando, layoutListo, pendientes, ultimo]);
 
+  // Se volvió de Pendientes: esa fila, a la vista. Va ANTES del `return` del
+  // formulario: un hook después de un `return` condicional rompe la pantalla
+  // («Rendered fewer hooks than expected») al tocar «Registrar montaje».
+  useEffect(() => {
+    if (!resaltar) return;
+    const t = window.setTimeout(() => document.querySelector(".mj-fila[data-resaltada]")?.scrollIntoView({ block: "center" }), 200);
+    return () => window.clearTimeout(t);
+  }, [resaltar]);
+
   if (abierto) {
     return (
       <FormularioDelTablero
@@ -383,13 +392,6 @@ export default function MountView({
       />
     );
   }
-
-  // Se volvió de Pendientes: esa fila, a la vista.
-  useEffect(() => {
-    if (!resaltar) return;
-    const t = window.setTimeout(() => document.querySelector(".mj-fila[data-resaltada]")?.scrollIntoView({ block: "center" }), 200);
-    return () => window.clearTimeout(t);
-  }, [resaltar]);
 
   /** Después de verificar uno: el siguiente sin verificar, en el orden de la
    *  lista, y cuántos quedan (sin contar el que se acaba de verificar). */
