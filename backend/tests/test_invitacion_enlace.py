@@ -347,6 +347,142 @@ def test_un_administrador_no_desactiva_ni_reactiva_al_duenio(client):
     assert r.status_code == 200
 
 
+# ─── Cambiar el rol (2026-11-20) ──────────────────────────────────────────────
+#
+# Reinvitar a un miembro da 409 y no había otra forma de pasar a un trabajador a
+# administrador (recorrido del manual del dueño). Mismas reglas que invitar.
+
+def _equipo_de_acme(client):
+    """La dueña de Acme, una administradora y un trabajador que ya entraron."""
+    cab_duenia = _fundar(client, "uid-d", "duenia@acme.co", "acme", "Acme")
+    _invitar(client, cab_duenia, "admin@acme.co", rol="admin")
+    _invitar(client, cab_duenia, "peon@acme.co", rol="worker")
+    _usar_verificador(client, {
+        "a": _claims("uid-a", "admin@acme.co"), "p": _claims("uid-p", "peon@acme.co"),
+        "d": _claims("uid-d", "duenia@acme.co"),
+    })
+    cab_admin = _cab(_oauth(client, "a").json()["token"])
+    cab_peon = _cab(_oauth(client, "p").json()["token"])
+    miembros = {m["email"]: m["id"] for m in client.get("/api/usuarios", headers=cab_duenia).json()["miembros"]}
+    return cab_duenia, cab_admin, cab_peon, miembros
+
+
+def _rol_en_la_lista(client, cab, email):
+    return next(m["rol"] for m in client.get("/api/usuarios", headers=cab).json()["miembros"] if m["email"] == email)
+
+
+def test_la_duenia_le_cambia_el_rol_a_un_trabajador_y_su_token_viejo_deja_de_valer(client):
+    from app.routers.usuarios import ROL_EN_EL_CORREO
+
+    cab_duenia, _cab_admin, cab_peon, miembros = _equipo_de_acme(client)
+    assert client.get("/api/usuarios", headers=cab_peon).status_code == 403
+
+    r = client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"rol": "admin"}, headers=cab_duenia)
+    assert r.status_code == 200, r.text
+    assert _rol_en_la_lista(client, cab_duenia, "peon@acme.co") == "admin"
+
+    # El token que tenía abierto dice «worker»: ya no vale (vuelve a entrar).
+    assert client.get("/api/spaces/", headers=cab_peon).status_code == 401
+    r = _oauth(client, "p")
+    assert r.status_code == 200 and r.json()["role"] == "admin"
+    assert client.get("/api/usuarios", headers=_cab(r.json()["token"])).status_code == 200
+
+    # Y de vuelta a trabajador: el token de administrador deja de abrir la plata.
+    cab_ascendido = _cab(r.json()["token"])
+    assert client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"rol": "worker"},
+                        headers=cab_duenia).status_code == 200
+    assert client.get("/api/usuarios", headers=cab_ascendido).status_code == 401
+
+    # La bitácora dice qué cambió, en palabras, y que lo hizo la dueña.
+    lineas = [l for l in client.get("/api/bitacora/?accion=usuario.rol", headers=cab_duenia).json()]
+    assert [l["detalle"].split(" · ")[0] for l in lineas] == [
+        f"{ROL_EN_EL_CORREO['admin']} → {ROL_EN_EL_CORREO['worker']}",
+        f"{ROL_EN_EL_CORREO['worker']} → {ROL_EN_EL_CORREO['admin']}",
+    ]
+    assert all(l["rol"] == "owner" and l["detalle"].endswith("duenia@acme.co") for l in lineas)
+    assert lineas[0]["titulo"] == "Rol de una persona cambiado"
+
+
+def test_solo_un_duenio_da_el_rol_duenio_o_se_lo_cambia_a_otro(client):
+    from app.routers.usuarios import SOLO_DUENIO_CAMBIA_DUENIO
+
+    cab_duenia, cab_admin, _cab_peon, miembros = _equipo_de_acme(client)
+
+    # La administradora sí sube a un trabajador a administrador (como invitarlo)…
+    assert client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"rol": "admin"},
+                        headers=cab_admin).status_code == 200
+    # …pero no hace dueños, ni le baja el rol a la dueña.
+    r = client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"rol": "owner"}, headers=cab_admin)
+    assert r.status_code == 403 and r.json()["detail"] == SOLO_DUENIO_CAMBIA_DUENIO
+    r = client.patch(f"/api/usuarios/{miembros['duenia@acme.co']}", json={"rol": "worker"}, headers=cab_admin)
+    assert r.status_code == 403 and r.json()["detail"] == SOLO_DUENIO_CAMBIA_DUENIO
+    assert _rol_en_la_lista(client, cab_duenia, "duenia@acme.co") == "owner"
+
+    # La dueña sí hace dueña a la administradora (su token sigue: las dos viajan como admin).
+    assert client.patch(f"/api/usuarios/{miembros['admin@acme.co']}", json={"rol": "owner"},
+                        headers=cab_duenia).status_code == 200
+    assert client.get("/api/clientes/mi-suscripcion", headers=cab_admin).status_code == 200
+
+
+def test_el_supermercado_no_se_queda_sin_duenio_y_nadie_se_cambia_a_si_mismo(client, admin):
+    from app.routers.usuarios import NO_A_VOS_MISMO, ULTIMO_DUENIO
+
+    cab_duenia, cab_admin, _cab_peon, miembros = _equipo_de_acme(client)
+    yo = miembros["duenia@acme.co"]
+
+    # Ni desactivarse ni bajarse de rol: tampoco la administradora a sí misma.
+    for cuerpo in ({"activo": False}, {"rol": "admin"}):
+        r = client.patch(f"/api/usuarios/{yo}", json=cuerpo, headers=cab_duenia)
+        assert r.status_code == 409 and r.json()["detail"] == NO_A_VOS_MISMO, cuerpo
+    r = client.patch(f"/api/usuarios/{miembros['admin@acme.co']}", json={"activo": False}, headers=cab_admin)
+    assert r.status_code == 409 and r.json()["detail"] == NO_A_VOS_MISMO
+    # Lo que no cambia nada no se frena.
+    assert client.patch(f"/api/usuarios/{yo}", json={"rol": "owner"}, headers=cab_duenia).status_code == 200
+
+    # Con otra dueña, a la primera se la puede pasar a administradora (lo hace la otra).
+    client.patch(f"/api/usuarios/{miembros['admin@acme.co']}", json={"rol": "owner"}, headers=cab_duenia)
+    r = client.patch(f"/api/usuarios/{yo}", json={"rol": "admin"}, headers=cab_admin)
+    assert r.status_code == 200, r.text
+    # Y ya no queda otra dueña: a la que sigue no se le puede quitar el rol
+    # (la clave de la instalación, que no tiene membresía, lo intenta).
+    from app.auth import create_token
+    cab_legado = _cab(create_token("admin", 0, "acme"))
+    r = client.patch(f"/api/usuarios/{miembros['admin@acme.co']}", json={"rol": "worker"}, headers=cab_legado)
+    assert r.status_code == 409 and r.json()["detail"] == ULTIMO_DUENIO
+    assert _rol_en_la_lista(client, cab_admin, "admin@acme.co") == "owner"
+
+
+def test_cambiar_el_rol_valida_lo_que_llega(client):
+    cab_duenia, _cab_admin, _cab_peon, miembros = _equipo_de_acme(client)
+    peon = miembros["peon@acme.co"]
+    assert client.patch(f"/api/usuarios/{peon}", json={"rol": "jefe"}, headers=cab_duenia).status_code == 422
+    assert client.patch(f"/api/usuarios/{peon}", json={}, headers=cab_duenia).status_code == 422
+    assert client.patch("/api/usuarios/999999", json={"rol": "admin"}, headers=cab_duenia).status_code == 404
+
+
+def test_la_bitacora_dice_duenio_cuando_lo_hizo_la_duenia(client):
+    """El dueño viaja como `admin` en el token y la bitácora lo anotaba así
+    («admin · 127.0.0.1»). El rol del token no cambia: sólo lo anotado."""
+    cab_duenia, cab_admin, _cab_peon, miembros = _equipo_de_acme(client)
+    client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"activo": False}, headers=cab_duenia)
+    client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"activo": True}, headers=cab_admin)
+    lineas = client.get("/api/bitacora/?accion=usuario.cambio", headers=cab_duenia).json()
+    assert [(l["detalle"], l["rol"]) for l in lineas] == [
+        ("activado · admin@acme.co", "admin"),
+        ("desactivado · duenia@acme.co", "owner"),
+    ]
+    # La invitación dice el rol en palabras (decía «rol owner»).
+    invitadas = client.get("/api/bitacora/?accion=usuario.invitado", headers=cab_duenia).json()
+    assert [(l["detalle"], l["rol"]) for l in invitadas] == [
+        ("rol Trabajador · duenia@acme.co", "owner"),
+        ("rol Administrador · duenia@acme.co", "owner"),
+    ]
+    # El ingreso de la dueña, también.
+    _oauth(client, "d")
+    ingreso = client.get("/api/bitacora/?accion=login.ok", headers=cab_duenia).json()[0]
+    assert ingreso["rol"] == "owner" and ingreso["detalle"] == "duenia@acme.co"
+
+
 # ─── El correo dice con qué cuenta entrar ────────────────────────────────────
 
 def test_el_correo_dice_con_que_cuenta_entrar_y_escapa_el_nombre(client, monkeypatch):

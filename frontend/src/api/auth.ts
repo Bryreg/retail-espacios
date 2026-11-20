@@ -189,6 +189,14 @@ export const invitarUsuario = (payload: InvitarPayload): Promise<{ ok: boolean; 
 export const setMiembroActivo = (usuarioId: number, activo: boolean): Promise<{ ok: boolean }> =>
   client.patch<{ ok: boolean }>(`/usuarios/${usuarioId}`, { activo }).then((r) => r.data);
 
+/** Le cambia el rol a esa persona en este supermercado (2026-11-20). Las reglas
+ *  las pone el servidor, las mismas que al invitar: sólo un dueño da el rol
+ *  Dueño o se lo cambia a otro dueño, nadie se cambia a sí mismo y el
+ *  supermercado no se queda sin dueño. Entre trabajador y administrador, la
+ *  sesión que la persona tenga abierta deja de valer y vuelve a entrar. */
+export const setMiembroRol = (usuarioId: number, rol: Miembro["rol"]): Promise<{ ok: boolean }> =>
+  client.patch<{ ok: boolean }>(`/usuarios/${usuarioId}`, { rol }).then((r) => r.data);
+
 
 export interface NotificationConfig {
   notify_emails: string;   // comma-separated recipient list

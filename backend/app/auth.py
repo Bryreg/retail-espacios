@@ -468,15 +468,31 @@ def decode_guia(token: str) -> int | None:
 # para no convertir cada pedido en una consulta a la base por defecto.
 #
 # El PATCH de `routers/usuarios.py` llama `invalidar_cache_membresia` al
-# cambiar `activo`, así que en la práctica el retraso real es el tiempo hasta
-# el PRÓXIMO pedido de esa persona, no el TTL.
+# cambiar `activo` o el rol, así que en la práctica el retraso real es el tiempo
+# hasta el PRÓXIMO pedido de esa persona, no el TTL.
+#
+# Se guarda el ROL de la membresía (None si no está activa), no sólo si vale
+# (2026-11-20, cambiar el rol desde Ajustes › Equipo): `decode_token` exige que
+# el rol del token sea el que la membresía da hoy, y la bitácora anota «owner»
+# cuando quien hace algo es el dueño (el token lo lleva como `admin`).
 
 _MEMBRESIA_CACHE_TTL_SEGUNDOS = 60
-_membresia_cache: dict[tuple[int, str], tuple[bool, float]] = {}
+_membresia_cache: dict[tuple[int, str], tuple[str | None, float]] = {}
 _membresia_cache_candado = threading.Lock()
 
 
+def rol_de_token_para(rol_membresia: str) -> str:
+    """``owner``/``admin`` de membresía viajan en el token como ``admin`` (spec
+    de la Fase 1, decisión 5); ``worker``, como ``worker``."""
+    return "admin" if rol_membresia in ("owner", "admin") else "worker"
+
+
 def _membresia_activa(usuario_id: int, cliente_slug: str) -> bool:
+    return _membresia_rol(usuario_id, cliente_slug) is not None
+
+
+def _membresia_rol(usuario_id: int, cliente_slug: str) -> str | None:
+    """El rol de la membresía ACTIVA de esa persona en ese cliente, o None."""
     clave = (usuario_id, cliente_slug)
     ahora = time.monotonic()
     with _membresia_cache_candado:
@@ -504,17 +520,17 @@ def _membresia_activa(usuario_id: int, cliente_slug: str) -> bool:
             .filter(Membresia.usuario_id == usuario_id, Membresia.cliente_slug == cliente_slug)
             .first()
         )
-        activa = bool(fila is not None and fila.activo)
+        rol = fila.rol if (fila is not None and fila.activo) else None
     finally:
         reg.close()
 
     with _membresia_cache_candado:
-        _membresia_cache[clave] = (activa, ahora + _MEMBRESIA_CACHE_TTL_SEGUNDOS)
-    return activa
+        _membresia_cache[clave] = (rol, ahora + _MEMBRESIA_CACHE_TTL_SEGUNDOS)
+    return rol
 
 
 def invalidar_cache_membresia(usuario_id: int | str, cliente_slug: str) -> None:
-    """Se llama al cambiar ``activo`` desde el PATCH: no hay que esperar el TTL.
+    """Se llama al cambiar ``activo`` o el rol desde el PATCH: no hay que esperar el TTL.
 
     Acepta el id como entero o como el texto de dígitos del claim ``sub``: la
     clave del caché es siempre ``(int, slug)``, y un llamador que pase el
@@ -547,6 +563,33 @@ def _claims_del_token(token: str) -> tuple[int | None, str | None]:
 
 def _email_del_token(token: str) -> str | None:
     return _claims_del_token(token)[1]
+
+
+def _rol_de_membresia_del_token(token: str) -> str | None:
+    """El rol de la MEMBRESÍA de quien trae este token ya válido (``owner``,
+    ``admin`` o ``worker``), o None sin ``sub`` (el login legado) o en la
+    consola del operador. Sale del caché que ``decode_token`` acaba de llenar:
+    no cuesta otra consulta."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    sub = _sub_entero(payload) if payload.get("sub") is not None else None
+    cliente = payload.get("cliente")
+    if sub is None or not isinstance(cliente, str) or not cliente or cliente == SLUG_PLATAFORMA:
+        return None
+    return _membresia_rol(sub, cliente)
+
+
+def _anotar_actor(request: Request, raw: str) -> None:
+    """Lo que ``services/bitacora.py::anotar`` lee de quien pide: el correo y,
+    desde el 2026-11-20, el rol de su membresía —el dueño viaja como ``admin``
+    en el token, y la bitácora lo decía así: «admin · 127.0.0.1»—."""
+    email = _email_del_token(raw)
+    if email:
+        request.state.actor_email = email
+        request.state.actor_mfa = _mfa_del_token(raw)
+        request.state.actor_rol_membresia = _rol_de_membresia_del_token(raw)
 
 
 USO_MEDIOS = "medios"
@@ -731,8 +774,19 @@ def decode_token(token: str, db: Session | None = None, uso: str | None = None) 
             email = payload.get("email")
             if not isinstance(email, str) or not es_operador(email):
                 return None
-        elif not _membresia_activa(sub, cliente):
-            return None
+        else:
+            rol_membresia = _membresia_rol(sub, cliente)
+            if rol_membresia is None:
+                return None
+            # Le cambiaron el rol (Ajustes › Equipo) entre trabajador y
+            # administrador: el token que tiene abierto dice el de antes y deja
+            # de valer —vuelve a entrar con el nuevo—. Sin esto, un
+            # administrador pasado a trabajador seguía viendo la plata hasta
+            # que el token venciera (12 h). Dueño ↔ administrador no cambia el
+            # token: los dos viajan como `admin`, y lo que es sólo del dueño se
+            # pregunta a la membresía en cada pedido.
+            if rol_de_token_para(rol_membresia) != role:
+                return None
     return role
 
 
@@ -830,10 +884,7 @@ def require_auth(
     role = decode_token(raw, db)
     if role is None:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
-    email = _email_del_token(raw)
-    if email:
-        request.state.actor_email = email
-        request.state.actor_mfa = _mfa_del_token(raw)
+    _anotar_actor(request, raw)
     return role
 
 
@@ -971,8 +1022,5 @@ def require_auth_or_query_token(
     role = decode_token(raw, db, uso=uso)
     if role is None:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
-    email = _email_del_token(raw)
-    if email:
-        request.state.actor_email = email
-        request.state.actor_mfa = _mfa_del_token(raw)
+    _anotar_actor(request, raw)
     return role
