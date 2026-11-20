@@ -101,6 +101,8 @@ async function marcar(page, objetivos) {
     if (!b) throw new Error(`No se ve lo que hay que marcar: ${loc}`);
     cajas.push({ ...b, n: o.n ?? null });
   }
+  // Los recuadros van en <html>, no en <body>: la app le pone `zoom` al body
+  // (escala.ts) y ahí adentro las coordenadas quedarían corridas.
   await page.evaluate((cajas) => {
     for (const c of cajas) {
       const d = document.createElement("div");
@@ -110,7 +112,7 @@ async function marcar(page, objetivos) {
         border: "4px solid #F97316", borderRadius: "10px", boxShadow: "0 0 0 3px rgba(255,255,255,.9)",
         zIndex: 2147483647, pointerEvents: "none",
       });
-      document.body.appendChild(d);
+      document.documentElement.appendChild(d);
       if (c.n !== null) {
         const n = document.createElement("div");
         n.className = "manual-marca";
@@ -120,7 +122,7 @@ async function marcar(page, objetivos) {
           borderRadius: "50%", background: "#F97316", color: "#fff", font: "700 16px/28px system-ui, sans-serif",
           textAlign: "center", zIndex: 2147483647, pointerEvents: "none", boxShadow: "0 0 0 3px #fff",
         });
-        document.body.appendChild(n);
+        document.documentElement.appendChild(n);
       }
     }
   }, cajas);
