@@ -33,10 +33,13 @@ async function entrar(rol) {
 }
 
 /** Un navegador con la sesión del rol ya puesta (como la deja el ingreso). */
-async function abrir(navegador, rol, { celular = false, escala = 2 } = {}) {
+async function abrir(navegador, rol, { celular = false, escala = 2, ancho = 1280, alto = 800 } = {}) {
+  // `ancho`/`alto`: la ventana del navegador en el computador. Las pantallas de
+  // una sola columna (montaje, guía) se capturan en una ventana más angosta para
+  // que la letra se lea en la hoja A4.
   const opciones = celular
     ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: escala, isMobile: true, hasTouch: true }
-    : { viewport: { width: 1280, height: 800 }, deviceScaleFactor: escala };
+    : { viewport: { width: ancho, height: alto }, deviceScaleFactor: escala };
   const contexto = await navegador.newContext({
     ...opciones, locale: "es-CO", timezoneId: "America/Bogota", baseURL: BASE, colorScheme: "light",
   });
@@ -135,7 +138,13 @@ async function foto(page, carpeta, nombre, { marca, recorte, margen = 16, comple
   const quitar = marca ? await marcar(page, marca) : null;
   const opciones = { path: path.join(dir, `${nombre}.jpg`), type: "jpeg", quality: 82, animations: "disabled" };
   if (recorte) {
-    const b = await enPagina(page, recorte);
+    // Un elemento, o varios: el recorte abarca a todos (de arriba del primero
+    // al final del último).
+    const cajas = [];
+    for (const r of Array.isArray(recorte) ? recorte : [recorte]) cajas.push(await enPagina(page, r));
+    const x0 = Math.min(...cajas.map((c) => c.x)), y0 = Math.min(...cajas.map((c) => c.y));
+    const x1 = Math.max(...cajas.map((c) => c.x + c.width)), y1 = Math.max(...cajas.map((c) => c.y + c.height));
+    const b = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
     const ancho = await page.evaluate(() => document.documentElement.scrollWidth);
     const x = Math.max(0, b.x - margen), y = Math.max(0, b.y - margen);
     opciones.fullPage = true;

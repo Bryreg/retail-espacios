@@ -171,3 +171,5 @@ figure.celu img { max-width: 52mm; }
    en la misma página. */
 body.continuo .capitulo { break-before: auto; margin-top: 9mm; }
 body.continuo .portada + .capitulo { margin-top: 0; }
+
+figure.dos.pc img { max-width: 86mm; }
