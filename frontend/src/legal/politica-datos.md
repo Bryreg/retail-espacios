@@ -2,7 +2,7 @@
 
 # Política de Tratamiento de Datos Personales — RECABRA
 
-**Versión: 2026-10-v3 · Vigencia: octubre 2026**
+**Versión: 2026-11-v4 · Vigencia: noviembre 2026**
 
 Esta política explica qué datos de personas maneja RECABRA, para qué los usa, con qué
 permiso, quién responde por ellos y cómo puede cualquier persona pedir que se los
@@ -362,7 +362,7 @@ registrada** en tres momentos:
 
 **Cada versión se acepta por separado.** La constancia guarda la versión concreta que se
 aceptó, así que cuando se publica una versión nueva —como la 2026-09-v2, que cambió lo que
-ve el operador de la plataforma (punto 5.3), o esta 2026-10-v3, que suma los proveedores de
+ve el operador de la plataforma (punto 5.3), o la 2026-10-v3, que sumó los proveedores de
 tecnología, los plazos de conservación, el cobro y los derechos persona por persona— la
 aceptación anterior deja de estar vigente y el sistema **vuelve a pedir la aceptación** en
 el siguiente ingreso, sin borrar ni reescribir la constancia vieja. Las aceptaciones anteriores se conservan tal como quedaron: son la
@@ -633,8 +633,9 @@ El reporte contiene:
   aceptó, y la referencia a esta sección 5.3 como base de la lectura.
 
 Se pide de dos maneras, y las dos devuelven exactamente el mismo contenido: el **dueño**
-del supermercado lo genera desde su propia sesión —`GET /api/clientes/mi-reporte-plataforma`,
-con las mismas garantías que el export de la sección 7: sólo el dueño, sólo su cliente, con
+del supermercado lo genera desde su propia sesión —en Ajustes › Cuenta › Tus datos ›
+«Reporte de transparencia»—, con las mismas garantías que la descarga de la sección 7: sólo
+el dueño, sólo su supermercado, con
 un límite de pedidos por hora—, o se lo pide al operador, que puede entregárselo en una
 asesoría. El reporte es **informativo**: no borra, no corrige y no cambia ningún dato; para
 eso están los derechos de la sección 7.
@@ -793,10 +794,10 @@ a:
 
 RECABRA tiene estas vías construidas en el producto, además del canal de correo:
 
-**a) Descargar los datos del supermercado — `GET /api/clientes/mi-export`**
+**a) Descargar los datos del supermercado — Ajustes › Cuenta › Tus datos › «Descargar los datos del supermercado»**
 
-El **dueño** del supermercado (rol *owner*) puede descargar en cualquier momento un
-archivo JSON con los datos de negocio de su cliente: espacios, contratos, proveedores y
+El **dueño** del supermercado puede descargar en cualquier momento un archivo JSON con
+los datos de negocio de su supermercado: espacios, contratos, proveedores y
 planos. Es la forma más directa de ejercer el derecho a **conocer** y de llevarse la
 información.
 
@@ -813,9 +814,9 @@ Restricciones, por diseño:
 - Hay un límite de descargas por hora, para que la función no se convierta en un canal de
   extracción masiva.
 
-**b) Solicitar la supresión — `POST /api/clientes/solicitar-supresion`**
+**b) Solicitar la supresión — Ajustes › Cuenta › Tus datos › «Solicitar supresión»**
 
-El dueño del supermercado puede **solicitar** que se supriman los datos de su cliente. La
+El dueño del supermercado puede **solicitar** que se supriman los datos de su supermercado. La
 solicitud queda registrada con quién la hizo, cuándo y por qué motivo, y aparece en el
 panel del operador de la plataforma.
 
@@ -824,7 +825,7 @@ verifica que no exista un deber legal o contractual de conservar la información
 ejecutarla, y deja anotado qué se hizo. Un borrado automático de una base de contratos es
 irreversible y no admite el juicio que la ley exige.
 
-**c) Reporte de transparencia — `GET /api/clientes/mi-reporte-plataforma`**
+**c) Reporte de transparencia — Ajustes › Cuenta › Tus datos › «Reporte de transparencia»**
 
 El **dueño** del supermercado puede generar, cuando quiera, el reporte de transparencia
 descrito en el punto 5.3: el catálogo de los datos que la plataforma toma de su cuenta —con
@@ -839,7 +840,7 @@ real y no contra el rol de la sesión; sólo su propio supermercado; y un límit
 por hora. El reporte **no borra ni modifica nada** —es informativo—, y también se lo puede
 pedir al operador, que lo entrega con idéntico contenido.
 
-**d) Descargar mis datos — `GET /api/auth/mis-datos`**
+**d) Descargar mis datos — el menú de la cuenta (arriba a la derecha) › «Descargar mis datos»**
 
 **Cualquier persona con cuenta propia** —dueña, administración o mercaderista— puede bajar,
 desde el menú de su cuenta, un archivo con **sus** datos: su cuenta (correo, nombre, fechas,
@@ -872,7 +873,7 @@ plazos de la sección 8: diez días hábiles una consulta y quince un reclamo.
 
 Fuera del sistema quedan, y así se le informa a la persona: su cuenta en Google/Firebase
 (RECABRA la borra en la consola de Firebase cuando pide la supresión), los respaldos
-cifrados (vencen solos a los 30 días), los registros técnicos del servidor y los correos que
+cifrados (vencen solos a los 14 días), los registros técnicos del servidor y los correos que
 ya se le entregaron a otros.
 
 Ni el export, ni la solicitud de supresión, ni este reporte, ni la descarga de los datos de
@@ -1073,8 +1074,8 @@ sobre ese equipo es de quien lo usa, y así lo dicen los Términos del servicio.
 
 ## 11. Vigencia y versionado
 
-- **Versión de esta política: 2026-10-v3.**
-- **Vigencia: desde octubre de 2026** y hasta que se publique una versión nueva.
+- **Versión de esta política: 2026-11-v4.**
+- **Vigencia: desde noviembre de 2026** y hasta que se publique una versión nueva.
 - El tratamiento de los datos se mantiene mientras dure la relación con cada titular y
   durante los plazos de conservación de la sección 6.
 
@@ -1091,8 +1092,9 @@ la ley lo exija, se pedirá una nueva aceptación.
 | **2026-09-v2** | El operador ve agregados exactos sin umbral; reporte de transparencia como derecho del cliente. Cambio material: dispara el re-consentimiento del punto 4.1. Antes de su despliegue, esta misma versión se amplió con el detalle de espacios y contratos (ver la fila siguiente). |
 | ↳ 2026-09-v2, ampliación previa al despliegue (2026-09-05) | El operador pasa a ver, además de los agregados, el **detalle de espacios y contratos** de cada cliente para la asesoría comercial (punto 5.3 (a)), con la finalidad nueva de **mejora del servicio y de la plataforma** (punto 3.6), anotado en la bitácora y declarado en el reporte de transparencia. **No se creó una versión nueva**: la 2026-09-v2 todavía no se había publicado ni desplegado, y el titular consiente el trato completo en un solo acto de aceptación. |
 | **2026-10-v3** | Revisión contra el producto (2026-10-30): todos los proveedores de tecnología (correo, respaldos en GitHub y en un depósito, Sentry) y lo que ve cada uno (9.1); lo que guarda el navegador, incluido el plano con valores después de «Salir» (2.7 y 10.1); las bitácoras, los registros técnicos, los errores y la cola de correos (2.5); la autoría de los registros, las altas en espera y la aceptación de los Términos del servicio (2.1 y 4.1); el cobro de la suscripción (2.6 y 3.7); los plazos de conservación por categoría, con lo que se borra solo (6); los derechos persona por persona: «Descargar mis datos» y la atención del operador que exporta o anonimiza (5.3 y 7.1 d y e). Cambio material: dispara el re-consentimiento del punto 4.1. |
+| **2026-11-v4** | Cómo se ejercen los derechos (7.1 y 5.3): cada vía se nombra por dónde está en la pantalla (Ajustes › Cuenta › Tus datos, y el menú de la cuenta) y no por la ruta técnica del sistema; «el dueño» y «su supermercado» en vez de «rol *owner*» y «su cliente». Corrige el plazo de los respaldos cifrados en 7.1 e (14 días, como en la sección 6). No cambia finalidades, datos ni encargados, pero como toda versión nueva dispara el re-consentimiento del punto 4.1: el sistema vuelve a pedir la aceptación en el siguiente ingreso. |
 
-> Nota técnica para quien mantiene el sistema: el identificador `2026-10-v3` es el mismo
+> Nota técnica para quien mantiene el sistema: el identificador `2026-11-v4` es el mismo
 > valor de la constante `VERSION_POLITICA` del backend (`app/models/consentimiento.py`). Si
 > se publica una versión nueva de este documento hay que cambiar los dos a la vez, o las
 > constancias de consentimiento apuntarán a un texto que ya no existe. Subir la constante no

@@ -1342,8 +1342,10 @@ def test_t47_la_politica_dice_lo_que_la_fase_7_cambio(client):
     agregados exactos, la falta de umbral, el reporte, su endpoint y la
     bitácora — es la base legal que el propio reporte cita."""
     texto = (REPO / "docs" / "legal" / "politica-datos.md").read_text(encoding="utf-8")
+    # Desde la 2026-11-v4 el reporte se nombra por dónde se pide en la pantalla
+    # (Ajustes › Cuenta › Tus datos), no por su ruta de la API.
     for frase in ("agregados exactos", "sin umbral", "reporte de transparencia",
-                  "mi-reporte-plataforma", "bitácora"):
+                  "Ajustes › Cuenta › Tus datos", "bitácora"):
         assert frase in texto, f"la política no dice {frase!r}"
 
 
@@ -1358,7 +1360,7 @@ def test_t49_la_version_subio_y_la_cabecera_la_dice(client):
 
     # Subió otra vez en la revisión de privacidad (2026-10-30): lo que se fija
     # es que la cabecera la diga, sea cual sea.
-    assert VERSION_POLITICA == "2026-10-v3", VERSION_POLITICA
+    assert VERSION_POLITICA == "2026-11-v4", VERSION_POLITICA
     texto = (REPO / "docs" / "legal" / "politica-datos.md").read_text(encoding="utf-8")
     cabecera = "\n".join(texto.splitlines()[:12])
     assert VERSION_POLITICA in cabecera, cabecera
