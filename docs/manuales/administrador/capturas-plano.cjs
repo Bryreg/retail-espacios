@@ -64,6 +64,8 @@ fs.mkdirSync(TEXTOS, { recursive: true });
     return b;
   };
   const ficha = () => page.locator("body");
+  /** La caja blanca de un diálogo (el `role=dialog` es el velo de toda la pantalla). */
+  const cajaDe = (d) => d.locator(":scope > div").first();
   const alPlano = async () => {
     await page.goto("/plano");
     await page.waitForLoadState("networkidle");
@@ -72,6 +74,9 @@ fs.mkdirSync(TEXTOS, { recursive: true });
     await espera(600);
   };
 
+  // DESDE=7|8|8.5|9 retoma desde ese tramo (para rehacer una parte sin repetir todo).
+  const DESDE = Number(process.env.DESDE || 7);
+  if (DESDE <= 7) {
   // ══ 7 · PLANO DE LA SEDE ══════════════════════════════════════════════════
   await alPlano();
   await foto(page, C, "01-plano-mirar", { marca: boton("Mirar").locator("xpath=..") });
@@ -136,6 +141,8 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await como.scrollIntoViewIfNeeded();
   await como.getByRole("radio", { name: "Por entrepaños" }).click();
   await espera(1000);
+  await como.evaluate((e) => e.scrollIntoView({ block: "center" }));
+  await espera(400);
   await foto(page, C, "10-como-se-vende", { marca: como });
   await guardarTexto("10-como-se-vende", ficha());
   await como.getByRole("radio", { name: "Entera" }).click();
@@ -235,6 +242,8 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await foto(page, C, "26-distribucion-guardada");
   await guardarTexto("26-distribucion-guardada");
 
+  }
+  if (DESDE <= 8) {
   // ══ 8 · PLANOGRAMAS ═══════════════════════════════════════════════════════
   await alPlano();
   await clicEnMueble("GON-12");
@@ -256,7 +265,7 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await espera(800);
   await page.locator("#destino-nombre").fill("Lácteos");
   await page.locator("#destino-pct").fill("20");
-  await foto(page, C, "32-agregar-destino", { marca: boton("Agregar a la cara") });
+  await foto(page, C, "32-agregar-destino", { recorte: cajaDe(page.getByRole("dialog").last()), margen: 12, marca: boton("Agregar a la cara") });
   await guardarTexto("32-agregar-destino", page.getByRole("dialog").last());
   await boton("Agregar a la cara").click();
   await espera(2000);
@@ -277,7 +286,7 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await page.getByRole("button", { name: /Publicar versión/ }).first().click();
   await espera(1000);
   const dPublicar = page.getByRole("dialog").last();
-  await foto(page, C, "35-publicar", { recorte: dPublicar, margen: 24, marca: dPublicar.getByRole("button", { name: /Publicar versión/ }) });
+  await foto(page, C, "35-publicar", { recorte: cajaDe(dPublicar), margen: 12, marca: dPublicar.getByRole("button", { name: /Publicar versión/ }) });
   await guardarTexto("35-publicar", dPublicar);
   await dPublicar.getByRole("button", { name: /Publicar versión/ }).click();
   await espera(2500);
@@ -290,7 +299,7 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await page.getByRole("button", { name: /Mandarla a quien corresponde/ }).first().click();
   await espera(1500);
   const dMandar = page.getByRole("dialog").last();
-  await foto(page, C, "37-mandar-guia", { recorte: dMandar, margen: 24 });
+  await foto(page, C, "37-mandar-guia", { recorte: cajaDe(dMandar), margen: 12, marca: dMandar.getByRole("button", { name: /^Mandar/ }).last() });
   await guardarTexto("37-mandar-guia", dMandar);
   console.log("  botones de «Mandarla»:", (await dMandar.locator("button").allInnerTexts()).join(" | "));
   const mandar = dMandar.getByRole("button", { name: /^Mandar/ }).last();
@@ -305,22 +314,24 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await boton("Versiones").click();
   await espera(1500);
   const dVersiones = page.getByRole("dialog").last();
-  await foto(page, C, "39-versiones", { recorte: dVersiones, margen: 24 });
+  await foto(page, C, "39-versiones", { recorte: cajaDe(dVersiones), margen: 12 });
   await guardarTexto("39-versiones", dVersiones);
   await dVersiones.getByRole("button", { name: "Guía" }).first().click();
   await espera(2000);
   await foto(page, C, "40-la-guia", { marca: page.getByRole("button", { name: "Copiar el enlace" }) });
   await guardarTexto("40-la-guia", page.getByRole("dialog").last());
 
+  }
+  if (DESDE <= 8.5) {
   // Verificar el montaje de un planograma: Pendientes › Hoy › Verificar
   await page.goto("/plano");
   await page.waitForLoadState("networkidle");
   await espera(1200);
   await page.getByRole("button", { name: "Pendientes" }).first().click();
   await espera(1500);
-  const verificar = page.getByRole("button", { name: /^Verificar/ }).first();
+  const verificar = page.locator("[data-cajon]").getByRole("button", { name: "Revisar", exact: true }).first();
   await verificar.scrollIntoViewIfNeeded();
-  await foto(page, C, "41-pendientes-verificar", { marca: verificar });
+  await foto(page, C, "41-pendientes-verificar", { recorte: page.locator("[data-cajon]"), margen: 0, marca: verificar });
   await verificar.click();
   await espera(2500);
   await foto(page, C, "42-revisar-montaje", { marca: [
@@ -340,15 +351,16 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await guardarTexto("43-no-coincide");
   await boton("Guardar y mandar la guía").click();
   await espera(2500);
-  await foto(page, C, "44-revision-guardada");
+  await foto(page, C, "44-revision-guardada", { recorte: page.getByText(/Guardado: no coincide/).first(), margen: 10 });
   await guardarTexto("44-revision-guardada");
 
+  }
   // ══ 9 · AJUSTES ═══════════════════════════════════════════════════════════
   await page.goto("/plano");
   await page.waitForLoadState("networkidle");
   await espera(1200);
   const engranaje = page.getByTitle(/Usuarios, avisos/).first();
-  await foto(page, C, "50-abrir-ajustes", { recorte: page.locator("nav").first(), marca: engranaje, margen: 8 });
+  await foto(page, C, "50-abrir-ajustes", { marca: engranaje });
   await engranaje.click();
   await espera(1000);
   await foto(page, C, "51-comercial", { marca: page.locator("[data-tema=comercial]") });

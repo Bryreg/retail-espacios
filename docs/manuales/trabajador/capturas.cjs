@@ -163,10 +163,6 @@ async function ingresoEncendido(contexto) {
   await tarjetas.nth(0).locator(".ini-link").click();
   await page.waitForTimeout(1800);
   await foto(page, C, "11-desde-inicio", { marca: page.getByText("Volver al Inicio") });
-  await ir("/");
-  await tarjetas.nth(1).locator(".ini-link").click();
-  await page.waitForTimeout(2000);
-  await foto(page, C, "12-por-vencer-en-el-plano");
 
   // ── 4. Pendientes ────────────────────────────────────────────────────────
   await ir("/");
@@ -286,9 +282,6 @@ async function ingresoEncendido(contexto) {
   await pestana("Mapa de oportunidades"); // Indicadores vuelve a la última pestaña que se usó
   await foto(page, C, "40-mapa", { marca: page.getByRole("tablist").or(page.locator('[role="tablist"]')).first() });
   await guardarTexto(page, "40-mapa");
-  await pestana("Análisis");
-  await foto(page, C, "41-analisis");
-  await guardarTexto(page, "41-analisis");
   await pestana("Plano");
   await foto(page, C, "42-plano");
   await pestana("Contratos");
@@ -323,8 +316,6 @@ async function ingresoEncendido(contexto) {
     ],
   });
   await guardarTexto(page, "48-historial");
-  await pestana("Diccionario");
-  await foto(page, C, "49-diccionario");
 
   await nav.close();
 })().catch((e) => { console.error(e); process.exit(1); });

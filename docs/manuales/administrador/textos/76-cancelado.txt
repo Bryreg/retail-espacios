@@ -14,7 +14,7 @@ Ctrl K
 Más
 Sincronizado
 Pendientes
-23
+24
 GA
 Galerías
 Administrador
@@ -42,17 +42,17 @@ Todas
 Vigentes hoy
 18
 Por vencer
-2
+1
 Sin montar
 2
 Libres
-5
+4
 Vendido en parte
-7
+8
 CÓDIGO	TIPO	PROVEEDOR	ESTADO	MONTAJE	DESDE	HASTA	DÍAS	VALOR AL MES	
 GON-04·A·PC1	Góndola, por cara · Participación 1	Aseo Total	Por vencer	Montado	1 may	30 nov	10d	$ 450.000	
-PUN-01	Punta de góndola	Limpio Hogar	Por vencer	Montado	1 jun	30 nov	10d	$ 600.000	
 GON-03·A·PC3	Góndola, por cara · Participación 3	Aseo Total	Activo	Montado	1 jul	31 dic	41d	$ 115.000	
+PUN-01	Punta de góndola	Limpio Hogar	Activo	Montado	1 jun	31 dic	41d	$ 600.000	
 PUN-02·EN1	Punta de góndola · Entrepaño 1 de 5	Snacks Norte	Activo	Montado	1 oct	31 dic	41d	$ 150.000	
 PUN-02·EN2	Punta de góndola · Entrepaño 2 de 5	Café Montaña	Activo	No se pudo	1 oct	31 dic	41d	$ 150.000	
 GON-01·A·PC1	Góndola, por cara · Participación 1	Lácteos Andinos	Activo	Montado	1 ago	31 ene 2027	72d	$ 270.000	
@@ -76,7 +76,7 @@ GON-02·B	Góndola, por cara	—	Libre	—	—	—	—	$ 450.000
 GON-03·A	Góndola, por cara	—	Por participación	—	—	—	—	$ 450.000	
 GON-03·B	Góndola, por cara	—	Tomada	—	—	—	—	$ 450.000	
 GON-04·A	Góndola, por cara	—	Tomada	—	—	—	—	$ 450.000	
-GON-04·B	Góndola, por cara	—	Libre	—	—	—	—	$ 450.000	
+GON-04·B	Góndola, por cara	—	Por participación	—	—	—	—	$ 450.000	
 NEV-01	Nevera de puertas	—	Por participación	—	—	—	—	$ 1.400.000	
 PUN-02	Punta de góndola	—	Vendido en parte	—	—	—	—	$ 600.000	
 PUN-03	Punta de góndola	—	Vendido en parte	—	—	—	—	$ 600.000	

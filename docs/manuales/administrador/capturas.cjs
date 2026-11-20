@@ -289,8 +289,8 @@ let paginaActual = null;
     const d = new Date(); d.setDate(d.getDate() + 7);
     await hasta.fill(d.toISOString().slice(0, 10));
     await espera(500);
-    await foto(page, C, "45-reservar-hasta", { recorte: pie(), margen: 6, marca: [{ loc: hasta, n: 1 }, { loc: boton("Reservar"), n: 2 }] });
-    await boton("Reservar").click();
+    await foto(page, C, "45-reservar-hasta", { recorte: pie(), margen: 6, marca: [{ loc: hasta, n: 1 }, { loc: page.getByRole("button", { name: /^Reservar hasta el/ }), n: 2 }] });
+    await page.getByRole("button", { name: /^Reservar hasta el/ }).click();
     await espera(2200);
     await guardarTexto(page, "46-reservado", panel());
     await foto(page, C, "46-reservado", { recorte: panel(), margen: 0 });
@@ -382,11 +382,11 @@ let paginaActual = null;
     await page.getByRole("button", { name: "Editar contrato" }).first().click();
     await espera(1500);
     await foto(page, C, "64-editando", { recorte: panel(), margen: 0, marca: page.getByText(/Editando el contrato de/).first() });
-    await page.getByText("Correo y nota para el proveedor").click();
-    await espera(500);
-    const nota = page.getByPlaceholder(/Algo que haya que saber/);
-    await nota.fill("Se suma un exhibidor de piso en diciembre.");
-    await espera(500);
+    // Se alarga un mes: hasta el último día del mes que viene.
+    const h = new Date(); const fin = new Date(h.getFullYear(), h.getMonth() + 2, 0);
+    const iso = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, "0")}-${String(fin.getDate()).padStart(2, "0")}`;
+    await page.locator('section.bloque[data-bloque="2"] input[type="date"]').nth(1).fill(iso);
+    await espera(800);
     await foto(page, C, "65-editar-guardar", { recorte: pie(), margen: 6, marca: boton("Guardar cambios y reenviar") });
     await boton("Guardar cambios y reenviar").click();
     await espera(800);
@@ -461,6 +461,8 @@ let paginaActual = null;
   // ── 5. Indicadores ──────────────────────────────────────────────────────
   await ir("/indicadores");
   await cerrarCajon();
+  await page.getByRole("tab", { name: "Mapa de oportunidades" }).click();
+  await espera(1200);
   await paso("80-mapa", () => foto(page, C, "80-mapa-de-oportunidades", { marca: page.getByRole("tablist").first() }));
   await paso("81-fecha", async () => {
     await page.getByRole("button", { name: /\d{1,2} \w{3} \d{4}/ }).first().click();
