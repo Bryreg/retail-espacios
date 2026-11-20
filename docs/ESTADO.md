@@ -1825,8 +1825,9 @@ que exista su campo lo junta el armazón (`armazonStore.tecleadoAlAbrir`) y el b
 eso: ya no se come las primeras letras. En el menú de la cuenta, toda la fila «Tema claro u oscuro»
 es el control (`role="menuitemcheckbox"`). El ingreso, la invitación (pantalla y correo), los errores
 de invitación y alta del servidor y el correo de prueba hablan de vos; quedan en usted la landing
-(copy.md §0), el informe comercial del operador (`InformeCliente`) y, hasta que el dueño decida, los
-correos de cobranza de la suscripción. Las fechas que lee una persona en los correos van en
+(copy.md §0), el informe comercial del operador (`InformeCliente`) y los correos de cobranza de la
+suscripción (`services/cobranza_automatica.py`: aviso formal de RECABRA al supermercado; decisión
+del dueño, 2026-11-20: «Déjalo con usted»). Las fechas que lee una persona en los correos van en
 dd/mm/aaaa (`mailer.fecha_de_correo`). Pruebas: `e2e/varios.e2e.ts`, `probar-ingreso`,
 `test_contract_emails`, `test_recordatorios`, `test_invitacion_enlace`.
 
