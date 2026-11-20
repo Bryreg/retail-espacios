@@ -10,4 +10,4 @@ Montaje
 montaje.centro@supermercado.example · sin valores
 Proveedor
 compras@limpiohogar.example
-Volver a Supervisar
+Volver a Indicadores

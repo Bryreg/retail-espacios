@@ -21,6 +21,6 @@ Tomado
 El precio es
 Total
 Al mes
-tarifa $ 120.000 al mes
+tarifa al mes × 3 meses = $ 360.000
 Sumar otro espacio: tocalo en el plano
 Tocá Ver en 3D para mostrarle cómo queda

@@ -13,6 +13,7 @@ Buscar
 Ctrl K
 Sincronizado
 Pendientes
+26
 GA
 Galerías
 Administrador
@@ -20,6 +21,7 @@ Montajes
 Montajes
 7 por montar · contratos y planogramas de CENTRO, por fecha de inicio
 Resumen de montajes
+Listo: PUN-03-EN1 quedó reportado como montado.
 Todos
 24
 Sin montar

@@ -23,14 +23,14 @@ Precio fijo
 % de las ventas
 Correo y nota para el proveedor · opcional
 Total del contrato
-214 días · 7,07 meses · 1 línea
+212 días · 7 meses · 1 línea
 $ 4.200.000
 CUBRE ESCOLAR
 CUBRE SEMANA SANTA
 CUBRE DÍA DE LA MADRE
 CUBRE DÍA DEL PADRE
 CUBRE VACACIONES
-Limpio Hogar contrata PUN-01 del 1 ene 2027 al 2 ago 2027 por $ 4.200.000 en total.
+Limpio Hogar contrata PUN-01 del 1 ene 2027 al 31 jul 2027 por $ 4.200.000 en total.
 Guardar contrato
 Reservar hasta…
 Empezar de nuevo

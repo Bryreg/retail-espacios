@@ -1,0 +1,79 @@
+Pendientes
+22 para revisar en CENTRO · pasá el mouse por una fila y se señala en el plano de Indicadores
+Hoy
+14
+30 días
+5
+Corregir
+3
+PUN-09 pasó a contrato. Salió el aviso al área comercial y al proveedor. El de montaje sale cuando el espacio tenga su planometría.
+VENTAS POR CARGAR · 1
+PUN-03·EN2
+Bebidas del Valle
+5 %
+1 sep – 30 sep
+vendido $ 4.200.000
+→ $ 210.000
+PUN-03·EN2
+Bebidas del Valle
+5 %
+1 oct – 31 oct
+$
+Guardar
+FALTA DISTRIBUIR · YA CORRE · 7
+corre
+GON-01 · A
+falta distribuir 60 % (1 participación) · ya corre.
+Distribuir
+corre
+GON-01 · B
+falta distribuir 40 % (1 participación) · ya corre.
+Distribuir
+corre
+GON-02 · A
+falta distribuir 50 % (1 participación) · ya corre.
+Distribuir
+corre
+GON-03 · A
+falta distribuir 80 % (3 participaciones) · ya corre.
+Distribuir
+corre
+GON-03 · B
+falta distribuir 100 % (1 participación) · ya corre.
+Distribuir
+corre
+GON-04 · A
+falta distribuir 100 % (1 participación) · ya corre.
+Distribuir
+corre
+NEV-01
+falta distribuir 80 % (2 participaciones) · ya corre.
+Distribuir
+FALTA PLANOMETRÍA · YA CORRE · 1
+corre
+PUN-03·EN2
+Bebidas del Valle · ya corre
+Cargar planometría
+PLANOGRAMA MONTADO POR REVISAR · 1
+hoy
+GON-13 · B · versión 1
+avisó que quedó montada · hoy 18:50 · sin foto
+Revisar
+NO SE PUDO MONTAR EL PLANOGRAMA · 1
+hoy
+GON-13 · A · versión 1
+No llegó el producto · La marca propia llega el lunes · hoy 18:50
+Ver
+PLANOGRAMA SIN MONTAR · 2
+hoy
+GON-12 · A · versión 1
+rige desde hoy · nadie avisó
+Mandar la guía
+hoy
+GON-12 · B · versión 1
+rige desde hoy · nadie avisó
+Mandar la guía
+NO SE PUDO MONTAR · 1
+!
+PUN-02·EN2
+Café Montaña · «El proveedor no entregó el material»

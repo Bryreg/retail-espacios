@@ -71,7 +71,7 @@ async function ingresoEncendido(contexto) {
   await contexto.route(/\/assets\/Login-[^/]+\.js$/, async (route) => {
     const r = await route.fetch();
     const cuerpo = (await r.text())
-      .replace(/B as he([,}])/, "B as he__$1")
+      .replace(/([\w$]+) as he([,}])/, "$1 as he__$2") // `he`: «el ingreso está configurado» (cambia de letra con cada build)
       .replace(/(from"\.\/index-[^"]+\.js";)/, "$1const he=!0;");
     await route.fulfill({ response: r, body: cuerpo });
   });
@@ -122,7 +122,7 @@ async function ingresoEncendido(contexto) {
       { loc: page.locator('select[aria-label="Sede"]'), n: 1 },
       { loc: page.locator(".btn-buscar"), n: 2 },
       { loc: page.getByLabel("Ayuda de esta pantalla"), n: 3 },
-      { loc: page.getByText("Sincronizado", { exact: true }), n: 4 },
+      { loc: page.getByText("Sincronizado", { exact: true }).locator(".."), n: 4 }, // con el punto: el número no tapa la «S»
       { loc: page.getByRole("button", { name: /^Pendientes/ }).first(), n: 5 },
       { loc: page.getByRole("button", { name: /Trabajador/ }).first(), n: 6 },
     ],
@@ -138,8 +138,13 @@ async function ingresoEncendido(contexto) {
   await page.waitForTimeout(400);
   await page.keyboard.type("PUN-07", { delay: 40 });
   await page.waitForTimeout(800);
-  await foto(page, C, "06b-buscar-espacio", { recorte: page.locator(".buscador"), margen: 20 });
-  await page.keyboard.press("Escape");
+  await foto(page, C, "06b-buscar-espacio", { recorte: page.locator(".buscador"), margen: 20, marca: page.locator(".buscador-fila").first() });
+  await guardarTexto(page, "06b-buscar-espacio");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(2500);
+  await foto(page, C, "06c-ficha-desde-buscar");
+  await guardarTexto(page, "06c-ficha-desde-buscar");
+  await ir("/");
   await page.getByLabel("Ayuda de esta pantalla").click();
   await page.waitForTimeout(800);
   await foto(page, C, "07-ayuda");
@@ -149,7 +154,7 @@ async function ingresoEncendido(contexto) {
   await page.getByText("Trabajador", { exact: true }).click();
   await page.waitForTimeout(500);
   const menu = page.locator(".menu-cuenta");
-  await foto(page, C, "08-cuenta", { recorte: menu, margen: 10, marca: menu.locator(".fila .der") });
+  await foto(page, C, "08-cuenta", { recorte: menu, margen: 10, marca: menu.locator("[data-fila-tema]") });
   await page.keyboard.press("Escape");
   await page.mouse.click(600, 600);
 
@@ -206,9 +211,9 @@ async function ingresoEncendido(contexto) {
   await foto(page, C, "26-confirmar", { marca: [{ loc: nombre, n: 1 }, { loc: boton("Confirmar"), n: 2 }] });
   await boton("Confirmar").click();
   await page.waitForTimeout(2500);
-  // No sale un «listo»: vuelve a la lista y el espacio pasa de «Sin montar»
-  // a «Montado, sin verificar».
-  await foto(page, C, "27-listo", { marca: filtros.getByRole("button", { name: /^Montado, sin verificar/ }) });
+  // Vuelve a la lista con «Listo: PUN-03-EN1 quedó reportado como montado.»
+  // arriba, y el espacio pasa de «Sin montar» a «Montado, sin verificar».
+  await foto(page, C, "27-listo", { marca: page.getByText(/^Listo: .* quedó reportado/).first() });
   await guardarTexto(page, "27-listo");
 
   // No pude (GON-02-PC1)
@@ -228,7 +233,7 @@ async function ingresoEncendido(contexto) {
   await guardarTexto(page, "30-no-pude");
   await boton("Confirmar").click();
   await page.waitForTimeout(2500);
-  await foto(page, C, "31-no-pude-listo");
+  await foto(page, C, "31-no-pude-listo", { marca: page.getByText(/^Listo: .* quedó reportado/).first() });
   await guardarTexto(page, "31-no-pude-listo");
 
   // Ver el registro y la foto
@@ -251,7 +256,18 @@ async function ingresoEncendido(contexto) {
   await guardarTexto(page, "35-no-realizado");
   await page.keyboard.press("Escape");
 
-  // Sin señal (PUN-03-EN2)
+  // Planogramas: el trabajador ve la guía (sólo lectura)
+  await ir("/montajes");
+  const filaGuia = fila("GON-12 · cara A");
+  await foto(page, C, "28-planograma", { marca: filaGuia.getByRole("button", { name: "Ver la guía" }) });
+  await filaGuia.getByRole("button", { name: "Ver la guía" }).click();
+  await page.waitForTimeout(2500);
+  await foto(page, C, "29-guia", { marca: page.getByRole("dialog").getByRole("button", { name: "Imprimir" }) });
+  await guardarTexto(page, "29-guia");
+  await page.getByRole("dialog").getByRole("button", { name: "Cerrar" }).click();
+  await page.waitForTimeout(600);
+
+  // Sin conexión (PUN-03-EN2)
   await ir("/montajes");
   await fila("PUN-03-EN2").locator("button.mj-btn").click();
   await page.waitForTimeout(2000);
@@ -263,18 +279,18 @@ async function ingresoEncendido(contexto) {
   await contexto.setOffline(true);
   await boton("Confirmar").click();
   await page.waitForTimeout(2000);
-  const sinSenal = page.getByText(/Sin señal/).first();
+  const sinSenal = page.getByText(/Sin conexión: tu reporte/).first();
   await sinSenal.scrollIntoViewIfNeeded();
   const cajaSinSenal = sinSenal.locator("xpath=ancestor::*[.//button[contains(., 'Reintentar')]][1]");
   await foto(page, C, "37-sin-senal", { recorte: cajaSinSenal, margen: 24, marca: page.getByRole("button", { name: "Reintentar ahora" }) });
   await guardarTexto(page, "37-sin-senal");
-  // El estado de arriba se entera al próximo intento: tocarlo lo fuerza.
-  await page.locator('[aria-label^="Sincronizado"]').click().catch(() => {});
+  // La barra pasa sola a «Sin conexión» (escucha al navegador).
   await page.getByText("Sin conexión", { exact: true }).waitFor({ timeout: 15000 });
   await foto(page, C, "38-sin-conexion", { recorte: barra, margen: 0, marca: page.getByText("Sin conexión", { exact: true }) });
   await contexto.setOffline(false);
   await page.waitForTimeout(6000);
   await guardarTexto(page, "39-volvio-la-senal");
+  await foto(page, C, "39-volvio-la-conexion", { marca: page.getByText(/^Listo: .* quedó reportado/).first() });
 
 
   // ── 6. Indicadores ───────────────────────────────────────────────────────
@@ -282,6 +298,15 @@ async function ingresoEncendido(contexto) {
   await pestana("Mapa de oportunidades"); // Indicadores vuelve a la última pestaña que se usó
   await foto(page, C, "40-mapa", { marca: page.getByRole("tablist").or(page.locator('[role="tablist"]')).first() });
   await guardarTexto(page, "40-mapa");
+  // El mouse fuera del mapa: al pasar por un indicador, este panel cambia a
+  // los espacios de ese indicador.
+  await page.mouse.move(2, 790);
+  await page.waitForTimeout(600);
+  const acciones = page.locator("section.mo-panel", { has: page.getByText(/^Ordenadas por impacto/) }).first();
+  await acciones.scrollIntoViewIfNeeded();
+  await page.mouse.move(2, 790);
+  await page.waitForTimeout(600);
+  await foto(page, C, "41-acciones", { recorte: acciones, margen: 12, marca: acciones.getByRole("button", { name: "Ver la ficha" }).first() });
   await pestana("Plano");
   await foto(page, C, "42-plano");
   await pestana("Contratos");
@@ -293,6 +318,13 @@ async function ingresoEncendido(contexto) {
   await page.waitForTimeout(2000);
   await foto(page, C, "45-ficha");
   await guardarTexto(page, "45-ficha");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(600);
+  await pestana("Contratos");
+  await page.getByText("PUN-02", { exact: true }).first().click();
+  await page.waitForTimeout(2000);
+  await foto(page, C, "45b-ficha-en-parte", { marca: page.getByText(/^De 5 entrepaños, 2 con contrato/).first() });
+  await guardarTexto(page, "45b-ficha-en-parte");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(600);
   await pestana("Contratos");

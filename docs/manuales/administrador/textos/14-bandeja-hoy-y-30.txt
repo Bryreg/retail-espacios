@@ -1,0 +1,142 @@
+RECABRA
+Inicio
+Contratos
+Indicadores
+Montajes
+Plano de la sede
+Ajustes
+Galerías
+Sede: CENTRO
+CENTRO
+1 de 1 · 16 muebles
+Buscar
+Ctrl K
+Sincronizado
+Pendientes
+24
+GA
+Galerías
+Administrador
+Hola
+Esto es lo que pide atención hoy en CENTRO.
+Hoy, 20/11/2026
+Nuevo contrato
+Configuración inicial
+5 de 6 · lo que falta para dejar el supermercado listo
+Ocultar
+Crear las sedes
+La sede: CENTRO.
+Ver
+Dibujar el plano de cada sede
+CENTRO: 16 muebles, 18 espacios contratables
+Ver
+Definir las tarifas
+3 tipos de mueble tienen tarifa de referencia.
+Ver
+Definir responsables por sede
+Cada sede tiene administración y montaje.
+Ver
+5
+Invitar al equipo
+Sólo estás vos.
+Invitar al equipo
+Registrar el primer contrato
+5 muebles tienen contrato.
+Ver
+Contratos activos
+18
+Ver cuáles son
+Por vencer (30 días)
+2
+Requieren acción
+Ver cuáles
+Montajes por resolver
+7
+5 sin montar · 2 no realizados
+Ver montajes
+Canon del mes
+$ 5.815.833
+Ver de dónde sale
+Pendientes de hoy · 16
+Ver los 24
+Planograma sin montar
+GON-12·A
+Resolver
+Planograma sin montar
+GON-12·B
+Resolver
+No se pudo montar el planograma
+GON-13·A
+Resolver
+Planograma montado por revisar
+GON-13·B
+Verificar
+Ventas por cargar
+PUN-03
+Cargar
+Ventas por cargar
+PUN-03
+Cargar
+Falta distribuir · ya corre
+GON-01·A · hoy
+Distribuir
+Falta distribuir · ya corre
+GON-01·B · hoy
+Distribuir
+y 8 más de hoy
+Actividad reciente
+Montaje de contrato verificado
+CENTRO-GON-01-B-PC1 · coincide
+06:50 p. m.
+Montaje de contrato verificado
+CENTRO-GON-01-PC1 · coincide
+06:50 p. m.
+Montaje de contrato verificado
+CENTRO-GON-03-B-PC1 · coincide
+06:50 p. m.
+Montaje de contrato verificado
+CENTRO-GON-03-PC1 · coincide
+06:50 p. m.
+Montaje de contrato verificado
+CENTRO-GON-03-PC2 · coincide
+06:50 p. m.
+Montaje de contrato verificado
+CENTRO-GON-03-PC3 · coincide
+06:50 p. m.
+Montaje de contrato verificado
+CENTRO-GON-04-PC1 · coincide
+06:50 p. m.
+Montaje de contrato verificado
+CENTRO-NEV-01-PC1 · coincide
+06:50 p. m.
+Pendientes
+24 para revisar en CENTRO · pasá el mouse por una fila y se señala en el plano de Indicadores
+Hoy
+16
+30 días
+5
+Corregir
+3
+POR VENCER EN 30 DÍAS · $ 1.050.000
+10d
+PUN-01
+Limpio Hogar · vence el 30 nov
+Renovar
+10d
+GON-04·A·PC1
+Aseo Total · vence el 30 nov
+Renovar
+RESERVAS POR CADUCAR · 1
+5d
+Reserva de Snacks Norte (Papitas Norte) en GON-02 · B caduca el 25 nov.
+Abrir en Distribución
+FALTA DISTRIBUIR · 1
+11d
+GON-02 · B
+todavía sin distribuir (1 participación) · empieza el 1 dic (en 11 días).
+Distribuir
+CONTRATADO SIN MONTAR · 1
+hoy
+PUN-03·EN1
+Café Montaña · empieza hoy
+Ir a Montajes

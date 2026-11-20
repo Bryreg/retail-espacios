@@ -34,19 +34,23 @@ const guardar = async (page, nombre) => fs.writeFileSync(path.join(__dirname, `t
   // ── 1. El correo y el enlace ────────────────────────────────────────────
   await ir(correoReal("por montar", "PUN-03-EN1"));
   const enlace = page.getByRole("link", { name: "Ver dónde queda y confirmar" });
+  // En el correo el enlace va pegado al renglón de arriba: un poco de aire para
+  // que el recuadro naranja no tape «… · desde el dd/mm/aaaa».
+  await enlace.evaluate((a) => { a.style.display = "inline-block"; a.style.marginTop = "8px"; });
   await foto(page, C, "01-correo", { recorte: page.locator('div[style*="max-width:560px"]'), margen: 20, marca: enlace });
+  await guardar(page, "01-correo");
   await enlace.click();
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(900);
   await foto(page, C, "02-espacio");
   await foto(page, C, "03-tarjeta", { recorte: tarjeta(), marca: page.getByText("Entrepaño 1 de", { exact: false }) });
   await foto(page, C, "04-asi-debe-quedar", { recorte: planometria(), marca: page.getByText("Tocá para verla en grande") });
-  await page.getByText("Tocá para verla en grande").click();
-  await page.waitForTimeout(700);
-  await foto(page, C, "05-planometria-grande");
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(400);
-  if (await page.locator('[role="dialog"]').count()) await page.mouse.click(10, 10);
+  // «Tocá para verla en grande» abre la planometría en una pestaña nueva.
+  const [grande] = await Promise.all([page.context().waitForEvent("page"), page.getByText("Tocá para verla en grande").click()]);
+  await grande.waitForLoadState("load");
+  await grande.waitForTimeout(700);
+  await foto(grande, C, "05-planometria-grande");
+  await grande.close();
   await page.waitForTimeout(400);
   await foto(page, C, "06-donde-queda", { recorte: mapa(), marca: page.getByText("PUN-03", { exact: true }).last() });
 
@@ -69,7 +73,7 @@ const guardar = async (page, nombre) => fs.writeFileSync(path.join(__dirname, `t
   await foto(page, C, "12-listo", { recorte: listo, margen: 24 });
   await guardar(page, "12-listo");
   const corregir = page.getByText("Corregir lo que acabo de reportar");
-  await foto(page, C, "12b-corregir", { recorte: listo, margen: 24, marca: corregir });
+  await foto(page, C, "12b-corregir", { recorte: [listo, corregir], margen: 24, marca: corregir });
   await corregir.click();
   await page.waitForTimeout(700);
   await foto(page, C, "12c-corregir-formulario");
@@ -126,8 +130,12 @@ const guardar = async (page, nombre) => fs.writeFileSync(path.join(__dirname, `t
   await guardar(page, "40-hay-que-corregir");
   await foto(page, C, "41-corregir-de-nuevo", { recorte: aviso, marca: page.getByText("Corregir y registrar de nuevo") });
 
-  // ── 6. Sin señal: el reporte queda guardado en el navegador ─────────────
-  await ir(enlaceDeMontaje("CENTRO-PUN-03-EN2", DATOS.leases["PUN-03-EN2"]));
+  // ── 6. Sin conexión: el reporte queda guardado en el navegador ─────────────
+  // Confirma sin conexión, cierra la página y vuelve a abrir el enlace ya con
+  // conexión: el reporte guardado espera «Mandar ahora» o «Descartar». (Con la
+  // página abierta se manda solo al volver la conexión: lo prueba la app.)
+  const enlaceEN2 = enlaceDeMontaje("CENTRO-PUN-03-EN2", DATOS.leases["PUN-03-EN2"]);
+  await ir(enlaceEN2);
   await boton("Lo monté").click();
   await page.locator('input[type="file"]').first().setInputFiles(FOTO);
   await nombre().fill("Luis Prueba");
@@ -135,18 +143,31 @@ const guardar = async (page, nombre) => fs.writeFileSync(path.join(__dirname, `t
   await page.context().setOffline(true);
   await boton("Confirmar").click();
   await page.waitForTimeout(1500);
-  const sinSenal = page.getByText(/Sin señal: tu reporte/).first();
+  const sinSenal = page.getByText(/Sin conexión: tu reporte/).first();
   await foto(page, C, "45-sin-senal", { recorte: [nombre(), page.getByText(/todavía no llegó/).first()], marca: sinSenal });
   await guardar(page, "45-sin-senal");
-  await page.context().setOffline(false);
-  await page.waitForTimeout(6000);
-  await foto(page, C, "46-volvio-la-senal", { recorte: page.getByText("Listo, quedó reportado").locator(".."), margen: 24 });
-  await guardar(page, "46-volvio-la-senal");
+  const otra = await page.context().newPage();
+  otra.setDefaultTimeout(20_000);
+  await page.close();
+  await otra.context().setOffline(false);
+  await otra.goto(enlaceEN2);
+  await otra.waitForLoadState("networkidle");
+  await otra.waitForTimeout(900);
+  const mandar = otra.getByRole("button", { name: "Mandar ahora" });
+  const pendiente = otra.getByText("Tenés un reporte sin mandar").locator("..");
+  await foto(otra, C, "47-reporte-sin-mandar", { recorte: [pendiente, mandar], margen: 16, marca: mandar });
+  await guardar(otra, "47-reporte-sin-mandar");
+  await mandar.click();
+  await otra.waitForTimeout(1500);
+  await foto(otra, C, "46-volvio-la-senal", { recorte: otra.getByText("Listo, quedó reportado").locator(".."), margen: 24 });
+  await guardar(otra, "46-volvio-la-senal");
 
   // ── 7. Un enlace vencido o roto ─────────────────────────────────────────
-  await ir("/?montar=CENTRO-PUN-03-EN1&t=enlace.vencido.prueba");
-  await foto(page, C, "30-enlace-roto", { recorte: page.getByText("Este enlace ya no sirve").locator(".."), margen: 40 });
-  await guardar(page, "30-enlace-roto");
+  await otra.goto("/?montar=CENTRO-PUN-03-EN1&t=enlace.vencido.prueba");
+  await otra.waitForLoadState("networkidle");
+  await otra.waitForTimeout(800);
+  await foto(otra, C, "30-enlace-roto", { recorte: otra.getByText("Este enlace ya no sirve").locator(".."), margen: 40 });
+  await guardar(otra, "30-enlace-roto");
 
   await nav.close();
 })().catch((e) => { console.error(e); process.exit(1); });

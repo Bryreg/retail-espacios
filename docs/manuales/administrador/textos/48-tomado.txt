@@ -10,6 +10,6 @@ Por porcentaje
 El precio es
 Total
 Al mes
-tarifa $ 600.000 al mes
+tarifa al mes × 3 meses = $ 1.800.000
 «PUN-06» está tomado del 1 ago al 31 ene 2027: ajustá las fechas.
 Sumar otro espacio: tocalo en el plano

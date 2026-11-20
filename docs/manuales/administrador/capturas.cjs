@@ -81,7 +81,11 @@ let paginaActual = null;
   }
 
   // ── 1. La barra ─────────────────────────────────────────────────────────
-  await ir("/contratos");
+  // La barra se captura en Indicadores: en Contratos la pastilla de
+  // Pendientes sale sin el número (ver notas.md, «Posibles errores»).
+  await ir("/indicadores");
+  await cerrarCajon();
+  await espera(2500);
   const barra = page.locator(".barra-app");
   await paso("03-barra", () => foto(page, C, "03-barra", {
     recorte: barra, margen: 0,
@@ -95,6 +99,7 @@ let paginaActual = null;
       { loc: page.getByRole("button", { name: /Administrador/ }).first(), n: 7 },
     ],
   }));
+  await ir("/contratos");
   await paso("05-buscar", async () => {
     await page.getByRole("button", { name: /Buscar/ }).first().click();
     await espera(600);
@@ -118,9 +123,19 @@ let paginaActual = null;
   });
   await paso("08-cuenta", async () => {
     await page.getByRole("button", { name: /Administrador/ }).first().click();
-    await espera(500);
-    await foto(page, C, "08-cuenta", { recorte: page.getByRole("menu").or(page.getByText("Cerrar sesión").locator("xpath=ancestor::*[3]")).first(), margen: 40 });
+    await espera(1200);
+    await foto(page, C, "08-cuenta", { recorte: await zona(page, { x: 880, y: 0, w: 400, h: 330 }), margen: 0 });
     await page.keyboard.press("Escape");
+  });
+
+  // ── 3.8 (bis) La ficha de una reserva viva (antes de confirmarla en 2.4).
+  await paso("13-ficha-reserva", async () => {
+    await fichaDesdeContratos("PUN-09");
+    const r = cajon().getByText(/^Reservado hasta el/).first();
+    await r.scrollIntoViewIfNeeded();
+    await guardarTexto(page, "13-ficha-reserva", cajon());
+    await foto(page, C, "13-ficha-reserva", { recorte: cajon(), margen: 0, marca: r });
+    await cerrarCajon();
   });
 
   // ── 2. Inicio y Pendientes ──────────────────────────────────────────────
@@ -139,6 +154,7 @@ let paginaActual = null;
     await cajon().locator('button[data-grupo="dias30"]').click();
     await espera(700);
     await guardarTexto(page, "15-bandeja-30", cajon());
+    await guardarTexto(page, "14-bandeja-hoy-y-30", page.locator("body"));
     await foto(page, C, "15-bandeja-30", { recorte: cajon(), margen: 0, marca: cajon().getByRole("button", { name: "Renovar" }).first() });
   });
   await paso("16-bandeja-corregir", async () => {
@@ -162,16 +178,37 @@ let paginaActual = null;
     const conf = cajon().getByRole("button", { name: "Confirmar", exact: true });
     await conf.scrollIntoViewIfNeeded();
     const caja = conf.locator("xpath=ancestor::*[3]");
-    await foto(page, C, "18-reserva-caduca", { recorte: caja, margen: 12, marca: [{ loc: conf, n: 1 }, { loc: cajon().getByRole("button", { name: "Cancelar", exact: true }), n: 2 }] });
+    await foto(page, C, "18-reserva-caduca", { recorte: caja, margen: 24, marca: [{ loc: conf, n: 1 }, { loc: cajon().getByRole("button", { name: "Cancelar", exact: true }), n: 2 }] });
     await conf.click();
-    await espera(900);
+    await espera(1500);
+    const hecho = cajon().getByText(/pasó a contrato/).first();
+    await guardarTexto(page, "18b-reserva-confirmada", cajon());
+    await foto(page, C, "18b-reserva-confirmada", { recorte: hecho, margen: 14, marca: hecho });
   });
   await paso("21-renovar-desde-pendientes", async () => {
     await cajon().locator('button[data-grupo="dias30"]').click();
     await espera(600);
     await cajon().getByRole("button", { name: "Renovar" }).first().click();
     await espera(1500);
-    await foto(page, C, "21-renovar-desde-pendientes", { marca: panel().locator("section.bloque").first() });
+    await guardarTexto(page, "21-renovar", panel());
+    const fechas2 = page.locator('section.bloque[data-bloque="2"] input[type="date"]');
+    await foto(page, C, "21-renovar-desde-pendientes", { recorte: panel(), margen: 0, marca: [{ loc: fechas2.first(), n: 1 }, { loc: fechas2.nth(1), n: 2 }] });
+    const totalR = page.getByText("Total del contrato").first().locator("xpath=ancestor::*[2]");
+    await foto(page, C, "22-renovar-total", { recorte: pie(), margen: 6, marca: page.getByText(/contrata PUN-01/).first() });
+    void totalR;
+  });
+  await paso("16b-ir-a-montajes", async () => {
+    await ir("/");
+    await cerrarCajon();
+    await page.getByRole("button", { name: /^Pendientes/ }).first().click();
+    await espera(900);
+    await cajon().locator('button[data-grupo="corregir"]').click();
+    await espera(700);
+    await cajon().getByRole("button", { name: "Ir a Montajes" }).first().click();
+    await espera(2000);
+    await guardarTexto(page, "16b-ir-a-montajes", page.locator("body"));
+    const fila = page.locator("li.mj-fila").filter({ hasText: "PUN-03-EN2" }).first();
+    await foto(page, C, "16b-ir-a-montajes", { marca: fila });
   });
 
   // ── 3. Vender un espacio ────────────────────────────────────────────────
@@ -193,9 +230,9 @@ let paginaActual = null;
   await tocar("PUN-07");
   await paso("33-elegir", () => foto(page, C, "33-elegir-espacio", { marca: page.locator('text[data-cod="PUN-07"]').first() }));
   await paso("34-entera-al-mes", async () => {
-    await boton("Al mes").click();
-    await espera(500);
-    await foto(page, C, "34-entera-al-mes", { recorte: bloque(1), margen: 10, marca: [{ loc: boton("Entera"), n: 1 }, { loc: boton("Al mes"), n: 2 }] });
+    // El precio arranca en «Al mes» con la tarifa: no se toca nada.
+    await guardarTexto(page, "34-entera-al-mes", bloque(1));
+    await foto(page, C, "34-entera-al-mes", { recorte: bloque(1), margen: 24, marca: [{ loc: boton("Entera"), n: 1 }, { loc: boton("Al mes"), n: 2 }, { loc: bloque(1).getByText(/tarifa al mes ×/).first(), n: 3 }] });
   });
   await paso("35-proveedor", async () => {
     const prov = page.getByPlaceholder("Escribí el nombre");
@@ -256,9 +293,8 @@ let paginaActual = null;
     await tocar("GON-04·B");
     await boton("25 %").click();
     await espera(500);
-    await boton("Al mes").click();
-    await espera(500);
-    await foto(page, C, "44-por-porcentaje", { recorte: bloque(1), margen: 10, marca: [{ loc: boton("25 %"), n: 1 }, { loc: boton("Al mes"), n: 2 }] });
+    await guardarTexto(page, "44-porcentaje", bloque(1));
+    await foto(page, C, "44-por-porcentaje", { recorte: bloque(1), margen: 24, marca: [{ loc: boton("25 %"), n: 1 }, { loc: boton("Al mes"), n: 2 }] });
   });
   await paso("45-reservar", async () => {
     const prov = page.getByPlaceholder("Escribí el nombre");
@@ -350,8 +386,7 @@ let paginaActual = null;
   });
   await paso("62-ficha-abajo", async () => {
     const l = cajon().getByText("Los próximos 12 meses").first();
-    await l.scrollIntoViewIfNeeded();
-    await page.mouse.wheel(0, 250);
+    await l.evaluate((e) => e.scrollIntoView({ block: "start" }));
     await espera(500);
     await foto(page, C, "62-ficha-linea-y-planometria", { recorte: cajon(), margen: 0 });
   });
@@ -548,6 +583,8 @@ let paginaActual = null;
       await boton("Confirmar").click();
       await espera(1800);
       await guardarTexto(page, "99b-registrado", page.locator("body"));
+      const listo = page.getByText(/^Listo: .* quedó reportado/).first();
+      await foto(page, C, "99b-registrado", { recorte: await zona(page, { x: 250, y: 0, w: 1030, h: 330 }), margen: 0, marca: listo });
     }
   });
   await paso("100-falta-planometria", async () => {
@@ -561,8 +598,8 @@ let paginaActual = null;
     await ir("/");
     await cerrarCajon();
     await contexto.setOffline(true);
-    await page.getByRole("button", { name: /Sincronizado/ }).first().click();
-    await espera(4000);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+    await espera(2500);
     await foto(page, C, "110-sin-conexion", { recorte: page.locator(".barra-app"), margen: 0, marca: page.getByRole("button", { name: /Sin conexión/ }).first() });
     await contexto.setOffline(false);
     await page.getByRole("button", { name: /Sin conexión/ }).first().click();
@@ -647,6 +684,19 @@ async function zonaDelCorreo(page) {
     document.body.appendChild(d);
   });
   return page.locator("#zona-del-correo");
+}
+
+/** Un recuadro fijo de la ventana (px), para recortar una zona que no es un
+ *  solo elemento (el menú de la cuenta, el encabezado de Montajes). */
+async function zona(page, { x, y, w, h }) {
+  await page.evaluate(({ x, y, w, h }) => {
+    document.getElementById("zona-fija")?.remove();
+    const d = document.createElement("div");
+    d.id = "zona-fija";
+    Object.assign(d.style, { position: "fixed", left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`, pointerEvents: "none" });
+    document.documentElement.appendChild(d);
+  }, { x, y, w, h });
+  return page.locator("#zona-fija");
 }
 
 async function paso(nombre, fn) {

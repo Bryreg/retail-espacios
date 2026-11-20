@@ -86,6 +86,11 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await buscador.fill("PUN-05");
   await espera(800);
   await foto(page, C, "03-buscar", { marca: buscador.locator("xpath=..") });
+  // Por proveedor: también los que tienen entrepaños o participaciones.
+  await buscador.fill("Café Montaña");
+  await espera(900);
+  await guardarTexto("03b-buscar-proveedor");
+  await foto(page, C, "03b-buscar-proveedor", { marca: buscador.locator("xpath=..") });
   await buscador.fill("");
   // Filtros
   const chipPorVencer = page.getByRole("button", { name: /Por vencer/ }).first();
@@ -94,6 +99,13 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await foto(page, C, "04-por-vencer", { marca: chipPorVencer });
   await page.getByRole("button", { name: /^Todos/ }).first().click();
   await espera(500);
+  // Una reserva viva (PUN-09): la ficha dice «Reservado», no «Ocupado».
+  await clicEnMueble("PUN-09");
+  await guardarTexto("05b-ficha-reserva");
+  const estadoReserva = page.locator("[data-codigo-del-mueble]").locator("xpath=../..").getByText(/^Reservad/).first();
+  await foto(page, C, "05b-ficha-reserva", { marca: (await estadoReserva.count()) ? estadoReserva : page.locator("[data-codigo-del-mueble]") });
+  await page.keyboard.press("Escape");
+  await espera(400);
   // La ficha (Mirar)
   await clicEnMueble("PUN-01");
   await foto(page, C, "05-ficha-mirar", { marca: page.locator("[data-codigo-del-mueble]") });
@@ -344,6 +356,13 @@ fs.mkdirSync(TEXTOS, { recursive: true });
   await espera(2500);
   await foto(page, C, "44-revision-guardada", { recorte: page.getByText(/Guardado: no coincide/).first(), margen: 10 });
   await guardarTexto("44-revision-guardada");
+  // Cerrar la revisión y la bandeja: vuelve al Plano (de donde se vino).
+  await page.keyboard.press("Escape");
+  await espera(800);
+  const volver = page.getByRole("button", { name: /^Volver a Plano de la sede/ }).first();
+  if (await volver.count()) { await volver.click(); } else { await page.keyboard.press("Escape"); }
+  await espera(1500);
+  console.log("  después de cerrar Pendientes:", page.url());
 
   }
   // ══ 9 · AJUSTES ═══════════════════════════════════════════════════════════
