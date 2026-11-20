@@ -171,12 +171,12 @@ def invitar_usuario(
             [
                 ("Supermercado", nombre),
                 ("Rol", ROL_EN_EL_CORREO.get(rol_nuevo, rol_nuevo)),
-                ("Ingrese con", escape(email)),
+                ("Entrá con", escape(email)),
             ],
             footer=(
-                f'Ingrese desde <a href="{enlace}">{enlace}</a> con la cuenta '
+                f'Entrá desde <a href="{enlace}">{enlace}</a> con la cuenta '
                 f'<b>{escape(email)}</b>: con Google, si es una cuenta de Google, o creando '
-                f'una cuenta de correo con esa misma dirección. Si ingresa con otra cuenta, la '
+                f'una cuenta de correo con esa misma dirección. Si entrás con otra cuenta, la '
                 f'invitación no la va a encontrar. El enlace vence en {INVITACION_TTL_DIAS} días.'
             ),
         )

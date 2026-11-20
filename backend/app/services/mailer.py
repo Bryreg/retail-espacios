@@ -299,7 +299,7 @@ def enviar_con_diagnostico(
         msg["Subject"] = subject
         msg["From"] = settings["mail_from"]
         msg["To"] = ", ".join(recipients)
-        msg.set_content("Este mensaje contiene contenido HTML. Use un cliente de correo compatible.")
+        msg.set_content("Este mensaje tiene contenido HTML: abrilo con un programa de correo que lo muestre.")
         msg.add_alternative(html_body, subtype="html")
 
         # El puerto decide el modo. 465 es SSL desde el saludo y 587 es STARTTLS:
@@ -400,7 +400,7 @@ def send_mail(db: Session, subject: str, html_body: str) -> bool:
         msg["Subject"] = subject
         msg["From"] = settings["mail_from"]
         msg["To"] = ", ".join(recipients)
-        msg.set_content("Este mensaje contiene contenido HTML. Use un cliente de correo compatible.")
+        msg.set_content("Este mensaje tiene contenido HTML: abrilo con un programa de correo que lo muestre.")
         msg.add_alternative(html_body, subtype="html")
 
         with smtplib.SMTP(settings["host"], settings["port"], timeout=30) as smtp:
