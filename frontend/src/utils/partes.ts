@@ -452,6 +452,32 @@ export function concordancia(clase: string): { un: string; el: string; los: stri
     : { un: "un", el: "el", los: "los", o: "o", este: "este" };
 }
 
+/** La cabecera de la ficha de una cara entera sin contrato que se vende por
+ *  partes (2026-11-20). Con dos entrepaños contratados decía «Disponible para
+ *  vender · Este espacio no tiene contrato activo.» y la verdad aparecía
+ *  recién abajo. `estados`: cada división de la cara —«corre» (contrato
+ *  vigente), «firmada» (firmada o reservada, por empezar) o «libre»—. Sin
+ *  ninguna tomada, `null`: la cara sí está disponible. */
+export function resumenDeLasPartes(clase: string, estados: readonly ("corre" | "firmada" | "libre")[]): { titulo: string; texto: string } | null {
+  const corren = estados.filter((e) => e === "corre").length;
+  const firmadas = estados.filter((e) => e === "firmada").length;
+  const libres = estados.length - corren - firmadas;
+  if (corren + firmadas === 0) return null;
+  const regla = claseDe(clase);
+  const { o } = concordancia(clase);
+  const nombre = (n: number) => (n === 1 ? regla?.singular ?? "parte" : regla?.plural ?? "partes");
+  const tomadas = [
+    corren > 0 && `${corren} con contrato`,
+    firmadas > 0 && `${firmadas} firmad${o}${firmadas === 1 ? "" : "s"} que todavía no empieza${firmadas === 1 ? "" : "n"}`,
+  ].filter(Boolean).join(" y ");
+  const queda = libres === 0 ? `no queda ningun${o} libre`
+    : `queda${libres === 1 ? "" : "n"} ${libres} libre${libres === 1 ? "" : "s"} para vender`;
+  return {
+    titulo: libres === 0 ? `Vendido por ${nombre(2)}` : "Vendido en parte",
+    texto: `De ${estados.length} ${nombre(estados.length)}, ${tomadas}: ${queda}. La cara entera no tiene contrato.`,
+  };
+}
+
 /** `Puerta 2 de 3`; sin el «de» si no se sabe cuántas hay. */
 export function textoDeParte(p: ParteRef, de?: number | null): string {
   const regla = claseDe(p.clase);

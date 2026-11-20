@@ -88,7 +88,7 @@ import { repartirAnchos, type Columna as ColumnaTabla } from "../utils/anchosTab
 import {
   alTocarEnVender, alternarParte, cantidadDe, claseDe, claveDeEspacio, codigoDeParte, codigoVisibleDe, concordancia,
   disponibilidadDeCara, disponibilidadDeEspacio, divisionDe, esDivision, esPieza, estadoDeEspacio, indiceDePartes,
-  partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, seVendeAlgo, sufijoDeParte,
+  partesDe, partirClave, partirCodigo, piezasDe, piezasDeLaFamilia, resumenDeLasPartes, seVendeAlgo, sufijoDeParte,
   tarifaDeLaFila, textoDeParte, comoSeLiberaLaCara, type ComoSeLibera, type EnContrato, type IndiceDePartes, type ParteRef,
   comoSeLiberaPorParticipacion, dispoDeParticipacion, esParticipacion, ocupadoPorParticipacion, parteVisible,
   porParticipacion, textoDeLoComprometido, type ParticipacionDeLaCara,
@@ -118,9 +118,10 @@ import {
 } from "../utils/mapaDeDecision";
 import type { FilaDeSede } from "../components/Indicadores/TodasLasSedes";
 import {
-  aCsv, bajarCsv, canonContraTarifa, diasHasta, montajesDelMes, venceEn, variacion,
+  aCsv, bajarCsv, canonContraTarifa, diasHasta, montajesDelMes, montajesPorResolver, venceEn, variacion,
   type EstadoDeMontaje,
 } from "../utils/indicadores";
+import { estadoDelPlanograma } from "../utils/montajes";
 import { getMetas, getSerieDeCanon, metaDeLaSede, type Metas, type SerieDeCanon } from "../api/indicadores";
 import type { OcupacionOut, TerminoOut } from "../api/participaciones";
 import { espacioDeLaCara, leerCara } from "../api/participaciones";
@@ -3274,6 +3275,23 @@ function FixtureDetailCard({
   const partesQueCorren = useMemo(() => partesConContrato(fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, isAdmin)
     .some((p) => p.face === entry.face && ["active", "expiring", "committed"].includes(displayStatus(p))),
   [fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, isAdmin, entry.face]);
+  /** La cara entera sin contrato con entrepaños (o puertas, tramos) tomados:
+   *  la cabecera dice cuántos y qué queda, no «Disponible para vender». Cada
+   *  división con el mismo criterio que el mapa de Indicadores. */
+  const enPartes = useMemo(() => {
+    const divisiones = partesDe(fixture).filter((p) => p.cara === entry.face && esDivision(p.parte));
+    if (!divisiones.length) return null;
+    const vendidas = partesConContrato(fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, false)
+      .filter((p) => p.face === entry.face && esDivision(p.parte));
+    const estados = divisiones.map((d) => {
+      const x = vendidas.find((p) => p.parte && sufijoDeParte(p.parte) === sufijoDeParte(d.parte));
+      const ds = x ? displayStatus(x) : "free";
+      return ds === "active" || ds === "expiring" ? "corre" as const : ds === "free" || ds === "expired" ? "libre" as const : "firmada" as const;
+    });
+    const clase = divisiones[0].parte.clase;
+    const r = resumenDeLasPartes(clase, estados);
+    return r ? { ...r, plural: claseDe(clase)?.plural ?? "partes" } : null;
+  }, [fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, entry.face]);
   const codigoDeLaCara = fullSpaceCode(fixture.sede || sedeDelMapa, entry.code);
   const reservaViva = isAdmin && entry.reservaHasta ? reservaDe?.(codigoDeLaCara) : undefined;
   const cobroDeLaCara = isAdmin && hasContract ? cobroDe?.(codigoDeLaCara) : undefined;
@@ -3436,6 +3454,16 @@ function FixtureDetailCard({
           /* El trabajador: la base le dice sólo que la toma una reserva. */
           <div data-reservada style={{ fontSize: "var(--t-xs)", color: "var(--ink-2)", lineHeight: 1.5 }}>
             Reservado: la toma una reserva, que todavía no es un contrato. No hay nada que montar.
+          </div>
+        ) : !hasContract && enPartes ? (
+          <div data-vendido-en-parte style={{ padding: "18px 4px 6px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink-1)" }}>{enPartes.titulo}</div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginTop: 6 }}>{enPartes.texto}</div>
+            {isAdmin && (
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.5, marginTop: 10 }}>
+                Abajo, en «Por {enPartes.plural}», está el contrato de cada parte; lo libre se vende ahí.
+              </div>
+            )}
           </div>
         ) : !hasContract ? (
           <NoContractState fixture={fixture} isAdmin={isAdmin} />
@@ -6198,14 +6226,13 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   // problema que alguien tiene que resolver hoy —el proveedor no entregó, el
   // espacio está ocupado por otra cosa— y trae su motivo. "Sin montar" es
   // silencio: el contrato ya arrancó, se está cobrando, y nadie dijo nada.
-  const montaje = useMemo(() => {
+  const clasificarMontajes = useCallback((filas: FaceEntry[]) => {
     const noMontado: (FaceEntry & { reporte: MountConfirmation })[] = [];
     const sinMontar: (FaceEntry & { dias: number })[] = [];
     /** Los que arrancaron hace más de la ventana y nunca se reportaron: antes
      *  una nota que no contaba; ahora una sección de «Corregir». */
     const viejos: (FaceEntry & { dias: number })[] = [];
-    // Con las partes vendidas: una puerta se monta como cualquier espacio.
-    fixtures.flatMap(espaciosDelMueble).forEach((entry) => {
+    filas.forEach((entry) => {
       const fase = contractPhase(entry);
       // Lo vencido ya no se monta y lo libre no tiene qué montar.
       if (fase !== "vigente" && fase !== "pendiente") return;
@@ -6235,7 +6262,27 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     sinMontar.sort((a, b) => b.dias - a.dias);
     viejos.sort((a, b) => b.dias - a.dias);
     return { noMontado, sinMontar, viejos };
-  }, [fixtures, montajeDe, espaciosDelMueble]);
+  }, [montajeDe]);
+  // Con las partes vendidas: una puerta se monta como cualquier espacio.
+  const montaje = useMemo(() => clasificarMontajes(fixtures.flatMap(espaciosDelMueble)), [clasificarMontajes, fixtures, espaciosDelMueble]);
+  /** Lo mismo con TODOS los contratos, también las participaciones que el
+   *  trabajador no ve como filas (D7) pero sí en Montajes: las cuentas que
+   *  dicen «sin montar» fuera de Montajes (el Inicio, el mapa por cara) tienen
+   *  que contar lo que Montajes lista. Para quien administra es `montaje`. */
+  const montajeDeTodo = useMemo(
+    () => (isAdmin ? montaje : clasificarMontajes(fixtures.flatMap((f) => [...commercialFacesOf(f), ...partesVendidasDe(f)])
+      .map((e) => conLaReserva(e, estadoComercial, sede)))),
+    [isAdmin, montaje, clasificarMontajes, fixtures, partesVendidasDe, estadoComercial, sede],
+  );
+  /** «Montajes por resolver» del Inicio: la regla de los filtros de Montajes
+   *  (`montajesPorResolver`) sobre todo lo que Montajes lista de la sede —los
+   *  contratos, con las participaciones, y los planogramas— sin la ventana de
+   *  30 días de Pendientes: lo viejo sin reporte también está «Sin montar». */
+  const porResolver = useMemo(() => montajesPorResolver([
+    ...montajeDeTodo.noMontado.map(() => ({ estado: "no_realizado" as const, empezo: true })),
+    ...[...montajeDeTodo.sinMontar, ...montajeDeTodo.viejos].map(() => ({ estado: "sin_montar" as const, empezo: true })),
+    ...planogramasPorRevisar.filas.map((c) => ({ estado: estadoDelPlanograma(c.estado), empezo: c.dias_que_rige >= 0 })),
+  ]), [montajeDeTodo, planogramasPorRevisar.filas]);
 
 
   // ─── Lo que la franja de Supervisar necesita saber ──────────────────────
@@ -6379,11 +6426,14 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     };
   }, [isAdmin, unidad, kpis, cortesSinCargar.cobros, sinAlquilar, periodoIso, ordenQuienPaga]);
 
-  /** Las caras contratadas y sin reportar, para que el chip «Sin montar» de la
-   *  tabla filtre exactamente la misma lista que muestran los pendientes. */
+  /** Las caras y partes que ya corren sin reporte de montaje: las filas cuya
+   *  columna Montaje dice «Sin montar» (`MontajeChip`), sin la ventana de 30
+   *  días de Pendientes —ésa separa lo de esta semana de lo viejo, pero lo
+   *  viejo también está sin montar—. Con sólo los de 30 días el chip decía
+   *  «Sin montar 1» sobre una tabla con dos filas «Sin montar». */
   const sinMontarSet = useMemo(
-    () => new Set(montaje.sinMontar.map((e) => claveDeFila(e))),
-    [montaje.sinMontar],
+    () => new Set([...montaje.sinMontar, ...montaje.viejos].map((e) => claveDeFila(e))),
+    [montaje.sinMontar, montaje.viejos],
   );
 
   /** Las temporadas comerciales que pisan el periodo, para el fondo del riel. */
@@ -6713,12 +6763,12 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       { id: "todos", label: "Todas", n: kpis.filas },
       { id: "occupied", label: "Vigentes hoy", n: cuantas("occupied") },
       { id: "expiring", label: "Por vencer", n: kpis.expiring.length },
-      { id: "sin_montar", label: "Sin montar", n: montaje.sinMontar.length },
+      { id: "sin_montar", label: "Sin montar", n: cuantas("sin_montar") },
       { id: "free", label: "Libres", n: cuantas("free") },
       { id: "en_parte", label: "Vendido en parte", n: cuantas("en_parte") },
     ];
     return todos;
-  }, [kpis, montaje.sinMontar.length, fixtures, espaciosDelMueble, sinMontarSet, enParteSet, libresSet]);
+  }, [kpis, fixtures, espaciosDelMueble, sinMontarSet, enParteSet, libresSet]);
 
   /** Los contratos que corren HOY (la pestaña «Vigentes hoy»): es la cifra
    *  «Contratos activos» del Inicio, y sus filas suman el «Canon del mes». */
@@ -7806,17 +7856,21 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     // Los montajes de cada cara: los de los contratos y los de los planogramas.
     const montajesDe = new Map<string, { estado: EstadoDeMontajeEnElMapa; detalle: string; abrir: () => void }[]>();
     const anotar = (k: string, m: { estado: EstadoDeMontajeEnElMapa; detalle: string; abrir: () => void }) => montajesDe.set(k, [...(montajesDe.get(k) ?? []), m]);
-    for (const e of montaje.noMontado) {
+    // Con TODOS los contratos (`montajeDeTodo`) y lo viejo sin reporte: la
+    // misma regla que Montajes y el Inicio. Al trabajador, una participación
+    // se le nombra por su cara, sin el `…-PC1` (D7: sus filas no las ve).
+    const codigoDelMontaje = (e: FaceEntry) => (!isAdmin && esParticipacion(e.parte) ? codigoVisible({ ...e, parte: null }) : codigoVisible(e));
+    for (const e of montajeDeTodo.noMontado) {
       anotar(claveDe(e), {
         estado: "no_realizado",
-        detalle: [codigoVisible(e), e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : e.reporte.nota ?? ""].filter(Boolean).join(" · "),
+        detalle: [codigoDelMontaje(e), e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : e.reporte.nota ?? ""].filter(Boolean).join(" · "),
         abrir: () => revisar(e.fixture, e.face),
       });
     }
-    for (const e of montaje.sinMontar) {
+    for (const e of [...montajeDeTodo.sinMontar, ...montajeDeTodo.viejos]) {
       anotar(claveDe(e), {
         estado: "sin_montar",
-        detalle: `${codigoVisible(e)} · arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`,
+        detalle: `${codigoDelMontaje(e)} · arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`,
         abrir: () => revisar(e.fixture, e.face),
       });
     }
@@ -7828,6 +7882,17 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         detalle: `Planograma · rige desde el ${diaCorto(c.rige_desde)}`,
         abrir: () => (c.estado === "sin_montar" ? setGuiaParaMandar(c.version_id) : setRevisarMontajeDe(c.version_id)),
       });
+    }
+    // Los proveedores de las participaciones que corren o están firmadas, para
+    // quien no administra: `kpis.todas` no las trae (no las ve como filas, D7)
+    // y una cara por participación decía «Clientes en el espacio —» y «Sin
+    // contrato hoy.». El nombre no es plata ni el %: es lo que ya le dice
+    // Montajes («GON-02-PC1 · Aseo Total»).
+    const deParticipaciones = new Map<string, string[]>();
+    if (!isAdmin) for (const f of fixtures) for (const p of partesVendidasDe(f).map((x) => conLaReserva(x, estadoComercial, sede))) {
+      const fase = contractPhase(p);
+      if (!esParticipacion(p.parte) || (fase !== "vigente" && fase !== "pendiente")) continue;
+      deParticipaciones.set(claveDe(p), [...(deParticipaciones.get(claveDe(p)) ?? []), p.supplierName.trim()]);
     }
     const unidadDe = new Map(kpis.unidades.map((u) => [claveDe(u.cara), u]));
     const espacios: EspacioDelMapa[] = [];
@@ -7893,7 +7958,8 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
           ...(partes ? { partes } : {}),
           ingresoAlMes: isAdmin ? suyos.filter((t) => t.fase === "vigente").reduce((s, t) => s + alMesDe(t.entry), 0) + ventas.reduce((s, v) => s + v.alMes, 0) : null,
           libreAlMes, tarifa,
-          clientes: [...new Set([...suyos.map((t) => t.entry.supplierName.trim()), ...ventas.map((v) => v.proveedor.trim())].filter(Boolean))],
+          clientes: [...new Set([...suyos.map((t) => t.entry.supplierName.trim()), ...(deParticipaciones.get(clave) ?? []),
+            ...ventas.map((v) => v.proveedor.trim())].filter(Boolean))],
           vence: venceProximo ? {
             dias: venceProximo.dias, fecha: venceProximo.t.entry.endDate, alMes: isAdmin ? alMesDe(venceProximo.t.entry) : null,
             codigo: codigoVisible(venceProximo.t.entry), proveedor: venceProximo.t.entry.supplierName.trim() || null,
@@ -7919,18 +7985,21 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
 
     // Las acciones prioritarias: lo que pierde plata primero.
     const acciones: AccionDelTablero[] = [];
+    /** Quien no administra no renueva ni gestiona: su botón dice lo que hace
+     *  —abre la ficha— y no la tarea de otro («Gestionar renovación»). */
+    const botonDe = (deAdmin: string) => (isAdmin ? deAdmin : "Ver la ficha");
     const accion = (a: Omit<AccionDelTablero, "impacto" | "dias"> & { impacto?: number | null; dias?: number | null }) =>
       acciones.push({ impacto: null, dias: null, ...a });
     for (const e of kpis.expired) {
       accion({ tipo: "vencido", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Contrato vencido sin cerrar", corto: "Contrato vencido",
         detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days, plazo: `venció el ${diaCorto(e.endDate)}`,
-        boton: "Ver ficha", onClick: () => revisar(e.fixture, e.face) });
+        boton: botonDe("Ver ficha"), onClick: () => revisar(e.fixture, e.face) });
     }
     for (const e of kpis.expiring) {
       if (e.proximoLeaseId) continue;
       accion({ tipo: "renovar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Renovación pendiente", corto: "Renovación pendiente",
         detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days,
-        plazo: `${diaCorto(e.endDate)} · ${e.days} día${e.days === 1 ? "" : "s"}`, boton: "Gestionar renovación", onClick: () => revisar(e.fixture, e.face) });
+        plazo: `${diaCorto(e.endDate)} · ${e.days} día${e.days === 1 ? "" : "s"}`, boton: botonDe("Gestionar renovación"), onClick: () => revisar(e.fixture, e.face) });
     }
     if (isAdmin) for (const c of cortesSinCargar.pendientes) {
       if (`${c.lease_id}|${c.periodo_desde}` in cortesSinCargar.cargados) continue;
@@ -7947,7 +8016,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     for (const e of montaje.noMontado) {
       accion({ tipo: "no_montado", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Montaje no realizado", corto: "Montaje no realizado",
         detalle: [e.supplierName, e.reporte.motivo ? MOTIVO_LABEL[e.reporte.motivo as MountMotivo] : ""].filter(Boolean).join(" · "),
-        plazo: `vigente desde el ${diaCorto(e.startDate)}`, boton: "Ver detalle", onClick: () => revisar(e.fixture, e.face) });
+        plazo: `vigente desde el ${diaCorto(e.startDate)}`, boton: botonDe("Ver detalle"), onClick: () => revisar(e.fixture, e.face) });
     }
     for (const c of planogramasPorRevisar.filas) {
       const f = fixtures.find((x) => x.id === c.fixture_id);
@@ -7959,9 +8028,11 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       else if (c.estado === "no_coincide") accion({ ...base, tipo: "planograma_no_coincide", asunto: "Planograma que no coincide", corto: "No coincide", boton: "Ver detalle", onClick: abrir });
       else accion({ ...base, tipo: "planograma_por_revisar", asunto: "Montaje sin verificar", corto: "Por verificar", detalle: "Planograma reportado montado", boton: "Verificar", onClick: abrir });
     }
-    for (const e of montaje.sinMontar) {
+    // Con lo viejo sin reporte: el mapa lo cuenta «Sin montar» (como Montajes)
+    // y la lista tiene que decir por qué.
+    for (const e of [...montaje.sinMontar, ...montaje.viejos]) {
       accion({ tipo: "sin_montar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Contrato sin montar", corto: "Sin montar",
-        detalle: e.supplierName, dias: -e.dias, plazo: `arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`, boton: "Ver ficha", onClick: () => revisar(e.fixture, e.face) });
+        detalle: e.supplierName, dias: -e.dias, plazo: `arrancó hace ${e.dias} día${e.dias === 1 ? "" : "s"}`, boton: botonDe("Ver ficha"), onClick: () => revisar(e.fixture, e.face) });
     }
 
     // La cartera: lo que paga cada cliente al mes (o sus espacios).
@@ -8225,7 +8296,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
             contratos: vigentesHoy,
             firmados: kpis.contratos - vigentesHoy,
             porVencer: kpis.expiring.length,
-            montajesPorResolver: montaje.sinMontar.length + montaje.noMontado.length,
+            montajesPorResolver: porResolver,
             canonDelMes,
             disponibles: libresSet.size,
           }}
@@ -8345,7 +8416,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 precio: ct && ct.pct !== null ? { pct: ct.pct, meta: meta.canon_tarifa, contadas: ct.contadas } : null,
                 variacion: tableroB.varCanon,
                 vence30: tableroB.cuentaVence(30), vence90: tableroB.cuentaVence(90),
-                montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda },
+                montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda, mes: new Date(`${hoyIso}T12:00:00`).toLocaleDateString("es-CO", { month: "long" }) },
                 cliente: tableroB.principal ? {
                   nombre: tableroB.principal.nombre, espacios: tableroB.principal.espacios, alMes: tableroB.principal.alMes,
                   pct: isAdmin && canonDelMes ? Math.round(((tableroB.principal.alMes ?? 0) / canonDelMes) * 100) : null,
@@ -8362,7 +8433,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                     acciones: "todos", ingreso: "occupied", vence: "expiring", montaje: "sin_montar", vacias: "free", parcial: "en_parte", cliente: "todos",
                   };
                   const cifra: Record<CapaDelMapa, string> = {
-                    acciones: "Acciones", ingreso: "Ingreso contratado", vence: "Por vencer", montaje: "Montajes pendientes",
+                    acciones: "Acciones", ingreso: "Ingreso contratado", vence: "Por vencer", montaje: "Caras con montaje pendiente",
                     vacias: "Caras sin contrato", parcial: "Venta parcial", cliente: "Cliente",
                   };
                   abrirTablaDesde(filtro[capa], "Mapa de oportunidades", cifra[capa]);

@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import type { UnifiedFixture } from "../../types/fixtures";
-import { contraLaMeta, pesos } from "../../utils/indicadores";
+import { contraLaMeta, pesos, verEnPendientes } from "../../utils/indicadores";
 import { enLaCapa, prioridadDe, TEXTO_DEL_MONTAJE, type Accion, type CapaDelMapa, type EspacioDelMapa } from "../../utils/mapaDeDecision";
 import MapaDeDecision, { type AccionEnElMapa } from "./MapaDeDecision";
 import "./mapaDeDecision.css";
@@ -50,8 +50,9 @@ export interface DatosDelMapa {
   precio: { pct: number; meta: number; contadas: number } | null;
   /** El canon contra el mes anterior: «+12,2 % frente a septiembre». */
   variacion: { pct: number; mes: string } | null;
-  /** Los contratos que empiezan este mes y cuántos ya están en la tienda. */
-  montajesDelMes: { total: number; enLaTienda: number };
+  /** Los contratos que empiezan este mes («noviembre») y cuántos ya están en
+   *  la tienda. */
+  montajesDelMes: { total: number; enLaTienda: number; mes: string };
   vence30: { contratos: number; alMes: number | null };
   vence90: { contratos: number; alMes: number | null };
   /** El cliente principal: el que más paga (administración) o el que más
@@ -86,7 +87,7 @@ export const METRICA_DEL_INDICADOR: Record<Exclude<CapaDelMapa, "acciones">, str
 
 const NOMBRE_DE_LA_CAPA: Record<CapaDelMapa, string> = {
   acciones: "Acciones prioritarias", ingreso: "Ingreso contratado", vence: "Ingreso por vencer · 90 días",
-  montaje: "Montajes pendientes", vacias: "Caras sin contrato", parcial: "Venta parcial", cliente: "Cliente",
+  montaje: "Caras con montaje pendiente", vacias: "Caras sin contrato", parcial: "Venta parcial", cliente: "Cliente",
 };
 
 function Estado({ tono, texto }: { tono: Tono; texto: string }) {
@@ -114,6 +115,9 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
   capaInicial?: CapaDelMapa | null;
 }) {
   const { esAdmin: plata } = datos;
+  /** Quien no administra no gestiona renovaciones ni manda guías: su botón
+   *  dice lo que pasa al tocarlo (abre la ficha). Para administración, igual. */
+  const deAdmin = (texto: string) => (plata ? texto : "Ver la ficha");
   const [senalada, setSenalada] = useState<CapaDelMapa | null>(null);
   const [fija, setFija] = useState<CapaDelMapa | null>(capaInicial);
   const [todos, setTodos] = useState(false);
@@ -152,13 +156,16 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
       estado: datos.vence30.contratos > 0 ? { tono: "critico", texto: "Sin renovar" } : datos.vence90.contratos > 0 ? { tono: "aviso", texto: "Vencen en 90 días" } : { tono: "bien", texto: "Nada por vencer" },
     },
     {
-      capa: "montaje", titulo: "Montajes pendientes", ancla: "Sin montar",
+      // Cuenta CARAS (una vez cada una, con su estado más urgente) y suma lo
+      // que hay que verificar: no es la cuenta de «Montajes por resolver» del
+      // Inicio (contratos y planogramas, uno por uno), y el rótulo lo dice.
+      capa: "montaje", titulo: NOMBRE_DE_LA_CAPA.montaje, ancla: "Sin montar",
       valor: String(montajes.length),
       detalle: montajes.length === 0 ? "nada pendiente"
         : ([["sin_montar", "sin montar", "sin montar"], ["no_realizado", "no realizado", "no realizados"], ["no_coincide", "no coincide", "no coinciden"],
           ["guia", "guía sin enviar", "guías sin enviar"], ["por_verificar", "por verificar", "por verificar"]] as const)
           .filter(([k]) => cuentaMontaje(k) > 0).map(([k, uno, varios]) => `${cuentaMontaje(k)} ${cuentaMontaje(k) === 1 ? uno : varios}`).join(" · "),
-      estado: cuentaMontaje("no_realizado") > 0 ? { tono: "critico", texto: "Requieren gestión" } : montajes.length > 0 ? { tono: "aviso", texto: "Por resolver" } : { tono: "bien", texto: "Al día" },
+      estado: cuentaMontaje("no_realizado") > 0 ? { tono: "critico", texto: plata ? "Requieren gestión" : "Avisale a quien administra" } : montajes.length > 0 ? { tono: "aviso", texto: "Por resolver" } : { tono: "bien", texto: "Al día" },
     },
   ];
   const der: Indicador[] = [
@@ -186,7 +193,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
 
   // ── Lo que dice la lista de abajo, capa por capa (una sola acción por espacio).
   const ficha = (e: EspacioDelMapa) => () => manejo.onFicha(e.clave);
-  const proponer = (e: EspacioDelMapa) => (plata ? { boton: "Preparar propuesta", onClick: () => manejo.onPropuesta(e.clave) } : { boton: "Ver ficha", onClick: ficha(e) });
+  const proponer = (e: EspacioDelMapa) => (plata ? { boton: "Preparar propuesta", onClick: () => manejo.onPropuesta(e.clave) } : { boton: "Ver la ficha", onClick: ficha(e) });
   const fecha = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-CO", { day: "numeric", month: "short" }).replace(".", "");
   const panel = ((): { titulo: string; sub: string; items: Item[] } => {
     switch (capa) {
@@ -205,7 +212,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
           sub: `${plata ? `${pesos(datos.canon ?? 0)} al mes en` : "Los espacios con contrato vigente:"} ${datos.contratos} contrato${datos.contratos === 1 ? "" : "s"} (la cara entera o cada parte).${plata ? " La altura de cada columna es lo que paga ese espacio." : ""}`,
           items: [...conIngreso].sort((a, b) => (b.ingresoAlMes ?? 0) - (a.ingresoAlMes ?? 0)).map((e) => ({
             clave: e.clave, codigo: e.codigo, sub: e.clientes.join(", ") || e.tipo,
-            valor: plata ? pesos(e.ingresoAlMes ?? 0) : null, boton: "Ver ficha", onClick: ficha(e),
+            valor: plata ? pesos(e.ingresoAlMes ?? 0) : null, boton: deAdmin("Ver ficha"), onClick: ficha(e),
           })),
         };
       case "vence": {
@@ -216,7 +223,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
           items: lista.map((e) => ({
             clave: e.clave, codigo: e.vence!.codigo,
             sub: `${e.vence!.proveedor ?? "Sin proveedor"} · vence el ${fecha(e.vence!.fecha)} · ${e.vence!.dias} día${e.vence!.dias === 1 ? "" : "s"}`,
-            valor: plata && e.vence!.alMes !== null ? pesos(e.vence!.alMes) : null, boton: "Gestionar renovación", onClick: ficha(e),
+            valor: plata && e.vence!.alMes !== null ? pesos(e.vence!.alMes) : null, boton: deAdmin("Gestionar renovación"), onClick: ficha(e),
           })),
         };
       }
@@ -229,7 +236,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
           items: lista.map((e) => ({
             clave: e.clave, codigo: e.codigo,
             sub: `${TEXTO_DEL_MONTAJE[e.montaje!].replace(/^./, (c) => c.toUpperCase())}${e.montajeDetalle ? ` · ${e.montajeDetalle}` : ""}`,
-            valor: null, boton: e.montaje === "guia" || e.montaje === "sin_montar" ? "Mandar la guía" : e.montaje === "por_verificar" ? "Verificar" : "Ver detalle",
+            valor: null, boton: deAdmin(e.montaje === "guia" || e.montaje === "sin_montar" ? "Mandar la guía" : e.montaje === "por_verificar" ? "Verificar" : "Ver detalle"),
             onClick: () => manejo.onMontaje(e.clave),
           })),
         };
@@ -268,7 +275,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
               sub: `${e.tipo}${hasta ? ` · ${vence ? "vence" : "hasta"} el ${fecha(hasta)}` : ""}${e.estado === "parcial" && e.detalleParcial ? ` · ${e.detalleParcial} al lado` : ""}`,
               valor: plata ? pesos(suma(suyos.map((k) => k.alMes))) : null,
               ...(e.estado === "parcial" && plata ? { boton: "Proponer ampliación", onClick: () => manejo.onPropuesta(e.clave) }
-                : { boton: vence ? "Gestionar renovación" : "Ver ficha", onClick: ficha(e) }),
+                : { boton: deAdmin(vence ? "Gestionar renovación" : "Ver ficha"), onClick: ficha(e) }),
             };
           }),
         };
@@ -346,9 +353,11 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
           </div>
         ) : (
           <div className="mo-meta">
-            <span className="t">Montajes del mes</span>
+            {/* Mide otra cosa que los montajes por resolver: sólo lo que
+                empieza este mes. El rótulo lo dice para que no se lean juntos. */}
+            <span className="t">Contratos que empiezan en {datos.montajesDelMes.mes}</span>
             <b>{datos.montajesDelMes.enLaTienda} de {datos.montajesDelMes.total}</b>
-            <span className="n">de los contratos que empiezan este mes, en la tienda</span>
+            <span className="n">ya montados en la tienda</span>
           </div>
         )}
         <div className="mo-meta">
@@ -366,8 +375,9 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
           <div className="mo-mapa-cab">
             <h2>Mapa de decisión · {datos.sede}</h2>
             <span className="mo-capa" data-capa-activa={capa}>{capa === "cliente" && datos.cliente ? `Cliente: ${datos.cliente.nombre}` : NOMBRE_DE_LA_CAPA[capa]}</span>
+            {/* Quien no administra no contrata: para él es el plano, a secas. */}
             <button type="button" className="mo-link der" onClick={manejo.onPlanoParaContratar}>
-              Plano para contratar <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden />
+              {plata ? "Plano para contratar" : "Ver el plano"} <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden />
             </button>
           </div>
           <Leyenda capa={capa} verPlata={plata} />
@@ -396,7 +406,7 @@ export default function MapaDeOportunidades({ datos, manejo, capaInicial = null 
             <p>{panel.sub}</p>
           </div>
           {capa === "acciones"
-            ? <button type="button" className="mo-link" onClick={() => manejo.onPendientes()}>Ver los {datos.pendientes.total} en Pendientes ›</button>
+            ? <button type="button" className="mo-link" onClick={() => manejo.onPendientes()}>{verEnPendientes(datos.pendientes.total)}</button>
             : capa !== "cliente" && <button type="button" className="mo-link" onClick={() => manejo.onTabla(capa)}>Ver como tabla ›</button>}
         </div>
         {visibles.length > 0 && (
