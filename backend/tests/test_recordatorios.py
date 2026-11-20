@@ -226,3 +226,17 @@ def test_un_vencido_lo_dice_como_vencido(client, db, rem, correos):
     _contrato(db, dias=-3)
     rem.check_expiring_leases(db)
     assert "venció hace 3 días" in correos[0][1]
+
+
+def test_el_aviso_dice_las_fechas_como_la_app(client, db, rem, monkeypatch):
+    """dd/mm/aaaa, como la app (2026-11-20): antes «Inicio 2026-09-21», la
+    fecha como la guarda la base."""
+    html = []
+    monkeypatch.setattr(rem, "send_mail_to", lambda _d, _a, cuerpo: (html.append(cuerpo), True)[1])
+    _con_contactos(db)
+    c = _contrato(db, dias=10)
+
+    assert rem.check_expiring_leases(db) == 1
+    assert c.start_date.strftime("%d/%m/%Y") in html[0]
+    assert c.end_date.strftime("%d/%m/%Y") in html[0]
+    assert c.end_date.isoformat() not in html[0]

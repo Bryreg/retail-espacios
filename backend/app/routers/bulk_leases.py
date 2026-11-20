@@ -66,7 +66,7 @@ from app.services.condiciones import ETIQUETA_DEL_VALOR, condiciones_de, texto_d
 from app.services.contacts import recipients_for
 from app.schemas.pesos import PesosOpcional
 from app.services.mailer import (
-    app_base_url, correo_configurado, format_cop, html_shell, send_mail_to_bg,
+    app_base_url, correo_configurado, fecha_de_correo, format_cop, html_shell, send_mail_to_bg,
 )
 from app.services.cola_de_correos import encolar_correo
 
@@ -850,7 +850,7 @@ def _avisar(
             rows = [
                 (f"{escape(f.codigo or '')} · {escape(f.proveedor or '')}",
                  (f"{escape(f.parte)}<br>" if f.parte else "")
-                 + f"{f.desde} → {f.hasta} · {valor_de(f)}")
+                 + f"{fecha_de_correo(f.desde)} → {fecha_de_correo(f.hasta)} · {valor_de(f)}")
                 for f in filas
             ]
             if total is not None:
@@ -879,7 +879,9 @@ def _avisar(
                  (f"<strong>{escape(f.parte)}</strong><br>" if f.parte else "")
                  + ubicacion(f, sede)
                  + f"{escape(f.proveedor or '')}{f' · {escape(f.marca)}' if f.marca else ''} · "
-                 f"desde el {f.desde}<br>"
+                 # La fecha como la lee una persona (20/11/2026), no la de la
+                 # base: «desde el 2026-11-20» (2026-11-20).
+                 f"desde el {fecha_de_correo(f.desde)}<br>"
                  f'<a href="{_enlace_de_montaje(f, cliente)}" style="color:#0369A1;font-weight:600;">'
                  "Ver dónde queda y confirmar</a>")
                 for f in a_montar
@@ -925,7 +927,7 @@ def _avisar(
         rows = [("Supermercado", escape(cliente.nombre))] + [
             (escape(f"{f.codigo} — {f.nombre or ''}".strip(" —")),
              (f"{escape(f.parte)}<br>" if f.parte else "")
-             + f"{f.desde} → {f.hasta} · {valor_de(f)}")
+             + f"{fecha_de_correo(f.desde)} → {fecha_de_correo(f.hasta)} · {valor_de(f)}")
             for f in filas
         ]
         encolar_correo(
