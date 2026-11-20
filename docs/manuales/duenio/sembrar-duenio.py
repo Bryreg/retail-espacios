@@ -10,8 +10,8 @@
   suscripción y una cuenta de cobro: así se ven «Suscripción» y el elegir
   supermercado al entrar.
 
-Todo por la API. Correos inventados (`.example`). Deja `sesion-duenia-<puerto>.json`
-con los ingresos que usan las capturas.
+Todo por la API. Correos inventados (`.example`). Deja `.sesion-duenia-<puerto>.json`
+con los ingresos que usan las capturas (la dueña en cada supermercado, Ana y Luis).
 
     python sembrar-duenio.py http://127.0.0.1:8793 <ruta de manual.db>
 """
@@ -108,6 +108,12 @@ pedir("PATCH", "/api/plataforma/clientes/norte_prueba",
 
 # 4. La dueña vuelve a entrar en Galerías (ya tiene dos supermercados).
 final = entrar(*DUENIA, cliente="galerias")
+# Y los ingresos de Ana (administradora: lo que ve quien no es dueño) y de Luis
+# (trabajador: su sesión abierta se cierra cuando la dueña le cambia el rol).
+# El rol del token tiene que ser el de la membresía de HOY (`rol_de_token_para`,
+# PR #121): por eso se piden después de todos los cambios de arriba.
 (AQUI / f".sesion-duenia-{PUERTO}.json").write_text(json.dumps(
-    {"galerias": final, "norte": entrar(*DUENIA, cliente="norte_prueba")}, ensure_ascii=False, indent=1))
+    {"galerias": final, "norte": entrar(*DUENIA, cliente="norte_prueba"),
+     "ana": entrar("ana.admin@supermercado.example", "Ana Prueba"),
+     "luis": entrar("luis.tienda@supermercado.example", "Luis Prueba")}, ensure_ascii=False, indent=1))
 print("listo: dueña, equipo de 4, invitación pendiente, segundo supermercado con suscripción")

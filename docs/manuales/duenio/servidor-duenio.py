@@ -10,13 +10,17 @@ las pantallas que el ingreso por clave no abre (Suscripción, Copia, Tus datos,
 Reporte de transparencia).
 
 Uso (lo arranca `capturas.cjs`; a mano):
-    MANUAL_TMP=<carpeta de levantar.sh> MANUAL_PUERTO=8793 python servidor-duenio.py
+    MANUAL_TMP=<carpeta de levantar.sh> python servidor-duenio.py 8793
+
+El puerto va también en la línea de comandos (no sólo en MANUAL_PUERTO) para
+que `levantar-duenio.sh` apague sólo el servidor de SU puerto (`pkill -f
+"servidor-duenio.py <puerto>$"`), sin tocar las copias de otros puertos.
 """
 import os
 import sys
 from pathlib import Path
 
-PUERTO = int(os.environ.get("MANUAL_PUERTO", "8790"))
+PUERTO = int(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("MANUAL_PUERTO", "8790"))
 BASE = Path(os.environ.get("MANUAL_TMP", "/tmp")) / f"bd-{PUERTO}"
 RAIZ = Path(__file__).resolve().parents[3]
 
@@ -51,6 +55,29 @@ class VerificadorDePrueba:
 
 
 app.dependency_overrides[get_verificador] = lambda: VerificadorDePrueba()
+
+
+# El correo de invitación no pasa por la cola de correos (sale directo con
+# `send_mail_to_bg`), así que `correoReal()` no lo encuentra. Acá, sólo en la
+# copia de prueba, se guarda tal como lo armó el servidor —asunto, destinatario
+# y HTML— en `<MANUAL_TMP>/correos-directos-<puerto>/` para capturarlo, y no
+# sale ninguno (como con el SMTP cortado de `servidor.sh`).
+import json  # noqa: E402
+
+import app.routers.usuarios as _usuarios  # noqa: E402
+
+CORREOS_DIRECTOS = BASE.parent / f"correos-directos-{PUERTO}"
+
+
+def _guardar_correo_directo(destinatarios, asunto, html):
+    CORREOS_DIRECTOS.mkdir(parents=True, exist_ok=True)
+    n = len(list(CORREOS_DIRECTOS.glob("*.json"))) + 1
+    (CORREOS_DIRECTOS / f"{n:03d}.json").write_text(json.dumps(
+        {"asunto": asunto, "para": list(destinatarios), "html": html}, ensure_ascii=False), encoding="utf-8")
+    return False
+
+
+_usuarios.send_mail_to_bg = _guardar_correo_directo
 
 if __name__ == "__main__":
     import uvicorn

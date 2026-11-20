@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>RECABRA · Manual del dueño</title>
 <link rel="stylesheet" href="../herramientas/estilo.css">
-<style>.cuando { break-after: avoid; } table { break-inside: avoid; }</style>
+<style>.cuando { break-after: avoid; } table { break-inside: avoid; } figure.mitad img { max-width: 52%; }</style>
 </head>
 <body>
 
@@ -20,7 +20,7 @@
     <dt>Versión</dt><dd>{{VERSION}} · {{FECHA}}</dd>
     <dt>Sistema</dt><dd>{{APP}}</dd>
     <dt>Equipo</dt><dd>Computador con internet</dd>
-    <dt>Tiempo de lectura</dt><dd>25 minutos</dd>
+    <dt>Tiempo de lectura</dt><dd>30 minutos</dd>
     <dt>Datos de ejemplo</dt><dd>Pantallas de una copia de prueba («Galerías», sede CENTRO). Personas, proveedores y correos inventados.</dd>
   </dl>
 </section>
@@ -37,8 +37,8 @@
     <tr><th style="width:40%">Qué</th><th>Trabajador</th><th>Administrador</th><th>Dueño</th></tr>
     <tr><td>Inicio, Indicadores y Montajes (sin plata)</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
     <tr><td>Contratos, precios, Plano, Ajustes comerciales</td><td>No</td><td>Sí</td><td>Sí</td></tr>
-    <tr><td>Invitar trabajadores y administradores; activarlos y desactivarlos</td><td>No</td><td>Sí</td><td>Sí</td></tr>
-    <tr><td>Invitar a otro dueño; desactivar o reactivar a un dueño</td><td>No</td><td>No</td><td><b>Sí</b></td></tr>
+    <tr><td>Invitar trabajadores y administradores; cambiarles el rol entre esos dos; activarlos y desactivarlos</td><td>No</td><td>Sí</td><td>Sí</td></tr>
+    <tr><td>Invitar a otro dueño; dar o quitar el rol Dueño; desactivar o reactivar a un dueño</td><td>No</td><td>No</td><td><b>Sí</b></td></tr>
     <tr><td>Suscripción: lo que se debe, cuentas de cobro, datos de facturación</td><td>No</td><td>No</td><td><b>Sí</b></td></tr>
     <tr><td>Copia de seguridad del supermercado</td><td>No</td><td>No</td><td><b>Sí</b></td></tr>
     <tr><td>Descargar los datos del supermercado; pedir la supresión; reporte de transparencia</td><td>No</td><td>No</td><td><b>Sí</b></td></tr>
@@ -58,7 +58,8 @@
     <li><p>Abrí la dirección de RECABRA y entrá <b>con Google</b> (si tu correo es de Google) o <b>con tu correo y contraseña</b>. Usá siempre el mismo correo con el que te invitaron o con el que diste de alta el supermercado.</p></li>
     <li><p>Si sos dueño o miembro de <b>dos supermercados</b>, al entrar RECABRA te pregunta a cuál entrar. Para pasar al otro, abrí el menú de tu cuenta, <span class="boton">Cerrar sesión</span>, y entrá de nuevo eligiendo el otro.</p></li>
     <li><p>Arriba a la derecha está tu cuenta: el círculo con tus iniciales, tu nombre y <span class="texto-pantalla">Dueño</span>. Al tocarlo se abre el menú: el supermercado, <span class="texto-pantalla">Tema claro u oscuro</span>, <span class="boton">Descargar mis datos</span> y <span class="boton">Cerrar sesión</span>.</p>
-      <figure class="mitad"><img src="../img/duenio/02-menu-cuenta.jpg" alt="El menú de la cuenta"></figure></li>
+      <figure class="mitad"><img src="../img/duenio/02-menu-cuenta.jpg" alt="El menú de la cuenta"></figure>
+      <p>Toda la fila <span class="texto-pantalla">Tema claro u oscuro</span> cambia la pantalla a oscura o clara: tocala en cualquier parte.</p></li>
   </ol>
   <div class="caja error"><span class="rotulo">Si entrás con otra cuenta</span><p>Si entrás con un correo distinto (por ejemplo, el personal en vez del del trabajo), RECABRA no te encuentra en el supermercado. Cerrá la sesión y entrá con el correo correcto. Si RECABRA te ofrece «crear un supermercado» y no es lo que querés, <b>no lo crees</b>: es la señal de que entraste con el correo equivocado.</p></div>
 </section>
@@ -70,18 +71,23 @@
 
   <h2 class="proceso">2.1 Ver el equipo</h2>
   <ol class="pasos">
-    <li><p>En el menú de la izquierda tocá <span class="boton">Ajustes</span> y después <span class="boton">Equipo</span>. En <span class="texto-pantalla">Usuarios de Galerías</span> está cada persona con su correo, su rol, cuándo entró por última vez (<span class="texto-pantalla">recién</span>, <span class="texto-pantalla">hace 3 d</span>, <span class="texto-pantalla">nunca entró</span>) y su botón <span class="boton">Desactivar</span> o <span class="boton">Activar</span>. Abajo, las invitaciones que todavía nadie aceptó.</p>
+    <li><p>En el menú de la izquierda tocá <span class="boton">Ajustes</span> y después <span class="boton">Equipo</span>. En <span class="texto-pantalla">Usuarios de Galerías</span> está cada persona con su correo, la lista de su rol, cuándo entró por última vez (<span class="texto-pantalla">recién</span>, <span class="texto-pantalla">hace 3 d</span>, <span class="texto-pantalla">nunca entró</span>) y su botón <span class="boton">Desactivar</span> o <span class="boton">Activar</span>. Abajo, las invitaciones que todavía nadie aceptó.</p>
       <figure class="mitad"><img src="../img/duenio/03-equipo.jpg" alt="Ajustes › Equipo"></figure></li>
+    <li><p>Tu propia fila dice <span class="texto-pantalla">Diana Prueba · vos</span>, con tu rol escrito al lado del correo (<span class="texto-pantalla">diana.duena@supermercado.example · Dueño</span>) y <b>sin botones</b>: nadie se cambia el rol ni se desactiva a sí mismo. Eso lo hace otra persona que maneje el equipo.</p>
+      <figure class="mitad"><img src="../img/duenio/03b-fila-propia.jpg" alt="La fila propia, sin botones"></figure></li>
   </ol>
 
   <h2 class="proceso">2.2 Invitar a una persona</h2>
-  <p class="cuando"><b>Cuándo:</b> entra alguien nuevo al equipo, o alguien necesita otro rol.</p>
+  <p class="cuando"><b>Cuándo:</b> entra alguien nuevo al equipo. (Si la persona ya está en la lista y necesita otro rol, no la invites: cambiale el rol, 2.3.)</p>
   <ol class="pasos">
-    <li><p>En <span class="texto-pantalla">Invitar por correo</span> (1) escribí el correo de la persona: <b>el mismo con el que va a entrar</b>. En <span class="texto-pantalla">Rol</span> (2) elegí <span class="texto-pantalla">Trabajador</span>, <span class="texto-pantalla">Administrador</span> o <span class="texto-pantalla">Dueño</span>. Tocá <span class="boton">Invitar</span> (3).</p>
+    <li><p>En <span class="texto-pantalla">Invitar por correo</span> escribí el correo de la persona: <b>el mismo con el que va a entrar</b>.</p></li>
+    <li><p>En <span class="texto-pantalla">Rol</span> elegí <span class="texto-pantalla">Trabajador</span>, <span class="texto-pantalla">Administrador</span> o <span class="texto-pantalla">Dueño</span>.</p></li>
+    <li><p>Tocá <span class="boton">Invitar</span>.</p>
       <figure class="mitad"><img src="../img/duenio/04-invitar.jpg" alt="Invitar por correo"></figure></li>
     <li><p>Listo cuando ves en verde <span class="texto-pantalla">Invitación enviada a sofia.nueva@supermercado.example: entra a Galerías como administrador, con esa misma cuenta.</span> Abajo aparece <span class="texto-pantalla">Invitación pendiente · Administrador</span> con <span class="texto-pantalla">vence en 7 d</span>.</p>
       <figure class="mitad"><img src="../img/duenio/05-invitacion-enviada.jpg" alt="Invitación enviada"></figure></li>
-    <li><p>A la persona le llega el correo <span class="texto-pantalla">Invitación a Galerías — RECABRA</span> con el supermercado, el rol, el correo con el que tiene que entrar y el enlace. Entra con Google o creando una cuenta de correo con <b>esa misma dirección</b>. Al entrar, deja de figurar como pendiente y aparece en la lista.</p></li>
+    <li><p>A la persona le llega el correo <span class="texto-pantalla">Invitación a Galerías — RECABRA</span>: el supermercado, el rol, <span class="texto-pantalla">Entrá con</span> y su correo, y el enlace, que <span class="texto-pantalla">vence en 7 días</span>. Entra con Google o creando una cuenta de correo con <b>esa misma dirección</b>. Al entrar, deja de figurar como pendiente y aparece en la lista.</p>
+      <figure class="mitad"><img src="../img/duenio/05b-correo-invitacion.jpg" alt="El correo de invitación"></figure></li>
   </ol>
   <table>
     <tr><th style="width:22%">Rol</th><th>Para quién</th><th>Qué ve y qué hace</th></tr>
@@ -91,13 +97,37 @@
   </table>
   <div class="caja error"><span class="rotulo">Si te equivocás</span><ul>
     <li><b>Correo mal escrito:</b> la invitación nunca se va a usar; vence sola a los 7 días. Invitá de nuevo con el correo bien.</li>
-    <li><b>Rol equivocado:</b> en RECABRA no hay un botón para cambiar el rol de una persona. Pedile el cambio a RECABRA; mientras tanto, si el rol le da más de lo que debe, desactivala (2.3).</li>
-    <li><b>«Esa persona ya es miembro de este cliente»:</b> ya está en la lista (quizás desactivada): usá <span class="boton">Activar</span>.</li>
-  </ul></div>
+    <li><b>Rol equivocado:</b> si todavía no aceptó, dejá vencer esa invitación e invitala de nuevo con el rol bien. Si ya entró, cambiale el rol desde la lista (2.3).</li>
+    <li><b>Invitás a alguien que ya está:</b> sale en rojo <span class="texto-pantalla">Esa persona ya es miembro de este supermercado: cambiale el rol desde la lista.</span> Buscala en la lista: cambiale el rol (2.3) o, si dice <span class="texto-pantalla">desactivado</span>, tocá <span class="boton">Activar</span> (2.4).</li>
+  </ul>
+  <figure class="mitad"><img src="../img/duenio/05c-ya-es-miembro.jpg" alt="Esa persona ya es miembro"></figure></div>
   <div class="caja ojo"><span class="rotulo">Ojo con el rol Dueño</span><p>Un dueño ve la plata de la suscripción, baja la copia con todos los contratos y puede pedir la supresión del supermercado. Dalo sólo a quien responde por la cuenta, nunca a un proveedor ni a personal temporal.</p></div>
 
-  <h2 class="proceso">2.3 Desactivar a quien se va (y volver a activar)</h2>
-  <p class="cuando"><b>Cuándo:</b> el mismo día que una persona deja el supermercado o cambia de puesto.</p>
+  <h2 class="proceso">2.3 Cambiar el rol de una persona</h2>
+  <p class="cuando"><b>Cuándo:</b> alguien cambia de puesto (un trabajador pasa a vender: Administrador), o le diste un rol equivocado. No hace falta invitarla de nuevo.</p>
+  <ol class="pasos">
+    <li><p>En <span class="boton">Ajustes</span> › <span class="boton">Equipo</span>, buscá la fila de la persona y abrí la lista de su rol (dice el rol que tiene hoy, por ejemplo <span class="texto-pantalla">Trabajador</span>).</p>
+      <figure class="mitad"><img src="../img/duenio/08-cambiar-rol.jpg" alt="La lista del rol en la fila de Luis"></figure></li>
+    <li><p>Elegí el rol nuevo: <span class="texto-pantalla">Trabajador</span>, <span class="texto-pantalla">Administrador</span> o <span class="texto-pantalla">Dueño</span>.</p></li>
+    <li><p>El navegador pregunta <span class="texto-pantalla">¿Pasar a Luis Prueba a administrador? Si tiene la sesión abierta, va a tener que volver a entrar.</span> Tocá <span class="boton">Aceptar</span>. (Si tocás <span class="boton">Cancelar</span>, no cambia nada.)</p></li>
+    <li><p>Listo cuando la lista de su fila dice el rol nuevo y abajo sale en verde <span class="texto-pantalla">Listo: Luis Prueba ahora es administrador.</span></p>
+      <figure class="mitad"><img src="../img/duenio/08b-rol-cambiado.jpg" alt="Rol cambiado"></figure></li>
+    <li><p>Si la persona tenía RECABRA abierto, su sesión se cierra sola: la próxima vez que toca algo vuelve a la portada. Que toque <span class="boton">Ya tengo cuenta</span> y entre como siempre.</p>
+      <figure class="mitad"><img src="../img/duenio/08c-luis-sesion-cerrada.jpg" alt="La sesión de Luis se cerró"></figure></li>
+    <li><p>Al entrar de nuevo, arriba a la derecha, debajo de su nombre, ya dice su rol nuevo: <span class="texto-pantalla">Administrador</span>.</p>
+      <figure class="mitad"><img src="../img/duenio/08d-luis-administrador.jpg" alt="Luis entró de nuevo como administrador"></figure></li>
+  </ol>
+  <div class="caja ojo"><span class="rotulo">Lo que no se puede</span><ul>
+    <li><b>Cambiarte el rol a vos mismo.</b> Tu fila no tiene la lista. Te lo cambia otra persona.</li>
+    <li><b>Dar o quitar el rol Dueño, si no sos dueño.</b> Un administrador sólo ve <span class="texto-pantalla">Trabajador</span> y <span class="texto-pantalla">Administrador</span>, y las filas de los dueños le aparecen sin lista ni botones.</li>
+    <li><b>Dejar el supermercado sin dueño.</b> Si querés dejar de ser dueña, primero dale el rol Dueño a otra persona; después, esa persona te cambia el rol a vos.</li>
+  </ul></div>
+  <figure class="mitad"><img src="../img/duenio/40-ana-equipo.jpg" alt="Equipo, como lo ve una administradora"><figcaption>Así ve Equipo Ana, administradora: en <i>Rol</i> no está <i>Dueño</i>, y la fila de Diana (dueña) no tiene lista ni botones.</figcaption></figure>
+  <div class="caja error"><span class="rotulo">Al dar el rol Dueño</span><p>El navegador avisa: <span class="texto-pantalla">¿Darle el rol Dueño a Ana Prueba? Va a poder ver la suscripción, bajar la copia de seguridad, manejar a los otros dueños y pedir la supresión del supermercado.</span> Si no estás segura, tocá <span class="boton">Cancelar</span>: la fila queda como estaba. Si elegiste un rol por error y aceptaste, volvé a elegir el de antes: sale <span class="texto-pantalla">Listo: Luis Prueba ahora es trabajador.</span></p></div>
+  <div class="caja truco"><span class="rotulo">Cuándo cierra la sesión</span><p>Entre <b>Trabajador</b> y <b>Administrador</b> la persona vuelve a entrar, porque cambia lo que ve (la plata). Entre <b>Administrador</b> y <b>Dueño</b>, no: sigue adentro y lo del dueño se le abre o se le cierra solo. Todo cambio de rol queda en la bitácora (3.5).</p></div>
+
+  <h2 class="proceso">2.4 Desactivar a quien se va (y volver a activar)</h2>
+  <p class="cuando"><b>Cuándo:</b> el mismo día que una persona deja el supermercado. (Si sólo cambió de puesto, cambiale el rol: 2.3.)</p>
   <ol class="pasos">
     <li><p>En la fila de la persona tocá <span class="boton">Desactivar</span>.</p>
       <figure class="mitad"><img src="../img/duenio/06-desactivar.jpg" alt="Desactivar"></figure></li>
@@ -108,14 +138,14 @@
   <div class="caja ojo"><span class="rotulo">Lo que pasa al desactivar</span><ul>
     <li>Pierde el acceso <b>enseguida</b>, aunque esté con la sesión abierta.</li>
     <li>Lo que hizo queda: sus contratos, montajes y su línea en la bitácora no se borran.</li>
-    <li>Un administrador no puede desactivar a un dueño; sólo otro dueño. Y <b>no se puede desactivar al último dueño activo</b>: si sos la única dueña, invitá antes a otra persona como dueña.</li>
-    <li>Los enlaces de montaje que esa persona reenvió siguen andando: si hace falta, cortalos (2.5).</li>
+    <li>Un administrador no puede desactivar a un dueño; sólo otro dueño. Vos no podés desactivarte (tu fila no tiene botón), y el supermercado no se puede quedar sin un dueño activo.</li>
+    <li>Los enlaces de montaje que esa persona reenvió siguen andando: si hace falta, cortalos (2.6).</li>
   </ul></div>
 
-  <h2 class="proceso">2.4 Invitaciones pendientes</h2>
+  <h2 class="proceso">2.5 Invitaciones pendientes</h2>
   <p>Cada invitación dura <b>7 días</b> (<span class="texto-pantalla">vence en 7 d</span>). Mientras está pendiente, la persona no tiene acceso. Si venció, desaparece de la lista: invitá de nuevo. Si la persona dice que «no la encuentra», casi siempre entró con otro correo: pedile que cierre la sesión y entre con el correo exacto de la invitación.</p>
 
-  <h2 class="proceso">2.5 Permisos de planogramas y cortar un enlace</h2>
+  <h2 class="proceso">2.6 Permisos de planogramas y cortar un enlace</h2>
   <ol class="pasos">
     <li><p><span class="texto-pantalla">Quién planifica y publica planogramas</span>: con <span class="texto-pantalla">Sólo administración</span> (lo normal) nadie del equipo toca los planogramas; con <span class="texto-pantalla">También el equipo</span>, los trabajadores planifican y publican <b>sólo los muebles que no se venden</b> (las góndolas de la casa). Se guarda al tocar.</p>
       <figure class="mitad"><img src="../img/duenio/09-permisos.jpg" alt="Quién planifica y publica planogramas"></figure></li>
@@ -127,17 +157,17 @@
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 <section class="capitulo">
   <h1><span class="num">3</span>La cuenta</h1>
-  <p class="entrada"><b>Ajustes › Cuenta</b> es lo tuyo como dueño: lo que RECABRA le cobra al supermercado, la copia de seguridad, los datos y la bitácora. Un administrador que no es dueño no ve la suscripción ni la copia.</p>
+  <p class="entrada"><b>Ajustes › Cuenta</b> es lo tuyo como dueño: lo que RECABRA le cobra al supermercado, la copia de seguridad, los datos y la bitácora. Un administrador que no es dueño no ve la suscripción ni la copia, y en <span class="texto-pantalla">Tus datos</span> sólo le dice dónde bajar sus datos personales.</p>
   <ol class="pasos">
     <li><p>En <span class="boton">Ajustes</span> tocá <span class="boton">Cuenta</span>. De arriba a abajo: <span class="texto-pantalla">Suscripción</span>, <span class="texto-pantalla">Copia de seguridad</span>, <span class="texto-pantalla">Tus datos</span> y <span class="texto-pantalla">Bitácora</span>.</p>
-      <figure class="mitad"><img src="../img/duenio/10-cuenta.jpg" alt="Ajustes › Cuenta"></figure></li>
+      <figure class="mitad"><img style="max-width:50%" src="../img/duenio/10-cuenta.jpg" alt="Ajustes › Cuenta"></figure></li>
   </ol>
 
   <h2 class="proceso">3.1 Suscripción y facturación</h2>
   <p class="cuando"><b>Cuándo:</b> cuando llega una cuenta de cobro, o si aparece arriba la franja <span class="texto-pantalla">Pago pendiente</span>.</p>
   <ol class="pasos">
     <li><p>En <span class="texto-pantalla">Suscripción</span> ves el <span class="texto-pantalla">Estado de la cuenta</span> (con el motivo), <span class="texto-pantalla">Lo pactado</span> (por mes), el <span class="texto-pantalla">Plazo para pagar</span>, la <span class="texto-pantalla">Próxima a pagar</span> con <span class="texto-pantalla">Total</span>, <span class="texto-pantalla">Retenciones estimadas</span>, <span class="texto-pantalla">Neto a pagar</span> y cuándo vence, <span class="texto-pantalla">Cómo pagar</span>, las <span class="texto-pantalla">Cuentas de cobro</span> y los <span class="texto-pantalla">Cambios de estado</span>. En el ejemplo: $ 450.000 al mes, neto $ 427.653.</p>
-      <figure class="mitad"><img src="../img/duenio/31-suscripcion.jpg" alt="Suscripción"></figure></li>
+      <figure class="mitad"><img style="max-width:42%" src="../img/duenio/31-suscripcion.jpg" alt="Suscripción"></figure></li>
     <li><p>Más abajo, <span class="texto-pantalla">Datos de facturación</span>: razón social, NIT, correo de facturación y municipio. Si cambian, corregilos y tocá <span class="boton">Guardar datos de facturación</span>: valen para las próximas cuentas de cobro.</p>
       <figure class="mitad"><img src="../img/duenio/32-facturacion.jpg" alt="Datos de facturación"></figure></li>
   </ol>
@@ -149,7 +179,7 @@
     <tr><td><b>Sólo lectura</b></td><td>A los 30 días de vencida (y nunca antes de 10 días del aviso formal por correo): se puede mirar, no cambiar nada.</td><td>La franja; no pueden guardar.</td></tr>
     <tr><td><b>Suspendida</b></td><td>Lo decide RECABRA, a mano. Sólo el dueño entra, para ver el motivo y ponerse al día.</td><td>No pueden entrar.</td></tr>
   </table>
-  <figure class="mitad"><img src="../img/duenio/30-franja-pago.jpg" alt="Franja de pago pendiente"><figcaption>La franja <i>Pago pendiente</i>, arriba de todo, con <i>Ver suscripción</i>. El supermercado del ejemplo («Norte») todavía no tiene plano.</figcaption></figure>
+  <figure class="mitad"><img src="../img/duenio/30-franja-pago.jpg" alt="Franja de pago pendiente"><figcaption>La franja <i>Pago pendiente</i>, arriba de todo: <i>Ver suscripción</i> abre la suscripción (sólo la ve el dueño) y <i>Reintentar</i> vuelve a consultar el estado, por ejemplo después de que RECABRA registró el pago. El supermercado del ejemplo («Norte») todavía no tiene plano.</figcaption></figure>
   <div class="caja truco"><span class="rotulo">Sin suscripción</span><p>Si dice <span class="texto-pantalla">Este supermercado no tiene una suscripción registrada en RECABRA: no hay cuentas de cobro a su nombre.</span>, no hay nada que pagar en el sistema (por ejemplo, un acuerdo aparte).</p></div>
 
   <h2 class="proceso">3.2 Copia de seguridad</h2>
@@ -170,19 +200,27 @@
   </ol>
   <div class="caja ojo"><span class="rotulo">La supresión es seria</span><p>Pedirla no borra nada en el momento, pero si RECABRA la ejecuta, se borra el supermercado y <b>no hay vuelta atrás</b>. Antes, bajá la copia de seguridad (3.2). Si la pediste por error, escribile enseguida a RECABRA.</p></div>
   <p><b>Tus datos personales</b> (tu cuenta, las políticas que aceptaste y lo que te menciona) los baja cada persona —también vos— desde el menú de su cuenta, arriba a la derecha: <span class="boton">Descargar mis datos</span> (1.1). Se pueden bajar hasta 3 veces por hora.</p>
+  <p>Así ve <span class="texto-pantalla">Tus datos</span> alguien de tu equipo que no es dueño (por ejemplo, Ana, administradora): sin botones, sólo <span class="texto-pantalla">Tus datos personales los bajás vos, desde el menú de tu cuenta, arriba a la derecha: «Descargar mis datos». Los datos del supermercado, la solicitud de supresión y el reporte de transparencia son del dueño de la cuenta: si los necesitás, pedíselos.</span> Si te los pide, los bajás vos.</p>
+  <figure class="mitad"><img style="max-width:85%" src="../img/duenio/41-ana-tus-datos.jpg" alt="Tus datos, como lo ve una administradora"></figure>
 
   <h2 class="proceso">3.4 Reporte de transparencia</h2>
   <p class="cuando"><b>Cuándo:</b> para saber qué ve RECABRA de tu supermercado y quién lo miró.</p>
   <ol class="pasos">
-    <li><p>Tocá <span class="boton">Reporte de transparencia</span>. Arriba elegí la <span class="texto-pantalla">Ventana</span> (3, 6, 12 o 24 meses). El reporte tiene cuatro partes: <b>1. Qué datos toma la plataforma y para qué</b> (cada dato con su definición y su finalidad), <b>2. Valores tomados, mes a mes</b>, <b>3. Quién lo consultó</b> (cada acceso del operador, con fecha y correo) y <b>4. Tus derechos</b>. <span class="boton">Imprimir / Guardar como PDF</span> lo saca en papel; <span class="boton">← Volver</span> regresa.</p>
+    <li><p>En <span class="texto-pantalla">Tus datos</span>, tocá <span class="boton">Reporte de transparencia</span>.</p></li>
+    <li><p>Arriba elegí la <span class="texto-pantalla">Ventana</span> (3, 6, 12 o 24 meses). El reporte tiene cuatro partes: <b>1. Qué datos toma la plataforma y para qué</b> (cada dato con su definición y su finalidad), <b>2. Valores tomados, mes a mes</b>, <b>3. Quién lo consultó</b> (cada acceso del operador, con fecha y correo) y <b>4. Tus derechos</b>. <span class="boton">Imprimir / Guardar como PDF</span> lo saca en papel; <span class="boton">Volver</span> regresa.</p>
       <figure class="mitad"><img src="../img/duenio/15-reporte.jpg" alt="Reporte de transparencia"></figure></li>
+    <li><p>Debajo del título están las fechas, en días de Colombia: cuándo se generó (<span class="texto-pantalla">generado el 20 de nov de 2026</span>) y qué versión de la política aceptaste y cuándo (<span class="texto-pantalla">versión aceptada 2026-10-v3 (20 de nov de 2026)</span>).</p>
+      <figure class="mitad"><img style="max-width:85%" src="../img/duenio/15b-reporte-fechas.jpg" alt="Las fechas del reporte"></figure></li>
+    <li><p>Al final, <span class="texto-pantalla">4. Tus derechos</span> dice dónde se hace cada cosa en la pantalla: bajar los datos, pedir la supresión y volver a ver el reporte (los tres en Ajustes › Cuenta › Tus datos, sólo el dueño), y a quién escribir para cualquier otra consulta.</p>
+      <figure class="mitad"><img style="max-width:85%" src="../img/duenio/15c-tus-derechos.jpg" alt="4. Tus derechos"></figure></li>
   </ol>
   <div class="caja avisale"><span class="rotulo">Si algo no te cierra</span><p>Si en «Quién lo consultó» ves un acceso que no esperabas, escribile a RECABRA al correo de protección de datos de la política.</p></div>
 
   <h2 class="proceso">3.5 La bitácora</h2>
   <p class="cuando"><b>Cuándo:</b> cuando hay que saber quién hizo algo («¿quién canceló este contrato?», «¿quién invitó a esta persona?»).</p>
   <ol class="pasos">
-    <li><p>Al final de <span class="texto-pantalla">Cuenta</span> está la <span class="texto-pantalla">Bitácora</span>: contratos, documentos, borrados e ingresos, guardados <b>un año</b>. Cada línea dice qué pasó, el detalle (y el correo de quien lo hizo), el rol, desde qué conexión y cuándo. En la lista de arriba elegí un tipo (por ejemplo <span class="texto-pantalla">Persona invitada</span>) para ver sólo eso; <span class="texto-pantalla">Actualizar</span> la vuelve a leer.</p>
+    <li><p>Al final de <span class="texto-pantalla">Cuenta</span> está la <span class="texto-pantalla">Bitácora</span>: contratos, documentos, borrados e ingresos, guardados <b>un año</b>. Cada línea dice qué pasó, el detalle con el correo de quien lo hizo, el rol (<span class="texto-pantalla">Dueño</span>, <span class="texto-pantalla">Administrador</span>, <span class="texto-pantalla">Trabajador</span>), desde qué conexión y cuándo.</p></li>
+    <li><p>En la lista de arriba elegí un tipo para ver sólo eso. Por ejemplo <span class="texto-pantalla">Rol de una persona cambiado</span>: cada línea dice el cambio (<span class="texto-pantalla">Trabajador → Administrador</span>) y quién lo hizo. <span class="texto-pantalla">Actualizar</span> la vuelve a leer.</p>
       <figure class="mitad"><img src="../img/duenio/16-bitacora.jpg" alt="Bitácora filtrada"></figure></li>
   </ol>
   <p>Lo borrado se ve en rojo y los ingresos fallidos en ámbar. La bitácora no se puede editar ni borrar.</p>
@@ -226,9 +264,9 @@
   <h2 class="proceso">5.1 Seguridad</h2>
   <ol>
     <li><b>Una cuenta por persona, nunca compartida.</b> Si alguien necesita entrar, invitalo con su correo. Lo que se hace con tu cuenta queda a tu nombre en la bitácora.</li>
-    <li><b>Desactivá a quien se va el mismo día</b> (2.3). Revisá la lista de Equipo una vez al mes: nadie que ya no trabaje con ustedes debería estar activo.</li>
+    <li><b>Desactivá a quien se va el mismo día</b> (2.4); si sólo cambió de puesto, cambiale el rol (2.3). Revisá la lista de Equipo una vez al mes: nadie que ya no trabaje con ustedes debería estar activo.</li>
     <li><b>El rol más chico que alcance.</b> Para montar y verificar, Trabajador; para vender, Administrador. Dueño, sólo quien responde por la cuenta. Tené <b>al menos dos dueños</b> activos, para que la cuenta no dependa de una sola persona.</li>
-    <li><b>Cuidá lo que sale del sistema:</b> la copia de seguridad y la descarga de datos llevan precios y contactos. Los enlaces de montaje y de guía abren sin contraseña: si uno se filtra, cortalo (2.5).</li>
+    <li><b>Cuidá lo que sale del sistema:</b> la copia de seguridad y la descarga de datos llevan precios y contactos. Los enlaces de montaje y de guía abren sin contraseña: si uno se filtra, cortalo (2.6).</li>
     <li><b>Desconfiá de pedidos raros:</b> RECABRA no pide tu contraseña ni datos de tarjeta por correo. Las cuentas de cobro se ven en Ajustes › Cuenta › Suscripción.</li>
   </ol>
   <div class="caja avisale"><span class="rotulo">Si perdiste el acceso o te robaron la cuenta</span><p>Pedile a otro dueño que te desactive y te vuelva a invitar, cambiá la contraseña de tu correo y escribile a RECABRA. Si sos la única dueña, escribile a RECABRA directamente.</p></div>
@@ -238,9 +276,11 @@
     <tr><th style="width:38%">Lo que pasa</th><th>Qué hacer</th></tr>
     <tr><td>La persona invitada dice que «no tiene acceso» o que RECABRA le ofrece crear un supermercado.</td><td>Entró con otro correo. Que cierre la sesión y entre con el correo exacto de la invitación. Que <b>no</b> cree un supermercado.</td></tr>
     <tr><td>No le llegó la invitación.</td><td>Que revise el correo no deseado. Si venció (7 días), invitá de nuevo.</td></tr>
-    <tr><td>No aparece la opción <span class="texto-pantalla">Dueño</span> en el rol.</td><td>Sólo un dueño puede invitar dueños. Revisá que entraste con tu cuenta (arriba debe decir <span class="texto-pantalla">Dueño</span>).</td></tr>
-    <tr><td><span class="texto-pantalla">No se puede desactivar al último dueño activo de este cliente.</span></td><td>Invitá antes a otra persona como Dueño; cuando entre, ya se puede.</td></tr>
-    <tr><td>En Suscripción dice <span class="texto-pantalla">Solo el owner del cliente puede hacer esto.</span></td><td>Entraste con una cuenta que no es dueña (o con la clave de instalación). Entrá con tu cuenta de dueño.</td></tr>
+    <tr><td>No aparece la opción <span class="texto-pantalla">Dueño</span> en el rol.</td><td>Sólo un dueño da el rol Dueño. Revisá que entraste con tu cuenta (arriba, debajo de tu nombre, debe decir <span class="texto-pantalla">Dueño</span>).</td></tr>
+    <tr><td>Tu fila (<span class="texto-pantalla">vos</span>) no tiene botones.</td><td>Es a propósito: nadie se cambia el rol ni se desactiva a sí mismo. Pedíselo a otro dueño.</td></tr>
+    <tr><td>Un trabajador pasó a administrador y dice que «lo sacó del sistema».</td><td>Es lo normal al cambiar entre esos dos roles: que toque <span class="boton">Ya tengo cuenta</span> y entre de nuevo. Ya entra con el rol nuevo.</td></tr>
+    <tr><td><span class="texto-pantalla">Esa persona ya es miembro de este supermercado: cambiale el rol desde la lista.</span></td><td>No la invites: cambiale el rol en su fila (2.3) o, si está desactivada, <span class="boton">Activar</span>.</td></tr>
+    <tr><td>Sale <span class="texto-pantalla">Esto lo puede hacer sólo el dueño del supermercado, con su cuenta.</span></td><td>Entraste con una cuenta que no es dueña, o con una sesión vieja. Cerrá la sesión y entrá con tu cuenta de dueño.</td></tr>
     <tr><td>Arriba aparece <span class="texto-pantalla">Pago pendiente</span>.</td><td>Ajustes › Cuenta › Suscripción: mirá qué cuenta de cobro está vencida y pedile a RECABRA los datos para transferir.</td></tr>
     <tr><td>Nadie del equipo puede guardar cambios.</td><td>Probablemente la cuenta está en <b>sólo lectura</b> por falta de pago: mirá Suscripción.</td></tr>
     <tr><td>La copia de seguridad no termina.</td><td>Esperá; con muchas fotos tarda. Si dice que no se pudo, probá en un rato. Se pueden bajar varias veces.</td></tr>
@@ -260,6 +300,8 @@
     <tr><td>Trabajador</td><td>Gente de la tienda: ve Inicio, Indicadores y Montajes, sin plata.</td></tr>
     <tr><td>Invitación pendiente</td><td>Una invitación que la persona todavía no aceptó. Vence a los 7 días.</td></tr>
     <tr><td>Desactivar</td><td>Cortarle el acceso a una persona. Se puede volver a activar.</td></tr>
+    <tr><td>Cambiar el rol</td><td>Pasar a una persona de Trabajador a Administrador (o al revés, o a Dueño) desde su fila en Equipo, sin invitarla de nuevo.</td></tr>
+    <tr><td>vos</td><td>La marca de tu propia fila en Equipo: no tiene botones.</td></tr>
     <tr><td>Sede</td><td>Cada tienda, con su plano y sus contratos.</td></tr>
     <tr><td>Papelera</td><td>Donde quedan 30 días las sedes borradas, para restaurarlas.</td></tr>
     <tr><td>Suscripción</td><td>Lo que RECABRA le cobra al supermercado: lo pactado, las cuentas de cobro y los pagos.</td></tr>
