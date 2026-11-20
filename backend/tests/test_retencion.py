@@ -81,11 +81,17 @@ def test_la_bitacora_del_operador_cubre_la_ventana_del_reporte(client):
 
 
 def test_el_cliente_purga_bitacora_e_intentos_con_sus_plazos(client, monkeypatch):
+    from conftest import esperar_mantenimiento
     from app.clientes import buscar, sesion_de
     from app.models.models import AuditEntry, LoginAttempt
     from app.services import retencion
     from app.services.bitacora import purgar
 
+    # La pasada de mantenimiento del arranque (el hilo de `client`) purga la
+    # bitácora con el MISMO plazo, leído de la variable: si corría después del
+    # `setenv` de abajo se llevaba la línea de 200 días y `purgar` devolvía 0
+    # (falló así en CI, 2026-11-20). Se espera a que termine antes de sembrar.
+    esperar_mantenimiento()
     db = sesion_de(buscar("galerias"))
     try:
         db.add_all([
