@@ -44,6 +44,27 @@ function salidaDelRechazo(codes: string[]): string {
   return `${salidas.join(", o bien: ")} y se guarda solo.`;
 }
 
+/** Si el navegador dice que hay red (`navigator.onLine` y los eventos
+ *  `online`/`offline`). El estado de la sincronización sólo cambia cuando un
+ *  pedido al servidor falla, y sin nada que pedir eso puede tardar: con el wifi
+ *  cortado, el formulario de montaje ya decía «Sin conexión» y la barra seguía
+ *  en «Sincronizado» hasta que alguien la tocaba (recorrido de los manuales,
+ *  2026-11-20). Al volver la red, el store sube y relee solo (`onOnline`). */
+function useEnLinea(): boolean {
+  const [enLinea, setEnLinea] = useState(() => typeof navigator === "undefined" || navigator.onLine !== false);
+  useEffect(() => {
+    const si = () => setEnLinea(true);
+    const no = () => setEnLinea(false);
+    window.addEventListener("online", si);
+    window.addEventListener("offline", no);
+    return () => {
+      window.removeEventListener("online", si);
+      window.removeEventListener("offline", no);
+    };
+  }, []);
+  return enLinea;
+}
+
 export default function SyncStatus() {
   const syncState = useFixtureStore((s) => s.syncState);
   const syncMessage = useFixtureStore((s) => s.syncMessage);
@@ -55,6 +76,7 @@ export default function SyncStatus() {
   const fixturesBySede = useFixtureStore((s) => s.fixturesBySede);
   const hasPending = useFixtureStore(selectHasPendingWork);
   const isAdmin = useAuthStore(selectIsAdmin);
+  const enLinea = useEnLinea();
 
   const busy = syncState === "pulling" || syncState === "pushing";
   const conflictSedes = Object.keys(conflicts);
@@ -133,6 +155,9 @@ export default function SyncStatus() {
     // resolver, no algo que se arregle solo.
     if (hayRechazo)
       return { label: "Rechazado por el servidor", color: "var(--danger)", alarma: true };
+    // Sin red, «Actualizando…» o «Sincronizado» mienten: lo que haya en curso
+    // va a fallar, y lo que se ve es la copia de este equipo.
+    if (!enLinea) return { label: "Sin conexión", color: "var(--danger)", alarma: true };
     if (syncState === "pulling") return { label: "Actualizando…", color: "var(--ink-4)", alarma: false };
     if (syncState === "pushing") return { label: "Guardando…", color: "var(--ink-4)", alarma: false };
     if (syncState === "error") return { label: "Sin conexión", color: "var(--danger)", alarma: true };
@@ -151,6 +176,7 @@ export default function SyncStatus() {
         onClick={handleSync}
         disabled={busy}
         title={
+          (!enLinea ? "Sin conexión a internet: se ve la copia de este equipo. Cuando vuelva, se sincroniza solo." : null) ??
           syncMessage ??
           (lastSyncLabel ? `${label} · última sincronización ${lastSyncLabel}` : `${label} · sincronizar con el servidor`)
         }

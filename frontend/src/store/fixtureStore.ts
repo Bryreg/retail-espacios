@@ -1590,6 +1590,11 @@ export const useFixtureStore = create<FixtureStore>()(
           if (changed) {
             await get().syncFromServer();
           } else {
+            // El servidor contestó y el plano de acá es el suyo: un «Sin
+            // conexión» que quedó de un pedido que falló antes (se cortó el
+            // wifi y volvió: `onOnline` llega acá) ya no es cierto. Sin esto
+            // la barra seguía en rojo hasta que alguien la tocaba.
+            if (get().syncState === "error") set({ syncState: "idle", syncMessage: null });
             // El plano no se movió, pero lo comercial ya no vive en el plano:
             // una venta, una cancelación o una planilla cargada en otro equipo
             // no cambian ninguna revisión. Sin esta rama, esta pestaña seguiría
