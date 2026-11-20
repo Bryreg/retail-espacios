@@ -502,9 +502,9 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   assert.match(plano, /porParticipacion=\{esPorParticipacion\(selectedItem\.id\)\}/);
   assert.match(panel, /const dispoPc = esPc \? \(dispoDeCara\?\.\(activeFace\) \?\? null\) : null;/);
   assert.match(panel, /const estadoVisto: SpaceStatus = estadoParaPintar\(face\.status, dispoPc\);/);
-  assert.match(panel, /const rotuloVisto = rotuloPorOcupacion\(face\.status, dispoPc\) \?\? STATUS_LABELS\[face\.status\];/);
+  assert.match(panel, /const rotuloVisto = esReserva \? STATUS_LABELS\.reserved\s*: rotuloPorOcupacion\(face\.status, dispoPc\) \?\? STATUS_LABELS\[face\.status\];/);
   // La pastilla: el color y la palabra por ocupación.
-  assert.match(panel, /\.\.\.\(rentable \? STATUS_BADGE_STYLE\[estadoVisto\] : NON_RENTABLE_BADGE_STYLE\)/, "la pastilla no usa el color por ocupación");
+  assert.match(panel, /\.\.\.\(rentable \? STATUS_BADGE_STYLE\[esReserva \? "reserved" : estadoVisto\] : NON_RENTABLE_BADGE_STYLE\)/, "la pastilla no usa el color por ocupación");
   assert.match(panel, /\{rentable \? rotuloVisto : NON_RENTABLE_LABEL\}/, "la pastilla dice «Disponible» sobre una cara por participación");
   assert.doesNotMatch(panel, /STATUS_BADGE_STYLE\[face\.status\]|\{rentable \? STATUS_LABELS\[face\.status\]/, "queda una pastilla con el estado crudo");
   // «Contratado»: lo comprometido, y dónde se vende (no «Sede → Vender»).

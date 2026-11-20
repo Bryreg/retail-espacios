@@ -1831,6 +1831,59 @@ del dueño, 2026-11-20: «Déjalo con usted»). Las fechas que lee una persona e
 dd/mm/aaaa (`mailer.fecha_de_correo`). Pruebas: `e2e/varios.e2e.ts`, `probar-ingreso`,
 `test_contract_emails`, `test_recordatorios`, `test_invitacion_enlace`.
 
+**Vender, contratos y reservas.** «Renovar» copia los MESES del contrato con la regla de
+`utils/meses.ts` (`renovacionDe` / `mismoPlazoDesde`): arranca el día después y termina la víspera
+del mismo día del mes (1 jun – 30 nov → 1 dic – 31 may; antes copiaba los días y terminaba un día
+tarde). En Vender, una línea que arranca con la tarifa de referencia (que es al mes) arranca en «Al
+mes» (`modoPorDefecto`, `utils/precioDeLista.ts`): el total es tarifa × meses. Antes arrancaba en
+«Total» con UN mes de tarifa y, si nadie tocaba «Al mes», se guardaba de menos. Pasarla a «Total» la
+convierte y «Volver a la tarifa» la deja «Al mes»; lo sembrado (renovar, editar) y las líneas sin
+tarifa siguen en «Total». Una reserva guardada no dice «contrato guardado» ni pide planometría;
+confirmarla manda los avisos de un contrato nuevo (ya los mandaba) y la bandeja dice a quiénes salió
+(`textoDeLaConfirmacion`). Una reserva viva no aparece en Montajes (`tomadoPorReserva`); la línea de
+tiempo de su ficha dice «Reservado hasta el …, sin confirmar» con el tramo en ámbar punteado, y la
+ficha del Plano 2D y el panel del 3D dicen «Reservado», no «Ocupado». «Archivos del contrato» no
+lista las fotos de montaje (`archivosDelContrato`). Los entrepaños de la venta cuentan la base (un
+mueble con `entrepanos: 4` se vende en 5, EN1 = la base): es la regla del catálogo, no un error.
+Pruebas: `probar-contrato`, `probar-vender`, `probar-lista-montajes`, `probar-montajes`,
+`test_reservas_de_espacio.py`, `e2e/vender-reservas.e2e.ts`.
+
+**Pendientes y Plano de la sede.** «Montaje sin reporte» y «Contratado sin montar» tienen «Ir a
+Montajes», que abre Montajes con esa fila marcada (`onIrAMontajes(codigo)` → `resaltar`). En Hoy,
+«Falta distribuir» y «Falta planometría» dicen «ya corre», «empieza en 7 días o menos» o las dos
+cosas según sus renglones (`tituloDeSeccion(s, grupo, dias)`). Abierta desde el Plano o Montajes, la
+bandeja (que vive en el Inicio) dice de dónde se vino y, al cerrarla, vuelve ahí
+(`armazonStore.cerrarPendientes`). La búsqueda del plano encuentra también por proveedor y marca de
+las partes y participaciones (`deLaBasePorMueble`). En «Distribuir la cara», cada participación lleva
+un color distinto mientras quede uno libre. La ficha del trabajador no ofrece «Ver la exhibición en
+3D». Los textos y correos nombran las pantallas de hoy: Contratos (no «Sede → Vender»), Pendientes
+(no «Supervisar → «Para revisar»»), Plano de la sede › 3D (no «Editor 3D»), Indicadores (no «el
+Dashboard»). Pruebas: `probar-comercial`, `probar-partes`, `probar-distribucion`,
+`probar-planogramas`, `e2e/plano-y-pendientes.e2e.ts`.
+
+**Equipo y Cuenta (dueño).** En Ajustes › Equipo se cambia el rol de una persona: `PATCH
+/api/usuarios/{id}` acepta `rol` además de `activo`, con las reglas de invitar (sólo un dueño da el
+rol Dueño o se lo cambia a otro dueño, 403; el supermercado no se queda sin dueño activo, 409; nadie
+se desactiva ni se cambia el rol a sí mismo, 409; bitácora `usuario.rol`). La fila propia dice «vos»
+y no tiene botones. **El rol del token sigue a la membresía:** el caché de membresías de `auth.py`
+guarda el rol y `decode_token` exige que el rol del token sea el que la membresía da hoy
+(`rol_de_token_para`): al pasar a alguien entre trabajador y administrador, su sesión abierta da 401
+y vuelve a entrar con el rol nuevo (antes, un administrador pasado a trabajador seguía viendo la
+plata hasta que vencía el token). Entre dueño y administrador el token no cambia: lo que es sólo del
+dueño se pregunta a la membresía. La bitácora anota `owner` cuando quien actúa es dueño
+(`request.state.actor_rol_membresia`; los permisos siguen leyendo el token) y la pantalla lo dice en
+palabras. El 403 de lo que es sólo del dueño dice «Esto lo puede hacer sólo el dueño del
+supermercado, con su cuenta.»; «Tus datos» se filtra como la copia y la suscripción. En el reporte
+de transparencia, `aceptada_en`, `capturado_en` y la fecha de cada acceso son el día en Colombia (salían
+un día antes) y «Tus derechos» dice dónde se hace cada cosa en la pantalla, no la ruta de la API (la
+Política, §7, todavía nombra las rutas: es un texto legal con versión, lo decide el dueño). Pruebas:
+`test_invitacion_enlace.py`, `test_plataforma_reporte.py`, `e2e/equipo.e2e.ts`.
+
+**La portada y su prueba de accesibilidad.** La prueba de axe de la portada fallaba a veces: medía
+el contraste a mitad de la animación de entrada. Corre con `reducedMotion` (mide el estado final) y
+eso destapó un contraste real: la etiqueta «sin valor» del ejemplo de correos, que pasa al gris de
+texto de las otras etiquetas con borde punteado.
+
 ### Historial de contratos (2026-11-13)
 
 Pregunta del dueño: «¿dónde queda el registro histórico de los contratos que han finalizado?». La
