@@ -1,0 +1,173 @@
+/* Estilo de impresión de los manuales de RECABRA (A4, color).
+   Los colores son los de la app (`frontend/src/tema.css`); el naranja de las
+   marcas es el mismo de los recuadros de las capturas. */
+
+@page { size: A4; margin: 16mm 15mm 18mm 15mm; }
+
+:root {
+  --tinta: #0F172A; --tinta-2: #344054; --tinta-3: #546072;
+  --linea: #E4E7EC; --suave: #F6F7F9; --azul: #1570EF; --azul-tinta: #1366D6;
+  --marca: #F97316; --marca-suave: #FFF1E6;
+  --rojo: #B32720; --rojo-suave: #FDECEA; --ambar: #8A5A06; --ambar-suave: #FDF3E1;
+  --verde: #006B4C; --verde-suave: #E0F0EB; --azul-suave: #EAF2FE;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0; color: var(--tinta); font-family: Inter, "Noto Sans", Arial, sans-serif;
+  font-size: 11.5pt; line-height: 1.45;
+}
+p { margin: 0 0 8px; }
+b, strong { font-weight: 650; }
+code, .codigo { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.92em; }
+
+/* ── Portada ─────────────────────────────────────────────────────────────── */
+.portada {
+  height: 258mm; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between;
+  break-after: page; padding: 6mm 2mm 0;
+}
+.portada .marca-app { font-weight: 800; letter-spacing: 0.14em; font-size: 15pt; }
+.portada .tipo { font-size: 13pt; color: var(--tinta-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6mm; }
+.portada h1 { font-size: 34pt; line-height: 1.08; margin: 0 0 6mm; letter-spacing: -0.01em; }
+.portada .para { font-size: 14pt; color: var(--tinta-2); max-width: 150mm; }
+.portada .foto-portada { width: 100%; border-radius: 10px; border: 1px solid var(--linea); margin: 8mm 0; max-height: 105mm; object-fit: cover; object-position: top; }
+.portada .ficha {
+  display: grid; grid-template-columns: 38mm 1fr; gap: 2mm 6mm; font-size: 10.5pt;
+  border-top: 2px solid var(--tinta); padding-top: 5mm;
+}
+.portada .ficha dt { color: var(--tinta-3); }
+.portada .ficha dd { margin: 0; font-weight: 600; }
+
+/* ── Índice ──────────────────────────────────────────────────────────────── */
+.indice { break-after: page; }
+.indice h2 { font-size: 20pt; margin: 0 0 6mm; }
+.indice ol { list-style: none; margin: 0; padding: 0; }
+.indice li { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-bottom: 1px dotted var(--linea); }
+.indice li.sub { padding-left: 9mm; font-size: 10.5pt; color: var(--tinta-2); border-bottom: none; padding-top: 2px; padding-bottom: 2px; }
+.indice li .t { flex: 1; }
+.indice li .p { font-variant-numeric: tabular-nums; color: var(--tinta-3); min-width: 8mm; text-align: right; }
+.indice li.cap { font-weight: 650; margin-top: 4px; }
+
+/* ── Capítulos y procesos ────────────────────────────────────────────────── */
+.capitulo { break-before: page; }
+.capitulo > h1 {
+  font-size: 22pt; margin: 0 0 3mm; letter-spacing: -0.01em;
+}
+.capitulo > h1 .num { color: var(--marca); margin-right: 3mm; }
+.capitulo > .entrada { font-size: 12.5pt; color: var(--tinta-2); margin-bottom: 6mm; }
+h2.proceso {
+  font-size: 15.5pt; margin: 9mm 0 2mm; padding-top: 3mm; border-top: 2px solid var(--tinta);
+  break-after: avoid;
+}
+h2.proceso:first-of-type { margin-top: 2mm; }
+.proceso-nuevo { break-before: page; }
+.cuando { color: var(--tinta-3); font-size: 10.5pt; margin: 0 0 4mm; }
+.cuando b { color: var(--tinta-2); }
+h3 { font-size: 12.5pt; margin: 6mm 0 2mm; break-after: avoid; }
+
+/* Los pasos: un número grande (el mismo naranja de la marca en la captura),
+   una acción por paso y su captura debajo. */
+ol.pasos { list-style: none; counter-reset: paso; margin: 0; padding: 0; }
+ol.pasos > li {
+  counter-increment: paso; position: relative; padding: 0 0 5mm 13mm; break-inside: avoid;
+}
+ol.pasos > li::before {
+  content: counter(paso); position: absolute; left: 0; top: -1px;
+  width: 9mm; height: 9mm; border-radius: 50%; background: var(--marca); color: #fff;
+  font-weight: 750; font-size: 13pt; line-height: 9mm; text-align: center;
+}
+ol.pasos > li > p:first-child { font-size: 12pt; margin-bottom: 2.5mm; padding-top: 1px; }
+
+figure { margin: 0 0 2mm; }
+figure img {
+  display: block; max-width: 100%; border: 1px solid var(--linea); border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+figure.celu img { max-width: 62mm; }
+figure.celu-chico img { max-width: 52mm; }
+figure.mitad img { max-width: 60%; }
+figure.dos { display: flex; gap: 5mm; align-items: flex-start; }
+figure.dos img { max-width: 62mm; }
+figcaption { font-size: 9.5pt; color: var(--tinta-3); margin-top: 1.5mm; }
+
+/* Lo que aparece en la pantalla, citado tal cual. */
+.boton {
+  display: inline-block; padding: 0 6px; border: 1.5px solid var(--tinta-2); border-radius: 6px;
+  font-weight: 650; font-size: 0.95em; line-height: 1.45; white-space: nowrap; background: #fff;
+}
+.boton.azul { background: var(--azul); border-color: var(--azul); color: #fff; }
+.texto-pantalla { font-weight: 600; color: var(--tinta); }
+.texto-pantalla::before { content: "«"; } .texto-pantalla::after { content: "»"; }
+
+/* Etiquetas de equipo. */
+.equipo {
+  display: inline-block; font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 1px 7px; border-radius: 99px; background: var(--suave); color: var(--tinta-2); border: 1px solid var(--linea);
+  vertical-align: 2px; margin-right: 4px;
+}
+
+/* Recuadros: qué pasa si te equivocás, lo que no se deshace, a quién avisar. */
+.caja {
+  border-radius: 8px; padding: 3mm 4mm; margin: 2mm 0 4mm; break-inside: avoid; font-size: 10.8pt;
+  border: 1px solid var(--linea); background: var(--suave);
+}
+.caja > .rotulo { display: block; font-weight: 750; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1mm; }
+.caja p:last-child, .caja ul:last-child { margin-bottom: 0; }
+.caja ul { margin: 0; padding-left: 5mm; }
+.caja.error { background: var(--ambar-suave); border-color: #F4D9A6; }
+.caja.error > .rotulo { color: var(--ambar); }
+.caja.ojo { background: var(--rojo-suave); border-color: #F5C2BE; }
+.caja.ojo > .rotulo { color: var(--rojo); }
+.caja.avisale { background: var(--azul-suave); border-color: #C7DBFB; }
+.caja.avisale > .rotulo { color: var(--azul-tinta); }
+.caja.truco { background: var(--verde-suave); border-color: #B9DCCF; }
+.caja.truco > .rotulo { color: var(--verde); }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; margin: 3mm 0 5mm; break-inside: avoid; }
+.trio .caja { margin: 0; }
+
+/* Tablas simples (problemas frecuentes, glosario). */
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 5mm; font-size: 10.5pt; }
+th, td { text-align: left; vertical-align: top; padding: 2.2mm 3mm; border-bottom: 1px solid var(--linea); }
+th { background: var(--suave); font-size: 9.5pt; color: var(--tinta-2); }
+tr { break-inside: avoid; }
+
+/* ── Hoja de bolsillo: una sola página ──────────────────────────────────── */
+.bolsillo { font-size: 10pt; line-height: 1.35; }
+.bolsillo h1 { font-size: 17pt; margin: 0 0 1mm; }
+.bolsillo .sub { color: var(--tinta-3); margin-bottom: 4mm; }
+.bolsillo .columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+.bolsillo h2 { font-size: 11.5pt; margin: 0 0 2mm; padding: 1.5mm 3mm; border-radius: 6px; }
+.bolsillo h2.si { background: var(--verde-suave); color: var(--verde); }
+.bolsillo h2.no { background: var(--rojo-suave); color: var(--rojo); }
+.bolsillo h2.ayuda { background: var(--azul-suave); color: var(--azul-tinta); }
+.bolsillo ol, .bolsillo ul { margin: 0 0 4mm; padding-left: 5mm; }
+.bolsillo li { margin-bottom: 1.4mm; }
+.bolsillo img { max-width: 100%; border: 1px solid var(--linea); border-radius: 6px; }
+
+/* ── Ejercicios, evaluación y guía del capacitador ─────────────────────── */
+.ejercicio { border: 1px solid var(--linea); border-radius: 8px; padding: 4mm 5mm; margin: 0 0 5mm; break-inside: avoid; }
+.ejercicio h3 { margin-top: 0; }
+.ejercicio .datos { background: var(--suave); border-radius: 6px; padding: 2mm 3mm; font-size: 10.5pt; margin-bottom: 2mm; }
+.linea-respuesta { border-bottom: 1px solid var(--tinta-3); height: 8mm; }
+.casilla { display: inline-block; width: 4mm; height: 4mm; border: 1.3px solid var(--tinta-2); border-radius: 1mm; vertical-align: -0.5mm; margin-right: 2mm; }
+ol.preguntas > li { margin-bottom: 4mm; break-inside: avoid; }
+ol.preguntas .opciones { list-style: none; padding-left: 0; margin: 1.5mm 0 0; }
+ol.preguntas .opciones li { margin-bottom: 1mm; }
+.respuesta { color: var(--verde); font-weight: 600; }
+.tiempo { float: right; font-size: 9.5pt; color: var(--tinta-3); font-weight: 600; }
+
+/* Pasos con capturas de celular: de a dos por fila (la captura es alta y
+   angosta; de a una dejaba media página en blanco). */
+ol.pasos.rejilla { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8mm; row-gap: 3mm; }
+ol.pasos.rejilla > li { padding-bottom: 2mm; }
+ol.pasos.rejilla figure.celu img, ol.pasos.rejilla figure.celu-chico img { max-width: 44mm; }
+ol.pasos.rejilla figure.dos img { max-width: 33mm; }
+ol.pasos.rejilla figure img { max-width: 100%; }
+figure.celu img { max-width: 52mm; }
+.portada .foto-portada { max-height: 95mm; width: auto; }
+
+/* Documentos cortos (ejercicios, guía del capacitador): los capítulos siguen
+   en la misma página. */
+body.continuo .capitulo { break-before: auto; margin-top: 9mm; }
+body.continuo .portada + .capitulo { margin-top: 0; }
