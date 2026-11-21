@@ -301,7 +301,7 @@ def solicitar_supresion(payload: SolicitarSupresionIn, dueno: tuple = Depends(re
         if ya_pendiente is not None:
             raise HTTPException(
                 status_code=409,
-                detail="Ya hay una solicitud de supresión pendiente para este cliente.",
+                detail="Ya hay una solicitud de supresión pendiente para este supermercado: RECABRA la está revisando.",
             )
 
         motivo = (payload.motivo or "").strip() or None

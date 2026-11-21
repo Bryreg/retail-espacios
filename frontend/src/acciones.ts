@@ -150,11 +150,13 @@ export function alternarFijada(fijadas: readonly string[], id: string): string[]
   return [...fijadas, id];
 }
 
-/** El glosario: los términos que aparecen en las pantallas. */
-export const GLOSARIO: readonly { termino: string; definicion: string; sinonimos?: readonly string[]; modulos: readonly Modulo[] }[] = [
-  { termino: "Canon", definicion: "Lo que paga el proveedor al mes por un espacio. Un contrato de tres meses por un total se reparte en sus meses.", sinonimos: ["alquiler", "arriendo"], modulos: ["inicio", "contratos", "indicadores"] },
-  { termino: "Tarifa de referencia", definicion: "El canon mensual sugerido por tipo de mueble (general o de la sede). Sirve para comparar lo que se cobra.", modulos: ["contratos", "indicadores"] },
-  { termino: "Canon ÷ tarifa", definicion: "Cuánto de la tarifa de referencia se está cobrando: 100 % es cobrar exactamente la tarifa.", modulos: ["indicadores"] },
+/** El glosario: los términos que aparecen en las pantallas. `plata`: el
+ *  término es de plata y sólo lo lee administración (quien trabaja en la
+ *  tienda no ve montos, tampoco su definición en la ayuda ni en el buscador). */
+export const GLOSARIO: readonly { termino: string; definicion: string; sinonimos?: readonly string[]; modulos: readonly Modulo[]; plata?: true }[] = [
+  { termino: "Canon", definicion: "Lo que paga el proveedor al mes por un espacio. Un contrato de tres meses por un total se reparte en sus meses.", sinonimos: ["alquiler", "arriendo"], modulos: ["inicio", "contratos", "indicadores"], plata: true },
+  { termino: "Tarifa de referencia", definicion: "El canon mensual sugerido por tipo de mueble (general o de la sede). Sirve para comparar lo que se cobra.", modulos: ["contratos", "indicadores"], plata: true },
+  { termino: "Canon ÷ tarifa", definicion: "Cuánto de la tarifa de referencia se está cobrando: 100 % es cobrar exactamente la tarifa.", modulos: ["indicadores"], plata: true },
   { termino: "Ocupación", definicion: "Las caras que se venden y tienen contrato hoy, sobre todas las que se venden.", modulos: ["inicio", "indicadores"] },
   { termino: "Cara", definicion: "Un lado de un mueble que se vende por separado: una góndola doble tiene cara A y cara B.", modulos: ["contratos", "plano", "plano3d", "indicadores", "caras"] },
   { termino: "Parte", definicion: "Una porción de una cara que se vende sola: una puerta de una nevera, un entrepaño.", modulos: ["contratos", "plano", "montajes"] },
@@ -167,18 +169,29 @@ export const GLOSARIO: readonly { termino: string; definicion: string; sinonimos
   { termino: "Sede", definicion: "Cada local del supermercado, con su plano. Se elige arriba, en la barra.", sinonimos: ["sucursal", "tienda"], modulos: ["inicio", "contratos", "indicadores", "montajes", "plano", "plano3d"] },
 ];
 
-export function buscarEnElGlosario(busqueda: string): typeof GLOSARIO[number][] {
+/** Lo que ese rol puede leer del glosario: sin plata para quien no administra. */
+const paraElRol = (esAdmin: boolean) => (g: typeof GLOSARIO[number]) => esAdmin || !g.plata;
+
+export function buscarEnElGlosario(busqueda: string, esAdmin = true): typeof GLOSARIO[number][] {
   if (!normalizar(busqueda)) return [];
-  return GLOSARIO.filter((g) => coincide(busqueda, g.termino, ...(g.sinonimos ?? [])));
+  return GLOSARIO.filter(paraElRol(esAdmin)).filter((g) => coincide(busqueda, g.termino, ...(g.sinonimos ?? [])));
+}
+
+/** Los términos de la ayuda «?» de una pantalla, para ese rol. */
+export function terminosDeLaPantalla(modulo: Modulo, esAdmin: boolean): typeof GLOSARIO[number][] {
+  return GLOSARIO.filter(paraElRol(esAdmin)).filter((g) => g.modulos.includes(modulo));
 }
 
 /** Qué hace cada pantalla: la ayuda «?». */
-export const AYUDA_DE_LA_PANTALLA: Record<Modulo, { titulo: string; que: string; pasos: readonly string[] }> = {
+export const AYUDA_DE_LA_PANTALLA: Record<Modulo, { titulo: string; que: string; pasos: readonly string[];
+  /** Lo que lee quien no administra, si `que` habla de plata. */
+  queSinPlata?: string }> = {
   inicio: { titulo: "Inicio", que: "Lo de hoy en la sede: lo que vence, lo que se monta, las reservas que caducan y, para administración, las cifras del mes.",
     pasos: ["Tocá una fila para abrir la ficha del espacio.", "«Pendientes», arriba, junta todo lo que hay que resolver."] },
   contratos: { titulo: "Contratos", que: "Vender un espacio: primero las fechas, después el espacio en el plano o en la línea de tiempo, y el contrato se lee como una frase antes de guardarlo.",
     pasos: ["Elegí para qué fechas.", "Tocá un espacio disponible (en verde) en el plano o un hueco en la línea de tiempo.", "Completá proveedor, vigencia y canon, y guardá."] },
   indicadores: { titulo: "Indicadores", que: "Cómo va la sede contra su meta: ocupación, canon, lo que vence y los montajes. Cada cifra tiene su «?» con la fórmula.",
+    queSinPlata: "Cómo va la sede contra su meta: ocupación, lo que vence y los montajes. Cada cifra tiene su «?» con la fórmula.",
     pasos: ["Resumen: las tarjetas con su lectura.", "Las pestañas abren el plano, la tabla, quién paga, todas las sedes, el detalle y el diccionario.", "Cada tabla se baja en CSV."] },
   montajes: { titulo: "Montajes", que: "Que lo contratado y lo planificado esté en la tienda como se pidió: contratos y planogramas en una sola lista, con su estado.",
     pasos: ["Filtrá por estado.", "Registrá un montaje con su foto.", "Administración verifica: la planometría al lado de la foto."] },

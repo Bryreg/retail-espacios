@@ -267,6 +267,10 @@ def test_solicitar_supresion_201_y_duplicada_pendiente_409(client):
         "/api/clientes/solicitar-supresion", json={"motivo": "Insisto"}, headers=owner_cab,
     )
     assert r2.status_code == 409, r2.text
+    # En el idioma de la app (decía «para este cliente»).
+    assert r2.json()["detail"] == (
+        "Ya hay una solicitud de supresión pendiente para este supermercado: RECABRA la está revisando."
+    )
 
     # Nada se borró -- el cliente y sus datos de negocio siguen intactos.
     assert client.get("/api/spaces/", headers=owner_cab).status_code == 200

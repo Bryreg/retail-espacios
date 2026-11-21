@@ -79,11 +79,22 @@ def check_expiring_leases(db: Session) -> int:
         .all()
     )
 
+    # Los arranques de los contratos vivos, por espacio: uno que ya tiene el
+    # siguiente firmado (renovado, o vendido a otro desde que termina) no se
+    # avisa. El correo dice «usá Renovar» y el «Por vencer» de la pantalla ya
+    # no lo lista (`siguienteFirmado` de `GET /spaces/comercial`): invitaba a
+    # renovarlo dos veces (recorrido de los manuales, 2026-11-21).
+    arranques: dict[int, list] = {}
+    for l in leases:
+        arranques.setdefault(l.space_id, []).append(l.start_date)
+
     sent_count = 0
     for lease in leases:
         days_left = (lease.end_date - today).days
         hito = _hito(days_left, hitos)
         if hito is None:
+            continue
+        if any(d > lease.end_date for d in arranques.get(lease.space_id, ())):
             continue
 
         # La marca lleva el HITO, no los días que faltaban: si llevara los días,

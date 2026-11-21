@@ -138,6 +138,13 @@ class EstadoComercial(BaseModel):
     #: reglas que ``leaseId``: sólo para quien administra (al trabajador,
     #: ``None``), ni se le pega al mueble ni viaja en el layout.
     proximoLeaseId: Optional[int] = None
+    #: Hay un contrato siguiente FIRMADO en la misma cara o parte, después del
+    #: que dibuja la fila (el mismo «próximo» de ``proximoLeaseId``): ya está
+    #: renovado —o vendido a otro desde el día que termina—, así que no va en
+    #: «Por vencer» ni se ofrece «Renovar» otra vez (recorrido de los manuales,
+    #: 2026-11-21: se ofrecía renovar dos veces). Es la regla de «sin renovar»
+    #: de Indicadores. Para los dos roles: no dice ni quién ni cuánto.
+    siguienteFirmado: bool = False
 
 
 @router.get("/comercial", response_model=dict[str, EstadoComercial])
@@ -251,6 +258,7 @@ def estado_comercial(
             proximoLeaseId=(proximo.id
                             if admin and vigente is not None and proximo is not None
                             else None),
+            siguienteFirmado=vigente is not None and proximo is not None,
         )
     return salida
 

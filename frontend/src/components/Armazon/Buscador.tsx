@@ -78,7 +78,7 @@ export default function Buscador({ esAdmin, ctx, onCerrar }: { esAdmin: boolean;
     const acciones = (mapa && !texto ? ACCIONES.filter((a) => esAdmin || !a.admin) : buscarAcciones(texto, esAdmin)).map((a) => ({ tipo: "accion" as const, a }));
     if (!texto) return acciones;
     const es = espacios.filter((e) => coincide(texto, e.codigo)).slice(0, 8).map((e) => ({ tipo: "espacio" as const, e }));
-    const ts = buscarEnElGlosario(texto).map((t) => ({ tipo: "termino" as const, t }));
+    const ts = buscarEnElGlosario(texto, esAdmin).map((t) => ({ tipo: "termino" as const, t }));
     return [...acciones, ...es, ...ts];
   }, [q, mapa, espacios, esAdmin]);
 

@@ -437,7 +437,7 @@ export function PartesDelMueble({ id, puedeEditar, sinTitulo = false, enElTema =
       )}
       {!division && !sinFijar && !enParticipacion && (
         <p className={cl.nota}>
-          Se vende entera. Con «Entera o por …», Vender ofrece la cara entera o cada parte, nunca las dos en las
+          Se vende entera. Con «Entera o por …», Contratos ofrece la cara entera o cada parte, nunca las dos en las
           mismas fechas.
         </p>
       )}

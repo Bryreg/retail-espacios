@@ -3,7 +3,7 @@
  * punta a punta por la pantalla, y lo que queda en la BASE (no en el dibujo).
  */
 import { expect, test } from "@playwright/test";
-import { comercial, entrar, gondola, plano, sedeUnica, sesionEnElNavegador, venderEntera } from "./sembrar";
+import { comercial, entrar, gondola, isoDentroDe, plano, sedeUnica, sesionEnElNavegador, venderEntera } from "./sembrar";
 
 test("vender: un contrato entero desde Contratos queda en la base", async ({ page, request }) => {
   const admin = await entrar(request, "admin");
@@ -68,4 +68,35 @@ test("cancelar: «Cancelar el contrato» libera el espacio en la base", async ({
   await page.getByRole("button", { name: "Sí, cancelar" }).click();
 
   await expect.poll(async () => (await comercial(request, admin))[`${sede}-GON-01`]?.status ?? "libre").not.toBe("occupied");
+});
+
+test("«Pendientes» lleva el mismo número en Contratos que en el Inicio, entrando directo", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  const sede = sedeUnica("PEC");
+  await plano(request, admin, sede, [gondola(sede, "GON-01", 3)]);
+  // Vence en 10 días: «Por vencer» cuenta en Pendientes.
+  await venderEntera(request, admin, sede, `${sede}-GON-01`, { proveedor: "Café Montaña", valor: 500_000, hasta: isoDentroDe(10) });
+  await sesionEnElNavegador(page, admin, sede);
+
+  const cuenta = page.locator(".btn-pendientes .cuenta");
+  await page.goto("/");
+  // La cuenta crece mientras bajan las listas (vencimientos, planometrías…):
+  // se lee cuando ya bajó todo.
+  await page.waitForLoadState("networkidle");
+  await expect(cuenta).toHaveText(/^\d+$/);
+  const enElInicio = (await cuenta.innerText()).trim();
+  expect(Number(enElInicio)).toBeGreaterThan(0);
+  // Directo a Contratos (una recarga, el enlace guardado): antes, sin número.
+  await page.goto("/contratos");
+  await expect(page.getByRole("button", { name: /^GON-01·A/ }).first()).toBeVisible();
+  await expect(cuenta).toHaveText(enElInicio);
+  await page.reload();
+  await expect(cuenta).toHaveText(enElInicio);
+  // Y desde el menú, ida y vuelta: el mismo número.
+  await page.locator('.menu-lateral [data-modulo="indicadores"]').click();
+  await expect(page).toHaveURL(/\/indicadores/);
+  await expect(cuenta).toHaveText(enElInicio);
+  await page.locator('.menu-lateral [data-modulo="contratos"]').click();
+  await expect(page).toHaveURL(/\/contratos/);
+  await expect(cuenta).toHaveText(enElInicio);
 });

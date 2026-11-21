@@ -33,6 +33,7 @@ devuelve ``pendientes_de_la_sede`` es para Supervisar y no lleva montos.
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -52,6 +53,36 @@ def dejar_pendiente(db: Session, lease: SpaceLease, cara_space_id: Optional[int]
     """El contrato recién escrito espera su planometría (y su zona, si es un
     porcentaje: quien llama pasa la cara). Va en la transacción de quien llama."""
     db.add(MontajePendiente(lease_id=lease.id, cara_space_id=cara_space_id or lease.space_id))
+
+
+def heredar_planometria(db: Session, lease: SpaceLease) -> bool:
+    """La renovación hereda la planometría (2026-11-21): si el contrato
+    recién escrito sigue a otro del MISMO espacio y el MISMO proveedor que
+    terminó la víspera de su arranque —lo que siembra «Renovar»
+    (``renovacionDe``)— y ése tenía planometría, se le copia. Sin esto la
+    renovación decía «Falta planometría» por una exhibición que ya estaba
+    cargada. Se copia (no se apunta a la otra): la planometría es de CADA
+    contrato (``LeaseFile``), y la del viejo se limpia cuando su cadena
+    termina. Devuelve si el contrato tiene planometría. Va en la transacción
+    de quien llama."""
+    if tiene_planometria(db, lease.id):
+        return True
+    anterior = (db.query(LeaseFile)
+                .join(SpaceLease, SpaceLease.id == LeaseFile.lease_id)
+                .filter(SpaceLease.space_id == lease.space_id,
+                        SpaceLease.supplier_id == lease.supplier_id,
+                        SpaceLease.id != lease.id,
+                        SpaceLease.end_date == lease.start_date - timedelta(days=1),
+                        LeaseFile.kind == PLANOMETRIA)
+                .order_by(SpaceLease.id.desc(), LeaseFile.id.desc())
+                .first())
+    if anterior is None:
+        return False
+    db.add(LeaseFile(lease_id=lease.id, kind=PLANOMETRIA, filename=anterior.filename,
+                     content_type=anterior.content_type, size=anterior.size, data=anterior.data,
+                     subido_por=anterior.subido_por))
+    db.flush()
+    return True
 
 
 def ids_pendientes(db: Session, lease_ids) -> set[int]:

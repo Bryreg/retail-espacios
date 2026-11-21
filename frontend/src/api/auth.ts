@@ -178,8 +178,12 @@ export interface InvitarPayload {
   rol: "owner" | "admin" | "worker";
 }
 
-export const invitarUsuario = (payload: InvitarPayload): Promise<{ ok: boolean; expira_en: string }> =>
-  client.post<{ ok: boolean; expira_en: string }>("/usuarios/invitar", payload).then((r) => r.data);
+/** `correo_enviado`: si el correo de la invitación ya salió. Si no, quedó en
+ *  la cola de correos y se reintenta solo (la invitación existe igual). */
+export interface InvitarRespuesta { ok: boolean; expira_en: string; correo_enviado: boolean }
+
+export const invitarUsuario = (payload: InvitarPayload): Promise<InvitarRespuesta> =>
+  client.post<InvitarRespuesta>("/usuarios/invitar", payload).then((r) => r.data);
 
 /** Activa o desactiva la membresía de esa persona EN el cliente del token
  *  de quien llama. Desactivar le corta el acceso YA: el siguiente request

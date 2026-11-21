@@ -61,6 +61,13 @@ async function conAlmacen<T>(modo: IDBTransactionMode, hacer: (a: IDBObjectStore
   });
 }
 
+/** La clave del reporte guardado: el espacio y el inicio de su contrato (el
+ *  reporte de un contrato no vale para el siguiente sobre el mismo espacio).
+ *  La usan el formulario y la pantalla del enlace, que lo busca al abrir. */
+export function claveDeBorrador(item: { code: string; desde: string }): string {
+  return `${item.code}|${item.desde}`;
+}
+
 /** Guarda el reporte. Devuelve si quedó guardado (sin IndexedDB, no). */
 export async function guardarBorrador(clave: string, b: BorradorDeMontaje): Promise<boolean> {
   const r = await conAlmacen("readwrite", (a) => a.put(b, clave));

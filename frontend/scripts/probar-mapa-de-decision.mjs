@@ -257,7 +257,13 @@ await prueba("montajes por resolver: la regla de los filtros de Montajes, sin ve
   const v = sinComentarios(leer("pages", "DashboardView.tsx"));
   assert.match(v, /montajesPorResolver: porResolver,/, "el Inicio volvió a contar a mano");
   assert.match(v, /\.\.\.\[\.\.\.montajeDeTodo\.sinMontar, \.\.\.montajeDeTodo\.viejos\]\.map/, "el Inicio dejó afuera lo viejo sin reporte");
-  assert.match(v, /planogramasPorRevisar\.filas\.map\(\(c\) => \(\{ estado: estadoDelPlanograma\(c\.estado\), empezo: c\.dias_que_rige >= 0 \}\)\)/);
+  // Todo lo que Montajes lista (`todas=1`), no sólo lo que se revisa: al
+  // trabajador le faltaban los planogramas que publica administración.
+  assert.match(v, /planogramasPorRevisar\.deMontajes\.map\(\(c\) => \(\{ estado: estadoDelPlanograma\(c\.estado\), empezo: c\.dias_que_rige >= 0 \}\)\)/,
+    "el Inicio cuenta sólo los planogramas que se revisan");
+  const sup = sinComentarios(leer("api", "supervision.ts"));
+  assert.match(sup, /export const leerSupervision = [\s\S]{0,300}params: \{ sede, todas: 1 \}/, "el Inicio pide sin todas=1");
+  assert.match(sup, /c\.puede_revisar !== false && c\.estado !== "coincide"/, "«Para revisar» se llena con lo que no se revisa");
   const ini = sinComentarios(leer("components", "Inicio", "Inicio.tsx"));
   assert.match(ini, /valor=\{String\(cifras\.montajesPorResolver\.total\)\}/);
 });
