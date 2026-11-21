@@ -1,7 +1,15 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-11-20: **arreglos del recorrido de los manuales** — al recorrer la app
+Última actualización: 2026-11-21: **segunda tanda de arreglos del recorrido** — Contratos lleva el
+número de Pendientes; lo ya renovado deja de estar «Por vencer» y la renovación hereda la
+planometría; confirmar o cancelar una reserva desde la ficha lo dice; el Inicio del trabajador cuenta
+los montajes de Montajes; el enlace de montaje ofrece al abrir el reporte sin mandar; la bitácora de
+Equipo dice a quién; la invitación pasa por la cola de correos; el reporte de transparencia y «Tus
+datos» en palabras. Las pruebas E2E usan el día de Colombia. Ver *Segunda tanda de arreglos del
+recorrido (2026-11-21)*.
+
+Antes, el 2026-11-20: **arreglos del recorrido de los manuales** — al recorrer la app
 rol por rol para los manuales de capacitación salieron errores reales y quedaron arreglados:
 «Registrar montaje» desde la cuenta rompía Montajes; el trabajador no veía los planogramas en
 Montajes ni encontraba espacios en el buscador; las cuentas de montajes no coincidían entre
@@ -1769,6 +1777,68 @@ para quien toque la pantalla:
 
 ## Qué está hecho
 
+### Segunda tanda de arreglos del recorrido (2026-11-21)
+
+Al revisar los manuales sobre la app con los arreglos del 2026-11-20 quedaban estos errores; cada uno
+tiene su prueba.
+
+**Pendientes en Contratos.** La pastilla roja lleva el mismo número también en Contratos: en modo
+Vender la pantalla no manda la cuenta (`mandaLaCuenta`) y corre la copia que sólo cuenta
+(`CuentaDePendientes`), como en el Plano y Montajes. Ya no vale «Contratos no se cuenta porque lo mira
+el proveedor»: es sólo el número; el detalle sigue detrás de la bandeja. Prueba: `e2e/contratos.e2e.ts`.
+
+**Lo ya renovado no está «Por vencer».** `GET /spaces/comercial` manda `siguienteFirmado` (los dos
+roles, sin proveedor ni montos; en `CAMPOS_DE_CONTRATO`, nunca viaja en el layout) cuando la cara o
+parte ya tiene el siguiente contrato firmado, de cualquier proveedor: es la regla de «sin renovar» de
+Indicadores. `displayStatus` la da «Activo»: sale de Pendientes › «Por vencer en 30 días», del Inicio
+y del chip, su ficha no ofrece «Renovar» y `check_expiring_leases` no manda el correo de vencimiento.
+**La renovación hereda la planometría:** un contrato de cara entera o de parte que sigue a otro del
+mismo espacio y el mismo proveedor terminado la víspera recibe una copia de su planometría
+(`montajes_pendientes.heredar_planometria`); no queda en «Falta planometría» y el aviso de montaje sale
+al guardar. Un porcentaje no hereda: espera su zona. Sólo para lo que se guarde desde ahora.
+Pruebas: `test_montaje_espera_planometria.py`, `test_recordatorios.py`, `probar-comercial`, E2E.
+
+**Reservas desde la ficha.** Confirmar o cancelar una reserva desde la ficha lo dice en la ficha
+(`[data-aviso-de-la-reserva]`, el mismo texto que la bandeja: `textoDeLaConfirmacion`). Cancelar lo
+dice también en Pendientes: «Se canceló la reserva de …: esas fechas quedan libres. No salió ningún
+correo.» (`textoDeLaCancelacion`). Pruebas: `probar-supervision`, `e2e/vender-reservas.e2e.ts`.
+
+**Montajes del trabajador.** «Montajes por resolver» del Inicio cuenta con
+`GET /api/planogramas/supervision?todas=1` (`deMontajes` de `usePlanogramasPorRevisar`), lo mismo que
+lista Montajes; «Para revisar» se queda con lo que el rol revisa (`paraRevisar`: `puede_revisar` y no
+`coincide`). Antes al trabajador le faltaban los planogramas de los muebles internos.
+
+**El enlace de montaje ofrece el reporte sin mandar al abrir.** `Montaje.tsx` busca el reporte guardado
+en el equipo (`claveDeBorrador`, `utils/borradorDeMontaje.ts`) y, si hay, abre el formulario con
+«Tenés un reporte sin mandar» arriba de todo, aunque el espacio ya estuviera reportado; «Descartar»
+vuelve al reporte que llegó. Prueba: `e2e/montaje.e2e.ts`.
+
+**Textos.** La ayuda «?» y el buscador no le definen términos de plata a quien no administra (`plata`
+en el `GLOSARIO`, `terminosDeLaPantalla`). En «Ver registro» de un no realizado, el trabajador lee
+«Avisale a quien administra la sede…» en vez de «Reclamale … al proveedor». La ficha › Venta dice
+«Contratos ofrece…» (ya no «Vender»). Mis muebles sugiere un nombre según el tipo
+(`nombreDeEjemplo`).
+
+**Bitácora de Equipo.** «Persona invitada», «Persona activada o desactivada» y «Rol de una persona
+cambiado» guardan primero el correo de la persona afectada («luis@x: Trabajador → Administrador ·
+quien-lo-hizo»): el correo, nunca el nombre, porque la supresión borra los correos en todas las
+columnas. «Descargar mis datos» cuenta como acción propia sólo la línea que termina con su correo;
+las que la nombran como afectada salen como menciones. La línea se lee entera (no se corta con «…»).
+
+**La invitación pasa por la cola de correos.** `cola_de_correos.enviar_ya_y_anotar` la anota y la manda
+dentro del pedido; `POST /usuarios/invitar` devuelve `correo_enviado` y la pantalla dice «enviada»
+sólo si salió; si no, el mantenimiento la reintenta como cualquier correo. `_intentar` reconoce el
+envío real por las funciones capturadas al importar (`_ENVIOS_REALES`).
+
+**Reporte de transparencia y «Tus datos» en palabras.** La parte 1 se agrupa por finalidad, con las
+fuentes traducidas en la pantalla (`FUENTES_EN_PALABRAS`), sin Endpoints ni el slug; el JSON conserva
+su forma y la fuente técnica. «Tus datos» dice «el supermercado» y «RECABRA», no «el cliente» ni «el
+operador de la plataforma». La suscripción usa `fechaCorta` («1 dic 2026»).
+
+**E2E con el día de Colombia.** De 19:00 a 24:00 de Colombia la fecha UTC del runner ya es «mañana»:
+la bandeja de Pendientes se abría sola y tapaba los clics, y Historial y reservas esperaban un día
+corrido. `isoDentroDe` y las fechas de las pruebas salen de `hoyEnColombia()` (`e2e/sembrar.ts`).
+
 ### Arreglos del recorrido de los manuales (2026-11-20)
 
 Los manuales de capacitación (`docs/manuales/`) se hicieron recorriendo la app de verdad, rol por
@@ -1791,8 +1861,8 @@ motivo.»; ahí va también el aviso de la revisión de un planograma. El formul
 «este equipo» y de «conexión», no de «teléfono» y «señal»: se usa también en el computador. La barra
 de sincronización (`SyncStatus`) escucha `online`/`offline` y dice «Sin conexión» sin esperar a que
 falle un pedido; un sondeo que vuelve a contestar limpia un «Sin conexión» viejo. **La pastilla roja
-de «Pendientes» es una sola cuenta en todos los módulos:** la hace `DashboardView`; fuera de Inicio,
-Indicadores y Contratos corre una copia que no dibuja (`<DashboardView soloLaCuenta inicio
+de «Pendientes» es una sola cuenta en todos los módulos:** la hace `DashboardView`; fuera de Inicio
+e Indicadores corre una copia que no dibuja (también en Contratos desde el 2026-11-21, ver abajo) (`<DashboardView soloLaCuenta inicio
 modo="supervisar">`, `CuentaDePendientes` en `Dashboard.tsx`) y que no atiende lo que es de la
 pantalla visible (pedidos del armazón, `pedidoVender`/`pedidoSupervisar`, la bandeja que se abre
 sola). Antes, entrando directo a `/montajes` o al Plano, salía sin número. Pruebas:
