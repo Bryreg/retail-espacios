@@ -1001,7 +1001,7 @@ def test_a15_la_politica_declara_los_campos_nuevos_y_la_copia_es_identica():
     assert "agregados exactos" in bajo
     assert "sin umbral" in bajo
     assert "reporte de transparencia" in bajo
-    assert "mi-reporte-plataforma" in bajo
+    assert "ajustes › cuenta › tus datos" in bajo  # dónde se pide (2026-11-v4: sin la ruta de la API)
     # (ii) la lectura de adopción y su clasificación derivada.
     assert "adopción" in bajo, "el §5.3 no declara la lectura de adopción"
     assert "clasificación" in bajo, "el §5.3 no declara la clasificación derivada"

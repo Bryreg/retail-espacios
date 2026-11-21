@@ -4,7 +4,7 @@
 
 **Redactada en septiembre de 2026; revisada el 2026-10-30** contra el producto (ver
 `docs/legal/revision-2026-10-30.md`). Acompaña a la Política de Tratamiento de Datos
-Personales (`docs/legal/politica-datos.md`, versión `2026-10-v3`), pero es un documento
+Personales (`docs/legal/politica-datos.md`, versión `2026-11-v4`), pero es un documento
 aparte: esta guía es interna y operativa, la política es pública.
 
 Esta guía es para el dueño del negocio, no para un abogado. Contesta cuatro preguntas:

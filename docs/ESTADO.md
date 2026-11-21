@@ -1,7 +1,14 @@
 # RECABRA — estado del proyecto
 
 Documento de referencia para retomar el trabajo sin tener que reconstruir el contexto.
-Última actualización: 2026-11-20: **arreglos del recorrido de los manuales** — al recorrer la app
+Última actualización: 2026-11-20 (tarde): **Política de datos 2026-11-v4** — el §7.1 nombra cada
+derecho por dónde está en la pantalla (Ajustes › Cuenta › Tus datos y el menú de la cuenta), no por
+la ruta de la API; «el dueño» / «su supermercado»; el plazo de los respaldos en 7.1 e pasa a 14
+días, como en la sección 6. No cambia finalidades, datos ni encargados; como toda versión nueva,
+vuelve a pedir la aceptación en el próximo ingreso (aviso que no bloquea), por decisión del dueño.
+`VERSION_POLITICA = "2026-11-v4"`; las dos copias de la política, idénticas.
+
+Antes, ese mismo día: **arreglos del recorrido de los manuales** — al recorrer la app
 rol por rol para los manuales de capacitación salieron errores reales y quedaron arreglados:
 «Registrar montaje» desde la cuenta rompía Montajes; el trabajador no veía los planogramas en
 Montajes ni encontraba espacios en el buscador; las cuentas de montajes no coincidían entre
@@ -4125,8 +4132,9 @@ suites de cobranza contra un Postgres 16 descartable (ver *Cobro de la suscripci
 `space_faces` (designación explícita de la cara del mueble).
 
 **Reglas duras nuevas:**
-- `VERSION_POLITICA = "2026-10-v3"` (`models/consentimiento.py`; `2026-09-v2` en Fase
-  7 Parte C, `2026-10-v3` en la auditoría de privacidad del 2026-10-30) — debe coincidir con el encabezado de `docs/legal/politica-datos.md`,
+- `VERSION_POLITICA = "2026-11-v4"` (`models/consentimiento.py`; `2026-09-v2` en Fase
+  7 Parte C, `2026-10-v3` en la auditoría de privacidad del 2026-10-30, `2026-11-v4` en el
+  recorrido de los manuales del 2026-11-20) — debe coincidir con el encabezado de `docs/legal/politica-datos.md`,
   y `frontend/src/legal/politica-datos.md` es copia byte a byte (test lo fija).
   El historial de versiones vive en §11 de la política ("Vigencia y
   versionado"), no en §10.

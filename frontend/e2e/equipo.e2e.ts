@@ -39,7 +39,7 @@ async function comoPersona(page: Page, s: Sesion, email: string, rolCliente: "ow
       version: 0,
     }));
     localStorage.setItem("recabra-config-inicial-vista", "1");
-    localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10));
+    localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date()));
   }, [s, email, rolCliente] as const);
 }
 
@@ -167,7 +167,7 @@ test("reporte de transparencia: el día de la aceptación es el de Colombia y lo
     // Las 8:30 p. m. del 20 en Colombia: ya es el 21 en UTC.
     generado_en: "2026-11-21T01:30:00Z",
     ventana: { desde: "2026-11", hasta: "2026-11", meses: 1 },
-    politica: { version_vigente: "2026-10-v3", version_aceptada: "2026-10-v3", aceptada_en: "2026-11-20",
+    politica: { version_vigente: "2026-11-v4", version_aceptada: "2026-11-v4", aceptada_en: "2026-11-20",
       base_legal: "Ley 1581 de 2012", url: "/politica-datos" },
     catalogo: [], valores: [], spread_actual: null,
     accesos: { total: 1, lineas: [{ fecha: "2026-11-20", operador: "op@recabra.example", accion: "detalle", periodo: "galerias:2026-11" }] },
