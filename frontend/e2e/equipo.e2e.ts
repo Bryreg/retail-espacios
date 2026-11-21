@@ -153,8 +153,9 @@ test("la bitácora dice «Dueño» cuando lo hizo la dueña, y a quién", async 
   await expect(page.getByText("Dueño · 127.0.0.1")).toBeVisible();
   await expect(page.getByText("Administrador · 127.0.0.1")).toBeVisible();
   await expect(page.getByText(/^(owner|admin) · /)).toHaveCount(0);
-  // Entero, sin cortarse con «…»: a quién es lo primero que se lee.
-  const linea = page.getByText(rol, { exact: true });
+  // Entero, sin cortarse con «…»: a quién es lo primero que se lee. En la bitácora de Ajustes:
+  // la «Actividad reciente» del Inicio, que queda detrás, la resume en un renglón.
+  const linea = page.getByLabel("Ajustes", { exact: true }).getByText(rol, { exact: true });
   await expect(linea).toBeVisible();
   expect(await linea.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
