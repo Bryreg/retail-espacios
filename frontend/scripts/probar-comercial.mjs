@@ -358,8 +358,9 @@ prueba("BLOQUES DE SUPERVISAR DENTRO DE isAdmin: tarjetas, ficha y tabla de part
   // salga SÓLO de las caras «reserved» sin la marca de una reserva de Vender,
   // y que liberar o reservar de verdad sea de administración.)
   // (Fase 4 de la distribución, 2026-10-25: suma los planogramas por revisar,
-  // que no llevan plata ni proveedor; el SERVIDOR sólo le manda a cada rol las
-  // caras que puede publicar —`test_revisa_quien_puede_publicar_esa_cara`—.)
+  // que no llevan plata ni proveedor; son las caras que ese rol puede publicar:
+  // `puede_revisar` del servidor —`test_revisa_quien_puede_publicar_esa_cara`—,
+  // filtrado en `paraRevisar` (`api/supervision.ts`).)
   assert.deepEqual(PARA_TODOS, ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas",
     "planogramasPorRevisar.filas"]);
   assert.match(t, /else if \(ds\[i\] === "reserved" && !x\.reservado\) reservadoAMano\.push\(x\);/,

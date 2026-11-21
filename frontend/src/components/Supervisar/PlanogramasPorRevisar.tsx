@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Eye, ScanEye, Send } from "lucide-react";
-import { leerSupervision, type CaraPorSupervisar } from "../../api/supervision";
+import { leerSupervision, type CaraDelMontaje, type CaraPorSupervisar } from "../../api/supervision";
 import { lineaParaRevisar, ORDEN_DE_SUPERVISION, pastillaParaRevisar } from "../../utils/supervision";
 import { EncabezadoDeSeccion, Mira } from "./piezas";
 import { tituloDeSeccion, type SeccionDeRevisar } from "./paraRevisar";
@@ -10,8 +10,9 @@ import { esFallaDeLectura } from "../../utils/sinLeer";
  * Los planogramas en «Para revisar» → Hoy (fase 4 de la distribución,
  * 2026-10-25, dibujo aprobado «Supervisar planogramas»): cuatro secciones, en
  * el orden del dibujo —montado por revisar, no coincide, no se pudo, sin
- * montar—. Sale de `GET /api/planogramas/supervision?sede=`, que sólo trae las
- * caras que ese rol puede revisar (las mismas que puede publicar). Sin
+ * montar—. Sale de `GET /api/planogramas/supervision?sede=&todas=1` (la lista
+ * de Montajes), de la que «Para revisar» se queda con las caras que ese rol
+ * puede revisar (las mismas que puede publicar). Sin
  * proveedores ni plata: lo vendido no entra (eso es el montaje de los
  * contratos, que sigue como siempre).
  *
@@ -31,21 +32,25 @@ export const SECCION_DE_SUPERVISION: Record<CaraPorSupervisar["estado"], Seccion
 /** La clave de la fila (`data-aviso`): una por versión. */
 export const claveDeSupervision = (c: Pick<CaraPorSupervisar, "version_id">): string => `pg:${c.version_id}`;
 
+/** `filas`: lo de «Para revisar» (lo que quien mira revisa). `deMontajes`:
+ *  todo lo que lista Montajes, también lo que el trabajador sólo mira (la
+ *  guía): con eso cuenta el Inicio «Montajes por resolver». */
 export function usePlanogramasPorRevisar({ sede, activo }: { sede: string; activo: boolean }) {
   const [filas, setFilas] = useState<CaraPorSupervisar[]>([]);
+  const [deMontajes, setDeMontajes] = useState<CaraDelMontaje[]>([]);
   const [hoy, setHoy] = useState("");
   const [sinLeer, setSinLeer] = useState(false);
   const [vuelta, setVuelta] = useState(0);
   useEffect(() => {
-    if (!activo || !sede) { setFilas([]); setSinLeer(false); return; }
+    if (!activo || !sede) { setFilas([]); setDeMontajes([]); setSinLeer(false); return; }
     let vivo = true;
     leerSupervision(sede)
-      .then((r) => { if (vivo) { setFilas(Array.isArray(r?.caras) ? r.caras : []); setHoy(r?.hoy ?? ""); setSinLeer(false); } })
-      .catch((e) => { if (vivo) { setFilas([]); setSinLeer(esFallaDeLectura(e)); } });
+      .then((r) => { if (vivo) { setFilas(r.caras); setDeMontajes(r.todas); setHoy(r.hoy); setSinLeer(false); } })
+      .catch((e) => { if (vivo) { setFilas([]); setDeMontajes([]); setSinLeer(esFallaDeLectura(e)); } });
     return () => { vivo = false; };
   }, [sede, activo, vuelta]);
   const recargar = useCallback(() => setVuelta((n) => n + 1), []);
-  return { filas, hoy, recargar, sinLeer };
+  return { filas, deMontajes, hoy, recargar, sinLeer };
 }
 
 export function PlanogramasPorRevisar({ filas, hoy, onAbrir, onMandar }: {

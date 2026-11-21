@@ -6313,8 +6313,10 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const porResolver = useMemo(() => montajesPorResolver([
     ...montajeDeTodo.noMontado.map(() => ({ estado: "no_realizado" as const, empezo: true })),
     ...[...montajeDeTodo.sinMontar, ...montajeDeTodo.viejos].map(() => ({ estado: "sin_montar" as const, empezo: true })),
-    ...planogramasPorRevisar.filas.map((c) => ({ estado: estadoDelPlanograma(c.estado), empezo: c.dias_que_rige >= 0 })),
-  ]), [montajeDeTodo, planogramasPorRevisar.filas]);
+    // Todo lo que Montajes lista (`deMontajes`), no sólo lo que se revisa:
+    // el trabajador monta también los planogramas que publica administración.
+    ...planogramasPorRevisar.deMontajes.map((c) => ({ estado: estadoDelPlanograma(c.estado), empezo: c.dias_que_rige >= 0 })),
+  ]), [montajeDeTodo, planogramasPorRevisar.deMontajes]);
 
 
   // ─── Lo que la franja de Supervisar necesita saber ──────────────────────
