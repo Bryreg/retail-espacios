@@ -19,8 +19,9 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 API = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8790"
 CLAVE_ADMIN = sys.argv[2] if len(sys.argv) > 2 else "admin-manual"
@@ -47,7 +48,9 @@ TOK = pedir("POST", "/api/auth/login", {"password": CLAVE_ADMIN})["token"]
 api = lambda m, ruta, c=None: pedir(m, ruta, c, TOK)  # noqa: E731
 
 # ── Fechas: todo relativo a hoy ────────────────────────────────────────────────
-HOY = date.today()
+# El servidor trabaja con el día de Colombia; con date.today() en UTC, entre
+# las 19:00 y las 24:00 de Colombia la siembra pedía fechas de «mañana».
+HOY = datetime.now(ZoneInfo("America/Bogota")).date()
 
 
 def mes(k: int) -> date:

@@ -20,8 +20,9 @@ import sqlite3
 import sys
 import urllib.error
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 API = sys.argv[1]
 BD = sys.argv[2]
@@ -90,7 +91,7 @@ alta = pedir("POST", "/api/clientes/alta", {
     "id_token": f"prueba:{DUENIA[0]}:{DUENIA[1]}", "slug": "norte_prueba",
     "nombre": "Supermercado Norte (prueba)", "acepta_politica": True, "acepta_terminos": True})
 op = entrar("operador@recabra.example", "Operador de prueba")
-hoy = date.today()
+hoy = datetime.now(ZoneInfo("America/Bogota")).date()  # el día de Colombia, como el servidor
 pedir("PUT", "/api/plataforma/clientes/norte_prueba/suscripcion", {
     "modo": "manual", "valor_cop": 450000, "plazo_pago_dias": 30,
     "razon_social": "Supermercado Norte de Prueba S.A.S.", "nit": "900000000-1",

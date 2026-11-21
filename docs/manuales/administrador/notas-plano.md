@@ -4,7 +4,8 @@ Para quien da la capacitación del Administrador. Los datos son los de la siembr
 (`herramientas/sembrar.py`, sede **CENTRO**): 16 muebles —góndolas dobles `GON-01`…`GON-04`
 vendidas por participación, góndolas de la casa `GON-12` y `GON-13` con planogramas
 publicados, puntas `PUN-01`…`PUN-09` y la nevera `NEV-01`—. Las capturas salen de
-`administrador/capturas-plano.cjs` (computador, 1280 × 800).
+`administrador/capturas-plano.cjs` (computador, 1280 × 800). Actualizado el 20/11/2026 contra la app con
+los arreglos del PR #121.
 
 ## Todos los días / de vez en cuando
 
@@ -49,7 +50,7 @@ publicados, puntas `PUN-01`…`PUN-09` y la nevera `NEV-01`—. Las capturas sal
 |---|---|---|
 | Arrastró un mueble sin querer | Quedó corrido | **Deshacer** (o Ctrl+Z) enseguida. Si ya salió, arrastrarlo de vuelta. Para evitarlo: trabajar en **Mirar** salvo cuando se edita. |
 | Intentó borrar un mueble vendido | *Rechazado por el servidor* · *El servidor no guardó el plano* | **Deshacer**. Si de verdad se va, primero cancelar el contrato y después borrar. |
-| No encuentra un mueble por el proveedor | La búsqueda dice *0 de 16* | Buscar por el **código**. (Ver *Posibles errores del sistema*, 1.) |
+| No encuentra un mueble | La búsqueda dice *0 de 16* | Mirar que el filtro de abajo esté en **Todos**; probar con el código o con otra parte del nombre del proveedor. |
 | Publicó una versión con un error | La guía ya salió | Corregir el dibujo y **publicar la versión siguiente**; volver a mandar la guía. |
 | Mandó la guía a quien no era | — | Ajustes › Equipo › **Cortar un enlace** con ese enlace. |
 | Marcó «coincide» y no coincidía | Versiones: *Coincide* | Volver a revisar cuando quien monta avise otra vez; la última revisión manda. |
@@ -92,60 +93,69 @@ publicados, puntas `PUN-01`…`PUN-09` y la nevera `NEV-01`—. Las capturas sal
 ## Qué demostrar en vivo
 
 - Mirar ↔ Editar, la rueda para acercar y **espacio + arrastrar** para moverse; *Centrar en todo*.
-- Buscar `PUN-05` y el filtro *Por vencer*.
+- Buscar `PUN-05`, después «Café Montaña» (marca `PUN-02`, `PUN-03` y `GON-03`: 3 de 16) y el filtro *Por vencer*.
+- La ficha de `PUN-09`: «Reservado» (no «Ocupado»).
 - Colocar una punta, girarla con **R**, cambiarle el código y borrarla; borrar la `PUN-04` y ver el
   rechazo; **Deshacer**.
 - El informe de **Renumerar** (sin aplicar) y **Imprimir**.
 - El 3D: recorrer, *Primera persona*, *Presentar*.
 - **Mis muebles**: el asistente de tres pasos hasta *Colocar en el plano*.
-- `GON-03`: *Distribuir la cara A* y *Listo, guardar la cara*.
+- `GON-03`: *Distribuir la cara A* (cada marca con su color) y *Listo, guardar la cara*.
 - `GON-12 · B`: agregar destino, arrastrar, publicar, mandar la guía, abrir la guía y *Copiar el enlace*.
-- Pendientes › *Revisar* un planograma montado: *No coincide* con números.
+- Pendientes › *Revisar* un planograma montado, abriendo Pendientes desde el Plano: «Viniste desde Plano de
+  la sede…», *No coincide* con números, y al cerrar vuelve al Plano.
 - Ajustes: tarifas (se guardan solas), temporadas, agregar y eliminar una sede (papelera), nombres
   propios, correo de prueba.
 
 ## No se pudo capturar
 
 - **Arrastrar un mueble en el 2D** se hace en el guion, pero la captura de «moverlo» no aporta (se ve
-  igual que antes): se explica con texto y la captura de *Rotar* quedó fuera del manual por espacio.
-- **«Productos y distribuciones» y probar un producto en el 3D** (elegir un mueble dentro del 3D):
-  el clic sobre el dibujo 3D depende de la cámara y no es estable en el navegador automático. El 3D sí
-  se ve (WebGL anduvo en headless).
+  igual que antes): se explica con texto.
+- **«Productos y distribuciones», probar un producto y el panel de un mueble en el 3D** (donde una
+  reserva dice «Reservado»): el clic sobre el dibujo 3D depende de la cámara y no es estable en el
+  navegador automático. El 3D sí se ve, y su leyenda dice *Disponible · Ocupado · Reservado · No
+  comercializable*.
 - **El correo real de la guía** que le llega a quien monta: está en el manual de Quien monta.
-- **Un correo de prueba que salga bien**: la copia de prueba tiene el correo cortado a propósito
-  (puerto cerrado), así que siempre sale el mensaje rojo; se muestra como ejemplo de «si falla».
+- **Un correo de prueba que salga bien**: la copia tiene el correo cortado a propósito (puerto cerrado),
+  así que siempre sale el mensaje rojo; se muestra como ejemplo de «si falla».
 - **Aplicar Renumerar**: no se aplicó para no cambiar los códigos que usan el resto de las capturas.
 - **Restaurar una sede de la papelera**: se muestra el botón *Restaurar*, no se tocó.
 
 ## Posibles errores del sistema
 
-1. **La búsqueda del plano no encuentra proveedores con espacios por partes.** El buscador dice
-   «Buscar espacio, categoría o proveedor…», pero «Café», «Montaña» o «Café Montaña» dan *0 de 16*,
-   aunque Café Montaña tiene `PUN-02-EN2`, `PUN-03-EN1` y una participación en `GON-03-B`. «Snacks»
-   sí encuentra 1 (la `PUN-04`, vendida entera). Reproducir: Plano › Mirar › escribir «Café».
-2. **Textos con nombres viejos de pantallas** en la ficha del mueble (pestaña Venta):
-   «Los contratos se hacen en **Sede → Vender**…» (hoy es *Contratos*), y en un mueble por
-   participación «…se ubica en el **Editor 3D → «Distribuir esta cara»**» (hoy es *Plano › 3D* y el
-   botón dice *Distribuir la cara*). En Ajustes › Tarifas: «…el **Dashboard** marca los contratos…»
-   (hoy es *Inicio* / *Indicadores*). En «Cómo se llaman los muebles acá»: «Vender, Supervisar, Estado
-   por espacio… el Editor 3D». Reproducir: abrir la ficha de `PUN-01` o `GON-03`.
-3. **Pendientes › «Falta distribuir · empieza en 7 días o menos»** lista participaciones que *ya
-   corren* desde hace meses (`GON-01 · A`… «ya corre»): el título dice «empieza en 7 días o menos».
-   Reproducir: Pendientes › Hoy con la siembra.
-4. **Pendientes › Planograma montado por revisar** dice «avisó que quedó · hoy 15:47 · sin foto»
-   (parece faltar «montada»). Reproducir: Pendientes › Hoy, fila `GON-13 · B · versión 1`.
-5. **Al tocar «Revisar» en Pendientes estando en el Plano**, la pantalla de atrás pasa al Inicio
-   (la ficha de revisión se abre encima del Inicio, no del Plano). No rompe nada, pero desorienta.
-6. **La ficha de `PUN-09`** (reserva provisional que empieza el mes que viene y caduca hoy) muestra el
-   estado *Ocupado* en vez de *Reservado* (el filtro sí la cuenta en *Reservados*). Reproducir: Plano ›
-   Editar › clic en `PUN-09`.
-7. **Caras: la píldora «Lista · versión 1 desde el 20 nov» se monta sobre el texto «Sin montar»** de
-   la columna de al lado a 1280 px. Reproducir: Plano › Caras.
-8. **Distribuir la cara (por porcentaje):** dos marcas distintas (Yogur Andino y Papitas Norte) salen
-   con el mismo azul punteado; cuesta distinguirlas. Reproducir: `GON-03` › Distribuir la cara A.
-9. **El nombre del mueble en Mis muebles** sugiere «Nevera de la entrada» como ejemplo aunque se esté
-   creando una punta (texto de ejemplo fijo). Menor.
-10. **En Versiones dice «Publicada… por admin»** cuando se entra con la clave de instalación (sin
-    persona). Con cuentas reales debería decir el correo; con la clave maestra no hay nombre.
-11. **Para quien prepara capturas:** a 1280 × 800 la app aplica `zoom` al `<body>` (~0,9) y las marcas
-    naranjas de `herramientas/comun.cjs` salían corridas (ya corregido en `comun.cjs`).
+Los de la versión anterior de estas notas, uno por uno (verificados el 20/11/2026):
+
+1. **La búsqueda del plano no encontraba proveedores con espacios por partes.** — **Arreglado en
+   #121.** «Café Montaña» marca `PUN-02`, `PUN-03` y `GON-03` (*3 de 16*; captura `03b-buscar-proveedor`).
+2. **Textos con nombres viejos de pantallas.** — **Arreglado en #121.** La ficha dice «Los contratos se
+   hacen en Contratos…» y, en un mueble por participación, «…se ubica en Plano de la sede › 3D →
+   «Distribuir la cara»»; Tarifas dice «Con esto, Pendientes marca los contratos que pagan por debajo
+   (en Corregir)»; «Cómo se llaman los muebles acá» nombra Contratos, Indicadores, Montajes, Tarifas y el
+   Plano de la sede. **Queda uno:** en la pestaña Venta, bajo *Cómo*, «Se vende entera. Con «Entera o por
+   …», Vender ofrece la cara entera o cada parte…» todavía nombra «Vender» como pantalla (hoy es
+   Contratos). Reproducir: Plano › clic en `PUN-01`.
+3. **«Falta distribuir · empieza en 7 días o menos» con participaciones que ya corren.** — **Arreglado en
+   #121:** el título dice «Falta distribuir · ya corre · 7» y cada fila «· ya corre.».
+4. **«avisó que quedó · hoy … · sin foto».** — **Arreglado en #121:** «avisó que quedó montada · hoy … ·
+   sin foto».
+5. **«Revisar» desde Pendientes estando en el Plano dejaba el Inicio atrás.** — **Arreglado en #121** (como
+   se decidió): la bandeja vive en el Inicio, pero arriba dice «Viniste desde Plano de la sede: al cerrar
+   Pendientes volvés ahí.» con «Volver a Plano de la sede», y al cerrar la revisión y la bandeja vuelve a
+   `/plano`.
+6. **La ficha de `PUN-09` (reserva) decía «Ocupado».** — **Arreglado en #121:** dice «Reservado» (captura
+   `05b-ficha-reserva`). El renglón *Estado* de la pestaña Venta también dice «Reservado».
+7. **Caras: la píldora «Lista · versión 1 desde el 20 nov» se montaba sobre «Sin montar».** — **No se
+   repite:** a 1280 px la píldora parte en dos renglones y no pisa la columna de al lado.
+8. **Distribuir la cara: dos marcas con el mismo azul.** — **Arreglado en #121:** Yogur Andino, Papitas
+   Norte y Aseo Total Hogar salen cada una de un color.
+9. **«Nevera de la entrada» como ejemplo de nombre al crear una punta.** — **Sigue** (menor): el campo de
+   nombre del paso 3 tiene ese ejemplo fijo (`AsistenteDeMueble.tsx`, `placeholder`), sea cual sea el mueble.
+10. **«Publicada… por admin» con la clave de instalación.** — **Sigue:** Versiones dice «Publicada el 20
+    nov por admin · rige desde el 20 nov». Con cuentas reales debería decir la persona; con la clave
+    maestra no hay nombre (propio de la copia de prueba).
+11. **Para quien prepara capturas: el `zoom` del `<body>`.** — Ya corregido en `comun.cjs`.
+
+Nuevos:
+
+12. **(Herramientas) La siembra falla de noche** (ver `notas.md`, 16): correr `levantar.sh` y los guiones
+    con `TZ=America/Bogota` entre las 19:00 y las 24:00 de Colombia.

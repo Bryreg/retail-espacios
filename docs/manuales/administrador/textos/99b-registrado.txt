@@ -13,7 +13,7 @@ Buscar
 Ctrl K
 Sincronizado
 Pendientes
-26
+25
 GA
 Galerías
 Administrador
