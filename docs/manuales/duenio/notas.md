@@ -14,9 +14,12 @@ sólo el dueño del supermercado, con su cuenta.»*. Para mostrar la cuenta de u
 - `duenio/levantar-duenio.sh` levanta la siembra de siempre y, sobre esa misma base,
   `duenio/servidor-duenio.py <puerto>`: el mismo backend, pero el ingreso con Google/correo acepta
   tokens de prueba (`prueba:<correo>:<nombre>`, con `dependency_overrides` de FastAPI; no se toca
-  el código de la app). También declara un operador de prueba (`operador@recabra.example`) y guarda
-  el **correo de invitación** —que sale directo, sin la cola— en
-  `<MANUAL_TMP>/correos-directos-<puerto>/` para capturarlo (no sale ninguno).
+  el código de la app). También declara un operador de prueba (`operador@recabra.example`) y
+  reemplaza el envío del **correo de invitación**: lo guarda en
+  `<MANUAL_TMP>/correos-directos-<puerto>/` para capturarlo y contesta «salió» (no sale ninguno).
+  Desde #123 la invitación pasa por la cola y la pantalla dice «Invitación enviada…» sólo si el
+  correo salió; para `carla.prueba@…` (`SIN_SALIDA`) contesta «no salió», y así se captura el aviso
+  rojo «Invitación creada para …, pero el correo no salió todavía…».
 - **Sólo apaga lo de su puerto** (`pkill -f "servidor-duenio.py <puerto>$"` y el uvicorn de ese
   puerto): puede haber copias de otros roles corriendo en otros puertos. Por eso el puerto va en la
   línea de comandos del servidor.
@@ -29,9 +32,11 @@ sólo el dueño del supermercado, con su cuenta.»*. Para mostrar la cuenta de u
   con los ingresos de Diana (en los dos supermercados), de Ana y de Luis. Desde el PR #121 el rol
   del token tiene que ser el de la membresía de hoy (`rol_de_token_para`): los ingresos se piden al
   final, después de todos los cambios de rol y de estado.
-- **Sembrá de nuevo antes de cada corrida completa** de `capturas.cjs`: la corrida invita a Sofía,
-  cambia el rol de Luis (y lo devuelve), lo desactiva y lo activa, pide una supresión y crea y borra
-  la sede NORTE. La sesión de Luis que guardó la siembra deja de valer en cuanto la corrida le
+- **Sembrá de nuevo antes de cada corrida completa** de `capturas.cjs`: la corrida invita a Sofía y
+  a Carla (la del correo que no salió), cambia el rol de Luis (y lo devuelve), lo desactiva y lo
+  activa, pide la supresión dos veces (la segunda da el «Ya hay una solicitud…»), hace que el
+  operador abra su lista de supermercados (para que «3. Quién lo consultó» tenga una fila) y crea y
+  borra la sede NORTE. La sesión de Luis que guardó la siembra deja de valer en cuanto la corrida le
   cambia el rol (es lo que se captura).
 - Los textos que cita el manual quedan en `<MANUAL_TMP>/textos-duenio/` (innerText de cada pantalla
   y el texto de cada aviso del navegador).
@@ -80,6 +85,7 @@ sólo el dueño del supermercado, con su cuenta.»*. Para mostrar la cuenta de u
 | Invitó con el correo mal escrito | La invitación queda pendiente y nadie entra | Invitar de nuevo con el correo bien; la mala vence sola a los 7 días. |
 | La persona entró con otro correo | «No tiene acceso» o le ofrece crear un supermercado | Que cierre la sesión y entre con el correo de la invitación; que no cree nada. |
 | Invitó con el rol equivocado | El rol en la lista no es el que quería | Si ya entró: cambiarle el rol en su fila (manual 2.3). Si no: dejar vencer la invitación e invitar de nuevo. |
+| Ve en rojo *Invitación creada para …, pero el correo no salió todavía…* e invita otra vez | Dos filas *Invitación pendiente* con el mismo correo | No hacía falta: la invitación ya existía y RECABRA reintenta el correo solo. La de más vence sola. |
 | Invitó de nuevo a alguien que ya está | *Esa persona ya es miembro de este supermercado: cambiale el rol desde la lista.* | Cambiarle el rol en su fila, o *Activar* si está desactivada. |
 | Le cambió el rol a un trabajador y «lo sacó» | Su RECABRA volvió a la portada | Normal entre Trabajador y Administrador: *Ya tengo cuenta* y entra con el rol nuevo. |
 | Quiere cambiarse el rol o desactivarse | Su fila dice *vos* y no tiene botones | Lo hace otro dueño. Para dejar de ser dueño: primero darle el rol Dueño a otra persona. |
@@ -122,7 +128,9 @@ respuestas, el orden de la sesión de 60 minutos y qué demostrar en vivo, en `c
 
 ## Posibles errores del sistema
 
-Revisado contra la app construida desde `main` con el PR #121, en la copia de prueba (puerto 8786).
+Revisado contra la app construida desde `main` con el PR #121, en la copia de prueba (puerto 8786), y
+otra vez con los PRs #122 (Política 2026-11-v4) y #123, en la copia del puerto 8791 (capturas
+rehechas el 20/11/2026, hora de Colombia).
 
 1. **«Solo el owner del cliente puede hacer esto.»** — **Arreglado en #121.** Ahora dice *«Esto lo
    puede hacer sólo el dueño del supermercado, con su cuenta.»* (verificado: sesión de Ana sin el
@@ -138,37 +146,67 @@ Revisado contra la app construida desde `main` con el PR #121, en la copia de pr
    mide 122 px y el texto 122 px; se lee *Administrador*).
 5. **La dueña ve «Desactivar» en su propia fila.** — **Arreglado en #121.** La fila propia dice
    *«Diana Prueba · vos»*, con el rol escrito, y no tiene botones (verificado, `03b-fila-propia`).
-6. **El correo de invitación no pasa por la cola de correos** (sale directo con `send_mail_to_bg`,
-   sin reintento). — **Sigue** (verificado: `routers/usuarios.py`, invitar). Si el envío falla en
+6. **El correo de invitación no pasa por la cola de correos.** — **Arreglado en #123** (verificado:
+   `routers/usuarios.py` usa `enviar_ya_y_anotar`; si no sale, la pantalla lo dice en rojo y el
+   mantenimiento lo reintenta; captura `05d-correo-no-salio`, manual 2.2 y 5.2). Lo de antes: Si el envío falla en
    ese momento, la invitación queda creada y el correo no se reintenta. La copia del dueño lo
    intercepta sólo para la captura.
 7. **Reporte de transparencia: la fecha de aceptación salía un día antes.** — **Arreglado en #121**
    (verificado: aceptación del 20/11/2026 a las 18:30, hora de Colombia → *«versión aceptada
-   2026-10-v3 (20 de nov de 2026)»*; *«generado el 20 de nov de 2026»*).
+   2026-10-v3 (20 de nov de 2026)»*; *«generado el 20 de nov de 2026»*). Con #122/#123, aceptada
+   a las 21:30 de Colombia (ya 21/11 en UTC): *«versión vigente 2026-11-v4 · versión aceptada
+   2026-11-v4 (20 de nov de 2026)»* y *«Reporte generado el 20 de nov de 2026»* (verificado).
 8. **Reporte de transparencia, «4. Tus derechos», con direcciones técnicas.** — **Arreglado en
    #121.** Ahora dice dónde está cada cosa (*Ajustes › Cuenta › Tus datos › «Solicitar supresión»
-   (sólo el dueño)*…) (verificado, `15c-tus-derechos`). La Política (§7) sigue nombrando rutas: es
-   texto legal con versión, lo decide el dueño (ESTADO.md).
+   (sólo el dueño)*…) (verificado, `15c-tus-derechos`). La Política (§7) nombraba rutas técnicas: **arreglado en
+   #122** (versión 2026-11-v4: *«Ajustes › Cuenta › Tus datos › «Descargar los datos del
+   supermercado»»*…).
 9. **En la bitácora, la dueña figuraba como «admin».** — **Arreglado en #121.** Dice *«Dueño ·
    127.0.0.1»*, y en el Inicio, *«rol Trabajador»* en vez de *«rol worker»* (verificado).
 10. **«Persona invitada» sin correo de quien invitó** cuando invita la clave de instalación. —
-    **Sigue, en parte** (verificado: ahora dice *«rol Dueño»* en palabras, pero sin correo). Sólo
+    **Arreglado en parte en #123** (verificado: *«diana.duena@supermercado.example: rol Dueño»*,
+    rol *Administrador*: ya dice a quién; quién invitó no, porque la clave no tiene correo). Sólo
     pasa con el acceso por clave (`LOGIN_LEGADO`), que en producción está apagado.
 
 **Nuevos (vistos en este recorrido)**
 
-11. **La bitácora no dice a QUIÉN se le cambió el rol ni a quién se desactivó.** *«Rol de una
+11. ~~**La bitácora no dice a QUIÉN se le cambió el rol ni a quién se desactivó.**~~ **Arreglado en
+    #123** (verificado: *«luis.tienda@supermercado.example: Trabajador → Administrador ·
+    diana.duena@supermercado.example»*, *«luis.tienda@…: desactivado · diana.duena@…»*,
+    *«sofia.nueva@…: rol Administrador · diana.duena@…»*, la línea entera, sin «…»; capturas `16`,
+    `16b`, `16c`, manual 3.5). Lo de antes: *«Rol de una
     persona cambiado · Trabajador → Administrador · diana.duena@…»* y *«Persona activada o
     desactivada · desactivado · diana.duena@…»* dicen quién lo hizo, pero no a quién (el servidor
     guarda el id, `entidad_id`, y no lo muestra). Con varios cambios el mismo día no se sabe cuál
     fue cuál. Reproducir: Equipo › cambiar el rol de Luis › Cuenta › Bitácora › *Rol de una persona
     cambiado* (o el Inicio, *Actividad reciente*).
-12. **Reporte de transparencia, «1. Qué datos toma la plataforma»**, todavía con palabras técnicas:
+12. **Reporte de transparencia, «1. Qué datos toma la plataforma».** — **Arreglado en gran parte en
+    #123** (verificado: *«1. Qué datos toma RECABRA y para qué»*, agrupado en *Salud de la cartera*,
+    *Asesoría comercial* y *Cobranza y administración de la cuenta*; cada dato *«Nombre.
+    definición»* y *«De dónde sale: … Cómo: …»* en palabras; sin el código del supermercado; §3 con
+    la columna *Quién*). **Sigue** algo de jerga en las definiciones (menor): *«Spread sobre la
+    tarifa de referencia»*, *«Cohorte de adopción … la fundación self-service más antigua»*,
+    *«membresía»*, *«clientes legibles»*, *«del cliente»* en vez de *del supermercado*, y en §3 la
+    acción *«Listado de clientes»*. Lo de antes:
     columnas *Fuente* (`layout_snapshots`, `space_leases`, `membresias`…) y *Endpoints*
     (`metricas, tendencia`), el código del supermercado (*galerias*) debajo del título y un *«--»*
     en la definición de *Estado de cuenta*. Reproducir: Tus datos › *Reporte de transparencia*.
-13. **Textos de «Tus datos» que hablan de «cliente» y «operador de la plataforma»**: el campo de la
+13. ~~**Textos de «Tus datos» que hablan de «cliente» y «operador de la plataforma»**~~ —
+    **Arreglado en #123** (verificado: *«Por qué querés que se borren los datos del supermercado»*,
+    *«…que revisa una persona de RECABRA, y, si corresponde, la supresión se hace a mano…»*,
+    *«Solicitud registrada. Una persona de RECABRA la va a revisar.»* y, si ya hay una, *«Ya hay una
+    solicitud de supresión pendiente para este supermercado: RECABRA la está revisando.»*). Lo de
+    antes: el campo de la
     supresión dice *«Por qué querés que se suprima el cliente»* y la confirmación, *«…revisa el
     operador de la plataforma…»*; el resto de la pantalla dice *supermercado* y *RECABRA*.
-14. **Fechas de Suscripción en otro formato**: *«1-dic-2026»*, *«20-nov-2026»* (con guiones),
+14. ~~**Fechas de Suscripción en otro formato**~~ — **Arreglado en #123** (verificado: *«1 dic
+    2026»*, *«vence 1 dic 2026 · por pagar»*). Lo de antes: *«1-dic-2026»*, *«20-nov-2026»* (con guiones),
     distinto del resto de la app (*20 nov*, *20/11/2026*). Menor.
+
+**Nuevos (vistos al rehacer las capturas después de #123)**
+
+15. **Suscripción › «Cambios de estado» con el día de UTC** (verificado). El cambio a *Pago pendiente*
+    que la siembra hizo a las 21:30 de Colombia del 20/11 dice *«21 nov 2026 · RECABRA»* (captura
+    `31-suscripcion`). `MiSuscripcion.tsx` › `fecha()` corta el instante (`c.en`, en UTC) con
+    `iso.slice(0, 10)`: entre las 19:00 y las 24:00 de Colombia sale el día siguiente. Las fechas
+    que son sólo día (vence, emitida) están bien. El manual no cita esa fecha.

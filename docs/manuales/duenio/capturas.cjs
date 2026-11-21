@@ -89,12 +89,12 @@ async function abrirAjustes(page, tema) {
 
 /** El correo directo que guardó `servidor-duenio.py`, en un HTML con la
  *  cabecera de un buzón (como `herramientas/correo.py`). */
-function correoDirecto(asunto) {
+function correoDirecto(asunto, para = "") {
   const dir = path.join(TMP, `correos-directos-${PUERTO}`);
   const archivos = fs.existsSync(dir) ? fs.readdirSync(dir).sort().reverse() : [];
   for (const a of archivos) {
     const c = JSON.parse(fs.readFileSync(path.join(dir, a), "utf8"));
-    if (!c.asunto.includes(asunto)) continue;
+    if (!c.asunto.includes(asunto) || !c.para.join(",").includes(para)) continue;
     const esc = (x) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     const salida = path.join(TMP, `correo-directo-${PUERTO}.html`);
     fs.writeFileSync(salida, '<!doctype html><meta charset="utf-8"><body style="margin:0;background:#f3f4f6;font-family:Arial,sans-serif">'
@@ -321,24 +321,43 @@ function correoDirecto(asunto) {
   await espera(page, 1500);
   await desplegar();
   const lineaDesactivado = bitacora.getByText(/^luis\.tienda@supermercado\.example: desactivado/).first();
-  await foto(page, C, "16b-bitacora-desactivado", { recorte: [bitacora.locator("select"), lineaDesactivado.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]")], margen: 12, marca: lineaDesactivado });
+  // El panel de Ajustes tiene su propio desplazamiento: la línea, al medio.
+  await lineaDesactivado.evaluate((e) => e.scrollIntoView({ block: "center" }));
+  await espera(page, 300);
+  await foto(page, C, "16b-bitacora-desactivado", { recorte: [bitacora.locator("select"), lineaDesactivado.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]")], margen: 12, marca: lineaDesactivado.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]") });
   await guardarTexto("16b-bitacora-desactivado", bitacora);
   await bitacora.locator("select").selectOption({ label: "Persona invitada" });
   await espera(page, 1500);
   await desplegar();
   const lineaInvitada = bitacora.getByText(/^sofia\.nueva@supermercado\.example: rol Administrador/).first();
-  await foto(page, C, "16c-bitacora-invitada", { recorte: [bitacora.locator("select"), lineaInvitada.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]")], margen: 12, marca: lineaInvitada });
+  // El panel de Ajustes tiene su propio desplazamiento: la línea, al medio.
+  await lineaInvitada.evaluate((e) => e.scrollIntoView({ block: "center" }));
+  await espera(page, 300);
+  await foto(page, C, "16c-bitacora-invitada", { recorte: [bitacora.locator("select"), lineaInvitada.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]")], margen: 12, marca: lineaInvitada.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]") });
   await guardarTexto("16c-bitacora-invitada", bitacora);
   await bitacora.locator("select").selectOption({ label: "Todo" });
   await espera(page, 1500);
   await guardarTexto("16-bitacora-todo", bitacora);
 
-  // Reporte de transparencia
+  // Reporte de transparencia. Antes, una consulta del operador de RECABRA
+  // (la lista de supermercados de su consola, como la abre cada día): así la
+  // parte «3. Quién lo consultó» tiene una línea.
+  {
+    const op = await ingresar("operador@recabra.example", "Operador de prueba");
+    const r = await fetch(`${BASE}/api/plataforma/clientes`, { headers: { authorization: `Bearer ${op.token}` } });
+    if (!r.ok) throw new Error(`operador › clientes: ${r.status}`);
+  }
   await boton(/Reporte de transparencia/, false).click();
   await page.waitForLoadState("networkidle");
   await espera(page, 2500);
   await foto(page, C, "15-reporte");
   await guardarTexto("15-reporte", page.locator("body"));
+  const quien = page.getByRole("heading", { name: "3. Quién lo consultó" }).locator("xpath=..");
+  await quien.scrollIntoViewIfNeeded();
+  await foto(page, C, "15d-quien-lo-consulto", { recorte: quien, margen: 10 });
+  await guardarTexto("15d-quien-lo-consulto", quien);
+  const catalogo = page.getByRole("heading", { name: "1. Qué datos toma RECABRA y para qué" }).locator("xpath=..");
+  await guardarTexto("15e-catalogo", catalogo);
   const derechos = page.getByRole("heading", { name: "4. Tus derechos" }).locator("xpath=..");
   await derechos.scrollIntoViewIfNeeded();
   await foto(page, C, "15c-tus-derechos", { recorte: derechos, margen: 10 });
@@ -386,7 +405,7 @@ function correoDirecto(asunto) {
   {
     const ctx = await nav.newContext({ viewport: { width: 760, height: 640 }, deviceScaleFactor: 2, locale: "es-CO" });
     const p = await ctx.newPage();
-    await p.goto(correoDirecto("Invitación a Galerías"));
+    await p.goto(correoDirecto("Invitación a Galerías", "sofia.nueva@"));
     await espera(p, 500);
     await foto(p, C, "05b-correo-invitacion", { recorte: p.locator("body"), margen: 0 });
     await guardarTexto("05b-correo-invitacion", p.locator("body"));

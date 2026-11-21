@@ -24,7 +24,7 @@ Así quedó el croquis del pedido. Lo que estaba entre corchetes lo decidí yo; 
 **Para qué es**
 - Objetivo: que cada rol pueda hacer sus tareas de todos los días **solo, sin ayuda**, después de la capacitación.
 - Se usa para: capacitación presencial (45 min quien monta, 90 min trabajador, dos sesiones de 2 h administrador, 60 min dueño), autoestudio y consulta diaria (la hoja de bolsillo).
-- Fecha de entrega: 20 de noviembre de 2026 (versión 1.0). Prioridad: lo de todos los días primero; después, lo que pasa de vez en cuando.
+- Fecha de entrega: 20 de noviembre de 2026 (versión 1.0); versión 1.1 el 21 de noviembre de 2026, con la app después de #122 y #123. Prioridad: lo de todos los días primero; después, lo que pasa de vez en cuando.
 
 **Quién lo usa**
 - Quien monta: oficio de tienda, poca experiencia con sistemas; lo lee en el celular o impreso, en el puesto.
