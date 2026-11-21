@@ -446,11 +446,18 @@ function UsuariosSection() {
     setInvitando(true);
     setInvMsg(null);
     try {
-      await invitarUsuario({ email: invEmail.trim(), rol: invRol });
-      setInvMsg({
-        ok: true,
-        text: `Invitación enviada a ${invEmail.trim()}: entra a ${clienteNombre ?? "este supermercado"} como ${rolLabelUsuario(invRol).toLowerCase()}, con esa misma cuenta.`,
-      });
+      const { correo_enviado } = await invitarUsuario({ email: invEmail.trim(), rol: invRol });
+      const correo = invEmail.trim();
+      const donde = clienteNombre ?? "este supermercado";
+      const rol = rolLabelUsuario(invRol).toLowerCase();
+      // El correo pasa por la cola (2026-11-21): «enviada» sólo si salió. Si
+      // no, la invitación existe igual y el correo se reintenta solo.
+      setInvMsg(correo_enviado
+        ? { ok: true, text: `Invitación enviada a ${correo}: entra a ${donde} como ${rol}, con esa misma cuenta.` }
+        : {
+            ok: false,
+            text: `Invitación creada para ${correo}, pero el correo no salió todavía: RECABRA lo vuelve a intentar solo. Si mientras tanto entra a ${donde} con esa misma cuenta, ya queda como ${rol}.`,
+          });
       setInvEmail("");
       cargar();
     } catch (err) {
@@ -833,13 +840,14 @@ function BitacoraSection() {
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: tonoDe(l.accion) }}>
                   {l.titulo}
                 </div>
+                {/* Entero, no cortado con «…»: desde el 2026-11-21 las líneas de
+                    Equipo dicen a quién y qué cambió, y eso es lo que se lee. */}
                 {l.detalle && (
                   <div
                     style={{
                       fontSize: 11.5, color: "var(--ink-2)", marginTop: 1,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      overflowWrap: "anywhere",
                     }}
-                    title={l.detalle}
                   >
                     {l.detalle}
                   </div>
@@ -1000,9 +1008,9 @@ function TusDatosSection() {
 
   const pedirSupresion = async () => {
     const seguro = confirm(
-      "Esto NO borra nada ahora mismo: registra un pedido de supresión que revisa el " +
-        "operador de la plataforma, y la ejecución (si corresponde) la hace a mano. " +
-        "¿Confirmás la solicitud?"
+      "Esto NO borra nada ahora mismo: registra un pedido de supresión de los datos del " +
+        "supermercado que revisa una persona de RECABRA, y, si corresponde, la supresión se " +
+        "hace a mano. ¿Confirmás la solicitud?"
     );
     if (!seguro) return;
     setPidiendo(true);
@@ -1011,7 +1019,7 @@ function TusDatosSection() {
       await solicitarSupresion(motivo.trim() || undefined);
       setSupresionMsg({
         ok: true,
-        text: "Solicitud registrada. El operador de la plataforma la va a revisar.",
+        text: "Solicitud registrada. Una persona de RECABRA la va a revisar.",
       });
       setMotivo("");
     } catch (err) {
@@ -1060,7 +1068,7 @@ function TusDatosSection() {
           type="text"
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
-          placeholder="Por qué querés que se suprima el cliente"
+          placeholder="Por qué querés que se borren los datos del supermercado"
           style={{ ...inputStyle, marginBottom: 8 }}
         />
         <ActionButton onClick={pedirSupresion} disabled={pidiendo}>
