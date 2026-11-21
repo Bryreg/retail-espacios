@@ -57,16 +57,20 @@ class VerificadorDePrueba:
 app.dependency_overrides[get_verificador] = lambda: VerificadorDePrueba()
 
 
-# El correo de invitación no pasa por la cola de correos (sale directo con
-# `send_mail_to_bg`), así que `correoReal()` no lo encuentra. Acá, sólo en la
-# copia de prueba, se guarda tal como lo armó el servidor —asunto, destinatario
-# y HTML— en `<MANUAL_TMP>/correos-directos-<puerto>/` para capturarlo, y no
-# sale ninguno (como con el SMTP cortado de `servidor.sh`).
+# El correo de invitación: desde #123 pasa por la cola de correos
+# (`enviar_ya_y_anotar`) y la pantalla dice «Invitación enviada…» sólo si salió.
+# Con el SMTP cortado de `servidor.sh` nunca saldría, así que acá, sólo en la
+# copia de prueba, el envío se reemplaza: se guarda tal como lo armó el
+# servidor —asunto, destinatario y HTML— en `<MANUAL_TMP>/correos-directos-<puerto>/`
+# para capturarlo, y cuenta como enviado (no sale ninguno). A las direcciones de
+# `SIN_SALIDA` les contesta que no salió, para capturar el aviso rojo
+# «Invitación creada para …, pero el correo no salió todavía…».
 import json  # noqa: E402
 
 import app.routers.usuarios as _usuarios  # noqa: E402
 
 CORREOS_DIRECTOS = BASE.parent / f"correos-directos-{PUERTO}"
+SIN_SALIDA = {"carla.prueba@supermercado.example"}
 
 
 def _guardar_correo_directo(destinatarios, asunto, html):
@@ -74,7 +78,7 @@ def _guardar_correo_directo(destinatarios, asunto, html):
     n = len(list(CORREOS_DIRECTOS.glob("*.json"))) + 1
     (CORREOS_DIRECTOS / f"{n:03d}.json").write_text(json.dumps(
         {"asunto": asunto, "para": list(destinatarios), "html": html}, ensure_ascii=False), encoding="utf-8")
-    return False
+    return not any(d.lower() in SIN_SALIDA for d in destinatarios)
 
 
 _usuarios.send_mail_to_bg = _guardar_correo_directo

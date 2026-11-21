@@ -139,6 +139,7 @@ function correoDirecto(asunto) {
 
   // Invitar
   const correo = page.getByPlaceholder("persona@empresa.com");
+  const form0 = () => page.locator("form").filter({ has: correo });
   await correo.fill("sofia.nueva@supermercado.example");
   const rol = page.locator("[data-rol-invitar]");
   await rol.selectOption("admin");
@@ -153,6 +154,18 @@ function correoDirecto(asunto) {
   await espera(page, 2500);
   await foto(page, C, "05-invitacion-enviada", { recorte: usuarios, margen: 6, marca: page.getByText(/Invitación enviada a/) });
   await guardarTexto("05-invitacion-enviada", usuarios);
+
+  // Una invitación cuyo correo no salió (la copia de prueba contesta «no
+  // salió» para carla.prueba@…, `servidor-duenio.py`): queda creada igual y el
+  // aviso, en rojo, dice que RECABRA lo reintenta.
+  await correo.fill("carla.prueba@supermercado.example");
+  await rol.selectOption("worker");
+  await boton("Invitar").click();
+  await espera(page, 2500);
+  const noSalio = page.getByText(/^Invitación creada para/);
+  await foto(page, C, "05d-correo-no-salio", { recorte: [form0(), noSalio], margen: 8, marca: noSalio });
+  guardar("05d-correo-no-salio", await noSalio.innerText());
+  await guardarTexto("05d-equipo", usuarios);
 
   // Volver a invitar a alguien que ya está: el servidor dice cómo seguir.
   await correo.fill("luis.tienda@supermercado.example");
@@ -272,7 +285,7 @@ function correoDirecto(asunto) {
   const tusDatos = page.locator("[data-tus-datos]");
   await boton(/Descargar los datos del supermercado/, false).click();
   await espera(page, 3000);
-  await page.getByPlaceholder("Por qué querés que se suprima el cliente").fill("Prueba del manual: no ejecutar");
+  await page.getByPlaceholder("Por qué querés que se borren los datos del supermercado").fill("Prueba del manual: no ejecutar");
   await foto(page, C, "13-tus-datos", { recorte: tusDatos, margen: 6, marca: [
     { loc: boton(/Descargar los datos del supermercado/, false), n: 1 },
     { loc: boton(/Solicitar supresión/, false), n: 2 },
@@ -284,6 +297,11 @@ function correoDirecto(asunto) {
   guardar("14-confirmacion-supresion", dialogos.at(-1));
   await foto(page, C, "14-supresion-registrada", { recorte: tusDatos, margen: 6, marca: page.getByText(/Solicitud registrada/) });
   await guardarTexto("14-tus-datos", tusDatos);
+  // Pedirla otra vez: ya hay una pendiente (409).
+  await boton(/Solicitar supresión/, false).click();
+  await espera(page, 2500);
+  guardar("14b-confirmacion-otra-vez", dialogos.at(-1));
+  await guardarTexto("14b-tus-datos-otra-vez", tusDatos);
 
   // Bitácora, filtrada: el cambio de rol
   const bitacora = page.getByText("Bitácora", { exact: true }).locator("xpath=../..");
@@ -293,6 +311,24 @@ function correoDirecto(asunto) {
   await bitacora.scrollIntoViewIfNeeded();
   await foto(page, C, "16-bitacora", { recorte: bitacora, margen: 6, marca: bitacora.locator("select") });
   await guardarTexto("16-bitacora", bitacora);
+  // A quién: la persona desactivada y la invitada, cada una en su línea. La
+  // lista tiene su propia barra de desplazamiento; para la captura se la deja
+  // crecer, así la segunda línea sale entera (sólo en la captura).
+  const desplegar = () => bitacora.evaluate((b) => b.querySelectorAll("*").forEach((e) => {
+    if (/(auto|scroll)/.test(getComputedStyle(e).overflowY)) { e.style.maxHeight = "none"; e.style.overflowY = "visible"; }
+  }));
+  await bitacora.locator("select").selectOption({ label: "Persona activada o desactivada" });
+  await espera(page, 1500);
+  await desplegar();
+  const lineaDesactivado = bitacora.getByText(/^luis\.tienda@supermercado\.example: desactivado/).first();
+  await foto(page, C, "16b-bitacora-desactivado", { recorte: [bitacora.locator("select"), lineaDesactivado.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]")], margen: 12, marca: lineaDesactivado });
+  await guardarTexto("16b-bitacora-desactivado", bitacora);
+  await bitacora.locator("select").selectOption({ label: "Persona invitada" });
+  await espera(page, 1500);
+  await desplegar();
+  const lineaInvitada = bitacora.getByText(/^sofia\.nueva@supermercado\.example: rol Administrador/).first();
+  await foto(page, C, "16c-bitacora-invitada", { recorte: [bitacora.locator("select"), lineaInvitada.locator("xpath=ancestor::*[contains(., '127.0.0.1')][1]")], margen: 12, marca: lineaInvitada });
+  await guardarTexto("16c-bitacora-invitada", bitacora);
   await bitacora.locator("select").selectOption({ label: "Todo" });
   await espera(page, 1500);
   await guardarTexto("16-bitacora-todo", bitacora);

@@ -155,19 +155,57 @@ const guardar = async (page, nombre) => fs.writeFileSync(path.join(__dirname, `t
   await otra.waitForTimeout(900);
   const mandar = otra.getByRole("button", { name: "Mandar ahora" });
   const pendiente = otra.getByText("Tenés un reporte sin mandar").locator("..");
-  await foto(otra, C, "47-reporte-sin-mandar", { recorte: [pendiente, mandar], margen: 16, marca: mandar });
+  // Arriba de todo, apenas se abre el enlace: la tarjeta del espacio y, debajo, el reporte guardado.
+  await foto(otra, C, "47-reporte-sin-mandar", { recorte: [otra.getByText("Entrepaño 2 de", { exact: false }).locator(".."), pendiente, mandar], margen: 16, marca: mandar });
   await guardar(otra, "47-reporte-sin-mandar");
   await mandar.click();
   await otra.waitForTimeout(1500);
   await foto(otra, C, "46-volvio-la-senal", { recorte: otra.getByText("Listo, quedó reportado").locator(".."), margen: 24 });
   await guardar(otra, "46-volvio-la-senal");
 
-  // ── 7. Un enlace vencido o roto ─────────────────────────────────────────
-  await otra.goto("/?montar=CENTRO-PUN-03-EN1&t=enlace.vencido.prueba");
+  // Una CORRECCIÓN que quedó sin mandar (PUN-03-EN1 ya estaba reportado):
+  // desde #123, al volver a abrir el enlace se ve directamente el formulario
+  // con «Tenés un reporte sin mandar» arriba de todo; «Descartar» vuelve al
+  // reporte que sí llegó («Este espacio ya se reportó como montado»).
+  const enlaceEN1 = enlaceDeMontaje("CENTRO-PUN-03-EN1", DATOS.leases["PUN-03-EN1"]);
+  await otra.goto(enlaceEN1);
   await otra.waitForLoadState("networkidle");
-  await otra.waitForTimeout(800);
-  await foto(otra, C, "30-enlace-roto", { recorte: otra.getByText("Este enlace ya no sirve").locator(".."), margen: 40 });
-  await guardar(otra, "30-enlace-roto");
+  await otra.waitForTimeout(900);
+  await otra.getByRole("button", { name: "Corregir el reporte" }).click();
+  await otra.waitForTimeout(600);
+  await otra.getByRole("button", { name: "Lo monté", exact: true }).click();
+  await otra.locator('input[type="file"]').first().setInputFiles(FOTO);
+  await otra.getByPlaceholder(/Quién reporta/i).first().fill("Luis Prueba");
+  await otra.waitForTimeout(600);
+  await otra.context().setOffline(true);
+  await otra.getByRole("button", { name: "Confirmar", exact: true }).click();
+  await otra.waitForTimeout(1500);
+  const tercera = await otra.context().newPage();
+  tercera.setDefaultTimeout(20_000);
+  await otra.close();
+  await tercera.context().setOffline(false);
+  await tercera.goto(enlaceEN1);
+  await tercera.waitForLoadState("networkidle");
+  await tercera.waitForTimeout(900);
+  const pendiente2 = tercera.getByText("Tenés un reporte sin mandar").locator("..");
+  await foto(tercera, C, "47b-correccion-sin-mandar", {
+    recorte: [tercera.getByText("Entrepaño 1 de", { exact: false }).locator(".."), tercera.getByRole("button", { name: "Descartar" })], margen: 16,
+    marca: tercera.getByRole("button", { name: "Descartar" }),
+  });
+  await guardar(tercera, "47b-correccion-sin-mandar");
+  await tercera.getByRole("button", { name: "Descartar" }).click();
+  await tercera.waitForTimeout(1200);
+  const yaReportado = tercera.getByText(/Este espacio ya se reportó/).first();
+  const cajaReportado = yaReportado.locator("xpath=ancestor::*[.//*[normalize-space(text())='Corregir el reporte']][1]");
+  await foto(tercera, C, "47c-descartado", { recorte: cajaReportado, margen: 24, marca: yaReportado });
+  await guardar(tercera, "47c-descartado");
+
+  // ── 7. Un enlace vencido o roto ─────────────────────────────────────────
+  await tercera.goto("/?montar=CENTRO-PUN-03-EN1&t=enlace.vencido.prueba");
+  await tercera.waitForLoadState("networkidle");
+  await tercera.waitForTimeout(800);
+  await foto(tercera, C, "30-enlace-roto", { recorte: tercera.getByText("Este enlace ya no sirve").locator(".."), margen: 40 });
+  await guardar(tercera, "30-enlace-roto");
 
   await nav.close();
 })().catch((e) => { console.error(e); process.exit(1); });

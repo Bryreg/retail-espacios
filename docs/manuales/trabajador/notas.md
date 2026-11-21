@@ -2,7 +2,8 @@
 
 Insumo para la hoja de bolsillo, los ejercicios, la evaluación y la guía del capacitador.
 Todo lo de acá se verificó en la copia de prueba (siembra de `herramientas/sembrar.py`,
-computador 1280 × 800), el 20/11/2026, y se volvió a verificar contra la app de después del PR #121 el mismo día.
+computador 1280 × 800), el 20/11/2026, y se volvió a verificar contra la app de después del PR #121 el mismo día
+y contra la de después de los PRs #122 y #123 (capturas rehechas el 20/11/2026, hora de Colombia).
 
 ## Todos los días
 
@@ -35,7 +36,7 @@ computador 1280 × 800), el 20/11/2026, y se volvió a verificar contra la app d
 | Cambió de sede sin querer | Ve espacios de otra tienda | Elegir la sede propia en el selector de arriba a la izquierda. |
 | Cerró el formulario antes del «Listo» | El espacio sigue «Sin montar» | Hasta ver «Listo: … quedó reportado …» no llegó. Registrarlo de nuevo. |
 | Quiso avisar «Quedó montada» de un planograma | «Ver la guía» sólo deja leer e imprimir | Lo avisa quien tiene el enlace de la guía (correo); si no, avisar a quien administra. |
-| Se cortó internet al confirmar | «Sin conexión: tu reporte quedó guardado en este equipo.»; la barra pasa sola a «Sin conexión» | Esperar o «Reintentar ahora». Si cerró la página, reabrir el espacio: «Tenés un reporte sin mandar» › «Mandar ahora». |
+| Se cortó internet al confirmar | «Sin conexión: tu reporte quedó guardado en este equipo.»; la barra pasa sola a «Sin conexión» | Esperar o «Reintentar ahora». Si cerró la página, reabrir el espacio en el mismo equipo («Registrar montaje», o «Ver registro» › «Registrar el montaje de nuevo»): arriba de todo, «Tenés un reporte sin mandar» › «Mandar ahora» (captura `39b-reporte-sin-mandar`). |
 
 ## Ejercicios sugeridos
 
@@ -80,7 +81,7 @@ Correr `levantar.sh` antes (siembra nueva). Datos de la siembra; la fecha «hoy�
 - **Sesión vencida.** Con un token inválido la app vuelve al ingreso; en la copia muestra el aviso de «no configurado», así que no se capturó.
 - **Cambiar de sede.** La siembra tiene una sola sede (CENTRO): el selector no tiene otra opción.
 - **Pestaña «Hoy» de Pendientes con algo adentro.** Para el trabajador sale vacía con la siembra (la reserva que caduca hoy no le aparece).
-- **«Tenés un reporte sin mandar» / «Mandar ahora» / «Descartar»** desde la cuenta. Verificado en la app; la captura está en el kit de Quien monta (`img/montador/47-reporte-sin-mandar.jpg`, misma pantalla de montaje) y no se repite acá.
+- ~~**«Tenés un reporte sin mandar» / «Mandar ahora» / «Descartar»** desde la cuenta.~~ Ahora se captura (`39b-reporte-sin-mandar`, manual 5.3 paso 4): `GON-02-PC1` › «Registrar el montaje de nuevo» › «Lo monté» + foto › sin conexión › «Confirmar» › cerrar la página › volver a abrirlo. El guion después toca «Descartar» (vuelve el formulario vacío) para no cambiar lo que muestran las capturas de Indicadores.
 - **Tomar la foto con la cámara.** En computador «Tomar foto» abre el selector de archivos; la captura carga la foto con el selector.
 - ~~Montajes de planogramas.~~ Ahora se capturan: `28-planograma` («Ver la guía») y `29-guia` (la guía de sólo lectura).
 
@@ -91,7 +92,7 @@ Correr `levantar.sh` antes (siembra nueva). Datos de la siembra; la fecha «hoy�
 3. ~~**Buscar promete espacios que no encuentra.**~~ **Arreglado en #121**: «PUN-07» da «ESPACIOS · PUN-07 · disponible → Ver la ficha» y Enter abre la ficha en Indicadores › Plano.
 4. ~~**Sin mensaje de confirmación al registrar desde la app.**~~ **Arreglado en #121**: arriba de la lista sale «Listo: PUN-03-EN1 quedó reportado como montado.» / «Listo: GON-02-PC1 quedó reportado como no montado, con el motivo.».
 5. ~~**«Sin señal: … en este teléfono.»** en el computador, y la barra seguía en «Sincronizado».~~ **Arreglado en #121**: «Sin conexión: tu reporte quedó guardado en este equipo.» y la barra pasa sola a «Sin conexión».
-6. **Contadores de montajes — arreglado en #121 para administración, NO para el trabajador (sigue pasando, verificado).** Con la siembra nueva, el Inicio del trabajador dice «Montajes por resolver 4 · 3 sin montar · 1 no realizado», mientras Montajes dice «5 por montar», «Sin montar 5», «No realizado 2». La diferencia son los 3 planogramas (GON-12 A y B sin montar, GON-13 A no se pudo): el Inicio los cuenta con `usePlanogramasPorRevisar`, que llama a `GET /api/planogramas/supervision` **sin** `todas=1`, y esa lista («Para revisar») le sigue llegando vacía al trabajador. Con la cuenta de administración el Inicio dice «7 · 5 sin montar · 2 no realizados», igual que Montajes. El resto ya coincide: Indicadores › Contratos «Sin montar 2» = las dos filas con Montaje «Sin montar»; el Mapa cuenta caras («Caras con montaje pendiente»). El manual (3.1) lo explica en una caja.
+6. ~~**Contadores de montajes — arreglado en #121 para administración, NO para el trabajador.**~~ **Arreglado en #123** (verificado con la siembra nueva: Inicio «Montajes por resolver 7 · 5 sin montar · 2 no realizados» = Montajes «Sin montar 5», «No realizado 2»; el manual 3.1 ya no tiene la caja de la diferencia). Antes, con la siembra nueva, el Inicio del trabajador decía «Montajes por resolver 4 · 3 sin montar · 1 no realizado», mientras Montajes dice «5 por montar», «Sin montar 5», «No realizado 2». La diferencia son los 3 planogramas (GON-12 A y B sin montar, GON-13 A no se pudo): el Inicio los cuenta con `usePlanogramasPorRevisar`, que llama a `GET /api/planogramas/supervision` **sin** `todas=1`, y esa lista («Para revisar») le sigue llegando vacía al trabajador. Con la cuenta de administración el Inicio dice «7 · 5 sin montar · 2 no realizados», igual que Montajes. El resto ya coincide: Indicadores › Contratos «Sin montar 2» = las dos filas con Montaje «Sin montar»; el Mapa cuenta caras («Caras con montaje pendiente»).
 7. ~~**«Ver los 1».**~~ **Arreglado en #121**: «Ver el pendiente» en el Inicio, «Ver 1 en Pendientes ›» en el Mapa y en Análisis.
 8. ~~**El número rojo de «Pendientes» desaparece en Montajes.**~~ **Arreglado en #121**: en `/montajes` dice «Pendientes 1».
 9. ~~**Análisis › «Capacidad por vender»: caras con participaciones dicen «Sin contrato hoy.»**~~ **Arreglado en #121**: GON-01·A, GON-03·A y NEV-01 dicen sus proveedores y «Vendida en parte: queda lugar.»; ya no trae consejos de negociación.
@@ -101,13 +102,16 @@ Correr `levantar.sh` antes (siembra nueva). Datos de la siembra; la fecha «hoy�
 13. ~~**«Tema claro u oscuro» no es un botón.**~~ **Arreglado en #121**: toda la fila es el control.
 14. **«Tu nombre» en el formulario de la app.** Sigue apareciendo en la copia de prueba (la sesión de prueba no tiene correo); con una cuenta real no lo debería pedir. Confirmar en producción.
 15. **Indicadores abre la última pestaña usada** (sigue pasando, verificado: después de Historial, volver a Indicadores abre Historial). Puede desorientar; el manual lo dice.
-16. **Nuevo: «Reclamale el material al proveedor…» se le dice al trabajador.** «Ver registro» de un «No realizado» dice «Reclamale el material al proveedor y, cuando llegue, registrá el montaje de nuevo.» también con la cuenta del trabajador, aunque en el resto de la app el reclamo es de administración («Avisale a quien administra»). El manual (5.2) sigue diciendo que el reclamo lo decide administración.
+16. ~~**«Reclamale el material al proveedor…» se le dice al trabajador.**~~ **Arreglado en #123**: «Avisale a quien administra la sede que falta el material del proveedor y, cuando llegue, registrá el montaje de nuevo.» («… falta el producto …» con «No llegó el producto»); manual 5.2 y captura `35-no-realizado` rehechos. Antes decía «Reclamale el material al proveedor y, cuando llegue, registrá el montaje de nuevo.» también con la cuenta del trabajador.
 
 ## Pantallas fuera de alcance que aparecen
 
 - ~~Indicadores › Mapa de oportunidades y Análisis: botones «Gestionar renovación», «Renovar»…~~ **Arreglado en #121**: con la cuenta del trabajador dicen lo que hacen («Ver la ficha», «Ver el plano», «Ver los contratos por vencer») y donde administración actúa dice «Avisale a quien administra».
 - ~~Inicio: «Por vencer (30 días) · Requieren acción».~~ **Arreglado en #121**: dice «Avisale a quien administra».
-- **Ayuda (?) del Inicio:** sigue definiendo «Canon» («Lo que paga el proveedor al mes…») y dice «para administración, las cifras del mes». El trabajador no ve montos, pero lee el concepto.
+- ~~**Ayuda (?) del Inicio:** definía «Canon».~~ **Arreglado en #123**: define Ocupación, Reserva provisional y Sede (captura `07-ayuda`, manual 2.2). **Sigue** la frase de arriba: «Lo de hoy en la sede: lo que vence, lo que se monta, las reservas que caducan y, para administración, las cifras del mes.» (verificado). Menor: no da cifras, sólo las nombra.
+- **Buscar (Ctrl K) con la cuenta del trabajador — sigue nombrando el canon** (verificado): «canon» o «indicadores» dan «Resumen de Indicadores · Indicadores · Ocupación, canon y montajes contra la meta.» «tarifa» ya no encuentra nada. Menor, pero es el mismo concepto que se sacó de la ayuda.
+- **Ayuda · Indicadores con la cuenta del trabajador** (verificado): la descripción nueva está («Cómo va la sede contra su meta: ocupación, lo que vence y los montajes. Cada cifra tiene su «?» con la fórmula.») y los términos no hablan de plata, pero el renglón siguiente dice «Las pestañas abren el plano, la tabla, quién paga, todas las sedes, el detalle y el diccionario.»: «quién paga» y «todas las sedes» no son pestañas que el trabajador tenga (las suyas: Mapa de oportunidades, Análisis, Plano, Contratos, Historial, Diccionario). El manual no cita esa ayuda.
+- **El reporte sin mandar no se ve en la lista** (verificado, cosmético): con un reporte guardado en el equipo, la fila de Montajes sigue diciendo «Sin montar» / «No realizado» sin ninguna marca; «Tenés un reporte sin mandar» aparece recién al abrir el formulario. El manual (5.3) dice cómo llegar.
 - **Indicadores › Mapa:** la tarjeta «Ingreso contratado · 13 caras» aparece al pasar el mouse por un indicador (caras, sin plata).
 - **Pendientes › «Corregir»:** diferencias entre la base y el plano; las resuelve administración.
 - **Portada pública:** el plano de ejemplo muestra precios inventados («$ 1.150.000 al mes»). Es la portada, no la tienda, pero conviene aclararlo (el manual lo dice en 1.2).

@@ -102,7 +102,7 @@ async function ingresoEncendido(contexto) {
     await contexto.close();
   }
 
-  const { page, contexto } = await abrir(nav, "worker");
+  let { page, contexto } = await abrir(nav, "worker");
   const boton = (n) => page.getByRole("button", { name: n, exact: true });
   const ir = async (ruta) => { await page.goto(ruta); await page.waitForLoadState("networkidle"); await page.waitForTimeout(1800); };
   const pestana = async (t) => {
@@ -291,6 +291,43 @@ async function ingresoEncendido(contexto) {
   await page.waitForTimeout(6000);
   await guardarTexto(page, "39-volvio-la-senal");
   await foto(page, C, "39-volvio-la-conexion", { marca: page.getByText(/^Listo: .* quedó reportado/).first() });
+
+  // Se cortó internet al confirmar y se CERRÓ la página: al volver a abrir el
+  // espacio, «Tenés un reporte sin mandar» sale arriba de todo del formulario.
+  // Se captura y se descarta, para no cambiar lo que muestran las capturas de
+  // Indicadores (GON-02-PC1 sigue «No realizado»).
+  await ir("/montajes");
+  await fila("GON-02-PC1").locator("button.mj-btn").click();
+  await page.waitForTimeout(1800);
+  await page.getByRole("button", { name: "Registrar el montaje de nuevo" }).click();
+  await page.waitForTimeout(1800);
+  await boton("Lo monté").click();
+  await page.locator('input[type="file"]').first().setInputFiles(FOTO);
+  await page.waitForTimeout(1000);
+  const nombre4 = page.getByPlaceholder(/Quién reporta/i).first();
+  if (await nombre4.count()) await nombre4.fill("Marta Prueba");
+  await contexto.setOffline(true);
+  await boton("Confirmar").click();
+  await page.waitForTimeout(2000);
+  await page.close();
+  await contexto.setOffline(false);
+  page = await contexto.newPage();
+  page.setDefaultTimeout(20_000);
+  await ir("/montajes");
+  await fila("GON-02-PC1").locator("button.mj-btn").click();
+  await page.waitForTimeout(1800);
+  await page.getByRole("button", { name: "Registrar el montaje de nuevo" }).click();
+  await page.waitForTimeout(2000);
+  const sinMandar = page.getByText("Tenés un reporte sin mandar", { exact: true });
+  const cajaSinMandar = sinMandar.locator("xpath=ancestor::*[.//button[contains(., 'Mandar ahora')]][1]");
+  await foto(page, C, "39b-reporte-sin-mandar", {
+    recorte: [page.getByText(/GON-02-PC1$/).first(), cajaSinMandar], margen: 24,
+    marca: boton("Mandar ahora"),
+  });
+  await guardarTexto(page, "39b-reporte-sin-mandar");
+  await boton("Descartar").click();
+  await page.waitForTimeout(1500);
+  await guardarTexto(page, "39c-descartado");
 
 
   // ── 6. Indicadores ───────────────────────────────────────────────────────
