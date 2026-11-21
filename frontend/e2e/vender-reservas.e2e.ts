@@ -159,3 +159,25 @@ test("la ficha del espacio dice qué pasó al cancelar la reserva", async ({ pag
     .toHaveText("Se canceló la reserva de GON-01·A: esas fechas quedan libres. No salió ningún correo.");
   await expect.poll(async () => (await comercial(request, admin))[`${sede}-GON-01`]?.status ?? "libre").toBe("libre");
 });
+
+test("un contrato ya renovado no sale en «Por vencer» ni ofrece «Renovar» otra vez", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  const sede = sedeUnica("RRE");
+  await plano(request, admin, sede, [gondola(sede, "GON-01", 3), gondola(sede, "GON-02", 7)]);
+  // GON-01 vence en 10 días y ya tiene su renovación; GON-02 vence en 12, sin renovar.
+  await venderEntera(request, admin, sede, `${sede}-GON-01`, { proveedor: "Limpio Hogar", valor: 900_000, hasta: isoDentroDe(10) });
+  await venderEntera(request, admin, sede, `${sede}-GON-01`, { proveedor: "Limpio Hogar", valor: 900_000, desde: isoDentroDe(11), hasta: isoDentroDe(190) });
+  await venderEntera(request, admin, sede, `${sede}-GON-02`, { proveedor: "Aseo Total", valor: 700_000, hasta: isoDentroDe(12) });
+  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
+  await sesionEnElNavegador(page, admin, sede);
+
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+  await page.locator(".btn-pendientes").click();
+  const cajon = page.locator('[role="dialog"]').last();
+  await cajon.locator('button[data-grupo="dias30"]').click();
+  const porVencer = cajon.locator('[data-aviso^="pv-"]');
+  await expect(porVencer).toHaveCount(1);
+  await expect(porVencer).toContainText("GON-02");
+  await expect(cajon.getByRole("button", { name: /^Renovar/ })).toHaveCount(1);
+});

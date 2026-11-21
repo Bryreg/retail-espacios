@@ -286,6 +286,9 @@ interface FaceEntry {
    *  (`proximoLeaseId`, sólo para quien administra, del mapa crudo): «Editar el
    *  próximo contrato» de la ficha abre ESE. */
   proximoLeaseId?: number | null;
+  /** Ya tiene el siguiente contrato firmado (`siguienteFirmado` del mapa
+   *  crudo, los dos roles): no está «Por vencer» ni se renueva otra vez. */
+  siguienteFirmado?: boolean;
 }
 
 /** Vender, cuando el Plano no deja cambiar cómo se vende un mueble: sin el
@@ -329,12 +332,14 @@ function conLaReserva(e: FaceEntry, estado: EstadoPorEspacio, sede: string): Fac
   // Al trabajador le llega sólo la marca (sin fecha, plata ni proveedor): va
   // «Reservado» a secas, y no «Ocupado sin contrato» en Corregir.
   if (suyo?.reservado) return { ...e, status: "reserved", reservado: true };
+  // Ya renovado (o vendido a otro desde que termina): a los dos roles.
+  const conSiguiente = suyo?.siguienteFirmado ? { ...e, siguienteFirmado: true } : e;
   // El contrato que dibuja la fila (sólo le llega a quien administra): como
   // `reservaHasta`, del mapa crudo; la fusión no se lo pega al mueble.
-  if (typeof suyo?.leaseId !== "number") return e;
+  if (typeof suyo?.leaseId !== "number") return conSiguiente;
   return typeof suyo.proximoLeaseId === "number"
-    ? { ...e, leaseId: suyo.leaseId, proximoLeaseId: suyo.proximoLeaseId }
-    : { ...e, leaseId: suyo.leaseId };
+    ? { ...conSiguiente, leaseId: suyo.leaseId, proximoLeaseId: suyo.proximoLeaseId }
+    : { ...conSiguiente, leaseId: suyo.leaseId };
 }
 
 const EMPTY_FACE: FaceData = {
@@ -385,6 +390,8 @@ const DIAS_PARA_RENOVAR = 60;
 function renovable(entry: FaceEntry): boolean {
   // Una reserva no se renueva: se confirma o se cancela («Reservas»).
   if (entry.reservaHasta || !entry.supplierName.trim() || !entry.endDate) return false;
+  // Ya tiene el siguiente firmado: renovarlo otra vez chocaría con él.
+  if (entry.siguienteFirmado) return false;
   const dias = daysUntil(entry.endDate);
   return dias !== null && dias <= DIAS_PARA_RENOVAR;
 }
@@ -592,7 +599,7 @@ type DisplayStatus =
  *  but has not started yet. Without it, booking a December end-cap in August
  *  painted the space occupied for four months — the plan said "taken" while
  *  the backend would happily have sold those months to someone else. */
-function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: string }): DisplayStatus {
+function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: string; siguienteFirmado?: boolean }): DisplayStatus {
   if (f.status === "free")        return "free";
   if (f.status === "reserved")    return "reserved";
   if (f.status === "maintenance") return "maintenance";
@@ -606,6 +613,11 @@ function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: st
   // which already counted its money as current revenue, and polluted the
   // very alert meant to surface spaces occupied without paperwork.
   if (!f.endDate)                 return "active";
+  // Ya tiene el siguiente contrato firmado (`conLaReserva`): no está «Por
+  // vencer» —ni en Pendientes, ni en el Inicio, ni en el chip— y no se ofrece
+  // «Renovar» otra vez. Antes un contrato ya renovado seguía ahí con «Renovar»
+  // (recorrido de los manuales, 2026-11-21).
+  if (f.siguienteFirmado)         return "active";
   return daysUntil(f.endDate) <= 30 ? "expiring" : "active";
 }
 
@@ -7870,7 +7882,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const montajesMes = montajesDelMes(delMes.map((t) => ({ desde: t.entry.startDate, estado: estadoDeMontajeDe(t.entry) })), hoyIso);
   const alMesDe = (x: FaceEntry) => (isAdmin ? enLaUnidad(x.negotiatedValue, x.startDate, x.endDate, "mes") : 0);
   const vence90 = venceEn(kpis.todas.filter((t) => t.fase === "vigente").map((t) => ({
-    codigo: codigoVisible(t.entry), hasta: t.entry.endDate, alMes: alMesDe(t.entry), renovado: !!t.entry.proximoLeaseId,
+    codigo: codigoVisible(t.entry), hasta: t.entry.endDate, alMes: alMesDe(t.entry), renovado: !!t.entry.siguienteFirmado,
   })), hoyIso, 90);
   const ct = isAdmin ? canonContraTarifa(kpis.vigentes.map((x) => ({
     alMes: alMesDe(x), tarifa: tarifaDeLaFila(referenceRates, sede, x).valor ?? 0,
@@ -8060,7 +8072,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         boton: botonDe("Ver ficha"), onClick: () => revisar(e.fixture, e.face) });
     }
     for (const e of kpis.expiring) {
-      if (e.proximoLeaseId) continue;
+      if (e.siguienteFirmado) continue;
       accion({ tipo: "renovar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Renovación pendiente", corto: "Renovación pendiente",
         detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days,
         plazo: `${diaCorto(e.endDate)} · ${e.days} día${e.days === 1 ? "" : "s"}`, boton: botonDe("Gestionar renovación"), onClick: () => revisar(e.fixture, e.face) });
@@ -8126,7 +8138,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       .map((t) => ({ t, dias: enDias(t.entry.endDate) }))
       .filter((x) => x.dias >= 0 && x.dias <= 90)
       .sort((a, b) => a.dias - b.dias);
-    const sinRenovar = (max: number) => vigentesQueVencen.filter((x) => x.dias <= max && !x.t.entry.proximoLeaseId);
+    const sinRenovar = (max: number) => vigentesQueVencen.filter((x) => x.dias <= max && !x.t.entry.siguienteFirmado);
     const cuentaVence = (max: number) => ({ contratos: sinRenovar(max).length, alMes: isAdmin ? sinRenovar(max).reduce((s, x) => s + alMesDe(x.t.entry), 0) : null });
 
     // Las caras enteras sin contrato hoy y el primer día de los próximos tres meses.
@@ -8199,7 +8211,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     const ctS = isAdmin ? canonContraTarifa(filas.filter((x) => x.negotiatedValue > 0).map((x) => ({
       alMes: alMesDe(x), tarifa: tarifaDeLaFila(referenceRates, s, x).valor ?? 0,
     }))) : null;
-    const vS = venceEn(filas.map((x) => ({ codigo: x.code, hasta: x.endDate, alMes: alMesDe(x), renovado: !!x.proximoLeaseId })), hoyIso, 90);
+    const vS = venceEn(filas.map((x) => ({ codigo: x.code, hasta: x.endDate, alMes: alMesDe(x), renovado: !!x.siguienteFirmado })), hoyIso, 90);
     return {
       sede: s, canonHoy: isAdmin && ser ? ser[ser.length - 1] : null,
       serie: isAdmin && ser ? ser.slice(-12) : null, variacion: isAdmin ? v?.pct ?? null : null,
@@ -8520,7 +8532,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 ocupacion: { pct: kpis.occPct, ocupadas: kpis.occupied, total: kpis.total, meta: meta.ocupacion },
                 vencen: tableroB.vigentesQueVencen.map(({ t }) => ({
                   clave: `${t.entry.fixture.id}-${t.entry.face}`, codigo: codigoVisible(t.entry), proveedor: t.entry.supplierName,
-                  hasta: t.entry.endDate, alMes: isAdmin ? alMesDe(t.entry) : null, renovado: !!t.entry.proximoLeaseId,
+                  hasta: t.entry.endDate, alMes: isAdmin ? alMesDe(t.entry) : null, renovado: !!t.entry.siguienteFirmado,
                 })),
                 montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda, verificados: montajesMes.porEstado.verificado },
                 acciones: tableroB.acciones, pendientes: attentionCount, brecha: tableroB.brecha, tarifas: tableroB.tarifas, embudo,

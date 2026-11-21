@@ -80,6 +80,9 @@ test("«Pendientes» lleva el mismo número en Contratos que en el Inicio, entra
 
   const cuenta = page.locator(".btn-pendientes .cuenta");
   await page.goto("/");
+  // La cuenta crece mientras bajan las listas (vencimientos, planometrías…):
+  // se lee cuando ya bajó todo.
+  await page.waitForLoadState("networkidle");
   await expect(cuenta).toHaveText(/^\d+$/);
   const enElInicio = (await cuenta.innerText()).trim();
   expect(Number(enElInicio)).toBeGreaterThan(0);

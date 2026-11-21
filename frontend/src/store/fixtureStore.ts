@@ -95,7 +95,8 @@ function mismoMapa(a: EstadoPorEspacio, b: EstadoPorEspacio): boolean {
         // Otro contrato en el mismo espacio con los mismos datos: sin esto
         // el mapa crudo se quedaría con el `leaseId` del que ya no está.
         (x.leaseId ?? null) !== (y.leaseId ?? null) ||
-        (x.proximoLeaseId ?? null) !== (y.proximoLeaseId ?? null)) return false;
+        (x.proximoLeaseId ?? null) !== (y.proximoLeaseId ?? null) ||
+        !!x.siguienteFirmado !== !!y.siguienteFirmado) return false;
   }
   return true;
 }

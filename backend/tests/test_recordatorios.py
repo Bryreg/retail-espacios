@@ -240,3 +240,25 @@ def test_el_aviso_dice_las_fechas_como_la_app(client, db, rem, monkeypatch):
     assert c.start_date.strftime("%d/%m/%Y") in html[0]
     assert c.end_date.strftime("%d/%m/%Y") in html[0]
     assert c.end_date.isoformat() not in html[0]
+
+
+# ─── Lo que ya tiene su renovación ───────────────────────────────────────────
+
+def test_un_contrato_ya_renovado_no_se_avisa(client, db, rem, correos):
+    """El correo dice «usá Renovar»: a un contrato que ya tiene el siguiente
+    firmado en el mismo espacio lo invitaba a renovarse dos veces (recorrido de
+    los manuales, 2026-11-21). Es la regla del «Por vencer» de la pantalla
+    (`siguienteFirmado` de `GET /spaces/comercial`)."""
+    from app.models.models import SpaceLease
+    _con_contactos(db)
+    viejo = _contrato(db, dias=20)
+    renovado = _contrato(db, dias=10)
+    db.add(SpaceLease(space_id=renovado.space_id, supplier_id=renovado.supplier_id,
+                      start_date=renovado.end_date + timedelta(days=1),
+                      end_date=renovado.end_date + timedelta(days=180),
+                      monthly_rent=800_000, is_active=True))
+    db.commit()
+
+    assert rem.check_expiring_leases(db) == 1, "se avisó el renovado"
+    assert viejo.space.code in correos[0][1]
+    assert [n.lease_id for n in db.query(_log()).all()] == [viejo.id]
