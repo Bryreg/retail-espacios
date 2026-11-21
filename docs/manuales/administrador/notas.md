@@ -140,7 +140,9 @@ Nuevos (verificados el 20/11/2026):
 16. **(Herramientas, no la app) La siembra falla de noche.** Entre las 19:00 y las 24:00 de Colombia
     (00:00–05:00 UTC), `sembrar.py` cae al publicar el planograma de `GON-12` («'NoneType' object is not
     subscriptable»): toma `date.today()` del sistema (UTC, ya es mañana) y el servidor trabaja con el día
-    de Colombia. Se corrió con `TZ=America/Bogota` delante de `levantar.sh` y de `node capturas.cjs`.
+    de Colombia. **Arreglado:** `sembrar.py` y `sembrar-duenio.py` toman el día de Colombia
+    (`ZoneInfo("America/Bogota")`). Por las dudas, los guiones se siguen corriendo con
+    `TZ=America/Bogota` delante de `node capturas.cjs`.
 
 Nuevos (verificados el 20/11/2026, noche, con #123):
 
