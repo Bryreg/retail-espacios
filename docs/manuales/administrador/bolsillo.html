@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>RECABRA · Hoja de bolsillo · Administrador</title>
+<link rel="stylesheet" href="../herramientas/estilo.css">
+<style>
+  .tira { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 3mm; margin: 0 0 3.5mm; align-items: end; }
+  .tira figure { margin: 0; text-align: center; }
+  .tira img { max-height: 34mm; width: auto; max-width: 100%; margin: 0 auto; }
+  .tira figcaption { font-weight: 650; color: var(--tinta); font-size: 8.8pt; }
+  .bolsillo { font-size: 9.4pt; }
+  .bolsillo li { margin-bottom: 1.1mm; }
+  .bolsillo h2 { margin-bottom: 1.5mm; }
+  .bolsillo ol, .bolsillo ul { margin-bottom: 3mm; }
+</style>
+</head>
+<body class="bolsillo">
+  <h1>RECABRA · Administrador de la sede</h1>
+  <p class="sub">Hoja de bolsillo · versión {{VERSION}} · {{FECHA}} · en el computador · los montos van completos («$ 1.800.000»)</p>
+
+  <div class="tira">
+    <figure><img src="../img/administrador/34-entera-al-mes.jpg" alt=""><figcaption>1. Vender: el precio arranca «Al mes» con la tarifa · total = tarifa × meses</figcaption></figure>
+    <figure><img src="../img/administrador/18-reserva-caduca.jpg" alt=""><figcaption>2. Pendientes › Hoy: «Confirmar» o «Cancelar»</figcaption></figure>
+    <figure><img src="../img/administrador/93-no-coincide.jpg" alt=""><figcaption>3. Montajes: «Coincide» o «No coincide» + nota</figcaption></figure>
+  </div>
+
+  <div class="columnas">
+    <div>
+      <h2 class="si">Todos los días</h2>
+      <ol>
+        <li>Mirá el <b>Inicio</b>: las cuatro tarjetas y <b>«Pendientes de hoy»</b>.</li>
+        <li>Abrí <b>Pendientes › Hoy</b>: reservas que caducan (<b>«Confirmar»</b> / <b>«Cancelar»</b>), <b>ventas por cargar</b>, <b>falta planometría</b>, <b>falta distribuir · ya corre</b>, lo que no se pudo montar.</li>
+        <li><b>Pendientes › 30 días</b>: <b>«Renovar»</b> lo que vence (copia los meses: 1 jun–30 nov → 1 dic–31 may). Leé la frase y el total antes de guardar.</li>
+        <li><b>Montajes › «Montado, sin verificar»</b>: compará la foto con la planometría y guardá la verificación.</li>
+        <li>Cuando un proveedor compra: <b>Contratos</b> › fechas › espacio › proveedor › correo › <b>«Guardar contrato»</b>. Después, la <b>planometría</b> en la ficha (o <b>distribuir</b> la cara si es un %).</li>
+        <li>Una vez por semana: <b>Pendientes › Corregir</b> y <b>Plano › Caras</b>.</li>
+      </ol>
+      <h2 class="ayuda">Dónde está cada cosa</h2>
+      <ul>
+        <li><b>La ficha de un espacio:</b> Indicadores › Contratos › clic en la fila. Ahí: editar, renovar, planometría, cancelar.</li>
+        <li><b>Lo que ya terminó:</b> Indicadores › <b>Historial</b> › «Exportar a Excel».</li>
+        <li><b>Cualquier función:</b> <b>Ctrl K</b> y escribila como la decís vos.</li>
+        <li><b>Muebles, códigos, planogramas:</b> Plano de la sede (editar sólo en el 2D, modo <b>«Editar»</b>).</li>
+      </ul>
+    </div>
+    <div>
+      <h2 class="no">Nunca</h2>
+      <ul>
+        <li>Nunca escribas en <b>«Al mes»</b> un número que es el total del contrato: tocá <b>«Total»</b>.</li>
+        <li>Nunca canceles un contrato sin hablar con el área comercial: <b>no se deshace</b>.</li>
+        <li>Nunca marques «Coincide» sin mirar la foto.</li>
+        <li>Nunca abras Contratos ni Indicadores con el proveedor mirando (tienen precios): mostrá el 3D con «Presentar».</li>
+        <li>Nunca cambies las <b>Tarifas</b> ni <b>Renumerar</b> por tu cuenta: cambian para todos.</li>
+        <li>Nunca cierres la pestaña con <b>«Rechazado por el servidor»</b>: primero «Deshacer».</li>
+        <li>Nunca vendas ni edites con la barra en <b>«Sin conexión»</b>.</li>
+        <li>Nunca dejes la sesión abierta en un computador compartido.</li>
+      </ul>
+      <h2 class="ayuda">Si pasa algo</h2>
+      <ul>
+        <li><b>«… está tomado del … al …: ajustá las fechas.»</b> Otras fechas, otro espacio u otro entrepaño.</li>
+        <li><b>A quien monta no le llegó nada:</b> falta la planometría o la distribución.</li>
+        <li><b>El proveedor no recibió el correo:</b> revisá el correo en la ficha y editá el contrato (se reenvía).</li>
+        <li><b>«… no se pudo mostrar»:</b> «Recargar». Si se repite, «Detalle para soporte».</li>
+      </ul>
+      <h2 class="ayuda">A quién avisar</h2>
+      <p><b>Avisale al dueño de la cuenta</b>: gente nueva en el equipo, roles, permisos, la suscripción. <b>Escribile a soporte de RECABRA</b>: no sale ningún correo, el correo de prueba falla, una pantalla que se rompe siempre.</p>
+    </div>
+  </div>
+</body>
+</html>

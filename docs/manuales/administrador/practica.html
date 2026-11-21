@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>RECABRA · Ejercicios y evaluación · Administrador</title>
+<link rel="stylesheet" href="../herramientas/estilo.css">
+</head>
+<body class="continuo">
+
+<section class="portada" style="height:auto;break-after:page">
+  <div class="marca-app">RECABRA</div>
+  <div style="margin:14mm 0">
+    <div class="tipo">Ejercicios de práctica y evaluación</div>
+    <h1>Administrador<br>de la sede</h1>
+    <p class="para">Cinco casos para practicar en el computador y una evaluación de diez preguntas. Se hacen después de leer el manual (capítulos 1 a 6 y 8), con quien te capacita al lado.</p>
+  </div>
+  <dl class="ficha">
+    <dt>Versión</dt><dd>{{VERSION}} · {{FECHA}}</dd>
+    <dt>Nombre</dt><dd><div class="linea-respuesta" style="height:6mm"></div></dd>
+    <dt>Fecha</dt><dd><div class="linea-respuesta" style="height:6mm"></div></dd>
+    <dt>Datos de prueba</dt><dd>Los casos usan la sede de práctica que prepara quien te capacita (la sede «CENTRO» del manual). Proveedores, marcas y correos son inventados: ningún correo le llega a un proveedor de verdad.</dd>
+    <dt>Fechas</dt><dd>«El mes que viene» es el mes siguiente al de la práctica. Los ejemplos están hechos el 20 de noviembre: el mes que viene es diciembre.</dd>
+  </dl>
+</section>
+
+<section class="capitulo">
+  <h1><span class="num">1</span>Ejercicios de práctica</h1>
+  <p class="entrada">Hacé cada caso sin mirar el manual. Si te trabás, mirá el capítulo que dice entre paréntesis y seguí. Antes de guardar, leé siempre la frase de abajo y el total. Al final, marcá cómo te fue.</p>
+
+  <div class="ejercicio">
+    <span class="tiempo">10 min</span>
+    <h3>Caso 1 · Vender una punta entera a 3 meses</h3>
+    <div class="datos"><b>Datos:</b> espacio <code>PUN-07</code> (punta de góndola, libre) · proveedor <b>Café Montaña</b> · marca <b>Café Montaña Tostado</b> · correo <code>ventas@cafemontana.example</code> · del 1 del mes que viene al último día del tercer mes (1 dic – 28 feb) · precio de lista (la tarifa: $ 600.000 al mes).</div>
+    <p><b>Tu tarea:</b> en Contratos, elegí las fechas, tocá <code>PUN-07</code>, dejá el precio como viene, completá proveedor, marca y correo, y guardá el contrato. (Manual, 3.1 a 3.4)</p>
+    <p><b>Te salió bien si:</b> antes de guardar viste <span class="texto-pantalla">Al mes</span> marcado y <span class="texto-pantalla">tarifa al mes × 3 meses = $ 1.800.000</span>; la frase dice <span class="texto-pantalla">Café Montaña contrata PUN-07 del 1 dic 2026 al 28 feb 2027 por $ 1.800.000 en total.</span>; y al guardar sale <span class="texto-pantalla">Contrato guardado</span>, con los avisos a Comercial y al Proveedor.</p>
+    <p><span class="casilla"></span>Lo hice solo <span class="casilla" style="margin-left:6mm"></span>Necesité ayuda</p>
+  </div>
+
+  <div class="ejercicio">
+    <span class="tiempo">10 min</span>
+    <h3>Caso 2 · Vender el 25 % de una cara</h3>
+    <div class="datos"><b>Datos:</b> cara <code>GON-04·B</code> (góndola doble, cara B, se vende por porcentaje, queda 100 %) · proveedor <b>Snacks Norte</b> · marca <b>Papitas Norte</b> · <b>25 %</b> · <span class="boton">3 meses</span> desde hoy · tarifa de la cara: $ 450.000 al mes.</div>
+    <p><b>Tu tarea:</b> vendé el 25 % de la cara B, guardá el contrato y buscá en Pendientes qué falta para que le llegue el aviso a quien monta. (Manual, 3.6 y 2.2)</p>
+    <p><b>Te salió bien si:</b> el precio quedó en $ 112.500 al mes y <span class="texto-pantalla">tarifa al mes × 3 meses = $ 337.500</span>; la barra dice <span class="texto-pantalla">75 % sigue libre</span>; y en Pendientes aparece <code>GON-04 · B</code> en <span class="texto-pantalla">Falta distribuir</span>.</p>
+    <p><span class="casilla"></span>Lo hice solo <span class="casilla" style="margin-left:6mm"></span>Necesité ayuda</p>
+  </div>
+
+  <div class="ejercicio">
+    <span class="tiempo">12 min</span>
+    <h3>Caso 3 · Reservar y confirmar</h3>
+    <div class="datos"><b>Datos:</b> espacio <code>PUN-08</code> (punta libre) · proveedor <b>Lácteos Andinos</b> · marca <b>Yogur Andino</b> · correo <code>comercial@lacteosandinos.example</code> · del 1 del mes que viene, 2 meses · reservar hasta dentro de 7 días.</div>
+    <p><b>Tu tarea:</b> armá el contrato y, en vez de guardarlo, reservalo con <span class="boton">Reservar hasta…</span>. Abrí la ficha de <code>PUN-08</code> y mirá cómo se ve. Fijate si aparece en Montajes. Después, el proveedor firmó: confirmá la reserva desde la ficha. (Manual, 3.8 y 2.4)</p>
+    <p><b>Te salió bien si:</b> al reservar dice <span class="texto-pantalla">Todavía no es un contrato: no salió ningún correo. Los avisos salen cuando se confirma.</span>; la ficha dice <span class="texto-pantalla">Reservado</span> y <code>PUN-08</code> no está en Montajes; al confirmar sale <span class="texto-pantalla">PUN-08 pasó a contrato. Salió el aviso al área comercial y al proveedor.</span></p>
+    <p><span class="casilla"></span>Lo hice solo <span class="casilla" style="margin-left:6mm"></span>Necesité ayuda</p>
+  </div>
+
+  <div class="ejercicio">
+    <span class="tiempo">8 min</span>
+    <h3>Caso 4 · Renovar lo que vence este mes</h3>
+    <div class="datos"><b>Datos:</b> <code>PUN-01</code> · <b>Limpio Hogar</b> · del 1 jun al 30 nov (6 meses) · $ 600.000 al mes. Sale en Pendientes › 30 días › <span class="texto-pantalla">Por vencer en 30 días</span>.</div>
+    <p><b>Tu tarea:</b> renovalo por el mismo plazo desde Pendientes. Antes de guardar, leé las fechas, la frase y el total. (Manual, 2.5)</p>
+    <p><b>Te salió bien si:</b> la renovación propone <b>del 1 dic al 31 may</b> sin que toques las fechas, la frase dice <span class="texto-pantalla">Limpio Hogar contrata PUN-01 del 1 dic 2026 al 31 may 2027 por $ 3.600.000 en total.</span> y se guarda el contrato. <code>PUN-01</code> sale de <span class="texto-pantalla">Por vencer en 30 días</span>.</p>
+    <p><span class="casilla"></span>Lo hice solo <span class="casilla" style="margin-left:6mm"></span>Necesité ayuda</p>
+  </div>
+
+  <div class="ejercicio">
+    <span class="tiempo">8 min</span>
+    <h3>Caso 5 · Un montaje que no coincide</h3>
+    <div class="datos"><b>Datos:</b> <code>PUN-04</code> · <b>Snacks Norte</b> · Papitas Norte · reportado <span class="texto-pantalla">montado, sin verificar</span>. En la foto falta el cabezote con el logo. Después, <code>PUN-05</code> (Galletas Sol), que sí quedó bien.</div>
+    <p><b>Tu tarea:</b> en Montajes, filtrá <span class="texto-pantalla">Montado, sin verificar</span>, verificá <code>PUN-04</code> como <span class="boton">No coincide</span> con la nota «Falta el cabezote con el logo arriba de la punta.», mandándole el aviso de nuevo a quien monta. Seguí con el siguiente y verificalo como <span class="boton">Coincide</span>. (Manual, 6.2)</p>
+    <p><b>Te salió bien si:</b> ves <span class="texto-pantalla">Quedó verificado: no coincide. El aviso de montaje salió de nuevo con lo que hay que corregir.</span>; con <span class="boton">Verificar el siguiente</span> llegaste a <code>PUN-05</code>; y en la lista <code>PUN-04</code> dice <span class="texto-pantalla">Verificado: no coincide</span> y <code>PUN-05</code> <span class="texto-pantalla">Verificado: coincide</span>.</p>
+    <p><span class="casilla"></span>Lo hice solo <span class="casilla" style="margin-left:6mm"></span>Necesité ayuda</p>
+  </div>
+</section>
+
+<section class="capitulo" style="break-before:page">
+  <h1><span class="num">2</span>Evaluación</h1>
+  <p class="entrada">Diez preguntas. Escribí la respuesta corta o marcá la opción. Para aprobar: 8 de 10.</p>
+  <ol class="preguntas">
+    <li>Para vender un espacio en Contratos, ¿qué elegís primero?<div class="linea-respuesta"></div></li>
+    <li>Tocás una punta con tarifa de $ 600.000 para un contrato de 3 meses. ¿En qué opción arranca <span class="texto-pantalla">El precio es</span> y cuál es el total?<div class="linea-respuesta"></div></li>
+    <li>El proveedor te dice «son $ 1.500.000 por los tres meses». ¿Qué hacés con el precio?
+      <ul class="opciones"><li><span class="casilla"></span>a) Lo escribo en «Al mes».</li><li><span class="casilla"></span>b) Toco «Total» y escribo 1.500.000.</li><li><span class="casilla"></span>c) Lo divido por tres y lo escribo en «Total».</li></ul></li>
+    <li>Guardaste un contrato y a quien monta no le llegó nada. ¿Qué falta?<div class="linea-respuesta"></div></li>
+    <li>Reservaste un espacio hasta el viernes. ¿Le llega algún correo al proveedor? ¿Aparece en Montajes?
+      <ul class="opciones"><li><span class="casilla"></span>a) Sí y sí.</li><li><span class="casilla"></span>b) No y no: todo eso pasa cuando la confirmás.</li><li><span class="casilla"></span>c) Le llega al proveedor, pero no aparece en Montajes.</li></ul></li>
+    <li>Renovás un contrato que va del 1 jun al 30 nov. ¿Qué fechas te propone RECABRA?<div class="linea-respuesta"></div></li>
+    <li>¿Se puede deshacer <span class="texto-pantalla">Sí, cancelar</span> en un contrato?
+      <ul class="opciones"><li><span class="casilla"></span>a) Sí, desde el Historial.</li><li><span class="casilla"></span>b) No: queda «Cancelado» y hay que volver a venderlo.</li></ul></li>
+    <li>Al verificar un montaje que no coincide, ¿qué escribís y qué casilla dejás marcada?<div class="linea-respuesta"></div><div class="linea-respuesta"></div></li>
+    <li>¿En qué vista y en qué modo del Plano de la sede se agrega o se borra un mueble?<div class="linea-respuesta"></div></li>
+    <li>Una persona nueva de la tienda tiene que entrar a RECABRA. ¿Qué hacés?
+      <ul class="opciones"><li><span class="casilla"></span>a) Le presto mi usuario hasta que tenga el suyo.</li><li><span class="casilla"></span>b) Le aviso al dueño de la cuenta, que es quien invita.</li><li><span class="casilla"></span>c) Le escribo a soporte de RECABRA.</li></ul></li>
+  </ol>
+  <p style="margin-top:6mm">Resultado: <span style="display:inline-block;width:20mm;border-bottom:1px solid var(--tinta-3)"></span> de 10 · Firma de quien capacita: <span style="display:inline-block;width:60mm;border-bottom:1px solid var(--tinta-3)"></span></p>
+</section>
+
+</body>
+</html>
