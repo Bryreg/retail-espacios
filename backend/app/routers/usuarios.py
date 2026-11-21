@@ -21,6 +21,7 @@ from app.auth import invalidar_cache_membresia, require_admin, sub_y_email_de_la
 from app.clientes import Cliente, buscar, cliente_del_pedido
 from app.database import get_db
 from app.services.bitacora import anotar
+from app.services.cola_de_correos import enviar_ya_y_anotar
 from sqlalchemy.orm import Session
 from app.models.identidad import ROLES_MEMBRESIA, Invitacion, Membresia, Usuario
 from app.services.mailer import app_base_url, html_shell, send_mail_to_bg
@@ -79,6 +80,9 @@ class InvitarIn(BaseModel):
 class InvitarOut(BaseModel):
     ok: bool
     expira_en: datetime
+    # Si el correo salió ya. Si no, quedó en la cola de correos y el
+    # mantenimiento lo reintenta: la pantalla no dice «enviada» sin serlo.
+    correo_enviado: bool = False
 
 
 class MiembroOut(BaseModel):
@@ -193,17 +197,26 @@ def invitar_usuario(
                 f'invitación no la va a encontrar. El enlace vence en {INVITACION_TTL_DIAS} días.'
             ),
         )
-        send_mail_to_bg([email], f"Invitación a {cliente.nombre} — RECABRA", html)
+        # Por la cola de correos (como los avisos): se anota antes de salir y,
+        # si el proveedor de correo falla, el mantenimiento lo reintenta. Antes
+        # salía directo y una falla pasajera perdía la invitación en silencio
+        # mientras la pantalla decía «Invitación enviada».
+        correo_enviado = enviar_ya_y_anotar(
+            db, send_mail_to_bg, [email], f"Invitación a {cliente.nombre} — RECABRA", html,
+        )
 
-        # La bitácora del supermercado (auditoría P2-14): quién invitó y con qué
-        # rol. El correo del invitado no va (es dato de un tercero); el de quien
-        # invita lo agrega `anotar`. La invitación ya está en el registro: esta
-        # línea va en la base del cliente, en su propio commit.
-        # El rol en palabras, como en el correo (decía «rol owner»).
+        # La bitácora del supermercado (auditoría P2-14): a quién se invitó y
+        # con qué rol, en palabras («invitada@x: rol Trabajador»); el correo de
+        # quien invita lo agrega `anotar` al final. El del invitado va primero
+        # (2026-11-21): sin él la línea no decía a quién —y con la clave de la
+        # instalación no decía ningún correo—. La lee sólo quien ya ve Equipo,
+        # y la supresión de esa persona lo anonimiza como cualquier otro correo.
+        # La invitación ya está en el registro: esta línea va en la base del
+        # cliente, en su propio commit.
         anotar(db, request, rol, "usuario.invitado", entidad="usuario",
-               detalle=f"rol {ROL_EN_EL_CORREO[rol_nuevo]}")
+               detalle=f"{email}: rol {ROL_EN_EL_CORREO[rol_nuevo]}")
         db.commit()
-        return InvitarOut(ok=True, expira_en=expira)
+        return InvitarOut(ok=True, expira_en=expira, correo_enviado=correo_enviado)
     finally:
         reg.close()
 
@@ -321,6 +334,10 @@ def patch_usuario(
                 )
 
         rol_antes = membresia.rol
+        # A quién, para la bitácora: «luis@x: Trabajador → Administrador». Sólo
+        # el correo, nunca el nombre: la supresión de la persona lo anonimiza en
+        # cualquier columna de texto (`services/titulares.py`).
+        afectado = reg.query(Usuario.email).filter(Usuario.id == usuario_id).scalar() or f"persona #{usuario_id}"
         if payload.activo is not None:
             membresia.activo = bool(payload.activo)
         if rol_nuevo is not None:
@@ -331,13 +348,14 @@ def patch_usuario(
         # y vuelve a entrar con el que le toca. Sin esto, un administrador
         # pasado a trabajador seguía viendo la plata hasta que el token venciera.
         invalidar_cache_membresia(usuario_id, cliente.slug)
-        # La bitácora del supermercado (auditoría P2-14).
+        # La bitácora del supermercado (auditoría P2-14): a quién y qué cambió;
+        # quién lo hizo lo agrega `anotar` al final.
         if payload.activo is not None:
             anotar(db, request, rol, "usuario.cambio", entidad="usuario", entidad_id=usuario_id,
-                   detalle="activado" if membresia.activo else "desactivado")
+                   detalle=f"{afectado}: {'activado' if membresia.activo else 'desactivado'}")
         if rol_nuevo is not None:
             anotar(db, request, rol, "usuario.rol", entidad="usuario", entidad_id=usuario_id,
-                   detalle=f"{ROL_EN_EL_CORREO[rol_antes]} → {ROL_EN_EL_CORREO[rol_nuevo]}")
+                   detalle=f"{afectado}: {ROL_EN_EL_CORREO[rol_antes]} → {ROL_EN_EL_CORREO[rol_nuevo]}")
         db.commit()
         return {"ok": True}
     finally:

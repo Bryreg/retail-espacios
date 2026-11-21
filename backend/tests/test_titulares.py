@@ -348,6 +348,10 @@ def test_descargar_mis_datos(client, monkeypatch):
     assert cuerpo["cuenta"]["correo"] == ANA
     acme = cuerpo["supermercados"]["acme"]
     assert any(l["accion"] == "proveedor.alta" for l in acme["acciones_en_la_bitacora"])
+    # La línea de su invitación la nombra («ana…: rol Administrador · duena…»),
+    # pero no es algo que hizo ella (ni la IP es la suya): sale como mención.
+    assert not any(l["accion"] == "usuario.invitado" for l in acme["acciones_en_la_bitacora"])
+    assert any(o["tabla"] == "audit_log" for o in acme["ocurrencias"])
     # El detalle de la bitácora se cuenta, no se copia.
     for o in acme["ocurrencias"]:
         if o["tabla"] == "audit_log":
@@ -355,6 +359,11 @@ def test_descargar_mis_datos(client, monkeypatch):
     # Sólo los supermercados donde tiene acceso: el del operador no.
     assert set(cuerpo["supermercados"]) == {"acme"}
     assert _bitacora_del_cliente("acme", "titular.descarga")
+    # La invitación sí es una acción de la dueña, que fue quien invitó.
+    r = client.get("/api/auth/mis-datos", headers=e.duena)
+    assert r.status_code == 200, r.text
+    assert any(l["accion"] == "usuario.invitado"
+               for l in r.json()["supermercados"]["acme"]["acciones_en_la_bitacora"])
 
 
 def test_mis_datos_pide_una_cuenta_personal(client, admin):
