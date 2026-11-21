@@ -124,6 +124,13 @@ export function faltaParaRevisar(e: {
   return null;
 }
 
+/** Qué pasó al cancelar una reserva (2026-11-21): la fila (o, en la ficha, el
+ *  renglón «Reservado hasta …») desaparece y no quedaba rastro. Cancelar no
+ *  manda correos (`DELETE /reservas/{id}`): se dice, para que nadie espere uno. */
+export function textoDeLaCancelacion(codigo: string): string {
+  return `Se canceló la reserva de ${codigo}: esas fechas quedan libres. No salió ningún correo.`;
+}
+
 /** Qué pasó al confirmar una reserva (2026-11-20): pasa a contrato y salen los
  *  avisos de un contrato nuevo, los mismos que al vender (`_avisar` del
  *  servidor). La pantalla no decía nada —la fila sólo desaparecía— y, en el

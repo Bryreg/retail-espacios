@@ -11,7 +11,7 @@ import { isDoubleGondola } from "../../types/espacio";
 import { codigoVisibleDe, partirCodigo } from "../../utils/partes";
 import { useFixtureStore } from "../../store/fixtureStore";
 import { EncabezadoDeSeccion, Mira } from "./piezas";
-import { textoDeLaConfirmacion } from "../../utils/supervision";
+import { textoDeLaCancelacion, textoDeLaConfirmacion } from "../../utils/supervision";
 
 /**
  * Dos bloques de «Para revisar» que nacieron con el rediseño de Vender (PR 1,
@@ -309,7 +309,8 @@ export function ReservasSinConfirmar({ sede, vivas, onCambio, titulo = "Reservas
   titulo?: string;
   vivas: readonly ReservaDeEspacio[];
   /** Una reserva se confirmó o se canceló: hay que volver a leer la lista y
-   *  el mapa. Al confirmar trae qué pasó con los correos (`aviso`). */
+   *  el mapa. Trae qué pasó (`aviso`): al confirmar, con los correos; al
+   *  cancelar, que se canceló. */
   onCambio: (aviso?: string | null) => void;
 }) {
   if (vivas.length === 0) return null;
@@ -325,7 +326,8 @@ export function ReservasSinConfirmar({ sede, vivas, onCambio, titulo = "Reservas
  *  («Reservado hasta …»), con el mismo camino. */
 export function FilaDeReserva({ r, sede, onCambio }: {
   r: ReservaDeEspacio; sede: string;
-  /** Confirmada (con lo que pasó con los correos) o cancelada. */
+  /** Confirmada (con lo que pasó con los correos) o cancelada (lo dice
+   *  también: la fila se va). */
   onCambio: (aviso?: string | null) => void;
 }) {
   const [enCurso, setEnCurso] = useState<"confirmar" | "cancelar" | null>(null);
@@ -347,7 +349,7 @@ export function FilaDeReserva({ r, sede, onCambio }: {
         onCambio(textoDeLaConfirmacion(cod, hecho.avisos));
       } else {
         await cancelarReserva(r.id);
-        onCambio(null);
+        onCambio(textoDeLaCancelacion(cod));
       }
     } catch (e) {
       setError(describeError(e, que === "confirmar"

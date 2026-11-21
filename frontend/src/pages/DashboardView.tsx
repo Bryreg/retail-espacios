@@ -3296,6 +3296,12 @@ function FixtureDetailCard({
   }, [fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, entry.face]);
   const codigoDeLaCara = fullSpaceCode(fixture.sede || sedeDelMapa, entry.code);
   const reservaViva = isAdmin && entry.reservaHasta ? reservaDe?.(codigoDeLaCara) : undefined;
+  /** Lo que pasó al confirmar o cancelar la reserva DESDE la ficha: la fila
+   *  se va (ya no hay reserva) y el aviso de la lista queda tapado por la
+   *  ficha, así que sólo cambiaba la pastilla a «Contratado» sin decir a
+   *  quiénes salió el aviso (recorrido de los manuales, 2026-11-21). */
+  const [hechoDeLaReserva, setHechoDeLaReserva] = useState<string | null>(null);
+  useEffect(() => { setHechoDeLaReserva(null); }, [codigoDeLaCara]);
   const cobroDeLaCara = isAdmin && hasContract ? cobroDe?.(codigoDeLaCara) : undefined;
   /** La planometría pedida, si es de OTRO contrato que el de la cara (una
    *  parte o una participación): va arriba, aparte. */
@@ -3343,6 +3349,18 @@ function FixtureDetailCard({
       )}
 
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto" }}>
+        {hechoDeLaReserva && (
+          <div role="status" data-aviso-de-la-reserva
+            style={{ display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
+              padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
+              fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
+            <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
+            <span>{hechoDeLaReserva}</span>
+            <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setHechoDeLaReserva(null)}>
+              <X size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          </div>
+        )}
         {/* «Cargar planometría» de «Para revisar»: la del contrato que la
             espera, arriba y a la vista. */}
         {isAdmin && pedidaAparte && (
@@ -3483,7 +3501,8 @@ function FixtureDetailCard({
             {/* La reserva se confirma o se cancela acá mismo, con el precio
                 que se guardó al reservar. */}
             {isAdmin && reservaViva && onReservaCambio && (
-              <FilaDeReserva r={reservaViva} sede={sedeDelMapa} onCambio={onReservaCambio} />
+              <FilaDeReserva r={reservaViva} sede={sedeDelMapa}
+                onCambio={(aviso) => { setHechoDeLaReserva(aviso ?? null); onReservaCambio(aviso); }} />
             )}
             {(entry.startDate || entry.endDate) && <PeriodBox entry={entry} />}
             {isAdmin && (entry.negotiatedValue > 0 || cobroDeLaCara) && (
@@ -6575,13 +6594,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const cuentasDeRevision = useMemo(() => contarPorGrupo(avisos), [avisos]);
   const attentionCount = cuentaDelBadge(cuentasDeRevision);
   /** La cuenta viaja al armazón: la pastilla roja del botón «Pendientes» de
-   *  la barra de arriba (era la de la pestaña «Supervisar»). En Vender no se
-   *  cuenta: mezcla vencimientos, bajo tarifa, reservas y cortes de ventas, y
-   *  la pantalla la mira el proveedor. */
-  const cuentaParaElMenu = modoEfectivo === "supervisar" ? attentionCount : 0;
+   *  la barra de arriba (era la de la pestaña «Supervisar»). En Vender esta
+   *  pantalla NO la manda —no pide todo lo que se cuenta (`pideRevision`) y
+   *  mandaba 0, así que en Contratos salía sin número—: ahí la hace la copia
+   *  que no dibuja (`CuentaDePendientes` en `Dashboard.tsx`), con la misma
+   *  regla que el Inicio. */
+  const mandaLaCuenta = modoEfectivo === "supervisar";
   useEffect(() => {
-    useArmazon.getState().setCuentaPendientes(cuentaParaElMenu);
-  }, [cuentaParaElMenu]);
+    if (mandaLaCuenta) useArmazon.getState().setCuentaPendientes(attentionCount);
+  }, [mandaLaCuenta, attentionCount]);
   const grupoDeRevision: GrupoDeRevision = grupoElegido ?? grupoParaAbrir(cuentasDeRevision);
 
   /** Al primer ingreso del día, si hay algo con fecha límite hoy, la bandeja

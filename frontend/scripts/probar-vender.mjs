@@ -1859,14 +1859,15 @@ console.log("\nvender · rediseño 2026-10: barras, íconos, plata entera y lo q
     // «Falta planometría» sólo se pide en Supervisar y para quien administra.
     assert.match(vista, /const faltaPlanometria = useFaltaPlanometria\(\{ sede, activo: isAdmin && pideRevision \}\);/,
       "«Falta planometría» se pide también en Vender");
-    // La cuenta roja de «Supervisar» mezcla vencimientos, bajo tarifa, reservas
-    // y cortes de ventas: con Vender abierto no se dibuja.
-    // (Rediseño UX 2026-10: la pastilla es la del botón «Pendientes» de la barra
-    // de arriba. Ni se cuenta en Vender ni se dibuja con Contratos abierto.)
-    assert.match(vista, /const cuentaParaElMenu = modoEfectivo === "supervisar" \? attentionCount : 0;/,
-      "la pastilla roja de «Supervisar» se dibuja en Vender");
+    // La pastilla roja es la del botón «Pendientes» de la barra de arriba (rediseño
+    // UX 2026-10) y lleva el MISMO número en todos los módulos, Contratos también
+    // (recorrido de los manuales, 2026-11-21: ahí salía sin número). En Vender esta
+    // pantalla no la manda —no pide todo lo que se cuenta—: la hace la copia que no
+    // dibuja, con la regla del Inicio.
+    assert.match(vista, /const mandaLaCuenta = modoEfectivo === "supervisar";/,
+      "la pantalla en modo Vender manda una cuenta que no es la del Inicio");
     const boton = entre(dashCodigo, "function BotonPendientes(", "\n}\n");
-    assert.match(boton, /const n = modulo === "contratos" \? 0 : cuenta;/, "la pastilla roja se dibuja con Contratos abierto");
+    assert.match(boton, /const n = cuenta;/, "la pastilla roja no lleva el mismo número en Contratos");
     assert.match(boton, /\{n > 0 && <span className="cuenta" aria-label=\{`\$\{n\} para revisar`\}>\{n\}<\/span>\}/, "la pastilla roja se dibuja aunque la cuenta sea cero, o lleva algo más que el número");
     // Las rutas de cada módulo, y nada más.
     const rutas = (f) => [...codigo(f).matchAll(/client\s*\.(get|post|delete|put|patch)(?:<[^>]*>)?\(\s*[`"']([^`"']+)[`"']/g)].map((m) => `${m[1]} ${m[2]}`).sort();

@@ -11,7 +11,7 @@ import { useFixtureStore } from "../../store/fixtureStore";
 import {
   CAMPO_DEL_FORMULARIO, CAMPOS_DEL_PASO, FAMILIAS_DEL_FORMULARIO, NOTA_DE_LA_TIENDA, ORIGENES,
   claveDeNombre, conOrigenCompleto, familiaDe, formularioDe, formularioDesdeModelo, formularioVacio,
-  guardarFicha, pasoDeNumero, pasoDelProblema, problemasDelFormulario, rotuloDeTarifa,
+  guardarFicha, nombreDeEjemplo, pasoDeNumero, pasoDelProblema, problemasDelFormulario, rotuloDeTarifa,
   type FamiliaDeFicha, type FormularioDeFicha, type PasoDelAsistente,
 } from "../../utils/formularioDeFicha";
 import { entrepanosQueEntran, geometriaALaVista, TIPOS_CON_GEOMETRIA } from "../../utils/geometriaDelMueble";
@@ -507,7 +507,7 @@ function PasoNombre({ form, familia, nueva, de, cambiar, numerosA, generales }: 
       <div className="mm-campo-c">
         <label htmlFor="mm-nombre">Nombre</label>
         <input id="mm-nombre" className="mm-campo" value={form.nombre} maxLength={largo.nombre} data-campo="nombre"
-          placeholder="Nevera de la entrada" aria-invalid={de("nombre").length > 0 || undefined}
+          placeholder={nombreDeEjemplo(familia)} aria-invalid={de("nombre").length > 0 || undefined}
           onChange={(e) => cambiar("nombre", e.target.value)} />
         <small>Así aparece en «Mis muebles» y en el plano.</small>
         <Problemas lista={de("nombre")} campo="nombre" />

@@ -521,6 +521,11 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   // «Los contratos se hacen en Contratos» (era «Sede → Vender», nombre viejo: 2026-11-20).
   const vender = panel.indexOf(">Contratos</b>, sobre el");
   assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Los contratos se hacen en Contratos» se dice también de una cara por participación");
+  // «Cómo» de la ficha del mueble › Venta y el aviso de los internos vendidos:
+  // la pantalla es Contratos, no «Vender» (2026-11-21).
+  for (const f of ["src/components/PartesDelMueble.tsx", "src/components/Contrato/ModoVender.tsx"]) {
+    assert.doesNotMatch(sinComent(fuenteDe(f.replace(/^src\//, ""))), /Vender ofrece/, `${f} nombra «Vender» como pantalla`);
+  }
 });
 
 /* La verificación del arreglo (2026-10-17): cuatro mutantes vivían con las
@@ -1354,8 +1359,10 @@ prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sec
   assert.match(t, /const cuentasDeRevision = useMemo\(\(\) => contarPorGrupo\(avisos\), \[avisos\]\);\s*const attentionCount = cuentaDelBadge\(cuentasDeRevision\);/,
     "la pastilla roja no es la suma de los tres grupos");
   // La cuenta va al menú de módulos (rediseño UX 2026-10): era la pastilla de
-  // la pestaña «Supervisar», ahora es la de «Indicadores», y en Vender no cuenta.
-  assert.match(t, /const cuentaParaElMenu = modoEfectivo === "supervisar" \? attentionCount : 0;\s*useEffect\(\(\) => \{\s*useArmazon\.getState\(\)\.setCuentaPendientes\(cuentaParaElMenu\);/);
+  // la pestaña «Supervisar», ahora es la de «Indicadores». En Vender esta
+  // pantalla no la manda (no pide todo lo que se cuenta): la manda la copia
+  // que no dibuja (`CuentaDePendientes`), así Contratos lleva el mismo número.
+  assert.match(t, /const mandaLaCuenta = modoEfectivo === "supervisar";\s*useEffect\(\(\) => \{\s*if \(mandaLaCuenta\) useArmazon\.getState\(\)\.setCuentaPendientes\(attentionCount\);/);
   assert.match(t, /const grupoDeRevision: GrupoDeRevision = grupoElegido \?\? grupoParaAbrir\(cuentasDeRevision\);/, "no abre en «Hoy» o en «30 días»");
   assert.match(t, /<PestanasDeRevision cuentas=\{cuentasDeRevision\} grupo=\{grupoDeRevision\}/, "las pestañas no dicen las cuentas de los grupos");
   // Cada lista que se cuenta se dibuja, y en UN solo grupo.

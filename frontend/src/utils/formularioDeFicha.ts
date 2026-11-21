@@ -120,6 +120,28 @@ export const FAMILIAS_DEL_FORMULARIO: readonly FamiliaDeFicha[] = CATALOGO_DE_MU
   }];
 });
 
+/** El nombre de ejemplo del campo «Nombre» del asistente, del tipo elegido.
+ *  Era «Nevera de la entrada» para todo, también al crear una punta
+ *  (recorrido de los manuales, 2026-11-21). Lo que no está en la lista (una
+ *  familia nueva) usa su rótulo sin el paréntesis. */
+const EJEMPLO_DE_NOMBRE: Record<string, string> = {
+  "gondola:double": "Góndola del pasillo 3",
+  "gondola:wall": "Mural de lácteos",
+  punta: "Punta de la entrada",
+  isla: "Estiba de la entrada",
+  impulsador: "Impulsador de la entrada",
+  puesto_impulso: "Puesto de impulso de la entrada",
+  nevera_refrescos: "Nevera de bebidas de la entrada",
+  nevera_puertas: "Nevera de la entrada",
+  nevera_vegetales: "Nevera de vegetales",
+  checkout: "Caja 1",
+  columna: "Columna de la entrada",
+};
+
+export function nombreDeEjemplo(familia: Pick<FamiliaDeFicha, "entrada" | "rotulo">): string {
+  return EJEMPLO_DE_NOMBRE[familia.entrada] ?? `${familia.rotulo.replace(/\s*\(.*\)\s*$/, "")} de la entrada`;
+}
+
 export function familiaDe(entrada: string): FamiliaDeFicha | undefined {
   return FAMILIAS_DEL_FORMULARIO.find((f) => f.entrada === entrada);
 }
