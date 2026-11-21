@@ -2017,7 +2017,7 @@ export default function Dashboard() {
       {modalDeAjuste === "temporadas" && isAdmin && <SeasonsModal onClose={() => setModalDeAjuste(null)} />}
       {buscadorAbierto && <Buscador esAdmin={isAdmin} ctx={ctx} onCerrar={() => useArmazon.getState().setBuscador(false)} />}
       {ayudaAbierta && (
-        <Ayuda modulo={efectivo} onCerrar={() => useArmazon.getState().setAyuda(false)}
+        <Ayuda modulo={efectivo} esAdmin={isAdmin} onCerrar={() => useArmazon.getState().setAyuda(false)}
           onDiccionario={() => { useArmazon.getState().setAyuda(false); ctx.ir("indicadores"); ctx.pedir("diccionario"); }} />
       )}
       </Suspense>

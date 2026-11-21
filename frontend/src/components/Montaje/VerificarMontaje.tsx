@@ -5,6 +5,7 @@ import { verificarMontaje, MOTIVO_LABEL, type MountConfirmation, type MountMotiv
 import { planometriaDelEspacio, planometriaUrl } from "../../api/planograms";
 import { fileUrl } from "../../api/files";
 import { queHacerSegunElMotivo } from "../../utils/montajes";
+import { selectIsAdmin, useAuthStore } from "../../store/authStore";
 
 const ICONO = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
@@ -51,6 +52,8 @@ export default function VerificarMontaje({ reporte, titulo, puedeVerificar, onCe
    *  cuántos quedan (2026-10-28), para seguir sin volver a la lista. */
   siguiente?: { codigo: string; detalle: string; quedan: number; sede: string; onAbrir: () => void } | null;
 }) {
+  /** Reclamarle al proveedor es de administración; el trabajador avisa. */
+  const esAdmin = useAuthStore(selectIsAdmin);
   const [plano, setPlano] = useState<{ url: string; tipo: string } | null | undefined>(undefined);
   const [resultado, setResultado] = useState<"coincide" | "no_coincide" | null>(null);
   const [nota, setNota] = useState("");
@@ -110,7 +113,7 @@ export default function VerificarMontaje({ reporte, titulo, puedeVerificar, onCe
 
         {!montado && (
           <div className="vm-resolver" data-resolver-montaje>
-            <p>{queHacerSegunElMotivo(reporte.motivo)}</p>
+            <p>{queHacerSegunElMotivo(reporte.motivo, esAdmin)}</p>
             {onRegistrarDeNuevo && <button type="button" className="vm-btn" onClick={onRegistrarDeNuevo}>Registrar el montaje de nuevo</button>}
           </div>
         )}

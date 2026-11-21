@@ -100,11 +100,17 @@ export function cuentaPorFiltro(estados: readonly EstadoDeMontaje[]): Record<Fil
   return c;
 }
 
-/** Qué hacer con un montaje no realizado, según el motivo (`MountMotivo`). */
-export function queHacerSegunElMotivo(motivo: string | null | undefined): string {
+/** Qué hacer con un montaje no realizado, según el motivo (`MountMotivo`).
+ *  Reclamarle al proveedor es de administración: quien trabaja en la tienda
+ *  avisa (`esAdmin` falso), como en el resto de sus pantallas. */
+export function queHacerSegunElMotivo(motivo: string | null | undefined, esAdmin = true): string {
   switch (motivo) {
-    case "sin_material": return "Reclamale el material al proveedor y, cuando llegue, registrá el montaje de nuevo.";
-    case "sin_producto": return "Reclamale el producto al proveedor y, cuando llegue, registrá el montaje de nuevo.";
+    case "sin_material": return esAdmin
+      ? "Reclamale el material al proveedor y, cuando llegue, registrá el montaje de nuevo."
+      : "Avisale a quien administra la sede que falta el material del proveedor y, cuando llegue, registrá el montaje de nuevo.";
+    case "sin_producto": return esAdmin
+      ? "Reclamale el producto al proveedor y, cuando llegue, registrá el montaje de nuevo."
+      : "Avisale a quien administra la sede que falta el producto del proveedor y, cuando llegue, registrá el montaje de nuevo.";
     case "espacio_ocupado": return "Liberá el espacio (sacá lo que lo ocupa o revisá si hay otro contrato encima) y registrá el montaje de nuevo.";
     default: return "Leé la nota de quien registró, resolvelo y registrá el montaje de nuevo.";
   }

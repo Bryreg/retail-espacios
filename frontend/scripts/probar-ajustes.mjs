@@ -93,6 +93,19 @@ await prueba("la ayuda tiene cada pantalla y el glosario sus términos", () => {
   assert.ok(A.buscarEnElGlosario("planometria").some((g) => g.termino === "Planometría"));
 });
 
+await prueba("al trabajador la ayuda no le define plata: ni el canon ni la tarifa", () => {
+  const nombres = (m, admin) => A.terminosDeLaPantalla(m, admin).map((g) => g.termino);
+  assert.ok(nombres("inicio", true).includes("Canon"));
+  for (const m of ["inicio", "indicadores", "contratos", "montajes"]) {
+    for (const t of ["Canon", "Tarifa de referencia", "Canon ÷ tarifa"]) assert.ok(!nombres(m, false).includes(t), `${t} en ${m}`);
+  }
+  assert.ok(nombres("inicio", false).includes("Ocupación"));
+  assert.equal(A.buscarEnElGlosario("canon", false).length, 0);
+  assert.equal(A.buscarEnElGlosario("tarifa", false).length, 0);
+  assert.ok(A.buscarEnElGlosario("canon").some((g) => g.termino === "Canon"));
+  assert.doesNotMatch(A.AYUDA_DE_LA_PANTALLA.indicadores.queSinPlata, /canon|tarifa|\$/i);
+});
+
 const C = await cargar("utils/configuracionInicial.ts");
 
 await prueba("la configuración inicial dice lo que falta y lo hecho", () => {
