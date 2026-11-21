@@ -46,7 +46,13 @@ from app.database import Base
 # la suscripción y los derechos persona por persona. Sumar encargados y
 # finalidades es un cambio material: se vuelve a pedir la aceptación (aviso
 # post-login, que no bloquea).
-VERSION_POLITICA = "2026-10-v3"
+#
+# 2026-11-20 (recorrido de los manuales) — sube a "2026-11-v4": el 7.1 nombra
+# cada derecho por dónde está en la pantalla (Ajustes › Cuenta › Tus datos y el
+# menú de la cuenta) y no por la ruta de la API, y corrige el plazo de los
+# respaldos (14 días). No es un cambio material, pero toda versión nueva vuelve
+# a pedir la aceptación (aviso post-login, que no bloquea): decisión del dueño.
+VERSION_POLITICA = "2026-11-v4"
 
 # Dónde se originó la aceptación: al fundar el cliente, al canjear una
 # invitación, o al aceptarla desde el aviso post-login de una cuenta existente.

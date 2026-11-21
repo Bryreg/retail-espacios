@@ -195,7 +195,7 @@ test("reporte de transparencia: el día de la aceptación es el de Colombia y lo
     // Las 8:30 p. m. del 20 en Colombia: ya es el 21 en UTC.
     generado_en: "2026-11-21T01:30:00Z",
     ventana: { desde: "2026-11", hasta: "2026-11", meses: 1 },
-    politica: { version_vigente: "2026-10-v3", version_aceptada: "2026-10-v3", aceptada_en: "2026-11-20",
+    politica: { version_vigente: "2026-11-v4", version_aceptada: "2026-11-v4", aceptada_en: "2026-11-20",
       base_legal: "Ley 1581 de 2012", url: "/politica-datos" },
     catalogo: [
       { clave: "ocupacion_pct", nombre: "Ocupación", definicion: "Porcentaje de espacios comercializables con un contrato activo.",

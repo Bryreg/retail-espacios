@@ -458,10 +458,11 @@ def _texto_politica():
 def test_la_constante_es_la_version_de_la_revision_de_privacidad():
     """El literal se afirma acá y en NINGÚN otro test: el resto compara contra
     la constante importada. (Fase 7 la subió a "2026-09-v2"; la revisión de
-    privacidad de la auditoría pre-lanzamiento, a "2026-10-v3".)"""
+    privacidad de la auditoría pre-lanzamiento, a "2026-10-v3"; el recorrido de
+    los manuales, a "2026-11-v4".)"""
     from app.models.consentimiento import VERSION_POLITICA
 
-    assert VERSION_POLITICA == "2026-10-v3"
+    assert VERSION_POLITICA == "2026-11-v4"
 
 
 def test_el_encabezado_y_el_versionado_de_la_politica_traen_la_version_vigente():
@@ -475,7 +476,7 @@ def test_el_encabezado_y_el_versionado_de_la_politica_traen_la_version_vigente()
 
     cabecera = texto.splitlines()[4]
     assert VERSION_POLITICA in cabecera, cabecera
-    assert "Vigencia: octubre 2026" in cabecera, cabecera
+    assert "Vigencia: noviembre 2026" in cabecera, cabecera
 
     versionado = texto[texto.index("## 11. Vigencia y versionado"):]
     assert f"**Versión de esta política: {VERSION_POLITICA}.**" in versionado
@@ -485,9 +486,13 @@ def test_el_encabezado_y_el_versionado_de_la_politica_traen_la_version_vigente()
     )
     assert linea is not None, "falta la fila de esta versión en el historial"
     bajo = linea.lower()
-    # La v3 dice qué sumó y que vuelve a pedir la aceptación.
+    # La vigente (2026-11-v4) dice qué cambió y que vuelve a pedir la aceptación.
     assert "re-consentimiento" in bajo
-    assert "plazos de conservación" in bajo and "navegador" in bajo
+    assert "pantalla" in bajo and "14 días" in bajo
+    # La v3 sigue en el historial con lo que sumó: es lo que aceptaron sus filas.
+    v3 = next((l for l in versionado.splitlines() if l.startswith("| **2026-10-v3**")), None)
+    assert v3 is not None, "se borró la fila de la 2026-10-v3 del historial"
+    assert "plazos de conservación" in v3.lower() and "navegador" in v3.lower()
     # Y la fila de la v2 sigue diciendo lo suyo: es lo que aceptaron sus filas.
     v2 = next((l for l in versionado.splitlines() if l.startswith("| **2026-09-v2**")), None)
     assert v2 is not None, "se borró la fila de la 2026-09-v2 del historial"
@@ -514,9 +519,13 @@ def test_la_politica_declara_el_re_consentimiento_por_cambio_de_version():
     assert "2026-09-v2" in cuatro_uno
 
     siete = texto[texto.index("## 7. Derechos del titular"):texto.index("## 8.")]
-    assert "mi-reporte-plataforma" in siete
+    # 2026-11-v4: cada derecho se nombra por dónde está en la PANTALLA, no por
+    # la ruta de la API (decisión del dueño, recorrido de los manuales).
+    assert "Ajustes › Cuenta › Tus datos" in siete
     assert "Reporte de transparencia" in siete
-    assert "mi-export" in siete and "solicitar-supresion" in siete
+    assert "Descargar los datos del supermercado" in siete and "Solicitar supresión" in siete
+    assert "Descargar mis datos" in siete
+    assert "/api/" not in siete, "el §7 vuelve a nombrar rutas de la API"
 
 
 # ════════════════════════════════════════════════════════════════════════════
