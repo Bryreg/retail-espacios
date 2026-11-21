@@ -6,11 +6,14 @@
 <link rel="stylesheet" href="../herramientas/estilo.css">
 <style>
   /* Capturas de computador: a lo ancho de la hoja, sin pasar de un tercio de página. */
-  figure.adm-pc img { width: 100%; max-width: 158mm; max-height: 99mm; object-fit: contain; object-position: left top; }
+  figure.adm-pc img { width: 100%; max-width: 158mm; max-height: 92mm; object-fit: contain; object-position: left top; }
   figure.adm-tira img { width: 100%; }
   figure.adm-recorte img, figure.adm-chico img { max-width: 100%; max-height: 80mm; width: auto; }
   figure.adm-lado { display: flex; gap: 4mm; align-items: flex-start; }
-  figure.adm-lado img { max-width: calc(50% - 2mm); max-height: 110mm; width: auto; }
+  figure.adm-lado img { max-width: calc(50% - 2mm); max-height: 96mm; width: auto; }
+  /* El índice entra en dos hojas. */
+  nav.indice li { padding: 3px 0; }
+  nav.indice li.sub { padding-top: 1px; padding-bottom: 1px; font-size: 10pt; }
   /* Un paso con un recorte: el texto a la izquierda y el recorte a la derecha. */
   ol.pasos > li:has(> figure.adm-recorte), ol.pasos > li:has(> figure.adm-chico) {
     display: grid; grid-template-columns: 0.85fr 1.15fr; column-gap: 6mm; align-items: start;
@@ -165,7 +168,7 @@
   <ol class="pasos">
     <li><p>Si el proveedor confirmó, tocá <span class="boton">Confirmar</span> (1): la reserva pasa a ser contrato. Si no, tocá <span class="boton">Cancelar</span> (2) y el espacio queda libre.</p>
       <figure class="adm-recorte"><img src="../img/administrador/18-reserva-caduca.jpg" alt="Reserva que caduca hoy"></figure></li>
-    <li><p>Al confirmar, arriba de la bandeja dice qué pasó y a quiénes les llegó el aviso, por ejemplo: <span class="texto-pantalla">PUN-09 pasó a contrato. Salió el aviso al área comercial y al proveedor. El de montaje sale cuando el espacio tenga su planometría.</span> La reserva sale de la lista.</p>
+    <li><p>Al confirmar, arriba de la bandeja dice que pasó a contrato y a quiénes les llegó el aviso. La reserva sale de la lista.</p>
       <figure class="adm-recorte"><img src="../img/administrador/18b-reserva-confirmada.jpg" alt="La reserva pasó a contrato"></figure></li>
   </ol>
   <div class="caja truco"><span class="rotulo">Los avisos salen al confirmar</span><p>Confirmar manda los mismos correos que vender: la <b>Confirmación</b> al proveedor y <span class="texto-pantalla">1 contrato nuevo — CENTRO</span> al área comercial. Si dice <span class="texto-pantalla">El proveedor no tiene correo: avisale vos.</span>, contale vos que quedó en firme. Para que salga el de montaje, cargá la planometría (4.4). La misma reserva tiene <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span> en la ficha del espacio (3.8).</p></div>
@@ -181,6 +184,7 @@
       <figure class="adm-recorte"><img src="../img/administrador/22-renovar-total.jpg" alt="Frase de la renovación"></figure></li>
   </ol>
   <div class="caja truco"><span class="rotulo">Otro plazo</span><p>Si el proveedor renueva por otro plazo, cambiá el <span class="texto-pantalla">Hasta</span> o usá los atajos <span class="boton">1 mes</span> y <span class="boton">3 meses</span>, y mirá que el total de abajo sea el acordado.</p></div>
+  <div class="caja error"><span class="rotulo">Después de renovar</span><p>La renovación es un contrato nuevo: pide su propia planometría (sale en Pendientes como <span class="texto-pantalla">Falta planometría</span>). El contrato que vence sigue en <span class="texto-pantalla">Por vencer en 30 días</span>, con <span class="boton">Renovar</span>, hasta su fecha: no lo renueves dos veces.</p></div>
 </section>
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
@@ -267,8 +271,8 @@
       <figure class="adm-recorte"><img src="../img/administrador/45-reservar-hasta.jpg" alt="Reservar hasta"></figure></li>
     <li><p>Queda <span class="texto-pantalla">Reservado hasta el …</span>: <span class="texto-pantalla">Hasta ese día nadie más puede tomarlo. Después se libera solo, si no se confirma.</span> Y abajo: <span class="texto-pantalla">Todavía no es un contrato: no salió ningún correo. Los avisos salen cuando se confirma.</span></p>
       <figure class="adm-chico"><img src="../img/administrador/46-reservado.jpg" alt="Reservado"></figure></li>
-    <li><p>En la ficha del espacio (4.1) la reserva dice <span class="texto-pantalla">Reservado</span>, con <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span>; en <span class="texto-pantalla">Los próximos 12 meses</span> se lee <span class="texto-pantalla">Reservado hasta el 20/11/2026, sin confirmar: …</span>, con el tramo punteado. El día que caduca te aparece en Pendientes (2.4).</p>
-      <figure class="adm-chico"><img src="../img/administrador/13-ficha-reserva.jpg" alt="Ficha de una reserva"></figure></li>
+    <li><p>En la ficha (4.1) dice <span class="texto-pantalla">Reservado</span>, con <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span>, y la línea de tiempo dice <span class="texto-pantalla">Reservado hasta el …, sin confirmar</span>. El día que caduca aparece en Pendientes (2.4).</p>
+      <figure class="adm-chico"><img style="max-height:54mm" src="../img/administrador/13-ficha-reserva.jpg" alt="Ficha de una reserva"></figure></li>
   </ol>
   <div class="caja error"><span class="rotulo">Para tener en cuenta</span><p>La reserva no puede terminar antes de hoy ni durar más que el contrato. Mientras sea reserva no sale ningún correo y <b>no aparece en Montajes</b>: a quien monta no le llega nada hasta que la confirmes. En el plano se ve como <span class="texto-pantalla">Reservado</span>, no como ocupado.</p></div>
 

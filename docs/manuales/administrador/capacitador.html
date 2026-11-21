@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>RECABRA · Guía del capacitador · Administrador</title>
+<link rel="stylesheet" href="../herramientas/estilo.css">
+</head>
+<body class="continuo">
+
+<section class="portada" style="height:auto;break-after:page">
+  <div class="marca-app">RECABRA</div>
+  <div style="margin:14mm 0">
+    <div class="tipo">Guía del capacitador</div>
+    <h1>Capacitar al administrador<br>de la sede</h1>
+    <p class="para">Para el dueño de la cuenta o un administrador con experiencia. Dos sesiones presenciales de 2 horas, con un computador por persona: la primera, vender y llevar los contratos; la segunda, montajes, indicadores, el plano y los ajustes.</p>
+  </div>
+  <dl class="ficha">
+    <dt>Versión</dt><dd>{{VERSION}} · {{FECHA}}</dd>
+    <dt>Duración</dt><dd>Dos sesiones de 2 horas (hasta 5 personas), mejor en días seguidos</dd>
+    <dt>Material</dt><dd>Manual, hoja de bolsillo impresa, ejercicios y evaluación (uno por persona)</dd>
+    <dt>Objetivo</dt><dd>Que cada persona venda sola un espacio entero y un porcentaje con el total correcto, reserve, confirme y renueve, verifique montajes, encuentre cualquier contrato en Indicadores y sepa qué no tocar del plano y de los ajustes.</dd>
+  </dl>
+</section>
+
+<section class="capitulo">
+  <h1><span class="num">1</span>Antes de las sesiones</h1>
+  <h2 class="proceso">1.1 Cuentas (dos días antes)</h2>
+  <ul>
+    <li>El dueño de la cuenta invita a cada persona con su correo y el rol <b>Administrador</b> (Ajustes › Equipo). La invitación vence a los 7 días.</li>
+    <li>Pedí que cada uno entre una vez antes de la sesión, con la cuenta a la que le llegó la invitación.</li>
+  </ul>
+  <h2 class="proceso">1.2 La sede de práctica (el día anterior)</h2>
+  <p>Los ejercicios usan los datos de la sede «CENTRO» del manual. Hay dos formas de tenerlos:</p>
+  <ol>
+    <li><b>La copia de prueba (recomendada).</b> Es la que usa el equipo técnico para las capturas (<code>docs/manuales/herramientas/COMO-SE-HACE.md</code>): una RECABRA aparte, con exactamente los datos del manual y sin correos que salgan. Pedila a soporte de RECABRA, <b>una por persona</b> o una sembrada de nuevo antes de cada sesión: los ejercicios venden, reservan y verifican de verdad, y no se pueden repetir sobre los mismos datos.</li>
+    <li><b>Una sede de práctica en la cuenta real.</b> Creá la sede <code>PRACTICA</code> (Ajustes › Sede y plano) y dibujá: dos puntas libres (como <code>PUN-07</code> y <code>PUN-08</code>), una góndola doble por porcentaje libre (como <code>GON-04</code>), una punta con un contrato que venza este mes (como <code>PUN-01</code>, Limpio Hogar, 6 meses) y una punta con contrato y montaje reportado sin verificar (como <code>PUN-04</code>: registralo vos desde Montajes con una foto). Usá proveedores inventados con correos <code>@….example</code>. <b>Al terminar, eliminá la sede.</b></li>
+  </ol>
+  <div class="caja ojo"><span class="rotulo">Nunca practiques en una sede real</span><p>Vender, confirmar, editar y verificar mandan correos de verdad: al área comercial (el gerente operacional recibe los de <b>todas</b> las sedes), al proveedor y a quien monta. En una sede de práctica de la cuenta real, avisale antes al gerente y poné correos inventados para los proveedores. Un contrato cancelado no se deshace.</p></div>
+  <h3>Lista de chequeo</h3>
+  <ul style="list-style:none;padding-left:0">
+    <li><span class="casilla"></span>Cada persona entró al menos una vez con su cuenta y ve la sede de práctica.</li>
+    <li><span class="casilla"></span>En la sede de práctica: <code>PUN-07</code> y <code>PUN-08</code> libres, <code>GON-04·B</code> libre, <code>PUN-01</code> en «Por vencer», <code>PUN-04</code> «Montado, sin verificar» y una reserva que caduca hoy.</li>
+    <li><span class="casilla"></span>Una imagen de prueba guardada en cada computador (para la planometría y el montaje).</li>
+    <li><span class="casilla"></span>Proyector con la pantalla en 1280 × 800 o más, para las demostraciones.</li>
+    <li><span class="casilla"></span>Impresos: hoja de bolsillo y ejercicios, uno por persona.</li>
+  </ul>
+</section>
+
+<section class="capitulo">
+  <h1><span class="num">2</span>Orden de las sesiones</h1>
+  <h2 class="proceso">2.1 Sesión 1 · Vender y llevar los contratos (2 h)</h2>
+  <table>
+    <tr><th style="width:16mm">Min.</th><th style="width:46mm">Bloque</th><th>Qué hacés</th></tr>
+    <tr><td>0–10</td><td>Para qué sirve</td><td>RECABRA lleva los espacios que el supermercado le alquila a los proveedores: qué, a quién, por cuánto, hasta cuándo y si quedó armado. Qué hace el administrador y qué no (equipo y cuenta son del dueño).</td></tr>
+    <tr><td>10–25</td><td><b>En vivo: la barra y Pendientes</b></td><td>Sede, <b>Ctrl K</b> (escribí «reno» apenas lo abrís), <b>Más</b>, la <b>?</b>, «Sincronizado». El Inicio y sus cuatro tarjetas. Pendientes: Hoy, 30 días, Corregir; «Ir a Montajes».</td></tr>
+    <tr><td>25–50</td><td><b>En vivo: vender una punta entera</b></td><td>Fechas, plano (colores), tocar <code>PUN-07</code>. Mostrá que el precio <b>arranca en «Al mes» con la tarifa</b> y que el total es tarifa × meses. Después tocá «Total» y escribí un total, para que vean la diferencia. Proveedor con Tab, correo, la frase, «Guardar contrato», «Qué pasa ahora» y el correo al proveedor.</td></tr>
+    <tr><td>50–65</td><td>Casos 1 y 2</td><td>Cada uno en su computador. Antes de que guarden, pedí que te lean la frase y el total en voz alta.</td></tr>
+    <tr><td>65–80</td><td><b>En vivo: entrepaños, % de las ventas, reservas</b></td><td><code>PUN-02</code> por entrepaños (sin guardar: la base también se vende). «% de las ventas» con corte mensual. «Reservar hasta…»: «Todavía no es un contrato…», la ficha dice «Reservado» y no está en Montajes.</td></tr>
+    <tr><td>80–95</td><td>Casos 3 y 4</td><td>Reservar, confirmar en Pendientes (leer a quiénes salió el aviso), cancelar desde la ficha. Renovar <code>PUN-01</code>: mostrá que propone 1 dic – 31 may sin tocar nada.</td></tr>
+    <tr><td>95–115</td><td><b>En vivo: la ficha</b></td><td>Indicadores › Contratos › fila. Editar contrato (el diálogo de reenviar y «Volver a Indicadores»), adjuntar la planometría y el correo «por montar», contratos anteriores. «Cancelar el contrato» hasta el diálogo y <b>«Dejarlo así»</b>.</td></tr>
+    <tr><td>115–120</td><td>Cierre</td><td>Dudas. Entregá la hoja de bolsillo.</td></tr>
+  </table>
+
+  <h2 class="proceso">2.2 Sesión 2 · Montajes, Indicadores, plano y ajustes (2 h)</h2>
+  <table>
+    <tr><th style="width:16mm">Min.</th><th style="width:46mm">Bloque</th><th>Qué hacés</th></tr>
+    <tr><td>0–10</td><td>Repaso</td><td>Tres preguntas rápidas: ¿en qué arranca el precio?, ¿cuándo le llega el aviso a quien monta?, ¿se deshace una cancelación?</td></tr>
+    <tr><td>10–30</td><td><b>En vivo: Montajes</b></td><td>Filtros. Verificar <code>PUN-04</code> con «No coincide», nota y la casilla de reenviar; «Verificar el siguiente». Resolver un «No realizado». «Registrar montaje» y el aviso «Listo: … quedó reportado como montado.»</td></tr>
+    <tr><td>30–40</td><td>Caso 5</td><td>Cada uno verifica sus dos montajes.</td></tr>
+    <tr><td>40–55</td><td><b>En vivo: Indicadores</b></td><td>Mapa de oportunidades, la fecha, Contratos con filtros y CSV, <b>Historial</b> con «Cancelado» y «Exportar a Excel», Diccionario.</td></tr>
+    <tr><td>55–80</td><td><b>En vivo: Plano de la sede</b></td><td>Mirar y Editar. Buscar por código y por proveedor («Café Montaña» marca 3). La ficha de <code>PUN-09</code> «Reservado». Colocar una punta, cambiarle el código y borrarla; borrar <code>PUN-04</code> y ver «Rechazado por el servidor» → «Deshacer». El 3D con «Presentar». Distribuir la cara de <code>GON-03</code> (cada marca con su color).</td></tr>
+    <tr><td>80–95</td><td><b>En vivo: Planogramas</b></td><td><code>GON-12 · B</code>: agregar un destino, ubicarlo, publicar, mandar la guía. Revisar <code>GON-13 · B</code> desde Pendientes estando en el Plano: al cerrar, vuelve al Plano.</td></tr>
+    <tr><td>95–105</td><td>Ajustes: qué no tocar</td><td>Tarifas (se guardan solas y cambian para todos), temporadas, metas, avisos y el correo de prueba. Renumerar sólo se muestra: no se aplica.</td></tr>
+    <tr><td>105–120</td><td>Evaluación</td><td>Las 10 preguntas. Corregí con las respuestas de abajo.</td></tr>
+  </table>
+</section>
+
+<section class="capitulo">
+  <h1><span class="num">3</span>Qué demostrar en vivo (lo que más cuesta)</h1>
+  <ul>
+    <li><b>«Al mes» y «Total».</b> Con <code>PUN-07</code> y 3 meses: el precio viene en «Al mes» ($ 600.000) y el total es $ 1.800.000. Tocá «Total» y escribí 1.500.000: el total cambia a $ 1.500.000. «Volver a la tarifa» lo deja como estaba. Es lo que más se equivoca.</li>
+    <li><b>La planometría destraba el aviso de montaje.</b> Vendé, mostrá «Sin montar · falta planometría» en Montajes, cargala en la ficha y mostrá «Salió el aviso de montaje a …».</li>
+    <li><b>La reserva no es un contrato.</b> No manda correos ni aparece en Montajes hasta confirmarla. Al confirmar, la bandeja dice a quiénes salió el aviso.</li>
+    <li><b>Renovar copia los meses.</b> 1 jun – 30 nov → 1 dic – 31 may, con el mismo valor al mes.</li>
+    <li><b>Lo que no se deshace:</b> cancelar un contrato, publicar una versión de planograma, mandar una guía, Renumerar.</li>
+  </ul>
+</section>
+
+<section class="capitulo">
+  <h1><span class="num">4</span>Errores típicos y cómo corregirlos</h1>
+  <table>
+    <tr><th style="width:32%">Lo que hacen</th><th style="width:30%">Cómo se ve</th><th>Cómo lo corregís</th></tr>
+    <tr><td>Escriben en «Al mes» el total que dio el proveedor.</td><td>El total sale multiplicado por los meses (p. ej. $ 4.500.000 en vez de $ 1.500.000).</td><td>Antes de guardar: «Total» y el número. Si ya se guardó: ficha › «Editar contrato».</td></tr>
+    <tr><td>Guardan sin leer la frase.</td><td>Fechas o proveedor equivocados.</td><td>Ficha › «Editar contrato» › «Guardar cambios y reenviar» (le llega a todos otra vez).</td></tr>
+    <tr><td>Escriben mal el correo del proveedor.</td><td>El proveedor dice que no le llegó nada.</td><td>Editar el contrato con el correo bueno: al guardar se reenvía.</td></tr>
+    <tr><td>Se olvidan de la planometría.</td><td>Montajes: «Sin montar · falta planometría»; Pendientes: «Falta planometría».</td><td>Ficha › «Adjuntar la planometría»: el aviso sale solo.</td></tr>
+    <tr><td>Venden un porcentaje y no distribuyen.</td><td>Pendientes: «Falta distribuir»; Montajes: «falta la zona».</td><td>«Distribuir» la cara (manual, 7.14).</td></tr>
+    <tr><td>Esperan que la reserva le avise al proveedor.</td><td>«Todavía no es un contrato: no salió ningún correo.»</td><td>Es así: los avisos salen al confirmar.</td></tr>
+    <tr><td>Se olvidan de una reserva.</td><td>El día que caduca se libera sola.</td><td>Volver a reservar o vender.</td></tr>
+    <tr><td>Verifican «Coincide» sin mirar la foto.</td><td>El proveedor reclama la exhibición.</td><td>Pedir a quien monta que registre de nuevo y verificar «No coincide» con la nota.</td></tr>
+    <tr><td>Tocan un espacio ocupado.</td><td>«"PUN-06" está tomado del 1 ago al 31 ene 2027: ajustá las fechas.»</td><td>Otras fechas, otro espacio u otro entrepaño.</td></tr>
+    <tr><td>Borran un mueble con contrato.</td><td>«Rechazado por el servidor» · «El servidor no guardó el plano».</td><td>«Deshacer» antes de cerrar la pestaña.</td></tr>
+    <tr><td>Renuevan dos veces.</td><td>Después de renovar, el contrato viejo sigue en «Por vencer en 30 días» con «Renovar» hasta su fecha.</td><td>Mirar la ficha antes: si ya hay un contrato desde el día siguiente, no hace falta. Si se guardó dos veces, cancelar el que sobra.</td></tr>
+    <tr><td>Cambian las tarifas «para probar».</td><td>Cambian los precios sugeridos y «Bajo tarifa» para todos.</td><td>Volver a escribir la tarifa de antes (Ajustes › Comercial › «Abrir las tarifas»).</td></tr>
+    <tr><td>Buscan el número de Pendientes en Contratos.</td><td>En Contratos el botón no muestra el número rojo.</td><td>Abrir «Pendientes» igual o mirar el número desde el Inicio.</td></tr>
+  </table>
+</section>
+
+<section class="capitulo">
+  <h1><span class="num">5</span>Respuestas</h1>
+  <h3>Evaluación</h3>
+  <table>
+    <tr><th style="width:12mm">N.º</th><th>Respuesta</th></tr>
+    <tr><td>1</td><td class="respuesta">Las fechas («¿Para qué fechas?»); después el espacio en el plano.</td></tr>
+    <tr><td>2</td><td class="respuesta">En «Al mes», con la tarifa ($ 600.000); el total es $ 1.800.000 (tarifa × 3 meses).</td></tr>
+    <tr><td>3</td><td class="respuesta">b) Toco «Total» y escribo 1.500.000.</td></tr>
+    <tr><td>4</td><td class="respuesta">La planometría (o, si es un porcentaje, la distribución de la cara). El aviso de montaje sale cuando se carga.</td></tr>
+    <tr><td>5</td><td class="respuesta">b) No y no: todavía no es un contrato. Los avisos salen y entra a Montajes cuando se confirma.</td></tr>
+    <tr><td>6</td><td class="respuesta">Del 1 dic al 31 may: los mismos meses, desde el día siguiente al vencimiento.</td></tr>
+    <tr><td>7</td><td class="respuesta">b) No: queda «Cancelado» en el Historial y hay que volver a venderlo.</td></tr>
+    <tr><td>8</td><td class="respuesta">«Qué hay que corregir» y la casilla «Mandar el aviso de montaje de nuevo a quien monta».</td></tr>
+    <tr><td>9</td><td class="respuesta">En el 2D, en modo «Editar». El 3D es sólo para mirar.</td></tr>
+    <tr><td>10</td><td class="respuesta">b) Le aviso al dueño de la cuenta, que invita y da los roles. Nunca se presta el usuario.</td></tr>
+  </table>
+  <h3>Ejercicios: cómo saber que está bien</h3>
+  <table>
+    <tr><th style="width:18mm">Caso</th><th>Lo que tenés que ver (en la sede de práctica)</th></tr>
+    <tr><td>1</td><td><code>PUN-07</code> con Café Montaña del 1 dic al 28 feb, $ 600.000 al mes, total $ 1.800.000 (90 días · 3 meses). En la cola de correos (copia de prueba): «Confirmación de 1 espacio» y «1 contrato nuevo — CENTRO».</td></tr>
+    <tr><td>2</td><td><code>GON-04·B · 25 %</code> de Snacks Norte, $ 337.500 en total; en Pendientes, <code>GON-04 · B</code> en «Falta distribuir».</td></tr>
+    <tr><td>3</td><td><code>PUN-09</code> en «Contratado» y fuera de «Reservas que caducan hoy»; <code>PUN-08</code> otra vez «Libre». Si la reserva de <code>PUN-08</code> se confirmó por error, cancelá ese contrato vos (ficha › «Cancelar el contrato»).</td></tr>
+    <tr><td>4</td><td>Un contrato nuevo de <code>PUN-01</code> del 1 dic al 31 may, $ 3.600.000 (6 meses). Extra: Pendientes › 30 días pide <span class="texto-pantalla">Falta planometría</span> para el contrato nuevo (es otro contrato: lleva su planometría). El contrato viejo sigue en «Por vencer en 30 días» hasta el 30 nov: que no lo renueven dos veces.</td></tr>
+    <tr><td>5</td><td><code>PUN-04</code> «Verificado: no coincide» con la nota, y <code>PUN-05</code> «Verificado: coincide». En la cola, un correo «por montar» nuevo para <code>PUN-04</code>.</td></tr>
+  </table>
+  <div class="caja avisale"><span class="rotulo">Después de las sesiones</span><p>Eliminá la sede de práctica (o pedí que se apague la copia de prueba). Acompañá la primera venta real de quien necesitó ayuda en los casos 1 o 2, y revisá con esa persona el total antes de guardar.</p></div>
+</section>
+
+</body>
+</html>

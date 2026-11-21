@@ -54,6 +54,12 @@ let paginaActual = null;
   const pie = () => page.locator("[data-pie-fijo]");
   const espera = (ms = 700) => page.waitForTimeout(ms);
   const fueraDelMouse = () => page.mouse.move(1275, 795);
+  /** El pie fijo del contrato (total y «Guardar») tapa los bloques 2 y 3 en
+   *  sus recortes: se esconde mientras se capturan. */
+  const sinPie = async (fn) => {
+    await page.evaluate(() => { const p = document.querySelector("[data-pie-fijo]"); if (p) p.style.visibility = "hidden"; });
+    try { await fn(); } finally { await page.evaluate(() => { const p = document.querySelector("[data-pie-fijo]"); if (p) p.style.visibility = ""; }); }
+  };
 
   async function tocar(cod) {
     const b = await page.locator(`text[data-cod="${cod}"]`).first().boundingBox();
@@ -192,7 +198,7 @@ let paginaActual = null;
     await espera(1500);
     await guardarTexto(page, "21-renovar", panel());
     const fechas2 = page.locator('section.bloque[data-bloque="2"] input[type="date"]');
-    await foto(page, C, "21-renovar-desde-pendientes", { recorte: panel(), margen: 0, marca: [{ loc: fechas2.first(), n: 1 }, { loc: fechas2.nth(1), n: 2 }] });
+    await sinPie(() => foto(page, C, "21-renovar-desde-pendientes", { recorte: bloque(2), margen: 14, marca: [{ loc: fechas2.first(), n: 1 }, { loc: fechas2.nth(1), n: 2 }] }));
     const totalR = page.getByText("Total del contrato").first().locator("xpath=ancestor::*[2]");
     await foto(page, C, "22-renovar-total", { recorte: pie(), margen: 6, marca: page.getByText(/contrata PUN-01/).first() });
     void totalR;
@@ -239,11 +245,11 @@ let paginaActual = null;
     await prov.click();
     await page.keyboard.type("Gal", { delay: 80 });
     await espera(900);
-    await foto(page, C, "35-proveedor", { recorte: bloque(2), margen: 10, marca: prov });
+    await sinPie(() => foto(page, C, "35-proveedor", { recorte: bloque(2), margen: 10, marca: prov }));
     await prov.press("Tab");
     await espera(500);
     await page.getByPlaceholder(/La que va en el espacio/).fill("Galletas Sol Integral");
-    await foto(page, C, "36-a-quien-y-cuando", { recorte: bloque(2), margen: 10, marca: page.getByPlaceholder(/La que va en el espacio/) });
+    await sinPie(() => foto(page, C, "36-a-quien-y-cuando", { recorte: bloque(2), margen: 10, marca: page.getByPlaceholder(/La que va en el espacio/) }));
   });
   await paso("37-correo-y-nota", async () => {
     await page.getByText("Correo y nota para el proveedor").click();
@@ -251,7 +257,7 @@ let paginaActual = null;
     await page.getByPlaceholder("opcional", { exact: true }).fill("compras@galletassol.example");
     await page.getByPlaceholder(/Algo que haya que saber/).fill("Incluye cabezote con el logo.");
     await page.getByPlaceholder(/Algo que haya que saber/).scrollIntoViewIfNeeded();
-    await foto(page, C, "37-correo-y-nota", { recorte: bloque(3), margen: 10, marca: [{ loc: page.getByPlaceholder("opcional", { exact: true }), n: 1 }, { loc: page.getByPlaceholder(/Algo que haya que saber/), n: 2 }] });
+    await sinPie(() => foto(page, C, "37-correo-y-nota", { recorte: bloque(3), margen: 10, marca: [{ loc: page.getByPlaceholder("opcional", { exact: true }), n: 1 }, { loc: page.getByPlaceholder(/Algo que haya que saber/), n: 2 }] }));
   });
   await paso("38-guardar", () => foto(page, C, "38-frase-y-guardar", { recorte: pie(), margen: 6, marca: boton("Guardar contrato") }));
   await paso("39-guardado", async () => {
@@ -584,7 +590,7 @@ let paginaActual = null;
       await espera(1800);
       await guardarTexto(page, "99b-registrado", page.locator("body"));
       const listo = page.getByText(/^Listo: .* quedó reportado/).first();
-      await foto(page, C, "99b-registrado", { recorte: await zona(page, { x: 250, y: 0, w: 1030, h: 330 }), margen: 0, marca: listo });
+      await foto(page, C, "99b-registrado", { recorte: await zona(page, { x: 226, y: 0, w: 1054, h: 330 }), margen: 0, marca: listo });
     }
   });
   await paso("100-falta-planometria", async () => {
@@ -700,6 +706,9 @@ async function zona(page, { x, y, w, h }) {
 }
 
 async function paso(nombre, fn) {
+  // SOLO=21-renovar-desde-pendientes,35-proveedor rehace sólo esos pasos (lo
+  // que está fuera de un paso —navegar, elegir fechas y espacios— corre igual).
+  if (process.env.SOLO && !process.env.SOLO.split(",").includes(nombre)) return;
   try { await fn(); } catch (e) {
     fallas.push(nombre);
     console.error(`  ✗ ${nombre}: ${String(e.message).split("\n").slice(0, 3).join(" | ")}`);
