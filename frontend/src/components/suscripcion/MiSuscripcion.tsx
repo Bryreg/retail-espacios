@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { describeError } from "../../api/client";
+import { fechaCorta } from "../../utils/propuesta";
 import {
   getMiSuscripcion,
   guardarMiFacturacion,
@@ -30,13 +31,11 @@ const ESTADO_TXT: Record<EstadoDeCuenta, string> = {
   suspendido: "Suspendida",
 };
 
-const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-
-/** `"2026-11-15"` → `15-nov-2026`, la misma forma que los correos. */
+/** `"2026-11-15"` → «15 nov 2026», como el resto de la app (`fechaCorta`).
+ *  Decía «15-nov-2026», la forma de los correos de cobro, que se quedan así. */
 function fecha(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const [a, m, d] = iso.slice(0, 10).split("-").map(Number);
-  return `${d}-${MESES[m - 1]}-${a}`;
+  return fechaCorta(iso.slice(0, 10));
 }
 
 /** `$ 1.234.567`: pesos enteros, punto de miles. */

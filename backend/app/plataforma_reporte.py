@@ -144,7 +144,7 @@ CATALOGO = [
     {
         "clave": "sedes_con_plano",
         "nombre": "Sedes con plano",
-        "definicion": "Cuántas sedes del cliente tienen un plano (layout) guardado en la plataforma.",
+        "definicion": "Cuántas sedes del cliente tienen un plano guardado en la plataforma.",
         "fuente": "layout_snapshots",
         "finalidad": "salud_cartera",
         "endpoints": ["metricas", "tendencia"],
@@ -216,7 +216,7 @@ CATALOGO = [
     {
         "clave": "estado_cuenta",
         "nombre": "Estado de cuenta",
-        "definicion": "El estado comercial de la cuenta (activo, gracia, solo_lectura o suspendido) que fijó el operador, y el motivo que escribió el operador al cambiarlo -- no es un dato que se toma del cliente.",
+        "definicion": "El estado comercial de la cuenta (activo, en gracia, sólo lectura o suspendido) que fijó RECABRA, y el motivo que RECABRA escribió al cambiarlo: no es un dato que se toma del cliente.",
         "fuente": "estados_cliente",
         "finalidad": "cobranza",
         "endpoints": ["metricas", "adopcion"],
@@ -261,7 +261,7 @@ CATALOGO = [
     {
         "clave": "clasificacion",
         "nombre": "Clasificación de adopción",
-        "definicion": "Categoría del cliente en el período (nueva, activa, fantasma, dormida o sin_cuentas), según cuentas con membresía, accesos recientes y contratos activos.",
+        "definicion": "Categoría del cliente en el período (nueva, activa, fantasma, dormida o sin cuentas), según cuentas con membresía, accesos recientes y contratos activos.",
         "fuente": "membresias, usuarios.ultimo_login, space_leases",
         "finalidad": "asesoria",
         "endpoints": ["adopcion"],
@@ -300,7 +300,7 @@ CATALOGO = [
     {
         "clave": "ocupadas",
         "nombre": "Espacios ocupados",
-        "definicion": "Cuántas caras comercializables tenían un contrato vigente en el mes -- el numerador de ocupacion_pct.",
+        "definicion": "Cuántas caras comercializables tenían un contrato vigente en el mes: con ellas se calcula la Ocupación.",
         "fuente": "layout_snapshots, space_leases (contratos vigentes del mes)",
         "finalidad": "salud_cartera",
         "endpoints": ["reporte"],
@@ -309,7 +309,7 @@ CATALOGO = [
     {
         "clave": "contratos_activos",
         "nombre": "Contratos activos del mes",
-        "definicion": "Cantidad de contratos vigentes en el mes -- el denominador de canon_promedio_mensual, guardado en snapshot_metricas.",
+        "definicion": "Cantidad de contratos vigentes en el mes, guardada en el resumen del mes: con ella se calcula el Canon promedio mensual.",
         "fuente": "snapshot_metricas (contratos vigentes de la base del cliente, capturados al armar la fila del mes)",
         "finalidad": "asesoria",
         "endpoints": ["reporte"],
@@ -318,7 +318,7 @@ CATALOGO = [
     {
         "clave": "canon_total",
         "nombre": "Canon total del mes",
-        "definicion": "Suma del canon mensual de los contratos vigentes del mes -- el numerador de canon_promedio_mensual; es el mismo número que /metricas publica como ingreso_contratado_mes.",
+        "definicion": "Suma del canon mensual de los contratos vigentes del mes: con ella se calcula el Canon promedio mensual, y es el mismo número que el Ingreso contratado del mes.",
         "fuente": "snapshot_metricas (suma del canon mensual de los contratos vigentes)",
         "finalidad": "asesoria",
         "endpoints": ["reporte"],
@@ -327,7 +327,7 @@ CATALOGO = [
     {
         "clave": "origen",
         "nombre": "Origen de la fila del mes",
-        "definicion": "Si la fila del mes se tomó de una vista en vivo (\"vista\") o del cierre de mes (\"cierre\").",
+        "definicion": "Si el resumen del mes se tomó en vivo («vista») o al cierre del mes («cierre»).",
         "fuente": "snapshot_metricas",
         "finalidad": "salud_cartera",
         "endpoints": ["reporte"],
@@ -336,7 +336,7 @@ CATALOGO = [
     {
         "clave": "capturado_en",
         "nombre": "Fecha de captura",
-        "definicion": "Día en que se capturó la fila del mes -- se publica sin hora.",
+        "definicion": "Día en que se guardó el resumen del mes, sin la hora.",
         "fuente": "snapshot_metricas",
         "finalidad": "salud_cartera",
         "endpoints": ["reporte"],
@@ -352,7 +352,7 @@ CATALOGO = [
     {
         "clave": "espacio_codigo_y_tipo",
         "nombre": "Código y tipo del espacio",
-        "definicion": "Por cada espacio comercializable del plano, su código completo (SEDE-CODE, con el sufijo -B de la cara B de una góndola doble) y su tipo comercial (góndola, punta, nevera y demás), más la sede, la zona y el área si están cargadas.",
+        "definicion": "Por cada espacio comercializable del plano, su código completo (la sede y el código del mueble, con -B si es la cara B de una góndola doble) y su tipo comercial (góndola, punta, nevera y demás), más la sede, la zona y el área si están cargadas.",
         "fuente": "layout_snapshots",
         "finalidad": "asesoria",
         "endpoints": ["detalle"],
@@ -406,7 +406,7 @@ CATALOGO = [
     {
         "clave": "resumen_por_tipo",
         "nombre": "Resumen por tipo de espacio",
-        "definicion": "Por cada tipo de espacio del cliente: cuántos hay, cuántos ocupados y cuántos libres, y el canon promedio, mínimo y máximo de los contratos vigentes de ese tipo, más si hay una tarifa de referencia configurada para ese tipo (sí/no -- nunca el valor de la tarifa).",
+        "definicion": "Por cada tipo de espacio del cliente: cuántos hay, cuántos ocupados y cuántos libres, y el canon promedio, mínimo y máximo de los contratos vigentes de ese tipo, más si hay una tarifa de referencia configurada para ese tipo (sí o no: nunca el valor de la tarifa).",
         "fuente": "space_leases, layout_snapshots, app_config (sólo el sí/no de la tarifa)",
         "finalidad": "asesoria",
         "endpoints": ["detalle"],
@@ -433,7 +433,7 @@ CATALOGO = [
     {
         "clave": "benchmark_plataforma",
         "nombre": "Promedio de la plataforma por tipo de espacio",
-        "definicion": "UN solo número por tipo de espacio: el canon promedio de los contratos vigentes de ese tipo en todos los clientes legibles. Sin desglose, sin sedes y sin el nombre de ningún otro supermercado -- se usa sólo para sugerir un precio cuando el cliente no cobra nada de ese tipo.",
+        "definicion": "UN solo número por tipo de espacio: el canon promedio de los contratos vigentes de ese tipo en todos los clientes legibles. Sin desglose, sin sedes y sin el nombre de ningún otro supermercado: se usa sólo para sugerir un precio cuando el cliente no cobra nada de ese tipo.",
         "fuente": "space_leases de todos los clientes legibles (un promedio por tipo)",
         "finalidad": "asesoria",
         "endpoints": ["detalle"],
@@ -451,7 +451,7 @@ CATALOGO = [
     {
         "clave": "recomendaciones",
         "nombre": "Recomendaciones de asesoría",
-        "definicion": "La lista priorizada de qué proponerle al cliente (espacio libre, contrato por vencer, precio bajo la tarifa, concentración de un proveedor, sede subutilizada, tipos sin tarifa o arranque), con el canon mensual en juego y una explicación en palabras que GENERA EL SISTEMA a partir de esos mismos datos -- no es una nota de nadie y no lleva datos de contacto ni personas.",
+        "definicion": "La lista priorizada de qué proponerle al cliente (espacio libre, contrato por vencer, precio bajo la tarifa, concentración de un proveedor, sede subutilizada, tipos sin tarifa o arranque), con el canon mensual en juego y una explicación en palabras que GENERA EL SISTEMA a partir de esos mismos datos: no es una nota de nadie y no lleva datos de contacto ni personas.",
         "fuente": "derivado de las entradas anteriores del detalle (texto generado por el sistema)",
         "finalidad": "asesoria",
         "endpoints": ["detalle"],
