@@ -10,7 +10,9 @@ medio del envío también lo perdía.
 cuerpo, y el correo sale enseguida, después de la respuesta—, pero antes de
 salir queda ANOTADO en ``correos_pendientes``, en la base del supermercado:
 
-1. ``encolar_correo`` (en el pedido) programa la tarea de fondo.
+1. ``encolar_correo`` (en el pedido) programa la tarea de fondo. La invitación
+   de Ajustes › Equipo usa ``enviar_ya_y_anotar``, que hace lo mismo dentro
+   del pedido para que la pantalla sepa si salió.
 2. La tarea anota la fila (``pendiente``, con ``proximo_intento`` diez minutos
    adelante: ese rato es suyo) y manda. Si sale, ``enviado``. Si no, una línea
    WARNING en el log y el próximo intento según ``ESPERAS``.
@@ -39,8 +41,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.correos import CorreoPendiente
 from app.observabilidad import resumen_de_destinatarios, sin_correos
+from app.services import mailer as _mailer
 
 log = logging.getLogger("recabra.correos")
+
+#: Las funciones de envío DE VERDAD, como quedaron al cargar el módulo. Una
+#: prueba que reemplaza `mailer.send_mail_to_bg` por una de mentira y la pasa
+#: por su router quiere que se llame ESA: compararla contra el atributo del
+#: módulo, ya reemplazado, la confundía con la real (2026-11-21).
+_ENVIOS_REALES = (_mailer.send_mail_to_bg, _mailer.send_mail_to)
 
 #: Espera antes del intento n+1, después de fallar el intento n (1-based).
 ESPERAS = (
@@ -81,7 +90,7 @@ def _intentar(enviar: Optional[Callable], destinatarios: list[str], asunto: str,
     """
     from app.services import mailer
 
-    if enviar is None or enviar is mailer.send_mail_to_bg or enviar is mailer.send_mail_to:
+    if enviar is None or any(enviar is real for real in _ENVIOS_REALES):
         # Por `mailer.send_mail_to`, buscado en el módulo en cada llamada: el
         # mismo caño de siempre (y el que algunas pruebas reemplazan).
         try:
@@ -137,8 +146,19 @@ def encolar_correo(tareas, db: Session, enviar: Optional[Callable], destinatario
     tareas.add_task(_anotar_y_enviar, db.get_bind(), enviar, list(destinatarios or []), asunto, html)
 
 
-def _anotar_y_enviar(motor, enviar, destinatarios: list[str], asunto: str, html: str) -> None:
-    """La tarea de fondo: anota, manda y marca. Nunca levanta."""
+def enviar_ya_y_anotar(db: Session, enviar: Optional[Callable], destinatarios, asunto: str,
+                       html: str) -> bool:
+    """Lo mismo que ``encolar_correo``, pero DENTRO del pedido: anota, manda y
+    dice si salió. Para cuando la pantalla tiene que decir la verdad sobre el
+    correo —la invitación de Ajustes › Equipo: «Invitación enviada» sólo si
+    salió; si no, que se reintenta—. Si falla, la fila queda ``pendiente`` y el
+    mantenimiento la reintenta como a cualquier otra. Nunca levanta.
+    """
+    return _anotar_y_enviar(db.get_bind(), enviar, list(destinatarios or []), asunto, html)
+
+
+def _anotar_y_enviar(motor, enviar, destinatarios: list[str], asunto: str, html: str) -> bool:
+    """La tarea de fondo: anota, manda y marca. Devuelve si salió. Nunca levanta."""
     sesion = sessionmaker(bind=motor, autoflush=False)()
     fila = None
     try:
@@ -163,7 +183,7 @@ def _anotar_y_enviar(motor, enviar, destinatarios: list[str], asunto: str, html:
         if fila is None:
             if not ok:
                 log.warning("Correo «%s» no salió (%s): %s", asunto, resumen_de_destinatarios(destinatarios), motivo)
-            return
+            return ok
         try:
             if ok:
                 _registrar_envio(fila, _ahora())
@@ -173,6 +193,7 @@ def _anotar_y_enviar(motor, enviar, destinatarios: list[str], asunto: str, html:
         except Exception:  # noqa: BLE001
             log.warning("No se pudo marcar el correo #%s", getattr(fila, "id", "?"), exc_info=True)
             sesion.rollback()
+        return ok
     finally:
         sesion.close()
 

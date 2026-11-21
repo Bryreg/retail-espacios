@@ -39,7 +39,7 @@ async function comoPersona(page: Page, s: Sesion, email: string, rolCliente: "ow
       version: 0,
     }));
     localStorage.setItem("recabra-config-inicial-vista", "1");
-    localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10));
+    localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date()));
   }, [s, email, rolCliente] as const);
 }
 
@@ -138,19 +138,47 @@ test("la administradora no toca a la dueña ni da el rol Dueño, y en Cuenta ve 
     .toHaveCount(0);
 });
 
-test("la bitácora dice «Dueño» cuando lo hizo la dueña", async ({ page, request }) => {
+test("la bitácora dice «Dueño» cuando lo hizo la dueña, y a quién", async ({ page, request }) => {
   const admin = await entrar(request, "admin");
   await comoPersona(page, admin, DIANA, "owner");
+  // El detalle como lo anota el servidor desde el 2026-11-21: a quién, qué y quién lo hizo.
+  const rol = `${LUIS}: Trabajador → Administrador · ${DIANA}`;
   await page.route(/\/api\/bitacora\/\?/, (r) => r.fulfill({ json: [
     { id: 2, at: new Date().toISOString(), rol: "owner", ip: "127.0.0.1", accion: "usuario.rol",
-      titulo: "Rol de una persona cambiado", detalle: `Trabajador → Administrador · ${DIANA}` },
+      titulo: "Rol de una persona cambiado", detalle: rol },
     { id: 1, at: new Date().toISOString(), rol: "admin", ip: "127.0.0.1", accion: "usuario.cambio",
-      titulo: "Persona activada o desactivada", detalle: `activado · ${ANA}` },
+      titulo: "Persona activada o desactivada", detalle: `${LUIS}: activado · ${ANA}` },
   ] }));
   await abrirAjustes(page, "cuenta");
   await expect(page.getByText("Dueño · 127.0.0.1")).toBeVisible();
   await expect(page.getByText("Administrador · 127.0.0.1")).toBeVisible();
   await expect(page.getByText(/^(owner|admin) · /)).toHaveCount(0);
+  // Entero, sin cortarse con «…»: a quién es lo primero que se lee. En la bitácora de Ajustes:
+  // la «Actividad reciente» del Inicio, que queda detrás, la resume en un renglón.
+  const linea = page.getByLabel("Ajustes", { exact: true }).getByText(rol, { exact: true });
+  await expect(linea).toBeVisible();
+  expect(await linea.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+});
+
+test("invitar: si el correo no salió, la pantalla no dice «enviada»", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  await comoPersona(page, admin, DIANA, "owner");
+  await equipoDePrueba(page);
+  const respuestas = [false, true];
+  await page.route(/\/api\/usuarios\/invitar$/, (r) => r.fulfill({ json: {
+    ok: true, expira_en: new Date(Date.now() + 7 * 86_400_000).toISOString(), correo_enviado: respuestas.shift(),
+  } }));
+  await abrirAjustes(page, "equipo");
+  const correo = page.getByPlaceholder("persona@empresa.com");
+
+  await correo.fill("nueva@supermercado.example");
+  await page.getByRole("button", { name: "Invitar", exact: true }).click();
+  await expect(page.getByText(/^Invitación creada para nueva@supermercado\.example, pero el correo no salió todavía: RECABRA lo vuelve a intentar solo\./)).toBeVisible();
+  await expect(page.getByText(/Invitación enviada/)).toHaveCount(0);
+
+  await correo.fill("otra@supermercado.example");
+  await page.getByRole("button", { name: "Invitar", exact: true }).click();
+  await expect(page.getByText(/^Invitación enviada a otra@supermercado\.example: /)).toBeVisible();
 });
 
 test("reporte de transparencia: el día de la aceptación es el de Colombia y los derechos dicen dónde", async ({ page, request }) => {
@@ -167,9 +195,15 @@ test("reporte de transparencia: el día de la aceptación es el de Colombia y lo
     // Las 8:30 p. m. del 20 en Colombia: ya es el 21 en UTC.
     generado_en: "2026-11-21T01:30:00Z",
     ventana: { desde: "2026-11", hasta: "2026-11", meses: 1 },
-    politica: { version_vigente: "2026-10-v3", version_aceptada: "2026-10-v3", aceptada_en: "2026-11-20",
+    politica: { version_vigente: "2026-11-v4", version_aceptada: "2026-11-v4", aceptada_en: "2026-11-20",
       base_legal: "Ley 1581 de 2012", url: "/politica-datos" },
-    catalogo: [], valores: [], spread_actual: null,
+    catalogo: [
+      { clave: "ocupacion_pct", nombre: "Ocupación", definicion: "Porcentaje de espacios comercializables con un contrato activo.",
+        fuente: "layout_snapshots, space_leases", finalidad: "salud_cartera", endpoints: ["metricas", "tendencia"], tratamiento: "relacion" },
+      { clave: "oportunidades", nombre: "Oportunidades de venta de espacio", definicion: "Por cada espacio libre, el precio sugerido.",
+        fuente: "derivado de ocupacion_pct", finalidad: "asesoria", endpoints: ["detalle"], tratamiento: "relacion" },
+    ],
+    valores: [], spread_actual: null,
     accesos: { total: 1, lineas: [{ fecha: "2026-11-20", operador: "op@recabra.example", accion: "detalle", periodo: "galerias:2026-11" }] },
     derechos,
   } }));
@@ -180,6 +214,16 @@ test("reporte de transparencia: el día de la aceptación es el de Colombia y lo
   await expect(cabecera).toContainText(new RegExp(`generado el ${dia20}`));
   await expect(cabecera).toContainText(new RegExp(`\\(${dia20}\\)`));
   await expect(page.locator(".reporte-tabla tbody td").first()).toHaveText(new RegExp(`^${dia20}$`));
+  // 1. En palabras: sin las rutas de la API, sin los nombres de las tablas ni el código interno.
+  const catalogo = page.locator("[data-reporte-catalogo]");
+  await expect(catalogo).toContainText("Salud de la cartera");
+  await expect(catalogo).toContainText("De dónde sale: los planos de las sedes, los contratos. Cómo: sale calculado a partir de otros datos.");
+  await expect(catalogo).toContainText("De dónde sale: se calcula con «Ocupación».");
+  for (const tecnico of ["Endpoints", "Fuente", "layout_snapshots", "space_leases", "metricas", "ocupacion_pct"]) {
+    await expect(catalogo).not.toContainText(tecnico);
+  }
+  await expect(cabecera).not.toContainText("galerias");
+  await expect(page.locator(".reporte-tabla tbody td").nth(3)).toHaveText("2026-11");
   const tusDerechos = page.locator("section").filter({ hasText: "4. Tus derechos" });
   await expect(tusDerechos).toContainText("Ajustes › Cuenta › Tus datos");
   await expect(tusDerechos).not.toContainText("/api/");

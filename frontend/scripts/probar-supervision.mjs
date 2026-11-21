@@ -191,6 +191,14 @@ await prueba("confirmar una reserva dice a quiénes salió el aviso (2026-11-20)
   const fila = sinComentarios(leer("src/components/Supervisar/CobrosYReservas.tsx"));
   assert.match(fila, /const hecho = await confirmarReserva\(r\.id\);\s*onCambio\(textoDeLaConfirmacion\(cod, hecho\.avisos\)\);/,
     "confirmar descarta lo que pasó con los correos");
+  // Cancelar también lo dice (2026-11-21): no manda correos, y se aclara.
+  assert.equal(SU.textoDeLaCancelacion("PUN-09"), "Se canceló la reserva de PUN-09: esas fechas quedan libres. No salió ningún correo.");
+  assert.match(fila, /await cancelarReserva\(r\.id\);\s*onCambio\(textoDeLaCancelacion\(cod\)\);/, "cancelar no dice nada");
+  // La ficha del espacio lo muestra ella misma: la fila se va y la lista queda tapada.
+  const vista = sinComentarios(leer("src/pages/DashboardView.tsx"));
+  assert.match(vista, /<FilaDeReserva r=\{reservaViva\} sede=\{sedeDelMapa\}\s*onCambio=\{\(aviso\) => \{ setHechoDeLaReserva\(aviso \?\? null\); onReservaCambio\(aviso\); \}\} \/>/,
+    "la ficha no dice qué pasó al confirmar o cancelar la reserva");
+  assert.ok(vista.includes("data-aviso-de-la-reserva"));
 });
 
 console.log(`\n${hechas} pruebas pasaron${process.exitCode ? ", hay fallas" : ""}.`);

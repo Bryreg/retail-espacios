@@ -82,6 +82,12 @@ await prueba("qué hacer con un no realizado, según el motivo", () => {
   assert.match(M.queHacerSegunElMotivo("sin_producto"), /Reclamale el producto/);
   assert.match(M.queHacerSegunElMotivo("espacio_ocupado"), /Liberá el espacio/);
   assert.match(M.queHacerSegunElMotivo(null), /registrá el montaje de nuevo/);
+  // Al trabajador: reclamarle al proveedor es de administración, él avisa.
+  for (const m of ["sin_material", "sin_producto"]) {
+    assert.match(M.queHacerSegunElMotivo(m, false), /^Avisale a quien administra la sede/);
+    assert.doesNotMatch(M.queHacerSegunElMotivo(m, false), /Reclamale/);
+  }
+  assert.match(M.queHacerSegunElMotivo("sin_material", true), /^Reclamale el material al proveedor/);
 });
 
 const vista = sinComentarios(leer("pages/MountView.tsx"));

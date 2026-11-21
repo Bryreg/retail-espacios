@@ -9,6 +9,7 @@ import type { MountConfirmation } from "../api/mounts";
 import type { UnifiedFixture } from "../types/fixtures";
 import { nombreDeMueble } from "../utils/nomenclatura";
 import { textoDelReporte } from "../utils/montajeDelContrato";
+import { claveDeBorrador, leerBorrador } from "../utils/borradorDeMontaje";
 import { TemaToggle } from "../tema";
 
 /**
@@ -111,6 +112,22 @@ export default function Montaje() {
     [espacio],
   );
 
+  /** Hay un reporte guardado en este equipo que no llegó (sin conexión, y se
+   *  cerró la página). Aunque el espacio ya estuviera reportado —una
+   *  corrección que no salió—, se abre el formulario, que lo ofrece arriba
+   *  («Mandar ahora» / «Descartar»): antes se veía el reporte VIEJO y el
+   *  guardado aparecía sólo al tocar «Corregir el reporte». */
+  const [porElGuardado, setPorElGuardado] = useState(false);
+  const claveGuardada = item ? claveDeBorrador(item) : null;
+  useEffect(() => {
+    if (!claveGuardada) return;
+    let vivo = true;
+    void leerBorrador(claveGuardada).then((b) => {
+      if (vivo && b) setPorElGuardado(true);
+    });
+    return () => { vivo = false; };
+  }, [claveGuardada]);
+
   if (estado === "cargando") return <Aviso texto="Cargando el espacio…" />;
 
   // Antes decía «pedí que te reenvíen el aviso»: no hay cómo reenviarlo, y el
@@ -187,7 +204,7 @@ export default function Montaje() {
   // Administración miró la foto al lado de la planometría y no coincide
   // (rediseño UX, etapa 7): quien monta lee qué corregir y lo registra de nuevo.
   const aCorregir = !recien && reportado?.verificacion?.resultado === "no_coincide" ? reportado.verificacion : null;
-  if (reportado && !corrigiendo) {
+  if (reportado && !corrigiendo && !porElGuardado) {
     return (
       <Marco espacio={espacio}>
         {aCorregir && (
@@ -242,8 +259,10 @@ export default function Montaje() {
         dibujo={espacio.dibujo ?? null}
         donde={espacio.donde}
         onEnviar={reportar}
-        onCancel={corrigiendo ? () => setCorrigiendo(false) : undefined}
-        onSaved={(m) => { setRecien(m); setCorrigiendo(false); }}
+        // Con un reporte que ya llegó, el formulario es una corrección: «Volver» al reporte.
+        onCancel={reportado ? () => { setCorrigiendo(false); setPorElGuardado(false); } : undefined}
+        onSaved={(m) => { setRecien(m); setCorrigiendo(false); setPorElGuardado(false); }}
+        onDescartado={() => setPorElGuardado(false)}
       />
     </Marco>
   );

@@ -16,7 +16,7 @@ import {
 
 /** Que Pendientes no se abra sola encima del Inicio. */
 const sinPendientesDelDia = (page: Page) =>
-  page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10)));
+  page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
 
 test("«Montaje sin reporte» lleva a Montajes con ese espacio marcado", async ({ page, request }) => {
   const admin = await entrar(request, "admin");

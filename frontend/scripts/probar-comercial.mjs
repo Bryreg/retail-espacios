@@ -358,8 +358,9 @@ prueba("BLOQUES DE SUPERVISAR DENTRO DE isAdmin: tarjetas, ficha y tabla de part
   // salga SÓLO de las caras «reserved» sin la marca de una reserva de Vender,
   // y que liberar o reservar de verdad sea de administración.)
   // (Fase 4 de la distribución, 2026-10-25: suma los planogramas por revisar,
-  // que no llevan plata ni proveedor; el SERVIDOR sólo le manda a cada rol las
-  // caras que puede publicar —`test_revisa_quien_puede_publicar_esa_cara`—.)
+  // que no llevan plata ni proveedor; son las caras que ese rol puede publicar:
+  // `puede_revisar` del servidor —`test_revisa_quien_puede_publicar_esa_cara`—,
+  // filtrado en `paraRevisar` (`api/supervision.ts`).)
   assert.deepEqual(PARA_TODOS, ["kpis.expired", "kpis.expiring", "kpis.noContract", "kpis.reservadoAMano", "fantasmas",
     "planogramasPorRevisar.filas"]);
   assert.match(t, /else if \(ds\[i\] === "reserved" && !x\.reservado\) reservadoAMano\.push\(x\);/,
@@ -521,6 +522,11 @@ prueba("la ficha del plano 2D: estado por ocupación y «Contratado» por partic
   // «Los contratos se hacen en Contratos» (era «Sede → Vender», nombre viejo: 2026-11-20).
   const vender = panel.indexOf(">Contratos</b>, sobre el");
   assert.ok(vender > panel.indexOf("{isAdmin && esPc ? ("), "«Los contratos se hacen en Contratos» se dice también de una cara por participación");
+  // «Cómo» de la ficha del mueble › Venta y el aviso de los internos vendidos:
+  // la pantalla es Contratos, no «Vender» (2026-11-21).
+  for (const f of ["src/components/PartesDelMueble.tsx", "src/components/Contrato/ModoVender.tsx"]) {
+    assert.doesNotMatch(sinComent(fuenteDe(f.replace(/^src\//, ""))), /Vender ofrece/, `${f} nombra «Vender» como pantalla`);
+  }
 });
 
 /* La verificación del arreglo (2026-10-17): cuatro mutantes vivían con las
@@ -893,8 +899,8 @@ prueba("una RESERVA viva de una cara o una parte no es un contrato en Supervisar
   const mueble0 = { id: "f", code: "GON-02", type: "cross", sede: "CENTRO" };
   const [fusionado] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservaHasta: "2026-11-02" } });
   assert.ok(!("reservaHasta" in fusionado), "la fecha de la reserva se pegó al mueble");
-  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta", "reservado",\s*"leaseId", "proximoLeaseId",\s*\] as const;/);
-  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\) \|\|\s*!!x\.reservado !== !!y\.reservado \|\|\s*\(x\.leaseId \?\? null\) !== \(y\.leaseId \?\? null\) \|\|\s*\(x\.proximoLeaseId \?\? null\) !== \(y\.proximoLeaseId \?\? null\)\) return false;/,
+  assert.match(sinComent(fuenteDe("utils/guardadoDelPlano.ts")), /"startDate", "endDate", "observation", "reservaHasta", "reservado",\s*"leaseId", "proximoLeaseId", "siguienteFirmado",\s*\] as const;/);
+  assert.match(sinComent(fuenteDe("store/fixtureStore.ts")), /\(x\.reservaHasta \?\? null\) !== \(y\.reservaHasta \?\? null\) \|\|\s*!!x\.reservado !== !!y\.reservado \|\|\s*\(x\.leaseId \?\? null\) !== \(y\.leaseId \?\? null\) \|\|\s*\(x\.proximoLeaseId \?\? null\) !== \(y\.proximoLeaseId \?\? null\) \|\|\s*!!x\.siguienteFirmado !== !!y\.siguienteFirmado\) return false;/,
     "el mapa crudo no se actualiza cuando una reserva se confirma con los mismos datos (o cambia el contrato que dibuja la cara)");
   // La marca de la reserva tampoco se le pega al mueble.
   const [fusionado2] = fusionarEstadoComercial("CENTRO", [mueble0], { "CENTRO-GON-02": { ...vendido(), reservado: true } });
@@ -1354,8 +1360,10 @@ prueba("la pastilla roja es la suma de los tres grupos, y cada aviso de cada sec
   assert.match(t, /const cuentasDeRevision = useMemo\(\(\) => contarPorGrupo\(avisos\), \[avisos\]\);\s*const attentionCount = cuentaDelBadge\(cuentasDeRevision\);/,
     "la pastilla roja no es la suma de los tres grupos");
   // La cuenta va al menú de módulos (rediseño UX 2026-10): era la pastilla de
-  // la pestaña «Supervisar», ahora es la de «Indicadores», y en Vender no cuenta.
-  assert.match(t, /const cuentaParaElMenu = modoEfectivo === "supervisar" \? attentionCount : 0;\s*useEffect\(\(\) => \{\s*useArmazon\.getState\(\)\.setCuentaPendientes\(cuentaParaElMenu\);/);
+  // la pestaña «Supervisar», ahora es la de «Indicadores». En Vender esta
+  // pantalla no la manda (no pide todo lo que se cuenta): la manda la copia
+  // que no dibuja (`CuentaDePendientes`), así Contratos lleva el mismo número.
+  assert.match(t, /const mandaLaCuenta = modoEfectivo === "supervisar";\s*useEffect\(\(\) => \{\s*if \(mandaLaCuenta\) useArmazon\.getState\(\)\.setCuentaPendientes\(attentionCount\);/);
   assert.match(t, /const grupoDeRevision: GrupoDeRevision = grupoElegido \?\? grupoParaAbrir\(cuentasDeRevision\);/, "no abre en «Hoy» o en «30 días»");
   assert.match(t, /<PestanasDeRevision cuentas=\{cuentasDeRevision\} grupo=\{grupoDeRevision\}/, "las pestañas no dicen las cuentas de los grupos");
   // Cada lista que se cuenta se dibuja, y en UN solo grupo.
@@ -1957,7 +1965,7 @@ prueba("Vender en edición: manda `edita` con el leaseId y `esperado`, sin la no
   const [f] = fusionarEstadoComercial("CENTRO", [{ id: "f", code: "GON-02", type: "cross", sede: "CENTRO" }],
     { "CENTRO-GON-02": { ...vendido(), leaseId: 17 } });
   assert.ok(!("leaseId" in f), "el leaseId se pegó al mueble");
-  assert.match(t0(), /if \(typeof suyo\?\.leaseId !== "number"\) return e;\s*return typeof suyo\.proximoLeaseId === "number"\s*\? \{ \.\.\.e, leaseId: suyo\.leaseId, proximoLeaseId: suyo\.proximoLeaseId \}\s*: \{ \.\.\.e, leaseId: suyo\.leaseId \};/,
+  assert.match(t0(), /const conSiguiente = suyo\?\.siguienteFirmado \? \{ \.\.\.e, siguienteFirmado: true \} : e;[\s\S]{0,200}if \(typeof suyo\?\.leaseId !== "number"\) return conSiguiente;\s*return typeof suyo\.proximoLeaseId === "number"\s*\? \{ \.\.\.conSiguiente, leaseId: suyo\.leaseId, proximoLeaseId: suyo\.proximoLeaseId \}\s*: \{ \.\.\.conSiguiente, leaseId: suyo\.leaseId \};/,
     "la fila no sabe qué contrato dibuja (ni el próximo)");
 });
 
@@ -2074,7 +2082,7 @@ prueba("el PRÓXIMO contrato de una cara con vigente se edita: `proximoLeaseId` 
     { "CENTRO-GON-02": { ...vendido(), leaseId: 17, proximoLeaseId: 18 } });
   assert.ok(!("proximoLeaseId" in f) && !("leaseId" in f), "el id del próximo se pegó al mueble");
   const ll = readFileSync(join(raiz, "..", "backend", "app", "services", "layout_lookup.py"), "utf8");
-  assert.match(ll, /"leaseId", "proximoLeaseId",\n\)/, "el id del próximo viaja en el layout");
+  assert.match(ll, /"leaseId", "proximoLeaseId", "siguienteFirmado",\n\)/, "el id del próximo viaja en el layout");
   const t = t0();
   assert.match(t, /\{isAdmin && rentable && onEditarProximo && hasContract && !entry\.reservaHasta\s*&& typeof entry\.leaseId === "number" && typeof entry\.proximoLeaseId === "number" && \(/,
     "«Editar el próximo contrato» no es sólo de quien administra");
@@ -2085,6 +2093,20 @@ prueba("el PRÓXIMO contrato de una cara con vigente se edita: `proximoLeaseId` 
   assert.doesNotMatch(t, /onEditar\(\{ \.\.\.e, leaseId: proximoLeaseId/, "el próximo de una parte se abre con el esperado del vigente");
   assert.match(t, /onEditarProximo=\{isAdmin\s*\? \(e, id\) => void editarContrato\(e\.fixture, e\.face, id, null, \{ enFicha: true \}\)/,
     "el próximo no se abre por SU id, o su esperado no sale de él");
+});
+
+prueba("un contrato con el siguiente firmado no está «Por vencer» ni se renueva otra vez (2026-11-21)", () => {
+  const sp = readFileSync(join(raiz, "..", "backend", "app", "routers", "spaces.py"), "utf8");
+  assert.match(sp, /siguienteFirmado=vigente is not None and proximo is not None,/, "el servidor no dice si ya está renovado");
+  const t = t0();
+  assert.match(t, /if \(f\.siguienteFirmado\)\s+return "active";\s*return daysUntil\(f\.endDate\) <= 30 \? "expiring" : "active";/,
+    "un contrato ya renovado sigue «Por vencer»");
+  assert.match(t, /if \(entry\.siguienteFirmado\) return false;/, "a un contrato ya renovado se le ofrece «Renovar»");
+  // «Sin renovar» de Indicadores: la misma regla, también para el trabajador.
+  assert.doesNotMatch(t, /renovado: !!\w+(\.\w+)*\.proximoLeaseId/, "«renovado» se mira por el id del próximo (que el trabajador no recibe)");
+  const [f] = fusionarEstadoComercial("CENTRO", [{ id: "f", code: "GON-02", type: "cross", sede: "CENTRO" }],
+    { "CENTRO-GON-02": { ...vendido(), siguienteFirmado: true } });
+  assert.ok(!("siguienteFirmado" in f), "la marca se pegó al mueble");
 });
 
 prueba("el foco vuelve al «Editar contrato» que abrió la edición (o al título de su sección), y los textos del final", () => {

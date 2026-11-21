@@ -129,7 +129,9 @@ ACCIONES.update({
 ACCIONES.update({
     "usuario.invitado": "Persona invitada",
     "usuario.cambio": "Persona activada o desactivada",
-    # Cambiar el rol desde Ajustes › Equipo (2026-11-20): «Trabajador → Administrador».
+    # Cambiar el rol desde Ajustes › Equipo (2026-11-20). Desde el 2026-11-21
+    # las tres de Equipo dicen a quién: «luis@x: Trabajador → Administrador»,
+    # «luis@x: desactivado», «luis@x: rol Trabajador» (las de antes, sin él).
     "usuario.rol": "Rol de una persona cambiado",
     "ajustes.tarifas": "Tarifas de referencia cambiadas",
     "ajustes.sedes": "Lista de sedes o nombres del catálogo cambiados",

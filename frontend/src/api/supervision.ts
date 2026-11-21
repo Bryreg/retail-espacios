@@ -77,9 +77,6 @@ export interface Revisada {
   reenviada_a: string[];
 }
 
-/** Las caras de la sede para «Para revisar», y el día de hoy del servidor. */
-export const leerSupervision = (sede: string): Promise<{ caras: CaraPorSupervisar[]; hoy: string }> =>
-  client.get<{ caras: CaraPorSupervisar[]; hoy: string }>("/planogramas/supervision", { params: { sede } }).then((r) => r.data);
 
 /** Una cara en la lista de Montajes: lo mismo, y también las que coinciden. */
 export type CaraDelMontaje = Omit<CaraPorSupervisar, "estado"> & {
@@ -90,6 +87,22 @@ export type CaraDelMontaje = Omit<CaraPorSupervisar, "estado"> & {
  *  UX, etapa 7): `todas=1` suma los que ya coinciden (el filtro «Verificado»). */
 export const leerMontajesDePlanogramas = (sede: string): Promise<CaraDelMontaje[]> =>
   client.get<{ caras: CaraDelMontaje[] }>("/planogramas/supervision", { params: { sede, todas: 1 } }).then((r) => r.data.caras);
+
+/** Las caras de la sede con el día de hoy del servidor, en UN pedido: las de
+ *  la lista de Montajes (`todas=1`, lo que cuenta el Inicio) y, de ésas, las
+ *  de «Para revisar» —las que quien mira revisa, sin las que ya coinciden—,
+ *  que es lo mismo que devuelve el pedido sin `todas`. Antes el Inicio pedía
+ *  sin `todas` y al trabajador le faltaban los planogramas que Montajes le
+ *  lista (los de los muebles internos que publica administración). */
+export const leerSupervision = (sede: string): Promise<{ caras: CaraPorSupervisar[]; todas: CaraDelMontaje[]; hoy: string }> =>
+  client.get<{ caras: CaraDelMontaje[]; hoy: string }>("/planogramas/supervision", { params: { sede, todas: 1 } }).then((r) => {
+    const todas = Array.isArray(r.data?.caras) ? r.data.caras : [];
+    return { todas, caras: paraRevisar(todas), hoy: r.data?.hoy ?? "" };
+  });
+
+/** De la lista de Montajes, lo de «Para revisar»: lo que se revisa y no coincide todavía. */
+export const paraRevisar = (todas: readonly CaraDelMontaje[]): CaraPorSupervisar[] =>
+  todas.filter((c): c is CaraPorSupervisar => c.puede_revisar !== false && c.estado !== "coincide");
 
 export const leerFichaDeMontaje = (id: number): Promise<FichaDeMontaje> =>
   client.get<FichaDeMontaje>("/planogramas/supervision/version", { params: { id } }).then((r) => r.data);

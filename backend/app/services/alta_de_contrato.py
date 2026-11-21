@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.fechas import hoy
 from app.models.models import Space, SpaceLease, SpaceStatus, Supplier
 from app.services.catalogo_muebles import CLASES_DE_PARTE
-from app.services.montajes_pendientes import dejar_pendiente
+from app.services.montajes_pendientes import dejar_pendiente, heredar_planometria
 from app.services.partes import Parte, cantidad_de, es_division
 
 
@@ -149,7 +149,12 @@ def escribir_contrato(
     )
     db.add(lease)
     db.flush()
-    dejar_pendiente(db, lease, cara_space_id)
+    # Una renovación de una cara entera o una parte hereda la planometría del
+    # contrato al que sigue: con ella ya no espera nada y el aviso de montaje
+    # sale al guardar, como cuando se la carga (`heredar_planometria`). Un
+    # porcentaje espera su zona, no un archivo: no hereda.
+    if cara_space_id is not None or not heredar_planometria(db, lease):
+        dejar_pendiente(db, lease, cara_space_id)
     if lease.start_date <= hoy():
         space.status = SpaceStatus.occupied
     return lease

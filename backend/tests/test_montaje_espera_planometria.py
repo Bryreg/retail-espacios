@@ -322,3 +322,65 @@ def test_la_lista_de_pendientes_dice_que_falta_y_no_lleva_plata(client, admin, w
     # Sólo administración.
     assert _pendientes(client, worker).status_code == 403
     assert client.get("/api/montajes/pendientes", params={"sede": "NAVE"}).status_code == 401
+
+
+# ─── La renovación hereda la planometría (2026-11-21) ────────────────────────
+
+OCT = {"desde": D(2026, 10, 1), "hasta": D(2026, 10, 31)}
+
+
+@RELOJ
+def test_la_renovacion_hereda_la_planometria_y_avisa_al_montaje_al_guardar(client, admin, monkeypatch):
+    """«Renovar» (mismo espacio, mismo proveedor, arranca el día después):
+    la renovación decía «Falta planometría» por una exhibición ya cargada."""
+    tp._plano(client, admin)
+    enviados = _correos(monkeypatch, client, admin)
+    (viejo,) = [c["lease_id"] for c in tv._vender(client, admin, tv._pedido(tv._entera("GON-02"), **OCT))["contratos"]]
+    _planometria(client, admin, viejo, nombre="punta-oct.jpg")
+    enviados.clear()
+
+    r = tv._vender(client, admin, tv._pedido(tv._entera("GON-02")))   # 1 – 30 nov
+    (nuevo,) = [c["lease_id"] for c in r["contratos"]]
+    heredada = client.get(f"/api/leases/{nuevo}/planometria", headers=admin)
+    assert heredada.status_code == 200 and heredada.json()["filename"] == "punta-oct.jpg"
+    # Ya no espera nada: el aviso de montaje sale al guardar, y no está en «Falta planometría».
+    assert r["avisos"]["montaje_pendiente"] == [] and r["avisos"]["montaje"] == ["m@x.co"]
+    assert _por_montar(enviados)
+    assert nuevo not in [f["lease_id"] for f in _pendientes(client, admin).json()]
+    # La del viejo sigue siendo suya: se copió, no se movió.
+    assert client.get(f"/api/leases/{viejo}/planometria", headers=admin).status_code == 200
+
+
+@RELOJ
+def test_otro_proveedor_o_un_hueco_no_heredan(client, admin, monkeypatch):
+    tp._plano(client, admin)
+    _correos(monkeypatch, client, admin)
+    (viejo,) = [c["lease_id"] for c in tv._vender(client, admin, tv._pedido(tv._entera("GON-02"), **OCT))["contratos"]]
+    _planometria(client, admin, viejo)
+    (vnev,) = [c["lease_id"] for c in tv._vender(client, admin, tv._pedido(tv._entera("NEV-03"), **OCT))["contratos"]]
+    _planometria(client, admin, vnev)
+
+    # Otro proveedor desde el día siguiente: es otra exhibición.
+    otro = tv._vender(client, admin, tv._pedido(tv._entera("GON-02"), proveedor="Alpina", correo="trade@alpina.co"))
+    # El mismo proveedor, pero con un día sin contrato en el medio.
+    hueco = tv._vender(client, admin, tv._pedido(tv._entera("NEV-03"), desde=D(2026, 11, 2)))
+    for r in (otro, hueco):
+        (lid,) = [c["lease_id"] for c in r["contratos"]]
+        assert r["avisos"]["montaje_pendiente"] == [lid]
+        assert client.get(f"/api/leases/{lid}/planometria", headers=admin).status_code == 404
+
+
+@RELOJ
+def test_el_mapa_dice_si_el_contrato_ya_tiene_el_siguiente_firmado(client, admin, worker):
+    """`siguienteFirmado`: con él, «Por vencer» no lista ni ofrece «Renovar»
+    a un contrato ya renovado. Para los dos roles (no dice quién ni cuánto)."""
+    tp._plano(client, admin)
+    tv._vender(client, admin, tv._pedido(tv._entera("GON-02"), **OCT))
+    tv._vender(client, admin, tv._pedido(tv._entera("NEV-03"), **OCT))
+    tv._vender(client, admin, tv._pedido(tv._entera("GON-02")))   # la renovación, 1 – 30 nov
+    for quien in (admin, worker):
+        mapa = client.get("/api/spaces/comercial", params={"sede": "NAVE"}, headers=quien).json()
+        assert mapa["NAVE-GON-02"]["siguienteFirmado"] is True
+        assert mapa["NAVE-NEV-03"]["siguienteFirmado"] is False
+    from app.services.layout_lookup import CAMPOS_DE_CONTRATO
+    assert "siguienteFirmado" in CAMPOS_DE_CONTRATO, "viajaría en el layout"

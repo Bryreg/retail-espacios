@@ -1,19 +1,27 @@
 import Cajon from "./Cajon";
-import { AYUDA_DE_LA_PANTALLA, GLOSARIO } from "../../acciones";
+import { AYUDA_DE_LA_PANTALLA, terminosDeLaPantalla } from "../../acciones";
 import type { Modulo } from "../../modulos";
 
 /**
  * La ayuda «?» de cada pantalla (rediseño UX 2026-10, etapa 8): qué hace, en
  * tres pasos, y la definición de cada término que aparece en ella. Las cifras
- * tienen su propio «?» con la fórmula (Indicadores › Diccionario).
+ * tienen su propio «?» con la fórmula (Indicadores › Diccionario). A quien
+ * trabaja en la tienda no le define los términos de plata (`plata` en el
+ * glosario).
  */
-export default function Ayuda({ modulo, onCerrar, onDiccionario }: { modulo: Modulo; onCerrar: () => void; onDiccionario: () => void }) {
+export default function Ayuda({ modulo, esAdmin, onCerrar, onDiccionario }: {
+  modulo: Modulo;
+  /** Quien no administra no ve plata: ni «Canon» ni la tarifa en los términos. */
+  esAdmin: boolean;
+  onCerrar: () => void;
+  onDiccionario: () => void;
+}) {
   const a = AYUDA_DE_LA_PANTALLA[modulo];
-  const terminos = GLOSARIO.filter((g) => g.modulos.includes(modulo));
+  const terminos = terminosDeLaPantalla(modulo, esAdmin);
   return (
     <Cajon titulo={`Ayuda · ${a.titulo}`} sub="Qué hace esta pantalla y qué quiere decir cada término" onCerrar={onCerrar} etiqueta="Ayuda de la pantalla" ancho={440}>
       <div className="ayuda" data-ayuda={modulo}>
-        <p className="ayuda-que">{a.que}</p>
+        <p className="ayuda-que">{esAdmin ? a.que : (a.queSinPlata ?? a.que)}</p>
         <ol className="ayuda-pasos">{a.pasos.map((p) => <li key={p}>{p}</li>)}</ol>
         <h3>Términos de esta pantalla</h3>
         <dl className="ayuda-terminos">

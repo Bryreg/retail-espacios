@@ -10,6 +10,10 @@
  *   lista dice «Listo: … quedó reportado como montado.».
  * · La pastilla roja de «Pendientes» es la misma en Montajes que en el Inicio,
  *   también entrando directo a `/montajes`.
+ * · «Montajes por resolver» del Inicio cuenta lo que lista Montajes, también
+ *   los planogramas que el trabajador sólo mira.
+ * · La ayuda «?» no le define «Canon», y un «no realizado» le dice que avise
+ *   a quien administra (reclamarle al proveedor es de administración).
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { conSesion, entrar, gondola, isoDentroDe, plano, sedeUnica, sesionEnElNavegador, venderEntera, type Sesion } from "./sembrar";
@@ -74,6 +78,33 @@ test("el trabajador ve los montajes de planogramas y abre la guía, sin revisarl
   await expect(guia).toHaveCount(0);
 });
 
+test("el Inicio del trabajador cuenta los mismos montajes que lista Montajes, con los planogramas", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  const sede = sedeUnica("PGI");
+  await plano(request, admin, sede, [interno(sede, "INT-01", 2), gondola(sede, "GON-01", 6)]);
+  // Un planograma que rige desde hoy (lo publica administración) y un contrato
+  // que empezó hace 5 días: los dos sin montar.
+  await publicarPlanograma(request, admin, sede, `f-${sede}-INT-01`);
+  await venderEntera(request, admin, sede, `${sede}-GON-01`, { proveedor: "Aseo Total", valor: 900_000 });
+  const worker = await entrar(request, "worker");
+  await sesionEnElNavegador(page, worker, sede);
+
+  await page.goto("/montajes");
+  await expect(page.locator('[data-montaje="planograma"]')).toHaveCount(1);
+  await expect(page.locator('[data-montaje="contrato"]')).toHaveCount(1);
+  await expect(page.locator('[data-filtro="sin_montar"] .mono')).toHaveText("2");
+  await expect(page.locator('[data-filtro="no_realizado"] .mono')).toHaveText("0");
+
+  // Antes el Inicio pedía sólo lo que el trabajador revisa y decía 1.
+  await page.goto("/");
+  const tarjeta = page.locator('[data-cifra-inicio="Montajes por resolver"]');
+  await expect(tarjeta.locator(".valor")).toHaveText("2");
+  await expect(tarjeta).toContainText("2 sin montar");
+  // «Para revisar» sigue siendo de quien publica: el planograma no le llega
+  // como tarea de revisión.
+  await expect(page.locator('[data-aviso^="pg:"]')).toHaveCount(0);
+});
+
 test("sin conexión: «en este equipo», la barra lo dice sola y al volver sale el «Listo»", async ({ page, context, request }) => {
   const admin = await entrar(request, "admin");
   const sede = sedeUnica("SCX");
@@ -125,6 +156,37 @@ test("«No pude» desde Montajes: la lista confirma que quedó el motivo", async
   await expect(page.getByRole("status").filter({ hasText: "Listo:" }))
     .toHaveText(/Listo: GON-01 quedó reportado como no montado, con el motivo\./);
   await expect(page.locator('[data-montaje="contrato"]').first()).toHaveAttribute("data-estado", "no_realizado");
+});
+
+test("al trabajador: la ayuda del Inicio sin «Canon» y el «no realizado» le dice que avise", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  const sede = sedeUnica("AYU");
+  await plano(request, admin, sede, [gondola(sede, "GON-01", 3)]);
+  await venderEntera(request, admin, sede, `${sede}-GON-01`, { proveedor: "Aseo Total", valor: 900_000 });
+  const r = await request.post("/api/montaje/reportar", {
+    headers: conSesion(admin),
+    multipart: { estado: "no_montado", space_code: `${sede}-GON-01`, motivo: "sin_material", reportado_por: "Prueba" },
+  });
+  expect(r.status(), await r.text()).toBe(201);
+  const worker = await entrar(request, "worker");
+  await sesionEnElNavegador(page, worker, sede);
+
+  // La ayuda «?» del Inicio no le define plata.
+  await page.goto("/");
+  await page.locator("[data-abrir-ayuda]").click();
+  const ayuda = page.locator('[data-ayuda="inicio"]');
+  await expect(ayuda).toBeVisible();
+  await expect(ayuda.locator("dt", { hasText: "Ocupación" })).toBeVisible();
+  await expect(ayuda).not.toContainText("Canon");
+  await expect(ayuda).not.toContainText("Lo que paga el proveedor");
+  await page.keyboard.press("Escape");
+
+  // «Ver registro» de un no realizado: reclamar es de administración.
+  await page.goto("/montajes");
+  await page.locator('[data-montaje="contrato"]').getByRole("button", { name: "Ver registro" }).click();
+  const resolver = page.locator("[data-resolver-montaje]");
+  await expect(resolver).toContainText("Avisale a quien administra la sede que falta el material del proveedor");
+  await expect(resolver).not.toContainText("Reclamale");
 });
 
 test("«Pendientes» lleva el mismo número en Montajes que en el Inicio, entrando directo", async ({ page, request }) => {

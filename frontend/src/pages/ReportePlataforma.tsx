@@ -79,19 +79,71 @@ function soloFecha(iso: string | null): string {
 /** El día de hoy en Colombia (`AAAA-MM-DD`), para el nombre del archivo. */
 const hoyEnColombia = (): string => new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
 
-const FINALIDAD_LABEL: Record<CatalogoEntrada["finalidad"], string> = {
-  asesoria: "Asesoría",
-  salud_cartera: "Salud de cartera",
-  cobranza: "Cobranza",
+/* La parte 1 en palabras (2026-11-21): era una tabla con «Fuente» (nombres de
+   tablas de la base) y «Endpoints» (rutas de la API), que a la dueña no le
+   decían nada. Ahora va agrupada por para qué, y de cada dato dice qué es, de
+   dónde sale y cómo sale. El JSON no cambia: «Descargar JSON» lleva la fuente
+   técnica tal cual (la Política, §5.3 c, pide de qué tabla sale). */
+
+/** Las finalidades, con las palabras de la Política (§3.6), en el orden en que
+ *  se leen. */
+const FINALIDADES: readonly { clave: CatalogoEntrada["finalidad"]; titulo: string; para: string }[] = [
+  {
+    clave: "salud_cartera", titulo: "Salud de la cartera",
+    para: "Para entender la ocupación, el ingreso contratado y el rendimiento de tu supermercado, y así sostener el servicio.",
+  },
+  {
+    clave: "asesoria", titulo: "Asesoría comercial",
+    para: "Para proponerte qué espacio te conviene vender, a qué precio y a qué proveedor ofrecérselo, a partir de tus propios espacios, contratos y proveedores. Sirve también para mejorar RECABRA, sin identificar a ninguna persona.",
+  },
+  {
+    clave: "cobranza", titulo: "Cobranza y administración de la cuenta",
+    para: "Para el estado de la cuenta, su uso y la facturación de la suscripción.",
+  },
+];
+
+const TRATAMIENTO_EN_PALABRAS: Record<CatalogoEntrada["tratamiento"], string> = {
+  exacto: "sale tal cual",
+  saneado: "sale con los correos y los teléfonos tapados",
+  sin_hora: "sale sólo la fecha, sin la hora",
+  conteo: "sale sólo la cantidad",
+  relacion: "sale calculado a partir de otros datos",
 };
 
-const TRATAMIENTO_LABEL: Record<CatalogoEntrada["tratamiento"], string> = {
-  exacto: "Exacto",
-  saneado: "Saneado",
-  sin_hora: "Sin hora",
-  conteo: "Conteo",
-  relacion: "Relación",
-};
+/** De qué tabla sale cada dato, dicho como lo conoce quien usa RECABRA. Lo que
+ *  no está acá se muestra tal cual llega (nunca se inventa). */
+const FUENTES_EN_PALABRAS: readonly [RegExp, string][] = [
+  [/usuarios\.ultimo_login/g, "el último ingreso de cada persona"],
+  [/suppliers\.name/g, "el nombre del proveedor"],
+  [/layout_snapshots/g, "los planos de las sedes"],
+  [/space_leases/g, "los contratos"],
+  [/suppliers/g, "los proveedores"],
+  [/membresias/g, "las personas con acceso"],
+  [/estados_cliente/g, "el estado de la cuenta"],
+  [/snapshot_metricas/g, "el resumen de cada mes que guarda RECABRA"],
+  [/app_config/g, "la configuración"],
+  [/fundaciones, clientes/g, "la fecha de alta del supermercado"],
+  [/todos los clientes legibles/g, "todos los supermercados"],
+  [/^derivado de /, "se calcula con "],
+];
+
+/** Los grupos de la parte 1. Una finalidad que esta pantalla no conoce sale
+ *  igual, con su nombre crudo: el reporte no esconde ningún dato. */
+function gruposDelCatalogo(catalogo: CatalogoEntrada[]): { clave: string; titulo: string; para: string }[] {
+  const conocidas = new Set<string>(FINALIDADES.map((f) => f.clave));
+  const otras = [...new Set(catalogo.map((c) => c.finalidad as string))].filter((f) => !conocidas.has(f));
+  return [...FINALIDADES, ...otras.map((f) => ({ clave: f, titulo: f, para: "" }))];
+}
+
+function fuenteEnPalabras(fuente: string, catalogo: CatalogoEntrada[]): string {
+  let texto = fuente;
+  for (const [patron, palabras] of FUENTES_EN_PALABRAS) texto = texto.replace(patron, palabras);
+  // «derivado de espacio_estado, resumen_por_tipo…»: los otros datos, por su nombre.
+  for (const c of catalogo) {
+    if (c.clave.includes("_")) texto = texto.replace(new RegExp(`\\b${c.clave}\\b`, "g"), `«${c.nombre}»`);
+  }
+  return texto;
+}
 
 /** Acciones tal como las anota `_anotar_consulta` en la bitácora del
  *  registro -- un texto que no está en la lista taxativa se muestra tal
@@ -199,39 +251,38 @@ const tdNum: React.CSSProperties = { ...td, textAlign: "right", fontFamily: "var
 
 function SeccionCatalogo({ catalogo }: { catalogo: CatalogoEntrada[] }) {
   return (
-    <section style={{ marginBottom: 26 }}>
-      <h2 style={tituloSeccion}>1. Qué datos toma la plataforma y para qué</h2>
+    <section style={{ marginBottom: 26 }} data-reporte-catalogo>
+      <h2 style={tituloSeccion}>1. Qué datos toma RECABRA y para qué</h2>
       <p style={parrafo}>
-        Lista completa de los agregados que el operador de la plataforma puede consultar de
-        este cliente, de dónde salen y para qué se usan. Ninguna fila de contrato, ningún
-        correo ni nombre de usuario final cruza esta frontera.
+        Todo lo que RECABRA puede consultar de tu supermercado, agrupado por para qué lo usa. De
+        cada dato: qué es, de dónde sale y cómo sale. Nunca entran los datos de contacto ni las
+        notas de tus proveedores, ni el nombre o el correo de las personas de tu equipo.
       </p>
-      <div style={{ overflowX: "auto" }}>
-        <table className="reporte-tabla" style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
-          <thead>
-            <tr>
-              <th style={th}>Dato</th>
-              <th style={th}>Definición</th>
-              <th style={th}>Fuente</th>
-              <th style={th}>Finalidad</th>
-              <th style={th}>Endpoints</th>
-              <th style={th}>Tratamiento</th>
-            </tr>
-          </thead>
-          <tbody>
-            {catalogo.map((c) => (
-              <tr key={c.clave}>
-                <td style={{ ...td, fontWeight: 600, color: "var(--con-ink-1)" }}>{c.nombre}</td>
-                <td style={td}>{c.definicion}</td>
-                <td style={td}>{c.fuente}</td>
-                <td style={td}>{FINALIDAD_LABEL[c.finalidad] ?? c.finalidad}</td>
-                <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{c.endpoints.join(", ")}</td>
-                <td style={td}>{TRATAMIENTO_LABEL[c.tratamiento] ?? c.tratamiento}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {gruposDelCatalogo(catalogo).map((f) => {
+        const datos = catalogo.filter((c) => c.finalidad === f.clave);
+        if (datos.length === 0) return null;
+        return (
+          <div key={f.clave} style={{ marginBottom: 16 }} data-finalidad={f.clave}>
+            <h3 style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 700, color: "var(--con-ink-1)" }}>
+              {f.titulo}
+            </h3>
+            {f.para && <p style={{ ...parrafo, margin: "0 0 8px" }}>{f.para}</p>}
+            <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+              {datos.map((c) => (
+                <li key={c.clave} style={{ padding: "6px 0", borderBottom: "1px solid var(--con-line-soft)" }}>
+                  <div style={{ fontSize: 12.5, color: "var(--con-ink-2)", lineHeight: 1.5 }}>
+                    <strong style={{ color: "var(--con-ink-1)" }}>{c.nombre}.</strong> {c.definicion}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--con-ink-3)", lineHeight: 1.5 }}>
+                    De dónde sale: {fuenteEnPalabras(c.fuente, catalogo)}. Cómo:{" "}
+                    {TRATAMIENTO_EN_PALABRAS[c.tratamiento] ?? c.tratamiento}.
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -246,8 +297,8 @@ function SeccionValores({
       <h2 style={tituloSeccion}>2. Valores tomados, mes a mes</h2>
       <p style={parrafo}>
         Ventana de {reporte.ventana.meses} meses, de {etiquetaMes(reporte.ventana.desde)} a{" "}
-        {etiquetaMes(reporte.ventana.hasta)}. Un mes sin captura no tuvo snapshot guardado --
-        no es lo mismo que cero contratos.
+        {etiquetaMes(reporte.ventana.hasta)}. Un mes «sin captura» es un mes en que RECABRA no
+        guardó el resumen: no es lo mismo que cero contratos.
       </p>
       <div style={{ overflowX: "auto" }}>
         <table className="reporte-tabla" style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
@@ -308,24 +359,31 @@ function SeccionValores({
   );
 }
 
+/** «galerias:2026-11» → «2026-11»: el período sin el código interno del
+ *  supermercado (es el suyo: el reporte es de él). Otro prefijo queda. */
+function sinElCodigo(periodo: string, slug: string): string {
+  return periodo.startsWith(`${slug}:`) ? periodo.slice(slug.length + 1) : periodo;
+}
+
 function SeccionAccesos({ reporte }: { reporte: ReporteTransparencia }) {
   return (
     <section style={{ marginBottom: 26 }}>
       <h2 style={tituloSeccion}>3. Quién lo consultó</h2>
       <p style={parrafo}>
-        {reporte.accesos.total} acceso{reporte.accesos.total === 1 ? "" : "s"} del operador de
-        la plataforma a los datos de este cliente en la ventana mostrada. Sólo fecha (sin
-        hora), correo del operador, acción y período -- nunca qué miró exactamente.
+        {reporte.accesos.total} acceso{reporte.accesos.total === 1 ? "" : "s"} de RECABRA a los
+        datos de tu supermercado en la ventana mostrada. De cada uno: la fecha (sin hora), el
+        correo de la persona de RECABRA que consultó, qué hizo y el período; nunca qué miró
+        exactamente.
       </p>
       {reporte.accesos.total === 0 ? (
-        <EstadoVacio texto="Ningún acceso del operador en la ventana." />
+        <EstadoVacio texto="Ningún acceso de RECABRA en la ventana." />
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table className="reporte-tabla" style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
             <thead>
               <tr>
                 <th style={th}>Fecha</th>
-                <th style={th}>Operador</th>
+                <th style={th}>Quién</th>
                 <th style={th}>Acción</th>
                 <th style={th}>Período</th>
               </tr>
@@ -336,7 +394,7 @@ function SeccionAccesos({ reporte }: { reporte: ReporteTransparencia }) {
                   <td style={td}>{soloFecha(l.fecha)}</td>
                   <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{l.operador}</td>
                   <td style={td}>{etiquetaAccion(l.accion)}</td>
-                  <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{l.periodo}</td>
+                  <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{sinElCodigo(l.periodo, reporte.cliente.slug)}</td>
                 </tr>
               ))}
             </tbody>
@@ -482,8 +540,10 @@ export default function ReportePlataforma({ modo }: { modo: Modo }) {
               <h1 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: "var(--con-ink-1)" }}>
                 Reporte de transparencia — {reporte.cliente.nombre}
               </h1>
-              <div style={{ fontSize: 11.5, color: "var(--con-ink-4)", fontFamily: "var(--font-mono)", marginBottom: 10 }}>
-                {reporte.cliente.slug} · generado el {soloFecha(reporte.generado_en)}
+              {/* Sin el código interno del supermercado («galerias»), que no le
+                  dice nada a quien lo lee: va sólo en el nombre del archivo. */}
+              <div style={{ fontSize: 11.5, color: "var(--con-ink-4)", marginBottom: 10 }}>
+                Reporte generado el {soloFecha(reporte.generado_en)}
               </div>
               <div style={{ fontSize: 12.5, color: "var(--con-ink-2)", lineHeight: 1.6 }}>
                 <div>

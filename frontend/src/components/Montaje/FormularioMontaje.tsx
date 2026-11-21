@@ -8,7 +8,7 @@ import type { UnifiedFixture } from "../../types/fixtures";
 import type { DibujoDeMontaje } from "../../api/montaje";
 import MiZonaEnLaCara from "./MiZonaEnLaCara";
 import {
-  borrarBorrador, cuandoSeGuardo, esErrorDeRed, guardarBorrador, leerBorrador, type BorradorDeMontaje,
+  borrarBorrador, claveDeBorrador, cuandoSeGuardo, esErrorDeRed, guardarBorrador, leerBorrador, type BorradorDeMontaje,
 } from "../../utils/borradorDeMontaje";
 
 /**
@@ -90,7 +90,7 @@ function fecha(iso: string): string {
 
 
 export default function FormularioMontaje({
-  item, vecinos, plano, dibujo, donde: dondeDelServidor, quienReporta, onEnviar, onCancel, onSaved,
+  item, vecinos, plano, dibujo, donde: dondeDelServidor, quienReporta, onEnviar, onCancel, onSaved, onDescartado,
 }: {
   item: EspacioAMontar;
   /** Todos los muebles de la sede: el plano necesita el contexto, no solo el destino. */
@@ -120,6 +120,10 @@ export default function FormularioMontaje({
   onEnviar: (datos: DatosReporte) => Promise<MountConfirmation>;
   onCancel?: () => void;
   onSaved: (m: MountConfirmation) => void;
+  /** «Descartar» el reporte guardado en el equipo. La pantalla del enlace abre
+   *  el formulario sólo por ese reporte cuando el espacio ya estaba reportado,
+   *  y al descartarlo vuelve a mostrar el reporte que sí llegó. */
+  onDescartado?: () => void;
 }) {
   const [foto, setFoto] = useState<File | null>(null);
   const [vista, setVista] = useState<string | null>(null);
@@ -157,7 +161,7 @@ export default function FormularioMontaje({
   /** El reporte de este montaje, guardado en el equipo: el de una visita
    *  anterior (`pendiente`, todavía no está en el formulario) o el que no
    *  pudo salir recién (`sinSenal`: cuándo se guardó). */
-  const clave = `${item.code}|${item.desde}`;
+  const clave = claveDeBorrador(item);
   const [pendiente, setPendiente] = useState<BorradorDeMontaje | null>(null);
   const [sinSenal, setSinSenal] = useState<string | null>(null);
   useEffect(() => {
@@ -351,6 +355,44 @@ export default function FormularioMontaje({
         </div>
       </div>
 
+      {/* El reporte que no llegó va primero: el trabajo ya está hecho, falta
+          mandarlo, y es lo que se ve al abrir el enlace otra vez. */}
+      {pendiente && (
+        <div role="status" data-reporte-guardado
+          style={{
+            display: "grid", gap: 10, marginBottom: 16, padding: 14, borderRadius: "var(--r-lg)",
+            background: "var(--entra-suave)", border: "1px solid var(--entra-borde)", color: "var(--ink-1)",
+          }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}>
+            <CloudOff size={17} aria-hidden style={{ color: "var(--entra-txt)" }} /> Tenés un reporte sin mandar
+          </div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.45, color: "var(--ink-2)" }}>
+            «{pendiente.estado === "montado" ? "Lo monté" : "No pude"}»
+            {pendiente.foto ? " · con foto" : ""}
+            {pendiente.quien ? ` · ${pendiente.quien}` : ""} · guardado {cuandoSeGuardo(pendiente.guardado)} ·
+            todavía no llegó al sistema.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {/* En tinta y no amarillo: el amarillo de esta pantalla es
+                «Confirmar» (uno por pantalla, `probar-tema`). */}
+            <button type="button" onClick={() => mandarPendiente(pendiente)} disabled={enviando}
+              style={{
+                flex: 1, minHeight: 46, borderRadius: "var(--r-lg)", fontSize: 15, fontWeight: 700, fontFamily: "inherit",
+                cursor: "pointer", border: "none", background: "var(--ink-1)", color: "var(--surface)",
+              }}>
+              {enviando ? "Enviando…" : "Mandar ahora"}
+            </button>
+            <button type="button" onClick={() => { void borrarBorrador(clave); setPendiente(null); onDescartado?.(); }} disabled={enviando}
+              style={{
+                minHeight: 46, padding: "0 16px", borderRadius: "var(--r-lg)", fontSize: 15, fontWeight: 600,
+                fontFamily: "inherit", cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)",
+              }}>
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Dónde queda. Va antes de la pregunta a propósito: primero se camina
           hasta el mueble, después se responde. El plano se dibuja con los
           muebles de la sede, y si el destino no aparece en el layout se omite
@@ -432,42 +474,6 @@ export default function FormularioMontaje({
               {ubicacion}
             </div>
           )}
-        </div>
-      )}
-
-      {pendiente && (
-        <div role="status" data-reporte-guardado
-          style={{
-            display: "grid", gap: 10, marginBottom: 16, padding: 14, borderRadius: "var(--r-lg)",
-            background: "var(--entra-suave)", border: "1px solid var(--entra-borde)", color: "var(--ink-1)",
-          }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}>
-            <CloudOff size={17} aria-hidden style={{ color: "var(--entra-txt)" }} /> Tenés un reporte sin mandar
-          </div>
-          <div style={{ fontSize: 13.5, lineHeight: 1.45, color: "var(--ink-2)" }}>
-            «{pendiente.estado === "montado" ? "Lo monté" : "No pude"}»
-            {pendiente.foto ? " · con foto" : ""}
-            {pendiente.quien ? ` · ${pendiente.quien}` : ""} · guardado {cuandoSeGuardo(pendiente.guardado)} ·
-            todavía no llegó al sistema.
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {/* En tinta y no amarillo: el amarillo de esta pantalla es
-                «Confirmar» (uno por pantalla, `probar-tema`). */}
-            <button type="button" onClick={() => mandarPendiente(pendiente)} disabled={enviando}
-              style={{
-                flex: 1, minHeight: 46, borderRadius: "var(--r-lg)", fontSize: 15, fontWeight: 700, fontFamily: "inherit",
-                cursor: "pointer", border: "none", background: "var(--ink-1)", color: "var(--surface)",
-              }}>
-              {enviando ? "Enviando…" : "Mandar ahora"}
-            </button>
-            <button type="button" onClick={() => { void borrarBorrador(clave); setPendiente(null); }} disabled={enviando}
-              style={{
-                minHeight: 46, padding: "0 16px", borderRadius: "var(--r-lg)", fontSize: 15, fontWeight: 600,
-                fontFamily: "inherit", cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)",
-              }}>
-              Descartar
-            </button>
-          </div>
         </div>
       )}
 
