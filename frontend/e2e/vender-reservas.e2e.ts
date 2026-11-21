@@ -10,12 +10,14 @@
  *  · Confirmar una reserva dice a quiénes salió el aviso (los de un contrato).
  */
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { comercial, conSesion, entrar, gondola, plano, sedeUnica, sesionEnElNavegador, venderEntera, type Sesion } from "./sembrar";
+import { comercial, conSesion, entrar, gondola, hoyEnColombia, plano, sedeUnica, sesionEnElNavegador, venderEntera, type Sesion } from "./sembrar";
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 /** El último día del mes `k` meses después del de hoy, y el primero. */
-const ultimoDia = (k: number) => { const h = new Date(); return new Date(h.getFullYear(), h.getMonth() + k + 1, 0); };
-const primerDia = (k: number) => { const h = new Date(); return new Date(h.getFullYear(), h.getMonth() + k, 1); };
+/** Hoy, el día de Colombia (el del servidor), como fecha local del runner. */
+const hoy = () => { const [a, m, d] = hoyEnColombia().split("-").map(Number); return new Date(a, m - 1, d); };
+const ultimoDia = (k: number) => { const h = hoy(); return new Date(h.getFullYear(), h.getMonth() + k + 1, 0); };
+const primerDia = (k: number) => { const h = hoy(); return new Date(h.getFullYear(), h.getMonth() + k, 1); };
 
 /** La tarifa de las góndolas de ESTA sede (`by_sede`): las demás pruebas
  *  comparten el servidor y siguen sin tarifa. */
@@ -86,7 +88,7 @@ test("reservar no dice «contrato guardado», y confirmar dice a quiénes salió
   await page.getByLabel("Precio total de GON-02·A").fill("900000");
   await page.getByLabel("Proveedor").fill("Lácteos Andinos");
   await page.getByRole("button", { name: "Reservar hasta…" }).click();
-  await page.getByLabel("Reservar hasta").fill(iso(new Date()));
+  await page.getByLabel("Reservar hasta").fill(hoyEnColombia());
   await page.getByRole("button", { name: /^Reservar hasta el / }).click();
 
   const hecho = page.locator('[data-guardado="reserva"]');

@@ -49,7 +49,7 @@ for (const tema of ["claro", "oscuro"] as const) {
     // El tema del interior se elige en la app (no sigue al sistema).
     if (tema === "oscuro") await page.addInitScript(() => localStorage.setItem("recabra-tema", "oscuro"));
     // Que Pendientes no se abra sola encima del Inicio (se revisa aparte).
-    await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10)));
+    await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
 
     for (const ruta of ["/", "/contratos", "/indicadores", "/plano", "/plano/caras", "/montajes"]) {
       await page.goto(ruta);

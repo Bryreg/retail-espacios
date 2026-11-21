@@ -39,7 +39,7 @@ async function comoPersona(page: Page, s: Sesion, email: string, rolCliente: "ow
       version: 0,
     }));
     localStorage.setItem("recabra-config-inicial-vista", "1");
-    localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10));
+    localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date()));
   }, [s, email, rolCliente] as const);
 }
 

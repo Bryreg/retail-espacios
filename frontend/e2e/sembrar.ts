@@ -86,9 +86,14 @@ export async function plano(api: APIRequestContext, s: Sesion, sede: string, mue
   expect([200, 409]).toContain(r2.status());
 }
 
+/** El día de hoy en Colombia, que es el que usa el servidor. Con la fecha UTC
+ *  del runner, de 19:00 a 24:00 de Colombia las pruebas esperaban «mañana». */
+export const hoyEnColombia = (): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+
 export const isoDentroDe = (dias: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + dias);
+  const d = new Date(`${hoyEnColombia()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
   return d.toISOString().slice(0, 10);
 };
 
