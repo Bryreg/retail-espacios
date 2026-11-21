@@ -78,10 +78,11 @@ prueba("el Dashboard monta los módulos sin volver a montarse y manda lo descono
   assert.match(dash, /if \(mountCode\) navigate\(RUTA_DE\.montajes, \{ replace: true \}\);/, "el enlace del correo de montaje no abre Montajes");
   // Contratos, Indicadores e Inicio son la MISMA pantalla comercial (un solo
   // elemento). La otra es la que sólo cuenta los Pendientes, fuera de lo
-  // comercial: nunca las dos a la vez, y ésa no dibuja nada.
+  // comercial y en Contratos (que en modo Vender no la manda); nunca con el
+  // Inicio o Indicadores a la vista, y ésa no dibuja nada.
   assert.equal((dash.match(/<DashboardView\b(?! soloLaCuenta)/g) ?? []).length, 1, "la pantalla comercial se monta en más de un lugar");
   assert.equal((dash.match(/<DashboardView soloLaCuenta\b/g) ?? []).length, 1);
-  assert.match(dash, /\{!comercial && <CuentaDePendientes \/>\}/, "la cuenta de Pendientes corre también con la pantalla comercial abierta");
+  assert.match(dash, /\{\(!comercial \|\| efectivo === "contratos"\) && <CuentaDePendientes \/>\}/, "la cuenta de Pendientes no corre en Contratos, o corre también con el Inicio o Indicadores a la vista");
   // El 2D y el 3D siguen alcanzándose: el selector 2D | 3D de la barra.
   assert.match(dash, /\["plano", "2D",[\s\S]{0,200}\["plano3d", "3D",/);
 });
@@ -112,7 +113,7 @@ prueba("«Pendientes» lleva el mismo número en todos los módulos: la copia qu
   assert.match(dash, /<DashboardView soloLaCuenta inicio modo="supervisar"/);
 });
 
-prueba("lo de «Para revisar» se pide en Supervisar o con la bandeja abierta; la pastilla no va en Contratos", () => {
+prueba("lo de «Para revisar» se pide en Supervisar o con la bandeja abierta; la pastilla va también en Contratos", () => {
   const v = sinComentarios(leer("pages", "DashboardView.tsx"));
   assert.match(v, /const pideRevision = modoEfectivo === "supervisar" \|\| bandejaAbierta;/);
   for (const h of ["useCobrosPorVentas", "useReservasDeEspacio", "useFaltaPlanometria", "usePrecioSinForma"])
@@ -122,7 +123,8 @@ prueba("lo de «Para revisar» se pide en Supervisar o con la bandeja abierta; l
   assert.equal((v.match(/\{cuerpoDeRevision\}/g) ?? []).length, 1);
   assert.match(v, /\{bandejaAbierta\s*\?\s*<div className="vacio-r">Abierto en Pendientes\.<\/div>\s*:\s*cuerpoDeRevision\}/);
   const dash = sinComentarios(leer("pages", "Dashboard.tsx"));
-  assert.match(dash, /const n = modulo === "contratos" \? 0 : cuenta;/);
+  // Contratos lleva el mismo número (recorrido de los manuales, 2026-11-21).
+  assert.match(dash, /const n = cuenta;/);
 });
 
 prueba("el Inicio no le muestra plata a quien no administra, ni la bitácora", () => {

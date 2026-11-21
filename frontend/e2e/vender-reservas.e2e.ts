@@ -9,8 +9,8 @@
  *  · Una reserva guardada no dice «El contrato quedó guardado.».
  *  · Confirmar una reserva dice a quiénes salió el aviso (los de un contrato).
  */
-import { expect, test, type APIRequestContext } from "@playwright/test";
-import { comercial, conSesion, entrar, gondola, hoyEnColombia, plano, sedeUnica, sesionEnElNavegador, venderEntera, type Sesion } from "./sembrar";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { comercial, conSesion, entrar, gondola, hoyEnColombia, isoDentroDe, plano, sedeUnica, sesionEnElNavegador, venderEntera, type Sesion } from "./sembrar";
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 /** El último día del mes `k` meses después del de hoy, y el primero. */
@@ -106,4 +106,78 @@ test("reservar no dice «contrato guardado», y confirmar dice a quiénes salió
   await cajon.locator("[data-reserva]").getByRole("button", { name: "Confirmar", exact: true }).click();
   await expect(page.locator("[data-aviso-de-supervision]")).toContainText("GON-02·A pasó a contrato.");
   await expect.poll(async () => (await comercial(request, admin))[`${sede}-GON-02`]?.leaseId ?? null).not.toBeNull();
+});
+
+/** Una reserva por la misma ruta que «Reservar hasta…» de Contratos. */
+async function reservar(api: APIRequestContext, s: Sesion, sede: string, espacio: string, proveedor: string) {
+  const r = await api.post("/api/contratos/vender", {
+    headers: conSesion(s),
+    data: {
+      sede, proveedor, correo: "compras@ejemplo.co", marca: proveedor, tipo: "reserva", caduca: isoDentroDe(3),
+      desde: isoDentroDe(0), hasta: isoDentroDe(60),
+      lineas: [{ espacio, valor: 900_000, modo_precio: "total", valor_tecleado: 900_000 }],
+    },
+  });
+  expect(r.status(), await r.text()).toBe(200);
+}
+
+/** La ficha de GON-01·A desde Indicadores › Contratos (la fila de la reserva). */
+async function abrirLaFicha(page: Page) {
+  await page.goto("/indicadores");
+  await page.getByRole("tab", { name: "Contratos" }).click();
+  await page.getByRole("row").filter({ has: page.getByRole("cell", { name: "GON-01·A", exact: true }) }).first().click();
+  await expect(page.locator("[data-reserva]")).toBeVisible();
+}
+
+test("la ficha del espacio dice qué pasó al confirmar la reserva", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  const sede = sedeUnica("RFI");
+  await plano(request, admin, sede, [gondola(sede, "GON-01", 3)]);
+  await reservar(request, admin, sede, `${sede}-GON-01`, "Lácteos Andinos");
+  await sesionEnElNavegador(page, admin, sede);
+
+  // Antes sólo cambiaba a «Contratado», sin decir nada.
+  await abrirLaFicha(page);
+  await page.locator("[data-reserva]").getByRole("button", { name: "Confirmar", exact: true }).click();
+  const aviso = page.locator("[data-aviso-de-la-reserva]");
+  await expect(aviso).toContainText("GON-01·A pasó a contrato.");
+  await expect(aviso).toContainText(/Salió el aviso|No salió ningún (aviso|correo)/);
+  await expect.poll(async () => (await comercial(request, admin))[`${sede}-GON-01`]?.leaseId ?? null).not.toBeNull();
+});
+
+test("la ficha del espacio dice qué pasó al cancelar la reserva", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  const sede = sedeUnica("RFC");
+  await plano(request, admin, sede, [gondola(sede, "GON-01", 3)]);
+  await reservar(request, admin, sede, `${sede}-GON-01`, "Bebidas del Sur");
+  await sesionEnElNavegador(page, admin, sede);
+
+  await abrirLaFicha(page);
+  await page.locator("[data-reserva]").getByRole("button", { name: "Cancelar", exact: true }).click();
+  await page.locator("[data-reserva]").getByRole("button", { name: "Sí, cancelar" }).click();
+  await expect(page.locator("[data-aviso-de-la-reserva]"))
+    .toHaveText("Se canceló la reserva de GON-01·A: esas fechas quedan libres. No salió ningún correo.");
+  await expect.poll(async () => (await comercial(request, admin))[`${sede}-GON-01`]?.status ?? "libre").toBe("libre");
+});
+
+test("un contrato ya renovado no sale en «Por vencer» ni ofrece «Renovar» otra vez", async ({ page, request }) => {
+  const admin = await entrar(request, "admin");
+  const sede = sedeUnica("RRE");
+  await plano(request, admin, sede, [gondola(sede, "GON-01", 3), gondola(sede, "GON-02", 7)]);
+  // GON-01 vence en 10 días y ya tiene su renovación; GON-02 vence en 12, sin renovar.
+  await venderEntera(request, admin, sede, `${sede}-GON-01`, { proveedor: "Limpio Hogar", valor: 900_000, hasta: isoDentroDe(10) });
+  await venderEntera(request, admin, sede, `${sede}-GON-01`, { proveedor: "Limpio Hogar", valor: 900_000, desde: isoDentroDe(11), hasta: isoDentroDe(190) });
+  await venderEntera(request, admin, sede, `${sede}-GON-02`, { proveedor: "Aseo Total", valor: 700_000, hasta: isoDentroDe(12) });
+  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
+  await sesionEnElNavegador(page, admin, sede);
+
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+  await page.locator(".btn-pendientes").click();
+  const cajon = page.locator('[role="dialog"]').last();
+  await cajon.locator('button[data-grupo="dias30"]').click();
+  const porVencer = cajon.locator('[data-aviso^="pv-"]');
+  await expect(porVencer).toHaveCount(1);
+  await expect(porVencer).toContainText("GON-02");
+  await expect(cajon.getByRole("button", { name: /^Renovar/ })).toHaveCount(1);
 });

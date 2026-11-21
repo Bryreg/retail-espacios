@@ -1521,9 +1521,10 @@ function VistaDelPlano({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void
 }
 
 /** Pendientes (etapa 3): la bandeja de lo que hay para revisar, encima de la
- *  pantalla en uso. La cuenta roja no se dibuja con Contratos abierto —mezcla
- *  vencimientos, bajo tarifa, reservas y cortes de ventas, y esa pantalla la
- *  mira el proveedor— y la bandeja sólo se abre si se la pide. Fuera de las
+ *  pantalla en uso. La cuenta roja es la misma en todos los módulos, también
+ *  con Contratos abierto (antes ahí salía sin número y parecía que no había
+ *  nada; recorrido de los manuales, 2026-11-21), y la bandeja sólo se abre si
+ *  se la pide. Fuera de las
  *  pantallas comerciales (Plano, Montajes) lleva al Inicio y la abre ahí:
  *  sus filas resuelven con la ficha y el plano de la sede. */
 function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => void }) {
@@ -1533,7 +1534,7 @@ function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => vo
   const cerrar = useArmazon((s) => s.cerrarPendientes);
   const location = useLocation();
   const comercial = modulo === "inicio" || modulo === "contratos" || modulo === "indicadores";
-  const n = modulo === "contratos" ? 0 : cuenta;
+  const n = cuenta;
   return (
     <button
       type="button"
@@ -1554,7 +1555,9 @@ function BotonPendientes({ modulo, ir }: { modulo: Modulo; ir: (m: Modulo) => vo
   );
 }
 
-/** La pastilla roja de «Pendientes» fuera de lo comercial (Plano, Montajes).
+/** La pastilla roja de «Pendientes» fuera del Inicio y de Indicadores (Plano,
+ *  Montajes y Contratos: Contratos es la pantalla comercial en modo Vender, que
+ *  no pide todo lo que se cuenta y no la manda).
  *  La cuenta la hace la pantalla comercial (`DashboardView`) con lo que baja;
  *  al entrar directo a `/montajes` (o recargar ahí) nunca se montaba y el botón
  *  salía sin número, mientras en Inicio e Indicadores decía «Pendientes 1»
@@ -1999,7 +2002,7 @@ export default function Dashboard() {
             )}
             </Suspense>
             </LimiteDeError>
-            {!comercial && <CuentaDePendientes />}
+            {(!comercial || efectivo === "contratos") && <CuentaDePendientes />}
           </main>
         </div>
       </div>

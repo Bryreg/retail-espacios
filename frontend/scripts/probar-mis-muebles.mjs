@@ -271,4 +271,19 @@ await prueba("todo lienzo 3D va a 1:1 adentro de la app escalada (la vista de la
   assert.match(leer("src/plano.css"), /\.p2-mini3d \{[^}]*grid-template-columns: minmax\(0, 1fr\)/, "la columna de la miniatura crece con el lienzo");
 });
 
+await prueba("el nombre de ejemplo es del tipo elegido: una punta no sugiere «Nevera de la entrada» (2026-11-21)", () => {
+  const de = (entrada) => F.nombreDeEjemplo(F.familiaDe(entrada));
+  assert.equal(de("punta"), "Punta de la entrada");
+  assert.equal(de("nevera_puertas"), "Nevera de la entrada");
+  for (const f of F.FAMILIAS_DEL_FORMULARIO) {
+    const n = F.nombreDeEjemplo(f);
+    assert.ok(n.length > 0 && !n.includes("("), `${f.entrada}: «${n}»`);
+    if (!f.tipo.startsWith("nevera")) assert.doesNotMatch(n, /nevera/i, `${f.entrada} sugiere «${n}»`);
+  }
+  assert.equal(F.nombreDeEjemplo({ entrada: "nueva", rotulo: "Exhibidor (de piso)" }), "Exhibidor de la entrada");
+  const paso = sinComentarios(leer("src/components/taller/AsistenteDeMueble.tsx"));
+  assert.match(paso, /placeholder=\{nombreDeEjemplo\(familia\)\}/, "el campo «Nombre» no usa el ejemplo del tipo");
+  assert.ok(!paso.includes('placeholder="Nevera de la entrada"'));
+});
+
 console.log(`\n${hechas} pruebas · el plano se edita en el 2D y los muebles se arman en Mis muebles`);

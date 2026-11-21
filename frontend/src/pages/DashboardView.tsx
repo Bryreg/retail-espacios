@@ -286,6 +286,9 @@ interface FaceEntry {
    *  (`proximoLeaseId`, sólo para quien administra, del mapa crudo): «Editar el
    *  próximo contrato» de la ficha abre ESE. */
   proximoLeaseId?: number | null;
+  /** Ya tiene el siguiente contrato firmado (`siguienteFirmado` del mapa
+   *  crudo, los dos roles): no está «Por vencer» ni se renueva otra vez. */
+  siguienteFirmado?: boolean;
 }
 
 /** Vender, cuando el Plano no deja cambiar cómo se vende un mueble: sin el
@@ -329,12 +332,14 @@ function conLaReserva(e: FaceEntry, estado: EstadoPorEspacio, sede: string): Fac
   // Al trabajador le llega sólo la marca (sin fecha, plata ni proveedor): va
   // «Reservado» a secas, y no «Ocupado sin contrato» en Corregir.
   if (suyo?.reservado) return { ...e, status: "reserved", reservado: true };
+  // Ya renovado (o vendido a otro desde que termina): a los dos roles.
+  const conSiguiente = suyo?.siguienteFirmado ? { ...e, siguienteFirmado: true } : e;
   // El contrato que dibuja la fila (sólo le llega a quien administra): como
   // `reservaHasta`, del mapa crudo; la fusión no se lo pega al mueble.
-  if (typeof suyo?.leaseId !== "number") return e;
+  if (typeof suyo?.leaseId !== "number") return conSiguiente;
   return typeof suyo.proximoLeaseId === "number"
-    ? { ...e, leaseId: suyo.leaseId, proximoLeaseId: suyo.proximoLeaseId }
-    : { ...e, leaseId: suyo.leaseId };
+    ? { ...conSiguiente, leaseId: suyo.leaseId, proximoLeaseId: suyo.proximoLeaseId }
+    : { ...conSiguiente, leaseId: suyo.leaseId };
 }
 
 const EMPTY_FACE: FaceData = {
@@ -385,6 +390,8 @@ const DIAS_PARA_RENOVAR = 60;
 function renovable(entry: FaceEntry): boolean {
   // Una reserva no se renueva: se confirma o se cancela («Reservas»).
   if (entry.reservaHasta || !entry.supplierName.trim() || !entry.endDate) return false;
+  // Ya tiene el siguiente firmado: renovarlo otra vez chocaría con él.
+  if (entry.siguienteFirmado) return false;
   const dias = daysUntil(entry.endDate);
   return dias !== null && dias <= DIAS_PARA_RENOVAR;
 }
@@ -592,7 +599,7 @@ type DisplayStatus =
  *  but has not started yet. Without it, booking a December end-cap in August
  *  painted the space occupied for four months — the plan said "taken" while
  *  the backend would happily have sold those months to someone else. */
-function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: string }): DisplayStatus {
+function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: string; siguienteFirmado?: boolean }): DisplayStatus {
   if (f.status === "free")        return "free";
   if (f.status === "reserved")    return "reserved";
   if (f.status === "maintenance") return "maintenance";
@@ -606,6 +613,11 @@ function displayStatus(f: { status: SpaceStatus; startDate?: string; endDate: st
   // which already counted its money as current revenue, and polluted the
   // very alert meant to surface spaces occupied without paperwork.
   if (!f.endDate)                 return "active";
+  // Ya tiene el siguiente contrato firmado (`conLaReserva`): no está «Por
+  // vencer» —ni en Pendientes, ni en el Inicio, ni en el chip— y no se ofrece
+  // «Renovar» otra vez. Antes un contrato ya renovado seguía ahí con «Renovar»
+  // (recorrido de los manuales, 2026-11-21).
+  if (f.siguienteFirmado)         return "active";
   return daysUntil(f.endDate) <= 30 ? "expiring" : "active";
 }
 
@@ -3296,6 +3308,12 @@ function FixtureDetailCard({
   }, [fixture, estadoComercial, indiceDeLaFicha, sedeDelMapa, entry.face]);
   const codigoDeLaCara = fullSpaceCode(fixture.sede || sedeDelMapa, entry.code);
   const reservaViva = isAdmin && entry.reservaHasta ? reservaDe?.(codigoDeLaCara) : undefined;
+  /** Lo que pasó al confirmar o cancelar la reserva DESDE la ficha: la fila
+   *  se va (ya no hay reserva) y el aviso de la lista queda tapado por la
+   *  ficha, así que sólo cambiaba la pastilla a «Contratado» sin decir a
+   *  quiénes salió el aviso (recorrido de los manuales, 2026-11-21). */
+  const [hechoDeLaReserva, setHechoDeLaReserva] = useState<string | null>(null);
+  useEffect(() => { setHechoDeLaReserva(null); }, [codigoDeLaCara]);
   const cobroDeLaCara = isAdmin && hasContract ? cobroDe?.(codigoDeLaCara) : undefined;
   /** La planometría pedida, si es de OTRO contrato que el de la cara (una
    *  parte o una participación): va arriba, aparte. */
@@ -3343,6 +3361,18 @@ function FixtureDetailCard({
       )}
 
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 13, overflowY: "auto" }}>
+        {hechoDeLaReserva && (
+          <div role="status" data-aviso-de-la-reserva
+            style={{ display: "grid", gridTemplateColumns: "18px minmax(0,1fr) auto", gap: 8, alignItems: "start",
+              padding: "10px 12px", borderRadius: 12, background: "var(--libre-suave)", border: "1px solid var(--libre-borde)",
+              fontSize: "var(--t-xs)", color: "var(--ink-1)", lineHeight: 1.45 }}>
+            <CircleCheck size={16} strokeWidth={1.75} aria-hidden style={{ color: "var(--libre-txt)", marginTop: 1 }} />
+            <span>{hechoDeLaReserva}</span>
+            <button type="button" className="btn-s" aria-label="Cerrar el aviso" onClick={() => setHechoDeLaReserva(null)}>
+              <X size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          </div>
+        )}
         {/* «Cargar planometría» de «Para revisar»: la del contrato que la
             espera, arriba y a la vista. */}
         {isAdmin && pedidaAparte && (
@@ -3483,7 +3513,8 @@ function FixtureDetailCard({
             {/* La reserva se confirma o se cancela acá mismo, con el precio
                 que se guardó al reservar. */}
             {isAdmin && reservaViva && onReservaCambio && (
-              <FilaDeReserva r={reservaViva} sede={sedeDelMapa} onCambio={onReservaCambio} />
+              <FilaDeReserva r={reservaViva} sede={sedeDelMapa}
+                onCambio={(aviso) => { setHechoDeLaReserva(aviso ?? null); onReservaCambio(aviso); }} />
             )}
             {(entry.startDate || entry.endDate) && <PeriodBox entry={entry} />}
             {isAdmin && (entry.negotiatedValue > 0 || cobroDeLaCara) && (
@@ -6577,13 +6608,15 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const cuentasDeRevision = useMemo(() => contarPorGrupo(avisos), [avisos]);
   const attentionCount = cuentaDelBadge(cuentasDeRevision);
   /** La cuenta viaja al armazón: la pastilla roja del botón «Pendientes» de
-   *  la barra de arriba (era la de la pestaña «Supervisar»). En Vender no se
-   *  cuenta: mezcla vencimientos, bajo tarifa, reservas y cortes de ventas, y
-   *  la pantalla la mira el proveedor. */
-  const cuentaParaElMenu = modoEfectivo === "supervisar" ? attentionCount : 0;
+   *  la barra de arriba (era la de la pestaña «Supervisar»). En Vender esta
+   *  pantalla NO la manda —no pide todo lo que se cuenta (`pideRevision`) y
+   *  mandaba 0, así que en Contratos salía sin número—: ahí la hace la copia
+   *  que no dibuja (`CuentaDePendientes` en `Dashboard.tsx`), con la misma
+   *  regla que el Inicio. */
+  const mandaLaCuenta = modoEfectivo === "supervisar";
   useEffect(() => {
-    useArmazon.getState().setCuentaPendientes(cuentaParaElMenu);
-  }, [cuentaParaElMenu]);
+    if (mandaLaCuenta) useArmazon.getState().setCuentaPendientes(attentionCount);
+  }, [mandaLaCuenta, attentionCount]);
   const grupoDeRevision: GrupoDeRevision = grupoElegido ?? grupoParaAbrir(cuentasDeRevision);
 
   /** Al primer ingreso del día, si hay algo con fecha límite hoy, la bandeja
@@ -7851,7 +7884,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
   const montajesMes = montajesDelMes(delMes.map((t) => ({ desde: t.entry.startDate, estado: estadoDeMontajeDe(t.entry) })), hoyIso);
   const alMesDe = (x: FaceEntry) => (isAdmin ? enLaUnidad(x.negotiatedValue, x.startDate, x.endDate, "mes") : 0);
   const vence90 = venceEn(kpis.todas.filter((t) => t.fase === "vigente").map((t) => ({
-    codigo: codigoVisible(t.entry), hasta: t.entry.endDate, alMes: alMesDe(t.entry), renovado: !!t.entry.proximoLeaseId,
+    codigo: codigoVisible(t.entry), hasta: t.entry.endDate, alMes: alMesDe(t.entry), renovado: !!t.entry.siguienteFirmado,
   })), hoyIso, 90);
   const ct = isAdmin ? canonContraTarifa(kpis.vigentes.map((x) => ({
     alMes: alMesDe(x), tarifa: tarifaDeLaFila(referenceRates, sede, x).valor ?? 0,
@@ -8041,7 +8074,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
         boton: botonDe("Ver ficha"), onClick: () => revisar(e.fixture, e.face) });
     }
     for (const e of kpis.expiring) {
-      if (e.proximoLeaseId) continue;
+      if (e.siguienteFirmado) continue;
       accion({ tipo: "renovar", clave: claveDe(e), codigo: codigoVisible(e), asunto: "Renovación pendiente", corto: "Renovación pendiente",
         detalle: e.supplierName, impacto: isAdmin ? alMesDe(e) : null, dias: e.days,
         plazo: `${diaCorto(e.endDate)} · ${e.days} día${e.days === 1 ? "" : "s"}`, boton: botonDe("Gestionar renovación"), onClick: () => revisar(e.fixture, e.face) });
@@ -8107,7 +8140,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
       .map((t) => ({ t, dias: enDias(t.entry.endDate) }))
       .filter((x) => x.dias >= 0 && x.dias <= 90)
       .sort((a, b) => a.dias - b.dias);
-    const sinRenovar = (max: number) => vigentesQueVencen.filter((x) => x.dias <= max && !x.t.entry.proximoLeaseId);
+    const sinRenovar = (max: number) => vigentesQueVencen.filter((x) => x.dias <= max && !x.t.entry.siguienteFirmado);
     const cuentaVence = (max: number) => ({ contratos: sinRenovar(max).length, alMes: isAdmin ? sinRenovar(max).reduce((s, x) => s + alMesDe(x.t.entry), 0) : null });
 
     // Las caras enteras sin contrato hoy y el primer día de los próximos tres meses.
@@ -8180,7 +8213,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
     const ctS = isAdmin ? canonContraTarifa(filas.filter((x) => x.negotiatedValue > 0).map((x) => ({
       alMes: alMesDe(x), tarifa: tarifaDeLaFila(referenceRates, s, x).valor ?? 0,
     }))) : null;
-    const vS = venceEn(filas.map((x) => ({ codigo: x.code, hasta: x.endDate, alMes: alMesDe(x), renovado: !!x.proximoLeaseId })), hoyIso, 90);
+    const vS = venceEn(filas.map((x) => ({ codigo: x.code, hasta: x.endDate, alMes: alMesDe(x), renovado: !!x.siguienteFirmado })), hoyIso, 90);
     return {
       sede: s, canonHoy: isAdmin && ser ? ser[ser.length - 1] : null,
       serie: isAdmin && ser ? ser.slice(-12) : null, variacion: isAdmin ? v?.pct ?? null : null,
@@ -8501,7 +8534,7 @@ export default function DashboardView({ onDisenarPlano, modo: modoPedido, onModo
                 ocupacion: { pct: kpis.occPct, ocupadas: kpis.occupied, total: kpis.total, meta: meta.ocupacion },
                 vencen: tableroB.vigentesQueVencen.map(({ t }) => ({
                   clave: `${t.entry.fixture.id}-${t.entry.face}`, codigo: codigoVisible(t.entry), proveedor: t.entry.supplierName,
-                  hasta: t.entry.endDate, alMes: isAdmin ? alMesDe(t.entry) : null, renovado: !!t.entry.proximoLeaseId,
+                  hasta: t.entry.endDate, alMes: isAdmin ? alMesDe(t.entry) : null, renovado: !!t.entry.siguienteFirmado,
                 })),
                 montajesDelMes: { total: montajesMes.total, enLaTienda: montajesMes.enLaTienda, verificados: montajesMes.porEstado.verificado },
                 acciones: tableroB.acciones, pendientes: attentionCount, brecha: tableroB.brecha, tarifas: tableroB.tarifas, embudo,

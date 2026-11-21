@@ -321,7 +321,7 @@ function Fila({
             data-repisas-vendidas={repisasVendidas}
             title={parteDelRenglon
               ? `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (3D), sin contrato en la base, y ${repisasVendidas === 1 ? "cae" : "caen"} en lo elegido. Las partes se venden igual: revisá que no caigan encima de lo que se está vendiendo antes de cerrar.`
-              : `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (3D), sin contrato en la base. Son del mueble, no de una cara: valen para las dos. Vender ofrece la cara entera, y el 3D se la muestra al proveedor libre, sin ellos: revisá si siguen vigentes antes de cerrar.`}
+              : `${repisasVendidas === 1 ? "Un espacio interno de este mueble figura vendido" : `${repisasVendidas} espacios internos de este mueble figuran vendidos`} aparte en el plano (3D), sin contrato en la base. Son del mueble, no de una cara: valen para las dos. Contratos ofrece la cara entera, y el 3D se la muestra al proveedor libre, sin ellos: revisá si siguen vigentes antes de cerrar.`}
           >
             {repisasVendidas === 1 ? "1 interno vendido" : `${repisasVendidas} internos vendidos`}{parteDelRenglon ? " en lo elegido" : ""}
           </span>
