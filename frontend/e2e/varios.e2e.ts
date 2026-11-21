@@ -20,7 +20,7 @@ test("worker: el buscador encuentra el espacio y abre su ficha, sin plata ni «R
   const worker = await entrar(request, "worker");
   await sesionEnElNavegador(page, worker, sede);
   // Que Pendientes no se abra sola encima del Inicio.
-  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10)));
+  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
   await page.goto("/");
   await expect(page.locator("main")).toBeVisible();
   await page.waitForLoadState("networkidle");
@@ -51,7 +51,7 @@ test("admin: el buscador sigue llevando a vender el espacio", async ({ page, req
   const sede = sedeUnica("BUA");
   await plano(request, admin, sede, [gondola(sede, "GON-01", 3)]);
   await sesionEnElNavegador(page, admin, sede);
-  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10)));
+  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
   await page.goto("/");
   await expect(page.locator("main")).toBeVisible();
   await page.waitForLoadState("networkidle");
@@ -66,7 +66,7 @@ test("admin: el buscador sigue llevando a vender el espacio", async ({ page, req
 test("menú de la cuenta: toda la fila «Tema claro u oscuro» cambia el tema", async ({ page, request }) => {
   const worker = await entrar(request, "worker");
   await sesionEnElNavegador(page, worker);
-  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10)));
+  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
   await page.goto("/");
   await expect(page.locator("main")).toBeVisible();
   await page.waitForLoadState("networkidle");
@@ -93,7 +93,7 @@ test("menú de la cuenta: toda la fila «Tema claro u oscuro» cambia el tema", 
 test("buscador: lo tecleado apenas se abre con el mouse no se pierde", async ({ page, request }) => {
   const worker = await entrar(request, "worker");
   await sesionEnElNavegador(page, worker);
-  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Date().toISOString().slice(0, 10)));
+  await page.addInitScript(() => localStorage.setItem("recabra-pendientes-del-dia", new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date())));
   // El buscador baja a pedido: que tarde, como en una conexión lenta.
   await page.route(/\/assets\/Buscador-[^/]*\.js$/, async (r) => {
     await new Promise((listo) => setTimeout(listo, 1200));
