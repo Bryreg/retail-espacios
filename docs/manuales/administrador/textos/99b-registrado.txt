@@ -13,7 +13,7 @@ Buscar
 Ctrl K
 Sincronizado
 Pendientes
-25
+26
 GA
 Galerías
 Administrador
@@ -88,18 +88,18 @@ Punta de góndola
 desde el 20 nov
 Sin montar · aviso enviado
 Registrar montaje
+PUN-08
+Contrato
+Lácteos Andinos
+Punta de góndola
+desde el 20 nov
+Sin montar · falta planometría
+Adjuntar planometría
 PUN-09
 Contrato
 Lácteos Andinos · Yogur Andino
 Punta de góndola
 desde el 1 dic
-Sin montar · falta planometría
-Adjuntar planometría
-PUN-08
-Contrato
-Café Montaña · Café Montaña Tostado
-Punta de góndola
-desde el 1 mar
 Sin montar · falta planometría
 Adjuntar planometría
 GON-04-PC1

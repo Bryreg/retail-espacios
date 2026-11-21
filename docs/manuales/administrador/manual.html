@@ -141,7 +141,7 @@
   <table>
     <tr><th style="width:34%">Lo que dice</th><th>Qué hacés</th></tr>
     <tr><td><span class="texto-pantalla">Reservas que caducan hoy</span></td><td><span class="boton">Confirmar</span> si el proveedor firmó; <span class="boton">Cancelar</span> si no (2.4).</td></tr>
-    <tr><td><span class="texto-pantalla">Por vencer en 30 días</span></td><td><span class="boton">Renovar</span>: abre un contrato nuevo con los mismos datos (2.5). Si no se renueva, no hagas nada: el espacio se libera solo el día que vence.</td></tr>
+    <tr><td><span class="texto-pantalla">Por vencer en 30 días</span></td><td><span class="boton">Renovar</span>: abre un contrato nuevo con los mismos datos (2.5). Al guardarlo, el que vence sale de la lista. Si no se renueva, no hagas nada: el espacio se libera solo el día que vence.</td></tr>
     <tr><td><span class="texto-pantalla">Ventas por cargar</span></td><td>Escribí lo que vendió el proveedor en ese período y <span class="boton">Guardar</span> (2.3).</td></tr>
     <tr><td><span class="texto-pantalla">Falta planometría</span></td><td><span class="boton">Cargar planometría</span>: abre la ficha del espacio para subirla (4.4). Sin ella no sale el aviso de montaje.</td></tr>
     <tr><td><span class="texto-pantalla">No se pudo montar</span></td><td>Tocá la fila: ves el motivo. Se resuelve en Montajes (6.3).</td></tr>
@@ -166,12 +166,12 @@
   <h2 class="proceso">2.4 Confirmar o cancelar una reserva</h2>
   <p class="cuando"><b>Cuándo:</b> el día que caduca una reserva provisional (<span class="texto-pantalla">Reservas que caducan hoy</span>). Si no hacés nada, la reserva se libera sola.</p>
   <ol class="pasos">
-    <li><p>Si el proveedor confirmó, tocá <span class="boton">Confirmar</span> (1): la reserva pasa a ser contrato. Si no, tocá <span class="boton">Cancelar</span> (2) y el espacio queda libre.</p>
+    <li><p>Si el proveedor confirmó, tocá <span class="boton">Confirmar</span> (1): la reserva pasa a ser contrato. Si no, tocá <span class="boton">Cancelar</span> (2) y, a <span class="texto-pantalla">¿Cancelarla?</span>, <span class="boton">Sí, cancelar</span>: arriba dice <span class="texto-pantalla">Se canceló la reserva de PUN-09: esas fechas quedan libres. No salió ningún correo.</span></p>
       <figure class="adm-recorte"><img src="../img/administrador/18-reserva-caduca.jpg" alt="Reserva que caduca hoy"></figure></li>
     <li><p>Al confirmar, arriba de la bandeja dice que pasó a contrato y a quiénes les llegó el aviso. La reserva sale de la lista.</p>
       <figure class="adm-recorte"><img src="../img/administrador/18b-reserva-confirmada.jpg" alt="La reserva pasó a contrato"></figure></li>
   </ol>
-  <div class="caja truco"><span class="rotulo">Los avisos salen al confirmar</span><p>Confirmar manda los mismos correos que vender: la <b>Confirmación</b> al proveedor y <span class="texto-pantalla">1 contrato nuevo — CENTRO</span> al área comercial. Si dice <span class="texto-pantalla">El proveedor no tiene correo: avisale vos.</span>, contale vos que quedó en firme. Para que salga el de montaje, cargá la planometría (4.4). La misma reserva tiene <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span> en la ficha del espacio (3.8).</p></div>
+  <div class="caja truco"><span class="rotulo">Los avisos salen al confirmar</span><p>Confirmar manda los mismos correos que vender: la <b>Confirmación</b> al proveedor y <span class="texto-pantalla">1 contrato nuevo — CENTRO</span> al área comercial. Si dice <span class="texto-pantalla">El proveedor no tiene correo: avisale vos.</span>, contale vos que quedó en firme. Para que salga el de montaje, cargá la planometría (4.4). La misma reserva tiene <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span> en la ficha del espacio, y ahí se lee el mismo mensaje (3.8).</p></div>
 
   <h2 class="proceso">2.5 Renovar lo que vence</h2>
   <p class="cuando"><b>Cuándo:</b> en los 30 días antes de que venza un contrato (grupo <span class="texto-pantalla">30 días</span>). El sistema también le avisa al área comercial por correo.</p>
@@ -184,7 +184,7 @@
       <figure class="adm-recorte"><img src="../img/administrador/22-renovar-total.jpg" alt="Frase de la renovación"></figure></li>
   </ol>
   <div class="caja truco"><span class="rotulo">Otro plazo</span><p>Si el proveedor renueva por otro plazo, cambiá el <span class="texto-pantalla">Hasta</span> o usá los atajos <span class="boton">1 mes</span> y <span class="boton">3 meses</span>, y mirá que el total de abajo sea el acordado.</p></div>
-  <div class="caja error"><span class="rotulo">Después de renovar</span><p>La renovación es un contrato nuevo: pide su propia planometría (sale en Pendientes como <span class="texto-pantalla">Falta planometría</span>). El contrato que vence sigue en <span class="texto-pantalla">Por vencer en 30 días</span>, con <span class="boton">Renovar</span>, hasta su fecha: no lo renueves dos veces.</p></div>
+  <div class="caja truco"><span class="rotulo">Después de renovar</span><p>El contrato que vence <b>sale de <span class="texto-pantalla">Por vencer en 30 días</span></b> (y del Inicio): ya tiene el siguiente firmado. Su ficha dice <span class="texto-pantalla">Activo</span> y ya no ofrece <span class="boton">Renovar con …</span>, y al área comercial no le llega el aviso de vencimiento. La renovación de un espacio entero o de una parte (un entrepaño) se queda con la <b>planometría</b> del contrato anterior: no aparece <span class="texto-pantalla">Falta planometría</span> y el aviso de montaje sale al guardar (4.3). Un <b>porcentaje</b> no la hereda: el aviso sale cuando se distribuya la cara (capítulo 7).</p></div>
 </section>
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
@@ -273,6 +273,8 @@
       <figure class="adm-chico"><img src="../img/administrador/46-reservado.jpg" alt="Reservado"></figure></li>
     <li><p>En la ficha (4.1) dice <span class="texto-pantalla">Reservado</span>, con <span class="boton">Confirmar</span> y <span class="boton">Cancelar</span>, y la línea de tiempo dice <span class="texto-pantalla">Reservado hasta el …, sin confirmar</span>. El día que caduca aparece en Pendientes (2.4).</p>
       <figure class="adm-chico"><img style="max-height:54mm" src="../img/administrador/13-ficha-reserva.jpg" alt="Ficha de una reserva"></figure></li>
+    <li><p>Desde la ficha, <span class="boton">Confirmar</span> la pasa a contrato y arriba dice a quiénes salió el aviso, lo mismo que en Pendientes (en el ejemplo, <span class="texto-pantalla">PUN-08 pasó a contrato. Salió el aviso al área comercial y al proveedor. El de montaje sale cuando el espacio tenga su planometría.</span>). <span class="boton">Cancelar</span> pregunta <span class="texto-pantalla">¿Cancelarla?</span>; con <span class="boton">Sí, cancelar</span> dice <span class="texto-pantalla">Se canceló la reserva de PUN-08: esas fechas quedan libres. No salió ningún correo.</span> y el espacio queda <span class="texto-pantalla">Libre</span>.</p>
+      <figure class="adm-lado"><img src="../img/administrador/77-reserva-confirmada-ficha.jpg" alt="Reserva confirmada desde la ficha"><img src="../img/administrador/76-reserva-cancelada.jpg" alt="Reserva cancelada desde la ficha"></figure></li>
   </ol>
   <div class="caja error"><span class="rotulo">Para tener en cuenta</span><p>La reserva no puede terminar antes de hoy ni durar más que el contrato. Mientras sea reserva no sale ningún correo y <b>no aparece en Montajes</b>: a quien monta no le llega nada hasta que la confirmes. En el plano se ve como <span class="texto-pantalla">Reservado</span>, no como ocupado.</p></div>
 
@@ -289,7 +291,7 @@
   <ol class="pasos">
     <li><p>Arriba del plano tocá <span class="boton">Línea de tiempo</span>: cada espacio en una fila y los próximos 12 meses. En rojo lo contratado, en ámbar punteado lo reservado y en azul tus fechas. Con <span class="texto-pantalla">Sólo los disponibles en tus fechas</span> quedan sólo los que sirven. <span class="boton">Plano</span> vuelve al plano.</p>
       <figure class="adm-pc"><img src="../img/administrador/49-linea-de-tiempo.jpg" alt="Línea de tiempo"></figure></li>
-    <li><p>Debajo del plano, <span class="texto-pantalla">Cuándo se libera cada espacio</span> cuenta cuántos espacios quedan libres desde cada fecha (<span class="texto-pantalla">si arrancás el 1 de dic → 4 libres</span>), con las temporadas marcadas y los códigos que se liberan.</p>
+    <li><p>Debajo del plano, <span class="texto-pantalla">Cuándo se libera cada espacio</span> cuenta cuántos espacios quedan libres desde cada fecha (<span class="texto-pantalla">si arrancás el 1 de dic → 3 libres</span>), con las temporadas marcadas y los códigos que se liberan.</p>
       <figure class="adm-recorte"><img src="../img/administrador/50-cuando-se-libera.jpg" alt="Cuándo se libera cada espacio"></figure></li>
   </ol>
 
@@ -348,11 +350,16 @@
   <h2 class="proceso">4.3 Renovar desde la ficha</h2>
   <p class="cuando"><b>Cuándo:</b> el proveedor sigue. Es lo mismo que <span class="boton">Renovar</span> de Pendientes (2.5).</p>
   <ol class="pasos">
-    <li><p>Tocá <span class="boton">Renovar con …</span> (el nombre del proveedor). Sólo aparece cuando el contrato está por vencer. Para darle el espacio a otro, <span class="boton">Contrato con otro proveedor</span>.</p>
+    <li><p>Tocá <span class="boton">Renovar con …</span> (el nombre del proveedor). Sólo aparece cuando el contrato está por vencer y todavía no tiene el siguiente firmado. Para darle el espacio a otro, <span class="boton">Contrato con otro proveedor</span>.</p>
       <figure class="adm-chico"><img src="../img/administrador/68-renovar-boton.jpg" alt="Renovar con"></figure></li>
     <li><p>Se abre Contratos con el contrato nuevo armado: los mismos meses, desde el día siguiente al vencimiento. En el ejemplo, después de alargar <code>PUN-01</code> hasta el 31 dic (7 meses), la renovación va del 1 ene al 31 jul 2027. Revisá <span class="texto-pantalla">Desde</span> (1), <span class="texto-pantalla">Hasta</span> (2) y el precio, y tocá <span class="boton azul">Guardar contrato</span>.</p>
       <figure class="adm-pc"><img src="../img/administrador/69-renovar-formulario.jpg" alt="Renovación"></figure></li>
+    <li><p>Sale <span class="texto-pantalla">Contrato guardado</span>. En <span class="texto-pantalla">Salieron los avisos a</span> aparece también <b>Montaje</b>: la renovación se quedó con la planometría del contrato anterior y el aviso de montaje ya salió.</p>
+      <figure class="adm-chico"><img src="../img/administrador/69b-renovado.jpg" alt="Renovación guardada con el aviso de montaje"></figure></li>
+    <li><p>La ficha del contrato que vence dice ahora <span class="texto-pantalla">Activo</span>, con <span class="boton">Editar el próximo contrato</span> en lugar de <span class="boton">Renovar con …</span>, y en <span class="texto-pantalla">Los próximos 12 meses</span> se ve ocupado hasta el final de la renovación. Ya no sale en <span class="texto-pantalla">Por vencer en 30 días</span>.</p>
+      <figure class="adm-chico"><img src="../img/administrador/69c-ya-renovado.jpg" alt="Ficha del contrato ya renovado"></figure></li>
   </ol>
+  <div class="caja error"><span class="rotulo">«Qué pasa ahora» después de renovar</span><p>Debajo de los avisos, <span class="texto-pantalla">Qué pasa ahora</span> sigue diciendo <span class="texto-pantalla">Sale a quien monta cuando el espacio tenga su planometría</span>. En una renovación no le hagas caso: si arriba figura <b>Montaje</b>, el aviso ya salió.</p></div>
 
   <h2 class="proceso">4.4 Cargar la planometría</h2>
   <p class="cuando"><b>Cuándo:</b> el proveedor mandó la imagen (o el PDF) de cómo debe quedar la exhibición. Sin ella no sale el aviso de montaje.</p>
@@ -385,7 +392,7 @@
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 <section class="capitulo">
   <h1><span class="num">5</span>Indicadores</h1>
-  <p class="entrada">Cómo va la sede: cuánto está ocupado, cuánto entra, qué vence, quién paga. Arriba están las pestañas; la fecha y el período se eligen a la izquierda. La plata se ve siempre en cifras completas («$ 6.035.833»).</p>
+  <p class="entrada">Cómo va la sede: cuánto está ocupado, cuánto entra, qué vence, quién paga. Arriba están las pestañas; la fecha y el período se eligen a la izquierda. La plata se ve siempre en cifras completas («$ 6.054.167»).</p>
 
   <h2 class="proceso">5.1 Mapa de oportunidades</h2>
   <p class="cuando"><b>Cuándo:</b> para ver de un vistazo dónde está la plata que falta.</p>
@@ -531,7 +538,6 @@
     <tr><td>Un espacio figura ocupado pero en la tienda está libre.</td><td>Pendientes › Corregir › <span class="texto-pantalla">Contrato sin mueble en el plano</span>: hay un contrato vivo sobre un espacio que el plano no dibuja. Se resuelve desde esa tarjeta.</td></tr>
     <tr><td>Una cara por porcentaje dice <span class="texto-pantalla">queda 0 %</span> y no se ve nada dibujado.</td><td>Lo ocupado lo deciden los contratos y las reservas vivas, no el dibujo. Mirá Indicadores › Participaciones o la ficha de la cara.</td></tr>
     <tr><td>Aparece una pantalla <span class="texto-pantalla">… no se pudo mostrar</span>.</td><td>Tocá <span class="boton azul">Recargar</span>. Lo guardado sigue guardado. Si vuelve a pasar, abrí <span class="texto-pantalla">Detalle para soporte</span> y mandáselo a soporte de RECABRA.</td></tr>
-    <tr><td>En Contratos, <span class="boton">Pendientes</span> no muestra el número rojo.</td><td>Pasa en esa pantalla. Abrí <span class="boton">Pendientes</span> igual, o mirá el número desde el Inicio.</td></tr>
     <tr><td>No veo una sede o un módulo.</td><td>Tu rol no lo tiene. Avisale al dueño de la cuenta.</td></tr>
     <tr><td>No encuentro una función.</td><td><span class="boton">Buscar</span> (Ctrl K) y escribí cómo le decís vos.</td></tr>
   </table>

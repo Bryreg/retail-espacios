@@ -5,7 +5,8 @@ Para quien da la capacitación del Administrador. Los datos son los de la siembr
 vendidas por participación, góndolas de la casa `GON-12` y `GON-13` con planogramas
 publicados, puntas `PUN-01`…`PUN-09` y la nevera `NEV-01`—. Las capturas salen de
 `administrador/capturas-plano.cjs` (computador, 1280 × 800). Actualizado el 20/11/2026 contra la app con
-los arreglos del PR #121.
+los arreglos del PR #121; revisado otra vez con #123 (sin capturas nuevas: ninguna de estas pantallas
+mostraba lo que cambió).
 
 ## Todos los días / de vez en cuando
 
@@ -131,9 +132,10 @@ Los de la versión anterior de estas notas, uno por uno (verificados el 20/11/20
    hacen en Contratos…» y, en un mueble por participación, «…se ubica en Plano de la sede › 3D →
    «Distribuir la cara»»; Tarifas dice «Con esto, Pendientes marca los contratos que pagan por debajo
    (en Corregir)»; «Cómo se llaman los muebles acá» nombra Contratos, Indicadores, Montajes, Tarifas y el
-   Plano de la sede. **Queda uno:** en la pestaña Venta, bajo *Cómo*, «Se vende entera. Con «Entera o por
-   …», Vender ofrece la cara entera o cada parte…» todavía nombra «Vender» como pantalla (hoy es
-   Contratos). Reproducir: Plano › clic en `PUN-01`.
+   Plano de la sede. El que quedaba —la pestaña Venta, bajo *Cómo*, «…Vender ofrece la cara entera…»—
+   está **arreglado en #123**: Plano › clic en `PUN-01` dice «Se vende entera. Con «Entera o por …»,
+   Contratos ofrece la cara entera o cada parte, nunca las dos en las mismas fechas.» (verificado el
+   20/11/2026, noche).
 3. **«Falta distribuir · empieza en 7 días o menos» con participaciones que ya corren.** — **Arreglado en
    #121:** el título dice «Falta distribuir · ya corre · 7» y cada fila «· ya corre.».
 4. **«avisó que quedó · hoy … · sin foto».** — **Arreglado en #121:** «avisó que quedó montada · hoy … ·
@@ -148,8 +150,10 @@ Los de la versión anterior de estas notas, uno por uno (verificados el 20/11/20
    repite:** a 1280 px la píldora parte en dos renglones y no pisa la columna de al lado.
 8. **Distribuir la cara: dos marcas con el mismo azul.** — **Arreglado en #121:** Yogur Andino, Papitas
    Norte y Aseo Total Hogar salen cada una de un color.
-9. **«Nevera de la entrada» como ejemplo de nombre al crear una punta.** — **Sigue** (menor): el campo de
-   nombre del paso 3 tiene ese ejemplo fijo (`AsistenteDeMueble.tsx`, `placeholder`), sea cual sea el mueble.
+9. **«Nevera de la entrada» como ejemplo de nombre al crear una punta.** — **Arreglado en #123:** el
+   ejemplo es del tipo elegido. Mis muebles › Crear un mueble › paso 3: *Punta de góndola* sugiere «Punta
+   de la entrada»; *Nevera de puertas*, «Nevera de la entrada» (verificado el 20/11/2026, noche). La
+   captura `21-asistente-3` tiene el nombre ya escrito, así que no cambia.
 10. **«Publicada… por admin» con la clave de instalación.** — **Sigue:** Versiones dice «Publicada el 20
     nov por admin · rige desde el 20 nov». Con cuentas reales debería decir la persona; con la clave
     maestra no hay nombre (propio de la copia de prueba).

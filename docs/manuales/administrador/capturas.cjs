@@ -87,9 +87,9 @@ let paginaActual = null;
   }
 
   // ── 1. La barra ─────────────────────────────────────────────────────────
-  // La barra se captura en Indicadores: en Contratos la pastilla de
-  // Pendientes sale sin el número (ver notas.md, «Posibles errores»).
-  await ir("/indicadores");
+  // La barra se captura en Contratos, donde se vende (desde #123 la pastilla
+  // de Pendientes lleva ahí el mismo número que en el resto).
+  await ir("/contratos");
   await cerrarCajon();
   await espera(2500);
   const barra = page.locator(".barra-app");
@@ -423,6 +423,37 @@ let paginaActual = null;
     await espera(1500);
     await guardarTexto(page, "69-renovar", panel());
     await foto(page, C, "69-renovar-formulario", { marca: [{ loc: page.locator('section.bloque[data-bloque="2"] input[type="date"]').first(), n: 1 }, { loc: page.locator('section.bloque[data-bloque="2"] input[type="date"]').nth(1), n: 2 }] });
+    // Se guarda: la renovación hereda la planometría (#123) y el aviso de
+    // montaje sale al guardar.
+    await boton("Guardar contrato").click();
+    await espera(2500);
+    await guardarTexto(page, "69b-renovado", panel());
+    await panel().scrollIntoViewIfNeeded();
+    // Hasta el aviso de montaje: el renglón del proveedor sale cortado por el
+    // borde del panel, y lo de abajo («Qué pasa ahora») no tiene en cuenta la
+    // planometría heredada (ver notas.md, «Posibles errores»).
+    const montaje = panel().getByText("Montaje", { exact: true }).first().locator("xpath=..");
+    // La nota de abajo, al centro: así entra todo lo de arriba (el panel
+    // quedaba cortado por el borde de la ventana).
+    await panel().getByText(/^La planometría se carga/).first().evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await espera(400);
+    await foto(page, C, "69b-renovado", { recorte: await hasta(page, panel(), panel().getByText("Proveedor", { exact: true }).last(), false), margen: 0, marca: montaje });
+  });
+  await paso("69c-ya-renovado", async () => {
+    // El contrato que ya tiene el siguiente firmado dice «Activo», sin
+    // «Renovar con …», y no sale en «Por vencer en 30 días».
+    await fichaDesdeContratos("PUN-01");
+    await guardarTexto(page, "69c-ficha-renovada", cajon());
+    await foto(page, C, "69c-ya-renovado", { recorte: cajon(), margen: 0, marca: cajon().locator(".ficha-cab").first() });
+    await cerrarCajon();
+    await ir("/");
+    await cerrarCajon();
+    await page.getByRole("button", { name: /^Pendientes/ }).first().click();
+    await espera(900);
+    await cajon().locator('button[data-grupo="dias30"]').click();
+    await espera(700);
+    await guardarTexto(page, "69c-bandeja-30", cajon());
+    await cerrarCajon();
   });
   await paso("70-planometria", async () => {
     await fichaDesdeContratos("PUN-07");
@@ -461,6 +492,58 @@ let paginaActual = null;
       await foto(page, C, "74-ver-todos-historial");
     }
   });
+  // ── 3.8 (ter) Confirmar o cancelar una reserva desde la ficha: la ficha
+  // dice qué pasó (`data-aviso-de-la-reserva`, #123). Después de
+  // «Contratos anteriores», que necesita `PUN-08` libre. No al final: con el
+  // contrato de la planilla (1 mar) la ficha de `PUN-08` muestra ese contrato y
+  // no la reserva de hoy (ver notas.md, «Posibles errores»).
+  async function reservarPUN08() {
+    await ir("/contratos");
+    await boton("3 meses").click();
+    await espera(700);
+    await tocar("PUN-08");
+    const prov = page.getByPlaceholder("Escribí el nombre");
+    await prov.click();
+    await page.keyboard.type("Lácteos", { delay: 80 });
+    await espera(800);
+    await prov.press("Tab");
+    await espera(400);
+    await boton("Reservar hasta…").click();
+    await espera(600);
+    const d = new Date(); d.setDate(d.getDate() + 7);
+    await page.locator('[data-reserva] input[type="date"]').first().fill(d.toISOString().slice(0, 10));
+    await espera(500);
+    await page.getByRole("button", { name: /^Reservar hasta el/ }).click();
+    await espera(2200);
+    await boton("Ver la ficha").click();
+    await espera(1800);
+  }
+  await paso("76-reserva-cancelada", async () => {
+    await reservarPUN08();
+    await cajon().getByRole("button", { name: "Cancelar", exact: true }).first().click();
+    await espera(1500);
+    const si = cajon().getByRole("button", { name: /^Sí, cancelar/ });
+    if (await si.count()) { await si.first().click(); await espera(1500); }
+    const aviso = cajon().locator("[data-aviso-de-la-reserva]");
+    await aviso.scrollIntoViewIfNeeded();
+    await guardarTexto(page, "76-reserva-cancelada", cajon());
+    await foto(page, C, "76-reserva-cancelada", { recorte: await hasta(page, cajon(), cajon().getByText("Los próximos 12 meses").first()), margen: 0, marca: aviso });
+    await cerrarCajon();
+  });
+  await paso("77-reserva-confirmada-ficha", async () => {
+    await reservarPUN08();
+    const conf = cajon().getByRole("button", { name: "Confirmar", exact: true }).first();
+    await conf.click();
+    await espera(1800);
+    const aviso = cajon().locator("[data-aviso-de-la-reserva]");
+    await aviso.scrollIntoViewIfNeeded();
+    await guardarTexto(page, "77-reserva-confirmada-ficha", cajon());
+    // Hasta el período: «Los próximos 12 meses» recién se actualiza al volver
+    // a abrir la ficha (ver notas.md, «Posibles errores»).
+    await foto(page, C, "77-reserva-confirmada-ficha", { recorte: await hasta(page, cajon(), cajon().getByText(/^valor al mes$/i).first()), margen: 0, marca: aviso });
+    await cerrarCajon();
+  });
+
   await paso("75-cancelar", async () => {
     await fichaDesdeContratos("PUN-06");
     const b = cajon().getByRole("button", { name: "Cancelar el contrato" });
@@ -608,7 +691,8 @@ let paginaActual = null;
     await espera(2500);
     await foto(page, C, "110-sin-conexion", { recorte: page.locator(".barra-app"), margen: 0, marca: page.getByRole("button", { name: /Sin conexión/ }).first() });
     await contexto.setOffline(false);
-    await page.getByRole("button", { name: /Sin conexión/ }).first().click();
+    // Al volver la red se sincroniza solo: el botón puede no estar ya.
+    await page.getByRole("button", { name: /Sin conexión/ }).first().click({ timeout: 3000 }).catch(() => {});
     await espera(3000);
   });
 
@@ -703,6 +787,16 @@ async function zona(page, { x, y, w, h }) {
     document.documentElement.appendChild(d);
   }, { x, y, w, h });
   return page.locator("#zona-fija");
+}
+
+/** La parte de arriba de `caja` (un panel o la ficha), hasta justo antes de
+ *  `fin`: para recortar lo que sigue cuando no hace al paso. */
+async function hasta(page, caja, fin, subir = true) {
+  if (subir) await caja.evaluate((e) => { e.scrollTop = 0; });
+  await page.waitForTimeout(300);
+  const c = await caja.boundingBox();
+  const f = await fin.boundingBox();
+  return zona(page, { x: c.x, y: c.y, w: c.width, h: Math.max(80, f.y - c.y - 2) });
 }
 
 async function paso(nombre, fn) {

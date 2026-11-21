@@ -1,0 +1,19 @@
+Contrato
+FIRMADO
+Contrato guardado
+PUN-01
+Limpio Hogar · 1 ene – 31 jul · $ 4.200.000
+Salieron los avisos a:
+Comercial
+gerencia@supermercado.example, admin.centro@supermercado.example · con el valor
+Montaje
+montaje.centro@supermercado.example · sin valores
+Proveedor
+compras@limpiohogar.example
+La planometría se carga en Indicadores, en la ficha del espacio.
+Qué pasa ahora
+Confirmación al proveedor Enviada, sin tarifas.
+Aviso de montaje Sale a quien monta cuando el espacio tenga su planometría (se carga en la ficha del espacio).
+Registro del montaje Quien monta lo registra con una foto, desde el enlace del correo.
+Verificación Administración compara la foto con lo pedido, en Montajes.
+Armar otro contratoVer la ficha
