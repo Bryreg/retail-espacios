@@ -417,11 +417,18 @@ def _sin_contenido_de_otros(lista: list[dict], *, plata: bool) -> list[dict]:
 
 def _lineas_de_bitacora(cx, persona: Persona) -> list[dict]:
     """Las líneas de la bitácora del supermercado que hizo esta persona (su
-    correo va al final del detalle): cuándo, qué, con qué rol y desde qué IP."""
+    correo va al final del detalle): cuándo, qué, con qué rol y desde qué IP.
+
+    Sólo donde el correo es el del FINAL (``anotar`` lo agrega como «… · correo»,
+    o es el detalle entero): desde el 2026-11-21 las líneas de Equipo nombran
+    también a la persona invitada o cambiada («luis@x: Trabajador →
+    Administrador · duenia@x»), y eso no es algo que hizo Luis —ni la IP es la
+    suya—. La mención igual aparece, contada, en las ocurrencias."""
     from app.models.models import AuditEntry
 
     t = AuditEntry.__table__
-    conds = [func.lower(t.c.detalle).contains(c, autoescape=True) for c in persona.correos if c]
+    detalle = func.lower(t.c.detalle)
+    conds = [or_(detalle == c, detalle.endswith(f" · {c}", autoescape=True)) for c in persona.correos if c]
     if not conds:
         return []
     return [

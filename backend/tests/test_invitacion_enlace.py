@@ -14,6 +14,7 @@ otro supermercado entraba al que el selector mostrara primero.
 Mismo andamiaje que ``test_identidad.py``: verificador falso por
 ``dependency_overrides`` y todo ``import app.*`` adentro de las funciones.
 """
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -393,11 +394,11 @@ def test_la_duenia_le_cambia_el_rol_a_un_trabajador_y_su_token_viejo_deja_de_val
                         headers=cab_duenia).status_code == 200
     assert client.get("/api/usuarios", headers=cab_ascendido).status_code == 401
 
-    # La bitácora dice qué cambió, en palabras, y que lo hizo la dueña.
+    # La bitácora dice a quién y qué cambió, en palabras, y que lo hizo la dueña.
     lineas = [l for l in client.get("/api/bitacora/?accion=usuario.rol", headers=cab_duenia).json()]
     assert [l["detalle"].split(" · ")[0] for l in lineas] == [
-        f"{ROL_EN_EL_CORREO['admin']} → {ROL_EN_EL_CORREO['worker']}",
-        f"{ROL_EN_EL_CORREO['worker']} → {ROL_EN_EL_CORREO['admin']}",
+        f"peon@acme.co: {ROL_EN_EL_CORREO['admin']} → {ROL_EN_EL_CORREO['worker']}",
+        f"peon@acme.co: {ROL_EN_EL_CORREO['worker']} → {ROL_EN_EL_CORREO['admin']}",
     ]
     assert all(l["rol"] == "owner" and l["detalle"].endswith("duenia@acme.co") for l in lineas)
     assert lineas[0]["titulo"] == "Rol de una persona cambiado"
@@ -467,15 +468,17 @@ def test_la_bitacora_dice_duenio_cuando_lo_hizo_la_duenia(client):
     client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"activo": False}, headers=cab_duenia)
     client.patch(f"/api/usuarios/{miembros['peon@acme.co']}", json={"activo": True}, headers=cab_admin)
     lineas = client.get("/api/bitacora/?accion=usuario.cambio", headers=cab_duenia).json()
+    # A quién, qué y quién (2026-11-21: decía «activado · admin@acme.co», y
+    # ese correo era el de quien lo hizo, no el de la persona activada).
     assert [(l["detalle"], l["rol"]) for l in lineas] == [
-        ("activado · admin@acme.co", "admin"),
-        ("desactivado · duenia@acme.co", "owner"),
+        ("peon@acme.co: activado · admin@acme.co", "admin"),
+        ("peon@acme.co: desactivado · duenia@acme.co", "owner"),
     ]
-    # La invitación dice el rol en palabras (decía «rol owner»).
+    # La invitación dice a quién y el rol en palabras (decía «rol owner»).
     invitadas = client.get("/api/bitacora/?accion=usuario.invitado", headers=cab_duenia).json()
     assert [(l["detalle"], l["rol"]) for l in invitadas] == [
-        ("rol Trabajador · duenia@acme.co", "owner"),
-        ("rol Administrador · duenia@acme.co", "owner"),
+        ("peon@acme.co: rol Trabajador · duenia@acme.co", "owner"),
+        ("admin@acme.co: rol Administrador · duenia@acme.co", "owner"),
     ]
     # El ingreso de la dueña, también.
     _oauth(client, "d")
@@ -506,6 +509,85 @@ def test_el_correo_dice_con_que_cuenta_entrar_y_escapa_el_nombre(client, monkeyp
     # Escapado UNA vez: el título lo escapa `html_shell` (2026-10-02), así que
     # quien llama ya no lo escapa por su cuenta.
     assert "&amp;lt;" not in html
+
+
+# ─── La invitación pasa por la cola de correos (2026-11-21) ───────────────────
+#
+# Salía directo: una falla pasajera del proveedor de correo perdía la invitación
+# y la pantalla decía igual «Invitación enviada». Ahora se anota en
+# `correos_pendientes`, el mantenimiento la reintenta y la respuesta dice si salió.
+
+def _correos_de_galerias():
+    from app.database import SessionLocal
+    from app.models.correos import CorreoPendiente
+
+    db = SessionLocal()
+    try:
+        return [(f.estado, f.intentos, json.loads(f.destinatarios_json), f.asunto)
+                for f in db.query(CorreoPendiente).order_by(CorreoPendiente.id).all()]
+    finally:
+        db.close()
+
+
+def test_la_invitacion_que_no_sale_queda_en_la_cola_y_se_reintenta(client, admin, monkeypatch):
+    from app.database import SessionLocal
+    from app.services import cola_de_correos, mailer
+    from tests.conftest import esperar_mantenimiento
+
+    import app.routers.usuarios as usuarios_router
+
+    esperar_mantenimiento()
+    intentos = []
+
+    def _cae(destinatarios, asunto, html):
+        intentos.append((list(destinatarios), asunto))
+        return False
+
+    monkeypatch.setattr(usuarios_router, "send_mail_to_bg", _cae)
+    r = client.post("/api/usuarios/invitar", json={"email": "nueva@acme.co", "rol": "worker"}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["correo_enviado"] is False
+    assert intentos == [(["nueva@acme.co"], "Invitación a Galerías — RECABRA")]
+    assert _correos_de_galerias() == [("pendiente", 1, ["nueva@acme.co"], "Invitación a Galerías — RECABRA")]
+    # La invitación existe igual: aparece en la lista de pendientes.
+    pendientes = client.get("/api/usuarios", headers=admin).json()["invitaciones"]
+    assert [i["email"] for i in pendientes] == ["nueva@acme.co"]
+
+    # Cuando el proveedor vuelve, el mantenimiento la manda: el mismo correo.
+    salieron = []
+    monkeypatch.setattr(mailer, "send_mail_to", lambda d, a, h: salieron.append((list(d), a, h)) or True)
+    db = SessionLocal()
+    try:
+        luego = datetime.now(timezone.utc) + timedelta(hours=1)
+        assert cola_de_correos.despachar_pendientes(db, ahora=luego) == {"enviados": 1, "fallidos": 0}
+    finally:
+        db.close()
+    assert _correos_de_galerias()[0][:2] == ("enviado", 2)
+    [(destinatarios, asunto, html)] = salieron
+    assert destinatarios == ["nueva@acme.co"] and asunto == "Invitación a Galerías — RECABRA"
+    assert "?invitacion=" in html and "nueva@acme.co" in html
+
+
+def test_la_invitacion_que_sale_queda_enviada_y_la_respuesta_lo_dice(client, admin, monkeypatch):
+    from tests.conftest import esperar_mantenimiento
+
+    import app.routers.usuarios as usuarios_router
+
+    esperar_mantenimiento()
+    monkeypatch.setattr(usuarios_router, "send_mail_to_bg", lambda d, a, h: True)
+    r = client.post("/api/usuarios/invitar", json={"email": "otra@acme.co", "rol": "admin"}, headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["correo_enviado"] is True
+    assert _correos_de_galerias() == [("enviado", 1, ["otra@acme.co"], "Invitación a Galerías — RECABRA")]
+
+
+def test_con_la_clave_de_la_instalacion_la_bitacora_dice_a_quien_se_invito(client, admin):
+    """Con el login legado no hay correo de quien invita: la línea decía sólo
+    «rol Trabajador», sin ningún correo. Ahora dice a quién."""
+    _invitar(client, admin, "Invitada@Acme.co", rol="worker")
+    [linea] = client.get("/api/bitacora/?accion=usuario.invitado", headers=admin).json()
+    assert linea["detalle"] == "invitada@acme.co: rol Trabajador"
+    assert linea["titulo"] == "Persona invitada"
 
 
 def test_el_titulo_del_correo_es_texto_y_no_arma_html(client):
