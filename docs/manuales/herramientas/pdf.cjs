@@ -74,12 +74,16 @@ async function imprimir(navegador, html, pdf, rotulo, numeros) {
     titulos.forEach((h, i) => {
       const li = document.createElement("li");
       li.className = h.tagName === "H1" ? "cap" : "sub";
-      li.innerHTML = `<span class="t">${h.textContent}</span><span class="p">${numeros?.[i] ?? ""}</span>`;
+      // El número del capítulo va en su propio <span>: sin un espacio después,
+      // el título del índice salía «1Antes de empezar» y no se encontraba en el PDF.
+      const titulo = [...h.childNodes].map((n) => n.textContent.trim()).filter(Boolean).join(" ");
+      li.innerHTML = `<span class="t">${titulo}</span><span class="p">${numeros?.[i] ?? ""}</span>`;
       ol.appendChild(li);
     });
     nav.appendChild(ol);
   }, { v: VERSION, numeros });
-  const titulos = await page.evaluate(() => [...document.querySelectorAll(".capitulo > h1, h2.proceso")].map((h) => h.textContent));
+  const titulos = await page.evaluate(() => [...document.querySelectorAll(".capitulo > h1, h2.proceso")]
+    .map((h) => [...h.childNodes].map((n) => n.textContent.trim()).filter(Boolean).join(" ")));
   await page.pdf({
     path: pdf, format: "A4", printBackground: true, preferCSSPageSize: true,
     displayHeaderFooter: true, headerTemplate: "<span></span>", footerTemplate: pie(rotulo),

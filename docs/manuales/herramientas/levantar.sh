@@ -7,6 +7,7 @@ PUERTO="${MANUAL_PUERTO:-8790}"
 PY="${PYTHON:-python3}"
 pkill -f "uvicorn app.main:app --host 127.0.0.1 --port $PUERTO" 2>/dev/null || true
 sleep 1
+mkdir -p "${MANUAL_TMP:-/tmp}"
 LOG="${MANUAL_TMP:-/tmp}/servidor-$PUERTO.log"
 MANUAL_TMP="${MANUAL_TMP:-/tmp}/bd-$PUERTO" MANUAL_PUERTO="$PUERTO" PYTHON="$PY" \
   setsid nohup sh "$AQUI/servidor.sh" > "$LOG" 2>&1 < /dev/null &
